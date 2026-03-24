@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Axiom Trade - 新增加仓层级</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "tertiary-container": "#a36700",
+                        "on-secondary-fixed-variant": "#005236",
+                        "tertiary-fixed-dim": "#ffb95f",
+                        "primary-container": "#2170e4",
+                        "on-secondary-container": "#00714d",
+                        "on-secondary": "#ffffff",
+                        "on-primary-fixed-variant": "#004395",
+                        "inverse-primary": "#adc6ff",
+                        "surface-dim": "#d8dadc",
+                        "on-surface": "#191c1e",
+                        "surface-container-highest": "#e0e3e5",
+                        "on-tertiary-fixed-variant": "#653e00",
+                        "primary-fixed": "#d8e2ff",
+                        "on-tertiary-fixed": "#2a1700",
+                        "on-background": "#191c1e",
+                        "surface-variant": "#e0e3e5",
+                        "on-tertiary-container": "#fffbff",
+                        "surface-bright": "#f7f9fb",
+                        "on-primary-fixed": "#001a42",
+                        "inverse-on-surface": "#eff1f3",
+                        "surface": "#f7f9fb",
+                        "on-error-container": "#93000a",
+                        "on-primary-container": "#fefcff",
+                        "on-primary": "#ffffff",
+                        "outline": "#727785",
+                        "tertiary-fixed": "#ffddb8",
+                        "error": "#ba1a1a",
+                        "on-error": "#ffffff",
+                        "surface-container-high": "#e6e8ea",
+                        "secondary-fixed": "#6ffbbe",
+                        "inverse-surface": "#2d3133",
+                        "background": "#f7f9fb",
+                        "surface-container-low": "#f2f4f6",
+                        "secondary": "#006c49",
+                        "primary-fixed-dim": "#adc6ff",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary": "#825100",
+                        "secondary-container": "#6cf8bb",
+                        "on-tertiary": "#ffffff",
+                        "on-surface-variant": "#424754",
+                        "secondary-fixed-dim": "#4edea3",
+                        "primary": "#0058be",
+                        "surface-tint": "#005ac2",
+                        "surface-container": "#eceef0",
+                        "on-secondary-fixed": "#002113",
+                        "outline-variant": "#c2c6d6",
+                        "error-container": "#ffdad6"
+                    },
+                    fontFamily: {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+                },
+            },
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; background-color: #f7f9fb; color: #191c1e; }
+        .font-headline { font-family: 'Manrope', sans-serif; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+    </style>
+</head>
+<body class="min-h-screen">
+<!-- TopAppBar Navigation Shell (Filtered for transactional relevance) -->
+<header class="bg-white dark:bg-slate-950 sticky top-0 z-50 border-none">
+<div class="flex justify-between items-center w-full px-6 py-4 mx-auto max-w-7xl">
+<div class="flex items-center gap-8">
+<span class="text-xl font-extrabold tracking-tighter text-slate-900 dark:text-slate-50">Axiom Trade</span>
+</div>
+<div class="flex items-center space-x-4">
+<button class="p-2 rounded-full hover:bg-slate-100 transition-colors">
+<span class="material-symbols-outlined text-slate-500">notifications</span>
+</button>
+<div class="h-8 w-8 rounded-full overflow-hidden bg-slate-200">
+<img class="object-cover w-full h-full" data-alt="Professional portrait of a financial analyst in a clean studio setting with soft lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuARL9r47HmEFT3MY5rLzZxVa5K8atKO8v-pvs4aHy-6aq_Vy-wxbjMbbZLGgEWUDCKkqu7D4iqzRLFRQajNp57NZj88q477co28_DW2gdRnlscYjr64SEyhMsc5dnuPVDMir5siNcDVoKptDrDQNYekzTLzgNa-YC99gTZosQ2VXwKqf0XILkJQjnwSo--boDBcU6zKFR2fDgsqEZ_Uw68lTSEpKTDKq9jvKQ0SBu02WAHp5-bOS0DmOqbCmO4jCYYgaAqSzW1x08c"/>
+</div>
+</div>
+</div>
+</header>
+<main class="max-w-7xl mx-auto px-6 py-8">
+<!-- Back Navigation -->
+<div class="mb-8">
+<button class="flex items-center gap-2 text-slate-500 hover:text-primary transition-all group">
+<span class="material-symbols-outlined text-lg group-hover:-translate-x-1 transition-transform">arrow_back</span>
+<span class="text-sm font-medium font-body">返回加仓策略配置</span>
+</button>
+</div>
+<!-- Title Section -->
+<div class="mb-10">
+<h1 class="text-3xl font-bold font-headline tracking-tight text-on-surface">新增加仓层级</h1>
+<p class="text-on-surface-variant text-sm mt-2 font-body">为您的金字塔式建仓策略定义新的风险对冲与增持参数。</p>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+<!-- Main Form Card (65% width equivalent) -->
+<div class="lg:col-span-8 space-y-6">
+<div class="bg-surface-container-lowest rounded-xl p-8 transition-shadow">
+<div class="flex items-center gap-3 mb-8">
+<div class="h-8 w-1 bg-primary rounded-full"></div>
+<h2 class="text-xl font-bold font-headline text-on-surface">层级参数设置</h2>
+</div>
+<div class="space-y-8">
+<!-- Input Group 1 -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+<div class="space-y-2">
+<label class="block text-[10px] font-bold tracking-widest uppercase text-on-surface-variant font-label">距均线跌幅 (%)</label>
+<div class="relative group">
+<input class="w-full bg-surface-container-highest border-none rounded-lg py-4 px-4 text-lg font-bold font-headline focus:ring-2 focus:ring-primary/40 transition-all outline-none" placeholder="0.0" type="text" value="5"/>
+<div class="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant font-bold">%</div>
+</div>
+<p class="text-[11px] text-slate-400 font-body">当资产价格低于MA20均线设定百分比时触发</p>
+</div>
+<div class="space-y-2">
+<label class="block text-[10px] font-bold tracking-widest uppercase text-on-surface-variant font-label">加仓倍数 (X)</label>
+<div class="relative group">
+<input class="w-full bg-surface-container-highest border-none rounded-lg py-4 px-4 text-lg font-bold font-headline focus:ring-2 focus:ring-primary/40 transition-all outline-none" placeholder="1.0" type="text" value="1.5"/>
+<div class="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant font-bold">X</div>
+</div>
+<p class="text-[11px] text-slate-400 font-body">相对于基础持仓规模的杠杆/资金倍数</p>
+</div>
+</div>
+<!-- Read Only Field (Glassmorphism Effect) -->
+<div class="bg-primary/5 rounded-xl p-6 border border-primary/10">
+<div class="flex justify-between items-center">
+<div class="space-y-1">
+<label class="block text-[10px] font-bold tracking-widest uppercase text-primary font-label">预计投入金额 (CNY)</label>
+<p class="text-2xl font-extrabold font-headline text-primary tracking-tight">¥45,000</p>
+</div>
+<div class="p-3 bg-white rounded-lg shadow-sm">
+<span class="material-symbols-outlined text-primary" data-weight="fill">payments</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Action Buttons -->
+<div class="flex items-center gap-4 pt-4">
+<button class="flex-1 bg-primary text-on-primary py-4 px-8 rounded-lg font-bold font-headline hover:bg-primary-container transition-all scale-100 active:scale-95 shadow-lg shadow-primary/10">
+                        保存层级配置
+                    </button>
+<button class="px-8 py-4 text-on-surface-variant font-semibold hover:bg-surface-container-high rounded-lg transition-all">
+                        取消
+                    </button>
+</div>
+</div>
+<!-- Side Preview Card (35% width equivalent) -->
+<div class="lg:col-span-4 space-y-6">
+<div class="bg-surface-container-low rounded-xl p-6 border-none">
+<h2 class="text-sm font-bold font-headline text-on-surface mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">analytics</span>
+                        策略预览
+                    </h2>
+<!-- Visual Pyramid Tracker -->
+<div class="space-y-4 mb-8">
+<div class="flex items-end gap-2 h-32 justify-center">
+<!-- Existing Tiers -->
+<div class="w-12 bg-secondary/20 rounded-t-sm h-1/4" title="Tier 1"></div>
+<div class="w-12 bg-secondary/40 rounded-t-sm h-1/2" title="Tier 2"></div>
+<!-- New Tier (Active Highlight) -->
+<div class="w-16 bg-primary rounded-t-sm h-3/4 relative" title="New Tier">
+<div class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] font-bold text-primary font-headline">New</div>
+</div>
+</div>
+<div class="h-px bg-outline-variant/30 w-full"></div>
+<p class="text-center text-[11px] font-bold tracking-widest text-on-surface-variant uppercase font-label">金字塔加仓结构</p>
+</div>
+<div class="space-y-4">
+<div class="flex justify-between items-center py-3 border-b border-outline-variant/10">
+<span class="text-xs font-medium text-on-surface-variant font-body">当前预留现金</span>
+<span class="text-sm font-bold font-headline text-on-surface">¥150,000</span>
+</div>
+<div class="flex justify-between items-center py-3 border-b border-outline-variant/10">
+<span class="text-xs font-medium text-on-surface-variant font-body">本次预计占用</span>
+<span class="text-sm font-bold font-headline text-primary">- ¥45,000</span>
+</div>
+<div class="flex justify-between items-center py-3 bg-white/50 rounded-lg px-3">
+<span class="text-xs font-bold text-on-surface font-body">剩余预留现金</span>
+<span class="text-sm font-extrabold font-headline text-secondary">¥105,000</span>
+</div>
+</div>
+</div>
+<!-- Financial Health Mini-Chart Placeholder -->
+<div class="bg-surface-container-lowest rounded-xl p-1 overflow-hidden">
+<img class="w-full h-32 object-cover opacity-80 rounded-lg" data-alt="Abstract financial chart with clean blue and green lines representing stock growth and stability on a light background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDtcN08aWHAL50OrwR_6Jy9_Rd9NBILZKITbAOoNBgCRXLzFjKHBzCQUKpA3YUPxB3JYMXOlwEyU4v-zB9kdsv1kaIMHmOJit04ojPa_agjM55mt7Awu40KiQ8gYXqVakxMlsTPt3l1WmRgYd4n9vrpAurFa9Mkw8nM9Qxd8SLu4Qb0B7DdCDaguW9W0kB4uEC__dUAXzbXSmwFaT_8B5Dow0ijjzbdkPTCXZKfddjISP0hwovD_ofE3_OtE0039D23Sopx0Oe6GAc"/>
+</div>
+</div>
+</div>
+<!-- Footer / Risk Disclosure -->
+<footer class="mt-16 pb-12">
+<div class="flex items-start gap-3 p-4 bg-error-container/10 rounded-lg border border-error-container/20">
+<span class="material-symbols-outlined text-error text-lg">warning</span>
+<p class="text-xs text-on-surface-variant leading-relaxed font-body">
+<span class="font-bold text-error">风险提示：</span>加仓倍数越高，单一层级的资金敞口越大。请确保您的账户剩余预留现金足以支撑后续可能出现的更深层跌幅，以避免爆仓或强制平仓风险。
+                </p>
+</div>
+<div class="mt-8 text-center">
+<p class="text-[10px] text-slate-400 font-label tracking-widest uppercase">© 2024 Axiom Trade Institutional Intelligence. All Rights Reserved.</p>
+</div>
+</footer>
+</main>
+</body></html>

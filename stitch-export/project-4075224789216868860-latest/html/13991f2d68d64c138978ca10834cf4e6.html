@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+
+<html class="light" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>加仓策略配置 | Axiom Trade</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "error": "#ba1a1a",
+                        "surface-container-high": "#e6e8ea",
+                        "tertiary-container": "#a36700",
+                        "primary": "#0058be",
+                        "surface-tint": "#005ac2",
+                        "secondary": "#006c49",
+                        "on-background": "#191c1e",
+                        "on-error": "#ffffff",
+                        "surface-container": "#eceef0",
+                        "on-surface": "#191c1e",
+                        "surface": "#f7f9fb",
+                        "surface-dim": "#d8dadc",
+                        "primary-fixed-dim": "#adc6ff",
+                        "tertiary-fixed": "#ffddb8",
+                        "on-tertiary-fixed-variant": "#653e00",
+                        "outline": "#727785",
+                        "on-secondary-container": "#00714d",
+                        "tertiary-fixed-dim": "#ffb95f",
+                        "on-tertiary-fixed": "#2a1700",
+                        "secondary-fixed-dim": "#4edea3",
+                        "secondary-fixed": "#6ffbbe",
+                        "surface-container-low": "#f2f4f6",
+                        "on-primary-fixed": "#001a42",
+                        "error-container": "#ffdad6",
+                        "on-tertiary": "#ffffff",
+                        "primary-fixed": "#d8e2ff",
+                        "inverse-on-surface": "#eff1f3",
+                        "on-tertiary-container": "#fffbff",
+                        "surface-bright": "#f7f9fb",
+                        "on-primary-fixed-variant": "#004395",
+                        "secondary-container": "#6cf8bb",
+                        "on-error-container": "#93000a",
+                        "inverse-primary": "#adc6ff",
+                        "on-surface-variant": "#424754",
+                        "inverse-surface": "#2d3133",
+                        "surface-variant": "#e0e3e5",
+                        "on-primary-container": "#fefcff",
+                        "on-secondary-fixed-variant": "#005236",
+                        "on-secondary": "#ffffff",
+                        "background": "#f7f9fb",
+                        "tertiary": "#825100",
+                        "surface-container-highest": "#e0e3e5",
+                        "on-primary": "#ffffff",
+                        "on-secondary-fixed": "#002113",
+                        "primary-container": "#2170e4",
+                        "surface-container-lowest": "#ffffff",
+                        "outline-variant": "#c2c6d6"
+                    },
+                    fontFamily: {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3, .font-headline { font-family: 'Manrope', sans-serif; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="bg-surface text-on-surface antialiased flex">
+<!-- SideNavBar -->
+<aside class="flex flex-col h-full py-6 px-4 fixed left-0 top-0 z-50 h-screen w-64 border-r border-slate-100 bg-slate-50 dark:bg-slate-950">
+<div class="mb-10 px-2">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 bg-primary-container rounded-xl flex items-center justify-center">
+<span class="material-symbols-outlined text-white" style="font-variation-settings: 'FILL' 1;">account_balance_wallet</span>
+</div>
+<div>
+<h1 class="text-xl font-extrabold text-blue-700 dark:text-blue-500 tracking-tight">Axiom Trade</h1>
+<p class="text-[10px] tracking-wider uppercase text-slate-500 font-medium">高级理财终端</p>
+</div>
+</div>
+</div>
+<nav class="flex-1 space-y-2">
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:text-slate-800 transition-transform scale-95 active:scale-100 rounded-xl hover:bg-white/50" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="text-sm font-medium">仪表板</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 text-blue-600 shadow-sm rounded-xl font-semibold transition-transform scale-100" href="#">
+<span class="material-symbols-outlined" data-icon="layers" style="font-variation-settings: 'FILL' 1;">layers</span>
+<span class="text-sm font-medium">筹码分布</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:text-slate-800 transition-transform scale-95 active:scale-100 rounded-xl hover:bg-white/50" href="#">
+<span class="material-symbols-outlined" data-icon="analytics">analytics</span>
+<span class="text-sm font-medium">策略分析</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:text-slate-800 transition-transform scale-95 active:scale-100 rounded-xl hover:bg-white/50" href="#">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+<span class="text-sm font-medium">交易历史</span>
+</a>
+</nav>
+<div class="mt-auto space-y-2 pt-6 border-t border-slate-200/50">
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:text-slate-800 transition-transform scale-95 active:scale-100 rounded-xl hover:bg-white/50" href="#">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+<span class="text-sm font-medium">账户设置</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:text-slate-800 transition-transform scale-95 active:scale-100 rounded-xl hover:bg-white/50" href="#">
+<span class="material-symbols-outlined" data-icon="logout">logout</span>
+<span class="text-sm font-medium">退出登录</span>
+</a>
+</div>
+</aside>
+<div class="flex-1 ml-64 flex flex-col min-h-screen">
+<!-- TopNavBar -->
+<header class="flex justify-between items-center px-8 w-full sticky top-0 z-40 h-16 bg-white dark:bg-slate-900 border-b border-slate-100">
+<div class="flex items-center gap-4">
+<h2 class="font-['Manrope'] font-bold text-lg text-slate-900 dark:text-slate-100">加仓策略配置</h2>
+<span class="px-2 py-0.5 bg-secondary-fixed text-on-secondary-fixed text-[10px] font-bold rounded uppercase tracking-tighter">Live Strategy</span>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-slate-400 text-xl">notifications</span>
+<span class="material-symbols-outlined text-slate-400 text-xl">settings</span>
+<span class="material-symbols-outlined text-slate-400 text-xl">help</span>
+</div>
+<div class="h-8 w-8 rounded-full overflow-hidden bg-surface-container">
+<img alt="用户头像" class="w-full h-full object-cover" data-alt="professional headshot of a financial advisor in a studio setting with clean lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAfpWM3N4JXsSDIgRak7HgwpJmB0skT_osgxBiuSFg28nrO7r4hZSBLtp2lAwJQB00AkcPdJgH8UwviwTqeXZRg6PvTzzALiLplGnxicQZ62xbjMjE4WNhL68iCiUeg9zMwfLbQVhda5X-v2T2SYnzHreu5B_r-X-guPSS7jc45ebs_jLTFDNyC3iKj3q_xGJj4E5R38gMEZgPEEYPLW-uFAh6pfph2woN6tw2K8DVaF0yHkc1sguhFwLsBrxAMqN-Z4HxFVlGAFmI"/>
+</div>
+</div>
+</header>
+<!-- Main Content -->
+<main class="p-8 space-y-8 max-w-7xl mx-auto w-full">
+<div class="grid grid-cols-12 gap-8">
+<!-- Left Content: Configuration -->
+<div class="col-span-12 lg:col-span-7 space-y-8">
+<!-- Moving Average Base -->
+<section class="bg-surface-container-lowest p-6 rounded-xl border border-transparent">
+<div class="flex items-center gap-3 mb-6">
+<span class="material-symbols-outlined text-primary" data-icon="timeline">timeline</span>
+<h3 class="font-headline font-bold text-lg">均线基准设置</h3>
+</div>
+<div class="flex flex-wrap gap-4">
+<label class="flex-1 min-w-[200px] relative group">
+<span class="absolute -top-2.5 left-3 bg-white px-2 text-[11px] font-bold text-primary tracking-tight">基准均线周期</span>
+<select class="w-full h-12 px-4 rounded-lg bg-surface-container-low border-none focus:ring-2 focus:ring-primary/20 appearance-none text-on-surface font-medium cursor-pointer">
+<option value="20">20日 移动平均线 (短期趋势)</option>
+<option selected="" value="60">60日 移动平均线 (中期基准)</option>
+<option value="120">120日 移动平均线 (长期牛熊)</option>
+<option value="250">250日 移动平均线 (年线)</option>
+</select>
+<span class="material-symbols-outlined absolute right-3 top-3 text-slate-400 pointer-events-none">expand_more</span>
+</label>
+<div class="flex-1 min-w-[200px] flex items-center px-4 bg-primary-fixed rounded-lg text-on-primary-fixed">
+<span class="material-symbols-outlined text-lg mr-2">info</span>
+<p class="text-xs font-medium">建议使用60日均线作为价值中枢进行分批加仓。</p>
+</div>
+</div>
+</section>
+<!-- Accumulation Tiers -->
+<section class="bg-surface-container-lowest p-6 rounded-xl border border-transparent">
+<div class="flex justify-between items-center mb-6">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary" data-icon="format_list_numbered">format_list_numbered</span>
+<h3 class="font-headline font-bold text-lg">加仓阶梯配置</h3>
+</div>
+<button class="flex items-center gap-1 px-4 py-2 bg-surface-container-high hover:bg-surface-container-highest text-primary font-bold text-sm rounded-lg transition-colors">
+<span class="material-symbols-outlined text-sm">add</span>
+                                新增阶梯
+                            </button>
+</div>
+<div class="space-y-4">
+<!-- Tier Header -->
+<div class="grid grid-cols-12 gap-4 px-4 py-2 bg-surface-container text-[10px] font-bold uppercase tracking-wider text-outline rounded-lg">
+<div class="col-span-1">层级</div>
+<div class="col-span-3">距均线跌幅 (%)</div>
+<div class="col-span-3">加仓倍数 (X)</div>
+<div class="col-span-4 text-right">预计投入金额 (CNY)</div>
+<div class="col-span-1"></div>
+</div>
+<!-- Tier Row 1 -->
+<div class="grid grid-cols-12 gap-4 items-center px-4 py-4 bg-surface-container-low hover:bg-white transition-colors border border-transparent hover:border-primary/10 rounded-xl group">
+<div class="col-span-1 font-headline font-extrabold text-primary">01</div>
+<div class="col-span-3">
+<div class="flex items-center gap-2">
+<input class="w-full bg-white border-none rounded-md text-sm font-bold focus:ring-1 focus:ring-primary" type="number" value="5"/>
+<span class="text-xs text-outline font-medium">%</span>
+</div>
+</div>
+<div class="col-span-3">
+<div class="flex items-center gap-2">
+<input class="w-full bg-white border-none rounded-md text-sm font-bold focus:ring-1 focus:ring-primary" type="number" value="1.0"/>
+<span class="text-xs text-outline font-medium">倍</span>
+</div>
+</div>
+<div class="col-span-4 text-right">
+<span class="font-headline font-bold text-on-surface">¥ 30,000</span>
+</div>
+<div class="col-span-1 text-right">
+<button class="text-outline hover:text-error transition-colors">
+<span class="material-symbols-outlined text-xl">delete</span>
+</button>
+</div>
+</div>
+<!-- Tier Row 2 -->
+<div class="grid grid-cols-12 gap-4 items-center px-4 py-4 bg-surface-container-low hover:bg-white transition-colors border border-transparent hover:border-primary/10 rounded-xl group">
+<div class="col-span-1 font-headline font-extrabold text-primary">02</div>
+<div class="col-span-3">
+<div class="flex items-center gap-2">
+<input class="w-full bg-white border-none rounded-md text-sm font-bold focus:ring-1 focus:ring-primary" type="number" value="10"/>
+<span class="text-xs text-outline font-medium">%</span>
+</div>
+</div>
+<div class="col-span-3">
+<div class="flex items-center gap-2">
+<input class="w-full bg-white border-none rounded-md text-sm font-bold focus:ring-1 focus:ring-primary" type="number" value="1.5"/>
+<span class="text-xs text-outline font-medium">倍</span>
+</div>
+</div>
+<div class="col-span-4 text-right">
+<span class="font-headline font-bold text-on-surface">¥ 45,000</span>
+</div>
+<div class="col-span-1 text-right">
+<button class="text-outline hover:text-error transition-colors">
+<span class="material-symbols-outlined text-xl">delete</span>
+</button>
+</div>
+</div>
+<!-- Tier Row 3 -->
+<div class="grid grid-cols-12 gap-4 items-center px-4 py-4 bg-surface-container-low hover:bg-white transition-colors border border-transparent hover:border-primary/10 rounded-xl group">
+<div class="col-span-1 font-headline font-extrabold text-primary">03</div>
+<div class="col-span-3">
+<div class="flex items-center gap-2">
+<input class="w-full bg-white border-none rounded-md text-sm font-bold focus:ring-1 focus:ring-primary" type="number" value="20"/>
+<span class="text-xs text-outline font-medium">%</span>
+</div>
+</div>
+<div class="col-span-3">
+<div class="flex items-center gap-2">
+<input class="w-full bg-white border-none rounded-md text-sm font-bold focus:ring-1 focus:ring-primary" type="number" value="2.5"/>
+<span class="text-xs text-outline font-medium">倍</span>
+</div>
+</div>
+<div class="col-span-4 text-right">
+<span class="font-headline font-bold text-on-surface">¥ 75,000</span>
+</div>
+<div class="col-span-1 text-right">
+<button class="text-outline hover:text-error transition-colors">
+<span class="material-symbols-outlined text-xl">delete</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Capital Allocation -->
+<section class="bg-surface-container-lowest p-6 rounded-xl border border-transparent">
+<div class="flex items-center gap-3 mb-6">
+<span class="material-symbols-outlined text-primary" data-icon="pie_chart">pie_chart</span>
+<h3 class="font-headline font-bold text-lg">资金分配摘要</h3>
+</div>
+<div class="space-y-6">
+<div class="flex justify-between items-end">
+<div>
+<p class="text-[10px] font-bold text-outline uppercase tracking-wider mb-1">当前策略预留资金 (CNY)</p>
+<p class="text-3xl font-headline font-extrabold text-on-surface">¥ 150,000.00</p>
+</div>
+<div class="text-right">
+<p class="text-[10px] font-bold text-outline uppercase tracking-wider mb-1">资金利用率</p>
+<p class="text-xl font-headline font-bold text-secondary">100.0%</p>
+</div>
+</div>
+<div class="relative h-4 w-full bg-surface-container rounded-full overflow-hidden flex">
+<div class="h-full bg-primary/40 border-r border-white/20" style="width: 20%"></div>
+<div class="h-full bg-primary/70 border-r border-white/20" style="width: 30%"></div>
+<div class="h-full bg-primary" style="width: 50%"></div>
+</div>
+<div class="flex gap-4 text-[11px] font-medium text-on-surface-variant">
+<div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-primary/40"></span> 阶梯 01 (20%)</div>
+<div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-primary/70"></span> 阶梯 02 (30%)</div>
+<div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-primary"></span> 阶梯 03 (50%)</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Right Content: Insights & Preview -->
+<div class="col-span-12 lg:col-span-5 space-y-8">
+<!-- Strategy Preview Visualization -->
+<section class="bg-surface-container-lowest p-6 rounded-xl border border-transparent">
+<div class="flex items-center gap-3 mb-8">
+<span class="material-symbols-outlined text-primary" data-icon="visibility">visibility</span>
+<h3 class="font-headline font-bold text-lg">策略原理预览</h3>
+</div>
+<!-- Minimalist Step Diagram -->
+<div class="relative py-10 px-4">
+<!-- Axis -->
+<div class="absolute left-0 bottom-0 w-full h-px bg-outline-variant opacity-30"></div>
+<div class="absolute left-0 top-0 h-full w-px bg-outline-variant opacity-30"></div>
+<!-- Moving Average Line -->
+<div class="absolute top-1/4 left-0 w-full h-0.5 bg-primary/20 border-t border-dashed border-primary/50"></div>
+<span class="absolute top-1/4 -right-12 -translate-y-1/2 text-[9px] font-bold text-primary/60 uppercase">MA 基准线</span>
+<!-- Steps Drawing -->
+<div class="relative h-48 w-full flex items-end">
+<!-- Price Movement Path -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none" preserveaspectratio="none" viewbox="0 0 400 200">
+<path d="M0,40 Q50,45 100,70 T200,120 T300,160 T400,180" fill="none" opacity="0.3" stroke="#0058be" stroke-dasharray="4" stroke-width="1.5"></path>
+</svg>
+<div class="flex-1 flex flex-col items-center group">
+<div class="mb-auto h-12 w-12 rounded-full border border-primary bg-white flex items-center justify-center text-[10px] font-bold text-primary shadow-sm z-10 transition-transform group-hover:scale-110">
+                                        -5%
+                                    </div>
+<div class="w-px h-16 bg-primary/10"></div>
+<span class="mt-2 text-[9px] font-bold text-outline uppercase tracking-tighter">阶梯 01</span>
+</div>
+<div class="flex-1 flex flex-col items-center group">
+<div class="mb-auto mt-12 h-14 w-14 rounded-full border-2 border-primary bg-white flex items-center justify-center text-[10px] font-bold text-primary shadow-md z-10 transition-transform group-hover:scale-110">
+                                        -10%
+                                    </div>
+<div class="w-px h-10 bg-primary/10"></div>
+<span class="mt-2 text-[9px] font-bold text-outline uppercase tracking-tighter">阶梯 02</span>
+</div>
+<div class="flex-1 flex flex-col items-center group">
+<div class="mb-auto mt-24 h-16 w-16 rounded-full border-[3px] border-primary bg-primary text-white flex items-center justify-center text-[10px] font-bold shadow-xl z-10 transition-transform group-hover:scale-110">
+                                        -20%
+                                    </div>
+<div class="w-px h-6 bg-primary/10"></div>
+<span class="mt-2 text-[9px] font-bold text-outline uppercase tracking-tighter">阶梯 03</span>
+</div>
+</div>
+</div>
+<p class="mt-8 text-xs text-on-surface-variant leading-relaxed bg-surface-container-low p-4 rounded-lg italic">
+                            “当市场价格偏离移动平均线基准时，按照既定比例分批买入，有效降低持仓成本并分散极端行情风险。”
+                        </p>
+</section>
+<!-- Execution Summary -->
+<section class="bg-primary-container p-6 rounded-xl text-white">
+<div class="flex items-center gap-3 mb-6">
+<span class="material-symbols-outlined text-white" data-icon="summarize" style="font-variation-settings: 'FILL' 1;">summarize</span>
+<h3 class="font-headline font-bold text-lg">执行摘要</h3>
+</div>
+<div class="grid grid-cols-2 gap-6">
+<div class="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/10">
+<p class="text-[10px] font-bold text-white/70 uppercase tracking-widest mb-1">阶梯总数</p>
+<p class="text-2xl font-headline font-extrabold">3 层</p>
+</div>
+<div class="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/10">
+<p class="text-[10px] font-bold text-white/70 uppercase tracking-widest mb-1">预期成本降幅</p>
+<p class="text-2xl font-headline font-extrabold">-12.5%</p>
+</div>
+<div class="col-span-2 bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/10 flex items-center justify-between">
+<div>
+<p class="text-[10px] font-bold text-white/70 uppercase tracking-widest mb-1">风险评级</p>
+<p class="text-xl font-headline font-bold">稳健增持</p>
+</div>
+<div class="flex gap-1">
+<div class="w-6 h-1 bg-secondary-fixed rounded-full"></div>
+<div class="w-6 h-1 bg-secondary-fixed rounded-full"></div>
+<div class="w-6 h-1 bg-white/30 rounded-full"></div>
+<div class="w-6 h-1 bg-white/30 rounded-full"></div>
+</div>
+</div>
+</div>
+</section>
+<!-- Quick Guide -->
+<div class="p-6 border border-outline-variant/30 rounded-xl space-y-4">
+<h4 class="text-xs font-bold text-outline uppercase tracking-widest">配置建议</h4>
+<ul class="space-y-3">
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-primary text-lg mt-0.5">verified</span>
+<p class="text-xs text-on-surface-variant font-medium">建议首笔加仓在 5-8% 跌幅区间触发。</p>
+</li>
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-primary text-lg mt-0.5">verified</span>
+<p class="text-xs text-on-surface-variant font-medium">采用马丁格尔变种，随跌幅扩大增加买入倍数。</p>
+</li>
+</ul>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer Actions -->
+<footer class="mt-auto h-20 bg-white border-t border-slate-100 px-8 flex items-center justify-between sticky bottom-0 z-40">
+<div class="flex items-center gap-2 text-on-surface-variant text-sm font-medium">
+<span class="material-symbols-outlined text-sm">schedule</span>
+                最后更新: 2023年10月24日 14:30
+            </div>
+<div class="flex items-center gap-4">
+<button class="px-8 py-3 text-sm font-bold text-on-surface-variant hover:text-on-surface transition-colors">取消</button>
+<button class="px-10 py-3 bg-primary text-white text-sm font-bold rounded-lg shadow-lg shadow-primary/20 hover:bg-primary-container transition-all scale-100 hover:scale-[1.02] active:scale-95">
+                    保存策略
+                </button>
+</div>
+</footer>
+</div>
+</body></html>

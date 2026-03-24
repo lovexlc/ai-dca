@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+
+<html class="light" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-primary-fixed": "#001a42",
+              "surface-tint": "#005ac2",
+              "inverse-primary": "#adc6ff",
+              "surface-container": "#eceef0",
+              "on-secondary-fixed-variant": "#005236",
+              "inverse-surface": "#2d3133",
+              "on-secondary-container": "#00714d",
+              "surface-bright": "#f7f9fb",
+              "secondary-container": "#6cf8bb",
+              "surface-container-low": "#f2f4f6",
+              "secondary-fixed": "#6ffbbe",
+              "on-tertiary-fixed-variant": "#653e00",
+              "on-surface-variant": "#424754",
+              "surface-container-lowest": "#ffffff",
+              "secondary-fixed-dim": "#4edea3",
+              "surface-container-highest": "#e0e3e5",
+              "on-primary": "#ffffff",
+              "tertiary-container": "#a36700",
+              "surface-container-high": "#e6e8ea",
+              "on-secondary": "#ffffff",
+              "primary-fixed-dim": "#adc6ff",
+              "error-container": "#ffdad6",
+              "primary-container": "#2170e4",
+              "on-primary-fixed-variant": "#004395",
+              "on-surface": "#191c1e",
+              "inverse-on-surface": "#eff1f3",
+              "error": "#ba1a1a",
+              "outline-variant": "#c2c6d6",
+              "background": "#f7f9fb",
+              "surface-variant": "#e0e3e5",
+              "on-tertiary": "#ffffff",
+              "on-error-container": "#93000a",
+              "on-tertiary-fixed": "#2a1700",
+              "on-tertiary-container": "#fffbff",
+              "secondary": "#006c49",
+              "primary": "#0058be",
+              "on-error": "#ffffff",
+              "tertiary-fixed": "#ffddb8",
+              "on-primary-container": "#fefcff",
+              "on-background": "#191c1e",
+              "surface": "#f7f9fb",
+              "tertiary-fixed-dim": "#ffb95f",
+              "outline": "#727785",
+              "tertiary": "#825100",
+              "on-secondary-fixed": "#002113",
+              "primary-fixed": "#d8e2ff",
+              "surface-dim": "#d8dadc"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body antialiased">
+<!-- Top Navigation Bar -->
+<header class="flex justify-between items-center w-full px-6 h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50">
+<div class="flex items-center gap-8">
+<span class="text-2xl font-black tracking-tight text-blue-700 dark:text-blue-400 font-headline">Axiom Trade</span>
+<nav class="hidden md:flex gap-6 items-center h-full pt-1">
+<a class="text-blue-700 dark:text-blue-400 border-b-2 border-blue-700 dark:border-blue-400 pb-1 font-bold text-sm font-medium font-inter" href="#">建仓</a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 text-sm font-medium font-inter transition-colors" href="#">加仓</a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 text-sm font-medium font-inter transition-colors" href="#">定投</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative hidden lg:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+<input class="bg-surface-container-highest border-none rounded-lg pl-10 pr-4 py-2 text-sm w-64 focus:ring-2 focus:ring-primary/40" placeholder="搜索市场..." type="text"/>
+</div>
+<button class="p-2 text-slate-500 hover:bg-slate-50 rounded-full transition-colors">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="p-2 text-slate-500 hover:bg-slate-50 rounded-full transition-colors">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<div class="h-8 w-8 rounded-full bg-primary-fixed overflow-hidden">
+<img alt="用户头像" data-alt="professional portrait of a financial advisor in a studio setting with clean lighting and neutral background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBX8yPjYeNv35I2PIz3hBYCVW9Ji9wSNDM5o8zaMrX8pgxhWGDbbd0lWCj1ovBrfjfE9iq6vBPtbQTYOB0DR3TvN88jaAbwqiQZzpYSiYFR_5bYDkwrLb2o0k2jRXdmLr7A36tZNfzsIjIKKjzf-eNCqqDzY40C9zC-NsgUW3R8xuwEXSdShL6aOUdA6T59eJH4KHdgLy1AkVtDOuzZdDPVtt9iCG1AaDG6oIXAjKmR6RNNAto4lSJedoWXtVbXyZaZJiRRoE58948"/>
+</div>
+</div>
+</header>
+<div class="flex min-h-screen">
+<!-- Sidebar Navigation -->
+<aside class="flex flex-col h-screen sticky top-16 p-4 border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 w-64 shrink-0">
+<div class="flex items-center gap-3 mb-8 px-2">
+<div class="h-10 w-10 bg-primary-container rounded-xl flex items-center justify-center text-on-primary-container">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">monitoring</span>
+</div>
+<div>
+<h3 class="text-lg font-bold font-manrope text-slate-900 dark:text-slate-100 leading-tight">智能投顾</h3>
+<p class="text-[10px] font-semibold uppercase font-inter tracking-wider text-primary">策略引擎</p>
+</div>
+</div>
+<div class="space-y-6 flex-grow">
+<div>
+<div class="flex items-center justify-between px-2 mb-3">
+<span class="text-[10px] font-semibold uppercase font-inter tracking-wider text-slate-400">自选股 (Watchlist)</span>
+<span class="material-symbols-outlined text-sm cursor-pointer text-slate-400">add_circle</span>
+</div>
+<div class="space-y-1">
+<div class="bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-400 shadow-sm rounded-lg px-4 py-3 mb-1 flex justify-between items-center transition-transform duration-200 hover:scale-[1.02] border-l-4 border-primary">
+<span class="font-bold text-sm">QQQ</span>
+<span class="text-xs font-semibold">$502.44</span>
+</div>
+<div class="text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/30 px-4 py-3 mb-1 rounded-lg flex justify-between items-center transition-transform duration-200 hover:scale-[1.02]">
+<span class="font-bold text-sm">VOO</span>
+<span class="text-xs font-semibold">$512.10</span>
+</div>
+<div class="text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/30 px-4 py-3 mb-1 rounded-lg flex justify-between items-center transition-transform duration-200 hover:scale-[1.02]">
+<span class="font-bold text-sm">SPY</span>
+<span class="text-xs font-semibold">$560.22</span>
+</div>
+</div>
+</div>
+<div>
+<span class="text-[10px] font-semibold uppercase font-inter tracking-wider text-slate-400 px-2 block mb-3">我的计划</span>
+<div class="px-2 space-y-4">
+<div class="border-l-2 border-primary pl-3 py-1">
+<p class="text-xs font-bold text-slate-900">QQQ 建仓策略</p>
+<p class="text-[10px] text-slate-500">当前成本: $548.05</p>
+</div>
+<div class="border-l-2 border-slate-200 pl-3 py-1">
+<p class="text-xs font-bold text-slate-500">VOO 定投计划</p>
+<p class="text-[10px] text-slate-400">下次扣款: 10/25</p>
+</div>
+</div>
+</div>
+</div>
+<button class="mt-auto bg-primary text-on-primary w-full py-3 rounded-lg font-bold text-sm mb-4 shadow-lg shadow-primary/20 hover:opacity-90 transition-all flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">add</span>
+                新建策略计划
+            </button>
+<div class="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-2">
+<a class="flex items-center gap-3 px-2 py-1 text-slate-500 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined text-sm">help</span>
+<span class="text-xs font-semibold uppercase tracking-wider">帮助中心</span>
+</a>
+<a class="flex items-center gap-3 px-2 py-1 text-slate-500 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined text-sm">warning</span>
+<span class="text-xs font-semibold uppercase tracking-wider">风险披露</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-grow p-8 bg-surface">
+<!-- Header Section -->
+<div class="flex justify-between items-end mb-8">
+<div>
+<div class="flex items-center gap-2 mb-1">
+<h1 class="text-3xl font-extrabold font-headline text-on-surface tracking-tight">QQQ 建仓策略</h1>
+<span class="bg-secondary-container text-on-secondary-container px-2 py-1 rounded text-[10px] font-bold uppercase tracking-widest">运行中</span>
+</div>
+<p class="text-on-surface-variant font-body">纳斯达克100指数基金 (QQQ) - 金字塔累积模型</p>
+</div>
+<div class="flex gap-3">
+<button class="flex items-center gap-2 px-4 py-2 bg-surface-container-high text-primary rounded-lg font-bold text-sm hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-lg">edit</span>
+                        修改配置
+                    </button>
+<button class="flex items-center gap-2 px-4 py-2 bg-error-container text-error rounded-lg font-bold text-sm hover:opacity-90 transition-colors">
+<span class="material-symbols-outlined text-lg">delete</span>
+                        终止计划
+                    </button>
+</div>
+</div>
+<!-- Summary Metrics Row -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-sm border-l-4 border-primary">
+<p class="text-on-surface-variant text-[10px] font-bold uppercase tracking-wider mb-1">总投资额</p>
+<h3 class="text-2xl font-extrabold font-headline text-on-surface">$5,480.55</h3>
+<div class="mt-2 w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden">
+<div class="bg-primary h-full w-[91%]" style="width: 91%;"></div>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-sm">
+<p class="text-on-surface-variant text-[10px] font-bold uppercase tracking-wider mb-1">剩余预算</p>
+<h3 class="text-2xl font-extrabold font-headline text-on-surface">$519.45</h3>
+<p class="text-secondary text-xs mt-1 font-semibold">9% 可用资金</p>
+</div>
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-sm">
+<p class="text-on-surface-variant text-[10px] font-bold uppercase tracking-wider mb-1">下次买入价</p>
+<h3 class="text-2xl font-extrabold font-headline text-primary">$559.21</h3>
+<p class="text-on-surface-variant text-xs mt-1">触发跌幅: -7.0%</p>
+</div>
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-sm">
+<p class="text-on-surface-variant text-[10px] font-bold uppercase tracking-wider mb-1">平均成本</p>
+<h3 class="text-2xl font-extrabold font-headline text-on-surface">$548.05</h3>
+<p class="text-secondary text-xs mt-1 font-semibold">+4.2% 浮盈</p>
+</div>
+</div>
+<div class="grid grid-cols-12 gap-8">
+<!-- Main Chart Area -->
+<div class="col-span-12 lg:col-span-8 space-y-8">
+<div class="bg-surface-container-lowest rounded-xl shadow-sm p-6 relative overflow-hidden">
+<div class="flex justify-between items-center mb-6">
+<h4 class="font-bold font-manrope text-lg">价格走势与入场位</h4>
+<div class="flex gap-2">
+<span class="bg-surface-container-high px-3 py-1 rounded-full text-xs font-semibold cursor-pointer">1D</span>
+<span class="bg-primary text-white px-3 py-1 rounded-full text-xs font-semibold cursor-pointer">1W</span>
+<span class="bg-surface-container-high px-3 py-1 rounded-full text-xs font-semibold cursor-pointer">1M</span>
+</div>
+</div>
+<div class="h-[400px] w-full bg-surface-container-low rounded-lg relative">
+<img alt="股价走势图" class="w-full h-full object-cover rounded-lg opacity-80" data-alt="professional stock trading candle stick chart with clear green and red bars on a clean white background with subtle grid lines" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAeTaiX4du-7pQX1u2CEgkM8j6t8sQBl8uhx4fUGcCt_rOJbz3kUTZ-VQuTfGjUqUYttTWh00BkNSTFERJdpsRmEGz_RXtvLNJhJlulBsJ7JCZacwJaMWnG_DzySr0n0BGoOxCWuV1d-SxobEz6QZ1RoveA5w63rcqLA6yfDoARxNWcd85KejpIK6K8laDmEXchbmrPwX-UvW69uVEiAWnQAk1NGo45ry4CL00Xd4d4JRftS60Bpw4MMp395VVvb7Cdpkn5ckn8zOs"/>
+<!-- Overlay Entry Marks -->
+<div class="absolute top-1/4 left-1/4 flex flex-col items-center">
+<div class="bg-secondary text-white px-2 py-1 rounded text-[10px] font-bold mb-1 shadow-md">第1阶段买入</div>
+<div class="w-px h-24 border-l-2 border-dashed border-secondary"></div>
+</div>
+<div class="absolute top-1/2 left-1/2 flex flex-col items-center">
+<div class="bg-primary text-white px-2 py-1 rounded text-[10px] font-bold mb-1 shadow-md">第2阶段买入 (待触发)</div>
+<div class="w-px h-32 border-l-2 border-dashed border-primary"></div>
+</div>
+</div>
+</div>
+<!-- Strategy Logic Section -->
+<div class="bg-surface-container-lowest rounded-xl shadow-sm p-6">
+<h4 class="font-bold font-manrope text-lg mb-4">投资策略逻辑 (Investment Strategy)</h4>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="space-y-4">
+<div class="flex items-start gap-3">
+<div class="bg-primary/10 p-2 rounded-lg">
+<span class="material-symbols-outlined text-primary">pyramid</span>
+</div>
+<div>
+<h5 class="text-sm font-bold text-on-surface">金字塔式加仓 (Pyramid Scaling)</h5>
+<p class="text-xs text-on-surface-variant mt-1 leading-relaxed">遵循“价格越低，买入越多”原则。通过在不同价格阶梯分配递增资金（如 20%, 30%, 50%），实现在低位大幅摊薄成本。</p>
+</div>
+</div>
+<div class="flex items-start gap-3">
+<div class="bg-secondary/10 p-2 rounded-lg">
+<span class="material-symbols-outlined text-secondary">analytics</span>
+</div>
+<div>
+<h5 class="text-sm font-bold text-on-surface">成本均摊 (Cost Averaging)</h5>
+<p class="text-xs text-on-surface-variant mt-1 leading-relaxed">不追求精准抄底，而是通过多笔分批交易捕捉波动。系统自动计算加权平均成本，确保投资组合在反弹时能更快转盈。</p>
+</div>
+</div>
+</div>
+<div class="space-y-4">
+<div class="flex items-start gap-3">
+<div class="bg-tertiary-container/20 p-2 rounded-lg">
+<span class="material-symbols-outlined text-tertiary">security</span>
+</div>
+<div>
+<h5 class="text-sm font-bold text-on-surface">风险偏好对齐</h5>
+<p class="text-xs text-on-surface-variant mt-1 leading-relaxed">基于当前市场波动率 (VIX) 动态调整跌幅阈值。目前 QQQ 策略设定为 -7% 触发二级买入，以抵御正常技术性回调。</p>
+</div>
+</div>
+<div class="bg-surface-container-low p-3 rounded-lg border border-outline-variant/30">
+<p class="text-[10px] font-bold text-slate-400 uppercase mb-2">策略核心公式</p>
+<code class="text-xs text-primary font-mono block">Buy_Amount = Base * (1 + Decline_Percentage * Weight)</code>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Column: Details Table & Instructions -->
+<div class="col-span-12 lg:col-span-4 space-y-8">
+<div class="bg-surface-container-lowest rounded-xl shadow-sm p-6">
+<h4 class="font-bold font-manrope text-lg mb-4">执行进度</h4>
+<div class="overflow-x-auto">
+<table class="w-full text-left text-sm">
+<thead class="bg-surface-container-low text-[10px] font-bold uppercase tracking-wider text-slate-500">
+<tr>
+<th class="px-3 py-2 rounded-l-lg">阶段</th>
+<th class="px-3 py-2">目标价</th>
+<th class="px-3 py-2">状态</th>
+<th class="px-3 py-2 rounded-r-lg">金额</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-slate-100">
+<tr class="hover:bg-slate-50">
+<td class="px-3 py-4 font-bold text-secondary">01</td>
+<td class="px-3 py-4 font-medium">$601.30</td>
+<td class="px-3 py-4">
+<span class="text-[10px] bg-secondary/10 text-secondary px-2 py-0.5 rounded-full font-bold">已成交</span>
+</td>
+<td class="px-3 py-4 font-bold text-on-surface-variant">$1,200</td>
+</tr>
+<tr class="bg-primary/5">
+<td class="px-3 py-4 font-bold text-primary">02</td>
+<td class="px-3 py-4 font-medium">$559.21</td>
+<td class="px-3 py-4">
+<span class="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">挂单中</span>
+</td>
+<td class="px-3 py-4 font-bold text-primary">$1,800</td>
+</tr>
+<tr class="opacity-50">
+<td class="px-3 py-4 font-bold text-slate-400">03</td>
+<td class="px-3 py-4 font-medium">$520.06</td>
+<td class="px-3 py-4">
+<span class="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-bold">待激活</span>
+</td>
+<td class="px-3 py-4 font-bold text-slate-400">$2,480</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="bg-surface-container-lowest rounded-xl shadow-sm p-6">
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-primary">info</span>
+<h4 class="font-bold font-manrope text-lg">操作指引</h4>
+</div>
+<div class="space-y-4">
+<div class="flex gap-4">
+<span class="h-6 w-6 rounded-full bg-primary-fixed text-primary text-[10px] font-bold flex items-center justify-center shrink-0">01</span>
+<p class="text-xs text-on-surface-variant leading-relaxed"><span class="font-bold text-on-surface">严格纪律:</span> 策略运行期间请勿随意手动卖出，以免破坏长期持仓成本结构。</p>
+</div>
+<div class="flex gap-4">
+<span class="h-6 w-6 rounded-full bg-primary-fixed text-primary text-[10px] font-bold flex items-center justify-center shrink-0">02</span>
+<p class="text-xs text-on-surface-variant leading-relaxed"><span class="font-bold text-on-surface">资金预留:</span> 请确保账户中存有足够的 $519.45 可用资金以供阶段2成交。</p>
+</div>
+<div class="flex gap-4">
+<span class="h-6 w-6 rounded-full bg-primary-fixed text-primary text-[10px] font-bold flex items-center justify-center shrink-0">03</span>
+<p class="text-xs text-on-surface-variant leading-relaxed"><span class="font-bold text-on-surface">市场调整:</span> 若标的基本面发生重大改变，建议点击“修改配置”调整止损位。</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<!-- Footer -->
+<footer class="flex justify-between items-center px-8 w-full h-16 bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 text-[10px] font-inter">
+<div class="flex items-center gap-6">
+<span class="text-slate-500 font-semibold uppercase tracking-widest">© 2024 Axiom Trade 金融智能</span>
+<div class="h-4 w-px bg-slate-300"></div>
+<nav class="flex gap-4">
+<a class="text-slate-500 hover:text-blue-500 transition-colors" href="#">操作说明</a>
+<a class="text-slate-500 hover:text-blue-500 transition-colors" href="#">策略原理</a>
+<a class="text-blue-600 underline font-bold" href="#">风险提示</a>
+</nav>
+</div>
+<div class="flex items-center gap-4 text-slate-400">
+<div class="flex items-center gap-1">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+<span>系统安全</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+<span>实时数据源</span>
+</div>
+</div>
+</footer>
+</body></html>

@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+
+<html class="light" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&amp;family=Inter:wght@400;500;600&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary-container": "#2170e4",
+                        "on-surface": "#191c1e",
+                        "on-secondary-container": "#00714d",
+                        "on-error": "#ffffff",
+                        "surface-variant": "#e0e3e5",
+                        "on-primary-fixed-variant": "#004395",
+                        "on-tertiary-fixed": "#2a1700",
+                        "on-primary-fixed": "#001a42",
+                        "secondary-fixed-dim": "#4edea3",
+                        "secondary-container": "#6cf8bb",
+                        "outline-variant": "#c2c6d6",
+                        "surface-container": "#eceef0",
+                        "on-primary": "#ffffff",
+                        "surface-tint": "#005ac2",
+                        "error-container": "#ffdad6",
+                        "on-tertiary": "#ffffff",
+                        "on-tertiary-container": "#fffbff",
+                        "background": "#f7f9fb",
+                        "tertiary-container": "#a36700",
+                        "surface-container-low": "#f2f4f6",
+                        "on-surface-variant": "#424754",
+                        "surface-container-high": "#e6e8ea",
+                        "surface-container-lowest": "#ffffff",
+                        "primary": "#0058be",
+                        "on-primary-container": "#fefcff",
+                        "error": "#ba1a1a",
+                        "surface-container-highest": "#e0e3e5",
+                        "secondary-fixed": "#6ffbbe",
+                        "secondary": "#006c49",
+                        "tertiary": "#825100",
+                        "surface-bright": "#f7f9fb",
+                        "on-background": "#191c1e",
+                        "surface": "#f7f9fb",
+                        "tertiary-fixed-dim": "#ffb95f",
+                        "on-tertiary-fixed-variant": "#653e00",
+                        "tertiary-fixed": "#ffddb8",
+                        "outline": "#727785",
+                        "primary-fixed-dim": "#adc6ff",
+                        "inverse-surface": "#2d3133",
+                        "on-secondary-fixed-variant": "#005236",
+                        "on-secondary-fixed": "#002113",
+                        "surface-dim": "#d8dadc",
+                        "on-error-container": "#93000a",
+                        "primary-fixed": "#d8e2ff",
+                        "on-secondary": "#ffffff",
+                        "inverse-primary": "#adc6ff",
+                        "inverse-on-surface": "#eff1f3"
+                    },
+                    fontFamily: {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3, .font-headline { font-family: 'Manrope', sans-serif; }
+    </style>
+</head>
+<body class="bg-surface text-on-surface">
+<!-- TopAppBar -->
+<header class="fixed top-0 z-50 w-full px-6 h-16 flex justify-between items-center bg-white border-b border-slate-100">
+<div class="flex items-center gap-8">
+<span class="text-xl font-black text-blue-800 tracking-tight">Financial Architect</span>
+<nav class="hidden md:flex items-center gap-6">
+<a class="text-sm font-medium font-inter text-slate-500 hover:text-blue-700 transition-colors" href="#">Market Data</a>
+<a class="text-sm font-medium font-inter text-blue-700 font-bold" href="#">Strategies</a>
+<a class="text-sm font-medium font-inter text-slate-500 hover:text-blue-700 transition-colors" href="#">Portfolios</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 text-slate-500 hover:bg-slate-50 rounded-full transition-colors">
+<span class="material-symbols-outlined" data-icon="dark_mode">dark_mode</span>
+</button>
+<button class="p-2 text-slate-500 hover:bg-slate-50 rounded-full transition-colors">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<div class="w-8 h-8 rounded-full bg-slate-200 overflow-hidden ml-2">
+<img alt="User profile" data-alt="minimalist user avatar placeholder with soft lighting and professional blue tones" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDYqIyEb883EFzGaWipolJ0qorOxmlg5HfRltieawt2dc-Gtyv209wbTmAUG9pqcYkaoG79qKU0EEx7N6waaor9B7dX09nhs3tK-RuVwAv8dcRphwdHLmuW_AxKs8JFmF7p-EpzxQwzVoZYug74OM4ZJYlD07iu3y0qgApTGFfN-C3c7k-ccTRDpJlo3l6vnOd4M5BGE2lFES0ElqNnoPx1a1GKBTvzNF3lU8weheaK1vZGBFfBdLZax47o3G9R6HF5m-xSA8GxJAs"/>
+</div>
+</div>
+</header>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 h-screen w-64 flex flex-col p-4 pt-20 bg-slate-50 border-r border-slate-100 hidden lg:flex">
+<div class="mb-8 px-4 py-3 bg-white rounded-xl shadow-sm border border-slate-200/50">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-primary-container flex items-center justify-center">
+<span class="material-symbols-outlined text-white" data-icon="account_balance_wallet" style="font-variation-settings: 'FILL' 1;">account_balance_wallet</span>
+</div>
+<div>
+<div class="text-sm font-bold text-blue-900 leading-tight">QQQ Portfolio</div>
+<div class="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Active Strategy</div>
+</div>
+</div>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:text-blue-600 hover:translate-x-1 transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="dashboard">dashboard</span>
+<span class="text-sm font-semibold font-inter uppercase tracking-wider">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 bg-white text-blue-700 rounded-lg px-4 py-3 shadow-sm border border-slate-200/50 active:scale-95 duration-150" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="account_balance_wallet" style="font-variation-settings: 'FILL' 1;">account_balance_wallet</span>
+<span class="text-sm font-semibold font-inter uppercase tracking-wider">Strategies</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:text-blue-600 hover:translate-x-1 transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="analytics">analytics</span>
+<span class="text-sm font-semibold font-inter uppercase tracking-wider">Analysis</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:text-blue-600 hover:translate-x-1 transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="description">description</span>
+<span class="text-sm font-semibold font-inter uppercase tracking-wider">Reports</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:text-blue-600 hover:translate-x-1 transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="settings">settings</span>
+<span class="text-sm font-semibold font-inter uppercase tracking-wider">Settings</span>
+</a>
+</nav>
+<div class="mt-auto pt-6 border-t border-slate-200 space-y-1">
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:text-blue-600 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="help">help</span>
+<span class="text-sm font-semibold font-inter uppercase tracking-wider">Support</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 px-4 py-3 hover:text-error transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="logout">logout</span>
+<span class="text-sm font-semibold font-inter uppercase tracking-wider">Logout</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="lg:ml-64 pt-24 pb-12 px-6 md:px-12 max-w-5xl">
+<div class="mb-10">
+<div class="flex items-center gap-2 text-slate-400 mb-2">
+<span class="text-xs font-bold uppercase tracking-widest">策略管理</span>
+<span class="material-symbols-outlined text-sm" data-icon="chevron_right">chevron_right</span>
+<span class="text-xs font-bold uppercase tracking-widest text-primary">QQQ 建仓策略</span>
+</div>
+<h1 class="text-3xl font-extrabold text-on-surface tracking-tight mb-2">修改 QQQ 建仓策略</h1>
+<p class="text-on-surface-variant text-sm max-w-2xl leading-relaxed">
+                基于“金融建筑师”理念，您可以精确配置金字塔建仓路径。通过多级价格触发点与权重分配，平衡您的风险敞口与潜在收益。
+            </p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+<!-- Form Section -->
+<div class="md:col-span-2 space-y-8">
+<!-- Section 1: Base Parameters -->
+<section class="bg-surface-container-lowest p-8 rounded-xl shadow-sm border border-slate-100">
+<div class="flex items-center gap-3 mb-6">
+<span class="material-symbols-outlined text-primary" data-icon="tune">tune</span>
+<h2 class="text-lg font-bold text-on-surface">基础参数设置</h2>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+<div class="space-y-2">
+<label class="block text-xs font-bold text-on-surface-variant uppercase tracking-wider">初始投资金额 ($)</label>
+<div class="relative group">
+<span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">$</span>
+<input class="w-full bg-surface-container-highest border-none rounded-lg py-3 pl-8 pr-4 text-on-surface font-semibold focus:ring-2 focus:ring-primary/40 transition-all outline-none" type="number" value="10000"/>
+</div>
+</div>
+<div class="space-y-2">
+<label class="block text-xs font-bold text-on-surface-variant uppercase tracking-wider">再平衡频率</label>
+<div class="relative">
+<select class="w-full bg-surface-container-highest border-none rounded-lg py-3 px-4 text-on-surface font-semibold appearance-none focus:ring-2 focus:ring-primary/40 transition-all outline-none cursor-pointer">
+<option>每周 (Weekly)</option>
+<option selected="">每两周 (Bi-weekly)</option>
+<option>每月 (Monthly)</option>
+</select>
+<span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" data-icon="expand_more">expand_more</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Section 2: Goal Stages -->
+<section class="bg-surface-container-lowest p-8 rounded-xl shadow-sm border border-slate-100">
+<div class="flex items-center justify-between mb-6">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary" data-icon="layers">layers</span>
+<h2 class="text-lg font-bold text-on-surface">目标阶梯配置</h2>
+</div>
+<button class="text-primary text-sm font-bold flex items-center gap-1 hover:underline">
+<span class="material-symbols-outlined text-[18px]" data-icon="add_circle">add_circle</span>
+                            添加阶梯
+                        </button>
+</div>
+<div class="space-y-4">
+<!-- Header Labels -->
+<div class="grid grid-cols-12 gap-4 px-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">
+<div class="col-span-1">层级</div>
+<div class="col-span-6">触发价格 ($)</div>
+<div class="col-span-4">分配权重 (%)</div>
+<div class="col-span-1 text-center">操作</div>
+</div>
+<!-- Stages List -->
+<div class="space-y-3">
+<!-- Stage 1 -->
+<div class="grid grid-cols-12 gap-4 items-center bg-surface-container-low p-4 rounded-lg group hover:bg-surface-container transition-colors">
+<div class="col-span-1 flex justify-center">
+<div class="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">1</div>
+</div>
+<div class="col-span-6">
+<input class="w-full bg-white border-none rounded py-2 px-3 text-sm font-medium focus:ring-1 focus:ring-primary/20" type="text" value="440.00"/>
+</div>
+<div class="col-span-4">
+<input class="w-full bg-white border-none rounded py-2 px-3 text-sm font-medium focus:ring-1 focus:ring-primary/20" type="text" value="10%"/>
+</div>
+<div class="col-span-1 flex justify-center">
+<button class="text-slate-300 hover:text-error transition-colors">
+<span class="material-symbols-outlined" data-icon="delete">delete</span>
+</button>
+</div>
+</div>
+<!-- Stage 2 -->
+<div class="grid grid-cols-12 gap-4 items-center bg-surface-container-low p-4 rounded-lg group hover:bg-surface-container transition-colors">
+<div class="col-span-1 flex justify-center">
+<div class="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">2</div>
+</div>
+<div class="col-span-6">
+<input class="w-full bg-white border-none rounded py-2 px-3 text-sm font-medium focus:ring-1 focus:ring-primary/20" type="text" value="425.00"/>
+</div>
+<div class="col-span-4">
+<input class="w-full bg-white border-none rounded py-2 px-3 text-sm font-medium focus:ring-1 focus:ring-primary/20" type="text" value="20%"/>
+</div>
+<div class="col-span-1 flex justify-center">
+<button class="text-slate-300 hover:text-error transition-colors">
+<span class="material-symbols-outlined" data-icon="delete">delete</span>
+</button>
+</div>
+</div>
+<!-- Stage 3 - Active/Highlighted -->
+<div class="grid grid-cols-12 gap-4 items-center bg-primary-container/5 ring-1 ring-primary/20 p-4 rounded-lg group">
+<div class="col-span-1 flex justify-center">
+<div class="w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center text-[10px] font-bold">3</div>
+</div>
+<div class="col-span-6">
+<input class="w-full bg-white border-none rounded py-2 px-3 text-sm font-medium focus:ring-1 focus:ring-primary/20" type="text" value="410.00"/>
+</div>
+<div class="col-span-4">
+<input class="w-full bg-white border-none rounded py-2 px-3 text-sm font-medium focus:ring-1 focus:ring-primary/20" type="text" value="30%"/>
+</div>
+<div class="col-span-1 flex justify-center">
+<button class="text-slate-300 hover:text-error transition-colors">
+<span class="material-symbols-outlined" data-icon="delete">delete</span>
+</button>
+</div>
+</div>
+<!-- Stage 4 -->
+<div class="grid grid-cols-12 gap-4 items-center bg-surface-container-low p-4 rounded-lg group hover:bg-surface-container transition-colors">
+<div class="col-span-1 flex justify-center">
+<div class="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">4</div>
+</div>
+<div class="col-span-6">
+<input class="w-full bg-white border-none rounded py-2 px-3 text-sm font-medium focus:ring-1 focus:ring-primary/20" type="text" value="395.00"/>
+</div>
+<div class="col-span-4">
+<input class="w-full bg-white border-none rounded py-2 px-3 text-sm font-medium focus:ring-1 focus:ring-primary/20" type="text" value="40%"/>
+</div>
+<div class="col-span-1 flex justify-center">
+<button class="text-slate-300 hover:text-error transition-colors">
+<span class="material-symbols-outlined" data-icon="delete">delete</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Sidebar Info/Summary -->
+<div class="space-y-6">
+<!-- Result Summary Card -->
+<div class="bg-primary text-white p-6 rounded-xl shadow-lg relative overflow-hidden">
+<div class="relative z-10">
+<div class="flex items-center gap-2 opacity-80 mb-4">
+<span class="material-symbols-outlined text-sm" data-icon="analytics">analytics</span>
+<span class="text-xs font-bold uppercase tracking-widest">结果预览</span>
+</div>
+<div class="space-y-4">
+<div>
+<div class="text-[10px] font-bold opacity-70 uppercase mb-1">总计分配权重</div>
+<div class="text-4xl font-extrabold font-headline">100%</div>
+</div>
+<div class="h-1 bg-white/20 rounded-full overflow-hidden">
+<div class="h-full bg-secondary-fixed w-full"></div>
+</div>
+<div class="pt-2 border-t border-white/10">
+<div class="flex justify-between text-sm">
+<span class="opacity-80">最大建仓仓位</span>
+<span class="font-bold">$10,000</span>
+</div>
+<div class="flex justify-between text-sm mt-1">
+<span class="opacity-80">预估平均成本</span>
+<span class="font-bold">$408.50</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Decorative background element -->
+<div class="absolute -right-8 -bottom-8 w-32 h-32 bg-white/10 rounded-full blur-3xl"></div>
+</div>
+<!-- Strategy Insights Card -->
+<div class="bg-surface-container-low p-6 rounded-xl border border-slate-200">
+<h3 class="text-sm font-bold text-on-surface mb-4">策略见解</h3>
+<ul class="space-y-4">
+<li class="flex gap-3">
+<span class="material-symbols-outlined text-secondary text-sm mt-0.5" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<p class="text-xs text-on-surface-variant leading-relaxed">您的权重分配呈标准的<strong>金字塔形</strong>，这有助于在价格下跌时降低平均持有成本。</p>
+</li>
+<li class="flex gap-3">
+<span class="material-symbols-outlined text-tertiary text-sm mt-0.5" data-icon="info" style="font-variation-settings: 'FILL' 1;">info</span>
+<p class="text-xs text-on-surface-variant leading-relaxed">由于设置了<strong>每两周</strong>再平衡，策略将平滑短期波动带来的影响。</p>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<!-- Sticky Footer Actions -->
+<div class="mt-12 pt-8 border-t border-slate-200 flex items-center justify-end gap-4">
+<button class="px-8 py-3 rounded-lg text-sm font-bold text-on-surface-variant bg-surface-container-high hover:bg-surface-container-highest transition-colors active:scale-95 duration-150">
+                取消
+            </button>
+<button class="px-10 py-3 rounded-lg text-sm font-bold text-white bg-primary shadow-md hover:bg-primary-container transition-all active:scale-95 duration-150">
+                保存更改
+            </button>
+</div>
+</main>
+<!-- Bottom Mobile Nav -->
+<nav class="fixed bottom-0 left-0 w-full bg-white md:hidden grid grid-cols-5 h-16 items-center shadow-[0_-2px_10px_rgba(0,0,0,0.05)] border-t border-slate-100 px-2 z-50">
+<button class="flex flex-col items-center gap-1 text-slate-400">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="text-[10px] font-bold">概览</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-blue-700">
+<span class="material-symbols-outlined" data-icon="account_balance_wallet" style="font-variation-settings: 'FILL' 1;">account_balance_wallet</span>
+<span class="text-[10px] font-bold">策略</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-400">
+<span class="material-symbols-outlined" data-icon="analytics">analytics</span>
+<span class="text-[10px] font-bold">分析</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-400">
+<span class="material-symbols-outlined" data-icon="description">description</span>
+<span class="text-[10px] font-bold">报告</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-400">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="text-[10px] font-bold">设置</span>
+</button>
+</nav>
+</body></html>

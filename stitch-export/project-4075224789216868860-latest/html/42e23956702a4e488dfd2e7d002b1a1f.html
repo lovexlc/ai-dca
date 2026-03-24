@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+
+<html class="light" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>修改定期定额投资策略 - Axiom Trade</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "tertiary-container": "#a36700",
+              "surface-tint": "#005ac2",
+              "surface-bright": "#f7f9fb",
+              "on-tertiary-container": "#fffbff",
+              "on-tertiary": "#ffffff",
+              "primary-container": "#2170e4",
+              "on-surface": "#191c1e",
+              "on-primary-fixed-variant": "#004395",
+              "surface-container-high": "#e6e8ea",
+              "inverse-surface": "#2d3133",
+              "on-secondary-fixed": "#002113",
+              "tertiary-fixed": "#ffddb8",
+              "surface-container": "#eceef0",
+              "tertiary-fixed-dim": "#ffb95f",
+              "on-secondary-fixed-variant": "#005236",
+              "surface-dim": "#d8dadc",
+              "on-error-container": "#93000a",
+              "primary-fixed": "#d8e2ff",
+              "on-background": "#191c1e",
+              "surface-variant": "#e0e3e5",
+              "on-tertiary-fixed": "#2a1700",
+              "on-tertiary-fixed-variant": "#653e00",
+              "primary": "#0058be",
+              "background": "#f7f9fb",
+              "error-container": "#ffdad6",
+              "on-secondary-container": "#00714d",
+              "error": "#ba1a1a",
+              "secondary-fixed": "#6ffbbe",
+              "surface-container-low": "#f2f4f6",
+              "on-error": "#ffffff",
+              "tertiary": "#825100",
+              "secondary-container": "#6cf8bb",
+              "on-secondary": "#ffffff",
+              "surface": "#f7f9fb",
+              "primary-fixed-dim": "#adc6ff",
+              "on-primary-container": "#fefcff",
+              "inverse-primary": "#adc6ff",
+              "outline": "#727785",
+              "secondary": "#006c49",
+              "on-surface-variant": "#424754",
+              "on-primary": "#ffffff",
+              "outline-variant": "#c2c6d6",
+              "surface-container-highest": "#e0e3e5",
+              "secondary-fixed-dim": "#4edea3",
+              "surface-container-lowest": "#ffffff",
+              "on-primary-fixed": "#001a42",
+              "inverse-on-surface": "#eff1f3"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3, .font-headline { font-family: 'Manrope', sans-serif; }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface min-h-screen flex flex-col">
+<!-- TopAppBar -->
+<header class="bg-[#f7f9fb] dark:bg-[#191c1e] flex justify-between items-center px-6 py-3 w-full max-w-full mx-auto fixed top-0 z-50">
+<div class="flex items-center gap-4">
+<span class="text-xl font-bold tracking-tight text-[#0058be] dark:text-[#2170e4]">Axiom Trade</span>
+<div class="h-6 w-[1px] bg-outline-variant opacity-20 hidden md:block"></div>
+<nav class="hidden md:flex gap-6">
+<a class="text-[#44474a] dark:text-[#c4c7c5] hover:bg-[#eceef0] dark:hover:bg-[#2c2e30] transition-colors duration-200 px-2 py-1 text-sm font-medium" href="#">Dashboard</a>
+<a class="text-[#0058be] dark:text-[#2170e4] font-semibold border-b-2 border-[#0058be] px-2 py-1 text-sm" href="#">Strategies</a>
+<a class="text-[#44474a] dark:text-[#c4c7c5] hover:bg-[#eceef0] dark:hover:bg-[#2c2e30] transition-colors duration-200 px-2 py-1 text-sm font-medium" href="#">Markets</a>
+</nav>
+</div>
+<div class="flex items-center gap-3">
+<button class="p-2 rounded-full hover:bg-[#eceef0] transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="notifications">notifications</span>
+</button>
+<button class="p-2 rounded-full hover:bg-[#eceef0] transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="account_circle">account_circle</span>
+</button>
+</div>
+</header>
+<!-- SideNavBar (Desktop Only) -->
+<aside class="fixed left-0 top-0 h-full flex flex-col p-4 z-40 bg-[#ffffff] dark:bg-[#111314] w-64 pt-20 hidden md:flex">
+<div class="flex flex-col gap-1">
+<a class="flex items-center gap-3 text-[#44474a] dark:text-[#c4c7c5] px-4 py-3 hover:bg-[#f7f9fb] dark:hover:bg-[#1d2021] rounded-lg transition-transform hover:translate-x-1 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="text-xs font-medium font-label">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 bg-[#f2f4f6] dark:bg-[#2170e4]/10 text-[#0058be] dark:text-[#2170e4] rounded-lg px-4 py-3 font-bold transition-transform hover:translate-x-1 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="insights">insights</span>
+<span class="text-xs font-medium font-label">Strategies</span>
+</a>
+<a class="flex items-center gap-3 text-[#44474a] dark:text-[#c4c7c5] px-4 py-3 hover:bg-[#f7f9fb] dark:hover:bg-[#1d2021] rounded-lg transition-transform hover:translate-x-1 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="show_chart">show_chart</span>
+<span class="text-xs font-medium font-label">Markets</span>
+</a>
+<a class="flex items-center gap-3 text-[#44474a] dark:text-[#c4c7c5] px-4 py-3 hover:bg-[#f7f9fb] dark:hover:bg-[#1d2021] rounded-lg transition-transform hover:translate-x-1 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span class="text-xs font-medium font-label">Portfolio</span>
+</a>
+<a class="flex items-center gap-3 text-[#44474a] dark:text-[#c4c7c5] px-4 py-3 hover:bg-[#f7f9fb] dark:hover:bg-[#1d2021] rounded-lg transition-transform hover:translate-x-1 duration-200 mt-auto" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="text-xs font-medium font-label">Settings</span>
+</a>
+</div>
+</aside>
+<!-- Main Canvas -->
+<main class="flex-1 md:ml-64 pt-20 pb-24 px-6 md:px-12">
+<div class="max-w-6xl mx-auto">
+<!-- Header Section -->
+<div class="mb-10">
+<div class="flex items-center gap-2 text-primary mb-2">
+<span class="material-symbols-outlined text-lg" data-icon="arrow_back">arrow_back</span>
+<span class="text-sm font-label uppercase tracking-widest">返回策略列表</span>
+</div>
+<h1 class="text-3xl font-extrabold font-headline tracking-tight text-on-surface">修改定期定额投资策略</h1>
+<p class="text-on-surface-variant mt-2 text-sm max-w-2xl">
+                    通过金融建筑师的精密计算，优化您的成本平均法（DCA）执行方案。调整投入参数以平衡风险与增长。
+                </p>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+<!-- Form Area (Left) -->
+<div class="lg:col-span-7 space-y-6">
+<div class="bg-surface-container-lowest rounded-xl p-8 shadow-sm">
+<h2 class="text-lg font-bold font-headline mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" data-icon="tune">tune</span>
+                            策略参数设置
+                        </h2>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- Initial Investment -->
+<div class="space-y-2">
+<label class="text-xs font-label uppercase tracking-wider text-on-surface-variant">初始投资额 (¥)</label>
+<div class="relative group">
+<input class="w-full bg-surface-container-highest border-none rounded-lg px-4 py-3 text-on-surface font-semibold focus:ring-2 focus:ring-primary/40 transition-all outline-none" type="text" value="50,000"/>
+<span class="absolute right-4 top-1/2 -translate-y-1/2 text-outline text-sm">CNY</span>
+</div>
+</div>
+<!-- Recurring Investment -->
+<div class="space-y-2">
+<label class="text-xs font-label uppercase tracking-wider text-on-surface-variant">定期投资额 (¥)</label>
+<div class="relative group">
+<input class="w-full bg-surface-container-highest border-none rounded-lg px-4 py-3 text-on-surface font-semibold focus:ring-2 focus:ring-primary/40 transition-all outline-none" type="text" value="5,000"/>
+<span class="absolute right-4 top-1/2 -translate-y-1/2 text-outline text-sm">CNY</span>
+</div>
+</div>
+</div>
+<!-- Buy Frequency -->
+<div class="mt-8 space-y-3">
+<label class="text-xs font-label uppercase tracking-wider text-on-surface-variant">买入频率</label>
+<div class="flex p-1 bg-surface-container rounded-xl">
+<button class="flex-1 py-2 text-sm font-medium rounded-lg text-on-surface-variant hover:bg-surface-container-lowest transition-colors">每日</button>
+<button class="flex-1 py-2 text-sm font-medium rounded-lg text-on-surface-variant hover:bg-surface-container-lowest transition-colors">每周</button>
+<button class="flex-1 py-2 text-sm font-medium rounded-lg text-on-surface-variant hover:bg-surface-container-lowest transition-colors">双周</button>
+<button class="flex-1 py-2 text-sm font-bold rounded-lg bg-surface-container-lowest text-primary shadow-sm">每月</button>
+</div>
+</div>
+<!-- Execution Date -->
+<div class="mt-8 space-y-3">
+<label class="text-xs font-label uppercase tracking-wider text-on-surface-variant">执行日期</label>
+<div class="grid grid-cols-3 gap-3">
+<button class="py-3 px-4 rounded-lg bg-surface-container text-on-surface-variant text-sm font-medium hover:bg-surface-container-high transition-all text-center">每月 1 号</button>
+<button class="py-3 px-4 rounded-lg bg-primary-container/10 border-2 border-primary text-primary text-sm font-bold transition-all text-center">每月 15 号</button>
+<button class="py-3 px-4 rounded-lg bg-surface-container text-on-surface-variant text-sm font-medium hover:bg-surface-container-high transition-all text-center">最后一天</button>
+</div>
+</div>
+<!-- Duration Selector -->
+<div class="mt-8 space-y-3">
+<label class="text-xs font-label uppercase tracking-wider text-on-surface-variant">投资期限</label>
+<div class="relative">
+<select class="w-full bg-surface-container-highest border-none rounded-lg px-4 py-3 text-on-surface font-semibold appearance-none focus:ring-2 focus:ring-primary/40 transition-all outline-none">
+<option>持续 12 个月</option>
+<option selected="">持续 24 个月</option>
+<option>持续 36 个月</option>
+<option>持续 60 个月</option>
+</select>
+<span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-outline pointer-events-none" data-icon="expand_more">expand_more</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Preview Area (Right) -->
+<div class="lg:col-span-5 space-y-6 sticky top-24">
+<!-- Strategy Performance Preview -->
+<div class="bg-gradient-to-br from-primary to-primary-container rounded-xl p-8 text-on-primary shadow-lg overflow-hidden relative">
+<!-- Abstract Background Decoration -->
+<div class="absolute -right-8 -bottom-8 w-48 h-48 bg-white/10 rounded-full blur-3xl"></div>
+<div class="absolute -left-4 -top-4 w-32 h-32 bg-secondary-fixed/10 rounded-full blur-2xl"></div>
+<div class="relative z-10">
+<div class="flex justify-between items-start mb-8">
+<div>
+<span class="text-xs font-label uppercase tracking-widest opacity-80">预期增长预期</span>
+<div class="text-4xl font-extrabold font-headline mt-1 tracking-tight">¥1,248,320</div>
+</div>
+<div class="bg-secondary-fixed text-on-secondary-fixed px-3 py-1 rounded-full text-sm font-bold flex items-center gap-1">
+<span class="material-symbols-outlined text-sm" data-icon="trending_up">trending_up</span>
+                                    +12.4%
+                                </div>
+</div>
+<div class="space-y-4">
+<div class="flex justify-between items-center py-3 border-b border-white/10">
+<span class="text-sm opacity-70">总投资额</span>
+<span class="font-bold">¥170,000</span>
+</div>
+<div class="flex justify-between items-center py-3 border-b border-white/10">
+<span class="text-sm opacity-70">预计收益</span>
+<span class="font-bold">¥1,078,320</span>
+</div>
+<div class="flex justify-between items-center py-3">
+<span class="text-sm opacity-70">风险级别</span>
+<span class="bg-tertiary-fixed text-on-tertiary-fixed px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">中风险</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Growth Projection Chart Mock -->
+<div class="bg-surface-container-lowest rounded-xl p-6 shadow-sm">
+<h3 class="text-xs font-label uppercase tracking-wider text-on-surface-variant mb-6">资本积累轨迹模拟</h3>
+<div class="h-48 w-full flex items-end gap-1 px-2">
+<div class="flex-1 bg-surface-container-high rounded-t-sm h-[20%]"></div>
+<div class="flex-1 bg-surface-container-high rounded-t-sm h-[25%]"></div>
+<div class="flex-1 bg-surface-container-high rounded-t-sm h-[32%]"></div>
+<div class="flex-1 bg-surface-container-high rounded-t-sm h-[38%]"></div>
+<div class="flex-1 bg-surface-container-high rounded-t-sm h-[45%]"></div>
+<div class="flex-1 bg-primary/20 rounded-t-sm h-[52%]"></div>
+<div class="flex-1 bg-primary/40 rounded-t-sm h-[60%]"></div>
+<div class="flex-1 bg-primary/60 rounded-t-sm h-[72%]"></div>
+<div class="flex-1 bg-primary/80 rounded-t-sm h-[85%]"></div>
+<div class="flex-1 bg-primary rounded-t-sm h-[100%]"></div>
+</div>
+<div class="flex justify-between mt-4 text-[10px] font-label text-outline uppercase tracking-wider">
+<span>第 1 个月</span>
+<span>第 24 个月</span>
+</div>
+</div>
+<!-- Strategy Visualization Image -->
+<div class="rounded-xl overflow-hidden aspect-video relative group">
+<img alt="Financial growth visualization" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" data-alt="Modern abstract background with glass spheres and soft light reflections representing financial interconnectedness and structured growth" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAUz_poZNoWv8wmWTPdhG3jjPU-qhFSWfsJxKZth8v-vHPp8weQQm_Z2pAUMWFkyqk4tk1nqlXb7_AZ6dklSa8dd13LkLhSfAm1LXzXWbyEjauyX57CBhxmzSrWDASwj0n8TA-oLYdfMEK61DvqWzf01Q0BL6_qRQUVEFuTHnHlJTuFrWKUTO1nMv7n--SbmXX2j6FyXjCH8r8gDxJByU8LXdh6Csv_vkQMp9aj9oeA7UXSDMQxzf5dwJslsog0SyzgcL4Jkb9vMSw"/>
+<div class="absolute inset-0 bg-gradient-to-t from-on-surface/60 to-transparent flex items-end p-6">
+<p class="text-white text-xs leading-relaxed italic">"建筑师通过结构定义空间，正如通过定投平衡风险。" — 首席策略师</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer Actions & Risk Warning -->
+<div class="fixed bottom-0 left-0 right-0 bg-surface/80 backdrop-blur-md z-40 border-t-0 md:ml-64">
+<!-- Risk Warning -->
+<div class="bg-surface-container-low py-2 px-6">
+<div class="max-w-6xl mx-auto flex items-center justify-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined text-sm" data-icon="info">info</span>
+<span class="text-[10px] font-label uppercase tracking-widest">风险揭示: 市场有风险，投资需谨慎。模拟业绩不代表未来表现。</span>
+</div>
+</div>
+<!-- Actions -->
+<div class="px-6 py-4 max-w-6xl mx-auto flex flex-col sm:flex-row gap-4">
+<button class="flex-1 bg-primary text-on-primary font-bold py-4 rounded-xl shadow-lg hover:shadow-primary/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2">
+<span class="material-symbols-outlined" data-icon="play_circle">play_circle</span>
+                保存并启动策略
+            </button>
+<button class="px-10 py-4 bg-surface-container-high text-on-surface-variant font-bold rounded-xl hover:bg-surface-dim transition-all active:scale-[0.98]">
+                取消
+            </button>
+</div>
+</div>
+</body></html>
