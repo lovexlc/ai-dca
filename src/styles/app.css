@@ -1028,6 +1028,10 @@ button {
   margin-top: 18px;
 }
 
+.summary-lines--compact {
+  margin-top: 16px;
+}
+
 .summary-lines__row {
   display: flex;
   align-items: center;
@@ -1559,10 +1563,136 @@ button {
   color: var(--primary);
 }
 
+.fund-footer__value--success {
+  color: var(--secondary);
+}
+
+.fund-footer__value--warning {
+  color: var(--warning);
+}
+
 .fund-footer__divider {
   width: 1px;
   height: 38px;
   background: rgba(194, 198, 214, 0.5);
+}
+
+.summary-lines--compact {
+  margin-top: 16px;
+  gap: 10px;
+}
+
+.fund-result-card {
+  grid-column: 1 / -1;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.result-tile {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 10px;
+  background: rgba(242, 244, 246, 0.72);
+  border: 1px solid rgba(194, 198, 214, 0.34);
+}
+
+.result-tile--accent {
+  background: rgba(0, 88, 190, 0.06);
+  border-color: rgba(0, 88, 190, 0.16);
+}
+
+.result-tile--success {
+  background: rgba(108, 248, 187, 0.18);
+  border-color: rgba(0, 108, 73, 0.18);
+}
+
+.result-tile--warning {
+  background: rgba(255, 221, 184, 0.38);
+  border-color: rgba(130, 81, 0, 0.18);
+}
+
+.result-tile__label {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.result-tile__value {
+  font-family: 'Manrope', 'Inter', sans-serif;
+  font-size: 28px;
+  line-height: 1.05;
+  font-weight: 800;
+}
+
+.result-tile__meta {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.fund-footer__value--success {
+  color: var(--secondary);
+}
+
+.fund-footer__value--warning {
+  color: var(--warning);
+}
+
+.fund-result-card {
+  margin-top: 0;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.result-tile {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  background: var(--surface-low);
+  border-radius: 10px;
+}
+
+.result-tile--accent {
+  background: rgba(0, 88, 190, 0.08);
+}
+
+.result-tile--success {
+  background: rgba(108, 248, 187, 0.22);
+}
+
+.result-tile--warning {
+  background: rgba(255, 221, 184, 0.55);
+}
+
+.result-tile__label {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.result-tile__value {
+  font-family: 'Manrope', 'Inter', sans-serif;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.result-tile__meta {
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .history-bottom {
@@ -1729,6 +1859,7 @@ button {
   .content-split,
   .content-split--wide,
   .fund-switch-grid,
+  .result-grid,
   .history-stats,
   .history-bottom,
   .minimal-layout,
@@ -1770,6 +1901,7 @@ button {
   .step-row__fields,
   .stage-row__fields,
   .stage-chip-row,
+  .result-grid,
   .segmented-control,
   .date-chip-list {
     grid-template-columns: 1fr;

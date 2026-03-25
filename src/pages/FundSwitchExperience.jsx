@@ -24,6 +24,25 @@ export function FundSwitchExperience({ screen, links }) {
     persistFundSwitchState(state, summary);
   }, [state, summary]);
 
+  function updateComparison(key, value) {
+    setState((current) => ({
+      ...current,
+      comparison: {
+        ...current.comparison,
+        [key]: key.includes('Shares') || key.includes('Price') || key === 'switchCost' || key === 'extraCash' || key === 'feeTradeCount'
+          ? Number(value) || 0
+          : value
+      }
+    }));
+  }
+
+  function updateFeePerTrade(value) {
+    setState((current) => ({
+      ...current,
+      feePerTrade: Number(value) || 0
+    }));
+  }
+
   function updateRow(index, key, value) {
     setState((current) => {
       const nextRows = [...current.rows];
@@ -149,10 +168,126 @@ export function FundSwitchExperience({ screen, links }) {
             <div className="section-eyebrow">智能计算引擎</div>
             <div className="section-title" style={{ color: 'inherit', marginTop: 4 }}>智能计算引擎</div>
             <p className="promo-card__copy">自动剔除手续费影响，精准对齐切换前后的份额价值差异。</p>
+            <div className="summary-lines summary-lines--compact">
+              <div className="summary-lines__row">
+                <span>不切换现值</span>
+                <strong>{formatCurrency(summary.stayValue, '¥ ')}</strong>
+              </div>
+              <div className="summary-lines__row">
+                <span>切换后现值</span>
+                <strong>{formatCurrency(summary.switchedValue, '¥ ')}</strong>
+              </div>
+              <div className="summary-lines__row">
+                <span>手续费合计</span>
+                <strong>{formatCurrency(summary.feeTotal, '¥ ')}</strong>
+              </div>
+            </div>
             <div className="promo-card__action">
               <button className="button-secondary" type="button">查看计算逻辑</button>
             </div>
           </div>
+
+          <SurfaceCard className="surface-card--tight">
+            <div className="section-header">
+              <div>
+                <div className="section-eyebrow">收益计算参数</div>
+                <h2 className="section-title">切换收益比较</h2>
+              </div>
+            </div>
+            <div className="field-grid field-grid--2">
+              <label className="field">
+                <span className="field__label">原基金代码</span>
+                <div className="field__input-shell">
+                  <input type="text" value={summary.comparison.sourceCode} onChange={(event) => updateComparison('sourceCode', event.target.value)} />
+                </div>
+              </label>
+              <label className="field">
+                <span className="field__label">现基金代码</span>
+                <div className="field__input-shell">
+                  <input type="text" value={summary.comparison.targetCode} onChange={(event) => updateComparison('targetCode', event.target.value)} />
+                </div>
+              </label>
+              <label className="field">
+                <span className="field__label">原持有份额</span>
+                <div className="field__input-shell">
+                  <input type="number" step="0.01" value={summary.comparison.sourceSellShares} onChange={(event) => updateComparison('sourceSellShares', event.target.value)} />
+                </div>
+              </label>
+              <label className="field">
+                <span className="field__label">原基金现价</span>
+                <div className="field__input-shell">
+                  <input type="number" step="0.0001" value={summary.comparison.sourceCurrentPrice} onChange={(event) => updateComparison('sourceCurrentPrice', event.target.value)} />
+                </div>
+              </label>
+              <label className="field">
+                <span className="field__label">现持有份额</span>
+                <div className="field__input-shell">
+                  <input type="number" step="0.01" value={summary.comparison.targetBuyShares} onChange={(event) => updateComparison('targetBuyShares', event.target.value)} />
+                </div>
+              </label>
+              <label className="field">
+                <span className="field__label">现基金现价</span>
+                <div className="field__input-shell">
+                  <input type="number" step="0.0001" value={summary.comparison.targetCurrentPrice} onChange={(event) => updateComparison('targetCurrentPrice', event.target.value)} />
+                </div>
+              </label>
+              <label className="field">
+                <span className="field__label">买入总成本</span>
+                <div className="field__input-shell">
+                  <input type="number" step="0.01" value={summary.comparison.switchCost} onChange={(event) => updateComparison('switchCost', event.target.value)} />
+                </div>
+              </label>
+              <label className="field">
+                <span className="field__label">额外补入现金</span>
+                <div className="field__input-shell">
+                  <input type="number" step="0.01" value={summary.comparison.extraCash} onChange={(event) => updateComparison('extraCash', event.target.value)} />
+                </div>
+              </label>
+              <label className="field">
+                <span className="field__label">单笔手续费</span>
+                <div className="field__input-shell">
+                  <input type="number" step="0.01" value={summary.feePerTrade} onChange={(event) => updateFeePerTrade(event.target.value)} />
+                </div>
+              </label>
+              <label className="field">
+                <span className="field__label">手续费笔数</span>
+                <div className="field__input-shell">
+                  <input type="number" step="1" value={summary.comparison.feeTradeCount} onChange={(event) => updateComparison('feeTradeCount', event.target.value)} />
+                </div>
+              </label>
+            </div>
+          </SurfaceCard>
+
+          <SurfaceCard className="surface-card--tight fund-result-card">
+            <div className="section-header">
+              <div>
+                <div className="section-eyebrow">结果输出</div>
+                <h2 className="section-title">收益助手结论</h2>
+              </div>
+            </div>
+            <div className="result-grid">
+              <div className="result-tile">
+                <span className="result-tile__label">不切换现在价值</span>
+                <strong className="result-tile__value">{formatCurrency(summary.stayValue, '¥ ')}</strong>
+                <span className="result-tile__meta">{summary.comparison.sourceSellShares} 份 × {summary.comparison.sourceCurrentPrice.toFixed(4)}</span>
+              </div>
+              <div className="result-tile">
+                <span className="result-tile__label">切换后现在价值</span>
+                <strong className="result-tile__value">{formatCurrency(summary.switchedValue, '¥ ')}</strong>
+                <span className="result-tile__meta">{summary.comparison.targetBuyShares} 份 × {summary.comparison.targetCurrentPrice.toFixed(4)}</span>
+              </div>
+              <div className="result-tile result-tile--accent">
+                <span className="result-tile__label">当前持仓浮盈</span>
+                <strong className="result-tile__value">{formatCurrency(summary.switchedPositionProfit, '¥ ')}</strong>
+                <span className="result-tile__meta">切换后现值 - 买入总成本 - 手续费</span>
+              </div>
+              <div className={summary.switchAdvantage >= 0 ? 'result-tile result-tile--success' : 'result-tile result-tile--warning'}>
+                <span className="result-tile__label">切换额外收益</span>
+                <strong className="result-tile__value">{formatCurrency(summary.switchAdvantage, '¥ ')}</strong>
+                <span className="result-tile__meta">切换后现值 - 不切换现值 - 补现金 - 手续费</span>
+              </div>
+            </div>
+          </SurfaceCard>
         </div>
 
         <SurfaceCard className="fund-table-card">
@@ -232,6 +367,13 @@ export function FundSwitchExperience({ screen, links }) {
           <div>
             <div className="section-eyebrow">预估处理金额</div>
             <div className="fund-footer__value fund-footer__value--primary">{formatCurrency(summary.processedAmount, '¥ ')}</div>
+          </div>
+          <div className="fund-footer__divider" />
+          <div>
+            <div className="section-eyebrow">真实额外收益</div>
+            <div className={summary.switchAdvantage >= 0 ? 'fund-footer__value fund-footer__value--success' : 'fund-footer__value fund-footer__value--warning'}>
+              {formatCurrency(summary.switchAdvantage, '¥ ')}
+            </div>
           </div>
         </div>
         <div className="fund-footer__actions">
