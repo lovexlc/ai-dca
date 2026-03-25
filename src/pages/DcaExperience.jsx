@@ -8,8 +8,8 @@ import { SurfaceCard, WorkspaceShell } from '../components/PageChrome.jsx';
 
 const APP_MENU = [
   { label: 'Dashboard', icon: 'dashboard' },
-  { label: 'Strategies', icon: 'lab_profile', active: true },
-  { label: 'Markets', icon: 'candlestick_chart' },
+  { label: 'Strategies', icon: 'insights', active: true },
+  { label: 'Markets', icon: 'show_chart' },
   { label: 'Portfolio', icon: 'account_balance_wallet' },
   { label: 'Settings', icon: 'settings' }
 ];
@@ -146,8 +146,8 @@ export function DcaExperience({ screen, links, inPagesDir }) {
             </div>
           </SurfaceCard>
 
-          <div className="footer-bar">
-            <a className="button-primary button-full" href={links.home}>
+          <div className="action-rail">
+            <a className="button-primary action-rail__main" href={links.home}>
               <MaterialIcon className="icon-button__icon" name="save" />
               保存并开始策略
             </a>
@@ -157,7 +157,15 @@ export function DcaExperience({ screen, links, inPagesDir }) {
 
         <div className="card-grid">
           <div className="summary-tile summary-tile--blue">
-            <div className="section-eyebrow">策略资金概览</div>
+            <div className="section-header">
+              <div>
+                <div className="section-eyebrow">策略资金概览</div>
+              </div>
+              <span className="summary-pill">
+                <MaterialIcon className="icon-button__icon" filled name="trending_up" />
+                +{formatPercent(state.targetReturn * 0.414, 1).replace('%', '')}%
+              </span>
+            </div>
             <div className="summary-tile__value">{formatCurrency(projection.totalInvestment, '¥ ')}</div>
             <div className="summary-lines">
               <div className="summary-lines__row">

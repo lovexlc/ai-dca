@@ -79,6 +79,18 @@ export function HistoryExperience({ screen, links, inPagesDir }) {
           </div>
           <h1 className="page-title page-title--compact">{screen.title}</h1>
         </div>
+        <div className="page-header__actions">
+          <span className="asset-chip">
+            <span className="asset-chip__dot" />
+            QQQ (纳斯达克100 ETF)
+          </span>
+          <button className="icon-button" type="button">
+            <MaterialIcon className="icon-button__icon" name="search" />
+          </button>
+          <button className="icon-button" type="button">
+            <MaterialIcon className="icon-button__icon" name="more_vert" />
+          </button>
+        </div>
       </section>
 
       <section className="history-stats">
@@ -107,6 +119,7 @@ export function HistoryExperience({ screen, links, inPagesDir }) {
               <th>单价</th>
               <th>总金额</th>
               <th>状态</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -121,6 +134,9 @@ export function HistoryExperience({ screen, links, inPagesDir }) {
                   <span className={row.type === '卖出' ? 'history-table__status history-table__status--watch' : 'history-table__status history-table__status--buy'}>
                     {row.status}
                   </span>
+                </td>
+                <td>
+                  <MaterialIcon className="table-chevron" name="chevron_right" />
                 </td>
               </tr>
             ))}

@@ -959,6 +959,35 @@ button {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(242, 244, 246, 0.94));
 }
 
+.asset-chip,
+.summary-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.asset-chip {
+  background: var(--surface-high);
+  color: var(--text-muted);
+}
+
+.asset-chip__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--secondary);
+}
+
+.summary-pill {
+  background: rgba(108, 248, 187, 0.92);
+  color: #002113;
+}
+
 .summary-tile--blue {
   color: white;
   background: linear-gradient(135deg, var(--primary), var(--primary-strong));
@@ -1154,6 +1183,23 @@ button {
   gap: 12px;
 }
 
+.action-rail {
+  position: sticky;
+  bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(14px);
+}
+
+.action-rail__main {
+  flex: 1;
+}
+
 .minimal-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.8fr);
@@ -1273,6 +1319,10 @@ button {
 .history-table__status--watch {
   background: rgba(255, 221, 184, 0.5);
   color: var(--warning);
+}
+
+.table-chevron {
+  color: var(--line);
 }
 
 .history-bottom {
