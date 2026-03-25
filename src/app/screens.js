@@ -2,7 +2,7 @@ export const PROJECT_ID = '4075224789216868860';
 export const PROJECT_TITLE = 'Stock Accumulation Calculator Dashboard';
 export const HOME_SCREEN_ID = '75a393ec1a2d424ebafa1d0e59402d26';
 
-export const GROUP_ORDER = ['home', 'accumEdit', 'accumNew', 'addLevel', 'dca', 'history'];
+export const GROUP_ORDER = ['home', 'accumEdit', 'accumNew', 'addLevel', 'dca', 'fundSwitch', 'history'];
 
 export const GROUP_META = {
   home: {
@@ -29,6 +29,11 @@ export const GROUP_META = {
     label: '定投计划',
     description: '管理初始投入、定投频率和执行日。',
     activeTab: 'dca'
+  },
+  fundSwitch: {
+    label: '基金切换助手',
+    description: '导入交易截图并核对基金切换收益。',
+    activeTab: 'fundSwitch'
   },
   history: {
     label: '历史记录',
@@ -66,6 +71,7 @@ const SCREEN_GROUP_IDS = {
     '42e23956702a4e488dfd2e7d002b1a1f',
     '328ef14fcb034d1186f1d3fe19c7852f'
   ],
+  fundSwitch: ['5e3d43b9c2ea47f9b5d2be752bca564e'],
   history: ['65aaf3e700d3443c9810f6c727b045e8']
 };
 
@@ -85,6 +91,7 @@ const RAW_SCREENS = [
   { id: '65aaf3e700d3443c9810f6c727b045e8', title: 'QQQ 交易历史 - Axiom Trade', device: 'DESKTOP' },
   { id: '328ef14fcb034d1186f1d3fe19c7852f', title: '修改 QQQ 投资策略 - Axiom Trade', device: 'DESKTOP' },
   { id: '42e23956702a4e488dfd2e7d002b1a1f', title: '修改定期定额策略配置 - Axiom Trade', device: 'DESKTOP' },
+  { id: '5e3d43b9c2ea47f9b5d2be752bca564e', title: '基金切换收益助手 - 持仓编辑页', device: 'DESKTOP' },
   { id: '0754eda620a54150bd6b646b17aedc95', title: 'QQQ 建仓策略 - 自选股与策略集成版', device: 'DESKTOP' },
   { id: '09c23b22bbfb45f090edd43a2022b1d6', title: '新增建仓计划 - 统一导航版', device: 'DESKTOP' },
   { id: '0b7f16c425a94d759f2a42e81a76be26', title: '股票左侧建仓计算器 - 中文版', device: 'MOBILE' },
@@ -141,6 +148,7 @@ export function createPageLinks({ inPagesDir = false } = {}) {
     accumNew: pageHref('03ef40c5dff048f8b1416a6a4567f9ee', { inPagesDir }),
     addLevel: pageHref('d142c0822784448ab9b8016e300bd25c', { inPagesDir }),
     dca: pageHref('530f6fe554444798820046dee4d4b889', { inPagesDir }),
+    fundSwitch: pageHref('5e3d43b9c2ea47f9b5d2be752bca564e', { inPagesDir }),
     history: pageHref('65aaf3e700d3443c9810f6c727b045e8', { inPagesDir }),
     catalog: inPagesDir ? '../catalog.html' : './catalog.html'
   };

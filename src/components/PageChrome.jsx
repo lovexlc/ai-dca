@@ -1,13 +1,14 @@
 import { TopTabs } from './TopTabs.jsx';
 import { MaterialIcon } from './MaterialIcon.jsx';
 
-export function WorkspaceShell({ tabs, activeTab, headerRight, sidebar, children }) {
+export function WorkspaceShell({ brand = 'Axiom Trade', brandHref, tabs, activeTab, headerRight, sidebar, children }) {
+  const fallbackHref = tabs.find((tab) => tab.key === 'home')?.href || './index.html';
   return (
     <div className="workspace-shell">
       <header className="workspace-topbar">
         <div className="workspace-topbar__left">
-          <a className="workspace-wordmark" href={tabs.find((tab) => tab.key === 'home')?.href || './index.html'}>
-            Axiom Trade
+          <a className="workspace-wordmark" href={brandHref || fallbackHref}>
+            {brand}
           </a>
           <TopTabs activeKey={activeTab} tabs={tabs} />
         </div>

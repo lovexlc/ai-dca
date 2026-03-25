@@ -2,7 +2,7 @@
   "project_id": "4075224789216868860",
   "project_title": "Stock Accumulation Calculator Dashboard",
   "homepage_screen_id": "75a393ec1a2d424ebafa1d0e59402d26",
-  "html_count": 24,
+  "html_count": 25,
   "screenshot_count": 0,
   "screens": [
     {
@@ -90,6 +90,14 @@
       "title": "修改定期定额策略配置 - Axiom Trade",
       "device": "DESKTOP",
       "page_url": "pages/42e23956702a4e488dfd2e7d002b1a1f.html",
+      "screenshot_url": null,
+      "is_homepage": false
+    },
+    {
+      "screen_id": "5e3d43b9c2ea47f9b5d2be752bca564e",
+      "title": "基金切换收益助手 - 持仓编辑页",
+      "device": "DESKTOP",
+      "page_url": "pages/5e3d43b9c2ea47f9b5d2be752bca564e.html",
       "screenshot_url": null,
       "is_homepage": false
     },
