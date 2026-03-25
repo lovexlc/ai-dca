@@ -1,0 +1,20 @@
+{
+  "name": "ai-dca-stragety",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build:stitch": "python3 scripts/build_gh_pages.py",
+    "build:react-pages": "vite build",
+    "publish:react-pages": "node scripts/publish_react_pages.mjs",
+    "build": "npm run build:stitch && npm run build:react-pages && npm run publish:react-pages"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.10"
+  }
+}
