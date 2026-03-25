@@ -1,17 +1,25 @@
 {
   "project_id": "4075224789216868860",
   "project_title": "Stock Accumulation Calculator Dashboard",
-  "latest_screen_id": "557ab0ae2a534a07a21f921a17e4f7fe",
-  "html_count": 28,
-  "screenshot_count": 26,
+  "homepage_screen_id": "75a393ec1a2d424ebafa1d0e59402d26",
+  "html_count": 24,
+  "screenshot_count": 22,
   "screens": [
+    {
+      "screen_id": "75a393ec1a2d424ebafa1d0e59402d26",
+      "title": "股票左侧建仓计算器 - 金字塔比例增强版",
+      "device": "DESKTOP",
+      "page_url": "pages/75a393ec1a2d424ebafa1d0e59402d26.html",
+      "screenshot_url": "screenshots/75a393ec1a2d424ebafa1d0e59402d26.png",
+      "is_homepage": true
+    },
     {
       "screen_id": "01a499e7120746da9b03b18b20876e4a",
       "title": "定投计划配置 - 灵活执行日期版",
       "device": "DESKTOP",
       "page_url": "pages/01a499e7120746da9b03b18b20876e4a.html",
       "screenshot_url": "screenshots/01a499e7120746da9b03b18b20876e4a.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "3b3fa48876b2428c8b0da9b5a6d0b21d",
@@ -19,7 +27,7 @@
       "device": "DESKTOP",
       "page_url": "pages/3b3fa48876b2428c8b0da9b5a6d0b21d.html",
       "screenshot_url": "screenshots/3b3fa48876b2428c8b0da9b5a6d0b21d.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "277883786481606886",
@@ -27,7 +35,7 @@
       "device": "UNKNOWN",
       "page_url": null,
       "screenshot_url": "screenshots/277883786481606886.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "d142c0822784448ab9b8016e300bd25c",
@@ -35,7 +43,7 @@
       "device": "DESKTOP",
       "page_url": "pages/d142c0822784448ab9b8016e300bd25c.html",
       "screenshot_url": "screenshots/d142c0822784448ab9b8016e300bd25c.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "03ef40c5dff048f8b1416a6a4567f9ee",
@@ -43,7 +51,7 @@
       "device": "DESKTOP",
       "page_url": "pages/03ef40c5dff048f8b1416a6a4567f9ee.html",
       "screenshot_url": "screenshots/03ef40c5dff048f8b1416a6a4567f9ee.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "26eb098db14e4c4bb059b607c9578acc",
@@ -51,7 +59,7 @@
       "device": "MOBILE",
       "page_url": "pages/26eb098db14e4c4bb059b607c9578acc.html",
       "screenshot_url": null,
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "d4ce671ce96341e1b4f20743a78c4963",
@@ -59,7 +67,7 @@
       "device": "DESKTOP",
       "page_url": "pages/d4ce671ce96341e1b4f20743a78c4963.html",
       "screenshot_url": "screenshots/d4ce671ce96341e1b4f20743a78c4963.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "13991f2d68d64c138978ca10834cf4e6",
@@ -67,7 +75,7 @@
       "device": "DESKTOP",
       "page_url": "pages/13991f2d68d64c138978ca10834cf4e6.html",
       "screenshot_url": "screenshots/13991f2d68d64c138978ca10834cf4e6.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "65aaf3e700d3443c9810f6c727b045e8",
@@ -75,7 +83,7 @@
       "device": "DESKTOP",
       "page_url": "pages/65aaf3e700d3443c9810f6c727b045e8.html",
       "screenshot_url": "screenshots/65aaf3e700d3443c9810f6c727b045e8.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "328ef14fcb034d1186f1d3fe19c7852f",
@@ -83,15 +91,7 @@
       "device": "DESKTOP",
       "page_url": "pages/328ef14fcb034d1186f1d3fe19c7852f.html",
       "screenshot_url": "screenshots/328ef14fcb034d1186f1d3fe19c7852f.png",
-      "is_latest": false
-    },
-    {
-      "screen_id": "75a393ec1a2d424ebafa1d0e59402d26",
-      "title": "股票左侧建仓计算器 - 金字塔比例增强版",
-      "device": "DESKTOP",
-      "page_url": "pages/75a393ec1a2d424ebafa1d0e59402d26.html",
-      "screenshot_url": "screenshots/75a393ec1a2d424ebafa1d0e59402d26.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "42e23956702a4e488dfd2e7d002b1a1f",
@@ -99,7 +99,7 @@
       "device": "DESKTOP",
       "page_url": "pages/42e23956702a4e488dfd2e7d002b1a1f.html",
       "screenshot_url": "screenshots/42e23956702a4e488dfd2e7d002b1a1f.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "0754eda620a54150bd6b646b17aedc95",
@@ -107,7 +107,7 @@
       "device": "DESKTOP",
       "page_url": "pages/0754eda620a54150bd6b646b17aedc95.html",
       "screenshot_url": "screenshots/0754eda620a54150bd6b646b17aedc95.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "09c23b22bbfb45f090edd43a2022b1d6",
@@ -115,7 +115,7 @@
       "device": "DESKTOP",
       "page_url": "pages/09c23b22bbfb45f090edd43a2022b1d6.html",
       "screenshot_url": "screenshots/09c23b22bbfb45f090edd43a2022b1d6.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "0b7f16c425a94d759f2a42e81a76be26",
@@ -123,15 +123,7 @@
       "device": "MOBILE",
       "page_url": "pages/0b7f16c425a94d759f2a42e81a76be26.html",
       "screenshot_url": null,
-      "is_latest": false
-    },
-    {
-      "screen_id": "205ff52f37ca4231aaa89fc0de323a5c",
-      "title": "投资计划极简首页",
-      "device": "DESKTOP",
-      "page_url": "pages/205ff52f37ca4231aaa89fc0de323a5c.html",
-      "screenshot_url": "screenshots/205ff52f37ca4231aaa89fc0de323a5c.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "42a1829a673444b584ff07bf3d340678",
@@ -139,7 +131,7 @@
       "device": "DESKTOP",
       "page_url": "pages/42a1829a673444b584ff07bf3d340678.html",
       "screenshot_url": "screenshots/42a1829a673444b584ff07bf3d340678.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "4acb407f6b6f4aa19d48e14db8fc3a02",
@@ -147,15 +139,7 @@
       "device": "DESKTOP",
       "page_url": "pages/4acb407f6b6f4aa19d48e14db8fc3a02.html",
       "screenshot_url": null,
-      "is_latest": false
-    },
-    {
-      "screen_id": "517f3212e8714d2092164bf145bba24d",
-      "title": "投资计划极简首页 - 30%现金比例优化版",
-      "device": "DESKTOP",
-      "page_url": "pages/517f3212e8714d2092164bf145bba24d.html",
-      "screenshot_url": "screenshots/517f3212e8714d2092164bf145bba24d.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "530f6fe554444798820046dee4d4b889",
@@ -163,15 +147,7 @@
       "device": "DESKTOP",
       "page_url": "pages/530f6fe554444798820046dee4d4b889.html",
       "screenshot_url": "screenshots/530f6fe554444798820046dee4d4b889.png",
-      "is_latest": false
-    },
-    {
-      "screen_id": "557ab0ae2a534a07a21f921a17e4f7fe",
-      "title": "投资计划极简首页 - 定投计划命名优化版",
-      "device": "DESKTOP",
-      "page_url": "pages/557ab0ae2a534a07a21f921a17e4f7fe.html",
-      "screenshot_url": "screenshots/557ab0ae2a534a07a21f921a17e4f7fe.png",
-      "is_latest": true
+      "is_homepage": false
     },
     {
       "screen_id": "6878eff12a044d799bb7943f2753cbfa",
@@ -179,7 +155,7 @@
       "device": "DESKTOP",
       "page_url": "pages/6878eff12a044d799bb7943f2753cbfa.html",
       "screenshot_url": "screenshots/6878eff12a044d799bb7943f2753cbfa.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "810ef0f6ff574c049df021d099547b63",
@@ -187,7 +163,7 @@
       "device": "DESKTOP",
       "page_url": "pages/810ef0f6ff574c049df021d099547b63.html",
       "screenshot_url": "screenshots/810ef0f6ff574c049df021d099547b63.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "81fee20edb5542f08bb363ac837b327c",
@@ -195,15 +171,7 @@
       "device": "DESKTOP",
       "page_url": "pages/81fee20edb5542f08bb363ac837b327c.html",
       "screenshot_url": "screenshots/81fee20edb5542f08bb363ac837b327c.png",
-      "is_latest": false
-    },
-    {
-      "screen_id": "8426eec63e0a459d9b4b1cacee2f4611",
-      "title": "投资计划极简首页 - 统一导航版",
-      "device": "DESKTOP",
-      "page_url": "pages/8426eec63e0a459d9b4b1cacee2f4611.html",
-      "screenshot_url": "screenshots/8426eec63e0a459d9b4b1cacee2f4611.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "8692ca0737d74aa78bd270ddbd5b1bf6",
@@ -211,7 +179,7 @@
       "device": "DESKTOP",
       "page_url": "pages/8692ca0737d74aa78bd270ddbd5b1bf6.html",
       "screenshot_url": "screenshots/8692ca0737d74aa78bd270ddbd5b1bf6.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "8a9f687cbc2b43aa8ff9a3fee729d4f0",
@@ -219,7 +187,7 @@
       "device": "DESKTOP",
       "page_url": "pages/8a9f687cbc2b43aa8ff9a3fee729d4f0.html",
       "screenshot_url": "screenshots/8a9f687cbc2b43aa8ff9a3fee729d4f0.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "8d93d9d89df94ffdafd339da9d50f0b7",
@@ -227,7 +195,7 @@
       "device": "DESKTOP",
       "page_url": "pages/8d93d9d89df94ffdafd339da9d50f0b7.html",
       "screenshot_url": "screenshots/8d93d9d89df94ffdafd339da9d50f0b7.png",
-      "is_latest": false
+      "is_homepage": false
     },
     {
       "screen_id": "d8f0b16bd9d24c62992a5198ba3fa857",
@@ -235,7 +203,7 @@
       "device": "DESKTOP",
       "page_url": "pages/d8f0b16bd9d24c62992a5198ba3fa857.html",
       "screenshot_url": "screenshots/d8f0b16bd9d24c62992a5198ba3fa857.png",
-      "is_latest": false
+      "is_homepage": false
     }
   ]
 }

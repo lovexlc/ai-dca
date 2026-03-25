@@ -10,7 +10,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EXPORT_DIR = ROOT / "stitch-export" / "project-4075224789216868860-latest"
 DOCS_DIR = ROOT / "docs"
-LATEST_SCREEN_ID = "557ab0ae2a534a07a21f921a17e4f7fe"
+HOMEPAGE_SCREEN_ID = "75a393ec1a2d424ebafa1d0e59402d26"
+EXCLUDED_TITLE_KEYWORDS = ("投资计划极简首页",)
 
 
 def safe_unlink(path: Path) -> None:
@@ -27,6 +28,21 @@ def read_export_manifest() -> dict:
         return json.load(f)
 
 
+def should_publish(screen: dict) -> bool:
+    title = screen["title"]
+    return all(keyword not in title for keyword in EXCLUDED_TITLE_KEYWORDS)
+
+
+def published_counts(site_manifest: list[dict]) -> tuple[int, int]:
+    html_count = sum(1 for item in site_manifest if item["page_url"])
+    screenshot_count = sum(1 for item in site_manifest if item["screenshot_url"])
+    return html_count, screenshot_count
+
+
+def homepage_item(site_manifest: list[dict]) -> dict:
+    return next(item for item in site_manifest if item["screen_id"] == HOMEPAGE_SCREEN_ID)
+
+
 def copy_export_assets(export_manifest: dict) -> list[dict]:
     pages_dir = DOCS_DIR / "pages"
     screenshots_dir = DOCS_DIR / "screenshots"
@@ -35,6 +51,9 @@ def copy_export_assets(export_manifest: dict) -> list[dict]:
 
     site_manifest: list[dict] = []
     for screen in export_manifest["screens"]:
+        if not should_publish(screen):
+            continue
+
         screen_id = screen["screen_id"]
         title = screen["title"]
         device = screen["device"]
@@ -61,10 +80,11 @@ def copy_export_assets(export_manifest: dict) -> list[dict]:
                 "device": device,
                 "page_url": page_rel,
                 "screenshot_url": shot_rel,
-                "is_latest": screen_id == LATEST_SCREEN_ID,
+                "is_homepage": screen_id == HOMEPAGE_SCREEN_ID,
             }
         )
 
+    site_manifest.sort(key=lambda item: item["screen_id"] != HOMEPAGE_SCREEN_ID)
     return site_manifest
 
 
@@ -90,15 +110,16 @@ box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
 
 
 def build_homepage(site_manifest: list[dict]) -> None:
-    latest = next(item for item in site_manifest if item["screen_id"] == LATEST_SCREEN_ID)
-    latest_src = DOCS_DIR / latest["page_url"]
-    latest_html = latest_src.read_text(encoding="utf-8")
-    (DOCS_DIR / "index.html").write_text(inject_catalog_link(latest_html), encoding="utf-8")
+    homepage = homepage_item(site_manifest)
+    homepage_src = DOCS_DIR / homepage["page_url"]
+    homepage_html = homepage_src.read_text(encoding="utf-8")
+    (DOCS_DIR / "index.html").write_text(inject_catalog_link(homepage_html), encoding="utf-8")
 
 
 def build_catalog(export_manifest: dict, site_manifest: list[dict]) -> None:
-    latest = next(item for item in site_manifest if item["screen_id"] == LATEST_SCREEN_ID)
-    latest_title = next(item["title"] for item in site_manifest if item["screen_id"] == LATEST_SCREEN_ID)
+    homepage = homepage_item(site_manifest)
+    homepage_title = homepage["title"]
+    html_count, screenshot_count = published_counts(site_manifest)
     rows = json.dumps(site_manifest, ensure_ascii=False)
 
     catalog_html = f"""<!DOCTYPE html>
@@ -287,10 +308,10 @@ def build_catalog(export_manifest: dict, site_manifest: list[dict]) -> None:
     <section class="hero">
       <div class="panel">
         <h1>Stitch 页面目录</h1>
-        <p>这个目录已经整理成 GitHub Pages 可直接部署的纯静态站点。默认首页使用你最新的“定投计划命名优化版”，其余 Stitch 页面保存在独立页面目录里，方便继续挑选、对比和二次开发。</p>
+        <p>这个目录已经整理成 GitHub Pages 可直接部署的纯静态站点。默认首页已经切换为“股票左侧建仓计算器 - 金字塔比例增强版”，并且发布内容里已经移除了之前的首页草稿页面。</p>
         <div class="hero-actions">
-          <a class="btn btn-primary" href="./index.html">打开默认首页</a>
-          <a class="btn btn-secondary" href="./{latest["page_url"]}">打开最新源码页</a>
+          <a class="btn btn-primary" href="./index.html">打开默认封面</a>
+          <a class="btn btn-secondary" href="./{homepage["page_url"]}">打开封面源码页</a>
         </div>
       </div>
       <div class="panel">
@@ -298,9 +319,9 @@ def build_catalog(export_manifest: dict, site_manifest: list[dict]) -> None:
         <div class="meta-list">
           <div class="meta-row"><span class="meta-label">项目 ID</span><strong>{html.escape(export_manifest["project_id"])}</strong></div>
           <div class="meta-row"><span class="meta-label">项目标题</span><strong>{html.escape(export_manifest["project_title"])}</strong></div>
-          <div class="meta-row"><span class="meta-label">最新首页</span><strong>{html.escape(latest_title)}</strong></div>
-          <div class="meta-row"><span class="meta-label">HTML 页面数</span><strong>{export_manifest["html_count"]}</strong></div>
-          <div class="meta-row"><span class="meta-label">截图数量</span><strong>{export_manifest["screenshot_count"]}</strong></div>
+          <div class="meta-row"><span class="meta-label">默认封面</span><strong>{html.escape(homepage_title)}</strong></div>
+          <div class="meta-row"><span class="meta-label">已发布 HTML</span><strong>{html_count}</strong></div>
+          <div class="meta-row"><span class="meta-label">已发布截图</span><strong>{screenshot_count}</strong></div>
         </div>
       </div>
     </section>
@@ -324,7 +345,7 @@ def build_catalog(export_manifest: dict, site_manifest: list[dict]) -> None:
       const screenshot = item.screenshot_url
         ? `<img class="thumb" src="${{item.screenshot_url}}" alt="${{item.title}} 预览图" loading="lazy">`
         : `<div class="thumb"></div>`;
-      const latest = item.is_latest ? '<span class="chip">最新</span>' : '';
+      const homepage = item.is_homepage ? '<span class="chip">封面</span>' : '';
       const device = `<span class="chip chip-muted">${{item.device}}</span>`;
       const htmlLink = item.page_url
         ? `<a href="${{item.page_url}}">打开页面</a>`
@@ -337,7 +358,7 @@ def build_catalog(export_manifest: dict, site_manifest: list[dict]) -> None:
           ${{screenshot}}
           <div class="card-body">
             <h3 class="card-title">${{item.title}}</h3>
-            <div class="card-meta">${{latest}}${{device}}</div>
+            <div class="card-meta">${{homepage}}${{device}}</div>
             <p style="margin: 0 0 12px; color: var(--muted); font-size: 13px;">屏幕 ID：${{item.screen_id}}</p>
             <div class="card-links">${{htmlLink}}${{shotLink}}</div>
           </div>
@@ -353,12 +374,13 @@ def build_catalog(export_manifest: dict, site_manifest: list[dict]) -> None:
 
 
 def write_site_manifest(export_manifest: dict, site_manifest: list[dict]) -> None:
+    html_count, screenshot_count = published_counts(site_manifest)
     out = {
         "project_id": export_manifest["project_id"],
         "project_title": export_manifest["project_title"],
-        "latest_screen_id": LATEST_SCREEN_ID,
-        "html_count": export_manifest["html_count"],
-        "screenshot_count": export_manifest["screenshot_count"],
+        "homepage_screen_id": HOMEPAGE_SCREEN_ID,
+        "html_count": html_count,
+        "screenshot_count": screenshot_count,
         "screens": site_manifest,
     }
     (DOCS_DIR / "manifest.json").write_text(
