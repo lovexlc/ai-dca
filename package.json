@@ -4,11 +4,14 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "build:app": "vite build",
+    "prepare:ocr-assets": "node scripts/prepare_ocr_assets.mjs",
+    "build:app": "npm run prepare:ocr-assets && vite build",
     "publish:pages": "node scripts/publish_react_pages.mjs",
     "build": "npm run build:app && npm run publish:pages"
   },
   "dependencies": {
+    "@gutenye/ocr-browser": "^1.4.8",
+    "onnxruntime-web": "^1.17.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

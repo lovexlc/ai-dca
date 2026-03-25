@@ -8,8 +8,10 @@ const docsDir = resolve(root, 'docs');
 const pageTemplatePath = resolve(distDir, 'frontend', 'page.html');
 const catalogPath = resolve(distDir, 'frontend', 'catalog.html');
 const distAssetsDir = resolve(distDir, 'react-assets');
+const distOcrDir = resolve(distDir, 'ocr');
 const docsPagesDir = resolve(docsDir, 'pages');
 const docsAssetsDir = resolve(docsDir, 'react-assets');
+const docsOcrDir = resolve(docsDir, 'ocr');
 
 if (!existsSync(pageTemplatePath)) {
   throw new Error(`Missing built page template: ${pageTemplatePath}`);
@@ -21,6 +23,10 @@ if (!existsSync(catalogPath)) {
 
 if (!existsSync(distAssetsDir)) {
   throw new Error(`Missing built assets directory: ${distAssetsDir}`);
+}
+
+if (!existsSync(distOcrDir)) {
+  throw new Error(`Missing built OCR directory: ${distOcrDir}`);
 }
 
 const baseTemplate = readFileSync(pageTemplatePath, 'utf8');
@@ -42,6 +48,9 @@ writeFileSync(resolve(docsDir, 'catalog.html'), rootCatalog, 'utf8');
 
 rmSync(docsAssetsDir, { recursive: true, force: true });
 cpSync(distAssetsDir, docsAssetsDir, { recursive: true, force: true });
+
+rmSync(docsOcrDir, { recursive: true, force: true });
+cpSync(distOcrDir, docsOcrDir, { recursive: true, force: true });
 
 rmSync(resolve(docsDir, 'assets'), { recursive: true, force: true });
 rmSync(resolve(docsDir, 'screenshots'), { recursive: true, force: true });

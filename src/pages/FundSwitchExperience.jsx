@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatCurrency } from '../app/accumulation.js';
 import { buildFundSwitchSummary, createEmptyFundSwitchRow, persistFundSwitchState, readFundSwitchState } from '../app/fundSwitch.js';
 import { MaterialIcon } from '../components/MaterialIcon.jsx';
@@ -12,13 +12,54 @@ const sidebarItems = [
   { label: 'Settings', icon: 'settings' }
 ];
 
+function createOcrState(overrides = {}) {
+  return {
+    status: 'idle',
+    progress: 0,
+    message: '等待上传交易截图，浏览器将直接在本地完成 OCR。',
+    durationMs: 0,
+    error: '',
+    lineCount: 0,
+    ...overrides
+  };
+}
+
+function getStatusBadgeProps(status) {
+  if (status === 'loading') {
+    return { tone: 'warning', icon: 'hourglass_top', label: '本地 OCR 处理中' };
+  }
+
+  if (status === 'error') {
+    return { tone: 'warning', icon: 'error', label: 'OCR 识别失败' };
+  }
+
+  if (status === 'warning') {
+    return { tone: 'warning', icon: 'warning', label: 'OCR 完成，需人工确认' };
+  }
+
+  if (status === 'success') {
+    return { tone: 'success', icon: 'check_circle', label: '识别成功，请确认数据' };
+  }
+
+  return { tone: 'warning', icon: 'upload_file', label: '等待上传交易截图' };
+}
+
+function buildUploadBadge(fileName) {
+  const extension = String(fileName || '').split('.').pop()?.slice(0, 3).toUpperCase();
+  return extension || 'IMG';
+}
+
 export function FundSwitchExperience({ screen, links }) {
   const [state, setState] = useState(() => readFundSwitchState());
+  const [ocrState, setOcrState] = useState(() => createOcrState());
+  const [ocrPreview, setOcrPreview] = useState([]);
+  const fileInputRef = useRef(null);
   const summary = useMemo(() => buildFundSwitchSummary(state), [state]);
   const workspaceTabs = [
     { key: 'dataProcess', label: 'Data Processing', href: links.fundSwitch },
     { key: 'yieldCalc', label: 'Yield Calculation', href: links.fundSwitch }
   ];
+  const badge = getStatusBadgeProps(ocrState.status);
 
   useEffect(() => {
     persistFundSwitchState(state, summary);
@@ -69,8 +110,89 @@ export function FundSwitchExperience({ screen, links }) {
     setState((current) => ({
       ...current,
       rows: [...current.rows, createEmptyFundSwitchRow()],
-      recognizedRecords: current.recognizedRecords + 1
+      recognizedRecords: current.rows.length + 1
     }));
+  }
+
+  async function processOcrFile(file) {
+    setOcrPreview([]);
+    setOcrState(createOcrState({
+      status: 'loading',
+      progress: 12,
+      message: '准备本地 OCR 引擎'
+    }));
+
+    try {
+      const { recognizeFundSwitchFile } = await import('../app/fundSwitchOcr.js');
+      const result = await recognizeFundSwitchFile(file, state.comparison, (progress) => {
+        setOcrState((current) => createOcrState({
+          ...current,
+          ...progress
+        }));
+      });
+
+      const parsedRows = result.rows.length ? result.rows : [createEmptyFundSwitchRow()];
+      setState((current) => ({
+        ...current,
+        fileName: file.name,
+        recognizedRecords: result.rows.length,
+        rows: parsedRows,
+        comparison: {
+          ...current.comparison,
+          ...result.comparison
+        }
+      }));
+      setOcrPreview(result.previewLines);
+
+      if (result.rows.length) {
+        setOcrState(createOcrState({
+          status: 'success',
+          progress: 100,
+          durationMs: result.durationMs,
+          lineCount: result.lines.length,
+          message: `本地 OCR 完成，已解析 ${result.rows.length} 条交易记录。`
+        }));
+      } else {
+        setOcrState(createOcrState({
+          status: 'warning',
+          progress: 100,
+          durationMs: result.durationMs,
+          lineCount: result.lines.length,
+          message: 'OCR 已完成，但没有稳定解析出交易行，请手动确认或补录。'
+        }));
+      }
+    } catch (error) {
+      setOcrState(createOcrState({
+        status: 'error',
+        progress: 0,
+        error: error instanceof Error ? error.message : '本地 OCR 失败，请更换更清晰的截图重试。',
+        message: '本地 OCR 失败'
+      }));
+    }
+  }
+
+  function handleFileInputChange(event) {
+    const file = event.target.files?.[0];
+    if (file) {
+      void processOcrFile(file);
+    }
+    event.target.value = '';
+  }
+
+  function openFilePicker() {
+    fileInputRef.current?.click();
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    const file = event.dataTransfer?.files?.[0];
+    if (file) {
+      void processOcrFile(file);
+    }
+  }
+
+  function handleDragOver(event) {
+    event.preventDefault();
   }
 
   return (
@@ -124,20 +246,34 @@ export function FundSwitchExperience({ screen, links }) {
       <section className="page-header">
         <div>
           <h1 className="page-title page-title--compact">基金切换收益助手</h1>
-          <p className="page-subtitle">智能识别交易截图，精准计算基金切换过程中的损益表现，助您优化投资策略。</p>
+          <p className="page-subtitle">使用 onnxruntime-web + PaddleOCR 模型在浏览器本地识别交易截图，并自动回填切换收益计算参数。</p>
         </div>
-        <StatusBadge>识别成功，请确认数据</StatusBadge>
+        <StatusBadge icon={badge.icon} tone={badge.tone}>{badge.label}</StatusBadge>
       </section>
 
       <section className="fund-switch-grid">
         <div className="card-grid">
           <SurfaceCard>
-            <button className="upload-dropzone" type="button">
+            <input
+              ref={fileInputRef}
+              accept="image/png,image/jpeg,image/jpg,image/webp"
+              hidden
+              onChange={handleFileInputChange}
+              type="file"
+            />
+            <button
+              className={ocrState.status === 'loading' ? 'upload-dropzone is-loading' : 'upload-dropzone'}
+              onClick={openFilePicker}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
+              type="button"
+            >
               <div className="upload-dropzone__icon">
-                <MaterialIcon className="upload-dropzone__icon-symbol" name="cloud_upload" />
+                <MaterialIcon className="upload-dropzone__icon-symbol" name={ocrState.status === 'loading' ? 'hourglass_top' : 'cloud_upload'} />
               </div>
-              <div className="upload-dropzone__title">点击或拖拽上传交易截图/PDF</div>
-              <div className="upload-dropzone__copy">支持 OCR 自动识别，可批量处理</div>
+              <div className="upload-dropzone__title">点击或拖拽上传交易截图</div>
+              <div className="upload-dropzone__copy">支持 PNG / JPG / JPEG / WebP，OCR 完全在本地浏览器执行。</div>
+              <div className="upload-dropzone__hint">{ocrState.message}</div>
             </button>
           </SurfaceCard>
 
@@ -147,21 +283,36 @@ export function FundSwitchExperience({ screen, links }) {
                 <div className="section-eyebrow">OCR 识别状态</div>
                 <h2 className="section-title">OCR 识别状态</h2>
               </div>
-              <div className="table-note">已完成 100%</div>
+              <div className="table-note">
+                {ocrState.status === 'idle' ? '待开始' : `${ocrState.progress}%`}
+              </div>
             </div>
             <div className="progress-line" style={{ marginTop: 0 }}>
               <div className="progress-line__track">
-                <div className="progress-line__value" style={{ width: '100%' }} />
+                <div className="progress-line__value" style={{ width: `${ocrState.progress}%` }} />
               </div>
             </div>
             <div className="ocr-file">
-              <div className="ocr-file__badge">IMG</div>
+              <div className="ocr-file__badge">{buildUploadBadge(ocrState.status === 'idle' ? '' : state.fileName)}</div>
               <div className="ocr-file__body">
-                <strong>{state.fileName}</strong>
-                <span>识别出 {summary.recordCount} 条有效记录</span>
+                <strong>{ocrState.status === 'idle' ? '未上传图片' : state.fileName}</strong>
+                <span>
+                  {ocrState.status === 'error'
+                    ? ocrState.error
+                    : ocrState.status === 'success' || ocrState.status === 'warning'
+                      ? `识别到 ${ocrState.lineCount} 行文字，解析出 ${Math.max(state.recognizedRecords, 0)} 条交易记录`
+                      : '上传后会自动尝试解析日期、基金代码、买卖方向、单价和份额'}
+                </span>
               </div>
-              <MaterialIcon className="ocr-file__check" filled name="check_circle" />
+              <MaterialIcon className="ocr-file__check" filled name={ocrState.status === 'error' ? 'error' : ocrState.status === 'loading' ? 'hourglass_top' : 'check_circle'} />
             </div>
+            {ocrPreview.length ? (
+              <div className="ocr-preview">
+                {ocrPreview.map((line) => (
+                  <div key={line} className="ocr-preview__line">{line}</div>
+                ))}
+              </div>
+            ) : null}
           </SurfaceCard>
 
           <div className="summary-tile summary-tile--blue">
@@ -178,8 +329,8 @@ export function FundSwitchExperience({ screen, links }) {
                 <strong>{formatCurrency(summary.switchedValue, '¥ ')}</strong>
               </div>
               <div className="summary-lines__row">
-                <span>手续费合计</span>
-                <strong>{formatCurrency(summary.feeTotal, '¥ ')}</strong>
+                <span>OCR 耗时</span>
+                <strong>{ocrState.durationMs ? `${ocrState.durationMs} ms` : '等待识别'}</strong>
               </div>
             </div>
             <div className="promo-card__action">
@@ -377,7 +528,7 @@ export function FundSwitchExperience({ screen, links }) {
           </div>
         </div>
         <div className="fund-footer__actions">
-          <button className="button-outline" type="button">取消导入</button>
+          <button className="button-outline" type="button" onClick={() => setOcrPreview([])}>取消导入</button>
           <button className="button-primary" type="button">
             确认导入并计算收益
             <MaterialIcon className="icon-button__icon" name="arrow_forward" />

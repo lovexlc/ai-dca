@@ -1363,6 +1363,11 @@ button {
   transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
 }
 
+.upload-dropzone.is-loading {
+  border-color: rgba(0, 88, 190, 0.3);
+  background: rgba(0, 88, 190, 0.04);
+}
+
 .upload-dropzone:hover {
   border-color: rgba(0, 88, 190, 0.28);
   background: rgba(0, 88, 190, 0.04);
@@ -1392,6 +1397,14 @@ button {
 .upload-dropzone__copy {
   color: var(--text-muted);
   font-size: 12px;
+  text-align: center;
+}
+
+.upload-dropzone__hint {
+  max-width: 34ch;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.6;
   text-align: center;
 }
 
@@ -1443,6 +1456,21 @@ button {
 
 .ocr-file__check {
   color: var(--secondary);
+}
+
+.ocr-preview {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.ocr-preview__line {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(242, 244, 246, 0.72);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .fund-table-card {
@@ -1635,64 +1663,6 @@ button {
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.5;
-}
-
-.fund-footer__value--success {
-  color: var(--secondary);
-}
-
-.fund-footer__value--warning {
-  color: var(--warning);
-}
-
-.fund-result-card {
-  margin-top: 0;
-}
-
-.result-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.result-tile {
-  display: grid;
-  gap: 6px;
-  padding: 16px;
-  background: var(--surface-low);
-  border-radius: 10px;
-}
-
-.result-tile--accent {
-  background: rgba(0, 88, 190, 0.08);
-}
-
-.result-tile--success {
-  background: rgba(108, 248, 187, 0.22);
-}
-
-.result-tile--warning {
-  background: rgba(255, 221, 184, 0.55);
-}
-
-.result-tile__label {
-  color: var(--text-faint);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.result-tile__value {
-  font-family: 'Manrope', 'Inter', sans-serif;
-  font-size: 24px;
-  font-weight: 800;
-  line-height: 1.1;
-}
-
-.result-tile__meta {
-  color: var(--text-muted);
-  font-size: 12px;
 }
 
 .history-bottom {

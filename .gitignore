@@ -3,3 +3,5 @@ __pycache__/
 stitch-previews/
 node_modules/
 frontend-dist/
+public/ocr/
+*.tgz
