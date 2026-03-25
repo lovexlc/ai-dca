@@ -88,9 +88,9 @@
 <div class="flex items-center gap-8">
 <span class="text-2xl font-black tracking-tight text-blue-700 dark:text-blue-400 font-headline">Axiom Trade</span>
 <nav class="hidden md:flex gap-6 items-center h-full pt-1">
-<a class="text-blue-700 dark:text-blue-400 border-b-2 border-blue-700 dark:border-blue-400 pb-1 font-bold text-sm font-medium font-inter" href="#">交易</a>
-<a class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 text-sm font-medium font-inter transition-colors" href="#">风险分散</a>
-<a class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 text-sm font-medium font-inter transition-colors" href="#">成本摊薄</a>
+<a class="text-blue-700 dark:text-blue-400 border-b-2 border-blue-700 dark:border-blue-400 pb-1 font-bold text-sm font-medium font-inter" href="#">初始建仓</a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 text-sm font-medium font-inter transition-colors" href="#">加仓</a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 text-sm font-medium font-inter transition-colors" href="#">定投</a>
 </nav>
 </div>
 <div class="flex items-center gap-4">
@@ -357,7 +357,7 @@
 <script data-stitch-nav-patch="true">
 (() => {
   const routes = {"home": {"root": "./index.html", "page": "75a393ec1a2d424ebafa1d0e59402d26.html"}, "accum_edit": {"root": "./pages/81fee20edb5542f08bb363ac837b327c.html", "page": "81fee20edb5542f08bb363ac837b327c.html"}, "accum_new": {"root": "./pages/03ef40c5dff048f8b1416a6a4567f9ee.html", "page": "03ef40c5dff048f8b1416a6a4567f9ee.html"}, "add_level": {"root": "./pages/d142c0822784448ab9b8016e300bd25c.html", "page": "d142c0822784448ab9b8016e300bd25c.html"}, "dca": {"root": "./pages/530f6fe554444798820046dee4d4b889.html", "page": "530f6fe554444798820046dee4d4b889.html"}, "history": {"root": "./pages/65aaf3e700d3443c9810f6c727b045e8.html", "page": "65aaf3e700d3443c9810f6c727b045e8.html"}, "catalog": {"root": "./catalog.html", "page": "../catalog.html"}};
-  const rules = {"help 技术支持": "catalog", "help 帮助中心": "catalog", "help Support": "catalog", "warning 风险披露": "catalog", "warning Risk Disclosure": "catalog", "操作说明": "catalog", "策略原理": "catalog", "风险提示": "catalog", "Operational Instructions": "catalog", "Strategy Principles": "catalog", "Risk Warnings": "catalog", "交易": "home", "建仓": "home", "风险分散": "accum_edit", "加仓": "accum_edit", "成本摊薄": "dca", "定投": "dca", "add 新建仓计划": "accum_new", "add 新建策略计划": "accum_new", "add New Accumulation": "accum_new", "edit 修改配置": "accum_edit", "edit 编辑配置": "accum_edit", "edit Edit Config": "accum_edit"};
+  const rules = {"help 技术支持": "catalog", "help 帮助中心": "catalog", "help Support": "catalog", "warning 风险披露": "catalog", "warning Risk Disclosure": "catalog", "操作说明": "catalog", "策略原理": "catalog", "风险提示": "catalog", "Operational Instructions": "catalog", "Strategy Principles": "catalog", "Risk Warnings": "catalog", "交易": "home", "初始建仓": "home", "建仓": "home", "风险分散": "accum_edit", "加仓": "accum_edit", "成本摊薄": "dca", "定投": "dca", "add 新建仓计划": "accum_new", "add 新建策略计划": "accum_new", "add New Accumulation": "accum_new", "edit 修改配置": "accum_edit", "edit 编辑配置": "accum_edit", "edit Edit Config": "accum_edit"};
   const insidePages = window.location.pathname.includes('/pages/');
   const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim();
   const resolveRoute = (targetKey) => {

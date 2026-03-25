@@ -68,6 +68,7 @@ SCREEN_GROUPS = {
 GROUP_RULES = {
     "home": {
         "交易": "home",
+        "初始建仓": "home",
         "建仓": "home",
         "风险分散": "accum_edit",
         "加仓": "accum_edit",
@@ -253,6 +254,20 @@ def inject_runtime_patch(screen_id: str, raw_html: str) -> str:
     return append_before_body(raw_html, script)
 
 
+def rewrite_home_tabs(screen_id: str, raw_html: str) -> str:
+    if group_for_screen(screen_id) != "home":
+        return raw_html
+
+    replacements = {
+        ">交易</a>": ">初始建仓</a>",
+        ">风险分散</a>": ">加仓</a>",
+        ">成本摊薄</a>": ">定投</a>",
+    }
+    for old, new in replacements.items():
+        raw_html = raw_html.replace(old, new)
+    return raw_html
+
+
 def inject_navigation_patch(screen_id: str, raw_html: str) -> str:
     rules = navigation_rules(screen_id)
     if not rules:
@@ -325,6 +340,7 @@ def copy_export_assets(export_manifest: dict) -> list[dict]:
             src_html = Path(screen["html_path"])
             dst_html = pages_dir / f"{screen_id}.html"
             raw_html = src_html.read_text(encoding="utf-8")
+            raw_html = rewrite_home_tabs(screen_id, raw_html)
             raw_html = inject_runtime_patch(screen_id, raw_html)
             raw_html = inject_navigation_patch(screen_id, raw_html)
             dst_html.write_text(raw_html, encoding="utf-8")
