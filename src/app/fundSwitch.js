@@ -18,22 +18,41 @@ export const defaultFundSwitchState = {
     feeTradeCount: 2
   },
   rows: [
-    { id: 'switch-1', date: '2023-10-24', code: '000651', type: '卖出', price: 1.245, shares: 12500 },
-    { id: 'switch-2', date: '2023-10-25', code: '001230', type: '买入', price: 3.8821, shares: 4010.5 },
-    { id: 'switch-3', date: '2023-11-02', code: '510300', type: '买入', price: 0.9982, shares: 25000 },
-    { id: 'switch-4', date: '2023-11-15', code: '161725', type: '卖出', price: 1.0234, shares: 8900 }
+    { id: 'switch-1', date: '2023-10-24', code: '000651', type: '卖出', buyPrice: 0, sellPrice: 1.245, shares: 12500 },
+    { id: 'switch-2', date: '2023-10-25', code: '001230', type: '买入', buyPrice: 3.8821, sellPrice: 0, shares: 4010.5 },
+    { id: 'switch-3', date: '2023-11-02', code: '510300', type: '买入', buyPrice: 0.9982, sellPrice: 0, shares: 25000 },
+    { id: 'switch-4', date: '2023-11-15', code: '161725', type: '卖出', buyPrice: 0, sellPrice: 1.0234, shares: 8900 }
   ]
 };
 
-function sanitizeRow(row, index) {
+function toPositiveNumber(value) {
+  return Math.max(Number(value) || 0, 0);
+}
+
+function withDerivedRowValues(row) {
+  const price = row.type === '卖出' ? row.sellPrice : row.buyPrice;
   return {
+    ...row,
+    price,
+    amount: round(price * row.shares, 2)
+  };
+}
+
+function sanitizeRow(row, index) {
+  const type = row?.type === '卖出' ? '卖出' : '买入';
+  const legacyPrice = toPositiveNumber(row?.price);
+  const buyPrice = toPositiveNumber(row?.buyPrice ?? (type === '买入' ? legacyPrice : 0));
+  const sellPrice = toPositiveNumber(row?.sellPrice ?? (type === '卖出' ? legacyPrice : 0));
+
+  return withDerivedRowValues({
     id: row?.id || `switch-${index + 1}`,
     date: row?.date || '',
     code: row?.code || '',
-    type: row?.type === '卖出' ? '卖出' : '买入',
-    price: Math.max(Number(row?.price) || 0, 0),
-    shares: Math.max(Number(row?.shares) || 0, 0)
-  };
+    type,
+    buyPrice,
+    sellPrice,
+    shares: toPositiveNumber(row?.shares)
+  });
 }
 
 function sanitizeComparison(comparison = {}) {
@@ -56,8 +75,7 @@ export function buildFundSwitchSummary(state) {
   const comparison = sanitizeComparison(state?.comparison);
   const feePerTrade = Math.max(Number(state?.feePerTrade) || 0, 0);
   const rows = (Array.isArray(state?.rows) && state.rows.length ? state.rows : defaultFundSwitchState.rows)
-    .map((row, index) => sanitizeRow(row, index))
-    .map((row) => ({ ...row, amount: round(row.price * row.shares, 2) }));
+    .map((row, index) => sanitizeRow(row, index));
 
   const processedAmount = rows.reduce((sum, row) => sum + row.amount, 0);
   const sellAmount = rows.reduce((sum, row) => sum + (row.type === '卖出' ? row.amount : 0), 0);
@@ -87,14 +105,15 @@ export function buildFundSwitchSummary(state) {
 }
 
 export function createEmptyFundSwitchRow() {
-  return {
+  return withDerivedRowValues({
     id: `switch-${Date.now()}`,
     date: '',
     code: '',
     type: '买入',
-    price: 0,
+    buyPrice: 0,
+    sellPrice: 0,
     shares: 0
-  };
+  });
 }
 
 export function readFundSwitchState() {
@@ -151,6 +170,8 @@ export function persistFundSwitchState(state, computed = buildFundSwitchSummary(
     },
     rows: computed.rows.map((row) => ({
       ...row,
+      buyPrice: round(row.buyPrice, 4),
+      sellPrice: round(row.sellPrice, 4),
       price: round(row.price, 4),
       shares: round(row.shares, 2),
       amount: round(row.amount, 2)

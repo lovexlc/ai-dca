@@ -5,6 +5,8 @@ import { findLatestNasdaqPrice, formatPriceAsOf, loadLatestNasdaqPrices } from '
 import { MaterialIcon } from '../components/MaterialIcon.jsx';
 import { SurfaceCard } from '../components/PageChrome.jsx';
 
+const FUND_CODE_PATTERN = /^\d{6}$/;
+
 function createOcrState(overrides = {}) {
   return {
     status: 'idle',
@@ -122,6 +124,27 @@ function buildMetricMeta(shares, currentPrice, snapshot) {
     : `${base} · 手动现价`;
 }
 
+function getFundCodeError(code) {
+  const value = String(code || '').trim();
+  if (!value) {
+    return '';
+  }
+
+  return FUND_CODE_PATTERN.test(value) ? '' : '基金代码必须是 6 位纯数字，不能填写基金名称。';
+}
+
+function buildFieldShellClass(isError, isReadOnly = false) {
+  if (isError) {
+    return 'field__input-shell is-error';
+  }
+
+  if (isReadOnly) {
+    return 'field__input-shell is-readonly';
+  }
+
+  return 'field__input-shell';
+}
+
 export function FundSwitchExperience({ links, inPagesDir }) {
   const [state, setState] = useState(() => readFundSwitchState());
   const [ocrState, setOcrState] = useState(() => createOcrState());
@@ -220,11 +243,25 @@ export function FundSwitchExperience({ links, inPagesDir }) {
   function updateRow(index, key, value) {
     setState((current) => {
       const nextRows = [...current.rows];
-      nextRows[index] = {
-        ...nextRows[index],
-        [key]: key === 'price' || key === 'shares' ? Number(value) || 0 : value
+      const currentRow = nextRows[index] || createEmptyFundSwitchRow();
+      const nextRow = {
+        ...currentRow,
+        [key]: key === 'buyPrice' || key === 'sellPrice' || key === 'shares' ? Number(value) || 0 : value
       };
 
+      if (key === 'type') {
+        const nextType = value === '卖出' ? '卖出' : '买入';
+        const previousActivePrice = currentRow.type === '卖出' ? Number(currentRow.sellPrice) || 0 : Number(currentRow.buyPrice) || 0;
+        nextRow.type = nextType;
+        if (nextType === '买入' && !nextRow.buyPrice && previousActivePrice) {
+          nextRow.buyPrice = previousActivePrice;
+        }
+        if (nextType === '卖出' && !nextRow.sellPrice && previousActivePrice) {
+          nextRow.sellPrice = previousActivePrice;
+        }
+      }
+
+      nextRows[index] = nextRow;
       return { ...current, rows: nextRows };
     });
   }
@@ -499,7 +536,7 @@ export function FundSwitchExperience({ links, inPagesDir }) {
           </div>
         </div>
         <div className="table-note fund-switch-section-note">
-          截图识别完成后，结果会直接回填到这里。你可以继续修改日期、基金代码、交易方向、价格和份额。
+          截图识别完成后，结果会直接回填到这里。你可以继续修改日期、基金代码、交易方向、买入价格、卖出价格和份额。基金代码仅接受 6 位纯数字。
         </div>
 
         <div className="fund-table-wrap fund-table-wrap--desktop">
@@ -509,19 +546,30 @@ export function FundSwitchExperience({ links, inPagesDir }) {
                 <th>日期 (时间)</th>
                 <th>基金代码</th>
                 <th className="fund-table__type-col">交易类型</th>
-                <th>单价 (价格)</th>
+                <th>买入价格</th>
+                <th>卖出价格</th>
                 <th>份额 (股数)</th>
                 <th className="fund-table__action">操作</th>
               </tr>
             </thead>
             <tbody>
-              {summary.rows.map((row, index) => (
+              {summary.rows.map((row, index) => {
+                const codeError = getFundCodeError(row.code);
+                return (
                 <tr key={row.id} className={index % 2 === 1 ? 'is-striped' : ''}>
                   <td>
                     <input type="text" value={row.date} onChange={(event) => updateRow(index, 'date', event.target.value)} />
                   </td>
                   <td>
-                    <input type="text" value={row.code} onChange={(event) => updateRow(index, 'code', event.target.value)} />
+                    <div className="fund-table__field">
+                      <input
+                        className={codeError ? 'fund-table__input is-error' : 'fund-table__input'}
+                        type="text"
+                        value={row.code}
+                        onChange={(event) => updateRow(index, 'code', event.target.value)}
+                      />
+                      {codeError ? <span className="fund-table__cell-note is-error">{codeError}</span> : null}
+                    </div>
                   </td>
                   <td className="fund-table__type-col">
                     <select
@@ -534,7 +582,10 @@ export function FundSwitchExperience({ links, inPagesDir }) {
                     </select>
                   </td>
                   <td>
-                    <input type="number" step="0.0001" value={row.price} onChange={(event) => updateRow(index, 'price', event.target.value)} />
+                    <input type="number" step="0.0001" value={row.buyPrice} onChange={(event) => updateRow(index, 'buyPrice', event.target.value)} />
+                  </td>
+                  <td>
+                    <input type="number" step="0.0001" value={row.sellPrice} onChange={(event) => updateRow(index, 'sellPrice', event.target.value)} />
                   </td>
                   <td>
                     <input type="number" step="0.01" value={row.shares} onChange={(event) => updateRow(index, 'shares', event.target.value)} />
@@ -545,13 +596,15 @@ export function FundSwitchExperience({ links, inPagesDir }) {
                     </button>
                   </td>
                 </tr>
-              ))}
+              );})}
             </tbody>
           </table>
         </div>
 
         <div className="fund-record-list">
-          {summary.rows.map((row, index) => (
+          {summary.rows.map((row, index) => {
+            const codeError = getFundCodeError(row.code);
+            return (
             <div key={row.id} className="fund-record-card">
               <div className="fund-record-card__head">
                 <div>
@@ -571,9 +624,10 @@ export function FundSwitchExperience({ links, inPagesDir }) {
                 </label>
                 <label className="field">
                   <span className="field__label">基金代码</span>
-                  <div className="field__input-shell">
+                  <div className={buildFieldShellClass(Boolean(codeError))}>
                     <input type="text" value={row.code} onChange={(event) => updateRow(index, 'code', event.target.value)} />
                   </div>
+                  {codeError ? <span className="field__helper is-error">{codeError}</span> : null}
                 </label>
                 <label className="field">
                   <span className="field__label">交易类型</span>
@@ -585,9 +639,15 @@ export function FundSwitchExperience({ links, inPagesDir }) {
                   </div>
                 </label>
                 <label className="field">
-                  <span className="field__label">单价 (价格)</span>
+                  <span className="field__label">买入价格</span>
                   <div className="field__input-shell">
-                    <input type="number" step="0.0001" value={row.price} onChange={(event) => updateRow(index, 'price', event.target.value)} />
+                    <input type="number" step="0.0001" value={row.buyPrice} onChange={(event) => updateRow(index, 'buyPrice', event.target.value)} />
+                  </div>
+                </label>
+                <label className="field">
+                  <span className="field__label">卖出价格</span>
+                  <div className="field__input-shell">
+                    <input type="number" step="0.0001" value={row.sellPrice} onChange={(event) => updateRow(index, 'sellPrice', event.target.value)} />
                   </div>
                 </label>
                 <label className="field">
@@ -598,7 +658,7 @@ export function FundSwitchExperience({ links, inPagesDir }) {
                 </label>
               </div>
             </div>
-          ))}
+          );})}
         </div>
       </SurfaceCard>
 
