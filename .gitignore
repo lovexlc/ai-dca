@@ -4,3 +4,5 @@ stitch-previews/
 node_modules/
 frontend-dist/
 *.tgz
+.dev.vars
+workers/ocr-proxy/.dev.vars

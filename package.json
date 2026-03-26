@@ -4,9 +4,12 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "dev": "vite",
     "build:app": "vite build",
     "publish:pages": "node scripts/publish_react_pages.mjs",
-    "build": "npm run build:app && npm run publish:pages"
+    "build": "npm run build:app && npm run publish:pages",
+    "worker:dev": "npx wrangler dev --config workers/ocr-proxy/wrangler.toml --port 8787",
+    "worker:deploy": "npx wrangler deploy --config workers/ocr-proxy/wrangler.toml"
   },
   "dependencies": {
     "react": "^18.3.1",

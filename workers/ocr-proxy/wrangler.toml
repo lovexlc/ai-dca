@@ -1,0 +1,6 @@
+name = "ai-dca-ocr-proxy"
+main = "src/index.js"
+compatibility_date = "2026-03-26"
+
+[vars]
+GEMINI_MODEL = "gemini-2.5-flash"

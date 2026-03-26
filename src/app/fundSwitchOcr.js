@@ -1,82 +1,99 @@
-import { detectRemoteTextFromFile } from './ocrSpace.js';
-import { buildOcrContext } from './fund-switch-ocr/classifier.js';
-import { parsePairedRowsTemplate } from './fund-switch-ocr/parser-paired-rows.js';
-import { parseSplitColumnsTemplate } from './fund-switch-ocr/parser-split-columns.js';
-import { finalizeRows, inferComparisonFromRows } from './fund-switch-ocr/utils.js';
+const OCR_ENDPOINT = '/api/ocr';
 
-const TEMPLATE_PARSERS = {
-  paired_rows_mobile: parsePairedRowsTemplate,
-  split_columns_mobile: parseSplitColumnsTemplate
-};
-
-function scoreParsedRows(templateId, preferredTemplateId, rows, warnings) {
-  let score = rows.length * 20;
-  score += rows.filter((row) => row.date).length * 6;
-  score += rows.filter((row) => Number(row.amount) > 100).length * 4;
-
-  if (rows.some((row) => row.type === '买入')) {
-    score += 4;
+function now() {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now();
   }
 
-  if (rows.some((row) => row.type === '卖出')) {
-    score += 4;
-  }
-
-  const uniqueCodes = new Set(rows.map((row) => row.code).filter(Boolean));
-  score += Math.min(uniqueCodes.size, 4) * 2;
-
-  if (preferredTemplateId === templateId) {
-    score += 2;
-  }
-
-  score -= (warnings || []).length * 3;
-  return score;
+  return Date.now();
 }
 
-function evaluateParser(templateId, preferredTemplateId, parser, context) {
-  const parsed = parser(context);
-  const rows = finalizeRows(parsed.rows || []);
-  return {
-    templateId,
-    rows,
-    warnings: parsed.warnings || [],
-    score: scoreParsedRows(templateId, preferredTemplateId, rows, parsed.warnings || [])
-  };
+function normalizePreviewLines(payload = {}) {
+  if (Array.isArray(payload.previewLines) && payload.previewLines.length) {
+    return payload.previewLines.filter(Boolean).slice(0, 6);
+  }
+
+  if (Array.isArray(payload.warnings) && payload.warnings.length) {
+    return payload.warnings.filter(Boolean).slice(0, 6);
+  }
+
+  return [];
+}
+
+function ensureImageFile(file) {
+  if (!file || typeof file !== 'object') {
+    throw new Error('未找到要识别的文件。');
+  }
+
+  if (!String(file.type || '').startsWith('image/')) {
+    throw new Error('当前仅支持图片上传，请使用 PNG、JPG、JPEG 或 WebP。');
+  }
 }
 
 export async function recognizeFundSwitchFile(file, fallbackComparison, onProgress) {
+  ensureImageFile(file);
+  const startedAt = now();
+
   onProgress?.({
     status: 'loading',
     progress: 18,
-    message: '上传截图到 OCR.Space'
+    message: '上传截图到 /api/ocr'
   });
 
-  const detected = await detectRemoteTextFromFile(file, onProgress);
+  const formData = new FormData();
+  formData.append('file', file, file.name || 'fund-switch-upload');
+  formData.append('fallbackComparison', JSON.stringify(fallbackComparison || {}));
 
   onProgress?.({
     status: 'loading',
-    progress: 72,
-    message: 'OCR.Space 已返回，正在匹配页面模板'
+    progress: 46,
+    message: 'Cloudflare Worker 正在请求 Gemini'
   });
 
-  const context = buildOcrContext(detected.lines);
-  const preferredTemplateId = context.templateId;
-  const candidates = Object.entries(TEMPLATE_PARSERS).map(([templateId, parser]) => evaluateParser(templateId, preferredTemplateId, parser, context));
-  candidates.sort((left, right) => right.score - left.score || right.rows.length - left.rows.length || (left.templateId === preferredTemplateId ? -1 : 1));
-  const best = candidates[0];
-  const confidence = Math.min(0.95, Math.max(context.confidence, best.rows.length ? 0.65 : 0.35) + (best.score >= 30 ? 0.08 : 0));
+  const response = await fetch(OCR_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json'
+    },
+    body: formData
+  });
+
+  const rawText = await response.text();
+  let payload = {};
+
+  if (rawText) {
+    try {
+      payload = JSON.parse(rawText);
+    } catch (_error) {
+      payload = {
+        error: response.ok ? 'OCR 服务返回了非 JSON 响应。' : rawText
+      };
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(payload.error || `OCR 服务请求失败: HTTP ${response.status}`);
+  }
+
+  onProgress?.({
+    status: 'loading',
+    progress: 84,
+    message: 'Gemini 已返回，正在回填持仓明细'
+  });
+
+  const rows = Array.isArray(payload.rows) ? payload.rows : [];
+  const warnings = Array.isArray(payload.warnings) ? payload.warnings : [];
 
   return {
-    ...detected,
-    templateId: best.templateId,
-    preferredTemplateId,
-    confidence,
-    warnings: best.warnings,
-    scores: context.scores,
-    parserScores: Object.fromEntries(candidates.map((item) => [item.templateId, item.score])),
-    comparison: inferComparisonFromRows(best.rows, fallbackComparison),
-    groups: context.groups,
-    previewLines: context.groups.map((group) => group.text).filter(Boolean).slice(0, 6),
-    rows: best.rows
+    rows,
+    warnings,
+    comparison: payload.comparison || fallbackComparison,
+    previewLines: normalizePreviewLines(payload),
+    recordCount: Number(payload.recordCount) || rows.length,
+    confidence: Math.max(Math.min(Number(payload.confidence) || 0, 1), 0),
+    provider: payload.provider || 'gemini-worker',
+    model: payload.model || '',
+    promptVersion: payload.promptVersion || '',
+    durationMs: Number(payload.durationMs) || Math.round(now() - startedAt)
   };
 }

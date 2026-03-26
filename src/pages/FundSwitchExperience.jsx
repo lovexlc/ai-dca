@@ -16,7 +16,7 @@ function createOcrState(overrides = {}) {
   return {
     status: 'idle',
     progress: 0,
-    message: '等待上传交易截图，前端将直接请求 OCR.Space 完成识别。',
+    message: '等待上传交易截图，前端会调用 /api/ocr，由 Cloudflare Worker 转发给 Gemini。',
     durationMs: 0,
     error: '',
     lineCount: 0,
@@ -26,7 +26,7 @@ function createOcrState(overrides = {}) {
 
 function getStatusBadgeProps(status) {
   if (status === 'loading') {
-    return { tone: 'warning', icon: 'hourglass_top', label: 'OCR.Space 处理中' };
+    return { tone: 'warning', icon: 'hourglass_top', label: 'Gemini 处理中' };
   }
 
   if (status === 'error') {
@@ -119,7 +119,7 @@ export function FundSwitchExperience({ screen, links }) {
     setOcrState(createOcrState({
       status: 'loading',
       progress: 12,
-      message: '准备上传到 OCR.Space'
+      message: '准备上传到 /api/ocr'
     }));
 
     try {
@@ -135,7 +135,7 @@ export function FundSwitchExperience({ screen, links }) {
       setState((current) => ({
         ...current,
         fileName: file.name,
-        recognizedRecords: result.rows.length,
+        recognizedRecords: result.recordCount || result.rows.length,
         rows: parsedRows,
         comparison: {
           ...current.comparison,
@@ -145,28 +145,31 @@ export function FundSwitchExperience({ screen, links }) {
       setOcrPreview(result.previewLines);
 
       if (result.rows.length) {
+        const hasWarnings = Array.isArray(result.warnings) && result.warnings.length > 0;
         setOcrState(createOcrState({
-          status: 'success',
+          status: hasWarnings ? 'warning' : 'success',
           progress: 100,
           durationMs: result.durationMs,
-          lineCount: result.lines.length,
-          message: `OCR.Space 识别完成，已解析 ${result.rows.length} 条交易记录。`
+          lineCount: result.recordCount || result.rows.length,
+          message: hasWarnings
+            ? `Gemini 已提取 ${result.rows.length} 条交易记录，请重点复核提示项。`
+            : `Gemini 提取完成，已解析 ${result.rows.length} 条交易记录。`
         }));
       } else {
         setOcrState(createOcrState({
           status: 'warning',
           progress: 100,
           durationMs: result.durationMs,
-          lineCount: result.lines.length,
-          message: 'OCR 已完成，但没有稳定解析出交易行，请手动确认或补录。'
+          lineCount: 0,
+          message: 'Gemini 已完成提取，但没有稳定产出可回填的交易记录，请手动确认或补录。'
         }));
       }
     } catch (error) {
       setOcrState(createOcrState({
         status: 'error',
         progress: 0,
-        error: error instanceof Error ? error.message : 'OCR.Space 识别失败，请更换更清晰的截图重试。',
-        message: 'OCR.Space 识别失败'
+        error: error instanceof Error ? error.message : '/api/ocr 调用失败，请检查 Worker、Secret 或上传更清晰的截图后重试。',
+        message: 'Gemini 提取失败'
       }));
     }
   }
@@ -246,7 +249,7 @@ export function FundSwitchExperience({ screen, links }) {
       <section className="page-header">
         <div>
           <h1 className="page-title page-title--compact">基金切换收益助手</h1>
-          <p className="page-subtitle">使用 OCR.Space 识别交易截图，并自动回填切换收益计算参数。</p>
+          <p className="page-subtitle">通过 Cloudflare Worker 中转 Gemini 识别交易截图，并自动回填切换收益计算参数。</p>
         </div>
         <StatusBadge icon={badge.icon} tone={badge.tone}>{badge.label}</StatusBadge>
       </section>
@@ -272,7 +275,7 @@ export function FundSwitchExperience({ screen, links }) {
                 <MaterialIcon className="upload-dropzone__icon-symbol" name={ocrState.status === 'loading' ? 'hourglass_top' : 'cloud_upload'} />
               </div>
               <div className="upload-dropzone__title">点击或拖拽上传交易截图</div>
-              <div className="upload-dropzone__copy">支持 PNG / JPG / JPEG / WebP，图片会直接发送到 OCR.Space 进行识别。</div>
+              <div className="upload-dropzone__copy">支持 PNG / JPG / JPEG / WebP，图片会发送到站点同源的 /api/ocr，由 Cloudflare Worker 调用 Gemini。</div>
               <div className="upload-dropzone__hint">{ocrState.message}</div>
             </button>
           </SurfaceCard>
@@ -300,8 +303,8 @@ export function FundSwitchExperience({ screen, links }) {
                   {ocrState.status === 'error'
                     ? ocrState.error
                     : ocrState.status === 'success' || ocrState.status === 'warning'
-                      ? `识别到 ${ocrState.lineCount} 行文字，解析出 ${Math.max(state.recognizedRecords, 0)} 条交易记录`
-                      : '上传后会自动尝试解析日期、基金名称、买卖方向、单价和份额'}
+                      ? `返回 ${Math.max(ocrState.lineCount, 0)} 条可回填记录，当前表单已同步 ${Math.max(state.recognizedRecords, 0)} 条交易记录`
+                      : '上传后会自动尝试提取日期、基金名称、买卖方向、单价和份额'}
                 </span>
               </div>
               <MaterialIcon className="ocr-file__check" filled name={ocrState.status === 'error' ? 'error' : ocrState.status === 'loading' ? 'hourglass_top' : 'check_circle'} />
@@ -316,8 +319,8 @@ export function FundSwitchExperience({ screen, links }) {
           </SurfaceCard>
 
           <div className="summary-tile summary-tile--blue">
-            <div className="section-eyebrow">智能计算引擎</div>
-            <div className="section-title" style={{ color: 'inherit', marginTop: 4 }}>智能计算引擎</div>
+            <div className="section-eyebrow">模型提取引擎</div>
+            <div className="section-title" style={{ color: 'inherit', marginTop: 4 }}>模型提取引擎</div>
             <p className="promo-card__copy">自动剔除手续费影响，精准对齐切换前后的份额价值差异。</p>
             <div className="summary-lines summary-lines--compact">
               <div className="summary-lines__row">
@@ -329,8 +332,8 @@ export function FundSwitchExperience({ screen, links }) {
                 <strong>{formatCurrency(summary.switchedValue, '¥ ')}</strong>
               </div>
               <div className="summary-lines__row">
-                <span>OCR 耗时</span>
-                <strong>{ocrState.durationMs ? `${ocrState.durationMs} ms` : '等待 OCR.Space'}</strong>
+                <span>接口耗时</span>
+                <strong>{ocrState.durationMs ? `${ocrState.durationMs} ms` : '等待 /api/ocr'}</strong>
               </div>
             </div>
             <div className="promo-card__action">
