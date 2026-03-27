@@ -944,8 +944,8 @@ export function HomeExperience({ links, inPagesDir = false }) {
           <StatCard accent="emerald" eyebrow="Average Cost" value={formatFundPrice(strategyPlan.averageCost)} note="按 MA120 触发层级与 MA200 风控重算" />
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.75fr)_minmax(320px,0.95fr)]">
-          <Card>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.75fr)_minmax(0,0.95fr)]">
+          <Card className="min-w-0 overflow-hidden">
             <SectionHeading
               eyebrow="Price Pulse"
               title="价格走势与基金脉冲"
@@ -953,7 +953,7 @@ export function HomeExperience({ links, inPagesDir = false }) {
             />
 
             {selectedFund && pricePulse ? (
-              <div className="mt-6 flex flex-col gap-5 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100 md:p-6">
+              <div className="mt-6 min-w-0 flex flex-col gap-5 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100 md:p-6">
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                     <div className="space-y-1">
                       <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">K-Line Monitor</div>
@@ -1013,7 +1013,7 @@ export function HomeExperience({ links, inPagesDir = false }) {
                     </div>
                   </div>
 
-                  <div className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white">
+                  <div className="relative min-w-0 overflow-hidden rounded-[28px] border border-slate-200 bg-white">
                     <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.12),_transparent_34%),radial-gradient(circle_at_bottom_right,_rgba(16,185,129,0.08),_transparent_32%)]" />
                     <svg className="relative h-[480px] w-full md:h-[560px]" preserveAspectRatio="none" viewBox="0 0 100 100">
                       <line stroke="rgba(148,163,184,0.16)" strokeDasharray="1.5 2.5" strokeWidth="0.4" x1="4" x2="96" y1="16" y2="16" />
@@ -1096,12 +1096,12 @@ export function HomeExperience({ links, inPagesDir = false }) {
                       ) : null}
                     </svg>
 
-                    <div className="pointer-events-none absolute left-4 top-4 flex flex-wrap items-center gap-2 text-[11px] font-semibold">
+                    <div className="pointer-events-none absolute left-3 top-3 right-20 flex flex-wrap items-center gap-1.5 text-[10px] font-semibold sm:left-4 sm:top-4 sm:right-28 sm:gap-2 sm:text-[11px]">
                       <span className="rounded-full bg-slate-900 px-3 py-1 text-white">{selectedFund.code}</span>
                       <span className="rounded-full bg-violet-50 px-3 py-1 text-violet-700">MA120</span>
                       <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">MA200</span>
                     </div>
-                    <div className="pointer-events-none absolute right-4 top-4 rounded-full bg-white/95 px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm">
+                    <div className="pointer-events-none absolute right-3 top-3 max-w-[5.5rem] truncate rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-semibold text-slate-600 shadow-sm sm:right-4 sm:top-4 sm:max-w-none sm:px-3 sm:text-xs">
                       {pricePulse.asOf || minuteSnapshot?.date || ''}
                     </div>
                     <div className="border-t border-slate-200 bg-slate-50/90 px-4 py-3 text-xs text-slate-500">
@@ -1126,8 +1126,8 @@ export function HomeExperience({ links, inPagesDir = false }) {
             )}
           </Card>
 
-          <div className="space-y-6 lg:col-span-2">
-            <Card>
+          <div className="min-w-0 space-y-6 lg:col-span-2">
+            <Card className="min-w-0">
               <SectionHeading
                 eyebrow="Execution Map"
                 title="建仓计划详情"
@@ -1140,8 +1140,8 @@ export function HomeExperience({ links, inPagesDir = false }) {
                   </div>
                 }
               />
-              <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
-                <table className="w-full text-left text-sm">
+              <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
+                <table className="min-w-[560px] w-full text-left text-sm">
                   <thead className="border-b border-slate-200 bg-slate-50/80 text-xs uppercase text-slate-500">
                     <tr>
                       <th className="px-4 py-3 font-semibold">批次</th>
@@ -1166,7 +1166,7 @@ export function HomeExperience({ links, inPagesDir = false }) {
               </div>
             </Card>
 
-            <Card>
+            <Card className="min-w-0 overflow-hidden">
               <SectionHeading eyebrow="Capital Mix" title="资金配置模型" />
               <div className="mt-6 flex min-h-[180px] items-end justify-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-5">
                 {strategyPlan.layers.map((layer, index) => (
