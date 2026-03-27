@@ -166,46 +166,26 @@ function formatPositionMeta(position, snapshot) {
   return `${position.code} · ${position.shares} 份 · 待补现价`;
 }
 
-function truncatePreviewText(value, maxLength = 92) {
-  const normalized = String(value || '').trim();
-  if (!normalized) {
-    return 'OCR 结果会在这里显示。';
-  }
-
-  return normalized.length > maxLength ? `${normalized.slice(0, maxLength).trimEnd()}...` : normalized;
-}
-
-function buildOcrPreview(rows = []) {
+function buildOcrPreviewRows(rows = []) {
   const previewRows = rows
     .filter((row) => String(row?.date || '').trim() || String(row?.code || '').trim() || Number(row?.shares) > 0 || Number(row?.price) > 0)
     .slice(0, 3)
     .map((row) => {
-      const parts = [];
-      if (row.date) {
-        parts.push(row.date);
-      }
-      if (row.code) {
-        parts.push(row.code);
-      }
-      if (row.type) {
-        parts.push(row.type);
-      }
-      if (Number(row.shares) > 0) {
-        parts.push(`${row.shares} 份`);
-      }
-      if (Number(row.price) > 0) {
-        parts.push(`@ ${Number(row.price).toFixed(4)}`);
-      }
-      return parts.join(' ');
+      const dateText = String(row?.date || '').trim();
+      const priceValue = Number(row?.price) || 0;
+      return {
+        id: row.id || `${row.code}-${dateText}`,
+        code: String(row?.code || '').trim() || '待补代码',
+        type: String(row?.type || '').trim() || '--',
+        shares: Number(row?.shares) > 0 ? `${row.shares} 份` : '--',
+        detail: [dateText || '待补日期', priceValue > 0 ? `@ ${priceValue.toFixed(4)}` : '待补价格'].join(' · ')
+      };
     });
 
-  if (!previewRows.length) {
-    return 'OCR 结果会在这里显示。';
-  }
-
-  const joinedPreview = previewRows.join('；');
-  const previewText = rows.length > previewRows.length ? `${joinedPreview} ...` : joinedPreview;
-  return truncatePreviewText(previewText);
+  return {
+    rows: previewRows,
+    hasMore: rows.filter((row) => String(row?.date || '').trim() || String(row?.code || '').trim() || Number(row?.shares) > 0 || Number(row?.price) > 0).length > previewRows.length
+  };
 }
 
 function StrategyToggle({ strategy, onChange }) {
@@ -433,7 +413,7 @@ function TransactionEditorCard({ row, index, codeError, onUpdateRow, onRemoveRow
   );
 }
 
-function CompactOcrStatusCard({ fileName, statusMeta, recognizedCount, needsManualReview, previewText, onEdit }) {
+function CompactOcrStatusCard({ fileName, statusMeta, recognizedCount, needsManualReview, previewRows, hasMorePreviewRows, onReupload, onEdit }) {
   return (
     <Card className="p-4 sm:p-5">
       <div className="flex flex-col gap-4">
@@ -460,14 +440,43 @@ function CompactOcrStatusCard({ fileName, statusMeta, recognizedCount, needsManu
           </span>
         </div>
 
-        <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+        <div className="overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
           <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">OCR 结果预览</div>
-          <div className="mt-2 text-sm leading-6 text-slate-600">{previewText}</div>
+          {previewRows.length ? (
+            <div className="mt-3 overflow-hidden rounded-xl border border-slate-100 bg-white">
+              <div className="grid grid-cols-[1.1fr,0.8fr,1fr] gap-3 border-b border-slate-100 bg-slate-50 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                <div>基金</div>
+                <div>类型</div>
+                <div className="text-right">份额</div>
+              </div>
+              {previewRows.map((row) => (
+                <div key={row.id} className="border-b border-slate-100 last:border-b-0">
+                  <div className="grid grid-cols-[1.1fr,0.8fr,1fr] gap-3 px-3 py-2.5 text-sm font-semibold text-slate-700">
+                    <div className="truncate">{row.code}</div>
+                    <div className={cx('truncate', row.type === '卖出' ? 'text-emerald-600' : row.type === '买入' ? 'text-red-600' : 'text-slate-500')}>{row.type}</div>
+                    <div className="truncate text-right">{row.shares}</div>
+                  </div>
+                  <div className="truncate px-3 pb-2.5 text-[11px] leading-5 text-slate-400">{row.detail}</div>
+                </div>
+              ))}
+              {hasMorePreviewRows ? (
+                <div className="px-3 py-2 text-center text-sm font-semibold text-slate-400">...</div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-white px-3 py-4 text-sm text-slate-400">OCR 结果会在这里显示。</div>
+          )}
         </div>
 
-        <button className="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-100" type="button" onClick={onEdit}>
+        <div className="grid grid-cols-2 gap-3">
+          <button className={secondaryButtonClass} type="button" onClick={onReupload}>
+            <Upload className="h-4 w-4" />
+            重新上传
+          </button>
+          <button className="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-100" type="button" onClick={onEdit}>
             修改识别明细
-        </button>
+          </button>
+        </div>
       </div>
     </Card>
   );
@@ -534,7 +543,7 @@ export function FundSwitchExperience({ links, inPagesDir }) {
   const effectiveOcrMessage = hasImportedData && ocrState.status === 'idle'
     ? `已同步 ${recognizedCount} 条记录，可继续确认收益或修改明细。`
     : ocrState.message;
-  const ocrPreviewText = useMemo(() => buildOcrPreview(summary.rows), [summary.rows]);
+  const ocrPreview = useMemo(() => buildOcrPreviewRows(summary.rows), [summary.rows]);
   const statusMeta = getStatusMeta(effectiveOcrStatus);
   const advantageMeta = getAdvantageTone(summary.switchAdvantage);
   const needsManualReview = ocrState.status === 'warning' || summary.rows.some((row) => Boolean(getFundCodeError(row.code)));
@@ -972,7 +981,9 @@ export function FundSwitchExperience({ links, inPagesDir }) {
                 statusMeta={statusMeta}
                 recognizedCount={recognizedCount}
                 needsManualReview={needsManualReview}
-                previewText={ocrPreviewText}
+                previewRows={ocrPreview.rows}
+                hasMorePreviewRows={ocrPreview.hasMore}
+                onReupload={openFilePicker}
                 onEdit={openDetailEditor}
               />
 
