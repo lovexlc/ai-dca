@@ -641,6 +641,11 @@ export function FundSwitchExperience({ links, inPagesDir }) {
   const statusMeta = getStatusMeta(effectiveOcrStatus);
   const advantageMeta = getAdvantageTone(summary.switchAdvantage);
   const needsManualReview = ocrState.status === 'warning' || validationIssues.length > 0 || !state.resultConfirmed;
+  const shouldShowBottomAdvantage = state.resultConfirmed && !isEditingDetails;
+  const bottomAdvantageText = shouldShowBottomAdvantage ? formatSignedCurrency(summary.switchAdvantage, '¥ ') : '待重算';
+  const bottomAdvantageTone = shouldShowBottomAdvantage
+    ? (summary.switchAdvantage >= 0 ? 'text-emerald-600' : 'text-red-600')
+    : 'text-slate-500';
 
   useEffect(() => {
     persistFundSwitchState({ ...state, comparison: summary.comparison }, summary);
@@ -1260,8 +1265,8 @@ export function FundSwitchExperience({ links, inPagesDir }) {
                 </div>
                 <div className="rounded-2xl bg-slate-100 px-3 py-2.5">
                   <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">额外收益</div>
-                  <div className={cx('mt-1 text-sm font-extrabold', state.resultConfirmed ? (summary.switchAdvantage >= 0 ? 'text-emerald-600' : 'text-red-600') : 'text-slate-500')}>
-                    {state.resultConfirmed ? formatSignedCurrency(summary.switchAdvantage, '¥ ') : '待生成'}
+                  <div className={cx('mt-1 text-sm font-extrabold', bottomAdvantageTone)}>
+                    {bottomAdvantageText}
                   </div>
                 </div>
               </div>
@@ -1280,18 +1285,18 @@ export function FundSwitchExperience({ links, inPagesDir }) {
                   <div className="h-8 w-px bg-slate-200" />
                   <div>
                     <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">当前额外收益</div>
-                    <div className={cx('mt-1 text-sm font-extrabold', state.resultConfirmed ? (summary.switchAdvantage >= 0 ? 'text-emerald-600' : 'text-red-600') : 'text-slate-500')}>
-                      {state.resultConfirmed ? formatSignedCurrency(summary.switchAdvantage, '¥ ') : '待生成'}
+                    <div className={cx('mt-1 text-sm font-extrabold', bottomAdvantageTone)}>
+                      {bottomAdvantageText}
                     </div>
                   </div>
                 </div>
 
                 {isEditingDetails ? (
-                  <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:w-auto sm:items-center">
+                  <div className="grid w-full gap-3 sm:flex sm:w-auto sm:items-center">
                     <button className={cx(secondaryButtonClass, 'w-full sm:flex-none')} type="button" onClick={closeDetailEditor}>
                       返回摘要
                     </button>
-                    <button className={cx(primaryButtonClass, 'w-full sm:flex-none')} type="button" onClick={handleConfirmDataAndYield}>
+                    <button className={cx(primaryButtonClass, 'w-full whitespace-nowrap sm:flex-none')} type="button" onClick={handleConfirmDataAndYield}>
                       确认修改并重新计算
                       <ArrowRight className="h-4 w-4" />
                     </button>
