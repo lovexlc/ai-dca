@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, LayoutGrid, LineChart, Plus, Shield, Trash2, TrendingUp, Wallet } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowRight, Download, LayoutGrid, LineChart, Plus, Shield, Trash2, TrendingUp, Upload, Wallet } from 'lucide-react';
 import { buildStages, formatCurrency, formatPercent, readAccumulationState } from '../app/accumulation.js';
 import { buildDcaProjection, readDcaState } from '../app/dca.js';
+import { exportHomeDashboardState, importHomeDashboardState, normalizeHomeDashboardState, persistHomeDashboardState, readHomeDashboardState } from '../app/homeDashboard.js';
 import { formatPriceAsOf, loadLatestNasdaqPrices, loadNasdaqMinuteSnapshot } from '../app/nasdaqPrices.js';
 import { buildPlan, readPlanState } from '../app/plan.js';
 import { Card, PageHero, PageShell, Pill, SectionHeading, SelectField, StatCard, cx, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
@@ -125,15 +126,19 @@ export function HomeExperience({ links, inPagesDir = false }) {
   const dca = buildDcaProjection(dcaState);
   const nextBuyPrice = accumulation.stages[1]?.price ?? accumulationState.basePrice;
   const reserveRatio = planState.totalBudget > 0 ? plan.reserveCapital / planState.totalBudget * 100 : 0;
+  const savedDashboardState = readHomeDashboardState();
 
   const [marketEntries, setMarketEntries] = useState([]);
   const [marketError, setMarketError] = useState('');
-  const [watchlistCodes, setWatchlistCodes] = useState([]);
-  const [selectedCode, setSelectedCode] = useState('');
+  const [watchlistCodes, setWatchlistCodes] = useState(savedDashboardState.watchlistCodes);
+  const [selectedCode, setSelectedCode] = useState(savedDashboardState.selectedCode);
   const [pendingCode, setPendingCode] = useState('');
   const [pulseData, setPulseData] = useState(null);
   const [pulseError, setPulseError] = useState('');
   const [isLoadingPulse, setIsLoadingPulse] = useState(false);
+  const [watchlistNotice, setWatchlistNotice] = useState('');
+  const [watchlistNoticeTone, setWatchlistNoticeTone] = useState('slate');
+  const importInputRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -146,7 +151,6 @@ export function HomeExperience({ links, inPagesDir = false }) {
 
         setMarketEntries(entries);
         setMarketError('');
-        setWatchlistCodes((current) => (current.length ? current.filter((code) => entries.some((entry) => entry.code === code)) : buildDefaultCodes(entries)));
       })
       .catch((error) => {
         if (cancelled) {
@@ -163,6 +167,27 @@ export function HomeExperience({ links, inPagesDir = false }) {
   }, [inPagesDir]);
 
   const marketByCode = useMemo(() => new Map(marketEntries.map((entry) => [entry.code, entry])), [marketEntries]);
+  const defaultWatchlistCodes = useMemo(() => buildDefaultCodes(marketEntries), [marketEntries]);
+  const availableCodes = useMemo(() => marketEntries.map((entry) => entry.code), [marketEntries]);
+
+  useEffect(() => {
+    if (!marketEntries.length) {
+      return;
+    }
+
+    const normalized = normalizeHomeDashboardState(
+      { watchlistCodes, selectedCode },
+      { availableCodes, defaultCodes: defaultWatchlistCodes }
+    );
+
+    if (normalized.watchlistCodes.join(',') !== watchlistCodes.join(',')) {
+      setWatchlistCodes(normalized.watchlistCodes);
+    }
+
+    if (normalized.selectedCode !== selectedCode) {
+      setSelectedCode(normalized.selectedCode);
+    }
+  }, [availableCodes, defaultWatchlistCodes, marketEntries.length, selectedCode, watchlistCodes]);
 
   const visibleWatchlistCodes = useMemo(() => {
     return watchlistCodes.filter((code) => marketByCode.has(code));
@@ -179,6 +204,10 @@ export function HomeExperience({ links, inPagesDir = false }) {
   );
 
   useEffect(() => {
+    if (!marketEntries.length) {
+      return;
+    }
+
     if (!watchlistItems.length) {
       if (selectedCode) {
         setSelectedCode('');
@@ -192,6 +221,10 @@ export function HomeExperience({ links, inPagesDir = false }) {
   }, [selectedCode, watchlistItems]);
 
   useEffect(() => {
+    if (!marketEntries.length) {
+      return;
+    }
+
     if (!addableEntries.length) {
       if (pendingCode) {
         setPendingCode('');
@@ -203,6 +236,17 @@ export function HomeExperience({ links, inPagesDir = false }) {
       setPendingCode(addableEntries[0].code);
     }
   }, [addableEntries, pendingCode]);
+
+  useEffect(() => {
+    if (!marketEntries.length) {
+      return;
+    }
+
+    persistHomeDashboardState({
+      watchlistCodes: visibleWatchlistCodes,
+      selectedCode
+    });
+  }, [marketEntries.length, selectedCode, visibleWatchlistCodes]);
 
   const selectedFund = useMemo(() => marketByCode.get(selectedCode) || null, [marketByCode, selectedCode]);
 
@@ -291,6 +335,8 @@ export function HomeExperience({ links, inPagesDir = false }) {
 
     setWatchlistCodes((current) => [...current, pendingCode]);
     setSelectedCode(pendingCode);
+    setWatchlistNotice(`已加入 ${pendingCode} 到自选基金。`);
+    setWatchlistNoticeTone('emerald');
   }
 
   function removeWatchlistItem(code) {
@@ -299,6 +345,57 @@ export function HomeExperience({ links, inPagesDir = false }) {
       const nextCode = visibleWatchlistCodes.find((itemCode) => itemCode !== code) || '';
       setSelectedCode(nextCode);
     }
+    setWatchlistNotice(`已从自选基金移除 ${code}。`);
+    setWatchlistNoticeTone('slate');
+  }
+
+  function exportWatchlistConfig() {
+    const payload = exportHomeDashboardState({
+      watchlistCodes: visibleWatchlistCodes,
+      selectedCode
+    });
+    const blob = new Blob([payload], { type: 'application/json;charset=utf-8' });
+    const objectUrl = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = `qqq-dashboard-config-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.URL.revokeObjectURL(objectUrl);
+    setWatchlistNotice('已导出当前浏览器中的自选配置。');
+    setWatchlistNoticeTone('emerald');
+  }
+
+  async function importWatchlistConfig(event) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      const rawText = await file.text();
+      const imported = importHomeDashboardState(rawText, {
+        availableCodes,
+        defaultCodes: defaultWatchlistCodes
+      });
+      setWatchlistCodes(imported.watchlistCodes);
+      setSelectedCode(imported.selectedCode);
+      setWatchlistNotice(`已导入 ${imported.watchlistCodes.length} 个自选基金。`);
+      setWatchlistNoticeTone('emerald');
+    } catch (error) {
+      setWatchlistNotice(error instanceof Error ? error.message : '导入配置失败。');
+      setWatchlistNoticeTone('amber');
+    } finally {
+      event.target.value = '';
+    }
+  }
+
+  function restoreDefaultWatchlist() {
+    setWatchlistCodes(defaultWatchlistCodes);
+    setSelectedCode(defaultWatchlistCodes[0] || '');
+    setWatchlistNotice('已恢复默认自选基金组合。');
+    setWatchlistNoticeTone('slate');
   }
 
   return (
@@ -329,9 +426,30 @@ export function HomeExperience({ links, inPagesDir = false }) {
           <SectionHeading
             eyebrow="Watchlist"
             title="自选基金"
-            description="自选基金固定放在页面最上方，仅当前会话生效。刷新页面后会回到默认组合，不会缓存你手动增删的结果。"
+            description="自选基金固定放在页面最上方，配置只保存在当前浏览器。你可以直接导出 JSON，自行备份或导入到另一台设备。"
             action={
-              <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+              <div className="flex w-full flex-col gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <button className={subtleButtonClass} type="button" onClick={exportWatchlistConfig}>
+                    <Download className="h-4 w-4" />
+                    导出配置
+                  </button>
+                  <button className={subtleButtonClass} type="button" onClick={() => importInputRef.current?.click()}>
+                    <Upload className="h-4 w-4" />
+                    导入配置
+                  </button>
+                  <button className={subtleButtonClass} type="button" onClick={restoreDefaultWatchlist}>
+                    恢复默认
+                  </button>
+                  <input
+                    ref={importInputRef}
+                    accept="application/json"
+                    className="hidden"
+                    type="file"
+                    onChange={importWatchlistConfig}
+                  />
+                </div>
+                <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
                 <div className="min-w-[220px]">
                   <SelectField
                     disabled={!addableEntries.length}
@@ -352,9 +470,23 @@ export function HomeExperience({ links, inPagesDir = false }) {
                   <Plus className="h-4 w-4" />
                   新增自选
                 </button>
+                </div>
               </div>
             }
           />
+
+          {watchlistNotice ? (
+            <div className={cx(
+              'mt-5 rounded-2xl px-4 py-3 text-sm',
+              watchlistNoticeTone === 'emerald'
+                ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+                : watchlistNoticeTone === 'amber'
+                  ? 'border border-amber-200 bg-amber-50 text-amber-700'
+                  : 'border border-slate-200 bg-slate-50 text-slate-600'
+            )}>
+              {watchlistNotice}
+            </div>
+          ) : null}
 
           {marketError ? (
             <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -632,7 +764,7 @@ export function HomeExperience({ links, inPagesDir = false }) {
               查看历史记录
               <ArrowRight className="h-4 w-4" />
             </a>
-            <button className={subtleButtonClass} type="button" onClick={() => setWatchlistCodes(buildDefaultCodes(marketEntries))}>
+            <button className={subtleButtonClass} type="button" onClick={restoreDefaultWatchlist}>
               恢复默认自选
             </button>
           </div>
