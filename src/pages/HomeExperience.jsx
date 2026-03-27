@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Plus, Trash2, Upload } from 'lucide-react';
 import { buildStages, formatCurrency, formatPercent, readAccumulationState } from '../app/accumulation.js';
-import { buildDcaProjection, readDcaState } from '../app/dca.js';
 import { exportHomeDashboardState, importHomeDashboardState, normalizeHomeDashboardState, persistHomeDashboardState, readHomeDashboardState } from '../app/homeDashboard.js';
 import { formatPriceAsOf, loadLatestNasdaqPrices, loadNasdaqDailySeries, loadNasdaqMinuteSnapshot } from '../app/nasdaqPrices.js';
 import { buildPlan, readPlanState } from '../app/plan.js';
@@ -286,23 +285,11 @@ function buildChartGeometry(displayBars = [], overlays = {}) {
   };
 }
 
-function buildMaNote(timeframe, dailyBarCount) {
-  if (timeframe === '1d') {
-    return dailyBarCount >= 200
-      ? `1d 视图使用新浪近两年日线，共 ${dailyBarCount} 个交易日。`
-      : `1d 视图已加载 ${dailyBarCount} 个交易日，长期均线先按当前已收录样本滚动展示。`;
-  }
-
-  return '当前是短周期视图，MA120 / MA200 按当前周期滚动计算，1d 视图更适合观察长期趋势。';
-}
-
 export function HomeExperience({ links, inPagesDir = false }) {
   const accumulationState = readAccumulationState();
   const accumulation = buildStages(accumulationState);
   const planState = readPlanState();
   const plan = buildPlan(planState);
-  const dcaState = readDcaState();
-  const dca = buildDcaProjection(dcaState);
   const nextBuyPrice = accumulation.stages[1]?.price ?? accumulationState.basePrice;
   const reserveRatio = planState.totalBudget > 0 ? plan.reserveCapital / planState.totalBudget * 100 : 0;
   const [dashboardState] = useState(() => readHomeDashboardState());
@@ -564,10 +551,9 @@ export function HomeExperience({ links, inPagesDir = false }) {
       primaryMetricValue: hasAmountData ? `¥ ${formatCompactNumber(totalAmount)}` : formatCompactNumber(totalVolume),
       hasAmountData,
       changePct,
-      asOf: formatPriceAsOf(selectedFund),
-      maNote: buildMaNote(timeframe, fullBarsByTimeframe['1d'].length)
+      asOf: formatPriceAsOf(selectedFund)
     };
-  }, [activeBar, displayBars, fullBarsByTimeframe, selectedFund, timeframe]);
+  }, [activeBar, displayBars, selectedFund]);
 
   function addWatchlistItem() {
     if (!pendingCode || visibleWatchlistCodes.includes(pendingCode)) {
@@ -646,7 +632,6 @@ export function HomeExperience({ links, inPagesDir = false }) {
         backLabel="返回页面目录"
         eyebrow="Strategy Dashboard"
         title="QQQ 建仓策略总览"
-        description="将加仓计划、资金留存和定投节奏汇总到一个轻量决策视图里，便于快速判断下一次操作窗口和预算占用。"
         badges={[
           <Pill key="status" tone="indigo">运行中</Pill>,
           <Pill key="layers" tone="slate">{accumulation.stages.length} 层建仓</Pill>
@@ -667,7 +652,6 @@ export function HomeExperience({ links, inPagesDir = false }) {
           <SectionHeading
             eyebrow="Watchlist"
             title="自选基金"
-            description="自选基金固定放在页面最上方，配置只保存在当前浏览器。你可以直接导出 JSON，自行备份或导入到另一台设备。"
             action={
               <div className="flex w-full flex-col gap-3">
                 <div className="flex flex-wrap items-center gap-3">
@@ -807,7 +791,6 @@ export function HomeExperience({ links, inPagesDir = false }) {
             <SectionHeading
               eyebrow="Price Pulse"
               title="价格走势与基金脉冲"
-              description="切换不同时间粒度查看专业 K 线、成交量和 MA120 / MA200 参考。图表可直接点选单根蜡烛，底部会同步更新 OHLC 数据。"
               action={selectedFund ? <Pill tone="indigo">{selectedFund.code}</Pill> : null}
             />
 
@@ -969,7 +952,6 @@ export function HomeExperience({ links, inPagesDir = false }) {
                         {pricePulse.hasAmountData && Number(activeBar?.amount) > 0 ? (
                           <span>成交额 ¥ {formatCompactNumber(activeBar?.amount)}</span>
                         ) : null}
-                        <span>{pricePulse.maNote}</span>
                       </div>
                     </div>
                   </div>
@@ -1031,19 +1013,6 @@ export function HomeExperience({ links, inPagesDir = false }) {
                   </div>
                 ))}
               </div>
-              <div className="mt-4 text-sm leading-6 text-slate-500">
-                分配权重与目标跌幅同步驱动入场价格，末层最大跌幅 {formatPercent(accumulationState.maxDrawdown, 2)}。
-              </div>
-            </Card>
-
-            <Card>
-              <SectionHeading eyebrow="Operator Notes" title="执行建议" />
-              <ul className="mt-5 space-y-3 text-sm leading-6 text-slate-600">
-                <li>首笔建仓使用 {formatCurrency(accumulation.stages[0]?.price ?? accumulationState.basePrice)} 作为基准价。</li>
-                <li>下一层计划买入价为 {formatCurrency(nextBuyPrice)}，触发后会自动重算平均成本。</li>
-                <li>当前预留资金占总预算 {formatPercent(reserveRatio, 1)}，保留现金缓冲有利于承接二层和三层回撤。</li>
-                <li>定投计划当前总投入 {formatCurrency(dca.totalInvestment)}，执行频率为 {dcaState.frequency}。</li>
-              </ul>
             </Card>
           </div>
         </div>
