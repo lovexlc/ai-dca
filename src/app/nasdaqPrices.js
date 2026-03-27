@@ -10,8 +10,6 @@ function normalizeFundKey(value = '') {
     .replace(/基金/g, '');
 }
 
-const nasdaqSnapshotModules = import.meta.glob('../../data/*/*.json');
-
 function buildAliases(entry = {}) {
   const aliases = new Set();
   const code = String(entry.code || '').trim();
@@ -49,6 +47,15 @@ export function nasdaqDataPath(outputPath, { inPagesDir = false } = {}) {
   return inPagesDir ? `../${normalized}` : `./${normalized}`;
 }
 
+export function nasdaqDailyHistoryPath(fundCode = '', { inPagesDir = false } = {}) {
+  const normalizedCode = String(fundCode || '').trim();
+  if (!normalizedCode) {
+    return '';
+  }
+
+  return inPagesDir ? `../data/${normalizedCode}/daily-sina.json` : `./data/${normalizedCode}/daily-sina.json`;
+}
+
 export async function loadLatestNasdaqPrices({ inPagesDir = false } = {}) {
   const response = await fetch(latestNasdaqPriceManifestPath({ inPagesDir }), {
     headers: {
@@ -63,18 +70,6 @@ export async function loadLatestNasdaqPrices({ inPagesDir = false } = {}) {
 
   const payload = await response.json();
   return Array.isArray(payload?.funds) ? payload.funds : [];
-}
-
-export function listNasdaqSnapshotPaths(fundCode = '') {
-  const normalizedCode = String(fundCode || '').trim();
-  if (!normalizedCode) {
-    return [];
-  }
-
-  return Object.keys(nasdaqSnapshotModules)
-    .map((path) => normalizeSnapshotPath(path))
-    .filter((path) => path.startsWith(`data/${normalizedCode}/`))
-    .sort((left, right) => left.localeCompare(right));
 }
 
 export function findLatestNasdaqPrice(entries = [], fundKey = '') {
@@ -118,28 +113,29 @@ export async function loadNasdaqMinuteSnapshot(snapshotOrPath, { inPagesDir = fa
   return response.json();
 }
 
-export async function loadNasdaqDailySnapshots(fundCode = '', { inPagesDir = false } = {}) {
-  const snapshotPaths = listNasdaqSnapshotPaths(fundCode);
-  if (!snapshotPaths.length) {
+export async function loadNasdaqDailySeries(fundCode = '', { inPagesDir = false } = {}) {
+  const resolvedPath = nasdaqDailyHistoryPath(fundCode, { inPagesDir });
+  if (!resolvedPath) {
     return [];
   }
 
-  const payloads = await Promise.all(snapshotPaths.map(async (path) => {
-    const response = await fetch(nasdaqDataPath(path, { inPagesDir }), {
-      headers: {
-        Accept: 'application/json'
-      },
-      cache: 'no-store'
-    });
+  const response = await fetch(resolvedPath, {
+    headers: {
+      Accept: 'application/json'
+    },
+    cache: 'no-store'
+  });
 
-    if (!response.ok) {
-      throw new Error(`历史快照加载失败: HTTP ${response.status}`);
-    }
+  if (response.status === 404) {
+    return [];
+  }
 
-    return response.json();
-  }));
+  if (!response.ok) {
+    throw new Error(`日线数据加载失败: HTTP ${response.status}`);
+  }
 
-  return payloads.sort((left, right) => String(left?.date || '').localeCompare(String(right?.date || '')));
+  const payload = await response.json();
+  return Array.isArray(payload?.bars) ? payload.bars : [];
 }
 
 export function formatPriceAsOf(snapshot) {

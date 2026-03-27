@@ -7,6 +7,7 @@
     "dev": "vite",
     "build:app": "vite build",
     "publish:pages": "node scripts/publish_react_pages.mjs",
+    "data:fetch-nasdaq-daily": "node scripts/fetch_nasdaq_etf_daily_sina.mjs",
     "build": "npm run build:app && npm run publish:pages",
     "worker:dev": "npx wrangler dev --config workers/ocr-proxy/wrangler.toml --port 8787",
     "worker:deploy": "npx wrangler deploy --config workers/ocr-proxy/wrangler.toml"

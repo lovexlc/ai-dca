@@ -3,7 +3,7 @@ import { Download, Plus, Trash2, Upload } from 'lucide-react';
 import { buildStages, formatCurrency, formatPercent, readAccumulationState } from '../app/accumulation.js';
 import { buildDcaProjection, readDcaState } from '../app/dca.js';
 import { exportHomeDashboardState, importHomeDashboardState, normalizeHomeDashboardState, persistHomeDashboardState, readHomeDashboardState } from '../app/homeDashboard.js';
-import { formatPriceAsOf, loadLatestNasdaqPrices, loadNasdaqDailySnapshots, loadNasdaqMinuteSnapshot } from '../app/nasdaqPrices.js';
+import { formatPriceAsOf, loadLatestNasdaqPrices, loadNasdaqDailySeries, loadNasdaqMinuteSnapshot } from '../app/nasdaqPrices.js';
 import { buildPlan, readPlanState } from '../app/plan.js';
 import { Card, PageHero, PageShell, Pill, SectionHeading, SelectField, StatCard, cx, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
 
@@ -100,26 +100,22 @@ function aggregateMinuteBars(minuteBars = [], groupSize = 15) {
   return aggregated;
 }
 
-function buildDailyBarsFromSnapshots(snapshots = []) {
-  return snapshots
-    .filter((snapshot) => Array.isArray(snapshot?.bars) && snapshot.bars.length)
-    .sort((left, right) => String(left.date || '').localeCompare(String(right.date || '')))
-    .map((snapshot, index) => {
-      const firstBar = snapshot.bars[0];
-      const lastBar = snapshot.bars[snapshot.bars.length - 1];
-      return {
-        id: String(snapshot.date || index),
-        sourceIndex: index,
-        label: String(snapshot.date || '').slice(5),
-        longLabel: String(snapshot.date || ''),
-        open: Number(firstBar?.open) || Number(firstBar?.close) || 0,
-        close: Number(lastBar?.close) || Number(lastBar?.open) || 0,
-        high: Math.max(...snapshot.bars.map((bar) => Number(bar.high) || Number(bar.close) || 0)),
-        low: Math.min(...snapshot.bars.map((bar) => Number(bar.low) || Number(bar.close) || 0)),
-        volume: snapshot.bars.reduce((sum, bar) => sum + (Number(bar.volume) || 0), 0),
-        amount: snapshot.bars.reduce((sum, bar) => sum + (Number(bar.amount) || 0), 0)
-      };
-    });
+function buildDailyBars(dailyBars = []) {
+  return dailyBars
+    .filter((bar) => Number.isFinite(Number(bar.close)))
+    .sort((left, right) => String(left?.date || '').localeCompare(String(right?.date || '')))
+    .map((bar, index) => ({
+      id: String(bar.date || index),
+      sourceIndex: index,
+      label: String(bar.date || '').slice(5),
+      longLabel: String(bar.date || ''),
+      open: Number(bar.open) || Number(bar.close) || 0,
+      close: Number(bar.close) || Number(bar.open) || 0,
+      high: Number(bar.high) || Number(bar.close) || Number(bar.open) || 0,
+      low: Number(bar.low) || Number(bar.close) || Number(bar.open) || 0,
+      volume: Number(bar.volume) || 0,
+      amount: Number(bar.amount) || 0
+    }));
 }
 
 function limitBarsForChart(bars = [], limit = 64) {
@@ -293,8 +289,8 @@ function buildChartGeometry(displayBars = [], overlays = {}) {
 function buildMaNote(timeframe, dailyBarCount) {
   if (timeframe === '1d') {
     return dailyBarCount >= 200
-      ? 'MA120 / MA200 代表长期日线趋势。'
-      : `当前仅收录 ${dailyBarCount} 个交易日，长期均线先按已收录日线样本滚动展示。`;
+      ? `1d 视图使用新浪近两年日线，共 ${dailyBarCount} 个交易日。`
+      : `1d 视图已加载 ${dailyBarCount} 个交易日，长期均线先按当前已收录样本滚动展示。`;
   }
 
   return '当前是短周期视图，MA120 / MA200 按当前周期滚动计算，1d 视图更适合观察长期趋势。';
@@ -317,7 +313,7 @@ export function HomeExperience({ links, inPagesDir = false }) {
   const [selectedCode, setSelectedCode] = useState(dashboardState.selectedCode);
   const [pendingCode, setPendingCode] = useState('');
   const [minuteSnapshot, setMinuteSnapshot] = useState(null);
-  const [dailySnapshots, setDailySnapshots] = useState([]);
+  const [dailySeries, setDailySeries] = useState([]);
   const [pulseError, setPulseError] = useState('');
   const [isLoadingPulse, setIsLoadingPulse] = useState(false);
   const [watchlistNotice, setWatchlistNotice] = useState('');
@@ -440,7 +436,7 @@ export function HomeExperience({ links, inPagesDir = false }) {
   useEffect(() => {
     if (!selectedFund?.output_path) {
       setMinuteSnapshot(null);
-      setDailySnapshots([]);
+      setDailySeries([]);
       setPulseError('');
       setIsLoadingPulse(false);
       return;
@@ -451,9 +447,9 @@ export function HomeExperience({ links, inPagesDir = false }) {
     setIsLoadingPulse(true);
     Promise.allSettled([
       loadNasdaqMinuteSnapshot(selectedFund, { inPagesDir }),
-      loadNasdaqDailySnapshots(selectedFund.code, { inPagesDir })
+      loadNasdaqDailySeries(selectedFund.code, { inPagesDir })
     ])
-      .then(([minuteResult, dailyResult]) => {
+      .then(([minuteResult, dailySeriesResult]) => {
         if (cancelled) {
           return;
         }
@@ -466,12 +462,12 @@ export function HomeExperience({ links, inPagesDir = false }) {
           setPulseError(minuteResult.reason instanceof Error ? minuteResult.reason.message : '分钟线数据加载失败');
         }
 
-        if (dailyResult.status === 'fulfilled') {
-          setDailySnapshots(dailyResult.value);
+        if (dailySeriesResult.status === 'fulfilled') {
+          setDailySeries(dailySeriesResult.value);
         } else {
-          setDailySnapshots([]);
+          setDailySeries([]);
           if (minuteResult.status !== 'fulfilled') {
-            setPulseError(dailyResult.reason instanceof Error ? dailyResult.reason.message : '历史快照加载失败');
+            setPulseError(dailySeriesResult.reason instanceof Error ? dailySeriesResult.reason.message : '日线数据加载失败');
           }
         }
       })
@@ -493,8 +489,8 @@ export function HomeExperience({ links, inPagesDir = false }) {
   const fullBarsByTimeframe = useMemo(() => ({
     '1m': normalizedMinuteBars,
     '15m': aggregateMinuteBars(normalizedMinuteBars, 15),
-    '1d': buildDailyBarsFromSnapshots(dailySnapshots)
-  }), [dailySnapshots, normalizedMinuteBars]);
+    '1d': buildDailyBars(dailySeries)
+  }), [dailySeries, normalizedMinuteBars]);
 
   const fullBars = fullBarsByTimeframe[timeframe] || [];
   const displayBars = useMemo(
@@ -554,6 +550,7 @@ export function HomeExperience({ links, inPagesDir = false }) {
     const changePct = openPrice > 0 ? (latestPrice - openPrice) / openPrice * 100 : 0;
     const totalAmount = displayBars.reduce((sum, bar) => sum + bar.amount, 0);
     const totalVolume = displayBars.reduce((sum, bar) => sum + bar.volume, 0);
+    const hasAmountData = displayBars.some((bar) => Number(bar.amount) > 0);
 
     return {
       bars: displayBars,
@@ -563,6 +560,9 @@ export function HomeExperience({ links, inPagesDir = false }) {
       lowPrice,
       totalAmount,
       totalVolume,
+      primaryMetricLabel: hasAmountData ? '成交额' : '成交量',
+      primaryMetricValue: hasAmountData ? `¥ ${formatCompactNumber(totalAmount)}` : formatCompactNumber(totalVolume),
+      hasAmountData,
       changePct,
       asOf: formatPriceAsOf(selectedFund),
       maNote: buildMaNote(timeframe, fullBarsByTimeframe['1d'].length)
@@ -844,8 +844,8 @@ export function HomeExperience({ links, inPagesDir = false }) {
 
                       <div className="grid gap-2 text-right sm:grid-cols-3 lg:min-w-[360px]">
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
-                          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">成交额</div>
-                          <div className="mt-1 text-sm font-semibold text-slate-900">¥ {formatCompactNumber(pricePulse.totalAmount)}</div>
+                          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{pricePulse.primaryMetricLabel}</div>
+                          <div className="mt-1 text-sm font-semibold text-slate-900">{pricePulse.primaryMetricValue}</div>
                         </div>
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
                           <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">MA120</div>
@@ -966,7 +966,9 @@ export function HomeExperience({ links, inPagesDir = false }) {
                       <div className="flex flex-wrap items-center gap-4">
                         <span>{activeBar?.longLabel || '--'}</span>
                         <span>成交量 {formatCompactNumber(activeBar?.volume)}</span>
-                        <span>成交额 ¥ {formatCompactNumber(activeBar?.amount)}</span>
+                        {pricePulse.hasAmountData && Number(activeBar?.amount) > 0 ? (
+                          <span>成交额 ¥ {formatCompactNumber(activeBar?.amount)}</span>
+                        ) : null}
                         <span>{pricePulse.maNote}</span>
                       </div>
                     </div>
