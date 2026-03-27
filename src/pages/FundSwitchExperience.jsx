@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronUp, CloudUpload, FileImage, LoaderCircle, Plus, Trash2, Upload } from 'lucide-react';
 import { formatCurrency } from '../app/accumulation.js';
-import { buildFundSwitchSummary, createEmptyFundSwitchRow, persistFundSwitchState, readFundSwitchState } from '../app/fundSwitch.js';
+import { buildFundSwitchSummary, createEmptyFundSwitchRow, deriveComparisonFromRows, persistFundSwitchState, readFundSwitchState } from '../app/fundSwitch.js';
 import { findLatestNasdaqPrice, formatPriceAsOf, loadLatestNasdaqPrices } from '../app/nasdaqPrices.js';
 import { Card, Field, NumberInput, PageHero, PageShell, SectionHeading, TextInput, cx, inputClass, primaryButtonClass, secondaryButtonClass, tableInputClass } from '../components/experience-ui.jsx';
 
@@ -281,6 +281,15 @@ export function FundSwitchExperience({ links, inPagesDir }) {
 
   function handleDragOver(event) {
     event.preventDefault();
+  }
+
+  function handleConfirmDataAndYield() {
+    setState((current) => ({
+      ...current,
+      comparison: deriveComparisonFromRows(current.rows, current.comparison),
+      recognizedRecords: current.rows.length
+    }));
+    setShowCalculationDetails(true);
   }
 
   return (
@@ -606,7 +615,7 @@ export function FundSwitchExperience({ links, inPagesDir }) {
             <button className={cx(secondaryButtonClass, 'flex-1 sm:flex-none')} type="button" onClick={openFilePicker}>
               重新上传
             </button>
-            <button className={cx(primaryButtonClass, 'flex-1 sm:flex-none')} type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+            <button className={cx(primaryButtonClass, 'flex-1 sm:flex-none')} type="button" onClick={handleConfirmDataAndYield}>
               确认数据与收益
               <ArrowRight className="h-4 w-4" />
             </button>

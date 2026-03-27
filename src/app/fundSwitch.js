@@ -29,6 +29,11 @@ function toPositiveNumber(value) {
   return Math.max(Number(value) || 0, 0);
 }
 
+function toNonNegativeOrFallback(value, fallback) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? Math.max(numericValue, 0) : fallback;
+}
+
 function withDerivedRowValues(row) {
   const price = row.type === '卖出' ? row.sellPrice : row.buyPrice;
   return {
@@ -59,15 +64,37 @@ function sanitizeComparison(comparison = {}) {
   const fallback = defaultFundSwitchState.comparison;
 
   return {
-    sourceCode: comparison.sourceCode || fallback.sourceCode,
-    sourceSellShares: Math.max(Number(comparison.sourceSellShares) || fallback.sourceSellShares, 0),
-    sourceCurrentPrice: Math.max(Number(comparison.sourceCurrentPrice) || fallback.sourceCurrentPrice, 0),
-    targetCode: comparison.targetCode || fallback.targetCode,
-    targetBuyShares: Math.max(Number(comparison.targetBuyShares) || fallback.targetBuyShares, 0),
-    targetCurrentPrice: Math.max(Number(comparison.targetCurrentPrice) || fallback.targetCurrentPrice, 0),
-    switchCost: Math.max(Number(comparison.switchCost) || fallback.switchCost, 0),
-    extraCash: Math.max(Number(comparison.extraCash) || fallback.extraCash, 0),
-    feeTradeCount: Math.max(Number(comparison.feeTradeCount) || fallback.feeTradeCount, 0)
+    sourceCode: String(comparison.sourceCode || '').trim() || fallback.sourceCode,
+    sourceSellShares: toNonNegativeOrFallback(comparison.sourceSellShares, fallback.sourceSellShares),
+    sourceCurrentPrice: toNonNegativeOrFallback(comparison.sourceCurrentPrice, fallback.sourceCurrentPrice),
+    targetCode: String(comparison.targetCode || '').trim() || fallback.targetCode,
+    targetBuyShares: toNonNegativeOrFallback(comparison.targetBuyShares, fallback.targetBuyShares),
+    targetCurrentPrice: toNonNegativeOrFallback(comparison.targetCurrentPrice, fallback.targetCurrentPrice),
+    switchCost: toNonNegativeOrFallback(comparison.switchCost, fallback.switchCost),
+    extraCash: toNonNegativeOrFallback(comparison.extraCash, fallback.extraCash),
+    feeTradeCount: toNonNegativeOrFallback(comparison.feeTradeCount, fallback.feeTradeCount)
+  };
+}
+
+export function deriveComparisonFromRows(rows, comparison = {}) {
+  const currentComparison = sanitizeComparison(comparison);
+  const normalizedRows = (Array.isArray(rows) ? rows : []).map((row, index) => sanitizeRow(row, index));
+  const sellRows = normalizedRows.filter((row) => row.type === '卖出');
+  const buyRows = normalizedRows.filter((row) => row.type === '买入');
+  const sellAmount = sellRows.reduce((sum, row) => sum + row.amount, 0);
+  const buyAmount = buyRows.reduce((sum, row) => sum + row.amount, 0);
+  const firstSellCode = sellRows.find((row) => String(row.code || '').trim())?.code;
+  const firstBuyCode = buyRows.find((row) => String(row.code || '').trim())?.code;
+
+  return {
+    ...currentComparison,
+    sourceCode: firstSellCode || currentComparison.sourceCode,
+    sourceSellShares: round(sellRows.reduce((sum, row) => sum + row.shares, 0), 2),
+    targetCode: firstBuyCode || currentComparison.targetCode,
+    targetBuyShares: round(buyRows.reduce((sum, row) => sum + row.shares, 0), 2),
+    extraCash: round(Math.max(buyAmount - sellAmount, 0), 2),
+    switchCost: round(buyAmount, 2),
+    feeTradeCount: normalizedRows.length
   };
 }
 
@@ -129,7 +156,7 @@ export function readFundSwitchState() {
 
     return {
       fileName: saved.fileName || defaultFundSwitchState.fileName,
-      recognizedRecords: Math.max(Number(saved.recognizedRecords) || defaultFundSwitchState.recognizedRecords, 0),
+      recognizedRecords: toNonNegativeOrFallback(saved.recognizedRecords, defaultFundSwitchState.recognizedRecords),
       feePerTrade: Math.max(Number(saved.feePerTrade) || defaultFundSwitchState.feePerTrade, 0),
       comparison: sanitizeComparison(saved.comparison),
       rows: (Array.isArray(saved.rows) && saved.rows.length ? saved.rows : defaultFundSwitchState.rows).map((row, index) => sanitizeRow(row, index))
