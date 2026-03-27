@@ -484,7 +484,7 @@ function TransactionEditorCard({ row, index, codeError, onUpdateRow, onRemoveRow
   );
 }
 
-function CompactOcrStatusCard({ fileName, statusMeta, recognizedCount, needsManualReview, previewRows, hasMorePreviewRows, onReupload, onEdit }) {
+function CompactOcrStatusCard({ fileName, statusMeta, recognizedCount, resultConfirmed, previewRows, hasMorePreviewRows, onReupload, onEdit }) {
   return (
     <Card className="p-4 sm:p-5">
       <div className="flex flex-col gap-4">
@@ -506,8 +506,8 @@ function CompactOcrStatusCard({ fileName, statusMeta, recognizedCount, needsManu
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-          <span className={cx('rounded-full px-2.5 py-1 font-semibold', needsManualReview ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700')}>
-            {needsManualReview ? '建议复核识别明细' : '可直接确认收益'}
+          <span className={cx('rounded-full px-2.5 py-1 font-semibold', resultConfirmed ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700')}>
+            {resultConfirmed ? '已生成结果摘要' : '待确认识别明细'}
           </span>
         </div>
 
@@ -560,7 +560,7 @@ function PendingResultCard({ issueSummary, onEdit }) {
             <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-700/70">Pending Confirmation</div>
             <div className="mt-2 text-lg font-bold text-amber-900">请先确认识别明细</div>
             <div className="mt-2 text-sm leading-6 text-amber-900/75">
-              {issueSummary || '交易明细校验通过后，系统才会生成切换收益结果。'}
+              {issueSummary || '交易明细校验通过后，系统才会生成结果摘要。'}
             </div>
           </div>
         </div>
@@ -573,7 +573,7 @@ function PendingResultCard({ issueSummary, onEdit }) {
   );
 }
 
-function EditingSummaryStrip({ value, strategy, recognizedCount, onExit }) {
+function EditingSummaryStrip({ strategy, recognizedCount, onExit }) {
   return (
     <Card className="p-4 sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -588,8 +588,8 @@ function EditingSummaryStrip({ value, strategy, recognizedCount, onExit }) {
 
       <div className="mt-4 grid grid-cols-3 gap-3">
         <div className="rounded-2xl bg-slate-50 px-3 py-3">
-          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">额外收益</div>
-          <div className="mt-1 text-sm font-extrabold text-slate-800">{value}</div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">状态</div>
+          <div className="mt-1 text-sm font-extrabold text-slate-800">待确认</div>
         </div>
         <div className="rounded-2xl bg-slate-50 px-3 py-3">
           <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">策略</div>
@@ -640,7 +640,6 @@ export function FundSwitchExperience({ links, inPagesDir }) {
   const validationIssueSummary = useMemo(() => summarizeValidationIssues(validationIssues), [validationIssues]);
   const statusMeta = getStatusMeta(effectiveOcrStatus);
   const advantageMeta = getAdvantageTone(summary.switchAdvantage);
-  const needsManualReview = ocrState.status === 'warning' || validationIssues.length > 0 || !state.resultConfirmed;
   const shouldShowBottomAdvantage = state.resultConfirmed && !isEditingDetails;
   const bottomAdvantageText = shouldShowBottomAdvantage ? formatSignedCurrency(summary.switchAdvantage, '¥ ') : '待重算';
   const bottomAdvantageTone = shouldShowBottomAdvantage
@@ -986,7 +985,6 @@ export function FundSwitchExperience({ links, inPagesDir }) {
         ) : isEditingDetails ? (
           <>
             <EditingSummaryStrip
-              value={state.resultConfirmed ? formatSignedCurrency(summary.switchAdvantage, '¥ ') : '待生成'}
               strategy={summary.strategy}
               recognizedCount={recognizedCount}
               onExit={closeDetailEditor}
@@ -1109,7 +1107,7 @@ export function FundSwitchExperience({ links, inPagesDir }) {
                 fileName={state.fileName}
                 statusMeta={statusMeta}
                 recognizedCount={recognizedCount}
-                needsManualReview={needsManualReview}
+                resultConfirmed={state.resultConfirmed}
                 previewRows={ocrPreview.rows}
                 hasMorePreviewRows={ocrPreview.hasMore}
                 onReupload={openFilePicker}
@@ -1117,7 +1115,7 @@ export function FundSwitchExperience({ links, inPagesDir }) {
               />
 
               <Card className="p-4 sm:p-6">
-                <SectionHeading eyebrow="Conclusion" title="当前切换判断" />
+                <SectionHeading eyebrow={state.resultConfirmed ? 'Conclusion' : 'Pending'} title={state.resultConfirmed ? '当前切换判断' : '等待确认识别明细'} />
 
                 <div className="mt-5 space-y-3 sm:space-y-4">
                   {state.resultConfirmed ? (
@@ -1243,7 +1241,7 @@ export function FundSwitchExperience({ links, inPagesDir }) {
               </Card>
             ) : (
               <Card className="p-4 sm:p-6">
-                <SectionHeading eyebrow="Parameters" title="计算详细参数预设" description="请先确认 OCR 识别明细，校验通过后再生成和调整收益参数。" />
+                <SectionHeading eyebrow="Parameters" title="计算详细参数预设" description="请先确认 OCR 识别明细，校验通过后再生成和调整参数。" />
               </Card>
             )}
           </>
@@ -1254,21 +1252,23 @@ export function FundSwitchExperience({ links, inPagesDir }) {
         <div className="mx-auto max-w-6xl">
           {hasImportedData ? (
             <>
-              <div className="mb-3 grid grid-cols-3 gap-2 sm:hidden">
+              <div className={cx('mb-3 grid gap-2 sm:hidden', shouldShowBottomAdvantage ? 'grid-cols-3' : 'grid-cols-2')}>
                 <div className="rounded-2xl bg-slate-100 px-3 py-2.5">
                   <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">条目</div>
                   <div className="mt-1 text-sm font-extrabold text-slate-700">{recognizedCount}</div>
                 </div>
                 <div className="rounded-2xl bg-slate-100 px-3 py-2.5">
                   <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">{isEditingDetails ? '状态' : '策略'}</div>
-                  <div className="mt-1 text-sm font-extrabold text-slate-700">{isEditingDetails ? '明细编辑' : STRATEGY_LABELS[summary.strategy]}</div>
+                  <div className="mt-1 text-sm font-extrabold text-slate-700">{isEditingDetails || !state.resultConfirmed ? '待确认' : STRATEGY_LABELS[summary.strategy]}</div>
                 </div>
-                <div className="rounded-2xl bg-slate-100 px-3 py-2.5">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">额外收益</div>
-                  <div className={cx('mt-1 text-sm font-extrabold', bottomAdvantageTone)}>
-                    {bottomAdvantageText}
+                {shouldShowBottomAdvantage ? (
+                  <div className="rounded-2xl bg-slate-100 px-3 py-2.5">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">额外收益</div>
+                    <div className={cx('mt-1 text-sm font-extrabold', bottomAdvantageTone)}>
+                      {bottomAdvantageText}
+                    </div>
                   </div>
-                </div>
+                ) : null}
               </div>
 
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1280,15 +1280,19 @@ export function FundSwitchExperience({ links, inPagesDir }) {
                   <div className="h-8 w-px bg-slate-200" />
                   <div>
                     <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{isEditingDetails ? '当前状态' : '当前策略'}</div>
-                    <div className="mt-1 text-sm font-extrabold text-slate-700">{isEditingDetails ? '明细编辑' : STRATEGY_LABELS[summary.strategy]}</div>
+                    <div className="mt-1 text-sm font-extrabold text-slate-700">{isEditingDetails || !state.resultConfirmed ? '待确认' : STRATEGY_LABELS[summary.strategy]}</div>
                   </div>
-                  <div className="h-8 w-px bg-slate-200" />
-                  <div>
-                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">当前额外收益</div>
-                    <div className={cx('mt-1 text-sm font-extrabold', bottomAdvantageTone)}>
-                      {bottomAdvantageText}
-                    </div>
-                  </div>
+                  {shouldShowBottomAdvantage ? (
+                    <>
+                      <div className="h-8 w-px bg-slate-200" />
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">当前额外收益</div>
+                        <div className={cx('mt-1 text-sm font-extrabold', bottomAdvantageTone)}>
+                          {bottomAdvantageText}
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
                 </div>
 
                 {isEditingDetails ? (
