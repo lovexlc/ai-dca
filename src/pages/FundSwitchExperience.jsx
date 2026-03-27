@@ -391,9 +391,82 @@ function TransactionEditorCard({ row, index, codeError, onUpdateRow, onRemoveRow
   );
 }
 
+function CompactOcrStatusCard({ fileName, statusMeta, message, recognizedCount, needsManualReview, onReupload, onEdit }) {
+  return (
+    <Card className="p-4 sm:p-5">
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">OCR Status</div>
+            <div className="mt-2 truncate text-base font-bold text-slate-800">{fileName || '未命名文件'}</div>
+            <div className="mt-1 text-sm leading-6 text-slate-500">{message}</div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={cx('inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold', statusMeta.colorClass)}>
+              <statusMeta.Icon className={cx('h-4 w-4', statusMeta.iconClassName)} />
+              {statusMeta.label}
+            </span>
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">
+              {recognizedCount} 条记录
+            </span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+          <span className={cx('rounded-full px-2.5 py-1 font-semibold', needsManualReview ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700')}>
+            {needsManualReview ? '建议复核识别明细' : '可直接确认收益'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button className={secondaryButtonClass} type="button" onClick={onReupload}>
+            <Upload className="h-4 w-4" />
+            重新上传
+          </button>
+          <button className="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-100" type="button" onClick={onEdit}>
+            修改识别明细
+          </button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function EditingSummaryStrip({ value, strategy, recognizedCount, onExit }) {
+  return (
+    <Card className="p-4 sm:p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Edit Mode</div>
+          <div className="mt-2 text-sm font-semibold text-slate-500">正在编辑识别明细，确认后会重新计算摘要结果。</div>
+        </div>
+        <button className="inline-flex items-center gap-2 self-start rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-200 sm:self-auto" type="button" onClick={onExit}>
+          返回摘要
+        </button>
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        <div className="rounded-2xl bg-slate-50 px-3 py-3">
+          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">额外收益</div>
+          <div className="mt-1 text-sm font-extrabold text-slate-800">{value}</div>
+        </div>
+        <div className="rounded-2xl bg-slate-50 px-3 py-3">
+          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">策略</div>
+          <div className="mt-1 text-sm font-extrabold text-slate-800">{STRATEGY_LABELS[strategy]}</div>
+        </div>
+        <div className="rounded-2xl bg-slate-50 px-3 py-3">
+          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">条目</div>
+          <div className="mt-1 text-sm font-extrabold text-slate-800">{recognizedCount}</div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export function FundSwitchExperience({ links, inPagesDir }) {
   const [state, setState] = useState(() => readFundSwitchState());
   const [ocrState, setOcrState] = useState(() => createOcrState());
+  const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [showCalculationDetails, setShowCalculationDetails] = useState(false);
   const [priceState, setPriceState] = useState(() => ({ status: 'idle', entries: [], error: '' }));
   const fileInputRef = useRef(null);
@@ -414,9 +487,15 @@ export function FundSwitchExperience({ links, inPagesDir }) {
     }),
     [state, priceSnapshotByCode]
   );
-  const statusMeta = getStatusMeta(ocrState.status);
-  const advantageMeta = getAdvantageTone(summary.switchAdvantage);
   const recognizedCount = summary.validRecordCount;
+  const hasImportedData = Boolean(state.fileName) || recognizedCount > 0;
+  const effectiveOcrStatus = hasImportedData && ocrState.status === 'idle' ? 'success' : ocrState.status;
+  const effectiveOcrMessage = hasImportedData && ocrState.status === 'idle'
+    ? `已同步 ${recognizedCount} 条记录，可继续确认收益或修改明细。`
+    : ocrState.message;
+  const statusMeta = getStatusMeta(effectiveOcrStatus);
+  const advantageMeta = getAdvantageTone(summary.switchAdvantage);
+  const needsManualReview = ocrState.status === 'warning' || summary.rows.some((row) => Boolean(getFundCodeError(row.code)));
 
   useEffect(() => {
     persistFundSwitchState({ ...state, comparison: summary.comparison }, summary);
@@ -585,6 +664,8 @@ export function FundSwitchExperience({ links, inPagesDir }) {
           ...result.comparison
         }
       }));
+      setIsEditingDetails(false);
+      setShowCalculationDetails(false);
 
       if (result.rows.length) {
         const hasWarnings = Array.isArray(result.warnings) && result.warnings.length > 0;
@@ -626,6 +707,15 @@ export function FundSwitchExperience({ links, inPagesDir }) {
     fileInputRef.current?.click();
   }
 
+  function openDetailEditor() {
+    setIsEditingDetails(true);
+    setShowCalculationDetails(false);
+  }
+
+  function closeDetailEditor() {
+    setIsEditingDetails(false);
+  }
+
   function handleDrop(event) {
     event.preventDefault();
     const file = event.dataTransfer?.files?.[0];
@@ -644,7 +734,8 @@ export function FundSwitchExperience({ links, inPagesDir }) {
       comparison: deriveFundSwitchComparison(current.rows, current.comparison),
       recognizedRecords: current.rows.length
     }));
-    setShowCalculationDetails(true);
+    setIsEditingDetails(false);
+    setShowCalculationDetails(false);
   }
 
   return (
@@ -672,14 +763,14 @@ export function FundSwitchExperience({ links, inPagesDir }) {
         actions={
           <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={openFilePicker}>
             <Upload className="h-4 w-4" />
-            上传截图
+            {hasImportedData ? '重新上传' : '上传截图'}
           </button>
         }
       />
 
       <div className="mx-auto max-w-6xl space-y-4 px-4 pt-6 sm:space-y-6 sm:px-6 sm:pt-8">
-        <div className="grid gap-6 lg:grid-cols-5">
-          <Card className="flex flex-col p-4 sm:p-6 lg:col-span-2">
+        {!hasImportedData ? (
+          <Card className="flex flex-col p-4 sm:p-6">
             <SectionHeading eyebrow="OCR Import" title="交易凭证导入" description={statusMeta.detail} />
 
             <button
@@ -717,288 +808,331 @@ export function FundSwitchExperience({ links, inPagesDir }) {
                 <FileImage className="h-8 w-8 shrink-0 text-slate-400" />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold text-slate-700">{state.fileName || '未命名文件'}</div>
-                  <div className="mt-0.5 text-xs text-slate-500">{ocrState.message}</div>
+                  <div className="mt-0.5 text-xs text-slate-500">{effectiveOcrMessage}</div>
                   {ocrState.error ? <div className="mt-2 text-xs text-red-500">{ocrState.error}</div> : null}
                   {priceState.status === 'error' ? <div className="mt-2 text-xs text-amber-600">{priceState.error}</div> : null}
                 </div>
               </div>
             )}
           </Card>
-
-          <Card className="p-4 sm:p-6 lg:col-span-3">
-            <SectionHeading eyebrow="Conclusion" title="当前切换判断" />
-
-            <div className="mt-5 space-y-3 sm:space-y-4">
-              <SummaryValueCard
-                value={formatSignedCurrency(summary.switchAdvantage, '')}
-                advantageMeta={advantageMeta}
-                strategy={summary.strategy}
-                onStrategyChange={updateStrategy}
-              />
-
-              <div className="grid gap-3 lg:grid-cols-2">
-                <PositionValueCard
-                  title="不切换现值"
-                  value={formatCurrency(summary.stayValue, '¥ ')}
-                  positions={summary.sourcePositions}
-                  priceSnapshotByCode={priceSnapshotByCode}
-                  emptyText="尚未回放出来源持仓，请先确认交易数据。"
-                />
-                <PositionValueCard
-                  title="切换后现值"
-                  value={formatCurrency(summary.switchedValue, '¥ ')}
-                  positions={summary.targetPositions}
-                  priceSnapshotByCode={priceSnapshotByCode}
-                  emptyText="尚未回放出目标持仓，请先确认交易数据。"
-                />
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <CompactMetricCard
-                  title="现持仓浮盈"
-                  value={formatSignedCurrency(summary.switchedPositionProfit, '¥ ')}
-                  note="现值 - 成本 - 手续费"
-                  tone={summary.switchedPositionProfit >= 0 ? 'positive' : 'negative'}
-                />
-                <CompactMetricCard title="预估处理金额" value={formatCurrency(summary.processedAmount, '¥ ')} note="已识别记录累计成交额" />
-              </div>
-            </div>
-
-            {summary.missingPriceCodes.length ? (
-              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
-                以下基金暂未匹配到现价，请在下方参数面板中手动补入：{summary.missingPriceCodes.join('、')}
-              </div>
-            ) : null}
-          </Card>
-        </div>
-
-        <Card className="overflow-hidden p-0">
-          <div className="flex flex-col justify-between gap-4 border-b border-slate-200 bg-white p-4 sm:p-6 md:flex-row md:items-center">
-            <SectionHeading
-              eyebrow="Editable Data"
-              title="交易数据明细"
-              description="截图识别完成后自动回填，可以在此继续修正错误。基金代码为 6 位纯数字。"
+        ) : isEditingDetails ? (
+          <>
+            <EditingSummaryStrip
+              value={formatSignedCurrency(summary.switchAdvantage, '¥ ')}
+              strategy={summary.strategy}
+              recognizedCount={recognizedCount}
+              onExit={closeDetailEditor}
             />
-            <div className="grid w-full grid-cols-2 gap-3 md:flex md:w-auto md:items-center">
-              <button className={cx(secondaryButtonClass, 'w-full')} type="button" onClick={openFilePicker}>
-                <Upload className="h-4 w-4" />
-                重新上传
-              </button>
-              <button className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-100" type="button" onClick={addRow}>
-                <Plus className="h-4 w-4" />
-                新增条目
-              </button>
-            </div>
-          </div>
 
-          <div className="space-y-3 p-4 md:hidden">
-            {summary.rows.map((row, index) => (
-              <TransactionEditorCard
-                key={row.id}
-                row={row}
-                index={index}
-                codeError={getFundCodeError(row.code)}
-                onUpdateRow={updateRow}
-                onRemoveRow={removeRow}
-              />
-            ))}
-          </div>
-
-          <div className="hidden overflow-x-auto md:block">
-            <table className="w-full whitespace-nowrap text-left text-sm">
-              <thead className="border-b border-slate-200 bg-slate-50/80 text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="px-6 py-4 font-semibold">日期</th>
-                  <th className="px-6 py-4 font-semibold">基金代码</th>
-                  <th className="px-6 py-4 font-semibold">交易类型</th>
-                  <th className="px-6 py-4 font-semibold">价格</th>
-                  <th className="px-6 py-4 font-semibold">份额 (股数)</th>
-                  <th className="px-6 py-4 font-semibold">成交额</th>
-                  <th className="w-16 px-6 py-4 text-right font-semibold">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {summary.rows.map((row, index) => {
-                  const codeError = getFundCodeError(row.code);
-                  return (
-                    <tr key={row.id} className="group transition-colors hover:bg-slate-50/50">
-                      <td className="px-6 py-3">
-                        <input className={cx(tableInputClass, 'w-36')} placeholder="YYYY-MM-DD" value={row.date} onChange={(event) => updateRow(index, 'date', event.target.value)} />
-                      </td>
-                      <td className="px-6 py-3">
-                        <div className="relative">
-                          <input
-                            className={cx(
-                              tableInputClass,
-                              'w-32',
-                              codeError ? 'border-red-300 text-red-900 focus:border-red-500' : 'border-transparent'
-                            )}
-                            placeholder="纯数字代码"
-                            value={row.code}
-                            onChange={(event) => updateRow(index, 'code', event.target.value)}
-                          />
-                          {codeError ? <div className="absolute left-0 top-10 z-10 rounded bg-red-600 px-2 py-1 text-[10px] text-white shadow-sm">{codeError}</div> : null}
-                        </div>
-                      </td>
-                      <td className="px-6 py-3">
-                        <select
-                          className={cx(
-                            'rounded-lg border px-3 py-2 pr-8 text-sm font-semibold outline-none transition-all',
-                            row.type === '卖出'
-                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                              : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
-                          )}
-                          value={row.type}
-                          onChange={(event) => updateRow(index, 'type', event.target.value)}
-                        >
-                          <option value="卖出">卖出</option>
-                          <option value="买入">买入</option>
-                        </select>
-                      </td>
-                      <td className="px-6 py-3">
-                        <input className={cx(tableInputClass, 'w-28')} step="0.0001" type="number" placeholder="0.0000" value={row.price} onChange={(event) => updateRow(index, row.type === '卖出' ? 'sellPrice' : 'buyPrice', event.target.value)} />
-                      </td>
-                      <td className="px-6 py-3">
-                        <input className={cx(tableInputClass, 'w-32')} step="0.01" type="number" placeholder="0.00" value={row.shares} onChange={(event) => updateRow(index, 'shares', event.target.value)} />
-                      </td>
-                      <td className="px-6 py-3">
-                        <div className="w-28 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 font-semibold text-slate-600">{formatCurrency(row.amount, '¥ ')}</div>
-                      </td>
-                      <td className="px-6 py-3 text-right">
-                        <button className="rounded-lg p-2 text-slate-400 opacity-0 transition-colors group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 focus:opacity-100" type="button" onClick={() => removeRow(index)} title="删除记录">
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
-        <Card className="overflow-hidden p-0">
-          <div className="flex cursor-pointer flex-col gap-4 border-b border-slate-200 bg-slate-50 p-4 transition-colors hover:bg-slate-100 sm:flex-row sm:items-center sm:justify-between sm:p-6" onClick={() => setShowCalculationDetails((current) => !current)}>
-            <SectionHeading eyebrow="Parameters" title="计算详细参数预设" description="确认交易明细后会自动回放出当前来源与目标持仓，可在这里切换 direct / trace 策略并补充现价。" />
-            <button className="flex items-center gap-2 self-start text-sm font-semibold text-slate-500 transition-colors hover:text-slate-800 sm:self-auto" type="button">
-              {showCalculationDetails ? '收起面板' : '展开修改'}
-              {showCalculationDetails ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
-            </button>
-          </div>
-
-          {showCalculationDetails ? (
-            <div className="space-y-6 bg-white p-4 sm:space-y-8 sm:p-6">
-              <div className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">来源策略</div>
-                  <div className="mt-1 text-sm text-slate-600">切换 direct / trace 会重新按交易链路回放当前来源仓位。</div>
+            <Card className="overflow-hidden p-0">
+              <div className="flex flex-col justify-between gap-4 border-b border-slate-200 bg-white p-4 sm:p-6 md:flex-row md:items-center">
+                <SectionHeading
+                  eyebrow="Editable Data"
+                  title="交易数据明细"
+                  description="识别结果需要修正时，在这里集中修改；确认后会自动重新计算摘要结果。"
+                />
+                <div className="grid w-full grid-cols-2 gap-3 md:flex md:w-auto md:items-center">
+                  <button className={cx(secondaryButtonClass, 'w-full')} type="button" onClick={closeDetailEditor}>
+                    返回摘要
+                  </button>
+                  <button className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-100" type="button" onClick={addRow}>
+                    <Plus className="h-4 w-4" />
+                    新增条目
+                  </button>
                 </div>
-                <StrategyToggle strategy={summary.strategy} onChange={updateStrategy} />
               </div>
 
-              <div className="grid gap-6 xl:grid-cols-2">
-                <PositionEditorSection
-                  kind="source"
-                  positions={summary.sourcePositions}
-                  comparison={summary.comparison}
-                  priceSnapshotByCode={priceSnapshotByCode}
-                  onSingleFieldChange={updateSinglePosition}
-                  onPriceChange={updatePriceOverride}
-                />
-
-                <PositionEditorSection
-                  kind="target"
-                  positions={summary.targetPositions}
-                  comparison={summary.comparison}
-                  priceSnapshotByCode={priceSnapshotByCode}
-                  onSingleFieldChange={updateSinglePosition}
-                  onPriceChange={updatePriceOverride}
-                />
+              <div className="space-y-3 p-4 md:hidden">
+                {summary.rows.map((row, index) => (
+                  <TransactionEditorCard
+                    key={row.id}
+                    row={row}
+                    index={index}
+                    codeError={getFundCodeError(row.code)}
+                    onUpdateRow={updateRow}
+                    onRemoveRow={removeRow}
+                  />
+                ))}
               </div>
 
-              <div className="border-t border-slate-100 pt-6">
-                <SectionHeading eyebrow="Cost Adjustments" title="切换成本调整项" />
-                <div className="mt-5 grid gap-4 xl:grid-cols-3 xl:gap-6">
-                  <label className="block rounded-xl border border-slate-100 bg-slate-50 p-4">
-                    <span className="block text-sm font-bold text-slate-700">额外补入现金 (元)</span>
-                    <span className="mt-1 block text-[10px] leading-relaxed text-slate-500">direct 模式只累计当前目标仓位的直接补现金；trace 会继续把中间链路补现金穿透累加。</span>
-                    <input className="mt-3 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-800 outline-none transition-all focus:border-indigo-400" type="number" step="0.01" value={summary.comparison.extraCash} onChange={(event) => updateComparisonScalar('extraCash', event.target.value)} />
-                  </label>
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full whitespace-nowrap text-left text-sm">
+                  <thead className="border-b border-slate-200 bg-slate-50/80 text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="px-6 py-4 font-semibold">日期</th>
+                      <th className="px-6 py-4 font-semibold">基金代码</th>
+                      <th className="px-6 py-4 font-semibold">交易类型</th>
+                      <th className="px-6 py-4 font-semibold">价格</th>
+                      <th className="px-6 py-4 font-semibold">份额 (股数)</th>
+                      <th className="px-6 py-4 font-semibold">成交额</th>
+                      <th className="w-16 px-6 py-4 text-right font-semibold">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {summary.rows.map((row, index) => {
+                      const codeError = getFundCodeError(row.code);
+                      return (
+                        <tr key={row.id} className="group transition-colors hover:bg-slate-50/50">
+                          <td className="px-6 py-3">
+                            <input className={cx(tableInputClass, 'w-36')} placeholder="YYYY-MM-DD" value={row.date} onChange={(event) => updateRow(index, 'date', event.target.value)} />
+                          </td>
+                          <td className="px-6 py-3">
+                            <div className="relative">
+                              <input
+                                className={cx(
+                                  tableInputClass,
+                                  'w-32',
+                                  codeError ? 'border-red-300 text-red-900 focus:border-red-500' : 'border-transparent'
+                                )}
+                                placeholder="纯数字代码"
+                                value={row.code}
+                                onChange={(event) => updateRow(index, 'code', event.target.value)}
+                              />
+                              {codeError ? <div className="absolute left-0 top-10 z-10 rounded bg-red-600 px-2 py-1 text-[10px] text-white shadow-sm">{codeError}</div> : null}
+                            </div>
+                          </td>
+                          <td className="px-6 py-3">
+                            <select
+                              className={cx(
+                                'rounded-lg border px-3 py-2 pr-8 text-sm font-semibold outline-none transition-all',
+                                row.type === '卖出'
+                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                  : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
+                              )}
+                              value={row.type}
+                              onChange={(event) => updateRow(index, 'type', event.target.value)}
+                            >
+                              <option value="卖出">卖出</option>
+                              <option value="买入">买入</option>
+                            </select>
+                          </td>
+                          <td className="px-6 py-3">
+                            <input className={cx(tableInputClass, 'w-28')} step="0.0001" type="number" placeholder="0.0000" value={row.price} onChange={(event) => updateRow(index, row.type === '卖出' ? 'sellPrice' : 'buyPrice', event.target.value)} />
+                          </td>
+                          <td className="px-6 py-3">
+                            <input className={cx(tableInputClass, 'w-32')} step="0.01" type="number" placeholder="0.00" value={row.shares} onChange={(event) => updateRow(index, 'shares', event.target.value)} />
+                          </td>
+                          <td className="px-6 py-3">
+                            <div className="w-28 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 font-semibold text-slate-600">{formatCurrency(row.amount, '¥ ')}</div>
+                          </td>
+                          <td className="px-6 py-3 text-right">
+                            <button className="rounded-lg p-2 text-slate-400 opacity-0 transition-colors group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 focus:opacity-100" type="button" onClick={() => removeRow(index)} title="删除记录">
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </>
+        ) : (
+          <>
+            <div className="grid gap-4 lg:grid-cols-[1.1fr,1.9fr]">
+              <CompactOcrStatusCard
+                fileName={state.fileName}
+                statusMeta={statusMeta}
+                message={effectiveOcrMessage}
+                recognizedCount={recognizedCount}
+                needsManualReview={needsManualReview}
+                onReupload={openFilePicker}
+                onEdit={openDetailEditor}
+              />
 
-                  <label className="block rounded-xl border border-slate-100 bg-slate-50 p-4">
-                    <span className="block text-sm font-bold text-slate-700">目标仓位原始成本 (元)</span>
-                    <span className="mt-1 block text-[10px] leading-relaxed text-slate-500">这里是当前剩余目标仓位的成本合计，默认由 lot 回放自动生成，必要时可以人工校准。</span>
-                    <input className="mt-3 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-800 outline-none transition-all focus:border-indigo-400" type="number" step="0.01" value={summary.comparison.switchCost} onChange={(event) => updateComparisonScalar('switchCost', event.target.value)} />
-                  </label>
+              <Card className="p-4 sm:p-6">
+                <SectionHeading eyebrow="Conclusion" title="当前切换判断" />
 
-                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                    <span className="block text-sm font-bold text-slate-700">预估交易手续费 (元)</span>
-                    <span className="mt-1 block text-[10px] leading-relaxed text-slate-500">默认同步为当前明细记录行数，可继续手动校准。</span>
-                    <div className="mt-3 flex items-center gap-2">
-                      <input className="h-11 w-20 rounded-lg border border-slate-200 bg-white px-2 text-center font-semibold text-slate-800 outline-none transition-all focus:border-indigo-400" type="number" step="0.01" placeholder="单笔" value={summary.feePerTrade} onChange={(event) => updateFeePerTrade(event.target.value)} />
-                      <span className="text-xs font-bold text-slate-400">×</span>
-                      <div className="relative flex-1">
-                        <input className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-800 outline-none transition-all focus:border-indigo-400" type="number" step="1" value={summary.comparison.feeTradeCount} onChange={(event) => updateComparisonScalar('feeTradeCount', event.target.value)} />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">笔</span>
+                <div className="mt-5 space-y-3 sm:space-y-4">
+                  <SummaryValueCard
+                    value={formatSignedCurrency(summary.switchAdvantage, '')}
+                    advantageMeta={advantageMeta}
+                    strategy={summary.strategy}
+                    onStrategyChange={updateStrategy}
+                  />
+
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <PositionValueCard
+                      title="不切换现值"
+                      value={formatCurrency(summary.stayValue, '¥ ')}
+                      positions={summary.sourcePositions}
+                      priceSnapshotByCode={priceSnapshotByCode}
+                      emptyText="尚未回放出来源持仓，请先确认交易数据。"
+                    />
+                    <PositionValueCard
+                      title="切换后现值"
+                      value={formatCurrency(summary.switchedValue, '¥ ')}
+                      positions={summary.targetPositions}
+                      priceSnapshotByCode={priceSnapshotByCode}
+                      emptyText="尚未回放出目标持仓，请先确认交易数据。"
+                    />
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <CompactMetricCard
+                      title="现持仓浮盈"
+                      value={formatSignedCurrency(summary.switchedPositionProfit, '¥ ')}
+                      note="现值 - 成本 - 手续费"
+                      tone={summary.switchedPositionProfit >= 0 ? 'positive' : 'negative'}
+                    />
+                    <CompactMetricCard title="预估处理金额" value={formatCurrency(summary.processedAmount, '¥ ')} note="已识别记录累计成交额" />
+                  </div>
+                </div>
+
+                {summary.missingPriceCodes.length ? (
+                  <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                    以下基金暂未匹配到现价，请在下方参数面板中手动补入：{summary.missingPriceCodes.join('、')}
+                  </div>
+                ) : null}
+              </Card>
+            </div>
+
+            <Card className="overflow-hidden p-0">
+              <div className="flex cursor-pointer flex-col gap-4 border-b border-slate-200 bg-slate-50 p-4 transition-colors hover:bg-slate-100 sm:flex-row sm:items-center sm:justify-between sm:p-6" onClick={() => setShowCalculationDetails((current) => !current)}>
+                <SectionHeading eyebrow="Parameters" title="计算详细参数预设" description="默认保持收起，只有在需要补现价或校准参数时再展开修改。" />
+                <button className="flex items-center gap-2 self-start text-sm font-semibold text-slate-500 transition-colors hover:text-slate-800 sm:self-auto" type="button">
+                  {showCalculationDetails ? '收起面板' : '展开修改'}
+                  {showCalculationDetails ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                </button>
+              </div>
+
+              {showCalculationDetails ? (
+                <div className="space-y-6 bg-white p-4 sm:space-y-8 sm:p-6">
+                  <div className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">来源策略</div>
+                      <div className="mt-1 text-sm text-slate-600">切换 direct / trace 会重新按交易链路回放当前来源仓位。</div>
+                    </div>
+                    <StrategyToggle strategy={summary.strategy} onChange={updateStrategy} />
+                  </div>
+
+                  <div className="grid gap-6 xl:grid-cols-2">
+                    <PositionEditorSection
+                      kind="source"
+                      positions={summary.sourcePositions}
+                      comparison={summary.comparison}
+                      priceSnapshotByCode={priceSnapshotByCode}
+                      onSingleFieldChange={updateSinglePosition}
+                      onPriceChange={updatePriceOverride}
+                    />
+
+                    <PositionEditorSection
+                      kind="target"
+                      positions={summary.targetPositions}
+                      comparison={summary.comparison}
+                      priceSnapshotByCode={priceSnapshotByCode}
+                      onSingleFieldChange={updateSinglePosition}
+                      onPriceChange={updatePriceOverride}
+                    />
+                  </div>
+
+                  <div className="border-t border-slate-100 pt-6">
+                    <SectionHeading eyebrow="Cost Adjustments" title="切换成本调整项" />
+                    <div className="mt-5 grid gap-4 xl:grid-cols-3 xl:gap-6">
+                      <label className="block rounded-xl border border-slate-100 bg-slate-50 p-4">
+                        <span className="block text-sm font-bold text-slate-700">额外补入现金 (元)</span>
+                        <span className="mt-1 block text-[10px] leading-relaxed text-slate-500">direct 模式只累计当前目标仓位的直接补现金；trace 会继续把中间链路补现金穿透累加。</span>
+                        <input className="mt-3 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-800 outline-none transition-all focus:border-indigo-400" type="number" step="0.01" value={summary.comparison.extraCash} onChange={(event) => updateComparisonScalar('extraCash', event.target.value)} />
+                      </label>
+
+                      <label className="block rounded-xl border border-slate-100 bg-slate-50 p-4">
+                        <span className="block text-sm font-bold text-slate-700">目标仓位原始成本 (元)</span>
+                        <span className="mt-1 block text-[10px] leading-relaxed text-slate-500">这里是当前剩余目标仓位的成本合计，默认由 lot 回放自动生成，必要时可以人工校准。</span>
+                        <input className="mt-3 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-800 outline-none transition-all focus:border-indigo-400" type="number" step="0.01" value={summary.comparison.switchCost} onChange={(event) => updateComparisonScalar('switchCost', event.target.value)} />
+                      </label>
+
+                      <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                        <span className="block text-sm font-bold text-slate-700">预估交易手续费 (元)</span>
+                        <span className="mt-1 block text-[10px] leading-relaxed text-slate-500">默认同步为当前明细记录行数，可继续手动校准。</span>
+                        <div className="mt-3 flex items-center gap-2">
+                          <input className="h-11 w-20 rounded-lg border border-slate-200 bg-white px-2 text-center font-semibold text-slate-800 outline-none transition-all focus:border-indigo-400" type="number" step="0.01" placeholder="单笔" value={summary.feePerTrade} onChange={(event) => updateFeePerTrade(event.target.value)} />
+                          <span className="text-xs font-bold text-slate-400">×</span>
+                          <div className="relative flex-1">
+                            <input className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-800 outline-none transition-all focus:border-indigo-400" type="number" step="1" value={summary.comparison.feeTradeCount} onChange={(event) => updateComparisonScalar('feeTradeCount', event.target.value)} />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">笔</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          ) : null}
-        </Card>
+              ) : null}
+            </Card>
+          </>
+        )}
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/85 p-3 shadow-[0_-4px_24px_rgba(0,0,0,0.04)] backdrop-blur-md sm:p-4">
         <div className="mx-auto max-w-6xl">
-          <div className="mb-3 grid grid-cols-3 gap-2 sm:hidden">
-            <div className="rounded-2xl bg-slate-100 px-3 py-2.5">
-              <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">条目</div>
-              <div className="mt-1 text-sm font-extrabold text-slate-700">{recognizedCount}</div>
-            </div>
-            <div className="rounded-2xl bg-slate-100 px-3 py-2.5">
-              <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">策略</div>
-              <div className="mt-1 text-sm font-extrabold text-slate-700">{STRATEGY_LABELS[summary.strategy]}</div>
-            </div>
-            <div className="rounded-2xl bg-slate-100 px-3 py-2.5">
-              <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">额外收益</div>
-              <div className={cx('mt-1 text-sm font-extrabold', summary.switchAdvantage >= 0 ? 'text-emerald-600' : 'text-red-600')}>
-                {formatSignedCurrency(summary.switchAdvantage, '¥ ')}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="hidden items-center gap-6 sm:flex">
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">识别条目</div>
-                <div className="mt-1 text-sm font-extrabold text-slate-700">{recognizedCount}</div>
-              </div>
-              <div className="h-8 w-px bg-slate-200" />
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">当前策略</div>
-                <div className="mt-1 text-sm font-extrabold text-slate-700">{STRATEGY_LABELS[summary.strategy]}</div>
-              </div>
-              <div className="h-8 w-px bg-slate-200" />
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">当前额外收益</div>
-                <div className={cx('mt-1 text-sm font-extrabold', summary.switchAdvantage >= 0 ? 'text-emerald-600' : 'text-red-600')}>
-                  {formatSignedCurrency(summary.switchAdvantage, '¥ ')}
+          {hasImportedData ? (
+            <>
+              <div className="mb-3 grid grid-cols-3 gap-2 sm:hidden">
+                <div className="rounded-2xl bg-slate-100 px-3 py-2.5">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">条目</div>
+                  <div className="mt-1 text-sm font-extrabold text-slate-700">{recognizedCount}</div>
+                </div>
+                <div className="rounded-2xl bg-slate-100 px-3 py-2.5">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">{isEditingDetails ? '状态' : '策略'}</div>
+                  <div className="mt-1 text-sm font-extrabold text-slate-700">{isEditingDetails ? '明细编辑' : STRATEGY_LABELS[summary.strategy]}</div>
+                </div>
+                <div className="rounded-2xl bg-slate-100 px-3 py-2.5">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">额外收益</div>
+                  <div className={cx('mt-1 text-sm font-extrabold', summary.switchAdvantage >= 0 ? 'text-emerald-600' : 'text-red-600')}>
+                    {formatSignedCurrency(summary.switchAdvantage, '¥ ')}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:w-auto sm:items-center">
-              <button className={cx(secondaryButtonClass, 'w-full sm:flex-none')} type="button" onClick={openFilePicker}>
-                重新上传
-              </button>
-              <button className={cx(primaryButtonClass, 'w-full sm:flex-none')} type="button" onClick={handleConfirmDataAndYield}>
-                确认数据与收益
-                <ArrowRight className="h-4 w-4" />
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="hidden items-center gap-6 sm:flex">
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">识别条目</div>
+                    <div className="mt-1 text-sm font-extrabold text-slate-700">{recognizedCount}</div>
+                  </div>
+                  <div className="h-8 w-px bg-slate-200" />
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{isEditingDetails ? '当前状态' : '当前策略'}</div>
+                    <div className="mt-1 text-sm font-extrabold text-slate-700">{isEditingDetails ? '明细编辑' : STRATEGY_LABELS[summary.strategy]}</div>
+                  </div>
+                  <div className="h-8 w-px bg-slate-200" />
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">当前额外收益</div>
+                    <div className={cx('mt-1 text-sm font-extrabold', summary.switchAdvantage >= 0 ? 'text-emerald-600' : 'text-red-600')}>
+                      {formatSignedCurrency(summary.switchAdvantage, '¥ ')}
+                    </div>
+                  </div>
+                </div>
+
+                {isEditingDetails ? (
+                  <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:w-auto sm:items-center">
+                    <button className={cx(secondaryButtonClass, 'w-full sm:flex-none')} type="button" onClick={closeDetailEditor}>
+                      返回摘要
+                    </button>
+                    <button className={cx(primaryButtonClass, 'w-full sm:flex-none')} type="button" onClick={handleConfirmDataAndYield}>
+                      确认修改并重新计算
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid w-full gap-3 sm:flex sm:w-auto sm:items-center">
+                    <button className={cx(primaryButtonClass, 'w-full sm:flex-none')} type="button" onClick={handleConfirmDataAndYield}>
+                      确认数据与收益
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-slate-500">上传交易截图后，系统会自动识别并生成切换收益摘要。</div>
+              <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={openFilePicker}>
+                上传截图
+                <Upload className="h-4 w-4" />
               </button>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </PageShell>
