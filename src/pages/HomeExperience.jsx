@@ -1090,8 +1090,8 @@ export function HomeExperience({ links, inPagesDir = false }) {
             title="策略列表"
             description="先在新建页创建策略，再回到这里切换查看。首页不直接修改策略模板。"
             action={
-              <a className={primaryButtonClass} href={links.accumNew}>
-                <Plus className="h-4 w-4" />
+              <a className={cx(primaryButtonClass, 'w-full sm:w-auto')} href={links.accumNew}>
+                <Plus className="h-4 w-4 shrink-0" />
                 新建策略
               </a>
             }
@@ -1116,7 +1116,7 @@ export function HomeExperience({ links, inPagesDir = false }) {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <div className="text-base font-semibold text-slate-900">{plan.name}</div>
+                          <div className="break-words text-base font-semibold leading-6 text-slate-900">{plan.name}</div>
                           {isActive ? <Pill tone="emerald">当前查看</Pill> : null}
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-slate-500">
@@ -1125,7 +1125,7 @@ export function HomeExperience({ links, inPagesDir = false }) {
                           <span>更新于 {formatPlanTimeLabel(plan.updatedAt || plan.createdAt)}</span>
                         </div>
                       </div>
-                      <div className="text-sm font-semibold text-slate-500">
+                      <div className="shrink-0 self-start text-sm font-semibold text-slate-500 sm:self-center">
                         {isActive ? '当前策略' : '点击查看'}
                       </div>
                     </div>
@@ -1147,15 +1147,15 @@ export function HomeExperience({ links, inPagesDir = false }) {
             action={
               <div className="flex w-full flex-col gap-3">
                 <div className="flex flex-wrap items-center gap-3">
-                  <button className={subtleButtonClass} type="button" onClick={exportWatchlistConfig}>
-                    <Download className="h-4 w-4" />
+                  <button className={cx(subtleButtonClass, 'w-full sm:w-auto')} type="button" onClick={exportWatchlistConfig}>
+                    <Download className="h-4 w-4 shrink-0" />
                     导出配置
                   </button>
-                  <button className={subtleButtonClass} type="button" onClick={() => importInputRef.current?.click()}>
-                    <Upload className="h-4 w-4" />
+                  <button className={cx(subtleButtonClass, 'w-full sm:w-auto')} type="button" onClick={() => importInputRef.current?.click()}>
+                    <Upload className="h-4 w-4 shrink-0" />
                     导入配置
                   </button>
-                  <button className={subtleButtonClass} type="button" onClick={restoreDefaultWatchlist}>
+                  <button className={cx(subtleButtonClass, 'w-full sm:w-auto')} type="button" onClick={restoreDefaultWatchlist}>
                     恢复默认
                   </button>
                   <input
@@ -1166,8 +1166,8 @@ export function HomeExperience({ links, inPagesDir = false }) {
                     onChange={importWatchlistConfig}
                   />
                 </div>
-                <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-                  <div className="min-w-[220px]">
+                <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+                  <div className="min-w-0 sm:min-w-[220px]">
                     <SelectField
                       disabled={!addableEntries.length}
                       options={addableEntries.map((entry) => ({
@@ -1179,12 +1179,12 @@ export function HomeExperience({ links, inPagesDir = false }) {
                     />
                   </div>
                   <button
-                    className={primaryButtonClass}
+                    className={cx(primaryButtonClass, 'w-full sm:w-auto')}
                     disabled={!pendingCode || !addableEntries.length}
                     type="button"
                     onClick={addWatchlistItem}
                   >
-                    <Plus className="h-4 w-4" />
+                    <Plus className="h-4 w-4 shrink-0" />
                     新增自选
                   </button>
                 </div>
@@ -1246,7 +1246,7 @@ export function HomeExperience({ links, inPagesDir = false }) {
                         removeWatchlistItem(item.code);
                       }}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-4 w-4 shrink-0" />
                     </button>
                   </div>
                   <div className="mt-4 flex items-end justify-between gap-4">
@@ -1274,7 +1274,7 @@ export function HomeExperience({ links, inPagesDir = false }) {
 
         <Card className="p-4 sm:p-5">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
+            <div className="min-w-0">
               <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Strategy Template</div>
               <div className="mt-1 text-lg font-bold text-slate-800">{activeStrategyOption.label}</div>
               <div className="mt-1 text-sm text-slate-500">{activeStrategyOption.note}</div>
@@ -1293,7 +1293,7 @@ export function HomeExperience({ links, inPagesDir = false }) {
                 参考基准 {benchmarkFund?.code || BENCHMARK_CODE} · {formatFundPrice(currentBenchmarkPrice, benchmarkCurrency)}
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
               <Pill tone="indigo">{activeStrategyOption.shortLabel}</Pill>
               <Pill tone="slate">{hasConfiguredPlan ? '只读展示' : '使用默认模板预览'}</Pill>
             </div>
@@ -1311,7 +1311,7 @@ export function HomeExperience({ links, inPagesDir = false }) {
               eyebrow="Execution Map"
               title="建仓计划详情"
               action={
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-start gap-2">
                   <Pill tone="indigo">基准 {benchmarkFund?.code || BENCHMARK_CODE}</Pill>
                   <Pill tone="slate">标的 {selectedFund?.code || '--'}</Pill>
                   {selectedStrategy === 'peak-drawdown' ? (

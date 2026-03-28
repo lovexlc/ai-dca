@@ -4,9 +4,9 @@ export function cx(...classes) {
   return classes.filter(Boolean).join(' ');
 }
 
-export const primaryButtonClass = 'inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition-all hover:-translate-y-0.5 hover:bg-indigo-700';
-export const secondaryButtonClass = 'inline-flex items-center justify-center gap-2 rounded-lg bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-200';
-export const subtleButtonClass = 'inline-flex items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50';
+export const primaryButtonClass = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-bold leading-none text-white shadow-md shadow-indigo-200 transition-all hover:-translate-y-0.5 hover:bg-indigo-700';
+export const secondaryButtonClass = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-slate-100 px-4 py-2.5 text-sm font-semibold leading-none text-slate-700 transition-colors hover:bg-slate-200';
+export const subtleButtonClass = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-white px-4 py-2.5 text-sm font-semibold leading-none text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50';
 export const inputClass = 'h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white';
 export const tableInputClass = 'h-10 w-full rounded-lg border border-transparent bg-transparent px-3 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-300 hover:border-slate-200 focus:border-indigo-400 focus:bg-white';
 
@@ -42,7 +42,7 @@ export function PageShell({ children, className = '' }) {
 
 export function Pill({ children, tone = 'slate', className = '' }) {
   return (
-    <span className={cx('inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold', pillToneClasses[tone] || pillToneClasses.slate, className)}>
+    <span className={cx('inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold leading-none', pillToneClasses[tone] || pillToneClasses.slate, className)}>
       {children}
     </span>
   );
