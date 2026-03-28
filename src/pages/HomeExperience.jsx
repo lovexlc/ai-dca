@@ -17,6 +17,30 @@ const MAX_CHART_BARS = {
   '15m': 32,
   '1d': 120
 };
+const STRATEGY_OPTIONS = [
+  {
+    key: 'ma120-risk',
+    label: 'MA120/MA200',
+    shortLabel: '均线分层',
+    note: 'MA120 主触发 + MA200 风控'
+  },
+  {
+    key: 'peak-drawdown',
+    label: '高点回撤 8 档',
+    shortLabel: '固定回撤',
+    note: '按阶段高点固定跌幅分 8 档执行'
+  }
+];
+const PEAK_DRAWDOWN_LAYERS = [
+  { drawdown: 9, label: '首次建仓', signal: '较阶段高点累计跌幅 9%' },
+  { drawdown: 12.5, label: '第1次加仓', signal: '较阶段高点累计跌幅 12.5%' },
+  { drawdown: 16, label: '第2次加仓', signal: '较阶段高点累计跌幅 16%' },
+  { drawdown: 19.5, label: '第3次加仓', signal: '较阶段高点累计跌幅 19.5%' },
+  { drawdown: 23, label: '第4次加仓', signal: '较阶段高点累计跌幅 23%' },
+  { drawdown: 26.5, label: '第5次加仓', signal: '较阶段高点累计跌幅 26.5%' },
+  { drawdown: 30, label: '第6次加仓', signal: '较阶段高点累计跌幅 30%' },
+  { drawdown: 33.5, label: '第7次加仓', signal: '较阶段高点累计跌幅 33.5%' }
+];
 
 function formatFundPrice(value) {
   return formatCurrency(value, '¥', 3);
@@ -260,6 +284,54 @@ function buildNasdaqStrategyPlan({
   };
 }
 
+function buildPeakDrawdownStrategyPlan({
+  totalBudget = 0,
+  cashReservePct = 0,
+  peakPrice = 0,
+  fallbackPrice = 0
+} = {}) {
+  const anchorPrice = Number(peakPrice) > 0 ? Number(peakPrice) : Number(fallbackPrice) || 0;
+  const normalizedBudget = Math.max(Number(totalBudget) || 0, 0);
+  const normalizedReservePct = Math.max(Number(cashReservePct) || 0, 0);
+  const investableCapital = normalizedBudget * Math.max(0, 1 - normalizedReservePct / 100);
+  const reserveCapital = normalizedBudget - investableCapital;
+  const totalWeight = PEAK_DRAWDOWN_LAYERS.reduce((sum, _, index) => sum + index + 1, 0) || 1;
+  const layers = PEAK_DRAWDOWN_LAYERS.map((layer, index) => {
+    const weight = index + 1;
+    const price = anchorPrice > 0 ? anchorPrice * (1 - layer.drawdown / 100) : 0;
+    const amount = investableCapital * (weight / totalWeight);
+    const shares = price > 0 ? amount / price : 0;
+
+    return {
+      id: `peak-drawdown-${index + 1}`,
+      label: layer.label,
+      signal: layer.signal,
+      weight,
+      price,
+      amount,
+      shares,
+      drawdown: layer.drawdown,
+      order: index + 1,
+      tone: index === PEAK_DRAWDOWN_LAYERS.length - 1 ? 'amber' : index === 0 ? 'violet' : 'slate',
+      isExtreme: index === PEAK_DRAWDOWN_LAYERS.length - 1
+    };
+  }).filter((layer) => layer.price > 0);
+  const totalAmount = layers.reduce((sum, layer) => sum + layer.amount, 0);
+  const totalShares = layers.reduce((sum, layer) => sum + layer.shares, 0);
+
+  return {
+    layers,
+    totalWeight,
+    investableCapital,
+    reserveCapital,
+    averageCost: totalShares > 0 ? totalAmount / totalShares : 0,
+    triggerPrice: anchorPrice,
+    riskPrice: layers[layers.length - 1]?.price || 0,
+    anchorPrice,
+    usesIndependentRiskLayer: false
+  };
+}
+
 function resolveNextTriggerLayer(layers = [], currentPrice = 0) {
   const sortedLayers = [...layers]
     .filter((layer) => Number.isFinite(layer.price) && layer.price > 0)
@@ -414,6 +486,7 @@ export function HomeExperience({ links, inPagesDir = false }) {
   const [marketError, setMarketError] = useState('');
   const [watchlistCodes, setWatchlistCodes] = useState(dashboardState.watchlistCodes);
   const [selectedCode, setSelectedCode] = useState(dashboardState.selectedCode);
+  const [selectedStrategy, setSelectedStrategy] = useState(dashboardState.selectedStrategy);
   const [pendingCode, setPendingCode] = useState('');
   const [minuteSnapshot, setMinuteSnapshot] = useState(null);
   const [dailySeries, setDailySeries] = useState([]);
@@ -530,9 +603,10 @@ export function HomeExperience({ links, inPagesDir = false }) {
 
     persistHomeDashboardState({
       watchlistCodes: visibleWatchlistCodes,
-      selectedCode
+      selectedCode,
+      selectedStrategy
     });
-  }, [marketEntries.length, selectedCode, visibleWatchlistCodes]);
+  }, [marketEntries.length, selectedCode, selectedStrategy, visibleWatchlistCodes]);
 
   const selectedFund = useMemo(() => marketByCode.get(selectedCode) || null, [marketByCode, selectedCode]);
 
@@ -611,7 +685,18 @@ export function HomeExperience({ links, inPagesDir = false }) {
     () => findLatestFiniteValue(dailyMa200Values),
     [dailyMa200Values]
   );
+  const stageHighPrice = useMemo(() => {
+    const values = dailyBars
+      .flatMap((bar) => [Number(bar.high) || 0, Number(bar.close) || 0])
+      .filter((value) => Number.isFinite(value) && value > 0);
+
+    return values.length ? Math.max(...values) : 0;
+  }, [dailyBars]);
   const currentFundPrice = Number(selectedFund?.current_price) || 0;
+  const activeStrategyOption = useMemo(
+    () => STRATEGY_OPTIONS.find((option) => option.key === selectedStrategy) || STRATEGY_OPTIONS[0],
+    [selectedStrategy]
+  );
   const strategyTriggerPrice = useMemo(() => {
     if (Number.isFinite(latestDailyMa120)) {
       return latestDailyMa120;
@@ -635,22 +720,30 @@ export function HomeExperience({ links, inPagesDir = false }) {
     return strategyTriggerPrice > 0 ? strategyTriggerPrice * 0.85 : 0;
   }, [latestDailyMa200, strategyTriggerPrice]);
   const strategyPlan = useMemo(
-    () => buildNasdaqStrategyPlan({
-      totalBudget: planState.totalBudget,
-      cashReservePct: planState.cashReservePct,
-      ma120: strategyTriggerPrice,
-      ma200: riskControlPrice,
-      fallbackPrice: currentFundPrice || Number(accumulationState.basePrice) || Number(planState.basePrice) || 0
-    }),
-    [accumulationState.basePrice, currentFundPrice, planState.basePrice, planState.cashReservePct, planState.totalBudget, riskControlPrice, strategyTriggerPrice]
+    () => (selectedStrategy === 'peak-drawdown'
+      ? buildPeakDrawdownStrategyPlan({
+          totalBudget: planState.totalBudget,
+          cashReservePct: planState.cashReservePct,
+          peakPrice: stageHighPrice,
+          fallbackPrice: currentFundPrice || Number(accumulationState.basePrice) || Number(planState.basePrice) || 0
+        })
+      : buildNasdaqStrategyPlan({
+          totalBudget: planState.totalBudget,
+          cashReservePct: planState.cashReservePct,
+          ma120: strategyTriggerPrice,
+          ma200: riskControlPrice,
+          fallbackPrice: currentFundPrice || Number(accumulationState.basePrice) || Number(planState.basePrice) || 0
+        })),
+    [accumulationState.basePrice, currentFundPrice, planState.basePrice, planState.cashReservePct, planState.totalBudget, riskControlPrice, selectedStrategy, stageHighPrice, strategyTriggerPrice]
   );
   const reserveRatio = planState.totalBudget > 0 ? strategyPlan.reserveCapital / planState.totalBudget * 100 : 0;
   const nextTriggerLayer = useMemo(
     () => resolveNextTriggerLayer(strategyPlan.layers, currentFundPrice),
     [currentFundPrice, strategyPlan.layers]
   );
-  const nextBuyPrice = nextTriggerLayer?.price ?? strategyTriggerPrice;
+  const nextBuyPrice = nextTriggerLayer?.price ?? strategyPlan.triggerPrice;
   const isBelowRiskControl = currentFundPrice > 0 && riskControlPrice > 0 && currentFundPrice < riskControlPrice;
+  const isBelowPeakExtreme = selectedStrategy === 'peak-drawdown' && currentFundPrice > 0 && strategyPlan.riskPrice > 0 && currentFundPrice <= strategyPlan.riskPrice;
 
   const fullBars = fullBarsByTimeframe[timeframe] || [];
   const displayBars = useMemo(
@@ -751,7 +844,8 @@ export function HomeExperience({ links, inPagesDir = false }) {
   function exportWatchlistConfig() {
     const payload = exportHomeDashboardState({
       watchlistCodes: visibleWatchlistCodes,
-      selectedCode
+      selectedCode,
+      selectedStrategy
     });
     const blob = new Blob([payload], { type: 'application/json;charset=utf-8' });
     const objectUrl = window.URL.createObjectURL(blob);
@@ -780,6 +874,7 @@ export function HomeExperience({ links, inPagesDir = false }) {
       });
       setWatchlistCodes(imported.watchlistCodes);
       setSelectedCode(imported.selectedCode);
+      setSelectedStrategy(imported.selectedStrategy);
       setWatchlistNotice(`已导入 ${imported.watchlistCodes.length} 个自选基金。`);
       setWatchlistNoticeTone('emerald');
     } catch (error) {
@@ -806,6 +901,7 @@ export function HomeExperience({ links, inPagesDir = false }) {
         title="QQQ 建仓策略总览"
         badges={[
           <Pill key="status" tone="indigo">运行中</Pill>,
+          <Pill key="strategy" tone="slate">{activeStrategyOption.shortLabel}</Pill>,
           <Pill key="layers" tone="slate">{strategyPlan.layers.length} 层建仓</Pill>
         ]}
         actions={
@@ -951,11 +1047,38 @@ export function HomeExperience({ links, inPagesDir = false }) {
           ) : null}
         </Card>
 
+        <Card className="p-4 sm:p-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Strategy Template</div>
+              <div className="mt-1 text-lg font-bold text-slate-800">{activeStrategyOption.label}</div>
+              <div className="mt-1 text-sm text-slate-500">{activeStrategyOption.note}</div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {STRATEGY_OPTIONS.map((option) => (
+                <button
+                  key={option.key}
+                  className={cx(
+                    'rounded-full px-4 py-2 text-sm font-semibold transition-colors',
+                    selectedStrategy === option.key
+                      ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  )}
+                  type="button"
+                  onClick={() => setSelectedStrategy(option.key)}
+                >
+                  {option.shortLabel}
+                </button>
+              ))}
+            </div>
+          </div>
+        </Card>
+
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard accent="indigo" eyebrow="Portfolio Budget" value={formatCurrency(strategyPlan.investableCapital)} note="按 MA120 主触发策略分配的预算" progress={Math.max(100 - reserveRatio, 0)} />
-          <StatCard eyebrow="Reserve Cash" value={formatCurrency(strategyPlan.reserveCapital)} note={isBelowRiskControl ? '价格已跌破 MA200，进入防守区。' : strategyPlan.usesIndependentRiskLayer ? `${formatPercent(reserveRatio, 1)} 作为 MA200 防守缓冲` : 'MA200 当前高于深水层，仅作趋势风控。'} />
-          <StatCard eyebrow="Next Trigger" value={formatFundPrice(nextBuyPrice)} note={nextTriggerLayer ? nextTriggerLayer.signal : '当前已进入最深防守区'} />
-          <StatCard accent="emerald" eyebrow="Average Cost" value={formatFundPrice(strategyPlan.averageCost)} note="按 MA120 触发层级与 MA200 风控重算" />
+          <StatCard accent="indigo" eyebrow="Portfolio Budget" value={formatCurrency(strategyPlan.investableCapital)} note={selectedStrategy === 'peak-drawdown' ? '按阶段高点固定回撤 8 档分配预算' : '按 MA120 主触发策略分配的预算'} progress={Math.max(100 - reserveRatio, 0)} />
+          <StatCard eyebrow="Reserve Cash" value={formatCurrency(strategyPlan.reserveCapital)} note={selectedStrategy === 'peak-drawdown' ? (isBelowPeakExtreme ? '价格已进入第 8 档极端区。' : `${formatPercent(reserveRatio, 1)} 作为极端回撤缓冲`) : (isBelowRiskControl ? '价格已跌破 MA200，进入防守区。' : strategyPlan.usesIndependentRiskLayer ? `${formatPercent(reserveRatio, 1)} 作为 MA200 防守缓冲` : 'MA200 当前高于深水层，仅作趋势风控。')} />
+          <StatCard eyebrow="Next Trigger" value={formatFundPrice(nextBuyPrice)} note={nextTriggerLayer ? nextTriggerLayer.signal : selectedStrategy === 'peak-drawdown' ? '当前已进入第 8 档极端区' : '当前已进入最深防守区'} />
+          <StatCard accent="emerald" eyebrow="Average Cost" value={formatFundPrice(strategyPlan.averageCost)} note={selectedStrategy === 'peak-drawdown' ? '按固定跌幅 8 档与序号递增仓位重算' : '按 MA120 触发层级与 MA200 风控重算'} />
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1.75fr)_minmax(0,0.95fr)]">
@@ -1147,10 +1270,20 @@ export function HomeExperience({ links, inPagesDir = false }) {
                 title="建仓计划详情"
                 action={
                   <div className="flex flex-wrap items-center gap-2">
-                    <Pill tone="violet">MA120 触发</Pill>
-                    <Pill tone="slate">{formatFundPrice(strategyTriggerPrice)}</Pill>
-                    <Pill tone="amber">MA200 风控</Pill>
-                    <Pill tone="slate">{formatFundPrice(riskControlPrice)}</Pill>
+                    {selectedStrategy === 'peak-drawdown' ? (
+                      <>
+                        <Pill tone="violet">阶段高点</Pill>
+                        <Pill tone="slate">{formatFundPrice(strategyPlan.anchorPrice)}</Pill>
+                        <Pill tone="amber">固定回撤 8 档</Pill>
+                      </>
+                    ) : (
+                      <>
+                        <Pill tone="violet">MA120 触发</Pill>
+                        <Pill tone="slate">{formatFundPrice(strategyTriggerPrice)}</Pill>
+                        <Pill tone="amber">MA200 风控</Pill>
+                        <Pill tone="slate">{formatFundPrice(riskControlPrice)}</Pill>
+                      </>
+                    )}
                   </div>
                 }
               />
@@ -1171,7 +1304,7 @@ export function HomeExperience({ links, inPagesDir = false }) {
                         <td className="px-4 py-3 font-semibold text-slate-700">{String(layer.order).padStart(2, '0')}</td>
                         <td className="px-4 py-3 text-slate-600">{layer.signal}</td>
                         <td className="px-4 py-3 text-slate-600">{formatFundPrice(layer.price)}</td>
-                        <td className="px-4 py-3 text-slate-600">{layer.order === 1 ? '基准' : formatPercent(layer.drawdown, 1)}</td>
+                        <td className="px-4 py-3 text-slate-600">{selectedStrategy === 'peak-drawdown' ? formatPercent(layer.drawdown, 1) : (layer.order === 1 ? '基准' : formatPercent(layer.drawdown, 1))}</td>
                         <td className="px-4 py-3 text-slate-900">{formatCurrency(layer.amount)}</td>
                       </tr>
                     ))}
@@ -1182,21 +1315,23 @@ export function HomeExperience({ links, inPagesDir = false }) {
 
             <Card className="min-w-0 overflow-hidden">
               <SectionHeading eyebrow="Capital Mix" title="资金配置模型" />
-              <div className="mt-6 flex min-h-[180px] items-end justify-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+              <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                <div className="flex min-h-[180px] min-w-max items-end gap-3">
                 {strategyPlan.layers.map((layer, index) => (
                   <div key={layer.id} className="flex w-16 flex-col items-center gap-3">
                     <div
                       className={cx(
                         'flex w-full items-end justify-center rounded-t-2xl px-2 py-3 text-xs font-bold text-white',
-                        layer.id === 'ma200-risk' ? 'bg-amber-500' : index === strategyPlan.layers.length - 1 ? 'bg-indigo-600' : 'bg-slate-400'
+                        layer.tone === 'amber' ? 'bg-amber-500' : layer.tone === 'violet' ? 'bg-violet-600' : index === strategyPlan.layers.length - 1 ? 'bg-indigo-600' : 'bg-slate-400'
                       )}
                       style={{ height: `${Math.max(layer.weight * 32, 44)}px` }}
                     >
                       {`${formatRawNumber(layer.weight, 1)}x`}
                     </div>
-                    <span className="text-center text-[11px] font-semibold text-slate-400">{layer.label}</span>
+                    <span className="text-center text-[11px] font-semibold text-slate-400">{selectedStrategy === 'peak-drawdown' ? `档位 ${layer.order}` : layer.label}</span>
                   </div>
                 ))}
+                </div>
               </div>
             </Card>
           </div>

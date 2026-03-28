@@ -1,6 +1,8 @@
 const HOME_DASHBOARD_KEY = 'aiDcaHomeDashboardState';
 const HOME_DASHBOARD_SOURCE = 'qqq-home-dashboard';
 const FUND_CODE_PATTERN = /^\d{6}$/;
+const DEFAULT_STRATEGY = 'ma120-risk';
+const ALLOWED_STRATEGIES = new Set([DEFAULT_STRATEGY, 'peak-drawdown']);
 
 function normalizeCodes(codes = [], availableCodes = []) {
   const available = new Set(Array.isArray(availableCodes) ? availableCodes.filter(Boolean) : []);
@@ -18,8 +20,14 @@ export function buildHomeDashboardState(overrides = {}) {
   return {
     watchlistCodes: [],
     selectedCode: '',
+    selectedStrategy: DEFAULT_STRATEGY,
     ...overrides
   };
+}
+
+function normalizeStrategy(value) {
+  const candidate = String(value || '').trim();
+  return ALLOWED_STRATEGIES.has(candidate) ? candidate : DEFAULT_STRATEGY;
 }
 
 export function normalizeHomeDashboardState(rawState, { availableCodes = [], defaultCodes = [] } = {}) {
@@ -32,7 +40,8 @@ export function normalizeHomeDashboardState(rawState, { availableCodes = [], def
 
   return buildHomeDashboardState({
     watchlistCodes,
-    selectedCode
+    selectedCode,
+    selectedStrategy: normalizeStrategy(rawState?.selectedStrategy)
   });
 }
 
@@ -59,6 +68,7 @@ export function persistHomeDashboardState(state) {
     version: 1,
     watchlistCodes: normalizeCodes(state?.watchlistCodes),
     selectedCode: String(state?.selectedCode || '').trim(),
+    selectedStrategy: normalizeStrategy(state?.selectedStrategy),
     updatedAt: new Date().toISOString()
   };
 
@@ -71,6 +81,7 @@ export function exportHomeDashboardState(state) {
     version: 1,
     watchlistCodes: normalizeCodes(state?.watchlistCodes),
     selectedCode: String(state?.selectedCode || '').trim(),
+    selectedStrategy: normalizeStrategy(state?.selectedStrategy),
     exportedAt: new Date().toISOString()
   }, null, 2);
 }
