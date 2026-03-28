@@ -70,6 +70,21 @@ function formatRawNumber(value, digits = 3) {
   return Number(value).toFixed(digits).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
 }
 
+function mapReferencePrice(value, ratio = 1) {
+  const numericValue = Number(value);
+  const numericRatio = Number(ratio);
+
+  if (!(numericValue > 0)) {
+    return 0;
+  }
+
+  if (!(numericRatio > 0) || !Number.isFinite(numericRatio)) {
+    return numericValue;
+  }
+
+  return numericValue * numericRatio;
+}
+
 function findLatestFiniteValue(values = []) {
   for (let index = values.length - 1; index >= 0; index -= 1) {
     const value = values[index];
@@ -751,6 +766,21 @@ export function HomeExperience({ links, inPagesDir = false }) {
   }, [benchmarkDailyBars]);
   const currentFundPrice = Number(selectedFund?.current_price) || 0;
   const currentBenchmarkPrice = Number(benchmarkFund?.current_price) || currentFundPrice;
+  const strategyPriceRatio = useMemo(() => {
+    if (currentFundPrice > 0 && currentBenchmarkPrice > 0) {
+      return currentFundPrice / currentBenchmarkPrice;
+    }
+
+    return 1;
+  }, [currentBenchmarkPrice, currentFundPrice]);
+  const usesMappedStrategyPrices = Boolean(
+    selectedFund?.code
+    && benchmarkFund?.code
+    && selectedFund.code !== benchmarkFund.code
+    && currentFundPrice > 0
+    && currentBenchmarkPrice > 0
+  );
+  const strategyDisplayCurrency = usesMappedStrategyPrices ? selectedFundCurrency : benchmarkCurrency;
   const activeStrategyOption = useMemo(
     () => STRATEGY_OPTIONS.find((option) => option.key === selectedStrategy) || STRATEGY_OPTIONS[0],
     [selectedStrategy]
@@ -794,15 +824,35 @@ export function HomeExperience({ links, inPagesDir = false }) {
         })),
     [accumulationState.basePrice, currentBenchmarkPrice, planState.basePrice, planState.cashReservePct, planState.totalBudget, riskControlPrice, selectedStrategy, stageHighPrice, strategyTriggerPrice]
   );
+  const displayStrategyPlan = useMemo(() => ({
+    ...strategyPlan,
+    triggerPrice: mapReferencePrice(strategyPlan.triggerPrice, strategyPriceRatio),
+    riskPrice: mapReferencePrice(strategyPlan.riskPrice, strategyPriceRatio),
+    anchorPrice: mapReferencePrice(strategyPlan.anchorPrice, strategyPriceRatio),
+    averageCost: mapReferencePrice(strategyPlan.averageCost, strategyPriceRatio),
+    layers: strategyPlan.layers.map((layer) => {
+      const mappedPrice = mapReferencePrice(layer.price, strategyPriceRatio);
+
+      return {
+        ...layer,
+        price: mappedPrice,
+        shares: mappedPrice > 0 ? layer.amount / mappedPrice : 0
+      };
+    })
+  }), [strategyPlan, strategyPriceRatio]);
+  const displayTriggerPrice = mapReferencePrice(strategyTriggerPrice, strategyPriceRatio);
+  const displayRiskControlPrice = mapReferencePrice(riskControlPrice, strategyPriceRatio);
+  const displayStageHighPrice = mapReferencePrice(stageHighPrice, strategyPriceRatio);
+  const strategyDisplayCurrentPrice = usesMappedStrategyPrices ? currentFundPrice : currentBenchmarkPrice;
   const reserveRatio = planState.totalBudget > 0 ? strategyPlan.reserveCapital / planState.totalBudget * 100 : 0;
   const nextTriggerLayer = useMemo(
-    () => resolveNextTriggerLayer(strategyPlan.layers, currentBenchmarkPrice),
-    [currentBenchmarkPrice, strategyPlan.layers]
+    () => resolveNextTriggerLayer(displayStrategyPlan.layers, strategyDisplayCurrentPrice),
+    [displayStrategyPlan.layers, strategyDisplayCurrentPrice]
   );
-  const nextBuyPrice = nextTriggerLayer?.price ?? strategyPlan.triggerPrice;
+  const nextBuyPrice = nextTriggerLayer?.price ?? displayStrategyPlan.triggerPrice;
   const executionLayers = useMemo(
-    () => strategyPlan.layers.map((layer) => {
-      const isCompleted = currentBenchmarkPrice > 0 && currentBenchmarkPrice <= layer.price;
+    () => displayStrategyPlan.layers.map((layer) => {
+      const isCompleted = strategyDisplayCurrentPrice > 0 && strategyDisplayCurrentPrice <= layer.price;
       const isNext = !isCompleted && nextTriggerLayer?.id === layer.id;
 
       return {
@@ -812,7 +862,7 @@ export function HomeExperience({ links, inPagesDir = false }) {
         progressTone: isCompleted ? 'emerald' : isNext ? 'indigo' : 'slate'
       };
     }),
-    [currentBenchmarkPrice, nextTriggerLayer?.id, strategyPlan.layers]
+    [displayStrategyPlan.layers, nextTriggerLayer?.id, strategyDisplayCurrentPrice]
   );
   const completedLayerCount = useMemo(
     () => executionLayers.filter((layer) => layer.progressState === 'completed').length,
@@ -1131,7 +1181,10 @@ export function HomeExperience({ links, inPagesDir = false }) {
               <div className="mt-1 text-lg font-bold text-slate-800">{activeStrategyOption.label}</div>
               <div className="mt-1 text-sm text-slate-500">{activeStrategyOption.note}</div>
               <div className="mt-1 text-sm text-slate-500">
-                当前参考基准 {benchmarkFund?.code || BENCHMARK_CODE} · {formatFundPrice(currentBenchmarkPrice, benchmarkCurrency)}
+                当前观察标的 {selectedFund?.code || '--'} · {formatFundPrice(currentFundPrice, selectedFundCurrency)}
+              </div>
+              <div className="mt-1 text-sm text-slate-500">
+                参考基准 {benchmarkFund?.code || BENCHMARK_CODE} · {formatFundPrice(currentBenchmarkPrice, benchmarkCurrency)}
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1157,8 +1210,8 @@ export function HomeExperience({ links, inPagesDir = false }) {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatCard accent="indigo" eyebrow="Portfolio Budget" value={formatCurrency(strategyPlan.investableCapital)} note={selectedStrategy === 'peak-drawdown' ? '按阶段高点固定回撤 8 档分配预算' : '按 MA120 主触发策略分配的预算'} progress={Math.max(100 - reserveRatio, 0)} />
           <StatCard eyebrow="Reserve Cash" value={formatCurrency(strategyPlan.reserveCapital)} note={selectedStrategy === 'peak-drawdown' ? (isBelowPeakExtreme ? '价格已进入第 8 档极端区。' : `${formatPercent(reserveRatio, 1)} 作为极端回撤缓冲`) : (isBelowRiskControl ? '价格已跌破 MA200，进入防守区。' : strategyPlan.usesIndependentRiskLayer ? `${formatPercent(reserveRatio, 1)} 作为 MA200 防守缓冲` : 'MA200 当前高于深水层，仅作趋势风控。')} />
-          <StatCard eyebrow="Next Trigger" value={formatFundPrice(nextBuyPrice, benchmarkCurrency)} note={nextTriggerLayer ? `${benchmarkFund?.code || BENCHMARK_CODE} · ${nextTriggerLayer.signal}` : selectedStrategy === 'peak-drawdown' ? '当前已进入第 8 档极端区' : '当前已进入最深防守区'} />
-          <StatCard accent="emerald" eyebrow="Average Cost" value={formatFundPrice(strategyPlan.averageCost, benchmarkCurrency)} note={selectedStrategy === 'peak-drawdown' ? `${benchmarkFund?.code || BENCHMARK_CODE} 固定跌幅 8 档重算` : `${benchmarkFund?.code || BENCHMARK_CODE} MA120 / MA200 重算`} />
+          <StatCard eyebrow="Next Trigger" value={formatFundPrice(nextBuyPrice, strategyDisplayCurrency)} note={nextTriggerLayer ? `${benchmarkFund?.code || BENCHMARK_CODE} 信号 · 映射到 ${selectedFund?.code || benchmarkFund?.code || BENCHMARK_CODE}` : selectedStrategy === 'peak-drawdown' ? '当前已进入第 8 档极端区' : '当前已进入最深防守区'} />
+          <StatCard accent="emerald" eyebrow="Average Cost" value={formatFundPrice(displayStrategyPlan.averageCost, strategyDisplayCurrency)} note={selectedStrategy === 'peak-drawdown' ? `${benchmarkFund?.code || BENCHMARK_CODE} 固定跌幅 8 档映射` : `${benchmarkFund?.code || BENCHMARK_CODE} MA120 / MA200 映射`} />
 
           <Card className="min-w-0 md:col-span-2 xl:col-start-2 xl:col-span-3">
             <SectionHeading
@@ -1167,22 +1220,23 @@ export function HomeExperience({ links, inPagesDir = false }) {
               action={
                 <div className="flex flex-wrap items-center gap-2">
                   <Pill tone="indigo">基准 {benchmarkFund?.code || BENCHMARK_CODE}</Pill>
+                  <Pill tone="slate">标的 {selectedFund?.code || '--'}</Pill>
                   {selectedStrategy === 'peak-drawdown' ? (
                     <>
-                      <Pill tone="violet">阶段高点 {formatFundPrice(strategyPlan.anchorPrice, benchmarkCurrency)}</Pill>
+                      <Pill tone="violet">阶段高点 {formatFundPrice(displayStageHighPrice, strategyDisplayCurrency)}</Pill>
                       <Pill tone="amber">固定回撤 8 档</Pill>
                     </>
                   ) : (
                     <>
-                      <Pill tone="violet">MA120 触发 {formatFundPrice(strategyTriggerPrice, benchmarkCurrency)}</Pill>
-                      <Pill tone="amber">MA200 风控 {formatFundPrice(riskControlPrice, benchmarkCurrency)}</Pill>
+                      <Pill tone="violet">MA120 触发 {formatFundPrice(displayTriggerPrice, strategyDisplayCurrency)}</Pill>
+                      <Pill tone="amber">MA200 风控 {formatFundPrice(displayRiskControlPrice, strategyDisplayCurrency)}</Pill>
                     </>
                   )}
                 </div>
               }
             />
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <Pill tone="slate">基准现价 {formatFundPrice(currentBenchmarkPrice, benchmarkCurrency)}</Pill>
+              <Pill tone="slate">当前标的现价 {formatFundPrice(strategyDisplayCurrentPrice, strategyDisplayCurrency)}</Pill>
               <Pill tone="emerald">已完成 {completedLayerCount}/{executionLayers.length} 档</Pill>
             </div>
             <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
@@ -1214,7 +1268,7 @@ export function HomeExperience({ links, inPagesDir = false }) {
                         <Pill tone={layer.progressTone}>{layer.progressLabel}</Pill>
                       </td>
                       <td className="px-4 py-3 text-slate-600">{layer.signal}</td>
-                      <td className="px-4 py-3 text-slate-600">{formatFundPrice(layer.price, benchmarkCurrency)}</td>
+                      <td className="px-4 py-3 text-slate-600">{formatFundPrice(layer.price, strategyDisplayCurrency)}</td>
                       <td className="px-4 py-3 text-slate-600">{selectedStrategy === 'peak-drawdown' ? formatPercent(layer.drawdown, 1) : (layer.order === 1 ? '基准' : formatPercent(layer.drawdown, 1))}</td>
                       <td className="px-4 py-3 text-slate-900">{formatCurrency(layer.amount)}</td>
                     </tr>
@@ -1447,7 +1501,7 @@ export function HomeExperience({ links, inPagesDir = false }) {
                         </div>
 
                         <div className="mx-auto mt-2 flex max-w-[560px] flex-wrap items-center justify-center gap-x-3 gap-y-1 px-2 text-[11px] font-semibold text-slate-500">
-                          <span>{formatFundPrice(layer.price, benchmarkCurrency)}</span>
+                          <span>{formatFundPrice(layer.price, strategyDisplayCurrency)}</span>
                           <span>{selectedStrategy === 'peak-drawdown' ? formatPercent(layer.drawdown, 1) : (layer.order === 1 ? '基准层' : formatPercent(layer.drawdown, 1))}</span>
                           <span>{formatCurrency(layer.amount)}</span>
                         </div>
