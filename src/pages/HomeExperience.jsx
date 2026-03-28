@@ -742,6 +742,24 @@ export function HomeExperience({ links, inPagesDir = false }) {
     [currentFundPrice, strategyPlan.layers]
   );
   const nextBuyPrice = nextTriggerLayer?.price ?? strategyPlan.triggerPrice;
+  const executionLayers = useMemo(
+    () => strategyPlan.layers.map((layer) => {
+      const isCompleted = currentFundPrice > 0 && currentFundPrice <= layer.price;
+      const isNext = !isCompleted && nextTriggerLayer?.id === layer.id;
+
+      return {
+        ...layer,
+        progressState: isCompleted ? 'completed' : isNext ? 'next' : 'pending',
+        progressLabel: isCompleted ? '已完成' : isNext ? '下一档' : '待触发',
+        progressTone: isCompleted ? 'emerald' : isNext ? 'indigo' : 'slate'
+      };
+    }),
+    [currentFundPrice, nextTriggerLayer?.id, strategyPlan.layers]
+  );
+  const completedLayerCount = useMemo(
+    () => executionLayers.filter((layer) => layer.progressState === 'completed').length,
+    [executionLayers]
+  );
   const isBelowRiskControl = currentFundPrice > 0 && riskControlPrice > 0 && currentFundPrice < riskControlPrice;
   const isBelowPeakExtreme = selectedStrategy === 'peak-drawdown' && currentFundPrice > 0 && strategyPlan.riskPrice > 0 && currentFundPrice <= strategyPlan.riskPrice;
 
@@ -1287,11 +1305,16 @@ export function HomeExperience({ links, inPagesDir = false }) {
                   </div>
                 }
               />
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <Pill tone="slate">当前价 {formatFundPrice(currentFundPrice)}</Pill>
+                <Pill tone="emerald">已完成 {completedLayerCount}/{executionLayers.length} 档</Pill>
+              </div>
               <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
-                <table className="min-w-[560px] w-full text-left text-sm">
+                <table className="min-w-[660px] w-full text-left text-sm">
                   <thead className="border-b border-slate-200 bg-slate-50/80 text-xs uppercase text-slate-500">
                     <tr>
                       <th className="px-4 py-3 font-semibold">批次</th>
+                      <th className="px-4 py-3 font-semibold">状态</th>
                       <th className="px-4 py-3 font-semibold">信号</th>
                       <th className="px-4 py-3 font-semibold">价格</th>
                       <th className="px-4 py-3 font-semibold">跌幅</th>
@@ -1299,9 +1322,21 @@ export function HomeExperience({ links, inPagesDir = false }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
-                    {strategyPlan.layers.map((layer) => (
-                      <tr key={layer.id}>
+                    {executionLayers.map((layer) => (
+                      <tr
+                        key={layer.id}
+                        className={cx(
+                          layer.progressState === 'completed'
+                            ? 'bg-emerald-50/70'
+                            : layer.progressState === 'next'
+                              ? 'bg-indigo-50/60'
+                              : ''
+                        )}
+                      >
                         <td className="px-4 py-3 font-semibold text-slate-700">{String(layer.order).padStart(2, '0')}</td>
+                        <td className="px-4 py-3">
+                          <Pill tone={layer.progressTone}>{layer.progressLabel}</Pill>
+                        </td>
                         <td className="px-4 py-3 text-slate-600">{layer.signal}</td>
                         <td className="px-4 py-3 text-slate-600">{formatFundPrice(layer.price)}</td>
                         <td className="px-4 py-3 text-slate-600">{selectedStrategy === 'peak-drawdown' ? formatPercent(layer.drawdown, 1) : (layer.order === 1 ? '基准' : formatPercent(layer.drawdown, 1))}</td>
