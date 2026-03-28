@@ -3,10 +3,12 @@ import { buildStages, defaultAccumulationState, round } from './accumulation.js'
 const PLAN_KEY = 'aiDcaPlanState';
 
 export const defaultPlanState = {
-  symbol: 'QQQ',
+  symbol: '513100',
   totalBudget: 12000,
   cashReservePct: 30,
   basePrice: defaultAccumulationState.basePrice,
+  riskControlPrice: round(defaultAccumulationState.basePrice * 0.85, 2),
+  selectedStrategy: 'ma120-risk',
   frequency: '每周',
   layerWeights: [40, 35, 25],
   triggerDrops: [0, 8, 16]
@@ -82,6 +84,8 @@ export function readPlanState() {
       totalBudget: Number(saved.totalBudget) || defaultPlanState.totalBudget,
       cashReservePct: Number(saved.cashReservePct) || defaultPlanState.cashReservePct,
       basePrice: Number(saved.basePrice) || defaultPlanState.basePrice,
+      riskControlPrice: Number(saved.riskControlPrice) || defaultPlanState.riskControlPrice,
+      selectedStrategy: saved.selectedStrategy || defaultPlanState.selectedStrategy,
       frequency: saved.frequency || defaultPlanState.frequency,
       layerWeights: normalizeList(saved.layerWeights, defaultPlanState.layerWeights),
       triggerDrops: normalizeList(saved.triggerDrops, defaultPlanState.triggerDrops)
@@ -102,6 +106,8 @@ export function persistPlanState(state, computed = buildPlan(state)) {
     totalBudget: round(state.totalBudget, 2),
     cashReservePct: round(state.cashReservePct, 2),
     basePrice: round(state.basePrice, 2),
+    riskControlPrice: round(state.riskControlPrice, 2),
+    selectedStrategy: state.selectedStrategy || defaultPlanState.selectedStrategy,
     frequency: state.frequency || defaultPlanState.frequency,
     layerWeights: computed.layerWeights.map((value) => round(value, 4)),
     triggerDrops: computed.triggerDrops.map((value) => round(value, 4)),
