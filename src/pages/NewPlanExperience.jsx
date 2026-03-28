@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowRight, Save } from 'lucide-react';
 import { formatCurrency, formatPercent } from '../app/accumulation.js';
 import { readHomeDashboardState } from '../app/homeDashboard.js';
-import { loadLatestNasdaqPrices } from '../app/nasdaqPrices.js';
+import { loadLatestNasdaqPrices, loadNasdaqDailySeries } from '../app/nasdaqPrices.js';
 import { persistPlanState, readPlanState } from '../app/plan.js';
 import { Card, Field, NumberInput, PageHero, PageShell, Pill, SectionHeading, SelectField, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
@@ -29,6 +29,37 @@ const fixedDrawdownBlueprint = [
   { drawdown: 30, label: '第6次加仓' },
   { drawdown: 33.5, label: '第7次加仓，极端档' }
 ];
+
+function buildMovingAverageValues(bars = [], period = 5) {
+  const values = [];
+  const closes = [];
+  let rollingSum = 0;
+
+  bars.forEach((bar, index) => {
+    const close = Number(bar.close) || 0;
+    closes.push(close);
+    rollingSum += close;
+
+    if (closes.length > period) {
+      rollingSum -= closes[index - period];
+    }
+
+    values.push(closes.length >= period ? rollingSum / period : rollingSum / closes.length);
+  });
+
+  return values;
+}
+
+function findLatestFiniteValue(values = []) {
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    const value = values[index];
+    if (Number.isFinite(value)) {
+      return value;
+    }
+  }
+
+  return 0;
+}
 
 function buildMovingAverageTemplatePlan(state) {
   const triggerPrice = Math.max(Number(state.basePrice) || 0, 0);
@@ -167,6 +198,12 @@ export function NewPlanExperience({ links, inPagesDir = false }) {
   const [state, setState] = useState(() => readPlanState());
   const [marketEntries, setMarketEntries] = useState([]);
   const [marketError, setMarketError] = useState('');
+  const [dailySeriesState, setDailySeriesState] = useState({
+    code: '',
+    bars: [],
+    ready: false
+  });
+  const autoSeedRef = useRef('');
 
   useEffect(() => {
     let cancelled = false;
@@ -216,6 +253,95 @@ export function NewPlanExperience({ links, inPagesDir = false }) {
     () => marketEntries.find((entry) => entry.code === state.symbol) || null,
     [marketEntries, state.symbol]
   );
+
+  useEffect(() => {
+    if (!selectedFund?.code) {
+      setDailySeriesState({
+        code: '',
+        bars: [],
+        ready: false
+      });
+      return;
+    }
+
+    let cancelled = false;
+    const nextCode = selectedFund.code;
+
+    setDailySeriesState({
+      code: nextCode,
+      bars: [],
+      ready: false
+    });
+
+    loadNasdaqDailySeries(nextCode, { inPagesDir })
+      .then((bars) => {
+        if (!cancelled) {
+          setDailySeriesState({
+            code: nextCode,
+            bars: Array.isArray(bars) ? bars : [],
+            ready: true
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDailySeriesState({
+            code: nextCode,
+            bars: [],
+            ready: true
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [inPagesDir, selectedFund?.code]);
+
+  const selectedDailySeries = useMemo(
+    () => (dailySeriesState.code === selectedFund?.code ? dailySeriesState.bars : []),
+    [dailySeriesState.bars, dailySeriesState.code, selectedFund?.code]
+  );
+  const isSelectedDailySeriesReady = !selectedFund?.code || (dailySeriesState.code === selectedFund.code && dailySeriesState.ready);
+
+  const derivedStageHigh = useMemo(() => {
+    const values = selectedDailySeries
+      .flatMap((bar) => [Number(bar.high) || 0, Number(bar.close) || 0])
+      .filter((value) => Number.isFinite(value) && value > 0);
+
+    if (values.length) {
+      return Math.max(...values);
+    }
+
+    return Number(selectedFund?.current_price) || 0;
+  }, [selectedDailySeries, selectedFund]);
+  const derivedMa120 = useMemo(
+    () => findLatestFiniteValue(buildMovingAverageValues(selectedDailySeries, 120)) || Number(selectedFund?.current_price) || 0,
+    [selectedDailySeries, selectedFund]
+  );
+  const derivedMa200 = useMemo(
+    () => findLatestFiniteValue(buildMovingAverageValues(selectedDailySeries, 200)) || (derivedMa120 > 0 ? derivedMa120 * 0.85 : 0),
+    [selectedDailySeries, derivedMa120]
+  );
+
+  useEffect(() => {
+    if (!selectedFund?.code || !isSelectedDailySeriesReady) {
+      return;
+    }
+
+    const syncKey = `${selectedFund.code}:${selectedStrategy}`;
+    if (autoSeedRef.current === syncKey) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      basePrice: selectedStrategy === 'peak-drawdown' ? derivedStageHigh : derivedMa120,
+      riskControlPrice: selectedStrategy === 'peak-drawdown' ? current.riskControlPrice : derivedMa200
+    }));
+    autoSeedRef.current = syncKey;
+  }, [derivedMa120, derivedMa200, derivedStageHigh, isSelectedDailySeriesReady, selectedFund?.code, selectedStrategy]);
+
   const activeStrategy = useMemo(
     () => strategyOptions.find((option) => option.key === selectedStrategy) || strategyOptions[0],
     [selectedStrategy]
