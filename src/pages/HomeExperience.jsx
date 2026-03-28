@@ -1089,6 +1089,12 @@ export function HomeExperience({ links, inPagesDir = false }) {
             eyebrow="Plans"
             title="策略列表"
             description="先在新建页创建策略，再回到这里切换查看。首页不直接修改策略模板。"
+            action={
+              <a className={primaryButtonClass} href={links.accumNew}>
+                <Plus className="h-4 w-4" />
+                新建策略
+              </a>
+            }
           />
 
           {planList.length ? (
