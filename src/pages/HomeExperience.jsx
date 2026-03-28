@@ -1409,34 +1409,68 @@ export function HomeExperience({ links, inPagesDir = false }) {
 
           <div className="min-w-0 space-y-6 lg:col-span-2">
             <Card className="min-w-0 overflow-hidden">
-              <SectionHeading eyebrow="Capital Mix" title="资金配置模型" />
-              <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50 p-5">
-                <div className="mx-auto flex min-w-[280px] max-w-[560px] flex-col gap-3">
-                {strategyPlan.layers.map((layer, index) => {
-                  const maxWeight = strategyPlan.layers[strategyPlan.layers.length - 1]?.weight || 1;
-                  const widthPct = `${Math.max(layer.weight / maxWeight * 100, 18)}%`;
+              <SectionHeading eyebrow="Capital Mix" title="资金配置模型" description="参考常见金字塔加仓示意图，首仓最轻，越往下触发越深、单层投入越大。" />
+              <div className="mt-6 overflow-x-auto rounded-[28px] border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Pill tone="violet">首仓轻</Pill>
+                  <Pill tone="slate">越跌越宽</Pill>
+                  <Pill tone="amber">深层加大金额</Pill>
+                </div>
 
-                  return (
-                    <div key={layer.id} className="space-y-2">
-                      <div className="flex items-center justify-between gap-3 text-[11px] font-semibold text-slate-400">
-                        <span>{selectedStrategy === 'peak-drawdown' ? `档位 ${layer.order}` : layer.label}</span>
-                        <span>{`${formatRawNumber(layer.weight, 1)}x`}</span>
-                      </div>
-                      <div className="flex justify-center">
+                <div className="relative mt-6">
+                  <div className="absolute left-1/2 top-0 bottom-0 w-px -translate-x-1/2 bg-slate-200/80" />
+                  <div className="mx-auto flex min-w-[280px] max-w-[760px] flex-col items-center gap-3">
+                  {strategyPlan.layers.map((layer, index) => {
+                    const maxWeight = strategyPlan.layers[strategyPlan.layers.length - 1]?.weight || 1;
+                    const widthPct = `${Math.min(100, 38 + layer.weight / maxWeight * 62)}%`;
+                    const bandClass = layer.tone === 'amber'
+                      ? 'from-amber-500 to-orange-500'
+                      : layer.tone === 'violet'
+                        ? 'from-violet-600 to-indigo-600'
+                        : index === strategyPlan.layers.length - 1
+                          ? 'from-indigo-600 to-sky-600'
+                          : 'from-slate-600 to-slate-500';
+
+                    return (
+                      <div key={layer.id} className="relative flex w-full justify-center">
+                        {index < strategyPlan.layers.length - 1 ? (
+                          <div className="absolute left-1/2 top-full h-3 w-px -translate-x-1/2 bg-slate-200/80" />
+                        ) : null}
                         <div
                           className={cx(
-                            'flex h-12 max-w-full items-center justify-between gap-3 rounded-2xl px-4 text-xs font-bold text-white shadow-sm',
-                            layer.tone === 'amber' ? 'bg-amber-500' : layer.tone === 'violet' ? 'bg-violet-600' : index === strategyPlan.layers.length - 1 ? 'bg-indigo-600' : 'bg-slate-500'
+                            'relative max-w-full rounded-[26px] bg-gradient-to-r px-4 py-3 text-white shadow-[0_12px_28px_rgba(15,23,42,0.12)] ring-1 ring-white/20',
+                            bandClass
                           )}
                           style={{ width: widthPct }}
                         >
-                          <span className="truncate">{selectedStrategy === 'peak-drawdown' ? layer.signal : layer.label}</span>
-                          <span className="shrink-0">{formatCurrency(layer.amount)}</span>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-[52px] text-center">
+                              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/70">
+                                {selectedStrategy === 'peak-drawdown' ? `L${layer.order}` : 'Layer'}
+                              </div>
+                              <div className="mt-1 text-sm font-extrabold">{`${formatRawNumber(layer.weight, 1)}x`}</div>
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm font-extrabold">
+                                {selectedStrategy === 'peak-drawdown' ? layer.label : layer.signal}
+                              </div>
+                              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-semibold text-white/80">
+                                <span>{formatFundPrice(layer.price, benchmarkCurrency)}</span>
+                                <span>{selectedStrategy === 'peak-drawdown' ? formatPercent(layer.drawdown, 1) : (layer.order === 1 ? '基准层' : formatPercent(layer.drawdown, 1))}</span>
+                              </div>
+                            </div>
+
+                            <div className="shrink-0 text-right">
+                              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/70">计划金额</div>
+                              <div className="mt-1 text-sm font-extrabold">{formatCurrency(layer.amount)}</div>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                  </div>
                 </div>
               </div>
             </Card>
