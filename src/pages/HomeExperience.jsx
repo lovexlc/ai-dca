@@ -1159,6 +1159,73 @@ export function HomeExperience({ links, inPagesDir = false }) {
           <StatCard eyebrow="Reserve Cash" value={formatCurrency(strategyPlan.reserveCapital)} note={selectedStrategy === 'peak-drawdown' ? (isBelowPeakExtreme ? '价格已进入第 8 档极端区。' : `${formatPercent(reserveRatio, 1)} 作为极端回撤缓冲`) : (isBelowRiskControl ? '价格已跌破 MA200，进入防守区。' : strategyPlan.usesIndependentRiskLayer ? `${formatPercent(reserveRatio, 1)} 作为 MA200 防守缓冲` : 'MA200 当前高于深水层，仅作趋势风控。')} />
           <StatCard eyebrow="Next Trigger" value={formatFundPrice(nextBuyPrice, benchmarkCurrency)} note={nextTriggerLayer ? `${benchmarkFund?.code || BENCHMARK_CODE} · ${nextTriggerLayer.signal}` : selectedStrategy === 'peak-drawdown' ? '当前已进入第 8 档极端区' : '当前已进入最深防守区'} />
           <StatCard accent="emerald" eyebrow="Average Cost" value={formatFundPrice(strategyPlan.averageCost, benchmarkCurrency)} note={selectedStrategy === 'peak-drawdown' ? `${benchmarkFund?.code || BENCHMARK_CODE} 固定跌幅 8 档重算` : `${benchmarkFund?.code || BENCHMARK_CODE} MA120 / MA200 重算`} />
+
+          <Card className="min-w-0 md:col-span-2 xl:col-start-2 xl:col-span-3">
+            <SectionHeading
+              eyebrow="Execution Map"
+              title="建仓计划详情"
+              action={
+                <div className="flex flex-wrap items-center gap-2">
+                  <Pill tone="indigo">基准 {benchmarkFund?.code || BENCHMARK_CODE}</Pill>
+                  {selectedStrategy === 'peak-drawdown' ? (
+                    <>
+                      <Pill tone="violet">阶段高点</Pill>
+                      <Pill tone="slate">{formatFundPrice(strategyPlan.anchorPrice, benchmarkCurrency)}</Pill>
+                      <Pill tone="amber">固定回撤 8 档</Pill>
+                    </>
+                  ) : (
+                    <>
+                      <Pill tone="violet">MA120 触发</Pill>
+                      <Pill tone="slate">{formatFundPrice(strategyTriggerPrice, benchmarkCurrency)}</Pill>
+                      <Pill tone="amber">MA200 风控</Pill>
+                      <Pill tone="slate">{formatFundPrice(riskControlPrice, benchmarkCurrency)}</Pill>
+                    </>
+                  )}
+                </div>
+              }
+            />
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <Pill tone="slate">基准现价 {formatFundPrice(currentBenchmarkPrice, benchmarkCurrency)}</Pill>
+              <Pill tone="emerald">已完成 {completedLayerCount}/{executionLayers.length} 档</Pill>
+            </div>
+            <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
+              <table className="min-w-[660px] w-full text-left text-sm">
+                <thead className="border-b border-slate-200 bg-slate-50/80 text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold">批次</th>
+                    <th className="px-4 py-3 font-semibold">状态</th>
+                    <th className="px-4 py-3 font-semibold">信号</th>
+                    <th className="px-4 py-3 font-semibold">价格</th>
+                    <th className="px-4 py-3 font-semibold">跌幅</th>
+                    <th className="px-4 py-3 font-semibold">金额</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {executionLayers.map((layer) => (
+                    <tr
+                      key={layer.id}
+                      className={cx(
+                        layer.progressState === 'completed'
+                          ? 'bg-emerald-50/70'
+                          : layer.progressState === 'next'
+                            ? 'bg-indigo-50/60'
+                            : ''
+                      )}
+                    >
+                      <td className="px-4 py-3 font-semibold text-slate-700">{String(layer.order).padStart(2, '0')}</td>
+                      <td className="px-4 py-3">
+                        <Pill tone={layer.progressTone}>{layer.progressLabel}</Pill>
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">{layer.signal}</td>
+                      <td className="px-4 py-3 text-slate-600">{formatFundPrice(layer.price, benchmarkCurrency)}</td>
+                      <td className="px-4 py-3 text-slate-600">{selectedStrategy === 'peak-drawdown' ? formatPercent(layer.drawdown, 1) : (layer.order === 1 ? '基准' : formatPercent(layer.drawdown, 1))}</td>
+                      <td className="px-4 py-3 text-slate-900">{formatCurrency(layer.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1.75fr)_minmax(0,0.95fr)]">
@@ -1344,73 +1411,6 @@ export function HomeExperience({ links, inPagesDir = false }) {
           </Card>
 
           <div className="min-w-0 space-y-6 lg:col-span-2">
-            <Card className="min-w-0">
-              <SectionHeading
-                eyebrow="Execution Map"
-                title="建仓计划详情"
-                action={
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Pill tone="indigo">基准 {benchmarkFund?.code || BENCHMARK_CODE}</Pill>
-                    {selectedStrategy === 'peak-drawdown' ? (
-                      <>
-                        <Pill tone="violet">阶段高点</Pill>
-                        <Pill tone="slate">{formatFundPrice(strategyPlan.anchorPrice, benchmarkCurrency)}</Pill>
-                        <Pill tone="amber">固定回撤 8 档</Pill>
-                      </>
-                    ) : (
-                      <>
-                        <Pill tone="violet">MA120 触发</Pill>
-                        <Pill tone="slate">{formatFundPrice(strategyTriggerPrice, benchmarkCurrency)}</Pill>
-                        <Pill tone="amber">MA200 风控</Pill>
-                        <Pill tone="slate">{formatFundPrice(riskControlPrice, benchmarkCurrency)}</Pill>
-                      </>
-                    )}
-                  </div>
-                }
-              />
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <Pill tone="slate">基准现价 {formatFundPrice(currentBenchmarkPrice, benchmarkCurrency)}</Pill>
-                <Pill tone="emerald">已完成 {completedLayerCount}/{executionLayers.length} 档</Pill>
-              </div>
-              <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
-                <table className="min-w-[660px] w-full text-left text-sm">
-                  <thead className="border-b border-slate-200 bg-slate-50/80 text-xs uppercase text-slate-500">
-                    <tr>
-                      <th className="px-4 py-3 font-semibold">批次</th>
-                      <th className="px-4 py-3 font-semibold">状态</th>
-                      <th className="px-4 py-3 font-semibold">信号</th>
-                      <th className="px-4 py-3 font-semibold">价格</th>
-                      <th className="px-4 py-3 font-semibold">跌幅</th>
-                      <th className="px-4 py-3 font-semibold">金额</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {executionLayers.map((layer) => (
-                      <tr
-                        key={layer.id}
-                        className={cx(
-                          layer.progressState === 'completed'
-                            ? 'bg-emerald-50/70'
-                            : layer.progressState === 'next'
-                              ? 'bg-indigo-50/60'
-                              : ''
-                        )}
-                      >
-                        <td className="px-4 py-3 font-semibold text-slate-700">{String(layer.order).padStart(2, '0')}</td>
-                        <td className="px-4 py-3">
-                          <Pill tone={layer.progressTone}>{layer.progressLabel}</Pill>
-                        </td>
-                        <td className="px-4 py-3 text-slate-600">{layer.signal}</td>
-                        <td className="px-4 py-3 text-slate-600">{formatFundPrice(layer.price, benchmarkCurrency)}</td>
-                        <td className="px-4 py-3 text-slate-600">{selectedStrategy === 'peak-drawdown' ? formatPercent(layer.drawdown, 1) : (layer.order === 1 ? '基准' : formatPercent(layer.drawdown, 1))}</td>
-                        <td className="px-4 py-3 text-slate-900">{formatCurrency(layer.amount)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-
             <Card className="min-w-0 overflow-hidden">
               <SectionHeading eyebrow="Capital Mix" title="资金配置模型" />
               <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50 p-5">
