@@ -103,6 +103,34 @@ export function SectionHeading({ eyebrow, title, description, action, className 
   );
 }
 
+export function PageTabs({ tabs = [], activeKey = '', className = '' }) {
+  if (!tabs.length) {
+    return null;
+  }
+
+  return (
+    <div className={cx('overflow-x-auto pb-1', className)}>
+      <div className="inline-flex min-w-full items-center gap-2 rounded-2xl bg-slate-100 p-1.5 sm:min-w-0">
+        {tabs.map((tab) => {
+          const isActive = tab.key === activeKey;
+          return (
+            <a
+              key={tab.key}
+              className={cx(
+                'inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-semibold transition-all',
+                isActive ? 'bg-white text-slate-900 shadow-sm shadow-slate-200' : 'text-slate-500 hover:bg-white/70 hover:text-slate-700'
+              )}
+              href={tab.href}
+            >
+              {tab.label}
+            </a>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function Field({ label, helper, rightLabel, children, className = '' }) {
   return (
     <label className={cx('block space-y-2', className)}>

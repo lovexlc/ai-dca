@@ -1,6 +1,7 @@
 import { ArrowRight, Calendar, Filter, LineChart, Shield, Wallet } from 'lucide-react';
 import { buildStages, formatCurrency, readAccumulationState } from '../app/accumulation.js';
-import { Card, PageHero, PageShell, Pill, SectionHeading, StatCard, secondaryButtonClass } from '../components/experience-ui.jsx';
+import { getPrimaryTabs } from '../app/screens.js';
+import { Card, PageHero, PageShell, PageTabs, Pill, SectionHeading, StatCard, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 const sampleHistory = [
   { date: '2024-03-25', type: '买入', shares: 10, price: 445.2, status: '已提交' },
@@ -17,6 +18,7 @@ export function HistoryExperience({ links }) {
   const totalInvestment = sampleHistory.reduce((sum, row) => sum + row.shares * row.price, 0);
   const buyAmount = sampleHistory.filter((row) => row.type === '买入').reduce((sum, row) => sum + row.shares * row.price, 0);
   const sellAmount = sampleHistory.filter((row) => row.type === '卖出').reduce((sum, row) => sum + row.shares * row.price, 0);
+  const primaryTabs = getPrimaryTabs(links);
 
   return (
     <PageShell>
@@ -30,7 +32,9 @@ export function HistoryExperience({ links }) {
           <Pill key="symbol" tone="indigo">QQQ</Pill>,
           <Pill key="count" tone="slate">{sampleHistory.length} 条记录</Pill>
         ]}
-      />
+      >
+        <PageTabs activeKey="history" tabs={primaryTabs} />
+      </PageHero>
 
       <div className="mx-auto max-w-6xl space-y-6 px-6 pt-8">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

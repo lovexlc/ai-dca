@@ -4,7 +4,8 @@ import { formatCurrency, formatPercent, readAccumulationState } from '../app/acc
 import { exportHomeDashboardState, importHomeDashboardState, normalizeHomeDashboardState, persistHomeDashboardState, readHomeDashboardState } from '../app/homeDashboard.js';
 import { formatPriceAsOf, loadLatestNasdaqPrices, loadNasdaqDailySeries, loadNasdaqMinuteSnapshot } from '../app/nasdaqPrices.js';
 import { readPlanList, readPlanState, setActivePlanId } from '../app/plan.js';
-import { Card, PageHero, PageShell, Pill, SectionHeading, SelectField, StatCard, cx, primaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
+import { getPrimaryTabs } from '../app/screens.js';
+import { Card, PageHero, PageShell, PageTabs, Pill, SectionHeading, SelectField, StatCard, cx, primaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
 
 const BENCHMARK_CODE = 'nas-daq100';
 const DEFAULT_WATCHLIST_CODES = [BENCHMARK_CODE, '513100', '159501', '159660'];
@@ -1177,17 +1178,19 @@ export function HomeExperience({ links, inPagesDir = false }) {
     }
   }
 
+  const primaryTabs = getPrimaryTabs(links);
+
   return (
     <PageShell>
       <PageHero
-        backHref={links.catalog}
-        backLabel="返回页面目录"
         eyebrow="Strategy Dashboard"
         title="QQQ 建仓策略总览"
         badges={[
           <Pill key="status" tone="indigo">{hasConfiguredPlan ? '已创建策略' : '待创建策略'}</Pill>
         ]}
-      />
+      >
+        <PageTabs activeKey="home" tabs={primaryTabs} />
+      </PageHero>
 
       <div className="mx-auto max-w-6xl space-y-6 px-6 pt-8">
         <div className="space-y-4 md:hidden">

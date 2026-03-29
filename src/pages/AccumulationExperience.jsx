@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowRight, BarChart3, Plus, Save, Trash2 } from 'lucide-react';
 import { buildStages, formatCurrency, formatPercent, persistAccumulationState, readAccumulationState, round } from '../app/accumulation.js';
-import { Card, Field, NumberInput, PageHero, PageShell, Pill, SectionHeading, SelectField, StatCard, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
+import { getPrimaryTabs } from '../app/screens.js';
+import { Card, Field, NumberInput, PageHero, PageShell, PageTabs, Pill, SectionHeading, SelectField, StatCard, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 const frequencyOptions = ['每日', '每周', '每月', '每季'];
 
 export function AccumulationExperience({ links }) {
   const [state, setState] = useState(() => readAccumulationState());
   const computed = useMemo(() => buildStages(state), [state]);
+  const primaryTabs = getPrimaryTabs(links);
 
   useEffect(() => {
     persistAccumulationState(state, computed);
@@ -56,7 +58,9 @@ export function AccumulationExperience({ links }) {
             新增层级
           </a>
         }
-      />
+      >
+        <PageTabs activeKey="accumEdit" tabs={primaryTabs} />
+      </PageHero>
 
       <div className="mx-auto max-w-6xl space-y-6 px-6 pt-8">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

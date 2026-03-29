@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Calendar, Clock3, Save, Target, TrendingUp, Wallet } from 'lucide-react';
 import { formatCurrency, formatPercent } from '../app/accumulation.js';
 import { buildDcaProjection, frequencyOptions, persistDcaState, readDcaState } from '../app/dca.js';
-import { Card, Field, NumberInput, PageHero, PageShell, Pill, SectionHeading, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
+import { getPrimaryTabs } from '../app/screens.js';
+import { Card, Field, NumberInput, PageHero, PageShell, PageTabs, Pill, SectionHeading, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 const DAY_OPTIONS = [1, 8, 15, 28];
 
 export function DcaExperience({ links }) {
   const [state, setState] = useState(() => readDcaState());
   const projection = useMemo(() => buildDcaProjection(state), [state]);
+  const primaryTabs = getPrimaryTabs(links);
 
   useEffect(() => {
     persistDcaState(state, projection);
@@ -26,7 +28,9 @@ export function DcaExperience({ links }) {
           <Pill key="cadence" tone="indigo">{projection.cadenceLabel}</Pill>,
           <Pill key="count" tone="slate">{projection.executionCount} 次执行</Pill>
         ]}
-      />
+      >
+        <PageTabs activeKey="dca" tabs={primaryTabs} />
+      </PageHero>
 
       <div className="mx-auto max-w-6xl space-y-6 px-6 pt-8">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

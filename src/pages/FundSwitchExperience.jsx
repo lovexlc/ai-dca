@@ -30,6 +30,7 @@ import {
   NumberInput,
   PageHero,
   PageShell,
+  PageTabs,
   SectionHeading,
   TextInput,
   cx,
@@ -38,6 +39,7 @@ import {
   secondaryButtonClass,
   tableInputClass
 } from '../components/experience-ui.jsx';
+import { getPrimaryTabs } from '../app/screens.js';
 
 const FUND_CODE_PATTERN = /^\d{6}$/;
 const STRATEGY_LABELS = {
@@ -649,6 +651,7 @@ export function FundSwitchExperience({ links, inPagesDir }) {
   const validationIssues = useMemo(() => buildRowValidationIssues(summary.rows), [summary.rows]);
   const validationIssueSummary = useMemo(() => summarizeValidationIssues(validationIssues), [validationIssues]);
   const statusMeta = getStatusMeta(effectiveOcrStatus);
+  const primaryTabs = getPrimaryTabs(links);
   const advantageMeta = getAdvantageTone(summary.switchAdvantage);
   const shouldShowBottomAdvantage = state.resultConfirmed && !isEditingDetails;
   const bottomAdvantageText = shouldShowBottomAdvantage ? formatSignedCurrency(summary.switchAdvantage, '¥ ') : '待重算';
@@ -934,8 +937,8 @@ export function FundSwitchExperience({ links, inPagesDir }) {
       <input ref={fileInputRef} accept="image/*" hidden onChange={handleFileInputChange} type="file" />
 
       <PageHero
-        backHref={links.catalog || './catalog.html'}
-        backLabel="返回页面目录"
+        backHref={links.home}
+        backLabel="返回策略总览"
         eyebrow="Fund Switch Assistant"
         title="基金切换收益助手"
         description="上传交易截图后，系统会智能识别整理成可编辑交易数据，并按 direct / trace 两种来源策略比较切换前后的真实收益。"
@@ -951,7 +954,9 @@ export function FundSwitchExperience({ links, inPagesDir }) {
             上传截图
           </button>
         ) : null}
-      />
+      >
+        <PageTabs activeKey="fundSwitch" tabs={primaryTabs} />
+      </PageHero>
 
       <div className="mx-auto max-w-6xl space-y-4 px-4 pt-6 sm:space-y-6 sm:px-6 sm:pt-8">
         {!hasImportedData ? (
