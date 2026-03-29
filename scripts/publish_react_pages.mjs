@@ -36,6 +36,9 @@ rmSync(docsPagesDir, { recursive: true, force: true });
 mkdirSync(docsPagesDir, { recursive: true });
 
 for (const screen of screens) {
+  if (screen.id === HOME_SCREEN_ID) {
+    continue;
+  }
   writeFileSync(resolve(docsPagesDir, `${screen.id}.html`), withScreenId(nestedTemplate, screen.id), 'utf8');
 }
 
