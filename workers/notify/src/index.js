@@ -1,4 +1,5 @@
 import { runNotificationCycle } from './evaluator.js';
+import { buildPublicGcmRegistration, buildPublicGcmRegistrations, checkGcmConnection, hasGcmServiceAccount, maskSecret, normalizeGcmRegistrations, readGcmServiceAccount, resolveGcmProjectId } from './gcm.js';
 import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
 
 const PAYLOAD_KEY = 'notify:payload';
@@ -45,6 +46,7 @@ function normalizeSettings(settings = {}) {
         createdAt: String(client?.createdAt || '').trim()
       })).filter((client) => client.id && client.baseUrl && client.token)
     : [];
+  const gcmRegistrations = normalizeGcmRegistrations(settings.gcmRegistrations);
 
   return {
     barkDeviceKey: String(settings.barkDeviceKey || '').trim(),
@@ -52,7 +54,13 @@ function normalizeSettings(settings = {}) {
     gotifyUsername: String(settings.gotifyUsername || '').trim(),
     gotifyPassword: String(settings.gotifyPassword || '').trim(),
     gotifyToken: String(settings.gotifyToken || '').trim(),
-    gotifyClients
+    gotifyClients,
+    gcmProjectId: String(settings.gcmProjectId || '').trim(),
+    gcmPackageName: String(settings.gcmPackageName || '').trim(),
+    gcmRegistrations,
+    gcmLastCheckAt: String(settings.gcmLastCheckAt || '').trim(),
+    gcmLastCheckStatus: String(settings.gcmLastCheckStatus || '').trim(),
+    gcmLastCheckDetail: String(settings.gcmLastCheckDetail || '').trim()
   };
 }
 
@@ -65,6 +73,82 @@ function randomString(length = 16) {
   const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   const bytes = crypto.getRandomValues(new Uint8Array(length));
   return Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('');
+}
+
+function buildPublicGcmSetup(settings, env) {
+  return {
+    gcmProjectId: resolveGcmProjectId(settings, env),
+    gcmPackageName: String(settings.gcmPackageName || '').trim(),
+    gcmRegistrationCount: Array.isArray(settings.gcmRegistrations) ? settings.gcmRegistrations.length : 0,
+    gcmRegistrations: buildPublicGcmRegistrations(settings.gcmRegistrations),
+    gcmServiceAccountConfigured: hasGcmServiceAccount(env),
+    gcmLastCheckAt: String(settings.gcmLastCheckAt || '').trim(),
+    gcmLastCheckStatus: String(settings.gcmLastCheckStatus || '').trim(),
+    gcmLastCheckDetail: String(settings.gcmLastCheckDetail || '').trim()
+  };
+}
+
+function applyGcmCheckState(registrations = [], matcher = null, details = {}) {
+  if (typeof matcher !== 'function') {
+    return registrations;
+  }
+
+  return registrations.map((registration) => (
+    matcher(registration)
+      ? {
+          ...registration,
+          lastCheckedAt: String(details.checkedAt || '').trim(),
+          lastCheckStatus: String(details.status || '').trim(),
+          lastCheckDetail: String(details.detail || '').trim(),
+          updatedAt: String(details.updatedAt || registration.updatedAt || '').trim()
+        }
+      : registration
+  ));
+}
+
+function upsertGcmRegistration(registrations = [], candidate = {}) {
+  const normalizedToken = String(candidate.token || '').trim();
+  const normalizedId = String(candidate.id || '').trim();
+  let replaced = false;
+  const nextRegistrations = registrations.map((registration) => {
+    const sameRegistration = (
+      normalizedId && registration.id === normalizedId
+    ) || (
+      normalizedToken && registration.token === normalizedToken
+    );
+
+    if (!sameRegistration) {
+      return registration;
+    }
+
+    replaced = true;
+    return {
+      ...registration,
+      ...candidate
+    };
+  });
+
+  if (!replaced) {
+    nextRegistrations.push(candidate);
+  }
+
+  return nextRegistrations;
+}
+
+function findGcmRegistration(settings, { registrationId = '', token = '' } = {}) {
+  const registrations = Array.isArray(settings.gcmRegistrations) ? settings.gcmRegistrations : [];
+  const normalizedRegistrationId = String(registrationId || '').trim();
+  const normalizedToken = String(token || '').trim();
+
+  if (normalizedRegistrationId) {
+    return registrations.find((registration) => registration.id === normalizedRegistrationId) || null;
+  }
+
+  if (normalizedToken) {
+    return registrations.find((registration) => registration.token === normalizedToken) || null;
+  }
+
+  return registrations[0] || null;
 }
 
 function ensureStateBinding(env) {
@@ -147,11 +231,13 @@ async function handleStatus(request, env) {
   const gotifyBaseUrl = settings.gotifyBaseUrl || String(env.GOTIFY_BASE_URL || '').trim();
   const gotifyToken = settings.gotifyToken || String(env.GOTIFY_TOKEN || '').trim();
   const gotifyClients = Array.isArray(settings.gotifyClients) ? settings.gotifyClients : [];
+  const gcmSetup = buildPublicGcmSetup(settings, env);
 
   return jsonResponse({
     configured: {
       bark: Boolean(barkDeviceKey),
-      gotify: Boolean(gotifyClients.length || (gotifyBaseUrl && gotifyToken))
+      gotify: Boolean(gotifyClients.length || (gotifyBaseUrl && gotifyToken)),
+      gcm: Boolean(gcmSetup.gcmProjectId && gcmSetup.gcmRegistrationCount)
     },
     counts: {
       planRuleCount: Number(meta?.counts?.planRuleCount) || 0,
@@ -169,7 +255,8 @@ async function handleStatus(request, env) {
       gotifyBaseUrl,
       gotifyAdminConfigured: Boolean(settings.gotifyUsername && settings.gotifyPassword),
       gotifyClientCount: gotifyClients.length,
-      gotifyTokenMasked: buildMaskedToken(gotifyToken)
+      gotifyTokenMasked: buildMaskedToken(gotifyToken),
+      ...gcmSetup
     }
   }, { origin });
 }
@@ -234,9 +321,159 @@ async function handleSettings(request, env) {
       gotifyBaseUrl: nextSettings.gotifyBaseUrl,
       gotifyAdminConfigured: Boolean(nextSettings.gotifyUsername && nextSettings.gotifyPassword),
       gotifyClientCount: Array.isArray(nextSettings.gotifyClients) ? nextSettings.gotifyClients.length : 0,
-      gotifyTokenMasked: buildMaskedToken(nextSettings.gotifyToken)
+      gotifyTokenMasked: buildMaskedToken(nextSettings.gotifyToken),
+      ...buildPublicGcmSetup(nextSettings, env)
     }
   }, { origin });
+}
+
+async function handleGcmRegister(request, env) {
+  const origin = readOrigin(request);
+  const settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
+  const payload = await request.json().catch(() => ({}));
+  const serviceAccount = (() => {
+    try {
+      return readGcmServiceAccount(env);
+    } catch (_error) {
+      return null;
+    }
+  })();
+  const projectId = String(payload.projectId || settings.gcmProjectId || serviceAccount?.projectId || '').trim();
+  const packageName = String(payload.packageName || settings.gcmPackageName || '').trim();
+  const deviceName = String(payload.deviceName || '').trim() || 'Android Device';
+  const token = String(payload.token || payload.registrationToken || '').trim();
+  const appId = String(payload.appId || '').trim();
+  const senderId = String(payload.senderId || '').trim();
+
+  if (!projectId) {
+    throw new Error('注册 Android GCM 设备前需要先提供 Firebase Project ID。');
+  }
+
+  if (!token) {
+    throw new Error('缺少 Android registration token。');
+  }
+
+  const nowIso = new Date().toISOString();
+  const existingRegistration = findGcmRegistration(settings, { token });
+  const registration = {
+    id: existingRegistration?.id || `gcm:${randomString(10).toLowerCase()}`,
+    deviceName,
+    packageName,
+    appId,
+    senderId,
+    token,
+    createdAt: existingRegistration?.createdAt || nowIso,
+    updatedAt: nowIso,
+    lastCheckedAt: existingRegistration?.lastCheckedAt || '',
+    lastCheckStatus: existingRegistration?.lastCheckStatus || '',
+    lastCheckDetail: existingRegistration?.lastCheckDetail || ''
+  };
+  const nextSettings = normalizeSettings({
+    ...settings,
+    gcmProjectId: projectId,
+    gcmPackageName: packageName || settings.gcmPackageName,
+    gcmRegistrations: upsertGcmRegistration(settings.gcmRegistrations, registration)
+  });
+
+  await writeJson(env, SETTINGS_KEY, nextSettings);
+
+  return jsonResponse({
+    ok: true,
+    registration: buildPublicGcmRegistration(registration),
+    setup: buildPublicGcmSetup(nextSettings, env)
+  }, { origin });
+}
+
+async function handleGcmCheck(request, env) {
+  const origin = readOrigin(request);
+  const settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
+  const payload = await request.json().catch(() => ({}));
+  const explicitToken = String(payload.token || payload.registrationToken || '').trim();
+  const explicitRegistrationId = String(payload.registrationId || '').trim();
+  const selectedRegistration = findGcmRegistration(settings, {
+    registrationId: explicitRegistrationId,
+    token: explicitToken
+  });
+  const projectId = String(payload.projectId || settings.gcmProjectId || resolveGcmProjectId(settings, env) || '').trim();
+  const packageName = String(payload.packageName || selectedRegistration?.packageName || settings.gcmPackageName || '').trim();
+  const token = explicitToken || String(selectedRegistration?.token || '').trim();
+  const registrationMatcher = selectedRegistration
+    ? (registration) => registration.id === selectedRegistration.id
+    : explicitToken
+      ? (registration) => registration.token === explicitToken
+      : null;
+
+  try {
+    const result = await checkGcmConnection({
+      env,
+      projectId,
+      packageName,
+      token
+    });
+    const nextSettings = normalizeSettings({
+      ...settings,
+      gcmProjectId: projectId,
+      gcmPackageName: packageName || settings.gcmPackageName,
+      gcmLastCheckAt: result.checkedAt,
+      gcmLastCheckStatus: result.status,
+      gcmLastCheckDetail: result.detail,
+      gcmRegistrations: applyGcmCheckState(settings.gcmRegistrations, registrationMatcher, {
+        checkedAt: result.checkedAt,
+        status: result.status,
+        detail: result.detail,
+        updatedAt: new Date().toISOString()
+      })
+    });
+
+    await writeJson(env, SETTINGS_KEY, nextSettings);
+
+    return jsonResponse({
+      ok: true,
+      result,
+      registration: selectedRegistration
+        ? buildPublicGcmRegistration({
+            ...selectedRegistration,
+            packageName,
+            lastCheckedAt: result.checkedAt,
+            lastCheckStatus: result.status,
+            lastCheckDetail: result.detail
+          })
+        : explicitToken
+          ? {
+              id: '',
+              deviceName: String(payload.deviceName || '').trim(),
+              packageName,
+              tokenMasked: maskSecret(explicitToken),
+              createdAt: '',
+              updatedAt: '',
+              lastCheckedAt: result.checkedAt,
+              lastCheckStatus: result.status,
+              lastCheckDetail: result.detail
+            }
+          : null,
+      setup: buildPublicGcmSetup(nextSettings, env)
+    }, { origin });
+  } catch (error) {
+    const failureMessage = error instanceof Error ? error.message : 'GCM 连接检查失败';
+    const checkedAt = new Date().toISOString();
+    const failedSettings = normalizeSettings({
+      ...settings,
+      gcmProjectId: projectId,
+      gcmPackageName: packageName || settings.gcmPackageName,
+      gcmLastCheckAt: checkedAt,
+      gcmLastCheckStatus: 'failed',
+      gcmLastCheckDetail: failureMessage,
+      gcmRegistrations: applyGcmCheckState(settings.gcmRegistrations, registrationMatcher, {
+        checkedAt,
+        status: 'failed',
+        detail: failureMessage,
+        updatedAt: new Date().toISOString()
+      })
+    });
+
+    await writeJson(env, SETTINGS_KEY, failedSettings);
+    throw error;
+  }
 }
 
 async function createGotifyAccount(settings) {
@@ -447,6 +684,14 @@ export default {
 
       if (request.method === 'POST' && url.pathname === '/api/notify/gotify-account') {
         return await handleGotifyAccount(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/register') {
+        return await handleGcmRegister(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/check') {
+        return await handleGcmCheck(request, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/run') {

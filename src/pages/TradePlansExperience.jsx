@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Bell, CalendarClock, Clock3, Copy, Layers3, Radar, Save, Sparkles } from 'lucide-react';
-import { generateGotifyClientAccount, loadNotifyEvents, loadNotifyStatus, persistNotifyClientConfig, readNotifyClientConfig, saveNotifySettings, sendNotifyTest, syncTradePlanRules } from '../app/notifySync.js';
+import { ArrowRight, Bell, CalendarClock, Clock3, Layers3, Radar, Save, Sparkles } from 'lucide-react';
+import { checkGcmConnection, loadNotifyEvents, loadNotifyStatus, persistNotifyClientConfig, readNotifyClientConfig, registerGcmClient, saveNotifySettings, sendNotifyTest, syncTradePlanRules } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { getPrimaryTabs } from '../app/screens.js';
-import { Card, Field, PageHero, PageShell, PageTabs, Pill, SectionHeading, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
+import { Card, Field, PageHero, PageShell, PageTabs, Pill, SectionHeading, StatCard, TextInput, cx, inputClass, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
 
 function PlanStatusPill({ tone = 'slate', children }) {
   return <Pill tone={tone}>{children}</Pill>;
@@ -39,28 +39,62 @@ function resolveEventStatusMeta(status = '') {
   }
 }
 
+function resolveGcmCheckMeta(status = '') {
+  switch (status) {
+    case 'validated':
+      return {
+        label: '校验通过',
+        tone: 'emerald'
+      };
+    case 'credentials-ready':
+      return {
+        label: '凭证可用',
+        tone: 'amber'
+      };
+    case 'failed':
+      return {
+        label: '检查失败',
+        tone: 'red'
+      };
+    default:
+      return {
+        label: '未检查',
+        tone: 'slate'
+      };
+  }
+}
+
 export function TradePlansExperience({ links, embedded = false }) {
   const [selectedRowId, setSelectedRowId] = useState('');
   const [notifyStatus, setNotifyStatus] = useState(null);
   const [recentEvents, setRecentEvents] = useState([]);
   const [notifyError, setNotifyError] = useState('');
+  const [notifyMessage, setNotifyMessage] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [isGeneratingGotify, setIsGeneratingGotify] = useState(false);
+  const [isCheckingGcm, setIsCheckingGcm] = useState(false);
+  const [isRegisteringGcm, setIsRegisteringGcm] = useState(false);
   const [notifyPlatform, setNotifyPlatform] = useState('android');
   const [notifyConfig, setNotifyConfig] = useState(() => {
     const persistedConfig = readNotifyClientConfig();
 
     return {
-      gotifyBaseUrl: persistedConfig.gotifyBaseUrl || 'https://push.freebacktrack.tech',
+      gotifyBaseUrl: persistedConfig.gotifyBaseUrl || '',
       gotifyUsername: persistedConfig.gotifyUsername || '',
       gotifyPassword: persistedConfig.gotifyPassword || '',
-      barkDeviceKey: persistedConfig.barkDeviceKey || ''
+      barkDeviceKey: persistedConfig.barkDeviceKey || '',
+      gcmProjectId: persistedConfig.gcmProjectId || '',
+      gcmPackageName: persistedConfig.gcmPackageName || '',
+      gcmDeviceName: persistedConfig.gcmDeviceName || '',
+      gcmToken: persistedConfig.gcmToken || ''
     };
   });
   const { previewRows, summary, hasPlans } = useMemo(() => buildTradePlanCenter(), []);
   const primaryTabs = getPrimaryTabs(links);
+  const gcmSetup = notifyStatus?.setup || {};
+  const gcmRegistrations = Array.isArray(gcmSetup?.gcmRegistrations) ? gcmSetup.gcmRegistrations : [];
+  const gcmCheckMeta = resolveGcmCheckMeta(gcmSetup?.gcmLastCheckStatus);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,10 +113,14 @@ export function TradePlansExperience({ links, embedded = false }) {
         setNotifyStatus(statusPayload);
         setRecentEvents(Array.isArray(eventsPayload?.events) ? eventsPayload.events : []);
         setNotifyConfig((current) => ({
-          gotifyBaseUrl: statusPayload?.setup?.gotifyBaseUrl || current.gotifyBaseUrl || 'https://push.freebacktrack.tech',
+          gotifyBaseUrl: statusPayload?.setup?.gotifyBaseUrl || current.gotifyBaseUrl || '',
           gotifyUsername: current.gotifyUsername || '',
           gotifyPassword: current.gotifyPassword || '',
-          barkDeviceKey: current.barkDeviceKey || statusPayload?.setup?.barkDeviceKey || ''
+          barkDeviceKey: current.barkDeviceKey || statusPayload?.setup?.barkDeviceKey || '',
+          gcmProjectId: current.gcmProjectId || statusPayload?.setup?.gcmProjectId || '',
+          gcmPackageName: current.gcmPackageName || statusPayload?.setup?.gcmPackageName || '',
+          gcmDeviceName: current.gcmDeviceName || '',
+          gcmToken: current.gcmToken || ''
         }));
         setNotifyError('');
       } catch (error) {
@@ -114,20 +152,22 @@ export function TradePlansExperience({ links, embedded = false }) {
 
   const selectedRow = previewRows.find((row) => row.id === selectedRowId) || previewRows[0] || null;
   const notificationValue = notifyStatus
-    ? notifyStatus.configured?.bark || notifyStatus.configured?.gotify
+    ? notifyStatus.configured?.bark || notifyStatus.configured?.gotify || notifyStatus.configured?.gcm
       ? '已配置'
       : '未配置'
     : summary.notificationStatus;
   const notificationNote = notifyStatus
     ? [
-        notifyStatus.configured?.bark ? 'Bark' : null,
-        notifyStatus.configured?.gotify ? 'Gotify' : null
-      ].filter(Boolean).join(' / ') || '请先配置 Bark 或 Gotify'
+        notifyStatus.configured?.bark ? 'Bark 可发送' : null,
+        notifyStatus.configured?.gotify ? 'Gotify 可发送' : null,
+        notifyStatus.configured?.gcm ? `Android GCM 已注册 ${gcmSetup?.gcmRegistrationCount || 0} 台` : null
+      ].filter(Boolean).join('；') || '请先配置 Bark，或完成 Android GCM 注册'
     : '提醒渠道和推送能力后续接入';
   const notifyChannelLabel = notifyStatus
     ? [
         notifyStatus.configured?.bark ? 'Bark' : null,
-        notifyStatus.configured?.gotify ? 'Gotify' : null
+        notifyStatus.configured?.gotify ? 'Gotify' : null,
+        notifyStatus.configured?.gcm ? `Android GCM (${gcmSetup?.gcmRegistrationCount || 0} 台已注册)` : null
       ].filter(Boolean).join(' / ') || '尚未配置通知通道'
     : selectedRow?.notificationMethod || '尚未配置通知通道';
   const selectedRowEvents = selectedRow
@@ -146,11 +186,18 @@ export function TradePlansExperience({ links, embedded = false }) {
 
     setNotifyStatus(statusPayload);
     setRecentEvents(Array.isArray(eventsPayload?.events) ? eventsPayload.events : []);
+    setNotifyConfig((current) => ({
+      ...current,
+      gcmProjectId: current.gcmProjectId || statusPayload?.setup?.gcmProjectId || '',
+      gcmPackageName: current.gcmPackageName || statusPayload?.setup?.gcmPackageName || ''
+    }));
     setNotifyError('');
   }
 
   async function handleSyncRules() {
     setIsSyncing(true);
+    setNotifyError('');
+    setNotifyMessage('');
     try {
       await syncTradePlanRules();
       await refreshNotifyData();
@@ -163,6 +210,8 @@ export function TradePlansExperience({ links, embedded = false }) {
 
   async function handleTestNotify() {
     setIsTesting(true);
+    setNotifyError('');
+    setNotifyMessage('');
     try {
       await sendNotifyTest();
       await refreshNotifyData();
@@ -175,6 +224,8 @@ export function TradePlansExperience({ links, embedded = false }) {
 
   async function handleSaveNotifyConfig() {
     setIsSavingSettings(true);
+    setNotifyError('');
+    setNotifyMessage('');
     try {
       await saveNotifySettings({
         barkDeviceKey: notifyConfig.barkDeviceKey
@@ -183,9 +234,14 @@ export function TradePlansExperience({ links, embedded = false }) {
         barkDeviceKey: notifyConfig.barkDeviceKey,
         gotifyBaseUrl: notifyConfig.gotifyBaseUrl,
         gotifyUsername: notifyConfig.gotifyUsername,
-        gotifyPassword: notifyConfig.gotifyPassword
+        gotifyPassword: notifyConfig.gotifyPassword,
+        gcmProjectId: notifyConfig.gcmProjectId,
+        gcmPackageName: notifyConfig.gcmPackageName,
+        gcmDeviceName: notifyConfig.gcmDeviceName,
+        gcmToken: notifyConfig.gcmToken
       });
       await refreshNotifyData();
+      setNotifyMessage('Bark 配置已保存。');
     } catch (error) {
       setNotifyError(error instanceof Error ? error.message : '通知配置保存失败');
     } finally {
@@ -193,44 +249,63 @@ export function TradePlansExperience({ links, embedded = false }) {
     }
   }
 
-  async function handleCopyAndroidConfig() {
-    const lines = [
-      `服务地址：${notifyConfig.gotifyBaseUrl || '未设置'}`,
-      `用户名：${notifyConfig.gotifyUsername || '未设置'}`,
-      `密码：${notifyConfig.gotifyPassword || '未设置'}`
-    ];
-
+  async function handleCheckGcm() {
+    setIsCheckingGcm(true);
+    setNotifyError('');
+    setNotifyMessage('');
     try {
-      await navigator.clipboard.writeText(lines.join('\n'));
-      setNotifyError('');
-    } catch (_error) {
-      setNotifyError('复制安卓接入信息失败，请手动复制。');
+      const payload = await checkGcmConnection({
+        projectId: notifyConfig.gcmProjectId,
+        packageName: notifyConfig.gcmPackageName,
+        deviceName: notifyConfig.gcmDeviceName,
+        token: notifyConfig.gcmToken
+      });
+      persistNotifyClientConfig({
+        barkDeviceKey: notifyConfig.barkDeviceKey,
+        gotifyBaseUrl: notifyConfig.gotifyBaseUrl,
+        gotifyUsername: notifyConfig.gotifyUsername,
+        gotifyPassword: notifyConfig.gotifyPassword,
+        gcmProjectId: notifyConfig.gcmProjectId,
+        gcmPackageName: notifyConfig.gcmPackageName,
+        gcmDeviceName: notifyConfig.gcmDeviceName,
+        gcmToken: notifyConfig.gcmToken
+      });
+      await refreshNotifyData();
+      setNotifyMessage(payload?.result?.detail || 'GCM 连接检查完成。');
+    } catch (error) {
+      setNotifyError(error instanceof Error ? error.message : 'GCM 连接检查失败');
+    } finally {
+      setIsCheckingGcm(false);
     }
   }
 
-  async function handleGenerateGotifyAccount() {
-    setIsGeneratingGotify(true);
+  async function handleRegisterGcm() {
+    setIsRegisteringGcm(true);
+    setNotifyError('');
+    setNotifyMessage('');
     try {
-      const payload = await generateGotifyClientAccount();
-      const account = payload?.account || {};
-      const nextConfig = {
-        gotifyBaseUrl: String(account.gotifyBaseUrl || notifyConfig.gotifyBaseUrl || 'https://push.freebacktrack.tech'),
-        gotifyUsername: String(account.gotifyUsername || ''),
-        gotifyPassword: String(account.gotifyPassword || '')
-      };
-
-      setNotifyConfig((current) => ({
-        ...current,
-        ...nextConfig
-      }));
-      persistNotifyClientConfig({
-        ...nextConfig
+      const payload = await registerGcmClient({
+        projectId: notifyConfig.gcmProjectId,
+        packageName: notifyConfig.gcmPackageName,
+        deviceName: notifyConfig.gcmDeviceName,
+        token: notifyConfig.gcmToken
       });
-      setNotifyError('');
+      persistNotifyClientConfig({
+        barkDeviceKey: notifyConfig.barkDeviceKey,
+        gotifyBaseUrl: notifyConfig.gotifyBaseUrl,
+        gotifyUsername: notifyConfig.gotifyUsername,
+        gotifyPassword: notifyConfig.gotifyPassword,
+        gcmProjectId: notifyConfig.gcmProjectId,
+        gcmPackageName: notifyConfig.gcmPackageName,
+        gcmDeviceName: notifyConfig.gcmDeviceName,
+        gcmToken: notifyConfig.gcmToken
+      });
+      await refreshNotifyData();
+      setNotifyMessage(`Android GCM 注册成功，当前已登记 ${payload?.setup?.gcmRegistrationCount || 0} 台设备。`);
     } catch (error) {
-      setNotifyError(error instanceof Error ? error.message : '生成安卓接入账号失败');
+      setNotifyError(error instanceof Error ? error.message : 'Android GCM 注册失败');
     } finally {
-      setIsGeneratingGotify(false);
+      setIsRegisteringGcm(false);
     }
   }
 
@@ -379,50 +454,98 @@ export function TradePlansExperience({ links, embedded = false }) {
                 {notifyError}
               </div>
             ) : null}
+            {notifyMessage ? (
+              <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                {notifyMessage}
+              </div>
+            ) : null}
             <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-5">
               {notifyPlatform === 'android' ? (
                 <>
-                  <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-slate-900">Android Gotify 接入信息</div>
+                  <div className="text-sm font-semibold text-slate-900">Android GCM / FCM 注册</div>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                    旧 GCM 发送接口已经下线，这里按 Firebase registration token 做服务端连接检查和 Android 设备注册。当前先只做检查和注册，不接实际下发。
+                  </p>
+                  <div className="mt-4 grid gap-3 xl:grid-cols-4">
+                    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Firebase Project</div>
+                      <div className="mt-2 text-sm font-semibold text-slate-800">{gcmSetup?.gcmProjectId || notifyConfig.gcmProjectId || '未设置'}</div>
                     </div>
-                    <div className="flex flex-wrap gap-2 xl:justify-end">
-                      <button
-                        className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold leading-none text-slate-700 transition-colors hover:bg-slate-200"
-                        type="button"
-                        onClick={handleGenerateGotifyAccount}
-                      >
-                        {isGeneratingGotify ? '正在生成账号' : notifyConfig.gotifyUsername ? '重新生成账号' : '生成安卓账号'}
-                      </button>
-                      <button
-                        className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-white px-3 py-2 text-xs font-semibold leading-none text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
-                        type="button"
-                        onClick={handleCopyAndroidConfig}
-                      >
-                        <Copy className="h-4 w-4" />
-                        复制安卓配置
-                      </button>
+                    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">包名限制</div>
+                      <div className="mt-2 text-sm font-semibold text-slate-800">{gcmSetup?.gcmPackageName || notifyConfig.gcmPackageName || '未设置'}</div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">服务账号</div>
+                      <div className="mt-2 text-sm font-semibold text-slate-800">{gcmSetup?.gcmServiceAccountConfigured ? '已就绪' : '未配置'}</div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">已注册设备</div>
+                      <div className="mt-2 text-sm font-semibold text-slate-800">{gcmSetup?.gcmRegistrationCount || 0} 台</div>
                     </div>
                   </div>
-                  <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,0.9fr)_minmax(0,0.9fr)]">
-                    <div className="min-w-0 space-y-2">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">服务地址</div>
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 ring-1 ring-slate-100">
-                        <div className="truncate">{notifyConfig.gotifyBaseUrl || '未生成'}</div>
+                  <div className="mt-5 grid gap-3 md:grid-cols-2">
+                    <Field label="Firebase Project ID" helper="连接检查会优先使用这里的 projectId，未填时再回退到 Worker 服务账号内的 project_id。">
+                      <TextInput value={notifyConfig.gcmProjectId} onChange={(event) => setNotifyConfig((current) => ({ ...current, gcmProjectId: event.target.value }))} placeholder="例如：ai-dca-prod" />
+                    </Field>
+                    <Field label="Android 包名" helper="可选。填写后连接检查会带上 restrictedPackageName。">
+                      <TextInput value={notifyConfig.gcmPackageName} onChange={(event) => setNotifyConfig((current) => ({ ...current, gcmPackageName: event.target.value }))} placeholder="例如：tech.freebacktrack.aidca" />
+                    </Field>
+                    <Field label="设备名称" helper="只是便于后台区分多个 Android 设备。">
+                      <TextInput value={notifyConfig.gcmDeviceName} onChange={(event) => setNotifyConfig((current) => ({ ...current, gcmDeviceName: event.target.value }))} placeholder="例如：Pixel 9 Pro" />
+                    </Field>
+                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-semibold text-slate-900">最近检查</div>
+                        <PlanStatusPill tone={gcmCheckMeta.tone}>{gcmCheckMeta.label}</PlanStatusPill>
                       </div>
+                      <div className="mt-3 text-sm leading-6 text-slate-600">{gcmSetup?.gcmLastCheckDetail || '还没有执行过连接检查。'}</div>
+                      <div className="mt-3 text-xs text-slate-400">{formatEventTimeLabel(gcmSetup?.gcmLastCheckAt)}</div>
                     </div>
-                    <div className="min-w-0 space-y-2">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">用户名</div>
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 ring-1 ring-slate-100">
-                        <div className="truncate">{notifyConfig.gotifyUsername || '未生成'}</div>
+                  </div>
+                  <div className="mt-4">
+                    <Field label="Registration Token" helper="把 Android 端 `FirebaseMessaging.getToken()` 返回的 token 粘贴到这里。">
+                      <textarea
+                        className={cx(inputClass, 'h-auto min-h-[132px] py-3 leading-6')}
+                        value={notifyConfig.gcmToken}
+                        onChange={(event) => setNotifyConfig((current) => ({ ...current, gcmToken: event.target.value }))}
+                        placeholder="粘贴 Android 设备的 Firebase registration token"
+                      />
+                    </Field>
+                  </div>
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    <button className={primaryButtonClass} type="button" onClick={handleCheckGcm}>
+                      {isCheckingGcm ? '正在检查 GCM 连接' : '检查 GCM 连接'}
+                    </button>
+                    <button className={subtleButtonClass} type="button" onClick={handleRegisterGcm}>
+                      {isRegisteringGcm ? '正在注册设备' : '注册 Android 设备'}
+                    </button>
+                  </div>
+                  <div className="mt-5 space-y-3">
+                    {gcmRegistrations.length ? gcmRegistrations.map((registration) => {
+                      const registrationMeta = resolveGcmCheckMeta(registration.lastCheckStatus);
+                      return (
+                        <div key={registration.id} className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-slate-900">{registration.deviceName || 'Android Device'}</div>
+                              <div className="mt-1 text-xs text-slate-400">{registration.tokenMasked || 'token 未展示'}</div>
+                            </div>
+                            <PlanStatusPill tone={registrationMeta.tone}>{registrationMeta.label}</PlanStatusPill>
+                          </div>
+                          <div className="mt-3 text-sm leading-6 text-slate-600">{registration.lastCheckDetail || '设备已登记，尚未执行单独校验。'}</div>
+                          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
+                            <span>包名: {registration.packageName || '未设置'}</span>
+                            <span>注册时间: {formatEventTimeLabel(registration.createdAt)}</span>
+                            <span>最近检查: {formatEventTimeLabel(registration.lastCheckedAt)}</span>
+                          </div>
+                        </div>
+                      );
+                    }) : (
+                      <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-5 text-sm leading-6 text-slate-500">
+                        还没有 Android 设备注册记录。先填入 registration token，再执行连接检查或注册。
                       </div>
-                    </div>
-                    <div className="min-w-0 space-y-2">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">密码</div>
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 ring-1 ring-slate-100">
-                        <div className="truncate">{notifyConfig.gotifyPassword || '未生成'}</div>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </>
               ) : (

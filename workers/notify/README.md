@@ -8,6 +8,8 @@
 - `GET /api/notify/events`
 - `POST /api/notify/sync`
 - `POST /api/notify/test`
+- `POST /api/notify/gcm/check`
+- `POST /api/notify/gcm/register`
 - `POST /api/notify/run`
 - cron 定时检查价格提醒和定投提醒
 
@@ -18,6 +20,9 @@
 - `BARK_DEVICE_KEY`
 - `GOTIFY_BASE_URL`
 - `GOTIFY_TOKEN`
+- `FIREBASE_SERVICE_ACCOUNT_JSON`
+
+`FIREBASE_SERVICE_ACCOUNT_JSON` 使用 Firebase Admin / Google service account 的整段 JSON。Worker 会用它申请 access token，再调用 FCM HTTP v1 做 `validateOnly` 连接检查。
 
 ## KV
 
@@ -37,3 +42,4 @@ npx wrangler dev --config workers/notify/wrangler.toml --port 8788
 - 计划规则由前端整包同步到后台
 - 价格提醒按当前策略重算后决定是否触发
 - 同一触发区只提醒一次，离开触发区后才允许再次提醒
+- Android 端目前只实现 GCM/FCM 的连接检查和 registration token 注册，尚未把实际推送下发接入到规则通知周期里

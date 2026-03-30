@@ -4,31 +4,39 @@ import { readPlanList } from './plan.js';
 const NOTIFY_ENDPOINT = '/api/notify';
 const NOTIFY_CLIENT_CONFIG_KEY = 'aiDcaNotifyClientConfig';
 
+function buildDefaultNotifyClientConfig() {
+  return {
+    gotifyBaseUrl: '',
+    gotifyUsername: '',
+    gotifyPassword: '',
+    barkDeviceKey: '',
+    gcmProjectId: '',
+    gcmPackageName: '',
+    gcmDeviceName: '',
+    gcmToken: ''
+  };
+}
+
 export function readNotifyClientConfig() {
   if (typeof window === 'undefined') {
-    return {
-      gotifyBaseUrl: '',
-      gotifyUsername: '',
-      gotifyPassword: '',
-      barkDeviceKey: ''
-    };
+    return buildDefaultNotifyClientConfig();
   }
 
   try {
     const saved = JSON.parse(window.localStorage.getItem(NOTIFY_CLIENT_CONFIG_KEY) || 'null');
     return {
+      ...buildDefaultNotifyClientConfig(),
       gotifyBaseUrl: String(saved?.gotifyBaseUrl || '').trim(),
       gotifyUsername: String(saved?.gotifyUsername || '').trim(),
       gotifyPassword: String(saved?.gotifyPassword || '').trim(),
-      barkDeviceKey: String(saved?.barkDeviceKey || '').trim()
+      barkDeviceKey: String(saved?.barkDeviceKey || '').trim(),
+      gcmProjectId: String(saved?.gcmProjectId || '').trim(),
+      gcmPackageName: String(saved?.gcmPackageName || '').trim(),
+      gcmDeviceName: String(saved?.gcmDeviceName || '').trim(),
+      gcmToken: String(saved?.gcmToken || '').trim()
     };
   } catch (_error) {
-    return {
-      gotifyBaseUrl: '',
-      gotifyUsername: '',
-      gotifyPassword: '',
-      barkDeviceKey: ''
-    };
+    return buildDefaultNotifyClientConfig();
   }
 }
 
@@ -44,7 +52,11 @@ export function persistNotifyClientConfig(nextConfig = {}) {
     gotifyBaseUrl: String(nextConfig.gotifyBaseUrl ?? current.gotifyBaseUrl ?? '').trim(),
     gotifyUsername: String(nextConfig.gotifyUsername ?? current.gotifyUsername ?? '').trim(),
     gotifyPassword: String(nextConfig.gotifyPassword ?? current.gotifyPassword ?? '').trim(),
-    barkDeviceKey: String(nextConfig.barkDeviceKey ?? current.barkDeviceKey ?? '').trim()
+    barkDeviceKey: String(nextConfig.barkDeviceKey ?? current.barkDeviceKey ?? '').trim(),
+    gcmProjectId: String(nextConfig.gcmProjectId ?? current.gcmProjectId ?? '').trim(),
+    gcmPackageName: String(nextConfig.gcmPackageName ?? current.gcmPackageName ?? '').trim(),
+    gcmDeviceName: String(nextConfig.gcmDeviceName ?? current.gcmDeviceName ?? '').trim(),
+    gcmToken: String(nextConfig.gcmToken ?? current.gcmToken ?? '').trim()
   };
 
   window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(payload));
@@ -124,7 +136,7 @@ export function sendNotifyTest() {
     },
     body: JSON.stringify({
       title: '交易计划测试提醒',
-      body: '这是一条测试通知，用来校验 Bark 和 Gotify 是否配置成功。'
+      body: '这是一条测试通知，用来校验当前已接入的提醒通道是否可用。'
     })
   });
 }
@@ -146,5 +158,25 @@ export function generateGotifyClientAccount() {
       'content-type': 'application/json'
     },
     body: JSON.stringify({})
+  });
+}
+
+export function registerGcmClient(payload = {}) {
+  return requestNotify('/gcm/register', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+export function checkGcmConnection(payload = {}) {
+  return requestNotify('/gcm/check', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(payload)
   });
 }
