@@ -1,6 +1,6 @@
 import { round } from './accumulation.js';
 
-const DCA_KEY = 'aiDcaDcaState';
+export const DCA_KEY = 'aiDcaDcaState';
 
 export const frequencyOptions = ['每日', '每周', '每月', '每季'];
 
@@ -100,6 +100,14 @@ export function readDcaState() {
   } catch (_error) {
     return defaultDcaState;
   }
+}
+
+export function hasSavedDcaState() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  return Boolean(window.localStorage.getItem(DCA_KEY));
 }
 
 export function persistDcaState(state, computed = buildDcaProjection(state)) {

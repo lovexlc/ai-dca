@@ -1,0 +1,23 @@
+name = "ai-dca-notify"
+main = "src/index.js"
+compatibility_date = "2026-03-30"
+
+[[routes]]
+pattern = "tools.freebacktrack.tech/api/notify*"
+zone_name = "freebacktrack.tech"
+
+[[kv_namespaces]]
+binding = "NOTIFY_STATE"
+id = "__REPLACE_WITH_NOTIFY_KV_ID__"
+preview_id = "__REPLACE_WITH_NOTIFY_KV_PREVIEW_ID__"
+
+[triggers]
+crons = ["*/30 * * * 1-5"]
+
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[vars]
+PUBLIC_DATA_BASE_URL = "https://tools.freebacktrack.tech"
+NOTIFY_TIMEZONE = "Asia/Shanghai"

@@ -4,6 +4,7 @@ import { formatCurrency, formatPercent } from '../app/accumulation.js';
 import { readHomeDashboardState } from '../app/homeDashboard.js';
 import { formatMarketCode, formatMarketLabel, formatMarketName } from '../app/marketDisplay.js';
 import { loadLatestNasdaqPrices, loadNasdaqDailySeries } from '../app/nasdaqPrices.js';
+import { syncTradePlanRules } from '../app/notifySync.js';
 import { persistPlanState, readPlanState } from '../app/plan.js';
 import { Card, Field, NumberInput, PageHero, PageShell, Pill, SectionHeading, SelectField, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
@@ -219,6 +220,7 @@ export function NewPlanExperience({ links, inPagesDir = false }) {
     bars: [],
     ready: false
   });
+  const [isSaving, setIsSaving] = useState(false);
   const autoSeedRef = useRef('');
 
   useEffect(() => {
@@ -382,14 +384,25 @@ export function NewPlanExperience({ links, inPagesDir = false }) {
     ? `按 ${benchmarkCodeLabel} 的阶段高点 ${formatFundPrice(computed.anchorPrice, benchmarkCurrency)} 向下拆成 8 档固定回撤。`
     : `按 ${benchmarkCodeLabel} 的120日线触发价 ${formatFundPrice(computed.anchorPrice, benchmarkCurrency)} 和200日线风控价 ${formatFundPrice(computed.riskPrice, benchmarkCurrency)} 生成分层。`;
 
-  function handleCreatePlan() {
+  async function handleCreatePlan() {
+    if (isSaving) {
+      return;
+    }
+
+    setIsSaving(true);
     persistPlanState({
       ...state,
       selectedStrategy,
       isConfigured: true
     }, computed, { mode: 'create', activate: true });
 
-    window.location.href = links.home;
+    try {
+      await syncTradePlanRules();
+    } catch (_error) {
+      // The local strategy has already been saved. Keep navigation responsive.
+    } finally {
+      window.location.href = links.home;
+    }
   }
 
   return (
@@ -670,9 +683,9 @@ export function NewPlanExperience({ links, inPagesDir = false }) {
           </div>
           <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
             <a className={cx(secondaryButtonClass, 'w-full sm:w-auto')} href={links.home}>取消</a>
-            <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={handleCreatePlan}>
+            <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} disabled={isSaving} type="button" onClick={handleCreatePlan}>
               <Save className="h-4 w-4" />
-              确认创建并返回总览
+              {isSaving ? '正在保存策略' : '确认创建并返回总览'}
               <ArrowRight className="h-4 w-4" />
             </button>
           </div>

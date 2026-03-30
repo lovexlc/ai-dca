@@ -11,7 +11,9 @@
     "data:fetch-nasdaq-benchmark": "python3 scripts/fetch_nasdaq100_benchmark.py",
     "build": "npm run build:app && npm run publish:pages",
     "worker:dev": "npx wrangler dev --config workers/ocr-proxy/wrangler.toml --port 8787",
-    "worker:deploy": "npx wrangler deploy --config workers/ocr-proxy/wrangler.toml"
+    "worker:deploy": "npx wrangler deploy --config workers/ocr-proxy/wrangler.toml",
+    "worker:notify:dev": "npx wrangler dev --config workers/notify/wrangler.toml --port 8788",
+    "worker:notify:deploy": "npx wrangler deploy --config workers/notify/wrangler.toml"
   },
   "dependencies": {
     "lucide-react": "^1.7.0",

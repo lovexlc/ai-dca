@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Calendar, Clock3, Save, Target, TrendingUp, Wallet } from 'lucide-react';
 import { formatCurrency, formatPercent } from '../app/accumulation.js';
 import { buildDcaProjection, frequencyOptions, persistDcaState, readDcaState } from '../app/dca.js';
+import { syncTradePlanRules } from '../app/notifySync.js';
 import { getPrimaryTabs } from '../app/screens.js';
 import { Card, Field, NumberInput, PageHero, PageShell, PageTabs, Pill, SectionHeading, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
@@ -9,12 +10,30 @@ const DAY_OPTIONS = [1, 8, 15, 28];
 
 export function DcaExperience({ links, embedded = false }) {
   const [state, setState] = useState(() => readDcaState());
+  const [isSaving, setIsSaving] = useState(false);
   const projection = useMemo(() => buildDcaProjection(state), [state]);
   const primaryTabs = getPrimaryTabs(links);
 
   useEffect(() => {
     persistDcaState(state, projection);
   }, [state, projection]);
+
+  async function handleSave() {
+    if (isSaving) {
+      return;
+    }
+
+    setIsSaving(true);
+    persistDcaState(state, projection);
+
+    try {
+      await syncTradePlanRules();
+    } catch (_error) {
+      // Keep the local plan saved even if notification sync is unavailable.
+    } finally {
+      window.location.href = links.home;
+    }
+  }
 
   const content = (
     <>
@@ -180,11 +199,11 @@ export function DcaExperience({ links, embedded = false }) {
           </div>
           <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
             <a className={cx(secondaryButtonClass, 'w-full sm:w-auto')} href={links.home}>取消</a>
-            <a className={cx(primaryButtonClass, 'w-full sm:w-auto')} href={links.home}>
+            <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} disabled={isSaving} type="button" onClick={handleSave}>
               <Save className="h-4 w-4" />
-              保存并开始策略
+              {isSaving ? '正在保存定投' : '保存并开始策略'}
               <ArrowRight className="h-4 w-4" />
-            </a>
+            </button>
           </div>
         </div>
       </div>
