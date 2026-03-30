@@ -194,18 +194,35 @@ function sortRows(rows = []) {
   });
 }
 
+function buildPreviewRows(rows = []) {
+  const seenTypes = new Set();
+
+  return rows.filter((row) => {
+    const typeKey = `${row.actionKey}:${row.typeLabel}`;
+    if (seenTypes.has(typeKey)) {
+      return false;
+    }
+
+    seenTypes.add(typeKey);
+    return true;
+  });
+}
+
 export function buildTradePlanCenter(now = new Date()) {
   const planRows = buildPlanRows(readPlanList());
   const dcaRows = buildDcaRows(readDcaState(), now);
   const rows = sortRows([...planRows, ...dcaRows]);
-  const nearestPricePlan = rows.find((row) => row.sourceType === 'plan') || null;
-  const nextDcaPlan = rows.find((row) => row.sourceType === 'dca') || null;
+  const previewRows = buildPreviewRows(rows);
+  const nearestPricePlan = previewRows.find((row) => row.sourceType === 'plan') || null;
+  const nextDcaPlan = previewRows.find((row) => row.sourceType === 'dca') || null;
 
   return {
     rows,
+    previewRows,
+    hasPlans: previewRows.length > 0,
     summary: {
-      pendingCount: rows.length,
-      nearestTrigger: nearestPricePlan?.triggerLabel || '待配置',
+      pendingCount: previewRows.length,
+      nearestTrigger: nearestPricePlan?.triggerLabel || '待新建',
       nextDcaDate: nextDcaPlan?.nextExecutionLabel || '未配置',
       notificationStatus: '通知预留中'
     }

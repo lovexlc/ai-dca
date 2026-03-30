@@ -7,6 +7,7 @@ import { HistoryExperience } from './HistoryExperience.jsx';
 import { HomeExperience } from './HomeExperience.jsx';
 import { TradePlansExperience } from './TradePlansExperience.jsx';
 
+const DEFAULT_WORKSPACE_TAB = 'tradePlans';
 const WORKSPACE_TITLES = {
   home: '建仓策略总览',
   tradePlans: '交易计划中心',
@@ -16,34 +17,30 @@ const WORKSPACE_TITLES = {
 };
 
 function normalizeWorkspaceTab(value = '') {
-  return PRIMARY_TAB_ORDER.includes(value) ? value : 'home';
+  return PRIMARY_TAB_ORDER.includes(value) ? value : DEFAULT_WORKSPACE_TAB;
 }
 
-function readTabFromLocation() {
+function readTabFromLocation(fallbackTab = DEFAULT_WORKSPACE_TAB) {
   if (typeof window === 'undefined') {
-    return 'home';
+    return normalizeWorkspaceTab(fallbackTab);
   }
 
   const params = new URLSearchParams(window.location.search);
-  return normalizeWorkspaceTab(params.get('tab') || 'home');
+  const currentTab = params.get('tab');
+  return currentTab ? normalizeWorkspaceTab(currentTab) : normalizeWorkspaceTab(fallbackTab);
 }
 
 function buildWorkspaceUrl(tab, { inPagesDir = false } = {}) {
   const nextUrl = new URL(inPagesDir ? '../index.html' : './index.html', window.location.href);
-  if (tab !== 'home') {
+  if (tab !== DEFAULT_WORKSPACE_TAB) {
     nextUrl.searchParams.set('tab', tab);
   }
   return nextUrl;
 }
 
-export function WorkspacePage({ initialTab = 'home', inPagesDir = false }) {
+export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir = false }) {
   const links = createPageLinks({ inPagesDir });
-  const [activeTab, setActiveTab] = useState(() => {
-    const locationTab = readTabFromLocation();
-    return locationTab !== 'home' || initialTab === 'home'
-      ? locationTab
-      : normalizeWorkspaceTab(initialTab);
-  });
+  const [activeTab, setActiveTab] = useState(() => readTabFromLocation(initialTab));
 
   const tabs = useMemo(() => getPrimaryTabs(links), [links]);
   const heroTitle = WORKSPACE_TITLES[activeTab] || WORKSPACE_TITLES.home;
@@ -61,12 +58,12 @@ export function WorkspacePage({ initialTab = 'home', inPagesDir = false }) {
 
   useEffect(() => {
     function handlePopState() {
-      setActiveTab(readTabFromLocation());
+      setActiveTab(readTabFromLocation(initialTab));
     }
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [initialTab]);
 
   function handleSelectTab(nextTab) {
     const normalizedTab = normalizeWorkspaceTab(nextTab);

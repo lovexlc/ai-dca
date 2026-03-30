@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bell, CalendarClock, Clock3, Layers3, Radar, Sparkles } from 'lucide-react';
+import { ArrowRight, Bell, CalendarClock, Clock3, Layers3, Radar, Sparkles } from 'lucide-react';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { getPrimaryTabs } from '../app/screens.js';
-import { Card, PageHero, PageShell, PageTabs, Pill, SectionHeading, StatCard, cx, secondaryButtonClass } from '../components/experience-ui.jsx';
+import { Card, PageHero, PageShell, PageTabs, Pill, SectionHeading, StatCard, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 function PlanStatusPill({ tone = 'slate', children }) {
   return <Pill tone={tone}>{children}</Pill>;
@@ -10,21 +10,21 @@ function PlanStatusPill({ tone = 'slate', children }) {
 
 export function TradePlansExperience({ links, embedded = false }) {
   const [selectedRowId, setSelectedRowId] = useState('');
-  const { rows, summary } = useMemo(() => buildTradePlanCenter(), []);
+  const { previewRows, summary, hasPlans } = useMemo(() => buildTradePlanCenter(), []);
   const primaryTabs = getPrimaryTabs(links);
 
   useEffect(() => {
-    if (!rows.length) {
+    if (!previewRows.length) {
       setSelectedRowId('');
       return;
     }
 
-    if (!rows.some((row) => row.id === selectedRowId)) {
-      setSelectedRowId(rows[0].id);
+    if (!previewRows.some((row) => row.id === selectedRowId)) {
+      setSelectedRowId(previewRows[0].id);
     }
-  }, [rows, selectedRowId]);
+  }, [previewRows, selectedRowId]);
 
-  const selectedRow = rows.find((row) => row.id === selectedRowId) || rows[0] || null;
+  const selectedRow = previewRows.find((row) => row.id === selectedRowId) || previewRows[0] || null;
 
   const content = (
     <div className={cx('mx-auto max-w-6xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
@@ -40,11 +40,11 @@ export function TradePlansExperience({ links, embedded = false }) {
           <SectionHeading
             eyebrow="计划列表"
             title="后续交易计划"
-            description="集中查看未来要执行的买入规则，后续可在这里扩展通知、提醒历史和自动执行。"
+            description="首页只保留每类计划一个待执行摘要，更多层级和完整配置去对应页面查看。"
             action={
               <>
-                <a className={secondaryButtonClass} href={links.home}>
-                  查看策略总览
+                <a className={secondaryButtonClass} href={links.accumNew}>
+                  新建策略
                 </a>
                 <a className={secondaryButtonClass} href={links.dca}>
                   查看定投计划
@@ -53,94 +53,73 @@ export function TradePlansExperience({ links, embedded = false }) {
             }
           />
 
-          <div className="mt-6 hidden overflow-hidden rounded-2xl border border-slate-200 md:block">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-slate-200 bg-slate-50/80 text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">计划名称</th>
-                  <th className="px-4 py-3 font-semibold">计划类型</th>
-                  <th className="px-4 py-3 font-semibold">标的</th>
-                  <th className="px-4 py-3 font-semibold">触发条件</th>
-                  <th className="px-4 py-3 font-semibold">下一次执行</th>
-                  <th className="px-4 py-3 font-semibold">通知</th>
-                  <th className="px-4 py-3 font-semibold">状态</th>
-                  <th className="px-4 py-3 font-semibold text-right">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {rows.map((row) => {
+          {hasPlans ? (
+            <>
+              <div className="mt-6 grid gap-4">
+                {previewRows.map((row) => {
                   const isSelected = row.id === selectedRow?.id;
                   return (
-                    <tr
+                    <div
                       key={row.id}
-                      className={cx('cursor-pointer transition-colors hover:bg-slate-50/70', isSelected ? 'bg-indigo-50/60' : '')}
-                      onClick={() => setSelectedRowId(row.id)}
+                      className={cx(
+                        'w-full rounded-2xl border px-5 py-5 text-left transition-colors',
+                        isSelected ? 'border-indigo-200 bg-indigo-50/70' : 'border-slate-200 bg-slate-50 hover:bg-white'
+                      )}
                     >
-                      <td className="px-4 py-4">
-                        <div className="font-semibold text-slate-900">{row.planName}</div>
-                      </td>
-                      <td className="px-4 py-4 text-slate-600">{row.typeLabel}</td>
-                      <td className="px-4 py-4 text-slate-600">{row.symbol}</td>
-                      <td className="px-4 py-4 text-slate-600">{row.triggerLabel}</td>
-                      <td className="px-4 py-4 text-slate-600">{row.nextExecutionLabel}</td>
-                      <td className="px-4 py-4 text-slate-600">{row.notificationLabel}</td>
-                      <td className="px-4 py-4">
-                        <PlanStatusPill tone={row.statusTone}>{row.statusLabel}</PlanStatusPill>
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <a className="text-sm font-semibold text-indigo-700 transition-colors hover:text-indigo-900" href={links[row.actionKey]}>
-                          {row.actionLabel}
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <button className="min-w-0 flex-1 space-y-2 text-left" type="button" onClick={() => setSelectedRowId(row.id)}>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <PlanStatusPill tone={row.statusTone}>{row.statusLabel}</PlanStatusPill>
+                            <Pill tone="slate">{row.typeLabel}</Pill>
+                          </div>
+                          <div className="text-base font-bold text-slate-900">{row.planName}</div>
+                          <div className="text-sm leading-6 text-slate-500">{row.symbol}</div>
+                        </button>
+                        <a
+                          className={cx(secondaryButtonClass, 'shrink-0')}
+                          href={links[row.actionKey]}
+                        >
+                          查看更多
+                          <ArrowRight className="h-4 w-4" />
                         </a>
-                      </td>
-                    </tr>
+                      </div>
+                      <button className="mt-4 grid w-full gap-4 text-left text-sm text-slate-600 md:grid-cols-3" type="button" onClick={() => setSelectedRowId(row.id)}>
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">触发条件</div>
+                          <div className="mt-1 leading-6 text-slate-700">{row.triggerLabel}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">下一次执行</div>
+                          <div className="mt-1 leading-6 text-slate-700">{row.nextExecutionLabel}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">通知</div>
+                          <div className="mt-1 leading-6 text-slate-700">{row.notificationLabel}</div>
+                        </div>
+                      </button>
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
+              </div>
 
-          <div className="mt-6 space-y-3 md:hidden">
-            {rows.map((row) => {
-              const isSelected = row.id === selectedRow?.id;
-              return (
-                <button
-                  key={row.id}
-                  className={cx(
-                    'w-full rounded-2xl border px-4 py-4 text-left transition-colors',
-                    isSelected ? 'border-indigo-200 bg-indigo-50/70' : 'border-slate-200 bg-slate-50'
-                  )}
-                  type="button"
-                  onClick={() => setSelectedRowId(row.id)}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-slate-900">{row.planName}</div>
-                      <div className="mt-1 text-xs leading-5 text-slate-500">{row.typeLabel}</div>
-                    </div>
-                    <PlanStatusPill tone={row.statusTone}>{row.statusLabel}</PlanStatusPill>
-                  </div>
-                  <div className="mt-3 grid gap-3 text-sm text-slate-600">
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">触发条件</div>
-                      <div className="mt-1">{row.triggerLabel}</div>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">下一次执行</div>
-                        <div className="mt-1">{row.nextExecutionLabel}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">通知</div>
-                        <div className="mt-1">{row.notificationLabel}</div>
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mt-4 text-sm text-slate-500">共 {rows.length} 项后续计划，后续支持按状态、标的和通知方式筛选。</div>
+              <div className="mt-4 text-sm text-slate-500">首页每类计划只展示一个待执行摘要，完整配置和更多层级请到对应页面查看。</div>
+            </>
+          ) : (
+            <div className="mt-6 rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8">
+              <div className="text-lg font-bold text-slate-900">还没有后续交易计划</div>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">
+                先去新建建仓策略，或者配置一份定投计划。保存后，首页会自动汇总后续待执行动作和通知状态。
+              </p>
+              <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                <a className={cx(primaryButtonClass, 'w-full sm:w-auto')} href={links.accumNew}>
+                  去新建策略
+                </a>
+                <a className={cx(secondaryButtonClass, 'w-full sm:w-auto')} href={links.dca}>
+                  去配置定投
+                </a>
+              </div>
+            </div>
+          )}
         </Card>
 
         <div className="space-y-6">
@@ -184,7 +163,12 @@ export function TradePlansExperience({ links, embedded = false }) {
                 </div>
               </div>
             ) : (
-              <p className="mt-4 text-sm leading-6 text-slate-500">当前还没有可展示的后续交易计划。</p>
+              <div className="mt-4 space-y-4">
+                <p className="text-sm leading-6 text-slate-500">当前还没有可展示的后续交易计划。先完成建仓策略或定投配置，这里会自动展示下一步待执行动作。</p>
+                <a className={cx(primaryButtonClass, 'w-full sm:w-auto')} href={links.accumNew}>
+                  去新建策略
+                </a>
+              </div>
             )}
           </Card>
         </div>

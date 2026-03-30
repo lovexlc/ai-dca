@@ -8,9 +8,10 @@ import { WorkspacePage } from './WorkspacePage.jsx';
 export function ScreenPage({ screenId, inPagesDir }) {
   const screen = getScreen(screenId);
   const links = createPageLinks({ inPagesDir });
+  const workspaceInitialTab = screen.group === 'home' ? 'tradePlans' : screen.group;
 
   if (isWorkspaceGroup(screen.group)) {
-    return <WorkspacePage initialTab={screen.group} inPagesDir={inPagesDir} />;
+    return <WorkspacePage initialTab={workspaceInitialTab} inPagesDir={inPagesDir} />;
   }
 
   useEffect(() => {
@@ -25,6 +26,6 @@ export function ScreenPage({ screenId, inPagesDir }) {
     case 'addLevel':
       return <AddLevelExperience screen={screen} links={links} inPagesDir={inPagesDir} />;
     default:
-      return <WorkspacePage initialTab="home" inPagesDir={inPagesDir} />;
+      return <WorkspacePage initialTab="tradePlans" inPagesDir={inPagesDir} />;
   }
 }
