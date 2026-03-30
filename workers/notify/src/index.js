@@ -34,13 +34,37 @@ function readOrigin(request) {
 }
 
 function normalizeSettings(settings = {}) {
+  const gotifyClients = Array.isArray(settings.gotifyClients)
+    ? settings.gotifyClients.map((client) => ({
+        id: String(client?.id || '').trim(),
+        baseUrl: String(client?.baseUrl || '').trim(),
+        username: String(client?.username || '').trim(),
+        token: String(client?.token || '').trim(),
+        appId: Number(client?.appId) || 0,
+        userId: Number(client?.userId) || 0,
+        createdAt: String(client?.createdAt || '').trim()
+      })).filter((client) => client.id && client.baseUrl && client.token)
+    : [];
+
   return {
     barkDeviceKey: String(settings.barkDeviceKey || '').trim(),
     gotifyBaseUrl: String(settings.gotifyBaseUrl || '').trim(),
     gotifyUsername: String(settings.gotifyUsername || '').trim(),
     gotifyPassword: String(settings.gotifyPassword || '').trim(),
-    gotifyToken: String(settings.gotifyToken || '').trim()
+    gotifyToken: String(settings.gotifyToken || '').trim(),
+    gotifyClients
   };
+}
+
+function buildMaskedToken(token = '') {
+  const normalized = String(token || '').trim();
+  return normalized ? `${normalized.slice(0, 4)}...${normalized.slice(-3)}` : '';
+}
+
+function randomString(length = 16) {
+  const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
+  return Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('');
 }
 
 function hasAdminAccess(request, env) {
@@ -117,11 +141,12 @@ async function handleStatus(request, env) {
   const barkDeviceKey = settings.barkDeviceKey || String(env.BARK_DEVICE_KEY || '').trim();
   const gotifyBaseUrl = settings.gotifyBaseUrl || String(env.GOTIFY_BASE_URL || '').trim();
   const gotifyToken = settings.gotifyToken || String(env.GOTIFY_TOKEN || '').trim();
+  const gotifyClients = Array.isArray(settings.gotifyClients) ? settings.gotifyClients : [];
 
   return jsonResponse({
     configured: {
       bark: Boolean(barkDeviceKey),
-      gotify: Boolean(gotifyBaseUrl && gotifyToken)
+      gotify: Boolean(gotifyClients.length || (gotifyBaseUrl && gotifyToken))
     },
     requiresAdminToken: Boolean(String(env.NOTIFY_ADMIN_TOKEN || '').trim()),
     hasAdminAccess: adminAccess,
@@ -138,9 +163,9 @@ async function handleStatus(request, env) {
     setup: adminAccess ? {
       barkDeviceKey,
       gotifyBaseUrl,
-      gotifyUsername: settings.gotifyUsername,
-      gotifyPassword: settings.gotifyPassword,
-      gotifyTokenMasked: gotifyToken ? `${gotifyToken.slice(0, 4)}...${gotifyToken.slice(-3)}` : ''
+      gotifyAdminConfigured: Boolean(settings.gotifyUsername && settings.gotifyPassword),
+      gotifyClientCount: gotifyClients.length,
+      gotifyTokenMasked: buildMaskedToken(gotifyToken)
     } : null
   }, { origin });
 }
@@ -205,9 +230,120 @@ async function handleSettings(request, env) {
     setup: {
       barkDeviceKey: nextSettings.barkDeviceKey,
       gotifyBaseUrl: nextSettings.gotifyBaseUrl,
-      gotifyUsername: nextSettings.gotifyUsername,
-      gotifyPassword: nextSettings.gotifyPassword,
-      gotifyTokenMasked: nextSettings.gotifyToken ? `${nextSettings.gotifyToken.slice(0, 4)}...${nextSettings.gotifyToken.slice(-3)}` : ''
+      gotifyAdminConfigured: Boolean(nextSettings.gotifyUsername && nextSettings.gotifyPassword),
+      gotifyClientCount: Array.isArray(nextSettings.gotifyClients) ? nextSettings.gotifyClients.length : 0,
+      gotifyTokenMasked: buildMaskedToken(nextSettings.gotifyToken)
+    }
+  }, { origin });
+}
+
+async function createGotifyAccount(settings) {
+  const baseUrl = String(settings.gotifyBaseUrl || '').trim();
+  const adminUsername = String(settings.gotifyUsername || '').trim();
+  const adminPassword = String(settings.gotifyPassword || '').trim();
+
+  if (!baseUrl || !adminUsername || !adminPassword) {
+    throw new Error('Gotify 管理配置不完整，无法生成安卓接入账号。');
+  }
+
+  const username = `ai-dca-${randomString(8).toLowerCase()}`;
+  const password = randomString(18);
+  const endpoint = new URL('/user', baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`);
+  const response = await fetch(endpoint.toString(), {
+    method: 'POST',
+    headers: {
+      authorization: `Basic ${btoa(`${adminUsername}:${adminPassword}`)}`,
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      name: username,
+      pass: password,
+      admin: false
+    })
+  });
+  const rawText = await response.text();
+  let payload = {};
+
+  if (rawText) {
+    try {
+      payload = JSON.parse(rawText);
+    } catch (_error) {
+      payload = { error: rawText };
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(payload.errorDescription || payload.error || `创建 Gotify 用户失败：状态 ${response.status}`);
+  }
+
+  const appResponse = await fetch(new URL('/application', baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`).toString(), {
+    method: 'POST',
+    headers: {
+      authorization: `Basic ${btoa(`${username}:${password}`)}`,
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      name: `ai-dca-mobile-${randomString(6).toLowerCase()}`,
+      description: 'AI DCA 移动端通知接收',
+      defaultPriority: 8
+    })
+  });
+  const appRawText = await appResponse.text();
+  let appPayload = {};
+
+  if (appRawText) {
+    try {
+      appPayload = JSON.parse(appRawText);
+    } catch (_error) {
+      appPayload = { error: appRawText };
+    }
+  }
+
+  if (!appResponse.ok) {
+    throw new Error(appPayload.errorDescription || appPayload.error || `创建 Gotify 应用失败：状态 ${appResponse.status}`);
+  }
+
+  return {
+    id: `gotify:${username}`,
+    gotifyBaseUrl: baseUrl,
+    gotifyUsername: username,
+    gotifyPassword: password,
+    gotifyUserId: Number(payload.id) || 0,
+    gotifyAppId: Number(appPayload.id) || 0,
+    gotifyToken: String(appPayload.token || '').trim(),
+    createdAt: new Date().toISOString()
+  };
+}
+
+async function handleGotifyAccount(request, env) {
+  requireAdmin(request, env);
+  const origin = readOrigin(request);
+  const settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
+  const account = await createGotifyAccount(settings);
+  const nextSettings = normalizeSettings({
+    ...settings,
+    gotifyClients: [
+      ...(Array.isArray(settings.gotifyClients) ? settings.gotifyClients : []),
+      {
+        id: account.id,
+        baseUrl: account.gotifyBaseUrl,
+        username: account.gotifyUsername,
+        token: account.gotifyToken,
+        appId: account.gotifyAppId,
+        userId: account.gotifyUserId,
+        createdAt: account.createdAt
+      }
+    ]
+  });
+
+  await writeJson(env, SETTINGS_KEY, nextSettings);
+
+  return jsonResponse({
+    ok: true,
+    account: {
+      gotifyBaseUrl: account.gotifyBaseUrl,
+      gotifyUsername: account.gotifyUsername,
+      gotifyPassword: account.gotifyPassword
     }
   }, { origin });
 }
@@ -295,6 +431,10 @@ export default {
 
       if (request.method === 'POST' && url.pathname === '/api/notify/settings') {
         return await handleSettings(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/gotify-account') {
+        return await handleGotifyAccount(request, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/run') {

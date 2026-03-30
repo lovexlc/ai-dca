@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Bell, CalendarClock, Clock3, Copy, Layers3, Radar, Save, Sparkles } from 'lucide-react';
-import { loadNotifyEvents, loadNotifyStatus, persistNotifyAdminToken, readNotifyAdminToken, saveNotifySettings, sendNotifyTest, syncTradePlanRules } from '../app/notifySync.js';
+import { generateGotifyClientAccount, loadNotifyEvents, loadNotifyStatus, persistNotifyAdminToken, persistNotifyClientConfig, readNotifyAdminToken, readNotifyClientConfig, saveNotifySettings, sendNotifyTest, syncTradePlanRules } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { getPrimaryTabs } from '../app/screens.js';
 import { Card, Field, PageHero, PageShell, PageTabs, Pill, SectionHeading, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
@@ -17,12 +17,14 @@ export function TradePlansExperience({ links, embedded = false }) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isGeneratingGotify, setIsGeneratingGotify] = useState(false);
   const [adminToken, setAdminToken] = useState(() => readNotifyAdminToken());
   const [notifyConfig, setNotifyConfig] = useState({
-    gotifyBaseUrl: 'https://push.freebacktrack.tech',
-    gotifyUsername: 'admin',
+    ...readNotifyClientConfig(),
+    gotifyBaseUrl: readNotifyClientConfig().gotifyBaseUrl || 'https://push.freebacktrack.tech',
+    gotifyUsername: readNotifyClientConfig().gotifyUsername || '',
     gotifyPassword: '',
-    barkDeviceKey: ''
+    barkDeviceKey: readNotifyClientConfig().barkDeviceKey || ''
   });
   const { previewRows, summary, hasPlans } = useMemo(() => buildTradePlanCenter(), []);
   const primaryTabs = getPrimaryTabs(links);
@@ -45,9 +47,9 @@ export function TradePlansExperience({ links, embedded = false }) {
         setRecentEvents(Array.isArray(eventsPayload?.events) ? eventsPayload.events : []);
         setNotifyConfig((current) => ({
           gotifyBaseUrl: statusPayload?.setup?.gotifyBaseUrl || current.gotifyBaseUrl || 'https://push.freebacktrack.tech',
-          gotifyUsername: statusPayload?.setup?.gotifyUsername || current.gotifyUsername || 'admin',
-          gotifyPassword: statusPayload?.setup?.gotifyPassword || current.gotifyPassword || '',
-          barkDeviceKey: statusPayload?.setup?.barkDeviceKey || current.barkDeviceKey || ''
+          gotifyUsername: current.gotifyUsername || '',
+          gotifyPassword: current.gotifyPassword || '',
+          barkDeviceKey: current.barkDeviceKey || statusPayload?.setup?.barkDeviceKey || ''
         }));
         setNotifyError('');
       } catch (error) {
@@ -141,10 +143,13 @@ export function TradePlansExperience({ links, embedded = false }) {
     setIsSavingSettings(true);
     try {
       await saveNotifySettings({
+        barkDeviceKey: notifyConfig.barkDeviceKey
+      });
+      persistNotifyClientConfig({
+        barkDeviceKey: notifyConfig.barkDeviceKey,
         gotifyBaseUrl: notifyConfig.gotifyBaseUrl,
         gotifyUsername: notifyConfig.gotifyUsername,
-        gotifyPassword: notifyConfig.gotifyPassword,
-        barkDeviceKey: notifyConfig.barkDeviceKey
+        gotifyPassword: notifyConfig.gotifyPassword
       });
       await refreshNotifyData();
     } catch (error) {
@@ -166,6 +171,32 @@ export function TradePlansExperience({ links, embedded = false }) {
       setNotifyError('');
     } catch (_error) {
       setNotifyError('复制安卓接入信息失败，请手动复制。');
+    }
+  }
+
+  async function handleGenerateGotifyAccount() {
+    setIsGeneratingGotify(true);
+    try {
+      const payload = await generateGotifyClientAccount();
+      const account = payload?.account || {};
+      const nextConfig = {
+        gotifyBaseUrl: String(account.gotifyBaseUrl || notifyConfig.gotifyBaseUrl || 'https://push.freebacktrack.tech'),
+        gotifyUsername: String(account.gotifyUsername || ''),
+        gotifyPassword: String(account.gotifyPassword || '')
+      };
+
+      setNotifyConfig((current) => ({
+        ...current,
+        ...nextConfig
+      }));
+      persistNotifyClientConfig({
+        ...nextConfig
+      });
+      setNotifyError('');
+    } catch (error) {
+      setNotifyError(error instanceof Error ? error.message : '生成安卓接入账号失败');
+    } finally {
+      setIsGeneratingGotify(false);
     }
   }
 
@@ -298,23 +329,28 @@ export function TradePlansExperience({ links, embedded = false }) {
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <div className="text-sm font-semibold text-slate-900">安卓 Gotify 接入信息</div>
-                      <div className="mt-1 text-sm leading-6 text-slate-500">生成后可直接填到手机 Gotify 客户端，用于接收通知。</div>
+                      <div className="mt-1 text-sm leading-6 text-slate-500">点击生成后，服务端会创建一个新的 Gotify 普通用户账号，并返回给当前浏览器保存。后续可直接填到手机 Gotify 客户端。</div>
                     </div>
-                    <button className={secondaryButtonClass} type="button" onClick={handleCopyAndroidConfig}>
-                      <Copy className="h-4 w-4" />
-                      复制安卓配置
-                    </button>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <button className={secondaryButtonClass} type="button" onClick={handleGenerateGotifyAccount}>
+                        {isGeneratingGotify ? '正在生成账号' : notifyConfig.gotifyUsername ? '重新生成账号' : '生成安卓账号'}
+                      </button>
+                      <button className={secondaryButtonClass} type="button" onClick={handleCopyAndroidConfig}>
+                        <Copy className="h-4 w-4" />
+                        复制安卓配置
+                      </button>
+                    </div>
                   </div>
                   <div className="mt-4 space-y-3">
                     <Field label="服务地址">
-                      <TextInput value={notifyConfig.gotifyBaseUrl} onChange={(event) => setNotifyConfig((current) => ({ ...current, gotifyBaseUrl: event.target.value }))} />
+                      <TextInput readOnly value={notifyConfig.gotifyBaseUrl} />
                     </Field>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <Field label="用户名">
-                        <TextInput value={notifyConfig.gotifyUsername} onChange={(event) => setNotifyConfig((current) => ({ ...current, gotifyUsername: event.target.value }))} />
+                        <TextInput readOnly value={notifyConfig.gotifyUsername} />
                       </Field>
                       <Field label="密码">
-                        <TextInput value={notifyConfig.gotifyPassword} onChange={(event) => setNotifyConfig((current) => ({ ...current, gotifyPassword: event.target.value }))} />
+                        <TextInput readOnly value={notifyConfig.gotifyPassword} />
                       </Field>
                     </div>
                   </div>
@@ -322,7 +358,7 @@ export function TradePlansExperience({ links, embedded = false }) {
 
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="text-sm font-semibold text-slate-900">iPhone Bark Key</div>
-                  <div className="mt-1 text-sm leading-6 text-slate-500">在 Bark App 里复制设备 Key，填入后保存，通知 Worker 会优先用这个 Key 推送 iOS 通知。</div>
+                  <div className="mt-1 text-sm leading-6 text-slate-500">在 Bark App 里复制设备 Key，填入后保存。系统会把 Key 保存到当前浏览器，并同步到通知 Worker。</div>
                   <div className="mt-4">
                     <Field label="Bark 设备 Key">
                       <TextInput value={notifyConfig.barkDeviceKey} onChange={(event) => setNotifyConfig((current) => ({ ...current, barkDeviceKey: event.target.value }))} />
@@ -332,7 +368,7 @@ export function TradePlansExperience({ links, embedded = false }) {
 
                 <button className={primaryButtonClass} type="button" onClick={handleSaveNotifyConfig}>
                   <Save className="h-4 w-4" />
-                  {isSavingSettings ? '正在保存通知配置' : '保存通知配置'}
+                  {isSavingSettings ? '正在保存 Bark 配置' : '保存 Bark 配置'}
                 </button>
               </div>
             </div>

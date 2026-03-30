@@ -3,6 +3,7 @@ import { readPlanList } from './plan.js';
 
 const NOTIFY_ENDPOINT = '/api/notify';
 const NOTIFY_ADMIN_TOKEN_KEY = 'aiDcaNotifyAdminToken';
+const NOTIFY_CLIENT_CONFIG_KEY = 'aiDcaNotifyClientConfig';
 
 function buildHeaders(baseHeaders = {}) {
   const headers = new Headers(baseHeaders);
@@ -35,6 +36,52 @@ export function persistNotifyAdminToken(token = '') {
   }
 
   window.localStorage.removeItem(NOTIFY_ADMIN_TOKEN_KEY);
+}
+
+export function readNotifyClientConfig() {
+  if (typeof window === 'undefined') {
+    return {
+      gotifyBaseUrl: '',
+      gotifyUsername: '',
+      gotifyPassword: '',
+      barkDeviceKey: ''
+    };
+  }
+
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(NOTIFY_CLIENT_CONFIG_KEY) || 'null');
+    return {
+      gotifyBaseUrl: String(saved?.gotifyBaseUrl || '').trim(),
+      gotifyUsername: String(saved?.gotifyUsername || '').trim(),
+      gotifyPassword: String(saved?.gotifyPassword || '').trim(),
+      barkDeviceKey: String(saved?.barkDeviceKey || '').trim()
+    };
+  } catch (_error) {
+    return {
+      gotifyBaseUrl: '',
+      gotifyUsername: '',
+      gotifyPassword: '',
+      barkDeviceKey: ''
+    };
+  }
+}
+
+export function persistNotifyClientConfig(nextConfig = {}) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const current = readNotifyClientConfig();
+  const payload = {
+    ...current,
+    ...nextConfig,
+    gotifyBaseUrl: String(nextConfig.gotifyBaseUrl ?? current.gotifyBaseUrl ?? '').trim(),
+    gotifyUsername: String(nextConfig.gotifyUsername ?? current.gotifyUsername ?? '').trim(),
+    gotifyPassword: String(nextConfig.gotifyPassword ?? current.gotifyPassword ?? '').trim(),
+    barkDeviceKey: String(nextConfig.barkDeviceKey ?? current.barkDeviceKey ?? '').trim()
+  };
+
+  window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(payload));
 }
 
 async function readJsonResponse(response) {
@@ -123,5 +170,15 @@ export function saveNotifySettings(payload = {}) {
       'content-type': 'application/json'
     },
     body: JSON.stringify(payload)
+  });
+}
+
+export function generateGotifyClientAccount() {
+  return requestNotify('/gotify-account', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({})
   });
 }

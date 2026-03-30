@@ -209,6 +209,7 @@ function resolveDcaWindow(rule, now = new Date(), timeZone = DEFAULT_TIMEZONE) {
 async function deliverNotification(env, notification) {
   const settings = typeof env.__notifySettings === 'object' && env.__notifySettings ? env.__notifySettings : {};
   const results = [];
+  const gotifyClients = Array.isArray(settings.gotifyClients) ? settings.gotifyClients : [];
 
   try {
     results.push(await sendBarkNotification({
@@ -223,18 +224,36 @@ async function deliverNotification(env, notification) {
     });
   }
 
-  try {
-    results.push(await sendGotifyNotification({
-      ...notification,
-      baseUrl: settings.gotifyBaseUrl || env.GOTIFY_BASE_URL || '',
-      token: settings.gotifyToken || env.GOTIFY_TOKEN || ''
-    }));
-  } catch (error) {
-    results.push({
-      channel: 'gotify',
-      status: 'failed',
-      detail: error instanceof Error ? error.message : 'Gotify 推送失败'
-    });
+  if (gotifyClients.length) {
+    for (const client of gotifyClients) {
+      try {
+        results.push(await sendGotifyNotification({
+          ...notification,
+          baseUrl: client.baseUrl,
+          token: client.token
+        }));
+      } catch (error) {
+        results.push({
+          channel: 'gotify',
+          status: 'failed',
+          detail: error instanceof Error ? error.message : 'Gotify 推送失败'
+        });
+      }
+    }
+  } else {
+    try {
+      results.push(await sendGotifyNotification({
+        ...notification,
+        baseUrl: settings.gotifyBaseUrl || env.GOTIFY_BASE_URL || '',
+        token: settings.gotifyToken || env.GOTIFY_TOKEN || ''
+      }));
+    } catch (error) {
+      results.push({
+        channel: 'gotify',
+        status: 'failed',
+        detail: error instanceof Error ? error.message : 'Gotify 推送失败'
+      });
+    }
   }
 
   const deliveredCount = results.filter((result) => result.status === 'delivered').length;
