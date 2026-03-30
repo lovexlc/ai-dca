@@ -13,7 +13,7 @@ function jsonResponse(payload, { status = 200, origin = '*' } = {}) {
       'content-type': 'application/json; charset=utf-8',
       'access-control-allow-origin': origin,
       'access-control-allow-methods': 'GET,POST,OPTIONS',
-      'access-control-allow-headers': 'content-type,x-notify-admin-token'
+      'access-control-allow-headers': 'content-type'
     }
   });
 }
@@ -24,7 +24,7 @@ function emptyResponse({ status = 204, origin = '*' } = {}) {
     headers: {
       'access-control-allow-origin': origin,
       'access-control-allow-methods': 'GET,POST,OPTIONS',
-      'access-control-allow-headers': 'content-type,x-notify-admin-token'
+      'access-control-allow-headers': 'content-type'
     }
   });
 }
@@ -67,16 +67,6 @@ function randomString(length = 16) {
   return Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('');
 }
 
-function hasAdminAccess(request, env) {
-  const expectedToken = String(env.NOTIFY_ADMIN_TOKEN || '').trim();
-  if (!expectedToken) {
-    return true;
-  }
-
-  const providedToken = String(request.headers.get('x-notify-admin-token') || '').trim();
-  return providedToken === expectedToken;
-}
-
 function ensureStateBinding(env) {
   if (!env.NOTIFY_STATE) {
     throw new Error('未配置 NOTIFY_STATE KV 绑定。');
@@ -100,26 +90,6 @@ async function readJson(env, key, fallback) {
 async function writeJson(env, key, value) {
   ensureStateBinding(env);
   await env.NOTIFY_STATE.put(key, JSON.stringify(value));
-}
-
-function requireAdmin(request, env) {
-  const expectedToken = String(env.NOTIFY_ADMIN_TOKEN || '').trim();
-  if (!expectedToken) {
-    return;
-  }
-
-  const providedToken = String(request.headers.get('x-notify-admin-token') || '').trim();
-  if (providedToken !== expectedToken) {
-    throw new Response(JSON.stringify({ error: '通知服务写接口未授权。' }), {
-      status: 401,
-      headers: {
-        'content-type': 'application/json; charset=utf-8',
-        'access-control-allow-origin': readOrigin(request),
-        'access-control-allow-methods': 'GET,POST,OPTIONS',
-        'access-control-allow-headers': 'content-type,x-notify-admin-token'
-      }
-    });
-  }
 }
 
 function getRecentEvents(state = {}) {
@@ -173,7 +143,6 @@ async function handleStatus(request, env) {
   const settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
   const recentEvents = getRecentEvents(state);
   const deliveryFailures = Object.values(getDeliveryFailures(state));
-  const adminAccess = hasAdminAccess(request, env);
   const barkDeviceKey = settings.barkDeviceKey || String(env.BARK_DEVICE_KEY || '').trim();
   const gotifyBaseUrl = settings.gotifyBaseUrl || String(env.GOTIFY_BASE_URL || '').trim();
   const gotifyToken = settings.gotifyToken || String(env.GOTIFY_TOKEN || '').trim();
@@ -184,8 +153,6 @@ async function handleStatus(request, env) {
       bark: Boolean(barkDeviceKey),
       gotify: Boolean(gotifyClients.length || (gotifyBaseUrl && gotifyToken))
     },
-    requiresAdminToken: Boolean(String(env.NOTIFY_ADMIN_TOKEN || '').trim()),
-    hasAdminAccess: adminAccess,
     counts: {
       planRuleCount: Number(meta?.counts?.planRuleCount) || 0,
       dcaRuleCount: Number(meta?.counts?.dcaRuleCount) || 0,
@@ -197,14 +164,13 @@ async function handleStatus(request, env) {
     eventCount: recentEvents.length,
     lastEvent: recentEvents[0] || null,
     deliveryFailureCount: deliveryFailures.length,
-    deliveryFailures: adminAccess ? deliveryFailures : [],
-    setup: adminAccess ? {
-      barkDeviceKey,
+    deliveryFailures,
+    setup: {
       gotifyBaseUrl,
       gotifyAdminConfigured: Boolean(settings.gotifyUsername && settings.gotifyPassword),
       gotifyClientCount: gotifyClients.length,
       gotifyTokenMasked: buildMaskedToken(gotifyToken)
-    } : null
+    }
   }, { origin });
 }
 
@@ -218,7 +184,6 @@ async function handleEvents(request, env) {
 }
 
 async function handleSync(request, env) {
-  requireAdmin(request, env);
   const origin = readOrigin(request);
   const payload = normalizeNotifyPayload(await request.json().catch(() => ({})));
   const compiled = compileNotifyRules(payload);
@@ -252,7 +217,6 @@ async function handleSync(request, env) {
 }
 
 async function handleSettings(request, env) {
-  requireAdmin(request, env);
   const origin = readOrigin(request);
   const existingSettings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
   const payload = await request.json().catch(() => ({}));
@@ -386,7 +350,6 @@ async function handleGotifyAccount(request, env) {
 }
 
 async function handleTest(request, env) {
-  requireAdmin(request, env);
   const origin = readOrigin(request);
   const payload = await request.json().catch(() => ({}));
   const existingState = await readJson(env, STATE_KEY, {});
@@ -442,7 +405,6 @@ async function runDetection(env, reason = 'manual-run') {
 }
 
 async function handleRun(request, env) {
-  requireAdmin(request, env);
   const origin = readOrigin(request);
   const summary = await runDetection(env, 'manual-run');
 

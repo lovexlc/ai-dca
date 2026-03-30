@@ -2,41 +2,7 @@ import { DCA_KEY, readDcaState } from './dca.js';
 import { readPlanList } from './plan.js';
 
 const NOTIFY_ENDPOINT = '/api/notify';
-const NOTIFY_ADMIN_TOKEN_KEY = 'aiDcaNotifyAdminToken';
 const NOTIFY_CLIENT_CONFIG_KEY = 'aiDcaNotifyClientConfig';
-
-function buildHeaders(baseHeaders = {}) {
-  const headers = new Headers(baseHeaders);
-  const adminToken = readNotifyAdminToken();
-
-  if (adminToken) {
-    headers.set('x-notify-admin-token', adminToken);
-  }
-
-  return headers;
-}
-
-export function readNotifyAdminToken() {
-  if (typeof window === 'undefined') {
-    return '';
-  }
-
-  return String(window.localStorage.getItem(NOTIFY_ADMIN_TOKEN_KEY) || '').trim();
-}
-
-export function persistNotifyAdminToken(token = '') {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  const normalized = String(token || '').trim();
-  if (normalized) {
-    window.localStorage.setItem(NOTIFY_ADMIN_TOKEN_KEY, normalized);
-    return;
-  }
-
-  window.localStorage.removeItem(NOTIFY_ADMIN_TOKEN_KEY);
-}
 
 export function readNotifyClientConfig() {
   if (typeof window === 'undefined') {
@@ -102,7 +68,7 @@ async function readJsonResponse(response) {
 async function requestNotify(path, init = {}) {
   const response = await fetch(`${NOTIFY_ENDPOINT}${path}`, {
     ...init,
-    headers: buildHeaders(init.headers)
+    headers: init.headers
   });
   const payload = await readJsonResponse(response);
 
