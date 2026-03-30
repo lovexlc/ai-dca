@@ -64,7 +64,7 @@ export function TradePlansExperience({ links, embedded = false }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [adminToken]);
 
   useEffect(() => {
     if (!previewRows.length) {
