@@ -5,9 +5,11 @@ import { DcaExperience } from './DcaExperience.jsx';
 import { FundSwitchExperience } from './FundSwitchExperience.jsx';
 import { HistoryExperience } from './HistoryExperience.jsx';
 import { HomeExperience } from './HomeExperience.jsx';
+import { TradePlansExperience } from './TradePlansExperience.jsx';
 
 const WORKSPACE_TITLES = {
   home: '建仓策略总览',
+  tradePlans: '交易计划中心',
   dca: '定投计划',
   fundSwitch: '基金切换收益分析',
   history: '交易历史'
@@ -81,6 +83,8 @@ export function WorkspacePage({ initialTab = 'home', inPagesDir = false }) {
   function renderActivePanel() {
     const sharedProps = { links, inPagesDir, embedded: true };
     switch (activeTab) {
+      case 'tradePlans':
+        return <TradePlansExperience {...sharedProps} />;
       case 'dca':
         return <DcaExperience {...sharedProps} />;
       case 'fundSwitch':

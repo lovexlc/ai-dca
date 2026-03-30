@@ -2,7 +2,7 @@
   "project_id": "4075224789216868860",
   "project_title": "股票建仓策略看板",
   "homepage_screen_id": "75a393ec1a2d424ebafa1d0e59402d26",
-  "html_count": 7,
+  "html_count": 8,
   "screenshot_count": 0,
   "screens": [
     {
@@ -12,6 +12,14 @@
       "page_url": "index.html",
       "screenshot_url": null,
       "is_homepage": true
+    },
+    {
+      "screen_id": "1c4b8d2f5a6748c7a0e3d1b6f9c2a4e8",
+      "title": "交易计划中心",
+      "device": "DESKTOP",
+      "page_url": "pages/1c4b8d2f5a6748c7a0e3d1b6f9c2a4e8.html",
+      "screenshot_url": null,
+      "is_homepage": false
     },
     {
       "screen_id": "81fee20edb5542f08bb363ac837b327c",

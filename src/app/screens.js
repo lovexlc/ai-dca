@@ -2,14 +2,19 @@ export const PROJECT_ID = '4075224789216868860';
 export const PROJECT_TITLE = '股票建仓策略看板';
 export const HOME_SCREEN_ID = '75a393ec1a2d424ebafa1d0e59402d26';
 
-export const GROUP_ORDER = ['home', 'accumEdit', 'accumNew', 'addLevel', 'dca', 'fundSwitch', 'history'];
-export const PRIMARY_TAB_ORDER = ['home', 'dca', 'fundSwitch', 'history'];
+export const GROUP_ORDER = ['home', 'tradePlans', 'accumEdit', 'accumNew', 'addLevel', 'dca', 'fundSwitch', 'history'];
+export const PRIMARY_TAB_ORDER = ['home', 'tradePlans', 'dca', 'fundSwitch', 'history'];
 
 export const GROUP_META = {
   home: {
     label: '封面与总览',
     description: '首页、仪表盘和移动端封面页面。',
     activeTab: 'home'
+  },
+  tradePlans: {
+    label: '交易计划',
+    description: '统一查看后续待执行的交易计划与通知状态。',
+    activeTab: 'tradePlans'
   },
   accumEdit: {
     label: '加仓配置',
@@ -45,6 +50,7 @@ export const GROUP_META = {
 
 export const PRIMARY_TAB_META = {
   home: { label: '策略总览', hrefKey: 'home' },
+  tradePlans: { label: '交易计划', hrefKey: 'tradePlans' },
   dca: { label: '定投计划', hrefKey: 'dca' },
   fundSwitch: { label: '基金切换', hrefKey: 'fundSwitch' },
   history: { label: '交易历史', hrefKey: 'history' }
@@ -52,6 +58,7 @@ export const PRIMARY_TAB_META = {
 
 const SCREEN_GROUP_IDS = {
   home: ['75a393ec1a2d424ebafa1d0e59402d26'],
+  tradePlans: ['1c4b8d2f5a6748c7a0e3d1b6f9c2a4e8'],
   accumEdit: ['81fee20edb5542f08bb363ac837b327c'],
   addLevel: ['d142c0822784448ab9b8016e300bd25c'],
   accumNew: ['03ef40c5dff048f8b1416a6a4567f9ee'],
@@ -66,6 +73,7 @@ const SCREEN_GROUPS = Object.fromEntries(
 
 const RAW_SCREENS = [
   { id: '75a393ec1a2d424ebafa1d0e59402d26', title: '建仓策略总览', device: 'DESKTOP' },
+  { id: '1c4b8d2f5a6748c7a0e3d1b6f9c2a4e8', title: '交易计划中心', device: 'DESKTOP' },
   { id: '81fee20edb5542f08bb363ac837b327c', title: '加仓策略配置', device: 'DESKTOP' },
   { id: 'd142c0822784448ab9b8016e300bd25c', title: '新增建仓层级', device: 'DESKTOP' },
   { id: '03ef40c5dff048f8b1416a6a4567f9ee', title: '新建建仓计划', device: 'DESKTOP' },
@@ -111,6 +119,7 @@ export function pageHref(screenId, { inPagesDir = false } = {}) {
 export function createPageLinks({ inPagesDir = false } = {}) {
   return {
     home: inPagesDir ? '../index.html' : './index.html',
+    tradePlans: pageHref('1c4b8d2f5a6748c7a0e3d1b6f9c2a4e8', { inPagesDir }),
     accumEdit: pageHref('81fee20edb5542f08bb363ac837b327c', { inPagesDir }),
     accumNew: pageHref('03ef40c5dff048f8b1416a6a4567f9ee', { inPagesDir }),
     addLevel: pageHref('d142c0822784448ab9b8016e300bd25c', { inPagesDir }),
