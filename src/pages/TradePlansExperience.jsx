@@ -220,20 +220,28 @@ export function TradePlansExperience({ links, embedded = false }) {
             title="后续交易计划"
             description="首页只保留每类计划一个待执行摘要，更多层级和完整配置去对应页面查看。"
             action={
-              <>
-                <button className={secondaryButtonClass} type="button" onClick={handleSyncRules}>
-                  {isSyncing ? '正在同步' : '同步通知规则'}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className={cx(
+                    primaryButtonClass,
+                    'bg-slate-900 text-white shadow-sm hover:bg-slate-800'
+                  )}
+                  type="button"
+                  onClick={handleSyncRules}
+                >
+                  {isSyncing ? '正在同步规则' : '同步通知规则'}
                 </button>
-                <button className={secondaryButtonClass} type="button" onClick={handleTestNotify}>
+                <button
+                  className={cx(
+                    secondaryButtonClass,
+                    'border-slate-300 bg-white shadow-sm hover:bg-slate-50'
+                  )}
+                  type="button"
+                  onClick={handleTestNotify}
+                >
                   {isTesting ? '正在发送' : '测试通知'}
                 </button>
-                <a className={secondaryButtonClass} href={links.accumNew}>
-                  新建策略
-                </a>
-                <a className={secondaryButtonClass} href={links.dca}>
-                  查看定投计划
-                </a>
-              </>
+              </div>
             }
           />
 
