@@ -19,6 +19,7 @@ export function TradePlansExperience({ links, embedded = false }) {
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isGeneratingGotify, setIsGeneratingGotify] = useState(false);
   const [adminToken, setAdminToken] = useState(() => readNotifyAdminToken());
+  const [notifyPlatform, setNotifyPlatform] = useState('android');
   const [notifyConfig, setNotifyConfig] = useState({
     ...readNotifyClientConfig(),
     gotifyBaseUrl: readNotifyClientConfig().gotifyBaseUrl || 'https://push.freebacktrack.tech',
@@ -310,66 +311,105 @@ export function TradePlansExperience({ links, embedded = false }) {
                 {notifyError}
               </div>
             ) : null}
-            {notifyStatus?.requiresAdminToken ? (
-              <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="text-sm font-semibold text-slate-700">通知管理口令</div>
-                <p className="mt-2 text-sm leading-6 text-slate-500">如果通知 Worker 开了写保护，需要在当前浏览器保存一份管理口令，页面上的“同步通知规则”和“测试通知”才会成功。</p>
-                <div className="mt-3">
-                  <TextInput placeholder="输入通知管理口令" type="password" value={adminToken} onChange={(event) => handleAdminTokenChange(event.target.value)} />
-                </div>
-              </div>
-            ) : null}
             <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                <Bell className="h-4 w-4 text-slate-400" />
-                通知接入配置
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <Bell className="h-4 w-4 text-slate-400" />
+                    通知接入配置
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                    安卓端由服务器生成 Gotify 账号并返回给当前浏览器保存；iPhone 端继续手动填写 Bark 设备 Key。
+                  </p>
+                </div>
+                <div className="inline-flex w-full items-center gap-1 rounded-2xl bg-slate-100 p-1 sm:w-auto">
+                  <button
+                    className={cx(
+                      'flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition-colors sm:flex-none',
+                      notifyPlatform === 'android' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                    )}
+                    type="button"
+                    onClick={() => setNotifyPlatform('android')}
+                  >
+                    Android
+                  </button>
+                  <button
+                    className={cx(
+                      'flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition-colors sm:flex-none',
+                      notifyPlatform === 'ios' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                    )}
+                    type="button"
+                    onClick={() => setNotifyPlatform('ios')}
+                  >
+                    iOS
+                  </button>
+                </div>
               </div>
-              <div className="mt-4 space-y-4">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <div className="text-sm font-semibold text-slate-900">安卓 Gotify 接入信息</div>
-                      <div className="mt-1 text-sm leading-6 text-slate-500">点击生成后，服务端会创建一个新的 Gotify 普通用户账号，并返回给当前浏览器保存。后续可直接填到手机 Gotify 客户端。</div>
-                    </div>
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <button className={secondaryButtonClass} type="button" onClick={handleGenerateGotifyAccount}>
-                        {isGeneratingGotify ? '正在生成账号' : notifyConfig.gotifyUsername ? '重新生成账号' : '生成安卓账号'}
-                      </button>
-                      <button className={secondaryButtonClass} type="button" onClick={handleCopyAndroidConfig}>
-                        <Copy className="h-4 w-4" />
-                        复制安卓配置
-                      </button>
-                    </div>
-                  </div>
-                  <div className="mt-4 space-y-3">
-                    <Field label="服务地址">
-                      <TextInput readOnly value={notifyConfig.gotifyBaseUrl} />
+              {notifyStatus?.requiresAdminToken ? (
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                    <Field
+                      className="flex-1"
+                      label="通知管理口令"
+                      helper="当前服务器开启了写保护，先在这个浏览器里填一次口令，后续同步、测试和生成安卓账号才能执行。"
+                    >
+                      <TextInput placeholder="输入通知管理口令" type="password" value={adminToken} onChange={(event) => handleAdminTokenChange(event.target.value)} />
                     </Field>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <Field label="用户名">
-                        <TextInput readOnly value={notifyConfig.gotifyUsername} />
-                      </Field>
-                      <Field label="密码">
-                        <TextInput readOnly value={notifyConfig.gotifyPassword} />
-                      </Field>
+                    <div className="rounded-xl bg-white px-4 py-3 text-sm text-slate-500 ring-1 ring-slate-200">
+                      {notifyStatus?.hasAdminAccess ? '当前浏览器已连接通知服务' : '当前浏览器尚未连接通知服务'}
                     </div>
                   </div>
                 </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="text-sm font-semibold text-slate-900">iPhone Bark Key</div>
-                  <div className="mt-1 text-sm leading-6 text-slate-500">在 Bark App 里复制设备 Key，填入后保存。系统会把 Key 保存到当前浏览器，并同步到通知 Worker。</div>
-                  <div className="mt-4">
-                    <Field label="Bark 设备 Key">
-                      <TextInput value={notifyConfig.barkDeviceKey} onChange={(event) => setNotifyConfig((current) => ({ ...current, barkDeviceKey: event.target.value }))} />
-                    </Field>
+              ) : null}
+              <div className="mt-4">
+                {notifyPlatform === 'android' ? (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">Android Gotify 接入信息</div>
+                        <div className="mt-1 text-sm leading-6 text-slate-500">点击生成后，服务端会创建一个新的 Gotify 普通用户账号，并返回给当前浏览器保存。后续可直接填到手机 Gotify 客户端。</div>
+                      </div>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <button className={secondaryButtonClass} type="button" onClick={handleGenerateGotifyAccount}>
+                          {isGeneratingGotify ? '正在生成账号' : notifyConfig.gotifyUsername ? '重新生成账号' : '生成安卓账号'}
+                        </button>
+                        <button className={secondaryButtonClass} type="button" onClick={handleCopyAndroidConfig}>
+                          <Copy className="h-4 w-4" />
+                          复制安卓配置
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      <Field label="服务地址">
+                        <TextInput readOnly value={notifyConfig.gotifyBaseUrl} />
+                      </Field>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field label="用户名">
+                          <TextInput readOnly value={notifyConfig.gotifyUsername} />
+                        </Field>
+                        <Field label="密码">
+                          <TextInput readOnly value={notifyConfig.gotifyPassword} />
+                        </Field>
+                      </div>
+                    </div>
                   </div>
-                </div>
-
-                <button className={primaryButtonClass} type="button" onClick={handleSaveNotifyConfig}>
-                  <Save className="h-4 w-4" />
-                  {isSavingSettings ? '正在保存 Bark 配置' : '保存 Bark 配置'}
-                </button>
+                ) : (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="text-sm font-semibold text-slate-900">iPhone Bark Key</div>
+                    <div className="mt-1 text-sm leading-6 text-slate-500">在 Bark App 里复制设备 Key，填入后保存。系统会把 Key 保存到当前浏览器，并同步到通知 Worker。</div>
+                    <div className="mt-4">
+                      <Field label="Bark 设备 Key">
+                        <TextInput value={notifyConfig.barkDeviceKey} onChange={(event) => setNotifyConfig((current) => ({ ...current, barkDeviceKey: event.target.value }))} />
+                      </Field>
+                    </div>
+                    <div className="mt-4">
+                      <button className={primaryButtonClass} type="button" onClick={handleSaveNotifyConfig}>
+                        <Save className="h-4 w-4" />
+                        {isSavingSettings ? '正在保存 Bark 配置' : '保存 Bark 配置'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             {selectedRow ? (
