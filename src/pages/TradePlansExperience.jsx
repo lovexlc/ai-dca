@@ -9,6 +9,36 @@ function PlanStatusPill({ tone = 'slate', children }) {
   return <Pill tone={tone}>{children}</Pill>;
 }
 
+function formatEventTimeLabel(value = '') {
+  const rawValue = String(value || '').trim();
+  if (!rawValue) {
+    return '--';
+  }
+
+  const normalized = rawValue.replace('T', ' ').slice(0, 16);
+  return normalized || '--';
+}
+
+function resolveEventStatusMeta(status = '') {
+  switch (status) {
+    case 'delivered':
+      return {
+        label: '已送达',
+        tone: 'emerald'
+      };
+    case 'failed':
+      return {
+        label: '发送失败',
+        tone: 'red'
+      };
+    default:
+      return {
+        label: '未发送',
+        tone: 'slate'
+      };
+  }
+}
+
 export function TradePlansExperience({ links, embedded = false }) {
   const [selectedRowId, setSelectedRowId] = useState('');
   const [notifyStatus, setNotifyStatus] = useState(null);
@@ -477,20 +507,31 @@ export function TradePlansExperience({ links, embedded = false }) {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card>
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-            <Bell className="h-4 w-4 text-slate-400" />
-            通知渠道
-          </div>
-          <p className="mt-3 text-sm leading-6 text-slate-500">后续可接入站内提醒、浏览器通知和消息推送，当前先保留通知状态与配置占位。</p>
-        </Card>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)]">
         <Card>
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
             <CalendarClock className="h-4 w-4 text-slate-400" />
             提醒历史
           </div>
-          <p className="mt-3 text-sm leading-6 text-slate-500">未来可记录每一次提醒是否送达、何时确认，以及用户是否已处理对应计划。</p>
+          <div className="mt-4 space-y-3">
+            {recentEvents.length ? recentEvents.slice(0, 4).map((item) => {
+              const statusMeta = resolveEventStatusMeta(item.status);
+              return (
+                <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0 text-sm font-semibold text-slate-800">{item.summary || item.title || '提醒记录'}</div>
+                    <PlanStatusPill tone={statusMeta.tone}>{statusMeta.label}</PlanStatusPill>
+                  </div>
+                  <div className="mt-2 text-sm leading-6 text-slate-600">{item.body || item.title || '当前没有更多提醒内容。'}</div>
+                  <div className="mt-2 text-xs text-slate-400">{formatEventTimeLabel(item.createdAt)}</div>
+                </div>
+              );
+            }) : (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm leading-6 text-slate-500">
+                目前还没有提醒记录。触发测试通知或规则提醒后，这里会展示实际通知内容。
+              </div>
+            )}
+          </div>
         </Card>
         <Card>
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
