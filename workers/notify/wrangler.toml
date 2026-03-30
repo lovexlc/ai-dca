@@ -8,8 +8,8 @@ zone_name = "freebacktrack.tech"
 
 [[kv_namespaces]]
 binding = "NOTIFY_STATE"
-id = "__REPLACE_WITH_NOTIFY_KV_ID__"
-preview_id = "__REPLACE_WITH_NOTIFY_KV_PREVIEW_ID__"
+id = "5246771a17544a17af5b4b6c482f5d62"
+preview_id = "21e04c9a7eac46018a4740c013e11a1f"
 
 [triggers]
 crons = ["*/30 * * * 1-5"]
