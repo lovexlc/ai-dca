@@ -45,10 +45,39 @@ function getCadenceLabel(frequency, executionDay) {
 
 function normalizeSavedSymbol(value) {
   const normalized = String(value || '').trim();
-  if (!normalized || normalized === 'QQQ') {
+  if (normalized === 'QQQ') {
     return defaultDcaState.symbol;
   }
   return normalized;
+}
+
+function hasOwnField(target, field) {
+  return Object.prototype.hasOwnProperty.call(target, field);
+}
+
+function readSavedNumber(saved, fields, fallback) {
+  const candidateFields = Array.isArray(fields) ? fields : [fields];
+
+  for (const field of candidateFields) {
+    if (!hasOwnField(saved, field)) {
+      continue;
+    }
+
+    const value = Number(saved[field]);
+    if (Number.isFinite(value)) {
+      return value;
+    }
+  }
+
+  return fallback;
+}
+
+function readSavedSymbol(saved) {
+  if (!hasOwnField(saved, 'symbol')) {
+    return defaultDcaState.symbol;
+  }
+
+  return normalizeSavedSymbol(saved.symbol);
 }
 
 export function buildDcaProjection(state) {
@@ -89,13 +118,13 @@ export function readDcaState() {
     }
 
     return {
-      symbol: normalizeSavedSymbol(saved.symbol),
-      initialInvestment: Number(saved.initialInvestment) || defaultDcaState.initialInvestment,
-      recurringInvestment: Number(saved.recurringInvestment) || defaultDcaState.recurringInvestment,
+      symbol: readSavedSymbol(saved),
+      initialInvestment: readSavedNumber(saved, 'initialInvestment', defaultDcaState.initialInvestment),
+      recurringInvestment: readSavedNumber(saved, ['recurringInvestment', 'monthlyInvestment'], defaultDcaState.recurringInvestment),
       frequency: saved.frequency || defaultDcaState.frequency,
-      executionDay: Number(saved.executionDay) || defaultDcaState.executionDay,
-      termMonths: Number(saved.termMonths) || defaultDcaState.termMonths,
-      targetReturn: Number(saved.targetReturn) || defaultDcaState.targetReturn
+      executionDay: readSavedNumber(saved, 'executionDay', defaultDcaState.executionDay),
+      termMonths: readSavedNumber(saved, 'termMonths', defaultDcaState.termMonths),
+      targetReturn: readSavedNumber(saved, 'targetReturn', defaultDcaState.targetReturn)
     };
   } catch (_error) {
     return defaultDcaState;
@@ -115,9 +144,11 @@ export function persistDcaState(state, computed = buildDcaProjection(state)) {
     return;
   }
 
+  const normalizedSymbol = normalizeSavedSymbol(state.symbol);
   const payload = {
     source: 'react-dca',
-    symbol: normalizeSavedSymbol(state.symbol),
+    version: 2,
+    symbol: normalizedSymbol,
     initialInvestment: round(state.initialInvestment, 2),
     recurringInvestment: round(state.recurringInvestment, 2),
     frequency: state.frequency || defaultDcaState.frequency,

@@ -56,15 +56,15 @@ export function DcaExperience({ links, embedded = false }) {
             <div className="mt-6 space-y-5">
               <div className="grid gap-4 md:grid-cols-2">
                 <Field label="初始投资额">
-                  <NumberInput step="0.01" value={state.initialInvestment} onChange={(event) => setState((current) => ({ ...current, initialInvestment: Number(event.target.value) || 0 }))} />
+                  <NumberInput step="0.01" value={state.initialInvestment} onChange={(event) => setState((current) => ({ ...current, initialInvestment: event.target.value }))} />
                 </Field>
                 <Field label="定期投资额">
-                  <NumberInput step="0.01" value={state.recurringInvestment} onChange={(event) => setState((current) => ({ ...current, recurringInvestment: Number(event.target.value) || 0 }))} />
+                  <NumberInput step="0.01" value={state.recurringInvestment} onChange={(event) => setState((current) => ({ ...current, recurringInvestment: event.target.value }))} />
                 </Field>
               </div>
 
               <Field label="标的代码" helper="建议使用交易代码，便于与首页和历史页保持一致。">
-                <TextInput value={state.symbol} onChange={(event) => setState((current) => ({ ...current, symbol: event.target.value || '纳指基金' }))} placeholder="例如：纳指基金代码" />
+                <TextInput value={state.symbol} onChange={(event) => setState((current) => ({ ...current, symbol: event.target.value }))} placeholder="例如：纳指基金代码" />
               </Field>
 
               <Field label="买入频率" helper="选择更长期的频率会显著减少执行次数。">
@@ -99,10 +99,10 @@ export function DcaExperience({ links, embedded = false }) {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <Field label="投资周期 (月)">
-                  <NumberInput step="1" value={state.termMonths} onChange={(event) => setState((current) => ({ ...current, termMonths: Number(event.target.value) || 1 }))} />
+                  <NumberInput step="1" value={state.termMonths} onChange={(event) => setState((current) => ({ ...current, termMonths: event.target.value }))} />
                 </Field>
                 <Field label="目标收益">
-                  <NumberInput step="1" value={state.targetReturn} onChange={(event) => setState((current) => ({ ...current, targetReturn: Number(event.target.value) || 0 }))} />
+                  <NumberInput step="1" value={state.targetReturn} onChange={(event) => setState((current) => ({ ...current, targetReturn: event.target.value }))} />
                 </Field>
               </div>
             </div>
