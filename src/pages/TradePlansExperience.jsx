@@ -19,12 +19,15 @@ export function TradePlansExperience({ links, embedded = false }) {
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isGeneratingGotify, setIsGeneratingGotify] = useState(false);
   const [notifyPlatform, setNotifyPlatform] = useState('android');
-  const [notifyConfig, setNotifyConfig] = useState({
-    ...readNotifyClientConfig(),
-    gotifyBaseUrl: readNotifyClientConfig().gotifyBaseUrl || 'https://push.freebacktrack.tech',
-    gotifyUsername: readNotifyClientConfig().gotifyUsername || '',
-    gotifyPassword: '',
-    barkDeviceKey: readNotifyClientConfig().barkDeviceKey || ''
+  const [notifyConfig, setNotifyConfig] = useState(() => {
+    const persistedConfig = readNotifyClientConfig();
+
+    return {
+      gotifyBaseUrl: persistedConfig.gotifyBaseUrl || 'https://push.freebacktrack.tech',
+      gotifyUsername: persistedConfig.gotifyUsername || '',
+      gotifyPassword: persistedConfig.gotifyPassword || '',
+      barkDeviceKey: persistedConfig.barkDeviceKey || ''
+    };
   });
   const { previewRows, summary, hasPlans } = useMemo(() => buildTradePlanCenter(), []);
   const primaryTabs = getPrimaryTabs(links);
