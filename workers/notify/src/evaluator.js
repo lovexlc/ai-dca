@@ -207,10 +207,14 @@ function resolveDcaWindow(rule, now = new Date(), timeZone = DEFAULT_TIMEZONE) {
 }
 
 async function deliverNotification(env, notification) {
+  const settings = typeof env.__notifySettings === 'object' && env.__notifySettings ? env.__notifySettings : {};
   const results = [];
 
   try {
-    results.push(await sendBarkNotification(env, notification));
+    results.push(await sendBarkNotification({
+      ...notification,
+      deviceKey: settings.barkDeviceKey || env.BARK_DEVICE_KEY || ''
+    }));
   } catch (error) {
     results.push({
       channel: 'bark',
@@ -220,7 +224,11 @@ async function deliverNotification(env, notification) {
   }
 
   try {
-    results.push(await sendGotifyNotification(env, notification));
+    results.push(await sendGotifyNotification({
+      ...notification,
+      baseUrl: settings.gotifyBaseUrl || env.GOTIFY_BASE_URL || '',
+      token: settings.gotifyToken || env.GOTIFY_TOKEN || ''
+    }));
   } catch (error) {
     results.push({
       channel: 'gotify',

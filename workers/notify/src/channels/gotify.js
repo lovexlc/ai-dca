@@ -1,8 +1,8 @@
-export async function sendGotifyNotification(env, { title, body, priority = 8 } = {}) {
-  const baseUrl = String(env.GOTIFY_BASE_URL || '').trim();
-  const token = String(env.GOTIFY_TOKEN || '').trim();
+export async function sendGotifyNotification({ baseUrl = '', token = '', title, body, priority = 8 } = {}) {
+  const normalizedBaseUrl = String(baseUrl || '').trim();
+  const normalizedToken = String(token || '').trim();
 
-  if (!baseUrl || !token) {
+  if (!normalizedBaseUrl || !normalizedToken) {
     return {
       channel: 'gotify',
       status: 'skipped',
@@ -10,8 +10,8 @@ export async function sendGotifyNotification(env, { title, body, priority = 8 } 
     };
   }
 
-  const endpoint = new URL('/message', baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`);
-  endpoint.searchParams.set('token', token);
+  const endpoint = new URL('/message', normalizedBaseUrl.endsWith('/') ? normalizedBaseUrl : `${normalizedBaseUrl}/`);
+  endpoint.searchParams.set('token', normalizedToken);
 
   const response = await fetch(endpoint.toString(), {
     method: 'POST',

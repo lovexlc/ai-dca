@@ -1,6 +1,6 @@
-export async function sendBarkNotification(env, { title, body, url = '' } = {}) {
-  const deviceKey = String(env.BARK_DEVICE_KEY || '').trim();
-  if (!deviceKey) {
+export async function sendBarkNotification({ deviceKey = '', title, body, url = '' } = {}) {
+  const normalizedDeviceKey = String(deviceKey || '').trim();
+  if (!normalizedDeviceKey) {
     return {
       channel: 'bark',
       status: 'skipped',
@@ -8,7 +8,7 @@ export async function sendBarkNotification(env, { title, body, url = '' } = {}) 
     };
   }
 
-  const endpoint = new URL(`https://api.day.app/${encodeURIComponent(deviceKey)}/${encodeURIComponent(title || '')}/${encodeURIComponent(body || '')}`);
+  const endpoint = new URL(`https://api.day.app/${encodeURIComponent(normalizedDeviceKey)}/${encodeURIComponent(title || '')}/${encodeURIComponent(body || '')}`);
   endpoint.searchParams.set('group', '交易计划提醒');
   if (url) {
     endpoint.searchParams.set('url', url);

@@ -4,6 +4,7 @@ import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
 const PAYLOAD_KEY = 'notify:payload';
 const STATE_KEY = 'notify:state';
 const META_KEY = 'notify:meta';
+const SETTINGS_KEY = 'notify:settings';
 
 function jsonResponse(payload, { status = 200, origin = '*' } = {}) {
   return new Response(JSON.stringify(payload, null, 2), {
@@ -30,6 +31,26 @@ function emptyResponse({ status = 204, origin = '*' } = {}) {
 
 function readOrigin(request) {
   return request.headers.get('origin') || '*';
+}
+
+function normalizeSettings(settings = {}) {
+  return {
+    barkDeviceKey: String(settings.barkDeviceKey || '').trim(),
+    gotifyBaseUrl: String(settings.gotifyBaseUrl || '').trim(),
+    gotifyUsername: String(settings.gotifyUsername || '').trim(),
+    gotifyPassword: String(settings.gotifyPassword || '').trim(),
+    gotifyToken: String(settings.gotifyToken || '').trim()
+  };
+}
+
+function hasAdminAccess(request, env) {
+  const expectedToken = String(env.NOTIFY_ADMIN_TOKEN || '').trim();
+  if (!expectedToken) {
+    return true;
+  }
+
+  const providedToken = String(request.headers.get('x-notify-admin-token') || '').trim();
+  return providedToken === expectedToken;
 }
 
 function ensureStateBinding(env) {
@@ -90,14 +111,20 @@ async function handleStatus(request, env) {
   const origin = readOrigin(request);
   const meta = await readJson(env, META_KEY, {});
   const state = await readJson(env, STATE_KEY, {});
+  const settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
   const recentEvents = getRecentEvents(state);
+  const adminAccess = hasAdminAccess(request, env);
+  const barkDeviceKey = settings.barkDeviceKey || String(env.BARK_DEVICE_KEY || '').trim();
+  const gotifyBaseUrl = settings.gotifyBaseUrl || String(env.GOTIFY_BASE_URL || '').trim();
+  const gotifyToken = settings.gotifyToken || String(env.GOTIFY_TOKEN || '').trim();
 
   return jsonResponse({
     configured: {
-      bark: Boolean(String(env.BARK_DEVICE_KEY || '').trim()),
-      gotify: Boolean(String(env.GOTIFY_BASE_URL || '').trim() && String(env.GOTIFY_TOKEN || '').trim())
+      bark: Boolean(barkDeviceKey),
+      gotify: Boolean(gotifyBaseUrl && gotifyToken)
     },
     requiresAdminToken: Boolean(String(env.NOTIFY_ADMIN_TOKEN || '').trim()),
+    hasAdminAccess: adminAccess,
     counts: {
       planRuleCount: Number(meta?.counts?.planRuleCount) || 0,
       dcaRuleCount: Number(meta?.counts?.dcaRuleCount) || 0,
@@ -107,7 +134,14 @@ async function handleStatus(request, env) {
     lastCheckedAt: String(meta?.lastCheckedAt || ''),
     lastTestedAt: String(meta?.lastTestedAt || ''),
     eventCount: recentEvents.length,
-    lastEvent: recentEvents[0] || null
+    lastEvent: recentEvents[0] || null,
+    setup: adminAccess ? {
+      barkDeviceKey,
+      gotifyBaseUrl,
+      gotifyUsername: settings.gotifyUsername,
+      gotifyPassword: settings.gotifyPassword,
+      gotifyTokenMasked: gotifyToken ? `${gotifyToken.slice(0, 4)}...${gotifyToken.slice(-3)}` : ''
+    } : null
   }, { origin });
 }
 
@@ -154,6 +188,30 @@ async function handleSync(request, env) {
   }, { origin });
 }
 
+async function handleSettings(request, env) {
+  requireAdmin(request, env);
+  const origin = readOrigin(request);
+  const existingSettings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
+  const payload = await request.json().catch(() => ({}));
+  const nextSettings = normalizeSettings({
+    ...existingSettings,
+    ...payload
+  });
+
+  await writeJson(env, SETTINGS_KEY, nextSettings);
+
+  return jsonResponse({
+    ok: true,
+    setup: {
+      barkDeviceKey: nextSettings.barkDeviceKey,
+      gotifyBaseUrl: nextSettings.gotifyBaseUrl,
+      gotifyUsername: nextSettings.gotifyUsername,
+      gotifyPassword: nextSettings.gotifyPassword,
+      gotifyTokenMasked: nextSettings.gotifyToken ? `${nextSettings.gotifyToken.slice(0, 4)}...${nextSettings.gotifyToken.slice(-3)}` : ''
+    }
+  }, { origin });
+}
+
 async function handleTest(request, env) {
   requireAdmin(request, env);
   const origin = readOrigin(request);
@@ -184,6 +242,7 @@ async function runDetection(env, reason = 'manual-run') {
   const payload = await readJson(env, PAYLOAD_KEY, normalizeNotifyPayload({}));
   const state = await readJson(env, STATE_KEY, {});
   const meta = await readJson(env, META_KEY, {});
+  env.__notifySettings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
   const cycle = await runNotificationCycle(env, payload, state, { reason });
   const nextMeta = {
     ...meta,
@@ -230,7 +289,12 @@ export default {
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/test') {
+        env.__notifySettings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
         return await handleTest(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/settings') {
+        return await handleSettings(request, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/run') {
