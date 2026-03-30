@@ -361,32 +361,49 @@ export function TradePlansExperience({ links, embedded = false }) {
             <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-5">
               {notifyPlatform === 'android' ? (
                 <>
-                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
-                    <div>
+                  <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                    <div className="min-w-0">
                       <div className="text-sm font-semibold text-slate-900">Android Gotify 接入信息</div>
-                      <div className="mt-1 text-sm leading-6 text-slate-500">点击生成后，服务端会创建一个新的 Gotify 普通用户账号，并返回给当前浏览器保存。后续直接填到手机 Gotify 客户端即可。</div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button className={secondaryButtonClass} type="button" onClick={handleGenerateGotifyAccount}>
+                    <div className="flex flex-wrap gap-2 xl:justify-end">
+                      <button
+                        className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold leading-none text-slate-700 transition-colors hover:bg-slate-200"
+                        type="button"
+                        onClick={handleGenerateGotifyAccount}
+                      >
                         {isGeneratingGotify ? '正在生成账号' : notifyConfig.gotifyUsername ? '重新生成账号' : '生成安卓账号'}
                       </button>
-                      <button className={secondaryButtonClass} type="button" onClick={handleCopyAndroidConfig}>
+                      <button
+                        className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-white px-3 py-2 text-xs font-semibold leading-none text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
+                        type="button"
+                        onClick={handleCopyAndroidConfig}
+                      >
                         <Copy className="h-4 w-4" />
                         复制安卓配置
                       </button>
                     </div>
                   </div>
-                  <div className="mt-5 grid gap-3 xl:grid-cols-2">
-                    <Field className="xl:col-span-2" label="服务地址">
-                      <TextInput readOnly value={notifyConfig.gotifyBaseUrl} />
-                    </Field>
-                    <Field label="用户名">
-                      <TextInput readOnly value={notifyConfig.gotifyUsername} />
-                    </Field>
-                    <Field label="密码">
-                      <TextInput readOnly value={notifyConfig.gotifyPassword} />
-                    </Field>
+                  <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,0.9fr)_minmax(0,0.9fr)]">
+                    <div className="min-w-0 space-y-2">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">服务地址</div>
+                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 ring-1 ring-slate-100">
+                        <div className="truncate">{notifyConfig.gotifyBaseUrl || '未生成'}</div>
+                      </div>
+                    </div>
+                    <div className="min-w-0 space-y-2">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">用户名</div>
+                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 ring-1 ring-slate-100">
+                        <div className="truncate">{notifyConfig.gotifyUsername || '未生成'}</div>
+                      </div>
+                    </div>
+                    <div className="min-w-0 space-y-2">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">密码</div>
+                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 ring-1 ring-slate-100">
+                        <div className="truncate">{notifyConfig.gotifyPassword || '未生成'}</div>
+                      </div>
+                    </div>
                   </div>
+                  <div className="mt-3 text-xs leading-5 text-slate-500">服务端会生成一个新的 Gotify 普通用户账号，结果只保存在当前浏览器，可直接配置到手机客户端。</div>
                 </>
               ) : (
                 <>
