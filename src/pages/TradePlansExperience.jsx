@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Bell, CalendarClock, Clock3, Copy, Layers3, Radar, Save, Sparkles } from 'lucide-react';
-import { generateGotifyClientAccount, loadNotifyEvents, loadNotifyStatus, persistNotifyAdminToken, persistNotifyClientConfig, readNotifyAdminToken, readNotifyClientConfig, saveNotifySettings, sendNotifyTest, syncTradePlanRules } from '../app/notifySync.js';
+import { generateGotifyClientAccount, loadNotifyEvents, loadNotifyStatus, persistNotifyClientConfig, readNotifyClientConfig, saveNotifySettings, sendNotifyTest, syncTradePlanRules } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { getPrimaryTabs } from '../app/screens.js';
 import { Card, Field, PageHero, PageShell, PageTabs, Pill, SectionHeading, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
@@ -18,7 +18,6 @@ export function TradePlansExperience({ links, embedded = false }) {
   const [isTesting, setIsTesting] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isGeneratingGotify, setIsGeneratingGotify] = useState(false);
-  const [adminToken, setAdminToken] = useState(() => readNotifyAdminToken());
   const [notifyPlatform, setNotifyPlatform] = useState('android');
   const [notifyConfig, setNotifyConfig] = useState({
     ...readNotifyClientConfig(),
@@ -67,7 +66,7 @@ export function TradePlansExperience({ links, embedded = false }) {
     return () => {
       cancelled = true;
     };
-  }, [adminToken]);
+  }, []);
 
   useEffect(() => {
     if (!previewRows.length) {
@@ -105,11 +104,6 @@ export function TradePlansExperience({ links, embedded = false }) {
         : String(event.ruleId || '').startsWith(`dca:${selectedRow.sourceId}:`)
     ))
     : [];
-
-  function handleAdminTokenChange(value) {
-    setAdminToken(value);
-    persistNotifyAdminToken(value);
-  }
 
   async function refreshNotifyData() {
     const [statusPayload, eventsPayload] = await Promise.all([
@@ -343,19 +337,6 @@ export function TradePlansExperience({ links, embedded = false }) {
             {notifyError ? (
               <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
                 {notifyError}
-              </div>
-            ) : null}
-            {notifyStatus?.requiresAdminToken ? (
-              <div className="mt-5 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 xl:grid-cols-[minmax(0,1fr)_220px] xl:items-end">
-                <Field
-                  label="通知管理口令"
-                  helper="服务器开启了写保护，当前浏览器先填一次口令，后续同步、测试和生成安卓账号才会生效。"
-                >
-                  <TextInput placeholder="输入通知管理口令" type="password" value={adminToken} onChange={(event) => handleAdminTokenChange(event.target.value)} />
-                </Field>
-                <div className="rounded-xl bg-white px-4 py-3 text-sm text-slate-500 ring-1 ring-slate-200">
-                  {notifyStatus?.hasAdminAccess ? '当前浏览器已连接通知服务' : '当前浏览器尚未连接通知服务'}
-                </div>
               </div>
             ) : null}
             <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-5">

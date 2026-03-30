@@ -316,7 +316,6 @@ async function createGotifyAccount(settings) {
 }
 
 async function handleGotifyAccount(request, env) {
-  requireAdmin(request, env);
   const origin = readOrigin(request);
   const settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
   const account = await createGotifyAccount(settings);
