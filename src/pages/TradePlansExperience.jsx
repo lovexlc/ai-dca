@@ -311,7 +311,6 @@ export function TradePlansExperience({ links, embedded = false }) {
             <SectionHeading
               eyebrow="通知接入"
               title="消息推送配置"
-              description="桌面端只保留一组清晰的接入入口。安卓端生成独立账号，iPhone 端单独填写 Bark Key。"
               action={
                 <div className="inline-flex items-center gap-1 rounded-2xl bg-slate-100 p-1">
                   <button
@@ -387,12 +386,10 @@ export function TradePlansExperience({ links, embedded = false }) {
                       </div>
                     </div>
                   </div>
-                  <div className="mt-3 text-xs leading-5 text-slate-500">服务端会生成一个新的 Gotify 普通用户账号，结果只保存在当前浏览器，可直接配置到手机客户端。</div>
                 </>
               ) : (
                 <>
                   <div className="text-sm font-semibold text-slate-900">iPhone Bark Key</div>
-                  <div className="mt-1 text-sm leading-6 text-slate-500">在 Bark App 里复制设备 Key，填入后保存。系统会把 Key 保存到当前浏览器，并同步到通知 Worker。</div>
                   <div className="mt-5 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
                     <Field label="Bark 设备 Key">
                       <TextInput value={notifyConfig.barkDeviceKey} onChange={(event) => setNotifyConfig((current) => ({ ...current, barkDeviceKey: event.target.value }))} />
