@@ -126,6 +126,41 @@ function getRecentEvents(state = {}) {
   return Array.isArray(state?.recentEvents) ? state.recentEvents : [];
 }
 
+function getDeliveryFailures(state = {}) {
+  return typeof state?.deliveryFailures === 'object' && state.deliveryFailures ? state.deliveryFailures : {};
+}
+
+function applySettingsRemovals(settings, removals = []) {
+  const nextSettings = normalizeSettings(settings);
+
+  for (const removal of removals) {
+    const configType = String(removal?.configType || '').trim();
+    const configKey = String(removal?.configKey || '').trim();
+    const configId = String(removal?.configId || '').trim();
+
+    if (!configType || !configKey) {
+      continue;
+    }
+
+    if (configType === 'bark') {
+      nextSettings.barkDeviceKey = '';
+      continue;
+    }
+
+    if (configType === 'gotify-client') {
+      nextSettings.gotifyClients = nextSettings.gotifyClients.filter((client) => `gotify-client:${client.id}` !== configKey && String(client.id || '').trim() !== configId);
+      continue;
+    }
+
+    if (configType === 'gotify-legacy') {
+      nextSettings.gotifyBaseUrl = '';
+      nextSettings.gotifyToken = '';
+    }
+  }
+
+  return nextSettings;
+}
+
 async function persistCycleResult(env, state, meta = {}) {
   await writeJson(env, STATE_KEY, state);
   await writeJson(env, META_KEY, meta);
@@ -137,6 +172,7 @@ async function handleStatus(request, env) {
   const state = await readJson(env, STATE_KEY, {});
   const settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
   const recentEvents = getRecentEvents(state);
+  const deliveryFailures = Object.values(getDeliveryFailures(state));
   const adminAccess = hasAdminAccess(request, env);
   const barkDeviceKey = settings.barkDeviceKey || String(env.BARK_DEVICE_KEY || '').trim();
   const gotifyBaseUrl = settings.gotifyBaseUrl || String(env.GOTIFY_BASE_URL || '').trim();
@@ -160,6 +196,8 @@ async function handleStatus(request, env) {
     lastTestedAt: String(meta?.lastTestedAt || ''),
     eventCount: recentEvents.length,
     lastEvent: recentEvents[0] || null,
+    deliveryFailureCount: deliveryFailures.length,
+    deliveryFailures: adminAccess ? deliveryFailures : [],
     setup: adminAccess ? {
       barkDeviceKey,
       gotifyBaseUrl,
@@ -353,6 +391,8 @@ async function handleTest(request, env) {
   const payload = await request.json().catch(() => ({}));
   const existingState = await readJson(env, STATE_KEY, {});
   const meta = await readJson(env, META_KEY, {});
+  let settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
+  env.__notifySettings = settings;
   const cycle = await runNotificationCycle(env, {}, existingState, {
     reason: 'manual-test',
     testPayload: {
@@ -360,6 +400,11 @@ async function handleTest(request, env) {
       body: String(payload.body || '这是一条测试通知，用来校验 Bark 和 Gotify 是否可用。')
     }
   });
+  if (Array.isArray(cycle.settingsRemovals) && cycle.settingsRemovals.length) {
+    settings = applySettingsRemovals(settings, cycle.settingsRemovals);
+    await writeJson(env, SETTINGS_KEY, settings);
+    env.__notifySettings = settings;
+  }
   const nextMeta = {
     ...meta,
     lastTestedAt: new Date().toISOString()
@@ -377,8 +422,14 @@ async function runDetection(env, reason = 'manual-run') {
   const payload = await readJson(env, PAYLOAD_KEY, normalizeNotifyPayload({}));
   const state = await readJson(env, STATE_KEY, {});
   const meta = await readJson(env, META_KEY, {});
-  env.__notifySettings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
+  let settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
+  env.__notifySettings = settings;
   const cycle = await runNotificationCycle(env, payload, state, { reason });
+  if (Array.isArray(cycle.settingsRemovals) && cycle.settingsRemovals.length) {
+    settings = applySettingsRemovals(settings, cycle.settingsRemovals);
+    await writeJson(env, SETTINGS_KEY, settings);
+    env.__notifySettings = settings;
+  }
   const nextMeta = {
     ...meta,
     counts: compileNotifyRules(payload).summary,

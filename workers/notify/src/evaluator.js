@@ -6,6 +6,7 @@ import { sendGotifyNotification } from './channels/gotify.js';
 const DEFAULT_PUBLIC_DATA_BASE_URL = 'https://tools.freebacktrack.tech';
 const DEFAULT_TIMEZONE = 'Asia/Shanghai';
 const MAX_RECENT_EVENTS = 30;
+const MAX_CHANNEL_FAILURES = 10;
 
 function roundPrice(value) {
   return Number.isFinite(Number(value)) ? Number(Number(value).toFixed(3)) : 0;
@@ -210,48 +211,79 @@ async function deliverNotification(env, notification) {
   const settings = typeof env.__notifySettings === 'object' && env.__notifySettings ? env.__notifySettings : {};
   const results = [];
   const gotifyClients = Array.isArray(settings.gotifyClients) ? settings.gotifyClients : [];
+  const barkDeviceKey = String(settings.barkDeviceKey || env.BARK_DEVICE_KEY || '').trim();
 
   try {
-    results.push(await sendBarkNotification({
-      ...notification,
-      deviceKey: settings.barkDeviceKey || env.BARK_DEVICE_KEY || ''
-    }));
+    results.push({
+      ...(await sendBarkNotification({
+        ...notification,
+        deviceKey: barkDeviceKey
+      })),
+      configKey: 'bark:default',
+      configType: 'bark',
+      configId: 'default',
+      configLabel: 'Bark'
+    });
   } catch (error) {
     results.push({
       channel: 'bark',
       status: 'failed',
-      detail: error instanceof Error ? error.message : 'Bark 推送失败'
+      detail: error instanceof Error ? error.message : 'Bark 推送失败',
+      configKey: 'bark:default',
+      configType: 'bark',
+      configId: 'default',
+      configLabel: 'Bark'
     });
   }
 
   if (gotifyClients.length) {
     for (const client of gotifyClients) {
       try {
-        results.push(await sendGotifyNotification({
-          ...notification,
-          baseUrl: client.baseUrl,
-          token: client.token
-        }));
+        results.push({
+          ...(await sendGotifyNotification({
+            ...notification,
+            baseUrl: client.baseUrl,
+            token: client.token
+          })),
+          configKey: `gotify-client:${client.id}`,
+          configType: 'gotify-client',
+          configId: client.id,
+          configLabel: client.username || client.id
+        });
       } catch (error) {
         results.push({
           channel: 'gotify',
           status: 'failed',
-          detail: error instanceof Error ? error.message : 'Gotify 推送失败'
+          detail: error instanceof Error ? error.message : 'Gotify 推送失败',
+          configKey: `gotify-client:${client.id}`,
+          configType: 'gotify-client',
+          configId: client.id,
+          configLabel: client.username || client.id
         });
       }
     }
   } else {
     try {
-      results.push(await sendGotifyNotification({
-        ...notification,
-        baseUrl: settings.gotifyBaseUrl || env.GOTIFY_BASE_URL || '',
-        token: settings.gotifyToken || env.GOTIFY_TOKEN || ''
-      }));
+      results.push({
+        ...(await sendGotifyNotification({
+          ...notification,
+          baseUrl: settings.gotifyBaseUrl || env.GOTIFY_BASE_URL || '',
+          token: settings.gotifyToken || env.GOTIFY_TOKEN || ''
+        })),
+        configKey: 'gotify:default',
+        configType: 'gotify-legacy',
+        configId: 'default',
+        configLabel: 'Gotify 默认通道'
+      });
     } catch (error) {
       results.push({
         channel: 'gotify',
         status: 'failed',
-        detail: error instanceof Error ? error.message : 'Gotify 推送失败'
+        detail: error instanceof Error ? error.message : 'Gotify 推送失败',
+        configKey: 'gotify:default',
+        configType: 'gotify-legacy',
+        configId: 'default',
+        configLabel: 'Gotify 默认通道'
       });
     }
   }
@@ -326,15 +358,105 @@ function appendEvent(recentEvents = [], event) {
   return [event, ...recentEvents].slice(0, MAX_RECENT_EVENTS);
 }
 
+function getDeliveryFailures(state = {}) {
+  return typeof state?.deliveryFailures === 'object' && state.deliveryFailures ? state.deliveryFailures : {};
+}
+
+function buildChannelRemovalEvent(removal, nowIso) {
+  const channelLabel = String(removal.configLabel || '').trim() || (removal.configType === 'bark'
+    ? 'Bark'
+    : removal.configType === 'gotify-client'
+      ? `Gotify 账号 ${removal.configId || ''}`.trim()
+      : 'Gotify 默认通道');
+
+  return {
+    id: `channel-removal:${removal.configKey}:${Date.now()}`,
+    ruleId: `channel:${removal.configKey}`,
+    title: '通知配置已自动移除',
+    body: `${channelLabel} 连续推送失败 ${removal.failures} 次，已从通知配置中自动移除。`,
+    summary: `${channelLabel} 已移除`,
+    status: 'failed',
+    channels: [{
+      channel: removal.channel,
+      status: 'removed',
+      detail: removal.detail || '连续失败超过阈值，已自动移除'
+    }],
+    createdAt: nowIso,
+    reason: 'auto-remove-failed-channel'
+  };
+}
+
+function updateDeliveryFailures(previousFailures, results = [], nowIso) {
+  const nextFailures = { ...previousFailures };
+  const removals = [];
+  const removalMap = new Map();
+
+  for (const result of results) {
+    const configKey = String(result?.configKey || '').trim();
+    if (!configKey || result?.status === 'skipped') {
+      continue;
+    }
+
+    if (result.status === 'delivered') {
+      delete nextFailures[configKey];
+      continue;
+    }
+
+    const previous = nextFailures[configKey] || {};
+    const nextCount = Math.max(Number(previous.count) || 0, 0) + 1;
+    nextFailures[configKey] = {
+      configKey,
+      configType: String(result.configType || previous.configType || '').trim(),
+      configId: String(result.configId || previous.configId || '').trim(),
+      configLabel: String(result.configLabel || previous.configLabel || '').trim(),
+      channel: String(result.channel || previous.channel || '').trim(),
+      count: nextCount,
+      lastFailureAt: nowIso,
+      detail: String(result.detail || '').trim()
+    };
+
+    if (nextCount >= MAX_CHANNEL_FAILURES && !removalMap.has(configKey)) {
+      const removal = {
+        configKey,
+        configType: nextFailures[configKey].configType,
+        configId: nextFailures[configKey].configId,
+        configLabel: nextFailures[configKey].configLabel,
+        channel: nextFailures[configKey].channel,
+        failures: nextCount,
+        detail: nextFailures[configKey].detail
+      };
+      removalMap.set(configKey, removal);
+      removals.push(removal);
+      delete nextFailures[configKey];
+    }
+  }
+
+  return {
+    nextFailures,
+    removals
+  };
+}
+
 export async function runNotificationCycle(env, payload = {}, storedState = {}, { reason = 'scheduled', testPayload = null } = {}) {
   const nextState = {
     ruleStates: typeof storedState?.ruleStates === 'object' && storedState.ruleStates ? storedState.ruleStates : {},
+    deliveryFailures: getDeliveryFailures(storedState),
     lastRunAt: new Date().toISOString()
   };
   let recentEvents = Array.isArray(storedState?.recentEvents) ? storedState.recentEvents : [];
+  const removalEvents = [];
+  const settingsRemovals = [];
+
+  function appendRemoval(removal) {
+    if (!settingsRemovals.some((item) => item.configKey === removal.configKey)) {
+      settingsRemovals.push(removal);
+    }
+  }
 
   if (testPayload) {
     const delivery = await deliverNotification(env, testPayload);
+    const failureUpdate = updateDeliveryFailures(nextState.deliveryFailures, delivery.results, new Date().toISOString());
+    nextState.deliveryFailures = failureUpdate.nextFailures;
     const event = {
       id: `test-${Date.now()}`,
       ruleId: 'test',
@@ -347,6 +469,12 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
       reason
     };
     recentEvents = appendEvent(recentEvents, event);
+    for (const removal of failureUpdate.removals) {
+      appendRemoval(removal);
+      const removalEvent = buildChannelRemovalEvent(removal, new Date().toISOString());
+      removalEvents.push(removalEvent);
+      recentEvents = appendEvent(recentEvents, removalEvent);
+    }
 
     return {
       state: {
@@ -356,8 +484,9 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
       summary: {
         triggeredCount: 0,
         deliveredCount: delivery.results.filter((result) => result.status === 'delivered').length,
-        events: [event]
-      }
+        events: [event, ...removalEvents]
+      },
+      settingsRemovals
     };
   }
 
@@ -400,6 +529,8 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
 
       const notification = buildPlanNotification(rule, evaluation);
       const delivery = await deliverNotification(env, notification);
+      const failureUpdate = updateDeliveryFailures(nextState.deliveryFailures, delivery.results, now.toISOString());
+      nextState.deliveryFailures = failureUpdate.nextFailures;
       nextState.ruleStates[rule.ruleId] = {
         ...nextState.ruleStates[rule.ruleId],
         lastHandledStage: stageOrder,
@@ -419,6 +550,13 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
       };
       events.push(event);
       recentEvents = appendEvent(recentEvents, event);
+      for (const removal of failureUpdate.removals) {
+        appendRemoval(removal);
+        const removalEvent = buildChannelRemovalEvent(removal, now.toISOString());
+        events.push(removalEvent);
+        removalEvents.push(removalEvent);
+        recentEvents = appendEvent(recentEvents, removalEvent);
+      }
     } catch (error) {
       nextState.ruleStates[rule.ruleId] = {
         ...previousState,
@@ -444,6 +582,8 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
 
     const notification = buildDcaNotification(rule, window.localDateLabel);
     const delivery = await deliverNotification(env, notification);
+    const failureUpdate = updateDeliveryFailures(nextState.deliveryFailures, delivery.results, now.toISOString());
+    nextState.deliveryFailures = failureUpdate.nextFailures;
     nextState.ruleStates[rule.ruleId] = {
       ...nextState.ruleStates[rule.ruleId],
       lastHandledWindowKey: window.windowKey,
@@ -463,6 +603,13 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
     };
     events.push(event);
     recentEvents = appendEvent(recentEvents, event);
+    for (const removal of failureUpdate.removals) {
+      appendRemoval(removal);
+      const removalEvent = buildChannelRemovalEvent(removal, now.toISOString());
+      events.push(removalEvent);
+      removalEvents.push(removalEvent);
+      recentEvents = appendEvent(recentEvents, removalEvent);
+    }
   }
 
   return {
@@ -475,6 +622,7 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
       deliveredCount: events.filter((event) => event.status === 'delivered').length,
       events,
       counts: compiled.summary
-    }
+    },
+    settingsRemovals
   };
 }
