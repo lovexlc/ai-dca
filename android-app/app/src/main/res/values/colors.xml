@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <color name="ink">#0F172A</color>
+  <color name="surface_page">#F8FAFC</color>
+  <color name="surface_card">#FFFFFFFF</color>
+  <color name="surface_token">#EEF2FF</color>
+  <color name="slate_700">#334155</color>
+  <color name="slate_600">#475569</color>
+  <color name="slate_500">#64748B</color>
+  <color name="slate_400">#94A3B8</color>
+  <color name="slate_200">#E2E8F0</color>
+  <color name="indigo_600">#4F46E5</color>
+  <color name="indigo_50">#EEF2FF</color>
+  <color name="emerald_600">#059669</color>
+  <color name="emerald_50">#ECFDF5</color>
+  <color name="amber_700">#B45309</color>
+  <color name="amber_50">#FFFBEB</color>
+  <color name="red_600">#DC2626</color>
+  <color name="red_50">#FEF2F2</color>
+</resources>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">AI DCA Notify</string>
+  <string name="main_subtitle">安装后会自动申请 FCM token、自动注册到 AI DCA 通知服务。普通用户不需要手动填 token。</string>
+  <string name="main_note">如果看到“设备已注册”，说明 app 已经把当前设备提交到服务端。后续 token 轮换时，app 也会自动重注册。</string>
+  <string name="status_label">当前状态</string>
+  <string name="device_info_label">设备信息</string>
+  <string name="status_idle">等待处理</string>
+  <string name="action_refresh">重新检查连接</string>
+  <string name="permission_denied_message">系统通知权限未开启，后续即使服务端发送成功，系统也可能不展示通知。</string>
+  <string name="notification_channel_name">AI DCA 通知</string>
+  <string name="notification_channel_description">交易计划和定投提醒</string>
+  <string name="incoming_message_fallback_title">AI DCA 通知</string>
+</resources>

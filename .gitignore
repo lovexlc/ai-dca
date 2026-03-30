@@ -6,3 +6,7 @@ frontend-dist/
 *.tgz
 .dev.vars
 workers/ocr-proxy/.dev.vars
+android-app/.gradle/
+android-app/local.properties
+android-app/app/google-services.json
+android-app/app/build/

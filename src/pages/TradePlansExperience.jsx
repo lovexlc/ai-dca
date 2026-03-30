@@ -462,9 +462,9 @@ export function TradePlansExperience({ links, embedded = false }) {
             <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-5">
               {notifyPlatform === 'android' ? (
                 <>
-                  <div className="text-sm font-semibold text-slate-900">Android GCM / FCM 注册</div>
+                  <div className="text-sm font-semibold text-slate-900">Android App 注册管理</div>
                   <p className="mt-2 text-sm leading-6 text-slate-500">
-                    旧 GCM 发送接口已经下线，这里按 Firebase registration token 做服务端连接检查和 Android 设备注册。当前先只做检查和注册，不接实际下发。
+                    普通用户不应该手动填 token。推荐直接安装 Android app 自动注册设备；这里保留给管理和调试使用，底层仍然按 Firebase registration token 做服务端检查。
                   </p>
                   <div className="mt-4 grid gap-3 xl:grid-cols-4">
                     <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
