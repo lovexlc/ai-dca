@@ -228,12 +228,13 @@ async function handleStatus(request, env) {
   const recentEvents = getRecentEvents(state);
   const deliveryFailures = Object.values(getDeliveryFailures(state));
   const barkDeviceKey = settings.barkDeviceKey || String(env.BARK_DEVICE_KEY || '').trim();
+  const gcmSetup = buildPublicGcmSetup(settings, env);
 
   return jsonResponse({
     configured: {
       bark: Boolean(barkDeviceKey),
       gotify: false,
-      gcm: false
+      gcm: Boolean(gcmSetup.gcmServiceAccountConfigured && gcmSetup.gcmRegistrationCount)
     },
     counts: {
       planRuleCount: Number(meta?.counts?.planRuleCount) || 0,
@@ -249,7 +250,7 @@ async function handleStatus(request, env) {
     deliveryFailures,
     setup: {
       barkDeviceKey,
-      androidNotice: '开发中，请等待。'
+      ...gcmSetup
     }
   }, { origin });
 }
@@ -681,11 +682,11 @@ export default {
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/gcm/register') {
-        return jsonResponse({ error: 'Android 通知开发中，请等待。' }, { status: 410, origin });
+        return await handleGcmRegister(request, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/gcm/check') {
-        return jsonResponse({ error: 'Android 通知开发中，请等待。' }, { status: 410, origin });
+        return await handleGcmCheck(request, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/run') {
