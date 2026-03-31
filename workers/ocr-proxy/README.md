@@ -63,7 +63,7 @@ npm run worker:deploy
 
 `workers/ocr-proxy/wrangler.toml` 已内置以下默认值：
 
-- `OCR_UPSTREAM_BASE_URL=http://142.93.159.165:2095/v1`
+- `OCR_UPSTREAM_BASE_URL=http://xxx:2095/v1`
 - `OCR_UPSTREAM_MODEL=gpt-5.4`
 
 API key 不写入仓库，只通过 `OCR_UPSTREAM_API_KEY` Secret 或本地 `.dev.vars` 注入。
