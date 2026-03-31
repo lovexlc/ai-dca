@@ -1,7 +1,6 @@
 import { buildMovingAverageValues, buildNasdaqStrategyPlan, buildPeakDrawdownStrategyPlan, findLatestFiniteValue, mapReferencePrice } from '../../../src/app/strategyEngine.js';
 import { compileNotifyRules } from './rules.js';
 import { sendBarkNotification } from './channels/bark.js';
-import { sendGotifyNotification } from './channels/gotify.js';
 
 const DEFAULT_PUBLIC_DATA_BASE_URL = 'https://tools.freebacktrack.tech';
 const DEFAULT_TIMEZONE = 'Asia/Shanghai';
@@ -210,7 +209,6 @@ function resolveDcaWindow(rule, now = new Date(), timeZone = DEFAULT_TIMEZONE) {
 async function deliverNotification(env, notification) {
   const settings = typeof env.__notifySettings === 'object' && env.__notifySettings ? env.__notifySettings : {};
   const results = [];
-  const gotifyClients = Array.isArray(settings.gotifyClients) ? settings.gotifyClients : [];
   const barkDeviceKey = String(settings.barkDeviceKey || env.BARK_DEVICE_KEY || '').trim();
 
   try {
@@ -234,58 +232,6 @@ async function deliverNotification(env, notification) {
       configId: 'default',
       configLabel: 'Bark'
     });
-  }
-
-  if (gotifyClients.length) {
-    for (const client of gotifyClients) {
-      try {
-        results.push({
-          ...(await sendGotifyNotification({
-            ...notification,
-            baseUrl: client.baseUrl,
-            token: client.token
-          })),
-          configKey: `gotify-client:${client.id}`,
-          configType: 'gotify-client',
-          configId: client.id,
-          configLabel: client.username || client.id
-        });
-      } catch (error) {
-        results.push({
-          channel: 'gotify',
-          status: 'failed',
-          detail: error instanceof Error ? error.message : 'Gotify 推送失败',
-          configKey: `gotify-client:${client.id}`,
-          configType: 'gotify-client',
-          configId: client.id,
-          configLabel: client.username || client.id
-        });
-      }
-    }
-  } else {
-    try {
-      results.push({
-        ...(await sendGotifyNotification({
-          ...notification,
-          baseUrl: settings.gotifyBaseUrl || env.GOTIFY_BASE_URL || '',
-          token: settings.gotifyToken || env.GOTIFY_TOKEN || ''
-        })),
-        configKey: 'gotify:default',
-        configType: 'gotify-legacy',
-        configId: 'default',
-        configLabel: 'Gotify 默认通道'
-      });
-    } catch (error) {
-      results.push({
-        channel: 'gotify',
-        status: 'failed',
-        detail: error instanceof Error ? error.message : 'Gotify 推送失败',
-        configKey: 'gotify:default',
-        configType: 'gotify-legacy',
-        configId: 'default',
-        configLabel: 'Gotify 默认通道'
-      });
-    }
   }
 
   const deliveredCount = results.filter((result) => result.status === 'delivered').length;

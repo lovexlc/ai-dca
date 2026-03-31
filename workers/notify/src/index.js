@@ -228,16 +228,12 @@ async function handleStatus(request, env) {
   const recentEvents = getRecentEvents(state);
   const deliveryFailures = Object.values(getDeliveryFailures(state));
   const barkDeviceKey = settings.barkDeviceKey || String(env.BARK_DEVICE_KEY || '').trim();
-  const gotifyBaseUrl = settings.gotifyBaseUrl || String(env.GOTIFY_BASE_URL || '').trim();
-  const gotifyToken = settings.gotifyToken || String(env.GOTIFY_TOKEN || '').trim();
-  const gotifyClients = Array.isArray(settings.gotifyClients) ? settings.gotifyClients : [];
-  const gcmSetup = buildPublicGcmSetup(settings, env);
 
   return jsonResponse({
     configured: {
       bark: Boolean(barkDeviceKey),
-      gotify: Boolean(gotifyClients.length || (gotifyBaseUrl && gotifyToken)),
-      gcm: Boolean(gcmSetup.gcmProjectId && gcmSetup.gcmRegistrationCount)
+      gotify: false,
+      gcm: false
     },
     counts: {
       planRuleCount: Number(meta?.counts?.planRuleCount) || 0,
@@ -252,11 +248,8 @@ async function handleStatus(request, env) {
     deliveryFailureCount: deliveryFailures.length,
     deliveryFailures,
     setup: {
-      gotifyBaseUrl,
-      gotifyAdminConfigured: Boolean(settings.gotifyUsername && settings.gotifyPassword),
-      gotifyClientCount: gotifyClients.length,
-      gotifyTokenMasked: buildMaskedToken(gotifyToken),
-      ...gcmSetup
+      barkDeviceKey,
+      androidNotice: '开发中，请等待。'
     }
   }, { origin });
 }
@@ -309,7 +302,12 @@ async function handleSettings(request, env) {
   const payload = await request.json().catch(() => ({}));
   const nextSettings = normalizeSettings({
     ...existingSettings,
-    ...payload
+    ...payload,
+    gotifyBaseUrl: '',
+    gotifyUsername: '',
+    gotifyPassword: '',
+    gotifyToken: '',
+    gotifyClients: []
   });
 
   await writeJson(env, SETTINGS_KEY, nextSettings);
@@ -318,11 +316,7 @@ async function handleSettings(request, env) {
     ok: true,
     setup: {
       barkDeviceKey: nextSettings.barkDeviceKey,
-      gotifyBaseUrl: nextSettings.gotifyBaseUrl,
-      gotifyAdminConfigured: Boolean(nextSettings.gotifyUsername && nextSettings.gotifyPassword),
-      gotifyClientCount: Array.isArray(nextSettings.gotifyClients) ? nextSettings.gotifyClients.length : 0,
-      gotifyTokenMasked: buildMaskedToken(nextSettings.gotifyToken),
-      ...buildPublicGcmSetup(nextSettings, env)
+      androidNotice: '开发中，请等待。'
     }
   }, { origin });
 }
@@ -597,7 +591,7 @@ async function handleTest(request, env) {
     reason: 'manual-test',
     testPayload: {
       title: String(payload.title || '交易计划测试提醒'),
-      body: String(payload.body || '这是一条测试通知，用来校验 Bark 和 Gotify 是否可用。')
+      body: String(payload.body || '这是一条测试通知，用来校验 Bark 是否可用。')
     }
   });
   if (Array.isArray(cycle.settingsRemovals) && cycle.settingsRemovals.length) {
@@ -683,15 +677,15 @@ export default {
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/gotify-account') {
-        return await handleGotifyAccount(request, env);
+        return jsonResponse({ error: 'Gotify 通知能力已移除。' }, { status: 410, origin });
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/gcm/register') {
-        return await handleGcmRegister(request, env);
+        return jsonResponse({ error: 'Android 通知开发中，请等待。' }, { status: 410, origin });
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/gcm/check') {
-        return await handleGcmCheck(request, env);
+        return jsonResponse({ error: 'Android 通知开发中，请等待。' }, { status: 410, origin });
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/run') {

@@ -27,3 +27,10 @@ When the user gives a new requirement, follow this sequence by default:
 - Long strategy names must have explicit line-height and enough vertical spacing to wrap naturally. Do not rely on default text leading in dense cards.
 - On mobile, badges should wrap to a new line before they squeeze or visually collide with the title.
 - Before finalizing a mobile page, check the key summary card in browser automation and verify that text blocks are visually separated rather than stacked into one dense cluster.
+
+## Local Credentials
+
+- Store local GitHub and Cloudflare credentials in `/home/lovexl/ai-dca-stragety/.env.local`.
+- Expected variables: `GITHUB_TOKEN`, `GH_TOKEN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
+- Login shells source `/home/lovexl/ai-dca-stragety/.env.local` via `~/.local/bin/env`, so agents can use these variables directly in new shell sessions.
+- Do not copy raw secret values into tracked files or commit them to the repository.
