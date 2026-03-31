@@ -26,6 +26,42 @@ function stripTrailingSlash(value = '') {
   return String(value || '').replace(/\/+$/, '');
 }
 
+function parseIsoTimestamp(value = '') {
+  const timestamp = Date.parse(String(value || '').trim());
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function resolveGcmRegistrationPriority(registration = {}, currentClientId = '') {
+  const pairedClients = Array.isArray(registration?.pairedClients) ? registration.pairedClients : [];
+  const currentClientPair = currentClientId
+    ? pairedClients.find((client) => client.clientId === currentClientId) || null
+    : null;
+
+  return Math.max(
+    parseIsoTimestamp(currentClientPair?.lastSeenAt),
+    parseIsoTimestamp(currentClientPair?.pairedAt),
+    parseIsoTimestamp(registration?.updatedAt),
+    parseIsoTimestamp(registration?.createdAt)
+  );
+}
+
+function selectGcmRegistrationsForDelivery(registrations = [], { currentClientId = '', limit = 0 } = {}) {
+  if (!(limit > 0) || registrations.length <= limit) {
+    return registrations;
+  }
+
+  return [...registrations]
+    .sort((left, right) => {
+      const priorityDiff = resolveGcmRegistrationPriority(right, currentClientId) - resolveGcmRegistrationPriority(left, currentClientId);
+      if (priorityDiff) {
+        return priorityDiff;
+      }
+
+      return String(left?.id || '').localeCompare(String(right?.id || ''));
+    })
+    .slice(0, limit);
+}
+
 async function fetchJson(url) {
   const response = await fetch(url, {
     headers: {
@@ -213,11 +249,12 @@ function resolveDcaWindow(rule, now = new Date(), timeZone = DEFAULT_TIMEZONE) {
   }
 }
 
-async function deliverNotification(env, notification) {
+async function deliverNotification(env, notification, options = {}) {
   const settings = typeof env.__notifySettings === 'object' && env.__notifySettings ? env.__notifySettings : {};
   const results = [];
   const barkDeviceKey = String(settings.barkDeviceKey || env.BARK_DEVICE_KEY || '').trim();
   const currentClientId = String(env.__notifyCurrentClientId || '').trim();
+  const limitGcmRegistrations = Math.max(Number(options.limitGcmRegistrations) || 0, 0);
   const gcmRegistrations = normalizeGcmRegistrations(settings.gcmRegistrations);
   const selectedGcmRegistrations = gcmRegistrations.filter((registration) => {
     const pairedClients = Array.isArray(registration.pairedClients) ? registration.pairedClients : [];
@@ -229,6 +266,10 @@ async function deliverNotification(env, notification) {
     return currentClientId
       ? pairedClients.some((client) => client.clientId === currentClientId)
       : true;
+  });
+  const gcmRegistrationsToDeliver = selectGcmRegistrationsForDelivery(selectedGcmRegistrations, {
+    currentClientId,
+    limit: limitGcmRegistrations
   });
 
   try {
@@ -265,7 +306,7 @@ async function deliverNotification(env, notification) {
       configLabel: currentClientId ? 'Android（当前浏览器）' : 'Android'
     });
   } else {
-    for (const registration of selectedGcmRegistrations) {
+    for (const registration of gcmRegistrationsToDeliver) {
       try {
         results.push({
           ...(await sendGcmNotification({
@@ -466,7 +507,9 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
   }
 
   if (testPayload) {
-    const delivery = await deliverNotification(env, testPayload);
+    const delivery = await deliverNotification(env, testPayload, {
+      limitGcmRegistrations: 1
+    });
     const failureUpdate = updateDeliveryFailures(nextState.deliveryFailures, delivery.results, new Date().toISOString());
     nextState.deliveryFailures = failureUpdate.nextFailures;
     const event = {

@@ -44,7 +44,7 @@ npx wrangler dev --config workers/notify/wrangler.toml --port 8788
 - Web 前端会在本地生成一个浏览器 `clientId`
 - Android app 注册成功后会向 Worker 申请一次性 8 位配对码
 - 用户把配对码填到前端页面后，Worker 会把那台 Android 设备和当前浏览器 `clientId` 建立配对关系
-- 手动测试通知会优先发送到当前浏览器已配对的 Android 设备
+- 手动测试通知会优先只发送到当前浏览器最近关联的一台 Android 设备
 - 计划规则由前端整包同步到后台
 - 价格提醒按当前策略重算后决定是否触发
 - 同一触发区只提醒一次，离开触发区后才允许再次提醒
