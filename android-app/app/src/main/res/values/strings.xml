@@ -2,13 +2,26 @@
 <resources>
   <string name="app_name">AI DCA Notify</string>
   <string name="main_subtitle">安装后会自动申请 FCM token、自动注册到 AI DCA 通知服务。普通用户不需要手动填 token。</string>
-  <string name="main_note">如果看到“设备已注册”，说明 app 已经把当前设备提交到服务端。后续 token 轮换时，app 也会自动重注册。</string>
+  <string name="main_note">“已校验”只表示 Firebase 凭证、包名和当前 token 能通过服务端的 validateOnly 检查。要确认 HyperOS 上的真实下发情况，请看“真实推送记录”。</string>
   <string name="status_label">当前状态</string>
   <string name="device_info_label">设备信息</string>
+  <string name="delivery_label">真实推送记录</string>
   <string name="status_idle">等待处理</string>
   <string name="action_refresh">重新检查连接</string>
   <string name="permission_denied_message">系统通知权限未开启，后续即使服务端发送成功，系统也可能不展示通知。</string>
   <string name="notification_channel_name">AI DCA 通知</string>
   <string name="notification_channel_description">交易计划和定投提醒</string>
   <string name="incoming_message_fallback_title">AI DCA 通知</string>
+  <string name="debug_label">调试日志</string>
+  <string name="debug_action_copy">复制</string>
+  <string name="debug_action_clear">清空</string>
+  <string name="debug_log_empty">当前还没有任何调试日志。</string>
+  <string name="debug_mode_hint">再点 %1$d 次开启调试模式</string>
+  <string name="debug_mode_enabled">调试模式已开启</string>
+  <string name="debug_mode_disabled">调试模式已关闭</string>
+  <string name="debug_logs_copied">调试日志已复制</string>
+  <string name="debug_logs_cleared">调试日志已清空</string>
+  <string name="delivery_status_empty">还没有记录到任何真实推送。当前页面的“已校验”不代表消息已经从 FCM 下发到这台手机。</string>
+  <string name="delivery_status_received_prefix">最近一次真实推送到达时间: </string>
+  <string name="delivery_status_error_prefix">最近一次推送已到达，但展示通知时出错: </string>
 </resources>

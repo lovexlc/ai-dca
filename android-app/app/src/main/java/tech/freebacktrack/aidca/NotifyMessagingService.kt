@@ -12,6 +12,7 @@ import com.google.firebase.messaging.RemoteMessage
 class NotifyMessagingService : FirebaseMessagingService() {
   override fun onNewToken(token: String) {
     super.onNewToken(token)
+    DebugLogStore.append(applicationContext, "fcm", "onNewToken: ${maskToken(token)}")
     RegistrationRepository.syncFromService(applicationContext, token, "token-refresh")
   }
 
@@ -26,6 +27,13 @@ class NotifyMessagingService : FirebaseMessagingService() {
       ?: message.data["body"]
       ?: message.data["message"]
       ?: "收到一条新的 AI DCA 推送消息。"
+    val messageId = message.messageId.orEmpty()
+    DebugLogStore.append(
+      applicationContext,
+      "fcm",
+      "onMessageReceived id=${messageId.ifBlank { "-" }} title=${title.take(48)} notification=${message.notification != null} dataKeys=${message.data.keys.joinToString(",")}"
+    )
+    DeliveryReceiptStore.writeReceived(applicationContext, title, body, messageId)
     val launchIntent = Intent(this, MainActivity::class.java).apply {
       flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
     }
@@ -44,8 +52,24 @@ class NotifyMessagingService : FirebaseMessagingService() {
       .setContentIntent(pendingIntent)
       .build()
 
-    val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    notificationManager.notify(message.messageId?.hashCode() ?: System.currentTimeMillis().toInt(), notification)
+    try {
+      val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      notificationManager.notify(message.messageId?.hashCode() ?: System.currentTimeMillis().toInt(), notification)
+      DebugLogStore.append(applicationContext, "notify", "Notification displayed for message ${messageId.ifBlank { "-" }}")
+    } catch (error: Exception) {
+      DebugLogStore.append(
+        applicationContext,
+        "notify",
+        "Notification display failed for message ${messageId.ifBlank { "-" }}: ${error.message ?: "未知错误"}"
+      )
+      DeliveryReceiptStore.writeDisplayError(
+        applicationContext,
+        title,
+        body,
+        messageId,
+        error.message ?: "未知错误"
+      )
+    }
   }
 
   companion object {
@@ -71,6 +95,11 @@ class NotifyMessagingService : FirebaseMessagingService() {
       }
 
       notificationManager.createNotificationChannel(channel)
+      DebugLogStore.append(context.applicationContext, "notify", "Created notification channel $CHANNEL_ID")
+    }
+
+    private fun maskToken(token: String): String {
+      return if (token.length <= 14) token else "${token.take(8)}...${token.takeLast(6)}"
     }
   }
 }

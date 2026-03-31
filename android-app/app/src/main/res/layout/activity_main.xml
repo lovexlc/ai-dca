@@ -149,6 +149,105 @@
         android:textSize="13sp" />
     </LinearLayout>
 
+    <LinearLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="16dp"
+      android:background="@drawable/card_surface"
+      android:elevation="1dp"
+      android:orientation="vertical"
+      android:padding="20dp">
+
+      <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/delivery_label"
+        android:textColor="@color/slate_500"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+
+      <TextView
+        android:id="@+id/deliveryStatusTextView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:background="@drawable/token_surface"
+        android:lineSpacingExtra="3dp"
+        android:padding="14dp"
+        android:textColor="@color/slate_700"
+        android:textSize="13sp" />
+    </LinearLayout>
+
+    <LinearLayout
+      android:id="@+id/debugCardView"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="16dp"
+      android:background="@drawable/card_surface"
+      android:elevation="1dp"
+      android:orientation="vertical"
+      android:padding="20dp"
+      android:visibility="gone">
+
+      <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+          android:layout_width="0dp"
+          android:layout_height="wrap_content"
+          android:layout_weight="1"
+          android:text="@string/debug_label"
+          android:textColor="@color/slate_500"
+          android:textSize="12sp"
+          android:textStyle="bold" />
+
+        <Button
+          android:id="@+id/copyDebugLogsButton"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:layout_marginRight="8dp"
+          android:minHeight="0dp"
+          android:minWidth="0dp"
+          android:paddingLeft="12dp"
+          android:paddingTop="8dp"
+          android:paddingRight="12dp"
+          android:paddingBottom="8dp"
+          android:text="@string/debug_action_copy"
+          android:textAllCaps="false"
+          android:textSize="12sp" />
+
+        <Button
+          android:id="@+id/clearDebugLogsButton"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:minHeight="0dp"
+          android:minWidth="0dp"
+          android:paddingLeft="12dp"
+          android:paddingTop="8dp"
+          android:paddingRight="12dp"
+          android:paddingBottom="8dp"
+          android:text="@string/debug_action_clear"
+          android:textAllCaps="false"
+          android:textSize="12sp" />
+      </LinearLayout>
+
+      <TextView
+        android:id="@+id/debugLogTextView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:background="@drawable/token_surface"
+        android:fontFamily="monospace"
+        android:lineSpacingExtra="3dp"
+        android:padding="14dp"
+        android:textColor="@color/slate_700"
+        android:textIsSelectable="true"
+        android:textSize="12sp" />
+    </LinearLayout>
+
     <Button
       android:id="@+id/refreshButton"
       android:layout_width="match_parent"
