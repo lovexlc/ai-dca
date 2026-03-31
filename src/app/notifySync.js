@@ -175,8 +175,11 @@ export function syncTradePlanRules(payload = buildNotifySyncPayload()) {
   });
 }
 
-export function sendNotifyTest() {
+export function sendNotifyTest(clientId = '') {
   return requestNotify('/test', {
+    query: {
+      clientId
+    },
     method: 'POST',
     headers: {
       'content-type': 'application/json'

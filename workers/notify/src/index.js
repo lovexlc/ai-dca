@@ -778,16 +778,18 @@ async function handleGotifyAccount(request, env) {
 
 async function handleTest(request, env) {
   const origin = readOrigin(request);
+  const currentClientId = readCurrentClientId(request);
   const payload = await request.json().catch(() => ({}));
   const existingState = await readJson(env, STATE_KEY, {});
   const meta = await readJson(env, META_KEY, {});
   let settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
   env.__notifySettings = settings;
+  env.__notifyCurrentClientId = currentClientId;
   const cycle = await runNotificationCycle(env, {}, existingState, {
     reason: 'manual-test',
     testPayload: {
       title: String(payload.title || '交易计划测试提醒'),
-      body: String(payload.body || '这是一条测试通知，用来校验 Bark 是否可用。')
+      body: String(payload.body || '这是一条测试通知，用来校验当前已接入的提醒通道是否可用。')
     }
   });
   if (Array.isArray(cycle.settingsRemovals) && cycle.settingsRemovals.length) {
@@ -814,6 +816,7 @@ async function runDetection(env, reason = 'manual-run') {
   const meta = await readJson(env, META_KEY, {});
   let settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
   env.__notifySettings = settings;
+  env.__notifyCurrentClientId = '';
   const cycle = await runNotificationCycle(env, payload, state, { reason });
   if (Array.isArray(cycle.settingsRemovals) && cycle.settingsRemovals.length) {
     settings = applySettingsRemovals(settings, cycle.settingsRemovals);

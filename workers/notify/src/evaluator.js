@@ -1,6 +1,7 @@
 import { buildMovingAverageValues, buildNasdaqStrategyPlan, buildPeakDrawdownStrategyPlan, findLatestFiniteValue, mapReferencePrice } from '../../../src/app/strategyEngine.js';
 import { compileNotifyRules } from './rules.js';
 import { sendBarkNotification } from './channels/bark.js';
+import { normalizeGcmRegistrations, resolveGcmProjectId, sendGcmNotification } from './gcm.js';
 
 const DEFAULT_PUBLIC_DATA_BASE_URL = 'https://tools.freebacktrack.tech';
 const DEFAULT_TIMEZONE = 'Asia/Shanghai';
@@ -216,6 +217,19 @@ async function deliverNotification(env, notification) {
   const settings = typeof env.__notifySettings === 'object' && env.__notifySettings ? env.__notifySettings : {};
   const results = [];
   const barkDeviceKey = String(settings.barkDeviceKey || env.BARK_DEVICE_KEY || '').trim();
+  const currentClientId = String(env.__notifyCurrentClientId || '').trim();
+  const gcmRegistrations = normalizeGcmRegistrations(settings.gcmRegistrations);
+  const selectedGcmRegistrations = gcmRegistrations.filter((registration) => {
+    const pairedClients = Array.isArray(registration.pairedClients) ? registration.pairedClients : [];
+
+    if (!pairedClients.length) {
+      return false;
+    }
+
+    return currentClientId
+      ? pairedClients.some((client) => client.clientId === currentClientId)
+      : true;
+  });
 
   try {
     results.push({
@@ -238,6 +252,52 @@ async function deliverNotification(env, notification) {
       configId: 'default',
       configLabel: 'Bark'
     });
+  }
+
+  if (!selectedGcmRegistrations.length) {
+    results.push({
+      channel: 'gcm',
+      status: 'skipped',
+      detail: currentClientId ? '当前浏览器还没有绑定 Android 设备' : '还没有已配对的 Android 设备',
+      configKey: currentClientId ? `gcm-client:${currentClientId}` : 'gcm:paired',
+      configType: 'gcm',
+      configId: currentClientId || 'paired',
+      configLabel: currentClientId ? 'Android（当前浏览器）' : 'Android'
+    });
+  } else {
+    for (const registration of selectedGcmRegistrations) {
+      try {
+        results.push({
+          ...(await sendGcmNotification({
+            env,
+            projectId: resolveGcmProjectId(settings, env),
+            packageName: registration.packageName,
+            token: registration.token,
+            title: notification.title,
+            body: notification.body,
+            data: {
+              ruleId: notification.ruleId || '',
+              summary: notification.summary || '',
+              url: notification.url || ''
+            }
+          })),
+          configKey: `gcm-registration:${registration.id}`,
+          configType: 'gcm-registration',
+          configId: registration.id,
+          configLabel: registration.deviceName || 'Android Device'
+        });
+      } catch (error) {
+        results.push({
+          channel: 'gcm',
+          status: 'failed',
+          detail: error instanceof Error ? error.message : 'Android 推送失败',
+          configKey: `gcm-registration:${registration.id}`,
+          configType: 'gcm-registration',
+          configId: registration.id,
+          configLabel: registration.deviceName || 'Android Device'
+        });
+      }
+    }
   }
 
   const deliveredCount = results.filter((result) => result.status === 'delivered').length;

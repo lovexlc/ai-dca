@@ -181,7 +181,7 @@ export function TradePlansExperience({ links, embedded = false }) {
     setNotifyError('');
     setNotifyMessage('');
     try {
-      await sendNotifyTest();
+      await sendNotifyTest(notifyConfig.notifyClientId);
       await refreshNotifyData();
     } catch (error) {
       setNotifyError(error instanceof Error ? error.message : '测试通知发送失败');

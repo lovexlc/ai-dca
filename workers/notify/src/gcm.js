@@ -137,6 +137,45 @@ function extractGoogleApiError(payload, status) {
   return `FCM 请求失败：状态 ${status}`;
 }
 
+function buildFcmEndpoint(projectId = '') {
+  return `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
+}
+
+function buildFcmMessage({ token = '', packageName = '', title = '', body = '', data = {} } = {}) {
+  const normalizedToken = String(token || '').trim();
+  const normalizedPackageName = String(packageName || '').trim();
+  const normalizedTitle = String(title || '').trim();
+  const normalizedBody = String(body || '').trim();
+  const normalizedData = Object.entries(data || {}).reduce((map, [key, value]) => {
+    if (value === undefined || value === null) {
+      return map;
+    }
+
+    map[String(key)] = String(value);
+    return map;
+  }, {});
+  const message = {
+    token: normalizedToken,
+    android: {
+      priority: 'high'
+    },
+    data: normalizedData
+  };
+
+  if (normalizedTitle || normalizedBody) {
+    message.notification = {
+      title: normalizedTitle,
+      body: normalizedBody
+    };
+  }
+
+  if (normalizedPackageName) {
+    message.android.restricted_package_name = normalizedPackageName;
+  }
+
+  return message;
+}
+
 export function maskSecret(value = '') {
   const normalized = String(value || '').trim();
   return normalized ? `${normalized.slice(0, 8)}...${normalized.slice(-6)}` : '';
@@ -287,22 +326,16 @@ export async function checkGcmConnection({ env, projectId = '', packageName = ''
   }
 
   const accessToken = await getGoogleAccessToken(serviceAccount);
-  const endpoint = `https://fcm.googleapis.com/v1/projects/${normalizedProjectId}/messages:send`;
-  const message = {
+  const endpoint = buildFcmEndpoint(normalizedProjectId);
+  const message = buildFcmMessage({
     token: normalizedToken,
-    android: {
-      priority: 'high'
-    },
+    packageName: normalizedPackageName,
     data: {
       source: 'ai-dca',
       type: 'connection-check',
       checkedAt
     }
-  };
-
-  if (normalizedPackageName) {
-    message.android.restricted_package_name = normalizedPackageName;
-  }
+  });
 
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -337,5 +370,75 @@ export async function checkGcmConnection({ env, projectId = '', packageName = ''
     projectId: normalizedProjectId,
     detail: 'FCM HTTP v1 validateOnly 校验通过。',
     responseName: String(payload.name || '').trim()
+  };
+}
+
+export async function sendGcmNotification({ env, projectId = '', packageName = '', token = '', title = '', body = '', data = {} } = {}) {
+  const serviceAccount = readGcmServiceAccount(env);
+
+  if (!serviceAccount) {
+    return {
+      channel: 'gcm',
+      status: 'skipped',
+      detail: '未配置 Firebase 服务账号'
+    };
+  }
+
+  const normalizedProjectId = String(projectId || serviceAccount.projectId || '').trim();
+  const normalizedToken = String(token || '').trim();
+
+  if (!normalizedProjectId) {
+    throw new Error('缺少 Firebase Project ID。');
+  }
+
+  if (!normalizedToken) {
+    return {
+      channel: 'gcm',
+      status: 'skipped',
+      detail: '未配置 Android registration token'
+    };
+  }
+
+  const accessToken = await getGoogleAccessToken(serviceAccount);
+  const response = await fetch(buildFcmEndpoint(normalizedProjectId), {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      message: buildFcmMessage({
+        token: normalizedToken,
+        packageName,
+        title,
+        body,
+        data: {
+          source: 'ai-dca',
+          type: 'notify',
+          sentAt: new Date().toISOString(),
+          ...data
+        }
+      })
+    })
+  });
+  const rawText = await response.text();
+  let payload = {};
+
+  if (rawText) {
+    try {
+      payload = JSON.parse(rawText);
+    } catch (_error) {
+      payload = { error: rawText };
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(extractGoogleApiError(payload, response.status));
+  }
+
+  return {
+    channel: 'gcm',
+    status: 'delivered',
+    detail: String(payload.name || rawText || '已发送到 Android 设备').trim()
   };
 }
