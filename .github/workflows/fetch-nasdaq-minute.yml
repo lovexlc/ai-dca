@@ -30,6 +30,11 @@ jobs:
           cache: "pip"
           cache-dependency-path: requirements-nasdaq-minute.txt
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -47,6 +52,12 @@ jobs:
       - name: Fetch minute bars
         run: python scripts/fetch_nasdaq_etf_minute.py --target-date "${TARGET_DATE}" --skip-existing
 
+      - name: Refresh ETF daily bars
+        run: node scripts/fetch_nasdaq_etf_daily_sina.mjs --lookback-days 730
+
+      - name: Refresh Nasdaq 100 benchmark bars
+        run: python scripts/fetch_nasdaq100_benchmark.py
+
       - name: Commit and push data updates
         shell: bash
         run: |
@@ -58,5 +69,5 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "data: update nasdaq etf minute bars for ${TARGET_DATE}"
+          git commit -m "data: refresh nasdaq market datasets for ${TARGET_DATE}"
           git push
