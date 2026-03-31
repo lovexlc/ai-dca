@@ -4,9 +4,11 @@ import { formatCurrency, formatPercent, readAccumulationState } from '../app/acc
 import { exportHomeDashboardState, importHomeDashboardState, normalizeHomeDashboardState, persistHomeDashboardState, readHomeDashboardState } from '../app/homeDashboard.js';
 import { formatMarketCode, formatMarketLabel, formatMarketName } from '../app/marketDisplay.js';
 import { formatPriceAsOf, loadLatestNasdaqPrices, loadNasdaqDailySeries, loadNasdaqMinuteSnapshot } from '../app/nasdaqPrices.js';
+import { readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { readPlanList, readPlanState, setActivePlanId } from '../app/plan.js';
 import { getPrimaryTabs } from '../app/screens.js';
 import { buildMovingAverageValues, buildNasdaqStrategyPlan, buildPeakDrawdownStrategyPlan, findLatestFiniteValue, mapReferencePrice, resolveNextTriggerLayer } from '../app/strategyEngine.js';
+import { showActionToast } from '../app/toast.js';
 import { Card, PageHero, PageShell, PageTabs, Pill, SectionHeading, SelectField, StatCard, cx, primaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
 
 const BENCHMARK_CODE = 'nas-daq100';
@@ -332,6 +334,9 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
   const [isLoadingPulse, setIsLoadingPulse] = useState(false);
   const [watchlistNotice, setWatchlistNotice] = useState('');
   const [watchlistNoticeTone, setWatchlistNoticeTone] = useState('slate');
+  const [planTestNotice, setPlanTestNotice] = useState('');
+  const [planTestError, setPlanTestError] = useState('');
+  const [testingPlanId, setTestingPlanId] = useState('');
   const [timeframe, setTimeframe] = useState('1m');
   const [activeBarId, setActiveBarId] = useState('');
   const [mobilePanels, setMobilePanels] = useState({
@@ -889,6 +894,9 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
     setSelectedCode(pendingCode);
     setWatchlistNotice(`已加入 ${pendingCode} 到自选基金。`);
     setWatchlistNoticeTone('emerald');
+    showActionToast('加入自选基金', 'success', {
+      description: `${pendingCode} 已加入当前自选列表。`
+    });
   }
 
   function removeWatchlistItem(code) {
@@ -899,6 +907,9 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
     }
     setWatchlistNotice(`已从自选基金移除 ${code}。`);
     setWatchlistNoticeTone('slate');
+    showActionToast('移除自选基金', 'success', {
+      description: `${code} 已从当前自选列表移除。`
+    });
   }
 
   function exportWatchlistConfig() {
@@ -918,6 +929,9 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
     window.URL.revokeObjectURL(objectUrl);
     setWatchlistNotice('已导出当前浏览器中的自选配置。');
     setWatchlistNoticeTone('emerald');
+    showActionToast('导出配置', 'success', {
+      description: '当前浏览器的自选配置已导出。'
+    });
   }
 
   async function importWatchlistConfig(event) {
@@ -936,9 +950,16 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
       setSelectedCode(imported.selectedCode);
       setWatchlistNotice(`已导入 ${imported.watchlistCodes.length} 个自选基金。`);
       setWatchlistNoticeTone('emerald');
+      showActionToast('导入配置', 'success', {
+        description: `已导入 ${imported.watchlistCodes.length} 个自选基金。`
+      });
     } catch (error) {
-      setWatchlistNotice(error instanceof Error ? error.message : '导入配置失败。');
+      const message = error instanceof Error ? error.message : '导入配置失败。';
+      setWatchlistNotice(message);
       setWatchlistNoticeTone('amber');
+      showActionToast('导入配置', 'error', {
+        description: message
+      });
     } finally {
       event.target.value = '';
     }
@@ -949,6 +970,9 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
     setSelectedCode(defaultWatchlistCodes[0] || '');
     setWatchlistNotice('已恢复默认自选基金组合。');
     setWatchlistNoticeTone('slate');
+    showActionToast('恢复默认', 'success', {
+      description: '已恢复默认自选基金组合。'
+    });
   }
 
   function handleSelectPlan(planId) {
@@ -963,6 +987,40 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
     if (targetPlan.symbol) {
       setSelectedCode(targetPlan.symbol);
       setWatchlistCodes((current) => (current.includes(targetPlan.symbol) ? current : [...current, targetPlan.symbol]));
+    }
+  }
+
+  async function handlePlanTestNotify(plan) {
+    const normalizedPlanId = String(plan?.id || '').trim();
+    if (!normalizedPlanId) {
+      return;
+    }
+
+    const notifyClientId = readNotifyClientConfig().notifyClientId || '';
+    setTestingPlanId(normalizedPlanId);
+    setPlanTestError('');
+    setPlanTestNotice('');
+
+    try {
+      await sendNotifyTest({
+        clientId: notifyClientId,
+        ruleId: `plan:${normalizedPlanId}`,
+        title: '交易计划测试提醒',
+        summary: `${String(plan?.name || plan?.symbol || '交易计划').trim()} 测试提醒`,
+        body: `这是「${String(plan?.name || plan?.symbol || '交易计划').trim()}」的测试通知。已触发您设置的购买条件，请前往网页查看当前投资策略。`
+      });
+      setPlanTestNotice(`已发送「${String(plan?.name || plan?.symbol || '交易计划').trim()}」的测试通知。`);
+      showActionToast('测试通知', 'success', {
+        description: `已发送「${String(plan?.name || plan?.symbol || '交易计划').trim()}」的测试通知。`
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '测试通知发送失败。';
+      setPlanTestError(message);
+      showActionToast('测试通知', 'error', {
+        description: message
+      });
+    } finally {
+      setTestingPlanId('');
     }
   }
 
@@ -1058,17 +1116,15 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
                 {planList.map((plan) => {
                   const isActive = plan.id === planState.id;
                   return (
-                    <button
+                    <div
                       key={`mobile-plan-${plan.id}`}
                       className={cx(
                         'w-full rounded-[22px] border px-4 py-4 text-left transition-all',
                         isActive ? 'border-indigo-200 bg-indigo-50 shadow-sm shadow-indigo-100' : 'border-slate-200 bg-slate-50'
                       )}
-                      type="button"
-                      onClick={() => handleSelectPlan(plan.id)}
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
+                        <button className="min-w-0 flex-1 text-left" type="button" onClick={() => handleSelectPlan(plan.id)}>
                           <div className="break-words text-sm font-semibold text-slate-900">{plan.name}</div>
                           <div className="mt-2 text-xs leading-5 text-slate-500">
                             标的 {formatMarketCode(plan.symbol)}
@@ -1076,10 +1132,20 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
                           <div className="text-xs leading-5 text-slate-500">
                             预算 {formatCurrency(plan.totalBudget, '¥ ')}
                           </div>
+                        </button>
+                        <div className="flex shrink-0 flex-col items-end gap-2">
+                          {isActive ? <Pill tone="emerald">当前</Pill> : null}
+                          <button
+                            className={cx(subtleButtonClass, 'px-3 py-2 text-xs')}
+                            type="button"
+                            disabled={testingPlanId === plan.id}
+                            onClick={() => handlePlanTestNotify(plan)}
+                          >
+                            {testingPlanId === plan.id ? '发送中' : '测试通知'}
+                          </button>
                         </div>
-                        {isActive ? <Pill tone="emerald">当前</Pill> : null}
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -1505,10 +1571,20 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
 
           {planList.length ? (
             <div className="mt-5 grid gap-3">
+              {planTestError ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                  {planTestError}
+                </div>
+              ) : null}
+              {planTestNotice ? (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  {planTestNotice}
+                </div>
+              ) : null}
               {planList.map((plan) => {
                 const isActive = plan.id === planState.id;
                 return (
-                  <button
+                  <div
                     key={plan.id}
                     className={cx(
                       'rounded-[24px] border px-4 py-4 text-left transition-all',
@@ -1516,11 +1592,9 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
                         ? 'border-indigo-200 bg-indigo-50 shadow-sm shadow-indigo-100'
                         : 'border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white'
                     )}
-                    type="button"
-                    onClick={() => handleSelectPlan(plan.id)}
                   >
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0">
+                      <button className="min-w-0 flex-1 text-left" type="button" onClick={() => handleSelectPlan(plan.id)}>
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="break-words text-base font-semibold leading-6 text-slate-900">{plan.name}</div>
                           {isActive ? <Pill tone="emerald">当前查看</Pill> : null}
@@ -1529,12 +1603,22 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
                           <div>标的 {formatMarketCode(plan.symbol)}</div>
                           <div>预算 {formatCurrency(plan.totalBudget, '¥ ')}</div>
                         </div>
-                      </div>
-                      <div className="shrink-0 self-start text-sm font-semibold text-slate-500 sm:self-center">
-                        {isActive ? '当前策略' : '点击查看'}
+                      </button>
+                      <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:self-center">
+                        <button
+                          className={cx(subtleButtonClass, 'px-3 py-2')}
+                          type="button"
+                          disabled={testingPlanId === plan.id}
+                          onClick={() => handlePlanTestNotify(plan)}
+                        >
+                          {testingPlanId === plan.id ? '发送中' : '测试通知'}
+                        </button>
+                        <div className="text-sm font-semibold text-slate-500">
+                          {isActive ? '当前策略' : '点击查看'}
+                        </div>
                       </div>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>

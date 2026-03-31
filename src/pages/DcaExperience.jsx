@@ -5,6 +5,7 @@ import { buildDcaProjection, frequencyOptions, persistDcaState, readDcaState } f
 import { syncTradePlanRules } from '../app/notifySync.js';
 import { readPlanList } from '../app/plan.js';
 import { getPrimaryTabs } from '../app/screens.js';
+import { showToast } from '../app/toast.js';
 import { Card, Field, NumberInput, PageHero, PageShell, PageTabs, Pill, SectionHeading, SelectField, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 const DAY_OPTIONS = [1, 8, 15, 28];
@@ -38,11 +39,19 @@ export function DcaExperience({ links, embedded = false }) {
     setIsSaving(true);
     persistDcaState(state, projection);
 
+    let syncFailed = false;
     try {
       await syncTradePlanRules();
     } catch (_error) {
       // Keep the local plan saved even if notification sync is unavailable.
+      syncFailed = true;
     } finally {
+      showToast({
+        title: '保存并开始策略成功',
+        description: syncFailed ? '定投计划已保存，本次通知规则未同步。' : '定投计划已保存，正在返回首页。',
+        tone: syncFailed ? 'amber' : 'emerald',
+        persist: true
+      });
       window.location.href = links.home;
     }
   }

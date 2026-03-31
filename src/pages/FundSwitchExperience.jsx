@@ -40,6 +40,7 @@ import {
   tableInputClass
 } from '../components/experience-ui.jsx';
 import { getPrimaryTabs } from '../app/screens.js';
+import { showActionToast } from '../app/toast.js';
 
 const FUND_CODE_PATTERN = /^\d{6}$/;
 const STRATEGY_LABELS = {
@@ -914,10 +915,20 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   }
 
   function handleConfirmDataAndYield() {
+    const actionLabel = isEditingDetails
+      ? '确认修改并重新计算'
+      : state.resultConfirmed
+        ? '确认数据与收益'
+        : '校验并生成结果';
+
     if (validationIssues.length) {
-      setConfirmError(summarizeValidationIssues(validationIssues));
+      const message = summarizeValidationIssues(validationIssues);
+      setConfirmError(message);
       setIsEditingDetails(true);
       setShowCalculationDetails(false);
+      showActionToast(actionLabel, 'error', {
+        description: message
+      });
       return;
     }
 
@@ -930,6 +941,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     }));
     setIsEditingDetails(false);
     setShowCalculationDetails(false);
+    showActionToast(actionLabel, 'success');
   }
 
   const content = (

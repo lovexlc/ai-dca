@@ -6,6 +6,7 @@ import { formatMarketCode, formatMarketLabel, formatMarketName } from '../app/ma
 import { loadLatestNasdaqPrices, loadNasdaqDailySeries } from '../app/nasdaqPrices.js';
 import { syncTradePlanRules } from '../app/notifySync.js';
 import { persistPlanState, readPlanState } from '../app/plan.js';
+import { showToast } from '../app/toast.js';
 import { Card, Field, NumberInput, PageHero, PageShell, Pill, SectionHeading, SelectField, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 const BENCHMARK_CODE = 'nas-daq100';
@@ -396,11 +397,19 @@ export function NewPlanExperience({ links, inPagesDir = false }) {
       isConfigured: true
     }, computed, { mode: 'create', activate: true });
 
+    let syncFailed = false;
     try {
       await syncTradePlanRules();
     } catch (_error) {
       // The local strategy has already been saved. Keep navigation responsive.
+      syncFailed = true;
     } finally {
+      showToast({
+        title: '确认创建并返回总览成功',
+        description: syncFailed ? '策略已保存，本次通知规则未同步。' : '策略已保存，正在返回总览。',
+        tone: syncFailed ? 'amber' : 'emerald',
+        persist: true
+      });
       window.location.href = links.home;
     }
   }

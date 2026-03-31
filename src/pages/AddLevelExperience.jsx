@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, ArrowRight, CheckCircle2, Plus, Save } from 'lucide-react';
 import { buildStages, formatCurrency, formatPercent, persistAccumulationState, readAccumulationState, round } from '../app/accumulation.js';
+import { showActionToast } from '../app/toast.js';
 import { Card, Field, NumberInput, PageHero, PageShell, Pill, SectionHeading, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 export function AddLevelExperience({ links }) {
@@ -30,6 +31,7 @@ export function AddLevelExperience({ links }) {
     setSaved(true);
     setNewWeight(5);
     setNewDrawdown(round(nextState.maxDrawdown + 1.5, 2));
+    showActionToast('保存并增加层级', 'success');
   }
 
   return (

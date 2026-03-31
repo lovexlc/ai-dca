@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { ArrowLeft, ChevronDown } from 'lucide-react';
+import { consumePendingToasts, subscribeToToasts } from '../app/toast.js';
 
 export function cx(...classes) {
   return classes.filter(Boolean).join(' ');
@@ -32,9 +34,64 @@ const statValueClasses = {
   red: 'text-red-500'
 };
 
+const toastToneClasses = {
+  slate: 'border-slate-200 bg-white text-slate-700',
+  indigo: 'border-indigo-200 bg-indigo-50 text-indigo-700',
+  emerald: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  red: 'border-red-200 bg-red-50 text-red-700',
+  amber: 'border-amber-200 bg-amber-50 text-amber-700'
+};
+
+function ToastViewport() {
+  const [toasts, setToasts] = useState([]);
+
+  useEffect(() => {
+    function appendToast(toast) {
+      setToasts((current) => [...current.filter((item) => item.id !== toast.id), toast].slice(-4));
+    }
+
+    consumePendingToasts().forEach(appendToast);
+    return subscribeToToasts(appendToast);
+  }, []);
+
+  useEffect(() => {
+    const timers = toasts.map((toast) => window.setTimeout(() => {
+      setToasts((current) => current.filter((item) => item.id !== toast.id));
+    }, toast.durationMs || 3200));
+
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [toasts]);
+
+  if (!toasts.length) {
+    return null;
+  }
+
+  return (
+    <div className="pointer-events-none fixed right-4 top-4 z-[120] flex w-[min(92vw,24rem)] flex-col gap-3">
+      {toasts.map((toast) => (
+        <div
+          key={toast.id}
+          className={cx(
+            'pointer-events-auto rounded-2xl border px-4 py-3 shadow-lg shadow-slate-200/70 backdrop-blur-sm',
+            toastToneClasses[toast.tone] || toastToneClasses.slate
+          )}
+        >
+          <div className="text-sm font-bold">{toast.title}</div>
+          {toast.description ? (
+            <div className="mt-1 text-sm leading-6 opacity-90">{toast.description}</div>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function PageShell({ children, className = '' }) {
   return (
     <div className={cx('min-h-screen bg-slate-50 pb-32 font-sans text-slate-900 selection:bg-indigo-100 selection:text-indigo-900', className)}>
+      <ToastViewport />
       {children}
     </div>
   );

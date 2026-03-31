@@ -3,6 +3,7 @@ import { ArrowRight, Bell, CalendarClock, Clock3, Layers3, Radar, Save, Sparkles
 import { loadNotifyEvents, loadNotifyStatus, pairAndroidDevice, persistNotifyClientConfig, readNotifyClientConfig, saveNotifySettings, sendNotifyTest, syncTradePlanRules, unpairAndroidDevice } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { getPrimaryTabs } from '../app/screens.js';
+import { showActionToast } from '../app/toast.js';
 import { Card, Field, PageHero, PageShell, PageTabs, Pill, SectionHeading, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 function PlanStatusPill({ tone = 'slate', children }) {
@@ -193,8 +194,13 @@ export function TradePlansExperience({ links, embedded = false }) {
     try {
       await syncTradePlanRules();
       await refreshNotifyData();
+      showActionToast('同步通知规则', 'success');
     } catch (error) {
-      setNotifyError(error instanceof Error ? error.message : '通知规则同步失败');
+      const message = error instanceof Error ? error.message : '通知规则同步失败';
+      setNotifyError(message);
+      showActionToast('同步通知规则', 'error', {
+        description: message
+      });
     } finally {
       setIsSyncing(false);
     }
@@ -215,8 +221,15 @@ export function TradePlansExperience({ links, embedded = false }) {
       });
       await refreshNotifyData();
       setNotifyMessage(`已发送「${row.planName}」的测试通知。`);
+      showActionToast('测试通知', 'success', {
+        description: `已发送「${row.planName}」的测试通知。`
+      });
     } catch (error) {
-      setNotifyError(error instanceof Error ? error.message : '测试通知发送失败');
+      const message = error instanceof Error ? error.message : '测试通知发送失败';
+      setNotifyError(message);
+      showActionToast('测试通知', 'error', {
+        description: message
+      });
     } finally {
       setTestingRowId('');
     }
@@ -235,8 +248,13 @@ export function TradePlansExperience({ links, embedded = false }) {
       });
       await refreshNotifyData();
       setNotifyMessage('Bark 配置已保存。');
+      showActionToast('保存 Bark 配置', 'success');
     } catch (error) {
-      setNotifyError(error instanceof Error ? error.message : '通知配置保存失败');
+      const message = error instanceof Error ? error.message : '通知配置保存失败';
+      setNotifyError(message);
+      showActionToast('保存 Bark 配置', 'error', {
+        description: message
+      });
     } finally {
       setIsSavingSettings(false);
     }
@@ -259,8 +277,13 @@ export function TradePlansExperience({ links, embedded = false }) {
       setAndroidPairingCode('');
       await refreshNotifyData();
       setNotifyMessage('Android 设备已绑定到当前浏览器。');
+      showActionToast('绑定 Android 设备', 'success');
     } catch (error) {
-      setNotifyError(error instanceof Error ? error.message : 'Android 设备绑定失败');
+      const message = error instanceof Error ? error.message : 'Android 设备绑定失败';
+      setNotifyError(message);
+      showActionToast('绑定 Android 设备', 'error', {
+        description: message
+      });
     } finally {
       setIsPairingAndroid(false);
     }
@@ -281,8 +304,13 @@ export function TradePlansExperience({ links, embedded = false }) {
       });
       await refreshNotifyData();
       setNotifyMessage('Android 设备已从当前浏览器解绑，Worker 里的绑定关系已删除。');
+      showActionToast('解绑当前浏览器', 'success');
     } catch (error) {
-      setNotifyError(error instanceof Error ? error.message : 'Android 设备解绑失败');
+      const message = error instanceof Error ? error.message : 'Android 设备解绑失败';
+      setNotifyError(message);
+      showActionToast('解绑当前浏览器', 'error', {
+        description: message
+      });
     } finally {
       setUnpairingRegistrationId('');
     }

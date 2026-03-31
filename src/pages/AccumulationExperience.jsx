@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowRight, BarChart3, Plus, Save, Trash2 } from 'lucide-react';
 import { buildStages, formatCurrency, formatPercent, persistAccumulationState, readAccumulationState, round } from '../app/accumulation.js';
+import { showActionToast } from '../app/toast.js';
 import { Card, Field, NumberInput, PageHero, PageShell, Pill, SectionHeading, SelectField, StatCard, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 const frequencyOptions = ['每日', '每周', '每月', '每季'];
@@ -36,6 +37,14 @@ export function AccumulationExperience({ links }) {
         weights: current.weights.filter((_, weightIndex) => weightIndex !== index)
       };
     });
+  }
+
+  function handleSavePlan() {
+    showActionToast('保存方案', 'success', {
+      description: '当前加仓配置已保存，正在返回首页。',
+      persist: true
+    });
+    window.location.href = links.home;
   }
 
   return (
@@ -211,11 +220,11 @@ export function AccumulationExperience({ links }) {
           </div>
           <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
             <a className={cx(secondaryButtonClass, 'w-full sm:w-auto')} href={links.home}>取消</a>
-            <a className={cx(primaryButtonClass, 'w-full sm:w-auto')} href={links.home}>
+            <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={handleSavePlan}>
               <Save className="h-4 w-4" />
               保存方案
               <ArrowRight className="h-4 w-4" />
-            </a>
+            </button>
           </div>
         </div>
       </div>
