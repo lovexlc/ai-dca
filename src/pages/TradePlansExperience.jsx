@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Bell, CalendarClock, Clock3, Layers3, Radar, Save, Sparkles } from 'lucide-react';
-import { loadNotifyEvents, loadNotifyStatus, pairAndroidDevice, persistNotifyClientConfig, readNotifyClientConfig, saveNotifySettings, sendNotifyTest, syncTradePlanRules } from '../app/notifySync.js';
+import { ArrowRight, Bell, CalendarClock, Clock3, Layers3, Radar, Save, Sparkles, Trash2 } from 'lucide-react';
+import { loadNotifyEvents, loadNotifyStatus, pairAndroidDevice, persistNotifyClientConfig, readNotifyClientConfig, saveNotifySettings, sendNotifyTest, syncTradePlanRules, unpairAndroidDevice } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { getPrimaryTabs } from '../app/screens.js';
 import { Card, Field, PageHero, PageShell, PageTabs, Pill, SectionHeading, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
@@ -49,6 +49,7 @@ export function TradePlansExperience({ links, embedded = false }) {
   const [isTesting, setIsTesting] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isPairingAndroid, setIsPairingAndroid] = useState(false);
+  const [unpairingRegistrationId, setUnpairingRegistrationId] = useState('');
   const [notifyPlatform, setNotifyPlatform] = useState('ios');
   const [androidPairingCode, setAndroidPairingCode] = useState('');
   const [notifyConfig, setNotifyConfig] = useState(() => {
@@ -231,6 +232,28 @@ export function TradePlansExperience({ links, embedded = false }) {
       setNotifyError(error instanceof Error ? error.message : 'Android 设备绑定失败');
     } finally {
       setIsPairingAndroid(false);
+    }
+  }
+
+  async function handleUnpairAndroidRegistration(registrationId = '') {
+    if (!registrationId) {
+      return;
+    }
+
+    setUnpairingRegistrationId(registrationId);
+    setNotifyError('');
+    setNotifyMessage('');
+    try {
+      await unpairAndroidDevice({
+        registrationId,
+        clientId: notifyConfig.notifyClientId
+      });
+      await refreshNotifyData();
+      setNotifyMessage('Android 设备已从当前浏览器解绑，Worker 里的绑定关系已删除。');
+    } catch (error) {
+      setNotifyError(error instanceof Error ? error.message : 'Android 设备解绑失败');
+    } finally {
+      setUnpairingRegistrationId('');
     }
   }
 
@@ -434,9 +457,23 @@ export function TradePlansExperience({ links, embedded = false }) {
                           <div key={registration.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="text-sm font-semibold text-slate-900">{registration.deviceName || 'Android Device'}</div>
-                              <Pill tone={registration.lastCheckStatus === 'validated' ? 'emerald' : 'slate'}>
-                                {registration.lastCheckStatus === 'validated' ? 'FCM 已校验' : registration.lastCheckStatus || '待校验'}
-                              </Pill>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Pill tone={registration.lastCheckStatus === 'validated' ? 'emerald' : 'slate'}>
+                                  {registration.lastCheckStatus === 'validated' ? 'FCM 已校验' : registration.lastCheckStatus || '待校验'}
+                                </Pill>
+                                <button
+                                  className={cx(
+                                    secondaryButtonClass,
+                                    'border-rose-200 bg-white px-3 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60'
+                                  )}
+                                  type="button"
+                                  disabled={unpairingRegistrationId === registration.id}
+                                  onClick={() => handleUnpairAndroidRegistration(registration.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  {unpairingRegistrationId === registration.id ? '正在解绑' : '解绑当前浏览器'}
+                                </button>
+                              </div>
                             </div>
                             <div className="mt-2 text-sm text-slate-500">{registration.packageName || androidSetup?.gcmPackageName || '未记录包名'}</div>
                             <div className="mt-3 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
@@ -454,6 +491,9 @@ export function TradePlansExperience({ links, embedded = false }) {
                       </p>
                     )}
                     <div className="mt-4 text-xs text-slate-400">
+                      解绑后会立即从 Worker 删除当前浏览器与该设备的绑定关系，可重新用配对码再绑定。
+                    </div>
+                    <div className="mt-1 text-xs text-slate-400">
                       服务端当前共登记 {Number(androidSetup?.gcmRegistrationCount) || 0} 台 Android 设备，其中 {Number(androidSetup?.gcmPairedRegistrationCount) || 0} 台已完成浏览器配对。
                     </div>
                   </div>

@@ -1,5 +1,5 @@
 import { runNotificationCycle } from './evaluator.js';
-import { buildPublicGcmRegistration, buildPublicGcmRegistrations, checkGcmConnection, hasGcmServiceAccount, maskSecret, normalizeGcmRegistrations, readGcmServiceAccount, resolveGcmProjectId } from './gcm.js';
+import { buildPublicGcmRegistration, buildPublicGcmRegistrations, checkGcmConnection, hasGcmServiceAccount, maskSecret, normalizeGcmPairedClients, normalizeGcmRegistrations, readGcmServiceAccount, resolveGcmProjectId } from './gcm.js';
 import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
 
 const PAYLOAD_KEY = 'notify:payload';
@@ -199,6 +199,16 @@ function upsertGcmPairedClient(pairedClients = [], candidate = {}) {
   }
 
   return nextPairedClients;
+}
+
+function removeGcmPairedClient(pairedClients = [], clientId = '') {
+  const normalizedClientId = normalizeClientId(clientId);
+
+  if (!normalizedClientId) {
+    return normalizeGcmPairedClients(pairedClients);
+  }
+
+  return normalizeGcmPairedClients(pairedClients).filter((client) => client.clientId !== normalizedClientId);
 }
 
 function findGcmRegistration(settings, { registrationId = '', token = '' } = {}) {
@@ -488,6 +498,51 @@ async function handleGcmPair(request, env) {
     pairingCodeHash: '',
     pairingCodeIssuedAt: '',
     pairingCodeExpiresAt: '',
+    updatedAt: nowIso
+  };
+  const nextSettings = normalizeSettings({
+    ...settings,
+    gcmRegistrations: upsertGcmRegistration(settings.gcmRegistrations, nextRegistration)
+  });
+
+  await writeJson(env, SETTINGS_KEY, nextSettings);
+
+  return jsonResponse({
+    ok: true,
+    registration: buildPublicGcmRegistration(nextRegistration, {
+      clientId
+    }),
+    setup: buildPublicGcmSetup(nextSettings, env, {
+      clientId
+    })
+  }, { origin });
+}
+
+async function handleGcmUnpair(request, env) {
+  const origin = readOrigin(request);
+  const settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
+  const payload = await request.json().catch(() => ({}));
+  const clientId = normalizeClientId(payload.clientId || readCurrentClientId(request));
+  const registrationId = String(payload.registrationId || '').trim();
+  const token = String(payload.token || payload.registrationToken || '').trim();
+
+  if (!clientId) {
+    throw new Error('缺少浏览器 clientId。');
+  }
+
+  const selectedRegistration = findGcmRegistration(settings, {
+    registrationId,
+    token
+  });
+
+  if (!selectedRegistration) {
+    throw new Error('未找到需要解绑的 Android 设备。');
+  }
+
+  const nowIso = new Date().toISOString();
+  const nextRegistration = {
+    ...selectedRegistration,
+    pairedClients: removeGcmPairedClient(selectedRegistration.pairedClients, clientId),
     updatedAt: nowIso
   };
   const nextSettings = normalizeSettings({
@@ -893,6 +948,10 @@ export default {
 
       if (request.method === 'POST' && url.pathname === '/api/notify/gcm/pair') {
         return await handleGcmPair(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/unpair') {
+        return await handleGcmUnpair(request, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/run') {

@@ -16,6 +16,10 @@ from zoneinfo import ZoneInfo
 import akshare as ak
 
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
+BENCHMARK_CODE = "nas-daq100"
+BENCHMARK_NAME = "NASDAQ 100 Index"
+BENCHMARK_CURRENCY = "$"
+BENCHMARK_SYMBOL = "^NDX"
 DEFAULT_SOURCE_CANDIDATES = [
     Path("data/all_nasdq.json"),
     Path("data/all_nasdaq.json"),
@@ -333,6 +337,30 @@ def load_latest_snapshot(output_path: Path) -> dict[str, Any] | None:
     }
 
 
+def build_benchmark_snapshot(output_root: Path) -> dict[str, Any] | None:
+    benchmark_dir = output_root / BENCHMARK_CODE
+    minute_path = benchmark_dir / "intraday-1m.json"
+
+    if not minute_path.exists():
+        return None
+
+    snapshot = load_latest_snapshot(minute_path)
+    if not snapshot:
+        return None
+
+    fifteen_path = benchmark_dir / "intraday-15m.json"
+    daily_path = benchmark_dir / "daily-sina.json"
+    return {
+        **snapshot,
+        "name": snapshot.get("name") or BENCHMARK_NAME,
+        "currency": BENCHMARK_CURRENCY,
+        "output_path": minute_path.as_posix(),
+        "output_path_15m": fifteen_path.as_posix() if fifteen_path.exists() else "",
+        "daily_output_path": daily_path.as_posix() if daily_path.exists() else "",
+        "source_symbol": BENCHMARK_SYMBOL,
+    }
+
+
 def write_latest_price_manifest(output_root: Path, source_path: Path, funds: list[Fund]) -> Path:
     snapshots: list[dict[str, Any]] = []
 
@@ -349,7 +377,12 @@ def write_latest_price_manifest(output_root: Path, source_path: Path, funds: lis
         if snapshot:
             snapshots.append(snapshot)
 
-    snapshots.sort(key=lambda item: item["code"])
+    benchmark_snapshot = build_benchmark_snapshot(output_root)
+    if benchmark_snapshot:
+        snapshots = [item for item in snapshots if item["code"] != BENCHMARK_CODE]
+        snapshots.append(benchmark_snapshot)
+
+    snapshots.sort(key=lambda item: (0 if item["code"] == BENCHMARK_CODE else 1, item["code"]))
     manifest = {
         "dataset": "nasdaq_latest_prices",
         "generated_at": datetime.now(SHANGHAI_TZ).isoformat(),

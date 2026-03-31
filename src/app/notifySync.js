@@ -210,3 +210,13 @@ export function pairAndroidDevice(payload = {}) {
     body: JSON.stringify(payload)
   });
 }
+
+export function unpairAndroidDevice(payload = {}) {
+  return requestNotify('/gcm/unpair', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+}

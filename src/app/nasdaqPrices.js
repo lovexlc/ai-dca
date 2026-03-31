@@ -1,3 +1,11 @@
+const BENCHMARK_CODE = 'nas-daq100';
+const BENCHMARK_NAME = 'NASDAQ 100 Index';
+const BENCHMARK_CURRENCY = '$';
+const BENCHMARK_SYMBOL = '^NDX';
+const BENCHMARK_MINUTE_OUTPUT_PATH = `data/${BENCHMARK_CODE}/intraday-1m.json`;
+const BENCHMARK_FIFTEEN_MINUTE_OUTPUT_PATH = `data/${BENCHMARK_CODE}/intraday-15m.json`;
+const BENCHMARK_DAILY_OUTPUT_PATH = `data/${BENCHMARK_CODE}/daily-sina.json`;
+
 function normalizeFundKey(value = '') {
   return String(value)
     .trim()
@@ -56,6 +64,53 @@ export function nasdaqDailyHistoryPath(fundCode = '', { inPagesDir = false } = {
   return inPagesDir ? `../data/${normalizedCode}/daily-sina.json` : `./data/${normalizedCode}/daily-sina.json`;
 }
 
+async function loadJsonIfExists(path = '') {
+  if (!path) {
+    return null;
+  }
+
+  const response = await fetch(path, {
+    headers: {
+      Accept: 'application/json'
+    },
+    cache: 'no-store'
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error(`现价数据加载失败: HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
+async function loadBenchmarkFallbackEntry({ inPagesDir = false } = {}) {
+  const snapshot = await loadJsonIfExists(nasdaqDataPath(BENCHMARK_MINUTE_OUTPUT_PATH, { inPagesDir }));
+  const bars = Array.isArray(snapshot?.bars) ? snapshot.bars : [];
+  const latestBar = bars[bars.length - 1] || null;
+
+  if (!latestBar) {
+    return null;
+  }
+
+  return {
+    code: BENCHMARK_CODE,
+    name: BENCHMARK_NAME,
+    index_key: 'nasdaq100',
+    currency: String(snapshot?.currency || '').trim() || BENCHMARK_CURRENCY,
+    date: String(snapshot?.date || latestBar.datetime || '').trim().slice(0, 10),
+    datetime: String(latestBar.datetime || snapshot?.date || '').trim(),
+    current_price: Number(latestBar.close) || Number(latestBar.open) || 0,
+    output_path: BENCHMARK_MINUTE_OUTPUT_PATH,
+    output_path_15m: BENCHMARK_FIFTEEN_MINUTE_OUTPUT_PATH,
+    daily_output_path: BENCHMARK_DAILY_OUTPUT_PATH,
+    source_symbol: BENCHMARK_SYMBOL
+  };
+}
+
 export async function loadLatestNasdaqPrices({ inPagesDir = false } = {}) {
   const response = await fetch(latestNasdaqPriceManifestPath({ inPagesDir }), {
     headers: {
@@ -69,7 +124,18 @@ export async function loadLatestNasdaqPrices({ inPagesDir = false } = {}) {
   }
 
   const payload = await response.json();
-  return Array.isArray(payload?.funds) ? payload.funds : [];
+  const funds = Array.isArray(payload?.funds) ? payload.funds : [];
+
+  if (funds.some((entry) => String(entry?.code || '').trim() === BENCHMARK_CODE)) {
+    return funds;
+  }
+
+  try {
+    const benchmarkEntry = await loadBenchmarkFallbackEntry({ inPagesDir });
+    return benchmarkEntry ? [benchmarkEntry, ...funds] : funds;
+  } catch {
+    return funds;
+  }
 }
 
 export function findLatestNasdaqPrice(entries = [], fundKey = '') {
