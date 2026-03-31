@@ -9,7 +9,7 @@ import { TradePlansExperience } from './TradePlansExperience.jsx';
 
 const DEFAULT_WORKSPACE_TAB = 'tradePlans';
 const WORKSPACE_TITLES = {
-  home: '建仓策略总览',
+  home: '加仓计划',
   tradePlans: '交易计划中心',
   dca: '定投计划',
   fundSwitch: '基金切换收益分析',

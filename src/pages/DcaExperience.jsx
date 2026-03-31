@@ -1,18 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Calendar, Clock3, Save, Target, TrendingUp, Wallet } from 'lucide-react';
+import { ArrowRight, Calendar, Clock3, Layers3, Save, Target, TrendingUp, Wallet } from 'lucide-react';
 import { formatCurrency, formatPercent } from '../app/accumulation.js';
 import { buildDcaProjection, frequencyOptions, persistDcaState, readDcaState } from '../app/dca.js';
 import { syncTradePlanRules } from '../app/notifySync.js';
+import { readPlanList } from '../app/plan.js';
 import { getPrimaryTabs } from '../app/screens.js';
-import { Card, Field, NumberInput, PageHero, PageShell, PageTabs, Pill, SectionHeading, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
+import { Card, Field, NumberInput, PageHero, PageShell, PageTabs, Pill, SectionHeading, SelectField, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 const DAY_OPTIONS = [1, 8, 15, 28];
 
 export function DcaExperience({ links, embedded = false }) {
   const [state, setState] = useState(() => readDcaState());
+  const [planList] = useState(() => readPlanList());
   const [isSaving, setIsSaving] = useState(false);
-  const projection = useMemo(() => buildDcaProjection(state), [state]);
+  const projection = useMemo(() => buildDcaProjection(state, { planList }), [planList, state]);
   const primaryTabs = getPrimaryTabs(links);
+  const linkedPlanOptions = useMemo(
+    () => [
+      { label: '不关联加仓策略', value: '' },
+      ...planList.map((plan) => ({
+        label: plan.name || `${plan.symbol} 加仓策略`,
+        value: plan.id
+      }))
+    ],
+    [planList]
+  );
 
   useEffect(() => {
     persistDcaState(state, projection);
@@ -35,11 +47,20 @@ export function DcaExperience({ links, embedded = false }) {
     }
   }
 
+  function handleLinkedPlanChange(nextPlanId = '') {
+    const targetPlan = planList.find((plan) => plan.id === nextPlanId) || null;
+    setState((current) => ({
+      ...current,
+      linkedPlanId: nextPlanId,
+      symbol: targetPlan?.symbol || current.symbol
+    }));
+  }
+
   const content = (
     <>
       <div className={cx('mx-auto max-w-6xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard accent="indigo" eyebrow="总投入" value={formatCurrency(projection.totalInvestment, '¥ ')} note="初始投入加上所有周期定投之和" />
+          <StatCard accent="indigo" eyebrow="总投入" value={formatCurrency(projection.totalInvestment, '¥ ')} note={projection.isLinkedPlan ? `首期按「${projection.linkedPlanName}」首笔金额执行，后续按固定定投额续投。` : '初始投入加上所有周期定投之和'} />
           <StatCard eyebrow="预估收益" value={formatCurrency(projection.totalInvestment * state.targetReturn / 100, '¥ ')} note={`按目标收益 ${formatPercent(state.targetReturn, 0)} 估算`} />
           <StatCard eyebrow="月均投入" value={formatCurrency(projection.monthlyEquivalent, '¥ ')} note="折算后的月度平均投入强度" />
           <StatCard accent="emerald" eyebrow="执行节奏" value={`${state.frequency} / ${state.executionDay}`} note="频率与执行日期共同决定节奏" />
@@ -50,21 +71,25 @@ export function DcaExperience({ links, embedded = false }) {
             <SectionHeading
               eyebrow="计划参数"
               title="策略参数设置"
-              description="把标的、买入频率和执行日整理成一个完整模板，后续只需要微调金额即可复用。"
+              description="把标的、买入频率和执行日整理成一个完整模板；如果关联加仓策略，首个定投日会自动套用该策略的首笔买入额。"
             />
 
             <div className="mt-6 space-y-5">
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label="初始投资额">
-                  <NumberInput step="0.01" value={state.initialInvestment} onChange={(event) => setState((current) => ({ ...current, initialInvestment: event.target.value }))} />
+                <Field label={projection.isLinkedPlan ? '首次买入额' : '初始投资额'} helper={projection.isLinkedPlan ? `已自动同步「${projection.linkedPlanName}」的首笔计划金额。` : '策略启动时可额外安排一笔首投。'}>
+                  <NumberInput className={projection.isLinkedPlan ? 'bg-white text-slate-600' : ''} readOnly={projection.isLinkedPlan} step="0.01" value={projection.isLinkedPlan ? projection.initialInvestment : state.initialInvestment} onChange={(event) => setState((current) => ({ ...current, initialInvestment: event.target.value }))} />
                 </Field>
-                <Field label="定期投资额">
+                <Field label={projection.isLinkedPlan ? '后续定投额' : '定期投资额'}>
                   <NumberInput step="0.01" value={state.recurringInvestment} onChange={(event) => setState((current) => ({ ...current, recurringInvestment: event.target.value }))} />
                 </Field>
               </div>
 
-              <Field label="标的代码" helper="建议使用交易代码，便于与首页和历史页保持一致。">
-                <TextInput value={state.symbol} onChange={(event) => setState((current) => ({ ...current, symbol: event.target.value }))} placeholder="例如：纳指基金代码" />
+              <Field label="关联加仓策略" helper={planList.length ? '选中后会在首个定投日自动执行该策略的首笔买入额。' : '当前还没有已创建的加仓策略，可先到“加仓计划”页新建。'}>
+                <SelectField options={linkedPlanOptions} value={state.linkedPlanId || ''} onChange={(event) => handleLinkedPlanChange(event.target.value)} />
+              </Field>
+
+              <Field label="标的代码" helper={projection.isLinkedPlan ? '已跟随所选加仓策略标的；如需修改，请先取消关联。' : '建议使用交易代码，便于与首页和历史页保持一致。'}>
+                <TextInput className={projection.isLinkedPlan ? 'bg-white text-slate-600' : ''} readOnly={projection.isLinkedPlan} value={projection.effectiveSymbol} onChange={(event) => setState((current) => ({ ...current, symbol: event.target.value }))} placeholder="例如：纳指基金代码" />
               </Field>
 
               <Field label="买入频率" helper="选择更长期的频率会显著减少执行次数。">
@@ -114,7 +139,7 @@ export function DcaExperience({ links, embedded = false }) {
               <div className="mt-6 rounded-[24px] border border-indigo-100 bg-white/90 p-5 shadow-sm">
                 <div className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-500">总投入</div>
                 <div className="mt-2 text-3xl font-extrabold tracking-tight text-indigo-700">{formatCurrency(projection.totalInvestment, '¥ ')}</div>
-                <p className="mt-3 text-sm leading-6 text-slate-500">总投资额 = 初始投资额 + 定期投资额 × 执行次数</p>
+                <p className="mt-3 text-sm leading-6 text-slate-500">{projection.isLinkedPlan ? '总投资额 = 首次买入额 + 后续定投额 × 剩余执行次数' : '总投资额 = 初始投资额 + 定期投资额 × 执行次数'}</p>
               </div>
               <div className="mt-4 grid gap-3">
                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -134,14 +159,31 @@ export function DcaExperience({ links, embedded = false }) {
               </div>
             </Card>
 
+            {projection.isLinkedPlan ? (
+              <Card className="border-emerald-100 bg-emerald-50">
+                <SectionHeading eyebrow="加仓联动" title="已关联首投策略" />
+                <div className="mt-5 rounded-2xl border border-emerald-100 bg-white/80 p-4">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
+                    <Layers3 className="h-4 w-4" />
+                    {projection.linkedPlanName}
+                  </div>
+                  <div className="mt-2 text-xl font-bold text-slate-900">{formatCurrency(projection.linkedPlanFirstInvestment, '¥ ')}</div>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">首个定投日会按该加仓策略的首笔金额执行，后续再恢复为固定定投额。</p>
+                </div>
+              </Card>
+            ) : null}
+
             <Card>
-              <SectionHeading eyebrow="执行预览" title="前六次定投预览" />
+              <SectionHeading eyebrow="执行预览" title="前六次执行预览" />
               <div className="mt-5 space-y-3">
                 {projection.schedule.map((row) => (
                   <div key={row.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                     <div className="flex items-center justify-between gap-4">
                       <div>
-                        <div className="font-semibold text-slate-900">{row.label}</div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="font-semibold text-slate-900">{row.label}</div>
+                          {row.isLinkedFirstExecution ? <Pill tone="emerald">加仓首投</Pill> : null}
+                        </div>
                         <div className="mt-1 text-sm text-slate-500">{row.note}</div>
                       </div>
                       <div className="text-right">
@@ -162,7 +204,7 @@ export function DcaExperience({ links, embedded = false }) {
                     <Calendar className="h-4 w-4 text-slate-400" />
                     节奏说明
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-slate-500">{projection.cadenceLabel}</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">{projection.isLinkedPlan ? `${projection.cadenceLabel}，首个执行日先落地加仓策略首笔金额。` : projection.cadenceLabel}</p>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
@@ -176,7 +218,7 @@ export function DcaExperience({ links, embedded = false }) {
                     <Target className="h-4 w-4" />
                     当前目标
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-emerald-700">计划在 {state.termMonths} 个月内，用 {state.frequency} 节奏累积 {state.symbol} 持仓。</p>
+                  <p className="mt-2 text-sm leading-6 text-emerald-700">计划在 {state.termMonths} 个月内，用 {state.frequency} 节奏累积 {projection.effectiveSymbol} 持仓。</p>
                 </div>
               </div>
             </Card>
@@ -218,10 +260,10 @@ export function DcaExperience({ links, embedded = false }) {
     <PageShell>
       <PageHero
         backHref={links.home}
-        backLabel="返回策略总览"
+        backLabel="返回加仓计划"
         eyebrow="定投计划"
         title="定投计划"
-        description="围绕初始投入、定投金额和执行频率建立更克制的长期买入节奏，让固定现金流可以直接映射到可执行的买入日程。"
+        description="围绕首次买入、定投金额和执行频率建立长期买入节奏；也可以直接关联一条加仓策略，让首个定投日自动套用它的首笔买入额。"
         badges={[
           <Pill key="cadence" tone="indigo">{projection.cadenceLabel}</Pill>,
           <Pill key="count" tone="slate">{projection.executionCount} 次执行</Pill>

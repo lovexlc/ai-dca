@@ -22,6 +22,7 @@ function normalizePlan(plan = {}) {
     riskControlPrice: Number(plan.riskControlPrice) || 0,
     selectedStrategy: String(plan.selectedStrategy || 'ma120-risk').trim() || 'ma120-risk',
     isConfigured: plan.isConfigured !== false,
+    investableCapital: Number(plan.investableCapital) || 0,
     layerWeights: normalizeList(plan.layerWeights).map((value) => Number(value) || 0),
     triggerDrops: normalizeList(plan.triggerDrops).map((value) => Number(value) || 0),
     referenceSymbol: String(plan.referenceSymbol || DEFAULT_BENCHMARK_SYMBOL).trim() || DEFAULT_BENCHMARK_SYMBOL,
@@ -47,8 +48,31 @@ function normalizeDca(dca = null) {
     frequency: String(dca.frequency || '每月').trim() || '每月',
     executionDay: Number(dca.executionDay) || 1,
     termMonths: Number(dca.termMonths) || 0,
-    targetReturn: Number(dca.targetReturn) || 0
+    targetReturn: Number(dca.targetReturn) || 0,
+    linkedPlanId: String(dca.linkedPlanId || '').trim()
   };
+}
+
+function resolveInvestableCapital(plan = {}) {
+  const explicitCapital = Number(plan.investableCapital) || 0;
+  if (explicitCapital > 0) {
+    return explicitCapital;
+  }
+
+  const totalBudget = Number(plan.totalBudget) || 0;
+  const cashReservePct = Math.max(Number(plan.cashReservePct) || 0, 0);
+  return totalBudget * Math.max(0, 1 - cashReservePct / 100);
+}
+
+function resolvePlanFirstLayerAmount(plan = null) {
+  if (!plan) {
+    return 0;
+  }
+
+  const layerWeights = normalizeList(plan.layerWeights).map((value) => Math.max(Number(value) || 0, 0));
+  const totalWeight = layerWeights.reduce((sum, value) => sum + value, 0) || 1;
+  const firstWeight = layerWeights[0] || 0;
+  return resolveInvestableCapital(plan) * (firstWeight / totalWeight);
 }
 
 export function normalizeNotifyPayload(payload = {}) {
@@ -80,14 +104,21 @@ export function compileNotifyRules(payload = {}) {
     enabled: true
   }));
 
-  const dcaRules = normalized.dca
+  const linkedPlan = normalized.dca?.linkedPlanId
+    ? normalized.plans.find((plan) => plan.id === normalized.dca.linkedPlanId) || null
+    : null;
+  const dcaSymbol = linkedPlan?.symbol || normalized.dca?.symbol || '';
+  const dcaRules = normalized.dca && dcaSymbol
     ? [{
-        ruleId: `dca:${normalized.dca.symbol}:${normalized.dca.frequency}:${normalized.dca.executionDay}`,
+        ruleId: `dca:${dcaSymbol}:${normalized.dca.frequency}:${normalized.dca.executionDay}:${normalized.dca.linkedPlanId || 'standard'}`,
         type: 'dca-schedule',
-        symbol: normalized.dca.symbol,
+        symbol: dcaSymbol,
         frequency: normalized.dca.frequency,
         executionDay: normalized.dca.executionDay,
         recurringInvestment: normalized.dca.recurringInvestment,
+        linkedPlanId: linkedPlan?.id || '',
+        linkedPlanName: linkedPlan?.name || dcaSymbol,
+        firstExecutionAmount: resolvePlanFirstLayerAmount(linkedPlan),
         enabled: true
       }]
     : [];

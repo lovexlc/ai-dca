@@ -1345,7 +1345,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
 
       <PageHero
         backHref={links.home}
-        backLabel="返回策略总览"
+        backLabel="返回加仓计划"
         eyebrow="基金切换分析"
         title="基金切换收益助手"
         description="上传交易截图后，系统会智能识别整理成可编辑交易数据，并按“直接来源 / 穿透来源”两种策略比较切换前后的真实收益。"

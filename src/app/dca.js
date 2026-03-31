@@ -1,4 +1,5 @@
 import { round } from './accumulation.js';
+import { buildPlan, readPlanList } from './plan.js';
 
 export const DCA_KEY = 'aiDcaDcaState';
 
@@ -11,7 +12,8 @@ export const defaultDcaState = {
   frequency: '每月',
   executionDay: 8,
   termMonths: 12,
-  targetReturn: 30
+  targetReturn: 30,
+  linkedPlanId: ''
 };
 
 function getExecutionCount(frequency, termMonths) {
@@ -55,6 +57,10 @@ function hasOwnField(target, field) {
   return Object.prototype.hasOwnProperty.call(target, field);
 }
 
+function normalizeLinkedPlanId(value) {
+  return String(value || '').trim();
+}
+
 function readSavedNumber(saved, fields, fallback) {
   const candidateFields = Array.isArray(fields) ? fields : [fields];
 
@@ -80,29 +86,67 @@ function readSavedSymbol(saved) {
   return normalizeSavedSymbol(saved.symbol);
 }
 
-export function buildDcaProjection(state) {
-  const initialInvestment = Math.max(Number(state.initialInvestment) || 0, 0);
+export function buildDcaProjection(state, { planList = readPlanList() } = {}) {
+  const plans = Array.isArray(planList) ? planList : [];
+  const linkedPlanId = normalizeLinkedPlanId(state?.linkedPlanId);
+  const linkedPlan = linkedPlanId
+    ? plans.find((plan) => String(plan?.id || '').trim() === linkedPlanId) || null
+    : null;
   const recurringInvestment = Math.max(Number(state.recurringInvestment) || 0, 0);
+  const manualInitialInvestment = Math.max(Number(state.initialInvestment) || 0, 0);
+  const linkedPlanFirstInvestment = linkedPlan
+    ? Math.max(Number(buildPlan(linkedPlan).layers?.[0]?.amount) || 0, 0)
+    : 0;
+  const initialInvestment = linkedPlan ? linkedPlanFirstInvestment : manualInitialInvestment;
   const termMonths = Math.max(Number(state.termMonths) || 0, 1);
   const executionCount = getExecutionCount(state.frequency, termMonths);
-  const totalInvestment = initialInvestment + recurringInvestment * executionCount;
+  const effectiveSymbol = normalizeSavedSymbol(linkedPlan?.symbol || state.symbol) || defaultDcaState.symbol;
+  const totalInvestment = linkedPlan
+    ? initialInvestment + recurringInvestment * Math.max(executionCount - 1, 0)
+    : initialInvestment + recurringInvestment * executionCount;
   const monthlyEquivalent = totalInvestment / termMonths;
   const cadenceLabel = getCadenceLabel(state.frequency, state.executionDay);
 
-  const schedule = Array.from({ length: Math.min(executionCount, 6) }, (_, index) => ({
-    id: `dca-${index + 1}`,
-    label: `第 ${index + 1} 次`,
-    contribution: recurringInvestment,
-    cumulative: initialInvestment + recurringInvestment * (index + 1),
-    note: cadenceLabel
-  }));
+  const schedule = Array.from({ length: Math.min(executionCount, 6) }, (_, index) => {
+    if (linkedPlan) {
+      const isFirstExecution = index === 0;
+      return {
+        id: `dca-${index + 1}`,
+        label: isFirstExecution ? '第 1 次（首投）' : `第 ${index + 1} 次`,
+        contribution: isFirstExecution ? initialInvestment : recurringInvestment,
+        cumulative: initialInvestment + recurringInvestment * Math.max(index, 0),
+        note: isFirstExecution
+          ? `${cadenceLabel}，按「${linkedPlan.name || effectiveSymbol}」首笔金额执行`
+          : cadenceLabel,
+        isLinkedFirstExecution: isFirstExecution
+      };
+    }
+
+    return {
+      id: `dca-${index + 1}`,
+      label: `第 ${index + 1} 次`,
+      contribution: recurringInvestment,
+      cumulative: initialInvestment + recurringInvestment * (index + 1),
+      note: cadenceLabel,
+      isLinkedFirstExecution: false
+    };
+  });
 
   return {
     executionCount,
     totalInvestment,
     monthlyEquivalent,
     cadenceLabel,
-    schedule
+    schedule,
+    effectiveSymbol,
+    initialInvestment,
+    manualInitialInvestment,
+    recurringInvestment,
+    linkedPlanId,
+    linkedPlanName: String(linkedPlan?.name || effectiveSymbol || '').trim(),
+    linkedPlanFirstInvestment,
+    isLinkedPlan: Boolean(linkedPlan),
+    nextExecutionAmount: linkedPlan ? initialInvestment : recurringInvestment
   };
 }
 
@@ -124,7 +168,8 @@ export function readDcaState() {
       frequency: saved.frequency || defaultDcaState.frequency,
       executionDay: readSavedNumber(saved, 'executionDay', defaultDcaState.executionDay),
       termMonths: readSavedNumber(saved, 'termMonths', defaultDcaState.termMonths),
-      targetReturn: readSavedNumber(saved, 'targetReturn', defaultDcaState.targetReturn)
+      targetReturn: readSavedNumber(saved, 'targetReturn', defaultDcaState.targetReturn),
+      linkedPlanId: normalizeLinkedPlanId(saved.linkedPlanId)
     };
   } catch (_error) {
     return defaultDcaState;
@@ -144,20 +189,23 @@ export function persistDcaState(state, computed = buildDcaProjection(state)) {
     return;
   }
 
-  const normalizedSymbol = normalizeSavedSymbol(state.symbol);
+  const normalizedSymbol = normalizeSavedSymbol(computed.effectiveSymbol || state.symbol);
   const payload = {
     source: 'react-dca',
-    version: 2,
+    version: 3,
     symbol: normalizedSymbol,
-    initialInvestment: round(state.initialInvestment, 2),
+    initialInvestment: round(computed.initialInvestment, 2),
     recurringInvestment: round(state.recurringInvestment, 2),
     frequency: state.frequency || defaultDcaState.frequency,
     executionDay: Math.max(Number(state.executionDay) || 1, 1),
     termMonths: Math.max(Number(state.termMonths) || 1, 1),
     targetReturn: round(state.targetReturn, 2),
+    linkedPlanId: normalizeLinkedPlanId(state.linkedPlanId),
     executionCount: computed.executionCount,
     totalInvestment: round(computed.totalInvestment, 2),
     cadenceLabel: computed.cadenceLabel,
+    nextExecutionAmount: round(computed.nextExecutionAmount, 2),
+    linkedPlanFirstInvestment: round(computed.linkedPlanFirstInvestment, 2),
     updatedAt: new Date().toISOString()
   };
 

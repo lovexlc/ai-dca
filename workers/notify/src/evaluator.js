@@ -115,12 +115,18 @@ function buildPlanNotification(rule, evaluation) {
   };
 }
 
-function buildDcaNotification(rule, localDateLabel) {
-  const amountText = Number(rule.recurringInvestment) > 0 ? `，计划金额 ¥${Number(rule.recurringInvestment).toFixed(2)}` : '';
+function buildDcaNotification(rule, localDateLabel, { isFirstExecution = false } = {}) {
+  const amount = isFirstExecution && Number(rule.firstExecutionAmount) > 0
+    ? Number(rule.firstExecutionAmount)
+    : Number(rule.recurringInvestment) || 0;
+  const linkedPlanText = isFirstExecution && rule.linkedPlanName
+    ? `，首期按「${rule.linkedPlanName}」策略首笔金额执行`
+    : '';
+  const amountText = amount > 0 ? `，计划金额 ¥${amount.toFixed(2)}` : '';
   return {
     ruleId: rule.ruleId,
     title: '定投计划提醒',
-    body: `${rule.symbol} 今天是定投执行日（${localDateLabel}）${amountText}。`,
+    body: `${rule.symbol} 今天是定投执行日（${localDateLabel}）${linkedPlanText}${amountText}。`,
     summary: `${rule.symbol} 定投执行日`
   };
 }
@@ -515,6 +521,7 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
   for (const rule of compiled.dcaRules) {
     const previousState = nextState.ruleStates[rule.ruleId] || {};
     const window = resolveDcaWindow(rule, now, timeZone);
+    const isFirstExecution = Boolean(rule.linkedPlanId) && !previousState.firstExecutionHandled;
 
     nextState.ruleStates[rule.ruleId] = {
       ...previousState,
@@ -526,7 +533,7 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
       continue;
     }
 
-    const notification = buildDcaNotification(rule, window.localDateLabel);
+    const notification = buildDcaNotification(rule, window.localDateLabel, { isFirstExecution });
     const delivery = await deliverNotification(env, notification);
     const failureUpdate = updateDeliveryFailures(nextState.deliveryFailures, delivery.results, now.toISOString());
     nextState.deliveryFailures = failureUpdate.nextFailures;
@@ -534,7 +541,8 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
       ...nextState.ruleStates[rule.ruleId],
       lastHandledWindowKey: window.windowKey,
       lastHandledAt: now.toISOString(),
-      lastHandledStatus: delivery.status
+      lastHandledStatus: delivery.status,
+      firstExecutionHandled: previousState.firstExecutionHandled || isFirstExecution
     };
     const event = {
       id: `${rule.ruleId}:${Date.now()}`,

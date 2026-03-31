@@ -409,7 +409,7 @@ export function NewPlanExperience({ links, inPagesDir = false }) {
     <PageShell>
       <PageHero
         backHref={links.home}
-        backLabel="返回策略总览"
+        backLabel="返回加仓计划"
         eyebrow="策略新建"
         title="新建建仓计划"
         description="在这里创建建仓策略，选择均线分层或固定回撤模板。创建完成后回到首页只读查看，不在首页直接修改。"

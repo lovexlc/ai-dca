@@ -1912,8 +1912,8 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
   return (
     <PageShell>
       <PageHero
-        eyebrow="建仓策略总览"
-        title="建仓策略总览"
+        eyebrow="加仓计划"
+        title="加仓计划"
         badges={[
           <Pill key="status" tone="indigo">{hasConfiguredPlan ? '已创建策略' : '待创建策略'}</Pill>
         ]}

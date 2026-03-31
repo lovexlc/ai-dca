@@ -42,7 +42,7 @@ export function AccumulationExperience({ links }) {
     <PageShell>
       <PageHero
         backHref={links.home}
-        backLabel="返回策略总览"
+        backLabel="返回加仓计划"
         eyebrow="加仓配置"
         title="加仓配置"
         description="将建仓总预算、基准价和末层跌幅统一收进一个轻量编辑面板里，实时联动各层权重、入场位和平均成本。"

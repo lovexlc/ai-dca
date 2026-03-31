@@ -141,27 +141,28 @@ function buildPlanRows(planList = []) {
   });
 }
 
-function buildDcaRows(dcaState, now = new Date()) {
+function buildDcaRows(dcaState, now = new Date(), planList = readPlanList()) {
   if (typeof window !== 'undefined' && !window.localStorage.getItem(DCA_STORAGE_KEY)) {
     return [];
   }
 
-  if (!dcaState?.symbol) {
+  const projection = buildDcaProjection(dcaState, { planList });
+
+  if (!projection.effectiveSymbol) {
     return [];
   }
 
-  const projection = buildDcaProjection(dcaState);
   const nextExecutionDate = getNextExecutionDate(dcaState.frequency, dcaState.executionDay, now);
   const nextExecutionLabel = formatDateLabel(nextExecutionDate);
 
   return [
     {
-      id: `dca-${dcaState.symbol}-${dcaState.frequency}-${dcaState.executionDay}`,
+      id: `dca-${projection.effectiveSymbol}-${dcaState.frequency}-${dcaState.executionDay}-${projection.linkedPlanId || 'standard'}`,
       sourceType: 'dca',
-      sourceId: dcaState.symbol,
-      planName: `${dcaState.symbol} 定投计划`,
-      typeLabel: '固定定投',
-      symbol: dcaState.symbol,
+      sourceId: projection.effectiveSymbol,
+      planName: `${projection.effectiveSymbol} 定投计划`,
+      typeLabel: projection.isLinkedPlan ? '定投 + 加仓首笔' : '固定定投',
+      symbol: projection.effectiveSymbol,
       triggerLabel: projection.cadenceLabel,
       nextExecutionLabel,
       notificationLabel: '预留中',
@@ -169,9 +170,13 @@ function buildDcaRows(dcaState, now = new Date()) {
       statusTone: 'emerald',
       actionLabel: '查看定投',
       actionKey: 'dca',
-      detailTitle: `${dcaState.symbol} 定投计划`,
-      detailSummary: `单次投入 ${formatCurrency(dcaState.recurringInvestment, '¥ ')}，周期内预计执行 ${projection.executionCount} 次。`,
-      triggerExplain: `${projection.cadenceLabel}，下一次计划执行日期 ${nextExecutionLabel}。`,
+      detailTitle: `${projection.effectiveSymbol} 定投计划`,
+      detailSummary: projection.isLinkedPlan
+        ? `首次按「${projection.linkedPlanName}」首笔金额 ${formatCurrency(projection.linkedPlanFirstInvestment, '¥ ')} 执行，后续单次投入 ${formatCurrency(dcaState.recurringInvestment, '¥ ')}。`
+        : `单次投入 ${formatCurrency(dcaState.recurringInvestment, '¥ ')}，周期内预计执行 ${projection.executionCount} 次。`,
+      triggerExplain: projection.isLinkedPlan
+        ? `${projection.cadenceLabel}，下一次计划执行日期 ${nextExecutionLabel}，首投金额 ${formatCurrency(projection.nextExecutionAmount, '¥ ')}。`
+        : `${projection.cadenceLabel}，下一次计划执行日期 ${nextExecutionLabel}。`,
       notificationMethod: '预留执行前提醒',
       reminderLog: ['执行前提醒功能待接入。'],
       order: 999,
@@ -209,8 +214,9 @@ function buildPreviewRows(rows = []) {
 }
 
 export function buildTradePlanCenter(now = new Date()) {
-  const planRows = buildPlanRows(readPlanList());
-  const dcaRows = buildDcaRows(readDcaState(), now);
+  const planList = readPlanList();
+  const planRows = buildPlanRows(planList);
+  const dcaRows = buildDcaRows(readDcaState(), now, planList);
   const rows = sortRows([...planRows, ...dcaRows]);
   const previewRows = buildPreviewRows(rows);
   const nearestPricePlan = previewRows.find((row) => row.sourceType === 'plan') || null;

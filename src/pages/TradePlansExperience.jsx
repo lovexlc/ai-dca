@@ -474,7 +474,7 @@ export function TradePlansExperience({ links, embedded = false }) {
     <PageShell>
       <PageHero
         backHref={links.home}
-        backLabel="返回策略总览"
+        backLabel="返回加仓计划"
         eyebrow="交易计划"
         title="交易计划中心"
         description="统一查看后续买入计划、触发条件和通知状态，后续所有规则型交易计划都从这里汇总。"
