@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Bell, CalendarClock, Clock3, Layers3, Radar, Save, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowRight, Bell, CalendarClock, Layers3, Radar, Save, Sparkles, Trash2 } from 'lucide-react';
 import { loadNotifyEvents, loadNotifyStatus, pairAndroidDevice, persistNotifyClientConfig, readNotifyClientConfig, saveNotifySettings, sendNotifyTest, syncTradePlanRules, unpairAndroidDevice } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { getPrimaryTabs } from '../app/screens.js';
@@ -132,25 +132,6 @@ export function TradePlansExperience({ links, embedded = false }) {
           ? '当前浏览器已关联 Android 设备'
           : '请先配置 iOS Bark 或绑定 Android 设备'
     : '提醒渠道和推送能力后续接入';
-  const notifyChannelLabel = notifyStatus
-    ? barkConfigured && androidConfigured
-      ? 'Bark（iOS） + Android'
-      : barkConfigured
-        ? 'Bark（iOS）'
-        : androidConfigured
-          ? 'Android'
-          : '尚未配置通知通道'
-    : selectedRow?.notificationMethod || '尚未配置通知通道';
-  const selectedRowEvents = selectedRow
-    ? recentEvents.filter((event) => (
-      selectedRow.ruleId
-        ? event.ruleId === selectedRow.ruleId
-        : selectedRow.sourceType === 'plan'
-          ? event.ruleId === `plan:${selectedRow.sourceId}`
-          : String(event.ruleId || '').startsWith(`dca:${selectedRow.sourceId}:`)
-    ))
-    : [];
-
   function buildRowTestPayload(row) {
     const normalizedRuleId = String(row?.ruleId || '').trim() || 'test';
     const normalizedPlanName = String(row?.planName || row?.detailTitle || '交易计划').trim();
@@ -585,7 +566,7 @@ export function TradePlansExperience({ links, embedded = false }) {
             <SectionHeading
               eyebrow="计划详情"
               title={selectedRow?.detailTitle || '当前没有待查看计划'}
-              description={selectedRow ? '右侧只展示当前选中计划的规则摘要、触发说明和最近提醒记录。' : '先在左侧选择一条交易计划，这里再展开对应的执行说明。'}
+              description={selectedRow ? '右侧只展示当前选中计划的规则摘要和触发说明。' : '先在左侧选择一条交易计划，这里再展开对应的执行说明。'}
             />
             {selectedRow ? (
               <div className="mt-5 space-y-4">
@@ -602,31 +583,6 @@ export function TradePlansExperience({ links, embedded = false }) {
                     触发说明
                   </div>
                   <p className="mt-2 text-sm leading-6 text-slate-600">{selectedRow.triggerExplain}</p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                    <Bell className="h-4 w-4 text-slate-400" />
-                    通知方式
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">{notifyChannelLabel}</p>
-                </div>
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                    <Clock3 className="h-4 w-4 text-slate-400" />
-                    最近提醒记录
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    {selectedRowEvents.length ? selectedRowEvents.map((item) => (
-                      <div key={item.id} className="rounded-xl bg-white px-3 py-3 text-sm text-slate-500">
-                        <div className="font-semibold text-slate-700">{item.summary || item.title}</div>
-                        <div className="mt-1 text-xs text-slate-400">{String(item.createdAt || '').replace('T', ' ').slice(0, 16)} · {item.status === 'delivered' ? '已送达' : item.status === 'failed' ? '发送失败' : '未发送'}</div>
-                      </div>
-                    )) : selectedRow.reminderLog.map((item) => (
-                      <div key={item} className="rounded-xl bg-white px-3 py-3 text-sm text-slate-500">
-                        {item}
-                      </div>
-                    ))}
-                  </div>
                 </div>
               </div>
             ) : (
