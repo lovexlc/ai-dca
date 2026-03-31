@@ -2,9 +2,6 @@ import { runNotificationCycle } from './evaluator.js';
 import { buildPublicGcmRegistration, buildPublicGcmRegistrations, checkGcmConnection, hasGcmServiceAccount, maskSecret, normalizeGcmPairedClients, normalizeGcmRegistrations, readGcmServiceAccount, resolveGcmProjectId } from './gcm.js';
 import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
 
-const PAYLOAD_KEY = 'notify:payload';
-const STATE_KEY = 'notify:state';
-const META_KEY = 'notify:meta';
 const SETTINGS_KEY = 'notify:settings';
 const PAIRING_CODE_TTL_MS = 10 * 60 * 1000;
 const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -37,6 +34,7 @@ function readOrigin(request) {
 }
 
 function normalizeSettings(settings = {}) {
+  const rawClients = typeof settings.clients === 'object' && settings.clients ? settings.clients : {};
   const gotifyClients = Array.isArray(settings.gotifyClients)
     ? settings.gotifyClients.map((client) => ({
         id: String(client?.id || '').trim(),
@@ -49,9 +47,41 @@ function normalizeSettings(settings = {}) {
       })).filter((client) => client.id && client.baseUrl && client.token)
     : [];
   const gcmRegistrations = normalizeGcmRegistrations(settings.gcmRegistrations);
+  const clients = Object.entries(rawClients).reduce((map, [clientId, client]) => {
+    const normalizedClientId = normalizeClientId(client?.clientId || clientId);
+
+    if (!normalizedClientId) {
+      return map;
+    }
+
+    map[normalizedClientId] = {
+      clientId: normalizedClientId,
+      clientLabel: normalizeClientName(client?.clientLabel || client?.notifyClientLabel || client?.clientName || ''),
+      barkDeviceKey: String(client?.barkDeviceKey || '').trim(),
+      payload: normalizeNotifyPayload(client?.payload || {}),
+      state: {
+        ruleStates: typeof client?.state?.ruleStates === 'object' && client.state.ruleStates ? client.state.ruleStates : {},
+        deliveryFailures: typeof client?.state?.deliveryFailures === 'object' && client.state.deliveryFailures ? client.state.deliveryFailures : {},
+        recentEvents: Array.isArray(client?.state?.recentEvents) ? client.state.recentEvents : [],
+        lastRunAt: String(client?.state?.lastRunAt || '').trim()
+      },
+      meta: {
+        counts: {
+          planRuleCount: Number(client?.meta?.counts?.planRuleCount) || 0,
+          dcaRuleCount: Number(client?.meta?.counts?.dcaRuleCount) || 0,
+          totalRuleCount: Number(client?.meta?.counts?.totalRuleCount) || 0
+        },
+        lastSyncedAt: String(client?.meta?.lastSyncedAt || '').trim(),
+        lastCheckedAt: String(client?.meta?.lastCheckedAt || '').trim(),
+        lastTestedAt: String(client?.meta?.lastTestedAt || '').trim()
+      }
+    };
+
+    return map;
+  }, {});
 
   return {
-    barkDeviceKey: String(settings.barkDeviceKey || '').trim(),
+    clients,
     gotifyBaseUrl: String(settings.gotifyBaseUrl || '').trim(),
     gotifyUsername: String(settings.gotifyUsername || '').trim(),
     gotifyPassword: String(settings.gotifyPassword || '').trim(),
@@ -63,6 +93,103 @@ function normalizeSettings(settings = {}) {
     gcmLastCheckAt: String(settings.gcmLastCheckAt || '').trim(),
     gcmLastCheckStatus: String(settings.gcmLastCheckStatus || '').trim(),
     gcmLastCheckDetail: String(settings.gcmLastCheckDetail || '').trim()
+  };
+}
+
+function buildDefaultClientRecord(clientId = '', clientLabel = '') {
+  const normalizedClientId = normalizeClientId(clientId);
+  return {
+    clientId: normalizedClientId,
+    clientLabel: normalizeClientName(clientLabel),
+    barkDeviceKey: '',
+    payload: normalizeNotifyPayload({}),
+    state: {
+      ruleStates: {},
+      deliveryFailures: {},
+      recentEvents: [],
+      lastRunAt: ''
+    },
+    meta: {
+      counts: {
+        planRuleCount: 0,
+        dcaRuleCount: 0,
+        totalRuleCount: 0
+      },
+      lastSyncedAt: '',
+      lastCheckedAt: '',
+      lastTestedAt: ''
+    }
+  };
+}
+
+function getClientRecord(settings, clientId = '', clientLabel = '') {
+  const normalizedClientId = normalizeClientId(clientId);
+
+  if (!normalizedClientId) {
+    return buildDefaultClientRecord('', clientLabel);
+  }
+
+  const existing = settings.clients?.[normalizedClientId] || null;
+  const nextClientLabel = normalizeClientName(clientLabel) || String(existing?.clientLabel || '').trim();
+
+  return {
+    ...buildDefaultClientRecord(normalizedClientId, nextClientLabel),
+    ...(existing || {}),
+    clientId: normalizedClientId,
+    clientLabel: nextClientLabel
+  };
+}
+
+function upsertClientRecord(settings, clientId = '', patch = {}) {
+  const normalizedClientId = normalizeClientId(clientId);
+
+  if (!normalizedClientId) {
+    throw new Error('缺少浏览器 clientId。');
+  }
+
+  const current = getClientRecord(settings, normalizedClientId);
+  const nextRecord = {
+    ...buildDefaultClientRecord(normalizedClientId, patch.clientLabel ?? current.clientLabel),
+    ...current,
+    ...patch,
+    clientId: normalizedClientId,
+    clientLabel: normalizeClientName(patch.clientLabel ?? current.clientLabel ?? ''),
+    barkDeviceKey: String(patch.barkDeviceKey ?? current.barkDeviceKey ?? '').trim(),
+    payload: normalizeNotifyPayload(patch.payload ?? current.payload ?? {}),
+    state: {
+      ...buildDefaultClientRecord(normalizedClientId).state,
+      ...(current.state || {}),
+      ...(patch.state || {})
+    },
+    meta: {
+      ...buildDefaultClientRecord(normalizedClientId).meta,
+      ...(current.meta || {}),
+      ...(patch.meta || {}),
+      counts: {
+        ...buildDefaultClientRecord(normalizedClientId).meta.counts,
+        ...(current.meta?.counts || {}),
+        ...(patch.meta?.counts || {})
+      }
+    }
+  };
+
+  return normalizeSettings({
+    ...settings,
+    clients: {
+      ...(settings.clients || {}),
+      [normalizedClientId]: nextRecord
+    }
+  });
+}
+
+function buildScopedNotifySettings(settings, clientId = '') {
+  const clientRecord = getClientRecord(settings, clientId);
+
+  return {
+    ...settings,
+    barkDeviceKey: clientRecord.barkDeviceKey,
+    clientId: clientRecord.clientId,
+    clientLabel: clientRecord.clientLabel
   };
 }
 
@@ -267,15 +394,71 @@ async function writeJson(env, key, value) {
   await env.NOTIFY_STATE.put(key, JSON.stringify(value));
 }
 
-function getRecentEvents(state = {}) {
-  return Array.isArray(state?.recentEvents) ? state.recentEvents : [];
+async function readSettings(env) {
+  return normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
 }
 
-function getDeliveryFailures(state = {}) {
-  return typeof state?.deliveryFailures === 'object' && state.deliveryFailures ? state.deliveryFailures : {};
+async function writeSettings(env, settings) {
+  await writeJson(env, SETTINGS_KEY, normalizeSettings(settings));
 }
 
-function applySettingsRemovals(settings, removals = []) {
+function requireCurrentClientId(request) {
+  const currentClientId = readCurrentClientId(request);
+
+  if (!currentClientId) {
+    throw new Error('缺少浏览器 clientId。');
+  }
+
+  return currentClientId;
+}
+
+function getClientRecentEvents(clientRecord = {}) {
+  return Array.isArray(clientRecord?.state?.recentEvents) ? clientRecord.state.recentEvents : [];
+}
+
+function getClientDeliveryFailures(clientRecord = {}) {
+  return Object.values(typeof clientRecord?.state?.deliveryFailures === 'object' && clientRecord.state.deliveryFailures
+    ? clientRecord.state.deliveryFailures
+    : {});
+}
+
+function buildEmptyRunSummary() {
+  return {
+    triggeredCount: 0,
+    deliveredCount: 0,
+    events: [],
+    clientCount: 0,
+    clients: []
+  };
+}
+
+function appendClientRunSummary(summary = buildEmptyRunSummary(), clientSummary = {}) {
+  const nextEvents = [
+    ...(Array.isArray(summary.events) ? summary.events : []),
+    ...(Array.isArray(clientSummary.events) ? clientSummary.events : [])
+  ].sort((left, right) => (
+    Date.parse(String(right?.createdAt || '')) - Date.parse(String(left?.createdAt || ''))
+  )).slice(0, 30);
+
+  return {
+    triggeredCount: Number(summary.triggeredCount) + (Number(clientSummary.triggeredCount) || 0),
+    deliveredCount: Number(summary.deliveredCount) + (Number(clientSummary.deliveredCount) || 0),
+    events: nextEvents,
+    clientCount: Number(summary.clientCount) + 1,
+    clients: [
+      ...(Array.isArray(summary.clients) ? summary.clients : []),
+      {
+        clientId: String(clientSummary.clientId || '').trim(),
+        clientLabel: String(clientSummary.clientLabel || '').trim(),
+        triggeredCount: Number(clientSummary.triggeredCount) || 0,
+        deliveredCount: Number(clientSummary.deliveredCount) || 0,
+        eventCount: Array.isArray(clientSummary.events) ? clientSummary.events.length : 0
+      }
+    ]
+  };
+}
+
+function applySettingsRemovals(settings, clientId = '', removals = []) {
   const nextSettings = normalizeSettings(settings);
 
   for (const removal of removals) {
@@ -287,8 +470,17 @@ function applySettingsRemovals(settings, removals = []) {
       continue;
     }
 
-    if (configType === 'bark') {
-      nextSettings.barkDeviceKey = '';
+    if (configType === 'bark-client') {
+      const targetClientId = normalizeClientId(configId || clientId);
+
+      if (!targetClientId) {
+        continue;
+      }
+
+      nextSettings.clients[targetClientId] = {
+        ...getClientRecord(nextSettings, targetClientId),
+        barkDeviceKey: ''
+      };
       continue;
     }
 
@@ -306,44 +498,39 @@ function applySettingsRemovals(settings, removals = []) {
   return nextSettings;
 }
 
-async function persistCycleResult(env, state, meta = {}) {
-  await writeJson(env, STATE_KEY, state);
-  await writeJson(env, META_KEY, meta);
-}
-
 async function handleStatus(request, env) {
   const origin = readOrigin(request);
-  const currentClientId = readCurrentClientId(request);
-  const meta = await readJson(env, META_KEY, {});
-  const state = await readJson(env, STATE_KEY, {});
-  const settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
-  const recentEvents = getRecentEvents(state);
-  const deliveryFailures = Object.values(getDeliveryFailures(state));
-  const barkDeviceKey = settings.barkDeviceKey || String(env.BARK_DEVICE_KEY || '').trim();
+  const currentClientId = requireCurrentClientId(request);
+  const settings = await readSettings(env);
+  const clientRecord = getClientRecord(settings, currentClientId);
+  const recentEvents = getClientRecentEvents(clientRecord);
+  const deliveryFailures = getClientDeliveryFailures(clientRecord);
   const gcmSetup = buildPublicGcmSetup(settings, env, {
     clientId: currentClientId
   });
 
   return jsonResponse({
     configured: {
-      bark: Boolean(barkDeviceKey),
+      bark: Boolean(clientRecord.barkDeviceKey),
       gotify: false,
-      gcm: Boolean(gcmSetup.gcmServiceAccountConfigured && gcmSetup.gcmRegistrationCount)
+      gcm: Boolean(gcmSetup.gcmServiceAccountConfigured && gcmSetup.gcmCurrentClientRegistrationCount)
     },
     counts: {
-      planRuleCount: Number(meta?.counts?.planRuleCount) || 0,
-      dcaRuleCount: Number(meta?.counts?.dcaRuleCount) || 0,
-      totalRuleCount: Number(meta?.counts?.totalRuleCount) || 0
+      planRuleCount: Number(clientRecord?.meta?.counts?.planRuleCount) || 0,
+      dcaRuleCount: Number(clientRecord?.meta?.counts?.dcaRuleCount) || 0,
+      totalRuleCount: Number(clientRecord?.meta?.counts?.totalRuleCount) || 0
     },
-    lastSyncedAt: String(meta?.lastSyncedAt || ''),
-    lastCheckedAt: String(meta?.lastCheckedAt || ''),
-    lastTestedAt: String(meta?.lastTestedAt || ''),
+    lastSyncedAt: String(clientRecord?.meta?.lastSyncedAt || ''),
+    lastCheckedAt: String(clientRecord?.meta?.lastCheckedAt || ''),
+    lastTestedAt: String(clientRecord?.meta?.lastTestedAt || ''),
     eventCount: recentEvents.length,
     lastEvent: recentEvents[0] || null,
     deliveryFailureCount: deliveryFailures.length,
     deliveryFailures,
     setup: {
-      barkDeviceKey,
+      barkDeviceKey: clientRecord.barkDeviceKey,
+      clientId: clientRecord.clientId,
+      clientLabel: clientRecord.clientLabel,
       ...gcmSetup
     }
   }, { origin });
@@ -351,41 +538,53 @@ async function handleStatus(request, env) {
 
 async function handleEvents(request, env) {
   const origin = readOrigin(request);
-  const state = await readJson(env, STATE_KEY, {});
+  const currentClientId = requireCurrentClientId(request);
+  const settings = await readSettings(env);
+  const clientRecord = getClientRecord(settings, currentClientId);
 
   return jsonResponse({
-    events: getRecentEvents(state)
+    events: getClientRecentEvents(clientRecord)
   }, { origin });
 }
 
 async function handleSync(request, env) {
   const origin = readOrigin(request);
-  const payload = normalizeNotifyPayload(await request.json().catch(() => ({})));
+  const currentClientId = requireCurrentClientId(request);
+  const rawPayload = await request.json().catch(() => ({}));
+  const payload = normalizeNotifyPayload(rawPayload);
   const compiled = compileNotifyRules(payload);
-  const existingState = await readJson(env, STATE_KEY, {});
+  const currentClientLabel = normalizeClientName(rawPayload?.clientLabel || rawPayload?.notifyClientLabel || '');
+  const settings = await readSettings(env);
+  const existingClient = getClientRecord(settings, currentClientId, currentClientLabel);
   const allowedRuleIds = new Set(compiled.allRules.map((rule) => rule.ruleId));
-  const nextRuleStates = Object.entries(existingState?.ruleStates || {}).reduce((map, [ruleId, state]) => {
+  const nextRuleStates = Object.entries(existingClient?.state?.ruleStates || {}).reduce((map, [ruleId, state]) => {
     if (allowedRuleIds.has(ruleId)) {
       map[ruleId] = state;
     }
     return map;
   }, {});
   const nextState = {
-    ...existingState,
+    ...existingClient.state,
     ruleStates: nextRuleStates,
-    recentEvents: getRecentEvents(existingState)
+    recentEvents: getClientRecentEvents(existingClient)
   };
   const nextMeta = {
-    ...(await readJson(env, META_KEY, {})),
+    ...existingClient.meta,
     counts: compiled.summary,
     lastSyncedAt: payload.syncedAt
   };
+  const nextSettings = upsertClientRecord(settings, currentClientId, {
+    clientLabel: currentClientLabel || existingClient.clientLabel,
+    payload,
+    state: nextState,
+    meta: nextMeta
+  });
 
-  await writeJson(env, PAYLOAD_KEY, payload);
-  await persistCycleResult(env, nextState, nextMeta);
+  await writeSettings(env, nextSettings);
 
   return jsonResponse({
     ok: true,
+    clientId: currentClientId,
     counts: compiled.summary,
     lastSyncedAt: payload.syncedAt
   }, { origin });
@@ -393,25 +592,23 @@ async function handleSync(request, env) {
 
 async function handleSettings(request, env) {
   const origin = readOrigin(request);
-  const currentClientId = readCurrentClientId(request);
-  const existingSettings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
+  const currentClientId = requireCurrentClientId(request);
+  const existingSettings = await readSettings(env);
   const payload = await request.json().catch(() => ({}));
-  const nextSettings = normalizeSettings({
-    ...existingSettings,
-    ...payload,
-    gotifyBaseUrl: '',
-    gotifyUsername: '',
-    gotifyPassword: '',
-    gotifyToken: '',
-    gotifyClients: []
+  const nextSettings = upsertClientRecord(existingSettings, currentClientId, {
+    clientLabel: normalizeClientName(payload?.clientLabel || payload?.notifyClientLabel || ''),
+    barkDeviceKey: String(payload?.barkDeviceKey || '').trim()
   });
+  const nextClientRecord = getClientRecord(nextSettings, currentClientId);
 
-  await writeJson(env, SETTINGS_KEY, nextSettings);
+  await writeSettings(env, nextSettings);
 
   return jsonResponse({
     ok: true,
     setup: {
-      barkDeviceKey: nextSettings.barkDeviceKey,
+      barkDeviceKey: nextClientRecord.barkDeviceKey,
+      clientId: nextClientRecord.clientId,
+      clientLabel: nextClientRecord.clientLabel,
       ...buildPublicGcmSetup(nextSettings, env, {
         clientId: currentClientId
       })
@@ -421,7 +618,7 @@ async function handleSettings(request, env) {
 
 async function handleGcmPairingKey(request, env) {
   const origin = readOrigin(request);
-  const settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
+  const settings = await readSettings(env);
   const payload = await request.json().catch(() => ({}));
   const registrationId = String(payload.registrationId || '').trim();
   const token = String(payload.token || payload.registrationToken || '').trim();
@@ -450,7 +647,7 @@ async function handleGcmPairingKey(request, env) {
     gcmRegistrations: upsertGcmRegistration(settings.gcmRegistrations, nextRegistration)
   });
 
-  await writeJson(env, SETTINGS_KEY, nextSettings);
+  await writeSettings(env, nextSettings);
 
   return jsonResponse({
     ok: true,
@@ -466,7 +663,7 @@ async function handleGcmPairingKey(request, env) {
 
 async function handleGcmPair(request, env) {
   const origin = readOrigin(request);
-  const settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
+  const settings = await readSettings(env);
   const payload = await request.json().catch(() => ({}));
   const pairingCode = normalizePairingCode(payload.pairingCode || payload.code || '');
   const clientId = normalizeClientId(payload.clientId);
@@ -500,12 +697,15 @@ async function handleGcmPair(request, env) {
     pairingCodeExpiresAt: '',
     updatedAt: nowIso
   };
-  const nextSettings = normalizeSettings({
+  let nextSettings = normalizeSettings({
     ...settings,
     gcmRegistrations: upsertGcmRegistration(settings.gcmRegistrations, nextRegistration)
   });
+  nextSettings = upsertClientRecord(nextSettings, clientId, {
+    clientLabel: clientName
+  });
 
-  await writeJson(env, SETTINGS_KEY, nextSettings);
+  await writeSettings(env, nextSettings);
 
   return jsonResponse({
     ok: true,
@@ -520,7 +720,7 @@ async function handleGcmPair(request, env) {
 
 async function handleGcmUnpair(request, env) {
   const origin = readOrigin(request);
-  const settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
+  const settings = await readSettings(env);
   const payload = await request.json().catch(() => ({}));
   const clientId = normalizeClientId(payload.clientId || readCurrentClientId(request));
   const registrationId = String(payload.registrationId || '').trim();
@@ -550,7 +750,7 @@ async function handleGcmUnpair(request, env) {
     gcmRegistrations: upsertGcmRegistration(settings.gcmRegistrations, nextRegistration)
   });
 
-  await writeJson(env, SETTINGS_KEY, nextSettings);
+  await writeSettings(env, nextSettings);
 
   return jsonResponse({
     ok: true,
@@ -565,7 +765,7 @@ async function handleGcmUnpair(request, env) {
 
 async function handleGcmRegister(request, env) {
   const origin = readOrigin(request);
-  const settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
+  const settings = await readSettings(env);
   const payload = await request.json().catch(() => ({}));
   const serviceAccount = (() => {
     try {
@@ -620,7 +820,7 @@ async function handleGcmRegister(request, env) {
     gcmRegistrations: upsertGcmRegistration(settings.gcmRegistrations, registration)
   });
 
-  await writeJson(env, SETTINGS_KEY, nextSettings);
+  await writeSettings(env, nextSettings);
 
   return jsonResponse({
     ok: true,
@@ -631,7 +831,7 @@ async function handleGcmRegister(request, env) {
 
 async function handleGcmCheck(request, env) {
   const origin = readOrigin(request);
-  const settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
+  const settings = await readSettings(env);
   const payload = await request.json().catch(() => ({}));
   const explicitToken = String(payload.token || payload.registrationToken || '').trim();
   const explicitRegistrationId = String(payload.registrationId || '').trim();
@@ -670,7 +870,7 @@ async function handleGcmCheck(request, env) {
       })
     });
 
-    await writeJson(env, SETTINGS_KEY, nextSettings);
+    await writeSettings(env, nextSettings);
 
     return jsonResponse({
       ok: true,
@@ -716,7 +916,7 @@ async function handleGcmCheck(request, env) {
       })
     });
 
-    await writeJson(env, SETTINGS_KEY, failedSettings);
+    await writeSettings(env, failedSettings);
     throw error;
   }
 }
@@ -801,7 +1001,7 @@ async function createGotifyAccount(settings) {
 
 async function handleGotifyAccount(request, env) {
   const origin = readOrigin(request);
-  const settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
+  const settings = await readSettings(env);
   const account = await createGotifyAccount(settings);
   const nextSettings = normalizeSettings({
     ...settings,
@@ -819,7 +1019,7 @@ async function handleGotifyAccount(request, env) {
     ]
   });
 
-  await writeJson(env, SETTINGS_KEY, nextSettings);
+  await writeSettings(env, nextSettings);
 
   return jsonResponse({
     ok: true,
@@ -831,16 +1031,58 @@ async function handleGotifyAccount(request, env) {
   }, { origin });
 }
 
+async function runClientDetection(env, settings, clientRecord, { reason = 'manual-run', testPayload = null } = {}) {
+  const currentClientId = normalizeClientId(clientRecord?.clientId);
+
+  if (!currentClientId) {
+    return {
+      settings,
+      summary: buildEmptyRunSummary()
+    };
+  }
+
+  env.__notifySettings = buildScopedNotifySettings(settings, currentClientId);
+  env.__notifyCurrentClientId = currentClientId;
+  const cycle = await runNotificationCycle(env, clientRecord.payload, clientRecord.state, {
+    reason,
+    testPayload
+  });
+  let nextSettings = settings;
+
+  if (Array.isArray(cycle.settingsRemovals) && cycle.settingsRemovals.length) {
+    nextSettings = applySettingsRemovals(nextSettings, currentClientId, cycle.settingsRemovals);
+  }
+
+  const refreshedClient = getClientRecord(nextSettings, currentClientId, clientRecord.clientLabel);
+  const nowIso = new Date().toISOString();
+  nextSettings = upsertClientRecord(nextSettings, currentClientId, {
+    clientLabel: refreshedClient.clientLabel || clientRecord.clientLabel,
+    state: cycle.state,
+    meta: {
+      ...refreshedClient.meta,
+      counts: testPayload ? refreshedClient.meta.counts : compileNotifyRules(refreshedClient.payload).summary,
+      lastCheckedAt: testPayload ? refreshedClient.meta.lastCheckedAt : nowIso,
+      lastTestedAt: testPayload ? nowIso : refreshedClient.meta.lastTestedAt
+    }
+  });
+
+  return {
+    settings: nextSettings,
+    summary: {
+      ...cycle.summary,
+      clientId: currentClientId,
+      clientLabel: refreshedClient.clientLabel || clientRecord.clientLabel
+    }
+  };
+}
+
 async function handleTest(request, env) {
   const origin = readOrigin(request);
-  const currentClientId = readCurrentClientId(request);
+  const currentClientId = requireCurrentClientId(request);
   const payload = await request.json().catch(() => ({}));
-  const existingState = await readJson(env, STATE_KEY, {});
-  const meta = await readJson(env, META_KEY, {});
-  let settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
-  env.__notifySettings = settings;
-  env.__notifyCurrentClientId = currentClientId;
-  const cycle = await runNotificationCycle(env, {}, existingState, {
+  let settings = await readSettings(env);
+  const clientRecord = getClientRecord(settings, currentClientId);
+  const result = await runClientDetection(env, settings, clientRecord, {
     reason: 'manual-test',
     testPayload: {
       title: String(payload.title || '交易计划测试提醒'),
@@ -849,51 +1091,40 @@ async function handleTest(request, env) {
       ruleId: String(payload.ruleId || 'test')
     }
   });
-  if (Array.isArray(cycle.settingsRemovals) && cycle.settingsRemovals.length) {
-    settings = applySettingsRemovals(settings, cycle.settingsRemovals);
-    await writeJson(env, SETTINGS_KEY, settings);
-    env.__notifySettings = settings;
-  }
-  const nextMeta = {
-    ...meta,
-    lastTestedAt: new Date().toISOString()
-  };
-
-  await persistCycleResult(env, cycle.state, nextMeta);
+  settings = result.settings;
+  await writeSettings(env, settings);
 
   return jsonResponse({
     ok: true,
-    summary: cycle.summary
+    summary: result.summary
   }, { origin });
 }
 
-async function runDetection(env, reason = 'manual-run') {
-  const payload = await readJson(env, PAYLOAD_KEY, normalizeNotifyPayload({}));
-  const state = await readJson(env, STATE_KEY, {});
-  const meta = await readJson(env, META_KEY, {});
-  let settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
-  env.__notifySettings = settings;
-  env.__notifyCurrentClientId = '';
-  const cycle = await runNotificationCycle(env, payload, state, { reason });
-  if (Array.isArray(cycle.settingsRemovals) && cycle.settingsRemovals.length) {
-    settings = applySettingsRemovals(settings, cycle.settingsRemovals);
-    await writeJson(env, SETTINGS_KEY, settings);
-    env.__notifySettings = settings;
+async function runDetection(env, reason = 'manual-run', options = {}) {
+  let settings = await readSettings(env);
+  const requestedClientId = normalizeClientId(options?.clientId);
+  const clientRecords = requestedClientId
+    ? [getClientRecord(settings, requestedClientId)]
+    : Object.values(settings.clients || {}).filter((client) => normalizeClientId(client?.clientId));
+  let summary = buildEmptyRunSummary();
+
+  for (const clientRecord of clientRecords) {
+    const result = await runClientDetection(env, settings, clientRecord, {
+      reason
+    });
+    settings = result.settings;
+    summary = appendClientRunSummary(summary, result.summary);
   }
-  const nextMeta = {
-    ...meta,
-    counts: compileNotifyRules(payload).summary,
-    lastCheckedAt: new Date().toISOString()
-  };
 
-  await persistCycleResult(env, cycle.state, nextMeta);
-
-  return cycle.summary;
+  await writeSettings(env, settings);
+  return summary;
 }
 
 async function handleRun(request, env) {
   const origin = readOrigin(request);
-  const summary = await runDetection(env, 'manual-run');
+  const summary = await runDetection(env, 'manual-run', {
+    clientId: readCurrentClientId(request)
+  });
 
   return jsonResponse({
     ok: true,
@@ -924,7 +1155,6 @@ export default {
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/test') {
-        env.__notifySettings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
         return await handleTest(request, env);
       }
 

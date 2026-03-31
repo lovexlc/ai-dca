@@ -89,6 +89,15 @@ export function persistNotifyClientConfig(nextConfig = {}) {
   window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(payload));
 }
 
+function resolveNotifyClientConfig(payload = {}) {
+  const current = readNotifyClientConfig();
+
+  return {
+    clientId: normalizeNotifyClientId(payload?.clientId || payload?.notifyClientId || current.notifyClientId),
+    clientLabel: normalizeNotifyClientLabel(payload?.clientLabel || payload?.clientName || payload?.notifyClientLabel || current.notifyClientLabel)
+  };
+}
+
 async function readJsonResponse(response) {
   const rawText = await response.text();
 
@@ -154,31 +163,49 @@ export function buildNotifySyncPayload() {
 }
 
 export function loadNotifyStatus(clientId = '') {
+  const resolvedClientId = normalizeNotifyClientId(clientId) || resolveNotifyClientConfig().clientId;
+
   return requestNotify('/status', {
     query: {
-      clientId
+      clientId: resolvedClientId
     }
   });
 }
 
-export function loadNotifyEvents() {
-  return requestNotify('/events');
+export function loadNotifyEvents(clientId = '') {
+  const resolvedClientId = normalizeNotifyClientId(clientId) || resolveNotifyClientConfig().clientId;
+
+  return requestNotify('/events', {
+    query: {
+      clientId: resolvedClientId
+    }
+  });
 }
 
 export function syncTradePlanRules(payload = buildNotifySyncPayload()) {
+  const clientConfig = resolveNotifyClientConfig(payload);
+
   return requestNotify('/sync', {
+    query: {
+      clientId: clientConfig.clientId
+    },
     method: 'POST',
     headers: {
       'content-type': 'application/json'
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({
+      ...payload,
+      clientLabel: clientConfig.clientLabel
+    })
   });
 }
 
 export function sendNotifyTest(payload = {}) {
+  const clientConfig = resolveNotifyClientConfig(payload);
+
   return requestNotify('/test', {
     query: {
-      clientId: payload.clientId || ''
+      clientId: clientConfig.clientId
     },
     method: 'POST',
     headers: {
@@ -194,31 +221,50 @@ export function sendNotifyTest(payload = {}) {
 }
 
 export function saveNotifySettings(payload = {}) {
+  const clientConfig = resolveNotifyClientConfig(payload);
+
   return requestNotify('/settings', {
+    query: {
+      clientId: clientConfig.clientId
+    },
     method: 'POST',
     headers: {
       'content-type': 'application/json'
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({
+      ...payload,
+      clientLabel: clientConfig.clientLabel
+    })
   });
 }
 
 export function pairAndroidDevice(payload = {}) {
+  const clientConfig = resolveNotifyClientConfig(payload);
+
   return requestNotify('/gcm/pair', {
     method: 'POST',
     headers: {
       'content-type': 'application/json'
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({
+      ...payload,
+      clientId: clientConfig.clientId,
+      clientName: clientConfig.clientLabel
+    })
   });
 }
 
 export function unpairAndroidDevice(payload = {}) {
+  const clientConfig = resolveNotifyClientConfig(payload);
+
   return requestNotify('/gcm/unpair', {
     method: 'POST',
     headers: {
       'content-type': 'application/json'
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({
+      ...payload,
+      clientId: clientConfig.clientId
+    })
   });
 }

@@ -249,8 +249,10 @@ function resolveDcaWindow(rule, now = new Date(), timeZone = DEFAULT_TIMEZONE) {
 async function deliverNotification(env, notification, options = {}) {
   const settings = typeof env.__notifySettings === 'object' && env.__notifySettings ? env.__notifySettings : {};
   const results = [];
-  const barkDeviceKey = String(settings.barkDeviceKey || env.BARK_DEVICE_KEY || '').trim();
+  const barkDeviceKey = String(settings.barkDeviceKey || '').trim();
   const currentClientId = String(env.__notifyCurrentClientId || '').trim();
+  const currentClientLabel = String(settings.clientLabel || '').trim();
+  const barkConfigKey = currentClientId ? `bark-client:${currentClientId}` : 'bark-client:unknown';
   const limitGcmRegistrations = Math.max(Number(options.limitGcmRegistrations) || 0, 0);
   const gcmRegistrations = normalizeGcmRegistrations(settings.gcmRegistrations);
   const selectedGcmRegistrations = gcmRegistrations.filter((registration) => {
@@ -275,20 +277,20 @@ async function deliverNotification(env, notification, options = {}) {
         ...notification,
         deviceKey: barkDeviceKey
       })),
-      configKey: 'bark:default',
-      configType: 'bark',
-      configId: 'default',
-      configLabel: 'Bark'
+      configKey: barkConfigKey,
+      configType: 'bark-client',
+      configId: currentClientId || 'unknown',
+      configLabel: currentClientLabel ? `Bark · ${currentClientLabel}` : 'Bark'
     });
   } catch (error) {
     results.push({
       channel: 'bark',
       status: 'failed',
       detail: error instanceof Error ? error.message : 'Bark 推送失败',
-      configKey: 'bark:default',
-      configType: 'bark',
-      configId: 'default',
-      configLabel: 'Bark'
+      configKey: barkConfigKey,
+      configType: 'bark-client',
+      configId: currentClientId || 'unknown',
+      configLabel: currentClientLabel ? `Bark · ${currentClientLabel}` : 'Bark'
     });
   }
 
@@ -413,7 +415,7 @@ function getDeliveryFailures(state = {}) {
 }
 
 function buildChannelRemovalEvent(removal, nowIso) {
-  const channelLabel = String(removal.configLabel || '').trim() || (removal.configType === 'bark'
+  const channelLabel = String(removal.configLabel || '').trim() || (removal.configType === 'bark-client'
     ? 'Bark'
     : removal.configType === 'gotify-client'
       ? `Gotify 账号 ${removal.configId || ''}`.trim()
