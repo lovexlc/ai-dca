@@ -379,6 +379,7 @@ export function TradePlansExperience({ links, embedded = false }) {
                             disabled={testingRowId === row.id}
                             onClick={() => handleTestNotify(row)}
                           >
+                            <Bell className="h-4 w-4" />
                             {testingRowId === row.id ? '正在发送' : '测试通知'}
                           </button>
                           <a
