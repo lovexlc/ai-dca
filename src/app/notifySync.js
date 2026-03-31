@@ -6,8 +6,41 @@ const NOTIFY_CLIENT_CONFIG_KEY = 'aiDcaNotifyClientConfig';
 
 function buildDefaultNotifyClientConfig() {
   return {
-    barkDeviceKey: ''
+    barkDeviceKey: '',
+    notifyClientId: '',
+    notifyClientLabel: ''
   };
+}
+
+function createNotifyClientId() {
+  if (typeof window !== 'undefined' && window.crypto?.randomUUID) {
+    return `web:${window.crypto.randomUUID()}`;
+  }
+
+  if (typeof window !== 'undefined' && window.crypto?.getRandomValues) {
+    const bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    return `web:${Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('')}`;
+  }
+
+  return `web:${Date.now().toString(36)}`;
+}
+
+function normalizeNotifyClientId(value = '') {
+  return String(value || '').trim().slice(0, 120);
+}
+
+function normalizeNotifyClientLabel(value = '') {
+  return String(value || '').trim().slice(0, 120);
+}
+
+function buildDefaultNotifyClientLabel() {
+  if (typeof window === 'undefined') {
+    return 'Web 控制台';
+  }
+
+  const hostname = String(window.location?.hostname || '').trim();
+  return hostname ? `Web 控制台 @ ${hostname}` : 'Web 控制台';
 }
 
 export function readNotifyClientConfig() {
@@ -17,12 +50,25 @@ export function readNotifyClientConfig() {
 
   try {
     const saved = JSON.parse(window.localStorage.getItem(NOTIFY_CLIENT_CONFIG_KEY) || 'null');
-    return {
+    const nextConfig = {
       ...buildDefaultNotifyClientConfig(),
       barkDeviceKey: String(saved?.barkDeviceKey || '').trim()
     };
+
+    nextConfig.notifyClientId = normalizeNotifyClientId(saved?.notifyClientId) || createNotifyClientId();
+    nextConfig.notifyClientLabel = normalizeNotifyClientLabel(saved?.notifyClientLabel) || buildDefaultNotifyClientLabel();
+    window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(nextConfig));
+
+    return nextConfig;
   } catch (_error) {
-    return buildDefaultNotifyClientConfig();
+    const nextConfig = {
+      ...buildDefaultNotifyClientConfig(),
+      notifyClientId: createNotifyClientId(),
+      notifyClientLabel: buildDefaultNotifyClientLabel()
+    };
+
+    window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(nextConfig));
+    return nextConfig;
   }
 }
 
@@ -35,7 +81,9 @@ export function persistNotifyClientConfig(nextConfig = {}) {
   const payload = {
     ...current,
     ...nextConfig,
-    barkDeviceKey: String(nextConfig.barkDeviceKey ?? current.barkDeviceKey ?? '').trim()
+    barkDeviceKey: String(nextConfig.barkDeviceKey ?? current.barkDeviceKey ?? '').trim(),
+    notifyClientId: normalizeNotifyClientId(nextConfig.notifyClientId ?? current.notifyClientId ?? '') || current.notifyClientId,
+    notifyClientLabel: normalizeNotifyClientLabel(nextConfig.notifyClientLabel ?? current.notifyClientLabel ?? '') || current.notifyClientLabel
   };
 
   window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(payload));
@@ -43,6 +91,7 @@ export function persistNotifyClientConfig(nextConfig = {}) {
 
 async function readJsonResponse(response) {
   const rawText = await response.text();
+
   if (!rawText) {
     return {};
   }
@@ -56,9 +105,24 @@ async function readJsonResponse(response) {
   }
 }
 
+function buildNotifyUrl(path, query = {}) {
+  const url = new URL(`${NOTIFY_ENDPOINT}${path}`, typeof window === 'undefined' ? 'https://localhost' : window.location.origin);
+
+  Object.entries(query || {}).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') {
+      return;
+    }
+
+    url.searchParams.set(key, String(value));
+  });
+
+  return `${url.pathname}${url.search}`;
+}
+
 async function requestNotify(path, init = {}) {
-  const response = await fetch(`${NOTIFY_ENDPOINT}${path}`, {
+  const response = await fetch(buildNotifyUrl(path, init.query), {
     ...init,
+    query: undefined,
     headers: init.headers
   });
   const payload = await readJsonResponse(response);
@@ -89,8 +153,12 @@ export function buildNotifySyncPayload() {
   };
 }
 
-export function loadNotifyStatus() {
-  return requestNotify('/status');
+export function loadNotifyStatus(clientId = '') {
+  return requestNotify('/status', {
+    query: {
+      clientId
+    }
+  });
 }
 
 export function loadNotifyEvents() {
@@ -122,6 +190,16 @@ export function sendNotifyTest() {
 
 export function saveNotifySettings(payload = {}) {
   return requestNotify('/settings', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+export function pairAndroidDevice(payload = {}) {
+  return requestNotify('/gcm/pair', {
     method: 'POST',
     headers: {
       'content-type': 'application/json'

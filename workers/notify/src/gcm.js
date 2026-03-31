@@ -142,6 +142,28 @@ export function maskSecret(value = '') {
   return normalized ? `${normalized.slice(0, 8)}...${normalized.slice(-6)}` : '';
 }
 
+export function normalizeGcmPairedClients(pairedClients = []) {
+  return Array.isArray(pairedClients)
+    ? pairedClients.map((client) => ({
+        clientId: String(client?.clientId || '').trim(),
+        clientName: String(client?.clientName || '').trim(),
+        pairedAt: String(client?.pairedAt || '').trim(),
+        lastSeenAt: String(client?.lastSeenAt || '').trim()
+      })).filter((client) => client.clientId)
+    : [];
+}
+
+export function isActiveGcmPairingCode(registration = {}, nowMs = Date.now()) {
+  const expiresAt = String(registration?.pairingCodeExpiresAt || '').trim();
+  const expiresAtMs = Date.parse(expiresAt);
+
+  return Boolean(
+    String(registration?.pairingCodeHash || '').trim()
+    && Number.isFinite(expiresAtMs)
+    && expiresAtMs > nowMs
+  );
+}
+
 export function normalizeGcmRegistrations(registrations = []) {
   return Array.isArray(registrations)
     ? registrations.map((registration) => ({
@@ -155,29 +177,50 @@ export function normalizeGcmRegistrations(registrations = []) {
         updatedAt: String(registration?.updatedAt || '').trim(),
         lastCheckedAt: String(registration?.lastCheckedAt || '').trim(),
         lastCheckStatus: String(registration?.lastCheckStatus || '').trim(),
-        lastCheckDetail: String(registration?.lastCheckDetail || '').trim()
+        lastCheckDetail: String(registration?.lastCheckDetail || '').trim(),
+        pairedClients: normalizeGcmPairedClients(registration?.pairedClients),
+        pairingCodeHash: String(registration?.pairingCodeHash || '').trim(),
+        pairingCodeIssuedAt: String(registration?.pairingCodeIssuedAt || '').trim(),
+        pairingCodeExpiresAt: String(registration?.pairingCodeExpiresAt || '').trim()
       })).filter((registration) => registration.id && registration.token)
     : [];
 }
 
-export function buildPublicGcmRegistration(registration = {}) {
+export function buildPublicGcmRegistration(registration = {}, options = {}) {
+  const normalizedRegistration = normalizeGcmRegistrations([registration])[0] || {};
+  const currentClientId = String(options?.clientId || '').trim();
+  const pairedClients = normalizeGcmPairedClients(normalizedRegistration.pairedClients);
+
   return {
-    id: String(registration?.id || '').trim(),
-    deviceName: String(registration?.deviceName || '').trim(),
-    packageName: String(registration?.packageName || '').trim(),
-    appId: String(registration?.appId || '').trim(),
-    senderId: String(registration?.senderId || '').trim(),
-    tokenMasked: maskSecret(registration?.token),
-    createdAt: String(registration?.createdAt || '').trim(),
-    updatedAt: String(registration?.updatedAt || '').trim(),
-    lastCheckedAt: String(registration?.lastCheckedAt || '').trim(),
-    lastCheckStatus: String(registration?.lastCheckStatus || '').trim(),
-    lastCheckDetail: String(registration?.lastCheckDetail || '').trim()
+    id: normalizedRegistration.id,
+    deviceName: normalizedRegistration.deviceName,
+    packageName: normalizedRegistration.packageName,
+    appId: normalizedRegistration.appId,
+    senderId: normalizedRegistration.senderId,
+    tokenMasked: maskSecret(normalizedRegistration.token),
+    createdAt: normalizedRegistration.createdAt,
+    updatedAt: normalizedRegistration.updatedAt,
+    lastCheckedAt: normalizedRegistration.lastCheckedAt,
+    lastCheckStatus: normalizedRegistration.lastCheckStatus,
+    lastCheckDetail: normalizedRegistration.lastCheckDetail,
+    pairedClientCount: pairedClients.length,
+    pairedClients: pairedClients.map((client) => ({
+      clientName: client.clientName,
+      pairedAt: client.pairedAt,
+      lastSeenAt: client.lastSeenAt
+    })),
+    pairedToCurrentClient: currentClientId
+      ? pairedClients.some((client) => client.clientId === currentClientId)
+      : false,
+    pairingCodeActive: isActiveGcmPairingCode(normalizedRegistration),
+    pairingCodeExpiresAt: isActiveGcmPairingCode(normalizedRegistration)
+      ? normalizedRegistration.pairingCodeExpiresAt
+      : ''
   };
 }
 
-export function buildPublicGcmRegistrations(registrations = []) {
-  return normalizeGcmRegistrations(registrations).map((registration) => buildPublicGcmRegistration(registration));
+export function buildPublicGcmRegistrations(registrations = [], options = {}) {
+  return normalizeGcmRegistrations(registrations).map((registration) => buildPublicGcmRegistration(registration, options));
 }
 
 export function readGcmServiceAccount(env) {

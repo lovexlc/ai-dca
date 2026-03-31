@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Bell, CalendarClock, Clock3, Layers3, Radar, Save, Sparkles } from 'lucide-react';
-import { loadNotifyEvents, loadNotifyStatus, persistNotifyClientConfig, readNotifyClientConfig, saveNotifySettings, sendNotifyTest, syncTradePlanRules } from '../app/notifySync.js';
+import { loadNotifyEvents, loadNotifyStatus, pairAndroidDevice, persistNotifyClientConfig, readNotifyClientConfig, saveNotifySettings, sendNotifyTest, syncTradePlanRules } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { getPrimaryTabs } from '../app/screens.js';
 import { Card, Field, PageHero, PageShell, PageTabs, Pill, SectionHeading, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
@@ -48,16 +48,26 @@ export function TradePlansExperience({ links, embedded = false }) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isPairingAndroid, setIsPairingAndroid] = useState(false);
   const [notifyPlatform, setNotifyPlatform] = useState('ios');
+  const [androidPairingCode, setAndroidPairingCode] = useState('');
   const [notifyConfig, setNotifyConfig] = useState(() => {
     const persistedConfig = readNotifyClientConfig();
 
     return {
-      barkDeviceKey: persistedConfig.barkDeviceKey || ''
+      barkDeviceKey: persistedConfig.barkDeviceKey || '',
+      notifyClientId: persistedConfig.notifyClientId || '',
+      notifyClientLabel: persistedConfig.notifyClientLabel || ''
     };
   });
   const { previewRows, summary, hasPlans } = useMemo(() => buildTradePlanCenter(), []);
   const primaryTabs = getPrimaryTabs(links);
+  const androidSetup = notifyStatus?.setup || null;
+  const pairedAndroidDevices = Array.isArray(androidSetup?.gcmCurrentClientRegistrations)
+    ? androidSetup.gcmCurrentClientRegistrations
+    : [];
+  const barkConfigured = Boolean(notifyStatus?.configured?.bark);
+  const androidConfigured = pairedAndroidDevices.length > 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -65,7 +75,7 @@ export function TradePlansExperience({ links, embedded = false }) {
     async function refreshNotifyPanel() {
       try {
         const [statusPayload, eventsPayload] = await Promise.all([
-          loadNotifyStatus(),
+          loadNotifyStatus(notifyConfig.notifyClientId),
           loadNotifyEvents()
         ]);
 
@@ -76,6 +86,7 @@ export function TradePlansExperience({ links, embedded = false }) {
         setNotifyStatus(statusPayload);
         setRecentEvents(Array.isArray(eventsPayload?.events) ? eventsPayload.events : []);
         setNotifyConfig((current) => ({
+          ...current,
           barkDeviceKey: current.barkDeviceKey || statusPayload?.setup?.barkDeviceKey || ''
         }));
         setNotifyError('');
@@ -93,7 +104,7 @@ export function TradePlansExperience({ links, embedded = false }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [notifyConfig.notifyClientId]);
 
   useEffect(() => {
     if (!previewRows.length) {
@@ -108,13 +119,25 @@ export function TradePlansExperience({ links, embedded = false }) {
 
   const selectedRow = previewRows.find((row) => row.id === selectedRowId) || previewRows[0] || null;
   const notificationValue = notifyStatus
-    ? notifyStatus.configured?.bark ? '已配置' : '未配置'
+    ? barkConfigured || androidConfigured ? '已配置' : '未配置'
     : summary.notificationStatus;
   const notificationNote = notifyStatus
-    ? notifyStatus.configured?.bark ? 'Bark 可发送' : '请先配置 iOS Bark 通知'
+    ? barkConfigured && androidConfigured
+      ? 'iOS Bark 与当前浏览器已配对 Android 设备都可发送'
+      : barkConfigured
+        ? 'Bark 可发送'
+        : androidConfigured
+          ? '当前浏览器已关联 Android 设备'
+          : '请先配置 iOS Bark 或绑定 Android 设备'
     : '提醒渠道和推送能力后续接入';
   const notifyChannelLabel = notifyStatus
-    ? notifyStatus.configured?.bark ? 'Bark（iOS）' : '尚未配置通知通道'
+    ? barkConfigured && androidConfigured
+      ? 'Bark（iOS） + Android'
+      : barkConfigured
+        ? 'Bark（iOS）'
+        : androidConfigured
+          ? 'Android'
+          : '尚未配置通知通道'
     : selectedRow?.notificationMethod || '尚未配置通知通道';
   const selectedRowEvents = selectedRow
     ? recentEvents.filter((event) => (
@@ -126,13 +149,14 @@ export function TradePlansExperience({ links, embedded = false }) {
 
   async function refreshNotifyData() {
     const [statusPayload, eventsPayload] = await Promise.all([
-      loadNotifyStatus(),
+      loadNotifyStatus(notifyConfig.notifyClientId),
       loadNotifyEvents()
     ]);
 
     setNotifyStatus(statusPayload);
     setRecentEvents(Array.isArray(eventsPayload?.events) ? eventsPayload.events : []);
     setNotifyConfig((current) => ({
+      ...current,
       barkDeviceKey: current.barkDeviceKey || statusPayload?.setup?.barkDeviceKey || ''
     }));
     setNotifyError('');
@@ -183,6 +207,30 @@ export function TradePlansExperience({ links, embedded = false }) {
       setNotifyError(error instanceof Error ? error.message : '通知配置保存失败');
     } finally {
       setIsSavingSettings(false);
+    }
+  }
+
+  async function handlePairAndroidCode() {
+    setIsPairingAndroid(true);
+    setNotifyError('');
+    setNotifyMessage('');
+    try {
+      await pairAndroidDevice({
+        pairingCode: androidPairingCode,
+        clientId: notifyConfig.notifyClientId,
+        clientName: notifyConfig.notifyClientLabel
+      });
+      persistNotifyClientConfig({
+        notifyClientId: notifyConfig.notifyClientId,
+        notifyClientLabel: notifyConfig.notifyClientLabel
+      });
+      setAndroidPairingCode('');
+      await refreshNotifyData();
+      setNotifyMessage('Android 设备已绑定到当前浏览器。');
+    } catch (error) {
+      setNotifyError(error instanceof Error ? error.message : 'Android 设备绑定失败');
+    } finally {
+      setIsPairingAndroid(false);
     }
   }
 
@@ -338,11 +386,77 @@ export function TradePlansExperience({ links, embedded = false }) {
             ) : null}
             <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-5">
               {notifyPlatform === 'android' ? (
-                <div className="rounded-2xl border border-dashed border-amber-300 bg-amber-50 px-5 py-6">
-                  <div className="text-sm font-semibold text-amber-900">Android 通知</div>
-                  <p className="mt-2 text-sm leading-6 text-amber-800">
-                    开发中，请等待。Android 通知能力已暂时移除，恢复后会在这里开放配置入口。
-                  </p>
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
+                    <div className="text-sm font-semibold text-slate-900">当前浏览器</div>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                      Android app 会向 Worker 申请 8 位配对码。把 app 里显示的配对码填到这里，Worker 就会把那台设备绑定到当前浏览器页面。
+                    </p>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">浏览器标签</div>
+                        <div className="mt-2 text-sm font-semibold text-slate-700">{notifyConfig.notifyClientLabel}</div>
+                      </div>
+                      <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">已关联设备</div>
+                        <div className="mt-2 text-sm font-semibold text-slate-700">{pairedAndroidDevices.length} 台</div>
+                      </div>
+                    </div>
+                    <div className="mt-4 rounded-2xl bg-slate-950 px-4 py-3 font-mono text-xs text-slate-100">
+                      {notifyConfig.notifyClientId}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+                    <Field label="Android 配对码">
+                      <TextInput
+                        value={androidPairingCode}
+                        placeholder="在 Android app 中查看 8 位配对码"
+                        onChange={(event) => setAndroidPairingCode(String(event.target.value || '').replace(/\s+/g, '').toUpperCase())}
+                      />
+                    </Field>
+                    <button className={primaryButtonClass} type="button" onClick={handlePairAndroidCode}>
+                      <Save className="h-4 w-4" />
+                      {isPairingAndroid ? '正在绑定 Android 设备' : '绑定 Android 设备'}
+                    </button>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-semibold text-slate-900">当前浏览器已关联的 Android 设备</div>
+                      <Pill tone={pairedAndroidDevices.length ? 'emerald' : 'slate'}>
+                        {pairedAndroidDevices.length ? `${pairedAndroidDevices.length} 台已关联` : '未关联'}
+                      </Pill>
+                    </div>
+                    {pairedAndroidDevices.length ? (
+                      <div className="mt-4 space-y-3">
+                        {pairedAndroidDevices.map((registration) => (
+                          <div key={registration.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="text-sm font-semibold text-slate-900">{registration.deviceName || 'Android Device'}</div>
+                              <Pill tone={registration.lastCheckStatus === 'validated' ? 'emerald' : 'slate'}>
+                                {registration.lastCheckStatus === 'validated' ? 'FCM 已校验' : registration.lastCheckStatus || '待校验'}
+                              </Pill>
+                            </div>
+                            <div className="mt-2 text-sm text-slate-500">{registration.packageName || androidSetup?.gcmPackageName || '未记录包名'}</div>
+                            <div className="mt-3 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
+                              <div>Token: {registration.tokenMasked || '--'}</div>
+                              <div>绑定时间: {formatEventTimeLabel(registration.updatedAt || registration.createdAt)}</div>
+                              <div>最近校验: {formatEventTimeLabel(registration.lastCheckedAt)}</div>
+                              <div>配对状态: {registration.pairedToCurrentClient ? '当前浏览器已绑定' : '未绑定'}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-4 text-sm leading-6 text-slate-500">
+                        当前浏览器还没有关联 Android 设备。先打开 Android app，拿到配对码，再回到这里完成绑定。
+                      </p>
+                    )}
+                    <div className="mt-4 text-xs text-slate-400">
+                      服务端当前共登记 {Number(androidSetup?.gcmRegistrationCount) || 0} 台 Android 设备，其中 {Number(androidSetup?.gcmPairedRegistrationCount) || 0} 台已完成浏览器配对。
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <>

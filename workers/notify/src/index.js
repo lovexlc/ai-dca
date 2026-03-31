@@ -6,6 +6,8 @@ const PAYLOAD_KEY = 'notify:payload';
 const STATE_KEY = 'notify:state';
 const META_KEY = 'notify:meta';
 const SETTINGS_KEY = 'notify:settings';
+const PAIRING_CODE_TTL_MS = 10 * 60 * 1000;
+const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 function jsonResponse(payload, { status = 200, origin = '*' } = {}) {
   return new Response(JSON.stringify(payload, null, 2), {
@@ -64,9 +66,16 @@ function normalizeSettings(settings = {}) {
   };
 }
 
-function buildMaskedToken(token = '') {
-  const normalized = String(token || '').trim();
-  return normalized ? `${normalized.slice(0, 4)}...${normalized.slice(-3)}` : '';
+function normalizeClientId(value = '') {
+  return String(value || '').trim().slice(0, 120);
+}
+
+function normalizeClientName(value = '') {
+  return String(value || '').trim().slice(0, 120);
+}
+
+function normalizePairingCode(value = '') {
+  return String(value || '').trim().replace(/\s+/g, '').toUpperCase();
 }
 
 function randomString(length = 16) {
@@ -75,12 +84,47 @@ function randomString(length = 16) {
   return Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('');
 }
 
-function buildPublicGcmSetup(settings, env) {
+function buildPairingCode(length = 8) {
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
+  return Array.from(bytes, (value) => PAIRING_CODE_ALPHABET[value % PAIRING_CODE_ALPHABET.length]).join('');
+}
+
+async function hashText(value = '') {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(value || '')));
+  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('');
+}
+
+function isFutureIso(value = '') {
+  const normalizedValue = String(value || '').trim();
+  const expiresAt = Date.parse(normalizedValue);
+
+  return Number.isFinite(expiresAt) && expiresAt > Date.now();
+}
+
+function readCurrentClientId(request) {
+  const url = new URL(request.url);
+  return normalizeClientId(url.searchParams.get('clientId'));
+}
+
+function buildPublicGcmSetup(settings, env, options = {}) {
+  const currentClientId = normalizeClientId(options?.clientId);
+  const gcmRegistrations = buildPublicGcmRegistrations(settings.gcmRegistrations, {
+    clientId: currentClientId
+  });
+  const gcmCurrentClientRegistrations = currentClientId
+    ? gcmRegistrations.filter((registration) => registration.pairedToCurrentClient)
+    : [];
+
   return {
     gcmProjectId: resolveGcmProjectId(settings, env),
     gcmPackageName: String(settings.gcmPackageName || '').trim(),
-    gcmRegistrationCount: Array.isArray(settings.gcmRegistrations) ? settings.gcmRegistrations.length : 0,
-    gcmRegistrations: buildPublicGcmRegistrations(settings.gcmRegistrations),
+    gcmRegistrationCount: gcmRegistrations.length,
+    gcmRegistrations,
+    gcmCurrentClientId: currentClientId,
+    gcmCurrentClientRegistrationCount: gcmCurrentClientRegistrations.length,
+    gcmCurrentClientRegistrations,
+    gcmPairedRegistrationCount: gcmRegistrations.filter((registration) => registration.pairedClientCount > 0).length,
+    gcmUnpairedRegistrationCount: gcmRegistrations.filter((registration) => registration.pairedClientCount === 0).length,
     gcmServiceAccountConfigured: hasGcmServiceAccount(env),
     gcmLastCheckAt: String(settings.gcmLastCheckAt || '').trim(),
     gcmLastCheckStatus: String(settings.gcmLastCheckStatus || '').trim(),
@@ -135,6 +179,28 @@ function upsertGcmRegistration(registrations = [], candidate = {}) {
   return nextRegistrations;
 }
 
+function upsertGcmPairedClient(pairedClients = [], candidate = {}) {
+  const normalizedClientId = normalizeClientId(candidate.clientId);
+  let replaced = false;
+  const nextPairedClients = pairedClients.map((client) => {
+    if (client.clientId !== normalizedClientId) {
+      return client;
+    }
+
+    replaced = true;
+    return {
+      ...client,
+      ...candidate
+    };
+  });
+
+  if (!replaced && normalizedClientId) {
+    nextPairedClients.push(candidate);
+  }
+
+  return nextPairedClients;
+}
+
 function findGcmRegistration(settings, { registrationId = '', token = '' } = {}) {
   const registrations = Array.isArray(settings.gcmRegistrations) ? settings.gcmRegistrations : [];
   const normalizedRegistrationId = String(registrationId || '').trim();
@@ -149,6 +215,21 @@ function findGcmRegistration(settings, { registrationId = '', token = '' } = {})
   }
 
   return registrations[0] || null;
+}
+
+async function findGcmRegistrationByPairingCode(settings, pairingCode = '') {
+  const normalizedPairingCode = normalizePairingCode(pairingCode);
+
+  if (!normalizedPairingCode) {
+    return null;
+  }
+
+  const pairingCodeHash = await hashText(normalizedPairingCode);
+
+  return (Array.isArray(settings.gcmRegistrations) ? settings.gcmRegistrations : []).find((registration) => (
+    isFutureIso(registration.pairingCodeExpiresAt)
+    && String(registration.pairingCodeHash || '').trim() === pairingCodeHash
+  )) || null;
 }
 
 function ensureStateBinding(env) {
@@ -222,13 +303,16 @@ async function persistCycleResult(env, state, meta = {}) {
 
 async function handleStatus(request, env) {
   const origin = readOrigin(request);
+  const currentClientId = readCurrentClientId(request);
   const meta = await readJson(env, META_KEY, {});
   const state = await readJson(env, STATE_KEY, {});
   const settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
   const recentEvents = getRecentEvents(state);
   const deliveryFailures = Object.values(getDeliveryFailures(state));
   const barkDeviceKey = settings.barkDeviceKey || String(env.BARK_DEVICE_KEY || '').trim();
-  const gcmSetup = buildPublicGcmSetup(settings, env);
+  const gcmSetup = buildPublicGcmSetup(settings, env, {
+    clientId: currentClientId
+  });
 
   return jsonResponse({
     configured: {
@@ -299,6 +383,7 @@ async function handleSync(request, env) {
 
 async function handleSettings(request, env) {
   const origin = readOrigin(request);
+  const currentClientId = readCurrentClientId(request);
   const existingSettings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
   const payload = await request.json().catch(() => ({}));
   const nextSettings = normalizeSettings({
@@ -317,8 +402,109 @@ async function handleSettings(request, env) {
     ok: true,
     setup: {
       barkDeviceKey: nextSettings.barkDeviceKey,
-      androidNotice: '开发中，请等待。'
+      ...buildPublicGcmSetup(nextSettings, env, {
+        clientId: currentClientId
+      })
     }
+  }, { origin });
+}
+
+async function handleGcmPairingKey(request, env) {
+  const origin = readOrigin(request);
+  const settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
+  const payload = await request.json().catch(() => ({}));
+  const registrationId = String(payload.registrationId || '').trim();
+  const token = String(payload.token || payload.registrationToken || '').trim();
+  const selectedRegistration = findGcmRegistration(settings, {
+    registrationId,
+    token
+  });
+
+  if (!selectedRegistration) {
+    throw new Error('当前设备还没有完成注册，请先调用 /api/notify/gcm/register。');
+  }
+
+  const pairingCode = buildPairingCode(8);
+  const pairingCodeHash = await hashText(pairingCode);
+  const pairingCodeIssuedAt = new Date().toISOString();
+  const pairingCodeExpiresAt = new Date(Date.now() + PAIRING_CODE_TTL_MS).toISOString();
+  const nextRegistration = {
+    ...selectedRegistration,
+    pairingCodeHash,
+    pairingCodeIssuedAt,
+    pairingCodeExpiresAt,
+    updatedAt: pairingCodeIssuedAt
+  };
+  const nextSettings = normalizeSettings({
+    ...settings,
+    gcmRegistrations: upsertGcmRegistration(settings.gcmRegistrations, nextRegistration)
+  });
+
+  await writeJson(env, SETTINGS_KEY, nextSettings);
+
+  return jsonResponse({
+    ok: true,
+    registration: buildPublicGcmRegistration(nextRegistration),
+    pairing: {
+      code: pairingCode,
+      issuedAt: pairingCodeIssuedAt,
+      expiresAt: pairingCodeExpiresAt
+    },
+    setup: buildPublicGcmSetup(nextSettings, env)
+  }, { origin });
+}
+
+async function handleGcmPair(request, env) {
+  const origin = readOrigin(request);
+  const settings = normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
+  const payload = await request.json().catch(() => ({}));
+  const pairingCode = normalizePairingCode(payload.pairingCode || payload.code || '');
+  const clientId = normalizeClientId(payload.clientId);
+  const clientName = normalizeClientName(payload.clientName) || 'Web 控制台';
+
+  if (!clientId) {
+    throw new Error('缺少浏览器 clientId。');
+  }
+
+  if (!pairingCode) {
+    throw new Error('缺少设备配对码。');
+  }
+
+  const selectedRegistration = await findGcmRegistrationByPairingCode(settings, pairingCode);
+
+  if (!selectedRegistration) {
+    throw new Error('配对码无效或已过期，请回到 Android app 重新生成。');
+  }
+
+  const nowIso = new Date().toISOString();
+  const nextRegistration = {
+    ...selectedRegistration,
+    pairedClients: upsertGcmPairedClient(selectedRegistration.pairedClients, {
+      clientId,
+      clientName,
+      pairedAt: nowIso,
+      lastSeenAt: nowIso
+    }),
+    pairingCodeHash: '',
+    pairingCodeIssuedAt: '',
+    pairingCodeExpiresAt: '',
+    updatedAt: nowIso
+  };
+  const nextSettings = normalizeSettings({
+    ...settings,
+    gcmRegistrations: upsertGcmRegistration(settings.gcmRegistrations, nextRegistration)
+  });
+
+  await writeJson(env, SETTINGS_KEY, nextSettings);
+
+  return jsonResponse({
+    ok: true,
+    registration: buildPublicGcmRegistration(nextRegistration, {
+      clientId
+    }),
+    setup: buildPublicGcmSetup(nextSettings, env, {
+      clientId
+    })
   }, { origin });
 }
 
@@ -336,6 +522,7 @@ async function handleGcmRegister(request, env) {
   const projectId = String(payload.projectId || settings.gcmProjectId || serviceAccount?.projectId || '').trim();
   const packageName = String(payload.packageName || settings.gcmPackageName || '').trim();
   const deviceName = String(payload.deviceName || '').trim() || 'Android Device';
+  const registrationId = String(payload.registrationId || '').trim();
   const token = String(payload.token || payload.registrationToken || '').trim();
   const appId = String(payload.appId || '').trim();
   const senderId = String(payload.senderId || '').trim();
@@ -349,9 +536,13 @@ async function handleGcmRegister(request, env) {
   }
 
   const nowIso = new Date().toISOString();
-  const existingRegistration = findGcmRegistration(settings, { token });
+  const existingRegistration = findGcmRegistration(settings, {
+    registrationId,
+    token
+  });
   const registration = {
-    id: existingRegistration?.id || `gcm:${randomString(10).toLowerCase()}`,
+    ...existingRegistration,
+    id: existingRegistration?.id || registrationId || `gcm:${randomString(10).toLowerCase()}`,
     deviceName,
     packageName,
     appId,
@@ -361,7 +552,11 @@ async function handleGcmRegister(request, env) {
     updatedAt: nowIso,
     lastCheckedAt: existingRegistration?.lastCheckedAt || '',
     lastCheckStatus: existingRegistration?.lastCheckStatus || '',
-    lastCheckDetail: existingRegistration?.lastCheckDetail || ''
+    lastCheckDetail: existingRegistration?.lastCheckDetail || '',
+    pairedClients: existingRegistration?.pairedClients || [],
+    pairingCodeHash: existingRegistration?.pairingCodeHash || '',
+    pairingCodeIssuedAt: existingRegistration?.pairingCodeIssuedAt || '',
+    pairingCodeExpiresAt: existingRegistration?.pairingCodeExpiresAt || ''
   };
   const nextSettings = normalizeSettings({
     ...settings,
@@ -687,6 +882,14 @@ export default {
 
       if (request.method === 'POST' && url.pathname === '/api/notify/gcm/check') {
         return await handleGcmCheck(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/pairing-key') {
+        return await handleGcmPairingKey(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/pair') {
+        return await handleGcmPair(request, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/run') {

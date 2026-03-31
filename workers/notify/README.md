@@ -10,6 +10,8 @@
 - `POST /api/notify/test`
 - `POST /api/notify/gcm/check`
 - `POST /api/notify/gcm/register`
+- `POST /api/notify/gcm/pairing-key`
+- `POST /api/notify/gcm/pair`
 - `POST /api/notify/run`
 - cron 定时检查价格提醒和定投提醒
 
@@ -39,6 +41,9 @@ npx wrangler dev --config workers/notify/wrangler.toml --port 8788
 ## 说明
 
 - 第一版是单用户设计
+- Web 前端会在本地生成一个浏览器 `clientId`
+- Android app 注册成功后会向 Worker 申请一次性 8 位配对码
+- 用户把配对码填到前端页面后，Worker 会把那台 Android 设备和当前浏览器 `clientId` 建立配对关系
 - 计划规则由前端整包同步到后台
 - 价格提醒按当前策略重算后决定是否触发
 - 同一触发区只提醒一次，离开触发区后才允许再次提醒
