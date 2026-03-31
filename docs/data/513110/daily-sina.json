@@ -4,40 +4,16 @@
   "fund_name": "华泰柏瑞纳斯达克100ETF(QDII)",
   "index_key": "nasdaq100",
   "range": {
-    "start_date": "2024-03-27",
-    "end_date": "2026-03-27",
+    "start_date": "2024-04-01",
+    "end_date": "2026-03-31",
     "lookback_days": 730
   },
   "requested_bars": 700,
   "source": "sina:CN_MarketDataService.getKLineData",
   "source_symbol": "sh513110",
-  "fund_list_source": "/home/lovexl/ai-dca-stragety/data/all_nasdq.json",
-  "generated_at": "2026-03-27T21:43:07.243Z",
+  "fund_list_source": "/home/runner/work/ai-dca/ai-dca/data/all_nasdq.json",
+  "generated_at": "2026-03-31T08:37:37.420Z",
   "bars": [
-    {
-      "date": "2024-03-27",
-      "open": 1.53,
-      "close": 1.53,
-      "high": 1.531,
-      "low": 1.526,
-      "volume": 31881300
-    },
-    {
-      "date": "2024-03-28",
-      "open": 1.533,
-      "close": 1.53,
-      "high": 1.534,
-      "low": 1.527,
-      "volume": 20297300
-    },
-    {
-      "date": "2024-03-29",
-      "open": 1.529,
-      "close": 1.527,
-      "high": 1.529,
-      "low": 1.525,
-      "volume": 12062800
-    },
     {
       "date": "2024-04-01",
       "open": 1.535,
@@ -3885,6 +3861,22 @@
       "high": 1.937,
       "low": 1.913,
       "volume": 80191600
+    },
+    {
+      "date": "2026-03-30",
+      "open": 1.89,
+      "close": 1.902,
+      "high": 1.903,
+      "low": 1.882,
+      "volume": 88112600
+    },
+    {
+      "date": "2026-03-31",
+      "open": 1.895,
+      "close": 1.887,
+      "high": 1.906,
+      "low": 1.884,
+      "volume": 72206400
     }
   ]
 }
