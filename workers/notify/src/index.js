@@ -844,7 +844,9 @@ async function handleTest(request, env) {
     reason: 'manual-test',
     testPayload: {
       title: String(payload.title || '交易计划测试提醒'),
-      body: String(payload.body || '这是一条测试通知，用来校验当前已接入的提醒通道是否可用。')
+      body: String(payload.body || '这是一条测试通知，用来校验当前已接入的提醒通道是否可用。'),
+      summary: String(payload.summary || '测试通知'),
+      ruleId: String(payload.ruleId || 'test')
     }
   });
   if (Array.isArray(cycle.settingsRemovals) && cycle.settingsRemovals.length) {

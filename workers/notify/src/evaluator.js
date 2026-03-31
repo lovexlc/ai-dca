@@ -140,30 +140,27 @@ async function loadDailyBars(env, cache, code) {
 function buildPlanNotification(rule, evaluation) {
   const layer = evaluation.deepestTriggeredLayer;
   const displayName = rule.planName || `${rule.symbol} 建仓计划`;
-  const currency = evaluation.currency;
-  const layerLabel = layer ? `第 ${layer.order} 档` : '建仓区';
-  const triggerPrice = layer ? formatPrice(layer.price, currency) : '--';
+  const stageHighPrice = Number(evaluation.stageHighPrice) || 0;
+  const currentPrice = Number(evaluation.currentPrice) || 0;
+  const fallbackDrawdown = Math.max(Number(layer?.drawdown) || 0, 0);
+  const actualDrawdown = stageHighPrice > 0 && currentPrice > 0 && currentPrice < stageHighPrice
+    ? (1 - currentPrice / stageHighPrice) * 100
+    : fallbackDrawdown;
+  const drawdownLabel = formatPercent(actualDrawdown || fallbackDrawdown, 1);
 
   return {
     ruleId: rule.ruleId,
     title: '交易计划提醒',
-    body: `${displayName} 已进入${layerLabel}，参考买入价 ${triggerPrice}，按计划分批执行。`,
-    summary: `${displayName} ${layerLabel}`
+    body: `已触发您设置的购买条件，${rule.symbol} 已下跌 ${drawdownLabel}。请前往网页查看当前投资策略。`,
+    summary: `${displayName} 触发购买条件`
   };
 }
 
-function buildDcaNotification(rule, localDateLabel, { isFirstExecution = false } = {}) {
-  const amount = isFirstExecution && Number(rule.firstExecutionAmount) > 0
-    ? Number(rule.firstExecutionAmount)
-    : Number(rule.recurringInvestment) || 0;
-  const linkedPlanText = isFirstExecution && rule.linkedPlanName
-    ? `，首期按「${rule.linkedPlanName}」策略首笔金额执行`
-    : '';
-  const amountText = amount > 0 ? `，计划金额 ¥${amount.toFixed(2)}` : '';
+function buildDcaNotification(rule, localDateLabel) {
   return {
     ruleId: rule.ruleId,
     title: '定投计划提醒',
-    body: `${rule.symbol} 今天是定投执行日（${localDateLabel}）${linkedPlanText}${amountText}。`,
+    body: `已到达您设定的定投日（${localDateLabel}）。请前往网页查看本期投资策略。`,
     summary: `${rule.symbol} 定投执行日`
   };
 }
@@ -514,10 +511,10 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
     nextState.deliveryFailures = failureUpdate.nextFailures;
     const event = {
       id: `test-${Date.now()}`,
-      ruleId: 'test',
+      ruleId: String(testPayload.ruleId || 'test'),
       title: testPayload.title,
       body: testPayload.body,
-      summary: '测试通知',
+      summary: String(testPayload.summary || '测试通知'),
       status: delivery.status,
       channels: delivery.results,
       createdAt: new Date().toISOString(),

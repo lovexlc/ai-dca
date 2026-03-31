@@ -175,18 +175,20 @@ export function syncTradePlanRules(payload = buildNotifySyncPayload()) {
   });
 }
 
-export function sendNotifyTest(clientId = '') {
+export function sendNotifyTest(payload = {}) {
   return requestNotify('/test', {
     query: {
-      clientId
+      clientId: payload.clientId || ''
     },
     method: 'POST',
     headers: {
       'content-type': 'application/json'
     },
     body: JSON.stringify({
-      title: '交易计划测试提醒',
-      body: '这是一条测试通知，用来校验当前已接入的提醒通道是否可用。'
+      title: String(payload.title || '交易计划测试提醒'),
+      body: String(payload.body || '这是一条测试通知，用来校验当前已接入的提醒通道是否可用。'),
+      summary: String(payload.summary || '测试通知'),
+      ruleId: String(payload.ruleId || 'test')
     })
   });
 }

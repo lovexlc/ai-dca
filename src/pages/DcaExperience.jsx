@@ -60,7 +60,7 @@ export function DcaExperience({ links, embedded = false }) {
     <>
       <div className={cx('mx-auto max-w-6xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard accent="indigo" eyebrow="总投入" value={formatCurrency(projection.totalInvestment, '¥ ')} note={projection.isLinkedPlan ? `首期按「${projection.linkedPlanName}」首笔金额执行，后续按固定定投额续投。` : '初始投入加上所有周期定投之和'} />
+          <StatCard accent="indigo" eyebrow="总投入" value={formatCurrency(projection.totalInvestment, '¥ ')} note={projection.isLinkedPlan ? `每个执行周期都投入 ${formatCurrency(projection.recurringInvestment, '¥ ')}，并按「${projection.linkedPlanName}」在周期内分批执行。` : '初始投入加上所有周期定投之和'} />
           <StatCard eyebrow="预估收益" value={formatCurrency(projection.totalInvestment * state.targetReturn / 100, '¥ ')} note={`按目标收益 ${formatPercent(state.targetReturn, 0)} 估算`} />
           <StatCard eyebrow="月均投入" value={formatCurrency(projection.monthlyEquivalent, '¥ ')} note="折算后的月度平均投入强度" />
           <StatCard accent="emerald" eyebrow="执行节奏" value={`${state.frequency} / ${state.executionDay}`} note="频率与执行日期共同决定节奏" />
@@ -71,20 +71,31 @@ export function DcaExperience({ links, embedded = false }) {
             <SectionHeading
               eyebrow="计划参数"
               title="策略参数设置"
-              description="把标的、买入频率和执行日整理成一个完整模板；如果关联加仓策略，首个定投日会自动套用该策略的首笔买入额。"
+              description="把标的、买入频率和执行日整理成一个完整模板；如果关联加仓策略，每个执行周期的总预算会按该策略拆成多笔。"
             />
 
             <div className="mt-6 space-y-5">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label={projection.isLinkedPlan ? '首次买入额' : '初始投资额'} helper={projection.isLinkedPlan ? `已自动同步「${projection.linkedPlanName}」的首笔计划金额。` : '策略启动时可额外安排一笔首投。'}>
-                  <NumberInput className={projection.isLinkedPlan ? 'bg-white text-slate-600' : ''} readOnly={projection.isLinkedPlan} step="0.01" value={projection.isLinkedPlan ? projection.initialInvestment : state.initialInvestment} onChange={(event) => setState((current) => ({ ...current, initialInvestment: event.target.value }))} />
-                </Field>
-                <Field label={projection.isLinkedPlan ? '后续定投额' : '定期投资额'}>
-                  <NumberInput step="0.01" value={state.recurringInvestment} onChange={(event) => setState((current) => ({ ...current, recurringInvestment: event.target.value }))} />
-                </Field>
-              </div>
+              {projection.isLinkedPlan ? (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Field label="单周期投入总额" helper={`这个预算会按「${projection.linkedPlanName}」的层级权重拆成多笔，周期总额保持不变。`}>
+                    <NumberInput step="0.01" value={state.recurringInvestment} onChange={(event) => setState((current) => ({ ...current, recurringInvestment: event.target.value }))} />
+                  </Field>
+                  <Field label="预计首批金额" helper="按当前关联策略折算后的第一笔预算。">
+                    <NumberInput className="bg-white text-slate-600" readOnly step="0.01" value={projection.linkedPlanFirstInvestment} />
+                  </Field>
+                </div>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Field label="初始投资额" helper="策略启动时可额外安排一笔首投。">
+                    <NumberInput step="0.01" value={state.initialInvestment} onChange={(event) => setState((current) => ({ ...current, initialInvestment: event.target.value }))} />
+                  </Field>
+                  <Field label="定期投资额">
+                    <NumberInput step="0.01" value={state.recurringInvestment} onChange={(event) => setState((current) => ({ ...current, recurringInvestment: event.target.value }))} />
+                  </Field>
+                </div>
+              )}
 
-              <Field label="关联加仓策略" helper={planList.length ? '选中后会在首个定投日自动执行该策略的首笔买入额。' : '当前还没有已创建的加仓策略，可先到“加仓计划”页新建。'}>
+              <Field label="关联加仓策略" helper={planList.length ? '选中后，单周期预算会按该策略的批次和触发条件在周期内分笔投入。' : '当前还没有已创建的加仓策略，可先到“加仓计划”页新建。'}>
                 <SelectField options={linkedPlanOptions} value={state.linkedPlanId || ''} onChange={(event) => handleLinkedPlanChange(event.target.value)} />
               </Field>
 
@@ -139,7 +150,7 @@ export function DcaExperience({ links, embedded = false }) {
               <div className="mt-6 rounded-[24px] border border-indigo-100 bg-white/90 p-5 shadow-sm">
                 <div className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-500">总投入</div>
                 <div className="mt-2 text-3xl font-extrabold tracking-tight text-indigo-700">{formatCurrency(projection.totalInvestment, '¥ ')}</div>
-                <p className="mt-3 text-sm leading-6 text-slate-500">{projection.isLinkedPlan ? '总投资额 = 首次买入额 + 后续定投额 × 剩余执行次数' : '总投资额 = 初始投资额 + 定期投资额 × 执行次数'}</p>
+                <p className="mt-3 text-sm leading-6 text-slate-500">{projection.isLinkedPlan ? '总投资额 = 单周期投入总额 × 执行周期数；每个周期内再按关联策略拆成多笔。' : '总投资额 = 初始投资额 + 定期投资额 × 执行次数'}</p>
               </div>
               <div className="mt-4 grid gap-3">
                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -161,20 +172,31 @@ export function DcaExperience({ links, embedded = false }) {
 
             {projection.isLinkedPlan ? (
               <Card className="border-emerald-100 bg-emerald-50">
-                <SectionHeading eyebrow="加仓联动" title="已关联首投策略" />
+                <SectionHeading eyebrow="加仓联动" title="已关联分批策略" />
                 <div className="mt-5 rounded-2xl border border-emerald-100 bg-white/80 p-4">
                   <div className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
                     <Layers3 className="h-4 w-4" />
                     {projection.linkedPlanName}
                   </div>
-                  <div className="mt-2 text-xl font-bold text-slate-900">{formatCurrency(projection.linkedPlanFirstInvestment, '¥ ')}</div>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">首个定投日会按该加仓策略的首笔金额执行，后续再恢复为固定定投额。</p>
+                  <div className="mt-2 text-xl font-bold text-slate-900">{formatCurrency(projection.recurringInvestment, '¥ ')}</div>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">每个执行周期总投入保持不变，并按该策略的批次权重和触发条件在周期内分批执行。</p>
+                  <div className="mt-4 space-y-2">
+                    {projection.linkedPlanSplit.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-sm">
+                        <div className="min-w-0">
+                          <div className="font-semibold text-slate-800">{item.label}</div>
+                          <div className="text-xs text-slate-500">{item.drawdown > 0 ? `参考回撤 ${formatPercent(item.drawdown, 1)}` : '首批参考区间'}</div>
+                        </div>
+                        <div className="shrink-0 font-semibold text-slate-900">{formatCurrency(item.amount, '¥ ')}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </Card>
             ) : null}
 
             <Card>
-              <SectionHeading eyebrow="执行预览" title="前六次执行预览" />
+              <SectionHeading eyebrow="执行预览" title={projection.isLinkedPlan ? '前六个周期预览' : '前六次执行预览'} />
               <div className="mt-5 space-y-3">
                 {projection.schedule.map((row) => (
                   <div key={row.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
@@ -182,13 +204,13 @@ export function DcaExperience({ links, embedded = false }) {
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="font-semibold text-slate-900">{row.label}</div>
-                          {row.isLinkedFirstExecution ? <Pill tone="emerald">加仓首投</Pill> : null}
+                          {row.isLinkedCycle ? <Pill tone="emerald">策略分批</Pill> : null}
                         </div>
                         <div className="mt-1 text-sm text-slate-500">{row.note}</div>
                       </div>
                       <div className="text-right">
                         <div className="font-semibold text-slate-900">{formatCurrency(row.cumulative, '¥ ')}</div>
-                        <div className="mt-1 text-xs text-slate-400">单次投入 {formatCurrency(row.contribution, '¥ ')}</div>
+                        <div className="mt-1 text-xs text-slate-400">{projection.isLinkedPlan ? '本期总投入' : '单次投入'} {formatCurrency(row.contribution, '¥ ')}</div>
                       </div>
                     </div>
                   </div>
@@ -204,7 +226,7 @@ export function DcaExperience({ links, embedded = false }) {
                     <Calendar className="h-4 w-4 text-slate-400" />
                     节奏说明
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-slate-500">{projection.isLinkedPlan ? `${projection.cadenceLabel}，首个执行日先落地加仓策略首笔金额。` : projection.cadenceLabel}</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">{projection.isLinkedPlan ? `${projection.cadenceLabel}，到达执行日后请前往网页查看该周期的分批投入策略。` : projection.cadenceLabel}</p>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">

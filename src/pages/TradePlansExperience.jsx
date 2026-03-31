@@ -46,7 +46,7 @@ export function TradePlansExperience({ links, embedded = false }) {
   const [notifyError, setNotifyError] = useState('');
   const [notifyMessage, setNotifyMessage] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isTesting, setIsTesting] = useState(false);
+  const [testingRowId, setTestingRowId] = useState('');
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isPairingAndroid, setIsPairingAndroid] = useState(false);
   const [unpairingRegistrationId, setUnpairingRegistrationId] = useState('');
@@ -142,11 +142,34 @@ export function TradePlansExperience({ links, embedded = false }) {
     : selectedRow?.notificationMethod || '尚未配置通知通道';
   const selectedRowEvents = selectedRow
     ? recentEvents.filter((event) => (
-      selectedRow.sourceType === 'plan'
-        ? event.ruleId === `plan:${selectedRow.sourceId}`
-        : String(event.ruleId || '').startsWith(`dca:${selectedRow.sourceId}:`)
+      selectedRow.ruleId
+        ? event.ruleId === selectedRow.ruleId
+        : selectedRow.sourceType === 'plan'
+          ? event.ruleId === `plan:${selectedRow.sourceId}`
+          : String(event.ruleId || '').startsWith(`dca:${selectedRow.sourceId}:`)
     ))
     : [];
+
+  function buildRowTestPayload(row) {
+    const normalizedRuleId = String(row?.ruleId || '').trim() || 'test';
+    const normalizedPlanName = String(row?.planName || row?.detailTitle || '交易计划').trim();
+
+    if (row?.sourceType === 'dca') {
+      return {
+        ruleId: normalizedRuleId,
+        title: '定投计划测试提醒',
+        summary: `${normalizedPlanName} 测试提醒`,
+        body: `这是「${normalizedPlanName}」的测试通知。已到达您设定的定投日，请前往网页查看本期投资策略。`
+      };
+    }
+
+    return {
+      ruleId: normalizedRuleId,
+      title: '交易计划测试提醒',
+      summary: `${normalizedPlanName} 测试提醒`,
+      body: `这是「${normalizedPlanName}」的测试通知。已触发您设置的购买条件${row?.triggerLabel ? `（${row.triggerLabel}）` : ''}，请前往网页查看当前投资策略。`
+    };
+  }
 
   async function refreshNotifyData() {
     const [statusPayload, eventsPayload] = await Promise.all([
@@ -177,17 +200,25 @@ export function TradePlansExperience({ links, embedded = false }) {
     }
   }
 
-  async function handleTestNotify() {
-    setIsTesting(true);
+  async function handleTestNotify(row) {
+    if (!row?.id) {
+      return;
+    }
+
+    setTestingRowId(row.id);
     setNotifyError('');
     setNotifyMessage('');
     try {
-      await sendNotifyTest(notifyConfig.notifyClientId);
+      await sendNotifyTest({
+        clientId: notifyConfig.notifyClientId,
+        ...buildRowTestPayload(row)
+      });
       await refreshNotifyData();
+      setNotifyMessage(`已发送「${row.planName}」的测试通知。`);
     } catch (error) {
       setNotifyError(error instanceof Error ? error.message : '测试通知发送失败');
     } finally {
-      setIsTesting(false);
+      setTestingRowId('');
     }
   }
 
@@ -284,16 +315,6 @@ export function TradePlansExperience({ links, embedded = false }) {
                 >
                   {isSyncing ? '正在同步规则' : '同步通知规则'}
                 </button>
-                <button
-                  className={cx(
-                    secondaryButtonClass,
-                    'border-slate-300 bg-white shadow-sm hover:bg-slate-50'
-                  )}
-                  type="button"
-                  onClick={handleTestNotify}
-                >
-                  {isTesting ? '正在发送' : '测试通知'}
-                </button>
               </div>
             }
           />
@@ -320,13 +341,26 @@ export function TradePlansExperience({ links, embedded = false }) {
                           <div className="text-base font-bold text-slate-900">{row.planName}</div>
                           <div className="text-sm leading-6 text-slate-500">{row.symbol}</div>
                         </button>
-                        <a
-                          className={cx(secondaryButtonClass, 'shrink-0')}
-                          href={links[row.actionKey]}
-                        >
-                          查看更多
-                          <ArrowRight className="h-4 w-4" />
-                        </a>
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          <button
+                            className={cx(
+                              secondaryButtonClass,
+                              'border-slate-300 bg-white shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60'
+                            )}
+                            type="button"
+                            disabled={testingRowId === row.id}
+                            onClick={() => handleTestNotify(row)}
+                          >
+                            {testingRowId === row.id ? '正在发送' : '测试提醒'}
+                          </button>
+                          <a
+                            className={cx(secondaryButtonClass, 'shrink-0')}
+                            href={links[row.actionKey]}
+                          >
+                            查看更多
+                            <ArrowRight className="h-4 w-4" />
+                          </a>
+                        </div>
                       </div>
                       <button className="mt-4 grid w-full gap-4 text-left text-sm text-slate-600 md:grid-cols-3" type="button" onClick={() => setSelectedRowId(row.id)}>
                         <div>

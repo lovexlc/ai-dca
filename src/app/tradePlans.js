@@ -117,6 +117,7 @@ function buildPlanRows(planList = []) {
       const order = index + 1;
       return ({
       id: `${plan.id}-${layer.id}`,
+      ruleId: `plan:${plan.id}`,
       sourceType: 'plan',
       sourceId: plan.id,
       planName: displayPlanName,
@@ -158,10 +159,11 @@ function buildDcaRows(dcaState, now = new Date(), planList = readPlanList()) {
   return [
     {
       id: `dca-${projection.effectiveSymbol}-${dcaState.frequency}-${dcaState.executionDay}-${projection.linkedPlanId || 'standard'}`,
+      ruleId: `dca:${projection.effectiveSymbol}:${dcaState.frequency}:${dcaState.executionDay}:${projection.linkedPlanId || 'standard'}`,
       sourceType: 'dca',
       sourceId: projection.effectiveSymbol,
       planName: `${projection.effectiveSymbol} 定投计划`,
-      typeLabel: projection.isLinkedPlan ? '定投 + 加仓首笔' : '固定定投',
+      typeLabel: projection.isLinkedPlan ? '定投 + 策略分批' : '固定定投',
       symbol: projection.effectiveSymbol,
       triggerLabel: projection.cadenceLabel,
       nextExecutionLabel,
@@ -172,10 +174,10 @@ function buildDcaRows(dcaState, now = new Date(), planList = readPlanList()) {
       actionKey: 'dca',
       detailTitle: `${projection.effectiveSymbol} 定投计划`,
       detailSummary: projection.isLinkedPlan
-        ? `首次按「${projection.linkedPlanName}」首笔金额 ${formatCurrency(projection.linkedPlanFirstInvestment, '¥ ')} 执行，后续单次投入 ${formatCurrency(dcaState.recurringInvestment, '¥ ')}。`
+        ? `每个执行周期投入 ${formatCurrency(dcaState.recurringInvestment, '¥ ')}，按「${projection.linkedPlanName}」拆分为 ${projection.linkedPlanSplitCount || 0} 批，在周期内分批执行。`
         : `单次投入 ${formatCurrency(dcaState.recurringInvestment, '¥ ')}，周期内预计执行 ${projection.executionCount} 次。`,
       triggerExplain: projection.isLinkedPlan
-        ? `${projection.cadenceLabel}，下一次计划执行日期 ${nextExecutionLabel}，首投金额 ${formatCurrency(projection.nextExecutionAmount, '¥ ')}。`
+        ? `${projection.cadenceLabel}，下一次计划执行日期 ${nextExecutionLabel}。到期后请前往网页查看本期分批策略。`
         : `${projection.cadenceLabel}，下一次计划执行日期 ${nextExecutionLabel}。`,
       notificationMethod: '预留执行前提醒',
       reminderLog: ['执行前提醒功能待接入。'],
