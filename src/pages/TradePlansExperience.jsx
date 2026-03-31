@@ -370,6 +370,17 @@ export function TradePlansExperience({ links, embedded = false }) {
                           <div className="text-sm leading-6 text-slate-500">{row.symbol}</div>
                         </button>
                         <div className="flex shrink-0 flex-wrap gap-2">
+                          <button
+                            className={cx(
+                              secondaryButtonClass,
+                              'border-slate-300 bg-white shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60'
+                            )}
+                            type="button"
+                            disabled={testingRowId === row.id}
+                            onClick={() => handleTestNotify(row)}
+                          >
+                            {testingRowId === row.id ? '正在发送' : '测试通知'}
+                          </button>
                           <a
                             className={cx(secondaryButtonClass, 'shrink-0')}
                             href={links[row.actionKey]}
@@ -592,22 +603,9 @@ export function TradePlansExperience({ links, embedded = false }) {
                   <p className="mt-2 text-sm leading-6 text-slate-600">{selectedRow.triggerExplain}</p>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                      <Bell className="h-4 w-4 text-slate-400" />
-                      通知方式
-                    </div>
-                    <button
-                      className={cx(
-                        secondaryButtonClass,
-                        'border-slate-300 bg-white shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60'
-                      )}
-                      type="button"
-                      disabled={testingRowId === selectedRow.id}
-                      onClick={() => handleTestNotify(selectedRow)}
-                    >
-                      {testingRowId === selectedRow.id ? '正在发送' : '测试提醒'}
-                    </button>
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <Bell className="h-4 w-4 text-slate-400" />
+                    通知方式
                   </div>
                   <p className="mt-2 text-sm leading-6 text-slate-600">{notifyChannelLabel}</p>
                 </div>
