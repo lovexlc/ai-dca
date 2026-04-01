@@ -154,19 +154,24 @@ function buildFcmMessage({ token = '', packageName = '', title = '', body = '', 
     map[String(key)] = String(value);
     return map;
   }, {});
+  const messageData = {
+    ...normalizedData
+  };
+
+  if (normalizedTitle) {
+    messageData.title = normalizedTitle;
+  }
+
+  if (normalizedBody) {
+    messageData.body = normalizedBody;
+  }
+
   const message = {
     token: normalizedToken,
     android: {
       priority: 'high'
     },
-    data: normalizedData
-  };
-
-  if (normalizedTitle || normalizedBody) {
-    message.notification = {
-      title: normalizedTitle,
-      body: normalizedBody
-    };
+    data: messageData
   }
 
   if (normalizedPackageName) {
@@ -205,23 +210,29 @@ export function isActiveGcmPairingCode(registration = {}, nowMs = Date.now()) {
 
 export function normalizeGcmRegistrations(registrations = []) {
   return Array.isArray(registrations)
-    ? registrations.map((registration) => ({
-        id: String(registration?.id || '').trim(),
-        deviceName: String(registration?.deviceName || '').trim(),
-        packageName: String(registration?.packageName || '').trim(),
-        appId: String(registration?.appId || '').trim(),
-        senderId: String(registration?.senderId || '').trim(),
-        token: String(registration?.token || '').trim(),
-        createdAt: String(registration?.createdAt || '').trim(),
-        updatedAt: String(registration?.updatedAt || '').trim(),
-        lastCheckedAt: String(registration?.lastCheckedAt || '').trim(),
-        lastCheckStatus: String(registration?.lastCheckStatus || '').trim(),
-        lastCheckDetail: String(registration?.lastCheckDetail || '').trim(),
-        pairedClients: normalizeGcmPairedClients(registration?.pairedClients),
-        pairingCodeHash: String(registration?.pairingCodeHash || '').trim(),
-        pairingCodeIssuedAt: String(registration?.pairingCodeIssuedAt || '').trim(),
-        pairingCodeExpiresAt: String(registration?.pairingCodeExpiresAt || '').trim()
-      })).filter((registration) => registration.id && registration.token)
+    ? registrations.map((registration) => {
+        const normalizedDeviceInstallationId = String(registration?.deviceInstallationId || '').trim();
+        const normalizedId = normalizedDeviceInstallationId || String(registration?.id || '').trim();
+
+        return {
+          id: normalizedId,
+          deviceInstallationId: normalizedDeviceInstallationId,
+          deviceName: String(registration?.deviceName || '').trim(),
+          packageName: String(registration?.packageName || '').trim(),
+          appId: String(registration?.appId || '').trim(),
+          senderId: String(registration?.senderId || '').trim(),
+          token: String(registration?.token || '').trim(),
+          createdAt: String(registration?.createdAt || '').trim(),
+          updatedAt: String(registration?.updatedAt || '').trim(),
+          lastCheckedAt: String(registration?.lastCheckedAt || '').trim(),
+          lastCheckStatus: String(registration?.lastCheckStatus || '').trim(),
+          lastCheckDetail: String(registration?.lastCheckDetail || '').trim(),
+          pairedClients: normalizeGcmPairedClients(registration?.pairedClients),
+          pairingCodeHash: String(registration?.pairingCodeHash || '').trim(),
+          pairingCodeIssuedAt: String(registration?.pairingCodeIssuedAt || '').trim(),
+          pairingCodeExpiresAt: String(registration?.pairingCodeExpiresAt || '').trim()
+        };
+      }).filter((registration) => registration.id && registration.token)
     : [];
 }
 
@@ -232,6 +243,7 @@ export function buildPublicGcmRegistration(registration = {}, options = {}) {
 
   return {
     id: normalizedRegistration.id,
+    deviceInstallationId: normalizedRegistration.deviceInstallationId || normalizedRegistration.id,
     deviceName: normalizedRegistration.deviceName,
     packageName: normalizedRegistration.packageName,
     appId: normalizedRegistration.appId,

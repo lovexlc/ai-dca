@@ -201,6 +201,10 @@ function normalizeClientName(value = '') {
   return String(value || '').trim().slice(0, 120);
 }
 
+function normalizeDeviceInstallationId(value = '') {
+  return String(value || '').trim().slice(0, 160);
+}
+
 function normalizePairingCode(value = '') {
   return String(value || '').trim().replace(/\s+/g, '').toUpperCase();
 }
@@ -280,9 +284,13 @@ function applyGcmCheckState(registrations = [], matcher = null, details = {}) {
 function upsertGcmRegistration(registrations = [], candidate = {}) {
   const normalizedToken = String(candidate.token || '').trim();
   const normalizedId = String(candidate.id || '').trim();
+  const normalizedDeviceInstallationId = normalizeDeviceInstallationId(candidate.deviceInstallationId || candidate.id);
   let replaced = false;
   const nextRegistrations = registrations.map((registration) => {
+    const registrationDeviceInstallationId = normalizeDeviceInstallationId(registration.deviceInstallationId || registration.id);
     const sameRegistration = (
+      normalizedDeviceInstallationId && registrationDeviceInstallationId === normalizedDeviceInstallationId
+    ) || (
       normalizedId && registration.id === normalizedId
     ) || (
       normalizedToken && registration.token === normalizedToken
@@ -338,10 +346,17 @@ function removeGcmPairedClient(pairedClients = [], clientId = '') {
   return normalizeGcmPairedClients(pairedClients).filter((client) => client.clientId !== normalizedClientId);
 }
 
-function findGcmRegistration(settings, { registrationId = '', token = '' } = {}) {
+function findGcmRegistration(settings, { deviceInstallationId = '', registrationId = '', token = '' } = {}) {
   const registrations = Array.isArray(settings.gcmRegistrations) ? settings.gcmRegistrations : [];
+  const normalizedDeviceInstallationId = normalizeDeviceInstallationId(deviceInstallationId);
   const normalizedRegistrationId = String(registrationId || '').trim();
   const normalizedToken = String(token || '').trim();
+
+  if (normalizedDeviceInstallationId) {
+    return registrations.find((registration) => (
+      normalizeDeviceInstallationId(registration.deviceInstallationId || registration.id) === normalizedDeviceInstallationId
+    )) || null;
+  }
 
   if (normalizedRegistrationId) {
     return registrations.find((registration) => registration.id === normalizedRegistrationId) || null;
@@ -620,9 +635,11 @@ async function handleGcmPairingKey(request, env) {
   const origin = readOrigin(request);
   const settings = await readSettings(env);
   const payload = await request.json().catch(() => ({}));
+  const deviceInstallationId = normalizeDeviceInstallationId(payload.deviceInstallationId || payload.installationId || '');
   const registrationId = String(payload.registrationId || '').trim();
   const token = String(payload.token || payload.registrationToken || '').trim();
   const selectedRegistration = findGcmRegistration(settings, {
+    deviceInstallationId,
     registrationId,
     token
   });
@@ -723,6 +740,7 @@ async function handleGcmUnpair(request, env) {
   const settings = await readSettings(env);
   const payload = await request.json().catch(() => ({}));
   const clientId = normalizeClientId(payload.clientId || readCurrentClientId(request));
+  const deviceInstallationId = normalizeDeviceInstallationId(payload.deviceInstallationId || payload.installationId || '');
   const registrationId = String(payload.registrationId || '').trim();
   const token = String(payload.token || payload.registrationToken || '').trim();
 
@@ -731,6 +749,7 @@ async function handleGcmUnpair(request, env) {
   }
 
   const selectedRegistration = findGcmRegistration(settings, {
+    deviceInstallationId,
     registrationId,
     token
   });
@@ -777,6 +796,7 @@ async function handleGcmRegister(request, env) {
   const projectId = String(payload.projectId || settings.gcmProjectId || serviceAccount?.projectId || '').trim();
   const packageName = String(payload.packageName || settings.gcmPackageName || '').trim();
   const deviceName = String(payload.deviceName || '').trim() || 'Android Device';
+  const deviceInstallationId = normalizeDeviceInstallationId(payload.deviceInstallationId || payload.installationId || '');
   const registrationId = String(payload.registrationId || '').trim();
   const token = String(payload.token || payload.registrationToken || '').trim();
   const appId = String(payload.appId || '').trim();
@@ -790,14 +810,20 @@ async function handleGcmRegister(request, env) {
     throw new Error('缺少 Android registration token。');
   }
 
+  if (!deviceInstallationId) {
+    throw new Error('缺少 Android deviceInstallationId。');
+  }
+
   const nowIso = new Date().toISOString();
   const existingRegistration = findGcmRegistration(settings, {
+    deviceInstallationId,
     registrationId,
     token
   });
   const registration = {
     ...existingRegistration,
-    id: existingRegistration?.id || registrationId || `gcm:${randomString(10).toLowerCase()}`,
+    id: deviceInstallationId,
+    deviceInstallationId,
     deviceName,
     packageName,
     appId,
@@ -833,9 +859,11 @@ async function handleGcmCheck(request, env) {
   const origin = readOrigin(request);
   const settings = await readSettings(env);
   const payload = await request.json().catch(() => ({}));
+  const explicitDeviceInstallationId = normalizeDeviceInstallationId(payload.deviceInstallationId || payload.installationId || '');
   const explicitToken = String(payload.token || payload.registrationToken || '').trim();
   const explicitRegistrationId = String(payload.registrationId || '').trim();
   const selectedRegistration = findGcmRegistration(settings, {
+    deviceInstallationId: explicitDeviceInstallationId,
     registrationId: explicitRegistrationId,
     token: explicitToken
   });
@@ -885,7 +913,8 @@ async function handleGcmCheck(request, env) {
           })
         : explicitToken
           ? {
-              id: '',
+              id: explicitDeviceInstallationId,
+              deviceInstallationId: explicitDeviceInstallationId,
               deviceName: String(payload.deviceName || '').trim(),
               packageName,
               tokenMasked: maskSecret(explicitToken),
@@ -1085,10 +1114,17 @@ async function handleTest(request, env) {
   const result = await runClientDetection(env, settings, clientRecord, {
     reason: 'manual-test',
     testPayload: {
+      eventId: String(payload.eventId || '').trim(),
+      eventType: String(payload.eventType || 'test').trim() || 'test',
       title: String(payload.title || '交易计划测试提醒'),
       body: String(payload.body || '这是一条测试通知，用来校验当前已接入的提醒通道是否可用。'),
       summary: String(payload.summary || '测试通知'),
-      ruleId: String(payload.ruleId || 'test')
+      ruleId: String(payload.ruleId || 'test'),
+      symbol: String(payload.symbol || '').trim(),
+      strategyName: String(payload.strategyName || '').trim(),
+      triggerCondition: String(payload.triggerCondition || '').trim(),
+      purchaseAmount: String(payload.purchaseAmount || '').trim(),
+      detailUrl: String(payload.detailUrl || payload.url || '').trim()
     }
   });
   settings = result.settings;

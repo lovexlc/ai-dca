@@ -22,8 +22,33 @@ function formatPrice(value, currency = '¥') {
   return `${prefix}${numericValue.toFixed(3)}`;
 }
 
+function formatAmount(value, currency = '¥') {
+  const numericValue = Number(value);
+  if (!(numericValue > 0)) {
+    return '';
+  }
+
+  const prefix = currency === '$' ? '$' : '¥';
+  return `${prefix}${numericValue.toFixed(2)}`;
+}
+
+function formatPercent(value, digits = 1) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return '--';
+  }
+
+  return `${numericValue.toFixed(digits)}%`;
+}
+
 function stripTrailingSlash(value = '') {
   return String(value || '').replace(/\/+$/, '');
+}
+
+function buildNotificationEventId(ruleId = '', context = '', now = new Date()) {
+  const normalizedRuleId = String(ruleId || 'notify').trim() || 'notify';
+  const normalizedContext = String(context || 'event').trim().replace(/[^a-zA-Z0-9:_-]+/g, '-');
+  return `${normalizedRuleId}:${normalizedContext}:${now.getTime()}`;
 }
 
 function parseIsoTimestamp(value = '') {
@@ -78,6 +103,17 @@ async function fetchJson(url) {
 
 function getBaseUrl(env) {
   return stripTrailingSlash(env.PUBLIC_DATA_BASE_URL || DEFAULT_PUBLIC_DATA_BASE_URL);
+}
+
+function buildNotificationDetailUrl(env, tab = 'tradePlans', ruleId = '') {
+  const url = new URL('/index.html', `${getBaseUrl(env)}/`);
+  url.searchParams.set('tab', String(tab || 'tradePlans').trim() || 'tradePlans');
+
+  if (String(ruleId || '').trim()) {
+    url.searchParams.set('ruleId', String(ruleId || '').trim());
+  }
+
+  return url.toString();
 }
 
 async function loadLatestMarketMap(env) {
@@ -137,9 +173,10 @@ async function loadDailyBars(env, cache, code) {
   return bars;
 }
 
-function buildPlanNotification(rule, evaluation) {
+function buildPlanNotification(rule, evaluation, env, options = {}) {
   const layer = evaluation.deepestTriggeredLayer;
   const displayName = rule.planName || `${rule.symbol} 建仓计划`;
+  const currency = String(evaluation.currency || '¥').trim() || '¥';
   const stageHighPrice = Number(evaluation.stageHighPrice) || 0;
   const currentPrice = Number(evaluation.currentPrice) || 0;
   const fallbackDrawdown = Math.max(Number(layer?.drawdown) || 0, 0);
@@ -147,21 +184,50 @@ function buildPlanNotification(rule, evaluation) {
     ? (1 - currentPrice / stageHighPrice) * 100
     : fallbackDrawdown;
   const drawdownLabel = formatPercent(actualDrawdown || fallbackDrawdown, 1);
+  const stageOrder = Math.max(Number(layer?.order) || 0, 1);
+  const purchaseAmount = formatAmount(layer?.amount, currency);
+  const currentPriceLabel = formatPrice(currentPrice, currency);
+  const triggerPriceLabel = formatPrice(layer?.price, currency);
+  const triggerCondition = `${rule.symbol} 已下跌 ${drawdownLabel}，当前价 ${currentPriceLabel}，触发第 ${stageOrder} 档买入（触发价 ${triggerPriceLabel}）`;
 
   return {
+    eventId: String(options.eventId || '').trim() || buildNotificationEventId(rule.ruleId, `stage-${stageOrder}`),
+    eventType: 'plan-trigger',
     ruleId: rule.ruleId,
+    symbol: rule.symbol,
+    strategyName: displayName,
+    triggerCondition,
+    purchaseAmount,
+    detailUrl: buildNotificationDetailUrl(env, 'tradePlans', rule.ruleId),
     title: '交易计划提醒',
-    body: `已触发您设置的购买条件，${rule.symbol} 已下跌 ${drawdownLabel}。请前往网页查看当前投资策略。`,
-    summary: `${displayName} 触发购买条件`
+    body: `已触发「${displayName}」的购买条件${purchaseAmount ? `，建议买入 ${purchaseAmount}` : ''}。请到网站查看更详细的策略说明。`,
+    summary: `${displayName} 触发第 ${stageOrder} 档买入`
   };
 }
 
-function buildDcaNotification(rule, localDateLabel) {
+function buildDcaNotification(rule, localDateLabel, env, options = {}) {
+  const isFirstExecution = Boolean(options.isFirstExecution);
+  const strategyName = rule.linkedPlanName || `${rule.symbol} 定投计划`;
+  const purchaseAmount = formatAmount(
+    isFirstExecution ? rule.firstExecutionAmount : rule.recurringInvestment,
+    '¥'
+  );
+  const triggerCondition = isFirstExecution
+    ? `已到达您设定的${rule.frequency}定投日（${localDateLabel}），首次执行将按「${strategyName}」的首档金额提醒`
+    : `已到达您设定的${rule.frequency}定投日（${localDateLabel}）`;
+
   return {
+    eventId: String(options.eventId || '').trim() || buildNotificationEventId(rule.ruleId, localDateLabel),
+    eventType: 'dca-schedule',
     ruleId: rule.ruleId,
+    symbol: rule.symbol,
+    strategyName,
+    triggerCondition,
+    purchaseAmount,
+    detailUrl: buildNotificationDetailUrl(env, 'dca', rule.ruleId),
     title: '定投计划提醒',
-    body: `已到达您设定的定投日（${localDateLabel}）。请前往网页查看本期投资策略。`,
-    summary: `${rule.symbol} 定投执行日`
+    body: `${strategyName} 已进入本期执行窗口${purchaseAmount ? `，建议投入 ${purchaseAmount}` : ''}。请到网站查看更详细的策略说明。`,
+    summary: `${strategyName} 定投执行日`
   };
 }
 
@@ -316,9 +382,16 @@ async function deliverNotification(env, notification, options = {}) {
             title: notification.title,
             body: notification.body,
             data: {
+              eventId: notification.eventId || '',
+              eventType: notification.eventType || '',
               ruleId: notification.ruleId || '',
               summary: notification.summary || '',
-              url: notification.url || ''
+              symbol: notification.symbol || '',
+              strategyName: notification.strategyName || '',
+              triggerCondition: notification.triggerCondition || '',
+              purchaseAmount: notification.purchaseAmount || '',
+              detailUrl: notification.detailUrl || notification.url || '',
+              url: notification.url || notification.detailUrl || ''
             }
           })),
           configKey: `gcm-registration:${registration.id}`,
@@ -512,11 +585,17 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
     const failureUpdate = updateDeliveryFailures(nextState.deliveryFailures, delivery.results, new Date().toISOString());
     nextState.deliveryFailures = failureUpdate.nextFailures;
     const event = {
-      id: `test-${Date.now()}`,
+      id: String(testPayload.eventId || '').trim() || `test-${Date.now()}`,
+      eventType: String(testPayload.eventType || 'test').trim() || 'test',
       ruleId: String(testPayload.ruleId || 'test'),
       title: testPayload.title,
       body: testPayload.body,
       summary: String(testPayload.summary || '测试通知'),
+      symbol: String(testPayload.symbol || '').trim(),
+      strategyName: String(testPayload.strategyName || '').trim(),
+      triggerCondition: String(testPayload.triggerCondition || '').trim(),
+      purchaseAmount: String(testPayload.purchaseAmount || '').trim(),
+      detailUrl: String(testPayload.detailUrl || testPayload.url || '').trim(),
       status: delivery.status,
       channels: delivery.results,
       createdAt: new Date().toISOString(),
@@ -581,7 +660,9 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
         continue;
       }
 
-      const notification = buildPlanNotification(rule, evaluation);
+      const notification = buildPlanNotification(rule, evaluation, env, {
+        eventId: buildNotificationEventId(rule.ruleId, `stage-${stageOrder}`, now)
+      });
       const delivery = await deliverNotification(env, notification);
       const failureUpdate = updateDeliveryFailures(nextState.deliveryFailures, delivery.results, now.toISOString());
       nextState.deliveryFailures = failureUpdate.nextFailures;
@@ -592,11 +673,17 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
         lastHandledStatus: delivery.status
       };
       const event = {
-        id: `${rule.ruleId}:${Date.now()}`,
+        id: notification.eventId,
+        eventType: notification.eventType,
         ruleId: rule.ruleId,
         title: notification.title,
         body: notification.body,
         summary: notification.summary,
+        symbol: notification.symbol,
+        strategyName: notification.strategyName,
+        triggerCondition: notification.triggerCondition,
+        purchaseAmount: notification.purchaseAmount,
+        detailUrl: notification.detailUrl,
         status: delivery.status,
         channels: delivery.results,
         createdAt: now.toISOString(),
@@ -635,7 +722,10 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
       continue;
     }
 
-    const notification = buildDcaNotification(rule, window.localDateLabel, { isFirstExecution });
+    const notification = buildDcaNotification(rule, window.localDateLabel, env, {
+      isFirstExecution,
+      eventId: buildNotificationEventId(rule.ruleId, window.windowKey, now)
+    });
     const delivery = await deliverNotification(env, notification);
     const failureUpdate = updateDeliveryFailures(nextState.deliveryFailures, delivery.results, now.toISOString());
     nextState.deliveryFailures = failureUpdate.nextFailures;
@@ -647,11 +737,17 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
       firstExecutionHandled: previousState.firstExecutionHandled || isFirstExecution
     };
     const event = {
-      id: `${rule.ruleId}:${Date.now()}`,
+      id: notification.eventId,
+      eventType: notification.eventType,
       ruleId: rule.ruleId,
       title: notification.title,
       body: notification.body,
       summary: notification.summary,
+      symbol: notification.symbol,
+      strategyName: notification.strategyName,
+      triggerCondition: notification.triggerCondition,
+      purchaseAmount: notification.purchaseAmount,
+      detailUrl: notification.detailUrl,
       status: delivery.status,
       channels: delivery.results,
       createdAt: now.toISOString(),

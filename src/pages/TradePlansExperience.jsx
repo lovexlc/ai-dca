@@ -40,6 +40,27 @@ function resolveEventStatusMeta(status = '') {
   }
 }
 
+function buildRuleDetailUrl(row) {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  const url = new URL('/index.html', window.location.origin);
+  url.searchParams.set('tab', row?.sourceType === 'dca' ? 'dca' : 'tradePlans');
+
+  if (String(row?.ruleId || '').trim()) {
+    url.searchParams.set('ruleId', String(row.ruleId).trim());
+  }
+
+  return url.toString();
+}
+
+function extractPurchaseAmount(row) {
+  const summary = String(row?.detailSummary || '').trim();
+  const match = summary.match(/[¥$]\s?\d+(?:\.\d+)?/);
+  return match ? match[0].replace(/\s+/g, '') : '';
+}
+
 export function TradePlansExperience({ links, embedded = false }) {
   const [selectedRowId, setSelectedRowId] = useState('');
   const [notifyStatus, setNotifyStatus] = useState(null);
@@ -135,10 +156,19 @@ export function TradePlansExperience({ links, embedded = false }) {
   function buildRowTestPayload(row) {
     const normalizedRuleId = String(row?.ruleId || '').trim() || 'test';
     const normalizedPlanName = String(row?.planName || row?.detailTitle || '交易计划').trim();
+    const purchaseAmount = extractPurchaseAmount(row);
+    const detailUrl = buildRuleDetailUrl(row);
 
     if (row?.sourceType === 'dca') {
       return {
+        eventId: `${normalizedRuleId}:manual-test:${Date.now()}`,
+        eventType: 'dca-test',
         ruleId: normalizedRuleId,
+        symbol: String(row?.symbol || '').trim(),
+        strategyName: normalizedPlanName,
+        triggerCondition: String(row?.triggerLabel || '').trim(),
+        purchaseAmount,
+        detailUrl,
         title: '定投计划测试提醒',
         summary: `${normalizedPlanName} 测试提醒`,
         body: `这是「${normalizedPlanName}」的测试通知。已到达您设定的定投日，请前往网页查看本期投资策略。`
@@ -146,7 +176,14 @@ export function TradePlansExperience({ links, embedded = false }) {
     }
 
     return {
+      eventId: `${normalizedRuleId}:manual-test:${Date.now()}`,
+      eventType: 'plan-test',
       ruleId: normalizedRuleId,
+      symbol: String(row?.symbol || '').trim(),
+      strategyName: normalizedPlanName,
+      triggerCondition: String(row?.triggerLabel || '').trim(),
+      purchaseAmount,
+      detailUrl,
       title: '交易计划测试提醒',
       summary: `${normalizedPlanName} 测试提醒`,
       body: `这是「${normalizedPlanName}」的测试通知。已触发您设置的购买条件${row?.triggerLabel ? `（${row.triggerLabel}）` : ''}，请前往网页查看当前投资策略。`
