@@ -1,139 +1,144 @@
-import { ArrowRight, Calendar, Filter, LineChart, Shield, Wallet } from 'lucide-react';
-import { buildStages, formatCurrency, readAccumulationState } from '../app/accumulation.js';
+import { useMemo } from 'react';
+import { ArrowRight, CalendarClock, Layers3, Wallet } from 'lucide-react';
+import { formatCurrency } from '../app/accumulation.js';
 import { getPrimaryTabs } from '../app/screens.js';
-import { Card, PageHero, PageShell, PageTabs, Pill, SectionHeading, StatCard, cx, secondaryButtonClass } from '../components/experience-ui.jsx';
+import { buildTradeHistory } from '../app/tradePlans.js';
+import { Card, PageHero, PageShell, PageTabs, Pill, SectionHeading, StatCard, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
-const sampleHistory = [
-  { date: '2024-03-25', type: '买入', shares: 10, price: 445.2, status: '已提交' },
-  { date: '2024-03-18', type: '买入', shares: 15, price: 431.1, status: '已提交' },
-  { date: '2024-03-11', type: '卖出', shares: 5, price: 445.5, status: '已完成' },
-  { date: '2024-03-04', type: '买入', shares: 22, price: 425.8, status: '已提交' },
-  { date: '2024-02-26', type: '买入', shares: 12, price: 432.4, status: '已提交' }
-];
+function HistoryStatusPill({ tone = 'slate', children }) {
+  return <Pill tone={tone}>{children}</Pill>;
+}
 
 export function HistoryExperience({ links, embedded = false }) {
-  const accumulationState = readAccumulationState();
-  const accumulation = buildStages(accumulationState);
-  const totalShares = sampleHistory.reduce((sum, row) => sum + row.shares, 0);
-  const totalInvestment = sampleHistory.reduce((sum, row) => sum + row.shares * row.price, 0);
-  const buyAmount = sampleHistory.filter((row) => row.type === '买入').reduce((sum, row) => sum + row.shares * row.price, 0);
-  const sellAmount = sampleHistory.filter((row) => row.type === '卖出').reduce((sum, row) => sum + row.shares * row.price, 0);
+  const { rows, hasHistory, summary, dcaMeta } = useMemo(() => buildTradeHistory(), []);
   const primaryTabs = getPrimaryTabs(links);
 
   const content = (
     <div className={cx('mx-auto max-w-6xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard eyebrow="累计股数" value={`${totalShares.toFixed(2)} 股`} note="最近执行记录累计股数" />
-          <StatCard eyebrow="平均价格" value={formatCurrency(totalInvestment / Math.max(totalShares, 1))} note="历史成交均价" />
-          <StatCard accent="indigo" eyebrow="买入金额" value={formatCurrency(buyAmount)} note="共享建仓状态同步的买入金额" />
-          <StatCard accent="emerald" eyebrow="卖出金额" value={formatCurrency(sellAmount)} note="用于观察历史兑现规模" />
-        </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard eyebrow="策略记录" value={`${summary.recordCount} 条`} note="按已保存策略自动生成的历史记录" />
+        <StatCard accent="indigo" eyebrow="累计投入" value={formatCurrency(summary.totalInvestment, '¥ ')} note="只统计已经写入历史的计划金额" />
+        <StatCard eyebrow="覆盖策略" value={`${summary.strategyCount} 个`} note="当前进入历史的策略数量" />
+        <StatCard accent="emerald" eyebrow="最近执行日" value={summary.latestExecutionDate} note={dcaMeta.configured ? dcaMeta.cadenceLabel : '先配置定投计划后才会生成历史'} />
+      </div>
 
-        <Card>
-            <SectionHeading
-              eyebrow="历史表格"
-              title="最近执行记录"
-              description="保留极简表头和横向分隔线，确保在调试数据时信息密度够高但不显得拥挤。"
-            action={
-              <>
-                <button className={secondaryButtonClass} type="button">
-                  <Filter className="h-4 w-4" />
-                  年份筛选
-                </button>
-                <button className={secondaryButtonClass} type="button">
-                  <Calendar className="h-4 w-4" />
-                  日期筛选
-                </button>
-              </>
-            }
-          />
+      <Card>
+        <SectionHeading
+          eyebrow="历史表格"
+          title="策略生成记录"
+          description="交易历史不再展示示例成交，当前会按已保存定投计划的执行日和金额自动生成记录。"
+        />
 
-          <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-slate-200 bg-slate-50/80 text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">日期</th>
-                  <th className="px-4 py-3 font-semibold">类型</th>
-                  <th className="px-4 py-3 font-semibold">数量</th>
-                  <th className="px-4 py-3 font-semibold">单价</th>
-                  <th className="px-4 py-3 font-semibold">总金额</th>
-                  <th className="px-4 py-3 font-semibold">状态</th>
-                  <th className="px-4 py-3 font-semibold text-right">详情</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {sampleHistory.map((row) => (
-                  <tr key={`${row.date}-${row.type}-${row.price}`} className="transition-colors hover:bg-slate-50/70">
-                    <td className="px-4 py-4 text-slate-600">{row.date}</td>
-                    <td className="px-4 py-4">
-                      <span className={row.type === '卖出' ? 'font-semibold text-red-500' : 'font-semibold text-emerald-600'}>
-                        {row.type}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 text-slate-600">{`${row.shares.toFixed(2)} 股`}</td>
-                    <td className="px-4 py-4 text-slate-600">{formatCurrency(row.price)}</td>
-                    <td className="px-4 py-4 font-semibold text-slate-900">{formatCurrency(row.shares * row.price)}</td>
-                    <td className="px-4 py-4">
-                      <span className={row.status === '已完成' ? 'inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-600' : 'inline-flex rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700'}>
-                        {row.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 text-right text-sm font-semibold text-slate-400">查看</td>
+        {hasHistory ? (
+          <>
+            <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-slate-200 bg-slate-50/80 text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold">日期</th>
+                    <th className="px-4 py-3 font-semibold">策略</th>
+                    <th className="px-4 py-3 font-semibold">类型</th>
+                    <th className="px-4 py-3 font-semibold">金额</th>
+                    <th className="px-4 py-3 font-semibold">状态</th>
+                    <th className="px-4 py-3 font-semibold">说明</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="mt-4 text-sm text-slate-500">显示 1-{sampleHistory.length} 条，共 {sampleHistory.length} 条记录</div>
-        </Card>
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card className="border-slate-200 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 text-white">
-            <SectionHeading eyebrow="价值趋势" title="价值趋势分析" />
-            <p className="mt-4 max-w-xl text-sm leading-6 text-slate-300">
-              查看不同买入区间的执行密度，以及历史成交对当前平均成本的影响。近期买入主要集中在第二层和第三层附近。
-            </p>
-            <div className="mt-6 rounded-[24px] border border-white/10 bg-white/5 p-5">
-              <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
-                <LineChart className="h-4 w-4" />
-                当前平均成本
-              </div>
-              <div className="mt-2 text-3xl font-extrabold tracking-tight">{formatCurrency(accumulation.averageCost)}</div>
-              <div className="mt-3 text-sm text-slate-300">最近成交均价 {formatCurrency(totalInvestment / Math.max(totalShares, 1))}</div>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {rows.map((row) => (
+                    <tr key={row.id} className="transition-colors hover:bg-slate-50/70">
+                      <td className="px-4 py-4 text-slate-600">{row.dateLabel}</td>
+                      <td className="px-4 py-4">
+                        <div className="font-semibold text-slate-900">{row.planName}</div>
+                        <div className="mt-1 text-xs text-slate-400">{row.symbol}</div>
+                      </td>
+                      <td className="px-4 py-4 text-slate-600">{row.typeLabel}</td>
+                      <td className="px-4 py-4 font-semibold text-slate-900">{formatCurrency(row.amount, '¥ ')}</td>
+                      <td className="px-4 py-4">
+                        <HistoryStatusPill tone={row.statusTone}>{row.statusLabel}</HistoryStatusPill>
+                      </td>
+                      <td className="px-4 py-4 text-slate-600">{row.note}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </Card>
 
-          <Card className="border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white">
-            <SectionHeading eyebrow="策略建议" title="金字塔加仓建议" />
-            <p className="mt-4 text-sm leading-6 text-slate-600">
-              基于过去 5 次买入操作，当前阶段性加仓仍然偏向第二和第三层。建议保留对 {formatCurrency(accumulation.stages[1]?.price ?? accumulationState.basePrice)} 的观察仓位。
+            <div className="mt-4 text-sm text-slate-500">显示 1-{rows.length} 条，共 {rows.length} 条记录</div>
+          </>
+        ) : (
+          <div className="mt-6 rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8">
+            <div className="text-lg font-bold text-slate-900">还没有可写入历史的策略记录</div>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">
+              历史页只展示能确定执行日期和金额的记录。先去配置定投计划，后续会按执行日自动写入历史；价格触发型策略不会再用假数据充数。
             </p>
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                  <Wallet className="h-4 w-4 text-slate-400" />
-                  共享买入金额
-                </div>
-                <div className="mt-2 text-xl font-bold text-slate-900">{formatCurrency(buyAmount)}</div>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                  <Shield className="h-4 w-4 text-slate-400" />
-                  当前观察价
-                </div>
-                <div className="mt-2 text-xl font-bold text-slate-900">{formatCurrency(accumulation.stages[1]?.price ?? accumulationState.basePrice)}</div>
-              </div>
-            </div>
-            <div className="mt-6">
-              <a className="inline-flex items-center gap-2 text-sm font-semibold text-indigo-700 transition-colors hover:text-indigo-900" href={links.accumEdit}>
-                查看当前建仓计划
-                <ArrowRight className="h-4 w-4" />
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+              <a className={cx(primaryButtonClass, 'w-full sm:w-auto')} href={links.dca}>
+                去配置定投
+              </a>
+              <a className={cx(secondaryButtonClass, 'w-full sm:w-auto')} href={links.tradePlans}>
+                查看交易计划
               </a>
             </div>
-          </Card>
-        </div>
+          </div>
+        )}
+      </Card>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="border-slate-200 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 text-white">
+          <SectionHeading eyebrow="生成规则" title="历史来源" />
+          <p className="mt-4 max-w-xl text-sm leading-6 text-slate-300">
+            交易历史直接读取当前已保存的定投配置，按执行频率、执行日、初始投资额和每期金额生成记录，不再使用示例成交数据。
+          </p>
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="rounded-[24px] border border-white/10 bg-white/5 p-5">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                <CalendarClock className="h-4 w-4" />
+                当前节奏
+              </div>
+              <div className="mt-2 text-xl font-extrabold tracking-tight">{dcaMeta.cadenceLabel}</div>
+            </div>
+            <div className="rounded-[24px] border border-white/10 bg-white/5 p-5">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                <Wallet className="h-4 w-4" />
+                每期金额
+              </div>
+              <div className="mt-2 text-xl font-extrabold tracking-tight">{formatCurrency(dcaMeta.recurringInvestment || 0, '¥ ')}</div>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white">
+          <SectionHeading eyebrow="联动策略" title={dcaMeta.planName} />
+          <p className="mt-4 text-sm leading-6 text-slate-600">
+            {dcaMeta.isLinkedPlan
+              ? `当前定投周期会按「${dcaMeta.linkedPlanName}」在周期内分批执行，历史里先记该周期的总投入金额。`
+              : '当前历史记录会直接按定投计划的单次金额入表。'}
+          </p>
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <Layers3 className="h-4 w-4 text-slate-400" />
+                当前计划
+              </div>
+              <div className="mt-2 text-xl font-bold text-slate-900">{dcaMeta.planName}</div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <ArrowRight className="h-4 w-4 text-slate-400" />
+                分批联动
+              </div>
+              <div className="mt-2 text-xl font-bold text-slate-900">{dcaMeta.isLinkedPlan ? dcaMeta.linkedPlanName : '未关联'}</div>
+            </div>
+          </div>
+          <div className="mt-6">
+            <a className="inline-flex items-center gap-2 text-sm font-semibold text-indigo-700 transition-colors hover:text-indigo-900" href={links.dca}>
+              去调整定投计划
+              <ArrowRight className="h-4 w-4" />
+            </a>
+          </div>
+        </Card>
       </div>
+    </div>
   );
 
   if (embedded) {
@@ -143,14 +148,14 @@ export function HistoryExperience({ links, embedded = false }) {
   return (
     <PageShell>
       <PageHero
-        backHref={links.accumEdit}
-        backLabel="返回加仓配置"
+        backHref={links.tradePlans}
+        backLabel="返回交易计划"
         eyebrow="交易历史"
         title="交易历史"
-        description="把最近执行过的买卖记录集中到一个轻量表格里，便于快速核对执行密度、累计金额和当前计划的一致性。"
+        description="把当前已保存策略中能确定执行日期和金额的记录自动沉淀到历史页里，定投计划会按执行日入表，不再展示示例数据。"
         badges={[
-          <Pill key="symbol" tone="indigo">当前标的</Pill>,
-          <Pill key="count" tone="slate">{sampleHistory.length} 条记录</Pill>
+          <Pill key="count" tone="indigo">{summary.recordCount} 条记录</Pill>,
+          <Pill key="cadence" tone="slate">{dcaMeta.cadenceLabel}</Pill>
         ]}
       >
         <PageTabs activeKey="history" tabs={primaryTabs} />

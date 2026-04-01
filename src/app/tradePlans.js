@@ -1,8 +1,6 @@
 import { formatCurrency, formatPercent } from './accumulation.js';
-import { buildDcaProjection, readDcaState } from './dca.js';
+import { buildDcaProjection, hasSavedDcaState, readDcaState } from './dca.js';
 import { buildPlan, readPlanList } from './plan.js';
-
-const DCA_STORAGE_KEY = 'aiDcaDcaState';
 
 function pad(value) {
   return String(value).padStart(2, '0');
@@ -18,9 +16,27 @@ function formatDateLabel(date) {
 }
 
 function createDate(baseDate) {
-  const target = baseDate instanceof Date ? new Date(baseDate.getTime()) : new Date();
+  const target = baseDate instanceof Date
+    ? new Date(baseDate.getTime())
+    : baseDate == null
+      ? new Date()
+      : new Date(baseDate);
   target.setHours(0, 0, 0, 0);
   return target;
+}
+
+function isValidDate(date) {
+  return date instanceof Date && !Number.isNaN(date.getTime());
+}
+
+function parseStoredDate(value = '') {
+  const normalized = String(value || '').trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const target = createDate(normalized);
+  return isValidDate(target) ? target : null;
 }
 
 function addDays(baseDate, days) {
@@ -64,6 +80,34 @@ function getNextExecutionDate(frequency = '每月', executionDay = 1, now = new 
         return candidate;
       }
       return addMonths(today, 1, safeDay);
+    }
+  }
+}
+
+function getExecutionDateOnOrAfter(frequency = '每月', executionDay = 1, startDate = new Date()) {
+  const start = createDate(startDate);
+  const safeDay = Math.max(Number(executionDay) || 1, 1);
+
+  switch (frequency) {
+    case '每日':
+      return start;
+    case '每周': {
+      const weekDay = Math.min(safeDay, 7);
+      const currentWeekDay = ((start.getDay() + 6) % 7) + 1;
+      const offset = weekDay >= currentWeekDay ? weekDay - currentWeekDay : 7 - (currentWeekDay - weekDay);
+      return addDays(start, offset);
+    }
+    case '每季': {
+      let candidate = addMonths(start, 0, safeDay);
+      while (!([0, 3, 6, 9].includes(candidate.getMonth())) || candidate < start) {
+        candidate = addMonths(candidate, 1, safeDay);
+      }
+      return candidate;
+    }
+    case '每月':
+    default: {
+      const candidate = addMonths(start, 0, safeDay);
+      return candidate >= start ? candidate : addMonths(start, 1, safeDay);
     }
   }
 }
@@ -125,7 +169,6 @@ function buildPlanRows(planList = []) {
       symbol: plan.symbol,
       triggerLabel: resolveLayerTriggerLabel({ ...plan }, { ...layer, order }, computed.layers.length),
       nextExecutionLabel: '价格满足条件后提醒',
-      notificationLabel: '预留中',
       statusLabel: order === 1 ? '待首仓' : '监控中',
       statusTone: order === 1 ? 'indigo' : 'slate',
       actionLabel: '查看策略',
@@ -143,7 +186,7 @@ function buildPlanRows(planList = []) {
 }
 
 function buildDcaRows(dcaState, now = new Date(), planList = readPlanList()) {
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(DCA_STORAGE_KEY)) {
+  if (!hasSavedDcaState()) {
     return [];
   }
 
@@ -167,7 +210,6 @@ function buildDcaRows(dcaState, now = new Date(), planList = readPlanList()) {
       symbol: projection.effectiveSymbol,
       triggerLabel: projection.cadenceLabel,
       nextExecutionLabel,
-      notificationLabel: '预留中',
       statusLabel: '待执行',
       statusTone: 'emerald',
       actionLabel: '查看定投',
@@ -213,6 +255,110 @@ function buildPreviewRows(rows = []) {
     seenTypes.add(typeKey);
     return true;
   });
+}
+
+function resolveDcaHistoryStartDate(dcaState, now = new Date()) {
+  return parseStoredDate(dcaState.createdAt || dcaState.updatedAt) || createDate(now);
+}
+
+function buildDcaHistoryRows(dcaState, now = new Date(), planList = readPlanList()) {
+  const projection = buildDcaProjection(dcaState, { planList });
+  if (!hasSavedDcaState() || !projection.effectiveSymbol) {
+    return {
+      rows: [],
+      projection
+    };
+  }
+
+  const rows = [];
+  const endDate = createDate(now);
+  const startDate = resolveDcaHistoryStartDate(dcaState, now);
+  const recurringInvestment = Math.max(Number(projection.recurringInvestment) || 0, 0);
+  const initialInvestment = Math.max(Number(projection.initialInvestment) || 0, 0);
+
+  if (!projection.isLinkedPlan && initialInvestment > 0 && startDate <= endDate) {
+    rows.push({
+      id: `history-dca-initial-${projection.effectiveSymbol}-${formatDateLabel(startDate)}`,
+      dateLabel: formatDateLabel(startDate),
+      sortDate: startDate.toISOString(),
+      sourceType: 'dca',
+      planName: `${projection.effectiveSymbol} 定投计划`,
+      symbol: projection.effectiveSymbol,
+      typeLabel: '初始建仓',
+      amount: initialInvestment,
+      statusLabel: '按策略生成',
+      statusTone: 'indigo',
+      note: '来自定投计划中的初始投资额。'
+    });
+  }
+
+  if (!(recurringInvestment > 0) || !(projection.executionCount > 0)) {
+    return {
+      rows,
+      projection
+    };
+  }
+
+  let cycleDate = getExecutionDateOnOrAfter(dcaState.frequency, dcaState.executionDay, startDate);
+  let cycleIndex = 0;
+
+  while (isValidDate(cycleDate) && cycleDate <= endDate && cycleIndex < projection.executionCount) {
+    cycleIndex += 1;
+    rows.push({
+      id: `history-dca-cycle-${projection.effectiveSymbol}-${formatDateLabel(cycleDate)}-${cycleIndex}`,
+      dateLabel: formatDateLabel(cycleDate),
+      sortDate: cycleDate.toISOString(),
+      sourceType: 'dca',
+      planName: `${projection.effectiveSymbol} 定投计划`,
+      symbol: projection.effectiveSymbol,
+      typeLabel: '定投执行',
+      amount: recurringInvestment,
+      statusLabel: '按策略生成',
+      statusTone: 'emerald',
+      note: projection.isLinkedPlan
+        ? `${projection.cadenceLabel}，按「${projection.linkedPlanName}」拆分 ${projection.linkedPlanSplitCount || 0} 批执行。`
+        : projection.cadenceLabel
+    });
+    cycleDate = getNextExecutionDate(dcaState.frequency, dcaState.executionDay, cycleDate);
+  }
+
+  return {
+    rows,
+    projection
+  };
+}
+
+function sortHistoryRows(rows = []) {
+  return [...rows].sort((left, right) => String(right.sortDate || '').localeCompare(String(left.sortDate || '')));
+}
+
+export function buildTradeHistory(now = new Date()) {
+  const planList = readPlanList();
+  const dcaState = readDcaState();
+  const { rows: dcaRows, projection } = buildDcaHistoryRows(dcaState, now, planList);
+  const rows = sortHistoryRows(dcaRows);
+  const totalInvestment = rows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+  const strategyCount = new Set(rows.map((row) => row.planName)).size;
+  const dcaConfigured = hasSavedDcaState() && Boolean(projection.effectiveSymbol);
+
+  return {
+    rows,
+    hasHistory: rows.length > 0,
+    summary: {
+      recordCount: rows.length,
+      totalInvestment,
+      latestExecutionDate: rows[0]?.dateLabel || '--',
+      strategyCount
+    },
+    dcaMeta: {
+      configured: dcaConfigured,
+      cadenceLabel: dcaConfigured ? projection.cadenceLabel || '未配置' : '未配置',
+      planName: dcaConfigured ? `${projection.effectiveSymbol} 定投计划` : '未配置',
+      isLinkedPlan: dcaConfigured && projection.isLinkedPlan,
+      linkedPlanName: dcaConfigured && projection.isLinkedPlan ? projection.linkedPlanName : '',
+      recurringInvestment: dcaConfigured ? projection.recurringInvestment : 0
+    }
+  };
 }
 
 export function buildTradePlanCenter(now = new Date()) {

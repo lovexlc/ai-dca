@@ -13,7 +13,9 @@ export const defaultDcaState = {
   executionDay: 8,
   termMonths: 12,
   targetReturn: 30,
-  linkedPlanId: ''
+  linkedPlanId: '',
+  createdAt: '',
+  updatedAt: ''
 };
 
 function getExecutionCount(frequency, termMonths) {
@@ -188,7 +190,9 @@ export function readDcaState() {
       executionDay: readSavedNumber(saved, 'executionDay', defaultDcaState.executionDay),
       termMonths: readSavedNumber(saved, 'termMonths', defaultDcaState.termMonths),
       targetReturn: readSavedNumber(saved, 'targetReturn', defaultDcaState.targetReturn),
-      linkedPlanId: normalizeLinkedPlanId(saved.linkedPlanId)
+      linkedPlanId: normalizeLinkedPlanId(saved.linkedPlanId),
+      createdAt: String(saved.createdAt || saved.updatedAt || ''),
+      updatedAt: String(saved.updatedAt || '')
     };
   } catch (_error) {
     return defaultDcaState;
@@ -208,10 +212,13 @@ export function persistDcaState(state, computed = buildDcaProjection(state)) {
     return;
   }
 
+  const existingState = readDcaState();
+  const timestamp = new Date().toISOString();
+  const createdAt = String(state.createdAt || existingState.createdAt || existingState.updatedAt || timestamp);
   const normalizedSymbol = normalizeSavedSymbol(computed.effectiveSymbol || state.symbol);
   const payload = {
     source: 'react-dca',
-    version: 4,
+    version: 5,
     symbol: normalizedSymbol,
     initialInvestment: round(state.initialInvestment, 2),
     recurringInvestment: round(state.recurringInvestment, 2),
@@ -225,7 +232,8 @@ export function persistDcaState(state, computed = buildDcaProjection(state)) {
     cadenceLabel: computed.cadenceLabel,
     nextExecutionAmount: round(computed.nextExecutionAmount, 2),
     linkedPlanFirstInvestment: round(computed.linkedPlanFirstInvestment, 2),
-    updatedAt: new Date().toISOString()
+    createdAt,
+    updatedAt: timestamp
   };
 
   window.localStorage.setItem(DCA_KEY, JSON.stringify(payload));

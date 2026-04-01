@@ -372,7 +372,7 @@ export function TradePlansExperience({ links, embedded = false }) {
                           </a>
                         </div>
                       </div>
-                      <button className="mt-4 grid w-full gap-4 text-left text-sm text-slate-600 md:grid-cols-3" type="button" onClick={() => setSelectedRowId(row.id)}>
+                      <button className="mt-4 grid w-full gap-4 text-left text-sm text-slate-600 md:grid-cols-2" type="button" onClick={() => setSelectedRowId(row.id)}>
                         <div>
                           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">触发条件</div>
                           <div className="mt-1 leading-6 text-slate-700">{row.triggerLabel}</div>
@@ -380,10 +380,6 @@ export function TradePlansExperience({ links, embedded = false }) {
                         <div>
                           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">下一次执行</div>
                           <div className="mt-1 leading-6 text-slate-700">{row.nextExecutionLabel}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">通知</div>
-                          <div className="mt-1 leading-6 text-slate-700">{row.notificationLabel}</div>
                         </div>
                       </button>
                     </div>
