@@ -279,6 +279,45 @@ export function saveNotifySettings(payload = {}) {
   });
 }
 
+export function issueNotifyGroupShareCode(payload = {}) {
+  const clientConfig = resolveNotifyClientConfig(payload);
+
+  return requestNotify('/group/share-code', {
+    clientConfig,
+    query: {
+      clientId: clientConfig.clientId
+    },
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      clientId: clientConfig.clientId,
+      clientLabel: clientConfig.clientLabel
+    })
+  });
+}
+
+export function joinNotifyGroup(payload = {}) {
+  const clientConfig = resolveNotifyClientConfig(payload);
+
+  return requestNotify('/group/join', {
+    clientConfig,
+    query: {
+      clientId: clientConfig.clientId
+    },
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      shareCode: String(payload.shareCode || payload.code || '').trim(),
+      clientId: clientConfig.clientId,
+      clientLabel: clientConfig.clientLabel
+    })
+  });
+}
+
 export function pairAndroidDevice(payload = {}) {
   const clientConfig = resolveNotifyClientConfig(payload);
 

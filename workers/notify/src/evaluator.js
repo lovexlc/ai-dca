@@ -1,7 +1,7 @@
 import { buildMovingAverageValues, buildNasdaqStrategyPlan, buildPeakDrawdownStrategyPlan, findLatestFiniteValue, mapReferencePrice } from '../../../src/app/strategyEngine.js';
 import { compileNotifyRules } from './rules.js';
 import { sendBarkNotification } from './channels/bark.js';
-import { normalizeGcmRegistrations, resolveGcmProjectId, sendGcmNotification } from './gcm.js';
+import { isRegistrationPairedToScope, normalizeGcmRegistrations, normalizeNotifyGroupId, resolveGcmProjectId, sendGcmNotification } from './gcm.js';
 
 const DEFAULT_PUBLIC_DATA_BASE_URL = 'https://tools.freebacktrack.tech';
 const DEFAULT_TIMEZONE = 'Asia/Shanghai';
@@ -56,10 +56,12 @@ function parseIsoTimestamp(value = '') {
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
-function resolveGcmRegistrationPriority(registration = {}, currentClientId = '') {
+function resolveGcmRegistrationPriority(registration = {}, currentClientId = '', currentGroupId = '') {
   const pairedClients = Array.isArray(registration?.pairedClients) ? registration.pairedClients : [];
-  const currentClientPair = currentClientId
-    ? pairedClients.find((client) => client.clientId === currentClientId) || null
+  const currentClientPair = currentGroupId
+    ? pairedClients.find((client) => normalizeNotifyGroupId(client?.groupId || client?.clientId) === currentGroupId) || null
+    : currentClientId
+      ? pairedClients.find((client) => client.clientId === currentClientId) || null
     : null;
 
   return Math.max(
@@ -70,14 +72,14 @@ function resolveGcmRegistrationPriority(registration = {}, currentClientId = '')
   );
 }
 
-function selectGcmRegistrationsForDelivery(registrations = [], { currentClientId = '', limit = 0 } = {}) {
+function selectGcmRegistrationsForDelivery(registrations = [], { currentClientId = '', currentGroupId = '', limit = 0 } = {}) {
   if (!(limit > 0) || registrations.length <= limit) {
     return registrations;
   }
 
   return [...registrations]
     .sort((left, right) => {
-      const priorityDiff = resolveGcmRegistrationPriority(right, currentClientId) - resolveGcmRegistrationPriority(left, currentClientId);
+      const priorityDiff = resolveGcmRegistrationPriority(right, currentClientId, currentGroupId) - resolveGcmRegistrationPriority(left, currentClientId, currentGroupId);
       if (priorityDiff) {
         return priorityDiff;
       }
@@ -317,23 +319,20 @@ async function deliverNotification(env, notification, options = {}) {
   const results = [];
   const barkDeviceKey = String(settings.barkDeviceKey || '').trim();
   const currentClientId = String(env.__notifyCurrentClientId || '').trim();
+  const currentGroupId = normalizeNotifyGroupId(settings.notifyGroupId || currentClientId);
   const currentClientLabel = String(settings.clientLabel || '').trim();
   const barkConfigKey = currentClientId ? `bark-client:${currentClientId}` : 'bark-client:unknown';
   const limitGcmRegistrations = Math.max(Number(options.limitGcmRegistrations) || 0, 0);
   const gcmRegistrations = normalizeGcmRegistrations(settings.gcmRegistrations);
-  const selectedGcmRegistrations = gcmRegistrations.filter((registration) => {
-    const pairedClients = Array.isArray(registration.pairedClients) ? registration.pairedClients : [];
-
-    if (!pairedClients.length) {
-      return false;
-    }
-
-    return currentClientId
-      ? pairedClients.some((client) => client.clientId === currentClientId)
-      : true;
-  });
+  const selectedGcmRegistrations = gcmRegistrations.filter((registration) => (
+    isRegistrationPairedToScope(registration, {
+      clientId: currentClientId,
+      currentGroupId: currentGroupId || currentClientId
+    })
+  ));
   const gcmRegistrationsToDeliver = selectGcmRegistrationsForDelivery(selectedGcmRegistrations, {
     currentClientId,
+    currentGroupId,
     limit: limitGcmRegistrations
   });
 
@@ -364,11 +363,11 @@ async function deliverNotification(env, notification, options = {}) {
     results.push({
       channel: 'gcm',
       status: 'skipped',
-      detail: currentClientId ? '当前浏览器还没有绑定 Android 设备' : '还没有已配对的 Android 设备',
-      configKey: currentClientId ? `gcm-client:${currentClientId}` : 'gcm:paired',
+      detail: currentGroupId ? '当前共享组还没有绑定 Android 设备' : '还没有已配对的 Android 设备',
+      configKey: currentGroupId ? `gcm-group:${currentGroupId}` : 'gcm:paired',
       configType: 'gcm',
-      configId: currentClientId || 'paired',
-      configLabel: currentClientId ? 'Android（当前浏览器）' : 'Android'
+      configId: currentGroupId || currentClientId || 'paired',
+      configLabel: currentGroupId ? 'Android（当前共享组）' : 'Android'
     });
   } else {
     for (const registration of gcmRegistrationsToDeliver) {

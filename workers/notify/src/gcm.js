@@ -186,15 +186,34 @@ export function maskSecret(value = '') {
   return normalized ? `${normalized.slice(0, 8)}...${normalized.slice(-6)}` : '';
 }
 
+export function normalizeNotifyGroupId(value = '') {
+  return String(value || '').trim().slice(0, 120);
+}
+
 export function normalizeGcmPairedClients(pairedClients = []) {
   return Array.isArray(pairedClients)
     ? pairedClients.map((client) => ({
         clientId: String(client?.clientId || '').trim(),
+        groupId: normalizeNotifyGroupId(client?.groupId || client?.clientId),
         clientName: String(client?.clientName || '').trim(),
         pairedAt: String(client?.pairedAt || '').trim(),
         lastSeenAt: String(client?.lastSeenAt || '').trim()
       })).filter((client) => client.clientId)
     : [];
+}
+
+export function isRegistrationPairedToScope(registration = {}, options = {}) {
+  const pairedClients = normalizeGcmPairedClients(registration?.pairedClients);
+  const currentClientId = String(options?.clientId || '').trim();
+  const currentGroupId = normalizeNotifyGroupId(options?.currentGroupId);
+
+  return pairedClients.some((client) => (
+    currentGroupId
+      ? client.groupId === currentGroupId
+      : currentClientId
+        ? client.clientId === currentClientId
+        : false
+  ));
 }
 
 export function isActiveGcmPairingCode(registration = {}, nowMs = Date.now()) {
@@ -239,6 +258,7 @@ export function normalizeGcmRegistrations(registrations = []) {
 export function buildPublicGcmRegistration(registration = {}, options = {}) {
   const normalizedRegistration = normalizeGcmRegistrations([registration])[0] || {};
   const currentClientId = String(options?.clientId || '').trim();
+  const currentGroupId = normalizeNotifyGroupId(options?.currentGroupId);
   const includePairedClientIds = Boolean(options?.includePairedClientIds);
   const pairedClients = normalizeGcmPairedClients(normalizedRegistration.pairedClients);
 
@@ -257,14 +277,15 @@ export function buildPublicGcmRegistration(registration = {}, options = {}) {
     lastCheckDetail: normalizedRegistration.lastCheckDetail,
     pairedClientCount: pairedClients.length,
     pairedClients: pairedClients.map((client) => ({
-      ...(includePairedClientIds ? { clientId: client.clientId } : {}),
+      ...(includePairedClientIds ? { clientId: client.clientId, groupId: client.groupId } : {}),
       clientName: client.clientName,
       pairedAt: client.pairedAt,
       lastSeenAt: client.lastSeenAt
     })),
-    pairedToCurrentClient: currentClientId
-      ? pairedClients.some((client) => client.clientId === currentClientId)
-      : false,
+    pairedToCurrentClient: isRegistrationPairedToScope(normalizedRegistration, {
+      clientId: currentClientId,
+      currentGroupId
+    }),
     pairingCodeActive: isActiveGcmPairingCode(normalizedRegistration),
     pairingCodeExpiresAt: isActiveGcmPairingCode(normalizedRegistration)
       ? normalizedRegistration.pairingCodeExpiresAt

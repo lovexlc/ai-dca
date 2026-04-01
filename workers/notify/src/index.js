@@ -1,9 +1,10 @@
 import { runNotificationCycle } from './evaluator.js';
-import { buildPublicGcmRegistration, buildPublicGcmRegistrations, checkGcmConnection, hasGcmServiceAccount, maskSecret, normalizeGcmPairedClients, normalizeGcmRegistrations, readGcmServiceAccount, resolveGcmProjectId } from './gcm.js';
+import { buildPublicGcmRegistration, buildPublicGcmRegistrations, checkGcmConnection, hasGcmServiceAccount, isRegistrationPairedToScope, maskSecret, normalizeGcmPairedClients, normalizeGcmRegistrations, normalizeNotifyGroupId, readGcmServiceAccount, resolveGcmProjectId } from './gcm.js';
 import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
 
 const SETTINGS_KEY = 'notify:settings';
 const PAIRING_CODE_TTL_MS = 10 * 60 * 1000;
+const GROUP_SHARE_CODE_TTL_MS = 10 * 60 * 1000;
 const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const CLIENT_SECRET_HEADER = 'x-notify-client-secret';
 
@@ -36,6 +37,15 @@ function readOrigin(request) {
 
 function normalizeSettings(settings = {}) {
   const rawClients = typeof settings.clients === 'object' && settings.clients ? settings.clients : {};
+  const notifyGroupShares = Array.isArray(settings.notifyGroupShares)
+    ? settings.notifyGroupShares.map((share) => ({
+        codeHash: String(share?.codeHash || '').trim(),
+        groupId: normalizeNotifyGroupId(share?.groupId),
+        createdByClientId: normalizeClientId(share?.createdByClientId),
+        createdAt: String(share?.createdAt || '').trim(),
+        expiresAt: String(share?.expiresAt || '').trim()
+      })).filter((share) => share.codeHash && share.groupId && isFutureIso(share.expiresAt))
+    : [];
   const gotifyClients = Array.isArray(settings.gotifyClients)
     ? settings.gotifyClients.map((client) => ({
         id: String(client?.id || '').trim(),
@@ -58,6 +68,7 @@ function normalizeSettings(settings = {}) {
     map[normalizedClientId] = {
       clientId: normalizedClientId,
       clientLabel: normalizeClientName(client?.clientLabel || client?.notifyClientLabel || client?.clientName || ''),
+      notifyGroupId: normalizeNotifyGroupId(client?.notifyGroupId || normalizedClientId) || normalizedClientId,
       clientSecretHash: String(client?.clientSecretHash || '').trim(),
       barkDeviceKey: String(client?.barkDeviceKey || '').trim(),
       payload: normalizeNotifyPayload(client?.payload || {}),
@@ -84,6 +95,7 @@ function normalizeSettings(settings = {}) {
 
   return {
     clients,
+    notifyGroupShares,
     gotifyBaseUrl: String(settings.gotifyBaseUrl || '').trim(),
     gotifyUsername: String(settings.gotifyUsername || '').trim(),
     gotifyPassword: String(settings.gotifyPassword || '').trim(),
@@ -103,6 +115,7 @@ function buildDefaultClientRecord(clientId = '', clientLabel = '') {
   return {
     clientId: normalizedClientId,
     clientLabel: normalizeClientName(clientLabel),
+    notifyGroupId: normalizeNotifyGroupId(normalizedClientId) || normalizedClientId,
     clientSecretHash: '',
     barkDeviceKey: '',
     payload: normalizeNotifyPayload({}),
@@ -157,6 +170,7 @@ function upsertClientRecord(settings, clientId = '', patch = {}) {
     ...patch,
     clientId: normalizedClientId,
     clientLabel: normalizeClientName(patch.clientLabel ?? current.clientLabel ?? ''),
+    notifyGroupId: normalizeNotifyGroupId(patch.notifyGroupId ?? current.notifyGroupId ?? normalizedClientId) || normalizedClientId,
     clientSecretHash: String(patch.clientSecretHash ?? current.clientSecretHash ?? '').trim(),
     barkDeviceKey: String(patch.barkDeviceKey ?? current.barkDeviceKey ?? '').trim(),
     payload: normalizeNotifyPayload(patch.payload ?? current.payload ?? {}),
@@ -193,7 +207,8 @@ function buildScopedNotifySettings(settings, clientId = '') {
     ...settings,
     barkDeviceKey: clientRecord.barkDeviceKey,
     clientId: clientRecord.clientId,
-    clientLabel: clientRecord.clientLabel
+    clientLabel: clientRecord.clientLabel,
+    notifyGroupId: clientRecord.notifyGroupId
   };
 }
 
@@ -249,6 +264,23 @@ function readCurrentClientSecret(request) {
   return normalizeClientSecret(request.headers.get(CLIENT_SECRET_HEADER));
 }
 
+function resolveClientGroupId(settings, clientId = '', clientLabel = '') {
+  const clientRecord = getClientRecord(settings, clientId, clientLabel);
+  return normalizeNotifyGroupId(clientRecord.notifyGroupId || clientRecord.clientId) || clientRecord.clientId;
+}
+
+function getNotifyGroupMembers(settings, groupId = '') {
+  const normalizedGroupId = normalizeNotifyGroupId(groupId);
+
+  if (!normalizedGroupId) {
+    return [];
+  }
+
+  return Object.values(settings.clients || {}).filter((client) => (
+    resolveClientGroupId(settings, client?.clientId, client?.clientLabel) === normalizedGroupId
+  ));
+}
+
 function requireMatchingClientId(request, payload = {}) {
   const queryClientId = readCurrentClientId(request);
   const bodyClientId = normalizeClientId(payload.clientId);
@@ -283,10 +315,12 @@ async function ensureAuthenticatedClient(request, settings, options = {}) {
 
   const needsSecretBootstrap = !existingClient || !String(existingClient.clientSecretHash || '').trim();
   const needsLabelUpdate = desiredClientLabel && desiredClientLabel !== String(existingClient?.clientLabel || '').trim();
+  const resolvedGroupId = normalizeNotifyGroupId(existingClient?.notifyGroupId || clientId) || clientId;
 
   if (needsSecretBootstrap || needsLabelUpdate) {
     const nextSettings = upsertClientRecord(settings, clientId, {
       clientLabel: needsLabelUpdate ? desiredClientLabel : String(existingClient?.clientLabel || desiredClientLabel || '').trim(),
+      notifyGroupId: resolvedGroupId,
       clientSecretHash
     });
 
@@ -308,14 +342,20 @@ async function ensureAuthenticatedClient(request, settings, options = {}) {
 
 function buildPublicGcmSetup(settings, env, options = {}) {
   const currentClientId = normalizeClientId(options?.clientId);
+  const currentGroupId = currentClientId ? resolveClientGroupId(settings, currentClientId) : '';
   const gcmRegistrations = buildPublicGcmRegistrations(settings.gcmRegistrations, {
-    clientId: currentClientId
+    clientId: currentClientId,
+    currentGroupId
   });
   const gcmCurrentClientRegistrations = currentClientId
     ? gcmRegistrations.filter((registration) => registration.pairedToCurrentClient)
     : [];
+  const notifyGroupMembers = currentGroupId ? getNotifyGroupMembers(settings, currentGroupId) : [];
 
   return {
+    notifyGroupId: currentGroupId,
+    notifyGroupMemberCount: notifyGroupMembers.length,
+    notifyGroupMemberClientIds: notifyGroupMembers.map((client) => client.clientId),
     gcmProjectId: resolveGcmProjectId(settings, env),
     gcmPackageName: String(settings.gcmPackageName || '').trim(),
     gcmRegistrationCount: gcmRegistrations.length,
@@ -415,6 +455,16 @@ function removeGcmPairedClient(pairedClients = [], clientId = '') {
   return normalizeGcmPairedClients(pairedClients).filter((client) => client.clientId !== normalizedClientId);
 }
 
+function removeGcmPairedGroup(pairedClients = [], groupId = '') {
+  const normalizedGroupId = normalizeNotifyGroupId(groupId);
+
+  if (!normalizedGroupId) {
+    return normalizeGcmPairedClients(pairedClients);
+  }
+
+  return normalizeGcmPairedClients(pairedClients).filter((client) => client.groupId !== normalizedGroupId);
+}
+
 function findGcmRegistration(settings, { deviceInstallationId = '', registrationId = '', token = '' } = {}) {
   const registrations = Array.isArray(settings.gcmRegistrations) ? settings.gcmRegistrations : [];
   const normalizedDeviceInstallationId = normalizeDeviceInstallationId(deviceInstallationId);
@@ -450,6 +500,21 @@ async function findGcmRegistrationByPairingCode(settings, pairingCode = '') {
   return (Array.isArray(settings.gcmRegistrations) ? settings.gcmRegistrations : []).find((registration) => (
     isFutureIso(registration.pairingCodeExpiresAt)
     && String(registration.pairingCodeHash || '').trim() === pairingCodeHash
+  )) || null;
+}
+
+async function findNotifyGroupShare(settings, shareCode = '') {
+  const normalizedShareCode = normalizePairingCode(shareCode);
+
+  if (!normalizedShareCode) {
+    return null;
+  }
+
+  const shareCodeHash = await hashText(normalizedShareCode);
+
+  return (Array.isArray(settings.notifyGroupShares) ? settings.notifyGroupShares : []).find((share) => (
+    isFutureIso(share.expiresAt)
+    && String(share.codeHash || '').trim() === shareCodeHash
   )) || null;
 }
 
@@ -736,6 +801,116 @@ async function handleSettings(request, env) {
   }, { origin });
 }
 
+async function handleNotifyGroupShareCode(request, env) {
+  const origin = readOrigin(request);
+  const payload = await request.json().catch(() => ({}));
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings, {
+    payload,
+    clientLabel: normalizeClientName(payload?.clientLabel || payload?.notifyClientLabel || '')
+  });
+  settings = auth.settings;
+  const currentClientId = auth.clientId;
+  const currentGroupId = resolveClientGroupId(settings, currentClientId, auth.clientRecord.clientLabel);
+  const shareCode = buildPairingCode(8);
+  const codeHash = await hashText(shareCode);
+  const issuedAt = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + GROUP_SHARE_CODE_TTL_MS).toISOString();
+  const nextSettings = normalizeSettings({
+    ...settings,
+    notifyGroupShares: [
+      ...(Array.isArray(settings.notifyGroupShares) ? settings.notifyGroupShares : []).filter((share) => share.groupId !== currentGroupId),
+      {
+        codeHash,
+        groupId: currentGroupId,
+        createdByClientId: currentClientId,
+        createdAt: issuedAt,
+        expiresAt
+      }
+    ]
+  });
+
+  await writeSettings(env, nextSettings);
+
+  return jsonResponse({
+    ok: true,
+    shareGroup: {
+      code: shareCode,
+      groupId: currentGroupId,
+      issuedAt,
+      expiresAt
+    },
+    setup: buildPublicGcmSetup(nextSettings, env, {
+      clientId: currentClientId
+    })
+  }, { origin });
+}
+
+async function handleNotifyGroupJoin(request, env) {
+  const origin = readOrigin(request);
+  const payload = await request.json().catch(() => ({}));
+  const shareCode = normalizePairingCode(payload.shareCode || payload.code || '');
+
+  if (!shareCode) {
+    throw new Error('缺少通知共享码。');
+  }
+
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings, {
+    payload,
+    clientLabel: normalizeClientName(payload?.clientLabel || payload?.notifyClientLabel || payload?.clientName || '')
+  });
+  settings = auth.settings;
+  const currentClientId = auth.clientId;
+  const currentClientLabel = auth.clientRecord.clientLabel || 'Web 控制台';
+  const targetShare = await findNotifyGroupShare(settings, shareCode);
+
+  if (!targetShare) {
+    throw new Error('通知共享码无效或已过期，请在原浏览器重新生成。');
+  }
+
+  const targetGroupId = normalizeNotifyGroupId(targetShare.groupId);
+  const nowIso = new Date().toISOString();
+  let nextSettings = upsertClientRecord(settings, currentClientId, {
+    clientLabel: currentClientLabel,
+    notifyGroupId: targetGroupId,
+    clientSecretHash: auth.clientRecord.clientSecretHash
+  });
+  nextSettings = normalizeSettings({
+    ...nextSettings,
+    gcmRegistrations: normalizeGcmRegistrations(nextSettings.gcmRegistrations).map((registration) => {
+      if (!normalizeGcmPairedClients(registration.pairedClients).some((client) => client.groupId === targetGroupId)) {
+        return registration;
+      }
+
+      return {
+        ...registration,
+        pairedClients: upsertGcmPairedClient(registration.pairedClients, {
+          clientId: currentClientId,
+          groupId: targetGroupId,
+          clientName: currentClientLabel,
+          pairedAt: nowIso,
+          lastSeenAt: nowIso
+        }),
+        updatedAt: nowIso
+      };
+    })
+  });
+
+  await writeSettings(env, nextSettings);
+
+  return jsonResponse({
+    ok: true,
+    notifyGroup: {
+      groupId: targetGroupId,
+      memberCount: getNotifyGroupMembers(nextSettings, targetGroupId).length
+    },
+    setup: buildPublicGcmSetup(nextSettings, env, {
+      clientId: currentClientId
+    })
+  }, { origin });
+}
+
 async function handleGcmPairingKey(request, env) {
   const origin = readOrigin(request);
   const settings = await readSettings(env);
@@ -795,6 +970,7 @@ async function handleGcmPair(request, env) {
   });
   settings = auth.settings;
   const clientId = auth.clientId;
+  const currentGroupId = resolveClientGroupId(settings, clientId, auth.clientRecord.clientLabel);
 
   if (!pairingCode) {
     throw new Error('缺少设备配对码。');
@@ -811,6 +987,7 @@ async function handleGcmPair(request, env) {
     ...selectedRegistration,
     pairedClients: upsertGcmPairedClient(selectedRegistration.pairedClients, {
       clientId,
+      groupId: currentGroupId,
       clientName,
       pairedAt: nowIso,
       lastSeenAt: nowIso
@@ -851,6 +1028,7 @@ async function handleGcmUnpair(request, env) {
   });
   settings = auth.settings;
   const clientId = auth.clientId;
+  const currentGroupId = resolveClientGroupId(settings, clientId, auth.clientRecord.clientLabel);
   const deviceInstallationId = normalizeDeviceInstallationId(payload.deviceInstallationId || payload.installationId || '');
   const registrationId = String(payload.registrationId || '').trim();
   const token = String(payload.token || payload.registrationToken || '').trim();
@@ -865,14 +1043,14 @@ async function handleGcmUnpair(request, env) {
     throw new Error('未找到需要解绑的 Android 设备。');
   }
 
-  if (!normalizeGcmPairedClients(selectedRegistration.pairedClients).some((client) => client.clientId === clientId)) {
-    throw new Error('当前浏览器与这台 Android 设备还没有建立绑定关系。');
+  if (!normalizeGcmPairedClients(selectedRegistration.pairedClients).some((client) => client.groupId === currentGroupId)) {
+    throw new Error('当前共享组与这台 Android 设备还没有建立绑定关系。');
   }
 
   const nowIso = new Date().toISOString();
   const nextRegistration = {
     ...selectedRegistration,
-    pairedClients: removeGcmPairedClient(selectedRegistration.pairedClients, clientId),
+    pairedClients: removeGcmPairedGroup(selectedRegistration.pairedClients, currentGroupId),
     updatedAt: nowIso
   };
   const nextSettings = normalizeSettings({
@@ -1331,6 +1509,14 @@ export default {
 
       if (request.method === 'POST' && url.pathname === '/api/notify/settings') {
         return await handleSettings(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/group/share-code') {
+        return await handleNotifyGroupShareCode(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/group/join') {
+        return await handleNotifyGroupJoin(request, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/gotify-account') {
