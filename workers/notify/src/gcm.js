@@ -239,6 +239,7 @@ export function normalizeGcmRegistrations(registrations = []) {
 export function buildPublicGcmRegistration(registration = {}, options = {}) {
   const normalizedRegistration = normalizeGcmRegistrations([registration])[0] || {};
   const currentClientId = String(options?.clientId || '').trim();
+  const includePairedClientIds = Boolean(options?.includePairedClientIds);
   const pairedClients = normalizeGcmPairedClients(normalizedRegistration.pairedClients);
 
   return {
@@ -256,6 +257,7 @@ export function buildPublicGcmRegistration(registration = {}, options = {}) {
     lastCheckDetail: normalizedRegistration.lastCheckDetail,
     pairedClientCount: pairedClients.length,
     pairedClients: pairedClients.map((client) => ({
+      ...(includePairedClientIds ? { clientId: client.clientId } : {}),
       clientName: client.clientName,
       pairedAt: client.pairedAt,
       lastSeenAt: client.lastSeenAt

@@ -5,6 +5,7 @@ import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
 const SETTINGS_KEY = 'notify:settings';
 const PAIRING_CODE_TTL_MS = 10 * 60 * 1000;
 const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const CLIENT_SECRET_HEADER = 'x-notify-client-secret';
 
 function jsonResponse(payload, { status = 200, origin = '*' } = {}) {
   return new Response(JSON.stringify(payload, null, 2), {
@@ -13,7 +14,7 @@ function jsonResponse(payload, { status = 200, origin = '*' } = {}) {
       'content-type': 'application/json; charset=utf-8',
       'access-control-allow-origin': origin,
       'access-control-allow-methods': 'GET,POST,OPTIONS',
-      'access-control-allow-headers': 'content-type'
+      'access-control-allow-headers': `content-type, ${CLIENT_SECRET_HEADER}`
     }
   });
 }
@@ -24,7 +25,7 @@ function emptyResponse({ status = 204, origin = '*' } = {}) {
     headers: {
       'access-control-allow-origin': origin,
       'access-control-allow-methods': 'GET,POST,OPTIONS',
-      'access-control-allow-headers': 'content-type'
+      'access-control-allow-headers': `content-type, ${CLIENT_SECRET_HEADER}`
     }
   });
 }
@@ -57,6 +58,7 @@ function normalizeSettings(settings = {}) {
     map[normalizedClientId] = {
       clientId: normalizedClientId,
       clientLabel: normalizeClientName(client?.clientLabel || client?.notifyClientLabel || client?.clientName || ''),
+      clientSecretHash: String(client?.clientSecretHash || '').trim(),
       barkDeviceKey: String(client?.barkDeviceKey || '').trim(),
       payload: normalizeNotifyPayload(client?.payload || {}),
       state: {
@@ -101,6 +103,7 @@ function buildDefaultClientRecord(clientId = '', clientLabel = '') {
   return {
     clientId: normalizedClientId,
     clientLabel: normalizeClientName(clientLabel),
+    clientSecretHash: '',
     barkDeviceKey: '',
     payload: normalizeNotifyPayload({}),
     state: {
@@ -154,6 +157,7 @@ function upsertClientRecord(settings, clientId = '', patch = {}) {
     ...patch,
     clientId: normalizedClientId,
     clientLabel: normalizeClientName(patch.clientLabel ?? current.clientLabel ?? ''),
+    clientSecretHash: String(patch.clientSecretHash ?? current.clientSecretHash ?? '').trim(),
     barkDeviceKey: String(patch.barkDeviceKey ?? current.barkDeviceKey ?? '').trim(),
     payload: normalizeNotifyPayload(patch.payload ?? current.payload ?? {}),
     state: {
@@ -201,6 +205,10 @@ function normalizeClientName(value = '') {
   return String(value || '').trim().slice(0, 120);
 }
 
+function normalizeClientSecret(value = '') {
+  return String(value || '').trim().slice(0, 240);
+}
+
 function normalizeDeviceInstallationId(value = '') {
   return String(value || '').trim().slice(0, 160);
 }
@@ -235,6 +243,67 @@ function isFutureIso(value = '') {
 function readCurrentClientId(request) {
   const url = new URL(request.url);
   return normalizeClientId(url.searchParams.get('clientId'));
+}
+
+function readCurrentClientSecret(request) {
+  return normalizeClientSecret(request.headers.get(CLIENT_SECRET_HEADER));
+}
+
+function requireMatchingClientId(request, payload = {}) {
+  const queryClientId = readCurrentClientId(request);
+  const bodyClientId = normalizeClientId(payload.clientId);
+  const currentClientId = queryClientId || bodyClientId;
+
+  if (!currentClientId) {
+    throw new Error('缺少浏览器 clientId。');
+  }
+
+  if (queryClientId && bodyClientId && queryClientId !== bodyClientId) {
+    throw new Error('浏览器 clientId 不匹配。');
+  }
+
+  return currentClientId;
+}
+
+async function ensureAuthenticatedClient(request, settings, options = {}) {
+  const clientId = requireMatchingClientId(request, options?.payload);
+  const clientSecret = readCurrentClientSecret(request);
+  const desiredClientLabel = normalizeClientName(options?.clientLabel || '');
+
+  if (!clientSecret) {
+    throw new Error('缺少浏览器鉴权信息，请刷新页面后重试。');
+  }
+
+  const existingClient = settings.clients?.[clientId] || null;
+  const clientSecretHash = await hashText(clientSecret);
+
+  if (String(existingClient?.clientSecretHash || '').trim() && existingClient.clientSecretHash !== clientSecretHash) {
+    throw new Error('浏览器鉴权失败，请回到原浏览器页面重新加载后重试。');
+  }
+
+  const needsSecretBootstrap = !existingClient || !String(existingClient.clientSecretHash || '').trim();
+  const needsLabelUpdate = desiredClientLabel && desiredClientLabel !== String(existingClient?.clientLabel || '').trim();
+
+  if (needsSecretBootstrap || needsLabelUpdate) {
+    const nextSettings = upsertClientRecord(settings, clientId, {
+      clientLabel: needsLabelUpdate ? desiredClientLabel : String(existingClient?.clientLabel || desiredClientLabel || '').trim(),
+      clientSecretHash
+    });
+
+    return {
+      didUpdate: true,
+      clientId,
+      clientRecord: getClientRecord(nextSettings, clientId, desiredClientLabel),
+      settings: nextSettings
+    };
+  }
+
+  return {
+    didUpdate: false,
+    clientId,
+    clientRecord: getClientRecord(settings, clientId, desiredClientLabel),
+    settings
+  };
 }
 
 function buildPublicGcmSetup(settings, env, options = {}) {
@@ -427,6 +496,22 @@ function requireCurrentClientId(request) {
   return currentClientId;
 }
 
+function requireAuthenticatedGcmRegistration(selectedRegistration, token = '') {
+  const normalizedToken = String(token || '').trim();
+
+  if (!normalizedToken) {
+    throw new Error('缺少 Android registration token。');
+  }
+
+  if (!selectedRegistration) {
+    throw new Error('当前设备还没有完成注册，请先调用 /api/notify/gcm/register。');
+  }
+
+  if (String(selectedRegistration.token || '').trim() !== normalizedToken) {
+    throw new Error('Android 设备鉴权失败，请使用当前 app 里的有效 token 重新请求。');
+  }
+}
+
 function getClientRecentEvents(clientRecord = {}) {
   return Array.isArray(clientRecord?.state?.recentEvents) ? clientRecord.state.recentEvents : [];
 }
@@ -515,9 +600,16 @@ function applySettingsRemovals(settings, clientId = '', removals = []) {
 
 async function handleStatus(request, env) {
   const origin = readOrigin(request);
-  const currentClientId = requireCurrentClientId(request);
-  const settings = await readSettings(env);
-  const clientRecord = getClientRecord(settings, currentClientId);
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings);
+  settings = auth.settings;
+  const currentClientId = auth.clientId;
+  const clientRecord = auth.clientRecord;
+
+  if (auth.didUpdate) {
+    await writeSettings(env, settings);
+  }
+
   const recentEvents = getClientRecentEvents(clientRecord);
   const deliveryFailures = getClientDeliveryFailures(clientRecord);
   const gcmSetup = buildPublicGcmSetup(settings, env, {
@@ -553,24 +645,32 @@ async function handleStatus(request, env) {
 
 async function handleEvents(request, env) {
   const origin = readOrigin(request);
-  const currentClientId = requireCurrentClientId(request);
-  const settings = await readSettings(env);
-  const clientRecord = getClientRecord(settings, currentClientId);
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings);
+  settings = auth.settings;
+
+  if (auth.didUpdate) {
+    await writeSettings(env, settings);
+  }
 
   return jsonResponse({
-    events: getClientRecentEvents(clientRecord)
+    events: getClientRecentEvents(auth.clientRecord)
   }, { origin });
 }
 
 async function handleSync(request, env) {
   const origin = readOrigin(request);
-  const currentClientId = requireCurrentClientId(request);
   const rawPayload = await request.json().catch(() => ({}));
   const payload = normalizeNotifyPayload(rawPayload);
   const compiled = compileNotifyRules(payload);
   const currentClientLabel = normalizeClientName(rawPayload?.clientLabel || rawPayload?.notifyClientLabel || '');
-  const settings = await readSettings(env);
-  const existingClient = getClientRecord(settings, currentClientId, currentClientLabel);
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings, {
+    clientLabel: currentClientLabel
+  });
+  settings = auth.settings;
+  const currentClientId = auth.clientId;
+  const existingClient = auth.clientRecord;
   const allowedRuleIds = new Set(compiled.allRules.map((rule) => rule.ruleId));
   const nextRuleStates = Object.entries(existingClient?.state?.ruleStates || {}).reduce((map, [ruleId, state]) => {
     if (allowedRuleIds.has(ruleId)) {
@@ -607,11 +707,16 @@ async function handleSync(request, env) {
 
 async function handleSettings(request, env) {
   const origin = readOrigin(request);
-  const currentClientId = requireCurrentClientId(request);
-  const existingSettings = await readSettings(env);
   const payload = await request.json().catch(() => ({}));
-  const nextSettings = upsertClientRecord(existingSettings, currentClientId, {
-    clientLabel: normalizeClientName(payload?.clientLabel || payload?.notifyClientLabel || ''),
+  const currentClientLabel = normalizeClientName(payload?.clientLabel || payload?.notifyClientLabel || '');
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings, {
+    clientLabel: currentClientLabel
+  });
+  settings = auth.settings;
+  const currentClientId = auth.clientId;
+  const nextSettings = upsertClientRecord(settings, currentClientId, {
+    clientLabel: currentClientLabel || auth.clientRecord.clientLabel,
     barkDeviceKey: String(payload?.barkDeviceKey || '').trim()
   });
   const nextClientRecord = getClientRecord(nextSettings, currentClientId);
@@ -644,9 +749,7 @@ async function handleGcmPairingKey(request, env) {
     token
   });
 
-  if (!selectedRegistration) {
-    throw new Error('当前设备还没有完成注册，请先调用 /api/notify/gcm/register。');
-  }
+  requireAuthenticatedGcmRegistration(selectedRegistration, token);
 
   const pairingCode = buildPairingCode(8);
   const pairingCodeHash = await hashText(pairingCode);
@@ -668,7 +771,9 @@ async function handleGcmPairingKey(request, env) {
 
   return jsonResponse({
     ok: true,
-    registration: buildPublicGcmRegistration(nextRegistration),
+    registration: buildPublicGcmRegistration(nextRegistration, {
+      includePairedClientIds: true
+    }),
     pairing: {
       code: pairingCode,
       issuedAt: pairingCodeIssuedAt,
@@ -680,15 +785,16 @@ async function handleGcmPairingKey(request, env) {
 
 async function handleGcmPair(request, env) {
   const origin = readOrigin(request);
-  const settings = await readSettings(env);
   const payload = await request.json().catch(() => ({}));
+  let settings = await readSettings(env);
   const pairingCode = normalizePairingCode(payload.pairingCode || payload.code || '');
-  const clientId = normalizeClientId(payload.clientId);
   const clientName = normalizeClientName(payload.clientName) || 'Web 控制台';
-
-  if (!clientId) {
-    throw new Error('缺少浏览器 clientId。');
-  }
+  const auth = await ensureAuthenticatedClient(request, settings, {
+    payload,
+    clientLabel: clientName
+  });
+  settings = auth.settings;
+  const clientId = auth.clientId;
 
   if (!pairingCode) {
     throw new Error('缺少设备配对码。');
@@ -719,7 +825,8 @@ async function handleGcmPair(request, env) {
     gcmRegistrations: upsertGcmRegistration(settings.gcmRegistrations, nextRegistration)
   });
   nextSettings = upsertClientRecord(nextSettings, clientId, {
-    clientLabel: clientName
+    clientLabel: clientName,
+    clientSecretHash: auth.clientRecord.clientSecretHash
   });
 
   await writeSettings(env, nextSettings);
@@ -737,16 +844,16 @@ async function handleGcmPair(request, env) {
 
 async function handleGcmUnpair(request, env) {
   const origin = readOrigin(request);
-  const settings = await readSettings(env);
   const payload = await request.json().catch(() => ({}));
-  const clientId = normalizeClientId(payload.clientId || readCurrentClientId(request));
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings, {
+    payload
+  });
+  settings = auth.settings;
+  const clientId = auth.clientId;
   const deviceInstallationId = normalizeDeviceInstallationId(payload.deviceInstallationId || payload.installationId || '');
   const registrationId = String(payload.registrationId || '').trim();
   const token = String(payload.token || payload.registrationToken || '').trim();
-
-  if (!clientId) {
-    throw new Error('缺少浏览器 clientId。');
-  }
 
   const selectedRegistration = findGcmRegistration(settings, {
     deviceInstallationId,
@@ -756,6 +863,10 @@ async function handleGcmUnpair(request, env) {
 
   if (!selectedRegistration) {
     throw new Error('未找到需要解绑的 Android 设备。');
+  }
+
+  if (!normalizeGcmPairedClients(selectedRegistration.pairedClients).some((client) => client.clientId === clientId)) {
+    throw new Error('当前浏览器与这台 Android 设备还没有建立绑定关系。');
   }
 
   const nowIso = new Date().toISOString();
@@ -850,7 +961,9 @@ async function handleGcmRegister(request, env) {
 
   return jsonResponse({
     ok: true,
-    registration: buildPublicGcmRegistration(registration),
+    registration: buildPublicGcmRegistration(registration, {
+      includePairedClientIds: true
+    }),
     setup: buildPublicGcmSetup(nextSettings, env)
   }, { origin });
 }
@@ -872,9 +985,11 @@ async function handleGcmCheck(request, env) {
   const token = explicitToken || String(selectedRegistration?.token || '').trim();
   const registrationMatcher = selectedRegistration
     ? (registration) => registration.id === selectedRegistration.id
-    : explicitToken
+      : explicitToken
       ? (registration) => registration.token === explicitToken
       : null;
+
+  requireAuthenticatedGcmRegistration(selectedRegistration, explicitToken);
 
   try {
     const result = await checkGcmConnection({
@@ -910,6 +1025,8 @@ async function handleGcmCheck(request, env) {
             lastCheckedAt: result.checkedAt,
             lastCheckStatus: result.status,
             lastCheckDetail: result.detail
+          }, {
+            includePairedClientIds: true
           })
         : explicitToken
           ? {
@@ -1107,10 +1224,17 @@ async function runClientDetection(env, settings, clientRecord, { reason = 'manua
 
 async function handleTest(request, env) {
   const origin = readOrigin(request);
-  const currentClientId = requireCurrentClientId(request);
   const payload = await request.json().catch(() => ({}));
   let settings = await readSettings(env);
-  const clientRecord = getClientRecord(settings, currentClientId);
+  const auth = await ensureAuthenticatedClient(request, settings);
+  settings = auth.settings;
+  const currentClientId = auth.clientId;
+  const clientRecord = auth.clientRecord;
+
+  if (auth.didUpdate) {
+    await writeSettings(env, settings);
+  }
+
   const result = await runClientDetection(env, settings, clientRecord, {
     reason: 'manual-test',
     testPayload: {
@@ -1158,8 +1282,19 @@ async function runDetection(env, reason = 'manual-run', options = {}) {
 
 async function handleRun(request, env) {
   const origin = readOrigin(request);
+  const requestedClientId = readCurrentClientId(request);
+
+  if (requestedClientId) {
+    const settings = await readSettings(env);
+    const auth = await ensureAuthenticatedClient(request, settings);
+
+    if (auth.didUpdate) {
+      await writeSettings(env, auth.settings);
+    }
+  }
+
   const summary = await runDetection(env, 'manual-run', {
-    clientId: readCurrentClientId(request)
+    clientId: requestedClientId
   });
 
   return jsonResponse({

@@ -503,7 +503,8 @@ export function TradePlansExperience({ links, embedded = false }) {
                       </div>
                     </div>
                     <div className="mt-4 rounded-2xl bg-slate-950 px-4 py-3 font-mono text-xs text-slate-100">
-                      {notifyConfig.notifyClientId}
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">浏览器 uniqId</div>
+                      <div className="mt-2">{notifyConfig.notifyClientId}</div>
                     </div>
                   </div>
 
@@ -554,6 +555,7 @@ export function TradePlansExperience({ links, embedded = false }) {
                             </div>
                             <div className="mt-2 text-sm text-slate-500">{registration.packageName || androidSetup?.gcmPackageName || '未记录包名'}</div>
                             <div className="mt-3 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
+                              <div>Android uniqId: {registration.deviceInstallationId || registration.id || '--'}</div>
                               <div>Token: {registration.tokenMasked || '--'}</div>
                               <div>绑定时间: {formatEventTimeLabel(registration.updatedAt || registration.createdAt)}</div>
                               <div>最近校验: {formatEventTimeLabel(registration.lastCheckedAt)}</div>
@@ -567,12 +569,6 @@ export function TradePlansExperience({ links, embedded = false }) {
                         当前浏览器还没有关联 Android 设备。先打开 Android app，拿到配对码，再回到这里完成绑定。
                       </p>
                     )}
-                    <div className="mt-4 text-xs text-slate-400">
-                      解绑后会立即从 Worker 删除当前浏览器与该设备的绑定关系，可重新用配对码再绑定。
-                    </div>
-                    <div className="mt-1 text-xs text-slate-400">
-                      服务端当前共登记 {Number(androidSetup?.gcmRegistrationCount) || 0} 台 Android 设备，其中 {Number(androidSetup?.gcmPairedRegistrationCount) || 0} 台已完成浏览器配对。
-                    </div>
                   </div>
                 </div>
               ) : (

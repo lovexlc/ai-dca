@@ -3,12 +3,14 @@ import { readPlanList } from './plan.js';
 
 const NOTIFY_ENDPOINT = '/api/notify';
 const NOTIFY_CLIENT_CONFIG_KEY = 'aiDcaNotifyClientConfig';
+const NOTIFY_CLIENT_SECRET_HEADER = 'x-notify-client-secret';
 
 function buildDefaultNotifyClientConfig() {
   return {
     barkDeviceKey: '',
     notifyClientId: '',
-    notifyClientLabel: ''
+    notifyClientLabel: '',
+    notifyClientSecret: ''
   };
 }
 
@@ -34,6 +36,10 @@ function normalizeNotifyClientLabel(value = '') {
   return String(value || '').trim().slice(0, 120);
 }
 
+function normalizeNotifyClientSecret(value = '') {
+  return String(value || '').trim().slice(0, 240);
+}
+
 function buildDefaultNotifyClientLabel() {
   if (typeof window === 'undefined') {
     return 'Web 控制台';
@@ -41,6 +47,20 @@ function buildDefaultNotifyClientLabel() {
 
   const hostname = String(window.location?.hostname || '').trim();
   return hostname ? `Web 控制台 @ ${hostname}` : 'Web 控制台';
+}
+
+function createNotifyClientSecret() {
+  if (typeof window !== 'undefined' && window.crypto?.randomUUID) {
+    return `${window.crypto.randomUUID()}${window.crypto.randomUUID()}`.replace(/-/g, '');
+  }
+
+  if (typeof window !== 'undefined' && window.crypto?.getRandomValues) {
+    const bytes = new Uint8Array(32);
+    window.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
+  }
+
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
 }
 
 export function readNotifyClientConfig() {
@@ -57,6 +77,7 @@ export function readNotifyClientConfig() {
 
     nextConfig.notifyClientId = normalizeNotifyClientId(saved?.notifyClientId) || createNotifyClientId();
     nextConfig.notifyClientLabel = normalizeNotifyClientLabel(saved?.notifyClientLabel) || buildDefaultNotifyClientLabel();
+    nextConfig.notifyClientSecret = normalizeNotifyClientSecret(saved?.notifyClientSecret) || createNotifyClientSecret();
     window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(nextConfig));
 
     return nextConfig;
@@ -64,7 +85,8 @@ export function readNotifyClientConfig() {
     const nextConfig = {
       ...buildDefaultNotifyClientConfig(),
       notifyClientId: createNotifyClientId(),
-      notifyClientLabel: buildDefaultNotifyClientLabel()
+      notifyClientLabel: buildDefaultNotifyClientLabel(),
+      notifyClientSecret: createNotifyClientSecret()
     };
 
     window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(nextConfig));
@@ -83,7 +105,8 @@ export function persistNotifyClientConfig(nextConfig = {}) {
     ...nextConfig,
     barkDeviceKey: String(nextConfig.barkDeviceKey ?? current.barkDeviceKey ?? '').trim(),
     notifyClientId: normalizeNotifyClientId(nextConfig.notifyClientId ?? current.notifyClientId ?? '') || current.notifyClientId,
-    notifyClientLabel: normalizeNotifyClientLabel(nextConfig.notifyClientLabel ?? current.notifyClientLabel ?? '') || current.notifyClientLabel
+    notifyClientLabel: normalizeNotifyClientLabel(nextConfig.notifyClientLabel ?? current.notifyClientLabel ?? '') || current.notifyClientLabel,
+    notifyClientSecret: normalizeNotifyClientSecret(nextConfig.notifyClientSecret ?? current.notifyClientSecret ?? '') || current.notifyClientSecret
   };
 
   window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(payload));
@@ -94,7 +117,8 @@ function resolveNotifyClientConfig(payload = {}) {
 
   return {
     clientId: normalizeNotifyClientId(payload?.clientId || payload?.notifyClientId || current.notifyClientId),
-    clientLabel: normalizeNotifyClientLabel(payload?.clientLabel || payload?.clientName || payload?.notifyClientLabel || current.notifyClientLabel)
+    clientLabel: normalizeNotifyClientLabel(payload?.clientLabel || payload?.clientName || payload?.notifyClientLabel || current.notifyClientLabel),
+    clientSecret: normalizeNotifyClientSecret(payload?.clientSecret || payload?.notifyClientSecret || current.notifyClientSecret) || current.notifyClientSecret
   };
 }
 
@@ -129,10 +153,18 @@ function buildNotifyUrl(path, query = {}) {
 }
 
 async function requestNotify(path, init = {}) {
+  const headers = new Headers(init.headers || {});
+  const clientSecret = normalizeNotifyClientSecret(init.clientConfig?.clientSecret);
+
+  if (clientSecret) {
+    headers.set(NOTIFY_CLIENT_SECRET_HEADER, clientSecret);
+  }
+
   const response = await fetch(buildNotifyUrl(path, init.query), {
     ...init,
     query: undefined,
-    headers: init.headers
+    clientConfig: undefined,
+    headers
   });
   const payload = await readJsonResponse(response);
 
@@ -163,21 +195,27 @@ export function buildNotifySyncPayload() {
 }
 
 export function loadNotifyStatus(clientId = '') {
-  const resolvedClientId = normalizeNotifyClientId(clientId) || resolveNotifyClientConfig().clientId;
+  const clientConfig = resolveNotifyClientConfig({
+    clientId
+  });
 
   return requestNotify('/status', {
+    clientConfig,
     query: {
-      clientId: resolvedClientId
+      clientId: clientConfig.clientId
     }
   });
 }
 
 export function loadNotifyEvents(clientId = '') {
-  const resolvedClientId = normalizeNotifyClientId(clientId) || resolveNotifyClientConfig().clientId;
+  const clientConfig = resolveNotifyClientConfig({
+    clientId
+  });
 
   return requestNotify('/events', {
+    clientConfig,
     query: {
-      clientId: resolvedClientId
+      clientId: clientConfig.clientId
     }
   });
 }
@@ -186,6 +224,7 @@ export function syncTradePlanRules(payload = buildNotifySyncPayload()) {
   const clientConfig = resolveNotifyClientConfig(payload);
 
   return requestNotify('/sync', {
+    clientConfig,
     query: {
       clientId: clientConfig.clientId
     },
@@ -204,6 +243,7 @@ export function sendNotifyTest(payload = {}) {
   const clientConfig = resolveNotifyClientConfig(payload);
 
   return requestNotify('/test', {
+    clientConfig,
     query: {
       clientId: clientConfig.clientId
     },
@@ -224,6 +264,7 @@ export function saveNotifySettings(payload = {}) {
   const clientConfig = resolveNotifyClientConfig(payload);
 
   return requestNotify('/settings', {
+    clientConfig,
     query: {
       clientId: clientConfig.clientId
     },
@@ -242,6 +283,10 @@ export function pairAndroidDevice(payload = {}) {
   const clientConfig = resolveNotifyClientConfig(payload);
 
   return requestNotify('/gcm/pair', {
+    clientConfig,
+    query: {
+      clientId: clientConfig.clientId
+    },
     method: 'POST',
     headers: {
       'content-type': 'application/json'
@@ -258,6 +303,10 @@ export function unpairAndroidDevice(payload = {}) {
   const clientConfig = resolveNotifyClientConfig(payload);
 
   return requestNotify('/gcm/unpair', {
+    clientConfig,
+    query: {
+      clientId: clientConfig.clientId
+    },
     method: 'POST',
     headers: {
       'content-type': 'application/json'
