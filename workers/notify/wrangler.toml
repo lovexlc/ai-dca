@@ -12,7 +12,9 @@ id = "5246771a17544a17af5b4b6c482f5d62"
 preview_id = "21e04c9a7eac46018a4740c013e11a1f"
 
 [triggers]
-crons = ["*/30 * * * 1-5"]
+# Cloudflare cron uses UTC. These two expressions together mean:
+# Beijing time Monday-Friday, every 30 minutes.
+crons = ["*/30 16-23 * * 0-4", "*/30 0-15 * * 1-5"]
 
 [observability]
 enabled = false

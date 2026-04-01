@@ -14,6 +14,7 @@
 - `POST /api/notify/gcm/pair`
 - `POST /api/notify/run`
 - cron 定时检查价格提醒和定投提醒
+  Worker 内部按北京时间 `Asia/Shanghai` 判断日期；Cloudflare cron 触发本身使用 UTC，因此 `wrangler.toml` 里的 cron 表达式已经换算到北京时间工作日。
 
 ## 环境变量
 
