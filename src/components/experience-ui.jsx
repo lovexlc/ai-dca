@@ -109,6 +109,42 @@ export function Card({ children, className = '' }) {
   return <div className={cx('rounded-xl border border-slate-200 bg-white p-6 shadow-sm', className)}>{children}</div>;
 }
 
+export function TopBar({ tabs = [], activeKey = '', onSelect, brand = '', className = '' }) {
+  if (!tabs.length) {
+    return null;
+  }
+
+  return (
+    <header className={cx('topbar', className)}>
+      <div className="topbar__inner">
+        {brand ? <div className="brand">{brand}</div> : null}
+        <nav className="topnav" aria-label="主导航">
+          {tabs.map((tab) => {
+            const isActive = tab.key === activeKey;
+            return (
+              <a
+                key={tab.key}
+                className={cx('topnav__link', isActive && 'active')}
+                aria-current={isActive ? 'page' : undefined}
+                href={tab.href}
+                onClick={(event) => {
+                  if (!onSelect) {
+                    return;
+                  }
+                  event.preventDefault();
+                  onSelect(tab.key);
+                }}
+              >
+                {tab.label}
+              </a>
+            );
+          })}
+        </nav>
+      </div>
+    </header>
+  );
+}
+
 export function PageHero({
   backHref,
   backLabel = '返回',

@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '../app/accumulation.js';
 import {
+  buildFundSwitchStateFromDocument,
+  buildFundSwitchViewHash,
   buildFundSwitchStateFromHistoryEntry,
   buildFundSwitchSummary,
   createDefaultFundSwitchState,
@@ -25,9 +27,13 @@ import {
   deleteFundSwitchHistoryEntry,
   deriveFundSwitchComparison,
   FUND_SWITCH_STRATEGIES,
+  parseFundSwitchHashRoute,
   persistFundSwitchState,
+  readFundSwitchDocument,
+  readFundSwitchDocuments,
   readFundSwitchHistory,
   readFundSwitchState,
+  saveFundSwitchDocument,
   saveFundSwitchHistoryEntry
 } from '../app/fundSwitch.js';
 import { findLatestNasdaqPrice, formatPriceAsOf, loadLatestNasdaqPrices } from '../app/nasdaqPrices.js';
@@ -35,12 +41,11 @@ import {
   Card,
   Field,
   NumberInput,
-  PageHero,
   PageShell,
-  PageTabs,
   Pill,
   SectionHeading,
   TextInput,
+  TopBar,
   cx,
   inputClass,
   primaryButtonClass,
@@ -254,6 +259,24 @@ function validateOcrUploadFile(file) {
   if (Number(file.size) > OCR_MAX_FILE_SIZE) {
     throw new Error('图片请控制在 10MB 内。');
   }
+}
+
+function readFundSwitchRouteState() {
+  if (typeof window === 'undefined') {
+    return { mode: 'upload', docId: '' };
+  }
+  return parseFundSwitchHashRoute(window.location.hash);
+}
+
+function updateFundSwitchRoute(nextRoute, { replace = false } = {}) {
+  if (typeof window === 'undefined') {
+    return nextRoute;
+  }
+
+  const nextUrl = new URL(window.location.href);
+  nextUrl.hash = nextRoute.mode === 'view' ? buildFundSwitchViewHash(nextRoute.docId || '').slice(1) : '';
+  window.history[replace ? 'replaceState' : 'pushState'](window.history.state, '', nextUrl);
+  return nextRoute;
 }
 
 function buildTrackedCodes(comparison = {}) {
@@ -624,6 +647,78 @@ function FundSwitchHistorySection({ entries, activeEntryId, onOpen, onDelete }) 
   );
 }
 
+function DocumentRecordCard({ entry, isActive, onOpen }) {
+  const workflowMeta = getDocumentWorkflowMeta(entry);
+
+  return (
+    <button
+      className={cx(
+        'w-full rounded-[24px] border p-4 text-left transition-colors sm:p-5',
+        isActive ? 'border-indigo-200 bg-indigo-50/60' : 'border-slate-200 bg-slate-50/80 hover:border-slate-300 hover:bg-white'
+      )}
+      type="button"
+      onClick={() => onOpen(entry.id)}
+    >
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={cx('inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold', workflowMeta.className)}>
+              {workflowMeta.label}
+            </span>
+            {entry.resultConfirmed ? (
+              <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-500">
+                可直接重算
+              </span>
+            ) : null}
+          </div>
+
+          <div className="mt-3 text-base font-bold text-slate-900">{entry.fileName || entry.title}</div>
+          <div className="mt-1 text-xs leading-5 text-slate-500">
+            最近更新 {formatDateTimeLabel(entry.updatedAt)} · {entry.recognizedRecords} 条记录
+          </div>
+
+          <p className="mt-3 text-xs leading-5 text-slate-500">
+            {entry.resultConfirmed
+              ? '打开后会按当前最新价格重算这次基金切换收益。'
+              : '打开后会回到待确认工作台，继续校验识别明细。'}
+          </p>
+        </div>
+
+        <div className="flex shrink-0 items-center">
+          <span className={cx(primaryButtonClass, 'pointer-events-none whitespace-nowrap')}>
+            打开文档
+          </span>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function FundSwitchDocumentSection({ entries, activeDocId, onOpen }) {
+  return (
+    <Card>
+      <SectionHeading eyebrow="最近文档" title="最近上传" />
+
+      {entries.length ? (
+        <div className="mt-6 space-y-3">
+          {entries.map((entry) => (
+            <DocumentRecordCard
+              key={entry.id}
+              entry={entry}
+              isActive={activeDocId === entry.id}
+              onOpen={onOpen}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="mt-6 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-6 text-sm leading-6 text-slate-500">
+          暂无最近文档。
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function LandingQuestionChip({ children }) {
   return (
     <div className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-slate-200 bg-[#f5f5f7] px-3.5 py-2 text-[13px] font-medium text-slate-600 shadow-[0_0_10px_rgba(15,23,42,0.08),0_1px_3px_rgba(15,23,42,0.05)]">
@@ -756,15 +851,126 @@ function SidebarQuickStat({ label, value, tone = 'slate' }) {
   );
 }
 
+function getDocumentWorkflowMeta(entry = {}) {
+  const workflowStatus = String(entry.workflowStatus || '').trim();
+  if (workflowStatus === 'error') {
+    return {
+      label: '处理失败',
+      className: 'border-red-200 bg-red-50 text-red-600'
+    };
+  }
+
+  if (workflowStatus === 'processing' || workflowStatus === 'uploading') {
+    return {
+      label: workflowStatus === 'uploading' ? '上传中' : '处理中',
+      className: 'border-amber-200 bg-amber-50 text-amber-600'
+    };
+  }
+
+  if (entry.resultConfirmed) {
+    return {
+      label: '结果已确认',
+      className: 'border-emerald-200 bg-emerald-50 text-emerald-600'
+    };
+  }
+
+  return {
+    label: '已回填待确认',
+    className: 'border-slate-200 bg-slate-100 text-slate-600'
+  };
+}
+
+function buildWorkflowSteps({ hasImportedData, recognizedCount, ocrState, resultConfirmed }) {
+  const normalizedStatus = String(ocrState?.status || '').trim();
+  const hasOcrResult = normalizedStatus === 'success' || normalizedStatus === 'warning' || resultConfirmed;
+  const isProcessing = normalizedStatus === 'loading';
+  const isError = normalizedStatus === 'error';
+
+  return [
+    {
+      key: 'upload',
+      label: '截图已接收',
+      detail: hasImportedData ? '文件已进入识别流程。' : '等待上传截图。',
+      tone: hasImportedData ? 'done' : 'pending'
+    },
+    {
+      key: 'ocr',
+      label: isProcessing ? 'OCR 识别中' : 'OCR 识别与解析',
+      detail: isError
+        ? '识别失败，请重新上传清晰截图。'
+        : hasOcrResult
+          ? `已解析 ${recognizedCount} 条记录。`
+          : '等待开始识别。',
+      tone: isError ? 'error' : hasOcrResult ? 'done' : isProcessing ? 'current' : 'pending'
+    },
+    {
+      key: 'sheet',
+      label: '明细工作表已准备',
+      detail: recognizedCount > 0 ? '可以直接修改识别明细。' : '等待回填识别结果。',
+      tone: recognizedCount > 0 ? 'done' : isError ? 'pending' : isProcessing ? 'current' : 'pending'
+    },
+    {
+      key: 'result',
+      label: resultConfirmed ? '收益结果已确认' : '等待确认收益结果',
+      detail: resultConfirmed ? '当前结果会按最新价格持续重算。' : '确认后会保存这次收益分析。',
+      tone: resultConfirmed ? 'done' : recognizedCount > 0 ? 'current' : 'pending'
+    }
+  ];
+}
+
+function WorkflowStepList({ steps = [] }) {
+  return (
+    <div className="rounded-[28px] border border-slate-200 bg-white p-4">
+      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">处理状态</div>
+      <div className="mt-4 space-y-3">
+        {steps.map((step, index) => (
+          <div key={step.key} className="flex gap-3">
+            <div className="flex flex-col items-center">
+              <div
+                className={cx(
+                  'flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-bold',
+                  step.tone === 'done'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
+                    : step.tone === 'current'
+                      ? 'border-indigo-200 bg-indigo-50 text-indigo-600'
+                      : step.tone === 'error'
+                        ? 'border-red-200 bg-red-50 text-red-600'
+                        : 'border-slate-200 bg-slate-100 text-slate-400'
+                )}
+              >
+                {index + 1}
+              </div>
+              {index < steps.length - 1 ? <div className="mt-1 h-6 w-px bg-slate-200" /> : null}
+            </div>
+            <div className="min-w-0 pb-2">
+              <div className={cx(
+                'text-sm font-semibold',
+                step.tone === 'error' ? 'text-red-600' : step.tone === 'pending' ? 'text-slate-400' : 'text-slate-900'
+              )}>
+                {step.label}
+              </div>
+              <div className="mt-1 text-xs leading-5 text-slate-500">{step.detail}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function AnalysisWorkspaceSidebar({
+  activeDocId,
+  documentEntries = [],
   fileName,
   statusMeta,
   effectiveOcrMessage,
   ocrState,
+  hasImportedData,
   recognizedCount,
   resultConfirmed,
   summary,
   validationIssueSummary,
+  onOpenDocument,
   onReupload,
   onEdit,
   onReset,
@@ -772,9 +978,15 @@ function AnalysisWorkspaceSidebar({
   onShowHistory,
   historyEntries = []
 }) {
-  const latestHistoryEntries = historyEntries.slice(0, 3);
+  const latestDocuments = documentEntries.slice(0, 5);
   const hasConfirmedResult = resultConfirmed;
   const quickTone = summary.switchAdvantage > 0 ? 'positive' : summary.switchAdvantage < 0 ? 'negative' : 'slate';
+  const workflowSteps = buildWorkflowSteps({
+    hasImportedData,
+    recognizedCount,
+    ocrState,
+    resultConfirmed
+  });
 
   return (
     <aside className="flex h-full flex-col gap-4 bg-slate-50/55 p-4 sm:p-5">
@@ -833,6 +1045,8 @@ function AnalysisWorkspaceSidebar({
         </div>
       </div>
 
+      <WorkflowStepList steps={workflowSteps} />
+
       <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-1">
         <button className={cx(primaryButtonClass, 'w-full')} type="button" onClick={hasConfirmedResult ? onShowSummary : onEdit}>
           {hasConfirmedResult ? '查看收益摘要' : '去确认识别明细'}
@@ -848,26 +1062,48 @@ function AnalysisWorkspaceSidebar({
         </button>
       </div>
 
-      {latestHistoryEntries.length ? (
+      {latestDocuments.length ? (
         <div className="rounded-[28px] border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">最近历史</div>
-              <div className="mt-1 text-sm font-bold text-slate-900">可以直接打开后重算</div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">最近文档</div>
+              <div className="mt-1 text-sm font-bold text-slate-900">上传完成后会追加到这里</div>
             </div>
-            <Pill tone="slate">{historyEntries.length} 条</Pill>
+            <Pill tone="slate">{documentEntries.length} 条</Pill>
           </div>
 
           <div className="mt-4 space-y-3">
-            {latestHistoryEntries.map((entry) => (
-              <div key={entry.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-                <div className="truncate text-sm font-semibold text-slate-800">{entry.title}</div>
-                <div className="mt-1 text-xs text-slate-400">{formatDateTimeLabel(entry.updatedAt)}</div>
-                <div className="mt-2 text-xs font-semibold text-slate-500">
-                  上次结果 {formatSignedCurrency(entry.snapshot.switchAdvantage, '¥ ')}
-                </div>
-              </div>
-            ))}
+            {latestDocuments.map((entry) => {
+              const workflowMeta = getDocumentWorkflowMeta(entry);
+              const isActive = activeDocId === entry.id;
+
+              return (
+                <button
+                  key={entry.id}
+                  className={cx(
+                    'w-full rounded-2xl border px-3 py-3 text-left transition-colors',
+                    isActive ? 'border-indigo-200 bg-indigo-50/70' : 'border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white'
+                  )}
+                  type="button"
+                  onClick={() => onOpenDocument(entry.id)}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-slate-800">{entry.fileName || entry.title}</div>
+                      <div className="mt-1 text-xs text-slate-400">{formatDateTimeLabel(entry.updatedAt)}</div>
+                    </div>
+                    <span className={cx('shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold', workflowMeta.className)}>
+                      {workflowMeta.label}
+                    </span>
+                  </div>
+                  <div className="mt-2 text-xs leading-5 text-slate-500">
+                    {entry.resultConfirmed
+                      ? `已确认 ${entry.recognizedRecords} 条记录，可直接打开重算。`
+                      : `已回填 ${entry.recognizedRecords} 条记录，等待确认收益。`}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       ) : null}
@@ -975,10 +1211,12 @@ function PendingResultCard({ issueSummary, onEdit }) {
 
 export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   const [state, setState] = useState(() => readFundSwitchState());
+  const [documentEntries, setDocumentEntries] = useState(() => readFundSwitchDocuments());
   const [historyEntries, setHistoryEntries] = useState(() => readFundSwitchHistory());
   const [ocrState, setOcrState] = useState(() => createOcrState());
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [activeWorkspacePanel, setActiveWorkspacePanel] = useState(() => (state.resultConfirmed ? 'summary' : 'details'));
+  const [routeState, setRouteState] = useState(() => readFundSwitchRouteState());
   const [confirmError, setConfirmError] = useState('');
   const [priceState, setPriceState] = useState(() => ({ status: 'idle', entries: [], error: '' }));
   const fileInputRef = useRef(null);
@@ -1010,10 +1248,66 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   const statusMeta = getStatusMeta(effectiveOcrStatus);
   const primaryTabs = getPrimaryTabs(links);
   const advantageMeta = getAdvantageTone(summary.switchAdvantage);
+  const showViewPage = routeState.mode === 'view' && hasImportedData;
+
+  useEffect(() => {
+    function syncRouteState() {
+      setRouteState(readFundSwitchRouteState());
+    }
+
+    window.addEventListener('hashchange', syncRouteState);
+    window.addEventListener('popstate', syncRouteState);
+    return () => {
+      window.removeEventListener('hashchange', syncRouteState);
+      window.removeEventListener('popstate', syncRouteState);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (routeState.mode === 'view' && routeState.docId && routeState.docId !== state.docId) {
+      const documentEntry = readFundSwitchDocument(routeState.docId);
+      if (!documentEntry) {
+        openUploadPage({ replace: true });
+        return;
+      }
+
+      const nextState = buildFundSwitchStateFromDocument(documentEntry);
+      setState(nextState);
+      setOcrState(createOcrState({
+        status: documentEntry.ocrStatus || 'success',
+        progress: documentEntry.workflowStatus === 'ready' ? 100 : 84,
+        durationMs: documentEntry.ocrDurationMs,
+        lineCount: nextState.recognizedRecords,
+        message: documentEntry.ocrMessage || '已从文档链接载入 OCR 结果。'
+      }));
+      setConfirmError('');
+      setIsEditingDetails(false);
+      setActiveWorkspacePanel(nextState.resultConfirmed ? 'summary' : 'details');
+      return;
+    }
+
+    if (routeState.mode === 'view' && !hasImportedData) {
+      openUploadPage({ replace: true });
+    }
+  }, [hasImportedData, routeState.docId, routeState.mode, state.docId]);
 
   useEffect(() => {
     persistFundSwitchState({ ...state, comparison: summary.comparison }, summary);
   }, [state, summary]);
+
+  function refreshDocumentEntries() {
+    const nextEntries = readFundSwitchDocuments();
+    setDocumentEntries((current) => {
+      const isSame = current.length === nextEntries.length
+        && current.every((entry, index) => (
+          entry.id === nextEntries[index]?.id
+          && entry.updatedAt === nextEntries[index]?.updatedAt
+          && entry.workflowStatus === nextEntries[index]?.workflowStatus
+          && entry.historyEntryId === nextEntries[index]?.historyEntryId
+        ));
+      return isSame ? current : nextEntries;
+    });
+  }
 
   function refreshHistoryEntries() {
     setHistoryEntries(readFundSwitchHistory());
@@ -1031,6 +1325,58 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     refreshHistoryEntries();
     return savedEntry;
   }
+
+  function saveDocumentSnapshot(nextState, nextOcrState = ocrState, workflowStatus) {
+    const savedDocument = saveFundSwitchDocument(
+      {
+        ...nextState,
+        comparison: deriveFundSwitchComparison(nextState.rows, nextState.comparison)
+      },
+      {
+        ocrState: nextOcrState,
+        workflowStatus
+      }
+    );
+    refreshDocumentEntries();
+    return savedDocument;
+  }
+
+  function openViewPage(docId, { replace = false } = {}) {
+    const normalizedDocId = String(docId || '').trim();
+    if (!normalizedDocId) {
+      return;
+    }
+
+    if (routeState.mode === 'view' && routeState.docId === normalizedDocId) {
+      return;
+    }
+
+    setRouteState(updateFundSwitchRoute({ mode: 'view', docId: normalizedDocId }, { replace }));
+  }
+
+  function openUploadPage({ replace = false } = {}) {
+    if (routeState.mode === 'upload') {
+      return;
+    }
+    setRouteState(updateFundSwitchRoute({ mode: 'upload', docId: '' }, { replace }));
+  }
+
+  useEffect(() => {
+    if (!state.docId || !hasImportedData) {
+      return;
+    }
+
+    saveDocumentSnapshot(
+      { ...state, comparison: summary.comparison },
+      createOcrState({
+        ...ocrState,
+        status: effectiveOcrStatus,
+        message: effectiveOcrMessage,
+        lineCount: recognizedCount
+      }),
+      state.resultConfirmed ? 'ready' : 'processing'
+    );
+  }, [effectiveOcrMessage, effectiveOcrStatus, hasImportedData, ocrState, recognizedCount, state, summary.comparison]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1200,40 +1546,51 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
       });
 
       const parsedRows = result.rows.length ? result.rows : [createEmptyFundSwitchRow()];
-      setState((current) => ({
-        ...current,
+      const nextState = {
+        ...state,
+        docId: '',
         historyEntryId: '',
         fileName: file.name,
         recognizedRecords: result.recordCount || parsedRows.length,
         resultConfirmed: false,
         rows: parsedRows,
         comparison: {
-          ...current.comparison,
+          ...state.comparison,
           ...result.comparison
         }
-      }));
+      };
       setConfirmError('');
       setIsEditingDetails(false);
       setActiveWorkspacePanel('details');
 
+      let nextOcrState;
       if (result.rows.length) {
         const hasWarnings = Array.isArray(result.warnings) && result.warnings.length > 0;
-        setOcrState(createOcrState({
+        nextOcrState = createOcrState({
           status: hasWarnings ? 'warning' : 'success',
           progress: 100,
           durationMs: result.durationMs,
           lineCount: result.recordCount || result.rows.length,
           message: hasWarnings ? `已提取 ${result.rows.length} 条记录，请复核。` : `提取完成，已解析 ${result.rows.length} 条记录。`
-        }));
+        });
       } else {
-        setOcrState(createOcrState({
+        nextOcrState = createOcrState({
           status: 'warning',
           progress: 100,
           durationMs: result.durationMs,
           lineCount: 0,
           message: '未能解析出记录。'
-        }));
+        });
       }
+
+      const savedDocument = saveDocumentSnapshot(nextState, nextOcrState, 'ready');
+      const persistedState = savedDocument
+        ? { ...nextState, docId: savedDocument.id }
+        : nextState;
+
+      setState(persistedState);
+      setOcrState(nextOcrState);
+      openViewPage(persistedState.docId);
     } catch (error) {
       setOcrState(createOcrState({
         status: 'error',
@@ -1262,6 +1619,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     setConfirmError('');
     setIsEditingDetails(false);
     setActiveWorkspacePanel('details');
+    openUploadPage();
   }
 
   function openDetailEditor() {
@@ -1312,34 +1670,82 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
 
     setConfirmError('');
     const nextComparison = deriveFundSwitchComparison(state.rows, state.comparison);
-    const nextState = {
+    const draftState = {
       ...state,
       comparison: nextComparison,
       recognizedRecords: state.rows.length,
       resultConfirmed: true
     };
+    const savedDocument = saveDocumentSnapshot(draftState, createOcrState({
+      ...ocrState,
+      status: effectiveOcrStatus,
+      message: effectiveOcrMessage,
+      lineCount: recognizedCount
+    }), 'ready');
+    const nextState = savedDocument ? { ...draftState, docId: savedDocument.id } : draftState;
     const savedEntry = saveAnalysisToHistory(nextState);
-    setState({
+    const finalState = {
       ...nextState,
       historyEntryId: savedEntry?.id || nextState.historyEntryId
-    });
+    };
+
+    if (savedEntry) {
+      saveDocumentSnapshot(finalState, createOcrState({
+        ...ocrState,
+        status: effectiveOcrStatus,
+        message: effectiveOcrMessage,
+        lineCount: recognizedCount
+      }), 'ready');
+    }
+
+    setState(finalState);
     setIsEditingDetails(false);
     setActiveWorkspacePanel('summary');
+    openViewPage(finalState.docId);
     showActionToast(actionLabel, 'success');
   }
 
-  function openHistoryAnalysis(entry) {
-    const nextState = buildFundSwitchStateFromHistoryEntry(entry);
+  function openDocument(documentId) {
+    const documentEntry = readFundSwitchDocument(documentId);
+    if (!documentEntry) {
+      return;
+    }
+
+    const nextState = buildFundSwitchStateFromDocument(documentEntry);
     setState(nextState);
     setOcrState(createOcrState({
-      status: 'success',
-      progress: 100,
-      message: '已从历史载入，将按当前最新价格重新分析。',
-      lineCount: nextState.recognizedRecords
+      status: documentEntry.ocrStatus || (nextState.resultConfirmed ? 'success' : 'warning'),
+      progress: documentEntry.workflowStatus === 'ready' ? 100 : 84,
+      durationMs: documentEntry.ocrDurationMs,
+      lineCount: nextState.recognizedRecords,
+      message: documentEntry.ocrMessage || '已从最近文档载入当前分析。'
     }));
     setConfirmError('');
     setIsEditingDetails(false);
+    setActiveWorkspacePanel(nextState.resultConfirmed ? 'summary' : 'details');
+    openViewPage(documentEntry.id);
+  }
+
+  function openHistoryAnalysis(entry) {
+    const baseState = buildFundSwitchStateFromHistoryEntry(entry);
+    const nextOcrState = createOcrState({
+      status: 'success',
+      progress: 100,
+      message: '已从历史载入，将按当前最新价格重新分析。',
+      lineCount: baseState.recognizedRecords
+    });
+    const savedDocument = saveDocumentSnapshot({
+      ...baseState,
+      docId: baseState.docId || ''
+    }, nextOcrState, 'ready');
+    const nextState = savedDocument ? { ...baseState, docId: savedDocument.id } : baseState;
+
+    setState(nextState);
+    setOcrState(nextOcrState);
+    setConfirmError('');
+    setIsEditingDetails(false);
     setActiveWorkspacePanel('summary');
+    openViewPage(nextState.docId);
     showActionToast('打开历史分析', 'success', {
       description: '已载入历史记录，当前页面会直接用最新价格重算。'
     });
@@ -1704,7 +2110,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     </div>
   );
 
-  const content = !hasImportedData ? (
+  const content = !showViewPage ? (
     <div className="mx-auto max-w-6xl space-y-10 px-5 pt-12 sm:px-8 sm:pt-16">
       <div className="overflow-hidden rounded-[40px] border border-transparent bg-transparent shadow-none">
         <div className="relative px-8 py-14 sm:px-14 sm:py-18">
@@ -1797,6 +2203,14 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
       </div>
 
       <div>
+        <FundSwitchDocumentSection
+          entries={documentEntries}
+          activeDocId={state.docId}
+          onOpen={openDocument}
+        />
+      </div>
+
+      <div>
         <FundSwitchHistorySection
           entries={historyEntries}
           activeEntryId={state.historyEntryId}
@@ -1831,14 +2245,18 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
         <div className="grid xl:min-h-[760px] xl:grid-cols-[310px,minmax(0,1fr)]">
           <div className="border-b border-slate-200 bg-slate-50/55 xl:border-b-0 xl:border-r">
             <AnalysisWorkspaceSidebar
+              activeDocId={state.docId}
+              documentEntries={documentEntries}
               fileName={state.fileName}
               statusMeta={statusMeta}
               effectiveOcrMessage={effectiveOcrMessage}
               ocrState={ocrState}
+              hasImportedData={hasImportedData}
               recognizedCount={recognizedCount}
               resultConfirmed={state.resultConfirmed}
               summary={summary}
               validationIssueSummary={validationIssueSummary}
+              onOpenDocument={openDocument}
               onReupload={openFilePicker}
               onEdit={openDetailEditor}
               onReset={resetToUploadEntry}
@@ -1879,37 +2297,15 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     return (
       <>
         <input ref={fileInputRef} accept=".png,.jpg,.jpeg,image/png,image/jpeg" hidden onChange={handleFileInputChange} type="file" />
-        {content}
-      </>
-    );
+      {content}
+    </>
+  );
   }
 
   return (
     <PageShell>
       <input ref={fileInputRef} accept=".png,.jpg,.jpeg,image/png,image/jpeg" hidden onChange={handleFileInputChange} type="file" />
-
-      <PageHero
-        backHref={links.home}
-        backLabel="返回加仓计划"
-        eyebrow="基金切换分析"
-        title="基金切换收益助手"
-        description="上传截图后自动计算基金切换收益。"
-        badges={hasImportedData ? [] : [
-          <span key="status" className={cx('inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold', statusMeta.colorClass)}>
-            <statusMeta.Icon className={cx('h-4 w-4', statusMeta.iconClassName)} />
-            {statusMeta.label}
-          </span>
-        ]}
-        actions={!hasImportedData ? (
-          <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={openFilePicker}>
-            <Upload className="h-4 w-4" />
-            上传截图
-          </button>
-        ) : null}
-      >
-        <PageTabs activeKey="fundSwitch" tabs={primaryTabs} />
-      </PageHero>
-
+      <TopBar activeKey="fundSwitch" tabs={primaryTabs} />
       {content}
     </PageShell>
   );

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { isFundSwitchViewHash } from '../app/fundSwitch.js';
 import { PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
-import { PageHero, PageShell, PageTabs } from '../components/experience-ui.jsx';
+import { PageShell, TopBar } from '../components/experience-ui.jsx';
 import { DcaExperience } from './DcaExperience.jsx';
 import { FundSwitchExperience } from './FundSwitchExperience.jsx';
 import { HistoryExperience } from './HistoryExperience.jsx';
@@ -34,6 +35,9 @@ function buildWorkspaceUrl(tab, { inPagesDir = false } = {}) {
   const nextUrl = new URL(inPagesDir ? '../index.html' : './index.html', window.location.href);
   if (tab !== DEFAULT_WORKSPACE_TAB) {
     nextUrl.searchParams.set('tab', tab);
+  }
+  if (tab === 'fundSwitch' && isFundSwitchViewHash(window.location.hash)) {
+    nextUrl.hash = window.location.hash;
   }
   return nextUrl;
 }
@@ -96,9 +100,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   return (
     <PageShell>
-        <PageHero eyebrow="股票建仓策略看板" title={heroTitle}>
-          <PageTabs activeKey={activeTab} onSelect={handleSelectTab} tabs={tabs} />
-        </PageHero>
+      <TopBar activeKey={activeTab} onSelect={handleSelectTab} tabs={tabs} />
       {renderActivePanel()}
     </PageShell>
   );

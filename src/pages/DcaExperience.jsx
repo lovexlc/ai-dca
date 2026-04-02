@@ -6,7 +6,7 @@ import { syncTradePlanRules } from '../app/notifySync.js';
 import { readPlanList } from '../app/plan.js';
 import { getPrimaryTabs } from '../app/screens.js';
 import { showToast } from '../app/toast.js';
-import { Card, Field, NumberInput, PageHero, PageShell, PageTabs, Pill, SectionHeading, SelectField, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
+import { Card, Field, NumberInput, PageShell, Pill, SectionHeading, SelectField, StatCard, TextInput, TopBar, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 const DAY_OPTIONS = [1, 8, 15, 28];
 
@@ -289,20 +289,7 @@ export function DcaExperience({ links, embedded = false }) {
 
   return (
     <PageShell>
-      <PageHero
-        backHref={links.home}
-        backLabel="返回加仓计划"
-        eyebrow="定投计划"
-        title="定投计划"
-        description="围绕首次买入、定投金额和执行频率建立长期买入节奏；也可以直接关联一条加仓策略，让首个定投日自动套用它的首笔买入额。"
-        badges={[
-          <Pill key="cadence" tone="indigo">{projection.cadenceLabel}</Pill>,
-          <Pill key="count" tone="slate">{projection.executionCount} 次执行</Pill>
-        ]}
-      >
-        <PageTabs activeKey="dca" tabs={primaryTabs} />
-      </PageHero>
-
+      <TopBar activeKey="dca" tabs={primaryTabs} />
       {content}
     </PageShell>
   );

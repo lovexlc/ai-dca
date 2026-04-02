@@ -9,7 +9,7 @@ import { readPlanList, readPlanState, setActivePlanId } from '../app/plan.js';
 import { getPrimaryTabs } from '../app/screens.js';
 import { buildMovingAverageValues, buildNasdaqStrategyPlan, buildPeakDrawdownStrategyPlan, findLatestFiniteValue, mapReferencePrice, resolveNextTriggerLayer } from '../app/strategyEngine.js';
 import { showActionToast } from '../app/toast.js';
-import { Card, PageHero, PageShell, PageTabs, Pill, SectionHeading, SelectField, StatCard, cx, primaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
+import { Card, PageShell, Pill, SectionHeading, SelectField, StatCard, TopBar, cx, primaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
 
 const BENCHMARK_CODE = 'nas-daq100';
 const DEFAULT_WATCHLIST_CODES = [BENCHMARK_CODE, '513100', '159501', '159660'];
@@ -1995,16 +1995,7 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
 
   return (
     <PageShell>
-      <PageHero
-        eyebrow="加仓计划"
-        title="加仓计划"
-        badges={[
-          <Pill key="status" tone="indigo">{hasConfiguredPlan ? '已创建策略' : '待创建策略'}</Pill>
-        ]}
-      >
-        <PageTabs activeKey="home" tabs={primaryTabs} />
-      </PageHero>
-
+      <TopBar activeKey="home" tabs={primaryTabs} />
       {content}
     </PageShell>
   );

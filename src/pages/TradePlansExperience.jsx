@@ -4,7 +4,7 @@ import { issueNotifyGroupShareCode, joinNotifyGroup, loadNotifyEvents, loadNotif
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { getPrimaryTabs } from '../app/screens.js';
 import { showActionToast } from '../app/toast.js';
-import { Card, Field, PageHero, PageShell, PageTabs, Pill, SectionHeading, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
+import { Card, Field, PageShell, Pill, SectionHeading, StatCard, TextInput, TopBar, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 function PlanStatusPill({ tone = 'slate', children }) {
   return <Pill tone={tone}>{children}</Pill>;
@@ -60,6 +60,8 @@ function extractPurchaseAmount(row) {
   const match = summary.match(/[¥$]\s?\d+(?:\.\d+)?/);
   return match ? match[0].replace(/\s+/g, '') : '';
 }
+
+const ANDROID_APK_DOWNLOAD_URL = 'https://github.com/yukerui/ai-dca-android-notify';
 
 export function TradePlansExperience({ links, embedded = false }) {
   const [selectedRowId, setSelectedRowId] = useState('');
@@ -529,6 +531,20 @@ export function TradePlansExperience({ links, embedded = false }) {
             </div>
           }
         />
+        {notifyPlatform === 'android' ? (
+          <div className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
+            APK 下载地址：
+            <a
+              className="ml-1 inline-flex items-center gap-1 font-semibold underline underline-offset-4"
+              href={ANDROID_APK_DOWNLOAD_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {ANDROID_APK_DOWNLOAD_URL}
+              <ArrowRight className="h-4 w-4" />
+            </a>
+          </div>
+        ) : null}
         {notifyError ? (
           <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
             {notifyError}
@@ -544,9 +560,6 @@ export function TradePlansExperience({ links, embedded = false }) {
             <div className="space-y-4">
               <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
                 <div className="text-sm font-semibold text-slate-900">当前浏览器与通知共享组</div>
-                <p className="mt-2 text-sm leading-6 text-slate-500">
-                  Android app 会向 Worker 申请 8 位配对码。把 app 里显示的配对码填到这里后，这台设备会绑定到当前通知共享组。其他浏览器只要加入同一共享组，就能直接复用这台 Android app。
-                </p>
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
                   <div className="rounded-2xl bg-slate-50 px-4 py-3">
                     <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">浏览器标签</div>
@@ -810,20 +823,7 @@ export function TradePlansExperience({ links, embedded = false }) {
 
   return (
     <PageShell>
-      <PageHero
-        backHref={links.home}
-        backLabel="返回加仓计划"
-        eyebrow="交易计划"
-        title="交易计划中心"
-        description="统一查看后续买入计划、触发条件和通知状态，后续所有规则型交易计划都从这里汇总。"
-        badges={[
-          <Pill key="pending" tone="indigo">{summary.pendingCount} 项待执行</Pill>,
-          <Pill key="notify" tone="slate">{summary.notificationStatus}</Pill>
-        ]}
-      >
-        <PageTabs activeKey="tradePlans" tabs={primaryTabs} />
-      </PageHero>
-
+      <TopBar activeKey="tradePlans" tabs={primaryTabs} />
       {content}
     </PageShell>
   );

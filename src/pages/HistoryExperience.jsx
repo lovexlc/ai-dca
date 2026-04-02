@@ -3,7 +3,7 @@ import { ArrowRight, CalendarClock, Layers3, Wallet } from 'lucide-react';
 import { formatCurrency } from '../app/accumulation.js';
 import { getPrimaryTabs } from '../app/screens.js';
 import { buildTradeHistory } from '../app/tradePlans.js';
-import { Card, PageHero, PageShell, PageTabs, Pill, SectionHeading, StatCard, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
+import { Card, PageShell, Pill, SectionHeading, StatCard, TopBar, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 function HistoryStatusPill({ tone = 'slate', children }) {
   return <Pill tone={tone}>{children}</Pill>;
@@ -147,20 +147,7 @@ export function HistoryExperience({ links, embedded = false }) {
 
   return (
     <PageShell>
-      <PageHero
-        backHref={links.tradePlans}
-        backLabel="返回交易计划"
-        eyebrow="交易历史"
-        title="交易历史"
-        description="把当前已保存策略中能确定执行日期和金额的记录自动沉淀到历史页里，定投计划会按执行日入表，不再展示示例数据。"
-        badges={[
-          <Pill key="count" tone="indigo">{summary.recordCount} 条记录</Pill>,
-          <Pill key="cadence" tone="slate">{dcaMeta.cadenceLabel}</Pill>
-        ]}
-      >
-        <PageTabs activeKey="history" tabs={primaryTabs} />
-      </PageHero>
-
+      <TopBar activeKey="history" tabs={primaryTabs} />
       {content}
     </PageShell>
   );

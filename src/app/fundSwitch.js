@@ -14,6 +14,11 @@ export { FUND_SWITCH_STRATEGIES };
 const FUND_SWITCH_HISTORY_KEY = 'aiDcaFundSwitchHistory';
 const FUND_SWITCH_HISTORY_SOURCE = 'react-fund-switch-history';
 const FUND_SWITCH_HISTORY_LIMIT = 12;
+const FUND_SWITCH_DOCS_KEY = 'aiDcaFundSwitchDocs';
+const FUND_SWITCH_DOCS_SOURCE = 'react-fund-switch-docs';
+const FUND_SWITCH_DOC_LIMIT = 24;
+const FUND_SWITCH_SESSION_KEY = 'aiDcaFundSwitchSessionState';
+const FUND_SWITCH_VIEW_HASH = '#/view';
 
 function createBlankComparison() {
   return {
@@ -49,6 +54,7 @@ function createBlankRow(id = `switch-${Date.now()}`) {
 }
 
 export const defaultFundSwitchState = {
+  docId: '',
   historyEntryId: '',
   fileName: '',
   recognizedRecords: 0,
@@ -60,6 +66,7 @@ export const defaultFundSwitchState = {
 
 export function createDefaultFundSwitchState() {
   return {
+    docId: '',
     historyEntryId: '',
     fileName: '',
     recognizedRecords: 0,
@@ -76,6 +83,18 @@ function toPositiveNumber(value) {
 
 function buildHistoryEntryId() {
   return `fund-switch-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function buildFundSwitchDocId() {
+  return `fund-switch-doc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function safeDecodeHashPart(value = '') {
+  try {
+    return decodeURIComponent(String(value || ''));
+  } catch {
+    return String(value || '');
+  }
 }
 
 function hasMeaningfulRowContent(row) {
@@ -147,6 +166,7 @@ function normalizeFundSwitchHistoryEntry(entry = {}) {
     source: FUND_SWITCH_HISTORY_SOURCE,
     version: 1,
     id: String(entry.id || '').trim(),
+    docId: String(entry.docId || '').trim(),
     title: String(entry.title || '').trim() || buildFundSwitchHistoryTitle({ fileName: entry.fileName, comparison }, { comparison }),
     fileName: String(entry.fileName || '').trim(),
     historyLabel: String(entry.historyLabel || '').trim(),
@@ -165,6 +185,123 @@ function normalizeFundSwitchHistoryEntry(entry = {}) {
     createdAt,
     updatedAt
   };
+}
+
+function normalizeFundSwitchRuntimeState(state = {}) {
+  const rows = sanitizeFundSwitchRows(
+    Array.isArray(state?.rows) && state.rows.length ? state.rows : defaultFundSwitchState.rows,
+    { filterInvalid: false }
+  );
+
+  return {
+    docId: String(state?.docId || '').trim(),
+    historyEntryId: String(state?.historyEntryId || '').trim(),
+    fileName: String(state?.fileName || '').trim(),
+    recognizedRecords: Math.max(Number(state?.recognizedRecords) || 0, rows.filter((row) => hasMeaningfulRowContent(row)).length),
+    resultConfirmed: state?.resultConfirmed === true,
+    feePerTrade: round(toPositiveNumber(state?.feePerTrade), 2),
+    comparison: sanitizeFundSwitchComparison(state?.comparison),
+    rows
+  };
+}
+
+function hasRuntimePayload(state = {}) {
+  return Boolean(
+    String(state?.fileName || '').trim()
+      || Number(state?.recognizedRecords) > 0
+      || (Array.isArray(state?.rows) ? state.rows : []).some((row) => hasMeaningfulRowContent(row))
+  );
+}
+
+export function parseFundSwitchHashRoute(hash = '') {
+  const normalizedHash = String(hash || '').trim();
+  const withoutHash = normalizedHash.startsWith('#') ? normalizedHash.slice(1) : normalizedHash;
+  const normalizedPath = withoutHash || '/';
+  const viewMatch = normalizedPath.match(/^\/?view(?:\/([^/?#]+))?$/);
+
+  if (viewMatch) {
+    return {
+      mode: 'view',
+      docId: safeDecodeHashPart(viewMatch[1] || '').trim()
+    };
+  }
+
+  return {
+    mode: 'upload',
+    docId: ''
+  };
+}
+
+export function isFundSwitchViewHash(hash = '') {
+  return parseFundSwitchHashRoute(hash).mode === 'view';
+}
+
+export function buildFundSwitchViewHash(docId = '') {
+  const normalizedDocId = String(docId || '').trim();
+  return normalizedDocId ? `${FUND_SWITCH_VIEW_HASH}/${encodeURIComponent(normalizedDocId)}` : FUND_SWITCH_VIEW_HASH;
+}
+
+function normalizeFundSwitchDocumentEntry(entry = {}) {
+  const state = normalizeFundSwitchRuntimeState(entry.state || entry);
+  const normalizedState = {
+    ...state,
+    docId: String(entry.id || state.docId || '').trim()
+  };
+  const id = normalizedState.docId;
+  const createdAt = String(entry.createdAt || entry.updatedAt || '');
+  const updatedAt = String(entry.updatedAt || createdAt || '');
+
+  if (!id || !hasRuntimePayload(normalizedState)) {
+    return null;
+  }
+
+  return {
+    source: FUND_SWITCH_DOCS_SOURCE,
+    version: 1,
+    id,
+    title: String(entry.title || '').trim() || buildFundSwitchHistoryTitle(normalizedState, { comparison: normalizedState.comparison }),
+    fileName: normalizedState.fileName,
+    workflowStatus: ['idle', 'uploading', 'processing', 'ready', 'error'].includes(String(entry.workflowStatus || ''))
+      ? String(entry.workflowStatus)
+      : normalizedState.resultConfirmed ? 'ready' : 'processing',
+    ocrStatus: String(entry.ocrStatus || '').trim(),
+    ocrMessage: String(entry.ocrMessage || '').trim(),
+    ocrDurationMs: Math.max(Number(entry.ocrDurationMs) || 0, 0),
+    recognizedRecords: normalizedState.recognizedRecords,
+    resultConfirmed: normalizedState.resultConfirmed,
+    historyEntryId: normalizedState.historyEntryId,
+    createdAt,
+    updatedAt,
+    state: normalizedState
+  };
+}
+
+function readFundSwitchDocumentStore() {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const rawStore = JSON.parse(window.localStorage.getItem(FUND_SWITCH_DOCS_KEY) || 'null');
+    return (Array.isArray(rawStore?.entries) ? rawStore.entries : [])
+      .map((entry) => normalizeFundSwitchDocumentEntry(entry))
+      .filter(Boolean)
+      .sort((left, right) => String(right.updatedAt || '').localeCompare(String(left.updatedAt || '')));
+  } catch {
+    return [];
+  }
+}
+
+function persistFundSwitchDocumentStore(entries = []) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(FUND_SWITCH_DOCS_KEY, JSON.stringify({
+    source: FUND_SWITCH_DOCS_SOURCE,
+    version: 1,
+    entries
+  }));
 }
 
 function readFundSwitchHistoryStore() {
@@ -201,6 +338,83 @@ export function createEmptyFundSwitchRow() {
 
 export function deriveFundSwitchComparison(rows, comparison = {}, strategyOverride) {
   return deriveFundSwitchComparisonFromCore(rows, comparison, strategyOverride);
+}
+
+export function readFundSwitchDocuments() {
+  return readFundSwitchDocumentStore();
+}
+
+export function readFundSwitchDocument(docId = '') {
+  const normalizedDocId = String(docId || '').trim();
+  if (!normalizedDocId) {
+    return null;
+  }
+  return readFundSwitchDocumentStore().find((entry) => entry.id === normalizedDocId) || null;
+}
+
+export function buildFundSwitchStateFromDocument(entry = {}) {
+  const normalizedEntry = normalizeFundSwitchDocumentEntry(entry);
+  if (!normalizedEntry) {
+    return createDefaultFundSwitchState();
+  }
+
+  return {
+    ...normalizedEntry.state,
+    docId: normalizedEntry.id
+  };
+}
+
+function resolveDocumentWorkflowStatus(ocrState = {}, fallbackStatus = 'processing', resultConfirmed = false) {
+  const normalizedStatus = String(ocrState?.status || '').trim();
+  if (normalizedStatus === 'error') {
+    return 'error';
+  }
+  if (resultConfirmed || normalizedStatus === 'success' || normalizedStatus === 'warning') {
+    return 'ready';
+  }
+  if (normalizedStatus === 'loading') {
+    return 'processing';
+  }
+  return fallbackStatus;
+}
+
+export function saveFundSwitchDocument(state, { ocrState, workflowStatus } = {}) {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const normalizedState = normalizeFundSwitchRuntimeState(state);
+  const nextId = normalizedState.docId || buildFundSwitchDocId();
+  const currentEntries = readFundSwitchDocumentStore();
+  const existingEntry = currentEntries.find((entry) => entry.id === nextId) || null;
+  const timestamp = new Date().toISOString();
+  const nextEntry = normalizeFundSwitchDocumentEntry({
+    ...existingEntry,
+    id: nextId,
+    title: buildFundSwitchHistoryTitle({ ...normalizedState, docId: nextId }, { comparison: normalizedState.comparison }),
+    fileName: normalizedState.fileName,
+    workflowStatus: workflowStatus || resolveDocumentWorkflowStatus(ocrState, existingEntry?.workflowStatus || 'processing', normalizedState.resultConfirmed),
+    ocrStatus: ocrState?.status || existingEntry?.ocrStatus || '',
+    ocrMessage: ocrState?.message || existingEntry?.ocrMessage || '',
+    ocrDurationMs: Number(ocrState?.durationMs) > 0 ? Number(ocrState.durationMs) : Number(existingEntry?.ocrDurationMs) || 0,
+    createdAt: existingEntry?.createdAt || timestamp,
+    updatedAt: timestamp,
+    state: {
+      ...normalizedState,
+      docId: nextId
+    }
+  });
+
+  if (!nextEntry) {
+    return null;
+  }
+
+  const nextEntries = [
+    nextEntry,
+    ...currentEntries.filter((entry) => entry.id !== nextEntry.id)
+  ].slice(0, FUND_SWITCH_DOC_LIMIT);
+  persistFundSwitchDocumentStore(nextEntries);
+  return nextEntry;
 }
 
 export function buildFundSwitchSummary(state, { getCurrentPrice } = {}) {
@@ -264,12 +478,24 @@ export function readFundSwitchState() {
   }
 
   try {
-    window.localStorage.removeItem('aiDcaFundSwitchState');
+    const route = parseFundSwitchHashRoute(window.location.hash);
+    if (route.mode !== 'view') {
+      return createDefaultFundSwitchState();
+    }
+
+    if (route.docId) {
+      const documentEntry = readFundSwitchDocument(route.docId);
+      if (documentEntry) {
+        return buildFundSwitchStateFromDocument(documentEntry);
+      }
+    }
+
+    const rawStore = JSON.parse(window.sessionStorage.getItem(FUND_SWITCH_SESSION_KEY) || 'null');
+    const normalizedState = normalizeFundSwitchRuntimeState(rawStore?.state);
+    return hasRuntimePayload(normalizedState) ? normalizedState : createDefaultFundSwitchState();
   } catch (_error) {
     return createDefaultFundSwitchState();
   }
-
-  return createDefaultFundSwitchState();
 }
 
 export function persistFundSwitchState(state, computed = buildFundSwitchSummary(state)) {
@@ -278,9 +504,23 @@ export function persistFundSwitchState(state, computed = buildFundSwitchSummary(
   }
 
   try {
-    window.localStorage.removeItem('aiDcaFundSwitchState');
+    const normalizedState = normalizeFundSwitchRuntimeState({
+      ...state,
+      comparison: computed?.comparison || state?.comparison
+    });
+
+    if (!hasRuntimePayload(normalizedState)) {
+      window.sessionStorage.removeItem(FUND_SWITCH_SESSION_KEY);
+      return;
+    }
+
+    window.sessionStorage.setItem(FUND_SWITCH_SESSION_KEY, JSON.stringify({
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      state: normalizedState
+    }));
   } catch (_error) {
-    // This page intentionally does not persist user-uploaded data in the browser.
+    // Ignore transient session persistence errors.
   }
 }
 
@@ -295,6 +535,7 @@ export function buildFundSwitchStateFromHistoryEntry(entry = {}) {
   }
 
   return {
+    docId: normalizedEntry.docId || '',
     historyEntryId: normalizedEntry.id,
     fileName: normalizedEntry.fileName || normalizedEntry.title,
     recognizedRecords: normalizedEntry.recognizedRecords,
@@ -324,6 +565,7 @@ export function saveFundSwitchHistoryEntry(state, computed = buildFundSwitchSumm
   const existingEntry = currentEntries.find((entry) => entry.id === String(state?.historyEntryId || '').trim()) || null;
   const nextEntry = normalizeFundSwitchHistoryEntry({
     id: existingEntry?.id || buildHistoryEntryId(),
+    docId: String(state?.docId || '').trim(),
     title: buildFundSwitchHistoryTitle(state, computed),
     fileName: String(state?.fileName || '').trim(),
     historyLabel: buildFundSwitchHistoryTitle(state, computed),
