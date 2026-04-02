@@ -4,14 +4,16 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
   CloudUpload,
   FileImage,
+  FileSpreadsheet,
   FolderOpen,
   History,
   LoaderCircle,
   Plus,
+  Sparkles,
+  SlidersHorizontal,
+  TableProperties,
   Trash2,
   Upload
 } from 'lucide-react';
@@ -37,12 +39,14 @@ import {
   PageHero,
   PageShell,
   PageTabs,
+  Pill,
   SectionHeading,
   TextInput,
   cx,
   inputClass,
   primaryButtonClass,
   secondaryButtonClass,
+  subtleButtonClass,
   tableInputClass
 } from '../components/experience-ui.jsx';
 import { getPrimaryTabs } from '../app/screens.js';
@@ -57,6 +61,24 @@ const STRATEGY_DESCRIPTIONS = {
   trace: '推荐。把中间几次换仓一起算进去，更接近“如果当初不换，现在值多少”。',
   direct: '只判断最后一步换仓是否划算，不追溯更早的来源基金。'
 };
+const LANDING_QUESTIONS = [
+  '如果当初不换，现在值多少？',
+  '换到现在这只后，当前多赚还是少赚？',
+  '中间补进去的钱算进去了吗？',
+  '哪几笔识别结果需要我手动改？'
+];
+const LANDING_OUTCOMES = [
+  '识别截图里的买入和卖出记录',
+  '自动回放来源仓位和目标仓位',
+  '按最新价格重算当前切换收益',
+  '保存历史分析，后续一键打开重算'
+];
+const WORKSPACE_PANELS = [
+  { key: 'details', label: '识别明细', Icon: TableProperties },
+  { key: 'summary', label: '收益摘要', Icon: Sparkles },
+  { key: 'settings', label: '计算参数', Icon: SlidersHorizontal },
+  { key: 'history', label: '历史分析', Icon: History }
+];
 
 function createOcrState(overrides = {}) {
   return {
@@ -265,28 +287,6 @@ function summarizeValidationIssues(issues = []) {
 
   const preview = issues.slice(0, 2).join('；');
   return issues.length > 2 ? `${preview}；另有 ${issues.length - 2} 项待修正。` : preview;
-}
-
-function buildOcrPreviewRows(rows = []) {
-  const previewRows = rows
-    .filter((row) => String(row?.date || '').trim() || String(row?.code || '').trim() || Number(row?.shares) > 0 || Number(row?.price) > 0)
-    .slice(0, 3)
-    .map((row) => {
-      const dateText = String(row?.date || '').trim();
-      const priceValue = Number(row?.price) || 0;
-      return {
-        id: row.id || `${row.code}-${dateText}`,
-        code: String(row?.code || '').trim() || '待补代码',
-        type: String(row?.type || '').trim() || '--',
-        shares: Number(row?.shares) > 0 ? `${row.shares} 份` : '--',
-        detail: [dateText || '待补日期', priceValue > 0 ? `价格 ${priceValue.toFixed(4)}` : '待补价格'].join('，')
-      };
-    });
-
-  return {
-    rows: previewRows,
-    hasMore: rows.filter((row) => String(row?.date || '').trim() || String(row?.code || '').trim() || Number(row?.shares) > 0 || Number(row?.price) > 0).length > previewRows.length
-  };
 }
 
 function StrategyToggle({ strategy, onChange }) {
@@ -547,6 +547,251 @@ function FundSwitchHistorySection({ entries, activeEntryId, onOpen, onDelete }) 
   );
 }
 
+function LandingQuestionChip({ children, tone = 'slate' }) {
+  const toneClassName = tone === 'indigo'
+    ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+    : 'border-slate-200 bg-white text-slate-600';
+
+  return (
+    <div className={cx('inline-flex items-center rounded-full border px-3 py-2 text-xs font-semibold shadow-sm shadow-slate-100/80', toneClassName)}>
+      {children}
+    </div>
+  );
+}
+
+function LandingStepCard({ index, title, description }) {
+  return (
+    <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-100/70">
+      <div className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">
+        {index}
+      </div>
+      <div className="mt-4 text-sm font-bold text-slate-900">{title}</div>
+      <div className="mt-2 text-sm leading-6 text-slate-500">{description}</div>
+    </div>
+  );
+}
+
+function WorkspaceNavButton({ panel, active, onSelect, badge = '' }) {
+  const { key, label, Icon } = panel;
+
+  return (
+    <button
+      className={cx(
+        'inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all',
+        active ? 'bg-slate-900 text-white shadow-sm shadow-slate-200' : 'bg-white text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+      )}
+      type="button"
+      onClick={() => onSelect(key)}
+    >
+      <Icon className="h-4 w-4" />
+      {label}
+      {badge ? (
+        <span className={cx('rounded-full px-2 py-0.5 text-[10px] font-bold', active ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-500')}>
+          {badge}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function ReadonlyTransactionsTable({ rows = [] }) {
+  const meaningfulRows = rows.filter((row) => hasMeaningfulRowContent(row));
+
+  if (!meaningfulRows.length) {
+    return (
+      <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-12 text-center text-sm leading-6 text-slate-500">
+        识别完成后，这里会像工作表一样展示回填后的交易明细。
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm shadow-slate-100/80">
+      <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-rose-300" />
+            <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
+          </div>
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">已回填交易表</div>
+        </div>
+        <div className="text-xs text-slate-500">{meaningfulRows.length} 条识别记录</div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="min-w-full whitespace-nowrap text-left text-sm">
+          <thead className="border-b border-slate-200 bg-white text-xs uppercase tracking-[0.14em] text-slate-400">
+            <tr>
+              <th className="px-4 py-3 font-semibold">日期</th>
+              <th className="px-4 py-3 font-semibold">基金代码</th>
+              <th className="px-4 py-3 font-semibold">交易类型</th>
+              <th className="px-4 py-3 font-semibold">价格</th>
+              <th className="px-4 py-3 font-semibold">份额</th>
+              <th className="px-4 py-3 font-semibold">成交额</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 bg-white">
+            {meaningfulRows.map((row) => (
+              <tr key={row.id} className="hover:bg-slate-50/80">
+                <td className="px-4 py-3 font-medium text-slate-700">{row.date || '--'}</td>
+                <td className="px-4 py-3 font-semibold text-slate-900">{row.code || '--'}</td>
+                <td className="px-4 py-3">
+                  <span className={cx(
+                    'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',
+                    row.type === '卖出' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                  )}>
+                    {row.type || '--'}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-slate-600">{Number(row.price) > 0 ? Number(row.price).toFixed(4) : '--'}</td>
+                <td className="px-4 py-3 text-slate-600">{Number(row.shares) > 0 ? row.shares : '--'}</td>
+                <td className="px-4 py-3 font-semibold text-slate-800">{Number(row.amount) > 0 ? formatCurrency(row.amount, '¥ ') : '--'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function SidebarQuickStat({ label, value, tone = 'slate' }) {
+  return (
+    <div className={cx(
+      'rounded-2xl border px-3 py-3',
+      tone === 'positive' ? 'border-emerald-200 bg-emerald-50' : tone === 'negative' ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-slate-50'
+    )}>
+      <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">{label}</div>
+      <div className={cx(
+        'mt-1 text-sm font-extrabold',
+        tone === 'positive' ? 'text-emerald-700' : tone === 'negative' ? 'text-red-600' : 'text-slate-800'
+      )}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function AnalysisWorkspaceSidebar({
+  fileName,
+  statusMeta,
+  effectiveOcrMessage,
+  ocrState,
+  recognizedCount,
+  resultConfirmed,
+  summary,
+  validationIssueSummary,
+  onReupload,
+  onEdit,
+  onReset,
+  onShowSummary,
+  onShowHistory,
+  historyEntries = []
+}) {
+  const latestHistoryEntries = historyEntries.slice(0, 3);
+  const hasConfirmedResult = resultConfirmed;
+  const quickTone = summary.switchAdvantage > 0 ? 'positive' : summary.switchAdvantage < 0 ? 'negative' : 'slate';
+
+  return (
+    <aside className="flex h-full flex-col gap-4 bg-white p-4 sm:p-5">
+      <button className="inline-flex items-center gap-2 self-start text-sm font-semibold text-slate-500 transition-colors hover:text-slate-800" type="button" onClick={onReset}>
+        返回上传入口
+      </button>
+
+      <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4 shadow-sm shadow-slate-100/70">
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500">
+            <FileImage className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">当前截图</div>
+            <div className="mt-2 truncate text-sm font-bold text-slate-900">{fileName || '未命名文件'}</div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className={cx('inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold', statusMeta.colorClass)}>
+                <statusMeta.Icon className={cx('h-4 w-4', statusMeta.iconClassName)} />
+                {statusMeta.label}
+              </span>
+              <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">
+                {recognizedCount} 条记录
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-white/80 bg-white px-4 py-4">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 rounded-full bg-indigo-50 p-2 text-indigo-600">
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-bold text-slate-900">
+                {hasConfirmedResult ? '当前收益判断已生成' : '识别明细已回填，等待你确认'}
+              </div>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                {hasConfirmedResult ? effectiveOcrMessage : validationIssueSummary || effectiveOcrMessage}
+              </p>
+              {ocrState.durationMs > 0 ? (
+                <div className="mt-2 text-xs font-semibold text-slate-400">OCR 用时约 {(ocrState.durationMs / 1000).toFixed(1)} 秒</div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+          <SidebarQuickStat label="当前口径" value={hasConfirmedResult ? STRATEGY_LABELS[summary.strategy] : '待确认'} />
+          <SidebarQuickStat
+            label="切换额外收益"
+            value={hasConfirmedResult ? formatSignedCurrency(summary.switchAdvantage, '¥ ') : '待生成'}
+            tone={hasConfirmedResult ? quickTone : 'slate'}
+          />
+          <SidebarQuickStat label="不切换现值" value={hasConfirmedResult ? formatCurrency(summary.stayValue, '¥ ') : '--'} />
+          <SidebarQuickStat label="换后现值" value={hasConfirmedResult ? formatCurrency(summary.switchedValue, '¥ ') : '--'} />
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+        <button className={cx(primaryButtonClass, 'w-full')} type="button" onClick={hasConfirmedResult ? onShowSummary : onEdit}>
+          {hasConfirmedResult ? '查看收益摘要' : '去确认识别明细'}
+        </button>
+        <button className={cx(secondaryButtonClass, 'w-full')} type="button" onClick={onEdit}>
+          修改识别明细
+        </button>
+        <button className={cx(subtleButtonClass, 'w-full')} type="button" onClick={onReupload}>
+          重新上传
+        </button>
+        <button className={cx(subtleButtonClass, 'w-full')} type="button" onClick={onShowHistory}>
+          历史分析
+        </button>
+      </div>
+
+      {latestHistoryEntries.length ? (
+        <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">最近历史</div>
+              <div className="mt-1 text-sm font-bold text-slate-900">可以直接打开后重算</div>
+            </div>
+            <Pill tone="slate">{historyEntries.length} 条</Pill>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {latestHistoryEntries.map((entry) => (
+              <div key={entry.id} className="rounded-2xl border border-white/80 bg-white px-3 py-3">
+                <div className="truncate text-sm font-semibold text-slate-800">{entry.title}</div>
+                <div className="mt-1 text-xs text-slate-400">{formatDateTimeLabel(entry.updatedAt)}</div>
+                <div className="mt-2 text-xs font-semibold text-slate-500">
+                  上次结果 {formatSignedCurrency(entry.snapshot.switchAdvantage, '¥ ')}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </aside>
+  );
+}
+
 function TransactionEditorCard({ row, index, codeError, onUpdateRow, onRemoveRow }) {
   return (
     <div className="rounded-[24px] border border-slate-200 bg-slate-50/90 p-4 shadow-sm shadow-slate-100/70">
@@ -620,74 +865,6 @@ function TransactionEditorCard({ row, index, codeError, onUpdateRow, onRemoveRow
   );
 }
 
-function CompactOcrStatusCard({ fileName, statusMeta, recognizedCount, resultConfirmed, previewRows, hasMorePreviewRows, onReupload, onEdit, onReset }) {
-  return (
-    <Card className="p-4 sm:p-5">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3">
-          <div className="min-w-0">
-            <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">识别状态</div>
-            <div className="mt-2 truncate text-base font-bold text-slate-800">{fileName || '未命名文件'}</div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={cx('inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold', statusMeta.colorClass)}>
-              <statusMeta.Icon className={cx('h-4 w-4', statusMeta.iconClassName)} />
-              {statusMeta.label}
-            </span>
-            <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">
-              {recognizedCount} 条记录
-            </span>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-          <span className={cx('rounded-full px-2.5 py-1 font-semibold', resultConfirmed ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700')}>
-            {resultConfirmed ? '已生成结果摘要' : '待确认识别明细'}
-          </span>
-        </div>
-
-        <div className="overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">识别结果预览</div>
-          {previewRows.length ? (
-            <div className="mt-3 overflow-hidden rounded-xl border border-slate-100 bg-white">
-              {previewRows.map((row) => (
-                <div key={row.id} className="border-b border-slate-100 last:border-b-0">
-                  <div className="grid grid-cols-[1.1fr,0.8fr,1fr] gap-3 px-3 py-2.5 text-sm font-semibold text-slate-700">
-                    <div className="truncate">{row.code}</div>
-                    <div className={cx('truncate', row.type === '卖出' ? 'text-emerald-600' : row.type === '买入' ? 'text-red-600' : 'text-slate-500')}>{row.type}</div>
-                    <div className="truncate text-right">{row.shares}</div>
-                  </div>
-                  <div className="truncate px-3 pb-2.5 text-[11px] leading-5 text-slate-400">{row.detail}</div>
-                </div>
-              ))}
-              {hasMorePreviewRows ? (
-                <div className="px-3 py-2 text-center text-sm font-semibold text-slate-400">...</div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-white px-3 py-4 text-sm text-slate-400">识别结果会在这里显示。</div>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <button className={secondaryButtonClass} type="button" onClick={onReupload}>
-            <Upload className="h-4 w-4" />
-            重新上传
-          </button>
-          <button className="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-100" type="button" onClick={onEdit}>
-            修改识别明细
-          </button>
-        </div>
-
-        <button className="text-sm font-semibold text-slate-500 transition-colors hover:text-slate-700" type="button" onClick={onReset}>
-          返回上传入口
-        </button>
-      </div>
-    </Card>
-  );
-}
-
 function PendingResultCard({ issueSummary, onEdit }) {
   return (
     <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-5 sm:p-6">
@@ -713,48 +890,12 @@ function PendingResultCard({ issueSummary, onEdit }) {
   );
 }
 
-function EditingSummaryStrip({ strategy, recognizedCount, onExit, onReset }) {
-  return (
-    <Card className="p-4 sm:p-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">编辑状态</div>
-          <div className="mt-2 text-sm font-semibold text-slate-500">正在编辑识别明细，确认后会重新计算摘要结果。</div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button className="inline-flex items-center gap-2 self-start rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-200 sm:self-auto" type="button" onClick={onExit}>
-            返回摘要
-          </button>
-          <button className="text-sm font-semibold text-slate-500 transition-colors hover:text-slate-700" type="button" onClick={onReset}>
-            返回上传入口
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-4 grid grid-cols-3 gap-3">
-        <div className="rounded-2xl bg-slate-50 px-3 py-3">
-          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">状态</div>
-          <div className="mt-1 text-sm font-extrabold text-slate-800">待确认</div>
-        </div>
-        <div className="rounded-2xl bg-slate-50 px-3 py-3">
-          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">口径</div>
-          <div className="mt-1 text-sm font-extrabold text-slate-800">{STRATEGY_LABELS[strategy]}</div>
-        </div>
-        <div className="rounded-2xl bg-slate-50 px-3 py-3">
-          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">条目</div>
-          <div className="mt-1 text-sm font-extrabold text-slate-800">{recognizedCount}</div>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
 export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   const [state, setState] = useState(() => readFundSwitchState());
   const [historyEntries, setHistoryEntries] = useState(() => readFundSwitchHistory());
   const [ocrState, setOcrState] = useState(() => createOcrState());
   const [isEditingDetails, setIsEditingDetails] = useState(false);
-  const [showCalculationDetails, setShowCalculationDetails] = useState(false);
+  const [activeWorkspacePanel, setActiveWorkspacePanel] = useState(() => (state.resultConfirmed ? 'summary' : 'details'));
   const [confirmError, setConfirmError] = useState('');
   const [priceState, setPriceState] = useState(() => ({ status: 'idle', entries: [], error: '' }));
   const fileInputRef = useRef(null);
@@ -781,17 +922,11 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   const effectiveOcrMessage = hasImportedData && ocrState.status === 'idle'
     ? `已同步 ${recognizedCount} 条记录，可继续确认收益或修改明细。`
     : ocrState.message;
-  const ocrPreview = useMemo(() => buildOcrPreviewRows(summary.rows), [summary.rows]);
   const validationIssues = useMemo(() => buildRowValidationIssues(summary.rows), [summary.rows]);
   const validationIssueSummary = useMemo(() => summarizeValidationIssues(validationIssues), [validationIssues]);
   const statusMeta = getStatusMeta(effectiveOcrStatus);
   const primaryTabs = getPrimaryTabs(links);
   const advantageMeta = getAdvantageTone(summary.switchAdvantage);
-  const shouldShowBottomAdvantage = state.resultConfirmed && !isEditingDetails;
-  const bottomAdvantageText = shouldShowBottomAdvantage ? formatSignedCurrency(summary.switchAdvantage, '¥ ') : '待重算';
-  const bottomAdvantageTone = shouldShowBottomAdvantage
-    ? (summary.switchAdvantage >= 0 ? 'text-emerald-600' : 'text-red-600')
-    : 'text-slate-500';
 
   useEffect(() => {
     persistFundSwitchState({ ...state, comparison: summary.comparison }, summary);
@@ -973,6 +1108,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
 
   async function processOcrFile(file) {
     setOcrState(createOcrState({ status: 'loading', progress: 12, message: '准备上传截图' }));
+    setActiveWorkspacePanel('details');
     try {
       const { recognizeFundSwitchFile } = await import('../app/fundSwitchOcr.js');
       const result = await recognizeFundSwitchFile(file, state.comparison, (progress) => {
@@ -994,7 +1130,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
       }));
       setConfirmError('');
       setIsEditingDetails(false);
-      setShowCalculationDetails(false);
+      setActiveWorkspacePanel('details');
 
       if (result.rows.length) {
         const hasWarnings = Array.isArray(result.warnings) && result.warnings.length > 0;
@@ -1041,16 +1177,24 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     setOcrState(createOcrState());
     setConfirmError('');
     setIsEditingDetails(false);
-    setShowCalculationDetails(false);
+    setActiveWorkspacePanel('details');
   }
 
   function openDetailEditor() {
     setIsEditingDetails(true);
-    setShowCalculationDetails(false);
+    setActiveWorkspacePanel('details');
   }
 
   function closeDetailEditor() {
     setIsEditingDetails(false);
+    setActiveWorkspacePanel(state.resultConfirmed ? 'summary' : 'details');
+  }
+
+  function selectWorkspacePanel(panelKey) {
+    setActiveWorkspacePanel(panelKey);
+    if (panelKey !== 'details') {
+      setIsEditingDetails(false);
+    }
   }
 
   function handleDrop(event) {
@@ -1076,7 +1220,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
       const message = summarizeValidationIssues(validationIssues);
       setConfirmError(message);
       setIsEditingDetails(true);
-      setShowCalculationDetails(false);
       showActionToast(actionLabel, 'error', {
         description: message
       });
@@ -1097,7 +1240,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
       historyEntryId: savedEntry?.id || nextState.historyEntryId
     });
     setIsEditingDetails(false);
-    setShowCalculationDetails(false);
+    setActiveWorkspacePanel('summary');
     showActionToast(actionLabel, 'success');
   }
 
@@ -1112,7 +1255,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     }));
     setConfirmError('');
     setIsEditingDetails(false);
-    setShowCalculationDetails(false);
+    setActiveWorkspacePanel('summary');
     showActionToast('打开历史分析', 'success', {
       description: '已载入历史记录，当前页面会直接用最新价格重算。'
     });
@@ -1127,322 +1270,494 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     showActionToast('删除历史分析', 'success');
   }
 
-  const content = (
-    <>
-      <div className="mx-auto max-w-6xl space-y-4 px-4 pt-6 sm:space-y-6 sm:px-6 sm:pt-8">
-        {!hasImportedData ? (
-          <Card className="flex flex-col p-4 sm:p-6">
-            <SectionHeading eyebrow="识别导入" title="交易凭证导入" description={statusMeta.detail} />
-
-            <button
-              className={cx(
-                'mt-5 flex min-h-[200px] flex-1 flex-col items-center justify-center rounded-[28px] border-2 border-dashed p-5 text-center transition-all sm:mt-6 sm:min-h-[220px] sm:rounded-[24px] sm:p-6',
-                ocrState.status === 'loading' ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 hover:border-indigo-400 hover:bg-slate-50'
-              )}
-              onClick={openFilePicker}
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
-              type="button"
-            >
-              {ocrState.status === 'loading' ? (
-                <LoaderCircle className="mb-3 h-10 w-10 animate-spin text-indigo-500" />
-              ) : (
-                <CloudUpload className="mb-3 h-10 w-10 text-slate-400" />
-              )}
-              <div className="font-semibold text-slate-700">点击或拖拽上传截图</div>
-              <div className="mt-1 text-xs text-slate-500">支持常见图片格式</div>
-              {ocrState.status === 'idle' ? null : (
-                <div className="mt-4 w-full max-w-xs">
-                  <div className="mb-1.5 flex items-center justify-between text-xs font-medium text-slate-500">
-                    <span>识别进度</span>
-                    <span className="text-indigo-600">{ocrState.progress}%</span>
-                  </div>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                    <div className="h-full rounded-full bg-indigo-500 transition-all duration-300" style={{ width: `${ocrState.progress}%` }} />
-                  </div>
-                </div>
-              )}
+  const detailsPanel = isEditingDetails ? (
+    <div className="space-y-5">
+      <SectionHeading
+        eyebrow="可编辑工作表"
+        title="交易数据明细"
+        description="识别结果需要修正时，在这里直接改。确认后会立刻按最新价格重新计算收益。"
+        action={(
+          <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:w-auto">
+            <button className={cx(secondaryButtonClass, 'w-full')} type="button" onClick={closeDetailEditor}>
+              返回摘要
             </button>
+            <button className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 sm:w-auto" type="button" onClick={addRow}>
+              <Plus className="h-4 w-4" />
+              新增条目
+            </button>
+          </div>
+        )}
+      />
 
-            {(ocrState.status !== 'idle' || state.fileName) && (
-              <div className="mt-4 flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3">
-                <FileImage className="h-8 w-8 shrink-0 text-slate-400" />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-semibold text-slate-700">{state.fileName || '未命名文件'}</div>
-                  <div className="mt-0.5 text-xs text-slate-500">{effectiveOcrMessage}</div>
-                  {ocrState.error ? <div className="mt-2 text-xs text-red-500">{ocrState.error}</div> : null}
-                  {priceState.status === 'error' ? <div className="mt-2 text-xs text-amber-600">{priceState.error}</div> : null}
-                </div>
-              </div>
-            )}
-          </Card>
-        ) : isEditingDetails ? (
-          <>
-            <EditingSummaryStrip
-              strategy={summary.strategy}
-              recognizedCount={recognizedCount}
-              onExit={closeDetailEditor}
-              onReset={resetToUploadEntry}
-            />
+      {confirmError ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          {confirmError}
+        </div>
+      ) : null}
 
-            <Card className="overflow-hidden p-0">
-              <div className="flex flex-col justify-between gap-4 border-b border-slate-200 bg-white p-4 sm:p-6 md:flex-row md:items-center">
-                <SectionHeading
-                  eyebrow="明细编辑"
-                  title="交易数据明细"
-                  description="识别结果需要修正时，在这里集中修改；确认后会自动重新计算摘要结果。"
-                />
-                <div className="grid w-full grid-cols-2 gap-3 md:flex md:w-auto md:items-center">
-                  <button className={cx(secondaryButtonClass, 'w-full')} type="button" onClick={closeDetailEditor}>
-                    返回摘要
-                  </button>
-                  <button className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-100" type="button" onClick={addRow}>
-                    <Plus className="h-4 w-4" />
-                    新增条目
-                  </button>
-                </div>
-              </div>
+      <div className="space-y-3 md:hidden">
+        {summary.rows.map((row, index) => (
+          <TransactionEditorCard
+            key={row.id}
+            row={row}
+            index={index}
+            codeError={getFundCodeError(row.code)}
+            onUpdateRow={updateRow}
+            onRemoveRow={removeRow}
+          />
+        ))}
+      </div>
 
-              {confirmError ? (
-                <div className="border-b border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600 sm:px-6">
-                  {confirmError}
-                </div>
-              ) : null}
-
-              <div className="space-y-3 p-4 md:hidden">
-                {summary.rows.map((row, index) => (
-                  <TransactionEditorCard
-                    key={row.id}
-                    row={row}
-                    index={index}
-                    codeError={getFundCodeError(row.code)}
-                    onUpdateRow={updateRow}
-                    onRemoveRow={removeRow}
-                  />
-                ))}
-              </div>
-
-              <div className="hidden overflow-x-auto md:block">
-                <table className="w-full whitespace-nowrap text-left text-sm">
-                  <thead className="border-b border-slate-200 bg-slate-50/80 text-xs uppercase text-slate-500">
-                    <tr>
-                      <th className="px-6 py-4 font-semibold">日期</th>
-                      <th className="px-6 py-4 font-semibold">基金代码</th>
-                      <th className="px-6 py-4 font-semibold">交易类型</th>
-                      <th className="px-6 py-4 font-semibold">价格</th>
-                      <th className="px-6 py-4 font-semibold">份额 (股数)</th>
-                      <th className="px-6 py-4 font-semibold">成交额</th>
-                      <th className="w-16 px-6 py-4 text-right font-semibold">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {summary.rows.map((row, index) => {
-                      const codeError = getFundCodeError(row.code);
-                      return (
-                        <tr key={row.id} className="group transition-colors hover:bg-slate-50/50">
-                          <td className="px-6 py-3">
-                            <input className={cx(tableInputClass, 'w-36')} placeholder="例如 2026-03-29" value={row.date} onChange={(event) => updateRow(index, 'date', event.target.value)} />
-                          </td>
-                          <td className="px-6 py-3">
-                            <div className="relative">
-                              <input
-                                className={cx(
-                                  tableInputClass,
-                                  'w-32',
-                                  codeError ? 'border-red-300 text-red-900 focus:border-red-500' : 'border-transparent'
-                                )}
-                                placeholder="纯数字代码"
-                                value={row.code}
-                                onChange={(event) => updateRow(index, 'code', event.target.value)}
-                              />
-                              {codeError ? <div className="absolute left-0 top-10 z-10 rounded bg-red-600 px-2 py-1 text-[10px] text-white shadow-sm">{codeError}</div> : null}
-                            </div>
-                          </td>
-                          <td className="px-6 py-3">
-                            <select
-                              className={cx(
-                                'rounded-lg border px-3 py-2 pr-8 text-sm font-semibold outline-none transition-all',
-                                row.type === '卖出'
-                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                                  : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
-                              )}
-                              value={row.type}
-                              onChange={(event) => updateRow(index, 'type', event.target.value)}
-                            >
-                              <option value="卖出">卖出</option>
-                              <option value="买入">买入</option>
-                            </select>
-                          </td>
-                          <td className="px-6 py-3">
-                            <input className={cx(tableInputClass, 'w-28')} step="0.0001" type="number" placeholder="0.0000" value={row.price} onChange={(event) => updateRow(index, row.type === '卖出' ? 'sellPrice' : 'buyPrice', event.target.value)} />
-                          </td>
-                          <td className="px-6 py-3">
-                            <input className={cx(tableInputClass, 'w-32')} step="0.01" type="number" placeholder="0.00" value={row.shares} onChange={(event) => updateRow(index, 'shares', event.target.value)} />
-                          </td>
-                          <td className="px-6 py-3">
-                            <div className="w-28 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 font-semibold text-slate-600">{formatCurrency(row.amount, '¥ ')}</div>
-                          </td>
-                          <td className="px-6 py-3 text-right">
-                            <button className="rounded-lg p-2 text-slate-400 opacity-0 transition-colors group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 focus:opacity-100" type="button" onClick={() => removeRow(index)} title="删除记录">
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </>
-        ) : (
-          <>
-            <div className="grid gap-4 lg:grid-cols-[1.1fr,1.9fr]">
-              <CompactOcrStatusCard
-                fileName={state.fileName}
-                statusMeta={statusMeta}
-                recognizedCount={recognizedCount}
-                resultConfirmed={state.resultConfirmed}
-                previewRows={ocrPreview.rows}
-                hasMorePreviewRows={ocrPreview.hasMore}
-                onReupload={openFilePicker}
-                onEdit={openDetailEditor}
-                onReset={resetToUploadEntry}
-              />
-
-              <Card className="p-4 sm:p-6">
-                <SectionHeading eyebrow={state.resultConfirmed ? '结果摘要' : '待确认'} title={state.resultConfirmed ? '当前切换判断' : '等待确认识别明细'} />
-
-                <div className="mt-5 space-y-3 sm:space-y-4">
-                  {state.resultConfirmed ? (
-                    <>
-                      <SummaryValueCard
-                        value={formatSignedCurrency(summary.switchAdvantage, '')}
-                        advantageMeta={advantageMeta}
-                        strategy={summary.strategy}
-                        onStrategyChange={updateStrategy}
-                      />
-
-                      <div className="grid gap-3 lg:grid-cols-2">
-                        <PositionValueCard
-                          title="如果不换，现在值多少"
-                          value={formatCurrency(summary.stayValue, '¥ ')}
-                          positions={summary.sourcePositions}
-                          priceSnapshotByCode={priceSnapshotByCode}
-                          emptyText="尚未回放出来源持仓，请先确认交易数据。"
+      <div className="hidden overflow-hidden rounded-[24px] border border-slate-200 bg-white md:block">
+        <div className="overflow-x-auto">
+          <table className="w-full whitespace-nowrap text-left text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50/80 text-xs uppercase text-slate-500">
+              <tr>
+                <th className="px-6 py-4 font-semibold">日期</th>
+                <th className="px-6 py-4 font-semibold">基金代码</th>
+                <th className="px-6 py-4 font-semibold">交易类型</th>
+                <th className="px-6 py-4 font-semibold">价格</th>
+                <th className="px-6 py-4 font-semibold">份额 (股数)</th>
+                <th className="px-6 py-4 font-semibold">成交额</th>
+                <th className="w-16 px-6 py-4 text-right font-semibold">操作</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {summary.rows.map((row, index) => {
+                const codeError = getFundCodeError(row.code);
+                return (
+                  <tr key={row.id} className="group transition-colors hover:bg-slate-50/50">
+                    <td className="px-6 py-3">
+                      <input className={cx(tableInputClass, 'w-36')} placeholder="例如 2026-03-29" value={row.date} onChange={(event) => updateRow(index, 'date', event.target.value)} />
+                    </td>
+                    <td className="px-6 py-3">
+                      <div className="relative">
+                        <input
+                          className={cx(
+                            tableInputClass,
+                            'w-32',
+                            codeError ? 'border-red-300 text-red-900 focus:border-red-500' : 'border-transparent'
+                          )}
+                          placeholder="纯数字代码"
+                          value={row.code}
+                          onChange={(event) => updateRow(index, 'code', event.target.value)}
                         />
-                        <PositionValueCard
-                          title="换到现在这只后，值多少"
-                          value={formatCurrency(summary.switchedValue, '¥ ')}
-                          positions={summary.targetPositions}
-                          priceSnapshotByCode={priceSnapshotByCode}
-                          emptyText="尚未回放出目标持仓，请先确认交易数据。"
-                        />
+                        {codeError ? <div className="absolute left-0 top-10 z-10 rounded bg-red-600 px-2 py-1 text-[10px] text-white shadow-sm">{codeError}</div> : null}
                       </div>
+                    </td>
+                    <td className="px-6 py-3">
+                      <select
+                        className={cx(
+                          'rounded-lg border px-3 py-2 pr-8 text-sm font-semibold outline-none transition-all',
+                          row.type === '卖出'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                            : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
+                        )}
+                        value={row.type}
+                        onChange={(event) => updateRow(index, 'type', event.target.value)}
+                      >
+                        <option value="卖出">卖出</option>
+                        <option value="买入">买入</option>
+                      </select>
+                    </td>
+                    <td className="px-6 py-3">
+                      <input className={cx(tableInputClass, 'w-28')} step="0.0001" type="number" placeholder="0.0000" value={row.price} onChange={(event) => updateRow(index, row.type === '卖出' ? 'sellPrice' : 'buyPrice', event.target.value)} />
+                    </td>
+                    <td className="px-6 py-3">
+                      <input className={cx(tableInputClass, 'w-32')} step="0.01" type="number" placeholder="0.00" value={row.shares} onChange={(event) => updateRow(index, 'shares', event.target.value)} />
+                    </td>
+                    <td className="px-6 py-3">
+                      <div className="w-28 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 font-semibold text-slate-600">{formatCurrency(row.amount, '¥ ')}</div>
+                    </td>
+                    <td className="px-6 py-3 text-right">
+                      <button className="rounded-lg p-2 text-slate-400 opacity-0 transition-colors group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 focus:opacity-100" type="button" onClick={() => removeRow(index)} title="删除记录">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <CompactMetricCard
-                          title="现持仓浮盈"
-                          value={formatSignedCurrency(summary.switchedPositionProfit, '¥ ')}
-                          note="现值 - 成本 - 手续费"
-                          tone={summary.switchedPositionProfit >= 0 ? 'positive' : 'negative'}
-                        />
-                        <CompactMetricCard title="预估处理金额" value={formatCurrency(summary.processedAmount, '¥ ')} note="已识别记录累计成交额" />
-                      </div>
-                    </>
-                  ) : (
-                    <PendingResultCard issueSummary={confirmError || validationIssueSummary} onEdit={openDetailEditor} />
-                  )}
-                </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
+        <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={closeDetailEditor}>
+          返回摘要
+        </button>
+        <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={handleConfirmDataAndYield}>
+          确认修改并重新计算
+          <ArrowRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  ) : (
+    <div className="space-y-5">
+      <SectionHeading
+        eyebrow="识别明细"
+        title="OCR 回填结果"
+        description="上传后的第一步先确认这里。它会像工作表一样把每条买入、卖出、价格和份额铺开。"
+        action={(
+          <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={openDetailEditor}>
+            修改识别明细
+          </button>
+        )}
+      />
 
-                {state.resultConfirmed && summary.missingPriceCodes.length ? (
-                  <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
-                    以下基金暂未匹配到现价，请在下方参数面板中手动补入：{summary.missingPriceCodes.join('、')}
-                  </div>
-                ) : null}
-              </Card>
+      {confirmError ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          {confirmError}
+        </div>
+      ) : null}
+
+      {!state.resultConfirmed && validationIssueSummary ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {validationIssueSummary}
+        </div>
+      ) : null}
+
+      <ReadonlyTransactionsTable rows={summary.rows} />
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        <CompactMetricCard title="识别条目" value={`${recognizedCount} 条`} note="有效买卖记录数量" />
+        <CompactMetricCard title="预估处理金额" value={formatCurrency(summary.processedAmount, '¥ ')} note="按当前识别结果汇总" />
+        <CompactMetricCard title="当前状态" value={state.resultConfirmed ? '已生成收益' : '待确认'} note={state.resultConfirmed ? '可以继续改口径或补现价' : '确认后才会生成收益判断'} />
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
+        <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={openDetailEditor}>
+          修改识别明细
+        </button>
+        <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={handleConfirmDataAndYield}>
+          {state.resultConfirmed ? '确认数据与收益' : '校验并生成结果'}
+          <ArrowRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+
+  const summaryPanel = state.resultConfirmed ? (
+    <div className="space-y-5">
+      <SectionHeading
+        eyebrow="收益摘要"
+        title="当前切换判断"
+        description="这里直接回答两个问题：如果不换，现在值多少；换成现在这只后，当前值多少。"
+        action={(
+          <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={() => selectWorkspacePanel('settings')}>
+            去调计算参数
+          </button>
+        )}
+      />
+
+      <SummaryValueCard
+        value={formatSignedCurrency(summary.switchAdvantage, '')}
+        advantageMeta={advantageMeta}
+        strategy={summary.strategy}
+        onStrategyChange={updateStrategy}
+      />
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <PositionValueCard
+          title="如果不换，现在值多少"
+          value={formatCurrency(summary.stayValue, '¥ ')}
+          positions={summary.sourcePositions}
+          priceSnapshotByCode={priceSnapshotByCode}
+          emptyText="尚未回放出来源持仓，请先确认交易数据。"
+        />
+        <PositionValueCard
+          title="换到现在这只后，值多少"
+          value={formatCurrency(summary.switchedValue, '¥ ')}
+          positions={summary.targetPositions}
+          priceSnapshotByCode={priceSnapshotByCode}
+          emptyText="尚未回放出目标持仓，请先确认交易数据。"
+        />
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <CompactMetricCard
+          title="现持仓浮盈"
+          value={formatSignedCurrency(summary.switchedPositionProfit, '¥ ')}
+          note="现值 - 成本 - 手续费"
+          tone={summary.switchedPositionProfit >= 0 ? 'positive' : 'negative'}
+        />
+        <CompactMetricCard title="预估处理金额" value={formatCurrency(summary.processedAmount, '¥ ')} note="已识别记录累计成交额" />
+        <CompactMetricCard title="额外补入现金" value={formatCurrency(summary.comparison.extraCash, '¥ ')} note="已计入最终真实额外收益" />
+      </div>
+
+      {state.resultConfirmed && summary.missingPriceCodes.length ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          以下基金暂未匹配到现价，请到“计算参数”里手动补入：{summary.missingPriceCodes.join('、')}
+        </div>
+      ) : null}
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
+        <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={openDetailEditor}>
+          修改识别明细
+        </button>
+        <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={handleConfirmDataAndYield}>
+          确认数据与收益
+          <ArrowRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  ) : (
+    <div className="space-y-5">
+      <SectionHeading
+        eyebrow="收益摘要"
+        title="等待确认识别明细"
+        description="收益摘要不会先猜结果。先把识别明细确认下来，再生成切换判断。"
+      />
+      <PendingResultCard issueSummary={confirmError || validationIssueSummary} onEdit={openDetailEditor} />
+      <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={() => selectWorkspacePanel('details')}>
+        去看识别明细
+      </button>
+    </div>
+  );
+
+  const settingsPanel = state.resultConfirmed ? (
+    <div className="space-y-6">
+      <SectionHeading
+        eyebrow="计算参数"
+        title="收益口径与价格校准"
+        description="默认推荐“追溯最初买入”。只有在你要补现价、切换口径或校准成本时，才需要改这里。"
+      />
+
+      <div className="flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">收益口径</div>
+          <div className="mt-1 text-sm leading-6 text-slate-600">推荐口径会沿交易链往前追，把中间换仓和补入现金一起算进去；另一档只看最后一次换仓。</div>
+        </div>
+        <StrategyToggle strategy={summary.strategy} onChange={updateStrategy} />
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <PositionEditorSection
+          kind="source"
+          positions={summary.sourcePositions}
+          comparison={summary.comparison}
+          priceSnapshotByCode={priceSnapshotByCode}
+          onSingleFieldChange={updateSinglePosition}
+          onPriceChange={updatePriceOverride}
+        />
+
+        <PositionEditorSection
+          kind="target"
+          positions={summary.targetPositions}
+          comparison={summary.comparison}
+          priceSnapshotByCode={priceSnapshotByCode}
+          onSingleFieldChange={updateSinglePosition}
+          onPriceChange={updatePriceOverride}
+        />
+      </div>
+
+      {priceState.status === 'error' ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          {priceState.error}
+        </div>
+      ) : null}
+
+      <div className="border-t border-slate-100 pt-6">
+        <SectionHeading eyebrow="成本调整" title="切换成本调整项" />
+        <div className="mt-5 grid gap-4 xl:grid-cols-3 xl:gap-6">
+          <label className="block rounded-xl border border-slate-100 bg-slate-50 p-4">
+            <span className="block text-sm font-bold text-slate-700">额外补入现金 (元)</span>
+            <span className="mt-1 block text-[10px] leading-relaxed text-slate-500">推荐口径会把中间换仓时补进去的钱一起算上；“只看最后一次”只统计最后一跳补的钱。</span>
+            <input className="mt-3 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-800 outline-none transition-all focus:border-indigo-400" type="number" step="0.01" value={summary.comparison.extraCash} onChange={(event) => updateComparisonScalar('extraCash', event.target.value)} />
+          </label>
+
+          <label className="block rounded-xl border border-slate-100 bg-slate-50 p-4">
+            <span className="block text-sm font-bold text-slate-700">目标仓位原始成本 (元)</span>
+            <span className="mt-1 block text-[10px] leading-relaxed text-slate-500">这里是当前剩余目标仓位的成本合计，默认由 lot 回放自动生成，必要时可以人工校准。</span>
+            <input className="mt-3 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-800 outline-none transition-all focus:border-indigo-400" type="number" step="0.01" value={summary.comparison.switchCost} onChange={(event) => updateComparisonScalar('switchCost', event.target.value)} />
+          </label>
+
+          <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+            <span className="block text-sm font-bold text-slate-700">预估交易手续费 (元)</span>
+            <span className="mt-1 block text-[10px] leading-relaxed text-slate-500">默认同步为当前明细记录行数，可继续手动校准。</span>
+            <div className="mt-3 flex items-center gap-2">
+              <input className="h-11 w-20 rounded-lg border border-slate-200 bg-white px-2 text-center font-semibold text-slate-800 outline-none transition-all focus:border-indigo-400" type="number" step="0.01" placeholder="单笔" value={summary.feePerTrade} onChange={(event) => updateFeePerTrade(event.target.value)} />
+              <span className="text-xs font-bold text-slate-400">×</span>
+              <div className="relative flex-1">
+                <input className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-800 outline-none transition-all focus:border-indigo-400" type="number" step="1" value={summary.comparison.feeTradeCount} onChange={(event) => updateComparisonScalar('feeTradeCount', event.target.value)} />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">笔</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
+        <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={openDetailEditor}>
+          修改识别明细
+        </button>
+        <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={handleConfirmDataAndYield}>
+          确认数据与收益
+          <ArrowRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  ) : (
+    <div className="space-y-5">
+      <SectionHeading eyebrow="计算参数" title="收益口径与价格校准" description="请先确认识别明细，校验通过后再生成和调整参数。" />
+      <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm leading-6 text-slate-500">
+        先去“识别明细”里确认交易数据，然后这里才会开放收益口径、现价补录和成本校准。
+      </div>
+      <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={() => selectWorkspacePanel('details')}>
+        去确认识别明细
+      </button>
+    </div>
+  );
+
+  const historyPanel = (
+    <div className="space-y-5">
+      <SectionHeading
+        eyebrow="历史分析"
+        title="历史分析记录"
+        description="每次确认收益后都会自动保存一条。之后直接点开，就会按当前最新价格重新分析。"
+      />
+      <FundSwitchHistorySection
+        entries={historyEntries}
+        activeEntryId={state.historyEntryId}
+        onOpen={openHistoryAnalysis}
+        onDelete={removeHistoryAnalysis}
+      />
+    </div>
+  );
+
+  const content = !hasImportedData ? (
+    <div className="mx-auto max-w-6xl space-y-6 px-4 pt-6 sm:px-6 sm:pt-8">
+      <div className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
+        <div className="grid xl:grid-cols-[1.08fr,0.92fr]">
+          <div className="border-b border-slate-200 px-6 py-8 sm:px-8 sm:py-10 xl:border-b-0 xl:border-r">
+            <Pill tone="indigo">基金切换收益分析</Pill>
+            <h2 className="mt-5 max-w-2xl text-3xl font-extrabold tracking-tight text-slate-900 sm:text-[2.5rem]">
+              上传基金切换截图，自动回放“如果不换”和“已经换了”两种结果
+            </h2>
+            <p className="mt-4 max-w-2xl text-base leading-7 text-slate-500">
+              页面会先识别交易截图，再按你现有的基金切换收益逻辑回放来源仓位、目标仓位和补入现金，最后用最新价格重算当前切换收益。
+            </p>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              {LANDING_QUESTIONS.map((question, index) => (
+                <LandingQuestionChip key={question} tone={index === 0 ? 'indigo' : 'slate'}>
+                  {question}
+                </LandingQuestionChip>
+              ))}
             </div>
 
-            {state.resultConfirmed ? (
-              <Card className="overflow-hidden p-0">
-                <div className="flex cursor-pointer flex-col gap-4 border-b border-slate-200 bg-slate-50 p-4 transition-colors hover:bg-slate-100 sm:flex-row sm:items-center sm:justify-between sm:p-6" onClick={() => setShowCalculationDetails((current) => !current)}>
-                  <SectionHeading eyebrow="高级设置" title="收益口径与计算参数" description="默认不用改。只有在需要补现价、切换收益口径或手动校准成本时再展开。" />
-                  <button className="flex items-center gap-2 self-start text-sm font-semibold text-slate-500 transition-colors hover:text-slate-800 sm:self-auto" type="button">
-                    {showCalculationDetails ? '收起面板' : '展开修改'}
-                    {showCalculationDetails ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
-                  </button>
+            <div className="mt-8 grid gap-4 md:grid-cols-3">
+              <LandingStepCard index="01" title="上传交易截图" description="支持拖拽或点击上传，先把截图送进 OCR 识别。" />
+              <LandingStepCard index="02" title="确认交易明细" description="把识别出来的每条买卖记录铺成工作表，必要时可以直接修改。" />
+              <LandingStepCard index="03" title="按最新价格出结果" description="生成收益摘要，并把这次分析存进历史，后续可以一键重算。" />
+            </div>
+          </div>
+
+          <div className="relative overflow-hidden bg-gradient-to-br from-slate-50 via-white to-indigo-50 px-6 py-8 sm:px-8 sm:py-10">
+            <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-indigo-200/40 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-16 -left-16 h-48 w-48 rounded-full bg-sky-100 blur-3xl" />
+
+            <div className="flex flex-wrap gap-2">
+              {LANDING_OUTCOMES.slice(0, 2).map((item) => (
+                <LandingQuestionChip key={item}>{item}</LandingQuestionChip>
+              ))}
+            </div>
+
+            <div className="mx-auto mt-8 max-w-md rounded-[32px] border border-slate-200 bg-white p-5 shadow-xl shadow-slate-200/60 sm:p-6">
+              <div className="text-center">
+                <div className={cx(
+                  'mx-auto flex h-16 w-16 items-center justify-center rounded-2xl',
+                  ocrState.status === 'loading' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-500'
+                )}>
+                  {ocrState.status === 'loading' ? <LoaderCircle className="h-8 w-8 animate-spin" /> : <CloudUpload className="h-8 w-8" />}
                 </div>
+                <div className="mt-4 text-xl font-extrabold tracking-tight text-slate-900">上传一张基金交易截图</div>
+                <p className="mt-2 text-sm leading-6 text-slate-500">交互会和参考页一样，先把文件送进来，再进入右侧工作区继续确认明细和收益。</p>
+              </div>
 
-                {showCalculationDetails ? (
-                  <div className="space-y-6 bg-white p-4 sm:space-y-8 sm:p-6">
-                    <div className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">收益口径</div>
-                        <div className="mt-1 text-sm text-slate-600">默认推荐“追溯最初买入”。只有在你只想判断最后一次换仓是否划算时，才切到“只看最后一次”。</div>
-                      </div>
-                      <StrategyToggle strategy={summary.strategy} onChange={updateStrategy} />
+              <button
+                className={cx(
+                  'mt-6 flex min-h-[220px] w-full flex-col items-center justify-center rounded-[28px] border-2 border-dashed p-5 text-center transition-all',
+                  ocrState.status === 'loading' ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 bg-slate-50 hover:border-indigo-400 hover:bg-white'
+                )}
+                onClick={openFilePicker}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                type="button"
+              >
+                {ocrState.status === 'loading' ? (
+                  <LoaderCircle className="mb-4 h-10 w-10 animate-spin text-indigo-500" />
+                ) : (
+                  <CloudUpload className="mb-4 h-10 w-10 text-slate-400" />
+                )}
+                <div className="text-base font-semibold text-slate-700">Drop files here or click to browse</div>
+                <div className="mt-2 text-xs text-slate-500">基金交易截图，支持常见图片格式</div>
+                {ocrState.status === 'idle' ? null : (
+                  <div className="mt-5 w-full max-w-xs">
+                    <div className="mb-1.5 flex items-center justify-between text-xs font-medium text-slate-500">
+                      <span>识别进度</span>
+                      <span className="text-indigo-600">{ocrState.progress}%</span>
                     </div>
-
-                    <div className="grid gap-6 xl:grid-cols-2">
-                      <PositionEditorSection
-                        kind="source"
-                        positions={summary.sourcePositions}
-                        comparison={summary.comparison}
-                        priceSnapshotByCode={priceSnapshotByCode}
-                        onSingleFieldChange={updateSinglePosition}
-                        onPriceChange={updatePriceOverride}
-                      />
-
-                      <PositionEditorSection
-                        kind="target"
-                        positions={summary.targetPositions}
-                        comparison={summary.comparison}
-                        priceSnapshotByCode={priceSnapshotByCode}
-                        onSingleFieldChange={updateSinglePosition}
-                        onPriceChange={updatePriceOverride}
-                      />
-                    </div>
-
-                    <div className="border-t border-slate-100 pt-6">
-                      <SectionHeading eyebrow="成本调整" title="切换成本调整项" />
-                      <div className="mt-5 grid gap-4 xl:grid-cols-3 xl:gap-6">
-                        <label className="block rounded-xl border border-slate-100 bg-slate-50 p-4">
-                          <span className="block text-sm font-bold text-slate-700">额外补入现金 (元)</span>
-                          <span className="mt-1 block text-[10px] leading-relaxed text-slate-500">推荐口径会把中间换仓时补进去的钱一起算上；“只看最后一次”只统计最后一跳补的钱。</span>
-                          <input className="mt-3 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-800 outline-none transition-all focus:border-indigo-400" type="number" step="0.01" value={summary.comparison.extraCash} onChange={(event) => updateComparisonScalar('extraCash', event.target.value)} />
-                        </label>
-
-                        <label className="block rounded-xl border border-slate-100 bg-slate-50 p-4">
-                          <span className="block text-sm font-bold text-slate-700">目标仓位原始成本 (元)</span>
-                          <span className="mt-1 block text-[10px] leading-relaxed text-slate-500">这里是当前剩余目标仓位的成本合计，默认由 lot 回放自动生成，必要时可以人工校准。</span>
-                          <input className="mt-3 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-800 outline-none transition-all focus:border-indigo-400" type="number" step="0.01" value={summary.comparison.switchCost} onChange={(event) => updateComparisonScalar('switchCost', event.target.value)} />
-                        </label>
-
-                        <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                          <span className="block text-sm font-bold text-slate-700">预估交易手续费 (元)</span>
-                          <span className="mt-1 block text-[10px] leading-relaxed text-slate-500">默认同步为当前明细记录行数，可继续手动校准。</span>
-                          <div className="mt-3 flex items-center gap-2">
-                            <input className="h-11 w-20 rounded-lg border border-slate-200 bg-white px-2 text-center font-semibold text-slate-800 outline-none transition-all focus:border-indigo-400" type="number" step="0.01" placeholder="单笔" value={summary.feePerTrade} onChange={(event) => updateFeePerTrade(event.target.value)} />
-                            <span className="text-xs font-bold text-slate-400">×</span>
-                            <div className="relative flex-1">
-                              <input className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-800 outline-none transition-all focus:border-indigo-400" type="number" step="1" value={summary.comparison.feeTradeCount} onChange={(event) => updateComparisonScalar('feeTradeCount', event.target.value)} />
-                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">笔</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                      <div className="h-full rounded-full bg-indigo-500 transition-all duration-300" style={{ width: `${ocrState.progress}%` }} />
                     </div>
                   </div>
-                ) : null}
-              </Card>
-            ) : (
-              <Card className="p-4 sm:p-6">
-                <SectionHeading eyebrow="高级设置" title="收益口径与计算参数" description="请先确认识别明细，校验通过后再生成和调整参数。" />
-              </Card>
-            )}
+                )}
+              </button>
 
-          </>
-        )}
+              <button className={cx(primaryButtonClass, 'mt-4 w-full')} type="button" onClick={openFilePicker}>
+                上传截图
+                <Upload className="h-4 w-4" />
+              </button>
+
+              {(ocrState.status !== 'idle' || state.fileName) && (
+                <div className="mt-4 flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <FileImage className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
+                  <div className="min-w-0 flex-1 text-left">
+                    <div className="truncate text-sm font-semibold text-slate-700">{state.fileName || '未命名文件'}</div>
+                    <div className="mt-1 text-xs leading-5 text-slate-500">{effectiveOcrMessage}</div>
+                    {ocrState.error ? <div className="mt-2 text-xs text-red-500">{ocrState.error}</div> : null}
+                    {priceState.status === 'error' ? <div className="mt-2 text-xs text-amber-600">{priceState.error}</div> : null}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              {LANDING_OUTCOMES.map((item) => (
+                <div key={item} className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-600 shadow-sm shadow-slate-100/80">
+                  {item}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1.15fr,0.85fr]">
+        <Card className="rounded-[28px] p-5 sm:p-6">
+          <SectionHeading
+            eyebrow="上传后工作台"
+            title="页面会怎么接住这张截图"
+            description="上传成功后，不再是往下滚一堆卡片，而是进入双栏工作台。左边收纳文件状态和当前判断，右边是明细、摘要、参数和历史。"
+          />
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                <FileSpreadsheet className="h-4 w-4 text-indigo-600" />
+                右侧主工作区
+              </div>
+              <p className="mt-3 text-sm leading-6 text-slate-500">默认先看识别明细，确认后切到收益摘要；需要时再去调收益口径、补现价或打开历史分析。</p>
+            </div>
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                <Sparkles className="h-4 w-4 text-indigo-600" />
+                左侧状态栏
+              </div>
+              <p className="mt-3 text-sm leading-6 text-slate-500">集中显示文件状态、识别进度、当前收益判断和快捷入口，操作节奏更接近参考页。</p>
+            </div>
+          </div>
+        </Card>
 
         <FundSwitchHistorySection
           entries={historyEntries}
@@ -1451,86 +1766,76 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
           onDelete={removeHistoryAnalysis}
         />
       </div>
-
-      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/85 p-3 shadow-[0_-4px_24px_rgba(0,0,0,0.04)] backdrop-blur-md sm:p-4">
-        <div className="mx-auto max-w-6xl">
-          {hasImportedData ? (
-            <>
-              <div className={cx('mb-3 grid gap-2 sm:hidden', shouldShowBottomAdvantage ? 'grid-cols-3' : 'grid-cols-2')}>
-                <div className="rounded-2xl bg-slate-100 px-3 py-2.5">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">条目</div>
-                  <div className="mt-1 text-sm font-extrabold text-slate-700">{recognizedCount}</div>
-                </div>
-                <div className="rounded-2xl bg-slate-100 px-3 py-2.5">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">{isEditingDetails ? '状态' : '口径'}</div>
-                  <div className="mt-1 text-sm font-extrabold text-slate-700">{isEditingDetails || !state.resultConfirmed ? '待确认' : STRATEGY_LABELS[summary.strategy]}</div>
-                </div>
-                {shouldShowBottomAdvantage ? (
-                  <div className="rounded-2xl bg-slate-100 px-3 py-2.5">
-                    <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">额外收益</div>
-                    <div className={cx('mt-1 text-sm font-extrabold', bottomAdvantageTone)}>
-                      {bottomAdvantageText}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className={cx('flex flex-col gap-4 sm:flex-row sm:items-center', isEditingDetails ? '' : 'sm:justify-between')}>
-                <div className={cx('hidden items-center gap-6 sm:flex', isEditingDetails ? 'sm:hidden' : '')}>
-                  <div>
-                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">识别条目</div>
-                    <div className="mt-1 text-sm font-extrabold text-slate-700">{recognizedCount}</div>
-                  </div>
-                  <div className="h-8 w-px bg-slate-200" />
-                  <div>
-                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{isEditingDetails ? '当前状态' : '当前口径'}</div>
-                    <div className="mt-1 text-sm font-extrabold text-slate-700">{isEditingDetails || !state.resultConfirmed ? '待确认' : STRATEGY_LABELS[summary.strategy]}</div>
-                  </div>
-                  {shouldShowBottomAdvantage ? (
-                    <>
-                      <div className="h-8 w-px bg-slate-200" />
-                      <div>
-                        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">当前额外收益</div>
-                        <div className={cx('mt-1 text-sm font-extrabold', bottomAdvantageTone)}>
-                          {bottomAdvantageText}
-                        </div>
-                      </div>
-                    </>
-                  ) : null}
-                </div>
-
-                {isEditingDetails ? (
-                  <div className="grid w-full gap-3 sm:grid-cols-2">
-                    <button className={cx(secondaryButtonClass, 'w-full')} type="button" onClick={closeDetailEditor}>
-                      返回摘要
-                    </button>
-                    <button className={cx(primaryButtonClass, 'w-full whitespace-nowrap')} type="button" onClick={handleConfirmDataAndYield}>
-                      确认修改并重新计算
-                      <ArrowRight className="h-4 w-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="grid w-full gap-3 sm:flex sm:w-auto sm:items-center">
-                    <button className={cx(primaryButtonClass, 'w-full sm:flex-none')} type="button" onClick={handleConfirmDataAndYield}>
-                      {state.resultConfirmed ? '确认数据与收益' : '校验并生成结果'}
-                      <ArrowRight className="h-4 w-4" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-slate-500">上传交易截图后，系统会自动识别并生成切换收益摘要。</div>
-              <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={openFilePicker}>
-                上传截图
-                <Upload className="h-4 w-4" />
-              </button>
+    </div>
+  ) : (
+    <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6 sm:pt-8">
+      <div className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
+        <div className="border-b border-slate-200 bg-slate-50/80 px-4 py-4 sm:px-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">基金切换收益工作台</div>
+              <div className="mt-2 text-xl font-extrabold tracking-tight text-slate-900">{state.fileName || '当前上传截图'}</div>
+              <div className="mt-1 text-sm text-slate-500">上传后进入双栏工作区：左侧看状态，右侧看明细、收益、参数和历史。</div>
             </div>
-          )}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={cx('inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold', statusMeta.colorClass)}>
+                <statusMeta.Icon className={cx('h-4 w-4', statusMeta.iconClassName)} />
+                {statusMeta.label}
+              </span>
+              <Pill tone="slate">{recognizedCount} 条记录</Pill>
+              <Pill tone={priceState.status === 'error' ? 'amber' : 'emerald'}>
+                {priceState.status === 'error' ? '行情未同步' : '已按最新价格重算'}
+              </Pill>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid xl:grid-cols-[320px,minmax(0,1fr)]">
+          <div className="border-b border-slate-200 xl:border-b-0 xl:border-r">
+            <AnalysisWorkspaceSidebar
+              fileName={state.fileName}
+              statusMeta={statusMeta}
+              effectiveOcrMessage={effectiveOcrMessage}
+              ocrState={ocrState}
+              recognizedCount={recognizedCount}
+              resultConfirmed={state.resultConfirmed}
+              summary={summary}
+              validationIssueSummary={validationIssueSummary}
+              onReupload={openFilePicker}
+              onEdit={openDetailEditor}
+              onReset={resetToUploadEntry}
+              onShowSummary={() => selectWorkspacePanel('summary')}
+              onShowHistory={() => selectWorkspacePanel('history')}
+              historyEntries={historyEntries}
+            />
+          </div>
+
+          <div className="min-w-0 bg-slate-50/60">
+            <div className="border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
+              <div className="flex flex-wrap gap-2">
+                {WORKSPACE_PANELS.map((panel) => (
+                  <WorkspaceNavButton
+                    key={panel.key}
+                    panel={panel}
+                    active={activeWorkspacePanel === panel.key}
+                    onSelect={selectWorkspacePanel}
+                    badge={panel.key === 'details' ? String(recognizedCount) : panel.key === 'history' ? String(historyEntries.length) : ''}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="p-4 sm:p-6">
+              {activeWorkspacePanel === 'details' ? detailsPanel : null}
+              {activeWorkspacePanel === 'summary' ? summaryPanel : null}
+              {activeWorkspacePanel === 'settings' ? settingsPanel : null}
+              {activeWorkspacePanel === 'history' ? historyPanel : null}
+            </div>
+          </div>
         </div>
       </div>
-    </>
+    </div>
   );
 
   if (embedded) {
