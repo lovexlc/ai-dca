@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   CloudUpload,
   FileImage,
-  FileSpreadsheet,
   FolderOpen,
   History,
   LoaderCircle,
@@ -61,12 +60,6 @@ const STRATEGY_DESCRIPTIONS = {
   trace: '推荐。把中间几次换仓一起算进去，更接近“如果当初不换，现在值多少”。',
   direct: '只判断最后一步换仓是否划算，不追溯更早的来源基金。'
 };
-const LANDING_OUTCOMES = [
-  '识别截图里的买入和卖出记录',
-  '自动回放来源仓位和目标仓位',
-  '按最新价格重算当前切换收益',
-  '保存历史分析，后续一键打开重算'
-];
 const LANDING_SCROLL_PANELS = [
   [
     {
@@ -593,11 +586,7 @@ function HistoryRecordCard({ entry, isActive, onOpen, onDelete }) {
 function FundSwitchHistorySection({ entries, activeEntryId, onOpen, onDelete }) {
   return (
     <Card>
-      <SectionHeading
-        eyebrow="收益分析历史"
-        title="历史分析记录"
-        description="每次确认收益后都会自动保存一条记录。之后直接点开，就会按当前最新价格重新分析。"
-      />
+      <SectionHeading eyebrow="收益分析历史" title="历史分析" />
 
       {entries.length ? (
         <div className="mt-6 space-y-3">
@@ -613,7 +602,7 @@ function FundSwitchHistorySection({ entries, activeEntryId, onOpen, onDelete }) 
         </div>
       ) : (
         <div className="mt-6 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-6 text-sm leading-6 text-slate-500">
-          还没有已保存的收益分析。先完成一次基金切换收益计算，系统会自动把当前分析沉淀到这里。
+          暂无历史分析。
         </div>
       )}
     </Card>
@@ -646,18 +635,6 @@ function LandingQuestionWall({ rows, className = '' }) {
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-function LandingStepCard({ index, title, description }) {
-  return (
-    <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
-      <div className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-xs font-bold text-slate-900">
-        {index}
-      </div>
-      <div className="mt-4 text-sm font-bold text-slate-900">{title}</div>
-      <div className="mt-2 text-sm leading-6 text-slate-500">{description}</div>
     </div>
   );
 }
@@ -1702,11 +1679,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
 
   const historyPanel = (
     <div className="space-y-5">
-      <SectionHeading
-        eyebrow="历史分析"
-        title="历史分析记录"
-        description="每次确认收益后都会自动保存一条。之后直接点开，就会按当前最新价格重新分析。"
-      />
       <FundSwitchHistorySection
         entries={historyEntries}
         activeEntryId={state.historyEntryId}
@@ -1725,11 +1697,8 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
           <div className="relative mx-auto max-w-4xl text-center">
             <Pill tone="indigo">基金切换收益分析</Pill>
             <h2 className="mx-auto mt-6 max-w-3xl text-3xl font-extrabold tracking-tight text-slate-900 sm:text-5xl">
-              上传基金切换截图，自动算清这次换仓现在到底赚了还是亏了
+              上传截图，直接重算基金切换收益
             </h2>
-            <p className="mx-auto mt-4 max-w-2xl text-base leading-8 text-slate-500">
-              先识别交易截图，再沿你现有的基金切换收益逻辑回放来源仓位、目标仓位和补入现金，最后直接用最新价格重算。
-            </p>
           </div>
 
           <div className="relative mx-auto mt-12 max-w-6xl">
@@ -1751,7 +1720,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
                   {ocrState.status === 'loading' ? <LoaderCircle className="h-7 w-7 animate-spin" /> : <CloudUpload className="h-7 w-7" />}
                 </div>
                 <div className="mt-4 text-xl font-extrabold tracking-tight text-slate-900">上传一张基金交易截图</div>
-                <p className="mt-2 text-sm leading-6 text-slate-500">上传后会进入双栏工作台。左边看文件和结果状态，右边确认明细、查看收益、调计算参数。</p>
               </div>
 
               <button
@@ -1770,7 +1738,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
                   <CloudUpload className="mb-4 h-9 w-9 text-slate-400" />
                 )}
                 <div className="text-base font-semibold text-slate-700">Drop files here or click to browse</div>
-                <div className="mt-2 text-xs text-slate-500">基金交易截图，支持常见图片格式</div>
                 {ocrState.status === 'idle' ? null : (
                   <div className="mt-5 w-full max-w-xs">
                     <div className="mb-1.5 flex items-center justify-between text-xs font-medium text-slate-500">
@@ -1801,49 +1768,11 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
                 </div>
               )}
             </div>
-
-            <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {LANDING_OUTCOMES.map((item) => (
-                <div key={item} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
-                  {item}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="mx-auto mt-10 grid max-w-5xl gap-4 md:grid-cols-3">
-            <LandingStepCard index="01" title="上传交易截图" description="支持拖拽或点击上传，先把截图送进 OCR 识别。" />
-            <LandingStepCard index="02" title="确认交易明细" description="把识别出来的每条买卖记录铺成工作表，必要时可以直接修改。" />
-            <LandingStepCard index="03" title="按最新价格出结果" description="生成收益摘要，并把这次分析存进历史，后续可以一键重算。" />
           </div>
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr,0.8fr]">
-        <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.05)]">
-          <SectionHeading
-            eyebrow="上传后工作台"
-            title="上传后进入更像参考页的双栏工作区"
-            description="左边只收纳文件状态、当前判断和最近历史；右边保留一块大的主工作区，专门处理识别明细、收益摘要、计算参数和历史分析。"
-          />
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
-              <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
-                <FileSpreadsheet className="h-4 w-4 text-indigo-600" />
-                右侧主工作区
-              </div>
-              <p className="mt-3 text-sm leading-6 text-slate-500">先看识别明细，再切换到收益摘要。只有需要时才进入计算参数和历史分析。</p>
-            </div>
-            <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
-              <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
-                <Sparkles className="h-4 w-4 text-indigo-600" />
-                左侧状态列
-              </div>
-              <p className="mt-3 text-sm leading-6 text-slate-500">上传后的文件、OCR 状态、当前结果和最近历史都集中放这边，避免整页来回找入口。</p>
-            </div>
-          </div>
-        </div>
-
+      <div>
         <FundSwitchHistorySection
           entries={historyEntries}
           activeEntryId={state.historyEntryId}
@@ -1860,7 +1789,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
             <div>
               <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">基金切换收益工作台</div>
               <div className="mt-2 text-xl font-extrabold tracking-tight text-slate-900">{state.fileName || '当前上传截图'}</div>
-              <div className="mt-1 text-sm text-slate-500">左侧看文件和状态，右侧集中处理明细、收益、参数和历史。</div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -1941,7 +1869,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
         backLabel="返回加仓计划"
         eyebrow="基金切换分析"
         title="基金切换收益助手"
-        description="上传交易截图后，系统会自动整理交易数据，并比较“如果不换，现在值多少”与“换完后，现在值多少”。默认按推荐口径追溯到最初买入，也可以切到只看最后一次换仓。"
+        description="上传截图后自动计算基金切换收益。"
         badges={hasImportedData ? [] : [
           <span key="status" className={cx('inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold', statusMeta.colorClass)}>
             <statusMeta.Icon className={cx('h-4 w-4', statusMeta.iconClassName)} />
