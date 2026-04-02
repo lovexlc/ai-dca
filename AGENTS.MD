@@ -28,6 +28,14 @@ When the user gives a new requirement, follow this sequence by default:
 - On mobile, badges should wrap to a new line before they squeeze or visually collide with the title.
 - Before finalizing a mobile page, check the key summary card in browser automation and verify that text blocks are visually separated rather than stacked into one dense cluster.
 
+## Pages Publishing Guardrail
+
+- This repository's deployed web app is served from `docs/`, not directly from `src/`.
+- After any frontend or page behavior change, do not push source-only updates.
+- Always regenerate the GitHub Pages artifacts with `npm run publish:pages` before commit/push.
+- If the frontend bundle changed, commit the corresponding `docs/index.html`, `docs/pages/*`, and `docs/react-assets/*` updates together with the source change.
+- Treat a frontend task as incomplete if the new behavior only exists in `src/` but has not been published into `docs/`.
+
 ## Local Credentials
 
 - Store local GitHub and Cloudflare credentials in `/home/lovexl/ai-dca-stragety/.env.local`.
