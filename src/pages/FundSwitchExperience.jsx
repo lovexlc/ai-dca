@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
-  CloudUpload,
   Download,
   FileImage,
   FolderOpen,
@@ -2415,17 +2414,17 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
             </h2>
           </div>
 
-          <div className="relative mx-auto mt-12 max-w-6xl sm:mt-14">
-            <div className="xl:hidden">
+          <div className="relative mx-auto mt-8 max-w-6xl sm:mt-10">
+            <div className="lg:hidden">
               <LandingQuestionWall className="mx-auto mb-8 max-w-2xl" rows={LANDING_MOBILE_SCROLL_ROWS} />
             </div>
 
-            <div className="hidden xl:block">
-              <LandingQuestionWall className="absolute left-0 top-1/2 w-[300px] -translate-y-1/2" rows={LANDING_SCROLL_PANELS[0]} />
-              <LandingQuestionWall className="absolute right-0 top-1/2 w-[300px] -translate-y-1/2" rows={LANDING_SCROLL_PANELS[1]} />
+            <div className="hidden lg:block">
+              <LandingQuestionWall className="absolute left-0 top-1/2 w-[220px] -translate-y-1/2 xl:w-[280px]" rows={LANDING_SCROLL_PANELS[0]} />
+              <LandingQuestionWall className="absolute right-0 top-1/2 w-[220px] -translate-y-1/2 xl:w-[280px]" rows={LANDING_SCROLL_PANELS[1]} />
             </div>
 
-            <div className="mx-auto w-full max-w-[456px] rounded-[32px] bg-white/58 p-7 shadow-[0_12px_32px_rgba(15,23,42,0.06)] backdrop-blur-xl sm:p-8 xl:relative xl:z-10">
+            <div className="mx-auto w-full max-w-[456px] rounded-[32px] bg-white/58 p-7 shadow-[0_12px_32px_rgba(15,23,42,0.06)] backdrop-blur-xl sm:p-8 lg:relative lg:z-10">
               <button
                 className={cx(
                   'flex aspect-square w-full flex-col items-center justify-center rounded-[24px] p-6 text-center transition-all',
@@ -2438,12 +2437,9 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
                 onDrop={handleDrop}
                 type="button"
               >
-                {ocrState.status === 'loading' ? (
-                  <LoaderCircle className="mb-4 h-9 w-9 animate-spin text-indigo-500" />
-                ) : (
-                  <CloudUpload className="mb-4 h-9 w-9 text-slate-400" />
-                )}
-                <div className="text-base font-semibold text-slate-700">点击或拖拽上传</div>
+                <div className="text-base font-semibold text-slate-700">
+                  {ocrState.status === 'loading' ? '正在识别截图' : '点击或拖拽上传'}
+                </div>
                 <div className="mt-2 text-xs font-medium text-slate-400">PNG / JPG / JPEG</div>
                 {ocrState.status === 'idle' ? null : (
                   <div className="mt-5 w-full max-w-xs">
