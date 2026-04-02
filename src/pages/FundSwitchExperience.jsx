@@ -2441,15 +2441,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
         )}
       </button>
 
-      <button
-        className="mt-5 inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-[0_12px_28px_rgba(79,70,229,0.26)] transition-all hover:-translate-y-0.5 hover:bg-indigo-700"
-        type="button"
-        onClick={openFilePicker}
-      >
-        上传截图
-        <Upload className="h-4 w-4" />
-      </button>
-
       {(ocrState.status !== 'idle' || state.fileName) && (
         <div className="mt-5 flex items-start gap-3 rounded-[24px] bg-white/52 px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
           <FileImage className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
