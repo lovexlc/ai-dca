@@ -2459,13 +2459,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     <div className="mx-auto max-w-6xl space-y-10 px-4 pt-6 sm:px-6 sm:pt-8">
       <div className="overflow-hidden rounded-[40px] border border-transparent bg-transparent shadow-none">
         <div className="relative px-0 pb-6 pt-0 sm:px-0 sm:pb-8 sm:pt-0">
-          <div className="relative mx-auto max-w-4xl text-center">
-            <h2 className="mx-auto max-w-3xl text-3xl font-extrabold tracking-tight text-slate-900 sm:text-5xl">
-              上传截图，直接重算基金切换收益
-            </h2>
-          </div>
-
-          <div className="relative mx-auto mt-8 max-w-6xl sm:mt-10">
+          <div className="relative mx-auto max-w-6xl">
             <div className="md:hidden">
               <LandingQuestionWall className="mx-auto mb-8 max-w-2xl" rows={LANDING_MOBILE_SCROLL_ROWS} />
             </div>
