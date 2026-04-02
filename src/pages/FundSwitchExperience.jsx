@@ -390,25 +390,33 @@ function PositionEditorSection({
 
 function SummaryValueCard({ value, advantageMeta, strategy, onStrategyChange }) {
   return (
-    <div className="relative overflow-hidden rounded-[28px] border border-indigo-100 bg-gradient-to-br from-white via-indigo-50 to-indigo-100/80 p-5 shadow-sm sm:p-6">
-      <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-indigo-500/10 blur-3xl" />
-      <div className="flex flex-col gap-4">
+    <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)] sm:p-7">
+      <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-indigo-900/45">结果摘要</div>
-            <div className="mt-2 text-sm font-semibold text-indigo-900/65">切换额外收益 (元)</div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">当前收益判断</div>
+            <div className="mt-2 text-sm font-semibold text-slate-500">切换额外收益 (元)</div>
           </div>
           <span className={cx('rounded-full px-3 py-1 text-xs font-bold', advantageMeta.className)}>{advantageMeta.label}</span>
         </div>
 
-        <div className="text-4xl font-extrabold tracking-tight text-indigo-700 sm:text-[2.75rem]">{value}</div>
-        <p className="text-xs font-medium leading-6 text-indigo-900/45">真实额外收益 = 切换后现值 - 不切换现值 - 额外补入现金 - 手续费</p>
-        <div className="rounded-2xl border border-white/70 bg-white/70 px-4 py-3">
-          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-900/45">当前收益口径</div>
-          <div className="mt-1 text-sm font-bold text-indigo-900">{STRATEGY_LABELS[strategy]}</div>
-          <p className="mt-1 text-xs leading-5 text-indigo-900/55">{STRATEGY_DESCRIPTIONS[strategy]}</p>
+        <div className={cx(
+          'text-5xl font-extrabold tracking-tight sm:text-[3.25rem]',
+          value.startsWith('-') ? 'text-red-600' : value.startsWith('+') ? 'text-emerald-600' : 'text-slate-900'
+        )}>
+          {value}
         </div>
-        <StrategyToggle strategy={strategy} onChange={onStrategyChange} />
+
+        <p className="max-w-2xl text-sm leading-7 text-slate-500">真实额外收益 = 切换后现值 - 不切换现值 - 额外补入现金 - 手续费</p>
+
+        <div className="flex flex-col gap-4 rounded-[28px] border border-slate-200 bg-slate-50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div className="min-w-0">
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">当前收益口径</div>
+            <div className="mt-1 text-sm font-bold text-slate-900">{STRATEGY_LABELS[strategy]}</div>
+            <p className="mt-1 text-xs leading-5 text-slate-500">{STRATEGY_DESCRIPTIONS[strategy]}</p>
+          </div>
+          <StrategyToggle strategy={strategy} onChange={onStrategyChange} />
+        </div>
       </div>
     </div>
   );
@@ -416,18 +424,18 @@ function SummaryValueCard({ value, advantageMeta, strategy, onStrategyChange }) 
 
 function PositionValueCard({ title, value, positions, priceSnapshotByCode, emptyText }) {
   return (
-    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{title}</div>
-      <div className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">{value}</div>
-      <div className="mt-3 space-y-2 text-[11px] leading-5 text-slate-500">
+    <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_12px_36px_rgba(15,23,42,0.04)]">
+      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{title}</div>
+      <div className="mt-3 text-3xl font-extrabold tracking-tight text-slate-900">{value}</div>
+      <div className="mt-4 space-y-2 text-[11px] leading-5 text-slate-500">
         {positions.length ? (
           positions.map((position) => (
-            <div key={`${title}-${position.code}`} className="rounded-xl bg-white px-3 py-2 text-slate-500 shadow-sm shadow-slate-100/60">
+            <div key={`${title}-${position.code}`} className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-slate-600">
               {formatPositionMeta(position, priceSnapshotByCode[position.code])}
             </div>
           ))
         ) : (
-          <div className="rounded-xl bg-white px-3 py-2 text-slate-400 shadow-sm shadow-slate-100/60">{emptyText}</div>
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-slate-400">{emptyText}</div>
         )}
       </div>
     </div>
@@ -436,7 +444,7 @@ function PositionValueCard({ title, value, positions, priceSnapshotByCode, empty
 
 function CompactMetricCard({ title, value, note, tone = 'slate' }) {
   return (
-    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm shadow-slate-100/70">
+    <div className="rounded-[24px] border border-slate-200 bg-white p-4">
       <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{title}</div>
       <div className={cx('mt-2 text-xl font-extrabold tracking-tight', tone === 'positive' ? 'text-emerald-600' : tone === 'negative' ? 'text-red-500' : 'text-slate-900')}>
         {value}
@@ -549,11 +557,11 @@ function FundSwitchHistorySection({ entries, activeEntryId, onOpen, onDelete }) 
 
 function LandingQuestionChip({ children, tone = 'slate' }) {
   const toneClassName = tone === 'indigo'
-    ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
-    : 'border-slate-200 bg-white text-slate-600';
+    ? 'border-indigo-200 bg-indigo-50/90 text-indigo-700'
+    : 'border-slate-200/80 bg-white/92 text-slate-600';
 
   return (
-    <div className={cx('inline-flex items-center rounded-full border px-3 py-2 text-xs font-semibold shadow-sm shadow-slate-100/80', toneClassName)}>
+    <div className={cx('inline-flex items-center rounded-full border px-3 py-2 text-xs font-semibold backdrop-blur-sm', toneClassName)}>
       {children}
     </div>
   );
@@ -561,8 +569,8 @@ function LandingQuestionChip({ children, tone = 'slate' }) {
 
 function LandingStepCard({ index, title, description }) {
   return (
-    <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-100/70">
-      <div className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">
+    <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
+      <div className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-xs font-bold text-slate-900">
         {index}
       </div>
       <div className="mt-4 text-sm font-bold text-slate-900">{title}</div>
@@ -577,8 +585,8 @@ function WorkspaceNavButton({ panel, active, onSelect, badge = '' }) {
   return (
     <button
       className={cx(
-        'inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all',
-        active ? 'bg-slate-900 text-white shadow-sm shadow-slate-200' : 'bg-white text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+        'inline-flex min-h-[40px] items-center justify-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-all',
+        active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-900'
       )}
       type="button"
       onClick={() => onSelect(key)}
@@ -659,12 +667,12 @@ function ReadonlyTransactionsTable({ rows = [] }) {
 function SidebarQuickStat({ label, value, tone = 'slate' }) {
   return (
     <div className={cx(
-      'rounded-2xl border px-3 py-3',
-      tone === 'positive' ? 'border-emerald-200 bg-emerald-50' : tone === 'negative' ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-slate-50'
+      'flex items-center justify-between gap-3 rounded-2xl border px-3 py-3',
+      tone === 'positive' ? 'border-emerald-200 bg-emerald-50/70' : tone === 'negative' ? 'border-red-200 bg-red-50/70' : 'border-slate-200 bg-slate-50'
     )}>
       <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">{label}</div>
       <div className={cx(
-        'mt-1 text-sm font-extrabold',
+        'text-sm font-extrabold text-right',
         tone === 'positive' ? 'text-emerald-700' : tone === 'negative' ? 'text-red-600' : 'text-slate-800'
       )}>
         {value}
@@ -694,18 +702,18 @@ function AnalysisWorkspaceSidebar({
   const quickTone = summary.switchAdvantage > 0 ? 'positive' : summary.switchAdvantage < 0 ? 'negative' : 'slate';
 
   return (
-    <aside className="flex h-full flex-col gap-4 bg-white p-4 sm:p-5">
+    <aside className="flex h-full flex-col gap-4 bg-slate-50/55 p-4 sm:p-5">
       <button className="inline-flex items-center gap-2 self-start text-sm font-semibold text-slate-500 transition-colors hover:text-slate-800" type="button" onClick={onReset}>
         返回上传入口
       </button>
 
-      <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4 shadow-sm shadow-slate-100/70">
+      <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
         <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-500">
             <FileImage className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">当前截图</div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">当前文档</div>
             <div className="mt-2 truncate text-sm font-bold text-slate-900">{fileName || '未命名文件'}</div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className={cx('inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold', statusMeta.colorClass)}>
@@ -719,9 +727,9 @@ function AnalysisWorkspaceSidebar({
           </div>
         </div>
 
-        <div className="mt-4 rounded-2xl border border-white/80 bg-white px-4 py-4">
+        <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
           <div className="flex items-start gap-3">
-            <div className="mt-0.5 rounded-full bg-indigo-50 p-2 text-indigo-600">
+            <div className="mt-0.5 rounded-full bg-white p-2 text-indigo-600 ring-1 ring-slate-200">
               <Sparkles className="h-4 w-4" />
             </div>
             <div className="min-w-0">
@@ -738,7 +746,7 @@ function AnalysisWorkspaceSidebar({
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+        <div className="mt-4 grid gap-2.5">
           <SidebarQuickStat label="当前口径" value={hasConfirmedResult ? STRATEGY_LABELS[summary.strategy] : '待确认'} />
           <SidebarQuickStat
             label="切换额外收益"
@@ -750,11 +758,11 @@ function AnalysisWorkspaceSidebar({
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+      <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-1">
         <button className={cx(primaryButtonClass, 'w-full')} type="button" onClick={hasConfirmedResult ? onShowSummary : onEdit}>
           {hasConfirmedResult ? '查看收益摘要' : '去确认识别明细'}
         </button>
-        <button className={cx(secondaryButtonClass, 'w-full')} type="button" onClick={onEdit}>
+        <button className={cx(subtleButtonClass, 'w-full')} type="button" onClick={onEdit}>
           修改识别明细
         </button>
         <button className={cx(subtleButtonClass, 'w-full')} type="button" onClick={onReupload}>
@@ -766,7 +774,7 @@ function AnalysisWorkspaceSidebar({
       </div>
 
       {latestHistoryEntries.length ? (
-        <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+        <div className="rounded-[28px] border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">最近历史</div>
@@ -777,7 +785,7 @@ function AnalysisWorkspaceSidebar({
 
           <div className="mt-4 space-y-3">
             {latestHistoryEntries.map((entry) => (
-              <div key={entry.id} className="rounded-2xl border border-white/80 bg-white px-3 py-3">
+              <div key={entry.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
                 <div className="truncate text-sm font-semibold text-slate-800">{entry.title}</div>
                 <div className="mt-1 text-xs text-slate-400">{formatDateTimeLabel(entry.updatedAt)}</div>
                 <div className="mt-2 text-xs font-semibold text-slate-500">
@@ -1626,59 +1634,53 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   );
 
   const content = !hasImportedData ? (
-    <div className="mx-auto max-w-6xl space-y-6 px-4 pt-6 sm:px-6 sm:pt-8">
-      <div className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
-        <div className="grid xl:grid-cols-[1.08fr,0.92fr]">
-          <div className="border-b border-slate-200 px-6 py-8 sm:px-8 sm:py-10 xl:border-b-0 xl:border-r">
+    <div className="mx-auto max-w-6xl space-y-6 px-4 pt-8 sm:px-6 sm:pt-10">
+      <div className="overflow-hidden rounded-[40px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.08)]">
+        <div className="relative px-6 py-10 sm:px-10 sm:py-14">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-56 bg-gradient-to-b from-slate-50 to-transparent" />
+
+          <div className="relative mx-auto max-w-4xl text-center">
             <Pill tone="indigo">基金切换收益分析</Pill>
-            <h2 className="mt-5 max-w-2xl text-3xl font-extrabold tracking-tight text-slate-900 sm:text-[2.5rem]">
-              上传基金切换截图，自动回放“如果不换”和“已经换了”两种结果
+            <h2 className="mx-auto mt-6 max-w-3xl text-3xl font-extrabold tracking-tight text-slate-900 sm:text-5xl">
+              上传基金切换截图，自动算清这次换仓现在到底赚了还是亏了
             </h2>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-slate-500">
-              页面会先识别交易截图，再按你现有的基金切换收益逻辑回放来源仓位、目标仓位和补入现金，最后用最新价格重算当前切换收益。
+            <p className="mx-auto mt-4 max-w-2xl text-base leading-8 text-slate-500">
+              先识别交易截图，再沿你现有的基金切换收益逻辑回放来源仓位、目标仓位和补入现金，最后直接用最新价格重算。
             </p>
-
-            <div className="mt-6 flex flex-wrap gap-2">
-              {LANDING_QUESTIONS.map((question, index) => (
-                <LandingQuestionChip key={question} tone={index === 0 ? 'indigo' : 'slate'}>
-                  {question}
-                </LandingQuestionChip>
-              ))}
-            </div>
-
-            <div className="mt-8 grid gap-4 md:grid-cols-3">
-              <LandingStepCard index="01" title="上传交易截图" description="支持拖拽或点击上传，先把截图送进 OCR 识别。" />
-              <LandingStepCard index="02" title="确认交易明细" description="把识别出来的每条买卖记录铺成工作表，必要时可以直接修改。" />
-              <LandingStepCard index="03" title="按最新价格出结果" description="生成收益摘要，并把这次分析存进历史，后续可以一键重算。" />
-            </div>
           </div>
 
-          <div className="relative overflow-hidden bg-gradient-to-br from-slate-50 via-white to-indigo-50 px-6 py-8 sm:px-8 sm:py-10">
-            <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-indigo-200/40 blur-3xl" />
-            <div className="pointer-events-none absolute -bottom-16 -left-16 h-48 w-48 rounded-full bg-sky-100 blur-3xl" />
-
-            <div className="flex flex-wrap gap-2">
-              {LANDING_OUTCOMES.slice(0, 2).map((item) => (
-                <LandingQuestionChip key={item}>{item}</LandingQuestionChip>
-              ))}
+          <div className="relative mx-auto mt-12 max-w-5xl">
+            <div className="hidden lg:block">
+              <div className="absolute left-0 top-6 flex max-w-[220px] flex-col gap-3">
+                {LANDING_QUESTIONS.slice(0, 2).map((question, index) => (
+                  <LandingQuestionChip key={question} tone={index === 0 ? 'indigo' : 'slate'}>
+                    {question}
+                  </LandingQuestionChip>
+                ))}
+              </div>
+              <div className="absolute right-0 top-6 flex max-w-[220px] flex-col items-end gap-3">
+                {LANDING_QUESTIONS.slice(2).map((question) => (
+                  <LandingQuestionChip key={question}>{question}</LandingQuestionChip>
+                ))}
+              </div>
             </div>
 
-            <div className="mx-auto mt-8 max-w-md rounded-[32px] border border-slate-200 bg-white p-5 shadow-xl shadow-slate-200/60 sm:p-6">
+            <div className="mx-auto w-full max-w-md rounded-[36px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.12)] sm:p-6">
               <div className="text-center">
                 <div className={cx(
-                  'mx-auto flex h-16 w-16 items-center justify-center rounded-2xl',
+                  'mx-auto flex h-14 w-14 items-center justify-center rounded-2xl',
                   ocrState.status === 'loading' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-500'
                 )}>
-                  {ocrState.status === 'loading' ? <LoaderCircle className="h-8 w-8 animate-spin" /> : <CloudUpload className="h-8 w-8" />}
+                  {ocrState.status === 'loading' ? <LoaderCircle className="h-7 w-7 animate-spin" /> : <CloudUpload className="h-7 w-7" />}
                 </div>
                 <div className="mt-4 text-xl font-extrabold tracking-tight text-slate-900">上传一张基金交易截图</div>
-                <p className="mt-2 text-sm leading-6 text-slate-500">交互会和参考页一样，先把文件送进来，再进入右侧工作区继续确认明细和收益。</p>
+                <p className="mt-2 text-sm leading-6 text-slate-500">上传后会进入双栏工作台。左边看文件和结果状态，右边确认明细、查看收益、调计算参数。</p>
               </div>
 
               <button
                 className={cx(
-                  'mt-6 flex min-h-[220px] w-full flex-col items-center justify-center rounded-[28px] border-2 border-dashed p-5 text-center transition-all',
-                  ocrState.status === 'loading' ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 bg-slate-50 hover:border-indigo-400 hover:bg-white'
+                  'mt-6 flex min-h-[220px] w-full flex-col items-center justify-center rounded-[28px] border border-dashed p-6 text-center transition-all',
+                  ocrState.status === 'loading' ? 'border-indigo-300 bg-indigo-50' : 'border-slate-300 bg-slate-50 hover:border-slate-400 hover:bg-white'
                 )}
                 onClick={openFilePicker}
                 onDragOver={handleDragOver}
@@ -1686,9 +1688,9 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
                 type="button"
               >
                 {ocrState.status === 'loading' ? (
-                  <LoaderCircle className="mb-4 h-10 w-10 animate-spin text-indigo-500" />
+                  <LoaderCircle className="mb-4 h-9 w-9 animate-spin text-indigo-500" />
                 ) : (
-                  <CloudUpload className="mb-4 h-10 w-10 text-slate-400" />
+                  <CloudUpload className="mb-4 h-9 w-9 text-slate-400" />
                 )}
                 <div className="text-base font-semibold text-slate-700">Drop files here or click to browse</div>
                 <div className="mt-2 text-xs text-slate-500">基金交易截图，支持常见图片格式</div>
@@ -1723,41 +1725,47 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
               )}
             </div>
 
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {LANDING_OUTCOMES.map((item) => (
-                <div key={item} className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-600 shadow-sm shadow-slate-100/80">
+                <div key={item} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
                   {item}
                 </div>
               ))}
             </div>
           </div>
+
+          <div className="mx-auto mt-10 grid max-w-5xl gap-4 md:grid-cols-3">
+            <LandingStepCard index="01" title="上传交易截图" description="支持拖拽或点击上传，先把截图送进 OCR 识别。" />
+            <LandingStepCard index="02" title="确认交易明细" description="把识别出来的每条买卖记录铺成工作表，必要时可以直接修改。" />
+            <LandingStepCard index="03" title="按最新价格出结果" description="生成收益摘要，并把这次分析存进历史，后续可以一键重算。" />
+          </div>
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.15fr,0.85fr]">
-        <Card className="rounded-[28px] p-5 sm:p-6">
+      <div className="grid gap-6 xl:grid-cols-[1.2fr,0.8fr]">
+        <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.05)]">
           <SectionHeading
             eyebrow="上传后工作台"
-            title="页面会怎么接住这张截图"
-            description="上传成功后，不再是往下滚一堆卡片，而是进入双栏工作台。左边收纳文件状态和当前判断，右边是明细、摘要、参数和历史。"
+            title="上传后进入更像参考页的双栏工作区"
+            description="左边只收纳文件状态、当前判断和最近历史；右边保留一块大的主工作区，专门处理识别明细、收益摘要、计算参数和历史分析。"
           />
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
               <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
                 <FileSpreadsheet className="h-4 w-4 text-indigo-600" />
                 右侧主工作区
               </div>
-              <p className="mt-3 text-sm leading-6 text-slate-500">默认先看识别明细，确认后切到收益摘要；需要时再去调收益口径、补现价或打开历史分析。</p>
+              <p className="mt-3 text-sm leading-6 text-slate-500">先看识别明细，再切换到收益摘要。只有需要时才进入计算参数和历史分析。</p>
             </div>
-            <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
               <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
                 <Sparkles className="h-4 w-4 text-indigo-600" />
-                左侧状态栏
+                左侧状态列
               </div>
-              <p className="mt-3 text-sm leading-6 text-slate-500">集中显示文件状态、识别进度、当前收益判断和快捷入口，操作节奏更接近参考页。</p>
+              <p className="mt-3 text-sm leading-6 text-slate-500">上传后的文件、OCR 状态、当前结果和最近历史都集中放这边，避免整页来回找入口。</p>
             </div>
           </div>
-        </Card>
+        </div>
 
         <FundSwitchHistorySection
           entries={historyEntries}
@@ -1769,13 +1777,13 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     </div>
   ) : (
     <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6 sm:pt-8">
-      <div className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
-        <div className="border-b border-slate-200 bg-slate-50/80 px-4 py-4 sm:px-6">
+      <div className="overflow-hidden rounded-[36px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.08)]">
+        <div className="border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">基金切换收益工作台</div>
               <div className="mt-2 text-xl font-extrabold tracking-tight text-slate-900">{state.fileName || '当前上传截图'}</div>
-              <div className="mt-1 text-sm text-slate-500">上传后进入双栏工作区：左侧看状态，右侧看明细、收益、参数和历史。</div>
+              <div className="mt-1 text-sm text-slate-500">左侧看文件和状态，右侧集中处理明细、收益、参数和历史。</div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -1791,8 +1799,8 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
           </div>
         </div>
 
-        <div className="grid xl:grid-cols-[320px,minmax(0,1fr)]">
-          <div className="border-b border-slate-200 xl:border-b-0 xl:border-r">
+        <div className="grid xl:min-h-[760px] xl:grid-cols-[310px,minmax(0,1fr)]">
+          <div className="border-b border-slate-200 bg-slate-50/55 xl:border-b-0 xl:border-r">
             <AnalysisWorkspaceSidebar
               fileName={state.fileName}
               statusMeta={statusMeta}
@@ -1811,8 +1819,8 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
             />
           </div>
 
-          <div className="min-w-0 bg-slate-50/60">
-            <div className="border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
+          <div className="min-w-0 bg-white">
+            <div className="border-b border-slate-200 bg-slate-50/55 px-4 py-4 sm:px-6">
               <div className="flex flex-wrap gap-2">
                 {WORKSPACE_PANELS.map((panel) => (
                   <WorkspaceNavButton
@@ -1826,7 +1834,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
               </div>
             </div>
 
-            <div className="p-4 sm:p-6">
+            <div className="p-5 sm:p-7">
               {activeWorkspacePanel === 'details' ? detailsPanel : null}
               {activeWorkspacePanel === 'summary' ? summaryPanel : null}
               {activeWorkspacePanel === 'settings' ? settingsPanel : null}
