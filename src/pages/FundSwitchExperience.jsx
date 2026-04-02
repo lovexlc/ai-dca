@@ -5,6 +5,7 @@ import {
   ArrowRight,
   CheckCircle2,
   CloudUpload,
+  Download,
   FileImage,
   FolderOpen,
   History,
@@ -337,13 +338,19 @@ function isValidRowDate(value) {
   return Number.isFinite(Date.parse(normalized.replace(' ', 'T')));
 }
 
-function buildRowValidationIssues(rows = []) {
+function buildRowValidationDiagnostics(rows = []) {
   const normalizedRows = (Array.isArray(rows) ? rows : []).filter((row) => hasMeaningfulRowContent(row));
   if (!normalizedRows.length) {
-    return ['请至少保留一条有效交易记录。'];
+    return [{
+      id: 'rows-empty',
+      rowIndex: -1,
+      rowLabel: '',
+      field: 'rows',
+      message: '请至少保留一条有效交易记录。'
+    }];
   }
 
-  const issues = [];
+  const diagnostics = [];
   normalizedRows.forEach((row, index) => {
     const rowLabel = `第 ${index + 1} 条记录`;
     const price = Number(row?.price) || 0;
@@ -352,31 +359,82 @@ function buildRowValidationIssues(rows = []) {
     const expectedAmount = roundToCurrency(price * shares);
 
     if (!isValidRowDate(row?.date)) {
-      issues.push(`${rowLabel} 日期不完整或格式不正确。`);
+      diagnostics.push({
+        id: `${row.id || index}-date`,
+        rowIndex: index,
+        rowLabel,
+        field: 'date',
+        message: '日期不完整或格式不正确。'
+      });
     }
     if (getFundCodeError(row?.code)) {
-      issues.push(`${rowLabel} 基金代码必须是 6 位纯数字。`);
+      diagnostics.push({
+        id: `${row.id || index}-code`,
+        rowIndex: index,
+        rowLabel,
+        field: 'code',
+        message: '基金代码必须是 6 位纯数字。'
+      });
     }
     if (row?.type !== '买入' && row?.type !== '卖出') {
-      issues.push(`${rowLabel} 交易类型不正确。`);
+      diagnostics.push({
+        id: `${row.id || index}-type`,
+        rowIndex: index,
+        rowLabel,
+        field: 'type',
+        message: '交易类型不正确。'
+      });
     }
     if (price <= 0) {
-      issues.push(`${rowLabel} 价格必须大于 0。`);
+      diagnostics.push({
+        id: `${row.id || index}-price`,
+        rowIndex: index,
+        rowLabel,
+        field: 'price',
+        message: '价格必须大于 0。'
+      });
     }
     if (shares <= 0) {
-      issues.push(`${rowLabel} 份额必须大于 0。`);
+      diagnostics.push({
+        id: `${row.id || index}-shares`,
+        rowIndex: index,
+        rowLabel,
+        field: 'shares',
+        message: '份额必须大于 0。'
+      });
     }
     if (amount <= 0) {
-      issues.push(`${rowLabel} 成交额不能为空。`);
+      diagnostics.push({
+        id: `${row.id || index}-amount-empty`,
+        rowIndex: index,
+        rowLabel,
+        field: 'amount',
+        message: '成交额不能为空。'
+      });
     } else if (price > 0 && shares > 0 && Math.abs(amount - expectedAmount) > 0.05) {
-      issues.push(`${rowLabel} 成交额与价格份额不一致。`);
+      diagnostics.push({
+        id: `${row.id || index}-amount-mismatch`,
+        rowIndex: index,
+        rowLabel,
+        field: 'amount',
+        message: '成交额与价格份额不一致。'
+      });
     }
   });
 
-  return issues;
+  return diagnostics;
 }
 
-function summarizeValidationIssues(issues = []) {
+function buildRowValidationIssues(diagnostics = []) {
+  return (Array.isArray(diagnostics) ? diagnostics : []).map((diagnostic) => (
+    diagnostic.rowIndex >= 0 && diagnostic.rowLabel
+      ? `${diagnostic.rowLabel} ${diagnostic.message}`
+      : diagnostic.message
+  ));
+}
+
+function summarizeValidationIssues(diagnostics = []) {
+  const issues = buildRowValidationIssues(diagnostics);
   if (!issues.length) {
     return '';
   }
@@ -755,8 +813,8 @@ function WorkspaceNavButton({ panel, active, onSelect, badge = '' }) {
   return (
     <button
       className={cx(
-        'inline-flex min-h-[40px] items-center justify-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-all',
-        active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-900'
+        'inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all',
+        active ? 'border-slate-900 bg-slate-900 text-white shadow-sm shadow-slate-200' : 'border-transparent bg-transparent text-slate-500 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-900'
       )}
       type="button"
       onClick={() => onSelect(key)}
@@ -772,7 +830,7 @@ function WorkspaceNavButton({ panel, active, onSelect, badge = '' }) {
   );
 }
 
-function ReadonlyTransactionsTable({ rows = [] }) {
+function ReadonlyTransactionsTable({ rows = [], highlightedRowIndex = -1 }) {
   const meaningfulRows = rows.filter((row) => hasMeaningfulRowContent(row));
 
   if (!meaningfulRows.length) {
@@ -810,8 +868,12 @@ function ReadonlyTransactionsTable({ rows = [] }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white">
-            {meaningfulRows.map((row) => (
-              <tr key={row.id} className="hover:bg-slate-50/80">
+            {meaningfulRows.map((row, index) => (
+              <tr
+                key={row.id}
+                data-row-index={index}
+                className={cx('hover:bg-slate-50/80', highlightedRowIndex === index ? 'bg-indigo-50/80' : '')}
+              >
                 <td className="px-4 py-3 font-medium text-slate-700">{row.date || '--'}</td>
                 <td className="px-4 py-3 font-semibold text-slate-900">{row.code || '--'}</td>
                 <td className="px-4 py-3">
@@ -880,18 +942,31 @@ function getDocumentWorkflowMeta(entry = {}) {
   };
 }
 
-function buildWorkflowSteps({ hasImportedData, recognizedCount, ocrState, resultConfirmed }) {
+function buildWorkflowSteps({
+  fileName,
+  hasImportedData,
+  recognizedCount,
+  ocrState,
+  resultConfirmed,
+  effectiveOcrMessage,
+  validationDiagnostics = [],
+  summary
+}) {
   const normalizedStatus = String(ocrState?.status || '').trim();
   const hasOcrResult = normalizedStatus === 'success' || normalizedStatus === 'warning' || resultConfirmed;
   const isProcessing = normalizedStatus === 'loading';
   const isError = normalizedStatus === 'error';
+  const hasValidationIssues = validationDiagnostics.length > 0;
 
   return [
     {
       key: 'upload',
       label: '截图已接收',
       detail: hasImportedData ? '文件已进入识别流程。' : '等待上传截图。',
-      tone: hasImportedData ? 'done' : 'pending'
+      tone: hasImportedData ? 'done' : 'pending',
+      lines: [
+        fileName ? `当前文档：${fileName}` : '上传后会为这次分析创建单独文档。'
+      ]
     },
     {
       key: 'ocr',
@@ -901,30 +976,75 @@ function buildWorkflowSteps({ hasImportedData, recognizedCount, ocrState, result
         : hasOcrResult
           ? `已解析 ${recognizedCount} 条记录。`
           : '等待开始识别。',
-      tone: isError ? 'error' : hasOcrResult ? 'done' : isProcessing ? 'current' : 'pending'
+      tone: isError ? 'error' : hasOcrResult ? 'done' : isProcessing ? 'current' : 'pending',
+      lines: [
+        effectiveOcrMessage || '等待 OCR 开始。',
+        ocrState.durationMs > 0 ? `OCR 用时约 ${(ocrState.durationMs / 1000).toFixed(1)} 秒。` : '',
+        recognizedCount > 0 ? `已回填 ${recognizedCount} 条可计算记录。` : ''
+      ].filter(Boolean)
     },
     {
       key: 'sheet',
       label: '明细工作表已准备',
-      detail: recognizedCount > 0 ? '可以直接修改识别明细。' : '等待回填识别结果。',
-      tone: recognizedCount > 0 ? 'done' : isError ? 'pending' : isProcessing ? 'current' : 'pending'
+      detail: hasValidationIssues
+        ? `发现 ${validationDiagnostics.length} 项待修正，建议先定位处理。`
+        : recognizedCount > 0
+          ? '可以直接修改识别明细。'
+          : '等待回填识别结果。',
+      tone: hasValidationIssues ? 'error' : recognizedCount > 0 ? 'done' : isError ? 'pending' : isProcessing ? 'current' : 'pending',
+      lines: hasValidationIssues
+        ? ['点击下面的问题，可直接跳到对应明细。']
+        : recognizedCount > 0
+          ? [`共 ${recognizedCount} 条识别记录，当前可以继续确认收益。`]
+          : [],
+      issues: validationDiagnostics.slice(0, 4),
+      extraIssueCount: Math.max(validationDiagnostics.length - 4, 0)
     },
     {
       key: 'result',
       label: resultConfirmed ? '收益结果已确认' : '等待确认收益结果',
       detail: resultConfirmed ? '当前结果会按最新价格持续重算。' : '确认后会保存这次收益分析。',
-      tone: resultConfirmed ? 'done' : recognizedCount > 0 ? 'current' : 'pending'
+      tone: resultConfirmed ? 'done' : recognizedCount > 0 && !hasValidationIssues ? 'current' : 'pending',
+      lines: resultConfirmed
+        ? [
+            `收益口径：${STRATEGY_LABELS[summary?.strategy || 'trace']}`,
+            `切换额外收益：${formatSignedCurrency(summary?.switchAdvantage || 0, '¥ ')}`,
+            `不切换现值：${formatCurrency(summary?.stayValue || 0, '¥ ')}`,
+            `换后现值：${formatCurrency(summary?.switchedValue || 0, '¥ ')}`
+          ]
+        : recognizedCount > 0 && !hasValidationIssues
+          ? ['确认识别明细后，会自动切到收益摘要。']
+          : ['先完成明细校验，再生成收益结果。']
     }
   ];
 }
 
-function WorkflowStepList({ steps = [] }) {
+function findPreferredWorkflowStepKey(steps = []) {
+  const tonePriority = ['error', 'current', 'done', 'pending'];
+  for (const tone of tonePriority) {
+    const match = steps.find((step) => step.tone === tone);
+    if (match) {
+      return match.key;
+    }
+  }
+  return steps[0]?.key || '';
+}
+
+function WorkflowStepList({
+  steps = [],
+  expandedStepKey = '',
+  onToggleStep,
+  onOpenDetails,
+  onOpenSummary,
+  onJumpToIssue
+}) {
   return (
     <div className="rounded-[28px] border border-slate-200 bg-white p-4">
       <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">处理状态</div>
       <div className="mt-4 space-y-3">
         {steps.map((step, index) => (
-          <div key={step.key} className="flex gap-3">
+          <div key={step.key} className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-3 py-3">
+            <button className="flex w-full gap-3 text-left" type="button" onClick={() => onToggleStep(step.key)}>
             <div className="flex flex-col items-center">
               <div
                 className={cx(
@@ -943,14 +1063,76 @@ function WorkflowStepList({ steps = [] }) {
               {index < steps.length - 1 ? <div className="mt-1 h-6 w-px bg-slate-200" /> : null}
             </div>
             <div className="min-w-0 pb-2">
-              <div className={cx(
-                'text-sm font-semibold',
-                step.tone === 'error' ? 'text-red-600' : step.tone === 'pending' ? 'text-slate-400' : 'text-slate-900'
-              )}>
-                {step.label}
+              <div className="flex items-start justify-between gap-3">
+                <div className={cx(
+                  'text-sm font-semibold',
+                  step.tone === 'error' ? 'text-red-600' : step.tone === 'pending' ? 'text-slate-400' : 'text-slate-900'
+                )}>
+                  {step.label}
+                </div>
+                <span className="shrink-0 text-[11px] font-semibold text-slate-400">
+                  {expandedStepKey === step.key ? '收起' : '展开'}
+                </span>
               </div>
               <div className="mt-1 text-xs leading-5 text-slate-500">{step.detail}</div>
             </div>
+            </button>
+
+            {expandedStepKey === step.key ? (
+              <div className="ml-10 space-y-3 border-t border-slate-200/80 pt-3">
+                {step.lines?.length ? (
+                  <div className="space-y-2">
+                    {step.lines.map((line) => (
+                      <div key={`${step.key}-${line}`} className="text-xs leading-5 text-slate-500">
+                        {line}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {step.issues?.length ? (
+                  <div className="space-y-2">
+                    {step.issues.map((issue) => (
+                      <button
+                        key={issue.id}
+                        className="flex w-full items-center justify-between gap-3 rounded-2xl border border-red-200 bg-white px-3 py-2 text-left transition-colors hover:bg-red-50"
+                        type="button"
+                        onClick={() => onJumpToIssue(issue.rowIndex)}
+                      >
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-red-600">{issue.rowLabel || '待修正问题'}</div>
+                          <div className="mt-1 text-xs leading-5 text-slate-600">{issue.message}</div>
+                        </div>
+                        {issue.rowIndex >= 0 ? (
+                          <span className="shrink-0 text-[11px] font-semibold text-red-500">定位</span>
+                        ) : null}
+                      </button>
+                    ))}
+                    {step.extraIssueCount ? (
+                      <div className="text-xs leading-5 text-slate-400">另有 {step.extraIssueCount} 项待修正，可在明细表里继续处理。</div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <div className="flex flex-wrap gap-2">
+                  {step.key === 'sheet' && (step.tone === 'done' || step.tone === 'error') ? (
+                    <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={onOpenDetails}>
+                      去确认识别明细
+                    </button>
+                  ) : null}
+                  {step.key === 'result' && step.tone === 'current' ? (
+                    <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={onOpenDetails}>
+                      完成确认后生成收益
+                    </button>
+                  ) : null}
+                  {step.key === 'result' && step.tone === 'done' ? (
+                    <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={onOpenSummary}>
+                      查看收益摘要
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
           </div>
         ))}
       </div>
@@ -961,113 +1143,108 @@ function WorkflowStepList({ steps = [] }) {
 function AnalysisWorkspaceSidebar({
   activeDocId,
   documentEntries = [],
+  expandedStepKey,
   fileName,
-  statusMeta,
+  workflowSteps = [],
   effectiveOcrMessage,
   ocrState,
-  hasImportedData,
   recognizedCount,
   resultConfirmed,
   summary,
   validationIssueSummary,
+  onToggleStep,
+  onJumpToIssue,
   onOpenDocument,
-  onReupload,
   onEdit,
   onReset,
   onShowSummary,
-  onShowHistory,
-  historyEntries = []
+  documentUpdatedAt
 }) {
   const latestDocuments = documentEntries.slice(0, 5);
   const hasConfirmedResult = resultConfirmed;
   const quickTone = summary.switchAdvantage > 0 ? 'positive' : summary.switchAdvantage < 0 ? 'negative' : 'slate';
-  const workflowSteps = buildWorkflowSteps({
-    hasImportedData,
-    recognizedCount,
-    ocrState,
-    resultConfirmed
-  });
 
   return (
-    <aside className="flex h-full flex-col gap-4 bg-slate-50/55 p-4 sm:p-5">
-      <button className="inline-flex items-center gap-2 self-start text-sm font-semibold text-slate-500 transition-colors hover:text-slate-800" type="button" onClick={onReset}>
-        返回上传入口
-      </button>
-
-      <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
+    <aside className="space-y-4">
+      <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
         <div className="flex items-start gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-500">
             <FileImage className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">当前文档</div>
-            <div className="mt-2 truncate text-sm font-bold text-slate-900">{fileName || '未命名文件'}</div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className={cx('inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold', statusMeta.colorClass)}>
-                <statusMeta.Icon className={cx('h-4 w-4', statusMeta.iconClassName)} />
-                {statusMeta.label}
-              </span>
-              <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">
-                {recognizedCount} 条记录
-              </span>
+            <div className="mt-2 truncate text-lg font-bold text-slate-900">{fileName || '未命名文件'}</div>
+            <div className="mt-2 text-xs leading-5 text-slate-400">
+              最近更新 {formatDateTimeLabel(documentUpdatedAt)}{ocrState.durationMs > 0 ? ` · OCR ${(ocrState.durationMs / 1000).toFixed(1)} 秒` : ''}
             </div>
           </div>
         </div>
 
         <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 rounded-full bg-white p-2 text-indigo-600 ring-1 ring-slate-200">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                {hasConfirmedResult ? '收益口径与结果要点' : '当前待确认重点'}
+              </div>
+              <div className={cx(
+                'mt-3 text-3xl font-extrabold tracking-tight',
+                hasConfirmedResult
+                  ? summary.switchAdvantage > 0
+                    ? 'text-emerald-600'
+                    : summary.switchAdvantage < 0
+                      ? 'text-red-500'
+                      : 'text-slate-900'
+                  : 'text-slate-900'
+              )}>
+                {hasConfirmedResult ? formatSignedCurrency(summary.switchAdvantage, '¥ ') : `${recognizedCount} 条记录`}
+              </div>
+            </div>
+            <div className="rounded-full bg-white p-2 text-indigo-600 ring-1 ring-slate-200">
               <Sparkles className="h-4 w-4" />
             </div>
-            <div className="min-w-0">
-              <div className="text-sm font-bold text-slate-900">
-                {hasConfirmedResult ? '当前收益判断已生成' : '识别明细已回填，等待你确认'}
-              </div>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
-                {hasConfirmedResult ? effectiveOcrMessage : validationIssueSummary || effectiveOcrMessage}
-              </p>
-              {ocrState.durationMs > 0 ? (
-                <div className="mt-2 text-xs font-semibold text-slate-400">OCR 用时约 {(ocrState.durationMs / 1000).toFixed(1)} 秒</div>
-              ) : null}
-            </div>
+          </div>
+
+          <p className="mt-3 text-sm leading-6 text-slate-500">
+            {hasConfirmedResult ? effectiveOcrMessage : validationIssueSummary || effectiveOcrMessage}
+          </p>
+
+          <div className="mt-4 grid gap-2.5">
+            <SidebarQuickStat label="当前口径" value={hasConfirmedResult ? STRATEGY_LABELS[summary.strategy] : '待确认'} />
+            <SidebarQuickStat
+              label="切换额外收益"
+              value={hasConfirmedResult ? formatSignedCurrency(summary.switchAdvantage, '¥ ') : '待生成'}
+              tone={hasConfirmedResult ? quickTone : 'slate'}
+            />
+            <SidebarQuickStat label="不切换现值" value={hasConfirmedResult ? formatCurrency(summary.stayValue, '¥ ') : '--'} />
+            <SidebarQuickStat label="换后现值" value={hasConfirmedResult ? formatCurrency(summary.switchedValue, '¥ ') : '--'} />
           </div>
         </div>
 
-        <div className="mt-4 grid gap-2.5">
-          <SidebarQuickStat label="当前口径" value={hasConfirmedResult ? STRATEGY_LABELS[summary.strategy] : '待确认'} />
-          <SidebarQuickStat
-            label="切换额外收益"
-            value={hasConfirmedResult ? formatSignedCurrency(summary.switchAdvantage, '¥ ') : '待生成'}
-            tone={hasConfirmedResult ? quickTone : 'slate'}
-          />
-          <SidebarQuickStat label="不切换现值" value={hasConfirmedResult ? formatCurrency(summary.stayValue, '¥ ') : '--'} />
-          <SidebarQuickStat label="换后现值" value={hasConfirmedResult ? formatCurrency(summary.switchedValue, '¥ ') : '--'} />
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={onReset}>
+            返回上传入口
+          </button>
+          <button className={cx(subtleButtonClass, 'w-full sm:w-auto')} type="button" onClick={hasConfirmedResult ? onShowSummary : onEdit}>
+            {hasConfirmedResult ? '查看收益摘要' : '去确认识别明细'}
+          </button>
         </div>
       </div>
 
-      <WorkflowStepList steps={workflowSteps} />
-
-      <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-1">
-        <button className={cx(primaryButtonClass, 'w-full')} type="button" onClick={hasConfirmedResult ? onShowSummary : onEdit}>
-          {hasConfirmedResult ? '查看收益摘要' : '去确认识别明细'}
-        </button>
-        <button className={cx(subtleButtonClass, 'w-full')} type="button" onClick={onEdit}>
-          修改识别明细
-        </button>
-        <button className={cx(subtleButtonClass, 'w-full')} type="button" onClick={onReupload}>
-          重新上传
-        </button>
-        <button className={cx(subtleButtonClass, 'w-full')} type="button" onClick={onShowHistory}>
-          历史分析
-        </button>
-      </div>
+      <WorkflowStepList
+        steps={workflowSteps}
+        expandedStepKey={expandedStepKey}
+        onToggleStep={onToggleStep}
+        onOpenDetails={onEdit}
+        onOpenSummary={onShowSummary}
+        onJumpToIssue={onJumpToIssue}
+      />
 
       {latestDocuments.length ? (
         <div className="rounded-[28px] border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">最近文档</div>
-              <div className="mt-1 text-sm font-bold text-slate-900">上传完成后会追加到这里</div>
+              <div className="mt-1 text-sm font-bold text-slate-900">点击即可带路由打开</div>
             </div>
             <Pill tone="slate">{documentEntries.length} 条</Pill>
           </div>
@@ -1081,13 +1258,13 @@ function AnalysisWorkspaceSidebar({
                 <button
                   key={entry.id}
                   className={cx(
-                    'w-full rounded-2xl border px-3 py-3 text-left transition-colors',
+                    'w-full rounded-[22px] border px-3 py-3 text-left transition-colors',
                     isActive ? 'border-indigo-200 bg-indigo-50/70' : 'border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white'
                   )}
                   type="button"
                   onClick={() => onOpenDocument(entry.id)}
                 >
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="truncate text-sm font-semibold text-slate-800">{entry.fileName || entry.title}</div>
                       <div className="mt-1 text-xs text-slate-400">{formatDateTimeLabel(entry.updatedAt)}</div>
@@ -1096,10 +1273,10 @@ function AnalysisWorkspaceSidebar({
                       {workflowMeta.label}
                     </span>
                   </div>
-                  <div className="mt-2 text-xs leading-5 text-slate-500">
-                    {entry.resultConfirmed
-                      ? `已确认 ${entry.recognizedRecords} 条记录，可直接打开重算。`
-                      : `已回填 ${entry.recognizedRecords} 条记录，等待确认收益。`}
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                    <span>{entry.recognizedRecords} 条记录</span>
+                    <span>·</span>
+                    <span>{entry.resultConfirmed ? '打开后直接重算' : '打开后继续确认'}</span>
                   </div>
                 </button>
               );
@@ -1111,9 +1288,15 @@ function AnalysisWorkspaceSidebar({
   );
 }
 
-function TransactionEditorCard({ row, index, codeError, onUpdateRow, onRemoveRow }) {
+function TransactionEditorCard({ row, index, codeError, highlighted = false, onUpdateRow, onRemoveRow }) {
   return (
-    <div className="rounded-[24px] border border-slate-200 bg-slate-50/90 p-4 shadow-sm shadow-slate-100/70">
+    <div
+      data-row-index={index}
+      className={cx(
+        'rounded-[24px] border bg-slate-50/90 p-4 shadow-sm shadow-slate-100/70',
+        highlighted ? 'border-indigo-300 ring-2 ring-indigo-100' : 'border-slate-200'
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">记录 {String(index + 1).padStart(2, '0')}</div>
@@ -1217,6 +1400,8 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [activeWorkspacePanel, setActiveWorkspacePanel] = useState(() => (state.resultConfirmed ? 'summary' : 'details'));
   const [routeState, setRouteState] = useState(() => readFundSwitchRouteState());
+  const [expandedStepKey, setExpandedStepKey] = useState(() => (state.resultConfirmed ? 'result' : 'sheet'));
+  const [highlightedRowIndex, setHighlightedRowIndex] = useState(-1);
   const [confirmError, setConfirmError] = useState('');
   const [priceState, setPriceState] = useState(() => ({ status: 'idle', entries: [], error: '' }));
   const fileInputRef = useRef(null);
@@ -1243,12 +1428,23 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   const effectiveOcrMessage = hasImportedData && ocrState.status === 'idle'
     ? `已同步 ${recognizedCount} 条记录，可继续确认收益或修改明细。`
     : ocrState.message;
-  const validationIssues = useMemo(() => buildRowValidationIssues(summary.rows), [summary.rows]);
-  const validationIssueSummary = useMemo(() => summarizeValidationIssues(validationIssues), [validationIssues]);
+  const validationDiagnostics = useMemo(() => buildRowValidationDiagnostics(summary.rows), [summary.rows]);
+  const validationIssues = useMemo(() => buildRowValidationIssues(validationDiagnostics), [validationDiagnostics]);
+  const validationIssueSummary = useMemo(() => summarizeValidationIssues(validationDiagnostics), [validationDiagnostics]);
   const statusMeta = getStatusMeta(effectiveOcrStatus);
   const primaryTabs = getPrimaryTabs(links);
   const advantageMeta = getAdvantageTone(summary.switchAdvantage);
   const showViewPage = routeState.mode === 'view' && hasImportedData;
+  const workflowSteps = useMemo(() => buildWorkflowSteps({
+    fileName: state.fileName,
+    hasImportedData,
+    recognizedCount,
+    ocrState,
+    resultConfirmed: state.resultConfirmed,
+    effectiveOcrMessage,
+    validationDiagnostics,
+    summary
+  }), [effectiveOcrMessage, hasImportedData, ocrState, recognizedCount, state.fileName, state.resultConfirmed, summary, validationDiagnostics]);
 
   useEffect(() => {
     function syncRouteState() {
@@ -1294,6 +1490,25 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   useEffect(() => {
     persistFundSwitchState({ ...state, comparison: summary.comparison }, summary);
   }, [state, summary]);
+
+  useEffect(() => {
+    setExpandedStepKey(findPreferredWorkflowStepKey(workflowSteps));
+  }, [state.docId, state.resultConfirmed, effectiveOcrStatus, workflowSteps]);
+
+  useEffect(() => {
+    if (highlightedRowIndex < 0) {
+      return;
+    }
+
+    const target = document.querySelector(`[data-row-index="${highlightedRowIndex}"]`);
+    if (!target) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, [activeWorkspacePanel, highlightedRowIndex, isEditingDetails]);
 
   function refreshDocumentEntries() {
     const nextEntries = readFundSwitchDocuments();
@@ -1359,6 +1574,71 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
       return;
     }
     setRouteState(updateFundSwitchRoute({ mode: 'upload', docId: '' }, { replace }));
+  }
+
+  function toggleWorkflowStep(stepKey) {
+    setExpandedStepKey((current) => (current === stepKey ? '' : stepKey));
+  }
+
+  function focusValidationIssue(rowIndex) {
+    if (rowIndex < 0) {
+      return;
+    }
+
+    setHighlightedRowIndex(rowIndex);
+    setIsEditingDetails(true);
+    setActiveWorkspacePanel('details');
+  }
+
+  function handleExportAnalysis() {
+    try {
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        docId: state.docId,
+        fileName: state.fileName,
+        resultConfirmed: state.resultConfirmed,
+        ocrState: {
+          status: effectiveOcrStatus,
+          message: effectiveOcrMessage,
+          durationMs: ocrState.durationMs,
+          lineCount: recognizedCount
+        },
+        summary: {
+          strategy: summary.strategy,
+          switchAdvantage: summary.switchAdvantage,
+          stayValue: summary.stayValue,
+          switchedValue: summary.switchedValue,
+          switchedPositionProfit: summary.switchedPositionProfit,
+          processedAmount: summary.processedAmount,
+          extraCash: summary.comparison.extraCash
+        },
+        state: {
+          ...state,
+          comparison: summary.comparison
+        }
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const baseName = (state.fileName || state.docId || 'fund-switch-analysis')
+        .replace(/\.[^.]+$/, '')
+        .replace(/[^a-zA-Z0-9-_一-龥]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'fund-switch-analysis';
+
+      link.href = url;
+      link.download = `${baseName}-analysis.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      showActionToast('导出结果', 'success', {
+        description: '已导出当前分析结果 JSON。'
+      });
+    } catch (error) {
+      showActionToast('导出结果', 'error', {
+        description: error instanceof Error ? error.message : '导出失败。'
+      });
+    }
   }
 
   useEffect(() => {
@@ -1538,6 +1818,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   async function processOcrFile(file) {
     try {
       validateOcrUploadFile(file);
+      setHighlightedRowIndex(-1);
       setOcrState(createOcrState({ status: 'loading', progress: 12, message: '准备上传截图' }));
       setActiveWorkspacePanel('details');
       const { recognizeFundSwitchFile } = await import('../app/fundSwitchOcr.js');
@@ -1616,6 +1897,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   function resetToUploadEntry() {
     setState(createDefaultFundSwitchState());
     setOcrState(createOcrState());
+    setHighlightedRowIndex(-1);
     setConfirmError('');
     setIsEditingDetails(false);
     setActiveWorkspacePanel('details');
@@ -1628,6 +1910,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   }
 
   function closeDetailEditor() {
+    setHighlightedRowIndex(-1);
     setIsEditingDetails(false);
     setActiveWorkspacePanel(state.resultConfirmed ? 'summary' : 'details');
   }
@@ -1635,6 +1918,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   function selectWorkspacePanel(panelKey) {
     setActiveWorkspacePanel(panelKey);
     if (panelKey !== 'details') {
+      setHighlightedRowIndex(-1);
       setIsEditingDetails(false);
     }
   }
@@ -1659,7 +1943,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
         : '校验并生成结果';
 
     if (validationIssues.length) {
-      const message = summarizeValidationIssues(validationIssues);
+      const message = summarizeValidationIssues(validationDiagnostics);
       setConfirmError(message);
       setIsEditingDetails(true);
       showActionToast(actionLabel, 'error', {
@@ -1699,6 +1983,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     }
 
     setState(finalState);
+    setHighlightedRowIndex(-1);
     setIsEditingDetails(false);
     setActiveWorkspacePanel('summary');
     openViewPage(finalState.docId);
@@ -1720,6 +2005,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
       lineCount: nextState.recognizedRecords,
       message: documentEntry.ocrMessage || '已从最近文档载入当前分析。'
     }));
+    setHighlightedRowIndex(-1);
     setConfirmError('');
     setIsEditingDetails(false);
     setActiveWorkspacePanel(nextState.resultConfirmed ? 'summary' : 'details');
@@ -1742,6 +2028,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
 
     setState(nextState);
     setOcrState(nextOcrState);
+    setHighlightedRowIndex(-1);
     setConfirmError('');
     setIsEditingDetails(false);
     setActiveWorkspacePanel('summary');
@@ -1792,6 +2079,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
             row={row}
             index={index}
             codeError={getFundCodeError(row.code)}
+            highlighted={highlightedRowIndex === index}
             onUpdateRow={updateRow}
             onRemoveRow={removeRow}
           />
@@ -1816,7 +2104,14 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
               {summary.rows.map((row, index) => {
                 const codeError = getFundCodeError(row.code);
                 return (
-                  <tr key={row.id} className="group transition-colors hover:bg-slate-50/50">
+                  <tr
+                    key={row.id}
+                    data-row-index={index}
+                    className={cx(
+                      'group transition-colors hover:bg-slate-50/50',
+                      highlightedRowIndex === index ? 'bg-indigo-50/80' : ''
+                    )}
+                  >
                     <td className="px-6 py-3">
                       <input className={cx(tableInputClass, 'w-36')} placeholder="例如 2026-03-29" value={row.date} onChange={(event) => updateRow(index, 'date', event.target.value)} />
                     </td>
@@ -1907,7 +2202,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
         </div>
       ) : null}
 
-      <ReadonlyTransactionsTable rows={summary.rows} />
+      <ReadonlyTransactionsTable highlightedRowIndex={highlightedRowIndex} rows={summary.rows} />
 
       <div className="grid gap-3 lg:grid-cols-3">
         <CompactMetricCard title="识别条目" value={`${recognizedCount} 条`} note="有效买卖记录数量" />
@@ -2220,55 +2515,69 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
       </div>
     </div>
   ) : (
-    <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6 sm:pt-8">
-      <div className="overflow-hidden rounded-[36px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.08)]">
-        <div className="border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">基金切换收益工作台</div>
-              <div className="mt-2 text-xl font-extrabold tracking-tight text-slate-900">{state.fileName || '当前上传截图'}</div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={cx('inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold', statusMeta.colorClass)}>
+    <div className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 sm:py-8">
+      <header className="mb-6 rounded-[28px] border border-slate-200 bg-white px-5 py-4 shadow-[0_18px_48px_rgba(15,23,42,0.06)] sm:px-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <div className="text-sm text-slate-500">基金切换收益工作台</div>
+            <div className="mt-2 truncate text-xl font-semibold text-slate-900 sm:text-2xl">{state.fileName || '当前上传截图'}</div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <span className={cx('inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-semibold', statusMeta.colorClass)}>
                 <statusMeta.Icon className={cx('h-4 w-4', statusMeta.iconClassName)} />
                 {statusMeta.label}
               </span>
-              <Pill tone="slate">{recognizedCount} 条记录</Pill>
-              <Pill tone={priceState.status === 'error' ? 'amber' : 'emerald'}>
-                {priceState.status === 'error' ? '行情未同步' : '已按最新价格重算'}
-              </Pill>
+              <span>{recognizedCount} 条记录</span>
+              <span>·</span>
+              <span>{priceState.status === 'error' ? '行情未同步' : '已按最新价格重算'}</span>
             </div>
+            <button className="mt-3 text-sm font-semibold text-slate-500 transition-colors hover:text-slate-800" type="button" onClick={resetToUploadEntry}>
+              返回上传入口
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={openFilePicker}>
+              重新上传
+            </button>
+            <button className={cx(subtleButtonClass, 'w-full sm:w-auto')} type="button" onClick={() => selectWorkspacePanel('history')}>
+              历史分析
+            </button>
+            <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={handleExportAnalysis}>
+              <Download className="h-4 w-4" />
+              导出结果
+            </button>
           </div>
         </div>
+      </header>
 
-        <div className="grid xl:min-h-[760px] xl:grid-cols-[310px,minmax(0,1fr)]">
-          <div className="border-b border-slate-200 bg-slate-50/55 xl:border-b-0 xl:border-r">
-            <AnalysisWorkspaceSidebar
-              activeDocId={state.docId}
-              documentEntries={documentEntries}
-              fileName={state.fileName}
-              statusMeta={statusMeta}
-              effectiveOcrMessage={effectiveOcrMessage}
-              ocrState={ocrState}
-              hasImportedData={hasImportedData}
-              recognizedCount={recognizedCount}
-              resultConfirmed={state.resultConfirmed}
-              summary={summary}
-              validationIssueSummary={validationIssueSummary}
-              onOpenDocument={openDocument}
-              onReupload={openFilePicker}
-              onEdit={openDetailEditor}
-              onReset={resetToUploadEntry}
-              onShowSummary={() => selectWorkspacePanel('summary')}
-              onShowHistory={() => selectWorkspacePanel('history')}
-              historyEntries={historyEntries}
-            />
-          </div>
+      <div className="grid grid-cols-12 gap-6">
+        <div className="col-span-12 lg:col-span-5 xl:col-span-4">
+          <AnalysisWorkspaceSidebar
+            activeDocId={state.docId}
+            documentEntries={documentEntries}
+            documentUpdatedAt={documentEntries.find((entry) => entry.id === state.docId)?.updatedAt || new Date().toISOString()}
+            effectiveOcrMessage={effectiveOcrMessage}
+            expandedStepKey={expandedStepKey}
+            fileName={state.fileName}
+            ocrState={ocrState}
+            recognizedCount={recognizedCount}
+            resultConfirmed={state.resultConfirmed}
+            summary={summary}
+            validationIssueSummary={validationIssueSummary}
+            workflowSteps={workflowSteps}
+            onEdit={openDetailEditor}
+            onJumpToIssue={focusValidationIssue}
+            onOpenDocument={openDocument}
+            onReset={resetToUploadEntry}
+            onShowSummary={() => selectWorkspacePanel('summary')}
+            onToggleStep={toggleWorkflowStep}
+          />
+        </div>
 
-          <div className="min-w-0 bg-white">
-            <div className="border-b border-slate-200 bg-slate-50/55 px-4 py-4 sm:px-6">
-              <div className="flex flex-wrap gap-2">
+        <div className="col-span-12 lg:col-span-7 xl:col-span-8">
+          <main className="rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
+            <div className="border-b border-slate-200 px-4 py-4 sm:px-6">
+              <div className="flex gap-2 overflow-x-auto pb-1">
                 {WORKSPACE_PANELS.map((panel) => (
                   <WorkspaceNavButton
                     key={panel.key}
@@ -2281,13 +2590,13 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
               </div>
             </div>
 
-            <div className="p-5 sm:p-7">
+            <section className="p-5 sm:p-7">
               {activeWorkspacePanel === 'details' ? detailsPanel : null}
               {activeWorkspacePanel === 'summary' ? summaryPanel : null}
               {activeWorkspacePanel === 'settings' ? settingsPanel : null}
               {activeWorkspacePanel === 'history' ? historyPanel : null}
-            </div>
-          </div>
+            </section>
+          </main>
         </div>
       </div>
     </div>
