@@ -98,6 +98,7 @@ export function TradePlansExperience({ links, embedded = false }) {
   const notifyGroupMemberCount = Math.max(Number(androidSetup?.notifyGroupMemberCount) || 0, notifyGroupId ? 1 : 0);
   const barkConfigured = Boolean(notifyStatus?.configured?.bark);
   const androidConfigured = pairedAndroidDevices.length > 0;
+  const shouldShowAndroidOnboarding = pairedAndroidDevices.length === 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -575,19 +576,21 @@ export function TradePlansExperience({ links, embedded = false }) {
                         <div className="mt-2">{notifyGroupId || '--'}</div>
                       </div>
                     </div>
-                    <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
-                      <Field label="加入通知共享组">
-                        <TextInput
-                          value={notifyGroupJoinCode}
-                          placeholder="输入另一台浏览器生成的 8 位共享码"
-                          onChange={(event) => setNotifyGroupJoinCode(String(event.target.value || '').replace(/\s+/g, '').toUpperCase())}
-                        />
-                      </Field>
-                      <button className={primaryButtonClass} type="button" onClick={handleJoinNotifyGroup}>
-                        <Save className="h-4 w-4" />
-                        {isJoiningNotifyGroup ? '正在加入共享组' : '加入共享组'}
-                      </button>
-                    </div>
+                    {shouldShowAndroidOnboarding ? (
+                      <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+                        <Field label="加入通知共享组">
+                          <TextInput
+                            value={notifyGroupJoinCode}
+                            placeholder="输入另一台浏览器生成的 8 位共享码"
+                            onChange={(event) => setNotifyGroupJoinCode(String(event.target.value || '').replace(/\s+/g, '').toUpperCase())}
+                          />
+                        </Field>
+                        <button className={primaryButtonClass} type="button" onClick={handleJoinNotifyGroup}>
+                          <Save className="h-4 w-4" />
+                          {isJoiningNotifyGroup ? '正在加入共享组' : '加入共享组'}
+                        </button>
+                      </div>
+                    ) : null}
                     <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
@@ -604,19 +607,21 @@ export function TradePlansExperience({ links, embedded = false }) {
                     </div>
                   </div>
 
-                  <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
-                    <Field label="Android 配对码">
-                      <TextInput
-                        value={androidPairingCode}
-                        placeholder="在 Android app 中查看 8 位配对码"
-                        onChange={(event) => setAndroidPairingCode(String(event.target.value || '').replace(/\s+/g, '').toUpperCase())}
-                      />
-                    </Field>
-                    <button className={primaryButtonClass} type="button" onClick={handlePairAndroidCode}>
-                      <Save className="h-4 w-4" />
-                      {isPairingAndroid ? '正在绑定 Android 设备' : '绑定 Android 设备'}
-                    </button>
-                  </div>
+                  {shouldShowAndroidOnboarding ? (
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+                      <Field label="Android 配对码">
+                        <TextInput
+                          value={androidPairingCode}
+                          placeholder="在 Android app 中查看 8 位配对码"
+                          onChange={(event) => setAndroidPairingCode(String(event.target.value || '').replace(/\s+/g, '').toUpperCase())}
+                        />
+                      </Field>
+                      <button className={primaryButtonClass} type="button" onClick={handlePairAndroidCode}>
+                        <Save className="h-4 w-4" />
+                        {isPairingAndroid ? '正在绑定 Android 设备' : '绑定 Android 设备'}
+                      </button>
+                    </div>
+                  ) : null}
 
                   <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
                     <div className="flex items-center justify-between gap-3">
