@@ -2406,9 +2406,9 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   );
 
   const content = !showViewPage ? (
-    <div className="mx-auto max-w-6xl space-y-10 px-5 pt-12 sm:px-8 sm:pt-16">
+    <div className="mx-auto max-w-6xl space-y-10 px-5 pt-4 sm:px-8 sm:pt-5">
       <div className="overflow-hidden rounded-[40px] border border-transparent bg-transparent shadow-none">
-        <div className="relative px-8 py-14 sm:px-14 sm:py-18">
+        <div className="relative px-8 py-6 sm:px-14 sm:py-8">
           <div className="relative mx-auto max-w-4xl text-center">
             <Pill tone="indigo" className="!bg-transparent !px-0 !py-0 !text-slate-400">
               基金切换收益分析
@@ -2436,16 +2436,14 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
                 )}>
                   {ocrState.status === 'loading' ? <LoaderCircle className="h-7 w-7 animate-spin" /> : <CloudUpload className="h-7 w-7" />}
                 </div>
-                <div className="mt-5 text-xl font-extrabold tracking-tight text-slate-900">上传基金交易截图</div>
-                <div className="mt-2 text-sm text-slate-500">支持常见图片格式，10MB 内</div>
               </div>
 
               <button
                 className={cx(
-                  'mt-7 flex min-h-[208px] w-full flex-col items-center justify-center rounded-[24px] border border-dashed p-6 text-center transition-all',
+                  'mt-5 flex min-h-[208px] w-full flex-col items-center justify-center rounded-[24px] p-6 text-center transition-all',
                   ocrState.status === 'loading'
-                    ? 'border-indigo-200/80 bg-indigo-50/70'
-                    : 'border-slate-300/70 bg-white/44 hover:border-slate-400/70 hover:bg-white/58'
+                    ? 'bg-indigo-50/70'
+                    : 'bg-white/44 hover:bg-white/58'
                 )}
                 onClick={openFilePicker}
                 onDragOver={handleDragOver}
@@ -2515,7 +2513,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
       </div>
     </div>
   ) : (
-    <div className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 sm:py-8">
+    <div className="mx-auto max-w-screen-2xl px-4 pb-6 pt-3 sm:px-6 sm:pb-8 sm:pt-4">
       <header className="mb-6 rounded-[28px] border border-slate-200 bg-white px-5 py-4 shadow-[0_18px_48px_rgba(15,23,42,0.06)] sm:px-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
