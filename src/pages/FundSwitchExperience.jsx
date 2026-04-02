@@ -1690,10 +1690,8 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
 
   const content = !hasImportedData ? (
     <div className="mx-auto max-w-6xl space-y-6 px-4 pt-8 sm:px-6 sm:pt-10">
-      <div className="overflow-hidden rounded-[40px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.08)]">
+      <div className="overflow-hidden rounded-[40px] border border-transparent bg-transparent shadow-none">
         <div className="relative px-6 py-10 sm:px-10 sm:py-14">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-56 bg-gradient-to-b from-slate-50 to-transparent" />
-
           <div className="relative mx-auto max-w-4xl text-center">
             <Pill tone="indigo" className="!bg-transparent !px-0 !py-0 !text-slate-400">
               基金切换收益分析
@@ -1713,7 +1711,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
               <LandingQuestionWall className="absolute right-0 top-1/2 w-[300px] -translate-y-1/2" rows={LANDING_SCROLL_PANELS[1]} />
             </div>
 
-            <div className="mx-auto w-full max-w-md rounded-[36px] border border-slate-200/80 bg-white/82 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur-[2px] sm:p-6 xl:relative xl:z-10">
+            <div className="mx-auto w-full max-w-md rounded-[36px] border border-slate-200/70 bg-white/72 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur-[4px] sm:p-6 xl:relative xl:z-10">
               <div className="text-center">
                 <div className={cx(
                   'mx-auto flex h-14 w-14 items-center justify-center rounded-2xl',
