@@ -8,6 +8,8 @@ import {
   ChevronUp,
   CloudUpload,
   FileImage,
+  FolderOpen,
+  History,
   LoaderCircle,
   Plus,
   Trash2,
@@ -15,13 +17,17 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '../app/accumulation.js';
 import {
+  buildFundSwitchStateFromHistoryEntry,
   buildFundSwitchSummary,
   createDefaultFundSwitchState,
   createEmptyFundSwitchRow,
+  deleteFundSwitchHistoryEntry,
   deriveFundSwitchComparison,
   FUND_SWITCH_STRATEGIES,
   persistFundSwitchState,
-  readFundSwitchState
+  readFundSwitchHistory,
+  readFundSwitchState,
+  saveFundSwitchHistoryEntry
 } from '../app/fundSwitch.js';
 import { findLatestNasdaqPrice, formatPriceAsOf, loadLatestNasdaqPrices } from '../app/nasdaqPrices.js';
 import {
@@ -129,6 +135,22 @@ function getAdvantageTone(value) {
     return { className: 'border border-red-200 bg-red-50 text-red-600', label: '当前落后' };
   }
   return { className: 'border border-slate-200 bg-slate-50 text-slate-600', label: '基本持平' };
+}
+
+function formatDateTimeLabel(value = '') {
+  const timestamp = Date.parse(String(value || ''));
+  if (!Number.isFinite(timestamp)) {
+    return '--';
+  }
+
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).format(new Date(timestamp)).replace(/\//g, '-');
 }
 
 function getFundCodeError(code) {
@@ -424,6 +446,107 @@ function CompactMetricCard({ title, value, note, tone = 'slate' }) {
   );
 }
 
+function HistoryRecordCard({ entry, isActive, onOpen, onDelete }) {
+  const savedAdvantageTone = getAdvantageTone(entry.snapshot.switchAdvantage);
+
+  return (
+    <div className={cx(
+      'rounded-[24px] border p-4 transition-colors sm:p-5',
+      isActive ? 'border-indigo-200 bg-indigo-50/60' : 'border-slate-200 bg-slate-50/80'
+    )}>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={cx(
+              'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold',
+              isActive ? 'bg-indigo-100 text-indigo-700' : 'bg-white text-slate-500'
+            )}>
+              <History className="h-3.5 w-3.5" />
+              {isActive ? '当前打开' : '历史记录'}
+            </span>
+            <span className={cx('rounded-full px-2.5 py-1 text-[11px] font-semibold', savedAdvantageTone.className)}>
+              {STRATEGY_LABELS[entry.snapshot.strategy]}
+            </span>
+          </div>
+
+          <div className="mt-3 text-base font-bold text-slate-900">{entry.title}</div>
+          <div className="mt-1 text-xs leading-5 text-slate-500">
+            上次保存 {formatDateTimeLabel(entry.updatedAt)} · {entry.snapshot.recordCount} 条记录
+            {entry.fileName ? ` · ${entry.fileName}` : ''}
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-slate-100 bg-white px-3 py-3">
+              <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">上次记录额外收益</div>
+              <div className={cx(
+                'mt-1 text-sm font-extrabold',
+                entry.snapshot.switchAdvantage > 0 ? 'text-emerald-600' : entry.snapshot.switchAdvantage < 0 ? 'text-red-500' : 'text-slate-700'
+              )}>
+                {formatSignedCurrency(entry.snapshot.switchAdvantage, '¥ ')}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-slate-100 bg-white px-3 py-3">
+              <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">上次记录不切换现值</div>
+              <div className="mt-1 text-sm font-extrabold text-slate-700">{formatCurrency(entry.snapshot.stayValue, '¥ ')}</div>
+            </div>
+            <div className="rounded-2xl border border-slate-100 bg-white px-3 py-3">
+              <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">上次记录切换后现值</div>
+              <div className="mt-1 text-sm font-extrabold text-slate-700">{formatCurrency(entry.snapshot.switchedValue, '¥ ')}</div>
+            </div>
+          </div>
+
+          <p className="mt-3 text-xs leading-5 text-slate-500">重新打开后，会直接按当前最新价格重算，不沿用当时保存时的旧价格。</p>
+        </div>
+
+        <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+          <button className={cx(primaryButtonClass, 'w-full whitespace-nowrap sm:w-auto')} type="button" onClick={() => onOpen(entry)}>
+            <FolderOpen className="h-4 w-4" />
+            打开重算
+          </button>
+          <button
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-50 sm:w-auto"
+            type="button"
+            onClick={() => onDelete(entry.id)}
+          >
+            <Trash2 className="h-4 w-4" />
+            删除
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FundSwitchHistorySection({ entries, activeEntryId, onOpen, onDelete }) {
+  return (
+    <Card>
+      <SectionHeading
+        eyebrow="收益分析历史"
+        title="历史分析记录"
+        description="每次确认收益后都会自动保存一条记录。之后直接点开，就会按当前最新价格重新分析。"
+      />
+
+      {entries.length ? (
+        <div className="mt-6 space-y-3">
+          {entries.map((entry) => (
+            <HistoryRecordCard
+              key={entry.id}
+              entry={entry}
+              isActive={activeEntryId === entry.id}
+              onOpen={onOpen}
+              onDelete={onDelete}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="mt-6 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-6 text-sm leading-6 text-slate-500">
+          还没有已保存的收益分析。先完成一次基金切换收益计算，系统会自动把当前分析沉淀到这里。
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function TransactionEditorCard({ row, index, codeError, onUpdateRow, onRemoveRow }) {
   return (
     <div className="rounded-[24px] border border-slate-200 bg-slate-50/90 p-4 shadow-sm shadow-slate-100/70">
@@ -628,6 +751,7 @@ function EditingSummaryStrip({ strategy, recognizedCount, onExit, onReset }) {
 
 export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   const [state, setState] = useState(() => readFundSwitchState());
+  const [historyEntries, setHistoryEntries] = useState(() => readFundSwitchHistory());
   const [ocrState, setOcrState] = useState(() => createOcrState());
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [showCalculationDetails, setShowCalculationDetails] = useState(false);
@@ -672,6 +796,23 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   useEffect(() => {
     persistFundSwitchState({ ...state, comparison: summary.comparison }, summary);
   }, [state, summary]);
+
+  function refreshHistoryEntries() {
+    setHistoryEntries(readFundSwitchHistory());
+  }
+
+  function buildSummaryWithLatestPrices(nextState) {
+    return buildFundSwitchSummary(nextState, {
+      getCurrentPrice: (code) => Number(findLatestNasdaqPrice(priceState.entries, code)?.current_price) || 0
+    });
+  }
+
+  function saveAnalysisToHistory(nextState) {
+    const nextSummary = buildSummaryWithLatestPrices(nextState);
+    const savedEntry = saveFundSwitchHistoryEntry(nextState, nextSummary);
+    refreshHistoryEntries();
+    return savedEntry;
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -841,6 +982,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
       const parsedRows = result.rows.length ? result.rows : [createEmptyFundSwitchRow()];
       setState((current) => ({
         ...current,
+        historyEntryId: '',
         fileName: file.name,
         recognizedRecords: result.recordCount || parsedRows.length,
         resultConfirmed: false,
@@ -942,15 +1084,47 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     }
 
     setConfirmError('');
-    setState((current) => ({
-      ...current,
-      comparison: deriveFundSwitchComparison(current.rows, current.comparison),
-      recognizedRecords: current.rows.length,
+    const nextComparison = deriveFundSwitchComparison(state.rows, state.comparison);
+    const nextState = {
+      ...state,
+      comparison: nextComparison,
+      recognizedRecords: state.rows.length,
       resultConfirmed: true
-    }));
+    };
+    const savedEntry = saveAnalysisToHistory(nextState);
+    setState({
+      ...nextState,
+      historyEntryId: savedEntry?.id || nextState.historyEntryId
+    });
     setIsEditingDetails(false);
     setShowCalculationDetails(false);
     showActionToast(actionLabel, 'success');
+  }
+
+  function openHistoryAnalysis(entry) {
+    const nextState = buildFundSwitchStateFromHistoryEntry(entry);
+    setState(nextState);
+    setOcrState(createOcrState({
+      status: 'success',
+      progress: 100,
+      message: '已从历史载入，将按当前最新价格重新分析。',
+      lineCount: nextState.recognizedRecords
+    }));
+    setConfirmError('');
+    setIsEditingDetails(false);
+    setShowCalculationDetails(false);
+    showActionToast('打开历史分析', 'success', {
+      description: '已载入历史记录，当前页面会直接用最新价格重算。'
+    });
+  }
+
+  function removeHistoryAnalysis(entryId) {
+    deleteFundSwitchHistoryEntry(entryId);
+    refreshHistoryEntries();
+    if (state.historyEntryId === entryId) {
+      setState((current) => ({ ...current, historyEntryId: '' }));
+    }
+    showActionToast('删除历史分析', 'success');
   }
 
   const content = (
@@ -1266,8 +1440,16 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
                 <SectionHeading eyebrow="高级设置" title="收益口径与计算参数" description="请先确认识别明细，校验通过后再生成和调整参数。" />
               </Card>
             )}
+
           </>
         )}
+
+        <FundSwitchHistorySection
+          entries={historyEntries}
+          activeEntryId={state.historyEntryId}
+          onOpen={openHistoryAnalysis}
+          onDelete={removeHistoryAnalysis}
+        />
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/85 p-3 shadow-[0_-4px_24px_rgba(0,0,0,0.04)] backdrop-blur-md sm:p-4">
