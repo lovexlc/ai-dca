@@ -1475,8 +1475,8 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
                 ) : null}
               </div>
 
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="hidden items-center gap-6 sm:flex">
+              <div className={cx('flex flex-col gap-4 sm:flex-row sm:items-center', isEditingDetails ? '' : 'sm:justify-between')}>
+                <div className={cx('hidden items-center gap-6 sm:flex', isEditingDetails ? 'sm:hidden' : '')}>
                   <div>
                     <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">识别条目</div>
                     <div className="mt-1 text-sm font-extrabold text-slate-700">{recognizedCount}</div>
@@ -1500,11 +1500,11 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
                 </div>
 
                 {isEditingDetails ? (
-                  <div className="grid w-full gap-3 sm:flex sm:w-auto sm:items-center">
-                    <button className={cx(secondaryButtonClass, 'w-full sm:flex-none')} type="button" onClick={closeDetailEditor}>
+                  <div className="grid w-full gap-3 sm:grid-cols-2">
+                    <button className={cx(secondaryButtonClass, 'w-full')} type="button" onClick={closeDetailEditor}>
                       返回摘要
                     </button>
-                    <button className={cx(primaryButtonClass, 'w-full whitespace-nowrap sm:flex-none')} type="button" onClick={handleConfirmDataAndYield}>
+                    <button className={cx(primaryButtonClass, 'w-full whitespace-nowrap')} type="button" onClick={handleConfirmDataAndYield}>
                       确认修改并重新计算
                       <ArrowRight className="h-4 w-4" />
                     </button>
