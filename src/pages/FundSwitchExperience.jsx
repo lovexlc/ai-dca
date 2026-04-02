@@ -52,6 +52,7 @@ import { getPrimaryTabs } from '../app/screens.js';
 import { showActionToast } from '../app/toast.js';
 
 const FUND_CODE_PATTERN = /^\d{6}$/;
+const OCR_MAX_FILE_SIZE = 10 * 1024 * 1024;
 const STRATEGY_LABELS = {
   trace: '追溯最初买入',
   direct: '只看最后一次'
@@ -239,6 +240,20 @@ function getFundCodeError(code) {
     return '';
   }
   return FUND_CODE_PATTERN.test(value) ? '' : '代码必须是 6 位纯数字。';
+}
+
+function validateOcrUploadFile(file) {
+  if (!file || typeof file !== 'object') {
+    throw new Error('未找到要上传的截图。');
+  }
+
+  if (!String(file.type || '').startsWith('image/')) {
+    throw new Error('当前仅支持常见图片格式。');
+  }
+
+  if (Number(file.size) > OCR_MAX_FILE_SIZE) {
+    throw new Error('图片请控制在 10MB 内。');
+  }
 }
 
 function buildTrackedCodes(comparison = {}) {
@@ -1175,9 +1190,10 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   }
 
   async function processOcrFile(file) {
-    setOcrState(createOcrState({ status: 'loading', progress: 12, message: '准备上传截图' }));
-    setActiveWorkspacePanel('details');
     try {
+      validateOcrUploadFile(file);
+      setOcrState(createOcrState({ status: 'loading', progress: 12, message: '准备上传截图' }));
+      setActiveWorkspacePanel('details');
       const { recognizeFundSwitchFile } = await import('../app/fundSwitchOcr.js');
       const result = await recognizeFundSwitchFile(file, state.comparison, (progress) => {
         setOcrState((current) => createOcrState({ ...current, ...progress }));
@@ -1689,9 +1705,9 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   );
 
   const content = !hasImportedData ? (
-    <div className="mx-auto max-w-6xl space-y-6 px-4 pt-8 sm:px-6 sm:pt-10">
+    <div className="mx-auto max-w-6xl space-y-10 px-5 pt-12 sm:px-8 sm:pt-16">
       <div className="overflow-hidden rounded-[40px] border border-transparent bg-transparent shadow-none">
-        <div className="relative px-6 py-10 sm:px-10 sm:py-14">
+        <div className="relative px-8 py-14 sm:px-14 sm:py-18">
           <div className="relative mx-auto max-w-4xl text-center">
             <Pill tone="indigo" className="!bg-transparent !px-0 !py-0 !text-slate-400">
               基金切换收益分析
@@ -1701,9 +1717,9 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
             </h2>
           </div>
 
-          <div className="relative mx-auto mt-12 max-w-6xl">
+          <div className="relative mx-auto mt-16 max-w-6xl">
             <div className="xl:hidden">
-              <LandingQuestionWall className="mx-auto mb-6 max-w-2xl" rows={LANDING_MOBILE_SCROLL_ROWS} />
+              <LandingQuestionWall className="mx-auto mb-8 max-w-2xl" rows={LANDING_MOBILE_SCROLL_ROWS} />
             </div>
 
             <div className="hidden xl:block">
@@ -1711,21 +1727,24 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
               <LandingQuestionWall className="absolute right-0 top-1/2 w-[300px] -translate-y-1/2" rows={LANDING_SCROLL_PANELS[1]} />
             </div>
 
-            <div className="mx-auto w-full max-w-md rounded-[36px] border border-slate-200/70 bg-white/72 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur-[4px] sm:p-6 xl:relative xl:z-10">
+            <div className="mx-auto w-full max-w-[456px] rounded-[32px] bg-white/58 p-7 shadow-[0_12px_32px_rgba(15,23,42,0.06)] backdrop-blur-xl sm:p-8 xl:relative xl:z-10">
               <div className="text-center">
                 <div className={cx(
-                  'mx-auto flex h-14 w-14 items-center justify-center rounded-2xl',
-                  ocrState.status === 'loading' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-500'
+                  'mx-auto flex h-14 w-14 items-center justify-center rounded-[20px] shadow-sm shadow-slate-200/40',
+                  ocrState.status === 'loading' ? 'bg-indigo-50/90 text-indigo-600' : 'bg-white/80 text-slate-500'
                 )}>
                   {ocrState.status === 'loading' ? <LoaderCircle className="h-7 w-7 animate-spin" /> : <CloudUpload className="h-7 w-7" />}
                 </div>
-                <div className="mt-4 text-xl font-extrabold tracking-tight text-slate-900">上传一张基金交易截图</div>
+                <div className="mt-5 text-xl font-extrabold tracking-tight text-slate-900">上传基金交易截图</div>
+                <div className="mt-2 text-sm text-slate-500">支持常见图片格式，10MB 内</div>
               </div>
 
               <button
                 className={cx(
-                  'mt-6 flex min-h-[220px] w-full flex-col items-center justify-center rounded-[28px] border border-dashed p-6 text-center transition-all',
-                  ocrState.status === 'loading' ? 'border-indigo-300 bg-indigo-50' : 'border-slate-300 bg-slate-50 hover:border-slate-400 hover:bg-white'
+                  'mt-7 flex min-h-[208px] w-full flex-col items-center justify-center rounded-[24px] border border-dashed p-6 text-center transition-all',
+                  ocrState.status === 'loading'
+                    ? 'border-indigo-200/80 bg-indigo-50/70'
+                    : 'border-slate-300/70 bg-white/44 hover:border-slate-400/70 hover:bg-white/58'
                 )}
                 onClick={openFilePicker}
                 onDragOver={handleDragOver}
@@ -1737,7 +1756,8 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
                 ) : (
                   <CloudUpload className="mb-4 h-9 w-9 text-slate-400" />
                 )}
-                <div className="text-base font-semibold text-slate-700">Drop files here or click to browse</div>
+                <div className="text-base font-semibold text-slate-700">点击或拖拽上传</div>
+                <div className="mt-2 text-xs font-medium text-slate-400">PNG / JPG / JPEG</div>
                 {ocrState.status === 'idle' ? null : (
                   <div className="mt-5 w-full max-w-xs">
                     <div className="mb-1.5 flex items-center justify-between text-xs font-medium text-slate-500">
@@ -1751,13 +1771,17 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
                 )}
               </button>
 
-              <button className={cx(primaryButtonClass, 'mt-4 w-full')} type="button" onClick={openFilePicker}>
+              <button
+                className="mt-5 inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-[0_12px_28px_rgba(79,70,229,0.26)] transition-all hover:-translate-y-0.5 hover:bg-indigo-700"
+                type="button"
+                onClick={openFilePicker}
+              >
                 上传截图
                 <Upload className="h-4 w-4" />
               </button>
 
               {(ocrState.status !== 'idle' || state.fileName) && (
-                <div className="mt-4 flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="mt-5 flex items-start gap-3 rounded-[24px] bg-white/52 px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
                   <FileImage className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
                   <div className="min-w-0 flex-1 text-left">
                     <div className="truncate text-sm font-semibold text-slate-700">{state.fileName || '未命名文件'}</div>
@@ -1854,7 +1878,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   if (embedded) {
     return (
       <>
-        <input ref={fileInputRef} accept="image/*" hidden onChange={handleFileInputChange} type="file" />
+        <input ref={fileInputRef} accept=".png,.jpg,.jpeg,image/png,image/jpeg" hidden onChange={handleFileInputChange} type="file" />
         {content}
       </>
     );
@@ -1862,7 +1886,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
 
   return (
     <PageShell>
-      <input ref={fileInputRef} accept="image/*" hidden onChange={handleFileInputChange} type="file" />
+      <input ref={fileInputRef} accept=".png,.jpg,.jpeg,image/png,image/jpeg" hidden onChange={handleFileInputChange} type="file" />
 
       <PageHero
         backHref={links.home}
