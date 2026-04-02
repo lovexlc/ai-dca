@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  CloudUpload,
   Download,
   FileImage,
   FolderOpen,
@@ -2404,6 +2405,65 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     </div>
   );
 
+  const landingUploadCard = (
+    <div className="mx-auto w-full max-w-[456px] rounded-[32px] bg-white/58 p-7 shadow-[0_12px_32px_rgba(15,23,42,0.06)] backdrop-blur-xl sm:p-8">
+      <button
+        className={cx(
+          'flex aspect-square w-full flex-col items-center justify-center rounded-[24px] p-6 text-center transition-all',
+          ocrState.status === 'loading'
+            ? 'bg-indigo-50/70'
+            : 'bg-white/44 hover:bg-white/58'
+        )}
+        onClick={openFilePicker}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        type="button"
+      >
+        {ocrState.status === 'loading' ? (
+          <LoaderCircle className="mb-4 h-9 w-9 animate-spin text-indigo-500" />
+        ) : (
+          <CloudUpload className="mb-4 h-9 w-9 text-slate-400" />
+        )}
+        <div className="text-base font-semibold text-slate-700">
+          {ocrState.status === 'loading' ? '正在识别截图' : '点击或拖拽上传'}
+        </div>
+        <div className="mt-2 text-xs font-medium text-slate-400">PNG / JPG / JPEG</div>
+        {ocrState.status === 'idle' ? null : (
+          <div className="mt-5 w-full max-w-xs">
+            <div className="mb-1.5 flex items-center justify-between text-xs font-medium text-slate-500">
+              <span>识别进度</span>
+              <span className="text-indigo-600">{ocrState.progress}%</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full rounded-full bg-indigo-500 transition-all duration-300" style={{ width: `${ocrState.progress}%` }} />
+            </div>
+          </div>
+        )}
+      </button>
+
+      <button
+        className="mt-5 inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-[0_12px_28px_rgba(79,70,229,0.26)] transition-all hover:-translate-y-0.5 hover:bg-indigo-700"
+        type="button"
+        onClick={openFilePicker}
+      >
+        上传截图
+        <Upload className="h-4 w-4" />
+      </button>
+
+      {(ocrState.status !== 'idle' || state.fileName) && (
+        <div className="mt-5 flex items-start gap-3 rounded-[24px] bg-white/52 px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
+          <FileImage className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
+          <div className="min-w-0 flex-1 text-left">
+            <div className="truncate text-sm font-semibold text-slate-700">{state.fileName || '未命名文件'}</div>
+            <div className="mt-1 text-xs leading-5 text-slate-500">{effectiveOcrMessage}</div>
+            {ocrState.error ? <div className="mt-2 text-xs text-red-500">{ocrState.error}</div> : null}
+            {priceState.status === 'error' ? <div className="mt-2 text-xs text-amber-600">{priceState.error}</div> : null}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   const content = !showViewPage ? (
     <div className="mx-auto max-w-6xl space-y-10 px-4 pt-6 sm:px-6 sm:pt-8">
       <div className="overflow-hidden rounded-[40px] border border-transparent bg-transparent shadow-none">
@@ -2415,65 +2475,18 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
           </div>
 
           <div className="relative mx-auto mt-8 max-w-6xl sm:mt-10">
-            <div className="lg:hidden">
+            <div className="md:hidden">
               <LandingQuestionWall className="mx-auto mb-8 max-w-2xl" rows={LANDING_MOBILE_SCROLL_ROWS} />
             </div>
 
-            <div className="hidden lg:block">
-              <LandingQuestionWall className="absolute left-0 top-1/2 w-[220px] -translate-y-1/2 xl:w-[280px]" rows={LANDING_SCROLL_PANELS[0]} />
-              <LandingQuestionWall className="absolute right-0 top-1/2 w-[220px] -translate-y-1/2 xl:w-[280px]" rows={LANDING_SCROLL_PANELS[1]} />
+            <div className="hidden md:grid md:grid-cols-[minmax(0,1fr)_minmax(280px,456px)_minmax(0,1fr)] md:items-center md:gap-4 lg:gap-6 xl:gap-8">
+              <LandingQuestionWall className="w-full max-w-[200px] justify-self-start lg:max-w-[240px] xl:max-w-[280px]" rows={LANDING_SCROLL_PANELS[0]} />
+              {landingUploadCard}
+              <LandingQuestionWall className="w-full max-w-[200px] justify-self-end lg:max-w-[240px] xl:max-w-[280px]" rows={LANDING_SCROLL_PANELS[1]} />
             </div>
 
-            <div className="mx-auto w-full max-w-[456px] rounded-[32px] bg-white/58 p-7 shadow-[0_12px_32px_rgba(15,23,42,0.06)] backdrop-blur-xl sm:p-8 lg:relative lg:z-10">
-              <button
-                className={cx(
-                  'flex aspect-square w-full flex-col items-center justify-center rounded-[24px] p-6 text-center transition-all',
-                  ocrState.status === 'loading'
-                    ? 'bg-indigo-50/70'
-                    : 'bg-white/44 hover:bg-white/58'
-                )}
-                onClick={openFilePicker}
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
-                type="button"
-              >
-                <div className="text-base font-semibold text-slate-700">
-                  {ocrState.status === 'loading' ? '正在识别截图' : '点击或拖拽上传'}
-                </div>
-                <div className="mt-2 text-xs font-medium text-slate-400">PNG / JPG / JPEG</div>
-                {ocrState.status === 'idle' ? null : (
-                  <div className="mt-5 w-full max-w-xs">
-                    <div className="mb-1.5 flex items-center justify-between text-xs font-medium text-slate-500">
-                      <span>识别进度</span>
-                      <span className="text-indigo-600">{ocrState.progress}%</span>
-                    </div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                      <div className="h-full rounded-full bg-indigo-500 transition-all duration-300" style={{ width: `${ocrState.progress}%` }} />
-                    </div>
-                  </div>
-                )}
-              </button>
-
-              <button
-                className="mt-5 inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-[0_12px_28px_rgba(79,70,229,0.26)] transition-all hover:-translate-y-0.5 hover:bg-indigo-700"
-                type="button"
-                onClick={openFilePicker}
-              >
-                上传截图
-                <Upload className="h-4 w-4" />
-              </button>
-
-              {(ocrState.status !== 'idle' || state.fileName) && (
-                <div className="mt-5 flex items-start gap-3 rounded-[24px] bg-white/52 px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
-                  <FileImage className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
-                  <div className="min-w-0 flex-1 text-left">
-                    <div className="truncate text-sm font-semibold text-slate-700">{state.fileName || '未命名文件'}</div>
-                    <div className="mt-1 text-xs leading-5 text-slate-500">{effectiveOcrMessage}</div>
-                    {ocrState.error ? <div className="mt-2 text-xs text-red-500">{ocrState.error}</div> : null}
-                    {priceState.status === 'error' ? <div className="mt-2 text-xs text-amber-600">{priceState.error}</div> : null}
-                  </div>
-                </div>
-              )}
+            <div className="md:hidden">
+              {landingUploadCard}
             </div>
           </div>
         </div>
