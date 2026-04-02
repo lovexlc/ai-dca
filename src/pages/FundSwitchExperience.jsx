@@ -2406,19 +2406,16 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   );
 
   const content = !showViewPage ? (
-    <div className="mx-auto max-w-6xl space-y-10 px-5 pt-4 sm:px-8 sm:pt-5">
+    <div className="mx-auto max-w-6xl space-y-10 px-4 pt-6 sm:px-6 sm:pt-8">
       <div className="overflow-hidden rounded-[40px] border border-transparent bg-transparent shadow-none">
-        <div className="relative px-8 py-6 sm:px-14 sm:py-8">
+        <div className="relative px-0 pb-6 pt-0 sm:px-0 sm:pb-8 sm:pt-0">
           <div className="relative mx-auto max-w-4xl text-center">
-            <Pill tone="indigo" className="!bg-transparent !px-0 !py-0 !text-slate-400">
-              基金切换收益分析
-            </Pill>
-            <h2 className="mx-auto mt-6 max-w-3xl text-3xl font-extrabold tracking-tight text-slate-900 sm:text-5xl">
+            <h2 className="mx-auto max-w-3xl text-3xl font-extrabold tracking-tight text-slate-900 sm:text-5xl">
               上传截图，直接重算基金切换收益
             </h2>
           </div>
 
-          <div className="relative mx-auto mt-16 max-w-6xl">
+          <div className="relative mx-auto mt-12 max-w-6xl sm:mt-14">
             <div className="xl:hidden">
               <LandingQuestionWall className="mx-auto mb-8 max-w-2xl" rows={LANDING_MOBILE_SCROLL_ROWS} />
             </div>
@@ -2429,18 +2426,9 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
             </div>
 
             <div className="mx-auto w-full max-w-[456px] rounded-[32px] bg-white/58 p-7 shadow-[0_12px_32px_rgba(15,23,42,0.06)] backdrop-blur-xl sm:p-8 xl:relative xl:z-10">
-              <div className="text-center">
-                <div className={cx(
-                  'mx-auto flex h-14 w-14 items-center justify-center rounded-[20px] shadow-sm shadow-slate-200/40',
-                  ocrState.status === 'loading' ? 'bg-indigo-50/90 text-indigo-600' : 'bg-white/80 text-slate-500'
-                )}>
-                  {ocrState.status === 'loading' ? <LoaderCircle className="h-7 w-7 animate-spin" /> : <CloudUpload className="h-7 w-7" />}
-                </div>
-              </div>
-
               <button
                 className={cx(
-                  'mt-5 flex min-h-[208px] w-full flex-col items-center justify-center rounded-[24px] p-6 text-center transition-all',
+                  'flex aspect-square w-full flex-col items-center justify-center rounded-[24px] p-6 text-center transition-all',
                   ocrState.status === 'loading'
                     ? 'bg-indigo-50/70'
                     : 'bg-white/44 hover:bg-white/58'
