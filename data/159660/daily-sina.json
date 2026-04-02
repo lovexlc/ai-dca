@@ -4,24 +4,16 @@
   "fund_name": "汇添富纳斯达克100ETF",
   "index_key": "nasdaq100",
   "range": {
-    "start_date": "2024-04-01",
-    "end_date": "2026-04-01",
+    "start_date": "2024-04-02",
+    "end_date": "2026-04-02",
     "lookback_days": 730
   },
   "requested_bars": 700,
   "source": "sina:CN_MarketDataService.getKLineData",
   "source_symbol": "sz159660",
   "fund_list_source": "/home/runner/work/ai-dca/ai-dca/data/all_nasdq.json",
-  "generated_at": "2026-04-01T08:45:37.491Z",
+  "generated_at": "2026-04-02T08:35:16.330Z",
   "bars": [
-    {
-      "date": "2024-04-01",
-      "open": 1.448,
-      "close": 1.451,
-      "high": 1.451,
-      "low": 1.446,
-      "volume": 8727300
-    },
     {
       "date": "2024-04-02",
       "open": 1.449,
@@ -3885,6 +3877,14 @@
       "high": 1.877,
       "low": 1.841,
       "volume": 89724642
+    },
+    {
+      "date": "2026-04-02",
+      "open": 1.873,
+      "close": 1.846,
+      "high": 1.873,
+      "low": 1.841,
+      "volume": 92601700
     }
   ]
 }

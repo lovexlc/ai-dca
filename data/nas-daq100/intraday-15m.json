@@ -10,7 +10,7 @@
   "timezone": "America/New_York",
   "source": "yahoo:chart",
   "source_symbol": "^NDX",
-  "generated_at": "2026-04-02T00:42:04Z",
+  "generated_at": "2026-04-02T08:35:18Z",
   "bars": [
     {
       "datetime": "2026-01-06 09:30:00",
@@ -11978,7 +11978,7 @@
       "close": 23911.03515625,
       "high": 24007.744140625,
       "low": 23871.611328125,
-      "volume": 98065280
+      "volume": 62389720
     },
     {
       "datetime": "2026-04-01 09:45:00",
