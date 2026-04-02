@@ -61,17 +61,82 @@ const STRATEGY_DESCRIPTIONS = {
   trace: '推荐。把中间几次换仓一起算进去，更接近“如果当初不换，现在值多少”。',
   direct: '只判断最后一步换仓是否划算，不追溯更早的来源基金。'
 };
-const LANDING_QUESTIONS = [
-  '如果当初不换，现在值多少？',
-  '换到现在这只后，当前多赚还是少赚？',
-  '中间补进去的钱算进去了吗？',
-  '哪几笔识别结果需要我手动改？'
-];
 const LANDING_OUTCOMES = [
   '识别截图里的买入和卖出记录',
   '自动回放来源仓位和目标仓位',
   '按最新价格重算当前切换收益',
   '保存历史分析，后续一键打开重算'
+];
+const LANDING_SCROLL_PANELS = [
+  [
+    {
+      duration: '22s',
+      delay: '-8s',
+      items: [
+        '如果当初不换，现在值多少？',
+        '换到现在这只后，当前多赚还是少赚？',
+        '中间补进去的钱算进去了吗？',
+        '哪几笔识别结果需要我手动改？'
+      ]
+    },
+    {
+      duration: '26s',
+      delay: '-5s',
+      items: [
+        '来源仓位到底是从哪只基金来的？',
+        '只看最后一次还是追溯最初买入？',
+        'OCR 识别错的代码和份额可以改吗？',
+        '现价同步到了哪一天？'
+      ]
+    },
+    {
+      duration: '20s',
+      delay: '-11s',
+      items: [
+        '如果不换，现在会比现在多多少？',
+        '手续费和额外补入现金算进去了吗？',
+        '保存过的分析还能直接重算吗？',
+        '这次换仓现在到底赚了还是亏了？'
+      ]
+    }
+  ],
+  [
+    {
+      duration: '22s',
+      delay: '-13s',
+      items: [
+        '识别截图里的买入和卖出记录',
+        '自动回放来源仓位和目标仓位',
+        '按最新价格重算当前切换收益',
+        '保存历史分析，后续一键打开重算'
+      ]
+    },
+    {
+      duration: '26s',
+      delay: '-9s',
+      items: [
+        '修改识别明细后可以立刻重新计算',
+        '来源基金会按你的收益口径回溯',
+        '切换成本和手续费都可以手动校准',
+        '历史记录点开就会用最新价格重算'
+      ]
+    },
+    {
+      duration: '20s',
+      delay: '-6s',
+      items: [
+        '当前不切换现值是多少？',
+        '当前换后现值是多少？',
+        '哪条识别记录需要人工复核？',
+        '收益摘要会自动保存进历史吗？'
+      ]
+    }
+  ]
+];
+const LANDING_MOBILE_SCROLL_ROWS = [
+  LANDING_SCROLL_PANELS[0][0],
+  LANDING_SCROLL_PANELS[1][1],
+  LANDING_SCROLL_PANELS[0][2]
 ];
 const WORKSPACE_PANELS = [
   { key: 'details', label: '识别明细', Icon: TableProperties },
@@ -555,14 +620,32 @@ function FundSwitchHistorySection({ entries, activeEntryId, onOpen, onDelete }) 
   );
 }
 
-function LandingQuestionChip({ children, tone = 'slate' }) {
-  const toneClassName = tone === 'indigo'
-    ? 'border-indigo-200 bg-indigo-50/90 text-indigo-700'
-    : 'border-slate-200/80 bg-white/92 text-slate-600';
-
+function LandingQuestionChip({ children }) {
   return (
-    <div className={cx('inline-flex items-center rounded-full border px-3 py-2 text-xs font-semibold backdrop-blur-sm', toneClassName)}>
+    <div className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-slate-200 bg-[#f5f5f7] px-3.5 py-2 text-[13px] font-medium text-slate-600 shadow-[0_0_10px_rgba(15,23,42,0.08),0_1px_3px_rgba(15,23,42,0.05)]">
       {children}
+    </div>
+  );
+}
+
+function LandingQuestionWall({ rows, className = '' }) {
+  return (
+    <div aria-hidden="true" className={cx('landing-question-wall flex flex-col gap-2.5 overflow-hidden', className)}>
+      {rows.map((row, index) => (
+        <div key={`${row.duration}-${index}`} className="landing-question-row overflow-hidden">
+          <div
+            className="landing-question-row-inner"
+            style={{
+              animationDuration: row.duration,
+              animationDelay: row.delay
+            }}
+          >
+            {[...row.items, ...row.items].map((item, itemIndex) => (
+              <LandingQuestionChip key={`${index}-${itemIndex}-${item}`}>{item}</LandingQuestionChip>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1649,23 +1732,17 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
             </p>
           </div>
 
-          <div className="relative mx-auto mt-12 max-w-5xl">
-            <div className="hidden lg:block">
-              <div className="absolute left-0 top-6 flex max-w-[220px] flex-col gap-3">
-                {LANDING_QUESTIONS.slice(0, 2).map((question, index) => (
-                  <LandingQuestionChip key={question} tone={index === 0 ? 'indigo' : 'slate'}>
-                    {question}
-                  </LandingQuestionChip>
-                ))}
-              </div>
-              <div className="absolute right-0 top-6 flex max-w-[220px] flex-col items-end gap-3">
-                {LANDING_QUESTIONS.slice(2).map((question) => (
-                  <LandingQuestionChip key={question}>{question}</LandingQuestionChip>
-                ))}
-              </div>
+          <div className="relative mx-auto mt-12 max-w-6xl">
+            <div className="xl:hidden">
+              <LandingQuestionWall className="mx-auto mb-6 max-w-2xl" rows={LANDING_MOBILE_SCROLL_ROWS} />
             </div>
 
-            <div className="mx-auto w-full max-w-md rounded-[36px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.12)] sm:p-6">
+            <div className="hidden xl:block">
+              <LandingQuestionWall className="absolute left-0 top-1/2 w-[300px] -translate-y-1/2" rows={LANDING_SCROLL_PANELS[0]} />
+              <LandingQuestionWall className="absolute right-0 top-1/2 w-[300px] -translate-y-1/2" rows={LANDING_SCROLL_PANELS[1]} />
+            </div>
+
+            <div className="mx-auto w-full max-w-md rounded-[36px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.12)] sm:p-6 xl:relative xl:z-10">
               <div className="text-center">
                 <div className={cx(
                   'mx-auto flex h-14 w-14 items-center justify-center rounded-2xl',
