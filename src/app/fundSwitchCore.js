@@ -1,7 +1,7 @@
 const FUND_SWITCH_EPSILON = 1e-6;
 const DEFAULT_PAIR_THRESHOLD = 35;
 
-export const FUND_SWITCH_STRATEGIES = ['direct', 'trace'];
+export const FUND_SWITCH_STRATEGIES = ['trace', 'direct'];
 
 export function round(value, digits = 2) {
   const factor = 10 ** digits;
@@ -78,7 +78,7 @@ function sanitizePriceOverrides(priceOverrides = {}) {
 }
 
 export function normalizeFundSwitchStrategy(value) {
-  return value === 'trace' ? 'trace' : 'direct';
+  return value === 'direct' ? 'direct' : 'trace';
 }
 
 export function sanitizeFundSwitchComparison(comparison = {}) {

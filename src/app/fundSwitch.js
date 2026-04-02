@@ -13,7 +13,7 @@ export { FUND_SWITCH_STRATEGIES };
 
 function createBlankComparison() {
   return {
-    strategy: 'direct',
+    strategy: 'trace',
     sourcePositions: [],
     targetPositions: [],
     sourceCode: '',

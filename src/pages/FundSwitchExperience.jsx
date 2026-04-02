@@ -44,8 +44,12 @@ import { showActionToast } from '../app/toast.js';
 
 const FUND_CODE_PATTERN = /^\d{6}$/;
 const STRATEGY_LABELS = {
-  direct: '直接来源',
-  trace: '穿透来源'
+  trace: '追溯最初买入',
+  direct: '只看最后一次'
+};
+const STRATEGY_DESCRIPTIONS = {
+  trace: '推荐。把中间几次换仓一起算进去，更接近“如果当初不换，现在值多少”。',
+  direct: '只判断最后一步换仓是否划算，不追溯更早的来源基金。'
 };
 
 function createOcrState(overrides = {}) {
@@ -270,7 +274,7 @@ function StrategyToggle({ strategy, onChange }) {
         <button
           key={item}
           className={cx(
-            'min-h-[40px] rounded-xl px-3 py-2 text-xs font-semibold transition-colors sm:min-h-0 sm:rounded-full sm:py-1.5',
+            'min-h-[40px] rounded-xl px-3 py-2 text-xs font-semibold leading-tight transition-colors sm:min-h-0 sm:rounded-full sm:py-1.5',
             strategy === item ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
           )}
           type="button"
@@ -377,6 +381,11 @@ function SummaryValueCard({ value, advantageMeta, strategy, onStrategyChange }) 
 
         <div className="text-4xl font-extrabold tracking-tight text-indigo-700 sm:text-[2.75rem]">{value}</div>
         <p className="text-xs font-medium leading-6 text-indigo-900/45">真实额外收益 = 切换后现值 - 不切换现值 - 额外补入现金 - 手续费</p>
+        <div className="rounded-2xl border border-white/70 bg-white/70 px-4 py-3">
+          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-900/45">当前收益口径</div>
+          <div className="mt-1 text-sm font-bold text-indigo-900">{STRATEGY_LABELS[strategy]}</div>
+          <p className="mt-1 text-xs leading-5 text-indigo-900/55">{STRATEGY_DESCRIPTIONS[strategy]}</p>
+        </div>
         <StrategyToggle strategy={strategy} onChange={onStrategyChange} />
       </div>
     </div>
@@ -605,7 +614,7 @@ function EditingSummaryStrip({ strategy, recognizedCount, onExit, onReset }) {
           <div className="mt-1 text-sm font-extrabold text-slate-800">待确认</div>
         </div>
         <div className="rounded-2xl bg-slate-50 px-3 py-3">
-          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">策略</div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">口径</div>
           <div className="mt-1 text-sm font-extrabold text-slate-800">{STRATEGY_LABELS[strategy]}</div>
         </div>
         <div className="rounded-2xl bg-slate-50 px-3 py-3">
@@ -1142,14 +1151,14 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
 
                       <div className="grid gap-3 lg:grid-cols-2">
                         <PositionValueCard
-                          title="不切换现值"
+                          title="如果不换，现在值多少"
                           value={formatCurrency(summary.stayValue, '¥ ')}
                           positions={summary.sourcePositions}
                           priceSnapshotByCode={priceSnapshotByCode}
                           emptyText="尚未回放出来源持仓，请先确认交易数据。"
                         />
                         <PositionValueCard
-                          title="切换后现值"
+                          title="换到现在这只后，值多少"
                           value={formatCurrency(summary.switchedValue, '¥ ')}
                           positions={summary.targetPositions}
                           priceSnapshotByCode={priceSnapshotByCode}
@@ -1183,7 +1192,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
             {state.resultConfirmed ? (
               <Card className="overflow-hidden p-0">
                 <div className="flex cursor-pointer flex-col gap-4 border-b border-slate-200 bg-slate-50 p-4 transition-colors hover:bg-slate-100 sm:flex-row sm:items-center sm:justify-between sm:p-6" onClick={() => setShowCalculationDetails((current) => !current)}>
-                  <SectionHeading eyebrow="参数预设" title="计算详细参数预设" description="默认保持收起，只有在需要补现价或校准参数时再展开修改。" />
+                  <SectionHeading eyebrow="高级设置" title="收益口径与计算参数" description="默认不用改。只有在需要补现价、切换收益口径或手动校准成本时再展开。" />
                   <button className="flex items-center gap-2 self-start text-sm font-semibold text-slate-500 transition-colors hover:text-slate-800 sm:self-auto" type="button">
                     {showCalculationDetails ? '收起面板' : '展开修改'}
                     {showCalculationDetails ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
@@ -1194,8 +1203,8 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
                   <div className="space-y-6 bg-white p-4 sm:space-y-8 sm:p-6">
                     <div className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">来源策略</div>
-                        <div className="mt-1 text-sm text-slate-600">切换“直接来源 / 穿透来源”会重新按交易链路回放当前来源仓位。</div>
+                        <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">收益口径</div>
+                        <div className="mt-1 text-sm text-slate-600">默认推荐“追溯最初买入”。只有在你只想判断最后一次换仓是否划算时，才切到“只看最后一次”。</div>
                       </div>
                       <StrategyToggle strategy={summary.strategy} onChange={updateStrategy} />
                     </div>
@@ -1225,7 +1234,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
                       <div className="mt-5 grid gap-4 xl:grid-cols-3 xl:gap-6">
                         <label className="block rounded-xl border border-slate-100 bg-slate-50 p-4">
                           <span className="block text-sm font-bold text-slate-700">额外补入现金 (元)</span>
-                          <span className="mt-1 block text-[10px] leading-relaxed text-slate-500">直接来源模式只累计当前目标仓位的直接补现金；穿透来源会继续把中间链路补现金向上追溯累加。</span>
+                          <span className="mt-1 block text-[10px] leading-relaxed text-slate-500">推荐口径会把中间换仓时补进去的钱一起算上；“只看最后一次”只统计最后一跳补的钱。</span>
                           <input className="mt-3 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-800 outline-none transition-all focus:border-indigo-400" type="number" step="0.01" value={summary.comparison.extraCash} onChange={(event) => updateComparisonScalar('extraCash', event.target.value)} />
                         </label>
 
@@ -1254,7 +1263,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
               </Card>
             ) : (
               <Card className="p-4 sm:p-6">
-                <SectionHeading eyebrow="参数预设" title="计算详细参数预设" description="请先确认识别明细，校验通过后再生成和调整参数。" />
+                <SectionHeading eyebrow="高级设置" title="收益口径与计算参数" description="请先确认识别明细，校验通过后再生成和调整参数。" />
               </Card>
             )}
           </>
@@ -1271,7 +1280,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
                   <div className="mt-1 text-sm font-extrabold text-slate-700">{recognizedCount}</div>
                 </div>
                 <div className="rounded-2xl bg-slate-100 px-3 py-2.5">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">{isEditingDetails ? '状态' : '策略'}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">{isEditingDetails ? '状态' : '口径'}</div>
                   <div className="mt-1 text-sm font-extrabold text-slate-700">{isEditingDetails || !state.resultConfirmed ? '待确认' : STRATEGY_LABELS[summary.strategy]}</div>
                 </div>
                 {shouldShowBottomAdvantage ? (
@@ -1292,7 +1301,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
                   </div>
                   <div className="h-8 w-px bg-slate-200" />
                   <div>
-                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{isEditingDetails ? '当前状态' : '当前策略'}</div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{isEditingDetails ? '当前状态' : '当前口径'}</div>
                     <div className="mt-1 text-sm font-extrabold text-slate-700">{isEditingDetails || !state.resultConfirmed ? '待确认' : STRATEGY_LABELS[summary.strategy]}</div>
                   </div>
                   {shouldShowBottomAdvantage ? (
@@ -1360,7 +1369,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
         backLabel="返回加仓计划"
         eyebrow="基金切换分析"
         title="基金切换收益助手"
-        description="上传交易截图后，系统会智能识别整理成可编辑交易数据，并按“直接来源 / 穿透来源”两种策略比较切换前后的真实收益。"
+        description="上传交易截图后，系统会自动整理交易数据，并比较“如果不换，现在值多少”与“换完后，现在值多少”。默认按推荐口径追溯到最初买入，也可以切到只看最后一次换仓。"
         badges={hasImportedData ? [] : [
           <span key="status" className={cx('inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold', statusMeta.colorClass)}>
             <statusMeta.Icon className={cx('h-4 w-4', statusMeta.iconClassName)} />
