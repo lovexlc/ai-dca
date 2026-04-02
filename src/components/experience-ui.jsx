@@ -120,28 +120,28 @@ export function PageHero({
   children
 }) {
   return (
-    <div className="border-b border-slate-200 bg-white px-6 pb-12 pt-10">
+    <div className="border-b border-slate-200 bg-white px-5 pb-6 pt-5 sm:px-6 sm:pb-8 sm:pt-6">
       <div className="mx-auto max-w-6xl">
         {backHref ? (
-          <a className="mb-8 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition-colors hover:text-indigo-600" href={backHref}>
+          <a className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition-colors hover:text-indigo-600" href={backHref}>
             <ArrowLeft className="h-4 w-4" />
             {backLabel}
           </a>
         ) : null}
-        <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="max-w-3xl">
-            {eyebrow ? <div className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">{eyebrow}</div> : null}
-            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 md:text-4xl">{title}</h1>
-            {description ? <p className="mt-4 max-w-2xl text-base leading-relaxed text-slate-500">{description}</p> : null}
+            {eyebrow ? <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{eyebrow}</div> : null}
+            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 md:text-[2rem]">{title}</h1>
+            {description ? <p className="mt-2.5 max-w-2xl text-sm leading-6 text-slate-500">{description}</p> : null}
           </div>
           {badges.length || actions ? (
-            <div className="flex flex-col items-start gap-3 md:items-end">
-              {badges.length ? <div className="flex flex-wrap items-center gap-3">{badges.map((badge, index) => <span key={index}>{badge}</span>)}</div> : null}
-              {actions ? <div className="flex flex-wrap items-center gap-3">{actions}</div> : null}
+            <div className="flex flex-col items-start gap-2.5 md:items-end">
+              {badges.length ? <div className="flex flex-wrap items-center gap-2">{badges.map((badge, index) => <span key={index}>{badge}</span>)}</div> : null}
+              {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
             </div>
           ) : null}
         </div>
-        {children ? <div className="mt-8">{children}</div> : null}
+        {children ? <div className="mt-5">{children}</div> : null}
       </div>
     </div>
   );
@@ -166,15 +166,15 @@ export function PageTabs({ tabs = [], activeKey = '', className = '', onSelect }
   }
 
   return (
-    <div className={cx('overflow-x-auto pb-1', className)}>
-      <div className="inline-flex min-w-full items-center gap-2 rounded-2xl bg-slate-100 p-1.5 sm:min-w-0">
+    <div className={cx('overflow-x-auto', className)}>
+      <div className="inline-flex min-w-full items-center gap-1.5 rounded-xl bg-slate-100 p-1 sm:min-w-0">
         {tabs.map((tab) => {
           const isActive = tab.key === activeKey;
           return (
             <a
               key={tab.key}
               className={cx(
-                'inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-semibold transition-all',
+                'inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg px-3 py-2 text-[13px] font-semibold transition-all',
                 isActive ? 'bg-white text-slate-900 shadow-sm shadow-slate-200' : 'text-slate-500 hover:bg-white/70 hover:text-slate-700'
               )}
               href={tab.href}
