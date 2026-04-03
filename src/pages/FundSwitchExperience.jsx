@@ -493,7 +493,7 @@ function PositionEditorSection({
 
 function SummaryValueCard({ value, advantageMeta, strategy, onStrategyChange }) {
   return (
-    <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)] sm:p-7">
+    <div className="rounded-[32px] bg-transparent px-1 py-1 sm:px-2 sm:py-2">
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -512,7 +512,7 @@ function SummaryValueCard({ value, advantageMeta, strategy, onStrategyChange }) 
 
         <p className="max-w-2xl text-sm leading-7 text-slate-500">真实额外收益 = 切换后现值 - 不切换现值 - 额外补入现金 - 手续费</p>
 
-        <div className="flex flex-col gap-4 rounded-[28px] border border-slate-200 bg-slate-50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div className="flex flex-col gap-4 rounded-[28px] bg-slate-50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
           <div className="min-w-0">
             <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">当前收益口径</div>
             <div className="mt-1 text-sm font-bold text-slate-900">{STRATEGY_LABELS[strategy]}</div>
@@ -527,18 +527,18 @@ function SummaryValueCard({ value, advantageMeta, strategy, onStrategyChange }) 
 
 function PositionValueCard({ title, value, positions, priceSnapshotByCode, emptyText }) {
   return (
-    <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_12px_36px_rgba(15,23,42,0.04)]">
+    <div className="rounded-[28px] bg-slate-50/80 p-5">
       <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{title}</div>
       <div className="mt-3 text-3xl font-extrabold tracking-tight text-slate-900">{value}</div>
       <div className="mt-4 space-y-2 text-[11px] leading-5 text-slate-500">
         {positions.length ? (
           positions.map((position) => (
-            <div key={`${title}-${position.code}`} className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-slate-600">
+            <div key={`${title}-${position.code}`} className="rounded-2xl bg-white px-3 py-3 text-slate-600">
               {formatPositionMeta(position, priceSnapshotByCode[position.code])}
             </div>
           ))
         ) : (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-slate-400">{emptyText}</div>
+          <div className="rounded-2xl bg-white/70 px-3 py-3 text-slate-400">{emptyText}</div>
         )}
       </div>
     </div>
@@ -547,7 +547,7 @@ function PositionValueCard({ title, value, positions, priceSnapshotByCode, empty
 
 function CompactMetricCard({ title, value, note, tone = 'slate' }) {
   return (
-    <div className="rounded-[24px] border border-slate-200 bg-white p-4">
+    <div className="rounded-[24px] bg-slate-50/80 p-4">
       <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{title}</div>
       <div className={cx('mt-2 text-xl font-extrabold tracking-tight', tone === 'positive' ? 'text-emerald-600' : tone === 'negative' ? 'text-red-500' : 'text-slate-900')}>
         {value}
@@ -1073,8 +1073,8 @@ function TransactionEditorCard({ row, index, codeError, highlighted = false, onU
     <div
       data-row-index={index}
       className={cx(
-        'rounded-[24px] border bg-slate-50/90 p-4 shadow-sm shadow-slate-100/70',
-        highlighted ? 'border-indigo-300 ring-2 ring-indigo-100' : 'border-slate-200'
+        'rounded-[24px] bg-slate-50/90 p-4',
+        highlighted ? 'ring-2 ring-indigo-100' : ''
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -1768,8 +1768,8 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm shadow-slate-100/80">
-        <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="overflow-hidden rounded-[24px] bg-transparent">
+        <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-full bg-rose-300" />
@@ -1812,7 +1812,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
               <col className="w-[150px]" />
               <col className="w-[64px]" />
             </colgroup>
-            <thead className="border-b border-slate-200 bg-white text-xs uppercase tracking-[0.14em] text-slate-400">
+            <thead className="border-b border-slate-100 bg-white text-xs uppercase tracking-[0.14em] text-slate-400">
               <tr>
                 <th className="px-4 py-3 font-semibold">日期</th>
                 <th className="px-4 py-3 font-semibold">基金代码</th>
