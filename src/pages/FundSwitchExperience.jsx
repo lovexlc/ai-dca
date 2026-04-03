@@ -2019,17 +2019,16 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   );
 
   const summaryPanel = state.resultConfirmed ? (
-    <div className="space-y-5">
-      <SectionHeading
-        eyebrow="收益摘要"
-        title="当前切换判断"
-        description="这里直接回答两个问题：如果不换，现在值多少；换成现在这只后，当前值多少。"
-        action={(
-          <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={() => selectWorkspacePanel('settings')}>
-            去调计算参数
-          </button>
-        )}
-      />
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <button
+          className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800"
+          type="button"
+          onClick={() => selectWorkspacePanel('settings')}
+        >
+          去调计算参数
+        </button>
+      </div>
 
       <SummaryValueCard
         value={formatSignedCurrency(summary.switchAdvantage, '')}
