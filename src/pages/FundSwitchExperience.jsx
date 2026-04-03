@@ -2020,16 +2020,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
 
   const summaryPanel = state.resultConfirmed ? (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <button
-          className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800"
-          type="button"
-          onClick={() => selectWorkspacePanel('settings')}
-        >
-          去调计算参数
-        </button>
-      </div>
-
       <SummaryValueCard
         value={formatSignedCurrency(summary.switchAdvantage, '')}
         advantageMeta={advantageMeta}
