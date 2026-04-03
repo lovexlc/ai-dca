@@ -1,11 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertCircle,
   AlertTriangle,
   ArrowRight,
-  CheckCircle2,
   CloudUpload,
-  Download,
   FileImage,
   FolderOpen,
   History,
@@ -14,8 +11,7 @@ import {
   Sparkles,
   SlidersHorizontal,
   TableProperties,
-  Trash2,
-  Upload
+  Trash2
 } from 'lucide-react';
 import { formatCurrency } from '../app/accumulation.js';
 import {
@@ -141,8 +137,7 @@ const LANDING_MOBILE_SCROLL_ROWS = [
 const WORKSPACE_PANELS = [
   { key: 'details', label: '识别明细', Icon: TableProperties },
   { key: 'summary', label: '收益摘要', Icon: Sparkles },
-  { key: 'settings', label: '计算参数', Icon: SlidersHorizontal },
-  { key: 'history', label: '历史分析', Icon: History }
+  { key: 'settings', label: '计算参数', Icon: SlidersHorizontal }
 ];
 
 function createOcrState(overrides = {}) {
@@ -154,52 +149,6 @@ function createOcrState(overrides = {}) {
     error: '',
     lineCount: 0,
     ...overrides
-  };
-}
-
-function getStatusMeta(status) {
-  if (status === 'loading') {
-    return {
-      Icon: LoaderCircle,
-      label: '正在识别',
-      detail: '正在提取截图中的交易记录，请稍候。',
-      colorClass: 'border border-amber-200 bg-amber-50 text-amber-600',
-      iconClassName: 'animate-spin'
-    };
-  }
-
-  if (status === 'error') {
-    return {
-      Icon: AlertCircle,
-      label: '识别失败',
-      detail: '请检查截图清晰度，或重新上传交易凭证。',
-      colorClass: 'border border-red-200 bg-red-50 text-red-600'
-    };
-  }
-
-  if (status === 'warning') {
-    return {
-      Icon: AlertTriangle,
-      label: '完成识别 (需复核)',
-      detail: '识别结果已回填，但仍有字段建议人工复核。',
-      colorClass: 'border border-amber-200 bg-amber-50 text-amber-600'
-    };
-  }
-
-  if (status === 'success') {
-    return {
-      Icon: CheckCircle2,
-      label: '已完成智能识别',
-      detail: '识别结果已成功回填为可编辑交易数据。',
-      colorClass: 'border border-emerald-200 bg-emerald-50 text-emerald-600'
-    };
-  }
-
-  return {
-    Icon: Upload,
-    label: '待上传截图',
-    detail: '支持常见图片格式的交易凭证截图。',
-    colorClass: 'border border-slate-200 bg-slate-100 text-slate-600'
   };
 }
 
@@ -896,23 +845,6 @@ function ReadonlyTransactionsTable({ rows = [], highlightedRowIndex = -1 }) {
   );
 }
 
-function SidebarQuickStat({ label, value, tone = 'slate' }) {
-  return (
-    <div className={cx(
-      'flex items-center justify-between gap-3 rounded-2xl border px-3 py-3',
-      tone === 'positive' ? 'border-emerald-200 bg-emerald-50/70' : tone === 'negative' ? 'border-red-200 bg-red-50/70' : 'border-slate-200 bg-slate-50'
-    )}>
-      <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">{label}</div>
-      <div className={cx(
-        'text-sm font-extrabold text-right',
-        tone === 'positive' ? 'text-emerald-700' : tone === 'negative' ? 'text-red-600' : 'text-slate-800'
-      )}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
 function getDocumentWorkflowMeta(entry = {}) {
   const workflowStatus = String(entry.workflowStatus || '').trim();
   if (workflowStatus === 'error') {
@@ -1017,17 +949,6 @@ function buildWorkflowSteps({
           : ['先完成明细校验，再生成收益结果。']
     }
   ];
-}
-
-function findPreferredWorkflowStepKey(steps = []) {
-  const tonePriority = ['error', 'current', 'done', 'pending'];
-  for (const tone of tonePriority) {
-    const match = steps.find((step) => step.tone === tone);
-    if (match) {
-      return match.key;
-    }
-  }
-  return steps[0]?.key || '';
 }
 
 function WorkflowStepList({
@@ -1144,92 +1065,17 @@ function AnalysisWorkspaceSidebar({
   activeDocId,
   documentEntries = [],
   expandedStepKey,
-  fileName,
   workflowSteps = [],
-  effectiveOcrMessage,
-  ocrState,
-  recognizedCount,
-  resultConfirmed,
-  summary,
-  validationIssueSummary,
   onToggleStep,
   onJumpToIssue,
   onOpenDocument,
   onEdit,
-  onReset,
-  onShowSummary,
-  documentUpdatedAt
+  onShowSummary
 }) {
   const latestDocuments = documentEntries.slice(0, 5);
-  const hasConfirmedResult = resultConfirmed;
-  const quickTone = summary.switchAdvantage > 0 ? 'positive' : summary.switchAdvantage < 0 ? 'negative' : 'slate';
 
   return (
     <aside className="space-y-4">
-      <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
-        <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-500">
-            <FileImage className="h-5 w-5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">当前文档</div>
-            <div className="mt-2 truncate text-lg font-bold text-slate-900">{fileName || '未命名文件'}</div>
-            <div className="mt-2 text-xs leading-5 text-slate-400">
-              最近更新 {formatDateTimeLabel(documentUpdatedAt)}{ocrState.durationMs > 0 ? ` · OCR ${(ocrState.durationMs / 1000).toFixed(1)} 秒` : ''}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
-                {hasConfirmedResult ? '收益口径与结果要点' : '当前待确认重点'}
-              </div>
-              <div className={cx(
-                'mt-3 text-3xl font-extrabold tracking-tight',
-                hasConfirmedResult
-                  ? summary.switchAdvantage > 0
-                    ? 'text-emerald-600'
-                    : summary.switchAdvantage < 0
-                      ? 'text-red-500'
-                      : 'text-slate-900'
-                  : 'text-slate-900'
-              )}>
-                {hasConfirmedResult ? formatSignedCurrency(summary.switchAdvantage, '¥ ') : `${recognizedCount} 条记录`}
-              </div>
-            </div>
-            <div className="rounded-full bg-white p-2 text-indigo-600 ring-1 ring-slate-200">
-              <Sparkles className="h-4 w-4" />
-            </div>
-          </div>
-
-          <p className="mt-3 text-sm leading-6 text-slate-500">
-            {hasConfirmedResult ? effectiveOcrMessage : validationIssueSummary || effectiveOcrMessage}
-          </p>
-
-          <div className="mt-4 grid gap-2.5">
-            <SidebarQuickStat label="当前口径" value={hasConfirmedResult ? STRATEGY_LABELS[summary.strategy] : '待确认'} />
-            <SidebarQuickStat
-              label="切换额外收益"
-              value={hasConfirmedResult ? formatSignedCurrency(summary.switchAdvantage, '¥ ') : '待生成'}
-              tone={hasConfirmedResult ? quickTone : 'slate'}
-            />
-            <SidebarQuickStat label="不切换现值" value={hasConfirmedResult ? formatCurrency(summary.stayValue, '¥ ') : '--'} />
-            <SidebarQuickStat label="换后现值" value={hasConfirmedResult ? formatCurrency(summary.switchedValue, '¥ ') : '--'} />
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={onReset}>
-            返回上传入口
-          </button>
-          <button className={cx(subtleButtonClass, 'w-full sm:w-auto')} type="button" onClick={hasConfirmedResult ? onShowSummary : onEdit}>
-            {hasConfirmedResult ? '查看收益摘要' : '去确认识别明细'}
-          </button>
-        </div>
-      </div>
-
       <WorkflowStepList
         steps={workflowSteps}
         expandedStepKey={expandedStepKey}
@@ -1400,7 +1246,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [activeWorkspacePanel, setActiveWorkspacePanel] = useState(() => (state.resultConfirmed ? 'summary' : 'details'));
   const [routeState, setRouteState] = useState(() => readFundSwitchRouteState());
-  const [expandedStepKey, setExpandedStepKey] = useState(() => (state.resultConfirmed ? 'result' : 'sheet'));
+  const [expandedStepKey, setExpandedStepKey] = useState('');
   const [highlightedRowIndex, setHighlightedRowIndex] = useState(-1);
   const [confirmError, setConfirmError] = useState('');
   const [priceState, setPriceState] = useState(() => ({ status: 'idle', entries: [], error: '' }));
@@ -1431,7 +1277,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   const validationDiagnostics = useMemo(() => buildRowValidationDiagnostics(summary.rows), [summary.rows]);
   const validationIssues = useMemo(() => buildRowValidationIssues(validationDiagnostics), [validationDiagnostics]);
   const validationIssueSummary = useMemo(() => summarizeValidationIssues(validationDiagnostics), [validationDiagnostics]);
-  const statusMeta = getStatusMeta(effectiveOcrStatus);
   const primaryTabs = getPrimaryTabs(links);
   const advantageMeta = getAdvantageTone(summary.switchAdvantage);
   const showViewPage = routeState.mode === 'view' && hasImportedData;
@@ -1479,6 +1324,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
       setConfirmError('');
       setIsEditingDetails(false);
       setActiveWorkspacePanel(nextState.resultConfirmed ? 'summary' : 'details');
+      setExpandedStepKey('');
       return;
     }
 
@@ -1490,10 +1336,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   useEffect(() => {
     persistFundSwitchState({ ...state, comparison: summary.comparison }, summary);
   }, [state, summary]);
-
-  useEffect(() => {
-    setExpandedStepKey(findPreferredWorkflowStepKey(workflowSteps));
-  }, [state.docId, state.resultConfirmed, effectiveOcrStatus, workflowSteps]);
 
   useEffect(() => {
     if (highlightedRowIndex < 0) {
@@ -1588,57 +1430,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     setHighlightedRowIndex(rowIndex);
     setIsEditingDetails(true);
     setActiveWorkspacePanel('details');
-  }
-
-  function handleExportAnalysis() {
-    try {
-      const payload = {
-        exportedAt: new Date().toISOString(),
-        docId: state.docId,
-        fileName: state.fileName,
-        resultConfirmed: state.resultConfirmed,
-        ocrState: {
-          status: effectiveOcrStatus,
-          message: effectiveOcrMessage,
-          durationMs: ocrState.durationMs,
-          lineCount: recognizedCount
-        },
-        summary: {
-          strategy: summary.strategy,
-          switchAdvantage: summary.switchAdvantage,
-          stayValue: summary.stayValue,
-          switchedValue: summary.switchedValue,
-          switchedPositionProfit: summary.switchedPositionProfit,
-          processedAmount: summary.processedAmount,
-          extraCash: summary.comparison.extraCash
-        },
-        state: {
-          ...state,
-          comparison: summary.comparison
-        }
-      };
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      const baseName = (state.fileName || state.docId || 'fund-switch-analysis')
-        .replace(/\.[^.]+$/, '')
-        .replace(/[^a-zA-Z0-9-_一-龥]+/g, '-')
-        .replace(/^-+|-+$/g, '') || 'fund-switch-analysis';
-
-      link.href = url;
-      link.download = `${baseName}-analysis.json`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-      showActionToast('导出结果', 'success', {
-        description: '已导出当前分析结果 JSON。'
-      });
-    } catch (error) {
-      showActionToast('导出结果', 'error', {
-        description: error instanceof Error ? error.message : '导出失败。'
-      });
-    }
   }
 
   useEffect(() => {
@@ -1843,6 +1634,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
       setConfirmError('');
       setIsEditingDetails(false);
       setActiveWorkspacePanel('details');
+      setExpandedStepKey('');
 
       let nextOcrState;
       if (result.rows.length) {
@@ -1901,6 +1693,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     setConfirmError('');
     setIsEditingDetails(false);
     setActiveWorkspacePanel('details');
+    setExpandedStepKey('');
     openUploadPage();
   }
 
@@ -1986,6 +1779,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     setHighlightedRowIndex(-1);
     setIsEditingDetails(false);
     setActiveWorkspacePanel('summary');
+    setExpandedStepKey('');
     openViewPage(finalState.docId);
     showActionToast(actionLabel, 'success');
   }
@@ -2009,6 +1803,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     setConfirmError('');
     setIsEditingDetails(false);
     setActiveWorkspacePanel(nextState.resultConfirmed ? 'summary' : 'details');
+    setExpandedStepKey('');
     openViewPage(documentEntry.id);
   }
 
@@ -2032,6 +1827,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     setConfirmError('');
     setIsEditingDetails(false);
     setActiveWorkspacePanel('summary');
+    setExpandedStepKey('');
     openViewPage(nextState.docId);
     showActionToast('打开历史分析', 'success', {
       description: '已载入历史记录，当前页面会直接用最新价格重算。'
@@ -2394,17 +2190,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     </div>
   );
 
-  const historyPanel = (
-    <div className="space-y-5">
-      <FundSwitchHistorySection
-        entries={historyEntries}
-        activeEntryId={state.historyEntryId}
-        onOpen={openHistoryAnalysis}
-        onDelete={removeHistoryAnalysis}
-      />
-    </div>
-  );
-
   const landingUploadCard = (
     <div className="mx-auto w-full max-w-[456px] rounded-[32px] bg-white/58 p-7 shadow-[0_12px_32px_rgba(15,23,42,0.06)] backdrop-blur-xl sm:p-8">
       <button
@@ -2496,59 +2281,22 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     </div>
   ) : (
     <div className="mx-auto max-w-screen-2xl px-4 pb-6 pt-3 sm:px-6 sm:pb-8 sm:pt-4">
-      <header className="mb-6 rounded-[28px] border border-slate-200 bg-white px-5 py-4 shadow-[0_18px_48px_rgba(15,23,42,0.06)] sm:px-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <div className="text-sm text-slate-500">基金切换收益工作台</div>
-            <div className="mt-2 truncate text-xl font-semibold text-slate-900 sm:text-2xl">{state.fileName || '当前上传截图'}</div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-              <span className={cx('inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-semibold', statusMeta.colorClass)}>
-                <statusMeta.Icon className={cx('h-4 w-4', statusMeta.iconClassName)} />
-                {statusMeta.label}
-              </span>
-              <span>{recognizedCount} 条记录</span>
-              <span>·</span>
-              <span>{priceState.status === 'error' ? '行情未同步' : '已按最新价格重算'}</span>
-            </div>
-            <button className="mt-3 text-sm font-semibold text-slate-500 transition-colors hover:text-slate-800" type="button" onClick={resetToUploadEntry}>
-              返回上传入口
-            </button>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={openFilePicker}>
-              重新上传
-            </button>
-            <button className={cx(subtleButtonClass, 'w-full sm:w-auto')} type="button" onClick={() => selectWorkspacePanel('history')}>
-              历史分析
-            </button>
-            <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={handleExportAnalysis}>
-              <Download className="h-4 w-4" />
-              导出结果
-            </button>
-          </div>
-        </div>
-      </header>
+      <div className="mb-4 flex items-center">
+        <button className="text-sm font-semibold text-slate-500 transition-colors hover:text-slate-800" type="button" onClick={resetToUploadEntry}>
+          返回上传入口
+        </button>
+      </div>
 
       <div className="grid grid-cols-12 gap-6">
         <div className="col-span-12 lg:col-span-5 xl:col-span-4">
           <AnalysisWorkspaceSidebar
             activeDocId={state.docId}
             documentEntries={documentEntries}
-            documentUpdatedAt={documentEntries.find((entry) => entry.id === state.docId)?.updatedAt || new Date().toISOString()}
-            effectiveOcrMessage={effectiveOcrMessage}
             expandedStepKey={expandedStepKey}
-            fileName={state.fileName}
-            ocrState={ocrState}
-            recognizedCount={recognizedCount}
-            resultConfirmed={state.resultConfirmed}
-            summary={summary}
-            validationIssueSummary={validationIssueSummary}
             workflowSteps={workflowSteps}
             onEdit={openDetailEditor}
             onJumpToIssue={focusValidationIssue}
             onOpenDocument={openDocument}
-            onReset={resetToUploadEntry}
             onShowSummary={() => selectWorkspacePanel('summary')}
             onToggleStep={toggleWorkflowStep}
           />
@@ -2564,7 +2312,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
                     panel={panel}
                     active={activeWorkspacePanel === panel.key}
                     onSelect={selectWorkspacePanel}
-                    badge={panel.key === 'details' ? String(recognizedCount) : panel.key === 'history' ? String(historyEntries.length) : ''}
+                    badge={panel.key === 'details' ? String(recognizedCount) : ''}
                   />
                 ))}
               </div>
@@ -2574,7 +2322,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
               {activeWorkspacePanel === 'details' ? detailsPanel : null}
               {activeWorkspacePanel === 'summary' ? summaryPanel : null}
               {activeWorkspacePanel === 'settings' ? settingsPanel : null}
-              {activeWorkspacePanel === 'history' ? historyPanel : null}
             </section>
           </main>
         </div>
