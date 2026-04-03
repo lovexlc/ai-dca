@@ -1802,7 +1802,16 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
         </div>
 
         <div className="hidden overflow-x-auto md:block">
-          <table className="w-full min-w-[860px] whitespace-nowrap text-left text-sm">
+          <table className="w-full min-w-[900px] table-fixed whitespace-nowrap text-left text-sm">
+            <colgroup>
+              <col className="w-[170px]" />
+              <col className="w-[124px]" />
+              <col className="w-[152px]" />
+              <col className="w-[124px]" />
+              <col className="w-[132px]" />
+              <col className="w-[150px]" />
+              <col className="w-[64px]" />
+            </colgroup>
             <thead className="border-b border-slate-200 bg-white text-xs uppercase tracking-[0.14em] text-slate-400">
               <tr>
                 <th className="px-4 py-3 font-semibold">日期</th>
