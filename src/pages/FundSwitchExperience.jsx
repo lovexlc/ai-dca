@@ -779,72 +779,6 @@ function WorkspaceNavButton({ panel, active, onSelect, badge = '' }) {
   );
 }
 
-function ReadonlyTransactionsTable({ rows = [], highlightedRowIndex = -1 }) {
-  const meaningfulRows = rows.filter((row) => hasMeaningfulRowContent(row));
-
-  if (!meaningfulRows.length) {
-    return (
-      <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-12 text-center text-sm leading-6 text-slate-500">
-        识别完成后，这里会像工作表一样展示回填后的交易明细。
-      </div>
-    );
-  }
-
-  return (
-    <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm shadow-slate-100/80">
-      <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-rose-300" />
-            <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
-          </div>
-          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">已回填交易表</div>
-        </div>
-        <div className="text-xs text-slate-500">{meaningfulRows.length} 条识别记录</div>
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="min-w-full whitespace-nowrap text-left text-sm">
-          <thead className="border-b border-slate-200 bg-white text-xs uppercase tracking-[0.14em] text-slate-400">
-            <tr>
-              <th className="px-4 py-3 font-semibold">日期</th>
-              <th className="px-4 py-3 font-semibold">基金代码</th>
-              <th className="px-4 py-3 font-semibold">交易类型</th>
-              <th className="px-4 py-3 font-semibold">价格</th>
-              <th className="px-4 py-3 font-semibold">份额</th>
-              <th className="px-4 py-3 font-semibold">成交额</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 bg-white">
-            {meaningfulRows.map((row, index) => (
-              <tr
-                key={row.id}
-                data-row-index={index}
-                className={cx('hover:bg-slate-50/80', highlightedRowIndex === index ? 'bg-indigo-50/80' : '')}
-              >
-                <td className="px-4 py-3 font-medium text-slate-700">{row.date || '--'}</td>
-                <td className="px-4 py-3 font-semibold text-slate-900">{row.code || '--'}</td>
-                <td className="px-4 py-3">
-                  <span className={cx(
-                    'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',
-                    row.type === '卖出' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
-                  )}>
-                    {row.type || '--'}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-slate-600">{Number(row.price) > 0 ? Number(row.price).toFixed(4) : '--'}</td>
-                <td className="px-4 py-3 text-slate-600">{Number(row.shares) > 0 ? row.shares : '--'}</td>
-                <td className="px-4 py-3 font-semibold text-slate-800">{Number(row.amount) > 0 ? formatCurrency(row.amount, '¥ ') : '--'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 function getDocumentWorkflowMeta(entry = {}) {
   const workflowStatus = String(entry.workflowStatus || '').trim();
   if (workflowStatus === 'error') {
@@ -921,7 +855,7 @@ function buildWorkflowSteps({
       detail: hasValidationIssues
         ? `发现 ${validationDiagnostics.length} 项待修正，建议先定位处理。`
         : recognizedCount > 0
-          ? '可以直接修改识别明细。'
+          ? '可以直接在表格里确认明细。'
           : '等待回填识别结果。',
       tone: hasValidationIssues ? 'error' : recognizedCount > 0 ? 'done' : isError ? 'pending' : isProcessing ? 'current' : 'pending',
       lines: hasValidationIssues
@@ -1213,7 +1147,7 @@ function TransactionEditorCard({ row, index, codeError, highlighted = false, onU
   );
 }
 
-function PendingResultCard({ issueSummary, onEdit }) {
+function PendingResultCard({ issueSummary }) {
   return (
     <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-5 sm:p-6">
       <div className="flex flex-col gap-4">
@@ -1229,10 +1163,6 @@ function PendingResultCard({ issueSummary, onEdit }) {
             </div>
           </div>
         </div>
-
-        <button className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-100" type="button" onClick={onEdit}>
-          修改识别明细
-        </button>
       </div>
     </div>
   );
@@ -1243,7 +1173,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   const [documentEntries, setDocumentEntries] = useState(() => readFundSwitchDocuments());
   const [historyEntries, setHistoryEntries] = useState(() => readFundSwitchHistory());
   const [ocrState, setOcrState] = useState(() => createOcrState());
-  const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [activeWorkspacePanel, setActiveWorkspacePanel] = useState(() => (state.resultConfirmed ? 'summary' : 'details'));
   const [routeState, setRouteState] = useState(() => readFundSwitchRouteState());
   const [expandedStepKey, setExpandedStepKey] = useState('');
@@ -1322,7 +1251,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
         message: documentEntry.ocrMessage || '已从文档链接载入 OCR 结果。'
       }));
       setConfirmError('');
-      setIsEditingDetails(false);
       setActiveWorkspacePanel(nextState.resultConfirmed ? 'summary' : 'details');
       setExpandedStepKey('');
       return;
@@ -1349,8 +1277,15 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
 
     window.requestAnimationFrame(() => {
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const firstField = target.querySelector('input, select');
+      if (firstField instanceof HTMLElement) {
+        firstField.focus();
+        if (typeof firstField.select === 'function') {
+          firstField.select();
+        }
+      }
     });
-  }, [activeWorkspacePanel, highlightedRowIndex, isEditingDetails]);
+  }, [activeWorkspacePanel, highlightedRowIndex]);
 
   function refreshDocumentEntries() {
     const nextEntries = readFundSwitchDocuments();
@@ -1428,7 +1363,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     }
 
     setHighlightedRowIndex(rowIndex);
-    setIsEditingDetails(true);
     setActiveWorkspacePanel('details');
   }
 
@@ -1632,7 +1566,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
         }
       };
       setConfirmError('');
-      setIsEditingDetails(false);
       setActiveWorkspacePanel('details');
       setExpandedStepKey('');
 
@@ -1691,28 +1624,20 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     setOcrState(createOcrState());
     setHighlightedRowIndex(-1);
     setConfirmError('');
-    setIsEditingDetails(false);
     setActiveWorkspacePanel('details');
     setExpandedStepKey('');
     openUploadPage();
   }
 
   function openDetailEditor() {
-    setIsEditingDetails(true);
-    setActiveWorkspacePanel('details');
-  }
-
-  function closeDetailEditor() {
     setHighlightedRowIndex(-1);
-    setIsEditingDetails(false);
-    setActiveWorkspacePanel(state.resultConfirmed ? 'summary' : 'details');
+    setActiveWorkspacePanel('details');
   }
 
   function selectWorkspacePanel(panelKey) {
     setActiveWorkspacePanel(panelKey);
     if (panelKey !== 'details') {
       setHighlightedRowIndex(-1);
-      setIsEditingDetails(false);
     }
   }
 
@@ -1729,16 +1654,11 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   }
 
   function handleConfirmDataAndYield() {
-    const actionLabel = isEditingDetails
-      ? '确认修改并重新计算'
-      : state.resultConfirmed
-        ? '确认数据与收益'
-        : '校验并生成结果';
+    const actionLabel = state.resultConfirmed ? '确认数据与收益' : '校验并生成结果';
 
     if (validationIssues.length) {
       const message = summarizeValidationIssues(validationDiagnostics);
       setConfirmError(message);
-      setIsEditingDetails(true);
       showActionToast(actionLabel, 'error', {
         description: message
       });
@@ -1777,7 +1697,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
 
     setState(finalState);
     setHighlightedRowIndex(-1);
-    setIsEditingDetails(false);
     setActiveWorkspacePanel('summary');
     setExpandedStepKey('');
     openViewPage(finalState.docId);
@@ -1801,7 +1720,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     }));
     setHighlightedRowIndex(-1);
     setConfirmError('');
-    setIsEditingDetails(false);
     setActiveWorkspacePanel(nextState.resultConfirmed ? 'summary' : 'details');
     setExpandedStepKey('');
     openViewPage(documentEntry.id);
@@ -1825,7 +1743,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     setOcrState(nextOcrState);
     setHighlightedRowIndex(-1);
     setConfirmError('');
-    setIsEditingDetails(false);
     setActiveWorkspacePanel('summary');
     setExpandedStepKey('');
     openViewPage(nextState.docId);
@@ -1843,96 +1760,110 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     showActionToast('删除历史分析', 'success');
   }
 
-  const detailsPanel = isEditingDetails ? (
+  const detailsPanel = (
     <div className="space-y-5">
-      <SectionHeading
-        eyebrow="可编辑工作表"
-        title="交易数据明细"
-        description="识别结果需要修正时，在这里直接改。确认后会立刻按最新价格重新计算收益。"
-        action={(
-          <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:w-auto">
-            <button className={cx(secondaryButtonClass, 'w-full')} type="button" onClick={closeDetailEditor}>
-              返回摘要
-            </button>
-            <button className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 sm:w-auto" type="button" onClick={addRow}>
-              <Plus className="h-4 w-4" />
-              新增条目
-            </button>
-          </div>
-        )}
-      />
-
       {confirmError ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
           {confirmError}
         </div>
       ) : null}
 
-      <div className="space-y-3 md:hidden">
-        {summary.rows.map((row, index) => (
-          <TransactionEditorCard
-            key={row.id}
-            row={row}
-            index={index}
-            codeError={getFundCodeError(row.code)}
-            highlighted={highlightedRowIndex === index}
-            onUpdateRow={updateRow}
-            onRemoveRow={removeRow}
-          />
-        ))}
-      </div>
+      <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm shadow-slate-100/80">
+        <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-rose-300" />
+              <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
+            </div>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">已回填交易表</div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="text-xs text-slate-500">{recognizedCount} 条识别记录</div>
+            <button className="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-50" type="button" onClick={addRow}>
+              <Plus className="h-4 w-4" />
+              新增条目
+            </button>
+          </div>
+        </div>
 
-      <div className="hidden overflow-hidden rounded-[24px] border border-slate-200 bg-white md:block">
-        <div className="overflow-x-auto">
-          <table className="w-full whitespace-nowrap text-left text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50/80 text-xs uppercase text-slate-500">
+        <div className="space-y-3 p-4 md:hidden">
+          {summary.rows.map((row, index) => (
+            <TransactionEditorCard
+              key={row.id}
+              row={row}
+              index={index}
+              codeError={getFundCodeError(row.code)}
+              highlighted={highlightedRowIndex === index}
+              onUpdateRow={updateRow}
+              onRemoveRow={removeRow}
+            />
+          ))}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
+          <table className="w-full min-w-[860px] whitespace-nowrap text-left text-sm">
+            <thead className="border-b border-slate-200 bg-white text-xs uppercase tracking-[0.14em] text-slate-400">
               <tr>
-                <th className="px-6 py-4 font-semibold">日期</th>
-                <th className="px-6 py-4 font-semibold">基金代码</th>
-                <th className="px-6 py-4 font-semibold">交易类型</th>
-                <th className="px-6 py-4 font-semibold">价格</th>
-                <th className="px-6 py-4 font-semibold">份额 (股数)</th>
-                <th className="px-6 py-4 font-semibold">成交额</th>
-                <th className="w-16 px-6 py-4 text-right font-semibold">操作</th>
+                <th className="px-4 py-3 font-semibold">日期</th>
+                <th className="px-4 py-3 font-semibold">基金代码</th>
+                <th className="px-4 py-3 font-semibold">交易类型</th>
+                <th className="px-4 py-3 font-semibold">价格</th>
+                <th className="px-4 py-3 font-semibold">份额</th>
+                <th className="px-4 py-3 font-semibold">成交额</th>
+                <th className="w-16 px-4 py-3 text-right font-semibold">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
               {summary.rows.map((row, index) => {
                 const codeError = getFundCodeError(row.code);
+                const focusEditableField = (event) => {
+                  const field = event.currentTarget.querySelector('input, select');
+                  if (field instanceof HTMLElement) {
+                    field.focus();
+                    if (typeof field.select === 'function') {
+                      field.select();
+                    }
+                  }
+                };
+
                 return (
                   <tr
                     key={row.id}
                     data-row-index={index}
                     className={cx(
-                      'group transition-colors hover:bg-slate-50/50',
+                      'group transition-colors hover:bg-slate-50/70 focus-within:bg-slate-50/70',
                       highlightedRowIndex === index ? 'bg-indigo-50/80' : ''
                     )}
                   >
-                    <td className="px-6 py-3">
-                      <input className={cx(tableInputClass, 'w-36')} placeholder="例如 2026-03-29" value={row.date} onChange={(event) => updateRow(index, 'date', event.target.value)} />
+                    <td className="px-3 py-2.5" onClick={focusEditableField}>
+                      <input
+                        className={cx(tableInputClass, 'h-11 rounded-md px-2.5 font-medium hover:bg-white focus:bg-white')}
+                        placeholder="例如 2026-03-29"
+                        value={row.date}
+                        onChange={(event) => updateRow(index, 'date', event.target.value)}
+                      />
                     </td>
-                    <td className="px-6 py-3">
+                    <td className="px-3 py-2.5" onClick={focusEditableField}>
                       <div className="relative">
                         <input
                           className={cx(
                             tableInputClass,
-                            'w-32',
-                            codeError ? 'border-red-300 text-red-900 focus:border-red-500' : 'border-transparent'
+                            'h-11 rounded-md px-2.5 font-semibold hover:bg-white focus:bg-white',
+                            codeError ? 'border-red-300 text-red-900 focus:border-red-500' : ''
                           )}
                           placeholder="纯数字代码"
                           value={row.code}
                           onChange={(event) => updateRow(index, 'code', event.target.value)}
                         />
-                        {codeError ? <div className="absolute left-0 top-10 z-10 rounded bg-red-600 px-2 py-1 text-[10px] text-white shadow-sm">{codeError}</div> : null}
+                        {codeError ? <div className="absolute left-2 top-[calc(100%+4px)] z-10 rounded bg-red-600 px-2 py-1 text-[10px] text-white shadow-sm">{codeError}</div> : null}
                       </div>
                     </td>
-                    <td className="px-6 py-3">
+                    <td className="px-3 py-2.5" onClick={focusEditableField}>
                       <select
                         className={cx(
-                          'rounded-lg border px-3 py-2 pr-8 text-sm font-semibold outline-none transition-all',
-                          row.type === '卖出'
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                            : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
+                          'h-11 w-full rounded-md border border-transparent bg-transparent px-2.5 pr-8 text-sm font-semibold outline-none transition-all hover:border-slate-200 hover:bg-white focus:border-indigo-400 focus:bg-white',
+                          row.type === '卖出' ? 'text-emerald-700' : 'text-red-700'
                         )}
                         value={row.type}
                         onChange={(event) => updateRow(index, 'type', event.target.value)}
@@ -1941,17 +1872,38 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
                         <option value="买入">买入</option>
                       </select>
                     </td>
-                    <td className="px-6 py-3">
-                      <input className={cx(tableInputClass, 'w-28')} step="0.0001" type="number" placeholder="0.0000" value={row.price} onChange={(event) => updateRow(index, row.type === '卖出' ? 'sellPrice' : 'buyPrice', event.target.value)} />
+                    <td className="px-3 py-2.5" onClick={focusEditableField}>
+                      <input
+                        className={cx(tableInputClass, 'h-11 rounded-md px-2.5 hover:bg-white focus:bg-white')}
+                        step="0.0001"
+                        type="number"
+                        placeholder="0.0000"
+                        value={row.price}
+                        onChange={(event) => updateRow(index, row.type === '卖出' ? 'sellPrice' : 'buyPrice', event.target.value)}
+                      />
                     </td>
-                    <td className="px-6 py-3">
-                      <input className={cx(tableInputClass, 'w-32')} step="0.01" type="number" placeholder="0.00" value={row.shares} onChange={(event) => updateRow(index, 'shares', event.target.value)} />
+                    <td className="px-3 py-2.5" onClick={focusEditableField}>
+                      <input
+                        className={cx(tableInputClass, 'h-11 rounded-md px-2.5 hover:bg-white focus:bg-white')}
+                        step="0.01"
+                        type="number"
+                        placeholder="0.00"
+                        value={row.shares}
+                        onChange={(event) => updateRow(index, 'shares', event.target.value)}
+                      />
                     </td>
-                    <td className="px-6 py-3">
-                      <div className="w-28 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 font-semibold text-slate-600">{formatCurrency(row.amount, '¥ ')}</div>
+                    <td className="px-3 py-2.5">
+                      <div className="flex h-11 items-center rounded-md px-2.5 font-semibold text-slate-700">
+                        {formatCurrency(row.amount, '¥ ')}
+                      </div>
                     </td>
-                    <td className="px-6 py-3 text-right">
-                      <button className="rounded-lg p-2 text-slate-400 opacity-0 transition-colors group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 focus:opacity-100" type="button" onClick={() => removeRow(index)} title="删除记录">
+                    <td className="px-3 py-2.5 text-right">
+                      <button
+                        className="rounded-lg p-2 text-slate-400 opacity-0 transition-colors group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-red-50 hover:text-red-500"
+                        type="button"
+                        onClick={() => removeRow(index)}
+                        title="删除记录"
+                      >
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </td>
@@ -1963,53 +1915,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
-        <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={closeDetailEditor}>
-          返回摘要
-        </button>
-        <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={handleConfirmDataAndYield}>
-          确认修改并重新计算
-          <ArrowRight className="h-4 w-4" />
-        </button>
-      </div>
-    </div>
-  ) : (
-    <div className="space-y-5">
-      <SectionHeading
-        eyebrow="识别明细"
-        title="OCR 回填结果"
-        description="上传后的第一步先确认这里。它会像工作表一样把每条买入、卖出、价格和份额铺开。"
-        action={(
-          <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={openDetailEditor}>
-            修改识别明细
-          </button>
-        )}
-      />
-
-      {confirmError ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-          {confirmError}
-        </div>
-      ) : null}
-
-      {!state.resultConfirmed && validationIssueSummary ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          {validationIssueSummary}
-        </div>
-      ) : null}
-
-      <ReadonlyTransactionsTable highlightedRowIndex={highlightedRowIndex} rows={summary.rows} />
-
-      <div className="grid gap-3 lg:grid-cols-3">
-        <CompactMetricCard title="识别条目" value={`${recognizedCount} 条`} note="有效买卖记录数量" />
-        <CompactMetricCard title="预估处理金额" value={formatCurrency(summary.processedAmount, '¥ ')} note="按当前识别结果汇总" />
-        <CompactMetricCard title="当前状态" value={state.resultConfirmed ? '已生成收益' : '待确认'} note={state.resultConfirmed ? '可以继续改口径或补现价' : '确认后才会生成收益判断'} />
-      </div>
-
-      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
-        <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={openDetailEditor}>
-          修改识别明细
-        </button>
+      <div className="flex justify-end">
         <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={handleConfirmDataAndYield}>
           {state.resultConfirmed ? '确认数据与收益' : '校验并生成结果'}
           <ArrowRight className="h-4 w-4" />
@@ -2061,10 +1967,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
-        <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={openDetailEditor}>
-          修改识别明细
-        </button>
+      <div className="flex justify-end">
         <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={handleConfirmDataAndYield}>
           确认数据与收益
           <ArrowRight className="h-4 w-4" />
@@ -2078,7 +1981,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
         title="等待确认识别明细"
         description="收益摘要不会先猜结果。先把识别明细确认下来，再生成切换判断。"
       />
-      <PendingResultCard issueSummary={confirmError || validationIssueSummary} onEdit={openDetailEditor} />
+      <PendingResultCard issueSummary={confirmError || validationIssueSummary} />
       <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={() => selectWorkspacePanel('details')}>
         去看识别明细
       </button>
@@ -2157,10 +2060,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
-        <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={openDetailEditor}>
-          修改识别明细
-        </button>
+      <div className="flex justify-end">
         <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={handleConfirmDataAndYield}>
           确认数据与收益
           <ArrowRight className="h-4 w-4" />
