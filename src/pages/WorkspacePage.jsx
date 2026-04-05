@@ -1,0 +1,107 @@
+import { useEffect, useMemo, useState } from 'react';
+import { isFundSwitchViewHash } from '../app/fundSwitch.js';
+import { PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
+import { PageShell, TopBar } from '../components/experience-ui.jsx';
+import { DcaExperience } from './DcaExperience.jsx';
+import { FundSwitchExperience } from './FundSwitchExperience.jsx';
+import { HistoryExperience } from './HistoryExperience.jsx';
+import { HomeExperience } from './HomeExperience.jsx';
+import { TradePlansExperience } from './TradePlansExperience.jsx';
+
+const DEFAULT_WORKSPACE_TAB = 'tradePlans';
+const WORKSPACE_TITLES = {
+  home: '加仓计划',
+  tradePlans: '交易计划中心',
+  dca: '定投计划',
+  fundSwitch: '基金切换收益分析',
+  history: '交易历史'
+};
+
+function normalizeWorkspaceTab(value = '') {
+  return PRIMARY_TAB_ORDER.includes(value) ? value : DEFAULT_WORKSPACE_TAB;
+}
+
+function readTabFromLocation(fallbackTab = DEFAULT_WORKSPACE_TAB) {
+  if (typeof window === 'undefined') {
+    return normalizeWorkspaceTab(fallbackTab);
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const currentTab = params.get('tab');
+  return currentTab ? normalizeWorkspaceTab(currentTab) : normalizeWorkspaceTab(fallbackTab);
+}
+
+function buildWorkspaceUrl(tab, { inPagesDir = false } = {}) {
+  const nextUrl = new URL(inPagesDir ? '../index.html' : './index.html', window.location.href);
+  if (tab !== DEFAULT_WORKSPACE_TAB) {
+    nextUrl.searchParams.set('tab', tab);
+  }
+  if (tab === 'fundSwitch' && isFundSwitchViewHash(window.location.hash)) {
+    nextUrl.hash = window.location.hash;
+  }
+  return nextUrl;
+}
+
+export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir = false }) {
+  const links = createPageLinks({ inPagesDir });
+  const [activeTab, setActiveTab] = useState(() => readTabFromLocation(initialTab));
+
+  const tabs = useMemo(() => getPrimaryTabs(links), [links]);
+  const heroTitle = WORKSPACE_TITLES[activeTab] || WORKSPACE_TITLES.home;
+
+  useEffect(() => {
+    document.title = heroTitle;
+  }, [heroTitle]);
+
+  useEffect(() => {
+    const canonicalUrl = buildWorkspaceUrl(activeTab, { inPagesDir });
+    if (window.location.href !== canonicalUrl.href) {
+      window.history.replaceState({ tab: activeTab }, '', canonicalUrl);
+    }
+  }, [activeTab, inPagesDir]);
+
+  useEffect(() => {
+    function handlePopState() {
+      setActiveTab(readTabFromLocation(initialTab));
+    }
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [initialTab]);
+
+  function handleSelectTab(nextTab) {
+    const normalizedTab = normalizeWorkspaceTab(nextTab);
+    if (normalizedTab === activeTab) {
+      return;
+    }
+
+    const nextUrl = buildWorkspaceUrl(normalizedTab, { inPagesDir });
+    window.history.pushState({ tab: normalizedTab }, '', nextUrl);
+    setActiveTab(normalizedTab);
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }
+
+  function renderActivePanel() {
+    const sharedProps = { links, inPagesDir, embedded: true };
+    switch (activeTab) {
+      case 'tradePlans':
+        return <TradePlansExperience {...sharedProps} />;
+      case 'dca':
+        return <DcaExperience {...sharedProps} />;
+      case 'fundSwitch':
+        return <FundSwitchExperience {...sharedProps} />;
+      case 'history':
+        return <HistoryExperience {...sharedProps} />;
+      case 'home':
+      default:
+        return <HomeExperience {...sharedProps} />;
+    }
+  }
+
+  return (
+    <PageShell>
+      <TopBar activeKey={activeTab} onSelect={handleSelectTab} tabs={tabs} />
+      {renderActivePanel()}
+    </PageShell>
+  );
+}

@@ -1,0 +1,30 @@
+{
+  "name": "ai-dca-stragety",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build:app": "vite build",
+    "publish:pages": "node scripts/publish_react_pages.mjs",
+    "data:fetch-nasdaq-daily": "node scripts/fetch_nasdaq_etf_daily_sina.mjs",
+    "data:fetch-nasdaq-benchmark": "python3 scripts/fetch_nasdaq100_benchmark.py",
+    "build": "npm run build:app && npm run publish:pages",
+    "worker:dev": "npx wrangler dev --config workers/ocr-proxy/wrangler.toml --port 8787",
+    "worker:deploy": "npx wrangler deploy --config workers/ocr-proxy/wrangler.toml",
+    "worker:notify:dev": "npx wrangler dev --config workers/notify/wrangler.toml --port 8788",
+    "worker:notify:deploy": "npx wrangler deploy --config workers/notify/wrangler.toml"
+  },
+  "dependencies": {
+    "lucide-react": "^1.7.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.2",
+    "vite": "^5.4.10"
+  }
+}

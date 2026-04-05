@@ -1,0 +1,30 @@
+name = "ai-dca-ocr-proxy"
+main = "src/index.js"
+compatibility_date = "2026-03-26"
+
+[[routes]]
+pattern = "tools.freebacktrack.tech/api/*"
+zone_name = "freebacktrack.tech"
+
+[[routes]]
+pattern = "tools.freebacktrack.tech/api/*"
+zone_name = "freebacktrack.tech"
+
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+persist = true
+head_sampling_rate = 1
+
+[vars]
+OCR_UPSTREAM_BASE_URL = "http://142.93.159.165:2095/v1"
+OCR_UPSTREAM_MODEL = "gpt-5.4"

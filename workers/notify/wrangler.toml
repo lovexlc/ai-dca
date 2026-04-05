@@ -1,0 +1,25 @@
+name = "ai-dca-notify"
+main = "src/index.js"
+compatibility_date = "2026-03-30"
+
+[[routes]]
+pattern = "tools.freebacktrack.tech/api/notify*"
+zone_name = "freebacktrack.tech"
+
+[[kv_namespaces]]
+binding = "NOTIFY_STATE"
+id = "5246771a17544a17af5b4b6c482f5d62"
+preview_id = "21e04c9a7eac46018a4740c013e11a1f"
+
+[triggers]
+# Cloudflare cron uses UTC. These two expressions together mean:
+# Beijing time Monday-Friday, every 30 minutes.
+crons = ["*/30 16-23 * * SUN-THU", "*/30 0-15 * * MON-FRI"]
+
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[vars]
+PUBLIC_DATA_BASE_URL = "https://tools.freebacktrack.tech"
+NOTIFY_TIMEZONE = "Asia/Shanghai"

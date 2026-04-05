@@ -1,0 +1,12 @@
+__pycache__/
+.DS_Store
+stitch-previews/
+node_modules/
+frontend-dist/
+*.tgz
+.env
+.env.local
+.env.*
+!.env.example
+.dev.vars
+workers/ocr-proxy/.dev.vars

@@ -1,0 +1,73 @@
+{
+  "project_id": "4075224789216868860",
+  "project_title": "股票建仓策略看板",
+  "homepage_screen_id": "75a393ec1a2d424ebafa1d0e59402d26",
+  "html_count": 8,
+  "screenshot_count": 0,
+  "screens": [
+    {
+      "screen_id": "75a393ec1a2d424ebafa1d0e59402d26",
+      "title": "加仓计划",
+      "device": "DESKTOP",
+      "page_url": "index.html",
+      "screenshot_url": null,
+      "is_homepage": true
+    },
+    {
+      "screen_id": "1c4b8d2f5a6748c7a0e3d1b6f9c2a4e8",
+      "title": "交易计划中心",
+      "device": "DESKTOP",
+      "page_url": "pages/1c4b8d2f5a6748c7a0e3d1b6f9c2a4e8.html",
+      "screenshot_url": null,
+      "is_homepage": false
+    },
+    {
+      "screen_id": "81fee20edb5542f08bb363ac837b327c",
+      "title": "加仓策略配置",
+      "device": "DESKTOP",
+      "page_url": "pages/81fee20edb5542f08bb363ac837b327c.html",
+      "screenshot_url": null,
+      "is_homepage": false
+    },
+    {
+      "screen_id": "d142c0822784448ab9b8016e300bd25c",
+      "title": "新增建仓层级",
+      "device": "DESKTOP",
+      "page_url": "pages/d142c0822784448ab9b8016e300bd25c.html",
+      "screenshot_url": null,
+      "is_homepage": false
+    },
+    {
+      "screen_id": "03ef40c5dff048f8b1416a6a4567f9ee",
+      "title": "新建建仓计划",
+      "device": "DESKTOP",
+      "page_url": "pages/03ef40c5dff048f8b1416a6a4567f9ee.html",
+      "screenshot_url": null,
+      "is_homepage": false
+    },
+    {
+      "screen_id": "65aaf3e700d3443c9810f6c727b045e8",
+      "title": "交易历史",
+      "device": "DESKTOP",
+      "page_url": "pages/65aaf3e700d3443c9810f6c727b045e8.html",
+      "screenshot_url": null,
+      "is_homepage": false
+    },
+    {
+      "screen_id": "5e3d43b9c2ea47f9b5d2be752bca564e",
+      "title": "基金切换收益分析",
+      "device": "DESKTOP",
+      "page_url": "pages/5e3d43b9c2ea47f9b5d2be752bca564e.html",
+      "screenshot_url": null,
+      "is_homepage": false
+    },
+    {
+      "screen_id": "530f6fe554444798820046dee4d4b889",
+      "title": "定投计划",
+      "device": "DESKTOP",
+      "page_url": "pages/530f6fe554444798820046dee4d4b889.html",
+      "screenshot_url": null,
+      "is_homepage": false
+    }
+  ]
+}

@@ -1,0 +1,116 @@
+:root {
+  --topbar-h: 44px;
+  --topbar-border: rgba(148, 163, 184, 0.24);
+  --topbar-bg: rgba(248, 250, 252, 0.92);
+  --topbar-link: #475569;
+  --topbar-link-hover: #0f172a;
+  --topbar-active-bg: rgba(255, 255, 255, 0.94);
+  --topbar-active-border: rgba(148, 163, 184, 0.42);
+  --topbar-focus: #4f46e5;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 90;
+  border-bottom: 1px solid var(--topbar-border);
+  background: var(--topbar-bg);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+}
+
+.topbar__inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--topbar-h);
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 0 14px;
+}
+
+.brand {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #334155;
+}
+
+.topnav {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.topnav::-webkit-scrollbar {
+  display: none;
+}
+
+.topnav__link {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--topbar-link);
+  text-decoration-line: underline;
+  text-decoration-color: transparent;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.35em;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    text-decoration-color 160ms ease;
+}
+
+.topnav__link:hover {
+  color: var(--topbar-link-hover);
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.topnav__link:focus-visible {
+  outline: 2px solid var(--topbar-focus);
+  outline-offset: 2px;
+  color: var(--topbar-link-hover);
+}
+
+.topnav__link.active,
+.topnav__link[aria-current="page"] {
+  color: #0f172a;
+  background: var(--topbar-active-bg);
+  border-color: var(--topbar-active-border);
+  text-decoration-color: currentColor;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+@media (max-width: 640px) {
+  .topbar__inner {
+    gap: 8px;
+    padding: 0 10px;
+  }
+
+  .brand {
+    display: none;
+  }
+
+  .topnav__link {
+    padding: 0 10px;
+  }
+}
