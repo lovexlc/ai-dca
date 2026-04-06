@@ -1,6 +1,6 @@
 {
   "dataset": "nasdaq_latest_prices",
-  "generated_at": "2026-04-03T08:12:34Z",
+  "generated_at": "2026-04-06T08:54:53Z",
   "fund_list_source": "data/all_nasdq.json",
   "count": 13,
   "funds": [
@@ -23,7 +23,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 1.603,
+      "current_price": 1.606,
       "output_path": "data/159501/daily-sina.json"
     },
     {
@@ -32,7 +32,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 1.416,
+      "current_price": 1.419,
       "output_path": "data/159513/daily-sina.json"
     },
     {
@@ -41,7 +41,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 1.916,
+      "current_price": 1.921,
       "output_path": "data/159632/daily-sina.json"
     },
     {
@@ -50,7 +50,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 1.822,
+      "current_price": 1.827,
       "output_path": "data/159659/daily-sina.json"
     },
     {
@@ -59,7 +59,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 1.846,
+      "current_price": 1.852,
       "output_path": "data/159660/daily-sina.json"
     },
     {
@@ -68,7 +68,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 1.58,
+      "current_price": 1.585,
       "output_path": "data/159696/daily-sina.json"
     },
     {
@@ -86,7 +86,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 1.721,
+      "current_price": 1.731,
       "output_path": "data/513100/daily-sina.json"
     },
     {
@@ -95,7 +95,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 1.939,
+      "current_price": 1.945,
       "output_path": "data/513110/daily-sina.json"
     },
     {
@@ -104,7 +104,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 2.102,
+      "current_price": 2.116,
       "output_path": "data/513300/daily-sina.json"
     },
     {
@@ -113,7 +113,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 1.896,
+      "current_price": 1.9,
       "output_path": "data/513390/daily-sina.json"
     },
     {
@@ -122,7 +122,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 1.61,
+      "current_price": 1.615,
       "output_path": "data/513870/daily-sina.json"
     }
   ],
@@ -146,7 +146,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 1.603,
+      "current_price": 1.606,
       "output_path": "data/159501/daily-sina.json"
     },
     "159513": {
@@ -155,7 +155,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 1.416,
+      "current_price": 1.419,
       "output_path": "data/159513/daily-sina.json"
     },
     "159632": {
@@ -164,7 +164,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 1.916,
+      "current_price": 1.921,
       "output_path": "data/159632/daily-sina.json"
     },
     "159659": {
@@ -173,7 +173,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 1.822,
+      "current_price": 1.827,
       "output_path": "data/159659/daily-sina.json"
     },
     "159660": {
@@ -182,7 +182,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 1.846,
+      "current_price": 1.852,
       "output_path": "data/159660/daily-sina.json"
     },
     "159696": {
@@ -191,7 +191,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 1.58,
+      "current_price": 1.585,
       "output_path": "data/159696/daily-sina.json"
     },
     "159941": {
@@ -209,7 +209,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 1.721,
+      "current_price": 1.731,
       "output_path": "data/513100/daily-sina.json"
     },
     "513110": {
@@ -218,7 +218,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 1.939,
+      "current_price": 1.945,
       "output_path": "data/513110/daily-sina.json"
     },
     "513300": {
@@ -227,7 +227,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 2.102,
+      "current_price": 2.116,
       "output_path": "data/513300/daily-sina.json"
     },
     "513390": {
@@ -236,7 +236,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 1.896,
+      "current_price": 1.9,
       "output_path": "data/513390/daily-sina.json"
     },
     "513870": {
@@ -245,7 +245,7 @@
       "index_key": "nasdaq100",
       "date": "daily-sina",
       "datetime": "daily-sina",
-      "current_price": 1.61,
+      "current_price": 1.615,
       "output_path": "data/513870/daily-sina.json"
     }
   }
