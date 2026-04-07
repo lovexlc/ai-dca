@@ -13,8 +13,6 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-import akshare as ak
-
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
 BENCHMARK_CODE = "nas-daq100"
 BENCHMARK_NAME = "NASDAQ 100 Index"
@@ -245,6 +243,11 @@ def to_sina_symbol(fund_code: str) -> str:
 
 
 def fetch_minute_bars(fund: Fund, target_date: str, period: str, adjust: str) -> list[dict[str, Any]]:
+    try:
+        import akshare as ak
+    except ModuleNotFoundError as exc:  # pragma: no cover - dependency missing path
+        raise ModuleNotFoundError("akshare is required to fetch minute bars") from exc
+
     frame = ak.stock_zh_a_minute(
         symbol=to_sina_symbol(fund.code),
         period=period,
@@ -315,6 +318,59 @@ def build_output_path(output_root: Path, fund_code: str, target_date: str) -> Pa
     return output_root / fund_code / f"{target_date}.json"
 
 
+def extract_snapshot_date_from_path(snapshot_path: Path) -> str:
+    try:
+        return date.fromisoformat(snapshot_path.stem).isoformat()
+    except ValueError:
+        return ""
+
+
+def resolve_snapshot_date(payload: dict[str, Any], last_bar: dict[str, Any], output_path: Path) -> str:
+    payload_date = str(payload.get("date", "")).strip()
+    if payload_date:
+        return payload_date
+
+    bar_date = str(last_bar.get("date") or last_bar.get("day") or "").strip()
+    if bar_date:
+        return bar_date[:10]
+
+    bar_datetime = str(last_bar.get("datetime") or last_bar.get("时间") or "").strip()
+    if bar_datetime:
+        return bar_datetime[:10]
+
+    payload_range = payload.get("range")
+    if isinstance(payload_range, dict):
+        range_end_date = str(payload_range.get("end_date", "")).strip()
+        if range_end_date:
+            return range_end_date
+
+    snapshot_date = extract_snapshot_date_from_path(output_path)
+    return snapshot_date or output_path.stem
+
+
+def resolve_snapshot_datetime(payload: dict[str, Any], last_bar: dict[str, Any], output_path: Path) -> str:
+    bar_datetime = str(last_bar.get("datetime") or last_bar.get("时间") or "").strip()
+    if bar_datetime:
+        return bar_datetime
+
+    bar_date = str(last_bar.get("date") or last_bar.get("day") or "").strip()
+    if bar_date:
+        return bar_date
+
+    payload_date = str(payload.get("date", "")).strip()
+    if payload_date:
+        return payload_date
+
+    payload_range = payload.get("range")
+    if isinstance(payload_range, dict):
+        range_end_date = str(payload_range.get("end_date", "")).strip()
+        if range_end_date:
+            return range_end_date
+
+    snapshot_date = extract_snapshot_date_from_path(output_path)
+    return snapshot_date or output_path.stem
+
+
 def load_latest_snapshot(output_path: Path) -> dict[str, Any] | None:
     payload = read_json(output_path)
     bars = payload.get("bars") or []
@@ -330,8 +386,8 @@ def load_latest_snapshot(output_path: Path) -> dict[str, Any] | None:
         "code": str(payload.get("fund_code", "")).strip(),
         "name": str(payload.get("fund_name", "")).strip(),
         "index_key": str(payload.get("index_key", "nasdaq100")).strip() or "nasdaq100",
-        "date": str(payload.get("date", output_path.stem)).strip(),
-        "datetime": str(last_bar.get("datetime") or last_bar.get("时间") or payload.get("date", output_path.stem)).strip(),
+        "date": resolve_snapshot_date(payload, last_bar, output_path),
+        "datetime": resolve_snapshot_datetime(payload, last_bar, output_path),
         "current_price": current_price,
         "output_path": output_path.as_posix(),
     }
@@ -373,7 +429,10 @@ def write_latest_price_manifest(output_root: Path, source_path: Path, funds: lis
         if not candidates:
             continue
 
-        snapshot = load_latest_snapshot(candidates[-1])
+        dated_candidates = [path for path in candidates if extract_snapshot_date_from_path(path)]
+        selected_path = dated_candidates[-1] if dated_candidates else candidates[-1]
+
+        snapshot = load_latest_snapshot(selected_path)
         if snapshot:
             snapshots.append(snapshot)
 
