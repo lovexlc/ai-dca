@@ -1,6 +1,6 @@
 {
   "dataset": "nasdaq_latest_prices",
-  "generated_at": "2026-04-07T08:44:17Z",
+  "generated_at": "2026-04-07T17:01:07.411420+08:00",
   "fund_list_source": "data/all_nasdq.json",
   "count": 13,
   "funds": [
@@ -8,11 +8,11 @@
       "code": "nas-daq100",
       "name": "NASDAQ 100 Index",
       "index_key": "nasdaq100",
-      "currency": "$",
       "date": "2026-04-06",
       "datetime": "2026-04-06 16:00:00",
       "current_price": 24192.166015625,
       "output_path": "data/nas-daq100/intraday-1m.json",
+      "currency": "$",
       "output_path_15m": "data/nas-daq100/intraday-15m.json",
       "daily_output_path": "data/nas-daq100/daily-sina.json",
       "source_symbol": "^NDX"
@@ -21,109 +21,109 @@
       "code": "159501",
       "name": "嘉实纳斯达克100ETF(QDII)",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
       "current_price": 1.607,
-      "output_path": "data/159501/daily-sina.json"
+      "output_path": "data/159501/2026-04-07.json"
     },
     {
       "code": "159513",
       "name": "大成纳斯达克100ETF(QDII)",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
       "current_price": 1.42,
-      "output_path": "data/159513/daily-sina.json"
+      "output_path": "data/159513/2026-04-07.json"
     },
     {
       "code": "159632",
       "name": "华安纳斯达克100ETF(QDII)",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
       "current_price": 1.925,
-      "output_path": "data/159632/daily-sina.json"
+      "output_path": "data/159632/2026-04-07.json"
     },
     {
       "code": "159659",
       "name": "招商纳斯达克100ETF(QDII)",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
       "current_price": 1.831,
-      "output_path": "data/159659/daily-sina.json"
+      "output_path": "data/159659/2026-04-07.json"
     },
     {
       "code": "159660",
       "name": "汇添富纳斯达克100ETF",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
       "current_price": 1.859,
-      "output_path": "data/159660/daily-sina.json"
+      "output_path": "data/159660/2026-04-07.json"
     },
     {
       "code": "159696",
       "name": "易方达纳斯达克100ETF(QDI)",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
       "current_price": 1.59,
-      "output_path": "data/159696/daily-sina.json"
+      "output_path": "data/159696/2026-04-07.json"
     },
     {
       "code": "159941",
       "name": "广发纳斯达克100ETF",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
       "current_price": 1.284,
-      "output_path": "data/159941/daily-sina.json"
+      "output_path": "data/159941/2026-04-07.json"
     },
     {
       "code": "513100",
       "name": "国泰纳斯达克100ETF",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
-      "current_price": 1.732,
-      "output_path": "data/513100/daily-sina.json"
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
+      "current_price": 1.731,
+      "output_path": "data/513100/2026-04-07.json"
     },
     {
       "code": "513110",
       "name": "华泰柏瑞纳斯达克100ETF(QDII)",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
       "current_price": 1.952,
-      "output_path": "data/513110/daily-sina.json"
+      "output_path": "data/513110/2026-04-07.json"
     },
     {
       "code": "513300",
       "name": "华夏纳斯达克100ETF(QDII)",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
-      "current_price": 2.119,
-      "output_path": "data/513300/daily-sina.json"
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
+      "current_price": 2.12,
+      "output_path": "data/513300/2026-04-07.json"
     },
     {
       "code": "513390",
       "name": "博时纳斯达克100ETF(QDII)",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
       "current_price": 1.906,
-      "output_path": "data/513390/daily-sina.json"
+      "output_path": "data/513390/2026-04-07.json"
     },
     {
       "code": "513870",
       "name": "富国纳斯达克100ETF(QDII)",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
-      "current_price": 1.619,
-      "output_path": "data/513870/daily-sina.json"
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
+      "current_price": 1.62,
+      "output_path": "data/513870/2026-04-07.json"
     }
   ],
   "by_code": {
@@ -131,11 +131,11 @@
       "code": "nas-daq100",
       "name": "NASDAQ 100 Index",
       "index_key": "nasdaq100",
-      "currency": "$",
       "date": "2026-04-06",
       "datetime": "2026-04-06 16:00:00",
       "current_price": 24192.166015625,
       "output_path": "data/nas-daq100/intraday-1m.json",
+      "currency": "$",
       "output_path_15m": "data/nas-daq100/intraday-15m.json",
       "daily_output_path": "data/nas-daq100/daily-sina.json",
       "source_symbol": "^NDX"
@@ -144,109 +144,109 @@
       "code": "159501",
       "name": "嘉实纳斯达克100ETF(QDII)",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
       "current_price": 1.607,
-      "output_path": "data/159501/daily-sina.json"
+      "output_path": "data/159501/2026-04-07.json"
     },
     "159513": {
       "code": "159513",
       "name": "大成纳斯达克100ETF(QDII)",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
       "current_price": 1.42,
-      "output_path": "data/159513/daily-sina.json"
+      "output_path": "data/159513/2026-04-07.json"
     },
     "159632": {
       "code": "159632",
       "name": "华安纳斯达克100ETF(QDII)",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
       "current_price": 1.925,
-      "output_path": "data/159632/daily-sina.json"
+      "output_path": "data/159632/2026-04-07.json"
     },
     "159659": {
       "code": "159659",
       "name": "招商纳斯达克100ETF(QDII)",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
       "current_price": 1.831,
-      "output_path": "data/159659/daily-sina.json"
+      "output_path": "data/159659/2026-04-07.json"
     },
     "159660": {
       "code": "159660",
       "name": "汇添富纳斯达克100ETF",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
       "current_price": 1.859,
-      "output_path": "data/159660/daily-sina.json"
+      "output_path": "data/159660/2026-04-07.json"
     },
     "159696": {
       "code": "159696",
       "name": "易方达纳斯达克100ETF(QDI)",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
       "current_price": 1.59,
-      "output_path": "data/159696/daily-sina.json"
+      "output_path": "data/159696/2026-04-07.json"
     },
     "159941": {
       "code": "159941",
       "name": "广发纳斯达克100ETF",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
       "current_price": 1.284,
-      "output_path": "data/159941/daily-sina.json"
+      "output_path": "data/159941/2026-04-07.json"
     },
     "513100": {
       "code": "513100",
       "name": "国泰纳斯达克100ETF",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
-      "current_price": 1.732,
-      "output_path": "data/513100/daily-sina.json"
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
+      "current_price": 1.731,
+      "output_path": "data/513100/2026-04-07.json"
     },
     "513110": {
       "code": "513110",
       "name": "华泰柏瑞纳斯达克100ETF(QDII)",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
       "current_price": 1.952,
-      "output_path": "data/513110/daily-sina.json"
+      "output_path": "data/513110/2026-04-07.json"
     },
     "513300": {
       "code": "513300",
       "name": "华夏纳斯达克100ETF(QDII)",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
-      "current_price": 2.119,
-      "output_path": "data/513300/daily-sina.json"
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
+      "current_price": 2.12,
+      "output_path": "data/513300/2026-04-07.json"
     },
     "513390": {
       "code": "513390",
       "name": "博时纳斯达克100ETF(QDII)",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
       "current_price": 1.906,
-      "output_path": "data/513390/daily-sina.json"
+      "output_path": "data/513390/2026-04-07.json"
     },
     "513870": {
       "code": "513870",
       "name": "富国纳斯达克100ETF(QDII)",
       "index_key": "nasdaq100",
-      "date": "daily-sina",
-      "datetime": "daily-sina",
-      "current_price": 1.619,
-      "output_path": "data/513870/daily-sina.json"
+      "date": "2026-04-07",
+      "datetime": "2026-04-07 15:00:00",
+      "current_price": 1.62,
+      "output_path": "data/513870/2026-04-07.json"
     }
   }
 }

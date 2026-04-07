@@ -1180,6 +1180,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   const [confirmError, setConfirmError] = useState('');
   const [priceState, setPriceState] = useState(() => ({ status: 'idle', entries: [], error: '' }));
   const fileInputRef = useRef(null);
+  const priceRequestIdRef = useRef(0);
 
   const trackedCodes = useMemo(() => buildTrackedCodes(state.comparison), [state.comparison]);
   const priceSnapshotByCode = useMemo(
@@ -1251,7 +1252,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
         message: documentEntry.ocrMessage || '已从文档链接载入 OCR 结果。'
       }));
       setConfirmError('');
-      setActiveWorkspacePanel(nextState.resultConfirmed ? 'summary' : 'details');
+      selectWorkspacePanel(nextState.resultConfirmed ? 'summary' : 'details');
       setExpandedStepKey('');
       return;
     }
@@ -1305,14 +1306,50 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     setHistoryEntries(readFundSwitchHistory());
   }
 
-  function buildSummaryWithLatestPrices(nextState) {
+  async function refreshLatestPrices() {
+    const requestId = priceRequestIdRef.current + 1;
+    priceRequestIdRef.current = requestId;
+
+    setPriceState((current) => ({
+      status: 'loading',
+      entries: current.entries,
+      error: ''
+    }));
+
+    try {
+      const entries = await loadLatestNasdaqPrices({ inPagesDir });
+      if (priceRequestIdRef.current !== requestId) {
+        return entries;
+      }
+
+      setPriceState({
+        status: 'success',
+        entries,
+        error: ''
+      });
+      return entries;
+    } catch (error) {
+      if (priceRequestIdRef.current !== requestId) {
+        return null;
+      }
+
+      setPriceState({
+        status: 'error',
+        entries: [],
+        error: error instanceof Error ? error.message : '加载失败。'
+      });
+      return [];
+    }
+  }
+
+  function buildSummaryWithLatestPrices(nextState, priceEntries = priceState.entries) {
     return buildFundSwitchSummary(nextState, {
-      getCurrentPrice: (code) => Number(findLatestNasdaqPrice(priceState.entries, code)?.current_price) || 0
+      getCurrentPrice: (code) => Number(findLatestNasdaqPrice(priceEntries, code)?.current_price) || 0
     });
   }
 
-  function saveAnalysisToHistory(nextState) {
-    const nextSummary = buildSummaryWithLatestPrices(nextState);
+  function saveAnalysisToHistory(nextState, priceEntries = priceState.entries) {
+    const nextSummary = buildSummaryWithLatestPrices(nextState, priceEntries);
     const savedEntry = saveFundSwitchHistoryEntry(nextState, nextSummary);
     refreshHistoryEntries();
     return savedEntry;
@@ -1384,25 +1421,9 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   }, [effectiveOcrMessage, effectiveOcrStatus, hasImportedData, ocrState, recognizedCount, state, summary.comparison]);
 
   useEffect(() => {
-    let cancelled = false;
-    setPriceState((current) => ({ status: current.entries.length ? 'success' : 'loading', entries: current.entries, error: '' }));
-
-    loadLatestNasdaqPrices({ inPagesDir })
-      .then((entries) => {
-        if (cancelled) {
-          return;
-        }
-        setPriceState({ status: 'success', entries, error: '' });
-      })
-      .catch((error) => {
-        if (cancelled) {
-          return;
-        }
-        setPriceState({ status: 'error', entries: [], error: error instanceof Error ? error.message : '加载失败。' });
-      });
-
+    void refreshLatestPrices();
     return () => {
-      cancelled = true;
+      priceRequestIdRef.current += 1;
     };
   }, [inPagesDir]);
 
@@ -1545,7 +1566,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
       validateOcrUploadFile(file);
       setHighlightedRowIndex(-1);
       setOcrState(createOcrState({ status: 'loading', progress: 12, message: '准备上传截图' }));
-      setActiveWorkspacePanel('details');
+      selectWorkspacePanel('details');
       const { recognizeFundSwitchFile } = await import('../app/fundSwitchOcr.js');
       const result = await recognizeFundSwitchFile(file, state.comparison, (progress) => {
         setOcrState((current) => createOcrState({ ...current, ...progress }));
@@ -1566,7 +1587,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
         }
       };
       setConfirmError('');
-      setActiveWorkspacePanel('details');
+      selectWorkspacePanel('details');
       setExpandedStepKey('');
 
       let nextOcrState;
@@ -1624,20 +1645,23 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     setOcrState(createOcrState());
     setHighlightedRowIndex(-1);
     setConfirmError('');
-    setActiveWorkspacePanel('details');
+    selectWorkspacePanel('details');
     setExpandedStepKey('');
     openUploadPage();
   }
 
   function openDetailEditor() {
     setHighlightedRowIndex(-1);
-    setActiveWorkspacePanel('details');
+    selectWorkspacePanel('details');
   }
 
   function selectWorkspacePanel(panelKey) {
     setActiveWorkspacePanel(panelKey);
     if (panelKey !== 'details') {
       setHighlightedRowIndex(-1);
+    }
+    if (panelKey === 'summary' || panelKey === 'settings') {
+      void refreshLatestPrices();
     }
   }
 
@@ -1653,7 +1677,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     event.preventDefault();
   }
 
-  function handleConfirmDataAndYield() {
+  async function handleConfirmDataAndYield() {
     const actionLabel = state.resultConfirmed ? '确认数据与收益' : '校验并生成结果';
 
     if (validationIssues.length) {
@@ -1666,6 +1690,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     }
 
     setConfirmError('');
+    const latestPriceEntries = await refreshLatestPrices();
     const nextComparison = deriveFundSwitchComparison(state.rows, state.comparison);
     const draftState = {
       ...state,
@@ -1680,7 +1705,10 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
       lineCount: recognizedCount
     }), 'ready');
     const nextState = savedDocument ? { ...draftState, docId: savedDocument.id } : draftState;
-    const savedEntry = saveAnalysisToHistory(nextState);
+    const savedEntry = saveAnalysisToHistory(
+      nextState,
+      Array.isArray(latestPriceEntries) ? latestPriceEntries : priceState.entries
+    );
     const finalState = {
       ...nextState,
       historyEntryId: savedEntry?.id || nextState.historyEntryId
@@ -1697,7 +1725,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
 
     setState(finalState);
     setHighlightedRowIndex(-1);
-    setActiveWorkspacePanel('summary');
+    selectWorkspacePanel('summary');
     setExpandedStepKey('');
     openViewPage(finalState.docId);
     showActionToast(actionLabel, 'success');
@@ -1720,7 +1748,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     }));
     setHighlightedRowIndex(-1);
     setConfirmError('');
-    setActiveWorkspacePanel(nextState.resultConfirmed ? 'summary' : 'details');
+    selectWorkspacePanel(nextState.resultConfirmed ? 'summary' : 'details');
     setExpandedStepKey('');
     openViewPage(documentEntry.id);
   }
@@ -1743,7 +1771,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     setOcrState(nextOcrState);
     setHighlightedRowIndex(-1);
     setConfirmError('');
-    setActiveWorkspacePanel('summary');
+    selectWorkspacePanel('summary');
     setExpandedStepKey('');
     openViewPage(nextState.docId);
     showActionToast('打开历史分析', 'success', {
