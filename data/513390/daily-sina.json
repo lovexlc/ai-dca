@@ -12,7 +12,7 @@
   "source": "sina:CN_MarketDataService.getKLineData",
   "source_symbol": "sh513390",
   "fund_list_source": "/home/runner/work/ai-dca/ai-dca/data/all_nasdq.json",
-  "generated_at": "2026-04-07T08:24:14.534Z",
+  "generated_at": "2026-04-07T08:44:12.743Z",
   "bars": [
     {
       "date": "2024-04-08",
