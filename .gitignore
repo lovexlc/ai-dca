@@ -3,6 +3,7 @@ __pycache__/
 stitch-previews/
 node_modules/
 frontend-dist/
+.frontend-build/
 *.tgz
 .env
 .env.local

@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build:app": "vite build",
-    "publish:pages": "node scripts/publish_react_pages.mjs",
+    "build:app": "VITE_OUT_DIR=.frontend-build vite build",
+    "publish:pages": "REACT_DIST_DIR=.frontend-build node scripts/publish_react_pages.mjs",
     "data:fetch-nasdaq-daily": "node scripts/fetch_nasdaq_etf_daily_sina.mjs",
     "data:fetch-nasdaq-benchmark": "python3 scripts/fetch_nasdaq100_benchmark.py",
     "build": "npm run build:app && npm run publish:pages",

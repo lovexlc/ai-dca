@@ -1,5 +1,6 @@
-export const DEFAULT_OCR_MODEL = 'gpt-5.4';
+export const DEFAULT_OCR_MODEL = 'gemini-3-flash-preview';
 export const PROMPT_VERSION = 'fund-switch-form-v2';
+export const HOLDINGS_PROMPT_VERSION = 'fund-holdings-form-v1';
 
 export const FUND_SWITCH_RESPONSE_SCHEMA = {
   type: 'OBJECT',
@@ -89,5 +90,80 @@ export function buildOcrUserPrompt(fileName = 'uploaded-image') {
     `每条 row 必须包含 date、code、type、price、shares、amount 六个字段。`,
     `输出格式只允许包含 rows 和 warnings 两个字段。`,
     `如果截图里没有足够清晰的交易记录，请返回 {"rows":[],"warnings":[...]}。`
+  ].join('\n');
+}
+
+export const HOLDINGS_RESPONSE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    rows: {
+      type: 'ARRAY',
+      description: '当前持仓列表，从截图上方到下方排序。',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          code: {
+            type: 'STRING',
+            description: '基金 6 位代码。必须是截图里清晰可见的代码。'
+          },
+          name: {
+            type: 'STRING',
+            description: '基金名称，可为空字符串。'
+          },
+          avgCost: {
+            type: 'NUMBER',
+            description: '买入均价 / 持仓均价 / 成本价。'
+          },
+          shares: {
+            type: 'NUMBER',
+            description: '当前持有份数。'
+          }
+        },
+        required: ['code', 'name', 'avgCost', 'shares']
+      }
+    },
+    warnings: {
+      type: 'ARRAY',
+      description: '识别歧义、字段缺失、跳过原因等短提示。',
+      items: {
+        type: 'STRING'
+      }
+    }
+  },
+  required: ['rows', 'warnings']
+};
+
+export const HOLDINGS_SYSTEM_PROMPT = `
+你是一个中文基金持仓截图结构化提取器。你的唯一任务，是把截图中的“当前持仓列表”整理成基金持仓收益工作台可以直接回填的 JSON。
+
+目标表单列固定为：
+1. 基金代码
+2. 基金名称
+3. 买入均价
+4. 持有份数
+
+提取规则：
+- 只识别“当前持仓列表”，不是交易流水，不是历史明细，不是收益走势图。
+- 一条清晰可见的当前持仓对应 rows 数组中的一项。
+- 必须输出严格 JSON，不能输出 Markdown、解释文字或代码块。
+- 保持截图里从上到下的顺序。
+- code 必须是截图里清晰可见的 6 位基金代码；如果代码不清晰，不要猜测，直接跳过该行并写入 warnings。
+- name 为基金名称，可为空字符串；如果名称清晰可见则尽量提取。
+- avgCost 必须是买入均价 / 持仓均价 / 成本价，不要把最新净值、昨收、估值、涨跌幅、持仓市值、收益金额误填到 avgCost。
+- shares 必须是当前持有份数，不要把持仓金额、可用份额外的其他数字误填到 shares。
+- 只有当 code、avgCost、shares 三项都可靠时，才输出该 row；否则跳过并在 warnings 中说明原因。
+- 忽略表头、页签、总资产、今日收益、累计收益、估算净值、按钮、广告、搜索框、说明文案。
+- 数值字段必须输出 JSON number，不要输出带单位的字符串。
+- 不要臆造截图里看不清的代码和数值。
+- warnings 应该简短、具体，说明哪些行被跳过、哪些字段有歧义、是否存在裁剪或模糊。
+`.trim();
+
+export function buildHoldingsOcrUserPrompt(fileName = 'uploaded-image') {
+  return [
+    '请分析这张基金持仓截图，并输出“基金持仓收益”表单 JSON。',
+    `文件名: ${fileName}`,
+    '每条 row 必须包含 code、name、avgCost、shares 四个字段。',
+    '输出格式只允许包含 rows 和 warnings 两个字段。',
+    '如果截图里没有足够清晰的当前持仓，请返回 {"rows":[],"warnings":[...]}。'
   ].join('\n');
 }

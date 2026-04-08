@@ -14,7 +14,7 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: 'frontend-dist',
+    outDir: process.env.VITE_OUT_DIR || 'frontend-dist',
     emptyOutDir: true,
     assetsDir: 'react-assets',
     rollupOptions: {
