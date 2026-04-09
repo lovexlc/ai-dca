@@ -4,24 +4,16 @@
   "fund_name": "国泰纳斯达克100ETF",
   "index_key": "nasdaq100",
   "range": {
-    "start_date": "2024-04-08",
-    "end_date": "2026-04-08",
+    "start_date": "2024-04-09",
+    "end_date": "2026-04-09",
     "lookback_days": 730
   },
   "requested_bars": 700,
   "source": "sina:CN_MarketDataService.getKLineData",
   "source_symbol": "sh513100",
   "fund_list_source": "/home/runner/work/ai-dca/ai-dca/data/all_nasdq.json",
-  "generated_at": "2026-04-08T08:45:00.421Z",
+  "generated_at": "2026-04-09T08:52:12.302Z",
   "bars": [
-    {
-      "date": "2024-04-08",
-      "open": 1.327,
-      "close": 1.326,
-      "high": 1.331,
-      "low": 1.326,
-      "volume": 266723200
-    },
     {
       "date": "2024-04-09",
       "open": 1.327,
@@ -3893,6 +3885,14 @@
       "high": 1.841,
       "low": 1.788,
       "volume": 522747331
+    },
+    {
+      "date": "2026-04-09",
+      "open": 1.833,
+      "close": 1.805,
+      "high": 1.833,
+      "low": 1.78,
+      "volume": 279219939
     }
   ]
 }
