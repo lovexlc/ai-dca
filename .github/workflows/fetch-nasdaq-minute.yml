@@ -58,10 +58,14 @@ jobs:
       - name: Refresh Nasdaq 100 benchmark bars
         run: python scripts/fetch_nasdaq100_benchmark.py
 
+      - name: Sync data to docs
+        shell: bash
+        run: rsync -a data/ docs/data/ --exclude 'holdings-nav-cache'
+
       - name: Commit and push data updates
         shell: bash
         run: |
-          git add data/
+          git add data/ docs/data/
           if git diff --cached --quiet; then
             echo "No data changes to commit."
             exit 0
