@@ -1,5 +1,5 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, sep } from 'node:path';
 import { HOME_SCREEN_ID, buildSiteManifest, screens } from '../src/app/screens.js';
 
 const root = process.cwd();
@@ -11,6 +11,7 @@ const distAssetsDir = resolve(distDir, 'react-assets');
 const docsPagesDir = resolve(docsDir, 'pages-v2');
 const docsAssetsDir = resolve(docsDir, 'react-assets-v2');
 const dataDir = resolve(root, 'data');
+const docsDataDir = resolve(docsDir, 'data');
 const holdingsCacheDir = resolve(dataDir, 'holdings-nav-cache');
 const docsHoldingsCacheDir = resolve(docsDir, 'holdings-nav-cache');
 
@@ -33,6 +34,14 @@ const nestedTemplate = baseTemplate.replaceAll('../react-assets/', '../react-ass
 const rootTemplate = baseTemplate.replaceAll('../react-assets/', './react-assets-v2/');
 const rootCatalog = readFileSync(catalogPath, 'utf8').replaceAll('../react-assets/', './react-assets-v2/');
 
+function ignoreLocalPermissionError(error, label) {
+  if (error && (error.code === 'EACCES' || error.code === 'EPERM')) {
+    console.warn(`Skipping ${label}: ${error.code} ${error.path || ''}`.trim());
+    return true;
+  }
+  return false;
+}
+
 rmSync(docsPagesDir, { recursive: true, force: true });
 mkdirSync(docsPagesDir, { recursive: true });
 
@@ -48,6 +57,21 @@ writeFileSync(resolve(docsDir, 'catalog.html'), rootCatalog, 'utf8');
 
 rmSync(docsAssetsDir, { recursive: true, force: true });
 cpSync(distAssetsDir, docsAssetsDir, { recursive: true, force: true });
+
+mkdirSync(docsDataDir, { recursive: true });
+if (existsSync(dataDir)) {
+  try {
+    cpSync(dataDir, docsDataDir, {
+      recursive: true,
+      force: true,
+      filter: (source) => source !== holdingsCacheDir && !source.startsWith(`${holdingsCacheDir}${sep}`)
+    });
+  } catch (error) {
+    if (!ignoreLocalPermissionError(error, 'docs/data sync')) {
+      throw error;
+    }
+  }
+}
 
 rmSync(docsHoldingsCacheDir, { recursive: true, force: true });
 if (existsSync(holdingsCacheDir)) {

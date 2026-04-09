@@ -27,4 +27,4 @@ head_sampling_rate = 1
 
 [vars]
 OCR_UPSTREAM_BASE_URL = "http://142.93.159.165:2095/v1"
-OCR_UPSTREAM_MODEL = "gpt-5.4"
+OCR_UPSTREAM_MODEL = "gemini-3-flash-preview"

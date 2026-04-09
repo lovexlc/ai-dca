@@ -32,9 +32,12 @@ When the user gives a new requirement, follow this sequence by default:
 
 - This repository's deployed web app is served from `docs/`, not directly from `src/`.
 - After any frontend or page behavior change, do not push source-only updates.
-- Always regenerate the GitHub Pages artifacts with `npm run publish:pages` before commit/push.
+- Always regenerate the GitHub Pages artifacts before commit/push.
+- Use `npm run build` for normal frontend publishing. This is the safe default because it rebuilds `frontend-dist/` and then syncs `docs/`.
+- Only running `npm run publish:pages` is acceptable when `frontend-dist/` has already been rebuilt from the exact source you are publishing.
 - If the frontend bundle changed, commit the corresponding `docs/index.html`, `docs/pages/*`, and `docs/react-assets/*` updates together with the source change.
 - Treat a frontend task as incomplete if the new behavior only exists in `src/` but has not been published into `docs/`.
+- If the user asks to push a frontend fix, assume they expect the live Pages site to update too. Do not stop at pushing `src/` commits only.
 
 ## Local Credentials
 

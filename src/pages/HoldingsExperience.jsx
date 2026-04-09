@@ -39,55 +39,37 @@ import {
 import { getPrimaryTabs } from '../app/screens.js';
 import { showActionToast } from '../app/toast.js';
 import {
-  Card,
   PageShell,
   Pill,
-  SectionHeading,
   TopBar,
   cx,
-  primaryButtonClass,
-  secondaryButtonClass,
-  subtleButtonClass,
   tableInputClass
 } from '../components/experience-ui.jsx';
 
-const summaryAccentClasses = {
-  slate: 'border-slate-200 bg-white',
-  indigo: 'border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white',
-  emerald: 'border-emerald-100 bg-emerald-50/70',
-  red: 'border-red-100 bg-red-50/70',
-  amber: 'border-amber-100 bg-amber-50/70'
+const warmSurfaceClass = 'rounded-[1.75rem] border border-[#f0e3da] bg-white shadow-[0_18px_40px_rgba(144,92,67,0.08)]';
+const coralPrimaryButtonClass = 'inline-flex items-center justify-center gap-2 rounded-full bg-[#ef5d4f] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(239,93,79,0.28)] transition-all hover:-translate-y-0.5 hover:bg-[#e34f41] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0';
+const softButtonClass = 'inline-flex items-center justify-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 ring-1 ring-[#eaded5] transition-all hover:-translate-y-0.5 hover:bg-[#fff8f4] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0';
+const heroButtonClass = 'inline-flex items-center justify-center gap-2 rounded-full bg-white/14 px-4 py-2.5 text-sm font-semibold text-white ring-1 ring-white/20 backdrop-blur-sm transition-all hover:bg-white/18 disabled:cursor-not-allowed disabled:opacity-60';
+const mutedButtonClass = 'inline-flex items-center justify-center gap-2 rounded-full bg-[#fff7f3] px-4 py-2.5 text-sm font-semibold text-[#c75d4d] ring-1 ring-[#f3d7ce] transition-all hover:bg-[#fff1eb] disabled:cursor-not-allowed disabled:opacity-60';
+const editorInputClass = 'h-11 w-full rounded-2xl border border-[#eaded5] bg-[#fffdfb] px-3.5 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-300 hover:border-[#dcc7bb] focus:border-[#ef5d4f]';
+
+const overviewToneClasses = {
+  neutral: 'border-[#efe3d8] bg-[linear-gradient(180deg,#fffdfb_0%,#fff7f3_100%)]',
+  blue: 'border-[#dbe2ff] bg-[linear-gradient(180deg,#f7f9ff_0%,#ffffff_100%)]',
+  coral: 'border-[#f5d9d2] bg-[linear-gradient(180deg,#fff9f7_0%,#ffffff_100%)]',
+  amber: 'border-[#f3dfc2] bg-[linear-gradient(180deg,#fffaf3_0%,#ffffff_100%)]',
+  rose: 'border-[#f1d8d8] bg-[linear-gradient(180deg,#fff7f7_0%,#ffffff_100%)]',
+  emerald: 'border-[#d7ece3] bg-[linear-gradient(180deg,#f6fffb_0%,#ffffff_100%)]'
 };
 
-const summaryValueClasses = {
-  slate: 'text-slate-900',
-  indigo: 'text-indigo-700',
-  emerald: 'text-emerald-600',
-  red: 'text-red-500',
-  amber: 'text-amber-600'
+const overviewValueClasses = {
+  neutral: 'text-slate-900',
+  blue: 'text-[#4360ee]',
+  coral: 'text-[#ef5d4f]',
+  amber: 'text-[#d28a32]',
+  rose: 'text-[#d85a5a]',
+  emerald: 'text-[#0f9f6e]'
 };
-
-function SummaryCard({ eyebrow, value, note, accent = 'slate', badge, icon: Icon }) {
-  return (
-    <Card className={cx('rounded-[1.75rem] p-5', summaryAccentClasses[accent] || summaryAccentClasses.slate)}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{eyebrow}</div>
-        {Icon ? (
-          <div className="rounded-full bg-white/80 p-2 text-slate-400 shadow-sm shadow-slate-200/60">
-            <Icon className="h-4 w-4" />
-          </div>
-        ) : null}
-      </div>
-      <div className={cx('mt-4 text-3xl font-extrabold tracking-tight', summaryValueClasses[accent] || summaryValueClasses.slate)}>
-        {value}
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        {badge}
-        {note ? <div className="text-sm leading-6 text-slate-500">{note}</div> : null}
-      </div>
-    </Card>
-  );
-}
 
 function createOcrState(overrides = {}) {
   return {
@@ -204,6 +186,212 @@ function getProfitTextClass(value) {
   return 'text-slate-500';
 }
 
+function clampNumber(value, min = 0, max = 100) {
+  return Math.min(Math.max(Number(value) || 0, min), max);
+}
+
+function formatSignedPercent(value, digits = 2) {
+  const normalized = Number(value) || 0;
+  const absolute = Math.abs(normalized).toFixed(digits);
+  if (normalized > 0) {
+    return `+${absolute}%`;
+  }
+  if (normalized < 0) {
+    return `-${absolute}%`;
+  }
+  return `${absolute}%`;
+}
+
+function formatPercent(value, digits = 2) {
+  return `${clampNumber(value, 0, Number.POSITIVE_INFINITY).toFixed(digits)}%`;
+}
+
+function computeRatePercent(numerator, denominator) {
+  const base = Number(denominator) || 0;
+  if (!(base > 0)) {
+    return 0;
+  }
+  return ((Number(numerator) || 0) / base) * 100;
+}
+
+function SectionHeader({ eyebrow, title, description, action }) {
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="max-w-3xl">
+        <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#d37b6f]">{eyebrow}</div>
+        <div className="mt-2 text-[1.65rem] font-extrabold tracking-tight text-slate-900">{title}</div>
+        {description ? <div className="mt-2 text-sm leading-6 text-slate-500">{description}</div> : null}
+      </div>
+      {action ? <div className="flex flex-wrap items-center gap-2">{action}</div> : null}
+    </div>
+  );
+}
+
+function OverviewCard({ title, value, detail, helper, tone = 'neutral', icon: Icon, visual }) {
+  return (
+    <div className={cx('overflow-hidden rounded-[1.6rem] border p-5 shadow-[0_18px_40px_rgba(150,97,70,0.08)]', overviewToneClasses[tone] || overviewToneClasses.neutral)}>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-500">
+            {Icon ? (
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/85 text-slate-400 shadow-sm shadow-slate-200/60">
+                <Icon className="h-4 w-4" />
+              </span>
+            ) : null}
+            <span>{title}</span>
+          </div>
+          <div className={cx('mt-4 text-3xl font-extrabold tracking-tight', overviewValueClasses[tone] || overviewValueClasses.neutral)}>
+            {value}
+          </div>
+          {detail ? <div className="mt-2 text-sm font-semibold text-slate-500">{detail}</div> : null}
+          {helper ? <div className="mt-3 text-sm leading-6 text-slate-500">{helper}</div> : null}
+        </div>
+        {visual ? <div className="hidden min-w-[128px] justify-end md:flex">{visual}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+function MiniTrend({ tone = 'coral', mode = 'rise' }) {
+  const stroke = tone === 'blue'
+    ? '#4b6bfb'
+    : tone === 'emerald'
+      ? '#10b981'
+      : tone === 'amber'
+        ? '#d28a32'
+        : '#ef5d4f';
+  const fill = tone === 'blue'
+    ? 'rgba(75,107,251,0.14)'
+    : tone === 'emerald'
+      ? 'rgba(16,185,129,0.14)'
+      : tone === 'amber'
+        ? 'rgba(210,138,50,0.14)'
+        : 'rgba(239,93,79,0.14)';
+  const points = mode === 'flat'
+    ? '8,58 36,58 64,58 92,58 120,58 148,58'
+    : mode === 'dip'
+      ? '8,22 36,30 64,44 92,58 120,70 148,74'
+      : mode === 'step'
+        ? '8,66 42,66 76,66 110,30 148,30'
+        : '8,70 34,68 60,66 94,46 122,26 148,18';
+
+  return (
+    <svg className="h-20 w-40" viewBox="0 0 156 80" fill="none" aria-hidden="true">
+      <polyline points={`8,79 ${points} 148,79`} fill={fill} />
+      <polyline points={points} fill="none" stroke={stroke} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CoverageGauge({ value = 0, label = '' }) {
+  const progress = clampNumber(value, 0, 100);
+
+  return (
+    <div className="flex min-w-[120px] justify-center">
+      <div className="relative flex h-24 w-24 items-center justify-center rounded-full" style={{ background: `conic-gradient(#ef5d4f 0 ${progress}%, #f1e7e0 ${progress}% 100%)` }}>
+        <div className="flex h-16 w-16 flex-col items-center justify-center rounded-full bg-white text-center shadow-inner shadow-[#f3e7dd]">
+          <div className="text-sm font-extrabold text-slate-900">{progress.toFixed(0)}%</div>
+          <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CompareBars({ primaryLabel, primaryValue, secondaryLabel, secondaryValue }) {
+  const primary = Number(primaryValue) || 0;
+  const secondary = Number(secondaryValue) || 0;
+  const max = Math.max(Math.abs(primary), Math.abs(secondary), 1);
+  const primaryWidth = `${28 + (Math.abs(primary) / max) * 64}%`;
+  const secondaryWidth = `${28 + (Math.abs(secondary) / max) * 64}%`;
+
+  return (
+    <div className="min-w-[132px] space-y-3">
+      <div>
+        <div className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
+          <span>{primaryLabel}</span>
+          <span className={primary >= 0 ? 'text-[#ef5d4f]' : 'text-[#4b6bfb]'}>{formatSignedCurrency(primary)}</span>
+        </div>
+        <div className="mt-2 h-2 rounded-full bg-[#f4ece6]">
+          <div className={cx('h-full rounded-full', primary >= 0 ? 'bg-[#ef5d4f]' : 'bg-[#4b6bfb]')} style={{ width: primaryWidth }} />
+        </div>
+      </div>
+      <div>
+        <div className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
+          <span>{secondaryLabel}</span>
+          <span className={secondary >= 0 ? 'text-[#ef5d4f]' : 'text-[#4b6bfb]'}>{formatSignedCurrency(secondary)}</span>
+        </div>
+        <div className="mt-2 h-2 rounded-full bg-[#f4ece6]">
+          <div className={cx('h-full rounded-full', secondary >= 0 ? 'bg-[#ef5d4f]' : 'bg-[#4b6bfb]')} style={{ width: secondaryWidth }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HeroMiniStat({ label, value, note }) {
+  return (
+    <div className="rounded-[1.2rem] bg-white/14 px-4 py-3 ring-1 ring-white/18 backdrop-blur-sm">
+      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/70">{label}</div>
+      <div className="mt-2 text-lg font-bold text-white">{value}</div>
+      {note ? <div className="mt-1 text-xs leading-5 text-white/72">{note}</div> : null}
+    </div>
+  );
+}
+
+function WorkflowStep({ step, title, description }) {
+  return (
+    <div className="rounded-[1.35rem] border border-[#f0e3da] bg-[#fffaf7] p-4">
+      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#d37b6f]">Step {step}</div>
+      <div className="mt-2 text-sm font-bold text-slate-900">{title}</div>
+      <div className="mt-2 text-sm leading-6 text-slate-500">{description}</div>
+    </div>
+  );
+}
+
+function MetricChip({ label, value, valueClassName = 'text-slate-900' }) {
+  return (
+    <div className="rounded-[1.2rem] border border-[#f0e3da] bg-[#fffdfa] px-3.5 py-3">
+      <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">{label}</div>
+      <div className={cx('mt-2 text-sm font-bold', valueClassName)}>{value}</div>
+    </div>
+  );
+}
+
+function RowStatusIcon({ status }) {
+  if (status === '已更新') {
+    return <CheckCircle2 className="h-4 w-4 text-emerald-500" />;
+  }
+  if (status === '更新失败') {
+    return <AlertTriangle className="h-4 w-4 text-red-500" />;
+  }
+  if (status === '更新中') {
+    return <LoaderCircle className="h-4 w-4 animate-spin text-[#ef5d4f]" />;
+  }
+  return <Sparkles className="h-4 w-4 text-slate-400" />;
+}
+
+function ImportStatusPill({ importDraft, ocrState }) {
+  let tone = 'slate';
+  let label = '等待上传';
+
+  if (importDraft?.rows?.length) {
+    tone = 'indigo';
+    label = '草稿待确认';
+  } else if (ocrState.status === 'loading') {
+    tone = 'indigo';
+    label = '识别中';
+  } else if (ocrState.status === 'success') {
+    tone = 'emerald';
+    label = '识别完成';
+  } else if (ocrState.status === 'error') {
+    tone = 'red';
+    label = '识别失败';
+  }
+
+  return <Pill tone={tone}>{label}</Pill>;
+}
+
 function resolveSyncTone(status = 'idle') {
   if (status === 'loading') {
     return 'indigo';
@@ -237,7 +425,7 @@ function resolveSyncLabel(status = 'idle') {
 }
 
 function describeCacheSource(cache = null) {
-  const source = String(cache?.source || '').trim();
+  const source = String(cache?.source || cache?.cacheSource || '').trim();
   if (source === 'edge-cache') {
     return '边缘缓存命中';
   }
@@ -644,35 +832,21 @@ export function HoldingsExperience({ links, embedded = false }) {
     fileInputRef.current?.click();
   }
 
-  const content = (
-    <>
-      <div className="border-b border-slate-200 bg-white/75 backdrop-blur-sm">
-        <div className="mx-auto max-w-6xl px-5 py-6 sm:px-6">
-          <SectionHeading
-            eyebrow="Fund Holdings"
-            title="基金持仓收益"
-            description="上传持仓截图生成可编辑草稿，或直接在表格里维护单个基金组合。页面每次打开都会通过 Worker 拉取最新净值，并保留最近一次成功快照。"
-            action={(
-              <>
-                <button className={secondaryButtonClass} type="button" onClick={openFilePicker}>
-                  <Upload className="h-4 w-4" />
-                  上传截图
-                </button>
-                <button
-                  className={subtleButtonClass}
-                  disabled={!codes.length || lastNavMeta.status === 'loading'}
-                  type="button"
-                  onClick={() => setRefreshSeed((value) => value + 1)}
-                >
-                  {lastNavMeta.status === 'loading' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                  刷新净值
-                </button>
-              </>
-            )}
-          />
-        </div>
-      </div>
+  const assetValue = summary.pricedCount ? summary.marketValue : summary.totalCost;
+  const totalProfitRate = computeRatePercent(summary.totalProfit, summary.totalCost);
+  const todayRateBase = (summary.marketValue - summary.todayProfit) > 0
+    ? (summary.marketValue - summary.todayProfit)
+    : summary.totalCost;
+  const todayProfitRate = computeRatePercent(summary.todayProfit, todayRateBase);
+  const coverageBase = summary.positionCount || summary.fetchableCount || 0;
+  const coverageRate = computeRatePercent(summary.pricedCount, coverageBase);
+  const completionRate = computeRatePercent(summary.positionCount, summary.meaningfulRowCount || summary.positionCount);
+  const latestSyncLabel = summary.latestSnapshotAt
+    ? formatDateTimeLabel(summary.latestSnapshotAt)
+    : (lastNavMeta.updatedAt ? formatDateTimeLabel(lastNavMeta.updatedAt) : '--');
 
+  const content = (
+    <div className="bg-[radial-gradient(circle_at_top,_#fff7f1_0,_#f7f2ed_46%,_#f3ede7_100%)]">
       <input
         ref={fileInputRef}
         accept="image/png,image/jpeg,image/jpg"
@@ -682,49 +856,110 @@ export function HoldingsExperience({ links, embedded = false }) {
       />
 
       <div className="mx-auto max-w-6xl px-5 pb-20 pt-6 sm:px-6">
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <SummaryCard
-            accent="slate"
-            badge={<Pill tone="slate">{summary.positionCount} 只持仓</Pill>}
-            eyebrow="组合总成本"
-            icon={Wallet}
-            note={summary.positionCount ? '按买入均价和持有份数汇总。' : '先录入持仓后再计算。'}
-            value={summary.positionCount ? formatCurrency(summary.totalCost, '¥', 2) : '--'}
-          />
-          <SummaryCard
-            accent={summary.pricedCount >= summary.positionCount && summary.positionCount > 0 ? 'indigo' : 'slate'}
-            badge={<Pill tone={summary.pricedCount >= summary.positionCount && summary.positionCount > 0 ? 'indigo' : 'slate'}>{summary.pricedCount}/{summary.positionCount || 0} 已覆盖</Pill>}
-            eyebrow="当前市值"
-            icon={Sparkles}
-            note={summary.pricedCount ? `最近净值日期 ${formatDateLabel(summary.latestNavDate)}` : '等待净值快照。'}
-            value={summary.pricedCount ? formatCurrency(summary.marketValue, '¥', 2) : '--'}
-          />
-          <SummaryCard
-            accent={todayCard.accent}
-            badge={todayCard.badge}
-            eyebrow="今日收益"
-            icon={History}
-            note={todayCard.note}
-            value={todayCard.value}
-          />
-          <SummaryCard
-            accent={summary.totalProfit > 0 ? 'emerald' : summary.totalProfit < 0 ? 'red' : 'slate'}
-            badge={<Pill tone={summary.totalProfit > 0 ? 'emerald' : summary.totalProfit < 0 ? 'red' : 'slate'}>{summary.pricedCount}/{summary.positionCount || 0} 已重算</Pill>}
-            eyebrow="总收益"
-            icon={Database}
-            note={summary.latestSnapshotAt ? `最近快照 ${formatDateTimeLabel(summary.latestSnapshotAt)}` : '等待首次净值同步。'}
-            value={summary.pricedCount ? formatSignedCurrency(summary.totalProfit) : '--'}
-          />
-        </div>
+        <div className="rounded-[2rem] bg-gradient-to-br from-[#ef6557] via-[#f07b62] to-[#f6b196] p-[1px] shadow-[0_28px_70px_rgba(210,104,82,0.30)]">
+          <div className="relative overflow-hidden rounded-[2rem] bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.24),_transparent_32%),linear-gradient(135deg,#ee6356_0%,#f07a61_50%,#f7b39a_100%)] px-5 py-6 text-white sm:px-6 sm:py-7">
+            <div className="pointer-events-none absolute -right-12 top-8 h-40 w-40 rounded-full bg-white/10 blur-3xl" />
+            <div className="pointer-events-none absolute -left-10 bottom-0 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
+            <div className="relative">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="max-w-3xl">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-white/14 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-white/80 ring-1 ring-white/20">
+                    <Wallet className="h-3.5 w-3.5" />
+                    Fund Holdings
+                  </div>
+                  <h1 className="mt-4 text-[2rem] font-extrabold tracking-tight sm:text-[2.35rem]">基金持仓收益</h1>
+                  <p className="mt-3 max-w-2xl text-sm leading-6 text-white/80">
+                    参考投资账本的账户面板风格，把组合资产、当日盈亏、累计收益和净值同步状态放到同一个看板里。
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button className={heroButtonClass} type="button" onClick={openFilePicker}>
+                    <Upload className="h-4 w-4" />
+                    上传截图
+                  </button>
+                  <button
+                    className={heroButtonClass}
+                    disabled={!codes.length || lastNavMeta.status === 'loading'}
+                    type="button"
+                    onClick={() => setRefreshSeed((value) => value + 1)}
+                  >
+                    {lastNavMeta.status === 'loading' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    刷新净值
+                  </button>
+                </div>
+              </div>
 
-        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.8fr)_minmax(300px,0.9fr)]">
-          <div className="space-y-6">
-            <Card className="overflow-hidden rounded-[2rem] border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white p-0">
-              <div className="grid gap-0 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]">
+              <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.72fr)]">
+                <div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-[1.5rem] bg-white/14 p-4 ring-1 ring-white/18 backdrop-blur-sm">
+                      <div className="text-sm font-semibold text-white/78">当日盈亏</div>
+                      <div className="mt-3 text-3xl font-extrabold tracking-tight text-white">{todayCard.value}</div>
+                      <div className="mt-2 text-sm font-semibold text-white/74">
+                        {summary.todayReadyCount >= summary.positionCount && summary.positionCount > 0 ? formatSignedPercent(todayProfitRate) : '等待完整净值'}
+                      </div>
+                    </div>
+                    <div className="rounded-[1.5rem] bg-white/14 p-4 ring-1 ring-white/18 backdrop-blur-sm">
+                      <div className="text-sm font-semibold text-white/78">累计收益</div>
+                      <div className="mt-3 text-3xl font-extrabold tracking-tight text-white">
+                        {summary.pricedCount ? formatSignedCurrency(summary.totalProfit) : '--'}
+                      </div>
+                      <div className="mt-2 text-sm font-semibold text-white/74">
+                        {summary.pricedCount ? formatSignedPercent(totalProfitRate) : '等待净值快照'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 rounded-[1.75rem] bg-white/12 p-5 ring-1 ring-white/18 backdrop-blur-sm">
+                    <div className="text-sm font-semibold text-white/78">账户资产</div>
+                    <div className="mt-2 text-[2.2rem] font-extrabold tracking-tight text-white sm:text-[2.65rem]">
+                      {assetValue > 0 ? formatCurrency(assetValue, '¥', 2) : '--'}
+                    </div>
+                    <div className="mt-2 text-sm text-white/72">
+                      {summary.pricedCount
+                        ? `最近净值日期 ${formatDateLabel(summary.latestNavDate)}`
+                        : '当前以持仓成本作为账户基线，等待首次净值同步。'}
+                    </div>
+
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      <HeroMiniStat
+                        label="持仓成本"
+                        value={summary.totalCost > 0 ? formatCurrency(summary.totalCost, '¥', 2) : '--'}
+                        note="按买入均价与份数汇总"
+                      />
+                      <HeroMiniStat
+                        label="持有收益"
+                        value={summary.pricedCount ? formatSignedCurrency(summary.totalProfit) : '--'}
+                        note={summary.pricedCount ? formatSignedPercent(totalProfitRate) : '等待净值'}
+                      />
+                      <HeroMiniStat
+                        label="净值覆盖"
+                        value={coverageBase ? formatPercent(coverageRate) : '--'}
+                        note={`${summary.pricedCount}/${coverageBase || 0} 已同步`}
+                      />
+                      <HeroMiniStat
+                        label="持仓数量"
+                        value={`${summary.positionCount || 0} 只`}
+                        note={`${summary.meaningfulRowCount || 0} 行有效录入`}
+                      />
+                      <HeroMiniStat
+                        label="组合完成度"
+                        value={summary.meaningfulRowCount ? formatPercent(completionRate) : '--'}
+                        note="已形成完整仓位的占比"
+                      />
+                      <HeroMiniStat
+                        label="最近快照"
+                        value={latestSyncLabel}
+                        note={resolveSyncLabel(lastNavMeta.status)}
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 <div
                   className={cx(
-                    'relative flex min-h-[260px] flex-col justify-between border-b border-indigo-100 p-6 lg:border-b-0 lg:border-r',
-                    dragActive && 'bg-indigo-50/80'
+                    'rounded-[1.75rem] bg-white/12 p-5 ring-1 ring-white/18 backdrop-blur-sm',
+                    dragActive && 'bg-white/18'
                   )}
                   onDragEnter={(event) => {
                     event.preventDefault();
@@ -750,116 +985,174 @@ export function HoldingsExperience({ links, embedded = false }) {
                     }
                   }}
                 >
-                  <div>
-                    <div className="mb-2 inline-flex rounded-full bg-white/90 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-indigo-500 shadow-sm shadow-indigo-100">
-                      OCR 导入区
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-white/80">导入工作台</div>
+                      <div className="mt-2 text-2xl font-extrabold tracking-tight text-white">截图识别持仓</div>
                     </div>
-                    <h2 className="text-2xl font-extrabold tracking-tight text-slate-900">把持仓截图接到当前工作台里</h2>
-                    <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">
-                      默认导入策略为替换当前组合。识别完成后会先生成草稿，不会静默覆盖你正在维护的持仓表。
-                    </p>
+                    <ImportStatusPill importDraft={importDraft} ocrState={ocrState} />
+                  </div>
+                  <div className="mt-3 text-sm leading-6 text-white/76">
+                    默认导入策略仍然是“先出草稿，再由你确认替换当前组合”，不会静默覆盖列表。
                   </div>
 
                   <button
                     className={cx(
-                      'mt-6 flex min-h-[140px] flex-col items-center justify-center rounded-[1.75rem] border border-dashed border-indigo-200 bg-white/80 px-6 py-8 text-center shadow-sm shadow-indigo-100/70 transition-all',
-                      dragActive ? 'scale-[1.01] border-indigo-400 bg-indigo-50' : 'hover:-translate-y-0.5 hover:border-indigo-300'
+                      'mt-5 flex min-h-[168px] w-full flex-col items-center justify-center rounded-[1.6rem] border border-dashed border-white/30 bg-white/12 px-6 py-8 text-center transition-all',
+                      dragActive ? 'scale-[1.01] bg-white/18' : 'hover:bg-white/16'
                     )}
                     type="button"
                     onClick={openFilePicker}
                   >
                     {ocrState.status === 'loading' ? (
-                      <LoaderCircle className="h-10 w-10 animate-spin text-indigo-500" />
+                      <LoaderCircle className="h-10 w-10 animate-spin text-white" />
                     ) : (
-                      <CloudUpload className="h-10 w-10 text-indigo-500" />
+                      <CloudUpload className="h-10 w-10 text-white" />
                     )}
-                    <div className="mt-4 text-base font-bold text-slate-900">
+                    <div className="mt-4 text-base font-bold text-white">
                       {ocrState.status === 'loading' ? '正在识别截图' : '拖拽或点击上传 PNG / JPG / JPEG'}
                     </div>
-                    <div className="mt-2 text-sm text-slate-500">
-                      {ocrState.message}
-                    </div>
+                    <div className="mt-2 max-w-xs text-sm leading-6 text-white/76">{ocrState.message}</div>
                     {ocrState.status === 'loading' ? (
-                      <div className="mt-5 h-2 w-full max-w-xs overflow-hidden rounded-full bg-indigo-100">
-                        <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${Math.max(Math.min(ocrState.progress, 100), 0)}%` }} />
+                      <div className="mt-5 h-2 w-full max-w-xs overflow-hidden rounded-full bg-white/18">
+                        <div className="h-full rounded-full bg-white transition-all" style={{ width: `${clampNumber(ocrState.progress, 0, 100)}%` }} />
                       </div>
                     ) : null}
                   </button>
-                </div>
 
-                <div className="flex flex-col justify-between bg-white/70 p-6">
-                  <div className="space-y-4">
-                    <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                        <FileImage className="h-4 w-4 text-slate-400" />
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                    <div className="rounded-[1.35rem] bg-white/14 px-4 py-4 ring-1 ring-white/16">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                        <FileImage className="h-4 w-4 text-white/72" />
                         最近导入
                       </div>
-                      <div className="mt-3 text-sm text-slate-500">
-                        {importDraft?.fileName || fileName || '尚未导入截图'}
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <Pill tone={ocrState.status === 'error' ? 'red' : ocrState.status === 'success' ? 'emerald' : ocrState.status === 'loading' ? 'indigo' : 'slate'}>
-                          {ocrState.status === 'error' ? '识别失败' : ocrState.status === 'success' ? '草稿已生成' : ocrState.status === 'loading' ? '识别中' : '等待上传'}
-                        </Pill>
+                      <div className="mt-3 text-sm text-white/80">{importDraft?.fileName || fileName || '尚未导入截图'}</div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
                         {ocrState.durationMs > 0 ? <Pill tone="slate">{formatDuration(ocrState.durationMs)}</Pill> : null}
+                        {importDraft?.rows?.length ? <Pill tone="indigo">{importDraft.rows.length} 行草稿</Pill> : null}
                       </div>
                     </div>
-
-                    <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                        <TableProperties className="h-4 w-4 text-slate-400" />
+                    <div className="rounded-[1.35rem] bg-white/14 px-4 py-4 ring-1 ring-white/16">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                        <TableProperties className="h-4 w-4 text-white/72" />
                         导入策略
                       </div>
-                      <div className="mt-2 text-sm leading-6 text-slate-500">
-                        本版本默认以“替换当前组合”为主；识别结果会先进入草稿，再由你确认应用。
+                      <div className="mt-3 text-sm leading-6 text-white/76">
+                        识别结果先放进草稿区，确认后才替换当前组合。适合先拍一张截图，再针对识别错行做手动微调。
                       </div>
                     </div>
                   </div>
 
-                  <div className="mt-5 flex flex-col gap-3 sm:flex-row lg:flex-col">
-                    <button className={primaryButtonClass} type="button" onClick={openFilePicker}>
-                      <Upload className="h-4 w-4" />
-                      重新上传截图
-                    </button>
-                    <button className={secondaryButtonClass} type="button" onClick={handleAddRow}>
-                      <Plus className="h-4 w-4" />
-                      手动新增一行
-                    </button>
-                  </div>
+                  {ocrState.error ? (
+                    <div className="mt-4 rounded-[1.2rem] bg-[#6e2018]/25 px-4 py-3 text-sm text-white ring-1 ring-white/14">
+                      {ocrState.error}
+                    </div>
+                  ) : null}
                 </div>
               </div>
-            </Card>
+            </div>
+          </div>
+        </div>
 
-            <Card className="rounded-[2rem] p-6">
-              <SectionHeading
-                eyebrow="Portfolio Ledger"
-                title="持仓明细"
-                description="代码、名称、买入均价和持有份数都可手动编辑。修改后会立即重算；代码变化会自动触发净值更新。"
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <OverviewCard
+            detail={summary.totalCost > 0 ? `持仓成本 ${formatCurrency(summary.totalCost, '¥', 2)}` : '等待录入持仓'}
+            helper={summary.positionCount ? `${summary.positionCount} 只基金纳入组合` : '先补全代码、均价和份数后开始汇总'}
+            icon={Wallet}
+            title="总资产"
+            tone="blue"
+            value={assetValue > 0 ? formatCurrency(assetValue, '¥', 2) : '--'}
+            visual={<MiniTrend tone="blue" mode={assetValue > summary.totalCost ? 'rise' : assetValue < summary.totalCost ? 'dip' : 'flat'} />}
+          />
+          <OverviewCard
+            detail={summary.todayReadyCount >= summary.positionCount && summary.positionCount > 0 ? formatSignedPercent(todayProfitRate) : '等待完整净值'}
+            helper={todayCard.note}
+            icon={History}
+            title="当日盈亏"
+            tone={todayCard.accent === 'red' ? 'rose' : todayCard.accent === 'amber' ? 'amber' : todayCard.accent === 'emerald' ? 'emerald' : 'coral'}
+            value={todayCard.value}
+            visual={<MiniTrend tone="coral" mode={summary.todayProfit > 0 ? 'step' : summary.todayProfit < 0 ? 'dip' : 'flat'} />}
+          />
+          <OverviewCard
+            detail={summary.pricedCount ? formatSignedPercent(totalProfitRate) : '等待净值快照'}
+            helper={summary.latestSnapshotAt ? `最近快照 ${formatDateTimeLabel(summary.latestSnapshotAt)}` : '进入页面后会自动刷新净值'}
+            icon={Sparkles}
+            title="累计收益"
+            tone={summary.totalProfit > 0 ? 'coral' : summary.totalProfit < 0 ? 'rose' : 'neutral'}
+            value={summary.pricedCount ? formatSignedCurrency(summary.totalProfit) : '--'}
+            visual={<MiniTrend tone={summary.totalProfit < 0 ? 'blue' : 'coral'} mode={summary.totalProfit > 0 ? 'rise' : summary.totalProfit < 0 ? 'dip' : 'flat'} />}
+          />
+          <OverviewCard
+            detail={coverageBase ? `${summary.pricedCount}/${coverageBase} 已同步` : '等待有效持仓'}
+            helper={summary.latestNavDate ? `最新净值日 ${formatDateLabel(summary.latestNavDate)}` : '尚未拿到最新净值日期'}
+            icon={Database}
+            title="净值覆盖"
+            tone="amber"
+            value={coverageBase ? formatPercent(coverageRate) : '--'}
+            visual={<CoverageGauge label="覆盖" value={coverageBase ? coverageRate : 0} />}
+          />
+          <OverviewCard
+            detail={`${resolveSyncLabel(lastNavMeta.status)} · ${describeCacheSource(lastNavMeta.cache)}`}
+            helper={lastNavMeta.updatedAt ? `最近触发 ${formatDateTimeLabel(lastNavMeta.updatedAt)}` : '进入页面后自动刷新'}
+            icon={RefreshCw}
+            title="收益对比"
+            tone="neutral"
+            value={summary.pricedCount ? formatSignedCurrency(summary.totalProfit) : '--'}
+            visual={<CompareBars primaryLabel="今日" primaryValue={summary.todayProfit} secondaryLabel="累计" secondaryValue={summary.totalProfit} />}
+          />
+          <OverviewCard
+            detail={`${summary.meaningfulRowCount || 0} 行录入 · ${summary.positionCount || 0} 只成仓`}
+            helper="完成度反映录入行里有多少已经形成完整仓位。"
+            icon={TableProperties}
+            title="组合完成度"
+            tone="emerald"
+            value={summary.meaningfulRowCount ? formatPercent(completionRate) : '--'}
+            visual={<CoverageGauge label="完成" value={summary.meaningfulRowCount ? completionRate : 0} />}
+          />
+        </div>
+
+        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,0.85fr)]">
+          <div className="space-y-6">
+            <div className={cx(warmSurfaceClass, 'p-6')}>
+              <SectionHeader
                 action={(
                   <>
-                    <button className={secondaryButtonClass} type="button" onClick={handleAddRow}>
+                    <button className={softButtonClass} type="button" onClick={handleAddRow}>
                       <Plus className="h-4 w-4" />
                       新增持仓
                     </button>
-                    <button className={subtleButtonClass} type="button" onClick={handleClearRows}>
+                    <button className={mutedButtonClass} type="button" onClick={handleClearRows}>
                       <Trash2 className="h-4 w-4" />
                       清空全部
                     </button>
                   </>
                 )}
+                description="列表模式参考基金账本明细页，保留可编辑字段，但把净值、今日盈亏和累计收益改成更聚焦的收益列。"
+                eyebrow="List Mode"
+                title="持仓列表"
               />
 
               {!hasMeaningfulRows ? (
-                <div className="mt-6 rounded-[1.75rem] border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
-                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm shadow-slate-200">
-                    <Wallet className="h-6 w-6 text-indigo-500" />
+                <div className="mt-6 rounded-[1.75rem] border border-dashed border-[#e7d6cc] bg-[#fffaf7] px-6 py-12 text-center">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm shadow-[#ead7cb]">
+                    <Wallet className="h-6 w-6 text-[#ef5d4f]" />
                   </div>
                   <div className="mt-4 text-lg font-bold text-slate-900">当前还没有持仓组合</div>
                   <p className="mt-2 text-sm leading-6 text-slate-500">
-                    你可以先上传截图生成导入草稿，也可以直接在下面的空白行录入代码、均价和份数。
+                    你可以先上传截图生成导入草稿，也可以直接新增一行，录入基金代码、买入均价和持有份数。
                   </p>
                 </div>
               ) : null}
+
+              <div className="mt-6 hidden grid-cols-[minmax(0,1.35fr)_minmax(0,0.84fr)_minmax(0,0.84fr)_minmax(0,0.9fr)_minmax(0,0.95fr)_minmax(0,1fr)_auto] gap-3 px-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400 xl:grid">
+                <span>基金 / 代码</span>
+                <span>买入均价</span>
+                <span>持有份数</span>
+                <span>最新净值</span>
+                <span>当日盈亏</span>
+                <span>累计收益</span>
+                <span className="text-right">操作</span>
+              </div>
 
               <div className="mt-6 space-y-4">
                 {rows.map((editableRow, index) => {
@@ -868,6 +1161,11 @@ export function HoldingsExperience({ links, embedded = false }) {
                   const snapshot = snapshotsByCode[normalizedRow.code] || null;
                   const metrics = buildHoldingMetrics(normalizedRow, snapshot);
                   const runtime = rowRuntimeById[editableRow.id] || {};
+                  const rowTotalRate = computeRatePercent(metrics.totalProfit, metrics.cost);
+                  const rowTodayRateBase = (metrics.marketValue - metrics.todayProfit) > 0
+                    ? (metrics.marketValue - metrics.todayProfit)
+                    : metrics.cost;
+                  const rowTodayRate = computeRatePercent(metrics.todayProfit, rowTodayRateBase);
 
                   let rowStatusLabel = '待完善';
                   let rowStatusTone = 'slate';
@@ -894,10 +1192,10 @@ export function HoldingsExperience({ links, embedded = false }) {
                   }
 
                   return (
-                    <div key={editableRow.id} className="rounded-[1.75rem] border border-slate-200 bg-slate-50/70 p-4">
-                      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <div key={editableRow.id} className="rounded-[1.75rem] border border-[#f0e3da] bg-[linear-gradient(180deg,#fffdfa_0%,#fff8f5_100%)] p-4 shadow-[0_16px_36px_rgba(150,100,74,0.06)]">
+                      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-slate-500 shadow-sm shadow-slate-200">
+                          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#cf776b] shadow-sm shadow-[#ead7cb]">
                             {String(index + 1).padStart(2, '0')}
                           </span>
                           当前持仓
@@ -905,7 +1203,7 @@ export function HoldingsExperience({ links, embedded = false }) {
                         <div className="flex items-center gap-2">
                           <Pill tone={rowStatusTone}>{rowStatusLabel}</Pill>
                           <button
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-500 ring-1 ring-slate-200 transition-colors hover:bg-red-50 hover:text-red-500"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-500 ring-1 ring-[#eaded5] transition-colors hover:bg-red-50 hover:text-red-500"
                             type="button"
                             onClick={() => handleDeleteRow(editableRow.id)}
                           >
@@ -914,37 +1212,47 @@ export function HoldingsExperience({ links, embedded = false }) {
                         </div>
                       </div>
 
-                      <div className="grid gap-3 xl:grid-cols-[1.05fr_1.35fr_1fr_1fr_1.2fr_1fr_1fr]">
-                        <label className="space-y-2">
-                          <span className="text-xs font-semibold text-slate-500">基金代码</span>
-                          <input
-                            className={cx(
-                              tableInputClass,
-                              'border border-slate-200 bg-white hover:border-slate-300',
-                              errors.code && 'border-red-200 bg-red-50 focus:border-red-300'
-                            )}
-                            inputMode="numeric"
-                            maxLength={6}
-                            placeholder="例如 110022"
-                            value={editableRow.code}
-                            onChange={(event) => updateRowField(editableRow.id, 'code', event.target.value)}
-                          />
-                        </label>
-                        <label className="space-y-2">
-                          <span className="text-xs font-semibold text-slate-500">基金名称</span>
-                          <input
-                            className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition-all hover:border-slate-300 focus:border-indigo-400"
-                            placeholder="可选，支持手动补全"
-                            value={editableRow.name}
-                            onChange={(event) => updateRowField(editableRow.id, 'name', event.target.value)}
-                          />
-                        </label>
+                      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.84fr)_minmax(0,0.84fr)_minmax(0,0.9fr)_minmax(0,0.95fr)_minmax(0,1fr)_auto]">
+                        <div className="min-w-0 space-y-3">
+                          <div className="grid gap-3 sm:grid-cols-[minmax(120px,0.6fr)_minmax(0,1fr)]">
+                            <label className="space-y-2">
+                              <span className="text-xs font-semibold text-slate-500">基金代码</span>
+                              <input
+                                className={cx(
+                                  tableInputClass,
+                                  editorInputClass,
+                                  errors.code && 'border-red-200 bg-red-50 focus:border-red-300'
+                                )}
+                                inputMode="numeric"
+                                maxLength={6}
+                                placeholder="例如 110022"
+                                value={editableRow.code}
+                                onChange={(event) => updateRowField(editableRow.id, 'code', event.target.value)}
+                              />
+                            </label>
+                            <label className="space-y-2">
+                              <span className="text-xs font-semibold text-slate-500">基金名称</span>
+                              <input
+                                className={editorInputClass}
+                                placeholder="可选，支持手动补全"
+                                value={editableRow.name}
+                                onChange={(event) => updateRowField(editableRow.id, 'name', event.target.value)}
+                              />
+                            </label>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                            <RowStatusIcon status={rowStatusLabel} />
+                            <span>{rowStatusNote}</span>
+                            {snapshot?.cacheSource ? <Pill tone="slate">{snapshot.cacheHit ? '缓存命中' : '实时更新'}</Pill> : null}
+                          </div>
+                        </div>
+
                         <label className="space-y-2">
                           <span className="text-xs font-semibold text-slate-500">买入均价</span>
                           <input
                             className={cx(
                               tableInputClass,
-                              'border border-slate-200 bg-white hover:border-slate-300',
+                              editorInputClass,
                               errors.avgCost && 'border-red-200 bg-red-50 focus:border-red-300'
                             )}
                             inputMode="decimal"
@@ -953,12 +1261,13 @@ export function HoldingsExperience({ links, embedded = false }) {
                             onChange={(event) => updateRowField(editableRow.id, 'avgCost', event.target.value)}
                           />
                         </label>
+
                         <label className="space-y-2">
                           <span className="text-xs font-semibold text-slate-500">持有份数</span>
                           <input
                             className={cx(
                               tableInputClass,
-                              'border border-slate-200 bg-white hover:border-slate-300',
+                              editorInputClass,
                               errors.shares && 'border-red-200 bg-red-50 focus:border-red-300'
                             )}
                             inputMode="decimal"
@@ -968,59 +1277,72 @@ export function HoldingsExperience({ links, embedded = false }) {
                           />
                         </label>
 
-                        <div className="space-y-2 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                        <div className="rounded-[1.25rem] border border-[#f0e3da] bg-white px-4 py-3">
                           <div className="text-xs font-semibold text-slate-500">最新净值</div>
-                          <div className="text-lg font-bold text-slate-900">{formatNav(snapshot?.latestNav)}</div>
-                          <div className="text-xs leading-5 text-slate-400">
+                          <div className="mt-2 text-lg font-bold text-slate-900">{formatNav(snapshot?.latestNav)}</div>
+                          <div className="mt-1 text-xs leading-5 text-slate-400">
                             {snapshot?.latestNavDate ? `最新 ${formatDateLabel(snapshot.latestNavDate)}` : '等待净值刷新'}
-                            <br />
-                            {snapshot?.previousNavDate ? `前值 ${formatDateLabel(snapshot.previousNavDate)}` : '上一交易日待同步'}
                           </div>
                         </div>
 
-                        <div className="space-y-2 rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                          <div className="text-xs font-semibold text-slate-500">今日收益</div>
-                          <div className={cx('text-lg font-bold', metrics.hasLatestNav && metrics.hasPreviousNav ? getProfitTextClass(metrics.todayProfit) : 'text-slate-400')}>
+                        <div className="rounded-[1.25rem] border border-[#f0e3da] bg-white px-4 py-3">
+                          <div className="text-xs font-semibold text-slate-500">当日盈亏</div>
+                          <div className={cx('mt-2 text-lg font-bold', metrics.hasLatestNav && metrics.hasPreviousNav ? getProfitTextClass(metrics.todayProfit) : 'text-slate-400')}>
                             {metrics.hasLatestNav && metrics.hasPreviousNav ? formatSignedCurrency(metrics.todayProfit) : '--'}
                           </div>
-                          <div className="text-xs leading-5 text-slate-400">
-                            公式：(最新净值 - 上一交易日净值) × 份数
+                          <div className="mt-1 text-xs leading-5 text-slate-400">
+                            {metrics.hasLatestNav && metrics.hasPreviousNav ? formatSignedPercent(rowTodayRate) : '上一交易日待同步'}
                           </div>
                         </div>
 
-                        <div className="space-y-2 rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                          <div className="text-xs font-semibold text-slate-500">总收益</div>
-                          <div className={cx('text-lg font-bold', metrics.hasLatestNav ? getProfitTextClass(metrics.totalProfit) : 'text-slate-400')}>
+                        <div className="rounded-[1.25rem] border border-[#f0e3da] bg-white px-4 py-3">
+                          <div className="text-xs font-semibold text-slate-500">累计收益</div>
+                          <div className={cx('mt-2 text-lg font-bold', metrics.hasLatestNav ? getProfitTextClass(metrics.totalProfit) : 'text-slate-400')}>
                             {metrics.hasLatestNav ? formatSignedCurrency(metrics.totalProfit) : '--'}
                           </div>
-                          <div className="text-xs leading-5 text-slate-400">
-                            当前市值 {metrics.hasLatestNav ? formatCurrency(metrics.marketValue, '¥', 2) : '--'}
+                          <div className="mt-1 text-xs leading-5 text-slate-400">
+                            {metrics.hasLatestNav ? `${formatSignedPercent(rowTotalRate)} · 市值 ${formatCurrency(metrics.marketValue, '¥', 2)}` : '当前市值待同步'}
                           </div>
+                        </div>
+
+                        <div className="flex items-start justify-end xl:pt-7">
+                          <button
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-500 ring-1 ring-[#eaded5] transition-colors hover:bg-red-50 hover:text-red-500"
+                            type="button"
+                            onClick={() => handleDeleteRow(editableRow.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
                         </div>
                       </div>
 
-                      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                        {rowStatusLabel === '已更新' ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : rowStatusLabel === '更新失败' ? <AlertTriangle className="h-4 w-4 text-red-500" /> : rowStatusLabel === '更新中' ? <LoaderCircle className="h-4 w-4 animate-spin text-indigo-500" /> : <Sparkles className="h-4 w-4 text-slate-400" />}
-                        <span>{rowStatusNote}</span>
-                        {snapshot?.cacheSource ? <Pill tone="slate">{snapshot.cacheHit ? '缓存命中' : '实时更新'}</Pill> : null}
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <MetricChip label="前值日期" value={snapshot?.previousNavDate ? formatDateLabel(snapshot.previousNavDate) : '--'} />
+                        <MetricChip label="快照时间" value={snapshot?.updatedAt ? formatDateTimeLabel(snapshot.updatedAt) : '--'} />
+                        <MetricChip label="缓存来源" value={snapshot?.cacheSource ? describeCacheSource(snapshot) : '等待刷新'} />
+                        <MetricChip
+                          label="状态"
+                          value={rowStatusLabel}
+                          valueClassName={rowStatusTone === 'red' ? 'text-red-500' : rowStatusTone === 'emerald' ? 'text-emerald-600' : rowStatusTone === 'indigo' ? 'text-[#ef5d4f]' : 'text-slate-900'}
+                        />
                       </div>
                     </div>
                   );
                 })}
               </div>
-            </Card>
+            </div>
           </div>
 
           <div className="space-y-6">
-            <Card className="rounded-[2rem] p-6">
-              <SectionHeading
+            <div className={cx(warmSurfaceClass, 'p-6')}>
+              <SectionHeader
+                description="组合级今日收益只在全部持仓完成净值拉取后展示最终结果。"
                 eyebrow="NAV Sync"
                 title="净值同步状态"
-                description="组合级今日收益只在全部持仓完成净值拉取后展示最终结果。"
               />
 
               <div className="mt-5 space-y-4">
-                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                <div className="rounded-[1.5rem] border border-[#f0e3da] bg-[#fff8f4] p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">组合状态</div>
@@ -1033,7 +1355,7 @@ export function HoldingsExperience({ links, embedded = false }) {
                   </div>
                 </div>
 
-                <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4">
+                <div className="rounded-[1.5rem] border border-[#f0e3da] bg-white p-4">
                   <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
                     <Database className="h-4 w-4 text-slate-400" />
                     缓存命中
@@ -1049,11 +1371,11 @@ export function HoldingsExperience({ links, embedded = false }) {
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                  <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4">
+                  <div className="rounded-[1.5rem] border border-[#f0e3da] bg-white p-4">
                     <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">成功更新</div>
                     <div className="mt-2 text-2xl font-extrabold text-slate-900">{lastNavMeta.successCount || 0}</div>
                   </div>
-                  <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4">
+                  <div className="rounded-[1.5rem] border border-[#f0e3da] bg-white p-4">
                     <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">失败代码</div>
                     <div className="mt-2 text-2xl font-extrabold text-slate-900">{lastNavMeta.failureCount || 0}</div>
                   </div>
@@ -1073,20 +1395,20 @@ export function HoldingsExperience({ links, embedded = false }) {
                   </div>
                 ) : null}
               </div>
-            </Card>
+            </div>
 
-            <Card className="rounded-[2rem] p-6">
-              <SectionHeading
+            <div className={cx(warmSurfaceClass, 'p-6')}>
+              <SectionHeader
+                description="识别结果不会直接覆盖当前组合，需要你确认后才会替换。"
                 eyebrow="OCR Draft"
                 title="导入草稿"
-                description="识别结果不会直接覆盖当前组合，需要你确认后才会替换。"
               />
 
               <div className="mt-5 space-y-4">
                 {importDraft ? (
                   <>
-                    <div className="rounded-[1.5rem] border border-indigo-100 bg-indigo-50 p-4">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-indigo-700">
+                    <div className="rounded-[1.5rem] border border-[#f3d6ce] bg-[#fff7f4] p-4">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-[#c85e4d]">
                         <FileImage className="h-4 w-4" />
                         {importDraft.fileName || '持仓截图'}
                       </div>
@@ -1096,11 +1418,11 @@ export function HoldingsExperience({ links, embedded = false }) {
                         {importDraft.durationMs > 0 ? <Pill tone="slate">{formatDuration(importDraft.durationMs)}</Pill> : null}
                       </div>
                       <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                        <button className={primaryButtonClass} disabled={!importDraft.rows.length} type="button" onClick={handleApplyDraft}>
+                        <button className={coralPrimaryButtonClass} disabled={!importDraft.rows.length} type="button" onClick={handleApplyDraft}>
                           <CheckCircle2 className="h-4 w-4" />
                           用草稿替换当前组合
                         </button>
-                        <button className={secondaryButtonClass} type="button" onClick={() => setImportDraft(null)}>
+                        <button className={softButtonClass} type="button" onClick={() => setImportDraft(null)}>
                           <X className="h-4 w-4" />
                           放弃本次草稿
                         </button>
@@ -1122,36 +1444,42 @@ export function HoldingsExperience({ links, embedded = false }) {
                     ) : null}
                   </>
                 ) : (
-                  <div className="rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm leading-6 text-slate-500">
+                  <div className="rounded-[1.5rem] border border-dashed border-[#e7d6cc] bg-[#fffaf7] p-5 text-sm leading-6 text-slate-500">
                     当前没有待确认的 OCR 草稿。上传截图后，完整识别行会先出现在这里，再由你决定是否替换当前组合。
                   </div>
                 )}
               </div>
-            </Card>
+            </div>
 
-            <Card className="rounded-[2rem] p-6">
-              <SectionHeading
+            <div className={cx(warmSurfaceClass, 'p-6')}>
+              <SectionHeader
+                description="延续现有工作台的编辑节奏：先识别，再校正，最后看组合收益。"
                 eyebrow="Guide"
                 title="操作提示"
-                description="延续现有工作台的编辑节奏：先识别，再校正，最后看组合收益。"
               />
 
-              <div className="mt-5 space-y-3">
-                <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-500">
-                  只有代码、买入均价、持有份数三项完整时，组合摘要才会纳入该持仓。
-                </div>
-                <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-500">
-                  行级状态固定为“更新中 / 已更新 / 更新失败”；组合级今日收益会统一显示“更新中 / 已更新 / 部分更新失败”。
-                </div>
-                <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-500">
-                  页面会自动把持仓和最近一次成功净值快照保存在本地，刷新后会继续沿用。
-                </div>
+              <div className="mt-5 grid gap-3">
+                <WorkflowStep
+                  description="上传截图后先生成草稿，不会覆盖当前列表。识别出的行可以先看数量、置信度和警告，再决定是否应用。"
+                  step="01"
+                  title="先识别，再确认替换"
+                />
+                <WorkflowStep
+                  description="只有基金代码、买入均价和持有份数三项完整时，当前行才会被纳入资产与收益汇总。"
+                  step="02"
+                  title="补全代码、均价和份数"
+                />
+                <WorkflowStep
+                  description="页面会自动保存最近一次成功净值快照。即使本次回源失败，也会优先展示最近成功结果。"
+                  step="03"
+                  title="看收益时同步检查净值状态"
+                />
               </div>
-            </Card>
+            </div>
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 
   if (embedded) {
