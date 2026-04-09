@@ -46,17 +46,17 @@ import {
   tableInputClass
 } from '../components/experience-ui.jsx';
 
-const warmSurfaceClass = 'rounded-[1.75rem] border border-[#f0e3da] bg-white shadow-[0_18px_40px_rgba(144,92,67,0.08)]';
-const coralPrimaryButtonClass = 'inline-flex items-center justify-center gap-2 rounded-full bg-[#ef5d4f] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(239,93,79,0.28)] transition-all hover:-translate-y-0.5 hover:bg-[#e34f41] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0';
-const softButtonClass = 'inline-flex items-center justify-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 ring-1 ring-[#eaded5] transition-all hover:-translate-y-0.5 hover:bg-[#fff8f4] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0';
+const warmSurfaceClass = 'rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.06)]';
+const coralPrimaryButtonClass = 'inline-flex items-center justify-center gap-2 rounded-full bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(79,70,229,0.24)] transition-all hover:-translate-y-0.5 hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0';
+const softButtonClass = 'inline-flex items-center justify-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 transition-all hover:-translate-y-0.5 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0';
 const heroButtonClass = 'inline-flex items-center justify-center gap-2 rounded-full bg-white/14 px-4 py-2.5 text-sm font-semibold text-white ring-1 ring-white/20 backdrop-blur-sm transition-all hover:bg-white/18 disabled:cursor-not-allowed disabled:opacity-60';
-const mutedButtonClass = 'inline-flex items-center justify-center gap-2 rounded-full bg-[#fff7f3] px-4 py-2.5 text-sm font-semibold text-[#c75d4d] ring-1 ring-[#f3d7ce] transition-all hover:bg-[#fff1eb] disabled:cursor-not-allowed disabled:opacity-60';
-const editorInputClass = 'h-11 w-full rounded-2xl border border-[#eaded5] bg-[#fffdfb] px-3.5 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-300 hover:border-[#dcc7bb] focus:border-[#ef5d4f]';
+const mutedButtonClass = 'inline-flex items-center justify-center gap-2 rounded-full bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 transition-all hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60';
+const editorInputClass = 'h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3.5 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-300 hover:border-slate-300 focus:border-indigo-400 focus:bg-white';
 
 const overviewToneClasses = {
-  neutral: 'border-[#efe3d8] bg-[linear-gradient(180deg,#fffdfb_0%,#fff7f3_100%)]',
+  neutral: 'border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]',
   blue: 'border-[#dbe2ff] bg-[linear-gradient(180deg,#f7f9ff_0%,#ffffff_100%)]',
-  coral: 'border-[#f5d9d2] bg-[linear-gradient(180deg,#fff9f7_0%,#ffffff_100%)]',
+  coral: 'border-indigo-100 bg-[linear-gradient(180deg,#f5f7ff_0%,#ffffff_100%)]',
   amber: 'border-[#f3dfc2] bg-[linear-gradient(180deg,#fffaf3_0%,#ffffff_100%)]',
   rose: 'border-[#f1d8d8] bg-[linear-gradient(180deg,#fff7f7_0%,#ffffff_100%)]',
   emerald: 'border-[#d7ece3] bg-[linear-gradient(180deg,#f6fffb_0%,#ffffff_100%)]'
@@ -65,7 +65,7 @@ const overviewToneClasses = {
 const overviewValueClasses = {
   neutral: 'text-slate-900',
   blue: 'text-[#4360ee]',
-  coral: 'text-[#ef5d4f]',
+  coral: 'text-indigo-600',
   amber: 'text-[#d28a32]',
   rose: 'text-[#d85a5a]',
   emerald: 'text-[#0f9f6e]'
@@ -218,7 +218,7 @@ function SectionHeader({ eyebrow, title, description, action }) {
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div className="max-w-3xl">
-        <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#d37b6f]">{eyebrow}</div>
+        <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-500">{eyebrow}</div>
         <div className="mt-2 text-[1.65rem] font-extrabold tracking-tight text-slate-900">{title}</div>
         {description ? <div className="mt-2 text-sm leading-6 text-slate-500">{description}</div> : null}
       </div>
@@ -259,14 +259,14 @@ function MiniTrend({ tone = 'coral', mode = 'rise' }) {
       ? '#10b981'
       : tone === 'amber'
         ? '#d28a32'
-        : '#ef5d4f';
+        : '#6366f1';
   const fill = tone === 'blue'
     ? 'rgba(75,107,251,0.14)'
     : tone === 'emerald'
       ? 'rgba(16,185,129,0.14)'
       : tone === 'amber'
         ? 'rgba(210,138,50,0.14)'
-        : 'rgba(239,93,79,0.14)';
+        : 'rgba(99,102,241,0.14)';
   const points = mode === 'flat'
     ? '8,58 36,58 64,58 92,58 120,58 148,58'
     : mode === 'dip'
@@ -288,8 +288,8 @@ function CoverageGauge({ value = 0, label = '' }) {
 
   return (
     <div className="flex min-w-[120px] justify-center">
-      <div className="relative flex h-24 w-24 items-center justify-center rounded-full" style={{ background: `conic-gradient(#ef5d4f 0 ${progress}%, #f1e7e0 ${progress}% 100%)` }}>
-        <div className="flex h-16 w-16 flex-col items-center justify-center rounded-full bg-white text-center shadow-inner shadow-[#f3e7dd]">
+      <div className="relative flex h-24 w-24 items-center justify-center rounded-full" style={{ background: `conic-gradient(#6366f1 0 ${progress}%, #e2e8f0 ${progress}% 100%)` }}>
+        <div className="flex h-16 w-16 flex-col items-center justify-center rounded-full bg-white text-center shadow-inner shadow-slate-200">
           <div className="text-sm font-extrabold text-slate-900">{progress.toFixed(0)}%</div>
           <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</div>
         </div>
@@ -310,19 +310,19 @@ function CompareBars({ primaryLabel, primaryValue, secondaryLabel, secondaryValu
       <div>
         <div className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
           <span>{primaryLabel}</span>
-          <span className={primary >= 0 ? 'text-[#ef5d4f]' : 'text-[#4b6bfb]'}>{formatSignedCurrency(primary)}</span>
+          <span className={primary >= 0 ? 'text-indigo-600' : 'text-[#4b6bfb]'}>{formatSignedCurrency(primary)}</span>
         </div>
-        <div className="mt-2 h-2 rounded-full bg-[#f4ece6]">
-          <div className={cx('h-full rounded-full', primary >= 0 ? 'bg-[#ef5d4f]' : 'bg-[#4b6bfb]')} style={{ width: primaryWidth }} />
+        <div className="mt-2 h-2 rounded-full bg-slate-200">
+          <div className={cx('h-full rounded-full', primary >= 0 ? 'bg-indigo-500' : 'bg-[#4b6bfb]')} style={{ width: primaryWidth }} />
         </div>
       </div>
       <div>
         <div className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
           <span>{secondaryLabel}</span>
-          <span className={secondary >= 0 ? 'text-[#ef5d4f]' : 'text-[#4b6bfb]'}>{formatSignedCurrency(secondary)}</span>
+          <span className={secondary >= 0 ? 'text-indigo-600' : 'text-[#4b6bfb]'}>{formatSignedCurrency(secondary)}</span>
         </div>
-        <div className="mt-2 h-2 rounded-full bg-[#f4ece6]">
-          <div className={cx('h-full rounded-full', secondary >= 0 ? 'bg-[#ef5d4f]' : 'bg-[#4b6bfb]')} style={{ width: secondaryWidth }} />
+        <div className="mt-2 h-2 rounded-full bg-slate-200">
+          <div className={cx('h-full rounded-full', secondary >= 0 ? 'bg-indigo-500' : 'bg-[#4b6bfb]')} style={{ width: secondaryWidth }} />
         </div>
       </div>
     </div>
@@ -341,8 +341,8 @@ function HeroMiniStat({ label, value, note }) {
 
 function WorkflowStep({ step, title, description }) {
   return (
-    <div className="rounded-[1.35rem] border border-[#f0e3da] bg-[#fffaf7] p-4">
-      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#d37b6f]">Step {step}</div>
+    <div className="rounded-[1.35rem] border border-slate-200 bg-slate-50 p-4">
+      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-500">Step {step}</div>
       <div className="mt-2 text-sm font-bold text-slate-900">{title}</div>
       <div className="mt-2 text-sm leading-6 text-slate-500">{description}</div>
     </div>
@@ -351,7 +351,7 @@ function WorkflowStep({ step, title, description }) {
 
 function MetricChip({ label, value, valueClassName = 'text-slate-900' }) {
   return (
-    <div className="rounded-[1.2rem] border border-[#f0e3da] bg-[#fffdfa] px-3.5 py-3">
+    <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-3.5 py-3">
       <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">{label}</div>
       <div className={cx('mt-2 text-sm font-bold', valueClassName)}>{value}</div>
     </div>
@@ -366,7 +366,7 @@ function RowStatusIcon({ status }) {
     return <AlertTriangle className="h-4 w-4 text-red-500" />;
   }
   if (status === '更新中') {
-    return <LoaderCircle className="h-4 w-4 animate-spin text-[#ef5d4f]" />;
+    return <LoaderCircle className="h-4 w-4 animate-spin text-indigo-500" />;
   }
   return <Sparkles className="h-4 w-4 text-slate-400" />;
 }
@@ -846,7 +846,7 @@ export function HoldingsExperience({ links, embedded = false }) {
     : (lastNavMeta.updatedAt ? formatDateTimeLabel(lastNavMeta.updatedAt) : '--');
 
   const content = (
-    <div className="bg-[radial-gradient(circle_at_top,_#fff7f1_0,_#f7f2ed_46%,_#f3ede7_100%)]">
+    <div className="bg-[radial-gradient(circle_at_top,_#f8fafc_0,_#f1f5f9_46%,_#e2e8f0_100%)]">
       <input
         ref={fileInputRef}
         accept="image/png,image/jpeg,image/jpg"
@@ -856,10 +856,10 @@ export function HoldingsExperience({ links, embedded = false }) {
       />
 
       <div className="mx-auto max-w-6xl px-5 pb-20 pt-6 sm:px-6">
-        <div className="rounded-[2rem] bg-gradient-to-br from-[#ef6557] via-[#f07b62] to-[#f6b196] p-[1px] shadow-[0_28px_70px_rgba(210,104,82,0.30)]">
-          <div className="relative overflow-hidden rounded-[2rem] bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.24),_transparent_32%),linear-gradient(135deg,#ee6356_0%,#f07a61_50%,#f7b39a_100%)] px-5 py-6 text-white sm:px-6 sm:py-7">
-            <div className="pointer-events-none absolute -right-12 top-8 h-40 w-40 rounded-full bg-white/10 blur-3xl" />
-            <div className="pointer-events-none absolute -left-10 bottom-0 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
+        <div className="rounded-[2rem] border border-slate-200 bg-white shadow-[0_28px_70px_rgba(15,23,42,0.10)]">
+          <div className="relative overflow-hidden rounded-[2rem] bg-[radial-gradient(circle_at_top_left,_rgba(129,140,248,0.24),_transparent_28%),linear-gradient(135deg,#0f172a_0%,#1e293b_52%,#334155_100%)] px-5 py-6 text-white sm:px-6 sm:py-7">
+            <div className="pointer-events-none absolute -right-12 top-8 h-40 w-40 rounded-full bg-indigo-300/10 blur-3xl" />
+            <div className="pointer-events-none absolute -left-10 bottom-0 h-32 w-32 rounded-full bg-sky-200/10 blur-2xl" />
             <div className="relative">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="max-w-3xl">
@@ -868,7 +868,7 @@ export function HoldingsExperience({ links, embedded = false }) {
                     Fund Holdings
                   </div>
                   <h1 className="mt-4 text-[2rem] font-extrabold tracking-tight sm:text-[2.35rem]">基金持仓收益</h1>
-                  <p className="mt-3 max-w-2xl text-sm leading-6 text-white/80">
+                  <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-200">
                     参考投资账本的账户面板风格，把组合资产、当日盈亏、累计收益和净值同步状态放到同一个看板里。
                   </p>
                 </div>
@@ -892,14 +892,14 @@ export function HoldingsExperience({ links, embedded = false }) {
               <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.72fr)]">
                 <div>
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="rounded-[1.5rem] bg-white/14 p-4 ring-1 ring-white/18 backdrop-blur-sm">
+                    <div className="rounded-[1.5rem] bg-white/12 p-4 ring-1 ring-white/16 backdrop-blur-sm">
                       <div className="text-sm font-semibold text-white/78">当日盈亏</div>
                       <div className="mt-3 text-3xl font-extrabold tracking-tight text-white">{todayCard.value}</div>
                       <div className="mt-2 text-sm font-semibold text-white/74">
                         {summary.todayReadyCount >= summary.positionCount && summary.positionCount > 0 ? formatSignedPercent(todayProfitRate) : '等待完整净值'}
                       </div>
                     </div>
-                    <div className="rounded-[1.5rem] bg-white/14 p-4 ring-1 ring-white/18 backdrop-blur-sm">
+                    <div className="rounded-[1.5rem] bg-white/12 p-4 ring-1 ring-white/16 backdrop-blur-sm">
                       <div className="text-sm font-semibold text-white/78">累计收益</div>
                       <div className="mt-3 text-3xl font-extrabold tracking-tight text-white">
                         {summary.pricedCount ? formatSignedCurrency(summary.totalProfit) : '--'}
@@ -910,7 +910,7 @@ export function HoldingsExperience({ links, embedded = false }) {
                     </div>
                   </div>
 
-                  <div className="mt-4 rounded-[1.75rem] bg-white/12 p-5 ring-1 ring-white/18 backdrop-blur-sm">
+                  <div className="mt-4 rounded-[1.75rem] bg-white/10 p-5 ring-1 ring-white/14 backdrop-blur-sm">
                     <div className="text-sm font-semibold text-white/78">账户资产</div>
                     <div className="mt-2 text-[2.2rem] font-extrabold tracking-tight text-white sm:text-[2.65rem]">
                       {assetValue > 0 ? formatCurrency(assetValue, '¥', 2) : '--'}
@@ -958,8 +958,8 @@ export function HoldingsExperience({ links, embedded = false }) {
 
                 <div
                   className={cx(
-                    'rounded-[1.75rem] bg-white/12 p-5 ring-1 ring-white/18 backdrop-blur-sm',
-                    dragActive && 'bg-white/18'
+                    'rounded-[1.75rem] bg-white/10 p-5 ring-1 ring-white/14 backdrop-blur-sm',
+                    dragActive && 'bg-white/14'
                   )}
                   onDragEnter={(event) => {
                     event.preventDefault();
@@ -998,8 +998,8 @@ export function HoldingsExperience({ links, embedded = false }) {
 
                   <button
                     className={cx(
-                      'mt-5 flex min-h-[168px] w-full flex-col items-center justify-center rounded-[1.6rem] border border-dashed border-white/30 bg-white/12 px-6 py-8 text-center transition-all',
-                      dragActive ? 'scale-[1.01] bg-white/18' : 'hover:bg-white/16'
+                      'mt-5 flex min-h-[168px] w-full flex-col items-center justify-center rounded-[1.6rem] border border-dashed border-white/20 bg-white/8 px-6 py-8 text-center transition-all',
+                      dragActive ? 'scale-[1.01] bg-white/12' : 'hover:bg-white/10'
                     )}
                     type="button"
                     onClick={openFilePicker}
@@ -1021,7 +1021,7 @@ export function HoldingsExperience({ links, embedded = false }) {
                   </button>
 
                   <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                    <div className="rounded-[1.35rem] bg-white/14 px-4 py-4 ring-1 ring-white/16">
+                    <div className="rounded-[1.35rem] bg-white/10 px-4 py-4 ring-1 ring-white/14">
                       <div className="flex items-center gap-2 text-sm font-semibold text-white">
                         <FileImage className="h-4 w-4 text-white/72" />
                         最近导入
@@ -1032,7 +1032,7 @@ export function HoldingsExperience({ links, embedded = false }) {
                         {importDraft?.rows?.length ? <Pill tone="indigo">{importDraft.rows.length} 行草稿</Pill> : null}
                       </div>
                     </div>
-                    <div className="rounded-[1.35rem] bg-white/14 px-4 py-4 ring-1 ring-white/16">
+                    <div className="rounded-[1.35rem] bg-white/10 px-4 py-4 ring-1 ring-white/14">
                       <div className="flex items-center gap-2 text-sm font-semibold text-white">
                         <TableProperties className="h-4 w-4 text-white/72" />
                         导入策略
@@ -1133,9 +1133,9 @@ export function HoldingsExperience({ links, embedded = false }) {
               />
 
               {!hasMeaningfulRows ? (
-                <div className="mt-6 rounded-[1.75rem] border border-dashed border-[#e7d6cc] bg-[#fffaf7] px-6 py-12 text-center">
-                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm shadow-[#ead7cb]">
-                    <Wallet className="h-6 w-6 text-[#ef5d4f]" />
+                <div className="mt-6 rounded-[1.75rem] border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm shadow-slate-200">
+                    <Wallet className="h-6 w-6 text-indigo-500" />
                   </div>
                   <div className="mt-4 text-lg font-bold text-slate-900">当前还没有持仓组合</div>
                   <p className="mt-2 text-sm leading-6 text-slate-500">
@@ -1192,10 +1192,10 @@ export function HoldingsExperience({ links, embedded = false }) {
                   }
 
                   return (
-                    <div key={editableRow.id} className="rounded-[1.75rem] border border-[#f0e3da] bg-[linear-gradient(180deg,#fffdfa_0%,#fff8f5_100%)] p-4 shadow-[0_16px_36px_rgba(150,100,74,0.06)]">
+                    <div key={editableRow.id} className="rounded-[1.75rem] border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-4 shadow-[0_16px_36px_rgba(15,23,42,0.05)]">
                       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#cf776b] shadow-sm shadow-[#ead7cb]">
+                          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-indigo-500 shadow-sm shadow-slate-200">
                             {String(index + 1).padStart(2, '0')}
                           </span>
                           当前持仓
@@ -1203,7 +1203,7 @@ export function HoldingsExperience({ links, embedded = false }) {
                         <div className="flex items-center gap-2">
                           <Pill tone={rowStatusTone}>{rowStatusLabel}</Pill>
                           <button
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-500 ring-1 ring-[#eaded5] transition-colors hover:bg-red-50 hover:text-red-500"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-500 ring-1 ring-slate-200 transition-colors hover:bg-red-50 hover:text-red-500"
                             type="button"
                             onClick={() => handleDeleteRow(editableRow.id)}
                           >
@@ -1277,7 +1277,7 @@ export function HoldingsExperience({ links, embedded = false }) {
                           />
                         </label>
 
-                        <div className="rounded-[1.25rem] border border-[#f0e3da] bg-white px-4 py-3">
+                        <div className="rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3">
                           <div className="text-xs font-semibold text-slate-500">最新净值</div>
                           <div className="mt-2 text-lg font-bold text-slate-900">{formatNav(snapshot?.latestNav)}</div>
                           <div className="mt-1 text-xs leading-5 text-slate-400">
@@ -1285,7 +1285,7 @@ export function HoldingsExperience({ links, embedded = false }) {
                           </div>
                         </div>
 
-                        <div className="rounded-[1.25rem] border border-[#f0e3da] bg-white px-4 py-3">
+                        <div className="rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3">
                           <div className="text-xs font-semibold text-slate-500">当日盈亏</div>
                           <div className={cx('mt-2 text-lg font-bold', metrics.hasLatestNav && metrics.hasPreviousNav ? getProfitTextClass(metrics.todayProfit) : 'text-slate-400')}>
                             {metrics.hasLatestNav && metrics.hasPreviousNav ? formatSignedCurrency(metrics.todayProfit) : '--'}
@@ -1295,7 +1295,7 @@ export function HoldingsExperience({ links, embedded = false }) {
                           </div>
                         </div>
 
-                        <div className="rounded-[1.25rem] border border-[#f0e3da] bg-white px-4 py-3">
+                        <div className="rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3">
                           <div className="text-xs font-semibold text-slate-500">累计收益</div>
                           <div className={cx('mt-2 text-lg font-bold', metrics.hasLatestNav ? getProfitTextClass(metrics.totalProfit) : 'text-slate-400')}>
                             {metrics.hasLatestNav ? formatSignedCurrency(metrics.totalProfit) : '--'}
@@ -1307,7 +1307,7 @@ export function HoldingsExperience({ links, embedded = false }) {
 
                         <div className="flex items-start justify-end xl:pt-7">
                           <button
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-500 ring-1 ring-[#eaded5] transition-colors hover:bg-red-50 hover:text-red-500"
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-500 ring-1 ring-slate-200 transition-colors hover:bg-red-50 hover:text-red-500"
                             type="button"
                             onClick={() => handleDeleteRow(editableRow.id)}
                           >
@@ -1323,7 +1323,7 @@ export function HoldingsExperience({ links, embedded = false }) {
                         <MetricChip
                           label="状态"
                           value={rowStatusLabel}
-                          valueClassName={rowStatusTone === 'red' ? 'text-red-500' : rowStatusTone === 'emerald' ? 'text-emerald-600' : rowStatusTone === 'indigo' ? 'text-[#ef5d4f]' : 'text-slate-900'}
+                          valueClassName={rowStatusTone === 'red' ? 'text-red-500' : rowStatusTone === 'emerald' ? 'text-emerald-600' : rowStatusTone === 'indigo' ? 'text-indigo-600' : 'text-slate-900'}
                         />
                       </div>
                     </div>
@@ -1342,7 +1342,7 @@ export function HoldingsExperience({ links, embedded = false }) {
               />
 
               <div className="mt-5 space-y-4">
-                <div className="rounded-[1.5rem] border border-[#f0e3da] bg-[#fff8f4] p-4">
+                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">组合状态</div>
@@ -1355,7 +1355,7 @@ export function HoldingsExperience({ links, embedded = false }) {
                   </div>
                 </div>
 
-                <div className="rounded-[1.5rem] border border-[#f0e3da] bg-white p-4">
+                <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4">
                   <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
                     <Database className="h-4 w-4 text-slate-400" />
                     缓存命中
@@ -1371,11 +1371,11 @@ export function HoldingsExperience({ links, embedded = false }) {
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                  <div className="rounded-[1.5rem] border border-[#f0e3da] bg-white p-4">
+                  <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4">
                     <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">成功更新</div>
                     <div className="mt-2 text-2xl font-extrabold text-slate-900">{lastNavMeta.successCount || 0}</div>
                   </div>
-                  <div className="rounded-[1.5rem] border border-[#f0e3da] bg-white p-4">
+                  <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4">
                     <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">失败代码</div>
                     <div className="mt-2 text-2xl font-extrabold text-slate-900">{lastNavMeta.failureCount || 0}</div>
                   </div>
@@ -1407,8 +1407,8 @@ export function HoldingsExperience({ links, embedded = false }) {
               <div className="mt-5 space-y-4">
                 {importDraft ? (
                   <>
-                    <div className="rounded-[1.5rem] border border-[#f3d6ce] bg-[#fff7f4] p-4">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-[#c85e4d]">
+                    <div className="rounded-[1.5rem] border border-indigo-100 bg-indigo-50/70 p-4">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-indigo-700">
                         <FileImage className="h-4 w-4" />
                         {importDraft.fileName || '持仓截图'}
                       </div>
@@ -1444,7 +1444,7 @@ export function HoldingsExperience({ links, embedded = false }) {
                     ) : null}
                   </>
                 ) : (
-                  <div className="rounded-[1.5rem] border border-dashed border-[#e7d6cc] bg-[#fffaf7] p-5 text-sm leading-6 text-slate-500">
+                  <div className="rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm leading-6 text-slate-500">
                     当前没有待确认的 OCR 草稿。上传截图后，完整识别行会先出现在这里，再由你决定是否替换当前组合。
                   </div>
                 )}
