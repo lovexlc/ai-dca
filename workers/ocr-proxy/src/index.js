@@ -3,6 +3,7 @@ import { deriveFundSwitchComparison, sanitizeFundSwitchComparison, sanitizeFundS
 import {
   getHoldingRowErrors,
   hasMeaningfulHoldingRow,
+  isHoldingCode,
   normalizeHoldingRow,
   round as roundHolding,
   sanitizeHoldingRows,
@@ -45,6 +46,14 @@ const HOLDINGS_OCR_PROMPT = {
   systemPrompt: HOLDINGS_SYSTEM_PROMPT,
   buildUserPrompt: buildHoldingsOcrUserPrompt,
   promptVersion: HOLDINGS_PROMPT_VERSION
+};
+
+const FUND_CATALOG_URL = 'https://fund.eastmoney.com/js/fundcode_search.js';
+const FUND_CATALOG_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+let fundCatalogCache = {
+  expiresAt: 0,
+  list: null,
+  byCode: null
 };
 
 function round(value, precision = 2) {
@@ -209,20 +218,351 @@ function buildHoldingRowId(index) {
   return `holding-import-${Date.now()}-${index + 1}`;
 }
 
-function sanitizeHoldingsRows(rows = []) {
-  const warnings = [];
-  const normalizedRows = (Array.isArray(rows) ? rows : []).map((row, index) => normalizeHoldingRow({
+function hasNumericInput(value) {
+  return !(value == null || String(value).trim() === '');
+}
+
+function parseScaledNumber(value, precision = 4, { allowNegative = false } = {}) {
+  if (!hasNumericInput(value)) {
+    return 0;
+  }
+
+  const rawText = String(value).trim();
+  let scale = 1;
+  if (rawText.includes('亿')) {
+    scale = 100000000;
+  } else if (rawText.includes('万')) {
+    scale = 10000;
+  }
+
+  const normalized = rawText
+    .replace(/[,\s]/g, '')
+    .replace(/[¥￥元份]/g, '')
+    .replace(/[亿万]/g, '')
+    .trim();
+  const numericValue = Number(normalized);
+
+  if (!Number.isFinite(numericValue)) {
+    return 0;
+  }
+
+  if (!allowNegative && numericValue <= 0) {
+    return 0;
+  }
+
+  return roundHolding(numericValue * scale, precision);
+}
+
+function parsePositiveNumber(value, precision = 4) {
+  return parseScaledNumber(value, precision, { allowNegative: false });
+}
+
+function parseSignedNumber(value, precision = 2) {
+  return parseScaledNumber(value, precision, { allowNegative: true });
+}
+
+function extractVisibleHoldingCode(value = '') {
+  const digits = normalizeText(value).replace(/\D/g, '');
+  return /^\d{6}$/.test(digits) ? digits : '';
+}
+
+function normalizeFundLookupName(value = '') {
+  return normalizeText(value)
+    .replace(/\.{2,}/g, '')
+    .replace(/…+/g, '')
+    .replace(/[()（）【】\[\]\-_\s]/g, '')
+    .replace(/人民币/g, '')
+    .trim()
+    .toUpperCase();
+}
+
+function extractFundShareClassHint(value = '') {
+  const normalized = normalizeText(value).replace(/\s+/g, '');
+  const match = normalized.match(/([ABCHIOR])(?:类)?(?:\)|）)?$/i);
+  return match ? match[1].toUpperCase() : '';
+}
+
+function normalizeFundBaseName(value = '') {
+  return normalizeFundLookupName(value)
+    .replace(/后端$/i, '')
+    .replace(/([ABCHIOR])(?:类)?$/i, '');
+}
+
+function parseFundCatalogScript(scriptText = '') {
+  const match = String(scriptText || '')
+    .replace(/^\uFEFF/, '')
+    .match(/var\s+r\s*=\s*(\[.*\]);?\s*$/s);
+
+  if (!match) {
+    throw new Error('基金目录脚本格式无法解析。');
+  }
+
+  const rawList = JSON.parse(match[1]);
+  const list = rawList
+    .filter((item) => Array.isArray(item) && item.length >= 3)
+    .map((item) => {
+      const code = String(item[0] || '').trim();
+      const name = normalizeText(item[2] || '');
+      const shareClass = extractFundShareClassHint(name);
+      return {
+        code,
+        name,
+        kind: normalizeText(item[3] || ''),
+        alias: normalizeText(item[1] || ''),
+        pinyin: normalizeText(item[4] || '').toUpperCase(),
+        searchName: normalizeFundLookupName(name),
+        baseName: normalizeFundBaseName(name),
+        shareClass
+      };
+    })
+    .filter((item) => isHoldingCode(item.code) && item.name);
+
+  return {
+    list,
+    byCode: new Map(list.map((item) => [item.code, item]))
+  };
+}
+
+async function getFundCatalog() {
+  if (fundCatalogCache.list && fundCatalogCache.expiresAt > Date.now()) {
+    return fundCatalogCache;
+  }
+
+  const response = await fetch(FUND_CATALOG_URL, {
+    headers: {
+      accept: 'application/javascript, text/javascript, */*;q=0.1',
+      referer: 'https://fund.eastmoney.com/',
+      'user-agent': 'Mozilla/5.0'
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`基金目录请求失败：HTTP ${response.status}`);
+  }
+
+  const scriptText = await response.text();
+  const parsed = parseFundCatalogScript(scriptText);
+  fundCatalogCache = {
+    ...parsed,
+    expiresAt: Date.now() + FUND_CATALOG_CACHE_TTL_MS
+  };
+  return fundCatalogCache;
+}
+
+async function resolveFundByCode(code = '') {
+  if (!isHoldingCode(code)) {
+    return null;
+  }
+
+  const catalog = await getFundCatalog();
+  return catalog.byCode.get(code) || null;
+}
+
+function scoreFundCatalogEntry(entry, queryName = '') {
+  const queryNormalized = normalizeFundLookupName(queryName);
+  const queryBase = normalizeFundBaseName(queryName);
+  if (!queryNormalized) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  let score = 0;
+
+  if (entry.searchName === queryNormalized) {
+    score += 140;
+  } else if (entry.searchName.startsWith(queryNormalized)) {
+    score += 110;
+  } else if (entry.searchName.includes(queryNormalized)) {
+    score += 90;
+  }
+
+  if (queryNormalized.startsWith(entry.searchName)) {
+    score += 40;
+  }
+
+  if (queryBase) {
+    if (entry.baseName === queryBase) {
+      score += 90;
+    } else if (entry.baseName.startsWith(queryBase)) {
+      score += 65;
+    } else if (entry.baseName.includes(queryBase)) {
+      score += 45;
+    } else if (queryBase.startsWith(entry.baseName)) {
+      score += 30;
+    }
+  }
+
+  const shareClassHint = extractFundShareClassHint(queryName);
+  if (shareClassHint && entry.shareClass === shareClassHint) {
+    score += 18;
+  } else if (shareClassHint && entry.shareClass && entry.shareClass !== shareClassHint) {
+    score -= 12;
+  }
+
+  if (entry.name.includes('后端')) {
+    score -= 20;
+  }
+
+  return score;
+}
+
+async function resolveFundCodeByName(name = '') {
+  const normalizedName = normalizeText(name);
+  const queryNormalized = normalizeFundLookupName(normalizedName);
+  if (!queryNormalized || queryNormalized.length < 2) {
+    return null;
+  }
+
+  const catalog = await getFundCatalog();
+  const ranked = catalog.list
+    .map((entry) => ({
+      ...entry,
+      score: scoreFundCatalogEntry(entry, normalizedName)
+    }))
+    .filter((entry) => entry.score >= 60)
+    .sort((left, right) => right.score - left.score);
+
+  if (!ranked.length) {
+    return null;
+  }
+
+  const best = ranked[0];
+  const second = ranked[1];
+  const shareClassHint = extractFundShareClassHint(normalizedName);
+  const ambiguousWithoutShareClass = !shareClassHint
+    && second
+    && (best.score - second.score) < 8
+    && best.baseName
+    && best.baseName === second.baseName
+    && best.code !== second.code;
+
+  if (ambiguousWithoutShareClass) {
+    return null;
+  }
+
+  return best;
+}
+
+function normalizeHoldingExtractionRow(row = {}, index = 0) {
+  const rawCode = row?.code ?? row?.fundCode ?? row?.fund_code ?? '';
+  const rawName = row?.name ?? row?.fundName ?? row?.holdingName ?? row?.title ?? '';
+  const rawAvgCost = row?.avgCost ?? row?.averageCost ?? row?.buyPrice ?? row?.costPrice ?? row?.cost ?? '';
+  const rawMarketValue = row?.marketValue ?? row?.holdingAmount ?? row?.amount ?? row?.assetValue ?? row?.market_amount ?? '';
+  const rawHoldingProfit = row?.holdingProfit ?? row?.profit ?? row?.profitAmount ?? row?.income ?? row?.holding_income ?? '';
+  const rawShares = row?.shares ?? row?.units ?? row?.holdingShares ?? row?.holdingUnits ?? row?.positionShares ?? '';
+  const rawUnitNav = row?.unitNav ?? row?.nav ?? row?.latestNav ?? row?.netValue ?? row?.unitNetValue ?? '';
+  const rawUnitNavDate = row?.unitNavDate ?? row?.navDate ?? row?.latestNavDate ?? row?.netValueDate ?? '';
+
+  return {
     id: normalizeText(row?.id) || buildHoldingRowId(index),
-    code: normalizeText(row?.code || row?.fundCode || ''),
-    name: normalizeText(row?.name || row?.fundName || ''),
-    avgCost: row?.avgCost ?? row?.averageCost ?? row?.buyPrice ?? row?.costPrice,
-    shares: row?.shares ?? row?.units ?? row?.holdingShares ?? row?.holdingUnits
+    code: extractVisibleHoldingCode(rawCode),
+    name: normalizeText(rawName),
+    avgCost: parsePositiveNumber(rawAvgCost, 4),
+    hasAvgCost: hasNumericInput(rawAvgCost),
+    marketValue: parsePositiveNumber(rawMarketValue, 2),
+    hasMarketValue: hasNumericInput(rawMarketValue),
+    holdingProfit: parseSignedNumber(rawHoldingProfit, 2),
+    hasHoldingProfit: hasNumericInput(rawHoldingProfit),
+    shares: parsePositiveNumber(rawShares, 2),
+    hasShares: hasNumericInput(rawShares),
+    unitNav: parsePositiveNumber(rawUnitNav, 4),
+    hasUnitNav: hasNumericInput(rawUnitNav),
+    unitNavDate: normalizeDate(rawUnitNavDate || '')
+  };
+}
+
+async function enrichHoldingExtractionRow(rawRow, generatedAt) {
+  const warnings = [];
+  const workingRow = normalizeHoldingExtractionRow(rawRow);
+
+  let resolvedCode = workingRow.code;
+  let resolvedName = workingRow.name;
+  let resolvedAvgCost = workingRow.avgCost;
+  let resolvedShares = workingRow.shares;
+  let resolvedUnitNav = workingRow.unitNav;
+
+  let catalogMatch = null;
+
+  if (isHoldingCode(resolvedCode)) {
+    try {
+      catalogMatch = await resolveFundByCode(resolvedCode);
+      if (catalogMatch?.name && (!resolvedName || resolvedName.includes('...') || resolvedName.includes('…'))) {
+        resolvedName = catalogMatch.name;
+      }
+    } catch (error) {
+      warnings.push(`代码 ${resolvedCode} 补全名称失败：${error instanceof Error ? error.message : '基金目录读取失败。'}`);
+    }
+  } else if (resolvedName) {
+    try {
+      catalogMatch = await resolveFundCodeByName(resolvedName);
+      if (catalogMatch?.code) {
+        resolvedCode = catalogMatch.code;
+        if (catalogMatch.name) {
+          resolvedName = catalogMatch.name;
+        }
+      } else {
+        warnings.push(`${resolvedName} 未能匹配到唯一基金代码。`);
+      }
+    } catch (error) {
+      warnings.push(`${resolvedName || '某一持仓行'} 基金代码补全失败：${error instanceof Error ? error.message : '基金目录读取失败。'}`);
+    }
+  }
+
+  if (!(resolvedShares > 0) && workingRow.marketValue > 0 && workingRow.unitNav > 0) {
+    resolvedShares = roundHolding(workingRow.marketValue / workingRow.unitNav, 2);
+    warnings.push(`${resolvedName || resolvedCode || '某一持仓行'} 已按图片净值计算持仓份额。`);
+  }
+
+  if (!(resolvedShares > 0) && workingRow.marketValue > 0 && isHoldingCode(resolvedCode)) {
+    try {
+      const liveSnapshot = await fetchFundNavSnapshot(resolvedCode, generatedAt);
+      if (liveSnapshot.latestNav > 0) {
+        resolvedUnitNav = liveSnapshot.latestNav;
+        resolvedShares = roundHolding(workingRow.marketValue / liveSnapshot.latestNav, 2);
+        warnings.push(`${resolvedName || resolvedCode} 已按联网净值估算持仓份额。`);
+      }
+    } catch (error) {
+      warnings.push(`${resolvedName || resolvedCode} 份额估算失败：${error instanceof Error ? error.message : '净值查询失败。'}`);
+    }
+  }
+
+  if (!(resolvedAvgCost > 0) && workingRow.marketValue > 0 && resolvedShares > 0 && workingRow.hasHoldingProfit) {
+    const costAmount = roundHolding(workingRow.marketValue - workingRow.holdingProfit, 2);
+    if (costAmount > 0) {
+      resolvedAvgCost = roundHolding(costAmount / resolvedShares, 4);
+    }
+  }
+
+  const normalizedRow = normalizeHoldingRow({
+    id: workingRow.id,
+    code: resolvedCode,
+    name: resolvedName || catalogMatch?.name || '',
+    avgCost: resolvedAvgCost,
+    shares: resolvedShares
   }, {
     idPrefix: 'holding-import'
-  }));
+  });
+
+  return {
+    row: normalizedRow,
+    warnings
+  };
+}
+
+async function sanitizeHoldingsRows(rows = []) {
+  const warnings = [];
+  const generatedAt = new Date().toISOString();
+  const enrichedRows = await Promise.all(
+    (Array.isArray(rows) ? rows : []).map((row, index) => enrichHoldingExtractionRow({
+      ...row,
+      id: normalizeText(row?.id) || buildHoldingRowId(index)
+    }, generatedAt))
+  );
 
   const validRows = [];
-  for (const row of normalizedRows) {
+  for (const item of enrichedRows) {
+    warnings.push(...item.warnings.map((entry) => normalizeText(entry)).filter(Boolean));
+    const row = item.row;
+
     if (!hasMeaningfulHoldingRow(row)) {
       continue;
     }
@@ -926,7 +1266,7 @@ async function handleHoldingsOcr(request, env) {
   const startedAt = Date.now();
   const { model, payload } = await callUpstreamModelWithRetry(file, env, HOLDINGS_OCR_PROMPT);
   const extracted = parseModelResponse(payload);
-  const rowResult = sanitizeHoldingsRows(extracted.rows || []);
+  const rowResult = await sanitizeHoldingsRows(extracted.rows || []);
   const rows = rowResult.rows;
   const warnings = [
     ...(Array.isArray(extracted.warnings) ? extracted.warnings.map((item) => normalizeText(item)).filter(Boolean) : []),
