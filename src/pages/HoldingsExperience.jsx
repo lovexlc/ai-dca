@@ -339,16 +339,6 @@ function HeroMiniStat({ label, value, note }) {
   );
 }
 
-function WorkflowStep({ step, title, description }) {
-  return (
-    <div className="rounded-[1.35rem] border border-slate-200 bg-slate-50 p-4">
-      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-500">Step {step}</div>
-      <div className="mt-2 text-sm font-bold text-slate-900">{title}</div>
-      <div className="mt-2 text-sm leading-6 text-slate-500">{description}</div>
-    </div>
-  );
-}
-
 function MetricChip({ label, value, valueClassName = 'text-slate-900' }) {
   return (
     <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-3.5 py-3">
@@ -1048,6 +1038,43 @@ export function HoldingsExperience({ links, embedded = false }) {
                       {ocrState.error}
                     </div>
                   ) : null}
+
+                  {importDraft ? (
+                    <div className="mt-4 rounded-[1.35rem] bg-white/10 p-4 ring-1 ring-white/14 backdrop-blur-sm">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                            <CheckCircle2 className="h-4 w-4 text-indigo-200" />
+                            草稿已生成，确认后替换当前组合
+                          </div>
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <Pill tone="indigo">{importDraft.rows.length} 行草稿</Pill>
+                            <Pill tone="slate">置信度 {(Number(importDraft.confidence || 0) * 100).toFixed(0)}%</Pill>
+                            {importDraft.durationMs > 0 ? <Pill tone="slate">{formatDuration(importDraft.durationMs)}</Pill> : null}
+                          </div>
+                          {importDraft.warnings?.length ? (
+                            <div className="mt-3 text-sm leading-6 text-amber-100">
+                              {importDraft.warnings.slice(0, 3).map((item) => (
+                                <div key={item}>{item}</div>
+                              ))}
+                              {importDraft.warnings.length > 3 ? <div>还有 {importDraft.warnings.length - 3} 条警告未展开。</div> : null}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="flex flex-col gap-3 sm:flex-row">
+                          <button className={coralPrimaryButtonClass} disabled={!importDraft.rows.length} type="button" onClick={handleApplyDraft}>
+                            <CheckCircle2 className="h-4 w-4" />
+                            用草稿替换当前组合
+                          </button>
+                          <button className={heroButtonClass} type="button" onClick={() => setImportDraft(null)}>
+                            <X className="h-4 w-4" />
+                            放弃本次草稿
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1111,370 +1138,223 @@ export function HoldingsExperience({ links, embedded = false }) {
           />
         </div>
 
-        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,0.85fr)]">
-          <div className="space-y-6">
-            <div className={cx(warmSurfaceClass, 'p-6')}>
-              <SectionHeader
-                action={(
-                  <>
-                    <button className={softButtonClass} type="button" onClick={handleAddRow}>
-                      <Plus className="h-4 w-4" />
-                      新增持仓
-                    </button>
-                    <button className={mutedButtonClass} type="button" onClick={handleClearRows}>
-                      <Trash2 className="h-4 w-4" />
-                      清空全部
-                    </button>
-                  </>
-                )}
-                description="列表模式参考基金账本明细页，保留可编辑字段，但把净值、今日盈亏和累计收益改成更聚焦的收益列。"
-                eyebrow="List Mode"
-                title="持仓列表"
-              />
+        <div className="mt-6">
+          <div className={cx(warmSurfaceClass, 'p-6')}>
+            <SectionHeader
+              action={(
+                <>
+                  <button className={softButtonClass} type="button" onClick={handleAddRow}>
+                    <Plus className="h-4 w-4" />
+                    新增持仓
+                  </button>
+                  <button className={mutedButtonClass} type="button" onClick={handleClearRows}>
+                    <Trash2 className="h-4 w-4" />
+                    清空全部
+                  </button>
+                </>
+              )}
+              description="列表模式参考基金账本明细页，保留可编辑字段，但把净值、今日盈亏和累计收益改成更聚焦的收益列。"
+              eyebrow="List Mode"
+              title="持仓列表"
+            />
 
-              {!hasMeaningfulRows ? (
-                <div className="mt-6 rounded-[1.75rem] border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center">
-                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm shadow-slate-200">
-                    <Wallet className="h-6 w-6 text-indigo-500" />
-                  </div>
-                  <div className="mt-4 text-lg font-bold text-slate-900">当前还没有持仓组合</div>
-                  <p className="mt-2 text-sm leading-6 text-slate-500">
-                    你可以先上传截图生成导入草稿，也可以直接新增一行，录入基金代码、买入均价和持有份数。
-                  </p>
+            {!hasMeaningfulRows ? (
+              <div className="mt-6 rounded-[1.75rem] border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm shadow-slate-200">
+                  <Wallet className="h-6 w-6 text-indigo-500" />
                 </div>
-              ) : null}
-
-              <div className="mt-6 hidden grid-cols-[minmax(0,1.35fr)_minmax(0,0.84fr)_minmax(0,0.84fr)_minmax(0,0.9fr)_minmax(0,0.95fr)_minmax(0,1fr)_auto] gap-3 px-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400 xl:grid">
-                <span>基金 / 代码</span>
-                <span>买入均价</span>
-                <span>持有份数</span>
-                <span>最新净值</span>
-                <span>当日盈亏</span>
-                <span>累计收益</span>
-                <span className="text-right">操作</span>
+                <div className="mt-4 text-lg font-bold text-slate-900">当前还没有持仓组合</div>
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                  你可以先上传截图生成导入草稿，也可以直接新增一行，录入基金代码、买入均价和持有份数。
+                </p>
               </div>
+            ) : null}
 
-              <div className="mt-6 space-y-4">
-                {rows.map((editableRow, index) => {
-                  const normalizedRow = normalizedRowMap[editableRow.id] || normalizeHoldingRow(editableRow);
-                  const errors = rowErrorsById[editableRow.id] || {};
-                  const snapshot = snapshotsByCode[normalizedRow.code] || null;
-                  const metrics = buildHoldingMetrics(normalizedRow, snapshot);
-                  const runtime = rowRuntimeById[editableRow.id] || {};
-                  const rowTotalRate = computeRatePercent(metrics.totalProfit, metrics.cost);
-                  const rowTodayRateBase = (metrics.marketValue - metrics.todayProfit) > 0
-                    ? (metrics.marketValue - metrics.todayProfit)
-                    : metrics.cost;
-                  const rowTodayRate = computeRatePercent(metrics.todayProfit, rowTodayRateBase);
+            <div className="mt-6 hidden grid-cols-[minmax(0,1.35fr)_minmax(0,0.84fr)_minmax(0,0.84fr)_minmax(0,0.9fr)_minmax(0,0.95fr)_minmax(0,1fr)_auto] gap-3 px-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400 xl:grid">
+              <span>基金 / 代码</span>
+              <span>买入均价</span>
+              <span>持有份数</span>
+              <span>最新净值</span>
+              <span>当日盈亏</span>
+              <span>累计收益</span>
+              <span className="text-right">操作</span>
+            </div>
 
-                  let rowStatusLabel = '待完善';
-                  let rowStatusTone = 'slate';
-                  let rowStatusNote = '补全代码、均价和份数后自动计算。';
+            <div className="mt-6 space-y-4">
+              {rows.map((editableRow, index) => {
+                const normalizedRow = normalizedRowMap[editableRow.id] || normalizeHoldingRow(editableRow);
+                const errors = rowErrorsById[editableRow.id] || {};
+                const snapshot = snapshotsByCode[normalizedRow.code] || null;
+                const metrics = buildHoldingMetrics(normalizedRow, snapshot);
+                const runtime = rowRuntimeById[editableRow.id] || {};
+                const rowTotalRate = computeRatePercent(metrics.totalProfit, metrics.cost);
+                const rowTodayRateBase = (metrics.marketValue - metrics.todayProfit) > 0
+                  ? (metrics.marketValue - metrics.todayProfit)
+                  : metrics.cost;
+                const rowTodayRate = computeRatePercent(metrics.todayProfit, rowTodayRateBase);
 
-                  if (Object.keys(errors).length) {
-                    rowStatusLabel = '待完善';
-                    rowStatusTone = 'slate';
-                    rowStatusNote = summarizeHoldingRowErrors(errors);
-                  } else if (runtime.status === 'loading') {
-                    rowStatusLabel = '更新中';
-                    rowStatusTone = 'indigo';
-                    rowStatusNote = '正在请求该基金的最新公布净值。';
-                  } else if (runtime.status === 'error') {
-                    rowStatusLabel = '更新失败';
-                    rowStatusTone = 'red';
-                    rowStatusNote = runtime.error || '净值更新失败，已保留上次成功快照。';
-                  } else if (snapshot?.latestNav > 0 && snapshot?.previousNav > 0) {
-                    rowStatusLabel = '已更新';
-                    rowStatusTone = 'emerald';
-                    rowStatusNote = snapshot.latestNavDate
-                      ? `净值日期 ${formatDateLabel(snapshot.latestNavDate)}`
-                      : '已同步到最近成功快照。';
-                  }
+                let rowStatusLabel = '待完善';
+                let rowStatusTone = 'slate';
+                let rowStatusNote = '补全代码、均价和份数后自动计算。';
 
-                  return (
-                    <div key={editableRow.id} className="rounded-[1.75rem] border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-4 shadow-[0_16px_36px_rgba(15,23,42,0.05)]">
-                      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-indigo-500 shadow-sm shadow-slate-200">
-                            {String(index + 1).padStart(2, '0')}
-                          </span>
-                          当前持仓
+                if (Object.keys(errors).length) {
+                  rowStatusLabel = '待完善';
+                  rowStatusTone = 'slate';
+                  rowStatusNote = summarizeHoldingRowErrors(errors);
+                } else if (runtime.status === 'loading') {
+                  rowStatusLabel = '更新中';
+                  rowStatusTone = 'indigo';
+                  rowStatusNote = '正在请求该基金的最新公布净值。';
+                } else if (runtime.status === 'error') {
+                  rowStatusLabel = '更新失败';
+                  rowStatusTone = 'red';
+                  rowStatusNote = runtime.error || '净值更新失败，已保留上次成功快照。';
+                } else if (snapshot?.latestNav > 0 && snapshot?.previousNav > 0) {
+                  rowStatusLabel = '已更新';
+                  rowStatusTone = 'emerald';
+                  rowStatusNote = snapshot.latestNavDate
+                    ? `净值日期 ${formatDateLabel(snapshot.latestNavDate)}`
+                    : '已同步到最近成功快照。';
+                }
+
+                return (
+                  <div key={editableRow.id} className="rounded-[1.75rem] border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-4 shadow-[0_16px_36px_rgba(15,23,42,0.05)]">
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-indigo-500 shadow-sm shadow-slate-200">
+                          {String(index + 1).padStart(2, '0')}
+                        </span>
+                        当前持仓
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Pill tone={rowStatusTone}>{rowStatusLabel}</Pill>
+                        <button
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-500 ring-1 ring-slate-200 transition-colors hover:bg-red-50 hover:text-red-500"
+                          type="button"
+                          onClick={() => handleDeleteRow(editableRow.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.84fr)_minmax(0,0.84fr)_minmax(0,0.9fr)_minmax(0,0.95fr)_minmax(0,1fr)_auto]">
+                      <div className="min-w-0 space-y-3">
+                        <div className="grid gap-3 sm:grid-cols-[minmax(120px,0.6fr)_minmax(0,1fr)]">
+                          <label className="space-y-2">
+                            <span className="text-xs font-semibold text-slate-500">基金代码</span>
+                            <input
+                              className={cx(
+                                tableInputClass,
+                                editorInputClass,
+                                errors.code && 'border-red-200 bg-red-50 focus:border-red-300'
+                              )}
+                              inputMode="numeric"
+                              maxLength={6}
+                              placeholder="例如 110022"
+                              value={editableRow.code}
+                              onChange={(event) => updateRowField(editableRow.id, 'code', event.target.value)}
+                            />
+                          </label>
+                          <label className="space-y-2">
+                            <span className="text-xs font-semibold text-slate-500">基金名称</span>
+                            <input
+                              className={editorInputClass}
+                              placeholder="可选，支持手动补全"
+                              value={editableRow.name}
+                              onChange={(event) => updateRowField(editableRow.id, 'name', event.target.value)}
+                            />
+                          </label>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Pill tone={rowStatusTone}>{rowStatusLabel}</Pill>
-                          <button
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-500 ring-1 ring-slate-200 transition-colors hover:bg-red-50 hover:text-red-500"
-                            type="button"
-                            onClick={() => handleDeleteRow(editableRow.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                          <RowStatusIcon status={rowStatusLabel} />
+                          <span>{rowStatusNote}</span>
+                          {snapshot?.cacheSource ? <Pill tone="slate">{snapshot.cacheHit ? '缓存命中' : '实时更新'}</Pill> : null}
                         </div>
                       </div>
 
-                      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.84fr)_minmax(0,0.84fr)_minmax(0,0.9fr)_minmax(0,0.95fr)_minmax(0,1fr)_auto]">
-                        <div className="min-w-0 space-y-3">
-                          <div className="grid gap-3 sm:grid-cols-[minmax(120px,0.6fr)_minmax(0,1fr)]">
-                            <label className="space-y-2">
-                              <span className="text-xs font-semibold text-slate-500">基金代码</span>
-                              <input
-                                className={cx(
-                                  tableInputClass,
-                                  editorInputClass,
-                                  errors.code && 'border-red-200 bg-red-50 focus:border-red-300'
-                                )}
-                                inputMode="numeric"
-                                maxLength={6}
-                                placeholder="例如 110022"
-                                value={editableRow.code}
-                                onChange={(event) => updateRowField(editableRow.id, 'code', event.target.value)}
-                              />
-                            </label>
-                            <label className="space-y-2">
-                              <span className="text-xs font-semibold text-slate-500">基金名称</span>
-                              <input
-                                className={editorInputClass}
-                                placeholder="可选，支持手动补全"
-                                value={editableRow.name}
-                                onChange={(event) => updateRowField(editableRow.id, 'name', event.target.value)}
-                              />
-                            </label>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                            <RowStatusIcon status={rowStatusLabel} />
-                            <span>{rowStatusNote}</span>
-                            {snapshot?.cacheSource ? <Pill tone="slate">{snapshot.cacheHit ? '缓存命中' : '实时更新'}</Pill> : null}
-                          </div>
-                        </div>
-
-                        <label className="space-y-2">
-                          <span className="text-xs font-semibold text-slate-500">买入均价</span>
-                          <input
-                            className={cx(
-                              tableInputClass,
-                              editorInputClass,
-                              errors.avgCost && 'border-red-200 bg-red-50 focus:border-red-300'
-                            )}
-                            inputMode="decimal"
-                            placeholder="0.0000"
-                            value={editableRow.avgCost}
-                            onChange={(event) => updateRowField(editableRow.id, 'avgCost', event.target.value)}
-                          />
-                        </label>
-
-                        <label className="space-y-2">
-                          <span className="text-xs font-semibold text-slate-500">持有份数</span>
-                          <input
-                            className={cx(
-                              tableInputClass,
-                              editorInputClass,
-                              errors.shares && 'border-red-200 bg-red-50 focus:border-red-300'
-                            )}
-                            inputMode="decimal"
-                            placeholder="0.00"
-                            value={editableRow.shares}
-                            onChange={(event) => updateRowField(editableRow.id, 'shares', event.target.value)}
-                          />
-                        </label>
-
-                        <div className="rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3">
-                          <div className="text-xs font-semibold text-slate-500">最新净值</div>
-                          <div className="mt-2 text-lg font-bold text-slate-900">{formatNav(snapshot?.latestNav)}</div>
-                          <div className="mt-1 text-xs leading-5 text-slate-400">
-                            {snapshot?.latestNavDate ? `最新 ${formatDateLabel(snapshot.latestNavDate)}` : '等待净值刷新'}
-                          </div>
-                        </div>
-
-                        <div className="rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3">
-                          <div className="text-xs font-semibold text-slate-500">当日盈亏</div>
-                          <div className={cx('mt-2 text-lg font-bold', metrics.hasLatestNav && metrics.hasPreviousNav ? getProfitTextClass(metrics.todayProfit) : 'text-slate-400')}>
-                            {metrics.hasLatestNav && metrics.hasPreviousNav ? formatSignedCurrency(metrics.todayProfit) : '--'}
-                          </div>
-                          <div className="mt-1 text-xs leading-5 text-slate-400">
-                            {metrics.hasLatestNav && metrics.hasPreviousNav ? formatSignedPercent(rowTodayRate) : '上一交易日待同步'}
-                          </div>
-                        </div>
-
-                        <div className="rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3">
-                          <div className="text-xs font-semibold text-slate-500">累计收益</div>
-                          <div className={cx('mt-2 text-lg font-bold', metrics.hasLatestNav ? getProfitTextClass(metrics.totalProfit) : 'text-slate-400')}>
-                            {metrics.hasLatestNav ? formatSignedCurrency(metrics.totalProfit) : '--'}
-                          </div>
-                          <div className="mt-1 text-xs leading-5 text-slate-400">
-                            {metrics.hasLatestNav ? `${formatSignedPercent(rowTotalRate)} · 市值 ${formatCurrency(metrics.marketValue, '¥', 2)}` : '当前市值待同步'}
-                          </div>
-                        </div>
-
-                        <div className="flex items-start justify-end xl:pt-7">
-                          <button
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-500 ring-1 ring-slate-200 transition-colors hover:bg-red-50 hover:text-red-500"
-                            type="button"
-                            onClick={() => handleDeleteRow(editableRow.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                        <MetricChip label="前值日期" value={snapshot?.previousNavDate ? formatDateLabel(snapshot.previousNavDate) : '--'} />
-                        <MetricChip label="快照时间" value={snapshot?.updatedAt ? formatDateTimeLabel(snapshot.updatedAt) : '--'} />
-                        <MetricChip label="缓存来源" value={snapshot?.cacheSource ? describeCacheSource(snapshot) : '等待刷新'} />
-                        <MetricChip
-                          label="状态"
-                          value={rowStatusLabel}
-                          valueClassName={rowStatusTone === 'red' ? 'text-red-500' : rowStatusTone === 'emerald' ? 'text-emerald-600' : rowStatusTone === 'indigo' ? 'text-indigo-600' : 'text-slate-900'}
+                      <label className="space-y-2">
+                        <span className="text-xs font-semibold text-slate-500">买入均价</span>
+                        <input
+                          className={cx(
+                            tableInputClass,
+                            editorInputClass,
+                            errors.avgCost && 'border-red-200 bg-red-50 focus:border-red-300'
+                          )}
+                          inputMode="decimal"
+                          placeholder="0.0000"
+                          value={editableRow.avgCost}
+                          onChange={(event) => updateRowField(editableRow.id, 'avgCost', event.target.value)}
                         />
+                      </label>
+
+                      <label className="space-y-2">
+                        <span className="text-xs font-semibold text-slate-500">持有份数</span>
+                        <input
+                          className={cx(
+                            tableInputClass,
+                            editorInputClass,
+                            errors.shares && 'border-red-200 bg-red-50 focus:border-red-300'
+                          )}
+                          inputMode="decimal"
+                          placeholder="0.00"
+                          value={editableRow.shares}
+                          onChange={(event) => updateRowField(editableRow.id, 'shares', event.target.value)}
+                        />
+                      </label>
+
+                      <div className="rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3">
+                        <div className="text-xs font-semibold text-slate-500">最新净值</div>
+                        <div className="mt-2 text-lg font-bold text-slate-900">{formatNav(snapshot?.latestNav)}</div>
+                        <div className="mt-1 text-xs leading-5 text-slate-400">
+                          {snapshot?.latestNavDate ? `最新 ${formatDateLabel(snapshot.latestNavDate)}` : '等待净值刷新'}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
 
-          <div className="space-y-6">
-            <div className={cx(warmSurfaceClass, 'p-6')}>
-              <SectionHeader
-                description="组合级今日收益只在全部持仓完成净值拉取后展示最终结果。"
-                eyebrow="NAV Sync"
-                title="净值同步状态"
-              />
-
-              <div className="mt-5 space-y-4">
-                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">组合状态</div>
-                      <div className="mt-2 text-lg font-bold text-slate-900">{resolveSyncLabel(lastNavMeta.status)}</div>
-                    </div>
-                    <Pill tone={resolveSyncTone(lastNavMeta.status)}>{resolveSyncLabel(lastNavMeta.status)}</Pill>
-                  </div>
-                  <div className="mt-3 text-sm leading-6 text-slate-500">
-                    {lastNavMeta.updatedAt ? `最近触发 ${formatDateTimeLabel(lastNavMeta.updatedAt)}` : '进入页面后自动刷新。'}
-                  </div>
-                </div>
-
-                <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                    <Database className="h-4 w-4 text-slate-400" />
-                    缓存命中
-                  </div>
-                  <div className="mt-2 text-sm leading-6 text-slate-500">
-                    {describeCacheSource(lastNavMeta.cache)}
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    {lastNavMeta.cache?.key ? <Pill tone="slate">key: {lastNavMeta.cache.key.slice(0, 12)}</Pill> : null}
-                    {lastNavMeta.cache?.codeCount ? <Pill tone="slate">{lastNavMeta.cache.codeCount} 个代码</Pill> : null}
-                    {lastNavMeta.cache?.hit ? <Pill tone="indigo">缓存命中</Pill> : null}
-                  </div>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                  <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4">
-                    <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">成功更新</div>
-                    <div className="mt-2 text-2xl font-extrabold text-slate-900">{lastNavMeta.successCount || 0}</div>
-                  </div>
-                  <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4">
-                    <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">失败代码</div>
-                    <div className="mt-2 text-2xl font-extrabold text-slate-900">{lastNavMeta.failureCount || 0}</div>
-                  </div>
-                </div>
-
-                {lastNavMeta.errors?.length ? (
-                  <div className="rounded-[1.5rem] border border-red-100 bg-red-50 p-4">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-red-600">
-                      <AlertTriangle className="h-4 w-4" />
-                      失败明细
-                    </div>
-                    <div className="mt-3 space-y-2 text-sm leading-6 text-red-600">
-                      {lastNavMeta.errors.map((item) => (
-                        <div key={item}>{item}</div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className={cx(warmSurfaceClass, 'p-6')}>
-              <SectionHeader
-                description="识别结果不会直接覆盖当前组合，需要你确认后才会替换。"
-                eyebrow="OCR Draft"
-                title="导入草稿"
-              />
-
-              <div className="mt-5 space-y-4">
-                {importDraft ? (
-                  <>
-                    <div className="rounded-[1.5rem] border border-indigo-100 bg-indigo-50/70 p-4">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-indigo-700">
-                        <FileImage className="h-4 w-4" />
-                        {importDraft.fileName || '持仓截图'}
+                      <div className="rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3">
+                        <div className="text-xs font-semibold text-slate-500">当日盈亏</div>
+                        <div className={cx('mt-2 text-lg font-bold', metrics.hasLatestNav && metrics.hasPreviousNav ? getProfitTextClass(metrics.todayProfit) : 'text-slate-400')}>
+                          {metrics.hasLatestNav && metrics.hasPreviousNav ? formatSignedCurrency(metrics.todayProfit) : '--'}
+                        </div>
+                        <div className="mt-1 text-xs leading-5 text-slate-400">
+                          {metrics.hasLatestNav && metrics.hasPreviousNav ? formatSignedPercent(rowTodayRate) : '上一交易日待同步'}
+                        </div>
                       </div>
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <Pill tone="indigo">{importDraft.rows.length} 行草稿</Pill>
-                        <Pill tone="slate">置信度 {(Number(importDraft.confidence || 0) * 100).toFixed(0)}%</Pill>
-                        {importDraft.durationMs > 0 ? <Pill tone="slate">{formatDuration(importDraft.durationMs)}</Pill> : null}
+
+                      <div className="rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3">
+                        <div className="text-xs font-semibold text-slate-500">累计收益</div>
+                        <div className={cx('mt-2 text-lg font-bold', metrics.hasLatestNav ? getProfitTextClass(metrics.totalProfit) : 'text-slate-400')}>
+                          {metrics.hasLatestNav ? formatSignedCurrency(metrics.totalProfit) : '--'}
+                        </div>
+                        <div className="mt-1 text-xs leading-5 text-slate-400">
+                          {metrics.hasLatestNav ? `${formatSignedPercent(rowTotalRate)} · 市值 ${formatCurrency(metrics.marketValue, '¥', 2)}` : '当前市值待同步'}
+                        </div>
                       </div>
-                      <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                        <button className={coralPrimaryButtonClass} disabled={!importDraft.rows.length} type="button" onClick={handleApplyDraft}>
-                          <CheckCircle2 className="h-4 w-4" />
-                          用草稿替换当前组合
-                        </button>
-                        <button className={softButtonClass} type="button" onClick={() => setImportDraft(null)}>
-                          <X className="h-4 w-4" />
-                          放弃本次草稿
+
+                      <div className="flex items-start justify-end xl:pt-7">
+                        <button
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-500 ring-1 ring-slate-200 transition-colors hover:bg-red-50 hover:text-red-500"
+                          type="button"
+                          onClick={() => handleDeleteRow(editableRow.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     </div>
 
-                    {importDraft.warnings?.length ? (
-                      <div className="rounded-[1.5rem] border border-amber-100 bg-amber-50 p-4">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-amber-700">
-                          <AlertTriangle className="h-4 w-4" />
-                          OCR 警告
-                        </div>
-                        <div className="mt-3 space-y-2 text-sm leading-6 text-amber-700">
-                          {importDraft.warnings.map((item) => (
-                            <div key={item}>{item}</div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                  </>
-                ) : (
-                  <div className="rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm leading-6 text-slate-500">
-                    当前没有待确认的 OCR 草稿。上传截图后，完整识别行会先出现在这里，再由你决定是否替换当前组合。
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <MetricChip label="前值日期" value={snapshot?.previousNavDate ? formatDateLabel(snapshot.previousNavDate) : '--'} />
+                      <MetricChip label="快照时间" value={snapshot?.updatedAt ? formatDateTimeLabel(snapshot.updatedAt) : '--'} />
+                      <MetricChip label="缓存来源" value={snapshot?.cacheSource ? describeCacheSource(snapshot) : '等待刷新'} />
+                      <MetricChip
+                        label="状态"
+                        value={rowStatusLabel}
+                        valueClassName={rowStatusTone === 'red' ? 'text-red-500' : rowStatusTone === 'emerald' ? 'text-emerald-600' : rowStatusTone === 'indigo' ? 'text-indigo-600' : 'text-slate-900'}
+                      />
+                    </div>
                   </div>
-                )}
-              </div>
-            </div>
-
-            <div className={cx(warmSurfaceClass, 'p-6')}>
-              <SectionHeader
-                description="延续现有工作台的编辑节奏：先识别，再校正，最后看组合收益。"
-                eyebrow="Guide"
-                title="操作提示"
-              />
-
-              <div className="mt-5 grid gap-3">
-                <WorkflowStep
-                  description="上传截图后先生成草稿，不会覆盖当前列表。识别出的行可以先看数量、置信度和警告，再决定是否应用。"
-                  step="01"
-                  title="先识别，再确认替换"
-                />
-                <WorkflowStep
-                  description="只有基金代码、买入均价和持有份数三项完整时，当前行才会被纳入资产与收益汇总。"
-                  step="02"
-                  title="补全代码、均价和份数"
-                />
-                <WorkflowStep
-                  description="页面会自动保存最近一次成功净值快照。即使本次回源失败，也会优先展示最近成功结果。"
-                  step="03"
-                  title="看收益时同步检查净值状态"
-                />
-              </div>
+                );
+              })}
             </div>
           </div>
         </div>
