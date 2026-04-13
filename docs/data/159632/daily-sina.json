@@ -4,40 +4,16 @@
   "fund_name": "华安纳斯达克100ETF(QDII)",
   "index_key": "nasdaq100",
   "range": {
-    "start_date": "2024-04-10",
-    "end_date": "2026-04-10",
+    "start_date": "2024-04-15",
+    "end_date": "2026-04-13",
     "lookback_days": 730
   },
   "requested_bars": 700,
   "source": "sina:CN_MarketDataService.getKLineData",
   "source_symbol": "sz159632",
   "fund_list_source": "/home/runner/work/ai-dca/ai-dca/data/all_nasdq.json",
-  "generated_at": "2026-04-10T08:54:10.351Z",
+  "generated_at": "2026-04-13T09:20:43.742Z",
   "bars": [
-    {
-      "date": "2024-04-10",
-      "open": 1.516,
-      "close": 1.516,
-      "high": 1.517,
-      "low": 1.514,
-      "volume": 48312700
-    },
-    {
-      "date": "2024-04-11",
-      "open": 1.503,
-      "close": 1.502,
-      "high": 1.504,
-      "low": 1.501,
-      "volume": 54477700
-    },
-    {
-      "date": "2024-04-12",
-      "open": 1.526,
-      "close": 1.526,
-      "high": 1.528,
-      "low": 1.523,
-      "volume": 171201539
-    },
     {
       "date": "2024-04-15",
       "open": 1.506,
@@ -3893,6 +3869,14 @@
       "high": 2.026,
       "low": 2.008,
       "volume": 88720500
+    },
+    {
+      "date": "2026-04-13",
+      "open": 1.999,
+      "close": 2.005,
+      "high": 2.008,
+      "low": 1.997,
+      "volume": 102803700
     }
   ]
 }
