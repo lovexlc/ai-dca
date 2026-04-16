@@ -4,24 +4,16 @@
   "fund_name": "华泰柏瑞纳斯达克100ETF(QDII)",
   "index_key": "nasdaq100",
   "range": {
-    "start_date": "2024-04-15",
-    "end_date": "2026-04-15",
+    "start_date": "2024-04-16",
+    "end_date": "2026-04-16",
     "lookback_days": 730
   },
   "requested_bars": 700,
   "source": "sina:CN_MarketDataService.getKLineData",
   "source_symbol": "sh513110",
   "fund_list_source": "/home/runner/work/ai-dca/ai-dca/data/all_nasdq.json",
-  "generated_at": "2026-04-15T09:06:14.110Z",
+  "generated_at": "2026-04-16T09:05:18.441Z",
   "bars": [
-    {
-      "date": "2024-04-15",
-      "open": 1.512,
-      "close": 1.517,
-      "high": 1.518,
-      "low": 1.512,
-      "volume": 21179700
-    },
     {
       "date": "2024-04-16",
       "open": 1.49,
@@ -3893,6 +3885,14 @@
       "high": 2.11,
       "low": 2.094,
       "volume": 59396750
+    },
+    {
+      "date": "2026-04-16",
+      "open": 2.131,
+      "close": 2.143,
+      "high": 2.144,
+      "low": 2.13,
+      "volume": 84789014
     }
   ]
 }
