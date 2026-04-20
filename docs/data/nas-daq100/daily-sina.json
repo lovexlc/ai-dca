@@ -5,8 +5,8 @@
   "index_key": "nasdaq100",
   "currency": "$",
   "range": {
-    "start_date": "2024-04-17",
-    "end_date": "2026-04-16",
+    "start_date": "2024-04-18",
+    "end_date": "2026-04-17",
     "requested_range": "2y",
     "requested_interval": "1d"
   },
@@ -14,16 +14,8 @@
   "source": "yahoo:chart",
   "source_symbol": "^NDX",
   "timezone": "America/New_York",
-  "generated_at": "2026-04-17T09:04:37Z",
+  "generated_at": "2026-04-20T09:27:54Z",
   "bars": [
-    {
-      "date": "2024-04-17",
-      "open": 17785.8203125,
-      "close": 17493.619140625,
-      "high": 17788.5390625,
-      "low": 17459.5703125,
-      "volume": 4991470000
-    },
     {
       "date": "2024-04-18",
       "open": 17514.76953125,
@@ -4023,6 +4015,14 @@
       "high": 26400.51953125,
       "low": 26113.650390625,
       "volume": 9963610000
+    },
+    {
+      "date": "2026-04-17",
+      "open": 26551.16015625,
+      "close": 26672.4296875,
+      "high": 26719.560546875,
+      "low": 26481.240234375,
+      "volume": 10159120000
     }
   ]
 }
