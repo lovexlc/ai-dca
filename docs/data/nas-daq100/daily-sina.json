@@ -6,15 +6,15 @@
   "currency": "$",
   "range": {
     "start_date": "2024-04-22",
-    "end_date": "2026-04-20",
+    "end_date": "2026-04-21",
     "requested_range": "2y",
     "requested_interval": "1d"
   },
-  "requested_bars": 500,
+  "requested_bars": 501,
   "source": "yahoo:chart",
   "source_symbol": "^NDX",
   "timezone": "America/New_York",
-  "generated_at": "2026-04-21T09:13:09Z",
+  "generated_at": "2026-04-22T09:07:33Z",
   "bars": [
     {
       "date": "2024-04-22",
@@ -4015,6 +4015,14 @@
       "high": 26670.119140625,
       "low": 26412.51953125,
       "volume": 8379940000
+    },
+    {
+      "date": "2026-04-21",
+      "open": 26658.849609375,
+      "close": 26479.470703125,
+      "high": 26730.640625,
+      "low": 26405.30078125,
+      "volume": 9309940000
     }
   ]
 }
