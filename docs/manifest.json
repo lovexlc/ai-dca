@@ -2,7 +2,7 @@
   "project_id": "4075224789216868860",
   "project_title": "股票建仓策略看板",
   "homepage_screen_id": "75a393ec1a2d424ebafa1d0e59402d26",
-  "html_count": 9,
+  "html_count": 8,
   "screenshot_count": 0,
   "screens": [
     {
@@ -50,14 +50,6 @@
       "title": "交易历史",
       "device": "DESKTOP",
       "page_url": "pages-v2/65aaf3e700d3443c9810f6c727b045e8.html",
-      "screenshot_url": null,
-      "is_homepage": false
-    },
-    {
-      "screen_id": "4b7f7e7b1b924c8f85a918c67c74a2d1",
-      "title": "基金持仓收益",
-      "device": "DESKTOP",
-      "page_url": "pages-v2/4b7f7e7b1b924c8f85a918c67c74a2d1.html",
       "screenshot_url": null,
       "is_homepage": false
     },

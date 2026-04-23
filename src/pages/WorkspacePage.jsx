@@ -4,7 +4,6 @@ import { PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/scree
 import { PageShell, TopBar } from '../components/experience-ui.jsx';
 import { DcaExperience } from './DcaExperience.jsx';
 import { FundSwitchExperience } from './FundSwitchExperience.jsx';
-import { HoldingsExperience } from './HoldingsExperience.jsx';
 import { HistoryExperience } from './HistoryExperience.jsx';
 import { HomeExperience } from './HomeExperience.jsx';
 import { TradePlansExperience } from './TradePlansExperience.jsx';
@@ -14,7 +13,6 @@ const WORKSPACE_TITLES = {
   home: '加仓计划',
   tradePlans: '交易计划中心',
   dca: '定投计划',
-  fundHoldings: '基金持仓收益',
   fundSwitch: '基金切换收益分析',
   history: '交易历史'
 };
@@ -90,8 +88,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         return <TradePlansExperience {...sharedProps} />;
       case 'dca':
         return <DcaExperience {...sharedProps} />;
-      case 'fundHoldings':
-        return <HoldingsExperience {...sharedProps} />;
       case 'fundSwitch':
         return <FundSwitchExperience {...sharedProps} />;
       case 'history':

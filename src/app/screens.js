@@ -2,8 +2,8 @@ export const PROJECT_ID = '4075224789216868860';
 export const PROJECT_TITLE = '股票建仓策略看板';
 export const HOME_SCREEN_ID = '75a393ec1a2d424ebafa1d0e59402d26';
 
-export const GROUP_ORDER = ['tradePlans', 'home', 'accumEdit', 'accumNew', 'addLevel', 'dca', 'fundHoldings', 'fundSwitch', 'history'];
-export const PRIMARY_TAB_ORDER = ['tradePlans', 'home', 'dca', 'fundHoldings', 'fundSwitch', 'history'];
+export const GROUP_ORDER = ['tradePlans', 'home', 'accumEdit', 'accumNew', 'addLevel', 'dca', 'fundSwitch', 'history'];
+export const PRIMARY_TAB_ORDER = ['tradePlans', 'home', 'dca', 'fundSwitch', 'history'];
 
 export const GROUP_META = {
   home: {
@@ -36,11 +36,6 @@ export const GROUP_META = {
     description: '管理初始投入、定投频率和执行日。',
     activeTab: 'dca'
   },
-  fundHoldings: {
-    label: '基金持仓收益',
-    description: '导入持仓截图并用最新净值重算组合收益。',
-    activeTab: 'fundHoldings'
-  },
   fundSwitch: {
     label: '基金切换助手',
     description: '导入交易截图并核对基金切换收益。',
@@ -57,7 +52,6 @@ export const PRIMARY_TAB_META = {
   tradePlans: { label: '交易计划', hrefKey: 'tradePlans' },
   home: { label: '加仓计划', hrefKey: 'home' },
   dca: { label: '定投计划', hrefKey: 'dca' },
-  fundHoldings: { label: '基金持仓收益', hrefKey: 'fundHoldings' },
   fundSwitch: { label: '基金切换', hrefKey: 'fundSwitch' },
   history: { label: '交易历史', hrefKey: 'history' }
 };
@@ -69,7 +63,6 @@ const SCREEN_GROUP_IDS = {
   addLevel: ['d142c0822784448ab9b8016e300bd25c'],
   accumNew: ['03ef40c5dff048f8b1416a6a4567f9ee'],
   dca: ['530f6fe554444798820046dee4d4b889'],
-  fundHoldings: ['4b7f7e7b1b924c8f85a918c67c74a2d1'],
   fundSwitch: ['5e3d43b9c2ea47f9b5d2be752bca564e'],
   history: ['65aaf3e700d3443c9810f6c727b045e8']
 };
@@ -85,7 +78,6 @@ const RAW_SCREENS = [
   { id: 'd142c0822784448ab9b8016e300bd25c', title: '新增建仓层级', device: 'DESKTOP' },
   { id: '03ef40c5dff048f8b1416a6a4567f9ee', title: '新建建仓计划', device: 'DESKTOP' },
   { id: '65aaf3e700d3443c9810f6c727b045e8', title: '交易历史', device: 'DESKTOP' },
-  { id: '4b7f7e7b1b924c8f85a918c67c74a2d1', title: '基金持仓收益', device: 'DESKTOP' },
   { id: '5e3d43b9c2ea47f9b5d2be752bca564e', title: '基金切换收益分析', device: 'DESKTOP' },
   { id: '530f6fe554444798820046dee4d4b889', title: '定投计划', device: 'DESKTOP' }
 ];
@@ -132,7 +124,6 @@ export function createPageLinks({ inPagesDir = false } = {}) {
     accumNew: pageHref('03ef40c5dff048f8b1416a6a4567f9ee', { inPagesDir }),
     addLevel: pageHref('d142c0822784448ab9b8016e300bd25c', { inPagesDir }),
     dca: pageHref('530f6fe554444798820046dee4d4b889', { inPagesDir }),
-    fundHoldings: pageHref('4b7f7e7b1b924c8f85a918c67c74a2d1', { inPagesDir }),
     fundSwitch: pageHref('5e3d43b9c2ea47f9b5d2be752bca564e', { inPagesDir }),
     history: pageHref('65aaf3e700d3443c9810f6c727b045e8', { inPagesDir }),
     catalog: inPagesDir ? '../index.html' : './index.html'
