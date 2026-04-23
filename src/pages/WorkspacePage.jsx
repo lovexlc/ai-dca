@@ -1,20 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import { isFundSwitchViewHash } from '../app/fundSwitch.js';
 import { PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
-import { PageShell, TopBar } from '../components/experience-ui.jsx';
+import { ConsoleLayout } from '../components/console-layout.jsx';
 import { DcaExperience } from './DcaExperience.jsx';
 import { FundSwitchExperience } from './FundSwitchExperience.jsx';
 import { HistoryExperience } from './HistoryExperience.jsx';
+import { HoldingsExperience } from './HoldingsExperience.jsx';
 import { HomeExperience } from './HomeExperience.jsx';
+import { NewPlanExperience } from './NewPlanExperience.jsx';
 import { TradePlansExperience } from './TradePlansExperience.jsx';
 
 const DEFAULT_WORKSPACE_TAB = 'tradePlans';
+
 const WORKSPACE_TITLES = {
   home: '加仓计划',
   tradePlans: '交易计划中心',
   dca: '定投计划',
   fundSwitch: '基金切换收益分析',
-  history: '交易历史'
+  history: '交易历史',
+  holdings: '持仓总览',
+  newPlan: '新建建仓计划'
 };
 
 function normalizeWorkspaceTab(value = '') {
@@ -46,7 +51,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const links = createPageLinks({ inPagesDir });
   const [activeTab, setActiveTab] = useState(() => readTabFromLocation(initialTab));
 
-  const tabs = useMemo(() => getPrimaryTabs(links), [links]);
+  const sidebarNav = useMemo(() => getPrimaryTabs(links), [links]);
   const heroTitle = WORKSPACE_TITLES[activeTab] || WORKSPACE_TITLES.home;
 
   useEffect(() => {
@@ -92,6 +97,10 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         return <FundSwitchExperience {...sharedProps} />;
       case 'history':
         return <HistoryExperience {...sharedProps} />;
+      case 'holdings':
+        return <HoldingsExperience {...sharedProps} />;
+      case 'newPlan':
+        return <NewPlanExperience {...sharedProps} />;
       case 'home':
       default:
         return <HomeExperience {...sharedProps} />;
@@ -99,9 +108,13 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   }
 
   return (
-    <PageShell>
-      <TopBar activeKey={activeTab} onSelect={handleSelectTab} tabs={tabs} />
+    <ConsoleLayout
+      brand="ai-dca"
+      sidebarNav={sidebarNav}
+      activeKey={activeTab}
+      onSelectNav={handleSelectTab}
+    >
       {renderActivePanel()}
-    </PageShell>
+    </ConsoleLayout>
   );
 }

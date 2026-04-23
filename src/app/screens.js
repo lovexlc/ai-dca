@@ -3,7 +3,7 @@ export const PROJECT_TITLE = '股票建仓策略看板';
 export const HOME_SCREEN_ID = '75a393ec1a2d424ebafa1d0e59402d26';
 
 export const GROUP_ORDER = ['tradePlans', 'home', 'accumEdit', 'accumNew', 'addLevel', 'dca', 'fundSwitch', 'history'];
-export const PRIMARY_TAB_ORDER = ['tradePlans', 'home', 'dca', 'fundSwitch', 'history'];
+export const PRIMARY_TAB_ORDER = ['tradePlans', 'home', 'dca', 'fundSwitch', 'history', 'holdings', 'newPlan'];
 
 export const GROUP_META = {
   home: {
@@ -53,7 +53,9 @@ export const PRIMARY_TAB_META = {
   home: { label: '加仓计划', hrefKey: 'home' },
   dca: { label: '定投计划', hrefKey: 'dca' },
   fundSwitch: { label: '基金切换', hrefKey: 'fundSwitch' },
-  history: { label: '交易历史', hrefKey: 'history' }
+  history: { label: '交易历史', hrefKey: 'history' },
+  holdings: { label: '持仓总览', hrefKey: 'holdings' },
+  newPlan: { label: '新建计划', hrefKey: 'newPlan' }
 };
 
 const SCREEN_GROUP_IDS = {
@@ -126,6 +128,8 @@ export function createPageLinks({ inPagesDir = false } = {}) {
     dca: pageHref('530f6fe554444798820046dee4d4b889', { inPagesDir }),
     fundSwitch: pageHref('5e3d43b9c2ea47f9b5d2be752bca564e', { inPagesDir }),
     history: pageHref('65aaf3e700d3443c9810f6c727b045e8', { inPagesDir }),
+    holdings: inPagesDir ? '../index.html?tab=holdings' : './index.html?tab=holdings',
+    newPlan: inPagesDir ? '../index.html?tab=newPlan' : './index.html?tab=newPlan',
     catalog: inPagesDir ? '../index.html' : './index.html'
   };
 }

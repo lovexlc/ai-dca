@@ -1,0 +1,316 @@
+:root {
+  --console-sidebar-w: 240px;
+  --console-ctx-w: 360px;
+  --console-topbar-h: 56px;
+  --console-mobilebar-h: 52px;
+  --console-border: rgba(148, 163, 184, 0.24);
+  --console-border-strong: rgba(148, 163, 184, 0.42);
+  --console-sidebar-bg: #ffffff;
+  --console-main-bg: #f8fafc;
+  --console-link: #475569;
+  --console-link-active: #3730a3;
+  --console-link-active-bg: rgba(79, 70, 229, 0.08);
+  --console-link-active-border: rgba(79, 70, 229, 0.22);
+}
+
+.console-root {
+  min-height: 100vh;
+  background: var(--console-main-bg);
+  color: #0f172a;
+}
+
+/* ---- Mobile top bar ---- */
+.console-mobilebar {
+  position: sticky;
+  top: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--console-mobilebar-h);
+  padding: 0 12px;
+  border-bottom: 1px solid var(--console-border);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+}
+
+.console-mobilebar__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.console-mobilebar__right {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---- Shell ---- */
+.console-shell {
+  display: flex;
+  align-items: stretch;
+  min-height: calc(100vh - 0px);
+}
+
+/* ---- Sidebar ---- */
+.console-sidebar {
+  flex: 0 0 var(--console-sidebar-w);
+  width: var(--console-sidebar-w);
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
+  border-right: 1px solid var(--console-border);
+  background: var(--console-sidebar-bg);
+  display: flex;
+  flex-direction: column;
+  z-index: 70;
+}
+
+.console-sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--console-border);
+}
+
+.console-brand {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #0f172a;
+}
+
+.console-sidebar__close {
+  display: none;
+}
+
+.console-sidenav {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 10px 24px;
+  overflow-y: auto;
+}
+
+.console-sidenav__link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--console-link);
+  background: transparent;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease;
+}
+
+.console-sidenav__link:hover {
+  background: rgba(148, 163, 184, 0.12);
+  color: #0f172a;
+}
+
+.console-sidenav__link:focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: 2px;
+}
+
+.console-sidenav__link.is-active,
+.console-sidenav__link[aria-current='page'] {
+  color: var(--console-link-active);
+  background: var(--console-link-active-bg);
+  border-color: var(--console-link-active-border);
+}
+
+/* ---- Main ---- */
+.console-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.console-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--console-topbar-h);
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--console-border);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+}
+
+.console-topbar__title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.console-topbar__heading {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.2;
+}
+
+.console-topbar__desc {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #64748b;
+}
+
+.console-topbar__right {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.console-main__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-bottom: 128px;
+}
+
+/* ---- Context panel ---- */
+.console-ctx {
+  flex: 0 0 var(--console-ctx-w);
+  width: var(--console-ctx-w);
+  border-left: 1px solid var(--console-border);
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
+  z-index: 50;
+}
+
+.console-ctx__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--console-border);
+}
+
+.console-ctx__title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #0f172a;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.console-ctx__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 16px 18px 32px;
+}
+
+.console-ctx__empty {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #94a3b8;
+  text-align: center;
+  padding: 32px 16px;
+}
+
+/* ---- Icon button ---- */
+.console-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #475569;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease;
+}
+
+.console-iconbtn:hover {
+  background: rgba(148, 163, 184, 0.16);
+  color: #0f172a;
+}
+
+.console-iconbtn:focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: 2px;
+}
+
+/* ---- Backdrop ---- */
+.console-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  background: rgba(15, 23, 42, 0.4);
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 1023.98px) {
+  .console-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    transform: translateX(-100%);
+    transition: transform 220ms ease;
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.18);
+  }
+
+  .console-sidebar.is-open {
+    transform: translateX(0);
+  }
+
+  .console-sidebar__close {
+    display: inline-flex;
+  }
+
+  .console-ctx {
+    display: none;
+  }
+
+  .console-topbar {
+    display: none;
+  }
+
+  .console-main__body {
+    padding-bottom: 96px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .console-mobilebar {
+    display: none;
+  }
+}
