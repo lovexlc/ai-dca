@@ -3,39 +3,39 @@ import {
   AlertTriangle,
   CheckCircle2,
   CloudUpload,
-  Database,
   FileImage,
-  History,
   LoaderCircle,
+  Pencil,
   Plus,
   RefreshCw,
-  Sparkles,
-  TableProperties,
+  Save,
+  Search,
   Trash2,
-  Upload,
   Wallet,
   X
 } from 'lucide-react';
-import { formatCurrency } from '../app/accumulation.js';
+import { formatCurrency, formatPercent } from '../app/accumulation.js';
 import {
-  createDefaultHoldingsState,
-  persistHoldingsState,
-  readHoldingsState,
-  recognizeHoldingsFile,
-  requestHoldingsNav
-} from '../app/holdings.js';
+  aggregateByCode,
+  buildLedgerRows,
+  createEmptyTransaction,
+  detectFundKind,
+  getLedgerCodeList,
+  getTransactionErrors,
+  normalizeFundCode,
+  normalizeFundKind,
+  normalizeTransaction,
+  summarizePortfolio,
+  summarizeTransactionErrors
+} from '../app/holdingsLedgerCore.js';
 import {
-  buildHoldingMetrics,
-  createEmptyHoldingRow,
-  getHoldingCodeList,
-  getHoldingRowErrors,
-  hasMeaningfulHoldingRow,
-  isHoldingCode,
-  normalizeHoldingRow,
-  sanitizeHoldingRows,
-  summarizeHoldingRowErrors,
-  summarizeHoldingRows
-} from '../app/holdingsCore.js';
+  buildNavMetaFromResult,
+  mergeSnapshotsFromNavResult,
+  persistLedgerState,
+  readLedgerState,
+  recognizeLedgerFile,
+  requestLedgerNav
+} from '../app/holdingsLedger.js';
 import { getPrimaryTabs } from '../app/screens.js';
 import { showActionToast } from '../app/toast.js';
 import {
@@ -46,1318 +46,1033 @@ import {
   tableInputClass
 } from '../components/experience-ui.jsx';
 
-const warmSurfaceClass = 'rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.06)]';
-const coralPrimaryButtonClass = 'inline-flex items-center justify-center gap-2 rounded-full bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(79,70,229,0.24)] transition-all hover:-translate-y-0.5 hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0';
-const softButtonClass = 'inline-flex items-center justify-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 transition-all hover:-translate-y-0.5 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0';
-const heroButtonClass = 'inline-flex items-center justify-center gap-2 rounded-full bg-white/14 px-4 py-2.5 text-sm font-semibold text-white ring-1 ring-white/20 backdrop-blur-sm transition-all hover:bg-white/18 disabled:cursor-not-allowed disabled:opacity-60';
-const mutedButtonClass = 'inline-flex items-center justify-center gap-2 rounded-full bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 transition-all hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60';
-const editorInputClass = 'h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3.5 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-300 hover:border-slate-300 focus:border-indigo-400 focus:bg-white';
+const KIND_LABELS = { otc: '场外', exchange: '场内' };
+const KIND_PILL_TONES = { otc: 'indigo', exchange: 'amber' };
+const KIND_FILTER_LABELS = { all: '全部', otc: '场外', exchange: '场内' };
+const KIND_FILTER_KEYS = ['all', 'otc', 'exchange'];
+const LEDGER_COLUMN_COUNT = 18;
+const PRIMARY_BTN = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_1px_2px_rgba(15,23,42,0.12)] transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60';
+const GHOST_BTN = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60';
+const SUBTLE_BTN = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60';
+const EDITABLE_INPUT = cx(tableInputClass, 'h-9 rounded-lg bg-slate-50 px-2 text-xs');
 
-const overviewToneClasses = {
-  neutral: 'border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]',
-  blue: 'border-[#dbe2ff] bg-[linear-gradient(180deg,#f7f9ff_0%,#ffffff_100%)]',
-  coral: 'border-indigo-100 bg-[linear-gradient(180deg,#f5f7ff_0%,#ffffff_100%)]',
-  amber: 'border-[#f3dfc2] bg-[linear-gradient(180deg,#fffaf3_0%,#ffffff_100%)]',
-  rose: 'border-[#f1d8d8] bg-[linear-gradient(180deg,#fff7f7_0%,#ffffff_100%)]',
-  emerald: 'border-[#d7ece3] bg-[linear-gradient(180deg,#f6fffb_0%,#ffffff_100%)]'
-};
-
-const overviewValueClasses = {
-  neutral: 'text-slate-900',
-  blue: 'text-[#4360ee]',
-  coral: 'text-indigo-600',
-  amber: 'text-[#d28a32]',
-  rose: 'text-[#d85a5a]',
-  emerald: 'text-[#0f9f6e]'
-};
-
-function createOcrState(overrides = {}) {
-  return {
-    status: 'idle',
-    progress: 0,
-    message: '上传持仓截图后会先生成一个可替换的导入草稿。',
-    durationMs: 0,
-    error: '',
-    lineCount: 0,
-    ...overrides
-  };
+function nowIso() {
+  return new Date().toISOString();
 }
 
-function toEditableRows(rows = []) {
-  if (!Array.isArray(rows) || !rows.length) {
-    return [createEmptyHoldingRow('holding-empty-1')];
-  }
+function formatSignedCurrency(value, digits = 2) {
+  const amount = formatCurrency(Math.abs(Number(value) || 0), '¥', digits);
+  if (Number(value) > 0) return `+${amount}`;
+  if (Number(value) < 0) return `-${amount}`;
+  return amount;
+}
 
-  return rows.map((row, index) => ({
-    id: String(row?.id || '').trim() || `holding-edit-${index + 1}`,
-    code: String(row?.code || '').trim(),
-    name: String(row?.name || '').trim(),
-    avgCost: row?.avgCost > 0 ? String(row.avgCost) : String(row?.avgCost || '').trim(),
-    shares: row?.shares > 0 ? String(row.shares) : String(row?.shares || '').trim()
-  }));
+function formatSignedPercent(value, digits = 2) {
+  const num = Number(value) || 0;
+  const base = formatPercent(Math.abs(num), digits, false);
+  if (num > 0) return `+${base}`;
+  if (num < 0) return `-${base}`;
+  return base;
+}
+
+function formatNav(value) {
+  if (!(Number(value) > 0)) return '—';
+  return Number(value).toFixed(4);
+}
+
+function formatShares(value) {
+  const num = Number(value) || 0;
+  if (num === 0) return '0';
+  return num.toFixed(4).replace(/\.?0+$/, '');
+}
+
+function formatRelativeTime(iso) {
+  if (!iso) return '尚未同步';
+  const ts = Date.parse(iso);
+  if (!Number.isFinite(ts)) return '尚未同步';
+  const diffSec = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (diffSec < 60) return `${diffSec} 秒前`;
+  const diffMin = Math.round(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} 分钟前`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr} 小时前`;
+  const diffDay = Math.round(diffHr / 24);
+  return `${diffDay} 天前`;
 }
 
 function sanitizeDecimalInput(value = '') {
   const raw = String(value || '').replace(/[^\d.]/g, '');
   const [integerPart, ...rest] = raw.split('.');
-  if (!rest.length) {
-    return integerPart;
-  }
-
+  if (!rest.length) return integerPart;
   return `${integerPart}.${rest.join('')}`;
 }
 
-function formatSignedCurrency(value) {
-  const amount = formatCurrency(Math.abs(value), '¥', 2);
-  if (value > 0) {
-    return `+${amount}`;
-  }
-  if (value < 0) {
-    return `-${amount}`;
-  }
-  return amount;
+function sanitizeCodeInput(value = '') {
+  return String(value || '').replace(/\D/g, '').slice(0, 6);
 }
 
-function formatNav(value) {
-  const amount = Number(value);
-  if (!(amount > 0)) {
-    return '--';
-  }
-
-  return amount.toFixed(4);
+function emptyDraft() {
+  return createEmptyTransaction({ type: 'BUY', kind: 'otc', date: '' });
 }
 
-function formatDateLabel(value = '') {
-  if (!value) {
-    return '--';
-  }
-
-  const timestamp = Date.parse(String(value || ''));
-  if (!Number.isFinite(timestamp)) {
-    return String(value || '');
-  }
-
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(new Date(timestamp)).replace(/\//g, '-');
-}
-
-function formatDateTimeLabel(value = '') {
-  if (!value) {
-    return '--';
-  }
-
-  const timestamp = Date.parse(String(value || ''));
-  if (!Number.isFinite(timestamp)) {
-    return String(value || '');
-  }
-
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  }).format(new Date(timestamp)).replace(/\//g, '-');
-}
-
-function formatDuration(durationMs = 0) {
-  if (!(durationMs > 0)) {
-    return '';
-  }
-
-  if (durationMs < 1000) {
-    return `${Math.round(durationMs)}ms`;
-  }
-
-  return `${(durationMs / 1000).toFixed(1)}s`;
-}
-
-function getProfitTextClass(value) {
-  if (value > 0) {
-    return 'text-emerald-600';
-  }
-  if (value < 0) {
-    return 'text-red-500';
-  }
-  return 'text-slate-500';
-}
-
-function clampNumber(value, min = 0, max = 100) {
-  return Math.min(Math.max(Number(value) || 0, min), max);
-}
-
-function formatSignedPercent(value, digits = 2) {
-  const normalized = Number(value) || 0;
-  const absolute = Math.abs(normalized).toFixed(digits);
-  if (normalized > 0) {
-    return `+${absolute}%`;
-  }
-  if (normalized < 0) {
-    return `-${absolute}%`;
-  }
-  return `${absolute}%`;
-}
-
-function formatPercent(value, digits = 2) {
-  return `${clampNumber(value, 0, Number.POSITIVE_INFINITY).toFixed(digits)}%`;
-}
-
-function computeRatePercent(numerator, denominator) {
-  const base = Number(denominator) || 0;
-  if (!(base > 0)) {
-    return 0;
-  }
-  return ((Number(numerator) || 0) / base) * 100;
-}
-
-function SectionHeader({ eyebrow, title, description, action }) {
-  return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div className="max-w-3xl">
-        <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-500">{eyebrow}</div>
-        <div className="mt-2 text-[1.65rem] font-extrabold tracking-tight text-slate-900">{title}</div>
-        {description ? <div className="mt-2 text-sm leading-6 text-slate-500">{description}</div> : null}
-      </div>
-      {action ? <div className="flex flex-wrap items-center gap-2">{action}</div> : null}
-    </div>
-  );
-}
-
-function OverviewCard({ title, value, detail, helper, tone = 'neutral', icon: Icon, visual }) {
-  return (
-    <div className={cx('overflow-hidden rounded-[1.6rem] border p-5 shadow-[0_18px_40px_rgba(150,97,70,0.08)]', overviewToneClasses[tone] || overviewToneClasses.neutral)}>
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-500">
-            {Icon ? (
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/85 text-slate-400 shadow-sm shadow-slate-200/60">
-                <Icon className="h-4 w-4" />
-              </span>
-            ) : null}
-            <span>{title}</span>
-          </div>
-          <div className={cx('mt-4 text-3xl font-extrabold tracking-tight', overviewValueClasses[tone] || overviewValueClasses.neutral)}>
-            {value}
-          </div>
-          {detail ? <div className="mt-2 text-sm font-semibold text-slate-500">{detail}</div> : null}
-          {helper ? <div className="mt-3 text-sm leading-6 text-slate-500">{helper}</div> : null}
-        </div>
-        {visual ? <div className="hidden min-w-[128px] justify-end md:flex">{visual}</div> : null}
-      </div>
-    </div>
-  );
-}
-
-function MiniTrend({ tone = 'coral', mode = 'rise' }) {
-  const stroke = tone === 'blue'
-    ? '#4b6bfb'
-    : tone === 'emerald'
-      ? '#10b981'
-      : tone === 'amber'
-        ? '#d28a32'
-        : '#6366f1';
-  const fill = tone === 'blue'
-    ? 'rgba(75,107,251,0.14)'
-    : tone === 'emerald'
-      ? 'rgba(16,185,129,0.14)'
-      : tone === 'amber'
-        ? 'rgba(210,138,50,0.14)'
-        : 'rgba(99,102,241,0.14)';
-  const points = mode === 'flat'
-    ? '8,58 36,58 64,58 92,58 120,58 148,58'
-    : mode === 'dip'
-      ? '8,22 36,30 64,44 92,58 120,70 148,74'
-      : mode === 'step'
-        ? '8,66 42,66 76,66 110,30 148,30'
-        : '8,70 34,68 60,66 94,46 122,26 148,18';
-
-  return (
-    <svg className="h-20 w-40" viewBox="0 0 156 80" fill="none" aria-hidden="true">
-      <polyline points={`8,79 ${points} 148,79`} fill={fill} />
-      <polyline points={points} fill="none" stroke={stroke} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function CoverageGauge({ value = 0, label = '' }) {
-  const progress = clampNumber(value, 0, 100);
-
-  return (
-    <div className="flex min-w-[120px] justify-center">
-      <div className="relative flex h-24 w-24 items-center justify-center rounded-full" style={{ background: `conic-gradient(#6366f1 0 ${progress}%, #e2e8f0 ${progress}% 100%)` }}>
-        <div className="flex h-16 w-16 flex-col items-center justify-center rounded-full bg-white text-center shadow-inner shadow-slate-200">
-          <div className="text-sm font-extrabold text-slate-900">{progress.toFixed(0)}%</div>
-          <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CompareBars({ primaryLabel, primaryValue, secondaryLabel, secondaryValue }) {
-  const primary = Number(primaryValue) || 0;
-  const secondary = Number(secondaryValue) || 0;
-  const max = Math.max(Math.abs(primary), Math.abs(secondary), 1);
-  const primaryWidth = `${28 + (Math.abs(primary) / max) * 64}%`;
-  const secondaryWidth = `${28 + (Math.abs(secondary) / max) * 64}%`;
-
-  return (
-    <div className="min-w-[132px] space-y-3">
-      <div>
-        <div className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
-          <span>{primaryLabel}</span>
-          <span className={primary >= 0 ? 'text-indigo-600' : 'text-[#4b6bfb]'}>{formatSignedCurrency(primary)}</span>
-        </div>
-        <div className="mt-2 h-2 rounded-full bg-slate-200">
-          <div className={cx('h-full rounded-full', primary >= 0 ? 'bg-indigo-500' : 'bg-[#4b6bfb]')} style={{ width: primaryWidth }} />
-        </div>
-      </div>
-      <div>
-        <div className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
-          <span>{secondaryLabel}</span>
-          <span className={secondary >= 0 ? 'text-indigo-600' : 'text-[#4b6bfb]'}>{formatSignedCurrency(secondary)}</span>
-        </div>
-        <div className="mt-2 h-2 rounded-full bg-slate-200">
-          <div className={cx('h-full rounded-full', secondary >= 0 ? 'bg-indigo-500' : 'bg-[#4b6bfb]')} style={{ width: secondaryWidth }} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function HeroMiniStat({ label, value, note }) {
-  return (
-    <div className="rounded-[1.2rem] bg-white/14 px-4 py-3 ring-1 ring-white/18 backdrop-blur-sm">
-      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/70">{label}</div>
-      <div className="mt-2 text-lg font-bold text-white">{value}</div>
-      {note ? <div className="mt-1 text-xs leading-5 text-white/72">{note}</div> : null}
-    </div>
-  );
-}
-
-function MetricChip({ label, value, valueClassName = 'text-slate-900' }) {
-  return (
-    <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-3.5 py-3">
-      <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">{label}</div>
-      <div className={cx('mt-2 text-sm font-bold', valueClassName)}>{value}</div>
-    </div>
-  );
-}
-
-function RowStatusIcon({ status }) {
-  if (status === '已更新') {
-    return <CheckCircle2 className="h-4 w-4 text-emerald-500" />;
-  }
-  if (status === '更新失败') {
-    return <AlertTriangle className="h-4 w-4 text-red-500" />;
-  }
-  if (status === '更新中') {
-    return <LoaderCircle className="h-4 w-4 animate-spin text-indigo-500" />;
-  }
-  return <Sparkles className="h-4 w-4 text-slate-400" />;
-}
-
-function ImportStatusPill({ importDraft, ocrState }) {
-  let tone = 'slate';
-  let label = '等待上传';
-
-  if (importDraft?.rows?.length) {
-    tone = 'indigo';
-    label = '草稿待确认';
-  } else if (ocrState.status === 'loading') {
-    tone = 'indigo';
-    label = '识别中';
-  } else if (ocrState.status === 'success') {
-    tone = 'emerald';
-    label = '识别完成';
-  } else if (ocrState.status === 'error') {
-    tone = 'red';
-    label = '识别失败';
-  }
-
-  return <Pill tone={tone}>{label}</Pill>;
-}
-
-function resolveSyncTone(status = 'idle') {
-  if (status === 'loading') {
-    return 'indigo';
-  }
-  if (status === 'success') {
-    return 'emerald';
-  }
-  if (status === 'partial-error') {
-    return 'amber';
-  }
-  if (status === 'error') {
-    return 'red';
-  }
-  return 'slate';
-}
-
-function resolveSyncLabel(status = 'idle') {
-  if (status === 'loading') {
-    return '更新中';
-  }
-  if (status === 'success') {
-    return '已更新';
-  }
-  if (status === 'partial-error') {
-    return '部分更新失败';
-  }
-  if (status === 'error') {
-    return '更新失败';
-  }
-  return '等待更新';
-}
-
-function describeCacheSource(cache = null) {
-  const source = String(cache?.source || cache?.cacheSource || '').trim();
-  if (source === 'edge-cache') {
-    return '边缘缓存命中';
-  }
-  if (source === 'repo-baseline') {
-    return '共享基线缓存';
-  }
-  if (source === 'live') {
-    return '实时回源';
-  }
-  return '等待本次刷新';
-}
-
-function resolveTodayCard(summary, lastNavMeta) {
-  if (!(summary.positionCount > 0)) {
-    return {
-      accent: 'slate',
-      value: '--',
-      note: '补全代码、买入均价和份数后开始计算。',
-      badge: <Pill tone="slate">等待持仓</Pill>
-    };
-  }
-
-  if (lastNavMeta?.status === 'loading') {
-    return {
-      accent: 'indigo',
-      value: '更新中',
-      note: summary.latestSnapshotAt
-        ? `当前仍显示 ${formatDateTimeLabel(summary.latestSnapshotAt)} 之前的完整快照。`
-        : '正在请求最新公布净值，不提前展示部分结果。',
-      badge: <Pill tone="indigo">更新中</Pill>
-    };
-  }
-
-  if (lastNavMeta?.status === 'partial-error') {
-    const canRenderValue = summary.todayReadyCount >= summary.positionCount;
-    return {
-      accent: canRenderValue ? (summary.todayProfit >= 0 ? 'amber' : 'red') : 'amber',
-      value: canRenderValue ? formatSignedCurrency(summary.todayProfit) : '--',
-      note: canRenderValue
-        ? '已保留最近一次完整快照，同时标记失败行。'
-        : '部分持仓本次更新失败，组合今日收益暂不完整。',
-      badge: <Pill tone="amber">部分更新失败</Pill>
-    };
-  }
-
-  if (lastNavMeta?.status === 'success' && summary.todayReadyCount >= summary.positionCount) {
-    return {
-      accent: summary.todayProfit > 0 ? 'emerald' : summary.todayProfit < 0 ? 'red' : 'slate',
-      value: formatSignedCurrency(summary.todayProfit),
-      note: summary.latestNavDate ? `净值日期 ${formatDateLabel(summary.latestNavDate)}` : '已按最新净值重算。',
-      badge: <Pill tone="emerald">已更新</Pill>
-    };
-  }
-
+function transactionToDraft(tx) {
   return {
-    accent: 'slate',
-    value: '--',
-    note: '等待完成净值刷新后展示。',
-    badge: <Pill tone="slate">等待更新</Pill>
+    id: tx.id,
+    code: String(tx.code || ''),
+    name: String(tx.name || ''),
+    kind: tx.kind || 'otc',
+    type: tx.type || 'BUY',
+    date: String(tx.date || ''),
+    price: tx.price > 0 ? String(tx.price) : '',
+    shares: tx.shares > 0 ? String(tx.shares) : '',
+    note: String(tx.note || '')
   };
 }
 
-export function HoldingsExperience({ links, embedded = false }) {
-  const primaryTabs = useMemo(() => getPrimaryTabs(links), [links]);
-  const [initialState] = useState(() => readHoldingsState());
-  const [rows, setRows] = useState(() => toEditableRows(initialState.rows));
-  const [fileName, setFileName] = useState(() => initialState.fileName || '');
-  const [snapshotsByCode, setSnapshotsByCode] = useState(() => initialState.snapshotsByCode || {});
-  const [lastNavMeta, setLastNavMeta] = useState(() => initialState.lastNavMeta || createDefaultHoldingsState().lastNavMeta);
+function createOcrState(overrides = {}) {
+  return {
+    status: 'idle',
+    progress: 0,
+    message: '上传持仓截图可一键生成 BUY 交易草稿（需人工补录交易日期）。',
+    error: '',
+    recordCount: 0,
+    ...overrides
+  };
+}
+
+export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = false } = {}) {
+  const [ledger, setLedger] = useState(() => readLedgerState());
+  const [kindFilter, setKindFilter] = useState('all');
+  const [searchText, setSearchText] = useState('');
+  const [selectedCode, setSelectedCode] = useState('');
+  const [sidePanelTab, setSidePanelTab] = useState('summary');
+  const [draft, setDraft] = useState(() => emptyDraft());
+  const [draftMode, setDraftMode] = useState('create');
+  const [editingTxId, setEditingTxId] = useState('');
+  const [editingBuffer, setEditingBuffer] = useState(null);
+  const [navStatus, setNavStatus] = useState('idle');
   const [ocrState, setOcrState] = useState(() => createOcrState());
-  const [importDraft, setImportDraft] = useState(null);
-  const [dragActive, setDragActive] = useState(false);
-  const [refreshSeed, setRefreshSeed] = useState(0);
-  const [rowRuntimeById, setRowRuntimeById] = useState({});
+  const [primaryTabKey, setPrimaryTabKey] = useState('holdings');
+
   const fileInputRef = useRef(null);
-  const navRequestIdRef = useRef(0);
+  const autoNavTriggeredRef = useRef(false);
 
-  const normalizedRows = useMemo(() => sanitizeHoldingRows(rows, { filterInvalid: false }), [rows]);
-  const normalizedRowMap = useMemo(
-    () => Object.fromEntries(normalizedRows.map((row) => [row.id, row])),
-    [normalizedRows]
-  );
-  const rowErrorsById = useMemo(
-    () => Object.fromEntries(normalizedRows.map((row) => [row.id, getHoldingRowErrors(row, { ignoreBlank: true })])),
-    [normalizedRows]
-  );
-  const summary = useMemo(
-    () => summarizeHoldingRows(normalizedRows, snapshotsByCode),
-    [normalizedRows, snapshotsByCode]
-  );
-  const codes = useMemo(() => getHoldingCodeList(normalizedRows), [normalizedRows]);
-  const codesKey = codes.join(',');
-  const hasMeaningfulRows = summary.meaningfulRowCount > 0;
-  const todayCard = useMemo(() => resolveTodayCard(summary, lastNavMeta), [summary, lastNavMeta]);
+  const tabs = useMemo(() => getPrimaryTabs(links), [links]);
 
+  // ---- Persist changes to localStorage whenever ledger state changes ----
   useEffect(() => {
-    persistHoldingsState({
-      fileName,
-      rows: normalizedRows,
-      snapshotsByCode,
-      lastNavMeta
+    persistLedgerState(ledger);
+  }, [ledger]);
+
+  // ---- Derived data ----
+  const transactions = ledger.transactions;
+  const snapshotsByCode = ledger.snapshotsByCode;
+  const ledgerRows = useMemo(
+    () => buildLedgerRows(transactions, snapshotsByCode),
+    [transactions, snapshotsByCode]
+  );
+  const aggregates = useMemo(
+    () => aggregateByCode(transactions, snapshotsByCode),
+    [transactions, snapshotsByCode]
+  );
+  const portfolio = useMemo(() => summarizePortfolio(aggregates), [aggregates]);
+  const aggregateByCodeMap = useMemo(() => {
+    const map = new Map();
+    for (const agg of aggregates) map.set(agg.code, agg);
+    return map;
+  }, [aggregates]);
+
+  const searchNeedle = searchText.trim().toLowerCase();
+  const filteredRows = useMemo(() => {
+    return ledgerRows.filter((row) => {
+      if (kindFilter !== 'all' && row.tx.kind !== kindFilter) return false;
+      if (!searchNeedle) return true;
+      return (
+        row.tx.code.toLowerCase().includes(searchNeedle)
+        || (row.tx.name || '').toLowerCase().includes(searchNeedle)
+      );
     });
-  }, [fileName, lastNavMeta, normalizedRows, snapshotsByCode]);
+  }, [ledgerRows, kindFilter, searchNeedle]);
 
-  useEffect(() => {
-    if (!codes.length) {
-      setLastNavMeta((current) => ({
-        ...current,
-        status: 'idle',
-        successCount: 0,
-        failureCount: 0,
-        errors: []
-      }));
-      return undefined;
+  const kindCounts = useMemo(() => {
+    const counts = { all: ledgerRows.length, otc: 0, exchange: 0 };
+    for (const row of ledgerRows) {
+      if (row.tx.kind === 'otc') counts.otc += 1;
+      else if (row.tx.kind === 'exchange') counts.exchange += 1;
     }
+    return counts;
+  }, [ledgerRows]);
 
-    const requestId = navRequestIdRef.current + 1;
-    navRequestIdRef.current = requestId;
-    const startedAt = new Date().toISOString();
+  const selectedAggregate = selectedCode ? aggregateByCodeMap.get(selectedCode) : null;
+  const needsDateBackfill = useMemo(
+    () => transactions.some((tx) => !tx.date),
+    [transactions]
+  );
+  const migrationNoticeVisible = Boolean(ledger.migratedFromLegacy) && needsDateBackfill;
 
-    setLastNavMeta((current) => ({
-      ...current,
-      status: 'loading',
-      successCount: 0,
-      failureCount: 0,
-      errors: []
-    }));
+  // ---- NAV auto-refresh on mount ----
+  useEffect(() => {
+    if (autoNavTriggeredRef.current) return;
+    const codes = getLedgerCodeList(transactions);
+    if (!codes.length) return;
+    autoNavTriggeredRef.current = true;
+    void refreshNavForCodes(codes, { silent: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    setRowRuntimeById((current) => {
-      const next = { ...current };
-      for (const row of normalizedRows) {
-        if (isHoldingCode(row.code)) {
-          next[row.id] = {
-            status: 'loading',
-            error: '',
-            updatedAt: next[row.id]?.updatedAt || '',
-            cacheSource: next[row.id]?.cacheSource || '',
-            cacheHit: next[row.id]?.cacheHit === true
-          };
-        }
-      }
-      return next;
-    });
-
-    let cancelled = false;
-
-    requestHoldingsNav(codes)
-      .then((payload) => {
-        if (cancelled || navRequestIdRef.current !== requestId) {
-          return;
-        }
-
-        const itemMap = new Map(payload.items.map((item) => [item.code, item]));
-        const errors = payload.items
-          .filter((item) => item.ok === false)
-          .map((item) => `${item.code}：${item.error || '净值更新失败。'}`)
-          .slice(0, 8);
-
-        setSnapshotsByCode((current) => {
-          const next = { ...current };
-          for (const item of payload.items) {
-            if (!item.ok || !(item.latestNav > 0) || !(item.previousNav > 0)) {
-              continue;
-            }
-
-            next[item.code] = {
-              code: item.code,
-              name: item.name || next[item.code]?.name || '',
-              latestNav: item.latestNav,
-              latestNavDate: item.latestNavDate,
-              previousNav: item.previousNav,
-              previousNavDate: item.previousNavDate,
-              updatedAt: item.updatedAt || payload.generatedAt || startedAt,
-              cacheHit: item.cacheHit === true || payload?.cache?.hit === true,
-              cacheSource: item.cacheSource || payload?.cache?.source || '',
-              cacheKey: item.cacheKey || payload?.cache?.key || '',
-              error: ''
-            };
-          }
-          return next;
-        });
-
-        setRowRuntimeById(() => {
-          const next = {};
-          for (const row of normalizedRows) {
-            if (!hasMeaningfulHoldingRow(row)) {
-              continue;
-            }
-
-            const errorsForRow = rowErrorsById[row.id] || {};
-            if (!isHoldingCode(row.code)) {
-              next[row.id] = {
-                status: Object.keys(errorsForRow).length ? 'idle' : 'idle',
-                error: '',
-                updatedAt: ''
-              };
-              continue;
-            }
-
-            const item = itemMap.get(row.code);
-            if (item?.ok && item.latestNav > 0 && item.previousNav > 0) {
-              next[row.id] = {
-                status: 'success',
-                error: '',
-                updatedAt: item.updatedAt || payload.generatedAt || startedAt,
-                cacheSource: item.cacheSource || payload?.cache?.source || '',
-                cacheHit: item.cacheHit === true || payload?.cache?.hit === true
-              };
-              continue;
-            }
-
-            next[row.id] = {
-              status: 'error',
-              error: item?.error || '净值更新失败，已保留上次成功快照。',
-              updatedAt: ''
-            };
-          }
-          return next;
-        });
-
-        setLastNavMeta({
-          status: payload.failureCount > 0
-            ? (payload.successCount > 0 ? 'partial-error' : 'error')
-            : 'success',
-          updatedAt: payload.generatedAt || startedAt,
-          successCount: payload.successCount,
-          failureCount: payload.failureCount,
-          cache: payload.cache,
-          errors
-        });
-      })
-      .catch((error) => {
-        if (cancelled || navRequestIdRef.current !== requestId) {
-          return;
-        }
-
-        const message = error instanceof Error ? error.message : '净值更新失败。';
-        setRowRuntimeById((current) => {
-          const next = { ...current };
-          for (const row of normalizedRows) {
-            if (!isHoldingCode(row.code)) {
-              continue;
-            }
-            next[row.id] = {
-              status: 'error',
-              error: message,
-              updatedAt: current[row.id]?.updatedAt || ''
-            };
-          }
-          return next;
-        });
-
-        setLastNavMeta((current) => ({
-          ...current,
-          status: Object.keys(snapshotsByCode || {}).length ? 'partial-error' : 'error',
-          successCount: 0,
-          failureCount: codes.length,
-          errors: [message]
-        }));
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [codesKey, refreshSeed]);
-
-  function updateRowField(rowId, field, value) {
-    setRows((current) => current.map((row) => {
-      if (row.id !== rowId) {
-        return row;
-      }
-
-      if (field === 'code') {
-        return {
-          ...row,
-          code: String(value || '').replace(/\D/g, '').slice(0, 6)
-        };
-      }
-
-      if (field === 'avgCost' || field === 'shares') {
-        return {
-          ...row,
-          [field]: sanitizeDecimalInput(value)
-        };
-      }
-
-      return {
-        ...row,
-        [field]: value
-      };
-    }));
-  }
-
-  function handleAddRow() {
-    setRows((current) => [...current, createEmptyHoldingRow()]);
-  }
-
-  function handleDeleteRow(rowId) {
-    setRows((current) => {
-      const next = current.filter((row) => row.id !== rowId);
-      return next.length ? next : [createEmptyHoldingRow('holding-empty-1')];
-    });
-  }
-
-  function handleClearRows() {
-    setRows([createEmptyHoldingRow('holding-empty-1')]);
-    setFileName('');
-    setImportDraft(null);
-    showActionToast('清空持仓', 'success', {
-      description: '当前组合已清空，最近一次净值快照仍会保留到重新录入。'
-    });
-  }
-
-  async function handleAnalyzeFile(file) {
-    if (!file) {
+  async function refreshNavForCodes(codes, { silent = false } = {}) {
+    const safeCodes = (Array.isArray(codes) ? codes : []).filter(Boolean);
+    if (!safeCodes.length) {
+      if (!silent) showActionToast('净值刷新', 'warning', { description: '当前没有可刷新的基金代码。' });
       return;
     }
-
-    setImportDraft(null);
-    setOcrState(createOcrState({
-      status: 'loading',
-      progress: 8,
-      message: '准备识别持仓截图'
-    }));
-
+    setNavStatus('loading');
     try {
-      const result = await recognizeHoldingsFile(file, (progressState) => {
-        setOcrState((current) => ({
-          ...current,
-          ...progressState
+      const navResult = await requestLedgerNav(safeCodes);
+      const { snapshotsByCode: mergedSnapshots, errors } = mergeSnapshotsFromNavResult(ledger.snapshotsByCode, navResult);
+      const nextMeta = buildNavMetaFromResult(navResult, errors);
+      setLedger((prev) => ({
+        ...prev,
+        snapshotsByCode: mergedSnapshots,
+        lastNavMeta: nextMeta
+      }));
+      setNavStatus('idle');
+      if (!silent) {
+        if (errors.length && nextMeta.successCount === 0) {
+          showActionToast('净值刷新', 'error', { description: errors[0]?.message || '全部代码均未能获取净值。' });
+        } else if (errors.length) {
+          showActionToast('净值刷新', 'warning', { description: `${nextMeta.successCount} 条成功 / ${errors.length} 条失败` });
+        } else {
+          showActionToast('净值刷新', 'success', { description: `成功更新 ${nextMeta.successCount} 个基金净值。` });
+        }
+      }
+    } catch (error) {
+      setNavStatus('error');
+      if (!silent) {
+        showActionToast('净值刷新', 'error', { description: error?.message || '净值服务暂时不可用。' });
+      }
+    }
+  }
+
+  function handleManualRefresh() {
+    const codes = getLedgerCodeList(transactions);
+    void refreshNavForCodes(codes, { silent: false });
+  }
+
+  // ---- Draft (quick add) handlers ----
+  function resetDraft(nextDraft = emptyDraft()) {
+    setDraft(nextDraft);
+    setDraftMode('create');
+  }
+
+  function handleDraftChange(field, value) {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      if (field === 'code') {
+        const nextCode = sanitizeCodeInput(value);
+        const existingName = prev.name || (aggregateByCodeMap.get(normalizeFundCode(nextCode))?.name || '');
+        const nextKind = prev.kind && prev.kind !== 'otc' ? prev.kind : detectFundKind(nextCode);
+        return { ...prev, code: nextCode, name: existingName, kind: nextKind };
+      }
+      if (field === 'price' || field === 'shares') {
+        return { ...prev, [field]: sanitizeDecimalInput(value) };
+      }
+      return { ...prev, [field]: value };
+    });
+  }
+
+  function submitDraft() {
+    const prepared = {
+      ...draft,
+      code: normalizeFundCode(draft.code),
+      kind: normalizeFundKind(draft.kind, draft.code),
+      price: Number(draft.price),
+      shares: Number(draft.shares)
+    };
+    const errors = getTransactionErrors(prepared);
+    if (Object.keys(errors).length) {
+      showActionToast('保存失败', 'error', { description: summarizeTransactionErrors(errors) });
+      return;
+    }
+    const normalized = normalizeTransaction({
+      ...prepared,
+      id: draftMode === 'edit' && draft.id ? draft.id : undefined
+    });
+    setLedger((prev) => {
+      const list = Array.isArray(prev.transactions) ? prev.transactions : [];
+      if (draftMode === 'edit') {
+        return {
+          ...prev,
+          transactions: list.map((tx) => (tx.id === normalized.id ? normalized : tx))
+        };
+      }
+      return { ...prev, transactions: [...list, normalized] };
+    });
+    showActionToast(draftMode === 'edit' ? '交易已更新' : '交易已新增', 'success', {
+      description: `${normalized.code} ${normalized.type} ${formatShares(normalized.shares)} 份 @ ${formatNav(normalized.price)}`
+    });
+    resetDraft();
+    setSelectedCode(normalized.code);
+    setSidePanelTab('summary');
+  }
+
+  function handleDeleteTransaction(txId) {
+    if (!txId) return;
+    const tx = transactions.find((item) => item.id === txId);
+    if (!tx) return;
+    // eslint-disable-next-line no-alert
+    if (typeof window !== 'undefined' && !window.confirm(`确认删除 ${tx.code} ${tx.type} ${formatShares(tx.shares)} 份？`)) {
+      return;
+    }
+    setLedger((prev) => ({
+      ...prev,
+      transactions: (prev.transactions || []).filter((item) => item.id !== txId)
+    }));
+    if (editingTxId === txId) {
+      setEditingTxId('');
+      setEditingBuffer(null);
+    }
+    showActionToast('交易已删除', 'success');
+  }
+
+  function handleStartEdit(row) {
+    setEditingTxId(row.tx.id);
+    setEditingBuffer(transactionToDraft(row.tx));
+  }
+
+  function handleCancelEdit() {
+    setEditingTxId('');
+    setEditingBuffer(null);
+  }
+
+  function handleEditFieldChange(field, value) {
+    setEditingBuffer((prev) => {
+      if (!prev) return prev;
+      if (field === 'code') {
+        return { ...prev, code: sanitizeCodeInput(value) };
+      }
+      if (field === 'price' || field === 'shares') {
+        return { ...prev, [field]: sanitizeDecimalInput(value) };
+      }
+      return { ...prev, [field]: value };
+    });
+  }
+
+  function handleCommitEdit() {
+    if (!editingBuffer) return;
+    const prepared = {
+      ...editingBuffer,
+      code: normalizeFundCode(editingBuffer.code),
+      kind: normalizeFundKind(editingBuffer.kind, editingBuffer.code),
+      price: Number(editingBuffer.price),
+      shares: Number(editingBuffer.shares)
+    };
+    const errors = getTransactionErrors(prepared);
+    if (Object.keys(errors).length) {
+      showActionToast('保存失败', 'error', { description: summarizeTransactionErrors(errors) });
+      return;
+    }
+    const normalized = normalizeTransaction({ ...prepared, id: editingBuffer.id });
+    setLedger((prev) => ({
+      ...prev,
+      transactions: (prev.transactions || []).map((tx) => (tx.id === normalized.id ? normalized : tx))
+    }));
+    setEditingTxId('');
+    setEditingBuffer(null);
+    showActionToast('交易已更新', 'success', {
+      description: `${normalized.code} ${normalized.type} ${formatShares(normalized.shares)} 份`
+    });
+  }
+
+  function handleCopyRowToDraft(row) {
+    setDraft(transactionToDraft(row.tx));
+    setDraftMode('edit');
+    setSidePanelTab('create');
+  }
+
+  // ---- OCR import ----
+  function handleTriggerOcr() {
+    if (!fileInputRef.current) return;
+    fileInputRef.current.value = '';
+    fileInputRef.current.click();
+  }
+
+  async function handleOcrFile(event) {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+    setOcrState(createOcrState({ status: 'loading', progress: 10, message: '正在识别持仓截图...' }));
+    try {
+      const result = await recognizeLedgerFile(file, (progress) => {
+        setOcrState((prev) => ({
+          ...prev,
+          status: 'loading',
+          progress: Number(progress?.progress) || prev.progress,
+          message: progress?.message || prev.message
         }));
       });
-
-      setImportDraft({
-        fileName: file.name || '',
-        rows: result.rows,
-        warnings: result.warnings,
-        confidence: result.confidence,
-        durationMs: result.durationMs,
-        recordCount: result.recordCount
-      });
-
+      const drafts = Array.isArray(result.draftTransactions) ? result.draftTransactions : [];
+      if (!drafts.length) {
+        setOcrState(createOcrState({
+          status: 'error',
+          error: '未能识别出有效的持仓记录，请重试或手动录入。'
+        }));
+        showActionToast('OCR 导入', 'error', { description: '未能识别出有效的持仓记录。' });
+        return;
+      }
+      setLedger((prev) => ({
+        ...prev,
+        transactions: [...(prev.transactions || []), ...drafts]
+      }));
       setOcrState(createOcrState({
         status: 'success',
         progress: 100,
-        lineCount: result.rows.length,
-        durationMs: result.durationMs,
-        message: result.rows.length
-          ? `已识别 ${result.rows.length} 行持仓草稿，请确认是否替换当前组合。`
-          : '未识别出可直接导入的完整持仓，请查看警告后手动录入。',
-        error: ''
+        message: `已导入 ${drafts.length} 条 BUY 草稿，请补录交易日期。`,
+        recordCount: drafts.length
       }));
-
-      showActionToast('持仓识别', result.rows.length ? 'success' : 'warning', {
-        tone: result.rows.length ? 'emerald' : 'amber',
-        description: result.rows.length
-          ? `已生成 ${result.rows.length} 行可编辑草稿，当前组合尚未被覆盖。`
-          : '识别结果没有形成完整持仓行，请根据提示补录。'
-      });
+      showActionToast('OCR 导入', 'success', { description: `已导入 ${drafts.length} 条 BUY 草稿，请补录交易日期。` });
     } catch (error) {
-      const message = error instanceof Error ? error.message : '识别持仓截图失败。';
       setOcrState(createOcrState({
         status: 'error',
-        progress: 0,
-        message: '识别失败',
-        error: message
+        error: error?.message || '识别失败，请稍后重试。'
       }));
-
-      showActionToast('持仓识别', 'error', {
-        description: message
-      });
+      showActionToast('OCR 导入', 'error', { description: error?.message || '识别失败。' });
     }
   }
 
-  function handleApplyDraft() {
-    if (!importDraft?.rows?.length) {
-      return;
+  // ---- Render helpers ----
+  function renderSummaryCards() {
+    const toneTotalProfit = portfolio.totalProfit > 0 ? 'emerald' : portfolio.totalProfit < 0 ? 'red' : 'slate';
+    const toneTodayProfit = portfolio.todayProfit > 0 ? 'emerald' : portfolio.todayProfit < 0 ? 'red' : 'slate';
+    const cards = [
+      { label: '总成本', value: formatCurrency(portfolio.totalCost, '¥', 2), tone: 'slate' },
+      { label: '总市值', value: formatCurrency(portfolio.marketValue, '¥', 2), tone: 'slate' },
+      {
+        label: '今日盈亏',
+        value: formatSignedCurrency(portfolio.todayProfit),
+        hint: formatSignedPercent(portfolio.todayReturnRate),
+        tone: toneTodayProfit
+      },
+      {
+        label: '累计盈亏',
+        value: formatSignedCurrency(portfolio.totalProfit),
+        hint: formatSignedPercent(portfolio.totalReturnRate),
+        tone: toneTotalProfit
+      },
+      {
+        label: '持仓状况',
+        value: `${portfolio.assetCount} / ${ledger.transactions.length}`,
+        hint: `基金数 / lot 数`,
+        tone: 'slate'
+      },
+      {
+        label: 'NAV 覆盖',
+        value: `${portfolio.pricedCount} / ${portfolio.assetCount}`,
+        hint: portfolio.latestNavDate ? `净值日 ${portfolio.latestNavDate}` : '尚未同步',
+        tone: portfolio.assetCount > 0 && portfolio.pricedCount < portfolio.assetCount ? 'amber' : 'slate'
+      }
+    ];
+    const toneValue = {
+      slate: 'text-slate-900',
+      emerald: 'text-emerald-600',
+      red: 'text-red-500',
+      amber: 'text-amber-600'
+    };
+    return (
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        {cards.map((card) => (
+          <div key={card.label} className="rounded-2xl border border-slate-200/70 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">{card.label}</div>
+            <div className={cx('mt-2 text-xl font-extrabold tracking-tight', toneValue[card.tone] || toneValue.slate)}>
+              {card.value}
+            </div>
+            {card.hint ? (
+              <div className="mt-1 text-xs text-slate-500">{card.hint}</div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  function renderKindFilter() {
+    return (
+      <div className="inline-flex items-center gap-1 rounded-xl bg-slate-100 p-1 text-xs font-semibold text-slate-600">
+        {KIND_FILTER_KEYS.map((key) => {
+          const active = kindFilter === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              className={cx(
+                'rounded-lg px-3 py-1.5 transition-colors',
+                active ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'hover:text-slate-800'
+              )}
+              onClick={() => setKindFilter(key)}
+            >
+              {KIND_FILTER_LABELS[key]}
+              <span className="ml-1.5 text-[10px] text-slate-400">{kindCounts[key] ?? 0}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  function renderNavBadge() {
+    const meta = ledger.lastNavMeta || {};
+    if (navStatus === 'loading') {
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+          正在刷新净值
+        </span>
+      );
+    }
+    if (!meta.updatedAt) {
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          尚未同步净值
+        </span>
+      );
+    }
+    if (meta.failureCount > 0) {
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs text-amber-600">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          {`${formatRelativeTime(meta.updatedAt)} · ${meta.successCount} 成功 / ${meta.failureCount} 失败`}
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        {`${formatRelativeTime(meta.updatedAt)} · ${meta.successCount} 条净值已同步`}
+      </span>
+    );
+  }
+
+  function renderRow(row) {
+    const { tx, metrics, snapshot } = row;
+    const isEditing = editingTxId === tx.id;
+    const kindTone = KIND_PILL_TONES[tx.kind] || 'slate';
+    const kindLabel = KIND_LABELS[tx.kind] || '未知';
+    const isSelected = selectedCode === tx.code;
+    const snapshotError = snapshot?.error ? String(snapshot.error) : '';
+    const rowKey = tx.id;
+    const profitCellClass = metrics.totalProfit > 0
+      ? 'text-emerald-600'
+      : metrics.totalProfit < 0 ? 'text-red-500' : 'text-slate-700';
+    const todayCellClass = metrics.todayProfit > 0
+      ? 'text-emerald-600'
+      : metrics.todayProfit < 0 ? 'text-red-500' : 'text-slate-700';
+
+    if (isEditing && editingBuffer) {
+      return (
+        <tr key={rowKey} className="bg-indigo-50/40">
+          <td className="px-2 py-2">
+            <input
+              className={EDITABLE_INPUT}
+              value={editingBuffer.code}
+              onChange={(event) => handleEditFieldChange('code', event.target.value)}
+              placeholder="6 位代码"
+              inputMode="numeric"
+            />
+          </td>
+          <td className="px-2 py-2">
+            <input
+              className={EDITABLE_INPUT}
+              value={editingBuffer.name}
+              onChange={(event) => handleEditFieldChange('name', event.target.value)}
+              placeholder="基金名称"
+            />
+          </td>
+          <td className="px-2 py-2">
+            <select
+              className={EDITABLE_INPUT}
+              value={editingBuffer.kind}
+              onChange={(event) => handleEditFieldChange('kind', event.target.value)}
+            >
+              <option value="otc">场外</option>
+              <option value="exchange">场内</option>
+            </select>
+          </td>
+          <td className="px-2 py-2">
+            <select
+              className={EDITABLE_INPUT}
+              value={editingBuffer.type}
+              onChange={(event) => handleEditFieldChange('type', event.target.value)}
+            >
+              <option value="BUY">BUY</option>
+              <option value="SELL">SELL</option>
+            </select>
+          </td>
+          <td className="px-2 py-2">
+            <input
+              type="date"
+              className={EDITABLE_INPUT}
+              value={editingBuffer.date}
+              onChange={(event) => handleEditFieldChange('date', event.target.value)}
+            />
+          </td>
+          <td className="px-2 py-2">
+            <input
+              className={EDITABLE_INPUT}
+              value={editingBuffer.price}
+              onChange={(event) => handleEditFieldChange('price', event.target.value)}
+              placeholder="0.0000"
+              inputMode="decimal"
+            />
+          </td>
+          <td className="px-2 py-2">
+            <input
+              className={EDITABLE_INPUT}
+              value={editingBuffer.shares}
+              onChange={(event) => handleEditFieldChange('shares', event.target.value)}
+              placeholder="0.0000"
+              inputMode="decimal"
+            />
+          </td>
+          <td className="px-2 py-2 text-right" colSpan={LEDGER_COLUMN_COUNT - 8}>
+            <div className="flex justify-end gap-1">
+              <button type="button" className={SUBTLE_BTN} onClick={handleCommitEdit}>
+                <Save className="h-3.5 w-3.5" /> 保存
+              </button>
+              <button type="button" className={SUBTLE_BTN} onClick={handleCancelEdit}>
+                <X className="h-3.5 w-3.5" /> 取消
+              </button>
+            </div>
+          </td>
+          <td className="px-2 py-2" />
+        </tr>
+      );
     }
 
-    setRows(toEditableRows(importDraft.rows));
-    setFileName(importDraft.fileName || '');
-    setImportDraft(null);
-    setOcrState(createOcrState({
-      status: 'success',
-      progress: 100,
-      lineCount: importDraft.rows.length,
-      durationMs: importDraft.durationMs || 0,
-      message: `已用识别结果替换当前组合，共 ${importDraft.rows.length} 行。`
-    }));
-    showActionToast('导入持仓', 'success', {
-      description: `已替换当前组合，文件来源：${importDraft.fileName || '持仓截图'}。`
-    });
+    const sellProceeds = metrics.isSell ? metrics.proceeds : null;
+    const marketOrProceeds = metrics.isSell
+      ? formatCurrency(sellProceeds || 0, '¥', 2)
+      : metrics.hasLatestNav ? formatCurrency(metrics.marketValue, '¥', 2) : '—';
+    const profitDisplay = metrics.isSell
+      ? '—'
+      : metrics.hasLatestNav ? formatSignedCurrency(metrics.totalProfit) : '—';
+    const profitRateDisplay = metrics.isSell
+      ? '—'
+      : metrics.hasLatestNav ? formatSignedPercent(metrics.totalReturnRate) : '—';
+    const todayDisplay = metrics.isSell
+      ? '—'
+      : (metrics.hasLatestNav && metrics.hasPreviousNav) ? formatSignedCurrency(metrics.todayProfit) : '—';
+    const todayRateDisplay = metrics.isSell
+      ? '—'
+      : (metrics.hasLatestNav && metrics.hasPreviousNav) ? formatSignedPercent(metrics.todayReturnRate) : '—';
+    const marketOrProceedsLabelClass = metrics.isSell ? 'text-slate-500' : 'text-slate-700';
+
+    return (
+      <tr
+        key={rowKey}
+        className={cx(
+          'cursor-pointer text-slate-700 transition-colors hover:bg-slate-50',
+          isSelected && 'bg-indigo-50/50'
+        )}
+        onClick={() => { setSelectedCode(tx.code); setSidePanelTab('summary'); }}
+      >
+        <td className="whitespace-nowrap px-2 py-2 font-mono text-xs text-slate-800">{tx.code}</td>
+        <td className="whitespace-nowrap px-2 py-2 text-xs">{tx.name || <span className="text-slate-400">—</span>}</td>
+        <td className="px-2 py-2"><Pill tone={kindTone}>{kindLabel}</Pill></td>
+        <td className="px-2 py-2">
+          <span className={cx(
+            'inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold',
+            tx.type === 'BUY' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'
+          )}>
+            {tx.type}
+          </span>
+        </td>
+        <td className="whitespace-nowrap px-2 py-2 text-xs">
+          {tx.date || <span className="text-amber-600">待补录</span>}
+        </td>
+        <td className="whitespace-nowrap px-2 py-2 text-right text-xs tabular-nums">{formatNav(tx.price)}</td>
+        <td className="whitespace-nowrap px-2 py-2 text-right text-xs tabular-nums">{formatShares(tx.shares)}</td>
+        <td className="whitespace-nowrap px-2 py-2 text-right text-xs tabular-nums text-slate-700">
+          {metrics.hasLatestNav ? formatNav(metrics.latestNav) : (snapshotError ? <span className="text-red-500">失败</span> : '—')}
+        </td>
+        <td className="whitespace-nowrap px-2 py-2 text-right text-[11px] text-slate-500">{metrics.latestNavDate || '—'}</td>
+        <td className="whitespace-nowrap px-2 py-2 text-right text-xs tabular-nums">{metrics.isSell ? '—' : formatShares(metrics.displayShares)}</td>
+        <td className="whitespace-nowrap px-2 py-2 text-right text-xs tabular-nums">{formatCurrency(metrics.costBasis, '¥', 2)}</td>
+        <td className={cx('whitespace-nowrap px-2 py-2 text-right text-xs tabular-nums', marketOrProceedsLabelClass)}>{marketOrProceeds}</td>
+        <td className={cx('whitespace-nowrap px-2 py-2 text-right text-xs tabular-nums', profitCellClass)}>{profitDisplay}</td>
+        <td className={cx('whitespace-nowrap px-2 py-2 text-right text-xs tabular-nums', profitCellClass)}>{profitRateDisplay}</td>
+        <td className={cx('whitespace-nowrap px-2 py-2 text-right text-xs tabular-nums', todayCellClass)}>{todayDisplay}</td>
+        <td className={cx('whitespace-nowrap px-2 py-2 text-right text-xs tabular-nums', todayCellClass)}>{todayRateDisplay}</td>
+        <td className="whitespace-nowrap px-2 py-2 text-right text-xs tabular-nums text-slate-500">
+          {metrics.hasPreviousNav ? formatNav(metrics.previousNav) : '—'}
+        </td>
+        <td className="whitespace-nowrap px-2 py-2">
+          <div className="flex justify-end gap-1" onClick={(event) => event.stopPropagation()}>
+            <button type="button" title="编辑" className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800" onClick={() => handleStartEdit(row)}>
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button type="button" title="复制到录入表" className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800" onClick={() => handleCopyRowToDraft(row)}>
+              <FileImage className="h-3.5 w-3.5" />
+            </button>
+            <button type="button" title="删除" className="rounded-lg p-1.5 text-red-500 transition-colors hover:bg-red-50" onClick={() => handleDeleteTransaction(tx.id)}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
   }
 
-  function handleSelectFileFromInput(event) {
-    const file = event.target.files?.[0];
-    if (file) {
-      handleAnalyzeFile(file);
+  function renderLedgerTable() {
+    if (!filteredRows.length) {
+      return (
+        <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 text-center">
+          <Wallet className="h-8 w-8 text-slate-300" />
+          <div className="text-sm text-slate-500">
+            {ledgerRows.length === 0 ? '还没有任何交易流水，点「+ 新增」或「OCR 导入」录入。' : '当前筛选条件下没有交易流水。'}
+          </div>
+        </div>
+      );
     }
-    event.target.value = '';
+    return (
+      <div className="overflow-x-auto">
+        <table className="min-w-[1400px] w-full text-sm">
+          <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+            <tr>
+              <th className="px-2 py-2">代码</th>
+              <th className="px-2 py-2">名称</th>
+              <th className="px-2 py-2">标签</th>
+              <th className="px-2 py-2">类型</th>
+              <th className="px-2 py-2">日期</th>
+              <th className="px-2 py-2 text-right">价</th>
+              <th className="px-2 py-2 text-right">份额</th>
+              <th className="px-2 py-2 text-right">当前净值</th>
+              <th className="px-2 py-2 text-right">净值日</th>
+              <th className="px-2 py-2 text-right">当前份额</th>
+              <th className="px-2 py-2 text-right">成本</th>
+              <th className="px-2 py-2 text-right">市值/实收</th>
+              <th className="px-2 py-2 text-right">总收益</th>
+              <th className="px-2 py-2 text-right">总收益率</th>
+              <th className="px-2 py-2 text-right">当日收益</th>
+              <th className="px-2 py-2 text-right">当日收益率</th>
+              <th className="px-2 py-2 text-right">前一日净值</th>
+              <th className="px-2 py-2 text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {filteredRows.map(renderRow)}
+          </tbody>
+        </table>
+      </div>
+    );
   }
 
-  function openFilePicker() {
-    fileInputRef.current?.click();
+  function renderSummaryPanel() {
+    if (!selectedAggregate) {
+      return (
+        <div className="text-sm text-slate-500">
+          点击左侧任意一行查看该基金的汇总（净份额 / 加权均价 / 总收益 / 今日收益）。
+        </div>
+      );
+    }
+    const agg = selectedAggregate;
+    const profitTone = agg.totalProfit > 0 ? 'text-emerald-600' : agg.totalProfit < 0 ? 'text-red-500' : 'text-slate-700';
+    const todayTone = agg.todayProfit > 0 ? 'text-emerald-600' : agg.todayProfit < 0 ? 'text-red-500' : 'text-slate-700';
+    return (
+      <div className="space-y-4">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">当前基金</div>
+          <div className="mt-1 flex items-center gap-2">
+            <span className="font-mono text-base font-bold text-slate-900">{agg.code}</span>
+            <Pill tone={KIND_PILL_TONES[agg.kind] || 'slate'}>{KIND_LABELS[agg.kind] || '未知'}</Pill>
+          </div>
+          {agg.name ? <div className="mt-1 text-sm text-slate-600">{agg.name}</div> : null}
+        </div>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+          <div>
+            <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">净份额</dt>
+            <dd className="mt-1 tabular-nums text-slate-900">{formatShares(agg.totalShares)}</dd>
+          </div>
+          <div>
+            <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">加权均价</dt>
+            <dd className="mt-1 tabular-nums text-slate-900">{formatNav(agg.avgCost)}</dd>
+          </div>
+          <div>
+            <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总成本</dt>
+            <dd className="mt-1 tabular-nums text-slate-900">{formatCurrency(agg.totalCost, '¥', 2)}</dd>
+          </div>
+          <div>
+            <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</dt>
+            <dd className="mt-1 tabular-nums text-slate-900">{agg.hasLatestNav ? formatCurrency(agg.marketValue, '¥', 2) : '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">累计盈亏</dt>
+            <dd className={cx('mt-1 tabular-nums', profitTone)}>
+              {agg.hasLatestNav ? `${formatSignedCurrency(agg.totalProfit)} (${formatSignedPercent(agg.totalReturnRate)})` : '—'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">今日盈亏</dt>
+            <dd className={cx('mt-1 tabular-nums', todayTone)}>
+              {agg.hasLatestNav && agg.hasPreviousNav ? `${formatSignedCurrency(agg.todayProfit)} (${formatSignedPercent(agg.todayReturnRate)})` : '—'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">BUY 总份额</dt>
+            <dd className="mt-1 tabular-nums text-slate-900">{formatShares(agg.buyShares)}</dd>
+          </div>
+          <div>
+            <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">SELL 总份额</dt>
+            <dd className="mt-1 tabular-nums text-slate-900">{formatShares(agg.sellShares)}</dd>
+          </div>
+          <div>
+            <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">首买日期</dt>
+            <dd className="mt-1 text-slate-700">{agg.firstBuyDate || '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">最新交易</dt>
+            <dd className="mt-1 text-slate-700">{agg.lastTxDate || '—'}</dd>
+          </div>
+        </dl>
+        {agg.snapshotError ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+            净值获取失败：{agg.snapshotError}
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
-  const assetValue = summary.pricedCount ? summary.marketValue : summary.totalCost;
-  const totalProfitRate = computeRatePercent(summary.totalProfit, summary.totalCost);
-  const todayRateBase = (summary.marketValue - summary.todayProfit) > 0
-    ? (summary.marketValue - summary.todayProfit)
-    : summary.totalCost;
-  const todayProfitRate = computeRatePercent(summary.todayProfit, todayRateBase);
-  const coverageBase = summary.positionCount || summary.fetchableCount || 0;
-  const coverageRate = computeRatePercent(summary.pricedCount, coverageBase);
-  const completionRate = computeRatePercent(summary.positionCount, summary.meaningfulRowCount || summary.positionCount);
-  const latestSyncLabel = summary.latestSnapshotAt
-    ? formatDateTimeLabel(summary.latestSnapshotAt)
-    : (lastNavMeta.updatedAt ? formatDateTimeLabel(lastNavMeta.updatedAt) : '--');
+  function renderDraftPanel() {
+    const errors = getTransactionErrors({
+      ...draft,
+      code: normalizeFundCode(draft.code),
+      price: Number(draft.price || 0),
+      shares: Number(draft.shares || 0)
+    }, { ignoreBlank: true });
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+            {draftMode === 'edit' ? '编辑交易' : '新增交易'}
+          </div>
+          {draftMode === 'edit' ? (
+            <button type="button" className={SUBTLE_BTN} onClick={() => resetDraft()}>
+              <X className="h-3.5 w-3.5" /> 取消
+            </button>
+          ) : null}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="col-span-1 text-xs text-slate-500">
+            代码
+            <input
+              className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')}
+              value={draft.code}
+              onChange={(event) => handleDraftChange('code', event.target.value)}
+              placeholder="如 021000"
+              inputMode="numeric"
+            />
+          </label>
+          <label className="col-span-1 text-xs text-slate-500">
+            名称
+            <input
+              className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')}
+              value={draft.name}
+              onChange={(event) => handleDraftChange('name', event.target.value)}
+              placeholder="如 长信电子信息"
+            />
+          </label>
+          <label className="col-span-1 text-xs text-slate-500">
+            标签
+            <select
+              className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')}
+              value={draft.kind}
+              onChange={(event) => handleDraftChange('kind', event.target.value)}
+            >
+              <option value="otc">场外</option>
+              <option value="exchange">场内</option>
+            </select>
+          </label>
+          <label className="col-span-1 text-xs text-slate-500">
+            类型
+            <select
+              className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')}
+              value={draft.type}
+              onChange={(event) => handleDraftChange('type', event.target.value)}
+            >
+              <option value="BUY">BUY</option>
+              <option value="SELL">SELL</option>
+            </select>
+          </label>
+          <label className="col-span-2 text-xs text-slate-500">
+            日期
+            <input
+              type="date"
+              className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')}
+              value={draft.date}
+              onChange={(event) => handleDraftChange('date', event.target.value)}
+            />
+          </label>
+          <label className="col-span-1 text-xs text-slate-500">
+            价格（净值）
+            <input
+              className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')}
+              value={draft.price}
+              onChange={(event) => handleDraftChange('price', event.target.value)}
+              placeholder="0.0000"
+              inputMode="decimal"
+            />
+          </label>
+          <label className="col-span-1 text-xs text-slate-500">
+            份额
+            <input
+              className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')}
+              value={draft.shares}
+              onChange={(event) => handleDraftChange('shares', event.target.value)}
+              placeholder="0.0000"
+              inputMode="decimal"
+            />
+          </label>
+          <label className="col-span-2 text-xs text-slate-500">
+            备注
+            <input
+              className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')}
+              value={draft.note}
+              onChange={(event) => handleDraftChange('note', event.target.value)}
+              placeholder="可选"
+            />
+          </label>
+        </div>
+        {Object.keys(errors).length ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+            {summarizeTransactionErrors(errors)}
+          </div>
+        ) : null}
+        <button type="button" className={PRIMARY_BTN + ' w-full'} onClick={submitDraft}>
+          <Save className="h-4 w-4" />
+          {draftMode === 'edit' ? '保存交易' : '新增交易'}
+        </button>
+      </div>
+    );
+  }
+
+  function renderOcrStatus() {
+    if (ocrState.status === 'idle') {
+      return <div className="text-xs text-slate-500">{ocrState.message}</div>;
+    }
+    if (ocrState.status === 'loading') {
+      return (
+        <div className="space-y-2 text-xs text-slate-600">
+          <div className="flex items-center gap-2">
+            <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+            {ocrState.message}
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${Math.min(100, Math.max(6, ocrState.progress || 6))}%` }} />
+          </div>
+        </div>
+      );
+    }
+    if (ocrState.status === 'success') {
+      return <div className="text-xs text-emerald-600">{ocrState.message}</div>;
+    }
+    if (ocrState.status === 'error') {
+      return <div className="text-xs text-red-500">{ocrState.error || '识别失败。'}</div>;
+    }
+    return null;
+  }
+
+  const topBar = embedded ? null : (
+    <TopBar
+      brand="ai-dca"
+      tabs={tabs}
+      activeKey={primaryTabKey}
+      onSelect={(key) => {
+        setPrimaryTabKey(key);
+        const target = tabs.find((tab) => tab.key === key);
+        if (target?.href && typeof window !== 'undefined') {
+          window.location.assign(target.href);
+        }
+      }}
+    />
+  );
 
   const content = (
-    <div className="bg-[radial-gradient(circle_at_top,_#f8fafc_0,_#f1f5f9_46%,_#e2e8f0_100%)]">
-      <input
-        ref={fileInputRef}
-        accept="image/png,image/jpeg,image/jpg"
-        className="hidden"
-        type="file"
-        onChange={handleSelectFileFromInput}
-      />
-
-      <div className="mx-auto max-w-6xl px-5 pb-20 pt-6 sm:px-6">
-        <div className="rounded-[2rem] border border-slate-200 bg-white shadow-[0_28px_70px_rgba(15,23,42,0.10)]">
-          <div className="relative overflow-hidden rounded-[2rem] bg-[radial-gradient(circle_at_top_left,_rgba(129,140,248,0.24),_transparent_28%),linear-gradient(135deg,#0f172a_0%,#1e293b_52%,#334155_100%)] px-5 py-6 text-white sm:px-6 sm:py-7">
-            <div className="pointer-events-none absolute -right-12 top-8 h-40 w-40 rounded-full bg-indigo-300/10 blur-3xl" />
-            <div className="pointer-events-none absolute -left-10 bottom-0 h-32 w-32 rounded-full bg-sky-200/10 blur-2xl" />
-            <div className="relative">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="max-w-3xl">
-                  <div className="inline-flex items-center gap-2 rounded-full bg-white/14 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-white/80 ring-1 ring-white/20">
-                    <Wallet className="h-3.5 w-3.5" />
-                    Fund Holdings
-                  </div>
-                  <h1 className="mt-4 text-[2rem] font-extrabold tracking-tight sm:text-[2.35rem]">基金持仓收益</h1>
-                  <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-200">
-                    参考投资账本的账户面板风格，把组合资产、当日盈亏、累计收益和净值同步状态放到同一个看板里。
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button className={heroButtonClass} type="button" onClick={openFilePicker}>
-                    <Upload className="h-4 w-4" />
-                    上传截图
-                  </button>
-                  <button
-                    className={heroButtonClass}
-                    disabled={!codes.length || lastNavMeta.status === 'loading'}
-                    type="button"
-                    onClick={() => setRefreshSeed((value) => value + 1)}
-                  >
-                    {lastNavMeta.status === 'loading' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                    刷新净值
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.72fr)]">
-                <div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="rounded-[1.5rem] bg-white/12 p-4 ring-1 ring-white/16 backdrop-blur-sm">
-                      <div className="text-sm font-semibold text-white/78">当日盈亏</div>
-                      <div className="mt-3 text-3xl font-extrabold tracking-tight text-white">{todayCard.value}</div>
-                      <div className="mt-2 text-sm font-semibold text-white/74">
-                        {summary.todayReadyCount >= summary.positionCount && summary.positionCount > 0 ? formatSignedPercent(todayProfitRate) : '等待完整净值'}
-                      </div>
-                    </div>
-                    <div className="rounded-[1.5rem] bg-white/12 p-4 ring-1 ring-white/16 backdrop-blur-sm">
-                      <div className="text-sm font-semibold text-white/78">累计收益</div>
-                      <div className="mt-3 text-3xl font-extrabold tracking-tight text-white">
-                        {summary.pricedCount ? formatSignedCurrency(summary.totalProfit) : '--'}
-                      </div>
-                      <div className="mt-2 text-sm font-semibold text-white/74">
-                        {summary.pricedCount ? formatSignedPercent(totalProfitRate) : '等待净值快照'}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 rounded-[1.75rem] bg-white/10 p-5 ring-1 ring-white/14 backdrop-blur-sm">
-                    <div className="text-sm font-semibold text-white/78">账户资产</div>
-                    <div className="mt-2 text-[2.2rem] font-extrabold tracking-tight text-white sm:text-[2.65rem]">
-                      {assetValue > 0 ? formatCurrency(assetValue, '¥', 2) : '--'}
-                    </div>
-                    <div className="mt-2 text-sm text-white/72">
-                      {summary.pricedCount
-                        ? `最近净值日期 ${formatDateLabel(summary.latestNavDate)}`
-                        : '当前以持仓成本作为账户基线，等待首次净值同步。'}
-                    </div>
-
-                    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                      <HeroMiniStat
-                        label="持仓成本"
-                        value={summary.totalCost > 0 ? formatCurrency(summary.totalCost, '¥', 2) : '--'}
-                        note="按买入均价与份数汇总"
-                      />
-                      <HeroMiniStat
-                        label="持有收益"
-                        value={summary.pricedCount ? formatSignedCurrency(summary.totalProfit) : '--'}
-                        note={summary.pricedCount ? formatSignedPercent(totalProfitRate) : '等待净值'}
-                      />
-                      <HeroMiniStat
-                        label="净值覆盖"
-                        value={coverageBase ? formatPercent(coverageRate) : '--'}
-                        note={`${summary.pricedCount}/${coverageBase || 0} 已同步`}
-                      />
-                      <HeroMiniStat
-                        label="持仓数量"
-                        value={`${summary.positionCount || 0} 只`}
-                        note={`${summary.meaningfulRowCount || 0} 行有效录入`}
-                      />
-                      <HeroMiniStat
-                        label="组合完成度"
-                        value={summary.meaningfulRowCount ? formatPercent(completionRate) : '--'}
-                        note="已形成完整仓位的占比"
-                      />
-                      <HeroMiniStat
-                        label="最近快照"
-                        value={latestSyncLabel}
-                        note={resolveSyncLabel(lastNavMeta.status)}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div
-                  className={cx(
-                    'rounded-[1.75rem] bg-white/10 p-5 ring-1 ring-white/14 backdrop-blur-sm',
-                    dragActive && 'bg-white/14'
-                  )}
-                  onDragEnter={(event) => {
-                    event.preventDefault();
-                    setDragActive(true);
-                  }}
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    setDragActive(true);
-                  }}
-                  onDragLeave={(event) => {
-                    event.preventDefault();
-                    if (event.currentTarget.contains(event.relatedTarget)) {
-                      return;
-                    }
-                    setDragActive(false);
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    setDragActive(false);
-                    const file = event.dataTransfer.files?.[0];
-                    if (file) {
-                      handleAnalyzeFile(file);
-                    }
-                  }}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold text-white/80">导入工作台</div>
-                      <div className="mt-2 text-2xl font-extrabold tracking-tight text-white">截图识别持仓</div>
-                    </div>
-                    <ImportStatusPill importDraft={importDraft} ocrState={ocrState} />
-                  </div>
-                  <div className="mt-3 text-sm leading-6 text-white/76">
-                    默认导入策略仍然是“先出草稿，再由你确认替换当前组合”，不会静默覆盖列表。
-                  </div>
-
-                  <button
-                    className={cx(
-                      'mt-5 flex min-h-[168px] w-full flex-col items-center justify-center rounded-[1.6rem] border border-dashed border-white/20 bg-white/8 px-6 py-8 text-center transition-all',
-                      dragActive ? 'scale-[1.01] bg-white/12' : 'hover:bg-white/10'
-                    )}
-                    type="button"
-                    onClick={openFilePicker}
-                  >
-                    {ocrState.status === 'loading' ? (
-                      <LoaderCircle className="h-10 w-10 animate-spin text-white" />
-                    ) : (
-                      <CloudUpload className="h-10 w-10 text-white" />
-                    )}
-                    <div className="mt-4 text-base font-bold text-white">
-                      {ocrState.status === 'loading' ? '正在识别截图' : '拖拽或点击上传 PNG / JPG / JPEG'}
-                    </div>
-                    <div className="mt-2 max-w-xs text-sm leading-6 text-white/76">{ocrState.message}</div>
-                    {ocrState.status === 'loading' ? (
-                      <div className="mt-5 h-2 w-full max-w-xs overflow-hidden rounded-full bg-white/18">
-                        <div className="h-full rounded-full bg-white transition-all" style={{ width: `${clampNumber(ocrState.progress, 0, 100)}%` }} />
-                      </div>
-                    ) : null}
-                  </button>
-
-                  <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                    <div className="rounded-[1.35rem] bg-white/10 px-4 py-4 ring-1 ring-white/14">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                        <FileImage className="h-4 w-4 text-white/72" />
-                        最近导入
-                      </div>
-                      <div className="mt-3 text-sm text-white/80">{importDraft?.fileName || fileName || '尚未导入截图'}</div>
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        {ocrState.durationMs > 0 ? <Pill tone="slate">{formatDuration(ocrState.durationMs)}</Pill> : null}
-                        {importDraft?.rows?.length ? <Pill tone="indigo">{importDraft.rows.length} 行草稿</Pill> : null}
-                      </div>
-                    </div>
-                    <div className="rounded-[1.35rem] bg-white/10 px-4 py-4 ring-1 ring-white/14">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                        <TableProperties className="h-4 w-4 text-white/72" />
-                        导入策略
-                      </div>
-                      <div className="mt-3 text-sm leading-6 text-white/76">
-                        识别结果先放进草稿区，确认后才替换当前组合。适合先拍一张截图，再针对识别错行做手动微调。
-                      </div>
-                    </div>
-                  </div>
-
-                  {ocrState.error ? (
-                    <div className="mt-4 rounded-[1.2rem] bg-[#6e2018]/25 px-4 py-3 text-sm text-white ring-1 ring-white/14">
-                      {ocrState.error}
-                    </div>
-                  ) : null}
-
-                  {importDraft ? (
-                    <div className="mt-4 rounded-[1.35rem] bg-white/10 p-4 ring-1 ring-white/14 backdrop-blur-sm">
-                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                            <CheckCircle2 className="h-4 w-4 text-indigo-200" />
-                            草稿已生成，确认后替换当前组合
-                          </div>
-                          <div className="mt-3 flex flex-wrap items-center gap-2">
-                            <Pill tone="indigo">{importDraft.rows.length} 行草稿</Pill>
-                            <Pill tone="slate">置信度 {(Number(importDraft.confidence || 0) * 100).toFixed(0)}%</Pill>
-                            {importDraft.durationMs > 0 ? <Pill tone="slate">{formatDuration(importDraft.durationMs)}</Pill> : null}
-                          </div>
-                          {importDraft.warnings?.length ? (
-                            <div className="mt-3 text-sm leading-6 text-amber-100">
-                              {importDraft.warnings.slice(0, 3).map((item) => (
-                                <div key={item}>{item}</div>
-                              ))}
-                              {importDraft.warnings.length > 3 ? <div>还有 {importDraft.warnings.length - 3} 条警告未展开。</div> : null}
-                            </div>
-                          ) : null}
-                        </div>
-
-                        <div className="flex flex-col gap-3 sm:flex-row">
-                          <button className={coralPrimaryButtonClass} disabled={!importDraft.rows.length} type="button" onClick={handleApplyDraft}>
-                            <CheckCircle2 className="h-4 w-4" />
-                            用草稿替换当前组合
-                          </button>
-                          <button className={heroButtonClass} type="button" onClick={() => setImportDraft(null)}>
-                            <X className="h-4 w-4" />
-                            放弃本次草稿
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </div>
+    <div className={cx('flex flex-col gap-4 px-4 py-5 sm:px-6', embedded ? '' : 'mx-auto max-w-[1600px]')}>
+      {migrationNoticeVisible ? (
+        <div className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-none" />
+          <div>
+            检测到从旧持仓汇总迁入的交易，请点击行内编辑按钮补录交易日期。迁入时间：{ledger.legacyMigrationAt?.slice(0, 10) || '—'}
           </div>
         </div>
-
-        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <OverviewCard
-            detail={summary.totalCost > 0 ? `持仓成本 ${formatCurrency(summary.totalCost, '¥', 2)}` : '等待录入持仓'}
-            helper={summary.positionCount ? `${summary.positionCount} 只基金纳入组合` : '先补全代码、均价和份数后开始汇总'}
-            icon={Wallet}
-            title="总资产"
-            tone="blue"
-            value={assetValue > 0 ? formatCurrency(assetValue, '¥', 2) : '--'}
-            visual={<MiniTrend tone="blue" mode={assetValue > summary.totalCost ? 'rise' : assetValue < summary.totalCost ? 'dip' : 'flat'} />}
-          />
-          <OverviewCard
-            detail={summary.todayReadyCount >= summary.positionCount && summary.positionCount > 0 ? formatSignedPercent(todayProfitRate) : '等待完整净值'}
-            helper={todayCard.note}
-            icon={History}
-            title="当日盈亏"
-            tone={todayCard.accent === 'red' ? 'rose' : todayCard.accent === 'amber' ? 'amber' : todayCard.accent === 'emerald' ? 'emerald' : 'coral'}
-            value={todayCard.value}
-            visual={<MiniTrend tone="coral" mode={summary.todayProfit > 0 ? 'step' : summary.todayProfit < 0 ? 'dip' : 'flat'} />}
-          />
-          <OverviewCard
-            detail={summary.pricedCount ? formatSignedPercent(totalProfitRate) : '等待净值快照'}
-            helper={summary.latestSnapshotAt ? `最近快照 ${formatDateTimeLabel(summary.latestSnapshotAt)}` : '进入页面后会自动刷新净值'}
-            icon={Sparkles}
-            title="累计收益"
-            tone={summary.totalProfit > 0 ? 'coral' : summary.totalProfit < 0 ? 'rose' : 'neutral'}
-            value={summary.pricedCount ? formatSignedCurrency(summary.totalProfit) : '--'}
-            visual={<MiniTrend tone={summary.totalProfit < 0 ? 'blue' : 'coral'} mode={summary.totalProfit > 0 ? 'rise' : summary.totalProfit < 0 ? 'dip' : 'flat'} />}
-          />
-          <OverviewCard
-            detail={coverageBase ? `${summary.pricedCount}/${coverageBase} 已同步` : '等待有效持仓'}
-            helper={summary.latestNavDate ? `最新净值日 ${formatDateLabel(summary.latestNavDate)}` : '尚未拿到最新净值日期'}
-            icon={Database}
-            title="净值覆盖"
-            tone="amber"
-            value={coverageBase ? formatPercent(coverageRate) : '--'}
-            visual={<CoverageGauge label="覆盖" value={coverageBase ? coverageRate : 0} />}
-          />
-          <OverviewCard
-            detail={`${resolveSyncLabel(lastNavMeta.status)} · ${describeCacheSource(lastNavMeta.cache)}`}
-            helper={lastNavMeta.updatedAt ? `最近触发 ${formatDateTimeLabel(lastNavMeta.updatedAt)}` : '进入页面后自动刷新'}
-            icon={RefreshCw}
-            title="收益对比"
-            tone="neutral"
-            value={summary.pricedCount ? formatSignedCurrency(summary.totalProfit) : '--'}
-            visual={<CompareBars primaryLabel="今日" primaryValue={summary.todayProfit} secondaryLabel="累计" secondaryValue={summary.totalProfit} />}
-          />
-          <OverviewCard
-            detail={`${summary.meaningfulRowCount || 0} 行录入 · ${summary.positionCount || 0} 只成仓`}
-            helper="完成度反映录入行里有多少已经形成完整仓位。"
-            icon={TableProperties}
-            title="组合完成度"
-            tone="emerald"
-            value={summary.meaningfulRowCount ? formatPercent(completionRate) : '--'}
-            visual={<CoverageGauge label="完成" value={summary.meaningfulRowCount ? completionRate : 0} />}
-          />
-        </div>
-
-        <div className="mt-6">
-          <div className={cx(warmSurfaceClass, 'p-6')}>
-            <SectionHeader
-              action={(
-                <>
-                  <button className={softButtonClass} type="button" onClick={handleAddRow}>
-                    <Plus className="h-4 w-4" />
-                    新增持仓
-                  </button>
-                  <button className={mutedButtonClass} type="button" onClick={handleClearRows}>
-                    <Trash2 className="h-4 w-4" />
-                    清空全部
-                  </button>
-                </>
-              )}
-              description="列表模式参考基金账本明细页，保留可编辑字段，但把净值、今日盈亏和累计收益改成更聚焦的收益列。"
-              eyebrow="List Mode"
-              title="持仓列表"
-            />
-
-            {!hasMeaningfulRows ? (
-              <div className="mt-6 rounded-[1.75rem] border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm shadow-slate-200">
-                  <Wallet className="h-6 w-6 text-indigo-500" />
-                </div>
-                <div className="mt-4 text-lg font-bold text-slate-900">当前还没有持仓组合</div>
-                <p className="mt-2 text-sm leading-6 text-slate-500">
-                  你可以先上传截图生成导入草稿，也可以直接新增一行，录入基金代码、买入均价和持有份数。
-                </p>
+      ) : null}
+      {renderSummaryCards()}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <section className="rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-3">
+              {renderKindFilter()}
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  className={cx(tableInputClass, 'h-10 w-56 rounded-xl border-slate-200 bg-slate-50 pl-9 pr-3 text-sm hover:bg-white')}
+                  value={searchText}
+                  onChange={(event) => setSearchText(event.target.value)}
+                  placeholder="搜索代码或名称"
+                />
               </div>
-            ) : null}
-
-            <div className="mt-6 hidden grid-cols-[minmax(0,1.35fr)_minmax(0,0.84fr)_minmax(0,0.84fr)_minmax(0,0.9fr)_minmax(0,0.95fr)_minmax(0,1fr)_auto] gap-3 px-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400 xl:grid">
-              <span>基金 / 代码</span>
-              <span>买入均价</span>
-              <span>持有份数</span>
-              <span>最新净值</span>
-              <span>当日盈亏</span>
-              <span>累计收益</span>
-              <span className="text-right">操作</span>
+              {renderNavBadge()}
             </div>
-
-            <div className="mt-6 space-y-4">
-              {rows.map((editableRow, index) => {
-                const normalizedRow = normalizedRowMap[editableRow.id] || normalizeHoldingRow(editableRow);
-                const errors = rowErrorsById[editableRow.id] || {};
-                const snapshot = snapshotsByCode[normalizedRow.code] || null;
-                const metrics = buildHoldingMetrics(normalizedRow, snapshot);
-                const runtime = rowRuntimeById[editableRow.id] || {};
-                const rowTotalRate = computeRatePercent(metrics.totalProfit, metrics.cost);
-                const rowTodayRateBase = (metrics.marketValue - metrics.todayProfit) > 0
-                  ? (metrics.marketValue - metrics.todayProfit)
-                  : metrics.cost;
-                const rowTodayRate = computeRatePercent(metrics.todayProfit, rowTodayRateBase);
-
-                let rowStatusLabel = '待完善';
-                let rowStatusTone = 'slate';
-                let rowStatusNote = '补全代码、均价和份数后自动计算。';
-
-                if (Object.keys(errors).length) {
-                  rowStatusLabel = '待完善';
-                  rowStatusTone = 'slate';
-                  rowStatusNote = summarizeHoldingRowErrors(errors);
-                } else if (runtime.status === 'loading') {
-                  rowStatusLabel = '更新中';
-                  rowStatusTone = 'indigo';
-                  rowStatusNote = '正在请求该基金的最新公布净值。';
-                } else if (runtime.status === 'error') {
-                  rowStatusLabel = '更新失败';
-                  rowStatusTone = 'red';
-                  rowStatusNote = runtime.error || '净值更新失败，已保留上次成功快照。';
-                } else if (snapshot?.latestNav > 0 && snapshot?.previousNav > 0) {
-                  rowStatusLabel = '已更新';
-                  rowStatusTone = 'emerald';
-                  rowStatusNote = snapshot.latestNavDate
-                    ? `净值日期 ${formatDateLabel(snapshot.latestNavDate)}`
-                    : '已同步到最近成功快照。';
-                }
-
-                return (
-                  <div key={editableRow.id} className="rounded-[1.75rem] border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-4 shadow-[0_16px_36px_rgba(15,23,42,0.05)]">
-                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-indigo-500 shadow-sm shadow-slate-200">
-                          {String(index + 1).padStart(2, '0')}
-                        </span>
-                        当前持仓
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Pill tone={rowStatusTone}>{rowStatusLabel}</Pill>
-                        <button
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-500 ring-1 ring-slate-200 transition-colors hover:bg-red-50 hover:text-red-500"
-                          type="button"
-                          onClick={() => handleDeleteRow(editableRow.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.84fr)_minmax(0,0.84fr)_minmax(0,0.9fr)_minmax(0,0.95fr)_minmax(0,1fr)_auto]">
-                      <div className="min-w-0 space-y-3">
-                        <div className="grid gap-3 sm:grid-cols-[minmax(120px,0.6fr)_minmax(0,1fr)]">
-                          <label className="space-y-2">
-                            <span className="text-xs font-semibold text-slate-500">基金代码</span>
-                            <input
-                              className={cx(
-                                tableInputClass,
-                                editorInputClass,
-                                errors.code && 'border-red-200 bg-red-50 focus:border-red-300'
-                              )}
-                              inputMode="numeric"
-                              maxLength={6}
-                              placeholder="例如 110022"
-                              value={editableRow.code}
-                              onChange={(event) => updateRowField(editableRow.id, 'code', event.target.value)}
-                            />
-                          </label>
-                          <label className="space-y-2">
-                            <span className="text-xs font-semibold text-slate-500">基金名称</span>
-                            <input
-                              className={editorInputClass}
-                              placeholder="可选，支持手动补全"
-                              value={editableRow.name}
-                              onChange={(event) => updateRowField(editableRow.id, 'name', event.target.value)}
-                            />
-                          </label>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                          <RowStatusIcon status={rowStatusLabel} />
-                          <span>{rowStatusNote}</span>
-                          {snapshot?.cacheSource ? <Pill tone="slate">{snapshot.cacheHit ? '缓存命中' : '实时更新'}</Pill> : null}
-                        </div>
-                      </div>
-
-                      <label className="space-y-2">
-                        <span className="text-xs font-semibold text-slate-500">买入均价</span>
-                        <input
-                          className={cx(
-                            tableInputClass,
-                            editorInputClass,
-                            errors.avgCost && 'border-red-200 bg-red-50 focus:border-red-300'
-                          )}
-                          inputMode="decimal"
-                          placeholder="0.0000"
-                          value={editableRow.avgCost}
-                          onChange={(event) => updateRowField(editableRow.id, 'avgCost', event.target.value)}
-                        />
-                      </label>
-
-                      <label className="space-y-2">
-                        <span className="text-xs font-semibold text-slate-500">持有份数</span>
-                        <input
-                          className={cx(
-                            tableInputClass,
-                            editorInputClass,
-                            errors.shares && 'border-red-200 bg-red-50 focus:border-red-300'
-                          )}
-                          inputMode="decimal"
-                          placeholder="0.00"
-                          value={editableRow.shares}
-                          onChange={(event) => updateRowField(editableRow.id, 'shares', event.target.value)}
-                        />
-                      </label>
-
-                      <div className="rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3">
-                        <div className="text-xs font-semibold text-slate-500">最新净值</div>
-                        <div className="mt-2 text-lg font-bold text-slate-900">{formatNav(snapshot?.latestNav)}</div>
-                        <div className="mt-1 text-xs leading-5 text-slate-400">
-                          {snapshot?.latestNavDate ? `最新 ${formatDateLabel(snapshot.latestNavDate)}` : '等待净值刷新'}
-                        </div>
-                      </div>
-
-                      <div className="rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3">
-                        <div className="text-xs font-semibold text-slate-500">当日盈亏</div>
-                        <div className={cx('mt-2 text-lg font-bold', metrics.hasLatestNav && metrics.hasPreviousNav ? getProfitTextClass(metrics.todayProfit) : 'text-slate-400')}>
-                          {metrics.hasLatestNav && metrics.hasPreviousNav ? formatSignedCurrency(metrics.todayProfit) : '--'}
-                        </div>
-                        <div className="mt-1 text-xs leading-5 text-slate-400">
-                          {metrics.hasLatestNav && metrics.hasPreviousNav ? formatSignedPercent(rowTodayRate) : '上一交易日待同步'}
-                        </div>
-                      </div>
-
-                      <div className="rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3">
-                        <div className="text-xs font-semibold text-slate-500">累计收益</div>
-                        <div className={cx('mt-2 text-lg font-bold', metrics.hasLatestNav ? getProfitTextClass(metrics.totalProfit) : 'text-slate-400')}>
-                          {metrics.hasLatestNav ? formatSignedCurrency(metrics.totalProfit) : '--'}
-                        </div>
-                        <div className="mt-1 text-xs leading-5 text-slate-400">
-                          {metrics.hasLatestNav ? `${formatSignedPercent(rowTotalRate)} · 市值 ${formatCurrency(metrics.marketValue, '¥', 2)}` : '当前市值待同步'}
-                        </div>
-                      </div>
-
-                      <div className="flex items-start justify-end xl:pt-7">
-                        <button
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-500 ring-1 ring-slate-200 transition-colors hover:bg-red-50 hover:text-red-500"
-                          type="button"
-                          onClick={() => handleDeleteRow(editableRow.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                      <MetricChip label="前值日期" value={snapshot?.previousNavDate ? formatDateLabel(snapshot.previousNavDate) : '--'} />
-                      <MetricChip label="快照时间" value={snapshot?.updatedAt ? formatDateTimeLabel(snapshot.updatedAt) : '--'} />
-                      <MetricChip label="缓存来源" value={snapshot?.cacheSource ? describeCacheSource(snapshot) : '等待刷新'} />
-                      <MetricChip
-                        label="状态"
-                        value={rowStatusLabel}
-                        valueClassName={rowStatusTone === 'red' ? 'text-red-500' : rowStatusTone === 'emerald' ? 'text-emerald-600' : rowStatusTone === 'indigo' ? 'text-indigo-600' : 'text-slate-900'}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" className={GHOST_BTN} onClick={handleManualRefresh} disabled={navStatus === 'loading'}>
+                <RefreshCw className={cx('h-4 w-4', navStatus === 'loading' && 'animate-spin')} />
+                刷新净值
+              </button>
+              <button type="button" className={GHOST_BTN} onClick={handleTriggerOcr} disabled={ocrState.status === 'loading'}>
+                <CloudUpload className="h-4 w-4" />
+                OCR 导入
+              </button>
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleOcrFile} />
+              <button type="button" className={PRIMARY_BTN} onClick={() => { resetDraft(); setSidePanelTab('create'); }}>
+                <Plus className="h-4 w-4" />
+                新增
+              </button>
             </div>
           </div>
-        </div>
+          <div className="px-1 py-1">
+            {renderLedgerTable()}
+          </div>
+          <div className="border-t border-slate-100 px-4 py-2 text-[11px] text-slate-400">
+            共 {ledgerRows.length} 笔流水；当前筛选 {filteredRows.length} 笔。
+          </div>
+        </section>
+        <aside className="relative">
+          <div className="sticky top-4 flex flex-col gap-3 rounded-2xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="inline-flex w-full rounded-xl bg-slate-100 p-1 text-xs font-semibold text-slate-600">
+              <button
+                type="button"
+                className={cx('flex-1 rounded-lg px-3 py-1.5 transition-colors', sidePanelTab === 'summary' ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'hover:text-slate-800')}
+                onClick={() => setSidePanelTab('summary')}
+              >
+                该基金汇总
+              </button>
+              <button
+                type="button"
+                className={cx('flex-1 rounded-lg px-3 py-1.5 transition-colors', sidePanelTab === 'create' ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'hover:text-slate-800')}
+                onClick={() => setSidePanelTab('create')}
+              >
+                {draftMode === 'edit' ? '编辑交易' : '新增交易'}
+              </button>
+            </div>
+            <div>
+              {sidePanelTab === 'summary' ? renderSummaryPanel() : renderDraftPanel()}
+            </div>
+            <div className="border-t border-slate-100 pt-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">OCR 状态</div>
+              <div className="mt-2">{renderOcrStatus()}</div>
+            </div>
+          </div>
+        </aside>
       </div>
     </div>
   );
@@ -1368,8 +1083,10 @@ export function HoldingsExperience({ links, embedded = false }) {
 
   return (
     <PageShell>
-      <TopBar activeKey="fundHoldings" tabs={primaryTabs} />
-      {content}
+      {topBar}
+      <main>{content}</main>
     </PageShell>
   );
 }
+
+export default HoldingsExperience;
