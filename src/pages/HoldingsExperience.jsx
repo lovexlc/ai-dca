@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
+  ClipboardPaste,
   CloudUpload,
   FileImage,
   LoaderCircle,
@@ -25,6 +26,7 @@ import {
   normalizeFundCode,
   normalizeFundKind,
   normalizeTransaction,
+  parseExcelPaste,
   summarizePortfolio,
   summarizeTransactionErrors
 } from '../app/holdingsLedgerCore.js';
@@ -146,6 +148,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [searchText, setSearchText] = useState('');
   const [selectedCode, setSelectedCode] = useState('');
   const [sidePanelTab, setSidePanelTab] = useState('summary');
+  const [mainViewTab, setMainViewTab] = useState('aggregate');
   const [draft, setDraft] = useState(() => emptyDraft());
   const [draftMode, setDraftMode] = useState('create');
   const [editingTxId, setEditingTxId] = useState('');
@@ -153,6 +156,9 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [navStatus, setNavStatus] = useState('idle');
   const [ocrState, setOcrState] = useState(() => createOcrState());
   const [primaryTabKey, setPrimaryTabKey] = useState('holdings');
+  const [pasteModalOpen, setPasteModalOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const [pasteResult, setPasteResult] = useState(null);
 
   const fileInputRef = useRef(null);
   const autoNavTriggeredRef = useRef(false);
@@ -298,6 +304,23 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       ...prepared,
       id: draftMode === 'edit' && draft.id ? draft.id : undefined
     });
+    if (normalized.type === 'SELL') {
+      const targetAgg = aggregateByCodeMap.get(normalized.code);
+      let available = targetAgg ? targetAgg.totalShares : 0;
+      if (draftMode === 'edit' && draft.id) {
+        const existing = transactions.find((tx) => tx.id === draft.id);
+        if (existing && existing.code === normalized.code) {
+          if (existing.type === 'SELL') available += existing.shares;
+          else if (existing.type === 'BUY') available -= existing.shares;
+        }
+      }
+      if (normalized.shares > available + 1e-6) {
+        showActionToast('保存失败', 'error', {
+          description: `SELL 份额 ${formatShares(normalized.shares)} 超过当前持仓 ${formatShares(Math.max(available, 0))}。`
+        });
+        return;
+      }
+    }
     setLedger((prev) => {
       const list = Array.isArray(prev.transactions) ? prev.transactions : [];
       if (draftMode === 'edit') {
@@ -373,6 +396,21 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       return;
     }
     const normalized = normalizeTransaction({ ...prepared, id: editingBuffer.id });
+    if (normalized.type === 'SELL') {
+      const targetAgg = aggregateByCodeMap.get(normalized.code);
+      let available = targetAgg ? targetAgg.totalShares : 0;
+      const existing = transactions.find((tx) => tx.id === editingBuffer.id);
+      if (existing && existing.code === normalized.code) {
+        if (existing.type === 'SELL') available += existing.shares;
+        else if (existing.type === 'BUY') available -= existing.shares;
+      }
+      if (normalized.shares > available + 1e-6) {
+        showActionToast('保存失败', 'error', {
+          description: `SELL 份额 ${formatShares(normalized.shares)} 超过当前持仓 ${formatShares(Math.max(available, 0))}。`
+        });
+        return;
+      }
+    }
     setLedger((prev) => ({
       ...prev,
       transactions: (prev.transactions || []).map((tx) => (tx.id === normalized.id ? normalized : tx))
@@ -439,58 +477,115 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
   }
 
+  // ---- Excel paste import ----
+  function openPasteModal() {
+    setPasteModalOpen(true);
+    setPasteText('');
+    setPasteResult(null);
+  }
+
+  function closePasteModal() {
+    setPasteModalOpen(false);
+  }
+
+  function handleParsePaste() {
+    const text = pasteText;
+    if (!text.trim()) {
+      showActionToast('粘贴解析', 'warning', { description: '粘贴区为空，请从 Excel 复制一段数据再试。' });
+      return;
+    }
+    const result = parseExcelPaste(text);
+    setPasteResult(result);
+    if (!result.rows.length) {
+      showActionToast('粘贴解析', 'warning', { description: '没有识别到有效行，请检查格式。' });
+      return;
+    }
+    const validCount = result.rows.filter((row) => Object.keys(row.errors).length === 0).length;
+    showActionToast('粘贴解析', 'success', {
+      description: `识别 ${result.rows.length} 行，其中有效 ${validCount} 行${result.headerDetected ? '（已识别表头）' : '（按位置映射）'}。`
+    });
+  }
+
+  function handleImportPasted() {
+    if (!pasteResult || !pasteResult.rows.length) return;
+    const validDrafts = pasteResult.rows
+      .filter((row) => Object.keys(row.errors).length === 0)
+      .map((row) => normalizeTransaction({ ...row.draft, id: undefined }));
+    if (!validDrafts.length) {
+      showActionToast('导入失败', 'error', { description: '没有有效行可导入，请根据提示修改后重试。' });
+      return;
+    }
+    setLedger((prev) => ({
+      ...prev,
+      transactions: [...(prev.transactions || []), ...validDrafts]
+    }));
+    const skipped = pasteResult.rows.length - validDrafts.length;
+    showActionToast('Excel 粘贴导入', 'success', {
+      description: skipped > 0
+        ? `已导入 ${validDrafts.length} 笔，跳过 ${skipped} 笔无效行。`
+        : `已导入 ${validDrafts.length} 笔交易。`
+    });
+    setPasteModalOpen(false);
+    setPasteText('');
+    setPasteResult(null);
+  }
+
   // ---- Render helpers ----
-  function renderSummaryCards() {
-    const toneTotalProfit = portfolio.totalProfit > 0 ? 'emerald' : portfolio.totalProfit < 0 ? 'red' : 'slate';
-    const toneTodayProfit = portfolio.todayProfit > 0 ? 'emerald' : portfolio.todayProfit < 0 ? 'red' : 'slate';
-    const cards = [
-      { label: '总成本', value: formatCurrency(portfolio.totalCost, '¥', 2), tone: 'slate' },
-      { label: '总市值', value: formatCurrency(portfolio.marketValue, '¥', 2), tone: 'slate' },
-      {
-        label: '今日盈亏',
-        value: formatSignedCurrency(portfolio.todayProfit),
-        hint: formatSignedPercent(portfolio.todayReturnRate),
-        tone: toneTodayProfit
-      },
-      {
-        label: '累计盈亏',
-        value: formatSignedCurrency(portfolio.totalProfit),
-        hint: formatSignedPercent(portfolio.totalReturnRate),
-        tone: toneTotalProfit
-      },
-      {
-        label: '持仓状况',
-        value: `${portfolio.assetCount} / ${ledger.transactions.length}`,
-        hint: `基金数 / lot 数`,
-        tone: 'slate'
-      },
-      {
-        label: 'NAV 覆盖',
-        value: `${portfolio.pricedCount} / ${portfolio.assetCount}`,
-        hint: portfolio.latestNavDate ? `净值日 ${portfolio.latestNavDate}` : '尚未同步',
-        tone: portfolio.assetCount > 0 && portfolio.pricedCount < portfolio.assetCount ? 'amber' : 'slate'
+  function renderPortfolioOverview() {
+    const profitTone = portfolio.totalProfit > 0 ? 'emerald' : portfolio.totalProfit < 0 ? 'red' : 'slate';
+    const todayTone = portfolio.todayProfit > 0 ? 'emerald' : portfolio.todayProfit < 0 ? 'red' : 'slate';
+    const navIncomplete = portfolio.assetCount > 0 && portfolio.pricedCount < portfolio.assetCount;
+    const lastUpdateDisplay = (() => {
+      if (portfolio.latestSnapshotAt) {
+        const ts = Date.parse(portfolio.latestSnapshotAt);
+        if (Number.isFinite(ts)) {
+          const d = new Date(ts);
+          const pad = (n) => String(n).padStart(2, '0');
+          return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        }
       }
-    ];
-    const toneValue = {
+      return portfolio.latestNavDate || '尚未同步';
+    })();
+    const toneClass = {
       slate: 'text-slate-900',
       emerald: 'text-emerald-600',
       red: 'text-red-500',
       amber: 'text-amber-600'
     };
+    const cards = [
+      { label: '总市值', value: formatCurrency(portfolio.marketValue, '¥', 2), tone: 'slate' },
+      { label: '总成本', value: formatCurrency(portfolio.totalCost, '¥', 2), tone: 'slate' },
+      { label: '总收益', value: formatSignedCurrency(portfolio.totalProfit), tone: profitTone },
+      { label: '总收益率', value: formatSignedPercent(portfolio.totalReturnRate), tone: profitTone },
+      { label: '当日收益', value: formatSignedCurrency(portfolio.todayProfit), tone: todayTone },
+      { label: '当日收益率', value: formatSignedPercent(portfolio.todayReturnRate), tone: todayTone },
+      { label: '持仓数量', value: String(portfolio.assetCount), tone: 'slate' },
+      { label: '最后更新', value: lastUpdateDisplay, tone: navIncomplete ? 'amber' : 'slate', small: true }
+    ];
     return (
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        {cards.map((card) => (
-          <div key={card.label} className="rounded-2xl border border-slate-200/70 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">{card.label}</div>
-            <div className={cx('mt-2 text-xl font-extrabold tracking-tight', toneValue[card.tone] || toneValue.slate)}>
-              {card.value}
-            </div>
-            {card.hint ? (
-              <div className="mt-1 text-xs text-slate-500">{card.hint}</div>
-            ) : null}
+      <section className="rounded-2xl border border-slate-200/70 bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="flex items-center justify-between">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">投资组合概览</div>
+          <div className="text-[11px] text-slate-400">
+            NAV 覆盖 {portfolio.pricedCount}/{portfolio.assetCount}
+            {portfolio.failedCodes && portfolio.failedCodes.length > 0 ? ` · 失败 ${portfolio.failedCodes.length}` : ''}
           </div>
-        ))}
-      </div>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+          {cards.map((card) => (
+            <div key={card.label}>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">{card.label}</div>
+              <div className={cx(
+                'mt-1 font-extrabold tracking-tight tabular-nums',
+                card.small ? 'text-base' : 'text-xl',
+                toneClass[card.tone] || toneClass.slate
+              )}>
+                {card.value}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
     );
   }
 
@@ -671,7 +766,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         key={rowKey}
         className={cx(
           'cursor-pointer text-slate-700 transition-colors hover:bg-slate-50',
-          isSelected && 'bg-indigo-50/50'
+          isSelected && 'bg-indigo-50/50',
+          !tx.date && 'border-l-2 border-amber-400'
         )}
         onClick={() => { setSelectedCode(tx.code); setSidePanelTab('summary'); }}
       >
@@ -719,6 +815,108 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           </div>
         </td>
       </tr>
+    );
+  }
+
+  function renderAggregatesTable() {
+    const filteredAggs = aggregates.filter((agg) => {
+      if (kindFilter !== 'all' && agg.kind !== kindFilter) return false;
+      if (!searchNeedle) return true;
+      return agg.code.toLowerCase().includes(searchNeedle)
+        || (agg.name || '').toLowerCase().includes(searchNeedle);
+    });
+
+    if (!filteredAggs.length) {
+      return (
+        <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 text-center">
+          <Wallet className="h-8 w-8 text-slate-300" />
+          <div className="text-sm text-slate-500">
+            {aggregates.length === 0 ? '还没有任何基金持仓，点「+ 新增」或「OCR 导入」录入。' : '当前筛选条件下没有基金。'}
+          </div>
+        </div>
+      );
+    }
+
+    const totalTone = portfolio.totalProfit > 0 ? 'text-emerald-600' : portfolio.totalProfit < 0 ? 'text-red-500' : 'text-slate-700';
+    const totalTodayTone = portfolio.todayProfit > 0 ? 'text-emerald-600' : portfolio.todayProfit < 0 ? 'text-red-500' : 'text-slate-700';
+
+    return (
+      <div className="overflow-x-auto">
+        <table className="min-w-[1200px] w-full text-sm">
+          <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+            <tr>
+              <th className="px-3 py-2">基金代码</th>
+              <th className="px-3 py-2">基金名称</th>
+              <th className="px-3 py-2">标签</th>
+              <th className="px-3 py-2 text-right">总份额</th>
+              <th className="px-3 py-2 text-right">平均成本</th>
+              <th className="px-3 py-2 text-right">当前净值</th>
+              <th className="px-3 py-2 text-right">总市值</th>
+              <th className="px-3 py-2 text-right">总收益(元)</th>
+              <th className="px-3 py-2 text-right">总收益率</th>
+              <th className="px-3 py-2 text-right">当日收益(元)</th>
+              <th className="px-3 py-2 text-right">当日收益率</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {filteredAggs.map((agg) => {
+              const kindTone = KIND_PILL_TONES[agg.kind] || 'slate';
+              const kindLabel = KIND_LABELS[agg.kind] || '未知';
+              const profitClass = agg.totalProfit > 0 ? 'text-emerald-600' : agg.totalProfit < 0 ? 'text-red-500' : 'text-slate-700';
+              const todayClass = agg.todayProfit > 0 ? 'text-emerald-600' : agg.todayProfit < 0 ? 'text-red-500' : 'text-slate-700';
+              const isSelected = selectedCode === agg.code;
+              return (
+                <tr
+                  key={agg.code}
+                  className={cx(
+                    'cursor-pointer text-slate-700 transition-colors hover:bg-slate-50',
+                    isSelected && 'bg-indigo-50/50',
+                    !agg.hasPosition && 'opacity-60'
+                  )}
+                  onClick={() => {
+                    setSelectedCode(agg.code);
+                    setSidePanelTab('summary');
+                  }}
+                >
+                  <td className="whitespace-nowrap px-3 py-2 font-mono text-xs font-semibold text-slate-800">{agg.code}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-xs">{agg.name || <span className="text-slate-400">—</span>}</td>
+                  <td className="px-3 py-2"><Pill tone={kindTone}>{kindLabel}</Pill></td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">{formatShares(agg.totalShares)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">{formatNav(agg.avgCost)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">
+                    {agg.hasLatestNav ? formatNav(agg.latestNav) : (agg.snapshotError ? <span className="text-red-500">失败</span> : '—')}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums text-slate-700">
+                    {agg.hasLatestNav ? formatCurrency(agg.marketValue, '¥', 2) : '—'}
+                  </td>
+                  <td className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', profitClass)}>
+                    {agg.hasLatestNav ? formatSignedCurrency(agg.totalProfit) : '—'}
+                  </td>
+                  <td className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', profitClass)}>
+                    {agg.hasLatestNav ? formatSignedPercent(agg.totalReturnRate) : '—'}
+                  </td>
+                  <td className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', todayClass)}>
+                    {agg.hasLatestNav && agg.hasPreviousNav ? formatSignedCurrency(agg.todayProfit) : '—'}
+                  </td>
+                  <td className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', todayClass)}>
+                    {agg.hasLatestNav && agg.hasPreviousNav ? formatSignedPercent(agg.todayReturnRate) : '—'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot className="bg-slate-50/70 text-xs font-semibold text-slate-700">
+            <tr>
+              <td className="px-3 py-2" colSpan={6}>合计（{portfolio.assetCount} 只持仓）</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatCurrency(portfolio.marketValue, '¥', 2)}</td>
+              <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', totalTone)}>{formatSignedCurrency(portfolio.totalProfit)}</td>
+              <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', totalTone)}>{formatSignedPercent(portfolio.totalReturnRate)}</td>
+              <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', totalTodayTone)}>{formatSignedCurrency(portfolio.todayProfit)}</td>
+              <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', totalTodayTone)}>{formatSignedPercent(portfolio.todayReturnRate)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     );
   }
 
@@ -1006,11 +1204,27 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           </div>
         </div>
       ) : null}
-      {renderSummaryCards()}
+      {renderPortfolioOverview()}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <section className="rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-3">
+              <div className="inline-flex items-center rounded-xl bg-slate-100 p-1 text-xs font-semibold text-slate-600">
+                <button
+                  type="button"
+                  className={cx('rounded-lg px-3 py-1.5 transition-colors', mainViewTab === 'aggregate' ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'hover:text-slate-800')}
+                  onClick={() => setMainViewTab('aggregate')}
+                >
+                  基金汇总
+                </button>
+                <button
+                  type="button"
+                  className={cx('rounded-lg px-3 py-1.5 transition-colors', mainViewTab === 'ledger' ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'hover:text-slate-800')}
+                  onClick={() => setMainViewTab('ledger')}
+                >
+                  成交流水
+                </button>
+              </div>
               {renderKindFilter()}
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -1032,6 +1246,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 <CloudUpload className="h-4 w-4" />
                 OCR 导入
               </button>
+              <button type="button" className={GHOST_BTN} onClick={openPasteModal}>
+                <ClipboardPaste className="h-4 w-4" />
+                粘贴 Excel
+              </button>
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleOcrFile} />
               <button type="button" className={PRIMARY_BTN} onClick={() => { resetDraft(); setSidePanelTab('create'); }}>
                 <Plus className="h-4 w-4" />
@@ -1040,10 +1258,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             </div>
           </div>
           <div className="px-1 py-1">
-            {renderLedgerTable()}
+            {mainViewTab === 'aggregate' ? renderAggregatesTable() : renderLedgerTable()}
           </div>
           <div className="border-t border-slate-100 px-4 py-2 text-[11px] text-slate-400">
-            共 {ledgerRows.length} 笔流水；当前筛选 {filteredRows.length} 笔。
+            {mainViewTab === 'aggregate'
+              ? `共 ${aggregates.length} 只基金；${ledgerRows.length} 笔流水。`
+              : `共 ${ledgerRows.length} 笔流水；当前筛选 ${filteredRows.length} 笔。`}
           </div>
         </section>
         <aside className="relative">
@@ -1074,6 +1294,104 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           </div>
         </aside>
       </div>
+      {pasteModalOpen ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 px-4 py-6" onClick={closePasteModal}>
+          <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+              <div>
+                <div className="text-sm font-bold text-slate-900">从 Excel 粘贴交易流水</div>
+                <div className="mt-0.5 text-xs text-slate-500">支持 TSV / CSV；自动识别表头（代码 / 名称 / 类型 / 日期 / 价 / 份额），没有表头则按列序映射。</div>
+              </div>
+              <button type="button" className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700" onClick={closePasteModal}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
+              <textarea
+                className="h-40 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800 outline-none transition-colors focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                placeholder={'从 Excel 选中单元格复制后粘贴在这里。\n例：\n代码\t名称\t场内场外\t类型\t日期\t价\t份额\n021000\t景顺长城纳斯达克\t场外\tBUY\t2026-04-16\t1.5345\t100'}
+                value={pasteText}
+                onChange={(event) => { setPasteText(event.target.value); setPasteResult(null); }}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" className={GHOST_BTN} onClick={handleParsePaste}>
+                  <Search className="h-4 w-4" />
+                  解析预览
+                </button>
+                {pasteResult ? (
+                  <div className="text-xs text-slate-500">
+                    共 {pasteResult.rows.length} 行，分隔符 {pasteResult.delimiter}，{pasteResult.headerDetected ? '已识别表头' : '按位置映射'}。
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-400">默认列顺序：代码 · 名称 · 场内场外 · 类型 · 日期 · 价 · 份额 · 备注</div>
+                )}
+              </div>
+              {pasteResult && pasteResult.rows.length ? (
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-slate-50 text-left font-semibold text-slate-500">
+                      <tr>
+                        <th className="px-2 py-1.5">状态</th>
+                        <th className="px-2 py-1.5">代码</th>
+                        <th className="px-2 py-1.5">名称</th>
+                        <th className="px-2 py-1.5">标签</th>
+                        <th className="px-2 py-1.5">类型</th>
+                        <th className="px-2 py-1.5">日期</th>
+                        <th className="px-2 py-1.5 text-right">价</th>
+                        <th className="px-2 py-1.5 text-right">份额</th>
+                        <th className="px-2 py-1.5">问题</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {pasteResult.rows.map((row) => {
+                        const ok = Object.keys(row.errors).length === 0;
+                        return (
+                          <tr key={row.index} className={ok ? 'text-slate-700' : 'bg-red-50/60 text-red-600'}>
+                            <td className="px-2 py-1.5">
+                              {ok ? (
+                                <span className="inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />有效</span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-red-500"><AlertTriangle className="h-3.5 w-3.5" />跳过</span>
+                              )}
+                            </td>
+                            <td className="px-2 py-1.5 font-mono">{row.draft.code || <span className="text-slate-400">—</span>}</td>
+                            <td className="px-2 py-1.5">{row.draft.name || <span className="text-slate-400">—</span>}</td>
+                            <td className="px-2 py-1.5">{KIND_LABELS[row.draft.kind] || row.draft.kind || <span className="text-slate-400">—</span>}</td>
+                            <td className="px-2 py-1.5">{row.draft.type}</td>
+                            <td className="px-2 py-1.5">{row.draft.date || <span className="text-amber-600">待补录</span>}</td>
+                            <td className="px-2 py-1.5 text-right tabular-nums">{row.draft.price || '—'}</td>
+                            <td className="px-2 py-1.5 text-right tabular-nums">{row.draft.shares || '—'}</td>
+                            <td className="px-2 py-1.5">{ok ? '—' : summarizeTransactionErrors(row.errors)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </div>
+            <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3">
+              <div className="text-xs text-slate-500">
+                {pasteResult
+                  ? `将导入 ${pasteResult.rows.filter((row) => Object.keys(row.errors).length === 0).length} 笔有效交易`
+                  : '提示：Excel 复制时会带上表头行，直接粘贴即可自动识别。'}
+              </div>
+              <div className="flex gap-2">
+                <button type="button" className={GHOST_BTN} onClick={closePasteModal}>取消</button>
+                <button
+                  type="button"
+                  className={PRIMARY_BTN}
+                  onClick={handleImportPasted}
+                  disabled={!pasteResult || !pasteResult.rows.some((row) => Object.keys(row.errors).length === 0)}
+                >
+                  <Save className="h-4 w-4" />
+                  导入有效行
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 
