@@ -795,25 +795,32 @@ export function TradePlansExperience({ links, embedded = false }) {
         <StatCard eyebrow="通知状态" value={notificationValue} note={notificationNote} />
       </div>
 
-      <div className="space-y-6 xl:hidden">
+      {/* Mobile / tablet: single column stack */}
+      <div className="space-y-6 lg:hidden">
         {renderPlansCard()}
-        {renderNotifyConfigCard()}
         {renderPlanDetailCard()}
         {renderHistoryCard()}
+        {renderNotifyConfigCard()}
         {renderAutomationCard()}
       </div>
 
-      <div className="hidden items-start gap-6 xl:grid xl:grid-cols-[minmax(360px,1fr)_minmax(0,1.4fr)_minmax(360px,1fr)]">
+      {/* Desktop: 2-column default (prevents narrow sidebars on 13/14" screens) */}
+      <div className="hidden items-start gap-6 lg:grid lg:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.85fr)] 2xl:grid-cols-[minmax(340px,0.95fr)_minmax(0,1.35fr)_minmax(360px,0.9fr)]">
         <div className="min-w-0 space-y-6">
           {renderPlansCard()}
+          <div className="2xl:hidden">
+            {renderHistoryCard()}
+          </div>
         </div>
-        <div className="min-w-0 space-y-6">
-          {renderPlanDetailCard()}
-          {renderHistoryCard()}
-        </div>
-        <div className="min-w-0 space-y-6">
+
+        <div className="min-w-0 space-y-6 2xl:order-3">
           {renderNotifyConfigCard()}
           {renderAutomationCard()}
+        </div>
+
+        <div className="hidden min-w-0 space-y-6 2xl:block">
+          {renderPlanDetailCard()}
+          {renderHistoryCard()}
         </div>
       </div>
     </div>
