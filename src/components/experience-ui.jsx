@@ -6,9 +6,9 @@ export function cx(...classes) {
   return classes.filter(Boolean).join(' ');
 }
 
-export const primaryButtonClass = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold leading-none text-white shadow-[0_1px_2px_rgba(15,23,42,0.08)] transition-colors hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2';
-export const secondaryButtonClass = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold leading-none text-slate-700 transition-colors hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2';
-export const subtleButtonClass = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-white px-4 py-2.5 text-sm font-semibold leading-none text-slate-700 ring-1 ring-slate-200/70 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2';
+export const primaryButtonClass = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold leading-none text-white shadow-[0_1px_2px_rgba(15,23,42,0.12)] transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2';
+export const secondaryButtonClass = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold leading-none text-slate-700 transition-colors hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2';
+export const subtleButtonClass = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-white px-4 py-2.5 text-sm font-semibold leading-none text-slate-700 ring-1 ring-slate-200/70 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2';
 export const inputClass = 'h-11 w-full rounded-xl border border-slate-200/70 bg-white px-3 text-sm text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] outline-none transition-colors placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100';
 export const tableInputClass = 'h-10 w-full rounded-xl border border-transparent bg-transparent px-3 text-sm text-slate-700 outline-none transition-colors placeholder:text-slate-300 hover:border-slate-200/70 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100';
 
@@ -22,14 +22,14 @@ const pillToneClasses = {
 
 const statAccentClasses = {
   slate: 'border-slate-200 bg-white',
-  indigo: 'border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white',
-  emerald: 'border-emerald-100 bg-emerald-50/70',
-  red: 'border-red-100 bg-red-50/70'
+  indigo: 'border-slate-200 bg-white',
+  emerald: 'border-slate-200 bg-white',
+  red: 'border-slate-200 bg-white'
 };
 
 const statValueClasses = {
   slate: 'text-slate-900',
-  indigo: 'text-indigo-700',
+  indigo: 'text-slate-900',
   emerald: 'text-emerald-600',
   red: 'text-red-500'
 };
@@ -106,7 +106,7 @@ export function Pill({ children, tone = 'slate', className = '' }) {
 }
 
 export function Card({ children, className = '' }) {
-  return <div className={cx('rounded-2xl border border-slate-200/70 bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.06)]', className)}>{children}</div>;
+  return <div className={cx('rounded-2xl border border-slate-200/70 bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.05)]', className)}>{children}</div>;
 }
 
 export function TopBar({ tabs = [], activeKey = '', onSelect, brand = '', className = '' }) {
