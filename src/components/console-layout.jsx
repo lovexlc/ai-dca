@@ -70,6 +70,7 @@ function ConsoleToastViewport() {
  * - brand: string (sidebar brand)
  * - topbarTitle / topbarDescription / topbarRight: optional. Topbar is hidden if all are empty.
  * - contextPanel / contextPanelTitle: optional right panel content.
+ * - sidebarFooter: optional node rendered at the bottom of the sidebar (e.g. quick actions or market snapshot).
  */
 export function ConsoleLayout({
   sidebarNav = [],
@@ -81,6 +82,7 @@ export function ConsoleLayout({
   topbarRight,
   contextPanel,
   contextPanelTitle,
+  sidebarFooter,
   children
 }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -163,6 +165,7 @@ export function ConsoleLayout({
               );
             })}
           </nav>
+          {sidebarFooter ? <div className="console-sidebar__footer">{sidebarFooter}</div> : null}
         </aside>
 
         {mobileNavOpen ? (

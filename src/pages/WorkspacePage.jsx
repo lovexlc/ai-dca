@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ArrowLeftRight, ArrowRight, History, Home, Layers3, LineChart, Plus, Repeat, Wallet } from 'lucide-react';
 import { isFundSwitchViewHash } from '../app/fundSwitch.js';
 import { PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
@@ -20,6 +21,16 @@ const WORKSPACE_TITLES = {
   history: '交易历史',
   holdings: '持仓总览',
   newPlan: '新建建仓计划'
+};
+
+const SIDEBAR_ICONS = {
+  tradePlans: Layers3,
+  home: Home,
+  dca: Repeat,
+  fundSwitch: ArrowLeftRight,
+  history: History,
+  holdings: Wallet,
+  newPlan: Plus
 };
 
 function normalizeWorkspaceTab(value = '') {
@@ -47,11 +58,43 @@ function buildWorkspaceUrl(tab, { inPagesDir = false } = {}) {
   return nextUrl;
 }
 
+function SidebarQuickActions({ onSelectNav }) {
+  return (
+    <div className="console-quick">
+      <div className="console-quick__eyebrow">快捷入口</div>
+      <button
+        type="button"
+        className="console-quick__primary"
+        onClick={() => onSelectNav?.('newPlan')}
+      >
+        <Plus className="h-4 w-4" aria-hidden="true" />
+        <span>新建建仓计划</span>
+      </button>
+      <button
+        type="button"
+        className="console-quick__secondary"
+        onClick={() => onSelectNav?.('fundSwitch')}
+      >
+        <LineChart className="h-4 w-4" aria-hidden="true" />
+        <span>基金切换分析</span>
+        <ArrowRight className="ml-auto h-4 w-4" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
 export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir = false }) {
   const links = createPageLinks({ inPagesDir });
   const [activeTab, setActiveTab] = useState(() => readTabFromLocation(initialTab));
 
-  const sidebarNav = useMemo(() => getPrimaryTabs(links), [links]);
+  const sidebarNav = useMemo(
+    () =>
+      getPrimaryTabs(links).map((tab) => ({
+        ...tab,
+        icon: SIDEBAR_ICONS[tab.key]
+      })),
+    [links]
+  );
   const heroTitle = WORKSPACE_TITLES[activeTab] || WORKSPACE_TITLES.home;
 
   useEffect(() => {
@@ -113,6 +156,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       sidebarNav={sidebarNav}
       activeKey={activeTab}
       onSelectNav={handleSelectTab}
+      sidebarFooter={<SidebarQuickActions onSelectNav={handleSelectTab} />}
     >
       {renderActivePanel()}
     </ConsoleLayout>

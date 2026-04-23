@@ -65,6 +65,7 @@ const ANDROID_APK_DOWNLOAD_URL = 'https://github.com/yukerui/ai-dca-android-noti
 
 export function TradePlansExperience({ links, embedded = false }) {
   const [selectedRowId, setSelectedRowId] = useState('');
+  const [detailTab, setDetailTab] = useState('detail');
   const [notifyStatus, setNotifyStatus] = useState(null);
   const [recentEvents, setRecentEvents] = useState([]);
   const [notifyError, setNotifyError] = useState('');
@@ -786,8 +787,37 @@ export function TradePlansExperience({ links, embedded = false }) {
     );
   }
 
+  function renderPlanContextPanel() {
+    const contextTabs = [
+      { key: 'detail', label: '计划详情' },
+      { key: 'history', label: recentEvents.length ? `提醒历史 · ${recentEvents.length}` : '提醒历史' }
+    ];
+    return (
+      <div className="space-y-4">
+        <div className="inline-flex w-full items-center gap-1 rounded-2xl bg-slate-100 p-1 sm:w-auto">
+          {contextTabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setDetailTab(tab.key)}
+              className={cx(
+                'flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition-colors sm:flex-none',
+                detailTab === tab.key
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {detailTab === 'detail' ? renderPlanDetailCard() : renderHistoryCard()}
+      </div>
+    );
+  }
+
   const content = (
-    <div className={cx('mx-auto max-w-6xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
+    <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard accent="indigo" eyebrow="待执行计划" value={`${summary.pendingCount} 项`} note="包含价格触发买入与固定定投计划" />
         <StatCard eyebrow="最近触发条件" value={summary.nearestTrigger} note="优先显示最近需要观察的价格条件" />
@@ -795,32 +825,24 @@ export function TradePlansExperience({ links, embedded = false }) {
         <StatCard eyebrow="通知状态" value={notificationValue} note={notificationNote} />
       </div>
 
-      {/* Mobile / tablet: single column stack */}
+      {/* Mobile / tablet: single column stack, context panel (detail/history tabs) right under list */}
       <div className="space-y-6 lg:hidden">
         {renderPlansCard()}
-        {renderPlanDetailCard()}
-        {renderHistoryCard()}
+        {renderPlanContextPanel()}
         {renderNotifyConfigCard()}
         {renderAutomationCard()}
       </div>
 
-      {/* Desktop: 2-column default (prevents narrow sidebars on 13/14" screens) */}
-      <div className="hidden items-start gap-6 lg:grid lg:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.85fr)] 2xl:grid-cols-[minmax(340px,0.95fr)_minmax(0,1.35fr)_minmax(360px,0.9fr)]">
+      {/* Desktop: 2-column layout. Left = list + notify config + automation.
+          Right = sticky context panel with detail/history tabs. */}
+      <div className="hidden items-start gap-6 lg:grid lg:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.9fr)]">
         <div className="min-w-0 space-y-6">
           {renderPlansCard()}
-          <div className="2xl:hidden">
-            {renderHistoryCard()}
-          </div>
-        </div>
-
-        <div className="min-w-0 space-y-6 2xl:order-3">
           {renderNotifyConfigCard()}
           {renderAutomationCard()}
         </div>
-
-        <div className="hidden min-w-0 space-y-6 2xl:block">
-          {renderPlanDetailCard()}
-          {renderHistoryCard()}
+        <div className="min-w-0 space-y-6 lg:sticky lg:top-4">
+          {renderPlanContextPanel()}
         </div>
       </div>
     </div>
