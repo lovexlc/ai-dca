@@ -803,14 +803,16 @@ export function TradePlansExperience({ links, embedded = false }) {
         {renderAutomationCard()}
       </div>
 
-      <div className="hidden items-start gap-6 xl:grid xl:grid-cols-[minmax(0,1.55fr)_minmax(360px,0.95fr)]">
+      <div className="hidden items-start gap-6 xl:grid xl:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.35fr)_minmax(360px,0.95fr)]">
         <div className="min-w-0 space-y-6">
           {renderPlansCard()}
+        </div>
+        <div className="min-w-0 space-y-6">
+          {renderPlanDetailCard()}
           {renderHistoryCard()}
         </div>
         <div className="min-w-0 space-y-6">
           {renderNotifyConfigCard()}
-          {renderPlanDetailCard()}
           {renderAutomationCard()}
         </div>
       </div>
