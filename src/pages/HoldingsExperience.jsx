@@ -1153,32 +1153,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     );
   }
 
-  function renderOcrStatus() {
-    if (ocrState.status === 'idle') {
-      return <div className="text-xs text-slate-500">{ocrState.message}</div>;
-    }
-    if (ocrState.status === 'loading') {
-      return (
-        <div className="space-y-2 text-xs text-slate-600">
-          <div className="flex items-center gap-2">
-            <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-            {ocrState.message}
-          </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-            <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${Math.min(100, Math.max(6, ocrState.progress || 6))}%` }} />
-          </div>
-        </div>
-      );
-    }
-    if (ocrState.status === 'success') {
-      return <div className="text-xs text-emerald-600">{ocrState.message}</div>;
-    }
-    if (ocrState.status === 'error') {
-      return <div className="text-xs text-red-500">{ocrState.error || '识别失败。'}</div>;
-    }
-    return null;
-  }
-
   const topBar = embedded ? null : (
     <TopBar
       brand="ai-dca"
@@ -1243,8 +1217,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 刷新净值
               </button>
               <button type="button" className={GHOST_BTN} onClick={handleTriggerOcr} disabled={ocrState.status === 'loading'}>
-                <CloudUpload className="h-4 w-4" />
-                OCR 导入
+                {ocrState.status === 'loading' ? (
+                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CloudUpload className="h-4 w-4" />
+                )}
+                {ocrState.status === 'loading' ? '识别中...' : '截图 OCR'}
               </button>
               <button type="button" className={GHOST_BTN} onClick={openPasteModal}>
                 <ClipboardPaste className="h-4 w-4" />
@@ -1286,10 +1264,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             </div>
             <div>
               {sidePanelTab === 'summary' ? renderSummaryPanel() : renderDraftPanel()}
-            </div>
-            <div className="border-t border-slate-100 pt-3">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">OCR 状态</div>
-              <div className="mt-2">{renderOcrStatus()}</div>
             </div>
           </div>
         </aside>
