@@ -272,9 +272,11 @@ export function SelectField({ options, className = '', ...props }) {
 
 export function StatCard({ eyebrow, value, note, accent = 'slate', progress }) {
   return (
-    <Card className={cx('p-5', statAccentClasses[accent] || statAccentClasses.slate)}>
-      {eyebrow ? <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{eyebrow}</div> : null}
-      <div className={cx('mt-3 text-2xl font-semibold tracking-tight tabular-nums', statValueClasses[accent] || statValueClasses.slate)}>{value}</div>
+    <Card className={cx('flex min-h-[132px] flex-col justify-between p-5', statAccentClasses[accent] || statAccentClasses.slate)}>
+      <div>
+        {eyebrow ? <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{eyebrow}</div> : null}
+        <div className={cx('mt-3 text-2xl font-semibold tracking-tight tabular-nums', statValueClasses[accent] || statValueClasses.slate)}>{value}</div>
+      </div>
       {note ? <div className="mt-2 text-sm leading-6 text-slate-500">{note}</div> : null}
       {typeof progress === 'number' ? (
         <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
