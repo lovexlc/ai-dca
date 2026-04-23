@@ -1629,7 +1629,7 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
           )}
         </Card>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard accent="indigo" eyebrow="可投入预算" value={formatCurrency(strategyPlan.investableCapital)} note={selectedStrategy === 'peak-drawdown' ? '按阶段高点固定回撤 8 档分配预算' : '按120日线主触发策略分配预算'} progress={Math.max(100 - reserveRatio, 0)} />
           <StatCard eyebrow="预留现金" value={formatCurrency(strategyPlan.reserveCapital)} note={selectedStrategy === 'peak-drawdown' ? (isBelowPeakExtreme ? '价格已进入第 8 档极端区。' : `${formatPercent(reserveRatio, 1)} 作为极端回撤缓冲`) : (isBelowRiskControl ? '价格已跌破200日线，进入防守区。' : strategyPlan.usesIndependentRiskLayer ? `${formatPercent(reserveRatio, 1)} 作为200日线防守缓冲` : '200日线当前高于深水层，仅作趋势风控。')} />
           <StatCard
@@ -1692,7 +1692,7 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
                     <Pill tone={layer.progressTone}>{layer.progressLabel}</Pill>
                   </div>
 
-                  <div className="mt-4 grid gap-3 rounded-2xl bg-white/80 p-3 sm:grid-cols-3">
+                  <div className="mt-4 grid gap-3 rounded-2xl border border-slate-200/70 bg-white p-3 sm:grid-cols-3">
                     <div>
                       <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">触发价格</div>
                       <div className="mt-1 text-sm font-semibold text-slate-900">{formatFundPrice(layer.price, strategyDisplayCurrency)}</div>
@@ -1760,12 +1760,12 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
             />
 
             {selectedFund && pricePulse ? (
-              <div className="mt-6 min-w-0 flex flex-col gap-5 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-100 md:p-6">
+              <div className="mt-6 min-w-0 flex flex-col gap-5 rounded-[28px] border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.06)] md:p-6">
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                     <div className="space-y-1">
                       <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">走势监测</div>
-                      <div className="text-2xl font-extrabold text-slate-900">{formatFundPrice(pricePulse.latestPrice, selectedFundCurrency)}</div>
-                      <div className={cx('text-sm font-semibold', pricePulse.changePct >= 0 ? 'text-emerald-600' : 'text-rose-600')}>
+                      <div className="text-2xl font-semibold tabular-nums text-slate-900">{formatFundPrice(pricePulse.latestPrice, selectedFundCurrency)}</div>
+                      <div className={cx('text-sm font-semibold tabular-nums', pricePulse.changePct >= 0 ? 'text-emerald-600' : 'text-red-600')}>
                         {formatPercent(pricePulse.changePct, 2, true)}
                       </div>
                     </div>

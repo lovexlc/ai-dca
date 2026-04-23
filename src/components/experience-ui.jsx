@@ -6,11 +6,11 @@ export function cx(...classes) {
   return classes.filter(Boolean).join(' ');
 }
 
-export const primaryButtonClass = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-bold leading-none text-white shadow-md shadow-indigo-200 transition-all hover:-translate-y-0.5 hover:bg-indigo-700';
-export const secondaryButtonClass = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-slate-100 px-4 py-2.5 text-sm font-semibold leading-none text-slate-700 transition-colors hover:bg-slate-200';
-export const subtleButtonClass = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-white px-4 py-2.5 text-sm font-semibold leading-none text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50';
-export const inputClass = 'h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white';
-export const tableInputClass = 'h-10 w-full rounded-lg border border-transparent bg-transparent px-3 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-300 hover:border-slate-200 focus:border-indigo-400 focus:bg-white';
+export const primaryButtonClass = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold leading-none text-white shadow-[0_1px_2px_rgba(15,23,42,0.08)] transition-colors hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2';
+export const secondaryButtonClass = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold leading-none text-slate-700 transition-colors hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2';
+export const subtleButtonClass = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-white px-4 py-2.5 text-sm font-semibold leading-none text-slate-700 ring-1 ring-slate-200/70 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2';
+export const inputClass = 'h-11 w-full rounded-xl border border-slate-200/70 bg-white px-3 text-sm text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] outline-none transition-colors placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100';
+export const tableInputClass = 'h-10 w-full rounded-xl border border-transparent bg-transparent px-3 text-sm text-slate-700 outline-none transition-colors placeholder:text-slate-300 hover:border-slate-200/70 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100';
 
 const pillToneClasses = {
   slate: 'bg-slate-100 text-slate-600',
@@ -106,7 +106,7 @@ export function Pill({ children, tone = 'slate', className = '' }) {
 }
 
 export function Card({ children, className = '' }) {
-  return <div className={cx('rounded-xl border border-slate-200 bg-white p-6 shadow-sm', className)}>{children}</div>;
+  return <div className={cx('rounded-2xl border border-slate-200/70 bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.06)]', className)}>{children}</div>;
 }
 
 export function TopBar({ tabs = [], activeKey = '', onSelect, brand = '', className = '' }) {
@@ -274,7 +274,7 @@ export function StatCard({ eyebrow, value, note, accent = 'slate', progress }) {
   return (
     <Card className={cx('p-5', statAccentClasses[accent] || statAccentClasses.slate)}>
       {eyebrow ? <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{eyebrow}</div> : null}
-      <div className={cx('mt-3 text-2xl font-extrabold tracking-tight', statValueClasses[accent] || statValueClasses.slate)}>{value}</div>
+      <div className={cx('mt-3 text-2xl font-semibold tracking-tight tabular-nums', statValueClasses[accent] || statValueClasses.slate)}>{value}</div>
       {note ? <div className="mt-2 text-sm leading-6 text-slate-500">{note}</div> : null}
       {typeof progress === 'number' ? (
         <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
