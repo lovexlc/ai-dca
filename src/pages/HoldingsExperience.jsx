@@ -1335,13 +1335,13 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                   placeholder="搜索代码或名称"
                 />
               </div>
-              {renderNavBadge()}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
               <button type="button" className={GHOST_BTN} onClick={handleManualRefresh} disabled={navStatus === 'loading'}>
                 <RefreshCw className={cx('h-4 w-4', navStatus === 'loading' && 'animate-spin')} />
                 刷新净值
               </button>
+              {renderNavBadge()}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
               <button type="button" className={GHOST_BTN} onClick={handleTriggerOcr} disabled={ocrState.status === 'loading'}>
                 {ocrState.status === 'loading' ? (
                   <LoaderCircle className="h-4 w-4 animate-spin" />
