@@ -72,7 +72,7 @@
   background: var(--console-sidebar-bg);
   display: flex;
   flex-direction: column;
-  z-index: 70;
+  z-index: 90;
 }
 
 .console-sidebar__header {
