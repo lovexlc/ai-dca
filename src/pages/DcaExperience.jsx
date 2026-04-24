@@ -76,7 +76,8 @@ export function DcaExperience({ links, embedded = false }) {
         </div>
 
         <div className="grid items-start gap-6 lg:grid-cols-5">
-          <Card className="lg:col-span-3">
+          {/* 右侧（05栅中 4–5）：策略参数表单变窄后作为上下文面板，sticky 固定随页面可见。 */}
+          <Card className="lg:col-span-2 lg:col-start-4 lg:row-start-1 lg:sticky lg:top-4">
             <SectionHeading
               eyebrow="计划参数"
               title="策略参数设置"
@@ -153,7 +154,8 @@ export function DcaExperience({ links, embedded = false }) {
             </div>
           </Card>
 
-          <div className="space-y-6 lg:col-span-2 lg:sticky lg:top-4">
+          {/* 左侧（05栅中 1–3）：资金概览 + 加仓联动面板较长，随页面正常滚动。 */}
+          <div className="space-y-6 lg:col-span-3 lg:col-start-1 lg:row-start-1">
             <Card className="border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white">
               <SectionHeading eyebrow="资金概览" title="策略资金概览" />
               <div className="mt-6 rounded-[24px] border border-indigo-100 bg-white/90 p-5 shadow-sm">

@@ -76,8 +76,8 @@ export function AccumulationExperience({ links }) {
         </div>
 
         <div className="grid items-start gap-6 lg:grid-cols-5">
-          {/* 右侧（05栅中 4–5）：基础参数 + 回测图，sticky 固定随页面可见 */}
-          <Card className="lg:col-span-2 lg:col-start-4 lg:row-start-1 lg:sticky lg:top-4">
+          {/* 左侧（05栅中 1–3）：基础参数 + 回测图较长，随页面正常滚动。 */}
+          <Card className="lg:col-span-3 lg:col-start-1 lg:row-start-1">
             <SectionHeading
               eyebrow="基础参数"
               title="基本参数设置"
@@ -122,8 +122,8 @@ export function AccumulationExperience({ links }) {
             </div>
           </Card>
 
-          {/* 左侧（栅 1–3）：层级矩阵，会随涨落和层级满载生长，随页面正常滚动 */}
-          <Card className="lg:col-span-3 lg:col-start-1 lg:row-start-1">
+          {/* 右侧（栅 4–5）：层级矩合成较短的上下文面板，sticky 固定随页面可见。 */}
+          <Card className="lg:col-span-2 lg:col-start-4 lg:row-start-1 lg:sticky lg:top-4">
             <SectionHeading
               eyebrow="层级矩阵"
               title="目标跌幅加仓点"
