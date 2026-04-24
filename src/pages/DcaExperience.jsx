@@ -75,7 +75,7 @@ export function DcaExperience({ links, embedded = false }) {
           <StatCard accent="emerald" eyebrow="执行节奏" value={`${state.frequency} / ${state.executionDay}`} note="频率与执行日期共同决定节奏" />
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-5">
+        <div className="grid items-start gap-6 lg:grid-cols-5">
           <Card className="lg:col-span-3">
             <SectionHeading
               eyebrow="计划参数"
@@ -153,7 +153,7 @@ export function DcaExperience({ links, embedded = false }) {
             </div>
           </Card>
 
-          <div className="space-y-6 lg:col-span-2">
+          <div className="space-y-6 lg:col-span-2 lg:sticky lg:top-4">
             <Card className="border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white">
               <SectionHeading eyebrow="资金概览" title="策略资金概览" />
               <div className="mt-6 rounded-[24px] border border-indigo-100 bg-white/90 p-5 shadow-sm">
