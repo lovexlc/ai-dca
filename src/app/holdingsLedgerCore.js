@@ -427,6 +427,100 @@ export function summarizePortfolio(aggregates = []) {
   return summary;
 }
 
+/**
+ * 把所有 SELL 交易按笔拆成"已卖出"行，并附上对应基金的加权平均成本
+ * （= 所有 BUY 的 price 按 shares 加权）。
+ * - 已实现收益 = (sellPrice − avgCost) × sellShares
+ * - 已实现收益率 = realizedProfit / (avgCost × sellShares)
+ * - costBasis = avgCost × sellShares；proceeds = sellPrice × sellShares
+ * - 该函数按 SELL 笔展开，部分卖出的基金会同时出现在基金汇总（剩余份额）和本列表（卖出份额）。
+ */
+export function buildSoldLots(transactions = []) {
+  const normalizedTxs = sanitizeTransactions(transactions, { filterInvalid: false });
+  const costMap = new Map();
+  for (const tx of normalizedTxs) {
+    if (!tx.code) continue;
+    if (!costMap.has(tx.code)) {
+      costMap.set(tx.code, { name: '', kind: tx.kind || 'otc', buyShares: 0, buyAmount: 0 });
+    }
+    const bucket = costMap.get(tx.code);
+    if (tx.name && !bucket.name) bucket.name = tx.name;
+    if (tx.kind) bucket.kind = tx.kind;
+    if (tx.type === 'BUY') {
+      bucket.buyShares = round(bucket.buyShares + tx.shares, 4);
+      bucket.buyAmount = round(bucket.buyAmount + tx.price * tx.shares, 2);
+    }
+  }
+
+  const lots = [];
+  for (const tx of normalizedTxs) {
+    if (tx.type !== 'SELL' || !tx.code) continue;
+    const bucket = costMap.get(tx.code) || { name: '', kind: tx.kind || 'otc', buyShares: 0, buyAmount: 0 };
+    const avgCost = bucket.buyShares > 0 ? round(bucket.buyAmount / bucket.buyShares, 4) : 0;
+    const sellShares = tx.shares;
+    const sellPrice = tx.price;
+    const proceeds = round(sellPrice * sellShares, 2);
+    const costBasis = round(avgCost * sellShares, 2);
+    const hasAvgCost = avgCost > 0;
+    const realizedProfit = hasAvgCost ? round((sellPrice - avgCost) * sellShares, 2) : 0;
+    const realizedReturnRate = hasAvgCost && costBasis > 0
+      ? round((realizedProfit / costBasis) * 100, 2)
+      : 0;
+    lots.push({
+      id: tx.id,
+      code: tx.code,
+      name: tx.name || bucket.name || '',
+      kind: tx.kind || bucket.kind || 'otc',
+      sellDate: tx.date || '',
+      sellShares,
+      sellPrice,
+      avgCost,
+      costBasis,
+      proceeds,
+      realizedProfit,
+      realizedReturnRate,
+      hasAvgCost,
+      note: tx.note || '',
+      tx
+    });
+  }
+
+  lots.sort((a, b) => {
+    const da = a.sellDate || '';
+    const db = b.sellDate || '';
+    if (da !== db) return db.localeCompare(da);
+    return a.code.localeCompare(b.code);
+  });
+  return lots;
+}
+
+/** 已卖出 tab 的 footer 合计。 */
+export function summarizeSoldLots(lots = []) {
+  const summary = {
+    lotCount: 0,
+    codeCount: 0,
+    totalSellShares: 0,
+    totalCostBasis: 0,
+    totalProceeds: 0,
+    totalRealizedProfit: 0,
+    totalRealizedReturnRate: 0
+  };
+  const codeSet = new Set();
+  for (const lot of Array.isArray(lots) ? lots : []) {
+    summary.lotCount += 1;
+    if (lot.code) codeSet.add(lot.code);
+    summary.totalSellShares = round(summary.totalSellShares + (lot.sellShares || 0), 4);
+    summary.totalCostBasis = round(summary.totalCostBasis + (lot.costBasis || 0), 2);
+    summary.totalProceeds = round(summary.totalProceeds + (lot.proceeds || 0), 2);
+    summary.totalRealizedProfit = round(summary.totalRealizedProfit + (lot.realizedProfit || 0), 2);
+  }
+  summary.codeCount = codeSet.size;
+  summary.totalRealizedReturnRate = summary.totalCostBasis > 0
+    ? round((summary.totalRealizedProfit / summary.totalCostBasis) * 100, 2)
+    : 0;
+  return summary;
+}
+
 /** Flatten transactions into display-ready rows joined with snapshots. */
 export function buildLedgerRows(transactions = [], snapshotsByCode = {}) {
   const normalizedTxs = sanitizeTransactions(transactions, { filterInvalid: false });

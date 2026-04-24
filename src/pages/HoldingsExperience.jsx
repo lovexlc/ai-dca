@@ -19,6 +19,7 @@ import { formatCurrency, formatPercent } from '../app/accumulation.js';
 import {
   aggregateByCode,
   buildLedgerRows,
+  buildSoldLots,
   createEmptyTransaction,
   detectFundKind,
   getLedgerCodeList,
@@ -28,6 +29,7 @@ import {
   normalizeTransaction,
   parseExcelPaste,
   summarizePortfolio,
+  summarizeSoldLots,
   summarizeTransactionErrors
 } from '../app/holdingsLedgerCore.js';
 import {
@@ -187,6 +189,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     for (const agg of aggregates) map.set(agg.code, agg);
     return map;
   }, [aggregates]);
+  const soldLots = useMemo(() => buildSoldLots(transactions), [transactions]);
+  const soldSummary = useMemo(() => summarizeSoldLots(soldLots), [soldLots]);
 
   const searchNeedle = searchText.trim().toLowerCase();
   const filteredRows = useMemo(() => {
@@ -823,6 +827,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
 
   function renderAggregatesTable() {
     const filteredAggs = aggregates.filter((agg) => {
+      if (!agg.hasPosition) return false;
       if (kindFilter !== 'all' && agg.kind !== kindFilter) return false;
       if (!searchNeedle) return true;
       return agg.code.toLowerCase().includes(searchNeedle)
@@ -830,12 +835,16 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     });
 
     if (!filteredAggs.length) {
+      const activeCount = aggregates.filter((agg) => agg.hasPosition).length;
+      const emptyMessage = aggregates.length === 0
+        ? '还没有任何基金持仓，点「+ 新增」或「OCR 导入」录入。'
+        : activeCount === 0
+          ? '所有基金均已卖出，请切换到「已卖出」页签查看历史交易。'
+          : '当前筛选条件下没有基金。';
       return (
         <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 text-center">
           <Wallet className="h-8 w-8 text-slate-300" />
-          <div className="text-sm text-slate-500">
-            {aggregates.length === 0 ? '还没有任何基金持仓，点「+ 新增」或「OCR 导入」录入。' : '当前筛选条件下没有基金。'}
-          </div>
+          <div className="text-sm text-slate-500">{emptyMessage}</div>
         </div>
       );
     }
@@ -873,8 +882,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                   key={agg.code}
                   className={cx(
                     'cursor-pointer text-slate-700 transition-colors hover:bg-slate-50',
-                    isSelected && 'bg-indigo-50/50',
-                    !agg.hasPosition && 'opacity-60'
+                    isSelected && 'bg-indigo-50/50'
                   )}
                   onClick={() => {
                     setSelectedCode(agg.code);
@@ -919,6 +927,108 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', totalTone)}>{formatSignedPercent(portfolio.totalReturnRate)}</td>
               <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', totalTodayTone)}>{formatSignedCurrency(portfolio.todayProfit)}</td>
               <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', totalTodayTone)}>{formatSignedPercent(portfolio.todayReturnRate)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    );
+  }
+
+  function renderSoldTable() {
+    const filteredLots = soldLots.filter((lot) => {
+      if (kindFilter !== 'all' && lot.kind !== kindFilter) return false;
+      if (!searchNeedle) return true;
+      return lot.code.toLowerCase().includes(searchNeedle)
+        || (lot.name || '').toLowerCase().includes(searchNeedle);
+    });
+    const filteredSummary = summarizeSoldLots(filteredLots);
+
+    if (!filteredLots.length) {
+      const emptyMessage = soldLots.length === 0
+        ? '还没有任何卖出记录。SELL 交易会自动出现在这里。'
+        : '当前筛选条件下没有卖出记录。';
+      return (
+        <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 text-center">
+          <Wallet className="h-8 w-8 text-slate-300" />
+          <div className="text-sm text-slate-500">{emptyMessage}</div>
+        </div>
+      );
+    }
+
+    const totalTone = filteredSummary.totalRealizedProfit > 0
+      ? 'text-emerald-600'
+      : filteredSummary.totalRealizedProfit < 0 ? 'text-red-500' : 'text-slate-700';
+
+    return (
+      <div className="overflow-x-auto">
+        <table className="min-w-[1200px] w-full text-sm">
+          <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+            <tr>
+              <th className="sticky left-0 z-20 bg-slate-50 px-3 py-2 shadow-[1px_0_0_rgba(15,23,42,0.08)]">基金代码</th>
+              <th className="px-3 py-2">基金名称</th>
+              <th className="px-3 py-2">标签</th>
+              <th className="px-3 py-2">卖出日期</th>
+              <th className="px-3 py-2 text-right">卖出份额</th>
+              <th className="px-3 py-2 text-right">卖出价</th>
+              <th className="px-3 py-2 text-right">平均成本</th>
+              <th className="px-3 py-2 text-right">成本金额</th>
+              <th className="px-3 py-2 text-right">卖出金额</th>
+              <th className="px-3 py-2 text-right">已实现收益(元)</th>
+              <th className="px-3 py-2 text-right">已实现收益率</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {filteredLots.map((lot) => {
+              const kindTone = KIND_PILL_TONES[lot.kind] || 'slate';
+              const kindLabel = KIND_LABELS[lot.kind] || '未知';
+              const profitClass = lot.realizedProfit > 0
+                ? 'text-emerald-600'
+                : lot.realizedProfit < 0 ? 'text-red-500' : 'text-slate-700';
+              const isSelected = selectedCode === lot.code;
+              return (
+                <tr
+                  key={lot.id}
+                  className={cx(
+                    'cursor-pointer text-slate-700 transition-colors hover:bg-slate-50',
+                    isSelected && 'bg-indigo-50/50'
+                  )}
+                  onClick={() => {
+                    setSelectedCode(lot.code);
+                    setSidePanelTab('summary');
+                  }}
+                >
+                  <td className={cx(
+                    'sticky left-0 z-10 whitespace-nowrap px-3 py-2 font-mono text-xs font-semibold text-slate-800 shadow-[1px_0_0_rgba(15,23,42,0.06)]',
+                    isSelected ? 'bg-indigo-50/90' : 'bg-white'
+                  )}>{lot.code}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-xs">{lot.name || <span className="text-slate-400">—</span>}</td>
+                  <td className="px-3 py-2"><Pill tone={kindTone}>{kindLabel}</Pill></td>
+                  <td className="whitespace-nowrap px-3 py-2 text-xs">{lot.sellDate || <span className="text-amber-600">待补录</span>}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">{formatShares(lot.sellShares)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">{formatNav(lot.sellPrice)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">{lot.hasAvgCost ? formatNav(lot.avgCost) : <span className="text-slate-400">—</span>}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums text-slate-700">{lot.hasAvgCost ? formatCurrency(lot.costBasis, '¥', 2) : '—'}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums text-slate-700">{formatCurrency(lot.proceeds, '¥', 2)}</td>
+                  <td className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', profitClass)}>
+                    {lot.hasAvgCost ? formatSignedCurrency(lot.realizedProfit) : '—'}
+                  </td>
+                  <td className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', profitClass)}>
+                    {lot.hasAvgCost ? formatSignedPercent(lot.realizedReturnRate) : '—'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot className="bg-slate-50/70 text-xs font-semibold text-slate-700">
+            <tr>
+              <td className="px-3 py-2" colSpan={4}>合计（{filteredSummary.codeCount} 只 / {filteredSummary.lotCount} 笔）</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatShares(filteredSummary.totalSellShares)}</td>
+              <td className="px-3 py-2"></td>
+              <td className="px-3 py-2"></td>
+              <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatCurrency(filteredSummary.totalCostBasis, '¥', 2)}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatCurrency(filteredSummary.totalProceeds, '¥', 2)}</td>
+              <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', totalTone)}>{formatSignedCurrency(filteredSummary.totalRealizedProfit)}</td>
+              <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', totalTone)}>{formatSignedPercent(filteredSummary.totalRealizedReturnRate)}</td>
             </tr>
           </tfoot>
         </table>
@@ -1199,6 +1309,13 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 </button>
                 <button
                   type="button"
+                  className={cx('rounded-lg px-3 py-1.5 transition-colors', mainViewTab === 'sold' ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'hover:text-slate-800')}
+                  onClick={() => setMainViewTab('sold')}
+                >
+                  已卖出{soldLots.length ? <span className="ml-1 rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{soldLots.length}</span> : null}
+                </button>
+                <button
+                  type="button"
                   className={cx('rounded-lg px-3 py-1.5 transition-colors', mainViewTab === 'ledger' ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'hover:text-slate-800')}
                   onClick={() => setMainViewTab('ledger')}
                 >
@@ -1242,12 +1359,18 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             </div>
           </div>
           <div className="px-1 py-1">
-            {mainViewTab === 'aggregate' ? renderAggregatesTable() : renderLedgerTable()}
+            {mainViewTab === 'aggregate'
+              ? renderAggregatesTable()
+              : mainViewTab === 'sold'
+                ? renderSoldTable()
+                : renderLedgerTable()}
           </div>
           <div className="border-t border-slate-100 px-4 py-2 text-[11px] text-slate-400">
             {mainViewTab === 'aggregate'
-              ? `共 ${aggregates.length} 只基金；${ledgerRows.length} 笔流水。`
-              : `共 ${ledgerRows.length} 笔流水；当前筛选 ${filteredRows.length} 笔。`}
+              ? `持仓中 ${portfolio.assetCount} 只基金；累计 ${ledgerRows.length} 笔流水。`
+              : mainViewTab === 'sold'
+                ? `共 ${soldSummary.codeCount} 只基金 / ${soldSummary.lotCount} 笔卖出；已实现收益 ${formatSignedCurrency(soldSummary.totalRealizedProfit)} （${formatSignedPercent(soldSummary.totalRealizedReturnRate)}）。`
+                : `共 ${ledgerRows.length} 笔流水；当前筛选 ${filteredRows.length} 笔。`}
           </div>
         </section>
         <aside className="relative">
