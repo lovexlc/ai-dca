@@ -342,6 +342,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     resetDraft();
     setSelectedCode(normalized.code);
     setSidePanelTab('summary');
+    setSidePanelOpen(false);
   }
 
   function handleDeleteTransaction(txId) {
@@ -1409,22 +1410,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               </button>
             </div>
             <div className="flex flex-col gap-3 overflow-y-auto px-5 py-4">
-              <div className="inline-flex w-full rounded-xl bg-slate-100 p-1 text-xs font-semibold text-slate-600">
-                <button
-                  type="button"
-                  className={cx('flex-1 rounded-lg px-3 py-1.5 transition-colors', sidePanelTab === 'summary' ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'hover:text-slate-800')}
-                  onClick={() => setSidePanelTab('summary')}
-                >
-                  该基金汇总
-                </button>
-                <button
-                  type="button"
-                  className={cx('flex-1 rounded-lg px-3 py-1.5 transition-colors', sidePanelTab === 'create' ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'hover:text-slate-800')}
-                  onClick={() => setSidePanelTab('create')}
-                >
-                  {draftMode === 'edit' ? '编辑交易' : '新增交易'}
-                </button>
-              </div>
               <div>
                 {sidePanelTab === 'summary' ? renderSummaryPanel() : renderDraftPanel()}
               </div>
