@@ -441,7 +441,7 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
                       className={cx(
                         'shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                         isActive
-                          ? 'border border-slate-300 bg-white text-slate-900'
+                          ? 'border border-slate-300 bg-white text-slate-900 ring-1 ring-slate-400'
                           : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                       )}
                     >
