@@ -325,21 +325,20 @@ export function BackupExperience({ links, embedded = false }) {
         <div className="mt-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-700">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
-            GitHub Pages 等纯前端页面直连第三方 WebDAV（坚果云、Nextcloud…）会被 CORS 拦下，这是服务器策略问题，与有无自建服务端无关。
-            本项目已在{' '}<code className="mx-1 font-mono text-amber-800">tools.freebacktrack.tech/api/webdav</code>{' '}部署好了公用的 Cloudflare Worker 代理，直接复制下面这个地址填到上面输入框即可：
-            <br />
-            <code className="font-mono text-amber-800 break-all">https://tools.freebacktrack.tech/api/webdav</code>
-            <br />
-            不放心拿自己的凭据走别人的代理？仓库里有脚本和部署步骤（见{' '}
-            <a
-              href="https://github.com/lovexlc/ai-dca/blob/main/workers/README.md"
-              target="_blank"
-              rel="noreferrer"
-              className="font-mono text-amber-900 underline decoration-amber-400 underline-offset-2 hover:text-amber-950"
-            >
-              github.com/lovexlc/ai-dca/blob/main/workers/README.md
-            </a>
-            {' '}），在你自己的 Cloudflare 账号部署一份，把自己的 Worker URL 填到上面即可。确认你的 WebDAV 服务器已开 CORS 的，也可以留空代理地址直连。
+            纯前端页面直连第三方 WebDAV（坚果云、Nextcloud…）会被 CORS 拦下，需要走代理。直接用本项目公用代理：
+            <code className="mt-1 block font-mono text-amber-800 break-all">https://tools.freebacktrack.tech/api/webdav</code>
+            <span className="mt-1 block">
+              不想用公用代理可自己部署一份（见{' '}
+              <a
+                href="https://github.com/lovexlc/ai-dca/blob/main/workers/README.md"
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-amber-900 underline decoration-amber-400 underline-offset-2 hover:text-amber-950"
+              >
+                workers/README.md
+              </a>
+              {' '}）；服务器已开 CORS 可留空直连。
+            </span>
           </div>
         </div>
       </Card>
