@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeftRight, ArrowRight, History, Home, Layers3, LineChart, Plus, Repeat, Wallet } from 'lucide-react';
+import { ArrowLeftRight, ArrowRight, CloudUpload, History, Home, Layers3, LineChart, Plus, Repeat, Wallet } from 'lucide-react';
 import { isFundSwitchViewHash } from '../app/fundSwitch.js';
 import { PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
+import { BackupExperience } from './BackupExperience.jsx';
 import { DcaExperience } from './DcaExperience.jsx';
 import { FundSwitchExperience } from './FundSwitchExperience.jsx';
 import { HistoryExperience } from './HistoryExperience.jsx';
@@ -20,7 +21,8 @@ const WORKSPACE_TITLES = {
   fundSwitch: '基金切换收益分析',
   history: '交易历史',
   holdings: '持仓总览',
-  newPlan: '新建建仓计划'
+  newPlan: '新建建仓计划',
+  backup: '数据同步 / 备份'
 };
 
 const SIDEBAR_ICONS = {
@@ -30,7 +32,8 @@ const SIDEBAR_ICONS = {
   fundSwitch: ArrowLeftRight,
   history: History,
   holdings: Wallet,
-  newPlan: Plus
+  newPlan: Plus,
+  backup: CloudUpload
 };
 
 function normalizeWorkspaceTab(value = '') {
@@ -144,6 +147,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         return <HoldingsExperience {...sharedProps} />;
       case 'newPlan':
         return <NewPlanExperience {...sharedProps} />;
+      case 'backup':
+        return <BackupExperience {...sharedProps} />;
       case 'home':
       default:
         return <HomeExperience {...sharedProps} />;
