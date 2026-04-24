@@ -771,7 +771,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         )}
         onClick={() => { setSelectedCode(tx.code); setSidePanelTab('summary'); }}
       >
-        <td className="whitespace-nowrap px-2 py-2 font-mono text-xs text-slate-800">{tx.code}</td>
+        <td className={cx(
+          'sticky left-0 z-10 whitespace-nowrap px-2 py-2 font-mono text-xs text-slate-800 shadow-[1px_0_0_rgba(15,23,42,0.06)]',
+          isSelected ? 'bg-indigo-50/90' : 'bg-white'
+        )}>{tx.code}</td>
         <td className="whitespace-nowrap px-2 py-2 text-xs">{tx.name || <span className="text-slate-400">—</span>}</td>
         <td className="px-2 py-2"><Pill tone={kindTone}>{kindLabel}</Pill></td>
         <td className="px-2 py-2">
@@ -845,7 +848,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         <table className="min-w-[1200px] w-full text-sm">
           <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
             <tr>
-              <th className="px-3 py-2">基金代码</th>
+              <th className="sticky left-0 z-20 bg-slate-50 px-3 py-2 shadow-[1px_0_0_rgba(15,23,42,0.08)]">基金代码</th>
               <th className="px-3 py-2">基金名称</th>
               <th className="px-3 py-2">标签</th>
               <th className="px-3 py-2 text-right">总份额</th>
@@ -878,7 +881,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                     setSidePanelTab('summary');
                   }}
                 >
-                  <td className="whitespace-nowrap px-3 py-2 font-mono text-xs font-semibold text-slate-800">{agg.code}</td>
+                  <td className={cx(
+                    'sticky left-0 z-10 whitespace-nowrap px-3 py-2 font-mono text-xs font-semibold text-slate-800 shadow-[1px_0_0_rgba(15,23,42,0.06)]',
+                    isSelected ? 'bg-indigo-50/90' : 'bg-white'
+                  )}>{agg.code}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-xs">{agg.name || <span className="text-slate-400">—</span>}</td>
                   <td className="px-3 py-2"><Pill tone={kindTone}>{kindLabel}</Pill></td>
                   <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">{formatShares(agg.totalShares)}</td>
@@ -936,7 +942,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         <table className="min-w-[1400px] w-full text-sm">
           <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
             <tr>
-              <th className="px-2 py-2">代码</th>
+              <th className="sticky left-0 z-20 bg-slate-50 px-2 py-2 shadow-[1px_0_0_rgba(15,23,42,0.08)]">代码</th>
               <th className="px-2 py-2">名称</th>
               <th className="px-2 py-2">标签</th>
               <th className="px-2 py-2">类型</th>
