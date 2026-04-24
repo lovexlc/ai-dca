@@ -330,7 +330,16 @@ export function BackupExperience({ links, embedded = false }) {
             <br />
             <code className="font-mono text-amber-800 break-all">https://tools.freebacktrack.tech/api/webdav</code>
             <br />
-            不放心拿自己的凭据走别人的代理？仓库里有脚本和 README（见{' '}<code className="font-mono text-amber-800">workers/README.md</code>{' '}），在你自己的 Cloudflare 账号部署一份，把自己的 Worker URL 填到上面即可。确认你的 WebDAV 服务器已开 CORS 的，也可以留空代理地址直连。
+            不放心拿自己的凭据走别人的代理？仓库里有脚本和部署步骤（见{' '}
+            <a
+              href="https://github.com/lovexlc/ai-dca/blob/main/workers/README.md"
+              target="_blank"
+              rel="noreferrer"
+              className="font-mono text-amber-900 underline decoration-amber-400 underline-offset-2 hover:text-amber-950"
+            >
+              github.com/lovexlc/ai-dca/blob/main/workers/README.md
+            </a>
+            {' '}），在你自己的 Cloudflare 账号部署一份，把自己的 Worker URL 填到上面即可。确认你的 WebDAV 服务器已开 CORS 的，也可以留空代理地址直连。
           </div>
         </div>
       </Card>
