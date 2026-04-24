@@ -3,22 +3,29 @@
 // 用途：给 ai-dca 纯前端的「数据同步 / 备份」tab 做 CORS 代理，
 //       让浏览器能跨域访问坚果云、Nextcloud、Infomaniak 等不开 CORS 的 WebDAV。
 //
-// 调用格式：
-//   <worker-url>/<full-target-url>
-//   例：https://webdav-proxy.<your-sub>.workers.dev/https://dav.jianguoyun.com/dav/ai-dca-backup/ai-dca-backup.json
+// 调用格式（生产环境，路由绑定在 tools.freebacktrack.tech）：
+//   https://tools.freebacktrack.tech/api/webdav/<full-target-url>
+//   例：https://tools.freebacktrack.tech/api/webdav/https://dav.jianguoyun.com/dav/ai-dca-backup/ai-dca-backup.json
+//
+// 也兑容 workers.dev 默认子域，调用格式：
+//   https://webdav-cors-proxy.<sub>.workers.dev/<full-target-url>
 //
 // 安全说明：
 //   - 默认只放行 ALLOWED_ORIGINS 里的来源，防止被当成公共代理。
-//   - 上线前请确保将 https://lovexlc.github.io 或你自己的域名加到列表。
+//   - 上线前请确保将前端所在的域名加到列表。
 //   - Worker 不对凭据做任何处理，只是透传 Authorization 头。
 
 const ALLOWED_ORIGINS = [
-  'https://lovexlc.github.io',
+  'https://tools.freebacktrack.tech',
   'http://localhost:4173',
   'http://localhost:5173',
   'http://127.0.0.1:4173',
   'http://127.0.0.1:5173'
 ];
+
+// 绑在自定义域名的路由前缀。命中时会被剔除，剩下的才是目标 URL。
+// 路由模式：tools.freebacktrack.tech/api/webdav/*
+const ROUTE_PREFIX = '/api/webdav/';
 
 // WebDAV 标准上除了 HTTP 动词，还需要 PROPFIND / MKCOL / COPY / MOVE / LOCK / UNLOCK。
 const ALLOWED_METHODS =
@@ -82,9 +89,17 @@ export default {
       return jsonError(403, `Origin not allowed: ${origin || '(missing)'}`, origin);
     }
 
-    // 解析目标 URL。Worker URL 下的 path 带一个完整的 http(s):// 地址。
+    // 解析目标 URL。
+    // - 在 tools.freebacktrack.tech/api/webdav/<target> 下调用时，剔掉前缀。
+    // - 在 workers.dev 直调时，pathname 本身就是 /<target>，剔掉开头的 /。
     const url = new URL(request.url);
-    const rawTarget = `${url.pathname.slice(1)}${url.search}`;
+    let pathPart;
+    if (url.pathname.startsWith(ROUTE_PREFIX)) {
+      pathPart = url.pathname.slice(ROUTE_PREFIX.length);
+    } else {
+      pathPart = url.pathname.replace(/^\/+/, '');
+    }
+    const rawTarget = `${pathPart}${url.search}`;
     if (!/^https?:\/\//i.test(rawTarget)) {
       return jsonError(
         400,

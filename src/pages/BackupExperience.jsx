@@ -314,7 +314,7 @@ export function BackupExperience({ links, embedded = false }) {
           <span className="font-semibold text-slate-700">CORS 代理地址（推荐）</span>
           <input
             className={inputClass}
-            placeholder="https://webdav-proxy.xxx.workers.dev"
+            placeholder="https://tools.freebacktrack.tech/api/webdav"
             value={config.proxyUrl}
             onChange={(event) => updateField('proxyUrl', event.target.value)}
             autoComplete="off"
