@@ -1487,13 +1487,118 @@ async function fetchFundNavSnapshot(code, generatedAt) {
   };
 }
 
+const EXCHANGE_FUND_CODE_PREFIXES = ['15', '50', '51', '52', '53', '54', '56', '58'];
+
+function isExchangeFundCode(code) {
+  const normalized = String(code || '').trim();
+  if (!/^\d{6}$/.test(normalized)) return false;
+  return EXCHANGE_FUND_CODE_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+}
+
+function resolveExchangeMarket(code) {
+  // 15x -> Shenzhen (secid 0.*)；其他前缀 -> Shanghai (secid 1.*).
+  return String(code || '').startsWith('15') ? '0' : '1';
+}
+
+function formatShanghaiDateFromEpochSec(seconds) {
+  const ms = Number(seconds) > 0 ? Number(seconds) * 1000 : Date.now();
+  const shifted = new Date(ms + 8 * 60 * 60 * 1000);
+  const y = shifted.getUTCFullYear();
+  const m = String(shifted.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(shifted.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function shiftIsoDateDays(isoDate, deltaDays) {
+  if (!isoDate || typeof isoDate !== 'string') return '';
+  const parts = isoDate.split('-').map((part) => Number(part));
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return '';
+  const ref = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+  ref.setUTCDate(ref.getUTCDate() + deltaDays);
+  const y = ref.getUTCFullYear();
+  const m = String(ref.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(ref.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+async function fetchExchangeQuoteSnapshot(code, generatedAt) {
+  const market = resolveExchangeMarket(code);
+  const url = new URL('https://push2.eastmoney.com/api/qt/stock/get');
+  url.searchParams.set('secid', `${market}.${code}`);
+  url.searchParams.set('fields', 'f43,f60,f86,f57,f58,f1');
+  url.searchParams.set('_', String(Date.now()));
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      accept: 'application/json, text/plain, */*',
+      referer: 'https://quote.eastmoney.com/',
+      'user-agent': 'Mozilla/5.0'
+    }
+  });
+
+  const rawText = await response.text();
+  if (!response.ok) {
+    throw new Error(`${code} 场内行情请求失败：HTTP ${response.status}`);
+  }
+
+  let payload = {};
+  if (rawText) {
+    try {
+      payload = JSON.parse(rawText);
+    } catch (_error) {
+      throw new Error(`${code} 场内行情接口返回了非 JSON 响应。`);
+    }
+  }
+
+  const data = payload?.data;
+  if (!data || typeof data !== 'object') {
+    throw new Error(`${code} 暂未查询到场内实时行情。`);
+  }
+
+  const scale = Math.max(Math.min(Number(data.f1) || 3, 6), 0);
+  const divisor = Math.pow(10, scale);
+  const latestRaw = Number(data.f43);
+  const previousRaw = Number(data.f60);
+  if (!(latestRaw > 0)) {
+    throw new Error(`${code} 场内行情暂无最新交易价。`);
+  }
+  if (!(previousRaw > 0)) {
+    throw new Error(`${code} 场内行情缺少昨收价。`);
+  }
+
+  const latestPrice = roundHolding(latestRaw / divisor, 4);
+  const previousPrice = roundHolding(previousRaw / divisor, 4);
+  const latestDate = formatShanghaiDateFromEpochSec(data.f86);
+  const previousDate = shiftIsoDateDays(latestDate, -1);
+  const name = String(data.f58 || '').trim();
+
+  return {
+    ok: true,
+    code,
+    name,
+    latestNav: latestPrice,
+    latestNavDate: latestDate,
+    previousNav: previousPrice,
+    previousNavDate: previousDate,
+    updatedAt: generatedAt,
+    priceSource: 'exchange-quote'
+  };
+}
+
+async function fetchHoldingSnapshot(code, generatedAt) {
+  if (isExchangeFundCode(code)) {
+    return fetchExchangeQuoteSnapshot(code, generatedAt);
+  }
+  return fetchFundNavSnapshot(code, generatedAt);
+}
+
 async function fetchLiveHoldingsNavPayload(codes, env, key) {
   const generatedAt = new Date().toISOString();
   const ttlMs = getHoldingsNavCacheTtlMs(env);
   const items = await Promise.all(
     codes.map(async (code) => {
       try {
-        const snapshot = await fetchFundNavSnapshot(code, generatedAt);
+        const snapshot = await fetchHoldingSnapshot(code, generatedAt);
         return {
           ...snapshot,
           cacheHit: false,
