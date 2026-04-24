@@ -1330,42 +1330,56 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
-                  className={cx(tableInputClass, 'h-10 w-56 rounded-xl border-slate-200 bg-slate-50 pl-9 pr-3 text-sm hover:bg-white')}
+                  className={cx(tableInputClass, 'h-9 w-56 rounded-lg border-slate-200 bg-slate-50 pl-9 pr-3 text-sm hover:bg-white')}
                   value={searchText}
                   onChange={(event) => setSearchText(event.target.value)}
                   placeholder="搜索代码或名称"
                 />
               </div>
-              <button type="button" className={GHOST_BTN} onClick={handleManualRefresh} disabled={navStatus === 'loading'}>
-                <RefreshCw className={cx('h-4 w-4', navStatus === 'loading' && 'animate-spin')} />
+              <button
+                type="button"
+                className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-white px-3 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={handleManualRefresh}
+                disabled={navStatus === 'loading'}
+              >
+                <RefreshCw className={cx('h-3.5 w-3.5', navStatus === 'loading' && 'animate-spin')} />
                 刷新净值
               </button>
               {renderNavBadge()}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" className={GHOST_BTN} onClick={handleTriggerOcr} disabled={ocrState.status === 'loading'}>
+              <button
+                type="button"
+                className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-white px-3 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={handleTriggerOcr}
+                disabled={ocrState.status === 'loading'}
+              >
                 {ocrState.status === 'loading' ? (
-                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                 ) : (
-                  <CloudUpload className="h-4 w-4" />
+                  <CloudUpload className="h-3.5 w-3.5" />
                 )}
                 {ocrState.status === 'loading' ? '识别中...' : '截图 OCR'}
               </button>
-              <button type="button" className={GHOST_BTN} onClick={openPasteModal}>
-                <ClipboardPaste className="h-4 w-4" />
+              <button
+                type="button"
+                className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-white px-3 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={openPasteModal}
+              >
+                <ClipboardPaste className="h-3.5 w-3.5" />
                 粘贴 Excel
               </button>
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleOcrFile} />
               <button
                 type="button"
-                className={PRIMARY_BTN}
+                className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-indigo-600 px-3.5 text-xs font-semibold text-white shadow-[0_1px_2px_rgba(15,23,42,0.12)] transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={() => {
                   resetDraft();
                   setSidePanelTab('create');
                   setSidePanelOpen(true);
                 }}
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="h-3.5 w-3.5" />
                 新增
               </button>
             </div>
