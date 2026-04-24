@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeftRight, ArrowRight, CalendarClock, ClipboardList, DatabaseBackup, History, Layers3, LineChart, PieChart, Plus } from 'lucide-react';
+import { ArrowRight, CalendarClock, CloudUpload, History, LineChart, ListChecks, Plus, Shuffle, TrendingUp, Wallet } from 'lucide-react';
 import { isFundSwitchViewHash } from '../app/fundSwitch.js';
 import { PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
@@ -24,13 +24,13 @@ const WORKSPACE_TITLES = {
 };
 
 const SIDEBAR_ICONS = {
-  tradePlans: ClipboardList,
-  home: Layers3,
+  tradePlans: ListChecks,
+  home: TrendingUp,
   dca: CalendarClock,
-  fundSwitch: ArrowLeftRight,
+  fundSwitch: Shuffle,
   history: History,
-  holdings: PieChart,
-  backup: DatabaseBackup
+  holdings: Wallet,
+  backup: CloudUpload
 };
 
 function normalizeWorkspaceTab(value = '') {
