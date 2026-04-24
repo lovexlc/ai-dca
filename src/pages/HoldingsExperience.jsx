@@ -622,17 +622,30 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
 
   function renderNavBadge() {
     const meta = ledger.lastNavMeta || {};
+    const refreshBtn = (
+      <button
+        type="button"
+        onClick={handleManualRefresh}
+        disabled={navStatus === 'loading'}
+        title="刷新净值"
+        aria-label="刷新净值"
+        className="inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <RefreshCw className={cx('h-3.5 w-3.5', navStatus === 'loading' && 'animate-spin')} />
+      </button>
+    );
     if (navStatus === 'loading') {
       return (
-        <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
-          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+        <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+          {refreshBtn}
           正在刷新净值
         </span>
       );
     }
     if (!meta.updatedAt) {
       return (
-        <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+        <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+          {refreshBtn}
           <AlertTriangle className="h-3.5 w-3.5" />
           尚未同步净值
         </span>
@@ -640,14 +653,16 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
     if (meta.failureCount > 0) {
       return (
-        <span className="inline-flex items-center gap-1.5 text-xs text-amber-600">
+        <span className="inline-flex items-center gap-1 text-xs text-amber-600">
+          {refreshBtn}
           <AlertTriangle className="h-3.5 w-3.5" />
           {`${formatRelativeTime(meta.updatedAt)} · ${meta.successCount} 成功 / ${meta.failureCount} 失败`}
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600">
+      <span className="inline-flex items-center gap-1 text-xs text-emerald-600">
+        {refreshBtn}
         <CheckCircle2 className="h-3.5 w-3.5" />
         {`${formatRelativeTime(meta.updatedAt)} · ${meta.successCount} 条净值已同步`}
       </span>
@@ -1336,15 +1351,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                   placeholder="搜索代码或名称"
                 />
               </div>
-              <button
-                type="button"
-                className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-white px-3 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
-                onClick={handleManualRefresh}
-                disabled={navStatus === 'loading'}
-              >
-                <RefreshCw className={cx('h-3.5 w-3.5', navStatus === 'loading' && 'animate-spin')} />
-                刷新净值
-              </button>
               {renderNavBadge()}
             </div>
             <div className="flex flex-wrap items-center gap-2">
