@@ -320,16 +320,17 @@ export function BackupExperience({ links, embedded = false }) {
             autoComplete="off"
             spellCheck="false"
           />
-          <span className="block text-xs text-slate-400">
-            纯前端直连第三方 WebDAV 会被浏览器 CORS 拦住。部署仓库里的 Cloudflare Worker（参考 workers/README.md）后把 Worker URL 填这里，留空则直连。
-          </span>
         </label>
 
         <div className="mt-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-700">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             GitHub Pages 等纯前端页面直连第三方 WebDAV（坚果云、Nextcloud…）会被 CORS 拦下，这是服务器策略问题，与有无自建服务端无关。
-            推荐用仓库自带的 Cloudflare Worker 代理脚本（免费、五分钟部署）。如果确认你的 WebDAV 已在服务端开了 CORS，也可以留空代理地址直连。
+            本项目已在{' '}<code className="mx-1 font-mono text-amber-800">tools.freebacktrack.tech/api/webdav</code>{' '}部署好了公用的 Cloudflare Worker 代理，直接复制下面这个地址填到上面输入框即可：
+            <br />
+            <code className="font-mono text-amber-800 break-all">https://tools.freebacktrack.tech/api/webdav</code>
+            <br />
+            不放心拿自己的凭据走别人的代理？仓库里有脚本和 README（见{' '}<code className="font-mono text-amber-800">workers/README.md</code>{' '}），在你自己的 Cloudflare 账号部署一份，把自己的 Worker URL 填到上面即可。确认你的 WebDAV 服务器已开 CORS 的，也可以留空代理地址直连。
           </div>
         </div>
       </Card>
