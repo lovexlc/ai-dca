@@ -1,8 +1,9 @@
 // WebDAV 整包备份 / 恢复。
 //
 // 设计要点：
-// - 浏览器直连 WebDAV，使用 Basic Auth。若服务端 CORS 未放行，调用方会抛出 NetworkError；
-//   UI 层会提示「请在 WebDAV 服务端允许跨域 (PUT/GET/MKCOL + Authorization 头)」。
+// - 浏览器依赖 Basic Auth 访问 WebDAV。默认直连，但大多数第三方 WebDAV
+//   不开 CORS，因此提供可选的 `proxyUrl` 字段，通过 Cloudflare Worker 中转。
+//   配套的 Worker 脚本放在 `workers/webdav-cors-proxy.js`。
 // - 导出范围：localStorage 中所有以 `aiDca` 开头的 key（自动覆盖未来新增 key），并排除
 //   瞬时/不可恢复项（如 `aiDcaPendingToasts`）。
 // - 凭据以明文存在 localStorage，KEY = `aiDcaWebDavConfig`（用户已明确选择）。
@@ -34,7 +35,8 @@ export function loadWebDavConfig() {
       baseUrl: String(parsed.baseUrl || ''),
       username: String(parsed.username || ''),
       password: String(parsed.password || ''),
-      remoteDir: String(parsed.remoteDir || '/ai-dca-backup/')
+      remoteDir: String(parsed.remoteDir || '/ai-dca-backup/'),
+      proxyUrl: String(parsed.proxyUrl || '')
     };
   } catch (err) {
     console.warn('[webdav] load config failed', err);
@@ -49,7 +51,8 @@ export function saveWebDavConfig(config) {
     baseUrl: String(config?.baseUrl || '').trim(),
     username: String(config?.username || ''),
     password: String(config?.password || ''),
-    remoteDir: normalizeDir(config?.remoteDir || '/ai-dca-backup/')
+    remoteDir: normalizeDir(config?.remoteDir || '/ai-dca-backup/'),
+    proxyUrl: String(config?.proxyUrl || '').trim().replace(/\/+$/, '')
   };
   ls.setItem(WEBDAV_CONFIG_KEY, JSON.stringify(payload));
 }
@@ -90,6 +93,13 @@ function joinUrl(baseUrl, path) {
   const base = String(baseUrl || '').replace(/\/+$/, '');
   const p = String(path || '').startsWith('/') ? path : `/${path}`;
   return `${base}${p}`;
+}
+
+function wrapWithProxy(url, proxyUrl) {
+  if (!proxyUrl) return url;
+  const proxy = String(proxyUrl).replace(/\/+$/, '');
+  // Worker 约定格式：<worker-url>/<full-target-url>
+  return `${proxy}/${url}`;
 }
 
 function basicAuthHeader(username, password) {
@@ -175,7 +185,8 @@ function ensureConfig(config) {
 
 async function webdavFetch(config, path, init = {}) {
   ensureConfig(config);
-  const url = joinUrl(config.baseUrl, path);
+  const targetUrl = joinUrl(config.baseUrl, path);
+  const url = wrapWithProxy(targetUrl, config.proxyUrl);
   const headers = {
     Authorization: basicAuthHeader(config.username, config.password),
     ...(init.headers || {})
@@ -185,7 +196,10 @@ async function webdavFetch(config, path, init = {}) {
     response = await fetch(url, { ...init, headers, credentials: 'omit', mode: 'cors' });
   } catch (err) {
     const message = err?.message || '网络请求失败';
-    throw new Error(`WebDAV 请求失败：${message}（如果是 CORS 错误，请在服务端放行浏览器跨域与 Authorization 头）`);
+    const hint = config.proxyUrl
+      ? '请确认 Worker 地址正确，且 ALLOWED_ORIGINS 已包含当前前端域名'
+      : '如果是 CORS 错误，请填写「CORS 代理地址」（参考 workers/README.md）或在服务端放行跨域';
+    throw new Error(`WebDAV 请求失败：${message}（${hint}）`);
   }
   return response;
 }

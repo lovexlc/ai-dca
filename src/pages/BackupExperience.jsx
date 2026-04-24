@@ -90,7 +90,8 @@ export function BackupExperience({ links, embedded = false }) {
     baseUrl: '',
     username: '',
     password: '',
-    remoteDir: '/ai-dca-backup/'
+    remoteDir: '/ai-dca-backup/',
+    proxyUrl: ''
   }));
   const [dirty, setDirty] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -309,14 +310,26 @@ export function BackupExperience({ links, embedded = false }) {
           </label>
         </div>
 
+        <label className="mt-4 block space-y-1.5 text-sm text-slate-600">
+          <span className="font-semibold text-slate-700">CORS 代理地址（推荐）</span>
+          <input
+            className={inputClass}
+            placeholder="https://webdav-proxy.xxx.workers.dev"
+            value={config.proxyUrl}
+            onChange={(event) => updateField('proxyUrl', event.target.value)}
+            autoComplete="off"
+            spellCheck="false"
+          />
+          <span className="block text-xs text-slate-400">
+            纯前端直连第三方 WebDAV 会被浏览器 CORS 拦住。部署仓库里的 Cloudflare Worker（参考 workers/README.md）后把 Worker URL 填这里，留空则直连。
+          </span>
+        </label>
+
         <div className="mt-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-700">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
-            浏览器直连 WebDAV 需要服务器开启 CORS：放行
-            <span className="mx-1 font-mono">PUT / GET / MKCOL / PROPFIND</span>
-            方法以及
-            <span className="mx-1 font-mono">Authorization</span>
-            头。若测试连接出现「网络错误」，一般就是 CORS 未放行。
+            GitHub Pages 等纯前端页面直连第三方 WebDAV（坚果云、Nextcloud…）会被 CORS 拦下，这是服务器策略问题，与有无自建服务端无关。
+            推荐用仓库自带的 Cloudflare Worker 代理脚本（免费、五分钟部署）。如果确认你的 WebDAV 已在服务端开了 CORS，也可以留空代理地址直连。
           </div>
         </div>
       </Card>
