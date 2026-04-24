@@ -885,8 +885,9 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                     isSelected && 'bg-indigo-50/50'
                   )}
                   onClick={() => {
-                    setSelectedCode(agg.code);
-                    setSidePanelTab('summary');
+                    showActionToast('该功能已暂时隐藏', 'warning', {
+                      description: '基金行详情面板暂未开放，后续版本会重新上线。'
+                    });
                   }}
                 >
                   <td className={cx(
@@ -1295,7 +1296,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         </div>
       ) : null}
       {renderPortfolioOverview()}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="grid grid-cols-1 gap-4">
         <section className="min-w-0 rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-3">
@@ -1352,7 +1353,15 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 粘贴 Excel
               </button>
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleOcrFile} />
-              <button type="button" className={PRIMARY_BTN} onClick={() => { resetDraft(); setSidePanelTab('create'); }}>
+              <button
+                type="button"
+                className={PRIMARY_BTN}
+                onClick={() => {
+                  showActionToast('该功能已暂时隐藏', 'warning', {
+                    description: '新增交易面板暂未开放，后续版本会重新上线。如需录入交易，请暂用粘贴 Excel / 截图 OCR 入口。'
+                  });
+                }}
+              >
                 <Plus className="h-4 w-4" />
                 新增
               </button>
@@ -1373,29 +1382,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 : `共 ${ledgerRows.length} 笔流水；当前筛选 ${filteredRows.length} 笔。`}
           </div>
         </section>
-        <aside className="relative">
-          <div className="sticky top-4 flex flex-col gap-3 rounded-2xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-            <div className="inline-flex w-full rounded-xl bg-slate-100 p-1 text-xs font-semibold text-slate-600">
-              <button
-                type="button"
-                className={cx('flex-1 rounded-lg px-3 py-1.5 transition-colors', sidePanelTab === 'summary' ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'hover:text-slate-800')}
-                onClick={() => setSidePanelTab('summary')}
-              >
-                该基金汇总
-              </button>
-              <button
-                type="button"
-                className={cx('flex-1 rounded-lg px-3 py-1.5 transition-colors', sidePanelTab === 'create' ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'hover:text-slate-800')}
-                onClick={() => setSidePanelTab('create')}
-              >
-                {draftMode === 'edit' ? '编辑交易' : '新增交易'}
-              </button>
-            </div>
-            <div>
-              {sidePanelTab === 'summary' ? renderSummaryPanel() : renderDraftPanel()}
-            </div>
-          </div>
-        </aside>
       </div>
       {pasteModalOpen ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 px-4 py-6" onClick={closePasteModal}>
