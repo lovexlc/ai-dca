@@ -400,7 +400,7 @@ function StrategyToggle({ strategy, onChange }) {
           key={item}
           className={cx(
             'min-h-[40px] rounded-xl px-3 py-2 text-xs font-semibold leading-tight transition-colors sm:min-h-0 sm:rounded-full sm:py-1.5',
-            strategy === item ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+            strategy === item ? 'border border-slate-300 bg-white text-slate-900' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
           )}
           type="button"
           onClick={() => onChange(item)}
@@ -763,7 +763,7 @@ function WorkspaceNavButton({ panel, active, onSelect, badge = '' }) {
     <button
       className={cx(
         'inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all',
-        active ? 'border-slate-900 bg-slate-900 text-white shadow-sm shadow-slate-200' : 'border-transparent bg-transparent text-slate-500 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-900'
+        active ? 'border-slate-300 bg-white text-slate-900 shadow-sm shadow-slate-200' : 'border-transparent bg-transparent text-slate-500 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-900'
       )}
       type="button"
       onClick={() => onSelect(key)}

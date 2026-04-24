@@ -453,7 +453,7 @@ export function TradePlansExperience({ links, embedded = false }) {
               <button
                 className={cx(
                   primaryButtonClass,
-                  'bg-slate-900 text-white shadow-sm hover:bg-slate-800'
+                  'shadow-sm'
                 )}
                 type="button"
                 onClick={handleSyncRules}

@@ -179,13 +179,13 @@
 }
 
 .console-quick__primary {
-  background: #0f172a;
-  color: #ffffff;
-  border: 1px solid #0f172a;
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
 }
 
 .console-quick__primary:hover {
-  background: #1e293b;
+  background: #f8fafc;
 }
 
 .console-quick__secondary {
