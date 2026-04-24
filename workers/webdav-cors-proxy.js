@@ -11,7 +11,9 @@
 //   https://webdav-cors-proxy.<sub>.workers.dev/<full-target-url>
 //
 // 安全说明：
-//   - 默认只放行 ALLOWED_ORIGINS 里的来源，防止被当成公共代理。
+//   - 请求带有 Origin 时，只放行 ALLOWED_ORIGINS 里的来源，防止被别的网站嵌套滥用。
+//   - 请求没带 Origin（浏览器地址栏直接打开 / curl / postman）也放行，
+//     因为浏览器的跨域攻击总会带 Origin，不带 Origin 的不是跨域来源。
 //   - 上线前请确保将前端所在的域名加到列表。
 //   - Worker 不对凭据做任何处理，只是透传 Authorization 头。
 
@@ -51,7 +53,8 @@ const STRIPPED_REQUEST_HEADERS = new Set([
 ]);
 
 function corsHeaders(origin) {
-  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : '';
+  // Origin 在白名单里才回带；没带 Origin 的请求不需要 CORS 头（也不会造成伤害）。
+  const allowedOrigin = origin && ALLOWED_ORIGINS.includes(origin) ? origin : '';
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Methods': ALLOWED_METHODS,
@@ -78,14 +81,18 @@ export default {
 
     // Preflight
     if (request.method === 'OPTIONS') {
-      if (!ALLOWED_ORIGINS.includes(origin)) {
+      // preflight 必然有 Origin；没 Origin 的 OPTIONS 不是真的 preflight，当普通请求走下去。
+      if (origin && !ALLOWED_ORIGINS.includes(origin)) {
         return new Response(null, { status: 403 });
       }
-      return new Response(null, { status: 204, headers: corsHeaders(origin) });
+      if (origin) {
+        return new Response(null, { status: 204, headers: corsHeaders(origin) });
+      }
     }
 
-    // 非 preflight 但没带 Origin——直接走 postman 之类的工具，也拒绝。
-    if (!origin || !ALLOWED_ORIGINS.includes(origin)) {
+    // 带有 Origin 但不在白名单里的，拒绝。
+    // 没带 Origin 的（地址栏直开 / curl / 原生客户端）不会触发 CORS 攻击，放行。
+    if (origin && !ALLOWED_ORIGINS.includes(origin)) {
       return jsonError(403, `Origin not allowed: ${origin || '(missing)'}`, origin);
     }
 
