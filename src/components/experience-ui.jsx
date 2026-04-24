@@ -147,6 +147,7 @@ export function TopBar({ tabs = [], activeKey = '', onSelect, brand = '', classN
 
 export function PageHero({
   backHref,
+  onBack,
   backLabel = '返回',
   eyebrow,
   title,
@@ -158,7 +159,16 @@ export function PageHero({
   return (
     <div className="border-b border-slate-200 bg-white px-5 pb-6 pt-5 sm:px-6 sm:pb-8 sm:pt-6">
       <div className="mx-auto max-w-6xl">
-        {backHref ? (
+        {onBack ? (
+          <button
+            type="button"
+            onClick={onBack}
+            className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition-colors hover:text-indigo-600"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {backLabel}
+          </button>
+        ) : backHref ? (
           <a className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition-colors hover:text-indigo-600" href={backHref}>
             <ArrowLeft className="h-4 w-4" />
             {backLabel}

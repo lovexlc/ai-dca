@@ -9,7 +9,6 @@ import { FundSwitchExperience } from './FundSwitchExperience.jsx';
 import { HistoryExperience } from './HistoryExperience.jsx';
 import { HoldingsExperience } from './HoldingsExperience.jsx';
 import { HomeExperience } from './HomeExperience.jsx';
-import { NewPlanExperience } from './NewPlanExperience.jsx';
 import { TradePlansExperience } from './TradePlansExperience.jsx';
 
 const DEFAULT_WORKSPACE_TAB = 'tradePlans';
@@ -21,7 +20,6 @@ const WORKSPACE_TITLES = {
   fundSwitch: '基金切换收益分析',
   history: '交易历史',
   holdings: '持仓总览',
-  newPlan: '新建建仓计划',
   backup: '数据同步 / 备份'
 };
 
@@ -32,7 +30,6 @@ const SIDEBAR_ICONS = {
   fundSwitch: ArrowLeftRight,
   history: History,
   holdings: Wallet,
-  newPlan: Plus,
   backup: CloudUpload
 };
 
@@ -68,7 +65,7 @@ function SidebarQuickActions({ onSelectNav }) {
       <button
         type="button"
         className="console-quick__primary"
-        onClick={() => onSelectNav?.('newPlan')}
+        onClick={() => onSelectNav?.('tradePlans', { hash: '#new' })}
       >
         <Plus className="h-4 w-4" aria-hidden="true" />
         <span>新建建仓计划</span>
@@ -120,16 +117,27 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     return () => window.removeEventListener('popstate', handlePopState);
   }, [initialTab]);
 
-  function handleSelectTab(nextTab) {
+  function handleSelectTab(nextTab, options = {}) {
     const normalizedTab = normalizeWorkspaceTab(nextTab);
-    if (normalizedTab === activeTab) {
+    const hash = typeof options.hash === 'string' ? options.hash : '';
+    const alreadyActive = normalizedTab === activeTab;
+    const hashMatches = (window.location.hash || '') === hash;
+    if (alreadyActive && hashMatches) {
       return;
     }
 
     const nextUrl = buildWorkspaceUrl(normalizedTab, { inPagesDir });
+    if (hash) {
+      nextUrl.hash = hash;
+    }
     window.history.pushState({ tab: normalizedTab }, '', nextUrl);
     setActiveTab(normalizedTab);
     window.scrollTo({ top: 0, behavior: 'auto' });
+    // 合并后：侧边栏《新建建仓计划》通过 #new hash 跳进《交易计划》的新建子视图。
+    // 由于 TradePlansExperience 在 mount 时才读 hash，手动触发 hashchange 用于已 mount 的情况。
+    if (hash && alreadyActive) {
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    }
   }
 
   function renderActivePanel() {
@@ -145,8 +153,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         return <HistoryExperience {...sharedProps} />;
       case 'holdings':
         return <HoldingsExperience {...sharedProps} />;
-      case 'newPlan':
-        return <NewPlanExperience {...sharedProps} />;
       case 'backup':
         return <BackupExperience {...sharedProps} />;
       case 'home':

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Bell, CalendarClock, Layers3, Radar, Save, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowRight, Bell, CalendarClock, Layers3, Plus, Radar, Save, Sparkles, Trash2 } from 'lucide-react';
 import { issueNotifyGroupShareCode, joinNotifyGroup, loadNotifyEvents, loadNotifyStatus, pairAndroidDevice, persistNotifyClientConfig, readNotifyClientConfig, saveNotifySettings, sendNotifyTest, syncTradePlanRules, unpairAndroidDevice } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { getPrimaryTabs } from '../app/screens.js';
 import { showActionToast } from '../app/toast.js';
 import { Card, Field, PageShell, Pill, SectionHeading, StatCard, TextInput, TopBar, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
+import { NewPlanExperience } from './NewPlanExperience.jsx';
 
 function PlanStatusPill({ tone = 'slate', children }) {
   return <Pill tone={tone}>{children}</Pill>;
@@ -66,6 +67,14 @@ const ANDROID_APK_DOWNLOAD_URL = 'https://github.com/yukerui/ai-dca-android-noti
 export function TradePlansExperience({ links, embedded = false }) {
   const [selectedRowId, setSelectedRowId] = useState('');
   const [detailTab, setDetailTab] = useState('detail');
+  // 《新建计划》嵌入在本 tab 中：view === 'new' 时渲染 NewPlanExperience 覆盖原内容。
+  // 用 URL hash (#new) 作为持久化入口，这样刷新或浏览器后退/前进按钮能回到正确视图。
+  const [view, setView] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 'list';
+    }
+    return window.location.hash === '#new' ? 'new' : 'list';
+  });
   const [notifyStatus, setNotifyStatus] = useState(null);
   const [recentEvents, setRecentEvents] = useState([]);
   const [notifyError, setNotifyError] = useState('');
@@ -93,6 +102,41 @@ export function TradePlansExperience({ links, embedded = false }) {
   });
   const { previewRows, summary, hasPlans } = useMemo(() => buildTradePlanCenter(), []);
   const primaryTabs = getPrimaryTabs(links);
+
+  // 向《新建计划》子视图切换：写入 hash 以便浏览器后退/前进能在两个视图间来回。
+  function enterNewPlanView() {
+    if (typeof window !== 'undefined' && window.location.hash !== '#new') {
+      window.history.pushState({ view: 'new' }, '', `${window.location.pathname}${window.location.search}#new`);
+    }
+    setView('new');
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+  }
+
+  function exitNewPlanView() {
+    if (typeof window !== 'undefined' && window.location.hash === '#new') {
+      // 回到交易计划视图，保持返回按钮行为：跳近最近的历史条目。
+      window.history.back();
+    }
+    setView('list');
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+    function syncViewFromHash() {
+      setView(window.location.hash === '#new' ? 'new' : 'list');
+    }
+    window.addEventListener('hashchange', syncViewFromHash);
+    window.addEventListener('popstate', syncViewFromHash);
+    return () => {
+      window.removeEventListener('hashchange', syncViewFromHash);
+      window.removeEventListener('popstate', syncViewFromHash);
+    };
+  }, []);
+
   const androidSetup = notifyStatus?.setup || null;
   const pairedAndroidDevices = Array.isArray(androidSetup?.gcmCurrentClientRegistrations)
     ? androidSetup.gcmCurrentClientRegistrations
@@ -816,8 +860,45 @@ export function TradePlansExperience({ links, embedded = false }) {
     );
   }
 
+  // 当进入《新建计划》子视图时，直接用 NewPlanExperience 覆盖当前内容。
+  // NewPlanExperience 自带 PageHero 左上角的《返回交易计划》按钮会调用 onBack 退出。
+  if (view === 'new') {
+    const newPlanNode = (
+      <NewPlanExperience
+        links={links}
+        embedded
+        onBack={exitNewPlanView}
+      />
+    );
+    if (embedded) {
+      return newPlanNode;
+    }
+    return (
+      <PageShell>
+        <TopBar activeKey="tradePlans" tabs={primaryTabs} />
+        {newPlanNode}
+      </PageShell>
+    );
+  }
+
   const content = (
     <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
+      {/* 标题 + 《新建计划》入口，点击后在本 tab 内覆盖为新建计划页。 */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Trade plans</div>
+          <h1 className="mt-1 text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">交易计划中心</h1>
+        </div>
+        <button
+          type="button"
+          onClick={enterNewPlanView}
+          className={cx(primaryButtonClass, 'h-10 px-4 text-sm')}
+        >
+          <Plus className="h-4 w-4" />
+          新建计划
+        </button>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard accent="indigo" eyebrow="待执行计划" value={`${summary.pendingCount} 项`} note="包含价格触发买入与固定定投计划" />
         <StatCard eyebrow="最近触发条件" value={summary.nearestTrigger} note="优先显示最近需要观察的价格条件" />

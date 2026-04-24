@@ -3,7 +3,8 @@ export const PROJECT_TITLE = '股票建仓策略看板';
 export const HOME_SCREEN_ID = '75a393ec1a2d424ebafa1d0e59402d26';
 
 export const GROUP_ORDER = ['tradePlans', 'home', 'accumEdit', 'accumNew', 'addLevel', 'dca', 'fundSwitch', 'history'];
-export const PRIMARY_TAB_ORDER = ['tradePlans', 'home', 'dca', 'fundSwitch', 'history', 'holdings', 'newPlan', 'backup'];
+// newPlan 已合并进《交易计划》tab（通过 #new hash 进入子视图），侧边栏不再作为独立 tab 展示。
+export const PRIMARY_TAB_ORDER = ['tradePlans', 'home', 'dca', 'fundSwitch', 'history', 'holdings', 'backup'];
 
 export const GROUP_META = {
   home: {

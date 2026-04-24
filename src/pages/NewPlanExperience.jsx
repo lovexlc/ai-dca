@@ -201,7 +201,7 @@ function formatFundPrice(value, currency = '¥') {
   return formatCurrency(value, currency, 3);
 }
 
-export function NewPlanExperience({ links, inPagesDir = false }) {
+export function NewPlanExperience({ links, inPagesDir = false, embedded = false, onBack = null }) {
   const dashboardState = readHomeDashboardState();
   const [state, setState] = useState(() => {
     const template = readPlanState();
@@ -410,15 +410,21 @@ export function NewPlanExperience({ links, inPagesDir = false }) {
         tone: syncFailed ? 'amber' : 'emerald',
         persist: true
       });
-      window.location.href = links.home;
+      if (typeof onBack === 'function') {
+        // 嵌入在《交易计划》中使用：保存成功后返回交易计划视图，而不跳转到加仓计划首页。
+        onBack();
+      } else {
+        window.location.href = links.home;
+      }
     }
   }
 
   return (
     <PageShell>
       <PageHero
-        backHref={links.home}
-        backLabel="返回加仓计划"
+        backHref={onBack ? undefined : links.home}
+        onBack={onBack || undefined}
+        backLabel={onBack ? '返回交易计划' : '返回加仓计划'}
         eyebrow="策略新建"
         title="新建建仓计划"
         description="在这里创建建仓策略，选择均线分层或固定回撤模板。创建完成后回到首页只读查看，不在首页直接修改。"
@@ -430,8 +436,9 @@ export function NewPlanExperience({ links, inPagesDir = false }) {
       />
 
       <div className="mx-auto max-w-6xl space-y-6 px-6 pt-8">
-        <div className="grid gap-6 lg:grid-cols-5">
-          <div className="min-w-0 space-y-6 lg:col-span-3">
+        {/* 左侧主内容较宽随页面滚动，右侧成本预览上下文面板较窄并 sticky。 */}
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.9fr)]">
+          <div className="min-w-0 space-y-6">
             <Card className="min-w-0 overflow-hidden">
               <SectionHeading eyebrow="第一步" title="基础设置" description="先确定标的、预算规模和策略锚点，这些输入会直接联动到右侧的成本预览和资金模型。" />
 
@@ -595,7 +602,7 @@ export function NewPlanExperience({ links, inPagesDir = false }) {
             </Card>
           </div>
 
-          <div className="min-w-0 space-y-6 lg:col-span-2">
+          <div className="min-w-0 space-y-6 lg:sticky lg:top-4">
             <Card className="min-w-0 overflow-hidden border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white">
               <SectionHeading eyebrow="结果预览" title="策略成本预览" />
               <div className="mt-6 rounded-[24px] border border-white/80 bg-white/90 p-5 shadow-sm">
