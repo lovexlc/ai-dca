@@ -430,7 +430,7 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
         <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
           <div className="min-w-0 flex-1">
             {hasPlans ? (
-              <div className="-mx-1 flex items-center gap-1 overflow-x-auto px-1">
+              <div className="inline-flex items-center gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1">
                 {planList.map((plan) => {
                   const isActive = plan.id === activePlanId;
                   return (
@@ -439,10 +439,10 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
                       type="button"
                       onClick={() => handleSelectPlan(plan.id)}
                       className={cx(
-                        'shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                        'shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-all',
                         isActive
-                          ? 'border border-slate-300 bg-white text-slate-900 ring-1 ring-slate-400'
-                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900'
                       )}
                     >
                       {plan.name || plan.symbol || '未命名策略'}
