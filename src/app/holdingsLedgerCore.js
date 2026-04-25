@@ -120,6 +120,7 @@ export function createEmptyTransaction(overrides = {}) {
     date: '',
     price: '',
     shares: '',
+    costPrice: '',
     note: '',
     ...overrides
   };
@@ -137,6 +138,7 @@ export function normalizeTransaction(tx = {}, { idPrefix = 'tx' } = {}) {
     date: normalizeIsoDate(tx?.date),
     price: parsePositiveDecimal(tx?.price, 4),
     shares: parsePositiveDecimal(tx?.shares, 4),
+    costPrice: parsePositiveDecimal(tx?.costPrice, 4),
     note: String(tx?.note || '').trim()
   };
 }
@@ -148,6 +150,7 @@ export function hasMeaningfulTransaction(tx = {}) {
       || String(tx?.date || '').trim()
       || Number(tx?.price) > 0
       || Number(tx?.shares) > 0
+      || Number(tx?.costPrice) > 0
       || String(tx?.note || '').trim()
   );
 }
@@ -299,8 +302,11 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}) {
         bucket.firstBuyDate = tx.date;
       }
     } else if (tx.type === 'SELL') {
-      bucket.sellShares = round(bucket.sellShares + tx.shares, 4);
-      bucket.sellAmount = round(bucket.sellAmount + tx.price * tx.shares, 2);
+      // 自洽的“已结清交易”（自带 costPrice）独立成笔，不参与持仓份额扣减。
+      if (!(tx.costPrice > 0)) {
+        bucket.sellShares = round(bucket.sellShares + tx.shares, 4);
+        bucket.sellAmount = round(bucket.sellAmount + tx.price * tx.shares, 2);
+      }
     }
     if (tx.date && tx.date > bucket.lastTxDate) {
       bucket.lastTxDate = tx.date;
@@ -456,7 +462,11 @@ export function buildSoldLots(transactions = []) {
   for (const tx of normalizedTxs) {
     if (tx.type !== 'SELL' || !tx.code) continue;
     const bucket = costMap.get(tx.code) || { name: '', kind: tx.kind || 'otc', buyShares: 0, buyAmount: 0 };
-    const avgCost = bucket.buyShares > 0 ? round(bucket.buyAmount / bucket.buyShares, 4) : 0;
+    // 优先使用本笔自带的 costPrice（已卖出快速登记），否则按全部 BUY 加权平均
+    const standalone = tx.costPrice > 0;
+    const avgCost = standalone
+      ? tx.costPrice
+      : (bucket.buyShares > 0 ? round(bucket.buyAmount / bucket.buyShares, 4) : 0);
     const sellShares = tx.shares;
     const sellPrice = tx.price;
     const proceeds = round(sellPrice * sellShares, 2);
@@ -480,6 +490,7 @@ export function buildSoldLots(transactions = []) {
       realizedProfit,
       realizedReturnRate,
       hasAvgCost,
+      standalone,
       note: tx.note || '',
       tx
     });

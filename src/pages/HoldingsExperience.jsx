@@ -231,7 +231,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         const nextKind = prev.kind && prev.kind !== 'otc' ? prev.kind : detectFundKind(nextCode);
         return { ...prev, code: nextCode, name: existingName, kind: nextKind };
       }
-      if (field === 'price' || field === 'shares') {
+      if (field === 'price' || field === 'shares' || field === 'costPrice') {
         return { ...prev, [field]: sanitizeDecimalInput(value) };
       }
       return { ...prev, [field]: value };
@@ -255,7 +255,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       ...prepared,
       id: draftMode === 'edit' && draft.id ? draft.id : undefined
     });
-    if (normalized.type === 'SELL') {
+    // 带 costPrice 的 SELL 是“已卖出快速登记”，不占用持仓，跳过份额校验。
+    if (normalized.type === 'SELL' && !(normalized.costPrice > 0)) {
       const targetAgg = aggregateByCodeMap.get(normalized.code);
       let available = targetAgg ? targetAgg.totalShares : 0;
       if (draftMode === 'edit' && draft.id) {
@@ -326,7 +327,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       if (field === 'code') {
         return { ...prev, code: sanitizeCodeInput(value) };
       }
-      if (field === 'price' || field === 'shares') {
+      if (field === 'price' || field === 'shares' || field === 'costPrice') {
         return { ...prev, [field]: sanitizeDecimalInput(value) };
       }
       return { ...prev, [field]: value };
@@ -348,7 +349,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       return;
     }
     const normalized = normalizeTransaction({ ...prepared, id: editingBuffer.id });
-    if (normalized.type === 'SELL') {
+    if (normalized.type === 'SELL' && !(normalized.costPrice > 0)) {
       const targetAgg = aggregateByCodeMap.get(normalized.code);
       let available = targetAgg ? targetAgg.totalShares : 0;
       const existing = transactions.find((tx) => tx.id === editingBuffer.id);
@@ -1211,6 +1212,19 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               inputMode="decimal"
             />
           </label>
+          {draft.type === 'SELL' ? (
+            <label className="col-span-2 text-xs text-slate-500">
+              买入成本价（可选，已卖出快速登记）
+              <input
+                className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')}
+                value={draft.costPrice || ''}
+                onChange={(event) => handleDraftChange('costPrice', event.target.value)}
+                placeholder="留空则按已有买入流水的加权平均成本"
+                inputMode="decimal"
+              />
+              <span className="mt-1 block text-[10px] text-slate-400">未录入买入流水时填入此处，自动结算 (卖价 − 成本) × 份额，不占用持仓。</span>
+            </label>
+          ) : null}
           <label className="col-span-2 text-xs text-slate-500">
             备注
             <input
@@ -1341,7 +1355,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 type="button"
                 className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-indigo-600 px-3.5 text-xs font-semibold text-white shadow-[0_1px_2px_rgba(15,23,42,0.12)] transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={() => {
-                  resetDraft();
+                  resetDraft(emptyDraft({ type: mainViewTab === 'sold' ? 'SELL' : 'BUY' }));
                   setSidePanelTab('create');
                   setSidePanelOpen(true);
                 }}

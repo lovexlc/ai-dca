@@ -69,8 +69,8 @@ export function sanitizeCodeInput(value = '') {
   return String(value || '').replace(/\D/g, '').slice(0, 6);
 }
 
-export function emptyDraft() {
-  return createEmptyTransaction({ type: 'BUY', kind: 'otc', date: '' });
+export function emptyDraft(overrides = {}) {
+  return createEmptyTransaction({ type: 'BUY', kind: 'otc', date: '', ...overrides });
 }
 
 export function transactionToDraft(tx) {
@@ -83,6 +83,7 @@ export function transactionToDraft(tx) {
     date: String(tx.date || ''),
     price: tx.price > 0 ? String(tx.price) : '',
     shares: tx.shares > 0 ? String(tx.shares) : '',
+    costPrice: tx.costPrice > 0 ? String(tx.costPrice) : '',
     note: String(tx.note || '')
   };
 }
