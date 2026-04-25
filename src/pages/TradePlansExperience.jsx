@@ -5,63 +5,13 @@ import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { showActionToast } from '../app/toast.js';
 import { Card, Field, Pill, SectionHeading, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 import { NewPlanExperience } from './NewPlanExperience.jsx';
-
-function PlanStatusPill({ tone = 'slate', children }) {
-  return <Pill tone={tone}>{children}</Pill>;
-}
-
-function formatEventTimeLabel(value = '') {
-  const rawValue = String(value || '').trim();
-  if (!rawValue) {
-    return '--';
-  }
-
-  const normalized = rawValue.replace('T', ' ').slice(0, 16);
-  return normalized || '--';
-}
-
-function resolveEventStatusMeta(status = '') {
-  switch (status) {
-    case 'delivered':
-      return {
-        label: '已送达',
-        tone: 'emerald'
-      };
-    case 'failed':
-      return {
-        label: '发送失败',
-        tone: 'red'
-      };
-    default:
-      return {
-        label: '未发送',
-        tone: 'slate'
-      };
-  }
-}
-
-function buildRuleDetailUrl(row) {
-  if (typeof window === 'undefined') {
-    return '';
-  }
-
-  const url = new URL('/index.html', window.location.origin);
-  url.searchParams.set('tab', row?.sourceType === 'dca' ? 'dca' : 'tradePlans');
-
-  if (String(row?.ruleId || '').trim()) {
-    url.searchParams.set('ruleId', String(row.ruleId).trim());
-  }
-
-  return url.toString();
-}
-
-function extractPurchaseAmount(row) {
-  const summary = String(row?.detailSummary || '').trim();
-  const match = summary.match(/[¥$]\s?\d+(?:\.\d+)?/);
-  return match ? match[0].replace(/\s+/g, '') : '';
-}
-
-const ANDROID_APK_DOWNLOAD_URL = 'https://github.com/yukerui/ai-dca-android-notify';
+import {
+  ANDROID_APK_DOWNLOAD_URL,
+  buildRuleDetailUrl,
+  extractPurchaseAmount,
+  formatEventTimeLabel,
+  resolveEventStatusMeta
+} from '../app/tradePlansHelpers.js';
 
 export function TradePlansExperience({ links, embedded = false }) {
   const [selectedRowId, setSelectedRowId] = useState('');
@@ -478,7 +428,7 @@ export function TradePlansExperience({ links, embedded = false }) {
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <button className="min-w-0 flex-1 space-y-2 text-left" type="button" onClick={() => setSelectedRowId(row.id)}>
                         <div className="flex flex-wrap items-center gap-2">
-                          <PlanStatusPill tone={row.statusTone}>{row.statusLabel}</PlanStatusPill>
+                          <Pill tone={row.statusTone}>{row.statusLabel}</Pill>
                           <Pill tone="slate">{row.typeLabel}</Pill>
                         </div>
                         <div className="text-base font-bold text-slate-900">{row.planName}</div>
@@ -801,7 +751,7 @@ export function TradePlansExperience({ links, embedded = false }) {
               <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0 text-sm font-semibold text-slate-800">{item.summary || item.title || '提醒记录'}</div>
-                  <PlanStatusPill tone={statusMeta.tone}>{statusMeta.label}</PlanStatusPill>
+                  <Pill tone={statusMeta.tone}>{statusMeta.label}</Pill>
                 </div>
                 <div className="mt-2 text-sm leading-6 text-slate-600">{item.body || item.title || '当前没有更多提醒内容。'}</div>
                 <div className="mt-2 text-xs text-slate-400">{formatEventTimeLabel(item.createdAt)}</div>
