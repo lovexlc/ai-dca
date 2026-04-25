@@ -1,4 +1,4 @@
-import{r as Na}from"./react-CFCE4xZu.js";var xo={exports:{}},ve={},_o={exports:{}},No={};/**
+import{r as Na}from"./react.js";var xo={exports:{}},ve={},_o={exports:{}},No={};/**
  * @license React
  * scheduler.production.min.js
  *

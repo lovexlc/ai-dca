@@ -21,7 +21,11 @@ if (!existsSync(distAssetsDir)) {
 
 // Single-page app: index.html mounts ScreenPage which always renders WorkspacePage.
 // Tabs/views are switched via ?tab= and #hash. No more pages-v2/* or manifest.json.
-const rootTemplate = readFileSync(pageTemplatePath, 'utf8').replaceAll('../react-assets/', './react-assets-v2/');
+const buildVersion = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 12);
+const rootTemplate = readFileSync(pageTemplatePath, 'utf8')
+  .replaceAll('../react-assets/', './react-assets-v2/')
+  // Cache-bust: 去 hash 后文件名不再变，改用 ?v=<构建时间戳> 使浏览器拉取最新资源。
+  .replace(/(\.\/react-assets-v2\/[^"']+\.(?:js|css))/g, `$1?v=${buildVersion}`);
 writeFileSync(resolve(docsDir, 'index.html'), rootTemplate, 'utf8');
 
 // Clear legacy build artifacts produced by previous versions of this script.
