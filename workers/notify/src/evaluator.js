@@ -139,6 +139,17 @@ function buildStageHighPrice(bars = []) {
   return values.length ? Math.max(...values) : 0;
 }
 
+// nasdaq_latest.json 不可用时，从 daily-sina bars 末尾取最新有效 close 作为当前价格的兑底。
+function getLatestBarClose(bars = []) {
+  for (let index = bars.length - 1; index >= 0; index -= 1) {
+    const close = Number(bars[index]?.close);
+    if (Number.isFinite(close) && close > 0) {
+      return close;
+    }
+  }
+  return 0;
+}
+
 function getCurrency(entry = null) {
   return String(entry?.currency || '').trim() || '¥';
 }
@@ -297,7 +308,11 @@ function resolveDcaWindow(rule, now = new Date(), timeZone = DEFAULT_TIMEZONE) {
     }
     case '每季': {
       const quarter = Math.floor((Math.max(parts.month, 1) - 1) / 3) + 1;
-      const due = [1, 4, 7, 10].includes(parts.month) && parts.day === executionDay;
+      // cron 只在工作日执行；若执行日落在周末，使用 day >= executionDay 让随后的工作日补上。
+      // 季度内重复触发已由调用方 lastHandledWindowKey === windowKey 阻止。
+      const daysInMonth = new Date(Date.UTC(parts.year, Math.max(parts.month, 1), 0)).getUTCDate();
+      const targetDay = Math.min(Math.max(executionDay, 1), daysInMonth);
+      const due = [1, 4, 7, 10].includes(parts.month) && parts.day >= targetDay;
       return {
         due,
         windowKey: `${parts.year}-Q${quarter}`,
@@ -305,12 +320,18 @@ function resolveDcaWindow(rule, now = new Date(), timeZone = DEFAULT_TIMEZONE) {
       };
     }
     case '每月':
-    default:
+    default: {
+      // cron 只在工作日执行；若执行日落在周末，使用 day >= executionDay 让随后的工作日补上。
+      // 同月重复触发已由调用方 lastHandledWindowKey === windowKey 阻止；
+      // 同时 clamp 到当月最大天数，避免 2 月 30/31 日永远不到。
+      const daysInMonth = new Date(Date.UTC(parts.year, Math.max(parts.month, 1), 0)).getUTCDate();
+      const targetDay = Math.min(Math.max(executionDay, 1), daysInMonth);
       return {
-        due: parts.day === executionDay,
+        due: parts.day >= targetDay,
         windowKey: `${parts.year}-${String(parts.month).padStart(2, '0')}`,
         localDateLabel
       };
+    }
   }
 }
 
@@ -426,8 +447,25 @@ async function evaluatePlanRule(rule, env, latestMarketMap, dailyCache) {
   const benchmarkEntry = latestMarketMap[rule.referenceSymbol] || selectedEntry || null;
   const benchmarkBars = await loadDailyBars(env, dailyCache, rule.referenceSymbol);
 
-  const currentFundPrice = Number(selectedEntry?.current_price) || 0;
-  const currentBenchmarkPrice = Number(benchmarkEntry?.current_price) || currentFundPrice;
+  // 当 nasdaq_latest.json 拉不到 / symbol 不在里面时，回退到 daily-sina 最新 close，
+  // 避免 displayCurrentPrice = 0 导致 resolveDeepestTriggeredLayer 永远返回 null。
+  const fallbackBenchmarkClose = getLatestBarClose(benchmarkBars);
+  let currentFundPrice = Number(selectedEntry?.current_price) || 0;
+  let currentBenchmarkPrice = Number(benchmarkEntry?.current_price) || 0;
+  if (!(currentBenchmarkPrice > 0)) {
+    currentBenchmarkPrice = fallbackBenchmarkClose;
+  }
+  if (!(currentFundPrice > 0)) {
+    if (rule.symbol === rule.referenceSymbol) {
+      currentFundPrice = currentBenchmarkPrice;
+    } else {
+      const selectedBars = await loadDailyBars(env, dailyCache, rule.symbol);
+      currentFundPrice = getLatestBarClose(selectedBars);
+    }
+  }
+  if (!(currentBenchmarkPrice > 0)) {
+    currentBenchmarkPrice = currentFundPrice;
+  }
   const dailyMa120 = findLatestFiniteValue(
     buildMovingAverageValues(benchmarkBars, 120, { allowPartial: benchmarkBars.length > 0 && benchmarkBars.length < 120 })
   );
