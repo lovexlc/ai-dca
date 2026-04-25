@@ -19,8 +19,17 @@ export default defineConfig({
     assetsDir: 'react-assets',
     rollupOptions: {
       input: {
-        page: resolve(__dirname, 'frontend/page.html'),
-        catalog: resolve(__dirname, 'frontend/catalog.html')
+        page: resolve(__dirname, 'frontend/page.html')
+      },
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('lucide-react')) return 'icons';
+            if (id.includes('react-dom')) return 'react-dom';
+            if (id.includes('/react/')) return 'react';
+          }
+          return undefined;
+        }
       }
     }
   }
