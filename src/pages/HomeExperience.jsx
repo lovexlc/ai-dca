@@ -33,6 +33,7 @@ import {
   resolveMarketCurrency,
   scalePrice
 } from './home/helpers.js';
+import { KpiCell, StatusDot } from './home/HomeWidgets.jsx';
 
 export function HomeExperience({ links, inPagesDir = false, embedded = false }) {
   const accumulationState = readAccumulationState();
@@ -818,30 +819,4 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
   );
 
   return content;
-}
-
-function KpiCell({ label, value, hint, accent }) {
-  return (
-    <div className="px-4 py-4 sm:px-5 sm:py-5">
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className={cx(
-        'mt-2 text-2xl font-semibold tabular-nums sm:text-[26px]',
-        accent === 'emerald' && 'text-emerald-700',
-        accent === 'rose' && 'text-rose-700',
-        !accent && 'text-slate-900'
-      )}>
-        {value}
-      </div>
-      {hint ? <div className="mt-1 text-xs text-slate-400">{hint}</div> : null}
-    </div>
-  );
-}
-
-function StatusDot({ state }) {
-  const color = state === 'completed'
-    ? 'bg-emerald-500'
-    : state === 'next'
-      ? 'bg-indigo-500'
-      : 'bg-slate-300';
-  return <span className={cx('inline-block h-2 w-2 rounded-full', color)} />;
 }
