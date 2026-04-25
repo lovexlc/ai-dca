@@ -2,9 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Bell, CalendarClock, Layers3, Plus, Radar, Save, Sparkles, Trash2 } from 'lucide-react';
 import { issueNotifyGroupShareCode, joinNotifyGroup, loadNotifyEvents, loadNotifyStatus, pairAndroidDevice, persistNotifyClientConfig, readNotifyClientConfig, saveNotifySettings, sendNotifyTest, syncTradePlanRules, unpairAndroidDevice } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
-import { getPrimaryTabs } from '../app/screens.js';
 import { showActionToast } from '../app/toast.js';
-import { Card, Field, PageShell, Pill, SectionHeading, StatCard, TextInput, TopBar, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
+import { Card, Field, Pill, SectionHeading, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 import { NewPlanExperience } from './NewPlanExperience.jsx';
 
 function PlanStatusPill({ tone = 'slate', children }) {
@@ -101,7 +100,6 @@ export function TradePlansExperience({ links, embedded = false }) {
     };
   });
   const { previewRows, summary, hasPlans } = useMemo(() => buildTradePlanCenter(), []);
-  const primaryTabs = getPrimaryTabs(links);
 
   // 向《新建计划》子视图切换：写入 hash 以便浏览器后退/前进能在两个视图间来回。
   function enterNewPlanView() {
@@ -870,15 +868,7 @@ export function TradePlansExperience({ links, embedded = false }) {
         onBack={exitNewPlanView}
       />
     );
-    if (embedded) {
-      return newPlanNode;
-    }
-    return (
-      <PageShell>
-        <TopBar activeKey="tradePlans" tabs={primaryTabs} />
-        {newPlanNode}
-      </PageShell>
-    );
+    return newPlanNode;
   }
 
   const content = (
@@ -929,14 +919,5 @@ export function TradePlansExperience({ links, embedded = false }) {
     </div>
   );
 
-  if (embedded) {
-    return content;
-  }
-
-  return (
-    <PageShell>
-      <TopBar activeKey="tradePlans" tabs={primaryTabs} />
-      {content}
-    </PageShell>
-  );
+  return content;
 }

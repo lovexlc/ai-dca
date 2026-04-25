@@ -42,12 +42,9 @@ import {
   recognizeLedgerFile,
   requestLedgerNav
 } from '../app/holdingsLedger.js';
-import { getPrimaryTabs } from '../app/screens.js';
 import { showActionToast } from '../app/toast.js';
 import {
-  PageShell,
   Pill,
-  TopBar,
   cx,
   tableInputClass
 } from '../components/experience-ui.jsx';
@@ -170,7 +167,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const autoNavTriggeredRef = useRef(false);
   const importMenuRef = useRef(null);
 
-  const tabs = useMemo(() => getPrimaryTabs(links), [links]);
 
   // ---- Persist changes to localStorage whenever ledger state changes ----
   useEffect(() => {
@@ -1310,21 +1306,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     );
   }
 
-  const topBar = embedded ? null : (
-    <TopBar
-      brand="ai-dca"
-      tabs={tabs}
-      activeKey={primaryTabKey}
-      onSelect={(key) => {
-        setPrimaryTabKey(key);
-        const target = tabs.find((tab) => tab.key === key);
-        if (target?.href && typeof window !== 'undefined') {
-          window.location.assign(target.href);
-        }
-      }}
-    />
-  );
-
   const content = (
     <div className={cx('flex flex-col gap-4 px-4 py-5 sm:px-6', embedded ? '' : 'mx-auto max-w-[1600px]')}>
       {migrationNoticeVisible ? (
@@ -1591,16 +1572,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     </div>
   );
 
-  if (embedded) {
-    return content;
-  }
-
-  return (
-    <PageShell>
-      {topBar}
-      <main>{content}</main>
-    </PageShell>
-  );
+  return content;
 }
 
 export default HoldingsExperience;

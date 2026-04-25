@@ -148,7 +148,7 @@ export function ConsoleLayout({
               return (
                 <a
                   key={item.key}
-                  href={item.href || '#'}
+                  href={item.href}
                   aria-current={isActive ? 'page' : undefined}
                   className={cx('console-sidenav__link', isActive && 'is-active')}
                   onClick={(event) => {

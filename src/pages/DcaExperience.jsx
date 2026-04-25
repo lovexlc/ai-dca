@@ -4,9 +4,8 @@ import { formatCurrency, formatPercent } from '../app/accumulation.js';
 import { buildDcaProjection, frequencyOptions, persistDcaState, readDcaState } from '../app/dca.js';
 import { syncTradePlanRules } from '../app/notifySync.js';
 import { readPlanList } from '../app/plan.js';
-import { getPrimaryTabs } from '../app/screens.js';
 import { showToast } from '../app/toast.js';
-import { Card, Field, NumberInput, PageShell, Pill, SectionHeading, SelectField, StatCard, TextInput, TopBar, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
+import { Card, Field, NumberInput, Pill, SectionHeading, SelectField, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 const DAY_OPTIONS = [1, 8, 15, 28];
 
@@ -15,7 +14,6 @@ export function DcaExperience({ links, embedded = false }) {
   const [planList] = useState(() => readPlanList());
   const [isSaving, setIsSaving] = useState(false);
   const projection = useMemo(() => buildDcaProjection(state, { planList }), [planList, state]);
-  const primaryTabs = getPrimaryTabs(links);
   const linkedPlanOptions = useMemo(
     () => [
       { label: '不关联加仓策略', value: '' },
@@ -285,14 +283,5 @@ export function DcaExperience({ links, embedded = false }) {
     </>
   );
 
-  if (embedded) {
-    return content;
-  }
-
-  return (
-    <PageShell>
-      <TopBar activeKey="dca" tabs={primaryTabs} />
-      {content}
-    </PageShell>
-  );
+  return content;
 }

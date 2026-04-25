@@ -13,7 +13,6 @@ import {
   ShieldAlert,
   Wifi
 } from 'lucide-react';
-import { getPrimaryTabs } from '../app/screens.js';
 import { showToast } from '../app/toast.js';
 import {
   applyBackupEnvelope,
@@ -32,10 +31,8 @@ import {
 } from '../app/webdavBackup.js';
 import {
   Card,
-  PageShell,
   Pill,
   SectionHeading,
-  TopBar,
   cx,
   inputClass,
   primaryButtonClass,
@@ -84,7 +81,6 @@ function StatusPill({ meta }) {
 }
 
 export function BackupExperience({ links, embedded = false }) {
-  const primaryTabs = getPrimaryTabs(links);
 
   const [config, setConfig] = useState(() => ({
     baseUrl: '',
@@ -454,14 +450,5 @@ export function BackupExperience({ links, embedded = false }) {
     </div>
   );
 
-  if (embedded) {
-    return content;
-  }
-
-  return (
-    <PageShell>
-      <TopBar activeKey="backup" tabs={primaryTabs} />
-      {content}
-    </PageShell>
-  );
+  return content;
 }

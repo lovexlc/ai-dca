@@ -12,10 +12,9 @@ import { formatMarketCode, formatMarketName } from '../app/marketDisplay.js';
 import { formatPriceAsOf, loadLatestNasdaqPrices, loadNasdaqDailySeries, loadNasdaqMinuteSnapshot } from '../app/nasdaqPrices.js';
 import { readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { readPlanList, readPlanState, setActivePlanId } from '../app/plan.js';
-import { getPrimaryTabs } from '../app/screens.js';
 import { buildMovingAverageValues, buildNasdaqStrategyPlan, buildPeakDrawdownStrategyPlan, findLatestFiniteValue, mapReferencePrice, resolveNextTriggerLayer } from '../app/strategyEngine.js';
 import { showActionToast } from '../app/toast.js';
-import { Card, PageShell, Pill, SectionHeading, TopBar, cx, primaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
+import { Card, Pill, SectionHeading, cx, primaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
 import {
   BENCHMARK_CODE,
   MAX_CHART_BARS,
@@ -403,7 +402,6 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
     }
   }
 
-  const primaryTabs = getPrimaryTabs(links);
 
   const activeStrategyOption = STRATEGY_OPTIONS.find((option) => option.key === selectedStrategy) || STRATEGY_OPTIONS[0];
   const hasPlans = planList.length > 0;
@@ -819,13 +817,7 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
     </div>
   );
 
-  if (embedded) return content;
-  return (
-    <PageShell>
-      <TopBar activeKey="home" tabs={primaryTabs} />
-      {content}
-    </PageShell>
-  );
+  return content;
 }
 
 function KpiCell({ label, value, hint, accent }) {

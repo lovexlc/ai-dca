@@ -7,7 +7,7 @@ import { loadLatestNasdaqPrices, loadNasdaqDailySeries } from '../app/nasdaqPric
 import { syncTradePlanRules } from '../app/notifySync.js';
 import { persistPlanState, readPlanState } from '../app/plan.js';
 import { showToast } from '../app/toast.js';
-import { Card, Field, NumberInput, PageHero, PageShell, Pill, SectionHeading, SelectField, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
+import { Card, Field, NumberInput, PageHero, Pill, SectionHeading, SelectField, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 const BENCHMARK_CODE = 'nas-daq100';
 const frequencyOptions = ['每日', '每周', '每月', '每季'];
@@ -420,7 +420,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   }
 
   return (
-    <PageShell>
+    <>
       <PageHero
         backHref={onBack ? undefined : links.home}
         onBack={onBack || undefined}
@@ -707,6 +707,6 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
           </div>
         </div>
       </div>
-    </PageShell>
+    </>
   );
 }

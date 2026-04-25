@@ -38,11 +38,9 @@ import {
   Card,
   Field,
   NumberInput,
-  PageShell,
   Pill,
   SectionHeading,
   TextInput,
-  TopBar,
   cx,
   inputClass,
   primaryButtonClass,
@@ -50,7 +48,6 @@ import {
   subtleButtonClass,
   tableInputClass
 } from '../components/experience-ui.jsx';
-import { getPrimaryTabs } from '../app/screens.js';
 import { showActionToast } from '../app/toast.js';
 
 const FUND_CODE_PATTERN = /^\d{6}$/;
@@ -1207,7 +1204,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
   const validationDiagnostics = useMemo(() => buildRowValidationDiagnostics(summary.rows), [summary.rows]);
   const validationIssues = useMemo(() => buildRowValidationIssues(validationDiagnostics), [validationDiagnostics]);
   const validationIssueSummary = useMemo(() => summarizeValidationIssues(validationDiagnostics), [validationDiagnostics]);
-  const primaryTabs = getPrimaryTabs(links);
   const advantageMeta = getAdvantageTone(summary.switchAdvantage);
   const showViewPage = routeState.mode === 'view' && hasImportedData;
   const workflowSteps = useMemo(() => buildWorkflowSteps({
@@ -2255,20 +2251,10 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     </div>
   );
 
-  if (embedded) {
-    return (
-      <>
-        <input ref={fileInputRef} accept=".png,.jpg,.jpeg,image/png,image/jpeg" hidden onChange={handleFileInputChange} type="file" />
+  return (
+    <>
+      <input ref={fileInputRef} accept=".png,.jpg,.jpeg,image/png,image/jpeg" hidden onChange={handleFileInputChange} type="file" />
       {content}
     </>
-  );
-  }
-
-  return (
-    <PageShell>
-      <input ref={fileInputRef} accept=".png,.jpg,.jpeg,image/png,image/jpeg" hidden onChange={handleFileInputChange} type="file" />
-      <TopBar activeKey="fundSwitch" tabs={primaryTabs} />
-      {content}
-    </PageShell>
   );
 }

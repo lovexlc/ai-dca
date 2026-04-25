@@ -1,9 +1,8 @@
 import { useMemo } from 'react';
 import { ArrowRight, CalendarClock, Layers3, Wallet } from 'lucide-react';
 import { formatCurrency } from '../app/accumulation.js';
-import { getPrimaryTabs } from '../app/screens.js';
 import { buildTradeHistory } from '../app/tradePlans.js';
-import { Card, PageShell, Pill, SectionHeading, StatCard, TopBar, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
+import { Card, Pill, SectionHeading, StatCard, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 function HistoryStatusPill({ tone = 'slate', children }) {
   return <Pill tone={tone}>{children}</Pill>;
@@ -11,7 +10,6 @@ function HistoryStatusPill({ tone = 'slate', children }) {
 
 export function HistoryExperience({ links, embedded = false }) {
   const { rows, hasHistory, summary, dcaMeta } = useMemo(() => buildTradeHistory(), []);
-  const primaryTabs = getPrimaryTabs(links);
 
   const content = (
     <div className={cx('mx-auto max-w-6xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
@@ -141,14 +139,5 @@ export function HistoryExperience({ links, embedded = false }) {
     </div>
   );
 
-  if (embedded) {
-    return content;
-  }
-
-  return (
-    <PageShell>
-      <TopBar activeKey="history" tabs={primaryTabs} />
-      {content}
-    </PageShell>
-  );
+  return content;
 }
