@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, CalendarClock, CloudUpload, History, LineChart, ListChecks, Plus, Shuffle, TrendingUp, Wallet } from 'lucide-react';
 import { isFundSwitchViewHash } from '../app/fundSwitch.js';
 import { PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
-import { BackupExperience } from './BackupExperience.jsx';
-import { DcaExperience } from './DcaExperience.jsx';
-import { FundSwitchExperience } from './FundSwitchExperience.jsx';
-import { HistoryExperience } from './HistoryExperience.jsx';
-import { HoldingsExperience } from './HoldingsExperience.jsx';
-import { HomeExperience } from './HomeExperience.jsx';
-import { TradePlansExperience } from './TradePlansExperience.jsx';
+
+// 各主 tab 使用 React.lazy 按需加载，在 Vite 中会被拆成独立 chunk。
+const BackupExperience = lazy(() => import('./BackupExperience.jsx').then((m) => ({ default: m.BackupExperience })));
+const DcaExperience = lazy(() => import('./DcaExperience.jsx').then((m) => ({ default: m.DcaExperience })));
+const FundSwitchExperience = lazy(() => import('./FundSwitchExperience.jsx').then((m) => ({ default: m.FundSwitchExperience })));
+const HistoryExperience = lazy(() => import('./HistoryExperience.jsx').then((m) => ({ default: m.HistoryExperience })));
+const HoldingsExperience = lazy(() => import('./HoldingsExperience.jsx').then((m) => ({ default: m.HoldingsExperience })));
+const HomeExperience = lazy(() => import('./HomeExperience.jsx').then((m) => ({ default: m.HomeExperience })));
+const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').then((m) => ({ default: m.TradePlansExperience })));
 
 const DEFAULT_WORKSPACE_TAB = 'tradePlans';
 
@@ -41,7 +43,6 @@ function readTabFromLocation(fallbackTab = DEFAULT_WORKSPACE_TAB) {
   if (typeof window === 'undefined') {
     return normalizeWorkspaceTab(fallbackTab);
   }
-
   const params = new URLSearchParams(window.location.search);
   const currentTab = params.get('tab');
   return currentTab ? normalizeWorkspaceTab(currentTab) : normalizeWorkspaceTab(fallbackTab);
@@ -83,9 +84,21 @@ function SidebarQuickActions({ onSelectNav }) {
   );
 }
 
+function TabLoadingFallback() {
+  return (
+    <div className="flex h-full min-h-[40vh] items-center justify-center text-sm text-slate-500">
+      加载中…
+    </div>
+  );
+}
+
 export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir = false }) {
   const links = createPageLinks({ inPagesDir });
   const [activeTab, setActiveTab] = useState(() => readTabFromLocation(initialTab));
+
+  // 为每个 tab 独立缓存上次的 scrollY，在切换返回时恢复。
+  const scrollPositionsRef = useRef(new Map());
+  const previousTabRef = useRef(activeTab);
 
   const sidebarNav = useMemo(
     () =>
@@ -112,10 +125,20 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     function handlePopState() {
       setActiveTab(readTabFromLocation(initialTab));
     }
-
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [initialTab]);
+
+  // tab 变化后，恢复该 tab 以前的 scrollY（如果有）。
+  // 使用 requestAnimationFrame 等新内容进入一个 paint 后再跳，避免在 lazy 加载过程中跳到 0。
+  useEffect(() => {
+    const saved = scrollPositionsRef.current.get(activeTab);
+    const targetY = typeof saved === 'number' ? saved : 0;
+    const id = window.requestAnimationFrame(() => {
+      window.scrollTo({ top: targetY, behavior: 'auto' });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [activeTab]);
 
   function handleSelectTab(nextTab, options = {}) {
     const normalizedTab = normalizeWorkspaceTab(nextTab);
@@ -126,13 +149,18 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       return;
     }
 
+    // 在离开当前 tab 之前记录其 scrollY。
+    if (!alreadyActive) {
+      scrollPositionsRef.current.set(previousTabRef.current, window.scrollY);
+      previousTabRef.current = normalizedTab;
+    }
+
     const nextUrl = buildWorkspaceUrl(normalizedTab, { inPagesDir });
     if (hash) {
       nextUrl.hash = hash;
     }
     window.history.pushState({ tab: normalizedTab }, '', nextUrl);
     setActiveTab(normalizedTab);
-    window.scrollTo({ top: 0, behavior: 'auto' });
     // 合并后：侧边栏《新建建仓计划》通过 #new hash 跳进《交易计划》的新建子视图。
     // 由于 TradePlansExperience 在 mount 时才读 hash，手动触发 hashchange 用于已 mount 的情况。
     if (hash && alreadyActive) {
@@ -169,7 +197,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       onSelectNav={handleSelectTab}
       sidebarFooter={<SidebarQuickActions onSelectNav={handleSelectTab} />}
     >
-      {renderActivePanel()}
+      <Suspense fallback={<TabLoadingFallback />}>{renderActivePanel()}</Suspense>
     </ConsoleLayout>
   );
 }
