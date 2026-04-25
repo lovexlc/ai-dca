@@ -34,7 +34,7 @@ workers/ocr-proxy/   OCR 代理 Worker
 scripts/             数据抓取与页面发布脚本
 data/                本地数据文件
 docs/                发布到静态站点的产物
-frontend-dist/       本地构建产物
+.frontend-build/    本地构建产物（git ignored）
 ```
 
 ## 本地开发
@@ -122,7 +122,7 @@ npm run worker:notify:deploy
 
 ## 发布说明
 
-- `docs/` 和 `frontend-dist/` 都是构建产物，修改前端后通常会更新
+- `docs/` 是发布到 GitHub Pages 的静态产物（由 `npm run build` 生成）；本地构建中间产物在 `.frontend-build/`，修改前端后通常会更新两处
 - 通知 Worker 运行在 `tools.freebacktrack.tech/api/notify*`
 - OCR Worker 运行在 `tools.freebacktrack.tech/api/*`
 

@@ -1,5 +1,5 @@
 {
-  "name": "ai-dca-stragety",
+  "name": "ai-dca",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -13,10 +13,12 @@
     "worker:dev": "npx wrangler dev --config workers/ocr-proxy/wrangler.toml --port 8787",
     "worker:deploy": "npx wrangler deploy --config workers/ocr-proxy/wrangler.toml",
     "worker:notify:dev": "npx wrangler dev --config workers/notify/wrangler.toml --port 8788",
-    "worker:notify:deploy": "npx wrangler deploy --config workers/notify/wrangler.toml"
+    "worker:notify:deploy": "npx wrangler deploy --config workers/notify/wrangler.toml",
+    "lint": "eslint src",
+    "format": "prettier --write src"
   },
   "dependencies": {
-    "lucide-react": "^1.7.0",
+    "lucide-react": "^0.460.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -25,6 +27,12 @@
     "@vitejs/plugin-react": "^4.3.4",
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.2",
-    "vite": "^5.4.10"
+    "vite": "^5.4.10",
+    "eslint": "^9.13.0",
+    "@eslint/js": "^9.13.0",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "globals": "^15.11.0",
+    "prettier": "^3.3.3"
   }
 }
