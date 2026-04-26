@@ -538,9 +538,16 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   function buildLedgerTsv() {
-    const header = ['代码', '名称', '标签', '类型', '日期', '价', '份额', '备注'];
+    const header = ['代码', '名称', '标签', '类型', '日期', '价', '份额', '备注', '切换标记'];
+    const txById = new Map();
+    (transactions || []).forEach((t) => { if (t && t.id) txById.set(t.id, t); });
     const rows = filteredRows.map(({ tx }) => {
       const kindLabel = tx.kind === 'exchange' ? '场内' : '场外';
+      const pair = tx.switchPairId ? txById.get(tx.switchPairId) : null;
+      let switchLabel = '';
+      if (pair && pair.code && pair.code !== tx.code) {
+        switchLabel = tx.type === 'SELL' ? `切换至 ${pair.code}` : `由 ${pair.code} 切换`;
+      }
       return [
         tx.code,
         tx.name || '',
@@ -549,7 +556,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         tx.date || '',
         formatNav(tx.price),
         formatShares(tx.shares),
-        tx.note || ''
+        tx.note || '',
+        switchLabel
       ].join('\t');
     });
     return { count: filteredRows.length, tsv: [header.join('\t'), ...rows].join('\n') };
@@ -675,13 +683,26 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
 
   function handleImportPasted() {
     if (!pasteResult || !pasteResult.rows.length) return;
-    const validDrafts = pasteResult.rows
-      .filter((row) => Object.keys(row.errors).length === 0)
-      .map((row) => normalizeTransaction({ ...row.draft, id: undefined }));
-    if (!validDrafts.length) {
+    const validRows = pasteResult.rows.filter((row) => Object.keys(row.errors).length === 0);
+    if (!validRows.length) {
       showActionToast('导入失败', 'error', { description: '没有有效行可导入，请根据提示修改后重试。' });
       return;
     }
+    // 重新生成 id 并重映射 switchPairId，保留批次内切换配对同时避免与现有流水 id 冲突。
+    const idMap = new Map();
+    const intermediate = validRows.map((row) => {
+      const oldId = row.draft && row.draft.id;
+      const oldPairId = row.draft && row.draft.switchPairId;
+      const draft = normalizeTransaction({ ...row.draft, id: undefined, switchPairId: '' });
+      if (oldId) idMap.set(oldId, draft.id);
+      return { oldPairId, draft };
+    });
+    const validDrafts = intermediate.map(({ oldPairId, draft }) => {
+      if (oldPairId && idMap.has(oldPairId)) {
+        return { ...draft, switchPairId: idMap.get(oldPairId) };
+      }
+      return draft;
+    });
     setLedger((prev) => ({
       ...prev,
       transactions: [...(prev.transactions || []), ...validDrafts]

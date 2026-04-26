@@ -572,7 +572,8 @@ const EXCEL_HEADER_KEYWORDS = {
   date: ['日期', '交易日', '交易日期', 'date'],
   price: ['价', '净值', '单价', '价格', '交易价', 'price'],
   shares: ['份额', '数量', 'shares'],
-  note: ['备注', '说明', 'note']
+  note: ['备注', '说明', 'note'],
+  switch: ['基金切换', '切换标记', '切换', 'switch']
 };
 
 function normalizeTypeCell(value) {
@@ -660,7 +661,7 @@ export function parseExcelPaste(text = '') {
     columnMap = headerMap;
     dataStart = 1;
   } else {
-    columnMap = { code: 0, name: 1, kind: 2, type: 3, date: 4, price: 5, shares: 6, note: 7 };
+    columnMap = { code: 0, name: 1, kind: 2, type: 3, date: 4, price: 5, shares: 6, note: 7, switch: 8 };
     dataStart = 0;
   }
 
@@ -687,8 +688,40 @@ export function parseExcelPaste(text = '') {
 
     const draft = normalizeTransaction(rawDraft);
     const errors = getTransactionErrors(draft);
-    rows.push({ index: i, raw: lines[i], cells, draft, errors });
+    const switchHint = String(pick('switch') || '').trim();
+    rows.push({ index: i, raw: lines[i], cells, draft, errors, switchHint });
   }
+
+  // 第二轮：根据「切换标记」列把买/卖两腿配对。
+  // 支持 '切换至 159501'、'由 159660 切换'、'→ 513100'、纯 6 位代码。
+  const pairUsed = new Set();
+  rows.forEach((row, idx) => {
+    if (pairUsed.has(idx)) return;
+    if (!row.switchHint) return;
+    const hint = row.switchHint;
+    const match = hint.match(/切换至\s*(\d{6})/)
+      || hint.match(/由\s*(\d{6})\s*切换/)
+      || hint.match(/→\s*(\d{6})/)
+      || hint.match(/(\d{6})/);
+    const target = match && match[1];
+    if (!target || target === row.draft.code) return;
+    let bestIdx = -1;
+    for (let j = 0; j < rows.length; j += 1) {
+      if (j === idx || pairUsed.has(j)) continue;
+      const candidate = rows[j].draft;
+      if (!candidate || candidate.code !== target) continue;
+      if (candidate.type === row.draft.type) continue;
+      const sameDate = candidate.date && row.draft.date && candidate.date === row.draft.date;
+      if (sameDate) { bestIdx = j; break; }
+      if (bestIdx < 0) bestIdx = j;
+    }
+    if (bestIdx >= 0) {
+      row.draft.switchPairId = rows[bestIdx].draft.id;
+      rows[bestIdx].draft.switchPairId = row.draft.id;
+      pairUsed.add(idx);
+      pairUsed.add(bestIdx);
+    }
+  });
 
   return {
     rows,
