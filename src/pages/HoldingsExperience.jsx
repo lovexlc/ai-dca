@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ClipboardPaste,
   CloudUpload,
+  Copy,
   FileImage,
   FileUp,
   LoaderCircle,
@@ -451,6 +452,132 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     setDraftMode('edit');
     setSidePanelTab('create');
     setSidePanelOpen(true);
+  }
+
+  // ---- Copy visible table to clipboard ----
+  async function writeClipboard(text) {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+      // fall through to legacy fallback
+    }
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+
+  function buildAggregateTsv() {
+    const filtered = aggregates.filter((agg) => {
+      if (!agg.hasPosition) return false;
+      if (kindFilter !== 'all' && agg.kind !== kindFilter) return false;
+      if (!searchNeedle) return true;
+      return agg.code.toLowerCase().includes(searchNeedle)
+        || (agg.name || '').toLowerCase().includes(searchNeedle);
+    });
+    const header = ['基金代码', '基金名称', '标签', '总份额', '平均成本', '当前净值', '总市值', '总收益(元)', '总收益率', '当日收益(元)', '当日收益率'];
+    const rows = filtered.map((agg) => {
+      const kindLabel = agg.kind === 'exchange' ? '场内' : '场外';
+      return [
+        agg.code,
+        agg.name || '',
+        kindLabel,
+        formatShares(agg.totalShares),
+        formatNav(agg.avgCost),
+        agg.hasLatestNav ? formatNav(agg.latestNav) : '',
+        agg.hasLatestNav ? agg.marketValue.toFixed(2) : '',
+        agg.hasLatestNav ? agg.totalProfit.toFixed(2) : '',
+        agg.hasLatestNav ? `${agg.totalReturnRate.toFixed(2)}%` : '',
+        (agg.hasLatestNav && agg.hasPreviousNav) ? agg.todayProfit.toFixed(2) : '',
+        (agg.hasLatestNav && agg.hasPreviousNav) ? `${agg.todayReturnRate.toFixed(2)}%` : ''
+      ].join('\t');
+    });
+    return { count: filtered.length, tsv: [header.join('\t'), ...rows].join('\n') };
+  }
+
+  function buildSoldTsv() {
+    const filtered = soldLots.filter((lot) => {
+      if (kindFilter !== 'all' && lot.kind !== kindFilter) return false;
+      if (!searchNeedle) return true;
+      return lot.code.toLowerCase().includes(searchNeedle)
+        || (lot.name || '').toLowerCase().includes(searchNeedle);
+    });
+    const header = ['基金代码', '基金名称', '标签', '卖出日期', '卖出份额', '卖出价', '平均成本', '成本金额', '卖出金额', '已实现收益(元)', '已实现收益率', '切换标记'];
+    const rows = filtered.map((lot) => {
+      const kindLabel = lot.kind === 'exchange' ? '场内' : '场外';
+      const switchLabel = lot.isSwitch ? `切换至 ${lot.switchTargetCode}` : '';
+      return [
+        lot.code,
+        lot.name || '',
+        kindLabel,
+        lot.sellDate || '',
+        formatShares(lot.sellShares),
+        formatNav(lot.sellPrice),
+        lot.hasAvgCost ? formatNav(lot.avgCost) : '',
+        lot.hasAvgCost ? lot.costBasis.toFixed(2) : '',
+        lot.proceeds.toFixed(2),
+        lot.hasAvgCost ? lot.realizedProfit.toFixed(2) : '',
+        lot.hasAvgCost ? `${lot.realizedReturnRate.toFixed(2)}%` : '',
+        switchLabel
+      ].join('\t');
+    });
+    return { count: filtered.length, tsv: [header.join('\t'), ...rows].join('\n') };
+  }
+
+  function buildLedgerTsv() {
+    const header = ['代码', '名称', '标签', '类型', '日期', '价', '份额', '备注'];
+    const rows = filteredRows.map(({ tx }) => {
+      const kindLabel = tx.kind === 'exchange' ? '场内' : '场外';
+      return [
+        tx.code,
+        tx.name || '',
+        kindLabel,
+        tx.type,
+        tx.date || '',
+        formatNav(tx.price),
+        formatShares(tx.shares),
+        tx.note || ''
+      ].join('\t');
+    });
+    return { count: filteredRows.length, tsv: [header.join('\t'), ...rows].join('\n') };
+  }
+
+  async function handleCopyVisibleTable() {
+    let payload;
+    let label;
+    if (mainViewTab === 'aggregate') {
+      payload = buildAggregateTsv();
+      label = '基金汇总';
+    } else if (mainViewTab === 'sold') {
+      payload = buildSoldTsv();
+      label = '已卖出';
+    } else {
+      payload = buildLedgerTsv();
+      label = '成交流水';
+    }
+    if (payload.count === 0) {
+      showActionToast('复制表格', 'warning', { description: '当前没有可复制的行。' });
+      return;
+    }
+    const ok = await writeClipboard(payload.tsv);
+    if (ok) {
+      showActionToast('已复制', 'success', { description: `${label} ${payload.count} 行已复制为 TSV。` });
+    } else {
+      showActionToast('复制失败', 'error', { description: '浏览器拒绝写入剪贴板，请手动复制。' });
+    }
   }
 
   // ---- OCR import ----
@@ -1528,6 +1655,15 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               {renderNavBadge()}
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-white px-3 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:ring-slate-300"
+                onClick={handleCopyVisibleTable}
+                title={mainViewTab === 'aggregate' ? '复制基金汇总为 TSV' : mainViewTab === 'sold' ? '复制已卖出为 TSV' : '复制成交流水为 TSV'}
+              >
+                <Copy className="h-3.5 w-3.5" />
+                复制表格
+              </button>
               <div className="relative" ref={importMenuRef}>
                 <button
                   type="button"
