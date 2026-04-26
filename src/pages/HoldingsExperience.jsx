@@ -96,6 +96,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
 
   const fileInputRef = useRef(null);
   const autoNavTriggeredRef = useRef(false);
+  const navAttemptedCodesRef = useRef(new Set());
   const importMenuRef = useRef(null);
 
 
@@ -207,13 +208,20 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
 
   // ---- NAV auto-refresh on mount ----
   useEffect(() => {
-    if (autoNavTriggeredRef.current) return;
     const codes = getLedgerCodeList(transactions);
     if (!codes.length) return;
+    const attempted = navAttemptedCodesRef.current;
+    const missing = codes.filter((code) => {
+      if (attempted.has(code)) return false;
+      const snap = snapshotsByCode?.[code];
+      const nav = Number(snap?.latestNav) || 0;
+      return !(nav > 0);
+    });
+    if (!missing.length) return;
+    for (const code of missing) attempted.add(code);
     autoNavTriggeredRef.current = true;
-    void refreshNavForCodes(codes, { silent: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    void refreshNavForCodes(missing, { silent: true });
+  }, [transactions, snapshotsByCode]);
 
   useEffect(() => {
     if (!importMenuOpen) return undefined;
