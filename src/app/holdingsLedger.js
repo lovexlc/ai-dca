@@ -20,7 +20,8 @@ import {
   normalizeFundName,
   normalizeTransaction,
   round,
-  sanitizeTransactions
+  sanitizeTransactions,
+  normalizeSwitchChains
 } from './holdingsLedgerCore.js';
 
 const LEDGER_STORAGE_KEY = 'aiDcaFundHoldingsLedger';
@@ -66,7 +67,8 @@ export function createDefaultLedgerState() {
     snapshotsByCode: {},
     lastNavMeta: normalizeLastNavMeta(),
     migratedFromLegacy: false,
-    legacyMigrationAt: ''
+    legacyMigrationAt: '',
+    switchChains: []
   };
 }
 
@@ -91,7 +93,8 @@ export function normalizeLedgerState(rawState = {}) {
     snapshotsByCode,
     lastNavMeta: normalizeLastNavMeta(rawState?.lastNavMeta),
     migratedFromLegacy: Boolean(rawState?.migratedFromLegacy),
-    legacyMigrationAt: String(rawState?.legacyMigrationAt || '').trim()
+    legacyMigrationAt: String(rawState?.legacyMigrationAt || '').trim(),
+    switchChains: normalizeSwitchChains(rawState?.switchChains)
   };
 }
 
@@ -203,7 +206,8 @@ export function persistLedgerState(state = {}) {
     snapshotsByCode,
     lastNavMeta: normalized.lastNavMeta,
     migratedFromLegacy: normalized.migratedFromLegacy,
-    legacyMigrationAt: normalized.legacyMigrationAt
+    legacyMigrationAt: normalized.legacyMigrationAt,
+    switchChains: normalized.switchChains
   };
 
   window.localStorage.setItem(LEDGER_STORAGE_KEY, JSON.stringify(payload));

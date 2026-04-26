@@ -731,3 +731,214 @@ export function parseExcelPaste(text = '') {
     totalLines: lines.length
   };
 }
+
+// ===========================================================================
+// 基金切换链路 (Switch Chains)
+// ---------------------------------------------------------------------------
+// 一条链路 = 用户挑选的若干段持仓：a 段 → b 段 → c 段 → ...
+// 每段 = 一笔 BUY 交易 + 可选的 SELL 交易（同代码、SELL 日期 ≥ BUY 日期）。
+// 末段的 sellTxId 可为空，代表当前仍在持仓，用最新净值结算。
+// 链路收益率 = 每段净值乘积 - 1。
+// 未切换基准 = 一直持有第一段那只基金到链路终点的收益率。
+//   - 如果末段卖出的代码恰好等于第一段的代码，可用末段卖出价对齐时间；
+//   - 否则用第一段基金的最新净值（与“持有至今”对齐）。
+// ===========================================================================
+
+function buildChainId() {
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `chain-${Date.now().toString(36)}-${rand}`;
+}
+
+export function normalizeSwitchChain(raw = {}) {
+  const id = String(raw?.id || '').trim() || buildChainId();
+  const name = String(raw?.name || '').trim();
+  const rawLegs = Array.isArray(raw?.legs) ? raw.legs : [];
+  const legs = rawLegs
+    .map((leg) => ({
+      buyTxId: String(leg?.buyTxId || '').trim(),
+      sellTxId: leg?.sellTxId ? String(leg.sellTxId).trim() : ''
+    }))
+    .filter((leg) => leg.buyTxId);
+  return { id, name, legs };
+}
+
+export function normalizeSwitchChains(rawList) {
+  if (!Array.isArray(rawList)) return [];
+  return rawList.map(normalizeSwitchChain);
+}
+
+function emptyChainMetrics(extra = {}) {
+  return {
+    segments: [],
+    valid: false,
+    validationError: '',
+    chainReturn: 0,
+    chainMultiple: 1,
+    baselineCode: '',
+    baselineStartPrice: 0,
+    baselineEndPrice: 0,
+    baselineEndSource: '',
+    baselineAlignedToChainEnd: false,
+    baselineReturn: 0,
+    baselineMultiple: 1,
+    advantage: 0,
+    multipleAdvantage: 0,
+    missingPriceCodes: [],
+    ...extra
+  };
+}
+
+/**
+ * 计算某条切换链路的关键指标。
+ * 入参:
+ *   - chain: { id, name, legs: [{ buyTxId, sellTxId? }] }
+ *   - transactions: 交易流水数组
+ *   - snapshotsByCode: { [code]: { latestNav, latestNavDate, ... } }
+ * 返回:
+ *   { segments, chainReturn, chainMultiple, baselineReturn, baselineMultiple,
+ *     advantage, multipleAdvantage, valid, validationError, missingPriceCodes }
+ */
+export function computeSwitchChainMetrics(chain, transactions = [], snapshotsByCode = {}) {
+  if (!chain || !Array.isArray(chain.legs) || chain.legs.length === 0) {
+    return emptyChainMetrics({ validationError: '链路至少需要一段。' });
+  }
+
+  const txById = new Map();
+  for (const tx of transactions || []) {
+    if (tx && tx.id) txById.set(tx.id, tx);
+  }
+
+  const segments = [];
+  const missingPriceCodes = new Set();
+  let segmentsValid = true;
+
+  for (let i = 0; i < chain.legs.length; i += 1) {
+    const leg = chain.legs[i];
+    const buyTx = txById.get(leg.buyTxId);
+    if (!buyTx) {
+      return emptyChainMetrics({ validationError: `第 ${i + 1} 段未找到买入交易。` });
+    }
+    if (buyTx.type !== 'BUY') {
+      return emptyChainMetrics({
+        validationError: `第 ${i + 1} 段需选择 BUY 交易（${buyTx.code}）。`
+      });
+    }
+
+    const sellTx = leg.sellTxId ? txById.get(leg.sellTxId) : null;
+    if (leg.sellTxId && !sellTx) {
+      return emptyChainMetrics({ validationError: `第 ${i + 1} 段未找到卖出交易。` });
+    }
+    if (sellTx) {
+      if (sellTx.type !== 'SELL') {
+        return emptyChainMetrics({
+          validationError: `第 ${i + 1} 段需选择 SELL 交易（${sellTx.code}）。`
+        });
+      }
+      if (sellTx.code !== buyTx.code) {
+        return emptyChainMetrics({
+          validationError: `第 ${i + 1} 段买卖代码不一致（${buyTx.code} vs ${sellTx.code}）。`
+        });
+      }
+      if (sellTx.date && buyTx.date && sellTx.date < buyTx.date) {
+        return emptyChainMetrics({
+          validationError: `第 ${i + 1} 段卖出日期早于买入日期。`
+        });
+      }
+    }
+
+    const segStart = Number(buyTx.price) || 0;
+    let segEnd = 0;
+    let segEndDate = '';
+    let segEndSource = sellTx ? 'sell' : 'latestNav';
+
+    if (sellTx) {
+      segEnd = Number(sellTx.price) || 0;
+      segEndDate = sellTx.date || '';
+    } else {
+      const snap = snapshotsByCode?.[buyTx.code] || null;
+      segEnd = Number(snap?.latestNav) || 0;
+      segEndDate = String(snap?.latestNavDate || '');
+      if (!(segEnd > 0)) missingPriceCodes.add(buyTx.code);
+    }
+
+    if (!(segStart > 0)) {
+      missingPriceCodes.add(buyTx.code);
+    }
+
+    const segValid = segStart > 0 && segEnd > 0;
+    const segMultiple = segValid ? segEnd / segStart : 1;
+    const segReturn = segValid ? segMultiple - 1 : 0;
+    if (!segValid) segmentsValid = false;
+
+    segments.push({
+      buyTxId: leg.buyTxId,
+      sellTxId: leg.sellTxId || '',
+      code: buyTx.code,
+      name: buyTx.name || '',
+      kind: buyTx.kind,
+      buyDate: buyTx.date || '',
+      buyPrice: round(segStart, 6),
+      sellDate: segEndDate,
+      sellPrice: round(segEnd, 6),
+      segEndSource,
+      segMultiple: round(segMultiple, 6),
+      segReturn: round(segReturn, 6),
+      valid: segValid
+    });
+  }
+
+  // 链路乘积
+  let chainMultiple = 1;
+  for (const seg of segments) {
+    chainMultiple *= seg.valid ? seg.segMultiple : 1;
+  }
+  const chainReturn = chainMultiple - 1;
+
+  // 未切换基准：持有第一段那只基金
+  const firstSeg = segments[0];
+  const lastSeg = segments[segments.length - 1];
+  const baselineCode = firstSeg.code;
+  const baselineStartPrice = firstSeg.buyPrice;
+
+  let baselineEndPrice = 0;
+  let baselineEndSource = '';
+  let baselineAlignedToChainEnd = false;
+
+  if (lastSeg.code === baselineCode && lastSeg.segEndSource === 'sell') {
+    // 完美对齐：链路终点正好卖出基准基金
+    baselineEndPrice = lastSeg.sellPrice;
+    baselineEndSource = 'leg-end';
+    baselineAlignedToChainEnd = true;
+  } else {
+    const snap = snapshotsByCode?.[baselineCode] || null;
+    baselineEndPrice = Number(snap?.latestNav) || 0;
+    baselineEndSource = 'latestNav';
+    if (!(baselineEndPrice > 0)) missingPriceCodes.add(baselineCode);
+  }
+
+  const baselineValid = baselineStartPrice > 0 && baselineEndPrice > 0;
+  const baselineMultiple = baselineValid ? baselineEndPrice / baselineStartPrice : 1;
+  const baselineReturn = baselineValid ? baselineMultiple - 1 : 0;
+
+  const valid = segmentsValid && baselineValid;
+  const advantage = valid ? chainReturn - baselineReturn : 0;
+  const multipleAdvantage = valid ? chainMultiple - baselineMultiple : 0;
+
+  return {
+    segments,
+    valid,
+    validationError: '',
+    chainReturn: round(chainReturn, 6),
+    chainMultiple: round(chainMultiple, 6),
+    baselineCode,
+    baselineStartPrice: round(baselineStartPrice, 6),
+    baselineEndPrice: round(baselineEndPrice, 6),
+    baselineEndSource,
+    baselineAlignedToChainEnd,
+    baselineReturn: round(baselineReturn, 6),
+    baselineMultiple: round(baselineMultiple, 6),
+    advantage: round(advantage, 6),
+    multipleAdvantage: round(multipleAdvantage, 6),
+    missingPriceCodes: Array.from(missingPriceCodes)
+  };
+}

@@ -23,6 +23,7 @@ import {
   aggregateByCode,
   buildLedgerRows,
   buildSoldLots,
+  computeSwitchChainMetrics,
   detectFundKind,
   getLedgerCodeList,
   getTransactionErrors,
@@ -124,59 +125,14 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }, [aggregates]);
   const soldLots = useMemo(() => buildSoldLots(transactions), [transactions]);
   const soldSummary = useMemo(() => summarizeSoldLots(soldLots), [soldLots]);
-
-  // 基金切换收益差：用与《基金切换》tab 同样的公式计算。
-  // stayValue   = 原基金卖出份额 × 原基金现净值        (如果不卖，持有到现在的市值)
-  // switchedValue = 新基金买入份额 × 新基金现净值    (切换后持有到现在的市值)
-  // extraCash   = max(buyAmount - sellProceeds, 0)        (切换时额外追加的现金)
-  // switchAdvantage = switchedValue - stayValue - extraCash  (切换相对于不动的额外收益)
-  // 切换收益率 = switchAdvantage / stayValue
-  const switchInsightByLotId = useMemo(() => {
-    const txById = new Map();
-    for (const tx of transactions) txById.set(tx.id, tx);
-    const map = new Map();
-    for (const lot of soldLots) {
-      if (!lot.isSwitch) continue;
-      const pairTx = txById.get(lot.switchPairId);
-      if (!pairTx) continue;
-      const srcSnap = snapshotsByCode?.[lot.code] || null;
-      const tgtSnap = snapshotsByCode?.[pairTx.code] || null;
-      const srcPrice = Number(srcSnap?.latestNav) || 0;
-      const tgtPrice = Number(tgtSnap?.latestNav) || 0;
-      const srcDate = String(srcSnap?.latestNavDate || '');
-      const tgtDate = String(tgtSnap?.latestNavDate || '');
-      const hasPrices = srcPrice > 0 && tgtPrice > 0;
-      const stayValue = Math.round(srcPrice * lot.sellShares * 100) / 100;
-      const switchedValue = Math.round(tgtPrice * pairTx.shares * 100) / 100;
-      const extraCash = Number(lot.switchExtraCash) || 0;
-      const switchAdvantage = Math.round((switchedValue - stayValue - extraCash) * 100) / 100;
-      const advantageRate = stayValue > 0
-        ? Math.round(((switchAdvantage / stayValue) * 100) * 100) / 100
-        : 0;
-      const missingPriceCodes = [
-        ...(srcPrice > 0 ? [] : [lot.code]),
-        ...(tgtPrice > 0 ? [] : [pairTx.code])
-      ];
-      map.set(lot.id, {
-        hasPrices,
-        srcPrice,
-        tgtPrice,
-        srcDate,
-        tgtDate,
-        stayValue,
-        switchedValue,
-        extraCash,
-        switchAdvantage,
-        advantageRate,
-        missingPriceCodes,
-        pairCode: pairTx.code,
-        pairName: pairTx.name || '',
-        pairShares: pairTx.shares,
-        pairPrice: pairTx.price
-      });
-    }
-    return map;
-  }, [soldLots, transactions, snapshotsByCode]);
+  const switchChains = Array.isArray(ledger.switchChains) ? ledger.switchChains : [];
+  const switchChainMetrics = useMemo(
+    () => switchChains.map((chain) => ({
+      chain,
+      metrics: computeSwitchChainMetrics(chain, transactions, snapshotsByCode)
+    })),
+    [switchChains, transactions, snapshotsByCode]
+  );
 
   const searchNeedle = searchText.trim().toLowerCase();
   const filteredRows = useMemo(() => {
@@ -200,6 +156,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       source = aggregates.filter((agg) => agg.hasPosition);
     } else if (mainViewTab === 'sold') {
       source = soldLots;
+    } else if (mainViewTab === 'switch') {
+      source = [];
     } else {
       source = ledgerRows.map((row) => row.tx);
     }
@@ -313,6 +271,57 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   function resetDraft(nextDraft = emptyDraft()) {
     setDraft(nextDraft);
     setDraftMode('create');
+  }
+
+  // ---- Switch chain handlers ----
+  function buildChainId() {
+    const rand = Math.random().toString(36).slice(2, 8);
+    return `chain-${Date.now().toString(36)}-${rand}`;
+  }
+
+  function handleAddSwitchChain() {
+    setLedger((prev) => {
+      const list = Array.isArray(prev.switchChains) ? prev.switchChains : [];
+      const next = { id: buildChainId(), name: '', legs: [{ buyTxId: '', sellTxId: '' }] };
+      return { ...prev, switchChains: [...list, next] };
+    });
+  }
+
+  function handleUpdateSwitchChain(chainId, updater) {
+    setLedger((prev) => {
+      const list = Array.isArray(prev.switchChains) ? prev.switchChains : [];
+      const nextList = list.map((c) => {
+        if (c.id !== chainId) return c;
+        const draft = typeof updater === 'function' ? updater(c) : { ...c, ...updater };
+        return { ...c, ...draft };
+      });
+      return { ...prev, switchChains: nextList };
+    });
+  }
+
+  function handleDeleteSwitchChain(chainId) {
+    setLedger((prev) => {
+      const list = Array.isArray(prev.switchChains) ? prev.switchChains : [];
+      return { ...prev, switchChains: list.filter((c) => c.id !== chainId) };
+    });
+  }
+
+  function handleAddChainLeg(chainId) {
+    handleUpdateSwitchChain(chainId, (chain) => ({
+      legs: [...(chain.legs || []), { buyTxId: '', sellTxId: '' }]
+    }));
+  }
+
+  function handleRemoveChainLeg(chainId, legIndex) {
+    handleUpdateSwitchChain(chainId, (chain) => ({
+      legs: (chain.legs || []).filter((_, i) => i !== legIndex)
+    }));
+  }
+
+  function handleSetChainLeg(chainId, legIndex, patch) {
+    handleUpdateSwitchChain(chainId, (chain) => ({
+      legs: (chain.legs || []).map((leg, i) => (i === legIndex ? { ...leg, ...patch } : leg))
+    }));
   }
 
   function handleDraftChange(field, value) {
@@ -1179,22 +1188,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         || (lot.name || '').toLowerCase().includes(searchNeedle);
     });
     const filteredSummary = summarizeSoldLots(filteredLots);
-    // 当前筛选可见切换配对的合计（仅统计两边都有净值的配对）。
-    const filteredSwitchTotals = filteredLots.reduce((acc, lot) => {
-      const insight = switchInsightByLotId.get(lot.id);
-      if (!insight || !insight.hasPrices) return acc;
-      acc.count += 1;
-      acc.advantage = Math.round((acc.advantage + insight.switchAdvantage) * 100) / 100;
-      acc.stayValue = Math.round((acc.stayValue + insight.stayValue) * 100) / 100;
-      return acc;
-    }, { count: 0, advantage: 0, stayValue: 0 });
-    const filteredSwitchAdvantageRate = filteredSwitchTotals.stayValue > 0
-      ? Math.round(((filteredSwitchTotals.advantage / filteredSwitchTotals.stayValue) * 100) * 100) / 100
-      : 0;
-    const switchTotalTone = filteredSwitchTotals.advantage > 0
-      ? 'text-emerald-600'
-      : filteredSwitchTotals.advantage < 0 ? 'text-red-500' : 'text-slate-700';
-
     if (!filteredLots.length) {
       const emptyMessage = soldLots.length === 0
         ? '还没有任何卖出记录。SELL 交易会自动出现在这里。'
@@ -1227,8 +1220,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               <th className="px-3 py-2 text-right">卖出金额</th>
               <th className="px-3 py-2 text-right">已实现收益(元)</th>
               <th className="px-3 py-2 text-right">已实现收益率</th>
-              <th className="px-3 py-2 text-right" title="如果不切换，原基金持有到现在；对比切换后新基金持有到现在的额外收益。与《基金切换》tab 一致。">切换收益(元)</th>
-              <th className="px-3 py-2 text-right" title="切换收益 / 原基金持有到今的市值">切换收益率</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -1238,15 +1229,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               const profitClass = lot.realizedProfit > 0
                 ? 'text-emerald-600'
                 : lot.realizedProfit < 0 ? 'text-red-500' : 'text-slate-700';
-              const switchInsight = lot.isSwitch ? switchInsightByLotId.get(lot.id) : null;
-              const switchAdvantageClass = (switchInsight && switchInsight.hasPrices)
-                ? (switchInsight.switchAdvantage > 0
-                    ? 'text-emerald-600'
-                    : switchInsight.switchAdvantage < 0 ? 'text-red-500' : 'text-slate-700')
-                : 'text-slate-400';
-              const switchInsightTitle = switchInsight && switchInsight.hasPrices
-                ? `原持仓 ${formatShares(lot.sellShares)}份 × ${formatNav(switchInsight.srcPrice)} = ${formatCurrency(switchInsight.stayValue, '¥', 2)}\n切换后 ${formatShares(switchInsight.pairShares)}份 × ${formatNav(switchInsight.tgtPrice)} = ${formatCurrency(switchInsight.switchedValue, '¥', 2)}` + (switchInsight.extraCash > 0 ? `\n额外追加现金 ${formatCurrency(switchInsight.extraCash, '¥', 2)}` : '')
-                : '';
               const isSelected = selectedCode === lot.code;
               return (
                 <tr
@@ -1288,25 +1270,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                   <td className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', profitClass)}>
                     {lot.hasAvgCost ? formatSignedPercent(lot.realizedReturnRate) : '—'}
                   </td>
-                  <td
-                    className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', switchAdvantageClass)}
-                    title={switchInsightTitle}
-                  >
-                    {!lot.isSwitch
-                      ? <span className="text-slate-300">—</span>
-                      : !switchInsight
-                        ? <span className="text-slate-300">—</span>
-                        : !switchInsight.hasPrices
-                          ? <span className="text-amber-600" title={`缺少净值：${switchInsight.missingPriceCodes.join('、')}`}>缺净值</span>
-                          : formatSignedCurrency(switchInsight.switchAdvantage)}
-                  </td>
-                  <td
-                    className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', switchAdvantageClass)}
-                  >
-                    {lot.isSwitch && switchInsight && switchInsight.hasPrices
-                      ? formatSignedPercent(switchInsight.advantageRate)
-                      : <span className="text-slate-300">—</span>}
-                  </td>
                 </tr>
               );
             })}
@@ -1321,15 +1284,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatCurrency(filteredSummary.totalProceeds, '¥', 2)}</td>
               <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', totalTone)}>{formatSignedCurrency(filteredSummary.totalRealizedProfit)}</td>
               <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', totalTone)}>{formatSignedPercent(filteredSummary.totalRealizedReturnRate)}</td>
-              <td
-                className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', filteredSwitchTotals.count > 0 ? switchTotalTone : 'text-slate-400')}
-                title={filteredSwitchTotals.count > 0 ? `已配对且两边都有净值的切换：${filteredSwitchTotals.count} 笔` : ''}
-              >
-                {filteredSwitchTotals.count > 0 ? formatSignedCurrency(filteredSwitchTotals.advantage) : <span className="text-slate-300">—</span>}
-              </td>
-              <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', filteredSwitchTotals.count > 0 ? switchTotalTone : 'text-slate-400')}>
-                {filteredSwitchTotals.count > 0 ? formatSignedPercent(filteredSwitchAdvantageRate) : <span className="text-slate-300">—</span>}
-              </td>
             </tr>
           </tfoot>
         </table>
@@ -1377,6 +1331,210 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             {filteredRows.map(renderRow)}
           </tbody>
         </table>
+      </div>
+    );
+  }
+
+  function renderSwitchChainView() {
+    const buyTxs = transactions
+      .filter((tx) => tx.type === 'BUY')
+      .slice()
+      .sort((a, b) => (b.date || '').localeCompare(a.date || '') || a.code.localeCompare(b.code));
+    const sellTxs = transactions
+      .filter((tx) => tx.type === 'SELL')
+      .slice()
+      .sort((a, b) => (b.date || '').localeCompare(a.date || '') || a.code.localeCompare(b.code));
+    const txById = new Map();
+    for (const tx of transactions) txById.set(tx.id, tx);
+
+    function txOptionLabel(tx) {
+      const dateLabel = tx.date || '日期待补';
+      const namePart = tx.name ? ` ${tx.name}` : '';
+      return `${tx.code}${namePart} · ${dateLabel} · ${formatNav(tx.price)} × ${formatShares(tx.shares)}`;
+    }
+
+    const headerRow = (
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="max-w-3xl text-xs leading-relaxed text-slate-500">
+          自由拼接切换链路（如 a → b → c → a）。每段为持仓期间净值变化 = 卖价/买价（末段可选「持有至今」用最新净值）。<br />
+          链路收益率 = 每段乘积 − 1；未切换基准为“一直持有首段基金”到链路终点的变化。默认全额切换，未考虑部分切换。
+        </div>
+        <button
+          type="button"
+          className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-indigo-600 px-3.5 text-xs font-semibold text-white shadow-[0_1px_2px_rgba(15,23,42,0.12)] transition-colors hover:bg-indigo-500"
+          onClick={handleAddSwitchChain}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          新建链路
+        </button>
+      </div>
+    );
+
+    if (!switchChains.length) {
+      return (
+        <div className="space-y-4 px-2 py-3">
+          {headerRow}
+          <div className="flex min-h-[180px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-200 text-center text-sm text-slate-500">
+            <Wallet className="h-7 w-7 text-slate-300" />
+            还没有任何切换链路。点击右上「新建链路」开始拼接。
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4 px-2 py-3">
+        {headerRow}
+        {switchChainMetrics.map(({ chain, metrics }) => {
+          const valid = metrics.valid;
+          const advantageTone = !valid
+            ? 'text-slate-400'
+            : metrics.advantage > 0
+              ? 'text-emerald-600'
+              : metrics.advantage < 0 ? 'text-red-500' : 'text-slate-700';
+          const chainTone = !valid
+            ? 'text-slate-400'
+            : metrics.chainReturn > 0
+              ? 'text-emerald-600'
+              : metrics.chainReturn < 0 ? 'text-red-500' : 'text-slate-700';
+          const baselineTone = !valid
+            ? 'text-slate-400'
+            : metrics.baselineReturn > 0
+              ? 'text-emerald-600'
+              : metrics.baselineReturn < 0 ? 'text-red-500' : 'text-slate-700';
+          return (
+            <div
+              key={chain.id}
+              className="rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+            >
+              <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
+                <input
+                  className={cx(tableInputClass, 'h-8 flex-1 min-w-[200px] rounded-lg border-slate-200 bg-slate-50 px-2 text-sm hover:bg-white')}
+                  value={chain.name}
+                  placeholder="链路名称（可选），例如：场内纳指 159660 → 159501 → 513100"
+                  onChange={(e) => handleUpdateSwitchChain(chain.id, { name: e.target.value })}
+                />
+                <button
+                  type="button"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-red-600 ring-1 ring-red-200 transition-colors hover:bg-red-50"
+                  onClick={() => handleDeleteSwitchChain(chain.id)}
+                  title="删除链路"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  删除链路
+                </button>
+              </div>
+              <div className="px-4 py-3 space-y-3">
+                {(chain.legs || []).map((leg, legIndex) => {
+                  const buyTx = leg.buyTxId ? txById.get(leg.buyTxId) : null;
+                  const sellOptions = buyTx
+                    ? sellTxs.filter((tx) => tx.code === buyTx.code
+                        && (!buyTx.date || !tx.date || tx.date >= buyTx.date)
+                        && tx.id !== buyTx.id)
+                    : sellTxs;
+                  const seg = metrics.segments && metrics.segments[legIndex] ? metrics.segments[legIndex] : null;
+                  const segTone = !seg || !seg.valid
+                    ? 'text-slate-400'
+                    : seg.segReturn > 0 ? 'text-emerald-600' : seg.segReturn < 0 ? 'text-red-500' : 'text-slate-700';
+                  return (
+                    <div key={legIndex} className="rounded-xl border border-slate-100 bg-slate-50/40 px-3 py-2.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="inline-flex h-6 min-w-[44px] items-center justify-center rounded-full bg-slate-200 px-2 text-[11px] font-semibold text-slate-700">段 {legIndex + 1}</span>
+                        <select
+                          className={cx(tableInputClass, 'h-8 min-w-[260px] flex-1 rounded-lg border-slate-200 bg-white px-2 text-xs')}
+                          value={leg.buyTxId || ''}
+                          onChange={(e) => handleSetChainLeg(chain.id, legIndex, { buyTxId: e.target.value, sellTxId: '' })}
+                        >
+                          <option value="">选择买入交易 (BUY)…</option>
+                          {buyTxs.map((tx) => (
+                            <option key={tx.id} value={tx.id}>{txOptionLabel(tx)}</option>
+                          ))}
+                        </select>
+                        <span className="text-xs text-slate-400">→</span>
+                        <select
+                          className={cx(tableInputClass, 'h-8 min-w-[260px] flex-1 rounded-lg border-slate-200 bg-white px-2 text-xs')}
+                          value={leg.sellTxId || ''}
+                          disabled={!buyTx}
+                          onChange={(e) => handleSetChainLeg(chain.id, legIndex, { sellTxId: e.target.value })}
+                        >
+                          <option value="">持有至今（用最新净值）</option>
+                          {sellOptions.map((tx) => (
+                            <option key={tx.id} value={tx.id}>{txOptionLabel(tx)}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="inline-flex h-8 items-center justify-center rounded-lg px-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-red-500"
+                          onClick={() => handleRemoveChainLeg(chain.id, legIndex)}
+                          title="删除该段"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      {seg ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 pl-1 text-[11px] text-slate-500">
+                          <span>代码：<span className="font-mono text-slate-700">{seg.code}</span></span>
+                          <span>买：{seg.buyDate || '—'} @ {formatNav(seg.buyPrice)}</span>
+                          <span>卖：{seg.sellDate || '—'} @ {formatNav(seg.sellPrice)}{seg.segEndSource === 'latestNav' ? <span className="ml-1 rounded bg-amber-50 px-1 text-[10px] text-amber-600">最新净值</span> : null}</span>
+                          <span className={cx('font-semibold tabular-nums', segTone)}>变化 {seg.valid ? formatSignedPercent(seg.segReturn * 100) : '—'}</span>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+                <button
+                  type="button"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-slate-100 px-3 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-200"
+                  onClick={() => handleAddChainLeg(chain.id)}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  添加一段
+                </button>
+              </div>
+              <div className="border-t border-slate-100 bg-slate-50/40 px-4 py-3">
+                {!metrics.valid && metrics.validationError ? (
+                  <div className="mb-2 flex items-start gap-1.5 text-xs text-amber-600">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-none" />
+                    <span>{metrics.validationError}</span>
+                  </div>
+                ) : null}
+                {!metrics.valid && !metrics.validationError && metrics.missingPriceCodes.length ? (
+                  <div className="mb-2 flex items-start gap-1.5 text-xs text-amber-600">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-none" />
+                    <span>缺少净值：{metrics.missingPriceCodes.join('、')}（请先在「基金汇总」刷新最新净值）。</span>
+                  </div>
+                ) : null}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">链路收益率</div>
+                    <div className={cx('mt-1 text-base font-semibold tabular-nums', chainTone)}>
+                      {metrics.valid ? formatSignedPercent(metrics.chainReturn * 100) : '—'}
+                    </div>
+                    <div className="mt-0.5 text-[11px] tabular-nums text-slate-400">乘积 {metrics.valid ? metrics.chainMultiple.toFixed(4) : '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">未切换基准{metrics.baselineCode ? <span className="ml-1 font-mono text-slate-500">({metrics.baselineCode})</span> : null}</div>
+                    <div className={cx('mt-1 text-base font-semibold tabular-nums', baselineTone)}>
+                      {metrics.valid ? formatSignedPercent(metrics.baselineReturn * 100) : '—'}
+                    </div>
+                    <div className="mt-0.5 text-[11px] tabular-nums text-slate-400">
+                      {metrics.valid ? `${formatNav(metrics.baselineStartPrice)} → ${formatNav(metrics.baselineEndPrice)}` : '—'}
+                      {metrics.baselineEndSource === 'latestNav' ? <span className="ml-1 rounded bg-amber-50 px-1 text-[10px] text-amber-600">最新净值</span> : null}
+                      {metrics.baselineAlignedToChainEnd ? <span className="ml-1 rounded bg-emerald-50 px-1 text-[10px] text-emerald-600">完美对齐</span> : null}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">切换优势</div>
+                    <div className={cx('mt-1 text-base font-semibold tabular-nums', advantageTone)}>
+                      {metrics.valid ? `${formatSignedPercent(metrics.advantage * 100)}` : '—'}
+                    </div>
+                    <div className="mt-0.5 text-[11px] tabular-nums text-slate-400">链路 − 未切换</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -1694,13 +1852,21 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 </button>
                 <button
                   type="button"
+                  className={cx('rounded-lg px-3 py-1.5 transition-colors', mainViewTab === 'switch' ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'hover:text-slate-800')}
+                  onClick={() => setMainViewTab('switch')}
+                >
+                  切换收益{switchChains.length ? <span className="ml-1 rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{switchChains.length}</span> : null}
+                </button>
+                <button
+                  type="button"
                   className={cx('rounded-lg px-3 py-1.5 transition-colors', mainViewTab === 'ledger' ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'hover:text-slate-800')}
                   onClick={() => setMainViewTab('ledger')}
                 >
                   成交流水
                 </button>
               </div>
-              {renderKindFilter()}
+              {mainViewTab === 'switch' ? null : renderKindFilter()}
+              {mainViewTab === 'switch' ? null : (
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
@@ -1710,6 +1876,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                   placeholder="搜索代码或名称"
                 />
               </div>
+              )}
               {renderNavBadge()}
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1794,14 +1961,18 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               ? renderAggregatesTable()
               : mainViewTab === 'sold'
                 ? renderSoldTable()
-                : renderLedgerTable()}
+                : mainViewTab === 'switch'
+                  ? renderSwitchChainView()
+                  : renderLedgerTable()}
           </div>
           <div className="border-t border-slate-100 px-4 py-2 text-[11px] text-slate-400">
             {mainViewTab === 'aggregate'
               ? `持仓中 ${portfolio.assetCount} 只基金；累计 ${ledgerRows.length} 笔流水。`
               : mainViewTab === 'sold'
                 ? `共 ${soldSummary.codeCount} 只基金 / ${soldSummary.lotCount} 笔卖出；已实现收益 ${formatSignedCurrency(soldSummary.totalRealizedProfit)} （${formatSignedPercent(soldSummary.totalRealizedReturnRate)}）。`
-                : `共 ${ledgerRows.length} 笔流水；当前筛选 ${filteredRows.length} 笔。`}
+                : mainViewTab === 'switch'
+                  ? `共 ${switchChains.length} 条切换链路。链路收益 = 每段净值乘积 − 1；未切换基准 = 一直持有首段基金到链路终点的收益。`
+                  : `共 ${ledgerRows.length} 笔流水；当前筛选 ${filteredRows.length} 笔。`}
           </div>
         </section>
       </div>
