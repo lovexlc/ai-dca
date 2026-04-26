@@ -123,6 +123,59 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const soldLots = useMemo(() => buildSoldLots(transactions), [transactions]);
   const soldSummary = useMemo(() => summarizeSoldLots(soldLots), [soldLots]);
 
+  // 基金切换收益差：用与《基金切换》tab 同样的公式计算。
+  // stayValue   = 原基金卖出份额 × 原基金现净值        (如果不卖，持有到现在的市值)
+  // switchedValue = 新基金买入份额 × 新基金现净值    (切换后持有到现在的市值)
+  // extraCash   = max(buyAmount - sellProceeds, 0)        (切换时额外追加的现金)
+  // switchAdvantage = switchedValue - stayValue - extraCash  (切换相对于不动的额外收益)
+  // 切换收益率 = switchAdvantage / stayValue
+  const switchInsightByLotId = useMemo(() => {
+    const txById = new Map();
+    for (const tx of transactions) txById.set(tx.id, tx);
+    const map = new Map();
+    for (const lot of soldLots) {
+      if (!lot.isSwitch) continue;
+      const pairTx = txById.get(lot.switchPairId);
+      if (!pairTx) continue;
+      const srcSnap = snapshotsByCode?.[lot.code] || null;
+      const tgtSnap = snapshotsByCode?.[pairTx.code] || null;
+      const srcPrice = Number(srcSnap?.latestNav) || 0;
+      const tgtPrice = Number(tgtSnap?.latestNav) || 0;
+      const srcDate = String(srcSnap?.latestNavDate || '');
+      const tgtDate = String(tgtSnap?.latestNavDate || '');
+      const hasPrices = srcPrice > 0 && tgtPrice > 0;
+      const stayValue = Math.round(srcPrice * lot.sellShares * 100) / 100;
+      const switchedValue = Math.round(tgtPrice * pairTx.shares * 100) / 100;
+      const extraCash = Number(lot.switchExtraCash) || 0;
+      const switchAdvantage = Math.round((switchedValue - stayValue - extraCash) * 100) / 100;
+      const advantageRate = stayValue > 0
+        ? Math.round(((switchAdvantage / stayValue) * 100) * 100) / 100
+        : 0;
+      const missingPriceCodes = [
+        ...(srcPrice > 0 ? [] : [lot.code]),
+        ...(tgtPrice > 0 ? [] : [pairTx.code])
+      ];
+      map.set(lot.id, {
+        hasPrices,
+        srcPrice,
+        tgtPrice,
+        srcDate,
+        tgtDate,
+        stayValue,
+        switchedValue,
+        extraCash,
+        switchAdvantage,
+        advantageRate,
+        missingPriceCodes,
+        pairCode: pairTx.code,
+        pairName: pairTx.name || '',
+        pairShares: pairTx.shares,
+        pairPrice: pairTx.price
+      });
+    }
+    return map;
+  }, [soldLots, transactions, snapshotsByCode]);
+
   const searchNeedle = searchText.trim().toLowerCase();
   const filteredRows = useMemo(() => {
     return ledgerRows.filter((row) => {
@@ -941,6 +994,21 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         || (lot.name || '').toLowerCase().includes(searchNeedle);
     });
     const filteredSummary = summarizeSoldLots(filteredLots);
+    // 当前筛选可见切换配对的合计（仅统计两边都有净值的配对）。
+    const filteredSwitchTotals = filteredLots.reduce((acc, lot) => {
+      const insight = switchInsightByLotId.get(lot.id);
+      if (!insight || !insight.hasPrices) return acc;
+      acc.count += 1;
+      acc.advantage = Math.round((acc.advantage + insight.switchAdvantage) * 100) / 100;
+      acc.stayValue = Math.round((acc.stayValue + insight.stayValue) * 100) / 100;
+      return acc;
+    }, { count: 0, advantage: 0, stayValue: 0 });
+    const filteredSwitchAdvantageRate = filteredSwitchTotals.stayValue > 0
+      ? Math.round(((filteredSwitchTotals.advantage / filteredSwitchTotals.stayValue) * 100) * 100) / 100
+      : 0;
+    const switchTotalTone = filteredSwitchTotals.advantage > 0
+      ? 'text-emerald-600'
+      : filteredSwitchTotals.advantage < 0 ? 'text-red-500' : 'text-slate-700';
 
     if (!filteredLots.length) {
       const emptyMessage = soldLots.length === 0
@@ -960,7 +1028,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
 
     return (
       <div className="overflow-x-auto">
-        <table className="min-w-[1200px] w-full text-sm">
+        <table className="min-w-[1400px] w-full text-sm">
           <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
             <tr>
               <th className="sticky left-0 z-20 bg-slate-50 px-3 py-2 shadow-[1px_0_0_rgba(15,23,42,0.08)]">基金代码</th>
@@ -974,6 +1042,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               <th className="px-3 py-2 text-right">卖出金额</th>
               <th className="px-3 py-2 text-right">已实现收益(元)</th>
               <th className="px-3 py-2 text-right">已实现收益率</th>
+              <th className="px-3 py-2 text-right" title="如果不切换，原基金持有到现在；对比切换后新基金持有到现在的额外收益。与《基金切换》tab 一致。">切换收益(元)</th>
+              <th className="px-3 py-2 text-right" title="切换收益 / 原基金持有到今的市值">切换收益率</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -983,6 +1053,15 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               const profitClass = lot.realizedProfit > 0
                 ? 'text-emerald-600'
                 : lot.realizedProfit < 0 ? 'text-red-500' : 'text-slate-700';
+              const switchInsight = lot.isSwitch ? switchInsightByLotId.get(lot.id) : null;
+              const switchAdvantageClass = (switchInsight && switchInsight.hasPrices)
+                ? (switchInsight.switchAdvantage > 0
+                    ? 'text-emerald-600'
+                    : switchInsight.switchAdvantage < 0 ? 'text-red-500' : 'text-slate-700')
+                : 'text-slate-400';
+              const switchInsightTitle = switchInsight && switchInsight.hasPrices
+                ? `原持仓 ${formatShares(lot.sellShares)}份 × ${formatNav(switchInsight.srcPrice)} = ${formatCurrency(switchInsight.stayValue, '¥', 2)}\n切换后 ${formatShares(switchInsight.pairShares)}份 × ${formatNav(switchInsight.tgtPrice)} = ${formatCurrency(switchInsight.switchedValue, '¥', 2)}` + (switchInsight.extraCash > 0 ? `\n额外追加现金 ${formatCurrency(switchInsight.extraCash, '¥', 2)}` : '')
+                : '';
               const isSelected = selectedCode === lot.code;
               return (
                 <tr
@@ -1024,6 +1103,25 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                   <td className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', profitClass)}>
                     {lot.hasAvgCost ? formatSignedPercent(lot.realizedReturnRate) : '—'}
                   </td>
+                  <td
+                    className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', switchAdvantageClass)}
+                    title={switchInsightTitle}
+                  >
+                    {!lot.isSwitch
+                      ? <span className="text-slate-300">—</span>
+                      : !switchInsight
+                        ? <span className="text-slate-300">—</span>
+                        : !switchInsight.hasPrices
+                          ? <span className="text-amber-600" title={`缺少净值：${switchInsight.missingPriceCodes.join('、')}`}>缺净值</span>
+                          : formatSignedCurrency(switchInsight.switchAdvantage)}
+                  </td>
+                  <td
+                    className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', switchAdvantageClass)}
+                  >
+                    {lot.isSwitch && switchInsight && switchInsight.hasPrices
+                      ? formatSignedPercent(switchInsight.advantageRate)
+                      : <span className="text-slate-300">—</span>}
+                  </td>
                 </tr>
               );
             })}
@@ -1038,6 +1136,15 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatCurrency(filteredSummary.totalProceeds, '¥', 2)}</td>
               <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', totalTone)}>{formatSignedCurrency(filteredSummary.totalRealizedProfit)}</td>
               <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', totalTone)}>{formatSignedPercent(filteredSummary.totalRealizedReturnRate)}</td>
+              <td
+                className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', filteredSwitchTotals.count > 0 ? switchTotalTone : 'text-slate-400')}
+                title={filteredSwitchTotals.count > 0 ? `已配对且两边都有净值的切换：${filteredSwitchTotals.count} 笔` : ''}
+              >
+                {filteredSwitchTotals.count > 0 ? formatSignedCurrency(filteredSwitchTotals.advantage) : <span className="text-slate-300">—</span>}
+              </td>
+              <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', filteredSwitchTotals.count > 0 ? switchTotalTone : 'text-slate-400')}>
+                {filteredSwitchTotals.count > 0 ? formatSignedPercent(filteredSwitchAdvantageRate) : <span className="text-slate-300">—</span>}
+              </td>
             </tr>
           </tfoot>
         </table>
