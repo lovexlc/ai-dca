@@ -90,6 +90,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [pasteText, setPasteText] = useState('');
   const [pasteResult, setPasteResult] = useState(null);
   const [importMenuOpen, setImportMenuOpen] = useState(false);
+  const [switchPickerOpen, setSwitchPickerOpen] = useState(false);
+  const [switchPickerSearch, setSwitchPickerSearch] = useState('');
 
   const fileInputRef = useRef(null);
   const autoNavTriggeredRef = useRef(false);
@@ -456,6 +458,21 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
 
   function closePasteModal() {
     setPasteModalOpen(false);
+  }
+
+  // ---- Switch counterpart picker ----
+  function openSwitchPicker() {
+    setSwitchPickerSearch('');
+    setSwitchPickerOpen(true);
+  }
+
+  function closeSwitchPicker() {
+    setSwitchPickerOpen(false);
+  }
+
+  function handleSelectSwitchCounterpart(txId) {
+    handleDraftChange('switchPairId', txId || '');
+    setSwitchPickerOpen(false);
   }
 
   function handleParsePaste() {
@@ -1283,26 +1300,46 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               <span className="ml-auto text-[10px] font-normal text-indigo-500/80">与反向交易配对</span>
             </label>
             {isSwitchOn ? (
-              <div className="mt-2 space-y-1">
-                {switchCandidates.length === 0 ? (
+              <div className="mt-2 space-y-1.5">
+                {switchCandidates.length === 0 && !pairedCounterpart && !pairedMissing ? (
                   <div className="rounded-lg bg-white px-2.5 py-2 text-[11px] text-slate-500">
                     暂无可配对的{oppositeType === 'BUY' ? '买入' : '卖出'}交易。需先创建一笔不同代码、未被配对的对手交易。
                   </div>
                 ) : (
-                  <select
-                    className={cx(tableInputClass, 'h-10 w-full rounded-xl bg-white px-3')}
-                    value={draft.switchPairId || ''}
-                    onChange={(event) => handleDraftChange('switchPairId', event.target.value)}
-                  >
-                    {pairedMissing ? (
-                      <option value={draft.switchPairId}>原配对交易已丢失，请重选</option>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {pairedCounterpart ? (
+                      <div className="flex min-w-[200px] flex-1 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-white px-2.5 py-1.5 text-[11px] text-slate-700 ring-1 ring-indigo-100">
+                        <span className="font-mono font-semibold text-slate-800">{pairedCounterpart.code}</span>
+                        {pairedCounterpart.name ? <span className="truncate text-slate-500">{pairedCounterpart.name}</span> : null}
+                        <Pill tone={KIND_PILL_TONES[pairedCounterpart.kind] || 'slate'}>{KIND_LABELS[pairedCounterpart.kind] || '未知'}</Pill>
+                        <span className={cx('rounded px-1.5 py-0.5 text-[10px] font-semibold', pairedCounterpart.type === 'BUY' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700')}>{pairedCounterpart.type}</span>
+                        <span className="text-slate-500">{pairedCounterpart.date || '待补录'}</span>
+                        <span className="ml-auto tabular-nums text-slate-600">{formatShares(pairedCounterpart.shares)}份 × {formatNav(pairedCounterpart.price)}</span>
+                      </div>
+                    ) : pairedMissing ? (
+                      <div className="flex-1 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-700">原配对交易已丢失，请重新选择</div>
+                    ) : (
+                      <div className="flex-1 rounded-lg bg-white px-2.5 py-1.5 text-[11px] text-slate-500">尚未选择对手方交易</div>
+                    )}
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={openSwitchPicker}
+                      disabled={switchCandidates.length === 0}
+                    >
+                      <Search className="h-3 w-3" />
+                      {pairedCounterpart || pairedMissing ? '更换' : '选择对手方'}
+                    </button>
+                    {pairedCounterpart || pairedMissing ? (
+                      <button
+                        type="button"
+                        className="rounded-lg px-2 py-1.5 text-[11px] font-semibold text-slate-500 transition-colors hover:bg-white hover:text-slate-700"
+                        onClick={() => handleDraftChange('switchPairId', '')}
+                      >
+                        清除
+                      </button>
                     ) : null}
-                    {switchCandidates.map((tx) => (
-                      <option key={tx.id} value={tx.id}>
-                        {tx.code} {tx.name ? `· ${tx.name}` : ''} · {tx.type} · {tx.date || '待补录'} · {formatShares(tx.shares)}份 × {formatNav(tx.price)}
-                      </option>
-                    ))}
-                  </select>
+                  </div>
                 )}
                 <div className="px-1 text-[10px] text-slate-500">
                   打开后两笔交易会互相关联，“已卖出”列表中会标识切换去向，从而能在持仓总览里看到资金流转。
@@ -1592,6 +1629,123 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                   导入有效行
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {switchPickerOpen ? (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/40 px-4 py-6" onClick={closeSwitchPicker}>
+          <div className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+              <div>
+                <div className="text-sm font-bold text-slate-900">选择基金切换对手方</div>
+                <div className="mt-0.5 text-xs text-slate-500">
+                  当前是 <span className="font-mono font-semibold text-slate-700">{draft.code || '—'}</span>{draft.name ? <> · {draft.name}</> : null} · {draft.type}，下方列出可配对的 <span className="font-semibold text-slate-700">{draft.type === 'BUY' ? '卖出' : '买入'}</span> 交易（不同代码、未被其他切换占用）。
+                </div>
+              </div>
+              <button type="button" className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700" onClick={closeSwitchPicker}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="border-b border-slate-100 bg-slate-50/60 px-5 py-2.5">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="search"
+                  className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-800 outline-none transition-colors focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  placeholder="搜索代码或名称…"
+                  value={switchPickerSearch}
+                  onChange={(event) => setSwitchPickerSearch(event.target.value)}
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto">
+              {(() => {
+                const oppType = draft.type === 'BUY' ? 'SELL' : 'BUY';
+                const draftCode = normalizeFundCode(draft.code);
+                const filterText = switchPickerSearch.trim().toLowerCase();
+                const candidates = transactions
+                  .filter((tx) => (
+                    tx.id !== draft.id
+                    && tx.type === oppType
+                    && tx.code
+                    && tx.code !== draftCode
+                    && (!tx.switchPairId || tx.switchPairId === draft.id)
+                  ))
+                  .filter((tx) => {
+                    if (!filterText) return true;
+                    const code = String(tx.code || '').toLowerCase();
+                    const name = String(tx.name || '').toLowerCase();
+                    return code.includes(filterText) || name.includes(filterText);
+                  })
+                  .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+                if (candidates.length === 0) {
+                  return (
+                    <div className="flex min-h-[200px] flex-col items-center justify-center gap-2 px-6 py-10 text-center text-xs text-slate-500">
+                      <Wallet className="h-8 w-8 text-slate-300" />
+                      {filterText
+                        ? `没有匹配 “${switchPickerSearch}” 的对手方交易。`
+                        : `暂无可配对的${oppType === 'BUY' ? '买入' : '卖出'}交易。需先创建一笔不同代码、未被配对的对手交易。`}
+                    </div>
+                  );
+                }
+                return (
+                  <table className="min-w-full text-sm">
+                    <thead className="sticky top-0 z-10 bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2">代码</th>
+                        <th className="px-3 py-2">名称</th>
+                        <th className="px-3 py-2">标签</th>
+                        <th className="px-3 py-2">类型</th>
+                        <th className="px-3 py-2">日期</th>
+                        <th className="px-3 py-2 text-right">价</th>
+                        <th className="px-3 py-2 text-right">份额</th>
+                        <th className="px-3 py-2 text-right">金额</th>
+                        <th className="px-3 py-2 text-right">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {candidates.map((tx) => {
+                        const isSelected = draft.switchPairId === tx.id;
+                        const amount = (Number(tx.shares) || 0) * (Number(tx.price) || 0);
+                        return (
+                          <tr
+                            key={tx.id}
+                            className={cx(
+                              'cursor-pointer text-slate-700 transition-colors hover:bg-indigo-50/60',
+                              isSelected && 'bg-indigo-50/80'
+                            )}
+                            onClick={() => handleSelectSwitchCounterpart(tx.id)}
+                          >
+                            <td className="whitespace-nowrap px-3 py-2 font-mono text-xs font-semibold text-slate-800">{tx.code}</td>
+                            <td className="px-3 py-2 text-xs">{tx.name || <span className="text-slate-400">—</span>}</td>
+                            <td className="px-3 py-2"><Pill tone={KIND_PILL_TONES[tx.kind] || 'slate'}>{KIND_LABELS[tx.kind] || '未知'}</Pill></td>
+                            <td className="whitespace-nowrap px-3 py-2 text-xs">
+                              <span className={cx('rounded px-1.5 py-0.5 text-[10px] font-semibold', tx.type === 'BUY' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700')}>{tx.type}</span>
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2 text-xs">{tx.date || <span className="text-amber-600">待补录</span>}</td>
+                            <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">{formatNav(tx.price)}</td>
+                            <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">{formatShares(tx.shares)}</td>
+                            <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums text-slate-700">{formatCurrency(amount, '¥', 2)}</td>
+                            <td className="whitespace-nowrap px-3 py-2 text-right">
+                              {isSelected ? (
+                                <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2 py-1 text-[11px] font-semibold text-white"><CheckCircle2 className="h-3 w-3" />已选</span>
+                              ) : (
+                                <span className="inline-flex items-center rounded-lg bg-white px-2 py-1 text-[11px] font-semibold text-indigo-600 ring-1 ring-indigo-100">选择</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                );
+              })()}
+            </div>
+            <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+              <div>点击任意一行即选定该笔交易作为切换对手方。</div>
+              <button type="button" className={GHOST_BTN} onClick={closeSwitchPicker}>关闭</button>
             </div>
           </div>
         </div>
