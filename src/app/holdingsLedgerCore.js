@@ -121,6 +121,7 @@ export function createEmptyTransaction(overrides = {}) {
     price: '',
     shares: '',
     costPrice: '',
+    switchPairId: '',
     note: '',
     ...overrides
   };
@@ -139,6 +140,7 @@ export function normalizeTransaction(tx = {}, { idPrefix = 'tx' } = {}) {
     price: parsePositiveDecimal(tx?.price, 4),
     shares: parsePositiveDecimal(tx?.shares, 4),
     costPrice: parsePositiveDecimal(tx?.costPrice, 4),
+    switchPairId: String(tx?.switchPairId || '').trim(),
     note: String(tx?.note || '').trim()
   };
 }
@@ -444,8 +446,10 @@ export function summarizePortfolio(aggregates = []) {
 export function buildSoldLots(transactions = []) {
   const normalizedTxs = sanitizeTransactions(transactions, { filterInvalid: false });
   const costMap = new Map();
+  const txById = new Map();
   for (const tx of normalizedTxs) {
     if (!tx.code) continue;
+    if (tx.id) txById.set(tx.id, tx);
     if (!costMap.has(tx.code)) {
       costMap.set(tx.code, { name: '', kind: tx.kind || 'otc', buyShares: 0, buyAmount: 0 });
     }
@@ -467,6 +471,9 @@ export function buildSoldLots(transactions = []) {
     const avgCost = standalone
       ? tx.costPrice
       : (bucket.buyShares > 0 ? round(bucket.buyAmount / bucket.buyShares, 4) : 0);
+    // 基金切换配对：查找本笔卖出手动指定的反向买入
+    const pairTx = tx.switchPairId ? txById.get(tx.switchPairId) : null;
+    const isSwitch = Boolean(pairTx && pairTx.type === 'BUY' && pairTx.code && pairTx.code !== tx.code);
     const sellShares = tx.shares;
     const sellPrice = tx.price;
     const proceeds = round(sellPrice * sellShares, 2);
@@ -491,6 +498,11 @@ export function buildSoldLots(transactions = []) {
       realizedReturnRate,
       hasAvgCost,
       standalone,
+      isSwitch,
+      switchPairId: isSwitch ? pairTx.id : '',
+      switchTargetCode: isSwitch ? pairTx.code : '',
+      switchTargetName: isSwitch ? (pairTx.name || '') : '',
+      switchExtraCash: isSwitch ? round(Math.max(pairTx.price * pairTx.shares - proceeds, 0), 2) : 0,
       note: tx.note || '',
       tx
     });

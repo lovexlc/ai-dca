@@ -84,6 +84,7 @@ export function transactionToDraft(tx) {
     price: tx.price > 0 ? String(tx.price) : '',
     shares: tx.shares > 0 ? String(tx.shares) : '',
     costPrice: tx.costPrice > 0 ? String(tx.costPrice) : '',
+    switchPairId: String(tx.switchPairId || ''),
     note: String(tx.note || '')
   };
 }

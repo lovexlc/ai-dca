@@ -275,13 +275,27 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
     setLedger((prev) => {
       const list = Array.isArray(prev.transactions) ? prev.transactions : [];
+      const previousTx = draftMode === 'edit' && draft.id ? list.find((tx) => tx.id === draft.id) : null;
+      const previousPairId = previousTx?.switchPairId || '';
+      const newPairId = normalized.switchPairId || '';
+      const remap = (tx) => {
+        // 如果原配对对手不再被选中，清除它们反向的 switchPairId
+        if (previousPairId && previousPairId !== newPairId && tx.id === previousPairId && tx.switchPairId === normalized.id) {
+          return { ...tx, switchPairId: '' };
+        }
+        // 新选中的对手：同步反向指向为当前 tx
+        if (newPairId && tx.id === newPairId) {
+          return { ...tx, switchPairId: normalized.id };
+        }
+        return tx;
+      };
       if (draftMode === 'edit') {
         return {
           ...prev,
-          transactions: list.map((tx) => (tx.id === normalized.id ? normalized : tx))
+          transactions: list.map((tx) => (tx.id === normalized.id ? normalized : remap(tx)))
         };
       }
-      return { ...prev, transactions: [...list, normalized] };
+      return { ...prev, transactions: [...list.map(remap), normalized] };
     });
     showActionToast(draftMode === 'edit' ? '交易已更新' : '交易已新增', 'success', {
       description: `${normalized.code} ${normalized.type} ${formatShares(normalized.shares)} 份 @ ${formatNav(normalized.price)}`
@@ -302,7 +316,9 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
     setLedger((prev) => ({
       ...prev,
-      transactions: (prev.transactions || []).filter((item) => item.id !== txId)
+      transactions: (prev.transactions || [])
+        .filter((item) => item.id !== txId)
+        .map((item) => (item.switchPairId === txId ? { ...item, switchPairId: '' } : item))
     }));
     if (editingTxId === txId) {
       setEditingTxId('');
@@ -967,7 +983,17 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                     'sticky left-0 z-10 whitespace-nowrap px-3 py-2 font-mono text-xs font-semibold text-slate-800 shadow-[1px_0_0_rgba(15,23,42,0.06)]',
                     isSelected ? 'bg-indigo-50/90' : 'bg-white'
                   )}>{lot.code}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-xs">{lot.name || <span className="text-slate-400">—</span>}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-xs">
+                    <span>{lot.name || <span className="text-slate-400">—</span>}</span>
+                    {lot.isSwitch ? (
+                      <span
+                        className="ml-2 inline-flex items-center gap-1 rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600 ring-1 ring-indigo-100"
+                        title={`切换至 ${lot.switchTargetCode}${lot.switchTargetName ? ` ${lot.switchTargetName}` : ''}`}
+                      >
+                        ⇋ 切换至 {lot.switchTargetCode}
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="px-3 py-2"><Pill tone={kindTone}>{kindLabel}</Pill></td>
                   <td className="whitespace-nowrap px-3 py-2 text-xs">{lot.sellDate || <span className="text-amber-600">待补录</span>}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">{formatShares(lot.sellShares)}</td>
@@ -1129,6 +1155,20 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       price: Number(draft.price || 0),
       shares: Number(draft.shares || 0)
     }, { ignoreBlank: true });
+    const oppositeType = draft.type === 'BUY' ? 'SELL' : 'BUY';
+    const draftCodeNormalized = normalizeFundCode(draft.code);
+    const switchCandidates = transactions
+      .filter((tx) => (
+        tx.id !== draft.id
+        && tx.type === oppositeType
+        && tx.code
+        && tx.code !== draftCodeNormalized
+        && (!tx.switchPairId || tx.switchPairId === draft.id)
+      ))
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    const isSwitchOn = Boolean(draft.switchPairId);
+    const pairedCounterpart = draft.switchPairId ? transactions.find((tx) => tx.id === draft.switchPairId) : null;
+    const pairedMissing = Boolean(draft.switchPairId) && !pairedCounterpart;
     return (
       <div className="space-y-3">
         <div className="flex items-center justify-between">
@@ -1225,6 +1265,51 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               <span className="mt-1 block text-[10px] text-slate-400">未录入买入流水时填入此处，自动结算 (卖价 − 成本) × 份额，不占用持仓。</span>
             </label>
           ) : null}
+          <div className="col-span-2 rounded-xl border border-indigo-100 bg-indigo-50/40 px-3 py-2.5">
+            <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-indigo-700">
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                checked={isSwitchOn}
+                onChange={(event) => {
+                  if (!event.target.checked) {
+                    handleDraftChange('switchPairId', '');
+                  } else if (switchCandidates.length) {
+                    handleDraftChange('switchPairId', switchCandidates[0].id);
+                  }
+                }}
+              />
+              <span>这是一笔基金切换</span>
+              <span className="ml-auto text-[10px] font-normal text-indigo-500/80">与反向交易配对</span>
+            </label>
+            {isSwitchOn ? (
+              <div className="mt-2 space-y-1">
+                {switchCandidates.length === 0 ? (
+                  <div className="rounded-lg bg-white px-2.5 py-2 text-[11px] text-slate-500">
+                    暂无可配对的{oppositeType === 'BUY' ? '买入' : '卖出'}交易。需先创建一笔不同代码、未被配对的对手交易。
+                  </div>
+                ) : (
+                  <select
+                    className={cx(tableInputClass, 'h-10 w-full rounded-xl bg-white px-3')}
+                    value={draft.switchPairId || ''}
+                    onChange={(event) => handleDraftChange('switchPairId', event.target.value)}
+                  >
+                    {pairedMissing ? (
+                      <option value={draft.switchPairId}>原配对交易已丢失，请重选</option>
+                    ) : null}
+                    {switchCandidates.map((tx) => (
+                      <option key={tx.id} value={tx.id}>
+                        {tx.code} {tx.name ? `· ${tx.name}` : ''} · {tx.type} · {tx.date || '待补录'} · {formatShares(tx.shares)}份 × {formatNav(tx.price)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <div className="px-1 text-[10px] text-slate-500">
+                  打开后两笔交易会互相关联，“已卖出”列表中会标识切换去向，从而能在持仓总览里看到资金流转。
+                </div>
+              </div>
+            ) : null}
+          </div>
           <label className="col-span-2 text-xs text-slate-500">
             备注
             <input

@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, CalendarClock, CloudUpload, History, LineChart, ListChecks, Plus, Shuffle, TrendingUp, Wallet } from 'lucide-react';
+import { CalendarClock, CloudUpload, History, ListChecks, Shuffle, TrendingUp, Wallet } from 'lucide-react';
 import { isFundSwitchViewHash } from '../app/fundSwitch.js';
 import { PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
@@ -13,7 +13,7 @@ const HoldingsExperience = lazy(() => import('./HoldingsExperience.jsx').then((m
 const HomeExperience = lazy(() => import('./HomeExperience.jsx').then((m) => ({ default: m.HomeExperience })));
 const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').then((m) => ({ default: m.TradePlansExperience })));
 
-const DEFAULT_WORKSPACE_TAB = 'tradePlans';
+const DEFAULT_WORKSPACE_TAB = 'holdings';
 
 const WORKSPACE_TITLES = {
   home: '加仓计划',
@@ -57,31 +57,6 @@ function buildWorkspaceUrl(tab, { inPagesDir = false } = {}) {
     nextUrl.hash = window.location.hash;
   }
   return nextUrl;
-}
-
-function SidebarQuickActions({ onSelectNav }) {
-  return (
-    <div className="console-quick">
-      <div className="console-quick__eyebrow">快捷入口</div>
-      <button
-        type="button"
-        className="console-quick__primary"
-        onClick={() => onSelectNav?.('tradePlans', { hash: '#new' })}
-      >
-        <Plus className="h-4 w-4" aria-hidden="true" />
-        <span>新建建仓计划</span>
-      </button>
-      <button
-        type="button"
-        className="console-quick__secondary"
-        onClick={() => onSelectNav?.('fundSwitch')}
-      >
-        <LineChart className="h-4 w-4" aria-hidden="true" />
-        <span>基金切换分析</span>
-        <ArrowRight className="ml-auto h-4 w-4" aria-hidden="true" />
-      </button>
-    </div>
-  );
 }
 
 function TabLoadingFallback() {
@@ -195,7 +170,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       sidebarNav={sidebarNav}
       activeKey={activeTab}
       onSelectNav={handleSelectTab}
-      sidebarFooter={<SidebarQuickActions onSelectNav={handleSelectTab} />}
     >
       <Suspense fallback={<TabLoadingFallback />}>{renderActivePanel()}</Suspense>
     </ConsoleLayout>

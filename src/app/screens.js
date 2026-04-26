@@ -2,7 +2,7 @@ export const PROJECT_ID = '4075224789216868860';
 export const PROJECT_TITLE = '股票建仓策略看板';
 
 // 主 tab 顺序与元数据：所有页面都通过 WorkspacePage（侧边栏 + ?tab=）展示。
-export const PRIMARY_TAB_ORDER = ['tradePlans', 'home', 'dca', 'fundSwitch', 'history', 'holdings', 'backup'];
+export const PRIMARY_TAB_ORDER = ['holdings', 'tradePlans', 'home', 'dca', 'fundSwitch', 'history', 'backup'];
 
 export const PRIMARY_TAB_META = {
   tradePlans: { label: '交易计划', hrefKey: 'tradePlans' },
