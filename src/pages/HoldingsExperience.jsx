@@ -191,13 +191,25 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }, [ledgerRows, kindFilter, searchNeedle]);
 
   const kindCounts = useMemo(() => {
-    const counts = { all: ledgerRows.length, otc: 0, exchange: 0 };
-    for (const row of ledgerRows) {
-      if (row.tx.kind === 'otc') counts.otc += 1;
-      else if (row.tx.kind === 'exchange') counts.exchange += 1;
+    // 计数随当前 tab 切换：
+    // - 基金汇总：在持的基金数（hasPosition）
+    // - 已卖出：卖出明细条数
+    // - 交易明细：交易总条数
+    let source;
+    if (mainViewTab === 'aggregate') {
+      source = aggregates.filter((agg) => agg.hasPosition);
+    } else if (mainViewTab === 'sold') {
+      source = soldLots;
+    } else {
+      source = ledgerRows.map((row) => row.tx);
+    }
+    const counts = { all: source.length, otc: 0, exchange: 0 };
+    for (const item of source) {
+      if (item.kind === 'otc') counts.otc += 1;
+      else if (item.kind === 'exchange') counts.exchange += 1;
     }
     return counts;
-  }, [ledgerRows]);
+  }, [mainViewTab, aggregates, soldLots, ledgerRows]);
 
   const selectedAggregate = selectedCode ? aggregateByCodeMap.get(selectedCode) : null;
   const needsDateBackfill = useMemo(
