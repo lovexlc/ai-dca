@@ -250,13 +250,26 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     setNavStatus('loading');
     try {
       const navResult = await requestLedgerNav(safeCodes);
-      const { snapshotsByCode: mergedSnapshots, errors } = mergeSnapshotsFromNavResult(ledger.snapshotsByCode, navResult);
-      const nextMeta = buildNavMetaFromResult(navResult, errors);
-      setLedger((prev) => ({
-        ...prev,
-        snapshotsByCode: mergedSnapshots,
-        lastNavMeta: nextMeta
-      }));
+      let mergeErrors = [];
+      let nextMeta = null;
+      // 用函数式 setState 基于最新 prev 合并，避免并发刷新互相覆盖。
+      setLedger((prev) => {
+        const merged = mergeSnapshotsFromNavResult(prev.snapshotsByCode, navResult);
+        mergeErrors = merged.errors;
+        nextMeta = buildNavMetaFromResult(navResult, merged.errors);
+        return {
+          ...prev,
+          snapshotsByCode: merged.snapshotsByCode,
+          lastNavMeta: nextMeta
+        };
+      });
+      const errors = mergeErrors;
+      if (!nextMeta) nextMeta = buildNavMetaFromResult(navResult, errors);
+      // 失败的代码允许下一次重新尝试（拉黑只针对成功的）。
+      const failedSet = new Set(errors.map((e) => e.code));
+      for (const code of safeCodes) {
+        if (failedSet.has(code)) navAttemptedCodesRef.current.delete(code);
+      }
       setNavStatus('idle');
       if (!silent) {
         if (errors.length && nextMeta.successCount === 0) {
@@ -269,6 +282,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       }
     } catch (error) {
       setNavStatus('error');
+      // 网络异常允许下次重试。
+      for (const code of safeCodes) navAttemptedCodesRef.current.delete(code);
       if (!silent) {
         showActionToast('净值刷新', 'error', { description: error?.message || '净值服务暂时不可用。' });
       }
@@ -277,6 +292,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
 
   function handleManualRefresh() {
     const codes = getLedgerCodeList(transactions);
+    // 手动刷新清空已尝试集合，所有代码都重新走一遍。
+    navAttemptedCodesRef.current.clear();
     void refreshNavForCodes(codes, { silent: false });
   }
 
