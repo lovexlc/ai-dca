@@ -784,6 +784,16 @@ function emptyChainMetrics(extra = {}) {
     advantage: 0,
     multipleAdvantage: 0,
     missingPriceCodes: [],
+    // 份额延续口径（元）
+    initialCapital: 0,
+    chainFinalValue: 0,
+    chainProfit: 0,
+    chainProfitRate: 0,
+    baselineFinalValue: 0,
+    baselineProfit: 0,
+    advantageProfit: 0,
+    cashFlowValid: false,
+    cashFlowNote: '',
     ...extra
   };
 }
@@ -883,6 +893,8 @@ export function computeSwitchChainMetrics(chain, transactions = [], snapshotsByC
       segEndSource,
       segMultiple: round(segMultiple, 6),
       segReturn: round(segReturn, 6),
+      buyShares: Number(buyTx.shares) || 0,
+      sellShares: sellTx ? (Number(sellTx.shares) || 0) : 0,
       valid: segValid
     });
   }
@@ -924,6 +936,65 @@ export function computeSwitchChainMetrics(chain, transactions = [], snapshotsByC
   const advantage = valid ? chainReturn - baselineReturn : 0;
   const multipleAdvantage = valid ? chainMultiple - baselineMultiple : 0;
 
+  // 份额延续口径（现金滚动）
+  // 初始资金 = 首段 buy.shares × buy.price
+  // 每段卖出后的现金全额转入下一段，按下一段 buy.price 换算为理论份额
+  // 末段“持有至今”时用理论份额 × latestNav
+  let initialCapital = 0;
+  let chainFinalValue = 0;
+  let chainProfit = 0;
+  let chainProfitRate = 0;
+  let baselineFinalValue = 0;
+  let baselineProfit = 0;
+  let advantageProfit = 0;
+  let cashFlowValid = false;
+  let cashFlowNote = '';
+
+  if (valid && firstSeg.buyShares > 0) {
+    initialCapital = firstSeg.buyShares * firstSeg.buyPrice;
+    let theoreticalShares = firstSeg.buyShares;
+    let cashOnHand = 0;
+    cashFlowValid = true;
+    for (let i = 0; i < segments.length; i += 1) {
+      const seg = segments[i];
+      // 本段取得份额：首段用用户实际 buy.shares；后续段用现金滚动
+      if (i === 0) {
+        theoreticalShares = seg.buyShares;
+      } else {
+        if (!(seg.buyPrice > 0)) {
+          cashFlowValid = false;
+          cashFlowNote = `第 ${i + 1} 段买价为 0，无法换算份额。`;
+          break;
+        }
+        theoreticalShares = cashOnHand / seg.buyPrice;
+      }
+      // 本段末现金
+      if (seg.segEndSource === 'sell') {
+        // 有真实卖单：首段用用户实际 sell.shares；后续段不知道用户实际卖了多少（理论份额不一定等于用户买入份额），按理论份额 × sellPrice
+        if (i === 0 && seg.sellShares > 0) {
+          cashOnHand = seg.sellShares * seg.sellPrice;
+        } else {
+          cashOnHand = theoreticalShares * seg.sellPrice;
+        }
+      } else {
+        // 持有至今: 理论份额 × latestNav
+        cashOnHand = theoreticalShares * seg.sellPrice;
+      }
+    }
+    if (cashFlowValid) {
+      chainFinalValue = cashOnHand;
+      chainProfit = chainFinalValue - initialCapital;
+      chainProfitRate = initialCapital > 0 ? chainProfit / initialCapital : 0;
+      baselineFinalValue = firstSeg.buyShares * baselineEndPrice;
+      baselineProfit = baselineFinalValue - initialCapital;
+      advantageProfit = chainProfit - baselineProfit;
+    }
+  } else if (!valid) {
+    cashFlowNote = '缺净值或段不完整，无法计算实际盈亏。';
+  } else {
+    cashFlowNote = '首段买入份额为 0，无法计算实际盈亏。';
+  }
+
   return {
     segments,
     valid,
@@ -939,6 +1010,15 @@ export function computeSwitchChainMetrics(chain, transactions = [], snapshotsByC
     baselineMultiple: round(baselineMultiple, 6),
     advantage: round(advantage, 6),
     multipleAdvantage: round(multipleAdvantage, 6),
-    missingPriceCodes: Array.from(missingPriceCodes)
+    missingPriceCodes: Array.from(missingPriceCodes),
+    initialCapital: round(initialCapital, 4),
+    chainFinalValue: round(chainFinalValue, 4),
+    chainProfit: round(chainProfit, 4),
+    chainProfitRate: round(chainProfitRate, 6),
+    baselineFinalValue: round(baselineFinalValue, 4),
+    baselineProfit: round(baselineProfit, 4),
+    advantageProfit: round(advantageProfit, 4),
+    cashFlowValid,
+    cashFlowNote
   };
 }

@@ -1531,6 +1531,43 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                     <div className="mt-0.5 text-[11px] tabular-nums text-slate-400">链路 − 未切换</div>
                   </div>
                 </div>
+                <div className="mt-3 border-t border-dashed border-slate-200 pt-3">
+                  <div className="mb-1.5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                    <span>份额延续口径（实际盈亏·元）</span>
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium normal-case tracking-normal text-slate-500">首段资金滚动·志脱费</span>
+                  </div>
+                  {metrics.cashFlowValid ? (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div>
+                        <div className="text-[11px] text-slate-500">链路实际盈亏</div>
+                        <div className={cx('mt-0.5 text-sm font-semibold tabular-nums', metrics.chainProfit > 0 ? 'text-emerald-600' : metrics.chainProfit < 0 ? 'text-red-500' : 'text-slate-700')}>
+                          {formatSignedCurrency(metrics.chainProfit)}
+                        </div>
+                        <div className="mt-0.5 text-[11px] tabular-nums text-slate-400">
+                          末值 {formatCurrency(metrics.chainFinalValue, '¥', 2)} · {formatSignedPercent(metrics.chainProfitRate * 100)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-slate-500">未切换盈亏</div>
+                        <div className={cx('mt-0.5 text-sm font-semibold tabular-nums', metrics.baselineProfit > 0 ? 'text-emerald-600' : metrics.baselineProfit < 0 ? 'text-red-500' : 'text-slate-700')}>
+                          {formatSignedCurrency(metrics.baselineProfit)}
+                        </div>
+                        <div className="mt-0.5 text-[11px] tabular-nums text-slate-400">
+                          末值 {formatCurrency(metrics.baselineFinalValue, '¥', 2)} · 初投入 {formatCurrency(metrics.initialCapital, '¥', 2)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-slate-500">切换优势（元）</div>
+                        <div className={cx('mt-0.5 text-sm font-semibold tabular-nums', metrics.advantageProfit > 0 ? 'text-emerald-600' : metrics.advantageProfit < 0 ? 'text-red-500' : 'text-slate-700')}>
+                          {formatSignedCurrency(metrics.advantageProfit)}
+                        </div>
+                        <div className="mt-0.5 text-[11px] tabular-nums text-slate-400">链路盈亏 − 未切换盈亏</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-slate-400">{metrics.cashFlowNote || '仅在链路有效且首段买入份额 > 0 时可计算。'}</div>
+                  )}
+                </div>
               </div>
             </div>
           );
