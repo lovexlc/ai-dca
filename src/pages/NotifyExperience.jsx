@@ -693,9 +693,6 @@ export function NotifyExperience({ embedded = false }) {
       <Card>
         <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Strategies</div>
         <div className="mt-1 text-base font-bold text-slate-900 sm:text-lg">提醒策略　·　{items.length} 条</div>
-        <p className="mt-1 text-xs leading-5 text-slate-500">
-          统一管理本机会触发的推送策略。每条默认收起，点击标题可展开查看明细与操作。
-        </p>
         <div className="mt-4 space-y-3">
           {items.map((item) => {
             const expanded = expandedStrategy === item.key;
@@ -917,9 +914,6 @@ export function NotifyExperience({ embedded = false }) {
             <Bell className="h-6 w-6 text-indigo-500" />
             通知设置
           </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-            统一管理推送通道、共享组、提醒历史与持仓提醒规则。各 tab 的提醒（交易计划、定投、加仓计划等）都会复用这里配置的 iOS / Android 接入，并在本页查看推送记录。
-          </p>
         </div>
       </div>
 
