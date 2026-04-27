@@ -2011,6 +2011,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               )}
               {renderNavBadge()}
             </div>
+            {mainViewTab === 'switch' ? null : (
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -2087,6 +2088,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 新增交易
               </button>
             </div>
+            )}
           </div>
           <div className="px-1 py-1">
             {mainViewTab === 'aggregate'
