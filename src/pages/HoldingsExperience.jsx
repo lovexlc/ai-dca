@@ -98,6 +98,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   // 形状：{ chainId, legIndex, role: 'buy' | 'sell' }
   const [chainPicker, setChainPicker] = useState(null);
   const [chainPickerSearch, setChainPickerSearch] = useState('');
+  // 已展开的链路 id 集合。保存过的链路默认折叠，新建时自动展开。
+  const [expandedChains, setExpandedChains] = useState(() => new Set());
 
   const fileInputRef = useRef(null);
   const autoNavTriggeredRef = useRef(false);
@@ -284,9 +286,15 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   function handleAddSwitchChain() {
+    const newId = buildChainId();
+    setExpandedChains((prev) => {
+      const next = new Set(prev);
+      next.add(newId);
+      return next;
+    });
     setLedger((prev) => {
       const list = Array.isArray(prev.switchChains) ? prev.switchChains : [];
-      const next = { id: buildChainId(), name: '', legs: [{ buyTxId: '', sellTxId: '' }] };
+      const next = { id: newId, name: '', legs: [{ buyTxId: '', sellTxId: '' }] };
       return { ...prev, switchChains: [...list, next] };
     });
   }
@@ -304,9 +312,24 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   function handleDeleteSwitchChain(chainId) {
+    setExpandedChains((prev) => {
+      if (!prev.has(chainId)) return prev;
+      const next = new Set(prev);
+      next.delete(chainId);
+      return next;
+    });
     setLedger((prev) => {
       const list = Array.isArray(prev.switchChains) ? prev.switchChains : [];
       return { ...prev, switchChains: list.filter((c) => c.id !== chainId) };
+    });
+  }
+
+  function toggleChainExpanded(chainId) {
+    setExpandedChains((prev) => {
+      const next = new Set(prev);
+      if (next.has(chainId)) next.delete(chainId);
+      else next.add(chainId);
+      return next;
     });
   }
 
@@ -1406,11 +1429,73 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             : metrics.baselineReturn > 0
               ? 'text-emerald-600'
               : metrics.baselineReturn < 0 ? 'text-red-500' : 'text-slate-700';
+          const isExpanded = expandedChains.has(chain.id);
+          const legCount = (chain.legs || []).length;
+          const pathCodes = (chain.legs || []).map((leg) => {
+            const t = leg.buyTxId ? txById.get(leg.buyTxId) : null;
+            return t ? t.code : '?';
+          });
+          const lastLeg = chain.legs && chain.legs.length ? chain.legs[chain.legs.length - 1] : null;
+          if (lastLeg) {
+            if (lastLeg.sellTxId) {
+              const sellT = txById.get(lastLeg.sellTxId);
+              pathCodes.push(sellT ? sellT.code : '?');
+            } else if (lastLeg.buyTxId) {
+              pathCodes.push('持有');
+            }
+          }
+          const pathSummary = pathCodes.length ? pathCodes.join(' → ') : '尚未配置任何段';
           return (
             <div
               key={chain.id}
               className="rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
             >
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => toggleChainExpanded(chain.id)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleChainExpanded(chain.id); } }}
+                className={cx(
+                  'flex flex-wrap items-center gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-slate-50/60',
+                  isExpanded ? 'border-b border-slate-100' : ''
+                )}
+              >
+                <ChevronDown className={cx('h-4 w-4 flex-none text-slate-400 transition-transform', !isExpanded && '-rotate-90')} />
+                <div className="min-w-[180px] flex-1">
+                  <div className="truncate text-sm font-semibold text-slate-800">
+                    {chain.name || '未命名链路'}
+                  </div>
+                  <div className="mt-0.5 truncate text-[11px] text-slate-500">{pathSummary}</div>
+                </div>
+                <div className="flex items-center gap-5 text-xs">
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-slate-400">链路收益率</div>
+                    <div className={cx('font-semibold tabular-nums', chainTone)}>
+                      {metrics.valid ? formatSignedPercent(metrics.chainReturn * 100) : '—'}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-slate-400">切换优势</div>
+                    <div className={cx('font-semibold tabular-nums', advantageTone)}>
+                      {metrics.valid ? formatSignedPercent(metrics.advantage * 100) : '—'}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-slate-400">段数</div>
+                    <div className="font-semibold tabular-nums text-slate-700">{legCount}</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-red-600 ring-1 ring-red-200 transition-colors hover:bg-red-50"
+                  onClick={(e) => { e.stopPropagation(); handleDeleteSwitchChain(chain.id); }}
+                  title="删除链路"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  删除
+                </button>
+              </div>
+              {isExpanded ? (
               <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
                 <input
                   className={cx(tableInputClass, 'h-8 flex-1 min-w-[200px] rounded-lg border-slate-200 bg-slate-50 px-2 text-sm hover:bg-white')}
@@ -1418,16 +1503,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                   placeholder="链路名称（可选），例如：场内纳指 159660 → 159501 → 513100"
                   onChange={(e) => handleUpdateSwitchChain(chain.id, { name: e.target.value })}
                 />
-                <button
-                  type="button"
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-red-600 ring-1 ring-red-200 transition-colors hover:bg-red-50"
-                  onClick={() => handleDeleteSwitchChain(chain.id)}
-                  title="删除链路"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  删除链路
-                </button>
               </div>
+              ) : null}
+              {isExpanded ? (
+              <>
               <div className="px-4 py-3 space-y-3">
                 {(chain.legs || []).map((leg, legIndex) => {
                   const buyTx = leg.buyTxId ? txById.get(leg.buyTxId) : null;
@@ -1583,6 +1662,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                   )}
                 </div>
               </div>
+              </>
+              ) : null}
             </div>
           );
         })}
