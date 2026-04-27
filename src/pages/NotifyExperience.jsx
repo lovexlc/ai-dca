@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Bell, CalendarClock, RefreshCw, Save, Trash2, Wallet } from 'lucide-react';
+import { ArrowRight, Bell, RefreshCw, Save, Trash2, Wallet } from 'lucide-react';
 import {
   issueNotifyGroupShareCode,
   joinNotifyGroup,
-  loadNotifyEvents,
   loadNotifyStatus,
   loadHoldingsNotifyRule,
   saveHoldingsNotifyRule,
@@ -27,18 +26,13 @@ import {
   primaryButtonClass,
   secondaryButtonClass
 } from '../components/experience-ui.jsx';
-import {
-  ANDROID_APK_DOWNLOAD_URL,
-  formatEventTimeLabel,
-  resolveEventStatusMeta
-} from '../app/tradePlansHelpers.js';
+import { ANDROID_APK_DOWNLOAD_URL, formatEventTimeLabel } from '../app/tradePlansHelpers.js';
 
 // 通知中心：把原本散落在《交易计划》tab 里的推送通道配置（iOS Bark、Android 配对、
 // 共享组生成/加入、设备列表）抽到独立 tab。其他 tab 只通过 readNotifyClientConfig
 // 读取已配置好的 clientId 来发送通知，配置入口只在这里。
 export function NotifyExperience({ embedded = false }) {
   const [notifyStatus, setNotifyStatus] = useState(null);
-  const [recentEvents, setRecentEvents] = useState([]);
   const [notifyError, setNotifyError] = useState('');
   const [notifyMessage, setNotifyMessage] = useState('');
   const [isSavingSettings, setIsSavingSettings] = useState(false);
@@ -97,22 +91,17 @@ export function NotifyExperience({ embedded = false }) {
         ? `${channelLabels.join(' / ')} 可发送`
         : '请先配置 iOS Bark 或绑定 Android 设备',
       androidDeviceCount: pairedAndroidDevices.length,
-      groupMemberCount: notifyGroupMemberCount,
-      recentEventCount: recentEvents.length
+      groupMemberCount: notifyGroupMemberCount
     };
-  }, [barkConfigured, androidConfigured, pairedAndroidDevices.length, notifyGroupMemberCount, recentEvents.length]);
+  }, [barkConfigured, androidConfigured, pairedAndroidDevices.length, notifyGroupMemberCount]);
 
   useEffect(() => {
     let cancelled = false;
     async function refreshNotifyPanel() {
       try {
-        const [statusPayload, eventsPayload] = await Promise.all([
-          loadNotifyStatus(notifyConfig.notifyClientId),
-          loadNotifyEvents()
-        ]);
+        const statusPayload = await loadNotifyStatus(notifyConfig.notifyClientId);
         if (cancelled) return;
         setNotifyStatus(statusPayload);
-        setRecentEvents(Array.isArray(eventsPayload?.events) ? eventsPayload.events : []);
         setNotifyConfig((current) => ({
           ...current,
           barkDeviceKey: current.barkDeviceKey || statusPayload?.setup?.barkDeviceKey || ''
@@ -151,12 +140,8 @@ export function NotifyExperience({ embedded = false }) {
   }, [notifyConfig.notifyClientId]);
 
   async function refreshNotifyData() {
-    const [statusPayload, eventsPayload] = await Promise.all([
-      loadNotifyStatus(notifyConfig.notifyClientId),
-      loadNotifyEvents()
-    ]);
+    const statusPayload = await loadNotifyStatus(notifyConfig.notifyClientId);
     setNotifyStatus(statusPayload);
-    setRecentEvents(Array.isArray(eventsPayload?.events) ? eventsPayload.events : []);
     setNotifyConfig((current) => ({
       ...current,
       barkDeviceKey: current.barkDeviceKey || statusPayload?.setup?.barkDeviceKey || ''
@@ -610,41 +595,6 @@ export function NotifyExperience({ embedded = false }) {
     );
   }
 
-  function renderHistoryCard() {
-    return (
-      <Card>
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-          <CalendarClock className="h-4 w-4 text-slate-400" />
-          提醒历史
-        </div>
-        <p className="mt-2 text-xs leading-5 text-slate-500">
-          展示最近触发的测试通知和规则提醒。每次触发会更新这里，方便核对推送是否到达。
-        </p>
-        <div className="mt-4 space-y-3">
-          {recentEvents.length
-            ? recentEvents.slice(0, 6).map((item) => {
-                const statusMeta = resolveEventStatusMeta(item.status);
-                return (
-                  <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="min-w-0 text-sm font-semibold text-slate-800">{item.summary || item.title || '提醒记录'}</div>
-                      <Pill tone={statusMeta.tone}>{statusMeta.label}</Pill>
-                    </div>
-                    <div className="mt-2 text-sm leading-6 text-slate-600">{item.body || item.title || '当前没有更多提醒内容。'}</div>
-                    <div className="mt-2 text-xs text-slate-400">{formatEventTimeLabel(item.createdAt)}</div>
-                  </div>
-                );
-              })
-            : (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm leading-6 text-slate-500">
-                目前还没有提醒记录。触发测试通知或规则提醒后，这里会展示实际通知内容。
-              </div>
-            )}
-        </div>
-      </Card>
-    );
-  }
-
   return (
     <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -655,30 +605,20 @@ export function NotifyExperience({ embedded = false }) {
             通知设置
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-            统一管理推送通道与共享组。各 tab 的提醒（如交易计划、定投、加仓计划）都会复用这里配置的 iOS / Android 接入。
+            统一管理推送通道、共享组与持仓提醒规则。各 tab 的提醒（如交易计划、定投、加仓计划）都会复用这里配置的 iOS / Android 接入。提醒历史可在「交易计划中心」查看。
           </p>
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-3">
         <StatCard accent="indigo" eyebrow="通道状态" value={summary.channelStatus} note={summary.channelNote} />
         <StatCard eyebrow="共享组成员" value={`${summary.groupMemberCount || 0} 个浏览器`} note="加入同一共享组的浏览器都会收到提醒" />
         <StatCard eyebrow="已关联 Android" value={`${summary.androidDeviceCount} 台`} note="在 Android tab 添加 / 解绑设备" />
-        <StatCard eyebrow="提醒历史" value={`${summary.recentEventCount} 条`} note="最近触发的测试通知和规则提醒" />
       </div>
 
-      <div className="space-y-6 lg:hidden">
+      <div className="space-y-6">
         {renderConfigCard()}
         {renderHoldingsRuleCard()}
-        {renderHistoryCard()}
-      </div>
-
-      <div className="hidden items-start gap-6 lg:grid lg:grid-cols-[minmax(0,1.5fr)_minmax(360px,0.9fr)]">
-        <div className="min-w-0 space-y-6">
-          {renderConfigCard()}
-          {renderHoldingsRuleCard()}
-        </div>
-        <div className="min-w-0 space-y-6 lg:sticky lg:top-4">{renderHistoryCard()}</div>
       </div>
     </div>
   );
