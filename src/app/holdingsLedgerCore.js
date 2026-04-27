@@ -3,8 +3,9 @@
  * + portfolio-level summary. Mirrors the Excel model the user already uses:
  *   - 每笔交易单单独一行（BUY/SELL）
  *   - 按基金代码聚合 → 总份额 / 平均成本 / 总收益 / 当日收益
- *   - 平均成本 = 所有 BUY 的 shares 加权均值，卖出不影响 avgCost
- *   - 总份额 = Σ BUY.shares − Σ SELL.shares（客态全部卖光则 0）
+ *   - 平均成本 = 按时间顺序跟踪的当前持仓加权均价（移动加权平均）。
+ *     中间被全部卖光后成本重置，仅后续买入计入本轮成本。
+ *   - 总份额 = 当前持仓份额（客态全部卖光则 0）
  *   - 总收益仅算未实现（mark-to-market），不包含卖出已实现盈亏
  *   - 当日收益 = (latestNav − previousNav) × totalShares
  */
@@ -324,10 +325,39 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}) {
     const hasPreviousNav = previousNav > 0;
 
     const totalShares = round(bucket.buyShares - bucket.sellShares, 4);
-    // Weighted avg cost across BUYs (sells do not change avg cost).
-    const avgCost = bucket.buyShares > 0 ? round(bucket.buyAmount / bucket.buyShares, 4) : 0;
-    // 总成本 = 当前未卖出份额 × 加权均价（= open cost）；卖光后=0
-    const totalCost = totalShares > 0 ? round(totalShares * avgCost, 2) : 0;
+    // 按时间顺序的移动加权平均成本：全部卖光后重置，后续买入仅计入本轮。
+    // BUY: openShares、openAmount 同步增加。
+    // SELL（非独立已结清）：按当前均价按比例减少 openAmount，均价不变；卖光则两者归零。
+    // 独立已结清交易（costPrice > 0）不参与仓位。
+    const sortedTxs = bucket.transactions.slice().sort((a, b) => {
+      const da = String(a.date || '');
+      const db = String(b.date || '');
+      if (da !== db) return da < db ? -1 : 1;
+      // 同一天：BUY 在 SELL 之前，避免本轮买入被上一轮卖出推变成本。
+      if (a.type !== b.type) return a.type === 'BUY' ? -1 : 1;
+      return String(a.id || '').localeCompare(String(b.id || ''));
+    });
+    let openShares = 0;
+    let openAmount = 0;
+    for (const tx of sortedTxs) {
+      if (tx.type === 'BUY') {
+        openShares = round(openShares + (Number(tx.shares) || 0), 4);
+        openAmount = round(openAmount + (Number(tx.shares) || 0) * (Number(tx.price) || 0), 4);
+      } else if (tx.type === 'SELL') {
+        if (Number(tx.costPrice) > 0) continue; // 独立已结清交易不动仓位
+        if (openShares <= 0) continue;
+        const sellQty = Math.min(Number(tx.shares) || 0, openShares);
+        const avg = openShares > 0 ? openAmount / openShares : 0;
+        openShares = round(openShares - sellQty, 4);
+        openAmount = round(Math.max(0, openAmount - avg * sellQty), 4);
+        if (openShares <= 0.0001) {
+          openShares = 0;
+          openAmount = 0;
+        }
+      }
+    }
+    const avgCost = openShares > 0 ? round(openAmount / openShares, 4) : 0;
+    const totalCost = openShares > 0 ? round(openShares * avgCost, 2) : 0;
     const marketValue = hasLatestNav && totalShares > 0 ? round(totalShares * latestNav, 2) : 0;
     const totalProfit = hasLatestNav && totalShares > 0 ? round(marketValue - totalCost, 2) : 0;
     const totalReturnRate = totalCost > 0 ? round((totalProfit / totalCost) * 100, 2) : 0;
