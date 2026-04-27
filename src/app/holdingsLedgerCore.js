@@ -8,8 +8,10 @@
  *   - 总份额 = 当前持仓份额（客态全部卖光则 0）
  *   - 总收益仅算未实现（mark-to-market），不包含卖出已实现盈亏
  *   - 当日收益 = (latestNav − previousNav) × totalShares
- *     仅当持仓的 latestNavDate === 今日（Asia/Shanghai）时计入；场外基金净值 T+1 发布，
- *     盘中 / 发布前 latestNavDate 仍留在昨天，那段涨跌是"昨日 vs 前日"，不应重复计入今日收益。
+ *     仅当持仓的 latestNavDate === "该 kind 的预期最新 NAV 日期" 时计入：
+ *       · exchange（场内 ETF）：盘中实时，预期 = 今日（非交易日则上一个工作日）。
+ *       · otc（场外，含 QDII）：净值 T+1 发布，预期 = 上一个工作日。周一回退到上周五（QDII T-3），
+ *         周二~周五回退到前一天（T-1）；这样 4-24（周五）的 NAV 在周一就能正确视为"今日"更新。
  */
 
 const FUND_CODE_PATTERN = /^\d{6}$/;
@@ -25,8 +27,8 @@ export function round(value, precision = 2) {
 
 /**
  * 获取上海时区的"今日"日期字符串（YYYY-MM-DD），用于和 snapshot.latestNavDate 做比对。
- * 场外基金净值是 T+1 发布的，盘中 / 发布前其 latestNavDate 仍然是昨天；以此为门控可避免
- * 重复计入昨日场外涨跌。
+ * 对场内 ETF 而言今日就是预期的最新 NAV 日期；对场外基金（包括 QDII）预期是"上一个工作日"，
+ * 详见 getExpectedLatestNavDate。
  */
 export function getTodayShanghaiDate() {
   try {
@@ -35,6 +37,41 @@ export function getTodayShanghaiDate() {
     const shifted = new Date(Date.now() + 8 * 60 * 60 * 1000);
     return shifted.toISOString().slice(0, 10);
   }
+}
+
+/**
+ * 返回指定 kind 在 todayDate 当日预期的"最新 NAV 日期"。
+ * - exchange（场内 ETF）：盘中实时，交易日 = today；周六/日上一个工作日。
+ * - otc（场外，含 QDII）：净值 T+1 发布，取上一个工作日。
+ *     周一 → 上周五（today - 3，QDII T-3）、周二~五 → today - 1（T-1）、周六 → today - 1（周五）、周日 → today - 2（周五）。
+ * 返回 YYYY-MM-DD 字符串。todayDate 默认取上海时区今日。
+ */
+export function getExpectedLatestNavDate(kind = 'otc', todayDate = getTodayShanghaiDate()) {
+  const today = String(todayDate || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
+    return today;
+  }
+  const [y, m, d] = today.split('-').map(Number);
+  const base = new Date(Date.UTC(y, m - 1, d));
+  const dayOfWeek = base.getUTCDay(); // 0=日, 1=一, ..., 6=六
+  const subtractDays = (delta) => {
+    const next = new Date(base.getTime() - delta * 86400000);
+    const yy = next.getUTCFullYear();
+    const mm = String(next.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(next.getUTCDate()).padStart(2, '0');
+    return `${yy}-${mm}-${dd}`;
+  };
+  const normalizedKind = kind === 'exchange' ? 'exchange' : 'otc';
+  if (normalizedKind === 'exchange') {
+    if (dayOfWeek === 0) return subtractDays(2); // 周日 → 上周五
+    if (dayOfWeek === 6) return subtractDays(1); // 周六 → 上周五
+    return today;
+  }
+  // otc：上一个工作日
+  if (dayOfWeek === 1) return subtractDays(3); // 周一 → 上周五（QDII T-3）
+  if (dayOfWeek === 0) return subtractDays(2); // 周日 → 上周五
+  if (dayOfWeek === 6) return subtractDays(1); // 周六 → 周五
+  return subtractDays(1); // 周二~五 → 前一天
 }
 
 /** Pad leading zeros so Excel's stripped codes (e.g. 21000, 18738) come back as 6-digit. */
@@ -230,7 +267,11 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
   const hasPreviousNav = previousNav > 0;
   const latestNavDate = String(snapshot?.latestNavDate || '');
   const todayDate = String(options?.todayDate || getTodayShanghaiDate());
-  const isLatestNavToday = !!latestNavDate && latestNavDate === todayDate;
+  // 场内 ETF 今日实时；场外/QDII NAV T+1 发布，最新可用 NAV 是上一个工作日（周一 → 上周五）。
+  const expectedLatestNavDate = getExpectedLatestNavDate(normalized.kind, todayDate);
+  const isLatestNavToday = !!latestNavDate
+    && latestNavDate >= expectedLatestNavDate
+    && latestNavDate <= todayDate;
   const cost = round(normalized.price * normalized.shares, 2);
 
   if (normalized.type === 'SELL') {
@@ -346,7 +387,10 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     const hasLatestNav = latestNav > 0;
     const hasPreviousNav = previousNav > 0;
     const latestNavDateStr = String(snapshot?.latestNavDate || '');
-    const isLatestNavToday = !!latestNavDateStr && latestNavDateStr === todayDate;
+    const expectedLatestNavDate = getExpectedLatestNavDate(bucket.kind, todayDate);
+    const isLatestNavToday = !!latestNavDateStr
+      && latestNavDateStr >= expectedLatestNavDate
+      && latestNavDateStr <= todayDate;
 
     const totalShares = round(bucket.buyShares - bucket.sellShares, 4);
     // 按时间顺序的移动加权平均成本：全部卖光后重置，后续买入仅计入本轮。
