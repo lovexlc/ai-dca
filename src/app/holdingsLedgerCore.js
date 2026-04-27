@@ -427,6 +427,10 @@ export function summarizePortfolio(aggregates = []) {
     failedCodes: []
   };
 
+  const navDatesSeen = new Set();
+  const exchangeNavDates = new Set();
+  const otcNavDates = new Set();
+
   for (const agg of Array.isArray(aggregates) ? aggregates : []) {
     if (agg.snapshotError && agg.hasPosition) {
       summary.failedCodes.push(agg.code);
@@ -446,6 +450,11 @@ export function summarizePortfolio(aggregates = []) {
       if (agg.latestNavDate && agg.latestNavDate > summary.latestNavDate) {
         summary.latestNavDate = agg.latestNavDate;
       }
+      if (agg.latestNavDate) {
+        navDatesSeen.add(agg.latestNavDate);
+        if (agg.kind === 'exchange') exchangeNavDates.add(agg.latestNavDate);
+        else if (agg.kind === 'otc') otcNavDates.add(agg.latestNavDate);
+      }
     }
     if (agg.hasLatestNav && agg.hasPreviousNav) {
       summary.todayReadyCount += 1;
@@ -461,6 +470,24 @@ export function summarizePortfolio(aggregates = []) {
   summary.todayReturnRate = summary.previousMarketValue > 0
     ? round((summary.todayProfit / summary.previousMarketValue) * 100, 2)
     : 0;
+
+  // 场内基金交易时段会先更新，场外基金净值要等当晚才发布；
+  // 用各持仓的 latestNavDate 是否一致来判断当日数据是否同步完整。
+  let navDateCoverage = 'none';
+  if (summary.assetCount > 0 && summary.pricedCount > 0) {
+    if (summary.pricedCount === summary.assetCount && navDatesSeen.size === 1) {
+      navDateCoverage = 'full';
+    } else {
+      navDateCoverage = 'partial';
+    }
+  }
+  summary.navDateCoverage = navDateCoverage;
+  summary.latestExchangeNavDate = exchangeNavDates.size
+    ? Array.from(exchangeNavDates).sort().slice(-1)[0]
+    : '';
+  summary.latestOtcNavDate = otcNavDates.size
+    ? Array.from(otcNavDates).sort().slice(-1)[0]
+    : '';
 
   return summary;
 }

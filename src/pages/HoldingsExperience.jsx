@@ -796,6 +796,18 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     const profitTone = portfolio.totalProfit > 0 ? 'emerald' : portfolio.totalProfit < 0 ? 'red' : 'slate';
     const todayTone = portfolio.todayProfit > 0 ? 'emerald' : portfolio.todayProfit < 0 ? 'red' : 'slate';
     const navIncomplete = portfolio.assetCount > 0 && portfolio.pricedCount < portfolio.assetCount;
+    const navBadge = (() => {
+      if (portfolio.navDateCoverage === 'full') {
+        return { text: '全部', className: 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200', title: '场内 + 场外 当日净值均已同步' };
+      }
+      if (portfolio.navDateCoverage === 'partial') {
+        const parts = [];
+        if (portfolio.latestExchangeNavDate) parts.push(`场内 ${portfolio.latestExchangeNavDate}`);
+        if (portfolio.latestOtcNavDate) parts.push(`场外 ${portfolio.latestOtcNavDate}`);
+        return { text: '部分', className: 'bg-amber-50 text-amber-600 ring-1 ring-amber-200', title: parts.length ? `当日净值同步状态：${parts.join(' · ')}` : '部分持仓净值尚未同步' };
+      }
+      return null;
+    })();
     const lastUpdateDisplay = (() => {
       if (portfolio.latestSnapshotAt) {
         const ts = Date.parse(portfolio.latestSnapshotAt);
@@ -818,8 +830,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       { label: '总成本', value: formatCurrency(portfolio.totalCost, '¥', 2), tone: 'slate' },
       { label: '总收益', value: formatSignedCurrency(portfolio.totalProfit), tone: profitTone },
       { label: '总收益率', value: formatSignedPercent(portfolio.totalReturnRate), tone: profitTone },
-      { label: '当日收益', value: formatSignedCurrency(portfolio.todayProfit), tone: todayTone },
-      { label: '当日收益率', value: formatSignedPercent(portfolio.todayReturnRate), tone: todayTone },
+      { label: '当日收益', value: formatSignedCurrency(portfolio.todayProfit), tone: todayTone, badge: navBadge },
+      { label: '当日收益率', value: formatSignedPercent(portfolio.todayReturnRate), tone: todayTone, badge: navBadge },
       { label: '持仓数量', value: String(portfolio.assetCount), tone: 'slate' },
       { label: '最后更新', value: lastUpdateDisplay, tone: navIncomplete ? 'amber' : 'slate', small: true }
     ];
@@ -835,7 +847,17 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
           {cards.map((card) => (
             <div key={card.label}>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">{card.label}</div>
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                <span>{card.label}</span>
+                {card.badge ? (
+                  <span
+                    className={cx('rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-normal', card.badge.className)}
+                    title={card.badge.title}
+                  >
+                    {card.badge.text}
+                  </span>
+                ) : null}
+              </div>
               <div className={cx(
                 'mt-1 font-extrabold tracking-tight tabular-nums',
                 card.small ? 'text-base' : 'text-xl',
