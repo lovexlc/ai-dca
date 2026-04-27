@@ -85,6 +85,9 @@ export function NotifyExperience({ embedded = false }) {
   // 「消息推送配置」默认在检测到已配置（iOS Bark 或 Android 任意一项）后自动收起，
   // 点击卡片头部可手动展开。null 表示尚未从远端收到 status，默认保持展开。
   const [configCollapsed, setConfigCollapsed] = useState(null);
+  // 「提醒策略」内的多条策略默认全部收起，点击标题切换展开。
+  // 取值：'rules' | 'holdings' | null。同时只展开一条，避免页面过长。
+  const [expandedStrategy, setExpandedStrategy] = useState(null);
 
   function buildLatestHoldingsDigest() {
     try {
@@ -659,36 +662,100 @@ export function NotifyExperience({ embedded = false }) {
     );
   }
 
-  function renderHoldingsRuleCard() {
-    return _renderHoldingsRuleCardImpl();
+  // 「提醒策略」：将原本独立的「交易计划规则同步」与「持仓当日收益提醒」合并为一张可折叠卡片。
+  // 每条默认收起，点击头部切换展开 / 收起，同时只展开一条。
+  function renderStrategyCard() {
+    const rulesLastSyncedLabel = rulesLastSyncedAt
+      ? formatEventTimeLabel(rulesLastSyncedAt)
+      : '本次会话尚未同步';
+    const holdingsEnabled = Boolean(holdingsRule.enabled);
+    const items = [
+      {
+        key: 'rules',
+        icon: <RefreshCw className="h-4 w-4 text-indigo-500" />,
+        title: '交易计划规则同步',
+        subtitle: `上次同步：${rulesLastSyncedLabel}`,
+        pill: null,
+        body: renderSyncRulesBody()
+      },
+      {
+        key: 'holdings',
+        icon: <Wallet className="h-4 w-4 text-emerald-500" />,
+        title: '持仓当日收益提醒',
+        subtitle: '北京时间 15:30 / 20:30 自动推送当日收益',
+        pill: holdingsEnabled
+          ? { tone: 'emerald', label: '已启用' }
+          : { tone: 'slate', label: '未启用' },
+        body: renderHoldingsRuleBody()
+      }
+    ];
+    return (
+      <Card>
+        <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Strategies</div>
+        <div className="mt-1 text-base font-bold text-slate-900 sm:text-lg">提醒策略　·　{items.length} 条</div>
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          统一管理本机会触发的推送策略。每条默认收起，点击标题可展开查看明细与操作。
+        </p>
+        <div className="mt-4 space-y-3">
+          {items.map((item) => {
+            const expanded = expandedStrategy === item.key;
+            return (
+              <div key={item.key} className="rounded-2xl border border-slate-200 bg-white">
+                <button
+                  type="button"
+                  onClick={() => setExpandedStrategy(expanded ? null : item.key)}
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                  aria-expanded={expanded}
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    {item.icon}
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-slate-800">{item.title}</div>
+                      <div className="mt-0.5 truncate text-xs text-slate-500">{item.subtitle}</div>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {item.pill ? <Pill tone={item.pill.tone}>{item.pill.label}</Pill> : null}
+                    {expanded
+                      ? <ChevronUp className="h-4 w-4 text-slate-400" />
+                      : <ChevronDown className="h-4 w-4 text-slate-400" />}
+                  </div>
+                </button>
+                {expanded ? (
+                  <div className="border-t border-slate-100 px-4 py-4">
+                    {item.body}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    );
   }
 
-  function renderSyncRulesCard() {
+  function renderSyncRulesBody() {
     const lastSyncedLabel = rulesLastSyncedAt
       ? formatEventTimeLabel(rulesLastSyncedAt)
       : '本次会话尚未同步';
     return (
-      <Card>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">规则同步</div>
-            <div className="mt-1 text-base font-bold text-slate-900 sm:text-lg">提醒规则同步</div>
-            <p className="mt-1 text-xs leading-5 text-slate-500">
-              将本机交易计划与定投规则同步到云端。交易计划中心修改后会自动同步，这里只是手动补同步入口。
-            </p>
-            <p className="mt-1 text-xs text-slate-400">上次同步：{lastSyncedLabel}</p>
-          </div>
-          <button
-            type="button"
-            className={cx(secondaryButtonClass, isSyncingRules && 'cursor-not-allowed opacity-60')}
-            onClick={handleSyncRules}
-            disabled={isSyncingRules}
-          >
-            <RefreshCw className="h-4 w-4" />
-            {isSyncingRules ? '正在同步' : '同步通知规则'}
-          </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs leading-5 text-slate-500">
+            将本机交易计划与定投规则同步到云端。交易计划中心修改后会自动同步，这里只是手动补同步入口。
+          </p>
+          <p className="mt-1 text-xs text-slate-400">上次同步：{lastSyncedLabel}</p>
         </div>
-      </Card>
+        <button
+          type="button"
+          className={cx(secondaryButtonClass, isSyncingRules && 'cursor-not-allowed opacity-60')}
+          onClick={handleSyncRules}
+          disabled={isSyncingRules}
+        >
+          <RefreshCw className="h-4 w-4" />
+          {isSyncingRules ? '正在同步' : '同步通知规则'}
+        </button>
+      </div>
     );
   }
 
@@ -767,7 +834,7 @@ export function NotifyExperience({ embedded = false }) {
     );
   }
 
-  function _renderHoldingsRuleCardImpl() {
+  function renderHoldingsRuleBody() {
     const digest = holdingsRule.digest || null;
     const exchangeCount = Array.isArray(digest?.exchange) ? digest.exchange.length : 0;
     const otcCount = Array.isArray(digest?.otc) ? digest.otc.length : 0;
@@ -783,16 +850,12 @@ export function NotifyExperience({ embedded = false }) {
     const isToggleBusy = isSavingHoldingsRule;
 
     return (
-      <Card>
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-          <Wallet className="h-4 w-4 text-emerald-500" />
-          持仓当日收益提醒
-        </div>
-        <p className="mt-2 text-xs leading-5 text-slate-500">
+      <div>
+        <p className="text-xs leading-5 text-slate-500">
           北京时间 15:30 推送场内当日收益；20:30 推送场外，未成功时 21:30 兜底；同日内只发一次。
         </p>
 
-        <label className="mt-4 flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+        <label className="mt-3 flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
           <input
             type="checkbox"
             className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
@@ -841,7 +904,7 @@ export function NotifyExperience({ embedded = false }) {
             </span>
           ) : null}
         </div>
-      </Card>
+      </div>
     );
   }
 
@@ -868,9 +931,8 @@ export function NotifyExperience({ embedded = false }) {
 
       <div className="space-y-6">
         {renderConfigCard()}
-        {renderSyncRulesCard()}
+        {renderStrategyCard()}
         {renderHistoryCard()}
-        {renderHoldingsRuleCard()}
       </div>
     </div>
   );
