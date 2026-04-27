@@ -499,6 +499,9 @@ export function summarizePortfolio(aggregates = []) {
   const navDatesSeen = new Set();
   const exchangeNavDates = new Set();
   const otcNavDates = new Set();
+  // 每个持仓 kind 不同，期望的最新 NAV 日期也不同（场内当日、场外/QDII 上一个交易日，QDII 周一为 T-3）。
+  // 这里用 agg.hasTodayNav 表示该持仓的 latestNavDate 已达预期最新日期，作为「当日数据已就绪」的判据。
+  let navTodayReadyCount = 0;
 
   for (const agg of Array.isArray(aggregates) ? aggregates : []) {
     if (agg.snapshotError && agg.hasPosition) {
@@ -524,6 +527,7 @@ export function summarizePortfolio(aggregates = []) {
         if (agg.kind === 'exchange') exchangeNavDates.add(agg.latestNavDate);
         else if (agg.kind === 'otc') otcNavDates.add(agg.latestNavDate);
       }
+      if (agg.hasTodayNav) navTodayReadyCount += 1;
     }
     if (agg.hasLatestNav && agg.hasPreviousNav && agg.hasTodayNav) {
       summary.todayReadyCount += 1;
@@ -540,11 +544,11 @@ export function summarizePortfolio(aggregates = []) {
     ? round((summary.todayProfit / summary.previousMarketValue) * 100, 2)
     : 0;
 
-  // 场内基金交易时段会先更新，场外基金净值要等当晚才发布；
-  // 用各持仓的 latestNavDate 是否一致来判断当日数据是否同步完整。
+  // 场内基金交易时段会先更新，场外基金净值要等当晚才发布，QDII 周一是 T-3。
+  // 因此不能强求所有持仓 latestNavDate 一致，只要每个持仓的 NAV 达到其期望最新日期即可视为「全部」。
   let navDateCoverage = 'none';
   if (summary.assetCount > 0 && summary.pricedCount > 0) {
-    if (summary.pricedCount === summary.assetCount && navDatesSeen.size === 1) {
+    if (summary.pricedCount === summary.assetCount && navTodayReadyCount === summary.assetCount) {
       navDateCoverage = 'full';
     } else {
       navDateCoverage = 'partial';
