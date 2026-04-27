@@ -2,7 +2,7 @@ export const PROJECT_ID = '4075224789216868860';
 export const PROJECT_TITLE = '股票建仓策略看板';
 
 // 主 tab 顺序与元数据：所有页面都通过 WorkspacePage（侧边栏 + ?tab=）展示。
-export const PRIMARY_TAB_ORDER = ['holdings', 'tradePlans', 'home', 'dca', 'fundSwitch', 'history', 'backup'];
+export const PRIMARY_TAB_ORDER = ['holdings', 'tradePlans', 'home', 'dca', 'fundSwitch', 'history', 'notify', 'backup'];
 
 export const PRIMARY_TAB_META = {
   tradePlans: { label: '交易计划', hrefKey: 'tradePlans' },
@@ -12,6 +12,7 @@ export const PRIMARY_TAB_META = {
   history: { label: '交易历史', hrefKey: 'history' },
   holdings: { label: '持仓总览', hrefKey: 'holdings' },
   newPlan: { label: '新建计划', hrefKey: 'newPlan' },
+  notify: { label: '通知', hrefKey: 'notify' },
   backup: { label: '数据同步 / 备份', hrefKey: 'backup' }
 };
 
@@ -27,6 +28,7 @@ export function createPageLinks({ inPagesDir = false } = {}) {
     history: `${indexHref}?tab=history`,
     holdings: `${indexHref}?tab=holdings`,
     newPlan: `${indexHref}?tab=newPlan`,
+    notify: `${indexHref}?tab=notify`,
     backup: `${indexHref}?tab=backup`,
     // 旧入口已并入交易计划 tab 的 #new 子视图
     accumNew: `${indexHref}?tab=tradePlans#new`,

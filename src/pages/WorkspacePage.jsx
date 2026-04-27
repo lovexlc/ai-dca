@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarClock, CloudUpload, History, ListChecks, Shuffle, TrendingUp, Wallet } from 'lucide-react';
+import { Bell, CalendarClock, CloudUpload, History, ListChecks, Shuffle, TrendingUp, Wallet } from 'lucide-react';
 import { isFundSwitchViewHash } from '../app/fundSwitch.js';
 import { PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
@@ -11,6 +11,7 @@ const FundSwitchExperience = lazy(() => import('./FundSwitchExperience.jsx').the
 const HistoryExperience = lazy(() => import('./HistoryExperience.jsx').then((m) => ({ default: m.HistoryExperience })));
 const HoldingsExperience = lazy(() => import('./HoldingsExperience.jsx').then((m) => ({ default: m.HoldingsExperience })));
 const HomeExperience = lazy(() => import('./HomeExperience.jsx').then((m) => ({ default: m.HomeExperience })));
+const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) => ({ default: m.NotifyExperience })));
 const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').then((m) => ({ default: m.TradePlansExperience })));
 
 const DEFAULT_WORKSPACE_TAB = 'holdings';
@@ -22,6 +23,7 @@ const WORKSPACE_TITLES = {
   fundSwitch: '基金切换收益分析',
   history: '交易历史',
   holdings: '持仓总览',
+  notify: '通知设置',
   backup: '数据同步 / 备份'
 };
 
@@ -32,6 +34,7 @@ const SIDEBAR_ICONS = {
   fundSwitch: Shuffle,
   history: History,
   holdings: Wallet,
+  notify: Bell,
   backup: CloudUpload
 };
 
@@ -156,6 +159,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         return <HistoryExperience {...sharedProps} />;
       case 'holdings':
         return <HoldingsExperience {...sharedProps} />;
+      case 'notify':
+        return <NotifyExperience {...sharedProps} />;
       case 'backup':
         return <BackupExperience {...sharedProps} />;
       case 'home':
