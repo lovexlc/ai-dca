@@ -574,8 +574,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         agg.hasLatestNav ? agg.marketValue.toFixed(2) : '',
         agg.hasLatestNav ? agg.totalProfit.toFixed(2) : '',
         agg.hasLatestNav ? `${agg.totalReturnRate.toFixed(2)}%` : '',
-        (agg.hasLatestNav && agg.hasPreviousNav) ? agg.todayProfit.toFixed(2) : '',
-        (agg.hasLatestNav && agg.hasPreviousNav) ? `${agg.todayReturnRate.toFixed(2)}%` : ''
+        agg.hasTodayNav ? agg.todayProfit.toFixed(2) : '',
+        agg.hasTodayNav ? `${agg.todayReturnRate.toFixed(2)}%` : ''
       ].join('\t');
     });
     return { count: filtered.length, tsv: [header.join('\t'), ...rows].join('\n') };
@@ -1053,10 +1053,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       : metrics.hasLatestNav ? formatSignedPercent(metrics.totalReturnRate) : '—';
     const todayDisplay = metrics.isSell
       ? '—'
-      : (metrics.hasLatestNav && metrics.hasPreviousNav) ? formatSignedCurrency(metrics.todayProfit) : '—';
+      : metrics.hasTodayNav ? formatSignedCurrency(metrics.todayProfit) : '—';
     const todayRateDisplay = metrics.isSell
       ? '—'
-      : (metrics.hasLatestNav && metrics.hasPreviousNav) ? formatSignedPercent(metrics.todayReturnRate) : '—';
+      : metrics.hasTodayNav ? formatSignedPercent(metrics.todayReturnRate) : '—';
     const marketOrProceedsLabelClass = metrics.isSell ? 'text-slate-500' : 'text-slate-700';
 
     return (
@@ -1205,7 +1205,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                     {agg.hasLatestNav ? formatSignedPercent(agg.totalReturnRate) : '—'}
                   </td>
                   <td className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', todayClass)}>
-                    {agg.hasLatestNav && agg.hasPreviousNav ? formatSignedCurrency(agg.todayProfit) : '—'}
+                    {agg.hasTodayNav ? formatSignedCurrency(agg.todayProfit) : '—'}
                   </td>
                   <td className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', todayClass)}>
                     {agg.hasLatestNav && agg.hasPreviousNav ? formatSignedPercent(agg.todayReturnRate) : '—'}
@@ -1740,7 +1740,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           <div>
             <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">今日盈亏</dt>
             <dd className={cx('mt-1 tabular-nums', todayTone)}>
-              {agg.hasLatestNav && agg.hasPreviousNav ? `${formatSignedCurrency(agg.todayProfit)} (${formatSignedPercent(agg.todayReturnRate)})` : '—'}
+              {agg.hasTodayNav ? `${formatSignedCurrency(agg.todayProfit)} (${formatSignedPercent(agg.todayReturnRate)})` : '—'}
             </dd>
           </div>
           <div>

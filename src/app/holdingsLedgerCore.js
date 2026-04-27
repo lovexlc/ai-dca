@@ -8,6 +8,8 @@
  *   - 总份额 = 当前持仓份额（客态全部卖光则 0）
  *   - 总收益仅算未实现（mark-to-market），不包含卖出已实现盈亏
  *   - 当日收益 = (latestNav − previousNav) × totalShares
+ *     仅当持仓的 latestNavDate === 今日（Asia/Shanghai）时计入；场外基金净值 T+1 发布，
+ *     盘中 / 发布前 latestNavDate 仍留在昨天，那段涨跌是"昨日 vs 前日"，不应重复计入今日收益。
  */
 
 const FUND_CODE_PATTERN = /^\d{6}$/;
@@ -19,6 +21,20 @@ export const FUND_KINDS = ['otc', 'exchange'];
 export function round(value, precision = 2) {
   const factor = 10 ** precision;
   return Math.round((Number(value) || 0) * factor) / factor;
+}
+
+/**
+ * 获取上海时区的"今日"日期字符串（YYYY-MM-DD），用于和 snapshot.latestNavDate 做比对。
+ * 场外基金净值是 T+1 发布的，盘中 / 发布前其 latestNavDate 仍然是昨天；以此为门控可避免
+ * 重复计入昨日场外涨跌。
+ */
+export function getTodayShanghaiDate() {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
+  } catch {
+    const shifted = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    return shifted.toISOString().slice(0, 10);
+  }
 }
 
 /** Pad leading zeros so Excel's stripped codes (e.g. 21000, 18738) come back as 6-digit. */
@@ -206,12 +222,15 @@ export function getLedgerCodeList(transactions = []) {
 }
 
 /** Metrics per lot/row, matching the Excel "成交流水" sheet columns. */
-export function buildLotMetrics(tx = {}, snapshot = null) {
+export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
   const normalized = normalizeTransaction(tx);
   const latestNav = round(Number(snapshot?.latestNav) || 0, 4);
   const previousNav = round(Number(snapshot?.previousNav) || 0, 4);
   const hasLatestNav = latestNav > 0;
   const hasPreviousNav = previousNav > 0;
+  const latestNavDate = String(snapshot?.latestNavDate || '');
+  const todayDate = String(options?.todayDate || getTodayShanghaiDate());
+  const isLatestNavToday = !!latestNavDate && latestNavDate === todayDate;
   const cost = round(normalized.price * normalized.shares, 2);
 
   if (normalized.type === 'SELL') {
@@ -230,9 +249,10 @@ export function buildLotMetrics(tx = {}, snapshot = null) {
       todayReturnRate: 0,
       hasLatestNav,
       hasPreviousNav,
+      hasTodayNav: false,
       latestNav,
       previousNav,
-      latestNavDate: String(snapshot?.latestNavDate || ''),
+      latestNavDate,
       previousNavDate: String(snapshot?.previousNavDate || '')
     };
   }
@@ -240,11 +260,11 @@ export function buildLotMetrics(tx = {}, snapshot = null) {
   const marketValue = hasLatestNav ? round(latestNav * normalized.shares, 2) : 0;
   const totalProfit = hasLatestNav ? round((latestNav - normalized.price) * normalized.shares, 2) : 0;
   const totalReturnRate = hasLatestNav && cost > 0 ? round((totalProfit / cost) * 100, 2) : 0;
-  const todayProfit = hasLatestNav && hasPreviousNav
+  const todayProfit = hasLatestNav && hasPreviousNav && isLatestNavToday
     ? round((latestNav - previousNav) * normalized.shares, 2)
     : 0;
-  const previousValue = hasPreviousNav ? previousNav * normalized.shares : 0;
-  const todayReturnRate = hasLatestNav && hasPreviousNav && previousValue > 0
+  const previousValue = hasPreviousNav && isLatestNavToday ? previousNav * normalized.shares : 0;
+  const todayReturnRate = hasLatestNav && hasPreviousNav && isLatestNavToday && previousValue > 0
     ? round((todayProfit / previousValue) * 100, 2)
     : 0;
 
@@ -262,17 +282,19 @@ export function buildLotMetrics(tx = {}, snapshot = null) {
     todayReturnRate,
     hasLatestNav,
     hasPreviousNav,
+    hasTodayNav: isLatestNavToday,
     latestNav,
     previousNav,
-    latestNavDate: String(snapshot?.latestNavDate || ''),
+    latestNavDate,
     previousNavDate: String(snapshot?.previousNavDate || '')
   };
 }
 
 /** Group transactions by fund code and produce the Excel "基金汇总" sheet shape. */
-export function aggregateByCode(transactions = [], snapshotsByCode = {}) {
+export function aggregateByCode(transactions = [], snapshotsByCode = {}, options = {}) {
   const normalizedTxs = sanitizeTransactions(transactions, { filterInvalid: false });
   const map = new Map();
+  const todayDate = String(options?.todayDate || getTodayShanghaiDate());
 
   for (const tx of normalizedTxs) {
     if (!tx.code) continue;
@@ -323,6 +345,8 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}) {
     const previousNav = round(Number(snapshot?.previousNav) || 0, 4);
     const hasLatestNav = latestNav > 0;
     const hasPreviousNav = previousNav > 0;
+    const latestNavDateStr = String(snapshot?.latestNavDate || '');
+    const isLatestNavToday = !!latestNavDateStr && latestNavDateStr === todayDate;
 
     const totalShares = round(bucket.buyShares - bucket.sellShares, 4);
     // 按时间顺序的移动加权平均成本：全部卖光后重置，后续买入仅计入本轮。
@@ -361,10 +385,10 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}) {
     const marketValue = hasLatestNav && totalShares > 0 ? round(totalShares * latestNav, 2) : 0;
     const totalProfit = hasLatestNav && totalShares > 0 ? round(marketValue - totalCost, 2) : 0;
     const totalReturnRate = totalCost > 0 ? round((totalProfit / totalCost) * 100, 2) : 0;
-    const todayProfit = hasLatestNav && hasPreviousNav && totalShares > 0
+    const todayProfit = hasLatestNav && hasPreviousNav && totalShares > 0 && isLatestNavToday
       ? round((latestNav - previousNav) * totalShares, 2)
       : 0;
-    const previousValue = hasPreviousNav && totalShares > 0 ? previousNav * totalShares : 0;
+    const previousValue = hasPreviousNav && totalShares > 0 && isLatestNavToday ? previousNav * totalShares : 0;
     const todayReturnRate = previousValue > 0
       ? round((todayProfit / previousValue) * 100, 2)
       : 0;
@@ -392,6 +416,7 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}) {
       hasPosition: totalShares > 0,
       hasLatestNav,
       hasPreviousNav,
+      hasTodayNav: isLatestNavToday,
       snapshotError: String(snapshot?.error || ''),
       firstBuyDate: bucket.firstBuyDate,
       lastTxDate: bucket.lastTxDate,
@@ -456,7 +481,7 @@ export function summarizePortfolio(aggregates = []) {
         else if (agg.kind === 'otc') otcNavDates.add(agg.latestNavDate);
       }
     }
-    if (agg.hasLatestNav && agg.hasPreviousNav) {
+    if (agg.hasLatestNav && agg.hasPreviousNav && agg.hasTodayNav) {
       summary.todayReadyCount += 1;
       summary.todayProfit = round(summary.todayProfit + agg.todayProfit, 2);
       summary.previousMarketValue = round(summary.previousMarketValue + agg.previousValue, 2);
