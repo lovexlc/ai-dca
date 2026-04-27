@@ -2090,7 +2090,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             </div>
             )}
           </div>
-          <div className="px-1 py-1">
+          <div className="min-h-[560px] px-1 py-1">
             {mainViewTab === 'aggregate'
               ? renderAggregatesTable()
               : mainViewTab === 'sold'
