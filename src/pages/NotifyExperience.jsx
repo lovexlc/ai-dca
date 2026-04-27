@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Bell, RefreshCw, Save, Trash2, Wallet } from 'lucide-react';
+import { ArrowRight, Bell, ChevronDown, ChevronUp, History, RefreshCw, Save, Trash2, Wallet } from 'lucide-react';
 import {
   issueNotifyGroupShareCode,
   joinNotifyGroup,
+  loadNotifyEvents,
   loadNotifyStatus,
   loadHoldingsNotifyRule,
   saveHoldingsNotifyRule,
@@ -10,6 +11,7 @@ import {
   persistNotifyClientConfig,
   readNotifyClientConfig,
   saveNotifySettings,
+  syncTradePlanRules,
   unpairAndroidDevice
 } from '../app/notifySync.js';
 import { aggregateByCode, buildHoldingsNotifyDigest, summarizePortfolio } from '../app/holdingsLedgerCore.js';
@@ -26,7 +28,22 @@ import {
   primaryButtonClass,
   secondaryButtonClass
 } from '../components/experience-ui.jsx';
-import { ANDROID_APK_DOWNLOAD_URL, formatEventTimeLabel } from '../app/tradePlansHelpers.js';
+import {
+  ANDROID_APK_DOWNLOAD_URL,
+  formatEventTimeLabel,
+  resolveEventStatusMeta
+} from '../app/tradePlansHelpers.js';
+
+// 提醒历史中的「测试通知」仅在展示后 30 分钟内保留，超过后从前端过滤。
+const TEST_EVENT_TTL_MS = 30 * 60 * 1000;
+
+function isTestEvent(event = {}) {
+  const ruleId = String(event?.ruleId || '').toLowerCase();
+  const eventType = String(event?.eventType || event?.type || '').toLowerCase();
+  if (ruleId === 'test' || ruleId.startsWith('test:') || ruleId.includes('-test')) return true;
+  if (eventType.includes('test')) return true;
+  return false;
+}
 
 // 通知中心：把原本散落在《交易计划》tab 里的推送通道配置（iOS Bark、Android 配对、
 // 共享组生成/加入、设备列表）抽到独立 tab。其他 tab 只通过 readNotifyClientConfig
@@ -56,6 +73,18 @@ export function NotifyExperience({ embedded = false }) {
   const [holdingsRule, setHoldingsRule] = useState({ enabled: false, digest: null, updatedAt: '' });
   const [isSavingHoldingsRule, setIsSavingHoldingsRule] = useState(false);
   const [isSyncingHoldingsDigest, setIsSyncingHoldingsDigest] = useState(false);
+  // 提醒历史与规则同步：从各 tab 合并到本页，避免交易计划中心重复采点。
+  const [notifyEvents, setNotifyEvents] = useState([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventsError, setEventsError] = useState('');
+  const [eventsLastSyncedAt, setEventsLastSyncedAt] = useState('');
+  // 仅用于驱动 30 分钟后重新过滤测试通知的重渲染。
+  const [eventsTick, setEventsTick] = useState(0);
+  const [isSyncingRules, setIsSyncingRules] = useState(false);
+  const [rulesLastSyncedAt, setRulesLastSyncedAt] = useState('');
+  // 「消息推送配置」默认在检测到已配置（iOS Bark 或 Android 任意一项）后自动收起，
+  // 点击卡片头部可手动展开。null 表示尚未从远端收到 status，默认保持展开。
+  const [configCollapsed, setConfigCollapsed] = useState(null);
 
   function buildLatestHoldingsDigest() {
     try {
@@ -138,6 +167,75 @@ export function NotifyExperience({ embedded = false }) {
       cancelled = true;
     };
   }, [notifyConfig.notifyClientId]);
+
+  // 首次拿到远端 status 后，若已配置任意一个推送通道，默认收起《消息推送配置》。
+  // 之后由用户手动切换展开/收起，不再被远端覆盖。
+  useEffect(() => {
+    if (configCollapsed !== null || !notifyStatus) return;
+    setConfigCollapsed(barkConfigured || androidConfigured);
+  }, [notifyStatus, barkConfigured, androidConfigured, configCollapsed]);
+  const isConfigCollapsed = configCollapsed === true;
+
+  // 首次进入页面拉取提醒历史。后续手动同步 / 发出测试通知后主动重新拉取。
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchEvents() {
+      setEventsLoading(true);
+      setEventsError('');
+      try {
+        const payload = await loadNotifyEvents(notifyConfig.notifyClientId);
+        if (cancelled) return;
+        const list = Array.isArray(payload?.events) ? payload.events : [];
+        setNotifyEvents(list);
+        setEventsLastSyncedAt(new Date().toISOString());
+      } catch (error) {
+        if (cancelled) return;
+        setEventsError(error instanceof Error ? error.message : '提醒历史加载失败');
+      } finally {
+        if (!cancelled) setEventsLoading(false);
+      }
+    }
+    fetchEvents();
+    return () => {
+      cancelled = true;
+    };
+  }, [notifyConfig.notifyClientId]);
+
+  // 每 60 秒推进 tick，让超过 30 分钟的测试通知从列表中自动消失。
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setEventsTick((value) => value + 1);
+    }, 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  // 按 30 分钟 TTL 过滤测试通知，其他事件原样保留。
+  // 依赖 eventsTick 是为了让定时器触发重评估。
+  const visibleEvents = useMemo(() => {
+    const now = Date.now();
+    return notifyEvents.filter((event) => {
+      if (!isTestEvent(event)) return true;
+      const createdAt = Date.parse(String(event?.createdAt || ''));
+      if (!Number.isFinite(createdAt)) return false;
+      return now - createdAt <= TEST_EVENT_TTL_MS;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notifyEvents, eventsTick]);
+
+  async function refreshNotifyEvents() {
+    setEventsLoading(true);
+    setEventsError('');
+    try {
+      const payload = await loadNotifyEvents(notifyConfig.notifyClientId);
+      const list = Array.isArray(payload?.events) ? payload.events : [];
+      setNotifyEvents(list);
+      setEventsLastSyncedAt(new Date().toISOString());
+    } catch (error) {
+      setEventsError(error instanceof Error ? error.message : '提醒历史加载失败');
+    } finally {
+      setEventsLoading(false);
+    }
+  }
 
   async function refreshNotifyData() {
     const statusPayload = await loadNotifyStatus(notifyConfig.notifyClientId);
@@ -311,14 +409,54 @@ export function NotifyExperience({ embedded = false }) {
     }
   }
 
+  async function handleSyncRules() {
+    setIsSyncingRules(true);
+    setNotifyError('');
+    setNotifyMessage('');
+    try {
+      await syncTradePlanRules();
+      setRulesLastSyncedAt(new Date().toISOString());
+      setNotifyMessage('交易计划与定投规则已同步到云端。');
+      showActionToast('同步通知规则', 'success');
+      // 同步后遵便重新拉取一次提醒历史，避免进页后才发现有新记录。
+      await refreshNotifyEvents();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '通知规则同步失败';
+      setNotifyError(message);
+      showActionToast('同步通知规则', 'error', { description: message });
+    } finally {
+      setIsSyncingRules(false);
+    }
+  }
+
   function renderConfigCard() {
     return (
       <Card className="min-w-0">
-        <SectionHeading
-          eyebrow="通知接入"
-          title="消息推送配置"
-          description="统一管理 iOS Bark、Android 设备配对，以及多浏览器共享通知组。其他 tab 触发通知时复用这里的配置。"
-          action={
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => setConfigCollapsed((prev) => !prev)}
+            className="flex min-w-0 flex-1 items-start gap-3 text-left"
+          >
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">通知接入</div>
+              <div className="mt-1 text-base font-bold text-slate-900 sm:text-lg">消息推送配置</div>
+              <div className="mt-1 text-xs leading-5 text-slate-500">
+                {isConfigCollapsed
+                  ? summary.channelNote
+                  : '统一管理 iOS Bark、Android 设备配对，以及多浏览器共享通知组。其他 tab 触发通知时复用这里的配置。'}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2 pt-1">
+              <Pill tone={(barkConfigured || androidConfigured) ? 'emerald' : 'slate'}>
+                {summary.channelStatus}
+              </Pill>
+              {isConfigCollapsed
+                ? <ChevronDown className="h-5 w-5 text-slate-400" />
+                : <ChevronUp className="h-5 w-5 text-slate-400" />}
+            </div>
+          </button>
+          {isConfigCollapsed ? null : (
             <div className="inline-flex items-center gap-1 rounded-2xl bg-slate-100 p-1">
               <button
                 className={cx(
@@ -341,8 +479,10 @@ export function NotifyExperience({ embedded = false }) {
                 Android
               </button>
             </div>
-          }
-        />
+          )}
+        </div>
+        {isConfigCollapsed ? null : (
+        <>
         {notifyPlatform === 'android' ? (
           <div className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
             APK 下载地址：
@@ -513,11 +653,121 @@ export function NotifyExperience({ embedded = false }) {
             </>
           )}
         </div>
+        </>
+        )}
       </Card>
     );
   }
 
   function renderHoldingsRuleCard() {
+    return _renderHoldingsRuleCardImpl();
+  }
+
+  function renderSyncRulesCard() {
+    const lastSyncedLabel = rulesLastSyncedAt
+      ? formatEventTimeLabel(rulesLastSyncedAt)
+      : '本次会话尚未同步';
+    return (
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">规则同步</div>
+            <div className="mt-1 text-base font-bold text-slate-900 sm:text-lg">提醒规则同步</div>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              将本机交易计划与定投规则同步到云端。交易计划中心修改后会自动同步，这里只是手动补同步入口。
+            </p>
+            <p className="mt-1 text-xs text-slate-400">上次同步：{lastSyncedLabel}</p>
+          </div>
+          <button
+            type="button"
+            className={cx(secondaryButtonClass, isSyncingRules && 'cursor-not-allowed opacity-60')}
+            onClick={handleSyncRules}
+            disabled={isSyncingRules}
+          >
+            <RefreshCw className="h-4 w-4" />
+            {isSyncingRules ? '正在同步' : '同步通知规则'}
+          </button>
+        </div>
+      </Card>
+    );
+  }
+
+  function renderHistoryCard() {
+    const eventsLastSyncedLabel = eventsLastSyncedAt
+      ? formatEventTimeLabel(eventsLastSyncedAt)
+      : '尚未拉取';
+    const showEmpty = !eventsLoading && !eventsError && visibleEvents.length === 0;
+    return (
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
+              <History className="h-3.5 w-3.5 text-slate-400" />
+              提醒历史
+            </div>
+            <div className="mt-1 text-base font-bold text-slate-900 sm:text-lg">最近推送记录</div>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              集中展示交易计划与定投提醒的推送记录。测试通知仅保留 30 分钟，超过后从列表中自动移除。
+            </p>
+            <p className="mt-1 text-xs text-slate-400">上次拉取：{eventsLastSyncedLabel}</p>
+          </div>
+          <button
+            type="button"
+            className={cx(secondaryButtonClass, eventsLoading && 'cursor-not-allowed opacity-60')}
+            onClick={refreshNotifyEvents}
+            disabled={eventsLoading}
+          >
+            <RefreshCw className="h-4 w-4" />
+            {eventsLoading ? '正在加载' : '刷新历史'}
+          </button>
+        </div>
+        {eventsError ? (
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            {eventsError}
+          </div>
+        ) : null}
+        {showEmpty ? (
+          <p className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+            暂无推送记录。发出测试通知或等待交易计划规则触发后可在此查看。
+          </p>
+        ) : null}
+        {visibleEvents.length ? (
+          <ul className="mt-4 space-y-2">
+            {visibleEvents.map((event, index) => {
+              const statusKey = String(event?.status || '').trim();
+              const meta = resolveEventStatusMeta
+                ? resolveEventStatusMeta(statusKey)
+                : { tone: statusKey === 'delivered' ? 'emerald' : 'rose', label: statusKey || '未知' };
+              const timeLabel = formatEventTimeLabel(event?.createdAt);
+              const title = String(event?.title || event?.summary || event?.eventType || '未命名事件');
+              const summary = String(event?.summary || event?.body || '');
+              const ruleId = String(event?.ruleId || '').trim();
+              const key = `${event?.id || ''}-${event?.createdAt || ''}-${index}`;
+              return (
+                <li key={key} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0 text-sm font-semibold text-slate-800">{title}</div>
+                    <div className="flex items-center gap-2">
+                      <Pill tone={meta?.tone || 'slate'}>{meta?.label || event?.status || '未知'}</Pill>
+                      <span className="text-xs text-slate-400">{timeLabel}</span>
+                    </div>
+                  </div>
+                  {summary ? (
+                    <p className="mt-1 text-xs leading-5 text-slate-500">{summary}</p>
+                  ) : null}
+                  {ruleId ? (
+                    <p className="mt-1 text-[11px] text-slate-400">规则标识：{ruleId}</p>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
+      </Card>
+    );
+  }
+
+  function _renderHoldingsRuleCardImpl() {
     const digest = holdingsRule.digest || null;
     const exchangeCount = Array.isArray(digest?.exchange) ? digest.exchange.length : 0;
     const otcCount = Array.isArray(digest?.otc) ? digest.otc.length : 0;
@@ -605,7 +855,7 @@ export function NotifyExperience({ embedded = false }) {
             通知设置
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-            统一管理推送通道、共享组与持仓提醒规则。各 tab 的提醒（如交易计划、定投、加仓计划）都会复用这里配置的 iOS / Android 接入。提醒历史可在「交易计划中心」查看。
+            统一管理推送通道、共享组、提醒历史与持仓提醒规则。各 tab 的提醒（交易计划、定投、加仓计划等）都会复用这里配置的 iOS / Android 接入，并在本页查看推送记录。
           </p>
         </div>
       </div>
@@ -618,6 +868,8 @@ export function NotifyExperience({ embedded = false }) {
 
       <div className="space-y-6">
         {renderConfigCard()}
+        {renderSyncRulesCard()}
+        {renderHistoryCard()}
         {renderHoldingsRuleCard()}
       </div>
     </div>

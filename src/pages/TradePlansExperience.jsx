@@ -1,20 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Bell, CalendarClock, Layers3, Plus, Radar, Sparkles } from 'lucide-react';
-import { loadNotifyEvents, loadNotifyStatus, readNotifyClientConfig, sendNotifyTest, syncTradePlanRules } from '../app/notifySync.js';
+import { ArrowRight, Bell, Layers3, Plus, Radar, Sparkles } from 'lucide-react';
+import { loadNotifyStatus, readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { showActionToast } from '../app/toast.js';
 import { Card, Pill, SectionHeading, StatCard, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 import { NewPlanExperience } from './NewPlanExperience.jsx';
 import {
   buildRuleDetailUrl,
-  extractPurchaseAmount,
-  formatEventTimeLabel,
-  resolveEventStatusMeta
+  extractPurchaseAmount
 } from '../app/tradePlansHelpers.js';
 
 export function TradePlansExperience({ links, embedded = false }) {
   const [selectedRowId, setSelectedRowId] = useState('');
-  const [detailTab, setDetailTab] = useState('detail');
   // 《新建计划》嵌入在本 tab 中：view === 'new' 时渲染 NewPlanExperience 覆盖原内容。
   // 用 URL hash (#new) 作为持久化入口，这样刷新或浏览器后退/前进按钮能回到正确视图。
   const [view, setView] = useState(() => {
@@ -23,10 +20,10 @@ export function TradePlansExperience({ links, embedded = false }) {
     }
     return window.location.hash === '#new' ? 'new' : 'list';
   });
-  const [notifyStatus, setNotifyStatus] = useState(null);
-  const [recentEvents, setRecentEvents] = useState([]);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [testingRowId, setTestingRowId] = useState('');
+  // 仅判断是否已配置任一推送通道，未配置时在顶部提示一行链接。
+  // 通知配置/历史/同步统一收口到《消息通知》tab，本页只保留测试通知动作。
+  const [channelConfigured, setChannelConfigured] = useState(true);
   // 仅读取 clientId：交易计划 tab 不再维护通道配置，只在发送测试通知时引用。配置入口请去《通知》tab。
   const notifyClientId = useMemo(() => readNotifyClientConfig().notifyClientId || '', []);
   const { previewRows, summary, hasPlans } = useMemo(() => buildTradePlanCenter(), []);
@@ -65,35 +62,25 @@ export function TradePlansExperience({ links, embedded = false }) {
     };
   }, []);
 
-  // 只保留读取状态用于 “通知状态” 卡片展示；不再提供交互入口。
-  const barkConfigured = Boolean(notifyStatus?.configured?.bark);
-  const androidConfigured = (notifyStatus?.setup?.gcmCurrentClientRegistrations || []).length > 0;
-
+  // 拉取一次通知状态，仅用于决定是否展示顶部「未配置」提示行。
   useEffect(() => {
     let cancelled = false;
-
-    async function refreshNotifyPanel() {
+    async function refreshChannelStatus() {
       try {
-        const [statusPayload, eventsPayload] = await Promise.all([
-          loadNotifyStatus(notifyClientId),
-          loadNotifyEvents()
-        ]);
-
-        if (cancelled) {
-          return;
-        }
-
-        setNotifyStatus(statusPayload);
-        setRecentEvents(Array.isArray(eventsPayload?.events) ? eventsPayload.events : []);
-      } catch {
-        if (cancelled) {
-          return;
+        const status = await loadNotifyStatus(notifyClientId);
+        if (cancelled) return;
+        const barkConfigured = Boolean(status?.configured?.bark);
+        const androidConfigured = Array.isArray(status?.setup?.gcmCurrentClientRegistrations)
+          && status.setup.gcmCurrentClientRegistrations.length > 0;
+        setChannelConfigured(barkConfigured || androidConfigured);
+      } catch (_error) {
+        // 拉取失败时按「已配置」处理，避免误导。
+        if (!cancelled) {
+          setChannelConfigured(true);
         }
       }
     }
-
-    refreshNotifyPanel();
-
+    refreshChannelStatus();
     return () => {
       cancelled = true;
     };
@@ -111,18 +98,6 @@ export function TradePlansExperience({ links, embedded = false }) {
   }, [previewRows, selectedRowId]);
 
   const selectedRow = previewRows.find((row) => row.id === selectedRowId) || previewRows[0] || null;
-  const notificationValue = notifyStatus
-    ? barkConfigured || androidConfigured ? '已配置' : '未配置'
-    : summary.notificationStatus;
-  const notificationNote = notifyStatus
-    ? barkConfigured && androidConfigured
-      ? 'iOS Bark 与当前共享组已配对 Android 设备都可发送'
-      : barkConfigured
-        ? 'Bark 可发送'
-        : androidConfigured
-          ? '当前共享组已关联 Android 设备'
-          : '请去「通知」tab 配置 iOS Bark 或绑定 Android 设备'
-    : '提醒渠道和推送能力后续接入';
   function buildRowTestPayload(row) {
     const normalizedRuleId = String(row?.ruleId || '').trim() || 'test';
     const normalizedPlanName = String(row?.planName || row?.detailTitle || '交易计划').trim();
@@ -160,32 +135,6 @@ export function TradePlansExperience({ links, embedded = false }) {
     };
   }
 
-  async function refreshNotifyData() {
-    const [statusPayload, eventsPayload] = await Promise.all([
-      loadNotifyStatus(notifyClientId),
-      loadNotifyEvents()
-    ]);
-
-    setNotifyStatus(statusPayload);
-    setRecentEvents(Array.isArray(eventsPayload?.events) ? eventsPayload.events : []);
-  }
-
-  async function handleSyncRules() {
-    setIsSyncing(true);
-    try {
-      await syncTradePlanRules();
-      await refreshNotifyData();
-      showActionToast('同步通知规则', 'success');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '通知规则同步失败';
-      showActionToast('同步通知规则', 'error', {
-        description: message
-      });
-    } finally {
-      setIsSyncing(false);
-    }
-  }
-
   async function handleTestNotify(row) {
     if (!row?.id) {
       return;
@@ -197,14 +146,13 @@ export function TradePlansExperience({ links, embedded = false }) {
         clientId: notifyClientId,
         ...buildRowTestPayload(row)
       });
-      await refreshNotifyData();
       showActionToast('测试通知', 'success', {
         description: `已发送「${row.planName}」的测试通知。`
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : '测试通知发送失败';
       showActionToast('测试通知', 'error', {
-        description: message
+        description: `${message}。请到《消息通知》页面检查推送通道接入。`
       });
     } finally {
       setTestingRowId('');
@@ -218,20 +166,6 @@ export function TradePlansExperience({ links, embedded = false }) {
           eyebrow="计划列表"
           title="后续交易计划"
           description="首页只保留每类计划一个待执行摘要，更多层级和完整配置去对应页面查看。"
-          action={
-            <div className="flex flex-wrap gap-2">
-              <button
-                className={cx(
-                  primaryButtonClass,
-                  'shadow-sm'
-                )}
-                type="button"
-                onClick={handleSyncRules}
-              >
-                {isSyncing ? '正在同步规则' : '同步通知规则'}
-              </button>
-            </div>
-          }
         />
 
         {hasPlans ? (
@@ -357,36 +291,6 @@ export function TradePlansExperience({ links, embedded = false }) {
     );
   }
 
-  function renderHistoryCard() {
-    return (
-      <Card>
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-          <CalendarClock className="h-4 w-4 text-slate-400" />
-          提醒历史
-        </div>
-        <div className="mt-4 space-y-3">
-          {recentEvents.length ? recentEvents.slice(0, 4).map((item) => {
-            const statusMeta = resolveEventStatusMeta(item.status);
-            return (
-              <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="min-w-0 text-sm font-semibold text-slate-800">{item.summary || item.title || '提醒记录'}</div>
-                  <Pill tone={statusMeta.tone}>{statusMeta.label}</Pill>
-                </div>
-                <div className="mt-2 text-sm leading-6 text-slate-600">{item.body || item.title || '当前没有更多提醒内容。'}</div>
-                <div className="mt-2 text-xs text-slate-400">{formatEventTimeLabel(item.createdAt)}</div>
-              </div>
-            );
-          }) : (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm leading-6 text-slate-500">
-              目前还没有提醒记录。触发测试通知或规则提醒后，这里会展示实际通知内容。
-            </div>
-          )}
-        </div>
-      </Card>
-    );
-  }
-
   function renderAutomationCard() {
     return (
       <Card>
@@ -396,35 +300,6 @@ export function TradePlansExperience({ links, embedded = false }) {
         </div>
         <p className="mt-3 text-sm leading-6 text-slate-500">当前只做计划承载和提醒入口，后续可扩展为条件单同步、执行确认和策略版本管理。</p>
       </Card>
-    );
-  }
-
-  function renderPlanContextPanel() {
-    const contextTabs = [
-      { key: 'detail', label: '计划详情' },
-      { key: 'history', label: recentEvents.length ? `提醒历史 · ${recentEvents.length}` : '提醒历史' }
-    ];
-    return (
-      <div className="space-y-4">
-        <div className="inline-flex w-full items-center gap-1 rounded-2xl bg-slate-100 p-1 sm:w-auto">
-          {contextTabs.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setDetailTab(tab.key)}
-              className={cx(
-                'flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition-colors sm:flex-none',
-                detailTab === tab.key
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-        {detailTab === 'detail' ? renderPlanDetailCard() : renderHistoryCard()}
-      </div>
     );
   }
 
@@ -459,29 +334,41 @@ export function TradePlansExperience({ links, embedded = false }) {
         </button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {channelConfigured ? null : (
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700">
+          <Bell className="h-4 w-4 text-amber-600" />
+          <span>通知通道尚未配置，测试 / 触发通知不会推送。</span>
+          <a
+            className="ml-auto inline-flex items-center gap-1 font-semibold text-amber-700 underline-offset-4 hover:underline"
+            href={links.notify}
+          >
+            去消息通知配置
+            <ArrowRight className="h-4 w-4" />
+          </a>
+        </div>
+      )}
+
+      <div className="grid gap-4 md:grid-cols-3">
         <StatCard accent="indigo" eyebrow="待执行计划" value={`${summary.pendingCount} 项`} note="包含价格触发买入与固定定投计划" />
         <StatCard eyebrow="最近触发条件" value={summary.nearestTrigger} note="优先显示最近需要观察的价格条件" />
         <StatCard accent="emerald" eyebrow="下一次定投日期" value={summary.nextDcaDate} note="按当前定投配置推算的最近执行日" />
-        <StatCard eyebrow="通知状态" value={notificationValue} note={notificationNote} />
       </div>
 
-      {/* Mobile / tablet: single column stack, context panel (detail/history tabs) right under list */}
+      {/* Mobile / tablet: single column stack */}
       <div className="space-y-6 lg:hidden">
         {renderPlansCard()}
-        {renderPlanContextPanel()}
+        {renderPlanDetailCard()}
         {renderAutomationCard()}
       </div>
 
-      {/* Desktop: 2-column layout. Left = list + automation.
-          Right = sticky context panel with detail/history tabs. */}
+      {/* Desktop: 2-column layout. Left = list + automation. Right = sticky plan detail card. */}
       <div className="hidden items-start gap-6 lg:grid lg:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.9fr)]">
         <div className="min-w-0 space-y-6">
           {renderPlansCard()}
           {renderAutomationCard()}
         </div>
         <div className="min-w-0 space-y-6 lg:sticky lg:top-4">
-          {renderPlanContextPanel()}
+          {renderPlanDetailCard()}
         </div>
       </div>
     </div>
