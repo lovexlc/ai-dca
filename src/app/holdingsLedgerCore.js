@@ -518,6 +518,44 @@ export function summarizePortfolio(aggregates = []) {
 }
 
 /**
+ * 把当前持仓归一化成 worker 通知服务可以消费的精简快照：只包含基金代码和组合权重，
+ * 不带任何成本/份额/金额/姓名等用户敏感数据。worker 拿到 weight 后，按当日净值
+ * 计算 Σ weight_i × (latest_i / previous_i - 1) 即可得到组合层面的当日收益率。
+ */
+export function buildHoldingsNotifyDigest({ aggregates = [], summary = null } = {}) {
+  const list = Array.isArray(aggregates) ? aggregates : [];
+  const totalMarketValue = Number(summary?.marketValue) > 0
+    ? Number(summary.marketValue)
+    : list.reduce((sum, agg) => sum + (Number(agg?.marketValue) > 0 ? Number(agg.marketValue) : 0), 0);
+
+  const exchange = [];
+  const otc = [];
+
+  if (totalMarketValue > 0) {
+    for (const agg of list) {
+      if (!agg || !agg.code) continue;
+      if (!agg.hasPosition) continue;
+      const shares = Number(agg.totalShares);
+      const marketValue = Number(agg.marketValue);
+      if (!Number.isFinite(shares) || shares <= 0) continue;
+      if (!Number.isFinite(marketValue) || marketValue <= 0) continue;
+      const weight = round(marketValue / totalMarketValue, 6);
+      if (!Number.isFinite(weight) || weight <= 0) continue;
+      const entry = { code: String(agg.code), weight };
+      if (agg.kind === 'exchange') exchange.push(entry);
+      else otc.push(entry);
+    }
+  }
+
+  return {
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    exchange,
+    otc
+  };
+}
+
+/**
  * 把所有 SELL 交易按笔拆成"已卖出"行，并附上对应基金的加权平均成本
  * （= 所有 BUY 的 price 按 shares 加权）。
  * - 已实现收益 = (sellPrice − avgCost) × sellShares

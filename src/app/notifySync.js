@@ -356,3 +356,58 @@ export function unpairAndroidDevice(payload = {}) {
     })
   });
 }
+
+function normalizeHoldingsDigest(digest) {
+  const result = { version: 1, generatedAt: '', exchange: [], otc: [] };
+  if (!digest || typeof digest !== 'object') return result;
+  if (digest.generatedAt) result.generatedAt = String(digest.generatedAt);
+  for (const bucket of ['exchange', 'otc']) {
+    const list = Array.isArray(digest[bucket]) ? digest[bucket] : [];
+    for (const entry of list) {
+      const code = String(entry?.code || '').trim();
+      const weight = Number(entry?.weight);
+      if (!/^\d{6}$/.test(code)) continue;
+      if (!Number.isFinite(weight) || weight <= 0) continue;
+      result[bucket].push({ code, weight });
+    }
+  }
+  return result;
+}
+
+/** 读取当前 client 的「持仓当日总收益」通知规则；未配置时返回禁用状态。 */
+export function loadHoldingsNotifyRule() {
+  const clientConfig = resolveNotifyClientConfig();
+
+  return requestNotify('/holdings-rule', {
+    clientConfig,
+    query: {
+      clientId: clientConfig.clientId
+    }
+  });
+}
+
+/**
+ * 保存当前 client 的「持仓当日总收益」通知规则。
+ * 仅同步代码 + 组合权重，不上传份额/成本/金额。
+ */
+export function saveHoldingsNotifyRule({ enabled = false, digest = null } = {}) {
+  const clientConfig = resolveNotifyClientConfig();
+  const normalizedDigest = normalizeHoldingsDigest(digest);
+
+  return requestNotify('/holdings-rule', {
+    clientConfig,
+    query: {
+      clientId: clientConfig.clientId
+    },
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      clientId: clientConfig.clientId,
+      clientLabel: clientConfig.clientLabel,
+      enabled: Boolean(enabled),
+      digest: normalizedDigest
+    })
+  });
+}

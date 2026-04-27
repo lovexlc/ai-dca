@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Bell, CalendarClock, Save, Trash2 } from 'lucide-react';
+import { ArrowRight, Bell, CalendarClock, RefreshCw, Save, Trash2, Wallet } from 'lucide-react';
 import {
   issueNotifyGroupShareCode,
   joinNotifyGroup,
   loadNotifyEvents,
   loadNotifyStatus,
+  loadHoldingsNotifyRule,
+  saveHoldingsNotifyRule,
   pairAndroidDevice,
   persistNotifyClientConfig,
   readNotifyClientConfig,
   saveNotifySettings,
   unpairAndroidDevice
 } from '../app/notifySync.js';
+import { aggregateByCode, buildHoldingsNotifyDigest, summarizePortfolio } from '../app/holdingsLedgerCore.js';
+import { readLedgerState } from '../app/holdingsLedger.js';
 import { showActionToast } from '../app/toast.js';
 import {
   Card,
@@ -55,6 +59,20 @@ export function NotifyExperience({ embedded = false }) {
       notifyClientLabel: persistedConfig.notifyClientLabel || ''
     };
   });
+  const [holdingsRule, setHoldingsRule] = useState({ enabled: false, digest: null, updatedAt: '' });
+  const [isSavingHoldingsRule, setIsSavingHoldingsRule] = useState(false);
+  const [isSyncingHoldingsDigest, setIsSyncingHoldingsDigest] = useState(false);
+
+  function buildLatestHoldingsDigest() {
+    try {
+      const ledger = readLedgerState();
+      const aggregates = aggregateByCode(ledger?.transactions || [], ledger?.snapshotsByCode || {});
+      const summary = summarizePortfolio(aggregates);
+      return buildHoldingsNotifyDigest({ aggregates, summary });
+    } catch (_error) {
+      return null;
+    }
+  }
 
   const androidSetup = notifyStatus?.setup || null;
   const pairedAndroidDevices = Array.isArray(androidSetup?.gcmCurrentClientRegistrations)
@@ -106,6 +124,27 @@ export function NotifyExperience({ embedded = false }) {
       }
     }
     refreshNotifyPanel();
+    return () => {
+      cancelled = true;
+    };
+  }, [notifyConfig.notifyClientId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadRule() {
+      try {
+        const payload = await loadHoldingsNotifyRule();
+        if (cancelled) return;
+        setHoldingsRule({
+          enabled: Boolean(payload?.enabled),
+          digest: payload?.digest || null,
+          updatedAt: String(payload?.updatedAt || '')
+        });
+      } catch (_error) {
+        // 静默：未配置与服务不可用都以「未启用」状态呈现。
+      }
+    }
+    loadRule();
     return () => {
       cancelled = true;
     };
@@ -238,6 +277,52 @@ export function NotifyExperience({ embedded = false }) {
       showActionToast('加入通知共享组', 'error', { description: message });
     } finally {
       setIsJoiningNotifyGroup(false);
+    }
+  }
+
+  async function handleToggleHoldingsRule(nextEnabled) {
+    setIsSavingHoldingsRule(true);
+    setNotifyError('');
+    setNotifyMessage('');
+    try {
+      const digest = buildLatestHoldingsDigest();
+      const payload = await saveHoldingsNotifyRule({ enabled: nextEnabled, digest });
+      setHoldingsRule({
+        enabled: Boolean(payload?.enabled),
+        digest: payload?.digest || digest || null,
+        updatedAt: String(payload?.updatedAt || new Date().toISOString())
+      });
+      setNotifyMessage(nextEnabled ? '持仓当日收益提醒已启用。' : '持仓当日收益提醒已关闭。');
+      showActionToast(nextEnabled ? '启用持仓提醒' : '关闭持仓提醒', 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '保存持仓通知规则失败';
+      setNotifyError(message);
+      showActionToast('保存持仓提醒', 'error', { description: message });
+    } finally {
+      setIsSavingHoldingsRule(false);
+    }
+  }
+
+  async function handleSyncHoldingsDigest() {
+    setIsSyncingHoldingsDigest(true);
+    setNotifyError('');
+    setNotifyMessage('');
+    try {
+      const digest = buildLatestHoldingsDigest();
+      const payload = await saveHoldingsNotifyRule({ enabled: holdingsRule.enabled, digest });
+      setHoldingsRule({
+        enabled: Boolean(payload?.enabled),
+        digest: payload?.digest || digest || null,
+        updatedAt: String(payload?.updatedAt || new Date().toISOString())
+      });
+      setNotifyMessage('持仓快照已同步。');
+      showActionToast('同步持仓快照', 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '同步持仓快照失败';
+      setNotifyError(message);
+      showActionToast('同步持仓快照', 'error', { description: message });
+    } finally {
+      setIsSyncingHoldingsDigest(false);
     }
   }
 
@@ -447,6 +532,84 @@ export function NotifyExperience({ embedded = false }) {
     );
   }
 
+  function renderHoldingsRuleCard() {
+    const digest = holdingsRule.digest || null;
+    const exchangeCount = Array.isArray(digest?.exchange) ? digest.exchange.length : 0;
+    const otcCount = Array.isArray(digest?.otc) ? digest.otc.length : 0;
+    const totalWeight = [...(digest?.exchange || []), ...(digest?.otc || [])]
+      .reduce((sum, entry) => sum + (Number(entry?.weight) || 0), 0);
+    const updatedLabel = holdingsRule.updatedAt
+      ? formatEventTimeLabel(holdingsRule.updatedAt)
+      : '尚未同步';
+    const generatedLabel = digest?.generatedAt
+      ? formatEventTimeLabel(digest.generatedAt)
+      : '尚未同步';
+    const hasDigest = exchangeCount + otcCount > 0;
+    const isToggleBusy = isSavingHoldingsRule;
+
+    return (
+      <Card>
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <Wallet className="h-4 w-4 text-emerald-500" />
+          持仓当日收益提醒
+        </div>
+        <p className="mt-2 text-xs leading-5 text-slate-500">
+          北京时间 15:30 推送场内当日收益；20:30 推送场外，未成功时 21:30 兜底；同日内只发一次。
+        </p>
+
+        <label className="mt-4 flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+          <input
+            type="checkbox"
+            className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+            checked={Boolean(holdingsRule.enabled)}
+            disabled={isToggleBusy}
+            onChange={(event) => handleToggleHoldingsRule(event.target.checked)}
+          />
+          <div className="min-w-0 text-sm leading-6 text-slate-700">
+            <div className="font-semibold text-slate-800">启用持仓当日收益推送</div>
+            <div className="mt-1 text-xs text-slate-500">
+              仅同步代码与组合权重到云端，不会上传份额、成本或金额。关闭后云端不再推送。
+            </div>
+          </div>
+        </label>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700">
+            <div className="text-xs text-slate-500">场内持仓</div>
+            <div className="mt-1 text-base font-semibold text-slate-900">{exchangeCount} 只</div>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700">
+            <div className="text-xs text-slate-500">场外持仓</div>
+            <div className="mt-1 text-base font-semibold text-slate-900">{otcCount} 只</div>
+          </div>
+        </div>
+
+        <div className="mt-3 text-xs leading-6 text-slate-500">
+          <div>快照生成时间：{generatedLabel}</div>
+          <div>云端保存时间：{updatedLabel}</div>
+          <div>覆盖权重：{(totalWeight * 100).toFixed(2)}%</div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            className={cx(secondaryButtonClass, isSyncingHoldingsDigest && 'cursor-not-allowed opacity-60')}
+            onClick={handleSyncHoldingsDigest}
+            disabled={isSyncingHoldingsDigest}
+          >
+            <RefreshCw className="h-4 w-4" />
+            {isSyncingHoldingsDigest ? '正在同步快照' : '立即同步快照'}
+          </button>
+          {!hasDigest ? (
+            <span className="text-xs text-amber-600">
+              当前云端未保存持仓快照，点击「立即同步快照」后才会调度推送。
+            </span>
+          ) : null}
+        </div>
+      </Card>
+    );
+  }
+
   function renderHistoryCard() {
     return (
       <Card>
@@ -506,11 +669,15 @@ export function NotifyExperience({ embedded = false }) {
 
       <div className="space-y-6 lg:hidden">
         {renderConfigCard()}
+        {renderHoldingsRuleCard()}
         {renderHistoryCard()}
       </div>
 
       <div className="hidden items-start gap-6 lg:grid lg:grid-cols-[minmax(0,1.5fr)_minmax(360px,0.9fr)]">
-        <div className="min-w-0 space-y-6">{renderConfigCard()}</div>
+        <div className="min-w-0 space-y-6">
+          {renderConfigCard()}
+          {renderHoldingsRuleCard()}
+        </div>
         <div className="min-w-0 space-y-6 lg:sticky lg:top-4">{renderHistoryCard()}</div>
       </div>
     </div>
