@@ -1481,6 +1481,327 @@ async function handleRun(request, env) {
   }, { origin });
 }
 
+// ---------------------------------------------------------------------------
+// 持仓当日收益提醒
+// 前端在「通知」tab 开启后会 POST 代码+组合权重的快照到 KV，定时任务在
+// 15:30 / 20:30 / 21:30 （Asia/Shanghai）拉取净值后计算全仓当日收益率并推送。
+// KV 中不存份额/金额/成本等任何用户敏感数据。
+// ---------------------------------------------------------------------------
+
+const HOLDINGS_RULE_KEY_PREFIX = 'holdings-rule:';
+const HOLDINGS_DEDUP_KEY_PREFIX = 'holdings-dedup:';
+const HOLDINGS_DEDUP_TTL_SECONDS = 36 * 3600;
+const FUND_CODE_PATTERN = /^\d{6}$/;
+
+function holdingsRuleKey(clientId) {
+  return `${HOLDINGS_RULE_KEY_PREFIX}${clientId}`;
+}
+
+function holdingsDedupKey(clientId, kind, dateKey) {
+  return `${HOLDINGS_DEDUP_KEY_PREFIX}${clientId}:${kind}:${dateKey}`;
+}
+
+function getShanghaiDateParts(date = new Date()) {
+  // 使用 Intl 拿到 Asia/Shanghai 的年月日/小时/分钟（包依轻量，Worker 运行时可用）。
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(date).reduce((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = part.value;
+    return acc;
+  }, {});
+  const hour = parts.hour === '24' ? '00' : parts.hour;
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    hhmm: `${hour}:${parts.minute}`
+  };
+}
+
+function normalizeHoldingsDigest(digest) {
+  const result = {
+    version: 1,
+    generatedAt: '',
+    exchange: [],
+    otc: []
+  };
+  if (!digest || typeof digest !== 'object') return result;
+  if (digest.generatedAt) result.generatedAt = String(digest.generatedAt);
+
+  let totalWeight = 0;
+  for (const bucket of ['exchange', 'otc']) {
+    const list = Array.isArray(digest[bucket]) ? digest[bucket] : [];
+    for (const entry of list) {
+      const code = String(entry?.code || '').trim();
+      const weight = Number(entry?.weight);
+      if (!FUND_CODE_PATTERN.test(code)) continue;
+      if (!Number.isFinite(weight) || weight <= 0 || weight > 1) continue;
+      result[bucket].push({ code, weight });
+      totalWeight += weight;
+    }
+  }
+
+  // 软限制：总权重 ≤ 1.5（两个 bucket 各自合计 ≤ 1，上限考虑取整冗余）
+  if (totalWeight > 1.5) {
+    return result;
+  }
+  return result;
+}
+
+async function handleHoldingsRuleGet(request, env) {
+  const origin = readOrigin(request);
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings);
+  settings = auth.settings;
+
+  if (auth.didUpdate) {
+    await writeSettings(env, settings);
+  }
+
+  const stored = await readJson(env, holdingsRuleKey(auth.clientId), null);
+  if (!stored) {
+    return jsonResponse({
+      enabled: false,
+      digest: null,
+      updatedAt: ''
+    }, { origin });
+  }
+
+  return jsonResponse({
+    enabled: Boolean(stored.enabled),
+    digest: stored.digest || null,
+    updatedAt: stored.updatedAt || ''
+  }, { origin });
+}
+
+async function handleHoldingsRulePost(request, env) {
+  const origin = readOrigin(request);
+  const payload = await request.json().catch(() => ({}));
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings, {
+    payload,
+    clientLabel: payload?.clientLabel
+  });
+  settings = auth.settings;
+
+  if (auth.didUpdate) {
+    await writeSettings(env, settings);
+  }
+
+  const enabled = Boolean(payload?.enabled);
+  const digest = normalizeHoldingsDigest(payload?.digest);
+  const updatedAt = new Date().toISOString();
+
+  await writeJson(env, holdingsRuleKey(auth.clientId), {
+    enabled,
+    digest,
+    updatedAt,
+    clientLabel: auth.clientRecord?.clientLabel || ''
+  });
+
+  return jsonResponse({
+    enabled,
+    digest,
+    updatedAt
+  }, { origin });
+}
+
+async function fetchHoldingsNavSnapshots(env, codes = []) {
+  const baseUrl = String(env?.PUBLIC_DATA_BASE_URL || 'https://tools.freebacktrack.tech').replace(/\/+$/, '');
+  if (!codes.length) return {};
+
+  const response = await fetch(`${baseUrl}/api/holdings/nav`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ codes })
+  });
+  if (!response.ok) {
+    throw new Error(`拉取净值失败：状态 ${response.status}`);
+  }
+  const data = await response.json().catch(() => ({}));
+  const list = Array.isArray(data?.snapshots) ? data.snapshots : [];
+  const map = {};
+  for (const snap of list) {
+    const code = String(snap?.code || '').trim();
+    if (!code) continue;
+    map[code] = snap;
+  }
+  return map;
+}
+
+function computeWeightedReturn(bucket, snapshotsByCode, todayShanghai) {
+  // 返回 { ready, returnRate, contributors[] }。
+  // ready=false 表示还有代码的 latestNavDate 不是今天，在调用方侧跳过。
+  let ready = true;
+  const eligible = [];
+  for (const entry of bucket) {
+    const snap = snapshotsByCode[entry.code];
+    const latestNav = Number(snap?.latestNav);
+    const previousNav = Number(snap?.previousNav);
+    const latestNavDate = String(snap?.latestNavDate || '');
+    if (!Number.isFinite(latestNav) || !Number.isFinite(previousNav) || previousNav <= 0) {
+      // 缺少净值或昨日净值 → 在加权中跳过，但如果是 latestNavDate 不是今天造成的，则整套跳过。
+      if (!latestNavDate || latestNavDate < todayShanghai) ready = false;
+      continue;
+    }
+    if (latestNavDate !== todayShanghai) {
+      ready = false;
+      continue;
+    }
+    eligible.push({
+      code: entry.code,
+      weight: entry.weight,
+      latestNav,
+      previousNav,
+      ratio: latestNav / previousNav - 1
+    });
+  }
+
+  if (!ready || !eligible.length) {
+    return { ready: false, returnRate: 0, contributors: eligible };
+  }
+
+  // 在 bucket 内 re-normalize（仅限于 eligible）。
+  const totalWeight = eligible.reduce((sum, item) => sum + item.weight, 0);
+  if (!(totalWeight > 0)) {
+    return { ready: false, returnRate: 0, contributors: eligible };
+  }
+  const weightedReturn = eligible.reduce((sum, item) => sum + (item.weight / totalWeight) * item.ratio, 0);
+
+  return {
+    ready: true,
+    returnRate: weightedReturn,
+    contributors: eligible
+      .map((item) => ({ ...item, contribution: (item.weight / totalWeight) * item.ratio }))
+      .sort((a, b) => Math.abs(b.ratio) - Math.abs(a.ratio))
+  };
+}
+
+function formatPercent(value) {
+  const sign = value >= 0 ? '+' : '−';
+  return `${sign}${Math.abs(value * 100).toFixed(2)}%`;
+}
+
+function buildHoldingsNotificationContent(kind, returnRate, contributors) {
+  const kindLabel = kind === 'exchange' ? '场内' : '场外';
+  const title = `[${kindLabel}] 当日收益 ${formatPercent(returnRate)}`;
+  const top = contributors.slice(0, 3).map((item) => `${item.code} ${formatPercent(item.ratio)}`);
+  const body = top.length
+    ? `今日${kindLabel}加权收益率 ${formatPercent(returnRate)}；贡献 Top：${top.join('、')}。`
+    : `今日${kindLabel}加权收益率 ${formatPercent(returnRate)}。`;
+  return { title, body, summary: `${kindLabel}当日收益 ${formatPercent(returnRate)}` };
+}
+
+async function listHoldingsRuleEntries(env) {
+  ensureStateBinding(env);
+  const entries = [];
+  let cursor;
+  do {
+    const result = await env.NOTIFY_STATE.list({ prefix: HOLDINGS_RULE_KEY_PREFIX, cursor });
+    for (const item of result.keys || []) {
+      const clientId = String(item.name || '').slice(HOLDINGS_RULE_KEY_PREFIX.length);
+      if (!clientId) continue;
+      entries.push({ clientId, key: item.name });
+    }
+    cursor = result.list_complete ? undefined : result.cursor;
+  } while (cursor);
+  return entries;
+}
+
+async function runHoldingsNotifications(env, kind, todayShanghai, reason = 'holdings-scheduled') {
+  if (kind !== 'exchange' && kind !== 'otc') return;
+
+  const entries = await listHoldingsRuleEntries(env);
+  if (!entries.length) return;
+
+  let settings = await readSettings(env);
+  let settingsDirty = false;
+
+  for (const { clientId, key } of entries) {
+    const stored = await readJson(env, key, null);
+    if (!stored || !stored.enabled) continue;
+
+    const dedupKey = holdingsDedupKey(clientId, kind, todayShanghai);
+    const dedup = await readJson(env, dedupKey, null);
+    if (dedup && dedup.status === 'sent') continue;
+
+    const digest = normalizeHoldingsDigest(stored.digest);
+    const bucket = digest[kind] || [];
+    if (!bucket.length) continue;
+
+    const codes = bucket.map((entry) => entry.code);
+    let snapshotsByCode = {};
+    try {
+      snapshotsByCode = await fetchHoldingsNavSnapshots(env, codes);
+    } catch (_error) {
+      // 拉取失败，不写 dedup，下一个 cron 会重试。
+      continue;
+    }
+
+    const computed = computeWeightedReturn(bucket, snapshotsByCode, todayShanghai);
+    if (!computed.ready) continue;
+
+    const clientRecord = getClientRecord(settings, clientId, stored.clientLabel || '');
+    if (!clientRecord) continue;
+
+    const { title, body, summary } = buildHoldingsNotificationContent(kind, computed.returnRate, computed.contributors);
+    const eventId = `holdings-${kind}-${todayShanghai}`;
+    try {
+      const result = await runClientDetection(env, settings, clientRecord, {
+        reason,
+        testPayload: {
+          eventId,
+          eventType: 'holdings-daily-return',
+          title,
+          body,
+          summary,
+          ruleId: `holdings-daily-${kind}`,
+          symbol: kind === 'exchange' ? '场内总仓' : '场外总仓',
+          strategyName: '持仓当日收益',
+          triggerCondition: `${todayShanghai} ${kind}`,
+          purchaseAmount: '',
+          detailUrl: ''
+        }
+      });
+      settings = result.settings;
+      settingsDirty = true;
+
+      await writeJson(env, dedupKey, {
+        sentAt: new Date().toISOString(),
+        status: 'sent',
+        kind,
+        date: todayShanghai
+      });
+      // KV TTL
+      try {
+        await env.NOTIFY_STATE.put(
+          dedupKey,
+          JSON.stringify({
+            sentAt: new Date().toISOString(),
+            status: 'sent',
+            kind,
+            date: todayShanghai
+          }),
+          { expirationTtl: HOLDINGS_DEDUP_TTL_SECONDS }
+        );
+      } catch (_error) {
+        // TTL 写入失败不阻断主流程。
+      }
+    } catch (_error) {
+      // 推送失败不写 dedup，等下个点重试。
+    }
+  }
+
+  if (settingsDirty) {
+    await writeSettings(env, settings);
+  }
+}
+
 export default {
   async fetch(request, env) {
     const origin = readOrigin(request);
@@ -1547,6 +1868,14 @@ export default {
         return await handleRun(request, env);
       }
 
+      if (request.method === 'GET' && url.pathname === '/api/notify/holdings-rule') {
+        return await handleHoldingsRuleGet(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/holdings-rule') {
+        return await handleHoldingsRulePost(request, env);
+      }
+
       if (request.method === 'GET' && url.pathname === '/api/notify/health') {
         return jsonResponse({ ok: true }, { origin });
       }
@@ -1566,7 +1895,21 @@ export default {
     }
   },
 
-  async scheduled(_controller, env, ctx) {
+  async scheduled(controller, env, ctx) {
     ctx.waitUntil(runDetection(env, 'scheduled'));
+
+    try {
+      const scheduledMs = Number(controller?.scheduledTime) || Date.now();
+      const { date: todayShanghai, hhmm } = getShanghaiDateParts(new Date(scheduledMs));
+      if (hhmm === '15:30') {
+        ctx.waitUntil(runHoldingsNotifications(env, 'exchange', todayShanghai, 'holdings-scheduled-1530'));
+      } else if (hhmm === '20:30') {
+        ctx.waitUntil(runHoldingsNotifications(env, 'otc', todayShanghai, 'holdings-scheduled-2030'));
+      } else if (hhmm === '21:30') {
+        ctx.waitUntil(runHoldingsNotifications(env, 'otc', todayShanghai, 'holdings-scheduled-2130'));
+      }
+    } catch (_error) {
+      // 调度分发异常不能拖垮原有 runDetection。
+    }
   }
 };
