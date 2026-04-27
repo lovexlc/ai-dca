@@ -94,6 +94,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const [switchPickerOpen, setSwitchPickerOpen] = useState(false);
   const [switchPickerSearch, setSwitchPickerSearch] = useState('');
+  // 切换链路 leg 选购/选卖弹窗
+  // 形状：{ chainId, legIndex, role: 'buy' | 'sell' }
+  const [chainPicker, setChainPicker] = useState(null);
+  const [chainPickerSearch, setChainPickerSearch] = useState('');
 
   const fileInputRef = useRef(null);
   const autoNavTriggeredRef = useRef(false);
@@ -1427,41 +1431,51 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               <div className="px-4 py-3 space-y-3">
                 {(chain.legs || []).map((leg, legIndex) => {
                   const buyTx = leg.buyTxId ? txById.get(leg.buyTxId) : null;
-                  const sellOptions = buyTx
-                    ? sellTxs.filter((tx) => tx.code === buyTx.code
-                        && (!buyTx.date || !tx.date || tx.date >= buyTx.date)
-                        && tx.id !== buyTx.id)
-                    : sellTxs;
+                  const sellTx = leg.sellTxId ? txById.get(leg.sellTxId) : null;
                   const seg = metrics.segments && metrics.segments[legIndex] ? metrics.segments[legIndex] : null;
                   const segTone = !seg || !seg.valid
                     ? 'text-slate-400'
                     : seg.segReturn > 0 ? 'text-emerald-600' : seg.segReturn < 0 ? 'text-red-500' : 'text-slate-700';
+                  const buyButtonLabel = buyTx ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="font-mono font-semibold text-slate-800">{buyTx.code}</span>
+                      {buyTx.name ? <span className="truncate text-slate-500">{buyTx.name}</span> : null}
+                      <span className="text-slate-400">· {buyTx.date || '待补日'}</span>
+                      <span className="tabular-nums text-slate-500">@ {formatNav(buyTx.price)} × {formatShares(buyTx.shares)}</span>
+                    </span>
+                  ) : <span className="text-slate-400">选择买入交易 (BUY)…</span>;
+                  const sellButtonLabel = !buyTx ? (
+                    <span className="text-slate-300">请先选择买入交易</span>
+                  ) : sellTx ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="font-mono font-semibold text-slate-800">{sellTx.code}</span>
+                      {sellTx.name ? <span className="truncate text-slate-500">{sellTx.name}</span> : null}
+                      <span className="text-slate-400">· {sellTx.date || '待补日'}</span>
+                      <span className="tabular-nums text-slate-500">@ {formatNav(sellTx.price)} × {formatShares(sellTx.shares)}</span>
+                    </span>
+                  ) : <span className="text-amber-600">持有至今（用最新净值）</span>;
                   return (
                     <div key={legIndex} className="rounded-xl border border-slate-100 bg-slate-50/40 px-3 py-2.5">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="inline-flex h-6 min-w-[44px] items-center justify-center rounded-full bg-slate-200 px-2 text-[11px] font-semibold text-slate-700">段 {legIndex + 1}</span>
-                        <select
-                          className={cx(tableInputClass, 'h-8 min-w-[260px] flex-1 rounded-lg border-slate-200 bg-white px-2 text-xs')}
-                          value={leg.buyTxId || ''}
-                          onChange={(e) => handleSetChainLeg(chain.id, legIndex, { buyTxId: e.target.value, sellTxId: '' })}
+                        <button
+                          type="button"
+                          className="inline-flex h-8 min-w-[260px] flex-1 items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-left text-xs text-slate-700 transition-colors hover:border-indigo-300 hover:bg-indigo-50/40"
+                          onClick={() => { setChainPicker({ chainId: chain.id, legIndex, role: 'buy' }); setChainPickerSearch(''); }}
                         >
-                          <option value="">选择买入交易 (BUY)…</option>
-                          {buyTxs.map((tx) => (
-                            <option key={tx.id} value={tx.id}>{txOptionLabel(tx)}</option>
-                          ))}
-                        </select>
+                          <span className="flex-1 truncate">{buyButtonLabel}</span>
+                          <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                        </button>
                         <span className="text-xs text-slate-400">→</span>
-                        <select
-                          className={cx(tableInputClass, 'h-8 min-w-[260px] flex-1 rounded-lg border-slate-200 bg-white px-2 text-xs')}
-                          value={leg.sellTxId || ''}
+                        <button
+                          type="button"
+                          className="inline-flex h-8 min-w-[260px] flex-1 items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-left text-xs text-slate-700 transition-colors hover:border-indigo-300 hover:bg-indigo-50/40 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:hover:border-slate-200"
                           disabled={!buyTx}
-                          onChange={(e) => handleSetChainLeg(chain.id, legIndex, { sellTxId: e.target.value })}
+                          onClick={() => { setChainPicker({ chainId: chain.id, legIndex, role: 'sell' }); setChainPickerSearch(''); }}
                         >
-                          <option value="">持有至今（用最新净值）</option>
-                          {sellOptions.map((tx) => (
-                            <option key={tx.id} value={tx.id}>{txOptionLabel(tx)}</option>
-                          ))}
-                        </select>
+                          <span className="flex-1 truncate">{sellButtonLabel}</span>
+                          <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                        </button>
                         <button
                           type="button"
                           className="inline-flex h-8 items-center justify-center rounded-lg px-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-red-500"
@@ -2259,6 +2273,162 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           </div>
         </div>
       ) : null}
+      {chainPicker ? (() => {
+        const ctx = chainPicker;
+        const targetChain = (ledger.switchChains || []).find((c) => c.id === ctx.chainId);
+        const targetLeg = targetChain && targetChain.legs ? targetChain.legs[ctx.legIndex] : null;
+        const buyTx = targetLeg && targetLeg.buyTxId ? transactions.find((tx) => tx.id === targetLeg.buyTxId) : null;
+        const isBuyRole = ctx.role === 'buy';
+        const oppType = isBuyRole ? 'BUY' : 'SELL';
+        const filterText = chainPickerSearch.trim().toLowerCase();
+        const close = () => { setChainPicker(null); setChainPickerSearch(''); };
+        const candidates = transactions
+          .filter((tx) => {
+            if (tx.type !== oppType) return false;
+            if (!tx.code) return false;
+            if (!isBuyRole && buyTx) {
+              if (tx.code !== buyTx.code) return false;
+              if (buyTx.date && tx.date && tx.date < buyTx.date) return false;
+              if (tx.id === buyTx.id) return false;
+            }
+            return true;
+          })
+          .filter((tx) => {
+            if (!filterText) return true;
+            const code = String(tx.code || '').toLowerCase();
+            const name = String(tx.name || '').toLowerCase();
+            return code.includes(filterText) || name.includes(filterText);
+          })
+          .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || a.code.localeCompare(b.code));
+        const currentSelectedId = isBuyRole ? (targetLeg?.buyTxId || '') : (targetLeg?.sellTxId || '');
+        const handlePick = (txId) => {
+          if (isBuyRole) {
+            handleSetChainLeg(ctx.chainId, ctx.legIndex, { buyTxId: txId, sellTxId: '' });
+          } else {
+            handleSetChainLeg(ctx.chainId, ctx.legIndex, { sellTxId: txId });
+          }
+          close();
+        };
+        return (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/40 px-4 py-6" onClick={close}>
+            <div className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200" onClick={(event) => event.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+                <div>
+                  <div className="text-sm font-bold text-slate-900">
+                    {isBuyRole ? `选择第 ${ctx.legIndex + 1} 段的买入交易` : `选择第 ${ctx.legIndex + 1} 段的卖出交易`}
+                  </div>
+                  <div className="mt-0.5 text-xs text-slate-500">
+                    {isBuyRole
+                      ? '列出所有 BUY 交易。选中后会重置本段卖出项。'
+                      : (
+                        <>仅列出 <span className="font-mono font-semibold text-slate-700">{buyTx?.code || '—'}</span>{buyTx?.name ? <> · {buyTx.name}</> : null} 的 SELL 交易（日期 ≥ 买入日{buyTx?.date ? ` ${buyTx.date}` : ''}）。也可选择「持有至今」。</>
+                      )}
+                  </div>
+                </div>
+                <button type="button" className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700" onClick={close}>
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="border-b border-slate-100 bg-slate-50/60 px-5 py-2.5">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="search"
+                    className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-800 outline-none transition-colors focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                    placeholder="搜索代码或名称…"
+                    value={chainPickerSearch}
+                    onChange={(event) => setChainPickerSearch(event.target.value)}
+                    autoFocus
+                  />
+                </div>
+              </div>
+              <div className="flex-1 overflow-auto">
+                {(candidates.length === 0 && (isBuyRole || !buyTx)) ? (
+                  <div className="flex min-h-[200px] flex-col items-center justify-center gap-2 px-6 py-10 text-center text-xs text-slate-500">
+                    <Wallet className="h-8 w-8 text-slate-300" />
+                    {filterText
+                      ? `没有匹配 “${chainPickerSearch}” 的 ${isBuyRole ? '买入' : '卖出'}交易。`
+                      : `暂无可选的 ${isBuyRole ? '买入' : '卖出'}交易。`}
+                  </div>
+                ) : (
+                  <table className="min-w-full text-sm">
+                    <thead className="sticky top-0 z-10 bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2">代码</th>
+                        <th className="px-3 py-2">名称</th>
+                        <th className="px-3 py-2">标签</th>
+                        <th className="px-3 py-2">类型</th>
+                        <th className="px-3 py-2">日期</th>
+                        <th className="px-3 py-2 text-right">价</th>
+                        <th className="px-3 py-2 text-right">份额</th>
+                        <th className="px-3 py-2 text-right">金额</th>
+                        <th className="px-3 py-2 text-right">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {!isBuyRole && buyTx ? (
+                        <tr
+                          className={cx(
+                            'cursor-pointer text-slate-700 transition-colors hover:bg-amber-50/60',
+                            currentSelectedId === '' && 'bg-amber-50/80'
+                          )}
+                          onClick={() => handlePick('')}
+                        >
+                          <td className="whitespace-nowrap px-3 py-2 font-mono text-xs font-semibold text-amber-700">{buyTx.code}</td>
+                          <td className="px-3 py-2 text-xs text-slate-600" colSpan={6}>持有至今（使用最新净值作为本段终点）</td>
+                          <td className="whitespace-nowrap px-3 py-2 text-right">
+                            {currentSelectedId === '' ? (
+                              <span className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2 py-1 text-[11px] font-semibold text-white"><CheckCircle2 className="h-3 w-3" />已选</span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-lg bg-white px-2 py-1 text-[11px] font-semibold text-amber-600 ring-1 ring-amber-200">选择</span>
+                            )}
+                          </td>
+                        </tr>
+                      ) : null}
+                      {candidates.map((tx) => {
+                        const isSelected = currentSelectedId === tx.id;
+                        const amount = (Number(tx.shares) || 0) * (Number(tx.price) || 0);
+                        return (
+                          <tr
+                            key={tx.id}
+                            className={cx(
+                              'cursor-pointer text-slate-700 transition-colors hover:bg-indigo-50/60',
+                              isSelected && 'bg-indigo-50/80'
+                            )}
+                            onClick={() => handlePick(tx.id)}
+                          >
+                            <td className="whitespace-nowrap px-3 py-2 font-mono text-xs font-semibold text-slate-800">{tx.code}</td>
+                            <td className="px-3 py-2 text-xs">{tx.name || <span className="text-slate-400">—</span>}</td>
+                            <td className="px-3 py-2"><Pill tone={KIND_PILL_TONES[tx.kind] || 'slate'}>{KIND_LABELS[tx.kind] || '未知'}</Pill></td>
+                            <td className="whitespace-nowrap px-3 py-2 text-xs">
+                              <span className={cx('rounded px-1.5 py-0.5 text-[10px] font-semibold', tx.type === 'BUY' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700')}>{tx.type}</span>
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2 text-xs">{tx.date || <span className="text-amber-600">待补录</span>}</td>
+                            <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">{formatNav(tx.price)}</td>
+                            <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">{formatShares(tx.shares)}</td>
+                            <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums text-slate-700">{formatCurrency(amount, '¥', 2)}</td>
+                            <td className="whitespace-nowrap px-3 py-2 text-right">
+                              {isSelected ? (
+                                <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2 py-1 text-[11px] font-semibold text-white"><CheckCircle2 className="h-3 w-3" />已选</span>
+                              ) : (
+                                <span className="inline-flex items-center rounded-lg bg-white px-2 py-1 text-[11px] font-semibold text-indigo-600 ring-1 ring-indigo-100">选择</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+              <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+                <div>点击任意一行即作为本段{isBuyRole ? '买入' : '卖出'}交易。</div>
+                <button type="button" className={GHOST_BTN} onClick={close}>关闭</button>
+              </div>
+            </div>
+          </div>
+        );
+      })() : null}
     </div>
   );
 
