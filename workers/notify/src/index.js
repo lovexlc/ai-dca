@@ -1507,7 +1507,8 @@ function holdingsDedupKey(clientId, kind, dateKey) {
  */
 const HOLDINGS_QDII_CODE_SET = new Set([
   '021000', // 南方纳斯达克100指数发起(QDII)I
-  '006075'  // 博时标普500ETF联接(QDII)C
+  '006075', // 博时标普500ETF联接(QDII)C
+  '019172'  // 摩根纳斯达克100(QDII)人民币A
 ]);
 
 /** 返回单只基金的生效 kind：QDII 白名单命中则返 'qdii'，否则返回 bucket 另外的 kind。 */

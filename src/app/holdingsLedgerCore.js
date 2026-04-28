@@ -34,7 +34,8 @@ const QDII_NAME_KEYWORDS = [
 /** 已知 QDII 基金代码白名单，作为名称识别失败时的兜底。 */
 const QDII_CODE_WHITELIST = new Set([
   '021000', // 南方纳斯达克100指数发起(QDII)I
-  '006075'  // 博时标普500ETF联接(QDII)C
+  '006075', // 博时标普500ETF联接(QDII)C
+  '019172'  // 摩根纳斯达克100(QDII)人民币A
 ]);
 
 export const TRANSACTION_TYPES = ['BUY', 'SELL'];

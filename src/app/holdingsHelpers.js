@@ -4,8 +4,8 @@ import { formatCurrency, formatPercent } from './accumulation.js';
 import { createEmptyTransaction } from './holdingsLedgerCore.js';
 import { cx, tableInputClass } from '../components/experience-ui.jsx';
 
-export const KIND_LABELS = { otc: '场外', exchange: '场内' };
-export const KIND_PILL_TONES = { otc: 'indigo', exchange: 'amber' };
+export const KIND_LABELS = { otc: '场外', exchange: '场内', qdii: 'QDII' };
+export const KIND_PILL_TONES = { otc: 'indigo', exchange: 'amber', qdii: 'purple' };
 export const KIND_FILTER_LABELS = { all: '全部', otc: '场外', exchange: '场内' };
 export const KIND_FILTER_KEYS = ['all', 'otc', 'exchange'];
 export const LEDGER_COLUMN_COUNT = 18;
