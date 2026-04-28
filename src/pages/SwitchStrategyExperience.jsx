@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowDownUp, Info, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ArrowDownUp, Info, RefreshCw, Radio, PlayCircle } from 'lucide-react';
 import { Card, Pill, SectionHeading, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { aggregateByCode } from '../app/holdingsLedgerCore.js';
+import {
+  buildDefaultSwitchConfig,
+  loadSwitchConfigFromWorker,
+  loadSwitchSnapshotFromWorker,
+  normalizeSwitchConfigShape,
+  readSwitchConfigCache,
+  runSwitchOnce,
+  saveSwitchConfigToWorker
+} from '../app/switchStrategySync.js';
 
 // 场内 / 场外纳指 100 切换套利策略实时建议器。
 //
@@ -178,8 +187,133 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   // 非持仓候选的现价：取 daily-sina.json 最后一根 K 线 close 作为当前价代理。
   const [priceState, setPriceState] = useState({ priceByCode: {} });
 
+  // ---- 「自动监控」worker 驱动的场内切换信号 ----
+  const [workerConfig, setWorkerConfig] = useState(() => readSwitchConfigCache());
+  const [workerSnapshot, setWorkerSnapshot] = useState(null);
+  const [workerStatus, setWorkerStatus] = useState({
+    loading: true,
+    saving: false,
+    running: false,
+    error: '',
+    notice: '',
+    lastSyncedAt: ''
+  });
+  // 本地表单草稿（阈值输入需要临时存为字符串）
+  const [thresholdsDraft, setThresholdsDraft] = useState(() => {
+    const cached = readSwitchConfigCache();
+    return (cached.thresholds && cached.thresholds.length ? cached.thresholds : [1, 8]).join(',');
+  });
+
   useEffect(() => { writePrefs(prefs); }, [prefs]);
   useEffect(() => { writeSwitchLedger(switchLedger); }, [switchLedger]);
+
+  // 首次入页：从 worker 拉取配置 + 快照。失败不阻断 UI（本地缓存仍可用）。
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setWorkerStatus((prev) => ({ ...prev, loading: true, error: '' }));
+        const [config, snapshotPayload] = await Promise.all([
+          loadSwitchConfigFromWorker().catch(() => null),
+          loadSwitchSnapshotFromWorker().catch(() => null)
+        ]);
+        if (cancelled) return;
+        if (config) {
+          setWorkerConfig(config);
+          setThresholdsDraft((config.thresholds || [1, 8]).join(','));
+        }
+        if (snapshotPayload?.snapshot) {
+          setWorkerSnapshot(snapshotPayload.snapshot);
+        }
+        setWorkerStatus((prev) => ({
+          ...prev,
+          loading: false,
+          error: '',
+          lastSyncedAt: new Date().toISOString()
+        }));
+      } catch (error) {
+        if (cancelled) return;
+        setWorkerStatus((prev) => ({
+          ...prev,
+          loading: false,
+          error: error?.message || '加载 worker 配置失败'
+        }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const persistWorkerConfig = useCallback(async (nextConfig) => {
+    const normalized = normalizeSwitchConfigShape(nextConfig);
+    setWorkerConfig(normalized);
+    setWorkerStatus((prev) => ({ ...prev, saving: true, error: '', notice: '' }));
+    try {
+      const stored = await saveSwitchConfigToWorker(normalized);
+      setWorkerConfig(stored);
+      setThresholdsDraft((stored.thresholds || [1, 8]).join(','));
+      setWorkerStatus((prev) => ({
+        ...prev,
+        saving: false,
+        notice: stored.enabled ? '配置已同步到 worker，交易时段内每分钟扫描。' : '配置已保存（未启用监控）。',
+        lastSyncedAt: new Date().toISOString()
+      }));
+    } catch (error) {
+      setWorkerStatus((prev) => ({
+        ...prev,
+        saving: false,
+        error: error?.message || '保存到 worker 失败'
+      }));
+    }
+  }, []);
+
+  const handleWorkerToggle = useCallback((enabled) => {
+    void persistWorkerConfig({ ...workerConfig, enabled });
+  }, [workerConfig, persistWorkerConfig]);
+
+  const handleWorkerBenchmarkChange = useCallback((code) => {
+    void persistWorkerConfig({ ...workerConfig, benchmarkCode: code });
+  }, [workerConfig, persistWorkerConfig]);
+
+  const handleWorkerCandidateToggle = useCallback((code) => {
+    const set = new Set((workerConfig.candidateCodes || []).map(String));
+    if (set.has(code)) set.delete(code); else set.add(code);
+    void persistWorkerConfig({ ...workerConfig, candidateCodes: Array.from(set) });
+  }, [workerConfig, persistWorkerConfig]);
+
+  const handleWorkerThresholdsCommit = useCallback(() => {
+    const parsed = String(thresholdsDraft || '')
+      .split(/[,\s]+/)
+      .map((token) => Number(token))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    const next = parsed.length ? parsed : [1, 8];
+    void persistWorkerConfig({ ...workerConfig, thresholds: next });
+  }, [thresholdsDraft, workerConfig, persistWorkerConfig]);
+
+  const handleWorkerRunOnce = useCallback(async () => {
+    setWorkerStatus((prev) => ({ ...prev, running: true, error: '', notice: '' }));
+    try {
+      const payload = await runSwitchOnce();
+      if (payload?.snapshot) {
+        setWorkerSnapshot(payload.snapshot);
+      }
+      const triggered = Number(payload?.summary?.triggered || 0);
+      const pushed = Number(payload?.summary?.pushed || 0);
+      setWorkerStatus((prev) => ({
+        ...prev,
+        running: false,
+        notice: triggered
+          ? `手动跡府完成：本轮命中 ${triggered} 个信号，推送 ${pushed} 次。`
+          : '手动跡府完成：当前未触达阈值。',
+        lastSyncedAt: new Date().toISOString()
+      }));
+    } catch (error) {
+      setWorkerStatus((prev) => ({
+        ...prev,
+        running: false,
+        error: error?.message || '手动运行失败'
+      }));
+    }
+  }, []);
 
   // 持仓 ledger
   useEffect(() => {
@@ -469,6 +603,207 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
   return (
     <div className="space-y-6">
+      <Card>
+        <SectionHeading
+          eyebrow="自动监控"
+          title="worker 每分钟扫描场内切换信号"
+          description="前端只做配置：选定基准 ETF + 候选 ETF + 阈值后保存到 worker。A 股交易时段 worker 每分钟拉取新浪现价与最新单位净值，计算 (价-净值)/净值 溢价。「基准溢价 − 候选溢价」绝对值跨越任一阈值（1% / 8%等）即推送到已配对的设备。"
+        />
+        <div className="mt-5 space-y-4">
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <label className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={Boolean(workerConfig.enabled)}
+                disabled={workerStatus.loading || workerStatus.saving}
+                onChange={(e) => handleWorkerToggle(e.target.checked)}
+              />
+              <span className="font-semibold text-slate-700">启用 worker 自动监控</span>
+            </label>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs text-slate-600">
+              <Radio className="h-3.5 w-3.5" />
+              cron: 周一至周五 09:30-11:30 / 13:00-15:00
+            </span>
+            <button
+              type="button"
+              className={cx(secondaryButtonClass, 'ml-auto h-9 px-3 text-xs')}
+              onClick={handleWorkerRunOnce}
+              disabled={workerStatus.running || workerStatus.saving || !workerConfig.enabled || !workerConfig.benchmarkCode || (workerConfig.candidateCodes || []).length === 0}
+              title={workerConfig.enabled ? '手动跡府一次：拉价 + 算溢价差 + 命中阈值则推送' : '需先启用监控并选定基准 / 候选'}
+            >
+              <PlayCircle className="h-4 w-4" />
+              {workerStatus.running ? '运行中…' : '手动跡府一次'}
+            </button>
+          </div>
+          {workerStatus.error ? (
+            <div className="flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{workerStatus.error}</span>
+            </div>
+          ) : null}
+          {workerStatus.notice && !workerStatus.error ? (
+            <div className="flex items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{workerStatus.notice}</span>
+            </div>
+          ) : null}
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">基准 ETF</div>
+              <select
+                className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 focus:border-indigo-300 focus:outline-none"
+                value={workerConfig.benchmarkCode || ''}
+                disabled={workerStatus.loading || workerStatus.saving}
+                onChange={(e) => handleWorkerBenchmarkChange(e.target.value)}
+              >
+                <option value="">请选择一只基准 ETF</option>
+                {candidateUniverse.map((f) => (
+                  <option key={`bench-${f.code}`} value={f.code}>
+                    {f.code} · {f.name || ''}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-2 text-xs text-slate-500">建议选你主仓的那只，比如 159632 / 513100。</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 md:col-span-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">候选 ETF</div>
+                <div className="text-xs text-slate-500">已选 {(workerConfig.candidateCodes || []).length} / 候选 {candidateUniverse.length}</div>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {candidateUniverse.length === 0 ? (
+                  <div className="text-sm text-slate-500">候选基金列表尚未加载。</div>
+                ) : null}
+                {candidateUniverse.map((f) => {
+                  const code = String(f.code);
+                  const isBench = code === workerConfig.benchmarkCode;
+                  const isSelected = (workerConfig.candidateCodes || []).includes(code);
+                  return (
+                    <button
+                      key={`cand-${code}`}
+                      type="button"
+                      disabled={isBench || workerStatus.loading || workerStatus.saving}
+                      onClick={() => handleWorkerCandidateToggle(code)}
+                      className={cx(
+                        'inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs',
+                        isBench
+                          ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                          : isSelected
+                            ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                      )}
+                    >
+                      <span className="font-semibold">{code}</span>
+                      {f.name ? <span className="text-slate-400">·</span> : null}
+                      {f.name ? <span className="max-w-[120px] truncate">{f.name}</span> : null}
+                      {isBench ? <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">基准</span> : null}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-xs text-slate-500">点击划勾。会与基准一一配对计算「基准溢价 − 候选溢价」；一只基金不能同时作为基准与候选。</p>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex-1 min-w-[220px]">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">阈值（%）</div>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 focus:border-indigo-300 focus:outline-none"
+                  value={thresholdsDraft}
+                  disabled={workerStatus.loading || workerStatus.saving}
+                  onChange={(e) => setThresholdsDraft(e.target.value)}
+                  onBlur={handleWorkerThresholdsCommit}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
+                  placeholder="1, 8"
+                />
+                <p className="mt-2 text-xs text-slate-500">逗号或空格分隔，按 Enter / 失焦保存。任一阈值被跨越都会推送（例如 1 / 8）。</p>
+              </div>
+              <div className="flex-1 min-w-[220px] text-xs text-slate-500">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">当前生效阈值</div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {(workerConfig.thresholds || []).map((t) => (
+                    <span key={`thr-${t}`} className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">±{t}%</span>
+                  ))}
+                  {(workerConfig.thresholds || []).length === 0 ? <span>未设置</span> : null}
+                </div>
+                {workerConfig.updatedAt ? (
+                  <div className="mt-2 text-[11px] text-slate-400">上次保存：{formatDate(workerConfig.updatedAt) || workerConfig.updatedAt}</div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">worker 最近一次计算</div>
+              {workerSnapshot?.computedAt ? (
+                <div className="text-xs text-slate-500">算于 {formatDate(workerSnapshot.computedAt) || workerSnapshot.computedAt}</div>
+              ) : <div className="text-xs text-slate-400">尚无快照</div>}
+            </div>
+            {workerSnapshot ? (
+              <div className="mt-3 space-y-2 text-sm">
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="text-xs uppercase tracking-[0.18em] text-slate-400">基准 {workerSnapshot.benchmarkCode}{workerSnapshot.benchmarkName ? ` · ${workerSnapshot.benchmarkName}` : ''}</div>
+                  <div className="mt-1 grid grid-cols-3 gap-2 text-xs text-slate-600">
+                    <div>现价 <span className="font-semibold text-slate-800">{formatPrice(workerSnapshot.benchmarkPrice)}</span></div>
+                    <div>净值 <span className="font-semibold text-slate-800">{formatPrice(workerSnapshot.benchmarkNav)}</span>{workerSnapshot.benchmarkNavDate ? <span className="ml-1 text-slate-400">@{workerSnapshot.benchmarkNavDate}</span> : null}</div>
+                    <div>溢价 <span className="font-semibold text-slate-800">{formatPercent(workerSnapshot.benchmarkPremiumPct, 2, true)}</span></div>
+                  </div>
+                </div>
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-100 text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2 text-left">候选</th>
+                        <th className="px-3 py-2 text-right">现价</th>
+                        <th className="px-3 py-2 text-right">净值</th>
+                        <th className="px-3 py-2 text-right">溢价</th>
+                        <th className="px-3 py-2 text-right">与基准差</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(workerSnapshot.candidates || []).map((c) => {
+                        const abs = Number.isFinite(c.spreadVsBenchmarkPct) ? Math.abs(c.spreadVsBenchmarkPct) : null;
+                        const thresholds = workerSnapshot.thresholds || [];
+                        const hits = thresholds.filter((t) => Number.isFinite(abs) && abs >= t).length;
+                        const cls = hits >= 2 ? 'text-rose-700 font-semibold' : hits >= 1 ? 'text-amber-700 font-semibold' : 'text-slate-600';
+                        return (
+                          <tr key={`snap-${c.code}`} className="border-t border-slate-100">
+                            <td className="px-3 py-2"><span className="font-semibold">{c.code}</span>{c.name ? <span className="ml-1 text-slate-400">{c.name}</span> : null}</td>
+                            <td className="px-3 py-2 text-right">{formatPrice(c.price)}</td>
+                            <td className="px-3 py-2 text-right">{formatPrice(c.nav)}{c.navDate ? <span className="ml-1 text-slate-400">@{c.navDate}</span> : null}</td>
+                            <td className="px-3 py-2 text-right">{formatPercent(c.premiumPct, 2, true)}</td>
+                            <td className={cx('px-3 py-2 text-right', cls)}>{formatPercent(c.spreadVsBenchmarkPct, 2, true)}</td>
+                          </tr>
+                        );
+                      })}
+                      {(!workerSnapshot.candidates || workerSnapshot.candidates.length === 0) ? (
+                        <tr><td colSpan={5} className="px-3 py-4 text-center text-slate-400">快照中暂无候选数据。</td></tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+                {(workerSnapshot.triggers || []).length > 0 ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                    <div className="font-semibold">本轮触发 {workerSnapshot.triggers.length} 个信号</div>
+                    <ul className="mt-1 list-disc pl-4">
+                      {workerSnapshot.triggers.map((t, idx) => (
+                        <li key={`trig-${idx}`}>卖 {t.fromCode} → 买 {t.toCode}：溢价差 {formatPercent(t.spreadPct, 2, true)} (≥ {t.threshold}%)</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-slate-500">启用监控后，交易时段内 worker 每分钟会生成一份快照。也可以点击「手动跡府一次」立刻跳起一个跳。</p>
+            )}
+          </div>
+        </div>
+      </Card>
+
       <Card>
         <SectionHeading
           eyebrow="切换策略"

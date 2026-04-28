@@ -58,6 +58,9 @@ jobs:
       - name: Refresh Nasdaq 100 benchmark bars
         run: python scripts/fetch_nasdaq100_benchmark.py
 
+      - name: Refresh ETF latest unit NAV (eastmoney lsjz)
+        run: node scripts/fetch_etf_latest_nav.mjs
+
       - name: Sync data to docs
         shell: bash
         run: rsync -a data/ docs/data/ --exclude 'holdings-nav-cache'

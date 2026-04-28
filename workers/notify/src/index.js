@@ -1,6 +1,20 @@
 import { runNotificationCycle } from './evaluator.js';
 import { buildPublicGcmRegistration, buildPublicGcmRegistrations, checkGcmConnection, hasGcmServiceAccount, isRegistrationPairedToScope, maskSecret, normalizeGcmPairedClients, normalizeGcmRegistrations, normalizeNotifyGroupId, readGcmServiceAccount, resolveGcmProjectId } from './gcm.js';
 import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
+import {
+  SWITCH_CONFIG_PREFIX,
+  buildSwitchTriggerNotification,
+  computeSwitchSnapshot,
+  evaluateSwitchTriggers,
+  fetchLatestNavMap,
+  fetchSinaPrices,
+  isInTradingSession,
+  isSwitchConfigRunnable,
+  normalizeSwitchConfig,
+  switchConfigKey,
+  switchSnapshotKey,
+  switchStateKey
+} from './switchStrategy.js';
 
 const SETTINGS_KEY = 'notify:settings';
 const PAIRING_CODE_TTL_MS = 10 * 60 * 1000;
@@ -1928,6 +1942,200 @@ async function runHoldingsNotifications(env, kind, todayShanghai, reason = 'hold
   }
 }
 
+// ---------------------------------------------------------------------------
+// 场内切换策略
+// 前端在「交易计划中心 / 切换」tab 配置基准 + 候选 + 阈值后 POST 到 KV，
+// Cron Trigger（A 股交易时段每分钟）扫描所有 client 的配置：
+// 1. 拉取实时盘中价（新浪 hq.sinajs.cn）
+// 2. 拉取最新单位净值（PUBLIC_DATA_BASE_URL/data/<code>/latest-nav.json）
+// 3. 计算 (price - nav) / nav 溢价 %
+// 4. 「基准 - 候选」溢价差跨越任一阈值（1% / 8% 等）→ 推送到该 client 已配对的设备
+// 去重：(基准, 候选) 对维护 (level, sign)，level 升档或方向翻转才推送一次。
+// ---------------------------------------------------------------------------
+
+async function readSwitchConfigForClient(env, clientId) {
+  const stored = await readJson(env, switchConfigKey(clientId), null);
+  return stored ? normalizeSwitchConfig(stored) : null;
+}
+
+async function writeSwitchConfigForClient(env, clientId, config) {
+  const normalized = normalizeSwitchConfig({
+    ...config,
+    updatedAt: new Date().toISOString()
+  });
+  await writeJson(env, switchConfigKey(clientId), normalized);
+  return normalized;
+}
+
+async function readSwitchSnapshotForClient(env, clientId) {
+  return await readJson(env, switchSnapshotKey(clientId), null);
+}
+
+async function listSwitchClientIds(env) {
+  ensureStateBinding(env);
+  const ids = [];
+  let cursor;
+  do {
+    const result = await env.NOTIFY_STATE.list({ prefix: SWITCH_CONFIG_PREFIX, cursor });
+    for (const item of result.keys || []) {
+      const clientId = String(item.name || '').slice(SWITCH_CONFIG_PREFIX.length);
+      if (clientId) ids.push(clientId);
+    }
+    cursor = result.list_complete ? undefined : result.cursor;
+  } while (cursor);
+  return ids;
+}
+
+async function handleSwitchConfigGet(request, env) {
+  const origin = readOrigin(request);
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings);
+  settings = auth.settings;
+  if (auth.didUpdate) await writeSettings(env, settings);
+  const config = await readSwitchConfigForClient(env, auth.clientId);
+  return jsonResponse({
+    ok: true,
+    config: config || normalizeSwitchConfig({ enabled: false })
+  }, { origin });
+}
+
+async function handleSwitchConfigPost(request, env) {
+  const origin = readOrigin(request);
+  const payload = await request.json().catch(() => ({}));
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings, {
+    payload,
+    clientLabel: normalizeClientName(payload?.clientLabel || payload?.notifyClientLabel || '')
+  });
+  settings = auth.settings;
+  if (auth.didUpdate) await writeSettings(env, settings);
+  const nextConfig = await writeSwitchConfigForClient(env, auth.clientId, {
+    enabled: payload?.enabled,
+    benchmarkCode: payload?.benchmarkCode,
+    candidateCodes: payload?.candidateCodes,
+    thresholds: payload?.thresholds,
+    clientLabel: auth.clientRecord?.clientLabel || ''
+  });
+  return jsonResponse({ ok: true, config: nextConfig }, { origin });
+}
+
+async function handleSwitchSnapshotGet(request, env) {
+  const origin = readOrigin(request);
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings);
+  settings = auth.settings;
+  if (auth.didUpdate) await writeSettings(env, settings);
+  const snapshot = await readSwitchSnapshotForClient(env, auth.clientId);
+  const config = await readSwitchConfigForClient(env, auth.clientId);
+  return jsonResponse({
+    ok: true,
+    snapshot,
+    config: config || normalizeSwitchConfig({ enabled: false })
+  }, { origin });
+}
+
+async function handleSwitchRunPost(request, env) {
+  const origin = readOrigin(request);
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings);
+  settings = auth.settings;
+  if (auth.didUpdate) await writeSettings(env, settings);
+  const config = await readSwitchConfigForClient(env, auth.clientId);
+  if (!config || !isSwitchConfigRunnable(config)) {
+    return jsonResponse({
+      ok: false,
+      error: '当前没有可运行的「切换」配置：请先选择基准 ETF、候选 ETF 并启用监控。'
+    }, { status: 400, origin });
+  }
+  const summary = await runSwitchStrategyForOneClient(env, auth.clientId, config, { reason: 'switch-manual-run' });
+  const snapshot = await readSwitchSnapshotForClient(env, auth.clientId);
+  return jsonResponse({ ok: true, summary, snapshot }, { origin });
+}
+
+async function runSwitchStrategyForOneClient(env, clientId, config, { reason = 'switch-strategy', priceMap = null, navByCode = null, computedAt = '' } = {}) {
+  let settings = await readSettings(env);
+  const clientRecord = getClientRecord(settings, clientId);
+  if (!clientRecord || !clientRecord.clientId) {
+    return { triggered: 0, skipped: 'no-client' };
+  }
+  const codes = Array.from(new Set([config.benchmarkCode, ...config.candidateCodes]));
+  const effectivePriceMap = priceMap || await fetchSinaPrices(codes).catch(() => ({}));
+  const effectiveNavMap = navByCode || await fetchLatestNavMap(env, codes);
+  const computedAtIso = computedAt || new Date().toISOString();
+  const snapshot = computeSwitchSnapshot(config, effectivePriceMap, effectiveNavMap, computedAtIso);
+  const prevState = (await readJson(env, switchStateKey(clientId), null)) || {};
+  const { triggers, nextTriggerStates } = evaluateSwitchTriggers(snapshot, prevState.triggerStates || {});
+  snapshot.triggers = triggers;
+  await writeJson(env, switchSnapshotKey(clientId), snapshot);
+  await writeJson(env, switchStateKey(clientId), {
+    triggerStates: nextTriggerStates,
+    updatedAt: snapshot.computedAt
+  });
+  let pushedCount = 0;
+  for (const trigger of triggers) {
+    const testPayload = buildSwitchTriggerNotification(snapshot, trigger, env);
+    try {
+      const result = await runClientDetection(env, settings, clientRecord, {
+        reason,
+        testPayload
+      });
+      settings = result.settings;
+      pushedCount += 1;
+    } catch (_error) {
+      // 忽略单条失败：下一分钟若仍处触发态会再尝试推送
+    }
+  }
+  if (pushedCount) {
+    await writeSettings(env, settings);
+  }
+  return {
+    triggered: triggers.length,
+    pushed: pushedCount,
+    candidateCount: snapshot.candidates.length,
+    ready: snapshot.ready
+  };
+}
+
+async function runSwitchStrategyTick(env, scheduledMs, reason = 'switch-cron') {
+  // 双保险：crontab 用 UTC，时间窗口可能宽于实际交易时段；这里再卡一次北京时间。
+  if (!isInTradingSession(new Date(scheduledMs))) {
+    return;
+  }
+  const clientIds = await listSwitchClientIds(env);
+  if (!clientIds.length) return;
+  const enabledList = [];
+  for (const clientId of clientIds) {
+    const config = await readSwitchConfigForClient(env, clientId);
+    if (config && isSwitchConfigRunnable(config)) {
+      enabledList.push({ clientId, config });
+    }
+  }
+  if (!enabledList.length) return;
+  const allCodes = new Set();
+  for (const { config } of enabledList) {
+    allCodes.add(config.benchmarkCode);
+    for (const code of config.candidateCodes) allCodes.add(code);
+  }
+  const codeList = Array.from(allCodes);
+  const [priceMap, navByCode] = await Promise.all([
+    fetchSinaPrices(codeList).catch(() => ({})),
+    fetchLatestNavMap(env, codeList)
+  ]);
+  const computedAt = new Date(scheduledMs).toISOString();
+  for (const { clientId, config } of enabledList) {
+    try {
+      await runSwitchStrategyForOneClient(env, clientId, config, {
+        reason,
+        priceMap,
+        navByCode,
+        computedAt
+      });
+    } catch (_error) {
+      // 单个 client 失败不阻断整轮
+    }
+  }
+}
+
 export default {
   async fetch(request, env) {
     const origin = readOrigin(request);
@@ -2002,6 +2210,22 @@ export default {
         return await handleHoldingsRulePost(request, env);
       }
 
+      if (request.method === 'GET' && url.pathname === '/api/notify/switch/config') {
+        return await handleSwitchConfigGet(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/switch/config') {
+        return await handleSwitchConfigPost(request, env);
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/notify/switch/snapshot') {
+        return await handleSwitchSnapshotGet(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/switch/run') {
+        return await handleSwitchRunPost(request, env);
+      }
+
       if (request.method === 'GET' && url.pathname === '/api/notify/health') {
         return jsonResponse({ ok: true }, { origin });
       }
@@ -2022,10 +2246,18 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
+    const scheduledMs = Number(controller?.scheduledTime) || Date.now();
+    const cron = String(controller?.cron || '').trim();
+    // 「场内切换」专用分钟级 cron（仅 A 股交易时段）。接下来在函数内部还会再卡一道
+    // isInTradingSession，双保险；指定这个 cron 的调度下不运行 runDetection / holdings。
+    if (cron === '* 1-7 * * MON-FRI') {
+      ctx.waitUntil(runSwitchStrategyTick(env, scheduledMs, 'switch-cron'));
+      return;
+    }
+
     ctx.waitUntil(runDetection(env, 'scheduled'));
 
     try {
-      const scheduledMs = Number(controller?.scheduledTime) || Date.now();
       const { date: todayShanghai, hhmm } = getShanghaiDateParts(new Date(scheduledMs));
       if (hhmm === '15:30') {
         ctx.waitUntil(runHoldingsNotifications(env, 'exchange', todayShanghai, 'holdings-scheduled-1530'));

@@ -12,9 +12,18 @@ id = "5246771a17544a17af5b4b6c482f5d62"
 preview_id = "21e04c9a7eac46018a4740c013e11a1f"
 
 [triggers]
-# Cloudflare cron uses UTC. These two expressions together mean:
-# Beijing time Monday-Friday, every 30 minutes.
-crons = ["*/30 16-23 * * SUN-THU", "*/30 0-15 * * MON-FRI"]
+# Cloudflare cron uses UTC.
+# - The first two expressions together mean: Beijing time Monday-Friday, every 30 minutes
+#   (drives the existing runDetection / holdings flows).
+# - The third expression runs every minute UTC 01:00-07:59 Mon-Fri
+#   (= Beijing 09:00-15:59 Mon-Fri, covering all of A-share trading hours).
+#   The handler additionally filters to 09:30-11:30 / 13:00-15:00 to skip the lunch break.
+#   This drives the "场内切换" (intra-market switch) strategy worker tick.
+crons = [
+  "*/30 16-23 * * SUN-THU",
+  "*/30 0-15 * * MON-FRI",
+  "* 1-7 * * MON-FRI"
+]
 
 [observability]
 enabled = false
