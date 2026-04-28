@@ -1,6 +1,6 @@
 // 建仓计划生成器：纯逻辑层，不含 React，便于单元测试。
 // 所有函数从 NewPlanExperience.jsx 抽离而来，行为与原文件一致。
-import { formatPercent } from './accumulation.js';
+import { formatCurrency, formatPercent } from './accumulation.js';
 
 export const BENCHMARK_CODE = 'nas-daq100';
 export const frequencyOptions = ['每日', '每周', '每月', '每季'];
