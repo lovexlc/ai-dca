@@ -10,15 +10,35 @@
  *   - 当日收益 = (latestNav − previousNav) × totalShares
  *     仅当持仓的 latestNavDate === "该 kind 的预期最新 NAV 日期" 时计入：
  *       · exchange（场内 ETF）：盘中实时，预期 = 今日（非交易日则上一个工作日）。
- *       · otc（场外，含 QDII）：净值 T+1 发布，预期 = 上一个工作日。周一回退到上周五（QDII T-3），
- *         周二~周五回退到前一天（T-1）；这样 4-24（周五）的 NAV 在周一就能正确视为"今日"更新。
+ *       · otc（境内场外）：T 日 NAV 在 T 日晚（约 21:00）发布，预期 = 今日（非交易日回退到上一个工作日）。
+ *         T 日早晨 NAV 尚未发布时 isLatestNavToday=false，"当日收益"留空，避免把 T-1 涨跌误显示成今日。
+ *       · qdii（场外 QDII，海外标的）：净值 T+1 发布，预期 = 上一个工作日。周一回退到上周五（T-3），
+ *         周二~周五回退到前一天（T-1）；这样 4-24（周五）的 NAV 在周一就能正确视为"最新可用"NAV。
+ *   - QDII 识别：优先看 transaction.kind，否则按持仓名称中的关键词（QDII / 纳指 / 标普 / 海外… ）+
+ *     代码白名单兜底；都不命中则按代码前缀分 exchange / otc 两档。
  */
 
 const FUND_CODE_PATTERN = /^\d{6}$/;
 const EXCHANGE_PREFIXES = ['15', '50', '51', '52', '56', '58', '53', '54'];
+/**
+ * QDII 基金（海外标的，T+1 发布 NAV）名称关键词。前端通过持仓名称启发式识别，
+ * 命中任意一个即视为 qdii。覆盖纳指/标普/美股/港股/恒生/海外/全球类基金。
+ */
+const QDII_NAME_KEYWORDS = [
+  'QDII', '纳指', '纳斯达克', '标普', 'S&P', '美国', '美股', '北美',
+  '香港', '恒生', 'H股', '港股',
+  '日经', '日本', '德国', '法国', '英国', '欧洲', '欧洲股',
+  '亚太', '亚洲', '新兴市场', '印度', '越南', '东南亚', '中东', '沙特', '俄罗斯',
+  '全球', '海外', '国际', '中概互联', '中概', '原油', '油气', '石油'
+];
+/** 已知 QDII 基金代码白名单，作为名称识别失败时的兜底。 */
+const QDII_CODE_WHITELIST = new Set([
+  '021000', // 南方纳斯达克100指数发起(QDII)I
+  '006075'  // 博时标普500ETF联接(QDII)C
+]);
 
 export const TRANSACTION_TYPES = ['BUY', 'SELL'];
-export const FUND_KINDS = ['otc', 'exchange'];
+export const FUND_KINDS = ['otc', 'exchange', 'qdii'];
 
 export function round(value, precision = 2) {
   const factor = 10 ** precision;
@@ -42,8 +62,10 @@ export function getTodayShanghaiDate() {
 /**
  * 返回指定 kind 在 todayDate 当日预期的"最新 NAV 日期"。
  * - exchange（场内 ETF）：盘中实时，交易日 = today；周六/日上一个工作日。
- * - otc（场外，含 QDII）：净值 T+1 发布，取上一个工作日。
- *     周一 → 上周五（today - 3，QDII T-3）、周二~五 → today - 1（T-1）、周六 → today - 1（周五）、周日 → today - 2（周五）。
+ * - otc（境内场外）：T 日 NAV 在 T 日晚发布，预期 = 今日（周六/日回退到周五）。
+ *     早晨 T 日 NAV 尚未公布时 latestNavDate 仍为 T-1，会判 isLatestNavToday=false（"当日收益"留空）。
+ * - qdii（场外 QDII）：净值 T+1 发布，取上一个工作日。
+ *     周一 → 上周五（today - 3，T-3）、周二~五 → today - 1（T-1）、周六 → today - 1、周日 → today - 2。
  * 返回 YYYY-MM-DD 字符串。todayDate 默认取上海时区今日。
  */
 export function getExpectedLatestNavDate(kind = 'otc', todayDate = getTodayShanghaiDate()) {
@@ -61,17 +83,18 @@ export function getExpectedLatestNavDate(kind = 'otc', todayDate = getTodayShang
     const dd = String(next.getUTCDate()).padStart(2, '0');
     return `${yy}-${mm}-${dd}`;
   };
-  const normalizedKind = kind === 'exchange' ? 'exchange' : 'otc';
-  if (normalizedKind === 'exchange') {
+  const normalizedKind = kind === 'exchange' || kind === 'qdii' ? kind : 'otc';
+  if (normalizedKind === 'exchange' || normalizedKind === 'otc') {
+    // 场内 ETF：盘中实时；境内场外：T 日 NAV 当晚发布。两者预期最新日期都是"今日（非交易日回退）"。
     if (dayOfWeek === 0) return subtractDays(2); // 周日 → 上周五
     if (dayOfWeek === 6) return subtractDays(1); // 周六 → 上周五
     return today;
   }
-  // otc：上一个工作日
-  if (dayOfWeek === 1) return subtractDays(3); // 周一 → 上周五（QDII T-3）
+  // qdii：T+1 发布，取上一个工作日
+  if (dayOfWeek === 1) return subtractDays(3); // 周一 → 上周五（T-3）
   if (dayOfWeek === 0) return subtractDays(2); // 周日 → 上周五
   if (dayOfWeek === 6) return subtractDays(1); // 周六 → 周五
-  return subtractDays(1); // 周二~五 → 前一天
+  return subtractDays(1); // 周二~五 → 前一天（T-1）
 }
 
 /** Pad leading zeros so Excel's stripped codes (e.g. 21000, 18738) come back as 6-digit. */
@@ -94,25 +117,51 @@ export function isValidFundCode(code = '') {
   return FUND_CODE_PATTERN.test(normalizeFundCode(code));
 }
 
-/** Guess kind from code: 5xx/15x/56x/58x/... are on-exchange (ETF/场内); everything else default 场外. */
-export function detectFundKind(code = '') {
-  const normalized = normalizeFundCode(code);
-  if (!FUND_CODE_PATTERN.test(normalized)) {
-    return 'otc';
+/**
+ * 名称启发式判断是否 QDII 基金（海外标的，T+1 发布 NAV）。
+ * 命中关键词或代码白名单即返回 true。
+ */
+export function detectQdiiByName(name = '', code = '') {
+  const normalizedCode = normalizeFundCode(code);
+  if (normalizedCode && QDII_CODE_WHITELIST.has(normalizedCode)) {
+    return true;
   }
-  const prefix = normalized.slice(0, 2);
-  if (EXCHANGE_PREFIXES.includes(prefix)) {
-    return 'exchange';
+  const text = String(name || '').toUpperCase();
+  if (!text) return false;
+  return QDII_NAME_KEYWORDS.some((kw) => text.includes(String(kw).toUpperCase()));
+}
+
+/**
+ * 按代码前缀 + 名称启发式推断基金类别：
+ * - 5xx/15x/56x/58x/... 等 ETF 前缀 → exchange（场内）。
+ * - 名称命中 QDII 关键词或在 QDII 代码白名单内 → qdii（场外 QDII，T+1）。
+ * - 其余 → otc（境内场外，T 日 NAV 当晚发布）。
+ */
+export function detectFundKind(code = '', name = '') {
+  const normalized = normalizeFundCode(code);
+  if (FUND_CODE_PATTERN.test(normalized)) {
+    const prefix = normalized.slice(0, 2);
+    if (EXCHANGE_PREFIXES.includes(prefix)) {
+      return 'exchange';
+    }
+  }
+  if (detectQdiiByName(name, normalized)) {
+    return 'qdii';
   }
   return 'otc';
 }
 
-export function normalizeFundKind(value = '', code = '') {
+/**
+ * 归一 transaction.kind：保留显式 'exchange' / 'qdii'；'otc' 或缺省时按代码 + 名称重新检测，
+ * 这样存量数据里 kind='otc' 的 QDII 基金也能自动升级为 'qdii'。
+ */
+export function normalizeFundKind(value = '', code = '', name = '') {
   const raw = String(value || '').trim().toLowerCase();
-  if (raw === 'exchange' || raw === 'otc') {
+  if (raw === 'exchange' || raw === 'qdii') {
     return raw;
   }
-  return detectFundKind(code);
+  // 'otc' 或为空：重新按代码+名称识别（升级 QDII）。
+  return detectFundKind(code, name);
 }
 
 export function normalizeTransactionType(value = '') {
@@ -267,8 +316,10 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
   const hasPreviousNav = previousNav > 0;
   const latestNavDate = String(snapshot?.latestNavDate || '');
   const todayDate = String(options?.todayDate || getTodayShanghaiDate());
-  // 场内 ETF 今日实时；场外/QDII NAV T+1 发布，最新可用 NAV 是上一个工作日（周一 → 上周五）。
-  const expectedLatestNavDate = getExpectedLatestNavDate(normalized.kind, todayDate);
+  // 场内 ETF 今日实时；境内场外 T 日晚发布；QDII T+1 发布（周一 → 上周五）。
+  // 同样按名称+代码重新识别 QDII，避免存量 kind='otc' 误判。
+  const resolvedKind = normalizeFundKind(normalized.kind, normalized.code, normalized.name || snapshot?.name || '');
+  const expectedLatestNavDate = getExpectedLatestNavDate(resolvedKind, todayDate);
   const isLatestNavToday = !!latestNavDate
     && latestNavDate >= expectedLatestNavDate
     && latestNavDate <= todayDate;
@@ -387,7 +438,11 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     const hasLatestNav = latestNav > 0;
     const hasPreviousNav = previousNav > 0;
     const latestNavDateStr = String(snapshot?.latestNavDate || '');
-    const expectedLatestNavDate = getExpectedLatestNavDate(bucket.kind, todayDate);
+    // 重新根据代码 + 名称识别 QDII：存量交易 kind='otc' 的 QDII 基金会在此升级为 'qdii'。
+    const resolvedName = bucket.name || snapshot?.name || '';
+    const resolvedKind = normalizeFundKind(bucket.kind, bucket.code, resolvedName);
+    bucket.kind = resolvedKind;
+    const expectedLatestNavDate = getExpectedLatestNavDate(resolvedKind, todayDate);
     const isLatestNavToday = !!latestNavDateStr
       && latestNavDateStr >= expectedLatestNavDate
       && latestNavDateStr <= todayDate;

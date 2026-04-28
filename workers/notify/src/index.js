@@ -1502,10 +1502,25 @@ function holdingsDedupKey(clientId, kind, dateKey) {
 }
 
 /**
+ * QDII 代码白名单（与前端 holdingsLedgerCore.js 保持一致）。
+ * worker 拿不到基金名称，只能靠代码识别 QDII；后续如果 digest 上传了 name，可改用关键词匹配。
+ */
+const HOLDINGS_QDII_CODE_SET = new Set([
+  '021000', // 南方纳斯达克100指数发起(QDII)I
+  '006075'  // 博时标普500ETF联接(QDII)C
+]);
+
+/** 返回单只基金的生效 kind：QDII 白名单命中则返 'qdii'，否则返回 bucket 另外的 kind。 */
+function resolveHoldingKind(code, bucketKind) {
+  if (HOLDINGS_QDII_CODE_SET.has(String(code || ''))) return 'qdii';
+  return bucketKind;
+}
+
+/**
  * 按基金类型返回「今日预期的最新 NAV 日期」（与前端 holdingsLedgerCore.js 保持一致）。
- * - exchange：金融市场（中国A股 ETF）周一至周五 = 当日；周六映射到周五，周日到周五。
- * - otc：场外公募基金一般 T-1；中港/QDII 周一是 T-3（上周五）。
- *   这里统一取 “上一个交易日”（周一 → 上周五，其他工作日 → 昨天，周六/周日 → 上周五）。
+ * - exchange（场内 ETF）：周一至周五 = 当日；周六/周日回退到周五。
+ * - otc（境内场外）：T 日 NAV 在 T 日晚发布，预期 = 当日（周末回退到周五）。
+ * - qdii（场外 QDII）：T+1 发布，预期 = 上一个工作日（周一 → 上周五 T-3）。
  */
 function getExpectedLatestNavDate(kind, todayShanghai) {
   const [y, m, d] = String(todayShanghai).split('-').map((s) => Number(s));
@@ -1520,12 +1535,13 @@ function getExpectedLatestNavDate(kind, todayShanghai) {
     const dd = String(t.getUTCDate()).padStart(2, '0');
     return `${yy}-${mm}-${dd}`;
   };
-  if (kind === 'exchange') {
+  // 场内 ETF + 境内场外：预期都是“今日（周末回退到周五）”。
+  if (kind === 'exchange' || kind === 'otc') {
     if (dow === 0) return shift(2); // 周日 → 上周五
     if (dow === 6) return shift(1); // 周六 → 周五
     return todayShanghai;
   }
-  // otc （含 QDII）
+  // qdii：T+1 发布，取上一个工作日
   if (dow === 1) return shift(3); // 周一 → 上周五 (QDII T-3)
   if (dow === 0) return shift(2); // 周日 → 周五
   if (dow === 6) return shift(1); // 周六 → 周五
@@ -1668,8 +1684,9 @@ async function fetchHoldingsNavSnapshots(env, codes = []) {
 function computeWeightedReturn(bucket, snapshotsByCode, todayShanghai, kind = 'exchange') {
   // 返回 { ready, returnRate, contributors[] }。
   // ready=false 表示还有代码的 latestNavDate 未达预期最新日期，在调用方侧跳过。
-  // 期望最新日期按 kind 计算：场内 = 当日；场外/QDII = 上一个交易日（周一为 T-3）。
-  const expectedLatestNavDate = getExpectedLatestNavDate(kind, todayShanghai);
+  // 期望最新日期按「单只」实际 kind 计算：
+  //   exchange = 当日；otc（境内场外）= 当日（晚 21 点后才会刷）；qdii = 上一交易日（周一 T-3）。
+  // bucket 仍是 exchange/otc 两档，但 otc bucket 里可能夹杂了 QDII，需要逐代码区分。
   let ready = true;
   const eligible = [];
   for (const entry of bucket) {
@@ -1677,6 +1694,8 @@ function computeWeightedReturn(bucket, snapshotsByCode, todayShanghai, kind = 'e
     const latestNav = Number(snap?.latestNav);
     const previousNav = Number(snap?.previousNav);
     const latestNavDate = String(snap?.latestNavDate || '');
+    const effectiveKind = resolveHoldingKind(entry.code, kind);
+    const expectedLatestNavDate = getExpectedLatestNavDate(effectiveKind, todayShanghai);
     if (!Number.isFinite(latestNav) || !Number.isFinite(previousNav) || previousNav <= 0) {
       // 缺少净值或昨日净值 → 在加权中跳过，但如果是 latestNavDate 不达预期日期造成的，则整套跳过。
       if (!latestNavDate || latestNavDate < expectedLatestNavDate) ready = false;
