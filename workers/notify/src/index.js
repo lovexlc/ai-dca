@@ -1504,6 +1504,7 @@ function holdingsDedupKey(clientId, kind, dateKey) {
 /**
  * QDII 代码白名单（与前端 holdingsLedgerCore.js 保持一致）。
  * worker 拿不到基金名称，只能靠代码识别 QDII；后续如果 digest 上传了 name，可改用关键词匹配。
+ * 并作为 `getFundType` 接口失败时的兑底。
  */
 const HOLDINGS_QDII_CODE_SET = new Set([
   '021000', // 南方纳斯达克100指数发起(QDII)I
@@ -1511,10 +1512,82 @@ const HOLDINGS_QDII_CODE_SET = new Set([
   '019172'  // 摩根纳斯达克100(QDII)人民币A
 ]);
 
-/** 返回单只基金的生效 kind：QDII 白名单命中则返 'qdii'，否则返回 bucket 另外的 kind。 */
-function resolveHoldingKind(code, bucketKind) {
-  if (HOLDINGS_QDII_CODE_SET.has(String(code || ''))) return 'qdii';
-  return bucketKind;
+/** 东财 F10 jbgk「基金类型」在 KV 里的缓存前缀。值为 JSON `{ type: string, ts: number }`。 */
+const FUND_TYPE_KEY_PREFIX = 'fundtype:';
+/** 成功调接口后缓存 30 天。基金类型几乎不变，不需要频繁刷新。 */
+const FUND_TYPE_TTL_SECONDS = 30 * 24 * 3600;
+/** 接口失败后的负缓存时间（1 小时），避免连续打接口。 */
+const FUND_TYPE_NEG_TTL_SECONDS = 3600;
+
+/**
+ * 拉取并缓存某只基金在东财 F10 「基金基本概况」里的「基金类型」字段。返回如「指数型-海外股票」、
+ * 「股票型-FOF」、「QDII-股票型」等。失败返空串。
+ * worker 在 KV 中缓存 30 天，不会频繁调接口。
+ */
+async function getFundType(code, env) {
+  const codeStr = String(code || '').trim();
+  if (!codeStr) return '';
+  if (!env || !env.NOTIFY_STATE) return '';
+  const key = FUND_TYPE_KEY_PREFIX + codeStr;
+  try {
+    const raw = await env.NOTIFY_STATE.get(key);
+    if (raw) {
+      try {
+        const obj = JSON.parse(raw);
+        if (obj && typeof obj.type === 'string') return obj.type;
+      } catch (_e) {
+        // 兼容旧格式：直接存了字符串。
+        return raw;
+      }
+    }
+  } catch (_e) {
+    // KV 读失败，继续走接口。
+  }
+
+  let fundType = '';
+  try {
+    const url = 'https://fundf10.eastmoney.com/jbgk_' + codeStr + '.html';
+    const resp = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; ai-dca-notify/1.0)',
+        'Referer': 'https://fundf10.eastmoney.com/'
+      },
+      // Cloudflare edge cache 1 天，减少重复拉取。
+      cf: { cacheTtl: 86400, cacheEverything: true }
+    });
+    if (resp && resp.ok) {
+      const html = await resp.text();
+      const match = html.match(/基金类型[^<]*<\/[^>]+>\s*<[^>]*>\s*([^<]+?)\s*</);
+      if (match) fundType = match[1].trim();
+    }
+  } catch (_e) {
+    // 接口失败，走负缓存。
+  }
+
+  try {
+    await env.NOTIFY_STATE.put(
+      key,
+      JSON.stringify({ type: fundType, ts: Date.now() }),
+      { expirationTtl: fundType ? FUND_TYPE_TTL_SECONDS : FUND_TYPE_NEG_TTL_SECONDS }
+    );
+  } catch (_e) {
+    // 写缓存失败不阻断主流程。
+  }
+
+  return fundType;
+}
+
+/**
+ * 返回单只基金的生效 kind。场内走 bucket；场外优先调 jbgk 接口看「基金类型」是否含
+ * 「海外」或「QDII」，命中返 'qdii'；接口失败时回退到本地白名单。
+ */
+async function resolveHoldingKindAsync(code, bucketKind, env) {
+  const codeStr = String(code || '');
+  if (bucketKind === 'exchange') return 'exchange';
+  const fundType = await getFundType(codeStr, env);
+  if (fundType && /海外|QDII/i.test(fundType)) return 'qdii';
+  if (!fundType && HOLDINGS_QDII_CODE_SET.has(codeStr)) return 'qdii';
+  return bucketKind || 'otc';
 }
 
 /**
@@ -1682,7 +1755,7 @@ async function fetchHoldingsNavSnapshots(env, codes = []) {
   return map;
 }
 
-function computeWeightedReturn(bucket, snapshotsByCode, todayShanghai, kind = 'exchange') {
+async function computeWeightedReturn(bucket, snapshotsByCode, todayShanghai, kind = 'exchange', env = null) {
   // 返回 { ready, returnRate, contributors[] }。
   // ready=false 表示还有代码的 latestNavDate 未达预期最新日期，在调用方侧跳过。
   // 期望最新日期按「单只」实际 kind 计算：
@@ -1695,7 +1768,7 @@ function computeWeightedReturn(bucket, snapshotsByCode, todayShanghai, kind = 'e
     const latestNav = Number(snap?.latestNav);
     const previousNav = Number(snap?.previousNav);
     const latestNavDate = String(snap?.latestNavDate || '');
-    const effectiveKind = resolveHoldingKind(entry.code, kind);
+    const effectiveKind = await resolveHoldingKindAsync(entry.code, kind, env);
     const expectedLatestNavDate = getExpectedLatestNavDate(effectiveKind, todayShanghai);
     if (!Number.isFinite(latestNav) || !Number.isFinite(previousNav) || previousNav <= 0) {
       // 缺少净值或昨日净值 → 在加权中跳过，但如果是 latestNavDate 不达预期日期造成的，则整套跳过。
@@ -1796,7 +1869,7 @@ async function runHoldingsNotifications(env, kind, todayShanghai, reason = 'hold
       continue;
     }
 
-    const computed = computeWeightedReturn(bucket, snapshotsByCode, todayShanghai, kind);
+    const computed = await computeWeightedReturn(bucket, snapshotsByCode, todayShanghai, kind, env);
     if (!computed.ready) continue;
 
     const clientRecord = getClientRecord(settings, clientId, stored.clientLabel || '');
