@@ -1,0 +1,35 @@
+# wrangler config for the standalone webdav-cors-proxy worker.
+# 之前这个 worker 只在 Cloudflare Dashboard 上手工部署，没有任何源码到部署的
+# 自动化路径；现在统一收敛到 wrangler，便于和 notify / ocr-proxy 一起 ci 化。
+#
+# 部署：npm run worker:webdav:deploy
+# 本地：npm run worker:webdav:dev
+
+name = "webdav-cors-proxy"
+main = "webdav-cors-proxy.js"
+compatibility_date = "2026-03-30"
+compatibility_flags = ["nodejs_compat"]
+
+[[routes]]
+pattern = "tools.freebacktrack.tech/api/webdav/*"
+zone_name = "freebacktrack.tech"
+
+# Smart Placement：webdav 后端往往在欧洲（Infomaniak）/ 国内（坚果云）/ 自建 NAS，
+# 让 worker 在地理上挑就近 PoP，对透传延迟有帮助，零额外费用。
+[placement]
+mode = "smart"
+
+# 透传 PROPFIND / PUT 大文件时上游可能慢；放宽到 60s。Paid 套餐内置。
+[limits]
+cpu_ms = 60000
+
+# Workers Logs：Paid 套餐内置，方便排查 502 Upstream fetch failed。
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
