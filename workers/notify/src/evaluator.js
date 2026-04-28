@@ -391,46 +391,57 @@ async function deliverNotification(env, notification, options = {}) {
       configLabel: currentGroupId ? 'Android（当前共享组）' : 'Android'
     });
   } else {
-    for (const registration of gcmRegistrationsToDeliver) {
-      try {
-        results.push({
-          ...(await sendGcmNotification({
-            env,
-            projectId: resolveGcmProjectId(settings, env),
-            packageName: registration.packageName,
-            token: registration.token,
-            title: notification.title,
-            body: notification.body,
-            data: {
-              eventId: notification.eventId || '',
-              eventType: notification.eventType || '',
-              ruleId: notification.ruleId || '',
-              summary: notification.summary || '',
-              symbol: notification.symbol || '',
-              strategyName: notification.strategyName || '',
-              triggerCondition: notification.triggerCondition || '',
-              purchaseAmount: notification.purchaseAmount || '',
-              detailUrl: notification.detailUrl || notification.url || '',
-              url: notification.url || notification.detailUrl || ''
-            }
-          })),
-          configKey: `gcm-registration:${registration.id}`,
-          configType: 'gcm-registration',
-          configId: registration.id,
-          configLabel: registration.deviceName || 'Android Device'
-        });
-      } catch (error) {
+    // FCM fan-out：并发发送给该 client 全部已配对设备。
+    // - Workers Paid 套餐对单次 invocation 的 subrequest 上限放到 1000，远高于 Free 的 50，
+    //   并发对 fan-out 没有被打回的风险。
+    // - 每条 FCM 消息互相独立，单设备失败不应阻塞其他设备 → 用 Promise.allSettled。
+    // - 把 projectId 在循环外解析一次，避免每次都重新调 resolveGcmProjectId。
+    const projectId = resolveGcmProjectId(settings, env);
+    const baseData = {
+      eventId: notification.eventId || '',
+      eventType: notification.eventType || '',
+      ruleId: notification.ruleId || '',
+      summary: notification.summary || '',
+      symbol: notification.symbol || '',
+      strategyName: notification.strategyName || '',
+      triggerCondition: notification.triggerCondition || '',
+      purchaseAmount: notification.purchaseAmount || '',
+      detailUrl: notification.detailUrl || notification.url || '',
+      url: notification.url || notification.detailUrl || ''
+    };
+    const fcmDeliveries = await Promise.allSettled(
+      gcmRegistrationsToDeliver.map((registration) =>
+        sendGcmNotification({
+          env,
+          projectId,
+          packageName: registration.packageName,
+          token: registration.token,
+          title: notification.title,
+          body: notification.body,
+          data: baseData
+        })
+      )
+    );
+    fcmDeliveries.forEach((settled, index) => {
+      const registration = gcmRegistrationsToDeliver[index];
+      const baseMeta = {
+        configKey: `gcm-registration:${registration.id}`,
+        configType: 'gcm-registration',
+        configId: registration.id,
+        configLabel: registration.deviceName || 'Android Device'
+      };
+      if (settled.status === 'fulfilled') {
+        results.push({ ...settled.value, ...baseMeta });
+      } else {
+        const error = settled.reason;
         results.push({
           channel: 'gcm',
           status: 'failed',
           detail: error instanceof Error ? error.message : 'Android 推送失败',
-          configKey: `gcm-registration:${registration.id}`,
-          configType: 'gcm-registration',
-          configId: registration.id,
-          configLabel: registration.deviceName || 'Android Device'
+          ...baseMeta
         });
       }
-    }
+    });
   }
 
   const deliveredCount = results.filter((result) => result.status === 'delivered').length;

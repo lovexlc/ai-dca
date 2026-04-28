@@ -1,6 +1,9 @@
 name = "ai-dca-notify"
 main = "src/index.js"
 compatibility_date = "2026-03-30"
+# Workers Paid 套餐已启用：开启 nodejs_compat 让后续可以直接用 Node 内置库
+# （JWT 签名、buffer 等），避免再手写 base64/HMAC。
+compatibility_flags = ["nodejs_compat"]
 
 [[routes]]
 pattern = "tools.freebacktrack.tech/api/notify*"
@@ -25,9 +28,27 @@ crons = [
   "* 1-7 * * MON-FRI"
 ]
 
+# Workers Paid 解锁的 Smart Placement：让 worker 自动靠近上游（FCM、新浪、东财、PUBLIC_DATA_BASE_URL），
+# 减少跨洲 round-trip。对 cron 高频 fan-out 帮助最大，且不收额外费用。
+[placement]
+mode = "smart"
+
+# Workers Paid CPU 上限可以拉到 5 分钟（默认 30s）。cron 一次会扫所有 client 做
+# 持仓收益计算 + FCM fan-out，留足缓冲避免被 1006 cpu_exceeded 截断。
+[limits]
+cpu_ms = 300000
+
+# Workers Logs（Paid 套餐内置，零额外费用）：日志保留 7 天，便于事后排查 FCM/Bark 推送
+# 失败、KV 写入异常等问题。invocation_logs 记录每次 cron tick 的入口/出口。
 [observability]
-enabled = false
+enabled = true
 head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
 
 [vars]
 PUBLIC_DATA_BASE_URL = "https://tools.freebacktrack.tech"
