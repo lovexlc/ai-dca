@@ -8,8 +8,8 @@ zone_name = "freebacktrack.tech"
 
 [[kv_namespaces]]
 binding = "NOTIFY_STATE"
-id = "5246771a17544a17af5b4b6c482f5d62"
-preview_id = "21e04c9a7eac46018a4740c013e11a1f"
+id = "d3d7cf8351b24070a156649fdd50790d"
+preview_id = "0b6670c7493642ca9b69bc29672dcb46"
 
 [triggers]
 # Cloudflare cron uses UTC.
