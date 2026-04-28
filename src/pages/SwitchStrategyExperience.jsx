@@ -1,34 +1,27 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowDownUp, Info, RefreshCw, Repeat } from 'lucide-react';
+import { AlertTriangle, ArrowDownUp, Info, RefreshCw } from 'lucide-react';
 import { Card, Pill, SectionHeading, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { aggregateByCode } from '../app/holdingsLedgerCore.js';
-import {
-  findLatestNasdaqPrice,
-  loadLatestNasdaqPrices,
-  loadNasdaqDailySeries,
-  loadNasdaqMinuteSnapshot
-} from '../app/nasdaqPrices.js';
 
 // 场内 / 场外纳指 100 切换套利策略实时建议器。
 //
-// 真实溢价数据来源（每个交易日 15:30 由 GitHub Action 拉取后入库）：
-// - data/nas-daq100/daily-sina.json + intraday-1m.json：NDX 美元日 K + 分钟线
-// - data/<code>/daily-sina.json：各场内 ETF 日 K
+// 真实溢价计算：
+//   溢价 % = (当前成交价 − 最新单位净值) / 最新单位净值
 //
-// 真实溢价计算（无 IOPV 时的近似锚定法）：
-// 1) 取最近 N 个共同交易日的 ETF_close / NDX_close，求中位数 r0；
-// 2) 实时溢价 % = (ETF当前价 / NDX当前价) / r0 - 1。
-// 假设：长期溢价均值≈0（中位数法稳健于均值），ETF 与 NDX 单位规模与汇率因子被 r0 吸收。
+// 数据源（每个交易日 15:30 由 GitHub Action 拉取）：
+// - data/<code>/latest-nav.json：场内 ETF 最新单位净值 (東财 f10/lsjz 的 DWJZ)
+// - data/all_nasdq.json：候选基金 universe（纳指 100 场内 ETF 全集，与持仓解耦）
+// - 当前价：持仓 ledger 中的 latestNav（A 股开盘期间由 notify worker push2 推送，收盘后是最后成交价）；
+//   非持仓候选取 data/<code>/daily-sina.json 最后一根 K 线 close 作为代理。
 //
-// 持仓的 latestNav：A 股开盘时由 notify worker 实时推送 push2 行情；收盘后回落到 daily-sina 最后一根收盘价。
+// 触发底层仍然是“两只之间的溢价差”，但 UI 只告诉用户「哪两只之间出现机会」，
+// 不在实时面板上展示具体数值，过价让用户去基金软件官方渠道查看。
 //
 // 持久化：
-// - aiDcaSwitchStrategyPrefs：基准 ETF、候选基金、阈值、手动溢价覆盖。
-// - aiDcaSwitchStrategyLedger：套利轮次人工日志。
+// - aiDcaSwitchStrategyPrefs：基准 ETF、候选基金、阈值
+// - aiDcaSwitchStrategyLedger：套利轮次人工日志
 
-const BENCHMARK_INDEX_CODE = 'nas-daq100';
-const PREMIUM_LOOKBACK_DAYS = 30;
 const SWITCH_PREFS_KEY = 'aiDcaSwitchStrategyPrefs';
 const SWITCH_LEDGER_KEY = 'aiDcaSwitchStrategyLedger';
 
@@ -40,9 +33,7 @@ const DEFAULT_PREFS = {
   intraBuyOtherPct: 3,
   otcPremiumThresholdPct: 8,
   otcMinIntraPremiumLow: 1,
-  otcMinIntraPremiumHigh: 2,
-  manualBenchmarkPremiumPct: '',
-  manualMinIntraPremiumPct: ''
+  otcMinIntraPremiumHigh: 2
 };
 
 function readPrefs() {
@@ -103,46 +94,69 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function median(values) {
-  const sorted = values.filter((v) => Number.isFinite(v)).slice().sort((a, b) => a - b);
-  if (!sorted.length) return null;
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+function navJsonPath(code, inPagesDir) {
+  return inPagesDir ? `../data/${code}/latest-nav.json` : `./data/${code}/latest-nav.json`;
 }
 
-// 用最近 lookback 个共同交易日的 ETF/NDX 收盘价比例中位数作为锚定比 r0。
-function computeAnchorRatio(etfBars = [], ndxByDate, lookbackDays = PREMIUM_LOOKBACK_DAYS) {
-  if (!Array.isArray(etfBars) || !etfBars.length || !ndxByDate || ndxByDate.size === 0) return null;
-  const ratios = [];
-  for (let i = etfBars.length - 1; i >= 0 && ratios.length < lookbackDays; i -= 1) {
-    const bar = etfBars[i];
-    const date = bar?.date;
-    const etfClose = Number(bar?.close);
-    if (!date || !Number.isFinite(etfClose) || etfClose <= 0) continue;
-    const ndxClose = ndxByDate.get(date);
-    if (Number.isFinite(ndxClose) && ndxClose > 0) {
-      ratios.push(etfClose / ndxClose);
-    }
-  }
-  return median(ratios);
+async function loadEtfLatestNav(code, { inPagesDir = false } = {}) {
+  if (!/^\d{6}$/.test(String(code || '').trim())) return null;
+  const response = await fetch(navJsonPath(code, inPagesDir), {
+    headers: { Accept: 'application/json' },
+    cache: 'no-store'
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const payload = await response.json();
+  const latestNav = Number(payload?.latestNav);
+  if (!Number.isFinite(latestNav) || latestNav <= 0) return null;
+  return {
+    code: payload?.code || code,
+    name: payload?.name || '',
+    latestNav,
+    latestNavDate: payload?.latestNavDate || '',
+    previousNav: Number(payload?.previousNav) || null,
+    previousNavDate: payload?.previousNavDate || ''
+  };
 }
 
-function lastBarClose(bars) {
-  if (!Array.isArray(bars)) return null;
-  for (let i = bars.length - 1; i >= 0; i -= 1) {
-    const v = Number(bars[i]?.close);
-    if (Number.isFinite(v) && v > 0) return v;
-  }
-  return null;
+function nasdqListPath(inPagesDir) {
+  return inPagesDir ? `../data/all_nasdq.json` : `./data/all_nasdq.json`;
 }
 
-function lastBarDate(bars) {
-  if (!Array.isArray(bars)) return '';
-  for (let i = bars.length - 1; i >= 0; i -= 1) {
-    const d = bars[i]?.date || bars[i]?.datetime;
-    if (d) return String(d);
-  }
-  return '';
+async function loadNasdqList({ inPagesDir = false } = {}) {
+  const response = await fetch(nasdqListPath(inPagesDir), {
+    headers: { Accept: 'application/json' },
+    cache: 'no-store'
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const payload = await response.json();
+  return Array.isArray(payload?.etfs) ? payload.etfs : [];
+}
+
+function dailySinaPath(code, inPagesDir) {
+  return inPagesDir ? `../data/${code}/daily-sina.json` : `./data/${code}/daily-sina.json`;
+}
+
+async function loadEtfLatestPrice(code, { inPagesDir = false } = {}) {
+  if (!/^\d{6}$/.test(String(code || '').trim())) return null;
+  const response = await fetch(dailySinaPath(code, inPagesDir), {
+    headers: { Accept: 'application/json' },
+    cache: 'no-store'
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const payload = await response.json();
+  const bars = Array.isArray(payload?.bars) ? payload.bars : [];
+  if (!bars.length) return null;
+  const last = bars[bars.length - 1];
+  const close = Number(last?.close);
+  if (!Number.isFinite(close) || close <= 0) return null;
+  return {
+    code: String(payload?.fund_code || code),
+    name: payload?.fund_name || '',
+    close,
+    date: last?.date || ''
+  };
 }
 
 export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false } = {}) {
@@ -151,14 +165,18 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   const [aggregates, setAggregates] = useState([]);
   const [refreshTick, setRefreshTick] = useState(0);
 
-  const [marketState, setMarketState] = useState({
+  const [navState, setNavState] = useState({
     loading: true,
     error: '',
-    ndxPrice: null,
-    ndxAt: '',
-    ratioByCode: {},
+    navByCode: {},
     generatedAt: ''
   });
+
+  // 候选基金 universe = data/all_nasdq.json 中的纳指 100 场内 ETF 全集，并非仅限于持仓。
+  const [candidateUniverse, setCandidateUniverse] = useState([]);
+  const [universeError, setUniverseError] = useState('');
+  // 非持仓候选的现价：取 daily-sina.json 最后一根 K 线 close 作为当前价代理。
+  const [priceState, setPriceState] = useState({ priceByCode: {} });
 
   useEffect(() => { writePrefs(prefs); }, [prefs]);
   useEffect(() => { writeSwitchLedger(switchLedger); }, [switchLedger]);
@@ -183,120 +201,123 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     [aggregates]
   );
 
-  // 默认勾选所有持仓场内 ETF
+  // 候选基金 universe（来自 data/all_nasdq.json）
   useEffect(() => {
-    if (!exchangeFunds.length) return;
+    let cancelled = false;
+    loadNasdqList({ inPagesDir })
+      .then((list) => {
+        if (cancelled) return;
+        setCandidateUniverse(Array.isArray(list) ? list : []);
+        setUniverseError('');
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setCandidateUniverse([]);
+        setUniverseError(error instanceof Error ? error.message : '候选基金列表加载失败');
+      });
+    return () => { cancelled = true; };
+  }, [inPagesDir, refreshTick]);
+
+  // 默认勾选「既在候选池又在持仓」的场内 ETF。候选池本身来自 all_nasdq.json，与持仓解耦。
+  useEffect(() => {
+    if (!candidateUniverse.length) return;
     setPrefs((prev) => {
       if (Array.isArray(prev.enabledCodes) && prev.enabledCodes.length > 0) return prev;
-      return { ...prev, enabledCodes: exchangeFunds.map((f) => f.code) };
+      const universeCodes = new Set(candidateUniverse.map((f) => f.code));
+      const defaults = exchangeFunds.map((f) => f.code).filter((code) => universeCodes.has(code));
+      if (!defaults.length) return prev;
+      return { ...prev, enabledCodes: defaults };
     });
-  }, [exchangeFunds.length]);
+  }, [candidateUniverse, exchangeFunds]);
 
-  // 加载真实溢价基础数据：NDX 当前价 + NDX 日 K + 各候选 ETF 日 K
-  const loadMarket = useCallback(async () => {
-    setMarketState((prev) => ({ ...prev, loading: true, error: '' }));
+  // 拉取所有候选 ETF 的最新单位净值（候选池来自 data/all_nasdq.json，不仅限于持仓）。
+  const loadNav = useCallback(async () => {
+    setNavState((prev) => ({ ...prev, loading: true, error: '' }));
     try {
-      const codes = exchangeFunds.map((f) => f.code);
+      const codes = candidateUniverse.map((f) => f.code);
       if (!codes.length) {
-        setMarketState({
-          loading: false,
-          error: '',
-          ndxPrice: null,
-          ndxAt: '',
-          ratioByCode: {},
-          generatedAt: nowIso()
-        });
+        setNavState({ loading: false, error: '', navByCode: {}, generatedAt: nowIso() });
         return;
       }
-
-      // 先拿 manifest 与 NDX 日 K + 分钟线
-      const [manifest, ndxDailyPayload, ndxMinutePayload] = await Promise.all([
-        loadLatestNasdaqPrices({ inPagesDir }).catch(() => []),
-        loadNasdaqDailySeries(BENCHMARK_INDEX_CODE, { inPagesDir }).catch(() => null),
-        loadNasdaqMinuteSnapshot(`data/${BENCHMARK_INDEX_CODE}/intraday-1m.json`, { inPagesDir }).catch(() => null)
-      ]);
-
-      const benchmarkEntry = findLatestNasdaqPrice(manifest, BENCHMARK_INDEX_CODE);
-      const ndxBars = Array.isArray(ndxDailyPayload?.bars) ? ndxDailyPayload.bars : [];
-      const ndxMinuteBars = Array.isArray(ndxMinutePayload?.bars) ? ndxMinutePayload.bars : [];
-
-      // 当前价优先级：分钟线最后一根 → manifest current_price → 日 K 最后一根
-      const ndxFromMinute = lastBarClose(ndxMinuteBars);
-      const ndxFromManifest = Number(benchmarkEntry?.current_price);
-      const ndxFromDaily = lastBarClose(ndxBars);
-      const ndxPrice = Number.isFinite(ndxFromMinute) && ndxFromMinute > 0
-        ? ndxFromMinute
-        : (Number.isFinite(ndxFromManifest) && ndxFromManifest > 0
-            ? ndxFromManifest
-            : (Number.isFinite(ndxFromDaily) && ndxFromDaily > 0 ? ndxFromDaily : null));
-
-      const ndxAt = lastBarDate(ndxMinuteBars) || benchmarkEntry?.datetime || lastBarDate(ndxBars) || '';
-
-      if (!ndxPrice) {
-        throw new Error('未拿到 NASDAQ 100 当前价（data/nas-daq100/...）');
-      }
-
-      const ndxByDate = new Map();
-      ndxBars.forEach((bar) => {
-        const close = Number(bar?.close);
-        if (bar?.date && Number.isFinite(close) && close > 0) {
-          ndxByDate.set(bar.date, close);
-        }
-      });
-
-      // 各候选 ETF 的日 K
-      const dailyResults = await Promise.all(
-        codes.map((code) =>
-          loadNasdaqDailySeries(code, { inPagesDir })
-            .then((payload) => ({ code, bars: Array.isArray(payload?.bars) ? payload.bars : [] }))
-            .catch(() => ({ code, bars: [] }))
-        )
+      const results = await Promise.all(
+        codes.map((code) => loadEtfLatestNav(code, { inPagesDir }).catch(() => null))
       );
-
-      const ratioByCode = {};
-      dailyResults.forEach(({ code, bars }) => {
-        const r0 = computeAnchorRatio(bars, ndxByDate, PREMIUM_LOOKBACK_DAYS);
-        if (Number.isFinite(r0) && r0 > 0) {
-          ratioByCode[code] = r0;
-        }
+      const navByCode = {};
+      results.forEach((entry) => {
+        if (entry && entry.code) navByCode[entry.code] = entry;
       });
-
-      setMarketState({
+      setNavState({
         loading: false,
-        error: '',
-        ndxPrice,
-        ndxAt,
-        ratioByCode,
+        error: Object.keys(navByCode).length === 0 ? '未拿到 ETF 最新净值。请检查 GitHub Action 是否跑过并生成 data/<code>/latest-nav.json。' : '',
+        navByCode,
         generatedAt: nowIso()
       });
     } catch (error) {
-      setMarketState((prev) => ({
+      setNavState((prev) => ({
         ...prev,
         loading: false,
-        error: error instanceof Error ? error.message : '真实溢价数据加载失败'
+        error: error instanceof Error ? error.message : '净值数据加载失败'
       }));
     }
-  }, [exchangeFunds, inPagesDir]);
+  }, [candidateUniverse, inPagesDir]);
 
-  useEffect(() => { loadMarket(); }, [loadMarket, refreshTick]);
+  useEffect(() => { loadNav(); }, [loadNav, refreshTick]);
 
-  // 把真实溢价合并到 fund 上
+  // 非持仓候选的现价：从 data/<code>/daily-sina.json 取最后一根 K 线 close。
+  // 持仓的候选直接用 holdings ledger 中的 latestNav（已由 notify worker 实时推送），不在此处覆盖。
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!candidateUniverse.length) {
+        setPriceState({ priceByCode: {} });
+        return;
+      }
+      const heldCodes = new Set(exchangeFunds.map((f) => f.code));
+      const targets = candidateUniverse.filter((f) => !heldCodes.has(f.code));
+      if (!targets.length) {
+        setPriceState({ priceByCode: {} });
+        return;
+      }
+      const results = await Promise.all(
+        targets.map((f) => loadEtfLatestPrice(f.code, { inPagesDir }).catch(() => null))
+      );
+      if (cancelled) return;
+      const priceByCode = {};
+      results.forEach((entry) => {
+        if (entry && entry.code) priceByCode[entry.code] = entry;
+      });
+      setPriceState({ priceByCode });
+    })();
+    return () => { cancelled = true; };
+  }, [candidateUniverse, exchangeFunds, inPagesDir, refreshTick]);
+
+  // 合并：(当前价 - 最新NAV) / 最新NAV。
+  // 候选池来自 all_nasdq.json：持仓里的取 holdings ledger 的 latestNav，否则取 daily-sina 最后一根 close。
   const fundsWithPremium = useMemo(() => {
-    const ndxPrice = Number(marketState.ndxPrice);
-    return exchangeFunds.map((fund) => {
-      const r0 = Number(marketState.ratioByCode?.[fund.code]);
-      const px = Number(fund.latestNav);
+    const heldByCode = new Map(exchangeFunds.map((f) => [f.code, f]));
+    return candidateUniverse.map((u) => {
+      const held = heldByCode.get(u.code) || null;
+      const navEntry = navState.navByCode?.[u.code] || null;
+      const priceEntry = priceState.priceByCode?.[u.code] || null;
+      const px = held ? Number(held.latestNav) : Number(priceEntry?.close);
+      const nav = Number(navEntry?.latestNav);
       let premiumPct = null;
-      if (Number.isFinite(ndxPrice) && ndxPrice > 0 && Number.isFinite(r0) && r0 > 0 && Number.isFinite(px) && px > 0) {
-        premiumPct = ((px / ndxPrice) / r0 - 1) * 100;
+      if (Number.isFinite(px) && px > 0 && Number.isFinite(nav) && nav > 0) {
+        premiumPct = ((px - nav) / nav) * 100;
       }
       return {
-        ...fund,
-        anchorRatio: Number.isFinite(r0) && r0 > 0 ? r0 : null,
+        code: u.code,
+        name: held?.name || u.name || '',
+        kind: held?.kind || 'exchange',
+        hasPosition: Boolean(held),
+        latestNav: Number.isFinite(px) && px > 0 ? px : null,
+        latestPriceDate: held ? '' : (priceEntry?.date || ''),
+        navLatest: nav > 0 ? nav : null,
+        navLatestDate: navEntry?.latestNavDate || '',
         premiumPct
       };
     });
-  }, [exchangeFunds, marketState.ndxPrice, marketState.ratioByCode]);
+  }, [candidateUniverse, exchangeFunds, navState.navByCode, priceState.priceByCode]);
 
   const enabledFunds = useMemo(() => {
     const set = new Set(prefs.enabledCodes || []);
@@ -325,63 +346,60 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     setPrefs((prev) => ({ ...prev, [key]: value }));
   }
 
-  // 场内信号：用真实溢价差判定
+  // 场内信号：只输出「哪两只满足条件」，不输出具体溢价。
   const intraSignals = useMemo(() => {
     if (!benchmark || !Number.isFinite(benchmark.premiumPct)) return [];
     const sellLower = Number(prefs.intraSellLowerPct || 0);
     const buyOther = Number(prefs.intraBuyOtherPct || 0);
-    return enabledFunds
+    const list = [];
+    enabledFunds
       .filter((f) => f.code !== benchmark.code && Number.isFinite(f.premiumPct))
-      .map((f) => {
-        // diff = 基准溢价 - 候选溢价；为正说明基准更贵
+      .forEach((f) => {
         const diff = benchmark.premiumPct - f.premiumPct;
-        return {
-          code: f.code,
-          name: f.name || f.code,
-          latestNav: f.latestNav,
-          latestNavDate: f.latestNavDate,
-          premiumPct: f.premiumPct,
-          diffVsBench: diff,
-          // 规则 A：基准价 − 持有价 ≤ X% → 卖持有买基准（基准便宜了）
-          sellHoldBuyBench: diff <= sellLower,
-          // 规则 B：基准（持有） − 另一只 ≥ Y% → 卖基准买另一只（基准更贵）
-          sellBenchBuyOther: diff >= buyOther
-        };
-      })
-      .sort((a, b) => a.diffVsBench - b.diffVsBench);
+        // 规则 A：基准溢价 − 持有溢价 ≤ X% → 卖持有买基准
+        if (diff <= sellLower) {
+          list.push({
+            kind: 'A',
+            from: f.code,
+            fromName: f.name || f.code,
+            to: benchmark.code,
+            toName: benchmark.name || benchmark.code,
+            description: `${f.code} 与 ${benchmark.code} 的溢价差 ≤ ${sellLower}%：可考虑卖 ${f.code} 买 ${benchmark.code}`
+          });
+        }
+        // 规则 B：基准溢价 − 另一只 ≥ Y% → 卖基准买另一只
+        if (diff >= buyOther) {
+          list.push({
+            kind: 'B',
+            from: benchmark.code,
+            fromName: benchmark.name || benchmark.code,
+            to: f.code,
+            toName: f.name || f.code,
+            description: `${benchmark.code} 与 ${f.code} 的溢价差 ≥ ${buyOther}%：可考虑卖 ${benchmark.code} 买 ${f.code}`
+          });
+        }
+      });
+    return list;
   }, [enabledFunds, benchmark, prefs.intraSellLowerPct, prefs.intraBuyOtherPct]);
 
-  // 自动取场外信号所需的两个数；允许手动覆盖
-  const otcAutoBenchPrem = Number.isFinite(benchmark?.premiumPct) ? benchmark.premiumPct : null;
-  const otcAutoMinIntraPrem = useMemo(() => {
-    const list = enabledFunds
-      .filter((f) => Number.isFinite(f.premiumPct))
-      .map((f) => f.premiumPct);
-    if (!list.length) return null;
-    return Math.min.apply(null, list);
-  }, [enabledFunds]);
-
+  // 场外信号：同样只输出代码对，不显示溢价数。
   const otcSignal = useMemo(() => {
-    const manualBench = prefs.manualBenchmarkPremiumPct === '' ? null : Number(prefs.manualBenchmarkPremiumPct);
-    const manualMin = prefs.manualMinIntraPremiumPct === '' ? null : Number(prefs.manualMinIntraPremiumPct);
-
-    const benchPrem = Number.isFinite(manualBench) ? manualBench : otcAutoBenchPrem;
-    const minIntraPrem = Number.isFinite(manualMin) ? manualMin : otcAutoMinIntraPrem;
-    const benchSource = Number.isFinite(manualBench) ? '手动' : '自动';
-    const intraSource = Number.isFinite(manualMin) ? '手动' : '自动';
-
-    if (!Number.isFinite(benchPrem) || !Number.isFinite(minIntraPrem)) {
+    const benchPrem = Number.isFinite(benchmark?.premiumPct) ? benchmark.premiumPct : null;
+    let minFund = null;
+    enabledFunds.forEach((f) => {
+      if (Number.isFinite(f.premiumPct)) {
+        if (!minFund || f.premiumPct < minFund.premiumPct) minFund = f;
+      }
+    });
+    if (!Number.isFinite(benchPrem) || !minFund) {
       return {
         ready: false,
-        message: marketState.loading
-          ? '正在加载真实溢价数据…'
-          : (marketState.error || '真实溢价数据未就绪。可在下方手动输入两个值。')
+        message: navState.loading ? '正在加载 ETF 净值…' : (navState.error || 'ETF 净值数据未就绪。')
       };
     }
-
     const benchHigh = benchPrem > Number(prefs.otcPremiumThresholdPct || 0);
-    const intraLowSoft = minIntraPrem < Number(prefs.otcMinIntraPremiumHigh || 0);
-    const intraLowHard = minIntraPrem < Number(prefs.otcMinIntraPremiumLow || 0);
+    const intraLowSoft = minFund.premiumPct < Number(prefs.otcMinIntraPremiumHigh || 0);
+    const intraLowHard = minFund.premiumPct < Number(prefs.otcMinIntraPremiumLow || 0);
     const triggered = benchHigh && (intraLowSoft || intraLowHard);
 
     let level = '未触发';
@@ -390,10 +408,10 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
     return {
       ready: true,
-      benchPrem,
-      minIntraPrem,
-      benchSource,
-      intraSource,
+      benchCode: benchmark.code,
+      benchName: benchmark.name || benchmark.code,
+      lowestCode: minFund.code,
+      lowestName: minFund.name || minFund.code,
       benchHigh,
       intraLowSoft,
       intraLowHard,
@@ -401,18 +419,16 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       level
     };
   }, [
-    prefs.manualBenchmarkPremiumPct,
-    prefs.manualMinIntraPremiumPct,
+    enabledFunds,
+    benchmark,
     prefs.otcPremiumThresholdPct,
     prefs.otcMinIntraPremiumLow,
     prefs.otcMinIntraPremiumHigh,
-    otcAutoBenchPrem,
-    otcAutoMinIntraPrem,
-    marketState.loading,
-    marketState.error
+    navState.loading,
+    navState.error
   ]);
 
-  // 套利轮次记录
+  // 套利轮次
   function appendCycle() {
     const row = {
       id: `cycle-${Date.now()}`,
@@ -434,20 +450,22 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     setSwitchLedger((prev) => prev.filter((row) => row.id !== id));
   }
 
+  const navUpdatedHint = useMemo(() => {
+    const dates = Object.values(navState.navByCode || {})
+      .map((entry) => entry?.latestNavDate)
+      .filter(Boolean)
+      .sort();
+    if (!dates.length) return '';
+    return `NAV 最新日期 ${dates[dates.length - 1]}`;
+  }, [navState.navByCode]);
+
   const benchmarkSummary = useMemo(() => {
     if (!exchangeFunds.length) {
       return '当前持仓中没有场内 ETF，先在持仓页录入交易再回来配置切换策略。';
     }
     if (!benchmark) return '请先选择一只基准 ETF。';
-    const premLabel = Number.isFinite(benchmark.premiumPct)
-      ? `溢价 ${formatPercent(benchmark.premiumPct, 2, true)}`
-      : '溢价 —';
-    return `基准：${benchmark.code} · ${benchmark.name || ''} · 最新 ${formatPrice(benchmark.latestNav)} (${formatDate(benchmark.latestNavDate)}) · ${premLabel}`;
+    return `基准：${benchmark.code} · ${benchmark.name || ''}`;
   }, [exchangeFunds.length, benchmark]);
-
-  const ndxLabel = Number.isFinite(marketState.ndxPrice)
-    ? `NDX ${marketState.ndxPrice.toFixed(2)} ${marketState.ndxAt ? `(${marketState.ndxAt})` : ''}`
-    : (marketState.loading ? '加载中…' : (marketState.error || '未就绪'));
 
   return (
     <div className="space-y-6">
@@ -455,14 +473,18 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         <SectionHeading
           eyebrow="切换策略"
           title="场内 / 场外纳指 100 切换套利"
-          description="用 GitHub Action 每日 15:30 拉取的 NDX 美元价 + 各场内 ETF 日 K，按近 30 个交易日的 ETF/NDX 中位比例做锚定，估算每只 ETF 的真实溢价；命中阈值即给出切换建议。"
+          description="溢价 % = (当前成交价 − 最新单位净值) / 最新单位净值。净值数据每个交易日 15:30 由 GitHub Action 从东财 lsjz 接口拉取。当前价 A 股开盘期间由 worker push2 实时推送，收盘后为最后成交价。"
         />
         <div className="mt-5 space-y-4">
           <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
             <Info className="h-4 w-4 text-slate-400" />
             <span>{benchmarkSummary}</span>
-            <span className="hidden md:inline text-slate-300">·</span>
-            <span className="text-slate-500">{ndxLabel}</span>
+            {navUpdatedHint ? (
+              <>
+                <span className="hidden md:inline text-slate-300">·</span>
+                <span className="text-slate-500">{navUpdatedHint}</span>
+              </>
+            ) : null}
             <button
               type="button"
               className={cx(secondaryButtonClass, 'ml-auto h-9 px-3 text-xs')}
@@ -472,10 +494,10 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
               重新读取数据
             </button>
           </div>
-          {marketState.error ? (
+          {navState.error ? (
             <div className="flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>真实溢价数据加载失败：{marketState.error}。可继续在下方手动输入溢价值。</span>
+              <span>净值数据加载异常：{navState.error}</span>
             </div>
           ) : null}
           <div className="grid gap-4 md:grid-cols-2">
@@ -509,28 +531,36 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                 />
                 <span className="text-sm text-slate-600">% / 周期</span>
               </div>
-              <p className="mt-2 text-xs text-slate-500">用作评估单笔切换是否值得的参考，触发判定本身不直接使用该值。</p>
+              <p className="mt-2 text-xs text-slate-500">作为评估单笔切换是否值得的参考，触发判定本身不使用该值。</p>
             </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">候选基金（场内）</div>
-                <div className="mt-1 text-sm text-slate-600">从持仓 exchange ETF 中勾选要参与切换比对的基金。</div>
+                <div className="mt-1 text-sm text-slate-600">候选池来自 data/all_nasdq.json，与持仓解耦；勾选要参与切换比对的基金。</div>
               </div>
-              <div className="text-xs text-slate-500">已选 {prefs.enabledCodes.length} / 持仓 {exchangeFunds.length}</div>
+              <div className="text-xs text-slate-500">已选 {prefs.enabledCodes.length} / 候选 {candidateUniverse.length}</div>
             </div>
+            {universeError ? (
+              <div className="mt-2 text-xs text-rose-600">候选基金列表加载失败：{universeError}</div>
+            ) : null}
             <div className="mt-3 flex flex-wrap gap-2">
-              {exchangeFunds.length === 0 ? (
-                <div className="text-sm text-slate-500">持仓中暂无场内 ETF。</div>
+              {candidateUniverse.length === 0 ? (
+                <div className="text-sm text-slate-500">候选基金尚未加载。</div>
               ) : null}
               {fundsWithPremium.map((f) => {
                 const checked = (prefs.enabledCodes || []).includes(f.code);
+                const hasNav = Number.isFinite(f.navLatest);
+                const priceSourceLabel = f.hasPosition ? '持仓' : (f.latestPriceDate || 'daily');
                 return (
                   <button
                     key={f.code}
                     type="button"
                     onClick={() => toggleEnabled(f.code)}
+                    title={hasNav
+                      ? `NAV ${f.navLatest.toFixed(4)} (${f.navLatestDate})・现价 ${formatPrice(f.latestNav)} (${priceSourceLabel})`
+                      : '净值数据未就绪'}
                     className={cx(
                       'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
                       checked
@@ -541,11 +571,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                     <span>{f.code}</span>
                     <span className="text-slate-400">·</span>
                     <span className="max-w-[120px] truncate text-slate-600">{f.name || ''}</span>
-                    {Number.isFinite(f.premiumPct) ? (
-                      <span className={cx(
-                        'ml-1 tabular-nums',
-                        f.premiumPct >= 0 ? 'text-rose-500' : 'text-emerald-500'
-                      )}>{formatPercent(f.premiumPct, 2, true)}</span>
+                    {f.hasPosition ? (
+                      <span className="ml-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">持</span>
                     ) : null}
                   </button>
                 );
@@ -558,8 +585,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       <Card>
         <SectionHeading
           eyebrow="场内切换信号"
-          title="基准 ETF 与候选 ETF 真实溢价差"
-          description="溢价 = (ETF当前价 / NDX当前价) / 近 30 日 ETF/NDX 中位比例 − 1。差值 = 基准溢价 − 候选溢价；正值意味着基准更贵。"
+          title="在持有的场内 ETF 之间倒换"
+          description="按下列阈值判定「哪两只 ETF 之间出现机会」，具体溢价数请到基金软件里查看后再下单。"
         />
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
@@ -591,52 +618,34 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
             </div>
           </div>
         </div>
-        <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-xs uppercase tracking-[0.16em] text-slate-500">
-              <tr>
-                <th className="px-3 py-2 text-left font-semibold">候选</th>
-                <th className="px-3 py-2 text-right font-semibold">单价</th>
-                <th className="px-3 py-2 text-right font-semibold">真实溢价</th>
-                <th className="px-3 py-2 text-right font-semibold">基准 − 候选</th>
-                <th className="px-3 py-2 text-left font-semibold">建议</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {!benchmark ? (
-                <tr><td colSpan={5} className="px-3 py-4 text-center text-sm text-slate-500">先选定一只基准 ETF。</td></tr>
-              ) : null}
-              {benchmark && intraSignals.length === 0 ? (
-                <tr><td colSpan={5} className="px-3 py-4 text-center text-sm text-slate-500">候选池中除了基准没有其他场内 ETF（或溢价数据未就绪）。</td></tr>
-              ) : null}
-              {intraSignals.map((row) => {
-                let tone = 'slate';
-                let suggestion = '观望';
-                if (row.sellBenchBuyOther) { tone = 'emerald'; suggestion = `卖基准 → 买 ${row.code}`; }
-                else if (row.sellHoldBuyBench) { tone = 'indigo'; suggestion = `卖 ${row.code} → 买基准`; }
-                return (
-                  <tr key={row.code}>
-                    <td className="px-3 py-2">
-                      <div className="font-semibold text-slate-700">{row.code}</div>
-                      <div className="text-xs text-slate-400">{row.name}</div>
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{formatPrice(row.latestNav)}</td>
-                    <td className={cx(
-                      'px-3 py-2 text-right tabular-nums',
-                      row.premiumPct >= 0 ? 'text-rose-600' : 'text-emerald-600'
-                    )}>{formatPercent(row.premiumPct, 2, true)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{formatPercent(row.diffVsBench, 2, true)}</td>
-                    <td className="px-3 py-2"><Pill tone={tone}>{suggestion}</Pill></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="mt-4 space-y-2">
+          {!benchmark ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-500">先选定一只基准 ETF。</div>
+          ) : null}
+          {benchmark && intraSignals.length === 0 ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-500">
+              当前任两只 ETF 之间都没有出现机会，继续耐心等待。
+            </div>
+          ) : null}
+          {intraSignals.map((sig, idx) => (
+            <div
+              key={`${sig.kind}-${sig.from}-${sig.to}-${idx}`}
+              className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+            >
+              <Pill tone={sig.kind === 'A' ? 'indigo' : 'emerald'}>规则 {sig.kind}</Pill>
+              <div className="flex-1">
+                <div className="font-semibold text-slate-700">卖 {sig.from} → 买 {sig.to}</div>
+                <div className="text-xs text-slate-500">
+                  {sig.fromName || ''} → {sig.toName || ''}。{sig.description}。具体溢价请到基金软件查看后再下单。
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
         <div className="mt-3 flex items-start gap-2 rounded-2xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
           <span>
-            数据每个交易日 15:30 由 GitHub Action（fetch-nasdaq-minute.yml）刷新；A 股开盘期间 ETF 当前价由 notify worker 实时推送。锚定法不需要 IOPV，但假设长期溢价均值≈0；若 ETF 与 NDX 跟踪误差较大（含汇率），建议把窗口延长。
+            净值来自东财 f10/lsjz 接口，通常在 T 日晚到 T+1 早更新；A 股开盘期间使用的是 T-1 日净值 · ETF 实时价，溢价估计会比 IOPV 略偏。下单前请以交易软件的实时溢价为准。
           </span>
         </div>
       </Card>
@@ -644,95 +653,63 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       <Card>
         <SectionHeading
           eyebrow="场外切换信号"
-          title="基准 ETF 溢价 vs 场内最低溢价"
-          description="判定何时把场内基准 ETF 换成场外 QDII 联接基金（或反向）。两个数默认从上方真实溢价自动取，可手动覆盖。"
+          title="将场内基准换为场外 QDII 联接基金"
+          description="当「基准 ETF 溢价 > A%」且「场内最低溢价 < B%」时提示反向套利。同样只输出代码对，不显示具体溢价数。"
         />
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">基准 ETF 当前溢价 %</div>
-              <div className="text-xs text-slate-500">
-                自动 {Number.isFinite(otcAutoBenchPrem) ? formatPercent(otcAutoBenchPrem, 2, true) : '—'}
-              </div>
-            </div>
-            <input
-              type="number"
-              step="0.1"
-              placeholder="留空使用自动值"
-              value={prefs.manualBenchmarkPremiumPct}
-              onChange={(e) => setPrefValue('manualBenchmarkPremiumPct', e.target.value)}
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold focus:border-indigo-300 focus:outline-none"
-            />
-            <div className="mt-1 text-xs text-slate-500">
-              触发阈值：&gt;
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">基准溢价 阈值</div>
+            <div className="mt-1 text-slate-700">
+              &gt;
               <input
                 type="number"
                 step="0.5"
                 value={prefs.otcPremiumThresholdPct}
                 onChange={(e) => setPrefValue('otcPremiumThresholdPct', e.target.value)}
-                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
+                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
               />%
             </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">场内最低溢价 %</div>
-              <div className="text-xs text-slate-500">
-                自动 {Number.isFinite(otcAutoMinIntraPrem) ? formatPercent(otcAutoMinIntraPrem, 2, true) : '—'}
-              </div>
-            </div>
-            <input
-              type="number"
-              step="0.1"
-              placeholder="留空使用自动值"
-              value={prefs.manualMinIntraPremiumPct}
-              onChange={(e) => setPrefValue('manualMinIntraPremiumPct', e.target.value)}
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold focus:border-indigo-300 focus:outline-none"
-            />
-            <div className="mt-1 text-xs text-slate-500">
-              触发阈值：&lt;
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">场内最低溢价 阈值</div>
+            <div className="mt-1 text-slate-700">
+              &lt;
               <input
                 type="number"
                 step="0.5"
                 value={prefs.otcMinIntraPremiumLow}
                 onChange={(e) => setPrefValue('otcMinIntraPremiumLow', e.target.value)}
-                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
-              />%（强）/ &lt;
+                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
+              />%（强） / &lt;
               <input
                 type="number"
                 step="0.5"
                 value={prefs.otcMinIntraPremiumHigh}
                 onChange={(e) => setPrefValue('otcMinIntraPremiumHigh', e.target.value)}
-                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
+                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
               />%（弱）
             </div>
           </div>
         </div>
         <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
           {otcSignal.ready ? (
-            <div className="space-y-2 text-sm text-slate-700">
-              <div className="flex flex-wrap items-center gap-2">
-                <Pill tone={otcSignal.triggered ? (otcSignal.intraLowHard ? 'emerald' : 'amber') : 'slate'}>
-                  {otcSignal.level}
-                </Pill>
-                <span>
-                  基准溢价 {formatPercent(otcSignal.benchPrem, 2, true)}
-                  <span className="ml-1 text-xs text-slate-400">({otcSignal.benchSource})</span>
-                  <span className="mx-1 text-slate-400">·</span>
-                  场内最低溢价 {formatPercent(otcSignal.minIntraPrem, 2, true)}
-                  <span className="ml-1 text-xs text-slate-400">({otcSignal.intraSource})</span>
-                </span>
+            otcSignal.triggered ? (
+              <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                <Pill tone={otcSignal.intraLowHard ? 'emerald' : 'amber'}>{otcSignal.level}</Pill>
+                <div className="flex-1">
+                  <div className="font-semibold text-slate-700">
+                    卖 {otcSignal.benchCode} → 申购场外 QDII 联接基金
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    「{otcSignal.benchCode} {otcSignal.benchName}」溢价偏高且「{otcSignal.lowestCode} {otcSignal.lowestName}」溢价偏低，出现反向套利机会。具体溢价请到基金软件查看后再下单。
+                  </div>
+                </div>
               </div>
-              {otcSignal.triggered ? (
-                <div className="text-slate-700">
-                  建议：卖出场内基准 ETF（{prefs.benchmarkCode}）→ 申购场外 QDII 联接基金，等溢价回归再赎回换回场内。
-                </div>
-              ) : (
-                <div className="text-slate-500">
-                  未触发。等到「基准溢价 &gt; {prefs.otcPremiumThresholdPct}% 且 场内最低溢价 &lt; {prefs.otcMinIntraPremiumHigh}%」再考虑切换。
-                </div>
-              )}
-            </div>
+            ) : (
+              <div className="text-sm text-slate-500">
+                当前未触发。等到「{otcSignal.benchCode} {otcSignal.benchName}」溢价偏高，且场内最低（当前为 {otcSignal.lowestCode}）溢价偏低时再看。
+              </div>
+            )
           ) : (
             <div className="flex items-center gap-2 text-sm text-slate-500">
               <Info className="h-4 w-4 text-slate-400" />
