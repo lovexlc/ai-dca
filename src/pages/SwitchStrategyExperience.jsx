@@ -188,6 +188,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   const [priceState, setPriceState] = useState({ priceByCode: {} });
 
   // ---- 「自动监控」worker 驱动的场内切换信号 ----
+  // 配置源头为 `prefs`（基准 / 候选 / 规则 A&B 阈值）。
+  // 本 Card 不重复提供表单，仅负责将 prefs debounce 同步到 worker。
   const [workerConfig, setWorkerConfig] = useState(() => readSwitchConfigCache());
   const [workerSnapshot, setWorkerSnapshot] = useState(null);
   const [workerStatus, setWorkerStatus] = useState({
@@ -197,11 +199,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     error: '',
     notice: '',
     lastSyncedAt: ''
-  });
-  // 本地表单草稿（阈值输入需要临时存为字符串）
-  const [thresholdsDraft, setThresholdsDraft] = useState(() => {
-    const cached = readSwitchConfigCache();
-    return (cached.thresholds && cached.thresholds.length ? cached.thresholds : [1, 8]).join(',');
   });
 
   useEffect(() => { writePrefs(prefs); }, [prefs]);
@@ -220,7 +217,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         if (cancelled) return;
         if (config) {
           setWorkerConfig(config);
-          setThresholdsDraft((config.thresholds || [1, 8]).join(','));
         }
         if (snapshotPayload?.snapshot) {
           setWorkerSnapshot(snapshotPayload.snapshot);
@@ -250,11 +246,12 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     try {
       const stored = await saveSwitchConfigToWorker(normalized);
       setWorkerConfig(stored);
-      setThresholdsDraft((stored.thresholds || [1, 8]).join(','));
       setWorkerStatus((prev) => ({
         ...prev,
         saving: false,
-        notice: stored.enabled ? '配置已同步到 worker，交易时段内每分钟扫描。' : '配置已保存（未启用监控）。',
+        notice: stored.enabled
+          ? '配置已同步到 worker，交易时段内每分钟按规则 A/B 扫描。'
+          : '配置已保存（未启用自动监控）。',
         lastSyncedAt: new Date().toISOString()
       }));
     } catch (error) {
@@ -266,28 +263,66 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     }
   }, []);
 
+  // 启用时将页面 prefs 一起带上，worker 立刻获得可运行的配置。
   const handleWorkerToggle = useCallback((enabled) => {
-    void persistWorkerConfig({ ...workerConfig, enabled });
-  }, [workerConfig, persistWorkerConfig]);
+    if (enabled) {
+      const benchmarkCode = String(prefs?.benchmarkCode || workerConfig.benchmarkCode || '');
+      const enabledCodes = Array.from(new Set((prefs?.enabledCodes || []).map(String)))
+        .filter((code) => code && code !== benchmarkCode);
+      void persistWorkerConfig({
+        ...workerConfig,
+        enabled: true,
+        benchmarkCode,
+        enabledCodes,
+        intraSellLowerPct: Number(prefs?.intraSellLowerPct),
+        intraBuyOtherPct: Number(prefs?.intraBuyOtherPct)
+      });
+    } else {
+      void persistWorkerConfig({ ...workerConfig, enabled: false });
+    }
+  }, [workerConfig, persistWorkerConfig, prefs]);
 
-  const handleWorkerBenchmarkChange = useCallback((code) => {
-    void persistWorkerConfig({ ...workerConfig, benchmarkCode: code });
-  }, [workerConfig, persistWorkerConfig]);
-
-  const handleWorkerCandidateToggle = useCallback((code) => {
-    const set = new Set((workerConfig.candidateCodes || []).map(String));
-    if (set.has(code)) set.delete(code); else set.add(code);
-    void persistWorkerConfig({ ...workerConfig, candidateCodes: Array.from(set) });
-  }, [workerConfig, persistWorkerConfig]);
-
-  const handleWorkerThresholdsCommit = useCallback(() => {
-    const parsed = String(thresholdsDraft || '')
-      .split(/[,\s]+/)
-      .map((token) => Number(token))
-      .filter((value) => Number.isFinite(value) && value > 0);
-    const next = parsed.length ? parsed : [1, 8];
-    void persistWorkerConfig({ ...workerConfig, thresholds: next });
-  }, [thresholdsDraft, workerConfig, persistWorkerConfig]);
+  // prefs 变动同步到 worker（debounce 800ms）。
+  // 仅在已启用自动监控时推送，以免未启用状态下频繁写入 worker。
+  useEffect(() => {
+    if (!workerConfig.enabled) return undefined;
+    const benchmarkCode = String(prefs?.benchmarkCode || '');
+    if (!benchmarkCode) return undefined;
+    const enabledCodes = Array.from(new Set((prefs?.enabledCodes || []).map(String)))
+      .filter((code) => code && code !== benchmarkCode);
+    const intraSellLowerPct = Number(prefs?.intraSellLowerPct);
+    const intraBuyOtherPct = Number(prefs?.intraBuyOtherPct);
+    const sameCodes = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+    const drift = (
+      String(workerConfig.benchmarkCode || '') !== benchmarkCode
+      || !sameCodes(workerConfig.enabledCodes || [], enabledCodes)
+      || Number(workerConfig.intraSellLowerPct) !== intraSellLowerPct
+      || Number(workerConfig.intraBuyOtherPct) !== intraBuyOtherPct
+    );
+    if (!drift) return undefined;
+    const timer = setTimeout(() => {
+      void persistWorkerConfig({
+        ...workerConfig,
+        benchmarkCode,
+        enabledCodes,
+        intraSellLowerPct,
+        intraBuyOtherPct
+      });
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [
+    workerConfig.enabled,
+    workerConfig.benchmarkCode,
+    workerConfig.enabledCodes,
+    workerConfig.intraSellLowerPct,
+    workerConfig.intraBuyOtherPct,
+    prefs?.benchmarkCode,
+    prefs?.enabledCodes,
+    prefs?.intraSellLowerPct,
+    prefs?.intraBuyOtherPct,
+    persistWorkerConfig,
+    workerConfig
+  ]);
 
   const handleWorkerRunOnce = useCallback(async () => {
     setWorkerStatus((prev) => ({ ...prev, running: true, error: '', notice: '' }));
@@ -607,7 +642,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         <SectionHeading
           eyebrow="自动监控"
           title="worker 每分钟扫描场内切换信号"
-          description="前端只做配置：选定基准 ETF + 候选 ETF + 阈值后保存到 worker。A 股交易时段 worker 每分钟拉取新浪现价与最新单位净值，计算 (价-净值)/净值 溢价。「基准溢价 − 候选溢价」绝对值跨越任一阈值（1% / 8%等）即推送到已配对的设备。"
+          description="本卡不重复提供表单：worker 复用下方「场内 / 场外 切换套利」中的同一份配置（基准 ETF + 勾选候选 + 规则 A / B 阈值）。A 股交易时段每分钟拉新浪现价 + 最新单位净值，同路计算 diff = 基准溢价 − 候选溢价。diff ≤ 规则 A 阈值 → 卖候选买基准；diff ≥ 规则 B 阈值 → 卖基准买候选。同一对仅在规则翻转时重推一次。"
         />
         <div className="mt-5 space-y-4">
           <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -629,11 +664,11 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
               type="button"
               className={cx(secondaryButtonClass, 'ml-auto h-9 px-3 text-xs')}
               onClick={handleWorkerRunOnce}
-              disabled={workerStatus.running || workerStatus.saving || !workerConfig.enabled || !workerConfig.benchmarkCode || (workerConfig.candidateCodes || []).length === 0}
-              title={workerConfig.enabled ? '手动跡府一次：拉价 + 算溢价差 + 命中阈值则推送' : '需先启用监控并选定基准 / 候选'}
+              disabled={workerStatus.running || workerStatus.saving || !workerConfig.enabled || !workerConfig.benchmarkCode || (workerConfig.enabledCodes || []).length === 0}
+              title={workerConfig.enabled ? '手动跑一次：拉价 + 算 diff + 命中规则 A/B 则推送' : '需先启用自动监控'}
             >
               <PlayCircle className="h-4 w-4" />
-              {workerStatus.running ? '运行中…' : '手动跡府一次'}
+              {workerStatus.running ? '运行中…' : '手动跑一次'}
             </button>
           </div>
           {workerStatus.error ? (
@@ -648,93 +683,17 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
               <span>{workerStatus.notice}</span>
             </div>
           ) : null}
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">基准 ETF</div>
-              <select
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 focus:border-indigo-300 focus:outline-none"
-                value={workerConfig.benchmarkCode || ''}
-                disabled={workerStatus.loading || workerStatus.saving}
-                onChange={(e) => handleWorkerBenchmarkChange(e.target.value)}
-              >
-                <option value="">请选择一只基准 ETF</option>
-                {candidateUniverse.map((f) => (
-                  <option key={`bench-${f.code}`} value={f.code}>
-                    {f.code} · {f.name || ''}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-2 text-xs text-slate-500">建议选你主仓的那只，比如 159632 / 513100。</p>
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <span><span className="text-slate-400">基准</span> <span className="font-semibold text-slate-700">{workerConfig.benchmarkCode || '未设定'}</span></span>
+              <span><span className="text-slate-400">候选</span> <span className="font-semibold text-slate-700">{(workerConfig.enabledCodes || []).length}</span> 只</span>
+              <span><span className="text-slate-400">规则 A</span> diff ≤ <span className="font-semibold text-slate-700">{Number.isFinite(Number(workerConfig.intraSellLowerPct)) ? `${workerConfig.intraSellLowerPct}%` : '—'}</span></span>
+              <span><span className="text-slate-400">规则 B</span> diff ≥ <span className="font-semibold text-slate-700">{Number.isFinite(Number(workerConfig.intraBuyOtherPct)) ? `${workerConfig.intraBuyOtherPct}%` : '—'}</span></span>
+              {workerConfig.updatedAt ? (
+                <span className="text-[11px] text-slate-400 ml-auto">上次同步 {formatDate(workerConfig.updatedAt) || workerConfig.updatedAt}</span>
+              ) : null}
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 md:col-span-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">候选 ETF</div>
-                <div className="text-xs text-slate-500">已选 {(workerConfig.candidateCodes || []).length} / 候选 {candidateUniverse.length}</div>
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {candidateUniverse.length === 0 ? (
-                  <div className="text-sm text-slate-500">候选基金列表尚未加载。</div>
-                ) : null}
-                {candidateUniverse.map((f) => {
-                  const code = String(f.code);
-                  const isBench = code === workerConfig.benchmarkCode;
-                  const isSelected = (workerConfig.candidateCodes || []).includes(code);
-                  return (
-                    <button
-                      key={`cand-${code}`}
-                      type="button"
-                      disabled={isBench || workerStatus.loading || workerStatus.saving}
-                      onClick={() => handleWorkerCandidateToggle(code)}
-                      className={cx(
-                        'inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs',
-                        isBench
-                          ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
-                          : isSelected
-                            ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
-                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                      )}
-                    >
-                      <span className="font-semibold">{code}</span>
-                      {f.name ? <span className="text-slate-400">·</span> : null}
-                      {f.name ? <span className="max-w-[120px] truncate">{f.name}</span> : null}
-                      {isBench ? <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">基准</span> : null}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="mt-2 text-xs text-slate-500">点击划勾。会与基准一一配对计算「基准溢价 − 候选溢价」；一只基金不能同时作为基准与候选。</p>
-            </div>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="flex-1 min-w-[220px]">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">阈值（%）</div>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 focus:border-indigo-300 focus:outline-none"
-                  value={thresholdsDraft}
-                  disabled={workerStatus.loading || workerStatus.saving}
-                  onChange={(e) => setThresholdsDraft(e.target.value)}
-                  onBlur={handleWorkerThresholdsCommit}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
-                  placeholder="1, 8"
-                />
-                <p className="mt-2 text-xs text-slate-500">逗号或空格分隔，按 Enter / 失焦保存。任一阈值被跨越都会推送（例如 1 / 8）。</p>
-              </div>
-              <div className="flex-1 min-w-[220px] text-xs text-slate-500">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">当前生效阈值</div>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {(workerConfig.thresholds || []).map((t) => (
-                    <span key={`thr-${t}`} className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">±{t}%</span>
-                  ))}
-                  {(workerConfig.thresholds || []).length === 0 ? <span>未设置</span> : null}
-                </div>
-                {workerConfig.updatedAt ? (
-                  <div className="mt-2 text-[11px] text-slate-400">上次保存：{formatDate(workerConfig.updatedAt) || workerConfig.updatedAt}</div>
-                ) : null}
-              </div>
-            </div>
+            <p className="mt-1.5 text-[11px] text-slate-500">以上仅供查看。要改参数请在下方「场内 / 场外 切换套利」中调整基准 / 勾选候选 / 规则 A &amp; B 阈值，修改后会自动同步到 worker。</p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -766,10 +725,12 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                     </thead>
                     <tbody>
                       {(workerSnapshot.candidates || []).map((c) => {
-                        const abs = Number.isFinite(c.spreadVsBenchmarkPct) ? Math.abs(c.spreadVsBenchmarkPct) : null;
-                        const thresholds = workerSnapshot.thresholds || [];
-                        const hits = thresholds.filter((t) => Number.isFinite(abs) && abs >= t).length;
-                        const cls = hits >= 2 ? 'text-rose-700 font-semibold' : hits >= 1 ? 'text-amber-700 font-semibold' : 'text-slate-600';
+                        const diff = Number(c.spreadVsBenchmarkPct);
+                        const sellLower = Number(workerSnapshot.intraSellLowerPct);
+                        const buyOther = Number(workerSnapshot.intraBuyOtherPct);
+                        const inA = Number.isFinite(diff) && Number.isFinite(sellLower) && diff <= sellLower;
+                        const inB = Number.isFinite(diff) && Number.isFinite(buyOther) && diff >= buyOther;
+                        const cls = inA ? 'text-emerald-700 font-semibold' : inB ? 'text-rose-700 font-semibold' : 'text-slate-600';
                         return (
                           <tr key={`snap-${c.code}`} className="border-t border-slate-100">
                             <td className="px-3 py-2"><span className="font-semibold">{c.code}</span>{c.name ? <span className="ml-1 text-slate-400">{c.name}</span> : null}</td>
@@ -791,7 +752,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                     <div className="font-semibold">本轮触发 {workerSnapshot.triggers.length} 个信号</div>
                     <ul className="mt-1 list-disc pl-4">
                       {workerSnapshot.triggers.map((t, idx) => (
-                        <li key={`trig-${idx}`}>卖 {t.fromCode} → 买 {t.toCode}：溢价差 {formatPercent(t.spreadPct, 2, true)} (≥ {t.threshold}%)</li>
+                        <li key={`trig-${idx}`}>规则 {t.rule || (Number(t.diffPct ?? t.spreadPct) >= 0 ? 'B' : 'A')} · 卖 {t.fromCode} → 买 {t.toCode}：diff {formatPercent(t.diffPct ?? t.spreadPct, 2, true)}</li>
                       ))}
                     </ul>
                   </div>

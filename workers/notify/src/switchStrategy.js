@@ -33,40 +33,51 @@ export function switchStateKey(clientId) {
 }
 
 const FUND_CODE_PATTERN = /^\d{6}$/;
-const DEFAULT_THRESHOLDS = [1, 8];
 const MAX_CANDIDATES = 20;
+// 与前端 SwitchStrategyExperience 的 DEFAULT_PREFS 保持一致。
+const DEFAULT_INTRA_SELL_LOWER_PCT = 1;   // 规则 A：基准溢价 − 候选溢价 ≤ X% → 卖候选买基准
+const DEFAULT_INTRA_BUY_OTHER_PCT = 3;    // 规则 B：基准溢价 − 候选溢价 ≥ Y% → 卖基准买候选
 
 function sanitizeCode(value) {
   const code = String(value || '').trim();
   return FUND_CODE_PATTERN.test(code) ? code : '';
 }
 
+function pickPercent(value, fallback) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  // 阈值限为 [-50, 50]，防止脱疑配置。
+  if (num < -50) return -50;
+  if (num > 50) return 50;
+  return num;
+}
+
+// 配置与前端 aiDcaSwitchStrategyPrefs 同名，不重复定义一套参数。
+// 字段：
+//  - benchmarkCode: 基准 ETF
+//  - enabledCodes:   勾选的候选 ETF 集合（不含基准）
+//  - intraSellLowerPct / intraBuyOtherPct: 规则 A / B 阈值，与页面同含义
 export function normalizeSwitchConfig(input = {}) {
   const benchmarkCode = sanitizeCode(input?.benchmarkCode);
   const seen = new Set();
   if (benchmarkCode) seen.add(benchmarkCode);
-  const candidateCodes = [];
-  for (const raw of Array.isArray(input?.candidateCodes) ? input.candidateCodes : []) {
+  const enabledCodesRaw = Array.isArray(input?.enabledCodes)
+    ? input.enabledCodes
+    : Array.isArray(input?.candidateCodes) ? input.candidateCodes : [];
+  const enabledCodes = [];
+  for (const raw of enabledCodesRaw) {
     const code = sanitizeCode(raw);
     if (!code || seen.has(code)) continue;
     seen.add(code);
-    candidateCodes.push(code);
-    if (candidateCodes.length >= MAX_CANDIDATES) break;
+    enabledCodes.push(code);
+    if (enabledCodes.length >= MAX_CANDIDATES) break;
   }
-  // 阈值：去重、>0、升序，最多 4 档；缺省 [1, 8]。
-  const thresholdsRaw = Array.isArray(input?.thresholds) ? input.thresholds : DEFAULT_THRESHOLDS;
-  const thresholds = Array.from(new Set(
-    thresholdsRaw.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
-  ))
-    .sort((left, right) => left - right)
-    .slice(0, 4);
-  if (!thresholds.length) thresholds.push(...DEFAULT_THRESHOLDS);
-
   return {
     enabled: Boolean(input?.enabled),
     benchmarkCode,
-    candidateCodes,
-    thresholds,
+    enabledCodes,
+    intraSellLowerPct: pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
+    intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
     clientLabel: String(input?.clientLabel || '').trim().slice(0, 120),
     updatedAt: String(input?.updatedAt || '').trim() || new Date().toISOString()
   };
@@ -77,10 +88,11 @@ export function isSwitchConfigRunnable(config) {
     config
     && config.enabled
     && config.benchmarkCode
-    && Array.isArray(config.candidateCodes)
-    && config.candidateCodes.length > 0
-    && Array.isArray(config.thresholds)
-    && config.thresholds.length > 0
+    && Array.isArray(config.enabledCodes)
+    && config.enabledCodes.length > 0
+    && Number.isFinite(config.intraSellLowerPct)
+    && Number.isFinite(config.intraBuyOtherPct)
+    && config.intraBuyOtherPct > config.intraSellLowerPct
   );
 }
 
@@ -215,6 +227,7 @@ export async function fetchLatestNavMap(env, codes = []) {
 
 // --- 快照与触发 ------------------------------------------------------------
 
+// 计算 worker 快照，与前端 SwitchStrategyExperience.fundsWithPremium / intraSignals 同语义。
 export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
   const benchmark = config.benchmarkCode;
   const benchPrice = Number(priceMap?.[benchmark]?.price);
@@ -223,13 +236,13 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     ? ((benchPrice - benchNav) / benchNav) * 100
     : null;
 
-  const candidates = config.candidateCodes.map((code) => {
+  const candidates = (config.enabledCodes || []).map((code) => {
     const candPrice = Number(priceMap?.[code]?.price);
     const candNav = Number(navByCode?.[code]?.nav);
     const candPremium = Number.isFinite(candPrice) && Number.isFinite(candNav) && candNav > 0
       ? ((candPrice - candNav) / candNav) * 100
       : null;
-    const spread = Number.isFinite(benchPremium) && Number.isFinite(candPremium)
+    const diff = Number.isFinite(benchPremium) && Number.isFinite(candPremium)
       ? benchPremium - candPremium
       : null;
     return {
@@ -239,7 +252,8 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       nav: Number.isFinite(candNav) ? candNav : null,
       navDate: navByCode?.[code]?.latestNavDate || '',
       premiumPct: Number.isFinite(candPremium) ? candPremium : null,
-      spreadVsBenchmarkPct: Number.isFinite(spread) ? spread : null
+      // diff = benchPremium − candPremium，与页面 intraSignals 中同名。
+      spreadVsBenchmarkPct: Number.isFinite(diff) ? diff : null
     };
   });
 
@@ -253,80 +267,66 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     benchmarkNavDate: navByCode?.[benchmark]?.latestNavDate || '',
     benchmarkPremiumPct: Number.isFinite(benchPremium) ? benchPremium : null,
     candidates,
-    thresholds: Array.isArray(config.thresholds) ? [...config.thresholds] : [...DEFAULT_THRESHOLDS],
+    intraSellLowerPct: Number(config.intraSellLowerPct),
+    intraBuyOtherPct: Number(config.intraBuyOtherPct),
     ready,
     triggers: []
   };
 }
 
-// 计算某个绝对溢价差跨越了几个阈值（0 / 1 / 2 / 3 ...）。
-function levelFor(absSpread, thresholds = []) {
-  let level = 0;
-  for (const t of thresholds) {
-    if (absSpread >= t) level += 1;
-  }
-  return level;
+// 与前端 intraSignals 算法一致：
+//   diff = benchPremium − candPremium
+//   规则 A: diff ≤ intraSellLowerPct  → 卖 候选 买 基准
+//   规则 B: diff ≥ intraBuyOtherPct   → 卖 基准 买 候选
+// per-pair dedup: 仅当本轮命中的规则与上次不同时才推送。
+function classifyRule(diff, sellLower, buyOther) {
+  if (!Number.isFinite(diff)) return 'none';
+  if (diff <= sellLower) return 'A';
+  if (diff >= buyOther) return 'B';
+  return 'none';
 }
 
 export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
   const benchmark = snapshot.benchmarkCode;
   const benchName = snapshot.benchmarkName || '';
-  const thresholds = Array.isArray(snapshot.thresholds) && snapshot.thresholds.length
-    ? [...snapshot.thresholds].sort((a, b) => a - b)
-    : [...DEFAULT_THRESHOLDS];
+  const sellLower = Number(snapshot.intraSellLowerPct);
+  const buyOther = Number(snapshot.intraBuyOtherPct);
   const nextTriggerStates = {};
   const triggers = [];
 
   for (const cand of snapshot.candidates || []) {
     const pairKey = `${benchmark}:${cand.code}`;
-    const spread = Number(cand.spreadVsBenchmarkPct);
-    if (!Number.isFinite(spread)) {
+    const diff = Number(cand.spreadVsBenchmarkPct);
+    if (!Number.isFinite(diff)) {
       // 数据缺失：保留旧状态，不衰减、不触发。
       const prev = prevTriggerStates?.[pairKey];
       if (prev) nextTriggerStates[pairKey] = prev;
       continue;
     }
-    const sign = spread === 0 ? 0 : spread > 0 ? 1 : -1;
-    const absSpread = Math.abs(spread);
-    const newLevel = levelFor(absSpread, thresholds);
-    const prev = prevTriggerStates?.[pairKey] || { level: 0, sign: 0 };
-    let shouldFire = false;
-    if (newLevel >= 1) {
-      if (sign !== prev.sign && prev.sign !== 0) {
-        // 方向翻转：之前已经有触发，现在反向到了触发区，重新发一次。
-        shouldFire = true;
-      } else if (newLevel > Number(prev.level || 0)) {
-        // 同方向升档（含从 0→任一）：发一次。
-        shouldFire = true;
-      } else if (Number(prev.level || 0) === 0 && newLevel >= 1) {
-        // 兜底：上次未触发，此次触发了。
-        shouldFire = true;
-      }
-    }
-    if (shouldFire) {
-      const fromCode = sign > 0 ? benchmark : cand.code;
-      const toCode = sign > 0 ? cand.code : benchmark;
-      const fromName = sign > 0 ? benchName : (cand.name || '');
-      const toName = sign > 0 ? (cand.name || '') : benchName;
-      // 选最大已跨越的阈值用于消息文案。
-      const crossedThreshold = [...thresholds].reverse().find((t) => absSpread >= t) || thresholds[0];
+    const rule = classifyRule(diff, sellLower, buyOther);
+    const prev = prevTriggerStates?.[pairKey] || { rule: 'none' };
+    const prevRule = String(prev.rule || 'none');
+    if (rule !== 'none' && rule !== prevRule) {
+      // A: 卖 cand 买 benchmark; B: 卖 benchmark 买 cand
+      const fromCode = rule === 'A' ? cand.code : benchmark;
+      const toCode = rule === 'A' ? benchmark : cand.code;
+      const fromName = rule === 'A' ? (cand.name || '') : benchName;
+      const toName = rule === 'A' ? benchName : (cand.name || '');
+      const threshold = rule === 'A' ? sellLower : buyOther;
       triggers.push({
         pairKey,
-        level: newLevel,
-        sign,
-        threshold: crossedThreshold,
+        rule,
         fromCode,
         toCode,
         fromName,
         toName,
-        spreadPct: spread,
-        absSpreadPct: absSpread
+        diffPct: diff,
+        threshold
       });
     }
     nextTriggerStates[pairKey] = {
-      level: newLevel,
-      sign: newLevel > 0 ? sign : 0,
-      lastSpreadPct: spread,
+      rule,
+      lastDiffPct: diff,
       updatedAt: snapshot.computedAt
     };
   }
@@ -335,25 +335,29 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
 }
 
 export function buildSwitchTriggerNotification(snapshot, trigger, env) {
-  const levelLabel = trigger.level >= 2 ? '强信号' : '弱信号';
   const fromLabel = trigger.fromName ? `${trigger.fromCode} ${trigger.fromName}` : trigger.fromCode;
   const toLabel = trigger.toName ? `${trigger.toCode} ${trigger.toName}` : trigger.toCode;
-  const spread = Number(trigger.spreadPct).toFixed(2);
-  const title = `[切换 ${levelLabel}] 卖 ${trigger.fromCode} → 买 ${trigger.toCode}`;
-  const body = `溢价差 ${spread}%（≥ ${trigger.threshold}%）：${fromLabel} → ${toLabel}。下单前请到基金软件确认实时溢价。`;
-  const summary = `切换信号 ${trigger.fromCode}→${trigger.toCode} ${spread}%`;
+  const diff = Number(trigger.diffPct);
+  const diffStr = (diff >= 0 ? '+' : '') + diff.toFixed(2);
+  const threshold = Number(trigger.threshold);
+  const ruleLabel = trigger.rule === 'A'
+    ? `规则 A：基准溢价 − 候选溢价 ≤ ${threshold}%`
+    : `规则 B：基准溢价 − 候选溢价 ≥ ${threshold}%`;
+  const title = `[切换 ${trigger.rule}] 卖 ${trigger.fromCode} → 买 ${trigger.toCode}`;
+  const body = `${ruleLabel}。当前溢价差 ${diffStr}%：${fromLabel} → ${toLabel}。下单前请在基金软件中复核实时溢价。`;
+  const summary = `切换 ${trigger.rule} ${trigger.fromCode}→${trigger.toCode} ${diffStr}%`;
   const baseUrl = stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || 'https://tools.freebacktrack.tech');
   const detailUrl = `${baseUrl}/index.html?tab=tradePlans#switch`;
-  // 同一对在同一时间点+level 只发一次；时间精确到分钟即可。
+  // 同一对 + 同一规则 + 同一分钟，只发一次。
   const minuteKey = String(snapshot?.computedAt || '').slice(0, 16);
-  const eventId = `switch:${snapshot.benchmarkCode}:${trigger.pairKey}:L${trigger.level}:S${trigger.sign >= 0 ? 'p' : 'n'}:${minuteKey}`;
+  const eventId = `switch:${snapshot.benchmarkCode}:${trigger.pairKey}:R${trigger.rule}:${minuteKey}`;
   return {
     eventId,
     eventType: 'switch-strategy-trigger',
     ruleId: `switch:${snapshot.benchmarkCode}`,
     symbol: trigger.fromCode,
     strategyName: '场内切换',
-    triggerCondition: `溢价差 ${spread}% ≥ ${trigger.threshold}%`,
+    triggerCondition: ruleLabel,
     purchaseAmount: '',
     detailUrl,
     title,

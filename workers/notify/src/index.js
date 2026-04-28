@@ -2012,8 +2012,9 @@ async function handleSwitchConfigPost(request, env) {
   const nextConfig = await writeSwitchConfigForClient(env, auth.clientId, {
     enabled: payload?.enabled,
     benchmarkCode: payload?.benchmarkCode,
-    candidateCodes: payload?.candidateCodes,
-    thresholds: payload?.thresholds,
+    enabledCodes: payload?.enabledCodes ?? payload?.candidateCodes,
+    intraSellLowerPct: payload?.intraSellLowerPct,
+    intraBuyOtherPct: payload?.intraBuyOtherPct,
     clientLabel: auth.clientRecord?.clientLabel || ''
   });
   return jsonResponse({ ok: true, config: nextConfig }, { origin });
@@ -2058,7 +2059,7 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
   if (!clientRecord || !clientRecord.clientId) {
     return { triggered: 0, skipped: 'no-client' };
   }
-  const codes = Array.from(new Set([config.benchmarkCode, ...config.candidateCodes]));
+  const codes = Array.from(new Set([config.benchmarkCode, ...(config.enabledCodes || [])]));
   const effectivePriceMap = priceMap || await fetchSinaPrices(codes).catch(() => ({}));
   const effectiveNavMap = navByCode || await fetchLatestNavMap(env, codes);
   const computedAtIso = computedAt || new Date().toISOString();
@@ -2114,7 +2115,7 @@ async function runSwitchStrategyTick(env, scheduledMs, reason = 'switch-cron') {
   const allCodes = new Set();
   for (const { config } of enabledList) {
     allCodes.add(config.benchmarkCode);
-    for (const code of config.candidateCodes) allCodes.add(code);
+    for (const code of (config.enabledCodes || [])) allCodes.add(code);
   }
   const codeList = Array.from(allCodes);
   const [priceMap, navByCode] = await Promise.all([

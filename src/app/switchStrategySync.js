@@ -12,12 +12,17 @@ const NOTIFY_CLIENT_SECRET_HEADER = 'x-notify-client-secret';
 const LOCAL_CACHE_KEY = 'aiDcaSwitchStrategyWorkerConfig';
 const FUND_CODE_PATTERN = /^\d{6}$/;
 
+// 与页面 SwitchStrategyExperience 的 DEFAULT_PREFS 保持同名及同默认。
+const DEFAULT_INTRA_SELL_LOWER_PCT = 1; // 规则 A
+const DEFAULT_INTRA_BUY_OTHER_PCT = 3;  // 规则 B
+
 export function buildDefaultSwitchConfig() {
   return {
     enabled: false,
     benchmarkCode: '',
-    candidateCodes: [],
-    thresholds: [1, 8],
+    enabledCodes: [],
+    intraSellLowerPct: DEFAULT_INTRA_SELL_LOWER_PCT,
+    intraBuyOtherPct: DEFAULT_INTRA_BUY_OTHER_PCT,
     clientLabel: '',
     updatedAt: ''
   };
@@ -44,31 +49,35 @@ export function writeSwitchConfigCache(config) {
   }
 }
 
+function pickPercent(value, fallback) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  if (num < -50) return -50;
+  if (num > 50) return 50;
+  return num;
+}
+
 export function normalizeSwitchConfigShape(input = {}) {
   const benchmarkCode = sanitizeFundCode(input?.benchmarkCode);
   const seen = new Set();
   if (benchmarkCode) seen.add(benchmarkCode);
-  const candidateCodes = [];
-  for (const raw of Array.isArray(input?.candidateCodes) ? input.candidateCodes : []) {
+  const enabledCodesRaw = Array.isArray(input?.enabledCodes)
+    ? input.enabledCodes
+    : Array.isArray(input?.candidateCodes) ? input.candidateCodes : [];
+  const enabledCodes = [];
+  for (const raw of enabledCodesRaw) {
     const code = sanitizeFundCode(raw);
     if (!code || seen.has(code)) continue;
     seen.add(code);
-    candidateCodes.push(code);
-    if (candidateCodes.length >= 20) break;
+    enabledCodes.push(code);
+    if (enabledCodes.length >= 20) break;
   }
-  const thresholdsRaw = Array.isArray(input?.thresholds) ? input.thresholds : [1, 8];
-  const thresholds = Array.from(new Set(
-    thresholdsRaw
-      .map((value) => Number(value))
-      .filter((value) => Number.isFinite(value) && value > 0)
-  ))
-    .sort((left, right) => left - right)
-    .slice(0, 4);
   return {
     enabled: Boolean(input?.enabled),
     benchmarkCode,
-    candidateCodes,
-    thresholds: thresholds.length ? thresholds : [1, 8],
+    enabledCodes,
+    intraSellLowerPct: pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
+    intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
     clientLabel: String(input?.clientLabel || '').trim().slice(0, 120),
     updatedAt: String(input?.updatedAt || '').trim()
   };
@@ -137,8 +146,9 @@ export async function saveSwitchConfigToWorker(config) {
     body: {
       enabled: next.enabled,
       benchmarkCode: next.benchmarkCode,
-      candidateCodes: next.candidateCodes,
-      thresholds: next.thresholds,
+      enabledCodes: next.enabledCodes,
+      intraSellLowerPct: next.intraSellLowerPct,
+      intraBuyOtherPct: next.intraBuyOtherPct,
       clientLabel: clientConfig?.notifyClientLabel || ''
     }
   });
