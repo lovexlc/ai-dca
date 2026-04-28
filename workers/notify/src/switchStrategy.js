@@ -296,7 +296,10 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
 
   for (const cand of snapshot.candidates || []) {
     const pairKey = `${benchmark}:${cand.code}`;
-    const diff = Number(cand.spreadVsBenchmarkPct);
+    // 重要：Number(null) 会变成 0，会被误当作「diff = 0%」命中规则 A（如果 sellLower ≥ 0）。
+    // 仅在原始值为 number 时才计算，null / undefined / NaN / 字符串均视为「数据缺失」。
+    const rawDiff = cand.spreadVsBenchmarkPct;
+    const diff = (typeof rawDiff === 'number' && Number.isFinite(rawDiff)) ? rawDiff : NaN;
     if (!Number.isFinite(diff)) {
       // 数据缺失：保留旧状态，不衰减、不触发。
       const prev = prevTriggerStates?.[pairKey];

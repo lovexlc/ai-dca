@@ -82,8 +82,10 @@ function writeSwitchLedger(rows) {
 }
 
 function formatPercent(value, digits = 2, withSign = false) {
-  if (!Number.isFinite(Number(value))) return '—';
+  // 先抦掉 null / undefined，避免 Number(null) → 0 被当成「0.00%」。
+  if (value === null || value === undefined || value === '') return '—';
   const v = Number(value);
+  if (!Number.isFinite(v)) return '—';
   const fixed = v.toFixed(digits);
   if (withSign && v > 0) return `+${fixed}%`;
   return `${fixed}%`;
@@ -387,17 +389,17 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     return () => { cancelled = true; };
   }, [inPagesDir, refreshTick]);
 
-  // 默认勾选「既在候选池又在持仓」的场内 ETF。候选池本身来自 all_nasdq.json，与持仓解耦。
+  // 「候选基金（场内）」不包含已持仓代码：benchmark 在上面下拉单独选，其它持仓不该出现在候选里。这里把 prefs.enabledCodes 里遗留的已持仓代码自动清掉。
   useEffect(() => {
-    if (!candidateUniverse.length) return;
+    if (!exchangeFunds.length) return;
+    const heldCodes = new Set(exchangeFunds.map((f) => f.code));
     setPrefs((prev) => {
-      if (Array.isArray(prev.enabledCodes) && prev.enabledCodes.length > 0) return prev;
-      const universeCodes = new Set(candidateUniverse.map((f) => f.code));
-      const defaults = exchangeFunds.map((f) => f.code).filter((code) => universeCodes.has(code));
-      if (!defaults.length) return prev;
-      return { ...prev, enabledCodes: defaults };
+      const before = Array.isArray(prev.enabledCodes) ? prev.enabledCodes : [];
+      const after = before.filter((code) => !heldCodes.has(code));
+      if (after.length === before.length) return prev;
+      return { ...prev, enabledCodes: after };
     });
-  }, [candidateUniverse, exchangeFunds]);
+  }, [exchangeFunds]);
 
   // 拉取所有候选 ETF 的最新单位净值（候选池来自 data/all_nasdq.json，不仅限于持仓）。
   const loadNav = useCallback(async () => {
@@ -834,9 +836,9 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">候选基金（场内）</div>
-                <div className="mt-1 text-sm text-slate-600">候选池来自 data/all_nasdq.json，与持仓解耦；勾选要参与切换比对的基金。</div>
+                <div className="mt-1 text-sm text-slate-600">候选池来自 data/all_nasdq.json，已自动隔离已持仓代码（含基准）；勾选要参与切换比对的未持仓基金。</div>
               </div>
-              <div className="text-xs text-slate-500">已选 {prefs.enabledCodes.length} / 候选 {candidateUniverse.length}</div>
+              <div className="text-xs text-slate-500">已选 {prefs.enabledCodes.length} / 候选 {fundsWithPremium.filter((f) => !f.hasPosition).length}</div>
             </div>
             {universeError ? (
               <div className="mt-2 text-xs text-rose-600">候选基金列表加载失败：{universeError}</div>
@@ -845,10 +847,10 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
               {candidateUniverse.length === 0 ? (
                 <div className="text-sm text-slate-500">候选基金尚未加载。</div>
               ) : null}
-              {fundsWithPremium.map((f) => {
+              {fundsWithPremium.filter((f) => !f.hasPosition).map((f) => {
                 const checked = (prefs.enabledCodes || []).includes(f.code);
                 const hasNav = Number.isFinite(f.navLatest);
-                const priceSourceLabel = f.hasPosition ? '持仓' : (f.latestPriceDate || 'daily');
+                const priceSourceLabel = f.latestPriceDate || 'daily';
                 return (
                   <button
                     key={f.code}
@@ -867,9 +869,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                     <span>{f.code}</span>
                     <span className="text-slate-400">·</span>
                     <span className="max-w-[120px] truncate text-slate-600">{f.name || ''}</span>
-                    {f.hasPosition ? (
-                      <span className="ml-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">持</span>
-                    ) : null}
                   </button>
                 );
               })}
