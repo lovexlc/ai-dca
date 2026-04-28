@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Bell, CalendarClock, Layers3, ListChecks, Plus, Radar, Sparkles, TrendingUp } from 'lucide-react';
+import { ArrowRight, Bell, CalendarClock, Layers3, ListChecks, Plus, Radar, Repeat, Sparkles, TrendingUp } from 'lucide-react';
 import { loadNotifyStatus, readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { showActionToast } from '../app/toast.js';
@@ -13,16 +13,20 @@ import {
 // 加仓计划 / 定投计划已合并为本 tab 的二级视图，按需 lazy 加载，避免初次进入交易计划就拖入 home dashboard 的图表 chunk。
 const HomeExperienceLazy = lazy(() => import('./HomeExperience.jsx').then((m) => ({ default: m.HomeExperience })));
 const DcaExperienceLazy = lazy(() => import('./DcaExperience.jsx').then((m) => ({ default: m.DcaExperience })));
+// 「切换」二级视图：场内 / 场外纳指 100 切换套利策略，首次进入才拉取实时价格快照。
+const SwitchStrategyExperienceLazy = lazy(() => import('./SwitchStrategyExperience.jsx').then((m) => ({ default: m.SwitchStrategyExperience })));
 
 // 子视图与 URL hash 对应关系：
 //   ''  / '#list' → 列表（默认）
 //   '#home'      → 加仓
 //   '#dca'       → 定投
+//   '#switch'    → 切换（场内/场外套利）
 //   '#new'       → 新建（覆盖整个 tab，独占视图）
 const SUB_VIEW_HASH = {
   list: '',
   home: '#home',
   dca: '#dca',
+  switch: '#switch',
   new: '#new'
 };
 
@@ -30,6 +34,7 @@ function parseSubViewFromHash(hash = '') {
   if (hash === '#new') return 'new';
   if (hash === '#home') return 'home';
   if (hash === '#dca') return 'dca';
+  if (hash === '#switch') return 'switch';
   return 'list';
 }
 
@@ -48,7 +53,7 @@ function SubViewLoadingFallback() {
 
 export function TradePlansExperience({ links, inPagesDir = false, embedded = false }) {
   const [selectedRowId, setSelectedRowId] = useState('');
-  // 子视图（list / home / dca / new）通过 URL hash 持久化，方便刷新和浏览器前进后退。
+  // 子视图（list / home / dca / switch / new）通过 URL hash 持久化，方便刷新和浏览器前进后退。
   const [subView, setSubView] = useState(getInitialSubView);
   const [testingRowId, setTestingRowId] = useState('');
   // 仅判断是否已配置任一推送通道，未配置时在顶部提示一行链接。
@@ -94,7 +99,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     gotoSubView('list');
   }
 
-  // 二级 tab 之间切换：list / home / dca
+  // 二级 tab 之间切换：list / home / dca / switch
   function handleSelectSubTab(nextView) {
     if (nextView === subView) return;
     gotoSubView(nextView);
@@ -371,7 +376,8 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   const subTabs = [
     { key: 'list', label: '列表', icon: ListChecks },
     { key: 'home', label: '加仓', icon: TrendingUp },
-    { key: 'dca', label: '定投', icon: CalendarClock }
+    { key: 'dca', label: '定投', icon: CalendarClock },
+    { key: 'switch', label: '切换', icon: Repeat }
   ];
 
   function renderSubTabBar() {
@@ -401,8 +407,9 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     );
   }
 
-  // 加仓 / 定投 二级视图：内嵌原 HomeExperience / DcaExperience，外层共享标题与二级 tab 切换。
-  if (subView === 'home' || subView === 'dca') {
+  // 加仓 / 定投 / 切换 二级视图：内嵌各自的 Experience 组件，外层共享标题与二级 tab 切换。
+  // 二级 tab 右侧不再重复「新建计划」主按钮（空状态与「加仓」「定投」「切换」页内都有明确的创建入口）。
+  if (subView === 'home' || subView === 'dca' || subView === 'switch') {
     return (
       <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -410,14 +417,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
             <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Trade plans</div>
             <h1 className="mt-1 text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">交易计划中心</h1>
           </div>
-          <button
-            type="button"
-            onClick={enterNewPlanView}
-            className={cx(primaryButtonClass, 'h-10 px-4 text-sm')}
-          >
-            <Plus className="h-4 w-4" />
-            新建计划
-          </button>
         </div>
 
         {renderSubTabBar()}
@@ -425,12 +424,18 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
         <Suspense fallback={<SubViewLoadingFallback />}>
           {subView === 'home' ? (
             <HomeExperienceLazy links={links} inPagesDir={inPagesDir} embedded />
-          ) : (
+          ) : subView === 'dca' ? (
             <DcaExperienceLazy
               links={links}
               inPagesDir={inPagesDir}
               embedded
               onAfterSave={() => gotoSubView('list')}
+            />
+          ) : (
+            <SwitchStrategyExperienceLazy
+              links={links}
+              inPagesDir={inPagesDir}
+              embedded
             />
           )}
         </Suspense>
@@ -446,14 +451,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
           <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Trade plans</div>
           <h1 className="mt-1 text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">交易计划中心</h1>
         </div>
-        <button
-          type="button"
-          onClick={enterNewPlanView}
-          className={cx(primaryButtonClass, 'h-10 px-4 text-sm')}
-        >
-          <Plus className="h-4 w-4" />
-          新建计划
-        </button>
+        {/* 列表顶部不再重复「新建计划」主按钮：空状态卡片以及「加仓 / 定投 / 切换」二级 tab 内都有明确的创建 / 保存入口。 */}
       </div>
 
       {renderSubTabBar()}
