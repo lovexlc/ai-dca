@@ -527,28 +527,29 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       .filter((f) => f.code !== benchmark.code && Number.isFinite(f.premiumPct))
       .forEach((f) => {
         const diff = benchmark.premiumPct - f.premiumPct;
-        // 规则 A：基准溢价 − 持有溢价 ≤ X% → 卖持有买基准
-        if (diff <= sellLower) {
-          list.push({
-            kind: 'A',
-            from: f.code,
-            fromName: f.name || f.code,
-            to: benchmark.code,
-            toName: benchmark.name || benchmark.code,
-            description: `${f.code} 与 ${benchmark.code} 的溢价差 ≤ ${sellLower}%：可考虑卖 ${f.code} 买 ${benchmark.code}`
-          });
-        }
-        // 规则 B：基准溢价 − 另一只 ≥ Y% → 卖基准买另一只
-        if (diff >= buyOther) {
-          list.push({
-            kind: 'B',
-            from: benchmark.code,
-            fromName: benchmark.name || benchmark.code,
-            to: f.code,
-            toName: f.name || f.code,
-            description: `${benchmark.code} 与 ${f.code} 的溢价差 ≥ ${buyOther}%：可考虑卖 ${benchmark.code} 买 ${f.code}`
-          });
-        }
+        if (!Number.isFinite(diff) || diff === 0) return;
+        const absDiff = Math.abs(diff);
+        let kind = null;
+        let threshold = 0;
+        if (absDiff <= sellLower) { kind = 'A'; threshold = sellLower; }
+        else if (absDiff >= buyOther) { kind = 'B'; threshold = buyOther; }
+        if (!kind) return;
+        // 方向：卖溢价高的，买溢价低的。diff > 0 表示基准溢价更高。
+        const benchHigher = diff > 0;
+        const fromCode = benchHigher ? benchmark.code : f.code;
+        const toCode = benchHigher ? f.code : benchmark.code;
+        const fromName = benchHigher ? (benchmark.name || benchmark.code) : (f.name || f.code);
+        const toName = benchHigher ? (f.name || f.code) : (benchmark.name || benchmark.code);
+        const cmp = kind === 'A' ? '≤' : '≥';
+        const tag = kind === 'A' ? '溢价接近' : '溢价偏离';
+        list.push({
+          kind,
+          from: fromCode,
+          fromName,
+          to: toCode,
+          toName,
+          description: `|${benchmark.code} − ${f.code} 溢价差| ${cmp} ${threshold}%（${tag}）：可考虑卖 ${fromCode} 买 ${toCode}`
+        });
       });
     return list;
   }, [enabledFunds, benchmark, prefs.intraSellLowerPct, prefs.intraBuyOtherPct]);
@@ -644,7 +645,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         <SectionHeading
           eyebrow="自动监控"
           title="worker 每分钟扫描场内切换信号"
-          description="本卡不重复提供表单：worker 复用下方「场内 / 场外 切换套利」中的同一份配置（基准 ETF + 勾选候选 + 规则 A / B 阈值）。A 股交易时段每分钟拉新浪现价 + 最新单位净值，同路计算 diff = 基准溢价 − 候选溢价。diff ≤ 规则 A 阈值 → 卖候选买基准；diff ≥ 规则 B 阈值 → 卖基准买候选。同一对仅在规则翻转时重推一次。"
         />
         <div className="mt-5 space-y-4">
           <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -689,13 +689,12 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <span><span className="text-slate-400">基准</span> <span className="font-semibold text-slate-700">{workerConfig.benchmarkCode || '未设定'}</span></span>
               <span><span className="text-slate-400">候选</span> <span className="font-semibold text-slate-700">{(workerConfig.enabledCodes || []).length}</span> 只</span>
-              <span><span className="text-slate-400">规则 A</span> diff ≤ <span className="font-semibold text-slate-700">{Number.isFinite(Number(workerConfig.intraSellLowerPct)) ? `${workerConfig.intraSellLowerPct}%` : '—'}</span></span>
-              <span><span className="text-slate-400">规则 B</span> diff ≥ <span className="font-semibold text-slate-700">{Number.isFinite(Number(workerConfig.intraBuyOtherPct)) ? `${workerConfig.intraBuyOtherPct}%` : '—'}</span></span>
+              <span><span className="text-slate-400">规则 A</span> |diff| ≤ <span className="font-semibold text-slate-700">{Number.isFinite(Number(workerConfig.intraSellLowerPct)) ? `${workerConfig.intraSellLowerPct}%` : '—'}</span></span>
+              <span><span className="text-slate-400">规则 B</span> |diff| ≥ <span className="font-semibold text-slate-700">{Number.isFinite(Number(workerConfig.intraBuyOtherPct)) ? `${workerConfig.intraBuyOtherPct}%` : '—'}</span></span>
               {workerConfig.updatedAt ? (
                 <span className="text-[11px] text-slate-400 ml-auto">上次同步 {formatDate(workerConfig.updatedAt) || workerConfig.updatedAt}</span>
               ) : null}
             </div>
-            <p className="mt-1.5 text-[11px] text-slate-500">以上仅供查看。要改参数请在下方「场内 / 场外 切换套利」中调整基准 / 勾选候选 / 规则 A &amp; B 阈值，修改后会自动同步到 worker。</p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -730,8 +729,9 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                         const diff = Number(c.spreadVsBenchmarkPct);
                         const sellLower = Number(workerSnapshot.intraSellLowerPct);
                         const buyOther = Number(workerSnapshot.intraBuyOtherPct);
-                        const inA = Number.isFinite(diff) && Number.isFinite(sellLower) && diff <= sellLower;
-                        const inB = Number.isFinite(diff) && Number.isFinite(buyOther) && diff >= buyOther;
+                        const absDiff = Number.isFinite(diff) ? Math.abs(diff) : NaN;
+                        const inA = Number.isFinite(absDiff) && Number.isFinite(sellLower) && diff !== 0 && absDiff <= sellLower;
+                        const inB = Number.isFinite(absDiff) && Number.isFinite(buyOther) && absDiff >= buyOther;
                         const cls = inA ? 'text-emerald-700 font-semibold' : inB ? 'text-rose-700 font-semibold' : 'text-slate-600';
                         return (
                           <tr key={`snap-${c.code}`} className="border-t border-slate-100">
@@ -761,7 +761,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                 ) : null}
               </div>
             ) : (
-              <p className="mt-3 text-xs text-slate-500">启用监控后，交易时段内 worker 每分钟会生成一份快照。也可以点击「手动跡府一次」立刻跳起一个跳。</p>
+              null
             )}
           </div>
         </div>
@@ -771,7 +771,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         <SectionHeading
           eyebrow="切换策略"
           title="场内 / 场外纳指 100 切换套利"
-          description="溢价 % = (当前成交价 − 最新单位净值) / 最新单位净值。净值数据每个交易日 15:30 由 GitHub Action 从东财 lsjz 接口拉取。当前价 A 股开盘期间由 worker push2 实时推送，收盘后为最后成交价。"
         />
         <div className="mt-5 space-y-4">
           <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
@@ -815,7 +814,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                   </option>
                 ))}
               </select>
-              <p className="mt-2 text-xs text-slate-500">默认 513100；下拉切换为其他你持有的场内 ETF。建议选规模大、流动性强的那只作为基准。</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">套利目标</div>
@@ -829,14 +827,12 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                 />
                 <span className="text-sm text-slate-600">% / 周期</span>
               </div>
-              <p className="mt-2 text-xs text-slate-500">作为评估单笔切换是否值得的参考，触发判定本身不使用该值。</p>
             </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">候选基金（场内）</div>
-                <div className="mt-1 text-sm text-slate-600">候选池来自 data/all_nasdq.json，已自动隔离已持仓代码（含基准）；勾选要参与切换比对的未持仓基金。</div>
               </div>
               <div className="text-xs text-slate-500">已选 {prefs.enabledCodes.length} / 候选 {fundsWithPremium.filter((f) => !f.hasPosition).length}</div>
             </div>
@@ -881,13 +877,12 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         <SectionHeading
           eyebrow="场内切换信号"
           title="在持有的场内 ETF 之间倒换"
-          description="按下列阈值判定「哪两只 ETF 之间出现机会」，具体溢价数请到基金软件里查看后再下单。"
         />
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">规则 A</div>
             <div className="mt-1 text-slate-700">
-              基准溢价 − 持有溢价 ≤
+              |基准溢价 − 候选溢价| ≤
               <input
                 type="number"
                 step="0.5"
@@ -895,13 +890,13 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                 onChange={(e) => setPrefValue('intraSellLowerPct', e.target.value)}
                 className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
               />
-              %  →  卖出持有，买入基准（基准相对便宜了）
+              %（溢价接近）→ 卖溢价高的，买溢价低的
             </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">规则 B</div>
             <div className="mt-1 text-slate-700">
-              基准溢价 − 另一只溢价 ≥
+              |基准溢价 − 候选溢价| ≥
               <input
                 type="number"
                 step="0.5"
@@ -909,7 +904,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                 onChange={(e) => setPrefValue('intraBuyOtherPct', e.target.value)}
                 className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
               />
-              %  →  卖出基准，买入另一只（基准更贵了）
+              %（溢价偏离）→ 卖溢价高的，买溢价低的
             </div>
           </div>
         </div>
@@ -949,7 +944,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         <SectionHeading
           eyebrow="场外切换信号"
           title="将场内基准换为场外 QDII 联接基金"
-          description="当「基准 ETF 溢价 > A%」且「场内最低溢价 < B%」时提示反向套利。同样只输出代码对，不显示具体溢价数。"
         />
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
@@ -1028,7 +1022,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
               ))}
             </ul>
           )}
-          <div className="mt-2 text-xs text-slate-500">这些基金可作为「场外切换」时的申购目标。建议优先选择费率低、跟踪误差小的联接基金。</div>
         </div>
       </Card>
 
@@ -1036,7 +1029,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         <SectionHeading
           eyebrow="套利轮次记录"
           title="切换周期人工日志"
-          description={`记录每一次切换的开仓 / 平仓价、份额与盈亏，用于回看是否达到目标 ${prefs.arbTargetPct}% / 周期。`}
         />
         <div className="mt-4 flex items-center justify-end">
           <button

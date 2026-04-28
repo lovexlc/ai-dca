@@ -276,13 +276,15 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
 
 // 与前端 intraSignals 算法一致：
 //   diff = benchPremium − candPremium
-//   规则 A: diff ≤ intraSellLowerPct  → 卖 候选 买 基准
-//   规则 B: diff ≥ intraBuyOtherPct   → 卖 基准 买 候选
-// per-pair dedup: 仅当本轮命中的规则与上次不同时才推送。
+//   |diff| ≤ intraSellLowerPct (默认 1%) → 规则 A：溢价差极小（premiums 接近）
+//   |diff| ≥ intraBuyOtherPct  (默认 3%) → 规则 B：溢价差极大（庄家套利机会）
+// 方向由 sign(diff) 决定：总是「卖溢价高的一只，买溢价低的一只」。
+// per-pair dedup：仅当本轮 (rule + 方向) 与上次不同时才推送。
 function classifyRule(diff, sellLower, buyOther) {
-  if (!Number.isFinite(diff)) return 'none';
-  if (diff <= sellLower) return 'A';
-  if (diff >= buyOther) return 'B';
+  if (!Number.isFinite(diff) || diff === 0) return 'none';
+  const absDiff = Math.abs(diff);
+  if (absDiff <= sellLower) return 'A';
+  if (absDiff >= buyOther) return 'B';
   return 'none';
 }
 
@@ -307,15 +309,18 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
       continue;
     }
     const rule = classifyRule(diff, sellLower, buyOther);
-    const prev = prevTriggerStates?.[pairKey] || { rule: 'none' };
+    // 方向：diff > 0 表示 bench 溢价更高（卖 bench 买 cand）；diff < 0 表示 cand 溢价更高（卖 cand 买 bench）。
+    const benchHigher = Number.isFinite(diff) && diff > 0;
+    const fromCode = benchHigher ? benchmark : cand.code;
+    const toCode = benchHigher ? cand.code : benchmark;
+    const fromName = benchHigher ? benchName : (cand.name || '');
+    const toName = benchHigher ? (cand.name || '') : benchName;
+    const threshold = rule === 'A' ? sellLower : buyOther;
+    const prev = prevTriggerStates?.[pairKey] || { rule: 'none', fromCode: '' };
     const prevRule = String(prev.rule || 'none');
-    if (rule !== 'none' && rule !== prevRule) {
-      // A: 卖 cand 买 benchmark; B: 卖 benchmark 买 cand
-      const fromCode = rule === 'A' ? cand.code : benchmark;
-      const toCode = rule === 'A' ? benchmark : cand.code;
-      const fromName = rule === 'A' ? (cand.name || '') : benchName;
-      const toName = rule === 'A' ? benchName : (cand.name || '');
-      const threshold = rule === 'A' ? sellLower : buyOther;
+    const prevFrom = String(prev.fromCode || '');
+    const dirChanged = rule !== 'none' && fromCode !== prevFrom;
+    if (rule !== 'none' && (rule !== prevRule || dirChanged)) {
       triggers.push({
         pairKey,
         rule,
@@ -329,6 +334,7 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
     }
     nextTriggerStates[pairKey] = {
       rule,
+      fromCode: rule === 'none' ? '' : fromCode,
       lastDiffPct: diff,
       updatedAt: snapshot.computedAt
     };
@@ -344,8 +350,8 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
   const diffStr = (diff >= 0 ? '+' : '') + diff.toFixed(2);
   const threshold = Number(trigger.threshold);
   const ruleLabel = trigger.rule === 'A'
-    ? `规则 A：基准溢价 − 候选溢价 ≤ ${threshold}%`
-    : `规则 B：基准溢价 − 候选溢价 ≥ ${threshold}%`;
+    ? `规则 A：|基准溢价 − 候选溢价| ≤ ${threshold}%（溢价接近）`
+    : `规则 B：|基准溢价 − 候选溢价| ≥ ${threshold}%（溢价偏离）`;
   const title = `[切换 ${trigger.rule}] 卖 ${trigger.fromCode} → 买 ${trigger.toCode}`;
   const body = `${ruleLabel}。当前溢价差 ${diffStr}%：${fromLabel} → ${toLabel}。下单前请在基金软件中复核实时溢价。`;
   const summary = `切换 ${trigger.rule} ${trigger.fromCode}→${trigger.toCode} ${diffStr}%`;
