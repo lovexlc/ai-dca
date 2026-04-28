@@ -1,17 +1,28 @@
 name = "ai-dca-ocr-proxy"
 main = "src/index.js"
 compatibility_date = "2026-03-26"
+# Workers Paid：启用 nodejs_compat 便于后续替换手写 base64/crypto 实现。
+compatibility_flags = ["nodejs_compat"]
 
+# 单条 route 即可（之前重复声明两次没有意义，已合并）。
 [[routes]]
 pattern = "tools.freebacktrack.tech/api/*"
 zone_name = "freebacktrack.tech"
 
-[[routes]]
-pattern = "tools.freebacktrack.tech/api/*"
-zone_name = "freebacktrack.tech"
+# Smart Placement：OCR 上游在境外（142.93.159.165 DigitalOcean），让 worker
+# 自动调度到靠近上游的位置，明显降低 OCR 链路 RTT。Workers Paid 免费功能。
+[placement]
+mode = "smart"
 
+# OCR 走 OpenAI 兼容协议 + 大图像；上游回包慢的时候原本 30s 默认上限会被截断。
+# Paid 套餐允许拉到 5 分钟。
+[limits]
+cpu_ms = 300000
+
+# Workers Logs + traces 全部打开（Paid 套餐内置）。原来 enabled=false 但子项
+# enabled=true 是矛盾配置，wrangler 会忽略 logs/traces 子项。
 [observability]
-enabled = false
+enabled = true
 head_sampling_rate = 1
 
 [observability.logs]
@@ -21,9 +32,9 @@ persist = true
 invocation_logs = true
 
 [observability.traces]
-enabled = false
-persist = true
+enabled = true
 head_sampling_rate = 1
+persist = true
 
 [vars]
 OCR_UPSTREAM_BASE_URL = "http://142.93.159.165:2095/v1"
