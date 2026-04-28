@@ -9,7 +9,9 @@ import { Card, Field, NumberInput, Pill, SectionHeading, SelectField, StatCard, 
 
 const DAY_OPTIONS = [1, 8, 15, 28];
 
-export function DcaExperience({ links, embedded = false }) {
+// onAfterSave: 当该页被嵌入交易计划二级 tab 时，保存后由父控件接管跳转（避免整页 reload）。
+// 未传时保留原行为：保存后跳转到 links.tradePlans。
+export function DcaExperience({ links, embedded = false, onAfterSave }) {
   const [state, setState] = useState(() => readDcaState());
   const [planList] = useState(() => readPlanList());
   const [isSaving, setIsSaving] = useState(false);
@@ -46,11 +48,15 @@ export function DcaExperience({ links, embedded = false }) {
     } finally {
       showToast({
         title: '保存并开始策略成功',
-        description: syncFailed ? '定投计划已保存，本次通知规则未同步。' : '定投计划已保存，正在返回首页。',
+        description: syncFailed ? '定投计划已保存，本次通知规则未同步。' : '定投计划已保存，正在返回交易计划列表。',
         tone: syncFailed ? 'amber' : 'emerald',
         persist: true
       });
-      window.location.href = links.home;
+      if (typeof onAfterSave === 'function') {
+        onAfterSave();
+      } else {
+        window.location.href = links.tradePlans;
+      }
     }
   }
 
@@ -271,7 +277,7 @@ export function DcaExperience({ links, embedded = false }) {
             </div>
           </div>
           <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-            <a className={cx(secondaryButtonClass, 'w-full sm:w-auto')} href={links.home}>取消</a>
+            <a className={cx(secondaryButtonClass, 'w-full sm:w-auto')} href={links.tradePlans}>取消</a>
             <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} disabled={isSaving} type="button" onClick={handleSave}>
               <Save className="h-4 w-4" />
               {isSaving ? '正在保存定投' : '保存并开始策略'}

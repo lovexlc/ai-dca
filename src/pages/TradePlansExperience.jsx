@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Bell, Layers3, Plus, Radar, Sparkles } from 'lucide-react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { ArrowRight, Bell, CalendarClock, Layers3, ListChecks, Plus, Radar, Sparkles, TrendingUp } from 'lucide-react';
 import { loadNotifyStatus, readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { showActionToast } from '../app/toast.js';
@@ -10,16 +10,46 @@ import {
   extractPurchaseAmount
 } from '../app/tradePlansHelpers.js';
 
-export function TradePlansExperience({ links, embedded = false }) {
+// 加仓计划 / 定投计划已合并为本 tab 的二级视图，按需 lazy 加载，避免初次进入交易计划就拖入 home dashboard 的图表 chunk。
+const HomeExperienceLazy = lazy(() => import('./HomeExperience.jsx').then((m) => ({ default: m.HomeExperience })));
+const DcaExperienceLazy = lazy(() => import('./DcaExperience.jsx').then((m) => ({ default: m.DcaExperience })));
+
+// 子视图与 URL hash 对应关系：
+//   ''  / '#list' → 列表（默认）
+//   '#home'      → 加仓
+//   '#dca'       → 定投
+//   '#new'       → 新建（覆盖整个 tab，独占视图）
+const SUB_VIEW_HASH = {
+  list: '',
+  home: '#home',
+  dca: '#dca',
+  new: '#new'
+};
+
+function parseSubViewFromHash(hash = '') {
+  if (hash === '#new') return 'new';
+  if (hash === '#home') return 'home';
+  if (hash === '#dca') return 'dca';
+  return 'list';
+}
+
+function getInitialSubView() {
+  if (typeof window === 'undefined') return 'list';
+  return parseSubViewFromHash(window.location.hash || '');
+}
+
+function SubViewLoadingFallback() {
+  return (
+    <div className="flex h-full min-h-[40vh] items-center justify-center text-sm text-slate-500">
+      加载中…
+    </div>
+  );
+}
+
+export function TradePlansExperience({ links, inPagesDir = false, embedded = false }) {
   const [selectedRowId, setSelectedRowId] = useState('');
-  // 《新建计划》嵌入在本 tab 中：view === 'new' 时渲染 NewPlanExperience 覆盖原内容。
-  // 用 URL hash (#new) 作为持久化入口，这样刷新或浏览器后退/前进按钮能回到正确视图。
-  const [view, setView] = useState(() => {
-    if (typeof window === 'undefined') {
-      return 'list';
-    }
-    return window.location.hash === '#new' ? 'new' : 'list';
-  });
+  // 子视图（list / home / dca / new）通过 URL hash 持久化，方便刷新和浏览器前进后退。
+  const [subView, setSubView] = useState(getInitialSubView);
   const [testingRowId, setTestingRowId] = useState('');
   // 仅判断是否已配置任一推送通道，未配置时在顶部提示一行链接。
   // 通知配置/历史/同步统一收口到《消息通知》tab，本页只保留测试通知动作。
@@ -28,37 +58,60 @@ export function TradePlansExperience({ links, embedded = false }) {
   const notifyClientId = useMemo(() => readNotifyClientConfig().notifyClientId || '', []);
   const { previewRows, summary, hasPlans } = useMemo(() => buildTradePlanCenter(), []);
 
-  // 向《新建计划》子视图切换：写入 hash 以便浏览器后退/前进能在两个视图间来回。
-  function enterNewPlanView() {
-    if (typeof window !== 'undefined' && window.location.hash !== '#new') {
-      window.history.pushState({ view: 'new' }, '', `${window.location.pathname}${window.location.search}#new`);
+  // 切换到任意子视图：写入对应 hash 以便浏览器后退/前进能在视图间来回。
+  // 新建子视图对其他视图来说是 push（保留返回栈）；其他子视图之间互相切换用 replace，避免在二级 tab 间频繁切换时把历史栈撑大。
+  function gotoSubView(nextView, { push = false } = {}) {
+    if (typeof window === 'undefined') {
+      setSubView(nextView);
+      return;
     }
-    setView('new');
-    if (typeof window !== 'undefined') {
+    const targetHash = SUB_VIEW_HASH[nextView] ?? '';
+    const currentHash = window.location.hash || '';
+    const baseUrl = `${window.location.pathname}${window.location.search}${targetHash}`;
+    if (currentHash !== targetHash) {
+      if (push) {
+        window.history.pushState({ subView: nextView }, '', baseUrl);
+      } else {
+        window.history.replaceState({ subView: nextView }, '', baseUrl);
+      }
+    }
+    setSubView(nextView);
+    if (nextView === 'new') {
       window.scrollTo({ top: 0, behavior: 'auto' });
     }
   }
 
+  function enterNewPlanView() {
+    gotoSubView('new', { push: true });
+  }
+
   function exitNewPlanView() {
     if (typeof window !== 'undefined' && window.location.hash === '#new') {
-      // 回到交易计划视图，保持返回按钮行为：跳近最近的历史条目。
+      // #new 是 push 进来的，回退一次能回到上一个视图。
       window.history.back();
+      return;
     }
-    setView('list');
+    gotoSubView('list');
+  }
+
+  // 二级 tab 之间切换：list / home / dca
+  function handleSelectSubTab(nextView) {
+    if (nextView === subView) return;
+    gotoSubView(nextView);
   }
 
   useEffect(() => {
     if (typeof window === 'undefined') {
       return undefined;
     }
-    function syncViewFromHash() {
-      setView(window.location.hash === '#new' ? 'new' : 'list');
+    function syncSubViewFromHash() {
+      setSubView(parseSubViewFromHash(window.location.hash || ''));
     }
-    window.addEventListener('hashchange', syncViewFromHash);
-    window.addEventListener('popstate', syncViewFromHash);
+    window.addEventListener('hashchange', syncSubViewFromHash);
+    window.addEventListener('popstate', syncSubViewFromHash);
     return () => {
-      window.removeEventListener('hashchange', syncViewFromHash);
-      window.removeEventListener('popstate', syncViewFromHash);
+      window.removeEventListener('hashchange', syncSubViewFromHash);
+      window.removeEventListener('popstate', syncSubViewFromHash);
     };
   }, []);
 
@@ -227,21 +280,21 @@ export function TradePlansExperience({ links, embedded = false }) {
               })}
             </div>
 
-            <div className="mt-4 text-sm text-slate-500">首页每类计划只展示一个待执行摘要，完整配置和更多层级请到对应页面查看。</div>
+            <div className="mt-4 text-sm text-slate-500">列表只展示每类计划的待执行摘要，完整配置可点击「加仓」「定投」二级 tab 查看。</div>
           </>
         ) : (
           <div className="mt-6 rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8">
             <div className="text-lg font-bold text-slate-900">还没有后续交易计划</div>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">
-              先去新建建仓策略，或者配置一份定投计划。保存后，首页会自动汇总后续待执行动作和通知状态。
+              先去新建建仓策略，或者在「定投」二级 tab 配置一份定投计划。保存后这里会自动汇总后续待执行动作和通知状态。
             </p>
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-              <a className={cx(primaryButtonClass, 'w-full sm:w-auto')} href={links.accumNew}>
+              <button type="button" onClick={enterNewPlanView} className={cx(primaryButtonClass, 'w-full sm:w-auto')}>
                 去新建策略
-              </a>
-              <a className={cx(secondaryButtonClass, 'w-full sm:w-auto')} href={links.dca}>
+              </button>
+              <button type="button" onClick={() => handleSelectSubTab('dca')} className={cx(secondaryButtonClass, 'w-full sm:w-auto')}>
                 去配置定投
-              </a>
+              </button>
             </div>
           </div>
         )}
@@ -278,12 +331,12 @@ export function TradePlansExperience({ links, embedded = false }) {
           <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5">
             <p className="text-sm leading-6 text-slate-500">当前还没有可展示的计划详情。先完成建仓策略或定投配置，或者从左侧选中一条后续交易计划。</p>
             <div className="mt-4 flex flex-wrap gap-3">
-              <a className={cx(primaryButtonClass, 'w-full sm:w-auto')} href={links.accumNew}>
+              <button type="button" onClick={enterNewPlanView} className={cx(primaryButtonClass, 'w-full sm:w-auto')}>
                 去新建策略
-              </a>
-              <a className={cx(secondaryButtonClass, 'w-full sm:w-auto')} href={links.dca}>
+              </button>
+              <button type="button" onClick={() => handleSelectSubTab('dca')} className={cx(secondaryButtonClass, 'w-full sm:w-auto')}>
                 去配置定投
-              </a>
+              </button>
             </div>
           </div>
         )}
@@ -305,20 +358,89 @@ export function TradePlansExperience({ links, embedded = false }) {
 
   // 当进入《新建计划》子视图时，直接用 NewPlanExperience 覆盖当前内容。
   // NewPlanExperience 自带 PageHero 左上角的《返回交易计划》按钮会调用 onBack 退出。
-  if (view === 'new') {
-    const newPlanNode = (
+  if (subView === 'new') {
+    return (
       <NewPlanExperience
         links={links}
         embedded
         onBack={exitNewPlanView}
       />
     );
-    return newPlanNode;
   }
 
-  const content = (
+  const subTabs = [
+    { key: 'list', label: '列表', icon: ListChecks },
+    { key: 'home', label: '加仓', icon: TrendingUp },
+    { key: 'dca', label: '定投', icon: CalendarClock }
+  ];
+
+  function renderSubTabBar() {
+    return (
+      <div className="inline-flex flex-wrap gap-1 rounded-2xl border border-slate-200 bg-slate-100/70 p-1">
+        {subTabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = subView === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => handleSelectSubTab(tab.key)}
+              className={cx(
+                'inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-sm font-semibold transition-colors',
+                isActive
+                  ? 'bg-white text-indigo-700 shadow-sm'
+                  : 'text-slate-500 hover:bg-white/60 hover:text-slate-700'
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // 加仓 / 定投 二级视图：内嵌原 HomeExperience / DcaExperience，外层共享标题与二级 tab 切换。
+  if (subView === 'home' || subView === 'dca') {
+    return (
+      <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Trade plans</div>
+            <h1 className="mt-1 text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">交易计划中心</h1>
+          </div>
+          <button
+            type="button"
+            onClick={enterNewPlanView}
+            className={cx(primaryButtonClass, 'h-10 px-4 text-sm')}
+          >
+            <Plus className="h-4 w-4" />
+            新建计划
+          </button>
+        </div>
+
+        {renderSubTabBar()}
+
+        <Suspense fallback={<SubViewLoadingFallback />}>
+          {subView === 'home' ? (
+            <HomeExperienceLazy links={links} inPagesDir={inPagesDir} embedded />
+          ) : (
+            <DcaExperienceLazy
+              links={links}
+              inPagesDir={inPagesDir}
+              embedded
+              onAfterSave={() => gotoSubView('list')}
+            />
+          )}
+        </Suspense>
+      </div>
+    );
+  }
+
+  // 默认：列表视图。
+  return (
     <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
-      {/* 标题 + 《新建计划》入口，点击后在本 tab 内覆盖为新建计划页。 */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Trade plans</div>
@@ -333,6 +455,8 @@ export function TradePlansExperience({ links, embedded = false }) {
           新建计划
         </button>
       </div>
+
+      {renderSubTabBar()}
 
       {channelConfigured ? null : (
         <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700">
@@ -373,6 +497,4 @@ export function TradePlansExperience({ links, embedded = false }) {
       </div>
     </div>
   );
-
-  return content;
 }

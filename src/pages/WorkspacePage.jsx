@@ -1,25 +1,22 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, CalendarClock, CloudUpload, History, ListChecks, Shuffle, TrendingUp, Wallet } from 'lucide-react';
+import { Bell, CloudUpload, History, ListChecks, Shuffle, Wallet } from 'lucide-react';
 import { isFundSwitchViewHash } from '../app/fundSwitch.js';
-import { PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
+import { LEGACY_TAB_REDIRECTS, PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 
 // 各主 tab 使用 React.lazy 按需加载，在 Vite 中会被拆成独立 chunk。
+// HomeExperience / DcaExperience 已并入 TradePlansExperience 作为二级 tab，不再在这里顶级 lazy。
 const BackupExperience = lazy(() => import('./BackupExperience.jsx').then((m) => ({ default: m.BackupExperience })));
-const DcaExperience = lazy(() => import('./DcaExperience.jsx').then((m) => ({ default: m.DcaExperience })));
 const FundSwitchExperience = lazy(() => import('./FundSwitchExperience.jsx').then((m) => ({ default: m.FundSwitchExperience })));
 const HistoryExperience = lazy(() => import('./HistoryExperience.jsx').then((m) => ({ default: m.HistoryExperience })));
 const HoldingsExperience = lazy(() => import('./HoldingsExperience.jsx').then((m) => ({ default: m.HoldingsExperience })));
-const HomeExperience = lazy(() => import('./HomeExperience.jsx').then((m) => ({ default: m.HomeExperience })));
 const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) => ({ default: m.NotifyExperience })));
 const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').then((m) => ({ default: m.TradePlansExperience })));
 
 const DEFAULT_WORKSPACE_TAB = 'holdings';
 
 const WORKSPACE_TITLES = {
-  home: '加仓计划',
   tradePlans: '交易计划中心',
-  dca: '定投计划',
   fundSwitch: '基金切换收益分析',
   history: '交易历史',
   holdings: '持仓总览',
@@ -29,8 +26,6 @@ const WORKSPACE_TITLES = {
 
 const SIDEBAR_ICONS = {
   tradePlans: ListChecks,
-  home: TrendingUp,
-  dca: CalendarClock,
   fundSwitch: Shuffle,
   history: History,
   holdings: Wallet,
@@ -48,7 +43,22 @@ function readTabFromLocation(fallbackTab = DEFAULT_WORKSPACE_TAB) {
   }
   const params = new URLSearchParams(window.location.search);
   const currentTab = params.get('tab');
+  // Legacy ?tab=home / ?tab=dca 重定向到交易计划的二级 tab。
+  if (currentTab && Object.prototype.hasOwnProperty.call(LEGACY_TAB_REDIRECTS, currentTab)) {
+    return LEGACY_TAB_REDIRECTS[currentTab].tab;
+  }
   return currentTab ? normalizeWorkspaceTab(currentTab) : normalizeWorkspaceTab(fallbackTab);
+}
+
+// 如果 URL 带了 legacy ?tab=home / ?tab=dca，返回应该在 tradePlans 中选中的 hash（'#home' / '#dca'）；否则返回空字符串。
+function readLegacyHashFromLocation() {
+  if (typeof window === 'undefined') return '';
+  const params = new URLSearchParams(window.location.search);
+  const currentTab = params.get('tab');
+  if (currentTab && Object.prototype.hasOwnProperty.call(LEGACY_TAB_REDIRECTS, currentTab)) {
+    return LEGACY_TAB_REDIRECTS[currentTab].hash || '';
+  }
+  return '';
 }
 
 function buildWorkspaceUrl(tab, { inPagesDir = false } = {}) {
@@ -73,6 +83,23 @@ function TabLoadingFallback() {
 export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir = false }) {
   const links = createPageLinks({ inPagesDir });
   const [activeTab, setActiveTab] = useState(() => readTabFromLocation(initialTab));
+
+  // Legacy ?tab=home / ?tab=dca 进来时，重写为 ?tab=tradePlans + hash，使二级 tab 能在 mount 时被选中。
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const legacyHash = readLegacyHashFromLocation();
+    if (!legacyHash) return;
+    const params = new URLSearchParams(window.location.search);
+    params.set('tab', 'tradePlans');
+    const nextUrl = new URL(
+      `${window.location.pathname}?${params.toString()}${legacyHash}`,
+      window.location.href
+    );
+    window.history.replaceState({ tab: 'tradePlans' }, '', nextUrl);
+    // 让 TradePlansExperience 读到新 hash。
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 为每个 tab 独立缓存上次的 scrollY，在切换返回时恢复。
   const scrollPositionsRef = useRef(new Map());
@@ -151,21 +178,17 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     switch (activeTab) {
       case 'tradePlans':
         return <TradePlansExperience {...sharedProps} />;
-      case 'dca':
-        return <DcaExperience {...sharedProps} />;
       case 'fundSwitch':
         return <FundSwitchExperience {...sharedProps} />;
       case 'history':
         return <HistoryExperience {...sharedProps} />;
-      case 'holdings':
-        return <HoldingsExperience {...sharedProps} />;
       case 'notify':
         return <NotifyExperience {...sharedProps} />;
       case 'backup':
         return <BackupExperience {...sharedProps} />;
-      case 'home':
+      case 'holdings':
       default:
-        return <HomeExperience {...sharedProps} />;
+        return <HoldingsExperience {...sharedProps} />;
     }
   }
 
