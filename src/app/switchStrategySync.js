@@ -19,7 +19,7 @@ const DEFAULT_INTRA_BUY_OTHER_PCT = 3;  // 规则 B
 export function buildDefaultSwitchConfig() {
   return {
     enabled: false,
-    benchmarkCode: '',
+    benchmarkCodes: [],
     enabledCodes: [],
     intraSellLowerPct: DEFAULT_INTRA_SELL_LOWER_PCT,
     intraBuyOtherPct: DEFAULT_INTRA_BUY_OTHER_PCT,
@@ -58,9 +58,19 @@ function pickPercent(value, fallback) {
 }
 
 export function normalizeSwitchConfigShape(input = {}) {
-  const benchmarkCode = sanitizeFundCode(input?.benchmarkCode);
+  // 兼容旧格式：input.benchmarkCode (string) → [benchmarkCode]。
+  const rawBenchmarks = Array.isArray(input?.benchmarkCodes)
+    ? input.benchmarkCodes
+    : (input?.benchmarkCode ? [input.benchmarkCode] : []);
+  const benchmarkCodes = [];
   const seen = new Set();
-  if (benchmarkCode) seen.add(benchmarkCode);
+  for (const raw of rawBenchmarks) {
+    const code = sanitizeFundCode(raw);
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    benchmarkCodes.push(code);
+    if (benchmarkCodes.length >= 20) break;
+  }
   const enabledCodesRaw = Array.isArray(input?.enabledCodes)
     ? input.enabledCodes
     : Array.isArray(input?.candidateCodes) ? input.candidateCodes : [];
@@ -74,7 +84,7 @@ export function normalizeSwitchConfigShape(input = {}) {
   }
   return {
     enabled: Boolean(input?.enabled),
-    benchmarkCode,
+    benchmarkCodes,
     enabledCodes,
     intraSellLowerPct: pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
     intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
@@ -145,7 +155,7 @@ export async function saveSwitchConfigToWorker(config) {
     method: 'POST',
     body: {
       enabled: next.enabled,
-      benchmarkCode: next.benchmarkCode,
+      benchmarkCodes: next.benchmarkCodes,
       enabledCodes: next.enabledCodes,
       intraSellLowerPct: next.intraSellLowerPct,
       intraBuyOtherPct: next.intraBuyOtherPct,
@@ -154,12 +164,13 @@ export async function saveSwitchConfigToWorker(config) {
   });
   const stored = normalizeSwitchConfigShape(payload?.config || next);
   writeSwitchConfigCache(stored);
-  // 返回充足元数据供 UI notice 使用（clientId / benchmark / 候选数量）。
+  // 返回充足元数据供 UI notice 使用（clientId / benchmarks / 候选数量）。
+  const benchSet = new Set(stored.benchmarkCodes || []);
   return {
     config: stored,
     clientId: payload?.clientId || '',
-    benchmarkCode: stored.benchmarkCode,
-    candidateCount: (stored.enabledCodes || []).filter((c) => c && c !== stored.benchmarkCode).length
+    benchmarkCodes: stored.benchmarkCodes,
+    candidateCount: (stored.enabledCodes || []).filter((c) => c && !benchSet.has(c)).length
   };
 }
 

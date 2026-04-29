@@ -54,13 +54,23 @@ function pickPercent(value, fallback) {
 
 // 配置与前端 aiDcaSwitchStrategyPrefs 同名，不重复定义一套参数。
 // 字段：
-//  - benchmarkCode: 基准 ETF
-//  - enabledCodes:   勾选的候选 ETF 集合（不含基准）
+//  - benchmarkCodes: 基准 ETF 数组（可多选；多基准下采用「全配对」：每只基准 × 每只候选都算 diff）
+//  - enabledCodes:   勾选的候选 ETF 集合（不含任何基准）
 //  - intraSellLowerPct / intraBuyOtherPct: 规则 A / B 阈值，与页面同含义
 export function normalizeSwitchConfig(input = {}) {
-  const benchmarkCode = sanitizeCode(input?.benchmarkCode);
+  // 兼容旧格式：input.benchmarkCode (string) → [benchmarkCode]。
+  const rawBenchmarks = Array.isArray(input?.benchmarkCodes)
+    ? input.benchmarkCodes
+    : (input?.benchmarkCode ? [input.benchmarkCode] : []);
+  const benchmarkCodes = [];
   const seen = new Set();
-  if (benchmarkCode) seen.add(benchmarkCode);
+  for (const raw of rawBenchmarks) {
+    const code = sanitizeCode(raw);
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    benchmarkCodes.push(code);
+    if (benchmarkCodes.length >= MAX_CANDIDATES) break;
+  }
   const enabledCodesRaw = Array.isArray(input?.enabledCodes)
     ? input.enabledCodes
     : Array.isArray(input?.candidateCodes) ? input.candidateCodes : [];
@@ -74,7 +84,7 @@ export function normalizeSwitchConfig(input = {}) {
   }
   return {
     enabled: Boolean(input?.enabled),
-    benchmarkCode,
+    benchmarkCodes,
     enabledCodes,
     intraSellLowerPct: pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
     intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
@@ -87,7 +97,8 @@ export function isSwitchConfigRunnable(config) {
   return Boolean(
     config
     && config.enabled
-    && config.benchmarkCode
+    && Array.isArray(config.benchmarkCodes)
+    && config.benchmarkCodes.length > 0
     && Array.isArray(config.enabledCodes)
     && config.enabledCodes.length > 0
     && Number.isFinite(config.intraSellLowerPct)
@@ -228,11 +239,8 @@ export async function fetchLatestNavMap(env, codes = []) {
 // --- 快照与触发 ------------------------------------------------------------
 
 // 计算 worker 快照，与前端 SwitchStrategyExperience.fundsWithPremium / intraSignals 同语义。
+// 多基准（benchmarkCodes）下采用「全配对」结构：每只基准都有一份候选评估，存放于 byBenchmark[]。
 export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
-  const benchmark = config.benchmarkCode;
-  const benchPrice = Number(priceMap?.[benchmark]?.price);
-  const benchNav = Number(navByCode?.[benchmark]?.nav);
-  const benchNavDate = String(navByCode?.[benchmark]?.latestNavDate || '').trim();
   const computedAtIso = String(computedAt || new Date().toISOString());
   // NAV 过旧（默认 14 天）也视为不可用，以免拿陈旧 NAV 算溢价误触发。
   const NAV_STALE_DAYS = 14;
@@ -243,60 +251,76 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     const ref = Date.parse(computedAtIso) || Date.now();
     return (ref - t) / 86400000;
   }
-  const benchNavStale = navAgeDays(benchNavDate) > NAV_STALE_DAYS;
-  const benchPremium = Number.isFinite(benchPrice) && Number.isFinite(benchNav) && benchNav > 0 && !benchNavStale
-    ? ((benchPrice - benchNav) / benchNav) * 100
-    : null;
 
-  const candidates = (config.enabledCodes || []).map((code) => {
-    const candPrice = Number(priceMap?.[code]?.price);
-    const candNav = Number(navByCode?.[code]?.nav);
-    const candNavDate = String(navByCode?.[code]?.latestNavDate || '').trim();
-    const navMissing = !Number.isFinite(candNav) || candNav <= 0;
-    const navStale = !navMissing && navAgeDays(candNavDate) > NAV_STALE_DAYS;
-    const priceMissing = !Number.isFinite(candPrice) || candPrice <= 0;
-    const candPremium = (!navMissing && !priceMissing && !navStale)
-      ? ((candPrice - candNav) / candNav) * 100
+  const benchmarkCodes = Array.isArray(config.benchmarkCodes) ? config.benchmarkCodes : [];
+  const enabledCodes = Array.isArray(config.enabledCodes) ? config.enabledCodes : [];
+
+  const byBenchmark = benchmarkCodes.map((benchmarkCode) => {
+    const benchPrice = Number(priceMap?.[benchmarkCode]?.price);
+    const benchNav = Number(navByCode?.[benchmarkCode]?.nav);
+    const benchNavDate = String(navByCode?.[benchmarkCode]?.latestNavDate || '').trim();
+    const benchNavStale = navAgeDays(benchNavDate) > NAV_STALE_DAYS;
+    const benchPremium = Number.isFinite(benchPrice) && Number.isFinite(benchNav) && benchNav > 0 && !benchNavStale
+      ? ((benchPrice - benchNav) / benchNav) * 100
       : null;
-    const diff = Number.isFinite(benchPremium) && Number.isFinite(candPremium)
-      ? benchPremium - candPremium
-      : null;
-    // 标注原因，供 UI / 调试使用；评估器看到 spreadVsBenchmarkPct=null 就不会触发。
-    let note = '';
-    if (navMissing) note = 'nav-missing';
-    else if (navStale) note = 'nav-stale';
-    else if (priceMissing) note = 'price-missing';
-    else if (!Number.isFinite(benchPremium)) note = 'benchmark-unavailable';
+
+    const candidates = enabledCodes.map((code) => {
+      const candPrice = Number(priceMap?.[code]?.price);
+      const candNav = Number(navByCode?.[code]?.nav);
+      const candNavDate = String(navByCode?.[code]?.latestNavDate || '').trim();
+      const navMissing = !Number.isFinite(candNav) || candNav <= 0;
+      const navStale = !navMissing && navAgeDays(candNavDate) > NAV_STALE_DAYS;
+      const priceMissing = !Number.isFinite(candPrice) || candPrice <= 0;
+      const candPremium = (!navMissing && !priceMissing && !navStale)
+        ? ((candPrice - candNav) / candNav) * 100
+        : null;
+      const diff = Number.isFinite(benchPremium) && Number.isFinite(candPremium)
+        ? benchPremium - candPremium
+        : null;
+      // 标注原因，供 UI / 调试使用；评估器看到 spreadVsBenchmarkPct=null 就不会触发。
+      let note = '';
+      if (navMissing) note = 'nav-missing';
+      else if (navStale) note = 'nav-stale';
+      else if (priceMissing) note = 'price-missing';
+      else if (!Number.isFinite(benchPremium)) note = 'benchmark-unavailable';
+      return {
+        code,
+        name: navByCode?.[code]?.name || '',
+        price: Number.isFinite(candPrice) ? candPrice : null,
+        nav: Number.isFinite(candNav) ? candNav : null,
+        navDate: candNavDate,
+        premiumPct: Number.isFinite(candPremium) ? candPremium : null,
+        // diff = benchPremium − candPremium，与页面 intraSignals 中同名。
+        spreadVsBenchmarkPct: Number.isFinite(diff) ? diff : null,
+        note
+      };
+    });
+
     return {
-      code,
-      name: navByCode?.[code]?.name || '',
-      price: Number.isFinite(candPrice) ? candPrice : null,
-      nav: Number.isFinite(candNav) ? candNav : null,
-      navDate: candNavDate,
-      premiumPct: Number.isFinite(candPremium) ? candPremium : null,
-      // diff = benchPremium − candPremium，与页面 intraSignals 中同名。
-      spreadVsBenchmarkPct: Number.isFinite(diff) ? diff : null,
-      note
+      benchmarkCode,
+      benchmarkName: navByCode?.[benchmarkCode]?.name || '',
+      benchmarkPrice: Number.isFinite(benchPrice) ? benchPrice : null,
+      benchmarkNav: Number.isFinite(benchNav) ? benchNav : null,
+      benchmarkNavDate: benchNavDate,
+      benchmarkPremiumPct: Number.isFinite(benchPremium) ? benchPremium : null,
+      benchmarkNote: !Number.isFinite(benchPrice) || benchPrice <= 0
+        ? 'price-missing'
+        : (!Number.isFinite(benchNav) || benchNav <= 0)
+          ? 'nav-missing'
+          : (benchNavStale ? 'nav-stale' : ''),
+      candidates
     };
   });
 
-  const ready = Number.isFinite(benchPremium) && candidates.some((c) => Number.isFinite(c.spreadVsBenchmarkPct));
+  const ready = byBenchmark.some((b) =>
+    Number.isFinite(b.benchmarkPremiumPct)
+    && b.candidates.some((c) => Number.isFinite(c.spreadVsBenchmarkPct))
+  );
   return {
     computedAt: computedAtIso,
-    benchmarkCode: benchmark,
-    benchmarkName: navByCode?.[benchmark]?.name || '',
-    benchmarkPrice: Number.isFinite(benchPrice) ? benchPrice : null,
-    benchmarkNav: Number.isFinite(benchNav) ? benchNav : null,
-    benchmarkNavDate: benchNavDate,
-    benchmarkPremiumPct: Number.isFinite(benchPremium) ? benchPremium : null,
-    benchmarkNote: !Number.isFinite(benchPrice) || benchPrice <= 0
-      ? 'price-missing'
-      : (!Number.isFinite(benchNav) || benchNav <= 0)
-        ? 'nav-missing'
-        : (benchNavStale ? 'nav-stale' : ''),
-    candidates,
     intraSellLowerPct: Number(config.intraSellLowerPct),
     intraBuyOtherPct: Number(config.intraBuyOtherPct),
+    byBenchmark,
     ready,
     triggers: []
   };
@@ -317,57 +341,58 @@ function classifyRule(diff, sellLower, buyOther) {
 }
 
 export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
-  const benchmark = snapshot.benchmarkCode;
-  const benchName = snapshot.benchmarkName || '';
   const sellLower = Number(snapshot.intraSellLowerPct);
   const buyOther = Number(snapshot.intraBuyOtherPct);
   const nextTriggerStates = {};
   const triggers = [];
 
-  for (const cand of snapshot.candidates || []) {
-    const pairKey = `${benchmark}:${cand.code}`;
-    // 重要：Number(null) 会变成 0，会被误当作「diff = 0%」命中规则 A（如果 sellLower ≥ 0）。
-    // 仅在原始值为 number 时才计算，null / undefined / NaN / 字符串均视为「数据缺失」。
-    const rawDiff = cand.spreadVsBenchmarkPct;
-    const diff = (typeof rawDiff === 'number' && Number.isFinite(rawDiff)) ? rawDiff : NaN;
-    if (!Number.isFinite(diff)) {
-      // 数据缺失：保留旧状态，不衰减、不触发。
-      const prev = prevTriggerStates?.[pairKey];
-      if (prev) nextTriggerStates[pairKey] = prev;
-      continue;
-    }
-    const rule = classifyRule(diff, sellLower, buyOther);
-    // 方向：基准是用户持有的 ETF，通知应该引导用户卖基准买候选。
-    // 无论基准溢价更高还是候选溢价更高，用户只能卖自己持有的基准。
-    // 当基准溢价更高时，这是正确的套利方向（卖溢价高的买溢价低的）。
-    // 当候选溢价更高时，用户仍需卖基准买候选（切换到溢价更低的标的）。
-    const fromCode = benchmark;
-    const toCode = cand.code;
-    const fromName = benchName;
-    const toName = cand.name || '';
-    const threshold = rule === 'A' ? sellLower : buyOther;
-    const prev = prevTriggerStates?.[pairKey] || { rule: 'none', fromCode: '' };
-    const prevRule = String(prev.rule || 'none');
-    const prevFrom = String(prev.fromCode || '');
-    const dirChanged = rule !== 'none' && fromCode !== prevFrom;
-    if (rule !== 'none' && (rule !== prevRule || dirChanged)) {
-      triggers.push({
-        pairKey,
+  const groups = Array.isArray(snapshot.byBenchmark) ? snapshot.byBenchmark : [];
+  for (const group of groups) {
+    const benchmark = group?.benchmarkCode || '';
+    const benchName = group?.benchmarkName || '';
+    if (!benchmark) continue;
+    for (const cand of group.candidates || []) {
+      const pairKey = `${benchmark}:${cand.code}`;
+      // 重要：Number(null) 会变成 0，会被误当作「diff = 0%」命中规则 A（如果 sellLower ≥ 0）。
+      // 仅在原始值为 number 时才计算，null / undefined / NaN / 字符串均视为「数据缺失」。
+      const rawDiff = cand.spreadVsBenchmarkPct;
+      const diff = (typeof rawDiff === 'number' && Number.isFinite(rawDiff)) ? rawDiff : NaN;
+      if (!Number.isFinite(diff)) {
+        // 数据缺失：保留旧状态，不衰减、不触发。
+        const prev = prevTriggerStates?.[pairKey];
+        if (prev) nextTriggerStates[pairKey] = prev;
+        continue;
+      }
+      const rule = classifyRule(diff, sellLower, buyOther);
+      // 方向：基准是用户持有的 ETF，通知引导用户卖基准买候选。
+      const fromCode = benchmark;
+      const toCode = cand.code;
+      const fromName = benchName;
+      const toName = cand.name || '';
+      const threshold = rule === 'A' ? sellLower : buyOther;
+      const prev = prevTriggerStates?.[pairKey] || { rule: 'none', fromCode: '' };
+      const prevRule = String(prev.rule || 'none');
+      const prevFrom = String(prev.fromCode || '');
+      const dirChanged = rule !== 'none' && fromCode !== prevFrom;
+      if (rule !== 'none' && (rule !== prevRule || dirChanged)) {
+        triggers.push({
+          pairKey,
+          rule,
+          fromCode,
+          toCode,
+          fromName,
+          toName,
+          diffPct: diff,
+          threshold
+        });
+      }
+      nextTriggerStates[pairKey] = {
         rule,
-        fromCode,
-        toCode,
-        fromName,
-        toName,
-        diffPct: diff,
-        threshold
-      });
+        fromCode: rule === 'none' ? '' : fromCode,
+        lastDiffPct: diff,
+        updatedAt: snapshot.computedAt
+      };
     }
-    nextTriggerStates[pairKey] = {
-      rule,
-      fromCode: rule === 'none' ? '' : fromCode,
-      lastDiffPct: diff,
-      updatedAt: snapshot.computedAt
-    };
   }
 
   return { triggers, nextTriggerStates };
@@ -385,7 +410,10 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
   const absDiffStr = Math.abs(diff).toFixed(2);
   const threshold = Number(trigger.threshold);
   const cmp = trigger.rule === 'A' ? '≤' : '≥';
-  const navDate = String(snapshot?.benchmarkNavDate || '').trim();
+  // 从 byBenchmark 中找到当前触发对应的基准条目，取其 NAV 日期。
+  const benchmarkEntry = (Array.isArray(snapshot?.byBenchmark) ? snapshot.byBenchmark : [])
+    .find((b) => b?.benchmarkCode === trigger.fromCode) || null;
+  const navDate = String(benchmarkEntry?.benchmarkNavDate || '').trim();
   const navHint = navDate ? ` · NAV ${navDate}` : '';
   const title = `切换 ${trigger.rule} | ${trigger.fromCode}→${trigger.toCode}`;
   const body = `|diff| ${absDiffStr}% ${cmp} ${threshold}%${navHint}\n卖 ${fromLabel} → 买 ${toLabel}\n下单前请以基金软件实时溢价为准。`;
@@ -397,11 +425,12 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
   const detailUrl = `${baseUrl}/index.html?tab=tradePlans#switch`;
   // 同一对 + 同一规则 + 同一分钟，只发一次。
   const minuteKey = String(snapshot?.computedAt || '').slice(0, 16);
-  const eventId = `switch:${snapshot.benchmarkCode}:${trigger.pairKey}:R${trigger.rule}:${minuteKey}`;
+  // pairKey 已含 benchmark:cand，多基准下仍唯一。
+  const eventId = `switch:${trigger.pairKey}:R${trigger.rule}:${minuteKey}`;
   return {
     eventId,
     eventType: 'switch-strategy-trigger',
-    ruleId: `switch:${snapshot.benchmarkCode}`,
+    ruleId: `switch:${trigger.fromCode}`,
     symbol: trigger.fromCode,
     strategyName: '场内切换',
     triggerCondition: ruleLabel,

@@ -36,7 +36,7 @@ const SWITCH_PREFS_KEY = 'aiDcaSwitchStrategyPrefs';
 const SWITCH_LEDGER_KEY = 'aiDcaSwitchStrategyLedger';
 
 const DEFAULT_PREFS = {
-  benchmarkCode: '513100',
+  benchmarkCodes: ['513100'],
   enabledCodes: [],
   arbTargetPct: 2,
   intraSellLowerPct: 1,
@@ -52,9 +52,20 @@ function readPrefs() {
     const raw = window.localStorage?.getItem(SWITCH_PREFS_KEY);
     if (!raw) return { ...DEFAULT_PREFS };
     const parsed = JSON.parse(raw);
+    // 兼容旧格式：parsed.benchmarkCode (string) → [benchmarkCode]。
+    let benchmarkCodes = Array.isArray(parsed?.benchmarkCodes) ? parsed.benchmarkCodes.filter(Boolean) : null;
+    if (!benchmarkCodes && typeof parsed?.benchmarkCode === 'string' && parsed.benchmarkCode) {
+      benchmarkCodes = [parsed.benchmarkCode];
+    }
+    if (!Array.isArray(benchmarkCodes) || !benchmarkCodes.length) {
+      benchmarkCodes = [...DEFAULT_PREFS.benchmarkCodes];
+    }
+    const { benchmarkCode: _legacyBenchmark, ...rest } = parsed || {};
+    void _legacyBenchmark;
     return {
       ...DEFAULT_PREFS,
-      ...parsed,
+      ...rest,
+      benchmarkCodes,
       enabledCodes: Array.isArray(parsed?.enabledCodes) ? parsed.enabledCodes : []
     };
   } catch {
@@ -248,16 +259,22 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     setWorkerStatus((prev) => ({ ...prev, saving: true, error: '', notice: '' }));
     try {
       const result = await saveSwitchConfigToWorker(normalized);
-      // saveSwitchConfigToWorker 现在返回 { config, clientId, benchmarkCode, candidateCount }
+      // saveSwitchConfigToWorker 现在返回 { config, clientId, benchmarkCodes, candidateCount }
       const stored = (result && result.config) ? result.config : result;
       setWorkerConfig(stored);
       const clientId = result?.clientId || '';
+      const benchmarkCodes = Array.isArray(result?.benchmarkCodes)
+        ? result.benchmarkCodes
+        : (stored.benchmarkCodes || []);
+      const benchSet = new Set(benchmarkCodes);
       const candidateCount = Number.isFinite(result?.candidateCount)
         ? result.candidateCount
-        : (stored.enabledCodes || []).filter((c) => c && c !== stored.benchmarkCode).length;
-      const benchmarkCode = result?.benchmarkCode || stored.benchmarkCode || '';
+        : (stored.enabledCodes || []).filter((c) => c && !benchSet.has(c)).length;
+      const benchmarkLabel = benchmarkCodes.length
+        ? (benchmarkCodes.length === 1 ? benchmarkCodes[0] : `${benchmarkCodes.length} 只 (${benchmarkCodes.join(', ')})`)
+        : '未设定';
       const clientHint = clientId ? `· client ${clientId.slice(0, 18)}…` : '';
-      const baseHint = `基准 ${benchmarkCode || '未设定'} / 候选 ${candidateCount} 只 ${clientHint}`.trim();
+      const baseHint = `基准 ${benchmarkLabel} / 候选 ${candidateCount} 只 ${clientHint}`.trim();
       setWorkerStatus((prev) => ({
         ...prev,
         saving: false,
@@ -275,14 +292,19 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     }
   }, []);
 
-  // benchmarkCode 变动时清掉旧快照，避免页面顶部 / 中部还在渲染旧基准的 worker 数据。
+  // benchmarkCodes 变动时清掉旧快照，避免页面顶部 / 中部还在渲染旧基准的 worker 数据。
+  const benchmarkCodesKey = (prefs?.benchmarkCodes || []).slice().sort().join(',');
   useEffect(() => {
     setWorkerSnapshot((prev) => {
       if (!prev) return prev;
-      if (String(prev.benchmarkCode || '') === String(prefs?.benchmarkCode || '')) return prev;
+      const prevBenchmarks = Array.isArray(prev.byBenchmark)
+        ? prev.byBenchmark.map((b) => b?.benchmarkCode).filter(Boolean)
+        : (prev.benchmarkCode ? [prev.benchmarkCode] : []);
+      const prevKey = prevBenchmarks.slice().sort().join(',');
+      if (prevKey === benchmarkCodesKey) return prev;
       return null;
     });
-  }, [prefs?.benchmarkCode]);
+  }, [benchmarkCodesKey]);
 
   // 手动清理 worker 端历史脈数据（config / snapshot / state）。
   const handleResetWorkerConfig = useCallback(async () => {
@@ -314,13 +336,17 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   // 启用时将页面 prefs 一起带上，worker 立刻获得可运行的配置。
   const handleWorkerToggle = useCallback((enabled) => {
     if (enabled) {
-      const benchmarkCode = String(prefs?.benchmarkCode || workerConfig.benchmarkCode || '');
+      const benchmarkCodes = Array.from(new Set([
+        ...(prefs?.benchmarkCodes || []),
+        ...(workerConfig.benchmarkCodes || [])
+      ].map(String).filter(Boolean)));
+      const benchSet = new Set(benchmarkCodes);
       const enabledCodes = Array.from(new Set((prefs?.enabledCodes || []).map(String)))
-        .filter((code) => code && code !== benchmarkCode);
+        .filter((code) => code && !benchSet.has(code));
       void persistWorkerConfig({
         ...workerConfig,
         enabled: true,
-        benchmarkCode,
+        benchmarkCodes,
         enabledCodes,
         intraSellLowerPct: Number(prefs?.intraSellLowerPct),
         intraBuyOtherPct: Number(prefs?.intraBuyOtherPct)
@@ -334,15 +360,21 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   // 仅在已启用自动监控时推送，以免未启用状态下频繁写入 worker。
   useEffect(() => {
     if (!workerConfig.enabled) return undefined;
-    const benchmarkCode = String(prefs?.benchmarkCode || '');
-    if (!benchmarkCode) return undefined;
+    const benchmarkCodes = Array.from(new Set((prefs?.benchmarkCodes || []).map(String).filter(Boolean)));
+    if (!benchmarkCodes.length) return undefined;
+    const benchSet = new Set(benchmarkCodes);
     const enabledCodes = Array.from(new Set((prefs?.enabledCodes || []).map(String)))
-      .filter((code) => code && code !== benchmarkCode);
+      .filter((code) => code && !benchSet.has(code));
     const intraSellLowerPct = Number(prefs?.intraSellLowerPct);
     const intraBuyOtherPct = Number(prefs?.intraBuyOtherPct);
-    const sameCodes = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+    const sameCodes = (a, b) => {
+      if (a.length !== b.length) return false;
+      const sa = a.slice().sort();
+      const sb = b.slice().sort();
+      return sa.every((v, i) => v === sb[i]);
+    };
     const drift = (
-      String(workerConfig.benchmarkCode || '') !== benchmarkCode
+      !sameCodes(workerConfig.benchmarkCodes || [], benchmarkCodes)
       || !sameCodes(workerConfig.enabledCodes || [], enabledCodes)
       || Number(workerConfig.intraSellLowerPct) !== intraSellLowerPct
       || Number(workerConfig.intraBuyOtherPct) !== intraBuyOtherPct
@@ -351,7 +383,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     const timer = setTimeout(() => {
       void persistWorkerConfig({
         ...workerConfig,
-        benchmarkCode,
+        benchmarkCodes,
         enabledCodes,
         intraSellLowerPct,
         intraBuyOtherPct
@@ -360,11 +392,11 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     return () => clearTimeout(timer);
   }, [
     workerConfig.enabled,
-    workerConfig.benchmarkCode,
+    workerConfig.benchmarkCodes,
     workerConfig.enabledCodes,
     workerConfig.intraSellLowerPct,
     workerConfig.intraBuyOtherPct,
-    prefs?.benchmarkCode,
+    prefs?.benchmarkCodes,
     prefs?.enabledCodes,
     prefs?.intraSellLowerPct,
     prefs?.intraBuyOtherPct,
@@ -447,20 +479,21 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     });
   }, [exchangeFunds]);
 
-  // 单一数据源：基准 ETF 下拉框只能从「持仓的场内 ETF」里选，所以 prefs.benchmarkCode
-  // 必须落在 exchangeFunds 之内。否则 <select value=...> 在浏览器里会静默回落显示
-  // 第一项（不会触发 onChange），但 prefs 里仍是旧值，导致顶部黄条/「基准:」标题/worker
-  // 卡片继续按旧 code 渲染（譬如卖掉 513100 后下拉显示 159632 但其它地方仍写 513100）。
-  // 这里在 exchangeFunds 变化后自动把 benchmarkCode 矫正成第一只持仓 ETF。
+  // 单一数据源：基准 ETF 只能从「持仓的场内 ETF」里选，所以 prefs.benchmarkCodes
+  // 里所有 code 都必须落在 exchangeFunds 之内。这里在 exchangeFunds 变化后自动过滤
+  // 不再持有的 code，并在清空后 fallback 到第一只持仓 ETF。
+  const benchmarkCodesJoined = (prefs?.benchmarkCodes || []).join(',');
   useEffect(() => {
     if (!exchangeFunds.length) return;
     const heldCodes = new Set(exchangeFunds.map((f) => f.code));
-    if (heldCodes.has(prefs.benchmarkCode)) return;
-    const fallbackCode = exchangeFunds[0].code;
-    setPrefs((prev) => (
-      prev.benchmarkCode === fallbackCode ? prev : { ...prev, benchmarkCode: fallbackCode }
-    ));
-  }, [exchangeFunds, prefs.benchmarkCode]);
+    setPrefs((prev) => {
+      const before = Array.isArray(prev.benchmarkCodes) ? prev.benchmarkCodes : [];
+      const after = before.filter((code) => heldCodes.has(code));
+      const next = after.length ? after : [exchangeFunds[0].code];
+      if (next.length === before.length && next.every((v, i) => v === before[i])) return prev;
+      return { ...prev, benchmarkCodes: next };
+    });
+  }, [exchangeFunds, benchmarkCodesJoined]);
 
   // 拉取所有候选 ETF 的最新单位净值（候选池来自 data/all_nasdq.json，不仅限于持仓）。
   const loadNav = useCallback(async () => {
@@ -556,13 +589,19 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     return fundsWithPremium.filter((f) => set.has(f.code));
   }, [fundsWithPremium, prefs.enabledCodes]);
 
-  const benchmark = useMemo(
-    () => fundsWithPremium.find((f) => f.code === prefs.benchmarkCode)
-      || enabledFunds[0]
-      || fundsWithPremium[0]
-      || null,
-    [fundsWithPremium, enabledFunds, prefs.benchmarkCode]
-  );
+  // 多基准：按 prefs.benchmarkCodes 顺序取 fundsWithPremium 中对应项。
+  const benchmarks = useMemo(() => {
+    const codes = Array.isArray(prefs.benchmarkCodes) ? prefs.benchmarkCodes : [];
+    const list = codes
+      .map((code) => fundsWithPremium.find((f) => f.code === code))
+      .filter(Boolean);
+    if (list.length) return list;
+    if (enabledFunds[0]) return [enabledFunds[0]];
+    if (fundsWithPremium[0]) return [fundsWithPremium[0]];
+    return [];
+  }, [fundsWithPremium, enabledFunds, prefs.benchmarkCodes]);
+  // 第一只基准，供需要单一基准上下文的位置使用（如 benchmarkSummary 默认提示、套利轮次默认记录）。
+  const benchmark = benchmarks[0] || null;
 
   function toggleEnabled(code) {
     setPrefs((prev) => {
@@ -571,65 +610,89 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       return { ...prev, enabledCodes: Array.from(set) };
     });
   }
-  function setBenchmarkCode(code) {
-    setPrefs((prev) => ({ ...prev, benchmarkCode: code }));
+  function toggleBenchmarkCode(code) {
+    setPrefs((prev) => {
+      const benchSet = new Set(prev.benchmarkCodes || []);
+      if (benchSet.has(code)) {
+        benchSet.delete(code);
+      } else {
+        benchSet.add(code);
+      }
+      const enabledSet = new Set(prev.enabledCodes || []);
+      // 增加为基准时，同时从候选中移除（以免重复；worker 也会过滤）。
+      enabledSet.delete(code);
+      return {
+        ...prev,
+        benchmarkCodes: Array.from(benchSet),
+        enabledCodes: Array.from(enabledSet)
+      };
+    });
   }
   function setPrefValue(key, value) {
     setPrefs((prev) => ({ ...prev, [key]: value }));
   }
 
-  // 场内信号：只输出「哪两只满足条件」，不输出具体溢价。
+  // 场内信号：多基准下使用「全配对」：每只基准 × 每只候选都评估一次。
   const intraSignals = useMemo(() => {
-    if (!benchmark || !Number.isFinite(benchmark.premiumPct)) return [];
+    if (!benchmarks.length) return [];
     const sellLower = Number(prefs.intraSellLowerPct || 0);
     const buyOther = Number(prefs.intraBuyOtherPct || 0);
+    const benchmarkCodeSet = new Set(benchmarks.map((b) => b.code));
     const list = [];
-    enabledFunds
-      .filter((f) => f.code !== benchmark.code && Number.isFinite(f.premiumPct))
-      .forEach((f) => {
-        const diff = benchmark.premiumPct - f.premiumPct;
-        if (!Number.isFinite(diff) || diff === 0) return;
-        const absDiff = Math.abs(diff);
-        let kind = null;
-        let threshold = 0;
-        if (absDiff <= sellLower) { kind = 'A'; threshold = sellLower; }
-        else if (absDiff >= buyOther) { kind = 'B'; threshold = buyOther; }
-        if (!kind) return;
-        // 方向：基准是用户持有的 ETF，应该引导用户卖基准买候选。
-        // 无论基准溢价更高还是候选溢价更高，用户只能卖自己持有的基准。
-        const fromCode = benchmark.code;
-        const toCode = f.code;
-        const fromName = benchmark.name || benchmark.code;
-        const toName = f.name || f.code;
-        const cmp = kind === 'A' ? '≤' : '≥';
-        const tag = kind === 'A' ? '溢价接近' : '溢价偏离';
-        list.push({
-          kind,
-          from: fromCode,
-          fromName,
-          to: toCode,
-          toName,
-          description: `|${benchmark.code} − ${f.code} 溢价差| ${cmp} ${threshold}%（${tag}）：可考虑卖 ${fromCode} 买 ${toCode}`
+    benchmarks.forEach((bench) => {
+      if (!Number.isFinite(bench?.premiumPct)) return;
+      enabledFunds
+        .filter((f) => !benchmarkCodeSet.has(f.code) && Number.isFinite(f.premiumPct))
+        .forEach((f) => {
+          const diff = bench.premiumPct - f.premiumPct;
+          if (!Number.isFinite(diff) || diff === 0) return;
+          const absDiff = Math.abs(diff);
+          let kind = null;
+          let threshold = 0;
+          if (absDiff <= sellLower) { kind = 'A'; threshold = sellLower; }
+          else if (absDiff >= buyOther) { kind = 'B'; threshold = buyOther; }
+          if (!kind) return;
+          // 方向：基准是用户持有的 ETF，应该引导用户卖基准买候选。
+          const fromCode = bench.code;
+          const toCode = f.code;
+          const fromName = bench.name || bench.code;
+          const toName = f.name || f.code;
+          const cmp = kind === 'A' ? '≤' : '≥';
+          const tag = kind === 'A' ? '溢价接近' : '溢价偏离';
+          list.push({
+            kind,
+            from: fromCode,
+            fromName,
+            to: toCode,
+            toName,
+            description: `|${bench.code} − ${f.code} 溢价差| ${cmp} ${threshold}%（${tag}）：可考虑卖 ${fromCode} 买 ${toCode}`
+          });
         });
-      });
+    });
     return list;
-  }, [enabledFunds, benchmark, prefs.intraSellLowerPct, prefs.intraBuyOtherPct]);
+  }, [enabledFunds, benchmarks, prefs.intraSellLowerPct, prefs.intraBuyOtherPct]);
 
-  // 场外信号：同样只输出代码对，不显示溢价数。
+  // 场外信号：多基准下取「溢价最高」的基准（表示场内已充分偏高，走场外更交同）。
   const otcSignal = useMemo(() => {
-    const benchPrem = Number.isFinite(benchmark?.premiumPct) ? benchmark.premiumPct : null;
+    let topBench = null;
+    benchmarks.forEach((b) => {
+      if (Number.isFinite(b?.premiumPct)) {
+        if (!topBench || b.premiumPct > topBench.premiumPct) topBench = b;
+      }
+    });
     let minFund = null;
     enabledFunds.forEach((f) => {
       if (Number.isFinite(f.premiumPct)) {
         if (!minFund || f.premiumPct < minFund.premiumPct) minFund = f;
       }
     });
-    if (!Number.isFinite(benchPrem) || !minFund) {
+    if (!topBench || !minFund) {
       return {
         ready: false,
         message: navState.loading ? '正在加载 ETF 净值…' : (navState.error || 'ETF 净值数据未就绪。')
       };
     }
+    const benchPrem = topBench.premiumPct;
     const benchHigh = benchPrem > Number(prefs.otcPremiumThresholdPct || 0);
     const intraLowSoft = minFund.premiumPct < Number(prefs.otcMinIntraPremiumHigh || 0);
     const intraLowHard = minFund.premiumPct < Number(prefs.otcMinIntraPremiumLow || 0);
@@ -641,8 +704,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
     return {
       ready: true,
-      benchCode: benchmark.code,
-      benchName: benchmark.name || benchmark.code,
+      benchCode: topBench.code,
+      benchName: topBench.name || topBench.code,
       lowestCode: minFund.code,
       lowestName: minFund.name || minFund.code,
       benchHigh,
@@ -653,7 +716,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     };
   }, [
     enabledFunds,
-    benchmark,
+    benchmarks,
     prefs.otcPremiumThresholdPct,
     prefs.otcMinIntraPremiumLow,
     prefs.otcMinIntraPremiumHigh,
@@ -666,7 +729,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     const row = {
       id: `cycle-${Date.now()}`,
       createdAt: nowIso(),
-      benchmarkCode: prefs.benchmarkCode,
+      // 套利轮次 ledger 仍为单轮单基准；多基准时默认取第一只。
+      benchmarkCode: (prefs.benchmarkCodes || [])[0] || '',
       counterpartCode: '',
       enterPrice: '',
       exitPrice: '',
@@ -696,9 +760,9 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     if (!exchangeFunds.length) {
       return '当前持仓中没有场内 ETF，先在持仓页录入交易再回来配置切换策略。';
     }
-    if (!benchmark) return '请先选择一只基准 ETF。';
-    return `基准：${benchmark.code} · ${benchmark.name || ''}`;
-  }, [exchangeFunds.length, benchmark]);
+    if (!benchmarks.length) return '请先选择至少一只基准 ETF。';
+    return `基准：${benchmarks.map((b) => `${b.code} · ${b.name || ''}`).join(' / ')}`;
+  }, [exchangeFunds.length, benchmarks]);
 
   return (
     <div className="space-y-6">
@@ -727,7 +791,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
               type="button"
               className={cx(secondaryButtonClass, 'ml-auto h-9 px-3 text-xs')}
               onClick={handleWorkerRunOnce}
-              disabled={workerStatus.running || workerStatus.saving || !workerConfig.enabled || !prefs?.benchmarkCode || ((prefs?.enabledCodes || []).filter((c) => c && c !== prefs?.benchmarkCode).length === 0)}
+              disabled={workerStatus.running || workerStatus.saving || !workerConfig.enabled || !((prefs?.benchmarkCodes || []).length) || ((prefs?.enabledCodes || []).filter((c) => c && !((prefs?.benchmarkCodes || []).includes(c))).length === 0)}
               title={workerConfig.enabled ? '手动跑一次：拉价 + 算 diff + 命中规则 A/B 则推送' : '需先启用自动监控'}
             >
               <PlayCircle className="h-4 w-4" />
@@ -757,9 +821,19 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           ) : null}
           <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              {/* 单一数据源：下拉选择的 prefs.benchmarkCode / enabledCodes / 阈值。 */}
-              <span><span className="text-slate-400">基准</span> <span className="font-semibold text-slate-700">{prefs?.benchmarkCode || '未设定'}</span></span>
-              <span><span className="text-slate-400">候选</span> <span className="font-semibold text-slate-700">{(prefs?.enabledCodes || []).filter((c) => c && c !== prefs?.benchmarkCode).length}</span> 只</span>
+              {/* 单一数据源：选择的 prefs.benchmarkCodes / enabledCodes / 阈值。 */}
+              <span>
+                <span className="text-slate-400">基准</span>{' '}
+                <span className="font-semibold text-slate-700">
+                  {(prefs?.benchmarkCodes || []).length
+                    ? (prefs.benchmarkCodes.length === 1 ? prefs.benchmarkCodes[0] : `${prefs.benchmarkCodes.length} 只`)
+                    : '未设定'}
+                </span>
+                {(prefs?.benchmarkCodes || []).length > 1 ? (
+                  <span className="ml-1 text-[11px] text-slate-400">({prefs.benchmarkCodes.join(', ')})</span>
+                ) : null}
+              </span>
+              <span><span className="text-slate-400">候选</span> <span className="font-semibold text-slate-700">{(prefs?.enabledCodes || []).filter((c) => c && !((prefs?.benchmarkCodes || []).includes(c))).length}</span> 只</span>
               <span><span className="text-slate-400">规则 A</span> |diff| ≤ <span className="font-semibold text-slate-700">{Number.isFinite(Number(prefs?.intraSellLowerPct)) ? `${prefs.intraSellLowerPct}%` : '—'}</span></span>
               <span><span className="text-slate-400">规则 B</span> |diff| ≥ <span className="font-semibold text-slate-700">{Number.isFinite(Number(prefs?.intraBuyOtherPct)) ? `${prefs.intraBuyOtherPct}%` : '—'}</span></span>
               {workerConfig.updatedAt ? (
@@ -776,50 +850,75 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
             </div>
             {workerSnapshot ? (
               <div className="mt-3 space-y-2 text-sm">
-                <div className="rounded-xl border border-slate-200 bg-white p-3">
-                  <div className="text-xs uppercase tracking-[0.18em] text-slate-400">基准 {workerSnapshot.benchmarkCode}{workerSnapshot.benchmarkName ? ` · ${workerSnapshot.benchmarkName}` : ''}</div>
-                  <div className="mt-1 grid grid-cols-3 gap-2 text-xs text-slate-600">
-                    <div>现价 <span className="font-semibold text-slate-800">{formatPrice(workerSnapshot.benchmarkPrice)}</span></div>
-                    <div>净值 <span className="font-semibold text-slate-800">{formatPrice(workerSnapshot.benchmarkNav)}</span>{workerSnapshot.benchmarkNavDate ? <span className="ml-1 text-slate-400">@{workerSnapshot.benchmarkNavDate}</span> : null}</div>
-                    <div>溢价 <span className="font-semibold text-slate-800">{formatPercent(workerSnapshot.benchmarkPremiumPct, 2, true)}</span></div>
-                  </div>
-                </div>
-                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                  <table className="w-full text-xs">
-                    <thead className="bg-slate-100 text-slate-500">
-                      <tr>
-                        <th className="px-3 py-2 text-left">候选</th>
-                        <th className="px-3 py-2 text-right">现价</th>
-                        <th className="px-3 py-2 text-right">净值</th>
-                        <th className="px-3 py-2 text-right">溢价</th>
-                        <th className="px-3 py-2 text-right">与基准差</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(workerSnapshot.candidates || []).map((c) => {
-                        const diff = Number(c.spreadVsBenchmarkPct);
-                        const sellLower = Number(workerSnapshot.intraSellLowerPct);
-                        const buyOther = Number(workerSnapshot.intraBuyOtherPct);
-                        const absDiff = Number.isFinite(diff) ? Math.abs(diff) : NaN;
-                        const inA = Number.isFinite(absDiff) && Number.isFinite(sellLower) && diff !== 0 && absDiff <= sellLower;
-                        const inB = Number.isFinite(absDiff) && Number.isFinite(buyOther) && absDiff >= buyOther;
-                        const cls = inA ? 'text-emerald-700 font-semibold' : inB ? 'text-rose-700 font-semibold' : 'text-slate-600';
-                        return (
-                          <tr key={`snap-${c.code}`} className="border-t border-slate-100">
-                            <td className="px-3 py-2"><span className="font-semibold">{c.code}</span>{c.name ? <span className="ml-1 text-slate-400">{c.name}</span> : null}</td>
-                            <td className="px-3 py-2 text-right">{formatPrice(c.price)}</td>
-                            <td className="px-3 py-2 text-right">{formatPrice(c.nav)}{c.navDate ? <span className="ml-1 text-slate-400">@{c.navDate}</span> : null}</td>
-                            <td className="px-3 py-2 text-right">{formatPercent(c.premiumPct, 2, true)}</td>
-                            <td className={cx('px-3 py-2 text-right', cls)}>{formatPercent(c.spreadVsBenchmarkPct, 2, true)}</td>
-                          </tr>
-                        );
-                      })}
-                      {(!workerSnapshot.candidates || workerSnapshot.candidates.length === 0) ? (
-                        <tr><td colSpan={5} className="px-3 py-4 text-center text-slate-400">快照中暂无候选数据。</td></tr>
-                      ) : null}
-                    </tbody>
-                  </table>
-                </div>
+                {(() => {
+                  // 兼容旧版快照（顶层 benchmarkCode + candidates）。
+                  const benchSnapshots = Array.isArray(workerSnapshot.byBenchmark) && workerSnapshot.byBenchmark.length
+                    ? workerSnapshot.byBenchmark
+                    : (workerSnapshot.benchmarkCode ? [{
+                        benchmarkCode: workerSnapshot.benchmarkCode,
+                        benchmarkName: workerSnapshot.benchmarkName,
+                        benchmarkPrice: workerSnapshot.benchmarkPrice,
+                        benchmarkNav: workerSnapshot.benchmarkNav,
+                        benchmarkNavDate: workerSnapshot.benchmarkNavDate,
+                        benchmarkPremiumPct: workerSnapshot.benchmarkPremiumPct,
+                        candidates: workerSnapshot.candidates || []
+                      }] : []);
+                  if (!benchSnapshots.length) {
+                    return (
+                      <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-400">
+                        快照中暂无基准数据。
+                      </div>
+                    );
+                  }
+                  const sellLower = Number(workerSnapshot.intraSellLowerPct);
+                  const buyOther = Number(workerSnapshot.intraBuyOtherPct);
+                  return benchSnapshots.map((bench) => (
+                    <div key={`bench-${bench.benchmarkCode}`} className="space-y-2">
+                      <div className="rounded-xl border border-slate-200 bg-white p-3">
+                        <div className="text-xs uppercase tracking-[0.18em] text-slate-400">基准 {bench.benchmarkCode}{bench.benchmarkName ? ` · ${bench.benchmarkName}` : ''}</div>
+                        <div className="mt-1 grid grid-cols-3 gap-2 text-xs text-slate-600">
+                          <div>现价 <span className="font-semibold text-slate-800">{formatPrice(bench.benchmarkPrice)}</span></div>
+                          <div>净值 <span className="font-semibold text-slate-800">{formatPrice(bench.benchmarkNav)}</span>{bench.benchmarkNavDate ? <span className="ml-1 text-slate-400">@{bench.benchmarkNavDate}</span> : null}</div>
+                          <div>溢价 <span className="font-semibold text-slate-800">{formatPercent(bench.benchmarkPremiumPct, 2, true)}</span></div>
+                        </div>
+                      </div>
+                      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                        <table className="w-full text-xs">
+                          <thead className="bg-slate-100 text-slate-500">
+                            <tr>
+                              <th className="px-3 py-2 text-left">候选</th>
+                              <th className="px-3 py-2 text-right">现价</th>
+                              <th className="px-3 py-2 text-right">净值</th>
+                              <th className="px-3 py-2 text-right">溢价</th>
+                              <th className="px-3 py-2 text-right">与基准差</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(bench.candidates || []).map((c) => {
+                              const diff = Number(c.spreadVsBenchmarkPct);
+                              const absDiff = Number.isFinite(diff) ? Math.abs(diff) : NaN;
+                              const inA = Number.isFinite(absDiff) && Number.isFinite(sellLower) && diff !== 0 && absDiff <= sellLower;
+                              const inB = Number.isFinite(absDiff) && Number.isFinite(buyOther) && absDiff >= buyOther;
+                              const cls = inA ? 'text-emerald-700 font-semibold' : inB ? 'text-rose-700 font-semibold' : 'text-slate-600';
+                              return (
+                                <tr key={`snap-${bench.benchmarkCode}-${c.code}`} className="border-t border-slate-100">
+                                  <td className="px-3 py-2"><span className="font-semibold">{c.code}</span>{c.name ? <span className="ml-1 text-slate-400">{c.name}</span> : null}</td>
+                                  <td className="px-3 py-2 text-right">{formatPrice(c.price)}</td>
+                                  <td className="px-3 py-2 text-right">{formatPrice(c.nav)}{c.navDate ? <span className="ml-1 text-slate-400">@{c.navDate}</span> : null}</td>
+                                  <td className="px-3 py-2 text-right">{formatPercent(c.premiumPct, 2, true)}</td>
+                                  <td className={cx('px-3 py-2 text-right', cls)}>{formatPercent(c.spreadVsBenchmarkPct, 2, true)}</td>
+                                </tr>
+                              );
+                            })}
+                            {(!bench.candidates || bench.candidates.length === 0) ? (
+                              <tr><td colSpan={5} className="px-3 py-4 text-center text-slate-400">快照中暂无候选数据。</td></tr>
+                            ) : null}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ));
+                })()}
                 {(workerSnapshot.triggers || []).length > 0 ? (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                     <div className="font-semibold">本轮触发 {workerSnapshot.triggers.length} 个信号</div>
@@ -870,21 +969,39 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           ) : null}
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">基准 ETF</div>
-              <select
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 focus:border-indigo-300 focus:outline-none"
-                value={prefs.benchmarkCode}
-                onChange={(e) => setBenchmarkCode(e.target.value)}
-              >
-                {exchangeFunds.length === 0 ? (
-                  <option value="">（持仓暂无场内 ETF）</option>
-                ) : null}
-                {exchangeFunds.map((f) => (
-                  <option key={f.code} value={f.code}>
-                    {f.code} · {f.name || ''}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">基准 ETF（可多选）</div>
+                <div className="text-xs text-slate-500">已选 {(prefs.benchmarkCodes || []).length} / 持仓 {exchangeFunds.length}</div>
+              </div>
+              {exchangeFunds.length === 0 ? (
+                <div className="mt-2 text-sm text-slate-500">（持仓暂无场内 ETF）</div>
+              ) : (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {exchangeFunds.map((f) => {
+                    const checked = (prefs.benchmarkCodes || []).includes(f.code);
+                    return (
+                      <button
+                        key={f.code}
+                        type="button"
+                        onClick={() => toggleBenchmarkCode(f.code)}
+                        className={cx(
+                          'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
+                          checked
+                            ? 'border-indigo-300 bg-indigo-100 text-indigo-800 hover:bg-indigo-200'
+                            : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'
+                        )}
+                      >
+                        <span>{f.code}</span>
+                        <span className="text-slate-400">·</span>
+                        <span className="max-w-[120px] truncate">{f.name || ''}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {(prefs.benchmarkCodes || []).length > 1 ? (
+                <div className="mt-2 text-[11px] text-slate-400">多基准采用「全配对」：每只基准 × 每只候选都会生成一条 diff 信号。</div>
+              ) : null}
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">套利目标</div>

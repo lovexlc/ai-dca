@@ -2044,7 +2044,9 @@ async function handleSwitchConfigPost(request, env) {
   if (auth.didUpdate) await writeSettings(env, settings);
   const nextConfig = await writeSwitchConfigForClient(env, auth.clientId, {
     enabled: payload?.enabled,
-    benchmarkCode: payload?.benchmarkCode,
+    benchmarkCodes: Array.isArray(payload?.benchmarkCodes)
+      ? payload.benchmarkCodes
+      : (payload?.benchmarkCode ? [payload.benchmarkCode] : []),
     enabledCodes: payload?.enabledCodes ?? payload?.candidateCodes,
     intraSellLowerPct: payload?.intraSellLowerPct,
     intraBuyOtherPct: payload?.intraBuyOtherPct,
@@ -2092,7 +2094,10 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
   if (!clientRecord || !clientRecord.clientId) {
     return { triggered: 0, skipped: 'no-client' };
   }
-  const codes = Array.from(new Set([config.benchmarkCode, ...(config.enabledCodes || [])]));
+  const codes = Array.from(new Set([
+    ...(Array.isArray(config.benchmarkCodes) ? config.benchmarkCodes : []),
+    ...(config.enabledCodes || [])
+  ]));
   const effectivePriceMap = priceMap || await fetchSinaPrices(codes).catch(() => ({}));
   const effectiveNavMap = navByCode || await fetchLatestNavMap(env, codes);
   const computedAtIso = computedAt || new Date().toISOString();
@@ -2125,7 +2130,8 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
   return {
     triggered: triggers.length,
     pushed: pushedCount,
-    candidateCount: snapshot.candidates.length,
+    candidateCount: (snapshot.byBenchmark || [])
+      .reduce((acc, b) => acc + ((b.candidates || []).length), 0),
     ready: snapshot.ready
   };
 }
@@ -2147,7 +2153,7 @@ async function runSwitchStrategyTick(env, scheduledMs, reason = 'switch-cron') {
   if (!enabledList.length) return;
   const allCodes = new Set();
   for (const { config } of enabledList) {
-    allCodes.add(config.benchmarkCode);
+    for (const code of (config.benchmarkCodes || [])) allCodes.add(code);
     for (const code of (config.enabledCodes || [])) allCodes.add(code);
   }
   const codeList = Array.from(allCodes);
