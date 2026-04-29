@@ -91,6 +91,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [pasteModalOpen, setPasteModalOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [pasteResult, setPasteResult] = useState(null);
+  // ---- OCR import modal: 截图 OCR 走与「粘贴 Excel」一致的「先弹窗 → 解析预览 → 导入有效行」流程。 ----
+  const [ocrModalOpen, setOcrModalOpen] = useState(false);
+  // ocrPreview 与 pasteResult 形状对齐：{ rows: Array<{ index, draft, errors }>, fileName, recordCount, warnings, provider, model }
+  const [ocrPreview, setOcrPreview] = useState(null);
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const [switchPickerOpen, setSwitchPickerOpen] = useState(false);
   const [switchPickerSearch, setSwitchPickerSearch] = useState('');
@@ -666,6 +670,9 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   async function handleOcrFile(event) {
     const file = event?.target?.files?.[0];
     if (!file) return;
+    // 「截图 OCR」现改为弹窗内预览流程：识别后仅填充预览表格，用户确认后才会写入 ledger。
+    if (!ocrModalOpen) setOcrModalOpen(true);
+    setOcrPreview(null);
     setOcrState(createOcrState({ status: 'loading', progress: 10, message: '正在识别持仓截图...' }));
     try {
       const result = await recognizeLedgerFile(file, (progress) => {
@@ -677,31 +684,55 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         }));
       });
       const drafts = Array.isArray(result.draftTransactions) ? result.draftTransactions : [];
+      // 以「预览行」的形式装入 modal（与 parseExcelPaste 一致），让 UI 可重用预览表格。
+      const previewRows = drafts.map((draft, index) => ({
+        index,
+        draft,
+        errors: getTransactionErrors(draft)
+      }));
       if (!drafts.length) {
         setOcrState(createOcrState({
           status: 'error',
           error: '未能识别出有效的持仓记录，请重试或手动录入。'
         }));
+        setOcrPreview({
+          rows: [],
+          fileName: file?.name || '',
+          recordCount: 0,
+          warnings: result.warnings || [],
+          provider: result.provider || '',
+          model: result.model || ''
+        });
         showActionToast('OCR 导入', 'error', { description: '未能识别出有效的持仓记录。' });
         return;
       }
-      setLedger((prev) => ({
-        ...prev,
-        transactions: [...(prev.transactions || []), ...drafts]
-      }));
+      setOcrPreview({
+        rows: previewRows,
+        fileName: file?.name || '',
+        recordCount: drafts.length,
+        warnings: result.warnings || [],
+        provider: result.provider || '',
+        model: result.model || ''
+      });
+      const validCount = previewRows.filter((row) => Object.keys(row.errors).length === 0).length;
       setOcrState(createOcrState({
         status: 'success',
         progress: 100,
-        message: `已导入 ${drafts.length} 条 BUY 草稿，请补录交易日期。`,
+        message: `识别出 ${drafts.length} 行，其中有效 ${validCount} 行，请在弹窗内确认后导入。`,
         recordCount: drafts.length
       }));
-      showActionToast('OCR 导入', 'success', { description: `已导入 ${drafts.length} 条 BUY 草稿，请补录交易日期。` });
+      showActionToast('OCR 识别', 'success', {
+        description: `识别出 ${drafts.length} 行，有效 ${validCount} 行，请在弹窗内确认后导入。`
+      });
     } catch (error) {
       setOcrState(createOcrState({
         status: 'error',
         error: error?.message || '识别失败，请稍后重试。'
       }));
       showActionToast('OCR 导入', 'error', { description: error?.message || '识别失败。' });
+    } finally {
+      // 允许同一个文件被重复选择，在弹窗内重新上传。
+      if (event?.target) event.target.value = '';
     }
   }
 
@@ -714,6 +745,46 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
 
   function closePasteModal() {
     setPasteModalOpen(false);
+  }
+
+  // ---- OCR import modal controls ----
+  function openOcrModal() {
+    setOcrModalOpen(true);
+    setOcrPreview(null);
+    setOcrState(createOcrState());
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  function closeOcrModal() {
+    setOcrModalOpen(false);
+    setOcrPreview(null);
+    setOcrState(createOcrState());
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  function handleImportOcr() {
+    if (!ocrPreview || !ocrPreview.rows.length) return;
+    const validRows = ocrPreview.rows.filter((row) => Object.keys(row.errors).length === 0);
+    if (!validRows.length) {
+      showActionToast('导入失败', 'error', { description: '没有有效行可导入，请重传或手动录入。' });
+      return;
+    }
+    // 重新生成 id，避免与现有流水 id 冲突（与 Excel 粘贴导入一致的打包逻辑）。
+    const validDrafts = validRows.map((row) => normalizeTransaction({ ...row.draft, id: undefined, switchPairId: '' }, { idPrefix: 'ocr' }));
+    setLedger((prev) => ({
+      ...prev,
+      transactions: [...(prev.transactions || []), ...validDrafts]
+    }));
+    const skipped = ocrPreview.rows.length - validDrafts.length;
+    showActionToast('OCR 导入', 'success', {
+      description: skipped > 0
+        ? `已导入 ${validDrafts.length} 条 BUY 草稿，跳过 ${skipped} 行无效。请补录交易日期。`
+        : `已导入 ${validDrafts.length} 条 BUY 草稿，请补录交易日期。`
+    });
+    setOcrModalOpen(false);
+    setOcrPreview(null);
+    setOcrState(createOcrState());
+    if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
   // ---- Switch counterpart picker ----
@@ -2080,7 +2151,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                     <button
                       type="button"
                       className="flex w-full items-start gap-2.5 px-3 py-2.5 text-left text-xs text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                      onClick={() => { setImportMenuOpen(false); handleTriggerOcr(); }}
+                      onClick={() => { setImportMenuOpen(false); openOcrModal(); }}
                       disabled={ocrState.status === 'loading'}
                       role="menuitem"
                     >
@@ -2250,6 +2321,133 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                   className={PRIMARY_BTN}
                   onClick={handleImportPasted}
                   disabled={!pasteResult || !pasteResult.rows.some((row) => Object.keys(row.errors).length === 0)}
+                >
+                  <Save className="h-4 w-4" />
+                  导入有效行
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {ocrModalOpen ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 px-4 py-6" onClick={closeOcrModal}>
+          <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+              <div>
+                <div className="text-sm font-bold text-slate-900">从截图识别交易流水</div>
+                <div className="mt-0.5 text-xs text-slate-500">上传持仓截图，识别后会在当前弹窗内预览所有行，确认后才会写入交易流水（仅导入有效行、默认 BUY）。</div>
+              </div>
+              <button type="button" className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700" onClick={closeOcrModal}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className={GHOST_BTN}
+                  onClick={handleTriggerOcr}
+                  disabled={ocrState.status === 'loading'}
+                >
+                  {ocrState.status === 'loading' ? (
+                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileImage className="h-4 w-4" />
+                  )}
+                  {ocrPreview ? '重新上传截图' : '选择截图文件'}
+                </button>
+                {ocrState.status === 'loading' ? (
+                  <div className="text-xs text-slate-500">{ocrState.message || '正在识别…'}{ocrState.progress ? ` · ${Math.round(ocrState.progress)}%` : ''}</div>
+                ) : ocrPreview ? (
+                  <div className="text-xs text-slate-500">
+                    {ocrPreview.fileName ? <span className="mr-2 font-mono text-slate-600">{ocrPreview.fileName}</span> : null}
+                    共 {ocrPreview.rows.length} 行识别结果{ocrPreview.model ? ` · 模型 ${ocrPreview.model}` : ''}。
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-400">支持 PNG / JPG 等图片；识别结果会默认标记为 BUY 草稿，交易日期需后续补录。</div>
+                )}
+              </div>
+              {ocrState.status === 'error' && ocrState.error ? (
+                <div className="rounded-xl border border-red-100 bg-red-50/70 px-3 py-2 text-xs text-red-600">{ocrState.error}</div>
+              ) : null}
+              {ocrPreview && Array.isArray(ocrPreview.warnings) && ocrPreview.warnings.length ? (
+                <div className="rounded-xl border border-amber-100 bg-amber-50/70 px-3 py-2 text-xs text-amber-700">
+                  <div className="font-semibold">识别提醒：</div>
+                  <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                    {ocrPreview.warnings.slice(0, 5).map((warn, idx) => (
+                      <li key={idx}>{String(warn)}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {ocrPreview && ocrPreview.rows.length ? (
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-slate-50 text-left font-semibold text-slate-500">
+                      <tr>
+                        <th className="px-2 py-1.5">状态</th>
+                        <th className="px-2 py-1.5">代码</th>
+                        <th className="px-2 py-1.5">名称</th>
+                        <th className="px-2 py-1.5">标签</th>
+                        <th className="px-2 py-1.5">类型</th>
+                        <th className="px-2 py-1.5">日期</th>
+                        <th className="px-2 py-1.5 text-right">价</th>
+                        <th className="px-2 py-1.5 text-right">份额</th>
+                        <th className="px-2 py-1.5">问题</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {ocrPreview.rows.map((row) => {
+                        const ok = Object.keys(row.errors).length === 0;
+                        return (
+                          <tr key={row.index} className={ok ? 'text-slate-700' : 'bg-red-50/60 text-red-600'}>
+                            <td className="px-2 py-1.5">
+                              {ok ? (
+                                <span className="inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />有效</span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-red-500"><AlertTriangle className="h-3.5 w-3.5" />跳过</span>
+                              )}
+                            </td>
+                            <td className="px-2 py-1.5 font-mono">{row.draft.code || <span className="text-slate-400">—</span>}</td>
+                            <td className="px-2 py-1.5">{row.draft.name || <span className="text-slate-400">—</span>}</td>
+                            <td className="px-2 py-1.5">{KIND_LABELS[row.draft.kind] || row.draft.kind || <span className="text-slate-400">—</span>}</td>
+                            <td className="px-2 py-1.5">{row.draft.type}</td>
+                            <td className="px-2 py-1.5">{row.draft.date || <span className="text-amber-600">待补录</span>}</td>
+                            <td className="px-2 py-1.5 text-right tabular-nums">{row.draft.price || '—'}</td>
+                            <td className="px-2 py-1.5 text-right tabular-nums">{row.draft.shares || '—'}</td>
+                            <td className="px-2 py-1.5">{ok ? '—' : summarizeTransactionErrors(row.errors)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : ocrPreview ? (
+                <div className="flex min-h-[160px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-6 py-8 text-center text-xs text-slate-500">
+                  <FileImage className="h-7 w-7 text-slate-300" />
+                  <div>该截图未识别出有效行。请换一张较清晰的持仓截图后重试。</div>
+                </div>
+              ) : (
+                <div className="flex min-h-[160px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-6 py-8 text-center text-xs text-slate-500">
+                  <CloudUpload className="h-7 w-7 text-slate-300" />
+                  <div>点击上方按钮选择一张持仓截图，识别后可在此预览、逐行确认。</div>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3">
+              <div className="text-xs text-slate-500">
+                {ocrPreview
+                  ? `将导入 ${ocrPreview.rows.filter((row) => Object.keys(row.errors).length === 0).length} 条 BUY 草稿`
+                  : '提示：识别结果需你在弹窗内确认后才会写入交易流水。'}
+              </div>
+              <div className="flex gap-2">
+                <button type="button" className={GHOST_BTN} onClick={closeOcrModal}>取消</button>
+                <button
+                  type="button"
+                  className={PRIMARY_BTN}
+                  onClick={handleImportOcr}
+                  disabled={!ocrPreview || !ocrPreview.rows.some((row) => Object.keys(row.errors).length === 0)}
                 >
                   <Save className="h-4 w-4" />
                   导入有效行
