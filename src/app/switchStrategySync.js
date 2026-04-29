@@ -154,7 +154,13 @@ export async function saveSwitchConfigToWorker(config) {
   });
   const stored = normalizeSwitchConfigShape(payload?.config || next);
   writeSwitchConfigCache(stored);
-  return stored;
+  // 返回充足元数据供 UI notice 使用（clientId / benchmark / 候选数量）。
+  return {
+    config: stored,
+    clientId: payload?.clientId || '',
+    benchmarkCode: stored.benchmarkCode,
+    candidateCount: (stored.enabledCodes || []).filter((c) => c && c !== stored.benchmarkCode).length
+  };
 }
 
 export async function loadSwitchSnapshotFromWorker() {
@@ -167,4 +173,16 @@ export async function loadSwitchSnapshotFromWorker() {
 
 export async function runSwitchOnce() {
   return await requestSwitch('/switch/run', { method: 'POST' });
+}
+
+// 清理 worker 端该 clientId 的切换策略 KV（config / snapshot / state）。
+export async function resetSwitchConfigOnWorker() {
+  const payload = await requestSwitch('/switch/config', { method: 'DELETE' });
+  // 同步清本地缓存，避免重新加载后又被旧 cache 覆盖。
+  writeSwitchConfigCache(buildDefaultSwitchConfig());
+  return {
+    clientId: payload?.clientId || '',
+    clearedKeys: Array.isArray(payload?.clearedKeys) ? payload.clearedKeys : [],
+    examinedKeys: Array.isArray(payload?.examinedKeys) ? payload.examinedKeys : []
+  };
 }

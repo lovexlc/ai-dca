@@ -954,11 +954,11 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     const snapshotError = snapshot?.error ? String(snapshot.error) : '';
     const rowKey = tx.id;
     const profitCellClass = metrics.totalProfit > 0
-      ? 'text-emerald-600'
-      : metrics.totalProfit < 0 ? 'text-red-500' : 'text-slate-700';
+      ? 'text-red-600'
+      : metrics.totalProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
     const todayCellClass = metrics.todayProfit > 0
-      ? 'text-emerald-600'
-      : metrics.todayProfit < 0 ? 'text-red-500' : 'text-slate-700';
+      ? 'text-red-600'
+      : metrics.todayProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
 
     if (isEditing && editingBuffer) {
       return (
@@ -1252,8 +1252,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
 
     const totalTone = filteredSummary.totalRealizedProfit > 0
-      ? 'text-emerald-600'
-      : filteredSummary.totalRealizedProfit < 0 ? 'text-red-500' : 'text-slate-700';
+      ? 'text-red-600'
+      : filteredSummary.totalRealizedProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
 
     return (
       <div className="overflow-x-auto">
@@ -1278,8 +1278,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               const kindTone = KIND_PILL_TONES[lot.kind] || 'slate';
               const kindLabel = KIND_LABELS[lot.kind] || '未知';
               const profitClass = lot.realizedProfit > 0
-                ? 'text-emerald-600'
-                : lot.realizedProfit < 0 ? 'text-red-500' : 'text-slate-700';
+                ? 'text-red-600'
+                : lot.realizedProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
               const isSelected = selectedCode === lot.code;
               return (
                 <tr

@@ -10,7 +10,8 @@ import {
   normalizeSwitchConfigShape,
   readSwitchConfigCache,
   runSwitchOnce,
-  saveSwitchConfigToWorker
+  saveSwitchConfigToWorker,
+  resetSwitchConfigOnWorker
 } from '../app/switchStrategySync.js';
 
 // 场内 / 场外纳指 100 切换套利策略实时建议器。
@@ -246,14 +247,23 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     setWorkerConfig(normalized);
     setWorkerStatus((prev) => ({ ...prev, saving: true, error: '', notice: '' }));
     try {
-      const stored = await saveSwitchConfigToWorker(normalized);
+      const result = await saveSwitchConfigToWorker(normalized);
+      // saveSwitchConfigToWorker 现在返回 { config, clientId, benchmarkCode, candidateCount }
+      const stored = (result && result.config) ? result.config : result;
       setWorkerConfig(stored);
+      const clientId = result?.clientId || '';
+      const candidateCount = Number.isFinite(result?.candidateCount)
+        ? result.candidateCount
+        : (stored.enabledCodes || []).filter((c) => c && c !== stored.benchmarkCode).length;
+      const benchmarkCode = result?.benchmarkCode || stored.benchmarkCode || '';
+      const clientHint = clientId ? `· client ${clientId.slice(0, 18)}…` : '';
+      const baseHint = `基准 ${benchmarkCode || '未设定'} / 候选 ${candidateCount} 只 ${clientHint}`.trim();
       setWorkerStatus((prev) => ({
         ...prev,
         saving: false,
         notice: stored.enabled
-          ? '配置已同步到 worker，交易时段内每分钟按规则 A/B 扫描。'
-          : '配置已保存（未启用自动监控）。',
+          ? `配置已同步到 worker（${baseHint}），交易时段内每分钟按规则 A/B 扫描。`
+          : `配置已保存（未启用自动监控 · ${baseHint}）。`,
         lastSyncedAt: new Date().toISOString()
       }));
     } catch (error) {
@@ -261,6 +271,42 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         ...prev,
         saving: false,
         error: error?.message || '保存到 worker 失败'
+      }));
+    }
+  }, []);
+
+  // benchmarkCode 变动时清掉旧快照，避免页面顶部 / 中部还在渲染旧基准的 worker 数据。
+  useEffect(() => {
+    setWorkerSnapshot((prev) => {
+      if (!prev) return prev;
+      if (String(prev.benchmarkCode || '') === String(prefs?.benchmarkCode || '')) return prev;
+      return null;
+    });
+  }, [prefs?.benchmarkCode]);
+
+  // 手动清理 worker 端历史脈数据（config / snapshot / state）。
+  const handleResetWorkerConfig = useCallback(async () => {
+    setWorkerStatus((prev) => ({ ...prev, saving: true, error: '', notice: '' }));
+    try {
+      const result = await resetSwitchConfigOnWorker();
+      // 本地 state 同步重置为默认值，后续调同步会重新写入。
+      const fresh = buildDefaultSwitchConfig();
+      setWorkerConfig(fresh);
+      setWorkerSnapshot(null);
+      const clientId = result?.clientId || '';
+      const cleared = Array.isArray(result?.clearedKeys) ? result.clearedKeys.length : 0;
+      const examined = Array.isArray(result?.examinedKeys) ? result.examinedKeys.length : 3;
+      setWorkerStatus((prev) => ({
+        ...prev,
+        saving: false,
+        notice: `worker 已清理 ${cleared}/${examined} 个 KV 键${clientId ? ` · client ${clientId.slice(0, 18)}…` : ''}。重新启用自动监控以同步新配置。`,
+        lastSyncedAt: new Date().toISOString()
+      }));
+    } catch (error) {
+      setWorkerStatus((prev) => ({
+        ...prev,
+        saving: false,
+        error: error?.message || '清理 worker 配置失败'
       }));
     }
   }, []);
@@ -666,11 +712,20 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
               type="button"
               className={cx(secondaryButtonClass, 'ml-auto h-9 px-3 text-xs')}
               onClick={handleWorkerRunOnce}
-              disabled={workerStatus.running || workerStatus.saving || !workerConfig.enabled || !workerConfig.benchmarkCode || (workerConfig.enabledCodes || []).length === 0}
+              disabled={workerStatus.running || workerStatus.saving || !workerConfig.enabled || !prefs?.benchmarkCode || ((prefs?.enabledCodes || []).filter((c) => c && c !== prefs?.benchmarkCode).length === 0)}
               title={workerConfig.enabled ? '手动跑一次：拉价 + 算 diff + 命中规则 A/B 则推送' : '需先启用自动监控'}
             >
               <PlayCircle className="h-4 w-4" />
               {workerStatus.running ? '运行中…' : '手动跑一次'}
+            </button>
+            <button
+              type="button"
+              onClick={handleResetWorkerConfig}
+              disabled={workerStatus.saving || workerStatus.running}
+              title="清理 worker 上这个 clientId 的 config / snapshot / state。适用于旧基准污染、需重建脈络的场景。清理后请重新启用自动监控以同步新配置。"
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-rose-300 bg-white px-3 text-xs font-semibold text-rose-700 shadow-sm transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {workerStatus.saving ? '清理中…' : '清理 worker 配置'}
             </button>
           </div>
           {workerStatus.error ? (
@@ -687,10 +742,11 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           ) : null}
           <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <span><span className="text-slate-400">基准</span> <span className="font-semibold text-slate-700">{workerConfig.benchmarkCode || '未设定'}</span></span>
-              <span><span className="text-slate-400">候选</span> <span className="font-semibold text-slate-700">{(workerConfig.enabledCodes || []).length}</span> 只</span>
-              <span><span className="text-slate-400">规则 A</span> |diff| ≤ <span className="font-semibold text-slate-700">{Number.isFinite(Number(workerConfig.intraSellLowerPct)) ? `${workerConfig.intraSellLowerPct}%` : '—'}</span></span>
-              <span><span className="text-slate-400">规则 B</span> |diff| ≥ <span className="font-semibold text-slate-700">{Number.isFinite(Number(workerConfig.intraBuyOtherPct)) ? `${workerConfig.intraBuyOtherPct}%` : '—'}</span></span>
+              {/* 单一数据源：下拉选择的 prefs.benchmarkCode / enabledCodes / 阈值。 */}
+              <span><span className="text-slate-400">基准</span> <span className="font-semibold text-slate-700">{prefs?.benchmarkCode || '未设定'}</span></span>
+              <span><span className="text-slate-400">候选</span> <span className="font-semibold text-slate-700">{(prefs?.enabledCodes || []).filter((c) => c && c !== prefs?.benchmarkCode).length}</span> 只</span>
+              <span><span className="text-slate-400">规则 A</span> |diff| ≤ <span className="font-semibold text-slate-700">{Number.isFinite(Number(prefs?.intraSellLowerPct)) ? `${prefs.intraSellLowerPct}%` : '—'}</span></span>
+              <span><span className="text-slate-400">规则 B</span> |diff| ≥ <span className="font-semibold text-slate-700">{Number.isFinite(Number(prefs?.intraBuyOtherPct)) ? `${prefs.intraBuyOtherPct}%` : '—'}</span></span>
               {workerConfig.updatedAt ? (
                 <span className="text-[11px] text-slate-400 ml-auto">上次同步 {formatDate(workerConfig.updatedAt) || workerConfig.updatedAt}</span>
               ) : null}

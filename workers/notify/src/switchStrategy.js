@@ -232,40 +232,68 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
   const benchmark = config.benchmarkCode;
   const benchPrice = Number(priceMap?.[benchmark]?.price);
   const benchNav = Number(navByCode?.[benchmark]?.nav);
-  const benchPremium = Number.isFinite(benchPrice) && Number.isFinite(benchNav) && benchNav > 0
+  const benchNavDate = String(navByCode?.[benchmark]?.latestNavDate || '').trim();
+  const computedAtIso = String(computedAt || new Date().toISOString());
+  // NAV 过旧（默认 14 天）也视为不可用，以免拿陈旧 NAV 算溢价误触发。
+  const NAV_STALE_DAYS = 14;
+  function navAgeDays(dateStr) {
+    if (!dateStr) return Infinity;
+    const t = Date.parse(dateStr);
+    if (!Number.isFinite(t)) return Infinity;
+    const ref = Date.parse(computedAtIso) || Date.now();
+    return (ref - t) / 86400000;
+  }
+  const benchNavStale = navAgeDays(benchNavDate) > NAV_STALE_DAYS;
+  const benchPremium = Number.isFinite(benchPrice) && Number.isFinite(benchNav) && benchNav > 0 && !benchNavStale
     ? ((benchPrice - benchNav) / benchNav) * 100
     : null;
 
   const candidates = (config.enabledCodes || []).map((code) => {
     const candPrice = Number(priceMap?.[code]?.price);
     const candNav = Number(navByCode?.[code]?.nav);
-    const candPremium = Number.isFinite(candPrice) && Number.isFinite(candNav) && candNav > 0
+    const candNavDate = String(navByCode?.[code]?.latestNavDate || '').trim();
+    const navMissing = !Number.isFinite(candNav) || candNav <= 0;
+    const navStale = !navMissing && navAgeDays(candNavDate) > NAV_STALE_DAYS;
+    const priceMissing = !Number.isFinite(candPrice) || candPrice <= 0;
+    const candPremium = (!navMissing && !priceMissing && !navStale)
       ? ((candPrice - candNav) / candNav) * 100
       : null;
     const diff = Number.isFinite(benchPremium) && Number.isFinite(candPremium)
       ? benchPremium - candPremium
       : null;
+    // 标注原因，供 UI / 调试使用；评估器看到 spreadVsBenchmarkPct=null 就不会触发。
+    let note = '';
+    if (navMissing) note = 'nav-missing';
+    else if (navStale) note = 'nav-stale';
+    else if (priceMissing) note = 'price-missing';
+    else if (!Number.isFinite(benchPremium)) note = 'benchmark-unavailable';
     return {
       code,
       name: navByCode?.[code]?.name || '',
       price: Number.isFinite(candPrice) ? candPrice : null,
       nav: Number.isFinite(candNav) ? candNav : null,
-      navDate: navByCode?.[code]?.latestNavDate || '',
+      navDate: candNavDate,
       premiumPct: Number.isFinite(candPremium) ? candPremium : null,
       // diff = benchPremium − candPremium，与页面 intraSignals 中同名。
-      spreadVsBenchmarkPct: Number.isFinite(diff) ? diff : null
+      spreadVsBenchmarkPct: Number.isFinite(diff) ? diff : null,
+      note
     };
   });
 
   const ready = Number.isFinite(benchPremium) && candidates.some((c) => Number.isFinite(c.spreadVsBenchmarkPct));
   return {
-    computedAt: String(computedAt || new Date().toISOString()),
+    computedAt: computedAtIso,
     benchmarkCode: benchmark,
     benchmarkName: navByCode?.[benchmark]?.name || '',
     benchmarkPrice: Number.isFinite(benchPrice) ? benchPrice : null,
     benchmarkNav: Number.isFinite(benchNav) ? benchNav : null,
-    benchmarkNavDate: navByCode?.[benchmark]?.latestNavDate || '',
+    benchmarkNavDate: benchNavDate,
     benchmarkPremiumPct: Number.isFinite(benchPremium) ? benchPremium : null,
+    benchmarkNote: !Number.isFinite(benchPrice) || benchPrice <= 0
+      ? 'price-missing'
+      : (!Number.isFinite(benchNav) || benchNav <= 0)
+        ? 'nav-missing'
+        : (benchNavStale ? 'nav-stale' : ''),
     candidates,
     intraSellLowerPct: Number(config.intraSellLowerPct),
     intraBuyOtherPct: Number(config.intraBuyOtherPct),
@@ -344,17 +372,25 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
 }
 
 export function buildSwitchTriggerNotification(snapshot, trigger, env) {
+  // 精简后通知格式（无字段重复）：
+  //   title:   切换 A | 159632→513100
+  //   body:    |diff| 0.85% ≤ 1%  · NAV 2026-04-28
+  //            卖 159632 纳指ETF → 买 513100 纳指ETF
+  //            下单前请以基金软件实时溢价为准。
   const fromLabel = trigger.fromName ? `${trigger.fromCode} ${trigger.fromName}` : trigger.fromCode;
   const toLabel = trigger.toName ? `${trigger.toCode} ${trigger.toName}` : trigger.toCode;
   const diff = Number(trigger.diffPct);
-  const diffStr = (diff >= 0 ? '+' : '') + diff.toFixed(2);
+  const absDiffStr = Math.abs(diff).toFixed(2);
   const threshold = Number(trigger.threshold);
+  const cmp = trigger.rule === 'A' ? '≤' : '≥';
+  const navDate = String(snapshot?.benchmarkNavDate || '').trim();
+  const navHint = navDate ? ` · NAV ${navDate}` : '';
+  const title = `切换 ${trigger.rule} | ${trigger.fromCode}→${trigger.toCode}`;
+  const body = `|diff| ${absDiffStr}% ${cmp} ${threshold}%${navHint}\n卖 ${fromLabel} → 买 ${toLabel}\n下单前请以基金软件实时溢价为准。`;
+  const summary = `切换 ${trigger.rule} ${trigger.fromCode}→${trigger.toCode} ${absDiffStr}%`;
   const ruleLabel = trigger.rule === 'A'
     ? `规则 A：|基准溢价 − 候选溢价| ≤ ${threshold}%（溢价接近）`
     : `规则 B：|基准溢价 − 候选溢价| ≥ ${threshold}%（溢价偏离）`;
-  const title = `[切换 ${trigger.rule}] 卖 ${trigger.fromCode} → 买 ${trigger.toCode}`;
-  const body = `${ruleLabel}。当前溢价差 ${diffStr}%：${fromLabel} → ${toLabel}。下单前请在基金软件中复核实时溢价。`;
-  const summary = `切换 ${trigger.rule} ${trigger.fromCode}→${trigger.toCode} ${diffStr}%`;
   const baseUrl = stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || 'https://tools.freebacktrack.tech');
   const detailUrl = `${baseUrl}/index.html?tab=tradePlans#switch`;
   // 同一对 + 同一规则 + 同一分钟，只发一次。
