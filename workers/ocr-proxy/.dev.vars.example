@@ -1,1 +1,5 @@
-OCR_UPSTREAM_API_KEY=your-upstream-api-key
+# Workers AI 调用不需要 API key。本文件只是示例位，可以留空。
+# 如需本地覆盖默认变量，在 wrangler dev 运行时以环境变量或 .dev.vars 写入。
+# 例如：
+# OCR_MODEL=@cf/llava-hf/llava-1.5-7b-hf
+# OCR_MAX_TOKENS=1500
