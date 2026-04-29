@@ -595,12 +595,12 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         if (absDiff <= sellLower) { kind = 'A'; threshold = sellLower; }
         else if (absDiff >= buyOther) { kind = 'B'; threshold = buyOther; }
         if (!kind) return;
-        // 方向：卖溢价高的，买溢价低的。diff > 0 表示基准溢价更高。
-        const benchHigher = diff > 0;
-        const fromCode = benchHigher ? benchmark.code : f.code;
-        const toCode = benchHigher ? f.code : benchmark.code;
-        const fromName = benchHigher ? (benchmark.name || benchmark.code) : (f.name || f.code);
-        const toName = benchHigher ? (f.name || f.code) : (benchmark.name || benchmark.code);
+        // 方向：基准是用户持有的 ETF，应该引导用户卖基准买候选。
+        // 无论基准溢价更高还是候选溢价更高，用户只能卖自己持有的基准。
+        const fromCode = benchmark.code;
+        const toCode = f.code;
+        const fromName = benchmark.name || benchmark.code;
+        const toName = f.name || f.code;
         const cmp = kind === 'A' ? '≤' : '≥';
         const tag = kind === 'A' ? '溢价接近' : '溢价偏离';
         list.push({

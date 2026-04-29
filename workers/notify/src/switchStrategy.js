@@ -337,12 +337,14 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
       continue;
     }
     const rule = classifyRule(diff, sellLower, buyOther);
-    // 方向：diff > 0 表示 bench 溢价更高（卖 bench 买 cand）；diff < 0 表示 cand 溢价更高（卖 cand 买 bench）。
-    const benchHigher = Number.isFinite(diff) && diff > 0;
-    const fromCode = benchHigher ? benchmark : cand.code;
-    const toCode = benchHigher ? cand.code : benchmark;
-    const fromName = benchHigher ? benchName : (cand.name || '');
-    const toName = benchHigher ? (cand.name || '') : benchName;
+    // 方向：基准是用户持有的 ETF，通知应该引导用户卖基准买候选。
+    // 无论基准溢价更高还是候选溢价更高，用户只能卖自己持有的基准。
+    // 当基准溢价更高时，这是正确的套利方向（卖溢价高的买溢价低的）。
+    // 当候选溢价更高时，用户仍需卖基准买候选（切换到溢价更低的标的）。
+    const fromCode = benchmark;
+    const toCode = cand.code;
+    const fromName = benchName;
+    const toName = cand.name || '';
     const threshold = rule === 'A' ? sellLower : buyOther;
     const prev = prevTriggerStates?.[pairKey] || { rule: 'none', fromCode: '' };
     const prevRule = String(prev.rule || 'none');
