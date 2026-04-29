@@ -35,8 +35,9 @@ export function switchStateKey(clientId) {
 const FUND_CODE_PATTERN = /^\d{6}$/;
 const MAX_CANDIDATES = 20;
 // 与前端 SwitchStrategyExperience 的 DEFAULT_PREFS 保持一致。
-const DEFAULT_INTRA_SELL_LOWER_PCT = 1;   // 规则 A：基准溢价 − 候选溢价 ≤ X% → 卖候选买基准
-const DEFAULT_INTRA_BUY_OTHER_PCT = 3;    // 规则 B：基准溢价 − 候选溢价 ≥ Y% → 卖基准买候选
+// v2 H/L 分组：benchmarkCodes = 高溢价组 H，enabledCodes = 低溢价组 L。
+const DEFAULT_INTRA_SELL_LOWER_PCT = 1;   // 规则 A 低→高：H溢价 − L溢价 < X% → 卖 L 买 H
+const DEFAULT_INTRA_BUY_OTHER_PCT = 3;    // 规则 B 高→低：H溢价 − L溢价 > Y% → 卖 H 买 L
 
 function sanitizeCode(value) {
   const code = String(value || '').trim();
@@ -53,10 +54,14 @@ function pickPercent(value, fallback) {
 }
 
 // 配置与前端 aiDcaSwitchStrategyPrefs 同名，不重复定义一套参数。
-// 字段：
-//  - benchmarkCodes: 基准 ETF 数组（可多选；多基准下采用「全配对」：每只基准 × 每只候选都算 diff）
-//  - enabledCodes:   勾选的候选 ETF 集合（不含任何基准）
-//  - intraSellLowerPct / intraBuyOtherPct: 规则 A / B 阈值，与页面同含义
+// v2 H/L 分组 —— 把基金按「溢价中枢」拆成两类：
+//  - benchmarkCodes: 高溢价组 H（如 513100 这类溢价常年偏高的纳指 ETF）
+//  - enabledCodes:   低溢价组 L（如 159632 这类同标的但溢价常年偏低的）
+//  - intraSellLowerPct / intraBuyOtherPct: 阈值，与页面同名同义。
+//  - 触发逻辑：每对 (h ∈ H) × (l ∈ L) 计算 diff = premium(h) − premium(l)（signed）
+//      diff < intraSellLowerPct → 规则 A 低→高：差价收窄，卖 l 买 h
+//      diff > intraBuyOtherPct  → 规则 B 高→低：差价扩大，卖 h 买 l
+//      sellLower ≤ diff ≤ buyOther → 中性区，不触发
 export function normalizeSwitchConfig(input = {}) {
   // 兼容旧格式：input.benchmarkCode (string) → [benchmarkCode]。
   const rawBenchmarks = Array.isArray(input?.benchmarkCodes)
@@ -326,17 +331,16 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
   };
 }
 
-// 与前端 intraSignals 算法一致：
-//   diff = benchPremium − candPremium
-//   |diff| ≤ intraSellLowerPct (默认 1%) → 规则 A：溢价差极小（premiums 接近）
-//   |diff| ≥ intraBuyOtherPct  (默认 3%) → 规则 B：溢价差极大（庄家套利机会）
-// 方向由 sign(diff) 决定：总是「卖溢价高的一只，买溢价低的一只」。
-// per-pair dedup：仅当本轮 (rule + 方向) 与上次不同时才推送。
+// 与前端 intraSignals 算法一致（v2 H/L 有方向）：
+//   diff = benchPremium − candPremium = premium(H) − premium(L)（signed，可正可负）
+//   diff < intraSellLowerPct (默认 1%) → 规则 A 低→高：差价收窄，卖 L 买 H
+//   diff > intraBuyOtherPct  (默认 3%) → 规则 B 高→低：差价扩大，卖 H 买 L
+//   sellLower ≤ diff ≤ buyOther       → 中性区间，不触发
+// per-pair dedup：仅当本轮 (rule + from→to 方向) 与上次不同时才推送。
 function classifyRule(diff, sellLower, buyOther) {
-  if (!Number.isFinite(diff) || diff === 0) return 'none';
-  const absDiff = Math.abs(diff);
-  if (absDiff <= sellLower) return 'A';
-  if (absDiff >= buyOther) return 'B';
+  if (!Number.isFinite(diff)) return 'none';
+  if (diff < sellLower) return 'A';
+  if (diff > buyOther) return 'B';
   return 'none';
 }
 
@@ -364,11 +368,13 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
         continue;
       }
       const rule = classifyRule(diff, sellLower, buyOther);
-      // 方向：基准是用户持有的 ETF，通知引导用户卖基准买候选。
-      const fromCode = benchmark;
-      const toCode = cand.code;
-      const fromName = benchName;
-      const toName = cand.name || '';
+      // v2 方向：
+      //   规则 A 低→高：fromCode = candidate (∈ L)，toCode = benchmark (∈ H)
+      //   规则 B 高→低：fromCode = benchmark (∈ H)，toCode = candidate (∈ L)
+      const fromCode = rule === 'A' ? cand.code : benchmark;
+      const toCode = rule === 'A' ? benchmark : cand.code;
+      const fromName = rule === 'A' ? (cand.name || '') : benchName;
+      const toName = rule === 'A' ? benchName : (cand.name || '');
       const threshold = rule === 'A' ? sellLower : buyOther;
       const prev = prevTriggerStates?.[pairKey] || { rule: 'none', fromCode: '' };
       const prevRule = String(prev.rule || 'none');
@@ -399,28 +405,30 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
 }
 
 export function buildSwitchTriggerNotification(snapshot, trigger, env) {
-  // 精简后通知格式（无字段重复）：
-  //   title:   切换 A | 159632→513100
-  //   body:    |diff| 0.85% ≤ 1%  · NAV 2026-04-28
+  // v2 通知格式（H/L 有方向）：
+  //   title:   切换 A 低→高 | 159632→513100
+  //   body:    H−L +0.85% < 1%  · NAV 2026-04-28
   //            卖 159632 纳指ETF → 买 513100 纳指ETF
   //            下单前请以基金软件实时溢价为准。
   const fromLabel = trigger.fromName ? `${trigger.fromCode} ${trigger.fromName}` : trigger.fromCode;
   const toLabel = trigger.toName ? `${trigger.toCode} ${trigger.toName}` : trigger.toCode;
   const diff = Number(trigger.diffPct);
-  const absDiffStr = Math.abs(diff).toFixed(2);
+  const diffStr = (diff >= 0 ? '+' : '') + diff.toFixed(2);
   const threshold = Number(trigger.threshold);
-  const cmp = trigger.rule === 'A' ? '≤' : '≥';
-  // 从 byBenchmark 中找到当前触发对应的基准条目，取其 NAV 日期。
+  const cmp = trigger.rule === 'A' ? '<' : '>';
+  // v2：fromCode 在 A 时 = candidate(L)，在 B 时 = benchmark(H)。NAV 日期用 H 组那只。
+  const benchHCode = trigger.rule === 'A' ? trigger.toCode : trigger.fromCode;
   const benchmarkEntry = (Array.isArray(snapshot?.byBenchmark) ? snapshot.byBenchmark : [])
-    .find((b) => b?.benchmarkCode === trigger.fromCode) || null;
+    .find((b) => b?.benchmarkCode === benchHCode) || null;
   const navDate = String(benchmarkEntry?.benchmarkNavDate || '').trim();
   const navHint = navDate ? ` · NAV ${navDate}` : '';
-  const title = `切换 ${trigger.rule} | ${trigger.fromCode}→${trigger.toCode}`;
-  const body = `|diff| ${absDiffStr}% ${cmp} ${threshold}%${navHint}\n卖 ${fromLabel} → 买 ${toLabel}\n下单前请以基金软件实时溢价为准。`;
-  const summary = `切换 ${trigger.rule} ${trigger.fromCode}→${trigger.toCode} ${absDiffStr}%`;
+  const arrow = trigger.rule === 'A' ? '低→高' : '高→低';
+  const title = `切换 ${trigger.rule} ${arrow} | ${trigger.fromCode}→${trigger.toCode}`;
+  const body = `H−L ${diffStr}% ${cmp} ${threshold}%${navHint}\n卖 ${fromLabel} → 买 ${toLabel}\n下单前请以基金软件实时溢价为准。`;
+  const summary = `切换 ${trigger.rule} ${trigger.fromCode}→${trigger.toCode} ${diffStr}%`;
   const ruleLabel = trigger.rule === 'A'
-    ? `规则 A：|基准溢价 − 候选溢价| ≤ ${threshold}%（溢价接近）`
-    : `规则 B：|基准溢价 − 候选溢价| ≥ ${threshold}%（溢价偏离）`;
+    ? `规则 A 低→高：H溢价 − L溢价 < ${threshold}%（差价收窄，卖 L 买 H）`
+    : `规则 B 高→低：H溢价 − L溢价 > ${threshold}%（差价扩大，卖 H 买 L）`;
   const baseUrl = stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || 'https://tools.freebacktrack.tech');
   const detailUrl = `${baseUrl}/index.html?tab=tradePlans#switch`;
   // 同一对 + 同一规则 + 同一分钟，只发一次。

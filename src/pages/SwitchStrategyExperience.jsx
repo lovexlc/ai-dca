@@ -35,6 +35,12 @@ import {
 const SWITCH_PREFS_KEY = 'aiDcaSwitchStrategyPrefs';
 const SWITCH_LEDGER_KEY = 'aiDcaSwitchStrategyLedger';
 
+// v2 H/L 分组语义：
+//   benchmarkCodes = 高溢价组 H（如 513100 纳指 ETF，溢价常年偏高的）
+//   enabledCodes   = 低溢价组 L（如 159632 纳指 ETF，溢价常年偏低的）
+//   diff = premium(H) − premium(L)（signed）
+//   diff < intraSellLowerPct → 规则 A 低→高（差价收窄，卖 L 买 H）
+//   diff > intraBuyOtherPct  → 规则 B 高→低（差价扩大，卖 H 买 L）
 const DEFAULT_PREFS = {
   benchmarkCodes: ['513100'],
   enabledCodes: [],
@@ -632,7 +638,12 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     setPrefs((prev) => ({ ...prev, [key]: value }));
   }
 
-  // 场内信号：多基准下使用「全配对」：每只基准 × 每只候选都评估一次。
+  // 场内信号（v2 H/L 有方向）：
+  //   benchmarks   = 高溢价组 H
+  //   enabledFunds = 低溢价组 L
+  //   每对 (h, l) 计算 diff = premium(h) − premium(l)
+  //   diff < sellLower → 规则 A 低→高：卖 L 买 H（差价收窄，抄底高溢价侧）
+  //   diff > buyOther  → 规则 B 高→低：卖 H 买 L（差价扩大，锁定差价收益）
   const intraSignals = useMemo(() => {
     if (!benchmarks.length) return [];
     const sellLower = Number(prefs.intraSellLowerPct || 0);
@@ -645,27 +656,28 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         .filter((f) => !benchmarkCodeSet.has(f.code) && Number.isFinite(f.premiumPct))
         .forEach((f) => {
           const diff = bench.premiumPct - f.premiumPct;
-          if (!Number.isFinite(diff) || diff === 0) return;
-          const absDiff = Math.abs(diff);
+          if (!Number.isFinite(diff)) return;
           let kind = null;
           let threshold = 0;
-          if (absDiff <= sellLower) { kind = 'A'; threshold = sellLower; }
-          else if (absDiff >= buyOther) { kind = 'B'; threshold = buyOther; }
+          let cmp = '';
+          if (diff < sellLower) { kind = 'A'; threshold = sellLower; cmp = '<'; }
+          else if (diff > buyOther) { kind = 'B'; threshold = buyOther; cmp = '>'; }
           if (!kind) return;
-          // 方向：基准是用户持有的 ETF，应该引导用户卖基准买候选。
-          const fromCode = bench.code;
-          const toCode = f.code;
-          const fromName = bench.name || bench.code;
-          const toName = f.name || f.code;
-          const cmp = kind === 'A' ? '≤' : '≥';
-          const tag = kind === 'A' ? '溢价接近' : '溢价偏离';
+          // 方向：A 卖 L 买 H；B 卖 H 买 L
+          const fromCode = kind === 'A' ? f.code : bench.code;
+          const toCode = kind === 'A' ? bench.code : f.code;
+          const fromName = kind === 'A' ? (f.name || f.code) : (bench.name || bench.code);
+          const toName = kind === 'A' ? (bench.name || bench.code) : (f.name || f.code);
+          const tag = kind === 'A' ? '差价收窄' : '差价扩大';
+          const arrow = kind === 'A' ? '低→高' : '高→低';
+          const diffStr = (diff >= 0 ? '+' : '') + diff.toFixed(2);
           list.push({
             kind,
             from: fromCode,
             fromName,
             to: toCode,
             toName,
-            description: `|${bench.code} − ${f.code} 溢价差| ${cmp} ${threshold}%（${tag}）：可考虑卖 ${fromCode} 买 ${toCode}`
+            description: `${bench.code}(H) − ${f.code}(L) 溢价差 ${diffStr}% ${cmp} ${threshold}%（${tag}，${arrow}）：可考虑卖 ${fromCode} 买 ${toCode}`
           });
         });
     });
@@ -970,7 +982,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <div className="flex items-center justify-between">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">基准 ETF（可多选）</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">高溢价组 H（可多选）</div>
                 <div className="text-xs text-slate-500">已选 {(prefs.benchmarkCodes || []).length} / 持仓 {exchangeFunds.length}</div>
               </div>
               {exchangeFunds.length === 0 ? (
@@ -999,9 +1011,9 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                   })}
                 </div>
               )}
-              {(prefs.benchmarkCodes || []).length > 1 ? (
-                <div className="mt-2 text-[11px] text-slate-400">多基准采用「全配对」：每只基准 × 每只候选都会生成一条 diff 信号。</div>
-              ) : null}
+              <div className="mt-2 text-[11px] text-slate-500">
+                把「溢价常年更高」的 ETF（如 513100）放这里。每对 (h ∈ H, l ∈ L) 都会算一遍 diff = premium(h) − premium(l)；diff &lt; {prefs.intraSellLowerPct}% 卖 L 买 H，diff &gt; {prefs.intraBuyOtherPct}% 卖 H 买 L。
+              </div>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">套利目标</div>
@@ -1020,7 +1032,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">候选基金（场内）</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">低溢价组 L（场内）</div>
               </div>
               <div className="text-xs text-slate-500">已选 {prefs.enabledCodes.length} / 候选 {fundsWithPremium.filter((f) => !f.hasPosition).length}</div>
             </div>
@@ -1070,7 +1082,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">规则 A</div>
             <div className="mt-1 text-slate-700">
-              |基准溢价 − 候选溢价| ≤
+              H溢价 − L溢价 {'<'}
               <input
                 type="number"
                 step="0.5"
@@ -1078,13 +1090,13 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                 onChange={(e) => setPrefValue('intraSellLowerPct', e.target.value)}
                 className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
               />
-              %（溢价接近）→ 卖溢价高的，买溢价低的
+              %（差价收窄，低→高）→ 卖 L 买 H
             </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">规则 B</div>
             <div className="mt-1 text-slate-700">
-              |基准溢价 − 候选溢价| ≥
+              H溢价 − L溢价 {'>'}
               <input
                 type="number"
                 step="0.5"
@@ -1092,7 +1104,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                 onChange={(e) => setPrefValue('intraBuyOtherPct', e.target.value)}
                 className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
               />
-              %（溢价偏离）→ 卖溢价高的，买溢价低的
+              %（差价扩大，高→低）→ 卖 H 买 L
             </div>
           </div>
         </div>
