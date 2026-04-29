@@ -788,8 +788,9 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
 
   // ---- Render helpers ----
   function renderPortfolioOverview() {
-    const profitTone = portfolio.totalProfit > 0 ? 'emerald' : portfolio.totalProfit < 0 ? 'red' : 'slate';
-    const todayTone = portfolio.todayProfit > 0 ? 'emerald' : portfolio.todayProfit < 0 ? 'red' : 'slate';
+    // 配色约定（中国 A 股常见）：涨=红，跌=绿
+    const profitTone = portfolio.totalProfit > 0 ? 'red' : portfolio.totalProfit < 0 ? 'emerald' : 'slate';
+    const todayTone = portfolio.todayProfit > 0 ? 'red' : portfolio.todayProfit < 0 ? 'emerald' : 'slate';
     const navIncomplete = portfolio.assetCount > 0 && portfolio.pricedCount < portfolio.assetCount;
     const navBadge = (() => {
       if (portfolio.navDateCoverage === 'full') {
