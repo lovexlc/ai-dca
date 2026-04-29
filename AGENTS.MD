@@ -45,3 +45,14 @@ When the user gives a new requirement, follow this sequence by default:
 - Expected variables: `GITHUB_TOKEN`, `GH_TOKEN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
 - Login shells source `/home/lovexl/ai-dca-stragety/.env.local` via `~/.local/bin/env`, so agents can use these variables directly in new shell sessions.
 - Do not copy raw secret values into tracked files or commit them to the repository.
+
+## Worker Deploy Guardrail (必读)
+
+- 任何对 `workers/*` 的代码改动必须同时完成：`git commit` → `git push origin main` → `npx wrangler deploy --config workers/<name>/wrangler.toml`。
+- `apply_patch` 成功 ≠ 已 commit；已 commit ≠ 已 push；已 push ≠ 已部署；已部署 ≠ 用户能搜到（raw 与 CDN 有缓存）。
+- 回报时必须附上三件证据：
+  - 本地路径 + 行号
+  - GitHub commit SHA + 以 SHA 固定的 raw 链接（不要用 `main` 分支 raw，GitHub CDN 会缓存）
+  - Worker `Current Version ID`
+- 用户说“搜不到 / 未生效”时，先复核事实再回话：`git diff HEAD origin/main -- <file>` / `git log origin/main --oneline -- <file>` / `npx wrangler deployments list --config workers/<name>/wrangler.toml`。
+- 详细复盘与验证清单：`docs/ops/worker-deploy-postmortem.md`。
