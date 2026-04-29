@@ -1,4 +1,6 @@
-export const DEFAULT_OCR_MODEL = 'gemini-3-flash-preview';
+// 切换到 Cloudflare Workers AI 后默认走 Llama 3.2 Vision Instruct，支持 messages
+// 格式 + 中文。可通过 wrangler.toml 中的 OCR_MODEL 环境变量改成其它视觉模型。
+export const DEFAULT_OCR_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 export const PROMPT_VERSION = 'fund-switch-form-v2';
 export const HOLDINGS_PROMPT_VERSION = 'fund-holdings-form-v2';
 

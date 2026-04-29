@@ -1,4 +1,3 @@
-import { connect } from 'cloudflare:sockets';
 import { deriveFundSwitchComparison, sanitizeFundSwitchComparison, sanitizeFundSwitchRows } from '../../../src/app/fundSwitchCore.js';
 import {
   getHoldingRowErrors,
@@ -863,6 +862,8 @@ function parseModelResponse(payload) {
   }
 
   const candidates = [
+    payload?.response,
+    payload?.description,
     payload?.choices?.[0]?.message?.parsed,
     payload?.choices?.[0]?.message?.content,
     payload?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments,
@@ -906,275 +907,52 @@ function parseFallbackComparison(rawValue) {
   }
 }
 
-function encodeBase64(arrayBuffer) {
-  const bytes = new Uint8Array(arrayBuffer);
-  let binary = '';
-  const chunkSize = 0x8000;
-
-  for (let index = 0; index < bytes.length; index += chunkSize) {
-    const chunk = bytes.subarray(index, index + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-
-  return btoa(binary);
-}
-
-function isIpv4Hostname(hostname = '') {
-  return /^(?:\d{1,3}\.){3}\d{1,3}$/.test(String(hostname).trim());
-}
-
-function concatUint8Arrays(chunks) {
-  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-  const merged = new Uint8Array(totalLength);
-  let offset = 0;
-
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-
-  return merged;
-}
-
-function findHeaderBoundary(bytes) {
-  for (let index = 0; index <= bytes.length - 4; index += 1) {
-    if (bytes[index] === 13 && bytes[index + 1] === 10 && bytes[index + 2] === 13 && bytes[index + 3] === 10) {
-      return index;
-    }
-  }
-
-  return -1;
-}
-
-function decodeChunkedBody(bytes) {
-  const chunks = [];
-  let offset = 0;
-
-  while (offset < bytes.length) {
-    const lineEnd = bytes.indexOf(13, offset);
-    if (lineEnd < 0 || bytes[lineEnd + 1] !== 10) {
-      throw new Error('上游返回了无法解析的 chunked 响应。');
-    }
-
-    const sizeText = new TextDecoder().decode(bytes.slice(offset, lineEnd)).split(';', 1)[0].trim();
-    const size = Number.parseInt(sizeText, 16);
-    if (!Number.isFinite(size)) {
-      throw new Error('上游返回了非法 chunk size。');
-    }
-
-    offset = lineEnd + 2;
-    if (size === 0) {
-      break;
-    }
-
-    const chunkEnd = offset + size;
-    chunks.push(bytes.slice(offset, chunkEnd));
-    offset = chunkEnd + 2;
-  }
-
-  return concatUint8Arrays(chunks);
-}
-
-async function readSocketResponse(socket) {
-  const reader = socket.readable.getReader();
-  const chunks = [];
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    if (value?.byteLength) {
-      chunks.push(value);
-    }
-  }
-
-  return concatUint8Arrays(chunks);
-}
-
-function parseHttpResponse(bytes) {
-  const boundary = findHeaderBoundary(bytes);
-  if (boundary < 0) {
-    throw new Error('上游响应缺少 HTTP 头部分隔符。');
-  }
-
-  const decoder = new TextDecoder();
-  const headerText = decoder.decode(bytes.slice(0, boundary));
-  const lines = headerText.split('\r\n');
-  const statusLine = lines.shift() || '';
-  const statusMatch = statusLine.match(/^HTTP\/\d+(?:\.\d+)?\s+(\d{3})/i);
-  const status = Number(statusMatch?.[1] || 0);
-  const headers = new Map();
-
-  for (const line of lines) {
-    const separator = line.indexOf(':');
-    if (separator < 0) {
-      continue;
-    }
-
-    const key = line.slice(0, separator).trim().toLowerCase();
-    const value = line.slice(separator + 1).trim();
-    headers.set(key, value);
-  }
-
-  let bodyBytes = bytes.slice(boundary + 4);
-  const transferEncoding = headers.get('transfer-encoding') || '';
-  if (transferEncoding.toLowerCase().includes('chunked')) {
-    bodyBytes = decodeChunkedBody(bodyBytes);
-  } else {
-    const contentLength = Number.parseInt(headers.get('content-length') || '', 10);
-    if (Number.isFinite(contentLength) && contentLength >= 0) {
-      bodyBytes = bodyBytes.slice(0, contentLength);
-    }
-  }
-
-  return {
-    status,
-    headers,
-    bodyText: decoder.decode(bodyBytes)
-  };
-}
-
-async function postJsonOverSocket(url, body, apiKey) {
-  const requestBody = JSON.stringify(body);
-  const port = Number(url.port || (url.protocol === 'https:' ? 443 : 80));
-  const socket = connect({
-    hostname: url.hostname,
-    port
-  }, {
-    secureTransport: url.protocol === 'https:' ? 'on' : 'off',
-    allowHalfOpen: true
-  });
-
-  const writer = socket.writable.getWriter();
-  const encoder = new TextEncoder();
-  const path = `${url.pathname}${url.search}`;
-  const hostHeader = url.port ? `${url.hostname}:${url.port}` : url.hostname;
-  const requestText = [
-    `POST ${path || '/'} HTTP/1.1`,
-    `Host: ${hostHeader}`,
-    'Content-Type: application/json',
-    'Accept: application/json',
-    `Authorization: Bearer ${apiKey}`,
-    `Content-Length: ${encoder.encode(requestBody).byteLength}`,
-    'Connection: close',
-    '',
-    requestBody
-  ].join('\r\n');
-
-  try {
-    await writer.write(encoder.encode(requestText));
-    writer.releaseLock();
-    const responseBytes = await readSocketResponse(socket);
-    return parseHttpResponse(responseBytes);
-  } finally {
-    await socket.close().catch(() => {});
-  }
-}
-
-async function postJsonOverFetch(url, body, apiKey) {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/json',
-      authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify(body)
-  });
-
-  return {
-    status: response.status,
-    bodyText: await response.text()
-  };
-}
-
 async function callUpstreamModel(file, env, promptConfig = FUND_SWITCH_OCR_PROMPT) {
-  const baseUrl = String(env.OCR_UPSTREAM_BASE_URL || '').trim().replace(/\/+$/, '');
-  const apiKey = String(env.OCR_UPSTREAM_API_KEY || '').trim();
-  const model = env.OCR_UPSTREAM_MODEL || DEFAULT_OCR_MODEL;
-
-  if (!baseUrl) {
-    throw new Error('缺少环境变量 OCR_UPSTREAM_BASE_URL');
+  if (!env?.AI || typeof env.AI.run !== 'function') {
+    throw new Error('未配置 Workers AI 绑定（[ai] binding = "AI"），无法执行 OCR。');
   }
 
-  if (!apiKey) {
-    throw new Error('缺少环境变量 OCR_UPSTREAM_API_KEY');
-  }
-
+  const model = String(env.OCR_MODEL || DEFAULT_OCR_MODEL).trim();
   const arrayBuffer = await file.arrayBuffer();
-  const mimeType = file.type || 'image/jpeg';
-  const dataUrl = `data:${mimeType};base64,${encodeBase64(arrayBuffer)}`;
-  const body = {
-    model,
+  const imageBytes = [...new Uint8Array(arrayBuffer)];
+  const maxTokens = Math.max(256, parseIntegerEnv(env.OCR_MAX_TOKENS, 1500));
+
+  const input = {
     messages: [
-      {
-        role: 'system',
-        content: promptConfig.systemPrompt
-      },
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: promptConfig.buildUserPrompt(file.name || 'uploaded-image') },
-          {
-            type: 'image_url',
-            image_url: {
-              url: dataUrl
-            }
-          }
-        ]
-      }
+      { role: 'system', content: promptConfig.systemPrompt },
+      { role: 'user', content: promptConfig.buildUserPrompt(file.name || 'uploaded-image') }
     ],
-    temperature: 0.1,
-    max_tokens: 1200,
-    max_completion_tokens: 1200
+    image: imageBytes,
+    max_tokens: maxTokens,
+    temperature: 0.1
   };
 
-  const endpoint = new URL(`${baseUrl}/chat/completions`);
-  const shouldPreferSocketTransport = endpoint.protocol === 'http:' && isIpv4Hostname(endpoint.hostname);
-  let transportResponse;
-
-  if (shouldPreferSocketTransport) {
-    try {
-      transportResponse = await postJsonOverSocket(endpoint, body, apiKey);
-    } catch (_socketError) {
-      transportResponse = await postJsonOverFetch(endpoint, body, apiKey);
-    }
-  } else {
-    transportResponse = await postJsonOverFetch(endpoint, body, apiKey);
-  }
-
-  const rawText = transportResponse.bodyText;
-  let payload = {};
-
-  if (rawText) {
-    try {
-      payload = JSON.parse(rawText);
-    } catch (_error) {
-      if (transportResponse.status >= 200 && transportResponse.status < 300) {
-        throw new Error(`上游模型返回了非 JSON 响应：${truncateText(rawText)}`);
-      }
-    }
-  }
-
-  if (transportResponse.status < 200 || transportResponse.status >= 300) {
-    const message = payload?.error?.message || rawText || `上游模型请求失败: HTTP ${transportResponse.status}`;
+  let payload;
+  try {
+    payload = await env.AI.run(model, input);
+  } catch (error) {
+    const message = error instanceof Error && error.message ? error.message : 'Workers AI 调用失败。';
+    const status = Number(error?.status ?? error?.statusCode ?? error?.response?.status ?? 0);
     throw createUpstreamError(message, {
-      status: transportResponse.status,
-      code: payload?.error?.code || payload?.error?.type
+      status: Number.isFinite(status) && status > 0 ? status : 502,
+      code: error?.code || error?.name
     });
   }
 
-  return {
-    model,
-    payload
-  };
+  // Workers AI 根据模型不同，返回可能是 { response: "..." } 、 { description: "..." } 、
+  // 纯字符串，或其它 OpenAI 兼容形式。全部交给 parseModelResponse 统一处理。
+  if (typeof payload === 'string') {
+    payload = { response: payload };
+  } else if (payload == null) {
+    throw new Error('Workers AI 返回了空响应。');
+  }
+
+  return { model, payload };
 }
 
 async function callUpstreamModelWithRetry(file, env, promptConfig = FUND_SWITCH_OCR_PROMPT) {
-  const maxRetries = Math.max(0, parseIntegerEnv(env.OCR_UPSTREAM_RETRY_ATTEMPTS, 1));
-  const retryDelayMs = Math.max(0, parseIntegerEnv(env.OCR_UPSTREAM_RETRY_DELAY_MS, 800));
+  const maxRetries = Math.max(0, parseIntegerEnv(env.OCR_RETRY_ATTEMPTS, 1));
+  const retryDelayMs = Math.max(0, parseIntegerEnv(env.OCR_RETRY_DELAY_MS, 800));
   let lastError;
 
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
@@ -1195,12 +973,6 @@ async function callUpstreamModelWithRetry(file, env, promptConfig = FUND_SWITCH_
 }
 
 async function handleOcr(request, env) {
-  if (!env.OCR_UPSTREAM_API_KEY) {
-    return jsonResponse({
-      error: '缺少 Cloudflare Workers Secret: OCR_UPSTREAM_API_KEY'
-    }, 500);
-  }
-
   const formData = await request.formData();
   const file = formData.get('file');
   if (!file || typeof file.arrayBuffer !== 'function') {
@@ -1229,7 +1001,7 @@ async function handleOcr(request, env) {
 
   return jsonResponse({
     ok: true,
-    provider: 'cloudflare-worker-openai-compatible',
+    provider: 'cloudflare-workers-ai',
     model,
     promptVersion: FUND_SWITCH_OCR_PROMPT.promptVersion,
     durationMs: Date.now() - startedAt,
@@ -1243,12 +1015,6 @@ async function handleOcr(request, env) {
 }
 
 async function handleHoldingsOcr(request, env) {
-  if (!env.OCR_UPSTREAM_API_KEY) {
-    return jsonResponse({
-      error: '缺少 Cloudflare Workers Secret: OCR_UPSTREAM_API_KEY'
-    }, 500);
-  }
-
   const formData = await request.formData();
   const file = formData.get('file');
   if (!file || typeof file.arrayBuffer !== 'function') {
@@ -1275,7 +1041,7 @@ async function handleHoldingsOcr(request, env) {
 
   return jsonResponse({
     ok: true,
-    provider: 'cloudflare-worker-openai-compatible',
+    provider: 'cloudflare-workers-ai',
     model,
     promptVersion: HOLDINGS_OCR_PROMPT.promptVersion,
     durationMs: Date.now() - startedAt,

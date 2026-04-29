@@ -1,26 +1,30 @@
 name = "ai-dca-ocr-proxy"
 main = "src/index.js"
 compatibility_date = "2026-03-26"
-# Workers Paid：启用 nodejs_compat 便于后续替换手写 base64/crypto 实现。
+# Workers AI 客户端依赖 Node 兼容层。
 compatibility_flags = ["nodejs_compat"]
 
-# 单条 route 即可（之前重复声明两次没有意义，已合并）。
+# 单条 route 即可。
 [[routes]]
 pattern = "tools.freebacktrack.tech/api/*"
 zone_name = "freebacktrack.tech"
 
-# Smart Placement：OCR 上游在境外（142.93.159.165 DigitalOcean），让 worker
-# 自动调度到靠近上游的位置，明显降低 OCR 链路 RTT。Workers Paid 免费功能。
+# Cloudflare Workers AI 绑定。代码里通过 env.AI.run(model, input) 调用。
+# 计费：Workers Paid 套餐每天包含 10,000 neurons 免费额度，超出按
+# $0.011 / 1k neurons 计算。Llama 3.2 11B Vision 单张图大约 30~80 neurons。
+[ai]
+binding = "AI"
+
+# Smart Placement：Workers AI 走的是 Cloudflare 内部网络，对 placement 不敏感，
+# 但同一 worker 还会回源东方财富 / 净值接口（境外），保留 smart 让整体调度更优。
 [placement]
 mode = "smart"
 
-# OCR 走 OpenAI 兼容协议 + 大图像；上游回包慢的时候原本 30s 默认上限会被截断。
-# Paid 套餐允许拉到 5 分钟。
+# OCR 输入图片可能较大、Workers AI 推理也可能较长。Paid 套餐允许拉到 5 分钟。
 [limits]
 cpu_ms = 300000
 
-# Workers Logs + traces 全部打开（Paid 套餐内置）。原来 enabled=false 但子项
-# enabled=true 是矛盾配置，wrangler 会忽略 logs/traces 子项。
+# Workers Logs + traces 全部打开（Paid 套餐内置）。
 [observability]
 enabled = true
 head_sampling_rate = 1
@@ -37,5 +41,7 @@ head_sampling_rate = 1
 persist = true
 
 [vars]
-OCR_UPSTREAM_BASE_URL = "http://142.93.159.165:2095/v1"
-OCR_UPSTREAM_MODEL = "gemini-3-flash-preview"
+# OCR 视觉模型，可换成 @cf/llava-hf/llava-1.5-7b-hf（更便宜更小）等。
+OCR_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct"
+# 单次 OCR 推理最多生成的 token 数。
+OCR_MAX_TOKENS = "1500"
