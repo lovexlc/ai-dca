@@ -1143,8 +1143,9 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       );
     }
 
-    const totalTone = portfolio.totalProfit > 0 ? 'text-emerald-600' : portfolio.totalProfit < 0 ? 'text-red-500' : 'text-slate-700';
-    const totalTodayTone = portfolio.todayProfit > 0 ? 'text-emerald-600' : portfolio.todayProfit < 0 ? 'text-red-500' : 'text-slate-700';
+    // 配色约定（中国 A 股常见）：涨=红，跌=绿
+    const totalTone = portfolio.totalProfit > 0 ? 'text-red-600' : portfolio.totalProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
+    const totalTodayTone = portfolio.todayProfit > 0 ? 'text-red-600' : portfolio.todayProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
 
     return (
       <div className="overflow-x-auto">
@@ -1168,8 +1169,9 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             {filteredAggs.map((agg) => {
               const kindTone = KIND_PILL_TONES[agg.kind] || 'slate';
               const kindLabel = KIND_LABELS[agg.kind] || '未知';
-              const profitClass = agg.totalProfit > 0 ? 'text-emerald-600' : agg.totalProfit < 0 ? 'text-red-500' : 'text-slate-700';
-              const todayClass = agg.todayProfit > 0 ? 'text-emerald-600' : agg.todayProfit < 0 ? 'text-red-500' : 'text-slate-700';
+              // 涨=红，跌=绿
+              const profitClass = agg.totalProfit > 0 ? 'text-red-600' : agg.totalProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
+              const todayClass = agg.todayProfit > 0 ? 'text-red-600' : agg.todayProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
               const isSelected = selectedCode === agg.code;
               return (
                 <tr
@@ -1439,18 +1441,18 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           const advantageTone = !valid
             ? 'text-slate-400'
             : metrics.advantage > 0
-              ? 'text-emerald-600'
-              : metrics.advantage < 0 ? 'text-red-500' : 'text-slate-700';
+              ? 'text-red-600'
+              : metrics.advantage < 0 ? 'text-emerald-600' : 'text-slate-700';
           const chainTone = !valid
             ? 'text-slate-400'
             : metrics.chainReturn > 0
-              ? 'text-emerald-600'
-              : metrics.chainReturn < 0 ? 'text-red-500' : 'text-slate-700';
+              ? 'text-red-600'
+              : metrics.chainReturn < 0 ? 'text-emerald-600' : 'text-slate-700';
           const baselineTone = !valid
             ? 'text-slate-400'
             : metrics.baselineReturn > 0
-              ? 'text-emerald-600'
-              : metrics.baselineReturn < 0 ? 'text-red-500' : 'text-slate-700';
+              ? 'text-red-600'
+              : metrics.baselineReturn < 0 ? 'text-emerald-600' : 'text-slate-700';
           const isExpanded = expandedChains.has(chain.id);
           const legCount = (chain.legs || []).length;
           const pathCodes = (chain.legs || []).map((leg) => {
@@ -1536,7 +1538,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                   const seg = metrics.segments && metrics.segments[legIndex] ? metrics.segments[legIndex] : null;
                   const segTone = !seg || !seg.valid
                     ? 'text-slate-400'
-                    : seg.segReturn > 0 ? 'text-emerald-600' : seg.segReturn < 0 ? 'text-red-500' : 'text-slate-700';
+                    : seg.segReturn > 0 ? 'text-red-600' : seg.segReturn < 0 ? 'text-emerald-600' : 'text-slate-700';
                   const buyButtonLabel = buyTx ? (
                     <span className="inline-flex items-center gap-2">
                       <span className="font-mono font-semibold text-slate-800">{buyTx.code}</span>
@@ -1655,7 +1657,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <div>
                         <div className="text-[11px] text-slate-500">链路实际盈亏</div>
-                        <div className={cx('mt-0.5 text-sm font-semibold tabular-nums', metrics.chainProfit > 0 ? 'text-emerald-600' : metrics.chainProfit < 0 ? 'text-red-500' : 'text-slate-700')}>
+                        <div className={cx('mt-0.5 text-sm font-semibold tabular-nums', metrics.chainProfit > 0 ? 'text-red-600' : metrics.chainProfit < 0 ? 'text-emerald-600' : 'text-slate-700')}>
                           {formatSignedCurrency(metrics.chainProfit)}
                         </div>
                         <div className="mt-0.5 text-[11px] tabular-nums text-slate-400">
@@ -1664,7 +1666,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                       </div>
                       <div>
                         <div className="text-[11px] text-slate-500">未切换盈亏</div>
-                        <div className={cx('mt-0.5 text-sm font-semibold tabular-nums', metrics.baselineProfit > 0 ? 'text-emerald-600' : metrics.baselineProfit < 0 ? 'text-red-500' : 'text-slate-700')}>
+                        <div className={cx('mt-0.5 text-sm font-semibold tabular-nums', metrics.baselineProfit > 0 ? 'text-red-600' : metrics.baselineProfit < 0 ? 'text-emerald-600' : 'text-slate-700')}>
                           {formatSignedCurrency(metrics.baselineProfit)}
                         </div>
                         <div className="mt-0.5 text-[11px] tabular-nums text-slate-400">
@@ -1673,7 +1675,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                       </div>
                       <div>
                         <div className="text-[11px] text-slate-500">切换优势（元）</div>
-                        <div className={cx('mt-0.5 text-sm font-semibold tabular-nums', metrics.advantageProfit > 0 ? 'text-emerald-600' : metrics.advantageProfit < 0 ? 'text-red-500' : 'text-slate-700')}>
+                        <div className={cx('mt-0.5 text-sm font-semibold tabular-nums', metrics.advantageProfit > 0 ? 'text-red-600' : metrics.advantageProfit < 0 ? 'text-emerald-600' : 'text-slate-700')}>
                           {formatSignedCurrency(metrics.advantageProfit)}
                         </div>
                         <div className="mt-0.5 text-[11px] tabular-nums text-slate-400">链路盈亏 − 未切换盈亏</div>
@@ -1702,8 +1704,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       );
     }
     const agg = selectedAggregate;
-    const profitTone = agg.totalProfit > 0 ? 'text-emerald-600' : agg.totalProfit < 0 ? 'text-red-500' : 'text-slate-700';
-    const todayTone = agg.todayProfit > 0 ? 'text-emerald-600' : agg.todayProfit < 0 ? 'text-red-500' : 'text-slate-700';
+    const profitTone = agg.totalProfit > 0 ? 'text-red-600' : agg.totalProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
+    const todayTone = agg.todayProfit > 0 ? 'text-red-600' : agg.todayProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
     return (
       <div className="space-y-4">
         <div>
