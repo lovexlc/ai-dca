@@ -184,20 +184,15 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
 
   // ---- NAV auto-refresh on mount ----
   useEffect(() => {
+    // 进入页面时无条件触发一次净值刷新（包含所有持仓代码）。
+    // autoNavTriggeredRef 保证整个 mount 周期内只跑一次；手动刷新走 handleManualRefresh，独立于此。
+    if (autoNavTriggeredRef.current) return;
     const codes = getLedgerCodeList(transactions);
     if (!codes.length) return;
-    const attempted = navAttemptedCodesRef.current;
-    const missing = codes.filter((code) => {
-      if (attempted.has(code)) return false;
-      const snap = snapshotsByCode?.[code];
-      const nav = Number(snap?.latestNav) || 0;
-      return !(nav > 0);
-    });
-    if (!missing.length) return;
-    for (const code of missing) attempted.add(code);
     autoNavTriggeredRef.current = true;
-    void refreshNavForCodes(missing, { silent: true });
-  }, [transactions, snapshotsByCode]);
+    for (const code of codes) navAttemptedCodesRef.current.add(code);
+    void refreshNavForCodes(codes, { silent: true });
+  }, [transactions]);
 
   useEffect(() => {
     if (!importMenuOpen) return undefined;
