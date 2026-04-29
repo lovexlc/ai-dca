@@ -915,7 +915,9 @@ async function callUpstreamModel(file, env, promptConfig = FUND_SWITCH_OCR_PROMP
   const model = String(env.OCR_MODEL || DEFAULT_OCR_MODEL).trim();
   const arrayBuffer = await file.arrayBuffer();
   const imageBytes = [...new Uint8Array(arrayBuffer)];
-  const maxTokens = Math.max(256, parseIntegerEnv(env.OCR_MAX_TOKENS, 1500));
+  // OCR 输出是结构化 JSON（数组 + 多列字段），1500 token 容易被截断。
+  // 默认放到 4096；可通过 wrangler.toml 的 OCR_MAX_TOKENS 覆盖。
+  const maxTokens = Math.max(256, parseIntegerEnv(env.OCR_MAX_TOKENS, 4096));
 
   const input = {
     messages: [
@@ -933,8 +935,13 @@ async function callUpstreamModel(file, env, promptConfig = FUND_SWITCH_OCR_PROMP
     payload = await env.AI.run(model, input);
     try {
       const keys = payload && typeof payload === 'object' ? Object.keys(payload).slice(0, 12) : [];
-      const sample = typeof payload?.response === 'string' ? String(payload.response).slice(0, 240) : (typeof payload?.description === 'string' ? String(payload.description).slice(0, 240) : '');
-      console.log('[ocr] workers-ai payload shape', JSON.stringify({ keys, sample }));
+      const choice = Array.isArray(payload?.choices) ? payload.choices[0] : null;
+      const contentRaw = choice?.message?.content ?? choice?.text ?? payload?.response ?? payload?.description ?? '';
+      const content = typeof contentRaw === 'string' ? contentRaw : JSON.stringify(contentRaw);
+      const sample = String(content || '').slice(0, 320);
+      const finishReason = choice?.finish_reason || choice?.stop_reason || null;
+      const usage = payload?.usage || null;
+      console.log('[ocr] workers-ai payload shape', JSON.stringify({ keys, finishReason, usage, contentLen: String(content || '').length, sample }));
     } catch (_logErr) {}
   } catch (error) {
     const message = error instanceof Error && error.message ? error.message : 'Workers AI 调用失败。';
@@ -953,8 +960,13 @@ async function callUpstreamModel(file, env, promptConfig = FUND_SWITCH_OCR_PROMP
         payload = await env.AI.run(model, input);
         try {
           const keys = payload && typeof payload === 'object' ? Object.keys(payload).slice(0, 12) : [];
-          const sample = typeof payload?.response === 'string' ? String(payload.response).slice(0, 240) : (typeof payload?.description === 'string' ? String(payload.description).slice(0, 240) : '');
-          console.log('[ocr] workers-ai payload shape (retry)', JSON.stringify({ keys, sample }));
+          const choice = Array.isArray(payload?.choices) ? payload.choices[0] : null;
+          const contentRaw = choice?.message?.content ?? choice?.text ?? payload?.response ?? payload?.description ?? '';
+          const content = typeof contentRaw === 'string' ? contentRaw : JSON.stringify(contentRaw);
+          const sample = String(content || '').slice(0, 320);
+          const finishReason = choice?.finish_reason || choice?.stop_reason || null;
+          const usage = payload?.usage || null;
+          console.log('[ocr] workers-ai payload shape (retry)', JSON.stringify({ keys, finishReason, usage, contentLen: String(content || '').length, sample }));
         } catch (_logErr) {}
       } catch (retryError) {
         const retryMsg = retryError instanceof Error && retryError.message ? retryError.message : 'Workers AI 调用失败（同意后重试仍失败）。';

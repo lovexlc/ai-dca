@@ -44,4 +44,8 @@ persist = true
 # OCR 视觉模型，可换成 @cf/llava-hf/llava-1.5-7b-hf（更便宜更小）等。
 OCR_MODEL = "@cf/moonshotai/kimi-k2.6"
 # 单次 OCR 推理最多生成的 token 数。
-OCR_MAX_TOKENS = "1500"
+# 结构化 JSON 输出（多行 rows + 多字段）容易在 1500 内被截断，
+# 表现为 finish_reason="length"、客户端拿到不完整 JSON、Worker 报
+# “没有返回可解析的 JSON 文本”。kimi-k2.6 支持很大的输出窗口，
+# 这里默认放到 4096；如果需要更多行可以再调到 8192。
+OCR_MAX_TOKENS = "4096"
