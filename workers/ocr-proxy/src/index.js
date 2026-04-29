@@ -929,14 +929,47 @@ async function callUpstreamModel(file, env, promptConfig = FUND_SWITCH_OCR_PROMP
 
   let payload;
   try {
+    console.log('[ocr] calling Workers AI', JSON.stringify({ model, msgCount: input?.messages?.length || 0, imageBytes: Array.isArray(input?.image) ? input.image.length : 0, max_tokens: input?.max_tokens }));
     payload = await env.AI.run(model, input);
+    try {
+      const keys = payload && typeof payload === 'object' ? Object.keys(payload).slice(0, 12) : [];
+      const sample = typeof payload?.response === 'string' ? String(payload.response).slice(0, 240) : (typeof payload?.description === 'string' ? String(payload.description).slice(0, 240) : '');
+      console.log('[ocr] workers-ai payload shape', JSON.stringify({ keys, sample }));
+    } catch (_logErr) {}
   } catch (error) {
     const message = error instanceof Error && error.message ? error.message : 'Workers AI 调用失败。';
     const status = Number(error?.status ?? error?.statusCode ?? error?.response?.status ?? 0);
-    throw createUpstreamError(message, {
-      status: Number.isFinite(status) && status > 0 ? status : 502,
-      code: error?.code || error?.name
-    });
+    const normalizedMessage = String(message || '').toLowerCase();
+
+    // 某些模型（如 Llama 3.2 Vision）首次调用需先提交 'agree' 以同意许可与使用政策。
+    // 遇到相关报错（常见包含关键词 'agree' 或代码 5016），先发送一次同意，再重试真实请求。
+    const needsAgree = normalizedMessage.includes('agree') || String(error?.code || '').includes('5016') || String(status) === '5016';
+    if (needsAgree) {
+      try {
+        // 轻量同意请求 —— 使用 messages 形式提交 'agree'
+        await env.AI.run(model, { messages: [{ role: 'user', content: 'agree' }] });
+        // 同意成功后重试真实推理
+        console.log('[ocr] sent agree, retrying real inference');
+        payload = await env.AI.run(model, input);
+        try {
+          const keys = payload && typeof payload === 'object' ? Object.keys(payload).slice(0, 12) : [];
+          const sample = typeof payload?.response === 'string' ? String(payload.response).slice(0, 240) : (typeof payload?.description === 'string' ? String(payload.description).slice(0, 240) : '');
+          console.log('[ocr] workers-ai payload shape (retry)', JSON.stringify({ keys, sample }));
+        } catch (_logErr) {}
+      } catch (retryError) {
+        const retryMsg = retryError instanceof Error && retryError.message ? retryError.message : 'Workers AI 调用失败（同意后重试仍失败）。';
+        const retryStatus = Number(retryError?.status ?? retryError?.statusCode ?? retryError?.response?.status ?? 0);
+        throw createUpstreamError(retryMsg, {
+          status: Number.isFinite(retryStatus) && retryStatus > 0 ? retryStatus : (Number.isFinite(status) && status > 0 ? status : 502),
+          code: retryError?.code || retryError?.name || error?.code || error?.name
+        });
+      }
+    } else {
+      throw createUpstreamError(message, {
+        status: Number.isFinite(status) && status > 0 ? status : 502,
+        code: error?.code || error?.name
+      });
+    }
   }
 
   // Workers AI 根据模型不同，返回可能是 { response: "..." } 、 { description: "..." } 、
@@ -973,6 +1006,7 @@ async function callUpstreamModelWithRetry(file, env, promptConfig = FUND_SWITCH_
 }
 
 async function handleOcr(request, env) {
+  try { console.log('[ocr] handleOcr start'); } catch (_e) {}
   const formData = await request.formData();
   const file = formData.get('file');
   if (!file || typeof file.arrayBuffer !== 'function') {
@@ -990,6 +1024,7 @@ async function handleOcr(request, env) {
   const startedAt = Date.now();
   const fallbackComparison = sanitizeFundSwitchComparison(parseFallbackComparison(formData.get('fallbackComparison')));
   const { model, payload } = await callUpstreamModelWithRetry(file, env, FUND_SWITCH_OCR_PROMPT);
+  try { console.log('[ocr] handleOcr got payload'); } catch (_e) {}
   const extracted = parseModelResponse(payload);
   const rowResult = sanitizeRows(extracted.rows || []);
   const rows = rowResult.rows;
@@ -1015,6 +1050,7 @@ async function handleOcr(request, env) {
 }
 
 async function handleHoldingsOcr(request, env) {
+  try { console.log('[ocr] handleHoldingsOcr start'); } catch (_e) {}
   const formData = await request.formData();
   const file = formData.get('file');
   if (!file || typeof file.arrayBuffer !== 'function') {
@@ -1031,6 +1067,7 @@ async function handleHoldingsOcr(request, env) {
 
   const startedAt = Date.now();
   const { model, payload } = await callUpstreamModelWithRetry(file, env, HOLDINGS_OCR_PROMPT);
+  try { console.log('[ocr] handleHoldingsOcr got payload'); } catch (_e) {}
   const extracted = parseModelResponse(payload);
   const rowResult = await sanitizeHoldingsRows(extracted.rows || []);
   const rows = rowResult.rows;

@@ -42,6 +42,6 @@ persist = true
 
 [vars]
 # OCR 视觉模型，可换成 @cf/llava-hf/llava-1.5-7b-hf（更便宜更小）等。
-OCR_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct"
+OCR_MODEL = "@cf/moonshotai/kimi-k2.6"
 # 单次 OCR 推理最多生成的 token 数。
 OCR_MAX_TOKENS = "1500"
