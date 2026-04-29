@@ -2,10 +2,10 @@
   "dataset": "etf_latest_nav_eastmoney",
   "code": "513110",
   "name": "华泰柏瑞纳斯达克100ETF(QDII)",
-  "latestNav": 2.1511,
-  "latestNavDate": "2026-04-24",
-  "previousNav": 2.1097,
-  "previousNavDate": "2026-04-23",
+  "latestNav": 2.1482,
+  "latestNavDate": "2026-04-27",
+  "previousNav": 2.1511,
+  "previousNavDate": "2026-04-24",
   "source": "eastmoney:f10/lsjz",
-  "generatedAt": "2026-04-28T06:04:21.982Z"
+  "generatedAt": "2026-04-29T09:36:03.484Z"
 }
