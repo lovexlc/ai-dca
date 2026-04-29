@@ -447,6 +447,21 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     });
   }, [exchangeFunds]);
 
+  // 单一数据源：基准 ETF 下拉框只能从「持仓的场内 ETF」里选，所以 prefs.benchmarkCode
+  // 必须落在 exchangeFunds 之内。否则 <select value=...> 在浏览器里会静默回落显示
+  // 第一项（不会触发 onChange），但 prefs 里仍是旧值，导致顶部黄条/「基准:」标题/worker
+  // 卡片继续按旧 code 渲染（譬如卖掉 513100 后下拉显示 159632 但其它地方仍写 513100）。
+  // 这里在 exchangeFunds 变化后自动把 benchmarkCode 矫正成第一只持仓 ETF。
+  useEffect(() => {
+    if (!exchangeFunds.length) return;
+    const heldCodes = new Set(exchangeFunds.map((f) => f.code));
+    if (heldCodes.has(prefs.benchmarkCode)) return;
+    const fallbackCode = exchangeFunds[0].code;
+    setPrefs((prev) => (
+      prev.benchmarkCode === fallbackCode ? prev : { ...prev, benchmarkCode: fallbackCode }
+    ));
+  }, [exchangeFunds, prefs.benchmarkCode]);
+
   // 拉取所有候选 ETF 的最新单位净值（候选池来自 data/all_nasdq.json，不仅限于持仓）。
   const loadNav = useCallback(async () => {
     setNavState((prev) => ({ ...prev, loading: true, error: '' }));
