@@ -35,6 +35,18 @@ function jsonResponse(payload, status = 200, extraHeaders = {}) {
   });
 }
 
+// 将二进制字节转成 base64 字符串，用于拼接 image_url 的 data URL。
+// Cloudflare Workers 运行时提供全局 btoa；大图不能用 String.fromCharCode(...arr)
+// 一次性展开（可能胆栈溢出），需要分段拼接。
+function bytesToBase64(bytes) {
+  const chunkSize = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 const FUND_SWITCH_OCR_PROMPT = {
   systemPrompt: FUND_SWITCH_SYSTEM_PROMPT,
   buildUserPrompt: buildOcrUserPrompt,
@@ -914,24 +926,45 @@ async function callUpstreamModel(file, env, promptConfig = FUND_SWITCH_OCR_PROMP
 
   const model = String(env.OCR_MODEL || DEFAULT_OCR_MODEL).trim();
   const arrayBuffer = await file.arrayBuffer();
-  const imageBytes = [...new Uint8Array(arrayBuffer)];
+  const imageUint8 = new Uint8Array(arrayBuffer);
   // OCR 输出是结构化 JSON（数组 + 多列字段），1500 token 容易被截断。
   // 默认放到 4096；可通过 wrangler.toml 的 OCR_MAX_TOKENS 覆盖。
   const maxTokens = Math.max(256, parseIntegerEnv(env.OCR_MAX_TOKENS, 4096));
 
+  // 点名是“OpenAI 兑充”调用路径（kimi-k2.6 / llava / GPT-style）：图必须作为 user message
+  // 的 content 数组中的 image_url（base64 data URL）传入，不能用顶层 `image` 字段。
+  // 顶层 `image` 是 Cloudflare 早期 Llama 3.2 Vision 专用的快路径，其他模型会直接
+  // 忽略它 —— 导致 user message 只有文字、模型答“未检测到可识别的交易截图”。
+  const mimeType = (typeof file?.type === 'string' && file.type.startsWith('image/')) ? file.type : 'image/jpeg';
+  const base64Image = bytesToBase64(imageUint8);
+  const dataUrl = `data:${mimeType};base64,${base64Image}`;
+  const userText = promptConfig.buildUserPrompt(file.name || 'uploaded-image');
+
   const input = {
     messages: [
       { role: 'system', content: promptConfig.systemPrompt },
-      { role: 'user', content: promptConfig.buildUserPrompt(file.name || 'uploaded-image') }
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: userText },
+          { type: 'image_url', image_url: { url: dataUrl } }
+        ]
+      }
     ],
-    image: imageBytes,
     max_tokens: maxTokens,
     temperature: 0.1
   };
 
   let payload;
   try {
-    console.log('[ocr] calling Workers AI', JSON.stringify({ model, msgCount: input?.messages?.length || 0, imageBytes: Array.isArray(input?.image) ? input.image.length : 0, max_tokens: input?.max_tokens }));
+    console.log('[ocr] calling Workers AI', JSON.stringify({
+      model,
+      msgCount: input?.messages?.length || 0,
+      mimeType,
+      imageBytes: imageUint8.length,
+      base64Len: base64Image.length,
+      max_tokens: input?.max_tokens
+    }));
     payload = await env.AI.run(model, input);
     try {
       const keys = payload && typeof payload === 'object' ? Object.keys(payload).slice(0, 12) : [];
