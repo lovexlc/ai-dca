@@ -1,7 +1,9 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Bell, CalendarClock, Layers3, ListChecks, Plus, Radar, Repeat, Sparkles, TrendingUp } from 'lucide-react';
+import { ArrowRight, Bell, CalendarClock, Layers3, ListChecks, Plus, Radar, Repeat, Sparkles, Trash2, TrendingUp } from 'lucide-react';
 import { loadNotifyStatus, readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
+import { deletePlan } from '../app/plan.js';
+import { clearDcaState } from '../app/dca.js';
 import { showActionToast } from '../app/toast.js';
 import { Card, Pill, SectionHeading, StatCard, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 import { NewPlanExperience } from './NewPlanExperience.jsx';
@@ -61,7 +63,8 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   const [channelConfigured, setChannelConfigured] = useState(true);
   // 仅读取 clientId：交易计划 tab 不再维护通道配置，只在发送测试通知时引用。配置入口请去《通知》tab。
   const notifyClientId = useMemo(() => readNotifyClientConfig().notifyClientId || '', []);
-  const { previewRows, summary, hasPlans } = useMemo(() => buildTradePlanCenter(), []);
+  const [planRefreshKey, setPlanRefreshKey] = useState(0);
+  const { previewRows, summary, hasPlans } = useMemo(() => buildTradePlanCenter(), [planRefreshKey]);
 
   // 切换到任意子视图：写入对应 hash 以便浏览器后退/前进能在视图间来回。
   // 新建子视图对其他视图来说是 push（保留返回栈）；其他子视图之间互相切换用 replace，避免在二级 tab 间频繁切换时把历史栈撑大。
@@ -156,6 +159,24 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   }, [previewRows, selectedRowId]);
 
   const selectedRow = previewRows.find((row) => row.id === selectedRowId) || previewRows[0] || null;
+
+  function handleDeletePlanRow(row) {
+    if (!row) return;
+    if (row.sourceType === 'dca') {
+      clearDcaState();
+      showActionToast('删除定投计划', 'success');
+    } else if (row.sourceType === 'plan' && row.sourceId) {
+      const removed = deletePlan(row.sourceId);
+      if (!removed) return;
+      showActionToast('删除加仓计划', 'success');
+    } else {
+      return;
+    }
+    if (selectedRowId === row.id) {
+      setSelectedRowId('');
+    }
+    setPlanRefreshKey((value) => value + 1);
+  }
   function buildRowTestPayload(row) {
     const normalizedRuleId = String(row?.ruleId || '').trim() || 'test';
     const normalizedPlanName = String(row?.planName || row?.detailTitle || '交易计划').trim();
@@ -268,6 +289,17 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
                           查看更多
                           <ArrowRight className="h-4 w-4" />
                         </a>
+                        <button
+                          type="button"
+                          className={cx(
+                            secondaryButtonClass,
+                            'border-rose-200 bg-white text-rose-600 shadow-sm hover:border-rose-300 hover:bg-rose-50'
+                          )}
+                          onClick={() => handleDeletePlanRow(row)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          删除
+                        </button>
                       </div>
                     </div>
                     <button className="mt-4 grid w-full gap-4 text-left text-sm text-slate-600 md:grid-cols-2" type="button" onClick={() => setSelectedRowId(row.id)}>

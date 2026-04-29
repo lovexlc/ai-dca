@@ -610,3 +610,19 @@ export function deleteFundSwitchHistoryEntry(entryId = '') {
   const nextEntries = readFundSwitchHistoryStore().filter((entry) => entry.id !== normalizedEntryId);
   persistFundSwitchHistoryStore(nextEntries);
 }
+
+// 删除一份“最近上传”文档，与删除历史分析的语义对齐：
+// 只动文档库，不连带清理历史分析。调用方需自行处理当前打开的 docId。
+export function deleteFundSwitchDocument(docId = '') {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const normalizedDocId = String(docId || '').trim();
+  if (!normalizedDocId) {
+    return;
+  }
+
+  const nextEntries = readFundSwitchDocumentStore().filter((entry) => entry.id !== normalizedDocId);
+  persistFundSwitchDocumentStore(nextEntries);
+}

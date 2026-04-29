@@ -300,3 +300,33 @@ export function setActivePlanId(planId = '') {
   persistPlanStore(nextStore);
   return activePlan;
 }
+
+// 删除一条加仓计划。如果删的是当前激活计划，自动回退到列表中的第一条；为空则清空 activePlanId。
+export function deletePlan(planId = '') {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const normalizedPlanId = String(planId || '').trim();
+  if (!normalizedPlanId) {
+    return false;
+  }
+
+  const store = readPlanStore();
+  const remaining = store.plans.filter((plan) => plan.id !== normalizedPlanId);
+  if (remaining.length === store.plans.length) {
+    return false;
+  }
+
+  const nextActiveId = store.activePlanId === normalizedPlanId
+    ? (remaining[0]?.id || '')
+    : store.activePlanId;
+
+  persistPlanStore({
+    source: PLAN_STORE_SOURCE,
+    version: 1,
+    activePlanId: nextActiveId,
+    plans: remaining
+  });
+  return true;
+}

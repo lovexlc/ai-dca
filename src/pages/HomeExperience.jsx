@@ -5,13 +5,13 @@
 // See docs/home-redesign.md for the layout spec.
 
 import { useEffect, useMemo, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { formatCurrency, formatPercent, readAccumulationState } from '../app/accumulation.js';
 import { normalizeHomeDashboardState, persistHomeDashboardState, readHomeDashboardState } from '../app/homeDashboard.js';
 import { formatMarketCode, formatMarketName } from '../app/marketDisplay.js';
 import { formatPriceAsOf, loadLatestNasdaqPrices, loadNasdaqDailySeries, loadNasdaqMinuteSnapshot } from '../app/nasdaqPrices.js';
 import { readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
-import { readPlanList, readPlanState, setActivePlanId } from '../app/plan.js';
+import { deletePlan, readPlanList, readPlanState, setActivePlanId } from '../app/plan.js';
 import { buildMovingAverageValues, buildNasdaqStrategyPlan, buildPeakDrawdownStrategyPlan, findLatestFiniteValue, mapReferencePrice, resolveNextTriggerLayer } from '../app/strategyEngine.js';
 import { showActionToast } from '../app/toast.js';
 import { Card, Pill, SectionHeading, cx, primaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
@@ -42,7 +42,7 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
 
   const [marketEntries, setMarketEntries] = useState([]);
   const [marketError, setMarketError] = useState('');
-  const [planList] = useState(() => readPlanList());
+  const [planList, setPlanList] = useState(() => readPlanList());
   const [activePlanId, setActivePlanIdState] = useState(() => initialPlanState.id || '');
   const [watchlistCodes, setWatchlistCodes] = useState(dashboardState.watchlistCodes);
   const [selectedCode, setSelectedCode] = useState(() => (initialPlanState.isConfigured ? initialPlanState.symbol : dashboardState.selectedCode));
@@ -374,6 +374,23 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
       setSelectedCode(targetPlan.symbol);
       setWatchlistCodes((current) => (current.includes(targetPlan.symbol) ? current : [...current, targetPlan.symbol]));
     }
+  }
+
+  function handleDeletePlanItem(planId) {
+    const normalizedId = String(planId || '').trim();
+    if (!normalizedId) return;
+    const removed = deletePlan(normalizedId);
+    if (!removed) return;
+    const nextList = readPlanList();
+    setPlanList(nextList);
+    if (activePlanId === normalizedId) {
+      const fallbackId = nextList[0]?.id || '';
+      setActivePlanIdState(fallbackId);
+      if (fallbackId) {
+        setActivePlanId(fallbackId);
+      }
+    }
+    showActionToast('删除加仓计划', 'success');
   }
 
   async function handlePlanTestNotify(plan) {
@@ -771,10 +788,8 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
               {planList.map((plan) => {
                 const isActive = plan.id === activePlanId;
                 return (
-                  <button
+                  <div
                     key={plan.id}
-                    type="button"
-                    onClick={() => handleSelectPlan(plan.id)}
                     className={cx(
                       'flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-left transition-colors',
                       isActive
@@ -782,7 +797,11 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
                         : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
                     )}
                   >
-                    <div className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectPlan(plan.id)}
+                      className="min-w-0 flex-1 text-left"
+                    >
                       <div className="flex items-center gap-2">
                         <span className={cx('truncate text-sm font-medium', isActive ? 'text-slate-900' : 'text-slate-700')}>
                           {plan.name || plan.symbol || '未命名策略'}
@@ -793,8 +812,16 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
                         {plan.symbol ? `标的 ${formatMarketCode(plan.symbol)}` : '未设置标的'}
                         {plan.totalBudget ? ` · 预算 ${formatCurrency(plan.totalBudget)}` : ''}
                       </div>
-                    </div>
-                  </button>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePlanItem(plan.id)}
+                      aria-label="删除该加仓计划"
+                      className="ml-3 inline-flex shrink-0 items-center justify-center rounded-md border border-rose-200 bg-white p-1.5 text-rose-600 transition-colors hover:border-rose-300 hover:bg-rose-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 );
               })}
               <a href={links.accumNew} className={cx(subtleButtonClass, 'mt-2 w-full justify-center text-sm')}>

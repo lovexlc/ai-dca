@@ -14,6 +14,7 @@ import {
   buildFundSwitchSummary,
   createDefaultFundSwitchState,
   createEmptyFundSwitchRow,
+  deleteFundSwitchDocument,
   deleteFundSwitchHistoryEntry,
   deriveFundSwitchComparison,
   persistFundSwitchState,
@@ -696,6 +697,15 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     showActionToast('删除历史分析', 'success');
   }
 
+  function removeDocumentEntry(entryId) {
+    deleteFundSwitchDocument(entryId);
+    refreshDocumentEntries();
+    if (state.docId === entryId) {
+      setState((current) => ({ ...current, docId: '' }));
+    }
+    showActionToast('删除最近上传', 'success');
+  }
+
   const detailsPanel = (
     <div className="space-y-5">
       {confirmError ? (
@@ -1101,6 +1111,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
           entries={documentEntries}
           activeDocId={state.docId}
           onOpen={openDocument}
+          onDelete={removeDocumentEntry}
         />
       </div>
 

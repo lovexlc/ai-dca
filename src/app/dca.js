@@ -207,6 +207,15 @@ export function hasSavedDcaState() {
   return Boolean(window.localStorage.getItem(DCA_KEY));
 }
 
+// 清空定投状态。定投只保存一份，清空后 tradePlans 列表中的 dca 行会自动消失。
+export function clearDcaState() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.removeItem(DCA_KEY);
+}
+
 export function persistDcaState(state, computed = buildDcaProjection(state)) {
   if (typeof window === 'undefined') {
     return;

@@ -287,17 +287,15 @@ export function FundSwitchHistorySection({ entries, activeEntryId, onOpen, onDel
   );
 }
 
-export function DocumentRecordCard({ entry, isActive, onOpen }) {
+export function DocumentRecordCard({ entry, isActive, onOpen, onDelete }) {
   const workflowMeta = getDocumentWorkflowMeta(entry);
 
   return (
-    <button
+    <div
       className={cx(
         'w-full rounded-[24px] border p-4 text-left transition-colors sm:p-5',
         isActive ? 'border-indigo-200 bg-indigo-50/60' : 'border-slate-200 bg-slate-50/80 hover:border-slate-300 hover:bg-white'
       )}
-      type="button"
-      onClick={() => onOpen(entry.id)}
     >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
@@ -324,17 +322,31 @@ export function DocumentRecordCard({ entry, isActive, onOpen }) {
           </p>
         </div>
 
-        <div className="flex shrink-0 items-center">
-          <span className={cx(primaryButtonClass, 'pointer-events-none whitespace-nowrap')}>
+        <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col">
+          <button
+            type="button"
+            className={cx(primaryButtonClass, 'whitespace-nowrap')}
+            onClick={() => onOpen(entry.id)}
+          >
             打开文档
-          </span>
+          </button>
+          {onDelete ? (
+            <button
+              type="button"
+              className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-rose-200 bg-white px-3.5 py-2 text-[13px] font-semibold text-rose-600 transition-colors hover:border-rose-300 hover:bg-rose-50"
+              onClick={() => onDelete(entry.id)}
+            >
+              <Trash2 className="h-4 w-4" />
+              删除
+            </button>
+          ) : null}
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
-export function FundSwitchDocumentSection({ entries, activeDocId, onOpen }) {
+export function FundSwitchDocumentSection({ entries, activeDocId, onOpen, onDelete }) {
   return (
     <Card>
       <SectionHeading eyebrow="最近文档" title="最近上传" />
@@ -347,6 +359,7 @@ export function FundSwitchDocumentSection({ entries, activeDocId, onOpen }) {
               entry={entry}
               isActive={activeDocId === entry.id}
               onOpen={onOpen}
+              onDelete={onDelete}
             />
           ))}
         </div>
