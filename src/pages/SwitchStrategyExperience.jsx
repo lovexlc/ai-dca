@@ -516,28 +516,34 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
   // 单一数据源：基准 ETF 只能从「持仓的场内 ETF」里选，所以 prefs.benchmarkCodes
   // 里所有 code 都必须落在 exchangeFunds 之内。这里在 exchangeFunds 变化后：
-  //   1) 先按原顺序保留仍然持仓的 code；
-  //   2) 再把当前持仓中尚未列入 benchmarkCodes 的 code 追加进去；
-  //   3) 如果最终为空（极端情况），fallback 到第一只持仓 ETF。
-  // 这样新增持仓（例如再买入一只 L 类 ETF）会自动成为基准，而不是只能在初始化
-  // 时挑选一只。修复 bug：以前只过滤、不追加，导致后加的 L 持仓不会进入 L 基准。
+  //   1) 先按原顺序保留仍然持仓且已分类（H/L）的 code；
+  //   2) 再把当前持仓中已分类、但尚未列入 benchmarkCodes 的 code 追加进去；
+  //   3) 如果最终为空（极端情况：暂时没有任何已分类持仓），fallback 到第一只持仓 ETF。
+  // 这样：
+  //   - 新增已分类持仓（例如再买入一只 L 类 ETF）会自动成为基准；
+  //   - 持仓但还没分类的 ETF（premiumClass 没标 H/L，例如 563020）不会被算成基准，
+  //     避免顶部绿条把它统计进 "基准 N 只"，因为没有 class 也无法参与任何规则。
   const benchmarkCodesJoined = (prefs?.benchmarkCodes || []).join(',');
   useEffect(() => {
     if (!exchangeFunds.length) return;
+    const cls = (prefs && prefs.premiumClass) || {};
     const heldOrder = exchangeFunds.map((f) => f.code);
-    const heldCodes = new Set(heldOrder);
+    const heldClassified = heldOrder.filter((code) => cls[code] === 'H' || cls[code] === 'L');
+    const heldClassifiedSet = new Set(heldClassified);
     setPrefs((prev) => {
       const before = Array.isArray(prev.benchmarkCodes) ? prev.benchmarkCodes : [];
-      const kept = before.filter((code) => heldCodes.has(code));
+      const kept = before.filter((code) => heldClassifiedSet.has(code));
       const keptSet = new Set(kept);
-      // 按 exchangeFunds 顺序追加尚未在 benchmarkCodes 中的持仓 code。
-      const appended = heldOrder.filter((code) => !keptSet.has(code));
+      // 按 exchangeFunds 顺序追加尚未在 benchmarkCodes 中、但已分类的持仓 code。
+      const appended = heldClassified.filter((code) => !keptSet.has(code));
       const merged = [...kept, ...appended];
+      // fallback：如果没有任何已分类持仓，至少保住一个非空 benchmarkCodes（用首个持仓），
+      // 避免下游空数组造成的边角问题；用户分类后下次 effect 会刷成正确值。
       const next = merged.length ? merged : [heldOrder[0]];
       if (next.length === before.length && next.every((v, i) => v === before[i])) return prev;
       return { ...prev, benchmarkCodes: next };
     });
-  }, [exchangeFunds, benchmarkCodesJoined]);
+  }, [exchangeFunds, benchmarkCodesJoined, premiumClassKey]);
 
   // 拉取所有候选 ETF 的最新单位净值（候选池来自 data/all_nasdq.json，不仅限于持仓）。
   const loadNav = useCallback(async () => {
