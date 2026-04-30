@@ -1011,9 +1011,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                   })}
                 </div>
               )}
-              <div className="mt-2 text-[11px] text-slate-500">
-                把「溢价常年更高」的 ETF（如 513100）放这里。每对 (h ∈ H, l ∈ L) 都会算一遍 diff = premium(h) − premium(l)；diff &lt; {prefs.intraSellLowerPct}% 卖 L 买 H，diff &gt; {prefs.intraBuyOtherPct}% 卖 H 买 L。
-              </div>
+
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">套利目标</div>
@@ -1132,12 +1130,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
             </div>
           ))}
         </div>
-        <div className="mt-3 flex items-start gap-2 rounded-2xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-          <span>
-            净值来自东财 f10/lsjz 接口，通常在 T 日晚到 T+1 早更新；A 股开盘期间使用的是 T-1 日净值 · ETF 实时价，溢价估计会比 IOPV 略偏。下单前请以交易软件的实时溢价为准。
-          </span>
-        </div>
+
       </Card>
 
       <Card>
