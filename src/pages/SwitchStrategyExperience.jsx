@@ -434,8 +434,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         ...prev,
         running: false,
         notice: triggered
-          ? `手动跡府完成：本轮命中 ${triggered} 个信号，推送 ${pushed} 次。`
-          : '手动跡府完成：当前未触达阈值。',
+          ? `手动执行完成：本轮命中 ${triggered} 个信号，推送 ${pushed} 次。`
+          : '手动执行完成：当前未触达阈值。',
         lastSyncedAt: new Date().toISOString()
       }));
     } catch (error) {
