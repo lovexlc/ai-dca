@@ -278,8 +278,16 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
 
   const benchmarkCodes = Array.isArray(config.benchmarkCodes) ? config.benchmarkCodes : [];
   const enabledCodes = Array.isArray(config.enabledCodes) ? config.enabledCodes : [];
+  const premiumClass = (config && typeof config.premiumClass === 'object' && config.premiumClass) ? config.premiumClass : {};
 
   const byBenchmark = benchmarkCodes.map((benchmarkCode) => {
+    // v3：bench 已分类时，只留对立类（H↔L）的候选，同类/未分类全部剔除。
+    const benchmarkClass = premiumClass[benchmarkCode] || null;
+    const oppClass = benchmarkClass === 'H' ? 'L' : (benchmarkClass === 'L' ? 'H' : null);
+    const eligibleCodes = oppClass
+      ? enabledCodes.filter((c) => premiumClass[c] === oppClass)
+      : enabledCodes;
+
     const benchPrice = Number(priceMap?.[benchmarkCode]?.price);
     const benchNav = Number(navByCode?.[benchmarkCode]?.nav);
     const benchNavDate = String(navByCode?.[benchmarkCode]?.latestNavDate || '').trim();
@@ -288,7 +296,7 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       ? ((benchPrice - benchNav) / benchNav) * 100
       : null;
 
-    const candidates = enabledCodes.map((code) => {
+    const candidates = eligibleCodes.map((code) => {
       const candPrice = Number(priceMap?.[code]?.price);
       const candNav = Number(navByCode?.[code]?.nav);
       const candNavDate = String(navByCode?.[code]?.latestNavDate || '').trim();
@@ -316,6 +324,7 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
         premiumPct: Number.isFinite(candPremium) ? candPremium : null,
         // diff = benchPremium − candPremium，与页面 intraSignals 中同名。
         spreadVsBenchmarkPct: Number.isFinite(diff) ? diff : null,
+        candClass: premiumClass[code] || null,
         note
       };
     });
@@ -323,6 +332,7 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     return {
       benchmarkCode,
       benchmarkName: navByCode?.[benchmarkCode]?.name || '',
+      benchmarkClass,
       benchmarkPrice: Number.isFinite(benchPrice) ? benchPrice : null,
       benchmarkNav: Number.isFinite(benchNav) ? benchNav : null,
       benchmarkNavDate: benchNavDate,
@@ -345,7 +355,7 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     intraSellLowerPct: Number(config.intraSellLowerPct),
     intraBuyOtherPct: Number(config.intraBuyOtherPct),
     // 随快照一起带 premiumClass，供 evaluateSwitchTriggers 使用。
-    premiumClass: (config && typeof config.premiumClass === 'object' && config.premiumClass) ? config.premiumClass : {},
+    premiumClass,
     byBenchmark,
     ready,
     triggers: []

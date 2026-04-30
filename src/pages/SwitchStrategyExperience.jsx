@@ -366,6 +366,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         enabled: true,
         benchmarkCodes,
         enabledCodes,
+        premiumClass: (prefs && typeof prefs.premiumClass === 'object' && prefs.premiumClass) ? prefs.premiumClass : {},
         intraSellLowerPct: Number(prefs?.intraSellLowerPct),
         intraBuyOtherPct: Number(prefs?.intraBuyOtherPct)
       });
@@ -385,15 +386,23 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       .filter((code) => code && !benchSet.has(code));
     const intraSellLowerPct = Number(prefs?.intraSellLowerPct);
     const intraBuyOtherPct = Number(prefs?.intraBuyOtherPct);
+    const premiumClass = (prefs && typeof prefs.premiumClass === 'object' && prefs.premiumClass) ? prefs.premiumClass : {};
     const sameCodes = (a, b) => {
       if (a.length !== b.length) return false;
       const sa = a.slice().sort();
       const sb = b.slice().sort();
       return sa.every((v, i) => v === sb[i]);
     };
+    const sameClassMap = (a, b) => {
+      const ka = Object.keys(a || {}).sort();
+      const kb = Object.keys(b || {}).sort();
+      if (ka.length !== kb.length) return false;
+      return ka.every((k, i) => k === kb[i] && a[k] === b[k]);
+    };
     const drift = (
       !sameCodes(workerConfig.benchmarkCodes || [], benchmarkCodes)
       || !sameCodes(workerConfig.enabledCodes || [], enabledCodes)
+      || !sameClassMap(workerConfig.premiumClass || {}, premiumClass)
       || Number(workerConfig.intraSellLowerPct) !== intraSellLowerPct
       || Number(workerConfig.intraBuyOtherPct) !== intraBuyOtherPct
     );
@@ -403,6 +412,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         ...workerConfig,
         benchmarkCodes,
         enabledCodes,
+        premiumClass,
         intraSellLowerPct,
         intraBuyOtherPct
       });
@@ -412,10 +422,12 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     workerConfig.enabled,
     workerConfig.benchmarkCodes,
     workerConfig.enabledCodes,
+    workerConfig.premiumClass,
     workerConfig.intraSellLowerPct,
     workerConfig.intraBuyOtherPct,
     prefs?.benchmarkCodes,
     prefs?.enabledCodes,
+    prefs?.premiumClass,
     prefs?.intraSellLowerPct,
     prefs?.intraBuyOtherPct,
     persistWorkerConfig,
