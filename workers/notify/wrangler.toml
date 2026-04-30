@@ -22,12 +22,15 @@ preview_id = "0b6670c7493642ca9b69bc29672dcb46"
 #   - 21:30 (UTC 13:30) Beijing —— 场外基金兜底：runDetection 兜底 + runHoldingsNotifications('otc')
 #   - * 1-7 MON-FRI (UTC) = Beijing 09:00-15:59 工作日每分钟 —— 场内切换策略 tick；
 #     handler 内再用 isInTradingSession 过滤 09:30-11:30 / 13:00-15:00 真交易时段。
+#   - 23:35 (UTC 15:35) Beijing —— 临时测试时刻：bypass dedup 触发一次 runHoldingsNotificationsAll，
+#     便于用户在晚上 23:35 验证全仓总览推送。验证完成后移除该 cron + 对应 dispatch 分支。
 # scheduled handler 已经按 hhmm 命中三个固定时刻分发 holdings，无需手动改 dispatch 逻辑。
 crons = [
   "30 7 * * MON-FRI",
   "30 12 * * MON-FRI",
   "30 13 * * MON-FRI",
-  "* 1-7 * * MON-FRI"
+  "* 1-7 * * MON-FRI",
+  "35 15 * * *"
 ]
 
 # Workers Paid 解锁的 Smart Placement：让 worker 自动靠近上游（FCM、新浪、东财、PUBLIC_DATA_BASE_URL），
