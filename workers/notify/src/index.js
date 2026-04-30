@@ -1829,15 +1829,43 @@ async function fetchHoldingsNavSnapshots(env, codes = []) {
   const baseUrl = String(env?.PUBLIC_DATA_BASE_URL || 'https://tools.freebacktrack.tech').replace(/\/+$/, '');
   if (!codes.length) return {};
 
-  const response = await fetch(`${baseUrl}/api/holdings/nav`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ codes })
-  });
+  const url = `${baseUrl}/api/holdings/nav`;
+  console.log('[notify][nav] fetch start', JSON.stringify({ url, codeCount: codes.length, codesSample: codes.slice(0, 3) }));
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'accept': 'application/json' },
+      body: JSON.stringify({ codes })
+    });
+  } catch (fetchErr) {
+    console.log('[notify][nav] fetch threw', JSON.stringify({ message: fetchErr?.message || String(fetchErr), stack: fetchErr?.stack || '' }));
+    throw new Error(`拉取净值失败：fetch threw ${fetchErr?.message || fetchErr}`);
+  }
+  const respHeaders = {};
+  try {
+    response.headers.forEach((v, k) => { respHeaders[k] = v; });
+  } catch (_e) { /* ignore */ }
+  const bodyText = await response.text().catch((e) => `__read_failed:${e?.message || e}`);
+  console.log('[notify][nav] fetch result', JSON.stringify({
+    status: response.status,
+    statusText: response.statusText,
+    ok: response.ok,
+    bodyLen: bodyText?.length || 0,
+    bodyPreview: typeof bodyText === 'string' ? bodyText.slice(0, 400) : '',
+    headerSubset: {
+      'content-type': respHeaders['content-type'],
+      'cf-ray': respHeaders['cf-ray'],
+      'cf-worker': respHeaders['cf-worker'],
+      'server': respHeaders['server'],
+      'allow': respHeaders['allow']
+    }
+  }));
   if (!response.ok) {
     throw new Error(`拉取净值失败：状态 ${response.status}`);
   }
-  const data = await response.json().catch(() => ({}));
+  let data = {};
+  try { data = JSON.parse(bodyText); } catch (_e) { data = {}; }
   const list = Array.isArray(data?.snapshots) ? data.snapshots : [];
   const map = {};
   for (const snap of list) {
