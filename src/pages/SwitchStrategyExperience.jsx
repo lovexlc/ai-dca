@@ -865,13 +865,13 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
             <button
               type="button"
-              onClick={() => setWorkerConfigExpanded(!workerConfigExpanded)}
-              className="w-full text-left hover:bg-slate-50 rounded-lg p-2 transition-colors -mx-2 -my-1 mb-2"
-             >
-              <div className="flex items-center justify-between">
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 flex-1">
+              onClick={() => setWorkerConfigExpanded((prev) => !prev)}
+              className="w-full rounded-lg p-2 text-left transition-colors hover:bg-slate-50"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
                   {workerConfigExpanded ? (
-                    <>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                       <span>
                         <span className="text-slate-400">基准</span>{' '}
                         <span className="font-semibold text-slate-700">
@@ -883,132 +883,152 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                           <span className="ml-1 text-[11px] text-slate-400">({prefs.benchmarkCodes.join(', ')})</span>
                         ) : null}
                       </span>
-                      <span><span className="text-slate-400">候选</span> <span className="font-semibold text-slate-700">{(prefs?.enabledCodes || []).filter((c) => c && !((prefs?.benchmarkCodes || []).includes(c))).length}</span> 只</span>
-                      <span><span className="text-slate-400">规则 A</span> |diff| ≤ <span className="font-semibold text-slate-700">{Number.isFinite(Number(prefs?.intraSellLowerPct)) ? `${prefs.intraSellLowerPct}%` : '—'}</span></span>
-                      <span><span className="text-slate-400">规则 B</span> |diff| ≥ <span className="font-semibold text-slate-700">{Number.isFinite(Number(prefs?.intraBuyOtherPct)) ? `${prefs.intraBuyOtherPct}%` : '—'}</span></span>
-                    </>
+                      <span>
+                        <span className="text-slate-400">候选</span>{' '}
+                        <span className="font-semibold text-slate-700">
+                          {(prefs?.enabledCodes || []).filter((c) => c && !((prefs?.benchmarkCodes || []).includes(c))).length}
+                        </span>{' '}
+                        只
+                      </span>
+                      <span>
+                        <span className="text-slate-400">规则 A</span> |diff| ≤{' '}
+                        <span className="font-semibold text-slate-700">
+                          {Number.isFinite(Number(prefs?.intraSellLowerPct)) ? `${prefs.intraSellLowerPct}%` : '—'}
+                        </span>
+                      </span>
+                      <span>
+                        <span className="text-slate-400">规则 B</span> |diff| ≥{' '}
+                        <span className="font-semibold text-slate-700">
+                          {Number.isFinite(Number(prefs?.intraBuyOtherPct)) ? `${prefs.intraBuyOtherPct}%` : '—'}
+                        </span>
+                      </span>
+                    </div>
                   ) : (
-                    <span className="text-slate-500">基准 {(prefs?.benchmarkCodes || []).length ? (prefs.benchmarkCodes.length === 1 ? prefs.benchmarkCodes[0] : `${prefs.benchmarkCodes.length} 只`) : '未设'} · 候选 {(prefs?.enabledCodes || []).filter((c) => c && !((prefs?.benchmarkCodes || []).includes(c))).length} · 规则 A ≤{Number.isFinite(Number(prefs?.intraSellLowerPct)) ? `${prefs.intraSellLowerPct}%` : '—'} / B ≥{Number.isFinite(Number(prefs?.intraBuyOtherPct)) ? `${prefs.intraBuyOtherPct}%` : '—'}</span>
+                    <span className="text-slate-500">
+                      基准 {(prefs?.benchmarkCodes || []).length ? (prefs.benchmarkCodes.length === 1 ? prefs.benchmarkCodes[0] : `${prefs.benchmarkCodes.length} 只`) : '未设'} · 候选 {(prefs?.enabledCodes || []).filter((c) => c && !((prefs?.benchmarkCodes || []).includes(c))).length} · 规则 A ≤{Number.isFinite(Number(prefs?.intraSellLowerPct)) ? `${prefs.intraSellLowerPct}%` : '—'} / B ≥{Number.isFinite(Number(prefs?.intraBuyOtherPct)) ? `${prefs.intraBuyOtherPct}%` : '—'}
+                    </span>
                   )}
                 </div>
                 <ChevronDown className={cx('h-4 w-4 shrink-0 transition-transform', workerConfigExpanded ? 'rotate-180' : '')} />
               </div>
             </button>
-            {workerConfigExpanded && (
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                {/* 单一数据源：选择的 prefs.benchmarkCodes / enabledCodes / 阈值。 */}
-                {(prefs?.benchmarkCodes || []).length > 1 ? (
-                  <span className="text-[11px] text-slate-400 w-full">{prefs.benchmarkCodes.join(', ')}</span>
-                ) : null}
-              </div>
-            )}
-            {workerConfigExpanded && workerConfig.updatedAt ? (
-              <div className="text-[11px] text-slate-400 mt-2">上次同步 {formatDate(workerConfig.updatedAt) || workerConfig.updatedAt}</div>
-            ) : null}
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">worker 最近一次计算</div>
-              {workerSnapshot?.computedAt ? (
-                <div className="text-xs text-slate-500">算于 {formatDate(workerSnapshot.computedAt) || workerSnapshot.computedAt}</div>
-              ) : <div className="text-xs text-slate-400">尚无快照</div>}
-            </div>
-            {workerSnapshot ? (
-              <div className="mt-3 space-y-2 text-sm">
-                {(() => {
-                  // 兼容旧版快照（顶层 benchmarkCode + candidates）。
-                  const benchSnapshots = Array.isArray(workerSnapshot.byBenchmark) && workerSnapshot.byBenchmark.length
-                    ? workerSnapshot.byBenchmark
-                    : (workerSnapshot.benchmarkCode ? [{
-                        benchmarkCode: workerSnapshot.benchmarkCode,
-                        benchmarkName: workerSnapshot.benchmarkName,
-                        benchmarkPrice: workerSnapshot.benchmarkPrice,
-                        benchmarkNav: workerSnapshot.benchmarkNav,
-                        benchmarkNavDate: workerSnapshot.benchmarkNavDate,
-                        benchmarkPremiumPct: workerSnapshot.benchmarkPremiumPct,
-                        candidates: workerSnapshot.candidates || []
-                      }] : []);
-                  if (!benchSnapshots.length) {
-                    return (
-                      <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-400">
-                        快照中暂无基准数据。
-                      </div>
-                    );
-                  }
-                  const sellLower = Number(workerSnapshot.intraSellLowerPct);
-                  const buyOther = Number(workerSnapshot.intraBuyOtherPct);
-                  const cls = prefs.premiumClass || {};
-                  return benchSnapshots.map((bench) => (
-                    <div key={`bench-${bench.benchmarkCode}`} className="space-y-2">
-                      <div className="rounded-xl border border-slate-200 bg-white p-3">
-                        <div className="text-xs uppercase tracking-[0.18em] text-slate-400">基准 {bench.benchmarkCode}{bench.benchmarkName ? ` · ${bench.benchmarkName}` : ''}</div>
-                        <div className="mt-1 grid grid-cols-3 gap-2 text-xs text-slate-600">
-                          <div>现价 <span className="font-semibold text-slate-800">{formatPrice(bench.benchmarkPrice)}</span></div>
-                          <div>净值 <span className="font-semibold text-slate-800">{formatPrice(bench.benchmarkNav)}</span>{bench.benchmarkNavDate ? <span className="ml-1 text-slate-400">@{bench.benchmarkNavDate}</span> : null}</div>
-                          <div>溢价 <span className="font-semibold text-slate-800">{formatPercent(bench.benchmarkPremiumPct, 2, true)}</span></div>
-                        </div>
-                      </div>
-                      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                        <table className="w-full text-xs">
-                          <thead className="bg-slate-100 text-slate-500">
-                            <tr>
-                              <th className="px-3 py-2 text-left">候选</th>
-                              <th className="px-3 py-2 text-right">现价</th>
-                              <th className="px-3 py-2 text-right">净值</th>
-                              <th className="px-3 py-2 text-right">溢价</th>
-                              <th className="px-3 py-2 text-right">与基准差</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(bench.candidates || []).map((c) => {
-                              // v3: class-aware highlight. diff = bench.premium - cand.premium.
-                              //   bench=L → gap = -diff; 规则 A: gap < sellLower
-                              //   bench=H → gap = diff;  规则 B: gap > buyOther
-                              const diff = Number(c.spreadVsBenchmarkPct);
-                              const benchClass = cls[bench.benchmarkCode];
-                              const candClass = cls[c.code];
-                              const eligible = (benchClass === 'H' || benchClass === 'L') && (candClass === 'H' || candClass === 'L') && benchClass !== candClass;
-                              let inA = false;
-                              let inB = false;
-                              if (eligible && Number.isFinite(diff)) {
-                                const gap = benchClass === 'H' ? diff : -diff;
-                                if (benchClass === 'L' && Number.isFinite(sellLower) && gap < sellLower) inA = true;
-                                if (benchClass === 'H' && Number.isFinite(buyOther) && gap > buyOther) inB = true;
-                              }
-                              const colorCls = inA ? 'text-emerald-700 font-semibold' : inB ? 'text-rose-700 font-semibold' : 'text-slate-600';
-                              return (
-                                <tr key={`snap-${bench.benchmarkCode}-${c.code}`} className="border-t border-slate-100">
-                                  <td className="px-3 py-2"><span className="font-semibold">{c.code}</span>{c.name ? <span className="ml-1 text-slate-400">{c.name}</span> : null}</td>
-                                  <td className="px-3 py-2 text-right">{formatPrice(c.price)}</td>
-                                  <td className="px-3 py-2 text-right">{formatPrice(c.nav)}{c.navDate ? <span className="ml-1 text-slate-400">@{c.navDate}</span> : null}</td>
-                                  <td className="px-3 py-2 text-right">{formatPercent(c.premiumPct, 2, true)}</td>
-                                  <td className={cx('px-3 py-2 text-right', colorCls)}>{formatPercent(c.spreadVsBenchmarkPct, 2, true)}</td>
-                                </tr>
-                              );
-                            })}
-                            {(!bench.candidates || bench.candidates.length === 0) ? (
-                              <tr><td colSpan={5} className="px-3 py-4 text-center text-slate-400">快照中暂无候选数据。</td></tr>
-                            ) : null}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  ));
-                })()}
-                {(workerSnapshot.triggers || []).length > 0 ? (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                    <div className="font-semibold">本轮触发 {workerSnapshot.triggers.length} 个信号</div>
-                    <ul className="mt-1 list-disc pl-4">
-                      {workerSnapshot.triggers.map((t, idx) => (
-                        <li key={`trig-${idx}`}>规则 {t.rule || (Number(t.diffPct ?? t.spreadPct) >= 0 ? 'B' : 'A')} · 卖 {t.fromCode} → 买 {t.toCode}：diff {formatPercent(t.diffPct ?? t.spreadPct, 2, true)}</li>
-                      ))}
-                    </ul>
+
+            {workerConfigExpanded ? (
+              <div className="mt-3 space-y-3">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                  {/* 单一数据源：选择的 prefs.benchmarkCodes / enabledCodes / 阈值。 */}
+                  {workerConfig.updatedAt ? (
+                    <span className="ml-auto text-[11px] text-slate-400">上次同步 {formatDate(workerConfig.updatedAt) || workerConfig.updatedAt}</span>
+                  ) : null}
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">worker 最近一次计算</div>
+                    {workerSnapshot?.computedAt ? (
+                      <div className="text-xs text-slate-500">算于 {formatDate(workerSnapshot.computedAt) || workerSnapshot.computedAt}</div>
+                    ) : <div className="text-xs text-slate-400">尚无快照</div>}
                   </div>
-                ) : null}
+                  {workerSnapshot ? (
+                    <div className="mt-3 space-y-2 text-sm">
+                      {(() => {
+                        // 兼容旧版快照（顶层 benchmarkCode + candidates）。
+                        const benchSnapshots = Array.isArray(workerSnapshot.byBenchmark) && workerSnapshot.byBenchmark.length
+                          ? workerSnapshot.byBenchmark
+                          : (workerSnapshot.benchmarkCode ? [{
+                              benchmarkCode: workerSnapshot.benchmarkCode,
+                              benchmarkName: workerSnapshot.benchmarkName,
+                              benchmarkPrice: workerSnapshot.benchmarkPrice,
+                              benchmarkNav: workerSnapshot.benchmarkNav,
+                              benchmarkNavDate: workerSnapshot.benchmarkNavDate,
+                              benchmarkPremiumPct: workerSnapshot.benchmarkPremiumPct,
+                              candidates: workerSnapshot.candidates || []
+                            }] : []);
+                        if (!benchSnapshots.length) {
+                          return (
+                            <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-400">
+                              快照中暂无基准数据。
+                            </div>
+                          );
+                        }
+                        const sellLower = Number(workerSnapshot.intraSellLowerPct);
+                        const buyOther = Number(workerSnapshot.intraBuyOtherPct);
+                        const cls = prefs.premiumClass || {};
+                        return benchSnapshots.map((bench) => (
+                          <div key={`bench-${bench.benchmarkCode}`} className="space-y-2">
+                            <div className="rounded-xl border border-slate-200 bg-white p-3">
+                              <div className="text-xs uppercase tracking-[0.18em] text-slate-400">基准 {bench.benchmarkCode}{bench.benchmarkName ? ` · ${bench.benchmarkName}` : ''}</div>
+                              <div className="mt-1 grid grid-cols-3 gap-2 text-xs text-slate-600">
+                                <div>现价 <span className="font-semibold text-slate-800">{formatPrice(bench.benchmarkPrice)}</span></div>
+                                <div>净值 <span className="font-semibold text-slate-800">{formatPrice(bench.benchmarkNav)}</span>{bench.benchmarkNavDate ? <span className="ml-1 text-slate-400">@{bench.benchmarkNavDate}</span> : null}</div>
+                                <div>溢价 <span className="font-semibold text-slate-800">{formatPercent(bench.benchmarkPremiumPct, 2, true)}</span></div>
+                              </div>
+                            </div>
+                            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                              <table className="w-full text-xs">
+                                <thead className="bg-slate-100 text-slate-500">
+                                  <tr>
+                                    <th className="px-3 py-2 text-left">候选</th>
+                                    <th className="px-3 py-2 text-right">现价</th>
+                                    <th className="px-3 py-2 text-right">净值</th>
+                                    <th className="px-3 py-2 text-right">溢价</th>
+                                    <th className="px-3 py-2 text-right">与基准差</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {(bench.candidates || []).map((c) => {
+                                    // v3: class-aware highlight. diff = bench.premium - cand.premium.
+                                    //   bench=L → gap = -diff; 规则 A: gap < sellLower
+                                    //   bench=H → gap = diff;  规则 B: gap > buyOther
+                                    const diff = Number(c.spreadVsBenchmarkPct);
+                                    const benchClass = cls[bench.benchmarkCode];
+                                    const candClass = cls[c.code];
+                                    const eligible = (benchClass === 'H' || benchClass === 'L') && (candClass === 'H' || candClass === 'L') && benchClass !== candClass;
+                                    let inA = false;
+                                    let inB = false;
+                                    if (eligible && Number.isFinite(diff)) {
+                                      const gap = benchClass === 'H' ? diff : -diff;
+                                      if (benchClass === 'L' && Number.isFinite(sellLower) && gap < sellLower) inA = true;
+                                      if (benchClass === 'H' && Number.isFinite(buyOther) && gap > buyOther) inB = true;
+                                    }
+                                    const colorCls = inA ? 'text-emerald-700 font-semibold' : inB ? 'text-rose-700 font-semibold' : 'text-slate-600';
+                                    return (
+                                      <tr key={`snap-${bench.benchmarkCode}-${c.code}`} className="border-t border-slate-100">
+                                        <td className="px-3 py-2"><span className="font-semibold">{c.code}</span>{c.name ? <span className="ml-1 text-slate-400">{c.name}</span> : null}</td>
+                                        <td className="px-3 py-2 text-right">{formatPrice(c.price)}</td>
+                                        <td className="px-3 py-2 text-right">{formatPrice(c.nav)}{c.navDate ? <span className="ml-1 text-slate-400">@{c.navDate}</span> : null}</td>
+                                        <td className="px-3 py-2 text-right">{formatPercent(c.premiumPct, 2, true)}</td>
+                                        <td className={cx('px-3 py-2 text-right', colorCls)}>{formatPercent(c.spreadVsBenchmarkPct, 2, true)}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                  {(!bench.candidates || bench.candidates.length === 0) ? (
+                                    <tr><td colSpan={5} className="px-3 py-4 text-center text-slate-400">快照中暂无候选数据。</td></tr>
+                                  ) : null}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        ));
+                      })()}
+                      {(workerSnapshot.triggers || []).length > 0 ? (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                          <div className="font-semibold">本轮触发 {workerSnapshot.triggers.length} 个信号</div>
+                          <ul className="mt-1 list-disc pl-4">
+                            {workerSnapshot.triggers.map((t, idx) => (
+                              <li key={`trig-${idx}`}>规则 {t.rule || (Number(t.diffPct ?? t.spreadPct) >= 0 ? 'B' : 'A')} · 卖 {t.fromCode} → 买 {t.toCode}：diff {formatPercent(t.diffPct ?? t.spreadPct, 2, true)}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-400">
+                      暂无最近一次计算结果，先手动跑一次或等待 worker 扫描。
+                    </div>
+                  )}
+                </div>
               </div>
-            ) : (
-              null
-            )}
+            ) : null}
           </div>
         </div>
       </Card>
