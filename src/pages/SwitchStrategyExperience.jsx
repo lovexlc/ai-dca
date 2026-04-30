@@ -515,16 +515,25 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, [exchangeFunds, premiumClassKey]);
 
   // 单一数据源：基准 ETF 只能从「持仓的场内 ETF」里选，所以 prefs.benchmarkCodes
-  // 里所有 code 都必须落在 exchangeFunds 之内。这里在 exchangeFunds 变化后自动过滤
-  // 不再持有的 code，并在清空后 fallback 到第一只持仓 ETF。
+  // 里所有 code 都必须落在 exchangeFunds 之内。这里在 exchangeFunds 变化后：
+  //   1) 先按原顺序保留仍然持仓的 code；
+  //   2) 再把当前持仓中尚未列入 benchmarkCodes 的 code 追加进去；
+  //   3) 如果最终为空（极端情况），fallback 到第一只持仓 ETF。
+  // 这样新增持仓（例如再买入一只 L 类 ETF）会自动成为基准，而不是只能在初始化
+  // 时挑选一只。修复 bug：以前只过滤、不追加，导致后加的 L 持仓不会进入 L 基准。
   const benchmarkCodesJoined = (prefs?.benchmarkCodes || []).join(',');
   useEffect(() => {
     if (!exchangeFunds.length) return;
-    const heldCodes = new Set(exchangeFunds.map((f) => f.code));
+    const heldOrder = exchangeFunds.map((f) => f.code);
+    const heldCodes = new Set(heldOrder);
     setPrefs((prev) => {
       const before = Array.isArray(prev.benchmarkCodes) ? prev.benchmarkCodes : [];
-      const after = before.filter((code) => heldCodes.has(code));
-      const next = after.length ? after : [exchangeFunds[0].code];
+      const kept = before.filter((code) => heldCodes.has(code));
+      const keptSet = new Set(kept);
+      // 按 exchangeFunds 顺序追加尚未在 benchmarkCodes 中的持仓 code。
+      const appended = heldOrder.filter((code) => !keptSet.has(code));
+      const merged = [...kept, ...appended];
+      const next = merged.length ? merged : [heldOrder[0]];
       if (next.length === before.length && next.every((v, i) => v === before[i])) return prev;
       return { ...prev, benchmarkCodes: next };
     });
