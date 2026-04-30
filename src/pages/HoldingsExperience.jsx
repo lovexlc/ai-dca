@@ -936,39 +936,54 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   // ---- Render helpers ----
-  function renderMarketIndexOverview() {
-    if (!marketIndexState.indexes.length) return null;
+  function renderMarketTicker() {
+    const items = marketIndexState.indexes;
+    if (!items.length) return null;
+
+    const tooltip = marketIndexState.generatedAt
+      ? `${formatRelativeTime(marketIndexState.generatedAt)} · Yahoo Finance`
+      : 'Yahoo Finance';
+
+    const renderItem = (item, copyIdx) => {
+      const tone = getMarketIndexTone(item.change);
+      const ToneIcon = tone.icon;
+      return (
+        <span
+          key={`${copyIdx}-${item.key}`}
+          className="inline-flex items-center gap-1.5 px-3 text-[11px] leading-none"
+        >
+          <span className="font-medium text-slate-500">{item.name}</span>
+          <span className={cx('font-semibold tabular-nums', tone.valueClass)}>
+            {formatMarketIndexValue(item.current_price)}
+          </span>
+          <ToneIcon className={cx('h-3 w-3 shrink-0', tone.changeClass)} />
+          <span className={cx('tabular-nums', tone.changeClass)}>
+            {formatMarketIndexMove(item.change)}
+          </span>
+          <span aria-hidden className="text-slate-300">|</span>
+          <span className={cx('font-semibold tabular-nums', tone.changeClass)}>
+            {formatMarketIndexPercent(item.change_percent)}
+          </span>
+          <span aria-hidden className="ml-2 text-slate-300">·</span>
+        </span>
+      );
+    };
 
     return (
-      <section className="rounded-2xl border border-slate-200/70 bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">大盘指数</div>
-          <div className="text-[11px] text-slate-400">
-            {marketIndexState.generatedAt ? `${formatRelativeTime(marketIndexState.generatedAt)} · Yahoo Finance` : 'Yahoo Finance'}
+      <div
+        className="market-ticker group flex h-7 max-w-full items-center overflow-hidden rounded-full border border-slate-200/70 bg-white/60 px-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur supports-[backdrop-filter]:bg-white/55"
+        title={tooltip}
+        role="region"
+        aria-label={`大盘指数实时行情 · ${tooltip}`}
+        tabIndex={0}
+      >
+        <div className="market-ticker-viewport flex h-full min-w-0 flex-1 items-center overflow-hidden">
+          <div className="market-ticker-track flex h-full items-center">
+            {items.map((item) => renderItem(item, 0))}
+            {items.map((item) => renderItem(item, 1))}
           </div>
         </div>
-        <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-3">
-          {marketIndexState.indexes.map((item) => {
-            const tone = getMarketIndexTone(item.change);
-            const ToneIcon = tone.icon;
-
-            return (
-              <div key={item.key} className="rounded-2xl bg-slate-50/80 px-4 py-4 ring-1 ring-slate-100">
-                <div className="text-[11px] font-semibold tracking-[0.08em] text-slate-500">{item.name}</div>
-                <div className={cx('mt-2 text-[clamp(2rem,4vw,2.75rem)] font-extrabold tracking-tight tabular-nums', tone.valueClass)}>
-                  {formatMarketIndexValue(item.current_price)}
-                </div>
-                <div className={cx('mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-base font-semibold tabular-nums', tone.changeClass)}>
-                  <ToneIcon className="h-4 w-4 shrink-0" />
-                  <span>{formatMarketIndexMove(item.change)}</span>
-                  <span className="text-slate-300">|</span>
-                  <span>{formatMarketIndexPercent(item.change_percent)}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+      </div>
     );
   }
 
@@ -1018,12 +1033,19 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     ];
     return (
       <section className="rounded-2xl border border-slate-200/70 bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        <div className="flex items-center justify-between">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">投资组合概览</div>
-          <div className="text-[11px] text-slate-400">
-            NAV 覆盖 {portfolio.pricedCount}/{portfolio.assetCount}
-            {portfolio.failedCodes && portfolio.failedCodes.length > 0 ? ` · 失败 ${portfolio.failedCodes.length}` : ''}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">投资组合概览</div>
+            <div className="text-[11px] text-slate-400">
+              NAV 覆盖 {portfolio.pricedCount}/{portfolio.assetCount}
+              {portfolio.failedCodes && portfolio.failedCodes.length > 0 ? ` · 失败 ${portfolio.failedCodes.length}` : ''}
+            </div>
           </div>
+          {marketIndexState.indexes.length ? (
+            <div className="order-3 ml-auto flex w-full justify-end sm:order-none sm:w-auto sm:max-w-[55%]">
+              {renderMarketTicker()}
+            </div>
+          ) : null}
         </div>
         <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
           {cards.map((card) => (
@@ -2167,7 +2189,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           </div>
         </div>
       ) : null}
-      {renderMarketIndexOverview()}
       {renderPortfolioOverview()}
       <div className="grid grid-cols-1 gap-4">
         <section className="min-w-0 rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
