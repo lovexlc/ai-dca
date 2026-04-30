@@ -546,7 +546,6 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
           <SectionHeading
             eyebrow="建仓计划"
             title="建仓计划详情"
-            description={activeStrategyOption.note}
           />
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <Pill tone="slate">基准 {benchmarkCodeLabel}</Pill>
@@ -780,7 +779,6 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
           <SectionHeading
             eyebrow="策略"
             title="策略列表"
-            description="首页只读切换查看，不直接修改策略模板。"
           />
 
           {hasPlans ? (

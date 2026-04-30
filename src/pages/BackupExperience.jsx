@@ -218,7 +218,6 @@ export function BackupExperience({ links, embedded = false }) {
         <SectionHeading
           eyebrow="WebDAV 配置"
           title="服务器与账号"
-          description="凭据会以明文形式保存在浏览器 localStorage 中，仅用于当前设备自动登录。"
           action={
             <div className="flex flex-wrap gap-2">
               <button
@@ -343,7 +342,6 @@ export function BackupExperience({ links, embedded = false }) {
         <SectionHeading
           eyebrow="同步操作"
           title="上传到 WebDAV / 从 WebDAV 恢复"
-          description="整包导出当前浏览器中的所有 ai-dca 本地数据；恢复会覆盖本地。"
           action={<StatusPill meta={lastSync} />}
         />
         <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -416,7 +414,6 @@ export function BackupExperience({ links, embedded = false }) {
         <SectionHeading
           eyebrow="备份清单"
           title="本次会打包的本地数据"
-          description="自动扫描 localStorage 中以 aiDca 开头的 key，临时/设置类（如 pendingToasts、WebDAV 配置本身）已排除。"
           action={
             <div className="flex items-center gap-2 text-xs text-slate-500">
               <FolderSync className="h-4 w-4 text-slate-400" />

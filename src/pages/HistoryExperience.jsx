@@ -24,7 +24,6 @@ export function HistoryExperience({ links, embedded = false }) {
         <SectionHeading
           eyebrow="历史表格"
           title="策略生成记录"
-          description="交易历史不再展示示例成交，当前会按已保存定投计划的执行日和金额自动生成记录。"
         />
 
         {hasHistory ? (
@@ -84,9 +83,6 @@ export function HistoryExperience({ links, embedded = false }) {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="border-slate-200 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 text-white">
           <SectionHeading eyebrow="生成规则" title="历史来源" />
-          <p className="mt-4 max-w-xl text-sm leading-6 text-slate-300">
-            交易历史直接读取当前已保存的定投配置，按执行频率、执行日、初始投资额和每期金额生成记录，不再使用示例成交数据。
-          </p>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             <div className="rounded-[24px] border border-white/10 bg-white/5 p-5">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
@@ -107,11 +103,6 @@ export function HistoryExperience({ links, embedded = false }) {
 
         <Card className="border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white">
           <SectionHeading eyebrow="联动策略" title={dcaMeta.planName} />
-          <p className="mt-4 text-sm leading-6 text-slate-600">
-            {dcaMeta.isLinkedPlan
-              ? `当前定投周期会按「${dcaMeta.linkedPlanName}」在周期内分批执行，历史里先记该周期的总投入金额。`
-              : '当前历史记录会直接按定投计划的单次金额入表。'}
-          </p>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">

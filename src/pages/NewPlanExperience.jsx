@@ -249,7 +249,6 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
         backLabel={onBack ? '返回交易计划' : '返回加仓计划'}
         eyebrow="策略新建"
         title="新建建仓计划"
-        description="在这里创建建仓策略，选择均线分层或固定回撤模板。创建完成后回到首页只读查看，不在首页直接修改。"
         badges={[
           <Pill key="symbol" tone="indigo">{formatMarketCode(selectedFund?.code || state.symbol) || '未选择标的'}</Pill>,
           <Pill key="benchmark" tone="slate">{benchmarkCodeLabel}</Pill>,
@@ -262,7 +261,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.9fr)]">
           <div className="min-w-0 space-y-6">
             <Card className="min-w-0 overflow-hidden">
-              <SectionHeading eyebrow="第一步" title="基础设置" description="先确定标的、预算规模和策略锚点，这些输入会直接联动到右侧的成本预览和资金模型。" />
+              <SectionHeading eyebrow="第一步" title="基础设置" />
 
               {marketError ? (
                 <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -343,7 +342,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
             </Card>
 
             <Card className="min-w-0 overflow-hidden">
-              <SectionHeading eyebrow="第二步" title="策略模板" description="这里决定后续分层是按均线执行，还是按历史高点的固定回撤执行。" />
+              <SectionHeading eyebrow="第二步" title="策略模板" />
 
               <div className="mt-6 grid gap-4 md:grid-cols-2">
                 {strategyOptions.map((option) => (
@@ -379,9 +378,6 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
               <SectionHeading
                 eyebrow="第三步"
                 title={selectedStrategy === 'peak-drawdown' ? '固定回撤 8 档' : '均线分层设置'}
-                description={selectedStrategy === 'peak-drawdown'
-                  ? '档位和跌幅固定，资金按档位序号逐级加大，最后一档是极端回撤位。'
-                  : '均线模板会基于120日线触发价和200日线风控价自动生成 4 档执行层。'}
               />
 
               <div className="mt-6 space-y-4">

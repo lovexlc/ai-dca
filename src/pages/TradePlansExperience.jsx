@@ -244,7 +244,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
         <SectionHeading
           eyebrow="计划列表"
           title="后续交易计划"
-          description="首页只保留每类计划一个待执行摘要，更多层级和完整配置去对应页面查看。"
         />
 
         {hasPlans ? (
@@ -345,7 +344,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
         <SectionHeading
           eyebrow="计划详情"
           title={selectedRow?.detailTitle || '当前没有待查看计划'}
-          description={selectedRow ? '右侧只展示当前选中计划的规则摘要和触发说明。' : '先在左侧选择一条交易计划，这里再展开对应的执行说明。'}
         />
         {selectedRow ? (
           <div className="mt-5 space-y-4">

@@ -85,7 +85,6 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
             <SectionHeading
               eyebrow="计划参数"
               title="策略参数设置"
-              description="把标的、买入频率和执行日整理成一个完整模板；如果关联加仓策略，每个执行周期的总预算会按该策略拆成多笔。"
             />
 
             <div className="mt-6 space-y-5">

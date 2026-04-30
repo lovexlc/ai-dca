@@ -934,7 +934,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
       <SectionHeading
         eyebrow="收益摘要"
         title="等待确认识别明细"
-        description="收益摘要不会先猜结果。先把识别明细确认下来，再生成切换判断。"
       />
       <PendingResultCard issueSummary={confirmError || validationIssueSummary} />
       <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={() => selectWorkspacePanel('details')}>
@@ -948,7 +947,6 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
       <SectionHeading
         eyebrow="计算参数"
         title="收益口径与价格校准"
-        description="默认推荐“追溯最初买入”。只有在你要补现价、切换口径或校准成本时，才需要改这里。"
       />
 
       <div className="flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1024,7 +1022,7 @@ export function FundSwitchExperience({ links, inPagesDir, embedded = false }) {
     </div>
   ) : (
     <div className="space-y-5">
-      <SectionHeading eyebrow="计算参数" title="收益口径与价格校准" description="请先确认识别明细，校验通过后再生成和调整参数。" />
+      <SectionHeading eyebrow="计算参数" title="收益口径与价格校准" />
       <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm leading-6 text-slate-500">
         先去“识别明细”里确认交易数据，然后这里才会开放收益口径、现价补录和成本校准。
       </div>
