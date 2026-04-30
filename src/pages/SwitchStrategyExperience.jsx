@@ -819,6 +819,18 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     return `基准：${benchmarks.map((b) => `${b.code} · ${b.name || ''}`).join(' / ')}`;
   }, [exchangeFunds.length, benchmarks]);
 
+  const switchSummary = useMemo(() => {
+    const cls = prefs?.premiumClass || {};
+    const benches = (prefs?.benchmarkCodes || []).filter(Boolean);
+    const cands = (prefs?.enabledCodes || []).filter((c) => c && !benches.includes(c));
+    const Hcands = cands.filter((c) => cls[c] === 'H');
+    const Lcands = cands.filter((c) => cls[c] === 'L');
+    const Hbenches = benches.filter((c) => cls[c] === 'H');
+    const Lbenches = benches.filter((c) => cls[c] === 'L');
+    const pairs = Hbenches.length * Lcands.length + Lbenches.length * Hcands.length;
+    return { benches, cands, Hcands, Lcands, Hbenches, Lbenches, pairs };
+  }, [prefs?.benchmarkCodes, prefs?.enabledCodes, prefs?.premiumClass]);
+
   return (
     <div className="space-y-6">
       <Card>
@@ -846,7 +858,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
               type="button"
               className={cx(secondaryButtonClass, 'ml-auto h-9 px-3 text-xs')}
               onClick={handleWorkerRunOnce}
-              disabled={workerStatus.running || workerStatus.saving || !workerConfig.enabled || !((prefs?.benchmarkCodes || []).length) || ((prefs?.enabledCodes || []).filter((c) => c && !((prefs?.benchmarkCodes || []).includes(c))).length === 0)}
+              disabled={workerStatus.running || workerStatus.saving || !workerConfig.enabled || !switchSummary.benches.length || switchSummary.pairs === 0}
               title={workerConfig.enabled ? '手动跑一次：拉价 + 算 diff + 命中规则 A/B 则推送' : '需先启用自动监控'}
             >
               <PlayCircle className="h-4 w-4" />
@@ -887,20 +899,17 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                       <span>
                         <span className="text-slate-400">基准</span>{' '}
                         <span className="font-semibold text-slate-700">
-                          {(prefs?.benchmarkCodes || []).length
-                            ? (prefs.benchmarkCodes.length === 1 ? prefs.benchmarkCodes[0] : `${prefs.benchmarkCodes.length} 只`)
-                            : '未设定'}
+                          {switchSummary.benches.length ? `${switchSummary.benches.length} 只` : '未设定'}
                         </span>
-                        {(prefs?.benchmarkCodes || []).length > 1 ? (
-                          <span className="ml-1 text-[11px] text-slate-400">({prefs.benchmarkCodes.join(', ')})</span>
+                        {switchSummary.benches.length ? (
+                          <span className="ml-1 text-[11px] text-slate-400">({switchSummary.benches.join(', ')})</span>
                         ) : null}
                       </span>
                       <span>
                         <span className="text-slate-400">候选</span>{' '}
-                        <span className="font-semibold text-slate-700">
-                          {(prefs?.enabledCodes || []).filter((c) => c && !((prefs?.benchmarkCodes || []).includes(c))).length}
-                        </span>{' '}
-                        只
+                        <span className="font-semibold text-slate-700">{switchSummary.pairs}</span>{' '}
+                        对{' '}
+                        <span className="text-[11px] text-slate-400">(H {switchSummary.Hcands.length} / L {switchSummary.Lcands.length})</span>
                       </span>
                       <span>
                         <span className="text-slate-400">规则 A</span> |diff| ≤{' '}
@@ -917,7 +926,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                     </div>
                   ) : (
                     <span className="text-slate-500">
-                      基准 {(prefs?.benchmarkCodes || []).length ? (prefs.benchmarkCodes.length === 1 ? prefs.benchmarkCodes[0] : `${prefs.benchmarkCodes.length} 只`) : '未设'} · 候选 {(prefs?.enabledCodes || []).filter((c) => c && !((prefs?.benchmarkCodes || []).includes(c))).length} · 规则 A ≤{Number.isFinite(Number(prefs?.intraSellLowerPct)) ? `${prefs.intraSellLowerPct}%` : '—'} / B ≥{Number.isFinite(Number(prefs?.intraBuyOtherPct)) ? `${prefs.intraBuyOtherPct}%` : '—'}
+                      基准 {switchSummary.benches.length ? `${switchSummary.benches.length} 只 (${switchSummary.benches.join(', ')})` : '未设'} · 候选 {switchSummary.pairs} 对 (H {switchSummary.Hcands.length} / L {switchSummary.Lcands.length}) · 规则 A ≤{Number.isFinite(Number(prefs?.intraSellLowerPct)) ? `${prefs.intraSellLowerPct}%` : '—'} / B ≥{Number.isFinite(Number(prefs?.intraBuyOtherPct)) ? `${prefs.intraBuyOtherPct}%` : '—'}
                     </span>
                   )}
                 </div>
