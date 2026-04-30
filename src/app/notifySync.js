@@ -371,6 +371,23 @@ function normalizeHoldingsDigest(digest) {
       result[bucket].push({ code, weight });
     }
   }
+  // 透传组合层面 totals（仅组合汇总数字，不含 per-fund 份额 / 成本）。
+  if (digest.totals && typeof digest.totals === 'object') {
+    const totals = {};
+    for (const key of [
+      'marketValue',
+      'totalCost',
+      'previousMarketValue',
+      'totalProfit',
+      'todayProfit',
+      'totalReturnRate',
+      'todayReturnRate'
+    ]) {
+      const v = Number(digest.totals[key]);
+      if (Number.isFinite(v)) totals[key] = v;
+    }
+    if (Object.keys(totals).length) result.totals = totals;
+  }
   return result;
 }
 

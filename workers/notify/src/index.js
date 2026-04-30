@@ -1689,6 +1689,27 @@ function normalizeHoldingsDigest(digest) {
   if (totalWeight > 1.5) {
     return result;
   }
+
+  // 透传组合层面 totals（仅用于「全仓总览」推送展示金额）。
+  // 仅记录组合维度的几个数字（总市值 / 总成本 / 昨日总市值 / 当日盈亏 / 累计盈亏 / 累计与当日收益率），
+  // 不包含任何 per-fund 份额或单笔成本。
+  if (digest.totals && typeof digest.totals === 'object') {
+    const totals = {};
+    for (const k of [
+      'marketValue',
+      'totalCost',
+      'previousMarketValue',
+      'totalProfit',
+      'todayProfit',
+      'totalReturnRate',
+      'todayReturnRate'
+    ]) {
+      const v = Number(digest.totals[k]);
+      if (Number.isFinite(v)) totals[k] = v;
+    }
+    if (Object.keys(totals).length) result.totals = totals;
+  }
+
   return result;
 }
 
@@ -1947,6 +1968,189 @@ async function runHoldingsNotifications(env, kind, todayShanghai, reason = 'hold
             kind,
             date: todayShanghai
           }),
+          { expirationTtl: HOLDINGS_DEDUP_TTL_SECONDS }
+        );
+      } catch (_error) {
+        // TTL 写入失败不阻断主流程。
+      }
+    } catch (_error) {
+      // 推送失败不写 dedup，等下个点重试。
+    }
+  }
+
+  if (settingsDirty) {
+    await writeSettings(env, settings);
+  }
+}
+
+// 全仓总览（场内 + 场外合并）推送内容构造。
+// totals 如果存在，推送里会同时显示 ¥ 金额；否则只显示百分比。
+function buildHoldingsNotificationContentAll(returnRate, contributors, totals = null) {
+  const dailyPct = formatPercent(returnRate);
+
+  // 当日 ¥ 金额：优先用 totals.todayProfit；否则用 previousMarketValue × 加权收益率 估算。
+  let dailyAmt = '';
+  if (totals) {
+    if (Number.isFinite(totals.todayProfit)) {
+      const sign = totals.todayProfit >= 0 ? '+' : '−';
+      dailyAmt = `${sign}¥${Math.abs(totals.todayProfit).toFixed(2)}`;
+    } else if (Number.isFinite(totals.previousMarketValue) && totals.previousMarketValue > 0) {
+      const profit = totals.previousMarketValue * returnRate;
+      const sign = profit >= 0 ? '+' : '−';
+      dailyAmt = `${sign}¥${Math.abs(profit).toFixed(2)}`;
+    }
+  }
+
+  // 累计收益行：仅在 totals 提供了 totalProfit + totalReturnRate 时输出。
+  // totalReturnRate 在前端已以「百分数值」存储（例如 2.72 表示 2.72%）。
+  let totalLine = '';
+  if (totals && Number.isFinite(totals.totalProfit) && Number.isFinite(totals.totalReturnRate)) {
+    const sign = totals.totalProfit >= 0 ? '+' : '−';
+    const rateSign = totals.totalReturnRate >= 0 ? '+' : '−';
+    totalLine = `；总收益 ${sign}¥${Math.abs(totals.totalProfit).toFixed(2)} (${rateSign}${Math.abs(totals.totalReturnRate).toFixed(2)}%)`;
+  }
+
+  const top = (contributors || []).slice(0, 3).map((item) => `${item.code} ${formatPercent(item.ratio)}`);
+  const titleAmt = dailyAmt ? `${dailyAmt} (${dailyPct})` : dailyPct;
+  const title = `[持仓总览] 当日收益 ${titleAmt}`;
+  const summary = `当日 ${titleAmt}${totalLine}`;
+  const dailyText = dailyAmt ? `${dailyAmt} (${dailyPct})` : dailyPct;
+  const body = top.length
+    ? `今日加权收益率 ${dailyText}${totalLine}；贡献 Top：${top.join('、')}。`
+    : `今日加权收益率 ${dailyText}${totalLine}。`;
+  return { title, body, summary };
+}
+
+// 全仓总览推送（场内 + 场外合并，20:30 / 21:30 使用）。
+// ready 门闸：场内容量、场外容量都必须「每只都刷出了应达日期」，任意一只未刷 → 跳过（等 21:30 兜底）。
+async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holdings-scheduled-all') {
+  console.log('[notify] runHoldingsNotificationsAll enter', JSON.stringify({
+    todayShanghai,
+    reason
+  }));
+
+  const entries = await listHoldingsRuleEntries(env);
+  if (!entries.length) {
+    console.log('[notify] runHoldingsNotificationsAll skip: no entries', JSON.stringify({ reason }));
+    return;
+  }
+  console.log('[notify] runHoldingsNotificationsAll loaded entries', JSON.stringify({
+    reason,
+    count: entries.length
+  }));
+
+  let settings = await readSettings(env);
+  let settingsDirty = false;
+
+  for (const { clientId, key } of entries) {
+    const stored = await readJson(env, key, null);
+    if (!stored || !stored.enabled) continue;
+
+    const dedupKey = holdingsDedupKey(clientId, 'all', todayShanghai);
+    const dedup = await readJson(env, dedupKey, null);
+    if (dedup && dedup.status === 'sent') continue;
+
+    const digest = normalizeHoldingsDigest(stored.digest);
+    const exchangeBucket = digest.exchange || [];
+    const otcBucket = digest.otc || [];
+    if (!exchangeBucket.length && !otcBucket.length) continue;
+
+    const codes = [...exchangeBucket, ...otcBucket].map((entry) => entry.code);
+    let snapshotsByCode = {};
+    try {
+      snapshotsByCode = await fetchHoldingsNavSnapshots(env, codes);
+    } catch (_error) {
+      // 拉取失败，不写 dedup，下个 cron 会重试。
+      continue;
+    }
+
+    const exchangeRes = await computeWeightedReturn(
+      exchangeBucket,
+      snapshotsByCode,
+      todayShanghai,
+      'exchange',
+      env
+    );
+    const otcRes = await computeWeightedReturn(
+      otcBucket,
+      snapshotsByCode,
+      todayShanghai,
+      'otc',
+      env
+    );
+    const exchangeReady = !exchangeBucket.length || exchangeRes.ready;
+    const otcReady = !otcBucket.length || otcRes.ready;
+    if (!exchangeReady || !otcReady) {
+      console.log('[notify] runHoldingsNotificationsAll skip: not ready', JSON.stringify({
+        clientId,
+        exchangeReady,
+        otcReady
+      }));
+      continue;
+    }
+
+    // 上传时 weight 是「本只市值 / 全仓总市值」，两个 bucket 合起来 ≈ 1。
+    // 这里用原始 weight 在全集上重新 normalize（实际上则 ≈ weight 本身）。
+    const allEligible = [
+      ...(exchangeRes.contributors || []),
+      ...(otcRes.contributors || [])
+    ];
+    if (!allEligible.length) continue;
+    const totalWeightAll = allEligible.reduce((sum, item) => sum + item.weight, 0);
+    if (!(totalWeightAll > 0)) continue;
+    const dailyReturnRate = allEligible.reduce(
+      (sum, item) => sum + (item.weight / totalWeightAll) * item.ratio,
+      0
+    );
+    const sortedContribs = allEligible
+      .map((item) => ({
+        ...item,
+        contribution: (item.weight / totalWeightAll) * item.ratio
+      }))
+      .sort((a, b) => Math.abs(b.ratio) - Math.abs(a.ratio));
+
+    const totals = digest.totals || null;
+    const { title, body, summary } = buildHoldingsNotificationContentAll(
+      dailyReturnRate,
+      sortedContribs,
+      totals
+    );
+
+    const clientRecord = getClientRecord(settings, clientId, stored.clientLabel || '');
+    if (!clientRecord) continue;
+
+    const eventId = `holdings-all-${todayShanghai}`;
+    try {
+      const result = await runClientDetection(env, settings, clientRecord, {
+        reason,
+        testPayload: {
+          eventId,
+          eventType: 'holdings-daily-return',
+          title,
+          body,
+          summary,
+          ruleId: 'holdings-daily-all',
+          symbol: '持仓总览',
+          strategyName: '持仓当日收益',
+          triggerCondition: `${todayShanghai} all`,
+          purchaseAmount: '',
+          detailUrl: ''
+        }
+      });
+      settings = result.settings;
+      settingsDirty = true;
+
+      const dedupPayload = {
+        sentAt: new Date().toISOString(),
+        status: 'sent',
+        kind: 'all',
+        date: todayShanghai
+      };
+      await writeJson(env, dedupKey, dedupPayload);
+      try {
+        await env.NOTIFY_STATE.put(
+          dedupKey,
+          JSON.stringify(dedupPayload),
           { expirationTtl: HOLDINGS_DEDUP_TTL_SECONDS }
         );
       } catch (_error) {
@@ -2357,10 +2561,10 @@ export default {
         ctx.waitUntil(runHoldingsNotifications(env, 'exchange', todayShanghai, 'holdings-scheduled-1530'));
       } else if (hhmm === '20:30') {
         console.log('[notify] scheduled dispatch -> runHoldingsNotifications', JSON.stringify({ kind: 'otc', hhmm, todayShanghai }));
-        ctx.waitUntil(runHoldingsNotifications(env, 'otc', todayShanghai, 'holdings-scheduled-2030'));
+        ctx.waitUntil(runHoldingsNotificationsAll(env, todayShanghai, 'holdings-scheduled-2030'));
       } else if (hhmm === '21:30') {
         console.log('[notify] scheduled dispatch -> runHoldingsNotifications', JSON.stringify({ kind: 'otc', hhmm, todayShanghai }));
-        ctx.waitUntil(runHoldingsNotifications(env, 'otc', todayShanghai, 'holdings-scheduled-2130'));
+        ctx.waitUntil(runHoldingsNotificationsAll(env, todayShanghai, 'holdings-scheduled-2130'));
       } else {
         console.log('[notify] scheduled holdings dispatch skipped', JSON.stringify({ hhmm, todayShanghai }));
       }

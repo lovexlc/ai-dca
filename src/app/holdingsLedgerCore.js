@@ -623,8 +623,10 @@ export function summarizePortfolio(aggregates = []) {
 
 /**
  * 把当前持仓归一化成 worker 通知服务可以消费的精简快照：只包含基金代码和组合权重，
- * 不带任何成本/份额/金额/姓名等用户敏感数据。worker 拿到 weight 后，按当日净值
- * 计算 Σ weight_i × (latest_i / previous_i - 1) 即可得到组合层面的当日收益率。
+ * 以及组合层面的几个汇总数字（市值 / 成本 / 当日盈亏 / 累计盈亏）—— 不包含 per-fund 的份额、
+ * 成本、姓名等用户敏感数据。worker 拿到 weight 后，按当日净值计算
+ * Σ weight_i × (latest_i / previous_i - 1) 得到组合层面的当日收益率；totals 用于在推送中
+ * 直接展示「+¥XX (+0.XX%)」+「总收益 +¥XXXX (+X.XX%)」这种全仓总览样式。
  */
 export function buildHoldingsNotifyDigest({ aggregates = [], summary = null } = {}) {
   const list = Array.isArray(aggregates) ? aggregates : [];
@@ -651,11 +653,30 @@ export function buildHoldingsNotifyDigest({ aggregates = [], summary = null } = 
     }
   }
 
+  // 组合层面 totals：仅在 summary 提供了对应字段时上传；任何字段都可缺省。
+  // 这里只放「组合维度」的几个数字，不放 per-fund 份额/成本。
+  const totals = {};
+  if (summary && typeof summary === 'object') {
+    for (const key of [
+      'marketValue',
+      'totalCost',
+      'previousMarketValue',
+      'totalProfit',
+      'todayProfit',
+      'totalReturnRate',
+      'todayReturnRate'
+    ]) {
+      const v = Number(summary[key]);
+      if (Number.isFinite(v)) totals[key] = round(v, 4);
+    }
+  }
+
   return {
     version: 1,
     generatedAt: new Date().toISOString(),
     exchange,
-    otc
+    otc,
+    ...(Object.keys(totals).length ? { totals } : {})
   };
 }
 

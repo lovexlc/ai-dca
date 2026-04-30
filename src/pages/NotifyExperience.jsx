@@ -682,7 +682,7 @@ export function NotifyExperience({ embedded = false }) {
         key: 'holdings',
         icon: <Wallet className="h-4 w-4 text-emerald-500" />,
         title: '持仓当日收益提醒',
-        subtitle: '北京时间 15:30 / 20:30 自动推送当日收益',
+        subtitle: '北京时间 15:30 推场内；20:30 / 21:30 推全仓总览',
         pill: holdingsEnabled
           ? { tone: 'emerald', label: '已启用' }
           : { tone: 'slate', label: '未启用' },
@@ -849,7 +849,7 @@ export function NotifyExperience({ embedded = false }) {
     return (
       <div>
         <p className="text-xs leading-5 text-slate-500">
-          北京时间 15:30 推送场内当日收益；20:30 推送场外，未成功时 21:30 兜底；同日内只发一次。
+          北京时间 15:30 推送场内当日收益；20:30 推送「场内 + 场外」全仓总览（包含 ¥ 金额与累计收益），未成功时 21:30 兜底；同日内只发一次。
         </p>
 
         <label className="mt-3 flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
