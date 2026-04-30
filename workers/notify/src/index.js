@@ -1771,6 +1771,42 @@ async function handleHoldingsRulePost(request, env) {
   }, { origin });
 }
 
+// 管理员：手动触发「全仓总览」推送（可选跳过当日 dedup + 可选临时覆盖 totals）。
+// 需要 ADMIN_TEST_TOKEN 匹配。主要用于上线后手动验证推送能走通。
+async function handleAdminHoldingsAllTest(request, env) {
+  const origin = readOrigin(request);
+  const headerToken = request.headers.get('x-admin-token') || '';
+  const expected = String(env?.ADMIN_TEST_TOKEN || '').trim();
+  if (!expected || headerToken !== expected) {
+    return jsonResponse({ error: 'forbidden' }, { status: 403, origin });
+  }
+  const payload = await request.json().catch(() => ({}));
+  const onlyClientId = String(payload?.clientId || '').trim();
+  if (!onlyClientId) {
+    return jsonResponse({ error: 'clientId required' }, { status: 400, origin });
+  }
+  const bypassDedup = payload?.bypassDedup !== false; // 默认 true
+  const totalsOverride = payload?.totalsOverride && typeof payload.totalsOverride === 'object'
+    ? payload.totalsOverride
+    : null;
+  const now = new Date();
+  const todayShanghai = (payload?.todayShanghai && /^\d{4}-\d{2}-\d{2}$/.test(payload.todayShanghai))
+    ? payload.todayShanghai
+    : getShanghaiDateParts(now).date;
+  await runHoldingsNotificationsAll(env, todayShanghai, 'admin-test-all', {
+    onlyClientId,
+    bypassDedup,
+    totalsOverride
+  });
+  return jsonResponse({
+    ok: true,
+    todayShanghai,
+    onlyClientId,
+    bypassDedup,
+    totalsOverride: totalsOverride ? Object.keys(totalsOverride) : null
+  }, { origin });
+}
+
 async function fetchHoldingsNavSnapshots(env, codes = []) {
   const baseUrl = String(env?.PUBLIC_DATA_BASE_URL || 'https://tools.freebacktrack.tech').replace(/\/+$/, '');
   if (!codes.length) return {};
@@ -2023,10 +2059,18 @@ function buildHoldingsNotificationContentAll(returnRate, contributors, totals = 
 
 // 全仓总览推送（场内 + 场外合并，20:30 / 21:30 使用）。
 // ready 门闸：场内容量、场外容量都必须「每只都刷出了应达日期」，任意一只未刷 → 跳过（等 21:30 兜底）。
-async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holdings-scheduled-all') {
+async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holdings-scheduled-all', options = {}) {
+  const onlyClientId = String(options?.onlyClientId || '').trim() || null;
+  const bypassDedup = options?.bypassDedup === true;
+  const totalsOverride = options?.totalsOverride && typeof options.totalsOverride === 'object'
+    ? options.totalsOverride
+    : null;
   console.log('[notify] runHoldingsNotificationsAll enter', JSON.stringify({
     todayShanghai,
-    reason
+    reason,
+    onlyClientId,
+    bypassDedup,
+    totalsOverride: totalsOverride ? Object.keys(totalsOverride) : null
   }));
 
   const entries = await listHoldingsRuleEntries(env);
@@ -2043,14 +2087,26 @@ async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holding
   let settingsDirty = false;
 
   for (const { clientId, key } of entries) {
+    if (onlyClientId && clientId !== onlyClientId) continue;
     const stored = await readJson(env, key, null);
     if (!stored || !stored.enabled) continue;
 
     const dedupKey = holdingsDedupKey(clientId, 'all', todayShanghai);
-    const dedup = await readJson(env, dedupKey, null);
-    if (dedup && dedup.status === 'sent') continue;
+    if (!bypassDedup) {
+      const dedup = await readJson(env, dedupKey, null);
+      if (dedup && dedup.status === 'sent') continue;
+    }
 
     const digest = normalizeHoldingsDigest(stored.digest);
+    if (totalsOverride) {
+      // 管理员测试：临时覆盖 totals，以便在 digest 还未带 totals 时也能展示 ¥ 金额。
+      const merged = { ...(digest.totals || {}) };
+      for (const [k, v] of Object.entries(totalsOverride)) {
+        const num = Number(v);
+        if (Number.isFinite(num)) merged[k] = num;
+      }
+      if (Object.keys(merged).length) digest.totals = merged;
+    }
     const exchangeBucket = digest.exchange || [];
     const otcBucket = digest.otc || [];
     if (!exchangeBucket.length && !otcBucket.length) continue;
@@ -2486,6 +2542,10 @@ export default {
 
       if (request.method === 'POST' && url.pathname === '/api/notify/holdings-rule') {
         return await handleHoldingsRulePost(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/admin/holdings-all-test') {
+        return await handleAdminHoldingsAllTest(request, env);
       }
 
       if (request.method === 'GET' && url.pathname === '/api/notify/switch/config') {
