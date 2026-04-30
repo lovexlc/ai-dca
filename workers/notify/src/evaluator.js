@@ -447,6 +447,27 @@ async function deliverNotification(env, notification, options = {}) {
   const deliveredCount = results.filter((result) => result.status === 'delivered').length;
   const configuredCount = results.filter((result) => result.status !== 'skipped').length;
 
+  try {
+    console.log('[notify][deliver] result', JSON.stringify({
+      eventId: notification.eventId || '',
+      eventType: notification.eventType || '',
+      clientId: String(env.__notifyCurrentClientId || ''),
+      delivered: deliveredCount,
+      configured: configuredCount,
+      gcmRegSelected: selectedGcmRegistrations.length,
+      gcmRegToDeliver: gcmRegistrationsToDeliver.length,
+      barkConfigured: !!barkDeviceKey,
+      results: results.map((r) => ({
+        channel: r.channel,
+        status: r.status,
+        detail: r.detail,
+        configLabel: r.configLabel
+      }))
+    }));
+  } catch (_logErr) {
+    // 日志序列化失败不阻断返回。
+  }
+
   return {
     results,
     status: deliveredCount > 0 ? 'delivered' : configuredCount > 0 ? 'failed' : 'skipped'

@@ -1794,14 +1794,29 @@ async function handleAdminHoldingsAllTest(request, env) {
   const todayShanghai = (payload?.todayShanghai && /^\d{4}-\d{2}-\d{2}$/.test(payload.todayShanghai))
     ? payload.todayShanghai
     : getShanghaiDateParts(now).date;
-  await runHoldingsNotificationsAll(env, todayShanghai, 'admin-test-all', {
+  console.log('[notify][admin-test-all] ENTER', JSON.stringify({
     onlyClientId,
     bypassDedup,
-    totalsOverride,
-    eventIdOverride
-  });
+    eventIdOverride,
+    todayShanghai,
+    totalsKeys: totalsOverride ? Object.keys(totalsOverride) : null
+  }));
+  let runError = null;
+  try {
+    await runHoldingsNotificationsAll(env, todayShanghai, 'admin-test-all', {
+      onlyClientId,
+      bypassDedup,
+      totalsOverride,
+      eventIdOverride
+    });
+  } catch (error) {
+    runError = error instanceof Error ? error.message : String(error);
+    console.log('[notify][admin-test-all] THREW', JSON.stringify({ message: runError }));
+  }
+  console.log('[notify][admin-test-all] EXIT', JSON.stringify({ runError }));
   return jsonResponse({
-    ok: true,
+    ok: !runError,
+    runError,
     todayShanghai,
     onlyClientId,
     bypassDedup,
@@ -2094,12 +2109,18 @@ async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holding
   for (const { clientId, key } of entries) {
     if (onlyClientId && clientId !== onlyClientId) continue;
     const stored = await readJson(env, key, null);
-    if (!stored || !stored.enabled) continue;
+    if (!stored || !stored.enabled) {
+      console.log('[notify][holdings-all] skip: rule disabled or missing', JSON.stringify({ clientId, hasStored: !!stored, enabled: stored?.enabled === true }));
+      continue;
+    }
 
     const dedupKey = holdingsDedupKey(clientId, 'all', todayShanghai);
     if (!bypassDedup) {
       const dedup = await readJson(env, dedupKey, null);
-      if (dedup && dedup.status === 'sent') continue;
+      if (dedup && dedup.status === 'sent') {
+        console.log('[notify][holdings-all] skip: dedup hit', JSON.stringify({ clientId, dedupKey, sentAt: dedup.sentAt }));
+        continue;
+      }
     }
 
     const digest = normalizeHoldingsDigest(stored.digest);
@@ -2114,16 +2135,34 @@ async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holding
     }
     const exchangeBucket = digest.exchange || [];
     const otcBucket = digest.otc || [];
-    if (!exchangeBucket.length && !otcBucket.length) continue;
+    console.log('[notify][holdings-all] digest', JSON.stringify({
+      clientId,
+      exchangeCount: exchangeBucket.length,
+      otcCount: otcBucket.length,
+      hasTotals: !!digest.totals
+    }));
+    if (!exchangeBucket.length && !otcBucket.length) {
+      console.log('[notify][holdings-all] skip: empty digest', JSON.stringify({ clientId }));
+      continue;
+    }
 
     const codes = [...exchangeBucket, ...otcBucket].map((entry) => entry.code);
     let snapshotsByCode = {};
     try {
       snapshotsByCode = await fetchHoldingsNavSnapshots(env, codes);
-    } catch (_error) {
+    } catch (error) {
       // 拉取失败，不写 dedup，下个 cron 会重试。
+      console.log('[notify][holdings-all] skip: nav fetch failed', JSON.stringify({
+        clientId,
+        message: error instanceof Error ? error.message : String(error)
+      }));
       continue;
     }
+    console.log('[notify][holdings-all] nav snapshots', JSON.stringify({
+      clientId,
+      codeCount: codes.length,
+      snapshotCount: Object.keys(snapshotsByCode).length
+    }));
 
     const exchangeRes = await computeWeightedReturn(
       exchangeBucket,
@@ -2145,7 +2184,9 @@ async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holding
       console.log('[notify] runHoldingsNotificationsAll skip: not ready', JSON.stringify({
         clientId,
         exchangeReady,
-        otcReady
+        otcReady,
+        exchangeContribCount: exchangeRes.contributors?.length || 0,
+        otcContribCount: otcRes.contributors?.length || 0
       }));
       continue;
     }
@@ -2178,9 +2219,18 @@ async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holding
     );
 
     const clientRecord = getClientRecord(settings, clientId, stored.clientLabel || '');
-    if (!clientRecord) continue;
+    if (!clientRecord) {
+      console.log('[notify][holdings-all] skip: clientRecord missing', JSON.stringify({ clientId }));
+      continue;
+    }
 
     const eventId = eventIdOverride || `holdings-all-${todayShanghai}`;
+    console.log('[notify][holdings-all] dispatching', JSON.stringify({
+      clientId,
+      eventId,
+      contribCount: allEligible.length,
+      dailyReturnRate
+    }));
     try {
       const result = await runClientDetection(env, settings, clientRecord, {
         reason,
@@ -2200,6 +2250,17 @@ async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holding
       });
       settings = result.settings;
       settingsDirty = true;
+      console.log('[notify][holdings-all] dispatched OK', JSON.stringify({
+        clientId,
+        eventId,
+        deliveredCount: result?.summary?.deliveredCount,
+        channels: (result?.summary?.events?.[0]?.channels || []).map((c) => ({
+          channel: c.channel,
+          status: c.status,
+          detail: c.detail,
+          configLabel: c.configLabel
+        }))
+      }));
 
       const dedupPayload = {
         sentAt: new Date().toISOString(),
@@ -2214,11 +2275,20 @@ async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holding
           JSON.stringify(dedupPayload),
           { expirationTtl: HOLDINGS_DEDUP_TTL_SECONDS }
         );
-      } catch (_error) {
+      } catch (error) {
         // TTL 写入失败不阻断主流程。
+        console.log('[notify][holdings-all] dedup ttl write failed (non-fatal)', JSON.stringify({
+          clientId,
+          message: error instanceof Error ? error.message : String(error)
+        }));
       }
-    } catch (_error) {
+    } catch (error) {
       // 推送失败不写 dedup，等下个点重试。
+      console.log('[notify][holdings-all] dispatch THREW', JSON.stringify({
+        clientId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : null
+      }));
     }
   }
 
