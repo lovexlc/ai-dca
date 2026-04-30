@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Bell, ChevronDown, ChevronUp, History, RefreshCw, Save, Trash2, Wallet } from 'lucide-react';
+import { ArrowRight, Bell, ChevronDown, ChevronUp, History, RefreshCw, Save, Send, Trash2, Wallet } from 'lucide-react';
 import {
   issueNotifyGroupShareCode,
   joinNotifyGroup,
@@ -11,6 +11,7 @@ import {
   persistNotifyClientConfig,
   readNotifyClientConfig,
   saveNotifySettings,
+  sendNotifyTest,
   syncTradePlanRules,
   unpairAndroidDevice
 } from '../app/notifySync.js';
@@ -73,6 +74,7 @@ export function NotifyExperience({ embedded = false }) {
   const [holdingsRule, setHoldingsRule] = useState({ enabled: false, digest: null, updatedAt: '' });
   const [isSavingHoldingsRule, setIsSavingHoldingsRule] = useState(false);
   const [isSyncingHoldingsDigest, setIsSyncingHoldingsDigest] = useState(false);
+  const [isTestingHoldingsNotify, setIsTestingHoldingsNotify] = useState(false);
   // 提醒历史与规则同步：从各 tab 合并到本页，避免交易计划中心重复采点。
   const [notifyEvents, setNotifyEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(false);
@@ -409,6 +411,38 @@ export function NotifyExperience({ embedded = false }) {
       showActionToast('同步持仓快照', 'error', { description: message });
     } finally {
       setIsSyncingHoldingsDigest(false);
+    }
+  }
+
+  // 发送一条「持仓总览」样式的测试推送，用于验证推送通道与文案。
+  async function handleTestHoldingsNotify() {
+    setIsTestingHoldingsNotify(true);
+    setNotifyError('');
+    setNotifyMessage('');
+    try {
+      const eventId = `holdings-test-${Date.now()}`;
+      await sendNotifyTest({
+        clientId: notifyConfig.notifyClientId,
+        eventId,
+        eventType: 'holdings-daily-return',
+        ruleId: 'holdings-daily-test',
+        symbol: '持仓总览',
+        strategyName: '持仓当日收益',
+        title: '[持仓总览] 当日收益 +¥238.95 (+0.16%)',
+        summary: '当日 +¥238.95 (+0.16%)；总收益 +¥3,884.87 (+2.72%)',
+        body: '今日加权收益率 +¥238.95 (+0.16%)；总收益 +¥3,884.87 (+2.72%)。这是一条测试通知，用于校验推送通道是否可用。',
+        triggerCondition: '手动测试'
+      });
+      setNotifyMessage('测试通知已发送。');
+      showActionToast('测试通知', 'success', {
+        description: '已发送「持仓总览」样式的测试推送。'
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '测试通知发送失败';
+      setNotifyError(message);
+      showActionToast('测试通知', 'error', { description: message });
+    } finally {
+      setIsTestingHoldingsNotify(false);
     }
   }
 
@@ -848,11 +882,7 @@ export function NotifyExperience({ embedded = false }) {
 
     return (
       <div>
-        <p className="text-xs leading-5 text-slate-500">
-          北京时间 15:30 推送场内当日收益；20:30 推送「场内 + 场外」全仓总览（包含 ¥ 金额与累计收益），未成功时 21:30 兜底；同日内只发一次。
-        </p>
-
-        <label className="mt-3 flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+        <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
           <input
             type="checkbox"
             className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
@@ -894,6 +924,15 @@ export function NotifyExperience({ embedded = false }) {
           >
             <RefreshCw className="h-4 w-4" />
             {isSyncingHoldingsDigest ? '正在同步快照' : '立即同步快照'}
+          </button>
+          <button
+            type="button"
+            className={cx(secondaryButtonClass, isTestingHoldingsNotify && 'cursor-not-allowed opacity-60')}
+            onClick={handleTestHoldingsNotify}
+            disabled={isTestingHoldingsNotify}
+          >
+            <Send className="h-4 w-4" />
+            {isTestingHoldingsNotify ? '正在发送测试' : '消息测试'}
           </button>
           {!hasDigest ? (
             <span className="text-xs text-amber-600">
