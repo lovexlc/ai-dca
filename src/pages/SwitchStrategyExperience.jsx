@@ -822,13 +822,21 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   const switchSummary = useMemo(() => {
     const cls = prefs?.premiumClass || {};
     const benches = (prefs?.benchmarkCodes || []).filter(Boolean);
-    const cands = (prefs?.enabledCodes || []).filter((c) => c && !benches.includes(c));
-    const Hcands = cands.filter((c) => cls[c] === 'H');
-    const Lcands = cands.filter((c) => cls[c] === 'L');
-    const Hbenches = benches.filter((c) => cls[c] === 'H');
+    const enabled = (prefs?.enabledCodes || []).filter(Boolean);
+    // 候选池 = (所有分类过的代码) = enabledCodes ∪ benchmarkCodes，
+    // 这样另一只持仓（在另一个分类里）也能成为当前 bench 的候选。
+    const classifiedPool = Array.from(new Set([...benches, ...enabled]))
+      .filter((c) => cls[c] === 'H' || cls[c] === 'L');
+    const Hpool = classifiedPool.filter((c) => cls[c] === 'H');
+    const Lpool = classifiedPool.filter((c) => cls[c] === 'L');
     const Lbenches = benches.filter((c) => cls[c] === 'L');
-    const pairs = Hbenches.length * Lcands.length + Lbenches.length * Hcands.length;
-    return { benches, cands, Hcands, Lcands, Hbenches, Lbenches, pairs };
+    const Hbenches = benches.filter((c) => cls[c] === 'H');
+    // L bench 的候选 = Hpool（不同类、无需排除自身）；H bench 的候选 = Lpool。
+    const Lrow = Lbenches.length ? { benches: Lbenches, cands: Hpool } : null;
+    const Hrow = Hbenches.length ? { benches: Hbenches, cands: Lpool } : null;
+    const pairs = (Lrow ? Lrow.benches.length * Lrow.cands.length : 0)
+      + (Hrow ? Hrow.benches.length * Hrow.cands.length : 0);
+    return { benches, Lbenches, Hbenches, Lrow, Hrow, pairs, Hpool, Lpool, cls };
   }, [prefs?.benchmarkCodes, prefs?.enabledCodes, prefs?.premiumClass]);
 
   return (
@@ -894,41 +902,39 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  {workerConfigExpanded ? (
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                      <span>
-                        <span className="text-slate-400">基准</span>{' '}
-                        <span className="font-semibold text-slate-700">
-                          {switchSummary.benches.length ? `${switchSummary.benches.length} 只` : '未设定'}
-                        </span>
-                        {switchSummary.benches.length ? (
-                          <span className="ml-1 text-[11px] text-slate-400">({switchSummary.benches.join(', ')})</span>
-                        ) : null}
+                  {(() => {
+                    const sellLower = Number.isFinite(Number(prefs?.intraSellLowerPct)) ? prefs.intraSellLowerPct : null;
+                    const buyOther = Number.isFinite(Number(prefs?.intraBuyOtherPct)) ? prefs.intraBuyOtherPct : null;
+                    const fmtCls = (c) => `${c}${switchSummary.cls[c] === 'H' ? 'H' : (switchSummary.cls[c] === 'L' ? 'L' : '')}`;
+                    const fmtList = (arr) => (arr || []).map(fmtCls).join(', ');
+                    if (!switchSummary.benches.length) {
+                      return <span className="text-slate-500">未配置基准（在上方 H/L 表拖入你的持仓代码）</span>;
+                    }
+                    const Lline = switchSummary.Lrow ? (
+                      <span key="L" className="text-slate-500">
+                        <span className="font-semibold text-slate-700">L 基准 {switchSummary.Lrow.benches.length} 只</span>
+                        <span className="text-[11px] text-slate-400">{' '}({fmtList(switchSummary.Lrow.benches)})</span>
+                        {' · 候选 '}<span className="font-semibold text-slate-700">{switchSummary.Lrow.cands.length}</span> 对{' '}
+                        <span className="text-[11px] text-slate-400">({fmtList(switchSummary.Lrow.cands) || '无'})</span>
+                        {' · 规则 A：H-L ≤'}<span className="font-semibold text-slate-700">{sellLower !== null ? `${sellLower}%` : '—'}</span>
                       </span>
-                      <span>
-                        <span className="text-slate-400">候选</span>{' '}
-                        <span className="font-semibold text-slate-700">{switchSummary.pairs}</span>{' '}
-                        对{' '}
-                        <span className="text-[11px] text-slate-400">(H {switchSummary.Hcands.length} / L {switchSummary.Lcands.length})</span>
+                    ) : null;
+                    const Hline = switchSummary.Hrow ? (
+                      <span key="H" className="text-slate-500">
+                        <span className="font-semibold text-slate-700">H 基准 {switchSummary.Hrow.benches.length} 只</span>
+                        <span className="text-[11px] text-slate-400">{' '}({fmtList(switchSummary.Hrow.benches)})</span>
+                        {' · 候选 '}<span className="font-semibold text-slate-700">{switchSummary.Hrow.cands.length}</span> 对{' '}
+                        <span className="text-[11px] text-slate-400">({fmtList(switchSummary.Hrow.cands) || '无'})</span>
+                        {' · 规则 B：H-L ≥'}<span className="font-semibold text-slate-700">{buyOther !== null ? `${buyOther}%` : '—'}</span>
                       </span>
-                      <span>
-                        <span className="text-slate-400">规则 A</span> |diff| ≤{' '}
-                        <span className="font-semibold text-slate-700">
-                          {Number.isFinite(Number(prefs?.intraSellLowerPct)) ? `${prefs.intraSellLowerPct}%` : '—'}
-                        </span>
-                      </span>
-                      <span>
-                        <span className="text-slate-400">规则 B</span> |diff| ≥{' '}
-                        <span className="font-semibold text-slate-700">
-                          {Number.isFinite(Number(prefs?.intraBuyOtherPct)) ? `${prefs.intraBuyOtherPct}%` : '—'}
-                        </span>
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-slate-500">
-                      基准 {switchSummary.benches.length ? `${switchSummary.benches.length} 只 (${switchSummary.benches.join(', ')})` : '未设'} · 候选 {switchSummary.pairs} 对 (H {switchSummary.Hcands.length} / L {switchSummary.Lcands.length}) · 规则 A ≤{Number.isFinite(Number(prefs?.intraSellLowerPct)) ? `${prefs.intraSellLowerPct}%` : '—'} / B ≥{Number.isFinite(Number(prefs?.intraBuyOtherPct)) ? `${prefs.intraBuyOtherPct}%` : '—'}
-                    </span>
-                  )}
+                    ) : null;
+                    return (
+                      <div className="flex flex-col gap-1">
+                        {Lline}
+                        {Hline}
+                      </div>
+                    );
+                  })()}
                 </div>
                 <ChevronDown className={cx('h-4 w-4 shrink-0 transition-transform', workerConfigExpanded ? 'rotate-180' : '')} />
               </div>

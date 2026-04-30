@@ -118,17 +118,21 @@ export function normalizeSwitchConfig(input = {}) {
 }
 
 export function isSwitchConfigRunnable(config) {
-  return Boolean(
-    config
-    && config.enabled
-    && Array.isArray(config.benchmarkCodes)
-    && config.benchmarkCodes.length > 0
-    && Array.isArray(config.enabledCodes)
-    && config.enabledCodes.length > 0
-    && Number.isFinite(config.intraSellLowerPct)
-    && Number.isFinite(config.intraBuyOtherPct)
-    && config.intraBuyOtherPct > config.intraSellLowerPct
-  );
+  if (!config || !config.enabled) return false;
+  if (!Number.isFinite(config.intraSellLowerPct) || !Number.isFinite(config.intraBuyOtherPct)) return false;
+  if (config.intraBuyOtherPct <= config.intraSellLowerPct) return false;
+  const benches = Array.isArray(config.benchmarkCodes) ? config.benchmarkCodes : [];
+  if (!benches.length) return false;
+  const enabled = Array.isArray(config.enabledCodes) ? config.enabledCodes : [];
+  const cls = (config && typeof config.premiumClass === 'object' && config.premiumClass) ? config.premiumClass : {};
+  const pool = Array.from(new Set([...benches, ...enabled])).filter((c) => cls[c] === 'H' || cls[c] === 'L');
+  for (const b of benches) {
+    const bc = cls[b];
+    if (bc !== 'H' && bc !== 'L') continue;
+    const opp = bc === 'H' ? 'L' : 'H';
+    if (pool.some((c) => c !== b && cls[c] === opp)) return true;
+  }
+  return false;
 }
 
 // --- 时间窗口 -------------------------------------------------------------
@@ -280,12 +284,16 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
   const enabledCodes = Array.isArray(config.enabledCodes) ? config.enabledCodes : [];
   const premiumClass = (config && typeof config.premiumClass === 'object' && config.premiumClass) ? config.premiumClass : {};
 
+  // 候选池 = (enabledCodes ∪ benchmarkCodes) \ self，这样一 H 一 L 的两只持仓
+  // 也能互为候选，而不是仅限于 enabledCodes（= 非持仓分类代码）。
+  const classifiedPool = Array.from(new Set([...benchmarkCodes, ...enabledCodes]))
+    .filter((c) => premiumClass[c] === 'H' || premiumClass[c] === 'L');
   const byBenchmark = benchmarkCodes.map((benchmarkCode) => {
     // v3：bench 已分类时，只留对立类（H↔L）的候选，同类/未分类全部剔除。
     const benchmarkClass = premiumClass[benchmarkCode] || null;
     const oppClass = benchmarkClass === 'H' ? 'L' : (benchmarkClass === 'L' ? 'H' : null);
     const eligibleCodes = oppClass
-      ? enabledCodes.filter((c) => premiumClass[c] === oppClass)
+      ? classifiedPool.filter((c) => c !== benchmarkCode && premiumClass[c] === oppClass)
       : enabledCodes;
 
     const benchPrice = Number(priceMap?.[benchmarkCode]?.price);
