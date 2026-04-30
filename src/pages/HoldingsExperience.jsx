@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowDown,
+  ArrowRight,
+  ArrowUp,
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
@@ -35,6 +38,7 @@ import {
   summarizeSoldLots,
   summarizeTransactionErrors
 } from '../app/holdingsLedgerCore.js';
+import { loadLatestMarketIndices } from '../app/marketIndices.js';
 import {
   buildNavMetaFromResult,
   mergeSnapshotsFromNavResult,
@@ -104,6 +108,11 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [chainPickerSearch, setChainPickerSearch] = useState('');
   // 已展开的链路 id 集合。保存过的链路默认折叠，新建时自动展开。
   const [expandedChains, setExpandedChains] = useState(() => new Set());
+  const [marketIndexState, setMarketIndexState] = useState(() => ({
+    generatedAt: '',
+    indexes: [],
+    error: ''
+  }));
 
   const fileInputRef = useRef(null);
   const autoNavTriggeredRef = useRef(false);
@@ -185,6 +194,32 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     [transactions]
   );
   const migrationNoticeVisible = Boolean(ledger.migratedFromLegacy) && needsDateBackfill;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    loadLatestMarketIndices({ inPagesDir })
+      .then((payload) => {
+        if (cancelled) return;
+        setMarketIndexState({
+          generatedAt: payload.generated_at || '',
+          indexes: Array.isArray(payload.indexes) ? payload.indexes : [],
+          error: ''
+        });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setMarketIndexState({
+          generatedAt: '',
+          indexes: [],
+          error: error instanceof Error ? error.message : '指数行情加载失败'
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [inPagesDir]);
 
   // ---- NAV auto-refresh on mount ----
   useEffect(() => {
@@ -270,6 +305,49 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     // 手动刷新清空已尝试集合，所有代码都重新走一遍。
     navAttemptedCodesRef.current.clear();
     void refreshNavForCodes(codes, { silent: false });
+  }
+
+  function formatMarketIndexValue(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return '—';
+    return number.toFixed(2);
+  }
+
+  function formatMarketIndexMove(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return '—';
+    const magnitude = Math.abs(number).toFixed(2);
+    return number < 0 ? `-${magnitude}` : magnitude;
+  }
+
+  function formatMarketIndexPercent(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return '—';
+    const magnitude = Math.abs(number).toFixed(2);
+    return number < 0 ? `-${magnitude}%` : `${magnitude}%`;
+  }
+
+  function getMarketIndexTone(change) {
+    const number = Number(change);
+    if (!Number.isFinite(number) || number === 0) {
+      return {
+        icon: ArrowRight,
+        valueClass: 'text-slate-900',
+        changeClass: 'text-slate-500'
+      };
+    }
+    if (number > 0) {
+      return {
+        icon: ArrowUp,
+        valueClass: 'text-red-500',
+        changeClass: 'text-red-500'
+      };
+    }
+    return {
+      icon: ArrowDown,
+      valueClass: 'text-emerald-600',
+      changeClass: 'text-emerald-600'
+    };
   }
 
   // ---- Draft (quick add) handlers ----
@@ -858,6 +936,42 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   // ---- Render helpers ----
+  function renderMarketIndexOverview() {
+    if (!marketIndexState.indexes.length) return null;
+
+    return (
+      <section className="rounded-2xl border border-slate-200/70 bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">大盘指数</div>
+          <div className="text-[11px] text-slate-400">
+            {marketIndexState.generatedAt ? `${formatRelativeTime(marketIndexState.generatedAt)} · Yahoo Finance` : 'Yahoo Finance'}
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-3">
+          {marketIndexState.indexes.map((item) => {
+            const tone = getMarketIndexTone(item.change);
+            const ToneIcon = tone.icon;
+
+            return (
+              <div key={item.key} className="rounded-2xl bg-slate-50/80 px-4 py-4 ring-1 ring-slate-100">
+                <div className="text-[11px] font-semibold tracking-[0.08em] text-slate-500">{item.name}</div>
+                <div className={cx('mt-2 text-[clamp(2rem,4vw,2.75rem)] font-extrabold tracking-tight tabular-nums', tone.valueClass)}>
+                  {formatMarketIndexValue(item.current_price)}
+                </div>
+                <div className={cx('mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-base font-semibold tabular-nums', tone.changeClass)}>
+                  <ToneIcon className="h-4 w-4 shrink-0" />
+                  <span>{formatMarketIndexMove(item.change)}</span>
+                  <span className="text-slate-300">|</span>
+                  <span>{formatMarketIndexPercent(item.change_percent)}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+
   function renderPortfolioOverview() {
     // 配色约定（中国 A 股常见）：涨=红，跌=绿
     const profitTone = portfolio.totalProfit > 0 ? 'red' : portfolio.totalProfit < 0 ? 'emerald' : 'slate';
@@ -2053,6 +2167,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           </div>
         </div>
       ) : null}
+      {renderMarketIndexOverview()}
       {renderPortfolioOverview()}
       <div className="grid grid-cols-1 gap-4">
         <section className="min-w-0 rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
