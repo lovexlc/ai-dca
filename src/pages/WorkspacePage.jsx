@@ -3,6 +3,9 @@ import { Bell, CloudUpload, History, ListChecks, Shuffle, Wallet } from 'lucide-
 import { isFundSwitchViewHash } from '../app/fundSwitch.js';
 import { LEGACY_TAB_REDIRECTS, PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
+import { TourProvider } from '../tour/tour-engine.jsx';
+import { TourOverlay } from '../tour/tour-overlay.jsx';
+import { TourLauncher } from '../tour/tour-launcher.jsx';
 
 // 各主 tab 使用 React.lazy 按需加载，在 Vite 中会被拆成独立 chunk。
 // HomeExperience / DcaExperience 已并入 TradePlansExperience 作为二级 tab，不再在这里顶级 lazy。
@@ -193,13 +196,17 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   }
 
   return (
-    <ConsoleLayout
-      brand="ai-dca"
-      sidebarNav={sidebarNav}
-      activeKey={activeTab}
-      onSelectNav={handleSelectTab}
-    >
-      <Suspense fallback={<TabLoadingFallback />}>{renderActivePanel()}</Suspense>
-    </ConsoleLayout>
+    <TourProvider navigateToTab={handleSelectTab} currentTab={activeTab}>
+      <ConsoleLayout
+        brand="ai-dca"
+        sidebarNav={sidebarNav}
+        activeKey={activeTab}
+        onSelectNav={handleSelectTab}
+      >
+        <Suspense fallback={<TabLoadingFallback />}>{renderActivePanel()}</Suspense>
+      </ConsoleLayout>
+      <TourOverlay />
+      <TourLauncher />
+    </TourProvider>
   );
 }

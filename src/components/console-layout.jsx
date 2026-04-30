@@ -149,6 +149,7 @@ export function ConsoleLayout({
                 <a
                   key={item.key}
                   href={item.href}
+                  data-tour={`sidebar-${item.key}`}
                   aria-current={isActive ? 'page' : undefined}
                   className={cx('console-sidenav__link', isActive && 'is-active')}
                   onClick={(event) => {
