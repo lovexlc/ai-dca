@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowDownUp, Info, RefreshCw, Radio, PlayCircle } from 'lucide-react';
+import { AlertTriangle, ArrowDownUp, Info, RefreshCw, Radio, PlayCircle, ChevronDown } from 'lucide-react';
 import { Card, Pill, SectionHeading, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { aggregateByCode } from '../app/holdingsLedgerCore.js';
@@ -231,6 +231,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     notice: '',
     lastSyncedAt: ''
   });
+  const [workerConfigExpanded, setWorkerConfigExpanded] = useState(false);
 
   useEffect(() => { writePrefs(prefs); }, [prefs]);
   useEffect(() => { writeSwitchLedger(switchLedger); }, [switchLedger]);
@@ -862,26 +863,48 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
             </div>
           ) : null}
           <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              {/* 单一数据源：选择的 prefs.benchmarkCodes / enabledCodes / 阈值。 */}
-              <span>
-                <span className="text-slate-400">基准</span>{' '}
-                <span className="font-semibold text-slate-700">
-                  {(prefs?.benchmarkCodes || []).length
-                    ? (prefs.benchmarkCodes.length === 1 ? prefs.benchmarkCodes[0] : `${prefs.benchmarkCodes.length} 只`)
-                    : '未设定'}
-                </span>
+            <button
+              type="button"
+              onClick={() => setWorkerConfigExpanded(!workerConfigExpanded)}
+              className="w-full text-left hover:bg-slate-50 rounded-lg p-2 transition-colors -mx-2 -my-1 mb-2"
+             >
+              <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 flex-1">
+                  {workerConfigExpanded ? (
+                    <>
+                      <span>
+                        <span className="text-slate-400">基准</span>{' '}
+                        <span className="font-semibold text-slate-700">
+                          {(prefs?.benchmarkCodes || []).length
+                            ? (prefs.benchmarkCodes.length === 1 ? prefs.benchmarkCodes[0] : `${prefs.benchmarkCodes.length} 只`)
+                            : '未设定'}
+                        </span>
+                        {(prefs?.benchmarkCodes || []).length > 1 ? (
+                          <span className="ml-1 text-[11px] text-slate-400">({prefs.benchmarkCodes.join(', ')})</span>
+                        ) : null}
+                      </span>
+                      <span><span className="text-slate-400">候选</span> <span className="font-semibold text-slate-700">{(prefs?.enabledCodes || []).filter((c) => c && !((prefs?.benchmarkCodes || []).includes(c))).length}</span> 只</span>
+                      <span><span className="text-slate-400">规则 A</span> |diff| ≤ <span className="font-semibold text-slate-700">{Number.isFinite(Number(prefs?.intraSellLowerPct)) ? `${prefs.intraSellLowerPct}%` : '—'}</span></span>
+                      <span><span className="text-slate-400">规则 B</span> |diff| ≥ <span className="font-semibold text-slate-700">{Number.isFinite(Number(prefs?.intraBuyOtherPct)) ? `${prefs.intraBuyOtherPct}%` : '—'}</span></span>
+                    </>
+                  ) : (
+                    <span className="text-slate-500">基准 {(prefs?.benchmarkCodes || []).length ? (prefs.benchmarkCodes.length === 1 ? prefs.benchmarkCodes[0] : `${prefs.benchmarkCodes.length} 只`) : '未设'} · 候选 {(prefs?.enabledCodes || []).filter((c) => c && !((prefs?.benchmarkCodes || []).includes(c))).length} · 规则 A ≤{Number.isFinite(Number(prefs?.intraSellLowerPct)) ? `${prefs.intraSellLowerPct}%` : '—'} / B ≥{Number.isFinite(Number(prefs?.intraBuyOtherPct)) ? `${prefs.intraBuyOtherPct}%` : '—'}</span>
+                  )}
+                </div>
+                <ChevronDown className={cx('h-4 w-4 shrink-0 transition-transform', workerConfigExpanded ? 'rotate-180' : '')} />
+              </div>
+            </button>
+            {workerConfigExpanded && (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                {/* 单一数据源：选择的 prefs.benchmarkCodes / enabledCodes / 阈值。 */}
                 {(prefs?.benchmarkCodes || []).length > 1 ? (
-                  <span className="ml-1 text-[11px] text-slate-400">({prefs.benchmarkCodes.join(', ')})</span>
+                  <span className="text-[11px] text-slate-400 w-full">{prefs.benchmarkCodes.join(', ')}</span>
                 ) : null}
-              </span>
-              <span><span className="text-slate-400">候选</span> <span className="font-semibold text-slate-700">{(prefs?.enabledCodes || []).filter((c) => c && !((prefs?.benchmarkCodes || []).includes(c))).length}</span> 只</span>
-              <span><span className="text-slate-400">规则 A</span> |diff| ≤ <span className="font-semibold text-slate-700">{Number.isFinite(Number(prefs?.intraSellLowerPct)) ? `${prefs.intraSellLowerPct}%` : '—'}</span></span>
-              <span><span className="text-slate-400">规则 B</span> |diff| ≥ <span className="font-semibold text-slate-700">{Number.isFinite(Number(prefs?.intraBuyOtherPct)) ? `${prefs.intraBuyOtherPct}%` : '—'}</span></span>
-              {workerConfig.updatedAt ? (
-                <span className="text-[11px] text-slate-400 ml-auto">上次同步 {formatDate(workerConfig.updatedAt) || workerConfig.updatedAt}</span>
-              ) : null}
-            </div>
+              </div>
+            )}
+            {workerConfigExpanded && workerConfig.updatedAt ? (
+              <div className="text-[11px] text-slate-400 mt-2">上次同步 {formatDate(workerConfig.updatedAt) || workerConfig.updatedAt}</div>
+            ) : null}
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
