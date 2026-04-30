@@ -35,9 +35,16 @@ export function switchStateKey(clientId) {
 const FUND_CODE_PATTERN = /^\d{6}$/;
 const MAX_CANDIDATES = 20;
 // 与前端 SwitchStrategyExperience 的 DEFAULT_PREFS 保持一致。
-// v2 H/L 分组：benchmarkCodes = 高溢价组 H，enabledCodes = 低溢价组 L。
-const DEFAULT_INTRA_SELL_LOWER_PCT = 1;   // 规则 A 低→高：H溢价 − L溢价 < X% → 卖 L 买 H
-const DEFAULT_INTRA_BUY_OTHER_PCT = 3;    // 规则 B 高→低：H溢价 − L溢价 > Y% → 卖 H 买 L
+// v3 持仓 + H/L 双维度：
+//   benchmarkCodes = 持仓基准（前端从持仓详情自动派生，worker 端只接收）
+//   enabledCodes   = 用户挑选的候选（前端按 H/L 分类做对侧过滤后下发）
+//   premiumClass   = 每只 ETF 的「溢价中枢」分类 'H' | 'L'，与持仓/候选解耦
+//   触发方向锚定在 benchmark 的分类：
+//     bench ∈ L 持有 → 仅看规则 A：gap = H溢价 − L溢价 < X% → 卖 bench(L) 买 cand(H)
+//     bench ∈ H 持有 → 仅看规则 B：gap = H溢价 − L溢价 > Y% → 卖 bench(H) 买 cand(L)
+//     同类、未分类、cand 未分类 都不触发。
+const DEFAULT_INTRA_SELL_LOWER_PCT = 1;   // 规则 A：差价收窄阈值
+const DEFAULT_INTRA_BUY_OTHER_PCT = 3;    // 规则 B：差价扩大阈值
 
 function sanitizeCode(value) {
   const code = String(value || '').trim();
@@ -54,14 +61,15 @@ function pickPercent(value, fallback) {
 }
 
 // 配置与前端 aiDcaSwitchStrategyPrefs 同名，不重复定义一套参数。
-// v2 H/L 分组 —— 把基金按「溢价中枢」拆成两类：
-//  - benchmarkCodes: 高溢价组 H（如 513100 这类溢价常年偏高的纳指 ETF）
-//  - enabledCodes:   低溢价组 L（如 159632 这类同标的但溢价常年偏低的）
+// v3 持仓 + H/L 双维度（持仓决定基准，H/L 决定方向）：
+//  - benchmarkCodes: 持仓基准（前端从持仓详情自动派生，禁止手挑非持仓代码）
+//  - enabledCodes:   候选（前端按 premiumClass 过滤后只剩对侧）
+//  - premiumClass:   { [code]: 'H' | 'L' }，每只 ETF 的溢价中枢标签
 //  - intraSellLowerPct / intraBuyOtherPct: 阈值，与页面同名同义。
-//  - 触发逻辑：每对 (h ∈ H) × (l ∈ L) 计算 diff = premium(h) − premium(l)（signed）
-//      diff < intraSellLowerPct → 规则 A 低→高：差价收窄，卖 l 买 h
-//      diff > intraBuyOtherPct  → 规则 B 高→低：差价扩大，卖 h 买 l
-//      sellLower ≤ diff ≤ buyOther → 中性区，不触发
+//  - 触发逻辑：每对 (bench, cand) 仅当 cand.class !== bench.class 且都已分类时考虑：
+//      bench=L → 看 gap = H溢价 − L溢价 < sellLower → 规则 A：卖 bench(L) 买 cand(H)
+//      bench=H → 看 gap > buyOther                  → 规则 B：卖 bench(H) 买 cand(L)
+//  - 未分类的 bench 或 cand：不触发，前端会有提示。
 export function normalizeSwitchConfig(input = {}) {
   // 兼容旧格式：input.benchmarkCode (string) → [benchmarkCode]。
   const rawBenchmarks = Array.isArray(input?.benchmarkCodes)
@@ -87,10 +95,21 @@ export function normalizeSwitchConfig(input = {}) {
     enabledCodes.push(code);
     if (enabledCodes.length >= MAX_CANDIDATES) break;
   }
+  // premiumClass: 仅保留出现在 benchmarkCodes / enabledCodes 中的代码，且值为 'H' | 'L'。
+  const premiumClass = {};
+  const rawClass = (input && typeof input.premiumClass === 'object' && input.premiumClass) ? input.premiumClass : {};
+  const validCodes = new Set([...benchmarkCodes, ...enabledCodes]);
+  for (const [code, value] of Object.entries(rawClass)) {
+    const c = sanitizeCode(code);
+    if (!c || !validCodes.has(c)) continue;
+    const v = String(value || '').trim().toUpperCase();
+    if (v === 'H' || v === 'L') premiumClass[c] = v;
+  }
   return {
     enabled: Boolean(input?.enabled),
     benchmarkCodes,
     enabledCodes,
+    premiumClass,
     intraSellLowerPct: pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
     intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
     clientLabel: String(input?.clientLabel || '').trim().slice(0, 120),
@@ -325,28 +344,34 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     computedAt: computedAtIso,
     intraSellLowerPct: Number(config.intraSellLowerPct),
     intraBuyOtherPct: Number(config.intraBuyOtherPct),
+    // 随快照一起带 premiumClass，供 evaluateSwitchTriggers 使用。
+    premiumClass: (config && typeof config.premiumClass === 'object' && config.premiumClass) ? config.premiumClass : {},
     byBenchmark,
     ready,
     triggers: []
   };
 }
 
-// 与前端 intraSignals 算法一致（v2 H/L 有方向）：
-//   diff = benchPremium − candPremium = premium(H) − premium(L)（signed，可正可负）
-//   diff < intraSellLowerPct (默认 1%) → 规则 A 低→高：差价收窄，卖 L 买 H
-//   diff > intraBuyOtherPct  (默认 3%) → 规则 B 高→低：差价扩大，卖 H 买 L
-//   sellLower ≤ diff ≤ buyOther       → 中性区间，不触发
-// per-pair dedup：仅当本轮 (rule + from→to 方向) 与上次不同时才推送。
-function classifyRule(diff, sellLower, buyOther) {
-  if (!Number.isFinite(diff)) return 'none';
-  if (diff < sellLower) return 'A';
-  if (diff > buyOther) return 'B';
+// 与前端 intraSignals 算法一致（v3：持仓决定基准，H/L 决定方向）：
+//   gap = H溢价 − L溢价（始终 H 在前）。满足以下任一才可能触发：
+//   - bench.class === 'L' && cand.class === 'H' && gap < intraSellLowerPct → 规则 A：卖 bench(L) 买 cand(H)
+//   - bench.class === 'H' && cand.class === 'L' && gap > intraBuyOtherPct  → 规则 B：卖 bench(H) 买 cand(L)
+//   同类、未分类、数据缺失 都不触发。
+// per-pair dedup：仅当本轮 rule 与上次不同时才推送（方向已被类别锁定，不会翻转）。
+function classifyRule({ benchClass, candClass, gap, sellLower, buyOther }) {
+  if (!Number.isFinite(gap)) return 'none';
+  if (benchClass !== 'H' && benchClass !== 'L') return 'none';
+  if (candClass !== 'H' && candClass !== 'L') return 'none';
+  if (benchClass === candClass) return 'none';
+  if (benchClass === 'L' && gap < sellLower) return 'A';
+  if (benchClass === 'H' && gap > buyOther) return 'B';
   return 'none';
 }
 
 export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
   const sellLower = Number(snapshot.intraSellLowerPct);
   const buyOther = Number(snapshot.intraBuyOtherPct);
+  const premiumClass = (snapshot && typeof snapshot.premiumClass === 'object' && snapshot.premiumClass) ? snapshot.premiumClass : {};
   const nextTriggerStates = {};
   const triggers = [];
 
@@ -355,32 +380,33 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
     const benchmark = group?.benchmarkCode || '';
     const benchName = group?.benchmarkName || '';
     if (!benchmark) continue;
+    const benchClass = premiumClass[benchmark];
     for (const cand of group.candidates || []) {
       const pairKey = `${benchmark}:${cand.code}`;
-      // 重要：Number(null) 会变成 0，会被误当作「diff = 0%」命中规则 A（如果 sellLower ≥ 0）。
-      // 仅在原始值为 number 时才计算，null / undefined / NaN / 字符串均视为「数据缺失」。
+      const candClass = premiumClass[cand.code];
+      // Number(null) 会变成 0，会被误当作「diff = 0%」。仅在原始值为 number 时才计算。
       const rawDiff = cand.spreadVsBenchmarkPct;
       const diff = (typeof rawDiff === 'number' && Number.isFinite(rawDiff)) ? rawDiff : NaN;
       if (!Number.isFinite(diff)) {
-        // 数据缺失：保留旧状态，不衰减、不触发。
         const prev = prevTriggerStates?.[pairKey];
         if (prev) nextTriggerStates[pairKey] = prev;
         continue;
       }
-      const rule = classifyRule(diff, sellLower, buyOther);
-      // v2 方向：
-      //   规则 A 低→高：fromCode = candidate (∈ L)，toCode = benchmark (∈ H)
-      //   规则 B 高→低：fromCode = benchmark (∈ H)，toCode = candidate (∈ L)
-      const fromCode = rule === 'A' ? cand.code : benchmark;
-      const toCode = rule === 'A' ? benchmark : cand.code;
-      const fromName = rule === 'A' ? (cand.name || '') : benchName;
-      const toName = rule === 'A' ? benchName : (cand.name || '');
-      const threshold = rule === 'A' ? sellLower : buyOther;
-      const prev = prevTriggerStates?.[pairKey] || { rule: 'none', fromCode: '' };
+      // diff = benchPremium − candPremium。gap 始终以 H 为被减数：
+      //   bench=H → gap = diff；bench=L → gap = -diff。未分类 → gap=NaN。
+      let gap = NaN;
+      if (benchClass === 'H') gap = diff;
+      else if (benchClass === 'L') gap = -diff;
+      const rule = classifyRule({ benchClass, candClass, gap, sellLower, buyOther });
+      // 方向始终是「卖持仓 bench, 买候选 cand」。
+      const fromCode = rule === 'none' ? '' : benchmark;
+      const toCode = rule === 'none' ? '' : cand.code;
+      const fromName = benchName;
+      const toName = cand.name || '';
+      const threshold = rule === 'A' ? sellLower : (rule === 'B' ? buyOther : NaN);
+      const prev = prevTriggerStates?.[pairKey] || { rule: 'none' };
       const prevRule = String(prev.rule || 'none');
-      const prevFrom = String(prev.fromCode || '');
-      const dirChanged = rule !== 'none' && fromCode !== prevFrom;
-      if (rule !== 'none' && (rule !== prevRule || dirChanged)) {
+      if (rule !== 'none' && rule !== prevRule) {
         triggers.push({
           pairKey,
           rule,
@@ -388,14 +414,19 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
           toCode,
           fromName,
           toName,
-          diffPct: diff,
-          threshold
+          // diffPct 字段保留为「H−L gap」（UI 渲染以该值为准）。
+          diffPct: gap,
+          gapPct: gap,
+          threshold,
+          benchClass,
+          candClass
         });
       }
       nextTriggerStates[pairKey] = {
         rule,
-        fromCode: rule === 'none' ? '' : fromCode,
+        fromCode,
         lastDiffPct: diff,
+        lastGapPct: Number.isFinite(gap) ? gap : null,
         updatedAt: snapshot.computedAt
       };
     }
@@ -405,30 +436,31 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
 }
 
 export function buildSwitchTriggerNotification(snapshot, trigger, env) {
-  // v2 通知格式（H/L 有方向）：
+  // v3 通知格式（持仓 bench + H/L 双维度）：
   //   title:   切换 A 低→高 | 159632→513100
   //   body:    H−L +0.85% < 1%  · NAV 2026-04-28
   //            卖 159632 纳指ETF → 买 513100 纳指ETF
   //            下单前请以基金软件实时溢价为准。
   const fromLabel = trigger.fromName ? `${trigger.fromCode} ${trigger.fromName}` : trigger.fromCode;
   const toLabel = trigger.toName ? `${trigger.toCode} ${trigger.toName}` : trigger.toCode;
-  const diff = Number(trigger.diffPct);
-  const diffStr = (diff >= 0 ? '+' : '') + diff.toFixed(2);
+  const gap = Number(trigger.gapPct ?? trigger.diffPct);
+  const gapStr = (gap >= 0 ? '+' : '') + gap.toFixed(2);
   const threshold = Number(trigger.threshold);
   const cmp = trigger.rule === 'A' ? '<' : '>';
-  // v2：fromCode 在 A 时 = candidate(L)，在 B 时 = benchmark(H)。NAV 日期用 H 组那只。
-  const benchHCode = trigger.rule === 'A' ? trigger.toCode : trigger.fromCode;
+  // v3：fromCode 始终 = benchmark（持仓）。H 组只：
+  //   bench.class === 'H' → H = fromCode；bench.class === 'L' → H = toCode。
+  const benchHCode = trigger.benchClass === 'H' ? trigger.fromCode : trigger.toCode;
   const benchmarkEntry = (Array.isArray(snapshot?.byBenchmark) ? snapshot.byBenchmark : [])
     .find((b) => b?.benchmarkCode === benchHCode) || null;
   const navDate = String(benchmarkEntry?.benchmarkNavDate || '').trim();
   const navHint = navDate ? ` · NAV ${navDate}` : '';
   const arrow = trigger.rule === 'A' ? '低→高' : '高→低';
   const title = `切换 ${trigger.rule} ${arrow} | ${trigger.fromCode}→${trigger.toCode}`;
-  const body = `H−L ${diffStr}% ${cmp} ${threshold}%${navHint}\n卖 ${fromLabel} → 买 ${toLabel}\n下单前请以基金软件实时溢价为准。`;
-  const summary = `切换 ${trigger.rule} ${trigger.fromCode}→${trigger.toCode} ${diffStr}%`;
+  const body = `H−L ${gapStr}% ${cmp} ${threshold}%${navHint}\n卖 ${fromLabel} → 买 ${toLabel}\n下单前请以基金软件实时溢价为准。`;
+  const summary = `切换 ${trigger.rule} ${trigger.fromCode}→${trigger.toCode} ${gapStr}%`;
   const ruleLabel = trigger.rule === 'A'
-    ? `规则 A 低→高：H溢价 − L溢价 < ${threshold}%（差价收窄，卖 L 买 H）`
-    : `规则 B 高→低：H溢价 − L溢价 > ${threshold}%（差价扩大，卖 H 买 L）`;
+    ? `规则 A 低→高：H溢价 − L溢价 < ${threshold}%（差价收窄，从持仓 L 换到 H）`
+    : `规则 B 高→低：H溢价 − L溢价 > ${threshold}%（差价扩大，从持仓 H 换到 L）`;
   const baseUrl = stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || 'https://tools.freebacktrack.tech');
   const detailUrl = `${baseUrl}/index.html?tab=tradePlans#switch`;
   // 同一对 + 同一规则 + 同一分钟，只发一次。

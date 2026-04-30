@@ -21,6 +21,9 @@ export function buildDefaultSwitchConfig() {
     enabled: false,
     benchmarkCodes: [],
     enabledCodes: [],
+    // 每只 ETF 的溢价中枢标签：'H' 高溢价 / 'L' 低溢价。
+    // 仅对出现在 benchmarkCodes / enabledCodes 中的代码生效。
+    premiumClass: {},
     intraSellLowerPct: DEFAULT_INTRA_SELL_LOWER_PCT,
     intraBuyOtherPct: DEFAULT_INTRA_BUY_OTHER_PCT,
     clientLabel: '',
@@ -82,10 +85,21 @@ export function normalizeSwitchConfigShape(input = {}) {
     enabledCodes.push(code);
     if (enabledCodes.length >= 20) break;
   }
+  // premiumClass：仅保留出现在 benchmarkCodes 或 enabledCodes 中的代码，且值为 'H' | 'L'。
+  const premiumClass = {};
+  const rawClass = (input && typeof input.premiumClass === 'object' && input.premiumClass) ? input.premiumClass : {};
+  const validCodes = new Set([...benchmarkCodes, ...enabledCodes]);
+  for (const [code, value] of Object.entries(rawClass)) {
+    const c = sanitizeFundCode(code);
+    if (!c || !validCodes.has(c)) continue;
+    const v = String(value || '').trim().toUpperCase();
+    if (v === 'H' || v === 'L') premiumClass[c] = v;
+  }
   return {
     enabled: Boolean(input?.enabled),
     benchmarkCodes,
     enabledCodes,
+    premiumClass,
     intraSellLowerPct: pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
     intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
     clientLabel: String(input?.clientLabel || '').trim().slice(0, 120),
@@ -157,6 +171,7 @@ export async function saveSwitchConfigToWorker(config) {
       enabled: next.enabled,
       benchmarkCodes: next.benchmarkCodes,
       enabledCodes: next.enabledCodes,
+      premiumClass: next.premiumClass,
       intraSellLowerPct: next.intraSellLowerPct,
       intraBuyOtherPct: next.intraBuyOtherPct,
       clientLabel: clientConfig?.notifyClientLabel || ''

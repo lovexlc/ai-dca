@@ -35,15 +35,18 @@ import {
 const SWITCH_PREFS_KEY = 'aiDcaSwitchStrategyPrefs';
 const SWITCH_LEDGER_KEY = 'aiDcaSwitchStrategyLedger';
 
-// v2 H/L 分组语义：
-//   benchmarkCodes = 高溢价组 H（如 513100 纳指 ETF，溢价常年偏高的）
-//   enabledCodes   = 低溢价组 L（如 159632 纳指 ETF，溢价常年偏低的）
-//   diff = premium(H) − premium(L)（signed）
-//   diff < intraSellLowerPct → 规则 A 低→高（差价收窄，卖 L 买 H）
-//   diff > intraBuyOtherPct  → 规则 B 高→低（差价扩大，卖 H 买 L）
+// v3 持仓 + H/L 双维度语义：
+//   benchmarkCodes = 持仓基准（从持仓详情自动派生，不手选）
+//   enabledCodes   = 用户勾选的候选，UI 仅呈现「对侧分类」的 ETF
+//   premiumClass   = { [code]: 'H' | 'L' }，每只 ETF 的溢价中枢标签（与持仓/候选解耦）
+//   gap = H溢价 − L溢价（始终 H 在前，正常市况 > 0）
+//   bench ∈ L 持有 → 仅看规则 A：gap < intraSellLowerPct → 卖 bench(L) 买 cand(H)
+//   bench ∈ H 持有 → 仅看规则 B：gap > intraBuyOtherPct  → 卖 bench(H) 买 cand(L)
+//   同类、未分类都不触发，UI 会提示补全分类。
 const DEFAULT_PREFS = {
   benchmarkCodes: ['513100'],
   enabledCodes: [],
+  premiumClass: {},
   arbTargetPct: 2,
   intraSellLowerPct: 1,
   intraBuyOtherPct: 3,
@@ -68,11 +71,19 @@ function readPrefs() {
     }
     const { benchmarkCode: _legacyBenchmark, ...rest } = parsed || {};
     void _legacyBenchmark;
+    // premiumClass：只保留值为 'H' | 'L'。未出现在持仓或候选中的代码不会出现在这里（运行时过滤）。
+    const rawClass = (parsed && typeof parsed.premiumClass === 'object' && parsed.premiumClass) ? parsed.premiumClass : {};
+    const premiumClass = {};
+    for (const [code, value] of Object.entries(rawClass)) {
+      const v = String(value || '').trim().toUpperCase();
+      if (/^\d{6}$/.test(String(code)) && (v === 'H' || v === 'L')) premiumClass[code] = v;
+    }
     return {
       ...DEFAULT_PREFS,
       ...rest,
       benchmarkCodes,
-      enabledCodes: Array.isArray(parsed?.enabledCodes) ? parsed.enabledCodes : []
+      enabledCodes: Array.isArray(parsed?.enabledCodes) ? parsed.enabledCodes : [],
+      premiumClass
     };
   } catch {
     return { ...DEFAULT_PREFS };
@@ -473,17 +484,19 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     return () => { cancelled = true; };
   }, [inPagesDir, refreshTick]);
 
-  // 「候选基金（场内）」不包含已持仓代码：benchmark 在上面下拉单独选，其它持仓不该出现在候选里。这里把 prefs.enabledCodes 里遗留的已持仓代码自动清掉。
+  // 候选集合 = 用户在 H/L 两表里拖入的代码 ∩ 排除持仓。
+  // 不再让用户手动勾选“候选基金”：入 H/L 即可作为候选。
+  const premiumClassKey = JSON.stringify(prefs?.premiumClass || {});
   useEffect(() => {
-    if (!exchangeFunds.length) return;
+    const cls = (prefs && prefs.premiumClass) || {};
     const heldCodes = new Set(exchangeFunds.map((f) => f.code));
+    const next = Object.keys(cls).filter((code) => !heldCodes.has(code)).sort();
     setPrefs((prev) => {
       const before = Array.isArray(prev.enabledCodes) ? prev.enabledCodes : [];
-      const after = before.filter((code) => !heldCodes.has(code));
-      if (after.length === before.length) return prev;
-      return { ...prev, enabledCodes: after };
+      if (before.length === next.length && before.every((v, i) => v === next[i])) return prev;
+      return { ...prev, enabledCodes: next };
     });
-  }, [exchangeFunds]);
+  }, [exchangeFunds, premiumClassKey]);
 
   // 单一数据源：基准 ETF 只能从「持仓的场内 ETF」里选，所以 prefs.benchmarkCodes
   // 里所有 code 都必须落在 exchangeFunds 之内。这里在 exchangeFunds 变化后自动过滤
@@ -609,80 +622,97 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   // 第一只基准，供需要单一基准上下文的位置使用（如 benchmarkSummary 默认提示、套利轮次默认记录）。
   const benchmark = benchmarks[0] || null;
 
-  function toggleEnabled(code) {
-    setPrefs((prev) => {
-      const set = new Set(prev.enabledCodes || []);
-      if (set.has(code)) set.delete(code); else set.add(code);
-      return { ...prev, enabledCodes: Array.from(set) };
-    });
-  }
-  function toggleBenchmarkCode(code) {
-    setPrefs((prev) => {
-      const benchSet = new Set(prev.benchmarkCodes || []);
-      if (benchSet.has(code)) {
-        benchSet.delete(code);
-      } else {
-        benchSet.add(code);
-      }
-      const enabledSet = new Set(prev.enabledCodes || []);
-      // 增加为基准时，同时从候选中移除（以免重复；worker 也会过滤）。
-      enabledSet.delete(code);
-      return {
-        ...prev,
-        benchmarkCodes: Array.from(benchSet),
-        enabledCodes: Array.from(enabledSet)
-      };
-    });
-  }
   function setPrefValue(key, value) {
     setPrefs((prev) => ({ ...prev, [key]: value }));
   }
+  // 拖拽分类：将 code 套入 H / L / 未分类。targetClass=null 表示从分类中移出。
+  function setCodeClass(code, targetClass) {
+    if (!code) return;
+    setPrefs((prev) => {
+      const cls = { ...((prev && prev.premiumClass) || {}) };
+      if (targetClass === 'H' || targetClass === 'L') cls[code] = targetClass;
+      else delete cls[code];
+      return { ...prev, premiumClass: cls };
+    });
+  }
+  // 拖拽状态：高亮当前悬停中的接收区。
+  const [dragOverZone, setDragOverZone] = useState(null);
+  const handleChipDragStart = useCallback((event, code) => {
+    if (!event || !event.dataTransfer || !code) return;
+    event.dataTransfer.setData('text/plain', code);
+    event.dataTransfer.effectAllowed = 'move';
+  }, []);
+  const handleZoneDragOver = useCallback((event, zone) => {
+    if (!event) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    setDragOverZone(zone);
+  }, []);
+  const handleZoneDragLeave = useCallback(() => {
+    setDragOverZone(null);
+  }, []);
+  const handleZoneDrop = useCallback((event, targetClass) => {
+    if (!event) return;
+    event.preventDefault();
+    setDragOverZone(null);
+    const code = event.dataTransfer ? event.dataTransfer.getData('text/plain') : '';
+    if (!code) return;
+    setCodeClass(code, targetClass);
+  }, []);
 
-  // 场内信号（v2 H/L 有方向）：
-  //   benchmarks   = 高溢价组 H
-  //   enabledFunds = 低溢价组 L
-  //   每对 (h, l) 计算 diff = premium(h) − premium(l)
-  //   diff < sellLower → 规则 A 低→高：卖 L 买 H（差价收窄，抄底高溢价侧）
-  //   diff > buyOther  → 规则 B 高→低：卖 H 买 L（差价扩大，锁定差价收益）
+  // 场内信号（v3 持仓 + premiumClass H/L 双维度）：
+  //   bench = 持仓基准，cand = 候选。仅当两者均已分类且不同类时考虑。
+  //   gap = H溢价 − L溢价（不依赖 bench/cand 谁减谁）
+  //   bench=L 且 gap < sellLower → 规则 A：卖 bench(L) 买 cand(H)
+  //   bench=H 且 gap > buyOther  → 规则 B：卖 bench(H) 买 cand(L)
   const intraSignals = useMemo(() => {
     if (!benchmarks.length) return [];
     const sellLower = Number(prefs.intraSellLowerPct || 0);
     const buyOther = Number(prefs.intraBuyOtherPct || 0);
+    const cls = (prefs && prefs.premiumClass) || {};
     const benchmarkCodeSet = new Set(benchmarks.map((b) => b.code));
     const list = [];
     benchmarks.forEach((bench) => {
       if (!Number.isFinite(bench?.premiumPct)) return;
+      const benchClass = cls[bench.code];
+      if (benchClass !== 'H' && benchClass !== 'L') return;
       enabledFunds
         .filter((f) => !benchmarkCodeSet.has(f.code) && Number.isFinite(f.premiumPct))
         .forEach((f) => {
-          const diff = bench.premiumPct - f.premiumPct;
-          if (!Number.isFinite(diff)) return;
+          const candClass = cls[f.code];
+          if (candClass !== 'H' && candClass !== 'L') return;
+          if (candClass === benchClass) return;
+          const hPremium = benchClass === 'H' ? bench.premiumPct : f.premiumPct;
+          const lPremium = benchClass === 'H' ? f.premiumPct : bench.premiumPct;
+          const gap = hPremium - lPremium;
+          if (!Number.isFinite(gap)) return;
           let kind = null;
           let threshold = 0;
           let cmp = '';
-          if (diff < sellLower) { kind = 'A'; threshold = sellLower; cmp = '<'; }
-          else if (diff > buyOther) { kind = 'B'; threshold = buyOther; cmp = '>'; }
+          if (benchClass === 'L' && gap < sellLower) { kind = 'A'; threshold = sellLower; cmp = '<'; }
+          else if (benchClass === 'H' && gap > buyOther) { kind = 'B'; threshold = buyOther; cmp = '>'; }
           if (!kind) return;
-          // 方向：A 卖 L 买 H；B 卖 H 买 L
-          const fromCode = kind === 'A' ? f.code : bench.code;
-          const toCode = kind === 'A' ? bench.code : f.code;
-          const fromName = kind === 'A' ? (f.name || f.code) : (bench.name || bench.code);
-          const toName = kind === 'A' ? (bench.name || bench.code) : (f.name || f.code);
+          const fromCode = bench.code;
+          const toCode = f.code;
+          const fromName = bench.name || bench.code;
+          const toName = f.name || f.code;
           const tag = kind === 'A' ? '差价收窄' : '差价扩大';
           const arrow = kind === 'A' ? '低→高' : '高→低';
-          const diffStr = (diff >= 0 ? '+' : '') + diff.toFixed(2);
+          const gapStr = (gap >= 0 ? '+' : '') + gap.toFixed(2);
+          const hCode = benchClass === 'H' ? bench.code : f.code;
+          const lCode = benchClass === 'H' ? f.code : bench.code;
           list.push({
             kind,
             from: fromCode,
             fromName,
             to: toCode,
             toName,
-            description: `${bench.code}(H) − ${f.code}(L) 溢价差 ${diffStr}% ${cmp} ${threshold}%（${tag}，${arrow}）：可考虑卖 ${fromCode} 买 ${toCode}`
+            description: `${hCode}(H) − ${lCode}(L) 溢价差 ${gapStr}% ${cmp} ${threshold}%（${tag}，${arrow}）：卖 ${fromCode} 买 ${toCode}`
           });
         });
     });
     return list;
-  }, [enabledFunds, benchmarks, prefs.intraSellLowerPct, prefs.intraBuyOtherPct]);
+  }, [enabledFunds, benchmarks, prefs.intraSellLowerPct, prefs.intraBuyOtherPct, prefs.premiumClass]);
 
   // 场外信号：多基准下取「溢价最高」的基准（表示场内已充分偏高，走场外更交同）。
   const otcSignal = useMemo(() => {
@@ -884,6 +914,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                   }
                   const sellLower = Number(workerSnapshot.intraSellLowerPct);
                   const buyOther = Number(workerSnapshot.intraBuyOtherPct);
+                  const cls = prefs.premiumClass || {};
                   return benchSnapshots.map((bench) => (
                     <div key={`bench-${bench.benchmarkCode}`} className="space-y-2">
                       <div className="rounded-xl border border-slate-200 bg-white p-3">
@@ -907,18 +938,28 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                           </thead>
                           <tbody>
                             {(bench.candidates || []).map((c) => {
+                              // v3: class-aware highlight. diff = bench.premium - cand.premium.
+                              //   bench=L → gap = -diff; 规则 A: gap < sellLower
+                              //   bench=H → gap = diff;  规则 B: gap > buyOther
                               const diff = Number(c.spreadVsBenchmarkPct);
-                              const absDiff = Number.isFinite(diff) ? Math.abs(diff) : NaN;
-                              const inA = Number.isFinite(absDiff) && Number.isFinite(sellLower) && diff !== 0 && absDiff <= sellLower;
-                              const inB = Number.isFinite(absDiff) && Number.isFinite(buyOther) && absDiff >= buyOther;
-                              const cls = inA ? 'text-emerald-700 font-semibold' : inB ? 'text-rose-700 font-semibold' : 'text-slate-600';
+                              const benchClass = cls[bench.benchmarkCode];
+                              const candClass = cls[c.code];
+                              const eligible = (benchClass === 'H' || benchClass === 'L') && (candClass === 'H' || candClass === 'L') && benchClass !== candClass;
+                              let inA = false;
+                              let inB = false;
+                              if (eligible && Number.isFinite(diff)) {
+                                const gap = benchClass === 'H' ? diff : -diff;
+                                if (benchClass === 'L' && Number.isFinite(sellLower) && gap < sellLower) inA = true;
+                                if (benchClass === 'H' && Number.isFinite(buyOther) && gap > buyOther) inB = true;
+                              }
+                              const colorCls = inA ? 'text-emerald-700 font-semibold' : inB ? 'text-rose-700 font-semibold' : 'text-slate-600';
                               return (
                                 <tr key={`snap-${bench.benchmarkCode}-${c.code}`} className="border-t border-slate-100">
                                   <td className="px-3 py-2"><span className="font-semibold">{c.code}</span>{c.name ? <span className="ml-1 text-slate-400">{c.name}</span> : null}</td>
                                   <td className="px-3 py-2 text-right">{formatPrice(c.price)}</td>
                                   <td className="px-3 py-2 text-right">{formatPrice(c.nav)}{c.navDate ? <span className="ml-1 text-slate-400">@{c.navDate}</span> : null}</td>
                                   <td className="px-3 py-2 text-right">{formatPercent(c.premiumPct, 2, true)}</td>
-                                  <td className={cx('px-3 py-2 text-right', cls)}>{formatPercent(c.spreadVsBenchmarkPct, 2, true)}</td>
+                                  <td className={cx('px-3 py-2 text-right', colorCls)}>{formatPercent(c.spreadVsBenchmarkPct, 2, true)}</td>
                                 </tr>
                               );
                             })}
@@ -979,95 +1020,167 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
               <span>净值数据加载异常：{navState.error}</span>
             </div>
           ) : null}
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center justify-between">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">高溢价组 H（可多选）</div>
-                <div className="text-xs text-slate-500">已选 {(prefs.benchmarkCodes || []).length} / 持仓 {exchangeFunds.length}</div>
-              </div>
-              {exchangeFunds.length === 0 ? (
-                <div className="mt-2 text-sm text-slate-500">（持仓暂无场内 ETF）</div>
-              ) : (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {exchangeFunds.map((f) => {
-                    const checked = (prefs.benchmarkCodes || []).includes(f.code);
-                    return (
-                      <button
-                        key={f.code}
-                        type="button"
-                        onClick={() => toggleBenchmarkCode(f.code)}
-                        className={cx(
-                          'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
-                          checked
-                            ? 'border-indigo-300 bg-indigo-100 text-indigo-800 hover:bg-indigo-200'
-                            : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'
-                        )}
-                      >
-                        <span>{f.code}</span>
-                        <span className="text-slate-400">·</span>
-                        <span className="max-w-[120px] truncate">{f.name || ''}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">套利目标</div>
-              <div className="mt-2 flex items-center gap-2">
-                <input
-                  type="number"
-                  step="0.5"
-                  className="w-24 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 focus:border-indigo-300 focus:outline-none"
-                  value={prefs.arbTargetPct}
-                  onChange={(e) => setPrefValue('arbTargetPct', e.target.value)}
-                />
-                <span className="text-sm text-slate-600">% / 周期</span>
-              </div>
+              <input
+                type="number"
+                step="0.5"
+                className="w-24 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 focus:border-indigo-300 focus:outline-none"
+                value={prefs.arbTargetPct}
+                onChange={(e) => setPrefValue('arbTargetPct', e.target.value)}
+              />
+              <span className="text-sm text-slate-600">% / 周期</span>
             </div>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">低溢价组 L（场内）</div>
+          {(() => {
+            const cls = prefs.premiumClass || {};
+            const held = exchangeFunds.map((f) => ({ code: f.code, name: f.name || '', cls: cls[f.code] || null }));
+            if (!held.length) return null;
+            return (
+              <div className="space-y-1 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3 text-xs leading-relaxed text-indigo-900">
+                {held.map((h) => {
+                  if (h.cls === 'H' || h.cls === 'L') {
+                    const opp = h.cls === 'H' ? 'L' : 'H';
+                    const candCount = Object.entries(cls).filter(([c, v]) => v === opp && c !== h.code).length;
+                    const ruleStr = h.cls === 'H'
+                      ? `规则 B（gap > ${prefs.intraBuyOtherPct}%）`
+                      : `规则 A（gap < ${prefs.intraSellLowerPct}%）`;
+                    return (
+                      <div key={h.code}>
+                        持仓 <strong>{h.code}</strong>{h.name ? `（${h.name}）` : ''} 属于 <strong>{h.cls}</strong> 组 → 仅看 {opp} 组的 {candCount} 只候选，触发条件 {ruleStr}。
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={h.code}>
+                      持仓 <strong>{h.code}</strong>{h.name ? `（${h.name}）` : ''} 还没分类。请把它拖入下方的 <strong>H</strong> 或 <strong>L</strong> 表格才会触发信号。
+                    </div>
+                  );
+                })}
               </div>
-              <div className="text-xs text-slate-500">已选 {prefs.enabledCodes.length} / 候选 {fundsWithPremium.filter((f) => !f.hasPosition).length}</div>
-            </div>
-            {universeError ? (
-              <div className="mt-2 text-xs text-rose-600">候选基金列表加载失败：{universeError}</div>
-            ) : null}
-            <div className="mt-3 flex flex-wrap gap-2">
-              {candidateUniverse.length === 0 ? (
-                <div className="text-sm text-slate-500">候选基金尚未加载。</div>
-              ) : null}
-              {fundsWithPremium.filter((f) => !f.hasPosition).map((f) => {
-                const checked = (prefs.enabledCodes || []).includes(f.code);
-                const hasNav = Number.isFinite(f.navLatest);
-                const priceSourceLabel = f.latestPriceDate || 'daily';
-                return (
-                  <button
-                    key={f.code}
-                    type="button"
-                    onClick={() => toggleEnabled(f.code)}
-                    title={hasNav
-                      ? `NAV ${f.navLatest.toFixed(4)} (${f.navLatestDate})・现价 ${formatPrice(f.latestNav)} (${priceSourceLabel})`
-                      : '净值数据未就绪'}
+            );
+          })()}
+          {(() => {
+            const cls = prefs.premiumClass || {};
+            const heldSet = new Set(exchangeFunds.map((f) => f.code));
+            const renderChip = (f) => {
+              const code = f.code;
+              const cur = cls[code] || null;
+              const isHeld = heldSet.has(code);
+              const hasNav = Number.isFinite(f.navLatest);
+              const priceSourceLabel = f.latestPriceDate || 'daily';
+              return (
+                <div
+                  key={code}
+                  draggable
+                  onDragStart={(e) => handleChipDragStart(e, code)}
+                  title={hasNav
+                    ? `NAV ${f.navLatest.toFixed(4)} (${f.navLatestDate})・现价 ${formatPrice(f.latestNav)} (${priceSourceLabel})`
+                    : '净值数据未就绪'}
+                  className={cx(
+                    'group inline-flex select-none items-center gap-1.5 rounded-full border px-2 py-1 text-xs font-semibold transition-colors cursor-grab active:cursor-grabbing',
+                    cur === 'H' ? 'border-rose-200 bg-rose-50 text-rose-800' :
+                    cur === 'L' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' :
+                    'border-slate-200 bg-white text-slate-600'
+                  )}
+                >
+                  <span>{code}</span>
+                  {f.name ? (
+                    <>
+                      <span className="text-slate-400">·</span>
+                      <span className="max-w-[100px] truncate text-slate-500">{f.name}</span>
+                    </>
+                  ) : null}
+                  {isHeld ? <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-800">持</span> : null}
+                  <span className="ml-1 inline-flex overflow-hidden rounded border border-slate-200 text-[10px]">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setCodeClass(code, cur === 'H' ? null : 'H'); }}
+                      className={cx('px-1.5 py-0.5', cur === 'H' ? 'bg-rose-500 text-white' : 'bg-white text-slate-500 hover:bg-rose-50 hover:text-rose-700')}
+                    >H</button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setCodeClass(code, cur === 'L' ? null : 'L'); }}
+                      className={cx('px-1.5 py-0.5 border-l border-slate-200', cur === 'L' ? 'bg-emerald-500 text-white' : 'bg-white text-slate-500 hover:bg-emerald-50 hover:text-emerald-700')}
+                    >L</button>
+                  </span>
+                </div>
+              );
+            };
+            const poolList = fundsWithPremium.filter((f) => !cls[f.code]);
+            const hList = fundsWithPremium.filter((f) => cls[f.code] === 'H');
+            const lList = fundsWithPremium.filter((f) => cls[f.code] === 'L');
+            return (
+              <div className="space-y-3">
+                <div
+                  onDragOver={(e) => handleZoneDragOver(e, 'pool')}
+                  onDragLeave={handleZoneDragLeave}
+                  onDrop={(e) => handleZoneDrop(e, null)}
+                  className={cx(
+                    'rounded-2xl border bg-white p-4 transition-colors',
+                    dragOverZone === 'pool' ? 'border-indigo-400 ring-2 ring-indigo-200' : 'border-slate-200'
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">所有纳指 ETF（未分类）</div>
+                    <div className="text-xs text-slate-500">{poolList.length} / 共 {fundsWithPremium.length} 只</div>
+                  </div>
+                  {universeError ? (
+                    <div className="mt-2 text-xs text-rose-600">候选基金列表加载失败：{universeError}</div>
+                  ) : null}
+                  <div className="mt-3 flex min-h-[44px] flex-wrap gap-2">
+                    {fundsWithPremium.length === 0 ? (
+                      <div className="text-sm text-slate-500">候选基金尚未加载。</div>
+                    ) : poolList.length === 0 ? (
+                      <div className="text-xs text-slate-400">所有 ETF 都已分类。可把 chip 拖回此处取消分类。</div>
+                    ) : poolList.map(renderChip)}
+                  </div>
+                  <div className="mt-2 text-[11px] text-slate-500">把溢价常年更高的拖到 <strong className="text-rose-700">H 组</strong>（如 513100），溢价常年更低的拖到 <strong className="text-emerald-700">L 组</strong>（如 159632）。也可点 chip 右侧的 H/L 按钮直接归类。</div>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div
+                    onDragOver={(e) => handleZoneDragOver(e, 'H')}
+                    onDragLeave={handleZoneDragLeave}
+                    onDrop={(e) => handleZoneDrop(e, 'H')}
                     className={cx(
-                      'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
-                      checked
-                        ? 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
-                        : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+                      'rounded-2xl border bg-white p-4 transition-colors',
+                      dragOverZone === 'H' ? 'border-rose-400 ring-2 ring-rose-200' : 'border-rose-200'
                     )}
                   >
-                    <span>{f.code}</span>
-                    <span className="text-slate-400">·</span>
-                    <span className="max-w-[120px] truncate text-slate-600">{f.name || ''}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-500">高溢价组 H</div>
+                      <div className="text-xs text-slate-500">{hList.length} 只</div>
+                    </div>
+                    <div className="mt-3 flex min-h-[44px] flex-wrap gap-2">
+                      {hList.length === 0 ? (
+                        <div className="text-xs text-slate-400">把溢价常年更高的 ETF 拖到这里。</div>
+                      ) : hList.map(renderChip)}
+                    </div>
+                  </div>
+                  <div
+                    onDragOver={(e) => handleZoneDragOver(e, 'L')}
+                    onDragLeave={handleZoneDragLeave}
+                    onDrop={(e) => handleZoneDrop(e, 'L')}
+                    className={cx(
+                      'rounded-2xl border bg-white p-4 transition-colors',
+                      dragOverZone === 'L' ? 'border-emerald-400 ring-2 ring-emerald-200' : 'border-emerald-200'
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600">低溢价组 L</div>
+                      <div className="text-xs text-slate-500">{lList.length} 只</div>
+                    </div>
+                    <div className="mt-3 flex min-h-[44px] flex-wrap gap-2">
+                      {lList.length === 0 ? (
+                        <div className="text-xs text-slate-400">把溢价常年更低的 ETF 拖到这里。</div>
+                      ) : lList.map(renderChip)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </Card>
 
