@@ -4,6 +4,14 @@ stitch-previews/
 node_modules/
 frontend-dist/
 .frontend-build/
+# Build artifacts written into docs/ by scripts/publish_react_pages.mjs.
+# Pages source = GitHub Actions; runner regenerates these from src/ + root data/.
+# Other files inside docs/ (CNAME, home-redesign.md, ops/, pages/, previews/, react-assets/) remain tracked.
+docs/index.html
+docs/.nojekyll
+docs/react-assets-v2/
+docs/data/
+docs/holdings-nav-cache/
 *.tgz
 .env
 .env.local
