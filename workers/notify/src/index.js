@@ -1789,6 +1789,7 @@ async function handleAdminHoldingsAllTest(request, env) {
   const totalsOverride = payload?.totalsOverride && typeof payload.totalsOverride === 'object'
     ? payload.totalsOverride
     : null;
+  const eventIdOverride = String(payload?.eventIdOverride || '').trim() || null;
   const now = new Date();
   const todayShanghai = (payload?.todayShanghai && /^\d{4}-\d{2}-\d{2}$/.test(payload.todayShanghai))
     ? payload.todayShanghai
@@ -1796,13 +1797,15 @@ async function handleAdminHoldingsAllTest(request, env) {
   await runHoldingsNotificationsAll(env, todayShanghai, 'admin-test-all', {
     onlyClientId,
     bypassDedup,
-    totalsOverride
+    totalsOverride,
+    eventIdOverride
   });
   return jsonResponse({
     ok: true,
     todayShanghai,
     onlyClientId,
     bypassDedup,
+    eventIdOverride,
     totalsOverride: totalsOverride ? Object.keys(totalsOverride) : null
   }, { origin });
 }
@@ -2065,11 +2068,13 @@ async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holding
   const totalsOverride = options?.totalsOverride && typeof options.totalsOverride === 'object'
     ? options.totalsOverride
     : null;
+  const eventIdOverride = String(options?.eventIdOverride || '').trim() || null;
   console.log('[notify] runHoldingsNotificationsAll enter', JSON.stringify({
     todayShanghai,
     reason,
     onlyClientId,
     bypassDedup,
+    eventIdOverride,
     totalsOverride: totalsOverride ? Object.keys(totalsOverride) : null
   }));
 
@@ -2175,7 +2180,7 @@ async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holding
     const clientRecord = getClientRecord(settings, clientId, stored.clientLabel || '');
     if (!clientRecord) continue;
 
-    const eventId = `holdings-all-${todayShanghai}`;
+    const eventId = eventIdOverride || `holdings-all-${todayShanghai}`;
     try {
       const result = await runClientDetection(env, settings, clientRecord, {
         reason,
