@@ -1123,34 +1123,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           </div>
           {(() => {
             const cls = prefs.premiumClass || {};
-            const held = exchangeFunds.map((f) => ({ code: f.code, name: f.name || '', cls: cls[f.code] || null }));
-            if (!held.length) return null;
-            return (
-              <div className="space-y-1 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3 text-xs leading-relaxed text-indigo-900">
-                {held.map((h) => {
-                  if (h.cls === 'H' || h.cls === 'L') {
-                    const opp = h.cls === 'H' ? 'L' : 'H';
-                    const candCount = Object.entries(cls).filter(([c, v]) => v === opp && c !== h.code).length;
-                    const ruleStr = h.cls === 'H'
-                      ? `规则 B（gap > ${prefs.intraBuyOtherPct}%）`
-                      : `规则 A（gap < ${prefs.intraSellLowerPct}%）`;
-                    return (
-                      <div key={h.code}>
-                        持仓 <strong>{h.code}</strong>{h.name ? `（${h.name}）` : ''} 属于 <strong>{h.cls}</strong> 组 → 仅看 {opp} 组的 {candCount} 只候选，触发条件 {ruleStr}。
-                      </div>
-                    );
-                  }
-                  return (
-                    <div key={h.code}>
-                      持仓 <strong>{h.code}</strong>{h.name ? `（${h.name}）` : ''} 还没分类。请把它拖入下方的 <strong>H</strong> 或 <strong>L</strong> 表格才会触发信号。
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
-          {(() => {
-            const cls = prefs.premiumClass || {};
             const heldSet = new Set(exchangeFunds.map((f) => f.code));
             const renderChip = (f) => {
               const code = f.code;
@@ -1374,9 +1346,9 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
             </div>
           </div>
         </div>
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-          {otcSignal.ready ? (
-            otcSignal.triggered ? (
+        {(otcSignal.ready ? otcSignal.triggered : true) && (
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+            {otcSignal.ready ? (
               <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
                 <Pill tone={otcSignal.intraLowHard ? 'emerald' : 'amber'}>{otcSignal.level}</Pill>
                 <div className="flex-1">
@@ -1389,17 +1361,13 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                 </div>
               </div>
             ) : (
-              <div className="text-sm text-slate-500">
-                当前未触发。等到「{otcSignal.benchCode} {otcSignal.benchName}」溢价偏高，且场内最低（当前为 {otcSignal.lowestCode}）溢价偏低时再看。
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <Info className="h-4 w-4 text-slate-400" />
+                {otcSignal.message}
               </div>
-            )
-          ) : (
-            <div className="flex items-center gap-2 text-sm text-slate-500">
-              <Info className="h-4 w-4 text-slate-400" />
-              {otcSignal.message}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
         <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">持仓中的场外 / QDII 基金</div>
           {otcFunds.length === 0 ? (
