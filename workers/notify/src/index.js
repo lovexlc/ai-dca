@@ -2048,6 +2048,7 @@ async function handleSwitchConfigPost(request, env) {
       ? payload.benchmarkCodes
       : (payload?.benchmarkCode ? [payload.benchmarkCode] : []),
     enabledCodes: payload?.enabledCodes ?? payload?.candidateCodes,
+    premiumClass: payload?.premiumClass,
     intraSellLowerPct: payload?.intraSellLowerPct,
     intraBuyOtherPct: payload?.intraBuyOtherPct,
     clientLabel: auth.clientRecord?.clientLabel || ''
