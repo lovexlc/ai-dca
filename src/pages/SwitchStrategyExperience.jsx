@@ -379,14 +379,23 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   // 仅在已启用自动监控时推送，以免未启用状态下频繁写入 worker。
   useEffect(() => {
     if (!workerConfig.enabled) return undefined;
-    const benchmarkCodes = Array.from(new Set((prefs?.benchmarkCodes || []).map(String).filter(Boolean)));
-    if (!benchmarkCodes.length) return undefined;
-    const benchSet = new Set(benchmarkCodes);
-    const enabledCodes = Array.from(new Set((prefs?.enabledCodes || []).map(String)))
-      .filter((code) => code && !benchSet.has(code));
-    const intraSellLowerPct = Number(prefs?.intraSellLowerPct);
-    const intraBuyOtherPct = Number(prefs?.intraBuyOtherPct);
-    const premiumClass = (prefs && typeof prefs.premiumClass === 'object' && prefs.premiumClass) ? prefs.premiumClass : {};
+    // 关键：把 desired 也跑一遍 normalizeSwitchConfigShape，让本地 diff 口径与
+    // 服务端持久化口径完全一致。否则会出现：
+    //   prefs.premiumClass 里有些 code 不在 benchmark ∪ enabled 里 → 服务端归一化
+    //   会剔除它们 → 本地 diff 用未归一化的 prefs 比较时永远 != → 800ms 反复
+    //   POST /switch/config，浏览器看上去一直在刷新。
+    // 同理 intraSellLowerPct / intraBuyOtherPct 若为 NaN，归一化会 fallback 到
+    // 默认值，也会形成同款死循环。
+    const desired = normalizeSwitchConfigShape({
+      ...workerConfig,
+      enabled: true,
+      benchmarkCodes: prefs?.benchmarkCodes || [],
+      enabledCodes: prefs?.enabledCodes || [],
+      premiumClass: prefs?.premiumClass || {},
+      intraSellLowerPct: prefs?.intraSellLowerPct,
+      intraBuyOtherPct: prefs?.intraBuyOtherPct
+    });
+    if (!desired.benchmarkCodes.length) return undefined;
     const sameCodes = (a, b) => {
       if (a.length !== b.length) return false;
       const sa = a.slice().sort();
@@ -400,22 +409,16 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       return ka.every((k, i) => k === kb[i] && a[k] === b[k]);
     };
     const drift = (
-      !sameCodes(workerConfig.benchmarkCodes || [], benchmarkCodes)
-      || !sameCodes(workerConfig.enabledCodes || [], enabledCodes)
-      || !sameClassMap(workerConfig.premiumClass || {}, premiumClass)
-      || Number(workerConfig.intraSellLowerPct) !== intraSellLowerPct
-      || Number(workerConfig.intraBuyOtherPct) !== intraBuyOtherPct
+      !sameCodes(workerConfig.benchmarkCodes || [], desired.benchmarkCodes)
+      || !sameCodes(workerConfig.enabledCodes || [], desired.enabledCodes)
+      || !sameClassMap(workerConfig.premiumClass || {}, desired.premiumClass)
+      || Number(workerConfig.intraSellLowerPct) !== desired.intraSellLowerPct
+      || Number(workerConfig.intraBuyOtherPct) !== desired.intraBuyOtherPct
     );
     if (!drift) return undefined;
     const timer = setTimeout(() => {
-      void persistWorkerConfig({
-        ...workerConfig,
-        benchmarkCodes,
-        enabledCodes,
-        premiumClass,
-        intraSellLowerPct,
-        intraBuyOtherPct
-      });
+      // 直接下发已归一化的 desired，避免 server 再次裁剪后产生新的状态差。
+      void persistWorkerConfig(desired);
     }, 800);
     return () => clearTimeout(timer);
   }, [
