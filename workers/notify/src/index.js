@@ -1453,6 +1453,10 @@ async function handleTest(request, env) {
 }
 
 async function runDetection(env, reason = 'manual-run', options = {}) {
+  console.log('[notify] runDetection enter', JSON.stringify({
+    reason,
+    clientId: options?.clientId || null
+  }));
   let settings = await readSettings(env);
   const requestedClientId = normalizeClientId(options?.clientId);
   const clientRecords = requestedClientId
@@ -1854,10 +1858,26 @@ async function listHoldingsRuleEntries(env) {
 }
 
 async function runHoldingsNotifications(env, kind, todayShanghai, reason = 'holdings-scheduled') {
-  if (kind !== 'exchange' && kind !== 'otc') return;
+  console.log('[notify] runHoldingsNotifications enter', JSON.stringify({
+    kind,
+    todayShanghai,
+    reason
+  }));
+  if (kind !== 'exchange' && kind !== 'otc') {
+    console.log('[notify] runHoldingsNotifications skip: invalid kind', JSON.stringify({ kind }));
+    return;
+  }
 
   const entries = await listHoldingsRuleEntries(env);
-  if (!entries.length) return;
+  if (!entries.length) {
+    console.log('[notify] runHoldingsNotifications skip: no entries', JSON.stringify({ kind, reason }));
+    return;
+  }
+  console.log('[notify] runHoldingsNotifications loaded entries', JSON.stringify({
+    kind,
+    reason,
+    count: entries.length
+  }));
 
   let settings = await readSettings(env);
   let settingsDirty = false;
@@ -2138,12 +2158,25 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
 }
 
 async function runSwitchStrategyTick(env, scheduledMs, reason = 'switch-cron') {
+  const scheduledIso = new Date(scheduledMs).toISOString();
+  console.log('[notify] runSwitchStrategyTick enter', JSON.stringify({
+    reason,
+    scheduledMs,
+    scheduledIso
+  }));
   // 双保险：crontab 用 UTC，时间窗口可能宽于实际交易时段；这里再卡一次北京时间。
   if (!isInTradingSession(new Date(scheduledMs))) {
+    console.log('[notify] runSwitchStrategyTick skip: outside trading session', JSON.stringify({
+      reason,
+      scheduledIso
+    }));
     return;
   }
   const clientIds = await listSwitchClientIds(env);
-  if (!clientIds.length) return;
+  if (!clientIds.length) {
+    console.log('[notify] runSwitchStrategyTick skip: no switch clients', JSON.stringify({ reason }));
+    return;
+  }
   const enabledList = [];
   for (const clientId of clientIds) {
     const config = await readSwitchConfigForClient(env, clientId);
@@ -2289,25 +2322,53 @@ export default {
   async scheduled(controller, env, ctx) {
     const scheduledMs = Number(controller?.scheduledTime) || Date.now();
     const cron = String(controller?.cron || '').trim();
+    let shanghaiHHMM = '';
+    let shanghaiDate = '';
+    try {
+      const parts = getShanghaiDateParts(new Date(scheduledMs));
+      shanghaiDate = parts.date;
+      shanghaiHHMM = parts.hhmm;
+    } catch (_error) {
+      // 安全兜底，不能影响入口日志本身。
+    }
+    console.log('[notify] scheduled tick', JSON.stringify({
+      cron,
+      scheduledMs,
+      scheduledIso: new Date(scheduledMs).toISOString(),
+      shanghaiDate,
+      shanghaiHHMM
+    }));
     // 「场内切换」专用分钟级 cron（仅 A 股交易时段）。接下来在函数内部还会再卡一道
     // isInTradingSession，双保险；指定这个 cron 的调度下不运行 runDetection / holdings。
     if (cron === '* 1-7 * * MON-FRI') {
+      console.log('[notify] scheduled dispatch -> runSwitchStrategyTick', JSON.stringify({ cron }));
       ctx.waitUntil(runSwitchStrategyTick(env, scheduledMs, 'switch-cron'));
       return;
     }
 
+    console.log('[notify] scheduled dispatch -> runDetection', JSON.stringify({ cron }));
     ctx.waitUntil(runDetection(env, 'scheduled'));
 
     try {
-      const { date: todayShanghai, hhmm } = getShanghaiDateParts(new Date(scheduledMs));
+      const todayShanghai = shanghaiDate || getShanghaiDateParts(new Date(scheduledMs)).date;
+      const hhmm = shanghaiHHMM || getShanghaiDateParts(new Date(scheduledMs)).hhmm;
       if (hhmm === '15:30') {
+        console.log('[notify] scheduled dispatch -> runHoldingsNotifications', JSON.stringify({ kind: 'exchange', hhmm, todayShanghai }));
         ctx.waitUntil(runHoldingsNotifications(env, 'exchange', todayShanghai, 'holdings-scheduled-1530'));
       } else if (hhmm === '20:30') {
+        console.log('[notify] scheduled dispatch -> runHoldingsNotifications', JSON.stringify({ kind: 'otc', hhmm, todayShanghai }));
         ctx.waitUntil(runHoldingsNotifications(env, 'otc', todayShanghai, 'holdings-scheduled-2030'));
       } else if (hhmm === '21:30') {
+        console.log('[notify] scheduled dispatch -> runHoldingsNotifications', JSON.stringify({ kind: 'otc', hhmm, todayShanghai }));
         ctx.waitUntil(runHoldingsNotifications(env, 'otc', todayShanghai, 'holdings-scheduled-2130'));
+      } else {
+        console.log('[notify] scheduled holdings dispatch skipped', JSON.stringify({ hhmm, todayShanghai }));
       }
-    } catch (_error) {
+    } catch (error) {
+      console.log('[notify] scheduled dispatch error', JSON.stringify({
+        cron,
+        message: error instanceof Error ? error.message : String(error)
+      }));
       // 调度分发异常不能拖垮原有 runDetection。
     }
   }
