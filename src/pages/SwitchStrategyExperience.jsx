@@ -522,7 +522,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     [aggregates]
   );
   const otcFunds = useMemo(
-    () => aggregates.filter((a) => (a.kind === 'qdii' || a.kind === 'otc') && a.hasPosition),
+    () => aggregates.filter((a) => a.kind === 'qdii' && a.hasPosition),
     [aggregates]
   );
 
@@ -1446,9 +1446,9 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           </div>
         )}
         <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">持仓中的场外 / QDII 基金</div>
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">持仓中的 QDII 基金</div>
           {otcFunds.length === 0 ? (
-            <div className="mt-2 text-sm text-slate-500">持仓中暂无场外或 QDII 基金。</div>
+            <div className="mt-2 text-sm text-slate-500">持仓中暂无 QDII 基金。</div>
           ) : (
             <ul className="mt-2 space-y-1 text-sm text-slate-700">
               {otcFunds.map((f) => {
@@ -1456,10 +1456,9 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                 return (
                   <li key={f.code} className="flex flex-col gap-1 rounded-xl px-1 py-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Pill tone={f.kind === 'qdii' ? 'indigo' : 'slate'}>{f.kind === 'qdii' ? 'QDII' : '场外'}</Pill>
+                      <Pill tone="indigo">QDII</Pill>
                       <span className="font-semibold text-slate-700">{f.code}</span>
                       <span className="text-slate-500">{f.name || ''}</span>
-                      <span className="ml-auto tabular-nums text-slate-400">最新 {formatPrice(f.latestNav)} · {formatDate(f.latestNavDate)}</span>
                     </div>
                     {limit ? (
                       <div className="flex flex-wrap items-center gap-2 pl-1 text-xs text-slate-500">
@@ -1478,7 +1477,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                         {limit.effectiveDate && (
                           <span className="text-slate-400">生效 {limit.effectiveDate}</span>
                         )}
-                        {limit.sourceUrl ? (
+                        {limit.sourceUrl && (
                           <a
                             href={limit.sourceUrl}
                             target="_blank"
@@ -1488,8 +1487,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                           >
                             公告 ↗
                           </a>
-                        ) : (
-                          <span className="ml-auto text-slate-400">来源 {limit.source || '—'}</span>
                         )}
                       </div>
                     ) : (
