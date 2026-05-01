@@ -215,6 +215,46 @@ async function loadNasdqList({ inPagesDir = false } = {}) {
   return Array.isArray(payload?.etfs) ? payload.etfs : [];
 }
 
+function nasdqOtcListPath(inPagesDir) {
+  return inPagesDir ? `../data/all_nasdq_otc.json` : `./data/all_nasdq_otc.json`;
+}
+
+async function loadNasdqOtcList({ inPagesDir = false } = {}) {
+  const response = await fetch(nasdqOtcListPath(inPagesDir), {
+    headers: { Accept: 'application/json' },
+    cache: 'no-store'
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const payload = await response.json();
+  return Array.isArray(payload?.funds) ? payload.funds : [];
+}
+
+// 场外纳指基金「按基金公司去重」分组键。
+// - etf_link: 用 link_to (场内 ETF 代码) 作为公司组，同公司同产品多份额归一组
+// - standalone_qdii: 按名称前缀 (摩根/宝盈/南方/国泰...) 归并同公司多份额
+function otcGroupIdOf(fund) {
+  if (!fund) return '';
+  if (fund.kind === 'etf_link' && fund.link_to) return 'etf:' + fund.link_to;
+  const name = String(fund.name || '');
+  const m = name.match(/^(摩根|宝盈|南方|国泰|大成|广发|华安|博时|华夏|嘉实|富国|汇添富|华泰柏瑞|招商|易方达)/);
+  if (m) return 'qdii:' + m[1];
+  return 'self:' + (fund.code || '');
+}
+
+// 限额排序键:
+//   suspended/closed -> -Infinity (沉底)
+//   maxPurchasePerDay > 0 -> 该金额 (具体限额)
+//   open 且无 max -> Infinity (不限, 最优)
+//   未知 / 加载中 -> null (待定)
+function limitSortValue(limit) {
+  if (!limit) return null;
+  if (limit.buyStatus === 'suspended' || limit.buyStatus === 'closed') return -Infinity;
+  const m = Number(limit.maxPurchasePerDay);
+  if (Number.isFinite(m) && m > 0) return m;
+  if (limit.buyStatus === 'open') return Infinity;
+  return null;
+}
+
 function dailySinaPath(code, inPagesDir) {
   return inPagesDir ? `../data/${code}/daily-sina.json` : `./data/${code}/daily-sina.json`;
 }
@@ -275,6 +315,9 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   });
   const [workerConfigExpanded, setWorkerConfigExpanded] = useState(false);
   const [fundLimitsByCode, setFundLimitsByCode] = useState({});
+  // 场外纳指基金全集 (data/all_nasdq_otc.json)。
+  const [otcUniverse, setOtcUniverse] = useState([]);
+  const [showAllOtc, setShowAllOtc] = useState(false);
 
   useEffect(() => { writePrefs(prefs); }, [prefs]);
   useEffect(() => { writeSwitchLedger(switchLedger); }, [switchLedger]);
@@ -521,16 +564,16 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     () => aggregates.filter((a) => a.kind === 'exchange' && a.hasPosition),
     [aggregates]
   );
-  const otcFunds = useMemo(
-    () => aggregates.filter((a) => a.kind === 'qdii' && a.hasPosition),
-    [aggregates]
-  );
 
-  // 拉取场外/QDII 持仓基金的申购限额（ocr-proxy worker）。
-  // 优先公告（LLM 抽取），其次 F10 / 详情页。仅场外/QDII 卡片走。
+  // 拉取所有场外纳指候选的申购限额 (ocr-proxy worker, 公告 LLM 优先)。
+  // 排除 C 类：C/A 共用份额公告，前端只比较 A/非AC。
   const otcCodesKey = useMemo(
-    () => otcFunds.map((f) => f.code).filter(Boolean).sort().join(','),
-    [otcFunds]
+    () => otcUniverse
+      .filter((f) => f && f.share_class !== 'C' && /^\d{6}$/.test(String(f.code || '')))
+      .map((f) => f.code)
+      .sort()
+      .join(','),
+    [otcUniverse]
   );
   useEffect(() => {
     if (!otcCodesKey) {
@@ -576,6 +619,65 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       });
     return () => { cancelled = true; };
   }, [inPagesDir, refreshTick]);
+
+  // 场外纳指基金全集加载。
+  useEffect(() => {
+    let cancelled = false;
+    loadNasdqOtcList({ inPagesDir })
+      .then((list) => { if (!cancelled) setOtcUniverse(Array.isArray(list) ? list : []); })
+      .catch(() => { if (!cancelled) setOtcUniverse([]); });
+    return () => { cancelled = true; };
+  }, [inPagesDir, refreshTick]);
+
+  // 场外纳指「按基金公司去重 + 选代表 + 按限额降序」。
+  // 每组候选 = {A 类, 非 AC 类}。
+  // 规则：若非 AC 类限额 > A 类限额 → 用非 AC，否则用 A。
+  const otcGroups = useMemo(() => {
+    const groups = new Map();
+    for (const f of otcUniverse) {
+      if (!f || f.share_class === 'C') continue;
+      if (!/^\d{6}$/.test(String(f.code || ''))) continue;
+      const gid = otcGroupIdOf(f);
+      if (!groups.has(gid)) groups.set(gid, { id: gid, members: [] });
+      groups.get(gid).members.push(f);
+    }
+    const result = [];
+    for (const g of groups.values()) {
+      const aCands = g.members.filter((f) => f.share_class === 'A');
+      const nonACands = g.members.filter((f) => f.share_class && f.share_class !== 'A' && f.share_class !== 'C');
+      const aPick = aCands.find((f) => f.currency === 'CNY') || aCands[0] || null;
+      const nPick = nonACands.find((f) => f.currency === 'CNY') || nonACands[0] || null;
+      const aLimit = aPick ? fundLimitsByCode[aPick.code] : null;
+      const nLimit = nPick ? fundLimitsByCode[nPick.code] : null;
+      const aVal = limitSortValue(aLimit);
+      const nVal = limitSortValue(nLimit);
+      let chosen = null, chosenLimit = null, chosenVal = null;
+      if (nPick && nVal != null && (aVal == null || nVal > aVal)) {
+        chosen = nPick; chosenLimit = nLimit; chosenVal = nVal;
+      } else if (aPick) {
+        chosen = aPick; chosenLimit = aLimit; chosenVal = aVal;
+      } else if (nPick) {
+        chosen = nPick; chosenLimit = nLimit; chosenVal = nVal;
+      } else {
+        continue;
+      }
+      result.push({
+        groupId: g.id,
+        fund: chosen,
+        limit: chosenLimit,
+        sortValue: chosenVal,
+        memberCount: g.members.length
+      });
+    }
+    const rank = (v) => {
+      if (v == null) return -2;
+      if (v === Infinity) return Number.MAX_VALUE;
+      if (v === -Infinity) return -1;
+      return v;
+    };
+    result.sort((a, b) => rank(b.sortValue) - rank(a.sortValue));
+    return result;
+  }, [otcUniverse, fundLimitsByCode]);
 
   // 候选集合 = 用户在 H/L 两表里拖入的代码 ∩ 排除持仓。
   // 不再让用户手动勾选“候选基金”：入 H/L 即可作为候选。
@@ -1386,7 +1488,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       <Card>
         <SectionHeading
           eyebrow="场外切换信号"
-          title="将场内基准换为场外 QDII 联接基金"
+          title="所有纳指（场外）基金 · 按基金公司限额降序"
         />
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
@@ -1446,17 +1548,19 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           </div>
         )}
         <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">持仓中的 QDII 基金</div>
-          {otcFunds.length === 0 ? (
-            <div className="mt-2 text-sm text-slate-500">持仓中暂无 QDII 基金。</div>
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">所有纳指（场外）基金 · 按基金公司限额降序</div>
+            <span className="text-xs text-slate-400">{otcGroups.length} 个公司</span>
+          </div>
+          {otcGroups.length === 0 ? (
+            <div className="mt-2 text-sm text-slate-500">场外基金清单加载中…</div>
           ) : (
-            <ul className="mt-2 space-y-1 text-sm text-slate-700">
-              {otcFunds.map((f) => {
-                const limit = fundLimitsByCode[f.code];
-                return (
-                  <li key={f.code} className="flex flex-col gap-1 rounded-xl px-1 py-1">
+            <>
+              <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                {(showAllOtc ? otcGroups : otcGroups.slice(0, 5)).map(({ groupId, fund: f, limit }) => (
+                  <li key={groupId} className="flex flex-col gap-1 rounded-xl px-1 py-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Pill tone="indigo">QDII</Pill>
+                      <Pill tone="indigo">{(f.share_class || 'A') + (f.currency === 'USD' ? ' / 美元' : '')}</Pill>
                       <span className="font-semibold text-slate-700">{f.code}</span>
                       <span className="text-slate-500">{f.name || ''}</span>
                     </div>
@@ -1493,9 +1597,19 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                       <div className="pl-1 text-xs text-slate-400">限额信息加载中…</div>
                     )}
                   </li>
-                );
-              })}
-            </ul>
+                ))}
+              </ul>
+              {otcGroups.length > 5 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllOtc((v) => !v)}
+                  className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-indigo-500 hover:text-indigo-600"
+                >
+                  {showAllOtc ? '收起' : `展示更多（剩余 ${otcGroups.length - 5} 个）`}
+                  <ChevronDown className={`h-4 w-4 transition-transform ${showAllOtc ? 'rotate-180' : ''}`} />
+                </button>
+              )}
+            </>
           )}
         </div>
       </Card>
