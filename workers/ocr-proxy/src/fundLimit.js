@@ -328,29 +328,49 @@ async function callAnnouncementLLM(env, code, title, noticeContent) {
   console.log('[fund-limit] ann LLM call model=' + model + ' contentLen=' + noticeContent.length);
   const payload = await env.AI.run(model, input);
 
-  // 抽 content，容下 OpenAI / Workers AI 几种常见 shape
-  const choice = Array.isArray(payload && payload.choices) ? payload.choices[0] : null;
-  const contentRaw =
-    (choice && choice.message && choice.message.content) ||
-    (choice && choice.text) ||
-    (payload && payload.response) ||
-    (payload && payload.description) ||
-    '';
-  const content = typeof contentRaw === 'string' ? contentRaw : JSON.stringify(contentRaw);
-  if (!content) throw new Error('上游模型返回空 content');
+  // Workers AI 不同模型返回的 shape 差别很大。全面候选集（与 ocr-proxy parseModelResponse 一致）：
+  const candidates = [
+    payload && payload.response,
+    payload && payload.description,
+    payload && payload.choices && payload.choices[0] && payload.choices[0].message && payload.choices[0].message.parsed,
+    payload && payload.choices && payload.choices[0] && payload.choices[0].message && payload.choices[0].message.content,
+    payload && payload.choices && payload.choices[0] && payload.choices[0].message && payload.choices[0].message.tool_calls && payload.choices[0].message.tool_calls[0] && payload.choices[0].message.tool_calls[0].function && payload.choices[0].message.tool_calls[0].function.arguments,
+    payload && payload.choices && payload.choices[0] && payload.choices[0].message && payload.choices[0].message.function_call && payload.choices[0].message.function_call.arguments,
+    payload && payload.choices && payload.choices[0] && payload.choices[0].text,
+    payload && payload.output_text,
+    payload && payload.output,
+    payload && payload.response && payload.response.output_text,
+    payload && payload.response && payload.response.output
+  ];
+  let content = '';
+  for (const c of candidates) {
+    if (c == null) continue;
+    if (typeof c === 'string' && c.trim()) { content = c; break; }
+    if (Array.isArray(c) || typeof c === 'object') { content = JSON.stringify(c); break; }
+  }
+  if (!content) {
+    const topKeys = payload && typeof payload === 'object' ? Object.keys(payload).slice(0, 8).join(',') : 'NA';
+    const msgKeys = payload && payload.choices && payload.choices[0] && payload.choices[0].message && typeof payload.choices[0].message === 'object'
+      ? Object.keys(payload.choices[0].message).slice(0, 8).join(',') : 'NA';
+    const errMsg = (payload && payload.error && (payload.error.message || payload.error)) || '';
+    console.log('[fund-limit] ann LLM empty payload top=[' + topKeys + '] msg=[' + msgKeys + '] err=' + JSON.stringify(errMsg).slice(0, 200) + ' sample=' + JSON.stringify(payload).slice(0, 600));
+    throw new Error('上游模型返回空 content (top=' + topKeys + ' msg=' + msgKeys + ')');
+  }
 
-  // 剖取 JSON：可能包裹在 ```json ... ``` 或袋零零说明文本
-  let jsonText = content.trim();
+  // 剖取 JSON：可能被 ```json ... ``` 包裹或多余文本包阅
+  let jsonText = String(content).trim();
   const fenced = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fenced) jsonText = fenced[1].trim();
-  // 如果还是有多余文本，取首个 {...} 块
-  if (!jsonText.startsWith('{')) {
+  if (!jsonText.startsWith('{') && !jsonText.startsWith('[')) {
     const m = jsonText.match(/\{[\s\S]*\}/);
     if (m) jsonText = m[0];
   }
   let parsed;
   try { parsed = JSON.parse(jsonText); }
-  catch (e) { throw new Error('模型输出非法 JSON: ' + (e && e.message || e) + ' raw=' + content.slice(0, 200)); }
+  catch (e) {
+    console.log('[fund-limit] ann LLM raw content=' + String(content).slice(0, 500));
+    throw new Error('模型输出非法 JSON: ' + (e && e.message || e));
+  }
   return parsed;
 }
 
