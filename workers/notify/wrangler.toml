@@ -55,6 +55,14 @@ head_sampling_rate = 1
 persist = true
 invocation_logs = true
 
+# Service binding to ocr-proxy worker. Calls /api/holdings/nav directly via
+# env.OCR_PROXY.fetch(...) without going through the public hostname.
+# Avoids same-zone worker→worker 405 caused by route collision on
+# tools.freebacktrack.tech/api/* (notify and ocr-proxy share the zone).
+[[services]]
+binding = "OCR_PROXY"
+service = "ai-dca-ocr-proxy"
+
 [vars]
 PUBLIC_DATA_BASE_URL = "https://tools.freebacktrack.tech"
 NOTIFY_TIMEZONE = "Asia/Shanghai"

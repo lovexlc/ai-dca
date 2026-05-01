@@ -1825,55 +1825,206 @@ async function handleAdminHoldingsAllTest(request, env) {
   }, { origin });
 }
 
-async function fetchHoldingsNavSnapshots(env, codes = []) {
-  const baseUrl = String(env?.PUBLIC_DATA_BASE_URL || 'https://tools.freebacktrack.tech').replace(/\/+$/, '');
-  if (!codes.length) return {};
+function isExchangeLikeCode(code) {
+  // 场内 ETF / LOF / 封闭基金：都以 1 或 5 开头。
+  return /^(1[5-9]|5\d)\d{4}$/.test(String(code || ''));
+}
 
-  const url = `${baseUrl}/api/holdings/nav`;
-  console.log('[notify][nav] fetch start', JSON.stringify({ url, codeCount: codes.length, codesSample: codes.slice(0, 3) }));
-  let response;
+function isAfterShanghaiNavCacheCutoff() {
+  // 返回当前上海时间是否 ≥ 15:30。场内 NAV 只在这个点之后才写缓存（避免缓存盘中报价）。
   try {
-    response = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'accept': 'application/json' },
-      body: JSON.stringify({ codes })
+    const fmt = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Shanghai',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit'
     });
-  } catch (fetchErr) {
-    console.log('[notify][nav] fetch threw', JSON.stringify({ message: fetchErr?.message || String(fetchErr), stack: fetchErr?.stack || '' }));
-    throw new Error(`拉取净值失败：fetch threw ${fetchErr?.message || fetchErr}`);
+    const parts = fmt.formatToParts(new Date());
+    const hh = Number(parts.find((p) => p.type === 'hour')?.value || '0');
+    const mm = Number(parts.find((p) => p.type === 'minute')?.value || '0');
+    return (hh * 60 + mm) >= (15 * 60 + 30);
+  } catch (_e) {
+    return false;
   }
-  const respHeaders = {};
-  try {
-    response.headers.forEach((v, k) => { respHeaders[k] = v; });
-  } catch (_e) { /* ignore */ }
-  const bodyText = await response.text().catch((e) => `__read_failed:${e?.message || e}`);
-  console.log('[notify][nav] fetch result', JSON.stringify({
-    status: response.status,
-    statusText: response.statusText,
-    ok: response.ok,
-    bodyLen: bodyText?.length || 0,
-    bodyPreview: typeof bodyText === 'string' ? bodyText.slice(0, 400) : '',
-    headerSubset: {
-      'content-type': respHeaders['content-type'],
-      'cf-ray': respHeaders['cf-ray'],
-      'cf-worker': respHeaders['cf-worker'],
-      'server': respHeaders['server'],
-      'allow': respHeaders['allow']
+}
+
+/**
+ * 拉取持仓净值，双策略 KV 缓存 + service binding。
+ *
+ * 调用方传入 bucketKindByCode (code -> 'exchange'|'otc') 和 todayShanghai。
+ * 本函数内部再通过 resolveHoldingKindAsync 区分 qdii。
+ *
+ * 读取逻辑：
+ *   - exchange：KV 中有缓存 → 直接用（缓存只写 15:30 后的收盘值，本身就是终态）。
+ *   - otc / qdii：KV cached.latestNavDate ≥ expectedLatestNavDate → 用缓存，不上游。
+ *   - 其他 → 列入 missing，一批请求。
+ *
+ * 写入逻辑：fresh.latestNavDate > cached?.latestNavDate 才覆写（“拉到新净值才更新”）。
+ *   - exchange：还要求当前上海时间 ≥ 15:30。
+ *   - otc / qdii：只要更新就写。
+ */
+async function fetchHoldingsNavSnapshots(env, codes = [], options = {}) {
+  if (!codes.length) return {};
+  const { bucketKindByCode = {}, todayShanghai = '' } = options;
+  const baseUrl = String(env?.PUBLIC_DATA_BASE_URL || 'https://tools.freebacktrack.tech').replace(/\/+$/, '');
+
+  // 逐 code 解析 effective kind（exchange / otc / qdii）以决定缓存有效期。
+  const kindByCode = {};
+  for (const code of codes) {
+    const bucketKind = bucketKindByCode[code] || (isExchangeLikeCode(code) ? 'exchange' : 'otc');
+    kindByCode[code] = await resolveHoldingKindAsync(code, bucketKind, env);
+  }
+
+  // 并发读全部缓存。
+  const cacheReads = await Promise.all(codes.map(async (code) => {
+    try {
+      const raw = await env?.NOTIFY_STATE?.get(`nav:${code}`);
+      if (!raw) return [code, null];
+      return [code, JSON.parse(raw)];
+    } catch (_e) {
+      return [code, null];
     }
   }));
+  const cachedByCode = Object.fromEntries(cacheReads);
+
+  // 决定哪些 code 需要拉新。
+  const result = {};
+  const missing = [];
+  let exchangeHit = 0, exchangeMiss = 0, otcHit = 0, otcMiss = 0;
+  for (const code of codes) {
+    const cached = cachedByCode[code];
+    const kind = kindByCode[code];
+    let cacheValid = false;
+    if (cached && Number.isFinite(Number(cached.latestNav)) && cached.latestNavDate) {
+      if (kind === 'exchange') {
+        cacheValid = true;
+      } else if (todayShanghai) {
+        const expected = getExpectedLatestNavDate(kind, todayShanghai);
+        cacheValid = String(cached.latestNavDate) >= expected;
+      }
+    }
+    if (cacheValid) {
+      result[code] = cached;
+      if (kind === 'exchange') exchangeHit += 1; else otcHit += 1;
+    } else {
+      missing.push(code);
+      if (kind === 'exchange') exchangeMiss += 1; else otcMiss += 1;
+    }
+  }
+
+  console.log('[notify][nav][cache] read', JSON.stringify({
+    total: codes.length,
+    hit: codes.length - missing.length,
+    miss: missing.length,
+    exchangeHit, exchangeMiss, otcHit, otcMiss,
+    missSample: missing.slice(0, 5)
+  }));
+
+  if (!missing.length) return result;
+
+  // 拉新：优先走 service binding，未绑定时回落公共域名（后者在同 zone 会 405，仅演习使用）。
+  const fetchUrl = `${baseUrl}/api/holdings/nav`;
+  const requestInit = {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'accept': 'application/json' },
+    body: JSON.stringify({ codes: missing })
+  };
+  let response;
+  let viaBinding = false;
+  try {
+    if (env?.OCR_PROXY?.fetch) {
+      viaBinding = true;
+      response = await env.OCR_PROXY.fetch(new Request('https://internal/api/holdings/nav', requestInit));
+    } else {
+      response = await fetch(fetchUrl, requestInit);
+    }
+  } catch (fetchErr) {
+    console.log('[notify][nav] fetch threw', JSON.stringify({
+      viaBinding,
+      message: fetchErr?.message || String(fetchErr)
+    }));
+    // 连报错都拉不到：如果有旧缓存 → 降级用。
+    let staleUsed = 0;
+    for (const code of missing) {
+      if (cachedByCode[code]) { result[code] = cachedByCode[code]; staleUsed += 1; }
+    }
+    console.log('[notify][nav][cache] fallback to stale on fetch-throw', JSON.stringify({ staleUsed }));
+    if (staleUsed === missing.length) return result;
+    throw new Error(`拉取净值失败：fetch threw ${fetchErr?.message || fetchErr}`);
+  }
+
+  const bodyText = await response.text().catch(() => '');
+  console.log('[notify][nav] fetch result', JSON.stringify({
+    viaBinding,
+    status: response.status,
+    ok: response.ok,
+    missingCount: missing.length,
+    bodyLen: bodyText.length,
+    bodyPreview: bodyText.slice(0, 240)
+  }));
+
   if (!response.ok) {
+    let staleUsed = 0;
+    for (const code of missing) {
+      if (cachedByCode[code]) { result[code] = cachedByCode[code]; staleUsed += 1; }
+    }
+    console.log('[notify][nav][cache] fallback to stale on non-ok', JSON.stringify({ staleUsed, status: response.status }));
+    if (staleUsed === missing.length) return result;
     throw new Error(`拉取净值失败：状态 ${response.status}`);
   }
+
   let data = {};
   try { data = JSON.parse(bodyText); } catch (_e) { data = {}; }
-  const list = Array.isArray(data?.snapshots) ? data.snapshots : [];
-  const map = {};
+  // ocr-proxy 返回 { items: [...] }；兼容旧字段 snapshots。
+  const list = Array.isArray(data?.items)
+    ? data.items
+    : (Array.isArray(data?.snapshots) ? data.snapshots : []);
+
+  const afterCacheCutoff = isAfterShanghaiNavCacheCutoff();
+  let written = 0, skippedExchange = 0, skippedSameOrOlder = 0;
+
   for (const snap of list) {
     const code = String(snap?.code || '').trim();
     if (!code) continue;
-    map[code] = snap;
+    if (snap?.ok === false) {
+      // 本次该 code 失败 → 回落旧缓存。
+      if (cachedByCode[code]) result[code] = cachedByCode[code];
+      continue;
+    }
+    result[code] = snap;
+
+    const kind = kindByCode[code];
+    const cached = cachedByCode[code];
+    const freshDate = String(snap.latestNavDate || '');
+    const cachedDate = String(cached?.latestNavDate || '');
+    const isNewer = freshDate && (!cachedDate || freshDate > cachedDate);
+
+    if (!isNewer) { skippedSameOrOlder += 1; continue; }
+
+    if (kind === 'exchange' && !afterCacheCutoff) {
+      skippedExchange += 1;
+      continue;
+    }
+
+    try {
+      await env?.NOTIFY_STATE?.put(`nav:${code}`, JSON.stringify(snap), { expirationTtl: 7 * 24 * 3600 });
+      written += 1;
+    } catch (kvErr) {
+      console.log('[notify][nav][cache] write failed', JSON.stringify({
+        code, message: kvErr?.message || String(kvErr)
+      }));
+    }
   }
-  return map;
+
+  console.log('[notify][nav][cache] write summary', JSON.stringify({
+    fetchedCount: list.length,
+    written,
+    skippedExchangeBeforeCutoff: skippedExchange,
+    skippedSameOrOlder,
+    afterCacheCutoff
+  }));
+
+  return result;
 }
 
 async function computeWeightedReturn(bucket, snapshotsByCode, todayShanghai, kind = 'exchange', env = null) {
@@ -1998,9 +2149,10 @@ async function runHoldingsNotifications(env, kind, todayShanghai, reason = 'hold
     if (!bucket.length) continue;
 
     const codes = bucket.map((entry) => entry.code);
+    const bucketKindByCode = Object.fromEntries(codes.map((c) => [c, kind]));
     let snapshotsByCode = {};
     try {
-      snapshotsByCode = await fetchHoldingsNavSnapshots(env, codes);
+      snapshotsByCode = await fetchHoldingsNavSnapshots(env, codes, { bucketKindByCode, todayShanghai });
     } catch (_error) {
       // 拉取失败，不写 dedup，下一个 cron 会重试。
       continue;
@@ -2175,9 +2327,12 @@ async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holding
     }
 
     const codes = [...exchangeBucket, ...otcBucket].map((entry) => entry.code);
+    const bucketKindByCode = {};
+    for (const e of exchangeBucket) bucketKindByCode[e.code] = 'exchange';
+    for (const e of otcBucket) bucketKindByCode[e.code] = 'otc';
     let snapshotsByCode = {};
     try {
-      snapshotsByCode = await fetchHoldingsNavSnapshots(env, codes);
+      snapshotsByCode = await fetchHoldingsNavSnapshots(env, codes, { bucketKindByCode, todayShanghai });
     } catch (error) {
       // 拉取失败，不写 dedup，下个 cron 会重试。
       console.log('[notify][holdings-all] skip: nav fetch failed', JSON.stringify({
