@@ -130,6 +130,48 @@ function formatDate(value) {
   return value ? String(value) : '—';
 }
 
+function formatLimitAmount(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return '—';
+  if (n >= 100000000) return `${(n / 100000000).toFixed(2).replace(/\.?0+$/, '')} 亿`;
+  if (n >= 10000) return `${(n / 10000).toFixed(2).replace(/\.?0+$/, '')} 万`;
+  return n.toLocaleString('zh-CN');
+}
+
+function limitToneFor(buyStatus) {
+  switch (buyStatus) {
+    case 'open':
+      return 'emerald';
+    case 'limit_large':
+      return 'amber';
+    case 'limit':
+      return 'amber';
+    case 'suspended':
+      return 'red';
+    case 'closed':
+      return 'red';
+    default:
+      return 'slate';
+  }
+}
+
+function limitLabelFor(buyStatus) {
+  switch (buyStatus) {
+    case 'open':
+      return '正常申购';
+    case 'limit_large':
+      return '限大额';
+    case 'limit':
+      return '限额';
+    case 'suspended':
+      return '暂停申购';
+    case 'closed':
+      return '已关闭';
+    default:
+      return buyStatus || '未知';
+  }
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -232,6 +274,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     lastSyncedAt: ''
   });
   const [workerConfigExpanded, setWorkerConfigExpanded] = useState(false);
+  const [fundLimitsByCode, setFundLimitsByCode] = useState({});
 
   useEffect(() => { writePrefs(prefs); }, [prefs]);
   useEffect(() => { writeSwitchLedger(switchLedger); }, [switchLedger]);
@@ -482,6 +525,40 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     () => aggregates.filter((a) => (a.kind === 'qdii' || a.kind === 'otc') && a.hasPosition),
     [aggregates]
   );
+
+  // 拉取场外/QDII 持仓基金的申购限额（ocr-proxy worker）。
+  // 优先公告（LLM 抽取），其次 F10 / 详情页。仅场外/QDII 卡片走。
+  const otcCodesKey = useMemo(
+    () => otcFunds.map((f) => f.code).filter(Boolean).sort().join(','),
+    [otcFunds]
+  );
+  useEffect(() => {
+    if (!otcCodesKey) {
+      setFundLimitsByCode({});
+      return undefined;
+    }
+    let cancelled = false;
+    const codes = otcCodesKey.split(',');
+    Promise.all(
+      codes.map((code) =>
+        fetch(`/api/fund-limit?code=${encodeURIComponent(code)}`, { cache: 'no-store' })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => [code, data])
+          .catch(() => [code, null])
+      )
+    ).then((entries) => {
+      if (cancelled) return;
+      const next = {};
+      for (const [code, data] of entries) {
+        if (data && typeof data === 'object') next[code] = data;
+      }
+      setFundLimitsByCode(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [otcCodesKey, refreshTick]);
+
 
   // 候选基金 universe（来自 data/all_nasdq.json）
   useEffect(() => {
@@ -1374,14 +1451,53 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
             <div className="mt-2 text-sm text-slate-500">持仓中暂无场外或 QDII 基金。</div>
           ) : (
             <ul className="mt-2 space-y-1 text-sm text-slate-700">
-              {otcFunds.map((f) => (
-                <li key={f.code} className="flex flex-wrap items-center gap-2">
-                  <Pill tone={f.kind === 'qdii' ? 'purple' : 'indigo'}>{f.kind === 'qdii' ? 'QDII' : '场外'}</Pill>
-                  <span className="font-semibold text-slate-700">{f.code}</span>
-                  <span className="text-slate-500">{f.name || ''}</span>
-                  <span className="ml-auto tabular-nums text-slate-400">最新 {formatPrice(f.latestNav)} · {formatDate(f.latestNavDate)}</span>
-                </li>
-              ))}
+              {otcFunds.map((f) => {
+                const limit = fundLimitsByCode[f.code];
+                return (
+                  <li key={f.code} className="flex flex-col gap-1 rounded-xl px-1 py-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Pill tone={f.kind === 'qdii' ? 'indigo' : 'slate'}>{f.kind === 'qdii' ? 'QDII' : '场外'}</Pill>
+                      <span className="font-semibold text-slate-700">{f.code}</span>
+                      <span className="text-slate-500">{f.name || ''}</span>
+                      <span className="ml-auto tabular-nums text-slate-400">最新 {formatPrice(f.latestNav)} · {formatDate(f.latestNavDate)}</span>
+                    </div>
+                    {limit ? (
+                      <div className="flex flex-wrap items-center gap-2 pl-1 text-xs text-slate-500">
+                        <Pill tone={limitToneFor(limit.buyStatus)} className="px-2 py-1 text-[11px]">{limitLabelFor(limit.buyStatus)}</Pill>
+                        {Number(limit.maxPurchasePerDay) > 0 && (
+                          <span>单户日上限 <span className="font-semibold text-slate-700 tabular-nums">{formatLimitAmount(limit.maxPurchasePerDay)}</span></span>
+                        )}
+                        {Number(limit.minPurchase) > 0 && (
+                          <span>起购 <span className="tabular-nums">{formatLimitAmount(limit.minPurchase)}</span></span>
+                        )}
+                        {limit.fixedInvest === false ? (
+                          <span className="text-slate-400">定投暂停</span>
+                        ) : Number(limit.fixedInvestMin) > 0 ? (
+                          <span>定投起额 <span className="tabular-nums">{formatLimitAmount(limit.fixedInvestMin)}</span></span>
+                        ) : null}
+                        {limit.effectiveDate && (
+                          <span className="text-slate-400">生效 {limit.effectiveDate}</span>
+                        )}
+                        {limit.sourceUrl ? (
+                          <a
+                            href={limit.sourceUrl}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="ml-auto text-indigo-500 hover:text-indigo-600 hover:underline"
+                            title={limit.sourceTitle || '基金公司限额公告'}
+                          >
+                            公告 ↗
+                          </a>
+                        ) : (
+                          <span className="ml-auto text-slate-400">来源 {limit.source || '—'}</span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="pl-1 text-xs text-slate-400">限额信息加载中…</div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
