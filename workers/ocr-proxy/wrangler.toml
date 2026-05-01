@@ -49,3 +49,13 @@ OCR_MODEL = "@cf/moonshotai/kimi-k2.6"
 # “没有返回可解析的 JSON 文本”。kimi-k2.6 支持很大的输出窗口，
 # 这里默认放到 4096；如果需要更多行可以再调到 8192。
 OCR_MAX_TOKENS = "4096"
+
+# fund-limit 接口的 KV 缓存。
+# - key 形态：limit:<6位基金代码>
+# - 默认 TTL 600s（10 分钟）。可在 Dashboard 里把 FUND_LIMIT_CACHE_TTL_SECONDS 调到
+#   300~900；下午 3 点公告窗后老缓存可能滞后，前端可带 ?refresh=1 强刷。
+# - QDII / Y 类等天天基金未代销的产品，整段「金额」会拿不到，但状态徽章仍可用。
+[[kv_namespaces]]
+binding = "FUND_LIMIT_KV"
+id = "633d193bdcb045e3bdbc098ff6249224"
+preview_id = "1892e345c6754009ac678ce467189ef2"

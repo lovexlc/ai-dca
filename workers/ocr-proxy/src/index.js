@@ -17,6 +17,7 @@ import {
   FUND_SWITCH_SYSTEM_PROMPT,
   PROMPT_VERSION
 } from './geminiPrompt.js';
+import { fetchFundLimit } from './fundLimit.js';
 
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -1560,7 +1561,7 @@ async function handleHoldingsNav(request, env) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (request.method === 'OPTIONS') {
@@ -1629,6 +1630,34 @@ export default {
       } catch (error) {
         return jsonResponse({
           error: error instanceof Error ? error.message : '持仓净值代理执行失败。'
+        }, 502);
+      }
+    }
+
+    if (url.pathname === '/api/fund-limit') {
+      if (request.method !== 'GET') {
+        return jsonResponse({
+          error: 'Method not allowed'
+        }, 405, {
+          allow: 'GET, OPTIONS'
+        });
+      }
+
+      try {
+        const code = (url.searchParams.get('code') || '').trim();
+        const force = url.searchParams.get('refresh') === '1';
+        const result = await fetchFundLimit({ code, force, env, ctx });
+        if (!result.ok) {
+          return jsonResponse({
+            error: result.error,
+            code: result.code,
+            tried: result.tried
+          }, result.status || 502);
+        }
+        return jsonResponse(result.data);
+      } catch (error) {
+        return jsonResponse({
+          error: error instanceof Error ? error.message : '基金限额代理执行失败。'
         }, 502);
       }
     }
