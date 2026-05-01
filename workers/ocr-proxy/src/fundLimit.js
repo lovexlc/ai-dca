@@ -286,7 +286,7 @@ function writeNegativeAnnCache(env, ctx, code) {
 // LLM 抽取：OpenAI-兼容格式，system + user，要求返回严格 JSON（temperature 低）。
 async function callAnnouncementLLM(env, code, title, noticeContent) {
   const model = String(env.ANNOUNCEMENT_LLM_MODEL || ANNOUNCEMENT_LLM_MODEL).trim();
-  const systemPrompt = '你是中国公募基金限额公告的结构化抽取助手。输入是一段公告原文，你需要抽取「申购/赎回/定投/限额」相关信息，输出严格 JSON。仅输出 JSON，不要任何多余说明或 markdown 包裹。';
+  const systemPrompt = '你是中国公募基金限额公告的结构化抽取助手。输入是一段公告原文，你需要抽取「申购/赎回/定投/限额」相关信息。重要：不要输出任何思考过程、注释、说明、分析；只输出一个严格 JSON 对象，不要任何 markdown 包裹。输出必须以 { 开始、以 } 结束。';
   const userText = [
     '公告标题：' + title,
     '基金代码：' + code,
@@ -317,12 +317,13 @@ async function callAnnouncementLLM(env, code, title, noticeContent) {
     '- 不要包裹代码块，不要加任何中文说明，只返 JSON 对象。'
   ].join('\n');
 
+  const maxTokens = Number(env.OCR_MAX_TOKENS) || 4096;
   const input = {
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userText }
     ],
-    max_tokens: 600,
+    max_tokens: maxTokens,
     temperature: 0.05
   };
   console.log('[fund-limit] ann LLM call model=' + model + ' contentLen=' + noticeContent.length);
@@ -334,6 +335,7 @@ async function callAnnouncementLLM(env, code, title, noticeContent) {
     payload && payload.description,
     payload && payload.choices && payload.choices[0] && payload.choices[0].message && payload.choices[0].message.parsed,
     payload && payload.choices && payload.choices[0] && payload.choices[0].message && payload.choices[0].message.content,
+    payload && payload.choices && payload.choices[0] && payload.choices[0].message && payload.choices[0].message.reasoning_content,
     payload && payload.choices && payload.choices[0] && payload.choices[0].message && payload.choices[0].message.tool_calls && payload.choices[0].message.tool_calls[0] && payload.choices[0].message.tool_calls[0].function && payload.choices[0].message.tool_calls[0].function.arguments,
     payload && payload.choices && payload.choices[0] && payload.choices[0].message && payload.choices[0].message.function_call && payload.choices[0].message.function_call.arguments,
     payload && payload.choices && payload.choices[0] && payload.choices[0].text,
