@@ -52,8 +52,9 @@ OCR_MAX_TOKENS = "4096"
 
 # fund-limit 接口的 KV 缓存。
 # - key 形态：limit:<6位基金代码>
-# - 默认 TTL 600s（10 分钟）。可在 Dashboard 里把 FUND_LIMIT_CACHE_TTL_SECONDS 调到
-#   300~900；下午 3 点公告窗后老缓存可能滞后，前端可带 ?refresh=1 强刷。
+# - 默认 TTL 24h。公告源结果自动延长到 7 天（公告内容不变）；
+#   可通过 FUND_LIMIT_CACHE_TTL_SECONDS 覆盖 f10/detail 源的默认 TTL；
+#   下午 3 点公告窗后老缓存可能滞后，前端可带 ?refresh=1 强刷。
 # - QDII / Y 类等天天基金未代销的产品，整段「金额」会拿不到，但状态徽章仍可用。
 [[kv_namespaces]]
 binding = "FUND_LIMIT_KV"

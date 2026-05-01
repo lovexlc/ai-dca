@@ -25,9 +25,11 @@
 
 const DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-const FUND_LIMIT_DEFAULT_TTL_SECONDS = 600; // 10 分钟
+// 限额信息变化频率低（基金公司发公告才变），默认 TTL 拉长到 1 天，依赖 force=1 手动刷新。
+const FUND_LIMIT_DEFAULT_TTL_SECONDS = 24 * 3600; // 1 天 (默认、f10/detail 源)
+const FUND_LIMIT_ANNOUNCEMENT_TTL_SECONDS = 7 * 24 * 3600; // 7 天 (chosen 来自公告时，与底层 ann-result 对齐)
 const ANNOUNCEMENT_RESULT_TTL_SECONDS = 7 * 24 * 3600; // 7 天（公告内容不变）
-const ANNOUNCEMENT_NEGATIVE_TTL_SECONDS = 6 * 3600; // 6 小时（未命中公告不必频繁重试）
+const ANNOUNCEMENT_NEGATIVE_TTL_SECONDS = 24 * 3600; // 1 天（未命中公告不必频繁重试）
 const ANNOUNCEMENT_LLM_MODEL = '@cf/moonshotai/kimi-k2.6';
 
 // 标题筛选正则：匹配一切跟「大额申购 / 限额 / 限购 / 暂停申购 / 恢复申购 / 调整大额 / 大额定投」相关的标题。
@@ -596,7 +598,9 @@ export async function fetchFundLimit({ code, force, env, ctx }) {
     return { ok: false, status: 502, error: '所有数据源均无法获取限额信息。', code, tried };
   }
   if (env && env.FUND_LIMIT_KV) {
-    const ttl = Math.max(60, Number(env.FUND_LIMIT_CACHE_TTL_SECONDS) || FUND_LIMIT_DEFAULT_TTL_SECONDS);
+    // 公告源 → 7 天；f10/detail 源 → 默认 TTL（1 天，可被 env.FUND_LIMIT_CACHE_TTL_SECONDS 覆盖）。
+    const baseTtl = Math.max(60, Number(env.FUND_LIMIT_CACHE_TTL_SECONDS) || FUND_LIMIT_DEFAULT_TTL_SECONDS);
+    const ttl = chosen.source === 'announcement' ? FUND_LIMIT_ANNOUNCEMENT_TTL_SECONDS : baseTtl;
     const writeP = env.FUND_LIMIT_KV
       .put(cacheKey, JSON.stringify(chosen), { expirationTtl: ttl })
       .catch((e) => console.log('[fund-limit] kv write failed: ' + (e && e.message || e)));
