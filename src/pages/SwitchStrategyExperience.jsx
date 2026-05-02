@@ -1205,8 +1205,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                                 <div>净值 <span className="font-semibold text-slate-800">{formatPrice(bench.benchmarkNav)}</span>{bench.benchmarkNavDate ? <span className="ml-1 text-slate-400">@{bench.benchmarkNavDate}</span> : null}</div>
                                 <div>溢价 <span className="font-semibold text-slate-800">{formatPercent(bench.benchmarkPremiumPct, 2, true)}</span></div>
                               </div>
-                            <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white">
-                              <table className="w-full text-xs">
+                            <table className="mt-3 w-full overflow-hidden rounded-lg border border-slate-200 text-xs">
                                 <thead className="bg-slate-50 text-slate-500">
                                   <tr>
                                     <th className="px-3 py-2 text-left">候选</th>
@@ -1247,8 +1246,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                                     <tr><td colSpan={5} className="px-3 py-4 text-center text-slate-400">快照中暂无候选数据。</td></tr>
                                   ) : null}
                                 </tbody>
-                              </table>
-                          </div>
+                            </table>
                         ));
                       })()}
                       {(workerSnapshot.triggers || []).length > 0 ? (
