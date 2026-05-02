@@ -1522,7 +1522,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       <Card>
         <SectionHeading
           eyebrow="场外切换信号"
-          title="所有纳指（场外）基金 · 按基金公司限额降序"
+          title="纳指（场外）基金"
         />
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
@@ -1583,7 +1583,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         )}
         <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">所有纳指（场外）基金 · 按基金公司限额降序</div>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">纳指（场外）基金</div>
             <span className="text-xs text-slate-400">{otcGroups.length} 个公司</span>
           </div>
           {otcGroups.length === 0 ? (
