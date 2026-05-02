@@ -2369,7 +2369,20 @@ function buildHoldingsNotificationContentAll(returnRate, contributors, totals = 
   const body = top.length
     ? `今日加权收益率 ${dailyText}${totalLine}；贡献 Top：${top.join('、')}。`
     : `今日加权收益率 ${dailyText}${totalLine}。`;
-  return { title, body, summary };
+
+  // Android 客户端：支持 body_md（目前仅实现 **bold** 的渲染）。
+  // 这里提供更“分行 + 强调”的内容，便于在通知栏里快速扫读。
+  const bodyMdLines = [];
+  bodyMdLines.push(`当日：**${titleAmt}**`);
+  if (totals && Number.isFinite(totals.totalProfit) && Number.isFinite(totals.totalReturnRate)) {
+    const profitSign = totals.totalProfit >= 0 ? '+' : '−';
+    const rateSign = totals.totalReturnRate >= 0 ? '+' : '−';
+    bodyMdLines.push(`总计：${profitSign}¥${Math.abs(totals.totalProfit).toFixed(2)} (${rateSign}${Math.abs(totals.totalReturnRate).toFixed(2)}%)`);
+  }
+  if (top.length) bodyMdLines.push(`Top：${top.join('、')}`);
+  const body_md = bodyMdLines.join('\n');
+
+  return { title, body, summary, body_md };
 }
 
 // 全仓总览推送（场内 + 场外合并，20:30 / 21:30 使用）。
@@ -2512,7 +2525,7 @@ async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holding
       .sort((a, b) => Math.abs(b.ratio) - Math.abs(a.ratio));
 
     const totals = digest.totals || null;
-    const { title, body, summary } = buildHoldingsNotificationContentAll(
+    const { title, body, summary, body_md } = buildHoldingsNotificationContentAll(
       dailyReturnRate,
       sortedContribs,
       totals
@@ -2539,6 +2552,7 @@ async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holding
           eventType: 'holdings-daily-return',
           title,
           body,
+          body_md,
           summary,
           ruleId: 'holdings-daily-all',
           symbol: '持仓总览',
