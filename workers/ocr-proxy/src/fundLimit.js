@@ -142,9 +142,10 @@ async function fetchWithTimeout(url, init = {}, timeoutMs = 8000) {
 }
 
 // ─── 数据源 1：基金公司限额公告 + LLM 抽取 ───────────────────────
-async function tryAnnouncement(code, env, ctx) {
+async function tryAnnouncement(code, env, ctx, force = false) {
   // 优先查 KV （公告结果独立错 ann-result:<code>，粒度与主缓存不同）
-  if (env && env.FUND_LIMIT_KV) {
+  // force=1 时跳过缓存，强制重新拉取并抽取公告。
+  if (env && env.FUND_LIMIT_KV && !force) {
     try {
       const cached = await env.FUND_LIMIT_KV.get('ann-result:' + code, { type: 'json' });
       if (cached && typeof cached === 'object') {
@@ -571,7 +572,7 @@ export async function fetchFundLimit({ code, force, env, ctx }) {
   const tried = [];
   // 三路并行：announcement + F10 + detail
   const [annSettled, f10Settled, detailSettled] = await Promise.allSettled([
-    tryAnnouncement(code, env, ctx),
+    tryAnnouncement(code, env, ctx, !!force),
     tryF10Html(code),
     tryDetailHtml(code)
   ]);

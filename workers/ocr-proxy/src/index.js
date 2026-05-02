@@ -1645,7 +1645,8 @@ export default {
 
       try {
         const code = (url.searchParams.get('code') || '').trim();
-        const force = url.searchParams.get('refresh') === '1';
+        // 兼容参数：refresh=1（历史）或 force=1（更直觉）。
+        const force = url.searchParams.get('refresh') === '1' || url.searchParams.get('force') === '1';
         const result = await fetchFundLimit({ code, force, env, ctx });
         if (!result.ok) {
           return jsonResponse({
