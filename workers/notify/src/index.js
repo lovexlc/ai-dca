@@ -1677,13 +1677,19 @@ function getExpectedLatestNavDate(kind, todayShanghai) {
   const today = String(todayShanghai || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) return todayShanghai;
 
+  // 这里的 T 定义为“最近一个交易日”（如果今天不是交易日，就回退到最近交易日）。
+  // 规则：
+  //   - exchange / otc：预期 = T
+  //   - qdii：预期 = T-1（即上一个交易日；若 T 为周一，则会自然回退到上周五，即 T-3）
+  const T = isTradingDayShanghai(today) ? today : getPreviousTradingDayShanghai(today);
+
   // 场内 ETF + 境内场外：预期都是“今日（非交易日回退到上一个交易日）”。
   if (kind === 'exchange' || kind === 'otc') {
-    return isTradingDayShanghai(today) ? today : getPreviousTradingDayShanghai(today);
+    return T;
   }
 
-  // qdii：T+1 发布，预期 = 上一个交易日（若今日非交易日，同样回退到上一个交易日）。
-  return getPreviousTradingDayShanghai(today);
+  // qdii：T+1 发布，预期 = T-1
+  return getPreviousTradingDayShanghai(T);
 }
 
 function getShanghaiDateParts(date = new Date()) {
