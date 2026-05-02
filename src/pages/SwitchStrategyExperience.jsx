@@ -1579,7 +1579,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">纳指（场外）基金</div>
-            <span className="text-xs text-slate-400">{otcGroups.length} 个公司</span>
           </div>
           {otcGroups.length === 0 ? (
             <div className="mt-2 text-sm text-slate-500">场外基金清单加载中…</div>
