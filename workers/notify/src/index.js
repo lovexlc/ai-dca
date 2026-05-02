@@ -1614,30 +1614,76 @@ async function resolveHoldingKindAsync(code, bucketKind, env) {
  * - otc（境内场外）：T 日 NAV 在 T 日晚发布，预期 = 当日（周末回退到周五）。
  * - qdii（场外 QDII）：T+1 发布，预期 = 上一个工作日（周一 → 上周五 T-3）。
  */
-function getExpectedLatestNavDate(kind, todayShanghai) {
-  const [y, m, d] = String(todayShanghai).split('-').map((s) => Number(s));
-  if (!y || !m || !d) return todayShanghai;
-  const today = new Date(Date.UTC(y, m - 1, d));
-  const dow = today.getUTCDay(); // 0=Sun … 6=Sat
-  const shift = (days) => {
-    const t = new Date(today.getTime());
-    t.setUTCDate(t.getUTCDate() - days);
-    const yy = t.getUTCFullYear();
-    const mm = String(t.getUTCMonth() + 1).padStart(2, '0');
-    const dd = String(t.getUTCDate()).padStart(2, '0');
-    return `${yy}-${mm}-${dd}`;
-  };
-  // 场内 ETF + 境内场外：预期都是“今日（周末回退到周五）”。
-  if (kind === 'exchange' || kind === 'otc') {
-    if (dow === 0) return shift(2); // 周日 → 上周五
-    if (dow === 6) return shift(1); // 周六 → 周五
-    return todayShanghai;
+function isChinaMarketHoliday(dateStr) {
+  // A 股休市（除周末外）——先用硬编码覆盖 2026 年已公告节假日。
+  // 来源：上交所《2026 年部分节假日休市安排》公告。
+  // https://www.sse.com.cn/disclosure/announcement/general/c/c_20251222_10802507.shtml
+  const d = String(dateStr || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+  const y = d.slice(0, 4);
+  if (y !== '2026') return false;
+
+  // 闭市区间（闭区间）
+  const ranges = [
+    ['2026-01-01', '2026-01-03'],
+    ['2026-02-15', '2026-02-23'],
+    ['2026-04-04', '2026-04-06'],
+    ['2026-05-01', '2026-05-05'],
+    ['2026-06-19', '2026-06-21'],
+    ['2026-09-25', '2026-09-27'],
+    ['2026-10-01', '2026-10-07']
+  ];
+
+  for (const [start, end] of ranges) {
+    if (d >= start && d <= end) return true;
   }
-  // qdii：T+1 发布，取上一个工作日
-  if (dow === 1) return shift(3); // 周一 → 上周五 (QDII T-3)
-  if (dow === 0) return shift(2); // 周日 → 周五
-  if (dow === 6) return shift(1); // 周六 → 周五
-  return shift(1); // 周二至周五 → 昨天 (T-1)
+  return false;
+}
+
+function isWeekendShanghai(dateStr) {
+  const [y, m, d] = String(dateStr).split('-').map((s) => Number(s));
+  if (!y || !m || !d) return false;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const dow = dt.getUTCDay();
+  return dow === 0 || dow === 6;
+}
+
+function shiftShanghaiDate(dateStr, daysBack = 1) {
+  const [y, m, d] = String(dateStr).split('-').map((s) => Number(s));
+  if (!y || !m || !d) return dateStr;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() - daysBack);
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
+function getPreviousTradingDayShanghai(dateStr) {
+  let cur = shiftShanghaiDate(dateStr, 1);
+  // 最多回退 30 天，避免死循环。
+  for (let i = 0; i < 30; i++) {
+    if (!isWeekendShanghai(cur) && !isChinaMarketHoliday(cur)) return cur;
+    cur = shiftShanghaiDate(cur, 1);
+  }
+  return cur;
+}
+
+function isTradingDayShanghai(dateStr) {
+  return !isWeekendShanghai(dateStr) && !isChinaMarketHoliday(dateStr);
+}
+
+function getExpectedLatestNavDate(kind, todayShanghai) {
+  const today = String(todayShanghai || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) return todayShanghai;
+
+  // 场内 ETF + 境内场外：预期都是“今日（非交易日回退到上一个交易日）”。
+  if (kind === 'exchange' || kind === 'otc') {
+    return isTradingDayShanghai(today) ? today : getPreviousTradingDayShanghai(today);
+  }
+
+  // qdii：T+1 发布，预期 = 上一个交易日（若今日非交易日，同样回退到上一个交易日）。
+  return getPreviousTradingDayShanghai(today);
 }
 
 function getShanghaiDateParts(date = new Date()) {
