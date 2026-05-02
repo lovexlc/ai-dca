@@ -162,7 +162,10 @@ async function tryAnnouncement(code, env, ctx) {
   }
 
   // 1) 拉公告列表
-  const listUrl = 'https://api.fund.eastmoney.com/f10/JJGG?fundcode=' + encodeURIComponent(code) + '&pageIndex=1&pageSize=20&type=0';
+  // 备注：东财该接口在部分情况下会返回 ErrCode=-999（疑似风控/缓存命中），导致 Data 为空。
+  // 加上时间戳参数（_）可显著降低 -999 概率。
+  const listUrl = 'https://api.fund.eastmoney.com/f10/JJGG?fundcode=' + encodeURIComponent(code)
+    + '&pageIndex=1&pageSize=20&type=0&_=' + Date.now();
   console.log('[fund-limit] ann list GET ' + listUrl);
   let listResp;
   try {
