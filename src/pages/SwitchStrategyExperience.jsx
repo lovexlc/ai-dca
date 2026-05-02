@@ -1198,18 +1198,16 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                         const buyOther = Number(workerSnapshot.intraBuyOtherPct);
                         const cls = prefs.premiumClass || {};
                         return benchSnapshots.map((bench) => (
-                          <div key={`bench-${bench.benchmarkCode}`} className="space-y-2">
-                            <div className="rounded-xl border border-slate-200 bg-white p-3">
+                          <div key={`bench-${bench.benchmarkCode}`} className="rounded-xl border border-slate-200 bg-white p-3">
                               <div className="text-xs uppercase tracking-[0.18em] text-slate-400">基准 {bench.benchmarkCode}{bench.benchmarkName ? ` · ${bench.benchmarkName}` : ''}</div>
                               <div className="mt-1 grid grid-cols-3 gap-2 text-xs text-slate-600">
                                 <div>现价 <span className="font-semibold text-slate-800">{formatPrice(bench.benchmarkPrice)}</span></div>
                                 <div>净值 <span className="font-semibold text-slate-800">{formatPrice(bench.benchmarkNav)}</span>{bench.benchmarkNavDate ? <span className="ml-1 text-slate-400">@{bench.benchmarkNavDate}</span> : null}</div>
                                 <div>溢价 <span className="font-semibold text-slate-800">{formatPercent(bench.benchmarkPremiumPct, 2, true)}</span></div>
                               </div>
-                            </div>
-                            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                            <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white">
                               <table className="w-full text-xs">
-                                <thead className="bg-slate-100 text-slate-500">
+                                <thead className="bg-slate-50 text-slate-500">
                                   <tr>
                                     <th className="px-3 py-2 text-left">候选</th>
                                     <th className="px-3 py-2 text-right">现价</th>
@@ -1250,7 +1248,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                                   ) : null}
                                 </tbody>
                               </table>
-                            </div>
                           </div>
                         ));
                       })()}
