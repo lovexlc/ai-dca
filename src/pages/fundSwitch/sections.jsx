@@ -505,7 +505,7 @@ export function buildWorkflowSteps({
           : '等待回填识别结果。',
       tone: hasValidationIssues ? 'error' : recognizedCount > 0 ? 'done' : isError ? 'pending' : isProcessing ? 'current' : 'pending',
       lines: hasValidationIssues
-        ? ['点击下面的问题，可直接跳到对应明细。']
+        ? ['']
         : recognizedCount > 0
           ? [`共 ${recognizedCount} 条识别记录，当前可以继续确认收益。`]
           : [],
@@ -670,7 +670,7 @@ export function AnalysisWorkspaceSidebar({
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">最近文档</div>
-              <div className="mt-1 text-sm font-bold text-slate-900">点击即可带路由打开</div>
+
             </div>
             <Pill tone="slate">{documentEntries.length} 条</Pill>
           </div>

@@ -1488,14 +1488,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           </div>
         </div>
         <div className="mt-4 space-y-2">
-          {!benchmark ? (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-500">先选定一只基准 ETF。</div>
-          ) : null}
-          {benchmark && intraSignals.length === 0 ? (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-500">
-              当前任两只 ETF 之间都没有出现机会，继续耐心等待。
-            </div>
-          ) : null}
+          {!benchmark ? null : null}
+          {benchmark && intraSignals.length === 0 ? null : null}
           {intraSignals.map((sig, idx) => (
             <div
               key={`${sig.kind}-${sig.from}-${sig.to}-${idx}`}
@@ -1504,9 +1498,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
               <Pill tone={sig.kind === 'A' ? 'indigo' : 'emerald'}>规则 {sig.kind}</Pill>
               <div className="flex-1">
                 <div className="font-semibold text-slate-700">卖 {sig.from} → 买 {sig.to}</div>
-                <div className="text-xs text-slate-500">
-                  {sig.fromName || ''} → {sig.toName || ''}。{sig.description}。具体溢价请到基金软件查看后再下单。
-                </div>
+                <div className="text-xs text-slate-500">{sig.fromName || ''} → {sig.toName || ''}。{sig.description}。</div>
               </div>
             </div>
           ))}
@@ -1563,9 +1555,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                   <div className="font-semibold text-slate-700">
                     卖 {otcSignal.benchCode} → 申购场外 QDII 联接基金
                   </div>
-                  <div className="text-xs text-slate-500">
-                    「{otcSignal.benchCode} {otcSignal.benchName}」溢价偏高且「{otcSignal.lowestCode} {otcSignal.lowestName}」溢价偏低，出现反向套利机会。具体溢价请到基金软件查看后再下单。
-                  </div>
+                  <div className="text-xs text-slate-500">「{otcSignal.benchCode} {otcSignal.benchName}」溢价偏高且「{otcSignal.lowestCode} {otcSignal.lowestName}」溢价偏低，出现反向套利机会。</div>
                 </div>
               </div>
             ) : (
@@ -1580,9 +1570,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           <div className="flex items-center justify-between">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">纳指（场外）基金</div>
           </div>
-          {otcGroups.length === 0 ? (
-            <div className="mt-2 text-sm text-slate-500">场外基金清单加载中…</div>
-          ) : (
+          {otcGroups.length === 0 ? null : (
             <>
               <ul className="mt-2 space-y-1 text-sm text-slate-700">
                 {(showAllOtc ? otcGroups : otcGroups.slice(0, 5)).map(({ groupId, fund: f, limit }) => (
@@ -1621,9 +1609,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                           </a>
                         )}
                       </div>
-                    ) : (
-                      <div className="pl-1 text-xs text-slate-400">限额信息加载中…</div>
-                    )}
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -1633,7 +1619,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                   onClick={() => setShowAllOtc((v) => !v)}
                   className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-indigo-500 hover:text-indigo-600"
                 >
-                  {showAllOtc ? '收起' : `展示更多（剩余 ${otcGroups.length - 5} 个）`}
+                  {showAllOtc ? '收起' : '展示更多'}
                   <ChevronDown className={`h-4 w-4 transition-transform ${showAllOtc ? 'rotate-180' : ''}`} />
                 </button>
               )}

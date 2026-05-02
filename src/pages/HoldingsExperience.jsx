@@ -1656,7 +1656,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           {headerRow}
           <div className="flex min-h-[180px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-200 text-center text-sm text-slate-500">
             <Wallet className="h-7 w-7 text-slate-300" />
-            还没有任何切换链路。点击右上「新建链路」开始拼接。
+            还没有任何切换链路。
           </div>
         </div>
       );
@@ -1928,7 +1928,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     if (!selectedAggregate) {
       return (
         <div className="text-sm text-slate-500">
-          点击左侧任意一行查看该基金的汇总（净份额 / 加权均价 / 总收益 / 今日收益）。
+
         </div>
       );
     }
@@ -2474,7 +2474,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               <div className="text-xs text-slate-500">
                 {pasteResult
                   ? `将导入 ${pasteResult.rows.filter((row) => Object.keys(row.errors).length === 0).length} 笔有效交易`
-                  : '提示：Excel 复制时会带上表头行，直接粘贴即可自动识别。'}
+                  : ''}
               </div>
               <div className="flex gap-2">
                 <button type="button" className={GHOST_BTN} onClick={closePasteModal}>取消</button>
@@ -2688,7 +2688,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               ) : (
                 <div className="flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-6 py-6 text-center text-[11px] text-slate-500">
                   <CloudUpload className="h-6 w-6 text-slate-300" />
-                  <div>点击上方按钮上传一张持仓截图。</div>
+                  <div />
                 </div>
               )}
             </div>
@@ -2696,7 +2696,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               <div className="text-[11px] text-slate-500">
                 {ocrPreview
                   ? `将导入 ${ocrPreview.rows.filter((row) => Object.keys(row.errors).length === 0).length} / ${ocrPreview.rows.length} 行`
-                  : '提示：识别结果需确认后才会写入流水。'}
+                  : ''}
               </div>
               <div className="flex gap-2">
                 <button type="button" className={GHOST_BTN} onClick={closeOcrModal}>取消</button>
@@ -2825,7 +2825,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               })()}
             </div>
             <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
-              <div>点击任意一行即选定该笔交易作为切换对手方。</div>
+              <div />
               <button type="button" className={GHOST_BTN} onClick={closeSwitchPicker}>关闭</button>
             </div>
           </div>
@@ -2980,7 +2980,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 )}
               </div>
               <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
-                <div>点击任意一行即作为本段{isBuyRole ? '买入' : '卖出'}交易。</div>
+                <div />
                 <button type="button" className={GHOST_BTN} onClick={close}>关闭</button>
               </div>
             </div>
