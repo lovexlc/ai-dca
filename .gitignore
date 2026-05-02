@@ -19,3 +19,4 @@ docs/holdings-nav-cache/
 !.env.example
 .dev.vars
 workers/ocr-proxy/.dev.vars
+workers/**/.wrangler/
