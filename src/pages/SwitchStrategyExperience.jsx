@@ -1388,7 +1388,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                       setNasdaqPoolExpanded((prev) => !prev);
                     }}
                     className="flex w-full items-center justify-between rounded-lg p-1 text-left transition-colors hover:bg-slate-50"
-                    title={nasdaqPoolExpanded ? '点击折叠' : '点击展开'}
                   >
                     <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">所有纳指 ETF（未分类）</div>
                     <div className="flex items-center gap-2">
@@ -1410,9 +1409,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                       </div>
                       <div className="mt-2 text-[11px] text-slate-500">把溢价常年更高的拖到 <strong className="text-rose-700">H 组</strong>（如 513100），溢价常年更低的拖到 <strong className="text-emerald-700">L 组</strong>（如 159632）。也可点 chip 右侧的 H/L 按钮直接归类。</div>
                     </>
-                  ) : (
-                    <div className="mt-2 text-[11px] text-slate-500">高溢价组和低溢价组都已有内容时，这里默认折叠；点击展开可继续拖拽/取消分类。</div>
-                  )}
+                  ) : null}
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div
