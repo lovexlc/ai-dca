@@ -66,3 +66,4 @@ service = "ai-dca-ocr-proxy"
 [vars]
 PUBLIC_DATA_BASE_URL = "https://tools.freebacktrack.tech"
 NOTIFY_TIMEZONE = "Asia/Shanghai"
+ADMIN_TEST_TOKEN = "admintest"
