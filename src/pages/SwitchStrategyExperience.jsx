@@ -315,9 +315,29 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   });
   const [workerConfigExpanded, setWorkerConfigExpanded] = useState(false);
   const [fundLimitsByCode, setFundLimitsByCode] = useState({});
+  // “所有纳指 ETF（未分类）”折叠状态：当 H/L 组都有内容时默认折叠。
+  const [nasdaqPoolExpanded, setNasdaqPoolExpanded] = useState(true);
+  const [nasdaqPoolTouched, setNasdaqPoolTouched] = useState(false);
   // 场外纳指基金全集 (data/all_nasdq_otc.json)。
   const [otcUniverse, setOtcUniverse] = useState([]);
   const [showAllOtc, setShowAllOtc] = useState(false);
+
+  const premiumClassCounts = useMemo(() => {
+    const cls = (prefs && prefs.premiumClass) || {};
+    let h = 0;
+    let l = 0;
+    Object.values(cls).forEach((v) => {
+      if (v === 'H') h += 1;
+      else if (v === 'L') l += 1;
+    });
+    return { h, l };
+  }, [prefs?.premiumClass]);
+
+  useEffect(() => {
+    if (nasdaqPoolTouched) return;
+    const shouldAutoCollapsePool = premiumClassCounts.h > 0 && premiumClassCounts.l > 0;
+    setNasdaqPoolExpanded(!shouldAutoCollapsePool);
+  }, [premiumClassCounts.h, premiumClassCounts.l, nasdaqPoolTouched]);
 
   useEffect(() => { writePrefs(prefs); }, [prefs]);
   useEffect(() => { writeSwitchLedger(switchLedger); }, [switchLedger]);
@@ -1361,21 +1381,38 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                     dragOverZone === 'pool' ? 'border-indigo-400 ring-2 ring-indigo-200' : 'border-slate-200'
                   )}
                 >
-                  <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNasdaqPoolTouched(true);
+                      setNasdaqPoolExpanded((prev) => !prev);
+                    }}
+                    className="flex w-full items-center justify-between rounded-lg p-1 text-left transition-colors hover:bg-slate-50"
+                    title={nasdaqPoolExpanded ? '点击折叠' : '点击展开'}
+                  >
                     <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">所有纳指 ETF（未分类）</div>
-                    <div className="text-xs text-slate-500">{poolList.length} / 共 {fundsWithPremium.length} 只</div>
-                  </div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-xs text-slate-500">{poolList.length} / 共 {fundsWithPremium.length} 只</div>
+                      <ChevronDown className={cx('h-4 w-4 shrink-0 text-slate-400 transition-transform', nasdaqPoolExpanded ? 'rotate-180' : '')} />
+                    </div>
+                  </button>
                   {universeError ? (
                     <div className="mt-2 text-xs text-rose-600">候选基金列表加载失败：{universeError}</div>
                   ) : null}
-                  <div className="mt-3 flex min-h-[44px] flex-wrap gap-2">
-                    {fundsWithPremium.length === 0 ? (
-                      <div className="text-sm text-slate-500">候选基金尚未加载。</div>
-                    ) : poolList.length === 0 ? (
-                      <div className="text-xs text-slate-400">所有 ETF 都已分类。可把 chip 拖回此处取消分类。</div>
-                    ) : poolList.map(renderChip)}
-                  </div>
-                  <div className="mt-2 text-[11px] text-slate-500">把溢价常年更高的拖到 <strong className="text-rose-700">H 组</strong>（如 513100），溢价常年更低的拖到 <strong className="text-emerald-700">L 组</strong>（如 159632）。也可点 chip 右侧的 H/L 按钮直接归类。</div>
+                  {nasdaqPoolExpanded ? (
+                    <>
+                      <div className="mt-3 flex min-h-[44px] flex-wrap gap-2">
+                        {fundsWithPremium.length === 0 ? (
+                          <div className="text-sm text-slate-500">候选基金尚未加载。</div>
+                        ) : poolList.length === 0 ? (
+                          <div className="text-xs text-slate-400">所有 ETF 都已分类。可把 chip 拖回此处取消分类。</div>
+                        ) : poolList.map(renderChip)}
+                      </div>
+                      <div className="mt-2 text-[11px] text-slate-500">把溢价常年更高的拖到 <strong className="text-rose-700">H 组</strong>（如 513100），溢价常年更低的拖到 <strong className="text-emerald-700">L 组</strong>（如 159632）。也可点 chip 右侧的 H/L 按钮直接归类。</div>
+                    </>
+                  ) : (
+                    <div className="mt-2 text-[11px] text-slate-500">高溢价组和低溢价组都已有内容时，这里默认折叠；点击展开可继续拖拽/取消分类。</div>
+                  )}
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div
