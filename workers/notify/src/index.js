@@ -1854,6 +1854,7 @@ async function handleAdminHoldingsAllTest(request, env) {
     totalsKeys: totalsOverride ? Object.keys(totalsOverride) : null
   }));
   let runError = null;
+  let debug = null;
   try {
     await runHoldingsNotificationsAll(env, todayShanghai, 'admin-test-all', {
       onlyClientId,
@@ -1861,6 +1862,69 @@ async function handleAdminHoldingsAllTest(request, env) {
       totalsOverride,
       eventIdOverride
     });
+
+    // debug: 复算一次门闸，定位是否会 skip(not ready / empty contributors / clientRecord missing)
+    try {
+      const stored = await readJson(env, holdingsRuleKey(onlyClientId), null);
+      const digest = normalizeHoldingsDigest(stored?.digest);
+      const exchangeBucket = digest.exchange || [];
+      const otcBucket = digest.otc || [];
+      const codes = [...exchangeBucket, ...otcBucket].map((entry) => entry.code);
+      const bucketKindByCode = {};
+      for (const e of exchangeBucket) bucketKindByCode[e.code] = 'exchange';
+      for (const e of otcBucket) bucketKindByCode[e.code] = 'otc';
+
+      let snapshotsByCode = {};
+      try {
+        snapshotsByCode = await fetchHoldingsNavSnapshots(env, codes, { bucketKindByCode, todayShanghai });
+      } catch (_e) {
+        snapshotsByCode = {};
+      }
+
+      const exchangeRes = await computeWeightedReturn(exchangeBucket, snapshotsByCode, todayShanghai, 'exchange', env);
+      const otcRes = await computeWeightedReturn(otcBucket, snapshotsByCode, todayShanghai, 'otc', env);
+      const exchangeReady = !exchangeBucket.length || exchangeRes.ready;
+      const otcReady = !otcBucket.length || otcRes.ready;
+
+      const perCode = [];
+      for (const code of codes) {
+        const bucketKind = bucketKindByCode[code] || (isExchangeLikeCode(code) ? 'exchange' : 'otc');
+        const effectiveKind = await resolveHoldingKindAsync(code, bucketKind, env);
+        const expected = getExpectedLatestNavDate(effectiveKind, todayShanghai);
+        const snap = snapshotsByCode?.[code] || null;
+        perCode.push({
+          code,
+          bucketKind,
+          effectiveKind,
+          expectedLatestNavDate: expected,
+          latestNavDate: snap?.latestNavDate || '',
+          ok: snap?.ok !== false,
+          hasPrev: Number.isFinite(Number(snap?.previousNav))
+        });
+      }
+
+      const allEligible = [
+        ...(exchangeRes.contributors || []),
+        ...(otcRes.contributors || [])
+      ];
+      const totalWeightAll = allEligible.reduce((sum, item) => sum + item.weight, 0);
+      const wouldDispatch = exchangeReady && otcReady && allEligible.length > 0 && totalWeightAll > 0;
+      debug = {
+        hasStored: !!stored,
+        enabled: stored?.enabled === true,
+        exchangeCount: exchangeBucket.length,
+        otcCount: otcBucket.length,
+        snapshotCount: Object.keys(snapshotsByCode || {}).length,
+        exchangeReady,
+        otcReady,
+        exchangeContribCount: exchangeRes.contributors?.length || 0,
+        otcContribCount: otcRes.contributors?.length || 0,
+        wouldDispatch,
+        perCode
+      };
+    } catch (_e) {
+      debug = { error: 'debug_failed' };
+    }
   } catch (error) {
     runError = error instanceof Error ? error.message : String(error);
     console.log('[notify][admin-test-all] THREW', JSON.stringify({ message: runError }));
@@ -1873,7 +1937,8 @@ async function handleAdminHoldingsAllTest(request, env) {
     onlyClientId,
     bypassDedup,
     eventIdOverride,
-    totalsOverride: totalsOverride ? Object.keys(totalsOverride) : null
+    totalsOverride: totalsOverride ? Object.keys(totalsOverride) : null,
+    debug
   }, { origin });
 }
 
