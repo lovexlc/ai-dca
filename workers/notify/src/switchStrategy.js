@@ -485,6 +485,11 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
   const minuteKey = String(snapshot?.computedAt || '').slice(0, 16);
   // pairKey 已含 benchmark:cand，多基准下仍唯一。
   const eventId = `switch:${trigger.pairKey}:R${trigger.rule}:${minuteKey}`;
+  const body_md = [
+    `**H−L ${gapStr}%** ${cmp} ${threshold}%${navHint}`,
+    `卖 **${fromLabel}** → 买 **${toLabel}**`,
+    `*下单前请以基金软件实时溢价为准。*`
+  ].join('\n');
   return {
     eventId,
     eventType: 'switch-strategy-trigger',
@@ -496,6 +501,7 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
     detailUrl,
     title,
     body,
-    summary
+    summary,
+    body_md
   };
 }

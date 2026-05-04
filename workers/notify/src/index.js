@@ -2273,7 +2273,10 @@ function buildHoldingsNotificationContent(kind, returnRate, contributors) {
   const body = top.length
     ? `今日${kindLabel}加权收益率 ${formatPercent(returnRate)}；贡献 Top：${top.join('、')}。`
     : `今日${kindLabel}加权收益率 ${formatPercent(returnRate)}。`;
-  return { title, body, summary: `${kindLabel}当日收益 ${formatPercent(returnRate)}` };
+  const bodyMdLines = [`${kindLabel}加权收益率：**${formatPercent(returnRate)}**`];
+  if (top.length) bodyMdLines.push(`Top：${top.join('、')}`);
+  const body_md = bodyMdLines.join('\n');
+  return { title, body, summary: `${kindLabel}当日收益 ${formatPercent(returnRate)}`, body_md };
 }
 
 async function listHoldingsRuleEntries(env) {
@@ -2345,7 +2348,7 @@ async function runHoldingsNotifications(env, kind, todayShanghai, reason = 'hold
     const clientRecord = getClientRecord(settings, clientId, stored.clientLabel || '');
     if (!clientRecord) continue;
 
-    const { title, body, summary } = buildHoldingsNotificationContent(kind, computed.returnRate, computed.contributors);
+    const { title, body, summary, body_md } = buildHoldingsNotificationContent(kind, computed.returnRate, computed.contributors);
     const eventId = `holdings-${kind}-${todayShanghai}`;
     try {
       const result = await runClientDetection(env, settings, clientRecord, {
@@ -2355,6 +2358,7 @@ async function runHoldingsNotifications(env, kind, todayShanghai, reason = 'hold
           eventType: 'holdings-daily-return',
           title,
           body,
+          body_md,
           summary,
           ruleId: `holdings-daily-${kind}`,
           symbol: kind === 'exchange' ? '场内总仓' : '场外总仓',
