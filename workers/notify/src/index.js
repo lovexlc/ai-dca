@@ -2672,33 +2672,9 @@ async function handleSwitchConfigGet(request, env) {
 // 清理该 clientId 的切换策略 config/snapshot/state 三个 KV 键，避免旧 benchmark 污染。
 async function handleSwitchConfigDelete(request, env) {
   const origin = readOrigin(request);
-  let settings = await readSettings(env);
-  const auth = await ensureAuthenticatedClient(request, settings);
-  settings = auth.settings;
-  if (auth.didUpdate) await writeSettings(env, settings);
-  ensureStateBinding(env);
-  const clientId = auth.clientId;
-  const keys = [
-    switchConfigKey(clientId),
-    switchSnapshotKey(clientId),
-    switchStateKey(clientId)
-  ];
-  const cleared = [];
-  for (const key of keys) {
-    try {
-      const existed = (await env.NOTIFY_STATE.get(key)) != null;
-      await env.NOTIFY_STATE.delete(key);
-      if (existed) cleared.push(key);
-    } catch (_e) {
-      // 单个键删除失败不阐断全部。
-    }
-  }
   return jsonResponse({
-    ok: true,
-    clientId,
-    clearedKeys: cleared,
-    examinedKeys: keys
-  }, { origin });
+    error: '该接口已下线。'
+  }, { status: 404, origin });
 }
 
 async function handleSwitchConfigPost(request, env) {

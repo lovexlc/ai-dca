@@ -4,14 +4,12 @@ import { Card, Pill, SectionHeading, cx, primaryButtonClass, secondaryButtonClas
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { aggregateByCode } from '../app/holdingsLedgerCore.js';
 import {
-  buildDefaultSwitchConfig,
   loadSwitchConfigFromWorker,
   loadSwitchSnapshotFromWorker,
   normalizeSwitchConfigShape,
   readSwitchConfigCache,
   runSwitchOnce,
-  saveSwitchConfigToWorker,
-  resetSwitchConfigOnWorker
+  saveSwitchConfigToWorker
 } from '../app/switchStrategySync.js';
 
 // 场内 / 场外纳指 100 切换套利策略实时建议器。
@@ -92,7 +90,11 @@ function readPrefs() {
 
 function writePrefs(prefs) {
   if (typeof window === 'undefined') return;
-  try { window.localStorage?.setItem(SWITCH_PREFS_KEY, JSON.stringify(prefs)); } catch {}
+  try {
+    window.localStorage?.setItem(SWITCH_PREFS_KEY, JSON.stringify(prefs));
+  } catch (_error) {
+    // ignore
+  }
 }
 
 function readSwitchLedger() {
@@ -107,7 +109,11 @@ function readSwitchLedger() {
 
 function writeSwitchLedger(rows) {
   if (typeof window === 'undefined') return;
-  try { window.localStorage?.setItem(SWITCH_LEDGER_KEY, JSON.stringify(rows)); } catch {}
+  try {
+    window.localStorage?.setItem(SWITCH_LEDGER_KEY, JSON.stringify(rows));
+  } catch (_error) {
+    // ignore
+  }
 }
 
 function formatPercent(value, digits = 2, withSign = false) {
@@ -429,33 +435,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       return null;
     });
   }, [benchmarkCodesKey]);
-
-  // 手动清理 worker 端历史脈数据（config / snapshot / state）。
-  const handleResetWorkerConfig = useCallback(async () => {
-    setWorkerStatus((prev) => ({ ...prev, saving: true, error: '', notice: '' }));
-    try {
-      const result = await resetSwitchConfigOnWorker();
-      // 本地 state 同步重置为默认值，后续调同步会重新写入。
-      const fresh = buildDefaultSwitchConfig();
-      setWorkerConfig(fresh);
-      setWorkerSnapshot(null);
-      const clientId = result?.clientId || '';
-      const cleared = Array.isArray(result?.clearedKeys) ? result.clearedKeys.length : 0;
-      const examined = Array.isArray(result?.examinedKeys) ? result.examinedKeys.length : 3;
-      setWorkerStatus((prev) => ({
-        ...prev,
-        saving: false,
-        notice: `worker 已清理 ${cleared}/${examined} 个 KV 键${clientId ? ` · client ${clientId.slice(0, 18)}…` : ''}。重新启用自动监控以同步新配置。`,
-        lastSyncedAt: new Date().toISOString()
-      }));
-    } catch (error) {
-      setWorkerStatus((prev) => ({
-        ...prev,
-        saving: false,
-        error: error?.message || '清理 worker 配置失败'
-      }));
-    }
-  }, []);
 
   // 启用时将页面 prefs 一起带上，worker 立刻获得可运行的配置。
   const handleWorkerToggle = useCallback((enabled) => {
@@ -1089,15 +1068,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
               <PlayCircle className="h-4 w-4" />
               {workerStatus.running ? '运行中…' : '手动跑一次'}
             </button>
-            <button
-              type="button"
-              onClick={handleResetWorkerConfig}
-              disabled={workerStatus.saving || workerStatus.running}
-              title="清理 worker 上这个 clientId 的 config / snapshot / state。适用于旧基准污染、需重建脈络的场景。清理后请重新启用自动监控以同步新配置。"
-              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-rose-300 bg-white px-3 text-xs font-semibold text-rose-700 shadow-sm transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {workerStatus.saving ? '清理中…' : '清理 worker 配置'}
-            </button>
           </div>
           {workerStatus.error ? (
             <div className="flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
@@ -1247,6 +1217,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                                   ) : null}
                                 </tbody>
                             </table>
+                          </div>
                         ));
                       })()}
                       {(workerSnapshot.triggers || []).length > 0 ? (

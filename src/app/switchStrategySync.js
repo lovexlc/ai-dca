@@ -200,15 +200,3 @@ export async function loadSwitchSnapshotFromWorker() {
 export async function runSwitchOnce() {
   return await requestSwitch('/switch/run', { method: 'POST' });
 }
-
-// 清理 worker 端该 clientId 的切换策略 KV（config / snapshot / state）。
-export async function resetSwitchConfigOnWorker() {
-  const payload = await requestSwitch('/switch/config', { method: 'DELETE' });
-  // 同步清本地缓存，避免重新加载后又被旧 cache 覆盖。
-  writeSwitchConfigCache(buildDefaultSwitchConfig());
-  return {
-    clientId: payload?.clientId || '',
-    clearedKeys: Array.isArray(payload?.clearedKeys) ? payload.clearedKeys : [],
-    examinedKeys: Array.isArray(payload?.examinedKeys) ? payload.examinedKeys : []
-  };
-}
