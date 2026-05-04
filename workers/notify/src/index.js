@@ -1085,6 +1085,70 @@ async function handleGcmUnpair(request, env) {
   }, { origin });
 }
 
+// Android-side unpair: the device authenticates itself via deviceInstallationId + token,
+// and removes one or all paired browsers from its pairedClients list.
+// Payload: { deviceInstallationId, token, groupId?, clientId?, registrationId? }
+async function handleGcmUnpairFromDevice(request, env) {
+  const origin = readOrigin(request);
+  const payload = await request.json().catch(() => ({}));
+  const deviceInstallationId = normalizeDeviceInstallationId(payload.deviceInstallationId || payload.installationId || '');
+  const registrationId = String(payload.registrationId || '').trim();
+  const token = String(payload.token || payload.registrationToken || '').trim();
+  const groupId = normalizeNotifyGroupId(payload.groupId || '');
+  const targetClientId = String(payload.clientId || payload.targetClientId || '').trim();
+
+  if (!token) {
+    throw new Error('解绑前端浏览器需要提供当前设备的 FCM token。');
+  }
+  if (!deviceInstallationId && !registrationId) {
+    throw new Error('解绑前端浏览器需要 deviceInstallationId 或 registrationId。');
+  }
+
+  const settings = await readSettings(env);
+  const selectedRegistration = findGcmRegistration(settings, {
+    deviceInstallationId,
+    registrationId,
+    token
+  });
+
+  if (!selectedRegistration) {
+    throw new Error('未找到当前 Android 设备的注册记录。');
+  }
+
+  if (String(selectedRegistration.token || '').trim() !== token) {
+    throw new Error('Token 与注册记录不一致，无法解绑。');
+  }
+
+  let nextPairedClients;
+  if (groupId) {
+    nextPairedClients = removeGcmPairedGroup(selectedRegistration.pairedClients, groupId);
+  } else if (targetClientId) {
+    nextPairedClients = removeGcmPairedClient(selectedRegistration.pairedClients, targetClientId);
+  } else {
+    nextPairedClients = [];
+  }
+
+  const nowIso = new Date().toISOString();
+  const nextRegistration = {
+    ...selectedRegistration,
+    pairedClients: nextPairedClients,
+    updatedAt: nowIso
+  };
+  const nextSettings = normalizeSettings({
+    ...settings,
+    gcmRegistrations: upsertGcmRegistration(settings.gcmRegistrations, nextRegistration)
+  });
+
+  await writeSettings(env, nextSettings);
+
+  return jsonResponse({
+    ok: true,
+    registration: buildPublicGcmRegistration(nextRegistration, {
+      includePairedClientIds: true
+    })
+  }, { origin });
+}
+
 async function handleGcmRegister(request, env) {
   const origin = readOrigin(request);
   const settings = await readSettings(env);
@@ -2895,6 +2959,9 @@ export default {
 
       if (request.method === 'POST' && url.pathname === '/api/notify/gcm/unpair') {
         return await handleGcmUnpair(request, env);
+      }
+      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/unpair-from-device') {
+        return await handleGcmUnpairFromDevice(request, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/run') {
