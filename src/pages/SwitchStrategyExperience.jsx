@@ -522,6 +522,28 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     workerConfig
   ]);
 
+  // 自动刷新「worker 最近一次计算」：从 worker 拉取 snapshot（只保留最后一条）。
+  // 无论是否启用自动监控，都应该能看到 worker 端最近一次执行留下的快照；
+  // 否则 UI 会只剩「手动跑一次」写入的记录。
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const payload = await loadSwitchSnapshotFromWorker();
+        if (cancelled) return;
+        if (payload?.snapshot) setWorkerSnapshot(payload.snapshot);
+      } catch (_error) {
+        // ignore
+      }
+    };
+    void tick();
+    const timer = setInterval(() => { void tick(); }, 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
   const handleWorkerRunOnce = useCallback(async () => {
     setWorkerStatus((prev) => ({ ...prev, running: true, error: '', notice: '' }));
     try {
