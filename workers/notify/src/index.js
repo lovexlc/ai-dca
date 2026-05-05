@@ -1,6 +1,7 @@
 import { runNotificationCycle } from './evaluator.js';
 import { buildPublicGcmRegistration, buildPublicGcmRegistrations, checkGcmConnection, hasGcmServiceAccount, isRegistrationPairedToScope, maskSecret, normalizeGcmPairedClients, normalizeGcmRegistrations, normalizeNotifyGroupId, readGcmServiceAccount, resolveGcmProjectId } from './gcm.js';
 import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
+import { handleBark, isBarkRoute } from './bark.js';
 import {
   SWITCH_CONFIG_PREFIX,
   buildSwitchTriggerNotification,
@@ -3002,6 +3003,10 @@ export default {
 
       if (request.method === 'GET' && url.pathname === '/api/notify/health') {
         return jsonResponse({ ok: true }, { origin });
+      }
+
+      if ((request.method === 'GET' || request.method === 'POST') && isBarkRoute(url)) {
+        return await handleBark(request, env, { jsonResponse, readSettings, readOrigin });
       }
 
       return jsonResponse({ error: '未找到通知接口。' }, { status: 404, origin });
