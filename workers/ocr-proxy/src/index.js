@@ -562,7 +562,7 @@ async function enrichHoldingExtractionRow(rawRow, generatedAt) {
 
 async function sanitizeHoldingsRows(rows = []) {
   const warnings = [];
-  const generatedAt = new Date().toISOString();
+  const generatedAt = nowShanghaiIso();
   const enrichedRows = await Promise.all(
     (Array.isArray(rows) ? rows : []).map((row, index) => enrichHoldingExtractionRow({
       ...row,
@@ -1358,6 +1358,29 @@ function formatShanghaiDateFromEpochSec(seconds) {
   return `${y}-${m}-${d}`;
 }
 
+// 返回当下东八区时间的 ISO 字符串，带 +08:00，例：「2026-05-06T14:48:08.639+08:00」。
+// 与 UTC ISO 表示同一时刻，Date.parse(...) 能正确解析。
+function epochMsToShanghaiIso(ms) {
+  const t = Number.isFinite(ms) ? ms : Date.now();
+  const shifted = new Date(t + 8 * 60 * 60 * 1000);
+  const y = shifted.getUTCFullYear();
+  const M = String(shifted.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(shifted.getUTCDate()).padStart(2, '0');
+  const H = String(shifted.getUTCHours()).padStart(2, '0');
+  const m = String(shifted.getUTCMinutes()).padStart(2, '0');
+  const s = String(shifted.getUTCSeconds()).padStart(2, '0');
+  const ms3 = String(shifted.getUTCMilliseconds()).padStart(3, '0');
+  return `${y}-${M}-${d}T${H}:${m}:${s}.${ms3}+08:00`;
+}
+
+function nowShanghaiIso() {
+  return epochMsToShanghaiIso(Date.now());
+}
+
+function containsExchangeFundCode(codes) {
+  return Array.isArray(codes) && codes.some((c) => isExchangeFundCode(c));
+}
+
 function shiftIsoDateDays(isoDate, deltaDays) {
   if (!isoDate || typeof isoDate !== 'string') return '';
   const parts = isoDate.split('-').map((part) => Number(part));
@@ -1442,7 +1465,7 @@ async function fetchHoldingSnapshot(code, generatedAt) {
 }
 
 async function fetchLiveHoldingsNavPayload(codes, env, key) {
-  const generatedAt = new Date().toISOString();
+  const generatedAt = nowShanghaiIso();
   const ttlMs = getHoldingsNavCacheTtlMs(env);
   const items = await Promise.all(
     codes.map(async (code) => {
@@ -1474,7 +1497,7 @@ async function fetchLiveHoldingsNavPayload(codes, env, key) {
   return {
     ok: true,
     generatedAt,
-    expiresAt: new Date(Date.parse(generatedAt) + ttlMs).toISOString(),
+    expiresAt: epochMsToShanghaiIso(Date.parse(generatedAt) + ttlMs),
     successCount,
     failureCount,
     cache: {
@@ -1522,7 +1545,10 @@ async function handleHoldingsNav(request, env) {
   }
 
   const key = await buildHoldingsCacheKey(codes);
-  const ttlMs = getHoldingsNavCacheTtlMs(env);
+  // 场内 ETF 交易时段价格每秒在变 → 只缓存 60s；场外/QDII 净值一天才刷一次 → 180min。
+  // 例子：一份请求里只要含任何 1 只场内代码，整份缓存都限 60s，避免 14:48 拉到的
+  // 盘中快照被冻到 17:48。
+  const ttlMs = containsExchangeFundCode(codes) ? 60_000 : getHoldingsNavCacheTtlMs(env);
   const cacheRequest = buildHoldingsCacheRequest(new URL(request.url), key, codes);
 
   const cachedResponse = await caches.default.match(cacheRequest);

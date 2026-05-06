@@ -1,0 +1,45 @@
+name: Deploy ocr-proxy worker
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'workers/ocr-proxy/**'
+      - '.github/workflows/deploy-worker-ocr-proxy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-worker-ocr-proxy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Deploy ocr-proxy worker via Wrangler
+        id: wrangler_deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '3'
+          command: deploy --config workers/ocr-proxy/wrangler.toml
+
+      - name: Print deployment summary
+        if: always()
+        run: |
+          echo "### ocr-proxy worker deploy" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit: ${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Workflow: ${GITHUB_WORKFLOW}" >> "$GITHUB_STEP_SUMMARY"
