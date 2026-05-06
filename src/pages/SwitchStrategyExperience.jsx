@@ -133,7 +133,23 @@ function formatPrice(value) {
 }
 
 function formatDate(value) {
-  return value ? String(value) : '—';
+  const rawValue = String(value || '').trim();
+  if (!rawValue) return '—';
+  const timestamp = Date.parse(rawValue);
+  if (!Number.isFinite(timestamp)) return rawValue;
+  try {
+    return new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }).format(new Date(timestamp)).replace(/\//g, '-');
+  } catch (_error) {
+    return rawValue;
+  }
 }
 
 function formatLimitAmount(value) {

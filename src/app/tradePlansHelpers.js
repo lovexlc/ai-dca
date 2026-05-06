@@ -7,8 +7,27 @@ export function formatEventTimeLabel(value = '') {
     return '--';
   }
 
-  const normalized = rawValue.replace('T', ' ').slice(0, 16);
-  return normalized || '--';
+  const timestamp = Date.parse(rawValue);
+  if (!Number.isFinite(timestamp)) {
+    // 未带时区信息且不能解析时，以原始值返回，避免显示 `Invalid Date`。
+    const fallback = rawValue.replace('T', ' ').slice(0, 16);
+    return fallback || '--';
+  }
+
+  try {
+    return new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }).format(new Date(timestamp)).replace(/\//g, '-');
+  } catch (_error) {
+    const fallback = rawValue.replace('T', ' ').slice(0, 16);
+    return fallback || '--';
+  }
 }
 
 export function resolveEventStatusMeta(status = '') {

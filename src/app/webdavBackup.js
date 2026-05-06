@@ -320,7 +320,7 @@ export function formatDateTime(iso) {
   try {
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return '—';
-    return date.toLocaleString('zh-CN', { hour12: false });
+    return date.toLocaleString('zh-CN', { hour12: false, timeZone: 'Asia/Shanghai' });
   } catch {
     return '—';
   }
