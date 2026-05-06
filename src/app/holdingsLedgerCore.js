@@ -18,6 +18,8 @@
  *     代码白名单兜底；都不命中则按代码前缀分 exchange / otc 两档。
  */
 
+import { getNearestTradingDayShanghai, getPreviousTradingDayShanghai, isTradingDayShanghai } from './holidaysCN.js';
+
 const FUND_CODE_PATTERN = /^\d{6}$/;
 const EXCHANGE_PREFIXES = ['15', '50', '51', '52', '56', '58', '53', '54'];
 /**
@@ -61,12 +63,16 @@ export function getTodayShanghaiDate() {
 }
 
 /**
- * 返回指定 kind 在 todayDate 当日预期的"最新 NAV 日期"。
- * - exchange（场内 ETF）：盘中实时，交易日 = today；周六/日上一个工作日。
- * - otc（境内场外）：T 日 NAV 在 T 日晚发布，预期 = 今日（周六/日回退到周五）。
+ * 返回指定 kind 在 todayDate 当日预期的"最新 NAV 日期"（已感知 A 股法定节假日）。
+ *
+ * 用 holidaysCN 的交易日历回退，让长假期间和节后第一个交易日不会把 latestNavDate 误判为「滞后」：
+ *   - exchange（场内 ETF）：盘中实时，预期 = 今日；非交易日（周末/法定假期）回退到最近一个 A 股交易日。
+ *   - otc（境内场外）：T 日 NAV 在 T 日晚发布，预期 = 今日；非交易日同样回退。
  *     早晨 T 日 NAV 尚未公布时 latestNavDate 仍为 T-1，会判 isLatestNavToday=false（"当日收益"留空）。
- * - qdii（场外 QDII）：净值 T+1 发布，取上一个工作日。
- *     周一 → 上周五（today - 3，T-3）、周二~五 → today - 1（T-1）、周六 → today - 1、周日 → today - 2。
+ *   - qdii（场外 QDII）：净值 T+1 发布，预期 = 最近交易日 T 的「前一个 A 股交易日」。
+ *     · 工作日：T-1 自然回退（周一 → 上周五）；
+ *     · 长假后第一个交易日（如五一节后 5/6）：T = today（5/6），
+ *       前一个 A 股交易日 = 4/30，从而把节内累计的海外行情视为已就绪、徽章显示「同步」。
  * 返回 YYYY-MM-DD 字符串。todayDate 默认取上海时区今日。
  */
 export function getExpectedLatestNavDate(kind = 'otc', todayDate = getTodayShanghaiDate()) {
@@ -74,28 +80,15 @@ export function getExpectedLatestNavDate(kind = 'otc', todayDate = getTodayShang
   if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
     return today;
   }
-  const [y, m, d] = today.split('-').map(Number);
-  const base = new Date(Date.UTC(y, m - 1, d));
-  const dayOfWeek = base.getUTCDay(); // 0=日, 1=一, ..., 6=六
-  const subtractDays = (delta) => {
-    const next = new Date(base.getTime() - delta * 86400000);
-    const yy = next.getUTCFullYear();
-    const mm = String(next.getUTCMonth() + 1).padStart(2, '0');
-    const dd = String(next.getUTCDate()).padStart(2, '0');
-    return `${yy}-${mm}-${dd}`;
-  };
   const normalizedKind = kind === 'exchange' || kind === 'qdii' ? kind : 'otc';
+  // T = 最近一个 A 股交易日：今天若是交易日则取今天，否则回退到上一个交易日。
+  const T = getNearestTradingDayShanghai(today);
+  // 场内 ETF + 境内场外：预期 = T。
   if (normalizedKind === 'exchange' || normalizedKind === 'otc') {
-    // 场内 ETF：盘中实时；境内场外：T 日 NAV 当晚发布。两者预期最新日期都是"今日（非交易日回退）"。
-    if (dayOfWeek === 0) return subtractDays(2); // 周日 → 上周五
-    if (dayOfWeek === 6) return subtractDays(1); // 周六 → 上周五
-    return today;
+    return T;
   }
-  // qdii：T+1 发布，取上一个工作日
-  if (dayOfWeek === 1) return subtractDays(3); // 周一 → 上周五（T-3）
-  if (dayOfWeek === 0) return subtractDays(2); // 周日 → 上周五
-  if (dayOfWeek === 6) return subtractDays(1); // 周六 → 周五
-  return subtractDays(1); // 周二~五 → 前一天（T-1）
+  // qdii：T+1 发布，预期 = T 之前的一个 A 股交易日。
+  return getPreviousTradingDayShanghai(T);
 }
 
 /** Pad leading zeros so Excel's stripped codes (e.g. 21000, 18738) come back as 6-digit. */
