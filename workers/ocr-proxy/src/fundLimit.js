@@ -25,10 +25,11 @@
 
 const DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-// 限额信息变化频率低（基金公司发公告才变），默认 TTL 拉长到 1 天，依赖 force=1 手动刷新。
+// 限额变化频率虽低，但实际中基金公司会不发公告静悔调整 / 公告抽取 LLM 会漏，
+// 所以所有 fund-limit 缓存都限 1 天 TTL，依赖自然过期 + ?force=1 手动刷新。
 const FUND_LIMIT_DEFAULT_TTL_SECONDS = 24 * 3600; // 1 天 (默认、f10/detail 源)
-const FUND_LIMIT_ANNOUNCEMENT_TTL_SECONDS = 7 * 24 * 3600; // 7 天 (chosen 来自公告时，与底层 ann-result 对齐)
-const ANNOUNCEMENT_RESULT_TTL_SECONDS = 7 * 24 * 3600; // 7 天（公告内容不变）
+const FUND_LIMIT_ANNOUNCEMENT_TTL_SECONDS = 24 * 3600; // 1 天 (chosen 来自公告时，与底层 ann-result 对齐)
+const ANNOUNCEMENT_RESULT_TTL_SECONDS = 24 * 3600; // 1 天（原始公告抽取结果）
 const ANNOUNCEMENT_NEGATIVE_TTL_SECONDS = 24 * 3600; // 1 天（未命中公告不必频繁重试）
 const ANNOUNCEMENT_LLM_MODEL = '@cf/moonshotai/kimi-k2.6';
 
