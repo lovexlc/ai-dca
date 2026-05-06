@@ -1039,6 +1039,33 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       }
       return null;
     })();
+    // 计算「节后累计跨越」信息：取所有 hasTodayNav 且跨越节假日的持仓中最大跨度，
+    // 作为「当日收益」卡的 subBadge。取最大是因为不同 kind 可能跨度不同（QDII 跨节，场内仅跨周末）。
+    const cumulativeStats = (() => {
+      const items = (Array.isArray(aggregates) ? aggregates : [])
+        .filter((a) => a && a.hasTodayNav && Number(a.todayProfitHolidayDays) > 0);
+      if (!items.length) return null;
+      let maxSpan = 0;
+      let maxHoliday = 0;
+      const kinds = new Set();
+      for (const a of items) {
+        if (a.todayProfitSpanDays > maxSpan) maxSpan = a.todayProfitSpanDays;
+        if (a.todayProfitHolidayDays > maxHoliday) maxHoliday = a.todayProfitHolidayDays;
+        if (a.kind) kinds.add(a.kind);
+      }
+      const kindLabel = Array.from(kinds).map((k) => KIND_LABELS[k] || k).join('/');
+      return {
+        spanDays: maxSpan,
+        holidayDays: maxHoliday,
+        kindLabel,
+        codes: items.map((a) => a.code)
+      };
+    })();
+    const todayCumulativeBadge = cumulativeStats ? {
+      text: `累${cumulativeStats.spanDays}日`,
+      className: 'rounded-sm bg-amber-50 px-1 py-px text-[10px] font-semibold text-amber-700 ring-1 ring-amber-200',
+      title: `${cumulativeStats.kindLabel || '部分持仓'}跨越节假日：该「当日收益」为跨 ${cumulativeStats.spanDays} 天（含 ${cumulativeStats.holidayDays} 个法定假期工作日）的累计涨跌，非单日波动。\n涉及代码：${cumulativeStats.codes.join(', ')}`
+    } : null;
     const lastUpdateDisplay = (() => {
       if (portfolio.latestSnapshotAt) {
         const ts = Date.parse(portfolio.latestSnapshotAt);
@@ -1073,8 +1100,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       { label: '总成本', value: formatCurrency(portfolio.totalCost, '¥', 2), tone: 'slate' },
       { label: '总收益', value: formatSignedCurrency(portfolio.totalProfit), tone: profitTone },
       { label: '总收益率', value: formatSignedPercent(portfolio.totalReturnRate), tone: profitTone },
-      { label: '当日收益', value: formatSignedCurrency(portfolio.todayProfit), tone: todayTone, badge: navBadge },
-      { label: '当日收益率', value: formatSignedPercent(portfolio.todayReturnRate), tone: todayTone, badge: navBadge },
+      { label: '当日收益', value: formatSignedCurrency(portfolio.todayProfit), tone: todayTone, badge: navBadge, subBadge: todayCumulativeBadge },
+      { label: '当日收益率', value: formatSignedPercent(portfolio.todayReturnRate), tone: todayTone, badge: navBadge, subBadge: todayCumulativeBadge },
       { label: '持仓数量', value: String(portfolio.assetCount), tone: 'slate' },
       { label: '最后更新', value: lastUpdateDisplay, tone: navIncomplete ? 'amber' : 'slate', small: true }
     ];
@@ -1114,6 +1141,11 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 toneClass[card.tone] || toneClass.slate
               )}>
                 {card.value}
+                {card.subBadge ? (
+                  <sup className={cx('ml-1 align-super', card.subBadge.className)} title={card.subBadge.title}>
+                    {card.subBadge.text}
+                  </sup>
+                ) : null}
               </div>
             </div>
           ))}
@@ -1458,6 +1490,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                   </td>
                   <td className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', todayClass)}>
                     {agg.hasTodayNav ? formatSignedCurrency(agg.todayProfit) : '—'}
+                    {agg.hasTodayNav && agg.todayProfitHolidayDays > 0 ? (
+                      <sup
+                        className="ml-0.5 inline-block rounded-sm bg-amber-50 px-1 py-px align-super text-[9px] font-semibold text-amber-700 ring-1 ring-amber-200"
+                        title={`跨越节假日：${agg.previousNavDate} → ${agg.latestNavDate}（共 ${agg.todayProfitSpanDays} 天，含 ${agg.todayProfitHolidayDays} 个法定假期工作日）。该「当日收益」为整段空窗的累计涨跌，非单日波动。`}
+                      >累{agg.todayProfitSpanDays}日</sup>
+                    ) : null}
                   </td>
                   <td className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', todayClass)}>
                     {agg.hasLatestNav && agg.hasPreviousNav ? formatSignedPercent(agg.todayReturnRate) : '—'}
@@ -1993,6 +2031,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">今日盈亏</dt>
             <dd className={cx('mt-1 tabular-nums', todayTone)}>
               {agg.hasTodayNav ? `${formatSignedCurrency(agg.todayProfit)} (${formatSignedPercent(agg.todayReturnRate)})` : '—'}
+              {agg.hasTodayNav && agg.todayProfitHolidayDays > 0 ? (
+                <sup
+                  className="ml-1 inline-block rounded-sm bg-amber-50 px-1 py-px align-super text-[9px] font-semibold text-amber-700 ring-1 ring-amber-200"
+                  title={`跨越节假日：${agg.previousNavDate} → ${agg.latestNavDate}（共 ${agg.todayProfitSpanDays} 天，含 ${agg.todayProfitHolidayDays} 个法定假期工作日）。该「今日盈亏」为整段空窗的累计涨跌，非单日波动。`}
+                >累{agg.todayProfitSpanDays}日</sup>
+              ) : null}
             </dd>
           </div>
           <div>

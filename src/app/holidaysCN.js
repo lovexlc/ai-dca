@@ -84,3 +84,37 @@ export function getPreviousTradingDayShanghai(dateStr) {
 export function getNearestTradingDayShanghai(dateStr) {
   return isTradingDayShanghai(dateStr) ? dateStr : getPreviousTradingDayShanghai(dateStr);
 }
+
+/** 两个 YYYY-MM-DD 之间的日历天数差（end - start）。负数表示 end 早于 start。 */
+export function calendarDaysBetween(startDate, endDate) {
+  const a = String(startDate || '');
+  const b = String(endDate || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(a) || !/^\d{4}-\d{2}-\d{2}$/.test(b)) return 0;
+  const [ay, am, ad] = a.split('-').map(Number);
+  const [by, bm, bd] = b.split('-').map(Number);
+  const ta = Date.UTC(ay, am - 1, ad);
+  const tb = Date.UTC(by, bm - 1, bd);
+  return Math.round((tb - ta) / 86400000);
+}
+
+/**
+ * 统计区间 (prevDate, latestDate] 中包含的「中国法定假期工作日」天数。
+ * 仅计算工作日（周一到周五）且被 isChinaMarketHoliday 命中的日子，
+ * 这样可以排除普通周末，专门捕捉「节假日跨越」场景。
+ * 当 latestDate <= prevDate 时返回 0。
+ */
+export function countHolidayWorkdaysBetween(prevDate, latestDate) {
+  const a = String(prevDate || '');
+  const b = String(latestDate || '');
+  if (!a || !b || a >= b) return 0;
+  const days = calendarDaysBetween(a, b);
+  if (days <= 0 || days > 60) return 0;
+  let cur = a;
+  let holidayCount = 0;
+  for (let i = 0; i < days; i++) {
+    cur = shiftDate(cur, -1);
+    if (cur > b) break;
+    if (!isWeekendShanghai(cur) && isChinaMarketHoliday(cur)) holidayCount += 1;
+  }
+  return holidayCount;
+}

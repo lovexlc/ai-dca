@@ -18,7 +18,7 @@
  *     代码白名单兜底；都不命中则按代码前缀分 exchange / otc 两档。
  */
 
-import { getNearestTradingDayShanghai, getPreviousTradingDayShanghai, isTradingDayShanghai } from './holidaysCN.js';
+import { getNearestTradingDayShanghai, getPreviousTradingDayShanghai, isTradingDayShanghai, countHolidayWorkdaysBetween, calendarDaysBetween } from './holidaysCN.js';
 
 const FUND_CODE_PATTERN = /^\d{6}$/;
 const EXCHANGE_PREFIXES = ['15', '50', '51', '52', '56', '58', '53', '54'];
@@ -354,6 +354,9 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
     ? round((todayProfit / previousValue) * 100, 2)
     : 0;
 
+  const previousNavDateStr = String(snapshot?.previousNavDate || '');
+  const todayProfitSpanDays = isLatestNavToday && previousNavDateStr && latestNavDate ? Math.max(0, calendarDaysBetween(previousNavDateStr, latestNavDate)) : 0;
+  const todayProfitHolidayDays = isLatestNavToday && previousNavDateStr && latestNavDate ? countHolidayWorkdaysBetween(previousNavDateStr, latestNavDate) : 0;
   return {
     tx: normalized,
     isSell: false,
@@ -372,7 +375,9 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
     latestNav,
     previousNav,
     latestNavDate,
-    previousNavDate: String(snapshot?.previousNavDate || '')
+    previousNavDate: previousNavDateStr,
+    todayProfitSpanDays,
+    todayProfitHolidayDays
   };
 }
 
@@ -486,6 +491,14 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       ? round((todayProfit / previousValue) * 100, 2)
       : 0;
 
+    const aggLatestNavDateStr = String(snapshot?.latestNavDate || '');
+    const aggPreviousNavDateStr = String(snapshot?.previousNavDate || '');
+    const aggTodayProfitSpanDays = isLatestNavToday && aggPreviousNavDateStr && aggLatestNavDateStr
+      ? Math.max(0, calendarDaysBetween(aggPreviousNavDateStr, aggLatestNavDateStr))
+      : 0;
+    const aggTodayProfitHolidayDays = isLatestNavToday && aggPreviousNavDateStr && aggLatestNavDateStr
+      ? countHolidayWorkdaysBetween(aggPreviousNavDateStr, aggLatestNavDateStr)
+      : 0;
     aggregates.push({
       code: bucket.code,
       name: bucket.name || snapshot?.name || '',
@@ -498,8 +511,8 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       totalCost,
       latestNav,
       previousNav,
-      latestNavDate: String(snapshot?.latestNavDate || ''),
-      previousNavDate: String(snapshot?.previousNavDate || ''),
+      latestNavDate: aggLatestNavDateStr,
+      previousNavDate: aggPreviousNavDateStr,
       marketValue,
       totalProfit,
       totalReturnRate,
@@ -510,6 +523,8 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       hasLatestNav,
       hasPreviousNav,
       hasTodayNav: isLatestNavToday,
+      todayProfitSpanDays: aggTodayProfitSpanDays,
+      todayProfitHolidayDays: aggTodayProfitHolidayDays,
       snapshotError: String(snapshot?.error || ''),
       firstBuyDate: bucket.firstBuyDate,
       lastTxDate: bucket.lastTxDate,
