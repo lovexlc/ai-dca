@@ -1384,6 +1384,56 @@ function containsExchangeFundCode(codes) {
   return Array.isArray(codes) && codes.some((c) => isExchangeFundCode(c));
 }
 
+// ---- /api/holdings/nav 动态缓存 TTL ----
+// 上下文：场外 (OTC) NAV 在 T 日晚 19:00–23:30 左右公布；QDII NAV 在 T+1 晚 18:00–22:00 公布。
+// 在 A 股交易日今晚 NAV 公布之前，上游 lsjz 接口返回的只会是上个交易日的 NAV——重复拉一定同值。
+// 所以在“不会变化”的时段拉长 cache TTL 可以减少上游压力、避免被限流。
+function getShanghaiHourMinuteDow(now) {
+  const t = now instanceof Date ? now : new Date();
+  const shifted = new Date(t.getTime() + 8 * 60 * 60 * 1000);
+  return {
+    hour: shifted.getUTCHours(),
+    minute: shifted.getUTCMinutes(),
+    dayOfWeek: shifted.getUTCDay() // 0=Sun, 6=Sat
+  };
+}
+
+// 根据上海时间返回“场外/QDII NAV 不会再变”的窗口长度（以毫秒计）。
+// 不需要被调方告诉“哪些 code 是 QDII”，OTC 和 QDII 取交集（较保守的）估计即可。
+function computeNonExchangeNavTtlMs(envBaseMs, now) {
+  const base = Math.max(60_000, Number(envBaseMs) || 0);
+  const { hour, minute, dayOfWeek } = getShanghaiHourMinuteDow(now);
+  const totalMin = hour * 60 + minute;
+
+  // 周六/周日：A 股未开盘、OTC/QDII NAV 均不变。缓存到8 小时，足够跨越周末。
+  if (dayOfWeek === 0 || dayOfWeek === 6) {
+    return Math.max(base, 8 * 60 * 60 * 1000);
+  }
+
+  // 工作日分段：
+  // - 00:00 – 17:30: 距离今晚公布还久，缓存到 17:30 之前。
+  // - 17:30 – 23:30: NAV 公布窗口，不调起上游频率（取较短 30min）。
+  // - 23:30 – 24:00: NAV 已锁，缓存到8:00 次日交易开始前。
+  const noUpdateUntilMin = 17 * 60 + 30; // 17:30
+  const publishWindowEndMin = 23 * 60 + 30; // 23:30
+  const nextDayQuietStartMin = 9 * 60 + 30; // 次日 09:30
+
+  if (totalMin < noUpdateUntilMin) {
+    const remainingMs = (noUpdateUntilMin - totalMin) * 60 * 1000;
+    return Math.max(base, remainingMs);
+  }
+
+  if (totalMin < publishWindowEndMin) {
+    return Math.min(base, 30 * 60 * 1000);
+  }
+
+  // 23:30 – 24:00
+  const remainingTodayMin = 24 * 60 - totalMin; // 到次日 00:00 的分钟
+  const nextDayMs = (remainingTodayMin + nextDayQuietStartMin) * 60 * 1000; // 到次日 09:30
+  return Math.max(base, nextDayMs);
+}
+
+
 function shiftIsoDateDays(isoDate, deltaDays) {
   if (!isoDate || typeof isoDate !== 'string') return '';
   const parts = isoDate.split('-').map((part) => Number(part));
@@ -1467,9 +1517,12 @@ async function fetchHoldingSnapshot(code, generatedAt) {
   return fetchFundNavSnapshot(code, generatedAt);
 }
 
-async function fetchLiveHoldingsNavPayload(codes, env, key) {
+async function fetchLiveHoldingsNavPayload(codes, env, key, ttlMsOverride) {
   const generatedAt = nowShanghaiIso();
-  const ttlMs = getHoldingsNavCacheTtlMs(env);
+  // 默认 fallback 以防被其他调用点复用；但 handleHoldingsNav 总是传进来。
+  const ttlMs = Number.isFinite(ttlMsOverride) && ttlMsOverride > 0
+    ? ttlMsOverride
+    : getHoldingsNavCacheTtlMs(env);
   const items = await Promise.all(
     codes.map(async (code) => {
       try {
@@ -1548,10 +1601,18 @@ async function handleHoldingsNav(request, env) {
   }
 
   const key = await buildHoldingsCacheKey(codes);
-  // 场内 ETF 交易时段价格每秒在变 → 只缓存 60s；场外/QDII 净值一天才刷一次 → 180min。
-  // 例子：一份请求里只要含任何 1 只场内代码，整份缓存都限 60s，避免 14:48 拉到的
-  // 盘中快照被冻到 17:48。
-  const ttlMs = containsExchangeFundCode(codes) ? 60_000 : getHoldingsNavCacheTtlMs(env);
+  // 三档缓存策略：
+  //   1. 含场内 ETF (15x/5xx) → 交易时段报价每秒在变 → 60s。
+  //   2. 纯场外/QDII 且处于“NAV 还不会变”的窗口 (A 股交易日 17:30 之前 或 周末)
+  //      → 拉长到3–10h，减少上游调用。 这是用户‌“场内开盘时取场外肯定没变化”​的主要优化点。
+  //   3. NAV 公布窗口 (17:30–23:30) → 短 30min，赶上新 NAV。
+  // 例子：请求含任 1 只场内→ 整份走 60s 分支，避免 14:48 拉到的盘中快照
+  // 被冻到 17:48。
+  const cacheNow = new Date();
+  const baseTtlMs = getHoldingsNavCacheTtlMs(env);
+  const ttlMs = containsExchangeFundCode(codes)
+    ? 60_000
+    : computeNonExchangeNavTtlMs(baseTtlMs, cacheNow);
   const cacheRequest = buildHoldingsCacheRequest(new URL(request.url), key, codes);
 
   // ?force=1 / ?refresh=1 直接绕过 edge cache，并删除旧 entry。常用于场内 ETF
@@ -1586,7 +1647,7 @@ async function handleHoldingsNav(request, env) {
     return jsonResponse(baselinePayload);
   }
 
-  const livePayload = await fetchLiveHoldingsNavPayload(codes, env, key);
+  const livePayload = await fetchLiveHoldingsNavPayload(codes, env, key, ttlMs);
 
   if (livePayload.failureCount === 0) {
     const cacheResponse = jsonResponse(livePayload, 200, {
