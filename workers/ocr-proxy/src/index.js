@@ -1551,7 +1551,14 @@ async function handleHoldingsNav(request, env) {
   const ttlMs = containsExchangeFundCode(codes) ? 60_000 : getHoldingsNavCacheTtlMs(env);
   const cacheRequest = buildHoldingsCacheRequest(new URL(request.url), key, codes);
 
-  const cachedResponse = await caches.default.match(cacheRequest);
+  // ?force=1 / ?refresh=1 直接绕过 edge cache，并删除旧 entry。常用于场内 ETF
+  // 缓存被旧值卡住时主动刷一次。
+  const reqUrl = new URL(request.url);
+  const forceBypass = reqUrl.searchParams.get('force') === '1' || reqUrl.searchParams.get('refresh') === '1';
+  if (forceBypass) {
+    try { await caches.default.delete(cacheRequest); } catch (_e) {}
+  }
+  const cachedResponse = forceBypass ? null : await caches.default.match(cacheRequest);
   if (cachedResponse) {
     try {
       const payload = await cachedResponse.json();
@@ -1569,7 +1576,9 @@ async function handleHoldingsNav(request, env) {
     }
   }
 
-  const baselinePayload = await readHoldingsBaselinePayload(request, env, key, ttlMs, codes);
+  const baselinePayload = forceBypass
+    ? null
+    : await readHoldingsBaselinePayload(request, env, key, ttlMs, codes);
   if (baselinePayload) {
     return jsonResponse(baselinePayload);
   }
