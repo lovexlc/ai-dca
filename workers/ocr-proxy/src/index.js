@@ -1152,9 +1152,12 @@ function normalizeRequestedHoldingCodes(input = []) {
 
 async function buildHoldingsCacheKey(codes = []) {
   const normalized = normalizeRequestedHoldingCodes(codes);
+  // 改动这个版本号可一次性废掉所有旧 entry。
+  // v2 = 场内 ETF 缓存 TTL 从 180min 调为 60s 后的首次 BUST。
+  const cacheBust = 'v2';
   const digest = await crypto.subtle.digest(
     'SHA-256',
-    new TextEncoder().encode(normalized.join(','))
+    new TextEncoder().encode(`${cacheBust}|${normalized.join(',')}`)
   );
 
   return [...new Uint8Array(digest)]
