@@ -1020,12 +1020,21 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     const navIncomplete = portfolio.assetCount > 0 && portfolio.pricedCount < portfolio.assetCount;
     const navBadge = (() => {
       if (portfolio.navDateCoverage === 'full') {
-        return { text: '全部', className: 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200', title: '场内 + 场外 当日净值均已同步' };
+        const fullParts = [];
+        if (portfolio.latestExchangeNavDate) fullParts.push(`场内 ${portfolio.latestExchangeNavDate}`);
+        if (portfolio.latestOtcNavDate) fullParts.push(`场外 ${portfolio.latestOtcNavDate}`);
+        if (portfolio.latestQdiiNavDate) fullParts.push(`QDII ${portfolio.latestQdiiNavDate}`);
+        return {
+          text: '全部',
+          className: 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200',
+          title: fullParts.length ? `各类资产净值已达预期：${fullParts.join(' · ')}` : '场内 + 场外 + QDII 当日净值均已同步'
+        };
       }
       if (portfolio.navDateCoverage === 'partial') {
         const parts = [];
         if (portfolio.latestExchangeNavDate) parts.push(`场内 ${portfolio.latestExchangeNavDate}`);
         if (portfolio.latestOtcNavDate) parts.push(`场外 ${portfolio.latestOtcNavDate}`);
+        if (portfolio.latestQdiiNavDate) parts.push(`QDII ${portfolio.latestQdiiNavDate}`);
         return { text: '部分', className: 'bg-amber-50 text-amber-600 ring-1 ring-amber-200', title: parts.length ? `当日净值同步状态：${parts.join(' · ')}` : '部分持仓净值尚未同步' };
       }
       return null;

@@ -555,9 +555,16 @@ export function summarizePortfolio(aggregates = []) {
   const navDatesSeen = new Set();
   const exchangeNavDates = new Set();
   const otcNavDates = new Set();
-  // 每个持仓 kind 不同，期望的最新 NAV 日期也不同（场内当日、场外/QDII 上一个交易日，QDII 周一为 T-3）。
-  // 这里用 agg.hasTodayNav 表示该持仓的 latestNavDate 已达预期最新日期，作为「当日数据已就绪」的判据。
+  const qdiiNavDates = new Set();
+  // 每个持仓 kind 不同，期望的最新 NAV 日期也不同：
+  //   · exchange（场内 ETF）：盘中实时，预期 = 今日（非交易日回退）；
+  //   · otc（境内场外）：T 日 NAV 当晚（约 21:00）发布，预期 = 今日（非交易日回退）；
+  //   · qdii（场外 QDII，海外标的）：净值 T+1 发布，预期 = 上一个工作日；周一回退到上周五（T-3）。
+  // 因此持仓总览不能用「同一 NAV 日期」做对齐，而是用 agg.hasTodayNav（latestNavDate 已达该 kind
+  // 预期最新日期）来判断「当日数据已就绪」。三个 NAV 日期 Set 用于在徽章 tooltip 上分别展示
+  // 场内 / 场外 / QDII 各自最新到的 NAV 日期，避免把 QDII 的天然滞后误标成「同步异常」。
   let navTodayReadyCount = 0;
+  let qdiiCount = 0;
 
   for (const agg of Array.isArray(aggregates) ? aggregates : []) {
     if (agg.snapshotError && agg.hasPosition) {
@@ -581,10 +588,12 @@ export function summarizePortfolio(aggregates = []) {
       if (agg.latestNavDate) {
         navDatesSeen.add(agg.latestNavDate);
         if (agg.kind === 'exchange') exchangeNavDates.add(agg.latestNavDate);
+        else if (agg.kind === 'qdii') qdiiNavDates.add(agg.latestNavDate);
         else if (agg.kind === 'otc') otcNavDates.add(agg.latestNavDate);
       }
       if (agg.hasTodayNav) navTodayReadyCount += 1;
     }
+    if (agg.kind === 'qdii') qdiiCount += 1;
     if (agg.hasLatestNav && agg.hasPreviousNav && agg.hasTodayNav) {
       summary.todayReadyCount += 1;
       summary.todayProfit = round(summary.todayProfit + agg.todayProfit, 2);
@@ -617,6 +626,13 @@ export function summarizePortfolio(aggregates = []) {
   summary.latestOtcNavDate = otcNavDates.size
     ? Array.from(otcNavDates).sort().slice(-1)[0]
     : '';
+  // QDII 的预期最新 NAV 日期天然落后一个工作日（周一为 T-3），需要单独暴露给 UI，
+  // 在「最后更新」徽章 tooltip 上独立展示，避免与场内/场外混在一起被误判为同步异常。
+  // 详见 docs/qdii-nav-rules.md。
+  summary.latestQdiiNavDate = qdiiNavDates.size
+    ? Array.from(qdiiNavDates).sort().slice(-1)[0]
+    : '';
+  summary.qdiiCount = qdiiCount;
 
   return summary;
 }
