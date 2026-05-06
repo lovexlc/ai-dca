@@ -277,7 +277,7 @@ export function NotifyExperience({ embedded = false }) {
     setNotifyMessage('');
     try {
       await pairAndroidDevice({
-        pairingCode: androidPairingCode,
+        deviceInstallationId: androidPairingCode,
         clientId: notifyConfig.notifyClientId,
         clientName: notifyConfig.notifyClientLabel
       });
@@ -606,11 +606,11 @@ export function NotifyExperience({ embedded = false }) {
 
               {shouldShowAndroidOnboarding ? (
                 <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
-                  <Field label="Android 配对码">
+                  <Field label="Android 设备 ID">
                     <TextInput
                       value={androidPairingCode}
-                      placeholder="在 Android app 中查看 8 位配对码"
-                      onChange={(event) => setAndroidPairingCode(String(event.target.value || '').replace(/\s+/g, '').toUpperCase())}
+                      placeholder="粘贴 Android app 显示的设备 ID"
+                      onChange={(event) => setAndroidPairingCode(String(event.target.value || '').trim())}
                     />
                   </Field>
                   <button className={primaryButtonClass} type="button" onClick={handlePairAndroidCode}>
@@ -664,7 +664,7 @@ export function NotifyExperience({ embedded = false }) {
                   </div>
                 ) : (
                   <p className="mt-4 text-sm leading-6 text-slate-500">
-                    当前共享组还没有关联 Android 设备。先打开 Android app，拿到配对码，再回到这里完成绑定。
+                    当前共享组还没有关联 Android 设备。先打开 Android app，复制设备 ID，再回到这里完成绑定。
                   </p>
                 )}
               </div>

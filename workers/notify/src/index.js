@@ -978,6 +978,9 @@ async function handleGcmPair(request, env) {
   const payload = await request.json().catch(() => ({}));
   let settings = await readSettings(env);
   const pairingCode = normalizePairingCode(payload.pairingCode || payload.code || '');
+  const deviceInstallationId = normalizeDeviceInstallationId(
+    payload.deviceInstallationId || payload.installationId || ''
+  );
   const clientName = normalizeClientName(payload.clientName) || 'Web 控制台';
   const auth = await ensureAuthenticatedClient(request, settings, {
     payload,
@@ -987,14 +990,21 @@ async function handleGcmPair(request, env) {
   const clientId = auth.clientId;
   const currentGroupId = resolveClientGroupId(settings, clientId, auth.clientRecord.clientLabel);
 
-  if (!pairingCode) {
-    throw new Error('缺少设备配对码。');
+  if (!deviceInstallationId && !pairingCode) {
+    throw new Error('缺少设备 ID 或配对码。');
   }
 
-  const selectedRegistration = await findGcmRegistrationByPairingCode(settings, pairingCode);
+  // 优先使用设备 ID 直接定位；fallback 到配对码（向后兼容旧流程）。
+  const selectedRegistration = deviceInstallationId
+    ? findGcmRegistration(settings, { deviceInstallationId })
+    : await findGcmRegistrationByPairingCode(settings, pairingCode);
 
   if (!selectedRegistration) {
-    throw new Error('配对码无效或已过期，请回到 Android app 重新生成。');
+    throw new Error(
+      deviceInstallationId
+        ? '未找到该设备 ID。请确认 Android app 已注册并且在线。'
+        : '配对码无效或已过期，请回到 Android app 重新生成。'
+    );
   }
 
   const nowIso = new Date().toISOString();
