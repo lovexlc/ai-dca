@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Bell, ChevronDown, ChevronUp, History, RefreshCw, Save, Send, Trash2, Wallet } from 'lucide-react';
 import {
-  issueNotifyGroupShareCode,
-  joinNotifyGroup,
   loadNotifyEvents,
   loadNotifyStatus,
   loadHoldingsNotifyRule,
@@ -56,13 +54,8 @@ export function NotifyExperience({ embedded = false }) {
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isPairingAndroid, setIsPairingAndroid] = useState(false);
   const [unpairingRegistrationId, setUnpairingRegistrationId] = useState('');
-  const [isIssuingNotifyGroupShareCode, setIsIssuingNotifyGroupShareCode] = useState(false);
-  const [isJoiningNotifyGroup, setIsJoiningNotifyGroup] = useState(false);
   const [notifyPlatform, setNotifyPlatform] = useState('ios');
   const [androidPairingCode, setAndroidPairingCode] = useState('');
-  const [notifyGroupShareCode, setNotifyGroupShareCode] = useState('');
-  const [notifyGroupShareExpiresAt, setNotifyGroupShareExpiresAt] = useState('');
-  const [notifyGroupJoinCode, setNotifyGroupJoinCode] = useState('');
   const [notifyConfig, setNotifyConfig] = useState(() => {
     const persistedConfig = readNotifyClientConfig();
     return {
@@ -106,11 +99,6 @@ export function NotifyExperience({ embedded = false }) {
   const pairedAndroidDevices = Array.isArray(androidSetup?.gcmCurrentClientRegistrations)
     ? androidSetup.gcmCurrentClientRegistrations
     : [];
-  const notifyGroupId = String(androidSetup?.notifyGroupId || notifyConfig.notifyClientId || '').trim();
-  const notifyGroupMemberCount = Math.max(
-    Number(androidSetup?.notifyGroupMemberCount) || 0,
-    notifyGroupId ? 1 : 0
-  );
   const barkConfigured = Boolean(notifyStatus?.configured?.bark);
   const androidConfigured = pairedAndroidDevices.length > 0;
   const shouldShowAndroidOnboarding = pairedAndroidDevices.length === 0;
@@ -124,10 +112,9 @@ export function NotifyExperience({ embedded = false }) {
       channelNote: channelLabels.length
         ? `${channelLabels.join(' / ')} 可发送`
         : '请先配置 iOS Bark 或绑定 Android 设备',
-      androidDeviceCount: pairedAndroidDevices.length,
-      groupMemberCount: notifyGroupMemberCount
+      androidDeviceCount: pairedAndroidDevices.length
     };
-  }, [barkConfigured, androidConfigured, pairedAndroidDevices.length, notifyGroupMemberCount]);
+  }, [barkConfigured, androidConfigured, pairedAndroidDevices.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -287,7 +274,7 @@ export function NotifyExperience({ embedded = false }) {
       });
       setAndroidPairingCode('');
       await refreshNotifyData();
-      setNotifyMessage('Android 设备已绑定到当前共享组。');
+      setNotifyMessage('Android 设备已绑定到当前浏览器。');
       showActionToast('绑定 Android 设备', 'success');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Android 设备绑定失败';
@@ -309,62 +296,14 @@ export function NotifyExperience({ embedded = false }) {
         clientId: notifyConfig.notifyClientId
       });
       await refreshNotifyData();
-      setNotifyMessage('Android 设备已从当前共享组解绑，组内浏览器都会停止共享这台设备。');
-      showActionToast('解绑共享组 Android', 'success');
+      setNotifyMessage('Android 设备已解绑。');
+      showActionToast('解绑 Android 设备', 'success');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Android 设备解绑失败';
       setNotifyError(message);
-      showActionToast('解绑共享组 Android', 'error', { description: message });
+      showActionToast('解绑 Android 设备', 'error', { description: message });
     } finally {
       setUnpairingRegistrationId('');
-    }
-  }
-
-  async function handleIssueNotifyGroupShareCode() {
-    setIsIssuingNotifyGroupShareCode(true);
-    setNotifyError('');
-    setNotifyMessage('');
-    try {
-      const payload = await issueNotifyGroupShareCode({
-        clientId: notifyConfig.notifyClientId,
-        clientLabel: notifyConfig.notifyClientLabel
-      });
-      setNotifyGroupShareCode(String(payload?.shareGroup?.code || '').trim());
-      setNotifyGroupShareExpiresAt(String(payload?.shareGroup?.expiresAt || '').trim());
-      await refreshNotifyData();
-      setNotifyMessage('通知共享码已生成，可在其他浏览器加入当前共享组。');
-      showActionToast('生成通知共享码', 'success');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '生成通知共享码失败';
-      setNotifyError(message);
-      showActionToast('生成通知共享码', 'error', { description: message });
-    } finally {
-      setIsIssuingNotifyGroupShareCode(false);
-    }
-  }
-
-  async function handleJoinNotifyGroup() {
-    setIsJoiningNotifyGroup(true);
-    setNotifyError('');
-    setNotifyMessage('');
-    try {
-      await joinNotifyGroup({
-        shareCode: notifyGroupJoinCode,
-        clientId: notifyConfig.notifyClientId,
-        clientLabel: notifyConfig.notifyClientLabel
-      });
-      setNotifyGroupJoinCode('');
-      setNotifyGroupShareCode('');
-      setNotifyGroupShareExpiresAt('');
-      await refreshNotifyData();
-      setNotifyMessage('当前浏览器已加入通知共享组，可直接复用同组 Android 设备。');
-      showActionToast('加入通知共享组', 'success');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '加入通知共享组失败';
-      setNotifyError(message);
-      showActionToast('加入通知共享组', 'error', { description: message });
-    } finally {
-      setIsJoiningNotifyGroup(false);
     }
   }
 
@@ -548,59 +487,20 @@ export function NotifyExperience({ embedded = false }) {
           {notifyPlatform === 'android' ? (
             <div className="space-y-4">
               <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
-                <div className="text-sm font-semibold text-slate-900">当前浏览器与通知共享组</div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className="text-sm font-semibold text-slate-900">当前浏览器</div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl bg-slate-50 px-4 py-3">
                     <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">浏览器标签</div>
                     <div className="mt-2 text-sm font-semibold text-slate-700">{notifyConfig.notifyClientLabel}</div>
-                  </div>
-                  <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">共享组成员</div>
-                    <div className="mt-2 text-sm font-semibold text-slate-700">{notifyGroupMemberCount || '--'} 个浏览器</div>
                   </div>
                   <div className="rounded-2xl bg-slate-50 px-4 py-3">
                     <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">已关联设备</div>
                     <div className="mt-2 text-sm font-semibold text-slate-700">{pairedAndroidDevices.length} 台</div>
                   </div>
                 </div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl bg-slate-950 px-4 py-3 font-mono text-xs text-slate-100">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">浏览器 uniqId</div>
-                    <div className="mt-2">{notifyConfig.notifyClientId}</div>
-                  </div>
-                  <div className="rounded-2xl bg-slate-950 px-4 py-3 font-mono text-xs text-slate-100">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">通知共享组 ID</div>
-                    <div className="mt-2">{notifyGroupId || '--'}</div>
-                  </div>
-                </div>
-                {shouldShowAndroidOnboarding ? (
-                  <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
-                    <Field label="加入通知共享组">
-                      <TextInput
-                        value={notifyGroupJoinCode}
-                        placeholder="输入另一台浏览器生成的 8 位共享码"
-                        onChange={(event) => setNotifyGroupJoinCode(String(event.target.value || '').replace(/\s+/g, '').toUpperCase())}
-                      />
-                    </Field>
-                    <button className={primaryButtonClass} type="button" onClick={handleJoinNotifyGroup}>
-                      <Save className="h-4 w-4" />
-                      {isJoiningNotifyGroup ? '正在加入共享组' : '加入共享组'}
-                    </button>
-                  </div>
-                ) : null}
-                <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">通知共享码</div>
-                      <div className="mt-2 font-mono text-lg font-semibold text-slate-900">{notifyGroupShareCode || '--------'}</div>
-                      <div className="mt-2 text-xs text-slate-500">
-                        {notifyGroupShareExpiresAt ? `有效期至 ${formatEventTimeLabel(notifyGroupShareExpiresAt)}` : '生成后可在其他浏览器加入当前共享组'}
-                      </div>
-                    </div>
-                    <button className={secondaryButtonClass} type="button" onClick={handleIssueNotifyGroupShareCode}>
-                      {isIssuingNotifyGroupShareCode ? '正在生成共享码' : '生成共享码'}
-                    </button>
-                  </div>
+                <div className="mt-4 rounded-2xl bg-slate-950 px-4 py-3 font-mono text-xs text-slate-100">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">浏览器 uniqId</div>
+                  <div className="mt-2">{notifyConfig.notifyClientId}</div>
                 </div>
               </div>
 
@@ -622,7 +522,7 @@ export function NotifyExperience({ embedded = false }) {
 
               <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-semibold text-slate-900">当前共享组已关联的 Android 设备</div>
+                  <div className="text-sm font-semibold text-slate-900">当前浏览器已关联的 Android 设备</div>
                   <Pill tone={pairedAndroidDevices.length ? 'emerald' : 'slate'}>
                     {pairedAndroidDevices.length ? `${pairedAndroidDevices.length} 台已关联` : '未关联'}
                   </Pill>
@@ -647,7 +547,7 @@ export function NotifyExperience({ embedded = false }) {
                               onClick={() => handleUnpairAndroidRegistration(registration.id)}
                             >
                               <Trash2 className="h-4 w-4" />
-                              {unpairingRegistrationId === registration.id ? '正在解绑' : '解绑共享组'}
+                              {unpairingRegistrationId === registration.id ? '正在解绑' : '解绑设备'}
                             </button>
                           </div>
                         </div>
@@ -657,14 +557,14 @@ export function NotifyExperience({ embedded = false }) {
                           <div>Token: {registration.tokenMasked || '--'}</div>
                           <div>绑定时间: {formatEventTimeLabel(registration.updatedAt || registration.createdAt)}</div>
                           <div>最近校验: {formatEventTimeLabel(registration.lastCheckedAt)}</div>
-                          <div>配对状态: {registration.pairedToCurrentClient ? '当前共享组已绑定' : '未绑定'}</div>
+                          <div>配对状态: {registration.pairedToCurrentClient ? '当前浏览器已绑定' : '未绑定'}</div>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
                   <p className="mt-4 text-sm leading-6 text-slate-500">
-                    当前共享组还没有关联 Android 设备。先打开 Android app，复制设备 ID，再回到这里完成绑定。
+                    当前浏览器还没有关联 Android 设备。先打开 Android app，复制设备 ID，再回到这里完成绑定。
                   </p>
                 )}
               </div>
@@ -958,8 +858,8 @@ export function NotifyExperience({ embedded = false }) {
 
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard accent="indigo" eyebrow="通道状态" value={summary.channelStatus} note={summary.channelNote} />
-        <StatCard eyebrow="共享组成员" value={`${summary.groupMemberCount || 0} 个浏览器`} note="加入同一共享组的浏览器都会收到提醒" />
         <StatCard eyebrow="已关联 Android" value={`${summary.androidDeviceCount} 台`} note="在 Android tab 添加 / 解绑设备" />
+        <StatCard eyebrow="iOS Bark" value={barkConfigured ? '已配置' : '未配置'} note="在 iOS tab 填入 Bark device key" />
       </div>
 
       <div className="space-y-6">

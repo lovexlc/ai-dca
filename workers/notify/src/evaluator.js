@@ -384,11 +384,11 @@ async function deliverNotification(env, notification, options = {}) {
     results.push({
       channel: 'gcm',
       status: 'skipped',
-      detail: currentGroupId ? '当前共享组还没有绑定 Android 设备' : '还没有已配对的 Android 设备',
-      configKey: currentGroupId ? `gcm-group:${currentGroupId}` : 'gcm:paired',
+      detail: '还没有已配对的 Android 设备',
+      configKey: currentClientId ? `gcm-client:${currentClientId}` : 'gcm:paired',
       configType: 'gcm',
-      configId: currentGroupId || currentClientId || 'paired',
-      configLabel: currentGroupId ? 'Android（当前共享组）' : 'Android'
+      configId: currentClientId || 'paired',
+      configLabel: 'Android'
     });
   } else {
     // FCM fan-out：并发发送给该 client 全部已配对设备。
