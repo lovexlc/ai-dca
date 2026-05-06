@@ -358,6 +358,46 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     Number.isFinite(b.benchmarkPremiumPct)
     && b.candidates.some((c) => Number.isFinite(c.spreadVsBenchmarkPct))
   );
+
+  // signals: 与前端原 intraSignals 同语义的「当前命中规则」列表（无 dedup，每次快照重算）。
+  // 前端 UI 直接渲染这一列表，避免浏览器再独立算一份。
+  const sellLowerCfg = Number(config.intraSellLowerPct);
+  const buyOtherCfg = Number(config.intraBuyOtherPct);
+  const signals = [];
+  for (const group of byBenchmark) {
+    const benchCode = group?.benchmarkCode || '';
+    if (!benchCode) continue;
+    if (!Number.isFinite(group?.benchmarkPremiumPct)) continue;
+    const benchClass = premiumClass[benchCode];
+    for (const cand of (group.candidates || [])) {
+      const candClass = premiumClass[cand.code];
+      const diff = cand?.spreadVsBenchmarkPct;
+      if (typeof diff !== 'number' || !Number.isFinite(diff)) continue;
+      let gap = NaN;
+      if (benchClass === 'H') gap = diff;
+      else if (benchClass === 'L') gap = -diff;
+      const rule = classifyRule({ benchClass, candClass, gap, sellLower: sellLowerCfg, buyOther: buyOtherCfg });
+      if (rule === 'none') continue;
+      const hCode = benchClass === 'H' ? benchCode : cand.code;
+      const lCode = benchClass === 'H' ? cand.code : benchCode;
+      const tag = rule === 'A' ? '差价收窄' : '差价扩大';
+      const arrow = rule === 'A' ? '低→高' : '高→低';
+      const cmp = rule === 'A' ? '<' : '>';
+      const threshold = rule === 'A' ? sellLowerCfg : buyOtherCfg;
+      const gapStr = (gap >= 0 ? '+' : '') + gap.toFixed(2);
+      signals.push({
+        kind: rule,
+        from: benchCode,
+        fromName: group.benchmarkName || benchCode,
+        to: cand.code,
+        toName: cand.name || cand.code,
+        gapPct: gap,
+        threshold,
+        description: `${hCode}(H) − ${lCode}(L) 溢价差 ${gapStr}% ${cmp} ${threshold}%（${tag}，${arrow}）：卖 ${benchCode} 买 ${cand.code}`
+      });
+    }
+  }
+
   return {
     computedAt: computedAtIso,
     intraSellLowerPct: Number(config.intraSellLowerPct),
@@ -365,6 +405,8 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     // 随快照一起带 premiumClass，供 evaluateSwitchTriggers 使用。
     premiumClass,
     byBenchmark,
+    // signals: 前端 UI 直接渲染的「当前命中规则」列表（无 dedup）。
+    signals,
     ready,
     triggers: []
   };

@@ -429,6 +429,15 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           : `配置已保存（未启用自动监控 · ${baseHint}）。`,
         lastSyncedAt: new Date().toISOString()
       }));
+      // 配置推完后马上跳一次 worker run，让页面的「场内信号」立刻拿到新 prefs
+      // 计算出的 snapshot.signals（不启用监控时 worker 也会计 snapshot、仅不推送）。
+      try {
+        const runPayload = await runSwitchOnce();
+        if (runPayload?.snapshot) setWorkerSnapshot(runPayload.snapshot);
+      } catch (runErr) {
+        // 静默失败：下一轮定时拉取会填上，不覆盖 saving notice。
+        if (typeof console !== 'undefined') console.warn('[switch] post-config run failed', runErr);
+      }
     } catch (error) {
       setWorkerStatus((prev) => ({
         ...prev,
@@ -477,9 +486,10 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, [workerConfig, persistWorkerConfig, prefs]);
 
   // prefs 变动同步到 worker（debounce 800ms）。
-  // 仅在已启用自动监控时推送，以免未启用状态下频繁写入 worker。
+  // v4：不再受 enabled 制约 —— 只要本地 prefs 与 worker 存的不一致就推。UI 现在统一
+  // 渲染 worker 计算的 signals，必须保证 worker 这边的 benchmarkCodes / premiumClass 始终
+  // 与本地 prefs 同步，否则 snapshot 会用陈旧配置算。
   useEffect(() => {
-    if (!workerConfig.enabled) return undefined;
     // 关键：把 desired 也跑一遍 normalizeSwitchConfigShape，让本地 diff 口径与
     // 服务端持久化口径完全一致。否则会出现：
     //   prefs.premiumClass 里有些 code 不在 benchmark ∪ enabled 里 → 服务端归一化
@@ -489,7 +499,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     // 默认值，也会形成同款死循环。
     const desired = normalizeSwitchConfigShape({
       ...workerConfig,
-      enabled: true,
+      // enabled 保留开关状态：未启用时仍然同步配置，worker run 仅计不推。
+      enabled: Boolean(workerConfig.enabled),
       benchmarkCodes: prefs?.benchmarkCodes || [],
       enabledCodes: prefs?.enabledCodes || [],
       premiumClass: prefs?.premiumClass || {},
@@ -907,59 +918,21 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     setCodeClass(code, targetClass);
   }, []);
 
-  // 场内信号（v3 持仓 + premiumClass H/L 双维度）：
-  //   bench = 持仓基准，cand = 候选。仅当两者均已分类且不同类时考虑。
-  //   gap = H溢价 − L溢价（不依赖 bench/cand 谁减谁）
-  //   bench=L 且 gap < sellLower → 规则 A：卖 bench(L) 买 cand(H)
-  //   bench=H 且 gap > buyOther  → 规则 B：卖 bench(H) 买 cand(L)
+  // 场内信号：统一使用 worker 计算的 snapshot.signals，不再在浏览器重复算一份。
+  //  - workerSnapshot 来自 /api/notify/switch/snapshot（本页顶部 useEffect 会定期拉）。
+  //  - 没启用自动监控也能看到 signals：未启用时 worker 仅计算不推送。
+  //  - prefs 变动后会 auto-sync config 到 worker，随后手动/定时 run 刷新 snapshot。
   const intraSignals = useMemo(() => {
-    if (!benchmarks.length) return [];
-    const sellLower = Number(prefs.intraSellLowerPct || 0);
-    const buyOther = Number(prefs.intraBuyOtherPct || 0);
-    const cls = (prefs && prefs.premiumClass) || {};
-    const benchmarkCodeSet = new Set(benchmarks.map((b) => b.code));
-    const list = [];
-    benchmarks.forEach((bench) => {
-      if (!Number.isFinite(bench?.premiumPct)) return;
-      const benchClass = cls[bench.code];
-      if (benchClass !== 'H' && benchClass !== 'L') return;
-      enabledFunds
-        .filter((f) => !benchmarkCodeSet.has(f.code) && Number.isFinite(f.premiumPct))
-        .forEach((f) => {
-          const candClass = cls[f.code];
-          if (candClass !== 'H' && candClass !== 'L') return;
-          if (candClass === benchClass) return;
-          const hPremium = benchClass === 'H' ? bench.premiumPct : f.premiumPct;
-          const lPremium = benchClass === 'H' ? f.premiumPct : bench.premiumPct;
-          const gap = hPremium - lPremium;
-          if (!Number.isFinite(gap)) return;
-          let kind = null;
-          let threshold = 0;
-          let cmp = '';
-          if (benchClass === 'L' && gap < sellLower) { kind = 'A'; threshold = sellLower; cmp = '<'; }
-          else if (benchClass === 'H' && gap > buyOther) { kind = 'B'; threshold = buyOther; cmp = '>'; }
-          if (!kind) return;
-          const fromCode = bench.code;
-          const toCode = f.code;
-          const fromName = bench.name || bench.code;
-          const toName = f.name || f.code;
-          const tag = kind === 'A' ? '差价收窄' : '差价扩大';
-          const arrow = kind === 'A' ? '低→高' : '高→低';
-          const gapStr = (gap >= 0 ? '+' : '') + gap.toFixed(2);
-          const hCode = benchClass === 'H' ? bench.code : f.code;
-          const lCode = benchClass === 'H' ? f.code : bench.code;
-          list.push({
-            kind,
-            from: fromCode,
-            fromName,
-            to: toCode,
-            toName,
-            description: `${hCode}(H) − ${lCode}(L) 溢价差 ${gapStr}% ${cmp} ${threshold}%（${tag}，${arrow}）：卖 ${fromCode} 买 ${toCode}`
-          });
-        });
-    });
-    return list;
-  }, [enabledFunds, benchmarks, prefs.intraSellLowerPct, prefs.intraBuyOtherPct, prefs.premiumClass]);
+    const list = Array.isArray(workerSnapshot?.signals) ? workerSnapshot.signals : [];
+    return list.map((s) => ({
+      kind: s.kind,
+      from: s.from,
+      fromName: s.fromName || s.from,
+      to: s.to,
+      toName: s.toName || s.to,
+      description: s.description || ''
+    }));
+  }, [workerSnapshot]);
 
   // 场外信号：多基准下取「溢价最高」的基准（表示场内已充分偏高，走场外更交同）。
   const otcSignal = useMemo(() => {
@@ -1100,8 +1073,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
               type="button"
               className={cx(secondaryButtonClass, 'ml-auto h-9 px-3 text-xs')}
               onClick={handleWorkerRunOnce}
-              disabled={workerStatus.running || workerStatus.saving || !workerConfig.enabled || !switchSummary.benches.length || switchSummary.pairs === 0}
-              title={workerConfig.enabled ? '手动跑一次：拉价 + 算 diff + 命中规则 A/B 则推送' : '需先启用自动监控'}
+              disabled={workerStatus.running || workerStatus.saving || !switchSummary.benches.length || switchSummary.pairs === 0}
+              title={workerConfig.enabled ? '手动跑一次：拉价 + 算 diff + 命中规则 A/B 则推送' : '手动跑一次：拉价 + 算 diff，未启用监控不推送'}
             >
               <PlayCircle className="h-4 w-4" />
               {workerStatus.running ? '运行中…' : '手动跑一次'}

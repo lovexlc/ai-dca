@@ -2666,10 +2666,13 @@ async function handleSwitchRunPost(request, env) {
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
   const config = await readSwitchConfigForClient(env, auth.clientId);
-  if (!config || !isSwitchConfigRunnable(config)) {
+  // 「可计算」」vs「可运行」：这里只要有有效的 bench/cand/H-L 就允许计一次快照。
+  // 未启用监控时 runSwitchStrategyForOneClient 会跳过 push，只刷新 snapshot/signals，
+  // 这样 UI 能统一渲染 worker 计算的信号，不需要浏览器再独立算一份。
+  if (!config || !isSwitchConfigRunnable({ ...config, enabled: true })) {
     return jsonResponse({
       ok: false,
-      error: '当前没有可运行的「切换」配置：请先选择基准 ETF、候选 ETF 并启用监控。'
+      error: '当前没有可计算的「切换」配置：请先选择基准 ETF、候选 ETF，并在 H/L 两表里各有至少一只已分类。'
     }, { status: 400, origin });
   }
   const summary = await runSwitchStrategyForOneClient(env, auth.clientId, config, { reason: 'switch-manual-run' });
@@ -2700,7 +2703,9 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
     updatedAt: snapshot.computedAt
   });
   let pushedCount = 0;
+  // 未启用自动监控时：只计快照不推送，让 UI 依然能看到 signals。
   for (const trigger of triggers) {
+    if (!config.enabled) break;
     const testPayload = buildSwitchTriggerNotification(snapshot, trigger, env);
     try {
       const result = await runClientDetection(env, settings, clientRecord, {
