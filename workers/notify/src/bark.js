@@ -1,20 +1,25 @@
-// Bark-style HTTP push endpoints.
-// Routes (GET + POST) under /api/notify/bark/...
-//   /api/notify/bark/:key/:body
-//   /api/notify/bark/:key/:title/:body
-//   /api/notify/bark/:key/:title/:subtitle/:body
+// URL-triggered HTTP push endpoints (推送 URL 调用).
+// Routes (GET + POST) under /api/notify/quick/...
+//   /api/notify/quick/:key/:body
+//   /api/notify/quick/:key/:title/:body
+//   /api/notify/quick/:key/:title/:subtitle/:body
 //
 // :key matches a paired Android device by its registration id
 // (deviceInstallationId, fallback to id). All query string and form/JSON
-// body params are forwarded to FCM `data` so external callers can pass
-// arbitrary metadata Bark-style.
+// body params are forwarded to FCM `data`.
+//
+// Legacy alias: /api/notify/bark/... is still accepted for back-compat with
+// any out-of-tree callers, but the client UI no longer surfaces it.
 
 import { normalizeGcmRegistrations, resolveGcmProjectId, sendGcmNotification } from './gcm.js';
 
-const BARK_PATH_PREFIX = '/api/notify/bark/';
+const QUICK_PATH_PREFIX = '/api/notify/quick/';
+const LEGACY_PATH_PREFIX = '/api/notify/bark/';
 
 export function isBarkRoute(url) {
-  return Boolean(url && url.pathname && url.pathname.startsWith(BARK_PATH_PREFIX));
+  if (!url || !url.pathname) return false;
+  return url.pathname.startsWith(QUICK_PATH_PREFIX)
+      || url.pathname.startsWith(LEGACY_PATH_PREFIX);
 }
 
 function safeDecode(segment) {
@@ -27,7 +32,13 @@ function safeDecode(segment) {
 }
 
 function parseBarkPath(pathname) {
-  const tail = pathname.slice(BARK_PATH_PREFIX.length);
+  const prefix = pathname.startsWith(QUICK_PATH_PREFIX)
+    ? QUICK_PATH_PREFIX
+    : pathname.startsWith(LEGACY_PATH_PREFIX)
+      ? LEGACY_PATH_PREFIX
+      : null;
+  if (!prefix) return null;
+  const tail = pathname.slice(prefix.length);
   if (!tail) return null;
   const segments = tail.split('/').filter((seg) => seg.length > 0);
   if (segments.length < 2 || segments.length > 4) return null;
