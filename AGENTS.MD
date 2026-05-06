@@ -48,11 +48,18 @@ When the user gives a new requirement, follow this sequence by default:
 
 ## Worker Deploy Guardrail (必读)
 
-- 任何对 `workers/*` 的代码改动必须同时完成：`git commit` → `git push origin main` → `npx wrangler deploy --config workers/<name>/wrangler.toml`。
-- `apply_patch` 成功 ≠ 已 commit；已 commit ≠ 已 push；已 push ≠ 已部署；已部署 ≠ 用户能搜到（raw 与 CDN 有缓存）。
-- 回报时必须附上三件证据：
+- **Worker 一律走 GitHub Actions 部署，不在本机或工作机执行 `wrangler deploy`。**
+  - notify worker workflow：`.github/workflows/deploy-worker-notify.yml`（`cloudflare/wrangler-action@v3`，锁 `wranglerVersion: '3'`）
+  - 触发：`main` 分支命中 `workers/notify/**` 或 workflow 自身改动时自动跑；也支持 Actions 页面 `Run workflow` 手动触发
+  - Cloudflare 凭证存在 repo Actions secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`，不依赖本机 `.env.local`
+- 修改 `workers/*` 的标准链路：`git commit` → `git push origin main` → 等 GitHub Actions run 跑出绿勾 → 取 Worker `Current Version ID`。
+- `apply_patch` 成功 ≠ 已 commit；已 commit ≠ 已 push；已 push ≠ Actions 跑过；Actions 绿了 ≠ 用户能搜到（raw / CDN 缓存）。
+- 回报时必须附上四件证据：
   - 本地路径 + 行号
-  - GitHub commit SHA + 以 SHA 固定的 raw 链接（不要用 `main` 分支 raw，GitHub CDN 会缓存）
-  - Worker `Current Version ID`
-- 用户说“搜不到 / 未生效”时，先复核事实再回话：`git diff HEAD origin/main -- <file>` / `git log origin/main --oneline -- <file>` / `npx wrangler deployments list --config workers/<name>/wrangler.toml`。
-- 详细复盘与验证清单：`docs/ops/worker-deploy-postmortem.md`。
+  - GitHub commit SHA + 以 SHA 固定的 raw 链接（不要用 `main` 分支 raw，CDN 会缓存）
+  - GitHub Actions run URL（`https://github.com/<owner>/<repo>/actions/runs/<id>`）+ 状态 success
+  - Worker `Current Version ID`（从 Actions 日志里 `Current Version ID:` 行取，或 wrangler API）
+- 用户说“搜不到 / 未生效”时，先复核事实再回话：`git diff HEAD origin/main -- <file>` / `git log origin/main --oneline -- <file>` / 查 Actions run 日志 / `curl -I` 路由验证返回头。
+- 升级 wrangler 前先确认 runner Node 版本：wrangler v4 要 Node 22+，目前 workflow 锁 v3 配 Node 20；要升 v4，同步把 `actions/setup-node` 升到 22。
+- 不要在本机 1c/512Mi 上跑 `npx wrangler` / `vite` / `esbuild` 等大依赖工具——会被 OOM 或 swap 拖死。本机仅承担 MCP 网关与持久化任务。
+- 详细复盘与验证清单：`docs/ops/notify-worker-deploy.md`。
