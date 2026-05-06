@@ -138,4 +138,19 @@ const qdiiNavDates = new Set();
   让 worker / Notion 同步逻辑也复用。
 - 增加单元测试覆盖 `getExpectedLatestNavDate` 在每个工作日的预期；当前重构靠人
   工 + browser smoke。
-- 节后第一个交易日的 "假期累计涨跌" 在 UI 上加一个 hover 提示。
+
+## 6. 已实现（变更日志）
+
+- **节后跨度「累 N 日」角标**（commit `6942d7d`，2026-05-06）
+  - `src/app/holidaysCN.js` 新增 `calendarDaysBetween` /
+    `countHolidayWorkdaysBetween`（仅计区间内「周一-周五 ∧
+    `isChinaMarketHoliday` 命中」的天数，自然排除普通周末）。
+  - `src/app/holdingsLedgerCore.js` 中 `buildLotMetrics` 与
+    `aggregateByCode` 输出新字段 `todayProfitSpanDays`（日历跨度） +
+    `todayProfitHolidayDays`（节假日工作日数）。
+  - `src/pages/HoldingsExperience.jsx` 在三处「当日收益」位置
+    （投资组合总览卡 / 持仓聚合表 / 右侧 summary 面板）渲染
+    amber 牙色 `<sup>累 N 日</sup>` 角标，hover 显示
+    `prev → latest（共 X 天，含 Y 个法定假期工作日）` 提示。
+  - 触发条件：`todayProfitHolidayDays > 0`（即区间跨越中国法定假期），
+    避免普通周一、QDII 常规 T+1 场景出现噪声。
