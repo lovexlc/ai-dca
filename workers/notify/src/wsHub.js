@@ -122,7 +122,15 @@ export class WsHub {
 
     this.#ensureHeartbeat()
 
-    return new Response(null, { status: 101, webSocket: client })
+    // 客户端如果携带了 Sec-WebSocket-Protocol（我们用它传 token），服务端
+    // 必须选中其中一个 echo 回去，OkHttp/浏览器的 WebSocket 才会接受升级。
+    const requestedProtocols = (request.headers.get("Sec-WebSocket-Protocol") || "")
+      .split(",").map((s) => s.trim()).filter(Boolean)
+    const responseHeaders = new Headers()
+    if (requestedProtocols.length > 0) {
+      responseHeaders.set("Sec-WebSocket-Protocol", requestedProtocols[0])
+    }
+    return new Response(null, { status: 101, webSocket: client, headers: responseHeaders })
   }
 
   /**
@@ -190,5 +198,42 @@ export class WsHub {
         this.heartbeatTimer = null
       }
     }, PING_INTERVAL_MS)
+  }
+}
+
+/**
+ * 从外部 Worker 代码并发发布一条 payload 到指定设备的 WsHub。
+ * 这是 fire-and-forget 语义：任何异常都会被吞掉，只记日志。
+ *
+ * @param {Record<string, unknown>} env
+ * @param {string} deviceInstallationId
+ * @param {Record<string, unknown>} payload
+ */
+export async function tryPublishWs(env, deviceInstallationId, payload) {
+  if (!env || !env.WS_HUB || !deviceInstallationId) return { skipped: true }
+  try {
+    const id = env.WS_HUB.idFromName(String(deviceInstallationId))
+    const stub = env.WS_HUB.get(id)
+    const res = await stub.fetch("https://ws-hub/publish", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload || {}),
+    })
+    if (!res.ok) {
+      try {
+        const text = await res.text()
+        console.log("[notify][ws] publish non-ok", JSON.stringify({ status: res.status, body: text.slice(0, 200) }))
+      } catch (_) {}
+      return { ok: false, status: res.status }
+    }
+    let parsed = null
+    try { parsed = await res.json() } catch (_) { parsed = null }
+    return { ok: true, ...parsed }
+  } catch (error) {
+    console.log("[notify][ws] publish error", JSON.stringify({
+      deviceInstallationId,
+      message: error instanceof Error ? error.message : String(error),
+    }))
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
   }
 }

@@ -63,6 +63,16 @@ invocation_logs = true
 binding = "OCR_PROXY"
 service = "ai-dca-ocr-proxy"
 
+# WsHub Durable Object：实时长连接通道。
+# 每个 deviceInstallationId 一个 instance，承载在线即推 + ping/pong。
+[[durable_objects.bindings]]
+name = "WS_HUB"
+class_name = "WsHub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WsHub"]
+
 [vars]
 PUBLIC_DATA_BASE_URL = "https://tools.freebacktrack.tech"
 NOTIFY_TIMEZONE = "Asia/Shanghai"

@@ -2,6 +2,11 @@ import { runNotificationCycle } from './evaluator.js';
 import { buildPublicGcmRegistration, buildPublicGcmRegistrations, checkGcmConnection, hasGcmServiceAccount, isRegistrationPairedToScope, maskSecret, normalizeGcmPairedClients, normalizeGcmRegistrations, normalizeNotifyGroupId, readGcmServiceAccount, resolveGcmProjectId } from './gcm.js';
 import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
 import { handleBark, isBarkRoute } from './bark.js';
+import { WsHub, tryPublishWs } from './wsHub.js';
+
+// 把 Durable Object 类型重新导出，让 Workers runtime 能在加载 wrangler 绑定时
+// 通过 entry module 的导出表找到 class_name="WsHub"。
+export { WsHub };
 import {
   SWITCH_CONFIG_PREFIX,
   buildSwitchTriggerNotification,
@@ -2874,6 +2879,63 @@ export default {
 
       if (request.method === 'GET' && url.pathname === '/api/notify/health') {
         return jsonResponse({ ok: true }, { origin });
+      }
+
+      // 实时通道 WebSocket 升级：客户端在 Sec-WebSocket-Protocol 头里用
+      // "jijin-token-<fcmToken>" 携带 token。验证后转发给该设备的 WsHub Durable Object。
+      if (url.pathname.startsWith('/api/notify/ws/')) {
+        const tail = url.pathname.slice('/api/notify/ws/'.length);
+        const slashIdx = tail.indexOf('/');
+        const deviceInstallationIdRaw = slashIdx === -1 ? tail : tail.slice(0, slashIdx);
+        const subpath = slashIdx === -1 ? '' : tail.slice(slashIdx + 1);
+        const deviceInstallationId = normalizeDeviceInstallationId(deviceInstallationIdRaw || '');
+
+        if (!deviceInstallationId) {
+          return jsonResponse({ ok: false, message: '缺少 deviceInstallationId。' }, { status: 400, origin });
+        }
+
+        // (a) Internal admin publish。仅服务仅有3 个调试点使用，需要 ADMIN_TEST_TOKEN。
+        if (request.method === 'POST' && subpath === 'publish') {
+          const expected = String((env && env.ADMIN_TEST_TOKEN) || '').trim();
+          const auth = String(request.headers.get('authorization') || '').trim();
+          const provided = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';
+          if (!expected || provided !== expected) {
+            return jsonResponse({ ok: false, message: 'admin token mismatch' }, { status: 401, origin });
+          }
+          let body = {};
+          try { body = await request.json(); } catch (_) { body = {}; }
+          const result = await tryPublishWs(env, deviceInstallationId, body || {});
+          return jsonResponse({ ok: !!(result && result.ok), result }, { origin });
+        }
+
+        // (b) WebSocket 升级。
+        if (request.method === 'GET' && subpath === '') {
+          if ((request.headers.get('upgrade') || '').toLowerCase() !== 'websocket') {
+            return jsonResponse({ ok: false, message: 'expected websocket upgrade' }, { status: 426, origin });
+          }
+          const protoHeader = request.headers.get('sec-websocket-protocol') || '';
+          const protocols = protoHeader.split(',').map((s) => s.trim()).filter(Boolean);
+          const TOKEN_PREFIX = 'jijin-token-';
+          const tokenProto = protocols.find((p) => p.startsWith(TOKEN_PREFIX)) || '';
+          const token = tokenProto ? tokenProto.slice(TOKEN_PREFIX.length).trim() : '';
+          if (!token) {
+            return jsonResponse({ ok: false, message: '缺少 token 子协议。' }, { status: 401, origin });
+          }
+          const settings = await readSettings(env);
+          const reg = findGcmRegistration(settings, { deviceInstallationId });
+          if (!reg) {
+            return jsonResponse({ ok: false, message: '未找到设备注册记录。' }, { status: 404, origin });
+          }
+          if (String(reg.token || '').trim() !== token) {
+            return jsonResponse({ ok: false, message: 'token 与注册记录不一致。' }, { status: 401, origin });
+          }
+          // 验证通过，转发给 WsHub Durable Object。
+          const id = env.WS_HUB.idFromName(deviceInstallationId);
+          const stub = env.WS_HUB.get(id);
+          return await stub.fetch('https://ws-hub/connect', request);
+        }
+
+        return jsonResponse({ ok: false, message: 'invalid ws route' }, { status: 404, origin });
       }
 
       if ((request.method === 'GET' || request.method === 'POST') && isBarkRoute(url)) {

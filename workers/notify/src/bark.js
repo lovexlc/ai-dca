@@ -12,6 +12,7 @@
 // any out-of-tree callers, but the client UI no longer surfaces it.
 
 import { normalizeGcmRegistrations, resolveGcmProjectId, sendGcmNotification } from './gcm.js';
+import { tryPublishWs } from './wsHub.js';
 
 const QUICK_PATH_PREFIX = '/api/notify/quick/';
 const LEGACY_PATH_PREFIX = '/api/notify/bark/';
@@ -171,6 +172,16 @@ export async function handleBark(request, env, deps = {}) {
       body: finalBody,
       data: dataPayload
     });
+    // 实时通道双路发送（fire-and-forget）。不阻塞、不重试，失败仅记日志。
+    // 客户端只要在线且 settings 里开了开关，会收到这条。
+    try {
+      await tryPublishWs(env, registration.deviceInstallationId || registration.id, {
+        title: finalTitle,
+        body: finalBody,
+        data: dataPayload,
+        source: 'bark',
+      });
+    } catch (_) { /* 吞掉，WS 不走不影响 FCM 返回 */ }
     const ok = result && result.status === 'delivered';
     return jsonResponse({
       ok: Boolean(ok),

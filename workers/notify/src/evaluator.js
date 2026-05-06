@@ -2,6 +2,7 @@ import { buildMovingAverageValues, buildNasdaqStrategyPlan, buildPeakDrawdownStr
 import { compileNotifyRules } from './rules.js';
 import { sendBarkNotification } from './channels/bark.js';
 import { isRegistrationPairedToScope, normalizeGcmRegistrations, normalizeNotifyGroupId, resolveGcmProjectId, sendGcmNotification } from './gcm.js';
+import { tryPublishWs } from './wsHub.js';
 
 const DEFAULT_PUBLIC_DATA_BASE_URL = 'https://tools.freebacktrack.tech';
 const DEFAULT_TIMEZONE = 'Asia/Shanghai';
@@ -423,6 +424,20 @@ async function deliverNotification(env, notification, options = {}) {
         })
       )
     );
+    // 实时通道双路发送（fire-and-forget）：FCM 与 WS 同时发。
+    // 使用 Promise.allSettled 避免单设备失败拖垮全部，该干预 FCM 返回。
+    try {
+      await Promise.allSettled(
+        gcmRegistrationsToDeliver.map((registration) =>
+          tryPublishWs(env, registration.deviceInstallationId || registration.id, {
+            title: notification.title,
+            body: notification.body,
+            data: baseData,
+            source: 'notify',
+          })
+        )
+      );
+    } catch (_) { /* 吞掉，不影响 FCM 返回 */ }
     fcmDeliveries.forEach((settled, index) => {
       const registration = gcmRegistrationsToDeliver[index];
       const baseMeta = {
