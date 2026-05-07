@@ -1311,14 +1311,14 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           <td className="px-2 py-2 text-right" colSpan={LEDGER_COLUMN_COUNT - 8}>
             <div className="flex justify-end gap-1">
               <button type="button" className={SUBTLE_BTN} onClick={handleCommitEdit}>
-                <Save className="h-3.5 w-3.5" /> 保存
+                <Save className="h-4 w-4" /> 保存
               </button>
               <button type="button" className={SUBTLE_BTN} onClick={handleCancelEdit}>
-                <X className="h-3.5 w-3.5" /> 取消
+                <X className="h-4 w-4" /> 取消
               </button>
             </div>
           </td>
-          <td className="px-2 py-2" />
+          <td className="sticky right-0 z-10 bg-indigo-50/40 px-2 py-2 shadow-[-1px_0_0_rgba(15,23,42,0.06)]" />
         </tr>
       );
     }
@@ -1384,17 +1384,20 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         <td className="whitespace-nowrap px-2 py-2 text-right text-xs tabular-nums text-slate-500">
           {metrics.hasPreviousNav ? formatNav(metrics.previousNav) : '—'}
         </td>
-        <td className="whitespace-nowrap px-2 py-2">
-          <div className="flex justify-end gap-1" onClick={(event) => event.stopPropagation()}>
-            <button type="button" title="编辑" className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800" onClick={() => handleStartEdit(row)}>
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-            <button type="button" title="复制到录入表" className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800" onClick={() => handleCopyRowToDraft(row)}>
-              <FileImage className="h-3.5 w-3.5" />
-            </button>
-            <button type="button" title="删除" className="rounded-lg p-1.5 text-red-500 transition-colors hover:bg-red-50" onClick={() => handleDeleteTransaction(tx.id)}>
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+        <td className={cx(
+          'sticky right-0 z-10 whitespace-nowrap px-2 py-2 shadow-[-1px_0_0_rgba(15,23,42,0.06)]',
+          isSelected ? 'bg-indigo-50/90' : 'bg-white'
+        )}>
+          <div className="flex justify-end gap-1.5" onClick={(event) => event.stopPropagation()}>
+            <button type="button" title="编辑" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-600 ring-1 ring-slate-200/80 transition-colors hover:bg-slate-100 hover:text-slate-900" onClick={() => handleStartEdit(row)}>
+            <Pencil className="h-4 w-4" />
+          </button>
+          <button type="button" title="复制到录入表" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-600 ring-1 ring-slate-200/80 transition-colors hover:bg-slate-100 hover:text-slate-900" onClick={() => handleCopyRowToDraft(row)}>
+            <FileImage className="h-4 w-4" />
+          </button>
+          <button type="button" title="删除" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-red-600 ring-1 ring-red-200/80 transition-colors hover:bg-red-50 hover:text-red-700" onClick={() => handleDeleteTransaction(tx.id)}>
+            <Trash2 className="h-4 w-4" />
+          </button>
           </div>
         </td>
       </tr>
@@ -1663,7 +1666,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               <th className="px-2 py-2 text-right">当日收益</th>
               <th className="px-2 py-2 text-right">当日收益率</th>
               <th className="px-2 py-2 text-right">前一日净值</th>
-              <th className="px-2 py-2 text-right">操作</th>
+              <th className="sticky right-0 z-20 bg-slate-50 px-2 py-2 text-right shadow-[-1px_0_0_rgba(15,23,42,0.08)]">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
