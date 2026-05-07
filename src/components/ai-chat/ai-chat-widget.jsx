@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Sparkles, X, Send, Loader2, RotateCcw } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import '../../styles/ai-chat.css';
 
 const CHAT_ENDPOINT = '/api/ai-chat';
@@ -206,7 +208,28 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
                   key={idx}
                   className={`ai-chat-msg ai-chat-msg--${m.role}`}
                 >
-                  <div className="ai-chat-msg__bubble">{m.content}</div>
+                  <div className="ai-chat-msg__bubble">
+                    {m.role === 'assistant' ? (
+                      <div className="ai-chat-md">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            a: ({ node, ...props }) => (
+                              <a
+                                {...props}
+                                target="_blank"
+                                rel="noreferrer noopener"
+                              />
+                            ),
+                          }}
+                        >
+                          {m.content}
+                        </ReactMarkdown>
+                      </div>
+                    ) : (
+                      m.content
+                    )}
+                  </div>
                 </div>
               ))
             )}
