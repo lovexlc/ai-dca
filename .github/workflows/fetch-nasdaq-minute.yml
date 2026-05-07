@@ -68,7 +68,9 @@ jobs:
       - name: Commit and push data updates
         shell: bash
         run: |
-          git add data/ docs/data/
+          # docs/data/ 被 .gitignore 忽略（本地 UX），但 Actions 是唯一写入者，用 -f 强制提交。
+          git add data/
+          git add -f docs/data/
           if git diff --cached --quiet; then
             echo "No data changes to commit."
             exit 0
