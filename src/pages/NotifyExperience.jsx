@@ -408,11 +408,11 @@ export function NotifyExperience({ embedded = false }) {
   function renderConfigCard() {
     return (
       <Card className="min-w-0">
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between">
           <button
             type="button"
             onClick={() => setConfigCollapsed((prev) => !prev)}
-            className="flex w-full min-w-0 items-start gap-3 text-left sm:flex-1"
+            className="flex w-full min-w-0 items-start gap-3 text-left lg:flex-1"
           >
             <div className="min-w-0 flex-1">
               <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">通知接入</div>
@@ -433,10 +433,10 @@ export function NotifyExperience({ embedded = false }) {
             </div>
           </button>
           {isConfigCollapsed ? null : (
-            <div className="flex w-full items-center justify-center gap-1 rounded-2xl bg-slate-100 p-1 sm:inline-flex sm:w-auto sm:justify-start">
+            <div className="flex w-full items-center justify-center gap-1 rounded-2xl bg-slate-100 p-1 lg:inline-flex lg:w-auto lg:justify-start">
               <button
                 className={cx(
-                  'flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition-colors sm:flex-none',
+                  'flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition-colors lg:flex-none',
                   notifyPlatform === 'ios' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                 )}
                 type="button"
@@ -446,7 +446,7 @@ export function NotifyExperience({ embedded = false }) {
               </button>
               <button
                 className={cx(
-                  'flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition-colors sm:flex-none',
+                  'flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition-colors lg:flex-none',
                   notifyPlatform === 'android' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                 )}
                 type="button"
