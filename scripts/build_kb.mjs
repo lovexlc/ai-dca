@@ -23,6 +23,14 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 
+// 可选：第二个仓库根（例如 ai-dca-andriod）。
+// 在 GitHub Actions 中通过额外的 actions/checkout 把目标仓库 checkout 到一个目录，
+// 然后把这个目录路径塞进 EXTRA_SOURCES_DIR 环境变量；本地构建时可不设置，
+// 对应文件会被静默跳过。值可以是绝对路径，也可以是相对当前工作目录的相对路径。
+const ANDROID_ROOT = process.env.EXTRA_SOURCES_DIR
+  ? path.resolve(process.env.EXTRA_SOURCES_DIR)
+  : null;
+
 const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
 const API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
 const INDEX_NAME = process.env.KB_INDEX_NAME || 'ai-dca-kb';
@@ -55,6 +63,14 @@ const SOURCES = [
   'docs/tabs/history.md',
   'docs/tabs/notify.md',
   'docs/tabs/backup.md',
+];
+
+// 第二仓库（ai-dca-andriod）里要纳入 KB 的文件。路径相对于 EXTRA_SOURCES_DIR。
+// source 标签会自动加上 `ai-dca-andriod/` 前缀，方便在 sources[] 里区分来源。
+const ANDROID_SOURCES = [
+  'README.md',
+  'AGENTS.md',
+  'docs/raw-ringtones.md',
 ];
 
 const CF_BASE = `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}`;
@@ -195,6 +211,39 @@ async function main() {
     });
     console.log(`  收入：${rel}  (${raw.length} 字 → ${chunks.length} 片)`);
   }
+
+  if (ANDROID_ROOT) {
+    console.log(`→ 额外仓库根：${ANDROID_ROOT}`);
+    for (const rel of ANDROID_SOURCES) {
+      const abs = path.join(ANDROID_ROOT, rel);
+      const label = `ai-dca-andriod/${rel}`;
+      let raw;
+      try {
+        raw = await fs.readFile(abs, 'utf8');
+      } catch (err) {
+        console.warn(`  跳过（读不到）：${label}`);
+        continue;
+      }
+      const title = extractTitle(label, raw);
+      const chunks = chunkText(raw);
+      chunks.forEach((c, i) => {
+        allChunks.push({
+          id: sanitizeId(label, i),
+          text: c,
+          metadata: {
+            source: label,
+            title,
+            chunkIndex: i,
+            text: c.length > 9000 ? c.slice(0, 9000) : c,
+          },
+        });
+      });
+      console.log(`  收入：${label}  (${raw.length} 字 → ${chunks.length} 片)`);
+    }
+  } else {
+    console.log('… 未设置 EXTRA_SOURCES_DIR，跳过 ai-dca-andriod 文档');
+  }
+
   if (allChunks.length === 0) {
     console.error('❌ 没有可读文件，中止。');
     process.exit(1);
