@@ -8,6 +8,29 @@ const CHAT_ENDPOINT = '/api/ai-chat';
 const STORAGE_KEY = 'aiDcaChatHistory_v1';
 const MAX_HISTORY = 30;
 
+// 「遇到问题了？」气泡推荐 launcher 的节奏。如果用户主动关掉或打开过 panel，本会话不再弹。
+const NUDGE_TEXT = '遇到问题了？点我给你解答';
+const NUDGE_INITIAL_DELAY_MS = 6000;
+const NUDGE_VISIBLE_MS = 7000;
+const NUDGE_HIDDEN_MS = 30000;
+const NUDGE_DISMISS_KEY = 'aiDcaChatNudgeDismissed_v1';
+
+function isNudgeDismissed() {
+  try {
+    return sessionStorage.getItem(NUDGE_DISMISS_KEY) === '1';
+  } catch (err) {
+    return false;
+  }
+}
+
+function markNudgeDismissed() {
+  try {
+    sessionStorage.setItem(NUDGE_DISMISS_KEY, '1');
+  } catch (err) {
+    /* ignore */
+  }
+}
+
 const SYSTEM_PROMPT =
   '你是 ai-dca 内置的 AI 助手，帮助用户理解定投策略、持仓回测、基金切换等功能，' +
   '回答简洁、准确、用中文。涉及具体投资建议时提醒用户自行判断风险，不要给出绝对收益承诺。';
@@ -51,6 +74,8 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
   const [messages, setMessages] = useState(() => loadHistory());
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
+  const [nudgeOpen, setNudgeOpen] = useState(false);
+  const [nudgeMuted, setNudgeMuted] = useState(() => isNudgeDismissed());
   const listRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -68,6 +93,56 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
       textareaRef.current.focus();
     }
   }, [open, messages, pending]);
+
+  // 一旦用户手动打开过 panel，后续不再主动弹气泡。
+  useEffect(() => {
+    if (open && !nudgeMuted) {
+      setNudgeMuted(true);
+      markNudgeDismissed();
+    }
+  }, [open, nudgeMuted]);
+
+  // 气泡节奏：首次延迟 -> 显示 -> 隐藏 -> 显示 -> ... 循环。
+  // panel 打开中、已被静默、或被手动关掉时，不起动 timer。
+  useEffect(() => {
+    if (open || nudgeMuted) {
+      setNudgeOpen(false);
+      return undefined;
+    }
+    let timer = null;
+    let cancelled = false;
+    const schedule = (delay, makeVisible) => {
+      timer = setTimeout(() => {
+        if (cancelled) return;
+        setNudgeOpen(makeVisible);
+        schedule(
+          makeVisible ? NUDGE_VISIBLE_MS : NUDGE_HIDDEN_MS,
+          !makeVisible,
+        );
+      }, delay);
+    };
+    schedule(NUDGE_INITIAL_DELAY_MS, true);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      setNudgeOpen(false);
+    };
+  }, [open, nudgeMuted]);
+
+  const handleNudgeOpen = useCallback(() => {
+    setOpen(true);
+    setNudgeOpen(false);
+  }, []);
+
+  const handleNudgeDismiss = useCallback((event) => {
+    if (event) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+    setNudgeOpen(false);
+    setNudgeMuted(true);
+    markNudgeDismissed();
+  }, []);
 
   const handleClose = useCallback(() => {
     setOpen(false);
@@ -147,15 +222,41 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
   return (
     <>
       {!open ? (
-        <button
-          type="button"
-          className="ai-chat-launcher"
-          aria-label="打开 AI 问答"
-          onClick={() => setOpen(true)}
-        >
-          <Sparkles className="h-4 w-4" aria-hidden="true" />
-          <span className="ai-chat-launcher__label">AI 问答</span>
-        </button>
+        <>
+          {nudgeOpen ? (
+            <button
+              type="button"
+              className="ai-chat-nudge"
+              onClick={handleNudgeOpen}
+              aria-label={`${NUDGE_TEXT}（点击打开 AI 问答）`}
+            >
+              <span className="ai-chat-nudge__text">{NUDGE_TEXT}</span>
+              <span
+                className="ai-chat-nudge__close"
+                role="button"
+                tabIndex={0}
+                aria-label="不再提示"
+                onClick={handleNudgeDismiss}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    handleNudgeDismiss(event);
+                  }
+                }}
+              >
+                <X className="h-3 w-3" aria-hidden="true" />
+              </span>
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="ai-chat-launcher"
+            aria-label="打开 AI 问答"
+            onClick={() => setOpen(true)}
+          >
+            <Sparkles className="h-4 w-4" aria-hidden="true" />
+            <span className="ai-chat-launcher__label">AI 问答</span>
+          </button>
+        </>
       ) : null}
 
       {open ? (

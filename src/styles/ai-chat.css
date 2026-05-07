@@ -32,6 +32,89 @@
   font-size: 13px;
 }
 
+/* AI 问答入口上方的主动提示气泡 */
+.ai-chat-nudge {
+  position: fixed;
+  right: 20px;
+  bottom: 76px; /* launcher bottom 20 + height ~40 + gap 16 */
+  z-index: 129;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100vw - 40px);
+  padding: 8px 8px 8px 14px;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #1f2937;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+  cursor: pointer;
+  white-space: nowrap;
+  animation: ai-chat-nudge-pop 220ms ease-out;
+  font-family: inherit;
+}
+
+.ai-chat-nudge::after {
+  content: '';
+  position: absolute;
+  right: 22px;
+  bottom: -6px;
+  width: 10px;
+  height: 10px;
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  transform: rotate(45deg);
+}
+
+.ai-chat-nudge:hover {
+  border-color: #c7d2fe;
+  box-shadow: 0 14px 30px rgba(99, 102, 241, 0.22);
+}
+
+.ai-chat-nudge:focus-visible {
+  outline: 2px solid #c7d2fe;
+  outline-offset: 2px;
+}
+
+.ai-chat-nudge__text {
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ai-chat-nudge__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  color: #94a3b8;
+  background: transparent;
+  flex: none;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.ai-chat-nudge__close:hover {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+@keyframes ai-chat-nudge-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .ai-chat-panel {
   position: fixed;
   right: 20px;
@@ -281,6 +364,15 @@
     bottom: 12px;
     width: auto;
     height: min(70vh, 520px);
+  }
+  .ai-chat-nudge {
+    right: 14px;
+    bottom: 64px; /* launcher bottom 14 + height ~36 + gap 14 */
+    font-size: 12.5px;
+    padding: 7px 6px 7px 12px;
+  }
+  .ai-chat-nudge::after {
+    right: 14px;
   }
 }
 
