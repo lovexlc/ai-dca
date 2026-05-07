@@ -74,11 +74,8 @@ id = "633d193bdcb045e3bdbc098ff6249224"
 preview_id = "1892e345c6754009ac678ce467189ef2"
 
 # 网站知识库向量索引。
-# 暂时注释：索引 ai-dca-kb 在 Cloudflare 账号上还不存在时，
-# wrangler deploy 会因为 binding 校验失败（code 10159）。
-# 待 scripts/build_kb.mjs 首次跑通（需要 CLOUDFLARE_API_TOKEN 含 Vectorize:Edit 权限）创建索引后，
-# 再取消下面三行的注释并重新推送即可启用 RAG。
-# Worker 代码已对 env.KNOWLEDGE_INDEX 缺失做了优雅降级，无绑定时聊天仍可用，仅不带知识库检索。
-# [[vectorize]]
-# binding = "KNOWLEDGE_INDEX"
-# index_name = "ai-dca-kb"
+# 索引由 scripts/build_kb.mjs 首次运行时创建（run 25482712161 success）。
+# Worker 代码在 src/index.js:1792 对 env.KNOWLEDGE_INDEX 缺失作了优雅降级。
+[[vectorize]]
+binding = "KNOWLEDGE_INDEX"
+index_name = "ai-dca-kb"
