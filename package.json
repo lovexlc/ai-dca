@@ -18,7 +18,8 @@
     "worker:webdav:deploy": "npx wrangler deploy --config workers/webdav-cors-proxy.toml",
     "lint": "eslint src",
     "format": "prettier --write src",
-    "data:fetch-market-indices": "node scripts/fetch_market_indices.mjs"
+    "data:fetch-market-indices": "node scripts/fetch_market_indices.mjs",
+    "kb:build": "node scripts/build_kb.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.460.0",

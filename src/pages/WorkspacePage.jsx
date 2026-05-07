@@ -203,7 +203,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       >
         <Suspense fallback={<TabLoadingFallback />}>{renderActivePanel()}</Suspense>
       </ConsoleLayout>
-      <AiChatWidget />
+      <AiChatWidget currentTab={activeTab} />
     </>
   );
 }

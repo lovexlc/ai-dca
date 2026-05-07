@@ -33,7 +33,17 @@ function persistHistory(messages) {
   }
 }
 
-export function AiChatWidget() {
+const TAB_LABELS = {
+  home: '首页',
+  holdings: '持仓',
+  tradePlans: '交易计划',
+  fundSwitch: '基金切换',
+  history: '交易历史',
+  notify: '提醒中心',
+  backup: '数据备份',
+};
+
+export function AiChatWidget({ currentTab, pageContext } = {}) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState(() => loadHistory());
@@ -77,12 +87,19 @@ export function AiChatWidget() {
     setInput('');
     setPending(true);
     try {
+      const tabLabel = currentTab ? (TAB_LABELS[currentTab] || currentTab) : '';
+      const ctxParts = [];
+      if (tabLabel) ctxParts.push(`用户当前所在页面：${tabLabel}`);
+      if (typeof pageContext === 'string' && pageContext.trim()) {
+        ctxParts.push(pageContext.trim().slice(0, 1500));
+      }
       const payload = {
         system: SYSTEM_PROMPT,
         messages: nextHistory.slice(-MAX_HISTORY).map((m) => ({
           role: m.role,
           content: m.content,
         })),
+        ...(ctxParts.length > 0 ? { pageContext: ctxParts.join('\n\n') } : {}),
       };
       const res = await fetch(CHAT_ENDPOINT, {
         method: 'POST',

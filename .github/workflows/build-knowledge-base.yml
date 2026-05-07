@@ -1,0 +1,52 @@
+name: Build AI knowledge base
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'README.md'
+      - 'demand.md'
+      - 'AGENTS.MD'
+      - 'workers/README.md'
+      - 'docs/**/*.md'
+      - 'scripts/build_kb.mjs'
+      - '.github/workflows/build-knowledge-base.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: build-knowledge-base
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Embed docs and upsert to Vectorize
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build knowledge base
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          KB_INDEX_NAME: ai-dca-kb
+          EMBED_MODEL: '@cf/baai/bge-m3'
+          KB_DIMENSIONS: '1024'
+        run: node scripts/build_kb.mjs
+
+      - name: Print summary
+        if: always()
+        run: |
+          {
+            echo '## Knowledge base build'
+            echo "- commit: \`${GITHUB_SHA}\`"
+            echo "- ref: \`${GITHUB_REF}\`"
+            echo "- index: \`ai-dca-kb\`"
+            echo "- model: \`@cf/baai/bge-m3\`"
+          } >> "$GITHUB_STEP_SUMMARY"
