@@ -1659,6 +1659,77 @@ async function handleHoldingsNav(request, env) {
   return jsonResponse(livePayload);
 }
 
+/**
+ * /api/ai-chat
+ * Lightweight chat completion via Cloudflare Workers AI (env.AI).
+ * Body: { messages: [{role, content}], system?: string, model?: string }
+ * Response: { reply: string, model: string }
+ */
+async function handleAiChat(request, env) {
+  if (!env || !env.AI || typeof env.AI.run !== 'function') {
+    return jsonResponse({ error: 'AI binding 未配置。' }, 503);
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch (err) {
+    return jsonResponse({ error: '请求体必须是 JSON。' }, 400);
+  }
+  const rawMessages = Array.isArray(body?.messages) ? body.messages : [];
+  const messages = [];
+  const systemPrompt = typeof body?.system === 'string' && body.system.trim()
+    ? body.system.trim()
+    : '你是 ai-dca 应用内置的 AI 助手，回答简洁、用中文。涉及具体投资建议时提醒用户自行判断风险，不给出绝对收益承诺。';
+  messages.push({ role: 'system', content: systemPrompt });
+  for (const m of rawMessages) {
+    if (!m || typeof m.content !== 'string') continue;
+    const role = m.role === 'assistant' ? 'assistant' : (m.role === 'system' ? 'system' : 'user');
+    if (role === 'system') continue; // system 已经从 body.system 注入
+    const content = m.content.slice(0, 4000);
+    if (!content.trim()) continue;
+    messages.push({ role, content });
+  }
+  if (messages.length <= 1) {
+    return jsonResponse({ error: 'messages 不能为空。' }, 400);
+  }
+  const model = (typeof body?.model === 'string' && body.model.trim())
+    || env.CHAT_MODEL
+    || '@cf/meta/llama-3.1-8b-instruct';
+  const maxTokens = Number(env.CHAT_MAX_TOKENS) > 0 ? Number(env.CHAT_MAX_TOKENS) : 1024;
+  let aiResult;
+  try {
+    aiResult = await env.AI.run(model, {
+      messages,
+      max_tokens: maxTokens
+    });
+  } catch (error) {
+    return jsonResponse({
+      error: error instanceof Error ? error.message : 'Workers AI 调用失败。',
+      model
+    }, 502);
+  }
+  let reply = '';
+  if (typeof aiResult === 'string') {
+    reply = aiResult;
+  } else if (aiResult && typeof aiResult === 'object') {
+    if (typeof aiResult.response === 'string') reply = aiResult.response;
+    else if (typeof aiResult.result === 'string') reply = aiResult.result;
+    else if (typeof aiResult.output_text === 'string') reply = aiResult.output_text;
+    else if (Array.isArray(aiResult.choices) && aiResult.choices[0]?.message?.content) {
+      reply = String(aiResult.choices[0].message.content);
+    }
+  }
+  reply = (reply || '').trim();
+  if (!reply) {
+    return jsonResponse({
+      error: 'AI 没有返回有效回复。',
+      model,
+      raw: aiResult ?? null
+    }, 502);
+  }
+  return jsonResponse({ reply, model });
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -1758,6 +1829,24 @@ export default {
       } catch (error) {
         return jsonResponse({
           error: error instanceof Error ? error.message : '基金限额代理执行失败。'
+        }, 502);
+      }
+    }
+
+    if (url.pathname === '/api/ai-chat') {
+      if (request.method !== 'POST') {
+        return jsonResponse({
+          error: 'Method not allowed'
+        }, 405, {
+          allow: 'POST, OPTIONS'
+        });
+      }
+
+      try {
+        return await handleAiChat(request, env);
+      } catch (error) {
+        return jsonResponse({
+          error: error instanceof Error ? error.message : 'AI 问答代理执行失败。'
         }, 502);
       }
     }
