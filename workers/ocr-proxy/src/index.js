@@ -1679,7 +1679,15 @@ async function handleAiChat(request, env) {
   const messages = [];
   const baseSystem = typeof body?.system === 'string' && body.system.trim()
     ? body.system.trim()
-    : '你是 ai-dca 应用内置的 AI 助手，回答简洁、用中文。涉及具体投资建议时提醒用户自行判断风险，不给出绝对收益承诺。';
+    : [
+      '你是 ai-dca 应用内置的 AI 助手，用中文回答。',
+      '涉及操作步骤、UI 入口、功能配置的问题，必须严格依据下面提供的「知识库片段」逐步回答：',
+      '· 片段中出现的按钮名、tab 名、卡片名、输入框提示、文件名一律保持原样（包括引号/中英文），不要改名、不要改说法。',
+      '· 步骤的先后顺序、条数不要压缩。原文有 6 步不要合并成 5 步。',
+      '· 原文提到的重要细节/限制（例如需要先切 sub-tab、需要加电池白名单、需要同步计划）不要舍弃，原样讲出来。',
+      '· 原文没写的具体细节（截图、版本号、具体路径）不要凭印象编。找不到答案就说“知识库里没查到”。',
+      '涉及具体投资建议时，提醒用户自行判断风险，不给出绝对收益承诺。',
+    ].join('\n');
 
   // 取最后一条 user 消息作为检索 query
   let lastUserContent = '';
@@ -1713,7 +1721,7 @@ async function handleAiChat(request, env) {
       .map((k, i) => `【片段${i + 1}｜${k.title || k.source || ''}】\n${k.text}`)
       .join('\n\n---\n\n');
     systemParts.push(
-      '以下是从本站知识库检索到的相关资料，请优先依据它们回答。如果资料与问题不相关可以忽略：\n\n' + ctx,
+      '以下是从本站知识库检索到的原文片段（按相关度递减）。请把答案完全构建在这些原文之上，不要凭印象改写；只有问题与原文明显不相关时，才可以再靠通用知识。\n\n' + ctx,
     );
   }
   if (pageContext) {
@@ -1795,7 +1803,7 @@ async function retrieveKnowledge(query, env) {
   if (!env.AI || typeof env.AI.run !== 'function') return [];
 
   const embedModel = env.EMBED_MODEL || '@cf/baai/bge-m3';
-  const topK = Number(env.CHAT_TOP_K) > 0 ? Math.min(Number(env.CHAT_TOP_K), 10) : 5;
+  const topK = Number(env.CHAT_TOP_K) > 0 ? Math.min(Number(env.CHAT_TOP_K), 12) : 8;
   const minScore = Number.isFinite(Number(env.CHAT_MIN_SCORE)) ? Number(env.CHAT_MIN_SCORE) : 0.3;
 
   let embed;
