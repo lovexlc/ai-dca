@@ -1,4 +1,3 @@
-import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -18,9 +17,6 @@ export default defineConfig({
     emptyOutDir: true,
     assetsDir: 'react-assets',
     rollupOptions: {
-      input: {
-        page: resolve(__dirname, 'frontend/page.html')
-      },
       output: {
         // 去掉默认的 [hash]，让 GitHub 上的文件名更可读。
         // 缓存破坏改由 publish 脚本在 index.html 中注入 ?v= 查询参数。

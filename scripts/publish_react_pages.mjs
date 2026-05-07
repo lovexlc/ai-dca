@@ -13,7 +13,7 @@ import { join, resolve, sep } from 'node:path';
 const root = process.cwd();
 const distDir = resolve(root, process.env.REACT_DIST_DIR || 'frontend-dist');
 const docsDir = resolve(root, 'docs');
-const pageTemplatePath = resolve(distDir, 'frontend', 'page.html');
+const pageTemplatePath = resolve(distDir, 'index.html');
 const distAssetsDir = resolve(distDir, 'react-assets');
 const docsAssetsDir = resolve(docsDir, 'react-assets-v2');
 const dataDir = resolve(root, 'data');
@@ -32,7 +32,7 @@ if (!existsSync(distAssetsDir)) {
 // Tabs/views are switched via ?tab= and #hash. No more pages-v2/* or manifest.json.
 const buildVersion = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 12);
 const rootTemplate = readFileSync(pageTemplatePath, 'utf8')
-  .replaceAll('../react-assets/', './react-assets-v2/')
+  .replaceAll('./react-assets/', './react-assets-v2/')
   // Cache-bust: 去 hash 后文件名不再变，改用 ?v=<构建时间戳> 使浏览器拉取最新资源。
   .replace(/(\.\/react-assets-v2\/[^"']+\.(?:js|css))/g, `$1?v=${buildVersion}`);
 writeFileSync(resolve(docsDir, 'index.html'), rootTemplate, 'utf8');

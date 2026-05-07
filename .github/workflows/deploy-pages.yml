@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - 'src/**'
-      - 'frontend/**'
+      - 'index.html'
       - 'package.json'
       - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
