@@ -47,6 +47,14 @@ const SOURCES = [
   'docs/home-redesign.md',
   'docs/ops/notify-worker-deploy.md',
   'docs/qdii-nav-rules.md',
+  // 用户向 tab 使用文档（AI 问答 RAG 的主要回答来源）
+  'docs/tabs/README.md',
+  'docs/tabs/holdings.md',
+  'docs/tabs/trade-plans.md',
+  'docs/tabs/fund-switch.md',
+  'docs/tabs/history.md',
+  'docs/tabs/notify.md',
+  'docs/tabs/backup.md',
 ];
 
 const CF_BASE = `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}`;
