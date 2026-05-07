@@ -1,115 +1,93 @@
-# 交易计划中心（tradePlans）
+# 交易计划中心
 
-- 入口组件：[`src/pages/TradePlansExperience.jsx`](../../src/pages/TradePlansExperience.jsx)
-- 二级 tab（lazy import）：
-  - `src/pages/HomeExperience.jsx` — 加仓计划 dashboard
-  - `src/pages/DcaExperience.jsx` — 定投计划编辑器
-  - `src/pages/SwitchStrategyExperience.jsx` — 场内/场外纳指 100 切换套利
-  - `src/pages/NewPlanExperience.jsx` — 新建加仓计划（覆盖整个 tab 的独占视图）
-- 计算核心：`src/app/tradePlans.js`（`buildTradePlanCenter` / `buildTradeHistory`）、`src/app/plan.js`、`src/app/dca.js`、`src/app/strategyEngine.js`、`src/app/switchStrategySync.js`
+配置「**什么时候应该买，买多少**」的策略。计划只**生成提醒**和**计划历史**，**不会自动下单**——真正的买入需要在基金 APP 操作完，再去[持仓总览](./holdings.md)录入成交。
 
-## 一、二级视图与 hash 路由
+## 页面结构
 
-本 tab 内部维护 `subView`，由 URL hash 驱动：
+顶部 3 张数字卡：
+- **待执行计划** — 当前启用且未触发的计划数
+- **最近触发条件** — 上次满足触发条件的计划
+- **下一次定投日期** — 距离下一个定投日还有多久
 
-| Hash | `subView` | 渲染组件 |
-|---|---|---|
-| `''` / `#list` | `list` | TradePlansExperience 自身的「计划列表 + 详情」双栏 |
-| `#home` | `home` | `HomeExperienceLazy` |
-| `#dca` | `dca` | `DcaExperienceLazy` |
-| `#switch` | `switch` | `SwitchStrategyExperienceLazy` |
-| `#new` | `new` | `NewPlanExperience`（独占整个 tab） |
+下面是「**计划列表**」，再下面是「**计划详情**」。
 
-hash 变更监听 `popstate` + `hashchange`，切 hash 立刻切 subView，无 reload。lazy import 让首次进入 `list` 不会拖入 dashboard 图表 chunk。
+顶部 4 个入口按钮（也可以通过 URL hash 切换：`#home` / `#dca` / `#switch` / `#new`）：
 
-## 二、`list` 视图（默认）
+| 入口 | 用途 |
+| --- | --- |
+| **加仓** | 看跌型策略：跌到某条均线、回撤到某幅度就提醒加仓 |
+| **定投** | 日历型策略：每月固定日（默认可选 1/8/15/28 日）触发 |
+| **场内场外纳指 100 套利** | 监控纳指 100 场内 ETF 与场外联接基金的溢价差，触发提醒 |
+| **新建** | 从零开始建一个新计划，在 `加仓 / 定投` 模式之间选 |
 
-顶部三张 StatCard：
+---
 
-- 「待执行计划」= `summary.pendingCount`（价格触发买入 + 固定定投）
-- 「最近触发条件」= `summary.nearestTrigger`
-- 「下一次定投日期」= `summary.nextDcaDate`
+## 常见操作
 
-下方两列：
+### 创建一个加仓计划
 
-- 左列「计划列表 / 后续交易计划」：基于 `buildTradePlanCenter()`，每行带 `Pill statusTone` 状态徽章 + `typeLabel` 类型徽章，可点击选中 → 右侧详情。每行有「测试通知」按钮（走 `sendNotifyTest`）和删除按钮（`deletePlan`）。
-- 右列「计划详情」：选中计划的完整规则、当前价格、距离触发的剩余空间、关联的定投计划。包含「打开规则详情」链接，跳到 `buildRuleDetailUrl`（在通知 tab 中渲染）。
+1. 顶部点「**加仓**」按钮。
+2. 选基金、设触发条件（如「跌破 200 日均线」「回撤 ≥ 8%」）、单次买入金额、最大累计金额。
+3. 保存后，计划进入「计划列表」，每天系统会按最新行情判断是否满足条件。
+4. 满足条件时会推[通知](./notify.md)（前提是配过通知通道），同时记一条到[交易历史](./history.md)。
 
-顶部还有「新建计划」按钮 → `setSubView('new')`。
+### 创建一个定投计划
 
-## 三、`home` 子视图（加仓 dashboard）
+1. 顶部点「**定投**」按钮。
+2. 选基金、频率（每月 / 每两周 / 每周）、扣款日、单次金额。
+3. 保存后，「下一次定投日期」卡片会显示下一次提醒时间。
 
-来自 `HomeExperience.jsx`，UI 取自 Tremor / shadcn 风格 dashboard，详细 layout 见 [`docs/home-redesign.md`](../home-redesign.md)。
+### 配置纳指 100 场内场外套利
 
-- 多基金价格 + 移动平均线图表（默认日线，可切到分钟线）。
-- KPI 卡片显示当前价格、日内涨跌、距离均线百分比。
-- 数据源：`loadLatestNasdaqPrices` / `loadNasdaqDailySeries` / `loadNasdaqMinuteSnapshot`（GitHub Action 抓取的静态 JSON 文件）。
-- 策略下拉：`STRATEGY_OPTIONS`（默认值见 `home/helpers.js`），用 `buildNasdaqStrategyPlan` / `buildPeakDrawdownStrategyPlan` 生成「下一次触发价」和分层挂单价。
-- localStorage 键：
-  - `aiDcaHomeDashboard` — 用户的图表 / 策略 / 时间窗口选择
-  - `aiDcaPlans` / `aiDcaActivePlanId`（来自 `src/app/plan.js`）— 计划列表本身
+1. 顶部点「**场内场外纳指套利**」按钮。
+2. 设置：
+   - 监控的场内 ETF 列表 + 场外联接基金
+   - 高溢价 / 低溢价阈值（H/L premium）
+   - 启用基准代码、可参与代码
+3. 系统会拉取场内行情 + 场外净值，算溢价并按阈值分类。
+4. 满足触发时推送提醒。
 
-## 四、`dca` 子视图（定投计划）
+### 启用 / 禁用 / 删除计划
 
-来自 `DcaExperience.jsx`：
+- **启用 / 禁用**：计划列表行内有切换开关。禁用后不再触发提醒，但保留数据。
+- **删除**：进入计划详情页，底部有删除按钮，会弹确认框。
 
-- 表单输入：基金代码、单笔金额、频率（来自 `frequencyOptions`）、扣款日（`DAY_OPTIONS = [1, 8, 15, 28]`）、关联加仓策略下拉。
-- 实时计算：`buildDcaProjection(state, { planList })` 给出未来 N 期金额、累计投入、最近一次执行日。
-- 保存即调用 `persistDcaState` 写入 localStorage 键 `aiDcaDca`，并触发 `syncTradePlanRules` 把全部计划下发到 notify worker（`POST /sync`）。
+### 查看下一次定投日
 
-## 五、`switch` 子视图（场内 / 场外纳指 100 切换套利）
+顶部第三张卡「**下一次定投日期**」直接显示。如果没配过定投，会提示「先配置定投计划后才会生成历史」。
 
-来自 `SwitchStrategyExperience.jsx`。整页核心逻辑（见源文件顶部注释）：
+---
 
-- 真实溢价：`(成交价 − 单位净值) / 单位净值`。
-- 数据源（每交易日 15:30 GitHub Action 拉取）：`data/<code>/latest-nav.json`、`data/all_nasdq.json`、`data/<code>/daily-sina.json`。
-- 持仓基准 (`benchmarkCodes`) 自动从 `aggregateByCode(readLedgerState())` 派生，**不在该页让用户手选**。
-- 候选 ETF (`enabledCodes`) 由用户勾选；UI 仅展示「对侧分类」。
-- `premiumClass` 给每只 ETF 标签 H / L，`gap = H溢价 − L溢价` 作为机会触发量。
-- localStorage：
-  - `aiDcaSwitchStrategyPrefs` — 基准 / 候选 / 阈值
-  - `aiDcaSwitchStrategyLedger` — 套利轮次人工日志
-- 与 worker 的对接通过 `loadSwitchConfigFromWorker / saveSwitchConfigToWorker / loadSwitchSnapshotFromWorker / runSwitchOnce`，对应 notify worker 的 `/switch/config`、`/switch/snapshot`、`/switch/run`。
+## 常见问题 Q&A
 
-## 六、`new` 子视图（NewPlanExperience）
+**Q：保存了计划，到了时间它会自动帮我买基金吗？**
+A：**不会**。本应用没接券商交易接口，所有计划只**生成提醒**（推到[通知](./notify.md)）和**记账**（写入[交易历史](./history.md)）。真正的买入要去基金 APP / 券商操作。买完后回[持仓总览](./holdings.md)录一笔实际成交，这样汇总和盈亏才会反映出来。
 
-- 模板下拉来自 `strategyOptions`：固定回撤模板（`buildFixedDrawdownPlan` + `fixedDrawdownBlueprint`）、均线模板（`buildMovingAverageTemplatePlan`）。
-- 选择基金 → 自动拉 `loadLatestNasdaqPrices` 当前价 + `loadNasdaqDailySeries` 历史 → 算出移动均线 + 推荐挂单价。
-- 保存：`persistPlanState` 写 localStorage `aiDcaPlans` 列表 + 把当前作为 active；同步 `syncTradePlanRules` 推到 notify worker。
-- `onBack` / `onAfterSave` 由父组件控制，避免整页 reload。
+**Q：「加仓」和「定投」有什么区别？**
+A：
+- **加仓**是**条件触发**：跌到某个程度才提醒，比如均线、回撤幅度。
+- **定投**是**日历触发**：每月固定日提醒，与行情无关。
+两者可以并存，覆盖不同的场景（定投打底 + 看跌加仓）。
 
-## 七、状态键速查
+**Q：定投通知到了我没买，下一次会自动加倍吗？**
+A：不会。定投提醒之间相互独立。漏买只是少了一期，不影响下一期。
 
-React state：
+**Q：纳指 100 套利的高低溢价阈值怎么设？**
+A：默认值在套利面板里能看到，**H/L premiumClass** 是把溢价分成「高 / 普通 / 低」三档的阈值。需要保守可以拉宽（H 设高一点、L 设低一点）。
 
-```
-selectedRowId      // 计划列表选中行
-subView            // list | home | dca | switch | new
-testingRowId       // 「测试通知」按钮 loading
-channelConfigured  // 是否已经配置 Bark / Android（从 notifySync 推断）
-planRefreshKey     // 强制重新读 plan list 的计数器
-```
+**Q：把计划改了，[通知](./notify.md)还是按老规则推？**
+A：改完计划后到[通知设置](./notify.md)点一下「同步计划」，新规则才会下发到通知服务（worker 端缓存的是同步过的规则）。
 
-localStorage：
+**Q：「计划列表」里看不到我刚建的定投？**
+A：看顶部 hash 是不是停在 `#new` 或 `#home` 子视图。点页面顶部「计划列表」回到全部视图。
 
-```
-aiDcaPlans                       # 加仓计划列表
-aiDcaActivePlanId                # 当前选中的 plan id
-aiDcaDca                         # 定投配置 + projection
-aiDcaHomeDashboard               # home dashboard 图表/策略偏好
-aiDcaSwitchStrategyPrefs         # 切换策略偏好
-aiDcaSwitchStrategyLedger        # 切换策略人工日志
-aiDcaNotifyClientConfig          # 复用通知客户端配置
-```
+**Q：怎么导出全部计划？**
+A：当前没提供导出按钮，但所有计划都包含在[数据同步](./backup.md) 的 `ai-dca-backup.json` 里，可以下载本地备份后从 JSON 取出。
 
-worker API：
+---
 
-- `POST /sync` — 同步全部计划规则
-- `POST /test` — 测试通知
-- `GET /status` — 查询通道状态（决定 `channelConfigured`）
-- `POST /switch/{config,snapshot,run}` — 切换策略
+## 相关页面
 
-## 八、相关文档
-
-- Home dashboard layout 规范：[`docs/home-redesign.md`](../home-redesign.md)
-- notify worker 部署规约：[`docs/ops/notify-worker-deploy.md`](../ops/notify-worker-deploy.md)
+- [持仓总览](./holdings.md) — 计划提醒后实际买入的成交要在这里录入。
+- [交易历史](./history.md) — 计划自动生成的历史记录（只读）。
+- [通知设置](./notify.md) — 计划触发提醒的发送通道。

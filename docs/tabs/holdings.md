@@ -1,97 +1,125 @@
-# 持仓总览（holdings）
+# 持仓总览
 
-- 入口组件：[`src/pages/HoldingsExperience.jsx`](../../src/pages/HoldingsExperience.jsx)（约 3000 行单文件）
-- 计算/存储核心：[`src/app/holdingsLedgerCore.js`](../../src/app/holdingsLedgerCore.js) + [`src/app/holdingsLedger.js`](../../src/app/holdingsLedger.js)
-- localStorage 主键：`aiDcaHoldingsLedger`（迁移自旧版 `aiDcaAggregateState`）
-- 默认主 tab：`holdings`（在 `WorkspacePage.jsx` 中硬编码）
+这一页是 ai-dca 的**主战场**：录入交易、看汇总、查盈亏、维护切换链路都在这里。
 
-## 一、tab 内的二级视图
+## 页面结构
 
-顶部主区有 4 个切换：
+左侧主视图有 4 个 tab，可以切换：
 
-| `mainViewTab` | 文案 | 数据来源 | 用途 |
-|---|---|---|---|
-| `aggregate` | 基金汇总 | `aggregateByCode(transactions, snapshotsByCode)` | 默认视图。每只基金一行，展示份额、成本、最新净值、当日收益、累计收益，自动用持仓最新净值做盈亏。|
-| `sold` | 已卖出 | `buildSoldLots(transactions)` + `summarizeSoldLots` | FIFO 拆批的已实现收益，按卖出日期倒序。支持显示「换仓链路」的目标代码。|
-| `switch` | 换仓链路 | `normalizeSwitchChains` + `computeSwitchChainMetrics` | 将一组卖→买配对成「同一笔钱被链式换仓」的有向链路，逐段展示每段成本、收益、当前持仓段。|
-| `ledger` | 成交流水 | `buildLedgerRows(transactions, snapshotsByCode)` | 原始交易明细。可在行内编辑、复制到录入表、删除。|
+| 视图 | 看的是什么 |
+| --- | --- |
+| **基金汇总** | 按基金代码聚合，每只基金一行：持仓份额、平均成本、当前净值、浮盈、今日盈亏 |
+| **已卖出** | 全部已经清仓的基金，按 FIFO 配对算好的盈亏 |
+| **切换链路** | 你手动标记的「从 A 基金切到 B 基金」的关系链，自动算每段收益 |
+| **成交流水** | **真正的数据底表**，所有买入卖出原始记录 |
 
-## 二、右侧抽屉 sidePanel
+右侧侧栏有 2 个 tab：
+- **摘要**：选中某只基金后，显示这只基金的详细统计
+- **录入**：新增一笔交易
 
-`sidePanelOpen=true` 时显示，`sidePanelTab` 共三种：
+顶部还有「场内 / 场外 / QDII」筛选、净值「刷新」按钮、「复制表格」按钮（导出 TSV）、Excel 粘贴和图片 OCR 入口。
 
-| `sidePanelTab` | 内容 |
-|---|---|
-| `summary` | 选中基金的汇总摘要：当前持仓、成本、最新净值、当日 / 累计收益、QDII 累计 N 日提示。|
-| `create` | 单条新增表单（基金代码、名称、类型、买卖、日期、份额、单价、备注）。|
-| `edit` | 选中流水的编辑缓冲，受 `editingTxId / editingBuffer` 控制。|
+---
 
-外加几个浮层 Modal：粘贴 Excel（`pasteModalOpen`）、OCR 截图导入（`ocrModalOpen`）、跨基金链路换仓选择（`switchPickerOpen` / `chainPicker`）。
+## 常见操作
 
-## 三、数据导入路径
+### 录入一笔新交易
 
-1. **手动单条**：`sidePanelTab=create` 表单 → `persistLedgerState`。
-2. **粘贴 Excel/TSV**：`parseExcelPaste` 把 TSV 解析成多行 → 校验 → 批量 append。
-3. **截图 OCR**：`recognizeLedgerFile(file)` → 走 `POST /api/holdings/ocr`（ocr-proxy worker） → 解析为 `transactions[]` 草稿。
-4. **链路换仓**：在 sold 视图选源仓 → `switchPickerOpen` → 把目标买入跟源卖出绑定，写入 `switchChains`。
+1. 点右侧侧栏的「**录入**」tab。
+2. 填代码、名称、场内/场外、买入或卖出（BUY/SELL）、日期、单价、份额。
+3. 点「**新增交易**」保存。
+4. 保存后，「基金汇总」「已卖出」「切换链路」会自动重算。
 
-所有路径最终都进入 `normalizeTransaction` + `getTransactionErrors` 双重校验。无效记录会显式标记「跳过」，不会进入持仓。
+### 批量录入：从 Excel 粘贴
 
-## 四、净值刷新
+1. 在 Excel 选中一段含表头的区域（表头：`代码 | 名称 | 场内场外 | 类型 | 日期 | 价 | 份额`），复制。
+2. 点顶部的「**粘贴 Excel**」按钮。
+3. 把内容粘到弹窗，确认识别结果，点确认即可批量写入流水。
 
-顶部 `RefreshCw` 按钮触发 `requestLedgerNav(codes)`，调用：
+### 批量录入：截图 OCR
 
-- `POST /api/holdings/nav`（ocr-proxy worker）
-- 请求体：`{ items: [{ code, kind }] }`
-- 响应：每个 code 对应 `{ navDate, navValue, previousNavDate, previousNavValue, latestPrice }`
-- 成功结果由 `mergeSnapshotsFromNavResult` 合并到 `state.snapshotsByCode`。
+1. 点顶部图片图标。
+2. 上传从基金 APP 截下来的成交单 PNG / JPG。
+3. 等识别完成，**逐行检查代码、日期、份额**（默认按 BUY 处理，可改）。
+4. 点确认写入流水。
 
-基金类别检测：`detectFundKind(code, name)` → `otc / exchange / qdii`。QDII 走 ocr-proxy 的 QDII 分桶（动态 TTL，按持仓时是否在交易日 / 是否盘中切换缓存窗口）；A 股 ETF 在 9:30–15:00 之间会被 notify worker 的 `push2` 实时价覆盖到最近的成交价，收盘后落回到当日收盘价。
+### 编辑或删除一笔交易
 
-## 五、关键聚合逻辑（来自 `holdingsLedgerCore.js`）
+**全部去「成交流水」视图操作**：
 
-- `buildLotMetrics(tx, snapshot, options)`：每条交易计算 `cost / shares / latestValue / unrealizedPnL / todayPnL`。
-- `aggregateByCode`：按基金代码聚合，得到 `aggregates[]`，包含 `holdingShares / avgCost / latestNav / todayProfit / todayProfitSpanDays / todayProfitHolidayDays`。其中 `todayProfit*` 跨周末/法定假期的「窗口收益」会带 hover tooltip 提醒「这是空窗累计涨跌不是单日波动」。
-- `summarizePortfolio(aggregates)`：汇总当前总市值、总成本、总浮盈、当日合计盈亏、按 fund-class 拆分的「H 高溢价 / L 低溢价」桶。
-- `buildSoldLots(transactions)`：FIFO 拆批求已实现收益。
-- `buildLedgerRows(transactions, snapshotsByCode)`：把交易和最新净值合并成流水视图行。
-- `buildHoldingsNotifyDigest({ aggregates, summary })`：被 NotifyExperience 用来生成「今日持仓推送 digest」。
-- `parseExcelPaste(text)`：粘贴板 TSV 解析（支持中英文表头映射）。
-- `normalizeSwitchChain / normalizeSwitchChains`：换仓链路 schema 规整。
-- `computeSwitchChainMetrics`：按链路逐段计算损益。
+1. 切到「成交流水」tab。
+2. 找到对应那一行，行尾有 3 个图标：
+   - 铅笔 = **编辑**（修改后会触发汇总重算）
+   - 复制 = **复制到录入表**（把这条复制成草稿，方便录入相似的下一笔）
+   - 红色垃圾桶 = **删除**（会弹确认框：「确认删除 xxx BUY n 份？」）
+3. 删除后，基金汇总、已卖出、切换链路全部自动更新，无需手工同步。
 
-## 六、状态键速查
+### 刷新最新净值
 
-React state（`useState`）：
+点表格右上角的刷新图标（aria-label：刷新净值）。
+- 场外基金会拉天天基金当日净值；T 日 15:00 后才有当日净值。
+- 场内 ETF 拉新浪/腾讯日线。
+- QDII 因为有海外市场，更新会比 A 股晚一天，属于正常情况。
+- 遇到节假日，「今日盈亏」会带 tooltip 解释为什么没动。
 
-```
-ledger          // 全部交易、快照、链路（持久化主对象）
-kindFilter      // all | otc | exchange | qdii
-searchText      // 列表搜索
-selectedCode    // 选中基金
-sidePanelTab    // summary | create | edit
-sidePanelOpen
-mainViewTab     // aggregate | sold | switch | ledger
-draft / draftMode / editingTxId / editingBuffer
-navStatus       // 净值刷新状态
-ocrState / ocrModalOpen / ocrPreview / ocrWarningsExpanded
-importMenuOpen / pasteModalOpen / pasteText / pasteResult
-switchPickerOpen / switchPickerSearch / chainPicker / chainPickerSearch
-```
+### 看某只基金的详细统计
 
-localStorage：
+点「基金汇总」或「成交流水」里的某行（不是按钮区域），右侧侧栏会自动切到「摘要」tab，显示这只基金的全部明细。
 
-```
-aiDcaHoldingsLedger     # ledger.transactions / snapshotsByCode / switchChains / lastNavRefreshedAt
-```
+### 配置切换链路
 
-## 七、和其他 tab 的耦合
+1. 切到「切换链路」视图。
+2. 点「+ 新建链路」开始一条链路。
+3. 每段（leg）需要选一笔 BUY 和一笔 SELL（或留空表示「持有至今，用最新净值」）。
+4. 点「添加一段」可以延长链路。X 图标删除单段，整条删除用「删除链路」。
+5. 链路自动算每段的收益百分比。
 
-- 通知 tab：`buildHoldingsNotifyDigest` 提供给 `NotifyExperience` 做「持仓推送规则」开关 + 数据。
-- 切换策略子页（tradePlans → switch）：从 `aggregateByCode` 派生持仓基准，自动决定基准 ETF 列表，不需要手选。
-- 基金切换收益分析（fundSwitch）：通过持仓代码列表辅助 OCR 解析与历史归档。
+### 复制表格到 Excel
 
-## 八、相关文档
+点顶部「**复制表格**」，当前视图（汇总 / 已卖出 / 流水）会按 TSV 格式写入剪贴板，直接粘贴到 Excel / 飞书表格即可。
 
-- 净值与 QDII 分桶规则：[`docs/qdii-nav-rules.md`](../qdii-nav-rules.md)
-- 实时通道（A 股盘中 push2 → ledger latestNav）：[`docs/architecture/realtime-channel.md`](../architecture/realtime-channel.md)
+---
+
+## 常见问题 Q&A
+
+**Q：基金汇总里的记录怎么删除？**
+A：「基金汇总」是从「成交流水」聚合出来的，不能直接在汇总里删。**切到「成交流水」**，找到对应那笔交易，点行尾的红色垃圾桶。删完后基金汇总会自动更新——如果一只基金的所有 BUY/SELL 都删光了，它就会从汇总里消失。
+
+**Q：怎么修改某笔交易的价格或份额？**
+A：「成交流水」→ 找到那行 → 点铅笔图标编辑。改完所有相关汇总都会重算。
+
+**Q：「已卖出」里的盈亏算错了？**
+A：盈亏是按 FIFO 配对买入卖出算的。如果对不上，先去「成交流水」检查这只基金的所有 BUY 和 SELL 是否齐全、日期是否正确。
+
+**Q：今天的净值刷不出来 / 一直显示 T-1？**
+A：
+- 场外基金 T 日 15:00 之前查不到当天净值，正常。
+- QDII 因海外市场延后，比 A 股晚一天属于预期。
+- 遇到长假（如春节），「今日盈亏」上的 tooltip 会解释「最新净值是 N 个交易日前的」。
+- 仍异常时点刷新按钮重试，或检查浏览器开发者工具 → Network 看 `/api/holdings/nav` 是否报错。
+
+**Q：OCR 识别截图错位 / 字段不准？**
+A：识别结果窗口里**每一行都可以单独编辑**，把错的改对再点确认。也支持只勾选其中一部分行。
+
+**Q：从老版本「持仓汇总」迁过来的数据，提示要补录交易日期？**
+A：旧版只存了汇总，新版需要原始交易日期。点流水行内的编辑按钮，把日期补全后保存即可。提示横幅会消失。
+
+**Q：为什么我有的基金会出现在「已卖出」？**
+A：当一只基金的全部份额都被卖完（净份额 = 0），它会自动归到「已卖出」。再次买入它会回到「基金汇总」。
+
+**Q：「切换链路」是做什么的？**
+A：当你**赎回 A 申购 B**做风格/费率切换时，标一条链路把 A 的 SELL 和 B 的 BUY 串起来，可以连续算「这次切换+持有」整体收益。它**不会**自动识别切换关系，需要手动选两笔交易。
+
+**Q：场内 / 场外 / QDII 怎么区分？**
+A：录入时填的「场内场外」字段决定。QDII 由系统按基金名称（含「纳斯达克 / 标普 / QDII」等关键字）自动识别，可以在录入时手动改。顶部筛选条按这三个分类过滤视图。
+
+**Q：换电脑后数据不见了？**
+A：所有数据存在浏览器 localStorage。**先在旧浏览器去[数据同步](./backup.md) tab 上传到 WebDAV**，新浏览器配同样的 WebDAV 再恢复。
+
+---
+
+## 相关页面
+
+- [交易计划中心](./trade-plans.md) — 计划生成的「下次买入建议」最终要在这里录入实际成交。
+- [基金切换收益分析](./fund-switch.md) — 切换前后的盈亏对比，独立工具，不影响流水。
+- [数据同步](./backup.md) — 跨设备搬数据。

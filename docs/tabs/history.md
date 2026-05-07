@@ -1,53 +1,71 @@
-# 交易历史（history）
+# 交易历史
 
-- 入口组件：[`src/pages/HistoryExperience.jsx`](../../src/pages/HistoryExperience.jsx)（约 130 行，纯展示）
-- 数据来源：`buildTradeHistory()`（来自 [`src/app/tradePlans.js`](../../src/app/tradePlans.js)）
+**这是一张只读表**，展示由[交易计划中心](./trade-plans.md)的策略**自动生成的执行历史**。它**不是**你真实的成交记录——真实成交在[持仓总览](./holdings.md)的「成交流水」里。
 
-这个 tab 是只读的：它只展示「策略写出来的历史记录」，不接受新增 / 修改。所有写入都来自 `tradePlans` / `dca` tab 在创建/触发计划时附带写入。
+## 页面结构
 
-## 一、顶部 4 张 StatCard
+顶部 4 张数字卡：
 
-| 卡片 | 来源 | 说明 |
-|---|---|---|
-| 策略记录 | `summary.recordCount` | 当前 history 总条数 |
-| 累计投入 | `summary.totalInvestment`（`formatCurrency` `¥ ` 前缀） | 只统计已经写入历史的计划金额 |
-| 覆盖策略 | `summary.strategyCount` | 当前进入历史的策略数量 |
-| 最近执行日 | `summary.latestExecutionDate` + `dcaMeta.cadenceLabel` | 没配置定投时显示「先配置定投计划后才会生成历史」 |
+| 卡片 | 含义 |
+| --- | --- |
+| **策略记录** | 已生成的历史条数 |
+| **累计投入** | 计划生成的所有金额求和（不含真实成交） |
+| **覆盖策略** | 当前进入历史的策略数量 |
+| **最近执行日** | 上一次有计划触发的日期 |
 
-## 二、历史表格
+下面是「**策略生成记录**」表格，列：
 
-`hasHistory=true` 时渲染一个表格，列结构：
+- 日期
+- 策略（哪个加仓 / 定投 / 套利计划）
+- 类型（BUY / SELL）
+- 金额
+- 状态
+- 说明
 
-| 列 | 字段 | 渲染 |
-|---|---|---|
-| 日期 | `row.date` | YYYY-MM-DD |
-| 策略 | `row.strategyLabel` | 文本 |
-| 类型 | `row.typeLabel` | 文本 |
-| 金额 | `row.amount` | `formatCurrency` |
-| 状态 | `row.statusTone` + `row.statusLabel` | `<HistoryStatusPill>`（薄包装的 `Pill`） |
-| 说明 | `row.note` | 长描述 |
+---
 
-空状态显示「先配置定投计划后才会生成历史」。
+## 常见操作
 
-## 三、为什么只是只读
+### 我能在这里做什么？
 
-- 这个 tab 是「策略行为审计页」，写入由 `dca.js` 在保存 / 模拟触发时主动 append。
-- 想清空历史 → 在 `tradePlans` 删除对应计划，或在 `backup` tab 用 WebDAV 恢复历史快照。
-- 这种只读约束让导出报表的口径稳定：所有展示数据都来自单一函数 `buildTradeHistory()`，前端不会就地编辑。
+基本只有「**看**」。这一页**没有任何编辑、删除按钮**，所有内容都从[交易计划中心](./trade-plans.md)推算出来：
 
-## 四、状态键速查
+- 想看自己定投了多少 → 看「累计投入」
+- 想看哪天哪个策略触发了 → 看表格
+- 想知道下一次会不会触发 → 去[交易计划中心](./trade-plans.md)看计划列表 / 下一次定投日
 
-React state：无（只 `useMemo`）
+### 想新增 / 修改记录怎么办？
 
-localStorage：
+通过修改**源头**：
 
-```
-aiDcaTradeHistory   # buildTradeHistory() 读取的源数组（在 dca.js / plan.js 中写入）
-aiDcaDca            # 定投状态 — 用于派生 dcaMeta.cadenceLabel
-```
+1. 改计划本身 → [交易计划中心](./trade-plans.md)
+2. 录真实成交 → [持仓总览](./holdings.md) → 成交流水 → 录入
 
-## 五、相关函数
+---
 
-- `buildTradeHistory()` — `src/app/tradePlans.js`：
-  - 输出 `{ rows, hasHistory, summary, dcaMeta }`
-  - 已经做了排序（按 `date` 倒序）和金额合计
+## 常见问题 Q&A
+
+**Q：表格是空的，「无历史记录」？**
+A：必须先在[交易计划中心](./trade-plans.md)**创建并启用至少一个**定投或加仓计划。计划没建，本页就没有数据。
+
+**Q：这里的「累计投入」和「持仓总览的成本」对不上？**
+A：正常。它们是**两套不同的数据**：
+- 本页 = 计划**建议**应该投入多少（一种「假如全按计划执行」的累计）
+- 持仓总览 = 你**实际**录入的成交金额
+两者可以差很多——计划提醒你买你没买、或者你额外加买了，都会差。
+
+**Q：定投触发了，但我那天没买，这里还会显示这条记录吗？**
+A：会。本页是**计划生成历史**，不管你实际有没有真买。漏买后想让持仓数据正确，去[持仓总览](./holdings.md)按真实情况录入或不录入。
+
+**Q：删除一个计划后，这里的相关历史还在吗？**
+A：本页是从当前计划状态实时算的。删了计划后，相关历史也会跟着消失。
+
+**Q：能导出吗？**
+A：当前没提供导出按钮。所有计划状态包含在[数据同步](./backup.md)的 `ai-dca-backup.json` 里，可以下载后自己解析。
+
+---
+
+## 相关页面
+
+- [交易计划中心](./trade-plans.md) — 历史的源头
+- [持仓总览](./holdings.md) — 真实成交记录

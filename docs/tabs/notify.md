@@ -1,119 +1,95 @@
-# 通知设置（notify）
+# 通知设置
 
-- 入口组件：[`src/pages/NotifyExperience.jsx`](../../src/pages/NotifyExperience.jsx)（约 870 行）
-- 同步层：[`src/app/notifySync.js`](../../src/app/notifySync.js)
-- 后端 worker：`workers/notify`（部署在 `tools.freebacktrack.tech`，wrangler 名 `ai-dca-notify`）
+把[交易计划中心](./trade-plans.md)的触发提醒、和持仓涨跌提醒**推送到手机**。支持 iOS（Bark）和 Android（自家 APK）。
 
-## 一、tab 主体结构
+## 页面结构
 
-顶部 3 张 StatCard：
+顶部 3 张数字卡：
 
-| 卡片 | 数据 |
-|---|---|
-| 通道状态 | `summary.channelStatus` + `summary.channelNote`，由 Bark / Android 是否任意配置决定 |
-| 已关联 Android | `summary.androidDeviceCount` 台 |
-| iOS Bark | `barkConfigured ? '已配置' : '未配置'` |
+| 卡片 | 含义 |
+| --- | --- |
+| **通道状态** | 通知服务（worker）是否正常 |
+| **已关联 Android** | 当前配对成功的 Android 设备数 |
+| **iOS Bark** | 当前已保存的 Bark 设备数 |
 
-下面是平台切换：`notifyPlatform = ios | android`。
+中间一组 sub-tab：**iOS / Android**，各自的配置入口分开。
 
-### iOS（Bark）子区域
+下面有：
+- 持仓提醒规则（涨跌幅阈值）
+- 同步状态 / 同步按钮
+- 测试历史
 
-- 字段：Bark device key、自定义 Bark 服务地址（默认 `https://api.day.app`，可换自建）。
-- 保存：`saveNotifySettings(payload)` → `POST /settings`。
-- 测试：`sendNotifyTest(payload)` → `POST /test`。
-- 状态徽章：emerald = 至少配置一种通道。
+---
 
-### Android（FCM 直绑）子区域
+## 常见操作
 
-- 流程：在 Android app 拿到 `deviceInstallationId` → 粘贴到「设备 ID」输入框 → `pairAndroidDevice({ pairingCode })` → 服务端用 `pairingCode` 查找 → 把 deviceInstallationId 直接绑到当前 clientId。
-- 已绑定列表：`pairedAndroidDevices[]`，每条带「最近健康检查状态」（`lastCheckStatus = validated | unregistered | ...`），可单独 `unpairAndroidDevice`。
-- APK 下载：常量 `ANDROID_APK_DOWNLOAD_URL`（来自 `src/app/tradePlansHelpers.js`）。
+### 配置 iOS（Bark）
 
-## 二、规则配置区
+1. 在 App Store 搜「**Bark**」装上。
+2. 打开 Bark，复制它给的 device key（一长串）。
+3. 切到本页 iOS sub-tab，把 key 粘到输入框，点保存。
+4. 点「**发送测试**」，几秒后 Bark 应该弹出一条「ai-dca 测试通知」。
 
-两类规则：
+### 配置 Android
 
-### 1. 计划规则（来自 trade-plans）
+1. 下载并安装本应用提供的 Android APK（页面上有「下载 APK」链接，常量 `ANDROID_APK_DOWNLOAD_URL`）。
+2. 打开 APK，**复制它显示的「设备 ID」**。
+3. 切到本页 Android sub-tab，把 ID 粘到「**粘贴 Android app 显示的设备 ID**」输入框。
+4. 点「配对」按钮。
+5. 配对成功后，「已关联 Android」卡片数字会 +1。
+6. 点「发送测试」验证。
 
-- 在 trade-plans / dca / new-plan 任一处保存计划时，会自动调用 `syncTradePlanRules` → `POST /sync` 把规则全集下发。
-- 本 tab 提供「立即同步」按钮（`isSyncingRules`）和上次同步时间 (`rulesLastSyncedAt`)。
-- 计划规则在 worker 里走 `holdings-rule` / `run` / `switch` 等具体路由触发；计划本身在 worker 中只存最近一份覆盖式 snapshot。
+### 解除配对（Android）
 
-### 2. 持仓推送规则（每日盘后 digest）
+在 Android 设备列表里，每台设备旁边都有一个移除按钮，点了立刻解除关联，立即生效。
 
-- 开关：`holdingsRule.enabled`，写入 `aiDcaHoldingsRule` + `POST /holdings-rule`。
-- 摘要：`buildHoldingsNotifyDigest({ aggregates, summary })`（来自 holdings tab 的核心）。
-- 立即测试：`POST /admin/holdings-all-test`（不会写入历史，仅触发一次推送）。
-- 立即同步：`isSyncingHoldingsDigest = true` 时把最新摘要推到 worker 缓存（用于 20:30 / 21:30 全量推送）。
+### 配置持仓涨跌提醒
 
-## 三、提醒历史（events）
+1. 找到「持仓提醒规则」区块。
+2. 设阈值，例如：单只基金日涨/跌 ≥ 3% 时推送。
+3. 保存。系统每天净值刷新后判断是否触发。
 
-- `loadNotifyEvents(clientId)` → `GET /events`，返回最近 N 条推送事件。
-- 显式过滤：`isTestEvent(event)` 命名为「测试通知」并且时间窗 ≤ 30 分钟才保留，超过 `TEST_EVENT_TTL_MS = 30 * 60 * 1000` 就从前端隐藏，避免长期堆积测试日志。
-- 每条事件用 `resolveEventStatusMeta` 映射 `status → { tone, label }`：emerald = 已送达 / slate = 队列中 / red = 失败。
-- 时间格式化：`formatEventTimeLabel`（短格式，相对时间或绝对日期）。
-- 列表头部「刷新」按钮：`isLoadingEvents = true` → 重新拉取；`eventsLastSyncedAt` 显示上次同步时间。
+### 把交易计划同步到通知服务
 
-可展开的「Strategy」分组：`expandedStrategy` 控制点击某个计划展开它的事件子集。
+**改完[交易计划中心](./trade-plans.md)的计划后**，回到本页，点「**同步计划**」按钮，新规则才会下发到 worker。
 
-## 四、`notifySync.js` 函数全集
+---
 
-```
-readNotifyClientConfig()                 # localStorage → notifyConfig（含 clientId / barkKey / barkBaseUrl）
-persistNotifyClientConfig(nextConfig)
-buildNotifySyncPayload()                 # 把所有 plan / dca 规则打包成 worker 期望的形状
-loadNotifyStatus(clientId)               # GET /status
-loadNotifyEvents(clientId)               # GET /events
-syncTradePlanRules(payload)              # POST /sync
-sendNotifyTest(payload)                  # POST /test
-saveNotifySettings(payload)              # POST /settings
-pairAndroidDevice(payload)               # POST /gcm/pair
-unpairAndroidDevice(payload)             # POST /gcm/unpair
-loadHoldingsNotifyRule()                 # 本地 rule 状态
-saveHoldingsNotifyRule({ enabled, digest }) # 本地 + POST /holdings-rule
-```
+## 常见问题 Q&A
 
-## 五、状态键速查
+**Q：iOS 设了 Bark key，但收不到通知？**
+A：依次检查：
+1. Bark APP 在系统通知里**已开启**（Bark 自己也要权限）。
+2. Bark APP **运行过至少一次**（首次安装要先打开过它，否则 device key 没注册）。
+3. 顶部「通道状态」卡片是不是绿色。如果是红色，通知服务可能挂了。
+4. 点「发送测试」，Bark 服务器会立即推送一条；30 分钟内的测试事件能在「测试历史」看到。
 
-React state：
+**Q：Android APK 在哪下载？**
+A：本页上有下载链接（页面顶部或 Android sub-tab 的提示文案里）。系统也会在「下载 APK」按钮里指向最新版本。
 
-```
-notifyStatus / notifyError / notifyMessage
-isSavingSettings / isPairingAndroid / unpairingRegistrationId
-notifyPlatform                # ios | android
-androidPairingCode
-notifyConfig                  # clientId / barkKey / barkBaseUrl
-holdingsRule                  # { enabled, digest, updatedAt }
-isSavingHoldingsRule / isSyncingHoldingsDigest / isTestingHoldingsNotify
-notifyEvents / eventsLoading / eventsError / eventsLastSyncedAt / eventsTick
-isSyncingRules / rulesLastSyncedAt
-configCollapsed               # 折叠通道配置卡片（默认根据是否已配置自动决定）
-expandedStrategy              # 展开某个 plan 下的事件
-```
+**Q：Android 配对了一会儿就掉线？**
+A：APK 后台被系统杀了。把 APK 加入电池白名单 / 后台运行白名单（华为：受保护应用；小米：自启动 + 省电策略）。
 
-localStorage：
+**Q：测试历史里我刚刚发的测试找不到了？**
+A：测试事件**只保留 30 分钟**（`TEST_EVENT_TTL_MS`）。再发一次就好。
 
-```
-aiDcaNotifyClientConfig
-aiDcaHoldingsRule
-```
+**Q：我把计划改了，怎么提醒还是按老规则推？**
+A：每次改完计划要回本页**点「同步计划」**——worker 端缓存的是上次同步的版本。同步后立即生效。
 
-## 六、worker 路由速查（部分）
+**Q：我想关掉所有通知一段时间？**
+A：
+- 临时：手机系统设置里关 Bark / APK 的通知。
+- 永久：把 Bark key 删了 / 解除 Android 配对。计划本身不用动。
 
-| 路由 | 作用 |
-|---|---|
-| `GET /status` | 通道状态、配额、最近 push 时间 |
-| `GET /events` | 提醒历史 |
-| `POST /settings` | 保存 Bark 配置 |
-| `POST /sync` | 全量下发规则 |
-| `POST /test` | 测试通知 |
-| `POST /holdings-rule` | 启用 / 关闭持仓 digest 规则 |
-| `POST /admin/holdings-all-test` | 触发一次持仓推送 |
-| `POST /gcm/{register, check, pair, unpair, unpair-from-device, pairing-key}` | Android 直绑 |
-| `POST /run` / `POST /switch/{config,snapshot,run}` | 计划执行入口 |
-| `WS /ws/*` | 实时通道 push2（A 股盘中价格回灌到前端 ledger） |
+**Q：通道状态显示「错误」？**
+A：通常是 worker 部署出问题或域名 DNS 异常。技术上是 worker 的健康检查端点（`/api/health`）失败。本应用的 worker 会自动尝试，等几分钟再刷新；如果长期不恢复联系运维。
 
-## 七、相关文档
+**Q：iOS / Android 能同时配吗？**
+A：可以，互不影响。计划触发时会同时推到所有已关联的设备。
 
-- 实时通道 / push2 来源：[`docs/architecture/realtime-channel.md`](../architecture/realtime-channel.md)
-- worker 部署规约：[`docs/ops/notify-worker-deploy.md`](../ops/notify-worker-deploy.md)
+---
+
+## 相关页面
+
+- [交易计划中心](./trade-plans.md) — 通知的内容来源（计划触发条件）
+- [持仓总览](./holdings.md) — 持仓涨跌通知的数据源

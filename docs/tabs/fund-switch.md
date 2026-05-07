@@ -1,95 +1,104 @@
-# 基金切换收益分析（fundSwitch）
+# 基金切换收益分析
 
-- 入口组件：[`src/pages/FundSwitchExperience.jsx`](../../src/pages/FundSwitchExperience.jsx)（约 1180 行）
-- 叶子展示组件：[`src/pages/fundSwitch/sections.jsx`](../../src/pages/fundSwitch/sections.jsx)
-- 计算核心：[`src/app/fundSwitch.js`](../../src/app/fundSwitch.js) + [`src/app/fundSwitchHelpers.js`](../../src/app/fundSwitchHelpers.js)
-- 数据源（场内 ETF）：`src/app/nasdaqPrices.js` 提供 `loadLatestNasdaqPrices / findLatestNasdaqPrice`
+这一页回答一个问题：「我赎回了 A 基金，转买 B 基金，**到底是不是亏了**？」
 
-> 这个 tab 解决的问题：「我把场外 A 切到场内 B 之后，到底比不切多挣 / 少挣了多少钱？」
-> 不只是单一汇率换算，而是会把多笔分批换仓 + 现金补入 + 手续费一起做对账。
+它跟[持仓总览](./holdings.md)里的「切换链路」**不是一回事**：切换链路是已发生事实的连续盈亏，本页是**单次切换前后的对比工具**，可以反复试算、保存历史分析、删了重来。
 
-## 一、文档（document）模型
+## 页面结构
 
-一个 fundSwitch document 是一次完整的换仓对账记录，由若干识别行 + 比较参数构成。
+顶部一排 5 个数字卡（`CompactMetricCard`）：
 
-| 函数 | 作用 |
-|---|---|
-| `createDefaultFundSwitchState()` | 空白状态 |
-| `readFundSwitchState()` | 读当前正在编辑的 document |
-| `persistFundSwitchState(state, computed)` | 持久化当前编辑态 |
-| `readFundSwitchDocuments() / readFundSwitchDocument(id)` | 已保存 document 列表与单条读取 |
-| `saveFundSwitchDocument(state, opts)` | 保存当前编辑为新 document（或更新） |
-| `deleteFundSwitchDocument(id)` | 删除 document |
-| `readFundSwitchHistory()` | 历史归档（结果快照） |
-| `saveFundSwitchHistoryEntry(state, computed)` | 把当前 document 写入历史 |
-| `deleteFundSwitchHistoryEntry(id)` | 删历史条目 |
-| `buildFundSwitchSummary(state, { getCurrentPrice })` | 核心计算入口，产出 `summary.comparison` |
-| `deriveFundSwitchComparison(rows, comparison, strategyOverride)` | 用不同策略口径重新算对比 |
+| 卡片 | 含义 |
+| --- | --- |
+| **如果不换，现在值多少** | 假设钱还留在 A 基金，按 A 当前净值算 |
+| **换到现在这只后，值多少** | 实际切到 B 之后，按 B 当前净值算 |
+| **现持仓浮盈** | 已切换部分的当前浮盈 |
+| **预估处理金额** | 这次切换涉及的总金额 |
+| **额外补入现金** | 卖 A 不够买 B 时，额外补的现金 |
 
-## 二、URL hash 路由
+下面 3 个区块（步骤折叠卡，同时只能展开一个）：
 
-- `parseFundSwitchHashRoute(hash)`：解析 `#doc-<id>` → 切换到对应 document。
-- `isFundSwitchViewHash(hash)` / `buildFundSwitchViewHash(docId)`：写入 hash。
-- React state 中 `routeState` 受 `readFundSwitchRouteState` 控制；切换 document 时不刷新页面。
+1. **等待确认识别明细** — OCR 或手动录入的交易，先在这里核对再纳入计算
+2. **计算参数（收益口径与价格校准）** — 选用什么口径算收益，给现价做校准
+3. **成本调整（切换成本调整项）** — 手续费、汇率差等额外成本
 
-## 三、UI 工作流（4 步骤）
+再下面是「历史分析」列表，可以保存当前分析、回看以前的对比。
 
-顶部一个 expandable workflow，受 `expandedStepKey` 控制（点击展开 / 折叠当前步骤）。
+---
 
-| Step | 关键 UI | 说明 |
-|---|---|---|
-| 选择策略口径 | `FUND_SWITCH_STRATEGIES` 下拉（`STRATEGY_LABELS / STRATEGY_DESCRIPTIONS`） | 决定 `comparison` 计算用「按金额/按份额/按净额」哪种算法 |
-| 录入识别行 | `rows[]` 表格 | 字段：日期 (`例如 2026-03-29`)、基金代码、净值 (`step=0.0001`)、金额 (`step=0.01`)；可粘贴或截图 OCR 导入 |
-| 校准价格 | 「计算参数 / 收益口径与价格校准」 Section | 当前价默认从 `loadLatestNasdaqPrices` 拉，允许人工覆写 |
-| 成本调整 | 「成本调整 / 切换成本调整项」 Section | `comparison.extraCash`（额外补入现金）、`comparison.switchCost`（切换成本）、`feePerTrade × feeTradeCount`（按笔数算手续费） |
+## 常见操作
 
-## 四、收益摘要（`buildFundSwitchSummary`）
+### 完整工作流（典型路径）
 
-返回的 `summary` 含三张 CompactMetricCard：
+1. **上传截图 / 手动录入两边交易**
+   - 上传基金 APP 的成交截图，或者直接在「等待确认识别明细」里手动加行。
+   - 上传支持拖拽 PNG / JPG。
+2. **核对识别明细**
+   - 展开「等待确认识别明细」区块，逐条检查代码、日期、价、份额。
+   - 错的字段直接点改；不要的记录点行尾「**删除记录**」。
+   - 这一步**不确认完，下方两个区块会被锁住**（提示文案：「先去『识别明细』里确认交易数据」）。
+3. **配置计算参数**
+   - 展开「计算参数」区块。
+   - 选收益口径（含费 / 不含费 / 自定义）。
+   - 校准当前价（系统会拉最新净值，可以手动覆盖）。
+4. **配置成本调整**
+   - 展开「成本调整」区块。
+   - 加入手续费、申赎费、汇率差等。
+5. **看顶部 5 个数字卡**
+   - 「如果不换 vs 换了之后」差额就是这次切换的得失。
+6. **保存到历史**
+   - 满意的话点「保存」，本次分析会进入下方的「历史分析」列表。
 
-- **「如果不换，现在值多少」** — 仍持有原 ETF 在当前价下的市值
-- **「换到现在这只后，值多少」** — 完成换仓 + 现金补入后的当前市值
-- **「现持仓浮盈」** — `换后市值 − 已识别成交累计金额 + 已计入额外现金`
+### 删除已识别记录
 
-以及辅助 metric：
+在「等待确认识别明细」区块，每行尾部有删除图标（title「删除记录」）。点击立即删除，不可撤销，但可以重新上传截图再识别。
 
-- 「预估处理金额」= 已识别记录累计成交额
-- 「额外补入现金」= 已计入最终真实额外收益
-- `summary.comparison.advantage` 用 `getAdvantageTone` 决定徽章颜色（emerald/red/slate）
+### 删除一条历史分析
 
-## 五、数据导入路径
+下方「历史分析」每张卡片右上角有删除按钮，会 toast 「删除历史分析」成功。
 
-1. **手动逐行**：表格内直接增/删/改行（`createEmptyFundSwitchRow()` + `Trash2`）。
-2. **截图 OCR**：复用 `recognizeLedgerFile`（`POST /api/holdings/ocr`），把识别出的成交按字段映射到 `rows[]`。`ocrState` 跟踪上传 / 解析状态。
-3. **从持仓 ledger 派生**：用持仓中的成交记录直接构造 `rows[]`（用 `buildFundSwitchStateFromHistoryEntry` / `buildFundSwitchStateFromDocument` 反向再编辑）。
+### 重新分析
 
-## 六、状态键速查
+清空当前所有内容：通过「最近上传」面板的「**删除最近上传**」按钮可以清掉本次工作流，重新开始。
 
-React state：
+---
 
-```
-state                  // 当前编辑中 document（rows + comparison + 策略 + currentPrice 等）
-documentEntries        // 已保存 document 列表（左栏）
-historyEntries         // 已归档历史结果
-ocrState               // OCR 上传 / 解析进度
-activeWorkspacePanel   // details | summary（默认 details，等结果确认完跳 summary）
-routeState             // hash route 状态
-expandedStepKey        // 展开的工作流步骤
-highlightedRowIndex    // OCR 结果高亮的行
-confirmError           // 确认按钮的报错
-priceState             // 价格快照拉取状态：idle/loading/ready/error
-```
+## 常见问题 Q&A
 
-localStorage：
+**Q：跟「持仓总览 → 切换链路」的区别？**
+A：
+- **本 tab**：单次切换的**假设性对比**工具。可以保存多个分析，互不干扰，**不影响**持仓数据。
+- **切换链路**：在持仓数据上**手动标注**的真实切换关系，用来连续算每段实际收益，**会**影响汇总展示。
+如果你只想试算「换了到底亏不亏」，用本 tab；如果你已经在持仓里有这两笔交易、想长期跟踪，去切换链路。
 
-```
-aiDcaFundSwitchState        # 当前编辑态（reset 时清空）
-aiDcaFundSwitchDocuments    # 已保存 document 数组
-aiDcaFundSwitchHistory      # 历史归档结果
-```
+**Q：上传截图后，下面两块（计算参数 / 成本调整）灰色点不动？**
+A：必须**先**在「等待确认识别明细」里逐条点确认。提示文案就是「先去『识别明细』里确认交易数据，然后这里才会开放收益口径、现价补录和成本校准」。
 
-## 七、和其他 tab 的耦合
+**Q：5 个数字卡为什么显示 — / 0？**
+A：通常是这几种情况：
+- 识别明细没确认 → 顶部不会算
+- 缺少 A 或 B 任一边的成交 → 算不出对比基准
+- 当前价没拉到 → 在「计算参数」里手动补一下
 
-- 持仓 tab：换仓链路（`switchChains`）的源 / 目标流水可以快速生成一份 fundSwitch document。
-- 价格服务：和加仓 dashboard / NewPlan 共用 `nasdaqPrices.js`，避免重复请求。
-- AI 助手：`buildFundSwitchSummary` 的运行结果会作为 page context 注入 AI 问答。
+**Q：OCR 识别的字段错了怎么办？**
+A：在「等待确认识别明细」区块**直接点字段编辑**。识别只是给个初稿，最终值以你确认的为准。
+
+**Q：保存的历史分析在哪？换电脑还在吗？**
+A：保存在浏览器 localStorage（key：`aiDcaFundSwitchHistory` 之类）。**换设备会丢**，先去[数据同步](./backup.md)备份再迁。
+
+**Q：「额外补入现金」是什么？**
+A：当 A 卖出回款不够买 B 全额时，差额需要额外补现金。例如卖 A 拿到 1 万，但买 B 想买 1.2 万，那「额外补入现金」= 2000。
+
+**Q：「成本调整」要填什么？**
+A：常见项：
+- A 基金赎回手续费（持有不足某天数会有惩罚费率）
+- B 基金申购手续费（虽然 0 折通常很低，但仍然计）
+- QDII 涉及汇率差时的损耗
+填得越实际，5 张数字卡越准。可以留空（视为无额外成本）。
+
+---
+
+## 相关页面
+
+- [持仓总览](./holdings.md) → 切换链路 — 已发生切换的连续盈亏跟踪
+- [数据同步](./backup.md) — 历史分析的跨设备备份
