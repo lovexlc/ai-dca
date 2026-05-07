@@ -53,6 +53,14 @@ OCR_MAX_TOKENS = "4096"
 CHAT_MODEL = "@cf/meta/llama-3.1-8b-instruct"
 # /api/ai-chat 单次生成上限。
 CHAT_MAX_TOKENS = "1024"
+# AI 问答检索使用的 embedding 模型。bge-m3 是多语言 1024 维，中文友好。
+EMBED_MODEL = "@cf/baai/bge-m3"
+# embedding 向量维度，要与 Vectorize 索引创建时一致。
+EMBED_DIMENSIONS = "1024"
+# /api/ai-chat 从知识库召回的 topK 。
+CHAT_TOP_K = "5"
+# 少于此分数的检索命中丢弃（0~1、越高越相似）。
+CHAT_MIN_SCORE = "0.3"
 
 # fund-limit 接口的 KV 缓存。
 # - key 形态：limit:<6位基金代码>
@@ -64,3 +72,9 @@ CHAT_MAX_TOKENS = "1024"
 binding = "FUND_LIMIT_KV"
 id = "633d193bdcb045e3bdbc098ff6249224"
 preview_id = "1892e345c6754009ac678ce467189ef2"
+
+# 网站知识库向量索引。需预先用 wrangler vectorize create ai-dca-kb 创建，
+# 或者让 scripts/build_kb.mjs 首次运行时自动创建。
+[[vectorize]]
+binding = "KNOWLEDGE_INDEX"
+index_name = "ai-dca-kb"

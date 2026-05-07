@@ -1677,10 +1677,56 @@ async function handleAiChat(request, env) {
   }
   const rawMessages = Array.isArray(body?.messages) ? body.messages : [];
   const messages = [];
-  const systemPrompt = typeof body?.system === 'string' && body.system.trim()
+  const baseSystem = typeof body?.system === 'string' && body.system.trim()
     ? body.system.trim()
     : '你是 ai-dca 应用内置的 AI 助手，回答简洁、用中文。涉及具体投资建议时提醒用户自行判断风险，不给出绝对收益承诺。';
-  messages.push({ role: 'system', content: systemPrompt });
+
+  // 取最后一条 user 消息作为检索 query
+  let lastUserContent = '';
+  for (let i = rawMessages.length - 1; i >= 0; i--) {
+    const m = rawMessages[i];
+    if (m && m.role === 'user' && typeof m.content === 'string' && m.content.trim()) {
+      lastUserContent = m.content.trim();
+      break;
+    }
+  }
+
+  // 调用知识库检索（失败不阻断主流程）
+  const knowledge = await retrieveKnowledge(lastUserContent, env).catch((err) => {
+    console.warn('[ai-chat] retrieve failed:', err && err.message ? err.message : err);
+    return [];
+  });
+
+  // 前端可选附带：当前页面简介 / 本地数据片段
+  const pageContext = typeof body?.pageContext === 'string' ? body.pageContext.slice(0, 2000).trim() : '';
+  const dataSnippets = Array.isArray(body?.dataSnippets)
+    ? body.dataSnippets
+        .filter((s) => typeof s === 'string' && s.trim())
+        .slice(0, 8)
+        .map((s) => s.slice(0, 800))
+    : [];
+
+  // 拼接增强 system prompt
+  const systemParts = [baseSystem];
+  if (knowledge.length > 0) {
+    const ctx = knowledge
+      .map((k, i) => `【片段${i + 1}｜${k.title || k.source || ''}】\n${k.text}`)
+      .join('\n\n---\n\n');
+    systemParts.push(
+      '以下是从本站知识库检索到的相关资料，请优先依据它们回答。如果资料与问题不相关可以忽略：\n\n' + ctx,
+    );
+  }
+  if (pageContext) {
+    systemParts.push('用户当前页面上下文：\n' + pageContext);
+  }
+  if (dataSnippets.length > 0) {
+    systemParts.push(
+      '用户本地数据片段（仅本次对话使用，不会保存）：\n' +
+        dataSnippets.map((s, i) => `[${i + 1}] ${s}`).join('\n'),
+    );
+  }
+  messages.push({ role: 'system', content: systemParts.join('\n\n') });
+
   for (const m of rawMessages) {
     if (!m || typeof m.content !== 'string') continue;
     const role = m.role === 'assistant' ? 'assistant' : (m.role === 'system' ? 'system' : 'user');
@@ -1727,7 +1773,65 @@ async function handleAiChat(request, env) {
       raw: aiResult ?? null
     }, 502);
   }
-  return jsonResponse({ reply, model });
+  return jsonResponse({
+    reply,
+    model,
+    sources: knowledge.map((k) => ({
+      source: k.source,
+      title: k.title,
+      score: k.score,
+    })),
+  });
+}
+
+/**
+ * 从 Vectorize 知识库检索与 query 最相关的片段。
+ * 返回按相似度递减排列的片段数组。
+ */
+async function retrieveKnowledge(query, env) {
+  if (!query || !env || !env.KNOWLEDGE_INDEX || typeof env.KNOWLEDGE_INDEX.query !== 'function') {
+    return [];
+  }
+  if (!env.AI || typeof env.AI.run !== 'function') return [];
+
+  const embedModel = env.EMBED_MODEL || '@cf/baai/bge-m3';
+  const topK = Number(env.CHAT_TOP_K) > 0 ? Math.min(Number(env.CHAT_TOP_K), 10) : 5;
+  const minScore = Number.isFinite(Number(env.CHAT_MIN_SCORE)) ? Number(env.CHAT_MIN_SCORE) : 0.3;
+
+  let embed;
+  try {
+    embed = await env.AI.run(embedModel, { text: [query.slice(0, 1000)] });
+  } catch (err) {
+    console.warn('[ai-chat] embed failed:', err && err.message ? err.message : err);
+    return [];
+  }
+  const vector =
+    (Array.isArray(embed?.data) && Array.isArray(embed.data[0]) && embed.data[0]) ||
+    (Array.isArray(embed) && Array.isArray(embed[0]) && embed[0]) ||
+    null;
+  if (!vector || vector.length === 0) return [];
+
+  let queryRes;
+  try {
+    queryRes = await env.KNOWLEDGE_INDEX.query(vector, {
+      topK,
+      returnMetadata: 'all',
+    });
+  } catch (err) {
+    console.warn('[ai-chat] vectorize query failed:', err && err.message ? err.message : err);
+    return [];
+  }
+  const matches = Array.isArray(queryRes?.matches) ? queryRes.matches : [];
+  return matches
+    .filter((m) => typeof m.score === 'number' && m.score >= minScore)
+    .map((m) => ({
+      id: m.id,
+      score: m.score,
+      source: m.metadata?.source || '',
+      title: m.metadata?.title || '',
+      text: typeof m.metadata?.text === 'string' ? m.metadata.text : '',
+    }))
+    .filter((m) => m.text.trim().length > 0);
 }
 
 export default {
