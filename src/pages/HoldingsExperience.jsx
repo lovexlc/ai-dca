@@ -1389,11 +1389,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           isSelected ? 'bg-indigo-50/90' : 'bg-white'
         )}>
           <div className="flex justify-end gap-1.5" onClick={(event) => event.stopPropagation()}>
-            <button type="button" title="编辑" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-600 ring-1 ring-slate-200/80 transition-colors hover:bg-slate-100 hover:text-slate-900" onClick={() => handleStartEdit(row)}>
+            <button type="button" title="编辑" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-600 ring-1 ring-slate-200/80 transition-colors hover:bg-slate-100 hover:text-slate-900" onClick={() => handleCopyRowToDraft(row)}>
             <Pencil className="h-4 w-4" />
-          </button>
-          <button type="button" title="复制到录入表" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-600 ring-1 ring-slate-200/80 transition-colors hover:bg-slate-100 hover:text-slate-900" onClick={() => handleCopyRowToDraft(row)}>
-            <FileImage className="h-4 w-4" />
           </button>
           <button type="button" title="删除" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-red-600 ring-1 ring-red-200/80 transition-colors hover:bg-red-50 hover:text-red-700" onClick={() => handleDeleteTransaction(tx.id)}>
             <Trash2 className="h-4 w-4" />
