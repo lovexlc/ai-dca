@@ -1062,7 +1062,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       };
     })();
     const todayCumulativeBadge = cumulativeStats ? {
-      text: `累${cumulativeStats.spanDays}日`,
+      text: `跨节${cumulativeStats.spanDays}日`,
       className: 'rounded-sm bg-amber-50 px-1 py-px text-[10px] font-semibold text-amber-700 ring-1 ring-amber-200',
       title: `${cumulativeStats.kindLabel || '部分持仓'}跨越节假日：该「当日收益」为跨 ${cumulativeStats.spanDays} 天（含 ${cumulativeStats.holidayDays} 个法定假期工作日）的累计涨跌，非单日波动。\n涉及代码：${cumulativeStats.codes.join(', ')}`
     } : null;
@@ -1494,7 +1494,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                       <sup
                         className="ml-0.5 inline-block rounded-sm bg-amber-50 px-1 py-px align-super text-[9px] font-semibold text-amber-700 ring-1 ring-amber-200"
                         title={`跨越节假日：${agg.previousNavDate} → ${agg.latestNavDate}（共 ${agg.todayProfitSpanDays} 天，含 ${agg.todayProfitHolidayDays} 个法定假期工作日）。该「当日收益」为整段空窗的累计涨跌，非单日波动。`}
-                      >累{agg.todayProfitSpanDays}日</sup>
+                      >跨节{agg.todayProfitSpanDays}日</sup>
                     ) : null}
                   </td>
                   <td className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', todayClass)}>
@@ -2035,7 +2035,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 <sup
                   className="ml-1 inline-block rounded-sm bg-amber-50 px-1 py-px align-super text-[9px] font-semibold text-amber-700 ring-1 ring-amber-200"
                   title={`跨越节假日：${agg.previousNavDate} → ${agg.latestNavDate}（共 ${agg.todayProfitSpanDays} 天，含 ${agg.todayProfitHolidayDays} 个法定假期工作日）。该「今日盈亏」为整段空窗的累计涨跌，非单日波动。`}
-                >累{agg.todayProfitSpanDays}日</sup>
+                >跨节{agg.todayProfitSpanDays}日</sup>
               ) : null}
             </dd>
           </div>
