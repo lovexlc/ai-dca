@@ -677,30 +677,15 @@ export function buildHoldingsNotifyDigest({ aggregates = [], summary = null } = 
     }
   }
 
-  // 组合层面 totals：仅在 summary 提供了对应字段时上传；任何字段都可缺省。
-  // 这里只放「组合维度」的几个数字，不放 per-fund 份额/成本。
-  const totals = {};
-  if (summary && typeof summary === 'object') {
-    for (const key of [
-      'marketValue',
-      'totalCost',
-      'previousMarketValue',
-      'totalProfit',
-      'todayProfit',
-      'totalReturnRate',
-      'todayReturnRate'
-    ]) {
-      const v = Number(summary[key]);
-      if (Number.isFinite(v)) totals[key] = round(v, 4);
-    }
-  }
+  // 出于隐私考虑：digest 不上传任何资产/金额字段（market value、cost、profit、return rate 等）。
+  // 仅上传 per-fund code 与组合内相对 weight，由 worker 拉取 NAV 后计算加权收益率；
+  // 推送中只显示百分比，具体金额引导用户回到网页查看。
 
   return {
     version: 1,
     generatedAt: new Date().toISOString(),
     exchange,
-    otc,
-    ...(Object.keys(totals).length ? { totals } : {})
+    otc
   };
 }
 

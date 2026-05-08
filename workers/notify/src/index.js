@@ -1686,25 +1686,8 @@ function normalizeHoldingsDigest(digest) {
     return result;
   }
 
-  // 透传组合层面 totals（仅用于「全仓总览」推送展示金额）。
-  // 仅记录组合维度的几个数字（总市值 / 总成本 / 昨日总市值 / 当日盈亏 / 累计盈亏 / 累计与当日收益率），
-  // 不包含任何 per-fund 份额或单笔成本。
-  if (digest.totals && typeof digest.totals === 'object') {
-    const totals = {};
-    for (const k of [
-      'marketValue',
-      'totalCost',
-      'previousMarketValue',
-      'totalProfit',
-      'todayProfit',
-      'totalReturnRate',
-      'todayReturnRate'
-    ]) {
-      const v = Number(digest.totals[k]);
-      if (Number.isFinite(v)) totals[k] = v;
-    }
-    if (Object.keys(totals).length) result.totals = totals;
-  }
+  // 旧版 digest 可能携带 totals（marketValue / todayProfit / totalProfit / …）。
+  // 出于隐私考虑现在统一丢弃：不透传到 KV，也不在推送里展示金额；worker 仅根据 code/weight 计算加权收益率百分比。
 
   return result;
 }
@@ -2150,11 +2133,13 @@ function buildHoldingsNotificationContent(kind, returnRate, contributors) {
   const kindLabel = kind === 'exchange' ? '场内' : '场外';
   const title = `[${kindLabel}] 当日收益 ${formatPercent(returnRate)}`;
   const top = contributors.slice(0, 3).map((item) => `${item.code} ${formatPercent(item.ratio)}`);
+  // 出于隐私考虑：推送仅展示加权收益率，不再携带 ¥ 金额；具体金额请回网页查看。
   const body = top.length
-    ? `今日${kindLabel}加权收益率 ${formatPercent(returnRate)}；贡献 Top：${top.join('、')}。`
-    : `今日${kindLabel}加权收益率 ${formatPercent(returnRate)}。`;
+    ? `今日${kindLabel}加权收益率 ${formatPercent(returnRate)}；贡献 Top：${top.join('、')}。详情请打开网页查看。`
+    : `今日${kindLabel}加权收益率 ${formatPercent(returnRate)}。详情请打开网页查看。`;
   const bodyMdLines = [`${kindLabel}加权收益率：**${formatPercent(returnRate)}**`];
   if (top.length) bodyMdLines.push(`Top：${top.join('、')}`);
+  bodyMdLines.push('详情请打开网页查看。');
   const body_md = bodyMdLines.join('\n');
   return { title, body, summary: `${kindLabel}当日收益 ${formatPercent(returnRate)}`, body_md };
 }
@@ -2283,51 +2268,23 @@ async function runHoldingsNotifications(env, kind, todayShanghai, reason = 'hold
 }
 
 // 全仓总览（场内 + 场外合并）推送内容构造。
-// totals 如果存在，推送里会同时显示 ¥ 金额；否则只显示百分比。
-function buildHoldingsNotificationContentAll(returnRate, contributors, totals = null) {
+// 出于隐私考虑：不再展示任何 ¥ 金额（不论旧版 digest 是否携带 totals），
+// 仅显示加权收益率百分比 + 贡献 Top；具体金额引导用户去网页查看。
+// 第三个参数保留签名以兼容旧调用方，内部不再读取。
+function buildHoldingsNotificationContentAll(returnRate, contributors, _totalsLegacy = null) {
+  void _totalsLegacy;
   const dailyPct = formatPercent(returnRate);
-
-  // 当日 ¥ 金额：优先用 totals.todayProfit；否则用 previousMarketValue × 加权收益率 估算。
-  let dailyAmt = '';
-  if (totals) {
-    if (Number.isFinite(totals.todayProfit)) {
-      const sign = totals.todayProfit >= 0 ? '+' : '−';
-      dailyAmt = `${sign}¥${Math.abs(totals.todayProfit).toFixed(2)}`;
-    } else if (Number.isFinite(totals.previousMarketValue) && totals.previousMarketValue > 0) {
-      const profit = totals.previousMarketValue * returnRate;
-      const sign = profit >= 0 ? '+' : '−';
-      dailyAmt = `${sign}¥${Math.abs(profit).toFixed(2)}`;
-    }
-  }
-
-  // 累计收益行：仅在 totals 提供了 totalProfit + totalReturnRate 时输出。
-  // totalReturnRate 在前端已以「百分数值」存储（例如 2.72 表示 2.72%）。
-  let totalLine = '';
-  if (totals && Number.isFinite(totals.totalProfit) && Number.isFinite(totals.totalReturnRate)) {
-    const sign = totals.totalProfit >= 0 ? '+' : '−';
-    const rateSign = totals.totalReturnRate >= 0 ? '+' : '−';
-    totalLine = `；总收益 ${sign}¥${Math.abs(totals.totalProfit).toFixed(2)} (${rateSign}${Math.abs(totals.totalReturnRate).toFixed(2)}%)`;
-  }
-
   const top = (contributors || []).slice(0, 3).map((item) => `${item.code} ${formatPercent(item.ratio)}`);
-  const titleAmt = dailyAmt ? `${dailyAmt} (${dailyPct})` : dailyPct;
-  const title = `[持仓总览] 当日收益 ${titleAmt}`;
-  const summary = `当日 ${titleAmt}${totalLine}`;
-  const dailyText = dailyAmt ? `${dailyAmt} (${dailyPct})` : dailyPct;
+  const title = `[持仓总览] 当日收益 ${dailyPct}`;
+  const summary = `当日加权收益率 ${dailyPct}`;
   const body = top.length
-    ? `今日加权收益率 ${dailyText}${totalLine}；贡献 Top：${top.join('、')}。`
-    : `今日加权收益率 ${dailyText}${totalLine}。`;
+    ? `今日加权收益率 ${dailyPct}；贡献 Top：${top.join('、')}。详情请打开网页查看。`
+    : `今日加权收益率 ${dailyPct}。详情请打开网页查看。`;
 
   // Android 客户端：支持 body_md（目前仅实现 **bold** 的渲染）。
-  // 这里提供更“分行 + 强调”的内容，便于在通知栏里快速扫读。
-  const bodyMdLines = [];
-  bodyMdLines.push(`当日：**${titleAmt}**`);
-  if (totals && Number.isFinite(totals.totalProfit) && Number.isFinite(totals.totalReturnRate)) {
-    const profitSign = totals.totalProfit >= 0 ? '+' : '−';
-    const rateSign = totals.totalReturnRate >= 0 ? '+' : '−';
-    bodyMdLines.push(`总计：${profitSign}¥${Math.abs(totals.totalProfit).toFixed(2)} (${rateSign}${Math.abs(totals.totalReturnRate).toFixed(2)}%)`);
-  }
+  const bodyMdLines = [`加权收益率：**${dailyPct}**`];
   if (top.length) bodyMdLines.push(`Top：${top.join('、')}`);
+  bodyMdLines.push('详情请打开网页查看。');
   const body_md = bodyMdLines.join('\n');
 
   return { title, body, summary, body_md };
@@ -2382,15 +2339,8 @@ async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holding
     }
 
     const digest = normalizeHoldingsDigest(stored.digest);
-    if (totalsOverride) {
-      // 管理员测试：临时覆盖 totals，以便在 digest 还未带 totals 时也能展示 ¥ 金额。
-      const merged = { ...(digest.totals || {}) };
-      for (const [k, v] of Object.entries(totalsOverride)) {
-        const num = Number(v);
-        if (Number.isFinite(num)) merged[k] = num;
-      }
-      if (Object.keys(merged).length) digest.totals = merged;
-    }
+    // 注：digest 不再包含 totals（金额字段），totalsOverride 选项保留签名但已被忽略，
+    // 推送仅展示加权收益率百分比，金额请去网页查看。
     const exchangeBucket = digest.exchange || [];
     const otcBucket = digest.otc || [];
     console.log('[notify][holdings-all] digest', JSON.stringify({
@@ -2472,11 +2422,9 @@ async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holding
       }))
       .sort((a, b) => Math.abs(b.ratio) - Math.abs(a.ratio));
 
-    const totals = digest.totals || null;
     const { title, body, summary, body_md } = buildHoldingsNotificationContentAll(
       dailyReturnRate,
-      sortedContribs,
-      totals
+      sortedContribs
     );
 
     const clientRecord = getClientRecord(settings, clientId, stored.clientLabel || '');
