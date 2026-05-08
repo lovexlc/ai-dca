@@ -2137,9 +2137,13 @@ function buildHoldingsNotificationContent(kind, returnRate, contributors) {
   const body = top.length
     ? `今日${kindLabel}加权收益率 ${formatPercent(returnRate)}；贡献 Top：${top.join('、')}。详情请打开网页查看。`
     : `今日${kindLabel}加权收益率 ${formatPercent(returnRate)}。详情请打开网页查看。`;
-  const bodyMdLines = [`${kindLabel}加权收益率：**${formatPercent(returnRate)}**`];
-  if (top.length) bodyMdLines.push(`Top：${top.join('、')}`);
-  bodyMdLines.push('详情请打开网页查看。');
+  // Android 客户端 MarkdownRenderer 支持 **bold** / 列表 / 空行；这里给出更清晰的视觉层次。
+  const topMdItems = contributors.slice(0, 3).map((item) => `- ${item.code} **${formatPercent(item.ratio)}**`);
+  const bodyMdLines = [`**${kindLabel}加权收益率 ${formatPercent(returnRate)}**`];
+  if (topMdItems.length) {
+    bodyMdLines.push('', '贡献 Top：', ...topMdItems);
+  }
+  bodyMdLines.push('', '详情请打开网页查看。');
   const body_md = bodyMdLines.join('\n');
   return { title, body, summary: `${kindLabel}当日收益 ${formatPercent(returnRate)}`, body_md };
 }
@@ -2281,10 +2285,13 @@ function buildHoldingsNotificationContentAll(returnRate, contributors, _totalsLe
     ? `今日加权收益率 ${dailyPct}；贡献 Top：${top.join('、')}。详情请打开网页查看。`
     : `今日加权收益率 ${dailyPct}。详情请打开网页查看。`;
 
-  // Android 客户端：支持 body_md（目前仅实现 **bold** 的渲染）。
-  const bodyMdLines = [`加权收益率：**${dailyPct}**`];
-  if (top.length) bodyMdLines.push(`Top：${top.join('、')}`);
-  bodyMdLines.push('详情请打开网页查看。');
+  // Android 客户端 MarkdownRenderer 支持 **bold** / 列表 / 空行；这里给出更清晰的视觉层次。
+  const topMdItems = (contributors || []).slice(0, 3).map((item) => `- ${item.code} **${formatPercent(item.ratio)}**`);
+  const bodyMdLines = [`**当日加权收益率 ${dailyPct}**`];
+  if (topMdItems.length) {
+    bodyMdLines.push('', '贡献 Top：', ...topMdItems);
+  }
+  bodyMdLines.push('', '详情请打开网页查看。');
   const body_md = bodyMdLines.join('\n');
 
   return { title, body, summary, body_md };
