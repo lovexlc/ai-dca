@@ -4,11 +4,6 @@ on:
   push:
     branches: [main]
     paths:
-      - 'README.md'
-      - 'demand.md'
-      - 'AGENTS.MD'
-      - 'workers/README.md'
-      - 'docs/**/*.md'
       - 'scripts/build_kb.mjs'
       - '.github/workflows/build-knowledge-base.yml'
   schedule:
@@ -29,12 +24,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Checkout ai-dca-andriod (Android app docs)
-        uses: actions/checkout@v4
-        with:
-          repository: lovexlc/ai-dca-andriod
-          ref: main
-          path: external/ai-dca-andriod
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -48,7 +37,6 @@ jobs:
           KB_INDEX_NAME: ai-dca-kb
           EMBED_MODEL: '@cf/baai/bge-m3'
           KB_DIMENSIONS: '1024'
-          EXTRA_SOURCES_DIR: external/ai-dca-andriod
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_KB_ROOT_PAGE_ID: ${{ secrets.NOTION_KB_ROOT_PAGE_ID }}
         run: node scripts/build_kb.mjs

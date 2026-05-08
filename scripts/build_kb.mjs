@@ -1,22 +1,22 @@
 #!/usr/bin/env node
 /**
- * 构建网站知识库。
+ * 构建网站知识库（仅 Notion 数据源）。
  *
- * 1. 扫描设定的 markdown / 文本文件
+ * 1. 从 Notion 根页面递归拉取子页（child_page）
  * 2. 切片（默认 800 字 / 100 字 重叠）
  * 3. 调用 Cloudflare Workers AI embedding 接口生成向量
  * 4. upsert 到 Cloudflare Vectorize 索引 (默认 ai-dca-kb)
  *
- * 需要环境变量：
+ * 必需环境变量：
  *   CLOUDFLARE_API_TOKEN  需含 Workers AI Read + Vectorize Edit 权限
  *   CLOUDFLARE_ACCOUNT_ID
+ *   NOTION_API_KEY            Notion internal integration token
+ *   NOTION_KB_ROOT_PAGE_ID    KB 根页面 ID（必须把该页 share 给上面的 integration）
+ *
+ * 可选环境变量：
  *   KB_INDEX_NAME         可选，默认 ai-dca-kb
  *   EMBED_MODEL           可选，默认 @cf/baai/bge-m3
  *   KB_DIMENSIONS         可选，默认 1024
- *
- * 可选环境变量（启用 Notion 数据源）：
- *   NOTION_API_KEY            Notion internal integration token
- *   NOTION_KB_ROOT_PAGE_ID    KB 根页面 ID（必须把该页 share 给上面的 integration）
  *   NOTION_VERSION            可选，默认 2022-06-28
  *   NOTION_MAX_DEPTH          可选，默认 2（根页面 -> 子页 -> 孙页）
  *
@@ -28,14 +28,6 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
-
-// 可选：第二个仓库根（例如 ai-dca-andriod）。
-// 在 GitHub Actions 中通过额外的 actions/checkout 把目标仓库 checkout 到一个目录，
-// 然后把这个目录路径塞进 EXTRA_SOURCES_DIR 环境变量；本地构建时可不设置，
-// 对应文件会被静默跳过。值可以是绝对路径，也可以是相对当前工作目录的相对路径。
-const ANDROID_ROOT = process.env.EXTRA_SOURCES_DIR
-  ? path.resolve(process.env.EXTRA_SOURCES_DIR)
-  : null;
 
 const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
 const API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
@@ -55,34 +47,10 @@ if (!ACCOUNT_ID || !API_TOKEN) {
   process.exit(1);
 }
 
-// 要纳入知识库的文件。路径相对于仓库根。
-// 补充新文档只需在这里添加一行。
-const SOURCES = [
-  'README.md',
-  'demand.md',
-  'AGENTS.MD',
-  'workers/README.md',
-  'docs/architecture/realtime-channel.md',
-  'docs/home-redesign.md',
-  'docs/ops/notify-worker-deploy.md',
-  'docs/qdii-nav-rules.md',
-  // 用户向 tab 使用文档（AI 问答 RAG 的主要回答来源）
-  'docs/tabs/README.md',
-  'docs/tabs/holdings.md',
-  'docs/tabs/trade-plans.md',
-  'docs/tabs/fund-switch.md',
-  'docs/tabs/history.md',
-  'docs/tabs/notify.md',
-  'docs/tabs/backup.md',
-];
-
-// 第二仓库（ai-dca-andriod）里要纳入 KB 的文件。路径相对于 EXTRA_SOURCES_DIR。
-// source 标签会自动加上 `ai-dca-andriod/` 前缀，方便在 sources[] 里区分来源。
-const ANDROID_SOURCES = [
-  'README.md',
-  'AGENTS.md',
-  'docs/raw-ringtones.md',
-];
+if (!NOTION_API_KEY || !NOTION_KB_ROOT_PAGE_ID) {
+  console.error('❌ 缺少环境变量 NOTION_API_KEY / NOTION_KB_ROOT_PAGE_ID');
+  process.exit(1);
+}
 
 // === Notion KB 数据源（可选） ===
 // 用户在 Notion 里建一个父页面，把所有 KB 子页放在它下面。
@@ -215,10 +183,6 @@ async function collectNotionPages(rootPageId, maxDepth, depth = 0, acc = []) {
 }
 
 async function buildNotionDocs() {
-  if (!NOTION_API_KEY || !NOTION_KB_ROOT_PAGE_ID) {
-    console.log('… 未设置 NOTION_API_KEY / NOTION_KB_ROOT_PAGE_ID，跳过 Notion 数据源');
-    return [];
-  }
   console.log(`→ Notion KB 根页面：${NOTION_KB_ROOT_PAGE_ID} (max depth ${NOTION_MAX_DEPTH})`);
   const pages = await collectNotionPages(NOTION_KB_ROOT_PAGE_ID, NOTION_MAX_DEPTH);
   console.log(`  发现 ${pages.length} 个 Notion 子页`);
@@ -359,65 +323,6 @@ async function main() {
   await ensureIndex();
 
   const allChunks = [];
-  for (const rel of SOURCES) {
-    const abs = path.join(ROOT, rel);
-    let raw;
-    try {
-      raw = await fs.readFile(abs, 'utf8');
-    } catch (err) {
-      console.warn(`  跳过（读不到）：${rel}`);
-      continue;
-    }
-    const title = extractTitle(rel, raw);
-    const chunks = chunkText(raw);
-    chunks.forEach((c, i) => {
-      allChunks.push({
-        id: sanitizeId(rel, i),
-        text: c,
-        metadata: {
-          source: rel,
-          title,
-          chunkIndex: i,
-          // Vectorize metadata 单条最大 10KB，戉10KB 以保证
-          text: c.length > 9000 ? c.slice(0, 9000) : c,
-        },
-      });
-    });
-    console.log(`  收入：${rel}  (${raw.length} 字 → ${chunks.length} 片)`);
-  }
-
-  if (ANDROID_ROOT) {
-    console.log(`→ 额外仓库根：${ANDROID_ROOT}`);
-    for (const rel of ANDROID_SOURCES) {
-      const abs = path.join(ANDROID_ROOT, rel);
-      const label = `ai-dca-andriod/${rel}`;
-      let raw;
-      try {
-        raw = await fs.readFile(abs, 'utf8');
-      } catch (err) {
-        console.warn(`  跳过（读不到）：${label}`);
-        continue;
-      }
-      const title = extractTitle(label, raw);
-      const chunks = chunkText(raw);
-      chunks.forEach((c, i) => {
-        allChunks.push({
-          id: sanitizeId(label, i),
-          text: c,
-          metadata: {
-            source: label,
-            title,
-            chunkIndex: i,
-            text: c.length > 9000 ? c.slice(0, 9000) : c,
-          },
-        });
-      });
-      console.log(`  收入：${label}  (${raw.length} 字 → ${chunks.length} 片)`);
-    }
-  } else {
-    console.log('… 未设置 EXTRA_SOURCES_DIR，跳过 ai-dca-andriod 文档');
-  }
-
   const notionDocs = await buildNotionDocs();
   for (const doc of notionDocs) {
     const chunks = chunkText(doc.text);
