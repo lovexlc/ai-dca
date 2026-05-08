@@ -78,4 +78,4 @@ preview_id = "1892e345c6754009ac678ce467189ef2"
 # Worker 代码在 src/index.js:1792 对 env.KNOWLEDGE_INDEX 缺失作了优雅降级。
 [[vectorize]]
 binding = "KNOWLEDGE_INDEX"
-index_name = "ai-dca-kb"
+index_name = "ai-dca-kb-v2"
