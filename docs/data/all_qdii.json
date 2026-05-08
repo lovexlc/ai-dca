@@ -1,0 +1,116 @@
+{
+  "dataset": "all_qdii",
+  "version": "1.0",
+  "indexes": [
+    {
+      "key": "sp500",
+      "name": "标普500",
+      "codes": [
+        "513500",
+        "159655",
+        "159612",
+        "513650"
+      ]
+    },
+    {
+      "key": "nasdaq100",
+      "name": "纳斯达克100",
+      "codes": [
+        "159513",
+        "159941",
+        "513100",
+        "159696",
+        "159632",
+        "513390",
+        "513300",
+        "159501",
+        "513870",
+        "159660",
+        "513110",
+        "159659"
+      ]
+    }
+  ],
+  "etfs": [
+    {
+      "code": "513500",
+      "name": "博时标普500ETF(513500)",
+      "index_key": "sp500"
+    },
+    {
+      "code": "159655",
+      "name": "华夏标普500ETF(QDII)",
+      "index_key": "sp500"
+    },
+    {
+      "code": "159612",
+      "name": "国泰标普500(QDII-ETF)",
+      "index_key": "sp500"
+    },
+    {
+      "code": "513650",
+      "name": "南方标普500ETF(QDII)",
+      "index_key": "sp500"
+    },
+    {
+      "code": "159513",
+      "name": "大成纳斯达克100ETF(QDII)",
+      "index_key": "nasdaq100"
+    },
+    {
+      "code": "159941",
+      "name": "广发纳斯达克100ETF",
+      "index_key": "nasdaq100"
+    },
+    {
+      "code": "513100",
+      "name": "国泰纳斯达克100ETF",
+      "index_key": "nasdaq100"
+    },
+    {
+      "code": "159696",
+      "name": "易方达纳斯达克100ETF(QDI)",
+      "index_key": "nasdaq100"
+    },
+    {
+      "code": "159632",
+      "name": "华安纳斯达克100ETF(QDII)",
+      "index_key": "nasdaq100"
+    },
+    {
+      "code": "513390",
+      "name": "博时纳斯达克100ETF(QDII)",
+      "index_key": "nasdaq100"
+    },
+    {
+      "code": "513300",
+      "name": "华夏纳斯达克100ETF(QDII)",
+      "index_key": "nasdaq100"
+    },
+    {
+      "code": "159501",
+      "name": "嘉实纳斯达克100ETF(QDII)",
+      "index_key": "nasdaq100"
+    },
+    {
+      "code": "513870",
+      "name": "富国纳斯达克100ETF(QDII)",
+      "index_key": "nasdaq100"
+    },
+    {
+      "code": "159660",
+      "name": "汇添富纳斯达克100ETF",
+      "index_key": "nasdaq100"
+    },
+    {
+      "code": "513110",
+      "name": "华泰柏瑞纳斯达克100ETF(QDII)",
+      "index_key": "nasdaq100"
+    },
+    {
+      "code": "159659",
+      "name": "招商纳斯达克100ETF(QDII)",
+      "index_key": "nasdaq100"
+    }
+  ]
+}
