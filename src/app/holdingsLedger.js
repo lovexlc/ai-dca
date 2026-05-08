@@ -226,24 +226,25 @@ export async function recognizeLedgerFile(file, onProgress) {
   const result = await recognizeHoldingsFile(file, onProgress);
   const draftTransactions = (Array.isArray(result.rows) ? result.rows : [])
     .map((row, index) => {
+      // 始终保留每一行作为 draft 透传给弹窗（即便 code/price/shares 缺失）。
+      // 弹窗内每个字段都是可编辑 input，会按 getTransactionErrors 自动标红/跳过；
+      // 用户可在导入前手动补齐，缺字段的行不会被写入 ledger（确认按钮过滤）。
       const code = normalizeFundCode(row?.code || '');
-      if (!isValidFundCode(code)) return null;
       const price = Number(row?.avgCost);
       const shares = Number(row?.shares);
-      if (!(price > 0) || !(shares > 0)) return null;
+      const validCode = isValidFundCode(code);
       return normalizeTransaction({
         id: buildTransactionId(`ocr-${index + 1}`),
-        code,
+        code: validCode ? code : '',
         name: row?.name || '',
-        kind: detectFundKind(code),
+        kind: validCode ? detectFundKind(code) : 'otc',
         type: 'BUY',
         date: '',
-        price,
-        shares,
+        price: price > 0 ? price : 0,
+        shares: shares > 0 ? shares : 0,
         note: 'OCR 导入，请核对交易日期与价格'
       }, { idPrefix: 'ocr' });
-    })
-    .filter(Boolean);
+    });
 
   return {
     draftTransactions,

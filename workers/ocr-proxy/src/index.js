@@ -448,7 +448,9 @@ async function resolveFundCodeByName(name = '') {
     && best.code !== second.code;
 
   if (ambiguousWithoutShareClass) {
-    return null;
+    // 同基础名下 A/C/E/I 等份额类无法从名字消歧时，仍返回最佳候选。
+    // 让 enrich 链路用这个 code 走联网净值兜底；前端弹窗会提示让用户核对。
+    return { ...best, ambiguous: true };
   }
 
   return best;
@@ -510,6 +512,9 @@ async function enrichHoldingExtractionRow(rawRow, generatedAt) {
         resolvedCode = catalogMatch.code;
         if (catalogMatch.name) {
           resolvedName = catalogMatch.name;
+        }
+        if (catalogMatch.ambiguous) {
+          warnings.push(`${resolvedName} 同名候选较多，已按猜测的份额类匹配代码 ${catalogMatch.code}，请核对。`);
         }
       } else {
         warnings.push(`${resolvedName} 未能匹配到唯一基金代码。`);
@@ -583,14 +588,15 @@ async function sanitizeHoldingsRows(rows = []) {
     if (Object.keys(errors).length) {
       const label = row.code || row.name || '某一持仓行';
       warnings.push(`${label} ${summarizeHoldingRowErrors(errors)}`);
-      continue;
+      // 仍把这行作为 partial draft 透传给前端，让用户在弹窗里手填缺失字段。
     }
 
     validRows.push(row);
   }
 
   return {
-    rows: sanitizeHoldingRows(validRows, { filterInvalid: true, idPrefix: 'holding-import' }),
+    // filterInvalid: false → 把 partial 行也透传出去（前端 modal 已支持逐行编辑 / 红色标记）。
+    rows: sanitizeHoldingRows(validRows, { filterInvalid: false, idPrefix: 'holding-import' }),
     warnings
   };
 }
