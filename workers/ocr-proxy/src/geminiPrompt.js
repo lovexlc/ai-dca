@@ -3,6 +3,8 @@
 export const DEFAULT_OCR_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 export const PROMPT_VERSION = 'fund-switch-form-v2';
 export const HOLDINGS_PROMPT_VERSION = 'fund-holdings-form-v2';
+// v3：补充支付宝/天天基金等"持仓汇总页"的反推链路提示。
+export const HOLDINGS_PROMPT_VERSION_V3 = 'fund-holdings-form-v3';
 
 export const FUND_SWITCH_RESPONSE_SCHEMA = {
   type: 'OBJECT',
@@ -169,6 +171,18 @@ export const HOLDINGS_SYSTEM_PROMPT = `
 2. 图片内计算：如果图片中缺少持仓份额，但明确显示了持有金额和单位净值，请直接计算 shares = 持有金额 ÷ 单位净值，结果保留两位小数。
 3. 不要在这一层臆造联网结果：如果图片中没有基金代码、没有单位净值，允许把 code 留空、unitNav 记为 0、unitNavDate 留空，由后端继续处理。
 4. 如果图片中直接显示了买入均价 / 持仓均价 / 成本价，请提取到 avgCost；如果没有，可返回 0。
+5. 反推链路（针对“持仓汇总页”，常见于支付宝/天天基金）：
+   - 当截图里有“持有金额/资产/总金额”和“持有收益”，并且页面明确提示“收益已更新到 X 月 X 日”或带有最新净值日期时，意味着持有金额已按最新净值刷新。
+   - 此时若图片同时给出该最新单位净值（unitNav），可按下面顺序反推：
+     · shares = 持有金额 ÷ 单位净值（小数保留 2 位）
+     · 买入金额 = 持有金额 − 持有收益（持有收益带正负号原样参与计算）
+     · avgCost = 买入金额 ÷ shares（小数保留 4 位）
+   - 反推得到的 shares 与 avgCost 直接写进对应字段，并仍保留 marketValue、holdingProfit、unitNav、unitNavDate。
+   - 如果截图里没有最新净值，shares 与 avgCost 留 0，由后端用基金代码联网补；不要自己编。
+6. 代码与名称的取舍：
+   - 截图能看到 6 位数字代码 → 直接填 code，name 也按图填。
+   - 截图只有基金名（汇总页常见）→ code 留空字符串，name 必须填全（被截断时尽量补全），后端会按 name 搜代码。
+   - 既看不到代码也辨认不出名称、或这一行被裁断到无法形成有效持仓 → 跳过这一行，不要输出空对象，并在 warnings 中写一句“第 N 行无法识别”。
 
 输出要求：
 - 只识别“当前持仓列表”，不是交易流水，不是历史明细，不是收益走势图。
@@ -193,6 +207,8 @@ export function buildHoldingsOcrUserPrompt(fileName = 'uploaded-image') {
     '每条 row 必须包含 code、name、avgCost、marketValue、holdingProfit、shares、unitNav、unitNavDate 八个字段。',
     '截图里有就直接提取；截图里缺少代码/净值时，不要猜测，留空或返回 0。',
     '如果图片中有持有金额和单位净值但没有份额，请直接计算 shares。',
+    '汇总页（支付宝/天天基金）若提示"收益已更新"且能看到最新净值：shares = 持有金额 ÷ 最新净值；avgCost = (持有金额 − 持有收益) ÷ shares。',
+    '只有基金名时 code 留空字符串，name 必须填；既无代码也无清晰名称的整行直接跳过，不要输出空对象。',
     '输出格式只允许包含 rows 和 warnings 两个字段。',
     '如果截图里没有足够清晰的当前持仓，请返回 {"rows":[],"warnings":[...]}。'
   ].join('\n');
