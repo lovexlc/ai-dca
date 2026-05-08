@@ -62,6 +62,8 @@ const HOLDINGS_OCR_PROMPT = {
 
 const FUND_CATALOG_URL = 'https://fund.eastmoney.com/js/fundcode_search.js';
 const FUND_CATALOG_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+const FUND_SUGGEST_URL = 'https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx';
+const ONLINE_NAME_FX_KEYWORDS = ['美元', '美元现汇', '美金', '美钞', '美汇', '现汇'];
 let fundCatalogCache = {
   expiresAt: 0,
   list: null,
@@ -434,6 +436,17 @@ async function resolveFundCodeByName(name = '') {
     .sort((left, right) => right.score - left.score);
 
   if (!ranked.length) {
+    // 本地 catalog 子串/前缀评分未命中（例：“发起式联接”/“人民币”令名字不互为子串）。
+    // 走东方财富 fundsuggest 语义搜索做兑底；命中后标 ambiguous=true 让前端提示用户核对。
+    try {
+      const online = await searchFundByNameOnline(normalizedName);
+      const picked = pickBestOnlineCandidate(online, normalizedName);
+      if (picked) {
+        return { ...picked, ambiguous: true, source: 'online' };
+      }
+    } catch (_e) {
+      /* 东财接口任何问题都不应该冲击主流程 */
+    }
     return null;
   }
 
@@ -453,6 +466,101 @@ async function resolveFundCodeByName(name = '') {
     return { ...best, ambiguous: true };
   }
 
+  return best;
+}
+
+async function searchFundByNameOnline(name = '') {
+  const trimmed = String(name || '').trim();
+  if (trimmed.length < 2) {
+    return [];
+  }
+  const url = `${FUND_SUGGEST_URL}?m=1&key=${encodeURIComponent(trimmed)}`;
+  const response = await fetch(url, {
+    headers: {
+      accept: 'application/json, text/plain, */*',
+      referer: 'https://fund.eastmoney.com/',
+      'user-agent': 'Mozilla/5.0'
+    }
+  });
+  if (!response.ok) {
+    return [];
+  }
+  const json = await response.json().catch(() => null);
+  if (!json || !Array.isArray(json.Datas)) {
+    return [];
+  }
+  return json.Datas
+    .map((item) => ({
+      code: String(item?.CODE || '').trim(),
+      name: normalizeText(item?.NAME || '')
+    }))
+    .filter((item) => isHoldingCode(item.code) && item.name);
+}
+
+function pickBestOnlineCandidate(candidates, queryName = '') {
+  if (!Array.isArray(candidates) || !candidates.length) {
+    return null;
+  }
+  const queryRaw = normalizeText(queryName);
+  if (!queryRaw) {
+    return null;
+  }
+  const prefixOptions = [queryRaw.slice(0, 4), queryRaw.slice(0, 3), queryRaw.slice(0, 2)].filter(Boolean);
+  const queryShareClass = extractFundShareClassHint(queryName);
+  const queryNormalized = normalizeFundLookupName(queryName);
+  const queryBase = normalizeFundBaseName(queryName);
+
+  let best = null;
+  let bestScore = -Infinity;
+  for (const cand of candidates) {
+    let score = 0;
+    let prefixHit = 0;
+    for (const prefix of prefixOptions) {
+      if (cand.name.startsWith(prefix)) {
+        prefixHit = prefix.length;
+        break;
+      }
+    }
+    if (prefixHit === 0) {
+      continue;
+    }
+    score += prefixHit * 12;
+
+    const candShareClass = extractFundShareClassHint(cand.name);
+    if (queryShareClass && candShareClass) {
+      if (candShareClass === queryShareClass) {
+        score += 25;
+      } else {
+        score -= 30;
+      }
+    }
+
+    const fxInName = ONLINE_NAME_FX_KEYWORDS.some((kw) => cand.name.includes(kw));
+    const fxInQuery = ONLINE_NAME_FX_KEYWORDS.some((kw) => queryRaw.includes(kw));
+    if (fxInName && !fxInQuery) {
+      score -= 25;
+    }
+
+    const candBase = normalizeFundBaseName(cand.name);
+    if (queryBase && candBase) {
+      if (candBase === queryBase) score += 30;
+      else if (candBase.includes(queryBase) || queryBase.includes(candBase)) score += 15;
+    }
+    if (queryNormalized && cand.name) {
+      const candNormalized = normalizeFundLookupName(cand.name);
+      if (queryNormalized.length >= 4 && candNormalized.includes(queryNormalized.slice(0, 4))) score += 6;
+      if (queryNormalized.length >= 6 && candNormalized.includes(queryNormalized.slice(0, 6))) score += 6;
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = cand;
+    }
+  }
+
+  if (!best || bestScore < 24) {
+    return null;
+  }
   return best;
 }
 
