@@ -3,6 +3,7 @@ import { Bell, CloudUpload, History, ListChecks, Shuffle, Wallet } from 'lucide-
 import { LEGACY_TAB_REDIRECTS, PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
+import { MobileTabBar } from '../components/mobile-tab-bar.jsx';
 
 // 各主 tab 使用 React.lazy 按需加载，在 Vite 中会被拆成独立 chunk。
 // HomeExperience / DcaExperience 已并入 TradePlansExperience 作为二级 tab，不再在这里顶级 lazy。
@@ -200,6 +201,23 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         <Suspense fallback={<TabLoadingFallback />}>{renderActivePanel()}</Suspense>
       </ConsoleLayout>
       <AiChatWidget currentTab={activeTab} />
+      <MobileTabBar
+        onSearch={() => {
+          handleSelectTab('holdings');
+          setTimeout(() => {
+            const input = document.querySelector('input[placeholder="搜索名称"]');
+            if (input) {
+              input.focus();
+              input.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            }
+          }, 80);
+        }}
+        onAi={() => window.dispatchEvent(new CustomEvent('aichat:open'))}
+        onNew={() => {
+          handleSelectTab('holdings');
+          setTimeout(() => window.dispatchEvent(new CustomEvent('holdings:new')), 80);
+        }}
+      />
     </>
   );
 }

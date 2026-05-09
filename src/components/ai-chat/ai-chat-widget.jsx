@@ -123,6 +123,12 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
   }, [messages]);
 
   useEffect(() => {
+    function onExternalOpen() { setOpen(true); }
+    window.addEventListener('aichat:open', onExternalOpen);
+    return () => window.removeEventListener('aichat:open', onExternalOpen);
+  }, []);
+
+  useEffect(() => {
     if (!open) return;
     const node = listRef.current;
     if (node) node.scrollTop = node.scrollHeight;

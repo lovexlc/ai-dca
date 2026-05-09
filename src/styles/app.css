@@ -219,3 +219,10 @@ svg {
     display: none;
   }
 }
+
+/* Reserve space for the mobile bottom tab bar so content isn't covered. */
+@media (max-width: 639px) {
+  body {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+}

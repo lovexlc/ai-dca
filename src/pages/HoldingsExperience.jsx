@@ -98,6 +98,16 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [selectedCode, setSelectedCode] = useState('');
   const [sidePanelTab, setSidePanelTab] = useState('summary');
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
+  useEffect(() => {
+    function onMobileNew() {
+      resetDraft(emptyDraft({ type: mainViewTab === 'sold' ? 'SELL' : 'BUY' }));
+      setSidePanelTab('create');
+      setSidePanelOpen(true);
+    }
+    window.addEventListener('holdings:new', onMobileNew);
+    return () => window.removeEventListener('holdings:new', onMobileNew);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainViewTab]);
   const [mainViewTab, setMainViewTab] = useState('aggregate');
   const [draft, setDraft] = useState(() => emptyDraft());
   const [draftMode, setDraftMode] = useState('create');
