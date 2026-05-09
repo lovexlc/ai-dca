@@ -1675,7 +1675,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       { label: '最后更新', value: lastUpdateDisplay, tone: navIncomplete ? 'amber' : 'slate', small: true }
     ];
     return (
-      <section className="rounded-2xl border border-slate-200/70 bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <section className="rounded-2xl border border-slate-200/70 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:px-5 sm:py-4">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">投资组合概览</div>
         </div>
@@ -1687,7 +1687,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             <div className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-white to-transparent" />
           </div>
         ) : null}
-        <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-4 sm:gap-x-6 sm:gap-y-4">
           {cards.map((card) => (
             <div key={card.label}>
               <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
@@ -1702,8 +1702,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 ) : null}
               </div>
               <div className={cx(
-                'mt-1 font-extrabold tracking-tight tabular-nums',
-                card.small ? 'text-base' : 'text-xl',
+                'mt-0.5 font-extrabold tracking-tight tabular-nums sm:mt-1',
+                card.small ? 'text-sm sm:text-base' : 'text-lg sm:text-xl',
                 toneClass[card.tone] || toneClass.slate
               )}>
                 {card.value}
@@ -2724,18 +2724,18 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               </button>
               <button
                 type="button"
-                className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-white px-3 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:ring-slate-300"
+                className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-white px-2.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:ring-slate-300 sm:px-3"
                 onClick={handleCopyVisibleTable}
                 title={mainViewTab === 'aggregate' ? '复制基金汇总为 TSV' : mainViewTab === 'sold' ? '复制已卖出为 TSV' : '复制成交流水为 TSV'}
               >
                 <Copy className="h-3.5 w-3.5" />
-                复制表格
+                <span className="hidden sm:inline">复制表格</span>
               </button>
               <div className="relative" ref={importMenuRef}>
                 <button
                   type="button"
                   className={cx(
-                    'inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-white px-3 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-60',
+                    'inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-white px-2.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-60 sm:px-3',
                     importMenuOpen && 'bg-slate-50 ring-slate-300'
                   )}
                   onClick={() => setImportMenuOpen((open) => !open)}
@@ -2748,7 +2748,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                   ) : (
                     <FileUp className="h-3.5 w-3.5" />
                   )}
-                  {ocrState.status === 'loading' ? '识别中...' : '批量导入'}
+                  <span className="hidden sm:inline">{ocrState.status === 'loading' ? '识别中...' : '批量导入'}</span>
                   <ChevronDown className={cx('h-3 w-3 text-slate-400 transition-transform', importMenuOpen && 'rotate-180')} />
                 </button>
                 {importMenuOpen ? (
