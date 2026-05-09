@@ -2112,13 +2112,30 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
     const filteredLots = soldLotsTable.getFilteredRowModel().rows.map((r) => r.original);
     const filteredSummary = summarizeSoldLots(filteredLots);
-    const totalTone = filteredSummary.totalRealizedProfit > 0
+    const profitTone = filteredSummary.totalRealizedProfit > 0
       ? 'text-rose-600'
       : filteredSummary.totalRealizedProfit < 0 ? 'text-emerald-600' : '';
+    const returnRateTone = filteredSummary.totalRealizedReturnRate > 0
+      ? 'text-rose-600'
+      : filteredSummary.totalRealizedReturnRate < 0 ? 'text-emerald-600' : '';
+    const soldFooterRow = {
+      code: <span className="text-xs font-semibold text-slate-700">合计</span>,
+      name: <span className="text-xs text-muted-foreground">{filteredSummary.codeCount} 只 / {filteredSummary.lotCount} 笔</span>,
+      costBasis: filteredSummary.totalCostBasis > 0
+        ? <span className="tabular-nums font-semibold">{formatCurrency(filteredSummary.totalCostBasis, '¥', 2)}</span>
+        : <span className="text-muted-foreground">—</span>,
+      proceeds: <span className="tabular-nums font-semibold">{formatCurrency(filteredSummary.totalProceeds, '¥', 2)}</span>,
+      realizedProfit: filteredSummary.totalCostBasis > 0
+        ? <span className={cx('tabular-nums font-semibold', profitTone)}>{formatSignedCurrency(filteredSummary.totalRealizedProfit, 2)}</span>
+        : <span className="text-muted-foreground">—</span>,
+      realizedReturnRate: filteredSummary.totalCostBasis > 0
+        ? <span className={cx('tabular-nums font-semibold', returnRateTone)}>{formatSignedPercent(filteredSummary.totalRealizedReturnRate)}</span>
+        : <span className="text-muted-foreground">—</span>,
+    };
     return (
       <div className="flex flex-col gap-2">
         <DataTableToolbar table={soldLotsTable} />
-        <DataTable table={soldLotsTable} />
+        <DataTable table={soldLotsTable} footerRow={soldFooterRow} />
       </div>
     );
   }
