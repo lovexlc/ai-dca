@@ -233,7 +233,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       accessorFn: (row) => row.code,
       meta: { label: '代码' },
       enableHiding: false,
-      header: ({ column }) => <DataTableColumnHeader column={column} title="代码" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="代码" />,
       cell: ({ row }) => (
         <span className="font-mono text-xs font-semibold tabular-nums">{row.original.code}</span>
       ),
@@ -242,7 +242,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       id: 'name',
       accessorFn: (row) => row.name || '',
       meta: { label: '名称', variant: 'text', placeholder: '搜索名称' },
-      header: ({ column }) => <DataTableColumnHeader column={column} title="名称" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="名称" />,
       cell: ({ row }) => row.original.name || <span className="text-muted-foreground">—</span>,
       filterFn: 'includesString',
     },
@@ -250,7 +250,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       id: 'kind',
       accessorFn: (row) => row.kind,
       meta: { label: '标签', variant: 'multiSelect', options: kindFilterOptions },
-      header: ({ column }) => <DataTableColumnHeader column={column} title="标签" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="标签" />,
       cell: ({ row }) => (
         <Pill tone={KIND_PILL_TONES[row.original.kind] || 'slate'}>
           {KIND_LABELS[row.original.kind] || '未知'}
@@ -265,7 +265,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       id: 'totalShares',
       accessorFn: (row) => row.totalShares,
       meta: { label: '总份额' },
-      header: ({ column }) => <DataTableColumnHeader column={column} title="总份额" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="总份额" />,
       cell: ({ row }) => <span className="tabular-nums">{formatShares(row.original.totalShares)}</span>,
       sortingFn: numericSortFn,
     },
@@ -273,7 +273,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       id: 'avgCost',
       accessorFn: (row) => row.avgCost,
       meta: { label: '平均成本' },
-      header: ({ column }) => <DataTableColumnHeader column={column} title="平均成本" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="平均成本" />,
       cell: ({ row }) => <span className="tabular-nums">{formatNav(row.original.avgCost)}</span>,
       sortingFn: numericSortFn,
     },
@@ -281,7 +281,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       id: 'latestNav',
       accessorFn: (row) => row.latestNav,
       meta: { label: '当前净值' },
-      header: ({ column }) => <DataTableColumnHeader column={column} title="当前净值" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="当前净值" />,
       cell: ({ row }) => (
         <span className="tabular-nums">{row.original.hasLatestNav ? formatNav(row.original.latestNav) : <span className="text-muted-foreground">—</span>}</span>
       ),
@@ -291,7 +291,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       id: 'marketValue',
       accessorFn: (row) => row.marketValue,
       meta: { label: '总市值' },
-      header: ({ column }) => <DataTableColumnHeader column={column} title="总市值" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="总市值" />,
       cell: ({ row }) => <span className="tabular-nums">{formatCurrency(row.original.marketValue, '¥', 2)}</span>,
       sortingFn: numericSortFn,
     },
@@ -299,7 +299,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       id: 'totalProfit',
       accessorFn: (row) => row.totalProfit,
       meta: { label: '总收益' },
-      header: ({ column }) => <DataTableColumnHeader column={column} title="总收益" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="总收益" />,
       cell: ({ row }) => {
         if (!row.original.hasLatestNav) return <span className="text-muted-foreground">—</span>;
         const v = row.original.totalProfit;
@@ -312,7 +312,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       id: 'totalReturnRate',
       accessorFn: (row) => row.totalReturnRate,
       meta: { label: '总收益率' },
-      header: ({ column }) => <DataTableColumnHeader column={column} title="总收益率" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="总收益率" />,
       cell: ({ row }) => {
         if (!row.original.hasLatestNav) return <span className="text-muted-foreground">—</span>;
         const v = row.original.totalReturnRate;
@@ -325,7 +325,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       id: 'todayProfit',
       accessorFn: (row) => row.todayProfit,
       meta: { label: '当日收益' },
-      header: ({ column }) => <DataTableColumnHeader column={column} title="当日收益" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="当日收益" />,
       cell: ({ row }) => {
         if (!row.original.hasLatestNav) return <span className="text-muted-foreground">—</span>;
         const v = row.original.todayProfit;
@@ -338,7 +338,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       id: 'todayReturnRate',
       accessorFn: (row) => row.todayReturnRate,
       meta: { label: '当日收益率' },
-      header: ({ column }) => <DataTableColumnHeader column={column} title="当日收益率" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="当日收益率" />,
       cell: ({ row }) => {
         if (!row.original.hasLatestNav) return <span className="text-muted-foreground">—</span>;
         const v = row.original.todayReturnRate;
