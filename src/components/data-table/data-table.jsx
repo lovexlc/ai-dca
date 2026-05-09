@@ -15,6 +15,7 @@ function DataTable({
   actionBar,
   children,
   className,
+  onRowClick,
   ...props
 }) {
   return <div
@@ -32,6 +33,8 @@ function DataTable({
   )}</TableHead>)}</TableRow>)}</TableHeader><TableBody>{table.getRowModel().rows?.length ? table.getRowModel().rows.map((row) => <TableRow
     key={row.id}
     data-state={row.getIsSelected() && "selected"}
+    className={onRowClick ? "cursor-pointer" : undefined}
+    onClick={onRowClick ? () => onRowClick(row) : undefined}
   >{row.getVisibleCells().map((cell) => <TableCell
     key={cell.id}
     style={{
