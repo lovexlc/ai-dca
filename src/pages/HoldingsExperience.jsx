@@ -1081,16 +1081,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     return (
       <section className="rounded-2xl border border-slate-200/70 bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">投资组合概览</div>
-            <div className="text-[11px] text-slate-400">
-              NAV 覆盖 {portfolio.pricedCount}/{portfolio.assetCount}
-              {portfolio.failedCodes && portfolio.failedCodes.length > 0 ? ` · 失败 ${portfolio.failedCodes.length}` : ''}
-            </div>
-          </div>
-          <div className="ml-auto flex shrink-0 items-center">
-            {renderNavBadge()}
-          </div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">投资组合概览</div>
         </div>
         {marketIndexState.indexes.length ? (
           <div className="relative mt-2 w-full overflow-hidden">
@@ -1157,52 +1148,82 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     );
   }
 
-  function renderNavBadge() {
+  function renderNavStatusStrip() {
     const meta = ledger.lastNavMeta || {};
-    const refreshBtn = (
-      <button
-        type="button"
-        onClick={handleManualRefresh}
-        disabled={navStatus === 'loading'}
-        title="刷新净值"
-        aria-label="刷新净值"
-        className="inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        <RefreshCw className={cx('h-3.5 w-3.5', navStatus === 'loading' && 'animate-spin')} />
-      </button>
-    );
-    if (navStatus === 'loading') {
-      return (
-        <span className="inline-flex items-center gap-1 text-xs text-slate-500">
-          {refreshBtn}
-          正在刷新净值
+    const loading = navStatus === 'loading';
+    const hasUpdate = !!meta.updatedAt;
+    const hasFailures = (meta.failureCount || 0) > 0;
+    const failedCount = portfolio.failedCodes ? portfolio.failedCodes.length : 0;
+    const coveragePct = portfolio.assetCount > 0
+      ? Math.round((portfolio.pricedCount / portfolio.assetCount) * 100)
+      : null;
+    const coverageTone = coveragePct === null
+      ? 'text-slate-400'
+      : coveragePct >= 100
+        ? 'text-emerald-600'
+        : coveragePct >= 80
+          ? 'text-slate-600'
+          : 'text-amber-600';
+    const btnClass = loading
+      ? 'border-indigo-200 bg-indigo-50 text-indigo-600 cursor-wait'
+      : hasFailures
+        ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+        : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700';
+    let statusEl;
+    if (loading) {
+      statusEl = (
+        <span className="inline-flex items-center gap-1.5 text-xs text-indigo-600">
+          <span className="relative inline-block h-1 w-24 overflow-hidden rounded-full bg-indigo-100">
+            <span className="absolute inset-y-0 left-0 w-full animate-pulse rounded-full bg-gradient-to-r from-indigo-200 via-indigo-500 to-indigo-200" />
+          </span>
+          正在同步…
         </span>
       );
-    }
-    if (!meta.updatedAt) {
-      return (
+    } else if (!hasUpdate) {
+      statusEl = (
         <span className="inline-flex items-center gap-1 text-xs text-slate-500">
-          {refreshBtn}
           <AlertTriangle className="h-3.5 w-3.5" />
           尚未同步净值
         </span>
       );
-    }
-    if (meta.failureCount > 0) {
-      return (
+    } else if (hasFailures) {
+      statusEl = (
         <span className="inline-flex items-center gap-1 text-xs text-amber-600">
-          {refreshBtn}
           <AlertTriangle className="h-3.5 w-3.5" />
-          {`${formatRelativeTime(meta.updatedAt)} · ${meta.successCount} 成功 / ${meta.failureCount} 失败`}
+          {`上次更新：${formatRelativeTime(meta.updatedAt)} · ${meta.successCount} 成功 / ${meta.failureCount} 失败`}
+        </span>
+      );
+    } else {
+      statusEl = (
+        <span className="inline-flex items-center gap-1 text-xs text-emerald-600">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          {`上次更新：${formatRelativeTime(meta.updatedAt)}`}
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-emerald-600">
-        {refreshBtn}
-        <CheckCircle2 className="h-3.5 w-3.5" />
-        {`${formatRelativeTime(meta.updatedAt)} · ${meta.successCount} 条净值已同步`}
-      </span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-slate-100 px-4 py-2.5">
+        <button
+          type="button"
+          onClick={handleManualRefresh}
+          disabled={loading}
+          aria-label="同步净值"
+          className={cx(
+            'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-all disabled:cursor-not-allowed',
+            btnClass
+          )}
+        >
+          <RefreshCw className={cx('h-3.5 w-3.5', loading && 'animate-spin')} />
+          同步净值
+        </button>
+        {statusEl}
+        <span aria-hidden className="hidden h-4 w-px bg-slate-200 sm:block" />
+        <span className={cx('inline-flex items-center gap-1 text-xs tabular-nums', coverageTone)}>
+          NAV 覆盖 {portfolio.pricedCount}/{portfolio.assetCount}
+          {coveragePct !== null ? <span className="text-slate-400">({coveragePct}%)</span> : null}
+          {failedCount > 0 ? <span className="text-amber-600">· 失败 {failedCount}</span> : null}
+        </span>
+      </div>
     );
   }
 
@@ -2303,6 +2324,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       {renderPortfolioOverview()}
       <div className="grid grid-cols-1 gap-4">
         <section className="min-w-0 rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          {renderNavStatusStrip()}
           <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <div role="tablist" aria-label="数据视图" className="flex items-center gap-1 border-b border-slate-200 -mb-px text-sm font-semibold">
