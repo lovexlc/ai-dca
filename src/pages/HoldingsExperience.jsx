@@ -2035,11 +2035,53 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         </div>
       );
     }
+    const filteredAggs = aggregatesTable.getFilteredRowModel().rows.map((r) => r.original);
+    let sumMarketValue = 0;
+    let sumTotalCost = 0;
+    let sumTotalProfit = 0;
+    let sumTodayProfit = 0;
+    let sumPreviousValue = 0;
+    let pricedCount = 0;
+    let todayCount = 0;
+    for (const agg of filteredAggs) {
+      if (agg.hasLatestNav) {
+        sumMarketValue += Number(agg.marketValue) || 0;
+        sumTotalCost += Number(agg.totalCost) || 0;
+        sumTotalProfit += Number(agg.totalProfit) || 0;
+        pricedCount += 1;
+      }
+      if (agg.hasTodayNav) {
+        sumTodayProfit += Number(agg.todayProfit) || 0;
+        sumPreviousValue += Number(agg.previousValue) || 0;
+        todayCount += 1;
+      }
+    }
+    const summaryTotalReturnRate = sumTotalCost > 0 ? (sumTotalProfit / sumTotalCost) * 100 : null;
+    const summaryTodayReturnRate = sumPreviousValue > 0 ? (sumTodayProfit / sumPreviousValue) * 100 : null;
+    const totalReturnTone = summaryTotalReturnRate == null
+      ? ''
+      : summaryTotalReturnRate > 0 ? 'text-rose-600' : summaryTotalReturnRate < 0 ? 'text-emerald-600' : '';
+    const todayReturnTone = summaryTodayReturnRate == null
+      ? ''
+      : summaryTodayReturnRate > 0 ? 'text-rose-600' : summaryTodayReturnRate < 0 ? 'text-emerald-600' : '';
+    const aggregatesFooterRow = {
+      code: <span className="text-xs font-semibold text-slate-700">合计</span>,
+      marketValue: pricedCount > 0
+        ? <span className="tabular-nums font-semibold">{formatCurrency(sumMarketValue, '¥', 2)}</span>
+        : <span className="text-muted-foreground">—</span>,
+      totalReturnRate: summaryTotalReturnRate != null
+        ? <span className={cx('tabular-nums font-semibold', totalReturnTone)}>{formatSignedPercent(summaryTotalReturnRate)}</span>
+        : <span className="text-muted-foreground">—</span>,
+      todayReturnRate: summaryTodayReturnRate != null
+        ? <span className={cx('tabular-nums font-semibold', todayReturnTone)}>{formatSignedPercent(summaryTodayReturnRate)}</span>
+        : <span className="text-muted-foreground">—</span>,
+    };
     return (
       <div className="flex flex-col gap-2">
         <DataTableToolbar table={aggregatesTable} />
         <DataTable
           table={aggregatesTable}
+          footerRow={aggregatesFooterRow}
           onRowClick={(row) => {
             setSelectedCode(row.original.code);
             setSidePanelTab('summary');

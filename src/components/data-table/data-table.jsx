@@ -4,6 +4,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow
@@ -16,6 +17,7 @@ function DataTable({
   children,
   className,
   onRowClick,
+  footerRow,
   ...props
 }) {
   return <div
@@ -48,7 +50,12 @@ function DataTable({
     className="h-24 text-center"
   >
                   No results.
-                </TableCell></TableRow>}</TableBody></Table></div><div className="flex flex-col gap-2.5"><DataTablePagination table={table} />{actionBar && table.getFilteredSelectedRowModel().rows.length > 0 && actionBar}</div></div>;
+                </TableCell></TableRow>}</TableBody>{footerRow ? <TableFooter><TableRow>{table.getVisibleLeafColumns().map((column) => <TableCell
+    key={column.id}
+    style={{
+      ...getColumnPinningStyle({ column })
+    }}
+  >{footerRow[column.id] != null ? footerRow[column.id] : null}</TableCell>)}</TableRow></TableFooter> : null}</Table></div><div className="flex flex-col gap-2.5"><DataTablePagination table={table} />{actionBar && table.getFilteredSelectedRowModel().rows.length > 0 && actionBar}</div></div>;
 }
 export {
   DataTable
