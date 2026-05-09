@@ -705,25 +705,24 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
 
           {/* Right: K 线 */}
           <div className="min-w-0">
-            <div className="inline-flex items-center rounded-md bg-slate-100 p-0.5">
-              {TIMEFRAME_OPTIONS.map((option) => (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() => setTimeframe(option.key)}
-                  className={cx(
-                    'rounded-md px-3 py-1 text-xs font-medium transition-colors',
-                    timeframe === option.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                  )}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-
             {pricePulse && chartGeometry.candles.length ? (
               <>
-                <div className="relative mt-3 min-w-0 overflow-hidden rounded-md border border-slate-200 bg-white">
+                <div className="relative min-w-0 overflow-hidden rounded-md border border-slate-200 bg-white">
+                  <div className="absolute left-2 top-2 z-10 inline-flex items-center rounded-md bg-white/85 p-0.5 shadow-sm ring-1 ring-slate-200/70 backdrop-blur">
+                    {TIMEFRAME_OPTIONS.map((option) => (
+                      <button
+                        key={option.key}
+                        type="button"
+                        onClick={() => setTimeframe(option.key)}
+                        className={cx(
+                          'rounded-md px-2.5 py-0.5 text-xs font-medium transition-colors',
+                          timeframe === option.key ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:text-slate-700'
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
                   <svg className="relative h-[260px] w-full sm:h-[300px]" preserveAspectRatio="none" viewBox="0 0 100 100">
                     <line stroke="rgba(148,163,184,0.2)" strokeDasharray="1.5 2.5" strokeWidth="0.3" x1="4" x2="96" y1="16" y2="16" />
                     <line stroke="rgba(148,163,184,0.2)" strokeDasharray="1.5 2.5" strokeWidth="0.3" x1="4" x2="96" y1="32" y2="32" />
@@ -785,7 +784,22 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
                 </div>
               </>
             ) : (
-              <div className="mt-3 rounded-md border border-dashed border-slate-300 px-4 py-12 text-center text-sm text-slate-500">
+              <div className="relative rounded-md border border-dashed border-slate-300 px-4 py-12 text-center text-sm text-slate-500">
+                <div className="absolute left-2 top-2 z-10 inline-flex items-center rounded-md bg-white/85 p-0.5 shadow-sm ring-1 ring-slate-200/70 backdrop-blur">
+                  {TIMEFRAME_OPTIONS.map((option) => (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => setTimeframe(option.key)}
+                      className={cx(
+                        'rounded-md px-2.5 py-0.5 text-xs font-medium transition-colors',
+                        timeframe === option.key ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:text-slate-700'
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
                 {pulseError
                   ? `加载失败：${pulseError}`
                   : isLoadingPulse
