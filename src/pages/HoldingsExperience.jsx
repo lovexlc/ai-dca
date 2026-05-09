@@ -114,8 +114,16 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       setSidePanelTab('create');
       setSidePanelOpen(true);
     }
+    function onMobilePaste() { openPasteModal(); }
+    function onMobileOcr() { openOcrModal(); }
     window.addEventListener('holdings:new', onMobileNew);
-    return () => window.removeEventListener('holdings:new', onMobileNew);
+    window.addEventListener('holdings:import-paste', onMobilePaste);
+    window.addEventListener('holdings:import-ocr', onMobileOcr);
+    return () => {
+      window.removeEventListener('holdings:new', onMobileNew);
+      window.removeEventListener('holdings:import-paste', onMobilePaste);
+      window.removeEventListener('holdings:import-ocr', onMobileOcr);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainViewTab]);
   const [pasteResult, setPasteResult] = useState(null);
@@ -2745,75 +2753,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 <Copy className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">复制表格</span>
               </button>
-              <div className="relative" ref={importMenuRef}>
-                <button
-                  type="button"
-                  className={cx(
-                    'inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-white px-2.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-60 sm:px-3',
-                    importMenuOpen && 'bg-slate-50 ring-slate-300'
-                  )}
-                  onClick={() => setImportMenuOpen((open) => !open)}
-                  disabled={ocrState.status === 'loading'}
-                  aria-haspopup="menu"
-                  aria-expanded={importMenuOpen}
-                >
-                  {ocrState.status === 'loading' ? (
-                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <FileUp className="h-3.5 w-3.5" />
-                  )}
-                  <span className="hidden sm:inline">{ocrState.status === 'loading' ? '识别中...' : '批量导入'}</span>
-                  <ChevronDown className={cx('h-3 w-3 text-slate-400 transition-transform', importMenuOpen && 'rotate-180')} />
-                </button>
-                {importMenuOpen ? (
-                  <div className="absolute right-0 top-full z-20 mt-1 w-56 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-slate-200" role="menu">
-                    <button
-                      type="button"
-                      className="flex w-full items-start gap-2.5 px-3 py-2.5 text-left text-xs text-slate-700 transition-colors hover:bg-slate-50 sm:hidden"
-                      onClick={() => {
-                        setImportMenuOpen(false);
-                        resetDraft(emptyDraft({ type: mainViewTab === 'sold' ? 'SELL' : 'BUY' }));
-                        setSidePanelTab('create');
-                        setSidePanelOpen(true);
-                      }}
-                      role="menuitem"
-                    >
-                      <Plus className="mt-0.5 h-4 w-4 flex-none text-slate-500" />
-                      <span className="flex-1">
-                        <span className="block font-semibold text-slate-800">单笔新增</span>
-                        <span className="mt-0.5 block text-[11px] text-slate-500">手动添加一条交易</span>
-                      </span>
-                    </button>
-                    <div className="h-px bg-slate-100 sm:hidden" />
-                    <button
-                      type="button"
-                      className="flex w-full items-start gap-2.5 px-3 py-2.5 text-left text-xs text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                      onClick={() => { setImportMenuOpen(false); openPasteModal(); }}
-                      role="menuitem"
-                    >
-                      <ClipboardPaste className="mt-0.5 h-4 w-4 flex-none text-slate-500" />
-                      <span className="flex-1">
-                        <span className="block font-semibold text-slate-800">粘贴 Excel</span>
-                        <span className="mt-0.5 block text-[11px] text-slate-500">从 Excel 粘贴 TSV / CSV 交易流水</span>
-                      </span>
-                    </button>
-                    <div className="h-px bg-slate-100" />
-                    <button
-                      type="button"
-                      className="flex w-full items-start gap-2.5 px-3 py-2.5 text-left text-xs text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                      onClick={() => { setImportMenuOpen(false); openOcrModal(); }}
-                      disabled={ocrState.status === 'loading'}
-                      role="menuitem"
-                    >
-                      <CloudUpload className="mt-0.5 h-4 w-4 flex-none text-slate-500" />
-                      <span className="flex-1">
-                        <span className="block font-semibold text-slate-800">截图 OCR</span>
-                        <span className="mt-0.5 block text-[11px] text-slate-500">上传持仓截图识别交易</span>
-                      </span>
-                    </button>
-                  </div>
-                ) : null}
-              </div>
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleOcrFile} />
             </div>
           </div>

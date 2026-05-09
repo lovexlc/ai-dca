@@ -217,6 +217,14 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
           handleSelectTab('holdings');
           setTimeout(() => window.dispatchEvent(new CustomEvent('holdings:new')), 80);
         }}
+        onPasteImport={() => {
+          handleSelectTab('holdings');
+          setTimeout(() => window.dispatchEvent(new CustomEvent('holdings:import-paste')), 80);
+        }}
+        onOcrImport={() => {
+          handleSelectTab('holdings');
+          setTimeout(() => window.dispatchEvent(new CustomEvent('holdings:import-ocr')), 80);
+        }}
       />
     </>
   );

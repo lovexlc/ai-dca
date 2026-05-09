@@ -343,7 +343,7 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
 
   return (
     <>
-      {!open ? (
+      {false ? (
         <>
           {nudgeOpen ? (
             <button
