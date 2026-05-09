@@ -1794,14 +1794,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700';
     let statusEl;
     if (loading) {
-      statusEl = (
-        <span className="inline-flex items-center gap-1.5 text-xs text-indigo-600">
-          <span className="relative inline-block h-1 w-24 overflow-hidden rounded-full bg-indigo-100">
-            <span className="absolute inset-y-0 left-0 w-full animate-pulse rounded-full bg-gradient-to-r from-indigo-200 via-indigo-500 to-indigo-200" />
-          </span>
-          正在同步…
-        </span>
-      );
+      statusEl = null;
     } else if (!hasUpdate) {
       statusEl = (
         <span className="inline-flex items-center gap-1 text-xs text-slate-500">
