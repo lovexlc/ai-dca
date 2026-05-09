@@ -1385,15 +1385,56 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
 
     if (!filteredAggs.length) {
       const activeCount = aggregates.filter((agg) => agg.hasPosition).length;
-      const emptyMessage = aggregates.length === 0
-        ? '还没有任何基金持仓，点「+ 新增」或「OCR 导入」录入。'
+      const isPristine = aggregates.length === 0;
+      const emptyTitle = isPristine
+        ? '还没有任何基金持仓'
         : activeCount === 0
-          ? '所有基金均已卖出，请切换到「已卖出」页签查看历史交易。'
-          : '当前筛选条件下没有基金。';
+          ? '所有基金均已卖出'
+          : '没有匹配的基金';
+      const emptyHint = isPristine
+        ? '点击下方按钮录入第一笔交易，或从持仓截图 / Excel 一键批量导入。'
+        : activeCount === 0
+          ? '请切换到「已卖出」页签查看历史交易。'
+          : '试试调整搜索词或筛选条件。';
       return (
-        <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 text-center">
-          <Wallet className="h-8 w-8 text-slate-300" />
-          <div className="text-sm text-slate-500">{emptyMessage}</div>
+        <div className="flex min-h-[260px] flex-col items-center justify-center gap-4 px-6 text-center">
+          <Wallet className="h-10 w-10 text-slate-300" />
+          <div className="space-y-1">
+            <div className="text-sm font-semibold text-slate-700">{emptyTitle}</div>
+            <div className="text-xs text-slate-500">{emptyHint}</div>
+          </div>
+          {isPristine ? (
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+              <button
+                type="button"
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(79,70,229,0.25)] transition-all hover:bg-indigo-500 hover:shadow-[0_6px_16px_rgba(79,70,229,0.3)]"
+                onClick={() => {
+                  resetDraft(emptyDraft({ type: 'BUY' }));
+                  setSidePanelTab('create');
+                  setSidePanelOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4" />
+                新增交易
+              </button>
+              <button
+                type="button"
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white px-3.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:ring-slate-300"
+                onClick={() => openOcrModal()}
+              >
+                <CloudUpload className="h-3.5 w-3.5" />
+                截图 OCR 导入
+              </button>
+              <button
+                type="button"
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white px-3.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:ring-slate-300"
+                onClick={() => openPasteModal()}
+              >
+                <ClipboardPaste className="h-3.5 w-3.5" />
+                粘贴 Excel
+              </button>
+            </div>
+          ) : null}
         </div>
       );
     }
@@ -2303,7 +2344,20 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               {renderNavBadge()}
             </div>
             {mainViewTab === 'switch' ? null : (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap">
+              <button
+                type="button"
+                className="order-first inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(79,70,229,0.25)] transition-all hover:bg-indigo-500 hover:shadow-[0_6px_16px_rgba(79,70,229,0.3)] disabled:cursor-not-allowed disabled:opacity-60 sm:order-last"
+                onClick={() => {
+                  resetDraft(emptyDraft({ type: mainViewTab === 'sold' ? 'SELL' : 'BUY' }));
+                  setSidePanelTab('create');
+                  setSidePanelOpen(true);
+                }}
+                title="新增单条交易"
+              >
+                <Plus className="h-4 w-4" />
+                新增交易
+              </button>
               <button
                 type="button"
                 className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-white px-3 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:ring-slate-300"
@@ -2365,19 +2419,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 ) : null}
               </div>
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleOcrFile} />
-              <button
-                type="button"
-                className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-indigo-600 px-3.5 text-xs font-semibold text-white shadow-[0_1px_2px_rgba(15,23,42,0.12)] transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
-                onClick={() => {
-                  resetDraft(emptyDraft({ type: mainViewTab === 'sold' ? 'SELL' : 'BUY' }));
-                  setSidePanelTab('create');
-                  setSidePanelOpen(true);
-                }}
-                title="新增单条交易"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                新增交易
-              </button>
             </div>
             )}
           </div>
