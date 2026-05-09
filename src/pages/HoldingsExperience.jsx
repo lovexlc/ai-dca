@@ -1383,13 +1383,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           onClick={handleManualRefresh}
           disabled={loading}
           aria-label="同步净值"
-          className={cx(
-            'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-all disabled:cursor-not-allowed',
-            btnClass
-          )}
+          title="同步净值"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <RefreshCw className={cx('h-3.5 w-3.5', loading && 'animate-spin')} />
-          同步净值
         </button>
         {statusEl}
         <span aria-hidden className="hidden h-4 w-px bg-slate-200 sm:block" />
@@ -2402,32 +2399,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                   );
                 })}
               </div>
-              {mainViewTab === 'switch' ? null : (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span aria-hidden className="hidden h-5 w-px bg-slate-200 sm:block" />
-                  <div className="relative inline-flex items-center">
-                    <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                    <input
-                      className="h-8 w-32 rounded-md border border-transparent bg-transparent pl-7 pr-2 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-400 hover:bg-slate-100/70 focus:w-56 focus:border-slate-200 focus:bg-white focus:ring-2 focus:ring-indigo-100"
-                      value={searchText}
-                      onChange={(event) => setSearchText(event.target.value)}
-                      placeholder="搜索…"
-                      aria-label="搜索代码或名称"
-                    />
-                    {searchText ? (
-                      <button
-                        type="button"
-                        onClick={() => setSearchText('')}
-                        className="absolute right-1.5 top-1/2 inline-flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-                        aria-label="清空搜索"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              )}
-            </div>
+</div>
             {mainViewTab === 'switch' ? null : (
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap">
               <button
