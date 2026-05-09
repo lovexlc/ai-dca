@@ -1847,6 +1847,7 @@ async function handleAiChat(request, env) {
     return jsonResponse({ error: '请求体必须是 JSON。' }, 400);
   }
   const rawMessages = Array.isArray(body?.messages) ? body.messages : [];
+  const wantStream = body?.stream === true;
   const messages = [];
   const baseSystem = typeof body?.system === 'string' && body.system.trim()
     ? body.system.trim()
@@ -1861,6 +1862,7 @@ async function handleAiChat(request, env) {
       '· 步骤的先后顺序、条数照抄；原文 6 步不要合并成 5 步，不省略次要步骤。',
       '· 原文里的细节/限制（先切 sub-tab、加电池白名单、需要同步计划等）必须原样讲出来。',
       '· 原文没写的具体细节（截图、版本号、具体路径）不要补充。',
+      '· 当用户附带了图片，你必须结合图片内容回答；图片可视为用户当前页面/数据的实际截图。',
       '涉及具体投资建议时，提醒用户自行判断风险，不给出绝对收益承诺。',
       '',
       '输出格式规范（前端会按 markdown 渲染，请务必遵守）：',
@@ -1872,23 +1874,40 @@ async function handleAiChat(request, env) {
       '· 末尾另起一行注明依据，格式为 `> 依据：片段 1、3`（这一行不算在主体长度里）。',
     ].join('\n');
 
-  // 取最后一条 user 消息作为检索 query
+  // 收集图片：顶层 body.images（应用于最后一条 user 消息）+ 每条 message.images。
+  // 每张图片是 data URL 或 base64 字符串，前端最多 4 张。
+  const topImages = Array.isArray(body?.images)
+    ? body.images.filter((u) => typeof u === 'string' && u.trim()).slice(0, 4)
+    : [];
+  const messageHasImages = (m) =>
+    Array.isArray(m?.images) && m.images.some((u) => typeof u === 'string' && u.trim());
+  const hasAnyImages = topImages.length > 0 || rawMessages.some(messageHasImages);
+
+  // 取最后一条 user 消息作为检索 query。
   let lastUserContent = '';
+  let lastUserIdx = -1;
   for (let i = rawMessages.length - 1; i >= 0; i--) {
     const m = rawMessages[i];
     if (m && m.role === 'user' && typeof m.content === 'string' && m.content.trim()) {
       lastUserContent = m.content.trim();
+      lastUserIdx = i;
       break;
     }
   }
+  if (lastUserIdx < 0) {
+    // 兼容 user 文本为空但只发了图的场景：仍把图绑到最末一条 user。
+    for (let i = rawMessages.length - 1; i >= 0; i--) {
+      if (rawMessages[i]?.role === 'user') { lastUserIdx = i; break; }
+    }
+  }
 
-  // 调用知识库检索（失败不阻断主流程）
+  // 调用知识库检索（失败不阻断主流程）。
   const knowledge = await retrieveKnowledge(lastUserContent, env).catch((err) => {
     console.warn('[ai-chat] retrieve failed:', err && err.message ? err.message : err);
     return [];
   });
 
-  // 前端可选附带：当前页面简介 / 本地数据片段
+  // 前端可选附带：当前页面简介 / 本地数据片段。
   const pageContext = typeof body?.pageContext === 'string' ? body.pageContext.slice(0, 2000).trim() : '';
   const dataSnippets = Array.isArray(body?.dataSnippets)
     ? body.dataSnippets
@@ -1897,7 +1916,7 @@ async function handleAiChat(request, env) {
         .map((s) => s.slice(0, 800))
     : [];
 
-  // 拼接增强 system prompt
+  // 拼接增强 system prompt。
   const systemParts = [baseSystem];
   if (knowledge.length > 0) {
     const ctx = knowledge
@@ -1906,14 +1925,16 @@ async function handleAiChat(request, env) {
     systemParts.push(
       '以下是从本站知识库检索到的原文片段（按相关度递减）。你的回答必须完全在这些原文范围内构建：直接引用、复述或综合这些片段；不要补充片段之外的细节，不要修改原文中的名词或步骤；如果这些片段没有直接回答用户问题，按上面的规则回复「抱歉，知识库里暂时没有这个问题的答案……」。\n\n' + ctx,
     );
-  } else {
+  } else if (!hasAnyImages) {
     systemParts.push(
       '本次知识库检索没有命中任何相关片段。请严格按规则直接回复：「抱歉，知识库里暂时没有这个问题的答案，你可以换个说法再问，或者查阅项目文档。」不要使用通用知识尝试回答。',
     );
+  } else {
+    systemParts.push(
+      '本次知识库检索没有命中任何片段，但用户附带了图片。请基于图片内容如实描述/回答；不要编造图片中不存在的内容。',
+    );
   }
-  if (pageContext) {
-    systemParts.push('用户当前页面上下文：\n' + pageContext);
-  }
+  if (pageContext) systemParts.push('用户当前页面上下文：\n' + pageContext);
   if (dataSnippets.length > 0) {
     systemParts.push(
       '用户本地数据片段（仅本次对话使用，不会保存）：\n' +
@@ -1922,31 +1943,114 @@ async function handleAiChat(request, env) {
   }
   messages.push({ role: 'system', content: systemParts.join('\n\n') });
 
-  for (const m of rawMessages) {
+  // 多模态 content 构造：text-only 直接保留字符串；带图片用 OpenAI-compat 数组形式。
+  const buildContent = (text, images) => {
+    const list = (images || []).filter((u) => typeof u === 'string' && u.trim());
+    if (list.length === 0) return text;
+    const parts = [];
+    if (text) parts.push({ type: 'text', text });
+    for (const u of list) {
+      const url = u.startsWith('data:') || u.startsWith('http')
+        ? u
+        : `data:image/jpeg;base64,${u.replace(/^base64,/, '')}`;
+      parts.push({ type: 'image_url', image_url: { url } });
+    }
+    return parts;
+  };
+
+  for (let i = 0; i < rawMessages.length; i++) {
+    const m = rawMessages[i];
     if (!m || typeof m.content !== 'string') continue;
     const role = m.role === 'assistant' ? 'assistant' : (m.role === 'system' ? 'system' : 'user');
     if (role === 'system') continue; // system 已经从 body.system 注入
-    const content = m.content.slice(0, 4000);
-    if (!content.trim()) continue;
-    messages.push({ role, content });
+    const text = m.content.slice(0, 4000);
+    let imgs = Array.isArray(m.images) ? m.images.slice() : [];
+    if (i === lastUserIdx && topImages.length) imgs = imgs.concat(topImages);
+    if (!text.trim() && imgs.length === 0) continue;
+    messages.push({ role, content: buildContent(text, imgs) });
   }
   if (messages.length <= 1) {
     return jsonResponse({ error: 'messages 不能为空。' }, 400);
   }
-  const model = (typeof body?.model === 'string' && body.model.trim())
-    || env.CHAT_MODEL
+
+  // 模型选择：显式 body.model > 有图走 vision 模型 > 默认文本模型。
+  const explicitModel = (typeof body?.model === 'string' && body.model.trim()) ? body.model.trim() : '';
+  const visionModel = (env.CHAT_VISION_MODEL && String(env.CHAT_VISION_MODEL).trim())
+    || '@cf/meta/llama-3.2-11b-vision-instruct';
+  const textModel = (env.CHAT_MODEL && String(env.CHAT_MODEL).trim())
     || '@cf/meta/llama-3.1-8b-instruct';
+  const model = explicitModel || (hasAnyImages ? visionModel : textModel);
   const maxTokens = Number(env.CHAT_MAX_TOKENS) > 0 ? Number(env.CHAT_MAX_TOKENS) : 1024;
+
+  const sources = knowledge.map((k) => ({
+    source: k.source,
+    title: k.title,
+    score: k.score,
+  }));
+
+  if (wantStream) {
+    let upstream;
+    try {
+      upstream = await env.AI.run(model, { messages, max_tokens: maxTokens, stream: true });
+    } catch (error) {
+      return jsonResponse({
+        error: error instanceof Error ? error.message : 'Workers AI 调用失败。',
+        model,
+      }, 502);
+    }
+    if (!upstream || typeof upstream.getReader !== 'function') {
+      return jsonResponse({
+        error: 'AI 流式响应不可用。',
+        model,
+      }, 502);
+    }
+
+    const encoder = new TextEncoder();
+    const { readable, writable } = new TransformStream();
+    (async () => {
+      const writer = writable.getWriter();
+      try {
+        const meta = JSON.stringify({ type: 'meta', model, sources });
+        await writer.write(encoder.encode(`event: meta\ndata: ${meta}\n\n`));
+        const reader = upstream.getReader();
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) await writer.write(value);
+        }
+      } catch (err) {
+        const errPayload = JSON.stringify({
+          error: err instanceof Error ? err.message : String(err),
+        });
+        try {
+          await writer.write(encoder.encode(`event: error\ndata: ${errPayload}\n\n`));
+        } catch (e) { /* ignore */ }
+      } finally {
+        try { await writer.close(); } catch (e) { /* ignore */ }
+      }
+    })();
+
+    return new Response(readable, {
+      status: 200,
+      headers: {
+        ...JSON_HEADERS,
+        'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache, no-transform',
+        'x-accel-buffering': 'no',
+      },
+    });
+  }
+
   let aiResult;
   try {
     aiResult = await env.AI.run(model, {
       messages,
-      max_tokens: maxTokens
+      max_tokens: maxTokens,
     });
   } catch (error) {
     return jsonResponse({
       error: error instanceof Error ? error.message : 'Workers AI 调用失败。',
-      model
+      model,
     }, 502);
   }
   let reply = '';
@@ -1965,24 +2069,16 @@ async function handleAiChat(request, env) {
     return jsonResponse({
       error: 'AI 没有返回有效回复。',
       model,
-      raw: aiResult ?? null
+      raw: aiResult ?? null,
     }, 502);
   }
   return jsonResponse({
     reply,
     model,
-    sources: knowledge.map((k) => ({
-      source: k.source,
-      title: k.title,
-      score: k.score,
-    })),
+    sources,
   });
 }
 
-/**
- * 从 Vectorize 知识库检索与 query 最相关的片段。
- * 返回按相似度递减排列的片段数组。
- */
 async function retrieveKnowledge(query, env) {
   if (!query || !env || !env.KNOWLEDGE_INDEX || typeof env.KNOWLEDGE_INDEX.query !== 'function') {
     return [];
