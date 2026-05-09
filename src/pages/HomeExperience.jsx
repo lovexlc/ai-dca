@@ -557,134 +557,33 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
         </div>
       </Card>
 
-      {/* ===== PlanDetailCard: full-width with table ===== */}
+      {/* ===== 建仓计划 + 价格走势：合并卡片 ===== */}
       <Card className="p-4 sm:p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <SectionHeading
-            eyebrow="建仓计划"
-            title="建仓计划详情"
-          />
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <Pill tone="slate">基准 {benchmarkCodeLabel}</Pill>
-            <Pill tone="slate">标的 {selectedFundCodeLabel || '--'}</Pill>
-            {selectedStrategy === 'peak-drawdown' ? (
-              <Pill tone="slate">阶段高点 {formatPriceLabel(displayStageHighPrice)}</Pill>
-            ) : (
-              <>
-                <Pill tone="slate">120日线触发 {formatPriceLabel(displayTriggerPrice)}</Pill>
-                <Pill tone="slate">200日线风控 {formatPriceLabel(displayRiskControlPrice)}</Pill>
-              </>
-            )}
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-baseline gap-x-6 gap-y-2">
-          <div>
-            <div className="text-xs text-slate-500">当前标的现价</div>
-            <div className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
-              {formatPriceLabel(strategyDisplayCurrentPrice)}
-            </div>
-          </div>
-          <div className="text-sm text-slate-500">
-            已完成 <span className="font-medium tabular-nums text-emerald-700">{completedLayerCount}</span>
-            {' '}/{' '}
-            <span className="tabular-nums">{executionLayers.length}</span> 档
-          </div>
-        </div>
-
-        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-          <div
-            className="h-full bg-emerald-500 transition-all"
-            style={{ width: executionLayers.length ? `${(completedLayerCount / executionLayers.length) * 100}%` : '0%' }}
-          />
-        </div>
-
-        {/* Desktop table */}
-        <div className="mt-5 hidden overflow-hidden rounded-md border border-slate-200 md:block">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs font-medium text-slate-500">
-              <tr>
-                <th className="px-4 py-2.5 font-medium">批次</th>
-                <th className="px-4 py-2.5 font-medium">状态</th>
-                <th className="px-4 py-2.5 font-medium">信号</th>
-                <th className="px-4 py-2.5 text-right font-medium">价格</th>
-                <th className="px-4 py-2.5 text-right font-medium">跌幅</th>
-                <th className="px-4 py-2.5 text-right font-medium">金额</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {executionLayers.map((layer) => (
-                <tr key={layer.id} className={cx(layer.progressState === 'next' && 'bg-indigo-50/40')}>
-                  <td className="px-4 py-3 tabular-nums text-slate-600">{String(layer.order).padStart(2, '0')}</td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center gap-2">
-                      <StatusDot state={layer.progressState} />
-                      <span className={cx('text-xs',
-                        layer.progressState === 'completed' && 'text-emerald-700',
-                        layer.progressState === 'next' && 'text-indigo-700',
-                        layer.progressState === 'pending' && 'text-slate-500'
-                      )}>{layer.progressLabel}</span>
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-slate-700">{layer.signal}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-slate-900">{formatPriceLabel(layer.price)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-slate-600">{formatDrawdownLabel(layer)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-slate-900">{formatCurrency(layer.amount)}</td>
-                </tr>
-              ))}
-              {!executionLayers.length ? (
-                <tr><td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={6}>请先创建一条建仓策略。</td></tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Mobile stacked cards */}
-        <div className="mt-4 space-y-2 md:hidden">
-          {executionLayers.map((layer) => (
-            <div key={`m-${layer.id}`} className={cx(
-              'rounded-md border p-3',
-              layer.progressState === 'next' ? 'border-indigo-200 bg-indigo-50/40' : 'border-slate-200 bg-white'
-            )}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <StatusDot state={layer.progressState} />
-                  <span className="text-xs tabular-nums text-slate-500">批次 {String(layer.order).padStart(2, '0')}</span>
-                  <span className={cx('text-xs',
-                    layer.progressState === 'completed' && 'text-emerald-700',
-                    layer.progressState === 'next' && 'text-indigo-700',
-                    layer.progressState === 'pending' && 'text-slate-500'
-                  )}>{layer.progressLabel}</span>
-                </div>
-                <span className="text-sm font-medium tabular-nums text-slate-900">{formatPriceLabel(layer.price)}</span>
-              </div>
-              <div className="mt-2 text-sm text-slate-700">{layer.signal}</div>
-              <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
-                <span>跌幅 <span className="tabular-nums text-slate-700">{formatDrawdownLabel(layer)}</span></span>
-                <span>金额 <span className="font-medium tabular-nums text-slate-700">{formatCurrency(layer.amount)}</span></span>
-              </div>
-            </div>
-          ))}
-          {!executionLayers.length ? (
-            <div className="rounded-md border border-dashed border-slate-300 px-3 py-4 text-center text-sm text-slate-500">
-              请先创建一条建仓策略。
-            </div>
-          ) : null}
-        </div>
-      </Card>
-
-      {/* ===== 价格走势 ===== */}
-      <Card className="p-4 sm:p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 flex-1">
             <SectionHeading
-              eyebrow="价格走势"
-              title={selectedFundCodeLabel || '未选择标的'}
-              description={pricePulse?.asOf ? `截至 ${pricePulse.asOf}` : (minuteSnapshot?.date || '选择一个标的查看走势。')}
+              eyebrow="建仓计划"
+              title={selectedFundCodeLabel || '建仓计划详情'}
+              description={pricePulse?.asOf ? `截至 ${pricePulse.asOf}` : undefined}
             />
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              <Pill tone="slate">基准 {benchmarkCodeLabel}</Pill>
+              <Pill tone="slate">标的 {selectedFundCodeLabel || '--'}</Pill>
+              {selectedStrategy === 'peak-drawdown' ? (
+                <Pill tone="slate">阶段高点 {formatPriceLabel(displayStageHighPrice)}</Pill>
+              ) : (
+                <>
+                  <Pill tone="slate">120日线触发 {formatPriceLabel(displayTriggerPrice)}</Pill>
+                  <Pill tone="slate">200日线风控 {formatPriceLabel(displayRiskControlPrice)}</Pill>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-row items-end gap-4 lg:flex-col lg:items-end lg:gap-1">
             {pricePulse ? (
-              <div className="text-left sm:text-right">
+              <div className="text-left lg:text-right">
                 <div className="text-xs text-slate-500">当前价格</div>
-                <div className="mt-1 flex items-baseline gap-2 sm:justify-end">
+                <div className="mt-0.5 flex items-baseline gap-2 lg:justify-end">
                   <span className="text-2xl font-semibold tabular-nums text-slate-900">
                     {formatFundPrice(pricePulse.latestPrice, selectedFundCurrency)}
                   </span>
@@ -696,97 +595,195 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
                   </span>
                 </div>
               </div>
-            ) : null}
-          </div>
-
-          <div className="mt-4 inline-flex items-center rounded-md bg-slate-100 p-0.5">
-            {TIMEFRAME_OPTIONS.map((option) => (
-              <button
-                key={option.key}
-                type="button"
-                onClick={() => setTimeframe(option.key)}
-                className={cx(
-                  'rounded-md px-3 py-1 text-xs font-medium transition-colors',
-                  timeframe === option.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-
-          {pricePulse && chartGeometry.candles.length ? (
-            <>
-              <div className="relative mt-4 min-w-0 overflow-hidden rounded-md border border-slate-200 bg-white">
-                <svg className="relative h-[320px] w-full sm:h-[380px]" preserveAspectRatio="none" viewBox="0 0 100 100">
-                  <line stroke="rgba(148,163,184,0.2)" strokeDasharray="1.5 2.5" strokeWidth="0.3" x1="4" x2="96" y1="16" y2="16" />
-                  <line stroke="rgba(148,163,184,0.2)" strokeDasharray="1.5 2.5" strokeWidth="0.3" x1="4" x2="96" y1="32" y2="32" />
-                  <line stroke="rgba(148,163,184,0.2)" strokeDasharray="1.5 2.5" strokeWidth="0.3" x1="4" x2="96" y1="48" y2="48" />
-                  <line stroke="rgba(148,163,184,0.2)" strokeDasharray="1.5 2.5" strokeWidth="0.3" x1="4" x2="96" y1="64" y2="64" />
-                  <line stroke="rgba(148,163,184,0.25)" strokeWidth="0.4" x1="4" x2="96" y1="79" y2="79" />
-                  {chartGeometry.volumeBars.map((bar) => (
-                    <rect key={bar.id} fill={bar.rising ? 'rgba(16,185,129,0.2)' : 'rgba(244,63,94,0.18)'} height={bar.height} rx="0.2" width={Math.max(bar.width, 1.2)} x={bar.x} y={bar.y} />
-                  ))}
-                  {chartGeometry.ma120Segments.map((segment, index) => (
-                    <polyline key={`ma120-${index}`} fill="none" points={segment} stroke="#7c3aed" strokeWidth={timeframe === '1d' ? '1.4' : '1'} strokeLinecap="round" strokeLinejoin="round" />
-                  ))}
-                  {chartGeometry.ma200Segments.map((segment, index) => (
-                    <polyline key={`ma200-${index}`} fill="none" points={segment} stroke="#f59e0b" strokeWidth={timeframe === '1d' ? '1.4' : '1'} strokeLinecap="round" strokeLinejoin="round" />
-                  ))}
-                  {chartGeometry.candles.map((candle) => (
-                    <g key={candle.id}>
-                      <line stroke={candle.rising ? '#10b981' : '#f43f5e'} strokeWidth="0.6" x1={candle.x} x2={candle.x} y1={candle.wickTop} y2={candle.wickBottom} />
-                      <rect fill={candle.rising ? '#10b981' : '#f43f5e'} height={candle.bodyHeight} rx="0.3" width={Math.max(candle.hitBoxWidth > 5 ? 1.8 : 1.3, 1.1)} x={candle.bodyX} y={candle.bodyY} />
-                      <rect fill="transparent" height="100" width={candle.hitBoxWidth} x={candle.hitBoxX} y="0" onClick={() => setActiveBarId(candle.id)} />
-                    </g>
-                  ))}
-                  {activeCandle && Number.isFinite(activeCloseY) ? (
-                    <g>
-                      <line stroke="rgba(15,23,42,0.28)" strokeDasharray="1.6 2.2" strokeWidth="0.4" x1={activeCandle.x} x2={activeCandle.x} y1="6" y2="96" />
-                      <line stroke="rgba(15,23,42,0.18)" strokeDasharray="1.6 2.2" strokeWidth="0.4" x1="4" x2="96" y1={activeCloseY} y2={activeCloseY} />
-                      <circle cx={activeCandle.x} cy={activeCloseY} fill="#0f172a" r="1" />
-                    </g>
-                  ) : null}
-                </svg>
-              </div>
-
-              <div className="mt-3 flex flex-col gap-2 text-xs md:flex-row md:items-center md:justify-between">
-                <div className="flex flex-wrap items-center gap-4">
-                  <span className="flex items-center gap-1.5">
-                    <span className="inline-block h-2.5 w-2.5 rounded-sm bg-violet-600" />
-                    <span className="text-slate-500">120日线</span>
-                    <span className="font-medium tabular-nums text-slate-700">{formatRawNumber(activeMa120)}</span>
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="inline-block h-2.5 w-2.5 rounded-sm bg-amber-500" />
-                    <span className="text-slate-500">200日线</span>
-                    <span className="font-medium tabular-nums text-slate-700">{formatRawNumber(activeMa200)}</span>
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="text-slate-500">成交量</span>
-                    <span className="font-medium tabular-nums text-slate-700">{pricePulse.volumeMetricValue}</span>
-                  </span>
+            ) : (
+              <div className="text-left lg:text-right">
+                <div className="text-xs text-slate-500">当前标的现价</div>
+                <div className="mt-0.5 text-2xl font-semibold tabular-nums text-slate-900">
+                  {formatPriceLabel(strategyDisplayCurrentPrice)}
                 </div>
-                {activeBar ? (
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500">
-                    <span>{activeBar.longLabel}</span>
-                    <span>开 <span className="tabular-nums text-slate-700">{formatRawNumber(activeBar.open)}</span></span>
-                    <span>高 <span className="tabular-nums text-slate-700">{formatRawNumber(activeBar.high)}</span></span>
-                    <span>低 <span className="tabular-nums text-slate-700">{formatRawNumber(activeBar.low)}</span></span>
-                    <span>收 <span className="tabular-nums text-slate-700">{formatRawNumber(activeBar.close)}</span></span>
-                  </div>
-                ) : null}
               </div>
-            </>
-          ) : (
-            <div className="mt-4 rounded-md border border-dashed border-slate-300 px-4 py-12 text-center text-sm text-slate-500">
-              {pulseError
-                ? `加载失败：${pulseError}`
-                : isLoadingPulse
-                  ? '正在加载价格走势数据...'
-                  : '请选择一个标的查看走势。'}
+            )}
+            <div className="text-xs text-slate-500">
+              已完成 <span className="font-medium tabular-nums text-emerald-700">{completedLayerCount}</span>
+              {' '}/{' '}<span className="tabular-nums">{executionLayers.length}</span> 档
             </div>
-          )}
+          </div>
+        </div>
+
+        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+          <div
+            className="h-full bg-emerald-500 transition-all"
+            style={{ width: executionLayers.length ? `${(completedLayerCount / executionLayers.length) * 100}%` : '0%' }}
+          />
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+          {/* Left: 建仓档位表 */}
+          <div className="min-w-0">
+            <div className="hidden overflow-hidden rounded-md border border-slate-200 md:block">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs font-medium text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">批次</th>
+                    <th className="px-3 py-2 font-medium">状态</th>
+                    <th className="px-3 py-2 font-medium">信号</th>
+                    <th className="px-3 py-2 text-right font-medium">价格</th>
+                    <th className="px-3 py-2 text-right font-medium">跌幅</th>
+                    <th className="px-3 py-2 text-right font-medium">金额</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {executionLayers.map((layer) => (
+                    <tr key={layer.id} className={cx(layer.progressState === 'next' && 'bg-indigo-50/40')}>
+                      <td className="px-3 py-2 tabular-nums text-slate-600">{String(layer.order).padStart(2, '0')}</td>
+                      <td className="px-3 py-2">
+                        <span className="inline-flex items-center gap-1.5">
+                          <StatusDot state={layer.progressState} />
+                          <span className={cx('text-xs',
+                            layer.progressState === 'completed' && 'text-emerald-700',
+                            layer.progressState === 'next' && 'text-indigo-700',
+                            layer.progressState === 'pending' && 'text-slate-500'
+                          )}>{layer.progressLabel}</span>
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-slate-700">{layer.signal}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-900">{formatPriceLabel(layer.price)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-600">{formatDrawdownLabel(layer)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-900">{formatCurrency(layer.amount)}</td>
+                    </tr>
+                  ))}
+                  {!executionLayers.length ? (
+                    <tr><td className="px-3 py-6 text-center text-sm text-slate-500" colSpan={6}>请先创建一条建仓策略。</td></tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="space-y-2 md:hidden">
+              {executionLayers.map((layer) => (
+                <div key={`m-${layer.id}`} className={cx(
+                  'rounded-md border p-3',
+                  layer.progressState === 'next' ? 'border-indigo-200 bg-indigo-50/40' : 'border-slate-200 bg-white'
+                )}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <StatusDot state={layer.progressState} />
+                      <span className="text-xs tabular-nums text-slate-500">批次 {String(layer.order).padStart(2, '0')}</span>
+                      <span className={cx('text-xs',
+                        layer.progressState === 'completed' && 'text-emerald-700',
+                        layer.progressState === 'next' && 'text-indigo-700',
+                        layer.progressState === 'pending' && 'text-slate-500'
+                      )}>{layer.progressLabel}</span>
+                    </div>
+                    <span className="text-sm font-medium tabular-nums text-slate-900">{formatPriceLabel(layer.price)}</span>
+                  </div>
+                  <div className="mt-2 text-sm text-slate-700">{layer.signal}</div>
+                  <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                    <span>跌幅 <span className="tabular-nums text-slate-700">{formatDrawdownLabel(layer)}</span></span>
+                    <span>金额 <span className="font-medium tabular-nums text-slate-700">{formatCurrency(layer.amount)}</span></span>
+                  </div>
+                </div>
+              ))}
+              {!executionLayers.length ? (
+                <div className="rounded-md border border-dashed border-slate-300 px-3 py-4 text-center text-sm text-slate-500">
+                  请先创建一条建仓策略。
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Right: K 线 */}
+          <div className="min-w-0">
+            <div className="inline-flex items-center rounded-md bg-slate-100 p-0.5">
+              {TIMEFRAME_OPTIONS.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setTimeframe(option.key)}
+                  className={cx(
+                    'rounded-md px-3 py-1 text-xs font-medium transition-colors',
+                    timeframe === option.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            {pricePulse && chartGeometry.candles.length ? (
+              <>
+                <div className="relative mt-3 min-w-0 overflow-hidden rounded-md border border-slate-200 bg-white">
+                  <svg className="relative h-[260px] w-full sm:h-[300px]" preserveAspectRatio="none" viewBox="0 0 100 100">
+                    <line stroke="rgba(148,163,184,0.2)" strokeDasharray="1.5 2.5" strokeWidth="0.3" x1="4" x2="96" y1="16" y2="16" />
+                    <line stroke="rgba(148,163,184,0.2)" strokeDasharray="1.5 2.5" strokeWidth="0.3" x1="4" x2="96" y1="32" y2="32" />
+                    <line stroke="rgba(148,163,184,0.2)" strokeDasharray="1.5 2.5" strokeWidth="0.3" x1="4" x2="96" y1="48" y2="48" />
+                    <line stroke="rgba(148,163,184,0.2)" strokeDasharray="1.5 2.5" strokeWidth="0.3" x1="4" x2="96" y1="64" y2="64" />
+                    <line stroke="rgba(148,163,184,0.25)" strokeWidth="0.4" x1="4" x2="96" y1="79" y2="79" />
+                    {chartGeometry.volumeBars.map((bar) => (
+                      <rect key={bar.id} fill={bar.rising ? 'rgba(16,185,129,0.2)' : 'rgba(244,63,94,0.18)'} height={bar.height} rx="0.2" width={Math.max(bar.width, 1.2)} x={bar.x} y={bar.y} />
+                    ))}
+                    {chartGeometry.ma120Segments.map((segment, index) => (
+                      <polyline key={`ma120-${index}`} fill="none" points={segment} stroke="#7c3aed" strokeWidth={timeframe === '1d' ? '1.4' : '1'} strokeLinecap="round" strokeLinejoin="round" />
+                    ))}
+                    {chartGeometry.ma200Segments.map((segment, index) => (
+                      <polyline key={`ma200-${index}`} fill="none" points={segment} stroke="#f59e0b" strokeWidth={timeframe === '1d' ? '1.4' : '1'} strokeLinecap="round" strokeLinejoin="round" />
+                    ))}
+                    {chartGeometry.candles.map((candle) => (
+                      <g key={candle.id}>
+                        <line stroke={candle.rising ? '#10b981' : '#f43f5e'} strokeWidth="0.6" x1={candle.x} x2={candle.x} y1={candle.wickTop} y2={candle.wickBottom} />
+                        <rect fill={candle.rising ? '#10b981' : '#f43f5e'} height={candle.bodyHeight} rx="0.3" width={Math.max(candle.hitBoxWidth > 5 ? 1.8 : 1.3, 1.1)} x={candle.bodyX} y={candle.bodyY} />
+                        <rect fill="transparent" height="100" width={candle.hitBoxWidth} x={candle.hitBoxX} y="0" onClick={() => setActiveBarId(candle.id)} />
+                      </g>
+                    ))}
+                    {activeCandle && Number.isFinite(activeCloseY) ? (
+                      <g>
+                        <line stroke="rgba(15,23,42,0.28)" strokeDasharray="1.6 2.2" strokeWidth="0.4" x1={activeCandle.x} x2={activeCandle.x} y1="6" y2="96" />
+                        <line stroke="rgba(15,23,42,0.18)" strokeDasharray="1.6 2.2" strokeWidth="0.4" x1="4" x2="96" y1={activeCloseY} y2={activeCloseY} />
+                        <circle cx={activeCandle.x} cy={activeCloseY} fill="#0f172a" r="1" />
+                      </g>
+                    ) : null}
+                  </svg>
+                </div>
+
+                <div className="mt-3 flex flex-col gap-2 text-xs md:flex-row md:items-center md:justify-between">
+                  <div className="flex flex-wrap items-center gap-4">
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block h-2.5 w-2.5 rounded-sm bg-violet-600" />
+                      <span className="text-slate-500">120日线</span>
+                      <span className="font-medium tabular-nums text-slate-700">{formatRawNumber(activeMa120)}</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block h-2.5 w-2.5 rounded-sm bg-amber-500" />
+                      <span className="text-slate-500">200日线</span>
+                      <span className="font-medium tabular-nums text-slate-700">{formatRawNumber(activeMa200)}</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-slate-500">成交量</span>
+                      <span className="font-medium tabular-nums text-slate-700">{pricePulse.volumeMetricValue}</span>
+                    </span>
+                  </div>
+                  {activeBar ? (
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500">
+                      <span>{activeBar.longLabel}</span>
+                      <span>开 <span className="tabular-nums text-slate-700">{formatRawNumber(activeBar.open)}</span></span>
+                      <span>高 <span className="tabular-nums text-slate-700">{formatRawNumber(activeBar.high)}</span></span>
+                      <span>低 <span className="tabular-nums text-slate-700">{formatRawNumber(activeBar.low)}</span></span>
+                      <span>收 <span className="tabular-nums text-slate-700">{formatRawNumber(activeBar.close)}</span></span>
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            ) : (
+              <div className="mt-3 rounded-md border border-dashed border-slate-300 px-4 py-12 text-center text-sm text-slate-500">
+                {pulseError
+                  ? `加载失败：${pulseError}`
+                  : isLoadingPulse
+                    ? '正在加载价格走势数据...'
+                    : '请选择一个标的查看走势。'}
+              </div>
+            )}
+          </div>
+        </div>
       </Card>
     </div>
   );
