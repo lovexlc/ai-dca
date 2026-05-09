@@ -2363,16 +2363,26 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               {mainViewTab === 'switch' ? null : (
                 <div className="flex flex-wrap items-center gap-2">
                   <span aria-hidden className="hidden h-5 w-px bg-slate-200 sm:block" />
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">类型</span>
                   {renderKindFilter()}
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <div className="relative inline-flex items-center">
+                    <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                     <input
-                      className={cx(tableInputClass, 'h-9 w-60 rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm shadow-sm placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100')}
+                      className="h-8 w-32 rounded-md border border-transparent bg-transparent pl-7 pr-2 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-400 hover:bg-slate-100/70 focus:w-56 focus:border-slate-200 focus:bg-white focus:ring-2 focus:ring-indigo-100"
                       value={searchText}
                       onChange={(event) => setSearchText(event.target.value)}
-                      placeholder="搜索代码或名称"
+                      placeholder="搜索…"
+                      aria-label="搜索代码或名称"
                     />
+                    {searchText ? (
+                      <button
+                        type="button"
+                        onClick={() => setSearchText('')}
+                        className="absolute right-1.5 top-1/2 inline-flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                        aria-label="清空搜索"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               )}
