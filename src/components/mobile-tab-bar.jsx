@@ -1,111 +1,167 @@
-import { useEffect, useRef, useState } from 'react';
-import { ClipboardPaste, CloudUpload, Plus, Search, Sparkles } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ClipboardPaste, CloudUpload, Plus, Search, Sparkles, X } from 'lucide-react';
+
+const ADD_TABS = [
+  {
+    key: 'single',
+    label: '单笔新增',
+    icon: Plus,
+    desc: '手动添加一条买入 / 卖出交易',
+    action: '开始新增',
+    handlerKey: 'onNew',
+  },
+  {
+    key: 'paste',
+    label: '粘贴 Excel',
+    icon: ClipboardPaste,
+    desc: '从 Excel 粘贴 TSV / CSV 数据批量导入',
+    action: '开始粘贴',
+    handlerKey: 'onPasteImport',
+  },
+  {
+    key: 'ocr',
+    label: '截图 OCR',
+    icon: CloudUpload,
+    desc: '上传持仓截图自动识别交易',
+    action: '上传截图',
+    handlerKey: 'onOcrImport',
+  },
+];
 
 export function MobileTabBar({ onSearch, onAi, onNew, onPasteImport, onOcrImport }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const wrapRef = useRef(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addTab, setAddTab] = useState('single');
+
+  const handlers = { onNew, onPasteImport, onOcrImport };
+  const active = ADD_TABS.find((t) => t.key === addTab) || ADD_TABS[0];
+  const ActiveIcon = active.icon;
 
   useEffect(() => {
-    if (!menuOpen) return undefined;
-    function onDocClick(event) {
-      if (!wrapRef.current) return;
-      if (wrapRef.current.contains(event.target)) return;
-      setMenuOpen(false);
+    if (!addOpen) return undefined;
+    function onKey(event) {
+      if (event.key === 'Escape') setAddOpen(false);
     }
-    document.addEventListener('mousedown', onDocClick);
-    document.addEventListener('touchstart', onDocClick);
+    document.addEventListener('keydown', onKey);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     return () => {
-      document.removeEventListener('mousedown', onDocClick);
-      document.removeEventListener('touchstart', onDocClick);
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
     };
-  }, [menuOpen]);
+  }, [addOpen]);
 
-  function pick(handler) {
-    return () => {
-      setMenuOpen(false);
-      if (typeof handler === 'function') handler();
-    };
+  function triggerAction(key) {
+    const tab = ADD_TABS.find((t) => t.key === key);
+    if (!tab) return;
+    setAddOpen(false);
+    const fn = handlers[tab.handlerKey];
+    if (typeof fn === 'function') fn();
+  }
+
+  function openAdd() {
+    setAddTab('single');
+    setAddOpen(true);
   }
 
   return (
-    <nav
-      className="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around border-t border-slate-200 bg-white/95 px-6 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-4px_24px_rgba(15,23,42,0.06)] backdrop-blur sm:hidden"
-      aria-label="底部快捷导航"
-    >
-      <button
-        type="button"
-        className="flex h-12 w-12 items-center justify-center rounded-full text-slate-600 transition-colors hover:bg-slate-100 active:bg-slate-200"
-        onClick={onSearch}
-        aria-label="搜索"
+    <>
+      <nav
+        className="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around border-t border-slate-200 bg-white/95 px-6 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-4px_24px_rgba(15,23,42,0.06)] backdrop-blur sm:hidden"
+        aria-label="底部快捷导航"
       >
-        <Search className="h-5 w-5" />
-      </button>
-      <button
-        type="button"
-        className="-mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-[0_8px_24px_rgba(79,70,229,0.35)] transition-colors hover:bg-indigo-500 active:bg-indigo-700"
-        onClick={onAi}
-        aria-label="AI 咨询"
-      >
-        <Sparkles className="h-6 w-6" />
-      </button>
-      <div className="relative" ref={wrapRef}>
         <button
           type="button"
           className="flex h-12 w-12 items-center justify-center rounded-full text-slate-600 transition-colors hover:bg-slate-100 active:bg-slate-200"
-          onClick={() => setMenuOpen((v) => !v)}
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
+          onClick={onSearch}
+          aria-label="搜索"
+        >
+          <Search className="h-5 w-5" />
+        </button>
+        <button
+          type="button"
+          className="-mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-[0_8px_24px_rgba(79,70,229,0.35)] transition-colors hover:bg-indigo-500 active:bg-indigo-700"
+          onClick={onAi}
+          aria-label="AI 咨询"
+        >
+          <Sparkles className="h-6 w-6" />
+        </button>
+        <button
+          type="button"
+          className="flex h-12 w-12 items-center justify-center rounded-full text-slate-600 transition-colors hover:bg-slate-100 active:bg-slate-200"
+          onClick={openAdd}
           aria-label="新增交易"
         >
           <Plus className="h-6 w-6" />
         </button>
-        {menuOpen ? (
+      </nav>
+
+      {addOpen ? (
+        <div
+          className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-900/40 backdrop-blur-sm sm:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="新增交易"
+          onClick={() => setAddOpen(false)}
+        >
           <div
-            className="absolute bottom-full right-0 z-40 mb-3 w-60 overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-slate-200"
-            role="menu"
+            className="w-full overflow-hidden rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
           >
-            <button
-              type="button"
-              className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50"
-              onClick={pick(onNew)}
-              role="menuitem"
-            >
-              <Plus className="mt-0.5 h-5 w-5 flex-none text-slate-500" />
-              <span className="flex-1">
-                <span className="block text-sm font-semibold text-slate-800">单笔新增</span>
-                <span className="mt-0.5 block text-xs text-slate-500">手动添加一条交易</span>
-              </span>
-            </button>
-            <div className="h-px bg-slate-100" />
-            <button
-              type="button"
-              className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50"
-              onClick={pick(onPasteImport)}
-              role="menuitem"
-            >
-              <ClipboardPaste className="mt-0.5 h-5 w-5 flex-none text-slate-500" />
-              <span className="flex-1">
-                <span className="block text-sm font-semibold text-slate-800">粘贴 Excel</span>
-                <span className="mt-0.5 block text-xs text-slate-500">从 Excel 粘贴 TSV / CSV 交易流水</span>
-              </span>
-            </button>
-            <div className="h-px bg-slate-100" />
-            <button
-              type="button"
-              className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50"
-              onClick={pick(onOcrImport)}
-              role="menuitem"
-            >
-              <CloudUpload className="mt-0.5 h-5 w-5 flex-none text-slate-500" />
-              <span className="flex-1">
-                <span className="block text-sm font-semibold text-slate-800">截图 OCR</span>
-                <span className="mt-0.5 block text-xs text-slate-500">上传持仓截图识别交易</span>
-              </span>
-            </button>
+            <div className="flex items-center justify-between px-5 pt-4">
+              <div className="text-base font-semibold text-slate-900">新增交易</div>
+              <button
+                type="button"
+                className="-mr-2 flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 active:bg-slate-200"
+                onClick={() => setAddOpen(false)}
+                aria-label="关闭"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="mt-3 flex gap-1 border-b border-slate-100 px-3" role="tablist">
+              {ADD_TABS.map((tab) => {
+                const Icon = tab.icon;
+                const isActive = tab.key === addTab;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    className={[
+                      'flex flex-1 items-center justify-center gap-1.5 border-b-2 px-2 py-3 text-sm font-medium transition-colors',
+                      isActive
+                        ? 'border-indigo-500 text-indigo-600'
+                        : 'border-transparent text-slate-500 hover:text-slate-700',
+                    ].join(' ')}
+                    onClick={() => setAddTab(tab.key)}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="px-5 pb-6 pt-7" role="tabpanel">
+              <div className="flex flex-col items-center text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+                  <ActiveIcon className="h-7 w-7" />
+                </div>
+                <div className="mt-3 text-base font-semibold text-slate-900">{active.label}</div>
+                <div className="mt-1 max-w-xs text-sm leading-relaxed text-slate-500">{active.desc}</div>
+                <button
+                  type="button"
+                  className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-xl bg-indigo-600 px-5 text-sm font-semibold text-white shadow-md transition-colors hover:bg-indigo-500 active:bg-indigo-700"
+                  onClick={() => triggerAction(active.key)}
+                >
+                  {active.action}
+                </button>
+              </div>
+            </div>
           </div>
-        ) : null}
-      </div>
-    </nav>
+        </div>
+      ) : null}
+    </>
   );
 }
 
