@@ -2066,13 +2066,27 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       : filteredSummary.totalRealizedProfit < 0 ? 'text-emerald-600' : '';
     return (
       <div className="flex flex-col gap-2">
-        <DataTableToolbar table={soldLotsTable}>
-          <span className="whitespace-nowrap text-xs text-muted-foreground">
-            合计 {filteredSummary.codeCount} 只 / {filteredSummary.lotCount} 笔 · 卖出 {formatCurrency(filteredSummary.totalProceeds, '¥', 2)} · 已实现 <span className={cx('font-semibold tabular-nums', totalTone)}>{formatSignedCurrency(filteredSummary.totalRealizedProfit)} ({formatSignedPercent(filteredSummary.totalRealizedReturnRate)})</span>
-          </span>
-        </DataTableToolbar>
+        <DataTableToolbar table={soldLotsTable} />
         <DataTable table={soldLotsTable} />
       </div>
+    );
+  }
+
+  function renderSoldStatusFooter() {
+    if (soldLots.length === 0) {
+      return `共 0 只基金 / 0 笔卖出。`;
+    }
+    const filteredLots = soldLotsTable.getFilteredRowModel().rows.map((r) => r.original);
+    const filteredSummary = summarizeSoldLots(filteredLots);
+    const profitTone = filteredSummary.totalRealizedProfit > 0
+      ? 'text-rose-600'
+      : filteredSummary.totalRealizedProfit < 0 ? 'text-emerald-600' : '';
+    return (
+      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span>合计 {filteredSummary.codeCount} 只 / {filteredSummary.lotCount} 笔</span>
+        <span>· 卖出 {formatCurrency(filteredSummary.totalProceeds, '¥', 2)}</span>
+        <span>· 已实现 <span className={cx('font-semibold tabular-nums', profitTone)}>{formatSignedCurrency(filteredSummary.totalRealizedProfit)} ({formatSignedPercent(filteredSummary.totalRealizedReturnRate)})</span></span>
+      </span>
     );
   }
 
@@ -2765,7 +2779,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleOcrFile} />
             </div>
           </div>
-          <div className="min-h-[560px] px-1 py-1">
+          <div className="min-h-[480px] px-1">
             {mainViewTab === 'aggregate'
               ? renderAggregatesTable()
               : mainViewTab === 'sold'
@@ -2776,7 +2790,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             {mainViewTab === 'aggregate'
               ? `持仓中 ${portfolio.assetCount} 只基金；累计 ${ledgerRows.length} 笔流水。`
               : mainViewTab === 'sold'
-                ? `共 ${soldSummary.codeCount} 只基金 / ${soldSummary.lotCount} 笔卖出；已实现收益 ${formatSignedCurrency(soldSummary.totalRealizedProfit)} （${formatSignedPercent(soldSummary.totalRealizedReturnRate)}）。`
+                ? renderSoldStatusFooter()
                 : `共 ${ledgerRows.length} 笔流水；当前筛选 ${filteredRows.length} 笔。`}
           </div>
         </section>
