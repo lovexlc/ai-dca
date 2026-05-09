@@ -4,6 +4,7 @@ import {
   ArrowRight,
   ArrowUp,
   AlertTriangle,
+  ArrowUpDown,
   CheckCircle2,
   ChevronDown,
   ClipboardPaste,
@@ -11,6 +12,7 @@ import {
   Copy,
   FileImage,
   FileUp,
+  Filter as FilterIcon,
   LoaderCircle,
   Pencil,
   Plus,
@@ -80,6 +82,8 @@ import {
 export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = false } = {}) {
   const [ledger, setLedger] = useState(() => readLedgerState());
   const [kindFilter, setKindFilter] = useState('all');
+  const [aggregateSort, setAggregateSort] = useState({ key: null, dir: 'desc' });
+  const [headerFilterOpen, setHeaderFilterOpen] = useState(null); // 'kind' | null
   const [searchText, setSearchText] = useState('');
   const [selectedCode, setSelectedCode] = useState('');
   const [sidePanelTab, setSidePanelTab] = useState('summary');
@@ -1402,13 +1406,62 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   function renderAggregatesTable() {
-    const filteredAggs = aggregates.filter((agg) => {
+    const baseAggs = aggregates.filter((agg) => {
       if (!agg.hasPosition) return false;
       if (kindFilter !== 'all' && agg.kind !== kindFilter) return false;
       if (!searchNeedle) return true;
       return agg.code.toLowerCase().includes(searchNeedle)
         || (agg.name || '').toLowerCase().includes(searchNeedle);
     });
+    const sortKey = aggregateSort.key;
+    const sortDir = aggregateSort.dir;
+    const filteredAggs = sortKey
+      ? [...baseAggs].sort((a, b) => {
+          const av = a[sortKey];
+          const bv = b[sortKey];
+          const aNull = av === null || av === undefined || Number.isNaN(av);
+          const bNull = bv === null || bv === undefined || Number.isNaN(bv);
+          if (aNull && bNull) return 0;
+          if (aNull) return 1; // nulls always sink to bottom
+          if (bNull) return -1;
+          let cmp;
+          if (typeof av === 'number' && typeof bv === 'number') cmp = av - bv;
+          else cmp = String(av).localeCompare(String(bv), 'zh-Hans-CN');
+          return sortDir === 'desc' ? -cmp : cmp;
+        })
+      : baseAggs;
+    const cycleSort = (key) => {
+      setAggregateSort((prev) => {
+        if (prev.key !== key) return { key, dir: 'desc' };
+        if (prev.dir === 'desc') return { key, dir: 'asc' };
+        return { key: null, dir: 'desc' };
+      });
+    };
+    const SortHeader = ({ sortKey: k, label, align = 'left', sticky = false }) => {
+      const active = sortKey === k;
+      return (
+        <th
+          className={cx(
+            'group cursor-pointer select-none px-3 py-2 transition-colors hover:bg-slate-100',
+            align === 'right' ? 'text-right' : 'text-left',
+            sticky && 'sticky left-0 z-20 bg-slate-50 shadow-[1px_0_0_rgba(15,23,42,0.08)]'
+          )}
+          onClick={() => cycleSort(k)}
+          aria-sort={active ? (sortDir === 'desc' ? 'descending' : 'ascending') : 'none'}
+        >
+          <span className={cx('inline-flex items-center gap-1', align === 'right' && 'flex-row-reverse')}>
+            {label}
+            {active ? (
+              sortDir === 'desc'
+                ? <ArrowDown className="h-3 w-3 text-indigo-500" />
+                : <ArrowUp className="h-3 w-3 text-indigo-500" />
+            ) : (
+              <ArrowUpDown className="h-3 w-3 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100" />
+            )}
+          </span>
+        </th>
+      );
+    };
 
     if (!filteredAggs.length) {
       const activeCount = aggregates.filter((agg) => agg.hasPosition).length;
@@ -1470,22 +1523,93 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     const totalTone = portfolio.totalProfit > 0 ? 'text-red-600' : portfolio.totalProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
     const totalTodayTone = portfolio.todayProfit > 0 ? 'text-red-600' : portfolio.todayProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
 
+    const activeKindLabel = kindFilter !== 'all' ? (KIND_FILTER_LABELS[kindFilter] || kindFilter) : null;
     return (
-      <div className="overflow-x-auto">
+      <div>
+        {activeKindLabel ? (
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/60 px-4 py-2 text-xs">
+            <span className="text-slate-500">筛选：</span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-indigo-700">
+              标签 · {activeKindLabel}
+              <button
+                type="button"
+                aria-label={`清除标签筛选`}
+                className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-indigo-500 transition-colors hover:bg-indigo-100 hover:text-indigo-700"
+                onClick={() => setKindFilter('all')}
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </span>
+            <button
+              type="button"
+              className="text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline"
+              onClick={() => setKindFilter('all')}
+            >清空</button>
+          </div>
+        ) : null}
+        <div className="overflow-x-auto">
         <table className="min-w-[1200px] w-full text-sm">
           <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
             <tr>
-              <th className="sticky left-0 z-20 bg-slate-50 px-3 py-2 shadow-[1px_0_0_rgba(15,23,42,0.08)]">基金代码</th>
-              <th className="px-3 py-2">基金名称</th>
-              <th className="px-3 py-2">标签</th>
-              <th className="px-3 py-2 text-right">总份额</th>
-              <th className="px-3 py-2 text-right">平均成本</th>
-              <th className="px-3 py-2 text-right">当前净值</th>
-              <th className="px-3 py-2 text-right">总市值</th>
-              <th className="px-3 py-2 text-right">总收益(元)</th>
-              <th className="px-3 py-2 text-right">总收益率</th>
-              <th className="px-3 py-2 text-right">当日收益(元)</th>
-              <th className="px-3 py-2 text-right">当日收益率</th>
+              <SortHeader sortKey="code" label="基金代码" sticky />
+              <SortHeader sortKey="name" label="基金名称" />
+              <th className="relative px-3 py-2">
+                <span className="inline-flex items-center gap-1">
+                  标签
+                  <button
+                    type="button"
+                    aria-label="筛选标签"
+                    className={cx(
+                      'inline-flex h-5 w-5 items-center justify-center rounded transition-colors',
+                      kindFilter !== 'all'
+                        ? 'bg-indigo-50 text-indigo-600 ring-1 ring-indigo-200'
+                        : 'text-slate-400 hover:bg-slate-200 hover:text-slate-600'
+                    )}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setHeaderFilterOpen(headerFilterOpen === 'kind' ? null : 'kind');
+                    }}
+                  >
+                    <FilterIcon className="h-3 w-3" />
+                  </button>
+                </span>
+                {headerFilterOpen === 'kind' ? (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setHeaderFilterOpen(null)} />
+                    <div className="absolute left-0 top-full z-40 mt-1 min-w-[180px] rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                      <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">按标签筛选</div>
+                      {KIND_FILTER_KEYS.map((key) => {
+                        const active = kindFilter === key;
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            className={cx(
+                              'flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs font-normal normal-case tracking-normal transition-colors',
+                              active ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100'
+                            )}
+                            onClick={() => {
+                              setKindFilter(key);
+                              setHeaderFilterOpen(null);
+                            }}
+                          >
+                            <span>{KIND_FILTER_LABELS[key]}</span>
+                            <span className="text-[10px] text-slate-400">{kindCounts[key] ?? 0}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : null}
+              </th>
+              <SortHeader sortKey="totalShares" label="总份额" align="right" />
+              <SortHeader sortKey="avgCost" label="平均成本" align="right" />
+              <SortHeader sortKey="latestNav" label="当前净值" align="right" />
+              <SortHeader sortKey="marketValue" label="总市值" align="right" />
+              <SortHeader sortKey="totalProfit" label="总收益(元)" align="right" />
+              <SortHeader sortKey="totalReturnRate" label="总收益率" align="right" />
+              <SortHeader sortKey="todayProfit" label="当日收益(元)" align="right" />
+              <SortHeader sortKey="todayReturnRate" label="当日收益率" align="right" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -1556,6 +1680,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             </tr>
           </tfoot>
         </table>
+        </div>
       </div>
     );
   }
@@ -2363,7 +2488,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               {mainViewTab === 'switch' ? null : (
                 <div className="flex flex-wrap items-center gap-2">
                   <span aria-hidden className="hidden h-5 w-px bg-slate-200 sm:block" />
-                  {renderKindFilter()}
                   <div className="relative inline-flex items-center">
                     <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                     <input
