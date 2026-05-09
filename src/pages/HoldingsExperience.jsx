@@ -304,7 +304,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         if (!row.original.hasLatestNav) return <span className="text-muted-foreground">—</span>;
         const v = row.original.totalProfit;
         const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
-        return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v, '¥', 2)}</span>;
+        return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v, 2)}</span>;
       },
       sortingFn: numericSortFn,
     },
@@ -330,7 +330,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         if (!row.original.hasLatestNav) return <span className="text-muted-foreground">—</span>;
         const v = row.original.todayProfit;
         const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
-        return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v, '¥', 2)}</span>;
+        return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v, 2)}</span>;
       },
       sortingFn: numericSortFn,
     },
