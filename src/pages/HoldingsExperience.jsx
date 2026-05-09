@@ -2711,7 +2711,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
               <button
                 type="button"
-                className="order-first inline-flex h-9 w-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-indigo-600 px-0 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(79,70,229,0.25)] transition-all hover:bg-indigo-500 hover:shadow-[0_6px_16px_rgba(79,70,229,0.3)] disabled:cursor-not-allowed disabled:opacity-60 sm:order-last sm:w-auto sm:px-4"
+                className="order-first hidden h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(79,70,229,0.25)] transition-all hover:bg-indigo-500 hover:shadow-[0_6px_16px_rgba(79,70,229,0.3)] disabled:cursor-not-allowed disabled:opacity-60 sm:order-last sm:inline-flex"
                 onClick={() => {
                   resetDraft(emptyDraft({ type: mainViewTab === 'sold' ? 'SELL' : 'BUY' }));
                   setSidePanelTab('create');
@@ -2720,7 +2720,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 title="新增单条交易"
               >
                 <Plus className="h-4 w-4" />
-                <span className="hidden sm:inline">新增交易</span>
+                新增交易
               </button>
               <button
                 type="button"
@@ -2753,6 +2753,24 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 </button>
                 {importMenuOpen ? (
                   <div className="absolute right-0 top-full z-20 mt-1 w-56 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-slate-200" role="menu">
+                    <button
+                      type="button"
+                      className="flex w-full items-start gap-2.5 px-3 py-2.5 text-left text-xs text-slate-700 transition-colors hover:bg-slate-50 sm:hidden"
+                      onClick={() => {
+                        setImportMenuOpen(false);
+                        resetDraft(emptyDraft({ type: mainViewTab === 'sold' ? 'SELL' : 'BUY' }));
+                        setSidePanelTab('create');
+                        setSidePanelOpen(true);
+                      }}
+                      role="menuitem"
+                    >
+                      <Plus className="mt-0.5 h-4 w-4 flex-none text-slate-500" />
+                      <span className="flex-1">
+                        <span className="block font-semibold text-slate-800">单笔新增</span>
+                        <span className="mt-0.5 block text-[11px] text-slate-500">手动添加一条交易</span>
+                      </span>
+                    </button>
+                    <div className="h-px bg-slate-100 sm:hidden" />
                     <button
                       type="button"
                       className="flex w-full items-start gap-2.5 px-3 py-2.5 text-left text-xs text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
