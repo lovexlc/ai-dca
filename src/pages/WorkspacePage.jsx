@@ -7,7 +7,7 @@ import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
 // 各主 tab 使用 React.lazy 按需加载，在 Vite 中会被拆成独立 chunk。
 // HomeExperience / DcaExperience 已并入 TradePlansExperience 作为二级 tab，不再在这里顶级 lazy。
 const BackupExperience = lazy(() => import('./BackupExperience.jsx').then((m) => ({ default: m.BackupExperience })));
-const FundSwitchAnalysisExperience = lazy(() => import('./FundSwitchAnalysisExperience.jsx').then((m) => ({ default: m.FundSwitchAnalysisExperience })));
+const FundSwitchExperience = lazy(() => import('./FundSwitchExperience.jsx').then((m) => ({ default: m.FundSwitchExperience })));
 const HistoryExperience = lazy(() => import('./HistoryExperience.jsx').then((m) => ({ default: m.HistoryExperience })));
 const HoldingsExperience = lazy(() => import('./HoldingsExperience.jsx').then((m) => ({ default: m.HoldingsExperience })));
 const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) => ({ default: m.NotifyExperience })));
@@ -176,7 +176,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       case 'tradePlans':
         return <TradePlansExperience {...sharedProps} />;
       case 'fundSwitch':
-        return <FundSwitchAnalysisExperience />;
+        return <FundSwitchExperience {...sharedProps} />;
       case 'history':
         return <HistoryExperience {...sharedProps} />;
       case 'notify':

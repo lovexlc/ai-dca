@@ -1,34 +1,30 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Bell, CalendarClock, Layers3, ListChecks, Plus, Radar, Repeat, Sparkles, Trash2, TrendingUp } from 'lucide-react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowRight, Bell, CalendarClock, ListChecks, MoreHorizontal, Trash2, TrendingUp } from 'lucide-react';
 import { loadNotifyStatus, readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { deletePlan } from '../app/plan.js';
 import { clearDcaState } from '../app/dca.js';
 import { showActionToast } from '../app/toast.js';
-import { Card, Pill, SectionHeading, StatCard, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
+import { Card, Pill, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 import { NewPlanExperience } from './NewPlanExperience.jsx';
 import {
   buildRuleDetailUrl,
   extractPurchaseAmount
 } from '../app/tradePlansHelpers.js';
 
-// 加仓计划 / 定投计划已合并为本 tab 的二级视图，按需 lazy 加载，避免初次进入交易计划就拖入 home dashboard 的图表 chunk。
+// 加仓计划 / 定投计划已合并为本 tab 的二级视图，按需 lazy 加载。
 const HomeExperienceLazy = lazy(() => import('./HomeExperience.jsx').then((m) => ({ default: m.HomeExperience })));
 const DcaExperienceLazy = lazy(() => import('./DcaExperience.jsx').then((m) => ({ default: m.DcaExperience })));
-// 「切换」二级视图：场内 / 场外纳指 100 切换套利策略，首次进入才拉取实时价格快照。
-const SwitchStrategyExperienceLazy = lazy(() => import('./SwitchStrategyExperience.jsx').then((m) => ({ default: m.SwitchStrategyExperience })));
 
 // 子视图与 URL hash 对应关系：
 //   ''  / '#list' → 列表（默认）
 //   '#home'      → 加仓
 //   '#dca'       → 定投
-//   '#switch'    → 切换（场内/场外套利）
 //   '#new'       → 新建（覆盖整个 tab，独占视图）
 const SUB_VIEW_HASH = {
   list: '',
   home: '#home',
   dca: '#dca',
-  switch: '#switch',
   new: '#new'
 };
 
@@ -36,7 +32,6 @@ function parseSubViewFromHash(hash = '') {
   if (hash === '#new') return 'new';
   if (hash === '#home') return 'home';
   if (hash === '#dca') return 'dca';
-  if (hash === '#switch') return 'switch';
   return 'list';
 }
 
@@ -53,21 +48,24 @@ function SubViewLoadingFallback() {
   );
 }
 
+const SUB_TABS = [
+  { key: 'list', label: '列表', icon: ListChecks },
+  { key: 'home', label: '加仓', icon: TrendingUp },
+  { key: 'dca', label: '定投', icon: CalendarClock }
+];
+
 export function TradePlansExperience({ links, inPagesDir = false, embedded = false }) {
-  const [selectedRowId, setSelectedRowId] = useState('');
-  // 子视图（list / home / dca / switch / new）通过 URL hash 持久化，方便刷新和浏览器前进后退。
+  // 子视图（list / home / dca / new）通过 URL hash 持久化，方便刷新和浏览器前进后退。
   const [subView, setSubView] = useState(getInitialSubView);
   const [testingRowId, setTestingRowId] = useState('');
   // 仅判断是否已配置任一推送通道，未配置时在顶部提示一行链接。
-  // 通知配置/历史/同步统一收口到《消息通知》tab，本页只保留测试通知动作。
   const [channelConfigured, setChannelConfigured] = useState(true);
-  // 仅读取 clientId：交易计划 tab 不再维护通道配置，只在发送测试通知时引用。配置入口请去《通知》tab。
   const notifyClientId = useMemo(() => readNotifyClientConfig().notifyClientId || '', []);
   const [planRefreshKey, setPlanRefreshKey] = useState(0);
-  const { previewRows, summary, hasPlans } = useMemo(() => buildTradePlanCenter(), [planRefreshKey]);
+  const { previewRows, hasPlans } = useMemo(() => buildTradePlanCenter(), [planRefreshKey]);
+  const [openMenuRowId, setOpenMenuRowId] = useState('');
+  const menuContainerRef = useRef(null);
 
-  // 切换到任意子视图：写入对应 hash 以便浏览器后退/前进能在视图间来回。
-  // 新建子视图对其他视图来说是 push（保留返回栈）；其他子视图之间互相切换用 replace，避免在二级 tab 间频繁切换时把历史栈撑大。
   function gotoSubView(nextView, { push = false } = {}) {
     if (typeof window === 'undefined') {
       setSubView(nextView);
@@ -95,23 +93,19 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   function exitNewPlanView() {
     if (typeof window !== 'undefined' && window.location.hash === '#new') {
-      // #new 是 push 进来的，回退一次能回到上一个视图。
       window.history.back();
       return;
     }
     gotoSubView('list');
   }
 
-  // 二级 tab 之间切换：list / home / dca / switch
   function handleSelectSubTab(nextView) {
     if (nextView === subView) return;
     gotoSubView(nextView);
   }
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return undefined;
-    }
+    if (typeof window === 'undefined') return undefined;
     function syncSubViewFromHash() {
       setSubView(parseSubViewFromHash(window.location.hash || ''));
     }
@@ -135,10 +129,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
           && status.setup.gcmCurrentClientRegistrations.length > 0;
         setChannelConfigured(barkConfigured || androidConfigured);
       } catch (_error) {
-        // 拉取失败时按「已配置」处理，避免误导。
-        if (!cancelled) {
-          setChannelConfigured(true);
-        }
+        if (!cancelled) setChannelConfigured(true);
       }
     }
     refreshChannelStatus();
@@ -147,18 +138,25 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     };
   }, [notifyClientId]);
 
+  // 点击外部关闭 row 的 ··· 菜单。
   useEffect(() => {
-    if (!previewRows.length) {
-      setSelectedRowId('');
-      return;
+    if (!openMenuRowId) return undefined;
+    function handleClickOutside(event) {
+      const node = menuContainerRef.current;
+      if (node && !node.contains(event.target)) {
+        setOpenMenuRowId('');
+      }
     }
-
-    if (!previewRows.some((row) => row.id === selectedRowId)) {
-      setSelectedRowId(previewRows[0].id);
+    function handleKeyDown(event) {
+      if (event.key === 'Escape') setOpenMenuRowId('');
     }
-  }, [previewRows, selectedRowId]);
-
-  const selectedRow = previewRows.find((row) => row.id === selectedRowId) || previewRows[0] || null;
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openMenuRowId]);
 
   function handleDeletePlanRow(row) {
     if (!row) return;
@@ -172,11 +170,10 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     } else {
       return;
     }
-    if (selectedRowId === row.id) {
-      setSelectedRowId('');
-    }
+    setOpenMenuRowId('');
     setPlanRefreshKey((value) => value + 1);
   }
+
   function buildRowTestPayload(row) {
     const normalizedRuleId = String(row?.ruleId || '').trim() || 'test';
     const normalizedPlanName = String(row?.planName || row?.detailTitle || '交易计划').trim();
@@ -215,10 +212,8 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   }
 
   async function handleTestNotify(row) {
-    if (!row?.id) {
-      return;
-    }
-
+    if (!row?.id) return;
+    setOpenMenuRowId('');
     setTestingRowId(row.id);
     try {
       await sendNotifyTest({
@@ -238,182 +233,17 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     }
   }
 
-  function renderPlansCard() {
-    return (
-      <Card className="min-w-0">
-        <SectionHeading
-          eyebrow="计划列表"
-          title="后续交易计划"
-        />
-
-        {hasPlans ? (
-          <>
-            <div className="mt-6 grid gap-4">
-              {previewRows.map((row) => {
-                const isSelected = row.id === selectedRow?.id;
-                return (
-                  <div
-                    key={row.id}
-                    className={cx(
-                      'w-full rounded-2xl border px-5 py-5 text-left transition-colors',
-                      isSelected ? 'border-indigo-200 bg-indigo-50/70' : 'border-slate-200 bg-slate-50 hover:bg-white'
-                    )}
-                  >
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                      <button className="min-w-0 flex-1 space-y-2 text-left" type="button" onClick={() => setSelectedRowId(row.id)}>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Pill tone={row.statusTone}>{row.statusLabel}</Pill>
-                          <Pill tone="slate">{row.typeLabel}</Pill>
-                        </div>
-                        <div className="text-base font-bold text-slate-900">{row.planName}</div>
-                        <div className="text-sm leading-6 text-slate-500">{row.symbol}</div>
-                      </button>
-                      <div className="flex shrink-0 flex-wrap gap-2">
-                        <button
-                          className={cx(
-                            secondaryButtonClass,
-                            'border-slate-300 bg-white shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60'
-                          )}
-                          type="button"
-                          disabled={testingRowId === row.id}
-                          onClick={() => handleTestNotify(row)}
-                        >
-                          <Bell className="h-4 w-4" />
-                          {testingRowId === row.id ? '正在发送' : '测试通知'}
-                        </button>
-                        <a
-                          className={cx(secondaryButtonClass, 'shrink-0')}
-                          href={links[row.actionKey]}
-                        >
-                          查看更多
-                          <ArrowRight className="h-4 w-4" />
-                        </a>
-                        <button
-                          type="button"
-                          className={cx(
-                            secondaryButtonClass,
-                            'border-rose-200 bg-white text-rose-600 shadow-sm hover:border-rose-300 hover:bg-rose-50'
-                          )}
-                          onClick={() => handleDeletePlanRow(row)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          删除
-                        </button>
-                      </div>
-                    </div>
-                    <button className="mt-4 grid w-full gap-4 text-left text-sm text-slate-600 md:grid-cols-2" type="button" onClick={() => setSelectedRowId(row.id)}>
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">触发条件</div>
-                        <div className="mt-1 leading-6 text-slate-700">{row.triggerLabel}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">下一次执行</div>
-                        <div className="mt-1 leading-6 text-slate-700">{row.nextExecutionLabel}</div>
-                      </div>
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="mt-4 text-sm text-slate-500">列表只展示每类计划的待执行摘要，完整配置可点击「加仓」「定投」二级 tab 查看。</div>
-          </>
-        ) : (
-          <div className="mt-6 rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8">
-            <div className="text-lg font-bold text-slate-900">还没有后续交易计划</div>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">
-              先去新建建仓策略，或者在「定投」二级 tab 配置一份定投计划。保存后这里会自动汇总后续待执行动作和通知状态。
-            </p>
-            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-              <button type="button" onClick={enterNewPlanView} className={cx(primaryButtonClass, 'w-full sm:w-auto')}>
-                去新建策略
-              </button>
-              <button type="button" onClick={() => handleSelectSubTab('dca')} className={cx(secondaryButtonClass, 'w-full sm:w-auto')}>
-                去配置定投
-              </button>
-            </div>
-          </div>
-        )}
-      </Card>
-    );
+  function handleViewMore(row) {
+    setOpenMenuRowId('');
+    if (row?.actionKey === 'home' || row?.actionKey === 'dca') {
+      handleSelectSubTab(row.actionKey);
+    }
   }
-
-  function renderPlanDetailCard() {
-    return (
-      <Card className="min-w-0">
-        <SectionHeading
-          eyebrow="计划详情"
-          title={selectedRow?.detailTitle || '当前没有待查看计划'}
-        />
-        {selectedRow ? (
-          <div className="mt-5 space-y-4">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                <Layers3 className="h-4 w-4 text-slate-400" />
-                规则摘要
-              </div>
-              <p className="mt-2 text-sm leading-6 text-slate-600">{selectedRow.detailSummary}</p>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                <Radar className="h-4 w-4 text-slate-400" />
-                触发说明
-              </div>
-              <p className="mt-2 text-sm leading-6 text-slate-600">{selectedRow.triggerExplain}</p>
-            </div>
-          </div>
-        ) : (
-          <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5">
-            <p className="text-sm leading-6 text-slate-500">当前还没有可展示的计划详情。先完成建仓策略或定投配置，或者从左侧选中一条后续交易计划。</p>
-            <div className="mt-4 flex flex-wrap gap-3">
-              <button type="button" onClick={enterNewPlanView} className={cx(primaryButtonClass, 'w-full sm:w-auto')}>
-                去新建策略
-              </button>
-              <button type="button" onClick={() => handleSelectSubTab('dca')} className={cx(secondaryButtonClass, 'w-full sm:w-auto')}>
-                去配置定投
-              </button>
-            </div>
-          </div>
-        )}
-      </Card>
-    );
-  }
-
-  function renderAutomationCard() {
-    return (
-      <Card>
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-          <Sparkles className="h-4 w-4 text-slate-400" />
-          自动执行
-        </div>
-        <p className="mt-3 text-sm leading-6 text-slate-500">当前只做计划承载和提醒入口，后续可扩展为条件单同步、执行确认和策略版本管理。</p>
-      </Card>
-    );
-  }
-
-  // 当进入《新建计划》子视图时，直接用 NewPlanExperience 覆盖当前内容。
-  // NewPlanExperience 自带 PageHero 左上角的《返回交易计划》按钮会调用 onBack 退出。
-  if (subView === 'new') {
-    return (
-      <NewPlanExperience
-        links={links}
-        embedded
-        onBack={exitNewPlanView}
-      />
-    );
-  }
-
-  const subTabs = [
-    { key: 'list', label: '列表', icon: ListChecks },
-    { key: 'home', label: '加仓', icon: TrendingUp },
-    { key: 'dca', label: '定投', icon: CalendarClock },
-    { key: 'switch', label: '切换', icon: Repeat }
-  ];
 
   function renderSubTabBar() {
     return (
       <div className="inline-flex flex-wrap gap-1 rounded-2xl border border-slate-200 bg-slate-100/70 p-1">
-        {subTabs.map((tab) => {
+        {SUB_TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = subView === tab.key;
           return (
@@ -437,35 +267,144 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     );
   }
 
-  // 加仓 / 定投 / 切换 二级视图：内嵌各自的 Experience 组件，外层共享标题与二级 tab 切换。
-  // 二级 tab 右侧不再重复「新建计划」主按钮（空状态与「加仓」「定投」「切换」页内都有明确的创建入口）。
-  if (subView === 'home' || subView === 'dca' || subView === 'switch') {
+  function renderRowMenu(row) {
+    const isOpen = openMenuRowId === row.id;
+    const isTesting = testingRowId === row.id;
+    return (
+      <div className="relative" ref={isOpen ? menuContainerRef : null}>
+        <button
+          type="button"
+          aria-label="更多操作"
+          aria-haspopup="menu"
+          aria-expanded={isOpen}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          onClick={(event) => {
+            event.stopPropagation();
+            setOpenMenuRowId(isOpen ? '' : row.id);
+          }}
+        >
+          <MoreHorizontal className="h-5 w-5" />
+        </button>
+        {isOpen ? (
+          <div
+            role="menu"
+            className="absolute right-0 top-10 z-10 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
+          >
+            <button
+              type="button"
+              role="menuitem"
+              disabled={isTesting}
+              onClick={() => handleTestNotify(row)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Bell className="h-4 w-4 text-slate-400" />
+              {isTesting ? '正在发送' : '测试通知'}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => handleViewMore(row)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+            >
+              <ArrowRight className="h-4 w-4 text-slate-400" />
+              查看更多
+            </button>
+            <div className="h-px bg-slate-100" />
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => handleDeletePlanRow(row)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              删除
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  function renderPlansList() {
+    if (!hasPlans) {
+      return (
+        <Card className="min-w-0">
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
+            <div className="text-base font-bold text-slate-900">还没有交易计划</div>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-center">
+              <button type="button" onClick={enterNewPlanView} className={cx(primaryButtonClass, 'w-full sm:w-auto')}>
+                新建加仓策略
+              </button>
+              <button type="button" onClick={() => handleSelectSubTab('dca')} className={cx(secondaryButtonClass, 'w-full sm:w-auto')}>
+                配置定投
+              </button>
+            </div>
+          </div>
+        </Card>
+      );
+    }
+
+    return (
+      <Card className="min-w-0">
+        <div className="grid gap-3">
+          {previewRows.map((row) => (
+            <div
+              key={row.id}
+              className="relative w-full rounded-2xl border border-slate-200 bg-white px-5 py-4 transition-colors hover:bg-slate-50"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Pill tone={row.statusTone}>{row.statusLabel}</Pill>
+                    <Pill tone="slate">{row.typeLabel}</Pill>
+                  </div>
+                  <div className="text-base font-bold text-slate-900">{row.planName}</div>
+                  <div className="text-xs text-slate-500">{row.symbol}</div>
+                </div>
+                {renderRowMenu(row)}
+              </div>
+              <div className="mt-3 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">触发条件</div>
+                  <div className="mt-0.5 leading-6 text-slate-700">{row.triggerLabel}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">下一次执行</div>
+                  <div className="mt-0.5 leading-6 text-slate-700">{row.nextExecutionLabel}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    );
+  }
+
+  // 《新建计划》子视图直接覆盖当前内容。
+  if (subView === 'new') {
+    return (
+      <NewPlanExperience
+        links={links}
+        embedded
+        onBack={exitNewPlanView}
+      />
+    );
+  }
+
+  // 加仓 / 定投 二级视图：外层共享二级 tab 切换，内嵌各自的 Experience 组件。
+  if (subView === 'home' || subView === 'dca') {
     return (
       <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Trade plans</div>
-            <h1 className="mt-1 text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">交易计划中心</h1>
-          </div>
-        </div>
-
         {renderSubTabBar()}
-
         <Suspense fallback={<SubViewLoadingFallback />}>
           {subView === 'home' ? (
             <HomeExperienceLazy links={links} inPagesDir={inPagesDir} embedded />
-          ) : subView === 'dca' ? (
+          ) : (
             <DcaExperienceLazy
               links={links}
               inPagesDir={inPagesDir}
               embedded
               onAfterSave={() => gotoSubView('list')}
-            />
-          ) : (
-            <SwitchStrategyExperienceLazy
-              links={links}
-              inPagesDir={inPagesDir}
-              embedded
             />
           )}
         </Suspense>
@@ -476,14 +415,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   // 默认：列表视图。
   return (
     <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Trade plans</div>
-          <h1 className="mt-1 text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">交易计划中心</h1>
-        </div>
-        {/* 列表顶部不再重复「新建计划」主按钮：空状态卡片以及「加仓 / 定投 / 切换」二级 tab 内都有明确的创建 / 保存入口。 */}
-      </div>
-
       {renderSubTabBar()}
 
       {channelConfigured ? null : (
@@ -494,35 +425,13 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
             className="ml-auto inline-flex items-center gap-1 font-semibold text-amber-700 underline-offset-4 hover:underline"
             href={links.notify}
           >
-            去消息通知配置
+            去配置
             <ArrowRight className="h-4 w-4" />
           </a>
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <StatCard accent="indigo" eyebrow="待执行计划" value={`${summary.pendingCount} 项`} note="包含价格触发买入与固定定投计划" />
-        <StatCard eyebrow="最近触发条件" value={summary.nearestTrigger} note="优先显示最近需要观察的价格条件" />
-        <StatCard accent="emerald" eyebrow="下一次定投日期" value={summary.nextDcaDate} note="按当前定投配置推算的最近执行日" />
-      </div>
-
-      {/* Mobile / tablet: single column stack */}
-      <div className="space-y-6 lg:hidden">
-        {renderPlansCard()}
-        {renderPlanDetailCard()}
-        {renderAutomationCard()}
-      </div>
-
-      {/* Desktop: 2-column layout. Left = list + automation. Right = sticky plan detail card. */}
-      <div className="hidden items-start gap-6 lg:grid lg:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.9fr)]">
-        <div className="min-w-0 space-y-6">
-          {renderPlansCard()}
-          {renderAutomationCard()}
-        </div>
-        <div className="min-w-0 space-y-6 lg:sticky lg:top-4">
-          {renderPlanDetailCard()}
-        </div>
-      </div>
+      {renderPlansList()}
     </div>
   );
 }
