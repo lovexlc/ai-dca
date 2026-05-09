@@ -1088,12 +1088,18 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               {portfolio.failedCodes && portfolio.failedCodes.length > 0 ? ` · 失败 ${portfolio.failedCodes.length}` : ''}
             </div>
           </div>
-          {marketIndexState.indexes.length ? (
-            <div className="order-3 ml-auto flex w-full justify-end sm:order-none sm:w-auto sm:max-w-[55%]">
+          <div className="ml-auto flex shrink-0 items-center">
+            {renderNavBadge()}
+          </div>
+        </div>
+        {marketIndexState.indexes.length ? (
+          <div className="relative mt-2 w-full overflow-hidden">
+            <div className="flex w-full justify-end">
               {renderMarketTicker()}
             </div>
-          ) : null}
-        </div>
+            <div className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-white to-transparent" />
+          </div>
+        ) : null}
         <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
           {cards.map((card) => (
             <div key={card.label}>
@@ -1650,7 +1656,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 text-center">
           <Wallet className="h-8 w-8 text-slate-300" />
           <div className="text-sm text-slate-500">
-            {ledgerRows.length === 0 ? '还没有任何交易流水，点「+ 新增」或「OCR 导入」录入。' : '当前筛选条件下没有交易流水。'}
+            {ledgerRows.length === 0 ? '还没有任何交易流水，点「新增交易」或「批量导入」（支持 OCR / Excel 粘贴）录入。' : '当前筛选条件下没有交易流水。'}
           </div>
         </div>
       );
@@ -2298,50 +2304,56 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       <div className="grid grid-cols-1 gap-4">
         <section className="min-w-0 rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="inline-flex items-center rounded-xl bg-slate-100 p-1 text-xs font-semibold text-slate-600">
-                <button
-                  type="button"
-                  className={cx('rounded-lg px-3 py-1.5 transition-colors', mainViewTab === 'aggregate' ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'hover:text-slate-800')}
-                  onClick={() => setMainViewTab('aggregate')}
-                >
-                  基金汇总
-                </button>
-                <button
-                  type="button"
-                  className={cx('rounded-lg px-3 py-1.5 transition-colors', mainViewTab === 'sold' ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'hover:text-slate-800')}
-                  onClick={() => setMainViewTab('sold')}
-                >
-                  已卖出{soldLots.length ? <span className="ml-1 rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{soldLots.length}</span> : null}
-                </button>
-                <button
-                  type="button"
-                  className={cx('rounded-lg px-3 py-1.5 transition-colors', mainViewTab === 'switch' ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'hover:text-slate-800')}
-                  onClick={() => setMainViewTab('switch')}
-                >
-                  切换收益{switchChains.length ? <span className="ml-1 rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{switchChains.length}</span> : null}
-                </button>
-                <button
-                  type="button"
-                  className={cx('rounded-lg px-3 py-1.5 transition-colors', mainViewTab === 'ledger' ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'hover:text-slate-800')}
-                  onClick={() => setMainViewTab('ledger')}
-                >
-                  成交流水
-                </button>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <div role="tablist" aria-label="数据视图" className="flex items-center gap-1 border-b border-slate-200 -mb-px text-sm font-semibold">
+                {[
+                  { key: 'aggregate', label: '基金汇总' },
+                  { key: 'sold', label: '已卖出', count: soldLots.length },
+                  { key: 'switch', label: '基金切换', count: switchChains.length },
+                  { key: 'ledger', label: '成交流水' }
+                ].map((tab) => {
+                  const active = mainViewTab === tab.key;
+                  return (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      className={cx(
+                        'relative inline-flex items-center gap-1.5 border-b-2 px-3 py-2 transition-colors',
+                        active
+                          ? 'border-indigo-500 text-slate-900'
+                          : 'border-transparent text-slate-500 hover:text-slate-800'
+                      )}
+                      onClick={() => setMainViewTab(tab.key)}
+                    >
+                      {tab.label}
+                      {tab.count ? (
+                        <span className={cx(
+                          'rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
+                          active ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-500'
+                        )}>{tab.count}</span>
+                      ) : null}
+                    </button>
+                  );
+                })}
               </div>
-              {mainViewTab === 'switch' ? null : renderKindFilter()}
               {mainViewTab === 'switch' ? null : (
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  className={cx(tableInputClass, 'h-9 w-56 rounded-lg border-slate-200 bg-slate-50 pl-9 pr-3 text-sm hover:bg-white')}
-                  value={searchText}
-                  onChange={(event) => setSearchText(event.target.value)}
-                  placeholder="搜索代码或名称"
-                />
-              </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span aria-hidden className="hidden h-5 w-px bg-slate-200 sm:block" />
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">类型</span>
+                  {renderKindFilter()}
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      className={cx(tableInputClass, 'h-9 w-60 rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm shadow-sm placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100')}
+                      value={searchText}
+                      onChange={(event) => setSearchText(event.target.value)}
+                      placeholder="搜索代码或名称"
+                    />
+                  </div>
+                </div>
               )}
-              {renderNavBadge()}
             </div>
             {mainViewTab === 'switch' ? null : (
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap">
