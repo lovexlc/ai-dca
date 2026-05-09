@@ -2778,7 +2778,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       {renderPortfolioOverview()}
       <div className="grid grid-cols-1 gap-4">
         <section className="min-w-0 rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-          {renderNavStatusStrip()}
           <div className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3 sm:gap-3 sm:justify-between">
             <div className="flex min-w-0 flex-1 items-center gap-x-4 sm:flex-wrap sm:gap-y-2">
               <div role="tablist" aria-label="数据视图" className="flex w-full min-w-0 items-center gap-1 overflow-x-auto border-b border-slate-200 -mb-px text-sm font-semibold sm:w-auto">
@@ -2842,7 +2841,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           </div>
           <div className="min-h-[480px] px-1">
             {mainViewTab === 'aggregate'
-              ? renderAggregatesTable()
+              ? (<>{renderNavStatusStrip()}{renderAggregatesTable()}</>)
               : mainViewTab === 'sold'
                 ? renderSoldTable()
                 : renderLedgerTable()}
@@ -2851,7 +2850,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             {mainViewTab === 'aggregate'
               ? `持仓中 ${portfolio.assetCount} 只基金；累计 ${ledgerRows.length} 笔流水。`
               : mainViewTab === 'sold'
-                ? renderSoldStatusFooter()
+                ? `共 ${soldLots.length} 笔卖出记录。`
                 : `共 ${ledgerRows.length} 笔流水；当前筛选 ${filteredRows.length} 笔。`}
           </div>
         </section>
