@@ -450,19 +450,36 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
                 {planList.map((plan) => {
                   const isActive = plan.id === activePlanId;
                   return (
-                    <button
+                    <div
                       key={plan.id}
-                      type="button"
-                      onClick={() => handleSelectPlan(plan.id)}
                       className={cx(
-                        'shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-all',
-                        isActive
-                          ? 'bg-white text-slate-900 shadow-sm'
-                          : 'text-slate-600 hover:text-slate-900'
+                        'group inline-flex shrink-0 items-center rounded-md transition-all',
+                        isActive ? 'bg-white shadow-sm' : ''
                       )}
                     >
-                      {plan.name || plan.symbol || '未命名策略'}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectPlan(plan.id)}
+                        className={cx(
+                          'rounded-md py-1.5 pl-3 pr-1.5 text-sm font-medium transition-all',
+                          isActive ? 'text-slate-900' : 'text-slate-600 hover:text-slate-900'
+                        )}
+                      >
+                        {plan.name || plan.symbol || '未命名策略'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeletePlanItem(plan.id)}
+                        aria-label={`删除策略「${plan.name || plan.symbol || '未命名策略'}」`}
+                        title="删除该策略"
+                        className={cx(
+                          'mr-1 inline-flex h-5 w-5 items-center justify-center rounded text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600',
+                          isActive ? 'opacity-100' : 'opacity-50 group-hover:opacity-100'
+                        )}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
                   );
                 })}
               </div>
@@ -656,10 +673,8 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
         </div>
       </Card>
 
-      {/* ===== 价格走势 + 策略列表 ===== */}
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
-        {/* Price chart */}
-        <Card className="p-4 sm:p-5">
+      {/* ===== 价格走势 ===== */}
+      <Card className="p-4 sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <SectionHeading
               eyebrow="价格走势"
@@ -772,74 +787,7 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
                   : '请选择一个标的查看走势。'}
             </div>
           )}
-        </Card>
-
-        {/* Strategy list (no per-item test notify, it's in PlanBar) */}
-        <Card className="p-4 sm:p-5">
-          <SectionHeading
-            eyebrow="策略"
-            title="策略列表"
-          />
-
-          {hasPlans ? (
-            <div className="mt-4 space-y-2">
-              {planList.map((plan) => {
-                const isActive = plan.id === activePlanId;
-                return (
-                  <div
-                    key={plan.id}
-                    className={cx(
-                      'flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-left transition-colors',
-                      isActive
-                        ? 'border-slate-900 bg-slate-50'
-                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                    )}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => handleSelectPlan(plan.id)}
-                      className="min-w-0 flex-1 text-left"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className={cx('truncate text-sm font-medium', isActive ? 'text-slate-900' : 'text-slate-700')}>
-                          {plan.name || plan.symbol || '未命名策略'}
-                        </span>
-                        {isActive ? <Pill tone="emerald">当前</Pill> : null}
-                      </div>
-                      <div className="mt-1 text-xs text-slate-500">
-                        {plan.symbol ? `标的 ${formatMarketCode(plan.symbol)}` : '未设置标的'}
-                        {plan.totalBudget ? ` · 预算 ${formatCurrency(plan.totalBudget)}` : ''}
-                      </div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeletePlanItem(plan.id)}
-                      aria-label="删除该加仓计划"
-                      className="ml-3 inline-flex shrink-0 items-center justify-center rounded-md border border-rose-200 bg-white p-1.5 text-rose-600 transition-colors hover:border-rose-300 hover:bg-rose-50"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                );
-              })}
-              <a href={links.accumNew} className={cx(subtleButtonClass, 'mt-2 w-full justify-center text-sm')}>
-                <Plus className="h-4 w-4" />
-                新建策略
-              </a>
-            </div>
-          ) : (
-            <div className="mt-4 space-y-3">
-              <a href={links.accumNew} className={cx(primaryButtonClass, 'w-full justify-center')}>
-                <Plus className="h-4 w-4" />
-                新建策略
-              </a>
-              <div className="rounded-md border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500">
-                还没有已创建的策略。
-              </div>
-            </div>
-          )}
-        </Card>
-      </div>
+      </Card>
     </div>
   );
 
