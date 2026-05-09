@@ -116,13 +116,22 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
     function onMobilePaste() { openPasteModal(); }
     function onMobileOcr() { openOcrModal(); }
+    function onSelectFund(event) {
+      const code = event && event.detail && event.detail.code;
+      if (!code) return;
+      setSelectedCode(code);
+      setSidePanelTab('summary');
+      setSidePanelOpen(true);
+    }
     window.addEventListener('holdings:new', onMobileNew);
     window.addEventListener('holdings:import-paste', onMobilePaste);
     window.addEventListener('holdings:import-ocr', onMobileOcr);
+    window.addEventListener('holdings:select-fund', onSelectFund);
     return () => {
       window.removeEventListener('holdings:new', onMobileNew);
       window.removeEventListener('holdings:import-paste', onMobilePaste);
       window.removeEventListener('holdings:import-ocr', onMobileOcr);
+      window.removeEventListener('holdings:select-fund', onSelectFund);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainViewTab]);

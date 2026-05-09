@@ -4,6 +4,7 @@ import { LEGACY_TAB_REDIRECTS, PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTab
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
 import { MobileTabBar } from '../components/mobile-tab-bar.jsx';
+import { GlobalSearch } from '../components/global-search.jsx';
 
 // 各主 tab 使用 React.lazy 按需加载，在 Vite 中会被拆成独立 chunk。
 // HomeExperience / DcaExperience 已并入 TradePlansExperience 作为二级 tab，不再在这里顶级 lazy。
@@ -102,6 +103,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   // 为每个 tab 独立缓存上次的 scrollY，在切换返回时恢复。
   const scrollPositionsRef = useRef(new Map());
   const previousTabRef = useRef(activeTab);
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
 
   const sidebarNav = useMemo(
     () =>
@@ -202,16 +204,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       </ConsoleLayout>
       <AiChatWidget currentTab={activeTab} />
       <MobileTabBar
-        onSearch={() => {
-          handleSelectTab('holdings');
-          setTimeout(() => {
-            const input = document.querySelector('input[placeholder="搜索名称"]');
-            if (input) {
-              input.focus();
-              input.scrollIntoView({ block: 'center', behavior: 'smooth' });
-            }
-          }, 80);
-        }}
+        onSearch={() => setGlobalSearchOpen(true)}
         onAi={() => window.dispatchEvent(new CustomEvent('aichat:open'))}
         onNew={() => {
           handleSelectTab('holdings');
@@ -224,6 +217,18 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         onOcrImport={() => {
           handleSelectTab('holdings');
           setTimeout(() => window.dispatchEvent(new CustomEvent('holdings:import-ocr')), 80);
+        }}
+      />
+      <GlobalSearch
+        open={globalSearchOpen}
+        onClose={() => setGlobalSearchOpen(false)}
+        onSelectTab={(key) => handleSelectTab(key)}
+        onSelectFund={(code) => {
+          handleSelectTab('holdings');
+          setTimeout(
+            () => window.dispatchEvent(new CustomEvent('holdings:select-fund', { detail: { code } })),
+            80,
+          );
         }}
       />
     </>
