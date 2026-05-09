@@ -71,7 +71,7 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
 
   const content = (
     <>
-      <div className={cx('mx-auto max-w-6xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
+      <div className={cx('space-y-6', embedded ? '' : 'mx-auto max-w-6xl px-6 pt-8')}>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatCard accent="indigo" eyebrow="总投入" value={formatCurrency(projection.totalInvestment, '¥ ')} note={projection.isLinkedPlan ? `每个执行周期都投入 ${formatCurrency(projection.recurringInvestment, '¥ ')}，并按「${projection.linkedPlanName}」在周期内分批执行。` : '初始投入加上所有周期定投之和'} />
           <StatCard eyebrow="预估收益" value={formatCurrency(projection.totalInvestment * state.targetReturn / 100, '¥ ')} note={`按目标收益 ${formatPercent(state.targetReturn, 0)} 估算`} />

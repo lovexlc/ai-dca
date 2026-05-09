@@ -434,7 +434,7 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
   }
 
   const content = (
-    <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 py-6 sm:px-6 sm:py-8' : 'px-4 py-6 sm:px-6 sm:py-8')}>
+    <div className={cx('space-y-4', embedded ? '' : 'mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8')}>
       {marketError ? (
         <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">
           现价数据加载失败：{marketError}

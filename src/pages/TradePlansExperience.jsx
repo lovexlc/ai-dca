@@ -350,28 +350,25 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
           {previewRows.map((row) => (
             <div
               key={row.id}
-              className="relative w-full rounded-2xl border border-slate-200 bg-white px-5 py-4 transition-colors hover:bg-slate-50"
+              className="relative w-full rounded-xl border border-slate-200 bg-white px-4 py-3 transition-colors hover:bg-slate-50"
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1 space-y-1.5">
-                  <div className="flex flex-wrap items-center gap-2">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <Pill tone={row.statusTone}>{row.statusLabel}</Pill>
                     <Pill tone="slate">{row.typeLabel}</Pill>
                   </div>
-                  <div className="text-base font-bold text-slate-900">{row.planName}</div>
-                  <div className="text-xs text-slate-500">{row.symbol}</div>
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="text-sm font-bold text-slate-900">{row.planName}</span>
+                    <span className="text-xs text-slate-400">{row.symbol}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-slate-500">
+                    <span>{row.triggerLabel}</span>
+                    <span className="text-slate-300" aria-hidden="true">·</span>
+                    <span>{row.nextExecutionLabel}</span>
+                  </div>
                 </div>
                 {renderRowMenu(row)}
-              </div>
-              <div className="mt-3 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">触发条件</div>
-                  <div className="mt-0.5 leading-6 text-slate-700">{row.triggerLabel}</div>
-                </div>
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">下一次执行</div>
-                  <div className="mt-0.5 leading-6 text-slate-700">{row.nextExecutionLabel}</div>
-                </div>
               </div>
             </div>
           ))}
