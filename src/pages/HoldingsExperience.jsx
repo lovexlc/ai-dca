@@ -4,7 +4,6 @@ import {
   ArrowRight,
   ArrowUp,
   AlertTriangle,
-  ArrowUpDown,
   CheckCircle2,
   ChevronDown,
   ClipboardPaste,
@@ -12,7 +11,6 @@ import {
   Copy,
   FileImage,
   FileUp,
-  Filter as FilterIcon,
   LoaderCircle,
   Pencil,
   Plus,
@@ -23,6 +21,21 @@ import {
   Wallet,
   X
 } from 'lucide-react';
+import {
+  flexRender,
+  getCoreRowModel,
+  getFacetedRowModel,
+  getFacetedUniqueValues,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from '@tanstack/react-table';
+import { DataTable } from '@/components/data-table/data-table';
+import { DataTableColumnHeader } from '@/components/data-table/data-table-column-header';
+import { DataTableFacetedFilter } from '@/components/data-table/data-table-faceted-filter';
+import { DataTablePagination } from '@/components/data-table/data-table-pagination';
+import { DataTableToolbar } from '@/components/data-table/data-table-toolbar';
 import { formatCurrency, formatPercent } from '../app/accumulation.js';
 import {
   aggregateByCode,
@@ -82,8 +95,6 @@ import {
 export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = false } = {}) {
   const [ledger, setLedger] = useState(() => readLedgerState());
   const [kindFilter, setKindFilter] = useState('all');
-  const [aggregateSort, setAggregateSort] = useState({ key: null, dir: 'desc' });
-  const [headerFilterOpen, setHeaderFilterOpen] = useState(null); // 'kind' | null
   const [searchText, setSearchText] = useState('');
   const [selectedCode, setSelectedCode] = useState('');
   const [sidePanelTab, setSidePanelTab] = useState('summary');
@@ -193,6 +204,166 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
     return counts;
   }, [mainViewTab, aggregates, soldLots, ledgerRows]);
+
+  // ---- TanStack Table (shadcn / tablecn) for the 「基金汇总」 view ----
+  const aggregatesTableData = useMemo(
+    () => aggregates.filter((agg) => agg.hasPosition),
+    [aggregates],
+  );
+  const numericSortFn = (rowA, rowB, columnId) => {
+    const a = rowA.getValue(columnId);
+    const b = rowB.getValue(columnId);
+    const aN = a == null || Number.isNaN(a);
+    const bN = b == null || Number.isNaN(b);
+    if (aN && bN) return 0;
+    if (aN) return 1;
+    if (bN) return -1;
+    return a - b;
+  };
+  const kindFilterOptions = useMemo(
+    () => KIND_FILTER_KEYS.filter((k) => k !== 'all').map((k) => ({
+      value: k,
+      label: KIND_FILTER_LABELS[k],
+    })),
+    [],
+  );
+  const aggregateColumns = useMemo(() => [
+    {
+      id: 'code',
+      accessorFn: (row) => row.code,
+      meta: { label: '代码' },
+      enableHiding: false,
+      header: ({ column }) => <DataTableColumnHeader column={column} title="代码" />,
+      cell: ({ row }) => (
+        <span className="font-mono text-xs font-semibold tabular-nums">{row.original.code}</span>
+      ),
+    },
+    {
+      id: 'name',
+      accessorFn: (row) => row.name || '',
+      meta: { label: '名称', variant: 'text', placeholder: '搜索名称' },
+      header: ({ column }) => <DataTableColumnHeader column={column} title="名称" />,
+      cell: ({ row }) => row.original.name || <span className="text-muted-foreground">—</span>,
+      filterFn: 'includesString',
+    },
+    {
+      id: 'kind',
+      accessorFn: (row) => row.kind,
+      meta: { label: '标签', variant: 'multiSelect', options: kindFilterOptions },
+      header: ({ column }) => <DataTableColumnHeader column={column} title="标签" />,
+      cell: ({ row }) => (
+        <Pill tone={KIND_PILL_TONES[row.original.kind] || 'slate'}>
+          {KIND_LABELS[row.original.kind] || '未知'}
+        </Pill>
+      ),
+      filterFn: (row, columnId, filterValue) => {
+        if (!Array.isArray(filterValue) || filterValue.length === 0) return true;
+        return filterValue.includes(row.getValue(columnId));
+      },
+    },
+    {
+      id: 'totalShares',
+      accessorFn: (row) => row.totalShares,
+      meta: { label: '总份额' },
+      header: ({ column }) => <DataTableColumnHeader column={column} title="总份额" />,
+      cell: ({ row }) => <span className="tabular-nums">{formatShares(row.original.totalShares)}</span>,
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'avgCost',
+      accessorFn: (row) => row.avgCost,
+      meta: { label: '平均成本' },
+      header: ({ column }) => <DataTableColumnHeader column={column} title="平均成本" />,
+      cell: ({ row }) => <span className="tabular-nums">{formatNav(row.original.avgCost)}</span>,
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'latestNav',
+      accessorFn: (row) => row.latestNav,
+      meta: { label: '当前净值' },
+      header: ({ column }) => <DataTableColumnHeader column={column} title="当前净值" />,
+      cell: ({ row }) => (
+        <span className="tabular-nums">{row.original.hasLatestNav ? formatNav(row.original.latestNav) : <span className="text-muted-foreground">—</span>}</span>
+      ),
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'marketValue',
+      accessorFn: (row) => row.marketValue,
+      meta: { label: '总市值' },
+      header: ({ column }) => <DataTableColumnHeader column={column} title="总市值" />,
+      cell: ({ row }) => <span className="tabular-nums">{formatCurrency(row.original.marketValue, '¥', 2)}</span>,
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'totalProfit',
+      accessorFn: (row) => row.totalProfit,
+      meta: { label: '总收益' },
+      header: ({ column }) => <DataTableColumnHeader column={column} title="总收益" />,
+      cell: ({ row }) => {
+        if (!row.original.hasLatestNav) return <span className="text-muted-foreground">—</span>;
+        const v = row.original.totalProfit;
+        const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
+        return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v, '¥', 2)}</span>;
+      },
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'totalReturnRate',
+      accessorFn: (row) => row.totalReturnRate,
+      meta: { label: '总收益率' },
+      header: ({ column }) => <DataTableColumnHeader column={column} title="总收益率" />,
+      cell: ({ row }) => {
+        if (!row.original.hasLatestNav) return <span className="text-muted-foreground">—</span>;
+        const v = row.original.totalReturnRate;
+        const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
+        return <span className={cx('tabular-nums', cls)}>{formatSignedPercent(v)}</span>;
+      },
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'todayProfit',
+      accessorFn: (row) => row.todayProfit,
+      meta: { label: '当日收益' },
+      header: ({ column }) => <DataTableColumnHeader column={column} title="当日收益" />,
+      cell: ({ row }) => {
+        if (!row.original.hasLatestNav) return <span className="text-muted-foreground">—</span>;
+        const v = row.original.todayProfit;
+        const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
+        return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v, '¥', 2)}</span>;
+      },
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'todayReturnRate',
+      accessorFn: (row) => row.todayReturnRate,
+      meta: { label: '当日收益率' },
+      header: ({ column }) => <DataTableColumnHeader column={column} title="当日收益率" />,
+      cell: ({ row }) => {
+        if (!row.original.hasLatestNav) return <span className="text-muted-foreground">—</span>;
+        const v = row.original.todayReturnRate;
+        const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
+        return <span className={cx('tabular-nums', cls)}>{formatSignedPercent(v)}</span>;
+      },
+      sortingFn: numericSortFn,
+    },
+  ], [kindFilterOptions]);
+
+  const aggregatesTable = useReactTable({
+    data: aggregatesTableData,
+    columns: aggregateColumns,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getFacetedRowModel: getFacetedRowModel(),
+    getFacetedUniqueValues: getFacetedUniqueValues(),
+    getPaginationRowModel: getPaginationRowModel(),
+    initialState: {
+      sorting: [{ id: 'marketValue', desc: true }],
+      pagination: { pageSize: 50 },
+    },
+  });
+
 
   const selectedAggregate = selectedCode ? aggregateByCodeMap.get(selectedCode) : null;
   const needsDateBackfill = useMemo(
@@ -1406,281 +1577,27 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   function renderAggregatesTable() {
-    const baseAggs = aggregates.filter((agg) => {
-      if (!agg.hasPosition) return false;
-      if (kindFilter !== 'all' && agg.kind !== kindFilter) return false;
-      if (!searchNeedle) return true;
-      return agg.code.toLowerCase().includes(searchNeedle)
-        || (agg.name || '').toLowerCase().includes(searchNeedle);
-    });
-    const sortKey = aggregateSort.key;
-    const sortDir = aggregateSort.dir;
-    const filteredAggs = sortKey
-      ? [...baseAggs].sort((a, b) => {
-          const av = a[sortKey];
-          const bv = b[sortKey];
-          const aNull = av === null || av === undefined || Number.isNaN(av);
-          const bNull = bv === null || bv === undefined || Number.isNaN(bv);
-          if (aNull && bNull) return 0;
-          if (aNull) return 1; // nulls always sink to bottom
-          if (bNull) return -1;
-          let cmp;
-          if (typeof av === 'number' && typeof bv === 'number') cmp = av - bv;
-          else cmp = String(av).localeCompare(String(bv), 'zh-Hans-CN');
-          return sortDir === 'desc' ? -cmp : cmp;
-        })
-      : baseAggs;
-    const cycleSort = (key) => {
-      setAggregateSort((prev) => {
-        if (prev.key !== key) return { key, dir: 'desc' };
-        if (prev.dir === 'desc') return { key, dir: 'asc' };
-        return { key: null, dir: 'desc' };
-      });
-    };
-    const SortHeader = ({ sortKey: k, label, align = 'left', sticky = false }) => {
-      const active = sortKey === k;
+    if (aggregatesTableData.length === 0) {
+      const emptyHint = aggregates.length === 0
+        ? '还没有交易记录。点击顶部工具栏的「新增交易」添加你的第一笔交易。'
+        : '全部持仓已卖出。在「已卖出」页可查看历史。';
       return (
-        <th
-          className={cx(
-            'group cursor-pointer select-none px-3 py-2 transition-colors hover:bg-slate-100',
-            align === 'right' ? 'text-right' : 'text-left',
-            sticky && 'sticky left-0 z-20 bg-slate-50 shadow-[1px_0_0_rgba(15,23,42,0.08)]'
-          )}
-          onClick={() => cycleSort(k)}
-          aria-sort={active ? (sortDir === 'desc' ? 'descending' : 'ascending') : 'none'}
-        >
-          <span className={cx('inline-flex items-center gap-1', align === 'right' && 'flex-row-reverse')}>
-            {label}
-            {active ? (
-              sortDir === 'desc'
-                ? <ArrowDown className="h-3 w-3 text-indigo-500" />
-                : <ArrowUp className="h-3 w-3 text-indigo-500" />
-            ) : (
-              <ArrowUpDown className="h-3 w-3 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100" />
-            )}
-          </span>
-        </th>
-      );
-    };
-
-    if (!filteredAggs.length) {
-      const activeCount = aggregates.filter((agg) => agg.hasPosition).length;
-      const isPristine = aggregates.length === 0;
-      const emptyTitle = isPristine
-        ? '还没有任何基金持仓'
-        : activeCount === 0
-          ? '所有基金均已卖出'
-          : '没有匹配的基金';
-      const emptyHint = isPristine
-        ? '点击下方按钮录入第一笔交易，或从持仓截图 / Excel 一键批量导入。'
-        : activeCount === 0
-          ? '请切换到「已卖出」页签查看历史交易。'
-          : '试试调整搜索词或筛选条件。';
-      return (
-        <div className="flex min-h-[260px] flex-col items-center justify-center gap-4 px-6 text-center">
-          <Wallet className="h-10 w-10 text-slate-300" />
-          <div className="space-y-1">
-            <div className="text-sm font-semibold text-slate-700">{emptyTitle}</div>
-            <div className="text-xs text-slate-500">{emptyHint}</div>
+        <div className="rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center">
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+            <Wallet className="h-5 w-5" />
           </div>
-          {isPristine ? (
-            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-              <button
-                type="button"
-                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(79,70,229,0.25)] transition-all hover:bg-indigo-500 hover:shadow-[0_6px_16px_rgba(79,70,229,0.3)]"
-                onClick={() => {
-                  resetDraft(emptyDraft({ type: 'BUY' }));
-                  setSidePanelTab('create');
-                  setSidePanelOpen(true);
-                }}
-              >
-                <Plus className="h-4 w-4" />
-                新增交易
-              </button>
-              <button
-                type="button"
-                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white px-3.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:ring-slate-300"
-                onClick={() => openOcrModal()}
-              >
-                <CloudUpload className="h-3.5 w-3.5" />
-                截图 OCR 导入
-              </button>
-              <button
-                type="button"
-                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white px-3.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:ring-slate-300"
-                onClick={() => openPasteModal()}
-              >
-                <ClipboardPaste className="h-3.5 w-3.5" />
-                粘贴 Excel
-              </button>
-            </div>
-          ) : null}
+          <p className="text-sm text-slate-600">{emptyHint}</p>
         </div>
       );
     }
-
-    // 配色约定（中国 A 股常见）：涨=红，跌=绿
-    const totalTone = portfolio.totalProfit > 0 ? 'text-red-600' : portfolio.totalProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
-    const totalTodayTone = portfolio.todayProfit > 0 ? 'text-red-600' : portfolio.todayProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
-
-    const activeKindLabel = kindFilter !== 'all' ? (KIND_FILTER_LABELS[kindFilter] || kindFilter) : null;
     return (
-      <div>
-        {activeKindLabel ? (
-          <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/60 px-4 py-2 text-xs">
-            <span className="text-slate-500">筛选：</span>
-            <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-indigo-700">
-              标签 · {activeKindLabel}
-              <button
-                type="button"
-                aria-label={`清除标签筛选`}
-                className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-indigo-500 transition-colors hover:bg-indigo-100 hover:text-indigo-700"
-                onClick={() => setKindFilter('all')}
-              >
-                <X className="h-2.5 w-2.5" />
-              </button>
-            </span>
-            <button
-              type="button"
-              className="text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline"
-              onClick={() => setKindFilter('all')}
-            >清空</button>
-          </div>
-        ) : null}
-        <div className="overflow-x-auto">
-        <table className="min-w-[1200px] w-full text-sm">
-          <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-            <tr>
-              <SortHeader sortKey="code" label="基金代码" sticky />
-              <SortHeader sortKey="name" label="基金名称" />
-              <th className="relative px-3 py-2">
-                <span className="inline-flex items-center gap-1">
-                  标签
-                  <button
-                    type="button"
-                    aria-label="筛选标签"
-                    className={cx(
-                      'inline-flex h-5 w-5 items-center justify-center rounded transition-colors',
-                      kindFilter !== 'all'
-                        ? 'bg-indigo-50 text-indigo-600 ring-1 ring-indigo-200'
-                        : 'text-slate-400 hover:bg-slate-200 hover:text-slate-600'
-                    )}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setHeaderFilterOpen(headerFilterOpen === 'kind' ? null : 'kind');
-                    }}
-                  >
-                    <FilterIcon className="h-3 w-3" />
-                  </button>
-                </span>
-                {headerFilterOpen === 'kind' ? (
-                  <>
-                    <div className="fixed inset-0 z-30" onClick={() => setHeaderFilterOpen(null)} />
-                    <div className="absolute left-0 top-full z-40 mt-1 min-w-[180px] rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
-                      <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">按标签筛选</div>
-                      {KIND_FILTER_KEYS.map((key) => {
-                        const active = kindFilter === key;
-                        return (
-                          <button
-                            key={key}
-                            type="button"
-                            className={cx(
-                              'flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs font-normal normal-case tracking-normal transition-colors',
-                              active ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100'
-                            )}
-                            onClick={() => {
-                              setKindFilter(key);
-                              setHeaderFilterOpen(null);
-                            }}
-                          >
-                            <span>{KIND_FILTER_LABELS[key]}</span>
-                            <span className="text-[10px] text-slate-400">{kindCounts[key] ?? 0}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </>
-                ) : null}
-              </th>
-              <SortHeader sortKey="totalShares" label="总份额" align="right" />
-              <SortHeader sortKey="avgCost" label="平均成本" align="right" />
-              <SortHeader sortKey="latestNav" label="当前净值" align="right" />
-              <SortHeader sortKey="marketValue" label="总市值" align="right" />
-              <SortHeader sortKey="totalProfit" label="总收益(元)" align="right" />
-              <SortHeader sortKey="totalReturnRate" label="总收益率" align="right" />
-              <SortHeader sortKey="todayProfit" label="当日收益(元)" align="right" />
-              <SortHeader sortKey="todayReturnRate" label="当日收益率" align="right" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filteredAggs.map((agg) => {
-              const kindTone = KIND_PILL_TONES[agg.kind] || 'slate';
-              const kindLabel = KIND_LABELS[agg.kind] || '未知';
-              // 涨=红，跌=绿
-              const profitClass = agg.totalProfit > 0 ? 'text-red-600' : agg.totalProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
-              const todayClass = agg.todayProfit > 0 ? 'text-red-600' : agg.todayProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
-              const isSelected = selectedCode === agg.code;
-              return (
-                <tr
-                  key={agg.code}
-                  className={cx(
-                    'cursor-pointer text-slate-700 transition-colors hover:bg-slate-50',
-                    isSelected && 'bg-indigo-50/50'
-                  )}
-                  onClick={() => {
-                    setSelectedCode(agg.code);
-                    setSidePanelTab('summary');
-                    setSidePanelOpen(true);
-                  }}
-                >
-                  <td className={cx(
-                    'sticky left-0 z-10 whitespace-nowrap px-3 py-2 font-mono text-xs font-semibold text-slate-800 shadow-[1px_0_0_rgba(15,23,42,0.06)]',
-                    isSelected ? 'bg-indigo-50/90' : 'bg-white'
-                  )}>{agg.code}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-xs">{agg.name || <span className="text-slate-400">—</span>}</td>
-                  <td className="px-3 py-2"><Pill tone={kindTone}>{kindLabel}</Pill></td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">{formatShares(agg.totalShares)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">{formatNav(agg.avgCost)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">
-                    {agg.hasLatestNav ? formatNav(agg.latestNav) : (agg.snapshotError ? <span className="text-red-500">失败</span> : '—')}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums text-slate-700">
-                    {agg.hasLatestNav ? formatCurrency(agg.marketValue, '¥', 2) : '—'}
-                  </td>
-                  <td className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', profitClass)}>
-                    {agg.hasLatestNav ? formatSignedCurrency(agg.totalProfit) : '—'}
-                  </td>
-                  <td className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', profitClass)}>
-                    {agg.hasLatestNav ? formatSignedPercent(agg.totalReturnRate) : '—'}
-                  </td>
-                  <td className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', todayClass)}>
-                    {agg.hasTodayNav ? formatSignedCurrency(agg.todayProfit) : '—'}
-                    {agg.hasTodayNav && agg.todayProfitHolidayDays > 0 ? (
-                      <sup
-                        className="ml-0.5 inline-block rounded-sm bg-amber-50 px-1 py-px align-super text-[9px] font-semibold text-amber-700 ring-1 ring-amber-200"
-                        title={`跨越节假日：${agg.previousNavDate} → ${agg.latestNavDate}（共 ${agg.todayProfitSpanDays} 天，含 ${agg.todayProfitHolidayDays} 个法定假期工作日）。该「当日收益」为整段空窗的累计涨跌，非单日波动。`}
-                      >跨节{agg.todayProfitSpanDays}日</sup>
-                    ) : null}
-                  </td>
-                  <td className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', todayClass)}>
-                    {agg.hasLatestNav && agg.hasPreviousNav ? formatSignedPercent(agg.todayReturnRate) : '—'}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot className="bg-slate-50/70 text-xs font-semibold text-slate-700">
-            <tr>
-              <td className="px-3 py-2" colSpan={6}>合计（{portfolio.assetCount} 只持仓）</td>
-              <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatCurrency(portfolio.marketValue, '¥', 2)}</td>
-              <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', totalTone)}>{formatSignedCurrency(portfolio.totalProfit)}</td>
-              <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', totalTone)}>{formatSignedPercent(portfolio.totalReturnRate)}</td>
-              <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', totalTodayTone)}>{formatSignedCurrency(portfolio.todayProfit)}</td>
-              <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', totalTodayTone)}>{formatSignedPercent(portfolio.todayReturnRate)}</td>
-            </tr>
-          </tfoot>
-        </table>
-        </div>
+      <div className="flex flex-col gap-2">
+        <DataTableToolbar table={aggregatesTable} />
+        <DataTable
+          table={aggregatesTable}
+          onRowClick={(row) => setSelectedCode(row.original.code)}
+        />
+        <DataTablePagination table={aggregatesTable} />
       </div>
     );
   }

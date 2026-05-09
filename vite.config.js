@@ -1,9 +1,18 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
   base: './',
+  resolve: {
+    alias: {
+      '@': path.resolve(HERE, './src'),
+    },
+  },
   server: {
     proxy: {
       '/api': {
@@ -28,6 +37,8 @@ export default defineConfig({
             if (id.includes('lucide-react')) return 'icons';
             if (id.includes('react-dom')) return 'react-dom';
             if (id.includes('/react/')) return 'react';
+            if (id.includes('@radix-ui') || id.includes('cmdk')) return 'radix';
+            if (id.includes('@tanstack/react-table')) return 'tanstack-table';
           }
           return undefined;
         }
