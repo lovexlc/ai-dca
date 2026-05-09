@@ -194,10 +194,11 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     } else {
       source = ledgerRows.map((row) => row.tx);
     }
-    const counts = { all: source.length, otc: 0, exchange: 0 };
+    const counts = { all: source.length, otc: 0, exchange: 0, qdii: 0 };
     for (const item of source) {
       if (item.kind === 'otc') counts.otc += 1;
       else if (item.kind === 'exchange') counts.exchange += 1;
+      else if (item.kind === 'qdii') counts.qdii += 1;
     }
     return counts;
   }, [mainViewTab, aggregates, soldLots, ledgerRows]);
@@ -554,7 +555,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         const { tx } = row.original;
         const isEditing = editingTxId === tx.id;
         if (isEditing && editingBuffer) {
-          return (<select className={EDITABLE_INPUT} value={editingBuffer.kind} onChange={(e) => ledgerHandlersRef.current.handleEditFieldChange('kind', e.target.value)}><option value="otc">场外</option><option value="exchange">场内</option></select>);
+          return (<select className={EDITABLE_INPUT} value={editingBuffer.kind} onChange={(e) => ledgerHandlersRef.current.handleEditFieldChange('kind', e.target.value)}><option value="otc">场外</option><option value="exchange">场内</option><option value="qdii">QDII</option></select>);
         }
         return <Pill tone={KIND_PILL_TONES[tx.kind] || 'slate'}>{KIND_LABELS[tx.kind] || '未知'}</Pill>;
       },
@@ -1861,6 +1862,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             >
               <option value="otc">场外</option>
               <option value="exchange">场内</option>
+              <option value="qdii">QDII</option>
             </select>
           </td>
           <td className="px-2 py-2">
@@ -2513,6 +2515,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             >
               <option value="otc">场外</option>
               <option value="exchange">场内</option>
+              <option value="qdii">QDII</option>
             </select>
           </label>
           <label className="col-span-1 text-xs text-slate-500">
