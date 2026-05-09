@@ -57,6 +57,7 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
   const [testingPlanId, setTestingPlanId] = useState('');
   const [timeframe, setTimeframe] = useState('1d');
   const [activeBarId, setActiveBarId] = useState('');
+  const [layersExpanded, setLayersExpanded] = useState(false);
 
   const planState = useMemo(
     () => planList.find((plan) => plan.id === activePlanId) || initialPlanState,
@@ -617,7 +618,7 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
           />
         </div>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
           {/* Left: 建仓档位表 */}
           <div className="min-w-0">
             <div className="hidden overflow-hidden rounded-md border border-slate-200 md:block">
@@ -633,7 +634,7 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {executionLayers.map((layer) => (
+                  {(layersExpanded ? executionLayers : executionLayers.slice(0, 5)).map((layer) => (
                     <tr key={layer.id} className={cx(layer.progressState === 'next' && 'bg-indigo-50/40')}>
                       <td className="px-3 py-2 tabular-nums text-slate-600">{String(layer.order).padStart(2, '0')}</td>
                       <td className="px-3 py-2">
@@ -660,7 +661,7 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
             </div>
 
             <div className="space-y-2 md:hidden">
-              {executionLayers.map((layer) => (
+              {(layersExpanded ? executionLayers : executionLayers.slice(0, 5)).map((layer) => (
                 <div key={`m-${layer.id}`} className={cx(
                   'rounded-md border p-3',
                   layer.progressState === 'next' ? 'border-indigo-200 bg-indigo-50/40' : 'border-slate-200 bg-white'
@@ -690,6 +691,16 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
                 </div>
               ) : null}
             </div>
+
+            {executionLayers.length > 5 ? (
+              <button
+                type="button"
+                onClick={() => setLayersExpanded((prev) => !prev)}
+                className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700"
+              >
+                {layersExpanded ? '收起' : `加载更多（剩余 ${executionLayers.length - 5} 档）`}
+              </button>
+            ) : null}
           </div>
 
           {/* Right: K 线 */}
