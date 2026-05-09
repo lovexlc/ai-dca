@@ -1365,14 +1365,14 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       statusEl = (
         <span className="inline-flex items-center gap-1 text-xs text-amber-600">
           <AlertTriangle className="h-3.5 w-3.5" />
-          {`上次更新：${formatRelativeTime(meta.updatedAt)} · ${meta.successCount} 成功 / ${meta.failureCount} 失败`}
+          {`上次更新 ${formatRelativeTime(meta.updatedAt)} · ${meta.failureCount} 项失败`}
         </span>
       );
     } else {
       statusEl = (
         <span className="inline-flex items-center gap-1 text-xs text-emerald-600">
           <CheckCircle2 className="h-3.5 w-3.5" />
-          {`上次更新：${formatRelativeTime(meta.updatedAt)}`}
+          {`上次更新 ${formatRelativeTime(meta.updatedAt)}`}
         </span>
       );
     }
@@ -1392,8 +1392,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         <span aria-hidden className="hidden h-4 w-px bg-slate-200 sm:block" />
         <span className={cx('inline-flex items-center gap-1 text-xs tabular-nums', coverageTone)}>
           NAV 覆盖 {portfolio.pricedCount}/{portfolio.assetCount}
-          {coveragePct !== null ? <span className="text-slate-400">({coveragePct}%)</span> : null}
-          {failedCount > 0 ? <span className="text-amber-600">· 失败 {failedCount}</span> : null}
+          {coveragePct !== null && coveragePct < 100 ? <span className="text-slate-400">({coveragePct}%)</span> : null}
         </span>
       </div>
     );
