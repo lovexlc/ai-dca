@@ -1862,7 +1862,7 @@ async function handleAiChat(request, env) {
       '· 步骤的先后顺序、条数照抄；原文 6 步不要合并成 5 步，不省略次要步骤。',
       '· 原文里的细节/限制（先切 sub-tab、加电池白名单、需要同步计划等）必须原样讲出来。',
       '· 原文没写的具体细节（截图、版本号、具体路径）不要补充。',
-      '· 当用户附带了图片，你必须结合图片内容回答；图片可视为用户当前页面/数据的实际截图。',
+      '· 如果原文片段里出现 `![](url)` 形式的图片引用，请原样保留在回答里（不要删掉 url，不要改写描述），让前端能渲染出来。',
       '涉及具体投资建议时，提醒用户自行判断风险，不给出绝对收益承诺。',
       '',
       '输出格式规范（前端会按 markdown 渲染，请务必遵守）：',
@@ -1874,15 +1874,6 @@ async function handleAiChat(request, env) {
       '· 末尾另起一行注明依据，格式为 `> 依据：片段 1、3`（这一行不算在主体长度里）。',
     ].join('\n');
 
-  // 收集图片：顶层 body.images（应用于最后一条 user 消息）+ 每条 message.images。
-  // 每张图片是 data URL 或 base64 字符串，前端最多 4 张。
-  const topImages = Array.isArray(body?.images)
-    ? body.images.filter((u) => typeof u === 'string' && u.trim()).slice(0, 4)
-    : [];
-  const messageHasImages = (m) =>
-    Array.isArray(m?.images) && m.images.some((u) => typeof u === 'string' && u.trim());
-  const hasAnyImages = topImages.length > 0 || rawMessages.some(messageHasImages);
-
   // 取最后一条 user 消息作为检索 query。
   let lastUserContent = '';
   let lastUserIdx = -1;
@@ -1892,12 +1883,6 @@ async function handleAiChat(request, env) {
       lastUserContent = m.content.trim();
       lastUserIdx = i;
       break;
-    }
-  }
-  if (lastUserIdx < 0) {
-    // 兼容 user 文本为空但只发了图的场景：仍把图绑到最末一条 user。
-    for (let i = rawMessages.length - 1; i >= 0; i--) {
-      if (rawMessages[i]?.role === 'user') { lastUserIdx = i; break; }
     }
   }
 
@@ -1925,13 +1910,9 @@ async function handleAiChat(request, env) {
     systemParts.push(
       '以下是从本站知识库检索到的原文片段（按相关度递减）。你的回答必须完全在这些原文范围内构建：直接引用、复述或综合这些片段；不要补充片段之外的细节，不要修改原文中的名词或步骤；如果这些片段没有直接回答用户问题，按上面的规则回复「抱歉，知识库里暂时没有这个问题的答案……」。\n\n' + ctx,
     );
-  } else if (!hasAnyImages) {
-    systemParts.push(
-      '本次知识库检索没有命中任何相关片段。请严格按规则直接回复：「抱歉，知识库里暂时没有这个问题的答案，你可以换个说法再问，或者查阅项目文档。」不要使用通用知识尝试回答。',
-    );
   } else {
     systemParts.push(
-      '本次知识库检索没有命中任何片段，但用户附带了图片。请基于图片内容如实描述/回答；不要编造图片中不存在的内容。',
+      '本次知识库检索没有命中任何相关片段。请严格按规则直接回复：「抱歉，知识库里暂时没有这个问题的答案，你可以换个说法再问，或者查阅项目文档。」不要使用通用知识尝试回答。',
     );
   }
   if (pageContext) systemParts.push('用户当前页面上下文：\n' + pageContext);
@@ -1943,43 +1924,24 @@ async function handleAiChat(request, env) {
   }
   messages.push({ role: 'system', content: systemParts.join('\n\n') });
 
-  // 多模态 content 构造：text-only 直接保留字符串；带图片用 OpenAI-compat 数组形式。
-  const buildContent = (text, images) => {
-    const list = (images || []).filter((u) => typeof u === 'string' && u.trim());
-    if (list.length === 0) return text;
-    const parts = [];
-    if (text) parts.push({ type: 'text', text });
-    for (const u of list) {
-      const url = u.startsWith('data:') || u.startsWith('http')
-        ? u
-        : `data:image/jpeg;base64,${u.replace(/^base64,/, '')}`;
-      parts.push({ type: 'image_url', image_url: { url } });
-    }
-    return parts;
-  };
-
   for (let i = 0; i < rawMessages.length; i++) {
     const m = rawMessages[i];
     if (!m || typeof m.content !== 'string') continue;
     const role = m.role === 'assistant' ? 'assistant' : (m.role === 'system' ? 'system' : 'user');
     if (role === 'system') continue; // system 已经从 body.system 注入
     const text = m.content.slice(0, 4000);
-    let imgs = Array.isArray(m.images) ? m.images.slice() : [];
-    if (i === lastUserIdx && topImages.length) imgs = imgs.concat(topImages);
-    if (!text.trim() && imgs.length === 0) continue;
-    messages.push({ role, content: buildContent(text, imgs) });
+    if (!text.trim()) continue;
+    messages.push({ role, content: text });
   }
   if (messages.length <= 1) {
     return jsonResponse({ error: 'messages 不能为空。' }, 400);
   }
 
-  // 模型选择：显式 body.model > 有图走 vision 模型 > 默认文本模型。
+  // 模型选择：显式 body.model > 默认文本模型。
   const explicitModel = (typeof body?.model === 'string' && body.model.trim()) ? body.model.trim() : '';
-  const visionModel = (env.CHAT_VISION_MODEL && String(env.CHAT_VISION_MODEL).trim())
-    || '@cf/meta/llama-3.2-11b-vision-instruct';
   const textModel = (env.CHAT_MODEL && String(env.CHAT_MODEL).trim())
     || '@cf/meta/llama-3.1-8b-instruct';
-  const model = explicitModel || (hasAnyImages ? visionModel : textModel);
+  const model = explicitModel || textModel;
   const maxTokens = Number(env.CHAT_MAX_TOKENS) > 0 ? Number(env.CHAT_MAX_TOKENS) : 1024;
 
   const sources = knowledge.map((k) => ({

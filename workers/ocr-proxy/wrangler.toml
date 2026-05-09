@@ -51,8 +51,6 @@ OCR_MODEL = "@cf/moonshotai/kimi-k2.6"
 OCR_MAX_TOKENS = "4096"
 # /api/ai-chat 默认使用的文本对话模型，可换为 @cf/qwen/qwen2.5-coder-32b-instruct 等。
 CHAT_MODEL = "@cf/meta/llama-3.1-8b-instruct"
-# /api/ai-chat 带图片时使用的 vision 模型。
-CHAT_VISION_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct"
 # /api/ai-chat 单次生成上限。
 CHAT_MAX_TOKENS = "1024"
 # AI 问答检索使用的 embedding 模型。bge-m3 是多语言 1024 维，中文友好。

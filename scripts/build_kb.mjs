@@ -139,6 +139,34 @@ async function blocksToMarkdown(blocks, depth = 0) {
         line = `${indent}> ${emoji} ${richTextToString(block.callout?.rich_text)}`;
         break;
       }
+      case 'image': {
+        const img = block.image || {};
+        const url = img.type === 'external' ? (img.external?.url || '') : (img.file?.url || '');
+        const cap = richTextToString(img.caption) || '';
+        if (url) line = `${indent}![${cap}](${url})`;
+        break;
+      }
+      case 'video':
+      case 'file':
+      case 'pdf':
+      case 'audio': {
+        const m = block[block.type] || {};
+        const url = m.type === 'external' ? (m.external?.url || '') : (m.file?.url || '');
+        const cap = richTextToString(m.caption) || block.type;
+        if (url) line = `${indent}[${cap}](${url})`;
+        break;
+      }
+      case 'embed':
+      case 'bookmark':
+      case 'link_preview': {
+        const url = block[block.type]?.url || '';
+        const cap = richTextToString(block[block.type]?.caption) || url;
+        if (url) line = `${indent}[${cap}](${url})`;
+        break;
+      }
+      case 'child_database':
+        // 子数据库由独立流程导出，正文中跳过
+        continue;
       case 'child_page':
         // 子页另外独立抽取，这里不重复包含
         continue;
