@@ -363,6 +363,429 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     },
   });
 
+  // ===== Sold lots table (shadcn/tablecn) =====
+  const soldHandlersRef = useRef({});
+  soldHandlersRef.current = { setSelectedCode, setSidePanelTab };
+  const soldColumns = useMemo(() => [
+    {
+      id: 'code',
+      accessorFn: (row) => row.code,
+      meta: { label: '代码' },
+      enableHiding: false,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="代码" />,
+      cell: ({ row }) => (
+        <button
+          type="button"
+          className="font-mono text-xs font-semibold tabular-nums text-slate-800 hover:underline"
+          onClick={() => { soldHandlersRef.current.setSelectedCode(row.original.code); soldHandlersRef.current.setSidePanelTab('summary'); }}
+        >{row.original.code}</button>
+      ),
+    },
+    {
+      id: 'name',
+      accessorFn: (row) => row.name || '',
+      meta: { label: '名称', variant: 'text', placeholder: '搜索名称' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="名称" />,
+      cell: ({ row }) => {
+        const lot = row.original;
+        return (
+          <span className="text-xs">
+            {lot.name || <span className="text-muted-foreground">—</span>}
+            {lot.isSwitch ? (
+              <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600 ring-1 ring-indigo-100" title={`切换至 ${lot.switchTargetCode}${lot.switchTargetName ? ` ${lot.switchTargetName}` : ''}`}>⇋ 切换至 {lot.switchTargetCode}</span>
+            ) : null}
+          </span>
+        );
+      },
+      filterFn: 'includesString',
+    },
+    {
+      id: 'kind',
+      accessorFn: (row) => row.kind,
+      meta: { label: '标签', variant: 'multiSelect', options: kindFilterOptions },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="标签" />,
+      cell: ({ row }) => (
+        <Pill tone={KIND_PILL_TONES[row.original.kind] || 'slate'}>{KIND_LABELS[row.original.kind] || '未知'}</Pill>
+      ),
+      filterFn: (row, columnId, filterValue) => {
+        if (!Array.isArray(filterValue) || filterValue.length === 0) return true;
+        return filterValue.includes(row.getValue(columnId));
+      },
+    },
+    {
+      id: 'sellDate',
+      accessorFn: (row) => row.sellDate || '',
+      meta: { label: '卖出日期' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="卖出日期" />,
+      cell: ({ row }) => row.original.sellDate || <span className="text-amber-600">待补录</span>,
+    },
+    {
+      id: 'sellShares',
+      accessorFn: (row) => row.sellShares,
+      meta: { label: '卖出份额' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="卖出份额" />,
+      cell: ({ row }) => <span className="tabular-nums">{formatShares(row.original.sellShares)}</span>,
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'sellPrice',
+      accessorFn: (row) => row.sellPrice,
+      meta: { label: '卖出价' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="卖出价" />,
+      cell: ({ row }) => <span className="tabular-nums">{formatNav(row.original.sellPrice)}</span>,
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'avgCost',
+      accessorFn: (row) => row.hasAvgCost ? row.avgCost : null,
+      meta: { label: '平均成本' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="平均成本" />,
+      cell: ({ row }) => row.original.hasAvgCost ? <span className="tabular-nums">{formatNav(row.original.avgCost)}</span> : <span className="text-muted-foreground">—</span>,
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'costBasis',
+      accessorFn: (row) => row.hasAvgCost ? row.costBasis : null,
+      meta: { label: '成本金额' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="成本金额" />,
+      cell: ({ row }) => row.original.hasAvgCost ? <span className="tabular-nums">{formatCurrency(row.original.costBasis, '¥', 2)}</span> : '—',
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'proceeds',
+      accessorFn: (row) => row.proceeds,
+      meta: { label: '卖出金额' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="卖出金额" />,
+      cell: ({ row }) => <span className="tabular-nums">{formatCurrency(row.original.proceeds, '¥', 2)}</span>,
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'realizedProfit',
+      accessorFn: (row) => row.hasAvgCost ? row.realizedProfit : null,
+      meta: { label: '已实现收益' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="已实现收益" />,
+      cell: ({ row }) => {
+        const lot = row.original;
+        if (!lot.hasAvgCost) return '—';
+        const v = lot.realizedProfit;
+        const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
+        return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v)}</span>;
+      },
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'realizedReturnRate',
+      accessorFn: (row) => row.hasAvgCost ? row.realizedReturnRate : null,
+      meta: { label: '收益率' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="收益率" />,
+      cell: ({ row }) => {
+        const lot = row.original;
+        if (!lot.hasAvgCost) return '—';
+        const v = lot.realizedReturnRate;
+        const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
+        return <span className={cx('tabular-nums', cls)}>{formatSignedPercent(v)}</span>;
+      },
+      sortingFn: numericSortFn,
+    },
+  ], [kindFilterOptions]);
+
+  const soldLotsTable = useReactTable({
+    data: soldLots,
+    columns: soldColumns,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getFacetedRowModel: getFacetedRowModel(),
+    getFacetedUniqueValues: getFacetedUniqueValues(),
+    getPaginationRowModel: getPaginationRowModel(),
+    initialState: {
+      sorting: [{ id: 'sellDate', desc: true }],
+      pagination: { pageSize: 50 },
+    },
+  });
+
+
+  // ===== Ledger (transactions) table (shadcn/tablecn) =====
+  const ledgerHandlersRef = useRef({});
+  ledgerHandlersRef.current = {
+    handleEditFieldChange,
+    handleCommitEdit,
+    handleCancelEdit,
+    handleCopyRowToDraft,
+    handleDeleteTransaction,
+    setSelectedCode,
+    setSidePanelTab,
+  };
+  const ledgerColumns = useMemo(() => [
+    {
+      id: 'code',
+      accessorFn: (row) => row.tx.code,
+      meta: { label: '代码' },
+      enableHiding: false,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="代码" />,
+      cell: ({ row }) => {
+        const { tx } = row.original;
+        const isEditing = editingTxId === tx.id;
+        if (isEditing && editingBuffer) {
+          return (<input className={EDITABLE_INPUT} value={editingBuffer.code} onChange={(e) => ledgerHandlersRef.current.handleEditFieldChange('code', e.target.value)} placeholder="6位代码" inputMode="numeric" />);
+        }
+        return (<button type="button" className="font-mono text-xs text-slate-800 hover:underline" onClick={() => { ledgerHandlersRef.current.setSelectedCode(tx.code); ledgerHandlersRef.current.setSidePanelTab('summary'); }}>{tx.code}</button>);
+      },
+    },
+    {
+      id: 'name',
+      accessorFn: (row) => row.tx.name || '',
+      meta: { label: '名称', variant: 'text', placeholder: '搜索名称' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="名称" />,
+      cell: ({ row }) => {
+        const { tx } = row.original;
+        const isEditing = editingTxId === tx.id;
+        if (isEditing && editingBuffer) {
+          return (<input className={EDITABLE_INPUT} value={editingBuffer.name} onChange={(e) => ledgerHandlersRef.current.handleEditFieldChange('name', e.target.value)} placeholder="基金名称" />);
+        }
+        return tx.name || <span className="text-muted-foreground">—</span>;
+      },
+      filterFn: 'includesString',
+    },
+    {
+      id: 'kind',
+      accessorFn: (row) => row.tx.kind,
+      meta: { label: '标签', variant: 'multiSelect', options: kindFilterOptions },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="标签" />,
+      cell: ({ row }) => {
+        const { tx } = row.original;
+        const isEditing = editingTxId === tx.id;
+        if (isEditing && editingBuffer) {
+          return (<select className={EDITABLE_INPUT} value={editingBuffer.kind} onChange={(e) => ledgerHandlersRef.current.handleEditFieldChange('kind', e.target.value)}><option value="otc">场外</option><option value="exchange">场内</option></select>);
+        }
+        return <Pill tone={KIND_PILL_TONES[tx.kind] || 'slate'}>{KIND_LABELS[tx.kind] || '未知'}</Pill>;
+      },
+      filterFn: (row, columnId, filterValue) => {
+        if (!Array.isArray(filterValue) || filterValue.length === 0) return true;
+        return filterValue.includes(row.getValue(columnId));
+      },
+    },
+    {
+      id: 'type',
+      accessorFn: (row) => row.tx.type,
+      meta: { label: '类型', variant: 'multiSelect', options: [{ value: 'BUY', label: 'BUY' }, { value: 'SELL', label: 'SELL' }] },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="类型" />,
+      cell: ({ row }) => {
+        const { tx } = row.original;
+        const isEditing = editingTxId === tx.id;
+        if (isEditing && editingBuffer) {
+          return (<select className={EDITABLE_INPUT} value={editingBuffer.type} onChange={(e) => ledgerHandlersRef.current.handleEditFieldChange('type', e.target.value)}><option value="BUY">BUY</option><option value="SELL">SELL</option></select>);
+        }
+        return (<span className={cx('inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold', tx.type === 'BUY' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500')}>{tx.type}</span>);
+      },
+      filterFn: (row, columnId, filterValue) => {
+        if (!Array.isArray(filterValue) || filterValue.length === 0) return true;
+        return filterValue.includes(row.getValue(columnId));
+      },
+    },
+    {
+      id: 'date',
+      accessorFn: (row) => row.tx.date || '',
+      meta: { label: '日期' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="日期" />,
+      cell: ({ row }) => {
+        const { tx } = row.original;
+        const isEditing = editingTxId === tx.id;
+        if (isEditing && editingBuffer) {
+          return (<input type="date" className={EDITABLE_INPUT} value={editingBuffer.date} onChange={(e) => ledgerHandlersRef.current.handleEditFieldChange('date', e.target.value)} />);
+        }
+        return tx.date || <span className="text-amber-600">待补录</span>;
+      },
+    },
+    {
+      id: 'price',
+      accessorFn: (row) => row.tx.price,
+      meta: { label: '价' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="价" />,
+      cell: ({ row }) => {
+        const { tx } = row.original;
+        const isEditing = editingTxId === tx.id;
+        if (isEditing && editingBuffer) {
+          return (<input className={EDITABLE_INPUT} value={editingBuffer.price} onChange={(e) => ledgerHandlersRef.current.handleEditFieldChange('price', e.target.value)} placeholder="0.0000" inputMode="decimal" />);
+        }
+        return <span className="tabular-nums">{formatNav(tx.price)}</span>;
+      },
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'shares',
+      accessorFn: (row) => row.tx.shares,
+      meta: { label: '份额' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="份额" />,
+      cell: ({ row }) => {
+        const { tx } = row.original;
+        const isEditing = editingTxId === tx.id;
+        if (isEditing && editingBuffer) {
+          return (<input className={EDITABLE_INPUT} value={editingBuffer.shares} onChange={(e) => ledgerHandlersRef.current.handleEditFieldChange('shares', e.target.value)} placeholder="0.0000" inputMode="decimal" />);
+        }
+        return <span className="tabular-nums">{formatShares(tx.shares)}</span>;
+      },
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'latestNav',
+      accessorFn: (row) => row.metrics.hasLatestNav ? row.metrics.latestNav : null,
+      meta: { label: '当前净值' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="当前净值" />,
+      cell: ({ row }) => {
+        const { metrics, snapshot } = row.original;
+        const snapshotError = snapshot?.error ? String(snapshot.error) : '';
+        return metrics.hasLatestNav ? <span className="tabular-nums">{formatNav(metrics.latestNav)}</span> : (snapshotError ? <span className="text-red-500">失败</span> : '—');
+      },
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'latestNavDate',
+      accessorFn: (row) => row.metrics.latestNavDate || '',
+      meta: { label: '净值日' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="净值日" />,
+      cell: ({ row }) => <span className="text-[11px] text-muted-foreground">{row.original.metrics.latestNavDate || '—'}</span>,
+    },
+    {
+      id: 'displayShares',
+      accessorFn: (row) => row.metrics.isSell ? null : row.metrics.displayShares,
+      meta: { label: '当前份额' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="当前份额" />,
+      cell: ({ row }) => {
+        const { metrics } = row.original;
+        return metrics.isSell ? '—' : <span className="tabular-nums">{formatShares(metrics.displayShares)}</span>;
+      },
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'costBasis',
+      accessorFn: (row) => row.metrics.costBasis,
+      meta: { label: '成本' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="成本" />,
+      cell: ({ row }) => <span className="tabular-nums">{formatCurrency(row.original.metrics.costBasis, '¥', 2)}</span>,
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'marketValue',
+      accessorFn: (row) => row.metrics.isSell ? row.metrics.proceeds : (row.metrics.hasLatestNav ? row.metrics.marketValue : null),
+      meta: { label: '市值/实收' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="市值/实收" />,
+      cell: ({ row }) => {
+        const { metrics } = row.original;
+        if (metrics.isSell) return <span className="tabular-nums text-muted-foreground">{formatCurrency(metrics.proceeds || 0, '¥', 2)}</span>;
+        return metrics.hasLatestNav ? <span className="tabular-nums">{formatCurrency(metrics.marketValue, '¥', 2)}</span> : '—';
+      },
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'totalProfit',
+      accessorFn: (row) => (row.metrics.isSell || !row.metrics.hasLatestNav) ? null : row.metrics.totalProfit,
+      meta: { label: '总收益' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="总收益" />,
+      cell: ({ row }) => {
+        const { metrics } = row.original;
+        if (metrics.isSell || !metrics.hasLatestNav) return '—';
+        const v = metrics.totalProfit;
+        const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
+        return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v)}</span>;
+      },
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'totalReturnRate',
+      accessorFn: (row) => (row.metrics.isSell || !row.metrics.hasLatestNav) ? null : row.metrics.totalReturnRate,
+      meta: { label: '总收益率' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="总收益率" />,
+      cell: ({ row }) => {
+        const { metrics } = row.original;
+        if (metrics.isSell || !metrics.hasLatestNav) return '—';
+        const v = metrics.totalReturnRate;
+        const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
+        return <span className={cx('tabular-nums', cls)}>{formatSignedPercent(v)}</span>;
+      },
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'todayProfit',
+      accessorFn: (row) => (row.metrics.isSell || !row.metrics.hasTodayNav) ? null : row.metrics.todayProfit,
+      meta: { label: '当日收益' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="当日收益" />,
+      cell: ({ row }) => {
+        const { metrics } = row.original;
+        if (metrics.isSell || !metrics.hasTodayNav) return '—';
+        const v = metrics.todayProfit;
+        const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
+        return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v)}</span>;
+      },
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'todayReturnRate',
+      accessorFn: (row) => (row.metrics.isSell || !row.metrics.hasTodayNav) ? null : row.metrics.todayReturnRate,
+      meta: { label: '当日收益率' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="当日收益率" />,
+      cell: ({ row }) => {
+        const { metrics } = row.original;
+        if (metrics.isSell || !metrics.hasTodayNav) return '—';
+        const v = metrics.todayReturnRate;
+        const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
+        return <span className={cx('tabular-nums', cls)}>{formatSignedPercent(v)}</span>;
+      },
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'previousNav',
+      accessorFn: (row) => row.metrics.hasPreviousNav ? row.metrics.previousNav : null,
+      meta: { label: '前一日净值' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="前一日净值" />,
+      cell: ({ row }) => {
+        const { metrics } = row.original;
+        return metrics.hasPreviousNav ? <span className="tabular-nums text-muted-foreground">{formatNav(metrics.previousNav)}</span> : '—';
+      },
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'actions',
+      enableSorting: false,
+      enableHiding: false,
+      meta: { label: '操作' },
+      header: () => <span className="text-xs font-semibold text-muted-foreground">操作</span>,
+      cell: ({ row }) => {
+        const { tx } = row.original;
+        const isEditing = editingTxId === tx.id;
+        if (isEditing && editingBuffer) {
+          return (
+            <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+              <button type="button" className={SUBTLE_BTN} onClick={() => ledgerHandlersRef.current.handleCommitEdit()}><Save className="h-4 w-4" /> 保存</button>
+              <button type="button" className={SUBTLE_BTN} onClick={() => ledgerHandlersRef.current.handleCancelEdit()}><X className="h-4 w-4" /> 取消</button>
+            </div>
+          );
+        }
+        return (
+          <div className="flex justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+            <button type="button" title="编辑" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-600 ring-1 ring-slate-200/80 transition-colors hover:bg-slate-100" onClick={() => ledgerHandlersRef.current.handleCopyRowToDraft(row.original)}><Pencil className="h-4 w-4" /></button>
+            <button type="button" title="删除" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-red-600 ring-1 ring-red-200/80 transition-colors hover:bg-red-50" onClick={() => ledgerHandlersRef.current.handleDeleteTransaction(tx.id)}><Trash2 className="h-4 w-4" /></button>
+          </div>
+        );
+      },
+    },
+  ], [editingTxId, editingBuffer, kindFilterOptions]);
+
+  const ledgerTable = useReactTable({
+    data: ledgerRows,
+    columns: ledgerColumns,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getFacetedRowModel: getFacetedRowModel(),
+    getFacetedUniqueValues: getFacetedUniqueValues(),
+    getPaginationRowModel: getPaginationRowModel(),
+    initialState: {
+      sorting: [{ id: 'date', desc: true }],
+      pagination: { pageSize: 50 },
+    },
+  });
+
 
   const selectedAggregate = selectedCode ? aggregateByCodeMap.get(selectedCode) : null;
   const needsDateBackfill = useMemo(
@@ -1597,156 +2020,44 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   function renderSoldTable() {
-    const filteredLots = soldLots.filter((lot) => {
-      if (kindFilter !== 'all' && lot.kind !== kindFilter) return false;
-      if (!searchNeedle) return true;
-      return lot.code.toLowerCase().includes(searchNeedle)
-        || (lot.name || '').toLowerCase().includes(searchNeedle);
-    });
-    const filteredSummary = summarizeSoldLots(filteredLots);
-    if (!filteredLots.length) {
-      const emptyMessage = soldLots.length === 0
-        ? '还没有任何卖出记录。SELL 交易会自动出现在这里。'
-        : '当前筛选条件下没有卖出记录。';
+    if (soldLots.length === 0) {
       return (
         <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 text-center">
           <Wallet className="h-8 w-8 text-slate-300" />
-          <div className="text-sm text-slate-500">{emptyMessage}</div>
+          <div className="text-sm text-slate-500">还没有任何卖出记录。SELL 交易会自动出现在这里。</div>
         </div>
       );
     }
-
+    const filteredLots = soldLotsTable.getFilteredRowModel().rows.map((r) => r.original);
+    const filteredSummary = summarizeSoldLots(filteredLots);
     const totalTone = filteredSummary.totalRealizedProfit > 0
-      ? 'text-red-600'
-      : filteredSummary.totalRealizedProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
-
+      ? 'text-rose-600'
+      : filteredSummary.totalRealizedProfit < 0 ? 'text-emerald-600' : '';
     return (
-      <div className="overflow-x-auto">
-        <table className="min-w-[1400px] w-full text-sm">
-          <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-            <tr>
-              <th className="sticky left-0 z-20 bg-slate-50 px-3 py-2 shadow-[1px_0_0_rgba(15,23,42,0.08)]">基金代码</th>
-              <th className="px-3 py-2">基金名称</th>
-              <th className="px-3 py-2">标签</th>
-              <th className="px-3 py-2">卖出日期</th>
-              <th className="px-3 py-2 text-right">卖出份额</th>
-              <th className="px-3 py-2 text-right">卖出价</th>
-              <th className="px-3 py-2 text-right">平均成本</th>
-              <th className="px-3 py-2 text-right">成本金额</th>
-              <th className="px-3 py-2 text-right">卖出金额</th>
-              <th className="px-3 py-2 text-right">已实现收益(元)</th>
-              <th className="px-3 py-2 text-right">已实现收益率</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filteredLots.map((lot) => {
-              const kindTone = KIND_PILL_TONES[lot.kind] || 'slate';
-              const kindLabel = KIND_LABELS[lot.kind] || '未知';
-              const profitClass = lot.realizedProfit > 0
-                ? 'text-red-600'
-                : lot.realizedProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
-              const isSelected = selectedCode === lot.code;
-              return (
-                <tr
-                  key={lot.id}
-                  className={cx(
-                    'cursor-pointer text-slate-700 transition-colors hover:bg-slate-50',
-                    isSelected && 'bg-indigo-50/50'
-                  )}
-                  onClick={() => {
-                    setSelectedCode(lot.code);
-                    setSidePanelTab('summary');
-                  }}
-                >
-                  <td className={cx(
-                    'sticky left-0 z-10 whitespace-nowrap px-3 py-2 font-mono text-xs font-semibold text-slate-800 shadow-[1px_0_0_rgba(15,23,42,0.06)]',
-                    isSelected ? 'bg-indigo-50/90' : 'bg-white'
-                  )}>{lot.code}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-xs">
-                    <span>{lot.name || <span className="text-slate-400">—</span>}</span>
-                    {lot.isSwitch ? (
-                      <span
-                        className="ml-2 inline-flex items-center gap-1 rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600 ring-1 ring-indigo-100"
-                        title={`切换至 ${lot.switchTargetCode}${lot.switchTargetName ? ` ${lot.switchTargetName}` : ''}`}
-                      >
-                        ⇋ 切换至 {lot.switchTargetCode}
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="px-3 py-2"><Pill tone={kindTone}>{kindLabel}</Pill></td>
-                  <td className="whitespace-nowrap px-3 py-2 text-xs">{lot.sellDate || <span className="text-amber-600">待补录</span>}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">{formatShares(lot.sellShares)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">{formatNav(lot.sellPrice)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">{lot.hasAvgCost ? formatNav(lot.avgCost) : <span className="text-slate-400">—</span>}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums text-slate-700">{lot.hasAvgCost ? formatCurrency(lot.costBasis, '¥', 2) : '—'}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums text-slate-700">{formatCurrency(lot.proceeds, '¥', 2)}</td>
-                  <td className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', profitClass)}>
-                    {lot.hasAvgCost ? formatSignedCurrency(lot.realizedProfit) : '—'}
-                  </td>
-                  <td className={cx('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', profitClass)}>
-                    {lot.hasAvgCost ? formatSignedPercent(lot.realizedReturnRate) : '—'}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot className="bg-slate-50/70 text-xs font-semibold text-slate-700">
-            <tr>
-              <td className="px-3 py-2" colSpan={4}>合计（{filteredSummary.codeCount} 只 / {filteredSummary.lotCount} 笔）</td>
-              <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatShares(filteredSummary.totalSellShares)}</td>
-              <td className="px-3 py-2"></td>
-              <td className="px-3 py-2"></td>
-              <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatCurrency(filteredSummary.totalCostBasis, '¥', 2)}</td>
-              <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatCurrency(filteredSummary.totalProceeds, '¥', 2)}</td>
-              <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', totalTone)}>{formatSignedCurrency(filteredSummary.totalRealizedProfit)}</td>
-              <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums', totalTone)}>{formatSignedPercent(filteredSummary.totalRealizedReturnRate)}</td>
-            </tr>
-          </tfoot>
-        </table>
+      <div className="flex flex-col gap-2">
+        <DataTableToolbar table={soldLotsTable}>
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
+            合计 {filteredSummary.codeCount} 只 / {filteredSummary.lotCount} 笔 · 卖出 {formatCurrency(filteredSummary.totalProceeds, '¥', 2)} · 已实现 <span className={cx('font-semibold tabular-nums', totalTone)}>{formatSignedCurrency(filteredSummary.totalRealizedProfit)} ({formatSignedPercent(filteredSummary.totalRealizedReturnRate)})</span>
+          </span>
+        </DataTableToolbar>
+        <DataTable table={soldLotsTable} />
       </div>
     );
   }
 
   function renderLedgerTable() {
-    if (!filteredRows.length) {
+    if (ledgerRows.length === 0) {
       return (
         <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 text-center">
           <Wallet className="h-8 w-8 text-slate-300" />
-          <div className="text-sm text-slate-500">
-            {ledgerRows.length === 0 ? '还没有任何交易流水，点「新增交易」或「批量导入」（支持 OCR / Excel 粘贴）录入。' : '当前筛选条件下没有交易流水。'}
-          </div>
+          <div className="text-sm text-slate-500">还没有任何交易流水，点「新增交易」或「批量导入」（支持 OCR / Excel 粘贴）录入。</div>
         </div>
       );
     }
     return (
-      <div className="overflow-x-auto">
-        <table className="min-w-[1400px] w-full text-sm">
-          <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-            <tr>
-              <th className="sticky left-0 z-20 bg-slate-50 px-2 py-2 shadow-[1px_0_0_rgba(15,23,42,0.08)]">代码</th>
-              <th className="px-2 py-2">名称</th>
-              <th className="px-2 py-2">标签</th>
-              <th className="px-2 py-2">类型</th>
-              <th className="px-2 py-2">日期</th>
-              <th className="px-2 py-2 text-right">价</th>
-              <th className="px-2 py-2 text-right">份额</th>
-              <th className="px-2 py-2 text-right">当前净值</th>
-              <th className="px-2 py-2 text-right">净值日</th>
-              <th className="px-2 py-2 text-right">当前份额</th>
-              <th className="px-2 py-2 text-right">成本</th>
-              <th className="px-2 py-2 text-right">市值/实收</th>
-              <th className="px-2 py-2 text-right">总收益</th>
-              <th className="px-2 py-2 text-right">总收益率</th>
-              <th className="px-2 py-2 text-right">当日收益</th>
-              <th className="px-2 py-2 text-right">当日收益率</th>
-              <th className="px-2 py-2 text-right">前一日净值</th>
-              <th className="sticky right-0 z-20 bg-slate-50 px-2 py-2 text-right shadow-[-1px_0_0_rgba(15,23,42,0.08)]">操作</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filteredRows.map(renderRow)}
-          </tbody>
-        </table>
+      <div className="flex flex-col gap-2">
+        <DataTableToolbar table={ledgerTable} />
+        <DataTable table={ledgerTable} />
       </div>
     );
   }
