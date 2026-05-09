@@ -20,7 +20,7 @@ function DataTable({
   return <div
     className={cn("flex w-full flex-col gap-2.5 overflow-auto", className)}
     {...props}
-  >{children}<div className="overflow-hidden rounded-md border"><Table><TableHeader>{table.getHeaderGroups().map((headerGroup) => <TableRow key={headerGroup.id}>{headerGroup.headers.map((header) => <TableHead
+  >{children}<div className="overflow-x-auto rounded-md border"><Table><TableHeader>{table.getHeaderGroups().map((headerGroup) => <TableRow key={headerGroup.id}>{headerGroup.headers.map((header) => <TableHead
     key={header.id}
     colSpan={header.colSpan}
     style={{

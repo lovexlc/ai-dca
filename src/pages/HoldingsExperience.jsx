@@ -2673,8 +2673,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         <section className="min-w-0 rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           {renderNavStatusStrip()}
           <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <div role="tablist" aria-label="数据视图" className="flex items-center gap-1 border-b border-slate-200 -mb-px text-sm font-semibold">
+            <div className="flex w-full min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+              <div role="tablist" aria-label="数据视图" className="flex w-full min-w-0 items-center gap-1 overflow-x-auto border-b border-slate-200 -mb-px text-sm font-semibold sm:w-auto">
                 {[
                   { key: 'aggregate', label: '基金汇总' },
                   { key: 'sold', label: '已卖出', count: soldLots.length },
@@ -2689,7 +2689,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                       role="tab"
                       aria-selected={active}
                       className={cx(
-                        'relative inline-flex items-center gap-1.5 border-b-2 px-3 py-2 transition-colors',
+                        'relative inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 transition-colors',
                         active
                           ? 'border-indigo-500 text-slate-900'
                           : 'border-transparent text-slate-500 hover:text-slate-800'
