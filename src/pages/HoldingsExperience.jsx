@@ -2073,13 +2073,13 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         ? <span className="tabular-nums font-semibold">{formatCurrency(sumMarketValue, '¥', 2)}</span>
         : <span className="text-muted-foreground">—</span>,
       totalProfit: pricedCount > 0
-        ? <span className={cx('tabular-nums font-semibold', totalProfitTone)}>{formatSignedCurrency(sumTotalProfit, '¥', 2)}</span>
+        ? <span className={cx('tabular-nums font-semibold', totalProfitTone)}>{formatSignedCurrency(sumTotalProfit, 2)}</span>
         : <span className="text-muted-foreground">—</span>,
       totalReturnRate: summaryTotalReturnRate != null
         ? <span className={cx('tabular-nums font-semibold', totalReturnTone)}>{formatSignedPercent(summaryTotalReturnRate)}</span>
         : <span className="text-muted-foreground">—</span>,
       todayProfit: todayCount > 0
-        ? <span className={cx('tabular-nums font-semibold', todayProfitTone)}>{formatSignedCurrency(sumTodayProfit, '¥', 2)}</span>
+        ? <span className={cx('tabular-nums font-semibold', todayProfitTone)}>{formatSignedCurrency(sumTodayProfit, 2)}</span>
         : <span className="text-muted-foreground">—</span>,
       todayReturnRate: summaryTodayReturnRate != null
         ? <span className={cx('tabular-nums font-semibold', todayReturnTone)}>{formatSignedPercent(summaryTodayReturnRate)}</span>
