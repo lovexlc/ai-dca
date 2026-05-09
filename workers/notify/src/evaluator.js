@@ -392,11 +392,12 @@ async function deliverNotification(env, notification, options = {}) {
       configLabel: 'Android'
     });
   } else {
-    // FCM fan-out：并发发送给该 client 全部已配对设备。
-    // - Workers Paid 套餐对单次 invocation 的 subrequest 上限放到 1000，远高于 Free 的 50，
-    //   并发对 fan-out 没有被打回的风险。
-    // - 每条 FCM 消息互相独立，单设备失败不应阻塞其他设备 → 用 Promise.allSettled。
-    // - 把 projectId 在循环外解析一次，避免每次都重新调 resolveGcmProjectId。
+    // 推送策略：WS（App 常驻）优先，FCM 兌底。
+    // - 先试 WS：tryPublishWs 返回 { ok, delivered, failed, total }。
+    //   delivered > 0 表示该设备至少一个长连接在线、成功收到 frame，干脆记为
+    //   「App 已探测到」→ 跳过 FCM，避免同一事件双弹。
+    // - WS 未 ok / delivered=0 的设备才走 FCM，保留原有 fan-out 语义。
+    // - Workers Paid 套餐 subrequest 上限 1000，两轮串行 (WS → FCM) 没频颈风险。
     const projectId = resolveGcmProjectId(settings, env);
     const baseData = {
       eventId: notification.eventId || '',
@@ -411,49 +412,79 @@ async function deliverNotification(env, notification, options = {}) {
       detailUrl: notification.detailUrl || notification.url || '',
       url: notification.url || notification.detailUrl || ''
     };
-    const fcmDeliveries = await Promise.allSettled(
+
+    // 1) 先 WS 探测。
+    const wsSettledList = await Promise.allSettled(
       gcmRegistrationsToDeliver.map((registration) =>
-        sendGcmNotification({
-          env,
-          projectId,
-          packageName: registration.packageName,
-          token: registration.token,
+        tryPublishWs(env, registration.deviceInstallationId || registration.id, {
           title: notification.title,
           body: notification.body,
-          data: baseData
+          data: baseData,
+          source: 'notify',
         })
       )
     );
-    // 实时通道双路发送（fire-and-forget）：FCM 与 WS 同时发。
-    // 使用 Promise.allSettled 避免单设备失败拖垮全部，该干预 FCM 返回。
-    try {
-      await Promise.allSettled(
-        gcmRegistrationsToDeliver.map((registration) =>
-          tryPublishWs(env, registration.deviceInstallationId || registration.id, {
-            title: notification.title,
-            body: notification.body,
-            data: baseData,
-            source: 'notify',
-          })
-        )
+    const wsDeliveredFlags = wsSettledList.map((settled) => {
+      if (settled.status !== 'fulfilled') return false;
+      const v = settled.value || {};
+      return Boolean(v.ok) && Number(v.delivered || 0) > 0;
+    });
+
+    // 2) 只对 WS 未送达的设备发 FCM 兌底。
+    const fcmTargetIndexes = [];
+    gcmRegistrationsToDeliver.forEach((_, idx) => {
+      if (!wsDeliveredFlags[idx]) fcmTargetIndexes.push(idx);
+    });
+    const fcmSettledByIdx = new Map();
+    if (fcmTargetIndexes.length) {
+      const settledList = await Promise.allSettled(
+        fcmTargetIndexes.map((idx) => sendGcmNotification({
+          env,
+          projectId,
+          packageName: gcmRegistrationsToDeliver[idx].packageName,
+          token: gcmRegistrationsToDeliver[idx].token,
+          title: notification.title,
+          body: notification.body,
+          data: baseData
+        }))
       );
-    } catch (_) { /* 吞掉，不影响 FCM 返回 */ }
-    fcmDeliveries.forEach((settled, index) => {
-      const registration = gcmRegistrationsToDeliver[index];
+      fcmTargetIndexes.forEach((idx, i) => fcmSettledByIdx.set(idx, settledList[i]));
+    }
+
+    // 3) 合并写 results。WS 送达的设备记 channel='ws' / status='delivered'。
+    gcmRegistrationsToDeliver.forEach((registration, idx) => {
       const baseMeta = {
         configKey: `gcm-registration:${registration.id}`,
         configType: 'gcm-registration',
         configId: registration.id,
         configLabel: registration.deviceName || 'Android Device'
       };
-      if (settled.status === 'fulfilled') {
+      if (wsDeliveredFlags[idx]) {
+        const wsValue = wsSettledList[idx].status === 'fulfilled' ? (wsSettledList[idx].value || {}) : {};
+        results.push({
+          channel: 'ws',
+          status: 'delivered',
+          detail: `App 常驻通道送达（连接数 ${Number(wsValue.delivered || 0)}），跳过 FCM`,
+          ...baseMeta
+        });
+        return;
+      }
+      const settled = fcmSettledByIdx.get(idx);
+      if (settled && settled.status === 'fulfilled') {
         results.push({ ...settled.value, ...baseMeta });
-      } else {
+      } else if (settled) {
         const error = settled.reason;
         results.push({
           channel: 'gcm',
           status: 'failed',
           detail: error instanceof Error ? error.message : 'Android 推送失败',
+          ...baseMeta
+        });
+      } else {
+        results.push({
+          channel: 'gcm',
+          status: 'failed',
+          detail: 'FCM 兌底未执行',
           ...baseMeta
         });
       }
