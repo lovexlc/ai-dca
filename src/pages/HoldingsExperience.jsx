@@ -191,8 +191,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       source = aggregates.filter((agg) => agg.hasPosition);
     } else if (mainViewTab === 'sold') {
       source = soldLots;
-    } else if (mainViewTab === 'switch') {
-      source = [];
     } else {
       source = ledgerRows.map((row) => row.tx);
     }
@@ -2678,7 +2676,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 {[
                   { key: 'aggregate', label: '基金汇总' },
                   { key: 'sold', label: '已卖出', count: soldLots.length },
-                  { key: 'switch', label: '基金切换', count: switchChains.length },
                   { key: 'ledger', label: '成交流水' }
                 ].map((tab) => {
                   const active = mainViewTab === tab.key;
@@ -2708,7 +2705,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 })}
               </div>
 </div>
-            {mainViewTab === 'switch' ? null : (
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap">
               <button
                 type="button"
@@ -2785,25 +2781,20 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               </div>
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleOcrFile} />
             </div>
-            )}
           </div>
           <div className="min-h-[560px] px-1 py-1">
             {mainViewTab === 'aggregate'
               ? renderAggregatesTable()
               : mainViewTab === 'sold'
                 ? renderSoldTable()
-                : mainViewTab === 'switch'
-                  ? renderSwitchChainView()
-                  : renderLedgerTable()}
+                : renderLedgerTable()}
           </div>
           <div className="border-t border-slate-100 px-4 py-2 text-[11px] text-slate-400">
             {mainViewTab === 'aggregate'
               ? `持仓中 ${portfolio.assetCount} 只基金；累计 ${ledgerRows.length} 笔流水。`
               : mainViewTab === 'sold'
                 ? `共 ${soldSummary.codeCount} 只基金 / ${soldSummary.lotCount} 笔卖出；已实现收益 ${formatSignedCurrency(soldSummary.totalRealizedProfit)} （${formatSignedPercent(soldSummary.totalRealizedReturnRate)}）。`
-                : mainViewTab === 'switch'
-                  ? `共 ${switchChains.length} 条切换链路。链路收益 = 每段净值乘积 − 1；未切换基准 = 一直持有首段基金到链路终点的收益。`
-                  : `共 ${ledgerRows.length} 笔流水；当前筛选 ${filteredRows.length} 笔。`}
+                : `共 ${ledgerRows.length} 笔流水；当前筛选 ${filteredRows.length} 笔。`}
           </div>
         </section>
       </div>
