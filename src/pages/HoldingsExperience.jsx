@@ -2064,13 +2064,22 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     const todayReturnTone = summaryTodayReturnRate == null
       ? ''
       : summaryTodayReturnRate > 0 ? 'text-rose-600' : summaryTodayReturnRate < 0 ? 'text-emerald-600' : '';
+    const totalProfitTone = sumTotalProfit > 0 ? 'text-rose-600' : sumTotalProfit < 0 ? 'text-emerald-600' : '';
+    const todayProfitTone = sumTodayProfit > 0 ? 'text-rose-600' : sumTodayProfit < 0 ? 'text-emerald-600' : '';
     const aggregatesFooterRow = {
       code: <span className="text-xs font-semibold text-slate-700">合计</span>,
+      name: <span className="text-xs text-muted-foreground">{filteredAggs.length} 只持仓</span>,
       marketValue: pricedCount > 0
         ? <span className="tabular-nums font-semibold">{formatCurrency(sumMarketValue, '¥', 2)}</span>
         : <span className="text-muted-foreground">—</span>,
+      totalProfit: pricedCount > 0
+        ? <span className={cx('tabular-nums font-semibold', totalProfitTone)}>{formatSignedCurrency(sumTotalProfit, '¥', 2)}</span>
+        : <span className="text-muted-foreground">—</span>,
       totalReturnRate: summaryTotalReturnRate != null
         ? <span className={cx('tabular-nums font-semibold', totalReturnTone)}>{formatSignedPercent(summaryTotalReturnRate)}</span>
+        : <span className="text-muted-foreground">—</span>,
+      todayProfit: todayCount > 0
+        ? <span className={cx('tabular-nums font-semibold', todayProfitTone)}>{formatSignedCurrency(sumTodayProfit, '¥', 2)}</span>
         : <span className="text-muted-foreground">—</span>,
       todayReturnRate: summaryTodayReturnRate != null
         ? <span className={cx('tabular-nums font-semibold', todayReturnTone)}>{formatSignedPercent(summaryTodayReturnRate)}</span>
