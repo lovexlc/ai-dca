@@ -302,6 +302,48 @@ function normalizeFundBaseName(value = '') {
     .replace(/([ABCHIOR])(?:类)?$/i, '');
 }
 
+function bigramSet(str = '') {
+  const s = String(str || '');
+  const set = new Set();
+  for (let i = 0; i < s.length - 1; i += 1) {
+    set.add(s.slice(i, i + 2));
+  }
+  return set;
+}
+
+function jaccardBigram(a = '', b = '') {
+  const A = bigramSet(a);
+  const B = bigramSet(b);
+  if (A.size === 0 || B.size === 0) {
+    return 0;
+  }
+  let inter = 0;
+  for (const g of A) {
+    if (B.has(g)) inter += 1;
+  }
+  const union = A.size + B.size - inter;
+  return union > 0 ? inter / union : 0;
+}
+
+function longestCommonSubstringLength(a = '', b = '') {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0 || n === 0) return 0;
+  // 滚动两行动态规划，O(m×n) 时间、O(n) 空间。
+  let prev = new Uint16Array(n + 1);
+  let curr = new Uint16Array(n + 1);
+  let best = 0;
+  for (let i = 1; i <= m; i += 1) {
+    for (let j = 1; j <= n; j += 1) {
+      curr[j] = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? prev[j - 1] + 1 : 0;
+      if (curr[j] > best) best = curr[j];
+    }
+    const tmp = prev; prev = curr; curr = tmp;
+    curr.fill(0);
+  }
+  return best;
+}
+
 function parseFundCatalogScript(scriptText = '') {
   const match = String(scriptText || '')
     .replace(/^\uFEFF/, '')
@@ -416,6 +458,21 @@ function scoreFundCatalogEntry(entry, queryName = '') {
     score -= 20;
   }
 
+  // 模糊度奖励：名字重叠“差不多就行”。
+  // catalog 中常多/少“发起式”“人民币”“QDII”令双向子串全失包含，
+  // 用 bigram Jaccard + 最长公共子串补上，让主体词汇重叠高的候选能走进决赛。
+  const queryFuzzy = queryBase || queryNormalized;
+  const candFuzzy = entry.baseName || entry.searchName;
+  if (queryFuzzy && candFuzzy && queryFuzzy.length >= 2 && candFuzzy.length >= 2) {
+    const jacc = jaccardBigram(queryFuzzy, candFuzzy);
+    score += Math.round(jacc * 60); // 满分 60
+    const lcs = longestCommonSubstringLength(queryFuzzy, candFuzzy);
+    if (lcs >= 4) score += 8;
+    if (lcs >= 6) score += 12;
+    if (lcs >= 9) score += 15;
+    if (lcs >= 12) score += 10;
+  }
+
   return score;
 }
 
@@ -432,7 +489,7 @@ async function resolveFundCodeByName(name = '') {
       ...entry,
       score: scoreFundCatalogEntry(entry, normalizedName)
     }))
-    .filter((entry) => entry.score >= 60)
+    .filter((entry) => entry.score >= 50)
     .sort((left, right) => right.score - left.score);
 
   if (!ranked.length) {
