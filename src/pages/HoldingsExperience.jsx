@@ -2673,8 +2673,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       <div className="grid grid-cols-1 gap-4">
         <section className="min-w-0 rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           {renderNavStatusStrip()}
-          <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex w-full min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3 sm:gap-3 sm:justify-between">
+            <div className="flex min-w-0 flex-1 items-center gap-x-4 sm:flex-wrap sm:gap-y-2">
               <div role="tablist" aria-label="数据视图" className="flex w-full min-w-0 items-center gap-1 overflow-x-auto border-b border-slate-200 -mb-px text-sm font-semibold sm:w-auto">
                 {[
                   { key: 'aggregate', label: '基金汇总' },
@@ -2708,10 +2708,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 })}
               </div>
 </div>
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap">
+            <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
               <button
                 type="button"
-                className="order-first inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(79,70,229,0.25)] transition-all hover:bg-indigo-500 hover:shadow-[0_6px_16px_rgba(79,70,229,0.3)] disabled:cursor-not-allowed disabled:opacity-60 sm:order-last"
+                className="order-first inline-flex h-9 w-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-indigo-600 px-0 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(79,70,229,0.25)] transition-all hover:bg-indigo-500 hover:shadow-[0_6px_16px_rgba(79,70,229,0.3)] disabled:cursor-not-allowed disabled:opacity-60 sm:order-last sm:w-auto sm:px-4"
                 onClick={() => {
                   resetDraft(emptyDraft({ type: mainViewTab === 'sold' ? 'SELL' : 'BUY' }));
                   setSidePanelTab('create');
@@ -2720,7 +2720,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 title="新增单条交易"
               >
                 <Plus className="h-4 w-4" />
-                新增交易
+                <span className="hidden sm:inline">新增交易</span>
               </button>
               <button
                 type="button"
