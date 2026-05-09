@@ -2013,7 +2013,11 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         <DataTableToolbar table={aggregatesTable} />
         <DataTable
           table={aggregatesTable}
-          onRowClick={(row) => setSelectedCode(row.original.code)}
+          onRowClick={(row) => {
+            setSelectedCode(row.original.code);
+            setSidePanelTab('summary');
+            setSidePanelOpen(true);
+          }}
         />
       </div>
     );
@@ -2724,7 +2728,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               </button>
               <button
                 type="button"
-                className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-white px-2.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:ring-slate-300 sm:px-3"
+                className="hidden h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-white px-2.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:ring-slate-300 sm:inline-flex sm:px-3"
                 onClick={handleCopyVisibleTable}
                 title={mainViewTab === 'aggregate' ? '复制基金汇总为 TSV' : mainViewTab === 'sold' ? '复制已卖出为 TSV' : '复制成交流水为 TSV'}
               >
