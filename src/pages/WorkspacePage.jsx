@@ -1,6 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, CloudUpload, History, ListChecks, Shuffle, Wallet } from 'lucide-react';
-import { isFundSwitchViewHash } from '../app/fundSwitch.js';
 import { LEGACY_TAB_REDIRECTS, PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
@@ -8,7 +7,7 @@ import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
 // 各主 tab 使用 React.lazy 按需加载，在 Vite 中会被拆成独立 chunk。
 // HomeExperience / DcaExperience 已并入 TradePlansExperience 作为二级 tab，不再在这里顶级 lazy。
 const BackupExperience = lazy(() => import('./BackupExperience.jsx').then((m) => ({ default: m.BackupExperience })));
-const FundSwitchExperience = lazy(() => import('./FundSwitchExperience.jsx').then((m) => ({ default: m.FundSwitchExperience })));
+const FundSwitchAnalysisExperience = lazy(() => import('./FundSwitchAnalysisExperience.jsx').then((m) => ({ default: m.FundSwitchAnalysisExperience })));
 const HistoryExperience = lazy(() => import('./HistoryExperience.jsx').then((m) => ({ default: m.HistoryExperience })));
 const HoldingsExperience = lazy(() => import('./HoldingsExperience.jsx').then((m) => ({ default: m.HoldingsExperience })));
 const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) => ({ default: m.NotifyExperience })));
@@ -66,9 +65,6 @@ function buildWorkspaceUrl(tab, { inPagesDir = false } = {}) {
   const nextUrl = new URL(inPagesDir ? '../index.html' : './index.html', window.location.href);
   if (tab !== DEFAULT_WORKSPACE_TAB) {
     nextUrl.searchParams.set('tab', tab);
-  }
-  if (tab === 'fundSwitch' && isFundSwitchViewHash(window.location.hash)) {
-    nextUrl.hash = window.location.hash;
   }
   return nextUrl;
 }
@@ -180,7 +176,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       case 'tradePlans':
         return <TradePlansExperience {...sharedProps} />;
       case 'fundSwitch':
-        return <FundSwitchExperience {...sharedProps} />;
+        return <FundSwitchAnalysisExperience />;
       case 'history':
         return <HistoryExperience {...sharedProps} />;
       case 'notify':
