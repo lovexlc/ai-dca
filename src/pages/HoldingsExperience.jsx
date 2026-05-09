@@ -98,16 +98,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [selectedCode, setSelectedCode] = useState('');
   const [sidePanelTab, setSidePanelTab] = useState('summary');
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
-  useEffect(() => {
-    function onMobileNew() {
-      resetDraft(emptyDraft({ type: mainViewTab === 'sold' ? 'SELL' : 'BUY' }));
-      setSidePanelTab('create');
-      setSidePanelOpen(true);
-    }
-    window.addEventListener('holdings:new', onMobileNew);
-    return () => window.removeEventListener('holdings:new', onMobileNew);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mainViewTab]);
   const [mainViewTab, setMainViewTab] = useState('aggregate');
   const [draft, setDraft] = useState(() => emptyDraft());
   const [draftMode, setDraftMode] = useState('create');
@@ -118,6 +108,16 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [primaryTabKey, setPrimaryTabKey] = useState('holdings');
   const [pasteModalOpen, setPasteModalOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  useEffect(() => {
+    function onMobileNew() {
+      resetDraft(emptyDraft({ type: mainViewTab === 'sold' ? 'SELL' : 'BUY' }));
+      setSidePanelTab('create');
+      setSidePanelOpen(true);
+    }
+    window.addEventListener('holdings:new', onMobileNew);
+    return () => window.removeEventListener('holdings:new', onMobileNew);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainViewTab]);
   const [pasteResult, setPasteResult] = useState(null);
   // ---- OCR import modal: 截图 OCR 走与「粘贴 Excel」一致的「先弹窗 → 解析预览 → 导入有效行」流程。 ----
   const [ocrModalOpen, setOcrModalOpen] = useState(false);
