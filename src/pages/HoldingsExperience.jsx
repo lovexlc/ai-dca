@@ -34,7 +34,6 @@ import {
 import { DataTable } from '@/components/data-table/data-table';
 import { DataTableColumnHeader } from '@/components/data-table/data-table-column-header';
 import { DataTableFacetedFilter } from '@/components/data-table/data-table-faceted-filter';
-import { DataTablePagination } from '@/components/data-table/data-table-pagination';
 import { DataTableToolbar } from '@/components/data-table/data-table-toolbar';
 import { formatCurrency, formatPercent } from '../app/accumulation.js';
 import {
@@ -1593,7 +1592,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           table={aggregatesTable}
           onRowClick={(row) => setSelectedCode(row.original.code)}
         />
-        <DataTablePagination table={aggregatesTable} />
       </div>
     );
   }
