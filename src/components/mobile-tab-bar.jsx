@@ -71,7 +71,7 @@ export function MobileTabBar({ onSearch, onAi, onNew, onPasteImport, onOcrImport
       >
         <button
           type="button"
-          className="flex h-12 w-12 items-center justify-center rounded-full text-slate-600 transition-colors hover:bg-slate-100 active:bg-slate-200"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200 active:bg-slate-300"
           onClick={onSearch}
           aria-label="搜索"
         >
@@ -87,7 +87,7 @@ export function MobileTabBar({ onSearch, onAi, onNew, onPasteImport, onOcrImport
         </button>
         <button
           type="button"
-          className="flex h-12 w-12 items-center justify-center rounded-full text-slate-600 transition-colors hover:bg-slate-100 active:bg-slate-200"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200 active:bg-slate-300"
           onClick={openAdd}
           aria-label="新增交易"
         >

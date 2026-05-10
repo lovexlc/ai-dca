@@ -1774,53 +1774,25 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   function renderNavStatusStrip() {
     const meta = ledger.lastNavMeta || {};
     const loading = navStatus === 'loading';
-    const hasUpdate = !!meta.updatedAt;
     const hasFailures = (meta.failureCount || 0) > 0;
-    const failedCount = portfolio.failedCodes ? portfolio.failedCodes.length : 0;
-    const btnClass = loading
-      ? 'border-indigo-200 bg-indigo-50 text-indigo-600 cursor-wait'
-      : hasFailures
-        ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
-        : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700';
-    let statusEl;
-    if (loading) {
-      statusEl = null;
-    } else if (!hasUpdate) {
-      statusEl = (
-        <span className="inline-flex items-center gap-1 text-xs text-slate-500">
-          <AlertTriangle className="h-3.5 w-3.5" />
-          尚未同步净值
-        </span>
-      );
-    } else if (hasFailures) {
-      statusEl = (
-        <span className="inline-flex items-center gap-1 text-xs text-amber-600">
-          <AlertTriangle className="h-3.5 w-3.5" />
-          {`${formatRelativeTime(meta.updatedAt).replace(/\s+/g, '')} · ${meta.failureCount} 项失败`}
-        </span>
-      );
-    } else {
-      statusEl = (
-        <span className="inline-flex items-center gap-1 text-xs text-emerald-600">
-          <CheckCircle2 className="h-3.5 w-3.5" />
-          {formatRelativeTime(meta.updatedAt).replace(/\s+/g, '')}
-        </span>
-      );
-    }
+    const failureLabel = hasFailures ? `净值同步有 ${meta.failureCount} 项失败` : '同步净值';
     return (
-      <div className="inline-flex items-center gap-2">
-        <button
-          type="button"
-          onClick={handleManualRefresh}
-          disabled={loading}
-          aria-label="同步净值"
-          title="同步净值"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <RefreshCw className={cx('h-3.5 w-3.5', loading && 'animate-spin')} />
-        </button>
-        {statusEl}
-      </div>
+      <button
+        type="button"
+        onClick={handleManualRefresh}
+        disabled={loading}
+        aria-label={failureLabel}
+        title={failureLabel}
+        className="relative inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <RefreshCw className={cx('h-3.5 w-3.5', loading && 'animate-spin')} />
+        {hasFailures ? (
+          <span
+            aria-hidden
+            className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-amber-500 ring-2 ring-white"
+          />
+        ) : null}
+      </button>
     );
   }
 
