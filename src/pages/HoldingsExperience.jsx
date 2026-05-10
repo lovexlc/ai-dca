@@ -1777,16 +1777,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     const hasUpdate = !!meta.updatedAt;
     const hasFailures = (meta.failureCount || 0) > 0;
     const failedCount = portfolio.failedCodes ? portfolio.failedCodes.length : 0;
-    const coveragePct = portfolio.assetCount > 0
-      ? Math.round((portfolio.pricedCount / portfolio.assetCount) * 100)
-      : null;
-    const coverageTone = coveragePct === null
-      ? 'text-slate-400'
-      : coveragePct >= 100
-        ? 'text-emerald-600'
-        : coveragePct >= 80
-          ? 'text-slate-600'
-          : 'text-amber-600';
     const btnClass = loading
       ? 'border-indigo-200 bg-indigo-50 text-indigo-600 cursor-wait'
       : hasFailures
@@ -1806,19 +1796,19 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       statusEl = (
         <span className="inline-flex items-center gap-1 text-xs text-amber-600">
           <AlertTriangle className="h-3.5 w-3.5" />
-          {`上次更新 ${formatRelativeTime(meta.updatedAt)} · ${meta.failureCount} 项失败`}
+          {`${formatRelativeTime(meta.updatedAt).replace(/\s+/g, '')} · ${meta.failureCount} 项失败`}
         </span>
       );
     } else {
       statusEl = (
         <span className="inline-flex items-center gap-1 text-xs text-emerald-600">
           <CheckCircle2 className="h-3.5 w-3.5" />
-          {`上次更新 ${formatRelativeTime(meta.updatedAt)}`}
+          {formatRelativeTime(meta.updatedAt).replace(/\s+/g, '')}
         </span>
       );
     }
     return (
-      <div className="flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1.5 px-3 pt-2">
+      <div className="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1 px-3 pt-1">
         <button
           type="button"
           onClick={handleManualRefresh}
@@ -1830,11 +1820,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           <RefreshCw className={cx('h-3.5 w-3.5', loading && 'animate-spin')} />
         </button>
         {statusEl}
-        <span aria-hidden className="hidden h-4 w-px bg-slate-200 sm:block" />
-        <span className={cx('inline-flex items-center gap-1 text-xs tabular-nums', coverageTone)}>
-          NAV 覆盖 {portfolio.pricedCount}/{portfolio.assetCount}
-          {coveragePct !== null && coveragePct < 100 ? <span className="text-slate-400">({coveragePct}%)</span> : null}
-        </span>
       </div>
     );
   }
@@ -2842,7 +2827,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           <div className="min-h-[480px] px-1">
             {mainViewTab === 'aggregate'
               ? renderNavStatusStrip()
-              : <div className="min-h-9 px-3 pt-2" aria-hidden />}
+              : <div className="min-h-7 px-3 pt-1" aria-hidden />}
             {mainViewTab === 'aggregate'
               ? renderAggregatesTable()
               : mainViewTab === 'sold'
