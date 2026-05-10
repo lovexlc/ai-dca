@@ -66,7 +66,7 @@ export function MobileTabBar({ onSearch, onAi, onNew, onPasteImport, onOcrImport
   return (
     <>
       <nav
-        className="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around border-t border-slate-200 bg-white/95 px-6 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-4px_24px_rgba(15,23,42,0.06)] backdrop-blur sm:hidden"
+        className="fixed bottom-0 left-0 right-0 z-30 flex items-center gap-2 border-t border-slate-200 bg-white/95 px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-4px_24px_rgba(15,23,42,0.06)] backdrop-blur sm:hidden"
         aria-label="底部快捷导航"
       >
         <button
@@ -79,11 +79,14 @@ export function MobileTabBar({ onSearch, onAi, onNew, onPasteImport, onOcrImport
         </button>
         <button
           type="button"
-          className="-mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-[0_8px_24px_rgba(79,70,229,0.35)] transition-colors hover:bg-indigo-500 active:bg-indigo-700"
+          className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-full bg-slate-100 pl-1.5 pr-4 text-left transition-colors hover:bg-slate-200/60 active:bg-slate-200"
           onClick={onAi}
-          aria-label="AI 咨询"
+          aria-label="询问知识助手"
         >
-          <Sparkles className="h-6 w-6" />
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-[0_4px_12px_rgba(79,70,229,0.3)]">
+            <Sparkles className="h-4 w-4" />
+          </span>
+          <span className="flex-1 truncate text-sm text-slate-500">询问知识助手</span>
         </button>
         <button
           type="button"
