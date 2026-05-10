@@ -1818,7 +1818,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       );
     }
     return (
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+      <div className="flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1.5 px-3 pt-2">
         <button
           type="button"
           onClick={handleManualRefresh}
@@ -2814,7 +2814,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               </div>
 </div>
             <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
-              {mainViewTab === 'aggregate' ? renderNavStatusStrip() : null}
               <button
                 type="button"
                 className="order-first hidden h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(79,70,229,0.25)] transition-all hover:bg-indigo-500 hover:shadow-[0_6px_16px_rgba(79,70,229,0.3)] disabled:cursor-not-allowed disabled:opacity-60 sm:order-last sm:inline-flex"
@@ -2841,6 +2840,9 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             </div>
           </div>
           <div className="min-h-[480px] px-1">
+            {mainViewTab === 'aggregate'
+              ? renderNavStatusStrip()
+              : <div className="min-h-9 px-3 pt-2" aria-hidden />}
             {mainViewTab === 'aggregate'
               ? renderAggregatesTable()
               : mainViewTab === 'sold'
