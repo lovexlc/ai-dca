@@ -120,7 +120,6 @@ export function MobileTabBar({ onSearch, onAi, onNew, onPasteImport, onOcrImport
             </div>
             <div className="mt-3 flex gap-1 border-b border-slate-100 px-3" role="tablist">
               {ADD_TABS.map((tab) => {
-                const Icon = tab.icon;
                 const isActive = tab.key === addTab;
                 return (
                   <button
@@ -129,14 +128,13 @@ export function MobileTabBar({ onSearch, onAi, onNew, onPasteImport, onOcrImport
                     role="tab"
                     aria-selected={isActive}
                     className={[
-                      'flex flex-1 items-center justify-center gap-1.5 border-b-2 px-2 py-3 text-sm font-medium transition-colors',
+                      'flex flex-1 items-center justify-center whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition-colors',
                       isActive
                         ? 'border-indigo-500 text-indigo-600'
                         : 'border-transparent text-slate-500 hover:text-slate-700',
                     ].join(' ')}
                     onClick={() => setAddTab(tab.key)}
                   >
-                    <Icon className="h-4 w-4" />
                     <span>{tab.label}</span>
                   </button>
                 );
