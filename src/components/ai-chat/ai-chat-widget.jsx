@@ -118,6 +118,8 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
   const textareaRef = useRef(null);
   const abortRef = useRef(null);
   const panelRef = useRef(null);
+  const dragStartY = useRef(null);
+  const dragDeltaY = useRef(0);
 
   useEffect(() => {
     persistHistory(messages);
@@ -222,6 +224,53 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
     setOpen(false);
     setError('');
   }, []);
+
+  // 下拉关闭：在手柄 / 头部区域向下拖超过阈值则关闭面板。
+  const handleDragStart = useCallback((event) => {
+    const touch = event.touches && event.touches[0];
+    if (!touch) return;
+    dragStartY.current = touch.clientY;
+    dragDeltaY.current = 0;
+    if (panelRef.current) {
+      panelRef.current.style.transition = 'none';
+    }
+  }, []);
+
+  const handleDragMove = useCallback((event) => {
+    if (dragStartY.current == null) return;
+    const touch = event.touches && event.touches[0];
+    if (!touch) return;
+    const dy = touch.clientY - dragStartY.current;
+    if (dy <= 0) {
+      dragDeltaY.current = 0;
+      if (panelRef.current) panelRef.current.style.transform = '';
+      return;
+    }
+    dragDeltaY.current = dy;
+    if (panelRef.current) {
+      panelRef.current.style.transform = `translateY(${dy}px)`;
+    }
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    if (dragStartY.current == null) return;
+    const dy = dragDeltaY.current;
+    dragStartY.current = null;
+    dragDeltaY.current = 0;
+    const node = panelRef.current;
+    if (node) {
+      node.style.transition = '';
+    }
+    if (dy > 100) {
+      handleClose();
+      // 面板即将卸载，留一点时间重置 transform 以免下次打开从偏移位置弹回。
+      setTimeout(() => {
+        if (panelRef.current) panelRef.current.style.transform = '';
+      }, 220);
+    } else if (node) {
+      node.style.transform = '';
+    }
+  }, [handleClose]);
 
   const handleReset = useCallback(() => {
     setMessages([]);
@@ -428,6 +477,13 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
           aria-label="AI 问答"
           aria-modal="false"
         >
+          <div
+            className="ai-chat-panel__grab"
+            onTouchStart={handleDragStart}
+            onTouchMove={handleDragMove}
+            onTouchEnd={handleDragEnd}
+            onTouchCancel={handleDragEnd}
+          >
           <div className="ai-chat-panel__handle" aria-hidden="true" />
           <header className="ai-chat-panel__header">
             <div className="ai-chat-panel__title">
@@ -454,6 +510,7 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
               </button>
             </div>
           </header>
+          </div>
 
           <div className="ai-chat-panel__list" ref={listRef}>
             {messages.length === 0 ? (

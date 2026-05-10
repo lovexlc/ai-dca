@@ -137,6 +137,11 @@
   display: none;
 }
 
+/* 顶部可下拉关闭区域：含手柄 + header。默认不介入下拉手势，在移动端启用。*/
+.ai-chat-panel__grab {
+  flex: none;
+}
+
 @keyframes ai-chat-pop {
   from {
     opacity: 0;
