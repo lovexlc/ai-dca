@@ -258,17 +258,28 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
     dragStartY.current = null;
     dragDeltaY.current = 0;
     const node = panelRef.current;
-    if (node) {
-      node.style.transition = '';
-    }
     if (dy > 100) {
-      handleClose();
-      // 面板即将卸载，留一点时间重置 transform 以免下次打开从偏移位置弹回。
+      // 先让面板滑出屏幕，避免面板瞬间 unmount 后后面 backdrop-blur 的底部按钮出现闪烁。
+      // 同时主动 blur textarea，先收起软键盘，避免 visualViewport 变化造成二次布局抹护。
+      if (textareaRef.current) {
+        try { textareaRef.current.blur(); } catch (_) { /* ignore */ }
+      }
+      if (node) {
+        const h = node.offsetHeight || 600;
+        node.style.transition = 'transform 200ms ease-out';
+        node.style.transform = `translateY(${h + 24}px)`;
+      }
       setTimeout(() => {
-        if (panelRef.current) panelRef.current.style.transform = '';
-      }, 220);
+        handleClose();
+      }, 200);
     } else if (node) {
+      // 未达阈值：带动画回弹。
+      node.style.transition = 'transform 180ms ease-out';
       node.style.transform = '';
+      // 下一帧拿掉临时 transition，以免影响后续 visualViewport 驱动的 bottom 变化。
+      setTimeout(() => {
+        if (node) node.style.transition = '';
+      }, 200);
     }
   }, [handleClose]);
 
