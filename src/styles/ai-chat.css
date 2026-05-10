@@ -132,6 +132,11 @@
   animation: ai-chat-pop 160ms ease-out;
 }
 
+/* 拖拽手柄：仅在移动端 bottom-sheet 形态下显示 */
+.ai-chat-panel__handle {
+  display: none;
+}
+
 @keyframes ai-chat-pop {
   from {
     opacity: 0;
@@ -359,11 +364,45 @@
     display: none;
   }
   .ai-chat-panel {
-    right: 12px;
-    left: 12px;
-    bottom: 12px;
-    width: auto;
-    height: min(70vh, 520px);
+    right: 0;
+    left: 0;
+    bottom: var(--ai-chat-kb, 0px);
+    width: 100%;
+    height: min(82vh, calc(100vh - 64px));
+    border-radius: 18px 18px 0 0;
+    border-bottom: none;
+    box-shadow: 0 -10px 32px rgba(15, 23, 42, 0.18);
+    transition: bottom 160ms ease;
+  }
+  .ai-chat-panel__handle {
+    display: block;
+    flex: none;
+    width: 36px;
+    height: 4px;
+    margin: 8px auto 0;
+    border-radius: 999px;
+    background: #cbd5e1;
+  }
+  .ai-chat-panel__header {
+    background: #ffffff;
+    border-bottom: 1px solid #f1f5f9;
+    padding: 6px 14px 10px;
+  }
+  .ai-chat-panel__list {
+    background: #ffffff;
+    padding: 12px 14px;
+  }
+  .ai-chat-panel__footer {
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    background: #ffffff;
+    border-top: 1px solid #f1f5f9;
+  }
+  .ai-chat-panel__input {
+    border-radius: 14px;
+    background: #f8fafc;
+    padding: 10px 12px;
+    min-height: 44px;
+    font-size: 15px;
   }
   .ai-chat-nudge {
     right: 14px;

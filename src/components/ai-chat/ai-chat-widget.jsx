@@ -117,6 +117,7 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
   const listRef = useRef(null);
   const textareaRef = useRef(null);
   const abortRef = useRef(null);
+  const panelRef = useRef(null);
 
   useEffect(() => {
     persistHistory(messages);
@@ -134,6 +135,44 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
     if (node) node.scrollTop = node.scrollHeight;
     if (textareaRef.current) textareaRef.current.focus();
   }, [open, messages, pending]);
+
+  // 面板打开时锁定 body 滚动，避免背景随手指滑动。
+  useEffect(() => {
+    if (!open) return undefined;
+    if (typeof document === 'undefined') return undefined;
+    const body = document.body;
+    const prevOverflow = body.style.overflow;
+    const prevTouchAction = body.style.touchAction;
+    body.style.overflow = 'hidden';
+    body.style.touchAction = 'none';
+    return () => {
+      body.style.overflow = prevOverflow;
+      body.style.touchAction = prevTouchAction;
+    };
+  }, [open]);
+
+  // 跟随 visualViewport：软键盘弹出时压缩面板高度，底部输入区始终可见。
+  useEffect(() => {
+    if (!open) return undefined;
+    if (typeof window === 'undefined' || !window.visualViewport) return undefined;
+    const vv = window.visualViewport;
+    const update = () => {
+      const node = panelRef.current;
+      if (!node) return;
+      const bottomInset = Math.max(
+        0,
+        window.innerHeight - vv.height - vv.offsetTop,
+      );
+      node.style.setProperty('--ai-chat-kb', `${bottomInset}px`);
+    };
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (open && !nudgeMuted) {
@@ -383,11 +422,13 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
 
       {open ? (
         <div
+          ref={panelRef}
           className="ai-chat-panel"
           role="dialog"
           aria-label="AI 问答"
           aria-modal="false"
         >
+          <div className="ai-chat-panel__handle" aria-hidden="true" />
           <header className="ai-chat-panel__header">
             <div className="ai-chat-panel__title">
               <Sparkles className="h-4 w-4" aria-hidden="true" />
