@@ -1325,7 +1325,8 @@ async function buildHoldingsCacheKey(codes = []) {
   const normalized = normalizeRequestedHoldingCodes(codes);
   // 改动这个版本号可一次性废掉所有旧 entry。
   // v2 = 场内 ETF 缓存 TTL 从 180min 调为 60s 后的首次 BUST。
-  const cacheBust = 'v2';
+  // v3 = 拆分 场内/场外 两个独立缓存后的 BUST。
+  const cacheBust = 'v3';
   const digest = await crypto.subtle.digest(
     'SHA-256',
     new TextEncoder().encode(`${cacheBust}|${normalized.join(',')}`)
@@ -1555,6 +1556,45 @@ function containsExchangeFundCode(codes) {
   return Array.isArray(codes) && codes.some((c) => isExchangeFundCode(c));
 }
 
+// 判断当前是否处于 A 股场内交易时间 (周一至周五 09:30–11:30 、 13:00–15:00，上海时间)。
+function isAshareTradingNow(now) {
+  const { hour, minute, dayOfWeek } = getShanghaiHourMinuteDow(now);
+  if (dayOfWeek === 0 || dayOfWeek === 6) return false;
+  const total = hour * 60 + minute;
+  const morningOpen = 9 * 60 + 30;
+  const morningClose = 11 * 60 + 30;
+  const afternoonOpen = 13 * 60;
+  const afternoonClose = 15 * 60;
+  return (total >= morningOpen && total < morningClose)
+      || (total >= afternoonOpen && total < afternoonClose);
+}
+
+// 场内 ETF 缓存 TTL：盘中 60s（报价秒变）；非交易时间拉长到下一个开盘前，价格不再变。
+function computeExchangeNavTtlMs(envBaseMs, now) {
+  const base = Math.max(60_000, Number(envBaseMs) || 0);
+  if (isAshareTradingNow(now)) return 60_000;
+  const { hour, minute, dayOfWeek } = getShanghaiHourMinuteDow(now);
+  const total = hour * 60 + minute;
+  // 周末：缓到 24 小时（足以跨越周六-日，反正坚请求也会重新验证）。
+  if (dayOfWeek === 0 || dayOfWeek === 6) {
+    return Math.max(base, 24 * 60 * 60 * 1000);
+  }
+  const openMin = 9 * 60 + 30;
+  const closeMin = 15 * 60;
+  let untilOpenMin;
+  if (total >= closeMin) {
+    // 盘后～午夜：算到次日 09:30。
+    untilOpenMin = (24 * 60 - total) + openMin;
+  } else if (total < openMin) {
+    // 凌晨 00:00～09:30：算到今日开盘。
+    untilOpenMin = openMin - total;
+  } else {
+    // 11:30 午间休市：算到 13:00 开盘。
+    untilOpenMin = (13 * 60) - total;
+  }
+  return Math.max(base, untilOpenMin * 60 * 1000);
+}
+
 // ---- /api/holdings/nav 动态缓存 TTL ----
 // 上下文：场外 (OTC) NAV 在 T 日晚 19:00–23:30 左右公布；QDII NAV 在 T+1 晚 18:00–22:00 公布。
 // 在 A 股交易日今晚 NAV 公布之前，上游 lsjz 接口返回的只会是上个交易日的 NAV——重复拉一定同值。
@@ -1771,63 +1811,119 @@ async function handleHoldingsNav(request, env) {
     }, 400);
   }
 
-  const key = await buildHoldingsCacheKey(codes);
-  // 三档缓存策略：
-  //   1. 含场内 ETF (15x/5xx) → 交易时段报价每秒在变 → 60s。
-  //   2. 纯场外/QDII 且处于“NAV 还不会变”的窗口 (A 股交易日 17:30 之前 或 周末)
-  //      → 拉长到3–10h，减少上游调用。 这是用户‌“场内开盘时取场外肯定没变化”​的主要优化点。
-  //   3. NAV 公布窗口 (17:30–23:30) → 短 30min，赶上新 NAV。
-  // 例子：请求含任 1 只场内→ 整份走 60s 分支，避免 14:48 拉到的盘中快照
-  // 被冻到 17:48。
-  const cacheNow = new Date();
-  const baseTtlMs = getHoldingsNavCacheTtlMs(env);
-  const ttlMs = containsExchangeFundCode(codes)
-    ? 60_000
-    : computeNonExchangeNavTtlMs(baseTtlMs, cacheNow);
-  const cacheRequest = buildHoldingsCacheRequest(new URL(request.url), key, codes);
-
-  // ?force=1 / ?refresh=1 直接绕过 edge cache，并删除旧 entry。常用于场内 ETF
-  // 缓存被旧值卡住时主动刷一次。
+  // 拆分策略：场内 ETF 与 场外/QDII 各自独立 cache key + TTL，并行 fetch。
+  //   - 场内 ETF：盘中 60s（报价秒变）；非交易时间拉长到下一个开盘前。
+  //   - 场外 / QDII：沿用 computeNonExchangeNavTtlMs，17:30 之前默认 NAV 未变可拉长几小时。
+  // 3 只场内 + N 只场外：盘中 60s 过期只需重拉 3 个 ETF，场外几小时内函数全走缓存。
   const reqUrl = new URL(request.url);
   const forceBypass = reqUrl.searchParams.get('force') === '1' || reqUrl.searchParams.get('refresh') === '1';
-  if (forceBypass) {
-    try { await caches.default.delete(cacheRequest); } catch (_e) {}
-  }
-  const cachedResponse = forceBypass ? null : await caches.default.match(cacheRequest);
-  if (cachedResponse) {
-    try {
-      const payload = await cachedResponse.json();
-      if (isHoldingsPayloadFresh(payload, ttlMs)) {
-        return jsonResponse(withHoldingsCacheMeta(payload, {
-          key,
-          hit: true,
-          source: 'edge-cache',
-          stale: false,
-          codeCount: codes.length
-        }));
-      }
-    } catch (_error) {
-      // Ignore broken cache entries and continue to baseline/live fetch.
-    }
-  }
+  const cacheNow = new Date();
+  const baseTtlMs = getHoldingsNavCacheTtlMs(env);
 
-  const baselinePayload = forceBypass
-    ? null
-    : await readHoldingsBaselinePayload(request, env, key, ttlMs, codes);
-  if (baselinePayload) {
-    return jsonResponse(baselinePayload);
+  const exchangeCodes = codes.filter((c) => isExchangeFundCode(c));
+  const otcCodes = codes.filter((c) => !isExchangeFundCode(c));
+
+  const exchangeTtlMs = computeExchangeNavTtlMs(baseTtlMs, cacheNow);
+  const otcTtlMs = computeNonExchangeNavTtlMs(baseTtlMs, cacheNow);
+
+  const [exchangePayload, otcPayload] = await Promise.all([
+    exchangeCodes.length
+      ? resolveHoldingsGroup({ request, env, codes: exchangeCodes, ttlMs: exchangeTtlMs, forceBypass })
+      : Promise.resolve(null),
+    otcCodes.length
+      ? resolveHoldingsGroup({ request, env, codes: otcCodes, ttlMs: otcTtlMs, forceBypass })
+      : Promise.resolve(null)
+  ]);
+
+  const itemsByCode = new Map();
+  if (exchangePayload && Array.isArray(exchangePayload.items)) {
+    for (const it of exchangePayload.items) itemsByCode.set(it.code, it);
+  }
+  if (otcPayload && Array.isArray(otcPayload.items)) {
+    for (const it of otcPayload.items) itemsByCode.set(it.code, it);
+  }
+  const items = codes.map((c) => itemsByCode.get(c)).filter(Boolean);
+  const successCount = items.filter((i) => i && i.ok === true).length;
+  const failureCount = items.length - successCount;
+  const generatedAt = (exchangePayload && exchangePayload.generatedAt)
+    || (otcPayload && otcPayload.generatedAt)
+    || nowShanghaiIso();
+  const expCandidates = [exchangePayload, otcPayload]
+    .filter(Boolean)
+    .map((p) => Date.parse(String(p.expiresAt || '')))
+    .filter((n) => Number.isFinite(n));
+  const expiresAt = expCandidates.length
+    ? epochMsToShanghaiIso(Math.min(...expCandidates))
+    : generatedAt;
+  const groups = [exchangePayload, otcPayload].filter(Boolean);
+  const allHit = groups.length > 0 && groups.every((g) => g && g.cache && g.cache.hit === true);
+  const anyLive = groups.some((g) => g && g.cache && g.cache.source === 'live');
+  const cacheSource = anyLive ? 'live' : ((groups[0] && groups[0].cache && groups[0].cache.source) || 'edge-cache');
+
+  return jsonResponse({
+    ok: true,
+    generatedAt,
+    expiresAt,
+    successCount,
+    failureCount,
+    cache: {
+      key: [exchangePayload && exchangePayload.cache && exchangePayload.cache.key,
+            otcPayload && otcPayload.cache && otcPayload.cache.key].filter(Boolean).join('+'),
+      hit: allHit,
+      source: cacheSource,
+      stale: false,
+      codeCount: codes.length,
+      groups: {
+        exchange: exchangePayload ? {
+          count: (exchangePayload.items && exchangePayload.items.length) || 0,
+          source: (exchangePayload.cache && exchangePayload.cache.source) || '',
+          hit: !!(exchangePayload.cache && exchangePayload.cache.hit === true),
+          ttlMs: exchangeTtlMs
+        } : null,
+        otc: otcPayload ? {
+          count: (otcPayload.items && otcPayload.items.length) || 0,
+          source: (otcPayload.cache && otcPayload.cache.source) || '',
+          hit: !!(otcPayload.cache && otcPayload.cache.hit === true),
+          ttlMs: otcTtlMs
+        } : null
+      }
+    },
+    items
+  });
+}
+
+// 单个分组（场内或场外）的 cache -> baseline -> live 查找流程。
+// 拆出来以便 handleHoldingsNav 并行调用。
+async function resolveHoldingsGroup({ request, env, codes, ttlMs, forceBypass }) {
+  const key = await buildHoldingsCacheKey(codes);
+  const cacheRequest = buildHoldingsCacheRequest(new URL(request.url), key, codes);
+
+  if (forceBypass) {
+    try { await caches.default.delete(cacheRequest); } catch (_e) { /* ignore */ }
+  } else {
+    const cachedResponse = await caches.default.match(cacheRequest);
+    if (cachedResponse) {
+      try {
+        const payload = await cachedResponse.json();
+        if (isHoldingsPayloadFresh(payload, ttlMs)) {
+          return withHoldingsCacheMeta(payload, {
+            key, hit: true, source: 'edge-cache', stale: false, codeCount: codes.length
+          });
+        }
+      } catch (_error) { /* fall through */ }
+    }
+    const baselinePayload = await readHoldingsBaselinePayload(request, env, key, ttlMs, codes);
+    if (baselinePayload) return baselinePayload;
   }
 
   const livePayload = await fetchLiveHoldingsNavPayload(codes, env, key, ttlMs);
-
   if (livePayload.failureCount === 0) {
     const cacheResponse = jsonResponse(livePayload, 200, {
       'cache-control': `public, max-age=${Math.max(Math.floor(ttlMs / 1000), 60)}`
     });
     await caches.default.put(cacheRequest, cacheResponse.clone());
   }
-
-  return jsonResponse(livePayload);
+  return livePayload;
 }
 
 /**
