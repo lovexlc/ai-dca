@@ -120,6 +120,8 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
   const panelRef = useRef(null);
   const dragStartY = useRef(null);
   const dragDeltaY = useRef(0);
+  // 退场动画期间暂停 visualViewport 跟随，避免键盘收起与 transform 同时改面板 bottom。
+  const closingRef = useRef(false);
 
   useEffect(() => {
     persistHistory(messages);
@@ -159,6 +161,7 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
     if (typeof window === 'undefined' || !window.visualViewport) return undefined;
     const vv = window.visualViewport;
     const update = () => {
+      if (closingRef.current) return;
       const node = panelRef.current;
       if (!node) return;
       const bottomInset = Math.max(
@@ -259,24 +262,29 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
     dragDeltaY.current = 0;
     const node = panelRef.current;
     if (dy > 100) {
-      // 先让面板滑出屏幕，避免面板瞬间 unmount 后后面 backdrop-blur 的底部按钮出现闪烁。
-      // 同时主动 blur textarea，先收起软键盘，避免 visualViewport 变化造成二次布局抹护。
+      // 退场：先锁住 visualViewport 跟随，避免键盘收起与 transform 同时抽 panel bottom。
+      closingRef.current = true;
       if (textareaRef.current) {
         try { textareaRef.current.blur(); } catch (_) { /* ignore */ }
       }
       if (node) {
         const h = node.offsetHeight || 600;
-        node.style.transition = 'transform 200ms ease-out';
-        node.style.transform = `translateY(${h + 24}px)`;
+        // 打 dragMove 中 transition = none 的补丁：先设 transition，强制 reflow
+        // 让浏览器提交新的 transition-property，再变 transform，才会动画。
+        node.style.transition = 'transform 220ms ease-out';
+        void node.offsetHeight; // force reflow
+        node.style.transform = `translateY(${h + 32}px)`;
+        node.style.pointerEvents = 'none';
       }
       setTimeout(() => {
+        closingRef.current = false;
         handleClose();
-      }, 200);
+      }, 220);
     } else if (node) {
-      // 未达阈值：带动画回弹。
+      // 未达阈值：带动画回弹。同样需强制 reflow。
       node.style.transition = 'transform 180ms ease-out';
+      void node.offsetHeight; // force reflow
       node.style.transform = '';
-      // 下一帧拿掉临时 transition，以免影响后续 visualViewport 驱动的 bottom 变化。
       setTimeout(() => {
         if (node) node.style.transition = '';
       }, 200);
