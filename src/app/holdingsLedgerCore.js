@@ -285,8 +285,9 @@ export function getTransactionErrors(tx = {}, { ignoreBlank = false } = {}) {
   if (!TRANSACTION_TYPES.includes(normalized.type)) {
     errors.type = '交易类型只允许 BUY / SELL。';
   }
-  if (!(normalized.price > 0)) {
-    errors.price = '交易价格必须大于 0。';
+  // 价格（净值）为选填项：T 日下单后 NAV 还未公布，允许先留空、事后手动回填。
+  if (normalized.price < 0) {
+    errors.price = '交易价格不能为负数。';
   }
   if (!(normalized.shares > 0)) {
     errors.shares = '交易份额必须大于 0。';

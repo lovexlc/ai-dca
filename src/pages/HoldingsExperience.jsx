@@ -1028,13 +1028,14 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   // 从「该基金汇总」弹窗点击 买入 / 卖出：预填代码/名称/标签，默认「三点前」=true，根据 snapshot 试图自动填入日期和净值。
+  // 从「该基金汇总」弹窗点击 买入 / 卖出：预填代码/名称/标签，默认「三点前」=true。
+  // 日期默认今天（T 日）；NAV 未公布，价格留空、事后回填。
   function openBuyOrSellFromSummary(aggSrc, type) {
     if (!aggSrc) return;
     if (aggSrc.kind === 'exchange') return; // 场内不走这个逻辑
     const kind = aggSrc.kind || 'otc';
     const code = normalizeFundCode(aggSrc.code || '');
-    const snapshot = code ? (snapshotsByCode || {})[code] : null;
-    const ctx = computeOtcAutoFillContext({ kind, before3pm: true, snapshot });
+    const ctx = computeOtcAutoFillContext({ kind, before3pm: true });
     const next = emptyDraft({
       code,
       name: aggSrc.name || '',
@@ -1042,15 +1043,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       type,
       before3pm: true,
       dca: false,
-      date: ctx.confirmDate || '',
-      price: ctx.price || ''
+      date: ctx.confirmDate || getTodayShanghaiDate(),
+      price: ''
     });
     resetDraft(next);
     setSidePanelTab('create');
     setSidePanelOpen(true);
-    if (ctx.hint) {
-      showActionToast('净值待公布', 'warning', { description: ctx.hint });
-    }
   }
 
   // ---- Switch chain handlers ----
@@ -1142,57 +1140,34 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       }
       if (field === 'before3pm') {
         // 场外/QDII：勾选「三点前」表示今天交易日收盘价确认；未勾 = 次个交易日确认。
-        // 场内不适用，只记状态不动 date / price。
+        // 场内不适用，只记状态不动 date。NAV 始终不自动带入。
         const nextBefore3pm = Boolean(value);
         if (prev.kind === 'exchange') {
           return { ...prev, before3pm: nextBefore3pm };
         }
-        const code = normalizeFundCode(prev.code || '');
-        const snapshot = code ? (snapshotsByCode || {})[code] : null;
-        const ctx = computeOtcAutoFillContext({ kind: prev.kind, before3pm: nextBefore3pm, snapshot });
+        const ctx = computeOtcAutoFillContext({ kind: prev.kind, before3pm: nextBefore3pm });
         return {
           ...prev,
           before3pm: nextBefore3pm,
-          date: ctx.confirmDate || prev.date,
-          price: ctx.price || ''
+          date: ctx.confirmDate || prev.date
         };
       }
       return { ...prev, [field]: value };
     });
-    if (field === 'before3pm') {
-      // 提示“净值待公布”场景，使用者知道为什么价格是空的。
-      const code = normalizeFundCode(draft?.code || '');
-      const snapshot = code ? (snapshotsByCode || {})[code] : null;
-      const ctx = computeOtcAutoFillContext({ kind: draft?.kind, before3pm: Boolean(value), snapshot });
-      if (ctx.hint) {
-        showActionToast('净值待公布', 'warning', { description: ctx.hint });
-      }
-    }
   }
 
   // 场外/QDII 基金「三点前/后」确认逻辑：
-  //   三点前 -> 确认日 = 该 kind 的「预期最新 NAV 日」（OTC=T，QDII=T-1）；只要快照的 latestNavDate
-  //   >= 确认日且不晚于今日，就视为已公布，直接带入。
-  //   三点后 -> 确认日 = 下一个交易日；NAV 通常还未公布，价格留空。
-  function computeOtcAutoFillContext({ kind, before3pm, snapshot }) {
+  //   三点前 -> 确认日 = 今天所在的交易日（T 日）。
+  //   三点后 -> 确认日 = 下一个交易日（T+1）。
+  // 价格（净值）始终不自动带入——下单时本日 NAV 还未公布，快照里看到的只是上一个交易日的净值。
+  function computeOtcAutoFillContext({ kind, before3pm }) {
     if (kind === 'exchange') {
       return { confirmDate: '', price: '', hint: '' };
     }
     const today = getTodayShanghaiDate();
-    // OTC: T = 今天（或上一交易日）；QDII: 预期最新 = T-1。
-    const baseDate = getExpectedLatestNavDate(kind || 'otc', today);
-    const confirmDate = before3pm ? baseDate : getNextTradingDayShanghai(baseDate);
-    const navDate = String(snapshot?.latestNavDate || '');
-    const navValue = Number(snapshot?.latestNav) || 0;
-    // 快照的最新 NAV 日只要不早于确认日、且不晚于今日，即可使用。
-    if (navDate && navValue > 0 && navDate >= confirmDate && navDate <= today) {
-      return { confirmDate, price: navValue.toFixed(4), hint: '' };
-    }
-    return {
-      confirmDate,
-      price: '',
-      hint: `${confirmDate} 净值尚未公布${kind === 'qdii' ? '（QDII T+1 公布）' : ''}，价格请晚些回填或手动输入。`
-    };
+    const todayTrading = getNearestTradingDayShanghai(today);
+    const confirmDate = before3pm ? todayTrading : getNextTradingDayShanghai(todayTrading);
+    return { confirmDate, price: '', hint: '' };
   }
 
   function submitDraft() {
@@ -2772,7 +2747,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             />
           </label>
           <label className="col-span-1 text-xs text-slate-500">
-            价格（净值）
+            价格（净值·选填）
             <input
               className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')}
               value={draft.price}
@@ -2782,7 +2757,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             />
           </label>
           <label className="col-span-1 text-xs text-slate-500">
-            份额
+            份额 *
             <input
               className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')}
               value={draft.shares}
