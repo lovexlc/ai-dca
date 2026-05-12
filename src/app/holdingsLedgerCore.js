@@ -3,10 +3,14 @@
  * + portfolio-level summary. Mirrors the Excel model the user already uses:
  *   - 每笔交易单单独一行（BUY/SELL）
  *   - 按基金代码聚合 → 总份额 / 平均成本 / 总收益 / 当日收益
- *   - 平均成本 = 摄藄成本法（全部 BUY 按份额加权），与主流基金 App
- *     （如天天基金 / 南方基金）保持一致。SELL 不改变平均成本，
- *     只减少持仓份额；就算中间出现过全部卖光，后续买入仍与早期 BUY
- *     一起摄藄。这与 buildSoldLots 里已实现益的成本口径一致。
+ *   - 平均成本 = 移动摊薄成本法（与支付宝 / 天天基金 / 南方基金 App
+ *     口径一致）。按交易日期顺序逐笔处理：
+ *       · BUY：cost += price × shares；shares += shares；avgCost = cost / shares
+ *       · SELL：从持仓成本里按「当前 avgCost × 卖出份额」扣减，份额减少，
+ *         avgCost 数值保持不变；若份额清零则成本一并归零。
+ *     这样「先高位 BUY → SELL → 低位 BUY」场景下，后续低位买入只与卖出
+ *     后剩下的成本基一起再平均，而不是把卖掉的高位成本继续算进均价。
+ *     buildSoldLots 里每笔已实现盈亏也用「卖出时刻」的移动 avgCost 结算。
  *   - 总份额 = 当前持仓份额（客态全部卖光则 0）
  *   - 总收益仅算未实现（mark-to-market），不包含卖出已实现盈亏
  *   - 当日收益 = (latestNav − previousNav) × totalShares
@@ -384,6 +388,22 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
 }
 
 /** Group transactions by fund code and produce the Excel "基金汇总" sheet shape. */
+/**
+ * 同一代码下交易的按时间顺序比较器：日期升序 → 同日 BUY 先于 SELL → id 字典序兑底。
+ * 保证移动摊薄遇同日买卖时 SELL 不会看到未完成的 BUY，也与 buildSoldLots 顺序一致。
+ */
+function compareTxChrono(a, b) {
+  const da = String(a?.date || '');
+  const db = String(b?.date || '');
+  if (da !== db) return da < db ? -1 : 1;
+  const ta = a?.type === 'BUY' ? 0 : 1;
+  const tb = b?.type === 'BUY' ? 0 : 1;
+  if (ta !== tb) return ta - tb;
+  const ia = String(a?.id || '');
+  const ib = String(b?.id || '');
+  return ia < ib ? -1 : (ia > ib ? 1 : 0);
+}
+
 export function aggregateByCode(transactions = [], snapshotsByCode = {}, options = {}) {
   const normalizedTxs = sanitizeTransactions(transactions, { filterInvalid: false });
   const map = new Map();
@@ -431,6 +451,37 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     }
   }
 
+  // 第二趟：按交易日期逐笔走「移动摊薄」，计算各 bucket 的现金 avgCost / totalCost。
+  // 与支付宝 / 天天基金 / 南方基金 App 的「平均成本」口径一致。
+  for (const bucket of map.values()) {
+    const sortedTxs = [...bucket.transactions].sort(compareTxChrono);
+    let runShares = 0;
+    let runCost = 0;
+    let runAvg = 0;
+    for (const tx of sortedTxs) {
+      if (tx.type === 'BUY') {
+        runCost = round(runCost + tx.price * tx.shares, 4);
+        runShares = round(runShares + tx.shares, 4);
+        runAvg = runShares > 0 ? runCost / runShares : 0;
+      } else if (tx.type === 'SELL') {
+        // 独立已结清交易（自带 costPrice）不动持仓。
+        if (tx.costPrice > 0) continue;
+        runCost = round(runCost - tx.shares * runAvg, 4);
+        runShares = round(runShares - tx.shares, 4);
+        if (runShares <= 0) {
+          // 清仓：重置成本与 avgCost，后续买入从零重新加权。
+          runShares = 0;
+          runCost = 0;
+          runAvg = 0;
+        }
+        // 份额未清零时：SELL 不改变 avgCost 数值。
+      }
+    }
+    bucket.movingAvgCost = round(runAvg, 4);
+    bucket.movingTotalCost = round(Math.max(runCost, 0), 2);
+    bucket.movingTotalShares = round(Math.max(runShares, 0), 4);
+  }
+
   const aggregates = [];
   for (const bucket of map.values()) {
     const snapshot = snapshotsByCode?.[bucket.code] || null;
@@ -448,17 +499,12 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       && latestNavDateStr >= expectedLatestNavDate
       && latestNavDateStr <= todayDate;
 
-    const totalShares = round(bucket.buyShares - bucket.sellShares, 4);
-    // 摄藄成本法（主流基金 App 口径，与 buildSoldLots 一致）：
-    // 平均成本 = 全部 BUY 的加权均价 = 总买入金额 / 总买入份额。
-    // SELL 不变动均价，只减少剩余份额；即使中间出现「全部卖光→重新买入」
-    // 场景，后续买入仍与早期 BUY 一起摄藄。与天天基金 / 南方基金 App 的
-    // 「平均成本」保持一致。独立已结清交易（SELL 自带 costPrice > 0）在录入
-    // bucket 阶段已被跳过，不影响 buyShares / buyAmount。
-    const avgCost = bucket.buyShares > 0
-      ? round(bucket.buyAmount / bucket.buyShares, 4)
-      : 0;
-    const totalCost = totalShares > 0 ? round(totalShares * avgCost, 2) : 0;
+    // 移动摊薄成本法（与支付宝 / 天天基金 / 南方基金 App 一致）：详见上方第二趟计算。
+    // BUY 加金额 + 份额；SELL 按「当前 avgCost」扣减持仓成本，份额减少，均价不变；
+    // 持仓清零后重置，后续买入重新从零加权。
+    const totalShares = bucket.movingTotalShares;
+    const avgCost = bucket.movingAvgCost;
+    const totalCost = bucket.movingTotalCost;
     const marketValue = hasLatestNav && totalShares > 0 ? round(totalShares * latestNav, 2) : 0;
     const totalProfit = hasLatestNav && totalShares > 0 ? round(marketValue - totalCost, 2) : 0;
     const totalReturnRate = totalCost > 0 ? round((totalProfit / totalCost) * 100, 2) : 0;
@@ -669,8 +715,10 @@ export function buildHoldingsNotifyDigest({ aggregates = [], summary = null } = 
 }
 
 /**
- * 把所有 SELL 交易按笔拆成"已卖出"行，并附上对应基金的加权平均成本
- * （= 所有 BUY 的 price 按 shares 加权）。
+ * 把所有 SELL 交易按笔拆成"已卖出"行，并附上「卖出时刻」的移动摊薄平均成本。
+ * - 按交易日期顺序逐笔走：BUY 加金额/份额、更新 runAvg；SELL 拍快照记下当前 runAvg、
+ *   再按「runAvg × sellShares」扣减持仓成本。这与 aggregateByCode 中的「平均成本」口径一致，
+ *   也与支付宝 / 天天基金 / 南方基金 App 的「已实现盈亏」口径一致。
  * - 已实现收益 = (sellPrice − avgCost) × sellShares
  * - 已实现收益率 = realizedProfit / (avgCost × sellShares)
  * - costBasis = avgCost × sellShares；proceeds = sellPrice × sellShares
@@ -678,67 +726,82 @@ export function buildHoldingsNotifyDigest({ aggregates = [], summary = null } = 
  */
 export function buildSoldLots(transactions = []) {
   const normalizedTxs = sanitizeTransactions(transactions, { filterInvalid: false });
-  const costMap = new Map();
   const txById = new Map();
+  const byCode = new Map();
   for (const tx of normalizedTxs) {
     if (!tx.code) continue;
     if (tx.id) txById.set(tx.id, tx);
-    if (!costMap.has(tx.code)) {
-      costMap.set(tx.code, { name: '', kind: tx.kind || 'otc', buyShares: 0, buyAmount: 0 });
+    if (!byCode.has(tx.code)) {
+      byCode.set(tx.code, { name: '', kind: tx.kind || 'otc', txs: [] });
     }
-    const bucket = costMap.get(tx.code);
+    const bucket = byCode.get(tx.code);
     if (tx.name && !bucket.name) bucket.name = tx.name;
     if (tx.kind) bucket.kind = tx.kind;
-    if (tx.type === 'BUY') {
-      bucket.buyShares = round(bucket.buyShares + tx.shares, 4);
-      bucket.buyAmount = round(bucket.buyAmount + tx.price * tx.shares, 2);
-    }
+    bucket.txs.push(tx);
   }
 
   const lots = [];
-  for (const tx of normalizedTxs) {
-    if (tx.type !== 'SELL' || !tx.code) continue;
-    const bucket = costMap.get(tx.code) || { name: '', kind: tx.kind || 'otc', buyShares: 0, buyAmount: 0 };
-    // 优先使用本笔自带的 costPrice（已卖出快速登记），否则按全部 BUY 加权平均
-    const standalone = tx.costPrice > 0;
-    const avgCost = standalone
-      ? tx.costPrice
-      : (bucket.buyShares > 0 ? round(bucket.buyAmount / bucket.buyShares, 4) : 0);
-    // 基金切换配对：查找本笔卖出手动指定的反向买入
-    const pairTx = tx.switchPairId ? txById.get(tx.switchPairId) : null;
-    const isSwitch = Boolean(pairTx && pairTx.type === 'BUY' && pairTx.code && pairTx.code !== tx.code);
-    const sellShares = tx.shares;
-    const sellPrice = tx.price;
-    const proceeds = round(sellPrice * sellShares, 2);
-    const costBasis = round(avgCost * sellShares, 2);
-    const hasAvgCost = avgCost > 0;
-    const realizedProfit = hasAvgCost ? round((sellPrice - avgCost) * sellShares, 2) : 0;
-    const realizedReturnRate = hasAvgCost && costBasis > 0
-      ? round((realizedProfit / costBasis) * 100, 2)
-      : 0;
-    lots.push({
-      id: tx.id,
-      code: tx.code,
-      name: tx.name || bucket.name || '',
-      kind: tx.kind || bucket.kind || 'otc',
-      sellDate: tx.date || '',
-      sellShares,
-      sellPrice,
-      avgCost,
-      costBasis,
-      proceeds,
-      realizedProfit,
-      realizedReturnRate,
-      hasAvgCost,
-      standalone,
-      isSwitch,
-      switchPairId: isSwitch ? pairTx.id : '',
-      switchTargetCode: isSwitch ? pairTx.code : '',
-      switchTargetName: isSwitch ? (pairTx.name || '') : '',
-      switchExtraCash: isSwitch ? round(Math.max(pairTx.price * pairTx.shares - proceeds, 0), 2) : 0,
-      note: tx.note || '',
-      tx
-    });
+  for (const bucket of byCode.values()) {
+    const sortedTxs = [...bucket.txs].sort(compareTxChrono);
+    let runShares = 0;
+    let runCost = 0;
+    let runAvg = 0;
+    for (const tx of sortedTxs) {
+      if (tx.type === 'BUY') {
+        runCost = round(runCost + tx.price * tx.shares, 4);
+        runShares = round(runShares + tx.shares, 4);
+        runAvg = runShares > 0 ? runCost / runShares : 0;
+        continue;
+      }
+      if (tx.type !== 'SELL') continue;
+      // 优先使用本笔自带 costPrice（独立已结清快速登记），否则取卖出时刻的移动 avgCost。
+      const standalone = tx.costPrice > 0;
+      const avgCost = standalone ? tx.costPrice : round(runAvg, 4);
+      const pairTx = tx.switchPairId ? txById.get(tx.switchPairId) : null;
+      const isSwitch = Boolean(pairTx && pairTx.type === 'BUY' && pairTx.code && pairTx.code !== tx.code);
+      const sellShares = tx.shares;
+      const sellPrice = tx.price;
+      const proceeds = round(sellPrice * sellShares, 2);
+      const costBasis = round(avgCost * sellShares, 2);
+      const hasAvgCost = avgCost > 0;
+      const realizedProfit = hasAvgCost ? round((sellPrice - avgCost) * sellShares, 2) : 0;
+      const realizedReturnRate = hasAvgCost && costBasis > 0
+        ? round((realizedProfit / costBasis) * 100, 2)
+        : 0;
+      lots.push({
+        id: tx.id,
+        code: tx.code,
+        name: tx.name || bucket.name || '',
+        kind: tx.kind || bucket.kind || 'otc',
+        sellDate: tx.date || '',
+        sellShares,
+        sellPrice,
+        avgCost,
+        costBasis,
+        proceeds,
+        realizedProfit,
+        realizedReturnRate,
+        hasAvgCost,
+        standalone,
+        isSwitch,
+        switchPairId: isSwitch ? pairTx.id : '',
+        switchTargetCode: isSwitch ? pairTx.code : '',
+        switchTargetName: isSwitch ? (pairTx.name || '') : '',
+        switchExtraCash: isSwitch ? round(Math.max(pairTx.price * pairTx.shares - proceeds, 0), 2) : 0,
+        note: tx.note || '',
+        tx
+      });
+      // 独立交易不扣减持仓；普通 SELL 同步走移动摊薄减持仓。
+      if (!standalone) {
+        runCost = round(runCost - sellShares * runAvg, 4);
+        runShares = round(runShares - sellShares, 4);
+        if (runShares <= 0) {
+          runShares = 0;
+          runCost = 0;
+          runAvg = 0;
+        }
+      }
+    }
   }
 
   lots.sort((a, b) => {
