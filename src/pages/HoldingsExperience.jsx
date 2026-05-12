@@ -1171,25 +1171,27 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   // 场外/QDII 基金「三点前/后」确认逻辑：
-  //   三点前 -> 确认日 = 今日所在的交易日（今日为交易日则今日，否则上一个交易日）；价格取该日 NAV。
-  //   三点后 -> 确认日 = 严格下一个交易日；价格一般还未公布、留空。
+  //   三点前 -> 确认日 = 该 kind 的「预期最新 NAV 日」（OTC=T，QDII=T-1）；只要快照的 latestNavDate
+  //   >= 确认日且不晚于今日，就视为已公布，直接带入。
+  //   三点后 -> 确认日 = 下一个交易日；NAV 通常还未公布，价格留空。
   function computeOtcAutoFillContext({ kind, before3pm, snapshot }) {
     if (kind === 'exchange') {
       return { confirmDate: '', price: '', hint: '' };
     }
     const today = getTodayShanghaiDate();
-    const confirmDate = before3pm
-      ? getNearestTradingDayShanghai(today)
-      : getNextTradingDayShanghai(today);
+    // OTC: T = 今天（或上一交易日）；QDII: 预期最新 = T-1。
+    const baseDate = getExpectedLatestNavDate(kind || 'otc', today);
+    const confirmDate = before3pm ? baseDate : getNextTradingDayShanghai(baseDate);
     const navDate = String(snapshot?.latestNavDate || '');
     const navValue = Number(snapshot?.latestNav) || 0;
-    if (navDate && navDate === confirmDate && navValue > 0) {
+    // 快照的最新 NAV 日只要不早于确认日、且不晚于今日，即可使用。
+    if (navDate && navValue > 0 && navDate >= confirmDate && navDate <= today) {
       return { confirmDate, price: navValue.toFixed(4), hint: '' };
     }
     return {
       confirmDate,
       price: '',
-      hint: `${confirmDate} 净值尚未公布，价格请晚些回填或手动输入。`
+      hint: `${confirmDate} 净值尚未公布${kind === 'qdii' ? '（QDII T+1 公布）' : ''}，价格请晚些回填或手动输入。`
     };
   }
 
