@@ -162,6 +162,11 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const autoNavTriggeredRef = useRef(false);
   const navAttemptedCodesRef = useRef(new Set());
   const importMenuRef = useRef(null);
+  // 「上传流水」隐藏 input 的 ref + 上传状态。点击后读取任意文件（xlsx/csv/json/截图），
+  // base64 后 POST 到 /api/holdings/ledger-upload 接口存进远端 KV，返回 key 后提示用户复制、
+  // 发给后台 / AI 调试。不介入本地 ledger，只是为了让云端能拿到原始文件。
+  const ledgerUploadInputRef = useRef(null);
+  const [ledgerUploadBusy, setLedgerUploadBusy] = useState(false);
 
 
   // ---- Persist changes to localStorage whenever ledger state changes ----
@@ -951,6 +956,74 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     // 手动刷新清空已尝试集合，所有代码都重新走一遍。
     navAttemptedCodesRef.current.clear();
     void refreshNavForCodes(codes, { silent: false });
+  }
+
+  // 「上传流水」点击入口：进去弹文件选择。选中任意文件后走 handleLedgerUploadFile。
+  function openLedgerUploadPicker() {
+    if (ledgerUploadBusy) return;
+    if (!ledgerUploadInputRef.current) return;
+    ledgerUploadInputRef.current.value = '';
+    ledgerUploadInputRef.current.click();
+  }
+
+  // 读取选中文件 → base64 → POST /api/holdings/ledger-upload → 拿到 key 后复制到剪贴板。
+  // 这个接口只负责存原始字节进 KV，不解析也不动本地 ledger，仅供后台/AI 下载后手动处理。
+  async function handleLedgerUploadFile(event) {
+    const input = event?.target;
+    const file = input?.files?.[0];
+    if (input) input.value = '';
+    if (!file) return;
+    const maxBytes = 20 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      showActionToast('上传流水', 'error', {
+        description: `文件过大（${(file.size / 1024 / 1024).toFixed(1)}MB），上限 20MB。`
+      });
+      return;
+    }
+    setLedgerUploadBusy(true);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      // 分段拼 base64，避免大文件一次性 String.fromCharCode(...) 栈溢出。
+      let binary = '';
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      }
+      const dataBase64 = btoa(binary);
+      const resp = await fetch('/api/holdings/ledger-upload', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          filename: file.name || '',
+          contentType: file.type || 'application/octet-stream',
+          dataBase64,
+          note: ''
+        })
+      });
+      const result = await resp.json().catch(() => ({}));
+      if (!resp.ok || !result?.ok || !result?.key) {
+        const reason = result?.error || `HTTP ${resp.status}`;
+        showActionToast('上传流水', 'error', { description: reason });
+        return;
+      }
+      const key = String(result.key);
+      // 尽量复制 key 到剪贴板，方便用户直接粘给 AI。不支持的环境默默跳过。
+      try {
+        if (navigator?.clipboard?.writeText) {
+          await navigator.clipboard.writeText(key);
+        }
+      } catch { /* 忽略剪贴板失败 */ }
+      showActionToast('上传流水', 'success', {
+        description: `key 已复制到剪贴板：${key}（可直接发送给 AI，服务器保留 7 天）。`
+      });
+    } catch (error) {
+      showActionToast('上传流水', 'error', {
+        description: error?.message || '上传失败，请重试。'
+      });
+    } finally {
+      setLedgerUploadBusy(false);
+    }
   }
 
   function formatMarketIndexValue(value) {
@@ -2793,6 +2866,21 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
 </div>
             <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
               {mainViewTab === 'aggregate' ? renderNavStatusStrip() : null}
+              {mainViewTab === 'aggregate' ? (
+                <button
+                  type="button"
+                  onClick={openLedgerUploadPicker}
+                  disabled={ledgerUploadBusy}
+                  title="上传交易流水文件到云端（xlsx / csv / json / 截图都可，服务器保留 7 天）"
+                  aria-label="上传交易流水"
+                  className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {ledgerUploadBusy
+                    ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                    : <FileUp className="h-3.5 w-3.5" />}
+                  <span className="hidden sm:inline">上传流水</span>
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="order-first hidden h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(79,70,229,0.25)] transition-all hover:bg-indigo-500 hover:shadow-[0_6px_16px_rgba(79,70,229,0.3)] disabled:cursor-not-allowed disabled:opacity-60 sm:order-last sm:inline-flex"
@@ -2816,6 +2904,13 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 <span className="hidden sm:inline">复制表格</span>
               </button>
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleOcrFile} />
+              <input
+                ref={ledgerUploadInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv,.tsv,.json,.txt,image/*"
+                className="hidden"
+                onChange={handleLedgerUploadFile}
+              />
             </div>
           </div>
           <div className="min-h-[480px] px-1">

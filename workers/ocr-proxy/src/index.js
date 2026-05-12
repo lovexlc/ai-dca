@@ -2183,6 +2183,137 @@ async function retrieveKnowledge(query, env) {
     .filter((m) => m.text.trim().length > 0);
 }
 
+// =============================================================================
+// 交易流水上传（复用 FUND_LIMIT_KV 命名空间，key 前缀 ledger-upload:）
+// -----------------------------------------------------------------------------
+// 使用场景：前端「基金汇总」 tab 上的「上传流水」按钮读取本地文件（支付宝导出的
+// .xlsx / .csv / .json / 截图等），转 base64 后 POST 这个接口；worker 随机生成 16 字节
+// token、拼出「ledger-upload:<token>」作为 KV key 存进去，TTL 7 天。返回包含 key
+// 和取回 URL。后台 / AI agent 拿到 key 后用 GET 同路径拼 ?key=... 读回文件原始字节。
+// =============================================================================
+const LEDGER_UPLOAD_KEY_PREFIX = 'ledger-upload:';
+const LEDGER_UPLOAD_TTL_SECONDS = 7 * 24 * 60 * 60;
+const LEDGER_UPLOAD_MAX_BYTES = 20 * 1024 * 1024; // 20MB 安全上限，KV value 上限 25MB。
+
+function randomToken(byteLength = 16) {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  let hex = '';
+  for (let i = 0; i < bytes.length; i += 1) {
+    hex += bytes[i].toString(16).padStart(2, '0');
+  }
+  return hex;
+}
+
+function buildLedgerRetrievalUrl(request, key) {
+  try {
+    const u = new URL(request.url);
+    u.search = '';
+    u.searchParams.set('key', key);
+    return u.toString();
+  } catch {
+    return `/api/holdings/ledger-upload?key=${encodeURIComponent(key)}`;
+  }
+}
+
+async function handleLedgerUpload(request, env) {
+  if (!env || !env.FUND_LIMIT_KV) {
+    return jsonResponse({
+      error: '服务未配置 KV 存储，无法上传交易流水。'
+    }, 500);
+  }
+
+  if (request.method === 'GET') {
+    const url = new URL(request.url);
+    const rawKey = (url.searchParams.get('key') || '').trim();
+    if (!rawKey) {
+      return jsonResponse({ error: '缺少 key 参数。' }, 400);
+    }
+    const kvKey = rawKey.startsWith(LEDGER_UPLOAD_KEY_PREFIX) ? rawKey : `${LEDGER_UPLOAD_KEY_PREFIX}${rawKey}`;
+    const raw = await env.FUND_LIMIT_KV.get(kvKey);
+    if (!raw) {
+      return jsonResponse({ error: 'key 不存在或已过期。', key: rawKey }, 404);
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      return jsonResponse({
+        ok: true,
+        key: rawKey,
+        filename: parsed.filename || '',
+        contentType: parsed.contentType || 'application/octet-stream',
+        sizeBytes: parsed.sizeBytes || 0,
+        uploadedAt: parsed.uploadedAt || '',
+        note: parsed.note || '',
+        dataBase64: parsed.dataBase64 || ''
+      });
+    } catch (error) {
+      return jsonResponse({
+        error: 'KV 中的负载不是合法的 JSON。',
+        detail: error instanceof Error ? error.message : ''
+      }, 500);
+    }
+  }
+
+  // POST
+  let payload;
+  try {
+    payload = await request.json();
+  } catch (error) {
+    return jsonResponse({
+      error: '请求体必须是 JSON（包含 filename / contentType / dataBase64 字段）。',
+      detail: error instanceof Error ? error.message : ''
+    }, 400);
+  }
+
+  const filename = String(payload?.filename || '').slice(0, 200);
+  const contentType = String(payload?.contentType || 'application/octet-stream').slice(0, 120);
+  const dataBase64 = String(payload?.dataBase64 || '');
+  const note = String(payload?.note || '').slice(0, 500);
+  if (!dataBase64) {
+    return jsonResponse({ error: '缺少 dataBase64 字段。' }, 400);
+  }
+  // base64 长度 / 4 * 3 大致估算原始字节数，超限直接拒。
+  const approxBytes = Math.floor(dataBase64.length * 3 / 4);
+  if (approxBytes > LEDGER_UPLOAD_MAX_BYTES) {
+    return jsonResponse({
+      error: `文件过大（~${(approxBytes / 1024 / 1024).toFixed(1)}MB），上限 ${LEDGER_UPLOAD_MAX_BYTES / 1024 / 1024}MB。`
+    }, 413);
+  }
+
+  const token = randomToken(16);
+  const kvKey = `${LEDGER_UPLOAD_KEY_PREFIX}${token}`;
+  const record = {
+    filename,
+    contentType,
+    sizeBytes: approxBytes,
+    uploadedAt: new Date().toISOString(),
+    note,
+    dataBase64
+  };
+  await env.FUND_LIMIT_KV.put(kvKey, JSON.stringify(record), {
+    expirationTtl: LEDGER_UPLOAD_TTL_SECONDS,
+    metadata: {
+      kind: 'ledger-upload',
+      filename,
+      contentType,
+      sizeBytes: approxBytes,
+      uploadedAt: record.uploadedAt
+    }
+  });
+
+  return jsonResponse({
+    ok: true,
+    key: token,
+    kvKey,
+    filename,
+    contentType,
+    sizeBytes: approxBytes,
+    uploadedAt: record.uploadedAt,
+    expiresInSeconds: LEDGER_UPLOAD_TTL_SECONDS,
+    retrievalUrl: buildLedgerRetrievalUrl(request, token)
+  });
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -2300,6 +2431,26 @@ export default {
       } catch (error) {
         return jsonResponse({
           error: error instanceof Error ? error.message : 'AI 问答代理执行失败。'
+        }, 502);
+      }
+    }
+
+    // 上传交易流水：POST 接收 base64 负载存进 FUND_LIMIT_KV，返回随机 key。
+    // GET 凭 key 读回原始字节（供后台 / AI agent 下载后手动解析）。默认 TTL 7 天。
+    if (url.pathname === '/api/holdings/ledger-upload') {
+      if (!['GET', 'POST'].includes(request.method)) {
+        return jsonResponse({
+          error: 'Method not allowed'
+        }, 405, {
+          allow: 'GET, POST, OPTIONS'
+        });
+      }
+
+      try {
+        return await handleLedgerUpload(request, env);
+      } catch (error) {
+        return jsonResponse({
+          error: error instanceof Error ? error.message : '交易流水上传失败。'
         }, 502);
       }
     }
