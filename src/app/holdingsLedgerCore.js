@@ -225,6 +225,7 @@ export function createEmptyTransaction(overrides = {}) {
     shares: '',
     costPrice: '',
     switchPairId: '',
+    dca: false,
     note: '',
     ...overrides
   };
@@ -244,6 +245,7 @@ export function normalizeTransaction(tx = {}, { idPrefix = 'tx' } = {}) {
     shares: parsePositiveDecimal(tx?.shares, 4),
     costPrice: parsePositiveDecimal(tx?.costPrice, 4),
     switchPairId: String(tx?.switchPairId || '').trim(),
+    dca: Boolean(tx?.dca),
     note: String(tx?.note || '').trim()
   };
 }

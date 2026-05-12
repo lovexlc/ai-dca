@@ -12,6 +12,7 @@ import {
   FileImage,
   FileUp,
   LoaderCircle,
+  Minus,
   Pencil,
   Plus,
   RefreshCw,
@@ -42,7 +43,9 @@ import {
   buildSoldLots,
   computeSwitchChainMetrics,
   detectFundKind,
+  getExpectedLatestNavDate,
   getLedgerCodeList,
+  getTodayShanghaiDate,
   getTransactionErrors,
   normalizeFundCode,
   normalizeFundKind,
@@ -53,6 +56,7 @@ import {
   summarizeSoldLots,
   summarizeTransactionErrors
 } from '../app/holdingsLedgerCore.js';
+import { getNearestTradingDayShanghai, getNextTradingDayShanghai } from '../app/holidaysCN.js';
 import { loadLatestMarketIndices } from '../app/marketIndices.js';
 import {
   buildNavMetaFromResult,
@@ -1023,6 +1027,32 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     setDraftMode('create');
   }
 
+  // 从「该基金汇总」弹窗点击 买入 / 卖出：预填代码/名称/标签，默认「三点前」=true，根据 snapshot 试图自动填入日期和净值。
+  function openBuyOrSellFromSummary(aggSrc, type) {
+    if (!aggSrc) return;
+    if (aggSrc.kind === 'exchange') return; // 场内不走这个逻辑
+    const kind = aggSrc.kind || 'otc';
+    const code = normalizeFundCode(aggSrc.code || '');
+    const snapshot = code ? (snapshotsByCode || {})[code] : null;
+    const ctx = computeOtcAutoFillContext({ kind, before3pm: true, snapshot });
+    const next = emptyDraft({
+      code,
+      name: aggSrc.name || '',
+      kind,
+      type,
+      before3pm: true,
+      dca: false,
+      date: ctx.confirmDate || '',
+      price: ctx.price || ''
+    });
+    resetDraft(next);
+    setSidePanelTab('create');
+    setSidePanelOpen(true);
+    if (ctx.hint) {
+      showActionToast('净值待公布', 'warning', { description: ctx.hint });
+    }
+  }
+
   // ---- Switch chain handlers ----
   function buildChainId() {
     const rand = Math.random().toString(36).slice(2, 8);
@@ -1107,8 +1137,60 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       if (field === 'price' || field === 'shares' || field === 'costPrice') {
         return { ...prev, [field]: sanitizeDecimalInput(value) };
       }
+      if (field === 'dca') {
+        return { ...prev, dca: Boolean(value) };
+      }
+      if (field === 'before3pm') {
+        // 场外/QDII：勾选「三点前」表示今天交易日收盘价确认；未勾 = 次个交易日确认。
+        // 场内不适用，只记状态不动 date / price。
+        const nextBefore3pm = Boolean(value);
+        if (prev.kind === 'exchange') {
+          return { ...prev, before3pm: nextBefore3pm };
+        }
+        const code = normalizeFundCode(prev.code || '');
+        const snapshot = code ? (snapshotsByCode || {})[code] : null;
+        const ctx = computeOtcAutoFillContext({ kind: prev.kind, before3pm: nextBefore3pm, snapshot });
+        return {
+          ...prev,
+          before3pm: nextBefore3pm,
+          date: ctx.confirmDate || prev.date,
+          price: ctx.price || ''
+        };
+      }
       return { ...prev, [field]: value };
     });
+    if (field === 'before3pm') {
+      // 提示“净值待公布”场景，使用者知道为什么价格是空的。
+      const code = normalizeFundCode(draft?.code || '');
+      const snapshot = code ? (snapshotsByCode || {})[code] : null;
+      const ctx = computeOtcAutoFillContext({ kind: draft?.kind, before3pm: Boolean(value), snapshot });
+      if (ctx.hint) {
+        showActionToast('净值待公布', 'warning', { description: ctx.hint });
+      }
+    }
+  }
+
+  // 场外/QDII 基金「三点前/后」确认逻辑：
+  //   三点前 -> 确认日 = 今日所在的交易日（今日为交易日则今日，否则上一个交易日）；价格取该日 NAV。
+  //   三点后 -> 确认日 = 严格下一个交易日；价格一般还未公布、留空。
+  function computeOtcAutoFillContext({ kind, before3pm, snapshot }) {
+    if (kind === 'exchange') {
+      return { confirmDate: '', price: '', hint: '' };
+    }
+    const today = getTodayShanghaiDate();
+    const confirmDate = before3pm
+      ? getNearestTradingDayShanghai(today)
+      : getNextTradingDayShanghai(today);
+    const navDate = String(snapshot?.latestNavDate || '');
+    const navValue = Number(snapshot?.latestNav) || 0;
+    if (navDate && navDate === confirmDate && navValue > 0) {
+      return { confirmDate, price: navValue.toFixed(4), hint: '' };
+    }
+    return {
+      confirmDate,
+      price: '',
+      hint: `${confirmDate} 净值尚未公布，价格请晚些回填或手动输入。`
+    };
   }
 
   function submitDraft() {
@@ -2575,6 +2657,29 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             净值获取失败：{agg.snapshotError}
           </div>
         ) : null}
+        {agg.kind === 'exchange' ? null : (
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              className="flex-1 inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-500"
+              onClick={() => openBuyOrSellFromSummary(agg, 'BUY')}
+            >
+              <Plus className="h-4 w-4" />买入
+            </button>
+            <button
+              type="button"
+              className="flex-1 inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-rose-500"
+              onClick={() => openBuyOrSellFromSummary(agg, 'SELL')}
+            >
+              <Minus className="h-4 w-4" />卖出
+            </button>
+          </div>
+        )}
+        {agg.kind === 'exchange' ? (
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+            场内 ETF 交易价格以实时成交为准，请使用顶部「新增交易」手动录入。
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -2684,6 +2789,37 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               inputMode="decimal"
             />
           </label>
+          {draft.kind !== 'exchange' ? (
+            <div className="col-span-2 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    checked={Boolean(draft.before3pm)}
+                    onChange={(event) => handleDraftChange('before3pm', event.target.checked)}
+                  />
+                  三点前交易
+                </label>
+                {draft.type === 'BUY' ? (
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      checked={Boolean(draft.dca)}
+                      onChange={(event) => handleDraftChange('dca', event.target.checked)}
+                    />
+                    定投
+                  </label>
+                ) : null}
+              </div>
+              <div className="mt-1.5 text-[10px] text-slate-500">
+                {draft.before3pm
+                  ? '勾选 = T 日 15:00 前提交，按今日收盘净值确认。'
+                  : '未勾 = T 日 15:00 后提交，按次个交易日净值确认，价格可能还未公布。'}
+              </div>
+            </div>
+          ) : null}
           {draft.type === 'SELL' ? (
             <label className="col-span-2 text-xs text-slate-500">
               买入成本价（可选，已卖出快速登记）

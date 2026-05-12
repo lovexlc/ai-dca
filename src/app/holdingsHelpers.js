@@ -70,7 +70,7 @@ export function sanitizeCodeInput(value = '') {
 }
 
 export function emptyDraft(overrides = {}) {
-  return createEmptyTransaction({ type: 'BUY', kind: 'otc', date: '', ...overrides });
+  return createEmptyTransaction({ type: 'BUY', kind: 'otc', date: '', dca: false, before3pm: true, ...overrides });
 }
 
 export function transactionToDraft(tx) {
@@ -85,6 +85,8 @@ export function transactionToDraft(tx) {
     shares: tx.shares > 0 ? String(tx.shares) : '',
     costPrice: tx.costPrice > 0 ? String(tx.costPrice) : '',
     switchPairId: String(tx.switchPairId || ''),
+    dca: Boolean(tx.dca),
+    before3pm: true,
     note: String(tx.note || '')
   };
 }

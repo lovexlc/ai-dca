@@ -85,6 +85,16 @@ export function getNearestTradingDayShanghai(dateStr) {
   return isTradingDayShanghai(dateStr) ? dateStr : getPreviousTradingDayShanghai(dateStr);
 }
 
+/** 严格晚于 dateStr 的最近一个 A 股交易日。最多向前 30 天，避免死循环。 */
+export function getNextTradingDayShanghai(dateStr) {
+  let cur = shiftDate(dateStr, -1);
+  for (let i = 0; i < 30; i++) {
+    if (isTradingDayShanghai(cur)) return cur;
+    cur = shiftDate(cur, -1);
+  }
+  return cur;
+}
+
 /** 两个 YYYY-MM-DD 之间的日历天数差（end - start）。负数表示 end 早于 start。 */
 export function calendarDaysBetween(startDate, endDate) {
   const a = String(startDate || '');
