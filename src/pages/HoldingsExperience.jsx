@@ -143,6 +143,27 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [ocrPreview, setOcrPreview] = useState(null);
   // 识别提醒（warnings）默认折叠，点击展开后显示全部，避免占用太多纵向空间。
   const [ocrWarningsExpanded, setOcrWarningsExpanded] = useState(false);
+  // 预览弹窗里把多行识别结果做成卡片轮播，每次只显示一条，避免手机端表格被横向截断。
+  const [ocrPreviewIndex, setOcrPreviewIndex] = useState(0);
+  const [pastePreviewIndex, setPastePreviewIndex] = useState(0);
+  useEffect(() => {
+    const total = ocrPreview && Array.isArray(ocrPreview.rows) ? ocrPreview.rows.length : 0;
+    setOcrPreviewIndex((prev) => {
+      if (total <= 0) return 0;
+      if (prev >= total) return total - 1;
+      if (prev < 0) return 0;
+      return prev;
+    });
+  }, [ocrPreview]);
+  useEffect(() => {
+    const total = pasteResult && Array.isArray(pasteResult.rows) ? pasteResult.rows.length : 0;
+    setPastePreviewIndex((prev) => {
+      if (total <= 0) return 0;
+      if (prev >= total) return total - 1;
+      if (prev < 0) return 0;
+      return prev;
+    });
+  }, [pasteResult]);
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const [switchPickerOpen, setSwitchPickerOpen] = useState(false);
   const [switchPickerSearch, setSwitchPickerSearch] = useState('');
@@ -1535,6 +1556,27 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     });
   }
 
+  // 粘贴预览也采用卡片表单后，需要可编辑模式，逻辑与 OCR 完全对齐。
+  function handlePasteRowFieldChange(rowIndex, field, value) {
+    setPasteResult((prev) => {
+      if (!prev || !Array.isArray(prev.rows)) return prev;
+      const nextRows = prev.rows.map((row) => {
+        if (row.index !== rowIndex) return row;
+        let nextValue = value;
+        if (field === 'code') {
+          nextValue = sanitizeCodeInput(value);
+        } else if (field === 'price' || field === 'shares' || field === 'costPrice') {
+          nextValue = sanitizeDecimalInput(value);
+        } else if (field === 'type') {
+          nextValue = String(value || '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
+        }
+        const nextDraft = { ...row.draft, [field]: nextValue };
+        return { ...row, draft: nextDraft, errors: getTransactionErrors(nextDraft) };
+      });
+      return { ...prev, rows: nextRows };
+    });
+  }
+
   // ---- Switch counterpart picker ----
   function openSwitchPicker() {
     setSwitchPickerSearch('');
@@ -2898,47 +2940,82 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 )}
               </div>
               {pasteResult && pasteResult.rows.length ? (
-                <div className="overflow-x-auto rounded-xl border border-slate-200">
-                  <table className="min-w-full text-xs">
-                    <thead className="bg-slate-50 text-left font-semibold text-slate-500">
-                      <tr>
-                        <th className="px-2 py-1.5">状态</th>
-                        <th className="px-2 py-1.5">代码</th>
-                        <th className="px-2 py-1.5">名称</th>
-                        <th className="px-2 py-1.5">标签</th>
-                        <th className="px-2 py-1.5">类型</th>
-                        <th className="px-2 py-1.5">日期</th>
-                        <th className="px-2 py-1.5 text-right">价</th>
-                        <th className="px-2 py-1.5 text-right">份额</th>
-                        <th className="px-2 py-1.5">问题</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {pasteResult.rows.map((row) => {
-                        const ok = Object.keys(row.errors).length === 0;
-                        return (
-                          <tr key={row.index} className={ok ? 'text-slate-700' : 'bg-red-50/60 text-red-600'}>
-                            <td className="px-2 py-1.5">
-                              {ok ? (
-                                <span className="inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />有效</span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-red-500"><AlertTriangle className="h-3.5 w-3.5" />跳过</span>
-                              )}
-                            </td>
-                            <td className="px-2 py-1.5 font-mono">{row.draft.code || <span className="text-slate-400">—</span>}</td>
-                            <td className="px-2 py-1.5">{row.draft.name || <span className="text-slate-400">—</span>}</td>
-                            <td className="px-2 py-1.5">{KIND_LABELS[row.draft.kind] || row.draft.kind || <span className="text-slate-400">—</span>}</td>
-                            <td className="px-2 py-1.5">{row.draft.type}</td>
-                            <td className="px-2 py-1.5">{row.draft.date || <span className="text-amber-600">待补录</span>}</td>
-                            <td className="px-2 py-1.5 text-right tabular-nums">{row.draft.price || '—'}</td>
-                            <td className="px-2 py-1.5 text-right tabular-nums">{row.draft.shares || '—'}</td>
-                            <td className="px-2 py-1.5">{ok ? '—' : summarizeTransactionErrors(row.errors)}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                (() => {
+                  const totalRows = pasteResult.rows.length;
+                  const safeIndex = Math.min(Math.max(pastePreviewIndex, 0), totalRows - 1);
+                  const row = pasteResult.rows[safeIndex];
+                  const ok = Object.keys(row.errors).length === 0;
+                  const invalidCount = pasteResult.rows.filter((r) => Object.keys(r.errors).length > 0).length;
+                  const goPrev = () => setPastePreviewIndex((i) => Math.max(0, i - 1));
+                  const goNext = () => setPastePreviewIndex((i) => Math.min(totalRows - 1, i + 1));
+                  return (
+                    <div className="space-y-3">
+                      {totalRows > 1 ? (
+                        <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50/70 px-2.5 py-1.5">
+                          <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" onClick={goPrev} disabled={safeIndex <= 0} aria-label="上一条">
+                            <ChevronLeft className="h-4 w-4" />
+                          </button>
+                          <div className="flex flex-col items-center text-center">
+                            <div className="text-xs font-semibold text-slate-700 tabular-nums">第 {safeIndex + 1} / {totalRows} 条</div>
+                            <div className="text-[10px] text-slate-500">{invalidCount > 0 ? `含 ${invalidCount} 行无效将被跳过` : '全部有效'}</div>
+                          </div>
+                          <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" onClick={goNext} disabled={safeIndex >= totalRows - 1} aria-label="下一条">
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ) : null}
+                      <div className="flex items-center gap-2">
+                        {ok ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />有效，将导入</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-600"><AlertTriangle className="h-3.5 w-3.5" />仅试用，将被跳过</span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <label className="col-span-1 text-xs text-slate-500">
+                          代码
+                          <input className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3 font-mono')} value={row.draft.code || ''} onChange={(e) => handlePasteRowFieldChange(row.index, 'code', e.target.value)} placeholder="6 位" inputMode="numeric" maxLength={6} />
+                        </label>
+                        <label className="col-span-1 text-xs text-slate-500">
+                          名称
+                          <input className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')} value={row.draft.name || ''} onChange={(e) => handlePasteRowFieldChange(row.index, 'name', e.target.value)} placeholder="基金名称" />
+                        </label>
+                        <label className="col-span-1 text-xs text-slate-500">
+                          标签
+                          <select className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')} value={row.draft.kind || 'otc'} onChange={(e) => handlePasteRowFieldChange(row.index, 'kind', e.target.value)}>
+                            <option value="otc">场外</option>
+                            <option value="exchange">场内</option>
+                            <option value="qdii">QDII</option>
+                          </select>
+                        </label>
+                        <label className="col-span-1 text-xs text-slate-500">
+                          类型
+                          <select className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')} value={row.draft.type || 'BUY'} onChange={(e) => handlePasteRowFieldChange(row.index, 'type', e.target.value)}>
+                            <option value="BUY">BUY</option>
+                            <option value="SELL">SELL</option>
+                          </select>
+                        </label>
+                        <label className="col-span-2 text-xs text-slate-500">
+                          日期
+                          <input type="date" className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3', row.draft.date ? '' : 'border-amber-200 text-amber-700')} value={row.draft.date || ''} onChange={(e) => handlePasteRowFieldChange(row.index, 'date', e.target.value)} />
+                        </label>
+                        <label className="col-span-1 text-xs text-slate-500">
+                          价格（净值）
+                          <input className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')} value={row.draft.price || ''} onChange={(e) => handlePasteRowFieldChange(row.index, 'price', e.target.value)} placeholder="0.0000" inputMode="decimal" />
+                        </label>
+                        <label className="col-span-1 text-xs text-slate-500">
+                          份额
+                          <input className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')} value={row.draft.shares || ''} onChange={(e) => handlePasteRowFieldChange(row.index, 'shares', e.target.value)} placeholder="0.0000" inputMode="decimal" />
+                        </label>
+                      </div>
+                      {!ok ? (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+                          {summarizeTransactionErrors(row.errors)}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })()
               ) : null}
             </div>
             <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3">
@@ -3031,126 +3108,82 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 );
               })() : null}
               {ocrPreview && ocrPreview.rows.length ? (
-                <div className="overflow-x-auto rounded-lg border border-slate-200">
-                  <table className="min-w-full text-[11px]">
-                    <thead className="bg-slate-50 text-left font-semibold text-slate-500">
-                      <tr>
-                        <th className="w-12 px-1.5 py-1">状态</th>
-                        <th className="w-24 px-1.5 py-1">代码</th>
-                        <th className="min-w-[140px] px-1.5 py-1">名称</th>
-                        <th className="w-20 px-1.5 py-1">标签</th>
-                        <th className="w-20 px-1.5 py-1">类型</th>
-                        <th className="w-32 px-1.5 py-1">日期</th>
-                        <th className="w-24 px-1.5 py-1 text-right">价</th>
-                        <th className="w-24 px-1.5 py-1 text-right">份额</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {ocrPreview.rows.map((row) => {
-                        const ok = Object.keys(row.errors).length === 0;
-                        const errSummary = ok ? '' : summarizeTransactionErrors(row.errors);
-                        return (
-                          <tr key={row.index} className={ok ? 'align-top' : 'bg-red-50/40 align-top'}>
-                            <td className="px-1.5 py-1 align-top">
-                              {ok ? (
-                                <span className="inline-flex items-center gap-1 text-emerald-600" title="已具备最少必要字段，将被导入"><CheckCircle2 className="h-3.5 w-3.5" />有效</span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-red-500" title={errSummary}><AlertTriangle className="h-3.5 w-3.5" />跳过</span>
-                              )}
-                            </td>
-                            <td className="px-1.5 py-1 align-top">
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                maxLength={6}
-                                className="h-7 w-full rounded-md border border-transparent bg-slate-50/60 px-1.5 font-mono text-[11px] text-slate-700 outline-none hover:border-slate-200 focus:border-indigo-400 focus:bg-white focus:ring-1 focus:ring-indigo-100"
-                                placeholder="6 位"
-                                value={row.draft.code || ''}
-                                onChange={(e) => handleOcrRowFieldChange(row.index, 'code', e.target.value)}
-                              />
-                            </td>
-                            <td className="px-1.5 py-1 align-top">
-                              <input
-                                type="text"
-                                className="h-7 w-full rounded-md border border-transparent bg-slate-50/60 px-1.5 text-[11px] text-slate-700 outline-none hover:border-slate-200 focus:border-indigo-400 focus:bg-white focus:ring-1 focus:ring-indigo-100"
-                                placeholder="名称"
-                                value={row.draft.name || ''}
-                                onChange={(e) => handleOcrRowFieldChange(row.index, 'name', e.target.value)}
-                              />
-                            </td>
-                            <td className="px-1.5 py-1 align-top">
-                              <select
-                                className="h-7 w-full rounded-md border border-transparent bg-slate-50/60 px-1 text-[11px] text-slate-700 outline-none hover:border-slate-200 focus:border-indigo-400 focus:bg-white focus:ring-1 focus:ring-indigo-100"
-                                value={row.draft.kind || 'otc'}
-                                onChange={(e) => handleOcrRowFieldChange(row.index, 'kind', e.target.value)}
-                              >
-                                <option value="otc">场外</option>
-                                <option value="exchange">场内</option>
-                                <option value="qdii">QDII</option>
-                              </select>
-                            </td>
-                            <td className="px-1.5 py-1 align-top">
-                              <select
-                                className="h-7 w-full rounded-md border border-transparent bg-slate-50/60 px-1 text-[11px] text-slate-700 outline-none hover:border-slate-200 focus:border-indigo-400 focus:bg-white focus:ring-1 focus:ring-indigo-100"
-                                value={row.draft.type || 'BUY'}
-                                onChange={(e) => handleOcrRowFieldChange(row.index, 'type', e.target.value)}
-                              >
-                                <option value="BUY">BUY</option>
-                                <option value="SELL">SELL</option>
-                              </select>
-                            </td>
-                            <td className="px-1.5 py-1 align-top">
-                              <input
-                                type="date"
-                                className={cx(
-                                  'h-7 w-full rounded-md border bg-slate-50/60 px-1.5 text-[11px] outline-none focus:border-indigo-400 focus:bg-white focus:ring-1 focus:ring-indigo-100',
-                                  row.draft.date ? 'border-transparent text-slate-700 hover:border-slate-200' : 'border-amber-200 text-amber-700'
-                                )}
-                                placeholder="待补录"
-                                value={row.draft.date || ''}
-                                onChange={(e) => handleOcrRowFieldChange(row.index, 'date', e.target.value)}
-                              />
-                            </td>
-                            <td className="px-1.5 py-1 align-top">
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                className="h-7 w-full rounded-md border border-transparent bg-slate-50/60 px-1.5 text-right tabular-nums text-[11px] text-slate-700 outline-none hover:border-slate-200 focus:border-indigo-400 focus:bg-white focus:ring-1 focus:ring-indigo-100"
-                                placeholder="0.00"
-                                value={row.draft.price || ''}
-                                onChange={(e) => handleOcrRowFieldChange(row.index, 'price', e.target.value)}
-                              />
-                            </td>
-                            <td className="px-1.5 py-1 align-top">
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                className="h-7 w-full rounded-md border border-transparent bg-slate-50/60 px-1.5 text-right tabular-nums text-[11px] text-slate-700 outline-none hover:border-slate-200 focus:border-indigo-400 focus:bg-white focus:ring-1 focus:ring-indigo-100"
-                                placeholder="0.00"
-                                value={row.draft.shares || ''}
-                                onChange={(e) => handleOcrRowFieldChange(row.index, 'shares', e.target.value)}
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  {ocrPreview.rows.some((row) => Object.keys(row.errors).length > 0) ? (
-                    <div className="border-t border-slate-100 bg-red-50/30 px-2.5 py-1.5 text-[11px] text-red-600">
-                      <div className="space-y-0.5">
-                        {ocrPreview.rows
-                          .filter((row) => Object.keys(row.errors).length > 0)
-                          .map((row) => (
-                            <div key={`err-${row.index}`} className="flex items-start gap-2">
-                              <span className="font-mono text-[10px] text-red-400">#{row.index + 1}</span>
-                              <span className="flex-1">{summarizeTransactionErrors(row.errors)}</span>
-                            </div>
-                          ))}
+                (() => {
+                  const totalRows = ocrPreview.rows.length;
+                  const safeIndex = Math.min(Math.max(ocrPreviewIndex, 0), totalRows - 1);
+                  const row = ocrPreview.rows[safeIndex];
+                  const ok = Object.keys(row.errors).length === 0;
+                  const invalidCount = ocrPreview.rows.filter((r) => Object.keys(r.errors).length > 0).length;
+                  const goPrev = () => setOcrPreviewIndex((i) => Math.max(0, i - 1));
+                  const goNext = () => setOcrPreviewIndex((i) => Math.min(totalRows - 1, i + 1));
+                  return (
+                    <div className="space-y-3">
+                      {totalRows > 1 ? (
+                        <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50/70 px-2.5 py-1.5">
+                          <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" onClick={goPrev} disabled={safeIndex <= 0} aria-label="上一条">
+                            <ChevronLeft className="h-4 w-4" />
+                          </button>
+                          <div className="flex flex-col items-center text-center">
+                            <div className="text-xs font-semibold text-slate-700 tabular-nums">第 {safeIndex + 1} / {totalRows} 条</div>
+                            <div className="text-[10px] text-slate-500">{invalidCount > 0 ? `含 ${invalidCount} 行无效将被跳过` : '全部有效'}</div>
+                          </div>
+                          <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" onClick={goNext} disabled={safeIndex >= totalRows - 1} aria-label="下一条">
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ) : null}
+                      <div className="flex items-center gap-2">
+                        {ok ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />有效，将导入</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-600"><AlertTriangle className="h-3.5 w-3.5" />仅试用，将被跳过</span>
+                        )}
                       </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <label className="col-span-1 text-xs text-slate-500">
+                          代码
+                          <input className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3 font-mono')} value={row.draft.code || ''} onChange={(e) => handleOcrRowFieldChange(row.index, 'code', e.target.value)} placeholder="6 位" inputMode="numeric" maxLength={6} />
+                        </label>
+                        <label className="col-span-1 text-xs text-slate-500">
+                          名称
+                          <input className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')} value={row.draft.name || ''} onChange={(e) => handleOcrRowFieldChange(row.index, 'name', e.target.value)} placeholder="基金名称" />
+                        </label>
+                        <label className="col-span-1 text-xs text-slate-500">
+                          标签
+                          <select className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')} value={row.draft.kind || 'otc'} onChange={(e) => handleOcrRowFieldChange(row.index, 'kind', e.target.value)}>
+                            <option value="otc">场外</option>
+                            <option value="exchange">场内</option>
+                            <option value="qdii">QDII</option>
+                          </select>
+                        </label>
+                        <label className="col-span-1 text-xs text-slate-500">
+                          类型
+                          <select className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')} value={row.draft.type || 'BUY'} onChange={(e) => handleOcrRowFieldChange(row.index, 'type', e.target.value)}>
+                            <option value="BUY">BUY</option>
+                            <option value="SELL">SELL</option>
+                          </select>
+                        </label>
+                        <label className="col-span-2 text-xs text-slate-500">
+                          日期
+                          <input type="date" className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3', row.draft.date ? '' : 'border-amber-200 text-amber-700')} value={row.draft.date || ''} onChange={(e) => handleOcrRowFieldChange(row.index, 'date', e.target.value)} />
+                        </label>
+                        <label className="col-span-1 text-xs text-slate-500">
+                          价格（净值）
+                          <input className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')} value={row.draft.price || ''} onChange={(e) => handleOcrRowFieldChange(row.index, 'price', e.target.value)} placeholder="0.0000" inputMode="decimal" />
+                        </label>
+                        <label className="col-span-1 text-xs text-slate-500">
+                          份额
+                          <input className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')} value={row.draft.shares || ''} onChange={(e) => handleOcrRowFieldChange(row.index, 'shares', e.target.value)} placeholder="0.0000" inputMode="decimal" />
+                        </label>
+                      </div>
+                      {!ok ? (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+                          {summarizeTransactionErrors(row.errors)}
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
-                </div>
+                  );
+                })()
               ) : ocrPreview ? (
                 <div className="flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-6 py-6 text-center text-[11px] text-slate-500">
                   <FileImage className="h-6 w-6 text-slate-300" />
