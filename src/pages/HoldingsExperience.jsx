@@ -1090,7 +1090,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       kind,
       type,
       before3pm: true,
-      dca: false,
       date: ctx.confirmDate || getTodayShanghaiDate(),
       price: ''
     });
@@ -1182,9 +1181,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       }
       if (field === 'price' || field === 'shares' || field === 'costPrice') {
         return { ...prev, [field]: sanitizeDecimalInput(value) };
-      }
-      if (field === 'dca') {
-        return { ...prev, dca: Boolean(value) };
       }
       if (field === 'before3pm') {
         // 场外/QDII：勾选「三点前」表示今天交易日收盘价确认；未勾 = 次个交易日确认。
@@ -2826,17 +2822,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                   />
                   三点前交易
                 </label>
-                {draft.type === 'BUY' ? (
-                  <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-slate-700">
-                    <input
-                      type="checkbox"
-                      className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                      checked={Boolean(draft.dca)}
-                      onChange={(event) => handleDraftChange('dca', event.target.checked)}
-                    />
-                    定投
-                  </label>
-                ) : null}
               </div>
               <div className="mt-1.5 text-[10px] text-slate-500">
                 {draft.before3pm
