@@ -1027,7 +1027,55 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     setDraftMode('create');
   }
 
-  // 从「该基金汇总」弹窗点击 买入 / 卖出：预填代码/名称/标签，默认「三点前」=true，根据 snapshot 试图自动填入日期和净值。
+  // 扫描所有「价格为空 / 0」的场外/QDII 交易，如果快照中能找到与 tx.date 匹配的
+  // latestNavDate 或 previousNavDate，则自动回填净值。场内不走净值路径、跳过。
+  // 由「点击基金汇总 / 已卖出 tab」等 useEffect 触发。
+  function autoFillTransactionPricesFromSnapshots() {
+    const snapMap = snapshotsByCode || {};
+    setLedger((prev) => {
+      const list = Array.isArray(prev.transactions) ? prev.transactions : [];
+      let changed = false;
+      const nextList = list.map((tx) => {
+        const existingPrice = Number(tx?.price) || 0;
+        if (existingPrice > 0) return tx;
+        const kind = String(tx?.kind || '').toLowerCase();
+        if (kind === 'exchange') return tx;
+        const code = normalizeFundCode(tx?.code || '');
+        if (!code) return tx;
+        const snap = snapMap[code];
+        if (!snap) return tx;
+        const txDate = String(tx?.date || '');
+        if (!txDate) return tx;
+        let resolved = 0;
+        if (String(snap.latestNavDate || '') === txDate && Number(snap.latestNav) > 0) {
+          resolved = Number(snap.latestNav);
+        } else if (String(snap.previousNavDate || '') === txDate && Number(snap.previousNav) > 0) {
+          resolved = Number(snap.previousNav);
+        }
+        if (!(resolved > 0)) return tx;
+        changed = true;
+        return { ...tx, price: Number(resolved.toFixed(4)) };
+      });
+      if (!changed) return prev;
+      return { ...prev, transactions: nextList };
+    });
+  }
+
+  // 点击「基金汇总」（侧边栏切到 summary）、或切到主 tab 「已卖出」时，
+  // 扫描一轮交易记录把净值留空的项用最新快照填上。
+  useEffect(() => {
+    if (sidePanelOpen && sidePanelTab === 'summary' && selectedCode) {
+      autoFillTransactionPricesFromSnapshots();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sidePanelOpen, sidePanelTab, selectedCode, snapshotsByCode]);
+  useEffect(() => {
+    if (mainViewTab === 'sold') {
+      autoFillTransactionPricesFromSnapshots();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainViewTab, snapshotsByCode]);
+
   // 从「该基金汇总」弹窗点击 买入 / 卖出：预填代码/名称/标签，默认「三点前」=true。
   // 日期默认今天（T 日）；NAV 未公布，价格留空、事后回填。
   function openBuyOrSellFromSummary(aggSrc, type) {
