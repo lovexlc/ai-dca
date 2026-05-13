@@ -14,7 +14,7 @@ import {
   fetchFinnhubCompanyNews,
   fetchFinnhubMarketNews
 } from './fetchers.js';
-import { askWithGrounding } from './ai.js';
+import { askWithGrounding, summarizeMarkets } from './ai.js';
 import { kvGetJson, kvPutJson, r2GetJson, r2PutJson, klineKey } from './storage.js';
 import {
   US_INDICES,
@@ -85,6 +85,10 @@ export default {
       if (path === '/news') {
         const market = (url.searchParams.get('market') || 'us').toLowerCase();
         return await handleNews(env, market, url.searchParams.get('refresh') === '1');
+      }
+      if (path === '/summary') {
+        const market = (url.searchParams.get('market') || 'us').toLowerCase();
+        return await handleSummary(env, market, url.searchParams.get('refresh') === '1');
       }
       if ((m = path.match(/^\/profile\/(.+)$/))) {
         return await handleProfile(env, decodeURIComponent(m[1]));
@@ -376,6 +380,9 @@ async function handleManualRefresh(env, body, ctx) {
   if (target === 'us-news') {
     return await handleNews(env, 'us', true);
   }
+  if (target === 'us-summary') {
+    return await handleSummary(env, 'us', true);
+  }
   return errorJson('unknown target ' + target, 400);
 }
 
@@ -399,10 +406,56 @@ async function runScheduled(env, cron) {
     tasks.push(refreshIndices(env, 'us'));
     tasks.push(handleNews(env, 'us', true));
   }
+  // 每 30 分钟跑一次美股主题摘要（由专门的 cron 触发）。
+  if (cron === '*/30 * * * *') {
+    tasks.push(handleSummary(env, 'us', true));
+  }
   const results = await Promise.allSettled(tasks);
   for (const r of results) {
     if (r.status === 'rejected') {
       console.warn('scheduled task failed', r.reason);
     }
   }
+}
+
+// =====================================================================
+// /summary：读今日新闻 + 涨跌榜，交 AI 归纳为 4 个主题。
+// KV 键 summary:<market>，TTL 2 小时。
+// =====================================================================
+
+async function handleSummary(env, market, forceRefresh) {
+  const key = 'summary:' + market;
+  if (!forceRefresh) {
+    const cached = await kvGetJson(env, key);
+    if (cached && Array.isArray(cached.themes)) return json({ ...cached, cached: true });
+  }
+  // 读取上游数据：新闻（含读表）+ 混合榜。
+  let news = [];
+  let movers = [];
+  try {
+    const newsCached = await kvGetJson(env, 'news:' + market);
+    if (newsCached && Array.isArray(newsCached.items)) news = newsCached.items;
+  } catch (_) {}
+  try {
+    const moversCached = await kvGetJson(env, 'movers:' + market + ':mixed');
+    if (moversCached && Array.isArray(moversCached.list)) movers = moversCached.list;
+  } catch (_) {}
+  // 最低限度：新闻或涨跌榜之一需要有内容，否则不用调 AI。
+  if (!news.length && !movers.length) {
+    return errorJson('no upstream data (news/movers KV empty)', 503, { market });
+  }
+  const ai = await summarizeMarkets({ env, market, news, movers });
+  const payload = {
+    market,
+    generatedAt: new Date().toISOString(),
+    themes: ai.themes,
+    model: ai.model,
+    aiError: ai.aiError || undefined,
+    inputCounts: { news: news.length, movers: movers.length }
+  };
+  // 只有拿到主题才写 KV，否则避免覆盖上次好的结果。
+  if (Array.isArray(ai.themes) && ai.themes.length) {
+    await kvPutJson(env, key, payload, { ttlSeconds: 7200 });
+  }
+  return json({ ...payload, cached: false });
 }

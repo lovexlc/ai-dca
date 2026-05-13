@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
+  ChevronDown,
+  ChevronRight,
   ExternalLink,
   Loader2,
   Newspaper,
@@ -28,6 +30,7 @@ import {
   fetchMovers,
   fetchNews,
   fetchQuotes,
+  fetchSummary,
   loadWatchlist,
   removeFromWatchlist
 } from '../app/marketsApi.js';
@@ -232,6 +235,74 @@ function NewsList({ items = [] }) {
   );
 }
 
+// 美股今日主题摘要。默认折叠，展开后按顺序列出 4 个主题。
+function SummaryModule({ themes = [], loading, generatedAt, open, onToggle, onRefresh }) {
+  const hasContent = Array.isArray(themes) && themes.length > 0;
+  return (
+    <Card className="space-y-3">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-3 text-left"
+      >
+        <div className="flex items-center gap-2">
+          {open ? <ChevronDown size={16} className="text-indigo-500" /> : <ChevronRight size={16} className="text-indigo-500" />}
+          <h2 className="text-base font-semibold text-slate-800">美国市场概况</h2>
+          {loading && <Loader2 size={12} className="animate-spin text-slate-400" />}
+          {!loading && hasContent && (
+            <span className="text-xs text-slate-400">AI 总结 · {themes.length} 个主题</span>
+          )}
+          {!loading && !hasContent && (
+            <span className="text-xs text-slate-400">暂无主题摘要</span>
+          )}
+        </div>
+        <span className="text-xs text-slate-400">
+          {generatedAt ? '更新于 ' + formatTime(generatedAt) : ''}
+        </span>
+      </button>
+      {open && (
+        <div className="space-y-3">
+          {hasContent ? (
+            <ol className="space-y-2">
+              {themes.map((t, idx) => (
+                <li
+                  key={idx}
+                  className="rounded-xl border border-slate-200/70 bg-white/80 p-3"
+                >
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-[11px] font-semibold text-indigo-600">
+                      {idx + 1}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="font-medium text-slate-800">{t.title}</div>
+                      <p className="mt-1 text-sm leading-relaxed text-slate-500">{t.detail}</p>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="text-sm text-slate-400">
+              暂未生成主题摘要。点右侧刷新按钮可请求重新生成。
+            </p>
+          )}
+          {onRefresh && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={onRefresh}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
+              >
+                <RefreshCw size={11} /> 重新生成
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export function MarketsExperience() {
   const [market, setMarket] = useState('us');
   const [indices, setIndices] = useState([]);
@@ -240,6 +311,9 @@ export function MarketsExperience() {
   const [moversLoading, setMoversLoading] = useState(false);
   const [news, setNews] = useState([]);
   const [newsLoading, setNewsLoading] = useState(false);
+  const [summary, setSummary] = useState({ themes: [], generatedAt: '' });
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
   const [watch, setWatch] = useState(() => loadWatchlist());
   const [watchQuotes, setWatchQuotes] = useState({});
   const [watchLoading, setWatchLoading] = useState(false);
@@ -316,6 +390,27 @@ export function MarketsExperience() {
     }
   }, [market]);
 
+  // 今日主题摘要（仅美股）。多数时候读 30 分钟 cron 写的缓存；force 时会调 AI 重生成。
+  const refreshSummary = useCallback(async (forceRefresh = false) => {
+    if (market !== 'us') {
+      setSummary({ themes: [], generatedAt: '' });
+      return;
+    }
+    setSummaryLoading(true);
+    try {
+      const r = await fetchSummary(market, { refresh: forceRefresh });
+      setSummary({
+        themes: Array.isArray(r && r.themes) ? r.themes : [],
+        generatedAt: (r && r.generatedAt) || ''
+      });
+    } catch (err) {
+      // 摘要是纯增量信息，失败不弹 toast，避免骚扰。
+      setSummary({ themes: [], generatedAt: '' });
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, [market]);
+
   const refreshWatch = useCallback(async () => {
     const list = watch[market] || [];
     if (!list.length) {
@@ -341,6 +436,10 @@ export function MarketsExperience() {
   useEffect(() => {
     refreshMovers(false);
   }, [refreshMovers]);
+
+  useEffect(() => {
+    refreshSummary(false);
+  }, [refreshSummary]);
 
   useEffect(() => {
     refreshWatch();
@@ -410,11 +509,23 @@ export function MarketsExperience() {
             refreshMovers(true);
             refreshNews();
             refreshWatch();
+            refreshSummary(true);
           }}
         >
           <RefreshCw size={12} /> 刷新
         </button>
       </div>
+
+      {market === 'us' && (
+        <SummaryModule
+          themes={summary.themes}
+          loading={summaryLoading}
+          generatedAt={summary.generatedAt}
+          open={summaryOpen}
+          onToggle={() => setSummaryOpen((v) => !v)}
+          onRefresh={() => refreshSummary(true)}
+        />
+      )}
 
       <Card className="space-y-3">
         <div className="flex items-center gap-2">

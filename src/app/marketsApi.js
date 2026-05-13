@@ -66,6 +66,11 @@ export async function fetchMovers(market, { direction = 'mixed', refresh = false
   return getJson('/movers?market=' + encodeURIComponent(market) + '&direction=' + encodeURIComponent(direction) + q);
 }
 
+export async function fetchSummary(market, { refresh = false } = {}) {
+  const q = refresh ? '&refresh=1' : '';
+  return getJson('/summary?market=' + encodeURIComponent(market) + q);
+}
+
 export async function fetchNews(market, { refresh = false } = {}) {
   const q = refresh ? '&refresh=1' : '';
   return getJson('/news?market=' + encodeURIComponent(market) + q);
