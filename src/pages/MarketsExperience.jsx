@@ -397,6 +397,55 @@ function SummaryModule({ themes = [], loading, generatedAt, open, onToggle, onRe
   );
 }
 
+// 行情中心底部“搜索或提问”输入条。提交后向全局 AI 抽屉发 prefill 事件，
+// 抽屉会自动切到市场行情模式并预填问题。
+function MarketsAskBar({ value, onChange }) {
+  const submit = useCallback(
+    (e) => {
+      if (e && e.preventDefault) e.preventDefault();
+      const q = String(value || '').trim();
+      if (!q) {
+        // 空输入：仅打开面板。
+        try { window.dispatchEvent(new CustomEvent('aichat:open')); } catch (_) { /* ignore */ }
+        return;
+      }
+      try {
+        window.dispatchEvent(
+          new CustomEvent('aichat:prefill', {
+            detail: { question: q, mode: 'markets', open: true },
+          }),
+        );
+      } catch (_) { /* ignore */ }
+      onChange('');
+    },
+    [value, onChange],
+  );
+
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-3 pb-3 sm:px-6 sm:pb-4">
+      <form
+        onSubmit={submit}
+        className="pointer-events-auto mx-auto flex max-w-3xl items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur"
+      >
+        <Search size={16} className="shrink-0 text-slate-400" />
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="搜索或提问…例如：今晚美股看什么？"
+          className="min-w-0 flex-1 border-none bg-transparent text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none"
+        />
+        <button
+          type="submit"
+          className={cx(primaryButtonClass, 'inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs')}
+        >
+          <Sparkles size={12} /> 提问
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export function MarketsExperience() {
   const [market, setMarket] = useState('us');
   const [indices, setIndices] = useState([]);
@@ -413,6 +462,7 @@ export function MarketsExperience() {
   const [watchLoading, setWatchLoading] = useState(false);
   const [symbolInput, setSymbolInput] = useState('');
   const [generatedAt, setGeneratedAt] = useState('');
+  const [askInput, setAskInput] = useState('');
   const reqIdRef = useRef(0);
   const [klineMap, setKlineMap] = useState({});
   const klineInflightRef = useRef(new Set());
@@ -575,7 +625,7 @@ export function MarketsExperience() {
   );
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-5 pb-24">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           {MARKETS.map((m) => (
@@ -688,6 +738,8 @@ export function MarketsExperience() {
         </div>
         <NewsList items={news} />
       </Card>
+
+      <MarketsAskBar value={askInput} onChange={setAskInput} />
     </div>
   );
 }

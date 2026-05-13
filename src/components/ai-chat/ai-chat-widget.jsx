@@ -189,6 +189,23 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
     return () => window.removeEventListener('aichat:open', onExternalOpen);
   }, []);
 
+  // 外部页面（例如行情中心底部 ask bar）预填问题 + 可选切换模式。
+  // detail: { question?: string, mode?: 'chat'|'markets', open?: boolean }
+  useEffect(() => {
+    function onPrefill(event) {
+      const detail = (event && event.detail) || {};
+      if (detail.mode === 'markets' || detail.mode === 'chat') {
+        setMode(detail.mode);
+      }
+      if (typeof detail.question === 'string' && detail.question.trim()) {
+        setInput(detail.question);
+      }
+      if (detail.open !== false) setOpen(true);
+    }
+    window.addEventListener('aichat:prefill', onPrefill);
+    return () => window.removeEventListener('aichat:prefill', onPrefill);
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     const node = listRef.current;
