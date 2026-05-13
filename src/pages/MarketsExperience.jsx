@@ -62,6 +62,76 @@ function formatTime(value) {
   return d.toLocaleString('zh-CN', { hour12: false });
 }
 
+// HH:mm 格式，用于新闻列表左侧时间戳列。
+function formatClock(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+// 仅月日，用于跨天新闻的辅助显示。
+function formatDateShort(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+}
+
+// 根据来源名取首字母，多字取前 2；中文取首字。
+function sourceInitials(source) {
+  const s = String(source || '').trim();
+  if (!s) return '?';
+  // 英文：取前两个单词首字母。
+  const words = s.split(/[\s\-_/]+/).filter(Boolean);
+  if (/^[\x00-\x7f]+$/.test(s) && words.length) {
+    return words.slice(0, 2).map((w) => w[0].toUpperCase()).join('');
+  }
+  // 中文或混合：取首字。
+  return s.slice(0, 1);
+}
+
+// 以来源名计算一个稳定的 hue，避免所有 badge 同色。
+function sourceHue(source) {
+  const s = String(source || '');
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
+function SourceBadge({ source }) {
+  const hue = sourceHue(source);
+  const bg = `hsl(${hue} 70% 92%)`;
+  const fg = `hsl(${hue} 55% 32%)`;
+  const badgeStyle = { backgroundColor: bg, color: fg };
+  return (
+    <span
+      title={source || ''}
+      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
+      style={badgeStyle}
+    >
+      {sourceInitials(source)}
+    </span>
+  );
+}
+
+// 发布时间 < 15 分钟 认为是“实时”。
+function isRecentNow(value, windowMinutes = 15) {
+  if (!value) return false;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return false;
+  return Date.now() - d.getTime() < windowMinutes * 60 * 1000;
+}
+
+// 跨天新闻需要额外显示日期。
+function isToday(value) {
+  if (!value) return false;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return false;
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+}
+
 function changeToneClass(value) {
   const n = Number(value);
   if (!Number.isFinite(n) || n === 0) return 'text-slate-500';
@@ -211,26 +281,50 @@ function NewsList({ items = [] }) {
     return <p className="text-sm text-slate-400">暂无新闻。</p>;
   }
   return (
-    <ul className="space-y-2">
-      {items.slice(0, 20).map((it) => (
-        <li key={it.url || it.title} className="rounded-xl border border-slate-200/70 bg-white/80 p-3 text-sm transition hover:border-indigo-200">
-          <a
-            href={it.url}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="flex items-start justify-between gap-3"
-          >
-            <div>
-              <div className="font-medium text-slate-800">{it.title}</div>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                {it.source && <span>{it.source}</span>}
-                {it.publishedAt && <span>{formatTime(it.publishedAt)}</span>}
+    <ul className="divide-y divide-slate-100">
+      {items.slice(0, 20).map((it) => {
+        const realtime = isRecentNow(it.publishedAt);
+        const today = isToday(it.publishedAt);
+        return (
+          <li key={it.url || it.title} className="py-2 first:pt-0 last:pb-0">
+            <a
+              href={it.url}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="flex items-start gap-3 rounded-lg px-1 py-1 transition hover:bg-indigo-50/40"
+            >
+              <div className="flex w-14 shrink-0 flex-col items-end pt-0.5 text-xs tabular-nums text-slate-400">
+                {it.publishedAt ? (
+                  <>
+                    <span className="font-medium text-slate-600">{formatClock(it.publishedAt)}</span>
+                    {!today && <span className="text-[10px] text-slate-400">{formatDateShort(it.publishedAt)}</span>}
+                  </>
+                ) : (
+                  <span>--:--</span>
+                )}
               </div>
-            </div>
-            <ExternalLink size={14} className="shrink-0 text-slate-300" />
-          </a>
-        </li>
-      ))}
+              <SourceBadge source={it.source} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1 text-sm font-medium leading-snug text-slate-800">
+                    {it.title}
+                  </div>
+                  {realtime && (
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-600">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-rose-500" />
+                      实时
+                    </span>
+                  )}
+                  <ExternalLink size={12} className="mt-1 shrink-0 text-slate-300" />
+                </div>
+                {it.source && (
+                  <div className="mt-0.5 text-[11px] text-slate-400">{it.source}</div>
+                )}
+              </div>
+            </a>
+          </li>
+        );
+      })}
     </ul>
   );
 }
