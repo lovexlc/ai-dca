@@ -176,6 +176,51 @@
   gap: 4px;
 }
 
+.ai-chat-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.ai-chat-mode__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.ai-chat-mode__btn.is-active {
+  background: #ffffff;
+  color: #4338ca;
+  box-shadow: 0 1px 3px rgba(67, 56, 202, 0.18);
+}
+
+.ai-chat-mode__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ai-chat-mode__depth {
+  margin-left: 4px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  background: #ffffff;
+  font-size: 12px;
+  color: #475569;
+}
+
 .ai-chat-iconbtn {
   display: inline-flex;
   align-items: center;

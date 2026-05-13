@@ -5,13 +5,17 @@ import {
   Send,
   Loader2,
   RotateCcw,
+  LineChart,
+  BookOpen,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import '../../styles/ai-chat.css';
+import { askMarkets, loadWatchlist } from '../../app/marketsApi.js';
 
 const CHAT_ENDPOINT = '/api/ai-chat';
 const STORAGE_KEY = 'aiDcaChatHistory_v1';
+const MODE_KEY = 'aiDcaChatMode_v1';
 const MAX_HISTORY = 30;
 
 const NUDGE_TEXT = '遇到问题了？点我给你解答';
@@ -39,6 +43,38 @@ function markNudgeDismissed() {
 const SYSTEM_PROMPT =
   '你是 ai-dca 内置的 AI 助手，帮助用户理解定投策略、持仓回测、基金切换等功能，' +
   '回答简洁、准确、用中文。涉及具体投资建议时提醒用户自行判断风险，不要给出绝对收益承诺。';
+
+function loadMode() {
+  try {
+    const v = localStorage.getItem(MODE_KEY);
+    return v === 'markets' ? 'markets' : 'chat';
+  } catch (err) {
+    return 'chat';
+  }
+}
+
+function persistMode(mode) {
+  try { localStorage.setItem(MODE_KEY, mode); } catch (err) { /* ignore */ }
+}
+
+function formatMarketsAnswer(res) {
+  const answer = String((res && res.answer) || '').trim();
+  const sources = Array.isArray(res && res.sources) ? res.sources.slice(0, 6) : [];
+  const parts = [];
+  if (answer) parts.push(answer);
+  if (sources.length) {
+    const lines = sources.map((s, i) => {
+      const title = (s && s.title) || (s && s.url) || '未命名来源';
+      const url = s && s.url ? s.url : '';
+      return url ? `${i + 1}. [${title}](${url})` : `${i + 1}. ${title}`;
+    });
+    parts.push('\n---\n**参考来源**\n' + lines.join('\n'));
+  }
+  if (res && res.searchError) {
+    parts.push(`\n_联网检索提示：${res.searchError}_`);
+  }
+  return parts.join('\n\n') || '未获取到响应。';
+}
 
 function loadHistory() {
   try {
@@ -112,6 +148,8 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
   const [messages, setMessages] = useState(() => loadHistory());
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
+  const [mode, setMode] = useState(() => loadMode());
+  const [marketsDepth, setMarketsDepth] = useState('fast');
   const [nudgeOpen, setNudgeOpen] = useState(false);
   const [nudgeMuted, setNudgeMuted] = useState(() => isNudgeDismissed());
   const listRef = useRef(null);
@@ -126,6 +164,8 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
   useEffect(() => {
     persistHistory(messages);
   }, [messages]);
+
+  useEffect(() => { persistMode(mode); }, [mode]);
 
   useEffect(() => {
     function onExternalOpen() { setOpen(true); }
@@ -311,6 +351,45 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
     const controller = new AbortController();
     abortRef.current = controller;
 
+    // 市场行情模式：调用独立的 markets/ask Worker（非流式 JSON）。
+    if (mode === 'markets') {
+      try {
+        let symbols = [];
+        try {
+          const wl = loadWatchlist() || {};
+          const us = Array.isArray(wl.us) ? wl.us : [];
+          const cn = Array.isArray(wl.cn) ? wl.cn : [];
+          symbols = [...us.slice(0, 4), ...cn.slice(0, 4)];
+        } catch (_) { /* ignore */ }
+        const res = await askMarkets({ question: content, symbols, depth: marketsDepth });
+        const reply = formatMarketsAnswer(res);
+        setMessages((prev) => {
+          const next = [...prev];
+          next[next.length - 1] = { role: 'assistant', content: reply };
+          return next;
+        });
+      } catch (err) {
+        if (err && err.name === 'AbortError') {
+          // 用户取消
+        } else {
+          const msg = err instanceof Error ? err.message : String(err);
+          setError(`市场行情服务暂不可用：${msg}`);
+          setMessages((prev) => {
+            if (prev.length === 0) return prev;
+            const last = prev[prev.length - 1];
+            if (last && last.role === 'assistant' && !last.content) {
+              return prev.slice(0, -1);
+            }
+            return prev;
+          });
+        }
+      } finally {
+        abortRef.current = null;
+        setPending(false);
+      }
+      return;
+    }
+
     try {
       const tabLabel = currentTab ? (TAB_LABELS[currentTab] || currentTab) : '';
       const ctxParts = [];
@@ -425,7 +504,7 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
       abortRef.current = null;
       setPending(false);
     }
-  }, [input, messages, pending, currentTab, pageContext]);
+  }, [input, messages, pending, currentTab, pageContext, mode, marketsDepth]);
 
   const handleStop = useCallback(() => {
     if (abortRef.current) abortRef.current.abort();
@@ -442,8 +521,12 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
   );
 
   const placeholder = useMemo(
-    () => (pending ? 'AI 正在思考…' : '问点什么，例如：定投策略怎么开始？'),
-    [pending],
+    () => {
+      if (pending) return 'AI 正在思考…';
+      if (mode === 'markets') return '问点市场问题，例如：今晚美股看什么？';
+      return '问点什么，例如：定投策略怎么开始？';
+    },
+    [pending, mode],
   );
 
   const canSend = !pending && !!input.trim();
@@ -509,6 +592,42 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
               <Sparkles className="h-4 w-4" aria-hidden="true" />
               <span>AI 问答</span>
             </div>
+            <div className="ai-chat-mode" role="tablist" aria-label="问答模式">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === 'chat'}
+                className={`ai-chat-mode__btn${mode === 'chat' ? ' is-active' : ''}`}
+                onClick={() => setMode('chat')}
+                disabled={pending}
+              >
+                <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>知识库</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === 'markets'}
+                className={`ai-chat-mode__btn${mode === 'markets' ? ' is-active' : ''}`}
+                onClick={() => setMode('markets')}
+                disabled={pending}
+              >
+                <LineChart className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>市场行情</span>
+              </button>
+              {mode === 'markets' ? (
+                <select
+                  value={marketsDepth}
+                  onChange={(e) => setMarketsDepth(e.target.value)}
+                  className="ai-chat-mode__depth"
+                  aria-label="检索深度"
+                  disabled={pending}
+                >
+                  <option value="fast">快速</option>
+                  <option value="deep">深度</option>
+                </select>
+              ) : null}
+            </div>
             <div className="ai-chat-panel__actions">
               <button
                 type="button"
@@ -535,12 +654,20 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
             {messages.length === 0 ? (
               <div className="ai-chat-empty">
                 <Sparkles className="h-5 w-5" aria-hidden="true" />
-                <p>有什么可以帮你的？</p>
-                <ul>
-                  <li>“纳指定投目前应该加仓还是观望？”</li>
-                  <li>“持仓页里 NAV 怎么自动更新？”</li>
-                  <li>“基金切换的限额逻辑是什么？”</li>
-                </ul>
+                <p>{mode === 'markets' ? '打开市场行情模式，可以不联网检索问点什么？' : '有什么可以帮你的？'}</p>
+                {mode === 'markets' ? (
+                  <ul>
+                    <li>“今晚苹果财报有什么重点？”</li>
+                    <li>“今天 A 股大盘怎么看？”</li>
+                    <li>“贵州茅台最近为什么下跌？”</li>
+                  </ul>
+                ) : (
+                  <ul>
+                    <li>“纳指定投目前应该加仓还是观望？”</li>
+                    <li>“持仓页里 NAV 怎么自动更新？”</li>
+                    <li>“基金切换的限额逻辑是什么？”</li>
+                  </ul>
+                )}
               </div>
             ) : (
               messages.map((m, idx) => {

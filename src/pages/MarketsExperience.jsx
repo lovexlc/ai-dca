@@ -2,14 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
-  Bot,
   ExternalLink,
   Loader2,
   Newspaper,
   Plus,
   RefreshCw,
   Search,
-  Send,
   Sparkles,
   Star,
   Trash2,
@@ -26,7 +24,6 @@ import {
 } from '../components/experience-ui.jsx';
 import {
   addToWatchlist,
-  askMarkets,
   fetchIndices,
   fetchMovers,
   fetchNews,
@@ -207,87 +204,6 @@ function NewsList({ items = [] }) {
   );
 }
 
-function AskPanel({ market, contextSymbols }) {
-  const [question, setQuestion] = useState('');
-  const [depth, setDepth] = useState('fast');
-  const [loading, setLoading] = useState(false);
-  const [answer, setAnswer] = useState('');
-  const [sources, setSources] = useState([]);
-  const [errorMsg, setErrorMsg] = useState('');
-
-  async function handleAsk(event) {
-    if (event) event.preventDefault();
-    const q = question.trim();
-    if (!q) return;
-    setLoading(true);
-    setErrorMsg('');
-    setAnswer('');
-    setSources([]);
-    try {
-      const res = await askMarkets({ question: q, symbols: contextSymbols || [], depth });
-      setAnswer(String(res.answer || ''));
-      setSources(Array.isArray(res.sources) ? res.sources : []);
-      if (res.searchError) setErrorMsg('（联网检索失败：' + res.searchError + '）');
-    } catch (err) {
-      setErrorMsg(String((err && err.message) || err));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <Card className="space-y-3">
-      <div className="flex items-center gap-2">
-        <Bot size={16} className="text-indigo-500" />
-        <h2 className="text-base font-semibold text-slate-800">AI 市场问答</h2>
-        <span className="text-xs text-slate-400">基于 Tavily 联网检索 + Workers AI 生成</span>
-      </div>
-      <form className="flex flex-col gap-2 sm:flex-row" onSubmit={handleAsk}>
-        <TextInput
-          className="flex-1"
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder={market === 'cn' ? '例如：今天 A 股大盘怎么看？' : '例如：苹果今晚财报有什么重点？'}
-          disabled={loading}
-        />
-        <select
-          value={depth}
-          onChange={(e) => setDepth(e.target.value)}
-          className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-600"
-          disabled={loading}
-        >
-          <option value="fast">快速</option>
-          <option value="deep">深度</option>
-        </select>
-        <button type="submit" className={cx(primaryButtonClass, 'inline-flex items-center gap-1')} disabled={loading}>
-          {loading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-          提问
-        </button>
-      </form>
-      {errorMsg && <p className="text-xs text-rose-500">{errorMsg}</p>}
-      {answer && (
-        <div className="whitespace-pre-wrap rounded-xl border border-indigo-100 bg-indigo-50/40 p-3 text-sm text-slate-700">
-          {answer}
-        </div>
-      )}
-      {sources.length > 0 && (
-        <div>
-          <div className="mb-1 text-xs font-medium text-slate-500">参考来源</div>
-          <ul className="space-y-1">
-            {sources.slice(0, 6).map((s) => (
-              <li key={s.url || s.title} className="text-xs">
-                <a href={s.url} target="_blank" rel="noreferrer noopener" className="text-indigo-500 hover:underline">
-                  {s.title || s.url}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </Card>
-  );
-}
-
 export function MarketsExperience() {
   const [market, setMarket] = useState('us');
   const [indices, setIndices] = useState([]);
@@ -305,7 +221,6 @@ export function MarketsExperience() {
   const reqIdRef = useRef(0);
 
   const watchSymbols = useMemo(() => watch[market] || [], [watch, market]);
-  const contextSymbols = useMemo(() => watchSymbols.slice(0, 5), [watchSymbols]);
 
   const refreshIndices = useCallback(async (forceRefresh = false) => {
     setIndicesLoading(true);
@@ -520,7 +435,6 @@ export function MarketsExperience() {
         </Card>
       </div>
 
-      <AskPanel market={market} contextSymbols={contextSymbols} />
 
       <Card className="space-y-3">
         <div className="flex items-center gap-2">
