@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowDownUp, Info, RefreshCw, Radio, PlayCircle, ChevronDown } from 'lucide-react';
+import { AlertTriangle, Info, RefreshCw, Radio, PlayCircle, ChevronDown } from 'lucide-react';
 import { Card, Pill, SectionHeading, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { aggregateByCode } from '../app/holdingsLedgerCore.js';
@@ -28,10 +28,8 @@ import {
 //
 // 持久化：
 // - aiDcaSwitchStrategyPrefs：基准 ETF、候选基金、阈值
-// - aiDcaSwitchStrategyLedger：套利轮次人工日志
 
 const SWITCH_PREFS_KEY = 'aiDcaSwitchStrategyPrefs';
-const SWITCH_LEDGER_KEY = 'aiDcaSwitchStrategyLedger';
 
 // v3 持仓 + H/L 双维度语义：
 //   benchmarkCodes = 持仓基准（从持仓详情自动派生，不手选）
@@ -92,25 +90,6 @@ function writePrefs(prefs) {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage?.setItem(SWITCH_PREFS_KEY, JSON.stringify(prefs));
-  } catch (_error) {
-    // ignore
-  }
-}
-
-function readSwitchLedger() {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage?.getItem(SWITCH_LEDGER_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch { return []; }
-}
-
-function writeSwitchLedger(rows) {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage?.setItem(SWITCH_LEDGER_KEY, JSON.stringify(rows));
   } catch (_error) {
     // ignore
   }
@@ -305,7 +284,6 @@ async function loadEtfLatestPrice(code, { inPagesDir = false } = {}) {
 
 export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false } = {}) {
   const [prefs, setPrefs] = useState(readPrefs);
-  const [switchLedger, setSwitchLedger] = useState(readSwitchLedger);
   const [aggregates, setAggregates] = useState([]);
   const [refreshTick, setRefreshTick] = useState(0);
 
@@ -362,7 +340,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, [premiumClassCounts.h, premiumClassCounts.l, nasdaqPoolTouched]);
 
   useEffect(() => { writePrefs(prefs); }, [prefs]);
-  useEffect(() => { writeSwitchLedger(switchLedger); }, [switchLedger]);
 
   // 首次入页：从 worker 拉取配置 + 快照。失败不阻断 UI（本地缓存仍可用）。
   useEffect(() => {
@@ -986,29 +963,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     navState.error
   ]);
 
-  // 套利轮次
-  function appendCycle() {
-    const row = {
-      id: `cycle-${Date.now()}`,
-      createdAt: nowIso(),
-      // 套利轮次 ledger 仍为单轮单基准；多基准时默认取第一只。
-      benchmarkCode: (prefs.benchmarkCodes || [])[0] || '',
-      counterpartCode: '',
-      enterPrice: '',
-      exitPrice: '',
-      shares: '',
-      pnl: '',
-      note: ''
-    };
-    setSwitchLedger((prev) => [row, ...prev]);
-  }
-  function patchCycle(id, key, value) {
-    setSwitchLedger((prev) => prev.map((row) => (row.id === id ? { ...row, [key]: value } : row)));
-  }
-  function removeCycle(id) {
-    setSwitchLedger((prev) => prev.filter((row) => row.id !== id));
-  }
-
   const navUpdatedHint = useMemo(() => {
     const dates = Object.values(navState.navByCode || {})
       .map((entry) => entry?.latestNavDate)
@@ -1612,116 +1566,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         </div>
       </Card>
 
-      <Card>
-        <SectionHeading
-          eyebrow="套利轮次记录"
-          title="切换周期人工日志"
-        />
-        <div className="mt-4 flex items-center justify-end">
-          <button
-            type="button"
-            onClick={appendCycle}
-            className={cx(primaryButtonClass, 'h-9 px-3 text-xs')}
-          >
-            <ArrowDownUp className="h-4 w-4" />
-            新增一笔切换
-          </button>
-        </div>
-        {switchLedger.length === 0 ? (
-          <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-            还没有套利记录。每完成一轮切换就回来登一笔，便于回看节奏。
-          </div>
-        ) : (
-          <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-[0.16em] text-slate-500">
-                <tr>
-                  <th className="px-3 py-2 text-left font-semibold">基准 / 对手</th>
-                  <th className="px-3 py-2 text-right font-semibold">开仓价</th>
-                  <th className="px-3 py-2 text-right font-semibold">平仓价</th>
-                  <th className="px-3 py-2 text-right font-semibold">份额</th>
-                  <th className="px-3 py-2 text-right font-semibold">盈亏 %</th>
-                  <th className="px-3 py-2 text-left font-semibold">备注</th>
-                  <th className="px-3 py-2" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {switchLedger.map((row) => (
-                  <tr key={row.id}>
-                    <td className="px-3 py-2">
-                      <input
-                        value={row.benchmarkCode}
-                        onChange={(e) => patchCycle(row.id, 'benchmarkCode', e.target.value)}
-                        className="w-20 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs focus:border-indigo-300 focus:outline-none"
-                      />
-                      <span className="mx-1 text-slate-400">→</span>
-                      <input
-                        value={row.counterpartCode}
-                        onChange={(e) => patchCycle(row.id, 'counterpartCode', e.target.value)}
-                        className="w-20 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs focus:border-indigo-300 focus:outline-none"
-                        placeholder="对手代码"
-                      />
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <input
-                        type="number"
-                        step="0.001"
-                        value={row.enterPrice}
-                        onChange={(e) => patchCycle(row.id, 'enterPrice', e.target.value)}
-                        className="w-24 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-right text-xs tabular-nums focus:border-indigo-300 focus:outline-none"
-                      />
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <input
-                        type="number"
-                        step="0.001"
-                        value={row.exitPrice}
-                        onChange={(e) => patchCycle(row.id, 'exitPrice', e.target.value)}
-                        className="w-24 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-right text-xs tabular-nums focus:border-indigo-300 focus:outline-none"
-                      />
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <input
-                        type="number"
-                        step="1"
-                        value={row.shares}
-                        onChange={(e) => patchCycle(row.id, 'shares', e.target.value)}
-                        className="w-24 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-right text-xs tabular-nums focus:border-indigo-300 focus:outline-none"
-                      />
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {(() => {
-                        const a = Number(row.enterPrice);
-                        const b = Number(row.exitPrice);
-                        if (!(a > 0) || !(b > 0)) return <span className="text-slate-400">—</span>;
-                        const pct = ((b - a) / a) * 100;
-                        return <span className={pct >= 0 ? 'text-emerald-600' : 'text-rose-600'}>{formatPercent(pct, 2, true)}</span>;
-                      })()}
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        value={row.note}
-                        onChange={(e) => patchCycle(row.id, 'note', e.target.value)}
-                        className="w-full min-w-[8rem] rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs focus:border-indigo-300 focus:outline-none"
-                        placeholder="备注"
-                      />
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <button
-                        type="button"
-                        onClick={() => removeCycle(row.id)}
-                        className="text-xs font-semibold text-slate-400 hover:text-rose-500"
-                      >
-                        删除
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
     </div>
   );
 }
