@@ -1529,17 +1529,19 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           {intraSignals.map((sig, idx) => (
             <div
               key={`${sig.kind}-${sig.from}-${sig.to}-${idx}`}
-              className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+              className="flex flex-col gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 sm:flex-row sm:items-start sm:gap-3"
             >
-              <Pill tone={sig.kind === 'A' ? 'indigo' : 'emerald'}>规则 {sig.kind}</Pill>
-              <div className="flex-1">
-                <div className="font-semibold text-slate-700">卖 {sig.from} → 买 {sig.to}</div>
-                <div className="text-xs text-slate-500">{sig.fromName || ''} → {sig.toName || ''}。{sig.description}。</div>
+              <div className="flex min-w-0 flex-1 items-start gap-2 sm:gap-3">
+                <Pill tone={sig.kind === 'A' ? 'indigo' : 'emerald'}>规则 {sig.kind}</Pill>
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-slate-700">卖 {sig.from} → 买 {sig.to}</div>
+                  <div className="text-xs text-slate-500">{sig.fromName || ''} → {sig.toName || ''}。{sig.description}。</div>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => openQuickRecordFromIntra(sig)}
-                className={cx(secondaryButtonClass, 'h-8 px-3 text-xs')}
+                className={cx(secondaryButtonClass, 'h-8 w-full px-3 text-xs sm:w-auto')}
                 title="记录此次切换到持仓 ledger"
               >
                 <ClipboardList className="h-4 w-4" />
@@ -1594,18 +1596,20 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         {(otcSignal.ready ? otcSignal.triggered : true) && (
           <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
             {otcSignal.ready ? (
-              <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                <Pill tone={otcSignal.intraLowHard ? 'emerald' : 'amber'}>{otcSignal.level}</Pill>
-                <div className="flex-1">
-                  <div className="font-semibold text-slate-700">
-                    卖 {otcSignal.benchCode} → 申购场外 QDII 联接基金
+              <div className="flex flex-col gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 sm:flex-row sm:items-start sm:gap-3">
+                <div className="flex min-w-0 flex-1 items-start gap-2 sm:gap-3">
+                  <Pill tone={otcSignal.intraLowHard ? 'emerald' : 'amber'}>{otcSignal.level}</Pill>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-slate-700">
+                      卖 {otcSignal.benchCode} → 申购场外 QDII 联接基金
+                    </div>
+                    <div className="text-xs text-slate-500">「{otcSignal.benchCode} {otcSignal.benchName}」溢价偏高且「{otcSignal.lowestCode} {otcSignal.lowestName}」溢价偏低，出现反向套利机会。</div>
                   </div>
-                  <div className="text-xs text-slate-500">「{otcSignal.benchCode} {otcSignal.benchName}」溢价偏高且「{otcSignal.lowestCode} {otcSignal.lowestName}」溢价偏低，出现反向套利机会。</div>
                 </div>
                 <button
                   type="button"
                   onClick={openQuickRecordFromOtc}
-                  className={cx(secondaryButtonClass, 'h-8 px-3 text-xs')}
+                  className={cx(secondaryButtonClass, 'h-8 w-full px-3 text-xs sm:w-auto')}
                   title="记录此次场内→场外切换到持仓 ledger"
                 >
                   <ClipboardList className="h-4 w-4" />
@@ -1683,8 +1687,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       </Card>
 
       {quickRecord && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-slate-900/40 p-3 sm:items-center sm:p-4">
+          <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl sm:rounded-3xl sm:p-6">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">快捷记录</div>
@@ -1734,7 +1738,12 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                 </label>
               </div>
               <label className="flex flex-col gap-1 text-xs text-slate-500 sm:col-span-2">备注
-                <input value={quickRecord.note || ''} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, note: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none" />
+                <textarea
+                  rows={2}
+                  value={quickRecord.note || ''}
+                  onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, note: e.target.value } : prev))}
+                  className="resize-y rounded-md border border-slate-200 bg-white px-2 py-1 text-sm leading-5 text-slate-800 focus:border-indigo-300 focus:outline-none"
+                />
               </label>
             </div>
             {!quickRecordValid && (
