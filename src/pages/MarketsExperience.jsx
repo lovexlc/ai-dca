@@ -11,7 +11,6 @@ import {
   Sparkles,
   Star,
   Trash2,
-  TrendingDown,
   TrendingUp
 } from 'lucide-react';
 import {
@@ -113,8 +112,16 @@ function MoversTable({ rows = [], onPick, klineMap = {} }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {rows.map((row) => (
-            <tr key={row.symbol} className="hover:bg-indigo-50/40">
+          {rows.map((row) => {
+            const pct = Number(row.changePercent);
+            const positive = Number.isFinite(pct) && pct > 0;
+            const negative = Number.isFinite(pct) && pct < 0;
+            return (
+            <tr key={row.symbol} className={cx(
+              'hover:bg-indigo-50/40',
+              positive && 'bg-emerald-50/30',
+              negative && 'bg-rose-50/30'
+            )}>
               <td className="px-3 py-2 align-top font-mono text-xs text-slate-600">
                 <div>{row.symbol}</div>
                 {row.industry ? (
@@ -123,8 +130,11 @@ function MoversTable({ rows = [], onPick, klineMap = {} }) {
               </td>
               <td className="px-3 py-2 align-top text-slate-800">{row.name}</td>
               <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.price)}</td>
-              <td className={cx('px-3 py-2 text-right tabular-nums', changeToneClass(row.changePercent))}>
-                {formatPercent(row.changePercent)}
+              <td className={cx('px-3 py-2 text-right tabular-nums font-semibold', changeToneClass(row.changePercent))}>
+                <span className="inline-flex items-center justify-end gap-0.5">
+                  {positive ? <ArrowUp size={11} /> : negative ? <ArrowDown size={11} /> : null}
+                  {formatPercent(row.changePercent)}
+                </span>
               </td>
               <td className="px-3 py-2 text-right">
                 <div className="inline-flex justify-end">
@@ -142,7 +152,8 @@ function MoversTable({ rows = [], onPick, klineMap = {} }) {
                 </button>
               </td>
             </tr>
-          ))}
+          );
+          })}
         </tbody>
       </table>
     </div>
@@ -226,7 +237,6 @@ export function MarketsExperience() {
   const [indices, setIndices] = useState([]);
   const [indicesLoading, setIndicesLoading] = useState(false);
   const [movers, setMovers] = useState([]);
-  const [moversDir, setMoversDir] = useState('gainers');
   const [moversLoading, setMoversLoading] = useState(false);
   const [news, setNews] = useState([]);
   const [newsLoading, setNewsLoading] = useState(false);
@@ -283,7 +293,7 @@ export function MarketsExperience() {
   const refreshMovers = useCallback(async (forceRefresh = false) => {
     setMoversLoading(true);
     try {
-      const r = await fetchMovers(market, { direction: moversDir, refresh: forceRefresh });
+      const r = await fetchMovers(market, { direction: 'mixed', refresh: forceRefresh });
       const list = Array.isArray(r.list) ? r.list : [];
       setMovers(list);
       ensureKlines(list.map((it) => it.symbol).filter(Boolean));
@@ -292,7 +302,7 @@ export function MarketsExperience() {
     } finally {
       setMoversLoading(false);
     }
-  }, [market, moversDir, ensureKlines]);
+  }, [market, ensureKlines]);
 
   const refreshNews = useCallback(async () => {
     setNewsLoading(true);
@@ -431,31 +441,10 @@ export function MarketsExperience() {
         <Card className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              {moversDir === 'gainers' ? <TrendingUp size={16} className="text-emerald-500" /> : <TrendingDown size={16} className="text-rose-500" />}
-              <h2 className="text-base font-semibold text-slate-800">{moversDir === 'gainers' ? '涨幅榜' : '跌幅榜'}</h2>
+              <TrendingUp size={16} className="text-indigo-500" />
+              <h2 className="text-base font-semibold text-slate-800">涨跌榜</h2>
               {moversLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
-            </div>
-            <div className="flex items-center gap-1 text-xs">
-              <button
-                type="button"
-                className={cx(
-                  'rounded-full px-2 py-1 transition',
-                  moversDir === 'gainers' ? 'bg-emerald-500 text-white' : 'bg-white/80 text-slate-500 hover:bg-emerald-50'
-                )}
-                onClick={() => setMoversDir('gainers')}
-              >
-                涨幅
-              </button>
-              <button
-                type="button"
-                className={cx(
-                  'rounded-full px-2 py-1 transition',
-                  moversDir === 'losers' ? 'bg-rose-500 text-white' : 'bg-white/80 text-slate-500 hover:bg-rose-50'
-                )}
-                onClick={() => setMoversDir('losers')}
-              >
-                跌幅
-              </button>
+              <span className="text-xs text-slate-400">默认按 |涨跌幅| 排序</span>
             </div>
           </div>
           <MoversTable rows={movers} onPick={handlePickMover} klineMap={klineMap} />

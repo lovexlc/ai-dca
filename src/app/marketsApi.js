@@ -61,7 +61,7 @@ export async function fetchKline(symbol, { timeframe = '1d' } = {}) {
   return getJson('/kline/' + encodeURIComponent(symbol) + '?tf=' + encodeURIComponent(timeframe));
 }
 
-export async function fetchMovers(market, { direction = 'gainers', refresh = false } = {}) {
+export async function fetchMovers(market, { direction = 'mixed', refresh = false } = {}) {
   const q = refresh ? '&refresh=1' : '';
   return getJson('/movers?market=' + encodeURIComponent(market) + '&direction=' + encodeURIComponent(direction) + q);
 }

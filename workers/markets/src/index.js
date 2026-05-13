@@ -78,7 +78,8 @@ export default {
       }
       if (path === '/movers') {
         const market = (url.searchParams.get('market') || 'us').toLowerCase();
-        const direction = url.searchParams.get('direction') === 'losers' ? 'losers' : 'gainers';
+        const dirParam = url.searchParams.get('direction') || 'mixed';
+        const direction = dirParam === 'gainers' ? 'gainers' : dirParam === 'losers' ? 'losers' : 'mixed';
         return await handleMovers(env, market, direction, url.searchParams.get('refresh') === '1');
       }
       if (path === '/news') {
@@ -229,13 +230,35 @@ async function handleMovers(env, market, direction, forceRefresh) {
   }
   let list = [];
   if (market === 'cn') {
-    list = await fetchEastmoneyMovers({ direction, limit: 30 });
+    if (direction === 'mixed') {
+      // 混合榜：拉一份涨幅 + 一份跌幅，按 |涨跌幅| desc 合并去重取 top30。
+      const [gainers, losers] = await Promise.all([
+        fetchEastmoneyMovers({ direction: 'gainers', limit: 20 }),
+        fetchEastmoneyMovers({ direction: 'losers', limit: 20 })
+      ]);
+      const seen = new Set();
+      const merged = [];
+      for (const r of [...(gainers || []), ...(losers || [])]) {
+        if (!r || !r.symbol || seen.has(r.symbol)) continue;
+        seen.add(r.symbol);
+        merged.push(r);
+      }
+      merged.sort((a, b) => Math.abs(Number(b.changePercent) || 0) - Math.abs(Number(a.changePercent) || 0));
+      list = merged.slice(0, 30);
+    } else {
+      list = await fetchEastmoneyMovers({ direction, limit: 30 });
+    }
   } else if (market === 'us') {
     // 从热门池中拉 quotes 后按涨跌幅排序。
     const quoteMap = await fetchYahooQuotesBatch(US_TOP_TICKERS, { range: '1d', interval: '5m' });
     const arr = Object.values(quoteMap).filter((q) => q && q.changePercent != null && !q.error);
-    arr.sort((a, b) => (direction === 'losers' ? a.changePercent - b.changePercent : b.changePercent - a.changePercent));
-    list = arr.slice(0, 20).map((q) => ({
+    if (direction === 'mixed') {
+      arr.sort((a, b) => Math.abs(Number(b.changePercent) || 0) - Math.abs(Number(a.changePercent) || 0));
+    } else {
+      arr.sort((a, b) => (direction === 'losers' ? a.changePercent - b.changePercent : b.changePercent - a.changePercent));
+    }
+    const limit = direction === 'mixed' ? 30 : 20;
+    list = arr.slice(0, limit).map((q) => ({
       symbol: q.symbol,
       code: q.symbol,
       name: q.name,
@@ -345,10 +368,10 @@ async function handleManualRefresh(env, body, ctx) {
     return json(await refreshIndices(env, 'cn'));
   }
   if (target === 'us-movers') {
-    return await handleMovers(env, 'us', 'gainers', true);
+    return await handleMovers(env, 'us', 'mixed', true);
   }
   if (target === 'cn-movers') {
-    return await handleMovers(env, 'cn', 'gainers', true);
+    return await handleMovers(env, 'cn', 'mixed', true);
   }
   if (target === 'us-news') {
     return await handleNews(env, 'us', true);
@@ -365,11 +388,11 @@ async function runScheduled(env, cron) {
   const hourUtc = new Date().getUTCHours();
   if (hourUtc >= 1 && hourUtc <= 7) {
     tasks.push(refreshIndices(env, 'cn'));
-    tasks.push(handleMovers(env, 'cn', 'gainers', true));
+    tasks.push(handleMovers(env, 'cn', 'mixed', true));
   }
   if (hourUtc >= 13 && hourUtc <= 20) {
     tasks.push(refreshIndices(env, 'us'));
-    tasks.push(handleMovers(env, 'us', 'gainers', true));
+    tasks.push(handleMovers(env, 'us', 'mixed', true));
   }
   if (cron === '30 22 * * *' || cron === '0 7 * * MON-FRI') {
     // 美股收盘后跨天 + A 股盘中际调度。
