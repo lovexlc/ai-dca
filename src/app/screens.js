@@ -3,11 +3,12 @@ export const PROJECT_TITLE = '股票建仓策略看板';
 
 // 主 tab 顺序与元数据：所有页面都通过 WorkspacePage（侧边栏 + ?tab=）展示。
 // 加仓计划（home）和定投计划（dca）已并入交易计划 tab，作为其二级 tab，不再独立出现在侧边栏。
-export const PRIMARY_TAB_ORDER = ['holdings', 'tradePlans', 'fundSwitch', 'history', 'notify', 'backup'];
+export const PRIMARY_TAB_ORDER = ['holdings', 'tradePlans', 'fundSwitch', 'markets', 'history', 'notify', 'backup'];
 
 export const PRIMARY_TAB_META = {
   tradePlans: { label: '交易计划', hrefKey: 'tradePlans' },
   fundSwitch: { label: '基金切换', hrefKey: 'fundSwitch' },
+  markets: { label: '行情中心', hrefKey: 'markets' },
   history: { label: '交易历史', hrefKey: 'history' },
   holdings: { label: '持仓总览', hrefKey: 'holdings' },
   newPlan: { label: '新建计划', hrefKey: 'newPlan' },
@@ -33,6 +34,7 @@ export function createPageLinks({ inPagesDir = false } = {}) {
     tradePlansHome: `${indexHref}?tab=tradePlans#home`,
     dca: `${indexHref}?tab=tradePlans#dca`,
     fundSwitch: `${indexHref}?tab=fundSwitch`,
+    markets: `${indexHref}?tab=markets`,
     history: `${indexHref}?tab=history`,
     holdings: `${indexHref}?tab=holdings`,
     newPlan: `${indexHref}?tab=newPlan`,

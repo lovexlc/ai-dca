@@ -1,0 +1,74 @@
+name = "ai-dca-markets"
+main = "src/index.js"
+compatibility_date = "2026-05-12"
+compatibility_flags = ["nodejs_compat"]
+
+# 复刻 Google Finance 的行情 + AI 问答 Worker。
+# 端点：
+#   GET  /api/markets/health                — 健康检查
+#   GET  /api/markets/indices?market=us|cn  — 指数卡片数据
+#   GET  /api/markets/quote/:symbol         — 单只行情快照
+#   GET  /api/markets/quotes?symbols=...    — 批量
+#   GET  /api/markets/kline/:symbol?tf=1d   — K 线 (R2)
+#   GET  /api/markets/movers?market=us|cn   — 涨跌榜
+#   GET  /api/markets/news?market=us|cn     — 新闻列表
+#   GET  /api/markets/profile/:symbol       — 公司基本面（美股 Finnhub）
+#   POST /api/markets/ask                   — AI 问答（Tavily + Workers AI）
+#   POST /api/markets/refresh               — 手动触发抓取
+[[routes]]
+pattern = "tools.freebacktrack.tech/api/markets/*"
+zone_name = "freebacktrack.tech"
+
+[ai]
+binding = "AI"
+
+[placement]
+mode = "smart"
+
+[limits]
+cpu_ms = 300000
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+# 定时抓取：所有 cron 表达式用 UTC。
+#   A 股：北京 09:30-15:00 工作日，每 2 分钟刷一次盘中报价 -> UTC 01:30-07:00 MON-FRI
+#   美股：北京 21:30-04:00 工作日（含夏令时简化），每 5 分钟刷一次 -> UTC 13:30-20:00 MON-FRI
+#   每日收盘后落 K 线 + 新闻：北京 06:30 (UTC 22:30) 任何天，覆盖前一交易日美股；
+#                              北京 15:30 (UTC 07:30) 工作日，覆盖 A 股。
+[triggers]
+crons = [
+  "*/2 1-6 * * MON-FRI",
+  "0 7 * * MON-FRI",
+  "30 7 * * MON-FRI",
+  "*/5 13-20 * * MON-FRI",
+  "30 22 * * *"
+]
+
+[vars]
+# Workers AI 默认模型。GLM-4.7-Flash 中文友好、tool calling 支持，便宜快。
+# 复杂问题（多步推理 / 比较多只股票）可在前端切换到 kimi-k2.6。
+CHAT_MODEL_FAST = "@cf/zai-org/glm-4.7-flash"
+CHAT_MODEL_DEEP = "@cf/moonshotai/kimi-k2.6"
+CHAT_MAX_TOKENS = "2048"
+# Tavily 搜索 endpoint。
+TAVILY_ENDPOINT = "https://api.tavily.com/search"
+# Finnhub REST base。
+FINNHUB_BASE = "https://finnhub.io/api/v1"
+
+[[kv_namespaces]]
+binding = "MARKETS_KV"
+id = "604823eb1497431bb8a13f895a0d68e3"
+preview_id = "cad6a160bc0a47f9adbd9f07559374ac"
+
+[[r2_buckets]]
+binding = "MARKETS_R2"
+bucket_name = "ai-dca-markets"
+preview_bucket_name = "ai-dca-markets"
