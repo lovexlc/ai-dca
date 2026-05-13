@@ -2,10 +2,10 @@
   "dataset": "etf_latest_nav_eastmoney",
   "code": "159941",
   "name": "广发纳斯达克100ETF",
-  "latestNav": 1.4999,
-  "latestNavDate": "2026-05-08",
-  "previousNav": 1.4652,
-  "previousNavDate": "2026-05-07",
+  "latestNav": 1.5035,
+  "latestNavDate": "2026-05-11",
+  "previousNav": 1.4999,
+  "previousNavDate": "2026-05-08",
   "source": "eastmoney:f10/lsjz",
-  "generatedAt": "2026-05-12T10:07:23.314Z"
+  "generatedAt": "2026-05-13T10:06:17.983Z"
 }
