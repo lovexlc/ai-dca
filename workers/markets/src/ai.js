@@ -6,7 +6,7 @@ const SYSTEM_PROMPT = `你是一个专注于金融市场的助手，服务对象
 2. 回答采用中文，结论放在最前，后面用小标题 + 简短要点列表说明理由。
 3. 涉及价格 / 涨跌幅 / 交易代码时，一定从“行情快照”取数，并标明数据时间点。
 4. 不提供个股买卖建议。可以描述估值、趋势、风险点，但不给买/卖/持有的明确指令。
-5. 在文末加一个“参考来源”区块，列出所引用的网站标题 + URL。如果用了多个，编号。`;
+5. 【重要】不要在回答里追加“参考来源”/“引用”/“来源”/“sources”区块，也不要在文末重复列出 URL；前端会单独展示来源列表。如需引用可在正文用[1][2]这样的角标对应组号即可。`;
 
 export async function tavilySearch({ query, key, maxResults = 5 }) {
   if (!key) throw new Error('missing TAVILY_API_KEY');
@@ -99,8 +99,16 @@ export async function askWithGrounding({ env, question, quoteSnapshots = [], dep
       || '';
   }
 
+  // 防模型偷加参考来源区块：裁掉最后一个“参考来源 / 来源 / 引用 / Sources”标题之后的所有内容。
+  const HEADING_RE = /(?:^|\n)\s*(?:#{1,6}\s*)?\**\s*(?:参考来源|来源|引用|资料来源|sources|references)\s*\**\s*[:。：]?\s*\n/gi;
+  let cleaned = String(answer);
+  let lastIdx = -1;
+  let m;
+  while ((m = HEADING_RE.exec(cleaned)) !== null) lastIdx = m.index;
+  if (lastIdx >= 0) cleaned = cleaned.slice(0, lastIdx).replace(/\s+$/, '');
+
   return {
-    answer: String(answer).trim(),
+    answer: cleaned.trim(),
     model,
     aiError,
     sources: searchResults.map((r) => ({ title: r.title, url: r.url, score: r.score })),

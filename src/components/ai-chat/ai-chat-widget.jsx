@@ -57,8 +57,18 @@ function persistMode(mode) {
   try { localStorage.setItem(MODE_KEY, mode); } catch (err) { /* ignore */ }
 }
 
+function stripTrailingSourcesBlock(text) {
+  const s = String(text || '');
+  if (!s) return s;
+  const re = /\n?\s*(?:#{1,6}\s*)?\**\s*(?:参考来源|来源|引用|资料来源|sources|references)\s*\**\s*[:。：]?\s*\n/gi;
+  let last = -1;
+  let m;
+  while ((m = re.exec(s)) !== null) last = m.index;
+  return last >= 0 ? s.slice(0, last).replace(/\s+$/, '') : s;
+}
+
 function formatMarketsAnswer(res) {
-  const answer = String((res && res.answer) || '').trim();
+  const answer = stripTrailingSourcesBlock(String((res && res.answer) || '').trim());
   const sources = Array.isArray(res && res.sources) ? res.sources.slice(0, 6) : [];
   const parts = [];
   if (answer) {
