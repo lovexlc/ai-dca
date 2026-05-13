@@ -115,8 +115,13 @@ function MoversTable({ rows = [], onPick, klineMap = {} }) {
         <tbody className="divide-y divide-slate-100">
           {rows.map((row) => (
             <tr key={row.symbol} className="hover:bg-indigo-50/40">
-              <td className="px-3 py-2 font-mono text-xs text-slate-600">{row.symbol}</td>
-              <td className="px-3 py-2 text-slate-800">{row.name}</td>
+              <td className="px-3 py-2 align-top font-mono text-xs text-slate-600">
+                <div>{row.symbol}</div>
+                {row.industry ? (
+                  <div className="mt-0.5 text-[10px] font-normal text-slate-400">{row.industry}</div>
+                ) : null}
+              </td>
+              <td className="px-3 py-2 align-top text-slate-800">{row.name}</td>
               <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.price)}</td>
               <td className={cx('px-3 py-2 text-right tabular-nums', changeToneClass(row.changePercent))}>
                 {formatPercent(row.changePercent)}

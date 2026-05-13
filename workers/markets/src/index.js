@@ -243,12 +243,38 @@ async function handleMovers(env, market, direction, forceRefresh) {
       changePercent: q.changePercent,
       change: q.change
     }));
+    list = await enrichWithProfiles(env, list);
   } else {
     return errorJson('unknown market ' + market, 400);
   }
   const payload = { market, direction, generatedAt: new Date().toISOString(), list };
   await kvPutJson(env, key, payload, { ttlSeconds: 1800 });
   return json({ ...payload, cached: false });
+}
+
+async function enrichWithProfiles(env, list) {
+  if (!env.FINNHUB_TOKEN || !Array.isArray(list) || !list.length) return list;
+  const out = await Promise.all(
+    list.map(async (row) => {
+      const sym = row && row.symbol;
+      if (!sym) return row;
+      const cacheKey = 'profile:us:' + sym;
+      try {
+        let prof = await kvGetJson(env, cacheKey);
+        if (!prof) {
+          prof = await fetchFinnhubProfile(sym, { token: env.FINNHUB_TOKEN });
+          if (prof && typeof prof === 'object') {
+            await kvPutJson(env, cacheKey, prof, { ttlSeconds: 7 * 24 * 3600 });
+          }
+        }
+        const industry = (prof && (prof.finnhubIndustry || prof.gicsSector || prof.industry)) || '';
+        return industry ? { ...row, industry } : row;
+      } catch (err) {
+        return row;
+      }
+    })
+  );
+  return out;
 }
 
 async function handleNews(env, market, forceRefresh) {
