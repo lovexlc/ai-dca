@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Info, RefreshCw, Radio, PlayCircle, ChevronDown } from 'lucide-react';
+import { AlertTriangle, ClipboardList, Info, RefreshCw, Radio, PlayCircle, ChevronDown } from 'lucide-react';
 import { Card, Pill, SectionHeading, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
-import { readLedgerState } from '../app/holdingsLedger.js';
-import { aggregateByCode } from '../app/holdingsLedgerCore.js';
+import { readLedgerState, persistLedgerState } from '../app/holdingsLedger.js';
+import { aggregateByCode, buildTransactionId, detectFundKind, normalizeTransaction } from '../app/holdingsLedgerCore.js';
 import {
   loadSwitchConfigFromWorker,
   loadSwitchSnapshotFromWorker,
@@ -284,6 +284,9 @@ async function loadEtfLatestPrice(code, { inPagesDir = false } = {}) {
 
 export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false } = {}) {
   const [prefs, setPrefs] = useState(readPrefs);
+  // 「记录此次切换」快捷入口的 Modal 表单状态。
+  // 为 null 时不渲染 Modal；设为表单对象后开启录入。
+  const [quickRecord, setQuickRecord] = useState(null);
   const [aggregates, setAggregates] = useState([]);
   const [refreshTick, setRefreshTick] = useState(0);
 
@@ -1000,6 +1003,101 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     return { benches, Lbenches, Hbenches, Lrow, Hrow, pairs, Hpool, Lpool, cls };
   }, [prefs?.benchmarkCodes, prefs?.enabledCodes, prefs?.premiumClass]);
 
+  // 机会卡片点「记录此次切换」后的快捷入口：
+  //   1. 从 intra signal / otc signal 预填表单 → setQuickRecord(form)。
+  //   2. 用户在 Modal 里补全价格、份额、备注 → saveQuickRecord 写入持仓 ledger。
+  //   3. 两笔交易 (SELL + BUY) 互指 switchPairId，复盘页 buildAutoSwitchChains 会自动推导出切换链路；
+  //      持仓总览也读同一份 holdings ledger，无需额外同步。
+  const openQuickRecordFromIntra = useCallback((sig) => {
+    setQuickRecord({
+      date: new Date().toISOString().slice(0, 10),
+      sellCode: sig?.from || '',
+      sellName: sig?.fromName || '',
+      sellPrice: '',
+      sellShares: '',
+      buyCode: sig?.to || '',
+      buyName: sig?.toName || '',
+      buyPrice: '',
+      buyShares: '',
+      note: `规则 ${sig?.kind || ''} · ${sig?.description || ''}`.trim(),
+      sourceKind: 'intra'
+    });
+  }, []);
+
+  const openQuickRecordFromOtc = useCallback(() => {
+    setQuickRecord({
+      date: new Date().toISOString().slice(0, 10),
+      sellCode: otcSignal?.benchCode || '',
+      sellName: otcSignal?.benchName || '',
+      sellPrice: '',
+      sellShares: '',
+      buyCode: '',
+      buyName: '',
+      buyPrice: '',
+      buyShares: '',
+      note: `场外申购 QDII 联接 · 参考场内最低溢价 ${otcSignal?.lowestCode || ''}`,
+      sourceKind: 'otc'
+    });
+  }, [otcSignal?.benchCode, otcSignal?.benchName, otcSignal?.lowestCode]);
+
+  const quickRecordValid = !!(
+    quickRecord
+    && quickRecord.sellCode && quickRecord.buyCode
+    && Number(quickRecord.sellPrice) > 0
+    && Number(quickRecord.sellShares) > 0
+    && Number(quickRecord.buyPrice) > 0
+    && Number(quickRecord.buyShares) > 0
+  );
+
+  const saveQuickRecord = useCallback(() => {
+    if (!quickRecord) return;
+    const sellPrice = Number(quickRecord.sellPrice);
+    const sellShares = Number(quickRecord.sellShares);
+    const buyPrice = Number(quickRecord.buyPrice);
+    const buyShares = Number(quickRecord.buyShares);
+    if (!quickRecord.sellCode || !quickRecord.buyCode) return;
+    if (!(sellPrice > 0) || !(sellShares > 0) || !(buyPrice > 0) || !(buyShares > 0)) return;
+    const sellId = buildTransactionId('quick');
+    const buyId = buildTransactionId('quick');
+    const sellTx = normalizeTransaction({
+      id: sellId,
+      code: quickRecord.sellCode,
+      name: quickRecord.sellName || '',
+      kind: detectFundKind(quickRecord.sellCode, quickRecord.sellName || ''),
+      type: 'SELL',
+      date: quickRecord.date,
+      price: sellPrice,
+      shares: sellShares,
+      switchPairId: buyId,
+      note: quickRecord.note || ''
+    }, { idPrefix: 'quick' });
+    const buyTx = normalizeTransaction({
+      id: buyId,
+      code: quickRecord.buyCode,
+      name: quickRecord.buyName || '',
+      kind: detectFundKind(quickRecord.buyCode, quickRecord.buyName || ''),
+      type: 'BUY',
+      date: quickRecord.date,
+      price: buyPrice,
+      shares: buyShares,
+      switchPairId: sellId,
+      note: quickRecord.note || ''
+    }, { idPrefix: 'quick' });
+    const current = readLedgerState();
+    persistLedgerState({
+      ...current,
+      transactions: [...(Array.isArray(current.transactions) ? current.transactions : []), sellTx, buyTx]
+    });
+    // 同窗口其它组件（复盘页、持仓总览页）不会自动收到 localStorage 的 storage 事件，
+    // 主动 dispatch 一下便于订阅了 storage 的页面重新读取 ledger。
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new StorageEvent('storage', { key: 'aiDcaFundHoldingsLedger' }));
+      }
+    } catch (_error) { /* ignore */ }
+    setQuickRecord(null);
+  }, [quickRecord]);
+
   return (
     <div className="space-y-6">
       <Card>
@@ -1438,6 +1536,15 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                 <div className="font-semibold text-slate-700">卖 {sig.from} → 买 {sig.to}</div>
                 <div className="text-xs text-slate-500">{sig.fromName || ''} → {sig.toName || ''}。{sig.description}。</div>
               </div>
+              <button
+                type="button"
+                onClick={() => openQuickRecordFromIntra(sig)}
+                className={cx(secondaryButtonClass, 'h-8 px-3 text-xs')}
+                title="记录此次切换到持仓 ledger"
+              >
+                <ClipboardList className="h-4 w-4" />
+                记录此次切换
+              </button>
             </div>
           ))}
         </div>
@@ -1495,6 +1602,15 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                   </div>
                   <div className="text-xs text-slate-500">「{otcSignal.benchCode} {otcSignal.benchName}」溢价偏高且「{otcSignal.lowestCode} {otcSignal.lowestName}」溢价偏低，出现反向套利机会。</div>
                 </div>
+                <button
+                  type="button"
+                  onClick={openQuickRecordFromOtc}
+                  className={cx(secondaryButtonClass, 'h-8 px-3 text-xs')}
+                  title="记录此次场内→场外切换到持仓 ledger"
+                >
+                  <ClipboardList className="h-4 w-4" />
+                  记录此次切换
+                </button>
               </div>
             ) : (
               <div className="flex items-center gap-2 text-sm text-slate-500">
@@ -1565,6 +1681,72 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           )}
         </div>
       </Card>
+
+      {quickRecord && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">快捷记录</div>
+                <div className="mt-1 text-lg font-semibold text-slate-800">登记一次场内 / 场外切换</div>
+                <div className="mt-1 text-xs text-slate-500">写入持仓 ledger 的一对 SELL/BUY 交易，并自动配对 switchPairId，复盘与持仓总览均会读取。</div>
+              </div>
+              <button type="button" onClick={() => setQuickRecord(null)} className="text-xs text-slate-400 hover:text-slate-600">关闭</button>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-1 text-xs text-slate-500 sm:col-span-2">
+                日期
+                <input
+                  type="date"
+                  value={quickRecord.date || ''}
+                  onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, date: e.target.value } : prev))}
+                  className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none"
+                />
+              </label>
+              <div className="rounded-2xl border border-rose-100 bg-rose-50/60 p-3">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-500">卖出</div>
+                <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">代码
+                  <input value={quickRecord.sellCode || ''} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, sellCode: e.target.value.trim() } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none" />
+                </label>
+                <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">名称
+                  <input value={quickRecord.sellName || ''} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, sellName: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none" />
+                </label>
+                <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">成交价
+                  <input type="number" step="0.0001" value={quickRecord.sellPrice} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, sellPrice: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-800 focus:border-indigo-300 focus:outline-none" />
+                </label>
+                <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">份额
+                  <input type="number" step="1" value={quickRecord.sellShares} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, sellShares: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-800 focus:border-indigo-300 focus:outline-none" />
+                </label>
+              </div>
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600">买入</div>
+                <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">代码
+                  <input value={quickRecord.buyCode || ''} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, buyCode: e.target.value.trim() } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none" />
+                </label>
+                <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">名称
+                  <input value={quickRecord.buyName || ''} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, buyName: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none" />
+                </label>
+                <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">成交价
+                  <input type="number" step="0.0001" value={quickRecord.buyPrice} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, buyPrice: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-800 focus:border-indigo-300 focus:outline-none" />
+                </label>
+                <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">份额
+                  <input type="number" step="1" value={quickRecord.buyShares} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, buyShares: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-800 focus:border-indigo-300 focus:outline-none" />
+                </label>
+              </div>
+              <label className="flex flex-col gap-1 text-xs text-slate-500 sm:col-span-2">备注
+                <input value={quickRecord.note || ''} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, note: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none" />
+              </label>
+            </div>
+            {!quickRecordValid && (
+              <div className="mt-3 text-xs text-rose-500">需要填写卖出 / 买入的代码、成交价和份额（均为正数）。</div>
+            )}
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button type="button" onClick={() => setQuickRecord(null)} className={cx(secondaryButtonClass, 'h-9 px-4 text-xs')}>取消</button>
+              <button type="button" onClick={saveQuickRecord} disabled={!quickRecordValid} className={cx(primaryButtonClass, 'h-9 px-4 text-xs', !quickRecordValid && 'cursor-not-allowed opacity-50')}>保存到持仓 ledger</button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

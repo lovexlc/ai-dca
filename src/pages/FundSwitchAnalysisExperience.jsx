@@ -16,7 +16,7 @@ import {
 import { formatCurrency } from '../app/accumulation.js';
 import { Pill, cx } from '../components/experience-ui.jsx';
 
-const LEDGER_STORAGE_KEY = 'aiDcaHoldingsLedger_v1';
+const LEDGER_STORAGE_KEY = 'aiDcaFundHoldingsLedger';
 
 /**
  * 从 ledger transactions 自动推导切换链路：
