@@ -80,12 +80,29 @@ export async function askWithGrounding({ env, question, quoteSnapshots = [], dep
     }
   ];
 
-  const aiResp = await env.AI.run(model, { messages, max_tokens: maxTokens });
-  const answer = typeof aiResp === 'string' ? aiResp : aiResp?.response || aiResp?.result?.response || '';
+  let aiResp;
+  let aiError = '';
+  try {
+    aiResp = await env.AI.run(model, { messages, max_tokens: maxTokens });
+  } catch (err) {
+    aiError = String(err?.message || err);
+  }
+  let answer = '';
+  if (typeof aiResp === 'string') {
+    answer = aiResp;
+  } else if (aiResp) {
+    answer = aiResp.response
+      || aiResp?.result?.response
+      || aiResp?.choices?.[0]?.message?.content
+      || aiResp?.output?.[0]?.content?.[0]?.text
+      || aiResp?.output_text
+      || '';
+  }
 
   return {
     answer: String(answer).trim(),
     model,
+    aiError,
     sources: searchResults.map((r) => ({ title: r.title, url: r.url, score: r.score })),
     searchError,
     quoteSnapshots

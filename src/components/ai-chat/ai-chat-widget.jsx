@@ -61,7 +61,13 @@ function formatMarketsAnswer(res) {
   const answer = String((res && res.answer) || '').trim();
   const sources = Array.isArray(res && res.sources) ? res.sources.slice(0, 6) : [];
   const parts = [];
-  if (answer) parts.push(answer);
+  if (answer) {
+    parts.push(answer);
+  } else if (res && res.aiError) {
+    parts.push(`抱歉，生成回答时出错：${res.aiError}`);
+  } else {
+    parts.push('抱歉，本次未生成回答。可以试试重新提问或切换到深度模式。');
+  }
   if (sources.length) {
     const lines = sources.map((s, i) => {
       const title = (s && s.title) || (s && s.url) || '未命名来源';
@@ -592,42 +598,6 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
               <Sparkles className="h-4 w-4" aria-hidden="true" />
               <span>AI 问答</span>
             </div>
-            <div className="ai-chat-mode" role="tablist" aria-label="问答模式">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode === 'chat'}
-                className={`ai-chat-mode__btn${mode === 'chat' ? ' is-active' : ''}`}
-                onClick={() => setMode('chat')}
-                disabled={pending}
-              >
-                <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>知识库</span>
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode === 'markets'}
-                className={`ai-chat-mode__btn${mode === 'markets' ? ' is-active' : ''}`}
-                onClick={() => setMode('markets')}
-                disabled={pending}
-              >
-                <LineChart className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>市场行情</span>
-              </button>
-              {mode === 'markets' ? (
-                <select
-                  value={marketsDepth}
-                  onChange={(e) => setMarketsDepth(e.target.value)}
-                  className="ai-chat-mode__depth"
-                  aria-label="检索深度"
-                  disabled={pending}
-                >
-                  <option value="fast">快速</option>
-                  <option value="deep">深度</option>
-                </select>
-              ) : null}
-            </div>
             <div className="ai-chat-panel__actions">
               <button
                 type="button"
@@ -648,6 +618,42 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
               </button>
             </div>
           </header>
+          <div className="ai-chat-mode" role="tablist" aria-label="问答模式">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'chat'}
+              className={`ai-chat-mode__btn${mode === 'chat' ? ' is-active' : ''}`}
+              onClick={() => setMode('chat')}
+              disabled={pending}
+            >
+              <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>知识库</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'markets'}
+              className={`ai-chat-mode__btn${mode === 'markets' ? ' is-active' : ''}`}
+              onClick={() => setMode('markets')}
+              disabled={pending}
+            >
+              <LineChart className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>市场行情</span>
+            </button>
+            {mode === 'markets' ? (
+              <select
+                value={marketsDepth}
+                onChange={(e) => setMarketsDepth(e.target.value)}
+                className="ai-chat-mode__depth"
+                aria-label="检索深度"
+                disabled={pending}
+              >
+                <option value="fast">快速</option>
+                <option value="deep">深度</option>
+              </select>
+            ) : null}
+          </div>
           </div>
 
           <div className="ai-chat-panel__list" ref={listRef}>

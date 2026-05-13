@@ -55,8 +55,8 @@ crons = [
 [vars]
 # Workers AI 默认模型。GLM-4.7-Flash 中文友好、tool calling 支持，便宜快。
 # 复杂问题（多步推理 / 比较多只股票）可在前端切换到 kimi-k2.6。
-CHAT_MODEL_FAST = "@cf/zai-org/glm-4.7-flash"
-CHAT_MODEL_DEEP = "@cf/moonshotai/kimi-k2.6"
+CHAT_MODEL_FAST = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+CHAT_MODEL_DEEP = "@cf/qwen/qwq-32b"
 CHAT_MAX_TOKENS = "2048"
 # Tavily 搜索 endpoint。
 TAVILY_ENDPOINT = "https://api.tavily.com/search"
