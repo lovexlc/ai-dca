@@ -25,6 +25,7 @@ import {
 import {
   addToWatchlist,
   fetchIndices,
+  fetchKline,
   fetchMovers,
   fetchNews,
   fetchQuotes,
@@ -32,6 +33,7 @@ import {
   removeFromWatchlist
 } from '../app/marketsApi.js';
 import { showActionToast } from '../app/toast.js';
+import { Sparkline } from '../components/markets/Sparkline.jsx';
 
 const MARKETS = [
   { key: 'us', label: '美股' },
@@ -64,9 +66,10 @@ function changeToneClass(value) {
   return n > 0 ? 'text-emerald-600' : 'text-rose-500';
 }
 
-function IndexCard({ entry, onPick }) {
+function IndexCard({ entry, onPick, sparkPoints }) {
   const positive = Number(entry.changePercent) > 0;
   const negative = Number(entry.changePercent) < 0;
+  const tone = positive ? 'up' : negative ? 'down' : 'flat';
   return (
     <button
       type="button"
@@ -81,6 +84,9 @@ function IndexCard({ entry, onPick }) {
         </span>
       </div>
       <div className="text-2xl font-semibold tabular-nums text-slate-900">{formatNumber(entry.price)}</div>
+      <div className="-mx-1 w-[calc(100%+0.5rem)]">
+        <Sparkline points={sparkPoints} width={220} height={36} tone={tone} className="w-full" />
+      </div>
       <div className="flex w-full items-center justify-between text-xs text-slate-400">
         <span>{entry.symbol}</span>
         <span className={changeToneClass(entry.change)}>{formatNumber(entry.change)}</span>
@@ -89,7 +95,7 @@ function IndexCard({ entry, onPick }) {
   );
 }
 
-function MoversTable({ rows = [], onPick }) {
+function MoversTable({ rows = [], onPick, klineMap = {} }) {
   if (!rows.length) {
     return <p className="text-sm text-slate-400">暂无榜单数据。</p>;
   }
@@ -102,6 +108,7 @@ function MoversTable({ rows = [], onPick }) {
             <th className="px-3 py-2 text-left">名称</th>
             <th className="px-3 py-2 text-right">最新价</th>
             <th className="px-3 py-2 text-right">涨跌幅</th>
+            <th className="px-3 py-2 text-right">趋势</th>
             <th className="px-3 py-2 text-right">操作</th>
           </tr>
         </thead>
@@ -113,6 +120,11 @@ function MoversTable({ rows = [], onPick }) {
               <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.price)}</td>
               <td className={cx('px-3 py-2 text-right tabular-nums', changeToneClass(row.changePercent))}>
                 {formatPercent(row.changePercent)}
+              </td>
+              <td className="px-3 py-2 text-right">
+                <div className="inline-flex justify-end">
+                  <Sparkline points={klineMap[row.symbol]} width={72} height={24} tone="auto" />
+                </div>
               </td>
               <td className="px-3 py-2 text-right">
                 <button
@@ -219,6 +231,29 @@ export function MarketsExperience() {
   const [symbolInput, setSymbolInput] = useState('');
   const [generatedAt, setGeneratedAt] = useState('');
   const reqIdRef = useRef(0);
+  const [klineMap, setKlineMap] = useState({});
+  const klineInflightRef = useRef(new Set());
+
+  const ensureKlines = useCallback(async (symbols) => {
+    const uniq = Array.from(new Set((symbols || []).filter(Boolean)));
+    const pending = uniq.filter((s) => !klineInflightRef.current.has(s));
+    pending.forEach((s) => klineInflightRef.current.add(s));
+    if (!pending.length) return;
+    await Promise.all(
+      pending.map(async (sym) => {
+        try {
+          const r = await fetchKline(sym, { timeframe: '1d' });
+          const candles = Array.isArray(r && r.candles) ? r.candles : [];
+          const pts = candles.slice(-30).map((c) => Number(c && c.c)).filter((v) => Number.isFinite(v));
+          if (pts.length >= 2) setKlineMap((prev) => ({ ...prev, [sym]: pts }));
+        } catch (err) {
+          // sparkline is best-effort, ignore individual failures
+        } finally {
+          klineInflightRef.current.delete(sym);
+        }
+      })
+    );
+  }, []);
 
   const watchSymbols = useMemo(() => watch[market] || [], [watch, market]);
 
@@ -228,7 +263,9 @@ export function MarketsExperience() {
     try {
       const r = await fetchIndices(market, { refresh: forceRefresh });
       if (reqId !== reqIdRef.current) return;
-      setIndices(Array.isArray(r.indexes) ? r.indexes : []);
+      const list = Array.isArray(r.indexes) ? r.indexes : [];
+      setIndices(list);
+      ensureKlines(list.map((it) => it.symbol).filter(Boolean));
       setGeneratedAt(r.generatedAt || '');
     } catch (err) {
       if (reqId !== reqIdRef.current) return;
@@ -236,19 +273,21 @@ export function MarketsExperience() {
     } finally {
       if (reqId === reqIdRef.current) setIndicesLoading(false);
     }
-  }, [market]);
+  }, [market, ensureKlines]);
 
   const refreshMovers = useCallback(async (forceRefresh = false) => {
     setMoversLoading(true);
     try {
       const r = await fetchMovers(market, { direction: moversDir, refresh: forceRefresh });
-      setMovers(Array.isArray(r.list) ? r.list : []);
+      const list = Array.isArray(r.list) ? r.list : [];
+      setMovers(list);
+      ensureKlines(list.map((it) => it.symbol).filter(Boolean));
     } catch (err) {
       showActionToast('涨跌榜加载失败', 'error');
     } finally {
       setMoversLoading(false);
     }
-  }, [market, moversDir]);
+  }, [market, moversDir, ensureKlines]);
 
   const refreshNews = useCallback(async () => {
     setNewsLoading(true);
@@ -370,7 +409,12 @@ export function MarketsExperience() {
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {indices.map((entry) => (
-            <IndexCard key={entry.symbol} entry={entry} onPick={(e) => handlePickMover(e)} />
+            <IndexCard
+              key={entry.symbol}
+              entry={entry}
+              onPick={(e) => handlePickMover(e)}
+              sparkPoints={klineMap[entry.symbol]}
+            />
           ))}
           {!indices.length && !indicesLoading && (
             <p className="text-sm text-slate-400">暂无指数数据。</p>
@@ -409,7 +453,7 @@ export function MarketsExperience() {
               </button>
             </div>
           </div>
-          <MoversTable rows={movers} onPick={handlePickMover} />
+          <MoversTable rows={movers} onPick={handlePickMover} klineMap={klineMap} />
         </Card>
 
         <Card className="space-y-3">
