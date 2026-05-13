@@ -157,6 +157,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 6px;
+  flex-wrap: nowrap;
   padding: 12px 14px;
   border-bottom: 1px solid #e2e8f0;
   background: linear-gradient(135deg, #eef2ff, #f5f3ff);
@@ -169,11 +171,14 @@
   font-size: 14px;
   font-weight: 600;
   color: #3730a3;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .ai-chat-panel__actions {
   display: inline-flex;
   gap: 4px;
+  flex: 0 0 auto;
 }
 
 .ai-chat-mode {
@@ -183,6 +188,9 @@
   padding: 2px;
   border-radius: 999px;
   background: rgba(99, 102, 241, 0.1);
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: center;
 }
 
 .ai-chat-mode__btn {
@@ -198,6 +206,8 @@
   font-weight: 600;
   cursor: pointer;
   transition: background 120ms ease, color 120ms ease;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .ai-chat-mode__btn.is-active {
@@ -219,6 +229,7 @@
   background: #ffffff;
   font-size: 12px;
   color: #475569;
+  flex: 0 0 auto;
 }
 
 .ai-chat-iconbtn {
@@ -438,6 +449,10 @@
     border-bottom: 1px solid #f1f5f9;
     padding: 6px 14px 10px;
   }
+  /* 手机端标题文字留给模式切换，只保留小图标 */
+  .ai-chat-panel__title span { display: none; }
+  .ai-chat-mode__btn { padding: 4px 8px; }
+  .ai-chat-mode__depth { padding: 3px 4px; }
   .ai-chat-panel__list {
     background: #ffffff;
     padding: 12px 14px;
