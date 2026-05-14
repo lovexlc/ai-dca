@@ -146,17 +146,15 @@ function IndexCard({ entry, onPick, sparkPoints }) {
     <button
       type="button"
       onClick={() => onPick && onPick(entry)}
-      className="group flex w-[31%] shrink-0 snap-start flex-col items-start gap-1 rounded-xl border border-slate-200/70 bg-white/80 p-2.5 text-left shadow-sm transition hover:border-indigo-300 hover:shadow-md sm:w-40 lg:w-44"
+      className="group flex w-[31%] min-w-0 shrink-0 snap-start flex-col items-start gap-0.5 overflow-hidden rounded-xl border border-slate-200/70 bg-white/80 p-2.5 text-left shadow-sm transition hover:border-indigo-300 hover:shadow-md sm:w-40 lg:w-44"
     >
       <div className="line-clamp-1 w-full text-xs font-medium text-slate-600">{entry.name || entry.symbol}</div>
-      <div className="flex w-full items-baseline justify-between gap-1">
-        <span className="text-base font-semibold tabular-nums text-slate-900">{formatNumber(entry.price)}</span>
-        <span className={cx('inline-flex items-center gap-0.5 text-[11px] font-medium tabular-nums', changeToneClass(entry.changePercent))}>
-          {positive ? <ArrowUp size={10} /> : negative ? <ArrowDown size={10} /> : null}
-          {formatPercent(entry.changePercent)}
-        </span>
+      <div className="w-full truncate text-[15px] font-semibold leading-tight tabular-nums text-slate-900">{formatNumber(entry.price)}</div>
+      <div className={cx('inline-flex items-center gap-0.5 text-[11px] font-medium tabular-nums', changeToneClass(entry.changePercent))}>
+        {positive ? <ArrowUp size={10} /> : negative ? <ArrowDown size={10} /> : null}
+        {formatPercent(entry.changePercent)}
       </div>
-      <div className="-mx-0.5 w-[calc(100%+0.25rem)]">
+      <div className="mt-1 -mx-0.5 w-[calc(100%+0.25rem)]">
         <Sparkline points={sparkPoints} width={160} height={28} tone={tone} className="w-full" />
       </div>
     </button>
