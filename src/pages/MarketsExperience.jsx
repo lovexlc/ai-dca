@@ -819,8 +819,8 @@ function MarketsResearchPanel({ market }) {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-white lg:h-[calc(100vh-1.5rem)] lg:max-h-[820px] lg:rounded-2xl lg:border lg:border-slate-200">
-      <div className="flex items-center justify-between border-b border-[#e8eaed] px-4 py-3 lg:border-slate-200">
-        <h2 className="text-xl font-semibold text-slate-900">研究</h2>
+      <div className="flex items-center justify-between border-b border-[#e8eaed] px-4 py-2 lg:border-slate-200 lg:py-3">
+        <h2 className="text-base font-semibold text-slate-900 lg:text-xl">研究</h2>
         <div className="flex items-center gap-1 text-slate-400">
           <button
             type="button"
@@ -1178,7 +1178,7 @@ export function MarketsExperience() {
   );
 
   return (
-    <div className="flex flex-col gap-5 pb-[220px] lg:grid lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:items-start lg:gap-4 lg:pb-6">
+    <div className="flex flex-col gap-5 pb-[260px] lg:grid lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:items-start lg:gap-4 lg:pb-6">
       {/* Mobile-only sidebar: Google Finance Beta style */}
       <aside className="order-2 flex flex-col gap-2 lg:hidden">
         <div className="px-1">
@@ -1538,9 +1538,9 @@ export function MarketsExperience() {
           'bg-white',
           // PC 样式
           'lg:relative lg:z-auto lg:order-3 lg:flex lg:flex-col lg:gap-3 lg:bg-transparent lg:sticky lg:top-2 lg:rounded-none lg:border-t-0 lg:shadow-none',
-          // Mobile bottom sheet：fixed 底部，peek 210px / expanded 100dvh
+          // Mobile bottom sheet：fixed 底部，peek 250px（露出 header+输入区） / expanded 100dvh
           'fixed inset-x-0 bottom-0 z-40 flex flex-col overflow-hidden rounded-t-2xl border-t border-[#e8eaed] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] transition-[height] duration-300 ease-out',
-          researchSheetOpen ? 'h-[100dvh]' : 'h-[210px]'
+          researchSheetOpen ? 'h-[100dvh]' : 'h-[250px]'
         )}
       >
         {/* Drag handle：点击切换 peek/expanded */}
