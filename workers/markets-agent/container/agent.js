@@ -1,11 +1,14 @@
 // LLM 工具调用循环：对接 OpenAI 兼容 /v1/chat/completions。
 // 允许模型运行多轮 tool_calls，最多 8 轮。
+// 限流 / 网络抖动时：指数退避重试 3 次，依然失败则降级到非 thinking 备用模型。
 
 import { SYSTEM_PROMPT, DEEP_DIVE_PROMPT, AGENT_GUIDE_PROMPT } from './prompts.js';
 import { TOOL_DEFS, TOOL_HANDLERS, hostFromUrl } from './tools.js';
 
 const MAX_ITERATIONS = 8;
 const LLM_TIMEOUT_MS = 180_000;
+const FALLBACK_MODEL = process.env.OPENAI_FALLBACK_MODEL || 'LongCat-Flash-Chat';
+const RETRY_DELAYS_MS = [3000, 8000, 15000];
 
 function stripThinking(text) {
 	let t = String(text || '');
@@ -48,16 +51,37 @@ async function callLLM({ baseUrl, apiKey, model, messages }) {
 		});
 		const text = await res.text();
 		if (!res.ok) {
-			return { ok: false, status: res.status, error: text.slice(0, 600) };
+			const retryable = res.status === 429 || res.status === 503 || res.status === 504 || res.status === 502;
+			return { ok: false, status: res.status, error: text.slice(0, 600), retryable };
 		}
 		let data;
-		try { data = JSON.parse(text); } catch { return { ok: false, error: 'invalid_json_from_llm', raw: text.slice(0, 400) }; }
+		try { data = JSON.parse(text); } catch { return { ok: false, error: 'invalid_json_from_llm', raw: text.slice(0, 400), retryable: false }; }
 		return { ok: true, data };
 	} catch (err) {
-		return { ok: false, error: String(err?.message || err) };
+		return { ok: false, error: String(err?.message || err), retryable: false };
 	} finally {
 		clearTimeout(tid);
 	}
+}
+
+async function callLLMWithRetry({ baseUrl, apiKey, model, messages }) {
+	let lastErr = null;
+	for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+		const r = await callLLM({ baseUrl, apiKey, model, messages });
+		if (r.ok) return { ok: true, data: r.data, model_used: model, attempts: attempt + 1 };
+		lastErr = r;
+		const errStr = r.error || '';
+		const rateLimited = r.retryable || /rate_limit|too_many_requests|超过限制|容量/i.test(errStr);
+		if (!rateLimited || attempt === RETRY_DELAYS_MS.length) break;
+		await new Promise((res) => setTimeout(res, RETRY_DELAYS_MS[attempt]));
+	}
+	// Last-ditch: switch to non-thinking fallback model.
+	if (model !== FALLBACK_MODEL) {
+		const r2 = await callLLM({ baseUrl, apiKey, model: FALLBACK_MODEL, messages });
+		if (r2.ok) return { ok: true, data: r2.data, model_used: FALLBACK_MODEL, attempts: RETRY_DELAYS_MS.length + 2, fallback: true };
+		return { ok: false, model_used: FALLBACK_MODEL, attempts: RETRY_DELAYS_MS.length + 2, error: r2.error || lastErr?.error, fallback_failed: true };
+	}
+	return { ok: false, model_used: model, attempts: RETRY_DELAYS_MS.length + 1, error: lastErr?.error };
 }
 
 function safeJsonParse(s) {
@@ -78,9 +102,6 @@ function dedupeSources(list) {
 }
 
 function summarizeToolResult(name, result) {
-	// Keep tool messages compact: at most ~3KB per message. The full data is
-	// kept in our accumulator (so we can build sources) but the LLM only sees
-	// a truncated JSON view to avoid blowing the context.
 	if (!result) return 'null';
 	let str = '';
 	try { str = JSON.stringify(result); } catch { str = String(result); }
@@ -109,18 +130,30 @@ export async function runAgent({ question, depth = 'fast', context = '' } = {}) 
 	let answer = '';
 	let finalReason = 'unknown';
 	let iterations = 0;
+	let modelsUsed = new Set();
+	let usedFallback = false;
 
 	for (let i = 0; i < MAX_ITERATIONS; i++) {
 		iterations = i + 1;
-		const llmRes = await callLLM({ baseUrl, apiKey, model, messages });
+		const llmRes = await callLLMWithRetry({ baseUrl, apiKey, model, messages });
+		if (llmRes.model_used) modelsUsed.add(llmRes.model_used);
+		if (llmRes.fallback) usedFallback = true;
 		if (!llmRes.ok) {
-			return { ok: false, error: 'llm_call_failed', detail: llmRes.error, iterations, trace };
+			return {
+				ok: false,
+				error: 'llm_call_failed',
+				detail: llmRes.error,
+				models_used: [...modelsUsed],
+				iterations,
+				trace,
+				sources: dedupeSources(aggregatedSources),
+				elapsed_ms: Date.now() - started,
+			};
 		}
 		const choice = llmRes.data?.choices?.[0];
 		const msg = choice?.message || {};
 		const toolCalls = msg.tool_calls || [];
 
-		// Push assistant message (drop reasoning_content; keep content + tool_calls).
 		const assistantPush = { role: 'assistant', content: msg.content || '' };
 		if (toolCalls.length) assistantPush.tool_calls = toolCalls;
 		messages.push(assistantPush);
@@ -161,6 +194,7 @@ export async function runAgent({ question, depth = 'fast', context = '' } = {}) 
 			error: 'no_answer',
 			reason: finalReason,
 			iterations,
+			models_used: [...modelsUsed],
 			sources: dedupeSources(aggregatedSources),
 			trace,
 			elapsed_ms: Date.now() - started,
@@ -173,6 +207,8 @@ export async function runAgent({ question, depth = 'fast', context = '' } = {}) 
 		phase: 'M2-agent',
 		depth,
 		model,
+		models_used: [...modelsUsed],
+		used_fallback: usedFallback,
 		answer: cleaned,
 		sources: dedupeSources(aggregatedSources),
 		iterations,
