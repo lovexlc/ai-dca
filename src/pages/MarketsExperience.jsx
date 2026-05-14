@@ -5,8 +5,11 @@ import {
   ChevronDown,
   ChevronUp,
   ChevronRight,
+  Edit3,
   ExternalLink,
+  History,
   Loader2,
+  Maximize2,
   Newspaper,
   Plus,
   RefreshCw,
@@ -26,6 +29,7 @@ import {
 } from '../components/experience-ui.jsx';
 import {
   addToWatchlist,
+  askMarkets,
   fetchIndices,
   fetchKline,
   fetchMovers,
@@ -595,86 +599,207 @@ function SummaryModule({ themes = [], loading, onRefresh }) {
 
 // 行情中心底部“搜索或提问”输入条。提交后向全局 AI 抽屉发 prefill 事件，
 // 抽屉会自动切到市场行情模式并预填问题。
-function MarketsAskBar({ value, onChange }) {
-  const submit = useCallback(
+// 右栏“研究”面板：inline 问答，点击预设问题或提交输入后直接调 /api/markets/ask。
+// 不再弹出右下角 AI 抽屉。
+function MarketsResearchPanel({ market }) {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [pending, setPending] = useState(false);
+  const scrollRef = useRef(null);
+
+  const send = useCallback(
+    async (raw) => {
+      const question = String(raw || '').trim();
+      if (!question || pending) return;
+      setInput('');
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', content: question },
+        { role: 'assistant', content: '', pending: true },
+      ]);
+      setPending(true);
+      try {
+        const wl = loadWatchlist() || {};
+        const symbols = Array.isArray(wl[market]) ? wl[market].slice(0, 10) : [];
+        const res = await askMarkets({ question, symbols, depth: 'fast' });
+        const answer = (res && (res.answer || res.text)) || '抱歉，未获取到回答。';
+        const sources = (res && Array.isArray(res.sources)) ? res.sources : [];
+        setMessages((prev) => {
+          const next = prev.slice(0, -1);
+          return [...next, { role: 'assistant', content: answer, sources }];
+        });
+      } catch (err) {
+        const msg = (err && err.message) ? err.message : String(err);
+        setMessages((prev) => {
+          const next = prev.slice(0, -1);
+          return [...next, { role: 'assistant', content: '请求失败：' + msg, error: true }];
+        });
+      } finally {
+        setPending(false);
+      }
+    },
+    [market, pending],
+  );
+
+  const onSubmit = useCallback(
     (e) => {
       if (e && e.preventDefault) e.preventDefault();
-      const q = String(value || '').trim();
-      if (!q) {
-        // 空输入：仅打开面板。
-        try { window.dispatchEvent(new CustomEvent('aichat:open')); } catch (_) { /* ignore */ }
-        return;
-      }
-      try {
-        window.dispatchEvent(
-          new CustomEvent('aichat:prefill', {
-            detail: { question: q, mode: 'markets', open: true },
-          }),
-        );
-      } catch (_) { /* ignore */ }
-      onChange('');
+      send(input);
     },
-    [value, onChange],
+    [input, send],
   );
 
-  return (
-    <MarketsAskPanel value={value} onChange={onChange} submit={submit} />
-  );
-}
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages]);
 
-function MarketsAskPanel({ value, onChange, submit }) {
-  const askPreset = useCallback((q) => {
-    try {
-      window.dispatchEvent(
-        new CustomEvent('aichat:prefill', {
-          detail: { question: q, mode: 'markets', open: true },
-        }),
-      );
-    } catch (_) { /* ignore */ }
-  }, []);
   const presets = [
-    '今晚美股看什么？',
-    '近期美债收益率对美股估值的影响',
+    '今日市场行情如何？',
+    '美债收益率对美股估值的影响',
     '科技板块今日异动原因',
     '与我自选最相关的催化剂',
   ];
+
   return (
-    <div className="flex flex-col gap-3">
-      <form
-        onSubmit={submit}
-        className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm"
-      >
-        <Search size={16} className="shrink-0 text-slate-400" />
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="问点什么…"
-          className="min-w-0 flex-1 border-none bg-transparent text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none"
+    <div className="flex h-[calc(100vh-1.5rem)] max-h-[820px] flex-col rounded-2xl border border-slate-200 bg-white">
+      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+        <h2 className="text-xl font-semibold text-slate-900">研究</h2>
+        <div className="flex items-center gap-1 text-slate-400">
+          <button
+            type="button"
+            aria-label="新对话"
+            onClick={() => setMessages([])}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-100 hover:text-indigo-600"
+          >
+            <Edit3 size={15} />
+          </button>
+          <button
+            type="button"
+            aria-label="历史"
+            disabled
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full opacity-50"
+          >
+            <History size={15} />
+          </button>
+          <button
+            type="button"
+            aria-label="全屏"
+            disabled
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full opacity-50"
+          >
+            <Maximize2 size={15} />
+          </button>
+        </div>
+      </div>
+
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3">
+        {messages.length === 0 ? (
+          <div className="flex flex-col gap-3">
+            <p className="text-[15px] font-semibold leading-snug text-slate-800">
+              您好！您可以向我咨询任何金融问题
+            </p>
+            <ul className="flex flex-col gap-2">
+              {presets.map((q) => (
+                <li key={q}>
+                  <button
+                    type="button"
+                    onClick={() => send(q)}
+                    disabled={pending}
+                    className="flex w-full items-center justify-between gap-2 rounded-2xl bg-slate-100 px-4 py-3 text-left text-[13px] leading-snug text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <span className="flex-1">{q}</span>
+                    <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200/80 text-slate-500">
+                      <Search size={13} />
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {messages.map((m, i) => (
+              <div key={i} className={cx('flex', m.role === 'user' ? 'justify-end' : 'justify-start')}>
+                <div
+                  className={cx(
+                    'max-w-[92%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-[13px] leading-relaxed',
+                    m.role === 'user'
+                      ? 'bg-indigo-500 text-white'
+                      : m.error
+                        ? 'bg-rose-50 text-rose-700'
+                        : 'bg-slate-100 text-slate-800',
+                  )}
+                >
+                  {m.pending ? (
+                    <span className="inline-flex items-center gap-1 text-slate-500">
+                      <Loader2 size={14} className="animate-spin" /> 思考中…
+                    </span>
+                  ) : (
+                    m.content
+                  )}
+                  {m.role === 'assistant' && Array.isArray(m.sources) && m.sources.length > 0 ? (
+                    <ul className="mt-2 flex flex-col gap-1 border-t border-slate-200 pt-2">
+                      {m.sources.slice(0, 5).map((s, si) => (
+                        <li key={si} className="text-[11px] text-slate-500">
+                          <a
+                            href={s.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="hover:text-indigo-600 hover:underline"
+                          >
+                            {s.title || s.url}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <form onSubmit={onSubmit} className="m-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+        <textarea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              send(input);
+            }
+          }}
+          rows={2}
+          placeholder="提出任何问题"
+          className="block w-full resize-none border-none bg-transparent text-[14px] text-slate-800 placeholder:text-slate-400 focus:outline-none"
+          disabled={pending}
         />
-        <button
-          type="submit"
-          className={cx(primaryButtonClass, 'inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs')}
-        >
-          <Sparkles size={12} /> 提问
-        </button>
+        <div className="mt-1 flex items-center justify-between">
+          <button
+            type="button"
+            aria-label="附加"
+            disabled
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-400"
+          >
+            <Plus size={14} />
+          </button>
+          <button
+            type="submit"
+            aria-label="发送"
+            disabled={pending || !input.trim()}
+            className={cx(
+              'inline-flex h-8 w-8 items-center justify-center rounded-full transition',
+              !input.trim() || pending
+                ? 'bg-slate-200 text-slate-400'
+                : 'bg-indigo-500 text-white hover:bg-indigo-600',
+            )}
+          >
+            {pending ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={14} />}
+          </button>
+        </div>
       </form>
-      <ul className="flex flex-col gap-1.5">
-        {presets.map((q) => (
-          <li key={q}>
-            <button
-              type="button"
-              onClick={() => askPreset(q)}
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-[13px] leading-snug text-slate-700 transition hover:border-indigo-300 hover:text-indigo-600"
-            >
-              {q}
-            </button>
-          </li>
-        ))}
-      </ul>
-      <p className="text-[11px] leading-relaxed text-slate-400">
-        AI 回答会出现在右下角抽屉中。
-      </p>
     </div>
   );
 }
@@ -694,7 +819,6 @@ export function MarketsExperience() {
   const [watchLoading, setWatchLoading] = useState(false);
   const [symbolInput, setSymbolInput] = useState('');
   const [generatedAt, setGeneratedAt] = useState('');
-  const [askInput, setAskInput] = useState('');
   const reqIdRef = useRef(0);
   const [klineMap, setKlineMap] = useState({});
   const klineInflightRef = useRef(new Set());
@@ -979,13 +1103,7 @@ export function MarketsExperience() {
       </main>
 
       <aside className="order-3 flex flex-col gap-3 lg:sticky lg:top-2">
-        <Card className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Sparkles size={16} className="text-indigo-500" />
-            <h2 className="text-sm font-semibold text-slate-800">AI 问答</h2>
-          </div>
-          <MarketsAskBar value={askInput} onChange={setAskInput} />
-        </Card>
+        <MarketsResearchPanel market={market} />
       </aside>
     </div>
   );
