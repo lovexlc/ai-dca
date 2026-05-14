@@ -8,7 +8,12 @@ on:
         required: false
         type: string
   schedule:
+    # 北京时间 15:30（收盘那一刻）：抓当日分钟线 / 日线 / 基准。
     - cron: "30 7 * * 1-5"
+    # 北京时间次日 09:00（开盘前）：单独补抓昨日单位净值——场内 ETF 单位净值
+    # 由基金公司 T 日晚 17:00-20:00 公布，15:30 cron 永远只能拿 T-1 的，需要这条补抓
+    # 才能让 latest-nav.json 在次日开盘前就更新到 T-1 收盘净值。
+    - cron: "0 1 * * 2-6"
 
 permissions:
   contents: write
