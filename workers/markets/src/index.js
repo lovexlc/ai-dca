@@ -12,7 +12,9 @@ import {
   fetchFinnhubQuote,
   fetchFinnhubProfile,
   fetchFinnhubCompanyNews,
-  fetchFinnhubMarketNews
+  fetchFinnhubMarketNews,
+  fetchTavilyNews,
+  hostToSourceName
 } from './fetchers.js';
 import { askWithGrounding, summarizeMarkets } from './ai.js';
 import { kvGetJson, kvPutJson, r2GetJson, r2PutJson, klineKey } from './storage.js';
@@ -314,22 +316,84 @@ async function handleNews(env, market, forceRefresh) {
     if (cached && cached.items) return json({ ...cached, cached: true });
   }
   let items = [];
+  const sourceErrors = {};
   if (market === 'us') {
     if (!env.FINNHUB_TOKEN) return errorJson('FINNHUB_TOKEN not configured', 500);
-    const raw = await fetchFinnhubMarketNews({ token: env.FINNHUB_TOKEN, category: 'general' });
-    items = (raw || []).slice(0, 30).map((it) => ({
-      title: it.headline || '',
-      url: it.url || '',
-      source: it.source || '',
-      publishedAt: it.datetime ? new Date(it.datetime * 1000).toISOString() : '',
-      summary: it.summary || '',
-      image: it.image || ''
-    }));
+    // 多源聚合：Finnhub general wire + Tavily news 多查询。Tavily 补上 Bloomberg/WSJ/Politico/Axios 等多元体。
+    const tasks = [
+      fetchFinnhubMarketNews({ token: env.FINNHUB_TOKEN, category: 'general' })
+        .then((raw) => ({ type: 'finnhub', raw: Array.isArray(raw) ? raw : [] }))
+        .catch((e) => { sourceErrors.finnhub = String(e.message || e); return { type: 'finnhub', raw: [] }; })
+    ];
+    if (env.TAVILY_API_KEY) {
+      const queries = [
+        'US stock market today S&P 500 Nasdaq Dow Jones',
+        'Federal Reserve interest rate decision',
+        'big tech earnings AI chip stocks',
+        'US economic policy treasury yields',
+        'major corporate earnings Wall Street'
+      ];
+      for (const q of queries) {
+        tasks.push(
+          fetchTavilyNews({ key: env.TAVILY_API_KEY, query: q, maxResults: 6, days: 2 })
+            .then((raw) => ({ type: 'tavily', raw }))
+            .catch((e) => { sourceErrors.tavily = String(e.message || e); return { type: 'tavily', raw: [] }; })
+        );
+      }
+    }
+    const settled = await Promise.all(tasks);
+    const merged = [];
+    for (const r of settled) {
+      if (r.type === 'finnhub') {
+        for (const it of r.raw) {
+          merged.push({
+            title: it.headline || '',
+            url: it.url || '',
+            source: it.source || hostToSourceName(it.url || ''),
+            publishedAt: it.datetime ? new Date(it.datetime * 1000).toISOString() : '',
+            summary: it.summary || '',
+            image: it.image || ''
+          });
+        }
+      } else if (r.type === 'tavily') {
+        for (const it of r.raw) {
+          merged.push({
+            title: it.title || '',
+            url: it.url || '',
+            source: hostToSourceName(it.url || ''),
+            publishedAt: it.published_date || '',
+            summary: String(it.content || '').replace(/\s+/g, ' ').trim().slice(0, 400),
+            image: ''
+          });
+        }
+      }
+    }
+    // 去重：优先按 URL，同 URL 取首现。
+    const seen = new Set();
+    const deduped = [];
+    for (const it of merged) {
+      const k = (it.url || it.title || '').trim().toLowerCase();
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      deduped.push(it);
+    }
+    // 按发布时间倒序，缺时间的放后。
+    deduped.sort((a, b) => {
+      const ta = a.publishedAt ? Date.parse(a.publishedAt) : 0;
+      const tb = b.publishedAt ? Date.parse(b.publishedAt) : 0;
+      return tb - ta;
+    });
+    items = deduped.slice(0, 30);
   } else {
     // A 股新闻：Phase 1 暂用空列表，后续接东财 / 雪球。
     items = [];
   }
-  const payload = { market, generatedAt: new Date().toISOString(), items };
+  const payload = {
+    market,
+    generatedAt: new Date().toISOString(),
+    items,
+    sourceErrors: Object.keys(sourceErrors).length ? sourceErrors : undefined
+  };
   await kvPutJson(env, key, payload, { ttlSeconds: 1800 });
   return json({ ...payload, cached: false });
 }

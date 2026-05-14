@@ -285,3 +285,74 @@ export async function fetchFinnhubMarketNews({ token, category = 'general' }) {
   if (!res.ok) throw new Error('finnhub market news HTTP ' + res.status);
   return res.json();
 }
+
+// ----- Tavily news ---------------------------------------------------------
+// 调用 Tavily Search API（topic=news）拉一批近期新闻。
+// 主要用来给「今日主题」提供多元化信源（不只是 Reuters/CNBC wire）。
+export async function fetchTavilyNews({ key, query, maxResults = 8, days = 1 }) {
+  if (!key) throw new Error('missing TAVILY_API_KEY');
+  const res = await fetch('https://api.tavily.com/search', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+    body: JSON.stringify({
+      query,
+      topic: 'news',
+      search_depth: 'basic',
+      include_answer: false,
+      include_raw_content: false,
+      max_results: maxResults,
+      days
+    })
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`tavily news HTTP ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  return Array.isArray(data?.results) ? data.results : [];
+}
+
+// 从 URL 推出人读友好的来源名：reuters.com -> "Reuters"、finance.yahoo.com -> "Yahoo Finance"。
+export function hostToSourceName(url) {
+  if (!url) return '';
+  let host = '';
+  try { host = new URL(url).hostname.replace(/^www\./, ''); } catch (_) { return ''; }
+  const map = {
+    'reuters.com': 'Reuters',
+    'cnbc.com': 'CNBC',
+    'wsj.com': 'WSJ',
+    'bloomberg.com': 'Bloomberg',
+    'nytimes.com': 'NYT',
+    'ft.com': 'FT',
+    'marketwatch.com': 'MarketWatch',
+    'finance.yahoo.com': 'Yahoo Finance',
+    'yahoo.com': 'Yahoo Finance',
+    'barrons.com': "Barron's",
+    'axios.com': 'Axios',
+    'politico.com': 'Politico',
+    'apnews.com': 'AP',
+    'foxbusiness.com': 'Fox Business',
+    'theguardian.com': 'Guardian',
+    'businessinsider.com': 'Business Insider',
+    'seekingalpha.com': 'Seeking Alpha',
+    'investing.com': 'Investing.com',
+    'forbes.com': 'Forbes',
+    'fortune.com': 'Fortune',
+    'theverge.com': 'The Verge',
+    'techcrunch.com': 'TechCrunch',
+    'arstechnica.com': 'Ars Technica',
+    'morningstar.com': 'Morningstar',
+    'benzinga.com': 'Benzinga',
+    'cnn.com': 'CNN',
+    'bbc.com': 'BBC',
+    'bbc.co.uk': 'BBC',
+    'reutersagency.com': 'Reuters',
+    'wsj.market': 'WSJ'
+  };
+  if (map[host]) return map[host];
+  // 剖出根域名作为 fallback。
+  const parts = host.split('.');
+  const base = parts.length >= 2 ? parts.slice(-2).join('.') : host;
+  if (map[base]) return map[base];
+  return base;
+}
