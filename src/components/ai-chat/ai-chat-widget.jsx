@@ -70,6 +70,27 @@ function stripTrailingSourcesBlock(text) {
   return last >= 0 ? s.slice(0, last).replace(/\s+$/, '') : s;
 }
 
+// M4 polish：将正文里的 "[n]" 引用标号映射为 Unicode 上标的可点击链接，
+// 指向 sources[n-1].url。无对应 source 时保留原文。
+const SUPERSCRIPTS = ['⁰', '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹'];
+function toSuperscript(n) {
+  return String(n)
+    .split('')
+    .map((c) => SUPERSCRIPTS[Number(c)] || c)
+    .join('');
+}
+function renderInlineCitations(content, sources) {
+  const text = String(content || '');
+  if (!text || !Array.isArray(sources) || sources.length === 0) return text;
+  return text.replace(/\[(\d{1,2})\]/g, (raw, num) => {
+    const n = Number(num);
+    if (!Number.isFinite(n) || n < 1 || n > sources.length) return raw;
+    const src = sources[n - 1];
+    if (!src || !src.url) return raw;
+    return `[${toSuperscript(n)}](${src.url})`;
+  });
+}
+
 function formatMarketsAnswer(res) {
   const answer = stripTrailingSourcesBlock(String((res && res.answer) || '').trim());
   const sources = Array.isArray(res && res.sources) ? res.sources.slice(0, 6) : [];
@@ -913,7 +934,7 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
                               ),
                             }}
                           >
-                            {m.content || ''}
+                            {renderInlineCitations(m.content || '', sources)}
                           </ReactMarkdown>
                         </div>
                       ) : (
