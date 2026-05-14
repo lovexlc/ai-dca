@@ -22,6 +22,12 @@ zone_name = "freebacktrack.tech"
 [ai]
 binding = "AI"
 
+# M3：Service binding 指向 ai-dca-markets-agent（MoltWorker 容器 Worker），
+# 用于 deep 深度问答的 SSE 流式透传（路由 /api/markets/ask/stream）。
+[[services]]
+binding = "AGENT"
+service = "ai-dca-markets-agent"
+
 [placement]
 mode = "smart"
 
@@ -63,6 +69,11 @@ CHAT_MAX_TOKENS = "2048"
 TAVILY_ENDPOINT = "https://api.tavily.com/search"
 # Finnhub REST base。
 FINNHUB_BASE = "https://finnhub.io/api/v1"
+# DEEP_BACKEND：深度问答的默认后端（仅影响 POST /ask）。
+#   "workers-ai"  深度问答走当前 Workers AI + Tavily 直连逻辑
+#   "container"   深度问答走 MoltWorker 容器（仍是同步 JSON，需要 INTERNAL_TOKEN）
+# 流式端点 /ask/stream 不受此 toggle 控制，只要 AGENT 绑定可用就直接透传。
+DEEP_BACKEND = "workers-ai"
 
 [[kv_namespaces]]
 binding = "MARKETS_KV"

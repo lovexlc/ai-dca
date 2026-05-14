@@ -100,6 +100,9 @@ export default {
         const body = await request.json().catch(() => ({}));
         return await handleAsk(env, body);
       }
+      if (path === '/ask/stream' && request.method === 'POST') {
+        return await handleAskStream(env, request);
+      }
       if (path === '/refresh' && request.method === 'POST') {
         const body = await request.json().catch(() => ({}));
         return await handleManualRefresh(env, body, ctx);
@@ -459,6 +462,47 @@ async function handleAsk(env, body) {
   }
   const result = await askWithGrounding({ env, question, quoteSnapshots, depth, extraContext });
   return json(result);
+}
+
+// =====================================================================
+// /ask/stream：深度问答 SSE 透传。
+// 请求体 = /ask 的请求体。响应为 text/event-stream，事件类型由
+// MoltWorker 容器定义：started / progress / tool_start / tool_end / source /
+// token / reasoning / done / error。
+// 此路由仅依赖 [[services]] AGENT 绑定 + INTERNAL_TOKEN secret，与
+// DEEP_BACKEND var 无关。同步 /ask 的后端选择仍由 DEEP_BACKEND 控制。
+// =====================================================================
+async function handleAskStream(env, request) {
+  if (!env.AGENT) {
+    return errorJson('AGENT service binding missing; deploy with [[services]] AGENT', 500);
+  }
+  if (!env.INTERNAL_TOKEN) {
+    return errorJson('INTERNAL_TOKEN secret missing on markets worker', 500);
+  }
+  const bodyText = await request.text();
+  const upstream = await env.AGENT.fetch('http://agent/internal/ask/stream', {
+    method: 'POST',
+    headers: {
+      authorization: 'Bearer ' + env.INTERNAL_TOKEN,
+      'content-type': 'application/json',
+      accept: 'text/event-stream'
+    },
+    body: bodyText
+  });
+  if (!upstream.body) {
+    return errorJson('agent upstream returned empty body', 502, { status: upstream.status });
+  }
+  // 直接透传上游 SSEて到浏览器。保留心跳 + token 增量。
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers: {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no',
+      ...CORS_HEADERS
+    }
+  });
 }
 
 async function handleManualRefresh(env, body, ctx) {
