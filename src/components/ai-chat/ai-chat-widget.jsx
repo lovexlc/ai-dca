@@ -58,12 +58,8 @@ const SYSTEM_PROMPT =
   '回答简洁、准确、用中文。涉及具体投资建议时提醒用户自行判断风险，不要给出绝对收益承诺。';
 
 function loadMode() {
-  try {
-    const v = localStorage.getItem(MODE_KEY);
-    return v === 'markets' ? 'markets' : 'chat';
-  } catch (err) {
-    return 'chat';
-  }
+  // 市场行情模式已从 UI 移除，常驻在知识库问答。
+  return 'chat';
 }
 
 function persistMode(mode) {
@@ -358,15 +354,7 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
   useEffect(() => {
     function onPrefill(event) {
       const detail = (event && event.detail) || {};
-      if (detail.mode === 'markets' || detail.mode === 'chat') {
-        setMode(detail.mode);
-      }
-      if (detail.depth === 'fast' || detail.depth === 'deep') {
-        setMarketsDepth(detail.depth);
-      }
-      if (typeof detail.context === 'string') {
-        pendingMarketsContextRef.current = detail.context;
-      }
+      // mode/depth/context 已不再采用：行情主题探索转为右栏研究面板 (markets:research)。
       if (typeof detail.question === 'string' && detail.question.trim()) {
         setInput(detail.question);
       }
@@ -929,9 +917,9 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
             {messages.length === 0 ? (
               <div className="ai-chat-empty">
                 <Sparkles className="h-5 w-5" aria-hidden="true" />
-                <p>{mode === 'markets' ? '问点市场问题，例如：' : '有什么可以帮你的？'}</p>
+                <p>有什么可以帮你的？</p>
                 <div className="ai-chat-hotqs" role="list">
-                  {(mode === 'markets' ? MARKETS_HOT_QUESTIONS : CHAT_HOT_QUESTIONS).map((q) => (
+                  {CHAT_HOT_QUESTIONS.map((q) => (
                     <button
                       key={q}
                       type="button"
