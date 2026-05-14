@@ -30,6 +30,7 @@ import {
 import {
   addToWatchlist,
   askMarkets,
+  askMarketsStream,
   fetchIndices,
   fetchKline,
   fetchMovers,
@@ -670,13 +671,71 @@ function MarketsResearchPanel({ market }) {
       try {
         const wl = loadWatchlist() || {};
         const symbols = Array.isArray(wl[market]) ? wl[market].slice(0, 10) : [];
-        const res = await askMarkets({ question, symbols, depth: useDepth, context: useContext });
-        const answer = (res && (res.answer || res.text)) || '抱歉，未获取到回答。';
-        const sources = (res && Array.isArray(res.sources)) ? res.sources : [];
-        setMessages((prev) => {
-          const next = prev.slice(0, -1);
-          return [...next, { role: 'assistant', content: answer, sources }];
-        });
+        if (useDepth === 'deep') {
+          // 深度模式走 SSE 流式 agent，可实时拉取工具调用 / token / sources。
+          let streamed = '';
+          const streamedSources = [];
+          const seenSourceUrls = new Set();
+          let stage = '深度搜索启动中…';
+          const renderPending = () => {
+            setMessages((prev) => {
+              const next = prev.slice();
+              const last = next[next.length - 1];
+              if (!last || !last.pending) return prev;
+              next[next.length - 1] = {
+                ...last,
+                content: streamed,
+                stage,
+                sources: streamedSources.slice(),
+              };
+              return next;
+            });
+          };
+          const onEvent = ({ type, payload }) => {
+            if (type === 'token' && payload && typeof payload.delta === 'string') {
+              streamed += payload.delta;
+              renderPending();
+            } else if (type === 'progress' && payload && typeof payload.message === 'string') {
+              stage = payload.message;
+              renderPending();
+            } else if (type === 'tool_start' && payload && typeof payload.name === 'string') {
+              stage = '调用工具：' + payload.name;
+              renderPending();
+            } else if (type === 'source' && payload && payload.url) {
+              if (!seenSourceUrls.has(payload.url)) {
+                seenSourceUrls.add(payload.url);
+                streamedSources.push(payload);
+                renderPending();
+              }
+            } else if (type === 'started') {
+              stage = '已启动深度模式…';
+              renderPending();
+            }
+          };
+          const done = await askMarketsStream({
+            question,
+            symbols,
+            depth: 'deep',
+            context: useContext,
+            onEvent,
+          });
+          const finalAnswer = (done && done.answer) || streamed || '抱歉，未获取到回答。';
+          const finalSources = (done && Array.isArray(done.sources) && done.sources.length)
+            ? done.sources
+            : streamedSources;
+          setMessages((prev) => {
+            const next = prev.slice(0, -1);
+            return [...next, { role: 'assistant', content: finalAnswer, sources: finalSources, depth: 'deep' }];
+          });
+        } else {
+          const res = await askMarkets({ question, symbols, depth: 'fast', context: useContext });
+          const answer = (res && (res.answer || res.text)) || '抱歉，未获取到回答。';
+          const sources = (res && Array.isArray(res.sources)) ? res.sources : [];
+          setMessages((prev) => {
+            const next = prev.slice(0, -1);
+            return [...next, { role: 'assistant', content: answer, sources }];
+          });
+        }
       } catch (err) {
         const msg = (err && err.message) ? err.message : String(err);
         setMessages((prev) => {
@@ -793,9 +852,14 @@ function MarketsResearchPanel({ market }) {
                   )}
                 >
                   {m.pending ? (
-                    <span className="inline-flex items-center gap-1 text-slate-500">
-                      <Loader2 size={14} className="animate-spin" /> 思考中…
-                    </span>
+                    <div className="flex flex-col gap-1">
+                      <span className="inline-flex items-center gap-1 text-slate-500">
+                        <Loader2 size={14} className="animate-spin" /> {m.stage || '思考中…'}
+                      </span>
+                      {m.content ? (
+                        <div className="whitespace-pre-wrap text-slate-700">{m.content}</div>
+                      ) : null}
+                    </div>
                   ) : (
                     m.content
                   )}
