@@ -77,6 +77,25 @@ export default {
 			});
 		}
 
+		if (url.pathname === '/internal/ask/stream' && request.method === 'POST') {
+			const body = await request.text();
+			const upstream = await stub.fetch('http://container/ask/stream', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+				body,
+			});
+			// Pipe the container's SSE body straight through to the client.
+			return new Response(upstream.body, {
+				status: upstream.status,
+				headers: {
+					'content-type': 'text/event-stream; charset=utf-8',
+					'cache-control': 'no-cache, no-transform',
+					'connection': 'keep-alive',
+					'x-accel-buffering': 'no',
+				},
+			});
+		}
+
 		return notFound();
 	},
 };
