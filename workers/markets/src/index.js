@@ -133,7 +133,10 @@ async function refreshIndices(env, market) {
   let indexes = [];
   if (market === 'us') {
     const symbols = US_INDICES.map((it) => it.symbol);
-    const quoteMap = await fetchYahooQuotesBatch(symbols, { range: '5d', interval: '1d' });
+    // range/interval 必须用 1d/5m，Yahoo Chart 的 chartPreviousClose 才是
+    // 真正的「昨日收盘」；range=5d 下取到的是 ~5 个交易日前的收盘，
+    // 算出来会变成一周累计涨幅，和 /quotes 里 VOO/QQQ 对不上。
+    const quoteMap = await fetchYahooQuotesBatch(symbols, { range: '1d', interval: '5m' });
     indexes = US_INDICES.map((it) => {
       const q = quoteMap[it.symbol] || {};
       return { ...q, key: it.key, name: it.name, symbol: it.symbol };
@@ -148,7 +151,7 @@ async function refreshIndices(env, market) {
     throw new Error('unknown market ' + market);
   }
   const payload = { market, generatedAt: new Date().toISOString(), indexes };
-  await kvPutJson(env, 'idx:' + market, payload, { ttlSeconds: 3600 });
+  await kvPutJson(env, 'idx:' + market, payload, { ttlSeconds: 120 });
   return payload;
 }
 
