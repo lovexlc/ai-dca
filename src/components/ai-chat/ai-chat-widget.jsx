@@ -7,6 +7,9 @@ import {
   RotateCcw,
   LineChart,
   BookOpen,
+  Globe,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -78,18 +81,18 @@ function formatMarketsAnswer(res) {
   } else {
     parts.push('抱歉，本次未生成回答。可以试试重新提问或切换到深度模式。');
   }
-  if (sources.length) {
-    const lines = sources.map((s, i) => {
-      const title = (s && s.title) || (s && s.url) || '未命名来源';
-      const url = s && s.url ? s.url : '';
-      return url ? `${i + 1}. [${title}](${url})` : `${i + 1}. ${title}`;
-    });
-    parts.push('\n---\n**参考来源**\n' + lines.join('\n'));
-  }
   if (res && res.searchError) {
     parts.push(`\n_联网检索提示：${res.searchError}_`);
   }
-  return parts.join('\n\n') || '未获取到响应。';
+  return {
+    content: parts.join('\n\n') || '未获取到响应。',
+    sources: sources
+      .map((s) => ({
+        title: (s && s.title) || (s && s.url) || '未命名来源',
+        url: s && s.url ? String(s.url) : '',
+      }))
+      .filter((s) => s.title || s.url),
+  };
 }
 
 function loadHistory() {
@@ -103,6 +106,9 @@ function loadHistory() {
       .map((m) => ({
         role: m.role,
         content: m.content,
+        ...(Array.isArray(m.sources) && m.sources.length
+          ? { sources: m.sources.filter((s) => s && (s.title || s.url)) }
+          : {}),
       }));
   } catch (err) {
     return [];
@@ -114,6 +120,7 @@ function persistHistory(messages) {
     const trimmed = messages.slice(-MAX_HISTORY).map((m) => ({
       role: m.role,
       content: m.content,
+      ...(Array.isArray(m.sources) && m.sources.length ? { sources: m.sources } : {}),
     }));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
   } catch (err) {
@@ -187,6 +194,8 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
   const [marketsDepth, setMarketsDepth] = useState('fast');
   const [nudgeOpen, setNudgeOpen] = useState(false);
   const [nudgeMuted, setNudgeMuted] = useState(() => isNudgeDismissed());
+  // 参考来源是否展开：key 是消息在列表里的 index。
+  const [openSources, setOpenSources] = useState(() => new Set());
   const listRef = useRef(null);
   const textareaRef = useRef(null);
   const abortRef = useRef(null);
@@ -414,10 +423,14 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
           symbols = [...us.slice(0, 4), ...cn.slice(0, 4)];
         } catch (_) { /* ignore */ }
         const res = await askMarkets({ question: content, symbols, depth: marketsDepth });
-        const reply = formatMarketsAnswer(res);
+        const out = formatMarketsAnswer(res);
         setMessages((prev) => {
           const next = [...prev];
-          next[next.length - 1] = { role: 'assistant', content: reply };
+          next[next.length - 1] = {
+            role: 'assistant',
+            content: out.content,
+            sources: out.sources,
+          };
           return next;
         });
       } catch (err) {
@@ -560,6 +573,15 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
 
   const handleStop = useCallback(() => {
     if (abortRef.current) abortRef.current.abort();
+  }, []);
+
+  const toggleSources = useCallback((idx) => {
+    setOpenSources((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
   }, []);
 
   const handleKeyDown = useCallback(
@@ -730,11 +752,51 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
               messages.map((m, idx) => {
                 const isAssistant = m.role === 'assistant';
                 const showLoading = isAssistant && idx === messages.length - 1 && pending && !m.content;
+                const sources = isAssistant && Array.isArray(m.sources) ? m.sources : [];
+                const sourcesOpen = openSources.has(idx);
                 return (
                   <div
                     key={idx}
                     className={`ai-chat-msg ai-chat-msg--${m.role}`}
                   >
+                    <div className="ai-chat-msg__col">
+                      {isAssistant && sources.length > 0 ? (
+                        <div className="ai-chat-sources">
+                          <button
+                            type="button"
+                            className="ai-chat-sources__chip"
+                            onClick={() => toggleSources(idx)}
+                            aria-expanded={sourcesOpen}
+                          >
+                            <Globe className="h-3.5 w-3.5" aria-hidden="true" />
+                            <span>{sources.length} 个网站</span>
+                            {sourcesOpen ? (
+                              <ChevronDown className="h-3 w-3" aria-hidden="true" />
+                            ) : (
+                              <ChevronRight className="h-3 w-3" aria-hidden="true" />
+                            )}
+                          </button>
+                          {sourcesOpen ? (
+                            <ol className="ai-chat-sources__list">
+                              {sources.map((s, i) => (
+                                <li key={i}>
+                                  {s.url ? (
+                                    <a
+                                      href={s.url}
+                                      target="_blank"
+                                      rel="noreferrer noopener"
+                                    >
+                                      {s.title || s.url}
+                                    </a>
+                                  ) : (
+                                    <span>{s.title}</span>
+                                  )}
+                                </li>
+                              ))}
+                            </ol>
+                          ) : null}
+                        </div>
+                      ) : null}
                     <div className="ai-chat-msg__bubble">
                       {showLoading ? (
                         <span className="ai-chat-msg__bubble--loading">
@@ -761,6 +823,7 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
                       ) : (
                         m.content
                       )}
+                    </div>
                     </div>
                   </div>
                 );
