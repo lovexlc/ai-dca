@@ -84,4 +84,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "data: refresh nasdaq market datasets for ${TARGET_DATE}"
-          git push
+          # 防止人工/其他 workflow 在期间推了 commit 造成 non-fast-forward。
+          # 拉远端变化 -> rebase 本质就是把本次数据 refresh commit 接到最新 main 上。
+          for attempt in 1 2 3; do
+            git pull --rebase origin main || true
+            if git push; then
+              echo "push ok on attempt $attempt"
+              exit 0
+            fi
+            echo "push attempt $attempt failed, retrying..." >&2
+            sleep 5
+          done
+          echo "push failed after 3 attempts" >&2
+          exit 1
