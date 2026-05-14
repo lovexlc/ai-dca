@@ -91,7 +91,44 @@
 }
 
 .console-sidebar__close {
+  display: inline-flex;
+}
+
+/* Desktop: when shell has is-nav-collapsed, hide the sidebar entirely */
+.console-shell.is-nav-collapsed > .console-sidebar {
   display: none;
+}
+
+/* Floating expand affordance shown when desktop sidebar is collapsed */
+.console-sidebar-expand {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 95;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border: 1px solid var(--console-border);
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.console-sidebar-expand:hover {
+  background: #f8fafc;
+  border-color: #c7d2fe;
+  color: #4f46e5;
+}
+
+@media (max-width: 1023.98px) {
+  .console-sidebar-expand {
+    display: none;
+  }
 }
 
 .console-sidenav {

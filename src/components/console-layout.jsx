@@ -86,6 +86,15 @@ export function ConsoleLayout({
   children
 }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [desktopNavCollapsed, setDesktopNavCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try { return window.localStorage.getItem('console:navCollapsed') === '1'; } catch (_) { return false; }
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try { window.localStorage.setItem('console:navCollapsed', desktopNavCollapsed ? '1' : '0'); } catch (_) { /* ignore */ }
+  }, [desktopNavCollapsed]);
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -125,7 +134,18 @@ export function ConsoleLayout({
         {topbarRight ? <div className="console-mobilebar__right">{topbarRight}</div> : null}
       </div>
 
-      <div className="console-shell">
+      {desktopNavCollapsed ? (
+        <button
+          type="button"
+          aria-label="展开导航"
+          className="console-sidebar-expand"
+          onClick={() => setDesktopNavCollapsed(false)}
+        >
+          <Menu className="h-4 w-4" aria-hidden="true" />
+        </button>
+      ) : null}
+
+      <div className={cx('console-shell', desktopNavCollapsed && 'is-nav-collapsed')}>
         <aside
           className={cx('console-sidebar', mobileNavOpen && 'is-open')}
           aria-label="模块导航"
@@ -134,9 +154,12 @@ export function ConsoleLayout({
             <div className="console-brand">{brand}</div>
             <button
               type="button"
-              aria-label="关闭导航"
+              aria-label="收起导航"
               className="console-iconbtn console-sidebar__close"
-              onClick={() => setMobileNavOpen(false)}
+              onClick={() => {
+                setMobileNavOpen(false);
+                setDesktopNavCollapsed(true);
+              }}
             >
               <X className="h-5 w-5" aria-hidden="true" />
             </button>
