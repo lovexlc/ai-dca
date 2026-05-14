@@ -65,7 +65,7 @@ export default {
 		}
 
 		if (url.pathname === '/internal/restart' && request.method === 'POST') {
-			return stub.fetch('http://container/__restart__');
+			return stub.fetch('http://container/__restart__', { method: 'POST' });
 		}
 
 		if (url.pathname === '/internal/ask' && request.method === 'POST') {
