@@ -65,6 +65,15 @@ const server = http.createServer(async (req, res) => {
 			});
 		}
 
+		if (url.pathname === '/__restart__' && req.method === 'POST') {
+			// 返回后立即退出进程，Cloudflare Container 运行时会重新拉起
+			// 新实例并注入最新的 envVars。
+			jsonResponse(res, 200, { ok: true, action: 'exiting' });
+			setTimeout(() => process.exit(0), 100);
+			return;
+		}
+
+
 		jsonResponse(res, 404, { ok: false, error: 'not_found', path: url.pathname });
 	} catch (err) {
 		jsonResponse(res, 500, { ok: false, error: String((err && err.message) || err) });

@@ -32,25 +32,9 @@ export class MarketsAgentContainer extends Container<Env> {
 		};
 	}
 
-	// 允许外层 Worker 主动重启 container。Cloudflare Container 只在实例启动时
-	// 注入 envVars，所以 secret 改后需要手动踢一下。
-	async fetch(req: Request): Promise<Response> {
-		const u = new URL(req.url);
-		if (u.pathname === '/__restart__') {
-			try {
-				await this.stop();
-			} catch (err) {
-				return new Response(JSON.stringify({ ok: false, error: String((err as any)?.message || err) }), {
-					status: 500,
-					headers: { 'content-type': 'application/json' },
-				});
-			}
-			return new Response(JSON.stringify({ ok: true, action: 'stopped' }), {
-				headers: { 'content-type': 'application/json' },
-			});
-		}
-		return super.fetch(req);
-	}
+	// 重启逻辑不在这里管。Container helper 的 stop()/destroy() 状态机不可靠；
+	// 改为由容器内部 process.exit(0)，Cloudflare 检到进程退出后会拉起
+	// 一个新实例，启动时重新注入最新 envVars。
 }
 
 function unauthorized() {
