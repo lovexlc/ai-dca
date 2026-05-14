@@ -10,6 +10,7 @@ export function Sparkline({
   strokeWidth = 1.5,
   tone = 'auto',
   showFill = true,
+  markLast = false,
   className = ''
 }) {
   const data = useMemo(
@@ -89,6 +90,14 @@ export function Sparkline({
     >
       {fillPath ? <path d={fillPath} fill={fill} stroke="none" /> : null}
       <path d={linePath} fill="none" stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round" strokeLinecap="round" />
+      {markLast && coords.length ? (
+        <circle
+          cx={coords[coords.length - 1][0]}
+          cy={coords[coords.length - 1][1]}
+          r={2.4}
+          fill={stroke}
+        />
+      ) : null}
     </svg>
   );
 }
