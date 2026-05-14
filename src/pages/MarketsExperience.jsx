@@ -146,7 +146,7 @@ function IndexCard({ entry, onPick, sparkPoints }) {
     <button
       type="button"
       onClick={() => onPick && onPick(entry)}
-      className="group flex flex-col items-start gap-2 rounded-2xl border border-slate-200/70 bg-white/80 p-4 text-left shadow-sm transition hover:border-indigo-300 hover:shadow-md"
+      className="group flex w-[78%] shrink-0 snap-start flex-col items-start gap-2 rounded-2xl border border-slate-200/70 bg-white/80 p-4 text-left shadow-sm transition hover:border-indigo-300 hover:shadow-md sm:w-56 lg:w-60"
     >
       <div className="flex w-full items-center justify-between gap-2">
         <span className="text-sm font-medium text-slate-600">{entry.name || entry.symbol}</span>
@@ -167,10 +167,14 @@ function IndexCard({ entry, onPick, sparkPoints }) {
   );
 }
 
-function MoversTable({ rows = [], onPick, klineMap = {} }) {
+function MoversTable({ rows = [], onPick, klineMap = {}, initialLimit = 4 }) {
+  const [expanded, setExpanded] = useState(false);
   if (!rows.length) {
     return <p className="text-sm text-slate-400">暂无榜单数据。</p>;
   }
+  const total = rows.length;
+  const visibleRows = expanded ? rows : rows.slice(0, initialLimit);
+  const hiddenCount = Math.max(0, total - initialLimit);
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white/80">
       <table className="min-w-full divide-y divide-slate-200/70 text-sm">
@@ -185,7 +189,7 @@ function MoversTable({ rows = [], onPick, klineMap = {} }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {rows.map((row) => {
+          {visibleRows.map((row) => {
             const pct = Number(row.changePercent);
             const positive = Number.isFinite(pct) && pct > 0;
             const negative = Number.isFinite(pct) && pct < 0;
@@ -229,6 +233,19 @@ function MoversTable({ rows = [], onPick, klineMap = {} }) {
           })}
         </tbody>
       </table>
+      {hiddenCount > 0 ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex w-full items-center justify-center gap-1 border-t border-slate-100 bg-slate-50/60 py-2 text-xs font-medium text-indigo-600 hover:bg-indigo-50/60"
+        >
+          {expanded ? (
+            <>收起 <ChevronDown size={12} className="rotate-180" /></>
+          ) : (
+            <>显示更多 ({hiddenCount}) <ChevronDown size={12} /></>
+          )}
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -677,19 +694,22 @@ export function MarketsExperience() {
           <h2 className="text-base font-semibold text-slate-800">主要指数</h2>
           {indicesLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {indices.map((entry) => (
-            <IndexCard
-              key={entry.symbol}
-              entry={entry}
-              onPick={(e) => handlePickMover(e)}
-              sparkPoints={klineMap[entry.symbol]}
-            />
-          ))}
-          {!indices.length && !indicesLoading && (
-            <p className="text-sm text-slate-400">暂无指数数据。</p>
-          )}
-        </div>
+        {indices.length ? (
+          <div className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex snap-x snap-mandatory gap-3 pb-1">
+              {indices.map((entry) => (
+                <IndexCard
+                  key={entry.symbol}
+                  entry={entry}
+                  onPick={(e) => handlePickMover(e)}
+                  sparkPoints={klineMap[entry.symbol]}
+                />
+              ))}
+            </div>
+          </div>
+        ) : !indicesLoading ? (
+          <p className="text-sm text-slate-400">暂无指数数据。</p>
+        ) : null}
       </Card>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
