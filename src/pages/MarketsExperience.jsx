@@ -508,20 +508,15 @@ function NewsList({ items = [] }) {
 // 美股今日主题摘要。默认折叠，展开后按顺序列出 4 个主题。
 function SummaryModule({ themes = [], loading, generatedAt, open, onToggle, onRefresh }) {
   const hasContent = Array.isArray(themes) && themes.length > 0;
-  // 每个主题独立记录“N 个网站”是否已展开。
-  const [expandedSources, setExpandedSources] = useState({});
-  const toggleSources = useCallback((idx) => {
-    setExpandedSources((prev) => ({ ...prev, [idx]: !prev[idx] }));
+  // 每个主题是否展开（详情+来源+AI 探索）。
+  const [expanded, setExpanded] = useState({});
+  const toggleTheme = useCallback((idx) => {
+    setExpanded((prev) => ({ ...prev, [idx]: !prev[idx] }));
   }, []);
   return (
-    <Card className="space-y-3">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center justify-between gap-3 text-left"
-      >
+    <Card className="space-y-0">
+      <div className="flex items-center justify-between gap-3 pb-1">
         <div className="flex items-center gap-2">
-          {open ? <ChevronDown size={16} className="text-indigo-500" /> : <ChevronRight size={16} className="text-indigo-500" />}
           <h2 className="text-base font-semibold text-slate-800">美国市场概况</h2>
           {loading && <Loader2 size={12} className="animate-spin text-slate-400" />}
           {!loading && hasContent && (
@@ -531,58 +526,53 @@ function SummaryModule({ themes = [], loading, generatedAt, open, onToggle, onRe
             <span className="text-xs text-slate-400">暂无主题摘要</span>
           )}
         </div>
-        <span className="text-xs text-slate-400">
-          {generatedAt ? '更新于 ' + formatTime(generatedAt) : ''}
-        </span>
-      </button>
-      {open && (
-        <div className="space-y-3">
-          {hasContent ? (
-            <ol className="space-y-2">
-              {themes.map((t, idx) => (
-                <li
-                  key={idx}
-                  className="rounded-xl border border-slate-200/70 bg-white/80 p-3"
-                >
-                  <div className="flex items-start gap-2">
-                    <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-[11px] font-semibold text-indigo-600">
-                      {idx + 1}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start gap-2">
-                        <div className="min-w-0 flex-1 font-medium text-slate-800">{t.title}</div>
-                        <ThemeSourceFavicons
-                          sources={t.sources}
-                          expanded={!!expandedSources[idx]}
-                          onToggle={() => toggleSources(idx)}
-                        />
-                      </div>
-                      <p className="mt-1 text-sm leading-relaxed text-slate-500">{t.detail}</p>
-                      {expandedSources[idx] && <ThemeSourceCards sources={t.sources} />}
-                      <ThemeExploreButton theme={t} />
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p className="text-sm text-slate-400">
-              暂未生成主题摘要。点右侧刷新按钮可请求重新生成。
-            </p>
+        <div className="flex items-center gap-2">
+          {generatedAt && (
+            <span className="hidden text-[11px] text-slate-400 sm:inline">更新于 {formatTime(generatedAt)}</span>
           )}
           {onRefresh && (
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={onRefresh}
-                className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
-              >
-                <RefreshCw size={11} /> 重新生成
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={onRefresh}
+              aria-label="重新生成主题"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
+            >
+              <RefreshCw size={11} />
+            </button>
           )}
         </div>
-      )}
+      </div>
+      {hasContent ? (
+        <ul className="divide-y divide-slate-200/70">
+          {themes.map((t, idx) => {
+            const isOpen = !!expanded[idx];
+            return (
+              <li key={idx}>
+                <button
+                  type="button"
+                  onClick={() => toggleTheme(idx)}
+                  className="flex w-full items-center justify-between gap-3 py-3 text-left transition hover:text-indigo-600"
+                  aria-expanded={isOpen}
+                >
+                  <span className="min-w-0 flex-1 text-[14.5px] font-medium leading-snug text-slate-800">{t.title}</span>
+                  <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-400 transition group-hover:text-indigo-500">
+                    {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  </span>
+                </button>
+                {isOpen && (
+                  <div className="space-y-2 pb-3">
+                    <p className="text-sm leading-relaxed text-slate-500">{t.detail}</p>
+                    <ThemeSourceCards sources={t.sources} />
+                    <ThemeExploreButton theme={t} />
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : !loading ? (
+        <p className="py-3 text-sm text-slate-400">暂未生成主题摘要。点右侧刷新按钮可请求重新生成。</p>
+      ) : null}
     </Card>
   );
 }
@@ -646,7 +636,6 @@ export function MarketsExperience() {
   const [newsLoading, setNewsLoading] = useState(false);
   const [summary, setSummary] = useState({ themes: [], generatedAt: '' });
   const [summaryLoading, setSummaryLoading] = useState(false);
-  const [summaryOpen, setSummaryOpen] = useState(false);
   const [watch, setWatch] = useState(() => loadWatchlist());
   const [watchQuotes, setWatchQuotes] = useState({});
   const [watchLoading, setWatchLoading] = useState(false);
@@ -855,17 +844,6 @@ export function MarketsExperience() {
         </div>
       </div>
 
-      {market === 'us' && (
-        <SummaryModule
-          themes={summary.themes}
-          loading={summaryLoading}
-          generatedAt={summary.generatedAt}
-          open={summaryOpen}
-          onToggle={() => setSummaryOpen((v) => !v)}
-          onRefresh={() => refreshSummary(true)}
-        />
-      )}
-
       <Card className="space-y-3">
         <div className="flex items-center gap-2">
           <Sparkles size={16} className="text-indigo-500" />
@@ -889,6 +867,15 @@ export function MarketsExperience() {
           <p className="text-sm text-slate-400">暂无指数数据。</p>
         ) : null}
       </Card>
+
+      {market === 'us' && (
+        <SummaryModule
+          themes={summary.themes}
+          loading={summaryLoading}
+          generatedAt={summary.generatedAt}
+          onRefresh={() => refreshSummary(true)}
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card className="space-y-3">
