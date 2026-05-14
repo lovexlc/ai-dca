@@ -331,7 +331,9 @@ async function handleNews(env, market, forceRefresh) {
         'Federal Reserve interest rate decision',
         'big tech earnings AI chip stocks',
         'US economic policy treasury yields',
-        'major corporate earnings Wall Street'
+        'major corporate earnings Wall Street',
+        'Federal Reserve chair governor nomination Senate confirmation',
+        'White House Congress tariff fiscal policy Wall Street reaction'
       ];
       for (const q of queries) {
         tasks.push(
