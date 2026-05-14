@@ -156,13 +156,25 @@ function siteFavicon(url) {
 }
 
 // 主题卡右上角的叠加 favicon + “N 个网站”徽标，仿 Google Finance。
-function ThemeSourceFavicons({ sources = [] }) {
+// 主题卡右上角的叠加 favicon + “N 个网站”按钮：点击展开/收起新闻引用卡。
+function ThemeSourceFavicons({ sources = [], expanded = false, onToggle }) {
   const list = (sources || []).filter((s) => s && s.url);
   if (!list.length) return null;
   const preview = list.slice(0, 3);
+  const label = `${list.length} 个网站`;
   return (
-    <div className="flex shrink-0 items-center gap-1.5" title={`${list.length} 个网站`}>
-      <div className="flex -space-x-1.5">
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={expanded}
+      aria-label={`${expanded ? '收起' : '展开'}${label}`}
+      title={label}
+      className={cx(
+        'inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-200/70 bg-white px-1.5 py-0.5 text-[11px] text-slate-500 shadow-sm transition hover:border-indigo-300 hover:text-indigo-600',
+        expanded && 'border-indigo-300 text-indigo-600',
+      )}
+    >
+      <span className="flex -space-x-1.5">
         {preview.map((s, i) => {
           const fav = siteFavicon(s.url);
           const host = s.source || siteHost(s.url);
@@ -173,59 +185,114 @@ function ThemeSourceFavicons({ sources = [] }) {
               alt=""
               title={host}
               loading="lazy"
-              className="h-4 w-4 rounded-full border border-white bg-white object-cover shadow-sm"
+              className="h-4 w-4 rounded-full border border-white bg-white object-cover"
               onError={(e) => { e.currentTarget.style.display = 'none'; }}
             />
           ) : (
             <span
               key={i}
               title={host}
-              className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-white bg-slate-100 text-[8px] font-semibold text-slate-500 shadow-sm"
+              className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-white bg-slate-100 text-[8px] font-semibold text-slate-500"
             >
               {sourceInitials(host)}
             </span>
           );
         })}
-      </div>
-      <span className="whitespace-nowrap text-[11px] text-slate-400">{list.length} 个网站</span>
-    </div>
+      </span>
+      <span className="whitespace-nowrap">{label}</span>
+      {expanded
+        ? <ChevronDown size={11} className="shrink-0 text-slate-400" />
+        : <ChevronRight size={11} className="shrink-0 text-slate-400" />}
+    </button>
   );
 }
 
-// 主题卡底部的可点击新闻 chips：favicon + 来源名，外链打开原文。
-function ThemeSourceChips({ sources = [] }) {
+// 仿 Google Finance：每条新闻一张 rich card，显示标题 + favicon + 站点域名。
+function ThemeSourceCards({ sources = [] }) {
   const list = (sources || []).filter((s) => s && s.url);
   if (!list.length) return null;
   return (
-    <ul className="mt-2 flex flex-wrap gap-1.5">
+    <ul className="mt-3 space-y-2">
       {list.map((s, i) => {
         const fav = siteFavicon(s.url);
-        const host = s.source || siteHost(s.url);
+        const host = siteHost(s.url);
+        const display = host ? `www.${host}` : (s.source || '');
         return (
-          <li key={i} className="min-w-0">
+          <li key={i}>
             <a
               href={s.url}
               target="_blank"
               rel="noreferrer noopener"
-              title={s.title || host}
-              className="inline-flex max-w-[16rem] items-center gap-1 rounded-full border border-slate-200/70 bg-white px-2 py-0.5 text-[11px] text-slate-500 transition hover:border-indigo-300 hover:text-indigo-600"
+              className="group block rounded-2xl border border-slate-200/70 bg-slate-50/80 px-3 py-2.5 transition hover:border-indigo-300 hover:bg-white"
             >
-              {fav ? (
-                <img
-                  src={fav}
-                  alt=""
-                  loading="lazy"
-                  className="h-3.5 w-3.5 shrink-0 rounded-full"
-                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                />
-              ) : null}
-              <span className="truncate">{host}</span>
-              <ExternalLink size={10} className="shrink-0 text-slate-300" />
+              <div className="line-clamp-2 text-[13px] font-medium leading-snug text-slate-800 group-hover:text-indigo-700">
+                {s.title || display || s.url}
+              </div>
+              <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-slate-500">
+                {fav ? (
+                  <img
+                    src={fav}
+                    alt=""
+                    loading="lazy"
+                    className="h-3.5 w-3.5 shrink-0 rounded-full"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
+                ) : (
+                  <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[8px] font-semibold text-slate-500">
+                    {sourceInitials(s.source || host)}
+                  </span>
+                )}
+                <span className="truncate">{display}</span>
+                <ExternalLink size={10} className="ml-auto shrink-0 text-slate-300" />
+              </div>
             </a>
           </li>
         );
       })}
     </ul>
+  );
+}
+
+// “借助 AI 深入探索此主题” 胶囊按钮：把主题标题、概要、来源 URL 一起填到
+// 全局 AI 抽屉，作为 markets 模式下的提问 prefill。
+function ThemeExploreButton({ theme }) {
+  const onClick = useCallback(() => {
+    if (!theme) return;
+    const title = String(theme.title || '').trim();
+    const detail = String(theme.detail || '').trim();
+    const refs = (theme.sources || [])
+      .filter((s) => s && s.url)
+      .slice(0, 6)
+      .map((s, i) => {
+        const host = s.source || siteHost(s.url) || '';
+        const t = s.title || host || s.url;
+        return `${i + 1}. ${t}${host ? `（${host}）` : ''} ${s.url}`;
+      })
+      .join('\n');
+    const lines = [
+      `请围绕主题「${title}」做一次深入解读：`,
+      '',
+      detail ? `主题概要：${detail}` : '',
+      '',
+      refs ? `相关新闻引用：\n${refs}` : '',
+      '',
+      '请：1) 梳理这一主题当前的关键事实与时间线；2) 评估对美股大盘、板块和我关注的代表性个股的潜在影响；3) 给出 2-3 个值得继续关注的信号或后续问题。',
+    ].filter(Boolean).join('\n');
+    try {
+      window.dispatchEvent(new CustomEvent('aichat:prefill', {
+        detail: { question: lines, mode: 'markets', open: true },
+      }));
+    } catch (_) { /* ignore */ }
+  }, [theme]);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50/60 px-3 py-1 text-xs font-medium text-indigo-600 transition hover:border-indigo-300 hover:bg-indigo-50"
+    >
+      <Sparkles size={12} />
+      借助 AI 深入探索此主题
+    </button>
   );
 }
 
@@ -434,6 +501,11 @@ function NewsList({ items = [] }) {
 // 美股今日主题摘要。默认折叠，展开后按顺序列出 4 个主题。
 function SummaryModule({ themes = [], loading, generatedAt, open, onToggle, onRefresh }) {
   const hasContent = Array.isArray(themes) && themes.length > 0;
+  // 每个主题独立记录“N 个网站”是否已展开。
+  const [expandedSources, setExpandedSources] = useState({});
+  const toggleSources = useCallback((idx) => {
+    setExpandedSources((prev) => ({ ...prev, [idx]: !prev[idx] }));
+  }, []);
   return (
     <Card className="space-y-3">
       <button
@@ -472,10 +544,15 @@ function SummaryModule({ themes = [], loading, generatedAt, open, onToggle, onRe
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start gap-2">
                         <div className="min-w-0 flex-1 font-medium text-slate-800">{t.title}</div>
-                        <ThemeSourceFavicons sources={t.sources} />
+                        <ThemeSourceFavicons
+                          sources={t.sources}
+                          expanded={!!expandedSources[idx]}
+                          onToggle={() => toggleSources(idx)}
+                        />
                       </div>
                       <p className="mt-1 text-sm leading-relaxed text-slate-500">{t.detail}</p>
-                      <ThemeSourceChips sources={t.sources} />
+                      {expandedSources[idx] && <ThemeSourceCards sources={t.sources} />}
+                      <ThemeExploreButton theme={t} />
                     </div>
                   </div>
                 </li>
