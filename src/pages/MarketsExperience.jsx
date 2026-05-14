@@ -146,22 +146,18 @@ function IndexCard({ entry, onPick, sparkPoints }) {
     <button
       type="button"
       onClick={() => onPick && onPick(entry)}
-      className="group flex w-[78%] shrink-0 snap-start flex-col items-start gap-2 rounded-2xl border border-slate-200/70 bg-white/80 p-4 text-left shadow-sm transition hover:border-indigo-300 hover:shadow-md sm:w-56 lg:w-60"
+      className="group flex w-[31%] shrink-0 snap-start flex-col items-start gap-1 rounded-xl border border-slate-200/70 bg-white/80 p-2.5 text-left shadow-sm transition hover:border-indigo-300 hover:shadow-md sm:w-40 lg:w-44"
     >
-      <div className="flex w-full items-center justify-between gap-2">
-        <span className="text-sm font-medium text-slate-600">{entry.name || entry.symbol}</span>
-        <span className={cx('inline-flex items-center gap-1 text-xs font-medium', changeToneClass(entry.changePercent))}>
-          {positive ? <ArrowUp size={12} /> : negative ? <ArrowDown size={12} /> : null}
+      <div className="line-clamp-1 w-full text-xs font-medium text-slate-600">{entry.name || entry.symbol}</div>
+      <div className="flex w-full items-baseline justify-between gap-1">
+        <span className="text-base font-semibold tabular-nums text-slate-900">{formatNumber(entry.price)}</span>
+        <span className={cx('inline-flex items-center gap-0.5 text-[11px] font-medium tabular-nums', changeToneClass(entry.changePercent))}>
+          {positive ? <ArrowUp size={10} /> : negative ? <ArrowDown size={10} /> : null}
           {formatPercent(entry.changePercent)}
         </span>
       </div>
-      <div className="text-2xl font-semibold tabular-nums text-slate-900">{formatNumber(entry.price)}</div>
-      <div className="-mx-1 w-[calc(100%+0.5rem)]">
-        <Sparkline points={sparkPoints} width={220} height={36} tone={tone} className="w-full" />
-      </div>
-      <div className="flex w-full items-center justify-between text-xs text-slate-400">
-        <span>{entry.symbol}</span>
-        <span className={changeToneClass(entry.change)}>{formatNumber(entry.change)}</span>
+      <div className="-mx-0.5 w-[calc(100%+0.25rem)]">
+        <Sparkline points={sparkPoints} width={160} height={28} tone={tone} className="w-full" />
       </div>
     </button>
   );
@@ -643,38 +639,43 @@ export function MarketsExperience() {
 
   return (
     <div className="flex flex-col gap-5 pb-24">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+      <div className="sticky top-0 z-20 -mx-4 flex items-center justify-between gap-3 border-b border-slate-200/70 bg-white/95 px-4 py-2 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:px-4">
+        <div className="flex items-center gap-1.5">
           {MARKETS.map((m) => (
             <button
               key={m.key}
               type="button"
               className={cx(
-                'rounded-full px-3 py-1 text-sm font-medium transition',
+                'rounded-full px-4 py-1.5 text-sm font-semibold transition',
                 market === m.key
                   ? 'bg-indigo-500 text-white shadow-sm'
-                  : 'bg-white/70 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'
+                  : 'bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600'
               )}
               onClick={() => setMarket(m.key)}
             >
               {m.label}
             </button>
           ))}
-          {generatedAt && <span className="text-xs text-slate-400">更新于 {formatTime(generatedAt)}</span>}
         </div>
-        <button
-          type="button"
-          className={cx(secondaryButtonClass, 'inline-flex items-center gap-1 text-xs')}
-          onClick={() => {
-            refreshIndices(true);
-            refreshMovers(true);
-            refreshNews();
-            refreshWatch();
-            refreshSummary(true);
-          }}
-        >
-          <RefreshCw size={12} /> 刷新
-        </button>
+        <div className="flex items-center gap-2">
+          {generatedAt && (
+            <span className="hidden text-[11px] text-slate-400 sm:inline">{formatTime(generatedAt)}</span>
+          )}
+          <button
+            type="button"
+            aria-label="刷新"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
+            onClick={() => {
+              refreshIndices(true);
+              refreshMovers(true);
+              refreshNews();
+              refreshWatch();
+              refreshSummary(true);
+            }}
+          >
+            <RefreshCw size={14} />
+          </button>
+        </div>
       </div>
 
       {market === 'us' && (
