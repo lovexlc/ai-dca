@@ -383,7 +383,27 @@ async function handleNews(env, market, forceRefresh) {
       const tb = b.publishedAt ? Date.parse(b.publishedAt) : 0;
       return tb - ta;
     });
-    items = deduped.slice(0, 30);
+    // 每个来源最多保留 5 条，防止 Reuters/CNBC 等 wire 压满版面；
+    // 超出部分放到 overflow中，仅在主列表没装满 30 条时才以补充。
+    const PER_SOURCE_CAP = 5;
+    const TOTAL_CAP = 30;
+    const perSourceCount = new Map();
+    const primary = [];
+    const overflow = [];
+    for (const it of deduped) {
+      const src = (it.source || 'unknown').toLowerCase();
+      const n = perSourceCount.get(src) || 0;
+      if (n < PER_SOURCE_CAP) {
+        perSourceCount.set(src, n + 1);
+        primary.push(it);
+      } else {
+        overflow.push(it);
+      }
+    }
+    items = primary.slice(0, TOTAL_CAP);
+    if (items.length < TOTAL_CAP) {
+      items = items.concat(overflow.slice(0, TOTAL_CAP - items.length));
+    }
   } else {
     // A 股新闻：Phase 1 暂用空列表，后续接东财 / 雪球。
     items = [];
