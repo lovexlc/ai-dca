@@ -954,25 +954,15 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   function handleManualRefresh() {
     const codes = getLedgerCodeList(transactions);
     // 摊薄成本法改造后，前端数据全部本地存储，服务端不会自动推送新口径。
-    // 这里先在本地强制重算一遍加权均价（avgCost / totalCost / 未实现收益等派生字段），
+    // 这里先在本地静默重算一遍派生字段（avgCost / totalCost / 未实现收益等），
     // 让用户即便没拉到新净值也能立刻看到新口径下的均价。再异步刷新最新净值。
-    let recomputedCount = 0;
     setLedger((prev) => {
       const prevTxs = Array.isArray(prev.transactions) ? prev.transactions : [];
       // sanitizeTransactions 会重新跑一遍 normalizeTransaction：触发 useMemo
       // 重新执行 aggregateByCode，以最新的摊薄成本法重算 avgCost / totalCost。
       const nextTxs = sanitizeTransactions(prevTxs, { filterInvalid: false });
-      const aggs = aggregateByCode(nextTxs, prev.snapshotsByCode || {});
-      recomputedCount = Array.isArray(aggs)
-        ? aggs.filter((agg) => agg && agg.hasPosition).length
-        : 0;
       return { ...prev, transactions: nextTxs };
     });
-    if (recomputedCount > 0) {
-      showActionToast('加权均价', 'success', {
-        description: `已用摊薄成本法重算 ${recomputedCount} 个在持基金的加权均价。`
-      });
-    }
     // 手动刷新清空已尝试集合，所有代码都重新走一遍。
     navAttemptedCodesRef.current.clear();
     void refreshNavForCodes(codes, { silent: false });
