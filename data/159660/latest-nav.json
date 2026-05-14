@@ -2,10 +2,10 @@
   "dataset": "etf_latest_nav_eastmoney",
   "code": "159660",
   "name": "汇添富纳斯达克100ETF",
-  "latestNav": 2.1884,
-  "latestNavDate": "2026-05-11",
-  "previousNav": 2.1831,
-  "previousNavDate": "2026-05-08",
+  "latestNav": 2.168,
+  "latestNavDate": "2026-05-12",
+  "previousNav": 2.1884,
+  "previousNavDate": "2026-05-11",
   "source": "eastmoney:f10/lsjz",
-  "generatedAt": "2026-05-13T10:06:17.983Z"
+  "generatedAt": "2026-05-14T03:30:00.033Z"
 }
