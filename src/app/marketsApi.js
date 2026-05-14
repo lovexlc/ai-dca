@@ -80,8 +80,8 @@ export async function fetchProfile(symbol) {
   return getJson('/profile/' + encodeURIComponent(symbol));
 }
 
-export async function askMarkets({ question, symbols = [], depth = 'fast' }) {
-  return postJson('/ask', { question, symbols, depth });
+export async function askMarkets({ question, symbols = [], depth = 'fast', context = '' }) {
+  return postJson('/ask', { question, symbols, depth, context });
 }
 
 // Watchlist (localStorage). Stored per market for convenience.

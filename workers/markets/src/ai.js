@@ -8,6 +8,15 @@ const SYSTEM_PROMPT = `你是一个专注于金融市场的助手，服务对象
 4. 不提供个股买卖建议。可以描述估值、趋势、风险点，但不给买/卖/持有的明确指令。
 5. 【重要】不要在回答里追加“参考来源”/“引用”/“来源”/“sources”区块，也不要在文末重复列出 URL；前端会单独展示来源列表。如需引用可在正文用[1][2]这样的角标对应组号即可。`;
 
+// 深度模式 / 主题深度解读专用的补充系统提示：给一份结构化的可交付结果。
+const DEEP_DIVE_PROMPT = `【深度模式】请按以下结构输出，总长控制在 500-900 字之内，使用 markdown：
+- 首段：一句话结论（事件是什么 + 对市场的净方向判断）。
+- 「关键事实与时间线」：3-5 个 bullet，按时间顺序罗列可验证的事实（人名 / 机构 / 数字 / 日期），每条末尾挂 [来源编号]。
+- 「市场影响」：分大盘、相关板块 / 行业、代表性个股（3 层）分别分析；能拉到行情快照或参考资料里的数据就用。
+- 「后续信号与关注点」：给 2-3 个具体、可跟踪的后续信号或后续问题（例如“下周 FOMC 会议纪要中某委员的表态”、“哪些果商打仗供应链调价”），避免空泛口号。
+- 「风险提示」：一句话。
+请随时结合「主题上下文」中给出的主题概要、相关新闻、以及「行情快照」上的代表性仓位，避免只重复标题。`;
+
 export async function tavilySearch({ query, key, maxResults = 5 }) {
   if (!key) throw new Error('missing TAVILY_API_KEY');
   const res = await fetch('https://api.tavily.com/search', {
@@ -32,8 +41,13 @@ export async function tavilySearch({ query, key, maxResults = 5 }) {
   return res.json();
 }
 
-function buildContext(searchResults, quoteSnapshots) {
+function buildContext(searchResults, quoteSnapshots, extraContext) {
   const lines = [];
+  if (typeof extraContext === 'string' && extraContext.trim()) {
+    lines.push('## 主题上下文');
+    lines.push(extraContext.trim());
+    lines.push('');
+  }
   if (Array.isArray(quoteSnapshots) && quoteSnapshots.length) {
     lines.push('## 行情快照');
     for (const q of quoteSnapshots) {
@@ -57,7 +71,7 @@ function buildContext(searchResults, quoteSnapshots) {
   return lines.join('\n');
 }
 
-export async function askWithGrounding({ env, question, quoteSnapshots = [], depth = 'fast' }) {
+export async function askWithGrounding({ env, question, quoteSnapshots = [], depth = 'fast', extraContext = '' }) {
   const tavilyKey = env.TAVILY_API_KEY;
   let searchResults = [];
   let searchError = '';
@@ -68,12 +82,13 @@ export async function askWithGrounding({ env, question, quoteSnapshots = [], dep
     searchError = String(err?.message || err);
   }
 
-  const context = buildContext(searchResults, quoteSnapshots);
+  const context = buildContext(searchResults, quoteSnapshots, extraContext);
   const model = depth === 'deep' ? (env.CHAT_MODEL_DEEP || '@cf/moonshotai/kimi-k2.6') : (env.CHAT_MODEL_FAST || '@cf/zai-org/glm-4.7-flash');
   const maxTokens = Number(env.CHAT_MAX_TOKENS || 2048);
 
+  const systemPrompt = depth === 'deep' ? `${SYSTEM_PROMPT}\n\n${DEEP_DIVE_PROMPT}` : SYSTEM_PROMPT;
   const messages = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: systemPrompt },
     {
       role: 'user',
       content: `${context}\n\n## 问题\n${question}`

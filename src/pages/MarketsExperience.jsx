@@ -253,8 +253,8 @@ function ThemeSourceCards({ sources = [] }) {
   );
 }
 
-// “借助 AI 深入探索此主题” 胶囊按钮：把主题标题、概要、来源 URL 一起填到
-// 全局 AI 抽屉，作为 markets 模式下的提问 prefill。
+// “借助 AI 深入探索此主题” 胶囊按钮：输入框只填一句简短问题，主题概要与新闻引用
+// 以 context 形式传给后端作为上下文，同时自动切换到深度模式。
 function ThemeExploreButton({ theme }) {
   const onClick = useCallback(() => {
     if (!theme) return;
@@ -269,18 +269,25 @@ function ThemeExploreButton({ theme }) {
         return `${i + 1}. ${t}${host ? `（${host}）` : ''} ${s.url}`;
       })
       .join('\n');
-    const lines = [
-      `请围绕主题「${title}」做一次深入解读：`,
-      '',
+    // 输入框只填一句话，避免长提示闪现。
+    const question = title
+      ? `深入解读主题「${title}」`
+      : '深入解读今日主题';
+    // 上下文交给服务端，不走输入框。
+    const ctxLines = [
+      title ? `主题标题：${title}` : '',
       detail ? `主题概要：${detail}` : '',
-      '',
       refs ? `相关新闻引用：\n${refs}` : '',
-      '',
-      '请：1) 梳理这一主题当前的关键事实与时间线；2) 评估对美股大盘、板块和我关注的代表性个股的潜在影响；3) 给出 2-3 个值得继续关注的信号或后续问题。',
-    ].filter(Boolean).join('\n');
+    ].filter(Boolean).join('\n\n');
     try {
       window.dispatchEvent(new CustomEvent('aichat:prefill', {
-        detail: { question: lines, mode: 'markets', open: true },
+        detail: {
+          question,
+          mode: 'markets',
+          depth: 'deep',
+          context: ctxLines,
+          open: true,
+        },
       }));
     } catch (_) { /* ignore */ }
   }, [theme]);

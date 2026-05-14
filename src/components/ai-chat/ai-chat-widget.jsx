@@ -196,6 +196,8 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
   const [nudgeMuted, setNudgeMuted] = useState(() => isNudgeDismissed());
   // 参考来源是否展开：key 是消息在列表里的 index。
   const [openSources, setOpenSources] = useState(() => new Set());
+  // 下一次 askMarkets 调用携带的额外上下文（来自主题深入按钮等外部触发），使用后自动清空。
+  const pendingMarketsContextRef = useRef('');
   const listRef = useRef(null);
   const textareaRef = useRef(null);
   const abortRef = useRef(null);
@@ -218,12 +220,19 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
   }, []);
 
   // 外部页面（例如行情中心底部 ask bar）预填问题 + 可选切换模式。
-  // detail: { question?: string, mode?: 'chat'|'markets', open?: boolean }
+  // detail: { question?: string, mode?: 'chat'|'markets', open?: boolean,
+  //           depth?: 'fast'|'deep', context?: string }
   useEffect(() => {
     function onPrefill(event) {
       const detail = (event && event.detail) || {};
       if (detail.mode === 'markets' || detail.mode === 'chat') {
         setMode(detail.mode);
+      }
+      if (detail.depth === 'fast' || detail.depth === 'deep') {
+        setMarketsDepth(detail.depth);
+      }
+      if (typeof detail.context === 'string') {
+        pendingMarketsContextRef.current = detail.context;
       }
       if (typeof detail.question === 'string' && detail.question.trim()) {
         setInput(detail.question);
@@ -422,7 +431,15 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
           const cn = Array.isArray(wl.cn) ? wl.cn : [];
           symbols = [...us.slice(0, 4), ...cn.slice(0, 4)];
         } catch (_) { /* ignore */ }
-        const res = await askMarkets({ question: content, symbols, depth: marketsDepth });
+        // 消费并清空额外上下文，仅本次提问生效。
+        const extraContext = pendingMarketsContextRef.current || '';
+        pendingMarketsContextRef.current = '';
+        const res = await askMarkets({
+          question: content,
+          symbols,
+          depth: marketsDepth,
+          context: extraContext,
+        });
         const out = formatMarketsAnswer(res);
         setMessages((prev) => {
           const next = [...prev];

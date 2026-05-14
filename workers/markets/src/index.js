@@ -433,6 +433,7 @@ async function handleAsk(env, body) {
   const question = String((body && body.question) || '').trim();
   if (!question) return errorJson('missing question', 400);
   const depth = body && body.depth === 'deep' ? 'deep' : 'fast';
+  const extraContext = typeof (body && body.context) === 'string' ? body.context.slice(0, 4000) : '';
   const wantSymbols = Array.isArray(body && body.symbols) ? body.symbols.slice(0, 8) : [];
   // 附带行情快照。
   const quoteSnapshots = [];
@@ -448,7 +449,7 @@ async function handleAsk(env, body) {
       console.warn('snapshot fail', raw, err);
     }
   }
-  const result = await askWithGrounding({ env, question, quoteSnapshots, depth });
+  const result = await askWithGrounding({ env, question, quoteSnapshots, depth, extraContext });
   return json(result);
 }
 
