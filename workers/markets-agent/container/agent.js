@@ -106,7 +106,7 @@ async function callLLMOnce({ baseUrl, apiKey, model, messages, signal }) {
 }
 
 // -------- Streaming LLM call (parses LongCat SSE -> deltas) --------
-async function callLLMStream({ baseUrl, apiKey, model, messages, signal, onContentDelta }) {
+async function callLLMStream({ baseUrl, apiKey, model, messages, signal, onContentDelta, onReasoningDelta }) {
 	const localCtrl = new AbortController();
 	const tid = setTimeout(() => localCtrl.abort(), LLM_TIMEOUT_MS);
 	const combinedSignal = signal ? anySignal([signal, localCtrl.signal]) : localCtrl.signal;
@@ -129,6 +129,7 @@ async function callLLMStream({ baseUrl, apiKey, model, messages, signal, onConte
 		const decoder = new TextDecoder();
 		let buf = '';
 		let content = '';
+		let reasoning = '';
 		const toolCalls = [];
 		let finishReason = null;
 		while (true) {
@@ -153,6 +154,12 @@ async function callLLMStream({ baseUrl, apiKey, model, messages, signal, onConte
 						try { onContentDelta(delta.content); } catch {}
 					}
 				}
+				if (typeof delta.reasoning_content === 'string' && delta.reasoning_content.length > 0) {
+					reasoning += delta.reasoning_content;
+					if (onReasoningDelta) {
+						try { onReasoningDelta(delta.reasoning_content); } catch {}
+					}
+				}
 				if (Array.isArray(delta.tool_calls)) {
 					for (const tc of delta.tool_calls) {
 						const idx = typeof tc.index === 'number' ? tc.index : 0;
@@ -166,7 +173,7 @@ async function callLLMStream({ baseUrl, apiKey, model, messages, signal, onConte
 				if (choice.finish_reason) finishReason = choice.finish_reason;
 			}
 		}
-		return { ok: true, content, tool_calls: toolCalls.filter(Boolean), finish_reason: finishReason };
+		return { ok: true, content, reasoning, tool_calls: toolCalls.filter(Boolean), finish_reason: finishReason };
 	} catch (err) {
 		return { ok: false, error: String(err?.message || err), retryable: false };
 	} finally {
@@ -243,7 +250,11 @@ async function runLoop({ question, depth = 'fast', context = '', emit, signal, s
 		safeEmit({ type: 'progress', step: iterations, total: MAX_ITERATIONS, brief: `第 ${iterations} 轮推理` });
 
 		const callOnce = (model) => streaming
-			? callLLMStream({ baseUrl, apiKey, model, messages, signal, onContentDelta: (d) => safeEmit({ type: 'token', delta: d }) })
+			? callLLMStream({
+					baseUrl, apiKey, model, messages, signal,
+					onContentDelta: (d) => safeEmit({ type: 'token', delta: d }),
+					onReasoningDelta: (d) => safeEmit({ type: 'reasoning', delta: d }),
+				})
 			: callLLMOnce({ baseUrl, apiKey, model, messages, signal });
 		const r = await withRetryFallback(callOnce, modelInitial);
 		if (r.model_used) modelsUsed.add(r.model_used);
