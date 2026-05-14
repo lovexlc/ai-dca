@@ -47,6 +47,11 @@ export async function fetchIndices(market, { refresh = false } = {}) {
   return getJson('/indices?market=' + encodeURIComponent(market) + q);
 }
 
+export async function fetchSectors(market, { refresh = false } = {}) {
+  const q = refresh ? '&refresh=1' : '';
+  return getJson('/sectors?market=' + encodeURIComponent(market) + q);
+}
+
 export async function fetchQuote(symbol) {
   return getJson('/quote/' + encodeURIComponent(symbol));
 }

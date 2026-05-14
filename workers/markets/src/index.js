@@ -24,6 +24,7 @@ import {
   CN_INDICES,
   US_TOP_TICKERS,
   CN_TOP_TICKERS,
+  US_SECTORS,
   classifySymbol
 } from './symbols.js';
 
@@ -68,6 +69,10 @@ export default {
       if (path === '/indices') {
         const market = (url.searchParams.get('market') || 'us').toLowerCase();
         return await handleIndices(env, market, url.searchParams.get('refresh') === '1');
+      }
+      if (path === '/sectors') {
+        const market = (url.searchParams.get('market') || 'us').toLowerCase();
+        return await handleSectors(env, market, url.searchParams.get('refresh') === '1');
       }
       if (path === '/quotes') {
         return await handleBatchQuotes(env, url.searchParams.get('symbols') || '');
@@ -165,6 +170,41 @@ async function refreshIndices(env, market) {
   }
   const payload = { market, generatedAt: new Date().toISOString(), indexes };
   await kvPutJson(env, 'idx:' + market, payload, { ttlSeconds: 120 });
+  return payload;
+}
+
+async function handleSectors(env, market, forceRefresh) {
+  if (market !== 'us') {
+    return json({ market, generatedAt: new Date().toISOString(), sectors: [], cached: false });
+  }
+  const key = 'sec:' + market;
+  if (!forceRefresh) {
+    const cached = await kvGetJson(env, key);
+    if (cached && Array.isArray(cached.sectors) && cached.sectors.length) {
+      return json({ ...cached, cached: true });
+    }
+  }
+  const fresh = await refreshSectors(env, market);
+  return json({ ...fresh, cached: false });
+}
+
+async function refreshSectors(env, market) {
+  // 目前只实现美股 S&P 11 行业指数（Google Finance "Equity sectors"）。
+  // 后续可以加 CN 中信一级行业。
+  const symbols = US_SECTORS.map((it) => it.symbol);
+  const quoteMap = await fetchYahooQuotesBatch(symbols, { range: '1d', interval: '5m' });
+  const sectors = US_SECTORS.map((it) => {
+    const q = quoteMap[it.symbol] || {};
+    return {
+      ...q,
+      key: it.key,
+      name: it.name,
+      symbol: it.symbol,
+      shortCode: it.shortCode
+    };
+  });
+  const payload = { market, generatedAt: new Date().toISOString(), sectors };
+  await kvPutJson(env, 'sec:' + market, payload, { ttlSeconds: 120 });
   return payload;
 }
 

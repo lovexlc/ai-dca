@@ -19,6 +19,23 @@ export const CN_INDICES = [
   { key: 'sh000688', name: '科创 50', symbol: 'sh000688', em: '1.000688' }
 ];
 
+// S&P 1500 行业指数（Google Finance "Equity sectors" 同款，11 个行业）。
+// 这些是指数不是 ETF，Yahoo Finance 接受 ^SP500-XX 格式。
+// shortCode 是 Google Finance 使用的别名（SIXE/SIXB/SIXI 等），用于前端展示。
+export const US_SECTORS = [
+  { key: 'sixe', name: '能源', symbol: '^SP500-10', shortCode: 'SIXE' },
+  { key: 'sixb', name: '材料', symbol: '^SP500-15', shortCode: 'SIXB' },
+  { key: 'sixi', name: '工业', symbol: '^SP500-20', shortCode: 'SIXI' },
+  { key: 'sixy', name: '可选消费', symbol: '^SP500-25', shortCode: 'SIXY' },
+  { key: 'sixr', name: '必需消费', symbol: '^SP500-30', shortCode: 'SIXR' },
+  { key: 'sixv', name: '医疗保健', symbol: '^SP500-35', shortCode: 'SIXV' },
+  { key: 'sixm', name: '金融', symbol: '^SP500-40', shortCode: 'SIXM' },
+  { key: 'sixt', name: '科技', symbol: '^SP500-45', shortCode: 'SIXT' },
+  { key: 'sixc', name: '通讯', symbol: '^SP500-50', shortCode: 'SIXC' },
+  { key: 'sixu', name: '公用事业', symbol: '^SP500-55', shortCode: 'SIXU' },
+  { key: 'sixre', name: '房地产', symbol: '^SP500-60', shortCode: 'SIXRE' }
+];
+
 // 默认热门美股池，用于 Phase 1 涨跌榜（之后会按 Finnhub /stock/symbol 全市场动态算）。
 export const US_TOP_TICKERS = [
   'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AVGO', 'NFLX', 'AMD',
