@@ -6,11 +6,14 @@ import {
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ClipboardPaste,
   CloudUpload,
   Copy,
   FileImage,
   FileUp,
+  LineChart,
   LoaderCircle,
   Minus,
   Pencil,
@@ -1741,6 +1744,17 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   // ---- Render helpers ----
+  function navigateToMarkets(event) {
+    if (event && (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)) return;
+    if (event) event.preventDefault();
+    if (typeof window === 'undefined') return;
+    const target = links.markets || './index.html?tab=markets';
+    const nextUrl = new URL(target, window.location.href);
+    if (window.location.href === nextUrl.href) return;
+    window.history.pushState({ tab: 'markets' }, '', nextUrl);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }
+
   function renderMarketTicker() {
     const items = marketIndexState.indexes;
     if (!items.length) return null;
@@ -1775,12 +1789,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     };
 
     return (
-      <div
-        className="market-ticker group flex h-7 max-w-full items-center overflow-hidden rounded-full border border-slate-200/70 bg-white/60 px-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur supports-[backdrop-filter]:bg-white/55"
-        title={tooltip}
-        role="region"
-        aria-label={`大盘指数实时行情 · ${tooltip}`}
-        tabIndex={0}
+      <a
+        href={links.markets || './index.html?tab=markets'}
+        onClick={navigateToMarkets}
+        className="market-ticker group flex h-7 max-w-full cursor-pointer items-center overflow-hidden rounded-full border border-slate-200/70 bg-white/60 px-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur transition-colors hover:border-blue-200 hover:bg-blue-50/40 hover:shadow-[0_1px_4px_rgba(37,99,235,0.12)] supports-[backdrop-filter]:bg-white/55 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+        title={`${tooltip} · 点击查看行情中心`}
+        aria-label={`进入行情中心查看完整大盘指数·${tooltip}`}
       >
         <div className="market-ticker-viewport flex h-full min-w-0 flex-1 items-center overflow-hidden">
           <div className="market-ticker-track flex h-full items-center">
@@ -1788,7 +1802,11 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             {items.map((item) => renderItem(item, 1))}
           </div>
         </div>
-      </div>
+        <ChevronRight
+          aria-hidden
+          className="ml-0.5 h-3.5 w-3.5 shrink-0 text-slate-400 transition-colors group-hover:text-blue-500"
+        />
+      </a>
     );
   }
 
@@ -1860,7 +1878,21 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     return (
       <section className="rounded-2xl border border-slate-200/70 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:px-5 sm:py-4">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">投资组合概览</div>
+          <div className="flex items-center gap-2">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">投资组合概览</div>
+            <a
+              href={links.markets || './index.html?tab=markets'}
+              onClick={navigateToMarkets}
+              className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 ring-1 ring-slate-200 transition-colors hover:bg-blue-50 hover:text-blue-600 hover:ring-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 sm:text-[11px]"
+              title="进入行情中心查看完整大盘指数 · VIX · CNN 贪婪指数"
+              aria-label="进入行情中心"
+            >
+              <LineChart className="h-3 w-3" aria-hidden />
+              <span className="hidden sm:inline">行情中心</span>
+              <span className="sm:hidden">行情</span>
+              <ChevronRight className="h-3 w-3" aria-hidden />
+            </a>
+          </div>
         </div>
         {marketIndexState.indexes.length ? (
           <div className="relative mt-2 w-full overflow-hidden">
