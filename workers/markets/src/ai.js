@@ -195,6 +195,10 @@ export async function summarizeMarkets({ env, market = 'us', news = [], movers =
       || aiResp?.output?.[0]?.content?.[0]?.text
       || aiResp?.output_text || '';
   }
+  // 其他模型可能返回非字符串（例如 object / array），强制转成字符串避免 raw.slice 报错。
+  if (typeof raw !== 'string') {
+    try { raw = JSON.stringify(raw); } catch (_) { raw = String(raw); }
+  }
   const parsed = extractJson(raw);
   let themes = [];
   if (parsed && Array.isArray(parsed.themes)) {
