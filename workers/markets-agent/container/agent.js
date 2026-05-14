@@ -69,6 +69,26 @@ function summarizeToolResult(name, result) {
 	return str;
 }
 
+// Build a UI-friendly artifact payload for tools that produce a structured
+// front-end view (e.g. interactive chart). Keep the payload small so it can
+// safely travel via SSE/trace. Return null when there is nothing to render.
+function buildUiArtifact(name, result) {
+	if (!result || !result.ok) return null;
+	if (name === 'fund_backtest' && result.data) {
+		const d = result.data;
+		return {
+			type: 'fund_backtest',
+			window: d.window || null,
+			series: d.series || null,
+			correlation_matrix: d.correlation_matrix || null,
+			winner_by_total_return: d.winner_by_total_return || null,
+			chart_data: d.chart_data || null,
+			errors: d.errors || null,
+		};
+	}
+	return null;
+}
+
 // -------- Non-streaming LLM call --------
 async function callLLMOnce({ baseUrl, apiKey, model, messages, signal }) {
 	const localCtrl = new AbortController();
@@ -294,8 +314,14 @@ async function runLoop({ question, depth = 'fast', context = '', emit, signal, s
 				try { result = await handler(args || {}); } catch (err) { result = { ok: false, error: String(err?.message || err) }; }
 			}
 			const tMs = Date.now() - tStart;
-			trace.push({ iter: iterations, tool: name, args, ok: !!result?.ok, ms: tMs, error: result?.error });
+			const uiArtifact = buildUiArtifact(name, result);
+			const traceEntry = { iter: iterations, tool: name, args, ok: !!result?.ok, ms: tMs, error: result?.error };
+			if (uiArtifact) traceEntry.ui_artifact = uiArtifact;
+			trace.push(traceEntry);
 			safeEmit({ type: 'tool_end', iter: iterations, name, ok: !!result?.ok, ms: tMs, error: result?.error });
+			if (uiArtifact) {
+				safeEmit({ type: 'tool_artifact', iter: iterations, name, payload: uiArtifact });
+			}
 			if (result?.sources) {
 				for (const s of result.sources) {
 					if (!s?.url || seenSourceUrls.has(s.url)) continue;

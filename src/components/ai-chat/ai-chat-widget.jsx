@@ -5,7 +5,7 @@ import {
   Send,
   Loader2,
   RotateCcw,
-  LineChart,
+  LineChart as LineChartIcon,
   BookOpen,
   Globe,
   ChevronDown,
@@ -13,6 +13,16 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import {
+  LineChart as RcLineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  CartesianGrid,
+  ResponsiveContainer,
+} from 'recharts';
 import '../../styles/ai-chat.css';
 import { askMarkets, askMarketsStream, loadWatchlist } from '../../app/marketsApi.js';
 
@@ -91,9 +101,107 @@ function renderInlineCitations(content, sources) {
   });
 }
 
+// Extract structured UI artifacts (e.g. fund_backtest chart_data) from
+// the agent's tool trace. Returns Array<{type, ...payload}>.
+function extractArtifactsFromTrace(trace) {
+  if (!Array.isArray(trace)) return [];
+  const out = [];
+  for (const t of trace) {
+    const a = t && t.ui_artifact;
+    if (a && a.type) out.push(a);
+  }
+  return out;
+}
+
+const FB_CHART_COLORS = ['#2563eb', '#dc2626', '#16a34a', '#ca8a04', '#9333ea', '#0891b2'];
+const FB_STYLE_ROOT = { marginBottom: 8 };
+const FB_STYLE_TITLE = { fontSize: 12, color: '#475569', marginBottom: 4 };
+const FB_STYLE_RANGE = { marginLeft: 6, color: '#94a3b8' };
+const FB_STYLE_BOX = { width: '100%', height: 240 };
+const FB_STYLE_MARGIN = { top: 8, right: 16, bottom: 4, left: 0 };
+const FB_STYLE_TICK = { fontSize: 10, fill: '#64748b' };
+const FB_STYLE_TOOLTIP = { fontSize: 12 };
+const FB_STYLE_LEGEND = { fontSize: 11 };
+const FB_STYLE_STATS = { fontSize: 11, color: '#64748b', marginTop: 4, lineHeight: 1.5 };
+const FB_STYLE_STATITEM = { marginRight: 12 };
+const FB_STYLE_STATSYM = { color: '#0f172a' };
+const FB_STYLE_CORR = { display: 'block', marginTop: 2 };
+const FB_Y_DOMAIN = ['auto', 'auto'];
+const fbFmtNum2 = (v) => (typeof v === 'number' ? v.toFixed(2) : v);
+
+function FundBacktestChart({ data }) {
+  if (!data || !data.chart_data || !Array.isArray(data.chart_data.dates)) return null;
+  const rebased = data.chart_data.rebased_to_100 || null;
+  const dates = data.chart_data.dates;
+  const symbols = rebased ? Object.keys(rebased) : [];
+  if (!symbols.length) return null;
+  const rows = dates.map((d, i) => {
+    const row = { date: d };
+    for (const s of symbols) row[s] = rebased[s][i];
+    return row;
+  });
+  const win = data.window || null;
+  const corr = data.correlation_matrix || null;
+  const series = data.series || null;
+  const corrEntries = corr ? Object.entries(corr) : [];
+  return (
+    <div className="ai-chat-artifact" style={FB_STYLE_ROOT}>
+      <div className="ai-chat-artifact__title" style={FB_STYLE_TITLE}>
+        基金回测·净值走势（起点 = 100）
+        {win && win.start && win.end ? (
+          <span style={FB_STYLE_RANGE}>
+            {win.start} → {win.end} · {win.trading_points} 点 · {win.interval}
+          </span>
+        ) : null}
+      </div>
+      <div style={FB_STYLE_BOX}>
+        <ResponsiveContainer width="100%" height="100%">
+          <RcLineChart data={rows} margin={FB_STYLE_MARGIN}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <XAxis dataKey="date" tick={FB_STYLE_TICK} minTickGap={24} />
+            <YAxis tick={FB_STYLE_TICK} domain={FB_Y_DOMAIN} width={36} />
+            <Tooltip contentStyle={FB_STYLE_TOOLTIP} formatter={fbFmtNum2} />
+            <Legend wrapperStyle={FB_STYLE_LEGEND} />
+            {symbols.map((s, i) => (
+              <Line
+                key={s}
+                type="monotone"
+                dataKey={s}
+                stroke={FB_CHART_COLORS[i % FB_CHART_COLORS.length]}
+                dot={false}
+                strokeWidth={1.5}
+                isAnimationActive={false}
+              />
+            ))}
+          </RcLineChart>
+        </ResponsiveContainer>
+      </div>
+      <div style={FB_STYLE_STATS}>
+        {symbols.map((s) => {
+          const st = (series && series[s]) || null;
+          const cum = st && typeof st.cum_return === 'number' ? (st.cum_return * 100).toFixed(2) + '%' : '—';
+          const sh = st && typeof st.sharpe === 'number' ? st.sharpe.toFixed(2) : '—';
+          const dd = st && typeof st.max_dd === 'number' ? (st.max_dd * 100).toFixed(2) + '%' : '—';
+          return (
+            <span key={s} style={FB_STYLE_STATITEM}>
+              <b style={FB_STYLE_STATSYM}>{s}</b>: 总收益 {cum} · 夏普 {sh} · 最大回撤 {dd}
+            </span>
+          );
+        })}
+        {corrEntries.length ? (
+          <span style={FB_STYLE_CORR}>
+            相关性：{corrEntries.map((p) => p[0] + '=' + (typeof p[1] === 'number' ? p[1].toFixed(3) : p[1])).join('  ')}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function formatMarketsAnswer(res) {
   const answer = stripTrailingSourcesBlock(String((res && res.answer) || '').trim());
   const sources = Array.isArray(res && res.sources) ? res.sources.slice(0, 6) : [];
+  const artifacts = extractArtifactsFromTrace(res && res.trace);
   const parts = [];
   if (answer) {
     parts.push(answer);
@@ -113,6 +221,7 @@ function formatMarketsAnswer(res) {
         url: s && s.url ? String(s.url) : '',
       }))
       .filter((s) => s.title || s.url),
+    artifacts,
   };
 }
 
@@ -130,6 +239,9 @@ function loadHistory() {
         ...(Array.isArray(m.sources) && m.sources.length
           ? { sources: m.sources.filter((s) => s && (s.title || s.url)) }
           : {}),
+        ...(Array.isArray(m.artifacts) && m.artifacts.length
+          ? { artifacts: m.artifacts.filter((a) => a && a.type) }
+          : {}),
       }));
   } catch (err) {
     return [];
@@ -142,6 +254,7 @@ function persistHistory(messages) {
       role: m.role,
       content: m.content,
       ...(Array.isArray(m.sources) && m.sources.length ? { sources: m.sources } : {}),
+      ...(Array.isArray(m.artifacts) && m.artifacts.length ? { artifacts: m.artifacts } : {}),
     }));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
   } catch (err) {
@@ -460,6 +573,7 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
           let status = '深度搜索启动中…';
           const seenUrls = new Set();
           const liveSources = [];
+          const liveArtifacts = [];
           const flush = () => {
             const head = status ? '_' + status + '_\n\n' : '';
             setMessages((prev) => {
@@ -470,6 +584,7 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
                   ...last,
                   content: head + acc,
                   sources: liveSources.slice(),
+                  artifacts: liveArtifacts.slice(),
                 };
               }
               return next;
@@ -508,6 +623,9 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
               } else if (type === 'token') {
                 const delta = payload && payload.delta;
                 if (typeof delta === 'string') acc += delta;
+              } else if (type === 'tool_artifact') {
+                const a = payload && payload.payload;
+                if (a && a.type) liveArtifacts.push(a);
               }
               flush();
             },
@@ -529,6 +647,7 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
               role: 'assistant',
               content: fa || '抱歉，本次未生成回答。可以试试重新提问或切换到浅模式。',
               sources: finalSources,
+              ...(liveArtifacts.length ? { artifacts: liveArtifacts.slice() } : {}),
             };
             return next;
           });
@@ -546,6 +665,7 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
             role: 'assistant',
             content: out.content,
             sources: out.sources,
+            ...(Array.isArray(out.artifacts) && out.artifacts.length ? { artifacts: out.artifacts } : {}),
           };
           return next;
         });
@@ -803,42 +923,6 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
               </button>
             </div>
           </header>
-          <div className="ai-chat-mode" role="tablist" aria-label="问答模式">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === 'chat'}
-              className={`ai-chat-mode__btn${mode === 'chat' ? ' is-active' : ''}`}
-              onClick={() => setMode('chat')}
-              disabled={pending}
-            >
-              <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>知识库</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === 'markets'}
-              className={`ai-chat-mode__btn${mode === 'markets' ? ' is-active' : ''}`}
-              onClick={() => setMode('markets')}
-              disabled={pending}
-            >
-              <LineChart className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>市场行情</span>
-            </button>
-            {mode === 'markets' ? (
-              <select
-                value={marketsDepth}
-                onChange={(e) => setMarketsDepth(e.target.value)}
-                className="ai-chat-mode__depth"
-                aria-label="检索深度"
-                disabled={pending}
-              >
-                <option value="fast">快速</option>
-                <option value="deep">深度</option>
-              </select>
-            ) : null}
-          </div>
           </div>
 
           <div className="ai-chat-panel__list" ref={listRef}>
@@ -922,6 +1006,13 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
                         </span>
                       ) : isAssistant ? (
                         <div className="ai-chat-md">
+                          {Array.isArray(m.artifacts) && m.artifacts.length
+                            ? m.artifacts.map((a, ai) =>
+                                a && a.type === 'fund_backtest'
+                                  ? <FundBacktestChart key={'art-' + ai} data={a} />
+                                  : null
+                              )
+                            : null}
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
                             components={{

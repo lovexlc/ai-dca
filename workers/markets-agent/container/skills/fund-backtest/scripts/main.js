@@ -90,6 +90,14 @@ async function main() {
 		if (series[s].cum_return > winnerRet) { winnerRet = series[s].cum_return; winner = s; }
 	}
 
+	// Rebased-to-100 NAV series, suitable for client-side interactive charts.
+	const rebased = {};
+	for (const sym of okSyms) {
+		const arr = aligned[sym];
+		const base = arr[0];
+		rebased[sym] = arr.map((v) => Number(((v / base) * 100).toFixed(4)));
+	}
+
 	const chartSvg = renderNAVChart(dates, aligned, { width: 720, height: 320 });
 	const chartB64 = Buffer.from(chartSvg, 'utf8').toString('base64');
 
@@ -105,6 +113,7 @@ async function main() {
 			series,
 			correlation_matrix: corr,
 			winner_by_total_return: winner,
+			chart_data: { dates, rebased_to_100: rebased },
 			chart_svg_b64: chartB64,
 			raw_csv_path: csvPath,
 			errors: Object.keys(errors).length ? errors : undefined,
