@@ -14,7 +14,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import '../../styles/ai-chat.css';
-import { askMarkets, loadWatchlist } from '../../app/marketsApi.js';
+import { askMarkets, askMarketsStream, loadWatchlist } from '../../app/marketsApi.js';
 
 const CHAT_ENDPOINT = '/api/ai-chat';
 const STORAGE_KEY = 'aiDcaChatHistory_v1';
@@ -433,6 +433,85 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
         // 消费并清空额外上下文，仅本次提问生效。
         const extraContext = pendingMarketsContextRef.current || '';
         pendingMarketsContextRef.current = '';
+        // M3：deep 深度问答走 SSE 流式（MoltWorker 容器）。fast 仍用同步 JSON。
+        if (marketsDepth === 'deep') {
+          let acc = '';
+          let status = '深度搜索启动中…';
+          const seenUrls = new Set();
+          const liveSources = [];
+          const flush = () => {
+            const head = status ? '_' + status + '_\n\n' : '';
+            setMessages((prev) => {
+              const next = [...prev];
+              const last = next[next.length - 1];
+              if (last && last.role === 'assistant') {
+                next[next.length - 1] = {
+                  ...last,
+                  content: head + acc,
+                  sources: liveSources.slice(),
+                };
+              }
+              return next;
+            });
+          };
+          flush();
+          const finalRes = await askMarketsStream({
+            question: content,
+            symbols,
+            depth: 'deep',
+            context: extraContext,
+            signal: controller.signal,
+            onEvent: ({ type, payload }) => {
+              if (type === 'started') {
+                status = '已启动…';
+              } else if (type === 'progress') {
+                const step = payload && payload.step;
+                const total = payload && payload.total;
+                const brief = payload && payload.brief ? '：' + payload.brief : '';
+                status = '第 ' + (step != null ? step : '?') + ' / ' + (total != null ? total : '?') + ' 轮' + brief;
+              } else if (type === 'tool_start') {
+                const name = (payload && payload.name) || '工具';
+                status = '调用工具 ' + name + '…';
+              } else if (type === 'tool_end') {
+                const name = (payload && payload.name) || '工具';
+                status = (payload && payload.ok) ? '工具 ' + name + ' 已返回' : '工具 ' + name + ' 失败';
+              } else if (type === 'source') {
+                const u = payload && payload.url;
+                if (u && !seenUrls.has(u)) {
+                  seenUrls.add(u);
+                  liveSources.push({
+                    title: (payload && payload.title) || u,
+                    url: String(u),
+                  });
+                }
+              } else if (type === 'token') {
+                const delta = payload && payload.delta;
+                if (typeof delta === 'string') acc += delta;
+              }
+              flush();
+            },
+          });
+          status = '';
+          const fa = stripTrailingSourcesBlock(
+            String((finalRes && finalRes.answer) || acc).trim(),
+          );
+          const finalSources =
+            Array.isArray(finalRes && finalRes.sources) && finalRes.sources.length
+              ? finalRes.sources.slice(0, 8).map((s) => ({
+                  title: (s && (s.title || s.url)) || '未命名来源',
+                  url: s && s.url ? String(s.url) : '',
+                }))
+              : liveSources.slice(0, 8);
+          setMessages((prev) => {
+            const next = [...prev];
+            next[next.length - 1] = {
+              role: 'assistant',
+              content: fa || '抱歉，本次未生成回答。可以试试重新提问或切换到浅模式。',
+              sources: finalSources,
+            };
+            return next;
+          });
+        } else {
         const res = await askMarkets({
           question: content,
           symbols,
@@ -449,6 +528,7 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
           };
           return next;
         });
+        }
       } catch (err) {
         if (err && err.name === 'AbortError') {
           // 用户取消
