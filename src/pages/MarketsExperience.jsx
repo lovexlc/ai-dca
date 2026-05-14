@@ -9,6 +9,7 @@ import {
   ExternalLink,
   History,
   Loader2,
+  ListPlus,
   Maximize2,
   Newspaper,
   Plus,
@@ -500,6 +501,41 @@ function SidebarRow({ symbol, name, price, changePercent, sparkPoints, onRemove 
             <Trash2 size={11} />
           </button>
         ) : null}
+      </div>
+    </li>
+  );
+}
+
+function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints }) {
+  const pct = Number(changePercent);
+  const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
+  const up = pct > 0;
+  const textTone = flat ? 'text-slate-500' : up ? 'text-emerald-600' : 'text-rose-600';
+  const circleBg = flat ? 'bg-slate-300' : up ? 'bg-emerald-500' : 'bg-rose-500';
+  const ArrowIcon = flat ? null : up ? ArrowUp : ArrowDown;
+  return (
+    <li className="flex items-center gap-3 px-1 py-3">
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-lg font-semibold leading-tight text-slate-900">{symbol}</div>
+        {name && name !== symbol ? (
+          <div className="truncate text-sm leading-tight text-slate-400">{name}</div>
+        ) : null}
+      </div>
+      {sparkPoints && sparkPoints.length >= 2 ? (
+        <Sparkline points={sparkPoints} width={86} height={32} tone="auto" showFill />
+      ) : (
+        <div className="h-[32px] w-[86px]" />
+      )}
+      <div className="flex shrink-0 flex-col items-end gap-0.5 leading-tight">
+        <div className="text-lg font-semibold tabular-nums text-slate-900">{formatNumber(price)}</div>
+        <div className="flex items-center gap-1">
+          <span className={cx('text-sm font-medium tabular-nums', textTone)}>{formatPercent(changePercent)}</span>
+          {ArrowIcon ? (
+            <span className={cx('inline-flex h-5 w-5 items-center justify-center rounded-full text-white', circleBg)}>
+              <ArrowIcon size={12} strokeWidth={3} />
+            </span>
+          ) : null}
+        </div>
       </div>
     </li>
   );
@@ -1141,7 +1177,136 @@ export function MarketsExperience() {
 
   return (
     <div className="flex flex-col gap-5 pb-6 lg:grid lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:items-start lg:gap-4">
-      <aside className="order-2 flex flex-col gap-3 lg:order-1 lg:sticky lg:top-2">
+      {/* Mobile-only sidebar: Google Finance Beta style */}
+      <aside className="order-2 flex flex-col gap-2 lg:hidden">
+        <div className="px-1">
+          <div className="flex items-center justify-between pt-1">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-md py-1 text-3xl font-normal text-slate-900"
+              title="列表切换　（后续启用多人多列表）"
+            >
+              <span>列表</span>
+              <ChevronDown size={20} className="text-slate-500" />
+            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                aria-label="管理列表"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100"
+              >
+                <ListPlus size={22} />
+              </button>
+              <button
+                type="button"
+                aria-label="全屏"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100"
+              >
+                <Maximize2 size={20} />
+              </button>
+            </div>
+          </div>
+          <div className="mt-1 h-px w-full bg-slate-200" />
+        </div>
+
+        {/* 监控列表 */}
+        <div className="px-1">
+          <div className="flex items-center justify-between py-2">
+            <h3 className="text-base font-semibold text-slate-900">监控列表</h3>
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                aria-label="添加自选"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100"
+                onClick={() => {
+                  const el = document.getElementById('markets-watch-add-input-mobile');
+                  if (el) el.focus();
+                }}
+              >
+                <Plus size={20} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setWatchOpen((v) => !v)}
+                aria-label={watchOpen ? '折叠' : '展开'}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100"
+              >
+                {watchOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+              </button>
+            </div>
+          </div>
+          {watchOpen && (
+            <>
+              <form className="flex items-center gap-2 px-1 pb-2" onSubmit={handleAddSymbol}>
+                <TextInput
+                  id="markets-watch-add-input-mobile"
+                  className="flex-1"
+                  value={symbolInput}
+                  onChange={(e) => setSymbolInput(e.target.value)}
+                  placeholder={market === 'cn' ? 'sh600519' : 'AAPL'}
+                />
+                <button type="submit" className={cx(primaryButtonClass, 'inline-flex shrink-0 items-center gap-1 px-3 py-2 text-sm')}>
+                  <Plus size={14} /> 添加
+                </button>
+              </form>
+              {watchRows.length === 0 ? (
+                <p className="px-2 py-2 text-sm text-slate-400">尚未添加自选。</p>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {watchRows.map((row) => (
+                    <MobileSidebarRow
+                      key={row.symbol}
+                      symbol={row.symbol}
+                      name={row.name}
+                      price={row.price}
+                      changePercent={row.changePercent}
+                      sparkPoints={klineMap[row.symbol]}
+                    />
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* 股票板块（仅美股） */}
+        {market === 'us' && (
+          <div className="px-1">
+            <div className="flex items-center justify-between py-2">
+              <h3 className="text-base font-semibold text-slate-900">股票板块</h3>
+              <button
+                type="button"
+                onClick={() => setSectorsOpen((v) => !v)}
+                aria-label={sectorsOpen ? '折叠' : '展开'}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100"
+              >
+                {sectorsOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+              </button>
+            </div>
+            {sectorsOpen && (
+              sectors.length === 0 ? (
+                <p className="px-2 py-2 text-sm text-slate-400">{sectorsLoading ? '加载中…' : '暂无数据'}</p>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {sectors.map((row) => (
+                    <MobileSidebarRow
+                      key={row.symbol}
+                      symbol={row.shortCode || row.symbol}
+                      name={row.name}
+                      price={row.price}
+                      changePercent={row.changePercent}
+                      sparkPoints={klineMap[row.symbol]}
+                    />
+                  ))}
+                </ul>
+              )
+            )}
+          </div>
+        )}
+      </aside>
+
+      {/* PC-only sidebar: Google Finance Beta-style compact (设计不变) */}
+      <aside className="order-2 hidden flex-col gap-3 lg:order-1 lg:sticky lg:top-2 lg:flex">
         <div className="rounded-2xl border border-slate-200/70 bg-white/95 shadow-sm">
           {/* 顶部工具栏：「列表 ▾」下拉 + 添加 + 全屏 */}
           <div className="flex items-center justify-between gap-1 border-b border-slate-200/70 px-2 py-1.5">
