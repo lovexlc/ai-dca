@@ -487,7 +487,10 @@ async function handleAskStream(env, request) {
       'content-type': 'application/json',
       accept: 'text/event-stream'
     },
-    body: bodyText
+    body: bodyText,
+    // M4: 客户端 abort 后这里 signal aborted，会传递到 markets-agent worker 、
+    // 再到 container。container/server.js 已听 res.on('close', ctrl.abort()) 做上游中断。
+    signal: request.signal
   });
   if (!upstream.body) {
     return errorJson('agent upstream returned empty body', 502, { status: upstream.status });
