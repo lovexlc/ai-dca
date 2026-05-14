@@ -3,6 +3,7 @@ import {
   ArrowDown,
   ArrowUp,
   ChevronDown,
+  ChevronUp,
   ChevronRight,
   ExternalLink,
   Loader2,
@@ -505,39 +506,28 @@ function NewsList({ items = [] }) {
   );
 }
 
-// 美股今日主题摘要。默认折叠，展开后按顺序列出 4 个主题。
-function SummaryModule({ themes = [], loading, generatedAt, open, onToggle, onRefresh }) {
+// 美股今日主题摘要。仿 Google Finance：首条默认展开（粗体标题 + 段落正文 + AI 探索按钮），
+// 其余条目折叠，每条右侧显示新闻来源 favicon 疆叠 + “N 个网站”。
+function SummaryModule({ themes = [], loading, onRefresh }) {
   const hasContent = Array.isArray(themes) && themes.length > 0;
-  // 每个主题是否展开（详情+来源+AI 探索）。
-  const [expanded, setExpanded] = useState({});
+  const [expanded, setExpanded] = useState({ 0: true });
   const toggleTheme = useCallback((idx) => {
     setExpanded((prev) => ({ ...prev, [idx]: !prev[idx] }));
   }, []);
   return (
     <Card className="space-y-0">
       <div className="flex items-center justify-between gap-3 pb-1">
+        <h2 className="text-lg font-semibold text-slate-900">美国市场概况</h2>
         <div className="flex items-center gap-2">
-          <h2 className="text-base font-semibold text-slate-800">美国市场概况</h2>
           {loading && <Loader2 size={12} className="animate-spin text-slate-400" />}
-          {!loading && hasContent && (
-            <span className="text-xs text-slate-400">AI 总结 · {themes.length} 个主题</span>
-          )}
-          {!loading && !hasContent && (
-            <span className="text-xs text-slate-400">暂无主题摘要</span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {generatedAt && (
-            <span className="hidden text-[11px] text-slate-400 sm:inline">更新于 {formatTime(generatedAt)}</span>
-          )}
           {onRefresh && (
             <button
               type="button"
               onClick={onRefresh}
               aria-label="重新生成主题"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-indigo-600"
             >
-              <RefreshCw size={11} />
+              <RefreshCw size={12} />
             </button>
           )}
         </div>
@@ -546,23 +536,49 @@ function SummaryModule({ themes = [], loading, generatedAt, open, onToggle, onRe
         <ul className="divide-y divide-slate-200/70">
           {themes.map((t, idx) => {
             const isOpen = !!expanded[idx];
+            const sources = (t.sources || []).filter((s) => s && s.url);
             return (
-              <li key={idx}>
+              <li key={idx} className="py-3.5 first:pt-3 last:pb-3">
                 <button
                   type="button"
                   onClick={() => toggleTheme(idx)}
-                  className="flex w-full items-center justify-between gap-3 py-3 text-left transition hover:text-indigo-600"
+                  className="flex w-full items-start justify-between gap-4 text-left"
                   aria-expanded={isOpen}
                 >
-                  <span className="min-w-0 flex-1 text-[14.5px] font-medium leading-snug text-slate-800">{t.title}</span>
-                  <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-400 transition group-hover:text-indigo-500">
-                    {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  <span className="min-w-0 flex-1 text-[15px] font-semibold leading-snug text-slate-900">{t.title}</span>
+                  <span className="flex shrink-0 items-center gap-2 pt-0.5">
+                    {sources.length > 0 && (
+                      <span className="hidden items-center gap-1.5 sm:flex">
+                        <span className="flex -space-x-1">
+                          {sources.slice(0, 3).map((s, i) => {
+                            const fav = siteFavicon(s.url);
+                            return fav ? (
+                              <img
+                                key={i}
+                                src={fav}
+                                alt=""
+                                loading="lazy"
+                                className="h-4 w-4 rounded-full ring-2 ring-white"
+                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                              />
+                            ) : (
+                              <span key={i} className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-[8px] font-semibold text-slate-500 ring-2 ring-white">
+                                {sourceInitials(s.source || siteHost(s.url))}
+                              </span>
+                            );
+                          })}
+                        </span>
+                        <span className="text-[11px] text-slate-500">{sources.length}个网站</span>
+                      </span>
+                    )}
+                    {isOpen
+                      ? <ChevronUp size={18} className="text-slate-400" />
+                      : <ChevronDown size={18} className="text-slate-400" />}
                   </span>
                 </button>
                 {isOpen && (
-                  <div className="space-y-2 pb-3">
-                    <p className="text-sm leading-relaxed text-slate-500">{t.detail}</p>
-                    <ThemeSourceCards sources={t.sources} />
+                  <div className="space-y-3 pt-3">
+                    <p className="text-[14px] leading-relaxed text-slate-700">{t.detail}</p>
                     <ThemeExploreButton theme={t} />
                   </div>
                 )}
