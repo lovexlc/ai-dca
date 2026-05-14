@@ -138,6 +138,97 @@ function changeToneClass(value) {
   return n > 0 ? 'text-emerald-600' : 'text-rose-500';
 }
 
+// 从 URL 中抽取 host。解析失败时返回空字符串。
+function siteHost(url) {
+  try {
+    const u = new URL(url);
+    return u.hostname.replace(/^www\./, '');
+  } catch (_) {
+    return '';
+  }
+}
+
+// 用 Google s2 favicon 服务拼 favicon URL，方便在主题卡、涨跌榜、新闻列表复用。
+function siteFavicon(url) {
+  const host = siteHost(url);
+  if (!host) return '';
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`;
+}
+
+// 主题卡右上角的叠加 favicon + “N 个网站”徽标，仿 Google Finance。
+function ThemeSourceFavicons({ sources = [] }) {
+  const list = (sources || []).filter((s) => s && s.url);
+  if (!list.length) return null;
+  const preview = list.slice(0, 3);
+  return (
+    <div className="flex shrink-0 items-center gap-1.5" title={`${list.length} 个网站`}>
+      <div className="flex -space-x-1.5">
+        {preview.map((s, i) => {
+          const fav = siteFavicon(s.url);
+          const host = s.source || siteHost(s.url);
+          return fav ? (
+            <img
+              key={i}
+              src={fav}
+              alt=""
+              title={host}
+              loading="lazy"
+              className="h-4 w-4 rounded-full border border-white bg-white object-cover shadow-sm"
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            />
+          ) : (
+            <span
+              key={i}
+              title={host}
+              className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-white bg-slate-100 text-[8px] font-semibold text-slate-500 shadow-sm"
+            >
+              {sourceInitials(host)}
+            </span>
+          );
+        })}
+      </div>
+      <span className="whitespace-nowrap text-[11px] text-slate-400">{list.length} 个网站</span>
+    </div>
+  );
+}
+
+// 主题卡底部的可点击新闻 chips：favicon + 来源名，外链打开原文。
+function ThemeSourceChips({ sources = [] }) {
+  const list = (sources || []).filter((s) => s && s.url);
+  if (!list.length) return null;
+  return (
+    <ul className="mt-2 flex flex-wrap gap-1.5">
+      {list.map((s, i) => {
+        const fav = siteFavicon(s.url);
+        const host = s.source || siteHost(s.url);
+        return (
+          <li key={i} className="min-w-0">
+            <a
+              href={s.url}
+              target="_blank"
+              rel="noreferrer noopener"
+              title={s.title || host}
+              className="inline-flex max-w-[16rem] items-center gap-1 rounded-full border border-slate-200/70 bg-white px-2 py-0.5 text-[11px] text-slate-500 transition hover:border-indigo-300 hover:text-indigo-600"
+            >
+              {fav ? (
+                <img
+                  src={fav}
+                  alt=""
+                  loading="lazy"
+                  className="h-3.5 w-3.5 shrink-0 rounded-full"
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
+              ) : null}
+              <span className="truncate">{host}</span>
+              <ExternalLink size={10} className="shrink-0 text-slate-300" />
+            </a>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function IndexCard({ entry, onPick, sparkPoints }) {
   const positive = Number(entry.changePercent) > 0;
   const negative = Number(entry.changePercent) < 0;
@@ -378,9 +469,13 @@ function SummaryModule({ themes = [], loading, generatedAt, open, onToggle, onRe
                     <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-[11px] font-semibold text-indigo-600">
                       {idx + 1}
                     </span>
-                    <div className="min-w-0">
-                      <div className="font-medium text-slate-800">{t.title}</div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start gap-2">
+                        <div className="min-w-0 flex-1 font-medium text-slate-800">{t.title}</div>
+                        <ThemeSourceFavicons sources={t.sources} />
+                      </div>
                       <p className="mt-1 text-sm leading-relaxed text-slate-500">{t.detail}</p>
+                      <ThemeSourceChips sources={t.sources} />
                     </div>
                   </div>
                 </li>
