@@ -258,8 +258,8 @@ function ThemeSourceCards({ sources = [] }) {
   );
 }
 
-// “借助 AI 深入探索此主题” 胶囊按钮：输入框只填一句简短问题，主题概要与新闻引用
-// 以 context 形式传给后端作为上下文，同时自动切换到深度模式。
+// “借助 AI 深入探索此主题” 胶囊按钮：点击后在右侧“研究”面板以深度模式自动执行，
+// 主题概要与新闻引用作为 context 传给后端。不再弹出右下角 AI 抽屉。
 function ThemeExploreButton({ theme }) {
   const onClick = useCallback(() => {
     if (!theme) return;
@@ -285,13 +285,11 @@ function ThemeExploreButton({ theme }) {
       refs ? `相关新闻引用：\n${refs}` : '',
     ].filter(Boolean).join('\n\n');
     try {
-      window.dispatchEvent(new CustomEvent('aichat:prefill', {
+      window.dispatchEvent(new CustomEvent('markets:research', {
         detail: {
           question,
-          mode: 'markets',
           depth: 'deep',
           context: ctxLines,
-          open: true,
         },
       }));
     } catch (_) { /* ignore */ }
@@ -608,20 +606,22 @@ function MarketsResearchPanel({ market }) {
   const scrollRef = useRef(null);
 
   const send = useCallback(
-    async (raw) => {
+    async (raw, opts = {}) => {
       const question = String(raw || '').trim();
       if (!question || pending) return;
+      const useDepth = opts.depth === 'deep' ? 'deep' : 'fast';
+      const useContext = typeof opts.context === 'string' ? opts.context : '';
       setInput('');
       setMessages((prev) => [
         ...prev,
-        { role: 'user', content: question },
+        { role: 'user', content: question, depth: useDepth },
         { role: 'assistant', content: '', pending: true },
       ]);
       setPending(true);
       try {
         const wl = loadWatchlist() || {};
         const symbols = Array.isArray(wl[market]) ? wl[market].slice(0, 10) : [];
-        const res = await askMarkets({ question, symbols, depth: 'fast' });
+        const res = await askMarkets({ question, symbols, depth: useDepth, context: useContext });
         const answer = (res && (res.answer || res.text)) || '抱歉，未获取到回答。';
         const sources = (res && Array.isArray(res.sources)) ? res.sources : [];
         setMessages((prev) => {
@@ -653,6 +653,18 @@ function MarketsResearchPanel({ market }) {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
+
+  // 主题探索按钮触发：在右栏以深度模式自动提问。面板默认仍是快速，此次问答后并不锁定深度。
+  useEffect(() => {
+    const onResearch = (event) => {
+      const detail = event && event.detail ? event.detail : {};
+      const q = String(detail.question || '').trim();
+      if (!q) return;
+      send(q, { depth: 'deep', context: detail.context || '' });
+    };
+    window.addEventListener('markets:research', onResearch);
+    return () => window.removeEventListener('markets:research', onResearch);
+  }, [send]);
 
   const presets = [
     '今日市场行情如何？',
