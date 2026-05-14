@@ -818,8 +818,8 @@ function MarketsResearchPanel({ market }) {
   ];
 
   return (
-    <div className="flex h-[calc(100vh-1.5rem)] max-h-[820px] flex-col rounded-2xl border border-slate-200 bg-white">
-      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+    <div className="flex h-full min-h-0 w-full flex-col bg-white lg:h-[calc(100vh-1.5rem)] lg:max-h-[820px] lg:rounded-2xl lg:border lg:border-slate-200">
+      <div className="flex items-center justify-between border-b border-[#e8eaed] px-4 py-3 lg:border-slate-200">
         <h2 className="text-xl font-semibold text-slate-900">研究</h2>
         <div className="flex items-center gap-1 text-slate-400">
           <button
@@ -988,6 +988,8 @@ export function MarketsExperience() {
   // 侧边折叠状态：默认两组都展开。
   const [watchOpen, setWatchOpen] = useState(true);
   const [sectorsOpen, setSectorsOpen] = useState(true);
+  // 研究底部抽屉（仅 mobile）：false=peek（露出 header+输入区），true=全屏
+  const [researchSheetOpen, setResearchSheetOpen] = useState(false);
 
   const ensureKlines = useCallback(async (symbols) => {
     const uniq = Array.from(new Set((symbols || []).filter(Boolean)));
@@ -1176,7 +1178,7 @@ export function MarketsExperience() {
   );
 
   return (
-    <div className="flex flex-col gap-5 pb-24 lg:grid lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:items-start lg:gap-4 lg:pb-6">
+    <div className="flex flex-col gap-5 pb-[220px] lg:grid lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:items-start lg:gap-4 lg:pb-6">
       {/* Mobile-only sidebar: Google Finance Beta style */}
       <aside className="order-2 flex flex-col gap-2 lg:hidden">
         <div className="px-1">
@@ -1529,47 +1531,29 @@ export function MarketsExperience() {
         </Card>
       </main>
 
-      <aside id="markets-research-anchor" className="order-3 flex flex-col gap-3 lg:sticky lg:top-2">
+      {/* Research panel: PC = sticky aside / Mobile = bottom sheet（peek 常驻底部，点 handle 上滑全屏） */}
+      <aside
+        id="markets-research-anchor"
+        className={cx(
+          'bg-white',
+          // PC 样式
+          'lg:relative lg:z-auto lg:order-3 lg:flex lg:flex-col lg:gap-3 lg:bg-transparent lg:sticky lg:top-2 lg:rounded-none lg:border-t-0 lg:shadow-none',
+          // Mobile bottom sheet：fixed 底部，peek 210px / expanded 100dvh
+          'fixed inset-x-0 bottom-0 z-40 flex flex-col overflow-hidden rounded-t-2xl border-t border-[#e8eaed] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] transition-[height] duration-300 ease-out',
+          researchSheetOpen ? 'h-[100dvh]' : 'h-[210px]'
+        )}
+      >
+        {/* Drag handle：点击切换 peek/expanded */}
+        <button
+          type="button"
+          onClick={() => setResearchSheetOpen((v) => !v)}
+          className="flex h-6 w-full shrink-0 items-center justify-center bg-white lg:hidden"
+          aria-label={researchSheetOpen ? '收起研究' : '展开研究'}
+        >
+          <span className="h-1 w-9 rounded-full bg-[#dadce0]" />
+        </button>
         <MarketsResearchPanel market={market} />
       </aside>
-
-      {/* Mobile-only bottom tab bar: 严格对齐 Google Finance Beta 的「首页 / 研究」入口 */}
-      <nav
-        className="fixed inset-x-0 bottom-0 z-40 flex border-t border-[#e8eaed] bg-white shadow-[0_-2px_8px_rgba(0,0,0,0.04)] lg:hidden"
-        aria-label="主导航"
-      >
-        <button
-          type="button"
-          className="flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[#5f6368] hover:bg-[#f1f3f4] active:bg-[#e8eaed]"
-          onClick={() => {
-            try {
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            } catch {
-              window.scrollTo(0, 0);
-            }
-          }}
-        >
-          <TrendingUp size={20} />
-          <span className="text-[11px] font-medium leading-none">首页</span>
-        </button>
-        <button
-          type="button"
-          className="flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[#1a73e8] hover:bg-[#f1f3f4] active:bg-[#e8eaed]"
-          onClick={() => {
-            const el = document.getElementById('markets-research-anchor');
-            if (el) {
-              try {
-                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              } catch {
-                el.scrollIntoView();
-              }
-            }
-          }}
-        >
-          <Sparkles size={20} />
-          <span className="text-[11px] font-medium leading-none">研究</span>
-        </button>
-      </nav>
     </div>
   );
 }
