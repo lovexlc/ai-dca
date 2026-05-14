@@ -83,6 +83,9 @@ export default {
 				method: 'POST',
 				headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
 				body,
+				// M4: 接力取消。客户端 abort -> markets worker close -> 这里 signal aborted
+				// -> container HTTP 连接关闭 -> container 里 res.on('close', ctrl.abort()) 处理工具/LLM 中断。
+				signal: request.signal,
 			});
 			// Pipe the container's SSE body straight through to the client.
 			return new Response(upstream.body, {
