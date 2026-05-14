@@ -14,6 +14,7 @@ import {
   fetchFinnhubCompanyNews,
   fetchFinnhubMarketNews,
   fetchTavilyNews,
+  fetchCnnFearGreed,
   hostToSourceName
 } from './fetchers.js';
 import { askWithGrounding, summarizeMarkets } from './ai.js';
@@ -143,6 +144,13 @@ async function refreshIndices(env, market) {
       const q = quoteMap[it.symbol] || {};
       return { ...q, key: it.key, name: it.name, symbol: it.symbol };
     });
+    // 追加 CNN Fear & Greed（失败则静默跳过，不让主要指数卡片整块崩掉）。
+    try {
+      const fng = await fetchCnnFearGreed();
+      if (fng) indexes.push({ ...fng, key: 'cnn_fng' });
+    } catch (err) {
+      console.warn('cnn fng fetch failed', (err && err.message) || err);
+    }
   } else if (market === 'cn') {
     const quoteMap = await fetchEastmoneyQuotesBatch(CN_INDICES.map((it) => it.symbol));
     indexes = CN_INDICES.map((it) => {

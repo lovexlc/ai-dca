@@ -4,9 +4,9 @@ export const US_INDICES = [
   { key: 'dji', name: '道琼斯工业平均指数', symbol: '^DJI' },
   { key: 'spx', name: '标普 500 指数', symbol: '^GSPC' },
   { key: 'ixic', name: '纳斯达克综合指数', symbol: '^IXIC' },
+  { key: 'vix', name: 'VIX 波动率', symbol: '^VIX' },
   { key: 'ndx', name: '纳斯达克 100 指数', symbol: '^NDX' },
-  { key: 'rut', name: '罗素 2000 指数', symbol: '^RUT' },
-  { key: 'vix', name: 'CBOE 波动率指数', symbol: '^VIX' }
+  { key: 'rut', name: '罗素 2000 指数', symbol: '^RUT' }
 ];
 
 // A 股主要指数。东方财富 secid 前缀 1=沪市指数 0=深市指数。

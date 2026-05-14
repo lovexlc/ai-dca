@@ -11,6 +11,16 @@ const YAHOO_HOST = 'https://' + 'query1.finance.yahoo.com';
 const EM_PUSH2_HOST = 'https://' + 'push2.eastmoney.com';
 const EM_PUSH2HIS_HOST = 'https://' + 'push2his.eastmoney.com';
 const FINNHUB_HOST = 'https://' + 'finnhub.io';
+const CNN_FNG_HOST = 'https://' + 'production.dataviz.cnn.io';
+
+// CNN 接口认浏览器 UA 严格——不像 Chrome 就给 418。
+const CNN_BROWSER_HEADERS = {
+  'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+  accept: 'application/json, text/plain, */*',
+  'accept-language': 'en-US,en;q=0.9',
+  origin: 'https://edition.cnn.com',
+  referer: 'https://edition.cnn.com/'
+};
 
 function round(value, precision = 4) {
   const n = Number(value);
@@ -355,4 +365,48 @@ export function hostToSourceName(url) {
   const base = parts.length >= 2 ? parts.slice(-2).join('.') : host;
   if (map[base]) return map[base];
   return base;
+}
+
+// ===================== CNN Fear & Greed Index =====================
+
+const FNG_RATING_ZH = {
+  'extreme fear': '极度恐惧',
+  fear: '恐惧',
+  neutral: '中性',
+  greed: '贪婪',
+  'extreme greed': '极度贪婪'
+};
+
+// CNN 返回的 fear_and_greed：{ score, rating, timestamp, previous_close, previous_1_week, previous_1_month, previous_1_year }
+// 装成与 Yahoo 指数 quote 同构的 entry，方便前端复用 IndexCard。
+export async function fetchCnnFearGreed() {
+  const url = buildUrl(CNN_FNG_HOST, '/index/fearandgreed/graphdata');
+  const res = await fetch(url, { headers: CNN_BROWSER_HEADERS, cf: { cacheTtl: 300 } });
+  if (!res.ok) throw new Error('cnn fng HTTP ' + res.status);
+  const data = await res.json();
+  const fg = data && data.fear_and_greed;
+  if (!fg || typeof fg.score !== 'number') throw new Error('cnn fng empty');
+  const score = round(fg.score, 2);
+  const previousClose = round(fg.previous_close, 2);
+  const change = score != null && previousClose != null ? round(score - previousClose, 2) : null;
+  const changePercent = previousClose ? round(((score - previousClose) / previousClose) * 100, 2) : null;
+  const ratingKey = String(fg.rating || '').trim().toLowerCase();
+  const ratingZh = FNG_RATING_ZH[ratingKey] || ratingKey;
+  return {
+    symbol: 'CNN_FNG',
+    name: ratingZh ? '恐惧贪婪·' + ratingZh : '恐惧贪婪指数',
+    market: 'us',
+    price: score,
+    previousClose,
+    change,
+    changePercent,
+    rating: ratingKey,
+    previousWeek: round(fg.previous_1_week, 2),
+    previousMonth: round(fg.previous_1_month, 2),
+    previousYear: round(fg.previous_1_year, 2),
+    currency: '',
+    exchangeTimezone: 'America/New_York',
+    marketState: '',
+    asOf: fg.timestamp ? new Date(fg.timestamp).toISOString() : new Date().toISOString()
+  };
 }
