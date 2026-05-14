@@ -1,6 +1,6 @@
 {
   "dataset": "etf_latest_nav_manifest",
-  "generatedAt": "2026-05-14T03:30:00.033Z",
+  "generatedAt": "2026-05-14T09:56:49.745Z",
   "source": "eastmoney:f10/lsjz",
   "successCount": 12,
   "failureCount": 0,
@@ -33,10 +33,10 @@
     {
       "code": "159696",
       "name": "易方达纳斯达克100ETF(QDI)",
-      "latestNav": 1.847,
-      "latestNavDate": "2026-05-12",
-      "previousNav": 1.8643,
-      "previousNavDate": "2026-05-11"
+      "latestNav": 1.8663,
+      "latestNavDate": "2026-05-13",
+      "previousNav": 1.847,
+      "previousNavDate": "2026-05-12"
     },
     {
       "code": "159632",
