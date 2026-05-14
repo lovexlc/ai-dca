@@ -12,7 +12,6 @@ import {
   buildSwitchTriggerNotification,
   computeSwitchSnapshot,
   evaluateSwitchTriggers,
-  fetchLatestNavMap,
   fetchSinaPrices,
   isInTradingSession,
   isSwitchConfigRunnable,
@@ -2640,6 +2639,45 @@ async function handleSwitchRunPost(request, env) {
   return jsonResponse({ ok: true, summary, snapshot }, { origin });
 }
 
+/**
+ * 为「场内切换」准备 NAV 映射：与持仓纵览复用 fetchHoldingsNavSnapshots，
+ * 让 worker 也按 getExpectedLatestNavDate 比对最新日期，并在缺新时实时拉取，
+ * 而不是只读 GitHub Action 维护、可能滞后多天的静态 latest-nav.json。
+ *
+ * 返回结构对齐 computeSwitchSnapshot 期望的字段：
+ *   { [code]: { code, name, nav, latestNavDate } }
+ */
+async function fetchSwitchNavMap(env, codes = []) {
+  const list = Array.from(new Set((codes || []).map((c) => String(c || '').trim()).filter(Boolean)));
+  if (!list.length) return {};
+  const todayShanghai = getShanghaiDateParts().date;
+  // bucketKindByCode 留空：fetchHoldingsNavSnapshots 内部按 isExchangeLikeCode 推断 'exchange'/'otc'，
+  // 再经 resolveHoldingKindAsync 升级为 qdii；切换策略目前的池子都是场内 ETF，但即便混入也能正确处理。
+  let snapshots = {};
+  try {
+    snapshots = await fetchHoldingsNavSnapshots(env, list, { todayShanghai }) || {};
+  } catch (err) {
+    console.log('[notify][switch][nav] fetchHoldingsNavSnapshots failed', JSON.stringify({
+      message: err?.message || String(err)
+    }));
+    snapshots = {};
+  }
+  const map = {};
+  for (const code of list) {
+    const snap = snapshots[code];
+    if (!snap) continue;
+    const nav = Number(snap.latestNav);
+    if (!Number.isFinite(nav) || nav <= 0) continue;
+    map[code] = {
+      code,
+      name: String(snap.name || '').trim(),
+      nav,
+      latestNavDate: String(snap.latestNavDate || '').trim()
+    };
+  }
+  return map;
+}
+
 async function runSwitchStrategyForOneClient(env, clientId, config, { reason = 'switch-strategy', priceMap = null, navByCode = null, computedAt = '' } = {}) {
   let settings = await readSettings(env);
   const clientRecord = getClientRecord(settings, clientId);
@@ -2651,7 +2689,7 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
     ...(config.enabledCodes || [])
   ]));
   const effectivePriceMap = priceMap || await fetchSinaPrices(codes).catch(() => ({}));
-  const effectiveNavMap = navByCode || await fetchLatestNavMap(env, codes);
+  const effectiveNavMap = navByCode || await fetchSwitchNavMap(env, codes);
   const computedAtIso = computedAt || new Date().toISOString();
   const snapshot = computeSwitchSnapshot(config, effectivePriceMap, effectiveNavMap, computedAtIso);
   const prevState = (await readJson(env, switchStateKey(clientId), null)) || {};
@@ -2726,7 +2764,7 @@ async function runSwitchStrategyTick(env, scheduledMs, reason = 'switch-cron') {
   const codeList = Array.from(allCodes);
   const [priceMap, navByCode] = await Promise.all([
     fetchSinaPrices(codeList).catch(() => ({})),
-    fetchLatestNavMap(env, codeList)
+    fetchSwitchNavMap(env, codeList)
   ]);
   const computedAt = new Date(scheduledMs).toISOString();
   for (const { clientId, config } of enabledList) {
