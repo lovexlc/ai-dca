@@ -261,6 +261,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 14px;
   display: flex;
   flex-direction: column;
@@ -331,6 +332,7 @@
 .ai-chat-msg {
   display: flex;
   width: 100%;
+  min-width: 0;
 }
 
 .ai-chat-msg--user {
@@ -348,6 +350,8 @@
   font-size: 13.5px;
   line-height: 1.55;
   word-break: break-word;
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 .ai-chat-msg--user .ai-chat-msg__bubble {
@@ -376,6 +380,8 @@
   flex-direction: column;
   gap: 4px;
   max-width: 86%;
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
 .ai-chat-msg--user .ai-chat-msg__col {
@@ -395,6 +401,8 @@
   flex-direction: column;
   gap: 4px;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .ai-chat-sources__chip {
@@ -434,6 +442,8 @@
   color: #475569;
   list-style: decimal;
   max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .ai-chat-sources__list a {
@@ -700,6 +710,9 @@
   margin: 8px 0;
   border-collapse: collapse;
   font-size: 12.5px;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .ai-chat-md th,
