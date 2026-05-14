@@ -618,17 +618,38 @@ function MarketsAskBar({ value, onChange }) {
   );
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-3 pb-3 sm:px-6 sm:pb-4">
+    <MarketsAskPanel value={value} onChange={onChange} submit={submit} />
+  );
+}
+
+function MarketsAskPanel({ value, onChange, submit }) {
+  const askPreset = useCallback((q) => {
+    try {
+      window.dispatchEvent(
+        new CustomEvent('aichat:prefill', {
+          detail: { question: q, mode: 'markets', open: true },
+        }),
+      );
+    } catch (_) { /* ignore */ }
+  }, []);
+  const presets = [
+    '今晚美股看什么？',
+    '近期美债收益率对美股估值的影响',
+    '科技板块今日异动原因',
+    '与我自选最相关的催化剂',
+  ];
+  return (
+    <div className="flex flex-col gap-3">
       <form
         onSubmit={submit}
-        className="pointer-events-auto mx-auto flex max-w-3xl items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur"
+        className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm"
       >
         <Search size={16} className="shrink-0 text-slate-400" />
         <input
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="搜索或提问…例如：今晚美股看什么？"
+          placeholder="问点什么…"
           className="min-w-0 flex-1 border-none bg-transparent text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none"
         />
         <button
@@ -638,6 +659,22 @@ function MarketsAskBar({ value, onChange }) {
           <Sparkles size={12} /> 提问
         </button>
       </form>
+      <ul className="flex flex-col gap-1.5">
+        {presets.map((q) => (
+          <li key={q}>
+            <button
+              type="button"
+              onClick={() => askPreset(q)}
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-[13px] leading-snug text-slate-700 transition hover:border-indigo-300 hover:text-indigo-600"
+            >
+              {q}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <p className="text-[11px] leading-relaxed text-slate-400">
+        AI 回答会出现在右下角抽屉中。
+      </p>
     </div>
   );
 }
@@ -820,80 +857,104 @@ export function MarketsExperience() {
   );
 
   return (
-    <div className="flex flex-col gap-5 pb-24">
-      <div className="sticky top-0 z-20 -mx-4 flex items-center justify-between gap-3 border-b border-slate-200/70 bg-white/95 px-4 py-2 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:px-4">
-        <div className="flex items-center gap-1.5">
-          {MARKETS.map((m) => (
-            <button
-              key={m.key}
-              type="button"
-              className={cx(
-                'rounded-full px-4 py-1.5 text-sm font-semibold transition',
-                market === m.key
-                  ? 'bg-indigo-500 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600'
-              )}
-              onClick={() => setMarket(m.key)}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          {generatedAt && (
-            <span className="hidden text-[11px] text-slate-400 sm:inline">{formatTime(generatedAt)}</span>
-          )}
-          <button
-            type="button"
-            aria-label="刷新"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
-            onClick={() => {
-              refreshIndices(true);
-              refreshMovers(true);
-              refreshNews();
-              refreshWatch();
-              refreshSummary(true);
-            }}
-          >
-            <RefreshCw size={14} />
-          </button>
-        </div>
-      </div>
-
-      <Card className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Sparkles size={16} className="text-indigo-500" />
-          <h2 className="text-base font-semibold text-slate-800">主要指数</h2>
-          {indicesLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
-        </div>
-        {indices.length ? (
-          <div className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <div className="flex snap-x snap-mandatory gap-3 pb-1">
-              {indices.map((entry) => (
-                <IndexCard
-                  key={entry.symbol}
-                  entry={entry}
-                  onPick={(e) => handlePickMover(e)}
-                  sparkPoints={klineMap[entry.symbol]}
-                />
-              ))}
+    <div className="flex flex-col gap-5 pb-6 lg:grid lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:items-start lg:gap-4">
+      <aside className="order-2 flex flex-col gap-4 lg:order-1 lg:sticky lg:top-2">
+        <Card className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Star size={16} className="text-amber-400" />
+              <h2 className="text-sm font-semibold text-slate-800">监控列表</h2>
+              {watchLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
             </div>
           </div>
-        ) : !indicesLoading ? (
-          <p className="text-sm text-slate-400">暂无指数数据。</p>
-        ) : null}
-      </Card>
+          <form className="flex items-center gap-1" onSubmit={handleAddSymbol}>
+            <TextInput
+              className="flex-1"
+              value={symbolInput}
+              onChange={(e) => setSymbolInput(e.target.value)}
+              placeholder={market === 'cn' ? 'sh600519' : 'AAPL'}
+            />
+            <button type="submit" className={cx(primaryButtonClass, 'inline-flex shrink-0 items-center gap-1 text-xs')}>
+              <Plus size={12} /> 添加
+            </button>
+          </form>
+          <WatchlistTable rows={watchRows} market={market} onRemove={handleRemove} />
+        </Card>
+      </aside>
 
-      {market === 'us' && (
-        <SummaryModule
-          themes={summary.themes}
-          loading={summaryLoading}
-          generatedAt={summary.generatedAt}
-          onRefresh={() => refreshSummary(true)}
-        />
-      )}
+      <main className="order-1 flex min-w-0 flex-col gap-5 lg:order-2">
+        <div className="sticky top-0 z-20 flex items-center justify-between gap-3 rounded-2xl border border-slate-200/70 bg-white/95 px-4 py-2 backdrop-blur">
+          <div className="flex items-center gap-1.5">
+            {MARKETS.map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                className={cx(
+                  'rounded-full px-4 py-1.5 text-sm font-semibold transition',
+                  market === m.key
+                    ? 'bg-indigo-500 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600'
+                )}
+                onClick={() => setMarket(m.key)}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            {generatedAt && (
+              <span className="hidden text-[11px] text-slate-400 sm:inline">{formatTime(generatedAt)}</span>
+            )}
+            <button
+              type="button"
+              aria-label="刷新"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
+              onClick={() => {
+                refreshIndices(true);
+                refreshMovers(true);
+                refreshNews();
+                refreshWatch();
+                refreshSummary(true);
+              }}
+            >
+              <RefreshCw size={14} />
+            </button>
+          </div>
+        </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <Card className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Sparkles size={16} className="text-indigo-500" />
+            <h2 className="text-base font-semibold text-slate-800">主要指数</h2>
+            {indicesLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
+          </div>
+          {indices.length ? (
+            <div className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="flex snap-x snap-mandatory gap-3 pb-1">
+                {indices.map((entry) => (
+                  <IndexCard
+                    key={entry.symbol}
+                    entry={entry}
+                    onPick={(e) => handlePickMover(e)}
+                    sparkPoints={klineMap[entry.symbol]}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : !indicesLoading ? (
+            <p className="text-sm text-slate-400">暂无指数数据。</p>
+          ) : null}
+        </Card>
+
+        {market === 'us' && (
+          <SummaryModule
+            themes={summary.themes}
+            loading={summaryLoading}
+            generatedAt={summary.generatedAt}
+            onRefresh={() => refreshSummary(true)}
+          />
+        )}
+
         <Card className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -907,40 +968,25 @@ export function MarketsExperience() {
         </Card>
 
         <Card className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Star size={16} className="text-amber-400" />
-              <h2 className="text-base font-semibold text-slate-800">自选</h2>
-              {watchLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
-            </div>
-            <form className="flex items-center gap-1" onSubmit={handleAddSymbol}>
-              <TextInput
-                className="w-32"
-                value={symbolInput}
-                onChange={(e) => setSymbolInput(e.target.value)}
-                placeholder={market === 'cn' ? 'sh600519' : 'AAPL'}
-              />
-              <button type="submit" className={cx(primaryButtonClass, 'inline-flex items-center gap-1 text-xs')}>
-                <Plus size={12} /> 添加
-              </button>
-            </form>
+          <div className="flex items-center gap-2">
+            <Newspaper size={16} className="text-indigo-500" />
+            <h2 className="text-base font-semibold text-slate-800">市场新闻</h2>
+            {newsLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
+            {market === 'cn' && <Pill tone="slate">A 股新闻源建设中</Pill>}
           </div>
-          <WatchlistTable rows={watchRows} market={market} onRemove={handleRemove} />
+          <NewsList items={news} />
         </Card>
-      </div>
+      </main>
 
-
-      <Card className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Newspaper size={16} className="text-indigo-500" />
-          <h2 className="text-base font-semibold text-slate-800">市场新闻</h2>
-          {newsLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
-          {market === 'cn' && <Pill tone="slate">A 股新闻源建设中</Pill>}
-        </div>
-        <NewsList items={news} />
-      </Card>
-
-      <MarketsAskBar value={askInput} onChange={setAskInput} />
+      <aside className="order-3 flex flex-col gap-3 lg:sticky lg:top-2">
+        <Card className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Sparkles size={16} className="text-indigo-500" />
+            <h2 className="text-sm font-semibold text-slate-800">AI 问答</h2>
+          </div>
+          <MarketsAskBar value={askInput} onChange={setAskInput} />
+        </Card>
+      </aside>
     </div>
   );
 }
