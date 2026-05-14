@@ -40,7 +40,7 @@ max_instances = 2
 
 [vars]
 # 默认模型；M2 后从 OpenClaw 读此。
-OPENAI_MODEL = "LongCat-2.0-Preview"
+OPENAI_MODEL = "LongCat-Flash-Thinking-2601"
 # Secrets （走 wrangler secret put）：
 #   INTERNAL_TOKEN     — markets Worker 与本 Worker 间共享 bearer
 #   OPENAI_API_KEY     — 你的中转 API key
