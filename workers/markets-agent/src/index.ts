@@ -29,6 +29,7 @@ export class MarketsAgentContainer extends Container<Env> {
 			OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
 			OPENAI_MODEL: env.OPENAI_MODEL ?? '',
 			TAVILY_API_KEY: env.TAVILY_API_KEY ?? '',
+			FIRECRAWL_API_KEY: env.FIRECRAWL_API_KEY ?? '',
 		};
 	}
 

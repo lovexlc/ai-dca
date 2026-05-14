@@ -43,6 +43,7 @@ const server = http.createServer(async (req, res) => {
 					has_openai_base: Boolean(process.env.OPENAI_BASE_URL),
 					openai_model: process.env.OPENAI_MODEL || null,
 					has_tavily_key: Boolean(process.env.TAVILY_API_KEY),
+					has_firecrawl_key: Boolean(process.env.FIRECRAWL_API_KEY),
 				},
 				node: process.version,
 				ts: new Date().toISOString(),
