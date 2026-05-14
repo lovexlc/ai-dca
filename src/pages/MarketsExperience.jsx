@@ -551,7 +551,7 @@ function SummaryModule({ themes = [], loading, onRefresh }) {
                 >
                   <span className="min-w-0 flex-1 text-[15px] font-semibold leading-snug text-slate-900">{t.title}</span>
                   <span className="flex shrink-0 items-center gap-2 pt-0.5">
-                    {sources.length > 0 && (
+                    {isOpen && sources.length > 0 && (
                       <span className="hidden items-center gap-1.5 sm:flex">
                         <span className="flex -space-x-1">
                           {sources.slice(0, 3).map((s, i) => {
