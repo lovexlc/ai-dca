@@ -114,9 +114,28 @@ export async function askWithGrounding({ env, question, quoteSnapshots = [], dep
       || '';
   }
 
+  // 除去 Kimi / Moonshot / GLM 等思考型模型输出的内部思考部分。
+  // 常见标记：<think>…</think>、<thinking>…</thinking>、<reasoning>…</reasoning>、
+  // Kimi 也会输出以 ◁think▷…◁/think▷ 为边界的块。
+  function stripThinking(text) {
+    let t = String(text || '');
+    // 成对的标签块（包括未闭合的尾部遗留）。
+    t = t.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '');
+    t = t.replace(/<thinking>[\s\S]*?(?:<\/thinking>|$)/gi, '');
+    t = t.replace(/<reasoning>[\s\S]*?(?:<\/reasoning>|$)/gi, '');
+    t = t.replace(/<analysis>[\s\S]*?(?:<\/analysis>|$)/gi, '');
+    // Kimi 另一种特殊边界符号（三角括号变体）。
+    t = t.replace(/\u25C1think\u25B7[\s\S]*?(?:\u25C1\/think\u25B7|$)/gi, '');
+    // 一些模型会用 ``` Markdown 代码块包裹 thinking：“```thinking…```”。
+    t = t.replace(/```\s*(?:thinking|think|reasoning)[\s\S]*?```/gi, '');
+    // OpenAI 风格的 “[Thinking]” / “[思考]” 领头段，直到遇到空行+ 正文。仅处理领头位置。
+    t = t.replace(/^\s*(?:\[?\s*(?:Thinking|Reasoning|思考|推理)\s*\]?)[:\uFF1A]?[\s\S]*?\n\s*\n/i, '');
+    return t;
+  }
+
   // 防模型偷加参考来源区块：裁掉最后一个“参考来源 / 来源 / 引用 / Sources”标题之后的所有内容。
   const HEADING_RE = /(?:^|\n)\s*(?:#{1,6}\s*)?\**\s*(?:参考来源|来源|引用|资料来源|sources|references)\s*\**\s*[:。：]?\s*\n/gi;
-  let cleaned = String(answer);
+  let cleaned = stripThinking(answer);
   let lastIdx = -1;
   let m;
   while ((m = HEADING_RE.exec(cleaned)) !== null) lastIdx = m.index;
