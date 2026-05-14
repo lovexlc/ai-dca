@@ -99,6 +99,84 @@ export default {
 			});
 		}
 
+		// Diagnostic: list models from the OpenAI-compatible upstream.
+		// Worker fetches directly, bypassing the container.
+		if (url.pathname === '/internal/diag/models' && request.method === 'GET') {
+			const base = (env.OPENAI_BASE_URL || '').replace(/\/$/, '');
+			if (!base || !env.OPENAI_API_KEY) {
+				return new Response(JSON.stringify({ error: 'OPENAI_BASE_URL or OPENAI_API_KEY not configured' }), {
+					status: 500,
+					headers: { 'content-type': 'application/json' },
+				});
+			}
+			const t0 = Date.now();
+			try {
+				const r = await fetch(`${base}/models`, {
+					headers: { authorization: `Bearer ${env.OPENAI_API_KEY}` },
+					signal: AbortSignal.timeout(15000),
+				});
+				const text = await r.text();
+				return new Response(JSON.stringify({
+					status: r.status,
+					elapsed_ms: Date.now() - t0,
+					base,
+					body: (() => { try { return JSON.parse(text); } catch { return text; } })(),
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			} catch (e: any) {
+				return new Response(JSON.stringify({
+					error: String(e?.message || e),
+					elapsed_ms: Date.now() - t0,
+					base,
+				}), { status: 502, headers: { 'content-type': 'application/json' } });
+			}
+		}
+
+		// Diagnostic: minimal chat completion probe (non-stream).
+		// Body: { model?: string, prompt?: string }. Defaults to env.OPENAI_MODEL and 'ping'.
+		if (url.pathname === '/internal/diag/chat' && request.method === 'POST') {
+			const base = (env.OPENAI_BASE_URL || '').replace(/\/$/, '');
+			if (!base || !env.OPENAI_API_KEY) {
+				return new Response(JSON.stringify({ error: 'OPENAI_BASE_URL or OPENAI_API_KEY not configured' }), {
+					status: 500,
+					headers: { 'content-type': 'application/json' },
+				});
+			}
+			let body: any = {};
+			try { body = await request.json(); } catch {}
+			const model = body.model || env.OPENAI_MODEL || 'auto';
+			const prompt = body.prompt || 'ping';
+			const t0 = Date.now();
+			try {
+				const r = await fetch(`${base}/chat/completions`, {
+					method: 'POST',
+					headers: {
+						authorization: `Bearer ${env.OPENAI_API_KEY}`,
+						'content-type': 'application/json',
+					},
+					body: JSON.stringify({
+						model,
+						messages: [{ role: 'user', content: prompt }],
+						max_tokens: 32,
+						temperature: 0,
+					}),
+					signal: AbortSignal.timeout(30000),
+				});
+				const text = await r.text();
+				return new Response(JSON.stringify({
+					status: r.status,
+					elapsed_ms: Date.now() - t0,
+					model_requested: model,
+					body: (() => { try { return JSON.parse(text); } catch { return text; } })(),
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			} catch (e: any) {
+				return new Response(JSON.stringify({
+					error: String(e?.message || e),
+					elapsed_ms: Date.now() - t0,
+					model_requested: model,
+				}), { status: 502, headers: { 'content-type': 'application/json' } });
+			}
+		}
+
 		return notFound();
 	},
 };
