@@ -1,0 +1,31 @@
+{
+  "name": "fund_backtest",
+  "description": "回测多只 ETF / 股票 / A 股场外基金的历史表现并对比。输入 symbols 列表 + 时间窗口，输出累计收益、年化、波动率、最大回撤、Sharpe、相关性，以及一张 SVG 净值曲线（base64）。支持美股 ticker（QQQ / VOO / NVDA / 0700.HK 等）和 A 股场外基金 6 位代码（如 110011 易方达蓝筹精选）。适合「QQQ 和 VOO 过去一年谁涨得多」「易方达蓝筹 110011 跟 VOO 比怎么样」这类问题。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "symbols": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "要回测的代码列表，至少 1 个，最多 5 个。美股传 ticker（QQQ/VOO），A 股场外基金传 6 位代码（110011）。"
+      },
+      "range": {
+        "type": "string",
+        "enum": ["1mo", "3mo", "6mo", "ytd", "1y", "2y", "5y", "max"],
+        "description": "回看窗口，默认 1y。"
+      },
+      "interval": {
+        "type": "string",
+        "enum": ["1d", "1wk", "1mo"],
+        "description": "采样粒度，默认 1d。"
+      },
+      "benchmark": {
+        "type": "string",
+        "description": "可选基准代码，会作为参考线叠加显示（不计入 winner 判定）。"
+      }
+    },
+    "required": ["symbols"]
+  },
+  "entry": "scripts/main.js",
+  "timeout_ms": 90000
+}

@@ -2,6 +2,8 @@
 // 不走 stdio MCP 子进程，因为 (a) 容器内冷启更快，(b) 错误处理更直接，
 // (c) 不需要 spawn 额外 npx 包。
 
+import { SKILL_TOOL_DEFS, SKILL_TOOL_HANDLERS } from './skills.js';
+
 const MARKETS_BASE = process.env.MARKETS_BASE_URL || 'https://tools.freebacktrack.tech/api/markets';
 const TAVILY_BASE = 'https://api.tavily.com';
 const FIRECRAWL_BASE = 'https://api.firecrawl.dev';
@@ -324,3 +326,7 @@ export function hostFromUrl(u) {
 	if (!u) return null;
 	try { return new URL(u).host.replace(/^www\./, ''); } catch { return null; }
 }
+
+// ============ Skills 注册（动态扩展 TOOL_DEFS / TOOL_HANDLERS）============
+TOOL_DEFS.push(...SKILL_TOOL_DEFS);
+Object.assign(TOOL_HANDLERS, SKILL_TOOL_HANDLERS);
