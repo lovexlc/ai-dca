@@ -5,7 +5,7 @@ import { SYSTEM_PROMPT, DEEP_DIVE_PROMPT, AGENT_GUIDE_PROMPT } from './prompts.j
 import { TOOL_DEFS, TOOL_HANDLERS, hostFromUrl } from './tools.js';
 
 const MAX_ITERATIONS = 8;
-const LLM_TIMEOUT_MS = 90_000;
+const LLM_TIMEOUT_MS = 180_000;
 
 function stripThinking(text) {
 	let t = String(text || '');
