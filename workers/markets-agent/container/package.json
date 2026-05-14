@@ -1,0 +1,7 @@
+{
+  "name": "markets-agent-container",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "server.js"
+}

@@ -1,0 +1,19 @@
+{
+  "name": "ai-dca-markets-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Markets deep-research agent. M1 = container skeleton + auth + echo. M2 will add Tavily MCP + LLM loop (forked from cloudflare/moltworker / OpenClaw).",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250101.0",
+    "typescript": "^5.4.0",
+    "wrangler": "^4.0.0"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.0.20"
+  }
+}

@@ -1,0 +1,48 @@
+# markets-agent Worker + Container
+#
+# Worker 仅暴露 /internal/* （bearer = INTERNAL_TOKEN）供同账号的 markets Worker 调用。
+# 容器内是最小可运行骨架 (M1)；M2 会把内部 server.js 替换为
+# OpenClaw runtime + Tavily MCP。
+name = "ai-dca-markets-agent"
+main = "src/index.ts"
+compatibility_date = "2026-05-12"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[placement]
+mode = "smart"
+
+# Durable Object 仅作为 Container 的 binding wrapper，不存储业务状态。
+[[durable_objects.bindings]]
+name = "MARKETS_AGENT"
+class_name = "MarketsAgentContainer"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MarketsAgentContainer"]
+
+# Cloudflare Container 配置。standard-1 = 0.5 vCPU / 4 GiB 内存 / 8 GB 磁盘。
+# instance 默认闲置后 sleep（由 src/index.ts 中 sleepAfter 控制）。
+[[containers]]
+class_name = "MarketsAgentContainer"
+image = "./Dockerfile"
+instance_type = "standard-1"
+max_instances = 2
+
+# 不对公网暴露路由；只能被 markets Worker 以 service binding 调用。
+# 如需调试，按需取消下面注释访问 workers.dev 子域名（顺便从 dev 环境验证）。
+# [[routes]]
+# pattern = "markets-agent.<account>.workers.dev/*"
+# custom_domain = false
+
+[vars]
+# 默认模型；M2 后从 OpenClaw 读此。
+OPENAI_MODEL = "deepseek-v3.2"
+# Secrets （走 wrangler secret put）：
+#   INTERNAL_TOKEN     — markets Worker 与本 Worker 间共享 bearer
+#   OPENAI_API_KEY     — 你的中转 API key
+#   OPENAI_BASE_URL    — 你的中转 base url (OpenAI 兼容)
+#   TAVILY_API_KEY     — 与 markets Worker 同一个 key
