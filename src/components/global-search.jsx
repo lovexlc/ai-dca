@@ -3,7 +3,6 @@ import {
   ArrowRight,
   BarChart3,
   Bell,
-  History,
   RefreshCcw,
   Search,
   Shuffle,
@@ -17,7 +16,6 @@ const TAB_ENTRIES = [
   { key: 'holdings', label: '持仓总览', desc: '基金持仓、汇总收益', icon: Wallet, keywords: 'holdings cangwei chicang' },
   { key: 'tradePlans', label: '交易计划', desc: '加仓 / 定投策略', icon: BarChart3, keywords: 'tradeplans plans jihua dca' },
   { key: 'fundSwitch', label: '基金切换', desc: '切换链路与执行', icon: Shuffle, keywords: 'fundswitch switch qiehuan' },
-  { key: 'history', label: '交易历史', desc: '历史成交流水', icon: History, keywords: 'history lishi' },
   { key: 'notify', label: '通知', desc: '推送配置与状态', icon: Bell, keywords: 'notify push tongzhi' },
   { key: 'backup', label: '数据同步 / 备份', desc: 'WebDAV / 本地备份', icon: RefreshCcw, keywords: 'backup beifen webdav sync' },
 ];

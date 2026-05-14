@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, CloudUpload, History, LineChart, ListChecks, Shuffle, Wallet } from 'lucide-react';
+import { Bell, CloudUpload, LineChart, ListChecks, Shuffle, Wallet } from 'lucide-react';
 import { LEGACY_TAB_REDIRECTS, PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
@@ -10,7 +10,6 @@ import { GlobalSearch } from '../components/global-search.jsx';
 // HomeExperience / DcaExperience 已并入 TradePlansExperience 作为二级 tab，不再在这里顶级 lazy。
 const BackupExperience = lazy(() => import('./BackupExperience.jsx').then((m) => ({ default: m.BackupExperience })));
 const FundSwitchExperience = lazy(() => import('./FundSwitchExperience.jsx').then((m) => ({ default: m.FundSwitchExperience })));
-const HistoryExperience = lazy(() => import('./HistoryExperience.jsx').then((m) => ({ default: m.HistoryExperience })));
 const HoldingsExperience = lazy(() => import('./HoldingsExperience.jsx').then((m) => ({ default: m.HoldingsExperience })));
 const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) => ({ default: m.NotifyExperience })));
 const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').then((m) => ({ default: m.TradePlansExperience })));
@@ -22,7 +21,6 @@ const WORKSPACE_TITLES = {
   tradePlans: '交易计划中心',
   fundSwitch: '基金切换收益分析',
   markets: '行情中心',
-  history: '交易历史',
   holdings: '持仓总览',
   notify: '通知设置',
   backup: '数据同步 / 备份'
@@ -32,7 +30,6 @@ const SIDEBAR_ICONS = {
   tradePlans: ListChecks,
   fundSwitch: Shuffle,
   markets: LineChart,
-  history: History,
   holdings: Wallet,
   notify: Bell,
   backup: CloudUpload
@@ -185,8 +182,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         return <FundSwitchExperience {...sharedProps} />;
       case 'markets':
         return <MarketsExperience {...sharedProps} />;
-      case 'history':
-        return <HistoryExperience {...sharedProps} />;
       case 'notify':
         return <NotifyExperience {...sharedProps} />;
       case 'backup':

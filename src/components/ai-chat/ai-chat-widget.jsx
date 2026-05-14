@@ -133,7 +133,6 @@ const TAB_LABELS = {
   holdings: '持仓',
   tradePlans: '交易计划',
   fundSwitch: '基金切换',
-  history: '交易历史',
   notify: '提醒中心',
   backup: '数据备份',
 };

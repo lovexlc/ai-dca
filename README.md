@@ -32,8 +32,6 @@ Android 推送接收端已经拆分到独立仓库，不再放在本项目内：
   - 按 fund-class 配对的 H/L 候选 + 单卡片渲染 benchmark + candidates
   - 持仓中的场内 ETF 自动加入 benchmark；纳指池在 H/L 双非空时自动收纳
   - 全部场外纳指 100 基金按基金公司分组展示
-- **交易历史** `history`
-  - 历史成交记录、策略命中、复盘
 - **通知设置** `notify`
   - 提醒规则同步、测试通知按钮、最近提醒记录
   - FCM / Bark / Gotify 多通道；Android 端通过 `deviceInstallationId` 直绑（已弃用配对码）
@@ -50,7 +48,7 @@ Android 推送接收端已经拆分到独立仓库，不再放在本项目内：
 ```text
 src/
   pages/                React 主 tab（HoldingsExperience、TradePlansExperience、FundSwitchExperience、
-                        HistoryExperience、NotifyExperience、BackupExperience、WorkspacePage 等）
+                        NotifyExperience、BackupExperience、WorkspacePage 等）
   components/
     ai-chat/            右下角 AI 问答悬浮窗
     console-layout.jsx  多 tab 控制台外壳
