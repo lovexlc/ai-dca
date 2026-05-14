@@ -31,6 +31,26 @@ export class MarketsAgentContainer extends Container<Env> {
 			TAVILY_API_KEY: env.TAVILY_API_KEY ?? '',
 		};
 	}
+
+	// 允许外层 Worker 主动重启 container。Cloudflare Container 只在实例启动时
+	// 注入 envVars，所以 secret 改后需要手动踢一下。
+	async fetch(req: Request): Promise<Response> {
+		const u = new URL(req.url);
+		if (u.pathname === '/__restart__') {
+			try {
+				await this.stop();
+			} catch (err) {
+				return new Response(JSON.stringify({ ok: false, error: String((err as any)?.message || err) }), {
+					status: 500,
+					headers: { 'content-type': 'application/json' },
+				});
+			}
+			return new Response(JSON.stringify({ ok: true, action: 'stopped' }), {
+				headers: { 'content-type': 'application/json' },
+			});
+		}
+		return super.fetch(req);
+	}
 }
 
 function unauthorized() {
@@ -57,6 +77,10 @@ export default {
 
 		if (url.pathname === '/internal/ping' && request.method === 'GET') {
 			return stub.fetch('http://container/health');
+		}
+
+		if (url.pathname === '/internal/restart' && request.method === 'POST') {
+			return stub.fetch('http://container/__restart__');
 		}
 
 		if (url.pathname === '/internal/ask' && request.method === 'POST') {
