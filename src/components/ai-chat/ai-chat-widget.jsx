@@ -131,6 +131,25 @@ const TAB_LABELS = {
   backup: '数据备份',
 };
 
+// 市场行情模式首屏热门问题（固定 6 条）。后续可换为从 worker /hot-questions 拉取。
+const MARKETS_HOT_QUESTIONS = [
+  '今晚美股看什么？',
+  '纳指定投现在该加仓还是观望？',
+  '英伟达最近为什么波动这么大？',
+  '今天 A 股大盘怎么看？',
+  '贵州茅台近期走势主要驱动是什么？',
+  '本周有哪些重要财报和宏观数据？',
+];
+
+const CHAT_HOT_QUESTIONS = [
+  '定投策略怎么开始？',
+  '持仓页里 NAV 怎么自动更新？',
+  '基金切换的限额逻辑是什么？',
+  '交易计划如何生成提醒？',
+  '如何备份和恢复我的数据？',
+  '为什么我的收益与预期不一致？',
+];
+
 // 解析一条 SSE frame，返回 {event, data}。
 function parseSseFrame(frame) {
   const lines = frame.split(/\r?\n/);
@@ -687,20 +706,25 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
             {messages.length === 0 ? (
               <div className="ai-chat-empty">
                 <Sparkles className="h-5 w-5" aria-hidden="true" />
-                <p>{mode === 'markets' ? '打开市场行情模式，可以不联网检索问点什么？' : '有什么可以帮你的？'}</p>
-                {mode === 'markets' ? (
-                  <ul>
-                    <li>“今晚苹果财报有什么重点？”</li>
-                    <li>“今天 A 股大盘怎么看？”</li>
-                    <li>“贵州茅台最近为什么下跌？”</li>
-                  </ul>
-                ) : (
-                  <ul>
-                    <li>“纳指定投目前应该加仓还是观望？”</li>
-                    <li>“持仓页里 NAV 怎么自动更新？”</li>
-                    <li>“基金切换的限额逻辑是什么？”</li>
-                  </ul>
-                )}
+                <p>{mode === 'markets' ? '问点市场问题，例如：' : '有什么可以帮你的？'}</p>
+                <div className="ai-chat-hotqs" role="list">
+                  {(mode === 'markets' ? MARKETS_HOT_QUESTIONS : CHAT_HOT_QUESTIONS).map((q) => (
+                    <button
+                      key={q}
+                      type="button"
+                      role="listitem"
+                      className="ai-chat-hotq"
+                      onClick={() => {
+                        setInput(q);
+                        if (textareaRef.current) {
+                          try { textareaRef.current.focus(); } catch (_) { /* ignore */ }
+                        }
+                      }}
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : (
               messages.map((m, idx) => {

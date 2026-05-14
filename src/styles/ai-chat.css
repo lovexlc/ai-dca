@@ -295,6 +295,39 @@
   line-height: 1.6;
 }
 
+.ai-chat-hotqs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.ai-chat-hotq {
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #475569;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+}
+
+.ai-chat-hotq:hover {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #4338ca;
+}
+
+.ai-chat-hotq:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
+
 .ai-chat-msg {
   display: flex;
   width: 100%;
