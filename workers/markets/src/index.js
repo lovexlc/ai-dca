@@ -28,6 +28,7 @@ import {
   US_SECTORS,
   classifySymbol
 } from './symbols.js';
+import { tagIndices } from './data/index-constituents.js';
 
 const CORS_HEADERS = {
   'access-control-allow-origin': '*',
@@ -507,6 +508,7 @@ async function handleEarnings(env, market, forceRefresh) {
       epsEstimate: typeof it.epsEstimate === 'number' ? it.epsEstimate : null,
       revenueActual: typeof it.revenueActual === 'number' ? it.revenueActual : null,
       revenueEstimate: typeof it.revenueEstimate === 'number' ? it.revenueEstimate : null,
+      indices: tagIndices(it.symbol || ''),
     }));
     // 优先以估算收入降序（大企业优先），同时在同一天内准备。后续可以接 profile 丰富中文名。
     items.sort((a, b) => {

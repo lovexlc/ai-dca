@@ -728,7 +728,17 @@ function EarningsCalendar({ items = [], initialLimit = 5 }) {
               <span className="text-base font-semibold leading-tight">{dayOfMonth}</span>
             </div>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium text-slate-800">{it.name || it.symbol}</div>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate text-sm font-medium text-slate-800">{it.name || it.symbol}</span>
+                {Array.isArray(it.indices) && it.indices.map((idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex shrink-0 items-center rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-600"
+                  >
+                    {idx}
+                  </span>
+                ))}
+              </div>
               {hourLabel && <div className="text-xs text-slate-400">{hourLabel}</div>}
             </div>
             <div className="hidden w-28 shrink-0 text-xs sm:block">
