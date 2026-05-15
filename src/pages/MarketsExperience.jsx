@@ -1709,7 +1709,7 @@ export function MarketsExperience() {
         id="markets-research-anchor"
         className={cx(
           'bg-white',
-          'lg:relative lg:z-auto lg:order-3 lg:flex lg:flex-col lg:gap-3 lg:bg-transparent lg:sticky lg:top-2 lg:rounded-none lg:border-t-0 lg:shadow-none',
+          'lg:relative lg:z-auto lg:order-3 lg:flex lg:flex-col lg:gap-3 lg:bg-transparent lg:sticky lg:top-2 lg:bottom-auto lg:h-auto lg:overflow-visible lg:rounded-none lg:border-t-0 lg:shadow-none',
           'fixed inset-x-0 z-40 flex flex-col overflow-hidden rounded-t-2xl border-t border-[#e8eaed] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] transition-all duration-300 ease-out',
           researchMode === 'conversation' ? 'top-20 bottom-0 h-auto' : researchMode === 'search' ? 'bottom-0 h-auto' : 'bottom-0 h-[130px]'
         )}
