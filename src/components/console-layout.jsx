@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, ChevronsRight } from 'lucide-react';
 import { consumePendingToasts, subscribeToToasts } from '../app/toast.js';
 import { cx } from './experience-ui.jsx';
 
@@ -134,17 +134,6 @@ export function ConsoleLayout({
         {topbarRight ? <div className="console-mobilebar__right">{topbarRight}</div> : null}
       </div>
 
-      {desktopNavCollapsed ? (
-        <button
-          type="button"
-          aria-label="展开导航"
-          className="console-sidebar-expand"
-          onClick={() => setDesktopNavCollapsed(false)}
-        >
-          <Menu className="h-4 w-4" aria-hidden="true" />
-        </button>
-      ) : null}
-
       <div className={cx('console-shell', desktopNavCollapsed && 'is-nav-collapsed')}>
         <aside
           className={cx('console-sidebar', mobileNavOpen && 'is-open')}
@@ -189,6 +178,16 @@ export function ConsoleLayout({
             })}
           </nav>
           {sidebarFooter ? <div className="console-sidebar__footer">{sidebarFooter}</div> : null}
+          {desktopNavCollapsed ? (
+            <button
+              type="button"
+              aria-label="展开导航"
+              className="console-sidebar__expand"
+              onClick={() => setDesktopNavCollapsed(false)}
+            >
+              <ChevronsRight className="h-4 w-4" aria-hidden="true" />
+            </button>
+          ) : null}
         </aside>
 
         {mobileNavOpen ? (

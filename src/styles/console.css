@@ -1,5 +1,6 @@
 :root {
   --console-sidebar-w: 240px;
+  --console-sidebar-w-collapsed: 60px;
   --console-ctx-w: 360px;
   --console-topbar-h: 56px;
   --console-mobilebar-h: 52px;
@@ -94,41 +95,63 @@
   display: inline-flex;
 }
 
-/* Desktop: when shell has is-nav-collapsed, hide the sidebar entirely */
-.console-shell.is-nav-collapsed > .console-sidebar {
-  display: none;
+/* Desktop: when shell has is-nav-collapsed, render the sidebar as a narrow icon-only rail. */
+@media (min-width: 1024px) {
+  .console-shell.is-nav-collapsed > .console-sidebar {
+    flex: 0 0 var(--console-sidebar-w-collapsed);
+    width: var(--console-sidebar-w-collapsed);
+  }
+
+  .console-shell.is-nav-collapsed .console-sidebar__header {
+    justify-content: center;
+    padding: 14px 8px 10px;
+  }
+
+  .console-shell.is-nav-collapsed .console-brand,
+  .console-shell.is-nav-collapsed .console-sidebar__close,
+  .console-shell.is-nav-collapsed .console-sidebar__footer {
+    display: none;
+  }
+
+  .console-shell.is-nav-collapsed .console-sidenav {
+    padding: 12px 8px 16px;
+  }
+
+  .console-shell.is-nav-collapsed .console-sidenav__link {
+    justify-content: center;
+    padding: 10px 0;
+    gap: 0;
+  }
+
+  .console-shell.is-nav-collapsed .console-sidenav__link > span {
+    display: none;
+  }
 }
 
-/* Floating expand affordance shown when desktop sidebar is collapsed */
-.console-sidebar-expand {
-  position: fixed;
-  top: 12px;
-  left: 12px;
-  z-index: 95;
-  width: 36px;
-  height: 36px;
+/* Bottom expand affordance inside the collapsed rail. */
+.console-sidebar__expand {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
-  border: 1px solid var(--console-border);
-  background: #ffffff;
-  color: #0f172a;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  width: 100%;
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--console-border);
+  background: transparent;
+  color: var(--console-link);
   cursor: pointer;
-  transition: background-color 160ms ease, border-color 160ms ease;
+  transition: background-color 160ms ease, color 160ms ease;
 }
 
-.console-sidebar-expand:hover {
-  background: #f8fafc;
-  border-color: #c7d2fe;
+.console-sidebar__expand:hover {
+  background: rgba(148, 163, 184, 0.12);
   color: #4f46e5;
 }
 
-@media (max-width: 1023.98px) {
-  .console-sidebar-expand {
-    display: none;
-  }
+.console-sidebar__expand:focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: -2px;
 }
 
 .console-sidenav {
