@@ -1716,31 +1716,37 @@ export function MarketsExperience() {
         style={researchMode === 'search' && vpHeight ? { height: vpHeight + 'px' } : undefined}
       >
         {/* Drag handle */}
-        <button
-          type="button"
-          onClick={() => setResearchMode((m) => m === 'peek' ? 'conversation' : 'peek')}
-          className="flex h-6 w-full shrink-0 items-center justify-center bg-white lg:hidden"
+        <div
+          role="button"
+          tabIndex={0}
           aria-label={researchMode === 'peek' ? '展开研究' : '收起研究'}
+          className="flex h-9 w-full shrink-0 cursor-pointer touch-none select-none items-center justify-center bg-white lg:hidden"
+          onClick={() => {
+            if (researchDragRef.current.moved) { researchDragRef.current.moved = false; return; }
+            setResearchMode((m) => m === 'peek' ? 'conversation' : 'peek');
+          }}
           onPointerDown={(e) => {
-            researchDragRef.current = { startY: e.clientY, dragging: true };
-            e.currentTarget.setPointerCapture(e.pointerId);
+            researchDragRef.current = { startY: e.clientY, dragging: true, moved: false };
+            try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
           }}
           onPointerMove={(e) => {
             if (!researchDragRef.current.dragging) return;
             const dy = e.clientY - researchDragRef.current.startY;
-            if ((researchMode === 'peek' || researchMode === 'search') && dy < -40) {
+            if (Math.abs(dy) > 8) researchDragRef.current.moved = true;
+            if ((researchMode === 'peek' || researchMode === 'search') && dy < -32) {
               researchDragRef.current.dragging = false;
               setResearchMode('conversation');
-            } else if ((researchMode === 'conversation' || researchMode === 'search') && dy > 40) {
+            } else if ((researchMode === 'conversation' || researchMode === 'search') && dy > 32) {
               researchDragRef.current.dragging = false;
               setResearchMode('peek');
             }
           }}
           onPointerUp={() => { researchDragRef.current.dragging = false; }}
           onPointerCancel={() => { researchDragRef.current.dragging = false; }}
+          onTouchMove={(e) => { e.preventDefault(); }}
         >
           <span className="h-1 w-9 rounded-full bg-[#dadce0]" />
-        </button>
+        </div>
         <MarketsResearchPanel market={market} mode={researchMode} onModeChange={setResearchMode} watchSymbols={watchSymbols} watchQuotes={watchQuotes} />
       </aside>
     </div>
