@@ -324,22 +324,27 @@ function IndexCard({ entry, onPick, sparkPoints }) {
     <button
       type="button"
       onClick={() => onPick && onPick(entry)}
-      className="group flex w-[160px] min-w-0 shrink-0 snap-start flex-col items-start gap-1 overflow-hidden rounded-xl p-3 text-left transition hover:bg-slate-50 sm:w-[170px] lg:w-[180px]"
+      className="group flex w-[140px] min-w-0 shrink-0 snap-start flex-col items-start gap-1 overflow-hidden rounded-xl border border-slate-200/70 bg-white p-3 text-left shadow-sm transition hover:shadow-md sm:w-[150px] lg:w-[160px]"
     >
       <div className="line-clamp-1 w-full text-[15px] font-semibold leading-tight text-slate-900">{entry.name || entry.symbol}</div>
       <div className="w-full truncate text-[13px] leading-tight tabular-nums text-slate-700">{formatNumber(entry.price)}</div>
       {hasChange && (
         <div className="text-[11px] tabular-nums text-slate-500">({change >= 0 ? '+' : ''}{formatNumber(Math.abs(change))})</div>
       )}
-      <div className={cx(
-        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums',
-        positive ? 'bg-rose-50 text-rose-600' : negative ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
-      )}>
-        {formatPercent(entry.changePercent)}
-        {positive ? <ArrowUp size={11} /> : negative ? <ArrowDown size={11} /> : null}
+      <div className="flex w-full items-center gap-1.5">
+        <span className={cx(
+          'text-[12px] font-semibold tabular-nums',
+          positive ? 'text-rose-600' : negative ? 'text-emerald-600' : 'text-slate-500'
+        )}>{formatPercent(entry.changePercent)}</span>
+        <span className={cx(
+          'inline-flex h-[18px] w-[18px] items-center justify-center rounded-full text-white',
+          positive ? 'bg-rose-500' : negative ? 'bg-emerald-500' : 'bg-slate-300'
+        )}>
+          {positive ? <ArrowUp size={11} strokeWidth={2.5} /> : negative ? <ArrowDown size={11} strokeWidth={2.5} /> : null}
+        </span>
       </div>
       <div className="mt-1 -mx-1 w-[calc(100%+0.5rem)]">
-        <Sparkline points={sparkPoints} width={180} height={48} tone={tone} className="w-full" />
+        <Sparkline points={sparkPoints} width={160} height={48} tone={tone} className="w-full" />
       </div>
     </button>
   );
@@ -1592,8 +1597,8 @@ export function MarketsExperience() {
         </div>
 
         {indices.length ? (
-          <div className="-mx-2 overflow-x-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <div className="flex snap-x snap-mandatory gap-1 pb-1">
+          <div className="-mx-2 overflow-x-auto px-2 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex snap-x snap-mandatory gap-3 pb-1">
               {indices.map((entry) => (
                 <IndexCard
                   key={entry.symbol}
