@@ -816,7 +816,7 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
 
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && messages.length > 0) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
   // 主题探索按钮触发：在右栏以深度模式自动提问。面板默认仍是快速，此次问答后并不锁定深度。
@@ -866,7 +866,7 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
     <>
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3">
         {messages.length === 0 ? (
-          <div className="flex h-full flex-col gap-5 pb-2">
+          <div className="flex flex-col gap-5 pb-2">
             <div>
               <h3 className="text-[20px] font-semibold leading-tight text-[#1f1f1f]">市场概况</h3>
               <p className="mt-1.5 text-[13px] leading-relaxed text-[#5f6368]">向我咨询当前市场行情、板块表现，或您监控列表的关键变化。</p>
