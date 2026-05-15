@@ -1288,7 +1288,7 @@ export function MarketsExperience() {
   );
 
   return (
-    <div className="flex flex-col gap-5 pb-[140px] lg:grid lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:items-start lg:gap-4 lg:pb-6">
+    <div className="flex flex-col gap-5 pb-[140px] lg:grid lg:grid-cols-[240px_minmax(0,1fr)_400px] lg:items-start lg:gap-4 lg:pb-6 xl:grid-cols-[240px_minmax(0,1fr)_460px]">
       {/* Mobile-only sidebar: Google Finance Beta style */}
       <aside className="order-2 flex flex-col gap-2 lg:hidden">
         <div className="px-1">
