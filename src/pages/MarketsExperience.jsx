@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronUp,
   ChevronRight,
+  Compass,
   Edit3,
   ExternalLink,
   History,
@@ -865,7 +866,61 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
     <>
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3">
         {messages.length === 0 ? (
-          <p className="mt-2 text-[14px] text-[#9aa0a6]">向我询问任何金融问题…</p>
+          <div className="flex h-full flex-col gap-5 pb-2">
+            <div>
+              <h3 className="text-[20px] font-semibold leading-tight text-[#1f1f1f]">市场概况</h3>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-[#5f6368]">向我咨询当前市场行情、板块表现，或您监控列表的关键变化。</p>
+            </div>
+            <div className="flex flex-col gap-2">
+              {[
+                '今日市场整体表现如何？',
+                '哪些板块涨幅居前？',
+                '我的监控列表近期有哪些关键变化？',
+              ].map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => send(q)}
+                  disabled={pending}
+                  className="flex w-full items-center justify-between gap-3 rounded-2xl bg-[#f1f3f4] px-4 py-3 text-left text-[14px] text-[#1f1f1f] transition hover:bg-[#e8eaed] disabled:opacity-60"
+                >
+                  <span className="flex-1">{q}</span>
+                  <Search size={16} className="shrink-0 text-[#5f6368]" />
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-col gap-2">
+              <p className="text-[13px] font-medium text-[#5f6368]">探索可能性</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => send('对当前市场进行深度概况分析，给出关键板块、风险与机会', { depth: 'deep' })}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#f1f3f4] px-3.5 py-2 text-[13px] text-[#1f1f1f] transition hover:bg-[#e8eaed] disabled:opacity-60"
+                >
+                  <Compass size={14} className="text-[#1a73e8]" />
+                  深度搜索
+                </button>
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => send('请分析我监控列表中股票的近期表现与关键变化', { depth: 'deep' })}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#f1f3f4] px-3.5 py-2 text-[13px] text-[#1f1f1f] transition hover:bg-[#e8eaed] disabled:opacity-60"
+                >
+                  <TrendingUp size={14} className="text-[#1a73e8]" />
+                  分析我的监控列表
+                </button>
+                <button
+                  type="button"
+                  onClick={() => inputRef.current?.focus()}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#f1f3f4] px-3.5 py-2 text-[13px] text-[#1f1f1f] transition hover:bg-[#e8eaed]"
+                >
+                  <Sparkles size={14} className="text-[#1a73e8]" />
+                  搜索或询问任意内容
+                </button>
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="flex flex-col gap-4">
             {messages.map((m, i) => (
