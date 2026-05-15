@@ -1167,7 +1167,8 @@ export function MarketsExperience() {
     vp.addEventListener('resize', handler);
     return () => vp.removeEventListener('resize', handler);
   }, []);
-  const researchDragRef = useRef({ startY: 0, dragging: false });
+  const researchDragRef = useRef({ startY: 0, lastY: 0, startT: 0, dragging: false, moved: false });
+  const asideRef = useRef(null);
 
   const ensureKlines = useCallback(async (symbols) => {
     const uniq = Array.from(new Set((symbols || []).filter(Boolean)));
@@ -1707,6 +1708,7 @@ export function MarketsExperience() {
       {/* Research panel: PC = sticky aside / Mobile = bottom sheet */}
       <aside
         id="markets-research-anchor"
+        ref={asideRef}
         className={cx(
           'bg-white',
           'lg:relative lg:z-auto lg:order-3 lg:flex lg:flex-col lg:gap-3 lg:bg-transparent lg:sticky lg:top-2 lg:bottom-auto lg:h-auto lg:overflow-visible lg:rounded-none lg:border-t-0 lg:shadow-none',
@@ -1726,23 +1728,46 @@ export function MarketsExperience() {
             setResearchMode((m) => m === 'peek' ? 'conversation' : 'peek');
           }}
           onPointerDown={(e) => {
-            researchDragRef.current = { startY: e.clientY, dragging: true, moved: false };
+            researchDragRef.current = { startY: e.clientY, lastY: e.clientY, startT: Date.now(), dragging: true, moved: false };
             try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+            const a = asideRef.current;
+            if (a) a.style.transition = 'none';
           }}
           onPointerMove={(e) => {
-            if (!researchDragRef.current.dragging) return;
-            const dy = e.clientY - researchDragRef.current.startY;
-            if (Math.abs(dy) > 8) researchDragRef.current.moved = true;
-            if ((researchMode === 'peek' || researchMode === 'search') && dy < -32) {
-              researchDragRef.current.dragging = false;
-              setResearchMode('conversation');
-            } else if ((researchMode === 'conversation' || researchMode === 'search') && dy > 32) {
-              researchDragRef.current.dragging = false;
-              setResearchMode('peek');
+            const r = researchDragRef.current;
+            if (!r.dragging) return;
+            const dy = e.clientY - r.startY;
+            r.lastY = e.clientY;
+            if (Math.abs(dy) > 6) r.moved = true;
+            // 跟手位移：在错误方向（超过边界）做 0.3 倍阻尼并 clamp ±36
+            let visual = dy;
+            const overshootPeek = researchMode === 'peek' && dy > 0;
+            const overshootConv = researchMode === 'conversation' && dy < 0;
+            if (overshootPeek || overshootConv) {
+              visual = Math.sign(dy) * Math.min(Math.abs(dy) * 0.3, 36);
             }
+            const a = asideRef.current;
+            if (a) a.style.transform = `translateY(${visual}px)`;
           }}
-          onPointerUp={() => { researchDragRef.current.dragging = false; }}
-          onPointerCancel={() => { researchDragRef.current.dragging = false; }}
+          onPointerUp={(e) => {
+            const r = researchDragRef.current;
+            if (!r.dragging) return;
+            r.dragging = false;
+            const dy = e.clientY - r.startY;
+            const dt = Math.max(Date.now() - r.startT, 1);
+            const v = dy / dt; // px/ms
+            let next = researchMode;
+            if (researchMode === 'peek' && (dy < -60 || v < -0.4)) next = 'conversation';
+            else if (researchMode === 'conversation' && (dy > 60 || v > 0.4)) next = 'peek';
+            const a = asideRef.current;
+            if (a) { a.style.transition = ''; a.style.transform = ''; }
+            if (next !== researchMode) setResearchMode(next);
+          }}
+          onPointerCancel={() => {
+            researchDragRef.current.dragging = false;
+            const a = asideRef.current;
+            if (a) { a.style.transition = ''; a.style.transform = ''; }
+          }}
           onTouchMove={(e) => { e.preventDefault(); }}
         >
           <span className="h-1 w-9 rounded-full bg-[#dadce0]" />
