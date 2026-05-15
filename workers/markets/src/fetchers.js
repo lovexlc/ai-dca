@@ -296,6 +296,16 @@ export async function fetchFinnhubMarketNews({ token, category = 'general' }) {
   return res.json();
 }
 
+// Finnhub 财报日历：默认拉 [today, today+14d] 区间。结构 { earningsCalendar: [...] }。
+export async function fetchFinnhubEarningsCalendar({ token, from, to }) {
+  const f = from || new Date().toISOString().slice(0, 10);
+  const t = to || new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+  const url = buildUrl(FINNHUB_HOST, '/api/v1/calendar/earnings', { from: f, to: t, token });
+  const res = await fetch(url, { headers: COMMON_HEADERS, cf: { cacheTtl: 1800 } });
+  if (!res.ok) throw new Error('finnhub earnings calendar HTTP ' + res.status);
+  return res.json();
+}
+
 // ----- Tavily news ---------------------------------------------------------
 // 调用 Tavily Search API（topic=news）拉一批近期新闻。
 // 主要用来给「今日主题」提供多元化信源（不只是 Reuters/CNBC wire）。

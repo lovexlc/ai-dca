@@ -81,6 +81,11 @@ export async function fetchNews(market, { refresh = false } = {}) {
   return getJson('/news?market=' + encodeURIComponent(market) + q);
 }
 
+export async function fetchEarnings(market, { refresh = false } = {}) {
+  const q = refresh ? '&refresh=1' : '';
+  return getJson('/earnings?market=' + encodeURIComponent(market) + q);
+}
+
 export async function fetchProfile(symbol) {
   return getJson('/profile/' + encodeURIComponent(symbol));
 }

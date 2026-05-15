@@ -13,6 +13,7 @@ import {
   fetchFinnhubProfile,
   fetchFinnhubCompanyNews,
   fetchFinnhubMarketNews,
+  fetchFinnhubEarningsCalendar,
   fetchTavilyNews,
   fetchCnnFearGreed,
   hostToSourceName
@@ -93,6 +94,10 @@ export default {
       if (path === '/news') {
         const market = (url.searchParams.get('market') || 'us').toLowerCase();
         return await handleNews(env, market, url.searchParams.get('refresh') === '1');
+      }
+      if (path === '/earnings') {
+        const market = (url.searchParams.get('market') || 'us').toLowerCase();
+        return await handleEarnings(env, market, url.searchParams.get('refresh') === '1');
       }
       if (path === '/summary') {
         const market = (url.searchParams.get('market') || 'us').toLowerCase();
@@ -472,6 +477,57 @@ async function handleNews(env, market, forceRefresh) {
 }
 
 async function handleProfile(env, rawSymbol) {
+  // placeholder marker; real impl below
+  return await _handleProfileImpl(env, rawSymbol);
+}
+
+// 即将发布的财报日历（仅美股 Finnhub）。默认 [today, today+14d]。
+async function handleEarnings(env, market, forceRefresh) {
+  if (market !== 'us') {
+    return json({ market, items: [], generatedAt: new Date().toISOString() });
+  }
+  if (!env.FINNHUB_TOKEN) return errorJson('FINNHUB_TOKEN not configured', 500);
+  const key = 'earnings:' + market;
+  if (!forceRefresh) {
+    const cached = await kvGetJson(env, key);
+    if (cached && Array.isArray(cached.items)) return json({ ...cached, cached: true });
+  }
+  let items = [];
+  try {
+    const raw = await fetchFinnhubEarningsCalendar({ token: env.FINNHUB_TOKEN });
+    const list = (raw && Array.isArray(raw.earningsCalendar)) ? raw.earningsCalendar : [];
+    items = list.map((it) => ({
+      symbol: it.symbol || '',
+      name: it.symbol || '',
+      date: it.date || '',
+      hour: it.hour || '',
+      year: it.year || null,
+      quarter: it.quarter || null,
+      epsActual: typeof it.epsActual === 'number' ? it.epsActual : null,
+      epsEstimate: typeof it.epsEstimate === 'number' ? it.epsEstimate : null,
+      revenueActual: typeof it.revenueActual === 'number' ? it.revenueActual : null,
+      revenueEstimate: typeof it.revenueEstimate === 'number' ? it.revenueEstimate : null,
+    }));
+    // 优先以估算收入降序（大企业优先），同时在同一天内准备。后续可以接 profile 丰富中文名。
+    items.sort((a, b) => {
+      const da = a.date || '9999-12-31';
+      const db = b.date || '9999-12-31';
+      if (da !== db) return da < db ? -1 : 1;
+      const ra = Number.isFinite(a.revenueEstimate) ? a.revenueEstimate : -1;
+      const rb = Number.isFinite(b.revenueEstimate) ? b.revenueEstimate : -1;
+      return rb - ra;
+    });
+    // 只留第一页给前端（防止 KV 过胖）
+    items = items.slice(0, 60);
+  } catch (err) {
+    return errorJson('finnhub earnings calendar failed: ' + String((err && err.message) || err), 502);
+  }
+  const payload = { market, generatedAt: new Date().toISOString(), items };
+  await kvPutJson(env, key, payload, { ttlSeconds: 1800 });
+  return json({ ...payload, cached: false });
+}
+
+async function _handleProfileImpl(env, rawSymbol) {
   const { market, code } = classifySymbol(rawSymbol);
   if (!market) return errorJson('invalid symbol', 400);
   if (market !== 'us') return errorJson('profile only supports US for now', 400);
