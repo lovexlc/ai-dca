@@ -19,6 +19,7 @@ import {
   Star,
   Trash2,
   TrendingUp
+  X,
 } from 'lucide-react';
 import {
   Card,
@@ -685,11 +686,12 @@ function SummaryModule({ themes = [], loading, onRefresh }) {
 // 抽屉会自动切到市场行情模式并预填问题。
 // 右栏“研究”面板：inline 问答，点击预设问题或提交输入后直接调 /api/markets/ask。
 // 不再弹出右下角 AI 抽屉。
-function MarketsResearchPanel({ market }) {
+function MarketsResearchPanel({ market, mode, onModeChange }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [pending, setPending] = useState(false);
   const scrollRef = useRef(null);
+  const inputRef = useRef(null);
 
   const send = useCallback(
     async (raw, opts = {}) => {
@@ -698,9 +700,10 @@ function MarketsResearchPanel({ market }) {
       const useDepth = opts.depth === 'deep' ? 'deep' : 'fast';
       const useContext = typeof opts.context === 'string' ? opts.context : '';
       setInput('');
+      onModeChange?.('conversation');
       setMessages((prev) => [
         ...prev,
-        { role: 'user', content: question, depth: useDepth },
+        { role: 'user', content: question, depth: useDepth, ts: Date.now() },
         { role: 'assistant', content: '', pending: true },
       ]);
       setPending(true);
@@ -782,7 +785,7 @@ function MarketsResearchPanel({ market }) {
         setPending(false);
       }
     },
-    [market, pending],
+    [market, pending, onModeChange],
   );
 
   const onSubmit = useCallback(
@@ -810,161 +813,143 @@ function MarketsResearchPanel({ market }) {
     return () => window.removeEventListener('markets:research', onResearch);
   }, [send]);
 
-  const presets = [
-    '今日市场行情如何？',
-    '美债收益率对美股估值的影响',
-    '科技板块今日异动原因',
-    '与我自选最相关的催化剂',
-  ];
+  // focus input on conversation open
+  useEffect(() => {
+    if (mode === 'conversation' && inputRef.current) {
+      const t = setTimeout(() => inputRef.current?.focus(), 300);
+      return () => clearTimeout(t);
+    }
+  }, [mode]);
 
-  return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-white lg:h-[calc(100vh-1.5rem)] lg:max-h-[820px] lg:rounded-2xl lg:border lg:border-slate-200">
-      <div className="flex items-center justify-between border-b border-[#e8eaed] px-4 py-2 lg:border-slate-200 lg:py-3">
-        <h2 className="text-base font-semibold text-slate-900 lg:text-xl">研究</h2>
-        <div className="flex items-center gap-1 text-slate-400">
-          <button
-            type="button"
-            aria-label="新对话"
-            onClick={() => setMessages([])}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-100 hover:text-indigo-600"
-          >
-            <Edit3 size={15} />
-          </button>
-          <button
-            type="button"
-            aria-label="历史"
-            disabled
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full opacity-50"
-          >
-            <History size={15} />
-          </button>
-          <button
-            type="button"
-            aria-label="全屏"
-            disabled
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full opacity-50"
-          >
-            <Maximize2 size={15} />
-          </button>
-        </div>
-      </div>
+  const fmtTime = (ts) => {
+    if (!ts) return '';
+    try { return new Date(ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }); }
+    catch { return ''; }
+  };
 
+  const conversationUI = (
+    <>
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3">
         {messages.length === 0 ? (
-          <div className="flex flex-col gap-3">
-            <p className="text-[15px] font-semibold leading-snug text-slate-800">
-              您好！您可以向我咨询任何金融问题
-            </p>
-            <ul className="flex flex-col gap-2">
-              {presets.map((q) => (
-                <li key={q}>
-                  <button
-                    type="button"
-                    onClick={() => send(q)}
-                    disabled={pending}
-                    className="flex w-full items-center justify-between gap-2 rounded-2xl bg-slate-100 px-4 py-3 text-left text-[13px] leading-snug text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <span className="flex-1">{q}</span>
-                    <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200/80 text-slate-500">
-                      <Search size={13} />
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <p className="mt-2 text-[14px] text-[#9aa0a6]">向我询问任何金融问题…</p>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4">
             {messages.map((m, i) => (
-              <div key={i} className={cx('flex', m.role === 'user' ? 'justify-end' : 'justify-start')}>
-                <div
-                  className={cx(
-                    'max-w-[92%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-[13px] leading-relaxed',
-                    m.role === 'user'
-                      ? 'bg-indigo-500 text-white'
-                      : m.error
-                        ? 'bg-rose-50 text-rose-700'
-                        : 'bg-slate-100 text-slate-800',
-                  )}
-                >
-                  {m.pending ? (
-                    <div className="flex flex-col gap-1">
-                      <span className="inline-flex items-center gap-1 text-slate-500">
-                        <Loader2 size={14} className="animate-spin" /> {m.stage || '思考中…'}
-                      </span>
-                      {m.content ? (
-                        <div className="whitespace-pre-wrap text-slate-700">{m.content}</div>
-                      ) : null}
+              <div key={i}>
+                {m.role === 'user' ? (
+                  <div className="flex flex-col items-end gap-1">
+                    <div className="max-w-[85%] rounded-2xl bg-[#f1f3f4] px-4 py-2.5 text-[14px] leading-relaxed text-[#1f1f1f]">
+                      {m.content}
                     </div>
-                  ) : (
-                    m.content
-                  )}
-                  {m.role === 'assistant' && Array.isArray(m.sources) && m.sources.length > 0 ? (
-                    <ul className="mt-2 flex flex-col gap-1 border-t border-slate-200 pt-2">
-                      {m.sources.slice(0, 5).map((s, si) => (
-                        <li key={si} className="text-[11px] text-slate-500">
-                          <a
-                            href={s.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="hover:text-indigo-600 hover:underline"
-                          >
-                            {s.title || s.url}
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </div>
+                    {m.ts ? <span className="text-[11px] text-[#9aa0a6]">{fmtTime(m.ts)}</span> : null}
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    {m.pending ? (
+                      <div className="flex items-center gap-1.5 text-[14px] text-[#5f6368]">
+                        <Loader2 size={14} className="animate-spin" />
+                        <span>{m.stage || '正在思考…'}</span>
+                      </div>
+                    ) : (
+                      <p className={cx('whitespace-pre-wrap text-[14px] leading-relaxed', m.error ? 'text-rose-600' : 'text-[#1f1f1f]')}>
+                        {m.content}
+                      </p>
+                    )}
+                    {!m.pending && Array.isArray(m.sources) && m.sources.length > 0 ? (
+                      <ul className="mt-1 flex flex-col gap-0.5">
+                        {m.sources.slice(0, 3).map((s, si) => (
+                          <li key={si}>
+                            <a href={s.url} target="_blank" rel="noreferrer" className="text-[11px] text-[#1a73e8] hover:underline">
+                              {s.title || s.url}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
-
-      <form onSubmit={onSubmit} className="m-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-        <textarea
+      <form onSubmit={onSubmit} className="mx-3 mb-3 mt-1 flex h-12 items-center gap-2 rounded-full bg-[#f1f3f4] px-4">
+        <Sparkles size={16} className="shrink-0 text-[#1a73e8]" />
+        <input
+          ref={inputRef}
+          type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              send(input);
-            }
-          }}
-          rows={2}
-          placeholder="提出任何问题"
-          className="block w-full resize-none border-none bg-transparent text-[14px] text-slate-800 placeholder:text-slate-400 focus:outline-none"
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}
+          placeholder="搜索或提问"
+          className="flex-1 bg-transparent text-[14px] text-[#1f1f1f] placeholder:text-[#5f6368] focus:outline-none"
           disabled={pending}
         />
-        <div className="mt-1 flex items-center justify-between">
+        <button
+          type="submit"
+          aria-label="发送"
+          disabled={pending || !input.trim()}
+          className={cx(
+            'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition',
+            !input.trim() || pending ? 'text-[#9aa0a6]' : 'bg-[#1a73e8] text-white hover:bg-[#1557b0]',
+          )}
+        >
+          {pending ? <Loader2 size={13} className="animate-spin" /> : <ArrowUp size={13} />}
+        </button>
+      </form>
+    </>
+  );
+
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col bg-white lg:h-[calc(100vh-1.5rem)] lg:max-h-[820px] lg:rounded-2xl lg:border lg:border-slate-200">
+      {pending && <div className="h-0.5 w-full shrink-0 animate-pulse bg-[#1a73e8]" />}
+      <div className="flex items-center justify-between border-b border-[#e8eaed] px-4 py-3 lg:border-slate-200">
+        <h2 className="text-base font-semibold text-[#1f1f1f]">研究</h2>
+        <div className="flex items-center gap-0.5 text-[#5f6368]">
           <button
             type="button"
-            aria-label="附加"
-            disabled
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-400"
+            aria-label="新对话"
+            onClick={() => { setMessages([]); onModeChange?.(’peek’); }}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#f1f3f4]"
           >
-            <Plus size={14} />
+            <Edit3 size={16} />
           </button>
           <button
-            type="submit"
-            aria-label="发送"
-            disabled={pending || !input.trim()}
-            className={cx(
-              'inline-flex h-8 w-8 items-center justify-center rounded-full transition',
-              !input.trim() || pending
-                ? 'bg-slate-200 text-slate-400'
-                : 'bg-indigo-500 text-white hover:bg-indigo-600',
-            )}
+            type="button"
+            aria-label="历史"
+            disabled
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full opacity-40"
           >
-            {pending ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={14} />}
+            <History size={16} />
           </button>
+          {mode === 'conversation' && (
+            <button
+              type="button"
+              aria-label="关闭"
+              onClick={() => onModeChange?.('peek')}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#f1f3f4] lg:hidden"
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
-      </form>
+      </div>
+      {mode === 'peek' && (
+        <button
+          type="button"
+          onClick={() => onModeChange?.('conversation')}
+          className="mx-3 mt-3 flex h-12 items-center gap-2 rounded-full bg-[#f1f3f4] px-4 text-left lg:hidden"
+        >
+          <Sparkles size={16} className="shrink-0 text-[#1a73e8]" />
+          <span className="flex-1 text-[14px] text-[#5f6368]">搜索或提问</span>
+        </button>
+      )}
+      <div className={cx('flex min-h-0 flex-1 flex-col', mode === 'peek' ? 'hidden lg:flex' : 'flex')}>
+        {conversationUI}
+      </div>
     </div>
   );
 }
-
 export function MarketsExperience() {
   const [market, setMarket] = useState('us');
   const [indices, setIndices] = useState([]);
@@ -988,8 +973,8 @@ export function MarketsExperience() {
   // 侧边折叠状态：默认两组都展开。
   const [watchOpen, setWatchOpen] = useState(true);
   const [sectorsOpen, setSectorsOpen] = useState(true);
-  // 研究底部抽屉（仅 mobile）：false=peek（露出 header+输入区），true=全屏
-  const [researchSheetOpen, setResearchSheetOpen] = useState(false);
+  // 研究底部抽屉模式（仅 mobile）：peek=小片 / conversation=全屏展开
+  const [researchMode, setResearchMode] = useState('peek');
 
   const ensureKlines = useCallback(async (symbols) => {
     const uniq = Array.from(new Set((symbols || []).filter(Boolean)));
@@ -1178,7 +1163,7 @@ export function MarketsExperience() {
   );
 
   return (
-    <div className="flex flex-col gap-5 pb-[260px] lg:grid lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:items-start lg:gap-4 lg:pb-6">
+    <div className="flex flex-col gap-5 pb-[140px] lg:grid lg:grid-cols-[260px_minmax(0,1fr)_320px] lg:items-start lg:gap-4 lg:pb-6">
       {/* Mobile-only sidebar: Google Finance Beta style */}
       <aside className="order-2 flex flex-col gap-2 lg:hidden">
         <div className="px-1">
@@ -1531,28 +1516,30 @@ export function MarketsExperience() {
         </Card>
       </main>
 
-      {/* Research panel: PC = sticky aside / Mobile = bottom sheet（peek 常驻底部，点 handle 上滑全屏） */}
+      {/* Backdrop when conversation */}
+      {researchMode === 'conversation' && (
+        <div className="fixed inset-0 z-30 bg-black/20 lg:hidden" onClick={() => setResearchMode('peek')} />
+      )}
+      {/* Research panel: PC = sticky aside / Mobile = bottom sheet */}
       <aside
         id="markets-research-anchor"
         className={cx(
           'bg-white',
-          // PC 样式
           'lg:relative lg:z-auto lg:order-3 lg:flex lg:flex-col lg:gap-3 lg:bg-transparent lg:sticky lg:top-2 lg:rounded-none lg:border-t-0 lg:shadow-none',
-          // Mobile bottom sheet：fixed 底部，peek 250px（露出 header+输入区） / expanded 100dvh
-          'fixed inset-x-0 bottom-0 z-40 flex flex-col overflow-hidden rounded-t-2xl border-t border-[#e8eaed] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] transition-[height] duration-300 ease-out',
-          researchSheetOpen ? 'h-[100dvh]' : 'h-[250px]'
+          'fixed inset-x-0 z-40 flex flex-col overflow-hidden rounded-t-2xl border-t border-[#e8eaed] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] transition-all duration-300 ease-out',
+          researchMode === 'conversation' ? 'top-20 bottom-0 h-auto' : 'bottom-0 h-[130px]'
         )}
       >
-        {/* Drag handle：点击切换 peek/expanded */}
+        {/* Drag handle */}
         <button
           type="button"
-          onClick={() => setResearchSheetOpen((v) => !v)}
+          onClick={() => setResearchMode((m) => m === 'peek' ? 'conversation' : 'peek')}
           className="flex h-6 w-full shrink-0 items-center justify-center bg-white lg:hidden"
-          aria-label={researchSheetOpen ? '收起研究' : '展开研究'}
+          aria-label={researchMode === 'peek' ? '展开研究' : '收起研究'}
         >
           <span className="h-1 w-9 rounded-full bg-[#dadce0]" />
         </button>
-        <MarketsResearchPanel market={market} />
+        <MarketsResearchPanel market={market} mode={researchMode} onModeChange={setResearchMode} />
       </aside>
     </div>
   );
