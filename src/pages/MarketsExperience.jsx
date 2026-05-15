@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import '../styles/ai-chat.css';
 import {
   ArrowDown,
   ArrowUp,
@@ -846,14 +849,43 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
                 ) : (
                   <div className="flex flex-col gap-1">
                     {m.pending ? (
-                      <div className="flex items-center gap-1.5 text-[14px] text-[#5f6368]">
-                        <Loader2 size={14} className="animate-spin" />
-                        <span>{m.stage || '正在思考…'}</span>
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5 text-[14px] text-[#5f6368]">
+                          <Loader2 size={14} className="animate-spin" />
+                          <span>{m.stage || '正在思考…'}</span>
+                        </div>
+                        {m.content ? (
+                          <div className="ai-chat-md text-[14px] leading-relaxed text-[#1f1f1f]">
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              components={{
+                                a: ({ node, ...props }) => (
+                                  <a {...props} target="_blank" rel="noreferrer noopener" />
+                                ),
+                              }}
+                            >
+                              {m.content}
+                            </ReactMarkdown>
+                          </div>
+                        ) : null}
                       </div>
                     ) : (
-                      <p className={cx('whitespace-pre-wrap text-[14px] leading-relaxed', m.error ? 'text-rose-600' : 'text-[#1f1f1f]')}>
-                        {m.content}
-                      </p>
+                      m.error ? (
+                        <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-rose-600">{m.content}</p>
+                      ) : (
+                        <div className="ai-chat-md text-[14px] leading-relaxed text-[#1f1f1f]">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              a: ({ node, ...props }) => (
+                                <a {...props} target="_blank" rel="noreferrer noopener" />
+                              ),
+                            }}
+                          >
+                            {m.content || ''}
+                          </ReactMarkdown>
+                        </div>
+                      )
                     )}
                     {!m.pending && Array.isArray(m.sources) && m.sources.length > 0 ? (
                       <ul className="mt-1 flex flex-col gap-0.5">
