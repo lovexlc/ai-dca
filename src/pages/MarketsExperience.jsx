@@ -902,7 +902,11 @@ function MarketsResearchPanel({ market, mode, onModeChange }) {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-white lg:h-[calc(100vh-1.5rem)] lg:max-h-[820px] lg:rounded-2xl lg:border lg:border-slate-200">
-      {pending && <div className="h-0.5 w-full shrink-0 animate-pulse bg-[#1a73e8]" />}
+      {pending && (
+        <div className="relative h-0.5 w-full shrink-0 overflow-hidden bg-[#e8f0fe]">
+          <div className="gf-progress-bar absolute inset-y-0 left-0 bg-[#1a73e8]" />
+        </div>
+      )}
       <div className="flex items-center justify-between border-b border-[#e8eaed] px-4 py-3 lg:border-slate-200">
         <h2 className="text-base font-semibold text-[#1f1f1f]">研究</h2>
         <div className="flex items-center gap-0.5 text-[#5f6368]">
@@ -975,6 +979,7 @@ export function MarketsExperience() {
   const [sectorsOpen, setSectorsOpen] = useState(true);
   // 研究底部抽屉模式（仅 mobile）：peek=小片 / conversation=全屏展开
   const [researchMode, setResearchMode] = useState('peek');
+  const researchDragRef = useRef({ startY: 0, dragging: false });
 
   const ensureKlines = useCallback(async (symbols) => {
     const uniq = Array.from(new Set((symbols || []).filter(Boolean)));
@@ -1536,6 +1541,23 @@ export function MarketsExperience() {
           onClick={() => setResearchMode((m) => m === 'peek' ? 'conversation' : 'peek')}
           className="flex h-6 w-full shrink-0 items-center justify-center bg-white lg:hidden"
           aria-label={researchMode === 'peek' ? '展开研究' : '收起研究'}
+          onPointerDown={(e) => {
+            researchDragRef.current = { startY: e.clientY, dragging: true };
+            e.currentTarget.setPointerCapture(e.pointerId);
+          }}
+          onPointerMove={(e) => {
+            if (!researchDragRef.current.dragging) return;
+            const dy = e.clientY - researchDragRef.current.startY;
+            if (researchMode === 'peek' && dy < -40) {
+              researchDragRef.current.dragging = false;
+              setResearchMode('conversation');
+            } else if (researchMode === 'conversation' && dy > 40) {
+              researchDragRef.current.dragging = false;
+              setResearchMode('peek');
+            }
+          }}
+          onPointerUp={() => { researchDragRef.current.dragging = false; }}
+          onPointerCancel={() => { researchDragRef.current.dragging = false; }}
         >
           <span className="h-1 w-9 rounded-full bg-[#dadce0]" />
         </button>
