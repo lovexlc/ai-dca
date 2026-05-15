@@ -481,34 +481,28 @@ function WatchlistTable({ rows = [], market, onRemove }) {
 
 function SidebarRow({ symbol, name, price, changePercent, sparkPoints, onRemove }) {
   const pct = Number(changePercent);
-  const tone = !Number.isFinite(pct) || Math.abs(pct) < 0.0001
-    ? 'text-slate-500'
-    : pct > 0
-    ? 'text-rose-600'
-    : 'text-emerald-600';
-  const ArrowIcon = !Number.isFinite(pct) || Math.abs(pct) < 0.0001
-    ? null
-    : pct > 0
-    ? ArrowUp
-    : ArrowDown;
+  const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
+  const up = pct > 0;
+  const textTone = flat ? 'text-[#5f6368]' : up ? 'text-[#a50e0e]' : 'text-[#137333]';
+  const ArrowIcon = flat ? null : up ? ArrowUp : ArrowDown;
   return (
     <li className="group relative">
-      <div className="flex items-center gap-2 rounded-md px-2 py-1.5 transition hover:bg-indigo-50/60">
+      <div className="flex items-center gap-3 rounded-md px-2 py-2 transition hover:bg-[#f1f3f4]">
         <div className="min-w-0 flex-1">
-          <div className="truncate font-mono text-[13px] font-semibold leading-tight text-slate-800">{symbol}</div>
+          <div className="truncate text-[13px] font-medium leading-tight text-[#1f1f1f]">{symbol}</div>
           {name && name !== symbol ? (
-            <div className="truncate text-[11px] leading-tight text-slate-400">{name}</div>
+            <div className="truncate text-[11px] leading-tight text-[#5f6368]">{name}</div>
           ) : null}
         </div>
         {sparkPoints && sparkPoints.length >= 2 ? (
-          <Sparkline points={sparkPoints} width={56} height={20} tone="auto" showFill={false} />
+          <Sparkline points={sparkPoints} width={76} height={28} tone="auto" showFill markLast />
         ) : (
-          <div className="h-[20px] w-[56px]" />
+          <div className="h-[28px] w-[76px]" />
         )}
         <div className="flex shrink-0 flex-col items-end leading-tight">
-          <div className="font-mono text-[12px] font-semibold tabular-nums text-slate-800">{formatNumber(price)}</div>
-          <div className={cx('flex items-center gap-0.5 font-mono text-[11px] tabular-nums', tone)}>
-            {ArrowIcon ? <ArrowIcon size={9} /> : null}
+          <div className="text-[13px] font-medium tabular-nums text-[#1f1f1f]">{formatNumber(price)}</div>
+          <div className={cx('flex items-center gap-0.5 text-[11px] tabular-nums', textTone)}>
+            {ArrowIcon ? <ArrowIcon size={10} /> : null}
             <span>{formatPercent(changePercent)}</span>
           </div>
         </div>
@@ -1535,7 +1529,7 @@ export function MarketsExperience() {
   );
 
   return (
-    <div className="flex flex-col gap-5 pb-[140px] lg:grid lg:grid-cols-[240px_minmax(0,1fr)_400px] lg:items-start lg:gap-4 lg:pb-6 xl:grid-cols-[240px_minmax(0,1fr)_460px]">
+    <div className="flex flex-col gap-5 pb-[140px] lg:grid lg:grid-cols-[300px_minmax(0,1fr)_380px] lg:items-start lg:gap-4 lg:pb-6 xl:grid-cols-[340px_minmax(0,1fr)_440px]">
       {/* Mobile-only sidebar: Google Finance Beta style */}
       <aside className="order-2 flex flex-col gap-2 lg:hidden">
         <div className="px-1">
@@ -1672,35 +1666,35 @@ export function MarketsExperience() {
 
       {/* PC-only sidebar: Google Finance Beta-style compact (设计不变) */}
       <aside className="order-2 hidden flex-col gap-3 lg:order-1 lg:sticky lg:top-2 lg:flex">
-        <div className="rounded-2xl border border-slate-200/70 bg-white/95 shadow-sm">
+        <div className="bg-transparent">
           {/* 顶部工具栏：「列表 ▾」下拉 + 添加 + 全屏 */}
-          <div className="flex items-center justify-between gap-1 border-b border-slate-200/70 px-2 py-1.5">
+          <div className="flex items-center justify-between gap-1 px-1 py-2">
             <button
               type="button"
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              className="inline-flex items-center gap-1 rounded-md px-1 py-1 text-[20px] leading-7 font-normal tracking-tight text-[#1f1f1f] hover:bg-[#f1f3f4]"
               title="列表切换（后续启用多人多列表）"
             >
               <span>列表</span>
-              <ChevronDown size={14} className="text-slate-400" />
+              <ChevronDown size={18} className="text-[#5f6368]" />
             </button>
             <div className="flex items-center gap-0.5">
               <button
                 type="button"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-indigo-600"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
                 title="添加自选"
                 onClick={() => {
                   const el = document.getElementById('markets-watch-add-input');
                   if (el) el.focus();
                 }}
               >
-                <Plus size={14} />
+                <Plus size={18} />
               </button>
               <button
                 type="button"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-indigo-600"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
                 title="全屏查看（后续接入）"
               >
-                <Maximize2 size={14} />
+                <Maximize2 size={16} />
               </button>
             </div>
           </div>
@@ -1710,12 +1704,12 @@ export function MarketsExperience() {
             <button
               type="button"
               onClick={() => setWatchOpen((v) => !v)}
-              className="flex w-full items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:bg-slate-50"
+              className="flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-[15px] font-medium text-[#1f1f1f] hover:bg-[#f1f3f4]"
             >
-              {watchOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-              <Star size={11} className="text-amber-400" />
+              {watchOpen ? <ChevronDown size={16} className="text-[#5f6368]" /> : <ChevronRight size={16} className="text-[#5f6368]" />}
+              <Star size={14} className="text-amber-400" />
               <span>监控列表</span>
-              {watchLoading && <Loader2 size={10} className="ml-1 animate-spin text-slate-400" />}
+              {watchLoading && <Loader2 size={12} className="ml-1 animate-spin text-slate-400" />}
             </button>
           </div>
           {watchOpen && (
@@ -1759,12 +1753,12 @@ export function MarketsExperience() {
                 <button
                   type="button"
                   onClick={() => setSectorsOpen((v) => !v)}
-                  className="flex w-full items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:bg-slate-50"
+                  className="flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-[15px] font-medium text-[#1f1f1f] hover:bg-[#f1f3f4]"
                 >
-                  {sectorsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                  <TrendingUp size={11} className="text-indigo-400" />
+                  {sectorsOpen ? <ChevronDown size={16} className="text-[#5f6368]" /> : <ChevronRight size={16} className="text-[#5f6368]" />}
+                  <TrendingUp size={14} className="text-indigo-400" />
                   <span>股票板块</span>
-                  {sectorsLoading && <Loader2 size={10} className="ml-1 animate-spin text-slate-400" />}
+                  {sectorsLoading && <Loader2 size={12} className="ml-1 animate-spin text-slate-400" />}
                 </button>
               </div>
               {sectorsOpen && (
