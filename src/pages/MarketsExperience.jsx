@@ -1150,6 +1150,14 @@ export function MarketsExperience() {
   // 研究底部抽屉模式（仅 mobile）：peek=小片 / conversation=全屏展开
   const [researchMode, setResearchMode] = useState('peek');
   const [vpHeight, setVpHeight] = useState(null);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)').matches : false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(max-width: 1023px)');
+    const h = () => setIsMobile(mq.matches);
+    mq.addEventListener ? mq.addEventListener('change', h) : mq.addListener(h);
+    return () => { mq.removeEventListener ? mq.removeEventListener('change', h) : mq.removeListener(h); };
+  }, []);
   const researchModeRef = useRef('peek');
   useEffect(() => { researchModeRef.current = researchMode; }, [researchMode]);
   useEffect(() => {
@@ -1168,6 +1176,7 @@ export function MarketsExperience() {
   }, []);
   const researchDragRef = useRef({ startY: 0, lastY: 0, startT: 0, dragging: false, moved: false });
   const asideRef = useRef(null);
+  const isDraggingRef = useRef(false);
 
   const ensureKlines = useCallback(async (symbols) => {
     const uniq = Array.from(new Set((symbols || []).filter(Boolean)));
@@ -1711,10 +1720,17 @@ export function MarketsExperience() {
         className={cx(
           'bg-white',
           'lg:relative lg:z-auto lg:order-3 lg:flex lg:flex-col lg:gap-3 lg:bg-transparent lg:sticky lg:top-2 lg:bottom-auto lg:h-auto lg:overflow-visible lg:rounded-none lg:border-t-0 lg:shadow-none',
-          'fixed inset-x-0 z-40 flex flex-col overflow-hidden rounded-t-2xl border-t border-[#e8eaed] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] transition-all duration-300 ease-out',
-          researchMode === 'conversation' ? 'top-20 bottom-0 h-auto' : researchMode === 'search' ? 'bottom-0 h-auto' : 'bottom-0 h-[130px]'
+          'fixed inset-x-0 bottom-0 z-40 flex flex-col overflow-hidden rounded-t-2xl border-t border-[#e8eaed] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] [transition:height_300ms_ease-out]'
         )}
-        style={researchMode === 'search' && vpHeight ? { height: vpHeight + 'px' } : undefined}
+        style={isMobile && !isDraggingRef.current ? {
+          height: (
+            researchMode === 'conversation'
+              ? Math.max((vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844)) - 80, 240)
+              : researchMode === 'search'
+                ? (vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844))
+                : 130
+          ) + 'px'
+        } : undefined}
       >
         {/* Drag handle */}
         <div
@@ -1727,10 +1743,17 @@ export function MarketsExperience() {
             setResearchMode((m) => m === 'peek' ? 'conversation' : 'peek');
           }}
           onPointerDown={(e) => {
-            researchDragRef.current = { startY: e.clientY, lastY: e.clientY, startT: Date.now(), dragging: true, moved: false };
-            try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
             const a = asideRef.current;
-            if (a) a.style.transition = 'none';
+            const startH = a ? a.offsetHeight : (researchMode === 'peek' ? 130 : 600);
+            researchDragRef.current = { startY: e.clientY, lastY: e.clientY, startH, startT: Date.now(), dragging: true, moved: false };
+            try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+            isDraggingRef.current = true;
+            if (a) {
+              a.style.transition = 'none';
+              a.style.height = startH + 'px';
+            }
+            // 从 peek 拖动开始时立即切到 conversation，让用户马上看到当前面板内容随高度出现
+            if (researchMode === 'peek') setResearchMode('conversation');
           }}
           onPointerMove={(e) => {
             const r = researchDragRef.current;
@@ -1738,15 +1761,15 @@ export function MarketsExperience() {
             const dy = e.clientY - r.startY;
             r.lastY = e.clientY;
             if (Math.abs(dy) > 6) r.moved = true;
-            // 跟手位移：在错误方向（超过边界）做 0.3 倍阻尼并 clamp ±36
-            let visual = dy;
-            const overshootPeek = researchMode === 'peek' && dy > 0;
-            const overshootConv = researchMode === 'conversation' && dy < 0;
-            if (overshootPeek || overshootConv) {
-              visual = Math.sign(dy) * Math.min(Math.abs(dy) * 0.3, 36);
-            }
+            // 跟手改 height：上拉(dy<0)长高，下滑(dy>0)变矮；边界外做阻尼
+            const vh = (vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844));
+            const peekH = 130;
+            const fullH = Math.max(vh - 80, 240);
+            let newH = r.startH - dy;
+            if (newH > fullH) newH = fullH + Math.min((newH - fullH) * 0.3, 36);
+            if (newH < peekH) newH = peekH - Math.min((peekH - newH) * 0.3, 36);
             const a = asideRef.current;
-            if (a) a.style.transform = `translateY(${visual}px)`;
+            if (a) a.style.height = newH + 'px';
           }}
           onPointerUp={(e) => {
             const r = researchDragRef.current;
@@ -1759,13 +1782,30 @@ export function MarketsExperience() {
             if (researchMode === 'peek' && (dy < -60 || v < -0.4)) next = 'conversation';
             else if (researchMode === 'conversation' && (dy > 60 || v > 0.4)) next = 'peek';
             const a = asideRef.current;
-            if (a) { a.style.transition = ''; a.style.transform = ''; }
+            if (a) {
+              a.style.transition = '';
+              // 显式写一次目标 height 触发 className 上的 height transition；React render 后会写相同值，不打断动画
+              const vh = (vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844));
+              const target = next === 'conversation' ? Math.max(vh - 80, 240) : next === 'search' ? vh : 130;
+              a.style.height = target + 'px';
+            }
+            isDraggingRef.current = false;
             if (next !== researchMode) setResearchMode(next);
+            else if (researchMode === 'conversation' && next === 'conversation') {
+              // pointerDown 时已 setResearchMode('conversation')，松手没切回，强制一次 re-render 让 React style 接管
+              setResearchMode((m) => m);
+            }
           }}
           onPointerCancel={() => {
             researchDragRef.current.dragging = false;
             const a = asideRef.current;
-            if (a) { a.style.transition = ''; a.style.transform = ''; }
+            if (a) {
+              a.style.transition = '';
+              const vh = (vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844));
+              const target = researchMode === 'conversation' ? Math.max(vh - 80, 240) : researchMode === 'search' ? vh : 130;
+              a.style.height = target + 'px';
+            }
+            isDraggingRef.current = false;
           }}
           onTouchMove={(e) => { e.preventDefault(); }}
         >
