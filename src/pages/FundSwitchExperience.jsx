@@ -1,4 +1,5 @@
 import { Suspense, lazy, useState } from 'react';
+import { History, Sparkles } from 'lucide-react';
 import { cx } from '../components/experience-ui.jsx';
 import { FundSwitchAnalysisExperience } from './FundSwitchAnalysisExperience.jsx';
 
@@ -16,8 +17,8 @@ function SubViewLoadingFallback() {
 }
 
 const MOBILE_TABS = [
-  { id: 'analysis', label: '复盘' },
-  { id: 'opportunity', label: '机会' }
+  { id: 'analysis', label: '复盘', icon: History },
+  { id: 'opportunity', label: '机会', icon: Sparkles }
 ];
 
 export function FundSwitchExperience({ links, inPagesDir = false, embedded = false } = {}) {
@@ -27,19 +28,23 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
     <div className={cx('mx-auto max-w-7xl', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
       {/* 移动端子 tab；lg+ 隐藏，PC 直接两列 */}
       <div className="mb-3 inline-flex gap-1 rounded-full bg-slate-100 p-1 lg:hidden">
-        {MOBILE_TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setMobileTab(t.id)}
-            className={cx(
-              'rounded-full px-4 py-1.5 text-sm font-medium transition-colors',
-              mobileTab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
+        {MOBILE_TABS.map((t) => {
+          const Icon = t.icon;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setMobileTab(t.id)}
+              className={cx(
+                'inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors',
+                mobileTab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              {t.label}
+            </button>
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2 lg:gap-6">
