@@ -14,7 +14,7 @@
 //
 // 限流 / 网络抖动时：指数退避重试 3 次，依然失败则降级到非 thinking 备用模型。
 
-import { SYSTEM_PROMPT, DEEP_DIVE_PROMPT, AGENT_GUIDE_PROMPT } from './prompts.js';
+import { SYSTEM_PROMPT, DEEP_DIVE_PROMPT, AGENT_GUIDE_PROMPT, RICH_OUTPUT_PROMPT } from './prompts.js';
 import { TOOL_DEFS, TOOL_HANDLERS, hostFromUrl } from './tools.js';
 
 const MAX_ITERATIONS = 8;
@@ -243,8 +243,8 @@ async function runLoop({ question, depth = 'fast', context = '', emit, signal, s
 	if (!question || typeof question !== 'string') return { ok: false, error: 'question_required' };
 
 	const systemContent = depth === 'deep'
-		? `${SYSTEM_PROMPT}\n\n${DEEP_DIVE_PROMPT}\n\n${AGENT_GUIDE_PROMPT}`
-		: `${SYSTEM_PROMPT}\n\n${AGENT_GUIDE_PROMPT}`;
+		? `${SYSTEM_PROMPT}\n\n${DEEP_DIVE_PROMPT}\n\n${RICH_OUTPUT_PROMPT}\n\n${AGENT_GUIDE_PROMPT}`
+		: `${SYSTEM_PROMPT}\n\n${RICH_OUTPUT_PROMPT}\n\n${AGENT_GUIDE_PROMPT}`;
 	const userContent = context && context.trim()
 		? `## 上下文\n${context.trim()}\n\n## 问题\n${question}`
 		: `## 问题\n${question}`;

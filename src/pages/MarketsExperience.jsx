@@ -48,6 +48,7 @@ import {
 } from '../app/marketsApi.js';
 import { showActionToast } from '../app/toast.js';
 import { Sparkline } from '../components/markets/Sparkline.jsx';
+import { MarketsChartCodeBlock } from '../components/markets/MarketsChartBlock.jsx';
 
 const MARKETS = [
   { key: 'us', label: '美股' },
@@ -830,6 +831,23 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
     catch { return ''; }
   };
 
+  const mdComponents = useMemo(() => ({
+    a: ({ node, ...props }) => (
+      <a {...props} target="_blank" rel="noreferrer noopener" />
+    ),
+    code: ({ inline, className, children, ...props }) => {
+      const match = /^language-(\w+)/.exec(className || '');
+      const lang = match ? match[1].toLowerCase() : '';
+      const text = String(children || '').replace(/\n$/, '');
+      if (!inline && (lang === 'kline' || lang === 'candle' || lang === 'candlestick' || lang === 'chart' || lang === 'linechart')) {
+        const rendered = <MarketsChartCodeBlock lang={lang} value={text} />;
+        if (rendered) return rendered;
+      }
+      return <code className={className} {...props}>{children}</code>;
+    },
+  }), []);
+
+
   const conversationUI = (
     <>
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3">
@@ -858,11 +876,7 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
                           <div className="ai-chat-md text-[14px] leading-relaxed text-[#1f1f1f]">
                             <ReactMarkdown
                               remarkPlugins={[remarkGfm]}
-                              components={{
-                                a: ({ node, ...props }) => (
-                                  <a {...props} target="_blank" rel="noreferrer noopener" />
-                                ),
-                              }}
+                              components={mdComponents}
                             >
                               {m.content}
                             </ReactMarkdown>
@@ -876,11 +890,7 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
                         <div className="ai-chat-md text-[14px] leading-relaxed text-[#1f1f1f]">
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
-                            components={{
-                              a: ({ node, ...props }) => (
-                                <a {...props} target="_blank" rel="noreferrer noopener" />
-                              ),
-                            }}
+                            components={mdComponents}
                           >
                             {m.content || ''}
                           </ReactMarkdown>
