@@ -39,8 +39,10 @@ max_instances = 2
 # custom_domain = false
 
 [vars]
-# 默认模型；'auto' 让 LiteLLM 代理按路由策略挑选。
-OPENAI_MODEL = "auto"
+# 默认模型：优先走 LongCat-Flash-Thinking-2601（推理型），不在代理端随机 fallback。
+OPENAI_MODEL = "LongCat-Flash-Thinking-2601"
+# 主模型失败后的本地 fallback（agent.js 手动级联）。
+OPENAI_FALLBACK_MODEL = "LongCat-Flash-Chat"
 # Secrets （走 wrangler secret put）：
 #   INTERNAL_TOKEN     — markets Worker 与本 Worker 间共享 bearer
 #   OPENAI_API_KEY     — 你的中转 API key
