@@ -913,7 +913,7 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
           <button
             type="button"
             aria-label="新对话"
-            onClick={() => { setMessages([]); onModeChange?.(’peek’); }}
+            onClick={() => { setMessages([]); onModeChange?.('peek'); }}
             className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#f1f3f4]"
           >
             <Edit3 size={16} />
