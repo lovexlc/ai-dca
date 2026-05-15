@@ -868,12 +868,11 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
         {messages.length === 0 ? (
           <div className="flex flex-col gap-5 pb-2">
             <div>
-              <h3 className="text-[20px] font-semibold leading-tight text-[#1f1f1f]">市场概况</h3>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-[#5f6368]">向我咨询当前市场行情、板块表现，或您监控列表的关键变化。</p>
+              <p className="text-[18px] font-medium leading-snug text-[#1f1f1f]">您好！您可以向我咨询任何金融问题</p>
             </div>
             <div className="flex flex-col gap-2">
               {[
-                '今日市场整体表现如何？',
+                '今日市场行情如何？',
                 '哪些板块涨幅居前？',
                 '我的监控列表近期有哪些关键变化？',
               ].map((q) => (
