@@ -1493,9 +1493,9 @@ export function MarketsExperience() {
     ensureKlines(watchSymbols);
   }, [watchSymbols, ensureKlines]);
 
-  function handleAddSymbol(event) {
-    if (event) event.preventDefault();
-    const raw = symbolInput.trim();
+  function handleAddSymbol(event, rawOverride) {
+    if (event && event.preventDefault) event.preventDefault();
+    const raw = (rawOverride != null ? String(rawOverride) : symbolInput).trim();
     if (!raw) return;
     const next = addToWatchlist(market, raw);
     setWatch(next);
@@ -1683,8 +1683,9 @@ export function MarketsExperience() {
                 className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
                 title="添加自选"
                 onClick={() => {
-                  const el = document.getElementById('markets-watch-add-input');
-                  if (el) el.focus();
+                  const placeholder = market === 'cn' ? 'sh600519' : 'AAPL';
+                  const val = typeof window !== 'undefined' ? window.prompt('添加自选代码', placeholder) : null;
+                  if (val) handleAddSymbol(null, val);
                 }}
               >
                 <Plus size={18} />
@@ -1714,18 +1715,6 @@ export function MarketsExperience() {
           </div>
           {watchOpen && (
             <div className="px-1 pb-1">
-              <form className="flex items-center gap-1 px-1 pb-2 pt-1" onSubmit={handleAddSymbol}>
-                <TextInput
-                  id="markets-watch-add-input"
-                  className="flex-1"
-                  value={symbolInput}
-                  onChange={(e) => setSymbolInput(e.target.value)}
-                  placeholder={market === 'cn' ? 'sh600519' : 'AAPL'}
-                />
-                <button type="submit" className={cx(primaryButtonClass, 'inline-flex shrink-0 items-center gap-1 px-2 py-1 text-xs')}>
-                  <Plus size={12} /> 添加
-                </button>
-              </form>
               {watchRows.length === 0 ? (
                 <p className="px-2 py-1 text-xs text-slate-400">尚未添加自选。</p>
               ) : (
