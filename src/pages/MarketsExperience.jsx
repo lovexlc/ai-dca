@@ -686,7 +686,7 @@ function SummaryModule({ themes = [], loading, onRefresh }) {
 // 抽屉会自动切到市场行情模式并预填问题。
 // 右栏“研究”面板：inline 问答，点击预设问题或提交输入后直接调 /api/markets/ask。
 // 不再弹出右下角 AI 抽屉。
-function MarketsResearchPanel({ market, mode, onModeChange }) {
+function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], watchQuotes = {} }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [pending, setPending] = useState(false);
@@ -815,7 +815,7 @@ function MarketsResearchPanel({ market, mode, onModeChange }) {
 
   // focus input on conversation open
   useEffect(() => {
-    if (mode === 'conversation' && inputRef.current) {
+    if ((mode === 'conversation' || mode === 'search') && inputRef.current) {
       const t = setTimeout(() => inputRef.current?.focus(), 300);
       return () => clearTimeout(t);
     }
@@ -941,14 +941,75 @@ function MarketsResearchPanel({ market, mode, onModeChange }) {
       {mode === 'peek' && (
         <button
           type="button"
-          onClick={() => onModeChange?.('conversation')}
+          onClick={() => onModeChange?.('search')}
           className="mx-3 mt-3 flex h-12 items-center gap-2 rounded-full bg-[#f1f3f4] px-4 text-left lg:hidden"
         >
           <Sparkles size={16} className="shrink-0 text-[#1a73e8]" />
           <span className="flex-1 text-[14px] text-[#5f6368]">搜索或提问</span>
         </button>
       )}
-      <div className={cx('flex min-h-0 flex-1 flex-col', mode === 'peek' ? 'hidden lg:flex' : 'flex')}>
+      {mode === 'search' && (
+        <div className="flex flex-1 flex-col overflow-hidden lg:hidden">
+          <div className="px-4 pt-3 pb-2">
+            <div className="flex items-center gap-2 mb-1.5">
+              <Sparkles size={14} className="text-[#1a73e8]" />
+              <span className="text-[13px] font-semibold text-[#1f1f1f]">AI 深度探索</span>
+            </div>
+            <p className="text-[12px] text-[#5f6368]">📈 关于您监控列表的最新数据洞见</p>
+          </div>
+          {watchSymbols.length > 0 && (
+            <div className="flex gap-2 overflow-x-auto px-4 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {watchSymbols.slice(0, 8).map((sym) => {
+                const q = watchQuotes[sym] || {};
+                const pct = Number(q.changePercent);
+                const pos = pct >= 0;
+                return (
+                  <button
+                    key={sym}
+                    type="button"
+                    onClick={() => { onModeChange?.('conversation'); send(sym + ' 最新行情分析'); }}
+                    className="flex shrink-0 items-center gap-1.5 rounded-full border border-[#e8eaed] bg-white px-3 py-1.5"
+                  >
+                    <span className="text-[12px] font-semibold text-[#1f1f1f]">{sym}</span>
+                    {q.changePercent != null && (
+                      <span className={cx('text-[11px] font-medium tabular-nums', pos ? 'text-[#34a853]' : 'text-[#ea4335]')}>
+                        {pos ? '+' : ''}{pct.toFixed(2)}%
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <div className="mt-auto px-3 pb-3">
+            <form onSubmit={onSubmit} className="flex items-center gap-2 rounded-2xl bg-[#f1f3f4] px-4 py-2.5">
+              <input
+                ref={inputRef}
+                autoFocus
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}
+                placeholder="询问相关问题或进行搜索"
+                className="flex-1 bg-transparent text-[14px] text-[#1f1f1f] placeholder:text-[#5f6368] focus:outline-none"
+                disabled={pending}
+              />
+              <button
+                type="submit"
+                aria-label="发送"
+                disabled={pending || !input.trim()}
+                className={cx(
+                  'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition',
+                  !input.trim() || pending ? 'text-[#9aa0a6]' : 'bg-[#1a73e8] text-white hover:bg-[#1557b0]',
+                )}
+              >
+                {pending ? <Loader2 size={13} className="animate-spin" /> : <ArrowUp size={13} />}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+      <div className={cx('flex min-h-0 flex-1 flex-col', mode === 'peek' || mode === 'search' ? 'hidden lg:flex' : 'flex')}>
         {conversationUI}
       </div>
     </div>
@@ -979,6 +1040,23 @@ export function MarketsExperience() {
   const [sectorsOpen, setSectorsOpen] = useState(true);
   // 研究底部抽屉模式（仅 mobile）：peek=小片 / conversation=全屏展开
   const [researchMode, setResearchMode] = useState('peek');
+  const [vpHeight, setVpHeight] = useState(null);
+  const researchModeRef = useRef('peek');
+  useEffect(() => { researchModeRef.current = researchMode; }, [researchMode]);
+  useEffect(() => {
+    const vp = window.visualViewport;
+    if (!vp) return;
+    const handler = () => {
+      const h = Math.round(vp.height);
+      setVpHeight(h);
+      // keyboard dismissed→back to peek if in search mode
+      if (h > window.innerHeight * 0.85 && researchModeRef.current === 'search') {
+        setResearchMode('peek');
+      }
+    };
+    vp.addEventListener('resize', handler);
+    return () => vp.removeEventListener('resize', handler);
+  }, []);
   const researchDragRef = useRef({ startY: 0, dragging: false });
 
   const ensureKlines = useCallback(async (symbols) => {
@@ -1532,8 +1610,9 @@ export function MarketsExperience() {
           'bg-white',
           'lg:relative lg:z-auto lg:order-3 lg:flex lg:flex-col lg:gap-3 lg:bg-transparent lg:sticky lg:top-2 lg:rounded-none lg:border-t-0 lg:shadow-none',
           'fixed inset-x-0 z-40 flex flex-col overflow-hidden rounded-t-2xl border-t border-[#e8eaed] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] transition-all duration-300 ease-out',
-          researchMode === 'conversation' ? 'top-20 bottom-0 h-auto' : 'bottom-0 h-[130px]'
+          researchMode === 'conversation' ? 'top-20 bottom-0 h-auto' : researchMode === 'search' ? 'bottom-0 h-auto' : 'bottom-0 h-[130px]'
         )}
+        style={researchMode === 'search' && vpHeight ? { height: vpHeight + 'px' } : undefined}
       >
         {/* Drag handle */}
         <button
@@ -1548,10 +1627,10 @@ export function MarketsExperience() {
           onPointerMove={(e) => {
             if (!researchDragRef.current.dragging) return;
             const dy = e.clientY - researchDragRef.current.startY;
-            if (researchMode === 'peek' && dy < -40) {
+            if ((researchMode === 'peek' || researchMode === 'search') && dy < -40) {
               researchDragRef.current.dragging = false;
               setResearchMode('conversation');
-            } else if (researchMode === 'conversation' && dy > 40) {
+            } else if ((researchMode === 'conversation' || researchMode === 'search') && dy > 40) {
               researchDragRef.current.dragging = false;
               setResearchMode('peek');
             }
@@ -1561,7 +1640,7 @@ export function MarketsExperience() {
         >
           <span className="h-1 w-9 rounded-full bg-[#dadce0]" />
         </button>
-        <MarketsResearchPanel market={market} mode={researchMode} onModeChange={setResearchMode} />
+        <MarketsResearchPanel market={market} mode={researchMode} onModeChange={setResearchMode} watchSymbols={watchSymbols} watchQuotes={watchQuotes} />
       </aside>
     </div>
   );
