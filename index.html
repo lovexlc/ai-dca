@@ -18,6 +18,22 @@
         100% { transform: translateX(260%); width: 40%; }
       }
       .gf-progress-bar { animation: gf-progress 1.4s ease-in-out infinite; }
+      /* Force light mode: prevent OPPO/ColorOS/Android forced-dark from inverting colors */
+      :root { color-scheme: light; }
+      html, body {
+        background-color: #ffffff !important;
+        color: #1f1f1f !important;
+        forced-color-adjust: none;
+      }
+      @media (prefers-color-scheme: dark) {
+        html, body, #root {
+          background-color: #ffffff !important;
+          color: #1f1f1f !important;
+        }
+        * {
+          forced-color-adjust: none;
+        }
+      }
     </style>
     <script type="module" src="/src/entry-screen.jsx"></script>
   </head>
