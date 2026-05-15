@@ -11,8 +11,8 @@ import {
 } from 'recharts';
 import { fetchKline } from '../../app/marketsApi.js';
 
-const UP = '#16a34a';
-const DOWN = '#dc2626';
+const UP = '#dc2626';
+const DOWN = '#16a34a';
 
 const BOX_STYLE = {
   margin: '8px 0',

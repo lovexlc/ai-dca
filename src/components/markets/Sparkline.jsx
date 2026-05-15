@@ -50,8 +50,8 @@ export function Sparkline({
   }
 
   const colorMap = {
-    up: { stroke: '#10b981', fill: 'rgba(16,185,129,0.18)' },
-    down: { stroke: '#f43f5e', fill: 'rgba(244,63,94,0.16)' },
+    up: { stroke: '#f43f5e', fill: 'rgba(244,63,94,0.16)' },
+    down: { stroke: '#10b981', fill: 'rgba(16,185,129,0.18)' },
     flat: { stroke: '#94a3b8', fill: 'rgba(148,163,184,0.16)' }
   };
   const { stroke, fill } = colorMap[resolvedTone] || colorMap.flat;

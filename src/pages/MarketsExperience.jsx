@@ -148,7 +148,7 @@ function isToday(value) {
 function changeToneClass(value) {
   const n = Number(value);
   if (!Number.isFinite(n) || n === 0) return 'text-slate-500';
-  return n > 0 ? 'text-emerald-600' : 'text-rose-500';
+  return n > 0 ? 'text-rose-600' : 'text-emerald-600';
 }
 
 // 从 URL 中抽取 host。解析失败时返回空字符串。
@@ -366,8 +366,8 @@ function MoversTable({ rows = [], onPick, klineMap = {}, initialLimit = 4 }) {
             return (
             <tr key={row.symbol} className={cx(
               'hover:bg-indigo-50/40',
-              positive && 'bg-emerald-50/30',
-              negative && 'bg-rose-50/30'
+              positive && 'bg-rose-50/30',
+              negative && 'bg-emerald-50/30'
             )}>
               <td className="px-3 py-2 align-top font-mono text-xs text-slate-600">
                 <div>{row.symbol}</div>
@@ -468,8 +468,8 @@ function SidebarRow({ symbol, name, price, changePercent, sparkPoints, onRemove 
   const tone = !Number.isFinite(pct) || Math.abs(pct) < 0.0001
     ? 'text-slate-500'
     : pct > 0
-    ? 'text-emerald-600'
-    : 'text-rose-600';
+    ? 'text-rose-600'
+    : 'text-emerald-600';
   const ArrowIcon = !Number.isFinite(pct) || Math.abs(pct) < 0.0001
     ? null
     : pct > 0
