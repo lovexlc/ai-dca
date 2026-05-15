@@ -1529,7 +1529,7 @@ export function MarketsExperience() {
   );
 
   return (
-    <div className="flex flex-col gap-5 pb-[140px] lg:grid lg:grid-cols-[300px_minmax(0,1fr)_380px] lg:items-start lg:gap-4 lg:pb-6 xl:grid-cols-[340px_minmax(0,1fr)_440px]">
+    <div className="flex flex-col gap-5 pb-[140px] lg:grid lg:grid-cols-[280px_minmax(0,1fr)_360px] lg:items-start lg:gap-4 lg:pb-6 xl:grid-cols-[320px_minmax(0,1fr)_400px]">
       {/* Mobile-only sidebar: Google Finance Beta style */}
       <aside className="order-2 flex flex-col gap-2 lg:hidden">
         <div className="px-1">
