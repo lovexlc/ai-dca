@@ -16,8 +16,8 @@ function SubViewLoadingFallback() {
 }
 
 const MOBILE_TABS = [
-  { id: 'opportunity', label: '机会' },
-  { id: 'analysis', label: '复盘' }
+  { id: 'analysis', label: '复盘' },
+  { id: 'opportunity', label: '机会' }
 ];
 
 export function FundSwitchExperience({ links, inPagesDir = false, embedded = false } = {}) {
