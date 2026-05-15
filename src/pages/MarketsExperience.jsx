@@ -18,7 +18,7 @@ import {
   Sparkles,
   Star,
   Trash2,
-  TrendingUp
+  TrendingUp,
   X,
 } from 'lucide-react';
 import {
