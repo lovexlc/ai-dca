@@ -32,6 +32,12 @@ const RANGE_LABELS = {
 const BENCH_CODE = '510300';
 const BENCH_LABEL = '沪深300';
 
+// 涨跌色 (中国 A 股约定)：红涨 / 绿跌 / 中性。统一在这里调。
+const TONE_UP = 'text-rose-600';
+const TONE_DOWN = 'text-emerald-600';
+const TONE_NEUTRAL = 'text-slate-700';
+const TONE_DIM = 'text-slate-400';
+
 function navOnOrBefore(items, isoDate) {
   if (!Array.isArray(items) || items.length === 0 || !isoDate) return null;
   let pick = null;
@@ -108,10 +114,10 @@ function safeResolveRange(range, opts) {
 }
 
 function signClass(value) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return 'text-slate-700';
-  if (value > 0) return 'text-rose-600';
-  if (value < 0) return 'text-emerald-600';
-  return 'text-slate-700';
+  if (value === null || value === undefined || !Number.isFinite(value)) return TONE_NEUTRAL;
+  if (value > 0) return TONE_UP;
+  if (value < 0) return TONE_DOWN;
+  return TONE_NEUTRAL;
 }
 
 function renderCurrency(value, { keepSign = true } = {}) {
@@ -127,10 +133,10 @@ function renderPercent(value, { keepSign = true, digits = 2 } = {}) {
 
 function KpiCell({ label, primary, primaryClass, sub }) {
   return (
-    <div className="flex flex-col gap-1 px-3 py-2">
-      <div className="text-[11px] font-medium text-slate-500">{label}</div>
-      <div className={cx('text-xl font-semibold tabular-nums leading-tight', primaryClass)}>{primary}</div>
-      {sub ? <div className="text-xs text-slate-500 tabular-nums">{sub}</div> : null}
+    <div className="flex min-w-0 flex-col gap-0.5 px-2.5 py-1.5 sm:px-3 sm:py-2">
+      <div className="text-[10.5px] font-medium uppercase tracking-[0.04em] text-slate-500 sm:text-[11px]">{label}</div>
+      <div className={cx('text-lg font-semibold leading-tight tabular-nums sm:text-xl', primaryClass)}>{primary}</div>
+      {sub ? <div className="text-[11px] text-slate-500 tabular-nums">{sub}</div> : null}
     </div>
   );
 }
@@ -274,19 +280,19 @@ export function IncomeDetail({ ledger, className = '' }) {
   return (
     <div
       className={cx(
-        'rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]',
+        'rounded-2xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4',
         className
       )}
     >
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <div className="text-sm font-semibold text-slate-900">收益明细</div>
-          <div className="text-xs text-slate-500">
+          <div className="text-[13px] font-semibold text-slate-900 sm:text-sm">收益明细</div>
+          <div className="text-[11px] text-slate-500 sm:text-xs">
             {rangeLabel}
             {subWindow ? <span className="ml-2 tabular-nums">{subWindow}</span> : null}
           </div>
         </div>
-        <div className="flex items-center gap-2 text-xs text-slate-400">
+        <div className="flex items-center gap-2 text-[11px] text-slate-400 sm:text-xs">
           {isLoading ? (
             <span className="inline-flex items-center gap-1">
               <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
@@ -308,7 +314,7 @@ export function IncomeDetail({ ledger, className = '' }) {
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-x-2 gap-y-3 divide-x divide-slate-100 md:grid-cols-4 md:divide-y-0">
+      <div className="mt-3 grid grid-cols-2 gap-1 sm:gap-2 md:grid-cols-4">
         <KpiCell
           label={`${rangeLabel}收益`}
           primary={renderCurrency(rangeProfit)}
@@ -343,23 +349,23 @@ export function IncomeDetail({ ledger, className = '' }) {
         />
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] sm:text-xs">
         {benchState.status === 'loading' ? (
-          <span className="text-slate-400">基准加载中…</span>
+          <span className={TONE_DIM}>基准加载中…</span>
         ) : alphaRate !== null ? (
           <span className={cx('font-medium', signClass(alphaRate))}>
             {alphaVerb}基准 {renderPercent(Math.abs(alphaRate), { keepSign: false })}
           </span>
         ) : (
-          <span className="text-slate-400">基准不可用</span>
+          <span className={TONE_DIM}>基准不可用</span>
         )}
-        <span className="text-slate-400">
+        <span className={TONE_DIM}>
           基准 {BENCH_LABEL} {Number.isFinite(benchRate) ? renderPercent(benchRate) : '—'}
         </span>
       </div>
 
       {inceptionDate ? null : (
-        <div className="mt-3 text-xs text-slate-400">暂无成交记录，请先在下方「成交流水」录入首笔买入。</div>
+        <div className={cx('mt-3 text-[11px] sm:text-xs', TONE_DIM)}>暂无成交记录，请先在下方「成交流水」录入首笔买入。</div>
       )}
     </div>
   );
