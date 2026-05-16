@@ -78,8 +78,12 @@
   - Commit: `77811f1baa375a770cf67d4f233bea5d98b559cb`
   - Raw: https://raw.githubusercontent.com/lovexlc/ai-dca/77811f1/src/app/IncomeDetail.jsx
   - 完成时间：2026-05-16 23:53 (CST)
-- [ ] **2.3** `feat(holdings): IncomeDetail entry on HoldingsExperience` — 持仓页接入入口
-  - 替换/补足 `HoldingsExperience.jsx` L1878-1900 顶部卡片区域；保留旧 totalReturnRate 列不变
+- [x] **2.3** `feat(holdings): IncomeDetail entry on HoldingsExperience` — 持仓页接入入口
+  - `HoldingsExperience.jsx` L44 `import { IncomeDetail }` + L2996 `<IncomeDetail ledger={ledger} />` 挂在 `renderPortfolioOverview()` 上方
+  - 原 9 个 totalReturnRate 卡片（总市值/总成本/总收益/总收益率/累计收益/累计收益率/当日收益/当日收益率/最后更新）位置及计算未动
+  - ESLint 0 errors；原有 22 warnings 未增加
+  - Commit: `bc74ea29a2e0391a8bdad0494001766032429065`
+  - 完成时间：2026-05-16 23:57 (CST)
 - [ ] **2.4** `feat(app): benchmark overlay (沪深300)` — 区间内基准对比数字
   - 复用 `marketsApi.js` 拉沪深300区间数据；只显示「跑赢基准 X.XX%」一行
 - [ ] **2.5** `style(income): polish typography + dark mode` — 视觉打磨
@@ -102,9 +106,9 @@
 
 ```
 第一刀 ▰▰▰▰  4/4   (后端 ✅ navClient ✅ series ✅ probe ✅)  🎉 完成
-第二刀 ▰▰▱▱▱  2/5   (镜头选择器 ✅ KPI 卡片 ✅)
+第二刀 ▰▰▰▱▱  3/5   (镜头选择器 ✅ KPI 卡片 ✅ 持仓页接入 ✅)
 第三刀 ▱▱▱▱  0/4
-合计   ▰▰▰▰▰▰▱▱▱▱▱▱▱  6/13
+合计   ▰▰▰▰▰▰▰▱▱▱▱▱▱  7/13
 ```
 
 ## 🔍 验证阶梯（每个 commit 都要过）
@@ -123,3 +127,4 @@
 - 2026-05-16 23:37 - 第一刀 1.4 完成 (incomeProbe.js + window.__incomeProbe 探针) 🎉 第一刀全收
 - 2026-05-16 23:48 - 第二刀 2.1 完成 (TimeRangeSelector + rangeUrlSync, 22 asserts)
 - 2026-05-16 23:53 - 第二刀 2.2 完成 (IncomeDetail.jsx 脚手架 + 4 KPI 行)
+- 2026-05-16 23:57 - 第二刀 2.3 完成 (HoldingsExperience 接入 IncomeDetail)
