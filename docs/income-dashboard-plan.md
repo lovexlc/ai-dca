@@ -106,8 +106,12 @@
 
 蚂蚁财富下半屏体验，**完成后整套收益看板上线**。
 
-- [ ] **3.1** `feat(app): ReturnChart.jsx (Recharts area)` — 区间净值/收益率曲线
-  - 双 Y 轴（左净值/右收益率）；hover 显示某日盈亏；惰性加载 Recharts
+- [x] **3.1** `feat(app): ReturnChart.jsx (Recharts area)` — 区间内组合 vs 沪深300 累计收益率双 Y 轴面积图
+  - 文件：`src/app/ReturnChart.jsx` (11854 bytes，默认导出，便于 3.3 `React.lazy` 懒加载)
+  - 复用 `useRangeUrlSync`，与 `IncomeDetail` 共享镜头；主线走 `buildPortfolioSeries.dailySeries.pnlRate`，副线为沪深300 forward-fill
+  - esbuild OK / ESLint 0 errors；UI smoke 在 3.3 接入 IncomeDetail 后用 cf-browser-mcp 一起跳
+  - Commit: `8f4be78`
+  - 完成时间：2026-05-17 00:12 (CST)
 - [ ] **3.2** `feat(app): ReturnCalendar.jsx (月度日历热力图)` — 每日盈亏日历
   - 当月+前后2月可滑；红绿格子；点格弹当日 lots 明细
 - [ ] **3.3** `feat(holdings): wire ReturnChart + ReturnCalendar into IncomeDetail` — 装配下半屏
@@ -120,8 +124,8 @@
 ```
 第一刀 ▰▰▰▰  4/4   (后端 ✅ navClient ✅ series ✅ probe ✅)  🎉 完成
 第二刀 ▰▰▰▰▰  5/5 🎉 (镜头 ✅ KPI ✅ 接入 ✅ 基准 ✅ polish ✅)
-第三刀 ▱▱▱▱  0/4
-合计   ▰▰▰▰▰▰▰▰▰▱▱▱▱  9/13
+第三刀 ▰▱▱▱  1/4
+合计   ▰▰▰▰▰▰▰▰▰▰▱▱▱  10/13
 ```
 
 ## 🔍 验证阶梯（每个 commit 都要过）
