@@ -29,6 +29,33 @@ const RANGE_LABELS = {
   custom: '自定义'
 };
 
+const BENCH_CODE = '510300';
+const BENCH_LABEL = '沪深300';
+
+function navOnOrBefore(items, isoDate) {
+  if (!Array.isArray(items) || items.length === 0 || !isoDate) return null;
+  let pick = null;
+  for (const it of items) {
+    if (!it || !it.date || typeof it.nav !== 'number') continue;
+    if (it.date <= isoDate) {
+      if (!pick || it.date > pick.date) pick = it;
+    }
+  }
+  return pick ? pick.nav : null;
+}
+
+function navOnOrAfter(items, isoDate) {
+  if (!Array.isArray(items) || items.length === 0 || !isoDate) return null;
+  let pick = null;
+  for (const it of items) {
+    if (!it || !it.date || typeof it.nav !== 'number') continue;
+    if (it.date >= isoDate) {
+      if (!pick || it.date < pick.date) pick = it;
+    }
+  }
+  return pick ? pick.nav : null;
+}
+
 function todayShanghaiIso() {
   try {
     return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
@@ -130,6 +157,7 @@ export function IncomeDetail({ ledger, className = '' }) {
 
   const [rangeState, setRangeState] = useState({ status: 'idle', series: null, stale: false, error: null });
   const [inceptionState, setInceptionState] = useState({ status: 'idle', series: null, stale: false, error: null });
+  const [benchState, setBenchState] = useState({ status: 'idle', rate: null, stale: false, error: null });
 
   const loadFor = useCallback(
     async ({ window: w, setState }) => {
@@ -196,6 +224,36 @@ export function IncomeDetail({ ledger, className = '' }) {
     };
   }, [loadFor, inceptionWindow, rangeWindow, rangeState]);
 
+  // 基准（沪深300、复用 fetchNavHistory、 buy-and-hold 区间收益率）
+  useEffect(() => {
+    let cancelled = false;
+    if (!rangeWindow) {
+      setBenchState({ status: 'idle', rate: null, stale: false, error: null });
+      return undefined;
+    }
+    setBenchState((prev) => ({ ...prev, status: 'loading', error: null }));
+    (async () => {
+      try {
+        const res = await fetchNavHistory({ code: BENCH_CODE, from: rangeWindow.from, to: rangeWindow.to });
+        if (cancelled) return;
+        const items = res?.items || [];
+        const startNav = navOnOrAfter(items, rangeWindow.from);
+        const endNav = navOnOrBefore(items, rangeWindow.to);
+        if (!startNav || !endNav) {
+          setBenchState({ status: 'ready', rate: null, stale: !!res?.stale, error: null });
+          return;
+        }
+        setBenchState({ status: 'ready', rate: endNav / startNav - 1, stale: !!res?.stale, error: null });
+      } catch (err) {
+        if (cancelled) return;
+        setBenchState({ status: 'error', rate: null, stale: false, error: err });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rangeWindow]);
+
   const isLoading = rangeState.status === 'loading' || inceptionState.status === 'loading';
   const hasError = rangeState.status === 'error' || inceptionState.status === 'error';
   const showStale = rangeState.stale || inceptionState.stale;
@@ -209,6 +267,9 @@ export function IncomeDetail({ ledger, className = '' }) {
   const rangeRate = rangeSeries?.returnRate ?? null;
   const annualized = rangeSeries?.annualizedReturn ?? null;
   const inceptionProfit = inceptionSeries?.profit ?? null;
+  const benchRate = benchState.rate;
+  const alphaRate = Number.isFinite(rangeRate) && Number.isFinite(benchRate) ? rangeRate - benchRate : null;
+  const alphaVerb = alphaRate === null ? null : alphaRate >= 0 ? '跑赢' : '落后';
 
   return (
     <div
@@ -280,6 +341,21 @@ export function IncomeDetail({ ledger, className = '' }) {
           onCustomChange={setCustom}
           inceptionEnabled={!!inceptionDate}
         />
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+        {benchState.status === 'loading' ? (
+          <span className="text-slate-400">基准加载中…</span>
+        ) : alphaRate !== null ? (
+          <span className={cx('font-medium', signClass(alphaRate))}>
+            {alphaVerb}基准 {renderPercent(Math.abs(alphaRate), { keepSign: false })}
+          </span>
+        ) : (
+          <span className="text-slate-400">基准不可用</span>
+        )}
+        <span className="text-slate-400">
+          基准 {BENCH_LABEL} {Number.isFinite(benchRate) ? renderPercent(benchRate) : '—'}
+        </span>
       </div>
 
       {inceptionDate ? null : (
