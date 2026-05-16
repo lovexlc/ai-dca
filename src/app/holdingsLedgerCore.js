@@ -568,7 +568,7 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
 }
 
 /** Portfolio-level summary card numbers matching the Excel "投资组合概览". */
-export function summarizePortfolio(aggregates = []) {
+export function summarizePortfolio(aggregates = [], soldSummary = null) {
   const summary = {
     assetCount: 0,
     recordedCodeCount: (Array.isArray(aggregates) ? aggregates : []).length,
@@ -641,6 +641,24 @@ export function summarizePortfolio(aggregates = []) {
     : 0;
   summary.todayReturnRate = summary.previousMarketValue > 0
     ? round((summary.todayProfit / summary.previousMarketValue) * 100, 2)
+    : 0;
+
+  // 累计收益（含已实现）：把「持仓未实现」与「已卖出 lots 的累计已实现」拼起来，
+  // 分母 = 当前剩余持仓成本 + 已卖出 lots 的成本基准（卖出时刻的移动平均成本 × 卖出份额）。
+  // - 部分卖出：当前持仓 totalCost 是「剩余持仓」的成本；soldSummary.totalCostBasis 是「已卖出份额」的成本；
+  //   两者相加 ≈ 用户在该基金上的累计投入（按移动摊薄口径），没有重复计算。
+  // - 已清仓：当前 totalCost = 0（被 summarizePortfolio 跳过），soldSummary 里仍带它的 lots，所以
+  //   它的已实现盈亏会在「累计收益」里出现，但不影响「总市值 / 总成本 / 当日收益」等持仓口径。
+  // 字段命名与「已卖出」面板的 totalRealizedProfit 对齐，避免引入新口径概念。
+  const realizedProfit = round(Number(soldSummary?.totalRealizedProfit) || 0, 2);
+  const realizedCostBasis = round(Number(soldSummary?.totalCostBasis) || 0, 2);
+  summary.realizedProfit = realizedProfit;
+  summary.realizedCostBasis = realizedCostBasis;
+  summary.realizedLotCount = Number(soldSummary?.lotCount) || 0;
+  summary.cumulativeCostBasis = round(summary.totalCost + realizedCostBasis, 2);
+  summary.cumulativeProfit = round(summary.totalProfit + realizedProfit, 2);
+  summary.cumulativeReturnRate = summary.cumulativeCostBasis > 0
+    ? round((summary.cumulativeProfit / summary.cumulativeCostBasis) * 100, 2)
     : 0;
 
   // 场内基金交易时段会先更新，场外基金净值要等当晚才发布，QDII 周一是 T-3。

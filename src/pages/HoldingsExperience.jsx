@@ -208,7 +208,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     () => aggregateByCode(transactions, snapshotsByCode),
     [transactions, snapshotsByCode]
   );
-  const portfolio = useMemo(() => summarizePortfolio(aggregates), [aggregates]);
   const aggregateByCodeMap = useMemo(() => {
     const map = new Map();
     for (const agg of aggregates) map.set(agg.code, agg);
@@ -216,6 +215,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }, [aggregates]);
   const soldLots = useMemo(() => buildSoldLots(transactions), [transactions]);
   const soldSummary = useMemo(() => summarizeSoldLots(soldLots), [soldLots]);
+  // portfolio 要拿 soldSummary 拼接「累计收益」（持仓未实现 + 已卖出累计已实现），
+  // 因此放在 soldSummary 之后计算。
+  const portfolio = useMemo(
+    () => summarizePortfolio(aggregates, soldSummary),
+    [aggregates, soldSummary]
+  );
   const switchChains = Array.isArray(ledger.switchChains) ? ledger.switchChains : [];
   const switchChainMetrics = useMemo(
     () => switchChains.map((chain) => ({
@@ -1813,6 +1818,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   function renderPortfolioOverview() {
     // 配色约定（中国 A 股常见）：涨=红，跌=绿
     const profitTone = portfolio.totalProfit > 0 ? 'red' : portfolio.totalProfit < 0 ? 'emerald' : 'slate';
+    const cumulativeTone = portfolio.cumulativeProfit > 0 ? 'red' : portfolio.cumulativeProfit < 0 ? 'emerald' : 'slate';
     const todayTone = portfolio.todayProfit > 0 ? 'red' : portfolio.todayProfit < 0 ? 'emerald' : 'slate';
     const navIncomplete = portfolio.assetCount > 0 && portfolio.pricedCount < portfolio.assetCount;
     const navBadge = (() => {
@@ -1870,6 +1876,26 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       { label: '总成本', value: formatCurrency(portfolio.totalCost, '¥', 2), tone: 'slate' },
       { label: '总收益', value: formatSignedCurrency(portfolio.totalProfit), tone: profitTone },
       { label: '总收益率', value: formatSignedPercent(portfolio.totalReturnRate), tone: profitTone },
+      {
+        label: '累计收益',
+        value: formatSignedCurrency(portfolio.cumulativeProfit),
+        tone: cumulativeTone,
+        badge: portfolio.realizedLotCount > 0 ? {
+          text: `+已实现 ${portfolio.realizedLotCount}`,
+          className: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
+          title: `含已卖出 ${portfolio.realizedLotCount} 笔已实现盈亏 ${formatSignedCurrency(portfolio.realizedProfit)}`
+        } : null
+      },
+      {
+        label: '累计收益率',
+        value: formatSignedPercent(portfolio.cumulativeReturnRate),
+        tone: cumulativeTone,
+        badge: portfolio.realizedLotCount > 0 ? {
+          text: '含已实现',
+          className: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
+          title: `分母 = 持仓成本 ${formatCurrency(portfolio.totalCost, '¥', 2)} + 已卖出成本基准 ${formatCurrency(portfolio.realizedCostBasis, '¥', 2)}`
+        } : null
+      },
       { label: '当日收益', value: formatSignedCurrency(portfolio.todayProfit), tone: todayTone, badge: navBadge },
       { label: '当日收益率', value: formatSignedPercent(portfolio.todayReturnRate), tone: todayTone, badge: navBadge },
       { label: '持仓数量', value: String(portfolio.assetCount), tone: 'slate' },
