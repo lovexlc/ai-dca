@@ -84,8 +84,14 @@
   - ESLint 0 errors；原有 22 warnings 未增加
   - Commit: `bc74ea29a2e0391a8bdad0494001766032429065`
   - 完成时间：2026-05-16 23:57 (CST)
-- [ ] **2.4** `feat(app): benchmark overlay (沪深300)` — 区间内基准对比数字
-  - 复用 `marketsApi.js` 拉沪深300区间数据；只显示「跑赢基准 X.XX%」一行
+- [x] **2.4** `feat(app): benchmark overlay (沪深300)` — 区间内基准对比数字
+  - IncomeDetail.jsx +76 行：BENCH_CODE=510300 / BENCH_LABEL=沪深300
+  - 不走 marketsApi.js（其 fetchKline 不接受区间参数），改复用 fetchNavHistory(同一 Worker 端点、同 IndexedDB 缓存)
+  - navOnOrBefore / navOnOrAfter 取区间起始/结束 NAV；buy-and-hold 基准收益率 = endNav/startNav - 1
+  - 下方一行显示「跑赢/落后基准 X.XX%」及「基准沪深300 X.XX%」
+  - ESLint 0 errors / 0 warnings
+  - Commit: `14104e4228d0b7378a46811d213e074d49ec7c09`
+  - 完成时间：2026-05-17 00:03 (CST)
 - [ ] **2.5** `style(income): polish typography + dark mode` — 视觉打磨
   - 对齐 Notion-native 留白；移动端紧凑布局；涨跌色变量统一
 
@@ -106,9 +112,9 @@
 
 ```
 第一刀 ▰▰▰▰  4/4   (后端 ✅ navClient ✅ series ✅ probe ✅)  🎉 完成
-第二刀 ▰▰▰▱▱  3/5   (镜头选择器 ✅ KPI 卡片 ✅ 持仓页接入 ✅)
+第二刀 ▰▰▰▰▱  4/5   (镜头选择器 ✅ KPI 卡片 ✅ 持仓页接入 ✅ 基准 ✅)
 第三刀 ▱▱▱▱  0/4
-合计   ▰▰▰▰▰▰▰▱▱▱▱▱▱  7/13
+合计   ▰▰▰▰▰▰▰▰▱▱▱▱▱  8/13
 ```
 
 ## 🔍 验证阶梯（每个 commit 都要过）
@@ -128,3 +134,4 @@
 - 2026-05-16 23:48 - 第二刀 2.1 完成 (TimeRangeSelector + rangeUrlSync, 22 asserts)
 - 2026-05-16 23:53 - 第二刀 2.2 完成 (IncomeDetail.jsx 脚手架 + 4 KPI 行)
 - 2026-05-16 23:57 - 第二刀 2.3 完成 (HoldingsExperience 接入 IncomeDetail)
+- 2026-05-17 00:03 - 第二刀 2.4 完成 (沪深300 benchmark overlay 复用 navHistory)
