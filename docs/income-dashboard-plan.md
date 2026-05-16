@@ -92,8 +92,15 @@
   - ESLint 0 errors / 0 warnings
   - Commit: `14104e4228d0b7378a46811d213e074d49ec7c09`
   - 完成时间：2026-05-17 00:03 (CST)
-- [ ] **2.5** `style(income): polish typography + dark mode` — 视觉打磨
-  - 对齐 Notion-native 留白；移动端紧凑布局；涨跌色变量统一
+- [x] **2.5** `style(income): polish typography + mobile compact` — 视觉打磨
+  - 涨跌色提取为 TONE_UP / TONE_DOWN / TONE_NEUTRAL / TONE_DIM，signClass + 基准区域统一引用
+  - KpiCell：小屏 text-lg → sm:text-xl，label 加 uppercase tracking + min-w-0 防溢出
+  - 外卡片 p-3 sm:p-4，border 200/70 软化；标题 / 资讯 / 基准 / 空状态 text-[11px] sm:text-xs
+  - KPI grid 去 divide-x，改用 gap-1 sm:gap-2 (修复 2 列 mobile 下难看的垂线)
+  - dark mode 跳过：HoldingsExperience 未用 dark: 且 tailwind 未启 darkMode，不泛滥加字段
+  - ESLint 0 errors / 0 warnings
+  - Commit: `7d4cc10560d7378945c4c7023d05f05a028bf6ba`
+  - 完成时间：2026-05-17 00:09 (CST)
 
 ## 🗡️ 第三刀 — 曲线 + 日历 (4 commits)
 
@@ -112,9 +119,9 @@
 
 ```
 第一刀 ▰▰▰▰  4/4   (后端 ✅ navClient ✅ series ✅ probe ✅)  🎉 完成
-第二刀 ▰▰▰▰▱  4/5   (镜头选择器 ✅ KPI 卡片 ✅ 持仓页接入 ✅ 基准 ✅)
+第二刀 ▰▰▰▰▰  5/5 🎉 (镜头 ✅ KPI ✅ 接入 ✅ 基准 ✅ polish ✅)
 第三刀 ▱▱▱▱  0/4
-合计   ▰▰▰▰▰▰▰▰▱▱▱▱▱  8/13
+合计   ▰▰▰▰▰▰▰▰▰▱▱▱▱  9/13
 ```
 
 ## 🔍 验证阶梯（每个 commit 都要过）
@@ -135,3 +142,4 @@
 - 2026-05-16 23:53 - 第二刀 2.2 完成 (IncomeDetail.jsx 脚手架 + 4 KPI 行)
 - 2026-05-16 23:57 - 第二刀 2.3 完成 (HoldingsExperience 接入 IncomeDetail)
 - 2026-05-17 00:03 - 第二刀 2.4 完成 (沪深300 benchmark overlay 复用 navHistory)
+- 2026-05-17 00:09 - 第二刀 2.5 完成 ＆ 第二刀全收 🎉 (typography / mobile / tone constants)
