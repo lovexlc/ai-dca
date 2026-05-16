@@ -71,6 +71,14 @@ npx wrangler secret delete OCR_UPSTREAM_API_KEY --config workers/ocr-proxy/wrang
 
 前端调用相对路径 `/api/ocr` / `/api/holdings/ocr` / `/api/holdings/nav`。要求两者之一：
 
+另外提供 `/api/holdings/nav-history` 用于收益看板的区间净值查询：
+
+- `GET /api/holdings/nav-history?code=510300&from=YYYY-MM-DD&to=YYYY-MM-DD`
+- 也可使用 `?code=...&days=365`（默认 365）作为 `from` 的语法糖
+- 返回 `{ ok, code, from, to, count, items: [{date, nav}], generatedAt, expiresAt, cache }`
+- `caches.default` 边缘缓存：历史区间（`to < today`）缓存 24h；含今天复用 `computeNonExchangeNavTtlMs` 动态 TTL
+- `?force=1` 或 `?refresh=1` 可强刷缓存
+
 - 站点和 Worker 部署在同一个 Cloudflare 域名下，`/api/*` 路由到这个 Worker（当前走这条路）
 - 或者站点本身就在 Cloudflare Pages / Workers 上
 

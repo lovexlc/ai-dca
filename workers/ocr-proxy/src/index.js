@@ -1511,6 +1511,169 @@ async function fetchFundNavSnapshot(code, generatedAt) {
   };
 }
 
+// 拉取一段时间内的历史 NAV 序列（DWJZ 单位净值），按日期升序返回。
+// 复用 lsjz 上游，pageSize=40 + 最多 50 页即可覆盖 ~8 年交易日数据。
+async function fetchFundNavHistory(code, fromDate, toDate) {
+  const headers = {
+    accept: 'application/json, text/plain, */*',
+    referer: 'https://fundf10.eastmoney.com/jjjz_' + encodeURIComponent(code) + '.html',
+    'user-agent': 'Mozilla/5.0'
+  };
+  const items = [];
+  const pageSize = 40;
+  let pageIndex = 1;
+  for (let p = 0; p < 50; p++) {
+    const url = new URL('https://api.fund.eastmoney.com/f10/lsjz');
+    url.searchParams.set('fundCode', code);
+    url.searchParams.set('pageIndex', String(pageIndex));
+    url.searchParams.set('pageSize', String(pageSize));
+    url.searchParams.set('startDate', fromDate);
+    url.searchParams.set('endDate', toDate);
+
+    const response = await fetch(url.toString(), { headers });
+    if (!response.ok) {
+      throw new Error(`${code} 净值历史接口请求失败：HTTP ${response.status}`);
+    }
+    const rawText = await response.text();
+    let payload;
+    try {
+      payload = rawText ? JSON.parse(rawText) : {};
+    } catch (_error) {
+      throw new Error(`${code} 净值历史接口返回了非 JSON 响应。`);
+    }
+    if (Number(payload?.ErrCode || 0) !== 0) {
+      throw new Error(payload?.ErrMsg || `${code} 净值历史接口返回错误。`);
+    }
+    const rows = Array.isArray(payload?.Data?.LSJZList) ? payload.Data.LSJZList : [];
+    for (const row of rows) {
+      const nav = Number(row?.DWJZ);
+      const date = normalizeDate(row?.FSRQ || '');
+      if (!date || !Number.isFinite(nav) || nav <= 0) continue;
+      items.push({ date, nav: roundHolding(nav, 4) });
+    }
+    const total = Number(payload?.TotalCount) || 0;
+    if (pageIndex * pageSize >= total) break;
+    if (!rows.length) break;
+    pageIndex++;
+  }
+  items.sort((a, b) => a.date.localeCompare(b.date));
+  return items;
+}
+
+// 单 code + 单区间的稳定 cache key，作为 caches.default 的 Request URL 参数。
+async function buildNavHistoryCacheKey(code, fromDate, toDate) {
+  const text = `${code}|${fromDate}|${toDate}`;
+  const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(text));
+  const bytes = new Uint8Array(buf);
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0');
+  return hex;
+}
+
+function todayShanghaiIsoDate() {
+  return epochMsToShanghaiIso(Date.now()).slice(0, 10);
+}
+
+// GET /api/holdings/nav-history?code=510300&from=YYYY-MM-DD&to=YYYY-MM-DD（或 &days=365）
+// 返回单只基金给定区间的日级 NAV 序列；caches.default 边缘缓存，TTL 区分历史段(24h) vs 含今天段(动态)。
+async function handleHoldingsNavHistory(request, env) {
+  const url = new URL(request.url);
+  const rawCode = String(url.searchParams.get('code') || '').trim();
+  if (!/^\d{6}$/.test(rawCode)) {
+    return jsonResponse({ error: '请求中缺少有效的 6 位基金代码（参数 code）。' }, 400);
+  }
+  const today = todayShanghaiIsoDate();
+  const toDate = String(url.searchParams.get('to') || '').trim() || today;
+  let fromDate = String(url.searchParams.get('from') || '').trim();
+  if (!fromDate) {
+    const daysRaw = url.searchParams.get('days');
+    const days = Math.max(1, Math.min(parseIntegerEnv(daysRaw, 365), 3650));
+    fromDate = shiftIsoDateDays(toDate, -days);
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fromDate) || !/^\d{4}-\d{2}-\d{2}$/.test(toDate)) {
+    return jsonResponse({ error: 'from / to 必须是 YYYY-MM-DD 格式。' }, 400);
+  }
+  if (fromDate > toDate) {
+    return jsonResponse({ error: 'from 必须早于或等于 to。' }, 400);
+  }
+
+  const forceBypass = url.searchParams.get('force') === '1' || url.searchParams.get('refresh') === '1';
+  const cacheKey = await buildNavHistoryCacheKey(rawCode, fromDate, toDate);
+
+  // 规范化缓存请求 URL（与原 request 的多余 query 解耦）。
+  const cacheUrl = new URL(url.origin);
+  cacheUrl.pathname = '/api/holdings/nav-history';
+  cacheUrl.searchParams.set('code', rawCode);
+  cacheUrl.searchParams.set('from', fromDate);
+  cacheUrl.searchParams.set('to', toDate);
+  cacheUrl.searchParams.set('cacheKey', cacheKey);
+  const cacheRequest = new Request(cacheUrl.toString(), { method: 'GET' });
+
+  const baseTtlMs = getHoldingsNavCacheTtlMs(env);
+  const cacheNow = new Date();
+  const includesToday = toDate >= today;
+  const ttlMs = includesToday
+    ? computeNonExchangeNavTtlMs(baseTtlMs, cacheNow)
+    : Math.max(baseTtlMs, 24 * 60 * 60 * 1000);
+
+  if (forceBypass) {
+    try { await caches.default.delete(cacheRequest); } catch (_e) { /* ignore */ }
+  } else {
+    const cachedResponse = await caches.default.match(cacheRequest);
+    if (cachedResponse) {
+      try {
+        const payload = await cachedResponse.json();
+        if (isHoldingsPayloadFresh(payload, ttlMs)) {
+          return jsonResponse({
+            ...payload,
+            cache: { ...(payload.cache || {}), hit: true, source: 'edge-cache', stale: false }
+          });
+        }
+      } catch (_e) { /* fall through to live fetch */ }
+    }
+  }
+
+  const generatedAt = nowShanghaiIso();
+  let items;
+  try {
+    items = await fetchFundNavHistory(rawCode, fromDate, toDate);
+  } catch (error) {
+    return jsonResponse({
+      ok: false,
+      code: rawCode,
+      from: fromDate,
+      to: toDate,
+      error: error instanceof Error ? error.message : `${rawCode} 净值历史拉取失败。`,
+      generatedAt
+    }, 502);
+  }
+
+  const expiresAt = epochMsToShanghaiIso(Date.parse(generatedAt) + ttlMs);
+  const payload = {
+    ok: true,
+    code: rawCode,
+    from: fromDate,
+    to: toDate,
+    count: items.length,
+    items,
+    generatedAt,
+    expiresAt,
+    cache: { key: cacheKey, hit: false, source: 'live', stale: false, ttlMs }
+  };
+
+  try {
+    const cachePut = new Response(JSON.stringify(payload), {
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': `max-age=${Math.floor(ttlMs / 1000)}`
+      }
+    });
+    await caches.default.put(cacheRequest, cachePut);
+  } catch (_e) { /* ignore cache put failures */ }
+
+  return jsonResponse(payload);
+}
+
 const EXCHANGE_FUND_CODE_PREFIXES = ['15', '50', '51', '52', '53', '54', '56', '58'];
 
 function isExchangeFundCode(code) {
@@ -2253,6 +2416,24 @@ export default {
       } catch (error) {
         return jsonResponse({
           error: error instanceof Error ? error.message : '持仓净值代理执行失败。'
+        }, 502);
+      }
+    }
+
+    if (url.pathname === '/api/holdings/nav-history') {
+      if (request.method !== 'GET') {
+        return jsonResponse({
+          error: 'Method not allowed'
+        }, 405, {
+          allow: 'GET, OPTIONS'
+        });
+      }
+
+      try {
+        return await handleHoldingsNavHistory(request, env);
+      } catch (error) {
+        return jsonResponse({
+          error: error instanceof Error ? error.message : '净值历史代理执行失败。'
         }, 502);
       }
     }
