@@ -401,7 +401,12 @@ function MoversTable({ rows = [], onPick, klineMap = {}, initialLimit = 4 }) {
               </td>
               <td className="px-3 py-2 text-right">
                 <div className="inline-flex justify-end">
-                  <Sparkline points={klineMap[row.symbol]} width={72} height={24} tone="auto" />
+                  <Sparkline
+                    points={klineMap[row.symbol]}
+                    width={72}
+                    height={24}
+                    tone={positive ? 'up' : negative ? 'down' : 'flat'}
+                  />
                 </div>
               </td>
               <td className="px-3 py-2 text-right">
@@ -485,6 +490,7 @@ function SidebarRow({ symbol, name, price, changePercent, sparkPoints, onRemove 
   const up = pct > 0;
   const textTone = flat ? 'text-[#5f6368]' : up ? 'text-[#a50e0e]' : 'text-[#137333]';
   const ArrowIcon = flat ? null : up ? ArrowUp : ArrowDown;
+  const sparkTone = flat ? 'flat' : up ? 'up' : 'down';
   return (
     <li className="group relative">
       <div className="flex items-center gap-3 rounded-md px-2 py-2 transition hover:bg-[#f1f3f4]">
@@ -495,7 +501,7 @@ function SidebarRow({ symbol, name, price, changePercent, sparkPoints, onRemove 
           ) : null}
         </div>
         {sparkPoints && sparkPoints.length >= 2 ? (
-          <Sparkline points={sparkPoints} width={76} height={28} tone="auto" showFill markLast />
+          <Sparkline points={sparkPoints} width={76} height={28} tone={sparkTone} showFill markLast />
         ) : (
           <div className="h-[28px] w-[76px]" />
         )}
@@ -525,9 +531,11 @@ function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints }) {
   const pct = Number(changePercent);
   const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
   const up = pct > 0;
-  const textTone = flat ? 'text-[#5f6368]' : up ? 'text-[#137333]' : 'text-[#a50e0e]';
-  const circleBg = flat ? 'bg-[#bdc1c6]' : up ? 'bg-[#137333]' : 'bg-[#a50e0e]';
+  // 统一“涨红跌绿”：上涨用红 (#a50e0e)，下跌用绿 (#137333)。
+  const textTone = flat ? 'text-[#5f6368]' : up ? 'text-[#a50e0e]' : 'text-[#137333]';
+  const circleBg = flat ? 'bg-[#bdc1c6]' : up ? 'bg-[#a50e0e]' : 'bg-[#137333]';
   const ArrowIcon = flat ? null : up ? ArrowUp : ArrowDown;
+  const sparkTone = flat ? 'flat' : up ? 'up' : 'down';
   return (
     <li className="flex items-center gap-3 px-1 py-3.5">
       <div className="min-w-0 flex-1">
@@ -537,7 +545,7 @@ function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints }) {
         ) : null}
       </div>
       {sparkPoints && sparkPoints.length >= 2 ? (
-        <Sparkline points={sparkPoints} width={86} height={32} tone="auto" showFill markLast />
+        <Sparkline points={sparkPoints} width={86} height={32} tone={sparkTone} showFill markLast />
       ) : (
         <div className="h-[32px] w-[86px]" />
       )}
