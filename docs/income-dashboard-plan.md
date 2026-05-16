@@ -61,8 +61,14 @@
 
 蚂蚁财富同款顶部「收益明细」卡片 + 镜头切换器，**完成后用户可看到不带曲线的数字**。
 
-- [ ] **2.1** `feat(app): TimeRangeSelector component` — 8 + 1 个镜头按钮 + URL 同步
-  - 默认 `ytd`；URL 参数双向绑定；移动端横向滚动条；`custom` 弹日期范围选择器
+- [x] **2.1** `feat(app): TimeRangeSelector component` — 8 + 1 个镜头按钮 + URL 同步
+  - 文件：`src/app/rangeUrlSync.js` (5542B，纯函数 + hook) + `src/app/TimeRangeSelector.jsx` (6699B, chip-row + custom popover)
+  - 10 个 chip（今/本周/上周/本月/上月/今年/去年/近一年/投资以来/自定义）。2.x 后续会接入。2.x 后续会接入。
+  - URL 同步：`?range=XXX&from=YYYY-MM-DD&to=YYYY-MM-DD`，保留非镜头参数；SSR 安静
+  - 22 个单元 assert 全绿（解析/序列化/round-trip/跨参数保持）；ESLint 0 errors
+  - Commit: `fcf4689c1100e940770eded02702b0b9d9e53fc5`
+  - Raw: https://raw.githubusercontent.com/lovexlc/ai-dca/fcf4689/src/app/TimeRangeSelector.jsx
+  - 完成时间：2026-05-16 23:48 (CST)
 - [ ] **2.2** `feat(app): IncomeDetail.jsx scaffolding + KPI rows` — 顶部卡片主体
   - 显示「区间收益 / 区间收益率 / 累计盈亏 / 年化收益率」；数字大字号 + 涨跌色；下挂时间镜头
   - 集成 portfolioSeries，加载态/错误态/stale 提示
@@ -90,9 +96,9 @@
 
 ```
 第一刀 ▰▰▰▰  4/4   (后端 ✅ navClient ✅ series ✅ probe ✅)  🎉 完成
-第二刀 ▱▱▱▱▱  0/5
+第二刀 ▰▱▱▱▱  1/5   (镜头选择器 ✅)
 第三刀 ▱▱▱▱  0/4
-合计   ▰▰▰▰▱▱▱▱▱▱▱▱▱  4/13
+合计   ▰▰▰▰▰▱▱▱▱▱▱▱▱  5/13
 ```
 
 ## 🔍 验证阶梯（每个 commit 都要过）
@@ -109,3 +115,4 @@
 - 2026-05-16 23:13 - 计划落档为本文件
 - 2026-05-16 23:33 - 第一刀 1.3 完成 (portfolioSeries.js + Modified Dietz, 45 asserts)
 - 2026-05-16 23:37 - 第一刀 1.4 完成 (incomeProbe.js + window.__incomeProbe 探针) 🎉 第一刀全收
+- 2026-05-16 23:48 - 第二刀 2.1 完成 (TimeRangeSelector + rangeUrlSync, 22 asserts)
