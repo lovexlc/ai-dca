@@ -40,7 +40,6 @@ import { DataTableColumnHeader } from '@/components/data-table/data-table-column
 import { DataTableFacetedFilter } from '@/components/data-table/data-table-faceted-filter';
 import { DataTableToolbar } from '@/components/data-table/data-table-toolbar';
 import { formatCurrency, formatPercent } from '../app/accumulation.js';
-import { installIncomeProbe } from '../app/incomeProbe.js';
 import { IncomeDetail } from '../app/IncomeDetail.jsx';
 import {
   aggregateByCode,
@@ -118,8 +117,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [primaryTabKey, setPrimaryTabKey] = useState('holdings');
   const [pasteModalOpen, setPasteModalOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
-  // dev-only 探针：window.__incomeProbe('ytd' | 'week' | ...) 看区间收益。冲烟通过后删。
-  useEffect(() => installIncomeProbe(() => ledger), [ledger]);
   useEffect(() => {
     function onMobileNew() {
       resetDraft(emptyDraft({ type: mainViewTab === 'sold' ? 'SELL' : 'BUY' }));
