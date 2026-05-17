@@ -2,7 +2,7 @@
 //
 // 收益看板 v2 的 hash route 工具 (零依赖)。
 //
-// - URL 格式: `#/income` `#/chart` `#/calendar` `#/breakdown` `#/transactions`
+// - URL 格式: `#/income` `#/chart` `#/calendar` `#/liquidation` `#/breakdown` `#/transactions`
 // - 空 hash (或 "#" / "#/") = OVERVIEW (主页)
 // - 未知片段 → fallback OVERVIEW，不抹除 URL (避免干扰别人的错 hash)
 // - 使用 hash change 事件订阅，与项目已有的 useRangeUrlSync 互不干扰
@@ -15,6 +15,7 @@ export const ROUTES = Object.freeze({
 	INCOME: 'income',
 	CHART: 'chart',
 	CALENDAR: 'calendar',
+	LIQUIDATION: 'liquidation',
 	BREAKDOWN: 'breakdown',
 	TRANSACTIONS: 'transactions',
 });

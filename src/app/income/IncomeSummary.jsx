@@ -26,6 +26,7 @@ const TONE_NEUTRAL = 'text-slate-500';
 
 const TILES = [
 	{ route: ROUTES.INCOME, icon: '\ud83d\udcca', label: '收益明细' },
+	{ route: ROUTES.LIQUIDATION, icon: '\ud83d\udcb0', label: '清仓分析' },
 	{ route: ROUTES.BREAKDOWN, icon: '\ud83e\udd67', label: '持仓分析' },
 	{ route: ROUTES.TRANSACTIONS, icon: '\ud83d\udcb1', label: '交易记录' },
 ];

@@ -13,6 +13,7 @@ import { IncomeSummary } from './IncomeSummary.jsx';
 import { ROUTES, useIncomeRoute } from '../incomeRoute.js';
 
 const IncomeDetailPage = lazy(() => import('./IncomeDetailPage.jsx'));
+const IncomeLiquidationPage = lazy(() => import('./IncomeLiquidationPage.jsx'));
 const IncomeBreakdownPage = lazy(() => import('./IncomeBreakdownPage.jsx'));
 const IncomeTransactionsPage = lazy(() => import('./IncomeTransactionsPage.jsx'));
 
@@ -21,6 +22,7 @@ const PAGE_BY_ROUTE = {
 	// 4.1: 旧子路由 alias 到收益明细（曲线 + 日历已内嵌）
 	[ROUTES.CHART]: IncomeDetailPage,
 	[ROUTES.CALENDAR]: IncomeDetailPage,
+	[ROUTES.LIQUIDATION]: IncomeLiquidationPage,
 	[ROUTES.BREAKDOWN]: IncomeBreakdownPage,
 	[ROUTES.TRANSACTIONS]: IncomeTransactionsPage,
 };
