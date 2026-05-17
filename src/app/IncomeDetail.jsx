@@ -6,14 +6,42 @@
 //   - 内部走 fetchNavHistory + buildPortfolioSeries，有 loading / error / stale 提示
 //   - 本 commit (2.2) 只做脚手架 + KPI 行；benchmark / 曲线 / 日历 留给 2.4 / 3.x
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { LoaderCircle, AlertTriangle } from 'lucide-react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { LoaderCircle, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 import { formatCurrency, formatPercent } from './accumulation.js';
 import { cx } from '../components/experience-ui.jsx';
 import { fetchNavHistory } from './navHistoryClient.js';
 import { buildPortfolioSeries, resolveRangeWindow } from './portfolioSeries.js';
 import { TimeRangeSelector } from './TimeRangeSelector.jsx';
 import { useRangeUrlSync, DEFAULT_RANGE } from './rangeUrlSync.js';
+
+// 3.3：下半屏面板懒加载 (Recharts 体积较大，进持仓 tab 才拉)
+const ReturnChart = lazy(() => import('./ReturnChart.jsx'));
+const ReturnCalendar = lazy(() => import('./ReturnCalendar.jsx'));
+
+function Disclosure({ title, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between rounded-2xl px-3 py-2 text-left text-[13px] font-semibold text-slate-700 hover:bg-slate-50 sm:px-4 sm:py-3 sm:text-sm"
+        aria-expanded={open}
+      >
+        <span>{title}</span>
+        {open ? <ChevronUp className="size-4 text-slate-400" /> : <ChevronDown className="size-4 text-slate-400" />}
+      </button>
+      {open ? (
+        <div className="border-t border-slate-100 p-3 sm:p-4">
+          <Suspense fallback={<div className="flex items-center gap-1 text-[11px] text-slate-400 sm:text-xs"><LoaderCircle className="size-3 animate-spin" />加载中</div>}>
+            {children}
+          </Suspense>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 const RANGE_LABELS = {
   today: '今日',
@@ -278,12 +306,8 @@ export function IncomeDetail({ ledger, className = '' }) {
   const alphaVerb = alphaRate === null ? null : alphaRate >= 0 ? '跑赢' : '落后';
 
   return (
-    <div
-      className={cx(
-        'rounded-2xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4',
-        className
-      )}
-    >
+    <div className={cx('flex flex-col gap-3', className)}>
+    <div className="rounded-2xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <div className="text-[13px] font-semibold text-slate-900 sm:text-sm">收益明细</div>
@@ -367,6 +391,17 @@ export function IncomeDetail({ ledger, className = '' }) {
       {inceptionDate ? null : (
         <div className={cx('mt-3 text-[11px] sm:text-xs', TONE_DIM)}>暂无成交记录，请先在下方「成交流水」录入首笔买入。</div>
       )}
+    </div>
+    {inceptionDate ? (
+      <>
+        <Disclosure title="收益曲线" defaultOpen>
+          <ReturnChart ledger={ledger} />
+        </Disclosure>
+        <Disclosure title="收益日历" defaultOpen={false}>
+          <ReturnCalendar ledger={ledger} />
+        </Disclosure>
+      </>
+    ) : null}
     </div>
   );
 }
