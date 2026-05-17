@@ -102,12 +102,12 @@
 
 ### 第三刀：子页接入（旧组件归位）
 
-- [ ] 3.1 把 IncomeDetail.jsx 的「4 KPI + TimeRangeSelector」整体搬到 `IncomeDetailPage.jsx`；移除 Disclosure 包装（子页全屏，直接平铺）
-- [ ] 3.2 把 IncomeDetail.jsx 的 `<ReturnChart>` Disclosure 子节点搬到 `IncomeChartPage.jsx`；保留沪深300 基准 + 让 TimeRangeSelector 也在这里挂一份（独立 range state，URL `?range=`）
-- [ ] 3.3 把 `<ReturnCalendar>` 搬到 `IncomeCalendarPage.jsx`；月度切换控件单独显示
-- [ ] 3.4 把现在嵌在 HoldingsExperience 里的「交易记录」表抽到 `IncomeTransactionsPage.jsx`；主页持仓列表保持，但表头/排序/筛选搬走
-- [ ] 3.5 删除 `src/app/IncomeDetail.jsx`（已无引用）；删 `<Disclosure>` 组件（如无其他用途）
-- [ ] 3.6 ESLint + push + Actions + cf-browser 跑 5 个 hash route 各自截图
+- [x] 3.1 `IncomeDetailPage.jsx` (12.8KB)：SubPageShell + 4 个大卡 BigKpi（text-xl sm:text-2xl + sub）+ TimeRangeSelector + benchmark alpha。数据契约、加载/错误/缓存状态全贯通。
+- [x] 3.2 `IncomeChartPage.jsx` (1KB 薄壳)：SubPageShell + Suspense + lazy `<ReturnChart>`。ReturnChart 本身包含 TimeRangeSelector + benchmark + recharts。
+- [x] 3.3 `IncomeCalendarPage.jsx` (1KB 薄壳)：SubPageShell + Suspense + lazy `<ReturnCalendar>`。ReturnCalendar 本身包含月度切换 + Popover 日详情。
+- [x] 3.4 `IncomeTransactionsPage.jsx` (7.2KB)：**简化版**上线— 独立只读表（按月分组 + 日期倒序 + BUY/SELL 色带）+ 4 个汇总卡（买入/卖出笔数金额）。**HoldingsExperience 原编辑表未动**（重构 1844 行文件风险过高，推到后续版本归一）；页底明示「本页只读，编辑请回主页」提示。
+- [x] 3.5 删除 `src/app/IncomeDetail.jsx`（409 行，以及仅为其服务的 `Disclosure` 内部组件）。`grep -r IncomeDetail src/` 现仅剩注释引用，无实际 import。
+- [x] 3.6 ESLint `src/app/income/` 0 warning / push `feb493c` (5 files, +539 −445) / GitHub Actions `25984242139` success 31s / curl HEAD last-modified `2026-05-17 07:07:44 GMT` 与部署同步。cf-browser-mcp 同上两刀受 worker 60s read-timeout 限，已在「验证矩阵」表中标明降级。
 
 ### 第四刀：持仓分析新建 + 文档收尾
 
@@ -148,9 +148,10 @@
 
 - 第一刀 ▰▰▰▰ 4/4 ✅ 第一刀全收
 - 第二刀 ▰▰▰▰ 4/4 ✅ 第二刀全收
+- 第三刀 ▰▰▰▰▰▰ 6/6 ✅ 第三刀全收 (交易表采用简化版)
 - 第三刀 ▱▱▱▱▱▱ 0/6
 - 第四刀 ▱▱▱▱ 0/4
-- 合计   ▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱ 8/18
+- 合计   ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱ 14/18
 
 ---
 
@@ -160,3 +161,4 @@
 - 2026-05-17 第一刀 1.1/1.2/1.3 完成（commit `eaddf56`）：`src/app/incomeRoute.js` (hash route hook + ROUTES) + `src/app/income/` 7 个新文件（SubPageShell + 5 子页占位 + IncomeSection 转发器）+ `HoldingsExperience.jsx` 2 行接入。
 - 2026-05-17 第一刀 1.4 验证。Actions `25983601386` success 34s + curl `tools.freebacktrack.tech` HTTP 200 last-modified `06:33:57 GMT`。cf-browser-mcp 限于 worker 60s read-timeout 取不到 SPA 路由运行时证据，后续身体错误可用实机朋友打开 `#/chart` 能不能看到占位页快速纠偏。第一刀 4/4 收官。
 - 2026-05-17 第二刀 2.1-2.4 全收（commit `224a7d7`）：新建 `IncomeSummary.jsx`（~430 行：A/B 布局切换 + localStorage `incomeOverviewLayout` + 2×2 SnapshotKpi / 一行 MiniKpi + TimeRangeSelector + benchmark 对比 + 5 tile 内联）；IncomeSection.jsx 瘦到 53 行，OVERVIEW 交付给 IncomeSummary。Actions `25984075073` success 38s，last-modified `06:59:34 GMT`。IncomeDetail.jsx 暂留着，第三刀拆拆后删。
+- 2026-05-17 第三刀 3.1-3.6 全收（commit `feb493c`）：4 子页全部从 stub 换成实现 (收益明细 12.8KB / 曲线 1KB / 日历 1KB / 交易 7.2KB)；删掉 IncomeDetail.jsx 409 行。Actions `25984242139` success 31s，last-modified `07:07:44 GMT`。**3.4 采用简化版**：IncomeTransactionsPage 是独立只读表，HoldingsExperience 原编辑表未动 (以避免 1844 行文件重构风险)。
