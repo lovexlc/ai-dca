@@ -1,13 +1,15 @@
 // IncomeDetailPage.jsx — #/income
 //
 // 第三刀 3.1：把 IncomeDetail.jsx 顶部卡（4 KPI + benchmark + TimeRangeSelector）整体落到子页。
-//   - 子页全屏，去掉原 IncomeDetail 内的 Disclosure 包装（曲线/日历单独切到 #/chart 和 #/calendar）
+// 第四刀 4.1：把 ReturnChart + ReturnCalendar 合并进同一页（蚂蚁财富同款一站式）。
+//   - 顶部：4 KPI + benchmark + TimeRangeSelector
+//   - 中部：ReturnChart（lazy，与上面的 selector 共享 URL range）
+//   - 下部：ReturnCalendar（lazy，自带月份切换）
+//   - 旧 #/chart / #/calendar 子页已弃用，alias 到本页（见 IncomeSection.jsx）
 //   - 数据契约：buildPortfolioSeries({tx,navByCode,from,to}) + fetchNavHistory，与 IncomeSummary 一致
 //   - 涨红跌绿；累计盈亏/年化沿用 IncomeDetail 行为
-//
-// 旧 src/app/IncomeDetail.jsx 在 3.5 删除。
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { LoaderCircle, AlertTriangle } from 'lucide-react';
 import SubPageShell from './SubPageShell.jsx';
 import { formatCurrency, formatPercent } from '../accumulation.js';
@@ -16,6 +18,18 @@ import { fetchNavHistory } from '../navHistoryClient.js';
 import { buildPortfolioSeries, resolveRangeWindow } from '../portfolioSeries.js';
 import { TimeRangeSelector } from '../TimeRangeSelector.jsx';
 import { useRangeUrlSync, DEFAULT_RANGE } from '../rangeUrlSync.js';
+
+const ReturnChart = lazy(() => import('../ReturnChart.jsx'));
+const ReturnCalendar = lazy(() => import('../ReturnCalendar.jsx'));
+
+function LazyFallback({ label }) {
+  return (
+    <div className="flex items-center gap-2 rounded-2xl border border-slate-200/70 bg-white px-3 py-6 text-[11px] text-slate-400 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:text-xs">
+      <LoaderCircle className="size-3 animate-spin" />
+      <span>{label}</span>
+    </div>
+  );
+}
 
 const RANGE_LABELS = {
   today: '今日',
@@ -338,6 +352,19 @@ export function IncomeDetailPage({ ledger, onBack }) {
           </div>
         )}
       </div>
+
+      {inceptionDate ? (
+        <>
+          <Suspense fallback={<LazyFallback label="加载收益曲线…" />}>
+            <ReturnChart ledger={ledger} />
+          </Suspense>
+          <Suspense fallback={<LazyFallback label="加载收益日历…" />}>
+            <div className="rounded-2xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4">
+              <ReturnCalendar ledger={ledger} />
+            </div>
+          </Suspense>
+        </>
+      ) : null}
     </SubPageShell>
   );
 }

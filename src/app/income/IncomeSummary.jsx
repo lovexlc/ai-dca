@@ -26,8 +26,6 @@ const TONE_NEUTRAL = 'text-slate-500';
 
 const TILES = [
 	{ route: ROUTES.INCOME, icon: '\ud83d\udcca', label: '收益明细' },
-	{ route: ROUTES.CHART, icon: '\ud83d\udcc8', label: '收益曲线' },
-	{ route: ROUTES.CALENDAR, icon: '\ud83d\udcc5', label: '收益日历' },
 	{ route: ROUTES.BREAKDOWN, icon: '\ud83e\udd67', label: '持仓分析' },
 	{ route: ROUTES.TRANSACTIONS, icon: '\ud83d\udcb1', label: '交易记录' },
 ];
