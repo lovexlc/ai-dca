@@ -35,7 +35,7 @@ function Fallback() {
 	);
 }
 
-export function IncomeSection({ ledger }) {
+export function IncomeSection({ ledger, portfolio, inceptionDate }) {
 	const { route, navigate, goBack } = useIncomeRoute();
 	const SubPage = PAGE_BY_ROUTE[route];
 
@@ -47,8 +47,15 @@ export function IncomeSection({ ledger }) {
 		);
 	}
 
-	// OVERVIEW：主页瘦身 → IncomeSummary（包含 A/B + 5 tile）
-	return <IncomeSummary ledger={ledger} navigate={navigate} />;
+	// OVERVIEW：v3 超瘦身 → IncomeSummary（总市值 + 当日 + 累计 + 5 tile）
+	return (
+		<IncomeSummary
+			ledger={ledger}
+			portfolio={portfolio}
+			inceptionDate={inceptionDate}
+			navigate={navigate}
+		/>
+	);
 }
 
 export default IncomeSection;

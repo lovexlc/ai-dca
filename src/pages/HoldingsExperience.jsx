@@ -200,6 +200,15 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
 
   // ---- Derived data ----
   const transactions = ledger.transactions;
+  const inceptionDate = useMemo(() => {
+    if (!Array.isArray(transactions) || transactions.length === 0) return null;
+    let earliest = null;
+    for (const tx of transactions) {
+      if (tx?.type !== 'BUY' || !tx.date) continue;
+      if (!earliest || tx.date < earliest) earliest = tx.date;
+    }
+    return earliest;
+  }, [transactions]);
   const snapshotsByCode = ledger.snapshotsByCode;
   const ledgerRows = useMemo(
     () => buildLedgerRows(transactions, snapshotsByCode),
@@ -1817,91 +1826,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   function renderPortfolioOverview() {
-    // 配色约定（中国 A 股常见）：涨=红，跌=绿
-    const profitTone = portfolio.totalProfit > 0 ? 'red' : portfolio.totalProfit < 0 ? 'emerald' : 'slate';
-    const cumulativeTone = portfolio.cumulativeProfit > 0 ? 'red' : portfolio.cumulativeProfit < 0 ? 'emerald' : 'slate';
-    const todayTone = portfolio.todayProfit > 0 ? 'red' : portfolio.todayProfit < 0 ? 'emerald' : 'slate';
-    const navIncomplete = portfolio.assetCount > 0 && portfolio.pricedCount < portfolio.assetCount;
-    const navBadge = (() => {
-      if (portfolio.navDateCoverage === 'full') {
-        const fullParts = [];
-        if (portfolio.latestExchangeNavDate) fullParts.push(`场内 ${portfolio.latestExchangeNavDate}`);
-        if (portfolio.latestOtcNavDate) fullParts.push(`场外 ${portfolio.latestOtcNavDate}`);
-        if (portfolio.latestQdiiNavDate) fullParts.push(`QDII ${portfolio.latestQdiiNavDate}`);
-        return {
-          text: '全部',
-          className: 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200',
-          title: fullParts.length ? `各类资产净值已达预期：${fullParts.join(' · ')}` : '场内 + 场外 + QDII 当日净值均已同步'
-        };
-      }
-      if (portfolio.navDateCoverage === 'partial') {
-        const parts = [];
-        if (portfolio.latestExchangeNavDate) parts.push(`场内 ${portfolio.latestExchangeNavDate}`);
-        if (portfolio.latestOtcNavDate) parts.push(`场外 ${portfolio.latestOtcNavDate}`);
-        if (portfolio.latestQdiiNavDate) parts.push(`QDII ${portfolio.latestQdiiNavDate}`);
-        return { text: '部分', className: 'bg-amber-50 text-amber-600 ring-1 ring-amber-200', title: parts.length ? `当日净值同步状态：${parts.join(' · ')}` : '部分持仓净值尚未同步' };
-      }
-      return null;
-    })();
-    const lastUpdateDisplay = (() => {
-      if (portfolio.latestSnapshotAt) {
-        const ts = Date.parse(portfolio.latestSnapshotAt);
-        if (Number.isFinite(ts)) {
-          try {
-            return new Intl.DateTimeFormat('zh-CN', {
-              timeZone: 'Asia/Shanghai',
-              year: 'numeric',
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: false
-            }).format(new Date(ts)).replace(/\//g, '-');
-          } catch (_error) {
-            const d = new Date(ts);
-            const pad = (n) => String(n).padStart(2, '0');
-            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-          }
-        }
-      }
-      return portfolio.latestNavDate || '尚未同步';
-    })();
-    const toneClass = {
-      slate: 'text-slate-900',
-      emerald: 'text-emerald-600',
-      red: 'text-red-500',
-      amber: 'text-amber-600'
-    };
-    const cards = [
-      { label: '总市值', value: formatCurrency(portfolio.marketValue, '¥', 2), tone: 'slate' },
-      { label: '总成本', value: formatCurrency(portfolio.totalCost, '¥', 2), tone: 'slate' },
-      { label: '总收益', value: formatSignedCurrency(portfolio.totalProfit), tone: profitTone },
-      { label: '总收益率', value: formatSignedPercent(portfolio.totalReturnRate), tone: profitTone },
-      {
-        label: '累计收益',
-        value: formatSignedCurrency(portfolio.cumulativeProfit),
-        tone: cumulativeTone,
-        badge: portfolio.realizedLotCount > 0 ? {
-          text: `+已实现 ${portfolio.realizedLotCount}`,
-          className: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
-          title: `含已卖出 ${portfolio.realizedLotCount} 笔已实现盈亏 ${formatSignedCurrency(portfolio.realizedProfit)}`
-        } : null
-      },
-      {
-        label: '累计收益率',
-        value: formatSignedPercent(portfolio.cumulativeReturnRate),
-        tone: cumulativeTone,
-        badge: portfolio.realizedLotCount > 0 ? {
-          text: '含已实现',
-          className: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
-          title: `分母 = 持仓成本 ${formatCurrency(portfolio.totalCost, '¥', 2)} + 已卖出成本基准 ${formatCurrency(portfolio.realizedCostBasis, '¥', 2)}`
-        } : null
-      },
-      { label: '当日收益', value: formatSignedCurrency(portfolio.todayProfit), tone: todayTone, badge: navBadge },
-      { label: '当日收益率', value: formatSignedPercent(portfolio.todayReturnRate), tone: todayTone, badge: navBadge },
-      { label: '持仓数量', value: String(portfolio.assetCount), tone: 'slate' },
-      { label: '最后更新', value: lastUpdateDisplay, tone: navIncomplete ? 'amber' : 'slate', small: true }
-    ];
+    // v3 · 原 cards/tone/navBadge/lastUpdateDisplay/toneClass 已伴随 cards 删除
     return (
       <section className="rounded-2xl border border-slate-200/70 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:px-5 sm:py-4">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
@@ -1929,35 +1854,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             <div className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-white to-transparent" />
           </div>
         ) : null}
-        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-4 sm:gap-x-6 sm:gap-y-4">
-          {cards.map((card) => (
-            <div key={card.label}>
-              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                <span>{card.label}</span>
-                {card.badge ? (
-                  <span
-                    className={cx('rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-normal', card.badge.className)}
-                    title={card.badge.title}
-                  >
-                    {card.badge.text}
-                  </span>
-                ) : null}
-              </div>
-              <div className={cx(
-                'mt-0.5 font-extrabold tracking-tight tabular-nums sm:mt-1',
-                card.small ? 'text-sm sm:text-base' : 'text-lg sm:text-xl',
-                toneClass[card.tone] || toneClass.slate
-              )}>
-                {card.value}
-                {card.subBadge ? (
-                  <sup className={cx('ml-1 align-super', card.subBadge.className)} title={card.subBadge.title}>
-                    {card.subBadge.text}
-                  </sup>
-                ) : null}
-              </div>
-            </div>
-          ))}
-        </div>
       </section>
     );
   }
@@ -2990,7 +2886,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           </div>
         </div>
       ) : null}
-      <IncomeSection ledger={ledger} />
+      <IncomeSection ledger={ledger} portfolio={portfolio} inceptionDate={inceptionDate} />
       {renderPortfolioOverview()}
       <div className="grid grid-cols-1 gap-4">
         <section className="min-w-0 rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">

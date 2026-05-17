@@ -171,6 +171,8 @@ function modifiedDietz({ vStart, vEnd, cashFlows, fromIso, toIso }) {
 function annualize(returnRate, days) {
   if (returnRate === null || !Number.isFinite(returnRate)) return null;
   if (!Number.isFinite(days) || days <= 0) return null;
+  // v3 护栏：不足 1 年不年化，避免 137天 +559%→+15729% 误导
+  if (days < 365) return null;
   return Math.pow(1 + returnRate, 365 / days) - 1;
 }
 
