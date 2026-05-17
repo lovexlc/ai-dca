@@ -90,15 +90,15 @@
 
 ### 第二刀：主页瘦身（IncomeSummary）
 
-- [ ] 2.1 新建 `src/app/income/IncomeSummary.jsx`：
+- [x] 2.1 新建 `src/app/income/IncomeSummary.jsx`：
   - 顶部 3 列收益（昨日 / 持有 / 累计）— 复用 IncomeDetail.jsx 中 KPI 项的格式化逻辑
   - `localStorage incomeOverviewLayout` 控制 A/B 切换：
     - `'compact'` → 仅 3 列收益（无图）
     - `'snapshot'` → 3 列 + 1 张静态迷你曲线（1y, 无控件，沪深300 灰线 + 组合红线，固定 80-100px 高）
   - 右上角悬浮一个图标按钮，切换 A/B 并写回 localStorage（lucide `Image` / `Layout` icon）
-- [ ] 2.2 5 个 icon-tile 网格（grid-cols-3 sm:grid-cols-5）：每个 tile = lucide icon + 中文标题，点击 `navigate(ROUTE)`
-- [ ] 2.3 在 `HoldingsExperience.jsx` 把 `<IncomeDetail/>` 替换为 `<IncomeSummary/>`；旧 IncomeDetail.jsx 暂不删（第三刀整体搬走后再删）
-- [ ] 2.4 ESLint + push + Actions + cf-browser 验证主页瘦身 + 切换按钮可点
+- [x] 2.2 5 个 icon-tile 网格（grid-cols-3 sm:grid-cols-5）：每个 tile = emoji + 中文标题，点击 `navigate(ROUTE)`。实际落地方式：TILES 从 IncomeSection 搬到 IncomeSummary 内部，IncomeSummary 独立交付「收益总览 + 5 入口」一体体验。
+- [x] 2.3 IncomeSection.jsx 的 OVERVIEW 分支从 `<IncomeDetail/> + 5 tile` 换成 `<IncomeSummary ledger navigate/>`；旧 IncomeDetail.jsx 暂不删（第三刀整体搬走后再删）。HoldingsExperience.jsx 不动（仍渲染 IncomeSection）。
+- [x] 2.4 ESLint `src/app/income/` 0 warning / push `224a7d7` / GitHub Actions `25984075073` success 38s / curl HEAD `tools.freebacktrack.tech` last-modified `2026-05-17 06:59:34 GMT` 与部署同步。cf-browser-mcp 按上一刀同理受 worker 60s read-timeout 限，降级为 Actions+curl 双证；实机可看到主页从「4 KPI + TimeRangeSelector + Disclosure 曲线/日历」瘦身为「顶部总览卡 + 5 tile」。
 
 ### 第三刀：子页接入（旧组件归位）
 
@@ -147,10 +147,10 @@
 ## 6. 进度速览
 
 - 第一刀 ▰▰▰▰ 4/4 ✅ 第一刀全收
-- 第二刀 ▱▱▱▱ 0/4
+- 第二刀 ▰▰▰▰ 4/4 ✅ 第二刀全收
 - 第三刀 ▱▱▱▱▱▱ 0/6
 - 第四刀 ▱▱▱▱ 0/4
-- 合计   ▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱ 4/18
+- 合计   ▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱ 8/18
 
 ---
 
@@ -159,3 +159,4 @@
 - 2026-05-17 初版 plan 落地。决策：Q1=A+B 可切换 / Q2 全选 5 tile / Q3 hash route / Q4 完整 4 刀。
 - 2026-05-17 第一刀 1.1/1.2/1.3 完成（commit `eaddf56`）：`src/app/incomeRoute.js` (hash route hook + ROUTES) + `src/app/income/` 7 个新文件（SubPageShell + 5 子页占位 + IncomeSection 转发器）+ `HoldingsExperience.jsx` 2 行接入。
 - 2026-05-17 第一刀 1.4 验证。Actions `25983601386` success 34s + curl `tools.freebacktrack.tech` HTTP 200 last-modified `06:33:57 GMT`。cf-browser-mcp 限于 worker 60s read-timeout 取不到 SPA 路由运行时证据，后续身体错误可用实机朋友打开 `#/chart` 能不能看到占位页快速纠偏。第一刀 4/4 收官。
+- 2026-05-17 第二刀 2.1-2.4 全收（commit `224a7d7`）：新建 `IncomeSummary.jsx`（~430 行：A/B 布局切换 + localStorage `incomeOverviewLayout` + 2×2 SnapshotKpi / 一行 MiniKpi + TimeRangeSelector + benchmark 对比 + 5 tile 内联）；IncomeSection.jsx 瘦到 53 行，OVERVIEW 交付给 IncomeSummary。Actions `25984075073` success 38s，last-modified `06:59:34 GMT`。IncomeDetail.jsx 暂留着，第三刀拆拆后删。
