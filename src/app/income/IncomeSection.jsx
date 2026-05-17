@@ -1,14 +1,15 @@
 // IncomeSection.jsx
 //
-// 第一刀 路由转发器：根据 #/<route> 切换主页 或 5 个子页 (lazy)。
+// 路由转发器：根据 #/<route> 切换主页 (IncomeSummary) 或 5 个子页 (lazy)。
 //
-// - 主页 (OVERVIEW) 暂时直接渲染原 <IncomeDetail/>，加一排临时的 5 tile
-//   链接以便在第二刀之前就能点入子页骨架。
-// - 第二刀会把 OVERVIEW 那一支换成 <IncomeSummary/> (主页瘦身)。
+// - OVERVIEW (route='') 渲染 <IncomeSummary/>，顶部轻量 KPI + A/B 布局 + 5 tile。
+// - 其他路由都是 lazy 子页（第三刀装入原处件）。
+// - IncomeDetail.jsx 仍有效且被原 HoldingsExperience 其他入口还可复用；
+//   第三刀会拆拆那块。
 
 import { lazy, Suspense } from 'react';
 import { LoaderCircle } from 'lucide-react';
-import { IncomeDetail } from '../IncomeDetail.jsx';
+import { IncomeSummary } from './IncomeSummary.jsx';
 import { ROUTES, useIncomeRoute } from '../incomeRoute.js';
 
 const IncomeDetailPage = lazy(() => import('./IncomeDetailPage.jsx'));
@@ -24,14 +25,6 @@ const PAGE_BY_ROUTE = {
 	[ROUTES.BREAKDOWN]: IncomeBreakdownPage,
 	[ROUTES.TRANSACTIONS]: IncomeTransactionsPage,
 };
-
-const TILES = [
-	{ route: ROUTES.INCOME, icon: '📊', label: '收益明细' },
-	{ route: ROUTES.CHART, icon: '📈', label: '收益曲线' },
-	{ route: ROUTES.CALENDAR, icon: '📅', label: '收益日历' },
-	{ route: ROUTES.BREAKDOWN, icon: '🥧', label: '持仓分析' },
-	{ route: ROUTES.TRANSACTIONS, icon: '💱', label: '交易记录' },
-];
 
 function Fallback() {
 	return (
@@ -54,28 +47,8 @@ export function IncomeSection({ ledger }) {
 		);
 	}
 
-	// OVERVIEW: 第一刀暂时保留原 IncomeDetail，第二刀换成 IncomeSummary。
-	return (
-		<div className="flex flex-col gap-3">
-			<IncomeDetail ledger={ledger} />
-			<nav
-				aria-label="收益看板子页入口"
-				className="grid grid-cols-3 gap-2 sm:grid-cols-5"
-			>
-				{TILES.map(({ route: r, icon, label }) => (
-					<button
-						key={r}
-						type="button"
-						onClick={() => navigate(r)}
-						className="flex flex-col items-center gap-1 rounded-2xl border border-slate-200/70 bg-white px-3 py-3 text-xs font-medium text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:bg-slate-50 active:bg-slate-100 sm:text-sm"
-					>
-						<span aria-hidden="true" className="text-lg leading-none">{icon}</span>
-						<span>{label}</span>
-					</button>
-				))}
-			</nav>
-		</div>
-	);
+	// OVERVIEW：主页瘦身 → IncomeSummary（包含 A/B + 5 tile）
+	return <IncomeSummary ledger={ledger} navigate={navigate} />;
 }
 
 export default IncomeSection;
