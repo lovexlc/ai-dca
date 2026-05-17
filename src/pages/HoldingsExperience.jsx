@@ -211,11 +211,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     return earliest;
   }, [transactions]);
   const { route: incomeRoute } = useIncomeRoute();
-  // 第五刀 5.3: mainViewTab 从 incomeRoute 派生 — OVERVIEW=aggregate (基金表格), TRANSACTIONS=ledger (成交流水)。
-  // tablist 已移除，只保留表格本身；handleCopyVisibleTable / kindCounts 等仍读取 mainViewTab。
-  useEffect(() => {
-    setMainViewTab(incomeRoute === ROUTES.TRANSACTIONS ? 'ledger' : 'aggregate');
-  }, [incomeRoute]);
+  // 第五刀 v6: 交易记录独立子页化后，主页 (#/) 只渲染基金汇总表格；mainViewTab 恒为 'aggregate'。
+  // ledger 编表仍保留以服务 IncomeTransactionsPage 点击行调 sidePanel 编辑。
   const snapshotsByCode = ledger.snapshotsByCode;
   const ledgerRows = useMemo(
     () => buildLedgerRows(transactions, snapshotsByCode),
@@ -1235,6 +1232,19 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
 
   function handleCopyRowToDraft(row) {
     setDraft(transactionToDraft(row.tx));
+    setDraftMode('edit');
+    setSidePanelTab('create');
+    setSidePanelOpen(true);
+  }
+
+  // 第五刀 v6: 供 IncomeTransactionsPage 子页调用 — 点击明细行后用 sidePanel 编辑该 tx。
+  // sidePanel 是 fixed overlay，不需 navigate 回主页即可覆盖在 #/transactions 上方。
+  function handleEditTransaction(txId) {
+    if (!txId) return;
+    const list = (ledger?.transactions || []);
+    const tx = list.find((t) => t && t.id === txId);
+    if (!tx) return;
+    setDraft(transactionToDraft(tx));
     setDraftMode('edit');
     setSidePanelTab('create');
     setSidePanelOpen(true);
@@ -2639,8 +2649,13 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       ) : null}
       {/* 第五刀 5.2: 行情 ticker 移到顶部（IncomeSection 之前），OVERVIEW / TRANSACTIONS 都会显示 */}
       {renderPortfolioOverview()}
-      <IncomeSection ledger={ledger} portfolio={portfolio} inceptionDate={inceptionDate} />
-      {incomeRoute === ROUTES.OVERVIEW || incomeRoute === ROUTES.TRANSACTIONS ? (<>
+      <IncomeSection
+        ledger={ledger}
+        portfolio={portfolio}
+        inceptionDate={inceptionDate}
+        onEditTransaction={handleEditTransaction}
+      />
+      {incomeRoute === ROUTES.OVERVIEW ? (<>
       <div className="grid grid-cols-1 gap-4">
         <section className="min-w-0 rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3 sm:gap-3 sm:justify-between">

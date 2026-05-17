@@ -15,6 +15,7 @@ import { ROUTES, useIncomeRoute } from '../incomeRoute.js';
 const IncomeDetailPage = lazy(() => import('./IncomeDetailPage.jsx'));
 const IncomeLiquidationPage = lazy(() => import('./IncomeLiquidationPage.jsx'));
 const IncomeBreakdownPage = lazy(() => import('./IncomeBreakdownPage.jsx'));
+const IncomeTransactionsPage = lazy(() => import('./IncomeTransactionsPage.jsx'));
 
 const PAGE_BY_ROUTE = {
 	[ROUTES.INCOME]: IncomeDetailPage,
@@ -23,8 +24,9 @@ const PAGE_BY_ROUTE = {
 	[ROUTES.CALENDAR]: IncomeDetailPage,
 	[ROUTES.LIQUIDATION]: IncomeLiquidationPage,
 	[ROUTES.BREAKDOWN]: IncomeBreakdownPage,
-	// 第五刀 5.3: TRANSACTIONS 路由不再渲染独立子页 — HoldingsExperience 在 #/transactions
-	// 路由下直接渲染 ledger 编辑表（成交流水移到这里并支持修改）。chip rail 仍由 IncomeSummary 提供。
+	// 第五刀 v6: TRANSACTIONS 路由重新绑定到独立子页 IncomeTransactionsPage。
+	// 子页内：全部交易汇总 card + 清仓分析入口 card + 跑赢 banner + 明细列表（点击行走 onEditTransaction 回调 → 主页 sidePanel 编辑）。
+	[ROUTES.TRANSACTIONS]: IncomeTransactionsPage,
 };
 
 function Fallback() {
@@ -36,14 +38,21 @@ function Fallback() {
 	);
 }
 
-export function IncomeSection({ ledger, portfolio, inceptionDate }) {
+export function IncomeSection({ ledger, portfolio, inceptionDate, onEditTransaction }) {
 	const { route, navigate, goBack } = useIncomeRoute();
 	const SubPage = PAGE_BY_ROUTE[route];
 
 	if (SubPage) {
 		return (
 			<Suspense fallback={<Fallback />}>
-				<SubPage ledger={ledger} onBack={goBack} navigate={navigate} />
+				<SubPage
+					ledger={ledger}
+					portfolio={portfolio}
+					inceptionDate={inceptionDate}
+					onBack={goBack}
+					navigate={navigate}
+					onEditTransaction={onEditTransaction}
+				/>
 			</Suspense>
 		);
 	}
