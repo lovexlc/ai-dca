@@ -120,7 +120,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [pasteText, setPasteText] = useState('');
   useEffect(() => {
     function onMobileNew() {
-      resetDraft(emptyDraft({ type: mainViewTab === 'sold' ? 'SELL' : 'BUY' }));
+      // 4.2: 已卖出 tab 已移除 (迁移到 #/liquidation)，默认留 BUY
+      resetDraft(emptyDraft({ type: 'BUY' }));
       setSidePanelTab('create');
       setSidePanelOpen(true);
     }
@@ -257,13 +258,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const kindCounts = useMemo(() => {
     // 计数随当前 tab 切换：
     // - 基金汇总：在持的基金数（hasPosition）
-    // - 已卖出：卖出明细条数
     // - 交易明细：交易总条数
     let source;
     if (mainViewTab === 'aggregate') {
       source = aggregates.filter((agg) => agg.hasPosition);
-    } else if (mainViewTab === 'sold') {
-      source = soldLots;
     } else {
       source = ledgerRows.map((row) => row.tx);
     }
@@ -274,7 +272,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       else if (item.kind === 'qdii') counts.qdii += 1;
     }
     return counts;
-  }, [mainViewTab, aggregates, soldLots, ledgerRows]);
+  }, [mainViewTab, aggregates, ledgerRows]);
 
   // ---- TanStack Table (shadcn / tablecn) for the 「基金汇总」 view ----
   const aggregatesTableData = useMemo(
@@ -1079,12 +1077,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sidePanelOpen, sidePanelTab, selectedCode, snapshotsByCode]);
-  useEffect(() => {
-    if (mainViewTab === 'sold') {
-      autoFillTransactionPricesFromSnapshots();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mainViewTab, snapshotsByCode]);
+  // 4.2: 原「切到 sold tab 时自动回填净值」的 effect 随 tab 一起删除
 
   // 从「该基金汇总」弹窗点击 买入 / 卖出：预填代码/名称/标签，默认「三点前」=true。
   // 日期默认今天（T 日）；NAV 未公布，价格留空、事后回填。
@@ -1499,9 +1492,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     if (mainViewTab === 'aggregate') {
       payload = buildAggregateTsv();
       label = '基金汇总';
-    } else if (mainViewTab === 'sold') {
-      payload = buildSoldTsv();
-      label = '已卖出';
     } else {
       payload = buildLedgerTsv();
       label = '成交流水';
@@ -2088,7 +2078,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     if (aggregatesTableData.length === 0) {
       const emptyHint = aggregates.length === 0
         ? '还没有交易记录。点击顶部工具栏的「新增交易」添加你的第一笔交易。'
-        : '全部持仓已卖出。在「已卖出」页可查看历史。';
+        : '全部持仓已卖出。在「收益明细 · 清仓分析」可查看历史。';
       return (
         <div className="rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center">
           <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400">
@@ -2898,7 +2888,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               <div role="tablist" aria-label="数据视图" className="flex w-full min-w-0 items-center gap-1 overflow-x-auto border-b border-slate-200 -mb-px text-sm font-semibold sm:w-auto">
                 {[
                   { key: 'aggregate', label: '基金汇总' },
-                  { key: 'sold', label: '已卖出', count: soldLots.length },
                   { key: 'ledger', label: '成交流水' }
                 ].map((tab) => {
                   const active = mainViewTab === tab.key;
@@ -2934,7 +2923,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 type="button"
                 className="order-first hidden h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(79,70,229,0.25)] transition-all hover:bg-indigo-500 hover:shadow-[0_6px_16px_rgba(79,70,229,0.3)] disabled:cursor-not-allowed disabled:opacity-60 sm:order-last sm:inline-flex"
                 onClick={() => {
-                  resetDraft(emptyDraft({ type: mainViewTab === 'sold' ? 'SELL' : 'BUY' }));
+                  resetDraft(emptyDraft({ type: 'BUY' }));
                   setSidePanelTab('create');
                   setSidePanelOpen(true);
                 }}
@@ -2947,7 +2936,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 type="button"
                 className="hidden h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-white px-2.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:ring-slate-300 sm:inline-flex sm:px-3"
                 onClick={handleCopyVisibleTable}
-                title={mainViewTab === 'aggregate' ? '复制基金汇总为 TSV' : mainViewTab === 'sold' ? '复制已卖出为 TSV' : '复制成交流水为 TSV'}
+                title={mainViewTab === 'aggregate' ? '复制基金汇总为 TSV' : '复制成交流水为 TSV'}
               >
                 <Copy className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">复制表格</span>
@@ -2956,18 +2945,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             </div>
           </div>
           <div className="min-h-[480px] px-1">
-            {mainViewTab === 'aggregate'
-              ? renderAggregatesTable()
-              : mainViewTab === 'sold'
-                ? renderSoldTable()
-                : renderLedgerTable()}
+            {mainViewTab === 'aggregate' ? renderAggregatesTable() : renderLedgerTable()}
           </div>
           <div className="border-t border-slate-100 px-4 py-2 text-[11px] text-slate-400">
             {mainViewTab === 'aggregate'
               ? `持仓中 ${portfolio.assetCount} 只基金；累计 ${ledgerRows.length} 笔流水。`
-              : mainViewTab === 'sold'
-                ? `共 ${soldLots.length} 笔卖出记录。`
-                : `共 ${ledgerRows.length} 笔流水；当前筛选 ${filteredRows.length} 笔。`}
+              : `共 ${ledgerRows.length} 笔流水；当前筛选 ${filteredRows.length} 笔。`}
           </div>
         </section>
       </div>
