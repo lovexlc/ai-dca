@@ -135,13 +135,55 @@
   - Commit: `40cd62a`
   - 完成时间：2026-05-17 09:52 (CST)
 
+> ⚠️ 第三刀 3.3/3.4 完成后，又被 **v3 主页瘦身重构** 覆盖：`IncomeDetail.jsx` 拆成 `IncomeSummary.jsx`（主页 5-tile 入口）+ `income/IncomeDetailPage.jsx` / `IncomeChartPage.jsx` / `IncomeCalendarPage.jsx` 三个子路由（#/income · #/chart · #/calendar）。本文件未记录该次重构。第四刀基于子路由架构上做整合。
+
+## 🗡️ 第四刀 — 收益明细整页化 + 清仓分析 (4 commits)
+
+蚂蚁财富同款体验（参考用户截图 2026-05-17 8:31 / 8:45）：把收益明细页做成一站式（KPI + 曲线 + 日历），并新增清仓分析子页。
+
+决策记录（2026-05-17 20:48 与用户确认）：
+- Q1：曲线 + 日历都内嵌到 `IncomeDetailPage`，常驻在 KPI 下方（不折叠、不切 tab）
+- Q2：`IncomeSummary` tile 合并到 4 个（收益明细 / 清仓分析 / 持仓分析 / 交易记录）
+- Q3：移除 `HoldingsExperience` 原「已卖出」mainViewTab；`soldLots` 计算保留供清仓分析复用
+- Q4：清仓后涨跌幅 = 卖出日 NAV → 今日 NAV 的累计涨跌；清仓盈利率 = 总清仓收益 / **总卖出本金**（卖出 lot 的 cost basis 之和）
+
+- [x] **4.1** `feat(income): merge ReturnChart + ReturnCalendar into IncomeDetailPage` — 收益明细整页化 — commit `3415cff`
+  - `IncomeDetailPage.jsx` 在 KPI/benchmark 行下方常驻 `ReturnChart`（不折叠）和 `ReturnCalendar`
+  - 删除 `src/app/income/IncomeChartPage.jsx`、`IncomeCalendarPage.jsx`
+  - `incomeRoute.js`：删 `ROUTES.CHART` / `ROUTES.CALENDAR`（或保留作为别名重定向到 `#/income`）
+  - `IncomeSummary.jsx` TILES 移除「收益曲线」「收益日历」两个 tile
+  - 验证：cf-browser-mcp goto `#/income` → 截图确认 KPI / 曲线 / 日历 三块齐显；旧 `#/chart` / `#/calendar` 不再 404 或落到收益明细
+- [x] **4.2** `feat(holdings): remove 「已卖出」 main view tab` — 实际提交 — commit `b7cd4b3`
+  - `HoldingsExperience.jsx` L2901 删 `{ key: 'sold', label: '已卖出', count: soldLots.length }`
+  - 清理相关分支：`mainViewTab === 'sold'` 渲染分支 / `buildSoldTsv` 复制按钮文案 / emptyHint 中提到「已卖出」页的话术
+  - 保留 `soldLots` / `soldSummary` / `summarizeSoldLots` 计算（4.3 / 4.4 仍要用）
+  - 验证：cf-browser-mcp goto 持仓页主区，主 tab 只剩「基金汇总 / 成交流水」
+- [x] **4.3** `feat(analytics): add clearedLotsAnalytics pure module` — 清仓分析纯函数 (20/20 测试) — commit `648a042`
+  - 文件：`src/app/clearedLotsAnalytics.js`
+  - 输入：`{ soldLots, range, today, inceptionDate, navByCode? }`
+  - 输出：`{ window, kpi: { totalProfit, profitRate, productCount, lotCount, avgHoldingDays }, items: [{ buyDate, sellDate, code, name, profit, profitRate, postClearReturn, holdingDays }] }`
+  - 镜头：本月 / 近半年 / 近一年 / 投资以来 — 按 `sellDate` 过滤
+  - **清仓盈利率** = `totalProfit / totalSellCostBasis`（总卖出本金 = Σ 卖出 lot 的 cost basis）
+  - **清仓后涨跌幅** = 该基金从 sellDate NAV 到今日 NAV 的累计涨跌（拉 `fetchNavHistory`，forward-fill 取最近可用值）
+  - ≥ 12 个单元 assert：镜头过滤 / KPI 公式 / 边界（无 sold lot、navByCode 缺失、单日清仓、同基金多次清仓）/ 排序
+- [x] **4.4** `feat(income): add liquidation analysis subpage (#/liquidation)` — 清仓分析子页 + 入口 — commit `6d39313`
+  - 文件：`src/app/income/IncomeLiquidationPage.jsx`
+  - 5 KPI 卡（清仓总收益 / 清仓盈利率 / 清仓产品数 / 清仓次数 / 平均持有天数）
+  - 镜头切换 chip：本月 / 近半年 / 近一年 / 投资以来
+  - Tab：清仓明细（按月分组，可按清仓时间/收益率排序）/ 盈亏排行（按 lot 收益率 desc）
+  - List 每行：买入日 → 卖出日、基金名（代码+标签）、清仓收益、清仓收益率、清仓后涨跌幅
+  - `IncomeSummary.jsx` TILES 注册「清仓分析」入口（紧跟在「收益明细」后）
+  - `incomeRoute.js` 加 `ROUTES.LIQUIDATION = '#/liquidation'`
+  - 验证：cf-browser-mcp goto `#/liquidation` → 截图 KPI / 镜头切换 / 列表按月分组
+
 ## 📋 进度速览
 
 ```
 第一刀 ▰▰▰▰   4/4 🎉 完成 (后端 ✅ navClient ✅ series ✅ probe ✅)
 第二刀 ▰▰▰▰▰  5/5 🎉 完成 (镜头 ✅ KPI ✅ 接入 ✅ 基准 ✅ polish ✅)
 第三刀 ▰▰▰▰   4/4 🎉 完成 (曲线 ✅ 日历 ✅ 装配 ✅ 收尾 ✅)
-合计   ▰▰▰▰▰▰▰▰▰▰▰▰▰  13/13 🎉 收益看板上线
+第四刀 ▰▰▰▰   4/4 🎉 完成 (整页化 ✅ 移除 sold tab ✅ analytics ✅ 清仓分析页 ✅)
+合计   ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰  17/17 🎉
 ```
 
 ## 🔍 验证阶梯（每个 commit 都要过）
@@ -167,3 +209,8 @@
 - 2026-05-17 00:17 - 第三刀 3.2 完成 (ReturnCalendar.jsx 月度热力图 + 8 asserts)
 - 2026-05-17 09:50 - 第三刀 3.3 完成 (IncomeDetail lazy 装配 ReturnChart + ReturnCalendar)
 - 2026-05-17 09:52 - 第三刀 3.4 完成 ＆ 第三刀全收 🎉 收益看板上线 (删 __incomeProbe + docs/income-dashboard.md)
+- 2026-05-17 20:48 - plan.md 追加第四刀（收益明细整页化 + 清仓分析），共 4 commits；进度 13/13 → 13/17。同步注明 3.3/3.4 完成后被 v3 主页瘦身重构覆盖为子路由架构（IncomeSummary + income/IncomeDetailPage|IncomeChartPage|IncomeCalendarPage）
+- 2026-05-17 20:53 - 第四刀 4.1 完成 (`3415cff`) - ReturnChart + ReturnCalendar 合并进 IncomeDetailPage；删 IncomeChartPage/IncomeCalendarPage；IncomeSummary TILES 5→3
+- 2026-05-17 20:54 - 第四刀 4.2 完成 (`b7cd4b3`) - HoldingsExperience 移除「已卖出」主 tab，+9/-26；soldLots/buildSoldTsv/renderSoldTable 代码暂留（4.4 复用）
+- 2026-05-17 20:57 - 第四刀 4.3 完成 (`648a042`) - clearedLotsAnalytics.js 纯函数模块 + 20/20 测试（lensFromDate / filterLotsByLens / computeClearedKpi / firstBuyDateForLot / holdDaysForLot / groupClearedByMonth / rankClearedLotsByProfit / afterSellChange）
+- 2026-05-17 21:00 - 第四刀 4.4 完成 ＆ 第四刀全收 🎉 (`6d39313`) - IncomeLiquidationPage.jsx (#/liquidation)：4 镜头 + 5 KPI + 清仓明细/盈亏排行 2 Tabs；esbuild 30.2kb / ESLint 0。0 警告。IncomeSummary TILES 插入「💰 清仓分析」。4 commit 合计进度 17/17。
