@@ -15,7 +15,6 @@ import { ROUTES, useIncomeRoute } from '../incomeRoute.js';
 const IncomeDetailPage = lazy(() => import('./IncomeDetailPage.jsx'));
 const IncomeLiquidationPage = lazy(() => import('./IncomeLiquidationPage.jsx'));
 const IncomeBreakdownPage = lazy(() => import('./IncomeBreakdownPage.jsx'));
-const IncomeTransactionsPage = lazy(() => import('./IncomeTransactionsPage.jsx'));
 
 const PAGE_BY_ROUTE = {
 	[ROUTES.INCOME]: IncomeDetailPage,
@@ -24,7 +23,8 @@ const PAGE_BY_ROUTE = {
 	[ROUTES.CALENDAR]: IncomeDetailPage,
 	[ROUTES.LIQUIDATION]: IncomeLiquidationPage,
 	[ROUTES.BREAKDOWN]: IncomeBreakdownPage,
-	[ROUTES.TRANSACTIONS]: IncomeTransactionsPage,
+	// 第五刀 5.3: TRANSACTIONS 路由不再渲染独立子页 — HoldingsExperience 在 #/transactions
+	// 路由下直接渲染 ledger 编辑表（成交流水移到这里并支持修改）。chip rail 仍由 IncomeSummary 提供。
 };
 
 function Fallback() {

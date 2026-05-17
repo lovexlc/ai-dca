@@ -13,7 +13,6 @@ import {
   Copy,
   FileImage,
   FileUp,
-  LineChart,
   LoaderCircle,
   Minus,
   Pencil,
@@ -212,6 +211,11 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     return earliest;
   }, [transactions]);
   const { route: incomeRoute } = useIncomeRoute();
+  // 第五刀 5.3: mainViewTab 从 incomeRoute 派生 — OVERVIEW=aggregate (基金表格), TRANSACTIONS=ledger (成交流水)。
+  // tablist 已移除，只保留表格本身；handleCopyVisibleTable / kindCounts 等仍读取 mainViewTab。
+  useEffect(() => {
+    setMainViewTab(incomeRoute === ROUTES.TRANSACTIONS ? 'ledger' : 'aggregate');
+  }, [incomeRoute]);
   const snapshotsByCode = ledger.snapshotsByCode;
   const ledgerRows = useMemo(
     () => buildLedgerRows(transactions, snapshotsByCode),
@@ -1648,35 +1652,16 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   function renderPortfolioOverview() {
-    // v3 · 原 cards/tone/navBadge/lastUpdateDisplay/toneClass 已伴随 cards 删除
+    // 第五刀 5.1: 移除「投资组合概览」文案 + 「行情中心」按钮，只保留行情 ticker。
+    // ticker 已移到 IncomeSection 之前（content 顶部），点击 ticker 仍可跳转行情中心。
+    if (!marketIndexState.indexes.length) return null;
     return (
-      <section className="rounded-2xl border border-slate-200/70 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:px-5 sm:py-4">
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <div className="flex items-center gap-2">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">投资组合概览</div>
-            <a
-              href={links.markets || './index.html?tab=markets'}
-              onClick={navigateToMarkets}
-              className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 ring-1 ring-slate-200 transition-colors hover:bg-blue-50 hover:text-blue-600 hover:ring-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 sm:text-[11px]"
-              title="进入行情中心查看完整大盘指数 · VIX · CNN 贪婪指数"
-              aria-label="进入行情中心"
-            >
-              <LineChart className="h-3 w-3" aria-hidden />
-              <span className="hidden sm:inline">行情中心</span>
-              <span className="sm:hidden">行情</span>
-              <ChevronRight className="h-3 w-3" aria-hidden />
-            </a>
-          </div>
+      <div className="relative w-full overflow-hidden">
+        <div className="flex w-full">
+          {renderMarketTicker()}
         </div>
-        {marketIndexState.indexes.length ? (
-          <div className="relative mt-2 w-full overflow-hidden">
-            <div className="flex w-full justify-end">
-              {renderMarketTicker()}
-            </div>
-            <div className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-white to-transparent" />
-          </div>
-        ) : null}
-      </section>
+        <div className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-white to-transparent" />
+      </div>
     );
   }
 
@@ -2652,45 +2637,14 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           </div>
         </div>
       ) : null}
-      <IncomeSection ledger={ledger} portfolio={portfolio} inceptionDate={inceptionDate} />
-      {incomeRoute === ROUTES.OVERVIEW ? (<>
+      {/* 第五刀 5.2: 行情 ticker 移到顶部（IncomeSection 之前），OVERVIEW / TRANSACTIONS 都会显示 */}
       {renderPortfolioOverview()}
+      <IncomeSection ledger={ledger} portfolio={portfolio} inceptionDate={inceptionDate} />
+      {incomeRoute === ROUTES.OVERVIEW || incomeRoute === ROUTES.TRANSACTIONS ? (<>
       <div className="grid grid-cols-1 gap-4">
         <section className="min-w-0 rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3 sm:gap-3 sm:justify-between">
-            <div className="flex min-w-0 flex-1 items-center gap-x-4 sm:flex-wrap sm:gap-y-2">
-              <div role="tablist" aria-label="数据视图" className="flex w-full min-w-0 items-center gap-1 overflow-x-auto border-b border-slate-200 -mb-px text-sm font-semibold sm:w-auto">
-                {[
-                  { key: 'aggregate', label: '基金汇总' },
-                  { key: 'ledger', label: '成交流水' }
-                ].map((tab) => {
-                  const active = mainViewTab === tab.key;
-                  return (
-                    <button
-                      key={tab.key}
-                      type="button"
-                      role="tab"
-                      aria-selected={active}
-                      className={cx(
-                        'relative inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 transition-colors',
-                        active
-                          ? 'border-indigo-500 text-slate-900'
-                          : 'border-transparent text-slate-500 hover:text-slate-800'
-                      )}
-                      onClick={() => setMainViewTab(tab.key)}
-                    >
-                      {tab.label}
-                      {tab.count ? (
-                        <span className={cx(
-                          'rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
-                          active ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-500'
-                        )}>{tab.count}</span>
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-</div>
+            {/* 第五刀 5.4: tablist 已移除 — 主表区域只保留表格，列表类型由 incomeRoute 决定 (OVERVIEW=基金汇总, TRANSACTIONS=成交流水) */}
             <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
               {mainViewTab === 'aggregate' ? renderNavStatusStrip() : null}
               <button
