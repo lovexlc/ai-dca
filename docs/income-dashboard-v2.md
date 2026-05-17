@@ -1,0 +1,128 @@
+# 收益看板 v2 架构文档
+
+> 状态：v2 上线（第一刀 → 第四刀全部落地）
+> 上线日期：2026-05
+> 父 plan：`docs/income-dashboard-v2-plan.md`
+
+## 1. 背景
+
+v1 把收益看板全部塑着在「持仓总览」一页（1 页 4 块 KPI + 曲线图 + 日历 + 折叠区），信息密度过高、与持仓列表争夺屏幕。v2 参考支付宝 / 天天基金 / 雪球「项目概览 + 五入口 tile」范式，拆成主页 + 5 个子页。
+
+## 2. 路由表
+
+hash route，不依赖 React Router。`src/app/incomeRoute.js` 提供 `useIncomeRoute()` / `ROUTES` / `navigate()` / `goBack()`。
+
+| Hash | 页面 | 组件 | 描述 |
+|---|---|---|---|
+| `#/` | 持仓总览 | `IncomeSummary` | snapshot 2×2 大卡 / mini bar A-B 切换 + 5 tile 入口 |
+| `#/income` | 收益明细 | `IncomeDetailPage` | 4 大 KPI 卡 + TimeRangeSelector + benchmark alpha（沘深 300） |
+| `#/chart` | 收益曲线 | `IncomeChartPage` | recharts AreaChart + benchmark 副线 + 区间选择器 |
+| `#/calendar` | 收益日历 | `IncomeCalendarPage` | 月度热力图 + 日详情 Popover |
+| `#/breakdown` | 持仓分析 | `IncomeBreakdownPage` | 品种饼图 + 资产类型饼图 + 贡献度 Top10 |
+| `#/transactions` | 交易记录 | `IncomeTransactionsPage` | 按月分组只读表 + 4 汇总卡 |
+
+5 个子页都是 `React.lazy` 动态加载，主页初始 bundle 不携 recharts。
+
+## 3. 主页 A/B 布局
+
+`IncomeSummary` 支持两种布局切换（localStorage 记忆）：
+
+- **A 布局 snapshot**：2×2 大卡（总市值 / 总成本 / 累计盈亏 / 今日盈亏），表达力强
+- **B 布局 mini bar**：单行紧凑指标条，密度高、为下方持仓列表让出更多空间
+
+切换控件位于 snapshot 右上角。
+
+5 个 tile入口（收益明细 / 持仓分析 / 交易记录 / 收益曲线 / 收益日历） 在 snapshot 下方。
+
+## 4. 子页职责划分
+
+### `IncomeDetailPage` — 收益明细
+
+- 4 张大 KPI 卡 + TimeRangeSelector + benchmark alpha（与沘深 300 对比的超额言说）
+- 复用原 `IncomeDetail.jsx` 的 11 helper + 3 useState + 3 useEffect + 4 KPI 派生
+- 加载状态徽章（LoaderCircle / AlertTriangle）渲染在 SubPageShell.right slot
+
+### `IncomeChartPage` / `IncomeCalendarPage` — 纯套壳
+
+- 1KB 薄壳：SubPageShell + Suspense + lazy(原组件)
+- ReturnChart 和 ReturnCalendar 原不动复用（各 356/437 行，自带 TimeRangeSelector）
+
+### `IncomeBreakdownPage` — 持仓分析（第四刀新增）
+
+- **概览卡**：持仓品种数 + 总市值 + 累计盈亏（涨红跌绿）
+- **品种饼图**：按 marketValue，前 8 + 「其他」灰块，左图右 legend
+- **资产类型饼图**：3 类设计
+  - `exchange` 场内 ETF（盘中实时，蓝）
+  - `otc` 境内场外（T 日 21:00 出价，绿）
+  - `qdii` 场外 QDII（T+1 出价，橙）
+  - legend 同时供各类市值 / 盈亏 / 口径
+- **贡献度榜**：盈利 Top 5 + 亏损 Top 5（按 totalProfit），双栏并列
+
+### `IncomeTransactionsPage` — 交易记录
+
+- 4 汇总卡（买入笔数/金额 · 卖出笔数/金额）
+- 按月分组 + 日期倒序 + BUY/SELL 双色块
+- 只读。主页原编辑表保留（查看下方「降级说明」）
+
+## 5. 数据传递契约
+
+所有子页均接受统一 props：
+
+```js
+{
+  ledger,   // { transactions: Tx[], snapshotsByCode: Record<code, snapshot> }
+  onBack,   // () => void，点返回箭头调用
+  navigate, // (route) => void
+}
+```
+
+核心计算函数（`src/app/`）：
+
+- `aggregateByCode(transactions, snapshotsByCode)` → `{ code, name, kind, marketValue, totalCost, totalProfit, totalReturnRate, hasPosition, ... }[]`
+- `buildPortfolioSeries({tx, navByCode, from, to})` → `{ profit, returnRate, annualizedReturn, dailySeries[] }`
+- `resolveRangeWindow(range, ...)` → `{from, to}`
+- `fetchNavHistory({code, from, to})` → `{items, stale}`
+
+颜色约定（全局）：
+
+- `TONE_UP = 'text-rose-600'`（盈利 / 上涨）
+- `TONE_DOWN = 'text-emerald-600'`（亏损 / 下跌）
+- `TONE_NEUTRAL = 'text-slate-700'`
+- `PORTFOLIO_COLOR = '#e11d48'` / `BENCH_COLOR = '#475569'`
+
+## 6. 插件化 / 类别颜色
+
+资产类型颜色不遵从「涨红跌绿」（你不能说场内 ETF 是「涨」或「跌」），是中性区分色：
+
+- `exchange` `#2563eb` blue
+- `otc` `#16a34a` green
+- `qdii` `#f97316` orange
+
+品种饼图使用 8 色调调色板 + slate-400 其他灰块。
+
+## 7. 已知降级
+
+### 7.1 交易表只读
+
+主页 `HoldingsExperience.jsx` 内嵌交易表 1844 行，带 14+ 列 TanStack Table 、排序/筛选/列隐藏、编辑 handler / 草稿状态 / setSelectedCode / setSidePanelTab 深度耦合。抽出需要一个独立的「第五刀」。当前 `IncomeTransactionsPage` 是另一个视角（按月分组 + 汇总）的只读视图。
+
+### 7.2 cf-browser-mcp 截图
+
+worker 60s read-timeout 拦截了 goto/screenshot/get_text 多次，现阶段未能走通。验证手段降级为三证：
+
+1. ESLint 0 error ƒ
+2. GitHub Actions success 状态 + run id
+3. `curl -I` last-modified 与 Actions 时间同步
+
+后续当 worker D1 会话 / 延长 read-timeout 后补 demo。
+
+## 8. 变更历史
+
+详见 `docs/income-dashboard-v2-plan.md`。
+
+| 刀 | 范围 | 页面 | 布局 | Commit |
+|---|---|---|---|---|
+| 1 | hash 路由 + 5 子页骨架 | IncomeSection / SubPageShell / 5 stub | · | `eaddf56` |
+| 2 | 主页瘦身 | IncomeSummary | A/B + 5 tile | `224a7d7` |
+| 3 | 4 子页装上 + 退场旧 IncomeDetail | Detail/Chart/Calendar/Transactions | · | `feb493c` |
+| 4 | 持仓分析实页 + 架构文档 | IncomeBreakdownPage / income-dashboard-v2.md | 三区块（品种/类型/贡献） | · |
