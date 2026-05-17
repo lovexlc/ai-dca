@@ -40,7 +40,7 @@ import { DataTableColumnHeader } from '@/components/data-table/data-table-column
 import { DataTableFacetedFilter } from '@/components/data-table/data-table-faceted-filter';
 import { DataTableToolbar } from '@/components/data-table/data-table-toolbar';
 import { formatCurrency, formatPercent } from '../app/accumulation.js';
-import { IncomeDetail } from '../app/IncomeDetail.jsx';
+import { IncomeSection } from '../app/income/IncomeSection.jsx';
 import {
   aggregateByCode,
   buildLedgerRows,
@@ -2990,7 +2990,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           </div>
         </div>
       ) : null}
-      <IncomeDetail ledger={ledger} />
+      <IncomeSection ledger={ledger} />
       {renderPortfolioOverview()}
       <div className="grid grid-cols-1 gap-4">
         <section className="min-w-0 rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
