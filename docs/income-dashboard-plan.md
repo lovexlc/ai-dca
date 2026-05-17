@@ -121,18 +121,27 @@
   - esbuild OK / ESLint 0 errors
   - Commit: `2aecc4b`
   - 完成时间：2026-05-17 00:17 (CST)
-- [ ] **3.3** `feat(holdings): wire ReturnChart + ReturnCalendar into IncomeDetail` — 装配下半屏
-  - 折叠面板：默认仅曲线展开；日历可点 toggle
-- [ ] **3.4** `chore(holdings): remove __incomeProbe + add docs/income-dashboard.md` — 收尾
-  - 删调试入口；写一篇用户文档讲「投资以来」起点、缓存、镜头定义
+- [x] **3.3** `feat(holdings): wire ReturnChart + ReturnCalendar into IncomeDetail` — 装配下半屏
+  - `IncomeDetail.jsx` +43/-8：`lazy(() => import('./ReturnChart.jsx'))` + `lazy(() => import('./ReturnCalendar.jsx'))` 拆出独立 chunk
+  - 新增 `Disclosure` 折叠面板：收益曲线 defaultOpen / 收益日历 defaultClosed；Suspense fallback 走 `LoaderCircle`
+  - 仅在 `inceptionDate` 存在（即有成交记录）时挂载下半屏，空持仓不渲染
+  - esbuild OK / ESLint 0 errors
+  - Commit: `1188318`
+  - 完成时间：2026-05-17 09:50 (CST)
+- [x] **3.4** `chore(holdings): remove __incomeProbe + add docs/income-dashboard.md` — 收尾
+  - 删 `src/app/incomeProbe.js` (3361B) + `HoldingsExperience.jsx` L43 import & L121-122 useEffect 探针钩子
+  - 新增 `docs/income-dashboard.md` (4604B)：投资以来起点 / 11 个镜头 / Modified Dietz 公式 / NAV 三层缓存 / 沪深300 基准 / UI 装配 / 文件索引
+  - esbuild OK / ESLint 0 errors（22 个预存 warnings 未增加）
+  - Commit: `40cd62a`
+  - 完成时间：2026-05-17 09:52 (CST)
 
 ## 📋 进度速览
 
 ```
-第一刀 ▰▰▰▰  4/4   (后端 ✅ navClient ✅ series ✅ probe ✅)  🎉 完成
-第二刀 ▰▰▰▰▰  5/5 🎉 (镜头 ✅ KPI ✅ 接入 ✅ 基准 ✅ polish ✅)
-第三刀 ▰▰▱▱  2/4
-合计   ▰▰▰▰▰▰▰▰▰▰▰▱▱  11/13
+第一刀 ▰▰▰▰   4/4 🎉 完成 (后端 ✅ navClient ✅ series ✅ probe ✅)
+第二刀 ▰▰▰▰▰  5/5 🎉 完成 (镜头 ✅ KPI ✅ 接入 ✅ 基准 ✅ polish ✅)
+第三刀 ▰▰▰▰   4/4 🎉 完成 (曲线 ✅ 日历 ✅ 装配 ✅ 收尾 ✅)
+合计   ▰▰▰▰▰▰▰▰▰▰▰▰▰  13/13 🎉 收益看板上线
 ```
 
 ## 🔍 验证阶梯（每个 commit 都要过）
@@ -154,3 +163,7 @@
 - 2026-05-16 23:57 - 第二刀 2.3 完成 (HoldingsExperience 接入 IncomeDetail)
 - 2026-05-17 00:03 - 第二刀 2.4 完成 (沪深300 benchmark overlay 复用 navHistory)
 - 2026-05-17 00:09 - 第二刀 2.5 完成 ＆ 第二刀全收 🎉 (typography / mobile / tone constants)
+- 2026-05-17 00:12 - 第三刀 3.1 完成 (ReturnChart.jsx Recharts 面积图)
+- 2026-05-17 00:17 - 第三刀 3.2 完成 (ReturnCalendar.jsx 月度热力图 + 8 asserts)
+- 2026-05-17 09:50 - 第三刀 3.3 完成 (IncomeDetail lazy 装配 ReturnChart + ReturnCalendar)
+- 2026-05-17 09:52 - 第三刀 3.4 完成 ＆ 第三刀全收 🎉 收益看板上线 (删 __incomeProbe + docs/income-dashboard.md)
