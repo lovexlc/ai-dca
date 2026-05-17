@@ -112,8 +112,15 @@
   - esbuild OK / ESLint 0 errors；UI smoke 在 3.3 接入 IncomeDetail 后用 cf-browser-mcp 一起跳
   - Commit: `8f4be78`
   - 完成时间：2026-05-17 00:12 (CST)
-- [ ] **3.2** `feat(app): ReturnCalendar.jsx (月度日历热力图)` — 每日盈亏日历
-  - 当月+前后2月可滑；红绿格子；点格弹当日 lots 明细
+- [x] **3.2** `feat(app): ReturnCalendar.jsx (月度日历热力图)` — 每日盈亏日历
+  - 文件：`src/app/ReturnCalendar.jsx` (15140 bytes，默认导出)
+  - 7×6 网格 · 红涨绿跌 · 色深按本月 |pnl| max 归一到 5 档 · 当月 ± 2 月限位
+  - 单日 pnl = `dailySeries[i].pnl - dailySeries[i-1].pnl`，剔除当日现金流后是净盈亏
+  - 点格子 Radix popover 弹当日交易明细 + 单日盈亏金额
+  - 单元测试：8 个 pure-fn assert 全过 (`dailyPnlByDate` / `txsOnDate` / `toneFor`)
+  - esbuild OK / ESLint 0 errors
+  - Commit: `2aecc4b`
+  - 完成时间：2026-05-17 00:17 (CST)
 - [ ] **3.3** `feat(holdings): wire ReturnChart + ReturnCalendar into IncomeDetail` — 装配下半屏
   - 折叠面板：默认仅曲线展开；日历可点 toggle
 - [ ] **3.4** `chore(holdings): remove __incomeProbe + add docs/income-dashboard.md` — 收尾
@@ -124,8 +131,8 @@
 ```
 第一刀 ▰▰▰▰  4/4   (后端 ✅ navClient ✅ series ✅ probe ✅)  🎉 完成
 第二刀 ▰▰▰▰▰  5/5 🎉 (镜头 ✅ KPI ✅ 接入 ✅ 基准 ✅ polish ✅)
-第三刀 ▰▱▱▱  1/4
-合计   ▰▰▰▰▰▰▰▰▰▰▱▱▱  10/13
+第三刀 ▰▰▱▱  2/4
+合计   ▰▰▰▰▰▰▰▰▰▰▰▱▱  11/13
 ```
 
 ## 🔍 验证阶梯（每个 commit 都要过）
