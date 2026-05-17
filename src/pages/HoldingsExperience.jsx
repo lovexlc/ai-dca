@@ -41,6 +41,7 @@ import { DataTableFacetedFilter } from '@/components/data-table/data-table-facet
 import { DataTableToolbar } from '@/components/data-table/data-table-toolbar';
 import { formatCurrency, formatPercent } from '../app/accumulation.js';
 import { IncomeSection } from '../app/income/IncomeSection.jsx';
+import { useIncomeRoute, ROUTES } from '../app/incomeRoute.js';
 import {
   aggregateByCode,
   buildLedgerRows,
@@ -209,6 +210,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
     return earliest;
   }, [transactions]);
+  const { route: incomeRoute } = useIncomeRoute();
   const snapshotsByCode = ledger.snapshotsByCode;
   const ledgerRows = useMemo(
     () => buildLedgerRows(transactions, snapshotsByCode),
@@ -2887,6 +2889,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         </div>
       ) : null}
       <IncomeSection ledger={ledger} portfolio={portfolio} inceptionDate={inceptionDate} />
+      {incomeRoute === ROUTES.OVERVIEW ? (<>
       {renderPortfolioOverview()}
       <div className="grid grid-cols-1 gap-4">
         <section className="min-w-0 rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -3583,6 +3586,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           </div>
         );
       })() : null}
+      </>) : null}
     </div>
   );
 

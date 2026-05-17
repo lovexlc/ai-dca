@@ -94,15 +94,15 @@ export function IncomeSummary({ portfolio, navigate, inceptionDate }) {
 				</dl>
 			</section>
 
-			<nav aria-label="收益看板子页入口" className="grid grid-cols-5 gap-2">
+			<nav aria-label="收益看板子页入口" className="flex flex-wrap gap-2">
 				{TILES.map(({ route: r, icon, label }) => (
 					<button
 						key={r}
 						type="button"
 						onClick={() => navigate?.(r)}
-						className="flex flex-col items-center gap-1 rounded-2xl border border-slate-200/70 bg-white px-2 py-3 text-[11px] font-medium text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-slate-50 active:bg-slate-100 sm:text-sm"
+						className="inline-flex items-center gap-1.5 rounded-full border border-slate-200/70 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-slate-50 active:bg-slate-100 sm:text-sm"
 					>
-						<span aria-hidden="true" className="text-xl leading-none">{icon}</span>
+						<span aria-hidden="true" className="text-base leading-none">{icon}</span>
 						<span>{label}</span>
 					</button>
 				))}
