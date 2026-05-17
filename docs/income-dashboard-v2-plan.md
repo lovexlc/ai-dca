@@ -111,14 +111,15 @@
 
 ### 第四刀：持仓分析新建 + 文档收尾
 
-- [ ] 4.1 `IncomeBreakdownPage.jsx`：按 `txByCode` × `currentNav` 算每只基金当前市值 + 贡献度（盈亏 / 总盈亏占比）；
-  - 品种饼图（前 10 + 其他）
-  - 资产类型饼图（偏股 / 偏债 / 指数 / 黄金 — 从 ai-dca/data 中读 `assetClass`，缺失则归 "其他"）
-  - 贡献度排序表（基金名 + 当前市值 + 累计盈亏 + 占比条）
-  - 复用 Recharts PieChart
-- [ ] 4.2 `docs/income-dashboard-v2.md`：新建 v2 架构文档 — 路由表 / IncomeSummary A/B 切换 / 5 子页职责 / 数据传递（Context vs props drilling）/ 已知降级（持仓分析仅算当前持仓不含历史已清仓）
-- [ ] 4.3 plan 终收 + 删 plan v1 中已被取代的章节交叉引用 + push + Actions success
-- [ ] 4.4 cf-browser-mcp 跑完整 demo：主页 → 5 子页 → 返回 → A/B 切换，各拿一张截图
+- [x] 4.1 `IncomeBreakdownPage.jsx` 实页（14.7KB / commit `56635c8`）：基于 `aggregateByCode(transactions, snapshotsByCode)` 得 `{ marketValue, totalCost, totalProfit, totalReturnRate, kind, hasPosition }`，仅取 `hasPosition && marketValue>0` 的仓位；
+  - 概览卡：持仓品种数 / 总市值 / 累计盈亏（涨红跌绿）
+  - 品种饼图：按 marketValue 降序，前 8 + 「其他（N 只）」 slate-400 灰块；右侧 legend 列表带占比 %
+  - 资产类型饼图（**口径调整**）：data 目录无 `assetClass` 字段，改用 `aggregateByCode` 已有的 `kind`：`exchange` 场内 ETF 蓝 / `otc` 境内场外 绿 / `qdii` 场外 QDII 橙；legend 同时供各类市值 + 盈亏 + 占比 + NAV 出价节奏说明
+  - 贡献度榜：盈利 Top 5 + 亏损 Top 5（按 totalProfit 降/升），双栏并列；每行 code+name+kind tag + 市值/成本 + 盈亏（红绿）+ 收益率
+  - Recharts PieChart 同步 import（首访 #/breakdown 时 Vite chunk-split 自动按需拉取）；ESLint 0 warning
+- [x] 4.2 `docs/income-dashboard-v2.md` 5.6KB v2 架构文档：路由表（6 行 hash→组件→职责）/ IncomeSummary A/B 切换 / 5 子页职责详描 / 数据传递 props 契约（ledger / onBack / navigate）/ 颜色约定 / 已知降级（交易表只读 + cf-browser-mcp 降级三证）/ 变更历史表（4 刀 commit 映射）
+- [x] 4.3 plan 终收 + push `56635c8` (2 files, +516 −5) + GitHub Actions `25984708899` success 32s / curl HEAD last-modified `2026-05-17 07:31:30 GMT` 与部署同步
+- [x] 4.4 cf-browser-mcp 完整 demo **降级保留**：worker 60s read-timeout 上限三次复现（goto/evaluate/get_text 全 -1，screenshot 全白 4801B），现阶段无法在 sandbox 内跑通 6 张截图 demo。已用「ESLint 0 error + Actions success + curl last-modified 同步」三证替代（详见验证矩阵）。后续 worker 接 D1 持久会话 / 调高 read-timeout 后补 demo。
 
 ---
 
@@ -138,7 +139,7 @@
 | 第一刀 | 0 err | OK | success | goto `#/chart` `evaluate location.hash` 命中 |
 | 第二刀 | 0 err | OK | success | 主页 screenshot + 点 tile → 子页 |
 | 第三刀 | 0 err | OK | success | 5 子页各 screenshot |
-| 第四刀 | 0 err | OK | success | demo 流程 6 张截图（5 子页 + A/B 切换）|
+| 第四刀 | 0 err | OK | success | **降级**：cf-browser-mcp 受 worker 60s read-timeout 限制，已用 ESLint + Actions + curl last-modified 三证替代 |
 
 用户已指示「不要本地 build」— 仅 ESLint + 远端 Actions；cf-browser-mcp 60s read-timeout 时降级为 `goto + screenshot` 双步骤，evaluate 跳过。
 
@@ -146,18 +147,21 @@
 
 ## 6. 进度速览
 
-- 第一刀 ▰▰▰▰ 4/4 ✅ 第一刀全收
-- 第二刀 ▰▰▰▰ 4/4 ✅ 第二刀全收
-- 第三刀 ▰▰▰▰▰▰ 6/6 ✅ 第三刀全收 (交易表采用简化版)
-- 第三刀 ▱▱▱▱▱▱ 0/6
-- 第四刀 ▱▱▱▱ 0/4
-- 合计   ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱ 14/18
+- 第一刀 ▰▰▰▰ 4/4 ✅ 第一刀全收
+- 第二刀 ▰▰▰▰ 4/4 ✅ 第二刀全收
+- 第三刀 ▰▰▰▰▰▰ 6/6 ✅ 第三刀全收 (交易表采用简化版)
+- 第四刀 ▰▰▰▰ 4/4 ✅ 第四刀全收 (cf-browser-mcp 降级保留 + 三证替代)
+- 合计   ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰ 18/18 🎉 v2 全收
 
 ---
 
 ## 7. 变更日志
 
 - 2026-05-17 初版 plan 落地。决策：Q1=A+B 可切换 / Q2 全选 5 tile / Q3 hash route / Q4 完整 4 刀。
+- 2026-05-17 第一刀 4/4：hash 路由骨架 + 5 子页 stub + IncomeSection 路由（commit `eaddf56` / Actions `25983601386` success 34s）。
+- 2026-05-17 第二刀 4/4：IncomeSummary 主页瘦身 + A/B 布局 + 5 tile 入口（commit `224a7d7` / Actions `25984075073` success 38s）。
+- 2026-05-17 第三刀 6/6：4 子页实现（IncomeDetailPage / IncomeChartPage / IncomeCalendarPage / IncomeTransactionsPage）+ 删除旧 `IncomeDetail.jsx`（commit `feb493c` / Actions `25984242139` success 31s）。**降级**：3.4 交易表抽离改为新建独立只读视图，主页编辑表保留，避免 1844 行 ledgerColumns 重构风险。
+- 2026-05-17 第四刀 4/4：IncomeBreakdownPage 实页 + v2 架构文档（commit `56635c8` / Actions `25984708899` success 32s）。**口径调整**：原计划「偏股/偏债/指数/黄金」按 `assetClass`，data 目录无此字段，改用 `aggregateByCode.kind`（场内 ETF / 境内场外 / 场外 QDII），保留三类饼图意图。**降级**：4.4 cf-browser-mcp demo 受 worker 60s read-timeout 限制无法跑通，三证替代。
 - 2026-05-17 第一刀 1.1/1.2/1.3 完成（commit `eaddf56`）：`src/app/incomeRoute.js` (hash route hook + ROUTES) + `src/app/income/` 7 个新文件（SubPageShell + 5 子页占位 + IncomeSection 转发器）+ `HoldingsExperience.jsx` 2 行接入。
 - 2026-05-17 第一刀 1.4 验证。Actions `25983601386` success 34s + curl `tools.freebacktrack.tech` HTTP 200 last-modified `06:33:57 GMT`。cf-browser-mcp 限于 worker 60s read-timeout 取不到 SPA 路由运行时证据，后续身体错误可用实机朋友打开 `#/chart` 能不能看到占位页快速纠偏。第一刀 4/4 收官。
 - 2026-05-17 第二刀 2.1-2.4 全收（commit `224a7d7`）：新建 `IncomeSummary.jsx`（~430 行：A/B 布局切换 + localStorage `incomeOverviewLayout` + 2×2 SnapshotKpi / 一行 MiniKpi + TimeRangeSelector + benchmark 对比 + 5 tile 内联）；IncomeSection.jsx 瘦到 53 行，OVERVIEW 交付给 IncomeSummary。Actions `25984075073` success 38s，last-modified `06:59:34 GMT`。IncomeDetail.jsx 暂留着，第三刀拆拆后删。
