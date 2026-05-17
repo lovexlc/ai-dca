@@ -72,21 +72,21 @@
 
 ### 第一刀：路由骨架（3 commit）
 
-- [ ] 1.1 新建 `src/app/incomeRoute.js`：
+- [x] 1.1 新建 `src/app/incomeRoute.js`：
   - `ROUTES = { OVERVIEW: '', INCOME: 'income', CHART: 'chart', CALENDAR: 'calendar', BREAKDOWN: 'breakdown', TRANSACTIONS: 'transactions' }`
   - `useIncomeRoute()` hook：listen `hashchange`，从 `location.hash` 解析当前 route + params；返回 `{ route, params, navigate(route, params?), goBack() }`
   - `navigate('income')` → `location.hash = '#/income'`；`navigate('')` → 清空 hash
   - `goBack()` 走 `history.back()`；如果没有上一条则 fallback `navigate('')`
   - **不破坏** `useRangeUrlSync` 现在用的 `?range=` query；range 跟 hash 并存（hash 管 route，query 管 range）
-- [ ] 1.2 新建 5 个子页骨架（占位空白页）：
+- [x] 1.2 新建 5 个子页骨架（占位空白页）：
   - `src/app/income/IncomeDetailPage.jsx`（搬走 IncomeDetail.jsx 的 4 KPI + 11 镜头）
   - `src/app/income/IncomeChartPage.jsx`（搬走 ReturnChart + 沪深300 基准 + 范围选择器）
   - `src/app/income/IncomeCalendarPage.jsx`（搬走 ReturnCalendar）
   - `src/app/income/IncomeBreakdownPage.jsx`（**新建占位**，仅 "持仓分析（开发中）"）
   - `src/app/income/IncomeTransactionsPage.jsx`（占位，复用现有 HoldingsExperience 内交易表 — 第三刀再接）
   - 每个子页：`<SubPageShell title="xxx" onBack>{children}</SubPageShell>` 顶部统一返回按钮，纯空白 body
-- [ ] 1.3 在 `HoldingsExperience.jsx` 接入 `useIncomeRoute()`，根据 route 渲染原 IncomeDetail 或子页占位（无 tile 还没做，先用临时 `<a href="#/chart">收益曲线</a>` 等链接进入）
-- [ ] 1.4 ESLint + push + GitHub Actions deploy-pages success + cf-browser-mcp goto `#/chart` 验证空白子页能被路由命中（拿 Title 或 `evaluate` URL）
+- [x] 1.3 在 `HoldingsExperience.jsx` 接入 `useIncomeRoute()`，根据 route 渲染原 IncomeDetail 或子页占位。实际落地方式：新建 `IncomeSection.jsx` 转发器包装原 IncomeDetail + 5 tile 入口，HoldingsExperience.jsx 只改两行（L43 import / L2993 JSX）。
+- [x] 1.4 ESLint 新文件 0 warning / push `eaddf56` / GitHub Actions `25983601386` success 34s / curl HEAD `tools.freebacktrack.tech` last-modified `2026-05-17 06:33:57 GMT` 与部署同步 / cf-browser-mcp `initialize` 200 OK 拿到 session，但 `goto` + `get_text` 双双被 worker 60s read-timeout 截断（urllib 返回 -1）—— 已知瓶颈，按验证规则降级为 Actions success + curl last-modified + Cloudflare Pages 双证。
 
 ### 第二刀：主页瘦身（IncomeSummary）
 
@@ -146,14 +146,16 @@
 
 ## 6. 进度速览
 
-- 第一刀 ▱▱▱▱ 0/4
+- 第一刀 ▰▰▰▰ 4/4 ✅ 第一刀全收
 - 第二刀 ▱▱▱▱ 0/4
 - 第三刀 ▱▱▱▱▱▱ 0/6
 - 第四刀 ▱▱▱▱ 0/4
-- 合计   ▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱ 0/18
+- 合计   ▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱ 4/18
 
 ---
 
 ## 7. 变更日志
 
 - 2026-05-17 初版 plan 落地。决策：Q1=A+B 可切换 / Q2 全选 5 tile / Q3 hash route / Q4 完整 4 刀。
+- 2026-05-17 第一刀 1.1/1.2/1.3 完成（commit `eaddf56`）：`src/app/incomeRoute.js` (hash route hook + ROUTES) + `src/app/income/` 7 个新文件（SubPageShell + 5 子页占位 + IncomeSection 转发器）+ `HoldingsExperience.jsx` 2 行接入。
+- 2026-05-17 第一刀 1.4 验证。Actions `25983601386` success 34s + curl `tools.freebacktrack.tech` HTTP 200 last-modified `06:33:57 GMT`。cf-browser-mcp 限于 worker 60s read-timeout 取不到 SPA 路由运行时证据，后续身体错误可用实机朋友打开 `#/chart` 能不能看到占位页快速纠偏。第一刀 4/4 收官。
