@@ -156,9 +156,9 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSerie
 
 				{/* 3 列 KPI：今日 / 持有 / 累计 */}
 				<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)] gap-1 sm:gap-4">
-					<KpiCol label="今日" value={todayProfit} rate={todayReturnRate} align="left" />
-					<KpiCol label="持有" value={totalProfit} rate={totalReturnRate} />
-					<KpiCol label="累计" value={cumulativeProfit} rate={cumulativeReturnRate} align="right" />
+					<KpiCol label="今日收益(元)" value={todayProfit} rate={todayReturnRate} align="left" />
+					<KpiCol label="持有收益(元)" value={totalProfit} rate={totalReturnRate} />
+					<KpiCol label="累计收益(元)" value={cumulativeProfit} rate={cumulativeReturnRate} align="right" />
 				</div>
 			</section>
 
