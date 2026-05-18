@@ -9,6 +9,8 @@ import { Card, Field, NumberInput, Pill, SectionHeading, SelectField, StatCard, 
 import { EXTRA_SYMBOL_GROUPS } from '../app/extraSymbols.js';
 
 const DAY_OPTIONS = [1, 8, 15, 28];
+const CALC_APPLY_KEY = 'aiDcaCalcApply';
+const CALC_FREQ_TO_DCA = { weekly: '每周', biweekly: '每周', monthly: '每月' };
 
 // onAfterSave: 当该页被嵌入交易计划二级 tab 时，保存后由父控件接管跳转（避免整页 reload）。
 // 未传时保留原行为：保存后跳转到 links.tradePlans。
@@ -31,6 +33,30 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
   useEffect(() => {
     persistDcaState(state, projection);
   }, [state, projection]);
+
+  // PR 2.5b：从 DCA 回测计算器跳过来时，读取 sessionStorage 预填表单。
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let raw;
+    try { raw = window.sessionStorage.getItem(CALC_APPLY_KEY); } catch (_e) { return; }
+    if (!raw) return;
+    try {
+      const payload = JSON.parse(raw);
+      const mappedFreq = CALC_FREQ_TO_DCA[payload.frequency] || '每周';
+      setState((current) => ({
+        ...current,
+        symbol: payload.symbol || current.symbol,
+        frequency: mappedFreq,
+        recurringInvestment: String(payload.amount || current.recurringInvestment)
+      }));
+      showToast({
+        title: '已从回测计算器填充表单',
+        description: `${payload.symbol} · 频率 ${mappedFreq} · 单期 $${payload.amount}。可修改后保存。`,
+        tone: 'emerald'
+      });
+    } catch (_e) { /* ignore */ }
+    try { window.sessionStorage.removeItem(CALC_APPLY_KEY); } catch (_e) { /* ignore */ }
+  }, []);
 
   async function handleSave() {
     if (isSaving) {

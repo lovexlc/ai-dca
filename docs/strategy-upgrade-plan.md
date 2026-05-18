@@ -162,7 +162,8 @@ src/components/
 - [ ] PR 4.5（后插队）：改 `src/pages/SellPlanExperience.jsx`：生成减仓计划时调 `checkWeightLimit` 与实际仓位打通
 - [ ] PR 4.5：改 `src/pages/HoldingsExperience.jsx`：仓位占比饰区 + 加超仓提醒（3336 行，需小步）
 - [ ] PR 4.5：改 `src/app/notifySync.js`：`weight_alert` 规则同步至 worker
-- [ ] PR 4.5：单测 `positionManager.test.js`（超仓边界、宽基免检、面向总资产=0的 fallback）
+- [x] 单测 `test/positionManager.test.mjs`（8 个 case：超仓、宽基免检、totalAssets=0 fallback、checkWeightLimit、再平衡 advice）— 随 PR 4 后补上
+- [x] 单测 `test/sellStrategy.test.mjs`（7 个 case）、`test/costTracker.test.mjs`（7 个 case，含负成本 / 费用 / 乱序）、`test/dcaCalculator.test.mjs`（6 个 case）—一起补齐。含原 `clearedLotsAnalytics` 1 个，总计 29/29 通过
 - [ ] 前端验证（e2e）：
   1. `/trade-plans#position` 空状态看到「先去 #ledger 录记录」提示
   2. 录几笔交易后进页：股数 / 标獣自动出现；手填价格后市值 / 占比 / 柱状图渲染

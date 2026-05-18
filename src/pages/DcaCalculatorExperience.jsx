@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { AlertTriangle, Calculator, Play } from 'lucide-react';
+import { AlertTriangle, Calculator, Play, Send } from 'lucide-react';
 import {
   DCA_FREQUENCIES,
   DCA_TIMEFRAMES,
@@ -25,7 +25,7 @@ import {
 
 // PR 2.5：DCA 回测计算器。
 // 动能：选标的 + 时间范围 + 频率 + 金额 → 拉取历史 K 线 + 纯函数回测 + 列表 + 走势图。
-// 不包含「一键应用」跳转 DCA 创建页（待 PR 2.5b）。
+// PR 2.5b：「应用此策略」 点后写 sessionStorage `aiDcaCalcApply` Ⓝ 跳 #dca，DcaExperience 读取预填表单。
 
 const DEFAULT_SYMBOL = 'QQQ';
 
@@ -33,6 +33,7 @@ const CHART_MARGIN = Object.freeze({ top: 8, right: 16, bottom: 8, left: 0 });
 const CHART_TICK = Object.freeze({ fontSize: 11, fill: '#94a3b8' });
 const CHART_TOOLTIP_STYLE = Object.freeze({ borderRadius: 12, fontSize: 12, border: '1px solid #e2e8f0' });
 const CHART_LEGEND_STYLE = Object.freeze({ fontSize: 12 });
+const CALC_APPLY_KEY = 'aiDcaCalcApply';
 
 export function DcaCalculatorExperience({ embedded = false }) {
   const [symbol, setSymbol] = useState(DEFAULT_SYMBOL);
@@ -86,6 +87,20 @@ export function DcaCalculatorExperience({ embedded = false }) {
 
   const summary = result?.summary;
   const isProfit = summary && summary.profit >= 0;
+
+  function handleApplyStrategy() {
+    if (!summary) return;
+    try {
+      window.sessionStorage.setItem(CALC_APPLY_KEY, JSON.stringify({
+        symbol: String(symbol || '').trim().toUpperCase(),
+        frequency,
+        amount: Number(amount) || 0,
+        avgCost: summary.avgCost,
+        appliedAt: new Date().toISOString()
+      }));
+    } catch (_e) { /* ignore quota */ }
+    window.location.hash = '#dca';
+  }
 
   return (
     <div className={cx('space-y-6', embedded ? '' : 'mx-auto max-w-6xl px-6 pt-8')}>
@@ -205,7 +220,20 @@ export function DcaCalculatorExperience({ embedded = false }) {
             <SectionHeading
               eyebrow="走势"
               title={`${symbol.toUpperCase()} · ${summary.startDate} → ${summary.endDate}`}
-              action={<Pill tone={isProfit ? 'emerald' : 'rose'}>{isProfit ? '赢利' : '亏损'}</Pill>}
+              action={(
+                <div className="flex items-center gap-2">
+                  <Pill tone={isProfit ? 'emerald' : 'rose'}>{isProfit ? '赢利' : '亏损'}</Pill>
+                  <button
+                    type="button"
+                    onClick={handleApplyStrategy}
+                    className={cx(primaryButtonClass, 'inline-flex items-center gap-1.5')}
+                    title="点击以此回测参数在 「定投」 页预填一份新定投计划"
+                  >
+                    <Send className="h-4 w-4" />
+                    应用此策略
+                  </button>
+                </div>
+              )}
             />
             <div className="mt-4 h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
