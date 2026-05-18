@@ -9,6 +9,8 @@ import {
   fetchEastmoneyQuote,
   fetchEastmoneyQuotesBatch,
   fetchEastmoneyMovers,
+  searchYahooSymbols,
+  searchEastmoneySymbols,
   fetchFinnhubQuote,
   fetchFinnhubProfile,
   fetchFinnhubCompanyNews,
@@ -78,6 +80,10 @@ export default {
       }
       if (path === '/quotes') {
         return await handleBatchQuotes(env, url.searchParams.get('symbols') || '');
+      }
+      if (path === '/search') {
+        const market = (url.searchParams.get('market') || 'us').toLowerCase();
+        return await handleSearch(env, market, url.searchParams.get('q') || '', url.searchParams.get('limit') || '8');
       }
       let m;
       if ((m = path.match(/^\/quote\/(.+)$/))) {
@@ -212,6 +218,22 @@ async function refreshSectors(env, market) {
   const payload = { market, generatedAt: new Date().toISOString(), sectors };
   await kvPutJson(env, 'sec:' + market, payload, { ttlSeconds: 120 });
   return payload;
+}
+
+async function handleSearch(env, market, query, limitParam) {
+  const q = String(query || '').trim();
+  const limit = Math.max(1, Math.min(Number(limitParam) || 8, 12));
+  if (!q) return json({ market, query: q, results: [] });
+  if (market !== 'us' && market !== 'cn') return errorJson('unknown market ' + market, 400);
+  const cacheKey = 'search:' + market + ':' + q.toLowerCase() + ':' + limit;
+  const cached = await kvGetJson(env, cacheKey);
+  if (cached && Array.isArray(cached.results)) return json({ ...cached, cached: true });
+  const results = market === 'cn'
+    ? await searchEastmoneySymbols(q, { limit })
+    : await searchYahooSymbols(q, { limit });
+  const payload = { market, query: q, generatedAt: new Date().toISOString(), results };
+  await kvPutJson(env, cacheKey, payload, { ttlSeconds: 3600 });
+  return json({ ...payload, cached: false });
 }
 
 async function handleQuote(env, rawSymbol) {

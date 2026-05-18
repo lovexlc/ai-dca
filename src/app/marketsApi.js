@@ -62,6 +62,12 @@ export async function fetchQuotes(symbols) {
   return getJson('/quotes?symbols=' + list);
 }
 
+export async function searchSymbols(market, query, { limit = 8, signal } = {}) {
+  const q = String(query || '').trim();
+  if (!q) return { results: [] };
+  return getJson('/search?market=' + encodeURIComponent(market) + '&q=' + encodeURIComponent(q) + '&limit=' + encodeURIComponent(limit), { signal });
+}
+
 export async function fetchKline(symbol, { timeframe = '1d' } = {}) {
   return getJson('/kline/' + encodeURIComponent(symbol) + '?tf=' + encodeURIComponent(timeframe));
 }

@@ -8,8 +8,10 @@ const UA = 'Mozilla/5.0 (compatible; ai-dca-markets/1.0)';
 const COMMON_HEADERS = { 'user-agent': UA, accept: '*/*' };
 
 const YAHOO_HOST = 'https://' + 'query1.finance.yahoo.com';
+const YAHOO_SEARCH_HOST = 'https://' + 'query2.finance.yahoo.com';
 const EM_PUSH2_HOST = 'https://' + 'push2.eastmoney.com';
 const EM_PUSH2HIS_HOST = 'https://' + 'push2his.eastmoney.com';
+const EM_SEARCH_HOST = 'https://' + 'searchapi.eastmoney.com';
 const FINNHUB_HOST = 'https://' + 'finnhub.io';
 const CNN_FNG_HOST = 'https://' + 'production.dataviz.cnn.io';
 
@@ -125,6 +127,33 @@ export async function fetchYahooQuotesBatch(symbols, opts = {}) {
   return out;
 }
 
+export async function searchYahooSymbols(query, { limit = 8 } = {}) {
+  const q = String(query || '').trim();
+  if (!q) return [];
+  const url = buildUrl(YAHOO_SEARCH_HOST, '/v1/finance/search', {
+    q,
+    quotesCount: Math.max(1, Math.min(Number(limit) || 8, 12)),
+    newsCount: 0
+  });
+  const res = await fetch(url, { headers: COMMON_HEADERS, cf: { cacheTtl: 300 } });
+  if (!res.ok) throw new Error('yahoo search HTTP ' + res.status);
+  const data = await res.json().catch(() => ({}));
+  const rows = Array.isArray(data && data.quotes) ? data.quotes : [];
+  const allowed = new Set(['EQUITY', 'ETF', 'MUTUALFUND', 'INDEX']);
+  return rows
+    .filter((row) => row && row.symbol && (!row.quoteType || allowed.has(row.quoteType)))
+    .slice(0, Math.max(1, Math.min(Number(limit) || 8, 12)))
+    .map((row) => ({
+      symbol: String(row.symbol || '').toUpperCase(),
+      name: row.shortname || row.longname || row.symbol || '',
+      market: 'us',
+      exchange: row.exchDisp || row.exchange || '',
+      type: row.quoteType || row.typeDisp || '',
+      industry: row.industryDisp || row.industry || '',
+      sector: row.sectorDisp || row.sector || ''
+    }));
+}
+
 // ===================== 东方财富 push2his K 线（A 股 + 指数） =====================
 
 // klt: 1=1m, 5=5m, 15=15m, 30=30m, 60=60m, 101=日, 102=周, 103=月
@@ -220,6 +249,42 @@ export async function fetchEastmoneyQuotesBatch(codes) {
     })
   );
   return out;
+}
+
+export async function searchEastmoneySymbols(query, { limit = 8 } = {}) {
+  const q = String(query || '').trim();
+  if (!q) return [];
+  const url = buildUrl(EM_SEARCH_HOST, '/api/suggest/get', {
+    input: q,
+    type: 14,
+    token: 'D43BF722C8E33BDC906FB84D85E326E8',
+    count: Math.max(1, Math.min(Number(limit) || 8, 12))
+  });
+  const res = await fetch(url, {
+    headers: { ...COMMON_HEADERS, referer: 'https://quote.eastmoney.com/' },
+    cf: { cacheTtl: 300 }
+  });
+  if (!res.ok) throw new Error('eastmoney search HTTP ' + res.status);
+  const data = await res.json().catch(() => ({}));
+  const rows = (((data || {}).QuotationCodeTable || {}).Data) || [];
+  const normalized = Array.isArray(rows) ? rows : [];
+  return normalized
+    .filter((row) => row && row.Code && (row.Classify === 'AStock' || row.SecurityType === '1' || row.SecurityTypeName))
+    .slice(0, Math.max(1, Math.min(Number(limit) || 8, 12)))
+    .map((row) => {
+      const code = String(row.Code || '').trim();
+      const mkt = String(row.MktNum || row.MarketType || '').trim();
+      const prefix = mkt === '1' ? 'sh' : mkt === '0' ? 'sz' : mkt === '2' ? 'bj' : code.startsWith('6') ? 'sh' : code.startsWith('4') || code.startsWith('8') ? 'bj' : 'sz';
+      return {
+        symbol: prefix + code,
+        code,
+        name: row.Name || code,
+        market: 'cn',
+        exchange: row.SecurityTypeName || (prefix === 'sh' ? '沪A' : prefix === 'bj' ? '北交所' : '深A'),
+        type: row.Classify || row.SecurityTypeName || '',
+        pinyin: row.PinYin || ''
+      };
+    });
 }
 
 // 东财涨跌榜：沪深 A 股 (m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23)。
