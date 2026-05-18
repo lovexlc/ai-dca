@@ -15,7 +15,7 @@ import SubPageShell from './SubPageShell.jsx';
 import { formatCurrency, formatPercent } from '../accumulation.js';
 import { cx } from '../../components/experience-ui.jsx';
 import { fetchNavHistory } from '../navHistoryClient.js';
-import { buildPortfolioSeries, resolveRangeWindow } from '../portfolioSeries.js';
+import { buildPortfolioSeries, resolveRangeWindow, shiftDays } from '../portfolioSeries.js';
 import { TimeRangeSelector } from '../TimeRangeSelector.jsx';
 import { useRangeUrlSync, DEFAULT_RANGE } from '../rangeUrlSync.js';
 
@@ -188,7 +188,9 @@ export function IncomeDetailPage({ ledger, onBack }) {
       setState((prev) => ({ ...prev, status: 'loading', error: null }));
       try {
         const codes = uniqCodes(transactions);
-        const nav = codes.length ? await fetchAllNav(codes, w.from, w.to) : { navByCode: {}, stale: false };
+        // 左边界左移 30d，保证 vStart 在节假日/元旦等非交易日上能 fallback 到上个交易日 nav。
+        const navFromIso = shiftDays(w.from, -30);
+        const nav = codes.length ? await fetchAllNav(codes, navFromIso, w.to) : { navByCode: {}, stale: false };
         const series = buildPortfolioSeries({ tx: transactions, navByCode: nav.navByCode, from: w.from, to: w.to });
         setState({ status: 'ready', series, stale: nav.stale, error: null });
       } catch (err) {

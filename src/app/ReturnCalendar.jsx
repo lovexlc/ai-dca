@@ -244,7 +244,9 @@ function ReturnCalendar({ ledger, className = '', selectedDate, onSelectDate }) 
           return;
         }
         const codes = uniqCodes(transactions);
-        const { navByCode, stale } = await fetchAllNav(codes, fromIso, toIso);
+        // 左边界左移 30 自然日，保证 vStart 在节假日/月初等非交易日仍能 findNavOnOrBefore 到 “上个交易日” nav。
+        const navFromIso = shiftDays(fromIso, -30);
+        const { navByCode, stale } = await fetchAllNav(codes, navFromIso, toIso);
         if (cancelled) return;
         const series = buildPortfolioSeries({ tx: transactions, navByCode, from: fromIso, to: toIso });
         const daily = dailyPnlByDate(series.dailySeries || []);

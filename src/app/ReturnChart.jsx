@@ -22,7 +22,7 @@ import { LoaderCircle, AlertTriangle } from 'lucide-react';
 import { formatPercent } from './accumulation.js';
 import { cx } from '../components/experience-ui.jsx';
 import { fetchNavHistory } from './navHistoryClient.js';
-import { buildPortfolioSeries, resolveRangeWindow } from './portfolioSeries.js';
+import { buildPortfolioSeries, resolveRangeWindow, shiftDays } from './portfolioSeries.js';
 import { useRangeUrlSync, DEFAULT_RANGE } from './rangeUrlSync.js';
 
 const BENCH_CODE = '510300';
@@ -187,12 +187,14 @@ function ReturnChart({ ledger, className = '' }) {
     (async () => {
       try {
         const codes = uniqCodes(transactions);
+        // 左边界左移 30d，避免窗口起点为非交易日时 vStart 被坍缩为 0。
+        const navFromIso = shiftDays(rangeWindow.from, -30);
         const navPromise = codes.length
-          ? fetchAllNav(codes, rangeWindow.from, rangeWindow.to)
+          ? fetchAllNav(codes, navFromIso, rangeWindow.to)
           : Promise.resolve({ navByCode: {}, stale: false });
         const benchPromise = fetchNavHistory({
           code: BENCH_CODE,
-          from: rangeWindow.from,
+          from: navFromIso,
           to: rangeWindow.to
         }).catch(() => ({ items: [], stale: false }));
         const [nav, bench] = await Promise.all([navPromise, benchPromise]);
