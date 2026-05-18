@@ -171,7 +171,7 @@ function WEEKDAYS() {
   return ['一', '二', '三', '四', '五', '六', '日'];
 }
 
-function DayCell({ cell, pnl, max, onClick, todayIso, selectedIso }) {
+function DayCell({ cell, pnl, max, onClick, todayIso, selectedIso, compact = false }) {
   const isToday = cell.iso === todayIso;
   const isSelected = cell.iso === selectedIso;
   const dim = !cell.inMonth;
@@ -194,7 +194,9 @@ function DayCell({ cell, pnl, max, onClick, todayIso, selectedIso }) {
       onClick={dim ? undefined : onClick}
       disabled={dim}
       className={cx(
-        'flex aspect-square min-h-[36px] flex-col items-start justify-between rounded-md border p-1 text-left transition-colors tabular-nums sm:min-h-[44px] md:aspect-auto md:h-[64px] lg:h-[68px]',
+        compact
+          ? 'flex aspect-square min-h-0 flex-col items-start justify-between rounded-md border p-1 text-left transition-colors tabular-nums'
+          : 'flex aspect-square min-h-[36px] flex-col items-start justify-between rounded-md border p-1 text-left transition-colors tabular-nums sm:min-h-[44px] md:aspect-auto md:h-[64px] lg:h-[68px]',
         isSelected && !dim ? selectedClasses : baseClasses,
         !isSelected && isToday && !dim ? 'ring-1 ring-offset-1 ring-slate-300' : '',
         !dim ? 'hover:brightness-95' : ''
@@ -211,7 +213,7 @@ function DayCell({ cell, pnl, max, onClick, todayIso, selectedIso }) {
   );
 }
 
-function ReturnCalendar({ ledger, className = '', selectedDate, onSelectDate }) {
+function ReturnCalendar({ ledger, className = '', selectedDate, onSelectDate, compact = false }) {
   const transactions = useMemo(
     () => (Array.isArray(ledger?.transactions) ? ledger.transactions : []),
     [ledger]
@@ -351,7 +353,7 @@ function ReturnCalendar({ ledger, className = '', selectedDate, onSelectDate }) 
         </button>
       </div>
 
-      <div className="mt-3 grid grid-cols-7 gap-1 text-center">
+      <div className={cx('mt-3 grid grid-cols-7 text-center', compact ? 'gap-0.5' : 'gap-1')}>
         {WEEKDAYS().map((w) => (
           <div key={w} className="text-[10px] font-medium text-slate-400 sm:text-[11px]">{w}</div>
         ))}
@@ -367,6 +369,7 @@ function ReturnCalendar({ ledger, className = '', selectedDate, onSelectDate }) 
                 onClick={undefined}
                 todayIso={todayCellIso}
                 selectedIso={selectedDate}
+                compact={compact}
               />
             );
           }
@@ -379,6 +382,7 @@ function ReturnCalendar({ ledger, className = '', selectedDate, onSelectDate }) 
               onClick={() => onSelectDate && onSelectDate(cell.iso)}
               todayIso={todayCellIso}
               selectedIso={selectedDate}
+              compact={compact}
             />
           );
         })}

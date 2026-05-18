@@ -126,7 +126,7 @@ export function DailyFundBreakdown({ ledger, selectedDate, className = '' }) {
         </div>
       </div>
 
-      <div className="mt-3 divide-y divide-slate-100">
+      <div className="mt-3 min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto">
         {rows.length === 0 && !isLoading ? (
           <div className={cx('py-4 text-center text-[12px]', TONE_DIM)}>
             {transactions.length === 0 ? '暂无成交记录。' : '当日无持仓。'}

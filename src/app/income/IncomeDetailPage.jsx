@@ -369,12 +369,21 @@ export function IncomeDetailPage({ ledger, portfolio, onBack }) {
               chartClassName="lg:h-[500px]"
             />
           </Suspense>
-          <div className="grid gap-3">
+          <div className="grid gap-3 lg:h-[580px] lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)]">
             <Suspense fallback={<LazyFallback label="加载收益日历…" />}>
-              <ReturnCalendar ledger={ledger} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+              <ReturnCalendar
+                ledger={ledger}
+                selectedDate={selectedDate}
+                onSelectDate={setSelectedDate}
+                compact
+              />
             </Suspense>
             <Suspense fallback={<LazyFallback label="加载当日明细…" />}>
-              <DailyFundBreakdown ledger={ledger} selectedDate={selectedDate} />
+              <DailyFundBreakdown
+                ledger={ledger}
+                selectedDate={selectedDate}
+                className="lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden"
+              />
             </Suspense>
           </div>
         </div>
