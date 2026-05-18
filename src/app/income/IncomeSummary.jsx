@@ -106,7 +106,7 @@ function KpiCol({ label, value, rate, align = 'center' }) {
 	);
 }
 
-export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSeries, quickActions, inceptionDate }) {
+export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSeries, cumulativeLastIso, quickActions, inceptionDate }) {
 	const marketValue = portfolio?.marketValue;
 	const todayProfit = portfolio?.todayProfit;
 	const todayReturnRate = portfolio?.todayReturnRate;
@@ -165,6 +165,14 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSerie
 				{Array.isArray(cumulativeSeries) && cumulativeSeries.length >= 2 ? (
 					<div className="flex-1 min-w-0">
 						<Sparkline series={cumulativeSeries} tone={cumulativeTone} />
+						{cumulativeLastIso ? (
+							<div
+								className="mt-1 text-[10px] text-slate-400 tabular-nums"
+								title="曲线末端为公布单位净值，不含今日实时变动；今日实时请看持仓页"
+							>
+								截至 {cumulativeLastIso} 公布净值
+							</div>
+						) : null}
 					</div>
 				) : (
 					<div className="flex-1" aria-hidden="true" />

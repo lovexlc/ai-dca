@@ -7,7 +7,9 @@
 //   - transactions: ledger.transactions
 //   - inceptionDate: ISO YYYY-MM-DD，首笔 BUY 日
 //
-// 输出：number[]（日级 pnl）或 null（数据不足 / 恢复中）
+// 输出：{ series: number[], lastIso: string } 或 null（数据不足 / 恢复中）
+// - series：日级 pnl（同之前发出到 IncomeSummary 的数组）
+// - lastIso：series 末端点对应的单位净值公布日（指示 UI 不包含今日实时估算）
 //
 // 失败不报错，sparkline 静默不渲染即可。
 
@@ -36,16 +38,16 @@ function uniqCodes(txs) {
 }
 
 export function useCumulativeSparkline({ transactions, inceptionDate }) {
-	const [series, setSeries] = useState(null);
+	const [snapshot, setSnapshot] = useState(null);
 
 	useEffect(() => {
 		if (!inceptionDate || !Array.isArray(transactions) || transactions.length === 0) {
-			setSeries(null);
+			setSnapshot(null);
 			return undefined;
 		}
 		const today = todayShanghaiIso();
 		if (inceptionDate > today) {
-			setSeries(null);
+			setSnapshot(null);
 			return undefined;
 		}
 		let cancelled = false;
@@ -53,7 +55,7 @@ export function useCumulativeSparkline({ transactions, inceptionDate }) {
 			try {
 				const codes = uniqCodes(transactions);
 				if (codes.length === 0) {
-					if (!cancelled) setSeries(null);
+					if (!cancelled) setSnapshot(null);
 					return;
 				}
 				const navByCode = {};
@@ -74,12 +76,12 @@ export function useCumulativeSparkline({ transactions, inceptionDate }) {
 					to: today,
 				});
 				const daily = Array.isArray(result?.dailySeries) ? result.dailySeries : [];
-				const pnls = daily
-					.map((d) => (Number.isFinite(d?.pnl) ? d.pnl : null))
-					.filter((v) => v !== null);
-				if (!cancelled) setSeries(pnls.length >= 2 ? pnls : null);
+				const validDaily = daily.filter((d) => Number.isFinite(d?.pnl));
+				const pnls = validDaily.map((d) => d.pnl);
+				const lastIso = validDaily.length > 0 ? String(validDaily[validDaily.length - 1]?.date || '') : '';
+				if (!cancelled) setSnapshot(pnls.length >= 2 ? { series: pnls, lastIso } : null);
 			} catch {
-				if (!cancelled) setSeries(null);
+				if (!cancelled) setSnapshot(null);
 			}
 		})();
 		return () => {
@@ -87,7 +89,7 @@ export function useCumulativeSparkline({ transactions, inceptionDate }) {
 		};
 	}, [transactions, inceptionDate]);
 
-	return series;
+	return snapshot;
 }
 
 export default useCumulativeSparkline;

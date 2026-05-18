@@ -73,7 +73,7 @@ export function IncomeSection({ ledger, portfolio, inceptionDate, onEditTransact
 }
 
 function OverviewSummary({ ledger, portfolio, inceptionDate, navigate, navRefresh, quickActions }) {
-	const cumulativeSeries = useCumulativeSparkline({
+	const sparkline = useCumulativeSparkline({
 		transactions: ledger?.transactions,
 		inceptionDate,
 	});
@@ -84,7 +84,8 @@ function OverviewSummary({ ledger, portfolio, inceptionDate, navigate, navRefres
 			inceptionDate={inceptionDate}
 			navigate={navigate}
 			navRefresh={navRefresh}
-			cumulativeSeries={cumulativeSeries}
+			cumulativeSeries={sparkline?.series}
+			cumulativeLastIso={sparkline?.lastIso}
 			quickActions={quickActions}
 		/>
 	);
