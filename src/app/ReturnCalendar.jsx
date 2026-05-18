@@ -181,6 +181,13 @@ function DayCell({ cell, pnl, max, onClick, todayIso, selectedIso }) {
   const baseClasses = dim
     ? 'bg-transparent text-slate-300 border-transparent cursor-default'
     : tone.className;
+  const selectedClasses = !dim && isSelected
+    ? tone.kind === 'up'
+      ? 'bg-rose-500 text-white border-rose-500'
+      : tone.kind === 'down'
+        ? 'bg-emerald-500 text-white border-emerald-500'
+        : 'bg-slate-400 text-white border-slate-400'
+    : '';
   return (
     <button
       type="button"
@@ -188,9 +195,9 @@ function DayCell({ cell, pnl, max, onClick, todayIso, selectedIso }) {
       disabled={dim}
       className={cx(
         'flex aspect-square min-h-[36px] flex-col items-start justify-between rounded-md border p-1 text-left transition-colors tabular-nums sm:min-h-[44px] md:aspect-auto md:h-[64px] lg:h-[68px]',
-        baseClasses,
-        isSelected && !dim ? 'ring-2 ring-offset-1 ring-slate-700' : isToday && !dim ? 'ring-1 ring-offset-1 ring-slate-400' : '',
-        !dim && hasPnl ? 'hover:brightness-95' : ''
+        isSelected && !dim ? selectedClasses : baseClasses,
+        !isSelected && isToday && !dim ? 'ring-1 ring-offset-1 ring-slate-300' : '',
+        !dim ? 'hover:brightness-95' : ''
       )}
       aria-label={`${cell.iso} ${hasPnl ? formatCurrency(pnl, '¥', 2) : ''}`}
     >
