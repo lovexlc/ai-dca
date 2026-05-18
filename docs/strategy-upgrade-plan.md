@@ -162,7 +162,7 @@ src/components/
 - [x] 股数从 `aiDcaTradeLedger` 自动读取；总资产 + 价格 存 `aiDcaPositionSnapshot`
 - [ ] PR 4.5（后插队）：改 `src/pages/SellPlanExperience.jsx`：生成减仓计划时调 `checkWeightLimit` 与实际仓位打通
 - [ ] PR 4.5：改 `src/pages/HoldingsExperience.jsx`：仓位占比饰区 + 加超仓提醒（3336 行，需小步）
-- [ ] PR 4.5：改 `src/app/notifySync.js`：`weight_alert` 规则同步至 worker
+- [x] PR 4.5（client 侧 partial）：`buildNotifySyncPayload` 额外上传 `positionDigest`（仅传 symbol/type/weightPct/exceedsCap + cashWeightPct，不传总资产与价格），以供 worker 生成 “X 超 50% 仓位上限” / “现金过高 → 加仓宽基” 提醒。worker 侧规则处理仍需推进。
 - [x] 单测 `test/positionManager.test.mjs`（8 个 case：超仓、宽基免检、totalAssets=0 fallback、checkWeightLimit、再平衡 advice）— 随 PR 4 后补上
 - [x] 单测 `test/sellStrategy.test.mjs`（7 个 case）、`test/costTracker.test.mjs`（7 个 case，含负成本 / 费用 / 乱序）、`test/dcaCalculator.test.mjs`（6 个 case）—一起补齐。含原 `clearedLotsAnalytics` 1 个，总计 29/29 通过
 - [ ] 前端验证（e2e）：

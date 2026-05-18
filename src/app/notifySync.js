@@ -4,6 +4,7 @@ import { readSellPlanList } from './sellPlans.js';
 import { readTradeLedger } from './tradeLedger.js';
 import { groupCostBasisBySymbol } from './costTracker.js';
 import { calculatePositions } from './positionManager.js';
+import { readVixSnapshot, resolveVixSignal, VIX_THRESHOLDS } from './vixSignal.js';
 
 const NOTIFY_ENDPOINT = '/api/notify';
 const NOTIFY_CLIENT_CONFIG_KEY = 'aiDcaNotifyClientConfig';
@@ -189,6 +190,26 @@ function hasPersistedDca() {
 
 // PR 4.5：weight_alert 规则 — 生成仓位占比摘要（不上传总资产/价格，仅传权重 %）。
 // worker 只需 weightPct 就能发 “X 超 50% 仓位上限” 提醒。
+// PR 2b：vix_signal 规则 — 上传当前 VIX 读数 + 阈值表，让 worker 能发 “跳到 30 / 40 / 50 ” 的跨阈值提醒。
+function buildVixDigest() {
+  const snapshot = readVixSnapshot();
+  if (!snapshot || !Number.isFinite(snapshot.value)) return null;
+  const signal = resolveVixSignal(snapshot.value);
+  return {
+    version: 1,
+    value: Number(snapshot.value),
+    level: signal.level,
+    levelLabel: signal.levelLabel,
+    cachedAt: snapshot.cachedAt || null,
+    thresholds: {
+      watch: VIX_THRESHOLDS.watch,
+      buyIndex: VIX_THRESHOLDS.buyIndex,
+      buyAll: VIX_THRESHOLDS.buyAll,
+      heavyBuy: VIX_THRESHOLDS.heavyBuy
+    }
+  };
+}
+
 function buildPositionDigest() {
   if (typeof window === 'undefined') return null;
   let snapshot;
@@ -245,12 +266,14 @@ export function buildNotifySyncPayload() {
     updatedAt: plan.updatedAt
   }));
   const positionDigest = buildPositionDigest();
+  const vixDigest = buildVixDigest();
 
   return {
     plans,
     dca,
     sellPlans,
     positionDigest,
+    vix: vixDigest,
     syncedAt: new Date().toISOString()
   };
 }
