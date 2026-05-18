@@ -6,6 +6,7 @@ import { syncTradePlanRules } from '../app/notifySync.js';
 import { readPlanList } from '../app/plan.js';
 import { showToast } from '../app/toast.js';
 import { Card, Field, NumberInput, Pill, SectionHeading, SelectField, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
+import { EXTRA_SYMBOL_GROUPS } from '../app/extraSymbols.js';
 
 const DAY_OPTIONS = [1, 8, 15, 28];
 
@@ -113,6 +114,31 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
               </Field>
 
               <Field label="标的代码" helper={projection.isLinkedPlan ? '已跟随所选加仓策略标的；如需修改，请先取消关联。' : '建议使用交易代码，便于与首页和历史页保持一致。'}>
+                {!projection.isLinkedPlan ? (
+                  <div className="mb-2 space-y-2">
+                    {EXTRA_SYMBOL_GROUPS.map((group) => (
+                      <div key={group.key} className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-semibold text-slate-500">{group.label}</span>
+                        {group.symbols.map((s) => (
+                          <button
+                            key={s.code}
+                            type="button"
+                            onClick={() => setState((current) => ({ ...current, symbol: s.code }))}
+                            className={cx(
+                              'rounded-full border px-3 py-1 text-xs font-semibold transition-all',
+                              state.symbol === s.code
+                                ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                                : 'border-slate-200 bg-white text-slate-500 hover:border-indigo-200 hover:text-indigo-600'
+                            )}
+                            title={s.name}
+                          >
+                            {s.code}
+                          </button>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <TextInput className={projection.isLinkedPlan ? 'bg-white text-slate-600' : ''} readOnly={projection.isLinkedPlan} value={projection.effectiveSymbol} onChange={(event) => setState((current) => ({ ...current, symbol: event.target.value }))} placeholder="例如：纳指基金代码" />
               </Field>
 

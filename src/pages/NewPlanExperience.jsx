@@ -21,6 +21,7 @@ import {
   resolveMarketCurrency,
   strategyOptions
 } from '../app/newPlan.js';
+import { EXTRA_SYMBOL_GROUPS, EXTRA_SYMBOL_CODES, findExtraSymbol, isExtraSymbol } from '../app/extraSymbols.js';
 
 
 export function NewPlanExperience({ links, inPagesDir = false, embedded = false, onBack = null }) {
@@ -74,6 +75,11 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
 
   useEffect(() => {
     if (!marketEntries.length) {
+      return;
+    }
+
+    // 用户选中了美股快选标的（QQQ/VOO/Mag7/TSM）时，不要被基金清单覆盖。
+    if (EXTRA_SYMBOL_CODES.has(String(state.symbol || '').trim())) {
       return;
     }
 
@@ -279,6 +285,33 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                 </Field>
 
                 <Field className="min-w-0" label="资产标的" helper="与首页共用同一套纳指基金标的池。">
+                  <div className="mb-3 space-y-2">
+                    {EXTRA_SYMBOL_GROUPS.map((group) => (
+                      <div key={group.key} className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-semibold text-slate-500">{group.label}</span>
+                        {group.symbols.map((s) => (
+                          <button
+                            key={s.code}
+                            type="button"
+                            onClick={() => {
+                              autoSeedRef.current = s.code;
+                              setState((current) => ({ ...current, symbol: s.code }));
+                            }}
+                            className={cx(
+                              'rounded-full border px-3 py-1 text-xs font-semibold transition-all',
+                              state.symbol === s.code
+                                ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                                : 'border-slate-200 bg-white text-slate-500 hover:border-indigo-200 hover:text-indigo-600'
+                            )}
+                            title={s.name}
+                          >
+                            {s.code}
+                          </button>
+                        ))}
+                        <span className="text-xs text-slate-400">{group.note}</span>
+                      </div>
+                    ))}
+                  </div>
                   {marketEntries.length ? (
                     <SelectField
                       className="min-w-0"
@@ -302,6 +335,14 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                     <div className="font-semibold text-slate-900">{selectedFundLabel}</div>
                     <div className="mt-1">当前现价 {formatFundPrice(selectedFund.current_price, selectedFundCurrency)}</div>
                     <div className="mt-1">策略参考基准 {benchmarkNameLabel}，{formatFundPrice(benchmarkFund?.current_price, benchmarkCurrency)}</div>
+                  </div>
+                ) : isExtraSymbol(state.symbol) ? (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
+                    <div className="font-semibold text-slate-900">
+                      {state.symbol}·{findExtraSymbol(state.symbol)?.name || ''}
+                    </div>
+                    <div className="mt-1">美股标的暂未接入实时行情，请手动填入下方的「触发价」与「风控价」。</div>
+                    <div className="mt-1 text-amber-700">提示：QQQ/VOO 等宽基指数只买不做 T；Mag7 / TSM 允许 70% 核仓 + 30% T 仓（后续 PR 会自动应用该规则）。</div>
                   </div>
                 ) : null}
 
