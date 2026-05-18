@@ -29,8 +29,8 @@
 - [x] 探查 `singleDayFundPnl` 与 DailyFundBreakdown 调用路径
 - [x] 锁定 root cause（mv fallback + BUY tx 双算）
 - [x] 写 plan
-- [ ] portfolioSeries.js 新增 `buildDailyFundPnlMap` 导出
-- [ ] ReturnCalendar.jsx import 切换 + 调用换源
-- [ ] ESLint clean
-- [ ] commit + push + Actions success + Pages last-modified
-- [ ] 回应用户列证据
+- [x] portfolioSeries.js 新增 `buildDailyFundPnlMap` 导出
+- [x] ReturnCalendar.jsx import 切换 + 调用换源
+- [x] ESLint clean
+- [x] commit `727a302` + push + Actions `26018048285` success + Pages last-modified `Mon, 18 May 2026 06:48:51 GMT`
+- [x] 回应用户列证据

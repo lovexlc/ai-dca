@@ -192,9 +192,23 @@ function buildDailySeries({ txs, navMap, fromIso, toIso }) {
 
   let cumulativeNetCF = 0;
   let cumulativeWeightedCF = 0;
+  // 新口径：pnl 不再用 MV-vStart-CF (会被 nav fallback + 当日 BUY 双算扶动)，
+  // 改为 per-fund 真·当日 nav 增量累加（仅当 nav.date === day 才计）。
+  // 这样 dailySeries.pnl[i] 严格等于 「起始日到 day_i 的当日明细加和」，
+  // 与 ReturnCalendar / DailyFundBreakdown / BigKpi 全部同源。
+  let cumulativeFundPnl = 0;
 
   for (let d = 0; d <= totalDays; d += 1) {
     const day = shiftDays(fromIso, d);
+    // 1. 先算当日 per-fund 真·nav 增量（基于昨日收盘 sharesByCode，未含当日 tx）
+    const fundRows = singleDayFundPnl({ tx: sortedTx, navByCode: navMap, date: day });
+    let dayFundPnl = 0;
+    for (const r of fundRows) {
+      if (Number.isFinite(r.pnl)) dayFundPnl += r.pnl;
+    }
+    cumulativeFundPnl += dayFundPnl;
+
+    // 2. 再应用当日 tx、更新 sharesByCode 与 cashflow
     while (txIdx < sortedTx.length && sortedTx[txIdx].date <= day) {
       const tx = sortedTx[txIdx];
       const signedAmount = tx.type === 'BUY' ? tx.amount : -tx.amount;
@@ -209,7 +223,8 @@ function buildDailySeries({ txs, navMap, fromIso, toIso }) {
     }
     const mv = portfolioMarketValue(sharesByCode, navMap, day);
     const denom = vStart + cumulativeWeightedCF;
-    const pnl = mv.value - vStart - cumulativeNetCF;
+    // pnl 改用 per-fund 真·当日 nav 增量累加（避免当日 BUY × fallback nav 伪增值）
+    const pnl = cumulativeFundPnl;
     const pnlRate = Math.abs(denom) < EPSILON ? null : pnl / denom;
     result.push({
       date: day,
@@ -268,9 +283,15 @@ export function buildPortfolioSeries({ tx, navByCode, from, to }) {
     fromIso,
     toIso
   });
-  const annualized = annualize(md.return_, md.days);
 
   const daily = buildDailySeries({ txs: allTx, navMap, fromIso, toIso });
+
+  // 以 dailySeries 末项 pnl（per-fund 真·当日 nav 增量累加）作为 profit 权威口径。
+  // 该口径与 ReturnCalendar / DailyFundBreakdown 同源，避免 nav fallback + 当日 BUY 双算造成的伪增值，与 Modified-Dietz 有细微偏差。
+  const lastDaily = daily.dailySeries.length ? daily.dailySeries[daily.dailySeries.length - 1] : null;
+  const fundProfit = lastDaily ? lastDaily.pnl : 0;
+  const fundReturnRate = Math.abs(md.denominator) < EPSILON ? null : fundProfit / md.denominator;
+  const annualized = annualize(fundReturnRate, md.days);
 
   return {
     window: { from: fromIso, to: toIso, days: md.days },
@@ -278,8 +299,8 @@ export function buildPortfolioSeries({ tx, navByCode, from, to }) {
     endValue: endMv.value,
     netCashFlow: md.netCF,
     weightedCashFlow: md.weightedCashFlow,
-    profit: md.profit,
-    returnRate: md.return_,
+    profit: fundProfit,
+    returnRate: fundReturnRate,
     annualizedReturn: annualized,
     dailySeries: daily.dailySeries,
     holdings: {
@@ -289,7 +310,8 @@ export function buildPortfolioSeries({ tx, navByCode, from, to }) {
     cashFlows: inWindowCashFlows,
     diagnostics: {
       startMissingNavCodes: startMv.missingCodes,
-      endMissingNavCodes: endMv.missingCodes
+      endMissingNavCodes: endMv.missingCodes,
+      modifiedDietz: { profit: md.profit, returnRate: md.return_, denominator: md.denominator }
     }
   };
 }
