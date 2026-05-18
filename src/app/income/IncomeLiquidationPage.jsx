@@ -200,7 +200,7 @@ export function IncomeLiquidationPage({ ledger, onBack }) {
 			{/* ② KPI */}
 			<div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-3">
 				<Kpi label="清仓总收益" value={formatSignedCurrency(kpi.totalProfit)} valueTone={toneOf(kpi.totalProfit)} />
-				<Kpi label="清仓盈利率" value={formatPercent(kpi.profitRate)} valueTone={toneOf(kpi.profitRate)} sub={`总卖出本金 ${formatCurrency(kpi.totalSellCostBasis)}`} />
+				<Kpi label="清仓盈利率" value={formatPercent(kpi.sellCostProfitRate)} valueTone={toneOf(kpi.sellCostProfitRate)} sub={`总卖出本金 ${formatCurrency(kpi.totalSellCostBasis)}`} />
 				<Kpi label="清仓产品数" value={`${kpi.codeCount} 只`} />
 				<Kpi label="平均持有天数" value={Number.isInteger(kpi.avgHoldDays) ? `${kpi.avgHoldDays} 天` : '—'} />
 				<Kpi label="清仓次数" value={`${kpi.lotCount} 次`} />

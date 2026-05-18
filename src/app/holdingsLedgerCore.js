@@ -369,8 +369,8 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
       costBasis: cost,
       proceeds,
       marketValue: 0,
-      totalProfit: 0,
-      totalReturnRate: 0,
+      unrealizedProfit: 0,
+      unrealizedReturnRate: 0,
       todayProfit: 0,
       todayReturnRate: 0,
       hasLatestNav,
@@ -384,8 +384,8 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
   }
 
   const marketValue = hasLatestNav ? round(latestNav * normalized.shares, 2) : 0;
-  const totalProfit = hasLatestNav ? round((latestNav - normalized.price) * normalized.shares, 2) : 0;
-  const totalReturnRate = hasLatestNav && cost > 0 ? round((totalProfit / cost) * 100, 2) : 0;
+  const unrealizedProfit = hasLatestNav ? round((latestNav - normalized.price) * normalized.shares, 2) : 0;
+  const unrealizedReturnRate = hasLatestNav && cost > 0 ? round((unrealizedProfit / cost) * 100, 2) : 0;
   const todayProfit = hasLatestNav && hasPreviousNav && isLatestNavToday
     ? round((latestNav - previousNav) * normalized.shares, 2)
     : 0;
@@ -405,8 +405,8 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
     costBasis: cost,
     proceeds: 0,
     marketValue,
-    totalProfit,
-    totalReturnRate,
+    unrealizedProfit,
+    unrealizedReturnRate,
     todayProfit,
     todayReturnRate,
     hasLatestNav,
@@ -540,8 +540,8 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     const avgCost = bucket.movingAvgCost;
     const totalCost = bucket.movingTotalCost;
     const marketValue = hasLatestNav && totalShares > 0 ? round(totalShares * latestNav, 2) : 0;
-    const totalProfit = hasLatestNav && totalShares > 0 ? round(marketValue - totalCost, 2) : 0;
-    const totalReturnRate = totalCost > 0 ? round((totalProfit / totalCost) * 100, 2) : 0;
+    const unrealizedProfit = hasLatestNav && totalShares > 0 ? round(marketValue - totalCost, 2) : 0;
+    const unrealizedReturnRate = totalCost > 0 ? round((unrealizedProfit / totalCost) * 100, 2) : 0;
     const todayProfit = hasLatestNav && hasPreviousNav && totalShares > 0 && isLatestNavToday
       ? round((latestNav - previousNav) * totalShares, 2)
       : 0;
@@ -573,8 +573,8 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       latestNavDate: aggLatestNavDateStr,
       previousNavDate: aggPreviousNavDateStr,
       marketValue,
-      totalProfit,
-      totalReturnRate,
+      unrealizedProfit,
+      unrealizedReturnRate,
       todayProfit,
       todayReturnRate,
       previousValue: round(previousValue, 2),
@@ -607,8 +607,8 @@ export function summarizePortfolio(aggregates = [], soldSummary = null) {
     recordedCodeCount: (Array.isArray(aggregates) ? aggregates : []).length,
     totalCost: 0,
     marketValue: 0,
-    totalProfit: 0,
-    totalReturnRate: 0,
+    unrealizedProfit: 0,
+    unrealizedReturnRate: 0,
     todayProfit: 0,
     todayReturnRate: 0,
     previousMarketValue: 0,
@@ -668,9 +668,9 @@ export function summarizePortfolio(aggregates = [], soldSummary = null) {
     }
   }
 
-  summary.totalProfit = round(summary.marketValue - summary.totalCost, 2);
-  summary.totalReturnRate = summary.totalCost > 0
-    ? round((summary.totalProfit / summary.totalCost) * 100, 2)
+  summary.unrealizedProfit = round(summary.marketValue - summary.totalCost, 2);
+  summary.unrealizedReturnRate = summary.totalCost > 0
+    ? round((summary.unrealizedProfit / summary.totalCost) * 100, 2)
     : 0;
   summary.todayReturnRate = summary.previousMarketValue > 0
     ? round((summary.todayProfit / summary.previousMarketValue) * 100, 2)
@@ -689,7 +689,7 @@ export function summarizePortfolio(aggregates = [], soldSummary = null) {
   summary.realizedCostBasis = realizedCostBasis;
   summary.realizedLotCount = Number(soldSummary?.lotCount) || 0;
   summary.cumulativeCostBasis = round(summary.totalCost + realizedCostBasis, 2);
-  summary.cumulativeProfit = round(summary.totalProfit + realizedProfit, 2);
+  summary.cumulativeProfit = round(summary.unrealizedProfit + realizedProfit, 2);
   summary.cumulativeReturnRate = summary.cumulativeCostBasis > 0
     ? round((summary.cumulativeProfit / summary.cumulativeCostBasis) * 100, 2)
     : 0;

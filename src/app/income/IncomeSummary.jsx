@@ -110,8 +110,8 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSerie
 	const marketValue = portfolio?.marketValue;
 	const todayProfit = portfolio?.todayProfit;
 	const todayReturnRate = portfolio?.todayReturnRate;
-	const totalProfit = portfolio?.totalProfit;
-	const totalReturnRate = portfolio?.totalReturnRate;
+	const unrealizedProfit = portfolio?.unrealizedProfit;
+	const unrealizedReturnRate = portfolio?.unrealizedReturnRate;
 	const cumulativeProfit = portfolio?.cumulativeProfit;
 	const cumulativeReturnRate = portfolio?.cumulativeReturnRate;
 
@@ -148,7 +148,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSerie
 				</div>
 				<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)] gap-1">
 					<KpiCol label="今日收益(元)" value={todayProfit} rate={todayReturnRate} align="left" centerRate />
-					<KpiCol label="持有收益(元)" value={totalProfit} rate={totalReturnRate} centerRate />
+					<KpiCol label="持有收益(元)" value={unrealizedProfit} rate={unrealizedReturnRate} centerRate />
 					<KpiCol label="累计收益(元)" value={cumulativeProfit} rate={cumulativeReturnRate} align="right" centerRate />
 				</div>
 			</section>
@@ -179,7 +179,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSerie
 				)}
 				<div className="flex gap-8 shrink-0">
 					<KpiCol label="今日" value={todayProfit} rate={todayReturnRate} align="right" />
-					<KpiCol label="持有" value={totalProfit} rate={totalReturnRate} align="right" />
+					<KpiCol label="持有" value={unrealizedProfit} rate={unrealizedReturnRate} align="right" />
 					<KpiCol label="累计" value={cumulativeProfit} rate={cumulativeReturnRate} align="right" />
 				</div>
 				{refreshBtn ? <div className="shrink-0">{refreshBtn}</div> : null}

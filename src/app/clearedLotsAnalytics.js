@@ -11,7 +11,7 @@
 // 提供的 KPI（4.4 清仓分析页使用）：
 //   - totalProfit：清仓总收益 = Σ realizedProfit
 //   - totalSellCostBasis：总卖出本金 = Σ costBasis
-//   - profitRate：清仓盈利率 = totalProfit / totalSellCostBasis（4.0 问题 Q4-2）
+//   - sellCostProfitRate：清仓盈利率 = totalProfit / totalSellCostBasis（4.0 问题 Q4-2）
 //   - codeCount：清仓产品数（unique code）
 //   - lotCount：清仓次数（lot 总条数）
 //   - avgHoldDays：平均持有天数（sellDate - firstBuyDate(code, sellDate)）
@@ -113,7 +113,7 @@ export function computeClearedKpi(lots, opts = {}) {
 		totalProfit: 0,
 		totalSellCostBasis: 0,
 		totalProceeds: 0,
-		profitRate: 0,
+		sellCostProfitRate: 0,
 		codeCount: 0,
 		lotCount: safeLots.length,
 		avgHoldDays: null
@@ -139,7 +139,7 @@ export function computeClearedKpi(lots, opts = {}) {
 	kpi.totalSellCostBasis = round(kpi.totalSellCostBasis, 2);
 	kpi.totalProceeds = round(kpi.totalProceeds, 2);
 	// Q4-2: 清仓盈利率 = totalProfit / totalSellCostBasis
-	kpi.profitRate = kpi.totalSellCostBasis > 0
+	kpi.sellCostProfitRate = kpi.totalSellCostBasis > 0
 		? round((kpi.totalProfit / kpi.totalSellCostBasis) * 100, 2)
 		: 0;
 	kpi.codeCount = codeSet.size;

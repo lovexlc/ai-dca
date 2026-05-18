@@ -82,7 +82,7 @@ test('computeClearedKpi 总盈亏 / 总本金 / 盈利率（Q4-2）', () => {
 	assert.equal(kpi.totalProfit, -50);
 	assert.equal(kpi.totalSellCostBasis, 2900);
 	// -50 / 2900 = -1.72%
-	assert.equal(kpi.profitRate, -1.72);
+	assert.equal(kpi.sellCostProfitRate, -1.72);
 	assert.equal(kpi.lotCount, 4);
 	assert.equal(kpi.codeCount, 3);
 });
@@ -90,7 +90,7 @@ test('computeClearedKpi 总盈亏 / 总本金 / 盈利率（Q4-2）', () => {
 test('computeClearedKpi 空 / 零本金 不报错', () => {
 	const empty = computeClearedKpi([]);
 	assert.equal(empty.totalProfit, 0);
-	assert.equal(empty.profitRate, 0);
+	assert.equal(empty.sellCostProfitRate, 0);
 	assert.equal(empty.lotCount, 0);
 	assert.equal(empty.codeCount, 0);
 	assert.equal(empty.avgHoldDays, null);

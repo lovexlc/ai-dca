@@ -4,7 +4,7 @@
 //   ① 概览 KPI（品种数 / 总市值 / 累计盈亏）
 //   ② 品种分布饼图（按 marketValue 占比，前 8 + 其他）
 //   ③ 资产类型饼图（场内 ETF / 境内场外 / 场外 QDII）+ 类别明细
-//   ④ 贡献度榜（盈利 Top 5 + 亏损 Top 5，按 totalProfit 排序）
+//   ④ 贡献度榜（盈利 Top 5 + 亏损 Top 5，按 unrealizedProfit 排序）
 //
 // 数据来源：aggregateByCode(ledger.transactions, ledger.snapshotsByCode)
 // kind 字段取值：'exchange'（场内 ETF）/ 'otc'（境内场外）/ 'qdii'（场外 QDII）
@@ -88,11 +88,11 @@ function buildKindSlices(positions) {
 	const byKind = new Map();
 	for (const p of positions) {
 		const k = p.kind || 'otc';
-		if (!byKind.has(k)) byKind.set(k, { kind: k, marketValue: 0, totalCost: 0, totalProfit: 0, count: 0 });
+		if (!byKind.has(k)) byKind.set(k, { kind: k, marketValue: 0, totalCost: 0, unrealizedProfit: 0, count: 0 });
 		const bucket = byKind.get(k);
 		bucket.marketValue += p.marketValue;
 		bucket.totalCost += p.totalCost;
-		bucket.totalProfit += p.totalProfit;
+		bucket.unrealizedProfit += p.unrealizedProfit;
 		bucket.count += 1;
 	}
 	return ['exchange', 'otc', 'qdii']
@@ -100,7 +100,7 @@ function buildKindSlices(positions) {
 		.filter(Boolean)
 		.map((b) => {
 			const meta = KIND_META[b.kind] || { label: b.kind, color: '#64748b', dim: '' };
-			const returnRate = b.totalCost > 0 ? (b.totalProfit / b.totalCost) * 100 : 0;
+			const returnRate = b.totalCost > 0 ? (b.unrealizedProfit / b.totalCost) * 100 : 0;
 			return { ...b, ...meta, returnRate };
 		});
 }
@@ -131,7 +131,7 @@ function KindTooltip({ active, payload, total }) {
 		<div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs shadow-md">
 			<div className="font-medium text-slate-800">{d.label}</div>
 			<div className="mt-1 text-slate-600">市值 {formatCurrency(d.marketValue)}（{pct.toFixed(2)}%）</div>
-			<div className={pnlTone(d.totalProfit)}>{pnlSign(d.totalProfit)}{formatCurrency(d.totalProfit)} · {formatPercent(d.returnRate)}</div>
+			<div className={pnlTone(d.unrealizedProfit)}>{pnlSign(d.unrealizedProfit)}{formatCurrency(d.unrealizedProfit)} · {formatPercent(d.returnRate)}</div>
 			<div className="text-slate-400">{d.count} 只 · {d.dim}</div>
 		</div>
 	);
@@ -149,7 +149,7 @@ function SectionCard({ title, hint, children }) {
 	);
 }
 
-function OverviewCard({ count, marketValue, totalProfit, returnRate }) {
+function OverviewCard({ count, marketValue, unrealizedProfit, returnRate }) {
 	return (
 		<section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4">
 			<div className="grid min-w-0 grid-cols-[0.68fr_minmax(0,1fr)_minmax(0,1fr)] gap-3 sm:grid-cols-3">
@@ -163,10 +163,10 @@ function OverviewCard({ count, marketValue, totalProfit, returnRate }) {
 				</div>
 				<div className="min-w-0">
 					<div className="text-xs text-slate-500">累计盈亏</div>
-					<div className={`mt-1 truncate whitespace-nowrap text-lg font-medium tabular-nums sm:text-xl ${pnlTone(totalProfit)}`}>
-						{pnlSign(totalProfit)}{formatCurrency(totalProfit)}
+					<div className={`mt-1 truncate whitespace-nowrap text-lg font-medium tabular-nums sm:text-xl ${pnlTone(unrealizedProfit)}`}>
+						{pnlSign(unrealizedProfit)}{formatCurrency(unrealizedProfit)}
 					</div>
-					<div className={`truncate whitespace-nowrap text-xs tabular-nums ${pnlTone(totalProfit)}`}>{pnlSign(returnRate)}{formatPercent(returnRate)}</div>
+					<div className={`truncate whitespace-nowrap text-xs tabular-nums ${pnlTone(unrealizedProfit)}`}>{pnlSign(returnRate)}{formatPercent(returnRate)}</div>
 				</div>
 			</div>
 		</section>
@@ -256,8 +256,8 @@ function KindChart({ slices, total }) {
 								</div>
 								<div className="mt-0.5 flex min-w-0 items-baseline justify-between gap-2">
 									<span className="min-w-0 truncate whitespace-nowrap tabular-nums text-slate-600">{formatCurrency(s.marketValue)}</span>
-									<span className={`shrink-0 truncate whitespace-nowrap tabular-nums ${pnlTone(s.totalProfit)}`}>
-										{pnlSign(s.totalProfit)}{formatCurrency(s.totalProfit)} · {pnlSign(s.returnRate)}{formatPercent(s.returnRate)}
+									<span className={`shrink-0 truncate whitespace-nowrap tabular-nums ${pnlTone(s.unrealizedProfit)}`}>
+										{pnlSign(s.unrealizedProfit)}{formatCurrency(s.unrealizedProfit)} · {pnlSign(s.returnRate)}{formatPercent(s.returnRate)}
 									</span>
 								</div>
 							</div>
@@ -286,11 +286,11 @@ function ContributionRow({ p, rank }) {
 				<div className={`truncate whitespace-nowrap tabular-nums ${TONE_DIM}`}>成本 {formatCurrency(p.totalCost)}</div>
 			</div>
 			<div className="min-w-0 text-right">
-				<div className={`truncate whitespace-nowrap text-sm tabular-nums ${pnlTone(p.totalProfit)}`}>
-					{pnlSign(p.totalProfit)}{formatCurrency(p.totalProfit)}
+				<div className={`truncate whitespace-nowrap text-sm tabular-nums ${pnlTone(p.unrealizedProfit)}`}>
+					{pnlSign(p.unrealizedProfit)}{formatCurrency(p.unrealizedProfit)}
 				</div>
-				<div className={`truncate whitespace-nowrap text-xs tabular-nums ${pnlTone(p.totalProfit)}`}>
-					{pnlSign(p.totalReturnRate)}{formatPercent(p.totalReturnRate)}
+				<div className={`truncate whitespace-nowrap text-xs tabular-nums ${pnlTone(p.unrealizedProfit)}`}>
+					{pnlSign(p.unrealizedReturnRate)}{formatPercent(p.unrealizedReturnRate)}
 				</div>
 			</div>
 		</li>
@@ -347,18 +347,18 @@ export function IncomeBreakdownPage({ ledger, onBack }) {
 	const overview = useMemo(() => {
 		const marketValue = positions.reduce((s, p) => s + p.marketValue, 0);
 		const totalCost = positions.reduce((s, p) => s + p.totalCost, 0);
-		const totalProfit = positions.reduce((s, p) => s + p.totalProfit, 0);
-		const returnRate = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0;
-		return { count: positions.length, marketValue, totalCost, totalProfit, returnRate };
+		const unrealizedProfit = positions.reduce((s, p) => s + p.unrealizedProfit, 0);
+		const returnRate = totalCost > 0 ? (unrealizedProfit / totalCost) * 100 : 0;
+		return { count: positions.length, marketValue, totalCost, unrealizedProfit, returnRate };
 	}, [positions]);
 
 	const varietySlices = useMemo(() => buildVarietySlices(positions), [positions]);
 	const kindSlices = useMemo(() => buildKindSlices(positions), [positions]);
 
 	const { winners, losers } = useMemo(() => {
-		const sorted = [...positions].sort((a, b) => b.totalProfit - a.totalProfit);
-		const win = sorted.filter((p) => p.totalProfit > 0).slice(0, 5);
-		const lose = sorted.filter((p) => p.totalProfit < 0).slice(-5).reverse();
+		const sorted = [...positions].sort((a, b) => b.unrealizedProfit - a.unrealizedProfit);
+		const win = sorted.filter((p) => p.unrealizedProfit > 0).slice(0, 5);
+		const lose = sorted.filter((p) => p.unrealizedProfit < 0).slice(-5).reverse();
 		return { winners: win, losers: lose };
 	}, [positions]);
 
@@ -378,7 +378,7 @@ export function IncomeBreakdownPage({ ledger, onBack }) {
 			<OverviewCard
 				count={overview.count}
 				marketValue={overview.marketValue}
-				totalProfit={overview.totalProfit}
+				unrealizedProfit={overview.unrealizedProfit}
 				returnRate={overview.returnRate}
 			/>
 

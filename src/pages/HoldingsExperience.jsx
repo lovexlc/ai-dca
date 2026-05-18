@@ -367,26 +367,26 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       sortingFn: numericSortFn,
     },
     {
-      id: 'totalProfit',
-      accessorFn: (row) => row.totalProfit,
+      id: 'unrealizedProfit',
+      accessorFn: (row) => row.unrealizedProfit,
       meta: { label: '总收益' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="总收益" />,
       cell: ({ row }) => {
         if (!row.original.hasLatestNav) return <span className="text-muted-foreground">—</span>;
-        const v = row.original.totalProfit;
+        const v = row.original.unrealizedProfit;
         const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
         return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v, 2)}</span>;
       },
       sortingFn: numericSortFn,
     },
     {
-      id: 'totalReturnRate',
-      accessorFn: (row) => row.totalReturnRate,
+      id: 'unrealizedReturnRate',
+      accessorFn: (row) => row.unrealizedReturnRate,
       meta: { label: '总收益率' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="总收益率" />,
       cell: ({ row }) => {
         if (!row.original.hasLatestNav) return <span className="text-muted-foreground">—</span>;
-        const v = row.original.totalReturnRate;
+        const v = row.original.unrealizedReturnRate;
         const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
         return <span className={cx('tabular-nums', cls)}>{formatSignedPercent(v)}</span>;
       },
@@ -609,28 +609,28 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       sortingFn: numericSortFn,
     },
     {
-      id: 'totalProfit',
-      accessorFn: (row) => (row.metrics.isSell || !row.metrics.hasLatestNav) ? null : row.metrics.totalProfit,
+      id: 'unrealizedProfit',
+      accessorFn: (row) => (row.metrics.isSell || !row.metrics.hasLatestNav) ? null : row.metrics.unrealizedProfit,
       meta: { label: '总收益' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="总收益" />,
       cell: ({ row }) => {
         const { metrics } = row.original;
         if (metrics.isSell || !metrics.hasLatestNav) return '—';
-        const v = metrics.totalProfit;
+        const v = metrics.unrealizedProfit;
         const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
         return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v)}</span>;
       },
       sortingFn: numericSortFn,
     },
     {
-      id: 'totalReturnRate',
-      accessorFn: (row) => (row.metrics.isSell || !row.metrics.hasLatestNav) ? null : row.metrics.totalReturnRate,
+      id: 'unrealizedReturnRate',
+      accessorFn: (row) => (row.metrics.isSell || !row.metrics.hasLatestNav) ? null : row.metrics.unrealizedReturnRate,
       meta: { label: '总收益率' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="总收益率" />,
       cell: ({ row }) => {
         const { metrics } = row.original;
         if (metrics.isSell || !metrics.hasLatestNav) return '—';
-        const v = metrics.totalReturnRate;
+        const v = metrics.unrealizedReturnRate;
         const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
         return <span className={cx('tabular-nums', cls)}>{formatSignedPercent(v)}</span>;
       },
@@ -1299,8 +1299,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         formatNav(agg.avgCost),
         agg.hasLatestNav ? formatNav(agg.latestNav) : '',
         agg.hasLatestNav ? agg.marketValue.toFixed(2) : '',
-        agg.hasLatestNav ? agg.totalProfit.toFixed(2) : '',
-        agg.hasLatestNav ? `${agg.totalReturnRate.toFixed(2)}%` : '',
+        agg.hasLatestNav ? agg.unrealizedProfit.toFixed(2) : '',
+        agg.hasLatestNav ? `${agg.unrealizedReturnRate.toFixed(2)}%` : '',
         agg.hasTodayNav ? agg.todayProfit.toFixed(2) : '',
         agg.hasTodayNav ? `${agg.todayReturnRate.toFixed(2)}%` : ''
       ].join('\t');
@@ -1736,9 +1736,9 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     const isSelected = selectedCode === tx.code;
     const snapshotError = snapshot?.error ? String(snapshot.error) : '';
     const rowKey = tx.id;
-    const profitCellClass = metrics.totalProfit > 0
+    const profitCellClass = metrics.unrealizedProfit > 0
       ? 'text-red-600'
-      : metrics.totalProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
+      : metrics.unrealizedProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
     const todayCellClass = metrics.todayProfit > 0
       ? 'text-red-600'
       : metrics.todayProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
@@ -1831,10 +1831,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       : metrics.hasLatestNav ? formatCurrency(metrics.marketValue, '¥', 2) : '—';
     const profitDisplay = metrics.isSell
       ? '—'
-      : metrics.hasLatestNav ? formatSignedCurrency(metrics.totalProfit) : '—';
+      : metrics.hasLatestNav ? formatSignedCurrency(metrics.unrealizedProfit) : '—';
     const profitRateDisplay = metrics.isSell
       ? '—'
-      : metrics.hasLatestNav ? formatSignedPercent(metrics.totalReturnRate) : '—';
+      : metrics.hasLatestNav ? formatSignedPercent(metrics.unrealizedReturnRate) : '—';
     const todayDisplay = metrics.isSell
       ? '—'
       : metrics.hasTodayNav ? formatSignedCurrency(metrics.todayProfit) : '—';
@@ -1929,7 +1929,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       if (agg.hasLatestNav) {
         sumMarketValue += Number(agg.marketValue) || 0;
         sumTotalCost += Number(agg.totalCost) || 0;
-        sumTotalProfit += Number(agg.totalProfit) || 0;
+        sumTotalProfit += Number(agg.unrealizedProfit) || 0;
         pricedCount += 1;
       }
       if (agg.hasTodayNav) {
@@ -1954,10 +1954,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       marketValue: pricedCount > 0
         ? <span className="tabular-nums font-semibold">{formatCurrency(sumMarketValue, '¥', 2)}</span>
         : <span className="text-muted-foreground">—</span>,
-      totalProfit: pricedCount > 0
+      unrealizedProfit: pricedCount > 0
         ? <span className={cx('tabular-nums font-semibold', totalProfitTone)}>{formatSignedCurrency(sumTotalProfit, 2)}</span>
         : <span className="text-muted-foreground">—</span>,
-      totalReturnRate: summaryTotalReturnRate != null
+      unrealizedReturnRate: summaryTotalReturnRate != null
         ? <span className={cx('tabular-nums font-semibold', totalReturnTone)}>{formatSignedPercent(summaryTotalReturnRate)}</span>
         : <span className="text-muted-foreground">—</span>,
       todayProfit: todayCount > 0
@@ -2319,7 +2319,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       );
     }
     const agg = selectedAggregate;
-    const profitTone = agg.totalProfit > 0 ? 'text-red-600' : agg.totalProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
+    const profitTone = agg.unrealizedProfit > 0 ? 'text-red-600' : agg.unrealizedProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
     const todayTone = agg.todayProfit > 0 ? 'text-red-600' : agg.todayProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
     return (
       <div className="space-y-4">
@@ -2351,7 +2351,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           <div className="min-w-0">
             <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">累计盈亏</dt>
             <dd className={cx('mt-1 min-w-0 truncate whitespace-nowrap tabular-nums', profitTone)}>
-              {agg.hasLatestNav ? `${formatSignedCurrency(agg.totalProfit)} (${formatSignedPercent(agg.totalReturnRate)})` : '—'}
+              {agg.hasLatestNav ? `${formatSignedCurrency(agg.unrealizedProfit)} (${formatSignedPercent(agg.unrealizedReturnRate)})` : '—'}
             </dd>
           </div>
           <div className="min-w-0">

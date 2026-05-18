@@ -398,10 +398,10 @@ export function IncomeDetailPage({ ledger, portfolio, onBack }) {
   const rangeLabel = RANGE_LABELS[range] || range;
   const subWindow = rangeWindow ? `${rangeWindow.from} → ${rangeWindow.to}` : '';
 
-  const rangeProfit = rangeSeries?.profit ?? null;
-  const todayProfit = todayState.series?.profit ?? null;
-  const rangeRate = rangeSeries?.returnRate ?? null;
-  const annualized = rangeSeries?.annualizedReturn ?? null;
+  const rangeProfit = rangeSeries?.windowProfit ?? null;
+  const todayProfit = todayState.series?.windowProfit ?? null;
+  const rangeRate = rangeSeries?.twrReturnRate ?? null;
+  const annualized = rangeSeries?.annualizedTwrReturnRate ?? null;
   // 累计盈亏 = portfolio.cumulativeProfit（含已实现盈亏），与 IncomeSummary 顶部卡片同口径同数字，避免「同名两个值」误导。
   const cumulativeProfit = portfolio?.cumulativeProfit ?? null;
   const cumulativeReturnRate = portfolio?.cumulativeReturnRate ?? null;

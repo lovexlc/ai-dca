@@ -17,7 +17,14 @@
 //
 // === NAV 分层语义 (Phase 1) ===
 // 本模块依赖 fetchNavHistory 返回的「公布单位净值」序列。
-// dailySeries / cumulativeProfit / cumulativeReturnRate / TWR returnRate 的**末端 = T-1**，
+// dailySeries / cumulativeProfit / cumulativeReturnRate / twrReturnRate 的**末端 = T-1**，
+//
+// === 字段命名 (Phase 2) ===
+// buildPortfolioSeries 返回字段（外部 API，详见 docs/data-glossary.md）：
+//   - windowProfit            : 区间 per-fund 累计盈亏 = Σ_t Σ_fund shares_{t-1}·Δnav
+//   - twrReturnRate           : 区间时间加权收益率 = exp(Σ log(1+r_i)) - 1
+//   - annualizedTwrReturnRate : TWR 年化（不足 365d 返回 null）
+// diagnostics.modifiedDietz / diagnostics.twr 保留旧 key（profit / returnRate），仅做对账诊断。
 // **不是**持仓 ledger 的实时 marketValue。
 // 交易时段内入口不会回灌 latestNav，为“接受漂移”策略（见 docs/nav-source-stratification-plan.md）。
 //
@@ -309,11 +316,11 @@ export function buildPortfolioSeries({ tx, navByCode, from, to }) {
 
   const daily = buildDailySeries({ txs: allTx, navMap, fromIso, toIso });
 
-  // 以 dailySeries 末项 pnl（per-fund 真·当日 nav 增量累加）作为 profit 权威口径。
+  // 以 dailySeries 末项 pnl（per-fund 真·当日 nav 增量累加）作为 windowProfit 权威口径。
   // 该口径与 ReturnCalendar / DailyFundBreakdown 同源，避免 nav fallback + 当日 BUY 双算造成的伪增值，与 Modified-Dietz 有细微偏差。
   const lastDaily = daily.dailySeries.length ? daily.dailySeries[daily.dailySeries.length - 1] : null;
   const fundProfit = lastDaily ? lastDaily.pnl : 0;
-  // returnRate 切换到 TWR（时间加权收益率），与沪深300 endNav/startNav-1 同口径，图表可直接对比。
+  // twrReturnRate 切换到 TWR（时间加权收益率），与沪深300 endNav/startNav-1 同口径，图表可直接对比。
   // Modified-Dietz 结果保留到 diagnostics.modifiedDietz 供对账。
   const twrReturn = lastDaily && Number.isFinite(lastDaily.twrCumulative) ? lastDaily.twrCumulative : null;
   const annualized = annualize(twrReturn, md.days);
@@ -324,9 +331,9 @@ export function buildPortfolioSeries({ tx, navByCode, from, to }) {
     endValue: endMv.value,
     netCashFlow: md.netCF,
     weightedCashFlow: md.weightedCashFlow,
-    profit: fundProfit,
-    returnRate: twrReturn,
-    annualizedReturn: annualized,
+    windowProfit: fundProfit,
+    twrReturnRate: twrReturn,
+    annualizedTwrReturnRate: annualized,
     dailySeries: daily.dailySeries,
     holdings: {
       atStart: Array.from(sharesAtStart.entries()).map(([code, shares]) => ({ code, shares })),
