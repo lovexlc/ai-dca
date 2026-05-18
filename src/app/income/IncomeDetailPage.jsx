@@ -320,7 +320,7 @@ export function IncomeDetailPage({ ledger, portfolio, onBack }) {
           primary={renderCurrency(cumulativeProfit)}
           primaryClass={signClass(cumulativeProfit)}
           sub={Number.isFinite(cumulativeReturnRate)
-            ? `${cumulativeReturnRate >= 0 ? '+' : ''}${cumulativeReturnRate.toFixed(2)}% 含已实现`
+            ? `${cumulativeReturnRate >= 0 ? '+' : ''}${cumulativeReturnRate.toFixed(2)}% 已卖出`
             : (inceptionDate ? `起 ${inceptionDate}` : null)}
         />
         <BigKpi
