@@ -49,6 +49,7 @@ import {
   detectFundKind,
   getExpectedLatestNavDate,
   getLedgerCodeList,
+  getActiveHoldingCodeList,
   getTodayShanghaiDate,
   getTransactionErrors,
   normalizeFundCode,
@@ -755,7 +756,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     // 进入页面时无条件触发一次净值刷新（包含所有持仓代码）。
     // autoNavTriggeredRef 保证整个 mount 周期内只跑一次；手动刷新走 handleManualRefresh，独立于此。
     if (autoNavTriggeredRef.current) return;
-    const codes = getLedgerCodeList(transactions);
+    // 只拉当前仍有持仓的 code（totalShares > 0），已清仓的不参与净值刷新。
+    const codes = getActiveHoldingCodeList(transactions);
     if (!codes.length) return;
     autoNavTriggeredRef.current = true;
     for (const code of codes) navAttemptedCodesRef.current.add(code);
@@ -830,7 +832,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   function handleManualRefresh() {
-    const codes = getLedgerCodeList(transactions);
+    // 手动刷新同样只针对当前持仓 code，避免给已卖出的 code 重复调用 nav 接口。
+    const codes = getActiveHoldingCodeList(transactions);
     // 摊薄成本法改造后，前端数据全部本地存储，服务端不会自动推送新口径。
     // 这里先在本地静默重算一遍派生字段（avgCost / totalCost / 未实现收益等），
     // 让用户即便没拉到新净值也能立刻看到新口径下的均价。再异步刷新最新净值。

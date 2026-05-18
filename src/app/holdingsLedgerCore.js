@@ -308,6 +308,39 @@ export function getLedgerCodeList(transactions = []) {
   return [...codeSet].sort();
 }
 
+/**
+ * 仅返回「当前仍有持仓」的 code list：跑一遍移动摊薄（与 aggregateByCode 一致），
+ * 只保留 BUY/SELL 抵冲后 totalShares > 0 的 code。
+ * 适用于净值拉取、行情刷新 等“只需要活跃持仓”的场景，避免给已清仓的 code 调 nav 接口。
+ * 已结清交易（SELL 带 costPrice）不参与持仓本身，不会让一个已清仓的 code 重新变“活跃”。
+ */
+export function getActiveHoldingCodeList(transactions = []) {
+  const normalizedTxs = sanitizeTransactions(transactions, { filterInvalid: false });
+  const txsByCode = new Map();
+  for (const tx of normalizedTxs) {
+    if (!tx.code) continue;
+    if (!FUND_CODE_PATTERN.test(tx.code)) continue;
+    if (!txsByCode.has(tx.code)) txsByCode.set(tx.code, []);
+    txsByCode.get(tx.code).push(tx);
+  }
+  const active = [];
+  for (const [code, txs] of txsByCode) {
+    const sortedTxs = [...txs].sort(compareTxChrono);
+    let runShares = 0;
+    for (const tx of sortedTxs) {
+      if (tx.type === 'BUY') {
+        runShares = round(runShares + tx.shares, 4);
+      } else if (tx.type === 'SELL') {
+        if (tx.costPrice > 0) continue; // 已结清交易不动持仓
+        runShares = round(runShares - tx.shares, 4);
+        if (runShares <= 0) runShares = 0;
+      }
+    }
+    if (runShares > 0) active.push(code);
+  }
+  return active.sort();
+}
+
 /** Metrics per lot/row, matching the Excel "成交流水" sheet columns. */
 export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
   const normalized = normalizeTransaction(tx);
