@@ -66,13 +66,9 @@ export function useIncomeRoute() {
 	}, []);
 
 	const goBack = useCallback(() => {
-		if (typeof window === 'undefined') return;
-		// 如果这个页面不是从主页跳过来的（直接粘贴 url），history 可能只有1 条，走 fallback
-		if (window.history.length > 1) {
-			window.history.back();
-		} else {
-			setHashRoute(ROUTES.OVERVIEW);
-		}
+		// 子页左上角返回始终回收益首页。不要使用 history.back()，否则收益明细里的
+		// 时间筛选 / 外部入口可能污染浏览器历史，导致返回目标不稳定。
+		setHashRoute(ROUTES.OVERVIEW);
 	}, []);
 
 	return { route, navigate, goBack };
