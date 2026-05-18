@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Hero 重设计 · 3 个方案 mockup</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { background:#f1f5f9; font-family: ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft Yahei", sans-serif; }
+  .mock-wrap { max-width: 1024px; margin: 0 auto; }
+  .mock-section { background:#fff; border:1px solid rgba(226,232,240,.7); border-radius:16px; padding:16px; box-shadow:0 1px 2px rgba(15,23,42,.04); }
+  .label { font-size:11px; font-weight:600; letter-spacing:.18em; text-transform:uppercase; color:#94a3b8; }
+  .arrow { display:inline-flex; align-items:center; gap:2px; font-weight:600; }
+  .ic { width:18px; height:18px; stroke-width:1.6; }
+  .chip { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; font-size:12px; font-weight:600; background:#f1f5f9; color:#475569; }
+  .chip-rose { background:#fff1f2; color:#be123c; }
+  .chip-emerald { background:#ecfdf5; color:#047857; }
+  .chip-zinc { background:#f8fafc; color:#475569; border:1px solid #e2e8f0; }
+  .v-rose { color:#e11d48; }
+  .v-gray { color:#64748b; }
+  .v-up::before { content: "▲"; font-size:.7em; margin-right:2px; }
+  .v-down::before { content: "▼"; font-size:.7em; margin-right:2px; }
+  .divider { width:1px; height:36px; background:#e2e8f0; }
+  .sparkline { width:100%; height:36px; }
+</style>
+</head>
+<body class="py-8">
+<div class="mock-wrap space-y-8 px-4">
+  <header>
+    <h1 class="text-xl font-bold text-slate-900">Hero 重设计 · 3 个方案 mockup</h1>
+    <p class="mt-1 text-sm text-slate-500">PC 宽度 1024px。移动端下面可伸缩检查。</p>
+  </header>
+
+  <!-- baseline -->
+  <section>
+    <div class="label mb-2">Baseline · 现在长这样</div>
+    <div class="mock-section">
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <div class="text-xs text-slate-500">总市值</div>
+          <div class="text-3xl font-bold text-slate-900">￥ 159,175.49</div>
+        </div>
+        <div class="flex items-center gap-6 text-sm text-slate-500">
+          <div><span>当日</span> ￥0.00 0%</div>
+          <div>累计 <span class="v-rose font-semibold">+￥13,408.53 +6.4%</span></div>
+          <div>起 2025-10-12</div>
+          <button class="text-slate-400">⟳</button>
+        </div>
+      </div>
+    </div>
+    <div class="mock-section mt-3 flex items-stretch gap-3">
+      <div class="flex-1 flex flex-col items-center justify-center gap-1 rounded-2xl border border-slate-200/70 bg-white px-1 py-4 text-xs font-medium text-slate-700">
+        <div>📊</div><div>收益明细</div>
+      </div>
+      <div class="flex-1 flex flex-col items-center justify-center gap-1 rounded-2xl border border-slate-200/70 bg-white px-1 py-4 text-xs font-medium text-slate-700">
+        <div>💰</div><div>清仓分析</div>
+      </div>
+      <div class="flex-1 flex flex-col items-center justify-center gap-1 rounded-2xl border border-slate-200/70 bg-white px-1 py-4 text-xs font-medium text-slate-700">
+        <div>🥯</div><div>持仓分析</div>
+      </div>
+      <div class="flex-1 flex flex-col items-center justify-center gap-1 rounded-2xl border border-slate-200/70 bg-white px-1 py-4 text-xs font-medium text-slate-700">
+        <div>💱</div><div>交易记录</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- A: Robinhood-style minimal -->
+  <section>
+    <div class="label mb-2">方案 A · Robinhood / Trade Republic 极简型</div>
+    <div class="mock-section">
+      <div class="flex items-start justify-between gap-4">
+        <div class="min-w-0">
+          <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">总市值</div>
+          <div class="mt-1 text-5xl font-bold tracking-tight text-slate-900">￥159,175.49</div>
+          <div class="mt-3 flex flex-wrap items-center gap-2">
+            <span class="chip chip-zinc">今日 ￥0.00 0.0%</span>
+            <span class="chip chip-rose v-up">累计 +￥13,408.53 +6.4%</span>
+            <span class="text-xs text-slate-400">· 起算 2025-10-12</span>
+          </div>
+        </div>
+        <button title="刷新净值" class="shrink-0 rounded-full border border-slate-200 bg-white p-2 text-slate-500 hover:bg-slate-50">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 0 1 15.6-6.1L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.6 6.1L3 16"/><path d="M3 21v-5h5"/></svg>
+        </button>
+      </div>
+    </div>
+    <!-- chip menu (entry) -->
+    <div class="mt-3 flex flex-wrap gap-2">
+      <button class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+        <svg class="ic text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 3 5-6"/></svg>
+        收益明细
+      </button>
+      <button class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+        <svg class="ic text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 3"/></svg>
+        清仓分析
+      </button>
+      <button class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+        <svg class="ic text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 1 1-9-9"/><path d="M21 12A9 9 0 0 0 12 3v9z"/></svg>
+        持仓分析
+      </button>
+      <button class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+        <svg class="ic text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 7h14l-3-3"/><path d="M21 17H7l3 3"/></svg>
+        交易记录
+      </button>
+    </div>
+  </section>
+
+  <!-- B: 蛋卷 / 底部 floating tabs -->
+  <section>
+    <div class="label mb-2">方案 B · 蛋卷双卡 + sparkline + 底部浮动入口</div>
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div class="mock-section sm:col-span-2">
+        <div class="flex items-start justify-between">
+          <div>
+            <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">总市值</div>
+            <div class="mt-1 text-4xl font-bold text-slate-900">￥159,175.49</div>
+          </div>
+          <button title="刷新净值" class="shrink-0 rounded-full border border-slate-200 bg-white p-2 text-slate-500">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 0 1 15.6-6.1L21 8"/><path d="M21 3v5h-5"/></svg>
+          </button>
+        </div>
+        <div class="mt-3 flex items-end justify-between gap-4">
+          <div>
+            <div class="text-xs text-slate-400">累计收益 · 起 2025-10-12</div>
+            <div class="mt-0.5 text-xl font-bold v-rose v-up">+￥13,408.53 <span class="text-base font-semibold">+6.4%</span></div>
+          </div>
+          <svg class="sparkline flex-1 max-w-[200px]" viewBox="0 0 200 36" preserveAspectRatio="none">
+            <polyline fill="none" stroke="#e11d48" stroke-width="1.6" points="0,28 18,30 36,22 54,24 72,18 90,20 108,12 126,16 144,10 162,12 180,6 200,8"/>
+          </svg>
+        </div>
+      </div>
+      <div class="mock-section flex flex-col justify-center" style="background:#fff1f2;border-color:#fecdd3">
+        <div class="text-[11px] font-semibold uppercase tracking-[0.18em]" style="color:#9f1239">今日收益</div>
+        <div class="mt-2 text-3xl font-bold" style="color:#be123c">+￥0.00</div>
+        <div class="mt-1 text-sm font-semibold" style="color:#be123c">+0.00%</div>
+      </div>
+    </div>
+    <!-- bottom floating segmented entry -->
+    <div class="mt-3 inline-flex w-full rounded-2xl border border-slate-200/70 bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <button class="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 3 5-6"/></svg>收益明细
+      </button>
+      <button class="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 3"/></svg>清仓分析
+      </button>
+      <button class="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 1 1-9-9"/><path d="M21 12A9 9 0 0 0 12 3v9z"/></svg>持仓分析
+      </button>
+      <button class="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 7h14l-3-3"/><path d="M21 17H7l3 3"/></svg>交易记录
+      </button>
+    </div>
+  </section>
+
+  <!-- C: Fidelity / Wise dense -->
+  <section>
+    <div class="label mb-2">方案 C · Fidelity / Wise 信息密集 + secondary nav</div>
+    <div class="mock-section">
+      <div class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-slate-200">
+        <div class="px-4">
+          <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">总市值</div>
+          <div class="mt-1 text-xl font-bold text-slate-900">￥159,175.49</div>
+        </div>
+        <div class="px-4">
+          <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">今日</div>
+          <div class="mt-1 text-xl font-bold text-slate-700">￥0.00</div>
+          <div class="text-xs text-slate-400">0.00%</div>
+        </div>
+        <div class="px-4">
+          <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">累计</div>
+          <div class="mt-1 text-xl font-bold v-rose">+￥13,408.53</div>
+          <div class="text-xs font-semibold v-rose">+6.40%</div>
+        </div>
+        <div class="px-4">
+          <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">起算</div>
+          <div class="mt-1 text-xl font-bold text-slate-700">2025-10-12</div>
+          <div class="text-xs text-slate-400 inline-flex items-center gap-1"><svg class="ic w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 0 1 15.6-6.1L21 8"/><path d="M21 3v5h-5"/></svg>刷新净值</div>
+        </div>
+      </div>
+    </div>
+    <!-- secondary nav (entry) -->
+    <div class="mt-3 border-b border-slate-200">
+      <nav class="flex gap-1 -mb-px">
+        <button class="inline-flex items-center gap-2 border-b-2 border-slate-900 px-3 py-2.5 text-sm font-semibold text-slate-900">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 3 5-6"/></svg>收益明细
+        </button>
+        <button class="inline-flex items-center gap-2 border-b-2 border-transparent px-3 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 3"/></svg>清仓分析
+        </button>
+        <button class="inline-flex items-center gap-2 border-b-2 border-transparent px-3 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 1 1-9-9"/><path d="M21 12A9 9 0 0 0 12 3v9z"/></svg>持仓分析
+        </button>
+        <button class="inline-flex items-center gap-2 border-b-2 border-transparent px-3 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-900">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 7h14l-3-3"/><path d="M21 17H7l3 3"/></svg>交易记录
+        </button>
+      </nav>
+    </div>
+  </section>
+
+  <footer class="py-6 text-center text-xs text-slate-400">
+    请选一个方案后告诉我，我会 patch HoldingsExperience / IncomeSummary 同时混合 PC 与移动响应式。
+  </footer>
+</div>
+</body>
+</html>
