@@ -10,6 +10,8 @@ import { loadNotifyEvents } from './notifySync.js';
 
 const WEB_NOTIFY_CONFIG_KEY = 'aiDcaWebNotifyConfig';
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
+// 首次启用时补推近 15 分钟内未看事件，避免“刚启用 PC 通知刚好挫过刚触发的事件”。
+const FIRST_RUN_REPLAY_WINDOW_MS = 15 * 60 * 1000;
 
 function buildDefaultWebNotifyConfig() {
   return {
@@ -137,18 +139,43 @@ export function startWebNotifyPoller({ clientId, intervalMs = DEFAULT_POLL_INTER
     const config = readWebNotifyConfig();
     const state = getWebNotifyState();
     if (!config.pcEnabled || !state.supported || state.permission !== 'granted') {
+      if (debug) console.info('[webNotifyClient] tick skipped', {
+        pcEnabled: config.pcEnabled,
+        supported: state.supported,
+        permission: state.permission
+      });
       return;
     }
     try {
       const payload = await loadNotifyEvents(clientId);
       if (stopped) return;
       const sorted = sortEventsAsc(payload?.events || []);
+      if (debug) console.info('[webNotifyClient] tick fetched', {
+        eventCount: sorted.length,
+        lastSeenEventId: config.lastSeenEventId
+      });
       if (!sorted.length) return;
       const latestId = pickEventId(sorted[sorted.length - 1]);
 
       if (!config.lastSeenEventId) {
-        // 首次启用：只记起点，不重推历史
+        // 首次启用：补推近 FIRST_RUN_REPLAY_WINDOW_MS 内的事件，那个窗口以外的历史跳过。
+        const cutoffMs = Date.now() - FIRST_RUN_REPLAY_WINDOW_MS;
+        const recent = sorted.filter((event) => (Date.parse(String(event?.createdAt || '')) || 0) >= cutoffMs);
+        if (!silent) {
+          for (const event of recent) {
+            showLocalWebNotification({
+              title: String(event?.title || event?.summary || '交易提醒'),
+              body: String(event?.body || event?.message || ''),
+              tag: pickEventId(event) || undefined
+            });
+          }
+        }
         persistWebNotifyConfig({ lastSeenEventId: latestId });
+        if (debug) console.info('[webNotifyClient] first-run replay', {
+          replayed: recent.length,
+          latestId,
+          silent
+        });
         return;
       }
 

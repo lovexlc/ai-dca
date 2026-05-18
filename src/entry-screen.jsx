@@ -23,7 +23,7 @@ try {
     if (typeof window !== 'undefined' && typeof window.__aiDcaStopWebNotifyPoller === 'function') {
       try { window.__aiDcaStopWebNotifyPoller(); } catch (_e) { /* ignore */ }
     }
-    const stop = startWebNotifyPoller({ clientId: notifyConfig.notifyClientId });
+    const stop = startWebNotifyPoller({ clientId: notifyConfig.notifyClientId, debug: true });
     if (typeof window !== 'undefined') {
       window.__aiDcaStopWebNotifyPoller = stop;
     }
