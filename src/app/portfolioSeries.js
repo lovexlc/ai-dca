@@ -197,6 +197,10 @@ function buildDailySeries({ txs, navMap, fromIso, toIso }) {
   // 这样 dailySeries.pnl[i] 严格等于 「起始日到 day_i 的当日明细加和」，
   // 与 ReturnCalendar / DailyFundBreakdown / BigKpi 全部同源。
   let cumulativeFundPnl = 0;
+  // TWR 累乘：r_i = pnl_i / V_{i-1}，cumLogReturn += log(1 + r_i)
+  // 与现金流时间无关，等价于「假设投入 1 元从首日持有到末日」，与沪深300 endNav/startNav-1 同口径。
+  let cumLogReturn = 0;
+  let prevMv = vStart;
 
   for (let d = 0; d <= totalDays; d += 1) {
     const day = shiftDays(fromIso, d);
@@ -205,6 +209,12 @@ function buildDailySeries({ txs, navMap, fromIso, toIso }) {
     let dayFundPnl = 0;
     for (const r of fundRows) {
       if (Number.isFinite(r.pnl)) dayFundPnl += r.pnl;
+    }
+    // 当日 TWR 收益率：用「前一日收盘市值 prevMv」作分母，与当日新增资金无关。
+    // prevMv ≤ ε 时（首日尚无持仓 / 全部赎回）记 0，避免除零。
+    const dayReturn = prevMv > EPSILON ? dayFundPnl / prevMv : 0;
+    if (Number.isFinite(dayReturn) && 1 + dayReturn > EPSILON) {
+      cumLogReturn += Math.log(1 + dayReturn);
     }
     cumulativeFundPnl += dayFundPnl;
 
@@ -226,13 +236,17 @@ function buildDailySeries({ txs, navMap, fromIso, toIso }) {
     // pnl 改用 per-fund 真·当日 nav 增量累加（避免当日 BUY × fallback nav 伪增值）
     const pnl = cumulativeFundPnl;
     const pnlRate = Math.abs(denom) < EPSILON ? null : pnl / denom;
+    const twrCumulative = Math.exp(cumLogReturn) - 1;
     result.push({
       date: day,
       marketValue: mv.value,
       cumulativeNetCashFlow: cumulativeNetCF,
       pnl,
-      pnlRate
+      pnlRate,
+      dailyReturn: dayReturn,
+      twrCumulative
     });
+    prevMv = mv.value;
   }
 
   return { dailySeries: result, vStart, startMissingCodes: startMv.missingCodes };
@@ -290,8 +304,10 @@ export function buildPortfolioSeries({ tx, navByCode, from, to }) {
   // 该口径与 ReturnCalendar / DailyFundBreakdown 同源，避免 nav fallback + 当日 BUY 双算造成的伪增值，与 Modified-Dietz 有细微偏差。
   const lastDaily = daily.dailySeries.length ? daily.dailySeries[daily.dailySeries.length - 1] : null;
   const fundProfit = lastDaily ? lastDaily.pnl : 0;
-  const fundReturnRate = Math.abs(md.denominator) < EPSILON ? null : fundProfit / md.denominator;
-  const annualized = annualize(fundReturnRate, md.days);
+  // returnRate 切换到 TWR（时间加权收益率），与沪深300 endNav/startNav-1 同口径，图表可直接对比。
+  // Modified-Dietz 结果保留到 diagnostics.modifiedDietz 供对账。
+  const twrReturn = lastDaily && Number.isFinite(lastDaily.twrCumulative) ? lastDaily.twrCumulative : null;
+  const annualized = annualize(twrReturn, md.days);
 
   return {
     window: { from: fromIso, to: toIso, days: md.days },
@@ -300,7 +316,7 @@ export function buildPortfolioSeries({ tx, navByCode, from, to }) {
     netCashFlow: md.netCF,
     weightedCashFlow: md.weightedCashFlow,
     profit: fundProfit,
-    returnRate: fundReturnRate,
+    returnRate: twrReturn,
     annualizedReturn: annualized,
     dailySeries: daily.dailySeries,
     holdings: {
@@ -311,7 +327,8 @@ export function buildPortfolioSeries({ tx, navByCode, from, to }) {
     diagnostics: {
       startMissingNavCodes: startMv.missingCodes,
       endMissingNavCodes: endMv.missingCodes,
-      modifiedDietz: { profit: md.profit, returnRate: md.return_, denominator: md.denominator }
+      modifiedDietz: { profit: md.profit, returnRate: md.return_, denominator: md.denominator },
+      twr: { returnRate: twrReturn }
     }
   };
 }
