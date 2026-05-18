@@ -145,7 +145,7 @@ export function DailyFundBreakdown({ ledger, selectedDate }) {
                   <span className="shrink-0 rounded bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-700">投资增值</span>
                 ) : null}
               </div>
-              <div className={cx('shrink-0 text-right text-sm font-semibold tabular-nums', signClass(row.pnl))}>
+              <div className={cx('min-w-0 max-w-[46%] shrink-0 truncate whitespace-nowrap text-right text-sm font-semibold tabular-nums', signClass(row.pnl))}>
                 {renderPnl(row.pnl)}
               </div>
             </div>

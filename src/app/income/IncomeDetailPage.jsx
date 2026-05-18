@@ -150,9 +150,9 @@ function renderPercent(value, { keepSign = true, digits = 2 } = {}) {
 function BigKpi({ label, primary, primaryClass, sub }) {
   return (
     <div className="flex min-w-0 flex-col gap-1 rounded-2xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4">
-      <div className="text-[11px] font-medium uppercase tracking-[0.04em] text-slate-500">{label}</div>
-      <div className={cx('text-xl font-semibold leading-tight tabular-nums sm:text-2xl', primaryClass)}>{primary}</div>
-      {sub ? <div className="text-[11px] text-slate-500 tabular-nums">{sub}</div> : null}
+      <div className="min-w-0 truncate text-[11px] font-medium uppercase tracking-[0.04em] text-slate-500">{label}</div>
+      <div className={cx('min-w-0 truncate whitespace-nowrap text-lg font-semibold leading-tight tabular-nums min-[380px]:text-xl sm:text-2xl', primaryClass)}>{primary}</div>
+      {sub ? <div className="min-w-0 truncate whitespace-nowrap text-[11px] text-slate-500 tabular-nums">{sub}</div> : null}
     </div>
   );
 }

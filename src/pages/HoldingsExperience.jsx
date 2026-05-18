@@ -2328,32 +2328,32 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           </div>
           {agg.name ? <div className="mt-1 text-sm text-slate-600">{agg.name}</div> : null}
         </div>
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-          <div>
+        <dl className="grid min-w-0 grid-cols-2 gap-x-4 gap-y-3 text-sm">
+          <div className="min-w-0">
             <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">净份额</dt>
-            <dd className="mt-1 tabular-nums text-slate-900">{formatShares(agg.totalShares)}</dd>
+            <dd className="mt-1 min-w-0 truncate whitespace-nowrap tabular-nums text-slate-900">{formatShares(agg.totalShares)}</dd>
           </div>
-          <div>
+          <div className="min-w-0">
             <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">加权均价</dt>
-            <dd className="mt-1 tabular-nums text-slate-900">{formatNav(agg.avgCost)}</dd>
+            <dd className="mt-1 min-w-0 truncate whitespace-nowrap tabular-nums text-slate-900">{formatNav(agg.avgCost)}</dd>
           </div>
-          <div>
+          <div className="min-w-0">
             <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总成本</dt>
-            <dd className="mt-1 tabular-nums text-slate-900">{formatCurrency(agg.totalCost, '¥', 2)}</dd>
+            <dd className="mt-1 min-w-0 truncate whitespace-nowrap tabular-nums text-slate-900">{formatCurrency(agg.totalCost, '¥', 2)}</dd>
           </div>
-          <div>
+          <div className="min-w-0">
             <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</dt>
-            <dd className="mt-1 tabular-nums text-slate-900">{agg.hasLatestNav ? formatCurrency(agg.marketValue, '¥', 2) : '—'}</dd>
+            <dd className="mt-1 min-w-0 truncate whitespace-nowrap tabular-nums text-slate-900">{agg.hasLatestNav ? formatCurrency(agg.marketValue, '¥', 2) : '—'}</dd>
           </div>
-          <div>
+          <div className="min-w-0">
             <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">累计盈亏</dt>
-            <dd className={cx('mt-1 tabular-nums', profitTone)}>
+            <dd className={cx('mt-1 min-w-0 truncate whitespace-nowrap tabular-nums', profitTone)}>
               {agg.hasLatestNav ? `${formatSignedCurrency(agg.totalProfit)} (${formatSignedPercent(agg.totalReturnRate)})` : '—'}
             </dd>
           </div>
-          <div>
+          <div className="min-w-0">
             <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">今日盈亏</dt>
-            <dd className={cx('mt-1 tabular-nums', todayTone)}>
+            <dd className={cx('mt-1 min-w-0 truncate whitespace-nowrap tabular-nums', todayTone)}>
               {agg.hasTodayNav ? `${formatSignedCurrency(agg.todayProfit)} (${formatSignedPercent(agg.todayReturnRate)})` : '—'}
               {agg.hasTodayNav && agg.todayProfitHolidayDays > 0 ? (
                 <sup
@@ -2363,13 +2363,13 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               ) : null}
             </dd>
           </div>
-          <div>
+          <div className="min-w-0">
             <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">BUY 总份额</dt>
-            <dd className="mt-1 tabular-nums text-slate-900">{formatShares(agg.buyShares)}</dd>
+            <dd className="mt-1 min-w-0 truncate whitespace-nowrap tabular-nums text-slate-900">{formatShares(agg.buyShares)}</dd>
           </div>
-          <div>
+          <div className="min-w-0">
             <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">SELL 总份额</dt>
-            <dd className="mt-1 tabular-nums text-slate-900">{formatShares(agg.sellShares)}</dd>
+            <dd className="mt-1 min-w-0 truncate whitespace-nowrap tabular-nums text-slate-900">{formatShares(agg.sellShares)}</dd>
           </div>
           <div>
             <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">首买日期</dt>

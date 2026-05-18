@@ -105,22 +105,22 @@ export function IncomeSummary({ portfolio, navigate, inceptionDate, navRefresh, 
 	return (
 		<div className="flex flex-col gap-3">
 			{/* v6.8 方案 B: 双卡 hero — 左大（总市值+累计+sparkline）/ 右窄（今日 rose 强调） */}
-			<section className="grid grid-cols-1 gap-3 sm:grid-cols-5">
+			<section className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-5">
 				{/* 左大卡：sm 占 3/5 列 */}
-				<div className="flex flex-col gap-3 rounded-2xl border border-slate-200/70 bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:col-span-3 sm:px-6 sm:py-5">
-					<div className="flex items-baseline justify-between gap-3">
-						<div>
+				<div className="flex min-w-0 flex-col gap-3 rounded-2xl border border-slate-200/70 bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:col-span-3 sm:px-6 sm:py-5">
+					<div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+						<div className="min-w-0">
 							<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</div>
-							<div className="mt-1 text-3xl font-extrabold tracking-tight tabular-nums text-slate-900 sm:text-4xl">
+							<div className="mt-1 truncate whitespace-nowrap text-2xl font-extrabold tracking-tight tabular-nums text-slate-900 min-[380px]:text-3xl sm:text-4xl">
 								{Number.isFinite(marketValue) ? formatCurrency(marketValue, '¥', 2) : '—'}
 							</div>
 						</div>
-						<div className="text-right">
+						<div className="min-w-0 text-left sm:text-right">
 							<div className="text-[11px] font-medium text-slate-500">累计</div>
-							<div className={cx('mt-0.5 text-sm font-semibold tabular-nums sm:text-base', cumulativeTone)}>
+							<div className={cx('mt-0.5 truncate whitespace-nowrap text-sm font-semibold tabular-nums sm:text-base', cumulativeTone)}>
 								{renderSignedCurrency(cumulativeProfit)}
 							</div>
-							<div className={cx('text-xs font-semibold tabular-nums', cumulativeTone)}>
+							<div className={cx('truncate whitespace-nowrap text-xs font-semibold tabular-nums', cumulativeTone)}>
 								{renderSignedPercent(cumulativeReturnRate)}
 							</div>
 						</div>
@@ -134,16 +134,16 @@ export function IncomeSummary({ portfolio, navigate, inceptionDate, navRefresh, 
 				</div>
 
 				{/* 右窄卡：sm 占 2/5 列，rose-50 浅底强调今日 */}
-				<div className="flex flex-col justify-between rounded-2xl border border-rose-100 bg-rose-50/60 px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:col-span-2 sm:px-5 sm:py-5">
+				<div className="flex min-w-0 flex-col justify-between rounded-2xl border border-rose-100 bg-rose-50/60 px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:col-span-2 sm:px-5 sm:py-5">
 					<div className="flex items-start justify-between gap-2">
 						<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">今日</div>
 						{refreshBtn}
 					</div>
-					<div className="mt-3">
-						<div className={cx('text-2xl font-bold tabular-nums sm:text-3xl', todayTone)}>
+					<div className="mt-3 min-w-0">
+						<div className={cx('truncate whitespace-nowrap text-2xl font-bold tabular-nums sm:text-3xl', todayTone)}>
 							{renderSignedCurrency(todayProfit)}
 						</div>
-						<div className={cx('mt-1 inline-flex items-center rounded-full bg-white/70 px-2 py-0.5 text-xs font-semibold tabular-nums', todayTone)}>
+						<div className={cx('mt-1 inline-flex max-w-full items-center truncate whitespace-nowrap rounded-full bg-white/70 px-2 py-0.5 text-xs font-semibold tabular-nums', todayTone)}>
 							{renderSignedPercent(todayReturnRate)}
 						</div>
 					</div>

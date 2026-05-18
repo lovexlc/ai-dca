@@ -63,7 +63,7 @@ function Kpi({ label, value, valueTone, sub }) {
 	return (
 		<div className="flex min-w-0 flex-col gap-1 rounded-2xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4">
 			<div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400 sm:text-[11px]">{label}</div>
-			<div className={cx('truncate text-lg font-semibold tabular-nums sm:text-xl', valueTone || TONE_NEUTRAL)}>{value}</div>
+			<div className={cx('truncate whitespace-nowrap text-lg font-semibold tabular-nums sm:text-xl', valueTone || TONE_NEUTRAL)}>{value}</div>
 			{sub ? <div className="truncate text-[10px] text-slate-400 sm:text-[11px]">{sub}</div> : null}
 		</div>
 	);
@@ -73,27 +73,27 @@ function LotRow({ lot, ledger }) {
 	const hd = holdDaysForLot(lot, ledger);
 	const rateTone = toneOf(lot.realizedReturnRate);
 	return (
-		<div className="flex items-center justify-between gap-2 border-b border-slate-100 px-2 py-2 last:border-b-0">
+		<div className="flex min-w-0 items-center justify-between gap-2 border-b border-slate-100 px-2 py-2 last:border-b-0">
 			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
-				<div className="flex items-center gap-1.5 truncate">
+				<div className="flex min-w-0 items-center gap-1.5 truncate">
 					<span className="truncate text-sm font-medium text-slate-800">{lot.name || lot.code}</span>
 					<span className="shrink-0 text-[10px] text-slate-400">{lot.code}</span>
 					{lot.isSwitch ? (
 						<span className="shrink-0 rounded-full bg-indigo-50 px-1.5 py-px text-[9px] font-semibold text-indigo-600">转换</span>
 					) : null}
 				</div>
-				<div className="flex items-center gap-2 text-[11px] text-slate-500">
+				<div className="flex min-w-0 items-center gap-2 overflow-hidden text-[11px] text-slate-500">
 					<span className="tabular-nums">{lot.sellDate}</span>
 					<span>·</span>
-					<span className="tabular-nums">{lot.sellShares.toLocaleString('zh-CN', { maximumFractionDigits: 2 })} 份</span>
+					<span className="min-w-0 truncate whitespace-nowrap tabular-nums">{lot.sellShares.toLocaleString('zh-CN', { maximumFractionDigits: 2 })} 份</span>
 					{Number.isFinite(hd) ? (<><span>·</span><span className="tabular-nums">持有 {hd} 天</span></>) : null}
 				</div>
 			</div>
-			<div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
-				<div className={cx('text-sm font-semibold tabular-nums', toneOf(lot.realizedProfit))}>
+			<div className="flex min-w-0 max-w-[44%] shrink-0 flex-col items-end gap-0.5 text-right">
+				<div className={cx('max-w-full truncate whitespace-nowrap text-sm font-semibold tabular-nums', toneOf(lot.realizedProfit))}>
 					{formatSignedCurrency(lot.realizedProfit)}
 				</div>
-				<div className={cx('text-[11px] tabular-nums', rateTone)}>
+				<div className={cx('max-w-full truncate whitespace-nowrap text-[11px] tabular-nums', rateTone)}>
 					{formatPercent(lot.realizedReturnRate)}
 				</div>
 			</div>
@@ -112,11 +112,11 @@ function MonthlyGroups({ groups, ledger }) {
 	return (
 		<div className="flex flex-col gap-3">
 			{groups.map((g) => (
-				<section key={g.month} className="rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+				<section key={g.month} className="min-w-0 rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
 					<header className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2 sm:px-4">
 						<div className="text-sm font-semibold text-slate-700 tabular-nums">{g.month}</div>
-						<div className="flex items-baseline gap-2">
-							<span className={cx('text-sm font-semibold tabular-nums', toneOf(g.totalProfit))}>
+						<div className="flex min-w-0 items-baseline gap-2">
+							<span className={cx('min-w-0 truncate whitespace-nowrap text-sm font-semibold tabular-nums', toneOf(g.totalProfit))}>
 								{formatSignedCurrency(g.totalProfit)}
 							</span>
 							<span className="text-[11px] text-slate-400 tabular-nums">{g.lotCount} 次</span>
@@ -198,7 +198,7 @@ export function IncomeLiquidationPage({ ledger, onBack }) {
 			</nav>
 
 			{/* ② KPI */}
-			<div className="grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-3">
+			<div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-3">
 				<Kpi label="清仓总收益" value={formatSignedCurrency(kpi.totalProfit)} valueTone={toneOf(kpi.totalProfit)} />
 				<Kpi label="清仓盈利率" value={formatPercent(kpi.profitRate)} valueTone={toneOf(kpi.profitRate)} sub={`总卖出本金 ${formatCurrency(kpi.totalSellCostBasis)}`} />
 				<Kpi label="清仓产品数" value={`${kpi.codeCount} 只`} />

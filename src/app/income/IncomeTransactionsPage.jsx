@@ -276,13 +276,13 @@ function SummaryStat({ count, label, amount, dim, subLabel, tone }) {
 	return (
 		<div className={cx('flex flex-col gap-0.5', dim ? 'opacity-70' : '')}>
 			<div className="flex items-baseline gap-1.5">
-				<span className={cx('text-xl font-bold tabular-nums sm:text-2xl', countColor)}>{count}</span>
+				<span className={cx('min-w-0 truncate whitespace-nowrap text-xl font-bold tabular-nums sm:text-2xl', countColor)}>{count}</span>
 				<span className="text-xs text-slate-500">次</span>
 				<span className={cx('text-xs font-medium', dim ? 'text-slate-400' : 'text-slate-600')}>{label}</span>
 			</div>
 			{amount === null
 				? (subLabel ? <div className="text-[11px] text-slate-500">{subLabel}</div> : null)
-				: <div className="text-[11px] text-slate-500">共{formatCurrency(amount, '¥', 2)}</div>}
+				: <div className="min-w-0 truncate whitespace-nowrap text-[11px] tabular-nums text-slate-500">共{formatCurrency(amount, '¥', 2)}</div>}
 		</div>
 	);
 }
@@ -296,7 +296,7 @@ function Row({ tx, onClick }) {
 		<button
 			type="button"
 			onClick={onClick}
-			className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-x-3 rounded-xl border border-slate-100 bg-white px-3 py-2.5 text-left transition-colors hover:bg-slate-50 active:bg-slate-100"
+			className="grid min-w-0 w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 rounded-xl border border-slate-100 bg-white px-3 py-2.5 text-left transition-colors hover:bg-slate-50 active:bg-slate-100"
 		>
 			<span className={cx('inline-flex w-12 shrink-0 items-center justify-center rounded px-1.5 py-0.5 text-[11px] font-semibold', tone)}>
 				{label}
@@ -305,7 +305,7 @@ function Row({ tx, onClick }) {
 				<div className="truncate text-[13px] font-medium text-slate-800">基金 | {tx.name || tx.code || '—'}</div>
 				<div className="mt-0.5 text-[11px] text-slate-400 tabular-nums">{toIsoDay(tx.date)}</div>
 			</span>
-			<span className="text-right text-[13px] font-semibold text-slate-800 tabular-nums">{amount === null ? '—' : formatCurrency(amount, '¥', 2)}</span>
+			<span className="min-w-0 max-w-[42%] shrink-0 truncate whitespace-nowrap text-right text-[13px] font-semibold tabular-nums text-slate-800">{amount === null ? '—' : formatCurrency(amount, '¥', 2)}</span>
 		</button>
 	);
 }

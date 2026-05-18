@@ -119,6 +119,10 @@ function VarietyTooltip({ active, payload, total }) {
 	);
 }
 
+function swatchStyle(color) {
+	return { backgroundColor: color };
+}
+
 function KindTooltip({ active, payload, total }) {
 	if (!active || !payload || !payload[0]) return null;
 	const d = payload[0].payload;
@@ -135,10 +139,10 @@ function KindTooltip({ active, payload, total }) {
 
 function SectionCard({ title, hint, children }) {
 	return (
-		<section className="rounded-2xl border border-slate-200 bg-white p-4">
-			<header className="mb-3 flex items-baseline justify-between gap-3">
-				<h3 className="text-sm font-medium text-slate-800">{title}</h3>
-				{hint ? <span className="text-xs text-slate-400">{hint}</span> : null}
+		<section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4">
+			<header className="mb-3 flex min-w-0 items-baseline justify-between gap-3">
+				<h3 className="min-w-0 truncate text-sm font-medium text-slate-800">{title}</h3>
+				{hint ? <span className="shrink-0 text-xs text-slate-400">{hint}</span> : null}
 			</header>
 			{children}
 		</section>
@@ -147,22 +151,22 @@ function SectionCard({ title, hint, children }) {
 
 function OverviewCard({ count, marketValue, totalProfit, returnRate }) {
 	return (
-		<section className="rounded-2xl border border-slate-200 bg-white p-4">
-			<div className="grid grid-cols-3 gap-3">
-				<div>
+		<section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4">
+			<div className="grid min-w-0 grid-cols-[0.68fr_minmax(0,1fr)_minmax(0,1fr)] gap-3 sm:grid-cols-3">
+				<div className="min-w-0">
 					<div className="text-xs text-slate-500">持仓品种</div>
-					<div className="mt-1 text-xl font-medium text-slate-800">{count} <span className="text-sm text-slate-400">只</span></div>
+					<div className="mt-1 truncate whitespace-nowrap text-lg font-medium tabular-nums text-slate-800 sm:text-xl">{count} <span className="text-sm text-slate-400">只</span></div>
 				</div>
-				<div>
+				<div className="min-w-0">
 					<div className="text-xs text-slate-500">总市值</div>
-					<div className="mt-1 text-xl font-medium text-slate-800">{formatCurrency(marketValue)}</div>
+					<div className="mt-1 truncate whitespace-nowrap text-lg font-medium tabular-nums text-slate-800 sm:text-xl">{formatCurrency(marketValue)}</div>
 				</div>
-				<div>
+				<div className="min-w-0">
 					<div className="text-xs text-slate-500">累计盈亏</div>
-					<div className={`mt-1 text-xl font-medium ${pnlTone(totalProfit)}`}>
+					<div className={`mt-1 truncate whitespace-nowrap text-lg font-medium tabular-nums sm:text-xl ${pnlTone(totalProfit)}`}>
 						{pnlSign(totalProfit)}{formatCurrency(totalProfit)}
 					</div>
-					<div className={`text-xs ${pnlTone(totalProfit)}`}>{pnlSign(returnRate)}{formatPercent(returnRate)}</div>
+					<div className={`truncate whitespace-nowrap text-xs tabular-nums ${pnlTone(totalProfit)}`}>{pnlSign(returnRate)}{formatPercent(returnRate)}</div>
 				</div>
 			</div>
 		</section>
@@ -174,7 +178,7 @@ function VarietyChart({ slices, total }) {
 		return <div className="py-8 text-center text-sm text-slate-400">暂无持仓数据</div>;
 	}
 	return (
-		<div className="grid grid-cols-1 gap-3 sm:grid-cols-[260px_1fr] sm:items-center">
+		<div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-[260px_minmax(0,1fr)] sm:items-center">
 			<div className="h-[220px]">
 				<ResponsiveContainer width="100%" height="100%">
 					<PieChart>
@@ -196,14 +200,14 @@ function VarietyChart({ slices, total }) {
 					</PieChart>
 				</ResponsiveContainer>
 			</div>
-			<ul className="flex flex-col gap-1.5 text-xs">
+			<ul className="flex min-w-0 flex-col gap-1.5 text-xs">
 				{slices.map((s) => {
 					const pct = total > 0 ? (s.value / total) * 100 : 0;
 					return (
-						<li key={s.key} className="flex items-center gap-2">
-							<span className="size-2.5 shrink-0 rounded-sm" style={{ background: s.color }} />
-							<span className="flex-1 truncate text-slate-700">{s.label}</span>
-							<span className="tabular-nums text-slate-500">{pct.toFixed(1)}%</span>
+						<li key={s.key} className="flex min-w-0 items-center gap-2">
+							<span className="size-2.5 shrink-0 rounded-sm" style={swatchStyle(s.color)} />
+							<span className="min-w-0 flex-1 truncate text-slate-700">{s.label}</span>
+							<span className="shrink-0 whitespace-nowrap tabular-nums text-slate-500">{pct.toFixed(1)}%</span>
 						</li>
 					);
 				})}
@@ -217,7 +221,7 @@ function KindChart({ slices, total }) {
 		return <div className="py-8 text-center text-sm text-slate-400">暂无持仓数据</div>;
 	}
 	return (
-		<div className="grid grid-cols-1 gap-3 sm:grid-cols-[220px_1fr] sm:items-center">
+		<div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-[220px_minmax(0,1fr)] sm:items-center">
 			<div className="h-[200px]">
 				<ResponsiveContainer width="100%" height="100%">
 					<PieChart>
@@ -239,20 +243,20 @@ function KindChart({ slices, total }) {
 					</PieChart>
 				</ResponsiveContainer>
 			</div>
-			<ul className="flex flex-col gap-2 text-xs">
+			<ul className="flex min-w-0 flex-col gap-2 text-xs">
 				{slices.map((s) => {
 					const pct = total > 0 ? (s.marketValue / total) * 100 : 0;
 					return (
-						<li key={s.kind} className="flex items-start gap-2">
-							<span className="mt-1 size-2.5 shrink-0 rounded-sm" style={{ background: s.color }} />
-							<div className="flex-1">
-								<div className="flex items-baseline justify-between gap-2">
-									<span className="text-slate-800">{s.label} <span className="text-slate-400">· {s.count} 只</span></span>
-									<span className="tabular-nums text-slate-500">{pct.toFixed(1)}%</span>
+						<li key={s.kind} className="flex min-w-0 items-start gap-2">
+							<span className="mt-1 size-2.5 shrink-0 rounded-sm" style={swatchStyle(s.color)} />
+							<div className="min-w-0 flex-1">
+								<div className="flex min-w-0 items-baseline justify-between gap-2">
+									<span className="min-w-0 truncate text-slate-800">{s.label} <span className="text-slate-400">· {s.count} 只</span></span>
+									<span className="shrink-0 whitespace-nowrap tabular-nums text-slate-500">{pct.toFixed(1)}%</span>
 								</div>
-								<div className="mt-0.5 flex items-baseline justify-between gap-2">
-									<span className="text-slate-600">{formatCurrency(s.marketValue)}</span>
-									<span className={`tabular-nums ${pnlTone(s.totalProfit)}`}>
+								<div className="mt-0.5 flex min-w-0 items-baseline justify-between gap-2">
+									<span className="min-w-0 truncate whitespace-nowrap tabular-nums text-slate-600">{formatCurrency(s.marketValue)}</span>
+									<span className={`shrink-0 truncate whitespace-nowrap tabular-nums ${pnlTone(s.totalProfit)}`}>
 										{pnlSign(s.totalProfit)}{formatCurrency(s.totalProfit)} · {pnlSign(s.returnRate)}{formatPercent(s.returnRate)}
 									</span>
 								</div>
@@ -267,25 +271,25 @@ function KindChart({ slices, total }) {
 
 function ContributionRow({ p, rank }) {
 	return (
-		<li className="grid grid-cols-[auto_1fr_auto] items-center gap-2 rounded-lg border border-slate-100 bg-slate-50/40 px-2.5 py-2 sm:grid-cols-[auto_1.5fr_1fr_auto]">
+		<li className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-slate-100 bg-slate-50/40 px-2.5 py-2 sm:grid-cols-[auto_minmax(0,1.5fr)_minmax(0,1fr)_auto]">
 			<span className="size-6 shrink-0 rounded-full bg-white text-center text-xs leading-6 text-slate-500 ring-1 ring-slate-200">{rank}</span>
 			<div className="min-w-0">
 				<div className="truncate text-sm text-slate-800">{p.name || '未命名'}</div>
-				<div className="flex items-center gap-1.5 text-xs text-slate-400">
-					<span className="tabular-nums">{p.code}</span>
+				<div className="flex min-w-0 items-center gap-1.5 text-xs text-slate-400">
+					<span className="shrink-0 tabular-nums">{p.code}</span>
 					<span className="size-1 rounded-full bg-slate-300" />
-					<span>{(KIND_META[p.kind] || { label: p.kind }).label}</span>
+					<span className="min-w-0 truncate">{(KIND_META[p.kind] || { label: p.kind }).label}</span>
 				</div>
 			</div>
-			<div className="hidden text-right text-xs text-slate-500 sm:block">
-				<div className="tabular-nums">{formatCurrency(p.marketValue)}</div>
-				<div className={TONE_DIM}>成本 {formatCurrency(p.totalCost)}</div>
+			<div className="hidden min-w-0 text-right text-xs text-slate-500 sm:block">
+				<div className="truncate whitespace-nowrap tabular-nums">{formatCurrency(p.marketValue)}</div>
+				<div className={`truncate whitespace-nowrap tabular-nums ${TONE_DIM}`}>成本 {formatCurrency(p.totalCost)}</div>
 			</div>
-			<div className="text-right">
-				<div className={`text-sm tabular-nums ${pnlTone(p.totalProfit)}`}>
+			<div className="min-w-0 text-right">
+				<div className={`truncate whitespace-nowrap text-sm tabular-nums ${pnlTone(p.totalProfit)}`}>
 					{pnlSign(p.totalProfit)}{formatCurrency(p.totalProfit)}
 				</div>
-				<div className={`text-xs tabular-nums ${pnlTone(p.totalProfit)}`}>
+				<div className={`truncate whitespace-nowrap text-xs tabular-nums ${pnlTone(p.totalProfit)}`}>
 					{pnlSign(p.totalReturnRate)}{formatPercent(p.totalReturnRate)}
 				</div>
 			</div>
