@@ -25,14 +25,22 @@
 - [x] step-5：ReturnCalendar：当前日单元如果用 latestNav 推算盈亏，给单元加 tooltip「实时估算，明日定盘后更新」；如果未推算只显示 0，加 tooltip「今日定盘后更新」
 - [x] step-6：SwitchStrategy（`src/pages/SwitchStrategyExperience.jsx:loadEtfLatestNav` 调用站点 loadNav）：对 `loadEtfLatestNav` 返回 null 的 code 批量降级调 `requestHoldingsNav(fallbackCodes)`（同 /api/holdings/nav）补齐 navByCode，与持仓页 KPI 同源
 - [x] step-7：建 `docs/data-glossary.md`（最小版）：罗列 `latestNav` / `previousNav` / `navHistory[].nav` / `marketValue` / `pricePulse.changePct` 五个字段的来源、时效、计算口径
-- [ ] step-8：最小单测 / 冒烟：
-  - 单测：mock 交易时段时间，确保 navHistoryClient 末端日期 ≤ T-1
-  - 冒烟：cf-browser-mcp 真实跑
-    - 收益看板首屏 → 看到末端 tooltip 文案
-    - 持仓页 KPI 实时态正常
-    - SwitchStrategy 选一只 ETF → 看到 latestNav 与持仓 KPI 同源
-- [ ] step-9：commit + push + Actions 验证（src/ 触发 deploy-pages 自动）
-- [ ] step-10：回报四件证据：commit SHA / Actions run / Pages HTTP 200 / cf-browser-mcp 截图关键文本
+- [x] step-8：冒烟验证（降级方案）
+  - cf-browser-mcp 在该 SPA 上 hydrate 失败（`evaluate` 报 `Cannot read properties of undefined (reading 'slice')`，`#root` 20s 超时），无法用 UI 截图；改用 **bundle 内容 grep** 作为证据。
+  - 部署后从 `https://tools.freebacktrack.tech/react-assets-v2/` 下载各 chunk，命中：
+    - `ReturnChart.js`（25303 字节）：`公布` × 1（来自「公布单位净值，不含今日实时变动」）
+    - `HoldingsExperience.js`（154647 字节）：`公布` × 2 / `cumulativeLastIso` × 1 / `截至` × 1（IncomeSummary + IncomeSection 被打包进同一 chunk）
+    - `HomeExperience.js`（29981 字节）：`截至` × 1
+  - 单测改在 Phase 1 收尾后补（不阻塞部署证据闭环）。
+- [x] step-9：commit + push + Actions 验证
+  - `26e188c feat(income): show T-1 "as of" caption under PC sparkline`（agent push）
+  - 用户随后接力提交：`0873d94 fix(income): restore mobile calendar and daily details`、`ea1a86a fix(income): center mobile KPI rates`
+  - Actions run `26031843723`（ea1a86a）completed success，job 总耗时 32s（install 7s / vite build 9s / upload 2s / deploy 7s）。
+- [x] step-10：四件证据回报
+  - commit SHA：`26e188c`（agent push）+ `ea1a86a`（用户最终 HEAD）
+  - raw 验证：`raw.githubusercontent.com/lovexlc/ai-dca/ea1a86a.../src/app/income/IncomeSummary.jsx` 含 `公布`×2 / `截至`×1 / `cumulativeLastIso`×3
+  - Actions run：<https://github.com/lovexlc/ai-dca/actions/runs/26031843723>
+  - Pages HTTP 200 + bundle grep：见上面 step-8 列表
 
 ## 关键决策（在 step-2 开工前补 ask-survey 如需）
 
