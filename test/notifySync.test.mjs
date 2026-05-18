@@ -1,0 +1,91 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+// localStorage 内存 shim —— 在导入业务模块前 install。
+function installStorage(seed = {}) {
+  const memory = new Map(Object.entries(seed));
+  const storage = {
+    getItem(k) { return memory.has(k) ? memory.get(k) : null; },
+    setItem(k, v) { memory.set(k, String(v)); },
+    removeItem(k) { memory.delete(k); },
+    clear() { memory.clear(); }
+  };
+  globalThis.window = { localStorage: storage };
+  return memory;
+}
+
+async function freshImport() {
+  // 因为各业务模块都是顶层 import 一次性 evaluate，本测试用 cache-bust 让每个 case 拿到全新实例
+  return await import(`../src/app/notifySync.js?cb=${Date.now()}${Math.random()}`);
+}
+
+test('buildNotifySyncPayload: 空 localStorage 仍返回 plans/dca/sellPlans/positionDigest/vix/syncedAt 顶层键', async () => {
+  installStorage();
+  const mod = await freshImport();
+  const payload = mod.buildNotifySyncPayload();
+  assert.ok(payload && typeof payload === 'object');
+  for (const key of ['plans', 'dca', 'sellPlans', 'positionDigest', 'syncedAt']) {
+    assert.ok(Object.prototype.hasOwnProperty.call(payload, key), `payload 缺少 ${key}`);
+  }
+  assert.ok('vix' in payload, 'payload 缺少 vix');
+  assert.deepEqual(payload.sellPlans, []);
+  assert.equal(payload.positionDigest, null);
+  assert.equal(payload.vix, null);
+  assert.equal(payload.dca, null);
+  assert.ok(typeof payload.syncedAt === 'string' && payload.syncedAt.length > 0);
+});
+
+test('buildNotifySyncPayload: sellPlans 取自 aiDcaSellPlanStore 并仅含精简字段', async () => {
+  const sellPlan = {
+    id: 'sp-1',
+    name: 'NVDA 减仓',
+    symbol: 'NVDA',
+    holdingCost: 100,
+    holdingShares: 50,
+    gainTriggers: [15, 25, 35],
+    sellRatios: [0.33, 0.33, 0.34],
+    trailingStopPct: 8,
+    isConfigured: true,
+    createdAt: '2026-05-01T00:00:00.000Z',
+    updatedAt: '2026-05-10T00:00:00.000Z',
+    // 故意混入额外字段，应被 strip 掉
+    secretField: 'should-not-leak'
+  };
+  installStorage({
+    aiDcaSellPlanStore: JSON.stringify([sellPlan])
+  });
+  const mod = await freshImport();
+  const payload = mod.buildNotifySyncPayload();
+  assert.equal(payload.sellPlans.length, 1);
+  const out = payload.sellPlans[0];
+  assert.equal(out.symbol, 'NVDA');
+  assert.equal(out.holdingCost, 100);
+  assert.deepEqual(out.gainTriggers, [15, 25, 35]);
+  assert.equal(out.updatedAt, '2026-05-10T00:00:00.000Z');
+  assert.ok(!('trailingStopPct' in out), '不应泄露 trailingStopPct');
+  assert.ok(!('secretField' in out), '不应泄露 secretField');
+  assert.ok(!('isConfigured' in out), '不应泄露 isConfigured');
+});
+
+test('buildNotifySyncPayload: vix 取自 aiDcaVixState 并加 level/thresholds', async () => {
+  installStorage({
+    aiDcaVixState: JSON.stringify({ value: 32.5, cachedAt: '2026-05-18T12:00:00.000Z' })
+  });
+  const mod = await freshImport();
+  const payload = mod.buildNotifySyncPayload();
+  assert.ok(payload.vix, 'vix 不应为 null');
+  assert.equal(payload.vix.value, 32.5);
+  assert.equal(payload.vix.level, 'buyIndex');
+  assert.equal(payload.vix.cachedAt, '2026-05-18T12:00:00.000Z');
+  assert.equal(payload.vix.thresholds.watch, 25);
+  assert.equal(payload.vix.thresholds.heavyBuy, 50);
+});
+
+test('buildNotifySyncPayload: positionDigest 在 totalAssets<=0 时为 null', async () => {
+  installStorage({
+    aiDcaPositionSnapshot: JSON.stringify({ totalAssets: 0, prices: { NVDA: 120 } })
+  });
+  const mod = await freshImport();
+  const payload = mod.buildNotifySyncPayload();
+  assert.equal(payload.positionDigest, null);
+});

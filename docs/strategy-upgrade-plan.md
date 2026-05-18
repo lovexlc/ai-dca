@@ -124,7 +124,7 @@ src/components/
 - [ ] 改 `src/app/nasdaqPrices.js`：拉取 `^VIX` 30 日历史，复用 TTL 缓存
 - [ ] VixDashboard 增加 30 日走势 + 历史信号列表
 - [ ] 改 `src/app/homeDashboard.js`：`vixSummary` 注入首页监控区
-- [ ] 改 `src/app/notifySync.js`：`vix_signal` 规则同步至 worker（跨阈值触发 + 24h 同级防抖，D7）
+- [x] 改 `src/app/notifySync.js`（client 侧）：`buildNotifySyncPayload` 额外上传 `vix` 快照 `{ value, level, levelLabel, cachedAt, thresholds }`，以供 worker 生成 `vix_signal` 跨阈值提醒。worker 侧跨阈值检测 + 24h 同级防抖仍需推进。
 - [ ] 后端冲烟：触发 VIX≥30/40/50 各一条通知看 worker 响应
 
 ### PR 2.5 — DCA 回测计算器 — `done`
