@@ -157,7 +157,7 @@ function BigKpi({ label, primary, primaryClass, sub }) {
   );
 }
 
-export function IncomeDetailPage({ ledger, onBack }) {
+export function IncomeDetailPage({ ledger, portfolio, onBack }) {
   const [{ range, customFrom, customTo }, setRange, setCustom] = useRangeUrlSync({ defaultRange: DEFAULT_RANGE });
   const transactions = useMemo(() => (Array.isArray(ledger?.transactions) ? ledger.transactions : []), [ledger]);
   const inceptionDate = useMemo(() => firstBuyDate(transactions), [transactions]);
@@ -281,7 +281,10 @@ export function IncomeDetailPage({ ledger, onBack }) {
   const rangeProfit = rangeSeries?.profit ?? null;
   const rangeRate = rangeSeries?.returnRate ?? null;
   const annualized = rangeSeries?.annualizedReturn ?? null;
-  const inceptionProfit = inceptionSeries?.profit ?? null;
+  // 累计盈亏 = portfolio.cumulativeProfit（含已实现盈亏），与 IncomeSummary 顶部卡片同口径同数字，避免「同名两个值」误导。
+  // inceptionSeries.profit 仅含持仓部分 nav 增量，作为「投资以来收益」KPI 单独展示。
+  const cumulativeProfit = portfolio?.cumulativeProfit ?? null;
+  const cumulativeReturnRate = portfolio?.cumulativeReturnRate ?? null;
   const benchRate = benchState.rate;
   const alphaRate = Number.isFinite(rangeRate) && Number.isFinite(benchRate) ? rangeRate - benchRate : null;
   const alphaVerb = alphaRate === null ? null : alphaRate >= 0 ? '跑赢' : '落后';
@@ -314,9 +317,11 @@ export function IncomeDetailPage({ ledger, onBack }) {
         <BigKpi label={`${rangeLabel}收益率`} primary={renderPercent(rangeRate)} primaryClass={signClass(rangeRate)} />
         <BigKpi
           label="累计盈亏"
-          primary={renderCurrency(inceptionProfit)}
-          primaryClass={signClass(inceptionProfit)}
-          sub={inceptionDate ? `起 ${inceptionDate}` : null}
+          primary={renderCurrency(cumulativeProfit)}
+          primaryClass={signClass(cumulativeProfit)}
+          sub={Number.isFinite(cumulativeReturnRate)
+            ? `${cumulativeReturnRate >= 0 ? '+' : ''}${cumulativeReturnRate.toFixed(2)}% 含已实现`
+            : (inceptionDate ? `起 ${inceptionDate}` : null)}
         />
         <BigKpi
           label="年化收益率"
