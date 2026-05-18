@@ -522,6 +522,23 @@ export function IncomeDetailPage({ ledger, portfolio, onBack }) {
             ) : null}
           </div>
 
+          <div className="grid gap-3 md:hidden">
+            <Suspense fallback={<LazyFallback label="加载收益日历…" />}>
+              <ReturnCalendar
+                ledger={ledger}
+                selectedDate={selectedDate}
+                onSelectDate={setSelectedDate}
+                compact
+              />
+            </Suspense>
+            <Suspense fallback={<LazyFallback label="加载当日明细…" />}>
+              <DailyFundBreakdown
+                ledger={ledger}
+                selectedDate={selectedDate}
+              />
+            </Suspense>
+          </div>
+
           <div className="hidden gap-3 md:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
             <Suspense fallback={<LazyFallback label="加载收益曲线…" />}>
               <ReturnChart
@@ -535,21 +552,21 @@ export function IncomeDetailPage({ ledger, portfolio, onBack }) {
               />
             </Suspense>
             <div className="grid gap-3 lg:h-[580px] lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)]">
-            <Suspense fallback={<LazyFallback label="加载收益日历…" />}>
-              <ReturnCalendar
-                ledger={ledger}
-                selectedDate={selectedDate}
-                onSelectDate={setSelectedDate}
-                compact
-              />
-            </Suspense>
-            <Suspense fallback={<LazyFallback label="加载当日明细…" />}>
-              <DailyFundBreakdown
-                ledger={ledger}
-                selectedDate={selectedDate}
-                className="lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden"
-              />
-            </Suspense>
+              <Suspense fallback={<LazyFallback label="加载收益日历…" />}>
+                <ReturnCalendar
+                  ledger={ledger}
+                  selectedDate={selectedDate}
+                  onSelectDate={setSelectedDate}
+                  compact
+                />
+              </Suspense>
+              <Suspense fallback={<LazyFallback label="加载当日明细…" />}>
+                <DailyFundBreakdown
+                  ledger={ledger}
+                  selectedDate={selectedDate}
+                  className="lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden"
+                />
+              </Suspense>
             </div>
           </div>
         </>
