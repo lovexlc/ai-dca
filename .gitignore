@@ -20,3 +20,4 @@ docs/holdings-nav-cache/
 .dev.vars
 workers/ocr-proxy/.dev.vars
 workers/**/.wrangler/
+docs/交易计划中心.md

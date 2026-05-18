@@ -109,15 +109,23 @@ src/components/
 - [ ] 单测：`sellStrategy.test.js`（节点计算、触发、底仓保护、做T 新成本）
 - [ ] 前端验证：宽基不显示减仓选项、个股可配置 3–5 档、底仓提示生效
 
-### PR 2 — VIX 信号引擎 + 面板 — `todo`
-- [ ] 新建 `src/app/vixSignal.js`（`fetchCurrentVix` / `resolveVixSignal` / `generateVixActions`）
-- [ ] 新建 `src/pages/VixDashboard.jsx`（数值 + 等级标签 + 操作卡 + 30 日走势 + 历史信号）
-- [ ] 改 `src/app/nasdaqPrices.js`：拉取 `^VIX`，复用 TTL 缓存
-- [ ] 改 `src/app/homeDashboard.js`：`vixSummary` 注入首页
-- [ ] 改 `src/pages/TradePlansExperience.jsx`：新增 `vix` tab
-- [ ] 改 `src/app/notifySync.js`：`vix_signal` 规则同步至 worker
-- [ ] 后端冲烟：触发 VIX≥30/40/50 各一条通知，看 worker 响应
-- [ ] 前端验证：首页 VIX 卡 + 等级颜色
+### PR 2a — VIX 信号引擎 + 面板 — `done`
+- [x] 新建 `src/app/vixSignal.js`：`VIX_THRESHOLDS` / `resolveVixSignal` / `fetchVixSnapshot` / `listVixLevels`，复用 markets worker `/quote/^VIX`
+- [x] 新建 `src/pages/VixDashboard.jsx`：数值卡 + 信号等级卡 + 操作建议列表 + 阈值参考表
+- [x] 改 `src/pages/TradePlansExperience.jsx`：新增 `#vix` 二级 tab（Activity 图标）
+- [x] `aiDcaVixState` localStorage 缓存 · 拉取失败允许手动录入 VIX 数值
+- [ ] 前端验证（e2e）：
+  1. 打开 `/trade-plans#vix`，页面会自动拉 `^VIX`；拉到后数值 + 等级卡出现
+  2. 手动输入 28、32、42、52，验证 5 个等级（calm/watch/buyIndex/buyAll/heavyBuy）颜色与推荐动作切换
+  3. 刷新 → 担出 worker 里没有 `/quote/^VIX` 路由时 fallback 到手动输入提示
+  4. `localStorage.aiDcaVixState` 被写入；刷新页面依然能读到上次值
+
+### PR 2b — VIX 深度集成（后插队） — `todo`
+- [ ] 改 `src/app/nasdaqPrices.js`：拉取 `^VIX` 30 日历史，复用 TTL 缓存
+- [ ] VixDashboard 增加 30 日走势 + 历史信号列表
+- [ ] 改 `src/app/homeDashboard.js`：`vixSummary` 注入首页监控区
+- [ ] 改 `src/app/notifySync.js`：`vix_signal` 规则同步至 worker（跨阈值触发 + 24h 同级防抖，D7）
+- [ ] 后端冲烟：触发 VIX≥30/40/50 各一条通知看 worker 响应
 
 ### PR 2.5 — DCA Calculator（独立可插入此处） — `todo`
 - [ ] 新建 `src/app/dcaCalculator.js`（`calculateDcaBacktest` / `filterBuyDates` / `buildDcaChartData`）
