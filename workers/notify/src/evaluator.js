@@ -530,9 +530,19 @@ async function deliverNotification(env, notification, options = {}) {
     // 日志序列化失败不阻断返回。
   }
 
+  // status === 'delivered' 定义：当且仅当所有 channels 都是 delivered 或 skipped，
+  // 且至少有一个 delivered。任何 queued / failed / 未知状态都不计 delivered。
+  // 这样 /api/notify/events 按 status 过滤后，PC 渠道 queued 事件仍会返回给前端轮询。
+  const allTerminal = results.length > 0
+    && results.every((result) => result.status === 'delivered' || result.status === 'skipped');
+  const anyDelivered = results.some((result) => result.status === 'delivered');
+  const overallStatus = allTerminal && anyDelivered
+    ? 'delivered'
+    : configuredCount > 0 ? 'failed' : 'skipped';
+
   return {
     results,
-    status: deliveredCount > 0 ? 'delivered' : configuredCount > 0 ? 'failed' : 'skipped'
+    status: overallStatus
   };
 }
 

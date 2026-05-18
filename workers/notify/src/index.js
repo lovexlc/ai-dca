@@ -712,8 +712,13 @@ async function handleEvents(request, env) {
     await writeSettings(env, settings);
   }
 
+  // 过滤 status==='delivered' 的事件：全部 channels 都 delivered或skipped 的事件
+  // 说明后台认定已送达、客户端不需要再重复拉取。
+  const pendingEvents = getClientRecentEvents(auth.clientRecord)
+    .filter((event) => event && event.status !== 'delivered');
+
   return jsonResponse({
-    events: getClientRecentEvents(auth.clientRecord)
+    events: pendingEvents
   }, { origin });
 }
 
