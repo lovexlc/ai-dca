@@ -132,9 +132,10 @@ function dotStyle(color) {
   return { backgroundColor: color };
 }
 
-function ChartTooltip({ active, payload, label }) {
+function ChartTooltip({ active, payload, label, lastIso }) {
   if (!active || !Array.isArray(payload) || payload.length === 0) return null;
   const point = payload[0]?.payload || {};
+  const isLastPoint = Boolean(lastIso) && label === lastIso;
   return (
     <div className="rounded-md border border-slate-200 bg-white/95 px-2 py-1.5 text-[11px] shadow-sm">
       <div className="font-medium text-slate-700 tabular-nums">{label}</div>
@@ -161,12 +162,30 @@ function ChartTooltip({ active, payload, label }) {
           当日收益 {formatCurrency(point.portfolioDailyPnl, '¥', 2)}
         </div>
       ) : null}
+      {isLastPoint ? (
+        <div className="mt-1 text-[10px] text-slate-400">
+          公布单位净值，不含今日实时变动
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function ReturnChart({ ledger, className = '', chartClassName = '', selectedDate, onSelectDate }) {
-  const [{ range, customFrom, customTo }] = useRangeUrlSync({ defaultRange: DEFAULT_RANGE });
+function ReturnChart({
+  ledger,
+  className = '',
+  chartClassName = '',
+  selectedDate,
+  onSelectDate,
+  hideHeader = false,
+  range: controlledRange,
+  customFrom: controlledCustomFrom,
+  customTo: controlledCustomTo
+}) {
+  const [{ range: syncedRange, customFrom: syncedCustomFrom, customTo: syncedCustomTo }] = useRangeUrlSync({ defaultRange: DEFAULT_RANGE });
+  const range = controlledRange || syncedRange;
+  const customFrom = controlledCustomFrom || syncedCustomFrom;
+  const customTo = controlledCustomTo || syncedCustomTo;
   const transactions = useMemo(
     () => (Array.isArray(ledger?.transactions) ? ledger.transactions : []),
     [ledger]
@@ -288,36 +307,38 @@ function ReturnChart({ ledger, className = '', chartClassName = '', selectedDate
         className
       )}
     >
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <div className="text-[13px] font-semibold text-slate-900 sm:text-sm">收益曲线</div>
-          <div className="text-[11px] text-slate-500 sm:text-xs">
-            组合 vs {BENCH_LABEL}
-            {rangeWindow ? (
-              <span className="ml-2 tabular-nums">
-                {rangeWindow.from} → {rangeWindow.to}
+      {!hideHeader ? (
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <div className="text-[13px] font-semibold text-slate-900 sm:text-sm">收益曲线</div>
+            <div className="text-[11px] text-slate-500 sm:text-xs">
+              组合 vs {BENCH_LABEL}
+              {rangeWindow ? (
+                <span className="ml-2 tabular-nums">
+                  {rangeWindow.from} → {rangeWindow.to}
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-[11px] text-slate-400 sm:text-xs">
+            {isLoading ? (
+              <span className="inline-flex items-center gap-1">
+                <LoaderCircle className="size-3 animate-spin" />
+                加载中
+              </span>
+            ) : null}
+            {state.stale ? <span className="text-amber-500">数据缓存</span> : null}
+            {isError ? (
+              <span className="inline-flex items-center gap-1 text-rose-500">
+                <AlertTriangle className="size-3" />
+                出错
               </span>
             ) : null}
           </div>
         </div>
-        <div className="flex items-center gap-2 text-[11px] text-slate-400 sm:text-xs">
-          {isLoading ? (
-            <span className="inline-flex items-center gap-1">
-              <LoaderCircle className="size-3 animate-spin" />
-              加载中
-            </span>
-          ) : null}
-          {state.stale ? <span className="text-amber-500">数据缓存</span> : null}
-          {isError ? (
-            <span className="inline-flex items-center gap-1 text-rose-500">
-              <AlertTriangle className="size-3" />
-              出错
-            </span>
-          ) : null}
-        </div>
-      </div>
+      ) : null}
 
-      <div className={cx('mt-3 h-56 w-full sm:h-56 lg:h-52', chartClassName)}>
+      <div className={cx(hideHeader ? 'h-56 w-full sm:h-56 lg:h-52' : 'mt-3 h-56 w-full sm:h-56 lg:h-52', chartClassName)}>
         {isEmpty || !state.data.length ? (
           <div className="flex h-full items-center justify-center text-[11px] text-slate-400">
             {isLoading ? '准备中…' : '暂无数据'}
@@ -366,7 +387,13 @@ function ReturnChart({ ledger, className = '', chartClassName = '', selectedDate
                 axisLine={false}
                 width={42}
               />
-              <Tooltip content={<ChartTooltip />} />
+              <Tooltip
+                content={
+                  <ChartTooltip
+                    lastIso={state.data?.[state.data.length - 1]?.date || ''}
+                  />
+                }
+              />
               {selectedDateInChart ? (
                 <ReferenceLine
                   yAxisId="left"

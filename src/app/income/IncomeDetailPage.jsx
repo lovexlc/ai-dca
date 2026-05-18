@@ -10,7 +10,7 @@
 //   - 涨红跌绿；累计盈亏/年化沿用 IncomeDetail 行为
 
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { LoaderCircle, AlertTriangle } from 'lucide-react';
+import { LoaderCircle, AlertTriangle, ChevronDown, X } from 'lucide-react';
 import SubPageShell from './SubPageShell.jsx';
 import { formatCurrency, formatPercent } from '../accumulation.js';
 import { cx } from '../../components/experience-ui.jsx';
@@ -157,12 +157,114 @@ function BigKpi({ label, primary, primaryClass, sub }) {
   );
 }
 
+function MobileOverview({ rangeLabel, todayProfit, rangeProfit, rangeRate, onOpenRange }) {
+  return (
+    <div className="rounded-3xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] md:hidden">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-[16px] font-semibold text-slate-900">收益总览</div>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="min-w-0">
+          <div className="truncate text-[12px] text-slate-500">今日收益(元)</div>
+          <div className={cx('mt-2 truncate whitespace-nowrap text-[18px] font-semibold tabular-nums', signClass(todayProfit))}>
+            {renderCurrency(todayProfit)}
+          </div>
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-[12px] text-slate-500">{rangeLabel}收益(元)</div>
+          <div className={cx('mt-2 truncate whitespace-nowrap text-[18px] font-semibold tabular-nums', signClass(rangeProfit))}>
+            {renderCurrency(rangeProfit)}
+          </div>
+        </div>
+        <button type="button" onClick={onOpenRange} className="min-w-0 rounded-2xl text-left" aria-label="选择收益率时间">
+          <div className="flex items-center gap-1 text-[12px] text-slate-500">
+            <span>收益率</span>
+            <ChevronDown className="size-3" />
+          </div>
+          <div className={cx('mt-2 truncate whitespace-nowrap text-[18px] font-semibold tabular-nums', signClass(rangeRate))}>
+            {renderPercent(rangeRate)}
+          </div>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const MOBILE_RANGE_OPTIONS = [
+  { key: 'lastWeek', label: '上周' },
+  { key: 'lastMonth', label: '上月' },
+  { key: 'ytd', label: '本年' },
+  { key: 'lastYear', label: '去年' },
+  { key: 'last365d', label: '近一年' },
+  { key: 'sinceInception', label: '投资以来' }
+];
+
+function MobileRangeSheet({ open, activeRange, inceptionEnabled, onClose, onSelect }) {
+  if (!open) return null;
+  const activeKey = activeRange === 'year' ? 'ytd' : activeRange;
+  return (
+    <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
+      <button type="button" aria-label="关闭时间选择" className="absolute inset-0 bg-slate-950/55" onClick={onClose} />
+      <div className="absolute inset-x-0 bottom-0 rounded-t-3xl bg-white px-4 pb-[calc(env(safe-area-inset-bottom)+24px)] pt-5 shadow-2xl">
+        <div className="mb-5 flex items-center justify-between">
+          <div className="text-[20px] font-semibold text-slate-900">更多时间选择</div>
+          <button type="button" onClick={onClose} className="rounded-full p-1 text-slate-600" aria-label="关闭">
+            <X className="size-6" />
+          </button>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          {MOBILE_RANGE_OPTIONS.map((item) => {
+            const disabled = item.key === 'sinceInception' && !inceptionEnabled;
+            const active = activeKey === item.key;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                disabled={disabled}
+                onClick={() => {
+                  if (disabled) return;
+                  onSelect(item.key);
+                  onClose();
+                }}
+                className={cx(
+                  'relative h-[68px] rounded-sm text-[18px] font-medium transition-colors',
+                  disabled
+                    ? 'bg-slate-50 text-slate-300'
+                    : active
+                      ? 'bg-blue-50 text-blue-600'
+                      : 'bg-slate-50 text-slate-800'
+                )}
+              >
+                {item.label}
+                {active ? (
+                  <span className="absolute bottom-0 right-0 h-0 w-0 border-b-[28px] border-l-[28px] border-b-blue-500 border-l-transparent">
+                    <span className="absolute -bottom-[26px] right-0 text-[16px] leading-none text-white">✓</span>
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-8 h-14 w-full rounded-full bg-blue-600 text-[20px] font-semibold text-white shadow-sm active:bg-blue-700"
+        >
+          确定
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function IncomeDetailPage({ ledger, portfolio, onBack }) {
   const [{ range, customFrom, customTo }, setRange, setCustom] = useRangeUrlSync({ defaultRange: DEFAULT_RANGE });
   const transactions = useMemo(() => (Array.isArray(ledger?.transactions) ? ledger.transactions : []), [ledger]);
   const inceptionDate = useMemo(() => firstBuyDate(transactions), [transactions]);
   const today = useMemo(() => todayShanghaiIso(), []);
   const [selectedDate, setSelectedDate] = useState(today);
+  const [mobileRangeOpen, setMobileRangeOpen] = useState(false);
+  const [mobileChartExpanded, setMobileChartExpanded] = useState(true);
 
   const rangeWindow = useMemo(
     () =>
@@ -174,9 +276,11 @@ export function IncomeDetailPage({ ledger, portfolio, onBack }) {
     [range, customFrom, customTo, today, inceptionDate]
   );
   const inceptionWindow = useMemo(() => (inceptionDate ? { from: inceptionDate, to: today } : null), [inceptionDate, today]);
+  const todayWindow = useMemo(() => ({ from: today, to: today }), [today]);
 
   const [rangeState, setRangeState] = useState({ status: 'idle', series: null, stale: false, error: null });
   const [inceptionState, setInceptionState] = useState({ status: 'idle', series: null, stale: false, error: null });
+  const [todayState, setTodayState] = useState({ status: 'idle', series: null, stale: false, error: null });
   const [benchState, setBenchState] = useState({ status: 'idle', rate: null, stale: false, error: null });
 
   const loadFor = useCallback(
@@ -217,6 +321,24 @@ export function IncomeDetailPage({ ledger, portfolio, onBack }) {
       cancelled = true;
     };
   }, [loadFor, rangeWindow]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!todayWindow) {
+      setTodayState({ status: 'idle', series: null, stale: false, error: null });
+      return undefined;
+    }
+    loadFor({
+      window: todayWindow,
+      setState: (next) => {
+        if (cancelled) return;
+        setTodayState((prev) => (typeof next === 'function' ? next(prev) : next));
+      },
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadFor, todayWindow]);
 
   useEffect(() => {
     let cancelled = false;
@@ -269,14 +391,15 @@ export function IncomeDetailPage({ ledger, portfolio, onBack }) {
     };
   }, [rangeWindow]);
 
-  const isLoading = rangeState.status === 'loading' || inceptionState.status === 'loading';
-  const hasError = rangeState.status === 'error' || inceptionState.status === 'error';
-  const showStale = rangeState.stale || inceptionState.stale;
+  const isLoading = rangeState.status === 'loading' || inceptionState.status === 'loading' || todayState.status === 'loading';
+  const hasError = rangeState.status === 'error' || inceptionState.status === 'error' || todayState.status === 'error';
+  const showStale = rangeState.stale || inceptionState.stale || todayState.stale;
   const rangeSeries = rangeState.series;
   const rangeLabel = RANGE_LABELS[range] || range;
   const subWindow = rangeWindow ? `${rangeWindow.from} → ${rangeWindow.to}` : '';
 
   const rangeProfit = rangeSeries?.profit ?? null;
+  const todayProfit = todayState.series?.profit ?? null;
   const rangeRate = rangeSeries?.returnRate ?? null;
   const annualized = rangeSeries?.annualizedReturn ?? null;
   // 累计盈亏 = portfolio.cumulativeProfit（含已实现盈亏），与 IncomeSummary 顶部卡片同口径同数字，避免「同名两个值」误导。
@@ -309,7 +432,15 @@ export function IncomeDetailPage({ ledger, portfolio, onBack }) {
 
   return (
     <SubPageShell title="收益明细" onBack={onBack} right={statusBadge}>
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4">
+      <MobileOverview
+        rangeLabel={rangeLabel}
+        todayProfit={todayProfit}
+        rangeProfit={rangeProfit}
+        rangeRate={rangeRate}
+        onOpenRange={() => setMobileRangeOpen(true)}
+      />
+
+      <div className="hidden grid-cols-2 gap-2 sm:gap-3 md:grid md:grid-cols-4">
         <BigKpi label={`${rangeLabel}收益`} primary={renderCurrency(rangeProfit)} primaryClass={signClass(rangeProfit)} />
         <BigKpi label={`${rangeLabel}收益率`} primary={renderPercent(rangeRate)} primaryClass={signClass(rangeRate)} />
         <BigKpi
@@ -328,7 +459,7 @@ export function IncomeDetailPage({ ledger, portfolio, onBack }) {
         />
       </div>
 
-      <div className="rounded-2xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4">
+      <div className="hidden rounded-2xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4 md:block">
         <TimeRangeSelector
           value={range}
           onChange={setRange}
@@ -360,16 +491,50 @@ export function IncomeDetailPage({ ledger, portfolio, onBack }) {
       </div>
 
       {inceptionDate ? (
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
-          <Suspense fallback={<LazyFallback label="加载收益曲线…" />}>
-            <ReturnChart
-              ledger={ledger}
-              selectedDate={selectedDate}
-              onSelectDate={setSelectedDate}
-              chartClassName="lg:h-[500px]"
-            />
-          </Suspense>
-          <div className="grid gap-3 lg:h-[580px] lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)]">
+        <>
+          <div className="rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] md:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileChartExpanded((v) => !v)}
+              className="flex w-full items-center justify-between px-3 py-3 text-left"
+              aria-expanded={mobileChartExpanded}
+            >
+              <div>
+                <div className="text-[13px] font-semibold text-slate-900">收益曲线</div>
+                <div className="mt-0.5 text-[11px] text-slate-500">组合 vs {BENCH_LABEL} · {rangeLabel}</div>
+              </div>
+              <ChevronDown className={cx('size-4 text-slate-400 transition-transform', mobileChartExpanded ? 'rotate-180' : '')} />
+            </button>
+            {mobileChartExpanded ? (
+              <Suspense fallback={<LazyFallback label="加载收益曲线…" />}>
+                <ReturnChart
+                  ledger={ledger}
+                  selectedDate={selectedDate}
+                  onSelectDate={setSelectedDate}
+                  className="border-0 p-3 pt-0 shadow-none"
+                  chartClassName="h-72"
+                  hideHeader
+                  range={range}
+                  customFrom={customFrom}
+                  customTo={customTo}
+                />
+              </Suspense>
+            ) : null}
+          </div>
+
+          <div className="hidden gap-3 md:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+            <Suspense fallback={<LazyFallback label="加载收益曲线…" />}>
+              <ReturnChart
+                ledger={ledger}
+                selectedDate={selectedDate}
+                onSelectDate={setSelectedDate}
+                chartClassName="lg:h-[500px]"
+                range={range}
+                customFrom={customFrom}
+                customTo={customTo}
+              />
+            </Suspense>
+            <div className="grid gap-3 lg:h-[580px] lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)]">
             <Suspense fallback={<LazyFallback label="加载收益日历…" />}>
               <ReturnCalendar
                 ledger={ledger}
@@ -385,9 +550,18 @@ export function IncomeDetailPage({ ledger, portfolio, onBack }) {
                 className="lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden"
               />
             </Suspense>
+            </div>
           </div>
-        </div>
+        </>
       ) : null}
+
+      <MobileRangeSheet
+        open={mobileRangeOpen}
+        activeRange={range}
+        inceptionEnabled={!!inceptionDate}
+        onClose={() => setMobileRangeOpen(false)}
+        onSelect={setRange}
+      />
     </SubPageShell>
   );
 }
