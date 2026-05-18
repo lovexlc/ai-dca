@@ -140,11 +140,19 @@ src/components/
   5. 明细表首末 5 行价格 / 股数 / 均价能手算核对
 - [ ] PR 2.5b（后插队）：「应用此策略」预填到新建 DCA 计划、保存回测快照、对比不同频率
 
-### PR 3 — 成本追踪 + 负成本 — `todo`
-- [ ] 新建 `src/app/costTracker.js`（`calculateCostBasis` / `recordTrade` / `getTradeHistory`）
-- [ ] 改 `src/app/holdingsCore.js`：关联交易记录
-- [ ] 改 `src/pages/HoldingsExperience.jsx`：显示真实成本 + 已实现盈亏 + 负成本标签
-- [ ] 单测：加权平均、卖出回收、负成本判定
+### PR 3 — 成本追踪 + 负成本 — `done`
+- [x] 新建 `src/app/costTracker.js`：`calculateCostBasis` / `groupCostBasisBySymbol` / `attachUnrealized`，双口径（加权均价 + 买减卖可负成本）
+- [x] 新建 `src/app/tradeLedger.js`：`aiDcaTradeLedger` / `aiDcaTradeLedgerArchive` CRUD、按 symbol 限 100 条自动归档（D9）
+- [x] 新建 `src/pages/TradeLedgerExperience.jsx`：chip 选标、表单 买/卖/股数/价格/日期/费用/备注、各标獣汇总卡 + 负成本高亮 + 逐笔表
+- [x] 改 `src/pages/TradePlansExperience.jsx`：新增 `#ledger` 二级 tab（BookOpen 图标）
+- [ ] PR 3.5 （后插队）：改 `src/app/holdingsCore.js` / `src/pages/HoldingsExperience.jsx`（3336 行，需小步） — 持仓行接入台账、显示「负成本」标签、已实现/未实现盈亏列
+- [ ] PR 3.5：单测 `costTracker.test.js`（加权平均、卖出回收、负成本边界、费用、乱序日期）
+- [ ] 前端验证（e2e）：
+  1. `/trade-plans#ledger` 进页，当台账空时看到「取一笔买入或卖出」提示
+  2. 录 NVDA 买 100@100 、买 50@80 、卖 50@120 三笔，验证加权均价 / 买减卖 / 已实现盈亏与手算一致
+  3. 继续加卖出直到「买减卖」转负，验证「负成本」胶片 + 绿色 stat出现
+  4. 切 QQQ chip 加几笔，验证双 symbol 并列可互切
+  5. 超过 100 条记录后检查 `localStorage.aiDcaTradeLedgerArchive`
 
 ### PR 4 — 仓位管理 + 做T 收益 — `todo`
 - [ ] 新建 `src/app/positionManager.js`（`calculateWeights` / `checkWeightLimit` / `generateRebalanceAdvice`）

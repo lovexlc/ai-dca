@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, ArrowRight, Bell, CalendarClock, Calculator, ListChecks, MoreHorizontal, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
+import { Activity, ArrowRight, Bell, BookOpen, CalendarClock, Calculator, ListChecks, MoreHorizontal, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
 import { loadNotifyStatus, readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { deletePlan } from '../app/plan.js';
@@ -18,6 +18,7 @@ const DcaExperienceLazy = lazy(() => import('./DcaExperience.jsx').then((m) => (
 const SellPlanExperienceLazy = lazy(() => import('./SellPlanExperience.jsx').then((m) => ({ default: m.SellPlanExperience })));
 const VixDashboardLazy = lazy(() => import('./VixDashboard.jsx').then((m) => ({ default: m.VixDashboard })));
 const DcaCalculatorExperienceLazy = lazy(() => import('./DcaCalculatorExperience.jsx').then((m) => ({ default: m.DcaCalculatorExperience })));
+const TradeLedgerExperienceLazy = lazy(() => import('./TradeLedgerExperience.jsx').then((m) => ({ default: m.TradeLedgerExperience })));
 
 // 子视图与 URL hash 对应关系：
 //   ''  / '#list' → 列表（默认）
@@ -26,6 +27,7 @@ const DcaCalculatorExperienceLazy = lazy(() => import('./DcaCalculatorExperience
 //   '#sell'      → 卖出
 //   '#vix'       → VIX 面板
 //   '#calc'      → DCA 回测
+//   '#ledger'    → 交易台账
 //   '#new'       → 新建（覆盖整个 tab，独占视图）
 const SUB_VIEW_HASH = {
   list: '',
@@ -34,6 +36,7 @@ const SUB_VIEW_HASH = {
   sell: '#sell',
   vix: '#vix',
   calc: '#calc',
+  ledger: '#ledger',
   new: '#new'
 };
 
@@ -44,6 +47,7 @@ function parseSubViewFromHash(hash = '') {
   if (hash === '#sell') return 'sell';
   if (hash === '#vix') return 'vix';
   if (hash === '#calc') return 'calc';
+  if (hash === '#ledger') return 'ledger';
   return 'list';
 }
 
@@ -66,7 +70,8 @@ const SUB_TABS = [
   { key: 'dca', label: '定投', icon: CalendarClock },
   { key: 'sell', label: '卖出', icon: TrendingDown },
   { key: 'vix', label: 'VIX', icon: Activity },
-  { key: 'calc', label: '回测', icon: Calculator }
+  { key: 'calc', label: '回测', icon: Calculator },
+  { key: 'ledger', label: '台账', icon: BookOpen }
 ];
 
 export function TradePlansExperience({ links, inPagesDir = false, embedded = false }) {
@@ -404,7 +409,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   }
 
   // 加仓 / 定投 二级视图：外层共享二级 tab 切换，内嵌各自的 Experience 组件。
-  if (subView === 'home' || subView === 'dca' || subView === 'sell' || subView === 'vix' || subView === 'calc') {
+  if (subView === 'home' || subView === 'dca' || subView === 'sell' || subView === 'vix' || subView === 'calc' || subView === 'ledger') {
     return (
       <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
         {renderSubTabBar()}
@@ -426,8 +431,10 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
             />
           ) : subView === 'vix' ? (
             <VixDashboardLazy embedded />
-          ) : (
+          ) : subView === 'calc' ? (
             <DcaCalculatorExperienceLazy embedded />
+          ) : (
+            <TradeLedgerExperienceLazy embedded />
           )}
         </Suspense>
       </div>
