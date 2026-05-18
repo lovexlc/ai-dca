@@ -1,7 +1,7 @@
 // IncomeSummary.jsx · v6.9 单卡支付宝风格
 //
 // 单卡 hero + 3 列 KPI + 4 入口：
-//   - 顶部：总市值（金额大字）+ 右侧起始日 + 刷新按钮
+//   - 顶部：总市值（金额大字）+ 右侧刷新按钮
 //   - PC：sparkline仅 PC。移动端隐藏 sparkline、保持纯文字。
 //   - 中部：3 列 KPI（今日 / 持有 / 累计） - 今日 rose-50 背景轻微强调
 //   - 入口区：4 个 lucide 单色线性 icon tile
@@ -9,7 +9,6 @@
 // 入参：
 //   - portfolio：HoldingsExperience L221 useMemo 的集计对象
 //   - navigate：跳转子页
-//   - inceptionDate：可选，顶部右侧 sub
 //   - navRefresh：{ onClick, loading, hasFailures, title }，顶部右侧刷新按钮
 //   - cumulativeSeries：可选 number[]，sparkline 数据源（仅 PC 渲染）
 
@@ -34,9 +33,21 @@ function signTone(value) {
 	return value > 0 ? TONE_UP : TONE_DOWN;
 }
 
-function renderSignedCurrency(value) {
+function trimFixed(value, digits = 2) {
+	return Number(value).toFixed(digits).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
+}
+
+function formatCompactCurrency(value, { compactFrom = 10000 } = {}) {
 	if (!Number.isFinite(value)) return '—';
-	const abs = formatCurrency(Math.abs(value), '¥', 2);
+	const abs = Math.abs(value);
+	if (abs >= 100000000) return `¥ ${trimFixed(value / 100000000)}亿`;
+	if (abs >= compactFrom) return `¥ ${trimFixed(value / 10000)}万`;
+	return formatCurrency(value, '¥', 2);
+}
+
+function renderSignedCurrency(value, options) {
+	if (!Number.isFinite(value)) return '—';
+	const abs = formatCompactCurrency(Math.abs(value), options);
 	if (value > 0) return `+${abs}`;
 	if (value < 0) return `-${abs}`;
 	return abs;
@@ -78,22 +89,23 @@ function Sparkline({ series, tone }) {
 }
 
 // KPI 单列：小 label + signed currency + signed percent。支付宝风格：无卡框、纯文字横排。
-function KpiCol({ label, value, rate }) {
+function KpiCol({ label, value, rate, align = 'center' }) {
 	const tone = signTone(value);
+	const alignClass = align === 'left' ? 'items-start text-left' : align === 'right' ? 'items-end text-right' : 'items-center text-center';
 	return (
-		<div className="flex min-w-0 flex-col items-center gap-0.5 px-1">
+		<div className={cx('flex min-w-0 flex-col gap-0.5', alignClass)}>
 			<div className="text-[11px] font-medium text-slate-500">{label}</div>
-			<div className={cx('truncate whitespace-nowrap text-lg font-bold tabular-nums sm:text-xl', tone)}>
-				{renderSignedCurrency(value)}
+			<div className={cx('max-w-full truncate whitespace-nowrap text-base font-bold tabular-nums min-[380px]:text-lg sm:text-xl', tone)}>
+				{renderSignedCurrency(value, { compactFrom: 10000 })}
 			</div>
-			<div className={cx('truncate whitespace-nowrap text-[11px] font-semibold tabular-nums sm:text-xs', tone)}>
+			<div className={cx('max-w-full truncate whitespace-nowrap text-[11px] font-semibold tabular-nums sm:text-xs', tone)}>
 				{renderSignedPercent(rate)}
 			</div>
 		</div>
 	);
 }
 
-export function IncomeSummary({ portfolio, navigate, inceptionDate, navRefresh, cumulativeSeries }) {
+export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSeries }) {
 	const marketValue = portfolio?.marketValue;
 	const todayProfit = portfolio?.todayProfit;
 	const todayReturnRate = portfolio?.todayReturnRate;
@@ -124,20 +136,15 @@ export function IncomeSummary({ portfolio, navigate, inceptionDate, navRefresh, 
 		<div className="flex flex-col gap-3">
 			{/* v7.0 支付宝风格：去卡框 hero（总市值超大字 + 3 列纯文字 KPI），金额不再被卡片宽束缚 */}
 			<section className="flex min-w-0 flex-col gap-4 px-1 pt-2 pb-1 sm:gap-5 sm:pt-3">
-				{/* 顶部行：总市值 label + 金额 / 右侧：起始日 + 刷新按钮 */}
+				{/* 顶部行：总市值 label + 金额 / 右侧：刷新按钮 */}
 				<div className="flex items-start justify-between gap-3">
 					<div className="min-w-0 flex-1">
 						<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</div>
 						<div className="mt-1 truncate whitespace-nowrap text-4xl font-extrabold tracking-tight tabular-nums text-slate-900 min-[380px]:text-[44px] sm:text-5xl">
-							{Number.isFinite(marketValue) ? formatCurrency(marketValue, '¥', 2) : '—'}
+							{formatCompactCurrency(marketValue, { compactFrom: 100000000 })}
 						</div>
 					</div>
-					<div className="flex flex-col items-end gap-1">
-						{refreshBtn}
-						{inceptionDate ? (
-							<div className="text-[11px] text-slate-400 tabular-nums">起 {inceptionDate}</div>
-						) : null}
-					</div>
+					{refreshBtn ? <div className="shrink-0">{refreshBtn}</div> : null}
 				</div>
 
 				{/* sparkline 仅 PC（sm 以上）渲染，移动端隐藏 */}
@@ -148,10 +155,10 @@ export function IncomeSummary({ portfolio, navigate, inceptionDate, navRefresh, 
 				) : null}
 
 				{/* 3 列 KPI：今日 / 持有 / 累计 */}
-				<div className="grid grid-cols-3 gap-2 sm:gap-4">
-					<KpiCol label="今日" value={todayProfit} rate={todayReturnRate} />
+				<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)] gap-1 sm:gap-4">
+					<KpiCol label="今日" value={todayProfit} rate={todayReturnRate} align="left" />
 					<KpiCol label="持有" value={totalProfit} rate={totalReturnRate} />
-					<KpiCol label="累计" value={cumulativeProfit} rate={cumulativeReturnRate} />
+					<KpiCol label="累计" value={cumulativeProfit} rate={cumulativeReturnRate} align="right" />
 				</div>
 			</section>
 
