@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Bell, CalendarClock, ListChecks, MoreHorizontal, Trash2, TrendingUp } from 'lucide-react';
+import { ArrowRight, Bell, CalendarClock, ListChecks, MoreHorizontal, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
 import { loadNotifyStatus, readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { deletePlan } from '../app/plan.js';
@@ -15,16 +15,19 @@ import {
 // 加仓计划 / 定投计划已合并为本 tab 的二级视图，按需 lazy 加载。
 const HomeExperienceLazy = lazy(() => import('./HomeExperience.jsx').then((m) => ({ default: m.HomeExperience })));
 const DcaExperienceLazy = lazy(() => import('./DcaExperience.jsx').then((m) => ({ default: m.DcaExperience })));
+const SellPlanExperienceLazy = lazy(() => import('./SellPlanExperience.jsx').then((m) => ({ default: m.SellPlanExperience })));
 
 // 子视图与 URL hash 对应关系：
 //   ''  / '#list' → 列表（默认）
 //   '#home'      → 加仓
 //   '#dca'       → 定投
+//   '#sell'      → 卖出
 //   '#new'       → 新建（覆盖整个 tab，独占视图）
 const SUB_VIEW_HASH = {
   list: '',
   home: '#home',
   dca: '#dca',
+  sell: '#sell',
   new: '#new'
 };
 
@@ -32,6 +35,7 @@ function parseSubViewFromHash(hash = '') {
   if (hash === '#new') return 'new';
   if (hash === '#home') return 'home';
   if (hash === '#dca') return 'dca';
+  if (hash === '#sell') return 'sell';
   return 'list';
 }
 
@@ -51,7 +55,8 @@ function SubViewLoadingFallback() {
 const SUB_TABS = [
   { key: 'list', label: '列表', icon: ListChecks },
   { key: 'home', label: '加仓', icon: TrendingUp },
-  { key: 'dca', label: '定投', icon: CalendarClock }
+  { key: 'dca', label: '定投', icon: CalendarClock },
+  { key: 'sell', label: '卖出', icon: TrendingDown }
 ];
 
 export function TradePlansExperience({ links, inPagesDir = false, embedded = false }) {
@@ -389,17 +394,23 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   }
 
   // 加仓 / 定投 二级视图：外层共享二级 tab 切换，内嵌各自的 Experience 组件。
-  if (subView === 'home' || subView === 'dca') {
+  if (subView === 'home' || subView === 'dca' || subView === 'sell') {
     return (
       <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
         {renderSubTabBar()}
         <Suspense fallback={<SubViewLoadingFallback />}>
           {subView === 'home' ? (
             <HomeExperienceLazy links={links} inPagesDir={inPagesDir} embedded />
-          ) : (
+          ) : subView === 'dca' ? (
             <DcaExperienceLazy
               links={links}
               inPagesDir={inPagesDir}
+              embedded
+              onAfterSave={() => gotoSubView('list')}
+            />
+          ) : (
+            <SellPlanExperienceLazy
+              links={links}
               embedded
               onAfterSave={() => gotoSubView('list')}
             />

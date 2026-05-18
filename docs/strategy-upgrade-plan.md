@@ -75,12 +75,29 @@ src/components/
 
 状态：`todo` / `in_progress` / `done` / `blocked`
 
-### PR 0 — 行情中心自选 + AI 分析（独立，可先行） — `todo`
-- [ ] 新建 `src/app/stockAnalysisPrompt.js`（金渐成框架 prompt 模板）
-- [ ] 新建 `src/components/StockAnalysisPanel.jsx`（SSE 流式渲染，复用 `askMarketsStream`）
-- [ ] 改 `src/pages/HomeExperience.jsx`：监控行加「+ 自选」、自选行加「AI 分析」按钮
-- [ ] 改 `src/app/homeDashboard.js`：`normalizeCodes` 支持美股 ticker（1–5 字母）
-- [ ] 前端验证：cf-browser-mcp 跑通自选增删 + AI 分析弹窗 + 流式渲染 + AbortController 取消
+### PR 0 — 行情中心 AI 分析 + 加仓/定投多标的快选 — `done`
+- [x] 新建 `src/app/stockAnalysisPrompt.js`（金渐成框架 prompt，MarketsExperience 复用）
+- [x] 改 `src/pages/MarketsExperience.jsx`：自选行「AI 分析」弹窗 + 流式渲染 + 取消（提交 `dbb2bad`）
+- [x] 新建 `src/app/extraSymbols.js`（QQQ/VOO/Mag7/TSM 额外标的表）
+- [x] 改 `src/pages/NewPlanExperience.jsx` + `src/pages/DcaExperience.jsx`：三组快选 chip、额外标的跳过自动 seed、提醒手填价（提交 `4130965`）
+- [ ] 前端验证：cf-browser-mcp 点一轮 AI 分析 + 新建计划页选 NVDA / VOO 看 chip 勿选中状态
+
+### PR 1 — 卖出策略引擎 + 减仓计划页（核心） — `in-progress`
+实际交付范围（PR 1 起步，优先打通「手动填入成本/股数 → 生成分档价 → 保存」闭环；plan/notifySync 集成推迟到 PR 1.5）：
+- [x] 新建 `src/app/assetType.js`：`INDEX_SYMBOLS` / `getAssetType` / `canSell` / `canHaveTradingPosition`
+- [x] 新建 `src/app/sellStrategy.js`：`buildSellPlan` / `evaluateSellSignals`，默认 15/25/35% × 33/33/34%，支持 3–5 档
+- [x] 新建 `src/app/sellPlans.js`：`aiDcaSellPlanStore` CRUD + 草稿存储
+- [x] 新建 `src/pages/SellPlanExperience.jsx`：Mag7/TSM chip、关联加仓策略、档位预览卡
+- [x] 改 `src/pages/TradePlansExperience.jsx`：新增 `#sell` 二级 tab，复用 `Suspense` 加载
+- [ ] PR 1.5：改 `src/app/tradePlans.js` 让列表页渲染卖出计划行（`buildSellPlanRows`）
+- [ ] PR 1.5：改 `src/app/notifySync.js`：`sell_layer` 规则同步至 worker
+- [ ] 单测：`sellStrategy.test.js`（分档计算、超 100% 归一、宽基禁售、股数/利润上限）
+- [ ] 前端验证（e2e）：
+  1. 打开 `/trade-plans#sell`，选 NVDA chip → 填写成本 100 / 股数 50 → 三档预览价为 115 / 125 / 135
+  2. 选 QQQ chip → 页面出现「宽基指数不可挂卖出计划」提示，保存按钮置灰
+  3. 调档数 4–5 → 预览档随之增加，卖出比总和在「100%」附近
+  4. 保存后重新进入 `#sell`，上次草稿被清空；`localStorage.aiDcaSellPlanStore` 多了一条
+  5. 联「加仓策略」下拉选一个已有计划 → symbol 自动同步
 
 ### PR 1 — 卖出策略引擎 + 减仓计划页（核心） — `todo`
 - [ ] 新建 `src/app/assetType.js`（`isBroadIndex` / `getAssetType` / `getStrategyRules`）
