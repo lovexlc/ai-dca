@@ -494,6 +494,21 @@ async function deliverNotification(env, notification, options = {}) {
   const deliveredCount = results.filter((result) => result.status === 'delivered').length;
   const configuredCount = results.filter((result) => result.status !== 'skipped').length;
 
+  // PC 浏览器渠道（方案 A，前端轮询消费）。
+  // worker 不直接 push 到浏览器，只在 event.channels 里登记一条 queued 状态，
+  // 让用户/调试能从 /api/notify/events 看到 pc 渠道存在。
+  if (currentClientId.startsWith('web:')) {
+    results.push({
+      channel: 'pc',
+      status: 'queued',
+      detail: '已写入事件，等待 PC 浏览器轮询拉取后本地弹窗',
+      configKey: `pc-client:${currentClientId}`,
+      configType: 'pc-client',
+      configId: currentClientId,
+      configLabel: currentClientLabel ? `PC · ${currentClientLabel}` : 'PC 浏览器'
+    });
+  }
+
   try {
     console.log('[notify][deliver] result', JSON.stringify({
       eventId: notification.eventId || '',
