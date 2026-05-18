@@ -1,16 +1,17 @@
-// IncomeSummary.jsx · v6.8 方案 B
+// IncomeSummary.jsx · v6.9 单卡支付宝风格
 //
-// 双卡 hero + lucide icon 4 入口：
-//   - 左大卡：总市值（4xl）+ 累计收益（金额 + %）+ 可选 sparkline + 起算日
-//   - 右窄卡：今日收益 rose-50 强调 + 右上角刷新按钮
-//   - 入口区：4 个 lucide 单色线性 icon tile（BarChart3 / Receipt / PieChart / ArrowLeftRight）
+// 单卡 hero + 3 列 KPI + 4 入口：
+//   - 顶部：总市值（金额大字）+ 右侧起始日 + 刷新按钮
+//   - PC：sparkline仅 PC。移动端隐藏 sparkline、保持纯文字。
+//   - 中部：3 列 KPI（今日 / 持有 / 累计） - 今日 rose-50 背景轻微强调
+//   - 入口区：4 个 lucide 单色线性 icon tile
 //
 // 入参：
 //   - portfolio：HoldingsExperience L221 useMemo 的集计对象
 //   - navigate：跳转子页
-//   - inceptionDate：可选，左大卡底部 sub
-//   - navRefresh：{ onClick, loading, hasFailures, title }，右窄卡刷新按钮
-//   - cumulativeSeries：可选 number[]，左大卡 sparkline 数据源；未传时 sparkline 不渲染（后续单独接入）
+//   - inceptionDate：可选，顶部右侧 sub
+//   - navRefresh：{ onClick, loading, hasFailures, title }，顶部右侧刷新按钮
+//   - cumulativeSeries：可选 number[]，sparkline 数据源（仅 PC 渲染）
 
 import { ROUTES } from '../incomeRoute.js';
 import { cx } from '../../components/experience-ui.jsx';
@@ -47,11 +48,11 @@ function renderSignedPercent(value) {
 	return `${sign}${formatPercent(Math.abs(value))}`;
 }
 
-// SVG sparkline. 给定 number[]，自动归一化绘制。tone 决定描边色 + 浅填充。
+// SVG sparkline。给定 number[]，自动归一化绘制。tone 决定描边色 + 浅填充。
 function Sparkline({ series, tone }) {
 	if (!Array.isArray(series) || series.length < 2) return null;
 	const w = 200;
-	const h = 40;
+	const h = 36;
 	const min = Math.min(...series);
 	const max = Math.max(...series);
 	const range = max - min || 1;
@@ -69,10 +70,26 @@ function Sparkline({ series, tone }) {
 			: 'rgba(100,116,139,0.08)';
 	const areaPath = `${linePath} L${w},${h} L0,${h} Z`;
 	return (
-		<svg viewBox={`0 0 ${w} ${h}`} className="h-10 w-full" preserveAspectRatio="none" aria-hidden="true">
+		<svg viewBox={`0 0 ${w} ${h}`} className="h-9 w-full" preserveAspectRatio="none" aria-hidden="true">
 			<path d={areaPath} fill={fill} />
 			<path d={linePath} fill="none" stroke={stroke} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
 		</svg>
+	);
+}
+
+// KPI 单列：小 label + signed currency + signed percent。accent: 今日项给 rose-50 浅底轻微强调。
+function KpiCol({ label, value, rate, accent }) {
+	const tone = signTone(value);
+	return (
+		<div className={cx('flex min-w-0 flex-col gap-1 rounded-xl px-3 py-2.5 sm:px-4 sm:py-3', accent ? 'bg-rose-50/60' : '')}>
+			<div className="text-[11px] font-medium text-slate-500">{label}</div>
+			<div className={cx('truncate whitespace-nowrap text-base font-bold tabular-nums sm:text-lg', tone)}>
+				{renderSignedCurrency(value)}
+			</div>
+			<div className={cx('truncate whitespace-nowrap text-[11px] font-semibold tabular-nums sm:text-xs', tone)}>
+				{renderSignedPercent(rate)}
+			</div>
+		</div>
 	);
 }
 
@@ -80,10 +97,11 @@ export function IncomeSummary({ portfolio, navigate, inceptionDate, navRefresh, 
 	const marketValue = portfolio?.marketValue;
 	const todayProfit = portfolio?.todayProfit;
 	const todayReturnRate = portfolio?.todayReturnRate;
+	const totalProfit = portfolio?.totalProfit;
+	const totalReturnRate = portfolio?.totalReturnRate;
 	const cumulativeProfit = portfolio?.cumulativeProfit;
 	const cumulativeReturnRate = portfolio?.cumulativeReturnRate;
 
-	const todayTone = signTone(todayProfit);
 	const cumulativeTone = signTone(cumulativeProfit);
 
 	const refreshBtn = navRefresh ? (
@@ -93,7 +111,7 @@ export function IncomeSummary({ portfolio, navigate, inceptionDate, navRefresh, 
 			disabled={navRefresh.loading}
 			aria-label={navRefresh.title || '同步净值'}
 			title={navRefresh.title || '同步净值'}
-			className="relative inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-white/70 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+			className="relative inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
 		>
 			<RefreshCw className={cx('h-3.5 w-3.5', navRefresh.loading && 'animate-spin')} />
 			{navRefresh.hasFailures ? (
@@ -104,53 +122,43 @@ export function IncomeSummary({ portfolio, navigate, inceptionDate, navRefresh, 
 
 	return (
 		<div className="flex flex-col gap-3">
-			{/* v6.8 方案 B: 双卡 hero — 左大（总市值+累计+sparkline）/ 右窄（今日 rose 强调） */}
-			<section className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-5">
-				{/* 左大卡：sm 占 3/5 列 */}
-				<div className="flex min-w-0 flex-col gap-3 rounded-2xl border border-slate-200/70 bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:col-span-3 sm:px-6 sm:py-5">
-					<div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
-						<div className="min-w-0">
-							<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</div>
-							<div className="mt-1 truncate whitespace-nowrap text-2xl font-extrabold tracking-tight tabular-nums text-slate-900 min-[380px]:text-3xl sm:text-4xl">
-								{Number.isFinite(marketValue) ? formatCurrency(marketValue, '¥', 2) : '—'}
-							</div>
-						</div>
-						<div className="min-w-0 text-left sm:text-right">
-							<div className="text-[11px] font-medium text-slate-500">累计</div>
-							<div className={cx('mt-0.5 truncate whitespace-nowrap text-sm font-semibold tabular-nums sm:text-base', cumulativeTone)}>
-								{renderSignedCurrency(cumulativeProfit)}
-							</div>
-							<div className={cx('truncate whitespace-nowrap text-xs font-semibold tabular-nums', cumulativeTone)}>
-								{renderSignedPercent(cumulativeReturnRate)}
-							</div>
+			{/* v6.9 支付宝风格：单卡 hero（总市值顶 + 3 列 KPI 底），取代双卡 */}
+			<section className="flex min-w-0 flex-col gap-3 rounded-2xl border border-slate-200/70 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:px-6 sm:py-4">
+				{/* 顶部行：总市值 label + 金额 / 右侧：起始日 + 刷新按钮 */}
+				<div className="flex items-start justify-between gap-3">
+					<div className="min-w-0">
+						<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</div>
+						<div className="mt-1 truncate whitespace-nowrap text-2xl font-extrabold tracking-tight tabular-nums text-slate-900 min-[380px]:text-3xl sm:text-4xl">
+							{Number.isFinite(marketValue) ? formatCurrency(marketValue, '¥', 2) : '—'}
 						</div>
 					</div>
-					{Array.isArray(cumulativeSeries) && cumulativeSeries.length >= 2 ? (
-						<Sparkline series={cumulativeSeries} tone={cumulativeTone} />
-					) : null}
-					{inceptionDate ? (
-						<div className="text-[11px] text-slate-400 tabular-nums">起 {inceptionDate}</div>
-					) : null}
+					<div className="flex flex-col items-end gap-1">
+						{refreshBtn}
+						{inceptionDate ? (
+							<div className="text-[11px] text-slate-400 tabular-nums">起 {inceptionDate}</div>
+						) : null}
+					</div>
 				</div>
 
-				{/* 右窄卡：sm 占 2/5 列，rose-50 浅底强调今日 */}
-				<div className="flex min-w-0 flex-col justify-between rounded-2xl border border-rose-100 bg-rose-50/60 px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:col-span-2 sm:px-5 sm:py-5">
-					<div className="flex items-start justify-between gap-2">
-						<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">今日</div>
-						{refreshBtn}
+				{/* sparkline 仅 PC（sm 以上）渲染，移动端隐藏 */}
+				{Array.isArray(cumulativeSeries) && cumulativeSeries.length >= 2 ? (
+					<div className="hidden sm:block">
+						<Sparkline series={cumulativeSeries} tone={cumulativeTone} />
 					</div>
-					<div className="mt-3 min-w-0">
-						<div className={cx('truncate whitespace-nowrap text-2xl font-bold tabular-nums sm:text-3xl', todayTone)}>
-							{renderSignedCurrency(todayProfit)}
-						</div>
-						<div className={cx('mt-1 inline-flex max-w-full items-center truncate whitespace-nowrap rounded-full bg-white/70 px-2 py-0.5 text-xs font-semibold tabular-nums', todayTone)}>
-							{renderSignedPercent(todayReturnRate)}
-						</div>
-					</div>
+				) : null}
+
+				{/* 分隔线 */}
+				<div className="h-px bg-slate-100" aria-hidden="true" />
+
+				{/* 3 列 KPI：今日 / 持有 / 累计 */}
+				<div className="grid grid-cols-3 gap-2 sm:gap-3">
+					<KpiCol label="今日" value={todayProfit} rate={todayReturnRate} accent />
+					<KpiCol label="持有" value={totalProfit} rate={totalReturnRate} />
+					<KpiCol label="累计" value={cumulativeProfit} rate={cumulativeReturnRate} />
 				</div>
 			</section>
 
-			{/* v6.8: 入口区改为 lucide 单色线性 icon */}
+			{/* 入口区：4 个 lucide 单色线性 icon */}
 			<nav aria-label="收益看板子页入口" className="grid grid-cols-4 gap-2">
 				{TILES.map(({ route: r, Icon, label }) => (
 					<button
