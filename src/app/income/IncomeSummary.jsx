@@ -106,7 +106,7 @@ function KpiCol({ label, value, rate, align = 'center' }) {
 	);
 }
 
-export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSeries, quickActions }) {
+export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSeries, quickActions, inceptionDate }) {
 	const marketValue = portfolio?.marketValue;
 	const todayProfit = portfolio?.todayProfit;
 	const todayReturnRate = portfolio?.todayReturnRate;
@@ -135,35 +135,49 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSerie
 
 	return (
 		<div className="flex flex-col gap-3">
-			{/* v7.0 支付宝风格：去卡框 hero（总市值超大字 + 3 列纯文字 KPI），金额不再被卡片宽束缚 */}
-			<section className="flex min-w-0 flex-col gap-4 px-1 pt-2 pb-1 sm:gap-5 sm:pt-3">
-				{/* 顶部行：总市值 label + 金额 / 右侧：刷新按钮 */}
+			{/* 移动端：v7.0 单卡支付宝风格（总市值⊒3 KPI 垂直堆叠） */}
+			<section className="flex flex-col gap-4 px-1 pt-2 pb-1 sm:hidden">
 				<div className="flex items-start justify-between gap-3">
 					<div className="min-w-0 flex-1">
 						<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</div>
-						<div className="mt-1 truncate whitespace-nowrap text-4xl font-extrabold tracking-tight tabular-nums text-slate-900 min-[380px]:text-[44px] sm:text-5xl">
+						<div className="mt-1 truncate whitespace-nowrap text-4xl font-extrabold tracking-tight tabular-nums text-slate-900 min-[380px]:text-[44px]">
 							{formatCompactCurrency(marketValue, { compactFrom: 100000000 })}
 						</div>
 					</div>
 					{refreshBtn ? <div className="shrink-0">{refreshBtn}</div> : null}
 				</div>
-
-				{/* sparkline 仅 PC（sm 以上）渲染，移动端隐藏 */}
-				{Array.isArray(cumulativeSeries) && cumulativeSeries.length >= 2 ? (
-					<div className="hidden sm:block">
-						<Sparkline series={cumulativeSeries} tone={cumulativeTone} />
-					</div>
-				) : null}
-
-				{/* 3 列 KPI：今日 / 持有 / 累计 */}
-				<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)] gap-1 sm:gap-4">
+				<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)] gap-1">
 					<KpiCol label="今日收益(元)" value={todayProfit} rate={todayReturnRate} align="left" />
 					<KpiCol label="持有收益(元)" value={totalProfit} rate={totalReturnRate} />
 					<KpiCol label="累计收益(元)" value={cumulativeProfit} rate={cumulativeReturnRate} align="right" />
 				</div>
 			</section>
 
-			{/* 入口区：移动端 4 tile grid（v7.0）；PC 端 inline pill + 右侧辅助操作 */}
+			{/* PC 端：A.1 横向 stat-bar（左金额+起算日 · 中 sparkline · 右 3 KPI · 最右刷新） */}
+			<section className="hidden sm:flex sm:items-end sm:gap-8 sm:px-1 sm:pb-4 sm:border-b sm:border-slate-100">
+				<div className="min-w-0 shrink-0">
+					<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</div>
+					<div className="mt-1 whitespace-nowrap text-4xl font-extrabold tracking-tight tabular-nums text-slate-900">
+						{formatCompactCurrency(marketValue, { compactFrom: 100000000 })}
+					</div>
+					{inceptionDate ? <div className="text-[11px] text-slate-400 mt-0.5">起 {inceptionDate}</div> : null}
+				</div>
+				{Array.isArray(cumulativeSeries) && cumulativeSeries.length >= 2 ? (
+					<div className="flex-1 min-w-0">
+						<Sparkline series={cumulativeSeries} tone={cumulativeTone} />
+					</div>
+				) : (
+					<div className="flex-1" aria-hidden="true" />
+				)}
+				<div className="flex gap-8 shrink-0">
+					<KpiCol label="今日" value={todayProfit} rate={todayReturnRate} align="right" />
+					<KpiCol label="持有" value={totalProfit} rate={totalReturnRate} align="right" />
+					<KpiCol label="累计" value={cumulativeProfit} rate={cumulativeReturnRate} align="right" />
+				</div>
+				{refreshBtn ? <div className="shrink-0">{refreshBtn}</div> : null}
+			</section>
+
+			{/* 入口区：移动端 4 tile grid（v7.0） */}
 			<nav aria-label="收益看板子页入口" className="grid grid-cols-4 gap-2 sm:hidden">
 				{TILES.map(({ route: r, Icon, label }) => (
 					<button
@@ -177,6 +191,8 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSerie
 					</button>
 				))}
 			</nav>
+
+			{/* PC 端：4 pill chip 入口 + 右侧 复制表格 / + 新增交易 */}
 			<div className="hidden sm:flex sm:items-center sm:justify-between sm:gap-3">
 				<nav aria-label="收益看板子页入口" className="flex flex-wrap gap-2">
 					{TILES.map(({ route: r, Icon, label }) => (
