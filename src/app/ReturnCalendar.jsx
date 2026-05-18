@@ -10,7 +10,6 @@
 //   - 默认导出，便于 3.3 React.lazy 懒加载
 
 import { useEffect, useMemo, useState } from 'react';
-import * as Popover from '@radix-ui/react-popover';
 import { ChevronLeft, ChevronRight, LoaderCircle, AlertTriangle } from 'lucide-react';
 import { formatCurrency } from './accumulation.js';
 import { cx } from '../components/experience-ui.jsx';
@@ -172,8 +171,9 @@ function WEEKDAYS() {
   return ['一', '二', '三', '四', '五', '六', '日'];
 }
 
-function DayCell({ cell, pnl, max, onClick, todayIso }) {
+function DayCell({ cell, pnl, max, onClick, todayIso, selectedIso }) {
   const isToday = cell.iso === todayIso;
+  const isSelected = cell.iso === selectedIso;
   const dim = !cell.inMonth;
   const tone = toneFor(pnl, max);
   const hasPnl = Number.isFinite(pnl) && pnl !== 0;
@@ -189,7 +189,7 @@ function DayCell({ cell, pnl, max, onClick, todayIso }) {
       className={cx(
         'flex aspect-square min-h-[36px] flex-col items-start justify-between rounded-md border p-1 text-left transition-colors tabular-nums sm:min-h-[44px] md:aspect-auto md:h-[64px] lg:h-[68px]',
         baseClasses,
-        isToday && !dim ? 'ring-1 ring-offset-1 ring-slate-400' : '',
+        isSelected && !dim ? 'ring-2 ring-offset-1 ring-slate-700' : isToday && !dim ? 'ring-1 ring-offset-1 ring-slate-400' : '',
         !dim && hasPnl ? 'hover:brightness-95' : ''
       )}
       aria-label={`${cell.iso} ${hasPnl ? formatCurrency(pnl, '¥', 2) : ''}`}
@@ -204,46 +204,7 @@ function DayCell({ cell, pnl, max, onClick, todayIso }) {
   );
 }
 
-function DayDetail({ iso, pnl, txsToday }) {
-  const hasTx = Array.isArray(txsToday) && txsToday.length > 0;
-  return (
-    <div className="w-64 rounded-md border border-slate-200 bg-white p-3 text-[12px] shadow-md">
-      <div className="flex items-center justify-between">
-        <div className="font-medium text-slate-700 tabular-nums">{iso}</div>
-        <div
-          className={cx(
-            'font-semibold tabular-nums',
-            pnl > 0 ? TONE_UP : pnl < 0 ? TONE_DOWN : 'text-slate-400'
-          )}
-        >
-          {Number.isFinite(pnl) && pnl !== 0
-            ? `${pnl > 0 ? '+' : ''}${formatCurrency(pnl, '¥', 2)}`
-            : '—'}
-        </div>
-      </div>
-      <div className="mt-2">
-        <div className="text-[11px] uppercase tracking-wide text-slate-400">交易</div>
-        {hasTx ? (
-          <ul className="mt-1 space-y-1">
-            {txsToday.map((tx, idx) => (
-              <li key={`${tx.code}-${idx}`} className="flex items-center justify-between tabular-nums">
-                <span className={cx('rounded px-1 text-[10px] font-semibold', tx.type === 'BUY' ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700')}>
-                  {tx.type}
-                </span>
-                <span className="flex-1 truncate px-1 text-slate-700">{tx.code}</span>
-                <span className="text-slate-500">{Number(tx.shares || 0).toFixed(2)} · {Number(tx.price || 0).toFixed(4)}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="mt-1 text-slate-400">无交易</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ReturnCalendar({ ledger, className = '' }) {
+function ReturnCalendar({ ledger, className = '', selectedDate, onSelectDate }) {
   const transactions = useMemo(
     () => (Array.isArray(ledger?.transactions) ? ledger.transactions : []),
     [ledger]
@@ -386,7 +347,6 @@ function ReturnCalendar({ ledger, className = '' }) {
         ))}
         {grid.map((cell) => {
           const pnl = state.daily[cell.iso];
-          const txsToday = cell.inMonth ? txsOnDate(transactions, cell.iso) : [];
           if (!cell.inMonth) {
             return (
               <DayCell
@@ -396,32 +356,20 @@ function ReturnCalendar({ ledger, className = '' }) {
                 max={monthMaxAbs}
                 onClick={undefined}
                 todayIso={todayCellIso}
+                selectedIso={selectedDate}
               />
             );
           }
           return (
-            <Popover.Root key={cell.iso}>
-              <Popover.Trigger asChild>
-                <button
-                  type="button"
-                  className="contents"
-                  aria-label={cell.iso}
-                >
-                  <DayCell
-                    cell={cell}
-                    pnl={pnl}
-                    max={monthMaxAbs}
-                    onClick={() => {}}
-                    todayIso={todayCellIso}
-                  />
-                </button>
-              </Popover.Trigger>
-              <Popover.Portal>
-                <Popover.Content sideOffset={6} className="z-50">
-                  <DayDetail iso={cell.iso} pnl={pnl} txsToday={txsToday} />
-                </Popover.Content>
-              </Popover.Portal>
-            </Popover.Root>
+            <DayCell
+              key={cell.iso}
+              cell={cell}
+              pnl={pnl}
+              max={monthMaxAbs}
+              onClick={() => onSelectDate && onSelectDate(cell.iso)}
+              todayIso={todayCellIso}
+              selectedIso={selectedDate}
+            />
           );
         })}
       </div>

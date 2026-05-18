@@ -21,6 +21,7 @@ import { useRangeUrlSync, DEFAULT_RANGE } from '../rangeUrlSync.js';
 
 const ReturnChart = lazy(() => import('../ReturnChart.jsx'));
 const ReturnCalendar = lazy(() => import('../ReturnCalendar.jsx'));
+const DailyFundBreakdown = lazy(() => import('./DailyFundBreakdown.jsx'));
 
 function LazyFallback({ label }) {
   return (
@@ -161,6 +162,7 @@ export function IncomeDetailPage({ ledger, onBack }) {
   const transactions = useMemo(() => (Array.isArray(ledger?.transactions) ? ledger.transactions : []), [ledger]);
   const inceptionDate = useMemo(() => firstBuyDate(transactions), [transactions]);
   const today = useMemo(() => todayShanghaiIso(), []);
+  const [selectedDate, setSelectedDate] = useState(today);
 
   const rangeWindow = useMemo(
     () =>
@@ -360,8 +362,11 @@ export function IncomeDetailPage({ ledger, onBack }) {
           </Suspense>
           <Suspense fallback={<LazyFallback label="加载收益日历…" />}>
             <div className="rounded-2xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4">
-              <ReturnCalendar ledger={ledger} />
+              <ReturnCalendar ledger={ledger} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
             </div>
+          </Suspense>
+          <Suspense fallback={<LazyFallback label="加载当日明细…" />}>
+            <DailyFundBreakdown ledger={ledger} selectedDate={selectedDate} />
           </Suspense>
         </>
       ) : null}

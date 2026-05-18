@@ -285,6 +285,55 @@ export function buildPortfolioSeries({ tx, navByCode, from, to }) {
   };
 }
 
+// 单日 per-fund 盈亏：基于上一交易日持仓 × (当日 nav - 上一交易日 nav)。
+// 当日新买入/卖出的现金流不计入 pnl，与 Modified-Dietz 思路一致。
+//
+// 入参：
+//   tx        — 完整 transactions 列表（含 name/code/shares/price/type/date）
+//   navByCode — { [code]: Array<{date, nav}> } 至少覆盖 [date-30d, date]
+//   date      — 目标 ISO 日期
+// 返回：Array<{ code, shares, nav, prevNav, prevDate, navDate, pnl, txsToday }>，仅含 shares>0 或当日有交易的基金。
+export function singleDayFundPnl({ tx, navByCode, date }) {
+  const isoDate = toIsoDate(date);
+  if (!isoDate) return [];
+  const allTx = normalizeTxList(tx);
+  const navMap = normalizeNavSeries(navByCode);
+  const prevIso = shiftDays(isoDate, -1);
+  const sharesPrev = sharesAtEndOfDay(allTx, prevIso);
+
+  const codes = new Set();
+  for (const code of sharesPrev.keys()) {
+    if ((sharesPrev.get(code) || 0) > EPSILON) codes.add(code);
+  }
+  for (const t of allTx) {
+    if (t.date === isoDate) codes.add(t.code);
+  }
+
+  const out = [];
+  for (const code of codes) {
+    const series = navMap[code] || [];
+    const pointToday = findNavOnOrBefore(series, isoDate);
+    const pointPrev = pointToday ? findNavOnOrBefore(series, shiftDays(pointToday.date, -1)) : null;
+    const shares = sharesPrev.get(code) || 0;
+    const nav = pointToday ? pointToday.nav : null;
+    const prevNav = pointPrev ? pointPrev.nav : null;
+    const prevDate = pointPrev ? pointPrev.date : null;
+    const navDate = pointToday ? pointToday.date : null;
+    const hasUpdate = !!pointToday && pointToday.date === isoDate;
+    const pnl = hasUpdate && Number.isFinite(nav) && Number.isFinite(prevNav)
+      ? shares * (nav - prevNav)
+      : null;
+    const txsToday = allTx.filter((t) => t.date === isoDate && t.code === code);
+    out.push({ code, shares, nav, prevNav, prevDate, navDate, pnl, txsToday });
+  }
+  out.sort((a, b) => {
+    const av = Number.isFinite(a.pnl) ? Math.abs(a.pnl) : -1;
+    const bv = Number.isFinite(b.pnl) ? Math.abs(b.pnl) : -1;
+    return bv - av;
+  });
+  return out;
+}
+
 // 镜头 → {from, to} 。UI 只传镜头名。
 export function resolveRangeWindow(range, { today, inceptionDate, custom } = {}) {
   const t = toIsoDate(today) || toIsoDate(new Date());
