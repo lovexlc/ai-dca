@@ -1,7 +1,7 @@
 // ReturnChart.jsx
 //
 // 第三刀 3.1：收益曲线（区间内）。
-//   - 主线：组合累计收益率 (来自 buildPortfolioSeries.dailySeries.pnlRate)
+//   - 主线：组合累计收益率（累计金额来自 ReturnCalendar 同源的 buildDailyFundPnlMap）
 //   - 副线：沪深 300 累计收益率 (navBench[d] / navBench[start] - 1)
 //   - 复用 useRangeUrlSync，与 IncomeDetail 共享 URL 镜头
 //   - 默认导出，方便 3.3 用 React.lazy 懒加载（recharts 体积大）
@@ -19,10 +19,10 @@ import {
   Legend
 } from 'recharts';
 import { LoaderCircle, AlertTriangle } from 'lucide-react';
-import { formatPercent } from './accumulation.js';
+import { formatCurrency, formatPercent } from './accumulation.js';
 import { cx } from '../components/experience-ui.jsx';
 import { fetchNavHistory } from './navHistoryClient.js';
-import { buildPortfolioSeries, resolveRangeWindow, shiftDays } from './portfolioSeries.js';
+import { buildDailyFundPnlMap, buildPortfolioSeries, resolveRangeWindow, shiftDays } from './portfolioSeries.js';
 import { useRangeUrlSync, DEFAULT_RANGE } from './rangeUrlSync.js';
 
 const BENCH_CODE = '510300';
@@ -127,25 +127,39 @@ function formatYTick(value) {
   return formatPercent(value * 100, 1, false);
 }
 
+function dotStyle(color) {
+  return { backgroundColor: color };
+}
+
 function ChartTooltip({ active, payload, label }) {
   if (!active || !Array.isArray(payload) || payload.length === 0) return null;
+  const point = payload[0]?.payload || {};
   return (
     <div className="rounded-md border border-slate-200 bg-white/95 px-2 py-1.5 text-[11px] shadow-sm">
       <div className="font-medium text-slate-700 tabular-nums">{label}</div>
       {payload.map((it) => {
         const v = it?.value;
         if (!Number.isFinite(v)) return null;
+        const isPortfolio = it.dataKey === 'portfolio';
         return (
           <div key={it.dataKey} className="flex items-center gap-1.5 tabular-nums">
             <span
               className="inline-block size-1.5 rounded-full"
-              style={{ backgroundColor: it.color || it.stroke }}
+              style={dotStyle(it.color)}
             />
             <span className="text-slate-500">{it.name}</span>
             <span className="font-medium text-slate-800">{formatPercent(v * 100, 2, true)}</span>
+            {isPortfolio && Number.isFinite(point.portfolioPnl) ? (
+              <span className="text-slate-400">累计 {formatCurrency(point.portfolioPnl, '¥', 2)}</span>
+            ) : null}
           </div>
         );
       })}
+      {Number.isFinite(point.portfolioDailyPnl) ? (
+        <div className="mt-0.5 text-slate-400 tabular-nums">
+          当日收益 {formatCurrency(point.portfolioDailyPnl, '¥', 2)}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -207,11 +221,36 @@ function ReturnChart({ ledger, className = '' }) {
         const daily = Array.isArray(series?.dailySeries) ? series.dailySeries : [];
         const dates = daily.map((d) => d.date);
         const benchByDate = buildBenchSeries(bench.items, dates);
-        const data = daily.map((d) => ({
-          date: d.date,
-          portfolio: Number.isFinite(d.pnlRate) ? d.pnlRate : null,
-          bench: Number.isFinite(benchByDate[d.date]) ? benchByDate[d.date] : null
-        }));
+        const dailyPnlByDate = buildDailyFundPnlMap({
+          tx: transactions,
+          navByCode: nav.navByCode,
+          fromIso: rangeWindow.from,
+          toIso: rangeWindow.to
+        });
+        let cumulativePnl = 0;
+        let lastDenominator = Number.isFinite(series.startValue) && Math.abs(series.startValue) > 1e-8
+          ? series.startValue
+          : null;
+        const data = daily.map((d) => {
+          const hasDailyPnl = Number.isFinite(dailyPnlByDate[d.date]);
+          const dayPnl = hasDailyPnl ? dailyPnlByDate[d.date] : 0;
+          cumulativePnl += dayPnl;
+          if (Number.isFinite(d.pnl) && Number.isFinite(d.pnlRate) && Math.abs(d.pnlRate) > 1e-8) {
+            const inferredDenominator = d.pnl / d.pnlRate;
+            if (Number.isFinite(inferredDenominator) && Math.abs(inferredDenominator) > 1e-8) {
+              lastDenominator = inferredDenominator;
+            }
+          }
+          return {
+            date: d.date,
+            // “我的组合”累计金额严格由收益日历同源的单日 pnl 累加而来；
+            // 比例仅用于和沪深300同屏展示，避免曲线和日历出现两套收益数据。
+            portfolio: lastDenominator ? cumulativePnl / lastDenominator : null,
+            portfolioPnl: cumulativePnl,
+            portfolioDailyPnl: hasDailyPnl ? dayPnl : null,
+            bench: Number.isFinite(benchByDate[d.date]) ? benchByDate[d.date] : null
+          };
+        });
         if (cancelled) return;
         setState({
           status: 'ready',
