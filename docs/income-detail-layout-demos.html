@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PC 收益明细布局 Demo</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --card: #fff;
+      --border: #e5eaf2;
+      --text: #172033;
+      --muted: #66758d;
+      --rose: #e11d48;
+      --green: #059669;
+      --blue: #2563eb;
+      --shadow: 0 10px 24px rgba(15, 23, 42, .06);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); }
+    header { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(12px); background: rgba(246, 248, 251, .86); border-bottom: 1px solid var(--border); }
+    .header-inner { max-width: 1480px; margin: 0 auto; padding: 18px 28px; }
+    h1 { margin: 0 0 6px; font-size: 22px; }
+    .intro { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
+    main { max-width: 1480px; margin: 0 auto; padding: 22px 28px 54px; display: grid; gap: 24px; }
+    section.demo { border: 1px solid var(--border); border-radius: 24px; background: rgba(255,255,255,.66); box-shadow: var(--shadow); overflow: hidden; }
+    .demo-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 20px; border-bottom: 1px solid var(--border); background: linear-gradient(180deg, #fff, #fbfcff); }
+    .demo-title h2 { margin: 0; font-size: 16px; }
+    .demo-title p { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .badge { white-space: nowrap; border: 1px solid #dbeafe; color: #1d4ed8; background: #eff6ff; padding: 5px 9px; border-radius: 999px; font-size: 12px; }
+    .canvas { padding: 16px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 18px; box-shadow: 0 3px 12px rgba(15,23,42,.035); overflow: hidden; min-width: 0; }
+    .card-head { height: 42px; padding: 10px 13px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #edf1f7; }
+    .card-title { font-size: 13px; font-weight: 700; }
+    .card-sub { color: var(--muted); font-size: 11px; }
+    .mini-actions { display:flex; gap:6px; }
+    .pill { border: 1px solid #e3e8f0; background:#fff; color:#64748b; border-radius: 999px; padding: 4px 8px; font-size: 11px; }
+    .pill.active { border-color:#fecdd3; background:#fff1f2; color:#be123c; }
+    .chart { position: relative; height: 100%; min-height: 170px; background:
+      linear-gradient(#e8eef7 1px, transparent 1px) 0 0 / 100% 25%,
+      linear-gradient(90deg,#eef2f7 1px, transparent 1px) 0 0 / 8.33% 100%,
+      linear-gradient(180deg,#fff,#fbfdff); }
+    .chart svg { width: 100%; height: 100%; display:block; }
+    .legend { position:absolute; top:10px; left:50%; transform:translateX(-50%); display:flex; gap:12px; font-size:11px; color:#64748b; background:rgba(255,255,255,.78); border:1px solid #eef2f7; padding:4px 8px; border-radius:999px; }
+    .dot { width:7px; height:7px; border-radius:999px; display:inline-block; margin-right:4px; }
+    .dot.rose { background: var(--rose); } .dot.slate { background:#475569; }
+    .calendar { display:grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 5px; padding: 10px; }
+    .weekday { text-align:center; color:#94a3b8; font-size:10px; padding-bottom:2px; }
+    .day { min-height: 42px; border-radius: 9px; border:1px solid #eef2f7; background:#f8fafc; color:#94a3b8; padding:5px; font-size:10px; position:relative; }
+    .day strong { color:#64748b; font-size:10px; }
+    .day.up { background:#fff1f2; border-color:#fecdd3; } .day.up .val { color:#e11d48; }
+    .day.down { background:#ecfdf5; border-color:#bbf7d0; } .day.down .val { color:#047857; }
+    .day.hot { background:#fb7185; border-color:#f43f5e; color:white; } .day.hot strong, .day.hot .val { color:white; }
+    .val { position:absolute; right:5px; bottom:4px; font-weight:700; font-size:10px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 8px 10px; border-bottom:1px solid #edf1f7; text-align:left; white-space:nowrap; }
+    th { color:#64748b; font-size:11px; font-weight:600; background:#fafcff; }
+    td.num { text-align:right; font-variant-numeric: tabular-nums; }
+    .up-text { color:#e11d48; font-weight:700; } .down-text { color:#059669; font-weight:700; }
+    .empty-hint { margin: 8px; border: 1px dashed #dbe3ef; border-radius: 12px; height: 52px; color:#94a3b8; display:flex; align-items:center; justify-content:center; font-size:12px; background:#fbfdff; }
+    .option-a { display:grid; grid-template-columns: minmax(0, 1.38fr) minmax(360px, .92fr); gap:14px; align-items:start; }
+    .option-a .chart-card { height: 330px; }
+    .option-a .side { display:grid; gap:14px; }
+    .option-a .cal-card { height: 226px; }
+    .option-a .detail-card { height: 188px; }
+    .option-b { display:grid; grid-template-columns: minmax(0, 1fr) 360px; grid-template-rows: 276px 240px; gap:14px; }
+    .option-b .chart-card { grid-column:1; grid-row:1 / span 2; }
+    .option-b .cal-card { grid-column:2; grid-row:1; }
+    .option-b .detail-card { grid-column:2; grid-row:2; }
+    .option-c .tabs-shell { background:#fff; border:1px solid var(--border); border-radius:18px; overflow:hidden; }
+    .tabbar { display:flex; gap:4px; padding:10px; border-bottom:1px solid #edf1f7; background:#fbfcff; }
+    .tab { padding:8px 13px; border-radius:10px; color:#64748b; font-size:12px; font-weight:700; }
+    .tab.active { color:#be123c; background:#fff1f2; }
+    .option-c .tab-content { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(340px,.8fr); gap:14px; padding:14px; height: 390px; }
+    .option-c .chart { min-height: 0; }
+    .compact-calendar { display:grid; grid-template-columns: repeat(7, 1fr); gap:4px; padding:10px; }
+    .compact-calendar .day { min-height:30px; border-radius:7px; }
+    .option-d { display:grid; grid-template-columns: 300px minmax(0,1fr) 360px; gap:14px; min-height:420px; }
+    .option-d .left-stack { display:grid; grid-template-rows: 148px 1fr; gap:14px; }
+    .summary-card { padding:14px; display:grid; gap:10px; }
+    .metric { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+    .metric span { color:#64748b; font-size:12px; } .metric strong { font-size:18px; font-variant-numeric:tabular-nums; }
+    .option-d .chart-card { height:420px; } .option-d .detail-card { height:420px; }
+    .note { margin-top: 12px; color:#64748b; font-size:12px; line-height:1.7; }
+    @media (max-width: 980px) {
+      .option-a, .option-b, .option-c .tab-content, .option-d { grid-template-columns: 1fr; grid-template-rows:auto; }
+      .option-b .chart-card, .option-b .cal-card, .option-b .detail-card { grid-column:auto; grid-row:auto; }
+      .option-a .chart-card, .option-b .chart-card, .option-d .chart-card { height:280px; }
+      .option-c .tab-content { height:auto; }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <h1>PC 端「收益曲线 / 收益日历 / 当日收益明细」布局 Demo</h1>
+    <p class="intro">目标：避免 PC 宽屏下图表和日历被拉得过高、过宽而失真，同时减少明细表空白。下面 4 个方案都保留三张 card，但通过固定高度、两列布局、标签页或主从布局控制信息密度。</p>
+  </div>
+</header>
+<main>
+  <section class="demo">
+    <div class="demo-title"><div><h2>方案 A：左图右上下栈 · 推荐默认</h2><p>曲线占左侧主区域，右侧上方日历、下方明细。三张 card 同屏可见，整体高度约 430px，不会把日历拉成大海报。</p></div><span class="badge">信息完整 / 改动适中</span></div>
+    <div class="canvas option-a">
+      <div class="card chart-card"><div class="card-head"><div><div class="card-title">收益曲线</div><div class="card-sub">组合 vs 沪深300</div></div><div class="mini-actions"><span class="pill active">今年</span><span class="pill">本月</span></div></div><mock-chart></mock-chart></div>
+      <div class="side">
+        <div class="card cal-card"><div class="card-head"><div><div class="card-title">收益日历</div><div class="card-sub">2026 年 05 月 +¥3,846.68</div></div></div><mock-calendar compact="true"></mock-calendar></div>
+        <div class="card detail-card"><div class="card-head"><div><div class="card-title">当日收益明细</div><div class="card-sub">2026-05-18</div></div></div><mock-table></mock-table></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="demo">
+    <div class="demo-title"><div><h2>方案 B：左侧大曲线 + 右侧辅助面板</h2><p>偏专业分析台：曲线拥有最多横向空间；日历与明细作为右侧辅助卡片，明细只展示 Top 5 + 查看全部。</p></div><span class="badge">分析优先</span></div>
+    <div class="canvas option-b">
+      <div class="card chart-card"><div class="card-head"><div><div class="card-title">收益曲线</div><div class="card-sub">高度固定 516px，宽度吃满左列</div></div></div><mock-chart></mock-chart></div>
+      <div class="card cal-card"><div class="card-head"><div><div class="card-title">收益日历</div><div class="card-sub">紧凑月历</div></div></div><mock-calendar compact="true"></mock-calendar></div>
+      <div class="card detail-card"><div class="card-head"><div><div class="card-title">当日收益明细</div><div class="card-sub">只显示有效记录</div></div></div><mock-table></mock-table><div class="empty-hint">无更多记录时不继续撑高表格</div></div>
+    </div>
+  </section>
+
+  <section class="demo">
+    <div class="demo-title"><div><h2>方案 C：一个分析 Card + 内部 Tab</h2><p>把曲线、日历、明细收进一个「收益分析」card。默认展示曲线 + 右侧摘要，日历/明细通过 Tab 切换，页面最短、留白最少。</p></div><span class="badge">最省空间</span></div>
+    <div class="canvas option-c">
+      <div class="tabs-shell">
+        <div class="tabbar"><div class="tab active">收益曲线</div><div class="tab">收益日历</div><div class="tab">当日明细</div><div style="margin-left:auto" class="pill active">2026-01-01 → 2026-05-18</div></div>
+        <div class="tab-content">
+          <div class="card"><mock-chart></mock-chart></div>
+          <div class="card"><div class="card-head"><div><div class="card-title">右侧摘要</div><div class="card-sub">选中日期 / 月收益 / 明细 Top</div></div></div><mock-calendar compact="true"></mock-calendar><mock-table></mock-table></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="demo">
+    <div class="demo-title"><div><h2>方案 D：主从布局 · 左摘要中曲线右明细</h2><p>左侧放月历和关键指标，中间曲线，右侧固定宽度明细。适合经常点日历格子看明细的使用方式。</p></div><span class="badge">交互清晰</span></div>
+    <div class="canvas option-d">
+      <div class="left-stack">
+        <div class="card summary-card"><div class="metric"><span>本月收益</span><strong class="up-text">+¥3,846</strong></div><div class="metric"><span>胜率</span><strong>62%</strong></div><div class="metric"><span>最大单日</span><strong class="up-text">+¥1.8k</strong></div></div>
+        <div class="card"><div class="card-head"><div><div class="card-title">收益日历</div><div class="card-sub">缩略版</div></div></div><mock-calendar compact="true"></mock-calendar></div>
+      </div>
+      <div class="card chart-card"><div class="card-head"><div><div class="card-title">收益曲线</div><div class="card-sub">主内容区，避免垂直拉伸</div></div></div><mock-chart></mock-chart></div>
+      <div class="card detail-card"><div class="card-head"><div><div class="card-title">当日收益明细</div><div class="card-sub">右侧抽屉式固定宽度</div></div></div><mock-table rows="more"></mock-table></div>
+    </div>
+  </section>
+</main>
+<script>
+  customElements.define('mock-chart', class extends HTMLElement {
+    connectedCallback() {
+      this.className = 'chart';
+      this.innerHTML = '<div class="legend"><span><i class="dot rose"></i>我的组合</span><span><i class="dot slate"></i>沪深300</span></div><svg viewBox="0 0 900 260" preserveAspectRatio="none"><path d="M0 145 L90 145 L160 143 L210 170 L280 168 L330 152 L380 174 L430 160 L480 205 L530 190 L580 170 L620 150 L680 122 L720 115 L760 98 L800 72 L840 86 L870 48 L900 70" fill="none" stroke="#475569" stroke-width="2"/><path d="M0 174 L90 174 L160 172 L210 203 L280 201 L330 190 L380 205 L430 198 L480 220 L530 208 L580 198 L620 182 L680 165 L720 151 L760 145 L800 120 L840 132 L870 104 L900 110" fill="none" stroke="#e11d48" stroke-width="2.4"/><path d="M0 260 L0 174 L90 174 L160 172 L210 203 L280 201 L330 190 L380 205 L430 198 L480 220 L530 208 L580 198 L620 182 L680 165 L720 151 L760 145 L800 120 L840 132 L870 104 L900 110 L900 260 Z" fill="rgba(225,29,72,.11)"/></svg>';
+    }
+  });
+  customElements.define('mock-calendar', class extends HTMLElement {
+    connectedCallback() {
+      const days = ['一','二','三','四','五','六','日'];
+      const vals = {6:['hot','+1.8k'],7:['down','-262'],8:['up','+1.1k'],11:['up','+125'],12:['down','-507'],13:['up','+1.1k'],14:['up','+650'],15:['down','-221']};
+      let html = '<div class="calendar">' + days.map(d => `<div class="weekday">${d}</div>`).join('');
+      for (let i=1;i<=28;i++) {
+        const v = vals[i];
+        html += `<div class="day ${v ? v[0] : ''}"><strong>${i}</strong>${v ? `<span class="val">${v[1]}</span>` : ''}</div>`;
+      }
+      html += '</div>';
+      this.innerHTML = html;
+    }
+  });
+  customElements.define('mock-table', class extends HTMLElement {
+    connectedCallback() {
+      const more = this.getAttribute('rows') === 'more';
+      const rows = [
+        ['沪深300ETF', '+¥243.15', '+0.36%', '持仓'],
+        ['中证红利', '-¥128.04', '-0.22%', '持仓'],
+        ['纳指ETF', '+¥88.62', '+0.41%', '买入'],
+        ['现金流影响', '¥0.00', '—', '—'],
+        ...(more ? [['恒生科技', '+¥72.11', '+0.18%', '持仓'], ['黄金ETF', '-¥36.30', '-0.09%', '持仓']] : [])
+      ];
+      this.innerHTML = `<table><thead><tr><th>标的</th><th class="num">收益</th><th class="num">涨跌</th><th>动作</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r[0]}</td><td class="num ${r[1].startsWith('-') ? 'down-text' : r[1].startsWith('+') ? 'up-text' : ''}">${r[1]}</td><td class="num">${r[2]}</td><td>${r[3]}</td></tr>`).join('')}</tbody></table>`;
+    }
+  });
+</script>
+</body>
+</html>
