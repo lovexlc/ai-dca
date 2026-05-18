@@ -134,31 +134,54 @@
   <section id="a" class="demo-card">
     <div class="demo-title">A. 横向 stat-bar（左金额 · 中 sparkline · 右 3 KPI 一行）</div>
     <div class="demo-meta"><span class="demo-tag">参考</span> Robinhood / Wealthfront &nbsp; <span class="demo-tag">占高</span> ~96px hero + 32px nav</div>
-    <div class="demo-viewport">
-      <section class="flex items-end gap-8 px-1 pb-4 border-b border-slate-100">
-        <div class="min-w-0 flex-shrink-0">
-          <div class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</div>
-          <div class="mt-1 text-4xl font-extrabold tracking-tight tabular-nums text-slate-900">¥ 159,175.49</div>
-          <div class="text-[11px] text-slate-400 mt-0.5">起 2025-10-12</div>
+    <div class="demo-viewport space-y-6">
+      <!-- A.1 工 nav + 左侧辅助操作（justify-between） -->
+      <div>
+        <div class="nav-label">补救 A.1 · 左 4 入口 + 右侧辅助操作（与现有 复制表格/新增交易 按钮合并）</div>
+        <section class="flex items-end gap-8 px-1 pb-4 border-b border-slate-100">
+          <div class="min-w-0 flex-shrink-0">
+            <div class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</div>
+            <div class="mt-1 text-4xl font-extrabold tracking-tight tabular-nums text-slate-900">¥ 159,175.49</div>
+            <div class="text-[11px] text-slate-400 mt-0.5">起 2025-10-12</div>
+          </div>
+          <div class="flex-1 min-w-0">
+            <svg viewBox="0 0 240 56" class="w-full h-14" preserveAspectRatio="none">
+              <path d="M0,40 L20,38 L40,42 L60,36 L80,30 L100,32 L120,24 L140,22 L160,18 L180,20 L200,14 L220,12 L240,8" fill="none" stroke="#e11d48" stroke-width="1.5"/>
+              <path d="M0,40 L20,38 L40,42 L60,36 L80,30 L100,32 L120,24 L140,22 L160,18 L180,20 L200,14 L220,12 L240,8 L240,56 L0,56 Z" fill="#fee2e2" fill-opacity="0.5"/>
+            </svg>
+          </div>
+          <div class="flex gap-8 flex-shrink-0">
+            <div class="text-right"><div class="text-[11px] font-medium text-slate-500">今日</div><div class="text-xl font-bold tabular-nums tone-neutral">¥ 0.00</div><div class="text-[11px] tone-neutral">0%</div></div>
+            <div class="text-right"><div class="text-[11px] font-medium text-slate-500">持有</div><div class="text-xl font-bold tabular-nums tone-up">+¥ 12,386.12</div><div class="text-[11px] tone-up">+8.4%</div></div>
+            <div class="text-right"><div class="text-[11px] font-medium text-slate-500">累计</div><div class="text-xl font-bold tabular-nums tone-up">+¥ 13,408.53</div><div class="text-[11px] tone-up">+6.4%</div></div>
+          </div>
+          <button class="flex-shrink-0 w-9 h-9 rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50">↻</button>
+        </section>
+        <div class="mt-3 flex items-center justify-between gap-3">
+          <div class="flex flex-wrap gap-2">
+            <a class="inline-flex items-center gap-1.5 px-3 h-8 rounded-full border border-slate-200 bg-white text-xs text-slate-700 hover:border-rose-300 hover:bg-rose-50"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9v6M15 7v10"/></svg>收益明细</a>
+            <a class="inline-flex items-center gap-1.5 px-3 h-8 rounded-full border border-slate-200 bg-white text-xs text-slate-700 hover:border-rose-300 hover:bg-rose-50"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18l-2 13H5L3 6z"/></svg>清仓分析</a>
+            <a class="inline-flex items-center gap-1.5 px-3 h-8 rounded-full border border-slate-200 bg-white text-xs text-slate-700 hover:border-rose-300 hover:bg-rose-50"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 3"/></svg>持仓分析</a>
+            <a class="inline-flex items-center gap-1.5 px-3 h-8 rounded-full border border-slate-200 bg-white text-xs text-slate-700 hover:border-rose-300 hover:bg-rose-50"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h13M16 3l4 4-4 4M21 17H8M8 21l-4-4 4-4"/></svg>交易记录</a>
+          </div>
+          <div class="flex gap-2 flex-shrink-0">
+            <button class="inline-flex items-center gap-1.5 px-3 h-8 rounded-full border border-slate-200 bg-white text-xs text-slate-500 hover:bg-slate-50"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>复制表格</button>
+            <button class="inline-flex items-center gap-1.5 px-3 h-8 rounded-full bg-rose-500 text-white text-xs hover:bg-rose-600"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>新增交易</button>
+          </div>
         </div>
-        <div class="flex-1 min-w-0">
-          <svg viewBox="0 0 240 56" class="w-full h-14" preserveAspectRatio="none">
-            <path d="M0,40 L20,38 L40,42 L60,36 L80,30 L100,32 L120,24 L140,22 L160,18 L180,20 L200,14 L220,12 L240,8" fill="none" stroke="#e11d48" stroke-width="1.5"/>
-            <path d="M0,40 L20,38 L40,42 L60,36 L80,30 L100,32 L120,24 L140,22 L160,18 L180,20 L200,14 L220,12 L240,8 L240,56 L0,56 Z" fill="#fee2e2" fill-opacity="0.5"/>
-          </svg>
+        <div class="mt-2 text-[11px] text-slate-400">优：复用现有 IncomeSection 顶部 复制表格/+新增交易 按钮，消化右侧空白，1 行解决。推荐。</div>
+      </div>
+
+      <!-- A.2 工4 pill grid 等宽撞满 -->
+      <div>
+        <div class="nav-label">补救 A.2 · 4 pill 等宽 grid 撞满（不合并辅助操作）</div>
+        <div class="grid grid-cols-4 gap-2">
+          <a class="inline-flex items-center justify-center gap-1.5 px-3 h-8 rounded-full border border-slate-200 bg-white text-xs text-slate-700 hover:border-rose-300 hover:bg-rose-50"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9v6M15 7v10"/></svg>收益明细</a>
+          <a class="inline-flex items-center justify-center gap-1.5 px-3 h-8 rounded-full border border-slate-200 bg-white text-xs text-slate-700 hover:border-rose-300 hover:bg-rose-50"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18l-2 13H5L3 6z"/></svg>清仓分析</a>
+          <a class="inline-flex items-center justify-center gap-1.5 px-3 h-8 rounded-full border border-slate-200 bg-white text-xs text-slate-700 hover:border-rose-300 hover:bg-rose-50"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 3"/></svg>持仓分析</a>
+          <a class="inline-flex items-center justify-center gap-1.5 px-3 h-8 rounded-full border border-slate-200 bg-white text-xs text-slate-700 hover:border-rose-300 hover:bg-rose-50"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h13M16 3l4 4-4 4M21 17H8M8 21l-4-4 4-4"/></svg>交易记录</a>
         </div>
-        <div class="flex gap-8 flex-shrink-0">
-          <div class="text-right"><div class="text-[11px] font-medium text-slate-500">今日</div><div class="text-xl font-bold tabular-nums tone-neutral">¥ 0.00</div><div class="text-[11px] tone-neutral">0%</div></div>
-          <div class="text-right"><div class="text-[11px] font-medium text-slate-500">持有</div><div class="text-xl font-bold tabular-nums tone-up">+¥ 12,386.12</div><div class="text-[11px] tone-up">+8.4%</div></div>
-          <div class="text-right"><div class="text-[11px] font-medium text-slate-500">累计</div><div class="text-xl font-bold tabular-nums tone-up">+¥ 13,408.53</div><div class="text-[11px] tone-up">+6.4%</div></div>
-        </div>
-        <button class="flex-shrink-0 w-9 h-9 rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50">↻</button>
-      </section>
-      <div class="mt-3 flex flex-wrap gap-2">
-        <a class="inline-flex items-center gap-1.5 px-3 h-8 rounded-full border border-slate-200 bg-white text-xs text-slate-700 hover:border-rose-300 hover:bg-rose-50"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9v6M15 7v10"/></svg>收益明细</a>
-        <a class="inline-flex items-center gap-1.5 px-3 h-8 rounded-full border border-slate-200 bg-white text-xs text-slate-700 hover:border-rose-300 hover:bg-rose-50"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18l-2 13H5L3 6z"/></svg>清仓分析</a>
-        <a class="inline-flex items-center gap-1.5 px-3 h-8 rounded-full border border-slate-200 bg-white text-xs text-slate-700 hover:border-rose-300 hover:bg-rose-50"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 3"/></svg>持仓分析</a>
-        <a class="inline-flex items-center gap-1.5 px-3 h-8 rounded-full border border-slate-200 bg-white text-xs text-slate-700 hover:border-rose-300 hover:bg-rose-50"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h13M16 3l4 4-4 4M21 17H8M8 21l-4-4 4-4"/></svg>交易记录</a>
+        <div class="mt-2 text-[11px] text-slate-400">优：最简，不动其他部件；劣：pill 变得偏形式化，详情页 1280 宽下单个按钮 ≈220px 偏宽。</div>
       </div>
     </div>
   </section>
