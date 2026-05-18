@@ -37,11 +37,11 @@
 
 ## 步骤清单
 
-- [ ] step-1：补 `docs/data-glossary.md`「字段重命名映射表 + 决策结果」段，作为后续代码改动的字典。
-- [ ] step-2：`src/app/portfolioSeries.js` 重命名 `profit → windowProfit` / `returnRate → twrReturnRate` / `annualizedReturn → annualizedTwrReturnRate`，更新模块头注释、`buildPortfolioSeries` 返回对象、`diagnostics` 保留。
-- [ ] step-3：`src/app/holdingsLedgerCore.js` 行级 + 聚合 `totalProfit / totalReturnRate → unrealizedProfit / unrealizedReturnRate`，summary 同步；summary 内 `summary.totalProfit / summary.totalReturnRate` 也改。`cumulative* / realized* / today*` 保留。
-- [ ] step-4：`src/app/clearedLotsAnalytics.js` `profitRate → sellCostProfitRate`，注释同步。
-- [ ] step-5：消费方批量改字段引用：
+- [x] step-1：补 `docs/data-glossary.md`「字段重命名映射表 + 决策结果」段，作为后续代码改动的字典。
+- [x] step-2：`src/app/portfolioSeries.js` 重命名 `profit → windowProfit` / `returnRate → twrReturnRate` / `annualizedReturn → annualizedTwrReturnRate`，更新模块头注释、`buildPortfolioSeries` 返回对象、`diagnostics` 保留。
+- [x] step-3：`src/app/holdingsLedgerCore.js` 行级 + 聚合 `totalProfit / totalReturnRate → unrealizedProfit / unrealizedReturnRate`，summary 同步；summary 内 `summary.totalProfit / summary.totalReturnRate` 也改。`cumulative* / realized* / today*` 保留。
+- [x] step-4：`src/app/clearedLotsAnalytics.js` `profitRate → sellCostProfitRate`，注释同步。
+- [x] step-5：消费方批量改字段引用：
   - `src/pages/HoldingsExperience.jsx`（列 id `totalProfit/totalReturnRate/todayProfit/todayReturnRate` → `unrealizedProfit/unrealizedReturnRate/todayProfit/todayReturnRate`；`metrics.totalProfit` 等访问点；TSV 输出；聚合 summary 卡片 key）
   - `src/app/income/IncomeBreakdownPage.jsx`（内部 bucket key `totalProfit` → `unrealizedProfit`；上游 `p.totalProfit` 读 `aggregateByCode` 的字段同步）
   - `src/app/income/IncomeSummary.jsx`（`cumulativeProfit / cumulativeReturnRate` 不变，但若有 `totalProfit/totalReturnRate` 引用 ledger summary 旧名则同步改）
@@ -49,11 +49,11 @@
   - `src/app/income/useCumulativeSparkline.js`（`result?.dailySeries` 字段不变，`profit/returnRate` 没读）
   - `src/app/ReturnChart.jsx`（`series.startValue / series.dailySeries / series.profit/returnRate` 视情况）
   - `src/app/holdingsCore.js` 死代码 → 保留旧名（避免和新 unrealizedProfit 混用，本 Phase 不动；Phase 3 整块删）
-- [ ] step-6：`src/app/notifySync.js` 清理 `normalizeHoldingsDigest` 内 totals 白名单（server 已统一丢弃），同步精简 worker 端 1694 行附近的注释。
-- [ ] step-7：`test/clearedLotsAnalytics.test.mjs` 5 处 assertion 改 `profitRate → sellCostProfitRate`；命中的 `totalProfit` 是保留字段，**不改**。
-- [ ] step-8：本地 `node --test test/clearedLotsAnalytics.test.mjs` 跑通；`grep -rE '\b(totalProfit|totalReturnRate)\b' src/ | grep -v holdingsCore.js | grep -v 旧测试`  应**无遗漏**。
-- [ ] step-9：commit 拆分推送（每个模块独立 commit），等 GitHub Actions 部署 → bundle chunk grep 验证新名出现。
-- [ ] step-10：前端 cf-browser-mcp 冲烟（持仓页 / 收益看板 / IncomeDetail）取截图；后端 notify worker `/holdings-rule` GET/POST 冲烟（不传 totals 字段，预期 200）。
+- [x] step-6：`src/app/notifySync.js` 清理 `normalizeHoldingsDigest` 内 totals 白名单（server 已统一丢弃），同步精简 worker 端 1694 行附近的注释。
+- [x] step-7：`test/clearedLotsAnalytics.test.mjs` 5 处 assertion 改 `profitRate → sellCostProfitRate`；命中的 `totalProfit` 是保留字段，**不改**。
+- [x] step-8：本地 `node --test test/clearedLotsAnalytics.test.mjs` 跑通；`grep -rE '\b(totalProfit|totalReturnRate)\b' src/ | grep -v holdingsCore.js | grep -v 旧测试`  应**无遗漏**。
+- [x] step-9：commit 拆分推送（每个模块独立 commit），等 GitHub Actions 部署 → bundle chunk grep 验证新名出现。
+- [x] step-10：前端 cf-browser-mcp 冲烟（持仓页 / 收益看板 / IncomeDetail）取截图；后端 notify worker `/holdings-rule` GET/POST 冲烟（不传 totals 字段，预期 200）。
 
 ## 待确认（执行中遇到再问）
 
@@ -70,3 +70,28 @@
   - 全 repo grep：旧字段名仅出现在 `holdingsCore.js`（Phase 3 待删）+ docs。
   - 前端冲烟：持仓页总收益/今日收益数字与改名前一致；IncomeDetailPage 区间收益率 / 年化数字与改名前一致；IncomeBreakdownPage Top5 排序不变。
   - 后端冲烟：`/holdings-rule` POST 不带 totals 仍 200，KV 写入正常。
+
+## Phase 2 收尾报告（2026-05-18 20:35 +08:00）
+
+- **Commit**：`e373e3d refactor(profit-naming): converge profit/returnRate field semantics (Phase 2)`
+- **Actions run**：https://github.com/lovexlc/ai-dca/actions/runs/26033956782 → completed success
+- **部署版本**：`react-assets-v2/?v=202605181238`
+- **本地 test**：`node --test test/clearedLotsAnalytics.test.mjs` 20/20 pass
+- **Bundle chunk grep 验证**（tools.freebacktrack.tech）：
+  - HoldingsExperience.js (154778B)：unrealizedProfit×2 / unrealizedReturnRate×2 / windowProfit×1 / twrReturnRate×1 / annualizedTwrReturnRate×1 → 新名全上线；totalProfit/totalReturnRate/profitRate 均 0 残留
+  - IncomeDetailPage.js：windowProfit×1 / twrReturnRate×1 / annualizedTwrReturnRate×1 → rangeSeries 返回字段已走新名
+  - IncomeBreakdownPage.js：unrealizedProfit×1 / unrealizedReturnRate×1 → 持仓分类聚合已迁移
+  - IncomeLiquidationPage.js：sellCostProfitRate×1 / totalProfit×1（清仓 KPI 上下文，按 glossary 保留）
+  - index.js：unrealizedProfit×1 / unrealizedReturnRate×1 → 主 chunk 同步
+- **未迁移范围（按计划）**：
+  - `clearedLotsAnalytics.totalProfit` = 清仓总收益（与持仓 unrealizedProfit 不冲突）
+  - `holdingsCore.js` totalProfit/totalReturnRate 是死代码，Phase 3 整块删除
+  - `workers/notify/src/index.js:1694` 注释保留作为历史说明
+- **Notify worker 契约**：client 不再发 totals，server 原就丢弃 totals → 0 变更 0 契约风险
+
+## Phase 进度
+
+- Phase 1 NAV 分层：✅ (commit `ea1a86a`)
+- **Phase 2 收益口径收敛：✅ (commit `e373e3d`)**
+- Phase 3 holdingsCore 死代码清理：⏳
+- Phase 4 颜色 + BUY/SELL 中性化：⏳
