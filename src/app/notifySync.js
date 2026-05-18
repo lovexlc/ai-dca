@@ -1,5 +1,6 @@
 import { DCA_KEY, readDcaState } from './dca.js';
 import { readPlanList } from './plan.js';
+import { readSellPlanList } from './sellPlans.js';
 
 const NOTIFY_ENDPOINT = '/api/notify';
 const NOTIFY_CLIENT_CONFIG_KEY = 'aiDcaNotifyClientConfig';
@@ -186,10 +187,23 @@ function hasPersistedDca() {
 export function buildNotifySyncPayload() {
   const plans = readPlanList();
   const dca = hasPersistedDca() ? readDcaState() : null;
+  // PR 1.5：sell_layer 规则 — 上传已保存的卖出计划列表，让 worker 能生成“盈利 X% → 卖 Y%”提醒。
+  // 只传一个精简快照（id/symbol/holdingCost/holdingShares/gainTriggers/sellRatios），其他字段 worker 不需要。
+  const sellPlans = readSellPlanList().map((plan) => ({
+    id: plan.id,
+    name: plan.name,
+    symbol: plan.symbol,
+    holdingCost: plan.holdingCost,
+    holdingShares: plan.holdingShares,
+    gainTriggers: plan.gainTriggers,
+    sellRatios: plan.sellRatios,
+    updatedAt: plan.updatedAt
+  }));
 
   return {
     plans,
     dca,
+    sellPlans,
     syncedAt: new Date().toISOString()
   };
 }
@@ -333,7 +347,7 @@ function normalizeHoldingsDigest(digest) {
     }
   }
   // 组合层 totals 已不再传输：workers/notify/src/index.js 出于隐私考虑统一丢弃 totals（只依赖 code/weight 加权计算收益率）。
-  // ​​​​​​Phase 2: 此处同步清理 client 端白名单，避免代码层继续依赖旧 totals 字段名。
+  // Phase 2: 此处同步清理 client 端白名单，避免代码层继续依赖旧 totals 字段名。
   return result;
 }
 
