@@ -90,7 +90,7 @@ function Sparkline({ series, tone }) {
 }
 
 // KPI 单列：小 label + signed currency + signed percent。支付宝风格：无卡框、纯文字横排。
-function KpiCol({ label, value, rate, align = 'center' }) {
+function KpiCol({ label, value, rate, align = 'center', centerRate = false }) {
 	const tone = signTone(value);
 	const alignClass = align === 'left' ? 'items-start text-left' : align === 'right' ? 'items-end text-right' : 'items-center text-center';
 	return (
@@ -99,7 +99,7 @@ function KpiCol({ label, value, rate, align = 'center' }) {
 			<div className={cx('max-w-full truncate whitespace-nowrap text-base font-bold tabular-nums min-[380px]:text-lg sm:text-xl', tone)}>
 				{renderSignedCurrency(value, { compactFrom: 10000 })}
 			</div>
-			<div className={cx('max-w-full truncate whitespace-nowrap text-[11px] font-semibold tabular-nums sm:text-xs', tone)}>
+			<div className={cx('max-w-full truncate whitespace-nowrap text-[11px] font-semibold tabular-nums sm:text-xs', centerRate && 'w-full text-center', tone)}>
 				{renderSignedPercent(rate)}
 			</div>
 		</div>
@@ -147,9 +147,9 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSerie
 					{refreshBtn ? <div className="shrink-0">{refreshBtn}</div> : null}
 				</div>
 				<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)] gap-1">
-					<KpiCol label="今日收益(元)" value={todayProfit} rate={todayReturnRate} align="left" />
-					<KpiCol label="持有收益(元)" value={totalProfit} rate={totalReturnRate} />
-					<KpiCol label="累计收益(元)" value={cumulativeProfit} rate={cumulativeReturnRate} align="right" />
+					<KpiCol label="今日收益(元)" value={todayProfit} rate={todayReturnRate} align="left" centerRate />
+					<KpiCol label="持有收益(元)" value={totalProfit} rate={totalReturnRate} centerRate />
+					<KpiCol label="累计收益(元)" value={cumulativeProfit} rate={cumulativeReturnRate} align="right" centerRate />
 				</div>
 			</section>
 
