@@ -7,6 +7,7 @@
 // - 同一个 tab 只保持一个 poller 实例（通过 stop() handle 避免 HMR 重复启动）。
 
 import { loadNotifyEvents } from './notifySync.js';
+import { isInTradingSession } from './tradingSession.js';
 
 const WEB_NOTIFY_CONFIG_KEY = 'aiDcaWebNotifyConfig';
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
@@ -144,6 +145,11 @@ export function startWebNotifyPoller({ clientId, intervalMs = DEFAULT_POLL_INTER
         supported: state.supported,
         permission: state.permission
       });
+      return;
+    }
+    // 交易时间外不请求。A 股 09:30-11:30 / 13:00-15:00 周一到周五 Asia/Shanghai。
+    if (!isInTradingSession(new Date())) {
+      if (debug) console.info('[webNotifyClient] tick skipped: outside trading session');
       return;
     }
     try {
