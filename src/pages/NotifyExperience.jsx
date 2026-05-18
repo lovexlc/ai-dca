@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Bell, ChevronDown, ChevronUp, History, RefreshCw, Save, Send, Trash2, Wallet } from 'lucide-react';
+import { ArrowRight, Bell, ChevronDown, ChevronUp, History, Laptop, RefreshCw, Save, Send, Trash2, Wallet } from 'lucide-react';
 import {
   loadNotifyEvents,
   loadNotifyStatus,
@@ -13,6 +13,13 @@ import {
   syncTradePlanRules,
   unpairAndroidDevice
 } from '../app/notifySync.js';
+import {
+  getWebNotifyState,
+  persistWebNotifyConfig,
+  readWebNotifyConfig,
+  requestWebNotifyPermission,
+  showLocalWebNotification
+} from '../app/webNotifyClient.js';
 import { aggregateByCode, buildHoldingsNotifyDigest, summarizePortfolio } from '../app/holdingsLedgerCore.js';
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { showActionToast } from '../app/toast.js';
@@ -83,6 +90,11 @@ export function NotifyExperience({ embedded = false }) {
   // 「提醒策略」内的多条策略默认全部收起，点击标题切换展开。
   // 取值：'rules' | 'holdings' | null。同时只展开一条，避免页面过长。
   const [expandedStrategy, setExpandedStrategy] = useState(null);
+  // PC 浏览器前台通知（方案 A）：仅在页面打开时弹桌面 Notification。
+  // 开关 webNotifyEnabled 写到 localStorage，由 entry-screen.jsx 启动的全局 poller 读取。
+  const [webNotifySupported, setWebNotifySupported] = useState(() => getWebNotifyState().supported);
+  const [webNotifyPermission, setWebNotifyPermission] = useState(() => getWebNotifyState().permission);
+  const [webNotifyEnabled, setWebNotifyEnabled] = useState(() => Boolean(readWebNotifyConfig().pcEnabled));
 
   function buildLatestHoldingsDigest() {
     try {
@@ -107,14 +119,48 @@ export function NotifyExperience({ embedded = false }) {
     const channelLabels = [];
     if (barkConfigured) channelLabels.push('iOS Bark');
     if (androidConfigured) channelLabels.push('Android');
+    if (webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled) {
+      channelLabels.push('PC 浏览器');
+    }
     return {
       channelStatus: channelLabels.length ? '已配置' : '未配置',
       channelNote: channelLabels.length
         ? `${channelLabels.join(' / ')} 可发送`
-        : '请先配置 iOS Bark 或绑定 Android 设备',
+        : '请先配置 iOS Bark、绑定 Android 设备，或授权 PC 浏览器通知',
       androidDeviceCount: pairedAndroidDevices.length
     };
-  }, [barkConfigured, androidConfigured, pairedAndroidDevices.length]);
+  }, [barkConfigured, androidConfigured, pairedAndroidDevices.length, webNotifySupported, webNotifyPermission, webNotifyEnabled]);
+
+  async function handleRequestWebNotifyPermission() {
+    const result = await requestWebNotifyPermission();
+    setWebNotifyPermission(result);
+    setWebNotifySupported(getWebNotifyState().supported);
+    if (result === 'granted') {
+      // 首次授权后默认启用轮询，省一步用户操作
+      persistWebNotifyConfig({ pcEnabled: true });
+      setWebNotifyEnabled(true);
+      showActionToast({ tone: 'positive', message: '已授权 PC 桌面通知，前台轮询已自动启用。' });
+    } else if (result === 'denied') {
+      showActionToast({ tone: 'negative', message: '浏览器已拒绝通知。请到地址栏 🔒 → 通知 → 允许后重试。' });
+    }
+  }
+
+  function handleSendLocalWebNotifyTest() {
+    const note = showLocalWebNotification({
+      title: 'AI-DCA 测试通知',
+      body: '这是一条本地桌面测试通知，证明当前浏览器可以收到 PC 通知。',
+      tag: 'pc-test'
+    });
+    if (!note) {
+      showActionToast({ tone: 'negative', message: '未能弹出通知，请先完成浏览器授权。' });
+    }
+  }
+
+  function handleToggleWebNotifyEnabled() {
+    const next = !webNotifyEnabled;
+    persistWebNotifyConfig({ pcEnabled: next });
+    setWebNotifyEnabled(next);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -454,6 +500,16 @@ export function NotifyExperience({ embedded = false }) {
               >
                 Android
               </button>
+              <button
+                className={cx(
+                  'flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition-colors lg:flex-none',
+                  notifyPlatform === 'pc' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                )}
+                type="button"
+                onClick={() => setNotifyPlatform('pc')}
+              >
+                PC 浏览器
+              </button>
             </div>
           )}
         </div>
@@ -569,6 +625,84 @@ export function NotifyExperience({ embedded = false }) {
                 )}
               </div>
             </div>
+          ) : notifyPlatform === 'pc' ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
+                <div className="flex items-start gap-3">
+                  <Laptop className="mt-1 h-5 w-5 text-indigo-500" />
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-slate-900">PC 浏览器桌面通知</div>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                      支持 Chrome / Edge / Brave / Arc 等 Chromium 系浏览器。在本浏览器打开此页面时，按 30 秒间隔检查最新事件并弹出桌面通知；浏览器关闭后不工作，如需后台推送请同时启用 iOS Bark 或 Android。
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">浏览器支持</div>
+                    <div className="mt-2 text-sm font-semibold text-slate-700">
+                      {webNotifySupported ? '✓ 支持' : '× 不支持 Notification API'}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">通知权限</div>
+                    <div className="mt-2 text-sm font-semibold text-slate-700">
+                      {webNotifyPermission === 'granted'
+                        ? '✓ 已授权'
+                        : webNotifyPermission === 'denied'
+                        ? '× 已拒绝（请到浏览器站点设置中开启）'
+                        : '⚠ 未授权'}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-5 flex flex-wrap items-center gap-3">
+                  <button
+                    className={primaryButtonClass}
+                    type="button"
+                    onClick={handleRequestWebNotifyPermission}
+                    disabled={!webNotifySupported || webNotifyPermission === 'granted' || webNotifyPermission === 'denied'}
+                  >
+                    <Bell className="h-4 w-4" />
+                    {webNotifyPermission === 'granted' ? '已授权浏览器通知' : '授权浏览器通知'}
+                  </button>
+                  <button
+                    className={secondaryButtonClass}
+                    type="button"
+                    onClick={handleSendLocalWebNotifyTest}
+                    disabled={!webNotifySupported || webNotifyPermission !== 'granted'}
+                  >
+                    <Send className="h-4 w-4" />
+                    发送本地测试通知
+                  </button>
+                </div>
+                <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+                  <div className="min-w-0 pr-2">
+                    <div className="text-sm font-semibold text-slate-900">启用前台轮询</div>
+                    <div className="mt-1 text-xs leading-5 text-slate-500">
+                      开启后，本浏览器每 30 秒检查一次最新事件，命中即弹桌面通知。仅在页面打开时工作。
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleToggleWebNotifyEnabled}
+                    disabled={!webNotifySupported || webNotifyPermission !== 'granted'}
+                    className={cx(
+                      'relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                      webNotifyEnabled ? 'bg-emerald-500' : 'bg-slate-300'
+                    )}
+                    aria-pressed={webNotifyEnabled}
+                    aria-label="启用 PC 前台轮询"
+                  >
+                    <span
+                      className={cx(
+                        'inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform',
+                        webNotifyEnabled ? 'translate-x-5' : 'translate-x-0.5'
+                      )}
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
           ) : (
             <>
               <div className="text-sm font-semibold text-slate-900">iOS Bark Key</div>
@@ -626,7 +760,7 @@ export function NotifyExperience({ embedded = false }) {
     return (
       <Card>
         <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Strategies</div>
-        <div className="mt-1 text-base font-bold text-slate-900 sm:text-lg">提醒策略　·　{items.length} 条</div>
+        <div className="mt-1 text-base font-bold text-slate-900 sm:text-lg">提醒策略 · {items.length} 条</div>
         <div className="mt-4 space-y-3">
           {items.map((item) => {
             const expanded = expandedStrategy === item.key;
