@@ -11,6 +11,7 @@ import { lazy, Suspense } from 'react';
 import { LoaderCircle } from 'lucide-react';
 import { IncomeSummary } from './IncomeSummary.jsx';
 import { ROUTES, useIncomeRoute } from '../incomeRoute.js';
+import { useCumulativeSparkline } from './useCumulativeSparkline.js';
 
 const IncomeDetailPage = lazy(() => import('./IncomeDetailPage.jsx'));
 const IncomeLiquidationPage = lazy(() => import('./IncomeLiquidationPage.jsx'));
@@ -58,6 +59,23 @@ export function IncomeSection({ ledger, portfolio, inceptionDate, onEditTransact
 	}
 
 	// OVERVIEW：v3 超瘦身 → IncomeSummary（总市值 + 当日 + 累计 + 5 tile）
+	// v6.8: 套一层 OverviewSummary，在其内部调用 useCumulativeSparkline hook。
+	return (
+		<OverviewSummary
+			ledger={ledger}
+			portfolio={portfolio}
+			inceptionDate={inceptionDate}
+			navigate={navigate}
+			navRefresh={navRefresh}
+		/>
+	);
+}
+
+function OverviewSummary({ ledger, portfolio, inceptionDate, navigate, navRefresh }) {
+	const cumulativeSeries = useCumulativeSparkline({
+		transactions: ledger?.transactions,
+		inceptionDate,
+	});
 	return (
 		<IncomeSummary
 			ledger={ledger}
@@ -65,6 +83,7 @@ export function IncomeSection({ ledger, portfolio, inceptionDate, onEditTransact
 			inceptionDate={inceptionDate}
 			navigate={navigate}
 			navRefresh={navRefresh}
+			cumulativeSeries={cumulativeSeries}
 		/>
 	);
 }
