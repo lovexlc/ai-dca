@@ -30,9 +30,7 @@ import {
   Card,
   Pill,
   TextInput,
-  cx,
-  primaryButtonClass,
-  secondaryButtonClass
+  cx
 } from '../components/experience-ui.jsx';
 import {
   addToWatchlist,
@@ -1311,6 +1309,7 @@ export function MarketsExperience() {
   // 侧边折叠状态：默认两组都展开。
   const [watchOpen, setWatchOpen] = useState(true);
   const [sectorsOpen, setSectorsOpen] = useState(true);
+  const [sectorSearchOpen, setSectorSearchOpen] = useState(false);
   // 研究底部抽屉模式（仅 mobile）：peek=小片 / conversation=全屏展开
   const [researchMode, setResearchMode] = useState('peek');
   const [vpHeight, setVpHeight] = useState(null);
@@ -1518,6 +1517,7 @@ export function MarketsExperience() {
     const next = addToWatchlist(market, raw);
     setWatch(next);
     setSymbolInput('');
+    setSectorSearchOpen(false);
   }
 
   function handleRemove(market, symbol) {
@@ -1590,42 +1590,17 @@ export function MarketsExperience() {
         <div className="px-1">
           <div className="flex items-center justify-between py-2">
             <h3 className="text-base font-semibold text-[#1f1f1f]">监控列表</h3>
-            <div className="flex items-center gap-0.5">
-              <button
-                type="button"
-                aria-label="添加自选"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
-                onClick={() => {
-                  const el = document.getElementById('markets-watch-add-input-mobile');
-                  if (el) el.focus();
-                }}
-              >
-                <Plus size={20} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setWatchOpen((v) => !v)}
-                aria-label={watchOpen ? '折叠' : '展开'}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
-              >
-                {watchOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setWatchOpen((v) => !v)}
+              aria-label={watchOpen ? '折叠' : '展开'}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
+            >
+              {watchOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </button>
           </div>
           {watchOpen && (
             <>
-              <form className="flex items-center gap-2 px-1 pb-2" onSubmit={handleAddSymbol}>
-                <TextInput
-                  id="markets-watch-add-input-mobile"
-                  className="flex-1"
-                  value={symbolInput}
-                  onChange={(e) => setSymbolInput(e.target.value)}
-                  placeholder={market === 'cn' ? 'sh600519' : 'AAPL'}
-                />
-                <button type="submit" className={cx(primaryButtonClass, 'inline-flex shrink-0 items-center gap-1 px-3 py-2 text-sm')}>
-                  <Plus size={14} /> 添加
-                </button>
-              </form>
               {watchRows.length === 0 ? (
                 <p className="px-2 py-2 text-sm text-[#5f6368]">尚未添加自选。</p>
               ) : (
@@ -1651,15 +1626,48 @@ export function MarketsExperience() {
           <div className="px-1">
             <div className="flex items-center justify-between py-2">
               <h3 className="text-base font-semibold text-[#1f1f1f]">股票板块</h3>
-              <button
-                type="button"
-                onClick={() => setSectorsOpen((v) => !v)}
-                aria-label={sectorsOpen ? '折叠' : '展开'}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
-              >
-                {sectorsOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-              </button>
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSectorsOpen(true);
+                    setSectorSearchOpen((v) => !v);
+                  }}
+                  aria-label="搜索并添加自选"
+                  className={cx(
+                    'inline-flex h-9 w-9 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]',
+                    sectorSearchOpen && 'bg-[#e8f0fe] text-[#1a73e8]'
+                  )}
+                >
+                  <Search size={19} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSectorsOpen((v) => !v)}
+                  aria-label={sectorsOpen ? '折叠' : '展开'}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
+                >
+                  {sectorsOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                </button>
+              </div>
             </div>
+            {sectorsOpen && sectorSearchOpen ? (
+              <form className="flex items-center gap-2 px-1 pb-2" onSubmit={handleAddSymbol}>
+                <div className="relative min-w-0 flex-1">
+                  <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#5f6368]" />
+                  <TextInput
+                    autoFocus
+                    className="h-10 w-full rounded-full border-[#dadce0] bg-white pl-9 pr-3 text-sm"
+                    value={symbolInput}
+                    onChange={(e) => setSymbolInput(e.target.value)}
+                    placeholder={market === 'cn' ? '搜索股票代码，如 sh600519' : '搜索股票代码，如 AAPL'}
+                  />
+                </div>
+                <button type="submit" className="inline-flex h-10 shrink-0 items-center rounded-full bg-[#1a73e8] px-4 text-sm font-semibold text-white hover:bg-[#1765cc]">
+                  添加
+                </button>
+              </form>
+            ) : null}
             {sectorsOpen && (
               sectors.length === 0 ? (
                 <p className="px-2 py-2 text-sm text-[#5f6368]">{sectorsLoading ? '加载中…' : '暂无数据'}</p>
@@ -1696,18 +1704,6 @@ export function MarketsExperience() {
               <ChevronDown size={18} className="text-[#5f6368]" />
             </button>
             <div className="flex items-center gap-0.5">
-              <button
-                type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
-                title="添加自选"
-                onClick={() => {
-                  const placeholder = market === 'cn' ? 'sh600519' : 'AAPL';
-                  const val = typeof window !== 'undefined' ? window.prompt('添加自选代码', placeholder) : null;
-                  if (val) handleAddSymbol(null, val);
-                }}
-              >
-                <Plus size={18} />
-              </button>
               <button
                 type="button"
                 className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
@@ -1757,19 +1753,53 @@ export function MarketsExperience() {
           {market === 'us' && (
             <>
               <div className="border-t border-slate-200/60 px-1 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setSectorsOpen((v) => !v)}
-                  className="flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-[15px] font-medium text-[#1f1f1f] hover:bg-[#f1f3f4]"
-                >
-                  {sectorsOpen ? <ChevronDown size={16} className="text-[#5f6368]" /> : <ChevronRight size={16} className="text-[#5f6368]" />}
-                  <TrendingUp size={14} className="text-indigo-400" />
-                  <span>股票板块</span>
-                  {sectorsLoading && <Loader2 size={12} className="ml-1 animate-spin text-slate-400" />}
-                </button>
+                <div className="flex items-center gap-1 rounded-md hover:bg-[#f1f3f4]">
+                  <button
+                    type="button"
+                    onClick={() => setSectorsOpen((v) => !v)}
+                    className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-2 text-left text-[15px] font-medium text-[#1f1f1f]"
+                  >
+                    {sectorsOpen ? <ChevronDown size={16} className="text-[#5f6368]" /> : <ChevronRight size={16} className="text-[#5f6368]" />}
+                    <TrendingUp size={14} className="text-indigo-400" />
+                    <span>股票板块</span>
+                    {sectorsLoading && <Loader2 size={12} className="ml-1 animate-spin text-slate-400" />}
+                  </button>
+                  <button
+                    type="button"
+                    title="搜索并添加自选"
+                    aria-label="搜索并添加自选"
+                    onClick={() => {
+                      setSectorsOpen(true);
+                      setSectorSearchOpen((v) => !v);
+                    }}
+                    className={cx(
+                      'mr-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#5f6368] hover:bg-white',
+                      sectorSearchOpen && 'bg-[#e8f0fe] text-[#1a73e8]'
+                    )}
+                  >
+                    <Search size={16} />
+                  </button>
+                </div>
               </div>
               {sectorsOpen && (
                 <div className="px-1 pb-2 pt-1">
+                  {sectorSearchOpen ? (
+                    <form className="mb-2 flex items-center gap-2" onSubmit={handleAddSymbol}>
+                      <div className="relative min-w-0 flex-1">
+                        <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5f6368]" />
+                        <TextInput
+                          autoFocus
+                          className="h-9 w-full rounded-full border-[#dadce0] bg-white pl-8 pr-3 text-sm"
+                          value={symbolInput}
+                          onChange={(e) => setSymbolInput(e.target.value)}
+                          placeholder={market === 'cn' ? 'sh600519' : 'AAPL'}
+                        />
+                      </div>
+                      <button type="submit" className="inline-flex h-9 shrink-0 items-center rounded-full bg-[#1a73e8] px-3 text-xs font-semibold text-white hover:bg-[#1765cc]">
+                        添加
+                      </button>
+                    </form>
+                  ) : null}
                   {sectors.length === 0 ? (
                     <p className="px-2 py-1 text-xs text-slate-400">加载中…</p>
                   ) : (
