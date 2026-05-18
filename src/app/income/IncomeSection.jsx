@@ -38,7 +38,7 @@ function Fallback() {
 	);
 }
 
-export function IncomeSection({ ledger, portfolio, inceptionDate, onEditTransaction }) {
+export function IncomeSection({ ledger, portfolio, inceptionDate, onEditTransaction, navRefresh }) {
 	const { route, navigate, goBack } = useIncomeRoute();
 	const SubPage = PAGE_BY_ROUTE[route];
 
@@ -64,6 +64,7 @@ export function IncomeSection({ ledger, portfolio, inceptionDate, onEditTransact
 			portfolio={portfolio}
 			inceptionDate={inceptionDate}
 			navigate={navigate}
+			navRefresh={navRefresh}
 		/>
 	);
 }

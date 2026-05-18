@@ -2673,6 +2673,14 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         portfolio={portfolio}
         inceptionDate={inceptionDate}
         onEditTransaction={handleEditTransaction}
+        navRefresh={{
+          onClick: handleManualRefresh,
+          loading: navStatus === 'loading',
+          hasFailures: (ledger.lastNavMeta?.failureCount || 0) > 0,
+          title: (ledger.lastNavMeta?.failureCount || 0) > 0
+            ? `净值同步有 ${ledger.lastNavMeta.failureCount} 项失败`
+            : '同步净值',
+        }}
       />
       {incomeRoute === ROUTES.OVERVIEW ? (<>
       <div className="grid grid-cols-1 gap-4">
@@ -2680,7 +2688,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           <div className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3 sm:gap-3 sm:justify-between">
             {/* 第五刀 5.4: tablist 已移除 — 主表区域只保留表格，列表类型由 incomeRoute 决定 (OVERVIEW=基金汇总, TRANSACTIONS=成交流水) */}
             <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
-              {mainViewTab === 'aggregate' ? renderNavStatusStrip() : null}
+              {/* v6.4: 净值刷新按钮已移到总市值卡片内“当日”行右侧 */}
               <button
                 type="button"
                 className="order-first hidden h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(79,70,229,0.25)] transition-all hover:bg-indigo-500 hover:shadow-[0_6px_16px_rgba(79,70,229,0.3)] disabled:cursor-not-allowed disabled:opacity-60 sm:order-last sm:inline-flex"

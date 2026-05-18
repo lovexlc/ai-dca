@@ -19,6 +19,7 @@
 import { ROUTES } from '../incomeRoute.js';
 import { cx } from '../../components/experience-ui.jsx';
 import { formatCurrency, formatPercent } from '../accumulation.js';
+import { RefreshCw } from 'lucide-react';
 
 const TONE_UP = 'text-rose-600';
 const TONE_DOWN = 'text-emerald-600';
@@ -50,7 +51,7 @@ function renderSignedPercent(value) {
 	return `${sign}${formatPercent(Math.abs(value))}`;
 }
 
-export function IncomeSummary({ portfolio, navigate, inceptionDate }) {
+export function IncomeSummary({ portfolio, navigate, inceptionDate, navRefresh }) {
 	const marketValue = portfolio?.marketValue;
 	const todayProfit = portfolio?.todayProfit;
 	const todayReturnRate = portfolio?.todayReturnRate;
@@ -69,7 +70,8 @@ export function IncomeSummary({ portfolio, navigate, inceptionDate }) {
 				</div>
 
 				<dl className="mt-4 flex flex-col gap-2.5 text-sm sm:flex-row sm:gap-8">
-					<div className="flex items-baseline gap-2 sm:flex-1">
+					{/* v6.4: “当日”行右侧预留净值刷新按钮位（合入总市值卡片） */}
+					<div className="flex items-center gap-2 sm:flex-1">
 						<dt className="text-slate-500">当日</dt>
 						<dd className={cx('font-semibold tabular-nums', todayTone)}>
 							{renderSignedCurrency(todayProfit)}
@@ -77,6 +79,21 @@ export function IncomeSummary({ portfolio, navigate, inceptionDate }) {
 						<dd className={cx('text-xs font-semibold tabular-nums', todayTone)}>
 							{renderSignedPercent(todayReturnRate)}
 						</dd>
+						{navRefresh ? (
+							<button
+								type="button"
+								onClick={navRefresh.onClick}
+								disabled={navRefresh.loading}
+								aria-label={navRefresh.title || '同步净值'}
+								title={navRefresh.title || '同步净值'}
+								className="relative ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+							>
+								<RefreshCw className={cx('h-3.5 w-3.5', navRefresh.loading && 'animate-spin')} />
+								{navRefresh.hasFailures ? (
+									<span aria-hidden className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-amber-500 ring-2 ring-white" />
+								) : null}
+							</button>
+						) : null}
 					</div>
 					<div className="flex items-baseline gap-2 sm:flex-1">
 						<dt className="text-slate-500">累计</dt>
