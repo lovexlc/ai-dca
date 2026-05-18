@@ -127,13 +127,18 @@ src/components/
 - [ ] 改 `src/app/notifySync.js`：`vix_signal` 规则同步至 worker（跨阈值触发 + 24h 同级防抖，D7）
 - [ ] 后端冲烟：触发 VIX≥30/40/50 各一条通知看 worker 响应
 
-### PR 2.5 — DCA Calculator（独立可插入此处） — `todo`
-- [ ] 新建 `src/app/dcaCalculator.js`（`calculateDcaBacktest` / `filterBuyDates` / `buildDcaChartData`）
-- [ ] 新建 `src/pages/DcaCalculatorExperience.jsx`（输入表单 + 折线图 + 明细表）
-- [ ] 改 `src/app/nasdaqPrices.js`：`loadHistoricalPrices(symbol, range)`
-- [ ] 改 `src/pages/TradePlansExperience.jsx`：新增 `dcaCalc` tab
-- [ ] 「应用此策略」一键预填到现有 DCA 计划
-- [ ] 前端验证：3m/6m/1y/2y/3y/5y × weekly/biweekly/monthly 全组合
+### PR 2.5 — DCA 回测计算器 — `done`
+- [x] 新建 `src/app/dcaCalculator.js`：`DCA_FREQUENCIES` / `DCA_TIMEFRAMES` / `filterBuyDates` / `calculateDcaBacktest` / `buildDcaChartData` / `loadBacktestCandles`（复用 `fetchKline`）
+- [x] 新建 `src/pages/DcaCalculatorExperience.jsx`：标的 chip + 范围 / 频率 / 金额 表单、总资产 / 总回报 / 年化 4 个 stat、recharts 双轴走势图、逐期明细表（前 20 + 后 5）
+- [x] 改 `src/pages/TradePlansExperience.jsx`：新增 `#calc` 二级 tab（Calculator 图标）
+- [x] 范围映射：1d K → 过去 1 个月、1w K → 1 年、1mo K → 5 年（worker `/kline/{sym}?tf=...`）
+- [ ] 前端验证（e2e）：
+  1. `/trade-plans#calc` 进页看到空状态提示
+  2. 选 QQQ + `1mo` + `monthly` + $500 点「运行回测」，拉到 `summary.periods >= 50`、总回报率 > 0
+  3. 切换为 `1w` + `weekly` + $100，验证年化 / 均价重算不乱
+  4. 走势图三条线（市值 / 累计投入 / 价格）都能渲染与 tooltip
+  5. 明细表首末 5 行价格 / 股数 / 均价能手算核对
+- [ ] PR 2.5b（后插队）：「应用此策略」预填到新建 DCA 计划、保存回测快照、对比不同频率
 
 ### PR 3 — 成本追踪 + 负成本 — `todo`
 - [ ] 新建 `src/app/costTracker.js`（`calculateCostBasis` / `recordTrade` / `getTradeHistory`）
