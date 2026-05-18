@@ -2685,7 +2685,9 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       {incomeRoute === ROUTES.OVERVIEW ? (<>
       <div className="grid grid-cols-1 gap-4">
         <section className="min-w-0 rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-          <div className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3 sm:gap-3 sm:justify-between">
+          {/* v6.5: 移动端所有按钮都是 hidden sm:inline-flex，此处在移动端实际没东西。
+              给外层加 hidden sm:flex 让移动端整个 header 不渲染（去除多余 padding/border），PC 保持原状。 */}
+          <div className="hidden flex-row items-center gap-2 border-b border-slate-100 px-4 py-3 sm:flex sm:gap-3 sm:justify-between">
             {/* 第五刀 5.4: tablist 已移除 — 主表区域只保留表格，列表类型由 incomeRoute 决定 (OVERVIEW=基金汇总, TRANSACTIONS=成交流水) */}
             <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
               {/* v6.4: 净值刷新按钮已移到总市值卡片内“当日”行右侧 */}
