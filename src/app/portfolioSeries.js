@@ -343,6 +343,37 @@ export function singleDayFundPnl({ tx, navByCode, date }) {
   return out;
 }
 
+// 区间内每天 per-fund 真·当日 pnl 加和，作为「日历单日 pnl」的权威源。
+// 仅当某基金 nav.date === day (singleDayFundPnl 内的 hasUpdate=true) 时才计入；未披露基金贡献 0。
+// 从而保证「日历单日格 ≡ 当日明细 finite pnl 之和」，避免与 DailyFundBreakdown 反号。
+//
+// 入参：
+//   tx        — 完整 transactions 列表
+//   navByCode — { [code]: Array<{date, nav}> }；建议覆盖 [fromIso-30d, toIso]
+//   fromIso, toIso — ISO 日期，闭区间
+// 返回：{ [isoDate: string]: number }，仅含至少一只基金 finite pnl 的日期。
+export function buildDailyFundPnlMap({ tx, navByCode, fromIso, toIso }) {
+  const out = {};
+  const from = toIsoDate(fromIso);
+  const to = toIsoDate(toIso);
+  if (!from || !to) return out;
+  const total = Math.max(0, daysBetween(from, to));
+  for (let d = 0; d <= total; d += 1) {
+    const day = shiftDays(from, d);
+    const rows = singleDayFundPnl({ tx, navByCode, date: day });
+    let sum = 0;
+    let hasAny = false;
+    for (const r of rows) {
+      if (Number.isFinite(r.pnl)) {
+        sum += r.pnl;
+        hasAny = true;
+      }
+    }
+    if (hasAny) out[day] = sum;
+  }
+  return out;
+}
+
 // 镜头 → {from, to} 。UI 只传镜头名。
 export function resolveRangeWindow(range, { today, inceptionDate, custom } = {}) {
   const t = toIsoDate(today) || toIsoDate(new Date());

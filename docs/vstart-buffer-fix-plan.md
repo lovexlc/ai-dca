@@ -20,14 +20,14 @@
 ## 步骤
 
 - [x] 1. 写 plan
-- [ ] 2. 改 src/app/ReturnCalendar.jsx:247 fetchAllNav 加 30d 左缓冲
-- [ ] 3. 改 src/app/ReturnChart.jsx:191 同上
-- [ ] 4. 改 src/app/income/IncomeDetailPage.jsx:191 同上
-- [ ] 5. portfolioSeries.js: vStart 缺 nav 时 console.warn（dev-time safeguard）
-- [ ] 6. ESLint
-- [ ] 7. commit + push
-- [ ] 8. Actions 部署 + Pages bundle 验证
-- [ ] 9. 浏览器复核（cf-browser-mcp 不可用时降级为 bundle hash 验证）
+- [x] 2. 改 src/app/ReturnCalendar.jsx:248 fetchAllNav 加 30d 左缓冲
+- [x] 3. 改 src/app/ReturnChart.jsx:192 同上、benchmark 同步
+- [x] 4. 改 src/app/income/IncomeDetailPage.jsx:192 同上
+- [x] 5. portfolioSeries.js: export shiftDays + vStart 缺 nav console.warn
+- [x] 6. ESLint 干净
+- [x] 7. commit `3b1126b` + push main
+- [x] 8. Actions run `26017580344` success；Pages last-modified `Mon, 18 May 2026 06:36:24 GMT`
+- [—] 9. cf-browser-mcp script 模式不可用，降级为 Actions + Pages 部署证据
 
 ## 影响
 

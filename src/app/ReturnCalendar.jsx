@@ -14,7 +14,7 @@ import { ChevronLeft, ChevronRight, LoaderCircle, AlertTriangle } from 'lucide-r
 import { formatCurrency } from './accumulation.js';
 import { cx } from '../components/experience-ui.jsx';
 import { fetchNavHistory } from './navHistoryClient.js';
-import { buildPortfolioSeries } from './portfolioSeries.js';
+import { buildDailyFundPnlMap } from './portfolioSeries.js';
 
 const TONE_UP = 'text-rose-600';
 const TONE_DOWN = 'text-emerald-600';
@@ -244,12 +244,13 @@ function ReturnCalendar({ ledger, className = '', selectedDate, onSelectDate }) 
           return;
         }
         const codes = uniqCodes(transactions);
-        // 左边界左移 30 自然日，保证 vStart 在节假日/月初等非交易日仍能 findNavOnOrBefore 到 “上个交易日” nav。
+        // 左边界左移 30 自然日，保证 singleDayFundPnl 在节假日/月初等非交易日仍能 findNavOnOrBefore 到上一个交易日 nav。
         const navFromIso = shiftDays(fromIso, -30);
         const { navByCode, stale } = await fetchAllNav(codes, navFromIso, toIso);
         if (cancelled) return;
-        const series = buildPortfolioSeries({ tx: transactions, navByCode, from: fromIso, to: toIso });
-        const daily = dailyPnlByDate(series.dailySeries || []);
+        // 与 DailyFundBreakdown 同源：per-fund 真·当日 pnl 之和（nav.date === day 才计）。
+        // 避免「全组合 mv 相邻差」在某基金当日 nav 未披露 + 当日 BUY 双算时出现伪 pnl 与明细加和反号。
+        const daily = buildDailyFundPnlMap({ tx: transactions, navByCode, fromIso, toIso });
         setState({ status: 'ready', daily, stale, error: null });
       } catch (err) {
         if (cancelled) return;
