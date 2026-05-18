@@ -1,21 +1,22 @@
-// IncomeSummary.jsx · v6.9 单卡支付宝风格
+// IncomeSummary.jsx · v7.1 hero 行合并主动作
 //
 // 单卡 hero + 3 列 KPI + 4 入口：
 //   - 顶部：总市值（金额大字）+ 右侧刷新按钮
 //   - PC：sparkline仅 PC。移动端隐藏 sparkline、保持纯文字。
 //   - 中部：3 列 KPI（今日 / 持有 / 累计） - 今日 rose-50 背景轻微强调
-//   - 入口区：4 个 lucide 单色线性 icon tile
+//   - 入口区：PC 端 inline pill chip（+ 右侧 复制表格 / +新增交易）；移动端保留 v7.0 grid tile
 //
 // 入参：
 //   - portfolio：HoldingsExperience L221 useMemo 的集计对象
 //   - navigate：跳转子页
 //   - navRefresh：{ onClick, loading, hasFailures, title }，顶部右侧刷新按钮
 //   - cumulativeSeries：可选 number[]，sparkline 数据源（仅 PC 渲染）
+//   - quickActions：{ onNewTransaction, onCopyTable, copyTitle }，PC 端 hero 行右侧合并主表顶部 「复制表格 / + 新增交易」按钮。
 
 import { ROUTES } from '../incomeRoute.js';
 import { cx } from '../../components/experience-ui.jsx';
 import { formatCurrency, formatPercent } from '../accumulation.js';
-import { RefreshCw, BarChart3, Receipt, PieChart, ArrowLeftRight } from 'lucide-react';
+import { RefreshCw, BarChart3, Receipt, PieChart, ArrowLeftRight, Plus, Copy } from 'lucide-react';
 
 const TONE_UP = 'text-rose-600';
 const TONE_DOWN = 'text-emerald-600';
@@ -105,7 +106,7 @@ function KpiCol({ label, value, rate, align = 'center' }) {
 	);
 }
 
-export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSeries }) {
+export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSeries, quickActions }) {
 	const marketValue = portfolio?.marketValue;
 	const todayProfit = portfolio?.todayProfit;
 	const todayReturnRate = portfolio?.todayReturnRate;
@@ -162,20 +163,61 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSerie
 				</div>
 			</section>
 
-			{/* 入口区：4 个 lucide 单色线性 icon */}
-			<nav aria-label="收益看板子页入口" className="grid grid-cols-4 gap-2">
+			{/* 入口区：移动端 4 tile grid（v7.0）；PC 端 inline pill + 右侧辅助操作 */}
+			<nav aria-label="收益看板子页入口" className="grid grid-cols-4 gap-2 sm:hidden">
 				{TILES.map(({ route: r, Icon, label }) => (
 					<button
 						key={r}
 						type="button"
 						onClick={() => navigate?.(r)}
-						className="flex flex-col items-center justify-center gap-1.5 rounded-2xl border border-slate-200/70 bg-white px-1 py-2.5 text-[11px] font-medium text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-slate-50 active:bg-slate-100 sm:py-3 sm:text-xs"
+						className="flex flex-col items-center justify-center gap-1.5 rounded-2xl border border-slate-200/70 bg-white px-1 py-2.5 text-[11px] font-medium text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-slate-50 active:bg-slate-100"
 					>
-						<Icon className="h-5 w-5 text-slate-600 sm:h-[22px] sm:w-[22px]" strokeWidth={1.75} aria-hidden="true" />
+						<Icon className="h-5 w-5 text-slate-600" strokeWidth={1.75} aria-hidden="true" />
 						<span className="truncate">{label}</span>
 					</button>
 				))}
 			</nav>
+			<div className="hidden sm:flex sm:items-center sm:justify-between sm:gap-3">
+				<nav aria-label="收益看板子页入口" className="flex flex-wrap gap-2">
+					{TILES.map(({ route: r, Icon, label }) => (
+						<button
+							key={r}
+							type="button"
+							onClick={() => navigate?.(r)}
+							className="inline-flex items-center gap-1.5 h-8 rounded-full border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 transition-colors hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
+						>
+							<Icon className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+							<span>{label}</span>
+						</button>
+					))}
+				</nav>
+				{quickActions && (quickActions.onCopyTable || quickActions.onNewTransaction) ? (
+					<div className="flex shrink-0 items-center gap-2">
+						{quickActions.onCopyTable ? (
+							<button
+								type="button"
+								onClick={quickActions.onCopyTable}
+								title={quickActions.copyTitle || '复制表格'}
+								className="inline-flex items-center gap-1.5 h-8 rounded-full border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
+							>
+								<Copy className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+								<span>复制表格</span>
+							</button>
+						) : null}
+						{quickActions.onNewTransaction ? (
+							<button
+								type="button"
+								onClick={quickActions.onNewTransaction}
+								title="新增单条交易"
+								className="inline-flex items-center gap-1.5 h-8 rounded-full bg-rose-500 px-3 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-rose-600"
+							>
+								<Plus className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />
+								<span>新增交易</span>
+							</button>
+						) : null}
+					</div>
+				) : null}
+			</div>
 		</div>
 	);
 }

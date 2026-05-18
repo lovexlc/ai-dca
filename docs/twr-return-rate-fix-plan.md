@@ -23,13 +23,13 @@ Modified-Dietz 结果保留到 `diagnostics.modifiedDietz` 供对账。
 ## 步骤
 
 - [x] step-1 写 plan.md
-- [ ] step-2 改 `src/app/portfolioSeries.js::buildDailySeries`：保留 pnl 累计，新增 `dailyReturn` + `twrCumulative` 字段，使用 log 累乘
-- [ ] step-3 改 `src/app/portfolioSeries.js::buildPortfolioSeries`：`returnRate` 切换到 lastDaily.twrCumulative；`annualizedReturn` 用 TWR 算；保留 Modified-Dietz 到 `diagnostics.modifiedDietz`
-- [ ] step-4 ESLint 检查
-- [ ] step-5 commit + push
-- [ ] step-6 等 Actions 部署成功 + Pages last-modified 推进
-- [ ] step-7 验证：cf-browser-mcp script 模式不可用 → 降级到 Actions sha + Pages last-modified 证据
-- [ ] step-8 回应用户：列三个口径对比、修复后 TWR 数字（请用户验证）、与沪深300同口径
+- [x] step-2 改 `buildDailySeries`：增 `dailyReturn` + `twrCumulative`，log 累乘（L193-235）
+- [x] step-3 改 `buildPortfolioSeries`：`returnRate` 切 TWR，`annualizedReturn` 用 TWR，`diagnostics.twr` 新增（L305-319）
+- [x] step-4 ESLint clean
+- [x] step-5 commit `3f7ca80` push success
+- [x] step-6 Actions run `26019351651` head_sha `3f7ca80` completed success；Pages root last-modified `Mon, 18 May 2026 07:22:09 GMT`（CST 15:22）
+- [x] step-7 cf-browser-mcp script 模式不可用 → 降级到 Actions sha + Pages last-modified 证据
+- [x] step-8 回应用户
 
 ## 关键决策
 - TWR 是行业标准用来与指数基准对比的口径；用户希望「今年来收益率」与图表上的沪深300线可比，TWR 是唯一正解。

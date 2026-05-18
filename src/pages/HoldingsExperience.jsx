@@ -2681,41 +2681,21 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             ? `净值同步有 ${ledger.lastNavMeta.failureCount} 项失败`
             : '同步净值',
         }}
+        quickActions={{
+          onNewTransaction: () => {
+            resetDraft(emptyDraft({ type: 'BUY' }));
+            setSidePanelTab('create');
+            setSidePanelOpen(true);
+          },
+          onCopyTable: handleCopyVisibleTable,
+          copyTitle: mainViewTab === 'aggregate' ? '复制基金汇总为 TSV' : '复制成交流水为 TSV',
+        }}
       />
       {incomeRoute === ROUTES.OVERVIEW ? (<>
       <div className="grid grid-cols-1 gap-4">
         <section className="min-w-0 rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-          {/* v6.5: 移动端所有按钮都是 hidden sm:inline-flex，此处在移动端实际没东西。
-              给外层加 hidden sm:flex 让移动端整个 header 不渲染（去除多余 padding/border），PC 保持原状。 */}
-          <div className="hidden flex-row items-center gap-2 border-b border-slate-100 px-4 py-3 sm:flex sm:gap-3 sm:justify-between">
-            {/* 第五刀 5.4: tablist 已移除 — 主表区域只保留表格，列表类型由 incomeRoute 决定 (OVERVIEW=基金汇总, TRANSACTIONS=成交流水) */}
-            <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
-              {/* v6.4: 净值刷新按钮已移到总市值卡片内“当日”行右侧 */}
-              <button
-                type="button"
-                className="order-first hidden h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white shadow-[0_4px_12px_rgba(79,70,229,0.25)] transition-all hover:bg-indigo-500 hover:shadow-[0_6px_16px_rgba(79,70,229,0.3)] disabled:cursor-not-allowed disabled:opacity-60 sm:order-last sm:inline-flex"
-                onClick={() => {
-                  resetDraft(emptyDraft({ type: 'BUY' }));
-                  setSidePanelTab('create');
-                  setSidePanelOpen(true);
-                }}
-                title="新增单条交易"
-              >
-                <Plus className="h-4 w-4" />
-                新增交易
-              </button>
-              <button
-                type="button"
-                className="hidden h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-white px-2.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:ring-slate-300 sm:inline-flex sm:px-3"
-                onClick={handleCopyVisibleTable}
-                title={mainViewTab === 'aggregate' ? '复制基金汇总为 TSV' : '复制成交流水为 TSV'}
-              >
-                <Copy className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">复制表格</span>
-              </button>
-              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleOcrFile} />
-            </div>
-          </div>
+          {/* v7.1: 「复制表格 / + 新增交易」已合并到 IncomeSummary hero 行右侧，原 hidden sm:flex header strip 一并移除（及其 px-4 py-3 border-b）。 */}
+          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleOcrFile} />
           <div className="min-h-[480px] px-1">
             {mainViewTab === 'aggregate' ? renderAggregatesTable() : renderLedgerTable()}
           </div>
