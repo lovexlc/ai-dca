@@ -154,12 +154,21 @@ src/components/
   4. 切 QQQ chip 加几笔，验证双 symbol 并列可互切
   5. 超过 100 条记录后检查 `localStorage.aiDcaTradeLedgerArchive`
 
-### PR 4 — 仓位管理 + 做T 收益 — `todo`
-- [ ] 新建 `src/app/positionManager.js`（`calculateWeights` / `checkWeightLimit` / `generateRebalanceAdvice`）
-- [ ] 改 `src/pages/SellPlanExperience.jsx`：集成仓位检查
-- [ ] 改 `src/pages/HoldingsExperience.jsx`：仓位占比可视化（饼图/柱状图）
-- [ ] 买入时超仓警告 + 做T 后新成本自动重算
-- [ ] 改 `src/app/notifySync.js`：`weight_alert` 规则同步
+### PR 4 — 仓位管理 + 做T 收益 — `done`
+- [x] 新建 `src/app/positionManager.js`：`calculatePositions` / `checkWeightLimit` / `generateRebalanceAdvice`、`STOCK_MAX_WEIGHT_PCT=50`、宽基不限仓位
+- [x] 新建 `src/pages/PositionManagerExperience.jsx`：4 个 stat 卡、总资产输入、拉取现价、recharts 柱状图（超仓转红）、明细表、再平衡建议
+- [x] 改 `src/pages/TradePlansExperience.jsx`：新增 `#position` 二级 tab（PieChart 图标）
+- [x] 股数从 `aiDcaTradeLedger` 自动读取；总资产 + 价格 存 `aiDcaPositionSnapshot`
+- [ ] PR 4.5（后插队）：改 `src/pages/SellPlanExperience.jsx`：生成减仓计划时调 `checkWeightLimit` 与实际仓位打通
+- [ ] PR 4.5：改 `src/pages/HoldingsExperience.jsx`：仓位占比饰区 + 加超仓提醒（3336 行，需小步）
+- [ ] PR 4.5：改 `src/app/notifySync.js`：`weight_alert` 规则同步至 worker
+- [ ] PR 4.5：单测 `positionManager.test.js`（超仓边界、宽基免检、面向总资产=0的 fallback）
+- [ ] 前端验证（e2e）：
+  1. `/trade-plans#position` 空状态看到「先去 #ledger 录记录」提示
+  2. 录几笔交易后进页：股数 / 标獣自动出现；手填价格后市值 / 占比 / 柱状图渲染
+  3. 个股占比 > 50% 时，柱转红、「超仓」警告 stat 加一、建议区出现「减仓」
+  4. 宽基标獣超过 50% 不报警（验证宽基免检）
+  5. 点「一键拉取全部」验证 `fetchQuote` 能依次拉价；cache 贯 `localStorage.aiDcaPositionSnapshot`
 
 ---
 
