@@ -90,7 +90,7 @@ src/components/
 - [x] 新建 `src/pages/SellPlanExperience.jsx`：Mag7/TSM chip、关联加仓策略、档位预览卡
 - [x] 改 `src/pages/TradePlansExperience.jsx`：新增 `#sell` 二级 tab，复用 `Suspense` 加载
 - [x] PR 1.5（部分完成）：`src/app/tradePlans.js` 增 `buildSellPlanRows` — 读 `aiDcaSellPlanStore`、调 `buildSellPlan` 拆档、输出 sourceType=`sell`/actionKey=`sell`/statusTone rose、sortRows 按 plan<sell<dca 排序、`summary.nextSellTrigger` 汇总首档。TradePlansExperience `handleViewMore` 加 `sell` 跳 `#sell`
-- [ ] PR 1.5：改 `src/app/notifySync.js`：`sell_layer` 规则同步至 worker
+- [x] PR 1.5（client 侧完成）：`buildNotifySyncPayload` 额外上传 `sellPlans` 精简快照（id/symbol/holdingCost/holdingShares/gainTriggers/sellRatios/updatedAt），以供 worker 生成 “盈利 X% → 卖 Y%” 提醒。worker 侧 sell_layer 规则处理需另行推进。
 - [ ] 单测：`sellStrategy.test.js`（分档计算、超 100% 归一、宽基禁售、股数/利润上限）
 - [ ] 前端验证（e2e）：
   1. 打开 `/trade-plans#sell`，选 NVDA chip → 填写成本 100 / 股数 50 → 三档预览价为 115 / 125 / 135

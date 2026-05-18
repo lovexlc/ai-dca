@@ -1,6 +1,9 @@
 import { DCA_KEY, readDcaState } from './dca.js';
 import { readPlanList } from './plan.js';
 import { readSellPlanList } from './sellPlans.js';
+import { readTradeLedger } from './tradeLedger.js';
+import { groupCostBasisBySymbol } from './costTracker.js';
+import { calculatePositions } from './positionManager.js';
 
 const NOTIFY_ENDPOINT = '/api/notify';
 const NOTIFY_CLIENT_CONFIG_KEY = 'aiDcaNotifyClientConfig';
@@ -184,6 +187,48 @@ function hasPersistedDca() {
   return Boolean(window.localStorage.getItem(DCA_KEY));
 }
 
+// PR 4.5：weight_alert 规则 — 生成仓位占比摘要（不上传总资产/价格，仅传权重 %）。
+// worker 只需 weightPct 就能发 “X 超 50% 仓位上限” 提醒。
+function buildPositionDigest() {
+  if (typeof window === 'undefined') return null;
+  let snapshot;
+  try {
+    snapshot = JSON.parse(window.localStorage.getItem('aiDcaPositionSnapshot') || 'null');
+  } catch (_e) { return null; }
+  if (!snapshot || typeof snapshot !== 'object') return null;
+
+  const totalAssets = Number(snapshot.totalAssets) || 0;
+  const prices = (snapshot.prices && typeof snapshot.prices === 'object') ? snapshot.prices : {};
+  if (totalAssets <= 0) return null;
+
+  const trades = readTradeLedger();
+  const grouped = groupCostBasisBySymbol(trades);
+  const shares = {};
+  for (const [sym, payload] of Object.entries(grouped)) {
+    if (payload.summary.remainingShares > 0) {
+      shares[sym] = payload.summary.remainingShares;
+    }
+  }
+
+  const positions = calculatePositions({ totalAssets, prices, shares });
+  const rows = (positions.rows || [])
+    .filter((row) => row && row.symbol)
+    .map((row) => ({
+      symbol: String(row.symbol),
+      type: row.type === 'index' ? 'index' : 'stock',
+      weightPct: Number(row.weightPct) || 0,
+      exceedsCap: Boolean(row.exceedsCap)
+    }));
+  if (!rows.length) return null;
+
+  return {
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    cashWeightPct: Number(positions.cashWeightPct) || 0,
+    rows
+  };
+}
+
 export function buildNotifySyncPayload() {
   const plans = readPlanList();
   const dca = hasPersistedDca() ? readDcaState() : null;
@@ -199,11 +244,13 @@ export function buildNotifySyncPayload() {
     sellRatios: plan.sellRatios,
     updatedAt: plan.updatedAt
   }));
+  const positionDigest = buildPositionDigest();
 
   return {
     plans,
     dca,
     sellPlans,
+    positionDigest,
     syncedAt: new Date().toISOString()
   };
 }
