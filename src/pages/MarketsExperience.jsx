@@ -49,6 +49,7 @@ import {
   removeFromWatchlist
 } from '../app/marketsApi.js';
 import { showActionToast } from '../app/toast.js';
+import { buildStockAnalysisPrompt } from '../app/stockAnalysisPrompt.js';
 import { Sparkline } from '../components/markets/Sparkline.jsx';
 import { MarketsChartCodeBlock } from '../components/markets/MarketsChartBlock.jsx';
 
@@ -483,7 +484,7 @@ function WatchlistTable({ rows = [], market, onRemove }) {
   );
 }
 
-function SidebarRow({ symbol, name, price, changePercent, sparkPoints, onRemove }) {
+function SidebarRow({ symbol, name, price, changePercent, sparkPoints, onRemove, onAnalyze }) {
   const pct = Number(changePercent);
   const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
   const up = pct > 0;
@@ -511,22 +512,38 @@ function SidebarRow({ symbol, name, price, changePercent, sparkPoints, onRemove 
             <span>{formatPercent(changePercent)}</span>
           </div>
         </div>
-        {onRemove ? (
-          <button
-            type="button"
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}
-            className="absolute right-1 top-1/2 hidden -translate-y-1/2 rounded p-0.5 text-slate-300 hover:text-rose-500 group-hover:block"
-            title="移除自选"
-          >
-            <Trash2 size={11} />
-          </button>
+        {(onAnalyze || onRemove) ? (
+          <div className="absolute right-1 top-1/2 hidden -translate-y-1/2 flex-col gap-0.5 group-hover:flex">
+            {onAnalyze ? (
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAnalyze(); }}
+                className="rounded p-0.5 text-slate-300 hover:text-indigo-500"
+                title="AI 分析"
+                aria-label="AI 分析"
+              >
+                <Sparkles size={11} />
+              </button>
+            ) : null}
+            {onRemove ? (
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}
+                className="rounded p-0.5 text-slate-300 hover:text-rose-500"
+                title="移除自选"
+                aria-label="移除自选"
+              >
+                <Trash2 size={11} />
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </li>
   );
 }
 
-function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints }) {
+function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints, onAnalyze }) {
   const pct = Number(changePercent);
   const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
   const up = pct > 0;
@@ -559,6 +576,17 @@ function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints }) {
           ) : null}
         </div>
       </div>
+      {onAnalyze ? (
+        <button
+          type="button"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAnalyze(); }}
+          className="ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4] hover:text-indigo-500"
+          title="AI 分析"
+          aria-label="AI 分析"
+        >
+          <Sparkles size={16} />
+        </button>
+      ) : null}
     </li>
   );
 }
@@ -865,7 +893,7 @@ function SummaryModule({ themes = [], loading, onRefresh }) {
 // 抽屉会自动切到市场行情模式并预填问题。
 // 右栏“研究”面板：inline 问答，点击预设问题或提交输入后直接调 /api/markets/ask。
 // 不再弹出右下角 AI 抽屉。
-function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], watchQuotes = {} }) {
+function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], watchQuotes = {}, pendingAnalysis = null, onAnalysisConsumed }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [pending, setPending] = useState(false);
@@ -974,6 +1002,23 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
     },
     [input, send],
   );
+
+  // 外部（侧边自选行）点击「AI 分析」时会设置 pendingAnalysis，
+  // 这里接收后拼金渐成 prompt、深度模式发送，并通知父级清除标记。
+  useEffect(() => {
+    if (!pendingAnalysis || !pendingAnalysis.symbol) return;
+    if (pending) return; // 上一轮还在跑，等它结束后下个 effect cycle 再试
+    const prompt = buildStockAnalysisPrompt({
+      symbol: pendingAnalysis.symbol,
+      name: pendingAnalysis.name,
+      market,
+    });
+    if (prompt) {
+      send(prompt, { depth: 'deep' });
+    }
+    onAnalysisConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAnalysis]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -1345,6 +1390,9 @@ export function MarketsExperience() {
   const researchDragRef = useRef({ startY: 0, lastY: 0, startT: 0, dragging: false, moved: false });
   const asideRef = useRef(null);
   const isDraggingRef = useRef(false);
+  // 供侧边自选行【AI 分析】按钮跨组件触发右侧 ResearchPanel 发起结构化问答。
+  // shape: { symbol, name } | null
+  const [pendingAnalysis, setPendingAnalysis] = useState(null);
 
   const ensureKlines = useCallback(async (symbols) => {
     const uniq = Array.from(new Set((symbols || []).filter(Boolean)));
@@ -1658,6 +1706,10 @@ export function MarketsExperience() {
                       price={row.price}
                       changePercent={row.changePercent}
                       sparkPoints={klineMap[row.symbol]}
+                      onAnalyze={() => {
+                        setPendingAnalysis({ symbol: row.symbol, name: row.name });
+                        setResearchMode('conversation');
+                      }}
                     />
                   ))}
                 </ul>
@@ -1818,6 +1870,9 @@ export function MarketsExperience() {
                       changePercent={row.changePercent}
                       sparkPoints={klineMap[row.symbol]}
                       onRemove={() => handleRemove(market, row.symbol)}
+                      onAnalyze={() => {
+                        setPendingAnalysis({ symbol: row.symbol, name: row.name });
+                      }}
                     />
                   ))}
                 </ul>
@@ -2124,7 +2179,15 @@ export function MarketsExperience() {
         >
           <span className="h-1 w-9 rounded-full bg-[#dadce0]" />
         </div>
-        <MarketsResearchPanel market={market} mode={researchMode} onModeChange={setResearchMode} watchSymbols={watchSymbols} watchQuotes={watchQuotes} />
+        <MarketsResearchPanel
+          market={market}
+          mode={researchMode}
+          onModeChange={setResearchMode}
+          watchSymbols={watchSymbols}
+          watchQuotes={watchQuotes}
+          pendingAnalysis={pendingAnalysis}
+          onAnalysisConsumed={() => setPendingAnalysis(null)}
+        />
       </aside>
     </div>
   );
