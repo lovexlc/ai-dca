@@ -1,10 +1,59 @@
 {
   "dataset": "etf_latest_nav_manifest",
-  "generatedAt": "2026-05-16T04:26:30.457Z",
+  "generatedAt": "2026-05-18T11:31:53.354Z",
   "source": "eastmoney:f10/lsjz",
-  "successCount": 12,
-  "failureCount": 0,
-  "failures": [],
+  "successCount": 0,
+  "failureCount": 12,
+  "failures": [
+    {
+      "code": "159513",
+      "error": "fetch failed"
+    },
+    {
+      "code": "159941",
+      "error": "fetch failed"
+    },
+    {
+      "code": "513100",
+      "error": "fetch failed"
+    },
+    {
+      "code": "159696",
+      "error": "fetch failed"
+    },
+    {
+      "code": "159632",
+      "error": "fetch failed"
+    },
+    {
+      "code": "513390",
+      "error": "fetch failed"
+    },
+    {
+      "code": "513300",
+      "error": "fetch failed"
+    },
+    {
+      "code": "159501",
+      "error": "fetch failed"
+    },
+    {
+      "code": "513870",
+      "error": "fetch failed"
+    },
+    {
+      "code": "159660",
+      "error": "fetch failed"
+    },
+    {
+      "code": "513110",
+      "error": "fetch failed"
+    },
+    {
+      "code": "159659",
+      "error": "fetch failed"
+    }
+  ],
   "items": [
     {
       "code": "159513",

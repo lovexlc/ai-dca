@@ -10,7 +10,7 @@
   "timezone": "America/New_York",
   "source": "yahoo:chart",
   "source_symbol": "^NDX",
-  "generated_at": "2026-05-16T04:26:30Z",
+  "generated_at": "2026-05-18T11:31:53Z",
   "bars": [
     {
       "datetime": "2026-05-07 09:30:00",
