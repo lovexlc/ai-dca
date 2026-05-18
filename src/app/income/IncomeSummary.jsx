@@ -93,16 +93,17 @@ export function IncomeSummary({ portfolio, navigate, inceptionDate }) {
 				</dl>
 			</section>
 
-			<nav aria-label="收益看板子页入口" className="flex flex-wrap gap-2">
+			{/* v6.3: 4 个 tile 改成 icon 上 / 文字下 的纵向 grid，一排 4 列，参考支付宝主页入口 */}
+			<nav aria-label="收益看板子页入口" className="grid grid-cols-4 gap-2">
 				{TILES.map(({ route: r, icon, label }) => (
 					<button
 						key={r}
 						type="button"
 						onClick={() => navigate?.(r)}
-						className="inline-flex items-center gap-1.5 rounded-full border border-slate-200/70 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-slate-50 active:bg-slate-100 sm:text-sm"
+						className="flex flex-col items-center justify-center gap-1 rounded-2xl border border-slate-200/70 bg-white px-1 py-2.5 text-[11px] font-medium text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-slate-50 active:bg-slate-100 sm:gap-1.5 sm:py-3 sm:text-xs"
 					>
-						<span aria-hidden="true" className="text-base leading-none">{icon}</span>
-						<span>{label}</span>
+						<span aria-hidden="true" className="text-xl leading-none sm:text-2xl">{icon}</span>
+						<span className="truncate">{label}</span>
 					</button>
 				))}
 			</nav>
