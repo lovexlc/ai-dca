@@ -77,13 +77,13 @@ function Sparkline({ series, tone }) {
 	);
 }
 
-// KPI 单列：小 label + signed currency + signed percent。accent: 今日项给 rose-50 浅底轻微强调。
-function KpiCol({ label, value, rate, accent }) {
+// KPI 单列：小 label + signed currency + signed percent。支付宝风格：无卡框、纯文字横排。
+function KpiCol({ label, value, rate }) {
 	const tone = signTone(value);
 	return (
-		<div className={cx('flex min-w-0 flex-col gap-1 rounded-xl px-3 py-2.5 sm:px-4 sm:py-3', accent ? 'bg-rose-50/60' : '')}>
+		<div className="flex min-w-0 flex-col items-center gap-0.5 px-1">
 			<div className="text-[11px] font-medium text-slate-500">{label}</div>
-			<div className={cx('truncate whitespace-nowrap text-base font-bold tabular-nums sm:text-lg', tone)}>
+			<div className={cx('truncate whitespace-nowrap text-lg font-bold tabular-nums sm:text-xl', tone)}>
 				{renderSignedCurrency(value)}
 			</div>
 			<div className={cx('truncate whitespace-nowrap text-[11px] font-semibold tabular-nums sm:text-xs', tone)}>
@@ -122,13 +122,13 @@ export function IncomeSummary({ portfolio, navigate, inceptionDate, navRefresh, 
 
 	return (
 		<div className="flex flex-col gap-3">
-			{/* v6.9 支付宝风格：单卡 hero（总市值顶 + 3 列 KPI 底），取代双卡 */}
-			<section className="flex min-w-0 flex-col gap-3 rounded-2xl border border-slate-200/70 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:px-6 sm:py-4">
+			{/* v7.0 支付宝风格：去卡框 hero（总市值超大字 + 3 列纯文字 KPI），金额不再被卡片宽束缚 */}
+			<section className="flex min-w-0 flex-col gap-4 px-1 pt-2 pb-1 sm:gap-5 sm:pt-3">
 				{/* 顶部行：总市值 label + 金额 / 右侧：起始日 + 刷新按钮 */}
 				<div className="flex items-start justify-between gap-3">
-					<div className="min-w-0">
+					<div className="min-w-0 flex-1">
 						<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</div>
-						<div className="mt-1 truncate whitespace-nowrap text-2xl font-extrabold tracking-tight tabular-nums text-slate-900 min-[380px]:text-3xl sm:text-4xl">
+						<div className="mt-1 truncate whitespace-nowrap text-4xl font-extrabold tracking-tight tabular-nums text-slate-900 min-[380px]:text-[44px] sm:text-5xl">
 							{Number.isFinite(marketValue) ? formatCurrency(marketValue, '¥', 2) : '—'}
 						</div>
 					</div>
@@ -147,12 +147,9 @@ export function IncomeSummary({ portfolio, navigate, inceptionDate, navRefresh, 
 					</div>
 				) : null}
 
-				{/* 分隔线 */}
-				<div className="h-px bg-slate-100" aria-hidden="true" />
-
 				{/* 3 列 KPI：今日 / 持有 / 累计 */}
-				<div className="grid grid-cols-3 gap-2 sm:gap-3">
-					<KpiCol label="今日" value={todayProfit} rate={todayReturnRate} accent />
+				<div className="grid grid-cols-3 gap-2 sm:gap-4">
+					<KpiCol label="今日" value={todayProfit} rate={todayReturnRate} />
 					<KpiCol label="持有" value={totalProfit} rate={totalReturnRate} />
 					<KpiCol label="累计" value={cumulativeProfit} rate={cumulativeReturnRate} />
 				</div>
