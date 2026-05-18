@@ -53,7 +53,7 @@ function renderPnl(value) {
   return `${value > 0 ? '+' : ''}${formatCurrency(value, '¥', 2)}`;
 }
 
-export function DailyFundBreakdown({ ledger, selectedDate }) {
+export function DailyFundBreakdown({ ledger, selectedDate, className = '' }) {
   const transactions = useMemo(
     () => (Array.isArray(ledger?.transactions) ? ledger.transactions : []),
     [ledger]
@@ -105,7 +105,7 @@ export function DailyFundBreakdown({ ledger, selectedDate }) {
   const hasAnyUpdate = rows.some((r) => Number.isFinite(r.pnl));
 
   return (
-    <div className="rounded-2xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4">
+    <div className={cx('rounded-2xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4', className)}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-baseline gap-2">
           <div className="text-[13px] font-semibold text-slate-900 sm:text-sm">当日收益明细</div>

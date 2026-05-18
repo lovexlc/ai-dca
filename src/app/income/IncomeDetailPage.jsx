@@ -3,8 +3,8 @@
 // 第三刀 3.1：把 IncomeDetail.jsx 顶部卡（4 KPI + benchmark + TimeRangeSelector）整体落到子页。
 // 第四刀 4.1：把 ReturnChart + ReturnCalendar 合并进同一页（蚂蚁财富同款一站式）。
 //   - 顶部：4 KPI + benchmark + TimeRangeSelector
-//   - 中部：ReturnChart（lazy，与上面的 selector 共享 URL range）
-//   - 下部：ReturnCalendar（lazy，自带月份切换）
+//   - PC：方案 B，左侧大 ReturnChart，右侧 ReturnCalendar + DailyFundBreakdown
+//   - 点击收益曲线或收益日历都会刷新同一个 selectedDate 下的当日收益明细
 //   - 旧 #/chart / #/calendar 子页已弃用，alias 到本页（见 IncomeSection.jsx）
 //   - 数据契约：buildPortfolioSeries({tx,navByCode,from,to}) + fetchNavHistory，与 IncomeSummary 一致
 //   - 涨红跌绿；累计盈亏/年化沿用 IncomeDetail 行为
@@ -273,8 +273,6 @@ export function IncomeDetailPage({ ledger, portfolio, onBack }) {
   const hasError = rangeState.status === 'error' || inceptionState.status === 'error';
   const showStale = rangeState.stale || inceptionState.stale;
   const rangeSeries = rangeState.series;
-  const inceptionSeries = inceptionState.series || rangeSeries;
-
   const rangeLabel = RANGE_LABELS[range] || range;
   const subWindow = rangeWindow ? `${rangeWindow.from} → ${rangeWindow.to}` : '';
 
@@ -282,7 +280,6 @@ export function IncomeDetailPage({ ledger, portfolio, onBack }) {
   const rangeRate = rangeSeries?.returnRate ?? null;
   const annualized = rangeSeries?.annualizedReturn ?? null;
   // 累计盈亏 = portfolio.cumulativeProfit（含已实现盈亏），与 IncomeSummary 顶部卡片同口径同数字，避免「同名两个值」误导。
-  // inceptionSeries.profit 仅含持仓部分 nav 增量，作为「投资以来收益」KPI 单独展示。
   const cumulativeProfit = portfolio?.cumulativeProfit ?? null;
   const cumulativeReturnRate = portfolio?.cumulativeReturnRate ?? null;
   const benchRate = benchState.rate;
@@ -363,19 +360,24 @@ export function IncomeDetailPage({ ledger, portfolio, onBack }) {
       </div>
 
       {inceptionDate ? (
-        <>
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
           <Suspense fallback={<LazyFallback label="加载收益曲线…" />}>
-            <ReturnChart ledger={ledger} />
+            <ReturnChart
+              ledger={ledger}
+              selectedDate={selectedDate}
+              onSelectDate={setSelectedDate}
+              chartClassName="lg:h-[500px]"
+            />
           </Suspense>
-          <Suspense fallback={<LazyFallback label="加载收益日历…" />}>
-            <div className="rounded-2xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4">
+          <div className="grid gap-3">
+            <Suspense fallback={<LazyFallback label="加载收益日历…" />}>
               <ReturnCalendar ledger={ledger} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
-            </div>
-          </Suspense>
-          <Suspense fallback={<LazyFallback label="加载当日明细…" />}>
-            <DailyFundBreakdown ledger={ledger} selectedDate={selectedDate} />
-          </Suspense>
-        </>
+            </Suspense>
+            <Suspense fallback={<LazyFallback label="加载当日明细…" />}>
+              <DailyFundBreakdown ledger={ledger} selectedDate={selectedDate} />
+            </Suspense>
+          </div>
+        </div>
       ) : null}
     </SubPageShell>
   );

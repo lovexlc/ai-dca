@@ -16,7 +16,8 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
-  Legend
+  Legend,
+  ReferenceLine
 } from 'recharts';
 import { LoaderCircle, AlertTriangle } from 'lucide-react';
 import { formatCurrency, formatPercent } from './accumulation.js';
@@ -164,7 +165,7 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
-function ReturnChart({ ledger, className = '' }) {
+function ReturnChart({ ledger, className = '', chartClassName = '', selectedDate, onSelectDate }) {
   const [{ range, customFrom, customTo }] = useRangeUrlSync({ defaultRange: DEFAULT_RANGE });
   const transactions = useMemo(
     () => (Array.isArray(ledger?.transactions) ? ledger.transactions : []),
@@ -271,6 +272,14 @@ function ReturnChart({ ledger, className = '' }) {
   const isLoading = state.status === 'loading';
   const isError = state.status === 'error';
   const isEmpty = state.status === 'ready' && state.data.length === 0;
+  const canSelectDate = typeof onSelectDate === 'function';
+  const selectedDateInChart = selectedDate && state.data.some((d) => d.date === selectedDate) ? selectedDate : null;
+
+  const handleChartClick = (next) => {
+    if (!canSelectDate) return;
+    const date = next?.activeLabel || next?.activePayload?.[0]?.payload?.date;
+    if (date) onSelectDate(date);
+  };
 
   return (
     <div
@@ -308,7 +317,7 @@ function ReturnChart({ ledger, className = '' }) {
         </div>
       </div>
 
-      <div className="mt-3 h-56 w-full sm:h-56 lg:h-52">
+      <div className={cx('mt-3 h-56 w-full sm:h-56 lg:h-52', chartClassName)}>
         {isEmpty || !state.data.length ? (
           <div className="flex h-full items-center justify-center text-[11px] text-slate-400">
             {isLoading ? '准备中…' : '暂无数据'}
@@ -317,6 +326,8 @@ function ReturnChart({ ledger, className = '' }) {
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart
               data={state.data}
+              onClick={handleChartClick}
+              className={canSelectDate ? 'cursor-pointer' : undefined}
               margin={{ top: 6, right: 8, bottom: 0, left: 0 }}
             >
               <defs>
@@ -356,6 +367,15 @@ function ReturnChart({ ledger, className = '' }) {
                 width={42}
               />
               <Tooltip content={<ChartTooltip />} />
+              {selectedDateInChart ? (
+                <ReferenceLine
+                  yAxisId="left"
+                  x={selectedDateInChart}
+                  stroke="#94a3b8"
+                  strokeDasharray="3 3"
+                  ifOverflow="extendDomain"
+                />
+              ) : null}
               <Legend
                 verticalAlign="top"
                 height={20}
