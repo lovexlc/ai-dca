@@ -1513,6 +1513,191 @@ async function fetchFundNavSnapshot(code, generatedAt) {
 
 // 拉取一段时间内的历史 NAV 序列（DWJZ 单位净值），按日期升序返回。
 // 复用 lsjz 上游，pageSize=40 + 最多 50 页即可覆盖 ~8 年交易日数据。
+
+function compareIsoDate(a, b) {
+  return String(a || '').localeCompare(String(b || ''));
+}
+
+function minIsoDate(a, b) {
+  return compareIsoDate(a, b) <= 0 ? a : b;
+}
+
+function monthKeyFromIsoDate(isoDate) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(isoDate || '')) ? String(isoDate).slice(0, 7) : '';
+}
+
+function firstOfMonthIso(monthKey) {
+  return /^\d{4}-\d{2}$/.test(String(monthKey || '')) ? `${monthKey}-01` : '';
+}
+
+function lastOfMonthIso(monthKey) {
+  if (!/^\d{4}-\d{2}$/.test(String(monthKey || ''))) return '';
+  const [year, month] = monthKey.split('-').map((n) => Number(n));
+  const dt = new Date(Date.UTC(year, month, 0));
+  const y = dt.getUTCFullYear();
+  const m = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(dt.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function nextMonthKey(monthKey) {
+  if (!/^\d{4}-\d{2}$/.test(String(monthKey || ''))) return '';
+  const [year, month] = monthKey.split('-').map((n) => Number(n));
+  const dt = new Date(Date.UTC(year, month, 1));
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function enumerateMonthKeys(fromDate, toDate) {
+  const start = monthKeyFromIsoDate(fromDate);
+  const end = monthKeyFromIsoDate(toDate);
+  if (!start || !end || start > end) return [];
+  const out = [];
+  for (let key = start; key && key <= end; key = nextMonthKey(key)) {
+    out.push(key);
+    if (key === end) break;
+  }
+  return out;
+}
+
+function filterNavItemsByDateRange(items, fromDate, toDate) {
+  const seen = new Set();
+  const out = [];
+  for (const item of Array.isArray(items) ? items : []) {
+    const date = String(item?.date || '').slice(0, 10);
+    const nav = Number(item?.nav);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(nav) || nav <= 0) continue;
+    if (date < fromDate || date > toDate || seen.has(date)) continue;
+    seen.add(date);
+    out.push({ date, nav: roundHolding(nav, 4) });
+  }
+  out.sort((a, b) => a.date.localeCompare(b.date));
+  return out;
+}
+
+function buildNavHistoryKvKey(code, monthKey) {
+  return `navhist:v1:${code}:${monthKey}`;
+}
+
+function hasNavHistoryKv(env) {
+  return Boolean(env?.NAV_HISTORY_KV && typeof env.NAV_HISTORY_KV.get === 'function' && typeof env.NAV_HISTORY_KV.put === 'function');
+}
+
+function isNavHistoryKvMonthFresh(payload, monthKey, today, ttlMs) {
+  if (!payload || payload.version !== 1 || payload.month !== monthKey || !Array.isArray(payload.items)) return false;
+  const todayMonth = monthKeyFromIsoDate(today);
+  const monthEnd = lastOfMonthIso(monthKey);
+  const payloadTo = String(payload.to || '');
+  if (todayMonth && monthKey < todayMonth) {
+    return payloadTo >= monthEnd;
+  }
+  return isHoldingsPayloadFresh(payload, ttlMs);
+}
+
+async function readJsonFromNavHistoryKv(env, key) {
+  try {
+    const payload = await env.NAV_HISTORY_KV.get(key, { type: 'json' });
+    return payload && typeof payload === 'object' ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
+async function putJsonToNavHistoryKv(env, key, payload) {
+  try {
+    await env.NAV_HISTORY_KV.put(key, JSON.stringify(payload));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function deleteNavHistoryKvKey(env, key) {
+  try {
+    await env.NAV_HISTORY_KV.delete(key);
+  } catch { /* ignore */ }
+}
+
+async function fetchFundNavHistoryWithMonthlyKv(code, fromDate, toDate, env, options = {}) {
+  const today = String(options.today || todayShanghaiIsoDate()).slice(0, 10);
+  const ttlMs = Math.max(60_000, Number(options.ttlMs) || 0);
+  const forceBypass = options.forceBypass === true;
+  const generatedAt = String(options.generatedAt || nowShanghaiIso());
+
+  if (!hasNavHistoryKv(env)) {
+    const items = await fetchFundNavHistory(code, fromDate, toDate);
+    return {
+      items,
+      cache: { source: 'live', hit: false, kv: { enabled: false } }
+    };
+  }
+
+  const months = enumerateMonthKeys(fromDate, toDate);
+  const cachedItems = [];
+  const missingMonths = [];
+  let kvHits = 0;
+
+  for (const monthKey of months) {
+    const key = buildNavHistoryKvKey(code, monthKey);
+    if (forceBypass) {
+      await deleteNavHistoryKvKey(env, key);
+      missingMonths.push(monthKey);
+      continue;
+    }
+    const payload = await readJsonFromNavHistoryKv(env, key);
+    if (isNavHistoryKvMonthFresh(payload, monthKey, today, ttlMs)) {
+      kvHits += 1;
+      cachedItems.push(...filterNavItemsByDateRange(payload.items, fromDate, toDate));
+    } else {
+      missingMonths.push(monthKey);
+    }
+  }
+
+  const fetchedItems = [];
+  for (const monthKey of missingMonths) {
+    const monthStart = firstOfMonthIso(monthKey);
+    const monthEnd = lastOfMonthIso(monthKey);
+    const fetchFrom = monthStart;
+    const fetchTo = minIsoDate(monthEnd, today);
+    let monthItems = [];
+    if (fetchFrom <= fetchTo) {
+      monthItems = await fetchFundNavHistory(code, fetchFrom, fetchTo);
+    }
+    const monthPayload = {
+      version: 1,
+      code,
+      month: monthKey,
+      from: fetchFrom,
+      to: fetchTo,
+      count: monthItems.length,
+      items: monthItems,
+      generatedAt,
+      expiresAt: monthKey < monthKeyFromIsoDate(today)
+        ? null
+        : epochMsToShanghaiIso(Date.parse(generatedAt) + ttlMs),
+      updatedAt: generatedAt
+    };
+    await putJsonToNavHistoryKv(env, buildNavHistoryKvKey(code, monthKey), monthPayload);
+    fetchedItems.push(...filterNavItemsByDateRange(monthItems, fromDate, toDate));
+  }
+
+  const items = filterNavItemsByDateRange([...cachedItems, ...fetchedItems], fromDate, toDate);
+  const hadLiveFetch = missingMonths.length > 0;
+  return {
+    items,
+    cache: {
+      source: hadLiveFetch ? (kvHits > 0 ? 'kv-partial' : 'kv-fill') : 'kv',
+      hit: !hadLiveFetch,
+      kv: {
+        enabled: true,
+        monthKeys: months,
+        hitMonths: kvHits,
+        missMonths: missingMonths.length,
+        force: forceBypass
+      }
+    }
+  };
+}
+
 async function fetchFundNavHistory(code, fromDate, toDate) {
   const headers = {
     accept: 'application/json, text/plain, */*',
@@ -1634,9 +1819,14 @@ async function handleHoldingsNavHistory(request, env) {
   }
 
   const generatedAt = nowShanghaiIso();
-  let items;
+  let navHistoryResult;
   try {
-    items = await fetchFundNavHistory(rawCode, fromDate, toDate);
+    navHistoryResult = await fetchFundNavHistoryWithMonthlyKv(rawCode, fromDate, toDate, env, {
+      today,
+      ttlMs,
+      forceBypass,
+      generatedAt
+    });
   } catch (error) {
     return jsonResponse({
       ok: false,
@@ -1648,6 +1838,7 @@ async function handleHoldingsNavHistory(request, env) {
     }, 502);
   }
 
+  const items = navHistoryResult.items || [];
   const expiresAt = epochMsToShanghaiIso(Date.parse(generatedAt) + ttlMs);
   const payload = {
     ok: true,
@@ -1658,7 +1849,14 @@ async function handleHoldingsNavHistory(request, env) {
     items,
     generatedAt,
     expiresAt,
-    cache: { key: cacheKey, hit: false, source: 'live', stale: false, ttlMs }
+    cache: {
+      key: cacheKey,
+      hit: navHistoryResult.cache?.hit === true,
+      source: navHistoryResult.cache?.source || 'live',
+      stale: false,
+      ttlMs,
+      kv: navHistoryResult.cache?.kv || null
+    }
   };
 
   try {

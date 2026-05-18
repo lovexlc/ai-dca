@@ -73,6 +73,14 @@ binding = "FUND_LIMIT_KV"
 id = "633d193bdcb045e3bdbc098ff6249224"
 preview_id = "1892e345c6754009ac678ce467189ef2"
 
+# holdings/nav-history 的长期历史净值缓存。
+# - key 形态：navhist:v1:<6位基金代码>:YYYY-MM
+# - 已结束月份长期保存；当前月份按接口动态 TTL 重新校验。
+[[kv_namespaces]]
+binding = "NAV_HISTORY_KV"
+id = "1537be1895404cc4a8286ae2aead9d52"
+preview_id = "76ce4f15374d458fb9c2f2af5e3eedd0"
+
 # 网站知识库向量索引。
 # 索引由 scripts/build_kb.mjs 首次运行时创建（run 25482712161 success）。
 # Worker 代码在 src/index.js:1792 对 env.KNOWLEDGE_INDEX 缺失作了优雅降级。
