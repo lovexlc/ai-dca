@@ -202,6 +202,7 @@ function DayCell({ cell, pnl, max, onClick, todayIso, selectedIso, compact = fal
         !dim ? 'hover:brightness-95' : ''
       )}
       aria-label={`${cell.iso} ${hasPnl ? formatCurrency(pnl, '¥', 2) : ''}`}
+      title={!dim && isToday ? '今日单元为交易时段实时估算，明日定盘后更新' : undefined}
     >
       <span className="text-[10px] font-medium sm:text-[11px]">{dayNum}</span>
       {!dim && hasPnl ? (

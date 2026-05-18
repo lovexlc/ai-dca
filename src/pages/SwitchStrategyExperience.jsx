@@ -3,6 +3,7 @@ import { AlertTriangle, ClipboardList, Info, RefreshCw, Radio, PlayCircle, Chevr
 import { Card, Pill, SectionHeading, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 import { readLedgerState, persistLedgerState } from '../app/holdingsLedger.js';
 import { aggregateByCode, buildTransactionId, detectFundKind, normalizeTransaction } from '../app/holdingsLedgerCore.js';
+import { requestHoldingsNav } from '../app/holdings.js';
 import {
   loadSwitchConfigFromWorker,
   loadSwitchSnapshotFromWorker,
@@ -768,6 +769,29 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       results.forEach((entry) => {
         if (entry && entry.code) navByCode[entry.code] = entry;
       });
+      // Phase 1 (NAV 分层) fallback：GitHub Action 预生成的 latest-nav.json 会过期或缺失。
+      // 对 null 的 code，走与持仓页 KPI 同源的 ocr-proxy /api/holdings/nav（DWJZ）补齐。
+      // 详见 docs/data-glossary.md、docs/nav-source-stratification-plan.md。
+      const fallbackCodes = codes.filter((code) => !navByCode[code]);
+      if (fallbackCodes.length > 0) {
+        try {
+          const fallback = await requestHoldingsNav(fallbackCodes);
+          for (const item of fallback?.items || []) {
+            if (!item?.code || navByCode[item.code]) continue;
+            if (!item.ok || !(item.latestNav > 0)) continue;
+            navByCode[item.code] = {
+              code: item.code,
+              name: item.name || '',
+              latestNav: item.latestNav,
+              latestNavDate: item.latestNavDate || '',
+              previousNav: Number.isFinite(item.previousNav) && item.previousNav > 0 ? item.previousNav : null,
+              previousNavDate: item.previousNavDate || ''
+            };
+          }
+        } catch (_e) {
+          // 静默降级失败，下面的空 navByCode 会提示用户
+        }
+      }
       setNavState({
         loading: false,
         error: Object.keys(navByCode).length === 0 ? '未拿到 ETF 最新净值。请检查 GitHub Action 是否跑过并生成 data/<code>/latest-nav.json。' : '',
