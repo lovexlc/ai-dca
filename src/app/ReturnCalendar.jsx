@@ -137,23 +137,19 @@ export function txsOnDate(transactions, isoDate) {
   return transactions.filter((tx) => String(tx?.date || '').slice(0, 10) === isoDate);
 }
 
-// 计算颜色：根据本月 |pnl| 最大值归一到 5 档透明度。
+// 计算颜色：未选中的涨跌日期统一使用浅红/浅绿，避免深色块过重。
 export function toneFor(pnl, max) {
   if (!Number.isFinite(pnl) || pnl === 0 || !Number.isFinite(max) || max === 0) {
     return { className: 'bg-slate-50 text-slate-400 border-slate-100', kind: 'flat' };
   }
-  const ratio = Math.min(1, Math.abs(pnl) / max);
-  const bucket = ratio > 0.8 ? 4 : ratio > 0.6 ? 3 : ratio > 0.4 ? 2 : ratio > 0.2 ? 1 : 0;
   if (pnl > 0) {
-    const ups = ['bg-rose-50', 'bg-rose-100', 'bg-rose-200', 'bg-rose-300', 'bg-rose-400'];
     return {
-      className: `${ups[bucket]} text-rose-800 border-rose-200`,
+      className: 'bg-rose-50 text-rose-700 border-rose-100',
       kind: 'up'
     };
   }
-  const downs = ['bg-emerald-50', 'bg-emerald-100', 'bg-emerald-200', 'bg-emerald-300', 'bg-emerald-400'];
   return {
-    className: `${downs[bucket]} text-emerald-900 border-emerald-200`,
+    className: 'bg-emerald-50 text-emerald-700 border-emerald-100',
     kind: 'down'
   };
 }
@@ -304,9 +300,6 @@ function ReturnCalendar({ ledger, className = '', selectedDate, onSelectDate, co
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <div className="text-[13px] font-semibold text-slate-900 sm:text-sm">收益日历</div>
-          <div className="text-[11px] text-slate-500 sm:text-xs">
-            红涨绿跌 · 当月 ± 2 月
-          </div>
         </div>
         <div className="flex items-center gap-2 text-[11px] text-slate-400 sm:text-xs">
           {isLoading ? (
