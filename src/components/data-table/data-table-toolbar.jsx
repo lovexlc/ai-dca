@@ -1,8 +1,9 @@
-// Adapted from sadmann7/tablecn (MIT). Inline filters were moved into per-column header dropdowns,
-// so this toolbar now only carries reset + view-options + caller-provided children.
+// Adapted from sadmann7/tablecn (MIT).
+// v6.6: View options dropdown removed per UX. Toolbar now only renders when there's
+// either an active column filter (重置过滤 button) or caller-provided children;
+// otherwise it returns null so the empty row above the table disappears.
 import { X } from "lucide-react";
 import * as React from "react";
-import { DataTableViewOptions } from "@/components/data-table/data-table-view-options";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -11,12 +12,13 @@ function DataTableToolbar({ table, children, className, ...props }) {
   const onReset = React.useCallback(() => {
     table.resetColumnFilters();
   }, [table]);
+  if (!isFiltered && !children) return null;
   return (
     <div
       role="toolbar"
       aria-orientation="horizontal"
       className={cn(
-        "flex w-full flex-col items-stretch justify-between gap-2 p-1 sm:flex-row sm:items-start",
+        "flex w-full flex-col items-stretch justify-between gap-2 sm:flex-row sm:items-start",
         className
       )}
       {...props}
@@ -37,7 +39,6 @@ function DataTableToolbar({ table, children, className, ...props }) {
       </div>
       <div className="flex flex-wrap items-center justify-end gap-2">
         {children}
-        <DataTableViewOptions table={table} align="end" />
       </div>
     </div>
   );

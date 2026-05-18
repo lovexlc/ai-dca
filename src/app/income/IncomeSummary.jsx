@@ -61,17 +61,35 @@ export function IncomeSummary({ portfolio, navigate, inceptionDate, navRefresh }
 	const todayTone = signTone(todayProfit);
 	const cumulativeTone = signTone(cumulativeProfit);
 
+	const refreshBtn = (extraClass) => navRefresh ? (
+		<button
+			type="button"
+			onClick={navRefresh.onClick}
+			disabled={navRefresh.loading}
+			aria-label={navRefresh.title || '同步净值'}
+			title={navRefresh.title || '同步净值'}
+			className={cx('relative inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50', extraClass)}
+		>
+			<RefreshCw className={cx('h-3.5 w-3.5', navRefresh.loading && 'animate-spin')} />
+			{navRefresh.hasFailures ? (
+				<span aria-hidden className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-amber-500 ring-2 ring-white" />
+			) : null}
+		</button>
+	) : null;
+
 	return (
 		<div className="flex flex-col gap-3">
-			<section className="rounded-2xl border border-slate-200/70 bg-white px-5 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:px-6 sm:py-6">
-				<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</div>
-				<div className="mt-1 text-3xl font-extrabold tracking-tight tabular-nums text-slate-900 sm:text-4xl">
-					{Number.isFinite(marketValue) ? formatCurrency(marketValue, '¥', 2) : '—'}
+			{/* v6.6: PC 端改为横向紧凑布局 — 左：总市值+大金额；右：当日+累计+刷新，不再被 flex-1 撑开。移动端保持纵向堆叠。 */}
+			<section className="rounded-2xl border border-slate-200/70 bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:flex sm:items-center sm:justify-between sm:gap-8 sm:px-6 sm:py-5">
+				<div className="sm:flex-shrink-0">
+					<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</div>
+					<div className="mt-1 text-3xl font-extrabold tracking-tight tabular-nums text-slate-900 sm:text-4xl">
+						{Number.isFinite(marketValue) ? formatCurrency(marketValue, '¥', 2) : '—'}
+					</div>
 				</div>
 
-				<dl className="mt-4 flex flex-col gap-2.5 text-sm sm:flex-row sm:gap-8">
-					{/* v6.4: “当日”行右侧预留净值刷新按钮位（合入总市值卡片） */}
-					<div className="flex items-center gap-2 sm:flex-1">
+				<dl className="mt-4 flex flex-col gap-2.5 text-sm sm:mt-0 sm:flex-row sm:items-center sm:gap-6">
+					<div className="flex items-center gap-2">
 						<dt className="text-slate-500">当日</dt>
 						<dd className={cx('font-semibold tabular-nums', todayTone)}>
 							{renderSignedCurrency(todayProfit)}
@@ -79,23 +97,10 @@ export function IncomeSummary({ portfolio, navigate, inceptionDate, navRefresh }
 						<dd className={cx('text-xs font-semibold tabular-nums', todayTone)}>
 							{renderSignedPercent(todayReturnRate)}
 						</dd>
-						{navRefresh ? (
-							<button
-								type="button"
-								onClick={navRefresh.onClick}
-								disabled={navRefresh.loading}
-								aria-label={navRefresh.title || '同步净值'}
-								title={navRefresh.title || '同步净值'}
-								className="relative ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-							>
-								<RefreshCw className={cx('h-3.5 w-3.5', navRefresh.loading && 'animate-spin')} />
-								{navRefresh.hasFailures ? (
-									<span aria-hidden className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-amber-500 ring-2 ring-white" />
-								) : null}
-							</button>
-						) : null}
+						{/* 移动端刷新按钮：跟随“当日”行 ml-auto 挨到行末 */}
+						{refreshBtn('ml-auto sm:hidden')}
 					</div>
-					<div className="flex items-baseline gap-2 sm:flex-1">
+					<div className="flex items-baseline gap-2">
 						<dt className="text-slate-500">累计</dt>
 						<dd className={cx('font-semibold tabular-nums', cumulativeTone)}>
 							{renderSignedCurrency(cumulativeProfit)}
@@ -107,6 +112,8 @@ export function IncomeSummary({ portfolio, navigate, inceptionDate, navRefresh }
 							<dd className="text-[11px] text-slate-400 tabular-nums">起 {inceptionDate}</dd>
 						) : null}
 					</div>
+					{/* PC 端刷新按钮：放在 dl 末尾 */}
+					{refreshBtn('hidden sm:inline-flex')}
 				</dl>
 			</section>
 
