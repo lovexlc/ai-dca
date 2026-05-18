@@ -187,7 +187,7 @@ function DayCell({ cell, pnl, max, onClick, todayIso }) {
       onClick={dim ? undefined : onClick}
       disabled={dim}
       className={cx(
-        'flex aspect-square min-h-[36px] flex-col items-start justify-between rounded-md border p-1 text-left transition-colors tabular-nums sm:min-h-[44px]',
+        'flex aspect-square min-h-[36px] flex-col items-start justify-between rounded-md border p-1 text-left transition-colors tabular-nums sm:min-h-[44px] md:aspect-auto md:h-[64px] lg:h-[68px]',
         baseClasses,
         isToday && !dim ? 'ring-1 ring-offset-1 ring-slate-400' : '',
         !dim && hasPnl ? 'hover:brightness-95' : ''

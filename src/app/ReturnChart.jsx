@@ -267,7 +267,7 @@ function ReturnChart({ ledger, className = '' }) {
         </div>
       </div>
 
-      <div className="mt-3 h-56 w-full sm:h-64">
+      <div className="mt-3 h-56 w-full sm:h-56 lg:h-52">
         {isEmpty || !state.data.length ? (
           <div className="flex h-full items-center justify-center text-[11px] text-slate-400">
             {isLoading ? '准备中…' : '暂无数据'}
