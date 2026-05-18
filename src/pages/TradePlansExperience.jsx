@@ -259,7 +259,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   function handleViewMore(row) {
     setOpenMenuRowId('');
-    if (row?.actionKey === 'home' || row?.actionKey === 'dca') {
+    if (row?.actionKey === 'home' || row?.actionKey === 'dca' || row?.actionKey === 'sell') {
       handleSelectSubTab(row.actionKey);
     }
   }

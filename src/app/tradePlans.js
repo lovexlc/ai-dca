@@ -1,6 +1,8 @@
 import { formatCurrency, formatPercent } from './accumulation.js';
 import { buildDcaProjection, hasSavedDcaState, readDcaState } from './dca.js';
 import { buildPlan, readPlanList } from './plan.js';
+import { readSellPlanList } from './sellPlans.js';
+import { buildSellPlan } from './sellStrategy.js';
 
 function pad(value) {
   return String(value).padStart(2, '0');
@@ -187,10 +189,59 @@ function buildDcaRows(dcaState, now = new Date(), planList = readPlanList()) {
   ];
 }
 
+// PR 1.5：将已保存的卖出计划按分档拆为交易计划中心的行。
+// 每个 sellPlan -> N 档行，交互与 plan 行一致（actionKey 切 'sell'，statusTone rose）。
+function buildSellPlanRows(sellPlanList = []) {
+  return sellPlanList.flatMap((plan) => {
+    const computed = buildSellPlan(plan);
+    if (!computed || !computed.sellable || !Array.isArray(computed.layers) || !computed.layers.length) {
+      return [];
+    }
+
+    const displayName = plan.name || `${plan.symbol || '未命名标的'} 卖出计划`;
+    const totalShares = computed.totalSharesPlanned || 0;
+    const totalProceeds = computed.totalProceeds || 0;
+
+    return computed.layers.map((layer, index) => {
+      const order = index + 1;
+      const ratioPct = formatPercent((Number(layer.ratio) || 0) * 100, 1);
+      const gainPct = formatPercent(Number(layer.gainPct) || 0, 1);
+      const priceText = Number.isFinite(Number(layer.triggerPrice))
+        ? `$${Number(layer.triggerPrice).toFixed(2)}`
+        : '--';
+      return {
+        id: `sell-${plan.id}-${order}`,
+        ruleId: `sell:${plan.id}:${order}`,
+        sourceType: 'sell',
+        sourceId: plan.id,
+        planName: displayName,
+        typeLabel: '分档卖出',
+        symbol: plan.symbol,
+        triggerLabel: `盈利 ${gainPct} → 卖 ${ratioPct} (≈ ${priceText})`,
+        nextExecutionLabel: '价格达到后提醒',
+        statusLabel: order === 1 ? '首档待触发' : '监控中',
+        statusTone: order === 1 ? 'rose' : 'slate',
+        actionLabel: '查看卖出',
+        actionKey: 'sell',
+        detailTitle: `${displayName} · 第 ${order} 档`,
+        detailSummary: `成本 ${formatCurrency(plan.holdingCost, '$ ')} / 持有 ${plan.holdingShares} 股，本档卖 ${Math.round(Number(layer.shares) || 0)} 股，预计回收 ${formatCurrency(Number(layer.proceeds) || 0, '$ ')}。`,
+        triggerExplain: `达到盈利 ${gainPct} 后卖出 ${ratioPct} 仓位，触发价格 ≈ ${priceText}。全计划共卖 ${Math.round(totalShares)} 股、预计回收 ${formatCurrency(totalProceeds, '$ ')}。`,
+        notificationMethod: '预留价格达到提醒',
+        reminderLog: ['卖出提醒通道待接入。'],
+        order,
+        createdAt: plan.createdAt || plan.updatedAt || ''
+      };
+    });
+  });
+}
+
 function sortRows(rows = []) {
   return [...rows].sort((left, right) => {
     if (left.sourceType !== right.sourceType) {
-      return left.sourceType === 'plan' ? -1 : 1;
+      const order = { plan: 0, sell: 1, dca: 2 };
+      const lo = order[left.sourceType] ?? 9;
+      const ro = order[right.sourceType] ?? 9;
+      return lo - ro;
     }
 
     if (left.sourceId !== right.sourceId) {
@@ -219,10 +270,12 @@ export function buildTradePlanCenter(now = new Date()) {
   const planList = readPlanList();
   const planRows = buildPlanRows(planList);
   const dcaRows = buildDcaRows(readDcaState(), now, planList);
-  const rows = sortRows([...planRows, ...dcaRows]);
+  const sellPlanRows = buildSellPlanRows(readSellPlanList());
+  const rows = sortRows([...planRows, ...sellPlanRows, ...dcaRows]);
   const previewRows = buildPreviewRows(rows);
   const nearestPricePlan = previewRows.find((row) => row.sourceType === 'plan') || null;
   const nextDcaPlan = previewRows.find((row) => row.sourceType === 'dca') || null;
+  const nextSellPlan = previewRows.find((row) => row.sourceType === 'sell') || null;
 
   return {
     rows,
@@ -232,6 +285,7 @@ export function buildTradePlanCenter(now = new Date()) {
       pendingCount: previewRows.length,
       nearestTrigger: nearestPricePlan?.triggerLabel || '待新建',
       nextDcaDate: nextDcaPlan?.nextExecutionLabel || '未配置',
+      nextSellTrigger: nextSellPlan?.triggerLabel || '未配置',
       notificationStatus: '通知预留中'
     }
   };

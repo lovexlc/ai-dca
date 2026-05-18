@@ -89,7 +89,7 @@ src/components/
 - [x] 新建 `src/app/sellPlans.js`：`aiDcaSellPlanStore` CRUD + 草稿存储
 - [x] 新建 `src/pages/SellPlanExperience.jsx`：Mag7/TSM chip、关联加仓策略、档位预览卡
 - [x] 改 `src/pages/TradePlansExperience.jsx`：新增 `#sell` 二级 tab，复用 `Suspense` 加载
-- [ ] PR 1.5：改 `src/app/tradePlans.js` 让列表页渲染卖出计划行（`buildSellPlanRows`）
+- [x] PR 1.5（部分完成）：`src/app/tradePlans.js` 增 `buildSellPlanRows` — 读 `aiDcaSellPlanStore`、调 `buildSellPlan` 拆档、输出 sourceType=`sell`/actionKey=`sell`/statusTone rose、sortRows 按 plan<sell<dca 排序、`summary.nextSellTrigger` 汇总首档。TradePlansExperience `handleViewMore` 加 `sell` 跳 `#sell`
 - [ ] PR 1.5：改 `src/app/notifySync.js`：`sell_layer` 规则同步至 worker
 - [ ] 单测：`sellStrategy.test.js`（分档计算、超 100% 归一、宽基禁售、股数/利润上限）
 - [ ] 前端验证（e2e）：
@@ -138,7 +138,8 @@ src/components/
   3. 切换为 `1w` + `weekly` + $100，验证年化 / 均价重算不乱
   4. 走势图三条线（市值 / 累计投入 / 价格）都能渲染与 tooltip
   5. 明细表首末 5 行价格 / 股数 / 均价能手算核对
-- [ ] PR 2.5b（后插队）：「应用此策略」预填到新建 DCA 计划、保存回测快照、对比不同频率
+- [x] PR 2.5b（部分完成）：「应用此策略」预填新建 DCA — DcaCalculatorExperience 走势区加 Send 按钮；sessionStorage `aiDcaCalcApply` 传 symbol/frequency/amount/avgCost；DcaExperience mount 读、预填、toast、清除。频率映射：weekly·biweekly → 每周；monthly → 每月
+- [ ] PR 2.5b（未完）：保存多个回测快照以并变量对比不同频率；avgCost 反向填到 SellPlan holdingCost
 
 ### PR 3 — 成本追踪 + 负成本 — `done`
 - [x] 新建 `src/app/costTracker.js`：`calculateCostBasis` / `groupCostBasisBySymbol` / `attachUnrealized`，双口径（加权均价 + 买减卖可负成本）
