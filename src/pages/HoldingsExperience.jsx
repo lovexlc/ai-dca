@@ -1146,12 +1146,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   function handleDeleteTransaction(txId) {
-    if (!txId) return;
+    if (!txId) return false;
     const tx = transactions.find((item) => item.id === txId);
-    if (!tx) return;
+    if (!tx) return false;
     // eslint-disable-next-line no-alert
     if (typeof window !== 'undefined' && !window.confirm(`确认删除 ${tx.code} ${tx.type} ${formatShares(tx.shares)} 份？`)) {
-      return;
+      return false;
     }
     setLedger((prev) => ({
       ...prev,
@@ -1164,6 +1164,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       setEditingBuffer(null);
     }
     showActionToast('交易已删除', 'success');
+    return true;
   }
 
   function handleStartEdit(row) {
@@ -2633,6 +2634,24 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           <Save className="h-4 w-4" />
           {draftMode === 'edit' ? '保存交易' : '新增交易'}
         </button>
+        {/* v6.2: edit 模式下在编辑面板底部提供删除按钮，
+            点击后调 handleDeleteTransaction（带 confirm），成功则关闭 sidePanel。
+            这样在交易记录子页点明细 → 弹出面板 → 可直接删除，不需剩主页的行内删除按钮。*/}
+        {draftMode === 'edit' && draft.id ? (
+          <button
+            type="button"
+            className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-white text-sm font-semibold text-red-600 ring-1 ring-red-200 transition-colors hover:bg-red-50 hover:ring-red-300"
+            onClick={() => {
+              const ok = handleDeleteTransaction(draft.id);
+              if (ok) {
+                setSidePanelOpen(false);
+              }
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+            删除该交易
+          </button>
+        ) : null}
       </div>
     );
   }
