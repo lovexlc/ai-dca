@@ -14,6 +14,15 @@
 //   R = (V_end - V_start - NetCF) / (V_start + Σ w_i · CF_i)
 //   其中 w_i = (T - t_i) / T，t_i = CF 发生日距区间起点的天数。
 //   BUY 资金流入为正；SELL 资金流出为负。
+//
+// === NAV 分层语义 (Phase 1) ===
+// 本模块依赖 fetchNavHistory 返回的「公布单位净值」序列。
+// dailySeries / cumulativeProfit / cumulativeReturnRate / TWR returnRate 的**末端 = T-1**，
+// **不是**持仓 ledger 的实时 marketValue。
+// 交易时段内入口不会回灌 latestNav，为“接受漂移”策略（见 docs/nav-source-stratification-plan.md）。
+//
+// 与「持仓 KPI / 今日盈亏」数字肯定会出现几个点偏差：KPI 走 latestNav （持仓 ledger 路径），
+// 本模块走公布净值。UI 端由调用者加「截至 YYYY-MM-DD」提示。
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const EPSILON = 1e-9;

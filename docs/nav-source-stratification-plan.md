@@ -18,13 +18,13 @@
 
 ## 步骤清单
 
-- [ ] step-1：在 `src/app/navHistoryClient.js` 顶部加分层说明注释，明确 `items` 末端语义 = T-1
-- [ ] step-2：在 `src/app/portfolioSeries.js` 顶部加分层说明注释，明确 `dailySeries` 末端 = 公布单位净值，**不**等于持仓页 KPI 的实时 marketValue
+- [x] step-1：在 `src/app/navHistoryClient.js` 顶部加分层说明注释，明确 `items` 末端语义 = T-1
+- [x] step-2：在 `src/app/portfolioSeries.js` 顶部加分层说明注释，明确 `dailySeries` 末端 = 公布单位净值，**不**等于持仓页 KPI 的实时 marketValue
 - [ ] step-3：IncomeSummary 收益曲线（IncomeSummary.jsx / useCumulativeSparkline.js）：当 series 末端 < 当前交易日（含交易时段实时态）时，在标题副文案或 tooltip 显示「截至 YYYY-MM-DD 公布净值」
 - [ ] step-4：IncomeDetail 主图（ReturnChart）：同 step-3，hover 末端点时 tooltip 增加「公布单位净值，不含今日实时变动」
 - [ ] step-5：ReturnCalendar：当前日单元如果用 latestNav 推算盈亏，给单元加 tooltip「实时估算，明日定盘后更新」；如果未推算只显示 0，加 tooltip「今日定盘后更新」
 - [ ] step-6：SwitchStrategy（`src/pages/SwitchStrategyExperience.jsx:loadEtfLatestNav`）：当 `data/<code>/latest-nav.json` 不存在 / fetch 失败 / payload 中 `latestNavDate` 早于 T-1 时，降级请求 `/api/holdings/nav`（与持仓页同源）
-- [ ] step-7：建 `docs/data-glossary.md`（最小版）：罗列 `latestNav` / `previousNav` / `navHistory[].nav` / `marketValue` / `pricePulse.changePct` 五个字段的来源、时效、计算口径
+- [x] step-7：建 `docs/data-glossary.md`（最小版）：罗列 `latestNav` / `previousNav` / `navHistory[].nav` / `marketValue` / `pricePulse.changePct` 五个字段的来源、时效、计算口径
 - [ ] step-8：最小单测 / 冒烟：
   - 单测：mock 交易时段时间，确保 navHistoryClient 末端日期 ≤ T-1
   - 冒烟：cf-browser-mcp 真实跑

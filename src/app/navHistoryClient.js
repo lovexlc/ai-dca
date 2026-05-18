@@ -17,6 +17,17 @@
 //
 // 这个文件刻意不依赖业务计算（Modified Dietz 等），只负责「拉一段 NAV 序列」。
 // 计算逻辑放在 portfolioSeries.js（下一刀）。
+//
+// === NAV 分层语义 (Phase 1) ===
+// 本模块返回的 items[] 是「公布单位净值」序列。
+// **序列末端语义 = T-1**（交易日 18:00 后才会出现当日净值；A 股场内 ETF、QDII 另论）。
+// **交易时段内 NOT 等于** ocr-proxy `/api/holdings/nav` 返回的「实时 latestNav」。
+//
+// 调用者必须遵守：
+//   - 实时态 KPI / 今日盈亏 / TopN / Notify digest → 请走 `latestNav`（持仓 ledger / requestHoldingsNav），不要从这里取末端。
+//   - 历史/累计图（收益看板曲线 / Return·Chart / Sparkline）→ 走本模块，接受末端 T-1 漂移。
+//   - UI 给末端加“截至 YYYY-MM-DD 公布净值”提示，避免跟持仓页实时数字对不上。
+// 详见 docs/nav-source-stratification-plan.md 、 docs/data-consistency-audit-plan.md。
 
 const NAV_HISTORY_ENDPOINT = '/api/holdings/nav-history';
 const DB_NAME = 'aiDcaNavHistory';
