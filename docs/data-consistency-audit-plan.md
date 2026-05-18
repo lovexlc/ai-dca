@@ -16,8 +16,8 @@
 - [x] step-2：梳理 NAV 数据流的所有上游/下游链路
 - [x] step-3：识别「同名不同义」+「同义不同名」+「死代码」
 - [x] step-4：写本 plan，列出问题与初步修复方向
-- [ ] step-5：与用户对齐修复优先级 + 决策项（ask-survey）
-- [ ] step-6：按优先级拆子任务（每项独立 plan + 独立 commit）
+- [x] step-5：与用户对齐修复优先级 + 决策项（ask-survey）—— 见末尾「决策结果」
+- [ ] step-6：按优先级拆子任务（每项独立 plan + 独立 commit）—— Phase 1 见 `docs/nav-source-stratification-plan.md`
 - [ ] step-7：执行 + 验证 + 部署证据
 
 ---
@@ -153,6 +153,24 @@ Turn 3 已定调「涨红跌绿」。现状盘点：
 5. **跨节假日今日盈亏**：是否在行情中心也加 tooltip 或降级显示？
 6. **现金/未投入余额**：是否纳入组合净值统计？
 7. **TWR vs Modified-Dietz vs 持仓 ROI**：UI 上是否给用户切换？还是只暴露 TWR（当前实现）？
+
+---
+
+## 决策结果（2026-05-18 17:51 +08:00）
+
+### 已拍板
+
+1. **修复优先级**：按 `Phase 1 NAV 来源分层 → Phase 2 收益率/profit 口径收敛 → Phase 3 holdingsCore 死代码清理 → Phase 4 颜色 + BUY/SELL` 顺序逐个推进，**不并发**。每个 Phase 独立 plan + 独立 commit。
+2. **NAV 权威源**：明确分两套，**接受漂移**：
+   - 实时态（持仓 KPI / Notify digest / 持仓今日盈亏 / TopN）→ 走 `latestNav`（push2 实时回写 + ocr-proxy DWJZ 兜底）。
+   - 历史/累计图（IncomeSummary 收益曲线 / IncomeDetail 主图 / ReturnChart / ReturnCalendar / Sparkline）→ 走 `fetchNavHistory`，序列末端为 T-1 公布单位净值，**不强行回灌 latestNav**。
+   - 副作用：交易时段两套数字可能差几个点 → UI 必须给「可能 stale」的末端加感知标记（tooltip / 副标题 / 时间戳）。
+3. **BUY/SELL 标签**：改 **中性灰底 + 箭头/形状** 区分（不再用颜色承担方向语义，避免与「涨红跌绿」打架）。
+
+### 留待后续 Phase 决定
+
+- 决策 3「行情中心今日涨跌口径」、决策 5「跨节假日降级」→ 归入 Phase 4。
+- 决策 6「现金/未投入余额是否纳入组合净值」、决策 7「TWR vs Modified-Dietz UI 切换」→ 归入 Phase 2。
 
 ---
 
