@@ -37,6 +37,19 @@ export const EXTRA_SYMBOL_GROUPS = [
     symbols: [
       { code: 'TSM', name: '台积电 ADR', currency: 'USD' }
     ]
+  },
+  {
+    key: 'hot',
+    label: '热门个股',
+    note: '可做 T、可负成本',
+    symbols: [
+      { code: 'AVGO', name: 'Broadcom', currency: 'USD' },
+      { code: 'AMD', name: 'AMD', currency: 'USD' },
+      { code: 'NFLX', name: 'Netflix', currency: 'USD' },
+      { code: 'ORCL', name: 'Oracle', currency: 'USD' },
+      { code: 'PLTR', name: 'Palantir', currency: 'USD' },
+      { code: 'COIN', name: 'Coinbase', currency: 'USD' }
+    ]
   }
 ];
 
