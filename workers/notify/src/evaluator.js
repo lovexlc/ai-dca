@@ -803,6 +803,214 @@ export async function evaluateVixSignal(env, vixDigest, options = {}) {
   };
 }
 
+// PR 1.5尾巴：worker 侧 sell_layer 提醒。
+// 客户端传 sellPlans: [{ id, symbol, holdingCost, holdingShares, gainTriggers:[15,25,35], sellRatios:[33,33,34], currentPrice }]。
+// 判定：gainPct = (currentPrice - holdingCost) / holdingCost * 100；
+// 递升匹配 gainTriggers 中已越线的最高档。仅在「跨档」时推；same-tier 且 24h 内不重推。
+export const SELL_TIER_DEBOUNCE_MS = 24 * 60 * 60 * 1000;
+
+function pickSellTier(gainPct, gainTriggers) {
+  if (!Array.isArray(gainTriggers) || !Number.isFinite(gainPct)) return -1;
+  let tier = -1;
+  for (let i = 0; i < gainTriggers.length; i += 1) {
+    const t = Number(gainTriggers[i]);
+    if (Number.isFinite(t) && gainPct >= t) tier = i;
+  }
+  return tier;
+}
+
+export async function evaluateSellPlanSignals(env, sellPlans, options = {}) {
+  const { clientId = '', settings = {}, readState, writeState } = options;
+  if (!Array.isArray(sellPlans) || !sellPlans.length) return { skipped: 'no-plans' };
+
+  const prev = (typeof readState === 'function' ? (await readState()) : null) || {};
+  const next = { ...prev };
+  const now = Date.now();
+  const delivered = [];
+  const skipped = [];
+
+  for (const plan of sellPlans) {
+    if (!plan || typeof plan !== 'object') continue;
+    const id = String(plan.id || '').trim();
+    const symbol = String(plan.symbol || '').trim().toUpperCase();
+    const holdingCost = Number(plan.holdingCost);
+    const currentPrice = Number(plan.currentPrice);
+    if (!id || !symbol) { skipped.push({ id, reason: 'missing-id-or-symbol' }); continue; }
+    if (!Number.isFinite(holdingCost) || holdingCost <= 0) { skipped.push({ id, reason: 'invalid-cost' }); continue; }
+    if (!Number.isFinite(currentPrice) || currentPrice <= 0) { skipped.push({ id, reason: 'no-price' }); continue; }
+
+    const gainPct = ((currentPrice - holdingCost) / holdingCost) * 100;
+    const tier = pickSellTier(gainPct, plan.gainTriggers);
+    if (tier < 0) { skipped.push({ id, reason: 'below-first-trigger', gainPct }); continue; }
+
+    const state = prev[id] || {};
+    const prevTier = Number.isFinite(Number(state.lastPushedTier)) ? Number(state.lastPushedTier) : -1;
+    const prevAt = Number(state.lastPushedAt) || 0;
+    if (prevTier === tier && now - prevAt < SELL_TIER_DEBOUNCE_MS) {
+      skipped.push({ id, reason: 'debounced-same-tier', tier, gainPct });
+      continue;
+    }
+    if (prevTier >= tier) {
+      skipped.push({ id, reason: 'not-crossing-up', tier, prevTier, gainPct });
+      continue;
+    }
+
+    const triggerPct = Number(plan.gainTriggers?.[tier]) || 0;
+    const ratioPct = Number(plan.sellRatios?.[tier]) || 0;
+    const sharesToSell = Number.isFinite(Number(plan.holdingShares))
+      ? Math.floor((Number(plan.holdingShares) * ratioPct) / 100)
+      : null;
+    const title = `${symbol} 盈利↑ 卖 ${ratioPct.toFixed(0)}%（第 ${tier + 1} 档）`;
+    const body = `${symbol} 当前 ${currentPrice.toFixed(2)}，盈利 ${gainPct.toFixed(2)}% 越线 ${triggerPct.toFixed(0)}%；计划卖出 ${ratioPct.toFixed(0)}%${sharesToSell ? `（约 ${sharesToSell} 股）` : ''}。`;
+    const body_md = [
+      `**${symbol} 卖出信号—第 ${tier + 1} 档触发**`,
+      '',
+      `- 成本：${holdingCost.toFixed(2)}`,
+      `- 当前价：**${currentPrice.toFixed(2)}**`,
+      `- 盈利：**${gainPct.toFixed(2)}%** (越线 ${triggerPct.toFixed(0)}%)`,
+      `- 计划卖出比例：**${ratioPct.toFixed(0)}%**${sharesToSell ? `（约 ${sharesToSell} 股）` : ''}`,
+    ].join('\n');
+    const detailUrl = buildNotificationDetailUrl(env, 'tradePlans', `sell:${id}`);
+
+    env.__notifySettings = settings;
+    env.__notifyCurrentClientId = clientId;
+    const notification = {
+      eventId: buildNotificationEventId(`sell:${id}:tier:${tier}`, `cross:${prevTier}->${tier}`, new Date(now)),
+      eventType: 'sell-signal',
+      ruleId: `sell:plan:${id}:tier:${tier}`,
+      title,
+      body,
+      body_md,
+      summary: title,
+      symbol,
+      detailUrl,
+      url: detailUrl,
+    };
+    try {
+      const result = await deliverNotification(env, notification);
+      delivered.push({ id, symbol, tier, gainPct, results: result?.results || [] });
+      next[id] = { lastPushedTier: tier, lastPushedAt: now, lastPushedGainPct: gainPct };
+    } catch (error) {
+      skipped.push({ id, reason: 'delivery-error', detail: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (typeof writeState === 'function' && delivered.length) {
+    await writeState(next);
+  }
+
+  return { delivered, skipped };
+}
+
+// PR 4.5尾巴：worker 侧仓位提醒。
+export const POSITION_DEBOUNCE_MS = 24 * 60 * 60 * 1000;
+export const CASH_HIGH_PCT = 30;
+
+export async function evaluatePositionDigest(env, positionDigest, options = {}) {
+  const { clientId = '', settings = {}, readState, writeState } = options;
+  if (!positionDigest || typeof positionDigest !== 'object') return { skipped: 'no-digest' };
+  const rows = Array.isArray(positionDigest.rows) ? positionDigest.rows : [];
+  const cashWeightPct = Number(positionDigest.cashWeightPct);
+
+  const prev = (typeof readState === 'function' ? (await readState()) : null) || {};
+  const next = { ...prev };
+  const now = Date.now();
+  const delivered = [];
+  const skipped = [];
+
+  env.__notifySettings = settings;
+  env.__notifyCurrentClientId = clientId;
+
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const symbol = String(row.symbol || '').trim().toUpperCase();
+    if (!symbol) continue;
+    const exceedsCap = Boolean(row.exceedsCap);
+    const weightPct = Number(row.weightPct) || 0;
+    const state = prev[symbol] || {};
+    const prevExceeds = Boolean(state.lastPushedExceedsCap);
+    const prevAt = Number(state.lastPushedAt) || 0;
+
+    if (!exceedsCap) {
+      if (prevExceeds) next[symbol] = { lastPushedExceedsCap: false, lastPushedAt: prevAt, lastPushedWeightPct: weightPct };
+      skipped.push({ symbol, reason: 'within-cap', weightPct });
+      continue;
+    }
+    if (prevExceeds && now - prevAt < POSITION_DEBOUNCE_MS) {
+      skipped.push({ symbol, reason: 'debounced-still-exceeding', weightPct });
+      continue;
+    }
+
+    const title = `${symbol} 超仓：${weightPct.toFixed(2)}%`;
+    const body = `${symbol} 当前仓位 ${weightPct.toFixed(2)}%，超出个股 50% 上限。建议逐步减仓或做 T 限仓。`;
+    const body_md = [
+      `**${symbol} 超仓报警**`,
+      '',
+      `- 当前仓位：**${weightPct.toFixed(2)}%** (上限 50%)`,
+      '- 建议：逐步减仓或做 T 限仓。',
+    ].join('\n');
+    const detailUrl = buildNotificationDetailUrl(env, 'tradePlans', `position:${symbol}`);
+    const notification = {
+      eventId: buildNotificationEventId(`position:${symbol}:exceeds`, `cap-cross`, new Date(now)),
+      eventType: 'position-cap',
+      ruleId: `position:${symbol}:exceeds-cap`,
+      title,
+      body,
+      body_md,
+      summary: title,
+      symbol,
+      detailUrl,
+      url: detailUrl,
+    };
+    try {
+      const result = await deliverNotification(env, notification);
+      delivered.push({ symbol, weightPct, results: result?.results || [] });
+      next[symbol] = { lastPushedExceedsCap: true, lastPushedAt: now, lastPushedWeightPct: weightPct };
+    } catch (error) {
+      skipped.push({ symbol, reason: 'delivery-error', detail: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (Number.isFinite(cashWeightPct) && cashWeightPct >= CASH_HIGH_PCT) {
+    const cashState = prev._cash || {};
+    const cashPrevHigh = Boolean(cashState.lastPushedHigh);
+    const cashPrevAt = Number(cashState.lastPushedAt) || 0;
+    if (!cashPrevHigh || now - cashPrevAt >= POSITION_DEBOUNCE_MS) {
+      const title = `现金仓位偏高：${cashWeightPct.toFixed(2)}%`;
+      const body = `现金占比 ${cashWeightPct.toFixed(2)}%（≥ ${CASH_HIGH_PCT}%），可金字塔加仓宽基。`;
+      const detailUrl = buildNotificationDetailUrl(env, 'tradePlans', 'position:cash');
+      const notification = {
+        eventId: buildNotificationEventId('position:cash:high', 'cross', new Date(now)),
+        eventType: 'cash-high',
+        ruleId: 'position:cash:high',
+        title,
+        body,
+        body_md: `**现金偏高**\n\n- 现金占比：**${cashWeightPct.toFixed(2)}%**\n- 建议：金字塔加仓宽基。`,
+        summary: title,
+        detailUrl,
+        url: detailUrl,
+      };
+      try {
+        const result = await deliverNotification(env, notification);
+        delivered.push({ symbol: '__cash__', cashWeightPct, results: result?.results || [] });
+        next._cash = { lastPushedHigh: true, lastPushedAt: now, lastPushedCashWeightPct: cashWeightPct };
+      } catch (error) {
+        skipped.push({ symbol: '__cash__', reason: 'delivery-error', detail: error instanceof Error ? error.message : String(error) });
+      }
+    } else {
+      skipped.push({ symbol: '__cash__', reason: 'debounced-cash-high', cashWeightPct });
+    }
+  } else if (Number.isFinite(cashWeightPct)) {
+    if (prev._cash?.lastPushedHigh) next._cash = { lastPushedHigh: false, lastPushedAt: prev._cash.lastPushedAt || 0, lastPushedCashWeightPct: cashWeightPct };
+  }
+
+  if (typeof writeState === 'function' && (delivered.length || JSON.stringify(prev) !== JSON.stringify(next))) {
+    await writeState(next);
+  }
+
+  return { delivered, skipped };
+}
+
 export async function runNotificationCycle(env, payload = {}, storedState = {}, { reason = 'scheduled', testPayload = null } = {}) {
   const nextState = {
     ruleStates: typeof storedState?.ruleStates === 'object' && storedState.ruleStates ? storedState.ruleStates : {},

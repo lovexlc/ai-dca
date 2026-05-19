@@ -253,18 +253,31 @@ function buildPositionDigest() {
 export function buildNotifySyncPayload() {
   const plans = readPlanList();
   const dca = hasPersistedDca() ? readDcaState() : null;
+  // PR 1.5：worker 计算盈利% 需要当前价。从 positionSnapshot.prices 拿（用户在 PositionManager / Holdings 页上刷价后写入）。
+  let snapshotPrices = {};
+  try {
+    const snap = JSON.parse(window.localStorage.getItem('aiDcaPositionSnapshot') || 'null');
+    if (snap && typeof snap === 'object' && snap.prices && typeof snap.prices === 'object') {
+      snapshotPrices = snap.prices;
+    }
+  } catch (_e) { /* ignore */ }
   // PR 1.5：sell_layer 规则 — 上传已保存的卖出计划列表，让 worker 能生成“盈利 X% → 卖 Y%”提醒。
-  // 只传一个精简快照（id/symbol/holdingCost/holdingShares/gainTriggers/sellRatios），其他字段 worker 不需要。
-  const sellPlans = readSellPlanList().map((plan) => ({
-    id: plan.id,
-    name: plan.name,
-    symbol: plan.symbol,
-    holdingCost: plan.holdingCost,
-    holdingShares: plan.holdingShares,
-    gainTriggers: plan.gainTriggers,
-    sellRatios: plan.sellRatios,
-    updatedAt: plan.updatedAt
-  }));
+  // 只传一个精简快照，并附带 currentPrice 供 worker 计算盈利%。
+  const sellPlans = readSellPlanList().map((plan) => {
+    const sym = String(plan.symbol || '').trim().toUpperCase();
+    const px = Number(snapshotPrices[sym]);
+    return {
+      id: plan.id,
+      name: plan.name,
+      symbol: plan.symbol,
+      holdingCost: plan.holdingCost,
+      holdingShares: plan.holdingShares,
+      gainTriggers: plan.gainTriggers,
+      sellRatios: plan.sellRatios,
+      currentPrice: Number.isFinite(px) && px > 0 ? px : null,
+      updatedAt: plan.updatedAt
+    };
+  });
   const positionDigest = buildPositionDigest();
   const vixDigest = buildVixDigest();
 

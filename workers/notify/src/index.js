@@ -1,4 +1,4 @@
-import { evaluateVixSignal, runNotificationCycle } from './evaluator.js';
+import { evaluatePositionDigest, evaluateSellPlanSignals, evaluateVixSignal, runNotificationCycle } from './evaluator.js';
 import { buildPublicGcmRegistration, buildPublicGcmRegistrations, checkGcmConnection, hasGcmServiceAccount, isRegistrationPairedToScope, maskSecret, normalizeGcmPairedClients, normalizeGcmRegistrations, normalizeNotifyGroupId, readGcmServiceAccount, resolveGcmProjectId } from './gcm.js';
 import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
 import { handleBark, isBarkRoute } from './bark.js';
@@ -778,6 +778,32 @@ async function handleSync(request, env) {
   } catch (error) {
     // VIX 推送失败不应影响 sync 本身。
     console.error('[notify] evaluateVixSignal failed', error);
+  }
+
+  // PR 1.5尾巴：sell_layer 推送。rawPayload.sellPlans 是 client 传的快照（含 currentPrice）。
+  try {
+    const sellStateKey = `sell-plan-state:${currentClientId}`;
+    await evaluateSellPlanSignals(env, rawPayload?.sellPlans, {
+      clientId: currentClientId,
+      settings: env.__notifySettings,
+      readState: () => readJson(env, sellStateKey, null),
+      writeState: (value) => writeJson(env, sellStateKey, value),
+    });
+  } catch (error) {
+    console.error('[notify] evaluateSellPlanSignals failed', error);
+  }
+
+  // PR 4.5尾巴：position 推送。rawPayload.positionDigest 拼装在 client 侧。
+  try {
+    const posStateKey = `position-state:${currentClientId}`;
+    await evaluatePositionDigest(env, rawPayload?.positionDigest, {
+      clientId: currentClientId,
+      settings: env.__notifySettings,
+      readState: () => readJson(env, posStateKey, null),
+      writeState: (value) => writeJson(env, posStateKey, value),
+    });
+  } catch (error) {
+    console.error('[notify] evaluatePositionDigest failed', error);
   }
 
   return jsonResponse({
