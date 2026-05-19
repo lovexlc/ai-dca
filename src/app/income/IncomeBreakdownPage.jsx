@@ -5,14 +5,18 @@
 //   ② 品种分布饼图（按 marketValue 占比，前 8 + 其他）
 //   ③ 资产类型饼图（场内 ETF / 境内场外 / 场外 QDII）+ 类别明细
 //   ④ 贡献度榜（盈利 Top 5 + 亏损 Top 5，按 unrealizedProfit 排序）
+//   ⑤ 仓位监控 / 再平衡（合并自原「仓位」子 tab）——个股单仓 cap（20 / 30 / 50%）告警 +
+//      减仓金额建议。在 US ticker 上线前，临时把 kind === 'exchange'（场内 ETF）当「宽基
+//      指数」不限仓（中国纳指 ETF 作 QQQ 替代）；otc / qdii 受 cap 约束。
 //
 // 数据来源：aggregateByCode(ledger.transactions, ledger.snapshotsByCode)
 // kind 字段取值：'exchange'（场内 ETF）/ 'otc'（境内场外）/ 'qdii'（场外 QDII）
 // 颜色：涨红跌绿（PNL>0 = rose-600；PNL<0 = emerald-600）
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
 	PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer,
+	BarChart, Bar, XAxis, YAxis, CartesianGrid, ReferenceLine,
 } from 'recharts';
 import SubPageShell from './SubPageShell.jsx';
 import { aggregateByCode } from '../holdingsLedgerCore.js';
@@ -36,6 +40,207 @@ const KIND_META = {
 	otc:      { label: '境内场外', color: '#16a34a', dim: 'T 日 21:00 出价' },
 	qdii:     { label: '场外 QDII', color: '#f97316', dim: 'T+1 出价' },
 };
+
+// 仓位 cap 默认值（对齐原 PositionManager 的 STOCK_MAX_WEIGHT_PCT）。
+// 用户可在面板调整，与 SellPlan / notifySync 共享 localStorage 键 aiDcaPositionSnapshot。
+const DEFAULT_CAP_PCT = 50;
+const POSITION_CONFIG_KEY = 'aiDcaPositionSnapshot';
+const BAR_COLOR_INDEX = '#16a34a'; // 宽基 — 绿
+const BAR_COLOR_STOCK = '#2563eb'; // 个股 — 蓝
+const BAR_COLOR_OVER  = '#e11d48'; // 超仓 — 红
+
+function readPositionConfig() {
+	if (typeof window === 'undefined') return {};
+	try {
+		return JSON.parse(window.localStorage.getItem(POSITION_CONFIG_KEY) || '{}') || {};
+	} catch (_e) { return {}; }
+}
+function writePositionConfig(patch) {
+	if (typeof window === 'undefined') return;
+	try {
+		const prev = readPositionConfig();
+		const next = { ...prev, ...patch, updatedAt: new Date().toISOString() };
+		window.localStorage.setItem(POSITION_CONFIG_KEY, JSON.stringify(next));
+	} catch (_e) { /* ignore */ }
+}
+
+// 计算 cap 告警 + 减仓建议。
+// 临时规则：kind === 'exchange'（场内 ETF）作「宽基指数」不限仓，其他受 cap 约束。
+// 待 US ticker 上线后，会补上 getAssetType 判定。
+function computeCapAnalysis(positions, { capPct, totalAssets }) {
+	const totalMarketValue = positions.reduce((s, p) => s + p.marketValue, 0);
+	const safeTotal = Math.max(Number(totalAssets) || 0, 0);
+	const denom = safeTotal > totalMarketValue ? safeTotal : totalMarketValue;
+	const cashValue = Math.max(denom - totalMarketValue, 0);
+	const rows = positions.map((p) => {
+		const isIndex = p.kind === 'exchange';
+		const weightPct = denom > 0 ? (p.marketValue / denom) * 100 : 0;
+		const exceedsCap = !isIndex && weightPct > capPct;
+		const trimAmount = exceedsCap ? p.marketValue - (capPct / 100) * denom : 0;
+		return {
+			code: p.code,
+			name: p.name,
+			kind: p.kind,
+			isIndex,
+			marketValue: Math.round(p.marketValue * 100) / 100,
+			weightPct: Math.round(weightPct * 100) / 100,
+			exceedsCap,
+			trimAmount: Math.max(0, Math.round(trimAmount * 100) / 100),
+		};
+	}).sort((a, b) => b.weightPct - a.weightPct);
+	const warnings = rows.filter((r) => r.exceedsCap);
+	const maxWeight = rows.length ? rows[0].weightPct : 0;
+	return {
+		rows,
+		totalMarketValue: Math.round(totalMarketValue * 100) / 100,
+		totalAssets: Math.round(denom * 100) / 100,
+		cashValue: Math.round(cashValue * 100) / 100,
+		cashWeightPct: denom > 0 ? Math.round((cashValue / denom) * 10000) / 100 : 0,
+		warnings,
+		maxWeight,
+	};
+}
+
+const CAP_BAR_MARGIN = Object.freeze({ top: 12, right: 24, bottom: 8, left: 0 });
+const CAP_BAR_TICK_X = Object.freeze({ fontSize: 11, fill: '#64748b' });
+const CAP_BAR_TICK_Y = Object.freeze({ fontSize: 11, fill: '#94a3b8' });
+
+function PositionBarTooltip({ active, payload, capPct }) {
+	if (!active || !payload || !payload[0]) return null;
+	const d = payload[0].payload;
+	return (
+		<div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs shadow-md">
+			<div className="font-medium text-slate-800">{d.code} · {d.name || '未命名'}</div>
+			<div className="mt-1 text-slate-600">市值 {formatCurrency(d.marketValue)}</div>
+			<div className="text-slate-600">权重 {d.weightPct.toFixed(2)}% <span className="text-slate-400">/ 上限 {d.isIndex ? '—' : `${capPct}%`}</span></div>
+			{d.exceedsCap ? <div className={TONE_UP}>超仓 {(d.weightPct - capPct).toFixed(2)} pp</div> : null}
+		</div>
+	);
+}
+
+function PositionCapPanel({ positions }) {
+	const initial = useMemo(() => readPositionConfig(), []);
+	const [capPct, setCapPct] = useState(() => {
+		const n = Number(initial.capPct);
+		return Number.isFinite(n) && n > 0 && n <= 100 ? n : DEFAULT_CAP_PCT;
+	});
+	const [totalAssetsInput, setTotalAssetsInput] = useState(() => {
+		const n = Number(initial.totalAssets);
+		return Number.isFinite(n) && n > 0 ? String(n) : '';
+	});
+
+	useEffect(() => {
+		writePositionConfig({
+			capPct: Number(capPct) || DEFAULT_CAP_PCT,
+			totalAssets: Number(totalAssetsInput) || 0,
+		});
+	}, [capPct, totalAssetsInput]);
+
+	const analysis = useMemo(
+		() => computeCapAnalysis(positions, { capPct, totalAssets: Number(totalAssetsInput) || 0 }),
+		[positions, capPct, totalAssetsInput],
+	);
+
+	const chartData = analysis.rows.map((r) => ({ ...r, capPct }));
+	const hasOverCap = analysis.warnings.length > 0;
+
+	return (
+		<div className="space-y-3">
+			{/* 配置行 */}
+			<div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
+				<label className="flex flex-col gap-0.5 rounded-lg border border-slate-200 px-3 py-2">
+					<span className="text-xs text-slate-500">个股仓位上限</span>
+					<span className="flex items-baseline gap-1">
+						<input
+							type="number"
+							value={capPct}
+							onChange={(e) => setCapPct(Number(e.target.value) || 0)}
+							min="1"
+							max="100"
+							step="1"
+							className="w-16 border-0 bg-transparent p-0 text-base font-medium tabular-nums text-slate-800 outline-none"
+						/>
+						<span className="text-sm text-slate-400">%</span>
+					</span>
+				</label>
+				<label className="flex flex-col gap-0.5 rounded-lg border border-slate-200 px-3 py-2">
+					<span className="text-xs text-slate-500">总资产（含现金）</span>
+					<span className="flex items-baseline gap-1">
+						<span className="text-sm text-slate-400">¥</span>
+						<input
+							type="number"
+							value={totalAssetsInput}
+							onChange={(e) => setTotalAssetsInput(e.target.value)}
+							min="0"
+							step="100"
+							placeholder="留空 = 仅按持仓市值"
+							className="w-full border-0 bg-transparent p-0 text-base font-medium tabular-nums text-slate-800 outline-none"
+						/>
+					</span>
+				</label>
+				<div className="rounded-lg border border-slate-200 px-3 py-2">
+					<div className="text-xs text-slate-500">现金仓位</div>
+					<div className="text-base font-medium tabular-nums text-slate-800">{analysis.cashWeightPct.toFixed(2)}%</div>
+					<div className="text-xs text-slate-400 tabular-nums">{formatCurrency(analysis.cashValue)}</div>
+				</div>
+				<div className="rounded-lg border border-slate-200 px-3 py-2">
+					<div className="text-xs text-slate-500">超仓警告</div>
+					<div className={`text-base font-medium tabular-nums ${hasOverCap ? TONE_UP : 'text-slate-800'}`}>{analysis.warnings.length}<span className="text-sm text-slate-400"> 只</span></div>
+					<div className="text-xs text-slate-400">最大单仓 {analysis.maxWeight.toFixed(2)}%</div>
+				</div>
+			</div>
+
+			{/* 柱状图 */}
+			{chartData.length === 0 ? (
+				<div className="py-6 text-center text-sm text-slate-400">暂无持仓数据</div>
+			) : (
+				<div className="h-56 w-full">
+					<ResponsiveContainer width="100%" height="100%">
+						<BarChart data={chartData} margin={CAP_BAR_MARGIN}>
+							<CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+							<XAxis dataKey="code" tick={CAP_BAR_TICK_X} interval={0} angle={chartData.length > 8 ? -30 : 0} textAnchor={chartData.length > 8 ? 'end' : 'middle'} height={chartData.length > 8 ? 48 : 30} />
+							<YAxis tick={CAP_BAR_TICK_Y} unit="%" domain={[0, Math.max(capPct + 10, ...chartData.map((d) => d.weightPct + 5), 60)]} />
+							<RTooltip content={<PositionBarTooltip capPct={capPct} />} />
+							<ReferenceLine y={capPct} stroke="#f97316" strokeDasharray="4 4" label={{ value: `上限 ${capPct}%`, position: 'right', fill: '#f97316', fontSize: 11 }} />
+							<Bar dataKey="weightPct" radius={[6, 6, 0, 0]}>
+								{chartData.map((d) => (
+									<Cell key={d.code} fill={d.exceedsCap ? BAR_COLOR_OVER : d.isIndex ? BAR_COLOR_INDEX : BAR_COLOR_STOCK} />
+								))}
+							</Bar>
+						</BarChart>
+					</ResponsiveContainer>
+				</div>
+			)}
+
+			{/* 再平衡建议 */}
+			<div className="space-y-1.5">
+				{analysis.warnings.length === 0 ? (
+					<div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+						✓ 所有个股持仓都在 {capPct}% 上限内。场内 ETF 作「宽基指数」不限仓。
+					</div>
+				) : (
+					analysis.warnings.map((w) => (
+						<div key={w.code} className="flex items-start justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+							<div className="min-w-0">
+								<span className="font-medium">{w.code} · {w.name || '未命名'}</span>
+								<span className="ml-2 text-rose-500">仓位 {w.weightPct.toFixed(2)}% / 上限 {capPct}%</span>
+							</div>
+							<div className="shrink-0 text-right">
+								<div>建议减仓</div>
+								<div className="font-medium tabular-nums">{formatCurrency(w.trimAmount)}</div>
+							</div>
+						</div>
+					))
+				)}
+			</div>
+
+			<p className="px-1 text-xs text-slate-400">
+				* 临时规则：场内 ETF（含中国纳指 ETF，作 QQQ 替代）作「宽基指数」不限仓；场外 / QDII 受 cap 约束。
+				US ticker 上线后会接 getAssetType 判定。总资产 · cap 存于 `aiDcaPositionSnapshot`，与 SellPlan · worker 推送共享。
+			</p>
+		</div>
+	);
+}
 
 function formatCurrency(value) {
 	const v = Number(value || 0);
@@ -388,6 +593,10 @@ export function IncomeBreakdownPage({ ledger, onBack }) {
 
 			<SectionCard title="资产类型" hint="按 NAV 出价节奏分类">
 				<KindChart slices={kindSlices} total={overview.marketValue} />
+			</SectionCard>
+
+			<SectionCard title="仓位监控 / 再平衡" hint="场内 ETF 作「宽基指数」不限仓">
+				<PositionCapPanel positions={positions} />
 			</SectionCard>
 
 			<SectionCard title="贡献度榜" hint="按累计盈亏排序">
