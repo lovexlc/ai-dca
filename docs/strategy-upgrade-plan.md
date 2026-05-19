@@ -139,7 +139,8 @@ src/components/
   4. 走势图三条线（市值 / 累计投入 / 价格）都能渲染与 tooltip
   5. 明细表首末 5 行价格 / 股数 / 均价能手算核对
 - [x] PR 2.5b（部分完成）：「应用此策略」预填新建 DCA — DcaCalculatorExperience 走势区加 Send 按钮；sessionStorage `aiDcaCalcApply` 传 symbol/frequency/amount/avgCost；DcaExperience mount 读、预填、toast、清除。频率映射：weekly·biweekly → 每周；monthly → 每月
-- [ ] PR 2.5b（未完）：保存多个回测快照以并变量对比不同频率；avgCost 反向填到 SellPlan holdingCost
+- [x] PR 2.5b（avgCost 反向填）：DcaCalculatorExperience 加 「应用到减仓计划」 按钮，写 sessionStorage `aiDcaSellApply = {symbol, avgCost}` 后跳 `#sell`；SellPlanExperience mount useEffect 读、预填 symbol+holdingCost、toast 、清除 key。
+- [ ] PR 2.5b（未完）：保存多个回测快照以并变量对比不同频率。
 
 ### PR 3 — 成本追踪 + 负成本 — `done`
 - [x] 新建 `src/app/costTracker.js`：`calculateCostBasis` / `groupCostBasisBySymbol` / `attachUnrealized`，双口径（加权均价 + 买减卖可负成本）

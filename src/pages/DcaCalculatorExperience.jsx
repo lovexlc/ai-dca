@@ -20,7 +20,8 @@ import {
   StatCard,
   TextInput,
   cx,
-  primaryButtonClass
+  primaryButtonClass,
+  secondaryButtonClass
 } from '../components/experience-ui.jsx';
 
 // PR 2.5：DCA 回测计算器。
@@ -34,6 +35,7 @@ const CHART_TICK = Object.freeze({ fontSize: 11, fill: '#94a3b8' });
 const CHART_TOOLTIP_STYLE = Object.freeze({ borderRadius: 12, fontSize: 12, border: '1px solid #e2e8f0' });
 const CHART_LEGEND_STYLE = Object.freeze({ fontSize: 12 });
 const CALC_APPLY_KEY = 'aiDcaCalcApply';
+const SELL_APPLY_KEY = 'aiDcaSellApply';
 
 export function DcaCalculatorExperience({ embedded = false }) {
   const [symbol, setSymbol] = useState(DEFAULT_SYMBOL);
@@ -100,6 +102,19 @@ export function DcaCalculatorExperience({ embedded = false }) {
       }));
     } catch (_e) { /* ignore quota */ }
     window.location.hash = '#dca';
+  }
+
+  // PR 2.5b part 2：把回测均价反向预填到减仓计划页（SellPlanExperience）。
+  function handleApplyToSellPlan() {
+    if (!summary) return;
+    try {
+      window.sessionStorage.setItem(SELL_APPLY_KEY, JSON.stringify({
+        symbol: String(symbol || '').trim().toUpperCase(),
+        avgCost: summary.avgCost,
+        appliedAt: new Date().toISOString()
+      }));
+    } catch (_e) { /* ignore quota */ }
+    window.location.hash = '#sell';
   }
 
   return (
@@ -231,6 +246,15 @@ export function DcaCalculatorExperience({ embedded = false }) {
                   >
                     <Send className="h-4 w-4" />
                     应用此策略
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleApplyToSellPlan}
+                    className={cx(secondaryButtonClass, 'inline-flex items-center gap-1.5')}
+                    title="以回测均价作为持仓成本，跳转到「减仓计划」预填"
+                  >
+                    <Send className="h-4 w-4" />
+                    应用到减仓计划
                   </button>
                 </div>
               )}

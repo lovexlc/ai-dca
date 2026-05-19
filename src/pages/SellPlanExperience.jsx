@@ -50,6 +50,28 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave }) {
   const [planList] = useState(() => readPlanList());
   const [isSaving, setIsSaving] = useState(false);
 
+  // PR 2.5b part 2：读 DCA 计算器反向预填（sessionStorage aiDcaSellApply），并侍后清除。
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let payload = null;
+    try {
+      const raw = window.sessionStorage.getItem('aiDcaSellApply');
+      if (raw) payload = JSON.parse(raw);
+    } catch (_e) { payload = null; }
+    if (!payload || !payload.symbol) return;
+    setState((current) => ({
+      ...current,
+      symbol: String(payload.symbol).toUpperCase(),
+      holdingCost: Number(payload.avgCost) > 0 ? Number(payload.avgCost) : current.holdingCost
+    }));
+    try { window.sessionStorage.removeItem('aiDcaSellApply'); } catch (_e) { /* ignore */ }
+    showToast({
+      tone: 'emerald',
+      title: '已从 DCA 回测预填',
+      description: `${String(payload.symbol).toUpperCase()} · 平均成本 ${Number(payload.avgCost).toFixed(2)}`
+    });
+  }, []);
+
   const projection = useMemo(() => buildSellPlan(state), [state]);
   const assetTypeLabel = getAssetTypeLabel(state.symbol);
   const assetType = getAssetType(state.symbol);
