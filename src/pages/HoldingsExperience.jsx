@@ -422,7 +422,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           {formatShares(row.original.totalShares)}
           {row.original.pendingSellShares > 0 ? (
             <span className="ml-1 rounded-full bg-amber-50 px-1.5 py-px text-[10px] font-medium text-amber-600" title={row.original.kind === 'qdii' ? 'QDII 赎回：T 日净值由 T+1 晚公布，T+2 确认后自动扣减' : '场外赎回：T 日晚公布 NAV，T+1 确认后自动扣减'}>
-              −{formatShares(row.original.pendingSellShares)} 待确认
+              卖出{formatShares(row.original.pendingSellShares)} 份待确认
             </span>
           ) : null}
         </span>
@@ -2129,7 +2129,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               <div className="mt-1.5 truncate text-sm font-bold tabular-nums text-slate-900 md:mt-2 md:text-xl">{formatCurrency(item.marketValue, '¥', 2)}</div>
               <div className="mt-1.5 md:mt-2">
                 <Pill
-                  tone={item.key === 'aggressive' ? 'rose' : item.key === 'stable' ? 'indigo' : 'emerald'}
+                  tone={item.key === 'aggressive' ? 'red' : item.key === 'stable' ? 'indigo' : 'emerald'}
                   className="px-1.5 py-0 text-[10px] md:px-2 md:py-0.5 md:text-xs"
                 >
                   {formatPercent(item.ratio, 1)}
@@ -2507,7 +2507,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               {formatShares(agg.totalShares)}
               {agg.pendingSellShares > 0 ? (
                 <span className="ml-2 rounded-full bg-amber-50 px-1.5 py-px text-[10px] font-medium text-amber-600" title={agg.kind === 'qdii' ? 'QDII 赎回：T 日净值由 T+1 晚公布，T+2 确认后自动扣减' : '场外赎回：T 日晚公布 NAV，T+1 确认后自动扣减'}>
-                  −{formatShares(agg.pendingSellShares)} 待确认
+                  卖出{formatShares(agg.pendingSellShares)} 份待确认
                 </span>
               ) : null}
             </dd>
