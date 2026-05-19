@@ -345,7 +345,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       enableHiding: false,
       header: ({ column }) => <DataTableColumnHeader column={column} label="代码" />,
       cell: ({ row }) => (
-        <span className="font-mono text-xs font-semibold tabular-nums">{row.original.code}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="font-mono text-xs font-semibold tabular-nums">{row.original.code}</span>
+          {row.original.ledgerIsNegativeCost ? <Pill tone="emerald">负成本</Pill> : null}
+        </div>
       ),
     },
     {
@@ -454,6 +457,45 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         const v = row.original.todayReturnRate;
         const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
         return <span className={cx('tabular-nums', cls)}>{formatSignedPercent(v)}</span>;
+      },
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'ledgerEffectiveCost',
+      accessorFn: (row) => (row.ledgerEffectiveCost == null ? null : row.ledgerEffectiveCost),
+      meta: { label: '实际成本' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="实际成本" />,
+      cell: ({ row }) => {
+        const v = row.original.ledgerEffectiveCost;
+        if (v == null) return <span className="text-muted-foreground">—</span>;
+        const cls = v < 0 ? 'text-emerald-600 font-semibold' : '';
+        return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v, 2)}</span>;
+      },
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'ledgerRealizedPnl',
+      accessorFn: (row) => (row.ledgerRealizedPnl == null ? null : row.ledgerRealizedPnl),
+      meta: { label: '已实现盈亏' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="已实现盈亏" />,
+      cell: ({ row }) => {
+        const v = row.original.ledgerRealizedPnl;
+        if (v == null) return <span className="text-muted-foreground">—</span>;
+        const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
+        return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v, 2)}</span>;
+      },
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'ledgerUnrealizedPnl',
+      accessorFn: (row) => (row.ledgerUnrealizedPnl == null ? null : row.ledgerUnrealizedPnl),
+      meta: { label: '台账浮盈' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="台账浮盈" />,
+      cell: ({ row }) => {
+        const v = row.original.ledgerUnrealizedPnl;
+        if (v == null) return <span className="text-muted-foreground">—</span>;
+        const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
+        return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v, 2)}</span>;
       },
       sortingFn: numericSortFn,
     },
