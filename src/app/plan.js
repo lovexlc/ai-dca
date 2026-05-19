@@ -50,7 +50,11 @@ function normalizePlanState(saved = {}, { assumeConfigured = false } = {}) {
     updatedAt: String(saved.updatedAt || ''),
     frequency: saved.frequency || defaultPlanState.frequency,
     layerWeights: normalizeList(saved.layerWeights, defaultPlanState.layerWeights),
-    triggerDrops: normalizeList(saved.triggerDrops, defaultPlanState.triggerDrops)
+    triggerDrops: normalizeList(saved.triggerDrops, defaultPlanState.triggerDrops),
+    assetType: saved.assetType || '',
+    strategyParams: saved.strategyParams || null,
+    screeningAnswers: saved.screeningAnswers || {},
+    screeningResult: saved.screeningResult || null
   };
 }
 
@@ -145,6 +149,10 @@ function serializePlanState(state, computed = buildPlan(state), { id = '', creat
     frequency: normalized.frequency,
     layerWeights: computed.layerWeights.map((value) => round(value, 4)),
     triggerDrops: computed.triggerDrops.map((value) => round(value, 4)),
+    assetType: computed.assetType || normalized.assetType || '',
+    strategyParams: computed.strategyParams || normalized.strategyParams || null,
+    screeningAnswers: normalized.screeningAnswers || {},
+    screeningResult: normalized.screeningResult || null,
     investableCapital: round(computed.investableCapital, 2),
     reserveCapital: round(computed.reserveCapital, 2),
     averageCost: round(computed.averageCost, 2),

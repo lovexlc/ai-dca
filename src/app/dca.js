@@ -1,5 +1,7 @@
 import { round } from './accumulation.js';
+import { getStrategyParams } from './assetType.js';
 import { buildPlan, readPlanList } from './plan.js';
+import { calculatePyramidBuyAmount, calculateSmartDcaAmount, resolvePyramidLevel } from './smartDca.js';
 
 export const DCA_KEY = 'aiDcaDcaState';
 
@@ -14,6 +16,10 @@ export const defaultDcaState = {
   termMonths: 12,
   targetReturn: 30,
   linkedPlanId: '',
+  currentPrice: 0,
+  rollingHigh: 0,
+  capitalPool: 0,
+  currentLevel: -1,
   createdAt: '',
   updatedAt: ''
 };
@@ -128,15 +134,32 @@ export function buildDcaProjection(state, { planList = readPlanList() } = {}) {
     : initialInvestment + recurringInvestment * executionCount;
   const monthlyEquivalent = totalInvestment / termMonths;
   const cadenceLabel = getCadenceLabel(state.frequency, state.executionDay);
+  const strategyParams = linkedPlan?.strategyParams || getStrategyParams(effectiveSymbol);
+  const currentPrice = Math.max(Number(state.currentPrice) || 0, 0);
+  const rollingHigh = Math.max(Number(state.rollingHigh) || Number(linkedPlan?.basePrice) || currentPrice || 0, 0);
+  const capitalPool = Math.max(Number(state.capitalPool) || 0, 0);
+  const smartDca = linkedPlan
+    ? calculateSmartDcaAmount({ monthlyBudget: recurringInvestment, currentPrice, rollingHigh, capitalPool, params: strategyParams })
+    : null;
+  const smartLevel = smartDca ? resolvePyramidLevel(smartDca.dropPct, strategyParams) : -1;
+  const pyramidBuyAmount = smartDca?.mode === 'pyramid'
+    ? calculatePyramidBuyAmount({ capitalPool: smartDca.poolBalance, monthlyBudget: recurringInvestment, level: smartLevel, params: strategyParams })
+    : 0;
+  const smartInvestAmount = smartDca
+    ? (smartDca.mode === 'high-level' ? smartDca.investAmount : pyramidBuyAmount)
+    : recurringInvestment;
+  const poolBalance = smartDca
+    ? Math.max(smartDca.poolBalance - pyramidBuyAmount, 0)
+    : capitalPool;
 
   const schedule = Array.from({ length: Math.min(executionCount, 6) }, (_, index) => {
     if (linkedPlan) {
       return {
         id: `dca-${index + 1}`,
         label: `第 ${index + 1} 期`,
-        contribution: recurringInvestment,
-        cumulative: recurringInvestment * (index + 1),
-        note: `${cadenceLabel}，按「${linkedPlan.name || effectiveSymbol}」策略在周期内分批执行`,
+        contribution: smartInvestAmount,
+        cumulative: smartInvestAmount * (index + 1),
+        note: smartDca?.mode === 'high-level' ? `${cadenceLabel}，当前高位，仅投 ${Math.round((strategyParams.highLevelRatio || 0.1) * 100)}%，其余进入资金池` : `${cadenceLabel}，按「${linkedPlan.name || effectiveSymbol}」策略在周期内分批执行`,
         isLinkedCycle: true
       };
     }
@@ -166,8 +189,15 @@ export function buildDcaProjection(state, { planList = readPlanList() } = {}) {
     linkedPlanSplit,
     linkedPlanSplitCount: linkedPlanSplit.length,
     linkedPlanFirstInvestment,
+    smartDcaMode: smartDca?.mode || 'fixed',
+    poolBalance,
+    dropPct: smartDca?.dropPct || 0,
+    smartInvestAmount,
+    smartPoolAmount: smartDca?.poolAmount || 0,
+    smartLevel,
+    strategyParams,
     isLinkedPlan: Boolean(linkedPlan),
-    nextExecutionAmount: recurringInvestment
+    nextExecutionAmount: smartInvestAmount
   };
 }
 
@@ -190,6 +220,10 @@ export function readDcaState() {
       executionDay: readSavedNumber(saved, 'executionDay', defaultDcaState.executionDay),
       termMonths: readSavedNumber(saved, 'termMonths', defaultDcaState.termMonths),
       targetReturn: readSavedNumber(saved, 'targetReturn', defaultDcaState.targetReturn),
+      currentPrice: readSavedNumber(saved, 'currentPrice', defaultDcaState.currentPrice),
+      rollingHigh: readSavedNumber(saved, 'rollingHigh', defaultDcaState.rollingHigh),
+      capitalPool: readSavedNumber(saved, 'capitalPool', defaultDcaState.capitalPool),
+      currentLevel: readSavedNumber(saved, 'currentLevel', defaultDcaState.currentLevel),
       linkedPlanId: normalizeLinkedPlanId(saved.linkedPlanId),
       createdAt: String(saved.createdAt || saved.updatedAt || ''),
       updatedAt: String(saved.updatedAt || '')
@@ -235,12 +269,19 @@ export function persistDcaState(state, computed = buildDcaProjection(state)) {
     executionDay: Math.max(Number(state.executionDay) || 1, 1),
     termMonths: Math.max(Number(state.termMonths) || 1, 1),
     targetReturn: round(state.targetReturn, 2),
+    currentPrice: round(state.currentPrice, 4),
+    rollingHigh: round(state.rollingHigh, 4),
+    capitalPool: round(computed.poolBalance, 2),
+    currentLevel: Math.max(Number(state.currentLevel) || computed.smartLevel || -1, -1),
     linkedPlanId: normalizeLinkedPlanId(state.linkedPlanId),
     executionCount: computed.executionCount,
     totalInvestment: round(computed.totalInvestment, 2),
     cadenceLabel: computed.cadenceLabel,
     nextExecutionAmount: round(computed.nextExecutionAmount, 2),
     linkedPlanFirstInvestment: round(computed.linkedPlanFirstInvestment, 2),
+    smartDcaMode: computed.smartDcaMode,
+    poolBalance: round(computed.poolBalance, 2),
+    dropPct: round(computed.dropPct, 2),
     createdAt,
     updatedAt: timestamp
   };

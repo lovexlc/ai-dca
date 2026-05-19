@@ -15,7 +15,6 @@ import {
   buildMovingAverageTemplatePlan,
   buildMovingAverageValues,
   findLatestFiniteValue,
-  fixedDrawdownBlueprint,
   formatFundPrice,
   frequencyOptions,
   resolveMarketCurrency,
@@ -23,6 +22,8 @@ import {
 } from '../app/newPlan.js';
 import { EXTRA_SYMBOL_GROUPS, EXTRA_SYMBOL_CODES, findExtraSymbol, isExtraSymbol } from '../app/extraSymbols.js';
 import { fetchQuote } from '../app/marketsApi.js';
+import { getAssetType, getAssetTypeLabel, getStrategyParams } from '../app/assetType.js';
+import { SCREENING_CHECKLIST, validateScreening } from '../app/stockScreener.js';
 
 
 export function NewPlanExperience({ links, inPagesDir = false, embedded = false, onBack = null }) {
@@ -48,6 +49,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   const [isSaving, setIsSaving] = useState(false);
   const autoSeedRef = useRef('');
   const [extraQuote, setExtraQuote] = useState({ symbol: '', price: 0, currency: '', asOf: '', loading: false, error: '' });
+  const [screeningAnswers, setScreeningAnswers] = useState(() => readPlanState().screeningAnswers || {});
 
   // 选中美股快选标的（QQQ/SPY/Mag7/TSM 等）时，去 markets worker 拉一次实时 quote；symbol 不再是 extra 时清空。
   useEffect(() => {
@@ -234,17 +236,21 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     autoSeedRef.current = syncKey;
   }, [benchmarkFund?.code, derivedMa120, derivedMa200, derivedStageHigh, isSelectedDailySeriesReady, selectedStrategy]);
 
+  const selectedAssetType = getAssetType(state.symbol);
+  const selectedAssetTypeLabel = getAssetTypeLabel(state.symbol);
+  const selectedStrategyParams = getStrategyParams(state.symbol);
+  const screeningResult = useMemo(() => validateScreening(screeningAnswers), [screeningAnswers]);
   const activeStrategy = useMemo(
     () => strategyOptions.find((option) => option.key === selectedStrategy) || strategyOptions[0],
     [selectedStrategy]
   );
   const computed = useMemo(
-    () => (selectedStrategy === 'peak-drawdown' ? buildFixedDrawdownPlan(state) : buildMovingAverageTemplatePlan(state)),
-    [selectedStrategy, state]
+    () => (selectedStrategy === 'peak-drawdown' ? buildFixedDrawdownPlan(state, selectedAssetType) : buildMovingAverageTemplatePlan(state)),
+    [selectedAssetType, selectedStrategy, state]
   );
 
   const strategySummary = selectedStrategy === 'peak-drawdown'
-    ? `按 ${benchmarkCodeLabel} 的阶段高点 ${formatFundPrice(computed.anchorPrice, benchmarkCurrency)} 向下拆成 8 档固定回撤。`
+    ? `按 ${benchmarkCodeLabel} 的阶段高点 ${formatFundPrice(computed.anchorPrice, benchmarkCurrency)} 向下拆成 ${computed.layers.length} 档固定回撤。`
     : `按 ${benchmarkCodeLabel} 的120日线触发价 ${formatFundPrice(computed.anchorPrice, benchmarkCurrency)} 和200日线风控价 ${formatFundPrice(computed.riskPrice, benchmarkCurrency)} 生成分层。`;
 
   async function handleCreatePlan() {
@@ -256,6 +262,10 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     persistPlanState({
       ...state,
       selectedStrategy,
+      assetType: selectedAssetType,
+      strategyParams: selectedStrategyParams,
+      screeningAnswers,
+      screeningResult,
       isConfigured: true
     }, computed, { mode: 'create', activate: true });
 
@@ -386,6 +396,13 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                   </div>
                 ) : null}
 
+
+                <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-4 text-sm text-indigo-800">
+                  <div className="font-semibold text-indigo-900">{selectedAssetTypeLabel}模式</div>
+                  <div className="mt-1">首买跌幅 {formatPercent(selectedStrategyParams.firstBuyDrop, 1)} · 加仓步长 {formatPercent(selectedStrategyParams.stepDrop, 1)} · {selectedStrategyParams.levels} 档</div>
+                  <div className="mt-1">倍数 {selectedStrategyParams.multipliers.join(' / ')} · 高位投入 {formatPercent(selectedStrategyParams.highLevelRatio * 100, 0)}</div>
+                </div>
+
                 <div className="grid gap-4 md:grid-cols-2">
                   <Field label="总投资额">
                     <NumberInput step="0.01" value={state.totalBudget} onChange={(event) => setState((current) => ({ ...current, totalBudget: Number(event.target.value) || 0 }))} />
@@ -455,10 +472,28 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                 </div>
             </Card>
 
+            {selectedAssetType === 'stock' ? (
+              <Card className="min-w-0 overflow-hidden border-amber-200 bg-amber-50">
+                <SectionHeading eyebrow="个股自查" title="基本面 checklist" />
+                <div className="mt-5 grid gap-3">
+                  {SCREENING_CHECKLIST.map((item) => (
+                    <label key={item.id} className="flex items-start gap-3 rounded-2xl border border-amber-100 bg-white/80 px-4 py-3 text-sm">
+                      <input type="checkbox" className="mt-1 h-4 w-4 accent-amber-600" checked={Boolean(screeningAnswers[item.id])} onChange={(event) => setScreeningAnswers((current) => ({ ...current, [item.id]: event.target.checked }))} />
+                      <span>
+                        <span className="font-semibold text-slate-900">{item.label}{item.critical ? ' · 关键' : ''}</span>
+                        <span className="mt-1 block text-slate-500">{item.description}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {!screeningResult.passed ? <div className="mt-4 rounded-2xl border border-amber-200 bg-white px-4 py-3 text-sm text-amber-800">{screeningResult.message}</div> : null}
+              </Card>
+            ) : null}
+
             <Card className="min-w-0 overflow-hidden">
               <SectionHeading
                 eyebrow="第三步"
-                title={selectedStrategy === 'peak-drawdown' ? '固定回撤 8 档' : '均线分层设置'}
+                title={selectedStrategy === 'peak-drawdown' ? `固定回撤 ${computed.layers.length} 档` : '均线分层设置'}
               />
 
               <div className="mt-6 space-y-4">
@@ -475,7 +510,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                         </div>
                       </div>
                       <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500">
-                        {selectedStrategy === 'peak-drawdown' ? `序号权重 ${layer.weight}x` : `模板权重 ${layer.weight}x`}
+                        {selectedStrategy === 'peak-drawdown' ? `策略倍数 ${layer.weight}x` : `模板权重 ${layer.weight}x`}
                       </div>
                     </div>
 
@@ -561,7 +596,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
               <div className="font-semibold text-emerald-900">执行建议</div>
               <p className="mt-2 text-sm leading-6 text-emerald-800">
                 {selectedStrategy === 'peak-drawdown'
-                  ? `当前计划会按 8 档固定回撤执行，首档 ${formatPercent(computed.layers[0]?.drawdown ?? 0, 1)}，极端档 ${formatPercent(computed.layers[computed.layers.length - 1]?.drawdown ?? 0, 1)}。`
+                  ? `当前计划会按 ${computed.layers.length} 档固定回撤执行，首档 ${formatPercent(computed.layers[0]?.drawdown ?? 0, 1)}，极端档 ${formatPercent(computed.layers[computed.layers.length - 1]?.drawdown ?? 0, 1)}。`
                   : `当前计划会按 4 档均线模板执行，先靠近120日线建首仓，再在更深位置逐步加大投入。`}
               </p>
             </Card>

@@ -1,13 +1,28 @@
-export const PEAK_DRAWDOWN_LAYERS = [
-  { drawdown: 9, label: '首次建仓', signal: '较阶段高点累计跌幅 9%' },
-  { drawdown: 12.5, label: '第1次加仓', signal: '较阶段高点累计跌幅 12.5%' },
-  { drawdown: 16, label: '第2次加仓', signal: '较阶段高点累计跌幅 16%' },
-  { drawdown: 19.5, label: '第3次加仓', signal: '较阶段高点累计跌幅 19.5%' },
-  { drawdown: 23, label: '第4次加仓', signal: '较阶段高点累计跌幅 23%' },
-  { drawdown: 26.5, label: '第5次加仓', signal: '较阶段高点累计跌幅 26.5%' },
-  { drawdown: 30, label: '第6次加仓', signal: '较阶段高点累计跌幅 30%' },
-  { drawdown: 33.5, label: '第7次加仓', signal: '较阶段高点累计跌幅 33.5%' }
+export const INDEX_PYRAMID_BLUEPRINT = [
+  { drawdown: 9, multiplier: 1, label: '首次建仓', signal: '较阶段高点累计跌幅 9%' },
+  { drawdown: 12.5, multiplier: 1, label: '第1次加仓', signal: '较阶段高点累计跌幅 12.5%' },
+  { drawdown: 16, multiplier: 1.5, label: '第2次加仓', signal: '较阶段高点累计跌幅 16%' },
+  { drawdown: 19.5, multiplier: 1.5, label: '第3次加仓', signal: '较阶段高点累计跌幅 19.5%' },
+  { drawdown: 23, multiplier: 2, label: '第4次加仓', signal: '较阶段高点累计跌幅 23%' },
+  { drawdown: 26.5, multiplier: 2, label: '第5次加仓', signal: '较阶段高点累计跌幅 26.5%' },
+  { drawdown: 30, multiplier: 3, label: '第6次加仓', signal: '较阶段高点累计跌幅 30%' }
 ];
+
+export const STOCK_PYRAMID_BLUEPRINT = [
+  { drawdown: 30, multiplier: 1, label: '首次建仓', signal: '较阶段高点累计跌幅 30%' },
+  { drawdown: 34, multiplier: 1, label: '第1次加仓', signal: '较阶段高点累计跌幅 34%' },
+  { drawdown: 38, multiplier: 1.5, label: '第2次加仓', signal: '较阶段高点累计跌幅 38%' },
+  { drawdown: 42, multiplier: 2, label: '第3次加仓', signal: '较阶段高点累计跌幅 42%' },
+  { drawdown: 46, multiplier: 2, label: '第4次加仓', signal: '较阶段高点累计跌幅 46%' },
+  { drawdown: 50, multiplier: 2.5, label: '第5次加仓', signal: '较阶段高点累计跌幅 50%' }
+];
+
+export function getPyramidBlueprint(assetType = 'stock') {
+  return assetType === 'index' ? INDEX_PYRAMID_BLUEPRINT : STOCK_PYRAMID_BLUEPRINT;
+}
+
+export const PEAK_DRAWDOWN_LAYERS = INDEX_PYRAMID_BLUEPRINT;
+
 
 export function mapReferencePrice(value, ratio = 1) {
   const numericValue = Number(value);
@@ -157,16 +172,18 @@ export function buildPeakDrawdownStrategyPlan({
   totalBudget = 0,
   cashReservePct = 0,
   peakPrice = 0,
-  fallbackPrice = 0
+  fallbackPrice = 0,
+  assetType = 'stock'
 } = {}) {
   const anchorPrice = Number(peakPrice) > 0 ? Number(peakPrice) : Number(fallbackPrice) || 0;
   const normalizedBudget = Math.max(Number(totalBudget) || 0, 0);
   const normalizedReservePct = Math.max(Number(cashReservePct) || 0, 0);
   const investableCapital = normalizedBudget * Math.max(0, 1 - normalizedReservePct / 100);
   const reserveCapital = normalizedBudget - investableCapital;
-  const totalWeight = PEAK_DRAWDOWN_LAYERS.reduce((sum, _, index) => sum + index + 1, 0) || 1;
-  const layers = PEAK_DRAWDOWN_LAYERS.map((layer, index) => {
-    const weight = index + 1;
+  const blueprint = getPyramidBlueprint(assetType);
+  const totalWeight = blueprint.reduce((sum, layer) => sum + layer.multiplier, 0) || 1;
+  const layers = blueprint.map((layer, index) => {
+    const weight = layer.multiplier;
     const price = anchorPrice > 0 ? anchorPrice * (1 - layer.drawdown / 100) : 0;
     const amount = investableCapital * (weight / totalWeight);
     const shares = price > 0 ? amount / price : 0;
@@ -176,13 +193,14 @@ export function buildPeakDrawdownStrategyPlan({
       label: layer.label,
       signal: layer.signal,
       weight,
+      multiplier: weight,
       price,
       amount,
       shares,
       drawdown: layer.drawdown,
       order: index + 1,
-      tone: index === PEAK_DRAWDOWN_LAYERS.length - 1 ? 'amber' : index === 0 ? 'violet' : 'slate',
-      isExtreme: index === PEAK_DRAWDOWN_LAYERS.length - 1
+      tone: index === blueprint.length - 1 ? 'amber' : index === 0 ? 'violet' : 'slate',
+      isExtreme: index === blueprint.length - 1
     };
   }).filter((layer) => layer.price > 0);
   const totalAmount = layers.reduce((sum, layer) => sum + layer.amount, 0);

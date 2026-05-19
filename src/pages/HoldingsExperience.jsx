@@ -39,6 +39,7 @@ import { DataTableColumnHeader } from '@/components/data-table/data-table-column
 import { DataTableFacetedFilter } from '@/components/data-table/data-table-faceted-filter';
 import { DataTableToolbar } from '@/components/data-table/data-table-toolbar';
 import { formatCurrency, formatPercent } from '../app/accumulation.js';
+import { ACCOUNT_TYPES, assignAccount, getAccountAllocation, getAssignedAccount, readAccountAssignments } from '../app/accountManager.js';
 import { IncomeSection } from '../app/income/IncomeSection.jsx';
 import { useIncomeRoute, ROUTES } from '../app/incomeRoute.js';
 import {
@@ -204,6 +205,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
 
   // ---- PR 3.5 part 1: 读取交易台账 (aiDcaTradeLedger)，给基金汇总行注入成本/盈亏字段（仅数据层，UI 留到 part 2）。 ----
   const [tradeLedgerEntries, setTradeLedgerEntries] = useState(() => readTradeLedger());
+  const [accountAssignments, setAccountAssignments] = useState(() => readAccountAssignments());
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     function onStorage(event) {
@@ -303,13 +305,15 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         const sym = String(agg.code || '').trim().toUpperCase();
         const entry = sym ? costBasisBySymbol[sym] : null;
         const summary = entry ? entry.summary : null;
+        const accountType = getAssignedAccount(sym || agg.code, accountAssignments);
         const base = summary ? {
           ...agg,
+          accountType,
           ledgerTextbookCost: summary.textbookCost,
           ledgerEffectiveCost: summary.effectiveCost,
           ledgerRealizedPnl: summary.realizedPnl,
           ledgerIsNegativeCost: summary.isNegativeCost,
-        } : { ...agg };
+        } : { ...agg, accountType };
         const price = Number(agg.latestNav) || 0;
         if (summary && price > 0) {
           const withUnreal = attachUnrealized(summary, price);
@@ -329,7 +333,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         weightPct: row.hasLatestNav ? ((Number(row.marketValue) || 0) / totalMv) * 100 : null,
       }));
     },
-    [aggregates, costBasisBySymbol],
+    [accountAssignments, aggregates, costBasisBySymbol],
   );
   const numericSortFn = (rowA, rowB, columnId) => {
     const a = rowA.getValue(columnId);
@@ -348,6 +352,13 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     })),
     [],
   );
+  const accountAllocation = useMemo(
+    () => getAccountAllocation(aggregatesTableData, accountAssignments),
+    [accountAssignments, aggregatesTableData],
+  );
+  function handleAccountChange(symbol, accountType) {
+    setAccountAssignments((current) => assignAccount(symbol, accountType, current));
+  }
   const aggregateColumns = useMemo(() => [
     {
       id: 'code',
@@ -384,6 +395,22 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         if (!Array.isArray(filterValue) || filterValue.length === 0) return true;
         return filterValue.includes(row.getValue(columnId));
       },
+    },
+    {
+      id: 'accountType',
+      accessorFn: (row) => row.accountType,
+      meta: { label: '账户' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="账户" />,
+      cell: ({ row }) => (
+        <select
+          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
+          value={row.original.accountType || getAssignedAccount(row.original.code, accountAssignments)}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => handleAccountChange(row.original.code, event.target.value)}
+        >
+          {Object.entries(ACCOUNT_TYPES).map(([key, config]) => <option key={key} value={key}>{config.label}</option>)}
+        </select>
+      ),
     },
     {
       id: 'totalShares',
@@ -544,7 +571,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       },
       sortingFn: numericSortFn,
     },
-  ], [kindFilterOptions]);
+  ], [accountAssignments, kindFilterOptions]);
 
   const aggregatesTable = useReactTable({
     data: aggregatesTableData,
@@ -2095,6 +2122,18 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     };
     return (
       <div className="flex flex-col gap-2">
+        <div className="grid gap-3 md:grid-cols-3">
+          {accountAllocation.map((item) => (
+            <div key={item.key} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm font-semibold text-slate-900">{item.label}</div>
+                <Pill tone={item.key === 'aggressive' ? 'rose' : item.key === 'stable' ? 'indigo' : 'emerald'}>{formatPercent(item.ratio, 1)}</Pill>
+              </div>
+              <div className="mt-2 text-xl font-bold text-slate-900">{formatCurrency(item.marketValue, '¥', 2)}</div>
+              <div className="mt-1 text-xs text-slate-400">{item.holdings.length} 个标的</div>
+            </div>
+          ))}
+        </div>
         <DataTableToolbar table={aggregatesTable} />
         <DataTable
           table={aggregatesTable}

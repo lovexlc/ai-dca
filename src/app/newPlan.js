@@ -1,6 +1,8 @@
 // 建仓计划生成器：纯逻辑层，不含 React，便于单元测试。
 // 所有函数从 NewPlanExperience.jsx 抽离而来，行为与原文件一致。
 import { formatCurrency, formatPercent } from './accumulation.js';
+import { getAssetType, getStrategyParams } from './assetType.js';
+import { getPyramidBlueprint } from './strategyEngine.js';
 
 export const BENCHMARK_CODE = 'nas-daq100';
 export const frequencyOptions = ['每日', '每周', '每月', '每季'];
@@ -16,16 +18,14 @@ export const strategyOptions = [
     note: '按阶段高点固定跌幅 8 档执行'
   }
 ];
-export const fixedDrawdownBlueprint = [
-  { drawdown: 9, label: '首次建仓' },
-  { drawdown: 12.5, label: '第1次加仓' },
-  { drawdown: 16, label: '第2次加仓' },
-  { drawdown: 19.5, label: '第3次加仓' },
-  { drawdown: 23, label: '第4次加仓' },
-  { drawdown: 26.5, label: '第5次加仓' },
-  { drawdown: 30, label: '第6次加仓' },
-  { drawdown: 33.5, label: '第7次加仓，极端档' }
-];
+export function fixedDrawdownBlueprint(assetType = 'stock') {
+  return getPyramidBlueprint(assetType).map((layer) => ({
+    drawdown: layer.drawdown,
+    multiplier: layer.multiplier,
+    label: layer.label
+  }));
+}
+
 
 export function buildMovingAverageValues(bars = [], period = 5) {
   const values = [];
@@ -141,15 +141,18 @@ export function buildMovingAverageTemplatePlan(state) {
   };
 }
 
-export function buildFixedDrawdownPlan(state) {
+export function buildFixedDrawdownPlan(state, explicitAssetType = '') {
   const peakPrice = Math.max(Number(state.basePrice) || 0, 0);
   const totalBudget = Math.max(Number(state.totalBudget) || 0, 0);
   const cashReservePct = Math.max(Number(state.cashReservePct) || 0, 0);
   const investableCapital = totalBudget * Math.max(0, 1 - cashReservePct / 100);
   const reserveCapital = totalBudget - investableCapital;
-  const totalWeight = fixedDrawdownBlueprint.reduce((sum, _, index) => sum + index + 1, 0) || 1;
-  const layers = fixedDrawdownBlueprint.map((layer, index) => {
-    const weight = index + 1;
+  const assetType = explicitAssetType || getAssetType(state.symbol);
+  const params = getStrategyParams(state.symbol);
+  const blueprint = fixedDrawdownBlueprint(assetType);
+  const totalWeight = blueprint.reduce((sum, layer) => sum + layer.multiplier, 0) || 1;
+  const layers = blueprint.map((layer, index) => {
+    const weight = layer.multiplier;
     const price = peakPrice > 0 ? peakPrice * (1 - layer.drawdown / 100) : 0;
     const amount = investableCapital * (weight / totalWeight);
     const shares = price > 0 ? amount / price : 0;
@@ -161,10 +164,11 @@ export function buildFixedDrawdownPlan(state) {
       signal: `较历史高点累计跌幅 ${formatPercent(layer.drawdown, 1)}`,
       drawdown: layer.drawdown,
       weight,
+      multiplier: weight,
       price,
       amount,
       shares,
-      isExtreme: index === fixedDrawdownBlueprint.length - 1
+      isExtreme: index === blueprint.length - 1
     };
   }).filter((layer) => layer.price > 0);
   const totalAmount = layers.reduce((sum, layer) => sum + layer.amount, 0);
@@ -172,6 +176,8 @@ export function buildFixedDrawdownPlan(state) {
 
   return {
     mode: 'peak-drawdown',
+    assetType,
+    strategyParams: params,
     anchorLabel: '阶段高点',
     anchorPrice: peakPrice,
     riskLabel: '极端档',

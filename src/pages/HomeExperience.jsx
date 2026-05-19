@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Activity, Plus, Trash2 } from 'lucide-react';
 import { formatCurrency, formatPercent, readAccumulationState } from '../app/accumulation.js';
+import { getAssetType } from '../app/assetType.js';
 import { normalizeHomeDashboardState, persistHomeDashboardState, readHomeDashboardState } from '../app/homeDashboard.js';
 import { formatMarketCode, formatMarketName } from '../app/marketDisplay.js';
 import { formatPriceAsOf, loadLatestNasdaqPrices, loadNasdaqDailySeries, loadNasdaqMinuteSnapshot } from '../app/nasdaqPrices.js';
@@ -261,6 +262,7 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
     && currentFundPrice > 0 && currentBenchmarkPrice > 0
   );
   const strategyDisplayCurrency = usesMappedStrategyPrices ? selectedFundCurrency : benchmarkCurrency;
+  const selectedPlanAssetType = planState.assetType || getAssetType(planState.symbol || selectedFund?.code || selectedFund?.symbol || '');
 
   const strategyTriggerPrice = useMemo(() => {
     if (Number.isFinite(latestDailyMa120)) return latestDailyMa120;
@@ -279,7 +281,8 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
           totalBudget: planState.totalBudget,
           cashReservePct: planState.cashReservePct,
           peakPrice: stageHighPrice,
-          fallbackPrice: currentBenchmarkPrice || Number(accumulationState.basePrice) || Number(planState.basePrice) || 0
+          fallbackPrice: currentBenchmarkPrice || Number(accumulationState.basePrice) || Number(planState.basePrice) || 0,
+          assetType: selectedPlanAssetType
         })
       : buildNasdaqStrategyPlan({
           totalBudget: planState.totalBudget,
@@ -288,7 +291,7 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
           ma200: riskControlPrice,
           fallbackPrice: currentBenchmarkPrice || Number(accumulationState.basePrice) || Number(planState.basePrice) || 0
         })),
-    [accumulationState.basePrice, currentBenchmarkPrice, planState.basePrice, planState.cashReservePct, planState.totalBudget, riskControlPrice, selectedStrategy, stageHighPrice, strategyTriggerPrice]
+    [accumulationState.basePrice, currentBenchmarkPrice, planState.assetType, planState.basePrice, planState.cashReservePct, planState.symbol, planState.totalBudget, riskControlPrice, selectedFund, selectedPlanAssetType, selectedStrategy, stageHighPrice, strategyTriggerPrice]
   );
   const displayStrategyPlan = useMemo(() => ({
     ...strategyPlan,

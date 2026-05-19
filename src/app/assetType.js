@@ -11,6 +11,23 @@ export const INDEX_SYMBOLS = new Set([
   'DIA', 'IWM', 'VTI', 'VT'
 ]);
 
+export const STRATEGY_PARAMS = {
+  index: {
+    firstBuyDrop: 9,
+    stepDrop: 3.5,
+    levels: 7,
+    multipliers: [1, 1, 1.5, 1.5, 2, 2, 3],
+    highLevelRatio: 0.1
+  },
+  stock: {
+    firstBuyDrop: 30,
+    stepDrop: 4.5,
+    levels: 6,
+    multipliers: [1, 1, 1.5, 2, 2, 2.5],
+    highLevelRatio: 0.1
+  }
+};
+
 export function getAssetType(symbol) {
   const raw = String(symbol || '').trim();
   if (!raw) return 'unknown';
@@ -20,6 +37,11 @@ export function getAssetType(symbol) {
   if (/^\d{6}$/.test(raw)) return 'fund';
   if (/^[A-Z]{1,5}$/.test(code)) return 'stock';
   return 'unknown';
+}
+
+export function getStrategyParams(symbol) {
+  const type = getAssetType(symbol);
+  return STRATEGY_PARAMS[type] || STRATEGY_PARAMS.stock;
 }
 
 export function getAssetTypeLabel(symbol) {

@@ -100,8 +100,8 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
     <>
       <div className={cx('space-y-6', embedded ? '' : 'mx-auto max-w-6xl px-6 pt-8')}>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard accent="indigo" eyebrow="总投入" value={formatCurrency(projection.totalInvestment, '¥ ')} note={projection.isLinkedPlan ? `每个执行周期都投入 ${formatCurrency(projection.recurringInvestment, '¥ ')}，并按「${projection.linkedPlanName}」在周期内分批执行。` : '初始投入加上所有周期定投之和'} />
-          <StatCard eyebrow="预估收益" value={formatCurrency(projection.totalInvestment * state.targetReturn / 100, '¥ ')} note={`按目标收益 ${formatPercent(state.targetReturn, 0)} 估算`} />
+          <StatCard accent="indigo" eyebrow="总投入" value={formatCurrency(projection.totalInvestment, '¥ ')} note={projection.isLinkedPlan ? `本期实际投入 ${formatCurrency(projection.nextExecutionAmount, '¥ ')}。` : '初始投入加上所有周期定投之和'} />
+          <StatCard eyebrow="资金池余额" value={formatCurrency(projection.poolBalance, '¥ ')} note={projection.isLinkedPlan ? `距高点 ${formatPercent(projection.dropPct, 1)}，${projection.smartDcaMode === 'high-level' ? '高位少买' : projection.smartDcaMode === 'pyramid' ? '金字塔候选' : '固定定投'}` : '未关联计划时不启用'} />
           <StatCard eyebrow="月均投入" value={formatCurrency(projection.monthlyEquivalent, '¥ ')} note="折算后的月度平均投入强度" />
           <StatCard accent="emerald" eyebrow="执行节奏" value={`${state.frequency} / ${state.executionDay}`} note="频率与执行日期共同决定节奏" />
         </div>
@@ -138,6 +138,21 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
               <Field label="关联加仓策略" helper={planList.length ? '选中后，单周期预算会按该策略的批次和触发条件在周期内分笔投入。' : '当前还没有已创建的加仓策略，可先到“加仓计划”页新建。'}>
                 <SelectField options={linkedPlanOptions} value={state.linkedPlanId || ''} onChange={(event) => handleLinkedPlanChange(event.target.value)} />
               </Field>
+
+
+              {projection.isLinkedPlan ? (
+                <div className="grid gap-4 md:grid-cols-3">
+                  <Field label="当前价格">
+                    <NumberInput step="0.001" value={state.currentPrice} onChange={(event) => setState((current) => ({ ...current, currentPrice: event.target.value }))} />
+                  </Field>
+                  <Field label="滚动高点">
+                    <NumberInput step="0.001" value={state.rollingHigh} onChange={(event) => setState((current) => ({ ...current, rollingHigh: event.target.value }))} />
+                  </Field>
+                  <Field label="资金池余额">
+                    <NumberInput step="0.01" value={projection.poolBalance.toFixed(2)} readOnly className="bg-white text-slate-600" />
+                  </Field>
+                </div>
+              ) : null}
 
               <Field label="标的代码" helper={projection.isLinkedPlan ? '已跟随所选加仓策略标的；如需修改，请先取消关联。' : '建议使用交易代码，便于与首页和历史页保持一致。'}>
                 {!projection.isLinkedPlan ? (
@@ -257,6 +272,17 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
                       </div>
                     ))}
                   </div>
+                </div>
+              </Card>
+            ) : null}
+
+            {projection.isLinkedPlan ? (
+              <Card className={projection.smartDcaMode === 'high-level' ? 'border-amber-100 bg-amber-50' : 'border-emerald-100 bg-emerald-50'}>
+                <SectionHeading eyebrow="Smart DCA" title={projection.smartDcaMode === 'high-level' ? '高位少买' : '金字塔资金池'} />
+                <div className="mt-4 grid gap-3 text-sm text-slate-700 md:grid-cols-3">
+                  <div className="rounded-2xl bg-white/80 p-4"><div className="text-xs font-semibold text-slate-400">距高点跌幅</div><div className="mt-1 font-bold text-slate-900">{formatPercent(projection.dropPct, 1)}</div></div>
+                  <div className="rounded-2xl bg-white/80 p-4"><div className="text-xs font-semibold text-slate-400">本期买入</div><div className="mt-1 font-bold text-slate-900">{formatCurrency(projection.nextExecutionAmount, '¥ ')}</div></div>
+                  <div className="rounded-2xl bg-white/80 p-4"><div className="text-xs font-semibold text-slate-400">入池金额</div><div className="mt-1 font-bold text-slate-900">{formatCurrency(projection.smartPoolAmount, '¥ ')}</div></div>
                 </div>
               </Card>
             ) : null}
