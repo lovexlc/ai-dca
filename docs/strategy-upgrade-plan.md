@@ -243,3 +243,11 @@ src/components/
 ## 9. 产出与验证记录（实施过程中逐步追加）
 
 _（每完成一个 step 在此追加：commit SHA + 关键截图/响应 + Actions run URL）_
+
+### 2026-05-19 PR1.5 / PR2b / PR4.5 worker + home tails
+
+- **Commits**: `cc08ce2`（worker：sellPlan + positionDigest + cashHigh）、`cb65128`（home VIX summary card + NewPlanExperience.formatPercent）、`3b0204f`（docs tick）。
+- **CI**: Deploy notify worker `cc08ce2` → success；Deploy GitHub Pages `cc08ce2`/`cb65128` → success。
+- **资产烟雾**: `https://tools.freebacktrack.tech/react-assets-v2/index.js`（644KB）中检出关键标识 `VIX` / `sellPlan` / `positionDigest` / `aiDcaVixState` / `TQQQ` / `TSLA`，表明新代码已打包发布。
+- **Worker 烟雾**: `GET /api/notify/status` 返回预期鉴权错误（`缺少浏览器 clientId`），路由活。
+- **依赖浏览器环境**: `cf-browser-mcp` 环境下 SPA 未能挂载（`<body>` 空，`#root` 未渲染），且 `/api/notify/sync` 需浏览器引导的 `clientSecret`。**剩余 UI 交互 e2e（首页 VIX 卡 / sellPlan tier 推送 / position-cap 推送 / cash-high 推送）需在本地浏览器人工验证，验证后回填各 PR “前端验证（e2e）” 复选框。**
