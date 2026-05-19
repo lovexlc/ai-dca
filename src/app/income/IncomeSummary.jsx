@@ -2,7 +2,8 @@
 //
 // 单卡 hero + 3 列 KPI + 4 入口：
 //   - 顶部：总市值（金额大字）+ 右侧刷新按钮
-//   - PC：sparkline仅 PC。移动端隐藏 sparkline、保持纯文字。
+//   - PC：中部展示「进取型 / 稳健型 / 防守型」三个 pill（替换 v7.1 sparkline）。
+//     移动端不渲染该 pill 区域，保持纯文字。
 //   - 中部：3 列 KPI（今日 / 持有 / 累计） - 今日 rose-50 背景轻微强调
 //   - 入口区：PC 端 inline pill chip（+ 右侧 复制表格 / +新增交易）；移动端保留 v7.0 grid tile
 //
@@ -10,7 +11,8 @@
 //   - portfolio：HoldingsExperience L221 useMemo 的集计对象
 //   - navigate：跳转子页
 //   - navRefresh：{ onClick, loading, hasFailures, title }，顶部右侧刷新按钮
-//   - cumulativeSeries：可选 number[]，sparkline 数据源（仅 PC 渲染）
+//   - cumulativeSeries / cumulativeLastIso：v7.2 起 PC 中部不再渲染 sparkline，
+//     props 暂保留以避免上游契约破坏，可在后续清理。
 //   - quickActions：{ onNewTransaction, onCopyTable, copyTitle }，PC 端 hero 行右侧合并主表顶部 「复制表格 / + 新增交易」按钮。
 
 import { ROUTES } from '../incomeRoute.js';
@@ -60,35 +62,6 @@ function renderSignedPercent(value) {
 	return `${sign}${formatPercent(Math.abs(value))}`;
 }
 
-// SVG sparkline。给定 number[]，自动归一化绘制。tone 决定描边色 + 浅填充。
-function Sparkline({ series, tone }) {
-	if (!Array.isArray(series) || series.length < 2) return null;
-	const w = 200;
-	const h = 36;
-	const min = Math.min(...series);
-	const max = Math.max(...series);
-	const range = max - min || 1;
-	const points = series.map((v, i) => {
-		const x = (i / (series.length - 1)) * w;
-		const y = h - ((v - min) / range) * h;
-		return [x, y];
-	});
-	const linePath = points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
-	const stroke = tone === TONE_UP ? '#e11d48' : tone === TONE_DOWN ? '#059669' : '#64748b';
-	const fill = tone === TONE_UP
-		? 'rgba(225,29,72,0.08)'
-		: tone === TONE_DOWN
-			? 'rgba(5,150,105,0.08)'
-			: 'rgba(100,116,139,0.08)';
-	const areaPath = `${linePath} L${w},${h} L0,${h} Z`;
-	return (
-		<svg viewBox={`0 0 ${w} ${h}`} className="h-9 w-full" preserveAspectRatio="none" aria-hidden="true">
-			<path d={areaPath} fill={fill} />
-			<path d={linePath} fill="none" stroke={stroke} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-		</svg>
-	);
-}
-
 // KPI 单列：小 label + signed currency + signed percent。支付宝风格：无卡框、纯文字横排。
 function KpiCol({ label, value, rate, align = 'center', centerRate = false }) {
 	const tone = signTone(value);
@@ -114,8 +87,6 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSerie
 	const unrealizedReturnRate = portfolio?.unrealizedReturnRate;
 	const cumulativeProfit = portfolio?.cumulativeProfit;
 	const cumulativeReturnRate = portfolio?.cumulativeReturnRate;
-
-	const cumulativeTone = signTone(cumulativeProfit);
 
 	const refreshBtn = navRefresh ? (
 		<button
@@ -153,7 +124,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSerie
 				</div>
 			</section>
 
-			{/* PC 端：A.1 横向 stat-bar（左金额+起算日 · 中 sparkline · 右 3 KPI · 最右刷新） */}
+			{/* PC 端：v7.2 横向 stat-bar（左金额+起算日 · 中 账户类型三 pill · 右 3 KPI · 最右刷新） */}
 			<section className="hidden sm:flex sm:items-end sm:gap-8 sm:px-1 sm:pb-4 sm:border-b sm:border-slate-100">
 				<div className="min-w-0 shrink-0">
 					<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</div>
@@ -162,21 +133,20 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSerie
 					</div>
 					{inceptionDate ? <div className="text-[11px] text-slate-400 mt-0.5">起 {inceptionDate}</div> : null}
 				</div>
-				{Array.isArray(cumulativeSeries) && cumulativeSeries.length >= 2 ? (
-					<div className="flex-1 min-w-0">
-						<Sparkline series={cumulativeSeries} tone={cumulativeTone} />
-						{cumulativeLastIso ? (
-							<div
-								className="mt-1 text-[10px] text-slate-400 tabular-nums"
-								title="曲线末端为公布单位净值，不含今日实时变动；今日实时请看持仓页"
-							>
-								截至 {cumulativeLastIso} 公布净值
-							</div>
-						) : null}
-					</div>
-				) : (
-					<div className="flex-1" aria-hidden="true" />
-				)}
+				<div className="flex-1 min-w-0 flex items-end justify-center gap-2 pb-1">
+					<span className="inline-flex items-center gap-1.5 h-7 rounded-full bg-rose-50 px-3 text-xs font-semibold text-rose-700 ring-1 ring-inset ring-rose-100">
+						<span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+						进取型
+					</span>
+					<span className="inline-flex items-center gap-1.5 h-7 rounded-full bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-100">
+						<span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
+						稳健型
+					</span>
+					<span className="inline-flex items-center gap-1.5 h-7 rounded-full bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-100">
+						<span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+						防守型
+					</span>
+				</div>
 				<div className="flex gap-8 shrink-0">
 					<KpiCol label="今日" value={todayProfit} rate={todayReturnRate} align="right" />
 					<KpiCol label="持有" value={unrealizedProfit} rate={unrealizedReturnRate} align="right" />
