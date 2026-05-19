@@ -38,11 +38,48 @@ function SimpleTable({ headers, rows }) {
 }
 
 function ScreenshotImage({ src, alt, caption }) {
+  const [zoomed, setZoomed] = useState(false);
   return (
-    <figure className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-      <img src={src} alt={alt} loading="lazy" className="mx-auto block max-h-[420px] w-full object-contain" />
-      {caption ? <figcaption className="px-4 py-2 text-xs text-slate-500">{caption}</figcaption> : null}
-    </figure>
+    <>
+      <figure className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+        <button
+          type="button"
+          onClick={() => setZoomed(true)}
+          className="group block w-full cursor-zoom-in"
+          aria-label={`点击放大查看：${alt}`}
+        >
+          <img
+            src={src}
+            alt={alt}
+            loading="lazy"
+            className="mx-auto block max-h-44 w-auto object-contain transition group-hover:opacity-90"
+          />
+        </button>
+        {caption ? <figcaption className="px-4 py-2 text-xs text-slate-500">{caption} <span className="text-slate-400">（点图放大）</span></figcaption> : null}
+      </figure>
+      {zoomed ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setZoomed(false)}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+        >
+          <img
+            src={src}
+            alt={alt}
+            className="max-h-[92vh] max-w-[92vw] cursor-zoom-out rounded-lg object-contain shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          />
+          <button
+            type="button"
+            onClick={() => setZoomed(false)}
+            className="absolute right-4 top-4 rounded-full bg-white/90 px-3 py-1 text-sm font-semibold text-slate-700 shadow hover:bg-white"
+          >
+            关闭
+          </button>
+        </div>
+      ) : null}
+    </>
   );
 }
 
