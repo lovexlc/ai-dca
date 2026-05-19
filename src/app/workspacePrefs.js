@@ -29,7 +29,7 @@ export function readWorkspacePrefs() {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(WORKSPACE_PREFS_KEY) || 'null');
     return normalizeWorkspacePrefs(parsed || {});
-  } catch (_error) {
+  } catch {
     return DEFAULT_WORKSPACE_PREFS;
   }
 }

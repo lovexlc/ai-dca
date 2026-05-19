@@ -7,7 +7,7 @@ export function parseBarkInput(input = '') {
     if (String(url.hostname || '').toLowerCase() === 'api.day.app') {
       return decodeURIComponent(url.pathname.split('/').filter(Boolean)[0] || '').trim();
     }
-  } catch (_error) {
+  } catch {
     // Not a full URL; fall through to regex extraction.
   }
 

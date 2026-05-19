@@ -27,7 +27,6 @@ import {
   Card,
   Field,
   Pill,
-  SectionHeading,
   StatCard,
   TextInput,
   cx,
@@ -103,7 +102,7 @@ export function NotifyExperience({ embedded = false }) {
       const aggregates = aggregateByCode(ledger?.transactions || [], ledger?.snapshotsByCode || {});
       const summary = summarizePortfolio(aggregates);
       return buildHoldingsNotifyDigest({ aggregates, summary });
-    } catch (_error) {
+    } catch {
       return null;
     }
   }
@@ -197,7 +196,7 @@ export function NotifyExperience({ embedded = false }) {
           digest: payload?.digest || null,
           updatedAt: String(payload?.updatedAt || '')
         });
-      } catch (_error) {
+      } catch {
         // 静默：未配置与服务不可用都以「未启用」状态呈现。
       }
     }

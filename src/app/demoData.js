@@ -203,7 +203,7 @@ export function readDemoDataMeta() {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(DEMO_DATA_MARKER_KEY) || 'null');
     return parsed && parsed.source === 'ai-dca-demo-data' ? parsed : null;
-  } catch (_error) {
+  } catch {
     return null;
   }
 }
