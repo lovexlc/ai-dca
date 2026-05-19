@@ -90,7 +90,8 @@ src/components/
 - [x] 新建 `src/pages/SellPlanExperience.jsx`：Mag7/TSM chip、关联加仓策略、档位预览卡
 - [x] 改 `src/pages/TradePlansExperience.jsx`：新增 `#sell` 二级 tab，复用 `Suspense` 加载
 - [x] PR 1.5（部分完成）：`src/app/tradePlans.js` 增 `buildSellPlanRows` — 读 `aiDcaSellPlanStore`、调 `buildSellPlan` 拆档、输出 sourceType=`sell`/actionKey=`sell`/statusTone rose、sortRows 按 plan<sell<dca 排序、`summary.nextSellTrigger` 汇总首档。TradePlansExperience `handleViewMore` 加 `sell` 跳 `#sell`
-- [x] PR 1.5（client 侧完成）：`buildNotifySyncPayload` 额外上传 `sellPlans` 精简快照（id/symbol/holdingCost/holdingShares/gainTriggers/sellRatios/updatedAt），以供 worker 生成 “盈利 X% → 卖 Y%” 提醒。worker 侧 sell_layer 规则处理需另行推进。
+- [x] PR 1.5（client 侧完成）：`buildNotifySyncPayload` 额外上传 `sellPlans` 精简快照（id/symbol/holdingCost/holdingShares/gainTriggers/sellRatios/updatedAt），以供 worker 生成 “盈利 X% → 卖 Y%” 提醒。
+- [x] PR 1.5（worker 侧完成 `cc08ce2`）：`workers/notify/src/evaluator.js` 增 `evaluateSellPlanSignals`（含 `SELL_TIER_DEBOUNCE_MS` + `pickSellTier`），按 KV `sell-plan-state:{clientId}` 记录每档去重；`index.js` `handleSync` 在 VIX 之后调度，client 侧 `notifySync.js` 注入 `currentPrice`（来自 `aiDcaPositionSnapshot.prices`）。
 - [ ] 单测：`sellStrategy.test.js`（分档计算、超 100% 归一、宽基禁售、股数/利润上限）
 - [ ] 前端验证（e2e）：
   1. 打开 `/trade-plans#sell`，选 NVDA chip → 填写成本 100 / 股数 50 → 三档预览价为 115 / 125 / 135
@@ -123,7 +124,7 @@ src/components/
 ### PR 2b — VIX 深度集成（后插队） — `todo`
 - [x] VixDashboard 增加 30 日走势：复用 `loadBacktestCandles('^VIX','1mo')` （走 markets worker /kline），取尾 30 点画 LineChart；阈值虑 4 条 ReferenceLine（watch/buyIndex/buyAll/heavyBuy）。独立 TTL 缓存（`src/app/nasdaqPrices.js`）并未动——现阶段复用 fetchKline 足以验证交互。
 - [ ] （后续）历史信号列表 + nasdaqPrices.js 专用 ^VIX 历史 + TTL 缓存
-- [ ] 改 `src/app/homeDashboard.js`：`vixSummary` 注入首页监控区
+- [x] 首页监控区 `vixSummary` 卡（`cb65128`）：`src/pages/HomeExperience.jsx` 读 `readVixSnapshot` + `resolveVixSignal`，在 `marketError` 与 PlanBar 之间插入微缩卡（VIX 值、等级色调、阈值提示、点击跳 `#vix`）。
 - [x] 改 `src/app/notifySync.js`（client 侧）：`buildNotifySyncPayload` 额外上传 `vix` 快照 `{ value, level, levelLabel, cachedAt, thresholds }`。
 - [x] worker 侧 `evaluateVixSignal`：handleSync 评估跨阈值（calm/watch/buy_index/buy_all/heavy_buy 5 级），同级 24h 防抖，状态存 KV `vix-state:${clientId}`（提交 `0538bed`，部署 Version `ac2eb606`）
 - [ ] 后端冲烟：触发 VIX≥30/40/50 各一条通知看 worker 响应
@@ -164,7 +165,8 @@ src/components/
 - [x] 股数从 `aiDcaTradeLedger` 自动读取；总资产 + 价格 存 `aiDcaPositionSnapshot`
 - [x] PR 4.5：改 `src/pages/SellPlanExperience.jsx`：持仓股数下方插仓位检查卡（读 positionSnapshot + tradeLedger 调 `calculatePositions`），展示当前 symbol 仓位 % 与个股 50% 上限；超限标红，服近上限（≥5%内）标黄。
 - [x] PR 4.5：改 `src/pages/HoldingsExperience.jsx`：`aggregatesTableData` 计算 `weightPct`，表尾加「仓位占比」列（inline 条 + ≥0.5% 足精度），≥0% 零占比不显示；≥5% 琴锥警、≥40% 琥珀、≥50% 玄霁超仓警报（提交 `c26deed`）
-- [x] PR 4.5（client 侧 partial）：`buildNotifySyncPayload` 额外上传 `positionDigest`（仅传 symbol/type/weightPct/exceedsCap + cashWeightPct，不传总资产与价格），以供 worker 生成 “X 超 50% 仓位上限” / “现金过高 → 加仓宽基” 提醒。worker 侧规则处理仍需推进。
+- [x] PR 4.5（client 侧完成）：`buildNotifySyncPayload` 额外上传 `positionDigest`（仅传 symbol/type/weightPct/exceedsCap + cashWeightPct，不传总资产与价格）。
+- [x] PR 4.5（worker 侧完成 `cc08ce2`）：`workers/notify/src/evaluator.js` 增 `evaluatePositionDigest`（`POSITION_DEBOUNCE_MS` + `CASH_HIGH_PCT=30`）。KV `position-state:{clientId}` 记录每 symbol 上一次超限状态与 `_cash.lastPushedHigh`。推送 eventType：`position-cap` / `cash-high`，detailUrl 跳 `tradePlans#position:{symbol}` / `tradePlans#position:cash`。
 - [x] 单测 `test/positionManager.test.mjs`（8 个 case：超仓、宽基免检、totalAssets=0 fallback、checkWeightLimit、再平衡 advice）— 随 PR 4 后补上
 - [x] 单测 `test/sellStrategy.test.mjs`（7 个 case）、`test/costTracker.test.mjs`（7 个 case，含负成本 / 费用 / 乱序）、`test/dcaCalculator.test.mjs`（6 个 case）—一起补齐。含原 `clearedLotsAnalytics` 1 个，总计 29/29 通过
 - [ ] 前端验证（e2e）：
