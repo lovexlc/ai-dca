@@ -17,6 +17,9 @@ import {
 import { getAssetType, getAssetTypeLabel, canSell } from '../app/assetType.js';
 import { EXTRA_SYMBOL_GROUPS } from '../app/extraSymbols.js';
 import { readPlanList } from '../app/plan.js';
+import { readTradeLedger } from '../app/tradeLedger.js';
+import { groupCostBasisBySymbol } from '../app/costTracker.js';
+import { calculatePositions } from '../app/positionManager.js';
 import { showToast } from '../app/toast.js';
 import {
   Card,
@@ -51,6 +54,38 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave }) {
   const assetTypeLabel = getAssetTypeLabel(state.symbol);
   const assetType = getAssetType(state.symbol);
   const sellable = canSell(state.symbol);
+
+  // PR 4.5：仓位检查 — 读 positionSnapshot + tradeLedger，给出当前 symbol 的仓位 %。
+  // 宽基不限仓，个股 50% 上限。超阈给红色签，服近给黄色签。
+  const weightInfo = useMemo(() => {
+    const symbol = String(state.symbol || '').trim().toUpperCase();
+    if (!symbol) return null;
+    let snapshot = null;
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem('aiDcaPositionSnapshot') : null;
+      snapshot = raw ? JSON.parse(raw) : null;
+    } catch (_e) { snapshot = null; }
+    if (!snapshot || !(Number(snapshot.totalAssets) > 0)) return null;
+    const trades = readTradeLedger();
+    const grouped = groupCostBasisBySymbol(trades);
+    const shares = {};
+    for (const [sym, payload] of Object.entries(grouped)) {
+      if (payload.summary.remainingShares > 0) shares[sym] = payload.summary.remainingShares;
+    }
+    const positions = calculatePositions({
+      totalAssets: Number(snapshot.totalAssets) || 0,
+      prices: snapshot.prices || {},
+      shares
+    });
+    const row = (positions.rows || []).find((r) => String(r.symbol).toUpperCase() === symbol);
+    if (!row) return null;
+    return {
+      weightPct: Number(row.weightPct) || 0,
+      exceedsCap: Boolean(row.exceedsCap),
+      capPct: row.type === 'index' ? null : 50,
+      type: row.type
+    };
+  }, [state.symbol]);
 
   const linkedPlanOptions = useMemo(
     () => [
@@ -241,6 +276,29 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave }) {
                   />
                 </Field>
               </div>
+
+              {weightInfo ? (
+                <div
+                  className={cx(
+                    'rounded-2xl border px-4 py-3 text-sm',
+                    weightInfo.exceedsCap
+                      ? 'border-rose-200 bg-rose-50 text-rose-700'
+                      : weightInfo.capPct && weightInfo.weightPct >= weightInfo.capPct - 5
+                        ? 'border-amber-200 bg-amber-50 text-amber-800'
+                        : 'border-slate-200 bg-slate-50 text-slate-600'
+                  )}
+                >
+                  <div className="flex items-center gap-2 font-semibold">
+                    <AlertTriangle className="h-4 w-4" /> 仓位检查
+                  </div>
+                  <div className="mt-1">
+                    {state.symbol} 当前仓位 <strong>{weightInfo.weightPct.toFixed(2)}%</strong>
+                    {weightInfo.capPct
+                      ? <> · 个股上限 {weightInfo.capPct}%{weightInfo.exceedsCap ? '（已超上限，建议逐步减仓）' : ''}</>
+                      : <> · 宽基指数不限仓</>}
+                  </div>
+                </div>
+              ) : null}
 
               <Field label="卖出档位数" helper={`默认 ${MIN_SELL_TIERS} 档，可调 ${MIN_SELL_TIERS}-${MAX_SELL_TIERS} 档。`}>
                 <div className="grid grid-cols-3 gap-2">

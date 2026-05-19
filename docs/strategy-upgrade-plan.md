@@ -160,7 +160,7 @@ src/components/
 - [x] 新建 `src/pages/PositionManagerExperience.jsx`：4 个 stat 卡、总资产输入、拉取现价、recharts 柱状图（超仓转红）、明细表、再平衡建议
 - [x] 改 `src/pages/TradePlansExperience.jsx`：新增 `#position` 二级 tab（PieChart 图标）
 - [x] 股数从 `aiDcaTradeLedger` 自动读取；总资产 + 价格 存 `aiDcaPositionSnapshot`
-- [ ] PR 4.5（后插队）：改 `src/pages/SellPlanExperience.jsx`：生成减仓计划时调 `checkWeightLimit` 与实际仓位打通
+- [x] PR 4.5：改 `src/pages/SellPlanExperience.jsx`：持仓股数下方插仓位检查卡（读 positionSnapshot + tradeLedger 调 `calculatePositions`），展示当前 symbol 仓位 % 与个股 50% 上限；超限标红，服近上限（≥5%内）标黄。
 - [ ] PR 4.5：改 `src/pages/HoldingsExperience.jsx`：仓位占比饰区 + 加超仓提醒（3336 行，需小步）
 - [x] PR 4.5（client 侧 partial）：`buildNotifySyncPayload` 额外上传 `positionDigest`（仅传 symbol/type/weightPct/exceedsCap + cashWeightPct，不传总资产与价格），以供 worker 生成 “X 超 50% 仓位上限” / “现金过高 → 加仓宽基” 提醒。worker 侧规则处理仍需推进。
 - [x] 单测 `test/positionManager.test.mjs`（8 个 case：超仓、宽基免检、totalAssets=0 fallback、checkWeightLimit、再平衡 advice）— 随 PR 4 后补上
