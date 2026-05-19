@@ -121,8 +121,8 @@ src/components/
   4. `localStorage.aiDcaVixState` 被写入；刷新页面依然能读到上次值
 
 ### PR 2b — VIX 深度集成（后插队） — `todo`
-- [ ] 改 `src/app/nasdaqPrices.js`：拉取 `^VIX` 30 日历史，复用 TTL 缓存
-- [ ] VixDashboard 增加 30 日走势 + 历史信号列表
+- [x] VixDashboard 增加 30 日走势：复用 `loadBacktestCandles('^VIX','1mo')` （走 markets worker /kline），取尾 30 点画 LineChart；阈值虑 4 条 ReferenceLine（watch/buyIndex/buyAll/heavyBuy）。独立 TTL 缓存（`src/app/nasdaqPrices.js`）并未动——现阶段复用 fetchKline 足以验证交互。
+- [ ] （后续）历史信号列表 + nasdaqPrices.js 专用 ^VIX 历史 + TTL 缓存
 - [ ] 改 `src/app/homeDashboard.js`：`vixSummary` 注入首页监控区
 - [x] 改 `src/app/notifySync.js`（client 侧）：`buildNotifySyncPayload` 额外上传 `vix` 快照 `{ value, level, levelLabel, cachedAt, thresholds }`，以供 worker 生成 `vix_signal` 跨阈值提醒。worker 侧跨阈值检测 + 24h 同级防抖仍需推进。
 - [ ] 后端冲烟：触发 VIX≥30/40/50 各一条通知看 worker 响应

@@ -99,6 +99,8 @@ import {
   sanitizeDecimalInput,
   transactionToDraft
 } from '../app/holdingsHelpers.js';
+import { readTradeLedger } from '../app/tradeLedger.js';
+import { groupCostBasisBySymbol, attachUnrealized } from '../app/costTracker.js';
 
 
 export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = false } = {}) {
@@ -200,6 +202,19 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     persistLedgerState(ledger);
   }, [ledger]);
 
+  // ---- PR 3.5 part 1: 读取交易台账 (aiDcaTradeLedger)，给基金汇总行注入成本/盈亏字段（仅数据层，UI 留到 part 2）。 ----
+  const [tradeLedgerEntries, setTradeLedgerEntries] = useState(() => readTradeLedger());
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    function onStorage(event) {
+      if (!event || event.key === 'aiDcaTradeLedger' || event.key === null) {
+        setTradeLedgerEntries(readTradeLedger());
+      }
+    }
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
   // ---- Derived data ----
   const transactions = ledger.transactions;
   const inceptionDate = useMemo(() => {
@@ -277,9 +292,33 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }, [mainViewTab, aggregates, ledgerRows]);
 
   // ---- TanStack Table (shadcn / tablecn) for the 「基金汇总」 view ----
+  // PR 3.5 part 1：交易台账以 symbol 为维度聚合成本/盈亏，以 ledger* 字段挂到持仓行上；UI 呈现留给 part 2。
+  const costBasisBySymbol = useMemo(
+    () => groupCostBasisBySymbol(tradeLedgerEntries),
+    [tradeLedgerEntries],
+  );
   const aggregatesTableData = useMemo(
-    () => aggregates.filter((agg) => agg.hasPosition),
-    [aggregates],
+    () => aggregates.filter((agg) => agg.hasPosition).map((agg) => {
+      const sym = String(agg.code || '').trim().toUpperCase();
+      const entry = sym ? costBasisBySymbol[sym] : null;
+      const summary = entry ? entry.summary : null;
+      if (!summary) return agg;
+      const enriched = {
+        ...agg,
+        ledgerTextbookCost: summary.textbookCost,
+        ledgerEffectiveCost: summary.effectiveCost,
+        ledgerRealizedPnl: summary.realizedPnl,
+        ledgerIsNegativeCost: summary.isNegativeCost,
+      };
+      const price = Number(agg.latestNav) || 0;
+      if (price > 0) {
+        const withUnreal = attachUnrealized(summary, price);
+        enriched.ledgerUnrealizedPnl = withUnreal.unrealizedPnl;
+        enriched.ledgerTotalPnl = withUnreal.totalPnl;
+      }
+      return enriched;
+    }),
+    [aggregates, costBasisBySymbol],
   );
   const numericSortFn = (rowA, rowB, columnId) => {
     const a = rowA.getValue(columnId);
