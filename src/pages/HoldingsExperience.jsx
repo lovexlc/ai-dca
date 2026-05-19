@@ -2125,17 +2125,16 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         <div className="grid grid-cols-3 gap-2 md:gap-3">
           {accountAllocation.map((item) => (
             <div key={item.key} className="min-w-0 rounded-2xl border border-slate-200 bg-white px-2.5 py-2 md:px-4 md:py-3">
-              <div className="flex items-center justify-between gap-1.5 md:gap-3">
-                <div className="truncate text-xs font-semibold text-slate-900 md:text-sm">{item.label}</div>
+              <div className="truncate text-xs font-semibold text-slate-900 md:text-sm">{item.label}</div>
+              <div className="mt-1.5 truncate text-sm font-bold tabular-nums text-slate-900 md:mt-2 md:text-xl">{formatCurrency(item.marketValue, '¥', 2)}</div>
+              <div className="mt-1.5 md:mt-2">
                 <Pill
                   tone={item.key === 'aggressive' ? 'rose' : item.key === 'stable' ? 'indigo' : 'emerald'}
-                  className="shrink-0 px-1.5 py-0 text-[10px] md:px-2 md:py-0.5 md:text-xs"
+                  className="px-1.5 py-0 text-[10px] md:px-2 md:py-0.5 md:text-xs"
                 >
                   {formatPercent(item.ratio, 1)}
                 </Pill>
               </div>
-              <div className="mt-1.5 truncate text-sm font-bold tabular-nums text-slate-900 md:mt-2 md:text-xl">{formatCurrency(item.marketValue, '¥', 2)}</div>
-              <div className="mt-0.5 truncate text-[10px] text-slate-400 md:mt-1 md:text-xs">{item.holdings.length} 个标的</div>
             </div>
           ))}
         </div>
