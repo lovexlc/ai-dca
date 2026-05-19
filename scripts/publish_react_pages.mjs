@@ -13,6 +13,7 @@ import { join, resolve, sep } from 'node:path';
 const root = process.cwd();
 const distDir = resolve(root, process.env.REACT_DIST_DIR || 'frontend-dist');
 const docsDir = resolve(root, 'docs');
+const publicDir = resolve(root, 'public');
 const pageTemplatePath = resolve(distDir, 'index.html');
 const distAssetsDir = resolve(distDir, 'react-assets');
 const docsAssetsDir = resolve(docsDir, 'react-assets-v2');
@@ -47,6 +48,30 @@ rmSync(resolve(docsDir, 'screenshots'), { recursive: true, force: true });
 
 rmSync(docsAssetsDir, { recursive: true, force: true });
 cpSync(distAssetsDir, docsAssetsDir, { recursive: true, force: true });
+
+// 静态资源：把 public/ 下的子目录/文件同步到 docs/。
+// Vite 会把 public/* 复制到 distDir，但此脚本只转发 index.html + react-assets/，
+// 如果不补上这一步，public/strategy-guide/*.png 这类静态资源会在 Pages 上 404。
+if (existsSync(publicDir)) {
+  for (const entry of readdirSync(publicDir)) {
+    if (entry === 'index.html') continue;
+    const sourcePath = join(publicDir, entry);
+    const targetPath = join(docsDir, entry);
+    try {
+      const info = statSync(sourcePath);
+      if (info.isDirectory()) {
+        rmSync(targetPath, { recursive: true, force: true });
+        cpSync(sourcePath, targetPath, { recursive: true, force: true });
+      } else if (info.isFile()) {
+        cpSync(sourcePath, targetPath, { force: true });
+      }
+    } catch (error) {
+      if (!ignoreLocalPermissionError(error, `public/${entry} sync`)) {
+        throw error;
+      }
+    }
+  }
+}
 
 // Cache-bust dynamic chunk imports inside the JS bundles.
 // 去 hash 后 chunk 互相 import 的字符串（如 "./HoldingsExperience.js" 与 __vite__mapDeps 里的
