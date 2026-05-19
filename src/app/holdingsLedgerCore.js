@@ -184,6 +184,21 @@ export function normalizeIsoDate(value = '') {
     const [, y, m, d] = directMatch;
     return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
   }
+  // 兜底: 形如 "202604-04" / "202604-04-XX" (年月之间缺少分隔符) → 拆为 YYYY-MM-DD。
+  // 例: "202604-04-04" → year=2026, month=04, day=04。
+  const noSepYearMonth = raw.match(/^(\d{4})(\d{2})[-/.](\d{1,2})(?:[-/.](\d{1,2}))?/);
+  if (noSepYearMonth) {
+    const [, y, m, d1, d2] = noSepYearMonth;
+    // 当存在两个数字段 (如 202604-04-XX), 取后者作 day; 否则取 d1 作 day。
+    const day = (d2 || d1);
+    return `${y}-${m.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+  // 兜底: 纯 8 位数字 YYYYMMDD
+  const compact = raw.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (compact) {
+    const [, y, m, d] = compact;
+    return `${y}-${m}-${d}`;
+  }
   const timestamp = Date.parse(raw);
   if (Number.isFinite(timestamp)) {
     const dateObj = new Date(timestamp);

@@ -17,7 +17,7 @@ import { formatCurrency } from '../accumulation.js';
 import { cx } from '../../components/experience-ui.jsx';
 import SubPageShell from './SubPageShell.jsx';
 import { ROUTES } from '../incomeRoute.js';
-import { buildSoldLots } from '../holdingsLedgerCore.js';
+import { buildSoldLots, normalizeIsoDate } from '../holdingsLedgerCore.js';
 import { getAssetTypeLabel } from '../assetType.js';
 
 const TONE_BUY = 'bg-rose-50 text-rose-700';
@@ -33,12 +33,17 @@ const LENS_OPTIONS = [
 
 function toIsoDay(d) {
 	if (!d) return '';
+	// 用 normalizeIsoDate 兜底，避免对非标准日期字符串死切（例如 "202604-04-04" 直接 slice(0,10) 会变成 "202604-04-"）。
+	const normalized = normalizeIsoDate(d);
+	if (normalized) return normalized;
 	const s = String(d);
 	return s.length >= 10 ? s.slice(0, 10) : s;
 }
 
 function monthKeyOf(iso) {
-	return iso && iso.length >= 7 ? iso.slice(0, 7) : '未知月';
+	// iso 已是 toIsoDay 输出，仅当其形如 YYYY-MM-DD 时取月份键。
+	if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso.slice(0, 7);
+	return '未知月';
 }
 
 function computeAmount(tx) {
