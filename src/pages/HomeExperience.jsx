@@ -5,7 +5,7 @@
 // See docs/home-redesign.md for the layout spec.
 
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Activity, Plus, Trash2 } from 'lucide-react';
 import { formatCurrency, formatPercent, readAccumulationState } from '../app/accumulation.js';
 import { normalizeHomeDashboardState, persistHomeDashboardState, readHomeDashboardState } from '../app/homeDashboard.js';
 import { formatMarketCode, formatMarketName } from '../app/marketDisplay.js';
@@ -14,6 +14,7 @@ import { readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { deletePlan, readPlanList, readPlanState, setActivePlanId } from '../app/plan.js';
 import { buildMovingAverageValues, buildNasdaqStrategyPlan, buildPeakDrawdownStrategyPlan, findLatestFiniteValue, mapReferencePrice, resolveNextTriggerLayer } from '../app/strategyEngine.js';
 import { showActionToast } from '../app/toast.js';
+import { resolveVixSignal, readVixSnapshot, VIX_THRESHOLDS } from '../app/vixSignal.js';
 import { Card, Pill, SectionHeading, cx, primaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
 import {
   BENCHMARK_CODE,
@@ -48,6 +49,23 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
   const [selectedCode, setSelectedCode] = useState(() => (initialPlanState.isConfigured ? initialPlanState.symbol : dashboardState.selectedCode));
   const [minuteSnapshot, setMinuteSnapshot] = useState(null);
   const [fifteenMinuteSnapshot, setFifteenMinuteSnapshot] = useState(null);
+  // PR 2b尾巴：首页 VIX 纪要卡。读 localStorage 缓存，用户可点跳 #vix tab 看详情。
+  const [vixSummary, setVixSummary] = useState(() => {
+    const snap = readVixSnapshot();
+    if (!snap) return null;
+    const signal = resolveVixSignal(snap.value);
+    return { value: snap.value, cachedAt: snap.cachedAt || '', ...signal };
+  });
+  useEffect(() => {
+    function refresh() {
+      const snap = readVixSnapshot();
+      if (!snap) { setVixSummary(null); return; }
+      const signal = resolveVixSignal(snap.value);
+      setVixSummary({ value: snap.value, cachedAt: snap.cachedAt || '', ...signal });
+    }
+    window.addEventListener('storage', refresh);
+    return () => window.removeEventListener('storage', refresh);
+  }, []);
   const [dailySeries, setDailySeries] = useState([]);
   const [benchmarkDailySeries, setBenchmarkDailySeries] = useState([]);
   const [pulseError, setPulseError] = useState('');
@@ -440,6 +458,39 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
         <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">
           现价数据加载失败：{marketError}
         </div>
+      ) : null}
+
+      {/* ===== PR 2b尾巴：VIX 首页摘要卡 — 点击跳转交易计划中心 #vix tab ===== */}
+      {vixSummary ? (
+        <a
+          href="/trade-plans#vix"
+          className={cx(
+            'flex items-center justify-between gap-3 rounded-md border px-4 py-2.5 text-sm transition-colors',
+            vixSummary.tone === 'red'
+              ? 'border-rose-200 bg-rose-50 hover:bg-rose-100'
+              : vixSummary.tone === 'orange'
+                ? 'border-orange-200 bg-orange-50 hover:bg-orange-100'
+                : vixSummary.tone === 'amber'
+                  ? 'border-amber-200 bg-amber-50 hover:bg-amber-100'
+                  : vixSummary.tone === 'yellow'
+                    ? 'border-yellow-200 bg-yellow-50 hover:bg-yellow-100'
+                    : vixSummary.tone === 'emerald'
+                      ? 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100'
+                      : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
+          )}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <Activity className="h-4 w-4 shrink-0 text-slate-500" />
+            <span className="font-medium text-slate-700">VIX</span>
+            <span className="font-semibold tabular-nums text-slate-900">{Number(vixSummary.value).toFixed(2)}</span>
+            <span className="text-slate-500">·</span>
+            <span className="truncate text-slate-700">{vixSummary.label || '平静'}</span>
+            <span className="hidden text-xs text-slate-500 sm:inline">
+              阈值 {VIX_THRESHOLDS.watch}/{VIX_THRESHOLDS.buyIndex}/{VIX_THRESHOLDS.buyAll}/{VIX_THRESHOLDS.heavyBuy}
+            </span>
+          </div>
+          <span className="shrink-0 text-xs text-slate-500">查看详情 →</span>
+        </a>
       ) : null}
 
       {/* ===== PlanBar: 策略切换 + 测试通知 + 新建策略 ===== */}

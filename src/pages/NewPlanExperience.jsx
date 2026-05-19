@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowRight, Save } from 'lucide-react';
-import { formatCurrency } from '../app/accumulation.js';
+import { formatCurrency, formatPercent } from '../app/accumulation.js';
 import { readHomeDashboardState } from '../app/homeDashboard.js';
 import { formatMarketCode, formatMarketLabel, formatMarketName } from '../app/marketDisplay.js';
 import { loadLatestNasdaqPrices, loadNasdaqDailySeries } from '../app/nasdaqPrices.js';
