@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Bell, BookOpen, Database, LineChart, RefreshCw, Trash2, Wallet } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { clearDemoData, hasPotentialUserData, installDemoData, readDemoDataMeta } from '../app/demoData.js';
 import { persistWorkspacePrefs, readWorkspacePrefs } from '../app/workspacePrefs.js';
 import { Card, PageHero, Pill, SectionHeading, SelectField, cx, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
@@ -12,15 +12,6 @@ const HOME_OPTIONS = [
   { value: 'markets', label: '行情中心' },
   { value: 'fundSwitch', label: '基金切换' },
   { value: 'backup', label: '数据同步 / 备份' }
-];
-
-const QUICK_ENTRIES = [
-  { key: 'holdings', title: '持仓总览', icon: Wallet, note: '真实资产底账、成本、收益、三账户分配' },
-  { key: 'tradePlans', title: '交易计划', icon: BookOpen, note: '宽基/个股加仓、定投、卖出计划' },
-  { key: 'notify', title: '通知设置', icon: Bell, note: '配置 iOS / Android / PC 推送提醒' },
-  { key: 'markets', title: '行情中心', icon: LineChart, note: '关注标的、市场指数和 VIX 信号' },
-  { key: 'fundSwitch', title: '基金切换', icon: RefreshCw, note: '比较同类基金和替代标的切换机会' },
-  { key: 'backup', title: '数据备份', icon: Database, note: '导出、恢复和迁移本地数据' }
 ];
 
 function GuideButton({ children, onClick, variant = 'primary' }) {
@@ -46,13 +37,12 @@ function SimpleTable({ headers, rows }) {
   );
 }
 
-function ScreenshotPlaceholder({ title, children }) {
+function ScreenshotImage({ src, alt, caption }) {
   return (
-    <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
-      <div className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">截图说明</div>
-      <div className="text-base font-bold text-slate-800">{title}</div>
-      <p className="mt-2 leading-6">{children}</p>
-    </div>
+    <figure className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+      <img src={src} alt={alt} loading="lazy" className="mx-auto block max-h-[420px] w-full object-contain" />
+      {caption ? <figcaption className="px-4 py-2 text-xs text-slate-500">{caption}</figcaption> : null}
+    </figure>
   );
 }
 
@@ -164,14 +154,22 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
               <Pill tone="indigo">iOS Bark</Pill>
               <h3 className="mt-4 text-lg font-bold text-slate-900">复制完整 Bark 链接</h3>
               <p className="mt-2 text-sm leading-6 text-slate-500">打开 Bark，复制 api.day.app 开头的完整链接，或只复制 Device Key。粘贴到通知页后，系统会自动提取可用 Key。</p>
-              <ScreenshotPlaceholder title="Bark 示例">例如 https://api.day.app/Kkbv.../推送内容，整段复制即可。</ScreenshotPlaceholder>
+              <ScreenshotImage
+                src="/strategy-guide/bark-example.png"
+                alt="iOS Bark 复制推送链接示例"
+                caption="例如 https://api.day.app/Kkbv.../推送内容，整段复制粘到通知页即可。"
+              />
               <button type="button" className={cx(primaryButtonClass, 'mt-5 w-full')} onClick={() => navigate('notify')}>去配置 iOS 通知</button>
             </Card>
             <Card>
               <Pill tone="emerald">Android</Pill>
               <h3 className="mt-4 text-lg font-bold text-slate-900">复制完整测试 URL</h3>
               <p className="mt-2 text-sm leading-6 text-slate-500">打开 Android 推送 App，可以复制灰色框里的消息推送 ID，也可以复制完整测试 URL。系统会自动提取 android- 开头 ID。</p>
-              <ScreenshotPlaceholder title="Android 示例">例如 android-04b416451c30dccc，或包含该 ID 的完整 URL。</ScreenshotPlaceholder>
+              <ScreenshotImage
+                src="/strategy-guide/android-example.jpg"
+                alt="Android 复制推送 ID 示例"
+                caption="复制灰色框里的 android-... ID，或下方完整测试 URL、系统会自动提取。"
+              />
               <button type="button" className={cx(primaryButtonClass, 'mt-5 w-full')} onClick={() => navigate('notify')}>去绑定 Android 设备</button>
             </Card>
             <Card>
@@ -181,24 +179,6 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
               <ul className="mt-4 space-y-2 text-sm text-slate-600"><li>1. 打开通知设置</li><li>2. 授权浏览器通知</li><li>3. 发送本地测试通知</li></ul>
               <button type="button" className={cx(primaryButtonClass, 'mt-5 w-full')} onClick={() => navigate('notify')}>去配置 PC 通知</button>
             </Card>
-          </div>
-        </section>
-
-        <section className="space-y-5">
-          <SectionHeading eyebrow="快捷入口" title="从这里进入各功能" />
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {QUICK_ENTRIES.map((entry) => {
-              const Icon = entry.icon;
-              return (
-                <button key={entry.key} type="button" onClick={() => navigate(entry.key)} className="group text-left transition hover:-translate-y-0.5">
-                  <Card className="h-full transition group-hover:shadow-lg">
-                    <Icon className="h-5 w-5 text-indigo-500" />
-                    <h3 className="mt-4 text-base font-bold text-slate-900">{entry.title}</h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-500">{entry.note}</p>
-                  </Card>
-                </button>
-              );
-            })}
           </div>
         </section>
 
