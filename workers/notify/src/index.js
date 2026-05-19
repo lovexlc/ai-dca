@@ -1,4 +1,4 @@
-import { runNotificationCycle } from './evaluator.js';
+import { evaluateVixSignal, runNotificationCycle } from './evaluator.js';
 import { buildPublicGcmRegistration, buildPublicGcmRegistrations, checkGcmConnection, hasGcmServiceAccount, isRegistrationPairedToScope, maskSecret, normalizeGcmPairedClients, normalizeGcmRegistrations, normalizeNotifyGroupId, readGcmServiceAccount, resolveGcmProjectId } from './gcm.js';
 import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
 import { handleBark, isBarkRoute } from './bark.js';
@@ -760,6 +760,25 @@ async function handleSync(request, env) {
   });
 
   await writeSettings(env, nextSettings);
+
+  // PR 2b尾巴：worker 侧 VIX 跨阈值推送。
+  // rawPayload.vix 是客户端在 buildNotifySyncPayload() 中上传的 digest，
+  // normalizeNotifyPayload 会把其过滤掉，所以这里从 raw 里拿。
+  // 仅在区间变动时推送；same-level 且 24h 内不重推。
+  try {
+    env.__notifySettings = buildScopedNotifySettings(nextSettings, currentClientId);
+    env.__notifyCurrentClientId = currentClientId;
+    const vixStateKey = `vix-state:${currentClientId}`;
+    await evaluateVixSignal(env, rawPayload?.vix, {
+      clientId: currentClientId,
+      settings: env.__notifySettings,
+      readState: () => readJson(env, vixStateKey, null),
+      writeState: (value) => writeJson(env, vixStateKey, value),
+    });
+  } catch (error) {
+    // VIX 推送失败不应影响 sync 本身。
+    console.error('[notify] evaluateVixSignal failed', error);
+  }
 
   return jsonResponse({
     ok: true,

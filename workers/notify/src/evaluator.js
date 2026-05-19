@@ -703,6 +703,106 @@ function updateDeliveryFailures(previousFailures, results = [], nowIso) {
   };
 }
 
+// PR 2b尾巴：worker 侧 VIX 跨阈值检测 + 24h 同级防抖。
+// 客户端在 sync payload 中附带 vix: { value, level, levelLabel, thresholds }。
+// 这里仅在「区间变动」时推送；same-level + 24h 内不重推。
+export const VIX_LEVEL_RANK = Object.freeze({
+  calm: 0,
+  watch: 1,
+  buy_index: 2,
+  buy_all: 3,
+  heavy_buy: 4,
+});
+
+export const VIX_SAME_LEVEL_DEBOUNCE_MS = 24 * 60 * 60 * 1000;
+
+function vixLevelLabel(level) {
+  switch (String(level || '').trim()) {
+    case 'watch': return '关注（≥25）';
+    case 'buy_index': return '买指数（≥30）';
+    case 'buy_all': return '全面买入（≥40）';
+    case 'heavy_buy': return '重仓加码（≥50）';
+    default: return '平静（<25）';
+  }
+}
+
+export async function evaluateVixSignal(env, vixDigest, options = {}) {
+  const { clientId = '', settings = {}, readState, writeState } = options;
+  if (!vixDigest || typeof vixDigest !== 'object') return { skipped: 'no-digest' };
+  const value = Number(vixDigest.value);
+  const level = String(vixDigest.level || 'calm').trim();
+  if (!Number.isFinite(value)) return { skipped: 'invalid-value' };
+  if (!Object.prototype.hasOwnProperty.call(VIX_LEVEL_RANK, level)) {
+    return { skipped: 'unknown-level', level };
+  }
+
+  const prev = (typeof readState === 'function' ? (await readState()) : null) || {};
+  const prevPushedLevel = String(prev.lastPushedLevel || '').trim();
+  const prevPushedAt = Number(prev.lastPushedAt) || 0;
+  const now = Date.now();
+
+  if (prevPushedLevel === level) {
+    if (now - prevPushedAt < VIX_SAME_LEVEL_DEBOUNCE_MS) {
+      return { skipped: 'debounced-same-level', level, value, prevLevel: prevPushedLevel };
+    }
+    return { skipped: 'same-level', level, value, prevLevel: prevPushedLevel };
+  }
+
+  env.__notifySettings = settings;
+  env.__notifyCurrentClientId = clientId;
+  const direction = (VIX_LEVEL_RANK[level] ?? 0) > (VIX_LEVEL_RANK[prevPushedLevel] ?? -1) ? '↑' : '↓';
+  const fromLabel = vixLevelLabel(prevPushedLevel || 'calm');
+  const toLabel = vixLevelLabel(level);
+  const title = `VIX ${direction} ${toLabel}`;
+  const body = `当前 VIX ${value.toFixed(2)}，${fromLabel} → ${toLabel}。`;
+  const body_md = [
+    '**VIX 跨阈值提醒**',
+    '',
+    `- 当前值：**${value.toFixed(2)}**`,
+    `- 区间变动：${fromLabel} → **${toLabel}**`,
+    '- 操作：参考策略按对应层级买入。',
+  ].join('\n');
+  const detailUrl = buildNotificationDetailUrl(env, 'tradePlans', 'vix-signal');
+  const notification = {
+    eventId: buildNotificationEventId(`vix:level:${level}`, `cross:${prevPushedLevel || 'calm'}->${level}`, new Date(now)),
+    eventType: 'vix-signal',
+    ruleId: `vix:level:${level}`,
+    title,
+    body,
+    body_md,
+    summary: title,
+    symbol: 'VIX',
+    detailUrl,
+    url: detailUrl,
+  };
+
+  let delivery = null;
+  try {
+    delivery = await deliverNotification(env, notification);
+  } catch (error) {
+    return { skipped: 'delivery-error', detail: error instanceof Error ? error.message : String(error) };
+  }
+
+  if (typeof writeState === 'function') {
+    await writeState({
+      lastPushedLevel: level,
+      lastPushedAt: now,
+      lastPushedValue: value,
+      lastSeenLevel: level,
+      lastSeenValue: value,
+      lastSeenAt: now,
+    });
+  }
+
+  return {
+    delivered: true,
+    level,
+    prevLevel: prevPushedLevel,
+    value,
+    results: delivery?.results || [],
+  };
+}
+
 export async function runNotificationCycle(env, payload = {}, storedState = {}, { reason = 'scheduled', testPayload = null } = {}) {
   const nextState = {
     ruleStates: typeof storedState?.ruleStates === 'object' && storedState.ruleStates ? storedState.ruleStates : {},
