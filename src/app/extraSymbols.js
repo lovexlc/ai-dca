@@ -10,7 +10,10 @@ export const EXTRA_SYMBOL_GROUPS = [
     note: '只买不做 T',
     symbols: [
       { code: 'QQQ', name: '纳指 100 ETF', currency: 'USD' },
-      { code: 'VOO', name: '标普 500 ETF', currency: 'USD' }
+      { code: 'VOO', name: '标普 500 ETF', currency: 'USD' },
+      { code: 'SPY', name: '标普 500 ETF (SPDR)', currency: 'USD' },
+      { code: 'DIA', name: '道指 30 ETF', currency: 'USD' },
+      { code: 'IWM', name: '罗素 2000 ETF', currency: 'USD' }
     ]
   },
   {
