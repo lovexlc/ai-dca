@@ -298,26 +298,37 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     [tradeLedgerEntries],
   );
   const aggregatesTableData = useMemo(
-    () => aggregates.filter((agg) => agg.hasPosition).map((agg) => {
-      const sym = String(agg.code || '').trim().toUpperCase();
-      const entry = sym ? costBasisBySymbol[sym] : null;
-      const summary = entry ? entry.summary : null;
-      if (!summary) return agg;
-      const enriched = {
-        ...agg,
-        ledgerTextbookCost: summary.textbookCost,
-        ledgerEffectiveCost: summary.effectiveCost,
-        ledgerRealizedPnl: summary.realizedPnl,
-        ledgerIsNegativeCost: summary.isNegativeCost,
-      };
-      const price = Number(agg.latestNav) || 0;
-      if (price > 0) {
-        const withUnreal = attachUnrealized(summary, price);
-        enriched.ledgerUnrealizedPnl = withUnreal.unrealizedPnl;
-        enriched.ledgerTotalPnl = withUnreal.totalPnl;
-      }
-      return enriched;
-    }),
+    () => {
+      const enriched = aggregates.filter((agg) => agg.hasPosition).map((agg) => {
+        const sym = String(agg.code || '').trim().toUpperCase();
+        const entry = sym ? costBasisBySymbol[sym] : null;
+        const summary = entry ? entry.summary : null;
+        const base = summary ? {
+          ...agg,
+          ledgerTextbookCost: summary.textbookCost,
+          ledgerEffectiveCost: summary.effectiveCost,
+          ledgerRealizedPnl: summary.realizedPnl,
+          ledgerIsNegativeCost: summary.isNegativeCost,
+        } : { ...agg };
+        const price = Number(agg.latestNav) || 0;
+        if (summary && price > 0) {
+          const withUnreal = attachUnrealized(summary, price);
+          base.ledgerUnrealizedPnl = withUnreal.unrealizedPnl;
+          base.ledgerTotalPnl = withUnreal.totalPnl;
+        }
+        return base;
+      });
+      // PR 4.5 收尾：仓位占比在表中可视化。总市值走 hasLatestNav 的行，以避免未定价的场外基金拉低总合计。
+      const totalMv = enriched.reduce(
+        (sum, row) => sum + (row.hasLatestNav ? (Number(row.marketValue) || 0) : 0),
+        0,
+      );
+      if (totalMv <= 0) return enriched;
+      return enriched.map((row) => ({
+        ...row,
+        weightPct: row.hasLatestNav ? ((Number(row.marketValue) || 0) / totalMv) * 100 : null,
+      }));
+    },
     [aggregates, costBasisBySymbol],
   );
   const numericSortFn = (rowA, rowB, columnId) => {
@@ -496,6 +507,31 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         if (v == null) return <span className="text-muted-foreground">—</span>;
         const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
         return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v, 2)}</span>;
+      },
+      sortingFn: numericSortFn,
+    },
+    {
+      id: 'weightPct',
+      accessorFn: (row) => (row.weightPct == null ? null : row.weightPct),
+      meta: { label: '仓位占比' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="仓位占比" />,
+      cell: ({ row }) => {
+        const v = row.original.weightPct;
+        if (v == null) return <span className="text-muted-foreground">—</span>;
+        const pct = Math.max(0, Math.min(100, v));
+        const heavy = v >= 50;
+        const warn = v >= 40 && v < 50;
+        const barCls = heavy ? 'bg-rose-500' : warn ? 'bg-amber-500' : 'bg-sky-500';
+        const textCls = heavy ? 'text-rose-700 font-semibold' : warn ? 'text-amber-700' : '';
+        const barStyle = { width: `${pct}%` };
+        return (
+          <div className="flex items-center gap-2 min-w-[120px]">
+            <div className="h-1.5 flex-1 rounded-full bg-slate-200 overflow-hidden">
+              <div className={cx('h-full rounded-full transition-all', barCls)} style={barStyle} />
+            </div>
+            <span className={cx('tabular-nums text-xs w-12 text-right', textCls)}>{v.toFixed(1)}%</span>
+          </div>
+        );
       },
       sortingFn: numericSortFn,
     },
