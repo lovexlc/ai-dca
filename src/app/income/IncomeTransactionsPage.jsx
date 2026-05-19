@@ -18,6 +18,7 @@ import { cx } from '../../components/experience-ui.jsx';
 import SubPageShell from './SubPageShell.jsx';
 import { ROUTES } from '../incomeRoute.js';
 import { buildSoldLots } from '../holdingsLedgerCore.js';
+import { getAssetTypeLabel } from '../assetType.js';
 
 const TONE_BUY = 'bg-rose-50 text-rose-700';
 const TONE_SELL = 'bg-emerald-50 text-emerald-700';
@@ -302,7 +303,7 @@ function Row({ tx, onClick }) {
 				{label}
 			</span>
 			<span className="min-w-0">
-				<div className="truncate text-[13px] font-medium text-slate-800">基金 | {tx.name || tx.code || '—'}</div>
+				<div className="truncate text-[13px] font-medium text-slate-800">{getAssetTypeLabel(tx.code)} | {tx.name || tx.code || '—'}</div>
 				<div className="mt-0.5 text-[11px] text-slate-400 tabular-nums">{toIsoDay(tx.date)}</div>
 			</span>
 			<span className="min-w-0 max-w-[42%] shrink-0 truncate whitespace-nowrap text-right text-[13px] font-semibold tabular-nums text-slate-800">{amount === null ? '—' : formatCurrency(amount, '¥', 2)}</span>
