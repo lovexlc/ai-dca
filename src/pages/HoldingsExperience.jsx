@@ -394,7 +394,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         <span className="tabular-nums">
           {formatShares(row.original.totalShares)}
           {row.original.pendingSellShares > 0 ? (
-            <span className="ml-1 rounded-full bg-amber-50 px-1.5 py-px text-[10px] font-medium text-amber-600" title="待确认卖出份额，净值公布后自动扣减">
+            <span className="ml-1 rounded-full bg-amber-50 px-1.5 py-px text-[10px] font-medium text-amber-600" title={row.original.kind === 'qdii' ? 'QDII 赎回：T 日净值由 T+1 晚公布，T+2 确认后自动扣减' : '场外赎回：T 日晚公布 NAV，T+1 确认后自动扣减'}>
               −{formatShares(row.original.pendingSellShares)} 待确认
             </span>
           ) : null}
@@ -2463,7 +2463,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             <dd className="mt-1 min-w-0 truncate whitespace-nowrap tabular-nums text-slate-900">
               {formatShares(agg.totalShares)}
               {agg.pendingSellShares > 0 ? (
-                <span className="ml-2 rounded-full bg-amber-50 px-1.5 py-px text-[10px] font-medium text-amber-600">
+                <span className="ml-2 rounded-full bg-amber-50 px-1.5 py-px text-[10px] font-medium text-amber-600" title={agg.kind === 'qdii' ? 'QDII 赎回：T 日净值由 T+1 晚公布，T+2 确认后自动扣减' : '场外赎回：T 日晚公布 NAV，T+1 确认后自动扣减'}>
                   −{formatShares(agg.pendingSellShares)} 待确认
                 </span>
               ) : null}
@@ -2667,9 +2667,13 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 </label>
               </div>
               <div className="mt-1.5 text-[10px] text-slate-500">
-                {draft.before3pm
-                  ? '勾选 = T 日 15:00 前提交，按今日收盘净值确认。'
-                  : '未勾 = T 日 15:00 后提交，按次个交易日净值确认，价格可能还未公布。'}
+                {draft.kind === 'qdii'
+                  ? (draft.before3pm
+                      ? 'QDII：T 日 15:00 前提交，按 T 日净值计算；T 日净值需等 T+1 晚公布，T+2 确认。'
+                      : 'QDII：T 日 15:00 后提交，顺延为 T+1 申赎，按 T+1 净值计算（T+2 晚公布，T+3 确认）。')
+                  : (draft.before3pm
+                      ? '场外：T 日 15:00 前提交，按 T 日净值（T 日晚公布），T+1 确认。'
+                      : '场外：T 日 15:00 后提交，顺延为 T+1 申赎，按 T+1 净值（T+1 晚公布），T+2 确认。')}
               </div>
             </div>
           ) : null}

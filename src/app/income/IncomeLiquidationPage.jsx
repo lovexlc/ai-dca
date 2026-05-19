@@ -93,7 +93,7 @@ function LotRow({ lot, ledger }) {
 				{lot.pending ? (
 					<>
 						<span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">待确认</span>
-						<span className="truncate text-[10px] text-slate-400">等 NAV 公布后自动更新</span>
+						<span className="truncate text-[10px] text-slate-400">{lot.kind === 'qdii' ? 'QDII：T+1 晚发净值，T+2 确认' : '场外：T 日晚发净值，T+1 确认'}</span>
 					</>
 				) : (
 					<>
