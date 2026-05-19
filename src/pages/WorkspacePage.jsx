@@ -1,10 +1,12 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, CloudUpload, LineChart, ListChecks, Shuffle, Wallet } from 'lucide-react';
-import { LEGACY_TAB_REDIRECTS, PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
+import { Bell, BookOpen, CloudUpload, LineChart, ListChecks, Shuffle, Trash2, Wallet } from 'lucide-react';
+import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
 import { MobileTabBar } from '../components/mobile-tab-bar.jsx';
 import { GlobalSearch } from '../components/global-search.jsx';
+import { clearDemoData, readDemoDataMeta } from '../app/demoData.js';
+import { readWorkspacePrefs } from '../app/workspacePrefs.js';
 
 // 各主 tab 使用 React.lazy 按需加载，在 Vite 中会被拆成独立 chunk。
 // HomeExperience / DcaExperience 已并入 TradePlansExperience 作为二级 tab，不再在这里顶级 lazy。
@@ -14,10 +16,15 @@ const HoldingsExperience = lazy(() => import('./HoldingsExperience.jsx').then((m
 const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) => ({ default: m.NotifyExperience })));
 const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').then((m) => ({ default: m.TradePlansExperience })));
 const MarketsExperience = lazy(() => import('./MarketsExperience.jsx').then((m) => ({ default: m.MarketsExperience })));
+const StrategyGuideExperience = lazy(() => import('./StrategyGuideExperience.jsx').then((m) => ({ default: m.StrategyGuideExperience })));
 
-const DEFAULT_WORKSPACE_TAB = 'holdings';
+function readPreferredWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
+  if (typeof window === 'undefined') return fallbackTab;
+  return readWorkspacePrefs().homepageTab || fallbackTab;
+}
 
 const WORKSPACE_TITLES = {
+  strategy: '美股策略助手',
   tradePlans: '交易计划中心',
   fundSwitch: '基金切换收益分析',
   markets: '行情中心',
@@ -27,6 +34,7 @@ const WORKSPACE_TITLES = {
 };
 
 const SIDEBAR_ICONS = {
+  strategy: BookOpen,
   tradePlans: ListChecks,
   fundSwitch: Shuffle,
   markets: LineChart,
@@ -65,7 +73,8 @@ function readLegacyHashFromLocation() {
 
 function buildWorkspaceUrl(tab, { inPagesDir = false } = {}) {
   const nextUrl = new URL(inPagesDir ? '../index.html' : './index.html', window.location.href);
-  if (tab !== DEFAULT_WORKSPACE_TAB) {
+  const preferredTab = readPreferredWorkspaceTab(DEFAULT_WORKSPACE_TAB);
+  if (tab !== preferredTab) {
     nextUrl.searchParams.set('tab', tab);
   }
   return nextUrl;
@@ -81,7 +90,8 @@ function TabLoadingFallback() {
 
 export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir = false }) {
   const links = createPageLinks({ inPagesDir });
-  const [activeTab, setActiveTab] = useState(() => readTabFromLocation(initialTab));
+  const [activeTab, setActiveTab] = useState(() => readTabFromLocation(readPreferredWorkspaceTab(initialTab)));
+  const [demoMeta, setDemoMeta] = useState(() => readDemoDataMeta());
 
   // Legacy ?tab=home / ?tab=dca 进来时，重写为 ?tab=tradePlans + hash，使二级 tab 能在 mount 时被选中。
   useEffect(() => {
@@ -97,7 +107,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     window.history.replaceState({ tab: 'tradePlans' }, '', nextUrl);
     // 让 TradePlansExperience 读到新 hash。
     window.dispatchEvent(new HashChangeEvent('hashchange'));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 为每个 tab 独立缓存上次的 scrollY，在切换返回时恢复。
@@ -113,7 +122,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       })),
     [links]
   );
-  const heroTitle = WORKSPACE_TITLES[activeTab] || WORKSPACE_TITLES.home;
+  const heroTitle = WORKSPACE_TITLES[activeTab] || WORKSPACE_TITLES.strategy;
 
   useEffect(() => {
     document.title = heroTitle;
@@ -128,7 +137,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   useEffect(() => {
     function handlePopState() {
-      setActiveTab(readTabFromLocation(initialTab));
+      setActiveTab(readTabFromLocation(readPreferredWorkspaceTab(initialTab)));
     }
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -176,6 +185,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   function renderActivePanel() {
     const sharedProps = { links, inPagesDir, embedded: true };
     switch (activeTab) {
+      case 'strategy':
+        return <StrategyGuideExperience {...sharedProps} onNavigate={handleSelectTab} onDemoDataChange={setDemoMeta} />;
       case 'tradePlans':
         return <TradePlansExperience {...sharedProps} />;
       case 'fundSwitch':
@@ -187,19 +198,44 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       case 'backup':
         return <BackupExperience {...sharedProps} />;
       case 'holdings':
-      default:
         return <HoldingsExperience {...sharedProps} />;
+      default:
+        return <StrategyGuideExperience {...sharedProps} onNavigate={handleSelectTab} onDemoDataChange={setDemoMeta} />;
     }
   }
 
   return (
     <>
       <ConsoleLayout
-        brand="ai-dca"
+        brand="美股策略助手"
         sidebarNav={sidebarNav}
         activeKey={activeTab}
         onSelectNav={handleSelectTab}
       >
+        {demoMeta ? (
+          <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>当前正在使用演示数据。建议先配置一次手机通知，完整体验策略触发提醒。</div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" className="rounded-xl bg-white px-3 py-2 text-xs font-bold text-amber-800 shadow-sm" onClick={() => handleSelectTab('notify')}>配置通知</button>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-xl bg-amber-600 px-3 py-2 text-xs font-bold text-white shadow-sm"
+                  onClick={() => {
+                    if (window.confirm('确认清除演示数据？')) {
+                      clearDemoData();
+                      setDemoMeta(null);
+                      window.location.reload();
+                    }
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  清除演示数据
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         <Suspense fallback={<TabLoadingFallback />}>{renderActivePanel()}</Suspense>
       </ConsoleLayout>
       <AiChatWidget currentTab={activeTab} />

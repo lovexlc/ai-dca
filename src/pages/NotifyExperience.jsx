@@ -39,6 +39,7 @@ import {
   formatEventTimeLabel,
   resolveEventStatusMeta
 } from '../app/tradePlansHelpers.js';
+import { parseAndroidNotifyInput, parseBarkInput } from '../app/notifyParsers.js';
 
 // 提醒历史中的「测试通知」仅在展示后 30 分钟内保留，超过后从前端过滤。
 const TEST_EVENT_TTL_MS = 30 * 60 * 1000;
@@ -290,8 +291,13 @@ export function NotifyExperience({ embedded = false }) {
     setNotifyError('');
     setNotifyMessage('');
     try {
-      await saveNotifySettings({ barkDeviceKey: notifyConfig.barkDeviceKey });
-      persistNotifyClientConfig({ barkDeviceKey: notifyConfig.barkDeviceKey });
+      const parsedBarkKey = parseBarkInput(notifyConfig.barkDeviceKey);
+      if (!parsedBarkKey) {
+        throw new Error('请粘贴 Bark 完整链接或 Device Key');
+      }
+      await saveNotifySettings({ barkDeviceKey: parsedBarkKey });
+      persistNotifyClientConfig({ barkDeviceKey: parsedBarkKey });
+      setNotifyConfig((current) => ({ ...current, barkDeviceKey: parsedBarkKey }));
       await refreshNotifyData();
       setNotifyMessage('Bark 配置已保存。');
       showActionToast('保存 Bark 配置', 'success');
@@ -309,8 +315,12 @@ export function NotifyExperience({ embedded = false }) {
     setNotifyError('');
     setNotifyMessage('');
     try {
+      const parsedAndroidId = parseAndroidNotifyInput(androidPairingCode);
+      if (!parsedAndroidId) {
+        throw new Error('请粘贴 Android 完整测试链接、消息推送 ID 或配对码');
+      }
       await pairAndroidDevice({
-        deviceInstallationId: androidPairingCode,
+        deviceInstallationId: parsedAndroidId,
         clientId: notifyConfig.notifyClientId,
         clientName: notifyConfig.notifyClientLabel
       });
@@ -562,11 +572,11 @@ export function NotifyExperience({ embedded = false }) {
 
               {shouldShowAndroidOnboarding ? (
                 <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
-                  <Field label="Android 设备 ID">
+                  <Field label="Android 推送链接、消息推送 ID 或配对码" helper="可以粘贴 Android App 里的完整测试 URL，也可以粘贴 android- 开头的消息推送 ID；系统会自动识别。">
                     <TextInput
                       value={androidPairingCode}
-                      placeholder="粘贴 Android app 显示的设备 ID"
-                      onChange={(event) => setAndroidPairingCode(String(event.target.value || '').trim())}
+                      placeholder="粘贴完整测试 URL 或 android- 开头 ID"
+                      onChange={(event) => setAndroidPairingCode(event.target.value)}
                     />
                   </Field>
                   <button className={primaryButtonClass} type="button" onClick={handlePairAndroidCode}>
@@ -620,7 +630,7 @@ export function NotifyExperience({ embedded = false }) {
                   </div>
                 ) : (
                   <p className="mt-4 text-sm leading-6 text-slate-500">
-                    当前浏览器还没有关联 Android 设备。先打开 Android app，复制设备 ID，再回到这里完成绑定。
+                    当前浏览器还没有关联 Android 设备。先打开 Android App，复制灰色框里的消息推送 ID，或复制完整测试 URL，再回到这里完成绑定。
                   </p>
                 )}
               </div>
@@ -705,12 +715,12 @@ export function NotifyExperience({ embedded = false }) {
             </div>
           ) : (
             <>
-              <div className="text-sm font-semibold text-slate-900">iOS Bark Key</div>
+              <div className="text-sm font-semibold text-slate-900">iOS Bark 链接或 Device Key</div>
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                当前仅保留 iOS 的 Bark 推送接入。填入设备 Key 后，可继续用于测试通知和规则提醒。
+                可以粘贴完整 Bark 链接，例如 https://api.day.app/xxx/推送内容；系统会自动提取 Device Key。
               </p>
               <div className="mt-5 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
-                <Field label="Bark 设备 Key">
+                <Field label="Bark 链接或 Device Key" helper="不用手动截取，复制 Bark 里显示的完整链接也可以。">
                   <TextInput
                     value={notifyConfig.barkDeviceKey}
                     onChange={(event) => setNotifyConfig((current) => ({ ...current, barkDeviceKey: event.target.value }))}
