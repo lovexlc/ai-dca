@@ -116,6 +116,7 @@ export function computeClearedKpi(lots, opts = {}) {
 		sellCostProfitRate: 0,
 		codeCount: 0,
 		lotCount: safeLots.length,
+		pendingLotCount: 0,
 		avgHoldDays: null
 	};
 	const codeSet = new Set();
@@ -124,6 +125,10 @@ export function computeClearedKpi(lots, opts = {}) {
 	for (const lot of safeLots) {
 		if (!lot) continue;
 		if (lot.code) codeSet.add(lot.code);
+		if (lot.pending) {
+			kpi.pendingLotCount += 1;
+			continue; // 待确认不计入 KPI 汇总，等 NAV 公布后自动转为正常。
+		}
 		kpi.totalProfit += Number.isFinite(lot.realizedProfit) ? lot.realizedProfit : 0;
 		kpi.totalSellCostBasis += Number.isFinite(lot.costBasis) ? lot.costBasis : 0;
 		kpi.totalProceeds += Number.isFinite(lot.proceeds) ? lot.proceeds : 0;
@@ -196,7 +201,8 @@ export function afterSellChange(lot, navByCode) {
 
 /** 对过滤后的 lots 按盈亏排序（默认 realizedProfit desc）。 */
 export function rankClearedLotsByProfit(lots, direction = 'desc') {
-	const safeLots = Array.isArray(lots) ? lots.slice() : [];
+	// 待确认的笔没有盈亏，不入盈亏排行。
+	const safeLots = (Array.isArray(lots) ? lots : []).filter((lot) => lot && !lot.pending).slice();
 	const factor = direction === 'asc' ? 1 : -1;
 	safeLots.sort((a, b) => {
 		const pa = Number.isFinite(a?.realizedProfit) ? a.realizedProfit : 0;

@@ -438,6 +438,19 @@ function compareTxChrono(a, b) {
   return ia < ib ? -1 : (ia > ib ? 1 : 0);
 }
 
+/**
+ * 场外/QDII 基金 SELL 提交后到 NAV 公布前：price 为空/0，算作「待确认」。
+ * 参考支付宝/天天基金的 UX：仓位/清仓明细不提前扣减份额，等净值回填后才转为正常已结算。
+ * costPrice > 0 的独立已结算交易不走待确认。
+ */
+export function isPendingOtcSell(tx) {
+  if (!tx || tx.type !== 'SELL') return false;
+  if (Number(tx.costPrice) > 0) return false;
+  const kind = String(tx.kind || '').toLowerCase();
+  if (kind !== 'otc' && kind !== 'qdii') return false;
+  return !(Number(tx.price) > 0);
+}
+
 export function aggregateByCode(transactions = [], snapshotsByCode = {}, options = {}) {
   const normalizedTxs = sanitizeTransactions(transactions, { filterInvalid: false });
   const map = new Map();
@@ -455,6 +468,7 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
         buyAmount: 0,
         sellShares: 0,
         sellAmount: 0,
+        pendingSellShares: 0,
         firstBuyDate: '',
         lastTxDate: ''
       });
@@ -476,8 +490,13 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     } else if (tx.type === 'SELL') {
       // 自洽的“已结清交易”（自带 costPrice）独立成笔，不参与持仓份额扣减。
       if (!(tx.costPrice > 0)) {
-        bucket.sellShares = round(bucket.sellShares + tx.shares, 4);
-        bucket.sellAmount = round(bucket.sellAmount + tx.price * tx.shares, 2);
+        if (isPendingOtcSell(tx)) {
+          // 待确认（场外/QDII、NAV 未回填）：记为 pending，不入 sellShares/sellAmount。
+          bucket.pendingSellShares = round(bucket.pendingSellShares + tx.shares, 4);
+        } else {
+          bucket.sellShares = round(bucket.sellShares + tx.shares, 4);
+          bucket.sellAmount = round(bucket.sellAmount + tx.price * tx.shares, 2);
+        }
       }
     }
     if (tx.date && tx.date > bucket.lastTxDate) {
@@ -500,6 +519,8 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       } else if (tx.type === 'SELL') {
         // 独立已结清交易（自带 costPrice）不动持仓。
         if (tx.costPrice > 0) continue;
+        // 待确认 SELL（场外/QDII NAV 未回填）：份额不提前扣减，等 NAV 回填后自动生效。
+        if (isPendingOtcSell(tx)) continue;
         runCost = round(runCost - tx.shares * runAvg, 4);
         runShares = round(runShares - tx.shares, 4);
         if (runShares <= 0) {
@@ -565,6 +586,7 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       transactions: bucket.transactions,
       buyShares: bucket.buyShares,
       sellShares: bucket.sellShares,
+      pendingSellShares: bucket.pendingSellShares || 0,
       totalShares,
       avgCost,
       totalCost,
@@ -808,18 +830,21 @@ export function buildSoldLots(transactions = []) {
       if (tx.type !== 'SELL') continue;
       // 优先使用本笔自带 costPrice（独立已结清快速登记），否则取卖出时刻的移动 avgCost。
       const standalone = tx.costPrice > 0;
+      const pending = isPendingOtcSell(tx);
       const avgCost = standalone ? tx.costPrice : round(runAvg, 4);
       const pairTx = tx.switchPairId ? txById.get(tx.switchPairId) : null;
       const isSwitch = Boolean(pairTx && pairTx.type === 'BUY' && pairTx.code && pairTx.code !== tx.code);
       const sellShares = tx.shares;
-      const sellPrice = tx.price;
-      const proceeds = round(sellPrice * sellShares, 2);
+      const sellPrice = pending ? 0 : tx.price;
+      const proceeds = pending ? null : round(sellPrice * sellShares, 2);
       const costBasis = round(avgCost * sellShares, 2);
       const hasAvgCost = avgCost > 0;
-      const realizedProfit = hasAvgCost ? round((sellPrice - avgCost) * sellShares, 2) : 0;
-      const realizedReturnRate = hasAvgCost && costBasis > 0
-        ? round((realizedProfit / costBasis) * 100, 2)
-        : 0;
+      const realizedProfit = pending
+        ? null
+        : (hasAvgCost ? round((sellPrice - avgCost) * sellShares, 2) : 0);
+      const realizedReturnRate = pending
+        ? null
+        : (hasAvgCost && costBasis > 0 ? round((realizedProfit / costBasis) * 100, 2) : 0);
       lots.push({
         id: tx.id,
         code: tx.code,
@@ -835,6 +860,7 @@ export function buildSoldLots(transactions = []) {
         realizedReturnRate,
         hasAvgCost,
         standalone,
+        pending,
         isSwitch,
         switchPairId: isSwitch ? pairTx.id : '',
         switchTargetCode: isSwitch ? pairTx.code : '',
@@ -843,8 +869,8 @@ export function buildSoldLots(transactions = []) {
         note: tx.note || '',
         tx
       });
-      // 独立交易不扣减持仓；普通 SELL 同步走移动摊薄减持仓。
-      if (!standalone) {
+      // 独立 / 待确认交易不扣减持仓；普通 SELL 同步走移动摊薄减持仓。
+      if (!standalone && !pending) {
         runCost = round(runCost - sellShares * runAvg, 4);
         runShares = round(runShares - sellShares, 4);
         if (runShares <= 0) {

@@ -390,7 +390,16 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       accessorFn: (row) => row.totalShares,
       meta: { label: '总份额' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="总份额" />,
-      cell: ({ row }) => <span className="tabular-nums">{formatShares(row.original.totalShares)}</span>,
+      cell: ({ row }) => (
+        <span className="tabular-nums">
+          {formatShares(row.original.totalShares)}
+          {row.original.pendingSellShares > 0 ? (
+            <span className="ml-1 rounded-full bg-amber-50 px-1.5 py-px text-[10px] font-medium text-amber-600" title="待确认卖出份额，净值公布后自动扣减">
+              −{formatShares(row.original.pendingSellShares)} 待确认
+            </span>
+          ) : null}
+        </span>
+      ),
       sortingFn: numericSortFn,
     },
     {
@@ -2451,7 +2460,14 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         <dl className="grid min-w-0 grid-cols-2 gap-x-4 gap-y-3 text-sm">
           <div className="min-w-0">
             <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">净份额</dt>
-            <dd className="mt-1 min-w-0 truncate whitespace-nowrap tabular-nums text-slate-900">{formatShares(agg.totalShares)}</dd>
+            <dd className="mt-1 min-w-0 truncate whitespace-nowrap tabular-nums text-slate-900">
+              {formatShares(agg.totalShares)}
+              {agg.pendingSellShares > 0 ? (
+                <span className="ml-2 rounded-full bg-amber-50 px-1.5 py-px text-[10px] font-medium text-amber-600">
+                  −{formatShares(agg.pendingSellShares)} 待确认
+                </span>
+              ) : null}
+            </dd>
           </div>
           <div className="min-w-0">
             <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">加权均价</dt>

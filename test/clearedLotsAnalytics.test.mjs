@@ -165,3 +165,26 @@ test('导出镜头常量', () => {
 	assert.equal(CLEARED_LENS_LABELS.month, '本月');
 	assert.equal(CLEARED_LENS_LABELS.all, '投资以来');
 });
+
+// ---- 场外/QDII 待确认 (pending) 行为 ----
+const lotsWithPending = [
+	...lots,
+	{ id: 'P1', code: '021000', kind: 'otc', sellDate: '2026-05-19', sellShares: 5000, sellPrice: 0,
+		avgCost: 1.5, costBasis: 7500, proceeds: null, realizedProfit: null, realizedReturnRate: null, pending: true }
+];
+
+test('computeClearedKpi: 待确认不入 KPI 汇总，仅入 pendingLotCount', () => {
+	const kpi = computeClearedKpi(lotsWithPending);
+	const base = computeClearedKpi(lots);
+	assert.equal(kpi.totalProfit, base.totalProfit, 'totalProfit 不应被 pending 污染');
+	assert.equal(kpi.totalSellCostBasis, base.totalSellCostBasis, 'totalSellCostBasis 不应计入 pending costBasis');
+	assert.equal(kpi.totalProceeds, base.totalProceeds, 'totalProceeds 不应计入 pending');
+	assert.equal(kpi.pendingLotCount, 1);
+	assert.equal(kpi.lotCount, lotsWithPending.length, 'lotCount 仍包含待确认');
+});
+
+test('rankClearedLotsByProfit: 待确认笔不入盈亏排行', () => {
+	const ranked = rankClearedLotsByProfit(lotsWithPending);
+	assert.equal(ranked.length, lots.length);
+	assert.equal(ranked.find((l) => l.pending), undefined);
+});

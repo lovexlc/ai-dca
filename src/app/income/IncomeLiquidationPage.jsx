@@ -90,12 +90,21 @@ function LotRow({ lot, ledger }) {
 				</div>
 			</div>
 			<div className="flex min-w-0 max-w-[44%] shrink-0 flex-col items-end gap-0.5 text-right">
-				<div className={cx('max-w-full truncate whitespace-nowrap text-sm font-semibold tabular-nums', toneOf(lot.realizedProfit))}>
-					{formatSignedCurrency(lot.realizedProfit)}
-				</div>
-				<div className={cx('max-w-full truncate whitespace-nowrap text-[11px] tabular-nums', rateTone)}>
-					{formatPercent(lot.realizedReturnRate)}
-				</div>
+				{lot.pending ? (
+					<>
+						<span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">待确认</span>
+						<span className="truncate text-[10px] text-slate-400">等 NAV 公布后自动更新</span>
+					</>
+				) : (
+					<>
+						<div className={cx('max-w-full truncate whitespace-nowrap text-sm font-semibold tabular-nums', toneOf(lot.realizedProfit))}>
+							{formatSignedCurrency(lot.realizedProfit)}
+						</div>
+						<div className={cx('max-w-full truncate whitespace-nowrap text-[11px] tabular-nums', rateTone)}>
+							{formatPercent(lot.realizedReturnRate)}
+						</div>
+					</>
+				)}
 			</div>
 		</div>
 	);
