@@ -22,6 +22,7 @@ import {
   strategyOptions
 } from '../app/newPlan.js';
 import { EXTRA_SYMBOL_GROUPS, EXTRA_SYMBOL_CODES, findExtraSymbol, isExtraSymbol } from '../app/extraSymbols.js';
+import { fetchQuote } from '../app/marketsApi.js';
 
 
 export function NewPlanExperience({ links, inPagesDir = false, embedded = false, onBack = null }) {
@@ -46,6 +47,39 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   });
   const [isSaving, setIsSaving] = useState(false);
   const autoSeedRef = useRef('');
+  const [extraQuote, setExtraQuote] = useState({ symbol: '', price: 0, currency: '', asOf: '', loading: false, error: '' });
+
+  // 选中美股快选标的（QQQ/SPY/Mag7/TSM 等）时，去 markets worker 拉一次实时 quote；symbol 不再是 extra 时清空。
+  useEffect(() => {
+    const sym = String(state.symbol || '').trim().toUpperCase();
+    if (!sym || !EXTRA_SYMBOL_CODES.has(sym)) {
+      if (extraQuote.symbol) {
+        setExtraQuote({ symbol: '', price: 0, currency: '', asOf: '', loading: false, error: '' });
+      }
+      return undefined;
+    }
+    if (extraQuote.symbol === sym) return undefined;
+    let cancelled = false;
+    setExtraQuote({ symbol: sym, price: 0, currency: '', asOf: '', loading: true, error: '' });
+    fetchQuote(sym).then((q) => {
+      if (cancelled) return;
+      const price = Number(q?.price) || 0;
+      setExtraQuote({ symbol: sym, price, currency: String(q?.currency || ''), asOf: String(q?.asOf || ''), loading: false, error: '' });
+    }).catch((err) => {
+      if (cancelled) return;
+      setExtraQuote({ symbol: sym, price: 0, currency: '', asOf: '', loading: false, error: err instanceof Error ? err.message : '行情获取失败' });
+    });
+    return () => { cancelled = true; };
+  }, [state.symbol, extraQuote.symbol]);
+
+  // 拉到现价 + basePrice 仍为 0 时预填一次；不覆盖用户已输入的值。
+  useEffect(() => {
+    const sym = String(state.symbol || '').trim().toUpperCase();
+    if (!sym || !EXTRA_SYMBOL_CODES.has(sym)) return;
+    if (extraQuote.symbol !== sym || !(extraQuote.price > 0)) return;
+    if (Number(state.basePrice) > 0) return;
+    setState((current) => ({ ...current, basePrice: extraQuote.price }));
+  }, [extraQuote.symbol, extraQuote.price, state.symbol, state.basePrice]);
 
   useEffect(() => {
     let cancelled = false;
@@ -341,8 +375,14 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                     <div className="font-semibold text-slate-900">
                       {state.symbol}·{findExtraSymbol(state.symbol)?.name || ''}
                     </div>
-                    <div className="mt-1">美股标的暂未接入实时行情，请手动填入下方的「触发价」与「风控价」。</div>
-                    <div className="mt-1 text-amber-700">提示：QQQ/VOO 等宽基指数只买不做 T；Mag7 / TSM 允许 70% 核仓 + 30% T 仓（后续 PR 会自动应用该规则）。</div>
+                    {extraQuote.symbol === String(state.symbol || '').trim().toUpperCase() && extraQuote.price > 0 ? (
+                      <div className="mt-1">当前现价 {formatFundPrice(extraQuote.price, extraQuote.currency || 'USD')}{extraQuote.asOf ? ` · ${new Date(extraQuote.asOf).toLocaleString('zh-CN', { hour12: false })}` : ''}{extraQuote.asOf ? '' : ''}</div>
+                    ) : extraQuote.symbol === String(state.symbol || '').trim().toUpperCase() && extraQuote.loading ? (
+                      <div className="mt-1">正在拉取实时行情…</div>
+                    ) : extraQuote.symbol === String(state.symbol || '').trim().toUpperCase() && extraQuote.error ? (
+                      <div className="mt-1 text-rose-700">行情获取失败：{extraQuote.error}；请手动填写下方的「触发价」与「风控价」。</div>
+                    ) : null}
+                    <div className="mt-1 text-amber-700">提示：QQQ/SPY/VOO 等宽基指数只买不做 T；Mag7 / TSM 允许 70% 核仓 + 30% T 仓（后续 PR 会自动应用该规则）。</div>
                   </div>
                 ) : null}
 
