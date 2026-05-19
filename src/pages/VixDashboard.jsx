@@ -7,6 +7,8 @@ import {
   readVixSnapshot,
   resolveVixSignal
 } from '../app/vixSignal.js';
+import { loadBacktestCandles } from '../app/dcaCalculator.js';
+import { LineChart, Line, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip, ReferenceLine } from 'recharts';
 import {
   Card,
   Pill,
@@ -19,7 +21,12 @@ import {
 
 // PR 2a：VIX 面板。
 // 依赖 markets worker 的 `/quote/^VIX`。拉取失败时允许手动输入 VIX 数值。
-// 30 日走势、Home 卡、notifySync 接入在 PR 2b。
+// PR 2b：30 日走势图、notifySync vix digest。Home 卡、worker 跨阈推送待补。
+
+const VIX_HISTORY_TIMEFRAME = '1mo';
+const VIX_CHART_MARGIN = Object.freeze({ top: 8, right: 16, bottom: 8, left: 0 });
+const VIX_CHART_TICK = Object.freeze({ fontSize: 11, fill: '#94a3b8' });
+const VIX_CHART_TOOLTIP_STYLE = Object.freeze({ borderRadius: 12, fontSize: 12, border: '1px solid #e2e8f0' });
 
 const TONE_BG = {
   emerald: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
@@ -45,6 +52,9 @@ export function VixDashboard({ embedded = false }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [autoTried, setAutoTried] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
 
   const signal = useMemo(() => resolveVixSignal(snapshot?.value), [snapshot]);
   const levels = useMemo(() => listVixLevels(), []);
@@ -74,6 +84,33 @@ export function VixDashboard({ embedded = false }) {
     handleRefresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoTried, snapshot]);
+
+  // PR 2b：入页拉 ^VIX 30 日日 K。
+  useEffect(() => {
+    let cancelled = false;
+    setHistoryLoading(true);
+    setHistoryError('');
+    loadBacktestCandles('^VIX', VIX_HISTORY_TIMEFRAME)
+      .then((candles) => {
+        if (cancelled) return;
+        const rows = (Array.isArray(candles) ? candles : [])
+          .slice(-30)
+          .map((c) => ({
+            date: c.date instanceof Date ? c.date.toISOString().slice(0, 10) : String(c.date).slice(0, 10),
+            close: Number.isFinite(c.close) ? Number(c.close) : null
+          }))
+          .filter((row) => row.close != null);
+        setHistory(rows);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setHistoryError(err instanceof Error ? err.message : '拉取 ^VIX 历史失败');
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   function handleManualApply() {
     const num = Number(manualValue);
@@ -193,6 +230,37 @@ export function VixDashboard({ embedded = false }) {
           </div>
         </Card>
       </div>
+
+      <Card className="min-w-0">
+        <SectionHeading
+          eyebrow="走势"
+          title="^VIX 30 日走势"
+          description="最近 30 个交易日的收盘。4 条虚线 为 watch/buyIndex/buyAll/heavyBuy 阈值。"
+        />
+        <div className="mt-4 h-64 w-full">
+          {historyLoading && history.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-sm text-slate-500">拉取中…</div>
+          ) : historyError && history.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-sm text-rose-600">{historyError}</div>
+          ) : history.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-sm text-slate-500">暂无历史数据</div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={history} margin={VIX_CHART_MARGIN}>
+                <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+                <XAxis dataKey="date" tick={VIX_CHART_TICK} minTickGap={20} />
+                <YAxis tick={VIX_CHART_TICK} domain={['auto', 'auto']} />
+                <Tooltip contentStyle={VIX_CHART_TOOLTIP_STYLE} />
+                <ReferenceLine y={VIX_THRESHOLDS.watch} stroke="#fbbf24" strokeDasharray="4 4" />
+                <ReferenceLine y={VIX_THRESHOLDS.buyIndex} stroke="#fb923c" strokeDasharray="4 4" />
+                <ReferenceLine y={VIX_THRESHOLDS.buyAll} stroke="#f43f5e" strokeDasharray="4 4" />
+                <ReferenceLine y={VIX_THRESHOLDS.heavyBuy} stroke="#b91c1c" strokeDasharray="4 4" />
+                <Line type="monotone" dataKey="close" stroke="#6366f1" strokeWidth={2} dot={false} name="VIX 收盘" />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </Card>
     </div>
   );
 }
