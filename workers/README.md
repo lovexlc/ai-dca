@@ -16,7 +16,7 @@ Tail Worker 等）本仓库都没用。
 | --- | --- | --- |
 | `ai-dca-notify` | `tools.freebacktrack.tech/api/notify*` | 交易计划推送、持仓当日收益、场内切换信号。带 cron + KV (`NOTIFY_STATE`)。 |
 | `ai-dca-ocr-proxy` | `tools.freebacktrack.tech/api/*` | 调用 Workers AI 视觉模型做 OCR（基金交易/持仓截图）；同时代理东方财富净值/行情接口，命中 `caches.default`。 |
-| `webdav-cors-proxy` | `tools.freebacktrack.tech/api/webdav/*` | 为「数据同步 / 备份」tab 提供 WebDAV 的 CORS 代理。 |
+| `webdav-cors-proxy` | `tools.freebacktrack.tech/api/webdav/*` | 为「数据同步」tab 提供 WebDAV 的 CORS 代理。 |
 
 ## 一、部署方式
 
