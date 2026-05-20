@@ -227,14 +227,20 @@ svg {
   }
 }
 
-/* ===== Brand preview: hide each tab’s big H1 hero block ===== */
-[data-brand-preview] header > div:has(> h1) {
+/* ===== App brand bar: hide each page hero H1 + Eyebrow (Google-style top bar replaces them) ===== */
+/* 各 tab page hero 中的 H1 + 上方小标题 */
+header h1,
+header > div > div.text-xs.font-bold.uppercase {
   display: none !important;
 }
-[data-brand-preview] header {
+/* experience-ui.jsx 共享页面 hero H1 + Eyebrow（不在 <header> 里）*/
+.experience-hero h1,
+.experience-hero .uppercase {
+  display: none !important;
+}
+/* page hero 外层 <header> 压缩 */
+header.flex.rounded-2xl,
+header.rounded-2xl {
   padding-top: 0.75rem !important;
   padding-bottom: 0.75rem !important;
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
 }

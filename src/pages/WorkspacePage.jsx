@@ -5,7 +5,7 @@ import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
 import { MobileTabBar } from '../components/mobile-tab-bar.jsx';
 import { GlobalSearch } from '../components/global-search.jsx';
-import { BrandPreviewBar, useBrandPreview } from '../components/brand-preview-bar.jsx';
+import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
 import { clearDemoData, readDemoDataMeta } from '../app/demoData.js';
 import { readWorkspacePrefs } from '../app/workspacePrefs.js';
 
@@ -122,7 +122,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const scrollPositionsRef = useRef(new Map());
   const previousTabRef = useRef(activeTab);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
-  const brandPreview = useBrandPreview();
   const currentPageLabel = PRIMARY_TAB_META[activeTab]?.label || '';
 
   const quickAction = useMemo(() => {
@@ -262,7 +261,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   return (
     <>
-      {brandPreview ? <BrandPreviewBar variant={brandPreview} currentPageLabel={currentPageLabel} /> : null}
+      <BrandPreviewBar currentPageLabel={currentPageLabel} />
       <ConsoleLayout
         brand="美股策略助手"
         sidebarNav={sidebarNav}
