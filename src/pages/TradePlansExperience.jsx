@@ -1,8 +1,9 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, ArrowRight, Bell, CalendarClock, Calculator, ChevronDown, ListChecks, MoreHorizontal, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
+import { Activity, ArrowRight, Bell, CalendarClock, Calculator, ChevronDown, ListChecks, MoreHorizontal, Pencil, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
 import { loadNotifyStatus, readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { deletePlan } from '../app/plan.js';
+import { deleteSellPlan } from '../app/sellPlans.js';
 import { clearDcaState } from '../app/dca.js';
 import { showActionToast } from '../app/toast.js';
 import { Card, cx, primaryButtonClass } from '../components/experience-ui.jsx';
@@ -292,6 +293,9 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     if (row.sourceType === 'dca') {
       clearDcaState();
       showActionToast('删除定投计划', 'success');
+    } else if (row.sourceType === 'sell' && row.sourceId) {
+      deleteSellPlan(row.sourceId);
+      showActionToast('删除卖出计划', 'success');
     } else if (row.sourceType === 'plan' && row.sourceId) {
       const removed = deletePlan(row.sourceId);
       if (!removed) return;
@@ -366,6 +370,24 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     setOpenMenuRowId('');
     if (row?.actionKey === 'home' || row?.actionKey === 'dca' || row?.actionKey === 'sell') {
       handleSelectSubTab(row.actionKey);
+    }
+  }
+
+  function handleEditRow(row) {
+    setOpenMenuRowId('');
+    if (row?.sourceType === 'dca') {
+      gotoSubView('dcaNew', { push: true });
+      return;
+    }
+    if (row?.sourceType === 'sell') {
+      gotoSubView('sellNew', { push: true });
+      return;
+    }
+    if (row?.sourceType === 'plan') {
+      showActionToast('编辑加仓策略', 'warning', {
+        description: '当前加仓策略编辑仍沿用新建向导入口，请进入后按现有参数重新保存。'
+      });
+      enterNewPlanView();
     }
   }
 
@@ -508,6 +530,15 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
               <ArrowRight className="h-4 w-4 text-slate-400" />
               查看更多
             </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => handleEditRow(row)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+            >
+              <Pencil className="h-4 w-4 text-slate-400" />
+              编辑
+            </button>
             <div className="h-px bg-slate-100" />
             <button
               type="button"
@@ -564,6 +595,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     const tone = TONE_CLASS[row.cardTone || meta.tone] || TONE_CLASS.indigo;
     const progressValue = Math.max(0, Math.min(100, Number(row.progressValue || 0) * 100));
     const progressItems = Array.isArray(row.progressItems) ? row.progressItems : [];
+    const isTesting = testingRowId === row.id;
 
     return (
       <div key={row.id} className="relative w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-100 hover:shadow-lg hover:shadow-slate-200/70 sm:px-5">
@@ -579,7 +611,37 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
               <span>{row.progressLabel || row.triggerLabel}</span>
             </div>
           </div>
-          {renderRowMenu(row)}
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
+              aria-label="测试通知"
+              title="测试通知"
+              disabled={isTesting}
+              onClick={() => handleTestNotify(row)}
+            >
+              <Bell className={cx('h-4 w-4', isTesting ? 'animate-pulse' : '')} />
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              aria-label="编辑计划"
+              title="编辑计划"
+              onClick={() => handleEditRow(row)}
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+              aria-label="删除计划"
+              title="删除计划"
+              onClick={() => handleDeletePlanRow(row)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+            {renderRowMenu(row)}
+          </div>
         </div>
 
         <div className="mt-4 space-y-2">
@@ -665,7 +727,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     return (
       <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
         {renderPageHeader()}
-        <div role="tabpanel" id={`trade-plan-panel-${subView}`} aria-labelledby={`trade-plan-tab-${subView}`} className="transition-opacity duration-200">
+        <div role="tabpanel" id={`trade-plan-panel-${subView}`} aria-labelledby={`trade-plan-tab-${subView}`} className="trade-plan-tab-panel">
           <Suspense fallback={<SubViewLoadingFallback />}>
             {subView === 'vix' ? <VixDashboardLazy embedded /> : <DcaCalculatorExperienceLazy embedded />}
           </Suspense>
@@ -692,7 +754,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
         </div>
       )}
 
-      <div role="tabpanel" id={`trade-plan-panel-${subView}`} aria-labelledby={`trade-plan-tab-${subView}`} className="transition-opacity duration-200">
+      <div role="tabpanel" id={`trade-plan-panel-${subView}`} aria-labelledby={`trade-plan-tab-${subView}`} className="trade-plan-tab-panel">
         {renderPlansList()}
       </div>
     </div>

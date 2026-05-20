@@ -1173,27 +1173,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
   return (
     <div className="space-y-6">
-      <div className={cx('inline-flex gap-1 rounded-full bg-slate-100 p-1', hideViewTabs && 'hidden')} aria-label="基金切换视图">
-        {[
-          { id: 'opportunity', label: '机会概览', icon: Sparkles },
-          { id: 'config', label: '规则配置', icon: Settings2 }
-        ].map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setSwitchView(item.id)}
-              aria-pressed={switchView === item.id}
-              className={cx('inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition-colors', switchView === item.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500')}
-            >
-              <Icon className="h-4 w-4" />
-              {item.label}
-            </button>
-          );
-        })}
-      </div>
-      <Card className={cx(switchView !== 'config' && 'hidden')}>
+      <Card>
         <SectionHeading
           eyebrow="自动监控"
           title="worker 每分钟扫描场内切换信号"
@@ -1404,7 +1384,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         </div>
       </Card>
 
-      <Card className={cx(switchView !== 'config' && 'hidden')}>
+      <Card>
         <SectionHeading
           eyebrow="规则配置"
           title="场内 / 场外纳指 100 切换套利"
@@ -1584,7 +1564,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         </div>
       </Card>
 
-      <Card className={cx(switchView !== 'opportunity' && 'hidden')}>
+      <Card>
         <SectionHeading
           eyebrow="机会概览"
           title="在持有的场内 ETF 之间倒换"
@@ -1653,7 +1633,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
       </Card>
 
-      <Card className={cx(switchView !== 'opportunity' && 'hidden')}>
+      <Card>
         <SectionHeading
           eyebrow="机会概览"
           title="纳指（场外）基金"

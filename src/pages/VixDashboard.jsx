@@ -9,9 +9,9 @@ import {
 } from '../app/vixSignal.js';
 import { loadBacktestCandles } from '../app/dcaCalculator.js';
 import { LineChart, Line, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip, ReferenceLine } from 'recharts';
+import { showToast } from '../app/toast.js';
 import {
   Card,
-  Pill,
   SectionHeading,
   StatCard,
   cx,
@@ -37,6 +37,22 @@ const TONE_BG = {
   slate: 'bg-slate-50 text-slate-600 ring-slate-200'
 };
 
+const VIX_LEVEL_ACCENT = {
+  emerald: 'from-emerald-400 to-emerald-500',
+  yellow: 'from-yellow-300 to-yellow-500',
+  amber: 'from-amber-400 to-orange-500',
+  orange: 'from-orange-500 to-rose-500',
+  red: 'from-rose-600 to-red-700',
+  slate: 'from-slate-300 to-slate-400'
+};
+
+const VIX_REFERENCE_COLORS = {
+  watch: '#facc15',
+  buyIndex: '#fb923c',
+  buyAll: '#f43f5e',
+  heavyBuy: '#991b1b'
+};
+
 function formatChange(snapshot) {
   if (!snapshot || !Number.isFinite(snapshot.change)) return '—';
   const sign = snapshot.change >= 0 ? '+' : '−';
@@ -44,6 +60,11 @@ function formatChange(snapshot) {
     ? ` (${snapshot.changePct >= 0 ? '+' : '−'}${Math.abs(snapshot.changePct).toFixed(2)}%)`
     : '';
   return `${sign}${Math.abs(snapshot.change).toFixed(2)}${pct}`;
+}
+
+function getVixPosition(value) {
+  if (!Number.isFinite(Number(value))) return 0;
+  return Math.max(0, Math.min(100, (Number(value) / 60) * 100));
 }
 
 export function VixDashboard({ embedded = false }) {
@@ -58,15 +79,23 @@ export function VixDashboard({ embedded = false }) {
 
   const signal = useMemo(() => resolveVixSignal(snapshot?.value), [snapshot]);
   const levels = useMemo(() => listVixLevels(), []);
+  const vixPosition = getVixPosition(snapshot?.value);
 
   async function handleRefresh() {
     if (loading) return;
+    const previousValue = Number(snapshot?.value);
     setLoading(true);
     setError('');
     try {
       const next = await fetchVixSnapshot();
       if (next) {
         setSnapshot(next);
+        const unchanged = Number.isFinite(previousValue) && Math.abs(previousValue - Number(next.value)) < 0.005;
+        showToast({
+          title: unchanged ? 'VIX 暂无变化' : 'VIX 已更新',
+          description: `${Number(next.value).toFixed(2)} · ${new Date(next.asOf || Date.now()).toLocaleString('zh-CN', { hour12: false })}`,
+          tone: unchanged ? 'slate' : 'emerald'
+        });
       } else {
         setError('后端返回了一个无法解析的数据包。');
       }
@@ -129,6 +158,67 @@ export function VixDashboard({ embedded = false }) {
     };
     setSnapshot(next);
     setManualValue('');
+    showToast({ title: '已使用手动 VIX', description: `当前 VIX ${num.toFixed(2)}`, tone: 'emerald' });
+  }
+
+  function renderVixThermometer() {
+    return (
+      <Card className="min-w-0 border-indigo-100 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-white">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-[0.22em] text-indigo-200">VIX 温度计</div>
+            <div className="mt-2 text-4xl font-black tabular-nums tracking-tight">{valueLabel}</div>
+            <div className="mt-2 text-sm text-slate-300">{signal.levelLabel} · {signal.headline}</div>
+          </div>
+          <div className="min-w-0 flex-1 lg:max-w-3xl">
+            <div className="relative pt-7">
+              <div className="absolute top-0 -translate-x-1/2 text-indigo-100" style={{ left: `${vixPosition}%` }}>
+                <div className="mx-auto h-0 w-0 border-x-[7px] border-t-[10px] border-x-transparent border-t-white" />
+                <div className="mt-1 whitespace-nowrap rounded-full bg-white/15 px-2 py-0.5 text-xs font-bold backdrop-blur">当前位置</div>
+              </div>
+              <div className="h-4 overflow-hidden rounded-full bg-gradient-to-r from-emerald-400 via-yellow-300 via-orange-400 to-rose-700 shadow-inner" />
+              <div className="mt-2 flex justify-between text-xs font-semibold text-slate-300">
+                <span>0</span>
+                <span>25</span>
+                <span>30</span>
+                <span>40</span>
+                <span>50</span>
+                <span>60+</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  function renderLevelCards() {
+    return (
+      <Card className="min-w-0">
+        <SectionHeading eyebrow="阈值区间" title="VIX 信号分区" description="横向查看当前 VIX 落在哪个恐慌区间，当前区间会高亮。" />
+        <div className="mt-5 grid gap-3 md:grid-cols-5">
+          {levels.map((lvl) => {
+            const isActive = signal.level === lvl.level;
+            return (
+              <div
+                key={lvl.level}
+                className={cx(
+                  'relative overflow-hidden rounded-2xl border p-4 ring-1 transition-all duration-200',
+                  TONE_BG[lvl.tone] || TONE_BG.slate,
+                  isActive ? 'scale-[1.02] border-indigo-300 ring-2 ring-indigo-300 shadow-lg shadow-indigo-100' : 'border-transparent'
+                )}
+              >
+                <div className={cx('absolute inset-x-0 top-0 h-1 bg-gradient-to-r', VIX_LEVEL_ACCENT[lvl.tone] || VIX_LEVEL_ACCENT.slate)} />
+                <div className="text-sm font-black">{lvl.label}</div>
+                <div className="mt-1 text-xs font-semibold opacity-80">{lvl.range}</div>
+                <div className="mt-3 text-xs leading-5">{lvl.summary}</div>
+                {isActive ? <div className="mt-3 text-xs font-black">当前位置</div> : null}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    );
   }
 
   const valueLabel = snapshot?.value != null ? snapshot.value.toFixed(2) : '—';
@@ -152,6 +242,8 @@ export function VixDashboard({ embedded = false }) {
           note="watch / buyIndex / buyAll / heavyBuy"
         />
       </div>
+
+      {renderVixThermometer()}
 
       {error ? (
         <div className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -183,7 +275,7 @@ export function VixDashboard({ embedded = false }) {
             action={(
               <button type="button" className={cx(primaryButtonClass, 'inline-flex items-center gap-1.5')} onClick={handleRefresh} disabled={loading}>
                 <RefreshCw className={cx('h-4 w-4', loading && 'animate-spin')} />
-                {loading ? '拉取中…' : '刷新 VIX'}
+                {loading ? '刷新中...' : '刷新 VIX'}
               </button>
             )}
           />
@@ -199,43 +291,16 @@ export function VixDashboard({ embedded = false }) {
           </div>
         </Card>
 
-        <Card className="lg:col-span-2 min-w-0">
-          <SectionHeading eyebrow="阈值表" title="VIX 信号分区" />
-          <div className="mt-5 space-y-2">
-            {levels.map((lvl) => (
-              <div
-                key={lvl.level}
-                className={cx(
-                  'rounded-xl px-3 py-2 ring-1 transition-colors',
-                  TONE_BG[lvl.tone] || TONE_BG.slate,
-                  signal.level === lvl.level ? 'ring-2 ring-offset-1' : ''
-                )}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Pill tone={lvl.tone === 'yellow' ? 'amber' : lvl.tone}>{lvl.label}</Pill>
-                    <span className="text-xs text-slate-500">{lvl.range}</span>
-                  </div>
-                  {signal.level === lvl.level ? (
-                    <span className="text-xs font-semibold">← 当前</span>
-                  ) : null}
-                </div>
-                <div className="mt-1 text-xs">{lvl.summary}</div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 flex items-center gap-1.5 text-xs text-slate-500">
-            <Activity className="h-3.5 w-3.5" />
-            阈值锁定于 D5，调整需同步改 `vixSignal.js`
-          </div>
-        </Card>
+        <div className="lg:col-span-2">
+          {renderLevelCards()}
+        </div>
       </div>
 
       <Card className="min-w-0">
         <SectionHeading
           eyebrow="走势"
           title="^VIX 30 日走势"
-          description="最近 30 个交易日的收盘。4 条虚线 为 watch/buyIndex/buyAll/heavyBuy 阈值。"
+          description="最近 30 个交易日的收盘。阈值线颜色与上方分区保持一致。"
         />
         <div className="mt-4 h-64 w-full">
           {historyLoading && history.length === 0 ? (
@@ -251,14 +316,18 @@ export function VixDashboard({ embedded = false }) {
                 <XAxis dataKey="date" tick={VIX_CHART_TICK} minTickGap={20} />
                 <YAxis tick={VIX_CHART_TICK} domain={['auto', 'auto']} />
                 <Tooltip contentStyle={VIX_CHART_TOOLTIP_STYLE} />
-                <ReferenceLine y={VIX_THRESHOLDS.watch} stroke="#fbbf24" strokeDasharray="4 4" />
-                <ReferenceLine y={VIX_THRESHOLDS.buyIndex} stroke="#fb923c" strokeDasharray="4 4" />
-                <ReferenceLine y={VIX_THRESHOLDS.buyAll} stroke="#f43f5e" strokeDasharray="4 4" />
-                <ReferenceLine y={VIX_THRESHOLDS.heavyBuy} stroke="#b91c1c" strokeDasharray="4 4" />
+                <ReferenceLine y={VIX_THRESHOLDS.watch} stroke={VIX_REFERENCE_COLORS.watch} strokeDasharray="4 4" label="25" />
+                <ReferenceLine y={VIX_THRESHOLDS.buyIndex} stroke={VIX_REFERENCE_COLORS.buyIndex} strokeDasharray="4 4" label="30" />
+                <ReferenceLine y={VIX_THRESHOLDS.buyAll} stroke={VIX_REFERENCE_COLORS.buyAll} strokeDasharray="4 4" label="40" />
+                <ReferenceLine y={VIX_THRESHOLDS.heavyBuy} stroke={VIX_REFERENCE_COLORS.heavyBuy} strokeDasharray="4 4" label="50" />
                 <Line type="monotone" dataKey="close" stroke="#6366f1" strokeWidth={2} dot={false} name="VIX 收盘" />
               </LineChart>
             </ResponsiveContainer>
           )}
+        </div>
+        <div className="mt-4 flex items-center gap-1.5 text-xs text-slate-500">
+          <Activity className="h-3.5 w-3.5" />
+          阈值锁定于 D5，调整需同步改 `vixSignal.js`
         </div>
       </Card>
     </div>
