@@ -3,7 +3,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { AlertCircle, Bell, BookOpen, CloudUpload, ListChecks, Wallet, Info, Trash2 } from 'lucide-react';
 import { clearDemoData, hasPotentialUserData, installDemoData, readDemoDataMeta } from '../app/demoData.js';
 import { persistWorkspacePrefs, readWorkspacePrefs } from '../app/workspacePrefs.js';
-import { Card, PageHero, Pill, SectionHeading, SelectField, cx, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
+import { Card, PageHero, Pill, NavPill, DisclosureBanner, SectionHeading, SelectField, cx, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
 
 const HOME_OPTIONS = [
   { value: 'strategy', label: '策略指南' },
@@ -288,12 +288,13 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
         eyebrow="FreeBacktrack Tools"
         title="投资工具工作台"
         description="从这里进入持仓、交易计划、通知和数据同步；策略说明默认收起，不挡住核心任务。"
-        badges={[<Pill key="a" tone="indigo">Dashboard</Pill>, <Pill key="b" tone="emerald">工具入口</Pill>, <Pill key="c" tone="amber">新手 Demo</Pill>]}
+        badges={[<NavPill key="a" href="#dashboard-title" active>Dashboard</NavPill>, <NavPill key="b" href="#tools-entry">工具入口</NavPill>, <NavPill key="c" href="#demo-zone">新手 Demo</NavPill>]}
       >
-        <div className="flex items-start gap-2.5 rounded-r-2xl border-l-4 border-amber-500 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-          <span>策略内容由公开的金渐成公众号文章整理总结而来。本工具与金渐成本人及其公众号无官方关联，不构成投资建议。</span>
-        </div>
+        <DisclosureBanner
+          icon={<AlertCircle className="h-4 w-4" />}
+          summary={<span><strong className="font-semibold">免责声明</strong>·本工具不构成投资建议，点击展开查看详情</span>}
+          details={<span>策略内容由公开的金渐成公众号文章整理总结而来。本工具与金渐成本人及其公众号无官方关联，不构成投资建议。仅供个人记录与学习使用，投资有风险、请独立判断。</span>}
+        />
       </PageHero>
 
       <main className="mx-auto flex max-w-6xl flex-col gap-10 px-5 py-8 sm:px-6">
@@ -307,7 +308,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
             </div>
             <GuideButton onClick={() => navigate('holdings')}>新增交易</GuideButton>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div id="tools-entry" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <ToolStatusCard icon={Wallet} title="持仓总览" value={dashboardStatus.holdings} note="资产、成本、收益和三账户分配" action="查看持仓" onClick={() => navigate('holdings')} />
             <ToolStatusCard icon={ListChecks} title="交易计划" value={dashboardStatus.plans} note="加仓、定投、卖出和 VIX 信号" action="新建加仓策略" onClick={() => navigate('tradePlans', { hash: '#new' })} />
             <ToolStatusCard icon={Bell} title="通知状态" value={dashboardStatus.notify} note="iOS、Android、PC 浏览器提醒" action="配置通知" onClick={() => navigate('notify')} />
@@ -317,7 +318,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
 
         <Card className="border-indigo-100 bg-indigo-50/70 p-5 sm:p-6">
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-            <SectionHeading eyebrow="新手辅助" title="需要一套示例数据吗？" description="生成随机 Demo，快速理解持仓、交易计划、通知和账户体系。" />
+            <div id="demo-zone"><SectionHeading eyebrow="新手辅助" title="需要一套示例数据吗？" description="生成随机 Demo，快速理解持仓、交易计划、通知和账户体系。" /></div>
             <div className="flex flex-wrap gap-3">
               <GuideButton variant="secondary" onClick={handleInstallDemo}>{demoMeta ? '重新生成 Demo' : '生成演示数据'}</GuideButton>
               {demoMeta ? <GuideButton variant="secondary" onClick={handleClearDemo}><Trash2 className="h-4 w-4" />清除 Demo</GuideButton> : null}

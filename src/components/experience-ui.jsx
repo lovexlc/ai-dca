@@ -6,7 +6,7 @@ export function cx(...classes) {
 
 export const primaryButtonClass = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-indigo-600 bg-indigo-600 px-4 py-2.5 text-sm font-semibold leading-5 text-white shadow-sm shadow-indigo-200/70 transition-colors hover:border-indigo-700 hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2';
 export const secondaryButtonClass = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-indigo-200 bg-white px-4 py-2.5 text-sm font-semibold leading-5 text-indigo-700 transition-colors hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2';
-export const subtleButtonClass = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-white px-4 py-2.5 text-sm font-semibold leading-5 text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2';
+export const subtleButtonClass = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-white px-4 py-2.5 text-sm font-semibold leading-5 text-slate-800 ring-1 ring-slate-300 transition-colors hover:bg-indigo-50 hover:text-indigo-700 hover:ring-indigo-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2';
 export const inputClass = 'h-11 w-full rounded-xl border border-slate-200/70 bg-white px-3 text-sm text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] outline-none transition-colors placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100';
 export const tableInputClass = 'h-10 w-full rounded-xl border border-transparent bg-transparent px-3 text-sm text-slate-700 outline-none transition-colors placeholder:text-slate-300 hover:border-slate-200/70 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100';
 
@@ -197,5 +197,43 @@ export function StatCard({ eyebrow, value, note, accent = 'slate', progress }) {
         </div>
       ) : null}
     </Card>
+  );
+}
+
+export function NavPill({ href, onClick, active = false, children, className = '' }) {
+  const base = 'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2';
+  const cls = active
+    ? 'border border-indigo-600 bg-indigo-600 text-white shadow-sm shadow-indigo-200'
+    : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700';
+  const handleClick = (event) => {
+    if (onClick) onClick(event);
+    if (href && href.startsWith('#')) {
+      event.preventDefault();
+      const id = href.slice(1);
+      const el = typeof document !== 'undefined' ? document.getElementById(id) : null;
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+  if (href) {
+    return <a href={href} onClick={handleClick} aria-current={active ? 'page' : undefined} className={cx(base, cls, className)}>{children}</a>;
+  }
+  return <button type="button" onClick={onClick} aria-current={active ? 'page' : undefined} className={cx(base, cls, className)}>{children}</button>;
+}
+
+export function DisclosureBanner({ icon = null, summary, details = null, tone = 'amber', defaultOpen = false, className = '' }) {
+  const tones = {
+    amber: { box: 'border-amber-300 bg-amber-50', text: 'text-amber-900', accent: 'text-amber-700' },
+    slate: { box: 'border-slate-200 bg-slate-50', text: 'text-slate-700', accent: 'text-slate-500' }
+  };
+  const t = tones[tone] || tones.amber;
+  return (
+    <details open={defaultOpen} className={cx('group rounded-2xl border-l-4 px-4 py-3 text-sm leading-6', t.box, t.text, className)}>
+      <summary className={cx('flex cursor-pointer items-start gap-2.5 list-none [&::-webkit-details-marker]:hidden')}>
+        {icon ? <span className={cx('mt-0.5 shrink-0', t.accent)}>{icon}</span> : null}
+        <span className="flex-1">{summary}</span>
+        {details ? <ChevronDown className={cx('mt-0.5 h-4 w-4 shrink-0 transition-transform group-open:rotate-180', t.accent)} /> : null}
+      </summary>
+      {details ? <div className={cx('mt-2 pl-6 text-[13px] leading-6', t.accent)}>{details}</div> : null}
+    </details>
   );
 }

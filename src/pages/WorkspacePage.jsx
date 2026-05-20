@@ -258,11 +258,11 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         onSelectNav={handleSelectTab}
       >
         {demoMeta ? (
-          <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>当前正在使用演示数据。建议先配置一次手机通知，完整体验策略触发提醒。</div>
               <div className="flex flex-wrap gap-2">
-                <button type="button" className="rounded-xl bg-white px-3 py-2 text-xs font-bold text-amber-800 shadow-sm" onClick={() => handleSelectTab('notify')}>配置通知</button>
+                <button type="button" className="inline-flex items-center gap-1 rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900 shadow-sm transition-colors hover:bg-amber-100" onClick={() => handleSelectTab('notify')}>配置通知</button>
                 <button
                   type="button"
                   className="inline-flex items-center gap-1 rounded-xl bg-amber-600 px-3 py-2 text-xs font-bold text-white shadow-sm"
