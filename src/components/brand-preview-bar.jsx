@@ -6,7 +6,7 @@ import { LineChart } from 'lucide-react';
  */
 export function BrandPreviewBar({ currentPageLabel }) {
   return (
-    <div className="sticky top-0 z-30 flex h-12 items-center gap-3 border-b border-slate-200 bg-white px-4 sm:px-6">
+    <div className="sticky top-0 z-30 hidden h-12 items-center gap-3 border-b border-slate-200 bg-white px-4 sm:flex sm:px-6">
       <div className="flex items-center gap-2">
         <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-indigo-500 to-purple-500 text-white">
           <LineChart className="h-4 w-4" strokeWidth={2.4} />
