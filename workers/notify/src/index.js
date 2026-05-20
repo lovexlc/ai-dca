@@ -1154,6 +1154,72 @@ async function handleGcmRegister(request, env) {
   }, { origin });
 }
 
+// Android-side device-id rotation: device authenticates with old deviceInstallationId + current
+// FCM token, then atomically renames its KV registration record to the new deviceInstallationId.
+// Preserves token / pairedClients / pairingCode* / projectId etc so paired browsers stay bound.
+// If a stale registration already exists under the new id (e.g. orphaned from an earlier attempt),
+// it is dropped to make room for the rename.
+// Payload: { oldDeviceInstallationId, newDeviceInstallationId, token }
+async function handleGcmResetDeviceId(request, env) {
+  const origin = readOrigin(request);
+  const payload = await request.json().catch(() => ({}));
+  const oldDeviceInstallationId = normalizeDeviceInstallationId(
+    payload.oldDeviceInstallationId || payload.deviceInstallationId || payload.installationId || ''
+  );
+  const newDeviceInstallationId = normalizeDeviceInstallationId(
+    payload.newDeviceInstallationId || payload.nextDeviceInstallationId || ''
+  );
+  const token = String(payload.token || payload.registrationToken || '').trim();
+
+  if (!token) {
+    throw new Error('重置设备 ID 需要提供当前设备的 FCM token。');
+  }
+  if (!oldDeviceInstallationId) {
+    throw new Error('重置设备 ID 需要提供旧的 deviceInstallationId。');
+  }
+  if (!newDeviceInstallationId) {
+    throw new Error('重置设备 ID 需要提供新的 deviceInstallationId。');
+  }
+  if (oldDeviceInstallationId === newDeviceInstallationId) {
+    throw new Error('新旧 deviceInstallationId 相同，无需重置。');
+  }
+
+  const settings = await readSettings(env);
+  const selectedRegistration = findGcmRegistration(settings, {
+    deviceInstallationId: oldDeviceInstallationId,
+    token
+  });
+
+  requireAuthenticatedGcmRegistration(selectedRegistration, token);
+
+  const nowIso = new Date().toISOString();
+  const nextRegistration = {
+    ...selectedRegistration,
+    id: newDeviceInstallationId,
+    deviceInstallationId: newDeviceInstallationId,
+    updatedAt: nowIso
+  };
+
+  const existingRegistrations = Array.isArray(settings.gcmRegistrations) ? settings.gcmRegistrations : [];
+  const filteredRegistrations = existingRegistrations.filter((registration) => {
+    const registrationId = normalizeDeviceInstallationId(registration.deviceInstallationId || registration.id);
+    return registrationId !== oldDeviceInstallationId && registrationId !== newDeviceInstallationId;
+  });
+  const nextSettings = normalizeSettings({
+    ...settings,
+    gcmRegistrations: [...filteredRegistrations, nextRegistration]
+  });
+
+  await writeSettings(env, nextSettings);
+
+  return jsonResponse({
+    ok: true,
+    registration: buildPublicGcmRegistration(nextRegistration, {
+      includePairedClientIds: true
+    })
+  }, { origin });
+}
+
 async function handleGcmCheck(request, env) {
   const origin = readOrigin(request);
   const settings = await readSettings(env);
@@ -2848,6 +2914,9 @@ export default {
       }
       if (request.method === 'POST' && url.pathname === '/api/notify/gcm/unpair-from-device') {
         return await handleGcmUnpairFromDevice(request, env);
+      }
+      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/reset-device-id') {
+        return await handleGcmResetDeviceId(request, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/run') {
