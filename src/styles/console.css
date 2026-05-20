@@ -66,9 +66,9 @@
   flex: 0 0 var(--console-sidebar-w);
   width: var(--console-sidebar-w);
   position: sticky;
-  top: 0;
+  top: var(--brand-bar-h, 48px);
   align-self: flex-start;
-  height: 100vh;
+  height: calc(100vh - var(--brand-bar-h, 48px));
   border-right: 1px solid var(--console-border);
   background: var(--console-sidebar-bg);
   display: flex;
@@ -276,7 +276,7 @@
 
 .console-topbar {
   position: sticky;
-  top: 0;
+  top: var(--brand-bar-h, 48px);
   z-index: 60;
   display: flex;
   align-items: center;
