@@ -362,16 +362,20 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
             </div>
             <div className="text-base font-bold text-slate-900">选择一个目标开始</div>
             <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              <button type="button" onClick={enterNewPlanView} className={cx(primaryButtonClass, 'w-full min-h-10 px-3 py-2 text-xs')}>
+              <button type="button" onClick={enterNewPlanView} className={cx(primaryButtonClass, 'inline-flex items-center justify-center gap-1.5 w-full min-h-10 px-3 py-2 text-xs')}>
+                <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
                 按回撤加仓
               </button>
-              <button type="button" onClick={() => handleSelectSubTab('dca')} className={cx(secondaryButtonClass, 'w-full min-h-10 px-3 py-2 text-xs')}>
+              <button type="button" onClick={() => handleSelectSubTab('dca')} className={cx(secondaryButtonClass, 'inline-flex items-center justify-center gap-1.5 w-full min-h-10 px-3 py-2 text-xs')}>
+                <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
                 设置定投
               </button>
-              <button type="button" onClick={() => handleSelectSubTab('sell')} className={cx(secondaryButtonClass, 'w-full min-h-10 px-3 py-2 text-xs')}>
+              <button type="button" onClick={() => handleSelectSubTab('sell')} className={cx(secondaryButtonClass, 'inline-flex items-center justify-center gap-1.5 w-full min-h-10 px-3 py-2 text-xs')}>
+                <TrendingDown className="h-3.5 w-3.5" aria-hidden="true" />
                 设置卖出规则
               </button>
-              <button type="button" onClick={() => handleSelectSubTab('vix')} className={cx(secondaryButtonClass, 'w-full min-h-10 px-3 py-2 text-xs')}>
+              <button type="button" onClick={() => handleSelectSubTab('vix')} className={cx(secondaryButtonClass, 'inline-flex items-center justify-center gap-1.5 w-full min-h-10 px-3 py-2 text-xs')}>
+                <Activity className="h-3.5 w-3.5" aria-hidden="true" />
                 查看 VIX 规则
               </button>
             </div>

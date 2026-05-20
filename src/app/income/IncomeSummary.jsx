@@ -15,7 +15,7 @@
 //   - cumulativeSeries / cumulativeLastIso：v7.2 起 PC 中部不再渲染 sparkline，props 暂保留以避免上游契约破坏，可在后续清理。
 //   - quickActions：{ onNewTransaction, onCopyTable, copyTitle }，PC 端 hero 行右侧合并主表顶部 「复制表格 / + 新增交易」按钮。
 
-import { ROUTES } from '../incomeRoute.js';
+import { ROUTES, useIncomeRoute } from '../incomeRoute.js';
 import { Pill, cx } from '../../components/experience-ui.jsx';
 import { formatCurrency, formatPercent } from '../accumulation.js';
 import { RefreshCw, BarChart3, Receipt, PieChart, ArrowLeftRight, Plus, Copy } from 'lucide-react';
@@ -102,6 +102,7 @@ function KpiCol({ label, value, rate, align = 'center', centerRate = false }) {
 }
 
 export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocation, cumulativeSeries, cumulativeLastIso, quickActions, inceptionDate }) {
+	const { route: activeRoute } = useIncomeRoute();
 	const marketValue = portfolio?.marketValue;
 	const todayProfit = portfolio?.todayProfit;
 	const todayReturnRate = portfolio?.todayReturnRate;
@@ -173,33 +174,41 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 
 			{/* 入口区：移动端 4 tile grid（v7.0） */}
 			<nav aria-label="收益看板子页入口" className="grid grid-cols-4 gap-2 sm:hidden">
-				{TILES.map(({ route: r, Icon, label }) => (
-					<button
-						key={r}
-						type="button"
-						onClick={() => navigate?.(r)}
-						className="flex flex-col items-center justify-center gap-1.5 rounded-2xl border border-slate-200/70 bg-white px-1 py-2.5 text-[11px] font-medium text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-slate-50 active:bg-slate-100"
-					>
-						<Icon className="h-5 w-5 text-slate-600" strokeWidth={1.75} aria-hidden="true" />
-						<span className="truncate">{label}</span>
-					</button>
-				))}
+				{TILES.map(({ route: r, Icon, label }) => {
+					const isActive = activeRoute === r;
+					return (
+						<button
+							key={r}
+							type="button"
+							aria-current={isActive ? 'page' : undefined}
+							onClick={() => navigate?.(r)}
+							className={cx('flex flex-col items-center justify-center gap-1.5 rounded-2xl border px-1 py-2.5 text-[11px] font-medium shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors active:bg-slate-100', isActive ? 'border-rose-300 bg-rose-50 text-rose-700' : 'border-slate-200/70 bg-white text-slate-700 hover:bg-slate-50')}
+						>
+							<Icon className={cx('h-5 w-5', isActive ? 'text-rose-600' : 'text-slate-600')} strokeWidth={1.75} aria-hidden="true" />
+							<span className="truncate">{label}</span>
+						</button>
+					);
+				})}
 			</nav>
 
 			{/* PC 端：4 pill chip 入口 + 右侧 复制表格 / + 新增交易 */}
 			<div className="hidden sm:flex sm:items-center sm:justify-between sm:gap-3">
 				<nav aria-label="收益看板子页入口" className="flex flex-wrap gap-2">
-					{TILES.map(({ route: r, Icon, label }) => (
-						<button
-							key={r}
-							type="button"
-							onClick={() => navigate?.(r)}
-							className="inline-flex items-center gap-1.5 h-8 rounded-full border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 transition-colors hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
-						>
-							<Icon className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-							<span>{label}</span>
-						</button>
-					))}
+					{TILES.map(({ route: r, Icon, label }) => {
+						const isActive = activeRoute === r;
+						return (
+							<button
+								key={r}
+								type="button"
+								aria-current={isActive ? 'page' : undefined}
+								onClick={() => navigate?.(r)}
+								className={cx('inline-flex items-center gap-1.5 h-8 rounded-full border px-3 text-xs font-medium transition-colors', isActive ? 'border-rose-300 bg-rose-50 text-rose-700 shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700')}
+							>
+								<Icon className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+								<span>{label}</span>
+							</button>
+						);
+					})}
 				</nav>
 				{quickActions && (quickActions.onCopyTable || quickActions.onNewTransaction) ? (
 					<div className="flex shrink-0 items-center gap-2">

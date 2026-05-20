@@ -54,6 +54,19 @@ function isTestEvent(event = {}) {
 // 通知中心：把原本散落在《交易计划》tab 里的推送通道配置（iOS Bark、Android 配对、
 // 共享组生成/加入、设备列表）抽到独立 tab。其他 tab 只通过 readNotifyClientConfig
 // 读取已配置好的 clientId 来发送通知，配置入口只在这里。
+// 将后端/网络错误转为用户友好文案。保留原始错误于控制台方便开发者调试。
+function humanizeNotifyError(error) {
+  const raw = error instanceof Error ? error.message : String(error || '');
+  if (typeof console !== 'undefined' && raw) console.warn('[notify]', raw);
+  if (!raw) return '通知服务暂时不可用，请稍后重试';
+  const text = raw.toLowerCase();
+  if (/status\s*5\d\d|http\s*5\d\d|\b5\d\d\b/.test(text)) return '通知服务暂时不可用，请稍后重试';
+  if (/status\s*4\d\d|http\s*4\d\d/.test(text)) return '通知服务请求被拒绝，请检查配置';
+  if (/network|fetch|abort|timeout|enotfound|econnre/.test(text)) return '网络连接不稳定，请检查网络后重试';
+  if (/cors/.test(text)) return '跨域请求被默认限制，请配置 CORS 代理或使用同域部署';
+  return raw;
+}
+
 export function NotifyExperience({ embedded = false }) {
   const [notifyStatus, setNotifyStatus] = useState(null);
   const [notifyError, setNotifyError] = useState('');
@@ -180,7 +193,7 @@ export function NotifyExperience({ embedded = false }) {
         setNotifyError('');
       } catch (error) {
         if (cancelled) return;
-        setNotifyError(error instanceof Error ? error.message : '通知服务暂时不可用');
+        setNotifyError(humanizeNotifyError(error));
       }
     }
     refreshNotifyPanel();
@@ -244,7 +257,7 @@ export function NotifyExperience({ embedded = false }) {
         setEventsLastSyncedAt(new Date().toISOString());
       } catch (error) {
         if (cancelled) return;
-        setEventsError(error instanceof Error ? error.message : '提醒历史加载失败');
+        setEventsError(humanizeNotifyError(error));
       } finally {
         if (!cancelled) setEventsLoading(false);
       }
@@ -285,7 +298,7 @@ export function NotifyExperience({ embedded = false }) {
       setNotifyEvents(list);
       setEventsLastSyncedAt(new Date().toISOString());
     } catch (error) {
-      setEventsError(error instanceof Error ? error.message : '提醒历史加载失败');
+      setEventsError(humanizeNotifyError(error));
     } finally {
       setEventsLoading(false);
     }

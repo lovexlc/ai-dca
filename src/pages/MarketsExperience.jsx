@@ -2,29 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import '../styles/ai-chat.css';
-import {
-  ArrowDown,
-  ArrowUp,
-  CalendarDays,
-  ChevronDown,
-  ChevronUp,
-  ChevronRight,
-  Compass,
-  Edit3,
-  ExternalLink,
-  History,
-  Loader2,
-  ListPlus,
-  Newspaper,
-  Plus,
-  RefreshCw,
-  Search,
-  Sparkles,
-  Star,
-  Trash2,
-  TrendingUp,
-  X,
-} from 'lucide-react';
+import { ArrowDown, ArrowUp, CalendarDays, ChevronDown, ChevronRight, ChevronUp, Compass, Edit3, ExternalLink, History, ListPlus, Loader2, Newspaper, Plus, RefreshCw, Search, Send, Sparkles, Star, Trash2, TrendingUp, X } from 'lucide-react';
 import {
   Card,
   Pill,
@@ -1075,7 +1053,7 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
         {messages.length === 0 ? (
           <div className="flex flex-col gap-5 pb-2">
             <div>
-              <p className="text-[18px] font-medium leading-snug text-[#1f1f1f]">您好！您可以向我咨询任何金融问题</p>
+              <p className="text-[18px] font-medium leading-snug text-[#1f1f1f]">您好！试试以下常见问题，或直接输入您的问题</p>
             </div>
             <div className="flex flex-col gap-2">
               {[
@@ -1088,10 +1066,11 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
                   type="button"
                   onClick={() => send(q)}
                   disabled={pending}
-                  className="flex w-full items-center justify-between gap-3 rounded-2xl bg-[#f1f3f4] px-4 py-3 text-left text-[14px] text-[#1f1f1f] transition hover:bg-[#e8eaed] disabled:opacity-60"
+                  title="点击提问"
+                  className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left text-[14px] text-[#1f1f1f] shadow-sm transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-900 disabled:opacity-60 disabled:hover:border-slate-200 disabled:hover:bg-white"
                 >
                   <span className="flex-1">{q}</span>
-                  <Search size={16} className="shrink-0 text-[#5f6368]" />
+                  <Send size={16} className="shrink-0 text-slate-400 transition group-hover:text-indigo-600" />
                 </button>
               ))}
             </div>
