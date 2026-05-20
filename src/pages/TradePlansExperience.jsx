@@ -516,7 +516,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
               role="menuitem"
               disabled={isTesting}
               onClick={() => handleTestNotify(row)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="hidden w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:flex"
             >
               <Bell className="h-4 w-4 text-slate-400" />
               {isTesting ? '正在发送' : '测试通知'}
@@ -534,17 +534,17 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
               type="button"
               role="menuitem"
               onClick={() => handleEditRow(row)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+              className="hidden w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 sm:flex"
             >
               <Pencil className="h-4 w-4 text-slate-400" />
               编辑
             </button>
-            <div className="h-px bg-slate-100" />
+            <div className="hidden h-px bg-slate-100 sm:block" />
             <button
               type="button"
               role="menuitem"
               onClick={() => handleDeletePlanRow(row)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
+              className="hidden w-full items-center gap-2 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 sm:flex"
             >
               <Trash2 className="h-4 w-4" />
               删除
