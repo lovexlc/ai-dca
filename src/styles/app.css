@@ -226,3 +226,15 @@ svg {
     padding-bottom: calc(64px + env(safe-area-inset-bottom));
   }
 }
+
+/* ===== Brand preview: hide each tab’s big H1 hero block ===== */
+[data-brand-preview] header > div:has(> h1) {
+  display: none !important;
+}
+[data-brand-preview] header {
+  padding-top: 0.75rem !important;
+  padding-bottom: 0.75rem !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
