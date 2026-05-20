@@ -938,15 +938,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }
   // 拖拽状态：高亮当前悬停中的接收区。
   const [dragOverZone, setDragOverZone] = useState(null);
-  const workerRunDisabledReason = workerStatus.running
-    ? '正在运行'
-    : workerStatus.saving
-    ? '配置同步中'
-    : !switchSummary.benches.length
-    ? '先配置 H/L 基准'
-    : switchSummary.pairs === 0
-    ? '先配置候选配对'
-    : '';
   const handleChipDragStart = useCallback((event, code) => {
     if (!event || !event.dataTransfer || !code) return;
     event.dataTransfer.setData('text/plain', code);
@@ -1074,6 +1065,16 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       + (Hrow ? Hrow.benches.length * Hrow.cands.length : 0);
     return { benches, Lbenches, Hbenches, Lrow, Hrow, pairs, Hpool, Lpool, cls };
   }, [prefs?.benchmarkCodes, prefs?.enabledCodes, prefs?.premiumClass]);
+
+  const workerRunDisabledReason = workerStatus.running
+    ? '正在运行'
+    : workerStatus.saving
+    ? '配置同步中'
+    : !switchSummary.benches.length
+    ? '先配置 H/L 基准'
+    : switchSummary.pairs === 0
+    ? '先配置候选配对'
+    : '';
 
   // 机会卡片点「记录此次切换」后的快捷入口：
   //   1. 从 intra signal / otc signal 预填表单 → setQuickRecord(form)。
