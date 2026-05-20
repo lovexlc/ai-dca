@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, BookOpen, CloudUpload, LineChart, ListChecks, Plus, RefreshCw, Send, Shuffle, Trash2, Wallet } from 'lucide-react';
-import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
+import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, PRIMARY_TAB_META, PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
 import { MobileTabBar } from '../components/mobile-tab-bar.jsx';
@@ -123,8 +123,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const previousTabRef = useRef(activeTab);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const brandPreview = useBrandPreview();
-  const primaryTabsForLabel = getPrimaryTabs();
-  const currentPageLabel = primaryTabsForLabel.find((t) => t.key === activeTab)?.label || '';
+  const currentPageLabel = PRIMARY_TAB_META[activeTab]?.label || '';
 
   const quickAction = useMemo(() => {
     if (activeTab === 'backup') {
