@@ -1,8 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowDown,
-  ArrowRight,
-  ArrowUp,
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
@@ -64,7 +61,6 @@ import {
   summarizeTransactionErrors
 } from '../app/holdingsLedgerCore.js';
 import { getNearestTradingDayShanghai, getNextTradingDayShanghai } from '../app/holidaysCN.js';
-import { loadLatestMarketIndices } from '../app/marketIndices.js';
 import {
   buildNavMetaFromResult,
   mergeSnapshotsFromNavResult,
@@ -94,7 +90,6 @@ import {
   createOcrState,
   emptyDraft,
   formatNav,
-  formatRelativeTime,
   formatShares,
   formatSignedCurrency,
   formatSignedPercent,
@@ -189,13 +184,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [chainPickerSearch, setChainPickerSearch] = useState('');
   // 已展开的链路 id 集合。保存过的链路默认折叠，新建时自动展开。
   const [expandedChains, setExpandedChains] = useState(() => new Set());
-  const [marketTickerOpen, setMarketTickerOpen] = useState(false);
-  const [marketIndexState, setMarketIndexState] = useState(() => ({
-    generatedAt: '',
-    indexes: [],
-    error: ''
-  }));
-
   const fileInputRef = useRef(null);
   const autoNavTriggeredRef = useRef(false);
   const navAttemptedCodesRef = useRef(new Set());
@@ -882,32 +870,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   );
   const migrationNoticeVisible = Boolean(ledger.migratedFromLegacy) && needsDateBackfill;
 
-  useEffect(() => {
-    let cancelled = false;
-
-    loadLatestMarketIndices({ inPagesDir })
-      .then((payload) => {
-        if (cancelled) return;
-        setMarketIndexState({
-          generatedAt: payload.generated_at || '',
-          indexes: Array.isArray(payload.indexes) ? payload.indexes : [],
-          error: ''
-        });
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        setMarketIndexState({
-          generatedAt: '',
-          indexes: [],
-          error: error instanceof Error ? error.message : '指数行情加载失败'
-        });
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [inPagesDir]);
-
   // ---- NAV auto-refresh on mount ----
   useEffect(() => {
     // 进入页面时无条件触发一次净值刷新（包含所有持仓代码）。
@@ -1009,49 +971,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     // 手动刷新清空已尝试集合，所有代码都重新走一遍。
     navAttemptedCodesRef.current.clear();
     void refreshNavForCodes(codes, { silent: false });
-  }
-
-  function formatMarketIndexValue(value) {
-    const number = Number(value);
-    if (!Number.isFinite(number)) return '—';
-    return number.toFixed(2);
-  }
-
-  function formatMarketIndexMove(value) {
-    const number = Number(value);
-    if (!Number.isFinite(number)) return '—';
-    const magnitude = Math.abs(number).toFixed(2);
-    return number < 0 ? `-${magnitude}` : magnitude;
-  }
-
-  function formatMarketIndexPercent(value) {
-    const number = Number(value);
-    if (!Number.isFinite(number)) return '—';
-    const magnitude = Math.abs(number).toFixed(2);
-    return number < 0 ? `-${magnitude}%` : `${magnitude}%`;
-  }
-
-  function getMarketIndexTone(change) {
-    const number = Number(change);
-    if (!Number.isFinite(number) || number === 0) {
-      return {
-        icon: ArrowRight,
-        valueClass: 'text-slate-900',
-        changeClass: 'text-slate-500'
-      };
-    }
-    if (number > 0) {
-      return {
-        icon: ArrowUp,
-        valueClass: 'text-red-500',
-        changeClass: 'text-red-500'
-      };
-    }
-    return {
-      icon: ArrowDown,
-      valueClass: 'text-emerald-600',
-      changeClass: 'text-emerald-600'
-    };
   }
 
   // ---- Draft (quick add) handlers ----
@@ -1770,87 +1689,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     if (window.location.href === nextUrl.href) return;
     window.history.pushState({ tab: 'markets' }, '', nextUrl);
     window.dispatchEvent(new PopStateEvent('popstate'));
-  }
-
-  function renderMarketTicker() {
-    const items = marketIndexState.indexes;
-    if (!items.length) return null;
-
-    const tooltip = marketIndexState.generatedAt
-      ? `${formatRelativeTime(marketIndexState.generatedAt)} · Yahoo Finance`
-      : 'Yahoo Finance';
-
-    const renderItem = (item, copyIdx, itemIndex) => {
-      const tone = getMarketIndexTone(item.change);
-      const ToneIcon = tone.icon;
-      return (
-        <span
-          key={`${copyIdx}-${item.key}`}
-          className={cx('inline-flex items-center gap-1.5 px-3 text-[13px] leading-none', itemIndex >= 2 && 'hidden sm:inline-flex', copyIdx > 0 && 'hidden sm:inline-flex')}
-        >
-          <span className="font-medium text-slate-500">{item.name}</span>
-          <span className={cx('font-semibold tabular-nums', tone.valueClass)}>
-            {formatMarketIndexValue(item.current_price)}
-          </span>
-          <ToneIcon className={cx('h-3 w-3 shrink-0', tone.changeClass)} />
-          <span className={cx('tabular-nums', tone.changeClass)}>
-            {formatMarketIndexMove(item.change)}
-          </span>
-          <span aria-hidden className="text-slate-300">|</span>
-          <span className={cx('font-semibold tabular-nums', tone.changeClass)}>
-            {formatMarketIndexPercent(item.change_percent)}
-          </span>
-          <span aria-hidden className="ml-2 text-slate-300">·</span>
-        </span>
-      );
-    };
-
-    return (
-      <a
-        href={links.markets || './index.html?tab=markets'}
-        onClick={navigateToMarkets}
-        className="market-ticker group flex h-10 max-w-full cursor-pointer items-center overflow-hidden rounded-2xl border border-slate-200 bg-white px-2 shadow-sm backdrop-blur transition-colors hover:border-indigo-200 hover:bg-indigo-50/40 hover:shadow-[0_1px_4px_rgba(79,70,229,0.12)] supports-[backdrop-filter]:bg-white/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
-        title={`${tooltip} · 点击查看行情中心`}
-        aria-label={`进入行情中心查看完整大盘指数·${tooltip}`}
-      >
-        <div className="market-ticker-viewport flex h-full min-w-0 flex-1 items-center overflow-hidden">
-          <div className="market-ticker-track flex h-full items-center">
-            {items.map((item, index) => renderItem(item, 0, index))}
-            {items.map((item, index) => renderItem(item, 1, index))}
-          </div>
-        </div>
-        <ChevronRight
-          aria-hidden
-          className="ml-1 h-4 w-4 shrink-0 text-slate-400 transition-colors group-hover:text-indigo-500"
-        />
-      </a>
-    );
-  }
-
-  function renderPortfolioOverview() {
-    const count = marketIndexState.indexes.length;
-    if (!count) return null;
-    return (
-      <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
-        <button
-          type="button"
-          className="flex w-full items-center justify-between gap-3 text-left text-sm font-semibold text-slate-700"
-          onClick={() => setMarketTickerOpen((value) => !value)}
-          aria-expanded={marketTickerOpen}
-        >
-          <span>市场概览 · {count} 个指数</span>
-          <ChevronDown className={cx('h-4 w-4 text-slate-400 transition', marketTickerOpen && 'rotate-180')} aria-hidden="true" />
-        </button>
-        {marketTickerOpen ? (
-          <div className="relative mt-2 w-full overflow-hidden border-t border-slate-100 pt-2">
-            <div className="flex w-full">
-              {renderMarketTicker()}
-            </div>
-            <div className="pointer-events-none absolute right-0 top-2 h-10 w-8 bg-gradient-to-l from-white to-transparent" />
-          </div>
-        ) : null}
-      </div>
-    );
   }
 
   function renderKindFilter() {
@@ -2837,7 +2675,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         ) : null}
         <button type="button" className={PRIMARY_BTN + ' w-full'} onClick={submitDraft}>
           <Save className="h-4 w-4" />
-          {draftMode === 'edit' ? '保存交易' : '新增交易'}
+          保存交易
         </button>
         {/* v6.2: edit 模式下在编辑面板底部提供删除按钮，
             点击后调 handleDeleteTransaction（带 confirm），成功则关闭 sidePanel。
@@ -2892,8 +2730,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           </div>
         </div>
       ) : null}
-      {/* 第五刀 5.2: 行情 ticker 移到顶部（IncomeSection 之前），OVERVIEW / TRANSACTIONS 都会显示 */}
-      {renderPortfolioOverview()}
       <IncomeSection
         ledger={ledger}
         portfolio={portfolio}
@@ -3523,20 +3359,27 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       {sidePanelOpen ? (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 px-4 py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="holdings-side-panel-title"
           onClick={() => setSidePanelOpen(false)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') setSidePanelOpen(false);
+          }}
         >
           <div
             className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-              <div className="text-sm font-bold text-slate-900">
+              <div id="holdings-side-panel-title" className="text-sm font-bold text-slate-900">
                 {sidePanelTab === 'summary'
                   ? '该基金汇总'
                   : draftMode === 'edit' ? '编辑交易' : '新增交易'}
               </div>
               <button
                 type="button"
+                aria-label="关闭弹层"
                 className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
                 onClick={() => setSidePanelOpen(false)}
               >
