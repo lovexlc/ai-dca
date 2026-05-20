@@ -17,7 +17,7 @@ import {
   FUND_SWITCH_SYSTEM_PROMPT,
   PROMPT_VERSION
 } from './geminiPrompt.js';
-import { fetchFundLimit } from './fundLimit.js';
+import { fetchFundLimit, fetchFundLimitsBatch, mapLimit } from './fundLimit.js';
 
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -2095,29 +2095,29 @@ async function fetchLiveHoldingsNavPayload(codes, env, key, ttlMsOverride) {
   const ttlMs = Number.isFinite(ttlMsOverride) && ttlMsOverride > 0
     ? ttlMsOverride
     : getHoldingsNavCacheTtlMs(env);
-  const items = await Promise.all(
-    codes.map(async (code) => {
-      try {
-        const snapshot = await fetchHoldingSnapshot(code, generatedAt);
-        return {
-          ...snapshot,
-          cacheHit: false,
-          cacheSource: 'live',
-          cacheKey: key
-        };
-      } catch (error) {
-        return {
-          ok: false,
-          code,
-          error: error instanceof Error ? error.message : `${code} 净值更新失败。`,
-          updatedAt: generatedAt,
-          cacheHit: false,
-          cacheSource: 'live',
-          cacheKey: key
-        };
-      }
-    })
-  );
+  // 以前是无限并发 Promise.all：冷缓存时 60 code 可能同时打 60 个上游。
+  // 这里改用 mapLimit(6) 限并发；东财 NAV 上游本身并不费力，6 并发 + 重试足够。
+  const items = await mapLimit(codes, 6, async (code) => {
+    try {
+      const snapshot = await fetchHoldingSnapshot(code, generatedAt);
+      return {
+        ...snapshot,
+        cacheHit: false,
+        cacheSource: 'live',
+        cacheKey: key
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        code,
+        error: error instanceof Error ? error.message : `${code} 净值更新失败。`,
+        updatedAt: generatedAt,
+        cacheHit: false,
+        cacheSource: 'live',
+        cacheKey: key
+      };
+    }
+  });
 
   const successCount = items.filter((item) => item.ok === true).length;
   const failureCount = items.length - successCount;
@@ -2637,18 +2637,46 @@ export default {
     }
 
     if (url.pathname === '/api/fund-limit') {
-      if (request.method !== 'GET') {
+      // GET ?code=XXXXXX        → 单 code（向后兼容）
+      // POST { codes: [...] }   → 批量，Worker 内部限并发刷 mapLimit，避免 N*3 上游放大
+      if (request.method !== 'GET' && request.method !== 'POST') {
         return jsonResponse({
           error: 'Method not allowed'
         }, 405, {
-          allow: 'GET, OPTIONS'
+          allow: 'GET, POST, OPTIONS'
         });
       }
 
       try {
-        const code = (url.searchParams.get('code') || '').trim();
-        // 兼容参数：refresh=1（历史）或 force=1（更直觉）。
         const force = url.searchParams.get('refresh') === '1' || url.searchParams.get('force') === '1';
+
+        if (request.method === 'POST') {
+          let payload = {};
+          try {
+            payload = await request.json();
+          } catch (_e) {
+            payload = {};
+          }
+          const rawCodes = Array.isArray(payload?.codes) ? payload.codes
+            : typeof payload?.codes === 'string' ? payload.codes.split(',')
+            : [];
+          // 上限 60（与 holdings/nav 对齐）；防忖意传上千个 code。
+          if (rawCodes.length > 60) {
+            return jsonResponse({ error: '单次最多查询 60 个基金代码。' }, 400);
+          }
+          const batch = await fetchFundLimitsBatch({ codes: rawCodes, force, env, ctx, concurrency: 4 });
+          if (!batch.ok) {
+            return jsonResponse({ error: batch.error, items: [], successCount: 0, failureCount: 0 }, batch.status || 400);
+          }
+          return jsonResponse({
+            items: batch.items,
+            successCount: batch.successCount,
+            failureCount: batch.failureCount,
+            generatedAt: new Date().toISOString()
+          });
+        }
+
+        const code = (url.searchParams.get('code') || '').trim();
         const result = await fetchFundLimit({ code, force, env, ctx });
         if (!result.ok) {
           return jsonResponse({

@@ -38,6 +38,29 @@ const CORS_HEADERS = {
   'access-control-allow-headers': 'content-type, authorization',
   'access-control-max-age': '86400'
 };
+
+// 轻量级并发限流：同时跑 worker(items[i]) 不超过 limit 个。
+async function mapLimit(items, limit, worker) {
+  const list = Array.isArray(items) ? items : [];
+  const out = new Array(list.length);
+  const n = Math.max(1, Math.min(limit | 0 || 1, list.length));
+  let cursor = 0;
+  async function runner() {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= list.length) return;
+      try {
+        out[idx] = await worker(list[idx], idx);
+      } catch (err) {
+        out[idx] = { __error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+  }
+  const runners = [];
+  for (let i = 0; i < n; i += 1) runners.push(runner());
+  await Promise.all(runners);
+  return out;
+}
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   ...CORS_HEADERS
@@ -258,23 +281,25 @@ async function handleQuote(env, rawSymbol) {
 async function handleBatchQuotes(env, symbolsParam) {
   const list = String(symbolsParam || '').split(',').map((s) => s.trim()).filter(Boolean);
   if (!list.length) return json({ quotes: {} });
+  // 以前是无限并发 Promise.all；symbols 可能有几十个。上限 60、并发 5。
+  if (list.length > 60) {
+    return errorJson('symbols too many (max 60)', 400);
+  }
   const out = {};
-  await Promise.all(
-    list.map(async (raw) => {
-      try {
-        const { market, code } = classifySymbol(raw);
-        if (!market) return;
-        if (market === 'us') {
-          const r = await fetchYahooChart(code, { range: '1d', interval: '5m' });
-          out[raw] = normalizeYahooQuote(r);
-        } else {
-          out[raw] = await fetchEastmoneyQuote(code);
-        }
-      } catch (err) {
-        out[raw] = { symbol: raw, error: String((err && err.message) || err) };
+  await mapLimit(list, 5, async (raw) => {
+    try {
+      const { market, code } = classifySymbol(raw);
+      if (!market) return;
+      if (market === 'us') {
+        const r = await fetchYahooChart(code, { range: '1d', interval: '5m' });
+        out[raw] = normalizeYahooQuote(r);
+      } else {
+        out[raw] = await fetchEastmoneyQuote(code);
       }
-    })
-  );
+    } catch (err) {
+      out[raw] = { symbol: raw, error: String((err && err.message) || err) };
+    }
+  });
   return json({ quotes: out, generatedAt: new Date().toISOString() });
 }
 

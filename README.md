@@ -149,7 +149,8 @@ npm run worker:webdav:dev   # webdav-cors-proxy（端口 8789）
 | `POST /api/ocr` | 通用截图 OCR |
 | `POST /api/holdings/ocr` | 持仓截图识别（结构化解析） |
 | `GET  /api/holdings/nav` | 持仓 NAV（A 股 / 港股 / QDII 分桶动态 TTL，支持 `?force=1` / `?refresh=1`） |
-| `POST /api/fund-limit` | 基金限购扫描（公告 → F10 → detail 多层回退 + KV 缓存 + LLM 抽取） |
+| `GET  /api/fund-limit?code=` | 基金限购扫描·单 code（公告 → F10 → detail 多层回退 + KV 缓存 + LLM 抽取） |
+| `POST /api/fund-limit` | 基金限购扫描·批量（body `{codes:[]}`，Worker 内 mapLimit 并发 4，返回 `{items,successCount,failureCount}`） |
 | `POST /api/ai-chat` | AI 助手（Vectorize RAG + llama-3.1-8b） |
 
 ### `notify`

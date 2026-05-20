@@ -614,25 +614,59 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       setFundLimitsByCode({});
       return undefined;
     }
-    let cancelled = false;
+    // 原先是 N 个 fetch fan-out、无并发上限也无 abort；现在走 POST 批量 + AbortController。
+    // Worker 内部 mapLimit(4) 复用 fetchFundLimit，三路源 * code 的放大在服务端收敛。
     const codes = otcCodesKey.split(',');
-    Promise.all(
-      codes.map((code) =>
-        fetch(`/api/fund-limit?code=${encodeURIComponent(code)}`, { cache: 'no-store' })
-          .then((r) => (r.ok ? r.json() : null))
-          .then((data) => [code, data])
-          .catch(() => [code, null])
-      )
-    ).then((entries) => {
-      if (cancelled) return;
-      const next = {};
-      for (const [code, data] of entries) {
-        if (data && typeof data === 'object') next[code] = data;
+    const ctrl = new AbortController();
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await fetch('/api/fund-limit', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ codes }),
+          cache: 'no-store',
+          signal: ctrl.signal
+        });
+        if (!resp.ok) {
+          // 老 Worker 可能还是 405（未上线新路由），回退 GET fan-out 保底。
+          if (resp.status === 405) {
+            const entries = await Promise.all(
+              codes.map((code) =>
+                fetch(`/api/fund-limit?code=${encodeURIComponent(code)}`, { cache: 'no-store', signal: ctrl.signal })
+                  .then((r) => (r.ok ? r.json() : null))
+                  .then((data) => [code, data])
+                  .catch(() => [code, null])
+              )
+            );
+            if (cancelled) return;
+            const next = {};
+            for (const [code, data] of entries) {
+              if (data && typeof data === 'object') next[code] = data;
+            }
+            setFundLimitsByCode(next);
+            return;
+          }
+          return;
+        }
+        const payload = await resp.json();
+        if (cancelled) return;
+        const next = {};
+        const items = Array.isArray(payload?.items) ? payload.items : [];
+        for (const item of items) {
+          if (item && item.ok && item.code && item.data && typeof item.data === 'object') {
+            next[item.code] = item.data;
+          }
+        }
+        setFundLimitsByCode(next);
+      } catch (err) {
+        if (err && err.name === 'AbortError') return;
+        // 静默失败；下一轮 refreshTick 会重试。
       }
-      setFundLimitsByCode(next);
-    });
+    })();
     return () => {
       cancelled = true;
+      ctrl.abort();
     };
   }, [otcCodesKey, refreshTick]);
 

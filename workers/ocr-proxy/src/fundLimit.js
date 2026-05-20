@@ -616,3 +616,67 @@ export async function fetchFundLimit({ code, force, env, ctx }) {
 }
 
 export { SOURCES };
+
+// 轻量级并发限流调度器：同时跑 worker(items[i]) 不超过 limit 个。
+// 各 worker 可 abort 独立，包装为 Promise.allSettled 语义避免一个失败拖垮整个批。
+export async function mapLimit(items, limit, worker) {
+  const list = Array.isArray(items) ? items : [];
+  const out = new Array(list.length);
+  const n = Math.max(1, Math.min(limit | 0 || 1, list.length));
+  let cursor = 0;
+  async function runner() {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= list.length) return;
+      try {
+        out[idx] = await worker(list[idx], idx);
+      } catch (err) {
+        out[idx] = { __error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+  }
+  const runners = [];
+  for (let i = 0; i < n; i += 1) runners.push(runner());
+  await Promise.all(runners);
+  return out;
+}
+
+// 批量 fund-limit：复用 fetchFundLimit，限并发避免三路源 * N 走法。
+export async function fetchFundLimitsBatch({ codes, force, env, ctx, concurrency }) {
+  const dedup = [];
+  const seen = new Set();
+  for (const raw of (codes || [])) {
+    const code = String(raw || '').trim();
+    if (!isValidFundCode(code) || seen.has(code)) continue;
+    seen.add(code);
+    dedup.push(code);
+  }
+  if (!dedup.length) {
+    return {
+      ok: false,
+      status: 400,
+      error: '请求中缺少有效的 6 位基金代码。',
+      items: [],
+      successCount: 0,
+      failureCount: 0
+    };
+  }
+  // 默认并发 4：冷缓存时上游单 code 3 路 * 4 批 = 12 路，不会炸。
+  const limit = Math.max(1, Math.min(Number(concurrency) || 4, 8));
+  const results = await mapLimit(dedup, limit, async (code) => {
+    try {
+      const r = await fetchFundLimit({ code, force, env, ctx });
+      if (r.ok) return { code, ok: true, data: r.data };
+      return { code, ok: false, status: r.status || 502, error: r.error || 'unknown', tried: r.tried || [] };
+    } catch (err) {
+      return { code, ok: false, status: 502, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  const items = results.map((r, i) => {
+    if (r && typeof r === 'object' && (r.ok === true || r.ok === false)) return r;
+    return { code: dedup[i], ok: false, status: 502, error: (r && r.__error) || '未知错误' };
+  });
+  const successCount = items.filter((it) => it.ok === true).length;
+  const failureCount = items.length - successCount;
+  return { ok: true, status: 200, items, successCount, failureCount };
+}
