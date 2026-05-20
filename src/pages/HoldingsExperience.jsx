@@ -2071,7 +2071,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           {headerRow}
           <div className="flex min-h-[180px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-200 text-center text-sm text-slate-500">
             <Wallet className="h-7 w-7 text-slate-300" />
-            还没有任何切换链路。
+            暂无基金切换记录，发生一笔跳转后会自动生成。
           </div>
         </div>
       );

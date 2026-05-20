@@ -82,8 +82,16 @@ function buildWorkspaceUrl(tab, { inPagesDir = false } = {}) {
 
 function TabLoadingFallback() {
   return (
-    <div className="flex h-full min-h-[40vh] items-center justify-center text-sm text-slate-500">
-      加载中…
+    <div role="status" aria-label="页面加载中" className="flex h-full min-h-[40vh] flex-col gap-3 px-4 py-6">
+      <div className="h-8 w-1/3 animate-pulse rounded-lg bg-slate-200/70" />
+      <div className="h-4 w-1/2 animate-pulse rounded bg-slate-100" />
+      <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="h-24 animate-pulse rounded-2xl bg-slate-100" />
+        <div className="h-24 animate-pulse rounded-2xl bg-slate-100" />
+        <div className="h-24 animate-pulse rounded-2xl bg-slate-100" />
+      </div>
+      <div className="h-48 w-full animate-pulse rounded-2xl bg-slate-100" />
+      <span className="sr-only">加载中…</span>
     </div>
   );
 }

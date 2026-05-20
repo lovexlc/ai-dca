@@ -281,7 +281,7 @@ export function BackupExperience({ links, embedded = false }) {
             </div>
           }
         />
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
           <label className="space-y-1.5 text-sm text-slate-600">
             <span className="font-semibold text-slate-700">服务器地址</span>
             <input
@@ -372,7 +372,7 @@ export function BackupExperience({ links, embedded = false }) {
           title="上传到 WebDAV / 从 WebDAV 恢复"
           action={<StatusPill meta={lastSync} />}
         />
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
           <button
             type="button"
             className={cx(
