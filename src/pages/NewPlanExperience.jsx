@@ -77,12 +77,9 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   useEffect(() => {
     const sym = String(state.symbol || '').trim().toUpperCase();
     if (!sym || !EXTRA_SYMBOL_CODES.has(sym)) {
-      if (extraQuote.symbol) {
-        setExtraQuote({ symbol: '', price: 0, currency: '', asOf: '', loading: false, error: '' });
-      }
+      setExtraQuote({ symbol: '', price: 0, currency: '', asOf: '', loading: false, error: '' });
       return undefined;
     }
-    if (extraQuote.symbol === sym) return undefined;
     let cancelled = false;
     setExtraQuote({ symbol: sym, price: 0, currency: '', asOf: '', loading: true, error: '' });
     fetchQuote(sym).then((q) => {
@@ -94,7 +91,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       setExtraQuote({ symbol: sym, price: 0, currency: '', asOf: '', loading: false, error: err instanceof Error ? err.message : '行情获取失败' });
     });
     return () => { cancelled = true; };
-  }, [state.symbol, extraQuote.symbol]);
+  }, [state.symbol]);
 
   // 拉到现价 + basePrice 仍为 0 时预填一次；不覆盖用户已输入的值。
   useEffect(() => {
