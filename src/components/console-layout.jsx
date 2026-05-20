@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Menu, X, ChevronsRight } from 'lucide-react';
+import { Menu, ChevronsRight, ChevronsLeft } from 'lucide-react';
 import { consumePendingToasts, subscribeToToasts } from '../app/toast.js';
 import { cx } from './experience-ui.jsx';
 
@@ -157,20 +157,6 @@ export function ConsoleLayout({
           aria-hidden={mobileSidebarHidden ? 'true' : undefined}
           {...(mobileSidebarHidden ? { inert: '' } : {})}
         >
-          <div className="console-sidebar__header">
-            <div className="console-brand">{brand}</div>
-            <button
-              type="button"
-              aria-label="收起导航"
-              className="console-iconbtn console-sidebar__close"
-              onClick={() => {
-                setMobileNavOpen(false);
-                setDesktopNavCollapsed(true);
-              }}
-            >
-              <X className="h-5 w-5" aria-hidden="true" />
-            </button>
-          </div>
           <nav className="console-sidenav" aria-label="模块导航">
             {sidebarNav.map((item) => {
               const isActive = item.key === activeKey;
@@ -196,16 +182,18 @@ export function ConsoleLayout({
             })}
           </nav>
           {sidebarFooter ? <div className="console-sidebar__footer">{sidebarFooter}</div> : null}
-          {desktopNavCollapsed ? (
-            <button
-              type="button"
-              aria-label="展开导航"
-              className="console-sidebar__expand"
-              onClick={() => setDesktopNavCollapsed(false)}
-            >
+          <button
+            type="button"
+            aria-label={desktopNavCollapsed ? "展开导航" : "收起导航"}
+            className="console-sidebar__expand"
+            onClick={() => setDesktopNavCollapsed((v) => !v)}
+          >
+            {desktopNavCollapsed ? (
               <ChevronsRight className="h-4 w-4" aria-hidden="true" />
-            </button>
-          ) : null}
+            ) : (
+              <ChevronsLeft className="h-4 w-4" aria-hidden="true" />
+            )}
+          </button>
         </aside>
 
         {mobileNavOpen ? (
