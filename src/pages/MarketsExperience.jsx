@@ -15,7 +15,6 @@ import {
   History,
   Loader2,
   ListPlus,
-  Maximize2,
   Newspaper,
   Plus,
   RefreshCw,
@@ -1665,21 +1664,6 @@ export function MarketsExperience() {
               >
                 <ListPlus size={22} />
               </button>
-              <button
-                type="button"
-                aria-label="全屏"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
-                onClick={() => {
-                  try {
-                    if (document.fullscreenElement) document.exitFullscreen();
-                    else document.documentElement.requestFullscreen?.();
-                  } catch (_error) {
-                    // Fullscreen is best-effort.
-                  }
-                }}
-              >
-                <Maximize2 size={20} />
-              </button>
             </div>
           </div>
           <div className="mt-1 h-px w-full bg-[#e8eaed]" />
@@ -1837,15 +1821,6 @@ export function MarketsExperience() {
               <span>列表</span>
               <ChevronDown size={18} className="text-[#5f6368]" />
             </button>
-            <div className="flex items-center gap-0.5">
-              <button
-                type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
-                title="全屏查看（后续接入）"
-              >
-                <Maximize2 size={16} />
-              </button>
-            </div>
           </div>
 
           {/* 组 1：监控列表 */}

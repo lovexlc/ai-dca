@@ -355,13 +355,19 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
               <ListChecks className="h-6 w-6" aria-hidden="true" />
             </div>
-            <div className="text-base font-bold text-slate-900">暂无交易计划</div>
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-center">
-              <button type="button" onClick={enterNewPlanView} className={cx(secondaryButtonClass, 'w-full sm:w-auto')}>
-                查看示例 / 新建策略
+            <div className="text-base font-bold text-slate-900">选择一个目标开始</div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <button type="button" onClick={enterNewPlanView} className={cx(primaryButtonClass, 'w-full min-h-10 px-3 py-2 text-xs')}>
+                按回撤加仓
               </button>
-              <button type="button" onClick={() => handleSelectSubTab('dca')} className={cx(secondaryButtonClass, 'w-full sm:w-auto')}>
-                配置定投
+              <button type="button" onClick={() => handleSelectSubTab('dca')} className={cx(secondaryButtonClass, 'w-full min-h-10 px-3 py-2 text-xs')}>
+                设置定投
+              </button>
+              <button type="button" onClick={() => handleSelectSubTab('sell')} className={cx(secondaryButtonClass, 'w-full min-h-10 px-3 py-2 text-xs')}>
+                设置卖出规则
+              </button>
+              <button type="button" onClick={() => handleSelectSubTab('vix')} className={cx(secondaryButtonClass, 'w-full min-h-10 px-3 py-2 text-xs')}>
+                查看 VIX 规则
               </button>
             </div>
           </div>

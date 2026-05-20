@@ -1,6 +1,6 @@
 import { Suspense, lazy, useState } from 'react';
 import { History, Sparkles } from 'lucide-react';
-import { cx } from '../components/experience-ui.jsx';
+import { Card, cx } from '../components/experience-ui.jsx';
 import { FundSwitchAnalysisExperience } from './FundSwitchAnalysisExperience.jsx';
 
 // PC：机会 + 复盘 同屏两列；App：子 tab 切换。
@@ -25,7 +25,14 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
   const [mobileTab, setMobileTab] = useState('opportunity');
 
   return (
-    <div className={cx('mx-auto max-w-7xl', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
+    <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
+      <Card className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Fund Switch</div>
+          <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-900">基金切换</h1>
+          <p className="mt-1 text-sm text-slate-500">机会概览与复盘分析 · 当前移动视图：{mobileTab === 'opportunity' ? '机会' : '复盘'}</p>
+        </div>
+      </Card>
       {/* 移动端子 tab；lg+ 隐藏，PC 直接两列 */}
       <div className="mb-3 inline-flex gap-1 rounded-full bg-slate-100 p-1 lg:hidden">
         {MOBILE_TABS.map((t) => {
@@ -35,6 +42,7 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
               key={t.id}
               type="button"
               onClick={() => setMobileTab(t.id)}
+              aria-pressed={mobileTab === t.id}
               className={cx(
                 'inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors',
                 mobileTab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'

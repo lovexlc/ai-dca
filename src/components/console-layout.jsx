@@ -90,11 +90,25 @@ export function ConsoleLayout({
     if (typeof window === 'undefined') return false;
     try { return window.localStorage.getItem('console:navCollapsed') === '1'; } catch (_) { return false; }
   });
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try { window.localStorage.setItem('console:navCollapsed', desktopNavCollapsed ? '1' : '0'); } catch (_) { /* ignore */ }
   }, [desktopNavCollapsed]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const query = window.matchMedia('(max-width: 1023px)');
+    const syncViewport = () => setIsMobileViewport(Boolean(query.matches));
+    syncViewport();
+    if (typeof query.addEventListener === 'function') {
+      query.addEventListener('change', syncViewport);
+      return () => query.removeEventListener('change', syncViewport);
+    }
+    query.addListener(syncViewport);
+    return () => query.removeListener(syncViewport);
+  }, []);
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -113,6 +127,7 @@ export function ConsoleLayout({
 
   const hasTopbar = Boolean(topbarTitle || topbarDescription || topbarRight);
   const hasContext = Boolean(contextPanel);
+  const mobileSidebarHidden = isMobileViewport && !mobileNavOpen;
   const currentNavItem = sidebarNav.find((item) => item.key === activeKey);
   const mobileTitle = topbarTitle || currentNavItem?.label || brand;
 
@@ -138,6 +153,8 @@ export function ConsoleLayout({
         <aside
           className={cx('console-sidebar', mobileNavOpen && 'is-open')}
           aria-label="模块导航"
+          aria-hidden={mobileSidebarHidden ? 'true' : undefined}
+          {...(mobileSidebarHidden ? { inert: '' } : {})}
         >
           <div className="console-sidebar__header">
             <div className="console-brand">{brand}</div>

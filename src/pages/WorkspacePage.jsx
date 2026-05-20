@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, BookOpen, CloudUpload, LineChart, ListChecks, Shuffle, Trash2, Wallet } from 'lucide-react';
+import { Bell, BookOpen, CloudUpload, LineChart, ListChecks, Plus, RefreshCw, Send, Shuffle, Trash2, Wallet } from 'lucide-react';
 import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
@@ -113,6 +113,48 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const scrollPositionsRef = useRef(new Map());
   const previousTabRef = useRef(activeTab);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+
+  const quickAction = useMemo(() => {
+    if (activeTab === 'backup') {
+      return {
+        label: '刷新预览',
+        icon: RefreshCw,
+        mode: 'custom',
+        action: () => window.dispatchEvent(new CustomEvent('backup:refresh-preview'))
+      };
+    }
+    if (activeTab === 'notify') {
+      return {
+        label: '测试通知',
+        icon: Send,
+        mode: 'custom',
+        action: () => window.dispatchEvent(new CustomEvent('notify:test-pc'))
+      };
+    }
+    if (activeTab === 'tradePlans') {
+      return {
+        label: '新建策略',
+        icon: ListChecks,
+        mode: 'custom',
+        action: () => {
+          handleSelectTab('tradePlans');
+          setTimeout(() => {
+            window.history.pushState({ subView: 'new' }, '', `${window.location.pathname}${window.location.search}#new`);
+            window.dispatchEvent(new HashChangeEvent('hashchange'));
+          }, 80);
+        }
+      };
+    }
+    if (activeTab === 'fundSwitch') {
+      return {
+        label: '查看机会',
+        icon: Shuffle,
+        mode: 'custom',
+        action: () => window.scrollTo({ top: 0, behavior: 'smooth' })
+      };
+    }
+    return { label: '新增交易', icon: Plus, mode: 'add', action: null };
+  }, [activeTab]);
 
   const sidebarNav = useMemo(
     () =>
@@ -240,6 +282,10 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       </ConsoleLayout>
       <AiChatWidget currentTab={activeTab} />
       <MobileTabBar
+        quickActionLabel={quickAction.label}
+        quickActionIcon={quickAction.icon}
+        quickActionMode={quickAction.mode}
+        onQuickAction={quickAction.action}
         onSearch={() => setGlobalSearchOpen(true)}
         onAi={() => window.dispatchEvent(new CustomEvent('aichat:open'))}
         onNew={() => {

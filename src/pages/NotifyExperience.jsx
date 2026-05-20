@@ -163,6 +163,11 @@ export function NotifyExperience({ embedded = false }) {
   }
 
   useEffect(() => {
+    window.addEventListener('notify:test-pc', handleSendLocalWebNotifyTest);
+    return () => window.removeEventListener('notify:test-pc', handleSendLocalWebNotifyTest);
+  }, [webNotifySupported, webNotifyPermission]);
+
+  useEffect(() => {
     let cancelled = false;
     async function refreshNotifyPanel() {
       try {
@@ -213,6 +218,18 @@ export function NotifyExperience({ embedded = false }) {
     setConfigCollapsed(barkConfigured || androidConfigured);
   }, [notifyStatus, barkConfigured, androidConfigured, configCollapsed]);
   const isConfigCollapsed = configCollapsed === true;
+  const pcPermissionReason = !webNotifySupported
+    ? '当前浏览器不支持 Notification API'
+    : webNotifyPermission === 'granted'
+    ? '浏览器通知已授权'
+    : webNotifyPermission === 'denied'
+    ? '请到浏览器站点设置中允许通知'
+    : '';
+  const pcTestDisabledReason = !webNotifySupported
+    ? '当前浏览器不支持 Notification API'
+    : webNotifyPermission !== 'granted'
+    ? '需先授权浏览器通知'
+    : '';
 
   // 首次进入页面拉取提醒历史。后续手动同步 / 发出测试通知后主动重新拉取。
   useEffect(() => {
@@ -670,6 +687,7 @@ export function NotifyExperience({ embedded = false }) {
                     type="button"
                     onClick={handleRequestWebNotifyPermission}
                     disabled={!webNotifySupported || webNotifyPermission === 'granted' || webNotifyPermission === 'denied'}
+                    title={pcPermissionReason || undefined}
                   >
                     <Bell className="h-4 w-4" />
                     {webNotifyPermission === 'granted' ? '已授权浏览器通知' : '授权浏览器通知'}
@@ -679,11 +697,17 @@ export function NotifyExperience({ embedded = false }) {
                     type="button"
                     onClick={handleSendLocalWebNotifyTest}
                     disabled={!webNotifySupported || webNotifyPermission !== 'granted'}
+                    title={pcTestDisabledReason || undefined}
                   >
                     <Send className="h-4 w-4" />
                     发送本地测试通知
                   </button>
                 </div>
+                {(pcPermissionReason || pcTestDisabledReason) ? (
+                  <div className="mt-3 text-xs text-slate-500">
+                    {pcTestDisabledReason || pcPermissionReason}
+                  </div>
+                ) : null}
                 <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
                   <div className="min-w-0 pr-2">
                     <div className="text-sm font-semibold text-slate-900">启用前台轮询</div>
@@ -695,6 +719,7 @@ export function NotifyExperience({ embedded = false }) {
                     type="button"
                     onClick={handleToggleWebNotifyEnabled}
                     disabled={!webNotifySupported || webNotifyPermission !== 'granted'}
+                    title={pcTestDisabledReason || undefined}
                     className={cx(
                       'relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50',
                       webNotifyEnabled ? 'bg-emerald-500' : 'bg-slate-300'

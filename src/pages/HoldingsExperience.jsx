@@ -189,6 +189,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [chainPickerSearch, setChainPickerSearch] = useState('');
   // 已展开的链路 id 集合。保存过的链路默认折叠，新建时自动展开。
   const [expandedChains, setExpandedChains] = useState(() => new Set());
+  const [marketTickerOpen, setMarketTickerOpen] = useState(false);
   const [marketIndexState, setMarketIndexState] = useState(() => ({
     generatedAt: '',
     indexes: [],
@@ -1827,15 +1828,27 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   function renderPortfolioOverview() {
-    // 第五刀 5.1: 移除「投资组合概览」文案 + 「行情中心」按钮，只保留行情 ticker。
-    // ticker 已移到 IncomeSection 之前（content 顶部），点击 ticker 仍可跳转行情中心。
-    if (!marketIndexState.indexes.length) return null;
+    const count = marketIndexState.indexes.length;
+    if (!count) return null;
     return (
-      <div className="relative w-full overflow-hidden border-b border-slate-200/70 pb-3">
-        <div className="flex w-full">
-          {renderMarketTicker()}
-        </div>
-        <div className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-white to-transparent" />
+      <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 text-left text-sm font-semibold text-slate-700"
+          onClick={() => setMarketTickerOpen((value) => !value)}
+          aria-expanded={marketTickerOpen}
+        >
+          <span>市场概览 · {count} 个指数</span>
+          <ChevronDown className={cx('h-4 w-4 text-slate-400 transition', marketTickerOpen && 'rotate-180')} aria-hidden="true" />
+        </button>
+        {marketTickerOpen ? (
+          <div className="relative mt-2 w-full overflow-hidden border-t border-slate-100 pt-2">
+            <div className="flex w-full">
+              {renderMarketTicker()}
+            </div>
+            <div className="pointer-events-none absolute right-0 top-2 h-10 w-8 bg-gradient-to-l from-white to-transparent" />
+          </div>
+        ) : null}
       </div>
     );
   }

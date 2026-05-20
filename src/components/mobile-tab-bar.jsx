@@ -28,7 +28,7 @@ const ADD_TABS = [
   },
 ];
 
-export function MobileTabBar({ onSearch, onAi, onNew, onPasteImport, onOcrImport }) {
+export function MobileTabBar({ onSearch, onAi, onNew, onPasteImport, onOcrImport, quickActionLabel = '新增交易', quickActionIcon: QuickActionIcon = Plus, quickActionMode = 'add', onQuickAction }) {
   const [addOpen, setAddOpen] = useState(false);
   const [addTab, setAddTab] = useState('single');
 
@@ -63,6 +63,14 @@ export function MobileTabBar({ onSearch, onAi, onNew, onPasteImport, onOcrImport
     setAddOpen(true);
   }
 
+  function triggerQuickAction() {
+    if (quickActionMode === 'add') {
+      openAdd();
+      return;
+    }
+    if (typeof onQuickAction === 'function') onQuickAction();
+  }
+
   return (
     <>
       <nav
@@ -91,10 +99,11 @@ export function MobileTabBar({ onSearch, onAi, onNew, onPasteImport, onOcrImport
         <button
           type="button"
           className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200/60 active:bg-slate-200"
-          onClick={openAdd}
-          aria-label="新增交易"
+          onClick={triggerQuickAction}
+          aria-label={quickActionLabel}
+          title={quickActionLabel}
         >
-          <Plus className="h-6 w-6" />
+          <QuickActionIcon className="h-5 w-5" />
         </button>
       </nav>
 

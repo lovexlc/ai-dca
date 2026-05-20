@@ -108,6 +108,11 @@ export function BackupExperience({ links, embedded = false }) {
     refreshPreview();
   }, [refreshPreview]);
 
+  useEffect(() => {
+    window.addEventListener('backup:refresh-preview', refreshPreview);
+    return () => window.removeEventListener('backup:refresh-preview', refreshPreview);
+  }, [refreshPreview]);
+
   const totalBytes = useMemo(
     () => preview.keys.reduce((acc, key) => acc + (preview.entries[key]?.length || 0), 0),
     [preview]
@@ -209,8 +214,18 @@ export function BackupExperience({ links, embedded = false }) {
     }
   }
 
-  const uploadDisabled = busy !== '' || !config.baseUrl || !config.username;
-  const restoreDisabled = busy !== '' || !config.baseUrl || !config.username;
+  const configMissingReason = !config.baseUrl
+    ? '填写服务器地址后可同步'
+    : !config.username
+    ? '填写用户名后可同步'
+    : '';
+  const saveDisabledReason = !dirty ? '没有未保存更改' : '';
+  const uploadDisabledReason = busy
+    ? '同步任务执行中'
+    : configMissingReason || (!preview.keys.length ? '当前没有可上传数据' : '');
+  const restoreDisabledReason = busy ? '同步任务执行中' : configMissingReason;
+  const uploadDisabled = Boolean(uploadDisabledReason);
+  const restoreDisabled = Boolean(restoreDisabledReason);
 
   const content = (
     <div className={cx('mx-auto max-w-5xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
@@ -220,10 +235,13 @@ export function BackupExperience({ links, embedded = false }) {
           <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-900">数据同步 / 备份</h1>
           <p className="mt-1 text-sm text-slate-500">同步状态：{lastSync ? formatDateTime(lastSync.at) : '尚未同步'} · 本地 {preview.keys.length} 项</p>
         </div>
-        <button type="button" className={primaryButtonClass} onClick={handleSaveConfig} disabled={!dirty}>
-          <Save className="h-4 w-4" aria-hidden="true" />
-          保存配置
-        </button>
+        <div className="flex flex-col items-start gap-1 sm:items-end">
+          <button type="button" className={primaryButtonClass} onClick={handleSaveConfig} disabled={!dirty} title={saveDisabledReason || undefined}>
+            <Save className="h-4 w-4" aria-hidden="true" />
+            保存配置
+          </button>
+          {saveDisabledReason ? <span className="text-xs text-slate-400">{saveDisabledReason}</span> : null}
+        </div>
       </header>
 
       <Card id="webdav-config">
@@ -245,15 +263,19 @@ export function BackupExperience({ links, embedded = false }) {
                 )}
                 测试连接
               </button>
-              <button
-                type="button"
-                className={cx(secondaryButtonClass)}
-                onClick={handleSaveConfig}
-                disabled={!dirty}
-              >
-                <Save className="h-4 w-4" />
-                保存配置
-              </button>
+              <div className="flex flex-col gap-1">
+                <button
+                  type="button"
+                  className={cx(secondaryButtonClass)}
+                  onClick={handleSaveConfig}
+                  disabled={!dirty}
+                  title={saveDisabledReason || undefined}
+                >
+                  <Save className="h-4 w-4" />
+                  保存配置
+                </button>
+                {saveDisabledReason ? <span className="text-xs text-slate-400">{saveDisabledReason}</span> : null}
+              </div>
             </div>
           }
         />
@@ -329,25 +351,17 @@ export function BackupExperience({ links, embedded = false }) {
           />
         </label>
 
-        <div className="mt-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-700">
-          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
-          <div>
-            纯前端页面直连第三方 WebDAV（坚果云、Nextcloud…）会被 CORS 拦下，需要走代理。直接用本项目公用代理：
+        <details className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-700">
+          <summary className="flex cursor-pointer items-center gap-2 font-semibold">
+            <ShieldAlert className="h-4 w-4 shrink-0" />
+            CORS 代理说明
+          </summary>
+          <div className="mt-3 pl-6">
+            纯前端页面直连第三方 WebDAV 可能被 CORS 拦下，可使用公用代理：
             <code className="mt-1 block font-mono text-amber-800 break-all">https://tools.freebacktrack.tech/api/webdav</code>
-            <span className="mt-1 block">
-              不想用公用代理可自己部署一份（见{' '}
-              <a
-                href="https://github.com/lovexlc/ai-dca/blob/main/workers/README.md"
-                target="_blank"
-                rel="noreferrer"
-                className="font-mono text-amber-900 underline decoration-amber-400 underline-offset-2 hover:text-amber-950"
-              >
-                workers/README.md
-              </a>
-              {' '}）；服务器已开 CORS 可留空直连。
-            </span>
+            <span className="mt-1 block">服务器已开 CORS 可留空直连。</span>
           </div>
-        </div>
+        </details>
       </Card>
 
       <Card>
@@ -366,6 +380,7 @@ export function BackupExperience({ links, embedded = false }) {
             )}
             onClick={handleUpload}
             disabled={uploadDisabled}
+            title={uploadDisabledReason || undefined}
           >
             <span className="flex items-center gap-2 text-sm font-semibold">
               {busy === 'upload' ? (
@@ -389,6 +404,7 @@ export function BackupExperience({ links, embedded = false }) {
             )}
             onClick={handleRestore}
             disabled={restoreDisabled}
+            title={restoreDisabledReason || undefined}
           >
             <span className="flex items-center gap-2 text-sm font-semibold">
               {busy === 'restore' ? (
@@ -403,6 +419,13 @@ export function BackupExperience({ links, embedded = false }) {
             </span>
           </button>
         </div>
+        {(uploadDisabledReason || restoreDisabledReason) ? (
+          <div className="mt-3 text-xs text-slate-500">
+            {uploadDisabledReason ? <span>上传：{uploadDisabledReason}</span> : null}
+            {uploadDisabledReason && restoreDisabledReason ? <span className="mx-2 text-slate-300">/</span> : null}
+            {restoreDisabledReason ? <span>恢复：{restoreDisabledReason}</span> : null}
+          </div>
+        ) : null}
 
         <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-slate-500">
           <button type="button" className={cx(subtleButtonClass, 'h-8 px-3 py-1 text-xs')} onClick={handleDownloadLocal}>
