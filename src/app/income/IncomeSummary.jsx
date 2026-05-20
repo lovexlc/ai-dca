@@ -1,28 +1,50 @@
-// IncomeSummary.jsx · v7.1 hero 行合并主动作
+// IncomeSummary.jsx · v7.3 hero 内嵌账户分配卡
 //
 // 单卡 hero + 3 列 KPI + 4 入口：
 //   - 顶部：总市值（金额大字）+ 右侧刷新按钮
-//   - PC：中部展示「进取型 / 稳健型 / 防守型」三个 pill（替换 v7.1 sparkline）。
-//     移动端不渲染该 pill 区域，保持纯文字。
-//   - 中部：3 列 KPI（今日 / 持有 / 累计） - 今日 rose-50 背景轻微强调
+//   - PC：中部三张账户分配卡（进取型 / 稳健型 / 防守型，含 ¥ 金额 + 比例 Pill），替换 v7.1 sparkline / v7.2 纯色 pill。
+//     移动端：在总市值与 KPI 之间同样渲染三张卡片（紧凑版，单行 3 列）。
+//   - 中部：3 列 KPI（今日 / 持有 / 累计）
 //   - 入口区：PC 端 inline pill chip（+ 右侧 复制表格 / +新增交易）；移动端保留 v7.0 grid tile
 //
 // 入参：
 //   - portfolio：HoldingsExperience L221 useMemo 的集计对象
 //   - navigate：跳转子页
 //   - navRefresh：{ onClick, loading, hasFailures, title }，顶部右侧刷新按钮
-//   - cumulativeSeries / cumulativeLastIso：v7.2 起 PC 中部不再渲染 sparkline，
-//     props 暂保留以避免上游契约破坏，可在后续清理。
+//   - accountAllocation：[{ key, label, marketValue, ratio }] 三账户分配（来自 getAccountAllocation）
+//   - cumulativeSeries / cumulativeLastIso：v7.2 起 PC 中部不再渲染 sparkline，props 暂保留以避免上游契约破坏，可在后续清理。
 //   - quickActions：{ onNewTransaction, onCopyTable, copyTitle }，PC 端 hero 行右侧合并主表顶部 「复制表格 / + 新增交易」按钮。
 
 import { ROUTES } from '../incomeRoute.js';
-import { cx } from '../../components/experience-ui.jsx';
+import { Pill, cx } from '../../components/experience-ui.jsx';
 import { formatCurrency, formatPercent } from '../accumulation.js';
 import { RefreshCw, BarChart3, Receipt, PieChart, ArrowLeftRight, Plus, Copy } from 'lucide-react';
 
 const TONE_UP = 'text-rose-600';
 const TONE_DOWN = 'text-emerald-600';
 const TONE_NEUTRAL = 'text-slate-500';
+
+const ACCOUNT_PILL_TONE = { aggressive: 'red', stable: 'indigo', defensive: 'emerald' };
+
+// 三账户 mini 卡片：紧凑版（PC hero 中部 + 移动端总市值下方共用）
+function AccountCardsGrid({ accountAllocation, className = '' }) {
+	if (!Array.isArray(accountAllocation) || !accountAllocation.length) return null;
+	return (
+		<div className={cx('grid grid-cols-3 gap-2', className)}>
+			{accountAllocation.map((item) => (
+				<div key={item.key} className="min-w-0 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-center">
+					<div className="truncate text-[11px] font-semibold text-slate-900 sm:text-xs">{item.label}</div>
+					<div className="mt-0.5 truncate text-xs font-bold tabular-nums text-slate-900 sm:text-sm">{formatCurrency(item.marketValue, '¥', 2)}</div>
+					<div className="mt-0.5 flex justify-center">
+						<Pill tone={ACCOUNT_PILL_TONE[item.key] || 'slate'} className="px-1.5 py-0 text-[10px] sm:text-xs">
+							{formatPercent(item.ratio, 1)}
+						</Pill>
+					</div>
+				</div>
+			))}
+		</div>
+	);
+}
 
 const TILES = [
 	{ route: ROUTES.INCOME, Icon: BarChart3, label: '收益明细' },
@@ -79,7 +101,7 @@ function KpiCol({ label, value, rate, align = 'center', centerRate = false }) {
 	);
 }
 
-export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSeries, cumulativeLastIso, quickActions, inceptionDate }) {
+export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocation, cumulativeSeries, cumulativeLastIso, quickActions, inceptionDate }) {
 	const marketValue = portfolio?.marketValue;
 	const todayProfit = portfolio?.todayProfit;
 	const todayReturnRate = portfolio?.todayReturnRate;
@@ -106,7 +128,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSerie
 
 	return (
 		<div className="flex flex-col gap-3">
-			{/* 移动端：v7.0 单卡支付宝风格（总市值⊒3 KPI 垂直堆叠） */}
+			{/* 移动端：v7.3 单卡（总市值 → 三账户卡 → 3 KPI 垂直堆叠） */}
 			<section className="flex flex-col gap-4 px-1 pt-2 pb-1 sm:hidden">
 				<div className="flex items-start justify-between gap-3">
 					<div className="min-w-0 flex-1">
@@ -117,6 +139,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSerie
 					</div>
 					{refreshBtn ? <div className="shrink-0">{refreshBtn}</div> : null}
 				</div>
+				<AccountCardsGrid accountAllocation={accountAllocation} />
 				<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)] gap-1">
 					<KpiCol label="今日收益(元)" value={todayProfit} rate={todayReturnRate} align="left" centerRate />
 					<KpiCol label="持有收益(元)" value={unrealizedProfit} rate={unrealizedReturnRate} centerRate />
@@ -124,7 +147,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSerie
 				</div>
 			</section>
 
-			{/* PC 端：v7.2 横向 stat-bar（左金额+起算日 · 中 账户类型三 pill · 右 3 KPI · 最右刷新） */}
+			{/* PC 端：v7.3 横向 stat-bar（左金额+起算日 · 中 账户分配三卡片 · 右 3 KPI · 最右刷新） */}
 			<section className="hidden sm:flex sm:items-end sm:gap-8 sm:px-1 sm:pb-4 sm:border-b sm:border-slate-100">
 				<div className="min-w-0 shrink-0">
 					<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</div>
@@ -133,20 +156,13 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, cumulativeSerie
 					</div>
 					{inceptionDate ? <div className="text-[11px] text-slate-400 mt-0.5">起 {inceptionDate}</div> : null}
 				</div>
-				<div className="flex-1 min-w-0 flex items-end justify-center gap-2 pb-1">
-					<span className="inline-flex items-center gap-1.5 h-7 rounded-full bg-rose-50 px-3 text-xs font-semibold text-rose-700 ring-1 ring-inset ring-rose-100">
-						<span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-rose-500" />
-						进取型
-					</span>
-					<span className="inline-flex items-center gap-1.5 h-7 rounded-full bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-100">
-						<span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
-						稳健型
-					</span>
-					<span className="inline-flex items-center gap-1.5 h-7 rounded-full bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-100">
-						<span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-						防守型
-					</span>
-				</div>
+				{Array.isArray(accountAllocation) && accountAllocation.length ? (
+					<div className="flex-1 min-w-0">
+						<AccountCardsGrid accountAllocation={accountAllocation} className="mx-auto max-w-xl" />
+					</div>
+				) : (
+					<div className="flex-1" aria-hidden="true" />
+				)}
 				<div className="flex gap-8 shrink-0">
 					<KpiCol label="今日" value={todayProfit} rate={todayReturnRate} align="right" />
 					<KpiCol label="持有" value={unrealizedProfit} rate={unrealizedReturnRate} align="right" />

@@ -2130,22 +2130,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     };
     return (
       <div className="flex flex-col gap-2">
-        <div className="grid grid-cols-3 gap-2 md:gap-3">
-          {accountAllocation.map((item) => (
-            <div key={item.key} className="min-w-0 rounded-2xl border border-slate-200 bg-white px-2.5 py-2 text-center md:px-4 md:py-3">
-              <div className="truncate text-xs font-semibold text-slate-900 md:text-sm">{item.label}</div>
-              <div className="mt-1.5 truncate text-sm font-bold tabular-nums text-slate-900 md:mt-2 md:text-xl">{formatCurrency(item.marketValue, '¥', 2)}</div>
-              <div className="mt-1.5 flex justify-center md:mt-2">
-                <Pill
-                  tone={item.key === 'aggressive' ? 'red' : item.key === 'stable' ? 'indigo' : 'emerald'}
-                  className="px-1.5 py-0 text-[10px] md:px-2 md:py-0.5 md:text-xs"
-                >
-                  {formatPercent(item.ratio, 1)}
-                </Pill>
-              </div>
-            </div>
-          ))}
-        </div>
         <DataTableToolbar table={aggregatesTable} />
         <DataTable
           table={aggregatesTable}
@@ -2875,6 +2859,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         portfolio={portfolio}
         inceptionDate={inceptionDate}
         onEditTransaction={handleEditTransaction}
+        accountAllocation={accountAllocation}
         navRefresh={{
           onClick: handleManualRefresh,
           loading: navStatus === 'loading',
