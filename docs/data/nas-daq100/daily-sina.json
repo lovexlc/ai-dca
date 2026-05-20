@@ -14,7 +14,7 @@
   "source": "yahoo:chart",
   "source_symbol": "^NDX",
   "timezone": "America/New_York",
-  "generated_at": "2026-05-20T05:00:24Z",
+  "generated_at": "2026-05-20T10:35:11Z",
   "bars": [
     {
       "date": "2024-05-20",

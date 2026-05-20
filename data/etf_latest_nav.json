@@ -1,6 +1,6 @@
 {
   "dataset": "etf_latest_nav_manifest",
-  "generatedAt": "2026-05-20T05:00:24.776Z",
+  "generatedAt": "2026-05-20T10:35:11.466Z",
   "source": "eastmoney:f10/lsjz",
   "successCount": 12,
   "failureCount": 0,
@@ -33,26 +33,26 @@
     {
       "code": "159696",
       "name": "易方达纳斯达克100ETF(QDI)",
-      "latestNav": 1.8429,
-      "latestNavDate": "2026-05-18",
-      "previousNav": 1.8508,
-      "previousNavDate": "2026-05-15"
+      "latestNav": 1.8303,
+      "latestNavDate": "2026-05-19",
+      "previousNav": 1.8429,
+      "previousNavDate": "2026-05-18"
     },
     {
       "code": "159632",
       "name": "华安纳斯达克100ETF(QDII)",
-      "latestNav": 2.2478,
-      "latestNavDate": "2026-05-18",
-      "previousNav": 2.2569,
-      "previousNavDate": "2026-05-15"
+      "latestNav": 2.2323,
+      "latestNavDate": "2026-05-19",
+      "previousNav": 2.2478,
+      "previousNavDate": "2026-05-18"
     },
     {
       "code": "513390",
       "name": "博时纳斯达克100ETF(QDII)",
-      "latestNav": 2.2215,
-      "latestNavDate": "2026-05-18",
-      "previousNav": 2.2304,
-      "previousNavDate": "2026-05-15"
+      "latestNav": 2.2061,
+      "latestNavDate": "2026-05-19",
+      "previousNav": 2.2215,
+      "previousNavDate": "2026-05-18"
     },
     {
       "code": "513300",
@@ -81,18 +81,18 @@
     {
       "code": "159660",
       "name": "汇添富纳斯达克100ETF",
-      "latestNav": 2.1633,
-      "latestNavDate": "2026-05-18",
-      "previousNav": 2.1725,
-      "previousNavDate": "2026-05-15"
+      "latestNav": 2.1484,
+      "latestNavDate": "2026-05-19",
+      "previousNav": 2.1633,
+      "previousNavDate": "2026-05-18"
     },
     {
       "code": "513110",
       "name": "华泰柏瑞纳斯达克100ETF(QDII)",
-      "latestNav": 2.2754,
-      "latestNavDate": "2026-05-18",
-      "previousNav": 2.285,
-      "previousNavDate": "2026-05-15"
+      "latestNav": 2.2598,
+      "latestNavDate": "2026-05-19",
+      "previousNav": 2.2754,
+      "previousNavDate": "2026-05-18"
     },
     {
       "code": "159659",
