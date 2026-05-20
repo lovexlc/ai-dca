@@ -25,6 +25,13 @@ import { fetchQuote } from '../app/marketsApi.js';
 import { getAssetType, getAssetTypeLabel, getStrategyParams } from '../app/assetType.js';
 import { SCREENING_CHECKLIST, validateScreening } from '../app/stockScreener.js';
 
+const PLAN_STEPS = [
+  { id: 1, title: '选标的' },
+  { id: 2, title: '选模板' },
+  { id: 3, title: '调参数' },
+  { id: 4, title: '预览确认' }
+];
+
 
 export function NewPlanExperience({ links, inPagesDir = false, embedded = false, onBack = null }) {
   const dashboardState = readHomeDashboardState();
@@ -50,6 +57,8 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   const autoSeedRef = useRef('');
   const [extraQuote, setExtraQuote] = useState({ symbol: '', price: 0, currency: '', asOf: '', loading: false, error: '' });
   const [screeningAnswers, setScreeningAnswers] = useState(() => readPlanState().screeningAnswers || {});
+  const [planStep, setPlanStep] = useState(1);
+  const [symbolSearch, setSymbolSearch] = useState('');
 
   // 选中美股快选标的（QQQ/SPY/Mag7/TSM 等）时，去 markets worker 拉一次实时 quote；symbol 不再是 extra 时清空。
   useEffect(() => {
@@ -236,6 +245,15 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     autoSeedRef.current = syncKey;
   }, [benchmarkFund?.code, derivedMa120, derivedMa200, derivedStageHigh, isSelectedDailySeriesReady, selectedStrategy]);
 
+  const filteredMarketEntries = useMemo(() => {
+    const keyword = symbolSearch.trim().toLowerCase();
+    if (!keyword) return marketEntries;
+    return marketEntries.filter((entry) => {
+      const haystack = `${entry.code || ''} ${entry.name || ''} ${entry.display_name || ''}`.toLowerCase();
+      return haystack.includes(keyword);
+    });
+  }, [marketEntries, symbolSearch]);
+
   const selectedAssetType = getAssetType(state.symbol);
   const selectedAssetTypeLabel = getAssetTypeLabel(state.symbol);
   const selectedStrategyParams = getStrategyParams(state.symbol);
@@ -307,11 +325,28 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       />
 
       <div className="mx-auto max-w-6xl space-y-6 px-6 pt-8">
+        <nav aria-label="新建策略步骤" className="grid gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:grid-cols-4">
+          {PLAN_STEPS.map((step) => (
+            <button
+              key={step.id}
+              type="button"
+              onClick={() => setPlanStep(step.id)}
+              aria-current={planStep === step.id ? 'step' : undefined}
+              className={cx(
+                'rounded-xl px-3 py-2 text-left text-sm font-semibold transition-colors',
+                planStep === step.id ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+              )}
+            >
+              <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-xs">{step.id}</span>
+              {step.title}
+            </button>
+          ))}
+        </nav>
         {/* 左侧主内容较宽随页面滚动，右侧成本预览上下文面板较窄并 sticky。 */}
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.9fr)]">
           <div className="min-w-0 space-y-6">
-            <Card className="min-w-0 overflow-hidden">
-              <SectionHeading eyebrow="第一步" title="基础设置" />
+            <Card className={cx("min-w-0 overflow-hidden", planStep !== 1 && "hidden")}>
+              <SectionHeading eyebrow="第一步" title="选标的与基础设置" />
 
               {marketError ? (
                 <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -328,7 +363,13 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                   />
                 </Field>
 
-                <Field className="min-w-0" label="资产标的" helper="与首页共用同一套纳指基金标的池。">
+                <Field className="min-w-0" label="资产标的" helper="可搜索纳指 ETF，或使用美股快捷分组。">
+                  <TextInput
+                    className="mb-3"
+                    placeholder="搜索代码或名称，例如 QQQ / 513100 / 纳指"
+                    value={symbolSearch}
+                    onChange={(event) => setSymbolSearch(event.target.value)}
+                  />
                   <div className="mb-3 space-y-2">
                     {EXTRA_SYMBOL_GROUPS.map((group) => (
                       <div key={group.key} className="flex flex-wrap items-center gap-2">
@@ -357,15 +398,18 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                     ))}
                   </div>
                   {marketEntries.length ? (
-                    <SelectField
+                    <>
+                      <div className="mb-2 text-xs font-semibold text-slate-400">纳指 ETF 下拉 · {filteredMarketEntries.length}/{marketEntries.length}</div>
+                      <SelectField
                       className="min-w-0"
-                      options={marketEntries.map((entry) => ({
+                      options={filteredMarketEntries.map((entry) => ({
                         label: formatMarketLabel(entry),
                         value: entry.code
                       }))}
                       value={state.symbol}
                       onChange={(event) => setState((current) => ({ ...current, symbol: event.target.value }))}
-                    />
+                      />
+                    </>
                   ) : (
                     <NumberInput
                       value={state.symbol}
@@ -439,8 +483,8 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
               </div>
             </Card>
 
-            <Card className="min-w-0 overflow-hidden">
-              <SectionHeading eyebrow="第二步" title="策略模板" />
+            <Card className={cx("min-w-0 overflow-hidden", planStep !== 2 && "hidden")}>
+              <SectionHeading eyebrow="第二步" title="选择策略模板" />
 
               <div className="mt-6 grid gap-4 md:grid-cols-2">
                 {strategyOptions.map((option) => (
@@ -473,7 +517,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
             </Card>
 
             {selectedAssetType === 'stock' ? (
-              <Card className="min-w-0 overflow-hidden border-amber-200 bg-amber-50">
+              <Card className={cx("min-w-0 overflow-hidden border-amber-200 bg-amber-50", planStep !== 2 && "hidden")}>
                 <SectionHeading eyebrow="个股自查" title="基本面 checklist" />
                 <div className="mt-5 grid gap-3">
                   {SCREENING_CHECKLIST.map((item) => (
@@ -490,7 +534,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
               </Card>
             ) : null}
 
-            <Card className="min-w-0 overflow-hidden">
+            <Card className={cx("min-w-0 overflow-hidden", planStep !== 3 && "hidden")}>
               <SectionHeading
                 eyebrow="第三步"
                 title={selectedStrategy === 'peak-drawdown' ? `固定回撤 ${computed.layers.length} 档` : '均线分层设置'}
@@ -536,7 +580,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
             </Card>
           </div>
 
-          <div className="min-w-0 space-y-6 lg:sticky lg:top-4">
+          <div className={cx("min-w-0 space-y-6 lg:sticky lg:top-4", planStep !== 4 && "hidden")}>
             <Card className="min-w-0 overflow-hidden border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white">
               <SectionHeading eyebrow="结果预览" title="策略成本预览" />
               <div className="mt-6 rounded-[24px] border border-white/80 bg-white/90 p-5 shadow-sm">
@@ -633,11 +677,19 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
           </div>
           <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
             <a className={cx(secondaryButtonClass, 'w-full sm:w-auto')} href={links.home}>取消</a>
-            <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} disabled={isSaving} type="button" onClick={handleCreatePlan}>
-              <Save className="h-4 w-4" />
-              {isSaving ? '正在保存策略' : '确认创建并返回总览'}
-              <ArrowRight className="h-4 w-4" />
-            </button>
+            {planStep > 1 ? <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={() => setPlanStep((step) => Math.max(1, step - 1))}>上一步</button> : null}
+            {planStep < 4 ? (
+              <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={() => setPlanStep((step) => Math.min(4, step + 1))}>
+                下一步
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            ) : (
+              <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} disabled={isSaving} type="button" onClick={handleCreatePlan}>
+                <Save className="h-4 w-4" />
+                {isSaving ? '正在保存策略' : '确认创建并返回总览'}
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
       </div>

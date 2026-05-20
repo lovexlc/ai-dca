@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ClipboardList, Info, RefreshCw, Radio, PlayCircle, ChevronDown } from 'lucide-react';
+import { AlertTriangle, ClipboardList, Info, RefreshCw, Radio, PlayCircle, ChevronDown, Settings2, Sparkles } from 'lucide-react';
 import { Card, Pill, SectionHeading, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 import { readLedgerState, persistLedgerState } from '../app/holdingsLedger.js';
 import { aggregateByCode, buildTransactionId, detectFundKind, normalizeTransaction } from '../app/holdingsLedgerCore.js';
@@ -283,7 +283,7 @@ async function loadEtfLatestPrice(code, { inPagesDir = false } = {}) {
   };
 }
 
-export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false } = {}) {
+export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false, initialView = 'opportunity' } = {}) {
   const [prefs, setPrefs] = useState(readPrefs);
   // 「记录此次切换」快捷入口的 Modal 表单状态。
   // 为 null 时不渲染 Modal；设为表单对象后开启录入。
@@ -325,6 +325,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   // 场外纳指基金全集 (data/all_nasdq_otc.json)。
   const [otcUniverse, setOtcUniverse] = useState([]);
   const [showAllOtc, setShowAllOtc] = useState(false);
+  const [switchView, setSwitchView] = useState(initialView === 'config' ? 'config' : 'opportunity');
 
   const premiumClassCounts = useMemo(() => {
     const cls = (prefs && prefs.premiumClass) || {};
@@ -344,6 +345,10 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, [premiumClassCounts.h, premiumClassCounts.l, nasdaqPoolTouched]);
 
   useEffect(() => { writePrefs(prefs); }, [prefs]);
+
+  useEffect(() => {
+    setSwitchView(initialView === 'config' ? 'config' : 'opportunity');
+  }, [initialView]);
 
   // 首次入页：从 worker 拉取配置 + 快照。失败不阻断 UI（本地缓存仍可用）。
   useEffect(() => {
@@ -1124,7 +1129,27 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
   return (
     <div className="space-y-6">
-      <Card>
+      <div className="inline-flex gap-1 rounded-full bg-slate-100 p-1" aria-label="基金切换视图">
+        {[
+          { id: 'opportunity', label: '机会概览', icon: Sparkles },
+          { id: 'config', label: '规则配置', icon: Settings2 }
+        ].map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setSwitchView(item.id)}
+              aria-pressed={switchView === item.id}
+              className={cx('inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition-colors', switchView === item.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500')}
+            >
+              <Icon className="h-4 w-4" />
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+      <Card className={cx(switchView !== 'config' && 'hidden')}>
         <SectionHeading
           eyebrow="自动监控"
           title="worker 每分钟扫描场内切换信号"
@@ -1332,9 +1357,9 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         </div>
       </Card>
 
-      <Card>
+      <Card className={cx(switchView !== 'config' && 'hidden')}>
         <SectionHeading
-          eyebrow="切换策略"
+          eyebrow="规则配置"
           title="场内 / 场外纳指 100 切换套利"
         />
         <div className="mt-5 space-y-4">
@@ -1412,12 +1437,12 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setCodeClass(code, cur === 'H' ? null : 'H'); }}
                       className={cx('px-1.5 py-0.5', cur === 'H' ? 'bg-rose-500 text-white' : 'bg-white text-slate-500 hover:bg-rose-50 hover:text-rose-700')}
-                    >H</button>
+                     aria-label={`将 ${code} 设为 H 组`}>设为 H</button>
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setCodeClass(code, cur === 'L' ? null : 'L'); }}
                       className={cx('px-1.5 py-0.5 border-l border-slate-200', cur === 'L' ? 'bg-emerald-500 text-white' : 'bg-white text-slate-500 hover:bg-emerald-50 hover:text-emerald-700')}
-                    >L</button>
+                     aria-label={`将 ${code} 设为 L 组`}>设为 L</button>
                   </span>
                 </div>
               );
@@ -1462,7 +1487,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                           <div className="text-xs text-slate-400">所有 ETF 都已分类。可把 chip 拖回此处取消分类。</div>
                         ) : poolList.map(renderChip)}
                       </div>
-                      <div className="mt-2 text-[11px] text-slate-500">把溢价常年更高的拖到 <strong className="text-rose-700">H 组</strong>（如 513100），溢价常年更低的拖到 <strong className="text-emerald-700">L 组</strong>（如 159632）。也可点 chip 右侧的 H/L 按钮直接归类。</div>
+                      <div className="mt-2 text-[11px] text-slate-500">点击每个 chip 右侧的 <strong className="text-rose-700">设为 H</strong> / <strong className="text-emerald-700">设为 L</strong> 完成分类；桌面端仍支持拖放作为辅助操作。</div>
                     </>
                   ) : null}
                 </div>
@@ -1482,7 +1507,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                     </div>
                     <div className="mt-3 flex min-h-[44px] flex-wrap gap-2">
                       {hList.length === 0 ? (
-                        <div className="text-xs text-slate-400">把溢价常年更高的 ETF 拖到这里。</div>
+                        <div className="text-xs text-slate-400">点击未分类 chip 的“设为 H”。</div>
                       ) : hList.map(renderChip)}
                     </div>
                   </div>
@@ -1501,7 +1526,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                     </div>
                     <div className="mt-3 flex min-h-[44px] flex-wrap gap-2">
                       {lList.length === 0 ? (
-                        <div className="text-xs text-slate-400">把溢价常年更低的 ETF 拖到这里。</div>
+                        <div className="text-xs text-slate-400">点击未分类 chip 的“设为 L”。</div>
                       ) : lList.map(renderChip)}
                     </div>
                   </div>
@@ -1512,19 +1537,21 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         </div>
       </Card>
 
-      <Card>
+      <Card className={cx(switchView !== 'opportunity' && 'hidden')}>
         <SectionHeading
-          eyebrow="场内切换信号"
+          eyebrow="机会概览"
           title="在持有的场内 ETF 之间倒换"
         />
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">规则 A</div>
+            <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="intra-sell-lower">规则 A · 低溢价持仓换高溢价</label>
             <div className="mt-1 text-slate-700">
               H溢价 − L溢价 {'<'}
               <input
                 type="number"
                 step="0.5"
+                id="intra-sell-lower"
+                aria-label="规则 A 阈值，默认 1%"
                 value={prefs.intraSellLowerPct}
                 onChange={(e) => setPrefValue('intraSellLowerPct', e.target.value)}
                 className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
@@ -1533,12 +1560,14 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
             </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">规则 B</div>
+            <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="intra-buy-other">规则 B · 高溢价持仓换低溢价</label>
             <div className="mt-1 text-slate-700">
               H溢价 − L溢价 {'>'}
               <input
                 type="number"
                 step="0.5"
+                id="intra-buy-other"
+                aria-label="规则 B 阈值，默认 3%"
                 value={prefs.intraBuyOtherPct}
                 onChange={(e) => setPrefValue('intraBuyOtherPct', e.target.value)}
                 className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
@@ -1577,19 +1606,21 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
       </Card>
 
-      <Card>
+      <Card className={cx(switchView !== 'opportunity' && 'hidden')}>
         <SectionHeading
-          eyebrow="场外切换信号"
+          eyebrow="机会概览"
           title="纳指（场外）基金"
         />
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">基准溢价 阈值</div>
+            <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="otc-premium-threshold">基准溢价阈值 · 默认 8%</label>
             <div className="mt-1 text-slate-700">
               &gt;
               <input
                 type="number"
                 step="0.5"
+                id="otc-premium-threshold"
+                aria-label="场外基准溢价阈值，默认 8%"
                 value={prefs.otcPremiumThresholdPct}
                 onChange={(e) => setPrefValue('otcPremiumThresholdPct', e.target.value)}
                 className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"

@@ -27,3 +27,19 @@
 - 行情中心已移除未接入的全屏入口，保留统一自选 onboarding。
 - Focused ESLint 已通过：`0 errors, 48 warnings`；warnings 为既有 unused/hook dependency 提示。
 - 浏览器 MCP 工具此前未在工具列表中提供，未做真实浏览器截图验收。
+
+## P2/P3 续做范围（2026-05-20）
+- [done] 6. 新建加仓策略表单分步化：选标的 → 选模板 → 调参数 → 预览确认；降低首屏候选按钮密度。
+- [done] 7. 纳指 ETF / 标的选择增加搜索与分组入口，保留快捷标的。
+- [done] 8. 基金切换拆成“机会概览 / 规则配置”两层；移动端不依赖拖拽，H/L 通过明确按钮操作。
+- [done] 9. 基金切换阈值 / spinbutton 增加清晰标签与默认值解释；移动说明移除“拖拽优先”。
+- [done] 10. 策略指南进一步收敛为指南索引 + 折叠详情；默认主页设置移到独立偏好区。
+- [done] 11. Focused lint / smoke check，提交并推送。
+
+
+## P2/P3 验证记录
+- 新建策略：已改为 4 步流程（选标的 / 选模板 / 调参数 / 预览确认），并增加纳指 ETF 搜索。
+- 基金切换：已拆为机会概览 / 规则配置；移动端新增“规则”tab；H/L 提供“设为 H / 设为 L”明确按钮，拖拽仅保留为桌面辅助。
+- 策略指南：默认主页设置已移到独立偏好卡；长内容改为“指南索引与折叠详情”。
+- Focused ESLint：`npx eslint src/pages/NewPlanExperience.jsx src/pages/FundSwitchExperience.jsx src/pages/SwitchStrategyExperience.jsx src/pages/StrategyGuideExperience.jsx` 已通过，0 errors，9 warnings（既有未使用变量 / hook 依赖提示）。
+- 浏览器 MCP 工具未在当前 MCP 工具列表中提供，未做真实浏览器截图验收。

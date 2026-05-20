@@ -325,15 +325,29 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
           </div>
         </Card>
 
+        <Card id="home-preferences" className="border-slate-200 bg-white">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px_auto] lg:items-end">
+            <SectionHeading eyebrow="偏好设置" title="默认打开哪个页面？" description="带 ?tab= 的链接仍会优先打开指定页面。" />
+            <SelectField options={HOME_OPTIONS} value={prefs.homepageTab} onChange={(event) => setPrefs((current) => ({ ...current, homepageTab: event.target.value }))} />
+            <GuideButton onClick={handleSaveHome}>保存默认主页</GuideButton>
+          </div>
+        </Card>
+
         <details className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:p-6">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left">
             <span>
               <span className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Guide</span>
-              <span className="mt-1 block text-xl font-bold tracking-tight text-slate-900">策略指南与新手说明</span>
+              <span className="mt-1 block text-xl font-bold tracking-tight text-slate-900">指南索引与折叠详情</span>
             </span>
             <BookOpen className="h-5 w-5 text-indigo-500 transition group-open:rotate-6" aria-hidden="true" />
           </summary>
           <div className="mt-6 space-y-8">
+            <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
+              <h3 className="text-sm font-bold text-indigo-900">指南索引</h3>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-indigo-700">
+                {['手机通知', '三账户体系', '宽基 ETF', '个股策略', '做 T / 负成本', '操作纪律', '全站 README'].map((item) => <span key={item} className="rounded-full bg-white px-3 py-1">{item}</span>)}
+              </div>
+            </div>
 
         <section className="space-y-5">
           <SectionHeading eyebrow="刚需功能" title="先把手机通知配好" description="策略触发时能不能提醒到手机，是这个工具从“看板”变成“执行助手”的关键。复制完整链接也可以，系统会自动解析。" />
@@ -422,14 +436,6 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
             <ReadmeCard title="数据同步 / 备份" description="备份和恢复本地数据，避免浏览器清理或换设备导致数据丢失。" bullets={['导出当前数据', '恢复历史备份', '换设备前先备份']} cta="前往备份" onClick={() => navigate('backup')} />
           </div>
         </section>
-
-        <Card>
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px_auto] lg:items-end">
-            <SectionHeading eyebrow="个性化" title="默认打开哪个页面？" description="选择下次无 tab 参数打开网站时默认进入的页面。带 ?tab= 的链接仍会优先打开指定页面。" />
-            <SelectField options={HOME_OPTIONS} value={prefs.homepageTab} onChange={(event) => setPrefs((current) => ({ ...current, homepageTab: event.target.value }))} />
-            <GuideButton onClick={handleSaveHome}>保存默认主页</GuideButton>
-          </div>
-        </Card>
 
           </div>
         </details>
