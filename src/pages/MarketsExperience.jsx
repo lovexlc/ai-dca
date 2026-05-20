@@ -30,7 +30,9 @@ import {
   Card,
   Pill,
   TextInput,
-  cx
+  cx,
+  primaryButtonClass,
+  secondaryButtonClass
 } from '../components/experience-ui.jsx';
 import {
   addToWatchlist,
@@ -100,7 +102,7 @@ function sourceInitials(source) {
   if (!s) return '?';
   // 英文：取前两个单词首字母。
   const words = s.split(/[\s\-_/]+/).filter(Boolean);
-  if (/^[\x00-\x7f]+$/.test(s) && words.length) {
+  if ([...s].every((char) => char.charCodeAt(0) <= 0x7f) && words.length) {
     return words.slice(0, 2).map((w) => w[0].toUpperCase()).join('');
   }
   // 中文或混合：取首字。
@@ -1639,6 +1641,8 @@ export function MarketsExperience() {
     [watch, market, watchQuotes]
   );
 
+  const marketStatusLabel = indicesLoading ? '刷新中' : (indices.length ? `${indices.length} 个指数` : '待加载');
+
   return (
     <div className="flex flex-col gap-5 pb-[140px] lg:grid lg:grid-cols-[280px_minmax(0,1fr)_360px] lg:items-start lg:gap-4 lg:pb-6 xl:grid-cols-[320px_minmax(0,1fr)_400px]">
       {/* Mobile-only sidebar: Google Finance Beta style */}
@@ -1669,7 +1673,9 @@ export function MarketsExperience() {
                   try {
                     if (document.fullscreenElement) document.exitFullscreen();
                     else document.documentElement.requestFullscreen?.();
-                  } catch {}
+                  } catch (_error) {
+                    // Fullscreen is best-effort.
+                  }
                 }}
               >
                 <Maximize2 size={20} />
@@ -1989,6 +1995,33 @@ export function MarketsExperience() {
       </aside>
 
       <main className="order-1 flex min-w-0 flex-col gap-5 lg:order-2">
+        <header className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Markets</div>
+              <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-900">行情中心</h1>
+              <p className="mt-1 text-sm text-slate-500">市场状态：{marketStatusLabel} · 自选 {watchRows.length} 个</p>
+            </div>
+            <button type="button" className={cx(secondaryButtonClass, 'w-full sm:w-auto')} onClick={() => { setSectorsOpen(true); setSectorSearchOpen(true); }}>
+              <Search className="h-4 w-4" aria-hidden="true" />
+              添加自选
+            </button>
+          </div>
+          {!watchRows.length ? (
+            <div className="mt-4 rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/50 px-4 py-4 text-sm text-slate-600">
+              <div className="font-semibold text-slate-900">还没有自选</div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" className={cx(primaryButtonClass, 'min-h-10 px-3 py-2 text-xs')} onClick={() => { setSectorsOpen(true); setSectorSearchOpen(true); }}>
+                  添加第一个标的
+                </button>
+                <button type="button" className={cx(secondaryButtonClass, 'min-h-10 px-3 py-2 text-xs')} onClick={() => setPendingAnalysis({ symbol: 'QQQ', name: 'Nasdaq 100 ETF' })}>
+                  开始研究 QQQ
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </header>
+
         <div className="sticky top-0 z-20 flex items-center justify-between gap-3 bg-white/95 px-1 py-2 backdrop-blur">
           <div className="flex items-center gap-3">
             {MARKETS.map((m) => (
@@ -2114,7 +2147,7 @@ export function MarketsExperience() {
             const a = asideRef.current;
             const startH = a ? a.offsetHeight : (researchMode === 'peek' ? 130 : 600);
             researchDragRef.current = { startY: e.clientY, lastY: e.clientY, startH, startT: Date.now(), dragging: true, moved: false };
-            try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+            try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_error) { /* best-effort */ }
             isDraggingRef.current = true;
             if (a) {
               a.style.transition = 'none';

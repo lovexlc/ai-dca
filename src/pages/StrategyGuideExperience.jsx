@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
-import { AlertCircle, Info, Trash2 } from 'lucide-react';
+import { AlertCircle, Bell, BookOpen, CloudUpload, ListChecks, Wallet, Info, Trash2 } from 'lucide-react';
 import { clearDemoData, hasPotentialUserData, installDemoData, readDemoDataMeta } from '../app/demoData.js';
 import { persistWorkspacePrefs, readWorkspacePrefs } from '../app/workspacePrefs.js';
 import { Card, PageHero, Pill, SectionHeading, SelectField, cx, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
@@ -193,6 +193,26 @@ function AccountCard({ account }) {
   );
 }
 
+function ToolStatusCard({ icon: Icon, title, value, note, action, onClick }) {
+  return (
+    <Card className="flex min-h-[148px] flex-col justify-between p-5 sm:p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+          <Icon className="h-5 w-5" aria-hidden="true" />
+        </div>
+        <Pill tone="slate">{value}</Pill>
+      </div>
+      <div>
+        <h2 className="mt-4 text-base font-bold text-slate-900">{title}</h2>
+        <p className="mt-1 text-sm leading-5 text-slate-500">{note}</p>
+      </div>
+      <button type="button" onClick={onClick} className={cx(subtleButtonClass, 'mt-4 min-h-10 w-full px-3 py-2 text-xs')}>
+        {action}
+      </button>
+    </Card>
+  );
+}
+
 export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange }) {
   const [demoMeta, setDemoMeta] = useState(() => readDemoDataMeta());
   const [prefs, setPrefs] = useState(() => readWorkspacePrefs());
@@ -237,13 +257,38 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
     setMessage(`已将“${HOME_OPTIONS.find((item) => item.value === next.homepageTab)?.label || '策略指南'}”设为默认首页。`);
   }
 
+  const dashboardStatus = (() => {
+    if (typeof window === 'undefined') {
+      return { holdings: '待录入', plans: '0 个', notify: '未配置', backup: '未配置' };
+    }
+    function readJson(key) {
+      try { return JSON.parse(window.localStorage.getItem(key) || 'null'); } catch { return null; }
+    }
+    const ledger = readJson('aiDcaFundHoldingsLedger');
+    const txCount = Array.isArray(ledger?.transactions) ? ledger.transactions.length : 0;
+    const planStore = readJson('aiDcaPlanStore');
+    const planCount = Array.isArray(planStore?.plans) ? planStore.plans.length : 0;
+    const dca = readJson('aiDcaDcaState');
+    const hasDca = Boolean(dca && dca.source);
+    const notify = readJson('aiDcaNotifyClientConfig');
+    const hasNotify = Boolean(notify?.barkDeviceKey || notify?.notifyClientId);
+    const webdav = readJson('aiDcaWebDavConfig');
+    const hasBackup = Boolean(webdav?.baseUrl || webdav?.username);
+    return {
+      holdings: txCount ? `${txCount} 笔` : '待录入',
+      plans: `${planCount + (hasDca ? 1 : 0)} 个`,
+      notify: hasNotify ? '已配置' : '未配置',
+      backup: hasBackup ? '已配置' : '未配置'
+    };
+  })();
+
   return (
     <div className="min-h-screen bg-slate-50">
       <PageHero
-        eyebrow="美股投资工具箱"
-        title="美股策略助手"
-        description="把公开投资文章中的美股定投、金字塔加仓、持仓管理和通知提醒流程整理成可执行工具。"
-        badges={[<Pill key="a" tone="indigo">策略指南</Pill>, <Pill key="b" tone="emerald">演示数据</Pill>, <Pill key="c" tone="amber">手机通知</Pill>, <Pill key="d" tone="slate">三账户体系</Pill>]}
+        eyebrow="FreeBacktrack Tools"
+        title="投资工具工作台"
+        description="从这里进入持仓、交易计划、通知和数据同步；策略说明默认收起，不挡住核心任务。"
+        badges={[<Pill key="a" tone="indigo">Dashboard</Pill>, <Pill key="b" tone="emerald">工具入口</Pill>, <Pill key="c" tone="amber">新手 Demo</Pill>]}
       >
         <div className="flex items-start gap-2.5 rounded-r-2xl border-l-4 border-amber-500 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
@@ -254,22 +299,41 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
       <main className="mx-auto flex max-w-6xl flex-col gap-10 px-5 py-8 sm:px-6">
         {message ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div> : null}
 
-        <Card className="border-indigo-100 bg-indigo-50/70">
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-            <SectionHeading eyebrow="新用户快速体验" title="一键生成演示数据" description="还没有真实持仓？先生成一套随机 Demo，体验持仓、交易计划、Smart DCA 资金池、三账户体系和通知提醒流程。Demo 数据只保存在本地。" />
+        <section className="space-y-5" aria-labelledby="dashboard-title">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Workspace</div>
+              <h2 id="dashboard-title" className="mt-1 text-xl font-bold tracking-tight text-slate-900">今天从哪里开始？</h2>
+            </div>
+            <GuideButton onClick={() => navigate('holdings')}>新增交易</GuideButton>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <ToolStatusCard icon={Wallet} title="持仓总览" value={dashboardStatus.holdings} note="资产、成本、收益和三账户分配" action="查看持仓" onClick={() => navigate('holdings')} />
+            <ToolStatusCard icon={ListChecks} title="交易计划" value={dashboardStatus.plans} note="加仓、定投、卖出和 VIX 信号" action="新建加仓策略" onClick={() => navigate('tradePlans')} />
+            <ToolStatusCard icon={Bell} title="通知状态" value={dashboardStatus.notify} note="iOS、Android、PC 浏览器提醒" action="配置通知" onClick={() => navigate('notify')} />
+            <ToolStatusCard icon={CloudUpload} title="数据同步" value={dashboardStatus.backup} note="WebDAV 备份与恢复" action="保存配置" onClick={() => navigate('backup')} />
+          </div>
+        </section>
+
+        <Card className="border-indigo-100 bg-indigo-50/70 p-5 sm:p-6">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+            <SectionHeading eyebrow="新手辅助" title="需要一套示例数据吗？" description="生成随机 Demo，快速理解持仓、交易计划、通知和账户体系。" />
             <div className="flex flex-wrap gap-3">
-              <GuideButton onClick={handleInstallDemo}>{demoMeta ? '重新生成演示数据' : '生成演示数据'}</GuideButton>
-              {demoMeta ? <GuideButton variant="secondary" onClick={handleClearDemo}><Trash2 className="h-4 w-4" />清除演示数据</GuideButton> : null}
+              <GuideButton variant="secondary" onClick={handleInstallDemo}>{demoMeta ? '重新生成 Demo' : '生成演示数据'}</GuideButton>
+              {demoMeta ? <GuideButton variant="secondary" onClick={handleClearDemo}><Trash2 className="h-4 w-4" />清除 Demo</GuideButton> : null}
             </div>
           </div>
-          {demoMeta ? (
-            <div className="mt-5 flex flex-wrap gap-3">
-              <GuideButton onClick={() => navigate('notify')}>配置通知</GuideButton>
-              <GuideButton variant="secondary" onClick={() => navigate('tradePlans')}>查看交易计划</GuideButton>
-              <GuideButton variant="secondary" onClick={() => navigate('holdings')}>查看持仓</GuideButton>
-            </div>
-          ) : null}
         </Card>
+
+        <details className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:p-6">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left">
+            <span>
+              <span className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Guide</span>
+              <span className="mt-1 block text-xl font-bold tracking-tight text-slate-900">策略指南与新手说明</span>
+            </span>
+            <BookOpen className="h-5 w-5 text-indigo-500 transition group-open:rotate-6" aria-hidden="true" />
+          </summary>
+          <div className="mt-6 space-y-8">
 
         <section className="space-y-5">
           <SectionHeading eyebrow="刚需功能" title="先把手机通知配好" description="策略触发时能不能提醒到手机，是这个工具从“看板”变成“执行助手”的关键。复制完整链接也可以，系统会自动解析。" />
@@ -366,6 +430,9 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
             <GuideButton onClick={handleSaveHome}>保存默认主页</GuideButton>
           </div>
         </Card>
+
+          </div>
+        </details>
 
         <Card className="border-slate-300 bg-white">
           <SectionHeading eyebrow="免责声明" title="非官方、非投资建议" />

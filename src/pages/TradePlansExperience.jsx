@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, ArrowRight, Bell, CalendarClock, Calculator, ListChecks, MoreHorizontal, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
+import { Activity, ArrowRight, Bell, CalendarClock, Calculator, ListChecks, MoreHorizontal, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
 import { loadNotifyStatus, readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { deletePlan } from '../app/plan.js';
@@ -79,7 +79,12 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   const [channelConfigured, setChannelConfigured] = useState(true);
   const notifyClientId = useMemo(() => readNotifyClientConfig().notifyClientId || '', []);
   const [planRefreshKey, setPlanRefreshKey] = useState(0);
-  const { previewRows, hasPlans } = useMemo(() => buildTradePlanCenter(), [planRefreshKey]);
+  const { previewRows, hasPlans } = useMemo(() => {
+    void planRefreshKey;
+    return buildTradePlanCenter();
+  }, [planRefreshKey]);
+  const planCountLabel = `${previewRows.length} 个计划`;
+
   const [openMenuRowId, setOpenMenuRowId] = useState('');
   const menuContainerRef = useRef(null);
 
@@ -145,7 +150,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
         const androidConfigured = Array.isArray(status?.setup?.gcmCurrentClientRegistrations)
           && status.setup.gcmCurrentClientRegistrations.length > 0;
         setChannelConfigured(barkConfigured || androidConfigured);
-      } catch (_error) {
+      } catch {
         if (!cancelled) setChannelConfigured(true);
       }
     }
@@ -346,11 +351,14 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     if (!hasPlans) {
       return (
         <Card className="min-w-0">
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
-            <div className="text-base font-bold text-slate-900">还没有交易计划</div>
+          <div className="rounded-2xl border border-dashed border-indigo-200 bg-slate-50 px-6 py-8 text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+              <ListChecks className="h-6 w-6" aria-hidden="true" />
+            </div>
+            <div className="text-base font-bold text-slate-900">暂无交易计划</div>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-center">
-              <button type="button" onClick={enterNewPlanView} className={cx(primaryButtonClass, 'w-full sm:w-auto')}>
-                新建加仓策略
+              <button type="button" onClick={enterNewPlanView} className={cx(secondaryButtonClass, 'w-full sm:w-auto')}>
+                查看示例 / 新建策略
               </button>
               <button type="button" onClick={() => handleSelectSubTab('dca')} className={cx(secondaryButtonClass, 'w-full sm:w-auto')}>
                 配置定投
@@ -439,6 +447,18 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   // 默认：列表视图。
   return (
     <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
+      <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Trade Plans</div>
+          <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-900">交易计划</h1>
+          <p className="mt-1 text-sm text-slate-500">{planCountLabel} · {channelConfigured ? '通知已就绪' : '通知未配置'}</p>
+        </div>
+        <button type="button" onClick={enterNewPlanView} className={primaryButtonClass}>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          新建加仓策略
+        </button>
+      </header>
+
       {renderSubTabBar()}
 
       {channelConfigured ? null : (
