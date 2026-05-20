@@ -1,5 +1,5 @@
 import { Suspense, lazy, useState } from 'react';
-import { History, Settings2, Sparkles } from 'lucide-react';
+import { History, Settings2 } from 'lucide-react';
 import { Card, cx } from '../components/experience-ui.jsx';
 import { FundSwitchAnalysisExperience } from './FundSwitchAnalysisExperience.jsx';
 
@@ -17,13 +17,12 @@ function SubViewLoadingFallback() {
 }
 
 const MOBILE_TABS = [
-  { id: 'opportunity', label: '机会', icon: Sparkles },
   { id: 'config', label: '规则', icon: Settings2 },
   { id: 'analysis', label: '复盘', icon: History }
 ];
 
 export function FundSwitchExperience({ links, inPagesDir = false, embedded = false } = {}) {
-  const [mobileTab, setMobileTab] = useState('opportunity');
+  const [mobileTab, setMobileTab] = useState('config');
 
   return (
     <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>
