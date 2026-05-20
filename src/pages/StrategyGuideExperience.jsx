@@ -287,19 +287,22 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
       <PageHero>
         <DisclosureBanner
           icon={<AlertCircle className="h-4 w-4" />}
-          summary={<span><strong className="font-semibold">免责声明</strong>·本工具不构成投资建议，点击展开查看详情</span>}
-          details={(
-            <div className="space-y-3">
-              <p>策略内容由公开的金渐成公众号文章整理总结而来。本工具与金渐成本人及其公众号无官方关联，不构成投资建议。仅供个人记录与学习使用，投资有风险、请独立判断。</p>
+          summary={
+            <span className="flex items-center justify-between gap-4 flex-1">
+              <span><strong className="font-semibold">免责声明</strong>·本工具不构成投资建议，点击展开查看详情</span>
               <a
-                className="inline-flex min-h-9 items-center justify-center rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 transition-colors hover:border-amber-400 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2"
+                className="inline-flex min-h-9 items-center justify-center rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 transition-colors hover:border-amber-400 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 whitespace-nowrap"
                 href="https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEUUA9qDZ5H_XnPECnDzzMGTTIc2b_5_gAC8B4AAtk5cFTHSrIufYF2bDsE.jpg"
                 target="_blank"
                 rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
               >
                 点击加入群聊
               </a>
-            </div>
+            </span>
+          }
+          details={(
+            <p>部分策略内容由公开的金渐成公众号文章整理总结而来。本工具与金渐成本人及其公众号无官方关联，不构成投资建议。仅供个人记录与学习使用，投资有风险、请独立判断。</p>
           )}
         />
       </PageHero>
