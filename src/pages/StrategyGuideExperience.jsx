@@ -300,11 +300,6 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
               >
                 点击加入群聊
               </a>
-            </span>
-          }
-          details={(
-            <div className="space-y-3">
-              <p>部分策略内容由公开的金渐成公众号文章整理总结而来。本工具与金渐成本人及其公众号无官方关联，不构成投资建议。仅供个人记录与学习使用，投资有风险、请独立判断。</p>
             </div>
           )}
         />
