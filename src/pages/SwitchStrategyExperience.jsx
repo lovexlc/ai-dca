@@ -938,6 +938,15 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }
   // 拖拽状态：高亮当前悬停中的接收区。
   const [dragOverZone, setDragOverZone] = useState(null);
+  const workerRunDisabledReason = workerStatus.running
+    ? '正在运行'
+    : workerStatus.saving
+    ? '配置同步中'
+    : !switchSummary.benches.length
+    ? '先配置 H/L 基准'
+    : switchSummary.pairs === 0
+    ? '先配置候选配对'
+    : '';
   const handleChipDragStart = useCallback((event, code) => {
     if (!event || !event.dataTransfer || !code) return;
     event.dataTransfer.setData('text/plain', code);
@@ -1204,16 +1213,19 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
               <Radio className="h-3.5 w-3.5" />
               cron: 周一至周五 09:30-11:30 / 13:00-15:00
             </span>
-            <button
-              type="button"
-              className={cx(secondaryButtonClass, 'ml-auto h-9 px-3 text-xs')}
-              onClick={handleWorkerRunOnce}
-              disabled={workerStatus.running || workerStatus.saving || !switchSummary.benches.length || switchSummary.pairs === 0}
-              title={workerConfig.enabled ? '手动跑一次：拉价 + 算 diff + 命中规则 A/B 则推送' : '手动跑一次：拉价 + 算 diff，未启用监控不推送'}
-            >
-              <PlayCircle className="h-4 w-4" />
-              {workerStatus.running ? '运行中…' : '手动跑一次'}
-            </button>
+            <div className="ml-auto flex flex-col items-end gap-1">
+              <button
+                type="button"
+                className={cx(secondaryButtonClass, 'h-9 px-3 text-xs')}
+                onClick={handleWorkerRunOnce}
+                disabled={Boolean(workerRunDisabledReason)}
+                title={workerRunDisabledReason || (workerConfig.enabled ? '手动跑一次：拉价 + 算 diff + 命中规则 A/B 则推送' : '手动跑一次：拉价 + 算 diff，未启用监控不推送')}
+              >
+                <PlayCircle className="h-4 w-4" />
+                {workerStatus.running ? '运行中…' : '手动跑一次'}
+              </button>
+              {workerRunDisabledReason ? <span className="text-[11px] text-slate-400">{workerRunDisabledReason}</span> : null}
+            </div>
           </div>
           {workerStatus.error ? (
             <div className="flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
@@ -1662,23 +1674,27 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
             </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">场内最低溢价 阈值</div>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">场内最低溢价阈值</div>
             <div className="mt-1 text-slate-700">
               &lt;
               <input
                 type="number"
                 step="0.5"
+                id="otc-strong-threshold"
+                aria-label="场外强信号阈值，默认 1%"
                 value={prefs.otcMinIntraPremiumLow}
                 onChange={(e) => setPrefValue('otcMinIntraPremiumLow', e.target.value)}
                 className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
-              />%（强） / &lt;
+              /><span className="sr-only">场外强信号阈值</span>%（强） / &lt;
               <input
                 type="number"
                 step="0.5"
+                id="otc-weak-threshold"
+                aria-label="场外弱信号阈值，默认 2%"
                 value={prefs.otcMinIntraPremiumHigh}
                 onChange={(e) => setPrefValue('otcMinIntraPremiumHigh', e.target.value)}
                 className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
-              />%（弱）
+              /><span className="sr-only">场外弱信号阈值</span>%（弱）
             </div>
           </div>
         </div>

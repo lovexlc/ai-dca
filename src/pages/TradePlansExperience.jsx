@@ -264,7 +264,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   function renderSubTabBar() {
     return (
-      <div className="inline-flex flex-wrap gap-1 rounded-2xl border border-slate-200 bg-slate-100/70 p-1">
+      <div className="inline-flex flex-wrap gap-1 rounded-2xl border border-slate-200 bg-slate-100/70 p-1" role="tablist" aria-label="交易计划分类">
         {SUB_TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = subView === tab.key;
@@ -273,6 +273,11 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
               key={tab.key}
               type="button"
               onClick={() => handleSelectSubTab(tab.key)}
+              role="tab"
+              id={`trade-plan-tab-${tab.key}`}
+              aria-selected={isActive}
+              aria-pressed={isActive}
+              aria-controls={`trade-plan-panel-${tab.key}`}
               className={cx(
                 'inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-sm font-semibold transition-colors',
                 isActive
@@ -424,6 +429,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     return (
       <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
         {renderSubTabBar()}
+        <div role="tabpanel" id={`trade-plan-panel-${subView}`} aria-labelledby={`trade-plan-tab-${subView}`}>
         <Suspense fallback={<SubViewLoadingFallback />}>
           {subView === 'home' ? (
             <HomeExperienceLazy links={links} inPagesDir={inPagesDir} embedded />
@@ -446,11 +452,12 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
             <DcaCalculatorExperienceLazy embedded />
           )}
         </Suspense>
+        </div>
       </div>
     );
   }
 
-  // 默认：列表视图。
+  // 默认：列表视图.
   return (
     <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
       <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:flex-row sm:items-center sm:justify-between">
@@ -481,7 +488,9 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
         </div>
       )}
 
-      {renderPlansList()}
+      <div role="tabpanel" id="trade-plan-panel-list" aria-labelledby="trade-plan-tab-list">
+        {renderPlansList()}
+      </div>
     </div>
   );
 }

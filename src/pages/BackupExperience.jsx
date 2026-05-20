@@ -219,7 +219,8 @@ export function BackupExperience({ links, embedded = false }) {
     : !config.username
     ? '填写用户名后可同步'
     : '';
-  const saveDisabledReason = !dirty ? '没有未保存更改' : '';
+  const saveDisabledReason = !config.baseUrl || !config.username ? '填写服务器地址和用户名后可保存' : !dirty ? '没有未保存更改' : '';
+  const testDisabledReason = busy === 'test' ? '正在测试连接' : configMissingReason;
   const uploadDisabledReason = busy
     ? '同步任务执行中'
     : configMissingReason || (!preview.keys.length ? '当前没有可上传数据' : '');
@@ -236,7 +237,7 @@ export function BackupExperience({ links, embedded = false }) {
           <p className="mt-1 text-sm text-slate-500">同步状态：{lastSync ? formatDateTime(lastSync.at) : '尚未同步'} · 本地 {preview.keys.length} 项</p>
         </div>
         <div className="flex flex-col items-start gap-1 sm:items-end">
-          <button type="button" className={primaryButtonClass} onClick={handleSaveConfig} disabled={!dirty} title={saveDisabledReason || undefined}>
+          <button type="button" className={primaryButtonClass} onClick={handleSaveConfig} disabled={Boolean(saveDisabledReason)} title={saveDisabledReason || undefined}>
             <Save className="h-4 w-4" aria-hidden="true" />
             保存配置
           </button>
@@ -254,7 +255,7 @@ export function BackupExperience({ links, embedded = false }) {
                 type="button"
                 className={cx(subtleButtonClass)}
                 onClick={handleTest}
-                disabled={busy === 'test'}
+                disabled={Boolean(testDisabledReason)}
               >
                 {busy === 'test' ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -263,12 +264,13 @@ export function BackupExperience({ links, embedded = false }) {
                 )}
                 测试连接
               </button>
+              {testDisabledReason ? <span className="text-xs text-slate-400">{testDisabledReason}</span> : null}
               <div className="flex flex-col gap-1">
                 <button
                   type="button"
                   className={cx(secondaryButtonClass)}
                   onClick={handleSaveConfig}
-                  disabled={!dirty}
+                  disabled={Boolean(saveDisabledReason)}
                   title={saveDisabledReason || undefined}
                 >
                   <Save className="h-4 w-4" />

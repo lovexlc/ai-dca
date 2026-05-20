@@ -153,6 +153,7 @@ export function ConsoleLayout({
         <aside
           className={cx('console-sidebar', mobileNavOpen && 'is-open')}
           aria-label="模块导航"
+          hidden={mobileSidebarHidden}
           aria-hidden={mobileSidebarHidden ? 'true' : undefined}
           {...(mobileSidebarHidden ? { inert: '' } : {})}
         >

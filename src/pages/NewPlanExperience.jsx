@@ -366,10 +366,13 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                 <Field className="min-w-0" label="资产标的" helper="可搜索纳指 ETF，或使用美股快捷分组。">
                   <TextInput
                     className="mb-3"
+                    aria-label="搜索标的"
+                    aria-describedby="new-plan-symbol-help"
                     placeholder="搜索代码或名称，例如 QQQ / 513100 / 纳指"
                     value={symbolSearch}
                     onChange={(event) => setSymbolSearch(event.target.value)}
                   />
+                  <div id="new-plan-symbol-help" className="sr-only">输入代码或名称筛选标的，下方也可使用快捷标的按钮。</div>
                   <div className="mb-3 space-y-2">
                     {EXTRA_SYMBOL_GROUPS.map((group) => (
                       <div key={group.key} className="flex flex-wrap items-center gap-2">
@@ -418,6 +421,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                   )}
                 </Field>
 
+                <div className="hidden" data-step-advanced-fields>
                 {selectedFund ? (
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
                     <div className="font-semibold text-slate-900">{selectedFundLabel}</div>
@@ -480,6 +484,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                 <Field label="执行频率">
                   <SelectField options={frequencyOptions} value={state.frequency} onChange={(event) => setState((current) => ({ ...current, frequency: event.target.value }))} />
                 </Field>
+                </div>
               </div>
             </Card>
 
@@ -539,6 +544,54 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                 eyebrow="第三步"
                 title={selectedStrategy === 'peak-drawdown' ? `固定回撤 ${computed.layers.length} 档` : '均线分层设置'}
               />
+              <div data-step-three-params="true">
+              <div className="mt-6 space-y-5">
+                {selectedFund ? (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                    <div className="font-semibold text-slate-900">{selectedFundLabel}</div>
+                    <div className="mt-1">当前现价 {formatFundPrice(selectedFund.current_price, selectedFundCurrency)}</div>
+                    <div className="mt-1">策略参考基准 {benchmarkNameLabel}，{formatFundPrice(benchmarkFund?.current_price, benchmarkCurrency)}</div>
+                  </div>
+                ) : isExtraSymbol(state.symbol) ? (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
+                    <div className="font-semibold text-slate-900">{state.symbol}·{findExtraSymbol(state.symbol)?.name || ''}</div>
+                    {extraQuote.symbol === String(state.symbol || '').trim().toUpperCase() && extraQuote.price > 0 ? (
+                      <div className="mt-1">当前现价 {formatFundPrice(extraQuote.price, extraQuote.currency || 'USD')}{extraQuote.asOf ? ` · ${new Date(extraQuote.asOf).toLocaleString('zh-CN', { hour12: false })}` : ''}</div>
+                    ) : extraQuote.symbol === String(state.symbol || '').trim().toUpperCase() && extraQuote.loading ? (
+                      <div className="mt-1">正在拉取实时行情…</div>
+                    ) : extraQuote.symbol === String(state.symbol || '').trim().toUpperCase() && extraQuote.error ? (
+                      <div className="mt-1 text-rose-700">行情获取失败：{extraQuote.error}；请手动填写下方价格。</div>
+                    ) : null}
+                  </div>
+                ) : null}
+                <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-4 text-sm text-indigo-800">
+                  <div className="font-semibold text-indigo-900">{selectedAssetTypeLabel}模式</div>
+                  <div className="mt-1">首买跌幅 {formatPercent(selectedStrategyParams.firstBuyDrop, 1)} · 加仓步长 {formatPercent(selectedStrategyParams.stepDrop, 1)} · {selectedStrategyParams.levels} 档</div>
+                  <div className="mt-1">倍数 {selectedStrategyParams.multipliers.join(' / ')} · 高位投入 {formatPercent(selectedStrategyParams.highLevelRatio * 100, 0)}</div>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Field label="总投资额">
+                    <NumberInput step="0.01" value={state.totalBudget} onChange={(event) => setState((current) => ({ ...current, totalBudget: Number(event.target.value) || 0 }))} />
+                  </Field>
+                  <Field label={selectedStrategy === 'peak-drawdown' ? '阶段高点' : '120日线触发价'}>
+                    <NumberInput step="0.001" value={Number(state.basePrice || 0).toFixed(3)} onChange={(event) => setState((current) => ({ ...current, basePrice: Number(event.target.value) || 0 }))} />
+                  </Field>
+                </div>
+                {selectedStrategy === 'ma120-risk' ? (
+                  <Field label="200日线风控价" helper="当它足够低于120日线深水层时，会进入最后一档。">
+                    <NumberInput step="0.001" value={Number(state.riskControlPrice || 0).toFixed(3)} onChange={(event) => setState((current) => ({ ...current, riskControlPrice: Number(event.target.value) || 0 }))} />
+                  </Field>
+                ) : null}
+                <Field label="现金留存比例" rightLabel={formatPercent(state.cashReservePct, 0)}>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <input aria-label="现金留存比例" className="h-2 w-full accent-indigo-600" max="90" min="0" step="1" type="range" value={state.cashReservePct} onChange={(event) => setState((current) => ({ ...current, cashReservePct: Number(event.target.value) || 0 }))} />
+                  </div>
+                </Field>
+                <Field label="执行频率">
+                  <SelectField options={frequencyOptions} value={state.frequency} onChange={(event) => setState((current) => ({ ...current, frequency: event.target.value }))} />
+                </Field>
+              </div>
+              </div>
 
               <div className="mt-6 space-y-4">
                 {computed.layers.map((layer) => (

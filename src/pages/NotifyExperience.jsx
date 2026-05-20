@@ -483,6 +483,8 @@ export function NotifyExperience({ embedded = false }) {
         <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between">
           <button
             type="button"
+            aria-label={isConfigCollapsed ? '展开通知接入配置' : '收起通知接入配置'}
+            aria-expanded={!isConfigCollapsed}
             onClick={() => setConfigCollapsed((prev) => !prev)}
             className="flex w-full min-w-0 items-start gap-3 text-left lg:flex-1"
           >
@@ -505,13 +507,17 @@ export function NotifyExperience({ embedded = false }) {
             </div>
           </button>
           {isConfigCollapsed ? null : (
-            <div className="flex w-full items-center justify-center gap-1 rounded-2xl bg-slate-100 p-1 lg:inline-flex lg:w-auto lg:justify-start">
+            <div className="flex w-full items-center justify-center gap-1 rounded-2xl bg-slate-100 p-1 lg:inline-flex lg:w-auto lg:justify-start" role="tablist" aria-label="通知平台">
               <button
                 className={cx(
                   'flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition-colors lg:flex-none',
                   notifyPlatform === 'ios' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                 )}
                 type="button"
+                role="tab"
+                aria-selected={notifyPlatform === 'ios'}
+                aria-pressed={notifyPlatform === 'ios'}
+                aria-controls="notify-panel"
                 onClick={() => setNotifyPlatform('ios')}
               >
                 iOS
@@ -522,6 +528,10 @@ export function NotifyExperience({ embedded = false }) {
                   notifyPlatform === 'android' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                 )}
                 type="button"
+                role="tab"
+                aria-selected={notifyPlatform === 'android'}
+                aria-pressed={notifyPlatform === 'android'}
+                aria-controls="notify-panel"
                 onClick={() => setNotifyPlatform('android')}
               >
                 Android
@@ -532,6 +542,10 @@ export function NotifyExperience({ embedded = false }) {
                   notifyPlatform === 'pc' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                 )}
                 type="button"
+                role="tab"
+                aria-selected={notifyPlatform === 'pc'}
+                aria-pressed={notifyPlatform === 'pc'}
+                aria-controls="notify-panel"
                 onClick={() => setNotifyPlatform('pc')}
               >
                 PC 浏览器
@@ -567,7 +581,8 @@ export function NotifyExperience({ embedded = false }) {
         ) : null}
         <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-5">
           {notifyPlatform === 'android' ? (
-            <div className="space-y-4">
+            <div className="space-y-4" role="tabpanel" id="notify-panel">
+              <h3 className="text-base font-bold text-slate-900">Android 设备绑定</h3>
               <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
                 <div className="text-sm font-semibold text-slate-900">当前浏览器</div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -595,10 +610,13 @@ export function NotifyExperience({ embedded = false }) {
                       onChange={(event) => setAndroidPairingCode(event.target.value)}
                     />
                   </Field>
-                  <button className={primaryButtonClass} type="button" onClick={handlePairAndroidCode}>
-                    <Save className="h-4 w-4" />
-                    {isPairingAndroid ? '正在绑定 Android 设备' : '绑定 Android 设备'}
-                  </button>
+                  <div className="flex flex-col gap-1">
+                    <button className={primaryButtonClass} type="button" onClick={handlePairAndroidCode} disabled={isPairingAndroid || !androidPairingCode.trim()}>
+                      <Save className="h-4 w-4" />
+                      {isPairingAndroid ? '正在绑定 Android 设备' : '绑定 Android 设备'}
+                    </button>
+                    {androidPairingCode.trim() ? null : <span className="text-xs text-slate-400">粘贴 Android 链接或 ID 后可绑定</span>}
+                  </div>
                 </div>
               ) : null}
 
@@ -652,7 +670,8 @@ export function NotifyExperience({ embedded = false }) {
               </div>
             </div>
           ) : notifyPlatform === 'pc' ? (
-            <div className="space-y-4">
+            <div className="space-y-4" role="tabpanel" id="notify-panel">
+              <h3 className="text-base font-bold text-slate-900">PC 浏览器通知</h3>
               <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
                 <div className="flex items-start gap-3">
                   <Laptop className="mt-1 h-5 w-5 text-indigo-500" />
@@ -738,8 +757,9 @@ export function NotifyExperience({ embedded = false }) {
               </div>
             </div>
           ) : (
-            <>
-              <div className="text-sm font-semibold text-slate-900">iOS Bark 链接或 Device Key</div>
+            <div role="tabpanel" id="notify-panel">
+              <h3 className="text-base font-bold text-slate-900">iOS Bark 配置</h3>
+              <div className="mt-4 text-sm font-semibold text-slate-900">iOS Bark 链接或 Device Key</div>
               <p className="mt-2 text-sm leading-6 text-slate-500">
                 可以粘贴完整 Bark 链接，例如 https://api.day.app/xxx/推送内容；系统会自动提取 Device Key。
               </p>
@@ -750,12 +770,15 @@ export function NotifyExperience({ embedded = false }) {
                     onChange={(event) => setNotifyConfig((current) => ({ ...current, barkDeviceKey: event.target.value }))}
                   />
                 </Field>
-                <button className={primaryButtonClass} type="button" onClick={handleSaveNotifyConfig}>
-                  <Save className="h-4 w-4" />
-                  {isSavingSettings ? '正在保存 Bark 配置' : '保存 Bark 配置'}
-                </button>
+                <div className="flex flex-col gap-1">
+                  <button className={primaryButtonClass} type="button" onClick={handleSaveNotifyConfig} disabled={isSavingSettings || !notifyConfig.barkDeviceKey.trim()}>
+                    <Save className="h-4 w-4" />
+                    {isSavingSettings ? '正在保存 Bark 配置' : '保存 Bark 配置'}
+                  </button>
+                  {notifyConfig.barkDeviceKey.trim() ? null : <span className="text-xs text-slate-400">粘贴 Bark 链接或 Device Key 后可保存</span>}
+                </div>
               </div>
-            </>
+            </div>
           )}
         </div>
         </>

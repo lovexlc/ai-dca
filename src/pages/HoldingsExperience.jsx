@@ -2080,7 +2080,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   function renderAggregatesTable() {
     if (aggregatesTableData.length === 0) {
       const emptyHint = aggregates.length === 0
-        ? '还没有交易记录。点击顶部工具栏的「新增交易」添加你的第一笔交易。'
+        ? '还没有交易记录。先录入第一笔交易建立持仓底账。'
         : '全部持仓已卖出。在「收益明细 · 清仓分析」可查看历史。';
       return (
         <div className="flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-indigo-200 bg-white px-6 py-16 text-center">
@@ -2091,7 +2091,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           <p className="mb-6 max-w-xs text-sm leading-6 text-slate-500">{aggregates.length === 0 ? '添加你的第一笔交易，开始追踪投资组合收益与风险敞口。' : emptyHint}</p>
           {aggregates.length === 0 ? (
             <button type="button" className={primaryButtonClass} onClick={() => { resetDraft(emptyDraft({ type: 'BUY' })); setSidePanelTab('create'); setSidePanelOpen(true); }}>
-              <Plus className="h-4 w-4" />新增交易
+              <Plus className="h-4 w-4" />录入第一笔交易
             </button>
           ) : null}
         </div>
@@ -2175,7 +2175,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           <p className="mb-6 max-w-xs text-sm leading-6 text-slate-500">点「新增交易」或「批量导入」录入，支持 OCR / Excel 粘贴。</p>
           <div className="flex flex-wrap justify-center gap-3">
             <button type="button" className={primaryButtonClass} onClick={() => { resetDraft(emptyDraft({ type: 'BUY' })); setSidePanelTab('create'); setSidePanelOpen(true); }}>
-              <Plus className="h-4 w-4" />新增交易
+              <Plus className="h-4 w-4" />录入交易流水
             </button>
             <button type="button" className={secondaryButtonClass} onClick={openPasteModal}>
               <ClipboardPaste className="h-4 w-4" />批量导入

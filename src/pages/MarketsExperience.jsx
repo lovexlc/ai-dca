@@ -444,7 +444,7 @@ function MoversTable({ rows = [], onPick, klineMap = {}, initialLimit = 4 }) {
 
 function WatchlistTable({ rows = [], market, onRemove }) {
   if (!rows.length) {
-    return <p className="text-sm text-slate-400">尚未添加自选。可在涨跌榜里加，也可在搜索框输入代码后回车。</p>;
+    return <p className="text-sm text-slate-400">未配置自选。添加标的后这里会显示监控列表。</p>;
   }
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white/80">
@@ -594,7 +594,7 @@ function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints, onA
 
 function NewsList({ items = [] }) {
   if (!items.length) {
-    return <p className="text-sm text-slate-400">暂无新闻。</p>;
+    return <p className="text-sm text-slate-400">今日暂无动态。</p>;
   }
   return (
     <ul className="divide-y divide-slate-100">
@@ -667,7 +667,7 @@ function formatAgo(iso) {
 function LatestNewsList({ items = [], initialLimit = 6 }) {
   const [expanded, setExpanded] = useState(false);
   if (!items.length) {
-    return <p className="text-sm text-slate-400">暂无动态。</p>;
+    return <p className="text-sm text-slate-400">今日暂无动态。</p>;
   }
   const limit = expanded ? items.length : Math.min(initialLimit, items.length);
   const visible = items.slice(0, limit);
@@ -741,7 +741,7 @@ function formatEps(n) {
 function EarningsCalendar({ items = [], initialLimit = 5 }) {
   const [expanded, setExpanded] = useState(false);
   if (!items.length) {
-    return <p className="text-sm text-slate-400">暂无财报计划。</p>;
+    return <p className="text-sm text-slate-400">今日暂无财报计划。</p>;
   }
   const limit = expanded ? items.length : Math.min(initialLimit, items.length);
   const visible = items.slice(0, limit);
@@ -1685,7 +1685,7 @@ export function MarketsExperience() {
           {watchOpen && (
             <>
               {watchRows.length === 0 ? (
-                <p className="px-2 py-2 text-sm text-[#5f6368]">尚未添加自选。</p>
+                <p className="px-2 py-2 text-sm text-[#5f6368]">未配置自选。</p>
               ) : (
                 <ul className="divide-y divide-[#e8eaed]">
                   {watchRows.map((row) => (
@@ -1839,7 +1839,7 @@ export function MarketsExperience() {
           {watchOpen && (
             <div className="px-1 pb-1">
               {watchRows.length === 0 ? (
-                <p className="px-2 py-1 text-xs text-slate-400">尚未添加自选。</p>
+                <p className="px-2 py-1 text-xs text-slate-400">未配置自选。</p>
               ) : (
                 <ul>
                   {watchRows.map((row) => (
@@ -1984,7 +1984,7 @@ export function MarketsExperience() {
           </div>
           {!watchRows.length ? (
             <div className="mt-4 rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/50 px-4 py-4 text-sm text-slate-600">
-              <div className="font-semibold text-slate-900">还没有自选</div>
+              <div className="font-semibold text-slate-900">未配置自选</div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button type="button" className={cx(primaryButtonClass, 'min-h-10 px-3 py-2 text-xs')} onClick={() => { setSectorsOpen(true); setSectorSearchOpen(true); }}>
                   添加第一个标的
@@ -2048,19 +2048,30 @@ export function MarketsExperience() {
             </div>
           </div>
         ) : !indicesLoading ? (
-          <p className="text-sm text-slate-400">暂无指数数据。</p>
+          <p className="text-sm text-slate-400">指数数据暂未加载。</p>
         ) : null}
 
         {market === 'us' && (
-          <SummaryModule
-            themes={summary.themes}
-            loading={summaryLoading}
-            generatedAt={summary.generatedAt}
-            onRefresh={() => refreshSummary(true)}
-          />
+          <div className="hidden lg:block">
+            <SummaryModule
+              themes={summary.themes}
+              loading={summaryLoading}
+              generatedAt={summary.generatedAt}
+              onRefresh={() => refreshSummary(true)}
+            />
+          </div>
         )}
 
-        <Card className="space-y-3">
+        <Card className="lg:hidden">
+          <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">移动端研究入口</div>
+          <div className="mt-2 text-base font-bold text-slate-900">研究助手</div>
+          <p className="mt-1 text-sm text-slate-500">从底部面板展开研究助手；自选和板块列表已收起到桌面侧栏。</p>
+          <button type="button" className={cx(primaryButtonClass, 'mt-4 w-full')} onClick={() => setResearchMode('conversation')}>
+            打开研究助手
+          </button>
+        </Card>
+
+        <Card className="hidden space-y-3 lg:block">
           <div className="flex items-center gap-2">
             <h2 className="text-base font-semibold text-slate-800">最新动态</h2>
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
@@ -2074,7 +2085,7 @@ export function MarketsExperience() {
         </Card>
 
         {market === 'us' && (
-          <Card className="space-y-3">
+          <Card className="hidden space-y-3 lg:block">
             <div className="flex items-center gap-2">
               <CalendarDays size={16} className="text-indigo-500" />
               <h2 className="text-base font-semibold text-slate-800">即将发布的财报</h2>
