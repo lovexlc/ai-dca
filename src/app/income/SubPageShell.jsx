@@ -8,10 +8,10 @@ import { ArrowLeftRight, BarChart3, ChevronLeft, PieChart, Receipt } from 'lucid
 import { ROUTES } from '../incomeRoute.js';
 
 const SUB_NAV = [
-	{ route: ROUTES.INCOME, label: '收益', Icon: BarChart3 },
-	{ route: ROUTES.LIQUIDATION, label: '清仓', Icon: Receipt },
-	{ route: ROUTES.BREAKDOWN, label: '持仓', Icon: PieChart },
-	{ route: ROUTES.TRANSACTIONS, label: '记录', Icon: ArrowLeftRight },
+	{ route: ROUTES.INCOME, label: '收益明细', labelShort: '收益', Icon: BarChart3 },
+	{ route: ROUTES.LIQUIDATION, label: '清仓分析', labelShort: '清仓', Icon: Receipt },
+	{ route: ROUTES.BREAKDOWN, label: '持仓分析', labelShort: '持仓', Icon: PieChart },
+	{ route: ROUTES.TRANSACTIONS, label: '交易记录', labelShort: '记录', Icon: ArrowLeftRight },
 ];
 
 export function SubPageShell({ title, onBack, children, right = null, navigate = null, currentRoute = '' }) {
@@ -34,7 +34,7 @@ export function SubPageShell({ title, onBack, children, right = null, navigate =
 			</header>
 			{typeof navigate === 'function' ? (
 				<nav aria-label="持仓收益子页" className="flex flex-wrap gap-1 rounded-2xl border border-slate-200 bg-slate-100/70 p-1">
-					{SUB_NAV.map(({ route, label, Icon }) => {
+					{SUB_NAV.map(({ route, label, labelShort, Icon }) => {
 						const active = currentRoute === route;
 						return (
 							<button
@@ -45,7 +45,8 @@ export function SubPageShell({ title, onBack, children, right = null, navigate =
 								className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${active ? 'bg-white text-rose-700 shadow-sm' : 'text-slate-500 hover:bg-white/70 hover:text-slate-800'}`}
 							>
 								<Icon className="size-3.5" aria-hidden="true" />
-								{label}
+								<span className="sm:hidden">{labelShort || label}</span>
+								<span className="hidden sm:inline">{label}</span>
 							</button>
 						);
 					})}
