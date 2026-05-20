@@ -230,20 +230,13 @@ export function BackupExperience({ links, embedded = false }) {
 
   const content = (
     <div className={cx('mx-auto max-w-5xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
-      <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Backup</div>
-          <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-900">数据同步 / 备份</h1>
-          <p className="mt-1 text-sm text-slate-500">同步状态：{lastSync ? formatDateTime(lastSync.at) : '尚未同步'} · 本地 {preview.keys.length} 项</p>
-        </div>
-        <div className="flex flex-col items-start gap-1 sm:items-end">
-          <button type="button" className={primaryButtonClass} onClick={handleSaveConfig} disabled={Boolean(saveDisabledReason)} title={saveDisabledReason || undefined}>
-            <Save className="h-4 w-4" aria-hidden="true" />
-            保存配置
-          </button>
-          {saveDisabledReason ? <span className="text-xs text-slate-400">{saveDisabledReason}</span> : null}
-        </div>
-      </header>
+      <div className="flex flex-col items-end gap-1">
+        <button type="button" className={primaryButtonClass} onClick={handleSaveConfig} disabled={Boolean(saveDisabledReason)} title={saveDisabledReason || undefined}>
+          <Save className="h-4 w-4" aria-hidden="true" />
+          保存配置
+        </button>
+        {saveDisabledReason ? <span className="text-xs text-slate-400">{saveDisabledReason}</span> : null}
+      </div>
 
       <Card id="webdav-config">
         <SectionHeading

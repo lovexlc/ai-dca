@@ -2701,14 +2701,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
 
   const content = (
     <div className={cx('flex flex-col gap-4 px-4 py-5 sm:px-6', embedded ? '' : 'mx-auto max-w-[1600px]')}>
-      <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Holdings</div>
-          <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-900">持仓总览</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            总资产 {formatCurrency(portfolio.marketValue, '¥', 2)} · 持仓 {portfolio.assetCount} 只 · 流水 {ledgerRows.length} 笔
-          </p>
-        </div>
+      <div className="flex justify-end">
         <button
           type="button"
           className={primaryButtonClass}
@@ -2721,7 +2714,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           <Plus className="h-4 w-4" aria-hidden="true" />
           新增交易
         </button>
-      </header>
+      </div>
       {migrationNoticeVisible ? (
         <div className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-none" />

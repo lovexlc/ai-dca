@@ -77,19 +77,12 @@ export function PageHero({
             {backLabel}
           </a>
         ) : null}
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div className="max-w-3xl">
-            {eyebrow ? <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{eyebrow}</div> : null}
-            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 md:text-[2rem]">{title}</h1>
-            {description ? <p className="mt-2.5 max-w-2xl text-sm leading-6 text-slate-500">{description}</p> : null}
+        {badges.length || actions ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {badges.length ? <div className="flex flex-wrap items-center gap-2">{badges.map((badge, index) => <span key={index}>{badge}</span>)}</div> : null}
+            {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
           </div>
-          {badges.length || actions ? (
-            <div className="flex flex-col items-start gap-2.5 md:items-end">
-              {badges.length ? <div className="flex flex-wrap items-center gap-2">{badges.map((badge, index) => <span key={index}>{badge}</span>)}</div> : null}
-              {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
-            </div>
-          ) : null}
-        </div>
+        ) : null}
         {children ? <div className="mt-5">{children}</div> : null}
       </div>
     </div>

@@ -27,13 +27,6 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
 
   return (
     <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
-      <Card className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Fund Switch</div>
-          <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-900">基金切换</h1>
-          <p className="mt-1 text-sm text-slate-500">机会、规则、复盘</p>
-        </div>
-      </Card>
       {/* 移动端子 tab；lg+ 隐藏，PC 直接两列 */}
       <div className="mb-3 inline-flex gap-1 rounded-full bg-slate-100 p-1 lg:hidden">
         {MOBILE_TABS.map((t) => {

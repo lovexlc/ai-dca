@@ -1949,20 +1949,15 @@ export function MarketsExperience() {
       </aside>
 
       <main className="order-1 flex min-w-0 flex-col gap-5 lg:order-2">
-        <header className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Markets</div>
-              <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-900">行情中心</h1>
-              <p className="mt-1 text-sm text-slate-500">市场状态：{marketStatusLabel} · 自选 {watchRows.length} 个</p>
-            </div>
+        <div className="space-y-3">
+          <div className="flex justify-end">
             <button type="button" className={cx(secondaryButtonClass, 'w-full sm:w-auto')} onClick={() => { setSectorsOpen(true); setSectorSearchOpen(true); }}>
               <Search className="h-4 w-4" aria-hidden="true" />
               添加自选
             </button>
           </div>
           {!watchRows.length ? (
-            <div className="mt-4 rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/50 px-4 py-4 text-sm text-slate-600">
+            <div className="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/50 px-4 py-4 text-sm text-slate-600">
               <div className="font-semibold text-slate-900">未配置自选</div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button type="button" className={cx(primaryButtonClass, 'min-h-10 px-3 py-2 text-xs')} onClick={() => { setSectorsOpen(true); setSectorSearchOpen(true); }}>
@@ -1974,7 +1969,7 @@ export function MarketsExperience() {
               </div>
             </div>
           ) : null}
-        </header>
+        </div>
 
         <div className="sticky top-0 z-20 flex items-center justify-between gap-3 bg-white/95 px-1 py-2 backdrop-blur">
           <div className="flex items-center gap-3">

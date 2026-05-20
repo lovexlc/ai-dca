@@ -464,17 +464,12 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   // 默认：列表视图.
   return (
     <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
-      <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Trade Plans</div>
-          <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-900">交易计划</h1>
-          <p className="mt-1 text-sm text-slate-500">{planCountLabel} · {channelConfigured ? '通知已就绪' : '通知未配置'}</p>
-        </div>
+      <div className="flex justify-end">
         <button type="button" onClick={enterNewPlanView} className={primaryButtonClass}>
           <Plus className="h-4 w-4" aria-hidden="true" />
           新建加仓策略
         </button>
-      </header>
+      </div>
 
       {renderSubTabBar()}
 

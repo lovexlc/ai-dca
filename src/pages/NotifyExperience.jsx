@@ -1048,17 +1048,7 @@ export function NotifyExperience({ embedded = false }) {
 
   return (
     <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Notifications</div>
-          <h1 className="mt-1 flex items-center gap-2 text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
-            <Bell className="h-6 w-6 text-indigo-500" />
-            通知设置
-          </h1>
-        </div>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
+<div className="grid gap-4 md:grid-cols-3">
         <StatCard accent="indigo" eyebrow="通道状态" value={summary.channelStatus} note={summary.channelNote} />
         <StatCard eyebrow="已关联 Android" value={`${summary.androidDeviceCount} 台`} note="在 Android tab 添加 / 解绑设备" />
         <StatCard eyebrow="iOS Bark" value={barkConfigured ? '已配置' : '未配置'} note="在 iOS tab 填入 Bark device key" />
