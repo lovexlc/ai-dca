@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { LoaderCircle, AlertTriangle } from 'lucide-react';
 import { cx } from '../../components/experience-ui.jsx';
 import { formatCurrency } from '../accumulation.js';
-import { fetchNavHistory } from '../navHistoryClient.js';
+import { fetchNavHistoryBatch } from '../navHistoryClient.js';
 import { singleDayFundPnl } from '../portfolioSeries.js';
 
 const TONE_UP = 'text-rose-600';
@@ -73,19 +73,12 @@ export function DailyFundBreakdown({ ledger, selectedDate, className = '' }) {
     const from = shiftDays(selectedDate, -30);
     (async () => {
       try {
-        const navByCode = {};
-        let anyStale = false;
-        await Promise.all(
-          codes.map(async (code) => {
-            try {
-              const res = await fetchNavHistory({ code, from, to: selectedDate });
-              navByCode[code] = res?.items || [];
-              if (res?.stale) anyStale = true;
-            } catch {
-              navByCode[code] = [];
-            }
-          })
-        );
+        // P3：批量拉取所有持仓 code 近 30 天 NAV。
+        const { navByCode, stale: anyStale } = await fetchNavHistoryBatch({
+          codes,
+          from,
+          to: selectedDate
+        });
         if (cancelled) return;
         const rows = singleDayFundPnl({ tx: transactions, navByCode, date: selectedDate });
         setState({ status: 'ready', rows, stale: anyStale, error: null });

@@ -14,7 +14,7 @@ import { LoaderCircle, AlertTriangle, ChevronDown, X } from 'lucide-react';
 import SubPageShell from './SubPageShell.jsx';
 import { formatCurrency, formatPercent } from '../accumulation.js';
 import { cx } from '../../components/experience-ui.jsx';
-import { fetchNavHistory } from '../navHistoryClient.js';
+import { fetchNavHistory, fetchNavHistoryBatch } from '../navHistoryClient.js';
 import { buildPortfolioSeries, resolveRangeWindow, shiftDays } from '../portfolioSeries.js';
 import { TimeRangeSelector } from '../TimeRangeSelector.jsx';
 import { useRangeUrlSync, DEFAULT_RANGE } from '../rangeUrlSync.js';
@@ -104,21 +104,11 @@ function uniqCodes(txs) {
   return Array.from(set).filter(Boolean);
 }
 
+// P3：批量拉取（同 ReturnChart）。bench (510300) 仍走单次 fetchNavHistory。
 async function fetchAllNav(codes, from, to) {
-  const map = {};
-  let anyStale = false;
-  await Promise.all(
-    codes.map(async (code) => {
-      try {
-        const res = await fetchNavHistory({ code, from, to });
-        map[code] = res.items || [];
-        if (res.stale) anyStale = true;
-      } catch {
-        map[code] = [];
-      }
-    })
-  );
-  return { navByCode: map, stale: anyStale };
+  if (!codes || !codes.length) return { navByCode: {}, stale: false };
+  const res = await fetchNavHistoryBatch({ codes, from, to });
+  return { navByCode: res.navByCode, stale: res.stale };
 }
 
 function safeResolveRange(range, opts) {

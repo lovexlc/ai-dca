@@ -22,7 +22,7 @@ import {
 import { LoaderCircle, AlertTriangle } from 'lucide-react';
 import { formatCurrency, formatPercent } from './accumulation.js';
 import { cx } from '../components/experience-ui.jsx';
-import { fetchNavHistory } from './navHistoryClient.js';
+import { fetchNavHistory, fetchNavHistoryBatch } from './navHistoryClient.js';
 import { buildDailyFundPnlMap, buildPortfolioSeries, resolveRangeWindow, shiftDays } from './portfolioSeries.js';
 import { useRangeUrlSync, DEFAULT_RANGE } from './rangeUrlSync.js';
 
@@ -58,21 +58,12 @@ function uniqCodes(txs) {
   return Array.from(set).filter(Boolean);
 }
 
+// P3：批量拉取所有持仓 code 的净值序列。
+// 内部先查 L1/L2，漏掉的 code 走单次 POST，避免 N 个 fetchNavHistory 同时 fan-out。
 async function fetchAllNav(codes, from, to) {
-  const map = {};
-  let anyStale = false;
-  await Promise.all(
-    codes.map(async (code) => {
-      try {
-        const res = await fetchNavHistory({ code, from, to });
-        map[code] = res.items || [];
-        if (res.stale) anyStale = true;
-      } catch {
-        map[code] = [];
-      }
-    })
-  );
-  return { navByCode: map, stale: anyStale };
+  if (!codes || !codes.length) return { navByCode: {}, stale: false };
+  const res = await fetchNavHistoryBatch({ codes, from, to });
+  return { navByCode: res.navByCode, stale: res.stale };
 }
 
 function safeResolveRange(range, opts) {

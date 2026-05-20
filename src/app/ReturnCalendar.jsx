@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, LoaderCircle, AlertTriangle } from 'lucide-react';
 import { formatCurrency } from './accumulation.js';
 import { cx } from '../components/experience-ui.jsx';
-import { fetchNavHistory } from './navHistoryClient.js';
+import { fetchNavHistoryBatch } from './navHistoryClient.js';
 import { buildDailyFundPnlMap } from './portfolioSeries.js';
 
 const TONE_UP = 'text-rose-600';
@@ -102,21 +102,11 @@ function uniqCodes(txs) {
   return Array.from(set).filter(Boolean);
 }
 
+// P3：批量拉取（同 ReturnChart）。
 async function fetchAllNav(codes, from, to) {
-  const map = {};
-  let anyStale = false;
-  await Promise.all(
-    codes.map(async (code) => {
-      try {
-        const res = await fetchNavHistory({ code, from, to });
-        map[code] = res.items || [];
-        if (res.stale) anyStale = true;
-      } catch {
-        map[code] = [];
-      }
-    })
-  );
-  return { navByCode: map, stale: anyStale };
+  if (!codes || !codes.length) return { navByCode: {}, stale: false };
+  const res = await fetchNavHistoryBatch({ codes, from, to });
+  return { navByCode: res.navByCode, stale: res.stale };
 }
 
 // dailySeries -> 当日 pnl 映射。第一条无前一日，按 vStart 为基线 → daily = pnl[0]。

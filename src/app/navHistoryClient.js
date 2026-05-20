@@ -324,6 +324,146 @@ export async function fetchNavHistory(opts = {}) {
   }
 }
 
+// 批量拉取 N 只基金同一区间的净值序列。
+// 限于一个页面有多个收益组件（ReturnChart / ReturnCalendar / DailyFundBreakdown / IncomeDetailPage）
+// 同时调用、冷缓存时同时发 N 个 fetchNavHistory 问题，这里先查 L1/L2，漏掉的 code
+// 走单次 POST /api/holdings/nav-history { codes: [...] }，Worker 内部 mapLimit(6) 复用现有
+// caches.default + KV 路径。老 Worker 未上线返 405 时回退到逐 code fetchNavHistory 兜底。
+//
+// 返回：{ navByCode: Record<code, items>, stale: bool, errors: Record<code, string>, generatedAt }
+export async function fetchNavHistoryBatch({ codes, from, to, days, forceLive } = {}) {
+  const inputCodes = Array.from(new Set(
+    (Array.isArray(codes) ? codes : [])
+      .map((c) => String(c || '').trim())
+      .filter((c) => /^\d{6}$/.test(c))
+  ));
+  if (!inputCodes.length) {
+    return { navByCode: {}, stale: false, errors: {}, generatedAt: new Date().toISOString() };
+  }
+
+  // 复用 normalizeArgs 的 from/to/days 规范逻辑（随便拿一个 code 走接口得到区间同。）
+  const args = normalizeArgs({ code: inputCodes[0], from, to, days, forceLive });
+  const fromDate = args.from;
+  const toDate = args.to;
+  const force = forceLive === true;
+  const nowMs = Date.now();
+
+  const navByCode = {};
+  const errors = {};
+  let anyStale = false;
+
+  // L2 查命中；未命中进入 missing。
+  const missing = [];
+  await Promise.all(inputCodes.map(async (code) => {
+    if (force) { missing.push(code); return; }
+    const key = makeCacheKey(code, fromDate, toDate);
+    const cached = await idbGet(key).catch(() => null);
+    if (isFresh(cached, nowMs)) {
+      navByCode[code] = cached.items || [];
+      return;
+    }
+    missing.push(code);
+  }));
+
+  if (!missing.length) {
+    return { navByCode, stale: false, errors, generatedAt: new Date().toISOString() };
+  }
+
+  // 一次 POST 批量。
+  let payload = null;
+  let httpStatus = 0;
+  try {
+    const resp = await fetch(NAV_HISTORY_ENDPOINT, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ codes: missing, from: fromDate, to: toDate, force: force ? 1 : 0 }),
+      cache: 'no-store'
+    });
+    httpStatus = resp.status;
+    if (resp.ok) {
+      payload = await resp.json();
+    }
+  } catch (err) {
+    // 网络错： payload 保持 null，后面走 stale 兜底。
+    errors.__network = err instanceof Error ? err.message : String(err);
+  }
+
+  if (httpStatus === 405 || (!payload && httpStatus && httpStatus !== 0)) {
+    // 老 Worker 未上线（405） 或 高中间件 返非 2xx 但不是 405 → 均回退逐 code fetchNavHistory。
+    const fallback = await Promise.all(missing.map(async (code) => {
+      try {
+        const res = await fetchNavHistory({ code, from: fromDate, to: toDate, forceLive: force });
+        return [code, res, null];
+      } catch (err) {
+        return [code, null, err];
+      }
+    }));
+    for (const [code, res, err] of fallback) {
+      if (err) {
+        errors[code] = err.message || String(err);
+        navByCode[code] = navByCode[code] || [];
+        continue;
+      }
+      navByCode[code] = res.items || [];
+      if (res.stale) anyStale = true;
+    }
+    return { navByCode, stale: anyStale, errors, generatedAt: new Date().toISOString() };
+  }
+
+  if (!payload) {
+    // 纯网络错：全部走 IDB stale 兜底。
+    for (const code of missing) {
+      const key = makeCacheKey(code, fromDate, toDate);
+      const stale = await idbGet(key).catch(() => null);
+      if (stale && Array.isArray(stale.items) && stale.items.length) {
+        navByCode[code] = stale.items;
+        anyStale = true;
+      } else {
+        navByCode[code] = [];
+        if (!errors[code]) errors[code] = errors.__network || 'network error';
+      }
+    }
+    return { navByCode, stale: anyStale, errors, generatedAt: new Date().toISOString() };
+  }
+
+  // 批量返回：逐项写回 L2。
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  const idbWrites = [];
+  for (const it of items) {
+    if (!it || !it.code) continue;
+    const code = it.code;
+    if (it.ok === true && it.data) {
+      const data = it.data;
+      navByCode[code] = data.items || [];
+      const key = makeCacheKey(code, fromDate, toDate);
+      idbWrites.push(idbPut({
+        key,
+        code,
+        from: fromDate,
+        to: toDate,
+        items: data.items || [],
+        generatedAt: data.generatedAt,
+        expiresAt: data.expiresAt,
+        storedAt: Date.now()
+      }).catch(() => false));
+    } else {
+      errors[code] = it.error || 'unknown';
+      const key = makeCacheKey(code, fromDate, toDate);
+      const stale = await idbGet(key).catch(() => null);
+      if (stale && Array.isArray(stale.items) && stale.items.length) {
+        navByCode[code] = stale.items;
+        anyStale = true;
+      } else {
+        navByCode[code] = [];
+      }
+    }
+  }
+  // 容量清理不阻塞。
+  Promise.all(idbWrites).then(() => idbClearExpired().catch(() => {})).catch(() => {});
+
+  return { navByCode, stale: anyStale, errors, generatedAt: payload?.generatedAt || new Date().toISOString() };
+}
+
 // 仅供测试 / 用户主动清缓存
 export async function clearNavHistoryCache() {
   inflight.clear();

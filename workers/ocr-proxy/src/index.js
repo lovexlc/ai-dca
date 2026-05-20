@@ -1762,6 +1762,136 @@ function todayShanghaiIsoDate() {
 // GET /api/holdings/nav-history?code=510300&from=YYYY-MM-DD&to=YYYY-MM-DD（或 &days=365）
 // 返回单只基金给定区间的日级 NAV 序列；caches.default 边缘缓存，TTL 区分历史段(24h) vs 含今天段(动态)。
 async function handleHoldingsNavHistory(request, env) {
+  return handleHoldingsNavHistorySingle(request, env);
+}
+
+// POST /api/holdings/nav-history
+// Body: { codes: string[], from?: 'YYYY-MM-DD', to?: 'YYYY-MM-DD', days?: number, force?: bool }
+// 返回：{ ok, from, to, items:[{code, ok, data?|error?}], successCount, failureCount, generatedAt }
+// 单 code 逻辑复用 GET 路径内部的 caches.default + KV 路径，Worker 内 mapLimit(6)。
+async function handleHoldingsNavHistoryBatch(request, env) {
+  let body = {};
+  try { body = await request.json(); } catch (_e) { body = {}; }
+  const rawCodes = Array.isArray(body?.codes) ? body.codes
+    : typeof body?.codes === 'string' ? body.codes.split(',')
+    : [];
+  const codes = Array.from(new Set(rawCodes.map((c) => String(c || '').trim()).filter((c) => /^\d{6}$/.test(c))));
+  if (!codes.length) return jsonResponse({ error: '请求中缺少有效的 6 位基金代码。' }, 400);
+  if (codes.length > 60) return jsonResponse({ error: '单次最多查询 60 个基金代码。' }, 400);
+
+  const today = todayShanghaiIsoDate();
+  const toRaw = typeof body?.to === 'string' ? body.to.trim() : '';
+  const toDate = /^\d{4}-\d{2}-\d{2}$/.test(toRaw) ? toRaw : today;
+  let fromDate;
+  const fromRaw = typeof body?.from === 'string' ? body.from.trim() : '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(fromRaw)) {
+    fromDate = fromRaw;
+  } else {
+    const daysNum = Number(body?.days);
+    const days = Number.isFinite(daysNum)
+      ? Math.max(1, Math.min(Math.floor(daysNum), 3650))
+      : 365;
+    fromDate = shiftIsoDateDays(toDate, -days);
+  }
+  if (fromDate > toDate) return jsonResponse({ error: 'from 必须早于或等于 to。' }, 400);
+  const forceBypass = body?.force === true || body?.force === 1
+    || body?.refresh === true || body?.refresh === 1;
+
+  const generatedAt = nowShanghaiIso();
+  const baseTtlMs = getHoldingsNavCacheTtlMs(env);
+  const includesToday = toDate >= today;
+  const ttlMs = includesToday
+    ? computeNonExchangeNavTtlMs(baseTtlMs, new Date())
+    : Math.max(baseTtlMs, 24 * 60 * 60 * 1000);
+  const origin = new URL(request.url).origin;
+
+  const items = await mapLimit(codes, 6, async (code) => {
+    try {
+      const cacheKey = await buildNavHistoryCacheKey(code, fromDate, toDate);
+      const cacheUrl = new URL(origin);
+      cacheUrl.pathname = '/api/holdings/nav-history';
+      cacheUrl.searchParams.set('code', code);
+      cacheUrl.searchParams.set('from', fromDate);
+      cacheUrl.searchParams.set('to', toDate);
+      cacheUrl.searchParams.set('cacheKey', cacheKey);
+      const cacheRequest = new Request(cacheUrl.toString(), { method: 'GET' });
+
+      if (forceBypass) {
+        try { await caches.default.delete(cacheRequest); } catch (_e) { /* ignore */ }
+      } else {
+        const cachedResponse = await caches.default.match(cacheRequest);
+        if (cachedResponse) {
+          try {
+            const cached = await cachedResponse.json();
+            if (isHoldingsPayloadFresh(cached, ttlMs)) {
+              return {
+                code,
+                ok: true,
+                data: { ...cached, cache: { ...(cached.cache || {}), hit: true, source: 'edge-cache', stale: false } }
+              };
+            }
+          } catch (_e) { /* fall through */ }
+        }
+      }
+
+      const navHistoryResult = await fetchFundNavHistoryWithMonthlyKv(code, fromDate, toDate, env, {
+        today,
+        ttlMs,
+        forceBypass,
+        generatedAt
+      });
+      const itemsList = navHistoryResult.items || [];
+      const expiresAt = epochMsToShanghaiIso(Date.parse(generatedAt) + ttlMs);
+      const itemPayload = {
+        ok: true,
+        code,
+        from: fromDate,
+        to: toDate,
+        count: itemsList.length,
+        items: itemsList,
+        generatedAt,
+        expiresAt,
+        cache: {
+          key: cacheKey,
+          hit: navHistoryResult.cache?.hit === true,
+          source: navHistoryResult.cache?.source || 'live',
+          stale: false,
+          ttlMs,
+          kv: navHistoryResult.cache?.kv || null
+        }
+      };
+      try {
+        const cachePut = new Response(JSON.stringify(itemPayload), {
+          headers: {
+            'content-type': 'application/json; charset=utf-8',
+            'cache-control': `max-age=${Math.floor(ttlMs / 1000)}`
+          }
+        });
+        await caches.default.put(cacheRequest, cachePut);
+      } catch (_e) { /* ignore cache put failures */ }
+      return { code, ok: true, data: itemPayload };
+    } catch (error) {
+      return {
+        code,
+        ok: false,
+        error: error instanceof Error ? error.message : `${code} 净值历史拉取失败。`
+      };
+    }
+  });
+
+  const successCount = items.filter((it) => it && it.ok === true).length;
+  return jsonResponse({
+    ok: true,
+    from: fromDate,
+    to: toDate,
+    items,
+    successCount,
+    failureCount: items.length - successCount,
+    generatedAt
+  });
+}
+
+async function handleHoldingsNavHistorySingle(request, env) {
   const url = new URL(request.url);
   const rawCode = String(url.searchParams.get('code') || '').trim();
   if (!/^\d{6}$/.test(rawCode)) {
@@ -2619,15 +2749,20 @@ export default {
     }
 
     if (url.pathname === '/api/holdings/nav-history') {
-      if (request.method !== 'GET') {
+      // GET ?code=XXXXXX            → 单 code（兼容）
+      // POST { codes:[], from?, to?, days?, force? }   → 批量
+      if (request.method !== 'GET' && request.method !== 'POST') {
         return jsonResponse({
           error: 'Method not allowed'
         }, 405, {
-          allow: 'GET, OPTIONS'
+          allow: 'GET, POST, OPTIONS'
         });
       }
 
       try {
+        if (request.method === 'POST') {
+          return await handleHoldingsNavHistoryBatch(request, env);
+        }
         return await handleHoldingsNavHistory(request, env);
       } catch (error) {
         return jsonResponse({
