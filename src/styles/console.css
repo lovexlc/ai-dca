@@ -69,6 +69,8 @@
   top: var(--brand-bar-h, 48px);
   align-self: flex-start;
   height: calc(100vh - var(--brand-bar-h, 48px));
+  max-height: calc(100vh - var(--brand-bar-h, 48px));
+  overflow: hidden;
   border-right: 1px solid var(--console-border);
   background: var(--console-sidebar-bg);
   display: flex;
