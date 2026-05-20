@@ -166,7 +166,7 @@ export function FundSwitchAnalysisExperience() {
         </div>
         <div className="mt-1 text-xs leading-relaxed text-slate-500">
           自动从「成交流水」中已标注 <span className="font-semibold text-slate-600">基金切换</span>（SELL ↔ BUY 配对）的记录推导链路，按日期顺序串联。
-          链路收益率 = 每段净值乘积 − 1；未切换基准 = 一直持有首段基金到链路终点。
+          链路收益率 = 每段价格/净值乘积 − 1；未切换基准 = 一直持有首段基金到链路终点。场内基金以场内交易价计算，场外基金以净值计算。
         </div>
       </div>
 
@@ -192,6 +192,9 @@ export function FundSwitchAnalysisExperience() {
             const isExpanded = expanded.has(chain.id);
             const legCount = (chain.legs || []).length;
             const pathSummary = chain.name || '尚未配置任何段';
+            const firstSegForBaseline = (metrics.segments || [])[0] || null;
+            const baselineKind = firstSegForBaseline ? (firstSegForBaseline.kind || 'otc') : 'otc';
+            const baselineLatestLabel = baselineKind === 'exchange' ? '最新价格' : '最新净值';
 
             return (
               <div
@@ -240,6 +243,9 @@ export function FundSwitchAnalysisExperience() {
                           : seg.segReturn > 0 ? 'text-red-600' : seg.segReturn < 0 ? 'text-emerald-600' : 'text-slate-700';
                         const buyTx = txById.get(seg.buyTxId);
                         const kind = seg.kind || (buyTx && buyTx.kind) || 'otc';
+                        const isExchange = kind === 'exchange';
+                        const latestLabel = isExchange ? '最新价格' : '最新净值';
+                        const isOpenSeg = seg.segEndSource === 'latestNav';
                         return (
                           <div key={i} className="rounded-xl border border-slate-100 bg-slate-50/40 px-3 py-2.5">
                             <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -251,10 +257,14 @@ export function FundSwitchAnalysisExperience() {
                             </div>
                             <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 pl-1 text-[11px] text-slate-500">
                               <span>买：{seg.buyDate || '—'} @ {formatNav(seg.buyPrice)}</span>
-                              <span>
-                                卖：{seg.sellDate || '—'} @ {formatNav(seg.sellPrice)}
-                                {seg.segEndSource === 'latestNav' ? <span className="ml-1 rounded bg-amber-50 px-1 text-[10px] text-amber-600">最新净值</span> : null}
-                              </span>
+                              {isOpenSeg ? (
+                                <span>
+                                  {latestLabel} @ {formatNav(seg.sellPrice)}
+                                  <span className="ml-1 rounded bg-amber-50 px-1 text-[10px] text-amber-600">持有中</span>
+                                </span>
+                              ) : (
+                                <span>卖：{seg.sellDate || '—'} @ {formatNav(seg.sellPrice)}</span>
+                              )}
                               <span className={cx('font-semibold tabular-nums', segTone)}>变化 {seg.valid ? formatSignedPercent(seg.segReturn * 100) : '—'}</span>
                             </div>
                           </div>
@@ -293,7 +303,7 @@ export function FundSwitchAnalysisExperience() {
                           </div>
                           <div className="mt-0.5 text-[11px] tabular-nums text-slate-400">
                             {metrics.valid ? `${formatNav(metrics.baselineStartPrice)} → ${formatNav(metrics.baselineEndPrice)}` : '—'}
-                            {metrics.baselineEndSource === 'latestNav' ? <span className="ml-1 rounded bg-amber-50 px-1 text-[10px] text-amber-600">最新净值</span> : null}
+                            {metrics.baselineEndSource === 'latestNav' ? <span className="ml-1 rounded bg-amber-50 px-1 text-[10px] text-amber-600">{baselineLatestLabel}</span> : null}
                             {metrics.baselineAlignedToChainEnd ? <span className="ml-1 rounded bg-emerald-50 px-1 text-[10px] text-emerald-600">完美对齐</span> : null}
                           </div>
                         </div>
