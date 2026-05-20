@@ -14,7 +14,7 @@ export const PRIMARY_TAB_META = {
   holdings: { label: '持仓总览', hrefKey: 'holdings' },
   newPlan: { label: '新建计划', hrefKey: 'newPlan' },
   notify: { label: '通知', hrefKey: 'notify' },
-  backup: { label: '数据同步 / 备份', hrefKey: 'backup' }
+  backup: { label: '数据同步', hrefKey: 'backup' }
 };
 
 // Legacy ?tab=home / ?tab=dca 进来时映射到 tradePlans 的对应二级视图。

@@ -1,6 +1,6 @@
 // WebDAV CORS Proxy — Cloudflare Worker
 //
-// 用途：给 ai-dca 纯前端的「数据同步 / 备份」tab 做 CORS 代理，
+// 用途：给 ai-dca 纯前端的「数据同步」tab 做 CORS 代理，
 //       让浏览器能跨域访问坚果云、Nextcloud、Infomaniak 等不开 CORS 的 WebDAV。
 //
 // 调用格式（生产环境，路由绑定在 tools.freebacktrack.tech）：
