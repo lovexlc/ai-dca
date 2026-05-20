@@ -291,18 +291,19 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
           details={(
             <div className="space-y-3">
               <p>部分策略内容由公开的金渐成公众号文章整理总结而来。本工具与金渐成本人及其公众号无官方关联，不构成投资建议。仅供个人记录与学习使用，投资有风险、请独立判断。</p>
-              <a
-                className="inline-flex min-h-9 items-center justify-center rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 transition-colors hover:border-amber-400 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 whitespace-nowrap"
-                href="https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEUUA9qDZ5H_XnPECnDzzMGTTIc2b_5_gAC8B4AAtk5cFTHSrIufYF2bDsE.jpg"
-                target="_blank"
-                rel="noreferrer"
-                onClick={(e) => e.stopPropagation()}
-              >
-                点击加入群聊
-              </a>
             </div>
           )}
         />
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <a
+            className="inline-flex min-h-9 items-center justify-center rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 transition-colors hover:border-indigo-400 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2 whitespace-nowrap"
+            href="https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEUUA9qDZ5H_XnPECnDzzMGTTIc2b_5_gAC8B4AAtk5cFTHSrIufYF2bDsE.jpg"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            点击加入群聊
+          </a>
+        </div>
       </PageHero>
 
       <main className="mx-auto flex max-w-6xl flex-col gap-10 px-5 py-8 sm:px-6">
