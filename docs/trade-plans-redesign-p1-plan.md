@@ -13,7 +13,7 @@
 - [done] 交易计划 tab 面板增加 200ms 淡入动效
 - [done] 计划卡片直出测试通知 / 删除快捷图标，保留更多菜单
 - [done] 运行 focused lint 并检查 diff
-- [in_progress] 提交并推送
+- [done] 提交并推送
 
 ## 关键决策
 
