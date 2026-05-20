@@ -117,6 +117,7 @@ function buildPlanRows(planList = []) {
   return planList.flatMap((plan) => {
     const computed = buildPlan(plan);
     const displayPlanName = resolveDisplayPlanName(plan);
+    const totalLayers = computed.layers.length;
     return computed.layers.map((layer, index) => {
       const order = index + 1;
       return ({
@@ -131,6 +132,17 @@ function buildPlanRows(planList = []) {
       nextExecutionLabel: '价格满足条件后提醒',
       statusLabel: order === 1 ? '待首仓' : '监控中',
       statusTone: order === 1 ? 'indigo' : 'slate',
+      cardTypeLabel: '加仓',
+      cardTone: 'indigo',
+      progressLabel: `${totalLayers}层策略 · 第 ${Math.min(order + 1, totalLayers)}/${totalLayers} 层待执行`,
+      progressValue: totalLayers > 1 ? Math.min(Math.max((order - 1) / (totalLayers - 1), 0), 1) : 0,
+      progressCaption: `当前监控：${resolveLayerTriggerLabel({ ...plan }, { ...layer, order }, totalLayers)}`,
+      progressItems: computed.layers.slice(0, 4).map((item, itemIndex) => ({
+        label: `第${itemIndex + 1}层`,
+        detail: Number.isFinite(Number(item.drawdown)) ? `-${Number(item.drawdown).toFixed(0)}%` : '',
+        status: itemIndex + 1 < order ? '已执行' : itemIndex + 1 === order ? '待执行' : '待执行'
+      })),
+      footerLabel: `下次执行：${order === 1 ? '价格满足后' : '继续监控'} · 预计买入 ${formatCurrency(layer.amount, '¥ ')}`,
       actionLabel: '查看策略',
       actionKey: 'home',
       detailTitle: `${displayPlanName} ${layer.label}`,
@@ -172,6 +184,16 @@ function buildDcaRows(dcaState, now = new Date(), planList = readPlanList()) {
       nextExecutionLabel,
       statusLabel: '待执行',
       statusTone: 'emerald',
+      cardTypeLabel: '定投',
+      cardTone: 'emerald',
+      progressLabel: `${projection.cadenceLabel} · 第 1/∞ 期`,
+      progressValue: 0.35,
+      progressCaption: `单次金额 ${formatCurrency(dcaState.recurringInvestment, '¥ ')}`,
+      progressItems: [
+        { label: '已设置', detail: dcaState.frequency || '定投', status: '已启用' },
+        { label: '下一期', detail: nextExecutionLabel, status: '待执行' }
+      ],
+      footerLabel: `下期扣款：${nextExecutionLabel} · 本期金额 ${formatCurrency(dcaState.recurringInvestment, '¥ ')}`,
       actionLabel: '查看定投',
       actionKey: 'dca',
       detailTitle: `${projection.effectiveSymbol} 定投计划`,
@@ -221,6 +243,17 @@ function buildSellPlanRows(sellPlanList = []) {
         nextExecutionLabel: '价格达到后提醒',
         statusLabel: order === 1 ? '首档待触发' : '监控中',
         statusTone: order === 1 ? 'rose' : 'slate',
+        cardTypeLabel: '卖出',
+        cardTone: 'amber',
+        progressLabel: `${computed.layers.length}档止盈 · 第 0/${computed.layers.length} 档触发`,
+        progressValue: computed.layers.length > 1 ? Math.min(Math.max((order - 1) / (computed.layers.length - 1), 0), 1) : 0,
+        progressCaption: `当前目标：盈利 ${gainPct}`,
+        progressItems: computed.layers.slice(0, 4).map((item, itemIndex) => ({
+          label: `第${itemIndex + 1}档`,
+          detail: `+${Number(item.gainPct || 0).toFixed(0)}%`,
+          status: '待触发'
+        })),
+        footerLabel: `持仓成本：${formatCurrency(plan.holdingCost, '$ ')} · 触发价 ${priceText}`,
         actionLabel: '查看卖出',
         actionKey: 'sell',
         detailTitle: `${displayName} · 第 ${order} 档`,
@@ -253,15 +286,15 @@ function sortRows(rows = []) {
 }
 
 function buildPreviewRows(rows = []) {
-  const seenTypes = new Set();
+  const seenSources = new Set();
 
   return rows.filter((row) => {
-    const typeKey = `${row.actionKey}:${row.typeLabel}`;
-    if (seenTypes.has(typeKey)) {
+    const sourceKey = `${row.sourceType}:${row.sourceId || row.id}`;
+    if (seenSources.has(sourceKey)) {
       return false;
     }
 
-    seenTypes.add(typeKey);
+    seenSources.add(sourceKey);
     return true;
   });
 }
