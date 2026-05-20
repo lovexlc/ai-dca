@@ -26,6 +26,35 @@ export function fixedDrawdownBlueprint(assetType = 'stock') {
   }));
 }
 
+// 高级自定义回撤蓝图：按用户调节的档数 / 首跌幅 / 阶梯步长 / 倍数模式动态生成。
+// 与UI 面板参数一一对应：仅在 customDrawdown.enabled 为 true 时代替 fixedDrawdownBlueprint。
+export function buildCustomDrawdownBlueprint({
+  levels = 6,
+  firstDrop = 10,
+  stepDrop = 5,
+  multiplierMode = 'increment',
+  multiplierBase = 1,
+  multiplierStep = 0.5
+} = {}) {
+  const normalizedLevels = Math.max(4, Math.min(10, Math.round(Number(levels) || 6)));
+  const normalizedFirst = Math.max(1, Math.min(30, Number(firstDrop) || 10));
+  const normalizedStep = Math.max(0, Math.min(15, Number(stepDrop) || 5));
+  const base = Math.max(0.1, Number(multiplierBase) || 1);
+  const step = Math.max(0, Number(multiplierStep) || 0.5);
+  const items = [];
+  for (let i = 0; i < normalizedLevels; i += 1) {
+    const drawdown = i === 0 ? normalizedFirst : normalizedFirst + normalizedStep * i;
+    const multiplier = multiplierMode === 'fixed' ? base : base + step * i;
+    const label = i === 0
+      ? `首档 -${drawdown.toFixed(1)}%`
+      : i === normalizedLevels - 1
+        ? `极端档 -${drawdown.toFixed(1)}%`
+        : `第 ${i + 1} 档 -${drawdown.toFixed(1)}%`;
+    items.push({ drawdown, multiplier, label });
+  }
+  return items;
+}
+
 
 export function buildMovingAverageValues(bars = [], period = 5) {
   const values = [];
@@ -141,7 +170,7 @@ export function buildMovingAverageTemplatePlan(state) {
   };
 }
 
-export function buildFixedDrawdownPlan(state, explicitAssetType = '') {
+export function buildFixedDrawdownPlan(state, explicitAssetType = '', customDrawdown = null) {
   const peakPrice = Math.max(Number(state.basePrice) || 0, 0);
   const totalBudget = Math.max(Number(state.totalBudget) || 0, 0);
   const cashReservePct = Math.max(Number(state.cashReservePct) || 0, 0);
@@ -149,7 +178,9 @@ export function buildFixedDrawdownPlan(state, explicitAssetType = '') {
   const reserveCapital = totalBudget - investableCapital;
   const assetType = explicitAssetType || getAssetType(state.symbol);
   const params = getStrategyParams(state.symbol);
-  const blueprint = fixedDrawdownBlueprint(assetType);
+  const blueprint = customDrawdown && customDrawdown.enabled
+    ? buildCustomDrawdownBlueprint(customDrawdown)
+    : fixedDrawdownBlueprint(assetType);
   const totalWeight = blueprint.reduce((sum, layer) => sum + layer.multiplier, 0) || 1;
   const layers = blueprint.map((layer, index) => {
     const weight = layer.multiplier;

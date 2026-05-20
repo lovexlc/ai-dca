@@ -55,6 +55,18 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   });
   const [isSaving, setIsSaving] = useState(false);
   const autoSeedRef = useRef('');
+  const isBasePriceDirtyRef = useRef(false);
+  const isRiskPriceDirtyRef = useRef(false);
+  const isNameDirtyRef = useRef(false);
+  const [customDrawdown, setCustomDrawdown] = useState({
+    enabled: false,
+    levels: 6,
+    firstDrop: 10,
+    stepDrop: 5,
+    multiplierMode: 'increment',
+    multiplierBase: 1,
+    multiplierStep: 0.5
+  });
   const [extraQuote, setExtraQuote] = useState({ symbol: '', price: 0, currency: '', asOf: '', loading: false, error: '' });
   const [screeningAnswers, setScreeningAnswers] = useState(() => readPlanState().screeningAnswers || {});
   const [planStep, setPlanStep] = useState(1);
@@ -90,6 +102,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     if (!sym || !EXTRA_SYMBOL_CODES.has(sym)) return;
     if (extraQuote.symbol !== sym || !(extraQuote.price > 0)) return;
     if (Number(state.basePrice) > 0) return;
+    if (isBasePriceDirtyRef.current) return;
     setState((current) => ({ ...current, basePrice: extraQuote.price }));
   }, [extraQuote.symbol, extraQuote.price, state.symbol, state.basePrice]);
 
@@ -238,11 +251,16 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       return;
     }
 
-    setState((current) => ({
-      ...current,
-      basePrice: selectedStrategy === 'peak-drawdown' ? derivedStageHigh : derivedMa120,
-      riskControlPrice: selectedStrategy === 'peak-drawdown' ? current.riskControlPrice : derivedMa200
-    }));
+    setState((current) => {
+      const next = { ...current };
+      if (!isBasePriceDirtyRef.current) {
+        next.basePrice = selectedStrategy === 'peak-drawdown' ? derivedStageHigh : derivedMa120;
+      }
+      if (!isRiskPriceDirtyRef.current && selectedStrategy === 'ma120-risk') {
+        next.riskControlPrice = derivedMa200;
+      }
+      return next;
+    });
     autoSeedRef.current = syncKey;
   }, [benchmarkFund?.code, derivedMa120, derivedMa200, derivedStageHigh, isSelectedDailySeriesReady, selectedStrategy]);
 
@@ -264,9 +282,34 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     [selectedStrategy]
   );
   const computed = useMemo(
-    () => (selectedStrategy === 'peak-drawdown' ? buildFixedDrawdownPlan(state, selectedAssetType) : buildMovingAverageTemplatePlan(state)),
-    [selectedAssetType, selectedStrategy, state]
+    () => (selectedStrategy === 'peak-drawdown'
+      ? buildFixedDrawdownPlan(state, selectedAssetType, customDrawdown)
+      : buildMovingAverageTemplatePlan(state)),
+    [selectedAssetType, selectedStrategy, state, customDrawdown]
   );
+
+  useEffect(() => {
+    if (isNameDirtyRef.current) return;
+    const code = String(state.symbol || '').trim();
+    if (!code) return;
+    const entry = marketEntries.find((e) => e.code === code) || null;
+    const extra = findExtraSymbol(code);
+    const codeLabel = formatMarketCode(code);
+    const displayName = entry ? (entry.name || entry.display_name || '') : (extra ? extra.name : '');
+    const labelLeft = displayName && displayName !== codeLabel ? `${codeLabel} ${displayName}` : codeLabel;
+    let suffix = '';
+    if (selectedStrategy === 'ma120-risk') {
+      suffix = '120日均线策略';
+    } else if (customDrawdown.enabled) {
+      suffix = `${customDrawdown.levels}档固定回撤 (首-${customDrawdown.firstDrop}% 步-${customDrawdown.stepDrop}%)`;
+    } else {
+      suffix = `${computed.layers.length || 8}档固定回撤`;
+    }
+    const recommended = `${labelLeft} · ${suffix}`;
+    if (recommended && recommended !== state.name) {
+      setState((current) => ({ ...current, name: recommended }));
+    }
+  }, [state.symbol, selectedStrategy, customDrawdown.enabled, customDrawdown.levels, customDrawdown.firstDrop, customDrawdown.stepDrop, marketEntries, computed.layers.length, state.name]);
 
   function goToPlanStep(nextStep) {
     const target = Math.max(1, Math.min(4, Number(nextStep) || 1));
@@ -415,10 +458,18 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                       <div className="mb-2 text-xs font-semibold text-slate-400">纳指 ETF 下拉 · {filteredMarketEntries.length}/{marketEntries.length}</div>
                       <SelectField
                       className="min-w-0"
-                      options={filteredMarketEntries.map((entry) => ({
-                        label: formatMarketLabel(entry),
-                        value: entry.code
-                      }))}
+                      options={(() => {
+                        const opts = filteredMarketEntries.map((entry) => ({
+                          label: formatMarketLabel(entry),
+                          value: entry.code
+                        }));
+                        const sym = String(state.symbol || '').trim();
+                        if (sym && !opts.some((o) => o.value === sym)) {
+                          const extra = findExtraSymbol(sym);
+                          opts.unshift({ label: extra ? `${sym} · ${extra.name}（美股快选）` : sym, value: sym });
+                        }
+                        return opts;
+                      })()}
                       value={state.symbol}
                       onChange={(event) => setState((current) => ({ ...current, symbol: event.target.value }))}
                       />
@@ -466,13 +517,19 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                     <NumberInput step="0.01" value={state.totalBudget} onChange={(event) => setState((current) => ({ ...current, totalBudget: Number(event.target.value) || 0 }))} />
                   </Field>
                   <Field label={selectedStrategy === 'peak-drawdown' ? '阶段高点' : '120日线触发价'}>
-                    <NumberInput step="0.001" value={state.basePrice} onChange={(event) => setState((current) => ({ ...current, basePrice: Number(event.target.value) || 0 }))} />
+                    <div className="flex items-center gap-2">
+                      <NumberInput className="flex-1" step="0.001" value={state.basePrice} onChange={(event) => { isBasePriceDirtyRef.current = true; setState((current) => ({ ...current, basePrice: Number(event.target.value) || 0 })); }} />
+                      <button type="button" title="重置为系统推荐值" className="shrink-0 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" onClick={() => { isBasePriceDirtyRef.current = false; const sym = String(state.symbol || '').trim().toUpperCase(); const usingExtra = EXTRA_SYMBOL_CODES.has(sym) && extraQuote.symbol === sym && extraQuote.price > 0; const next = selectedStrategy === 'peak-drawdown' ? (usingExtra ? extraQuote.price : derivedStageHigh) : (usingExtra ? extraQuote.price : derivedMa120); setState((current) => ({ ...current, basePrice: Number(next) || 0 })); }}>推荐</button>
+                    </div>
                   </Field>
                 </div>
 
                 {selectedStrategy === 'ma120-risk' ? (
                   <Field label="200日线风控价" helper="当它足够低于120日线深水层时，会进入最后一档。">
-                    <NumberInput step="0.001" value={state.riskControlPrice} onChange={(event) => setState((current) => ({ ...current, riskControlPrice: Number(event.target.value) || 0 }))} />
+                    <div className="flex items-center gap-2">
+                      <NumberInput className="flex-1" step="0.001" value={state.riskControlPrice} onChange={(event) => { isRiskPriceDirtyRef.current = true; setState((current) => ({ ...current, riskControlPrice: Number(event.target.value) || 0 })); }} />
+                      <button type="button" title="重置为系统推荐值" className="shrink-0 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" onClick={() => { isRiskPriceDirtyRef.current = false; setState((current) => ({ ...current, riskControlPrice: Number(derivedMa200) || 0 })); }}>推荐</button>
+                    </div>
                   </Field>
                 ) : null}
 
@@ -595,16 +652,53 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
               </div>
               </div>
 
+              {selectedStrategy === 'peak-drawdown' ? (
+                <details className="mt-6 rounded-[24px] border border-indigo-200 bg-indigo-50/40 p-4">
+                  <summary className="cursor-pointer text-sm font-semibold text-indigo-700">高级自定义固定回撤参数</summary>
+                  <div className="mt-4 space-y-4">
+                    <label className="flex items-center gap-2 text-sm font-semibold text-indigo-900">
+                      <input type="checkbox" className="h-4 w-4 accent-indigo-600" checked={customDrawdown.enabled} onChange={(e) => setCustomDrawdown((c) => ({ ...c, enabled: e.target.checked }))} />
+                      开启自定义参数（关闭则使用系统推荐档位）
+                    </label>
+                    <div className={cx('grid gap-4 md:grid-cols-2', !customDrawdown.enabled && 'opacity-50 pointer-events-none')}>
+                      <Field label="建仓总档数" rightLabel={`${customDrawdown.levels} 档`} helper="范围 4 ~ 10 档">
+                        <input type="range" min="4" max="10" step="1" className="h-2 w-full accent-indigo-600" value={customDrawdown.levels} onChange={(e) => setCustomDrawdown((c) => ({ ...c, levels: Number(e.target.value) || 6 }))} />
+                      </Field>
+                      <Field label="首档下跌触发" rightLabel={`-${customDrawdown.firstDrop}%`} helper="范围 -5% ~ -15%">
+                        <input type="range" min="5" max="15" step="1" className="h-2 w-full accent-indigo-600" value={customDrawdown.firstDrop} onChange={(e) => setCustomDrawdown((c) => ({ ...c, firstDrop: Number(e.target.value) || 10 }))} />
+                      </Field>
+                      <Field label="阶梯步长" rightLabel={`-${customDrawdown.stepDrop}%`} helper="范围 -2% ~ -8%">
+                        <input type="range" min="2" max="8" step="1" className="h-2 w-full accent-indigo-600" value={customDrawdown.stepDrop} onChange={(e) => setCustomDrawdown((c) => ({ ...c, stepDrop: Number(e.target.value) || 5 }))} />
+                      </Field>
+                      <Field label="倍数模式" helper="递增：每档递加；固定：每档同倍">
+                        <SelectField options={[{ label: '递增 (1.0x → 2.0x)', value: 'increment' }, { label: '固定 (1.0x)', value: 'fixed' }]} value={customDrawdown.multiplierMode} onChange={(e) => setCustomDrawdown((c) => ({ ...c, multiplierMode: e.target.value }))} />
+                      </Field>
+                    </div>
+                    {customDrawdown.enabled ? (
+                      <div className="rounded-2xl border border-indigo-100 bg-white px-4 py-3 text-xs text-slate-600">
+                        当前生成 <strong className="text-indigo-700">{computed.layers.length}</strong> 档：首档 -{customDrawdown.firstDrop}%，每档增加 {customDrawdown.stepDrop}%跌幅；倍数 {customDrawdown.multiplierMode === 'fixed' ? '每档同 1.0x' : `1.0x → ${(1 + 0.5 * (customDrawdown.levels - 1)).toFixed(1)}x`}。右侧预览图与下方档位表会实时联动。
+                      </div>
+                    ) : null}
+                  </div>
+                </details>
+              ) : null}
+
               <details className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
                 <summary className="cursor-pointer text-sm font-semibold text-slate-700">高级价格表</summary>
                 <div className="mt-5 space-y-5">
                   <div className="grid gap-4 md:grid-cols-2">
                     <Field label={selectedStrategy === 'peak-drawdown' ? '阶段高点' : '120日线触发价'}>
-                      <NumberInput step="0.001" value={Number(state.basePrice || 0).toFixed(3)} onChange={(event) => setState((current) => ({ ...current, basePrice: Number(event.target.value) || 0 }))} />
+                      <div className="flex items-center gap-2">
+                        <NumberInput className="flex-1" step="0.001" value={Number(state.basePrice || 0).toFixed(3)} onChange={(event) => { isBasePriceDirtyRef.current = true; setState((current) => ({ ...current, basePrice: Number(event.target.value) || 0 })); }} />
+                        <button type="button" title="重置为系统推荐值" className="shrink-0 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" onClick={() => { isBasePriceDirtyRef.current = false; const sym = String(state.symbol || '').trim().toUpperCase(); const usingExtra = EXTRA_SYMBOL_CODES.has(sym) && extraQuote.symbol === sym && extraQuote.price > 0; const next = selectedStrategy === 'peak-drawdown' ? (usingExtra ? extraQuote.price : derivedStageHigh) : (usingExtra ? extraQuote.price : derivedMa120); setState((current) => ({ ...current, basePrice: Number(next) || 0 })); }}>推荐</button>
+                      </div>
                     </Field>
                     {selectedStrategy === 'ma120-risk' ? (
                       <Field label="200日线风控价" helper="当它足够低于120日线深水层时，会进入最后一档。">
-                        <NumberInput step="0.001" value={Number(state.riskControlPrice || 0).toFixed(3)} onChange={(event) => setState((current) => ({ ...current, riskControlPrice: Number(event.target.value) || 0 }))} />
+                        <div className="flex items-center gap-2">
+                          <NumberInput className="flex-1" step="0.001" value={Number(state.riskControlPrice || 0).toFixed(3)} onChange={(event) => { isRiskPriceDirtyRef.current = true; setState((current) => ({ ...current, riskControlPrice: Number(event.target.value) || 0 })); }} />
+                          <button type="button" title="重置为系统推荐值" className="shrink-0 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" onClick={() => { isRiskPriceDirtyRef.current = false; setState((current) => ({ ...current, riskControlPrice: Number(derivedMa200) || 0 })); }}>推荐</button>
+                        </div>
                       </Field>
                     ) : null}
                   </div>
@@ -654,12 +748,16 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
             <Card className="min-w-0 overflow-hidden">
               <SectionHeading eyebrow="第四步" title="确认计划名称" />
               <div className="mt-5">
-                <Field label="策略名称" helper="创建后会出现在交易计划列表中。">
-                  <TextInput
-                    placeholder="例如：513100 固定回撤计划"
-                    value={state.name || ''}
-                    onChange={(event) => setState((current) => ({ ...current, name: event.target.value }))}
-                  />
+                <Field label="策略名称" helper="创建后会出现在交易计划列表中；系统会根据标的与策略自动生成推荐名称。">
+                  <div className="flex items-center gap-2">
+                    <TextInput
+                      className="flex-1"
+                      placeholder="例如：513100 固定回撤计划"
+                      value={state.name || ''}
+                      onChange={(event) => { isNameDirtyRef.current = true; setState((current) => ({ ...current, name: event.target.value })); }}
+                    />
+                    <button type="button" title="重新使用系统推荐名称" className="shrink-0 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" onClick={() => { isNameDirtyRef.current = false; setState((current) => ({ ...current, name: '' })); }}>推荐</button>
+                  </div>
                 </Field>
               </div>
             </Card>
