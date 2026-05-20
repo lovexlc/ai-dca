@@ -254,7 +254,7 @@ export function BackupExperience({ links, embedded = false }) {
               <div className="flex flex-col gap-1">
                 <button
                   type="button"
-                  className={cx(secondaryButtonClass)}
+                  className={cx(subtleButtonClass)}
                   onClick={handleSaveConfig}
                   disabled={Boolean(saveDisabledReason)}
                   title={saveDisabledReason || undefined}
