@@ -17,9 +17,9 @@ function SubViewLoadingFallback() {
 }
 
 const MOBILE_TABS = [
-  { id: 'analysis', label: '复盘', icon: History },
   { id: 'opportunity', label: '机会', icon: Sparkles },
-  { id: 'config', label: '规则', icon: Settings2 }
+  { id: 'config', label: '规则', icon: Settings2 },
+  { id: 'analysis', label: '复盘', icon: History }
 ];
 
 export function FundSwitchExperience({ links, inPagesDir = false, embedded = false } = {}) {
@@ -31,7 +31,7 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
         <div>
           <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Fund Switch</div>
           <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-900">基金切换</h1>
-          <p className="mt-1 text-sm text-slate-500">机会概览、规则配置与复盘分析 · 当前移动视图：{mobileTab === 'opportunity' ? '机会' : mobileTab === 'config' ? '规则' : '复盘'}</p>
+          <p className="mt-1 text-sm text-slate-500">机会、规则、复盘</p>
         </div>
       </Card>
       {/* 移动端子 tab；lg+ 隐藏，PC 直接两列 */}
@@ -60,7 +60,7 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
         {/* 左：机会 / 规则 */}
         <div className={cx('min-w-0', mobileTab === 'analysis' ? 'hidden lg:block' : '')}>
           <Suspense fallback={<SubViewLoadingFallback />}>
-            <SwitchStrategyExperienceLazy links={links} inPagesDir={inPagesDir} embedded initialView={mobileTab === 'config' ? 'config' : 'opportunity'} />
+            <SwitchStrategyExperienceLazy links={links} inPagesDir={inPagesDir} embedded hideViewTabs initialView={mobileTab === 'config' ? 'config' : 'opportunity'} />
           </Suspense>
         </div>
         {/* 右：复盘（PC 端 sticky 占满视口内可见区） */}

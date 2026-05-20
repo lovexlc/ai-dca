@@ -2065,7 +2065,6 @@ export function MarketsExperience() {
         <Card className="lg:hidden">
           <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">移动端研究入口</div>
           <div className="mt-2 text-base font-bold text-slate-900">研究助手</div>
-          <p className="mt-1 text-sm text-slate-500">从底部面板展开研究助手；自选和板块列表已收起到桌面侧栏。</p>
           <button type="button" className={cx(primaryButtonClass, 'mt-4 w-full')} onClick={() => setResearchMode('conversation')}>
             打开研究助手
           </button>
@@ -2098,7 +2097,7 @@ export function MarketsExperience() {
 
       {/* Backdrop when conversation */}
       {researchMode === 'conversation' && (
-        <div className="fixed inset-0 z-30 bg-black/20 lg:hidden" onClick={() => setResearchMode('peek')} />
+        <div className="fixed inset-0 z-30 bg-white lg:hidden" onClick={() => setResearchMode('peek')} />
       )}
       {/* Research panel: PC = sticky aside / Mobile = bottom sheet */}
       <aside
@@ -2107,12 +2106,13 @@ export function MarketsExperience() {
         className={cx(
           'bg-white',
           'lg:relative lg:z-auto lg:order-3 lg:flex lg:flex-col lg:gap-3 lg:bg-transparent lg:sticky lg:top-2 lg:bottom-auto lg:h-auto lg:overflow-visible lg:rounded-none lg:border-t-0 lg:shadow-none',
-          'fixed inset-x-0 bottom-0 z-40 flex flex-col overflow-hidden rounded-t-2xl border-t border-[#e8eaed] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] [transition:height_300ms_ease-out]'
+          'fixed inset-x-0 bottom-0 z-40 flex flex-col overflow-hidden border-t border-[#e8eaed] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] [transition:height_300ms_ease-out]',
+          researchMode === 'conversation' ? 'top-0 rounded-none' : 'rounded-t-2xl'
         )}
         style={isMobile && !isDraggingRef.current ? {
           height: (
             researchMode === 'conversation'
-              ? Math.max((vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844)) - 80, 240)
+              ? (vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844))
               : researchMode === 'search'
                 ? (vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844))
                 : 130
@@ -2151,7 +2151,7 @@ export function MarketsExperience() {
             // 跟手改 height：上拉(dy<0)长高，下滑(dy>0)变矮；边界外做阻尼
             const vh = (vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844));
             const peekH = 130;
-            const fullH = Math.max(vh - 80, 240);
+            const fullH = vh;
             let newH = r.startH - dy;
             if (newH > fullH) newH = fullH + Math.min((newH - fullH) * 0.3, 36);
             if (newH < peekH) newH = peekH - Math.min((peekH - newH) * 0.3, 36);
@@ -2173,7 +2173,7 @@ export function MarketsExperience() {
               a.style.transition = '';
               // 显式写一次目标 height 触发 className 上的 height transition；React render 后会写相同值，不打断动画
               const vh = (vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844));
-              const target = next === 'conversation' ? Math.max(vh - 80, 240) : next === 'search' ? vh : 130;
+              const target = next === 'conversation' ? vh : next === 'search' ? vh : 130;
               a.style.height = target + 'px';
             }
             isDraggingRef.current = false;
@@ -2189,7 +2189,7 @@ export function MarketsExperience() {
             if (a) {
               a.style.transition = '';
               const vh = (vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844));
-              const target = researchMode === 'conversation' ? Math.max(vh - 80, 240) : researchMode === 'search' ? vh : 130;
+              const target = researchMode === 'conversation' ? vh : researchMode === 'search' ? vh : 130;
               a.style.height = target + 'px';
             }
             isDraggingRef.current = false;

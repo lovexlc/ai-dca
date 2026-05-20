@@ -113,7 +113,6 @@ export function NotifyExperience({ embedded = false }) {
     : [];
   const barkConfigured = Boolean(notifyStatus?.configured?.bark);
   const androidConfigured = pairedAndroidDevices.length > 0;
-  const shouldShowAndroidOnboarding = pairedAndroidDevices.length === 0;
 
   const summary = useMemo(() => {
     const channelLabels = [];
@@ -601,9 +600,8 @@ export function NotifyExperience({ embedded = false }) {
                 </div>
               </div>
 
-              {shouldShowAndroidOnboarding ? (
-                <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
-                  <Field label="Android 推送链接、消息推送 ID 或配对码" helper="可以粘贴 Android App 里的完整测试 URL，也可以粘贴 android- 开头的消息推送 ID；系统会自动识别。">
+              <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+                  <Field label="Android 设备 ID / 测试 URL" helper="粘贴 Android App 里的设备 ID 或完整测试 URL，系统会自动识别。">
                     <TextInput
                       value={androidPairingCode}
                       placeholder="粘贴完整测试 URL 或 android- 开头 ID"
@@ -618,7 +616,6 @@ export function NotifyExperience({ embedded = false }) {
                     {androidPairingCode.trim() ? null : <span className="text-xs text-slate-400">粘贴 Android 链接或 ID 后可绑定</span>}
                   </div>
                 </div>
-              ) : null}
 
               <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
                 <div className="flex items-center justify-between gap-3">
@@ -663,9 +660,10 @@ export function NotifyExperience({ embedded = false }) {
                     ))}
                   </div>
                 ) : (
-                  <p className="mt-4 text-sm leading-6 text-slate-500">
-                    当前浏览器还没有关联 Android 设备。先打开 Android App，复制灰色框里的消息推送 ID，或复制完整测试 URL，再回到这里完成绑定。
-                  </p>
+                  <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center">
+                    <div className="text-sm font-semibold text-slate-900">未绑定 Android 设备</div>
+                    <div className="mt-1 text-xs text-slate-400">粘贴设备 ID 后绑定</div>
+                  </div>
                 )}
               </div>
             </div>

@@ -283,7 +283,7 @@ async function loadEtfLatestPrice(code, { inPagesDir = false } = {}) {
   };
 }
 
-export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false, initialView = 'opportunity' } = {}) {
+export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false, initialView = 'opportunity', hideViewTabs = false } = {}) {
   const [prefs, setPrefs] = useState(readPrefs);
   // 「记录此次切换」快捷入口的 Modal 表单状态。
   // 为 null 时不渲染 Modal；设为表单对象后开启录入。
@@ -1173,7 +1173,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
   return (
     <div className="space-y-6">
-      <div className="inline-flex gap-1 rounded-full bg-slate-100 p-1" aria-label="基金切换视图">
+      <div className={cx('inline-flex gap-1 rounded-full bg-slate-100 p-1', hideViewTabs && 'hidden')} aria-label="基金切换视图">
         {[
           { id: 'opportunity', label: '机会概览', icon: Sparkles },
           { id: 'config', label: '规则配置', icon: Settings2 }
