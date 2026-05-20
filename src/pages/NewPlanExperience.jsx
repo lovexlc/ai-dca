@@ -165,6 +165,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   const selectedFundCurrency = resolveMarketCurrency(selectedFund);
   const benchmarkCurrency = resolveMarketCurrency(benchmarkFund);
   const selectedFundLabel = formatMarketLabel(selectedFund || { code: state.symbol });
+  const selectedAnchorNameLabel = formatMarketName(selectedFund || findExtraSymbol(state.symbol) || { code: state.symbol });
   const benchmarkCodeLabel = formatMarketCode(benchmarkFund?.code || BENCHMARK_CODE);
   const benchmarkNameLabel = formatMarketName(benchmarkFund || { code: BENCHMARK_CODE });
 
@@ -820,7 +821,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                     <strong className="text-slate-900">{formatCurrency(computed.reserveCapital, '¥ ')}</strong>
                   </div>
                   <div className="flex items-center justify-between text-sm text-slate-500">
-                    <span>{computed.anchorLabel}（{benchmarkCodeLabel}）</span>
+                    <span>{computed.anchorLabel}（{selectedAnchorNameLabel}）</span>
                     <strong className="text-slate-900">{formatFundPrice(computed.anchorPrice, benchmarkCurrency)}</strong>
                   </div>
                 </div>
