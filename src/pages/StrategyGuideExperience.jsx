@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
-import { AlertCircle, Bell, BookOpen, CloudUpload, ListChecks, Wallet, Info, Trash2 } from 'lucide-react';
+import { AlertCircle, Bell, BookOpen, CloudUpload, ListChecks, Wallet, Info, Trash2, X } from 'lucide-react';
 import { clearDemoData, hasPotentialUserData, installDemoData, readDemoDataMeta } from '../app/demoData.js';
 import { persistWorkspacePrefs, readWorkspacePrefs } from '../app/workspacePrefs.js';
 import { Card, PageHero, Pill, NavPill, DisclosureBanner, SectionHeading, SelectField, cx, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
@@ -217,6 +217,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
   const [demoMeta, setDemoMeta] = useState(() => readDemoDataMeta());
   const [prefs, setPrefs] = useState(() => readWorkspacePrefs());
   const [message, setMessage] = useState('');
+  const [showQrModal, setShowQrModal] = useState(false);
   const hasUserData = useMemo(() => hasPotentialUserData(), []);
 
   function navigate(tabKey) {
@@ -295,14 +296,13 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
           )}
         />
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <a
+          <button
+            type="button"
             className="inline-flex min-h-9 items-center justify-center rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 transition-colors hover:border-indigo-400 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2 whitespace-nowrap"
-            href="https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEUUA9qDZ5H_XnPECnDzzMGTTIc2b_5_gAC8B4AAtk5cFTHSrIufYF2bDsE.jpg"
-            target="_blank"
-            rel="noopener noreferrer"
+            onClick={() => setShowQrModal(true)}
           >
             点击加入群聊
-          </a>
+          </button>
         </div>
       </PageHero>
 
@@ -456,6 +456,38 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
           {demoMeta ? <div className="mt-5"><GuideButton variant="secondary" onClick={handleClearDemo}><Trash2 className="h-4 w-4" />体验完成，清除演示数据</GuideButton></div> : null}
         </Card>
       </main>
+
+      {showQrModal ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="加入群聊二维码"
+          onClick={() => setShowQrModal(false)}
+        >
+          <div
+            className="relative max-w-sm w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              aria-label="关闭"
+              className="absolute -top-3 -right-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-700 shadow-md transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
+              onClick={() => setShowQrModal(false)}
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <div className="overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <img
+                src="https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEUUA9qDZ5H_XnPECnDzzMGTTIc2b_5_gAC8B4AAtk5cFTHSrIufYF2bDsE.jpg"
+                alt="加入群聊二维码"
+                className="block w-full"
+              />
+              <p className="px-4 py-3 text-center text-xs text-slate-600">使用微信 / QQ 扫码加入群聊</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
