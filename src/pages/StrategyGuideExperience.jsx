@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
-import { Info, Trash2 } from 'lucide-react';
+import { AlertCircle, Info, Trash2 } from 'lucide-react';
 import { clearDemoData, hasPotentialUserData, installDemoData, readDemoDataMeta } from '../app/demoData.js';
 import { persistWorkspacePrefs, readWorkspacePrefs } from '../app/workspacePrefs.js';
 import { Card, PageHero, Pill, SectionHeading, SelectField, cx, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
@@ -128,13 +128,13 @@ function InfoPopover({ title, sections }) {
 
 function SimpleTable({ headers, rows }) {
   return (
-    <div className="overflow-x-auto rounded-2xl border border-slate-200">
+    <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
       <table className="min-w-full divide-y divide-slate-200 text-sm">
-        <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
-          <tr>{headers.map((header) => <th key={header} className="px-4 py-3">{header}</th>)}</tr>
+        <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
+          <tr>{headers.map((header) => <th key={header} className="px-4 py-3.5">{header}</th>)}</tr>
         </thead>
-        <tbody className="divide-y divide-slate-100 bg-white text-slate-600">
-          {rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex} className="px-4 py-3">{cell}</td>)}</tr>)}
+        <tbody className="divide-y divide-slate-100 text-slate-600">
+          {rows.map((row, index) => <tr key={index} className="even:bg-slate-50/70">{row.map((cell, cellIndex) => <td key={cellIndex} className={cx('px-4 py-3.5 leading-6', cellIndex > 0 && 'tabular-nums')}>{cell}</td>)}</tr>)}
         </tbody>
       </table>
     </div>
@@ -149,7 +149,7 @@ function ScreenshotImage({ src, alt, caption }) {
   }
   return (
     <>
-      <figure className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+      <figure className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <button type="button" onClick={() => setZoomed(true)} className="group block w-full cursor-zoom-in" aria-label={`点击放大查看：${alt}`}>
           <img src={src} alt={alt} loading="lazy" onError={() => setFailed(true)} className="mx-auto block max-h-44 w-auto object-contain transition group-hover:opacity-90" />
         </button>
@@ -245,12 +245,13 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
         description="把公开投资文章中的美股定投、金字塔加仓、持仓管理和通知提醒流程整理成可执行工具。"
         badges={[<Pill key="a" tone="indigo">策略指南</Pill>, <Pill key="b" tone="emerald">演示数据</Pill>, <Pill key="c" tone="amber">手机通知</Pill>, <Pill key="d" tone="slate">三账户体系</Pill>]}
       >
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
-          策略内容由公开的金渐成公众号文章整理总结而来。本工具与金渐成本人及其公众号无官方关联，不构成投资建议。
+        <div className="flex items-start gap-2.5 rounded-r-2xl border-l-4 border-amber-500 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+          <span>策略内容由公开的金渐成公众号文章整理总结而来。本工具与金渐成本人及其公众号无官方关联，不构成投资建议。</span>
         </div>
       </PageHero>
 
-      <main className="mx-auto flex max-w-6xl flex-col gap-8 px-5 py-6 sm:px-6">
+      <main className="mx-auto flex max-w-6xl flex-col gap-10 px-5 py-8 sm:px-6">
         {message ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div> : null}
 
         <Card className="border-indigo-100 bg-indigo-50/70">
@@ -272,7 +273,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
 
         <section className="space-y-5">
           <SectionHeading eyebrow="刚需功能" title="先把手机通知配好" description="策略触发时能不能提醒到手机，是这个工具从“看板”变成“执行助手”的关键。复制完整链接也可以，系统会自动解析。" />
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid gap-6 lg:grid-cols-3">
             <Card>
               <Pill tone="indigo">iOS Bark</Pill>
               <h3 className="mt-4 text-lg font-bold text-slate-900">复制完整 Bark 链接</h3>
@@ -299,7 +300,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
 
         <section className="space-y-5">
           <SectionHeading eyebrow="资产配置" title="三账户体系" />
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-6 md:grid-cols-3">
             {ACCOUNT_CARDS.map((account) => <AccountCard key={account.title} account={account} />)}
           </div>
           <GuideButton onClick={() => navigate('holdings')}>前往持仓总览 →</GuideButton>
@@ -321,7 +322,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
           <SectionHeading eyebrow="第一兼唯一" title="个股投资策略" />
           <Card className="relative space-y-5 pr-14">
             <InfoPopover title="个股投资策略" sections={STOCK_DETAILS} />
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
               {['第一兼唯一 — 行业第一或有唯一性护城河', '营收/利润持续增长 — 连续亏损 3 年一票否决', '资产负债健康 — 现金 ≥ 负债', '经营现金流为正 — 非靠借钱度日', '行业前景好 — 市场大 + 风口 + 竞争优势', '估值合理 — PE 历史百分位 < 70%'].map((item) => <div key={item} className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">{item}</div>)}
             </div>
             <SimpleTable headers={['规则', '参数']} rows={[[ '买入', '首买跌 30%（优质 20%+），每档 4-5%，≥6 档，1-1-1.5-2-2-2.5' ], [ '仓位', '单只上限 50%，总仓位 7-8.5 成，70% 底仓 + 30% 做 T' ], [ '减仓', '+15% / +25% / +35% 分档减仓' ]]} />
@@ -329,7 +330,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
           </Card>
         </section>
 
-        <section className="grid gap-5 lg:grid-cols-2">
+        <section className="grid gap-6 lg:grid-cols-2">
           <div className="space-y-5">
             <SectionHeading eyebrow="终极目标" title="做 T 与负成本持股" />
             <Card className="relative pr-14">
@@ -348,7 +349,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
 
         <section className="space-y-5">
           <SectionHeading eyebrow="全站 README" title="每个功能页能做什么" />
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             <ReadmeCard title="持仓总览" description="记录真实资产底账，管理交易流水、成本、收益、市值和三账户分配。" bullets={['新增或导入交易流水', '确认成本与收益', '分配进取/稳健/防守账户']} cta="前往持仓总览" onClick={() => navigate('holdings')} />
             <ReadmeCard title="交易计划" description="把策略变成可执行清单，包括加仓计划、定投计划和卖出计划。" bullets={['宽基金字塔加仓', '个股 checklist', 'Smart DCA 资金池']} cta="前往交易计划" onClick={() => navigate('tradePlans')} />
             <ReadmeCard title="通知设置" description="配置 iOS Bark、Android 推送 App 或 PC 浏览器通知，让策略触发时主动提醒你。" bullets={['复制完整链接自动解析', '发送测试通知', '同步交易计划规则']} cta="前往通知设置" onClick={() => navigate('notify')} />

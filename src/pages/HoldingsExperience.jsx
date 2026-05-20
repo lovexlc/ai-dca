@@ -76,6 +76,8 @@ import { showActionToast } from '../app/toast.js';
 import {
   Pill,
   cx,
+  primaryButtonClass,
+  secondaryButtonClass,
   tableInputClass
 } from '../components/experience-ui.jsx';
 import {
@@ -1771,13 +1773,13 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       ? `${formatRelativeTime(marketIndexState.generatedAt)} · Yahoo Finance`
       : 'Yahoo Finance';
 
-    const renderItem = (item, copyIdx) => {
+    const renderItem = (item, copyIdx, itemIndex) => {
       const tone = getMarketIndexTone(item.change);
       const ToneIcon = tone.icon;
       return (
         <span
           key={`${copyIdx}-${item.key}`}
-          className="inline-flex items-center gap-1.5 px-3 text-[11px] leading-none"
+          className={cx('inline-flex items-center gap-1.5 px-3 text-[13px] leading-none', itemIndex >= 2 && 'hidden sm:inline-flex', copyIdx > 0 && 'hidden sm:inline-flex')}
         >
           <span className="font-medium text-slate-500">{item.name}</span>
           <span className={cx('font-semibold tabular-nums', tone.valueClass)}>
@@ -1800,19 +1802,19 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       <a
         href={links.markets || './index.html?tab=markets'}
         onClick={navigateToMarkets}
-        className="market-ticker group flex h-7 max-w-full cursor-pointer items-center overflow-hidden rounded-full border border-slate-200/70 bg-white/60 px-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur transition-colors hover:border-blue-200 hover:bg-blue-50/40 hover:shadow-[0_1px_4px_rgba(37,99,235,0.12)] supports-[backdrop-filter]:bg-white/55 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+        className="market-ticker group flex h-10 max-w-full cursor-pointer items-center overflow-hidden rounded-2xl border border-slate-200 bg-white px-2 shadow-sm backdrop-blur transition-colors hover:border-indigo-200 hover:bg-indigo-50/40 hover:shadow-[0_1px_4px_rgba(79,70,229,0.12)] supports-[backdrop-filter]:bg-white/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
         title={`${tooltip} · 点击查看行情中心`}
         aria-label={`进入行情中心查看完整大盘指数·${tooltip}`}
       >
         <div className="market-ticker-viewport flex h-full min-w-0 flex-1 items-center overflow-hidden">
           <div className="market-ticker-track flex h-full items-center">
-            {items.map((item) => renderItem(item, 0))}
-            {items.map((item) => renderItem(item, 1))}
+            {items.map((item, index) => renderItem(item, 0, index))}
+            {items.map((item, index) => renderItem(item, 1, index))}
           </div>
         </div>
         <ChevronRight
           aria-hidden
-          className="ml-0.5 h-3.5 w-3.5 shrink-0 text-slate-400 transition-colors group-hover:text-blue-500"
+          className="ml-1 h-4 w-4 shrink-0 text-slate-400 transition-colors group-hover:text-indigo-500"
         />
       </a>
     );
@@ -1823,7 +1825,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     // ticker 已移到 IncomeSection 之前（content 顶部），点击 ticker 仍可跳转行情中心。
     if (!marketIndexState.indexes.length) return null;
     return (
-      <div className="relative w-full overflow-hidden">
+      <div className="relative w-full overflow-hidden border-b border-slate-200/70 pb-3">
         <div className="flex w-full">
           {renderMarketTicker()}
         </div>
@@ -2062,11 +2064,17 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         ? '还没有交易记录。点击顶部工具栏的「新增交易」添加你的第一笔交易。'
         : '全部持仓已卖出。在「收益明细 · 清仓分析」可查看历史。';
       return (
-        <div className="rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center">
-          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-            <Wallet className="h-5 w-5" />
+        <div className="flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-indigo-200 bg-white px-6 py-16 text-center">
+          <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-indigo-50 text-indigo-500">
+            <Wallet className="h-8 w-8" />
           </div>
-          <p className="text-sm text-slate-600">{emptyHint}</p>
+          <h3 className="mb-2 text-base font-semibold text-slate-900">{aggregates.length === 0 ? '暂无交易记录' : '暂无当前持仓'}</h3>
+          <p className="mb-6 max-w-xs text-sm leading-6 text-slate-500">{aggregates.length === 0 ? '添加你的第一笔交易，开始追踪投资组合收益与风险敞口。' : emptyHint}</p>
+          {aggregates.length === 0 ? (
+            <button type="button" className={primaryButtonClass} onClick={() => { resetDraft(emptyDraft({ type: 'BUY' })); setSidePanelTab('create'); setSidePanelOpen(true); }}>
+              <Plus className="h-4 w-4" />新增交易
+            </button>
+          ) : null}
         </div>
       );
     }
@@ -2156,9 +2164,20 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   function renderLedgerTable() {
     if (ledgerRows.length === 0) {
       return (
-        <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 text-center">
-          <Wallet className="h-8 w-8 text-slate-300" />
-          <div className="text-sm text-slate-500">还没有任何交易流水，点「新增交易」或「批量导入」（支持 OCR / Excel 粘贴）录入。</div>
+        <div className="flex min-h-[260px] flex-col items-center justify-center rounded-2xl border border-dashed border-indigo-200 bg-white px-6 py-14 text-center">
+          <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-indigo-50 text-indigo-500">
+            <Wallet className="h-8 w-8" />
+          </div>
+          <h3 className="mb-2 text-base font-semibold text-slate-900">暂无交易流水</h3>
+          <p className="mb-6 max-w-xs text-sm leading-6 text-slate-500">点「新增交易」或「批量导入」录入，支持 OCR / Excel 粘贴。</p>
+          <div className="flex flex-wrap justify-center gap-3">
+            <button type="button" className={primaryButtonClass} onClick={() => { resetDraft(emptyDraft({ type: 'BUY' })); setSidePanelTab('create'); setSidePanelOpen(true); }}>
+              <Plus className="h-4 w-4" />新增交易
+            </button>
+            <button type="button" className={secondaryButtonClass} onClick={openPasteModal}>
+              <ClipboardPaste className="h-4 w-4" />批量导入
+            </button>
+          </div>
         </div>
       );
     }

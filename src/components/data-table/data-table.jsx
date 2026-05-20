@@ -23,7 +23,7 @@ function DataTable({
   return <div
     className={cn("flex w-full flex-col gap-2.5 overflow-auto", className)}
     {...props}
-  >{children}<div className="overflow-x-auto rounded-md border"><Table><TableHeader>{table.getHeaderGroups().map((headerGroup) => <TableRow key={headerGroup.id}>{headerGroup.headers.map((header) => <TableHead
+  >{children}<div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white"><Table><TableHeader>{table.getHeaderGroups().map((headerGroup) => <TableRow key={headerGroup.id}>{headerGroup.headers.map((header) => <TableHead
     key={header.id}
     colSpan={header.colSpan}
     style={{
@@ -47,9 +47,9 @@ function DataTable({
     cell.getContext()
   )}</TableCell>)}</TableRow>) : <TableRow><TableCell
     colSpan={table.getAllColumns().length}
-    className="h-24 text-center"
+    className="h-32 text-center text-sm text-slate-500"
   >
-                  No results.
+                  暂无数据
                 </TableCell></TableRow>}</TableBody>{footerRow ? <TableFooter><TableRow>{table.getVisibleLeafColumns().map((column) => <TableCell
     key={column.id}
     style={{

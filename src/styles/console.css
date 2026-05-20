@@ -6,12 +6,12 @@
   --console-mobilebar-h: 52px;
   --console-border: rgba(148, 163, 184, 0.24);
   --console-border-strong: rgba(148, 163, 184, 0.42);
-  --console-sidebar-bg: #ffffff;
+  --console-sidebar-bg: linear-gradient(180deg, #ffffff 0%, #eef2ff 100%);
   --console-main-bg: #f8fafc;
   --console-link: #475569;
   --console-link-active: #3730a3;
-  --console-link-active-bg: rgba(79, 70, 229, 0.08);
-  --console-link-active-border: rgba(79, 70, 229, 0.22);
+  --console-link-active-bg: rgba(99, 102, 241, 0.12);
+  --console-link-active-border: rgba(99, 102, 241, 0.28);
 }
 
 .console-root {
@@ -171,7 +171,7 @@
   border-radius: 10px;
   border: 1px solid transparent;
   font-size: 13.5px;
-  font-weight: 600;
+  font-weight: 650;
   line-height: 1.2;
   color: var(--console-link);
   background: transparent;
@@ -182,8 +182,8 @@
 }
 
 .console-sidenav__link:hover {
-  background: rgba(148, 163, 184, 0.12);
-  color: #0f172a;
+  background: rgba(99, 102, 241, 0.10);
+  color: #312e81;
 }
 
 .console-sidenav__link:focus-visible {
@@ -196,6 +196,7 @@
   color: var(--console-link-active);
   background: var(--console-link-active-bg);
   border-color: var(--console-link-active-border);
+  box-shadow: inset 3px 0 0 #6366f1;
 }
 
 /* ---- Sidebar footer (quick actions / status) ---- */
@@ -255,8 +256,8 @@
 }
 
 .console-quick__secondary:hover {
-  background: rgba(148, 163, 184, 0.12);
-  color: #0f172a;
+  background: rgba(99, 102, 241, 0.10);
+  color: #312e81;
 }
 
 .console-quick__primary:focus-visible,

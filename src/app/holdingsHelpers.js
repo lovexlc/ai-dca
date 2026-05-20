@@ -9,8 +9,8 @@ export const KIND_PILL_TONES = { otc: 'indigo', exchange: 'amber', qdii: 'purple
 export const KIND_FILTER_LABELS = { all: '全部', otc: '场外', exchange: '场内', qdii: 'QDII' };
 export const KIND_FILTER_KEYS = ['all', 'otc', 'exchange', 'qdii'];
 export const LEDGER_COLUMN_COUNT = 18;
-export const PRIMARY_BTN = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_1px_2px_rgba(15,23,42,0.12)] transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60';
-export const GHOST_BTN = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60';
+export const PRIMARY_BTN = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-indigo-200/70 transition-colors hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
+export const GHOST_BTN = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
 export const SUBTLE_BTN = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60';
 export const EDITABLE_INPUT = cx(tableInputClass, 'h-9 rounded-lg bg-slate-50 px-2 text-xs');
 
