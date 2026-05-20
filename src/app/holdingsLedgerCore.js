@@ -356,6 +356,29 @@ export function getActiveHoldingCodeList(transactions = []) {
   return active.sort();
 }
 
+/**
+ * 返回「出现在基金切换链路里」的所有 code（仅依赖 SELL.switchPairId 标注推导）。
+ * 用途：NAV 刷新时连同已清仓但仍作为「未切换基准」参照的代码一并刷新，
+ * 避免 baseline 价冻结在切换那天的口子。
+ */
+export function getSwitchChainCodeList(transactions = []) {
+  const normalizedTxs = sanitizeTransactions(transactions, { filterInvalid: false });
+  const txById = new Map();
+  for (const tx of normalizedTxs) {
+    if (tx && tx.id) txById.set(tx.id, tx);
+  }
+  const codes = new Set();
+  for (const tx of normalizedTxs) {
+    if (tx.type !== 'SELL' || !tx.switchPairId) continue;
+    const pair = txById.get(tx.switchPairId);
+    if (!pair || pair.type !== 'BUY' || !pair.code) continue;
+    if (pair.code === tx.code) continue;
+    if (tx.code && FUND_CODE_PATTERN.test(tx.code)) codes.add(tx.code);
+    if (pair.code && FUND_CODE_PATTERN.test(pair.code)) codes.add(pair.code);
+  }
+  return [...codes].sort();
+}
+
 /** Metrics per lot/row, matching the Excel "成交流水" sheet columns. */
 export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
   const normalized = normalizeTransaction(tx);
