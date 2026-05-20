@@ -287,6 +287,11 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       : buildMovingAverageTemplatePlan(state)),
     [selectedAssetType, selectedStrategy, state, customDrawdown]
   );
+  const maxLayerWeight = useMemo(
+    () => Math.max(...computed.layers.map((layer) => Number(layer.weight) || 0), 1),
+    [computed.layers]
+  );
+  const selectedFrequencyLabel = frequencyOptions.find((item) => item.value === state.frequency)?.label || state.frequency;
 
   useEffect(() => {
     if (isNameDirtyRef.current) return;
@@ -742,12 +747,10 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                 </div>
               </details>
             </Card>
-          </div>
 
-          <div className={cx("min-w-0 space-y-6 lg:sticky lg:top-4", planStep !== 4 && "hidden")}>
-            <Card className="min-w-0 overflow-hidden">
-              <SectionHeading eyebrow="第四步" title="确认计划名称" />
-              <div className="mt-5">
+            <Card className={cx("min-w-0 overflow-hidden", planStep !== 4 && "hidden")}>
+              <SectionHeading eyebrow="第四步" title="确认策略配置" />
+              <div className="mt-5 space-y-5">
                 <Field label="策略名称" helper="创建后会出现在交易计划列表中；系统会根据标的与策略自动生成推荐名称。">
                   <div className="flex items-center gap-2">
                     <TextInput
@@ -759,8 +762,52 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                     <button type="button" title="重新使用系统推荐名称" className="shrink-0 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" onClick={() => { isNameDirtyRef.current = false; setState((current) => ({ ...current, name: '' })); }}>推荐</button>
                   </div>
                 </Field>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">投资标的</div>
+                    <div className="mt-1 text-sm font-extrabold text-slate-900">{selectedFundLabel}</div>
+                    <div className="mt-1 text-xs text-slate-500">参考基准 {benchmarkNameLabel}</div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">模板 / 频率</div>
+                    <div className="mt-1 text-sm font-extrabold text-slate-900">{activeStrategy.label}</div>
+                    <div className="mt-1 text-xs text-slate-500">{selectedFrequencyLabel}</div>
+                  </div>
+                </div>
+
+                <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+                  <div className="border-b border-slate-100 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-900">档位确认明细</div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="bg-white text-[11px] uppercase tracking-[0.16em] text-slate-400">
+                        <tr>
+                          <th className="px-4 py-3 font-bold">档位</th>
+                          <th className="px-4 py-3 font-bold">触发价</th>
+                          <th className="px-4 py-3 font-bold">累计跌幅</th>
+                          <th className="px-4 py-3 font-bold">计划金额</th>
+                          <th className="px-4 py-3 font-bold">资金比例</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-600">
+                        {computed.layers.map((layer) => (
+                          <tr key={layer.id} className="hover:bg-indigo-50/40">
+                            <td className="px-4 py-3 font-semibold text-slate-900">{layer.label}</td>
+                            <td className="px-4 py-3 font-mono">{formatFundPrice(layer.price, benchmarkCurrency)}</td>
+                            <td className="px-4 py-3">{formatPercent(layer.drawdown, 1)}</td>
+                            <td className="px-4 py-3 font-semibold text-slate-900">{formatCurrency(layer.amount, '¥ ')}</td>
+                            <td className="px-4 py-3">{formatPercent((computed.totalWeight ? layer.weight / computed.totalWeight : 0) * 100, 1)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             </Card>
+          </div>
+
+          <div className="min-w-0 space-y-6 lg:sticky lg:top-4">
             <Card className="min-w-0 overflow-hidden border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white">
               <SectionHeading eyebrow="结果预览" title="策略成本预览" />
               <div className="mt-6 rounded-[24px] border border-white/80 bg-white/90 p-5 shadow-sm">
@@ -782,36 +829,47 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                 </div>
               </div>
 
-              <div className="mt-5 rounded-[24px] border border-slate-200 bg-white/80 p-5">
-                <div
-                  className={cx(
-                    selectedStrategy === 'peak-drawdown'
-                      ? 'grid grid-cols-4 gap-3 sm:flex sm:min-h-[180px] sm:min-w-max sm:items-end'
-                      : 'flex min-h-[180px] items-end gap-3'
-                  )}
-                >
-                  {computed.layers.map((layer) => (
-                    <div
-                      key={layer.id}
-                      className={cx(
-                        'flex flex-col items-center gap-3',
-                        selectedStrategy === 'peak-drawdown' ? 'min-w-0 sm:w-14' : 'w-14'
-                      )}
-                    >
-                      <div
-                        className={cx(
-                          'flex w-full items-end justify-center rounded-t-2xl px-2 py-3 text-xs font-bold text-white',
-                          layer.isExtreme ? 'bg-amber-500' : layer.order === 1 ? 'bg-slate-900' : 'bg-indigo-600'
-                        )}
-                        style={{ height: `${Math.max(layer.weight * (selectedStrategy === 'peak-drawdown' ? 14 : 32), 44)}px` }}
-                      >
-                        {`${layer.weight}x`}
+              <div className="mt-5 rounded-[24px] border border-slate-200 bg-white/80 p-5 shadow-sm">
+                <div className="grid grid-cols-[minmax(82px,0.9fr)_minmax(112px,1.2fr)_minmax(88px,0.9fr)] items-end gap-3 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                  <div className="text-right">Price / Condition</div>
+                  <div className="text-center">Stepped Pyramid</div>
+                  <div>Budget / Allocation</div>
+                </div>
+                <div className="relative mt-4 space-y-3 overflow-hidden rounded-[24px] bg-gradient-to-b from-slate-50 via-white to-indigo-50/40 px-2 py-3">
+                  <div className="pointer-events-none absolute bottom-4 left-1/2 top-4 border-l border-dashed border-indigo-200" />
+                  {computed.layers.map((layer, index) => {
+                    const progression = computed.layers.length > 1 ? index / (computed.layers.length - 1) : 0;
+                    const widthPct = Math.min(94, 35 + progression * 40 + (Number(layer.weight) || 0) / maxLayerWeight * 15);
+                    const allocationPct = computed.totalWeight ? layer.weight / computed.totalWeight * 100 : 0;
+                    return (
+                      <div key={layer.id} className="group grid grid-cols-[minmax(82px,0.9fr)_minmax(112px,1.2fr)_minmax(88px,0.9fr)] items-center gap-3">
+                        <div className="text-right">
+                          <div className="text-xs font-extrabold text-slate-900">{formatPercent(layer.drawdown, 1)}</div>
+                          <div className="mt-0.5 font-mono text-[11px] text-slate-400">{formatFundPrice(layer.price, benchmarkCurrency)}</div>
+                        </div>
+                        <div className="relative flex min-h-10 items-center justify-center">
+                          <div
+                            className={cx(
+                              'relative flex h-10 items-center justify-center overflow-hidden rounded-2xl px-3 text-xs font-extrabold text-white shadow-sm transition-all duration-300 group-hover:-translate-y-0.5 group-hover:shadow-lg group-hover:shadow-indigo-200/60',
+                              layer.isExtreme
+                                ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500'
+                                : layer.order === 1
+                                  ? 'bg-gradient-to-r from-slate-700 via-slate-900 to-slate-700'
+                                  : 'bg-gradient-to-r from-indigo-500 via-indigo-600 to-violet-600'
+                            )}
+                            style={{ width: `${widthPct}%` }}
+                          >
+                            <span className="pointer-events-none absolute inset-y-0 -left-1/2 w-1/2 -skew-x-12 bg-white/20 opacity-0 transition-all duration-700 group-hover:left-full group-hover:opacity-100" />
+                            <span className="relative z-10">{layer.weight}x</span>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-extrabold text-slate-900">{formatPercent(allocationPct, 1)}</div>
+                          <div className="mt-0.5 font-mono text-[11px] text-slate-400">{formatCurrency(layer.amount, '¥ ')}</div>
+                        </div>
                       </div>
-                      <span className="text-center text-[11px] font-semibold text-slate-400">
-                        {selectedStrategy === 'peak-drawdown' ? `档位 ${layer.order}` : layer.label}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </Card>
