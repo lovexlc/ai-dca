@@ -58,6 +58,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   const [extraQuote, setExtraQuote] = useState({ symbol: '', price: 0, currency: '', asOf: '', loading: false, error: '' });
   const [screeningAnswers, setScreeningAnswers] = useState(() => readPlanState().screeningAnswers || {});
   const [planStep, setPlanStep] = useState(1);
+  const [maxUnlockedStep, setMaxUnlockedStep] = useState(1);
   const [symbolSearch, setSymbolSearch] = useState('');
 
   // 选中美股快选标的（QQQ/SPY/Mag7/TSM 等）时，去 markets worker 拉一次实时 quote；symbol 不再是 extra 时清空。
@@ -267,9 +268,15 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     [selectedAssetType, selectedStrategy, state]
   );
 
-  const strategySummary = selectedStrategy === 'peak-drawdown'
-    ? `按 ${benchmarkCodeLabel} 的阶段高点 ${formatFundPrice(computed.anchorPrice, benchmarkCurrency)} 向下拆成 ${computed.layers.length} 档固定回撤。`
-    : `按 ${benchmarkCodeLabel} 的120日线触发价 ${formatFundPrice(computed.anchorPrice, benchmarkCurrency)} 和200日线风控价 ${formatFundPrice(computed.riskPrice, benchmarkCurrency)} 生成分层。`;
+  function goToPlanStep(nextStep) {
+    const target = Math.max(1, Math.min(4, Number(nextStep) || 1));
+    if (target > maxUnlockedStep + 1) {
+      showToast({ title: '先完成当前步骤', description: '请按顺序继续，避免跳到还没有上下文的预览。', tone: 'amber' });
+      return;
+    }
+    setPlanStep(target);
+    setMaxUnlockedStep((current) => Math.max(current, target));
+  }
 
   async function handleCreatePlan() {
     if (isSaving) {
@@ -330,11 +337,16 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
             <button
               key={step.id}
               type="button"
-              onClick={() => setPlanStep(step.id)}
+              onClick={() => goToPlanStep(step.id)}
               aria-current={planStep === step.id ? 'step' : undefined}
+              aria-disabled={step.id > maxUnlockedStep + 1}
               className={cx(
                 'rounded-xl px-3 py-2 text-left text-sm font-semibold transition-colors',
-                planStep === step.id ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+                planStep === step.id
+                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200'
+                  : step.id > maxUnlockedStep + 1
+                    ? 'cursor-not-allowed text-slate-300'
+                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
               )}
             >
               <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-xs">{step.id}</span>
@@ -346,7 +358,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.9fr)]">
           <div className="min-w-0 space-y-6">
             <Card className={cx("min-w-0 overflow-hidden", planStep !== 1 && "hidden")}>
-              <SectionHeading eyebrow="第一步" title="选标的与基础设置" />
+              <SectionHeading eyebrow="第一步" title="选择标的" />
 
               {marketError ? (
                 <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -355,14 +367,9 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
               ) : null}
 
               <div className="mt-6 space-y-5">
-                <Field label="策略名称" helper="创建后会出现在首页的策略列表中。">
-                  <TextInput
-                    placeholder="例如：513100 固定回撤计划"
-                    value={state.name || ''}
-                    onChange={(event) => setState((current) => ({ ...current, name: event.target.value }))}
-                  />
-                </Field>
-
+                <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-800">
+                  当前类型：{selectedAssetTypeLabel}
+                </div>
                 <Field className="min-w-0" label="资产标的" helper="可搜索纳指 ETF，或使用美股快捷分组。">
                   <TextInput
                     className="mb-3"
@@ -373,8 +380,10 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                     onChange={(event) => setSymbolSearch(event.target.value)}
                   />
                   <div id="new-plan-symbol-help" className="sr-only">输入代码或名称筛选标的，下方也可使用快捷标的按钮。</div>
-                  <div className="mb-3 space-y-2">
-                    {EXTRA_SYMBOL_GROUPS.map((group) => (
+                  <details className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <summary className="cursor-pointer text-xs font-semibold text-slate-500">快捷美股标的</summary>
+                    <div className="mt-3 space-y-2">
+                      {EXTRA_SYMBOL_GROUPS.map((group) => (
                       <div key={group.key} className="flex flex-wrap items-center gap-2">
                         <span className="text-xs font-semibold text-slate-500">{group.label}</span>
                         {group.symbols.map((s) => (
@@ -398,8 +407,9 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                         ))}
                         <span className="text-xs text-slate-400">{group.note}</span>
                       </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  </details>
                   {marketEntries.length ? (
                     <>
                       <div className="mb-2 text-xs font-semibold text-slate-400">纳指 ETF 下拉 · {filteredMarketEntries.length}/{marketEntries.length}</div>
@@ -514,7 +524,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                   <div className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-500">当前模板说明</div>
                   <div className="mt-2 text-lg font-bold text-indigo-700">{activeStrategy.label}</div>
                   <div className="mt-2 text-sm font-semibold text-slate-700">参考基准 {benchmarkNameLabel}</div>
-                  <p className="mt-3 text-sm leading-6 text-slate-500">{strategySummary}</p>
+                  <p className="mt-3 text-sm leading-6 text-slate-500">第三步再确认总金额、频率和风险档位；高级价格表默认折叠。</p>
                   <div className="mt-4 inline-flex rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500">
                     首页仅查看策略结果，如需调整请回到本页重新创建
                   </div>
@@ -573,27 +583,32 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                   <Field label="总投资额">
                     <NumberInput step="0.01" value={state.totalBudget} onChange={(event) => setState((current) => ({ ...current, totalBudget: Number(event.target.value) || 0 }))} />
                   </Field>
-                  <Field label={selectedStrategy === 'peak-drawdown' ? '阶段高点' : '120日线触发价'}>
-                    <NumberInput step="0.001" value={Number(state.basePrice || 0).toFixed(3)} onChange={(event) => setState((current) => ({ ...current, basePrice: Number(event.target.value) || 0 }))} />
+                  <Field label="执行频率">
+                    <SelectField options={frequencyOptions} value={state.frequency} onChange={(event) => setState((current) => ({ ...current, frequency: event.target.value }))} />
                   </Field>
                 </div>
-                {selectedStrategy === 'ma120-risk' ? (
-                  <Field label="200日线风控价" helper="当它足够低于120日线深水层时，会进入最后一档。">
-                    <NumberInput step="0.001" value={Number(state.riskControlPrice || 0).toFixed(3)} onChange={(event) => setState((current) => ({ ...current, riskControlPrice: Number(event.target.value) || 0 }))} />
-                  </Field>
-                ) : null}
                 <Field label="现金留存比例" rightLabel={formatPercent(state.cashReservePct, 0)}>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
                     <input aria-label="现金留存比例" className="h-2 w-full accent-indigo-600" max="90" min="0" step="1" type="range" value={state.cashReservePct} onChange={(event) => setState((current) => ({ ...current, cashReservePct: Number(event.target.value) || 0 }))} />
                   </div>
                 </Field>
-                <Field label="执行频率">
-                  <SelectField options={frequencyOptions} value={state.frequency} onChange={(event) => setState((current) => ({ ...current, frequency: event.target.value }))} />
-                </Field>
               </div>
               </div>
 
-              <div className="mt-6 space-y-4">
+              <details className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
+                <summary className="cursor-pointer text-sm font-semibold text-slate-700">高级价格表</summary>
+                <div className="mt-5 space-y-5">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Field label={selectedStrategy === 'peak-drawdown' ? '阶段高点' : '120日线触发价'}>
+                      <NumberInput step="0.001" value={Number(state.basePrice || 0).toFixed(3)} onChange={(event) => setState((current) => ({ ...current, basePrice: Number(event.target.value) || 0 }))} />
+                    </Field>
+                    {selectedStrategy === 'ma120-risk' ? (
+                      <Field label="200日线风控价" helper="当它足够低于120日线深水层时，会进入最后一档。">
+                        <NumberInput step="0.001" value={Number(state.riskControlPrice || 0).toFixed(3)} onChange={(event) => setState((current) => ({ ...current, riskControlPrice: Number(event.target.value) || 0 }))} />
+                      </Field>
+                    ) : null}
+                  </div>
+                  <div className="space-y-4">
                 {computed.layers.map((layer) => (
                   <div key={layer.id} className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -629,11 +644,25 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                     </div>
                   </div>
                 ))}
-              </div>
+                  </div>
+                </div>
+              </details>
             </Card>
           </div>
 
           <div className={cx("min-w-0 space-y-6 lg:sticky lg:top-4", planStep !== 4 && "hidden")}>
+            <Card className="min-w-0 overflow-hidden">
+              <SectionHeading eyebrow="第四步" title="确认计划名称" />
+              <div className="mt-5">
+                <Field label="策略名称" helper="创建后会出现在交易计划列表中。">
+                  <TextInput
+                    placeholder="例如：513100 固定回撤计划"
+                    value={state.name || ''}
+                    onChange={(event) => setState((current) => ({ ...current, name: event.target.value }))}
+                  />
+                </Field>
+              </div>
+            </Card>
             <Card className="min-w-0 overflow-hidden border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white">
               <SectionHeading eyebrow="结果预览" title="策略成本预览" />
               <div className="mt-6 rounded-[24px] border border-white/80 bg-white/90 p-5 shadow-sm">
@@ -730,9 +759,9 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
           </div>
           <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
             <a className={cx(secondaryButtonClass, 'w-full sm:w-auto')} href={links.home}>取消</a>
-            {planStep > 1 ? <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={() => setPlanStep((step) => Math.max(1, step - 1))}>上一步</button> : null}
+            {planStep > 1 ? <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={() => goToPlanStep(planStep - 1)}>上一步</button> : null}
             {planStep < 4 ? (
-              <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={() => setPlanStep((step) => Math.min(4, step + 1))}>
+              <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={() => goToPlanStep(planStep + 1)}>
                 下一步
                 <ArrowRight className="h-4 w-4" />
               </button>

@@ -52,6 +52,7 @@ export function IncomeSection({ ledger, portfolio, inceptionDate, onEditTransact
 					inceptionDate={inceptionDate}
 					onBack={goBack}
 					navigate={navigate}
+					currentRoute={route}
 					onEditTransaction={onEditTransaction}
 				/>
 			</Suspense>

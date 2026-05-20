@@ -173,7 +173,7 @@ function ProfitRanking({ lots, ledger }) {
 	);
 }
 
-export function IncomeLiquidationPage({ ledger, onBack }) {
+export function IncomeLiquidationPage({ ledger, onBack, navigate, currentRoute }) {
 	const [lens, setLens] = useState('all');
 	const [tab, setTab] = useState('detail'); // 'detail' | 'ranking'
 
@@ -183,7 +183,7 @@ export function IncomeLiquidationPage({ ledger, onBack }) {
 	const groups = useMemo(() => groupClearedByMonth(lots), [lots]);
 
 	return (
-		<SubPageShell title="清仓分析" onBack={onBack}>
+		<SubPageShell title="清仓分析" onBack={onBack} navigate={navigate} currentRoute={currentRoute}>
 			{/* ① 镜头 chips */}
 			<nav aria-label="清仓分析镜头" className="flex flex-wrap gap-1.5">
 				{CLEARED_LENS_KEYS.map((k) => {

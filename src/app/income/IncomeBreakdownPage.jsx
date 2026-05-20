@@ -538,7 +538,7 @@ function ContributionPanel({ winners, losers }) {
 	);
 }
 
-export function IncomeBreakdownPage({ ledger, onBack }) {
+export function IncomeBreakdownPage({ ledger, onBack, navigate, currentRoute }) {
 	const aggregates = useMemo(
 		() => aggregateByCode(ledger?.transactions || [], ledger?.snapshotsByCode || {}),
 		[ledger],
@@ -569,7 +569,7 @@ export function IncomeBreakdownPage({ ledger, onBack }) {
 
 	if (positions.length === 0) {
 		return (
-			<SubPageShell title="持仓分析" onBack={onBack}>
+			<SubPageShell title="持仓分析" onBack={onBack} navigate={navigate} currentRoute={currentRoute}>
 				<div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-8 text-center text-sm text-slate-500">
 					还没有持仓数据。
 					<div className="mt-1 text-xs text-slate-400">添加交易后再回来查看品种与类型分布。</div>
@@ -579,7 +579,7 @@ export function IncomeBreakdownPage({ ledger, onBack }) {
 	}
 
 	return (
-		<SubPageShell title="持仓分析" onBack={onBack}>
+		<SubPageShell title="持仓分析" onBack={onBack} navigate={navigate} currentRoute={currentRoute}>
 			<OverviewCard
 				count={overview.count}
 				marketValue={overview.marketValue}

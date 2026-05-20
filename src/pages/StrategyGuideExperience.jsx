@@ -309,7 +309,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
           </div>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <ToolStatusCard icon={Wallet} title="持仓总览" value={dashboardStatus.holdings} note="资产、成本、收益和三账户分配" action="查看持仓" onClick={() => navigate('holdings')} />
-            <ToolStatusCard icon={ListChecks} title="交易计划" value={dashboardStatus.plans} note="加仓、定投、卖出和 VIX 信号" action="新建加仓策略" onClick={() => navigate('tradePlans')} />
+            <ToolStatusCard icon={ListChecks} title="交易计划" value={dashboardStatus.plans} note="加仓、定投、卖出和 VIX 信号" action="新建加仓策略" onClick={() => navigate('tradePlans', { hash: '#new' })} />
             <ToolStatusCard icon={Bell} title="通知状态" value={dashboardStatus.notify} note="iOS、Android、PC 浏览器提醒" action="配置通知" onClick={() => navigate('notify')} />
             <ToolStatusCard icon={CloudUpload} title="数据同步" value={dashboardStatus.backup} note="WebDAV 备份与恢复" action="保存配置" onClick={() => navigate('backup')} />
           </div>

@@ -64,7 +64,7 @@ function shiftDays(isoDate, deltaDays) {
 	return d.toISOString().slice(0, 10);
 }
 
-export function IncomeTransactionsPage({ ledger, onBack, navigate, onEditTransaction }) {
+export function IncomeTransactionsPage({ ledger, onBack, navigate, currentRoute, onEditTransaction }) {
 	const transactions = useMemo(
 		() => (Array.isArray(ledger?.transactions) ? ledger.transactions : []),
 		[ledger]
@@ -147,7 +147,7 @@ export function IncomeTransactionsPage({ ledger, onBack, navigate, onEditTransac
 	const showBanner = !bannerDismissed && winnerLot !== null;
 
 	return (
-		<SubPageShell title="交易记录" onBack={onBack}>
+		<SubPageShell title="交易记录" onBack={onBack} navigate={navigate} currentRoute={currentRoute}>
 			{/* ① 全部交易汇总 */}
 			<div className="rounded-2xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4">
 				<div className="flex items-center justify-between gap-2 pb-3">

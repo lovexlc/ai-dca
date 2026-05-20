@@ -172,6 +172,9 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   useEffect(() => {
     const canonicalUrl = buildWorkspaceUrl(activeTab, { inPagesDir });
+    if (activeTab === 'tradePlans' && window.location.hash) {
+      canonicalUrl.hash = window.location.hash;
+    }
     if (window.location.href !== canonicalUrl.href) {
       window.history.replaceState({ tab: activeTab }, '', canonicalUrl);
     }

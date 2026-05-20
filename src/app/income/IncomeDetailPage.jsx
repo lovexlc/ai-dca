@@ -247,7 +247,7 @@ function MobileRangeSheet({ open, activeRange, inceptionEnabled, onClose, onSele
   );
 }
 
-export function IncomeDetailPage({ ledger, portfolio, onBack }) {
+export function IncomeDetailPage({ ledger, portfolio, onBack, navigate, currentRoute }) {
   const [{ range, customFrom, customTo }, setRange, setCustom] = useRangeUrlSync({ defaultRange: DEFAULT_RANGE });
   const transactions = useMemo(() => (Array.isArray(ledger?.transactions) ? ledger.transactions : []), [ledger]);
   const inceptionDate = useMemo(() => firstBuyDate(transactions), [transactions]);
@@ -421,7 +421,7 @@ export function IncomeDetailPage({ ledger, portfolio, onBack }) {
   );
 
   return (
-    <SubPageShell title="收益明细" onBack={onBack} right={statusBadge}>
+    <SubPageShell title="收益明细" onBack={onBack} navigate={navigate} currentRoute={currentRoute} right={statusBadge}>
       <MobileOverview
         rangeLabel={rangeLabel}
         todayProfit={todayProfit}
