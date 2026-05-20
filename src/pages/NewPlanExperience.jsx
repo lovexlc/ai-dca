@@ -154,6 +154,9 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   }, [dashboardState.selectedCode, marketEntries, state.symbol]);
 
   const selectedStrategy = state.selectedStrategy || 'ma120-risk';
+  const selectedSymbolCode = String(state.symbol || '').trim().toUpperCase();
+  const selectedExtraSymbol = findExtraSymbol(selectedSymbolCode);
+  const isSelectedExtraSymbol = EXTRA_SYMBOL_CODES.has(selectedSymbolCode);
   const selectedFund = useMemo(
     () => marketEntries.find((entry) => entry.code === state.symbol) || null,
     [marketEntries, state.symbol]
@@ -164,12 +167,22 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   );
   const selectedFundCurrency = resolveMarketCurrency(selectedFund);
   const benchmarkCurrency = resolveMarketCurrency(benchmarkFund);
-  const selectedFundLabel = formatMarketLabel(selectedFund || { code: state.symbol });
-  const selectedAnchorNameLabel = formatMarketName(selectedFund || findExtraSymbol(state.symbol) || { code: state.symbol });
+  const selectedInstrumentCurrency = isSelectedExtraSymbol ? (extraQuote.currency || selectedExtraSymbol?.currency || 'USD') : selectedFundCurrency;
+  const selectedFundLabel = formatMarketLabel(selectedFund || selectedExtraSymbol || { code: state.symbol });
+  const selectedAnchorNameLabel = formatMarketName(selectedFund || selectedExtraSymbol || { code: state.symbol });
   const benchmarkCodeLabel = formatMarketCode(benchmarkFund?.code || BENCHMARK_CODE);
   const benchmarkNameLabel = formatMarketName(benchmarkFund || { code: BENCHMARK_CODE });
 
   useEffect(() => {
+    if (isSelectedExtraSymbol) {
+      setDailySeriesState({
+        code: selectedSymbolCode,
+        bars: [],
+        ready: true
+      });
+      return;
+    }
+
     if (!benchmarkFund?.code) {
       setDailySeriesState({
         code: '',
@@ -211,15 +224,24 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     return () => {
       cancelled = true;
     };
-  }, [benchmarkFund?.code, inPagesDir]);
+  }, [benchmarkFund?.code, inPagesDir, isSelectedExtraSymbol, selectedSymbolCode]);
 
   const selectedDailySeries = useMemo(
-    () => (dailySeriesState.code === benchmarkFund?.code ? dailySeriesState.bars : []),
-    [benchmarkFund?.code, dailySeriesState.bars, dailySeriesState.code]
+    () => (!isSelectedExtraSymbol && dailySeriesState.code === benchmarkFund?.code ? dailySeriesState.bars : []),
+    [benchmarkFund?.code, dailySeriesState.bars, dailySeriesState.code, isSelectedExtraSymbol]
   );
-  const isSelectedDailySeriesReady = !benchmarkFund?.code || (dailySeriesState.code === benchmarkFund.code && dailySeriesState.ready);
+  const isSelectedDailySeriesReady = isSelectedExtraSymbol || !benchmarkFund?.code || (dailySeriesState.code === benchmarkFund.code && dailySeriesState.ready);
+  const activeExtraQuotePrice = isSelectedExtraSymbol && extraQuote.symbol === selectedSymbolCode ? Number(extraQuote.price) || 0 : 0;
 
   const derivedStageHigh = useMemo(() => {
+    if (activeExtraQuotePrice > 0) {
+      return activeExtraQuotePrice;
+    }
+
+    if (isSelectedExtraSymbol) {
+      return 0;
+    }
+
     const values = selectedDailySeries
       .flatMap((bar) => [Number(bar.high) || 0, Number(bar.close) || 0])
       .filter((value) => Number.isFinite(value) && value > 0);
@@ -229,22 +251,34 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     }
 
     return Number(benchmarkFund?.current_price) || Number(selectedFund?.current_price) || 0;
-  }, [benchmarkFund, selectedDailySeries, selectedFund]);
+  }, [activeExtraQuotePrice, benchmarkFund, isSelectedExtraSymbol, selectedDailySeries, selectedFund]);
   const derivedMa120 = useMemo(
-    () => findLatestFiniteValue(buildMovingAverageValues(selectedDailySeries, 120)) || Number(benchmarkFund?.current_price) || Number(selectedFund?.current_price) || 0,
-    [benchmarkFund, selectedDailySeries, selectedFund]
+    () => {
+      if (activeExtraQuotePrice > 0) return activeExtraQuotePrice;
+      if (isSelectedExtraSymbol) return 0;
+      return findLatestFiniteValue(buildMovingAverageValues(selectedDailySeries, 120)) || Number(benchmarkFund?.current_price) || Number(selectedFund?.current_price) || 0;
+    },
+    [activeExtraQuotePrice, benchmarkFund, isSelectedExtraSymbol, selectedDailySeries, selectedFund]
   );
   const derivedMa200 = useMemo(
-    () => findLatestFiniteValue(buildMovingAverageValues(selectedDailySeries, 200)) || (derivedMa120 > 0 ? derivedMa120 * 0.85 : 0),
-    [selectedDailySeries, derivedMa120]
+    () => {
+      if (activeExtraQuotePrice > 0) return activeExtraQuotePrice * 0.85;
+      if (isSelectedExtraSymbol) return 0;
+      return findLatestFiniteValue(buildMovingAverageValues(selectedDailySeries, 200)) || (derivedMa120 > 0 ? derivedMa120 * 0.85 : 0);
+    },
+    [activeExtraQuotePrice, derivedMa120, isSelectedExtraSymbol, selectedDailySeries]
   );
 
   useEffect(() => {
-    if (!benchmarkFund?.code || !isSelectedDailySeriesReady) {
+    if (!isSelectedExtraSymbol && (!benchmarkFund?.code || !isSelectedDailySeriesReady)) {
       return;
     }
 
-    const syncKey = `${benchmarkFund.code}:${selectedStrategy}`;
+    if (isSelectedExtraSymbol && (!(activeExtraQuotePrice > 0) || !isSelectedDailySeriesReady)) {
+      return;
+    }
+
+    const syncKey = `${selectedSymbolCode}:${selectedStrategy}:${isSelectedExtraSymbol ? activeExtraQuotePrice : benchmarkFund?.code}`;
     if (autoSeedRef.current === syncKey) {
       return;
     }
@@ -260,7 +294,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       return next;
     });
     autoSeedRef.current = syncKey;
-  }, [benchmarkFund?.code, derivedMa120, derivedMa200, derivedStageHigh, isSelectedDailySeriesReady, selectedStrategy]);
+  }, [activeExtraQuotePrice, benchmarkFund?.code, derivedMa120, derivedMa200, derivedStageHigh, isSelectedDailySeriesReady, isSelectedExtraSymbol, selectedStrategy, selectedSymbolCode]);
 
   const filteredMarketEntries = useMemo(() => {
     const keyword = symbolSearch.trim().toLowerCase();
@@ -791,7 +825,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                         {computed.layers.map((layer) => (
                           <tr key={layer.id} className="hover:bg-indigo-50/40">
                             <td className="px-4 py-3 font-semibold text-slate-900">{layer.label}</td>
-                            <td className="px-4 py-3 font-mono">{formatFundPrice(layer.price, benchmarkCurrency)}</td>
+                            <td className="px-4 py-3 font-mono">{formatFundPrice(layer.price, selectedInstrumentCurrency)}</td>
                             <td className="px-4 py-3">{formatPercent(layer.drawdown, 1)}</td>
                             <td className="px-4 py-3 font-semibold text-slate-900">{formatCurrency(layer.amount, '¥ ')}</td>
                             <td className="px-4 py-3">{formatPercent((computed.totalWeight ? layer.weight / computed.totalWeight : 0) * 100, 1)}</td>
@@ -810,7 +844,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
               <SectionHeading eyebrow="结果预览" title="策略成本预览" />
               <div className="mt-6 rounded-[24px] border border-white/80 bg-white/90 p-5 shadow-sm">
                 <div className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-500">预估平均成本</div>
-                <div className="mt-2 text-3xl font-extrabold tracking-tight text-indigo-700">{formatFundPrice(computed.averageCost, benchmarkCurrency)}</div>
+                <div className="mt-2 text-3xl font-extrabold tracking-tight text-indigo-700">{formatFundPrice(computed.averageCost, selectedInstrumentCurrency)}</div>
                 <div className="mt-4 grid gap-3">
                   <div className="flex items-center justify-between text-sm text-slate-500">
                     <span>可投入资金</span>
@@ -822,7 +856,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                   </div>
                   <div className="flex items-center justify-between text-sm text-slate-500">
                     <span>{computed.anchorLabel}（{selectedAnchorNameLabel}）</span>
-                    <strong className="text-slate-900">{formatFundPrice(computed.anchorPrice, benchmarkCurrency)}</strong>
+                    <strong className="text-slate-900">{formatFundPrice(computed.anchorPrice, selectedInstrumentCurrency)}</strong>
                   </div>
                 </div>
               </div>
@@ -843,7 +877,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                       <div key={layer.id} className="group grid grid-cols-[minmax(82px,0.9fr)_minmax(112px,1.2fr)_minmax(88px,0.9fr)] items-center gap-3">
                         <div className="text-right">
                           <div className="text-xs font-extrabold text-slate-900">{formatPercent(layer.drawdown, 1)}</div>
-                          <div className="mt-0.5 font-mono text-[11px] text-slate-400">{formatFundPrice(layer.price, benchmarkCurrency)}</div>
+                          <div className="mt-0.5 font-mono text-[11px] text-slate-400">{formatFundPrice(layer.price, selectedInstrumentCurrency)}</div>
                         </div>
                         <div className="relative flex min-h-10 items-center justify-center">
                           <div
