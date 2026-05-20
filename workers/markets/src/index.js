@@ -390,26 +390,25 @@ async function handleMovers(env, market, direction, forceRefresh) {
 
 async function enrichWithProfiles(env, list) {
   if (!env.FINNHUB_TOKEN || !Array.isArray(list) || !list.length) return list;
-  const out = await Promise.all(
-    list.map(async (row) => {
-      const sym = row && row.symbol;
-      if (!sym) return row;
-      const cacheKey = 'profile:us:' + sym;
-      try {
-        let prof = await kvGetJson(env, cacheKey);
-        if (!prof) {
-          prof = await fetchFinnhubProfile(sym, { token: env.FINNHUB_TOKEN });
-          if (prof && typeof prof === 'object') {
-            await kvPutJson(env, cacheKey, prof, { ttlSeconds: 7 * 24 * 3600 });
-          }
+  // Finnhub profile 单 symbol 一调、且可能冷缓存；list 常见 30 个。限并发 5。
+  const out = await mapLimit(list, 5, async (row) => {
+    const sym = row && row.symbol;
+    if (!sym) return row;
+    const cacheKey = 'profile:us:' + sym;
+    try {
+      let prof = await kvGetJson(env, cacheKey);
+      if (!prof) {
+        prof = await fetchFinnhubProfile(sym, { token: env.FINNHUB_TOKEN });
+        if (prof && typeof prof === 'object') {
+          await kvPutJson(env, cacheKey, prof, { ttlSeconds: 7 * 24 * 3600 });
         }
-        const industry = (prof && (prof.finnhubIndustry || prof.gicsSector || prof.industry)) || '';
-        return industry ? { ...row, industry } : row;
-      } catch (err) {
-        return row;
       }
-    })
-  );
+      const industry = (prof && (prof.finnhubIndustry || prof.gicsSector || prof.industry)) || '';
+      return industry ? { ...row, industry } : row;
+    } catch (err) {
+      return row;
+    }
+  });
   return out;
 }
 

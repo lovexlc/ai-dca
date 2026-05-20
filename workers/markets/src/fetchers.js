@@ -13,6 +13,29 @@ const EM_PUSH2_HOST = 'https://' + 'push2.eastmoney.com';
 const EM_PUSH2HIS_HOST = 'https://' + 'push2his.eastmoney.com';
 const EM_SEARCH_HOST = 'https://' + 'searchapi.eastmoney.com';
 const FINNHUB_HOST = 'https://' + 'finnhub.io';
+
+// 轻量级并发限流。与index.js 里的版本语义一致，这里独立定义避免跨文件依赖。
+async function mapLimit(items, limit, worker) {
+  const list = Array.isArray(items) ? items : [];
+  const out = new Array(list.length);
+  const n = Math.max(1, Math.min(limit | 0 || 1, list.length));
+  let cursor = 0;
+  async function runner() {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= list.length) return;
+      try {
+        out[idx] = await worker(list[idx], idx);
+      } catch (err) {
+        out[idx] = { __error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+  }
+  const runners = [];
+  for (let i = 0; i < n; i += 1) runners.push(runner());
+  await Promise.all(runners);
+  return out;
+}
 const CNN_FNG_HOST = 'https://' + 'production.dataviz.cnn.io';
 
 // CNN 接口认浏览器 UA 严格——不像 Chrome 就给 418。
@@ -114,16 +137,15 @@ export function normalizeYahooKline(raw, intervalLabel) {
 
 export async function fetchYahooQuotesBatch(symbols, opts = {}) {
   const out = {};
-  await Promise.all(
-    symbols.map(async (sym) => {
-      try {
-        const raw = await fetchYahooChart(sym, { range: '1d', interval: '5m', ...opts });
-        out[sym] = normalizeYahooQuote(raw);
-      } catch (err) {
-        out[sym] = { symbol: sym, error: String((err && err.message) || err) };
-      }
-    })
-  );
+  // 上游 Yahoo chart 单 symbol 一调；symbols 可能是几十个。限并发 5。
+  await mapLimit(symbols, 5, async (sym) => {
+    try {
+      const raw = await fetchYahooChart(sym, { range: '1d', interval: '5m', ...opts });
+      out[sym] = normalizeYahooQuote(raw);
+    } catch (err) {
+      out[sym] = { symbol: sym, error: String((err && err.message) || err) };
+    }
+  });
   return out;
 }
 
@@ -239,15 +261,14 @@ export async function fetchEastmoneyQuote(code) {
 
 export async function fetchEastmoneyQuotesBatch(codes) {
   const out = {};
-  await Promise.all(
-    codes.map(async (code) => {
-      try {
-        out[code] = await fetchEastmoneyQuote(code);
-      } catch (err) {
-        out[code] = { symbol: code, error: String((err && err.message) || err) };
-      }
-    })
-  );
+  // 东财 NAV 较便宜、上限 8 并发。
+  await mapLimit(codes, 8, async (code) => {
+    try {
+      out[code] = await fetchEastmoneyQuote(code);
+    } catch (err) {
+      out[code] = { symbol: code, error: String((err && err.message) || err) };
+    }
+  });
   return out;
 }
 
