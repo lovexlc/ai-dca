@@ -21,7 +21,7 @@ import {
   strategyOptions
 } from '../app/newPlan.js';
 import { EXTRA_SYMBOL_GROUPS, EXTRA_SYMBOL_CODES, findExtraSymbol, isExtraSymbol } from '../app/extraSymbols.js';
-import { fetchQuote } from '../app/marketsApi.js';
+import { fetchKline, fetchQuote } from '../app/marketsApi.js';
 import { getAssetType, getAssetTypeLabel, getStrategyParams } from '../app/assetType.js';
 import { SCREENING_CHECKLIST, validateScreening } from '../app/stockScreener.js';
 
@@ -174,16 +174,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   const benchmarkNameLabel = formatMarketName(benchmarkFund || { code: BENCHMARK_CODE });
 
   useEffect(() => {
-    if (isSelectedExtraSymbol) {
-      setDailySeriesState({
-        code: selectedSymbolCode,
-        bars: [],
-        ready: true
-      });
-      return;
-    }
-
-    if (!benchmarkFund?.code) {
+    if (!isSelectedExtraSymbol && !benchmarkFund?.code) {
       setDailySeriesState({
         code: '',
         bars: [],
@@ -193,7 +184,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     }
 
     let cancelled = false;
-    const nextCode = benchmarkFund.code;
+    const nextCode = isSelectedExtraSymbol ? selectedSymbolCode : benchmarkFund.code;
 
     setDailySeriesState({
       code: nextCode,
@@ -201,7 +192,18 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       ready: false
     });
 
-    loadNasdaqDailySeries(nextCode, { inPagesDir })
+    const seriesPromise = isSelectedExtraSymbol
+      ? fetchKline(nextCode, { timeframe: '1y' }).then((payload) => {
+          const candles = Array.isArray(payload?.candles) ? payload.candles : Array.isArray(payload?.bars) ? payload.bars : [];
+          return candles.map((bar) => ({
+            datetime: bar.datetime || bar.date || bar.t || '',
+            high: Number(bar.high ?? bar.h) || 0,
+            close: Number(bar.close ?? bar.c) || 0
+          }));
+        })
+      : loadNasdaqDailySeries(nextCode, { inPagesDir });
+
+    seriesPromise
       .then((bars) => {
         if (!cancelled) {
           setDailySeriesState({
@@ -227,21 +229,17 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   }, [benchmarkFund?.code, inPagesDir, isSelectedExtraSymbol, selectedSymbolCode]);
 
   const selectedDailySeries = useMemo(
-    () => (!isSelectedExtraSymbol && dailySeriesState.code === benchmarkFund?.code ? dailySeriesState.bars : []),
-    [benchmarkFund?.code, dailySeriesState.bars, dailySeriesState.code, isSelectedExtraSymbol]
+    () => {
+      const expectedCode = isSelectedExtraSymbol ? selectedSymbolCode : benchmarkFund?.code;
+      return dailySeriesState.code === expectedCode ? dailySeriesState.bars : [];
+    },
+    [benchmarkFund?.code, dailySeriesState.bars, dailySeriesState.code, isSelectedExtraSymbol, selectedSymbolCode]
   );
-  const isSelectedDailySeriesReady = isSelectedExtraSymbol || !benchmarkFund?.code || (dailySeriesState.code === benchmarkFund.code && dailySeriesState.ready);
+  const expectedDailySeriesCode = isSelectedExtraSymbol ? selectedSymbolCode : benchmarkFund?.code;
+  const isSelectedDailySeriesReady = !expectedDailySeriesCode || (dailySeriesState.code === expectedDailySeriesCode && dailySeriesState.ready);
   const activeExtraQuotePrice = isSelectedExtraSymbol && extraQuote.symbol === selectedSymbolCode ? Number(extraQuote.price) || 0 : 0;
 
   const derivedStageHigh = useMemo(() => {
-    if (activeExtraQuotePrice > 0) {
-      return activeExtraQuotePrice;
-    }
-
-    if (isSelectedExtraSymbol) {
-      return 0;
-    }
-
     const values = selectedDailySeries
       .flatMap((bar) => [Number(bar.high) || 0, Number(bar.close) || 0])
       .filter((value) => Number.isFinite(value) && value > 0);
@@ -250,23 +248,28 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       return Math.max(...values);
     }
 
+    if (isSelectedExtraSymbol) {
+      return activeExtraQuotePrice;
+    }
+
     return Number(benchmarkFund?.current_price) || Number(selectedFund?.current_price) || 0;
   }, [activeExtraQuotePrice, benchmarkFund, isSelectedExtraSymbol, selectedDailySeries, selectedFund]);
   const derivedMa120 = useMemo(
     () => {
-      if (activeExtraQuotePrice > 0) return activeExtraQuotePrice;
-      if (isSelectedExtraSymbol) return 0;
-      return findLatestFiniteValue(buildMovingAverageValues(selectedDailySeries, 120)) || Number(benchmarkFund?.current_price) || Number(selectedFund?.current_price) || 0;
+      const ma120 = findLatestFiniteValue(buildMovingAverageValues(selectedDailySeries, 120));
+      if (ma120 > 0) return ma120;
+      if (isSelectedExtraSymbol) return activeExtraQuotePrice;
+      return Number(benchmarkFund?.current_price) || Number(selectedFund?.current_price) || 0;
     },
     [activeExtraQuotePrice, benchmarkFund, isSelectedExtraSymbol, selectedDailySeries, selectedFund]
   );
   const derivedMa200 = useMemo(
     () => {
-      if (activeExtraQuotePrice > 0) return activeExtraQuotePrice * 0.85;
-      if (isSelectedExtraSymbol) return 0;
-      return findLatestFiniteValue(buildMovingAverageValues(selectedDailySeries, 200)) || (derivedMa120 > 0 ? derivedMa120 * 0.85 : 0);
+      const ma200 = findLatestFiniteValue(buildMovingAverageValues(selectedDailySeries, 200));
+      if (ma200 > 0) return ma200;
+      return derivedMa120 > 0 ? derivedMa120 * 0.85 : 0;
     },
-    [activeExtraQuotePrice, derivedMa120, isSelectedExtraSymbol, selectedDailySeries]
+    [derivedMa120, selectedDailySeries]
   );
 
   useEffect(() => {
@@ -274,11 +277,11 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       return;
     }
 
-    if (isSelectedExtraSymbol && (!(activeExtraQuotePrice > 0) || !isSelectedDailySeriesReady)) {
+    if (isSelectedExtraSymbol && !isSelectedDailySeriesReady) {
       return;
     }
 
-    const syncKey = `${selectedSymbolCode}:${selectedStrategy}:${isSelectedExtraSymbol ? activeExtraQuotePrice : benchmarkFund?.code}`;
+    const syncKey = `${selectedSymbolCode}:${selectedStrategy}:${isSelectedExtraSymbol ? `${derivedStageHigh}:${derivedMa120}:${derivedMa200}` : benchmarkFund?.code}`;
     if (autoSeedRef.current === syncKey) {
       return;
     }
