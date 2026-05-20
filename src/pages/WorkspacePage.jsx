@@ -292,7 +292,9 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
             </div>
           </div>
         ) : null}
-        <Suspense fallback={<TabLoadingFallback />}>{renderActivePanel()}</Suspense>
+        <div className="pt-4">
+          <Suspense fallback={<TabLoadingFallback />}>{renderActivePanel()}</Suspense>
+        </div>
       </ConsoleLayout>
       <AiChatWidget currentTab={activeTab} />
       <MobileTabBar
