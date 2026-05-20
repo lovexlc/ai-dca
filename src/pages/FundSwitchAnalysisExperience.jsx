@@ -1,6 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ChevronDown, Shuffle } from 'lucide-react';
-import { readLedgerState } from '../app/holdingsLedger.js';
+import {
+  readLedgerState,
+  persistLedgerState,
+  requestLedgerNav,
+  mergeSnapshotsFromNavResult,
+  buildNavMetaFromResult
+} from '../app/holdingsLedger.js';
 import {
   computeSwitchChainMetrics,
   sanitizeTransactions
@@ -117,6 +123,7 @@ function buildAutoSwitchChains(transactions) {
 export function FundSwitchAnalysisExperience() {
   const [ledger, setLedger] = useState(() => readLedgerState());
   const [expanded, setExpanded] = useState(() => new Set());
+  const navRefreshTriggeredRef = useRef(false);
 
   // 监听 storage 事件，跨标签页/兄弟组件更新 ledger 时同步。
   useEffect(() => {
@@ -135,6 +142,50 @@ export function FundSwitchAnalysisExperience() {
   const snapshotsByCode = ledger.snapshotsByCode || {};
 
   const chains = useMemo(() => buildAutoSwitchChains(transactions), [transactions]);
+
+  // 进入本 tab 时主动拉一次 NAV，覆盖「链路中出现过的全部代码」——
+  // 包括已被切换卖出、不再出现在当前持仓的 code（它们不会被 HoldingsExperience 刷新到），
+  // 避免「未切换基准」baseline 价冻结在切换那天的口子。
+  useEffect(() => {
+    if (navRefreshTriggeredRef.current) return undefined;
+    const codeSet = new Set();
+    for (const chain of chains) {
+      for (const leg of chain.legs || []) {
+        const buy = leg.buyTxId ? transactions.find((tx) => tx.id === leg.buyTxId) : null;
+        const sell = leg.sellTxId ? transactions.find((tx) => tx.id === leg.sellTxId) : null;
+        if (buy && buy.code) codeSet.add(buy.code);
+        if (sell && sell.code) codeSet.add(sell.code);
+      }
+    }
+    const codes = [...codeSet].sort();
+    if (!codes.length) return undefined;
+    navRefreshTriggeredRef.current = true;
+    let cancelled = false;
+    (async () => {
+      try {
+        const navResult = await requestLedgerNav(codes);
+        if (cancelled) return;
+        setLedger((prev) => {
+          const merged = mergeSnapshotsFromNavResult(prev.snapshotsByCode, navResult);
+          const nextMeta = buildNavMetaFromResult(navResult, merged.errors);
+          const nextState = {
+            ...prev,
+            snapshotsByCode: merged.snapshotsByCode,
+            lastNavMeta: nextMeta
+          };
+          persistLedgerState(nextState);
+          return nextState;
+        });
+      } catch (_err) {
+        // 静默失败：下次 mount 重试。
+        navRefreshTriggeredRef.current = false;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [chains, transactions]);
+
   const chainsWithMetrics = useMemo(
     () => chains.map((chain) => ({
       chain,
