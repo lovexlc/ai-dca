@@ -47,10 +47,10 @@ function AccountCardsGrid({ accountAllocation, className = '' }) {
 }
 
 const TILES = [
-	{ route: ROUTES.INCOME, Icon: BarChart3, label: '收益明细' },
-	{ route: ROUTES.LIQUIDATION, Icon: Receipt, label: '清仓分析' },
-	{ route: ROUTES.BREAKDOWN, Icon: PieChart, label: '持仓分析' },
-	{ route: ROUTES.TRANSACTIONS, Icon: ArrowLeftRight, label: '交易记录' },
+	{ route: ROUTES.INCOME, Icon: BarChart3, label: '收益' },
+	{ route: ROUTES.LIQUIDATION, Icon: Receipt, label: '清仓' },
+	{ route: ROUTES.BREAKDOWN, Icon: PieChart, label: '持仓' },
+	{ route: ROUTES.TRANSACTIONS, Icon: ArrowLeftRight, label: '记录' },
 ];
 
 function signTone(value) {

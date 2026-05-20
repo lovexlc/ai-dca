@@ -8,10 +8,10 @@ import { ArrowLeftRight, BarChart3, ChevronLeft, PieChart, Receipt } from 'lucid
 import { ROUTES } from '../incomeRoute.js';
 
 const SUB_NAV = [
-	{ route: ROUTES.INCOME, label: '收益明细', Icon: BarChart3 },
-	{ route: ROUTES.LIQUIDATION, label: '清仓分析', Icon: Receipt },
-	{ route: ROUTES.BREAKDOWN, label: '持仓分析', Icon: PieChart },
-	{ route: ROUTES.TRANSACTIONS, label: '交易记录', Icon: ArrowLeftRight },
+	{ route: ROUTES.INCOME, label: '收益', Icon: BarChart3 },
+	{ route: ROUTES.LIQUIDATION, label: '清仓', Icon: Receipt },
+	{ route: ROUTES.BREAKDOWN, label: '持仓', Icon: PieChart },
+	{ route: ROUTES.TRANSACTIONS, label: '记录', Icon: ArrowLeftRight },
 ];
 
 export function SubPageShell({ title, onBack, children, right = null, navigate = null, currentRoute = '' }) {
