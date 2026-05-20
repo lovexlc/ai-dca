@@ -26,7 +26,7 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
   const [mobileTab, setMobileTab] = useState('opportunity');
 
   return (
-    <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
+    <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>
       {/* 移动端子 tab；lg+ 隐藏，PC 直接两列 */}
       <div className="mb-3 inline-flex gap-1 rounded-full bg-slate-100 p-1 lg:hidden">
         {MOBILE_TABS.map((t) => {

@@ -463,13 +463,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   // 默认：列表视图.
   return (
-    <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
-      <div className="flex justify-end">
-        <button type="button" onClick={enterNewPlanView} className={primaryButtonClass}>
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          新建加仓策略
-        </button>
-      </div>
+    <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
 
       {renderSubTabBar()}
 

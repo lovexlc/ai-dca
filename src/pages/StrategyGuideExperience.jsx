@@ -284,12 +284,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <PageHero
-        eyebrow="FreeBacktrack Tools"
-        title="投资工具工作台"
-        description="从这里进入持仓、交易计划、通知和数据同步；策略说明默认收起，不挡住核心任务。"
-        badges={[<NavPill key="a" href="#dashboard-title" active>Dashboard</NavPill>, <NavPill key="b" href="#tools-entry">工具入口</NavPill>, <NavPill key="c" href="#demo-zone">新手 Demo</NavPill>]}
-      >
+      <PageHero>
         <DisclosureBanner
           icon={<AlertCircle className="h-4 w-4" />}
           summary={<span><strong className="font-semibold">免责声明</strong>·本工具不构成投资建议，点击展开查看详情</span>}

@@ -2700,21 +2700,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   const content = (
-    <div className={cx('flex flex-col gap-4 px-4 py-5 sm:px-6', embedded ? '' : 'mx-auto max-w-[1600px]')}>
-      <div className="flex justify-end">
-        <button
-          type="button"
-          className={primaryButtonClass}
-          onClick={() => {
-            resetDraft(emptyDraft({ type: 'BUY' }));
-            setSidePanelTab('create');
-            setSidePanelOpen(true);
-          }}
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          新增交易
-        </button>
-      </div>
+    <div className={cx('flex flex-col gap-4 px-4 sm:px-6', embedded ? '' : 'mx-auto max-w-[1600px]')}>
       {migrationNoticeVisible ? (
         <div className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-none" />

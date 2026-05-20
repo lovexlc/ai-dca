@@ -1949,27 +1949,19 @@ export function MarketsExperience() {
       </aside>
 
       <main className="order-1 flex min-w-0 flex-col gap-5 lg:order-2">
-        <div className="space-y-3">
-          <div className="flex justify-end">
-            <button type="button" className={cx(secondaryButtonClass, 'w-full sm:w-auto')} onClick={() => { setSectorsOpen(true); setSectorSearchOpen(true); }}>
-              <Search className="h-4 w-4" aria-hidden="true" />
-              添加自选
-            </button>
-          </div>
-          {!watchRows.length ? (
-            <div className="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/50 px-4 py-4 text-sm text-slate-600">
-              <div className="font-semibold text-slate-900">未配置自选</div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button type="button" className={cx(primaryButtonClass, 'min-h-10 px-3 py-2 text-xs')} onClick={() => { setSectorsOpen(true); setSectorSearchOpen(true); }}>
-                  添加第一个标的
-                </button>
-                <button type="button" className={cx(secondaryButtonClass, 'min-h-10 px-3 py-2 text-xs')} onClick={() => setPendingAnalysis({ symbol: 'QQQ', name: 'Nasdaq 100 ETF' })}>
-                  开始研究 QQQ
-                </button>
-              </div>
+        {!watchRows.length ? (
+          <div className="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/50 px-4 py-4 text-sm text-slate-600">
+            <div className="font-semibold text-slate-900">未配置自选</div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" className={cx(primaryButtonClass, 'min-h-10 px-3 py-2 text-xs')} onClick={() => { setSectorsOpen(true); setSectorSearchOpen(true); }}>
+                添加第一个标的
+              </button>
+              <button type="button" className={cx(secondaryButtonClass, 'min-h-10 px-3 py-2 text-xs')} onClick={() => setPendingAnalysis({ symbol: 'QQQ', name: 'Nasdaq 100 ETF' })}>
+                开始研究 QQQ
+              </button>
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
         <div className="sticky top-0 z-20 flex items-center justify-between gap-3 bg-white/95 px-1 py-2 backdrop-blur">
           <div className="flex items-center gap-3">
