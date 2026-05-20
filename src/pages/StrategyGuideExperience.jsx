@@ -12,7 +12,7 @@ const HOME_OPTIONS = [
   { value: 'notify', label: '通知设置' },
   { value: 'markets', label: '行情中心' },
   { value: 'fundSwitch', label: '基金切换' },
-  { value: 'backup', label: '数据同步 / 备份' }
+  { value: 'backup', label: '数据同步' }
 ];
 
 const ACCOUNT_CARDS = [
@@ -237,7 +237,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
   }
 
   function handleInstallDemo() {
-    if (hasUserData && !window.confirm('检测到已有本地数据。生成演示数据会覆盖当前持仓、计划和定投数据。建议先到“数据同步 / 备份”导出备份。确认继续？')) return;
+    if (hasUserData && !window.confirm('检测到已有本地数据。生成演示数据会覆盖当前持仓、计划和定投数据。建议先到“数据同步”导出备份。确认继续？')) return;
     const meta = installDemoData();
     setMessage('演示数据已生成。下一步建议配置手机通知，完整体验“计划触发 → 手机提醒”的流程。');
     setDemoMeta(meta);
@@ -290,7 +290,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
           summary={<span><strong className="font-semibold">免责声明</strong>·本工具不构成投资建议，点击展开查看详情</span>}
           details={(
             <div className="space-y-3">
-              <p>策略内容由公开的金渐成公众号文章整理总结而来。本工具与金渐成本人及其公众号无官方关联，不构成投资建议。仅供个人记录与学习使用，投资有风险、请独立判断。</p>
+              <p>部分策略内容由公开的金渐成公众号文章整理总结而来。本工具与金渐成本人及其公众号无官方关联，不构成投资建议。仅供个人记录与学习使用，投资有风险、请独立判断。</p>
               <a
                 className="inline-flex min-h-9 items-center justify-center rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 transition-colors hover:border-amber-400 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2"
                 href="https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEUUA9qDZ5H_XnPECnDzzMGTTIc2b_5_gAC8B4AAtk5cFTHSrIufYF2bDsE.jpg"
@@ -441,7 +441,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
             <ReadmeCard title="通知设置" description="配置 iOS Bark、Android 推送 App 或 PC 浏览器通知，让策略触发时主动提醒你。" bullets={['复制完整链接自动解析', '发送测试通知', '同步交易计划规则']} cta="前往通知设置" onClick={() => navigate('notify')} />
             <ReadmeCard title="行情中心" description="查看关注标的、市场指数和 VIX 风险信号。" bullets={['维护美股关注列表', '观察指数和恐慌信号', '辅助判断是否进入加仓区']} cta="前往行情中心" onClick={() => navigate('markets')} />
             <ReadmeCard title="基金切换" description="辅助比较同类基金、ETF 或替代标的之间的切换机会。" bullets={['比较候选标的', '分析切换收益', '只在差异足够大时执行']} cta="前往基金切换" onClick={() => navigate('fundSwitch')} />
-            <ReadmeCard title="数据同步 / 备份" description="备份和恢复本地数据，避免浏览器清理或换设备导致数据丢失。" bullets={['导出当前数据', '恢复历史备份', '换设备前先备份']} cta="前往备份" onClick={() => navigate('backup')} />
+            <ReadmeCard title="数据同步" description="备份和恢复本地数据，避免浏览器清理或换设备导致数据丢失。" bullets={['导出当前数据', '恢复历史备份', '换设备前先备份']} cta="前往备份" onClick={() => navigate('backup')} />
           </div>
         </section>
 

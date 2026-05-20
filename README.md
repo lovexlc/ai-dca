@@ -36,7 +36,7 @@ Android 推送接收端已经拆分到独立仓库，不再放在本项目内：
   - 提醒规则同步、测试通知按钮、最近提醒记录
   - FCM / Bark / Gotify 多通道；Android 端通过 `deviceInstallationId` 直绑（已弃用配对码）
   - 持仓晚盘通知 20:30 / 21:30 统一全量推送（in + out + 总览），支持 `body_md`
-- **数据同步 / 备份** `backup`
+- **数据同步** `backup`
   - WebDAV 备份 / 恢复（通过 `webdav-cors-proxy` worker 转发 CORS）
 - **AI 助手**（右下角悬浮入口，Plus 体验）
   - 基于 Cloudflare Vectorize（`ai-dca-kb`，1024 维 cosine）+ bge-m3 嵌入 + `@cf/meta/llama-3.1-8b-instruct` 推理

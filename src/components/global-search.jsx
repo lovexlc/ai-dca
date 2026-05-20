@@ -17,7 +17,7 @@ const TAB_ENTRIES = [
   { key: 'tradePlans', label: '交易计划', desc: '加仓 / 定投策略', icon: BarChart3, keywords: 'tradeplans plans jihua dca' },
   { key: 'fundSwitch', label: '基金切换', desc: '切换链路与执行', icon: Shuffle, keywords: 'fundswitch switch qiehuan' },
   { key: 'notify', label: '通知', desc: '推送配置与状态', icon: Bell, keywords: 'notify push tongzhi' },
-  { key: 'backup', label: '数据同步 / 备份', desc: 'WebDAV / 本地备份', icon: RefreshCcw, keywords: 'backup beifen webdav sync' },
+  { key: 'backup', label: '数据同步', desc: 'WebDAV / 本地备份', icon: RefreshCcw, keywords: 'backup beifen webdav sync' },
 ];
 
 function pickFundsFromLedger(state) {

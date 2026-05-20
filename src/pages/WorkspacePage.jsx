@@ -31,7 +31,7 @@ const WORKSPACE_TITLES = {
   markets: '行情中心',
   holdings: '持仓总览',
   notify: '通知设置',
-  backup: '数据同步 / 备份'
+  backup: '数据同步'
 };
 
 const SIDEBAR_ICONS = {
