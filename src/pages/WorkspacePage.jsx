@@ -325,6 +325,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     <>
       <BrandPreviewBar
         currentPageLabel={currentPageLabel}
+        onOpenNav={() => window.dispatchEvent(new CustomEvent('console:open-mobile-nav'))}
         onJoinGroup={() => setShowQrModal(true)}
         onShowDisclaimer={() => setShowDisclaimer(true)}
       />
@@ -333,6 +334,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         sidebarNav={sidebarNav}
         activeKey={activeTab}
         onSelectNav={handleSelectTab}
+        showMobileBar={false}
       >
         {demoMeta ? (
           <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">

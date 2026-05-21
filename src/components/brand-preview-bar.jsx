@@ -6,13 +6,24 @@ import { AccountMenu } from './account-menu.jsx';
  * 取代各 tab 内部的大 H1 hero，释放垂直空间。
  * 手机 / PC 均可见，保证加入群聊 / 免责 / 账号菜单 三件事两端一致。
  */
-export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onShowDisclaimer }) {
+export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onShowDisclaimer, onOpenNav }) {
   return (
     <div className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-slate-200 bg-white px-3 sm:gap-3 sm:px-6">
       <div className="flex shrink-0 items-center gap-2">
-        <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-indigo-500 to-purple-500 text-white">
-          <LineChart className="h-4 w-4" strokeWidth={2.4} />
-        </span>
+        {onOpenNav ? (
+          <button
+            type="button"
+            aria-label="打开导航"
+            onClick={onOpenNav}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-sm transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
+          >
+            <LineChart className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />
+          </button>
+        ) : (
+          <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-indigo-500 to-purple-500 text-white">
+            <LineChart className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />
+          </span>
+        )}
         <span className="hidden text-[15px] font-semibold tracking-tight text-slate-900 sm:inline">美股策略助手</span>
         <span className="ml-1 hidden items-center rounded-md border border-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-500 sm:inline-flex">Beta</span>
       </div>

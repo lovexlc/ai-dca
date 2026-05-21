@@ -83,6 +83,7 @@ export function ConsoleLayout({
   contextPanel,
   contextPanelTitle,
   sidebarFooter,
+  showMobileBar = true,
   children
 }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -115,6 +116,15 @@ export function ConsoleLayout({
   }, [activeKey]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    function handleOpenMobileNav() {
+      setMobileNavOpen(true);
+    }
+    window.addEventListener('console:open-mobile-nav', handleOpenMobileNav);
+    return () => window.removeEventListener('console:open-mobile-nav', handleOpenMobileNav);
+  }, []);
+
+  useEffect(() => {
     if (!mobileNavOpen) {
       return undefined;
     }
@@ -136,18 +146,20 @@ export function ConsoleLayout({
       <ConsoleToastViewport />
 
       {/* Mobile top bar with menu button */}
-      <div className="console-mobilebar">
-        <button
-          type="button"
-          aria-label="打开导航"
-          className="console-iconbtn"
-          onClick={() => setMobileNavOpen(true)}
-        >
-          <Menu className="h-5 w-5" aria-hidden="true" />
-        </button>
-        <div className="console-mobilebar__title">{mobileTitle}</div>
-        {topbarRight ? <div className="console-mobilebar__right">{topbarRight}</div> : null}
-      </div>
+      {showMobileBar ? (
+        <div className="console-mobilebar">
+          <button
+            type="button"
+            aria-label="打开导航"
+            className="console-iconbtn"
+            onClick={() => setMobileNavOpen(true)}
+          >
+            <Menu className="h-5 w-5" aria-hidden="true" />
+          </button>
+          <div className="console-mobilebar__title">{mobileTitle}</div>
+          {topbarRight ? <div className="console-mobilebar__right">{topbarRight}</div> : null}
+        </div>
+      ) : null}
 
       <div className={cx('console-shell', desktopNavCollapsed && 'is-nav-collapsed')}>
         <aside
