@@ -195,6 +195,10 @@ export function AccountMenu() {
               <div className="text-sm font-bold text-slate-900">账户登录</div>
               <div className="mt-1 text-xs text-slate-500">登录后自动恢复并备份</div>
             </div>
+            <div className="space-y-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] leading-5 text-amber-800">
+              <p><span className="font-semibold">用户名 / 登录密码</span>会加密后存储到服务器，用于多设备同步。</p>
+              <p><span className="font-semibold">安全密码</span>仅用于本地加解密数据，<span className="font-semibold">不会上传服务器</span>。请务必自行保存，不要分享；丢失后云端备份将无法恢复。</p>
+            </div>
             <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
               用户名
               <input className={inputClass} value={form.username} onChange={(event) => updateField('username', event.target.value)} autoComplete="username" spellCheck="false" />
