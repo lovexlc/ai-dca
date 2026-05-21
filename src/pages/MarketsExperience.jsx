@@ -463,7 +463,7 @@ function WatchlistTable({ rows = [], market, onRemove }) {
   );
 }
 
-function SidebarRow({ symbol, name, price, changePercent, sparkPoints, onRemove, onAnalyze }) {
+function SidebarRow({ symbol, name, price, changePercent, sparkPoints, selected = false, onSelect, onRemove, onAnalyze }) {
   const pct = Number(changePercent);
   const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
   const up = pct > 0;
@@ -472,7 +472,22 @@ function SidebarRow({ symbol, name, price, changePercent, sparkPoints, onRemove,
   const sparkTone = flat ? 'flat' : up ? 'up' : 'down';
   return (
     <li className="group relative">
-      <div className="flex items-center gap-3 rounded-md px-2 py-2 transition hover:bg-[#f1f3f4]">
+      <div
+        role="button"
+        tabIndex={0}
+        aria-pressed={selected}
+        onClick={() => onSelect?.()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect?.();
+          }
+        }}
+        className={cx(
+          'flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 transition hover:bg-[#f1f3f4] focus:outline-none focus:ring-2 focus:ring-[#1a73e8]/30',
+          selected && 'bg-[#e8f0fe] ring-1 ring-[#1a73e8]/25 hover:bg-[#e8f0fe]'
+        )}
+      >
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13px] font-medium leading-tight text-[#1f1f1f]">{symbol}</div>
           {name && name !== symbol ? (
@@ -522,7 +537,7 @@ function SidebarRow({ symbol, name, price, changePercent, sparkPoints, onRemove,
   );
 }
 
-function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints, onAnalyze }) {
+function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints, selected = false, onSelect, onAnalyze }) {
   const pct = Number(changePercent);
   const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
   const up = pct > 0;
@@ -532,7 +547,22 @@ function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints, onA
   const ArrowIcon = flat ? null : up ? ArrowUp : ArrowDown;
   const sparkTone = flat ? 'flat' : up ? 'up' : 'down';
   return (
-    <li className="flex items-center gap-3 px-1 py-3.5">
+    <li
+      role="button"
+      tabIndex={0}
+      aria-pressed={selected}
+      onClick={() => onSelect?.()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect?.();
+        }
+      }}
+      className={cx(
+        'flex cursor-pointer items-center gap-3 rounded-2xl px-2 py-3.5 transition hover:bg-[#f1f3f4] focus:outline-none focus:ring-2 focus:ring-[#1a73e8]/30',
+        selected && 'bg-[#e8f0fe] ring-1 ring-[#1a73e8]/25 hover:bg-[#e8f0fe]'
+      )}
+    >
       <div className="min-w-0 flex-1">
         <div className="truncate text-base font-semibold leading-tight text-[#1f1f1f]">{symbol}</div>
         {name && name !== symbol ? (
@@ -783,6 +813,108 @@ function EarningsCalendar({ items = [], initialLimit = 5 }) {
     </div>
   );
 }
+
+const SYMBOL_DETAIL_TABS = [
+  { key: 'overview', label: '概览' },
+  { key: 'news', label: '动态' },
+  { key: 'earnings', label: '财报' },
+];
+
+function SymbolDetailPanel({ row, market, sparkPoints, news = [], earnings = [], activeTab, onTabChange, onAnalyze }) {
+  if (!row || !row.symbol) return null;
+  const pct = Number(row.changePercent);
+  const change = Number(row.change);
+  const positive = Number.isFinite(pct) && pct > 0;
+  const negative = Number.isFinite(pct) && pct < 0;
+  const tone = positive ? 'up' : negative ? 'down' : 'flat';
+  const symbolKey = String(row.symbol || '').toLowerCase();
+  const nameKey = String(row.name || '').toLowerCase();
+  const relatedNews = (news || []).filter((it) => {
+    const text = `${it.title || ''} ${it.source || ''}`.toLowerCase();
+    return text.includes(symbolKey) || (nameKey && nameKey !== symbolKey && text.includes(nameKey));
+  });
+  const relatedEarnings = (earnings || []).filter((it) => String(it.symbol || '').toUpperCase() === String(row.symbol || '').toUpperCase());
+
+  return (
+    <Card className="overflow-hidden p-0">
+      <div className="border-b border-[#e8eaed] px-4 py-4 sm:px-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 text-[13px] text-[#5f6368]">
+              <span>{market === 'us' ? '美股' : 'A 股'}</span>
+              <span>·</span>
+              <span>{row.symbol}</span>
+            </div>
+            <h2 className="mt-1 truncate text-2xl font-semibold tracking-tight text-[#1f1f1f] sm:text-3xl">{row.name || row.symbol}</h2>
+            <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="text-2xl font-medium tabular-nums text-[#1f1f1f] sm:text-3xl">{formatNumber(row.price)}</span>
+              <span className={cx('text-sm font-medium tabular-nums', positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#5f6368]')}>
+                {Number.isFinite(change) ? `${change > 0 ? '+' : ''}${formatNumber(change)}` : '--'} · {formatPercent(row.changePercent)} 今天
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onAnalyze}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#e8f0fe] px-3 py-2 text-sm font-medium text-[#1a73e8] transition hover:bg-[#d2e3fc]"
+          >
+            <Sparkles size={15} />
+            研究
+          </button>
+        </div>
+        <div className="mt-4 h-44 rounded-2xl bg-[#f8fafd] px-2 py-2">
+          {sparkPoints && sparkPoints.length >= 2 ? (
+            <Sparkline points={sparkPoints} width={720} height={170} tone={tone} showFill markLast className="h-full w-full" />
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">趋势加载中…</div>
+          )}
+        </div>
+        <div className="mt-4 flex gap-6 border-b border-[#e8eaed] text-sm font-medium text-[#5f6368]">
+          {SYMBOL_DETAIL_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => onTabChange(tab.key)}
+              className={cx(
+                '-mb-px border-b-2 px-1 pb-2 transition',
+                activeTab === tab.key ? 'border-[#1a73e8] text-[#1a73e8]' : 'border-transparent hover:text-[#1f1f1f]'
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="px-4 py-4 sm:px-5">
+        {activeTab === 'overview' ? (
+          <div className="grid gap-3 text-sm sm:grid-cols-2">
+            <div className="rounded-2xl bg-[#f8fafd] px-3 py-3">
+              <div className="text-xs text-[#5f6368]">最新价</div>
+              <div className="mt-1 font-medium tabular-nums text-[#1f1f1f]">{formatNumber(row.price)}</div>
+            </div>
+            <div className="rounded-2xl bg-[#f8fafd] px-3 py-3">
+              <div className="text-xs text-[#5f6368]">今日涨跌幅</div>
+              <div className={cx('mt-1 font-medium tabular-nums', positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#1f1f1f]')}>{formatPercent(row.changePercent)}</div>
+            </div>
+            <div className="rounded-2xl bg-[#f8fafd] px-3 py-3">
+              <div className="text-xs text-[#5f6368]">涨跌额</div>
+              <div className="mt-1 font-medium tabular-nums text-[#1f1f1f]">{Number.isFinite(change) ? `${change > 0 ? '+' : ''}${formatNumber(change)}` : '--'}</div>
+            </div>
+            <div className="rounded-2xl bg-[#f8fafd] px-3 py-3">
+              <div className="text-xs text-[#5f6368]">市场</div>
+              <div className="mt-1 font-medium text-[#1f1f1f]">{market === 'us' ? '美股' : 'A 股'}</div>
+            </div>
+          </div>
+        ) : activeTab === 'news' ? (
+          <NewsList items={relatedNews.length ? relatedNews : news.slice(0, 8)} />
+        ) : (
+          <EarningsCalendar items={relatedEarnings.length ? relatedEarnings : earnings.slice(0, 5)} />
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function SummaryModule({ themes = [], loading, onRefresh }) {
   const hasContent = Array.isArray(themes) && themes.length > 0;
   const [expanded, setExpanded] = useState({ 0: true });
@@ -872,7 +1004,7 @@ function SummaryModule({ themes = [], loading, onRefresh }) {
 // 抽屉会自动切到市场行情模式并预填问题。
 // 右栏“研究”面板：inline 问答，点击预设问题或提交输入后直接调 /api/markets/ask。
 // 不再弹出右下角 AI 抽屉。
-function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], watchQuotes = {}, pendingAnalysis = null, onAnalysisConsumed }) {
+function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], watchQuotes = {}, selectedSymbol = '', selectedQuote = null, pendingAnalysis = null, onAnalysisConsumed }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [pending, setPending] = useState(false);
@@ -895,7 +1027,9 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
       setPending(true);
       try {
         const wl = loadWatchlist() || {};
-        const symbols = Array.isArray(wl[market]) ? wl[market].slice(0, 10) : [];
+        const focusSymbol = String(selectedSymbol || '').trim();
+        const listSymbols = Array.isArray(wl[market]) ? wl[market] : [];
+        const symbols = Array.from(new Set([focusSymbol, ...listSymbols].filter(Boolean))).slice(0, 10);
         if (useDepth === 'deep') {
           // 深度模式走 SSE 流式 agent，可实时拉取工具调用 / token / sources。
           let streamed = '';
@@ -971,7 +1105,7 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
         setPending(false);
       }
     },
-    [market, pending, onModeChange],
+    [market, pending, onModeChange, selectedSymbol],
   );
 
   const onSubmit = useCallback(
@@ -1052,15 +1186,36 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3">
         {messages.length === 0 ? (
           <div className="flex flex-col gap-5 pb-2">
+            {selectedSymbol ? (
+              <div className="rounded-2xl border border-[#e8eaed] bg-[#f8fafd] px-4 py-3">
+                <div className="text-[12px] font-medium text-[#5f6368]">当前研究标的</div>
+                <div className="mt-1 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-[16px] font-semibold text-[#1f1f1f]">{selectedSymbol}</div>
+                    {selectedQuote?.name ? <div className="truncate text-[12px] text-[#5f6368]">{selectedQuote.name}</div> : null}
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="text-[14px] font-medium tabular-nums text-[#1f1f1f]">{formatNumber(selectedQuote?.price)}</div>
+                    <div className={cx('text-[12px] font-medium tabular-nums', Number(selectedQuote?.changePercent) > 0 ? 'text-[#a50e0e]' : Number(selectedQuote?.changePercent) < 0 ? 'text-[#137333]' : 'text-[#5f6368]')}>
+                      {formatPercent(selectedQuote?.changePercent)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
             <div>
               <p className="text-[18px] font-medium leading-snug text-[#1f1f1f]">您好！试试以下常见问题，或直接输入您的问题</p>
             </div>
             <div className="flex flex-col gap-2">
-              {[
+              {(selectedSymbol ? [
+                `${selectedSymbol} 最新行情怎么看？`,
+                `${selectedSymbol} 最近有哪些关键变化？`,
+                `${selectedSymbol} 和我的监控列表相比表现如何？`,
+              ] : [
                 '今日市场行情如何？',
                 '哪些板块涨幅居前？',
                 '我的监控列表近期有哪些关键变化？',
-              ].map((q) => (
+              ]).map((q) => (
                 <button
                   key={q}
                   type="button"
@@ -1342,6 +1497,8 @@ export function MarketsExperience() {
   const [sectorSearchOpen, setSectorSearchOpen] = useState(false);
   // 研究底部抽屉模式（仅 mobile）：peek=小片 / conversation=全屏展开
   const [researchMode, setResearchMode] = useState('peek');
+  const [selectedSymbol, setSelectedSymbol] = useState('');
+  const [symbolDetailTab, setSymbolDetailTab] = useState('overview');
   const [vpHeight, setVpHeight] = useState(null);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)').matches : false);
   useEffect(() => {
@@ -1396,6 +1553,17 @@ export function MarketsExperience() {
   }, []);
 
   const watchSymbols = useMemo(() => watch[market] || [], [watch, market]);
+
+  useEffect(() => {
+    if (!watchSymbols.length) {
+      if (selectedSymbol) setSelectedSymbol('');
+      return;
+    }
+    if (!selectedSymbol || !watchSymbols.includes(selectedSymbol)) {
+      setSelectedSymbol(watchSymbols[0]);
+      setSymbolDetailTab('overview');
+    }
+  }, [selectedSymbol, watchSymbols]);
 
   const refreshIndices = useCallback(async (forceRefresh = false) => {
     setIndicesLoading(true);
@@ -1582,6 +1750,8 @@ export function MarketsExperience() {
     if (!raw) return;
     const next = addToWatchlist(market, raw);
     setWatch(next);
+    setSelectedSymbol(raw);
+    setSymbolDetailTab('overview');
     setSymbolInput('');
     setSymbolSearchResults([]);
     setSectorSearchOpen(false);
@@ -1596,12 +1766,26 @@ export function MarketsExperience() {
   function handleRemove(market, symbol) {
     const next = removeFromWatchlist(market, symbol);
     setWatch(next);
+    if (symbol === selectedSymbol) {
+      const nextList = next[market] || [];
+      setSelectedSymbol(nextList[0] || '');
+      setSymbolDetailTab('overview');
+    }
   }
 
   function handlePickMover(row) {
     const next = addToWatchlist(market, row.symbol);
     setWatch(next);
+    setSelectedSymbol(row.symbol);
+    setSymbolDetailTab('overview');
     showActionToast('已加入自选', 'success');
+  }
+
+  function handleSelectSymbol(row, options = {}) {
+    if (!row || !row.symbol) return;
+    setSelectedSymbol(row.symbol);
+    setSymbolDetailTab('overview');
+    if (options.openResearch) setResearchMode('conversation');
   }
 
   const watchRows = useMemo(
@@ -1617,6 +1801,11 @@ export function MarketsExperience() {
         };
       }),
     [watch, market, watchQuotes]
+  );
+
+  const selectedQuote = useMemo(
+    () => watchRows.find((row) => row.symbol === selectedSymbol) || null,
+    [selectedSymbol, watchRows]
   );
 
   const marketStatusLabel = indicesLoading ? '刷新中' : (indices.length ? `${indices.length} 个指数` : '待加载');
@@ -1675,9 +1864,11 @@ export function MarketsExperience() {
                       price={row.price}
                       changePercent={row.changePercent}
                       sparkPoints={klineMap[row.symbol]}
+                      selected={row.symbol === selectedSymbol}
+                      onSelect={() => handleSelectSymbol(row)}
                       onAnalyze={() => {
+                        handleSelectSymbol(row, { openResearch: true });
                         setPendingAnalysis({ symbol: row.symbol, name: row.name });
-                        setResearchMode('conversation');
                       }}
                     />
                   ))}
@@ -1829,8 +2020,11 @@ export function MarketsExperience() {
                       price={row.price}
                       changePercent={row.changePercent}
                       sparkPoints={klineMap[row.symbol]}
+                      selected={row.symbol === selectedSymbol}
+                      onSelect={() => handleSelectSymbol(row)}
                       onRemove={() => handleRemove(market, row.symbol)}
                       onAnalyze={() => {
+                        handleSelectSymbol(row, { openResearch: true });
                         setPendingAnalysis({ symbol: row.symbol, name: row.name });
                       }}
                     />
@@ -1999,6 +2193,22 @@ export function MarketsExperience() {
             </button>
           </div>
         </div>
+
+        {selectedQuote ? (
+          <SymbolDetailPanel
+            row={selectedQuote}
+            market={market}
+            sparkPoints={klineMap[selectedQuote.symbol]}
+            news={news}
+            earnings={earnings}
+            activeTab={symbolDetailTab}
+            onTabChange={setSymbolDetailTab}
+            onAnalyze={() => {
+              handleSelectSymbol(selectedQuote, { openResearch: true });
+              setPendingAnalysis({ symbol: selectedQuote.symbol, name: selectedQuote.name });
+            }}
+          />
+        ) : null}
 
         {indices.length ? (
           <div className="-mx-2 overflow-x-auto px-2 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -2170,6 +2380,8 @@ export function MarketsExperience() {
           onModeChange={setResearchMode}
           watchSymbols={watchSymbols}
           watchQuotes={watchQuotes}
+          selectedSymbol={selectedSymbol}
+          selectedQuote={selectedQuote}
           pendingAnalysis={pendingAnalysis}
           onAnalysisConsumed={() => setPendingAnalysis(null)}
         />
