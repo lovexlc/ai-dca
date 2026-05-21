@@ -1,4 +1,4 @@
-import { AlertCircle, LineChart } from 'lucide-react';
+import { AlertCircle, LineChart, Menu } from 'lucide-react';
 import { AccountMenu } from './account-menu.jsx';
 
 /**
@@ -15,9 +15,12 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
             type="button"
             aria-label="打开导航"
             onClick={onOpenNav}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-sm transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
+            className="relative inline-flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-sm transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
           >
             <LineChart className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />
+            <span className="absolute -bottom-1 -right-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-white bg-slate-900 text-white shadow-sm sm:hidden" aria-hidden="true">
+              <Menu className="h-2.5 w-2.5" strokeWidth={2.6} />
+            </span>
           </button>
         ) : (
           <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-indigo-500 to-purple-500 text-white">
