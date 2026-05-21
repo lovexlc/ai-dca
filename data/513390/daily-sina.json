@@ -4,7 +4,7 @@
   "fund_name": "博时纳斯达克100ETF(QDII)",
   "index_key": "nasdaq100",
   "range": {
-    "start_date": "2024-05-20",
+    "start_date": "2024-05-21",
     "end_date": "2026-05-20",
     "lookback_days": 730
   },
@@ -12,16 +12,8 @@
   "source": "sina:CN_MarketDataService.getKLineData",
   "source_symbol": "sh513390",
   "fund_list_source": "/home/runner/work/ai-dca/ai-dca/data/all_nasdq.json",
-  "generated_at": "2026-05-20T10:35:07.293Z",
+  "generated_at": "2026-05-21T05:05:51.426Z",
   "bars": [
-    {
-      "date": "2024-05-20",
-      "open": 1.507,
-      "close": 1.511,
-      "high": 1.511,
-      "low": 1.507,
-      "volume": 10085500
-    },
     {
       "date": "2024-05-21",
       "open": 1.519,
