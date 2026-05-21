@@ -1334,10 +1334,10 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                         return benchSnapshots.map((bench) => (
                           <div key={`bench-${bench.benchmarkCode}`} className="rounded-xl border border-slate-200 bg-white p-3">
                               <div className="text-xs uppercase tracking-[0.18em] text-slate-400">基准 {bench.benchmarkCode}{bench.benchmarkName ? ` · ${bench.benchmarkName}` : ''}</div>
-                              <div className="mt-1 grid grid-cols-3 gap-2 text-xs text-slate-600">
-                                <div>现价 <span className="font-semibold text-slate-800">{formatPrice(bench.benchmarkPrice)}</span></div>
-                                <div>净值 <span className="font-semibold text-slate-800">{formatPrice(bench.benchmarkNav)}</span>{bench.benchmarkNavDate ? <span className="ml-1 text-slate-400">@{bench.benchmarkNavDate}</span> : null}</div>
-                                <div>溢价 <span className="font-semibold text-slate-800">{formatPercent(bench.benchmarkPremiumPct, 2, true)}</span></div>
+                              <div className="mt-1 grid grid-cols-1 sm:grid-cols-3 gap-x-2 gap-y-1 text-xs text-slate-600">
+                                <div className="min-w-0">现价 <span className="font-semibold text-slate-800">{formatPrice(bench.benchmarkPrice)}</span></div>
+                                <div className="min-w-0">净值 <span className="font-semibold text-slate-800">{formatPrice(bench.benchmarkNav)}</span>{bench.benchmarkNavDate ? <span className="ml-1 whitespace-nowrap text-slate-400">@{bench.benchmarkNavDate}</span> : null}</div>
+                                <div className="min-w-0">溢价 <span className="font-semibold text-slate-800">{formatPercent(bench.benchmarkPremiumPct, 2, true)}</span></div>
                               </div>
                             <div className="mt-3 overflow-x-auto">
                               <table className="min-w-[520px] w-full overflow-hidden rounded-lg border border-slate-200 text-xs">
