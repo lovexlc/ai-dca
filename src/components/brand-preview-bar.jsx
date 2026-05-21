@@ -1,10 +1,11 @@
 import { LineChart } from 'lucide-react';
+import { AccountMenu } from './account-menu.jsx';
 
 /**
  * 应用顶部品牌条（Google Finance 风格）。
  * 取代各 tab 内部的大 H1 hero，释放垂直空间。
  */
-export function BrandPreviewBar({ currentPageLabel }) {
+export function BrandPreviewBar({ currentPageLabel, rightSlot }) {
   return (
     <div className="sticky top-0 z-30 hidden h-12 items-center gap-3 border-b border-slate-200 bg-white px-4 sm:flex sm:px-6">
       <div className="flex items-center gap-2">
@@ -20,6 +21,7 @@ export function BrandPreviewBar({ currentPageLabel }) {
           <span className="truncate text-sm font-medium text-slate-700">{currentPageLabel}</span>
         </>
       ) : null}
+      <div className="ml-auto flex items-center gap-2">{rightSlot || <AccountMenu />}</div>
     </div>
   );
 }

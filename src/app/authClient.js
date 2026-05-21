@@ -1,5 +1,11 @@
 const DEFAULT_SYNC_BASE = 'https://tools.freebacktrack.tech/api/sync';
 const SESSION_KEY = 'aiDcaCloudSyncSession';
+const SESSION_EVENT = 'cloud-sync:session-changed';
+
+function notifyCloudSessionChanged(session) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(SESSION_EVENT, { detail: { session: session || null } }));
+}
 
 function getSyncBase() {
   if (typeof window !== 'undefined' && window.__AI_DCA_SYNC_BASE__) {
@@ -46,6 +52,7 @@ export function saveCloudSession(session) {
     savedAt: new Date().toISOString()
   };
   ls.setItem(SESSION_KEY, JSON.stringify(payload));
+  notifyCloudSessionChanged(payload);
   return payload;
 }
 
@@ -53,6 +60,7 @@ export function clearCloudSession() {
   const ls = safeStorage();
   if (!ls) return;
   ls.removeItem(SESSION_KEY);
+  notifyCloudSessionChanged(null);
 }
 
 async function readJson(response) {
@@ -109,3 +117,4 @@ export async function uploadLatestCloudBackup(payload, session = loadCloudSessio
 }
 
 export const CLOUD_SYNC_SESSION_KEY = SESSION_KEY;
+export const CLOUD_SYNC_SESSION_EVENT = SESSION_EVENT;
