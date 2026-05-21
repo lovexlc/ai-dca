@@ -307,18 +307,6 @@ function ToolEntry({ icon: Icon, title, value, note, onClick }) {
   );
 }
 
-function FloatingAi({ onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="fixed bottom-6 right-6 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg shadow-slate-900/30 transition-all hover:scale-105 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 sm:bottom-8 sm:right-8"
-      aria-label="AI 助手"
-    >
-      <Sparkles className="h-6 w-6" aria-hidden="true" />
-    </button>
-  );
-}
 
 function InfoSections({ sections }) {
   return (
@@ -551,7 +539,6 @@ const CHAPTER_EYEBROW = {
 export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange }) {
   const [demoMeta, setDemoMeta] = useState(() => readDemoDataMeta());
   const [message, setMessage] = useState('');
-  const [showAi, setShowAi] = useState(false);
   const [recent, setRecent] = useState(() => readRecent());
   const [activeChapter, setActiveChapter] = useState(null);
   const [activeAccount, setActiveAccount] = useState(null);
@@ -701,7 +688,6 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
 
       </main>
 
-      <FloatingAi onClick={() => setShowAi(true)} />
 
       <DetailModal
         open={Boolean(accountMeta)}
@@ -720,23 +706,6 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
       >
         {chapterMeta ? <ChapterModalBody id={chapterMeta.id} navigate={navigate} closeModal={() => setActiveChapter(null)} demoMeta={demoMeta} onInstallDemo={handleInstallDemo} onClearDemo={handleClearDemo} /> : null}
       </DetailModal>
-
-
-
-      {showAi ? (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-900/40 p-4 sm:items-center" role="dialog" aria-modal="true" onClick={() => setShowAi(false)}>
-          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <button type="button" aria-label="关闭" className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => setShowAi(false)}><X className="h-4 w-4" /></button>
-            <div className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-indigo-500" /><h3 className="text-base font-bold text-slate-900">AI 快问（即将上线）</h3></div>
-            <p className="mt-3 text-sm leading-6 text-slate-500">未来你可以在这里问：「今天该加仓哪些？」、「我的进取仓比例」、「VIX 现在多少」。</p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button type="button" onClick={() => { setShowAi(false); navigate('markets'); }} className={cx(subtleButtonClass, 'text-xs')}>看 VIX</button>
-              <button type="button" onClick={() => { setShowAi(false); navigate('tradePlans'); }} className={cx(subtleButtonClass, 'text-xs')}>看交易计划</button>
-              <button type="button" onClick={() => { setShowAi(false); navigate('holdings'); }} className={cx(subtleButtonClass, 'text-xs')}>看持仓</button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
