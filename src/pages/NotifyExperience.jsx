@@ -591,28 +591,30 @@ export function NotifyExperience({ embedded = false }) {
             {notifyMessage}
           </div>
         ) : null}
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-5 py-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-semibold text-slate-900">当前浏览器</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">推送终端身份</div>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl bg-slate-50 px-4 py-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">浏览器标签</div>
+              <div className="mt-2 text-sm font-semibold text-slate-700">{notifyConfig.notifyClientLabel}</div>
+            </div>
+            <div className="rounded-2xl bg-slate-50 px-4 py-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">已绑定 Android 设备</div>
+              <div className="mt-2 text-sm font-semibold text-slate-700">{pairedAndroidDevices.length} 台</div>
+            </div>
+          </div>
+          <div className="mt-4 rounded-2xl bg-slate-950 px-4 py-3 font-mono text-xs text-slate-100">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">浏览器 uniqId</div>
+            <div className="mt-2 break-all">{notifyConfig.notifyClientId}</div>
+          </div>
+        </div>
         <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-5">
           {notifyPlatform === 'android' ? (
             <div className="space-y-4" role="tabpanel" id="notify-panel">
               <h3 className="text-base font-bold text-slate-900">Android 设备绑定</h3>
-              <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
-                <div className="text-sm font-semibold text-slate-900">当前浏览器</div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">浏览器标签</div>
-                    <div className="mt-2 text-sm font-semibold text-slate-700">{notifyConfig.notifyClientLabel}</div>
-                  </div>
-                  <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">已关联设备</div>
-                    <div className="mt-2 text-sm font-semibold text-slate-700">{pairedAndroidDevices.length} 台</div>
-                  </div>
-                </div>
-                <div className="mt-4 rounded-2xl bg-slate-950 px-4 py-3 font-mono text-xs text-slate-100">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">浏览器 uniqId</div>
-                  <div className="mt-2">{notifyConfig.notifyClientId}</div>
-                </div>
-              </div>
-
               <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
                   <Field label="Android 设备 ID / 测试 URL" helper="粘贴 Android App 里的设备 ID 或完整测试 URL，系统会自动识别。">
                     <TextInput
