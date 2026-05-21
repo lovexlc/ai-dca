@@ -26,6 +26,15 @@
 6. **保留 WebDAV**：账户云同步作为默认推荐；WebDAV 作为高级/自托管选项保留。
 7. **冲突安全优先**：自动上传前比较远端版本；冲突时提示用户选择本地覆盖、远端恢复或另存本地。
 
+
+## 已确认产品决策
+
+- 注册方式：用户名 + 密码。
+- 后端存储：Cloudflare Worker + D1 + KV。
+- 安全密码：默认自填，保留生成按钮。
+- 本设备解锁：支持「记住本设备」。
+- 同步范围：包含通知配置，端侧加密后同步。
+
 ## 推荐架构
 
 ### 前端模块
@@ -219,40 +228,36 @@ MVP 简化：
 | 状态 | 步骤 | 内容 |
 |---|---|---|
 | done | 1. 现状调研 | 已确认现有 WebDAV 同步入口、备份范围、localStorage key 规则。 |
-| todo | 2. 确认产品决策 | 确认后端存储选型、注册方式、安全密码 UX。 |
-| todo | 3. 设计加密模块 | 新增 `secureVault.js`，实现随机密码、PBKDF2、AES-GCM、加密/解密 envelope。 |
-| todo | 4. 设计账户 API | 新增 sync/auth worker 路由与数据结构。 |
-| todo | 5. 设计前端 auth client | 新增登录态、token 刷新、登出、本地 session 保存。 |
-| todo | 6. 设计云同步 client | 上传/下载密文 blob、版本冲突检测、自动同步队列。 |
-| todo | 7. 改造数据同步页 | 添加账户同步卡片，WebDAV 降级为高级备份。 |
-| todo | 8. 全局自动同步接入 | Workspace 启动登录态检测和 data-changed debounce 同步。 |
-| todo | 9. 验证 | 加密解密单测、Worker API curl、前端浏览器登录/同步/恢复路径验证。 |
-| todo | 10. 部署 | Worker 通过 GitHub Actions 部署；前端通过 GitHub Actions 发布。 |
+| done | 2. 确认产品决策 | 已确认：用户名密码、D1 + KV、默认自填安全密码、记住本设备、通知配置加密同步。 |
+| done | 3. 设计加密模块 | 已新增 `src/app/secureVault.js`：安全密码生成、PBKDF2、AES-GCM、密文 envelope、记住本设备密钥。 |
+| done | 4. 设计账户 API | 已新增 `workers/sync/`：用户名密码注册/登录、D1 用户/session/元数据、KV 密文 blob、版本冲突保护。 |
+| done | 5. 设计前端 auth client | 已新增 `src/app/authClient.js`：注册、登录、session 保存、meta/latest 请求。 |
+| done | 6. 设计云同步 client | 已新增 `src/app/cloudSync.js`：加密上传、解密恢复、远端 meta、本设备密钥自动同步。 |
+| done | 7. 改造数据同步页 | 已在 `BackupExperience.jsx` 顶部加入账户同步卡片；WebDAV 保留为下方高级备份。 |
+| done | 8. 全局自动同步接入 | 已在 `WorkspacePage.jsx` 启动 `startCloudAutoSync()`，监听 `aiDca*` 本地数据变更后 debounce 上传。 |
+| done | 9. 验证 | 已完成 focused ESLint、Worker import、mock API 注册/登录/上传/冲突烟测、diff check；浏览器 MCP 当前不可用，未做真实浏览器截图。 |
+| in_progress | 10. 部署 | 已新增 `deploy-worker-sync.yml` 并创建/回填 D1/KV 资源；等待推送后由 GitHub Actions 部署。 |
 
 ## 关键决策待确认
 
 1. **注册方式**
-   - A. 邮箱 + 密码（MVP 最快）
-   - B. 邮箱验证码 + 密码（更安全，需要邮件通道）
-   - C. 仅用户名 + 密码（最简单，但找回困难）
+   - 已确认：用户名 + 密码。
+   - 说明：MVP 不做邮箱找回；后续可增加邮箱绑定。
 
 2. **后端存储**
-   - A. Cloudflare Worker + KV（MVP 最快）
-   - B. Cloudflare Worker + D1 + KV（用户/版本更清晰）
-   - C. Cloudflare Worker + D1 + R2（长期更稳）
+   - 已确认：Cloudflare Worker + D1 + KV。
+   - D1 保存用户、session、版本元数据；KV 保存最新密文 blob。
 
 3. **安全密码默认策略**
-   - A. 默认自动生成，用户也可改成自填。
-   - B. 默认用户自填，提供生成按钮。
+   - 已确认：默认用户自填，同时保留生成按钮。
 
 4. **是否记住安全密码**
-   - A. 默认不记住，每次新设备需要输入。
-   - B. 用户勾选「记住本设备」后存在本机，仅本机自动解锁。
+   - 已确认：支持记住本设备。
+   - 实现口径：本机保存可恢复加密密钥的本地状态；服务端仍不保存安全密码或明文数据。
 
 5. **同步范围是否包含通知配置**
-   - 当前 WebDAV 会同步 `aiDcaNotifyClientConfig`。
-   - 该配置可能包含通知 token / endpoint。
-   - 如果云端只存密文，则可以同步；但 UI 需要明确这是端侧加密同步。
+   - 已确认：包含通知配置，但只以端侧加密密文同步。
+   - 当前 WebDAV 范围内的 `aiDcaNotifyClientConfig` 继续纳入账户同步。
 
 ## 风险与注意事项
 
@@ -261,8 +266,7 @@ MVP 简化：
 - 登录密码和安全密码不能混用；否则重置登录密码会让用户误以为能恢复数据。
 - Web Crypto API 需要 HTTPS 环境，GitHub Pages/生产域名满足；本地 dev 通常也可用。
 - 不要把安全密码、派生 key、明文 payload 发给 Worker。
-- 当前仓库本地状态显示 `main...origin/main [ahead 4]`，实施前需要先确认是否有未推送提交/远端状态，避免混入不相关变更。
-- 当前存在未提交的 `src/pages/NewPlanExperience.jsx` 本地修改；后续实施不要混入，除非明确需要。
+- 当前仓库本地状态存在多个未推送提交；提交/推送时需避免混入无关改动。
 
 ## 验证计划
 
@@ -294,11 +298,11 @@ MVP 简化：
 
 第一版建议做：
 
-- 邮箱 + 密码注册/登录。
-- 安全密码自动生成 + 支持自填。
+- 用户名 + 密码注册/登录。
+- 安全密码默认自填 + 支持生成。
 - 端侧 AES-GCM 加密当前 WebDAV 同步范围。
-- Cloudflare Worker + KV 保存最新一份密文备份。
-- 手动同步 + 登录后自动检查/恢复。
+- Cloudflare Worker + D1 + KV：D1 保存用户/session/meta，KV 保存最新一份密文备份。
+- 手动同步 + 登录后状态检查 + 本设备解锁后自动上传。
 - 自动上传先做 debounce，不做复杂多端实时合并。
 
 暂缓：
@@ -308,3 +312,12 @@ MVP 简化：
 - 多设备实时合并。
 - 找回安全密码。
 - 第三方登录。
+
+## 本次实现验证记录
+
+- `npx eslint src/app/authClient.js src/app/cloudSync.js src/app/secureVault.js src/pages/BackupExperience.jsx src/pages/WorkspacePage.jsx`：0 errors，1 个既有 `WorkspacePage.jsx` hook dependency warning。
+- `node --input-type=module -e "await import('./workers/sync/src/index.js')"`：Worker 入口可导入。
+- Worker mock API smoke：注册 200、重复注册 409、错误密码 401、登录 200、未授权 meta 401、上传 200、版本冲突 409、latest 200/version 1。
+- `git diff --check`：通过。
+- Cloudflare 资源：已创建/复用 `ai-dca-sync-db`、`ai-dca-sync-backups`、`ai-dca-sync-backups-preview`，并回填 `workers/sync/wrangler.toml`。
+- 限制：当前 MCP 工具列表没有浏览器/cf-browser 工具，未执行真实浏览器截图验证。

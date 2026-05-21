@@ -262,7 +262,9 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       const list = (Array.isArray(raw) ? raw : []).filter((x) => x && x.id !== `tab:${normalizedTab}`);
       list.unshift({ id: `tab:${normalizedTab}`, ts: Date.now() });
       window.localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 12)));
-    } catch {}
+    } catch {
+      // 忽略最近访问记录写入失败，不影响 tab 切换。
+    }
     // 合并后：侧边栏《新建建仓计划》通过 #new hash 跳进《交易计划》的新建子视图。
     // 由于 TradePlansExperience 在 mount 时才读 hash，手动触发 hashchange 用于已 mount 的情况。
     if (hash && alreadyActive) {

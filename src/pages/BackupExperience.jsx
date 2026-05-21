@@ -4,6 +4,7 @@ import {
   CloudDownload,
   CloudUpload,
   Download,
+  KeyRound,
   Eye,
   EyeOff,
   FolderSync,
@@ -11,8 +12,12 @@ import {
   RefreshCcw,
   Save,
   ShieldAlert,
+  UserRound,
   Wifi
 } from 'lucide-react';
+import { clearCloudSession, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
+import { loadCloudSyncMeta, refreshRemoteCloudMeta, restoreEncryptedCloudBackup, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
+import { generateSecurityPassword, loadRememberedKey } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
 import {
   applyBackupEnvelope,
@@ -81,6 +86,11 @@ function StatusPill({ meta }) {
 }
 
 export function BackupExperience({ links, embedded = false }) {
+  const [cloudSession, setCloudSession] = useState(() => loadCloudSession());
+  const [cloudMeta, setCloudMeta] = useState(() => loadCloudSyncMeta());
+  const [rememberedKey, setRememberedKey] = useState(() => loadRememberedKey());
+  const [cloudMode, setCloudMode] = useState('login');
+  const [accountForm, setAccountForm] = useState({ username: '', password: '', securityPassword: '', rememberDevice: true });
 
   const [config, setConfig] = useState(() => ({
     baseUrl: '',
@@ -121,6 +131,70 @@ export function BackupExperience({ links, embedded = false }) {
   function updateField(field, value) {
     setConfig((prev) => ({ ...prev, [field]: value }));
     setDirty(true);
+  }
+
+  function updateAccountField(field, value) {
+    setAccountForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  async function handleCloudAuth(action) {
+    setBusy(action);
+    try {
+      const session = action === 'cloud-register'
+        ? await registerCloudAccount(accountForm)
+        : await loginCloudAccount(accountForm);
+      setCloudSession(session);
+      const remoteMeta = session?.latestBackupMeta || await refreshRemoteCloudMeta();
+      if (remoteMeta) setCloudMeta(remoteMeta);
+      showToast({ title: action === 'cloud-register' ? '账户已注册' : '已登录', description: session?.username || '', tone: 'emerald' });
+    } catch (err) {
+      showToast({ title: action === 'cloud-register' ? '注册失败' : '登录失败', description: err?.message || String(err), tone: 'red' });
+    } finally {
+      setBusy('');
+    }
+  }
+
+  function handleCloudLogout() {
+    clearCloudSession();
+    setCloudSession(null);
+    showToast({ title: '已退出账户', tone: 'slate' });
+  }
+
+  async function handleCloudUpload() {
+    setBusy('cloud-upload');
+    try {
+      const result = await uploadEncryptedCloudBackup({
+        securityPassword: accountForm.securityPassword,
+        rememberDevice: accountForm.rememberDevice,
+        useRemembered: Boolean(rememberedKey && !accountForm.securityPassword)
+      });
+      setCloudMeta(result);
+      setRememberedKey(loadRememberedKey());
+      showToast({ title: '已加密上传', description: `版本 ${result.version} · ${result.keyCount} 项`, tone: 'emerald' });
+    } catch (err) {
+      showToast({ title: '上传失败', description: err?.message || String(err), tone: 'red' });
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function handleCloudRestore() {
+    const confirmed = window.confirm('从账户云端恢复会覆盖当前浏览器本地数据。是否继续？');
+    if (!confirmed) return;
+    setBusy('cloud-restore');
+    try {
+      const result = await restoreEncryptedCloudBackup({
+        securityPassword: accountForm.securityPassword,
+        useRemembered: Boolean(rememberedKey && !accountForm.securityPassword)
+      });
+      setCloudMeta({ version: result.version, updatedAt: result.updatedAt, keyCount: result.restoredKeyCount });
+      refreshPreview();
+      showToast({ title: '已从账户恢复', description: `已写入 ${result.restoredKeyCount} 项`, tone: 'emerald', durationMs: 5000 });
+    } catch (err) {
+      showToast({ title: '恢复失败', description: err?.message || String(err), tone: 'red' });
+    } finally {
+      setBusy('');
+    }
   }
 
   function handleSaveConfig() {
@@ -214,6 +288,32 @@ export function BackupExperience({ links, embedded = false }) {
     }
   }
 
+  const cloudLoggedIn = Boolean(cloudSession?.accessToken);
+  const securityReady = accountForm.securityPassword.length >= 8 || Boolean(rememberedKey);
+  const cloudAuthDisabledReason = busy
+    ? '任务执行中'
+    : !accountForm.username
+    ? '填写用户名'
+    : !accountForm.password
+    ? '填写登录密码'
+    : '';
+  const cloudUploadDisabledReason = busy
+    ? '任务执行中'
+    : !cloudLoggedIn
+    ? '请先登录'
+    : accountForm.securityPassword.length < 8 && !rememberedKey
+    ? '填写安全密码或使用本设备密钥'
+    : !preview.keys.length
+    ? '当前没有可上传数据'
+    : '';
+  const cloudRestoreDisabledReason = busy
+    ? '任务执行中'
+    : !cloudLoggedIn
+    ? '请先登录'
+    : !securityReady
+    ? '输入安全密码或使用本设备密钥'
+    : '';
+
   const configMissingReason = !config.baseUrl
     ? '填写服务器地址后可同步'
     : !config.username
@@ -230,6 +330,66 @@ export function BackupExperience({ links, embedded = false }) {
 
   const content = (
     <div className={cx('mx-auto max-w-5xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
+
+      <Card id="account-sync">
+        <SectionHeading
+          eyebrow="账户同步"
+          title="登录后自动保存加密备份"
+          action={cloudLoggedIn ? <Pill tone="emerald">{cloudSession.username}</Pill> : <Pill tone="slate">未登录</Pill>}
+        />
+        <div className="mt-6 grid gap-4 lg:grid-cols-3">
+          <label className="space-y-1.5 text-sm text-slate-600">
+            <span className="font-semibold text-slate-700">用户名</span>
+            <input className={inputClass} value={accountForm.username} onChange={(event) => updateAccountField('username', event.target.value)} autoComplete="username" spellCheck="false" />
+          </label>
+          <label className="space-y-1.5 text-sm text-slate-600">
+            <span className="font-semibold text-slate-700">登录密码</span>
+            <input className={inputClass} type="password" value={accountForm.password} onChange={(event) => updateAccountField('password', event.target.value)} autoComplete="current-password" />
+          </label>
+          <label className="space-y-1.5 text-sm text-slate-600">
+            <span className="font-semibold text-slate-700">安全密码</span>
+            <div className="flex gap-2">
+              <input className={inputClass} type="password" value={accountForm.securityPassword} onChange={(event) => updateAccountField('securityPassword', event.target.value)} autoComplete="off" />
+              <button type="button" className={cx(subtleButtonClass, 'h-10 shrink-0 px-3')} onClick={() => updateAccountField('securityPassword', generateSecurityPassword())}>生成</button>
+            </div>
+          </label>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button type="button" className={cx(cloudMode === 'login' ? primaryButtonClass : secondaryButtonClass, 'h-9 px-3 py-2 text-xs')} onClick={() => { setCloudMode('login'); handleCloudAuth('cloud-login'); }} disabled={Boolean(cloudAuthDisabledReason)}>
+            {busy === 'cloud-login' ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserRound className="h-4 w-4" />}
+            登录
+          </button>
+          <button type="button" className={cx(cloudMode === 'register' ? primaryButtonClass : secondaryButtonClass, 'h-9 px-3 py-2 text-xs')} onClick={() => { setCloudMode('register'); handleCloudAuth('cloud-register'); }} disabled={Boolean(cloudAuthDisabledReason)}>
+            <UserRound className="h-4 w-4" />
+            注册
+          </button>
+          {cloudLoggedIn ? (
+            <button type="button" className={cx(subtleButtonClass, 'h-9 px-3 py-2 text-xs')} onClick={handleCloudLogout}>退出</button>
+          ) : null}
+          <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600">
+            <input type="checkbox" checked={accountForm.rememberDevice} onChange={(event) => updateAccountField('rememberDevice', event.target.checked)} />
+            记住本设备
+          </label>
+          {rememberedKey ? <Pill tone="indigo">本设备已解锁</Pill> : null}
+          {cloudAuthDisabledReason ? <span className="text-xs text-slate-400">{cloudAuthDisabledReason}</span> : null}
+        </div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <button type="button" className={cx(primaryButtonClass, 'h-auto justify-start px-4 py-3 text-left')} onClick={handleCloudUpload} disabled={Boolean(cloudUploadDisabledReason)} title={cloudUploadDisabledReason || undefined}>
+            {busy === 'cloud-upload' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
+            加密上传账户备份
+          </button>
+          <button type="button" className={cx(secondaryButtonClass, 'h-auto justify-start px-4 py-3 text-left')} onClick={handleCloudRestore} disabled={Boolean(cloudRestoreDisabledReason)} title={cloudRestoreDisabledReason || undefined}>
+            {busy === 'cloud-restore' ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+            从账户恢复
+          </button>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
+          <span>云端：{cloudMeta?.version ? `版本 ${cloudMeta.version}` : '暂无记录'}</span>
+          <span>范围：{preview.keys.length} 项 · {formatBytes(totalBytes)}</span>
+          {cloudUploadDisabledReason ? <span>上传：{cloudUploadDisabledReason}</span> : null}
+          {cloudRestoreDisabledReason ? <span>恢复：{cloudRestoreDisabledReason}</span> : null}
+        </div>
+      </Card>
 
       <Card id="webdav-config">
         <SectionHeading
