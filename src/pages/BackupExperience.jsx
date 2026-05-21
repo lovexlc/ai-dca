@@ -13,8 +13,6 @@ import {
   ShieldAlert,
   Wifi
 } from 'lucide-react';
-import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authClient.js';
-import { loadCloudSyncMeta, refreshRemoteCloudMeta } from '../app/cloudSync.js';
 import { showToast } from '../app/toast.js';
 import {
   applyBackupEnvelope,
@@ -83,9 +81,6 @@ function StatusPill({ meta }) {
 }
 
 export function BackupExperience({ links, embedded = false }) {
-  const [cloudSession, setCloudSession] = useState(() => loadCloudSession());
-  const [cloudMeta, setCloudMeta] = useState(() => loadCloudSyncMeta());
-
   const [config, setConfig] = useState(() => ({
     baseUrl: '',
     username: '',
@@ -117,24 +112,6 @@ export function BackupExperience({ links, embedded = false }) {
     return () => window.removeEventListener('backup:refresh-preview', refreshPreview);
   }, [refreshPreview]);
 
-  useEffect(() => {
-    function refreshCloudStatus(event) {
-      if (event?.detail?.session !== undefined) setCloudSession(event.detail.session || loadCloudSession());
-      else setCloudSession(loadCloudSession());
-      refreshRemoteCloudMeta().then((remoteMeta) => {
-        if (remoteMeta) setCloudMeta(remoteMeta);
-      }).catch(() => {});
-      refreshPreview();
-    }
-    window.addEventListener(CLOUD_SYNC_SESSION_EVENT, refreshCloudStatus);
-    window.addEventListener('cloud-sync:auto-uploaded', refreshCloudStatus);
-    window.addEventListener('cloud-sync:auto-restored', refreshCloudStatus);
-    return () => {
-      window.removeEventListener(CLOUD_SYNC_SESSION_EVENT, refreshCloudStatus);
-      window.removeEventListener('cloud-sync:auto-uploaded', refreshCloudStatus);
-      window.removeEventListener('cloud-sync:auto-restored', refreshCloudStatus);
-    };
-  }, [refreshPreview]);
 
   const totalBytes = useMemo(
     () => preview.keys.reduce((acc, key) => acc + (preview.entries[key]?.length || 0), 0),
@@ -237,8 +214,6 @@ export function BackupExperience({ links, embedded = false }) {
     }
   }
 
-  const cloudLoggedIn = Boolean(cloudSession?.accessToken);
-
   const configMissingReason = !config.baseUrl
     ? '填写服务器地址后可同步'
     : !config.username
@@ -255,28 +230,6 @@ export function BackupExperience({ links, embedded = false }) {
 
   const content = (
     <div className={cx('mx-auto max-w-5xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
-
-      <Card id="account-sync">
-        <SectionHeading
-          eyebrow="账户同步"
-          title="自动加密同步"
-          action={cloudLoggedIn ? <Pill tone="emerald">{cloudSession.username}</Pill> : <Pill tone="slate">未登录</Pill>}
-        />
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-            <div className="text-xs font-semibold text-slate-400">状态</div>
-            <div className="mt-1 text-sm font-bold text-slate-800">{cloudLoggedIn ? '自动同步中' : '右上角登录'}</div>
-          </div>
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-            <div className="text-xs font-semibold text-slate-400">云端</div>
-            <div className="mt-1 text-sm font-bold text-slate-800">{cloudMeta?.version ? `版本 ${cloudMeta.version}` : '暂无记录'}</div>
-          </div>
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-            <div className="text-xs font-semibold text-slate-400">范围</div>
-            <div className="mt-1 text-sm font-bold text-slate-800">{preview.keys.length} 项 · {formatBytes(totalBytes)}</div>
-          </div>
-        </div>
-      </Card>
 
       <Card id="webdav-config">
         <SectionHeading

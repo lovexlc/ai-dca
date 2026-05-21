@@ -1,28 +1,59 @@
 import { useEffect, useState } from 'react';
 import { KeyRound, Loader2, LogOut, UserRound } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
-import { refreshRemoteCloudMeta, restoreEncryptedCloudBackup, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
+import { loadCloudSyncMeta, refreshRemoteCloudMeta, restoreEncryptedCloudBackup, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
 import { clearRememberedKey, generateSecurityPassword } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
+import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.jsx';
 import { cx, inputClass, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from './experience-ui.jsx';
 
 export function AccountMenu() {
   const [session, setSession] = useState(() => loadCloudSession());
+  const [meta, setMeta] = useState(() => loadCloudSyncMeta());
+  const [preview, setPreview] = useState(() => collectBackupPayload());
+  const [syncState, setSyncState] = useState('idle');
+  const [lastError, setLastError] = useState('');
   const [form, setForm] = useState({ username: '', password: '', securityPassword: '', rememberDevice: true });
   const [busy, setBusy] = useState('');
 
   useEffect(() => {
-    function syncSession(event) {
+    function refreshLocalState(event) {
       setSession(event?.detail?.session || loadCloudSession());
+      setMeta(event?.detail?.meta || loadCloudSyncMeta());
+      setPreview(collectBackupPayload());
     }
     function syncStorage(event) {
-      if (event.key === 'aiDcaCloudSyncSession') setSession(loadCloudSession());
+      if (!event.key || event.key.startsWith('aiDca')) refreshLocalState(event);
     }
-    window.addEventListener(CLOUD_SYNC_SESSION_EVENT, syncSession);
+    function handleSyncStarted() {
+      setSyncState('syncing');
+      setLastError('');
+    }
+    function handleSyncDone(event) {
+      setSyncState('synced');
+      setLastError('');
+      refreshLocalState(event);
+    }
+    function handleSyncError(event) {
+      setSyncState('error');
+      setLastError(event?.detail?.message || '同步失败');
+      refreshLocalState(event);
+    }
+    window.addEventListener(CLOUD_SYNC_SESSION_EVENT, refreshLocalState);
+    window.addEventListener('cloud-sync:meta-changed', refreshLocalState);
+    window.addEventListener('cloud-sync:auto-upload-started', handleSyncStarted);
+    window.addEventListener('cloud-sync:auto-uploaded', handleSyncDone);
+    window.addEventListener('cloud-sync:auto-restored', handleSyncDone);
+    window.addEventListener('cloud-sync:auto-error', handleSyncError);
     window.addEventListener('storage', syncStorage);
     return () => {
-      window.removeEventListener(CLOUD_SYNC_SESSION_EVENT, syncSession);
+      window.removeEventListener(CLOUD_SYNC_SESSION_EVENT, refreshLocalState);
+      window.removeEventListener('cloud-sync:meta-changed', refreshLocalState);
+      window.removeEventListener('cloud-sync:auto-upload-started', handleSyncStarted);
+      window.removeEventListener('cloud-sync:auto-uploaded', handleSyncDone);
+      window.removeEventListener('cloud-sync:auto-restored', handleSyncDone);
+      window.removeEventListener('cloud-sync:auto-error', handleSyncError);
       window.removeEventListener('storage', syncStorage);
     };
   }, []);
@@ -58,7 +89,12 @@ export function AccountMenu() {
         ? await registerCloudAccount(form)
         : await loginCloudAccount(form);
       setSession(nextSession);
+      setSyncState('syncing');
+      setLastError('');
       const restored = await runInitialSync(nextSession, action);
+      setMeta(loadCloudSyncMeta());
+      setPreview(collectBackupPayload());
+      setSyncState('synced');
       showToast({
         title: action === 'register' ? '账户已注册' : '已登录',
         description: restored ? '已自动恢复并开启备份' : '已开启自动备份',
@@ -89,6 +125,16 @@ export function AccountMenu() {
     : '';
   const loggedIn = Boolean(session?.accessToken);
   const initial = loggedIn ? String(session.username || '?').slice(0, 1).toUpperCase() : '';
+  const previewBytes = preview.keys.reduce((sum, key) => sum + (preview.entries[key]?.length || 0), 0);
+  const statusLabel = !loggedIn
+    ? '未登录'
+    : syncState === 'syncing'
+    ? '同步中'
+    : syncState === 'error'
+    ? '同步失败'
+    : meta?.version
+    ? `已同步 v${meta.version}`
+    : '等待同步';
 
   return (
     <Popover>
@@ -119,9 +165,25 @@ export function AccountMenu() {
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white">{initial}</span>
               <div className="min-w-0">
                 <div className="truncate text-sm font-bold text-slate-900">{session.username}</div>
-                <div className="text-xs text-slate-500">自动同步已启用</div>
+                <div className="text-xs text-slate-500">{statusLabel}</div>
               </div>
             </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-xl bg-slate-50 px-2 py-2">
+                <div className="text-[10px] font-semibold text-slate-400">状态</div>
+                <div className="mt-1 truncate text-xs font-bold text-slate-800">{statusLabel}</div>
+              </div>
+              <div className="rounded-xl bg-slate-50 px-2 py-2">
+                <div className="text-[10px] font-semibold text-slate-400">云端</div>
+                <div className="mt-1 text-xs font-bold text-slate-800">{meta?.version ? `v${meta.version}` : '-'}</div>
+              </div>
+              <div className="rounded-xl bg-slate-50 px-2 py-2">
+                <div className="text-[10px] font-semibold text-slate-400">本地</div>
+                <div className="mt-1 text-xs font-bold text-slate-800">{preview.keys.length} 项</div>
+              </div>
+            </div>
+            <div className="text-xs text-slate-500">范围 {preview.keys.length} 项 · {formatBytes(previewBytes)}</div>
+            {lastError ? <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600">{lastError}</div> : null}
             <button type="button" className={cx(subtleButtonClass, 'w-full justify-center')} onClick={handleLogout}>
               <LogOut className="h-4 w-4" />
               退出登录

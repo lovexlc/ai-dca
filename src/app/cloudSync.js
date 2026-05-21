@@ -20,6 +20,9 @@ export function saveCloudSyncMeta(meta = {}) {
   if (!ls) return null;
   const payload = { ...meta, savedAt: new Date().toISOString() };
   ls.setItem(CLOUD_SYNC_META_KEY, JSON.stringify(payload));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('cloud-sync:meta-changed', { detail: { meta: payload } }));
+  }
   return payload;
 }
 
@@ -28,7 +31,6 @@ export async function uploadEncryptedCloudBackup({ securityPassword, rememberDev
   if (!session?.accessToken) throw new Error('请先登录账户');
   const localMeta = loadCloudSyncMeta();
   const envelope = buildBackupEnvelope();
-  if (!envelope.keyCount) throw new Error('当前没有可同步的数据');
   const remembered = useRemembered ? loadRememberedKey() : null;
   const encrypted = await encryptBackupEnvelope(envelope, securityPassword, {
     rememberDevice,
@@ -80,47 +82,58 @@ let autoSyncTimer = null;
 let originalSetItem = null;
 let originalRemoveItem = null;
 let originalClear = null;
+let autoUploadInFlight = false;
 
 function isSyncableKey(key = '') {
   const value = String(key || '');
   return value.startsWith('aiDca') && !['aiDcaPendingToasts', 'aiDcaCloudSyncMeta', 'aiDcaCloudSyncSession', 'aiDcaSecureSyncRememberedKey'].includes(value);
 }
 
-function scheduleAutoUpload() {
+export function scheduleCloudAutoUpload({ delay = 2500 } = {}) {
   const session = loadCloudSession();
   const remembered = loadRememberedKey();
-  if (!session?.accessToken || !remembered?.rawKey) return;
+  if (!session?.accessToken || !remembered?.rawKey || typeof window === 'undefined') return false;
   window.clearTimeout(autoSyncTimer);
   autoSyncTimer = window.setTimeout(async () => {
+    if (autoUploadInFlight) return;
+    autoUploadInFlight = true;
+    window.dispatchEvent(new CustomEvent('cloud-sync:auto-upload-started'));
     try {
-      await uploadEncryptedCloudBackup({ useRemembered: true, rememberDevice: true });
-      window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded'));
+      const result = await uploadEncryptedCloudBackup({ useRemembered: true, rememberDevice: true });
+      window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result } }));
     } catch (err) {
       window.dispatchEvent(new CustomEvent('cloud-sync:auto-error', { detail: { message: err?.message || String(err) } }));
+    } finally {
+      autoUploadInFlight = false;
     }
-  }, 2500);
+  }, delay);
+  return true;
 }
 
 export function startCloudAutoSync() {
-  if (typeof window === 'undefined' || !window.localStorage || autoSyncStarted) return;
+  if (typeof window === 'undefined' || !window.localStorage || !window.Storage || autoSyncStarted) return;
   autoSyncStarted = true;
-  const storage = window.localStorage;
-  originalSetItem = storage.setItem.bind(storage);
-  originalRemoveItem = storage.removeItem.bind(storage);
-  originalClear = storage.clear.bind(storage);
-  storage.setItem = (key, value) => {
-    originalSetItem(key, value);
-    if (isSyncableKey(key)) scheduleAutoUpload();
+  const proto = window.Storage.prototype;
+  originalSetItem = proto.setItem;
+  originalRemoveItem = proto.removeItem;
+  originalClear = proto.clear;
+  proto.setItem = function patchedSetItem(key, value) {
+    const result = originalSetItem.call(this, key, value);
+    if (this === window.localStorage && isSyncableKey(key)) scheduleCloudAutoUpload();
+    return result;
   };
-  storage.removeItem = (key) => {
-    originalRemoveItem(key);
-    if (isSyncableKey(key)) scheduleAutoUpload();
+  proto.removeItem = function patchedRemoveItem(key) {
+    const result = originalRemoveItem.call(this, key);
+    if (this === window.localStorage && isSyncableKey(key)) scheduleCloudAutoUpload();
+    return result;
   };
-  storage.clear = () => {
-    originalClear();
-    scheduleAutoUpload();
+  proto.clear = function patchedClear() {
+    const result = originalClear.call(this);
+    if (this === window.localStorage) scheduleCloudAutoUpload();
+    return result;
   };
   window.addEventListener('storage', (event) => {
-    if (isSyncableKey(event.key)) scheduleAutoUpload();
+    if (isSyncableKey(event.key)) scheduleCloudAutoUpload();
   });
+  scheduleCloudAutoUpload({ delay: 5000 });
 }
