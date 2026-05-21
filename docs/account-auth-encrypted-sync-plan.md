@@ -236,7 +236,7 @@ MVP 简化：
 | done | 7. 改造数据同步页 | 已在 `BackupExperience.jsx` 顶部加入账户同步卡片；WebDAV 保留为下方高级备份。 |
 | done | 8. 全局自动同步接入 | 已在 `WorkspacePage.jsx` 启动 `startCloudAutoSync()`，监听 `aiDca*` 本地数据变更后 debounce 上传。 |
 | done | 9. 验证 | 已完成 focused ESLint、Worker import、mock API 注册/登录/上传/冲突烟测、diff check；浏览器 MCP 当前不可用，未做真实浏览器截图。 |
-| in_progress | 10. 部署 | 已新增 `deploy-worker-sync.yml` 并创建/回填 D1/KV 资源；等待推送后由 GitHub Actions 部署。 |
+| done | 10. 部署 | 已推送并由 GitHub Actions 完成 Pages 与 sync Worker 部署；生产健康检查通过。 |
 
 ## 关键决策待确认
 
@@ -321,3 +321,12 @@ MVP 简化：
 - `git diff --check`：通过。
 - Cloudflare 资源：已创建/复用 `ai-dca-sync-db`、`ai-dca-sync-backups`、`ai-dca-sync-backups-preview`，并回填 `workers/sync/wrangler.toml`。
 - 限制：当前 MCP 工具列表没有浏览器/cf-browser 工具，未执行真实浏览器截图验证。
+
+## 部署结果
+
+- Commit：`3656509 feat: add encrypted account sync`。
+- GitHub Pages workflow：success，run `https://github.com/lovexlc/ai-dca/actions/runs/26202944115`。
+- Sync Worker workflow：success，run `https://github.com/lovexlc/ai-dca/actions/runs/26202944141`。
+- Worker Current Version ID：`e2ef6cc0-bbaf-4786-8592-1e6fb6149d62`。
+- 生产健康检查：`GET https://tools.freebacktrack.tech/api/sync/health` 返回 HTTP 200，`{ "ok": true, "service": "sync" }`。
+- 未授权检查：`GET https://tools.freebacktrack.tech/api/sync/meta` 返回 HTTP 401，`{ "message": "未登录" }`。
