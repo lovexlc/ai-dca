@@ -71,4 +71,4 @@ export function extractPurchaseAmount(row) {
   return match ? match[0].replace(/\s+/g, '') : '';
 }
 
-export const ANDROID_APK_DOWNLOAD_URL = 'https://github.com/yukerui/ai-dca-android-notify';
+export const ANDROID_APK_DOWNLOAD_URL = 'https://github.com/lovexlc/ai-dca-andriod/releases';
