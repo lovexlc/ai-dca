@@ -842,7 +842,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
             </Card>
           </div>
 
-          <div className="min-w-0 space-y-6 lg:sticky lg:top-4">
+          <div className={cx("min-w-0 space-y-6 lg:sticky lg:top-4 lg:block", planStep !== 4 && "hidden")}>
             <Card className="min-w-0 overflow-hidden border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white">
               <SectionHeading eyebrow="结果预览" title="策略成本预览" />
               <div className="mt-6 rounded-[24px] border border-white/80 bg-white/90 p-5 shadow-sm">
