@@ -198,7 +198,7 @@ function NotionCard({ children, onClick, className = '' }) {
 function LearnCard({ card, onOpen }) {
   const Icon = card.icon;
   return (
-    <NotionCard onClick={() => onOpen(card.id)} className="h-[132px] w-[148px] flex-shrink-0 snap-start sm:h-[230px] sm:w-[220px]">
+    <NotionCard onClick={() => onOpen(card.id)} className="h-[210px] w-[136px] flex-shrink-0 snap-start sm:h-[230px] sm:w-[220px]">
       <div className={cx('flex flex-1 items-center justify-center bg-gradient-to-br', card.tint)}>
         <Icon className={cx('h-8 w-8 transition-transform group-hover:scale-110 sm:h-12 sm:w-12', card.accent)} strokeWidth={1.4} aria-hidden="true" />
       </div>
@@ -216,7 +216,7 @@ function RecentCard({ entry, onActivate }) {
   const Icon = meta.icon || BookOpen;
   const kindLabel = meta.kind === 'tab' ? '页面' : meta.kind === 'account' ? '账户' : '章节';
   return (
-    <NotionCard onClick={() => onActivate(meta)} className="h-[96px] w-[132px] flex-shrink-0 snap-start sm:h-[150px] sm:w-[170px]">
+    <NotionCard onClick={() => onActivate(meta)} className="h-[150px] w-[118px] flex-shrink-0 snap-start sm:h-[150px] sm:w-[170px]">
       <div className={cx('flex flex-1 items-center justify-center bg-gradient-to-br', meta.tint)}>
         <Icon className={cx('h-7 w-7 sm:h-10 sm:w-10', meta.accent)} strokeWidth={1.4} aria-hidden="true" />
       </div>
