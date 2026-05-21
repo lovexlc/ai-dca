@@ -178,29 +178,31 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function navJsonPath(code, inPagesDir) {
-  return inPagesDir ? `../data/${code}/latest-nav.json` : `./data/${code}/latest-nav.json`;
+function etfLatestNavManifestPath(inPagesDir) {
+  return inPagesDir ? '../data/etf_latest_nav.json' : './data/etf_latest_nav.json';
 }
 
-async function loadEtfLatestNav(code, { inPagesDir = false } = {}) {
-  if (!/^\d{6}$/.test(String(code || '').trim())) return null;
-  const response = await fetch(navJsonPath(code, inPagesDir), {
+async function loadEtfLatestNavManifest({ inPagesDir = false } = {}) {
+  const response = await fetch(etfLatestNavManifestPath(inPagesDir), {
     headers: { Accept: 'application/json' },
     cache: 'no-store'
   });
-  if (response.status === 404) return null;
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const payload = await response.json();
-  const latestNav = Number(payload?.latestNav);
-  if (!Number.isFinite(latestNav) || latestNav <= 0) return null;
-  return {
-    code: payload?.code || code,
-    name: payload?.name || '',
-    latestNav,
-    latestNavDate: payload?.latestNavDate || '',
-    previousNav: Number(payload?.previousNav) || null,
-    previousNavDate: payload?.previousNavDate || ''
-  };
+  const navByCode = {};
+  for (const item of payload?.items || []) {
+    if (item?.code && Number.isFinite(item.latestNav) && item.latestNav > 0) {
+      navByCode[item.code] = {
+        code: item.code,
+        name: item.name || '',
+        latestNav: item.latestNav,
+        latestNavDate: item.latestNavDate || '',
+        previousNav: Number.isFinite(item.previousNav) && item.previousNav > 0 ? item.previousNav : null,
+        previousNavDate: item.previousNavDate || ''
+      };
+    }
+  }
+  return navByCode;
 }
 
 function nasdqListPath(inPagesDir) {
@@ -281,6 +283,31 @@ async function loadEtfLatestPrice(code, { inPagesDir = false } = {}) {
     close,
     date: last?.date || ''
   };
+}
+
+// 批量加载非持仓候选的现价：优化后从各个 daily-sina.json 并行加载（限制并发数）
+async function loadEtfLatestPricesInBatch(codes, { inPagesDir = false, concurrency = 3 } = {}) {
+  const priceByCode = {};
+  const queue = [...codes];
+  const pending = [];
+
+  const worker = async () => {
+    while (queue.length > 0) {
+      const code = queue.shift();
+      try {
+        const result = await loadEtfLatestPrice(code, { inPagesDir });
+        if (result) priceByCode[result.code] = result;
+      } catch (_e) {
+        // 静默跳过失败的单个请求
+      }
+    }
+  };
+
+  for (let i = 0; i < Math.min(concurrency, codes.length); i += 1) {
+    pending.push(worker());
+  }
+  await Promise.all(pending);
+  return priceByCode;
 }
 
 export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false, initialView = 'opportunity', hideViewTabs = false } = {}) {
@@ -793,6 +820,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, [exchangeFunds, benchmarkCodesJoined, premiumClassKey]);
 
   // 拉取所有候选 ETF 的最新单位净值（候选池来自 data/all_nasdq.json，不仅限于持仓）。
+  // 优化：使用统一的 data/etf_latest_nav.json 清单而不是逐个调用 data/<code>/latest-nav.json。
   const loadNav = useCallback(async () => {
     setNavState((prev) => ({ ...prev, loading: true, error: '' }));
     try {
@@ -801,13 +829,13 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         setNavState({ loading: false, error: '', navByCode: {}, generatedAt: nowIso() });
         return;
       }
-      const results = await Promise.all(
-        codes.map((code) => loadEtfLatestNav(code, { inPagesDir }).catch(() => null))
-      );
-      const navByCode = {};
-      results.forEach((entry) => {
-        if (entry && entry.code) navByCode[entry.code] = entry;
-      });
+      let navByCode = {};
+      try {
+        // Phase 0：从统一的 etf_latest_nav.json 清单拉取所有 ETF 净值
+        navByCode = await loadEtfLatestNavManifest({ inPagesDir });
+      } catch (_e) {
+        // 清单加载失败，继续降级到 Phase 1 fallback
+      }
       // Phase 1 (NAV 分层) fallback：GitHub Action 预生成的 latest-nav.json 会过期或缺失。
       // 对 null 的 code，走与持仓页 KPI 同源的 ocr-proxy /api/holdings/nav（DWJZ）补齐。
       // 详见 docs/data-glossary.md、docs/nav-source-stratification-plan.md。
@@ -833,7 +861,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       }
       setNavState({
         loading: false,
-        error: Object.keys(navByCode).length === 0 ? '未拿到 ETF 最新净值。请检查 GitHub Action 是否跑过并生成 data/<code>/latest-nav.json。' : '',
+        error: Object.keys(navByCode).length === 0 ? '未拿到 ETF 最新净值。请检查 GitHub Action 是否跑过并生成 data/etf_latest_nav.json。' : '',
         navByCode,
         generatedAt: nowIso()
       });
@@ -850,6 +878,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
   // 非持仓候选的现价：从 data/<code>/daily-sina.json 取最后一根 K 线 close。
   // 持仓的候选直接用 holdings ledger 中的 latestNav（已由 notify worker 实时推送），不在此处覆盖。
+  // 优化：批量加载而不是每个都单独发起请求，并限制并发数以遵守后端调用规范。
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -858,19 +887,15 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         return;
       }
       const heldCodes = new Set(exchangeFunds.map((f) => f.code));
-      const targets = candidateUniverse.filter((f) => !heldCodes.has(f.code));
-      if (!targets.length) {
+      const targetCodes = candidateUniverse
+        .filter((f) => !heldCodes.has(f.code))
+        .map((f) => f.code);
+      if (!targetCodes.length) {
         setPriceState({ priceByCode: {} });
         return;
       }
-      const results = await Promise.all(
-        targets.map((f) => loadEtfLatestPrice(f.code, { inPagesDir }).catch(() => null))
-      );
+      const priceByCode = await loadEtfLatestPricesInBatch(targetCodes, { inPagesDir, concurrency: 3 });
       if (cancelled) return;
-      const priceByCode = {};
-      results.forEach((entry) => {
-        if (entry && entry.code) priceByCode[entry.code] = entry;
-      });
       setPriceState({ priceByCode });
     })();
     return () => { cancelled = true; };

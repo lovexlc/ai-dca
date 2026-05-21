@@ -16,7 +16,7 @@ const ACCOUNT_CARDS = [
     sentence: '追求高收益，承受高波动',
     examples: 'AAPL / MSFT / GOOGL / AMZN / NVDA / META / TSLA / TSM',
     details: [
-      ['进取型账户', ['清一色美股七巨头 + 台积电 + 博通 + AMD。', '英伟达占比最大，其次是谷歌，苹果/亚马逊/台积电/Meta 各占一部分。', '特斯拉仓位较小，280 美元以内再考虑加仓。', '追求高收益，承受高波动，是"改变未来的资产"。']]
+      ['进取型账户', ['清一色美股七巨头 + 台积电 + 博通 + AMD。', '英伟达占比最大，其次是谷歌，苹果/亚马逊/台积电/Meta 各占一部分。特斯拉仓位较小', '追求高收益，承受高波动，是"改变未来的资产"。']]
     ]
   },
   {
@@ -734,13 +734,16 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
     const hasDca = Boolean(dca && dca.source);
     const notify = readJson('aiDcaNotifyClientConfig');
     const hasNotify = Boolean(notify?.barkDeviceKey || notify?.notifyClientId);
-    const webdav = readJson('aiDcaWebDavConfig');
-    const hasBackup = Boolean(webdav?.baseUrl || webdav?.username);
+    const switchPrefs = readJson('aiDcaSwitchStrategyPrefs');
+    const hasFundSwitch = Boolean(
+      (Array.isArray(switchPrefs?.enabledCodes) && switchPrefs.enabledCodes.length > 0) ||
+      (Array.isArray(switchPrefs?.benchmarkCodes) && switchPrefs.benchmarkCodes.length > 0)
+    );
     return {
       holdings: txCount ? `${txCount} 笔` : '待录入',
       plans: `${planCount + (hasDca ? 1 : 0)} 个`,
       notify: hasNotify ? '已配置' : '未配置',
-      backup: hasBackup ? '已配置' : '未配置'
+      fundSwitch: hasFundSwitch ? '已开启' : '未开启'
     };
   }, []);
 
@@ -789,7 +792,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
             <ToolEntry icon={Wallet} title="持仓总览" value={dashboardStatus.holdings} onClick={() => navigate('holdings')} />
             <ToolEntry icon={ListChecks} title="交易计划" value={dashboardStatus.plans} onClick={() => navigate('tradePlans', { hash: '#new' })} />
             <ToolEntry icon={Bell} title="通知设置" value={dashboardStatus.notify} onClick={() => navigate('notify')} />
-            <ToolEntry icon={Repeat} title="基金切换" value="对比工具" onClick={() => navigate('fundSwitch')} />
+            <ToolEntry icon={Repeat} title="基金切换" value={dashboardStatus.fundSwitch} onClick={() => navigate('fundSwitch')} />
           </div>
         </section>
 
