@@ -136,7 +136,9 @@ function pushRecent(id) {
     const list = readRecent();
     list.unshift({ id, ts: Date.now() });
     window.localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 12)));
-  } catch {}
+  } catch {
+    // 最近访问写入失败时不阻塞章节打开。
+  }
 }
 
 function formatSince(ts) {
@@ -196,13 +198,13 @@ function NotionCard({ children, onClick, className = '' }) {
 function LearnCard({ card, onOpen }) {
   const Icon = card.icon;
   return (
-    <NotionCard onClick={() => onOpen(card.id)} className="h-[210px] w-[200px] flex-shrink-0 snap-start sm:h-[230px] sm:w-[220px]">
+    <NotionCard onClick={() => onOpen(card.id)} className="h-[132px] w-[148px] flex-shrink-0 snap-start sm:h-[230px] sm:w-[220px]">
       <div className={cx('flex flex-1 items-center justify-center bg-gradient-to-br', card.tint)}>
-        <Icon className={cx('h-12 w-12 transition-transform group-hover:scale-110', card.accent)} strokeWidth={1.4} aria-hidden="true" />
+        <Icon className={cx('h-8 w-8 transition-transform group-hover:scale-110 sm:h-12 sm:w-12', card.accent)} strokeWidth={1.4} aria-hidden="true" />
       </div>
-      <div className="border-t border-slate-100 px-4 py-3">
-        <div className="text-sm font-semibold text-slate-900 group-hover:text-indigo-600">{card.title}</div>
-        <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-400"><BookOpen className="h-3 w-3" aria-hidden="true" />{card.meta}</div>
+      <div className="border-t border-slate-100 px-3 py-2 sm:px-4 sm:py-3">
+        <div className="truncate text-xs font-semibold text-slate-900 group-hover:text-indigo-600 sm:text-sm">{card.title}</div>
+        <div className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-400 sm:text-xs"><BookOpen className="h-3 w-3" aria-hidden="true" />{card.meta}</div>
       </div>
     </NotionCard>
   );
@@ -214,13 +216,13 @@ function RecentCard({ entry, onActivate }) {
   const Icon = meta.icon || BookOpen;
   const kindLabel = meta.kind === 'tab' ? '页面' : meta.kind === 'account' ? '账户' : '章节';
   return (
-    <NotionCard onClick={() => onActivate(meta)} className="h-[150px] w-[170px] flex-shrink-0 snap-start">
+    <NotionCard onClick={() => onActivate(meta)} className="h-[96px] w-[132px] flex-shrink-0 snap-start sm:h-[150px] sm:w-[170px]">
       <div className={cx('flex flex-1 items-center justify-center bg-gradient-to-br', meta.tint)}>
-        <Icon className={cx('h-10 w-10', meta.accent)} strokeWidth={1.4} aria-hidden="true" />
+        <Icon className={cx('h-7 w-7 sm:h-10 sm:w-10', meta.accent)} strokeWidth={1.4} aria-hidden="true" />
       </div>
-      <div className="border-t border-slate-100 px-3 py-2">
-        <div className="truncate text-xs font-semibold text-slate-900">{meta.title}</div>
-        <div className="flex items-center justify-between text-[11px] text-slate-400">
+      <div className="border-t border-slate-100 px-2.5 py-1.5 sm:px-3 sm:py-2">
+        <div className="truncate text-[11px] font-semibold text-slate-900 sm:text-xs">{meta.title}</div>
+        <div className="flex items-center justify-between gap-2 text-[10px] text-slate-400 sm:text-[11px]">
           <span>{kindLabel}</span>
           <span>{formatSince(entry.ts)}</span>
         </div>
@@ -666,7 +668,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
         {visibleRecent.length > 0 ? (
           <section className="space-y-3">
             <SectionLabel icon={BookOpen}>Recently visited</SectionLabel>
-            <div className="-mx-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-2 sm:mx-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="-mx-5 flex snap-x snap-mandatory gap-2 overflow-x-auto px-5 pb-2 sm:mx-0 sm:gap-3 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {visibleRecent.map((r, idx) => <RecentCard key={`${r.id}-${r.ts || idx}`} entry={r} onActivate={handleRecentActivate} />)}
             </div>
           </section>
@@ -681,7 +683,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
 
         <section className="space-y-3">
           <SectionLabel icon={BookOpen}>策略章节</SectionLabel>
-          <div className="-mx-5 flex snap-x snap-mandatory gap-4 overflow-x-auto px-5 pb-2 sm:mx-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="-mx-5 flex snap-x snap-mandatory gap-2.5 overflow-x-auto px-5 pb-2 sm:mx-0 sm:gap-4 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {LEARN_CARDS.map((card) => <LearnCard key={card.id} card={card} onOpen={handleOpenChapter} />)}
           </div>
         </section>
