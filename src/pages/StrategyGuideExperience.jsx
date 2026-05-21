@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle, Bell, BookOpen, CloudUpload, ListChecks, Wallet, Trash2, X,
   Sparkles, Calendar, ChevronRight, Clock, Layers, ShieldCheck, Target,
-  Activity, FileText, Settings
+  Activity, FileText, Settings, TrendingUp, Repeat
 } from 'lucide-react';
 import { clearDemoData, hasPotentialUserData, installDemoData, readDemoDataMeta } from '../app/demoData.js';
 import { persistWorkspacePrefs, readWorkspacePrefs } from '../app/workspacePrefs.js';
@@ -24,7 +24,7 @@ const ACCOUNT_CARDS = [
     sentence: '追求高收益，承受高波动',
     examples: 'AAPL / MSFT / GOOGL / AMZN / NVDA / META / TSLA / TSM',
     details: [
-      ['进取型账户', ['清一色美股七巨头 + 台积电 + 博通 + AMD。', '英伟达占比最大，其次是谷歌，苹果/亚马逊/台积电/Meta 各占一部分。', '特斯拉仓位较小，280 美元以内再考虑加仓。', '追求高收益，承受高波动，是“改变未来的资产”。']]
+      ['进取型账户', ['清一色美股七巨头 + 台积电 + 博通 + AMD。', '英伟达占比最大，其次是谷歌，苹果/亚马逊/台积电/Meta 各占一部分。', '特斯拉仓位较小，280 美元以内再考虑加仓。', '追求高收益，承受高波动，是"改变未来的资产"。']]
     ]
   },
   {
@@ -48,12 +48,12 @@ const ACCOUNT_CARDS = [
 ];
 
 const INDEX_DETAILS = [
-  ['金字塔加仓法详解', ['事先算好准备用在标普500和纳指100上的总资金。', '跌到首买线后开始买入，之后每跌一个档位加仓一次。', '倍数 1-1-1.5-1.5-2-2-3，最后的“3”会动用额外资金，属于大跌大买。', '资金安排从小到大：小跌小买，大跌大买，把握重大机会。']],
+  ['金字塔加仓法详解', ['事先算好准备用在标普500和纳指100上的总资金。', '跌到首买线后开始买入，之后每跌一个档位加仓一次。', '倍数 1-1-1.5-1.5-2-2-3，最后的"3"会动用额外资金，属于大跌大买。', '资金安排从小到大：小跌小买，大跌大买，把握重大机会。']],
   ['VIX 恐慌指数信号', ['VIX 达到 30：捞一些宽基指数进来。', 'VIX 达到 40：开始买入个股和两个宽基指数 ETF。', 'VIX 达到 50：重点加仓，资金最少打掉 50% 以上。', 'VIX 在 50-90：属于很好的买入节点，但不是唯一参考指标。']]
 ];
 
 const STOCK_DETAILS = [
-  ['“第一兼唯一”选股原则', ['投资选个股，跟选伴侣一样难：优秀特质很难全部兼得。', '龙头个股是少数兼具规模和市场地位领先（第一），同时拥有核心技术/壁垒/不可替代性（唯一）的资产。', '最好兼具“第一和唯一”，这样的个股买入后有信心长期持有。']],
+  ['"第一兼唯一"选股原则', ['投资选个股，跟选伴侣一样难：优秀特质很难全部兼得。', '龙头个股是少数兼具规模和市场地位领先（第一），同时拥有核心技术/壁垒/不可替代性（唯一）的资产。', '最好兼具"第一和唯一"，这样的个股买入后有信心长期持有。']],
   ['买入规则详解', ['先看基本面有没有恶化，如果没有，个股下跌 30% 左右开始买入。', '之后每下跌 4-5% 左右加仓一次，买入次数一般大于 6 次。', '拄底时出手，资金至少分 5 次，从少到多，不贪多。']]
 ];
 
@@ -77,7 +77,41 @@ const LEARN_CARDS = [
   { id: 'guide-readme', title: '全站 README', meta: '8 分钟阅读', icon: FileText, tint: 'from-slate-50 to-slate-100/40', accent: 'text-slate-500' }
 ];
 
-const RECENT_KEY = 'aiDcaRecentGuideAnchors';
+const TAB_RECENT_META = {
+  'tab:strategy': { title: '策略指南', icon: BookOpen, tint: 'from-slate-50 to-slate-100/40', accent: 'text-slate-500' },
+  'tab:holdings': { title: '持仓总览', icon: Wallet, tint: 'from-indigo-50 to-indigo-100/40', accent: 'text-indigo-500' },
+  'tab:tradePlans': { title: '交易计划', icon: ListChecks, tint: 'from-emerald-50 to-emerald-100/40', accent: 'text-emerald-500' },
+  'tab:fundSwitch': { title: '基金切换', icon: Repeat, tint: 'from-sky-50 to-sky-100/40', accent: 'text-sky-500' },
+  'tab:markets': { title: '行情中心', icon: TrendingUp, tint: 'from-amber-50 to-amber-100/40', accent: 'text-amber-500' },
+  'tab:notify': { title: '通知设置', icon: Bell, tint: 'from-rose-50 to-rose-100/40', accent: 'text-rose-500' },
+  'tab:backup': { title: '数据同步', icon: CloudUpload, tint: 'from-violet-50 to-violet-100/40', accent: 'text-violet-500' }
+};
+
+const ACCOUNT_RECENT_META = {
+  agg: { title: '进取型', icon: Activity, tint: 'from-rose-50 to-rose-100/40', accent: 'text-rose-500' },
+  steady: { title: '稳健型', icon: ShieldCheck, tint: 'from-indigo-50 to-indigo-100/40', accent: 'text-indigo-500' },
+  defend: { title: '防守型', icon: Wallet, tint: 'from-emerald-50 to-emerald-100/40', accent: 'text-emerald-500' }
+};
+
+function lookupRecent(id) {
+  if (!id) return null;
+  if (id.startsWith('tab:')) {
+    const m = TAB_RECENT_META[id];
+    if (!m) return null;
+    return { kind: 'tab', id, target: id.slice(4), ...m };
+  }
+  if (id.startsWith('account:')) {
+    const key = id.slice(8);
+    const m = ACCOUNT_RECENT_META[key];
+    if (!m) return null;
+    return { kind: 'account', id, accountId: key, ...m };
+  }
+  const card = LEARN_CARDS.find((c) => c.id === id);
+  if (card) return { kind: 'chapter', id, title: card.title, icon: card.icon, tint: card.tint, accent: card.accent };
+  return null;
+}
+
+export const RECENT_KEY = 'aiDcaRecentGuideAnchors';
 
 function getGreeting() {
   const h = new Date().getHours();
@@ -92,16 +126,16 @@ function readRecent() {
   if (typeof window === 'undefined') return [];
   try {
     const raw = JSON.parse(window.localStorage.getItem(RECENT_KEY) || '[]');
-    return Array.isArray(raw) ? raw.filter(Boolean).slice(0, 5) : [];
+    return Array.isArray(raw) ? raw.filter(Boolean).slice(0, 12) : [];
   } catch { return []; }
 }
 
 function pushRecent(id) {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined' || !id) return;
   try {
     const list = readRecent().filter((item) => item && item.id !== id);
     list.unshift({ id, ts: Date.now() });
-    window.localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 5)));
+    window.localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 12)));
   } catch {}
 }
 
@@ -178,24 +212,28 @@ function LearnCard({ card, onOpen }) {
   );
 }
 
-function RecentCard({ anchorId, ts, onOpen }) {
-  const card = LEARN_CARDS.find((c) => c.id === anchorId);
-  if (!card) return null;
-  const Icon = card.icon;
+function RecentCard({ entry, onActivate }) {
+  const meta = lookupRecent(entry.id);
+  if (!meta) return null;
+  const Icon = meta.icon || BookOpen;
+  const kindLabel = meta.kind === 'tab' ? '页面' : meta.kind === 'account' ? '账户' : '章节';
   return (
-    <NotionCard onClick={() => onOpen(card.id)} className="h-[160px] w-[180px] flex-shrink-0 snap-start">
-      <div className={cx('flex flex-1 items-center justify-center bg-gradient-to-br', card.tint)}>
-        <Icon className={cx('h-10 w-10', card.accent)} strokeWidth={1.4} aria-hidden="true" />
+    <NotionCard onClick={() => onActivate(meta)} className="h-[150px] w-[170px] flex-shrink-0 snap-start">
+      <div className={cx('flex flex-1 items-center justify-center bg-gradient-to-br', meta.tint)}>
+        <Icon className={cx('h-10 w-10', meta.accent)} strokeWidth={1.4} aria-hidden="true" />
       </div>
       <div className="border-t border-slate-100 px-3 py-2">
-        <div className="truncate text-xs font-semibold text-slate-900">{card.title}</div>
-        <div className="text-[11px] text-slate-400">{formatSince(ts)}</div>
+        <div className="truncate text-xs font-semibold text-slate-900">{meta.title}</div>
+        <div className="flex items-center justify-between text-[11px] text-slate-400">
+          <span>{kindLabel}</span>
+          <span>{formatSince(entry.ts)}</span>
+        </div>
       </div>
     </NotionCard>
   );
 }
 
-function AccountHeroCard({ account }) {
+function AccountTeaserCard({ account, onOpen }) {
   const tints = {
     rose: 'from-rose-50 via-white to-white',
     indigo: 'from-indigo-50 via-white to-white',
@@ -203,25 +241,19 @@ function AccountHeroCard({ account }) {
   };
   const dots = { rose: 'bg-rose-400', indigo: 'bg-indigo-400', emerald: 'bg-emerald-400' };
   return (
-    <details className={cx('group overflow-hidden rounded-2xl border border-slate-100 bg-gradient-to-br shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-slate-200', tints[account.tone] || 'from-slate-50')}>
-      <summary className="flex cursor-pointer list-none flex-col gap-3 px-5 py-5">
-        <div className="flex items-center gap-2">
-          <span className={cx('h-2 w-2 rounded-full', dots[account.tone] || 'bg-slate-400')} aria-hidden="true" />
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{account.title}</span>
-        </div>
-        <div className="text-base font-semibold leading-6 text-slate-900">{account.sentence}</div>
-        <div className="font-mono text-[11px] leading-5 text-slate-500">{account.examples}</div>
-        <div className="mt-1 inline-flex items-center gap-1 text-xs text-slate-400 group-open:hidden">查看详情<ChevronRight className="h-3 w-3" aria-hidden="true" /></div>
-      </summary>
-      <div className="space-y-4 border-t border-slate-100 bg-white/80 px-5 py-4 text-sm text-slate-600">
-        {account.details.map(([heading, bullets]) => (
-          <div key={heading}>
-            <div className="text-sm font-semibold text-slate-900">{heading}</div>
-            <ul className="mt-2 space-y-1.5 leading-6">{bullets.map((item) => <li key={item}>· {item}</li>)}</ul>
-          </div>
-        ))}
+    <button
+      type="button"
+      onClick={() => onOpen(account.id)}
+      className={cx('group flex w-full flex-col gap-3 overflow-hidden rounded-2xl border border-slate-100 bg-gradient-to-br px-5 py-5 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-slate-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300', tints[account.tone] || 'from-slate-50')}
+    >
+      <div className="flex items-center gap-2">
+        <span className={cx('h-2 w-2 rounded-full', dots[account.tone] || 'bg-slate-400')} aria-hidden="true" />
+        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{account.title}</span>
       </div>
-    </details>
+      <div className="text-base font-semibold leading-6 text-slate-900">{account.sentence}</div>
+      <div className="font-mono text-[11px] leading-5 text-slate-500">{account.examples}</div>
+      <div className="mt-1 inline-flex items-center gap-1 text-xs text-slate-400 group-hover:text-indigo-500">查看详情<ChevronRight className="h-3 w-3" aria-hidden="true" /></div>
+    </button>
   );
 }
 
@@ -351,7 +383,7 @@ function ScreenshotImage({ src, alt, caption }) {
         {caption ? <figcaption className="px-4 py-2 text-xs text-slate-500">{caption}</figcaption> : null}
       </figure>
       {zoomed ? (
-        <div role="dialog" aria-modal="true" onClick={() => setZoomed(false)} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+        <div role="dialog" aria-modal="true" onClick={() => setZoomed(false)} className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
           <img src={src} alt={alt} className="max-h-[92vh] max-w-[92vw] cursor-zoom-out rounded-lg object-contain shadow-2xl" onClick={(event) => event.stopPropagation()} />
           <button type="button" onClick={() => setZoomed(false)} className="absolute right-4 top-4 rounded-full bg-white/90 px-3 py-1 text-sm font-semibold text-slate-700 shadow hover:bg-white">关闭</button>
         </div>
@@ -377,6 +409,144 @@ function ReadmeCard({ title, description, bullets = [], cta, onClick }) {
   );
 }
 
+function DetailModal({ open, title, eyebrow, onClose, children }) {
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="relative flex max-h-[95vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:max-h-[90vh] sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex flex-shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-7">
+          <div className="min-w-0">
+            {eyebrow ? <div className="text-xs font-semibold uppercase tracking-wider text-indigo-500">{eyebrow}</div> : null}
+            <h2 className="mt-1 text-lg font-bold tracking-tight text-slate-900 sm:text-xl">{title}</h2>
+          </div>
+          <button type="button" aria-label="关闭" onClick={onClose} className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AccountModalBody({ account }) {
+  return (
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+        <div className="text-sm font-semibold text-slate-900">一句话定位</div>
+        <div className="mt-1 text-sm leading-6 text-slate-600">{account.sentence}</div>
+        <div className="mt-2 font-mono text-[11px] leading-5 text-slate-500">{account.examples}</div>
+      </div>
+      <InfoSections sections={account.details} />
+    </div>
+  );
+}
+
+function ChapterModalBody({ id, navigate, closeModal }) {
+  function go(tab, options) { closeModal(); navigate(tab, options); }
+  if (id === 'guide-notify') {
+    return (
+      <div className="space-y-6">
+        <SectionHeading eyebrow="刚需功能" title="先把手机通知配好" description="策略触发时能不能提醒到手机，是这个工具从「看板」变成「执行助手」的关键。" />
+        <div className="grid gap-5 lg:grid-cols-3">
+          <Card>
+            <Pill tone="indigo">iOS Bark</Pill>
+            <h3 className="mt-3 text-base font-bold text-slate-900">复制完整 Bark 链接</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-500">打开 Bark，复制 api.day.app 开头的完整链接，或只复制 Device Key。系统会自动提取可用 Key。</p>
+            <ScreenshotImage src="/strategy-guide/bark-example.png" alt="iOS Bark 复制推送链接示例" caption="很便捷，整段复制粘到通知页即可。" />
+            <button type="button" className={cx(primaryButtonClass, 'mt-5 w-full')} onClick={() => go('notify')}>去配置 iOS 通知</button>
+          </Card>
+          <Card>
+            <Pill tone="emerald">Android</Pill>
+            <h3 className="mt-3 text-base font-bold text-slate-900">复制完整测试 URL</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-500">打开 Android 推送 App，复制灰色框里的消息推送 ID 或完整测试 URL，系统会自动提取。</p>
+            <ScreenshotImage src="/strategy-guide/android-example.jpg" alt="Android 复制推送 ID 示例" caption="复制灰色框里的 android-... ID。" />
+            <button type="button" className={cx(primaryButtonClass, 'mt-5 w-full')} onClick={() => go('notify')}>去绑定 Android 设备</button>
+          </Card>
+          <Card>
+            <Pill tone="slate">PC 浏览器</Pill>
+            <h3 className="mt-3 text-base font-bold text-slate-900">授权桌面通知</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-500">适合电脑常开网页。授权后前台轮询事件并弹出桌面提醒。</p>
+            <ul className="mt-4 space-y-2 text-sm text-slate-600"><li>1. 打开通知设置</li><li>2. 授权浏览器通知</li><li>3. 发送本地测试通知</li></ul>
+            <button type="button" className={cx(primaryButtonClass, 'mt-5 w-full')} onClick={() => go('notify')}>去配置 PC 通知</button>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+  if (id === 'guide-index-etf') {
+    return (
+      <div className="space-y-5">
+        <p className="text-sm leading-6 text-slate-500">核心原则：长期持有、只买不卖，按回撤金字塔分批加仓；高位少买，低位多买。</p>
+        <SimpleTable headers={['', 'QQQ（纳指100）', 'SPY/VOO（标普500）']} rows={[['首买跌幅', '9%', '6.5%（参考）'], ['每档间隔', '3.5%', '2.5-3%（参考）'], ['档数', '7', '6（参考）'], ['倍数', '1-1-1.5-1.5-2-2-3', '同左']]} />
+        <SimpleTable headers={['VIX', '等级', '操作']} rows={[['<25', '平静', '常规定投，不追高'], ['25-30', '警戒', '保持定投 + 准备备用资金'], ['30-40', '中高恐慌', '加仓宽基'], ['40-50', '高恐慌', '宽基 + 个股全开'], ['≥50', '极端恐慌', '重仓，资金至少打 50%']]} />
+        <InfoSections sections={INDEX_DETAILS} />
+        <GuideButton onClick={() => go('tradePlans')}>前往交易计划 →</GuideButton>
+      </div>
+    );
+  }
+  if (id === 'guide-stock') {
+    return (
+      <div className="space-y-5">
+        <div className="grid gap-3 md:grid-cols-2">
+          {['第一兼唯一 — 行业第一或唯一性护城河', '营收/利润持续增长', '资产负债健康 — 现金 ≥ 负债', '经营现金流为正', '行业前景好', '估值合理 — PE 历史百分位 < 70%'].map((item) => <div key={item} className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">{item}</div>)}
+        </div>
+        <SimpleTable headers={['规则', '参数']} rows={[['买入', '首买跌 30%（优质 20%+），每档 4-5%，≥6 档'], ['仓位', '单只上限 50%，总仓 7-8.5 成，70% 底仓 + 30% 做 T'], ['减仓', '+15% / +25% / +35% 分档减仓']]} />
+        <InfoSections sections={STOCK_DETAILS} />
+        <GuideButton onClick={() => go('tradePlans')}>前往交易计划 →</GuideButton>
+      </div>
+    );
+  }
+  if (id === 'guide-t') {
+    return (
+      <div className="space-y-5">
+        <InfoSections sections={T_DETAILS} />
+        <GuideButton onClick={() => go('holdings')}>查看持仓做 T 记录 →</GuideButton>
+      </div>
+    );
+  }
+  if (id === 'guide-discipline') {
+    return (
+      <div className="space-y-5">
+        <InfoSections sections={DISCIPLINE_DETAILS} />
+      </div>
+    );
+  }
+  if (id === 'guide-readme') {
+    return (
+      <div className="grid gap-5 md:grid-cols-2">
+        <ReadmeCard title="持仓总览" description="记录真实资产底账，管理交易流水、成本、收益、市值和三账户分配。" bullets={['新增或导入交易流水', '确认成本与收益', '分配三账户']} cta="前往持仓总览" onClick={() => go('holdings')} />
+        <ReadmeCard title="交易计划" description="把策略变成可执行清单，包括加仓、定投和卖出计划。" bullets={['宽基金字塔加仓', '个股 checklist', 'Smart DCA 资金池']} cta="前往交易计划" onClick={() => go('tradePlans')} />
+        <ReadmeCard title="通知设置" description="配置 iOS Bark、Android 推送或 PC 浏览器通知，策略触发时主动提醒你。" bullets={['复制完整链接自动解析', '发送测试通知', '同步交易计划规则']} cta="前往通知设置" onClick={() => go('notify')} />
+        <ReadmeCard title="行情中心" description="查看关注标的、市场指数和 VIX 风险信号。" bullets={['维护美股关注列表', '观察指数和恐慌信号', '辅助判断是否进入加仓区']} cta="前往行情中心" onClick={() => go('markets')} />
+        <ReadmeCard title="基金切换" description="辅助比较同类基金、ETF 或替代标的之间的切换机会。" bullets={['比较候选标的', '分析切换收益', '差异足够大时才执行']} cta="前往基金切换" onClick={() => go('fundSwitch')} />
+        <ReadmeCard title="数据同步" description="备份和恢复本地数据，避免浏览器清理或换设备导致数据丢失。" bullets={['导出当前数据', '恢复历史备份', '换设备前先备份']} cta="前往备份" onClick={() => go('backup')} />
+      </div>
+    );
+  }
+  return null;
+}
+
+const CHAPTER_EYEBROW = {
+  'guide-notify': '刚需功能',
+  'guide-index-etf': '只买不卖',
+  'guide-stock': '第一兼唯一',
+  'guide-t': '终极目标',
+  'guide-discipline': '铁律',
+  'guide-readme': '全站 README'
+};
+
 export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange }) {
   const [demoMeta, setDemoMeta] = useState(() => readDemoDataMeta());
   const [prefs, setPrefs] = useState(() => readWorkspacePrefs());
@@ -385,8 +555,20 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [showAi, setShowAi] = useState(false);
   const [recent, setRecent] = useState(() => readRecent());
-  const detailsRef = useRef(null);
+  const [activeChapter, setActiveChapter] = useState(null);
+  const [activeAccount, setActiveAccount] = useState(null);
   const hasUserData = useMemo(() => hasPotentialUserData(), []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    function onStorage(e) {
+      if (!e || e.key === RECENT_KEY || e.key === null) {
+        setRecent(readRecent());
+      }
+    }
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   function navigate(tabKey, options) {
     if (onNavigate) { onNavigate(tabKey, options); return; }
@@ -395,22 +577,32 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
     }
   }
 
-  function scrollToGuideSection(targetId) {
-    if (typeof window === 'undefined') return;
-    const target = document.getElementById(targetId);
-    if (!target) return;
-    const offset = window.matchMedia('(max-width: 639px)').matches ? 96 : 24;
-    const top = Math.max(0, window.scrollY + target.getBoundingClientRect().top - offset);
-    window.scrollTo({ top, behavior: 'smooth' });
+  function handleOpenChapter(chapterId) {
+    pushRecent(chapterId);
+    setRecent(readRecent());
+    setActiveAccount(null);
+    setActiveChapter(chapterId);
   }
 
-  function handleOpenLearn(anchorId) {
-    pushRecent(anchorId);
+  function handleOpenAccount(accountId) {
+    pushRecent(`account:${accountId}`);
     setRecent(readRecent());
-    if (detailsRef.current && !detailsRef.current.open) {
-      detailsRef.current.open = true;
+    setActiveChapter(null);
+    setActiveAccount(accountId);
+  }
+
+  function handleRecentActivate(meta) {
+    if (meta.kind === 'tab') {
+      navigate(meta.target);
+      return;
     }
-    setTimeout(() => scrollToGuideSection(anchorId), 60);
+    if (meta.kind === 'account') {
+      handleOpenAccount(meta.accountId);
+      return;
+    }
+    if (meta.kind === 'chapter') {
+      handleOpenChapter(meta.id);
+    }
   }
 
   function refreshDemoMeta() {
@@ -421,9 +613,9 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
   }
 
   function handleInstallDemo() {
-    if (hasUserData && !window.confirm('检测到已有本地数据。生成演示数据会覆盖当前持仓、计划和定投数据。建议先到“数据同步”导出备份。确认继续？')) return;
+    if (hasUserData && !window.confirm('检测到已有本地数据。生成演示数据会覆盖当前持仓、计划和定投数据。建议先到「数据同步」导出备份。确认继续？')) return;
     const meta = installDemoData();
-    setMessage('演示数据已生成。下一步建议配置手机通知，完整体验“计划触发 → 手机提醒”的流程。');
+    setMessage('演示数据已生成。下一步建议配置手机通知，完整体验「计划触发 → 手机提醒」的流程。');
     setDemoMeta(meta);
     onDemoDataChange?.(meta);
   }
@@ -438,7 +630,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
   function handleSaveHome() {
     const next = persistWorkspacePrefs({ homepageTab: prefs.homepageTab });
     setPrefs(next);
-    setMessage(`已将“${HOME_OPTIONS.find((item) => item.value === next.homepageTab)?.label || '策略指南'}”设为默认首页。`);
+    setMessage(`已将「${HOME_OPTIONS.find((item) => item.value === next.homepageTab)?.label || '策略指南'}」设为默认首页。`);
   }
 
   const dashboardStatus = useMemo(() => {
@@ -466,6 +658,10 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
     };
   }, []);
 
+  const visibleRecent = useMemo(() => recent.filter((r) => r && r.id !== 'tab:strategy' && lookupRecent(r.id)).slice(0, 5), [recent]);
+  const chapterMeta = activeChapter ? LEARN_CARDS.find((c) => c.id === activeChapter) : null;
+  const accountMeta = activeAccount ? ACCOUNT_CARDS.find((a) => a.id === activeAccount) : null;
+
   return (
     <div className="min-h-screen bg-white">
       <WelcomeHero onJoinGroup={() => setShowQrModal(true)} onShowDisclaimer={() => setShowDisclaimer(true)} />
@@ -473,11 +669,11 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
       <main className="mx-auto flex max-w-5xl flex-col gap-10 px-5 pb-28 sm:px-6">
         {message ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div> : null}
 
-        {recent.length > 0 ? (
+        {visibleRecent.length > 0 ? (
           <section className="space-y-3">
             <SectionLabel icon={BookOpen}>Recently visited</SectionLabel>
             <div className="-mx-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-2 sm:mx-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {recent.map((r) => <RecentCard key={r.id} anchorId={r.id} ts={r.ts} onOpen={handleOpenLearn} />)}
+              {visibleRecent.map((r) => <RecentCard key={r.id} entry={r} onActivate={handleRecentActivate} />)}
             </div>
           </section>
         ) : null}
@@ -485,14 +681,14 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
         <section className="space-y-3">
           <SectionLabel icon={Target}>三账户体系</SectionLabel>
           <div className="grid gap-4 md:grid-cols-3">
-            {ACCOUNT_CARDS.map((account) => <AccountHeroCard key={account.id} account={account} />)}
+            {ACCOUNT_CARDS.map((account) => <AccountTeaserCard key={account.id} account={account} onOpen={handleOpenAccount} />)}
           </div>
         </section>
 
         <section className="space-y-3">
           <SectionLabel icon={BookOpen}>策略章节</SectionLabel>
           <div className="-mx-5 flex snap-x snap-mandatory gap-4 overflow-x-auto px-5 pb-2 sm:mx-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {LEARN_CARDS.map((card) => <LearnCard key={card.id} card={card} onOpen={handleOpenLearn} />)}
+            {LEARN_CARDS.map((card) => <LearnCard key={card.id} card={card} onOpen={handleOpenChapter} />)}
           </div>
         </section>
 
@@ -510,93 +706,6 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
             <ToolEntry icon={CloudUpload} title="数据同步" value={dashboardStatus.backup} onClick={() => navigate('backup')} />
           </div>
         </section>
-
-        <details ref={detailsRef} className="group rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-6">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left">
-            <span>
-              <SectionLabel icon={BookOpen}>章节详情</SectionLabel>
-              <span className="mt-1 block text-lg font-semibold tracking-tight text-slate-900">点击展开完整指南</span>
-            </span>
-            <ChevronRight className="h-5 w-5 text-slate-400 transition-transform group-open:rotate-90" aria-hidden="true" />
-          </summary>
-          <div className="mt-6 space-y-10">
-            <section id="guide-notify" className="scroll-mt-24 space-y-5">
-              <SectionHeading eyebrow="刚需功能" title="先把手机通知配好" description="策略触发时能不能提醒到手机，是这个工具从“看板”变成“执行助手”的关键。" />
-              <div className="grid gap-6 lg:grid-cols-3">
-                <Card>
-                  <Pill tone="indigo">iOS Bark</Pill>
-                  <h3 className="mt-4 text-lg font-bold text-slate-900">复制完整 Bark 链接</h3>
-                  <p className="mt-2 text-sm leading-6 text-slate-500">打开 Bark，复制 api.day.app 开头的完整链接，或只复制 Device Key。系统会自动提取可用 Key。</p>
-                  <ScreenshotImage src="/strategy-guide/bark-example.png" alt="iOS Bark 复制推送链接示例" caption="很便捷，整段复制粘到通知页即可。" />
-                  <button type="button" className={cx(primaryButtonClass, 'mt-5 w-full')} onClick={() => navigate('notify')}>去配置 iOS 通知</button>
-                </Card>
-                <Card>
-                  <Pill tone="emerald">Android</Pill>
-                  <h3 className="mt-4 text-lg font-bold text-slate-900">复制完整测试 URL</h3>
-                  <p className="mt-2 text-sm leading-6 text-slate-500">打开 Android 推送 App，复制灰色框里的消息推送 ID 或完整测试 URL，系统会自动提取。</p>
-                  <ScreenshotImage src="/strategy-guide/android-example.jpg" alt="Android 复制推送 ID 示例" caption="复制灰色框里的 android-... ID。" />
-                  <button type="button" className={cx(primaryButtonClass, 'mt-5 w-full')} onClick={() => navigate('notify')}>去绑定 Android 设备</button>
-                </Card>
-                <Card>
-                  <Pill tone="slate">PC 浏览器</Pill>
-                  <h3 className="mt-4 text-lg font-bold text-slate-900">授权桌面通知</h3>
-                  <p className="mt-2 text-sm leading-6 text-slate-500">适合电脑常开网页。授权后前台轮询事件并弹出桌面提醒。</p>
-                  <ul className="mt-4 space-y-2 text-sm text-slate-600"><li>1. 打开通知设置</li><li>2. 授权浏览器通知</li><li>3. 发送本地测试通知</li></ul>
-                  <button type="button" className={cx(primaryButtonClass, 'mt-5 w-full')} onClick={() => navigate('notify')}>去配置 PC 通知</button>
-                </Card>
-              </div>
-            </section>
-
-            <section id="guide-index-etf" className="scroll-mt-24 space-y-5">
-              <SectionHeading eyebrow="只买不卖" title="金字塔加仓法 · 宽基指数 ETF" />
-              <Card className="space-y-5">
-                <p className="text-sm leading-6 text-slate-500">核心原则：长期持有、只买不卖，按回撞金字塔分批加仓；高位少买，低位多买。</p>
-                <SimpleTable headers={['', 'QQQ（纳指100）', 'SPY/VOO（标普500）']} rows={[['首买跌幅', '9%', '6.5%（参考）'], ['每档间隔', '3.5%', '2.5-3%（参考）'], ['档数', '7', '6（参考）'], ['倍数', '1-1-1.5-1.5-2-2-3', '同左']]} />
-                <SimpleTable headers={['VIX', '等级', '操作']} rows={[['<25', '平静', '常规定投，不追高'], ['25-30', '警戒', '保持定投 + 准备备用资金'], ['30-40', '中高恐慌', '加仓宽基'], ['40-50', '高恐慌', '宽基 + 个股全开'], ['≥50', '极端恐慌', '重仓，资金至少打 50%']]} />
-                <InfoSections sections={INDEX_DETAILS} />
-                <GuideButton onClick={() => navigate('tradePlans')}>前往交易计划 →</GuideButton>
-              </Card>
-            </section>
-
-            <section id="guide-stock" className="scroll-mt-24 space-y-5">
-              <SectionHeading eyebrow="第一兼唯一" title="个股投资策略" />
-              <Card className="space-y-5">
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {['第一兼唯一 — 行业第一或唯一性护城河', '营收/利润持续增长', '资产负债健康 — 现金 ≥ 负债', '经营现金流为正', '行业前景好', '估值合理 — PE 历史百分位 < 70%'].map((item) => <div key={item} className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">{item}</div>)}
-                </div>
-                <SimpleTable headers={['规则', '参数']} rows={[['买入', '首买跌 30%（优质 20%+），每档 4-5%，≥6 档'], ['仓位', '单只上限 50%，总仓 7-8.5 成，70% 底仓 + 30% 做 T'], ['减仓', '+15% / +25% / +35% 分档减仓']]} />
-                <InfoSections sections={STOCK_DETAILS} />
-                <GuideButton onClick={() => navigate('tradePlans')}>前往交易计划 →</GuideButton>
-              </Card>
-            </section>
-
-            <section id="guide-t" className="scroll-mt-24 space-y-5">
-              <SectionHeading eyebrow="终极目标" title="做 T 与负成本持股" />
-              <Card>
-                <InfoSections sections={T_DETAILS} />
-              </Card>
-            </section>
-
-            <section id="guide-discipline" className="scroll-mt-24 space-y-5">
-              <SectionHeading eyebrow="铁律" title="操作纪律" />
-              <Card>
-                <InfoSections sections={DISCIPLINE_DETAILS} />
-              </Card>
-            </section>
-
-            <section id="guide-readme" className="scroll-mt-24 space-y-5">
-              <SectionHeading eyebrow="全站 README" title="每个功能页能做什么" />
-              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                <ReadmeCard title="持仓总览" description="记录真实资产底账，管理交易流水、成本、收益、市值和三账户分配。" bullets={['新增或导入交易流水', '确认成本与收益', '分配三账户']} cta="前往持仓总览" onClick={() => navigate('holdings')} />
-                <ReadmeCard title="交易计划" description="把策略变成可执行清单，包括加仓、定投和卖出计划。" bullets={['宽基金字塔加仓', '个股 checklist', 'Smart DCA 资金池']} cta="前往交易计划" onClick={() => navigate('tradePlans')} />
-                <ReadmeCard title="通知设置" description="配置 iOS Bark、Android 推送或 PC 浏览器通知，策略触发时主动提醒你。" bullets={['复制完整链接自动解析', '发送测试通知', '同步交易计划规则']} cta="前往通知设置" onClick={() => navigate('notify')} />
-                <ReadmeCard title="行情中心" description="查看关注标的、市场指数和 VIX 风险信号。" bullets={['维护美股关注列表', '观察指数和恐慌信号', '辅助判断是否进入加仓区']} cta="前往行情中心" onClick={() => navigate('markets')} />
-                <ReadmeCard title="基金切换" description="辅助比较同类基金、ETF 或替代标的之间的切换机会。" bullets={['比较候选标的', '分析切换收益', '差异足够大时才执行']} cta="前往基金切换" onClick={() => navigate('fundSwitch')} />
-                <ReadmeCard title="数据同步" description="备份和恢复本地数据，避免浏览器清理或换设备导致数据丢失。" bullets={['导出当前数据', '恢复历史备份', '换设备前先备份']} cta="前往备份" onClick={() => navigate('backup')} />
-              </div>
-            </section>
-          </div>
-        </details>
 
         <details className="group rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-6">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left">
@@ -625,6 +734,24 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
 
       <FloatingAi onClick={() => setShowAi(true)} />
 
+      <DetailModal
+        open={Boolean(accountMeta)}
+        eyebrow="三账户体系"
+        title={accountMeta ? `${accountMeta.title}账户` : ''}
+        onClose={() => setActiveAccount(null)}
+      >
+        {accountMeta ? <AccountModalBody account={accountMeta} /> : null}
+      </DetailModal>
+
+      <DetailModal
+        open={Boolean(chapterMeta)}
+        eyebrow={chapterMeta ? (CHAPTER_EYEBROW[chapterMeta.id] || '策略章节') : ''}
+        title={chapterMeta ? chapterMeta.title : ''}
+        onClose={() => setActiveChapter(null)}
+      >
+        {chapterMeta ? <ChapterModalBody id={chapterMeta.id} navigate={navigate} closeModal={() => setActiveChapter(null)} /> : null}
+      </DetailModal>
+
       {showQrModal ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 p-4" role="dialog" aria-modal="true" aria-label="加入群聊二维码" onClick={() => setShowQrModal(false)}>
           <div className="relative w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
@@ -652,7 +779,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
           <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <button type="button" aria-label="关闭" className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => setShowAi(false)}><X className="h-4 w-4" /></button>
             <div className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-indigo-500" /><h3 className="text-base font-bold text-slate-900">AI 快问（即将上线）</h3></div>
-            <p className="mt-3 text-sm leading-6 text-slate-500">未来你可以在这里问：“今天该加仓哪些？”、“我的进取仓比例”、“VIX 现在多少”。</p>
+            <p className="mt-3 text-sm leading-6 text-slate-500">未来你可以在这里问：「今天该加仓哪些？」、「我的进取仓比例」、「VIX 现在多少」。</p>
             <div className="mt-4 flex flex-wrap gap-2">
               <button type="button" onClick={() => { setShowAi(false); navigate('markets'); }} className={cx(subtleButtonClass, 'text-xs')}>看 VIX</button>
               <button type="button" onClick={() => { setShowAi(false); navigate('tradePlans'); }} className={cx(subtleButtonClass, 'text-xs')}>看交易计划</button>

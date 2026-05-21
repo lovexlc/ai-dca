@@ -6,6 +6,7 @@ import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
 import { MobileTabBar } from '../components/mobile-tab-bar.jsx';
 import { GlobalSearch } from '../components/global-search.jsx';
 import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
+import { startCloudAutoSync } from '../app/cloudSync.js';
 import { clearDemoData, readDemoDataMeta } from '../app/demoData.js';
 import { readWorkspacePrefs } from '../app/workspacePrefs.js';
 
@@ -192,6 +193,10 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   }, [heroTitle]);
 
   useEffect(() => {
+    startCloudAutoSync();
+  }, []);
+
+  useEffect(() => {
     const canonicalUrl = buildWorkspaceUrl(activeTab, { inPagesDir });
     if (activeTab === 'tradePlans' && window.location.hash) {
       canonicalUrl.hash = window.location.hash;
@@ -250,6 +255,14 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     }
     window.history.pushState({ tab: normalizedTab }, '', nextUrl);
     setActiveTab(normalizedTab);
+    // 记录侧边 tab 点击，供「策略指南 · Recently visited」读取。
+    try {
+      const RECENT_KEY = 'aiDcaRecentGuideAnchors';
+      const raw = JSON.parse(window.localStorage.getItem(RECENT_KEY) || '[]');
+      const list = (Array.isArray(raw) ? raw : []).filter((x) => x && x.id !== `tab:${normalizedTab}`);
+      list.unshift({ id: `tab:${normalizedTab}`, ts: Date.now() });
+      window.localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 12)));
+    } catch {}
     // 合并后：侧边栏《新建建仓计划》通过 #new hash 跳进《交易计划》的新建子视图。
     // 由于 TradePlansExperience 在 mount 时才读 hash，手动触发 hashchange 用于已 mount 的情况。
     if (hash && alreadyActive) {
