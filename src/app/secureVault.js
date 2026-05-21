@@ -70,6 +70,24 @@ async function importRawKey(rawBase64) {
   return ensureCrypto().subtle.importKey('raw', raw, { name: CIPHER_NAME, length: KEY_LENGTH }, true, ['encrypt', 'decrypt']);
 }
 
+// 计算备份明文的确定性 hash，仅依赖内容（keys + entries + schemaVersion），排除 exportedAt 等随机量。
+// 服务端以此判断是否跳过版本升级。
+export async function computeBackupContentHash(envelope) {
+  const env = envelope || {};
+  const payload = env.payload && typeof env.payload === 'object' ? env.payload : {};
+  const keys = Array.isArray(env.keys) && env.keys.length ? [...env.keys] : Object.keys(payload);
+  keys.sort();
+  const orderedEntries = keys.reduce((acc, key) => { acc[key] = payload[key]; return acc; }, {});
+  const canonical = JSON.stringify({
+    schemaVersion: Number(env.version) || 1,
+    keyCount: Number(env.keyCount) || keys.length,
+    keys,
+    entries: orderedEntries
+  });
+  const digest = await ensureCrypto().subtle.digest('SHA-256', TEXT_ENCODER.encode(canonical));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 export async function encryptBackupEnvelope(envelope, securityPassword, options = {}) {
   const rememberedRawKey = String(options.rawKey || '').trim();
   const rememberedCrypto = options.cryptoMeta || {};
@@ -79,6 +97,7 @@ export async function encryptBackupEnvelope(envelope, securityPassword, options 
   const iterations = hasRememberedKdf ? Number(rememberedCrypto.iterations) : rememberedRawKey ? 0 : Number(options.iterations) || DEFAULT_ITERATIONS;
   const key = rememberedRawKey ? await importRawKey(rememberedRawKey) : await deriveKey(securityPassword, salt, iterations);
   const plaintext = TEXT_ENCODER.encode(JSON.stringify(envelope || {}));
+  const contentHash = await computeBackupContentHash(envelope);
   const encrypted = await ensureCrypto().subtle.encrypt({ name: CIPHER_NAME, iv }, key, plaintext);
   const exportedKey = options.rememberDevice && !rememberedRawKey ? await exportRawKey(key) : rememberedRawKey;
   return {
@@ -94,7 +113,8 @@ export async function encryptBackupEnvelope(envelope, securityPassword, options 
     meta: {
       keyCount: Number(envelope?.keyCount) || 0,
       exportedAt: envelope?.exportedAt || new Date().toISOString(),
-      schemaVersion: Number(envelope?.version) || 1
+      schemaVersion: Number(envelope?.version) || 1,
+      contentHash
     },
     ciphertext: bytesToBase64(new Uint8Array(encrypted)),
     rememberedKey: exportedKey

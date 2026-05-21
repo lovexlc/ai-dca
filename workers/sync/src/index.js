@@ -65,8 +65,14 @@ async function ensureSchema(env) {
     kv_key TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     key_count INTEGER NOT NULL DEFAULT 0,
-    bytes INTEGER NOT NULL DEFAULT 0
+    bytes INTEGER NOT NULL DEFAULT 0,
+    content_hash TEXT NOT NULL DEFAULT ''
   )`).run();
+  try {
+    await env.DB.prepare("ALTER TABLE backups ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''").run();
+  } catch {
+    // 现有表可能已存在。
+  }
 }
 
 async function hashPasswordCredential(passwordHash, salt) {
@@ -147,7 +153,18 @@ async function handlePutLatest(request, env, origin) {
   if (!encryptedEnvelope.ciphertext || encryptedEnvelope.source !== 'ai-dca-secure-sync') {
     return json({ message: '密文备份格式不合法' }, { status: 400, origin });
   }
-  const current = await env.DB.prepare('SELECT version, kv_key AS kvKey FROM backups WHERE user_id = ?').bind(user.id).first();
+  const current = await env.DB.prepare('SELECT version, kv_key AS kvKey, updated_at AS updatedAt, key_count AS keyCount, bytes, content_hash AS contentHash FROM backups WHERE user_id = ?').bind(user.id).first();
+  const incomingHash = String(encryptedEnvelope?.meta?.contentHash || '');
+  // 内容未变化：保持版本号不变，不重写 KV，不报冲突。
+  if (current && incomingHash && incomingHash === String(current.contentHash || '')) {
+    return json({
+      version: Number(current.version),
+      updatedAt: current.updatedAt,
+      keyCount: Number(current.keyCount) || 0,
+      bytes: Number(current.bytes) || 0,
+      unchanged: true
+    }, { origin });
+  }
   const baseVersion = body.baseVersion == null ? null : Number(body.baseVersion);
   if (current && baseVersion !== null && Number(current.version) !== baseVersion) {
     return json({ message: '云端数据已更新，请先处理冲突', currentVersion: current.version }, { status: 409, origin });
@@ -159,11 +176,11 @@ async function handlePutLatest(request, env, origin) {
   const updatedAt = nowIso();
   const keyCount = Number(encryptedEnvelope?.meta?.keyCount) || 0;
   if (current) {
-    await env.DB.prepare('UPDATE backups SET version = ?, updated_at = ?, key_count = ?, bytes = ? WHERE user_id = ?')
-      .bind(version, updatedAt, keyCount, encoded.length, user.id).run();
+    await env.DB.prepare('UPDATE backups SET version = ?, updated_at = ?, key_count = ?, bytes = ?, content_hash = ? WHERE user_id = ?')
+      .bind(version, updatedAt, keyCount, encoded.length, incomingHash, user.id).run();
   } else {
-    await env.DB.prepare('INSERT INTO backups (user_id, version, kv_key, updated_at, key_count, bytes) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(user.id, version, kvKey, updatedAt, keyCount, encoded.length).run();
+    await env.DB.prepare('INSERT INTO backups (user_id, version, kv_key, updated_at, key_count, bytes, content_hash) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(user.id, version, kvKey, updatedAt, keyCount, encoded.length, incomingHash).run();
   }
   return json({ version, updatedAt, keyCount, bytes: encoded.length }, { origin });
 }
