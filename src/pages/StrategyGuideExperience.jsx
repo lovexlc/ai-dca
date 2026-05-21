@@ -3,10 +3,12 @@ import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authClient.js
 import {
   Bell, BookOpen, CloudUpload, ListChecks, Wallet, Trash2, X,
   Sparkles, Calendar, ChevronRight, Clock, Layers, ShieldCheck, Target,
-  Activity, FileText, TrendingUp, Repeat
+  Activity, FileText, TrendingUp, Repeat, Loader2
 } from 'lucide-react';
 import { clearDemoData, hasPotentialUserData, installDemoData, readDemoDataMeta } from '../app/demoData.js';
 import { Card, Pill, SectionHeading, cx, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
+import { fetchEarnings } from '../app/marketsApi.js';
+import { loadSwitchSnapshotFromWorker } from '../app/switchStrategySync.js';
 
 const ACCOUNT_CARDS = [
   {
@@ -253,49 +255,146 @@ function AccountTeaserCard({ account, onOpen }) {
   );
 }
 
-function buildUpcomingEvents() {
-  const now = new Date();
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  function fmt(d) { return `${months[d.getMonth()]} ${d.getDate()}`; }
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const day = today.getDay();
-  const isWeekend = day === 0 || day === 6;
-  const items = [];
-  if (!isWeekend) {
-    items.push({ day: '今日', date: fmt(today), title: 'A 股开盘 / 收盘', time: '09:30 — 15:00' });
-    items.push({ day: '今日', date: fmt(today), title: '美股开盘（夏令时）', time: '21:30' });
+// 「即将到来」现在由两部分拼接：
+// 1) 行情中心上游 /earnings 接口的「即将发布财报」（取未来 3 条）
+// 2) 基金切换 worker snapshot 里计算出的场内/场外切换信号
+const EARNINGS_WEEKDAY_CN = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+const EARNINGS_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function parseEarningsDateLocal(d) {
+  if (!d) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+function formatEarningsHourCST(hourCode) {
+  if (hourCode === 'bmo') return '盘前公布 UTC+8';
+  if (hourCode === 'amc') return '盘后公布 UTC+8';
+  if (hourCode === 'dmh') return '盘中公布 UTC+8';
+  return '发布时间待公告';
+}
+function startOfDay(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function pickUpcomingEarnings(items, limit = 3) {
+  if (!Array.isArray(items) || !items.length) return [];
+  const todayStart = startOfDay(new Date()).getTime();
+  const future = items
+    .map((it) => ({ it, d: parseEarningsDateLocal(it && it.date) }))
+    .filter((x) => x.d && x.d.getTime() >= todayStart)
+    .sort((a, b) => a.d - b.d);
+  return future.slice(0, limit).map(({ it, d }) => {
+    const isToday = d.getTime() === todayStart;
+    const dayLabel = isToday ? '今日' : EARNINGS_WEEKDAY_CN[d.getDay()];
+    const dateLabel = `${EARNINGS_MONTHS[d.getMonth()]} ${d.getDate()}`;
+    return {
+      key: `earn-${it.symbol || it.name}-${it.date}`,
+      day: dayLabel,
+      date: dateLabel,
+      title: it.name || it.symbol || '未命名公司',
+      sub: formatEarningsHourCST(it.hour),
+      target: 'markets'
+    };
+  });
+}
+function buildSwitchSignalEvents(snapshot) {
+  const list = [];
+  if (!snapshot) return list;
+  const signals = Array.isArray(snapshot.signals) ? snapshot.signals : [];
+  const triggers = Array.isArray(snapshot.triggers) ? snapshot.triggers : [];
+  if (signals.length > 0) {
+    // 区分场内「差价收窄/扩大」两个规则 (kind A / kind B)。
+    const ruleA = signals.filter((s) => s.kind === 'A').length; // 差价收窄 低→高
+    const ruleB = signals.filter((s) => s.kind === 'B').length; // 差价扩大 高→低
+    const parts = [];
+    if (ruleA) parts.push(`${ruleA} 个差价收窄`);
+    if (ruleB) parts.push(`${ruleB} 个差价扩大`);
+    list.push({
+      key: 'switch-intra',
+      day: '场内',
+      date: `${signals.length} 条`,
+      title: '基金切换信号',
+      sub: parts.length ? parts.join(' · ') : `当前命中 ${signals.length} 条切换规则`,
+      target: 'fundSwitch',
+      accent: triggers.length > 0 ? 'rose' : 'indigo'
+    });
+  } else if (triggers.length > 0) {
+    list.push({
+      key: 'switch-triggers',
+      day: '本轮',
+      date: `${triggers.length} 条`,
+      title: '本轮触发切换信号',
+      sub: '点击查看详情并记录本次切换',
+      target: 'fundSwitch',
+      accent: 'rose'
+    });
   }
-  const next = new Date(today.getTime() + 86400000);
-  const nextDay = next.getDay();
-  if (nextDay !== 0 && nextDay !== 6) {
-    items.push({ day: '明日', date: fmt(next), title: 'A 股开盘检查计划', time: '09:30' });
-  } else {
-    const daysToMon = (8 - day) % 7 || 7;
-    const mon = new Date(today.getTime() + daysToMon * 86400000);
-    items.push({ day: '周一', date: fmt(mon), title: 'A 股开盘检查计划', time: '09:30' });
-  }
-  return items.slice(0, 3);
+  return list;
 }
 
-function UpcomingEvents() {
-  const events = useMemo(() => buildUpcomingEvents(), []);
+function UpcomingEvents({ navigate }) {
+  const [earnings, setEarnings] = useState([]);
+  const [switchEvents, setSwitchEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    Promise.allSettled([fetchEarnings('us'), loadSwitchSnapshotFromWorker()]).then((results) => {
+      if (cancelled) return;
+      const [er, sr] = results;
+      const earnItems = er.status === 'fulfilled' && Array.isArray(er.value?.items) ? er.value.items : [];
+      const snapshot = sr.status === 'fulfilled' ? sr.value?.snapshot : null;
+      setEarnings(pickUpcomingEarnings(earnItems, 3));
+      setSwitchEvents(buildSwitchSignalEvents(snapshot));
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const events = useMemo(() => [...switchEvents, ...earnings], [switchEvents, earnings]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 rounded-2xl border border-slate-100 bg-white p-5 text-sm text-slate-500">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+        正在拉取即将发布的财报与切换信号…
+      </div>
+    );
+  }
   if (!events.length) {
-    return <div className="rounded-2xl border border-slate-100 bg-white p-5 text-sm text-slate-500">本周末暂无交易日提醒。</div>;
+    return <div className="rounded-2xl border border-slate-100 bg-white p-5 text-sm text-slate-500">暂无即将发布的财报或切换信号。</div>;
   }
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      {events.map((ev, i) => (
-        <div key={`${ev.day}-${ev.title}`} className={cx('flex items-start gap-4 px-5 py-4', i > 0 && 'border-t border-slate-100')}>
-          <div className="w-16 flex-shrink-0 text-xs leading-5">
-            <div className="font-semibold text-slate-900">{ev.day}</div>
-            <div className="text-slate-400">{ev.date}</div>
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium text-slate-900">{ev.title}</div>
-            <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-500"><Clock className="h-3 w-3" aria-hidden="true" />{ev.time}</div>
-          </div>
-        </div>
-      ))}
+      {events.map((ev, i) => {
+        const clickable = Boolean(ev.target && navigate);
+        const Wrapper = clickable ? 'button' : 'div';
+        const wrapperProps = clickable
+          ? { type: 'button', onClick: () => navigate(ev.target) }
+          : {};
+        return (
+          <Wrapper
+            key={ev.key || `${ev.day}-${ev.title}-${i}`}
+            {...wrapperProps}
+            className={cx(
+              'flex w-full items-start gap-4 px-5 py-4 text-left',
+              i > 0 && 'border-t border-slate-100',
+              clickable && 'transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:bg-slate-50'
+            )}
+          >
+            <div className="w-16 flex-shrink-0 text-xs leading-5">
+              <div className={cx('font-semibold', ev.accent === 'rose' ? 'text-rose-600' : 'text-slate-900')}>{ev.day}</div>
+              <div className="text-slate-400">{ev.date}</div>
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium text-slate-900">{ev.title}</div>
+              {ev.sub ? (
+                <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
+                  <Clock className="h-3 w-3" aria-hidden="true" />{ev.sub}
+                </div>
+              ) : null}
+            </div>
+            {clickable ? <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-300" aria-hidden="true" /> : null}
+          </Wrapper>
+        );
+      })}
     </div>
   );
 }
@@ -681,7 +780,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
 
         <section className="space-y-3">
           <SectionLabel icon={Calendar}>即将到来</SectionLabel>
-          <UpcomingEvents />
+          <UpcomingEvents navigate={navigate} />
         </section>
 
         <section className="space-y-3">
