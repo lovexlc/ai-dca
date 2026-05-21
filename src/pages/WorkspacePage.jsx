@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, BookOpen, CloudUpload, LineChart, ListChecks, Plus, RefreshCw, Send, Shuffle, Trash2, Wallet } from 'lucide-react';
+import { ArrowLeft, ArrowUp, Bell, BookOpen, CloudUpload, LineChart, ListChecks, Plus, RefreshCw, Send, Shuffle, Trash2, Wallet } from 'lucide-react';
 import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, PRIMARY_TAB_META, PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
@@ -101,6 +101,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const links = createPageLinks({ inPagesDir });
   const [activeTab, setActiveTab] = useState(() => readTabFromLocation(readPreferredWorkspaceTab(initialTab)));
   const [demoMeta, setDemoMeta] = useState(() => readDemoDataMeta());
+  const [tabHistory, setTabHistory] = useState([]);
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   // Legacy ?tab=home / ?tab=dca 进来时，重写为 ?tab=tradePlans + hash，使二级 tab 能在 mount 时被选中。
   useEffect(() => {
@@ -116,6 +118,15 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     window.history.replaceState({ tab: 'tradePlans' }, '', nextUrl);
     // 让 TradePlansExperience 读到新 hash。
     window.dispatchEvent(new HashChangeEvent('hashchange'));
+  }, []);
+
+  useEffect(() => {
+    function handleScroll() {
+      setShowScrollTop(window.scrollY > 520);
+    }
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   // 为每个 tab 独立缓存上次的 scrollY，在切换返回时恢复。
@@ -192,11 +203,14 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   useEffect(() => {
     function handlePopState() {
-      setActiveTab(readTabFromLocation(readPreferredWorkspaceTab(initialTab)));
+      const nextTab = readTabFromLocation(readPreferredWorkspaceTab(initialTab));
+      scrollPositionsRef.current.set(activeTab, window.scrollY);
+      setTabHistory((current) => current.filter((item) => item !== nextTab));
+      setActiveTab(nextTab);
     }
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [initialTab]);
+  }, [activeTab, initialTab]);
 
   // tab 变化后，恢复该 tab 以前的 scrollY（如果有）。
   // 使用 requestAnimationFrame 等新内容进入一个 paint 后再跳，避免在 lazy 加载过程中跳到 0。
@@ -218,9 +232,15 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       return;
     }
 
-    // 在离开当前 tab 之前记录其 scrollY。
+    // 在离开当前 tab 之前记录其 scrollY，并保存移动端返回路径。
     if (!alreadyActive) {
       scrollPositionsRef.current.set(previousTabRef.current, window.scrollY);
+      if (options.recordHistory !== false) {
+        setTabHistory((current) => {
+          const withoutCurrent = current.filter((item) => item !== activeTab);
+          return [...withoutCurrent, activeTab].slice(-8);
+        });
+      }
       previousTabRef.current = normalizedTab;
     }
 
@@ -235,6 +255,17 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     if (hash && alreadyActive) {
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     }
+  }
+
+  function handleMobileBack() {
+    const previousTab = tabHistory[tabHistory.length - 1];
+    if (!previousTab) return;
+    setTabHistory((current) => current.slice(0, -1));
+    handleSelectTab(previousTab, { recordHistory: false });
+  }
+
+  function handleScrollTop() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function renderActivePanel() {
@@ -317,6 +348,32 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
           setTimeout(() => window.dispatchEvent(new CustomEvent('holdings:import-ocr')), 80);
         }}
       />
+      {(tabHistory.length > 0 || showScrollTop) ? (
+        <div className="fixed bottom-24 right-4 z-40 flex flex-col gap-2 sm:hidden" aria-label="页面快捷操作">
+          {tabHistory.length > 0 ? (
+            <button
+              type="button"
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 shadow-lg shadow-slate-900/10 backdrop-blur active:bg-slate-100"
+              aria-label="返回上一页"
+              title="返回上一页"
+              onClick={handleMobileBack}
+            >
+              <ArrowLeft className="h-5 w-5" aria-hidden="true" />
+            </button>
+          ) : null}
+          {showScrollTop ? (
+            <button
+              type="button"
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 shadow-lg shadow-slate-900/10 backdrop-blur active:bg-slate-100"
+              aria-label="回到顶部"
+              title="回到顶部"
+              onClick={handleScrollTop}
+            >
+              <ArrowUp className="h-5 w-5" aria-hidden="true" />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <GlobalSearch
         open={globalSearchOpen}
         onClose={() => setGlobalSearchOpen(false)}
