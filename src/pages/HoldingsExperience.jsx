@@ -47,7 +47,6 @@ import {
   detectFundKind,
   getExpectedLatestNavDate,
   getLedgerCodeList,
-  getActiveHoldingCodeList,
   getSwitchChainCodeList,
   getTodayShanghaiDate,
   getTransactionErrors,
@@ -836,11 +835,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     // 进入页面时无条件触发一次净值刷新（包含所有持仓代码）。
     // autoNavTriggeredRef 保证整个 mount 周期内只跑一次；手动刷新走 handleManualRefresh，独立于此。
     if (autoNavTriggeredRef.current) return;
-    // 当前仍有持仓的 code（totalShares > 0），再并入切换链路里出现过的代码，
-    // 后者用于「未切换基准」对照价的及时刷新，避免 baseline 价冻结在切换那天的口子。
-    const activeCodes = getActiveHoldingCodeList(transactions);
+    // 拉取所有交易代码（含已卖出/清仓代码），确保卖出净值和清仓收益也能拿到最新确认 NAV。
+    const ledgerCodes = getLedgerCodeList(transactions);
     const chainCodes = getSwitchChainCodeList(transactions);
-    const codes = [...new Set([...activeCodes, ...chainCodes])].sort();
+    const codes = [...new Set([...ledgerCodes, ...chainCodes])].sort();
     if (!codes.length) return;
     autoNavTriggeredRef.current = true;
     for (const code of codes) navAttemptedCodesRef.current.add(code);
@@ -915,11 +913,11 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   function handleManualRefresh() {
-    // 手动刷新：当前持仓 + 切换链路里出现过的代码，保证「未切换基准」 baseline 价也能同步刷新。
-    const activeCodes = getActiveHoldingCodeList(transactions);
+    // 手动刷新：所有交易代码 + 切换链路里出现过的代码，保证已卖出/清仓记录也能同步确认 NAV。
+    const ledgerCodes = getLedgerCodeList(transactions);
     const chainCodes = getSwitchChainCodeList(transactions);
-    const codes = [...new Set([...activeCodes, ...chainCodes])].sort();
-    // 摊薄成本法改造后，前端数据全部本地存储，服务端不会自动推送新口径。
+    const codes = [...new Set([...ledgerCodes, ...chainCodes])].sort();
+    // 批次成本法改造后，前端数据全部本地存储，服务端不会自动推送新口径。
     // 这里先在本地静默重算一遍派生字段（avgCost / totalCost / 未实现收益等），
     // 让用户即便没拉到新净值也能立刻看到新口径下的均价。再异步刷新最新净值。
     setLedger((prev) => {
@@ -974,15 +972,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     });
   }
 
-  // 点击「基金汇总」（侧边栏切到 summary）、或切到主 tab 「已卖出」时，
-  // 扫描一轮交易记录把净值留空的项用最新快照填上。
+  // 净值快照更新后，立即扫描交易记录，把价格为空 / 0 且日期匹配的场外/QDII 买卖单回填确认 NAV。
+  // 这样已卖出/清仓记录不需要用户再打开某个弹窗，也能在刷新净值后自动修正收益。
   useEffect(() => {
-    if (sidePanelOpen && sidePanelTab === 'summary' && selectedCode) {
-      autoFillTransactionPricesFromSnapshots();
-    }
+    autoFillTransactionPricesFromSnapshots();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sidePanelOpen, sidePanelTab, selectedCode, snapshotsByCode]);
-  // 4.2: 原「切到 sold tab 时自动回填净值」的 effect 随 tab 一起删除
+  }, [snapshotsByCode]);
 
   // 从「该基金汇总」弹窗点击 买入 / 卖出：预填代码/名称/标签，默认「三点前」=true。
   // 日期默认今天（T 日）；NAV 未公布，价格留空、事后回填。
