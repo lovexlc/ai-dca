@@ -5,14 +5,14 @@
   "index_key": "nasdaq100",
   "range": {
     "start_date": "2024-05-21",
-    "end_date": "2026-05-20",
+    "end_date": "2026-05-21",
     "lookback_days": 730
   },
   "requested_bars": 700,
   "source": "sina:CN_MarketDataService.getKLineData",
   "source_symbol": "sh513390",
   "fund_list_source": "/home/runner/work/ai-dca/ai-dca/data/all_nasdq.json",
-  "generated_at": "2026-05-21T05:05:51.426Z",
+  "generated_at": "2026-05-21T10:52:48.937Z",
   "bars": [
     {
       "date": "2024-05-21",
@@ -3885,6 +3885,14 @@
       "high": 2.271,
       "low": 2.241,
       "volume": 54961700
+    },
+    {
+      "date": "2026-05-21",
+      "open": 2.299,
+      "close": 2.294,
+      "high": 2.312,
+      "low": 2.288,
+      "volume": 108138175
     }
   ]
 }
