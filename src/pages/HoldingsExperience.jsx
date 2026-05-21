@@ -2687,6 +2687,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             setSidePanelTab('create');
             setSidePanelOpen(true);
           },
+          onPasteExcel: openPasteModal,
+          onOcr: openOcrModal,
           onCopyTable: handleCopyVisibleTable,
           copyTitle: mainViewTab === 'aggregate' ? '复制基金汇总为 TSV' : '复制成交流水为 TSV',
         }}

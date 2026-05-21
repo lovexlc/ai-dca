@@ -18,7 +18,7 @@
 import { ROUTES, useIncomeRoute } from '../incomeRoute.js';
 import { Pill, cx } from '../../components/experience-ui.jsx';
 import { formatCurrency, formatPercent } from '../accumulation.js';
-import { RefreshCw, BarChart3, Receipt, PieChart, ArrowLeftRight, Plus, Copy } from 'lucide-react';
+import { RefreshCw, BarChart3, Receipt, PieChart, ArrowLeftRight, Plus, Copy, ClipboardPaste, ScanLine } from 'lucide-react';
 
 const TONE_UP = 'text-rose-600';
 const TONE_DOWN = 'text-emerald-600';
@@ -210,8 +210,30 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 						);
 					})}
 				</nav>
-				{quickActions && (quickActions.onCopyTable || quickActions.onNewTransaction) ? (
+				{quickActions && (quickActions.onCopyTable || quickActions.onNewTransaction || quickActions.onPasteExcel || quickActions.onOcr) ? (
 					<div className="flex shrink-0 items-center gap-2">
+						{quickActions.onPasteExcel ? (
+							<button
+								type="button"
+								onClick={quickActions.onPasteExcel}
+								title="从外部表格粘贴多行交易"
+								className="inline-flex items-center gap-1.5 h-8 rounded-full border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
+							>
+								<ClipboardPaste className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+								<span>粘贴 Excel</span>
+							</button>
+						) : null}
+						{quickActions.onOcr ? (
+							<button
+								type="button"
+								onClick={quickActions.onOcr}
+								title="从截图识别交易流水"
+								className="inline-flex items-center gap-1.5 h-8 rounded-full border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
+							>
+								<ScanLine className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+								<span>截图 OCR</span>
+							</button>
+						) : null}
 						{quickActions.onCopyTable ? (
 							<button
 								type="button"
