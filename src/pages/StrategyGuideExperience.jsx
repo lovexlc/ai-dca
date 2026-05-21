@@ -180,7 +180,7 @@ function NotionCard({ children, onClick, className = '' }) {
         type="button"
         onClick={onClick}
         className={cx(
-          'group flex w-full flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-slate-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300',
+          'group flex flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-slate-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300',
           className
         )}
       >
@@ -189,7 +189,7 @@ function NotionCard({ children, onClick, className = '' }) {
     );
   }
   return (
-    <div className={cx('flex w-full flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]', className)}>
+    <div className={cx('flex flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]', className)}>
       {children}
     </div>
   );
