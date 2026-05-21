@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Home, KeyRound, Loader2, LogOut, UserRound, X } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
 import { loadCloudSyncMeta, refreshRemoteCloudMeta, restoreEncryptedCloudBackup, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
@@ -194,7 +195,7 @@ export function AccountMenu() {
         <span className="hidden max-w-[7rem] truncate sm:inline">{loggedIn ? session.username : '登录'}</span>
       </button>
 
-      {open ? (
+      {open && typeof document !== "undefined" ? createPortal((
         <div
           className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4"
           onClick={() => setOpen(false)}
@@ -316,7 +317,7 @@ export function AccountMenu() {
             </div>
           </div>
         </div>
-      ) : null}
+      ), document.body) : null}
     </>
   );
 }
