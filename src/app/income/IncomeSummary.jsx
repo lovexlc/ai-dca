@@ -53,6 +53,32 @@ function AccountAllocationIndicator({ accountAllocation }) {
 		</div>
 	);
 }
+// 移动端账户分配指示器：3 列 grid，列宽与下方 KPI 行一致，便于横向对齐。
+function AccountAllocationRowMobile({ accountAllocation }) {
+	if (!Array.isArray(accountAllocation) || !accountAllocation.length) return null;
+	const SEG_BY_KEY = {
+		aggressive: { bgColor: 'bg-red-500', label: '进取型' },
+		stable: { bgColor: 'bg-indigo-500', label: '稳健型' },
+		defensive: { bgColor: 'bg-emerald-500', label: '防守型' },
+	};
+	return (
+		<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)] gap-1 text-sm">
+			{accountAllocation.map((item) => {
+				const seg = SEG_BY_KEY[item.key];
+				if (!seg || !(item.ratio > 0)) {
+					return <div key={item.key} aria-hidden="true" />;
+				}
+				return (
+					<div key={item.key} className="flex min-w-0 items-center justify-center gap-1.5">
+						<div className={cx(seg.bgColor, 'w-2.5 h-2.5 rounded-full shrink-0')} />
+						<span className="text-slate-600 whitespace-nowrap">{seg.label}</span>
+						<span className="text-slate-500 font-medium tabular-nums">{formatPercent(item.ratio, 0)}</span>
+					</div>
+				);
+			})}
+		</div>
+	);
+}
 function AccountCardsGrid({ accountAllocation, className = '' }) {
 	if (!Array.isArray(accountAllocation) || !accountAllocation.length) return null;
 	return (
@@ -166,7 +192,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 					</div>
 					{refreshBtn ? <div className="shrink-0">{refreshBtn}</div> : null}
 				</div>
-			<AccountAllocationIndicator accountAllocation={accountAllocation} />
+			<AccountAllocationRowMobile accountAllocation={accountAllocation} />
 				<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)] gap-1">
 				<KpiCol label="今日收益(元)" value={todayProfit} rate={todayReturnRate} align="center" centerRate />
 				<KpiCol label="持有收益(元)" value={unrealizedProfit} rate={unrealizedReturnRate} align="center" centerRate />
