@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AlertCircle, Bell, BookOpen, CloudUpload, ListChecks, Wallet, Trash2, X,
+  Bell, BookOpen, CloudUpload, ListChecks, Wallet, Trash2, X,
   Sparkles, Calendar, ChevronRight, Clock, Layers, ShieldCheck, Target,
   Activity, FileText, Settings, TrendingUp, Repeat
 } from 'lucide-react';
@@ -162,14 +162,10 @@ function SectionLabel({ icon: Icon, children, action }) {
   );
 }
 
-function WelcomeHero({ onShowDisclaimer, onJoinGroup }) {
+function WelcomeHero() {
   const greeting = getGreeting();
   return (
     <div className="relative px-5 pt-10 pb-8 sm:px-6 sm:pt-14 sm:pb-10">
-      <div className="absolute right-4 top-4 flex items-center gap-2 sm:right-6 sm:top-6">
-        <button type="button" onClick={onJoinGroup} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-indigo-200 hover:text-indigo-600">加入群聊</button>
-        <button type="button" onClick={onShowDisclaimer} className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200 transition-colors hover:bg-amber-100"><AlertCircle className="h-3 w-3" aria-hidden="true" />免责</button>
-      </div>
       <h1 className="text-center text-3xl font-bold tracking-tight text-slate-900 sm:text-[36px]">{greeting}，dudu</h1>
     </div>
   );
@@ -551,8 +547,6 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
   const [demoMeta, setDemoMeta] = useState(() => readDemoDataMeta());
   const [prefs, setPrefs] = useState(() => readWorkspacePrefs());
   const [message, setMessage] = useState('');
-  const [showQrModal, setShowQrModal] = useState(false);
-  const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [showAi, setShowAi] = useState(false);
   const [recent, setRecent] = useState(() => readRecent());
   const [activeChapter, setActiveChapter] = useState(null);
@@ -664,7 +658,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
 
   return (
     <div className="min-h-screen bg-white">
-      <WelcomeHero onJoinGroup={() => setShowQrModal(true)} onShowDisclaimer={() => setShowDisclaimer(true)} />
+      <WelcomeHero />
 
       <main className="mx-auto flex max-w-5xl flex-col gap-10 px-5 pb-28 sm:px-6">
         {message ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div> : null}
@@ -752,27 +746,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
         {chapterMeta ? <ChapterModalBody id={chapterMeta.id} navigate={navigate} closeModal={() => setActiveChapter(null)} /> : null}
       </DetailModal>
 
-      {showQrModal ? (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 p-4" role="dialog" aria-modal="true" aria-label="加入群聊二维码" onClick={() => setShowQrModal(false)}>
-          <div className="relative w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
-            <button type="button" aria-label="关闭" className="absolute -top-3 -right-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-700 shadow-md transition-colors hover:bg-slate-100" onClick={() => setShowQrModal(false)}><X className="h-4 w-4" /></button>
-            <div className="overflow-hidden rounded-2xl bg-white shadow-2xl">
-              <img src="https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEUUA9qDZ5H_XnPECnDzzMGTTIc2b_5_gAC8B4AAtk5cFTHSrIufYF2bDsE.jpg" alt="加入群聊二维码" className="block w-full" />
-              <p className="px-4 py-3 text-center text-xs text-slate-600">使用微信 / QQ 扫码加入群聊</p>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
-      {showDisclaimer ? (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4" role="dialog" aria-modal="true" onClick={() => setShowDisclaimer(false)}>
-          <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <button type="button" aria-label="关闭" className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => setShowDisclaimer(false)}><X className="h-4 w-4" /></button>
-            <SectionHeading eyebrow="免责声明" title="非官方、非投资建议" />
-            <p className="mt-4 text-sm leading-7 text-slate-500">本工具中的策略说明由公开的金渐成公众号文章整理、总结和结构化而来，仅用于个人学习、记录和辅助决策。本工具与金渐成本人及其公众号无官方关联、无授权关系，也不代表金渐成本人观点或服务。页面中的计划、提醒、演示数据和计算结果均为辅助工具输出，不构成任何投资建议。投资有风险，请独立判断并自行承担决策结果。</p>
-          </div>
-        </div>
-      ) : null}
 
       {showAi ? (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-900/40 p-4 sm:items-center" role="dialog" aria-modal="true" onClick={() => setShowAi(false)}>

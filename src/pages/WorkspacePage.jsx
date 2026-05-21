@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUp, Bell, BookOpen, CloudUpload, LineChart, ListChecks, Plus, RefreshCw, Send, Shuffle, Trash2, Wallet } from 'lucide-react';
+import { ArrowLeft, ArrowUp, Bell, BookOpen, CloudUpload, LineChart, ListChecks, Plus, RefreshCw, Send, Shuffle, Trash2, Wallet, X } from 'lucide-react';
 import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, PRIMARY_TAB_META, PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
@@ -104,6 +104,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const [demoMeta, setDemoMeta] = useState(() => readDemoDataMeta());
   const [tabHistory, setTabHistory] = useState([]);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [showDisclaimer, setShowDisclaimer] = useState(false);
 
   // Legacy ?tab=home / ?tab=dca 进来时，重写为 ?tab=tradePlans + hash，使二级 tab 能在 mount 时被选中。
   useEffect(() => {
@@ -321,7 +323,11 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   return (
     <>
-      <BrandPreviewBar currentPageLabel={currentPageLabel} />
+      <BrandPreviewBar
+        currentPageLabel={currentPageLabel}
+        onJoinGroup={() => setShowQrModal(true)}
+        onShowDisclaimer={() => setShowDisclaimer(true)}
+      />
       <ConsoleLayout
         brand="美股策略助手"
         sidebarNav={sidebarNav}
@@ -415,6 +421,31 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
           );
         }}
       />
+      {showQrModal ? (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/70 p-4" role="dialog" aria-modal="true" aria-label="加入群聊二维码" onClick={() => setShowQrModal(false)}>
+          <div className="relative w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+            <button type="button" aria-label="关闭" className="absolute -top-3 -right-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-700 shadow-md transition-colors hover:bg-slate-100" onClick={() => setShowQrModal(false)}>
+              <X className="h-4 w-4" />
+            </button>
+            <div className="overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <img src="https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEUUA9qDZ5H_XnPECnDzzMGTTIc2b_5_gAC8B4AAtk5cFTHSrIufYF2bDsE.jpg" alt="加入群聊二维码" className="block w-full" />
+              <p className="px-4 py-3 text-center text-xs text-slate-600">使用微信 / QQ 扫码加入群聊</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {showDisclaimer ? (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/60 p-4" role="dialog" aria-modal="true" onClick={() => setShowDisclaimer(false)}>
+          <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <button type="button" aria-label="关闭" className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => setShowDisclaimer(false)}>
+              <X className="h-4 w-4" />
+            </button>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-600">免责声明</div>
+            <h3 className="mt-1 text-lg font-bold text-slate-900">非官方、非投资建议</h3>
+            <p className="mt-4 text-sm leading-7 text-slate-500">本工具中的策略说明由公开的金渐成公众号文章整理、总结和结构化而来，仅用于个人学习、记录和辅助决策。本工具与金渐成本人及其公众号无官方关联、无授权关系，也不代表金渐成本人观点或服务。页面中的计划、提醒、演示数据和计算结果均为辅助工具输出，不构成任何投资建议。投资有风险，请独立判断并自行承担决策结果。</p>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

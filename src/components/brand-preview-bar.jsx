@@ -1,11 +1,11 @@
-import { LineChart } from 'lucide-react';
+import { AlertCircle, LineChart } from 'lucide-react';
 import { AccountMenu } from './account-menu.jsx';
 
 /**
  * 应用顶部品牌条（Google Finance 风格）。
  * 取代各 tab 内部的大 H1 hero，释放垂直空间。
  */
-export function BrandPreviewBar({ currentPageLabel, rightSlot }) {
+export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onShowDisclaimer }) {
   return (
     <div className="sticky top-0 z-30 hidden h-12 items-center gap-3 border-b border-slate-200 bg-white px-4 sm:flex sm:px-6">
       <div className="flex items-center gap-2">
@@ -21,7 +21,28 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot }) {
           <span className="truncate text-sm font-medium text-slate-700">{currentPageLabel}</span>
         </>
       ) : null}
-      <div className="ml-auto flex items-center gap-2">{rightSlot || <AccountMenu />}</div>
+      <div className="ml-auto flex items-center gap-2">
+        {onJoinGroup ? (
+          <button
+            type="button"
+            onClick={onJoinGroup}
+            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-indigo-200 hover:text-indigo-600"
+          >
+            加入群聊
+          </button>
+        ) : null}
+        {onShowDisclaimer ? (
+          <button
+            type="button"
+            onClick={onShowDisclaimer}
+            className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200 transition-colors hover:bg-amber-100"
+          >
+            <AlertCircle className="h-3 w-3" aria-hidden="true" />
+            免责
+          </button>
+        ) : null}
+        {rightSlot || <AccountMenu />}
+      </div>
     </div>
   );
 }
