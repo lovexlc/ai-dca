@@ -265,6 +265,20 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   }
 
   function handleScrollTop() {
+    const headerOffset = 64;
+    const probeY = Math.min(window.innerHeight - 120, Math.max(140, window.innerHeight * 0.38));
+    const cards = Array.from(document.querySelectorAll('[data-scroll-card="true"]'));
+    const activeCard = cards.find((card) => {
+      const rect = card.getBoundingClientRect();
+      return rect.top <= probeY && rect.bottom >= probeY + 80;
+    });
+    if (activeCard) {
+      const targetTop = Math.max(0, window.scrollY + activeCard.getBoundingClientRect().top - headerOffset);
+      if (window.scrollY > targetTop + 24) {
+        window.scrollTo({ top: targetTop, behavior: 'smooth' });
+        return;
+      }
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 

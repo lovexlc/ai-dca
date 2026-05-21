@@ -18,3 +18,9 @@
 - `npx eslint src/pages/WorkspacePage.jsx` 已通过：0 errors，1 warning（既有 `handleSelectTab` hook dependency warning）。
 - `git diff --check` 已通过。
 - 仅提交 `src/pages/WorkspacePage.jsx` 与本计划文件；未混入已有未提交改动 `src/pages/NewPlanExperience.jsx`。
+
+
+## Follow-up: card-aware scroll behavior
+- [done] 回到顶部按钮改为上下文感知：当前视口位于 `data-scroll-card` 内时，优先滚回该 card 顶部；已经在 card 顶部时才滚回页面顶部。
+- [done] `Card` 组件默认输出 `data-scroll-card="true"`，并透传 `id` / `data-*` 等属性，所有 card 统一遵循该交互策略。
+- [done] 「指南索引与折叠详情」展开内容增加移动端 sticky 小顶栏，滚动浏览时提示仍在该 card 内。

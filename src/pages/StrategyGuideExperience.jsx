@@ -343,7 +343,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
           </div>
         </Card>
 
-        <details className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:p-6">
+        <details data-scroll-card="true" data-scroll-card-title="指南索引与折叠详情" className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:p-6">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left">
             <span>
               <span className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Guide</span>
@@ -352,6 +352,10 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
             <BookOpen className="h-5 w-5 text-indigo-500 transition group-open:rotate-6" aria-hidden="true" />
           </summary>
           <div className="mt-6 space-y-8">
+            <div className="sticky top-[52px] z-20 -mx-5 -mt-2 mb-2 flex items-center justify-between border-y border-slate-200 bg-white/95 px-5 py-2 text-xs font-bold text-slate-600 shadow-sm backdrop-blur sm:hidden">
+              <span>指南索引与折叠详情</span>
+              <span className="text-indigo-500">浏览中</span>
+            </div>
             <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
               <h3 className="text-sm font-bold text-indigo-900">指南索引</h3>
               <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-indigo-700">
