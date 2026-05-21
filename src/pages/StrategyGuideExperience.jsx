@@ -664,7 +664,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
         {visibleRecent.length > 0 ? (
           <section className="space-y-3">
             <SectionLabel icon={BookOpen}>Recently visited</SectionLabel>
-            <div className="-mx-5 flex snap-x snap-mandatory gap-2 overflow-x-auto px-5 pb-2 sm:mx-0 sm:gap-3 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-2 sm:gap-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {visibleRecent.map((r, idx) => <RecentCard key={`${r.id}-${r.ts || idx}`} entry={r} onActivate={handleRecentActivate} />)}
             </div>
           </section>
@@ -679,7 +679,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
 
         <section className="space-y-3">
           <SectionLabel icon={BookOpen}>策略章节</SectionLabel>
-          <div className="-mx-5 flex snap-x snap-mandatory gap-2.5 overflow-x-auto px-5 pb-2 sm:mx-0 sm:gap-4 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 sm:gap-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {LEARN_CARDS.map((card) => <LearnCard key={card.id} card={card} onOpen={handleOpenChapter} />)}
           </div>
         </section>
