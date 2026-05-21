@@ -81,7 +81,6 @@ function StatusPill({ meta }) {
 }
 
 export function BackupExperience({ links, embedded = false }) {
-
   const [config, setConfig] = useState(() => ({
     baseUrl: '',
     username: '',
@@ -112,6 +111,7 @@ export function BackupExperience({ links, embedded = false }) {
     window.addEventListener('backup:refresh-preview', refreshPreview);
     return () => window.removeEventListener('backup:refresh-preview', refreshPreview);
   }, [refreshPreview]);
+
 
   const totalBytes = useMemo(
     () => preview.keys.reduce((acc, key) => acc + (preview.entries[key]?.length || 0), 0),

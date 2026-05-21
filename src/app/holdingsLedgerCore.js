@@ -3,14 +3,13 @@
  * + portfolio-level summary. Mirrors the Excel model the user already uses:
  *   - 每笔交易单单独一行（BUY/SELL）
  *   - 按基金代码聚合 → 总份额 / 平均成本 / 总收益 / 当日收益
- *   - 平均成本 = 移动摊薄成本法（与支付宝 / 天天基金 / 南方基金 App
- *     口径一致）。按交易日期顺序逐笔处理：
- *       · BUY：cost += price × shares；shares += shares；avgCost = cost / shares
- *       · SELL：从持仓成本里按「当前 avgCost × 卖出份额」扣减，份额减少，
- *         avgCost 数值保持不变；若份额清零则成本一并归零。
- *     这样「先高位 BUY → SELL → 低位 BUY」场景下，后续低位买入只与卖出
- *     后剩下的成本基一起再平均，而不是把卖掉的高位成本继续算进均价。
- *     buildSoldLots 里每笔已实现盈亏也用「卖出时刻」的移动 avgCost 结算。
+ *   - 平均成本 = 按买入批次扣减后的剩余持仓成本 / 剩余份额。
+ *     按交易日期顺序逐笔处理：
+ *       · BUY：追加一个买入批次（shares / cost）。
+ *       · SELL：按先进先出消耗买入批次，清仓收益按被消耗批次的成本结算；
+ *         剩余持仓只保留未卖出批次的成本，所以卖出后平均成本可能变化。
+ *     这样「卖掉低成本批次 → 剩余高成本批次」场景下，基金汇总会与南方基金
+ *     等 App 的持仓成本更一致，也能避免把已卖出批次继续摊到剩余份额里。
  *   - 总份额 = 当前持仓份额（客态全部卖光则 0）
  *   - 总收益仅算未实现（mark-to-market），不包含卖出已实现盈亏
  *   - 当日收益 = (latestNav − previousNav) × totalShares
@@ -24,7 +23,7 @@
  *     代码白名单兜底；都不命中则按代码前缀分 exchange / otc 两档。
  */
 
-import { getNearestTradingDayShanghai, getPreviousTradingDayShanghai, isTradingDayShanghai, countHolidayWorkdaysBetween, calendarDaysBetween } from './holidaysCN.js';
+import { getNearestTradingDayShanghai, getPreviousTradingDayShanghai, countHolidayWorkdaysBetween, calendarDaysBetween } from './holidaysCN.js';
 
 const FUND_CODE_PATTERN = /^\d{6}$/;
 const EXCHANGE_PREFIXES = ['15', '50', '51', '52', '56', '58', '53', '54'];
@@ -327,7 +326,7 @@ export function getLedgerCodeList(transactions = []) {
  * 仅返回「当前仍有持仓」的 code list：跑一遍移动摊薄（与 aggregateByCode 一致），
  * 只保留 BUY/SELL 抵冲后 totalShares > 0 的 code。
  * 适用于净值拉取、行情刷新 等“只需要活跃持仓”的场景，避免给已清仓的 code 调 nav 接口。
- * 已结清交易（SELL 带 costPrice）不参与持仓本身，不会让一个已清仓的 code 重新变“活跃”。
+ * SELL 带 costPrice 时仍要扣减已有持仓；若本地没有对应 BUY 批次，则视为独立已结清记录。
  */
 export function getActiveHoldingCodeList(transactions = []) {
   const normalizedTxs = sanitizeTransactions(transactions, { filterInvalid: false });
@@ -346,7 +345,7 @@ export function getActiveHoldingCodeList(transactions = []) {
       if (tx.type === 'BUY') {
         runShares = round(runShares + tx.shares, 4);
       } else if (tx.type === 'SELL') {
-        if (tx.costPrice > 0) continue; // 已结清交易不动持仓
+        if (isPendingOtcSell(tx)) continue;
         runShares = round(runShares - tx.shares, 4);
         if (runShares <= 0) runShares = 0;
       }
@@ -489,6 +488,56 @@ export function isPendingOtcSell(tx) {
   return !(Number(tx.price) > 0);
 }
 
+function pushCostLot(lots, shares, price) {
+  const qty = round(Number(shares) || 0, 4);
+  const px = Number(price) || 0;
+  if (!(qty > 0) || !(px > 0)) return;
+  lots.push({ shares: qty, cost: round(qty * px, 6) });
+}
+
+function consumeCostLots(lots, shares) {
+  let remaining = round(Number(shares) || 0, 4);
+  let consumedShares = 0;
+  let consumedCost = 0;
+  while (remaining > 0 && lots.length) {
+    const lot = lots[0];
+    const lotShares = round(Number(lot.shares) || 0, 4);
+    const lotCost = Number(lot.cost) || 0;
+    if (!(lotShares > 0) || !(lotCost >= 0)) {
+      lots.shift();
+      continue;
+    }
+    const take = Math.min(lotShares, remaining);
+    const unitCost = lotCost / lotShares;
+    const takeCost = round(unitCost * take, 6);
+    consumedShares = round(consumedShares + take, 4);
+    consumedCost = round(consumedCost + takeCost, 6);
+    const leftShares = round(lotShares - take, 4);
+    if (leftShares <= 0.000001) {
+      lots.shift();
+    } else {
+      lot.shares = leftShares;
+      lot.cost = round(Math.max(lotCost - takeCost, 0), 6);
+    }
+    remaining = round(remaining - take, 4);
+  }
+  return {
+    consumedShares,
+    consumedCost,
+    avgCost: consumedShares > 0 ? consumedCost / consumedShares : 0
+  };
+}
+
+function summarizeCostLots(lots) {
+  const totalShares = round(lots.reduce((sum, lot) => sum + (Number(lot.shares) || 0), 0), 4);
+  const totalCost = round(lots.reduce((sum, lot) => sum + (Number(lot.cost) || 0), 0), 2);
+  return {
+    totalShares,
+    totalCost,
+    avgCost: totalShares > 0 ? round(totalCost / totalShares, 4) : 0
+  };
+}
+
 export function aggregateByCode(transactions = [], snapshotsByCode = {}, options = {}) {
   const normalizedTxs = sanitizeTransactions(transactions, { filterInvalid: false });
   const map = new Map();
@@ -526,15 +575,13 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
         bucket.firstBuyDate = tx.date;
       }
     } else if (tx.type === 'SELL') {
-      // 自洽的“已结清交易”（自带 costPrice）独立成笔，不参与持仓份额扣减。
-      if (!(tx.costPrice > 0)) {
-        if (isPendingOtcSell(tx)) {
-          // 待确认（场外/QDII、NAV 未回填）：记为 pending，不入 sellShares/sellAmount。
-          bucket.pendingSellShares = round(bucket.pendingSellShares + tx.shares, 4);
-        } else {
-          bucket.sellShares = round(bucket.sellShares + tx.shares, 4);
-          bucket.sellAmount = round(bucket.sellAmount + tx.price * tx.shares, 2);
-        }
+      if (isPendingOtcSell(tx)) {
+        // 待确认（场外/QDII、NAV 未回填）：记为 pending，不入 sellShares/sellAmount。
+        bucket.pendingSellShares = round(bucket.pendingSellShares + tx.shares, 4);
+      } else {
+        // 即使 SELL 带 costPrice，也仍要作为卖出份额计入汇总；costPrice 只影响清仓收益口径。
+        bucket.sellShares = round(bucket.sellShares + tx.shares, 4);
+        bucket.sellAmount = round(bucket.sellAmount + tx.price * tx.shares, 2);
       }
     }
     if (tx.date && tx.date > bucket.lastTxDate) {
@@ -542,37 +589,25 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     }
   }
 
-  // 第二趟：按交易日期逐笔走「移动摊薄」，计算各 bucket 的现金 avgCost / totalCost。
-  // 与支付宝 / 天天基金 / 南方基金 App 的「平均成本」口径一致。
+  // 第二趟：按交易日期逐笔走买入批次，计算剩余持仓 avgCost / totalCost。
+  // SELL 按 FIFO 消耗买入批次；卖出后剩余批次的均价可能变化。
   for (const bucket of map.values()) {
     const sortedTxs = [...bucket.transactions].sort(compareTxChrono);
-    let runShares = 0;
-    let runCost = 0;
-    let runAvg = 0;
+    const costLots = [];
     for (const tx of sortedTxs) {
       if (tx.type === 'BUY') {
-        runCost = round(runCost + tx.price * tx.shares, 4);
-        runShares = round(runShares + tx.shares, 4);
-        runAvg = runShares > 0 ? runCost / runShares : 0;
+        pushCostLot(costLots, tx.shares, tx.price);
       } else if (tx.type === 'SELL') {
-        // 独立已结清交易（自带 costPrice）不动持仓。
-        if (tx.costPrice > 0) continue;
         // 待确认 SELL（场外/QDII NAV 未回填）：份额不提前扣减，等 NAV 回填后自动生效。
         if (isPendingOtcSell(tx)) continue;
-        runCost = round(runCost - tx.shares * runAvg, 4);
-        runShares = round(runShares - tx.shares, 4);
-        if (runShares <= 0) {
-          // 清仓：重置成本与 avgCost，后续买入从零重新加权。
-          runShares = 0;
-          runCost = 0;
-          runAvg = 0;
-        }
-        // 份额未清零时：SELL 不改变 avgCost 数值。
+        // costPrice 只是该笔清仓收益的成本覆盖值；若本地存在 BUY 批次，基金汇总仍必须扣减这些份额。
+        consumeCostLots(costLots, tx.shares);
       }
     }
-    bucket.movingAvgCost = round(runAvg, 4);
-    bucket.movingTotalCost = round(Math.max(runCost, 0), 2);
-    bucket.movingTotalShares = round(Math.max(runShares, 0), 4);
+    const lotSummary = summarizeCostLots(costLots);
+    bucket.movingAvgCost = lotSummary.avgCost;
+    bucket.movingTotalCost = lotSummary.totalCost;
+    bucket.movingTotalShares = lotSummary.totalShares;
   }
 
   const aggregates = [];
@@ -592,9 +627,8 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       && latestNavDateStr >= expectedLatestNavDate
       && latestNavDateStr <= todayDate;
 
-    // 移动摊薄成本法（与支付宝 / 天天基金 / 南方基金 App 一致）：详见上方第二趟计算。
-    // BUY 加金额 + 份额；SELL 按「当前 avgCost」扣减持仓成本，份额减少，均价不变；
-    // 持仓清零后重置，后续买入重新从零加权。
+    // 买入批次扣减法：详见上方第二趟计算。
+    // BUY 追加批次；SELL 按 FIFO 消耗批次；剩余成本和均价只来自未卖出的批次。
     const totalShares = bucket.movingTotalShares;
     const avgCost = bucket.movingAvgCost;
     const totalCost = bucket.movingTotalCost;
@@ -827,10 +861,9 @@ export function buildHoldingsNotifyDigest({ aggregates = [], summary = null } = 
 }
 
 /**
- * 把所有 SELL 交易按笔拆成"已卖出"行，并附上「卖出时刻」的移动摊薄平均成本。
- * - 按交易日期顺序逐笔走：BUY 加金额/份额、更新 runAvg；SELL 拍快照记下当前 runAvg、
- *   再按「runAvg × sellShares」扣减持仓成本。这与 aggregateByCode 中的「平均成本」口径一致，
- *   也与支付宝 / 天天基金 / 南方基金 App 的「已实现盈亏」口径一致。
+ * 把所有 SELL 交易按笔拆成"已卖出"行，并附上「被卖出买入批次」的平均成本。
+ * - 按交易日期顺序逐笔走：BUY 追加批次；SELL 按 FIFO 消耗批次。
+ *   这与 aggregateByCode 中的剩余持仓成本口径一致。
  * - 已实现收益 = (sellPrice − avgCost) × sellShares
  * - 已实现收益率 = realizedProfit / (avgCost × sellShares)
  * - costBasis = avgCost × sellShares；proceeds = sellPrice × sellShares
@@ -855,27 +888,27 @@ export function buildSoldLots(transactions = []) {
   const lots = [];
   for (const bucket of byCode.values()) {
     const sortedTxs = [...bucket.txs].sort(compareTxChrono);
-    let runShares = 0;
-    let runCost = 0;
-    let runAvg = 0;
+    const costLots = [];
     for (const tx of sortedTxs) {
       if (tx.type === 'BUY') {
-        runCost = round(runCost + tx.price * tx.shares, 4);
-        runShares = round(runShares + tx.shares, 4);
-        runAvg = runShares > 0 ? runCost / runShares : 0;
+        pushCostLot(costLots, tx.shares, tx.price);
         continue;
       }
       if (tx.type !== 'SELL') continue;
-      // 优先使用本笔自带 costPrice（独立已结清快速登记），否则取卖出时刻的移动 avgCost。
-      const standalone = tx.costPrice > 0;
+      // 优先使用本笔自带 costPrice 计算清仓收益；但只要本地有 BUY 批次，SELL 仍要消耗批次，避免基金汇总不扣减份额。
       const pending = isPendingOtcSell(tx);
-      const avgCost = standalone ? tx.costPrice : round(runAvg, 4);
+      const consumed = pending ? null : consumeCostLots(costLots, tx.shares);
+      const hasCostOverride = tx.costPrice > 0;
+      const standalone = hasCostOverride && !(consumed?.consumedShares > 0);
+      const avgCost = hasCostOverride ? tx.costPrice : round(consumed?.avgCost || 0, 4);
       const pairTx = tx.switchPairId ? txById.get(tx.switchPairId) : null;
       const isSwitch = Boolean(pairTx && pairTx.type === 'BUY' && pairTx.code && pairTx.code !== tx.code);
       const sellShares = tx.shares;
       const sellPrice = pending ? 0 : tx.price;
       const proceeds = pending ? null : round(sellPrice * sellShares, 2);
-      const costBasis = round(avgCost * sellShares, 2);
+      const costBasis = hasCostOverride
+        ? round(avgCost * sellShares, 2)
+        : round(consumed?.consumedCost || avgCost * sellShares, 2);
       const hasAvgCost = avgCost > 0;
       const realizedProfit = pending
         ? null
@@ -907,16 +940,7 @@ export function buildSoldLots(transactions = []) {
         note: tx.note || '',
         tx
       });
-      // 独立 / 待确认交易不扣减持仓；普通 SELL 同步走移动摊薄减持仓。
-      if (!standalone && !pending) {
-        runCost = round(runCost - sellShares * runAvg, 4);
-        runShares = round(runShares - sellShares, 4);
-        if (runShares <= 0) {
-          runShares = 0;
-          runCost = 0;
-          runAvg = 0;
-        }
-      }
+      // 独立 / 待确认交易不扣减持仓；普通 SELL 已在生成 consumed 时同步消耗批次。
     }
   }
 

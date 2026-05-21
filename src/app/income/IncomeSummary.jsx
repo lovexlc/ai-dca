@@ -18,7 +18,7 @@
 import { ROUTES, useIncomeRoute } from '../incomeRoute.js';
 import { Pill, cx } from '../../components/experience-ui.jsx';
 import { formatCurrency, formatPercent } from '../accumulation.js';
-import { RefreshCw, BarChart3, Receipt, PieChart, ArrowLeftRight, Plus, Copy } from 'lucide-react';
+import { RefreshCw, BarChart3, Receipt, PieChart, ArrowLeftRight, Plus, Copy, ClipboardPaste, ScanLine } from 'lucide-react';
 
 const TONE_UP = 'text-rose-600';
 const TONE_DOWN = 'text-emerald-600';
@@ -47,10 +47,10 @@ function AccountCardsGrid({ accountAllocation, className = '' }) {
 }
 
 const TILES = [
-	{ route: ROUTES.INCOME, Icon: BarChart3, label: '收益明细' },
-	{ route: ROUTES.LIQUIDATION, Icon: Receipt, label: '清仓分析' },
-	{ route: ROUTES.BREAKDOWN, Icon: PieChart, label: '持仓分析' },
-	{ route: ROUTES.TRANSACTIONS, Icon: ArrowLeftRight, label: '交易记录' },
+	{ route: ROUTES.INCOME, Icon: BarChart3, label: '收益明细', labelShort: '收益' },
+	{ route: ROUTES.LIQUIDATION, Icon: Receipt, label: '清仓分析', labelShort: '清仓' },
+	{ route: ROUTES.BREAKDOWN, Icon: PieChart, label: '持仓分析', labelShort: '持仓' },
+	{ route: ROUTES.TRANSACTIONS, Icon: ArrowLeftRight, label: '交易记录', labelShort: '记录' },
 ];
 
 function signTone(value) {
@@ -174,7 +174,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 
 			{/* 入口区：移动端 4 tile grid（v7.0） */}
 			<nav aria-label="收益看板子页入口" className="grid grid-cols-4 gap-2 sm:hidden">
-				{TILES.map(({ route: r, Icon, label }) => {
+				{TILES.map(({ route: r, Icon, label, labelShort }) => {
 					const isActive = activeRoute === r;
 					return (
 						<button
@@ -185,7 +185,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 							className={cx('flex flex-col items-center justify-center gap-1.5 rounded-2xl border px-1 py-2.5 text-[11px] font-medium shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors active:bg-slate-100', isActive ? 'border-rose-300 bg-rose-50 text-rose-700' : 'border-slate-200/70 bg-white text-slate-700 hover:bg-slate-50')}
 						>
 							<Icon className={cx('h-5 w-5', isActive ? 'text-rose-600' : 'text-slate-600')} strokeWidth={1.75} aria-hidden="true" />
-							<span className="truncate">{label}</span>
+							<span className="truncate">{labelShort || label}</span>
 						</button>
 					);
 				})}
@@ -194,7 +194,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 			{/* PC 端：4 pill chip 入口 + 右侧 复制表格 / + 新增交易 */}
 			<div className="hidden sm:flex sm:items-center sm:justify-between sm:gap-3">
 				<nav aria-label="收益看板子页入口" className="flex flex-wrap gap-2">
-					{TILES.map(({ route: r, Icon, label }) => {
+					{TILES.map(({ route: r, Icon, label, labelShort }) => {
 						const isActive = activeRoute === r;
 						return (
 							<button
@@ -210,7 +210,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 						);
 					})}
 				</nav>
-				{quickActions && (quickActions.onCopyTable || quickActions.onNewTransaction) ? (
+				{quickActions && (quickActions.onCopyTable || quickActions.onNewTransaction || quickActions.onPasteExcel || quickActions.onOcr) ? (
 					<div className="flex shrink-0 items-center gap-2">
 						{quickActions.onCopyTable ? (
 							<button
@@ -223,6 +223,28 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 								<span>复制表格</span>
 							</button>
 						) : null}
+						{quickActions.onPasteExcel ? (
+							<button
+								type="button"
+								onClick={quickActions.onPasteExcel}
+								title="从外部表格粘贴多行交易"
+								className="inline-flex items-center gap-1.5 h-8 rounded-full border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
+							>
+								<ClipboardPaste className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+								<span>粘贴 Excel</span>
+							</button>
+						) : null}
+						{quickActions.onOcr ? (
+							<button
+								type="button"
+								onClick={quickActions.onOcr}
+								title="从截图识别交易流水"
+								className="inline-flex items-center gap-1.5 h-8 rounded-full border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
+							>
+								<ScanLine className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+								<span>截图 OCR</span>
+							</button>
+						) : null}
 						{quickActions.onNewTransaction ? (
 							<button
 								type="button"
@@ -231,7 +253,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 								className="inline-flex items-center gap-1.5 h-8 rounded-full bg-rose-500 px-3 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-rose-600"
 							>
 								<Plus className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />
-								<span>新增交易</span>
+								<span>新增单笔</span>
 							</button>
 						) : null}
 					</div>

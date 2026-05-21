@@ -1,11 +1,12 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, BookOpen, CloudUpload, LineChart, ListChecks, Plus, RefreshCw, Send, Shuffle, Trash2, Wallet } from 'lucide-react';
+import { ArrowLeft, ArrowUp, Bell, BookOpen, CloudUpload, LineChart, ListChecks, Plus, RefreshCw, Send, Shuffle, Trash2, Wallet, X } from 'lucide-react';
 import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, PRIMARY_TAB_META, PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
 import { MobileTabBar } from '../components/mobile-tab-bar.jsx';
 import { GlobalSearch } from '../components/global-search.jsx';
 import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
+import { startCloudAutoSync } from '../app/cloudSync.js';
 import { clearDemoData, readDemoDataMeta } from '../app/demoData.js';
 import { readWorkspacePrefs } from '../app/workspacePrefs.js';
 
@@ -101,6 +102,10 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const links = createPageLinks({ inPagesDir });
   const [activeTab, setActiveTab] = useState(() => readTabFromLocation(readPreferredWorkspaceTab(initialTab)));
   const [demoMeta, setDemoMeta] = useState(() => readDemoDataMeta());
+  const [tabHistory, setTabHistory] = useState([]);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [showDisclaimer, setShowDisclaimer] = useState(false);
 
   // Legacy ?tab=home / ?tab=dca 进来时，重写为 ?tab=tradePlans + hash，使二级 tab 能在 mount 时被选中。
   useEffect(() => {
@@ -116,6 +121,15 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     window.history.replaceState({ tab: 'tradePlans' }, '', nextUrl);
     // 让 TradePlansExperience 读到新 hash。
     window.dispatchEvent(new HashChangeEvent('hashchange'));
+  }, []);
+
+  useEffect(() => {
+    function handleScroll() {
+      setShowScrollTop(window.scrollY > 520);
+    }
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   // 为每个 tab 独立缓存上次的 scrollY，在切换返回时恢复。
@@ -181,6 +195,10 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   }, [heroTitle]);
 
   useEffect(() => {
+    startCloudAutoSync();
+  }, []);
+
+  useEffect(() => {
     const canonicalUrl = buildWorkspaceUrl(activeTab, { inPagesDir });
     if (activeTab === 'tradePlans' && window.location.hash) {
       canonicalUrl.hash = window.location.hash;
@@ -192,11 +210,14 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   useEffect(() => {
     function handlePopState() {
-      setActiveTab(readTabFromLocation(readPreferredWorkspaceTab(initialTab)));
+      const nextTab = readTabFromLocation(readPreferredWorkspaceTab(initialTab));
+      scrollPositionsRef.current.set(activeTab, window.scrollY);
+      setTabHistory((current) => current.filter((item) => item !== nextTab));
+      setActiveTab(nextTab);
     }
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [initialTab]);
+  }, [activeTab, initialTab]);
 
   // tab 变化后，恢复该 tab 以前的 scrollY（如果有）。
   // 使用 requestAnimationFrame 等新内容进入一个 paint 后再跳，避免在 lazy 加载过程中跳到 0。
@@ -218,9 +239,15 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       return;
     }
 
-    // 在离开当前 tab 之前记录其 scrollY。
+    // 在离开当前 tab 之前记录其 scrollY，并保存移动端返回路径。
     if (!alreadyActive) {
       scrollPositionsRef.current.set(previousTabRef.current, window.scrollY);
+      if (options.recordHistory !== false) {
+        setTabHistory((current) => {
+          const withoutCurrent = current.filter((item) => item !== activeTab);
+          return [...withoutCurrent, activeTab].slice(-8);
+        });
+      }
       previousTabRef.current = normalizedTab;
     }
 
@@ -230,11 +257,46 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     }
     window.history.pushState({ tab: normalizedTab }, '', nextUrl);
     setActiveTab(normalizedTab);
+    // 记录侧边 tab 点击，供「策略指南 · Recently visited」读取。
+    try {
+      const RECENT_KEY = 'aiDcaRecentGuideAnchors';
+      const raw = JSON.parse(window.localStorage.getItem(RECENT_KEY) || '[]');
+      const list = Array.isArray(raw) ? raw.filter(Boolean) : [];
+      list.unshift({ id: `tab:${normalizedTab}`, ts: Date.now() });
+      window.localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 12)));
+    } catch {
+      // 忽略最近访问记录写入失败，不影响 tab 切换。
+    }
     // 合并后：侧边栏《新建建仓计划》通过 #new hash 跳进《交易计划》的新建子视图。
     // 由于 TradePlansExperience 在 mount 时才读 hash，手动触发 hashchange 用于已 mount 的情况。
     if (hash && alreadyActive) {
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     }
+  }
+
+  function handleMobileBack() {
+    const previousTab = tabHistory[tabHistory.length - 1];
+    if (!previousTab) return;
+    setTabHistory((current) => current.slice(0, -1));
+    handleSelectTab(previousTab, { recordHistory: false });
+  }
+
+  function handleScrollTop() {
+    const headerOffset = 64;
+    const probeY = Math.min(window.innerHeight - 120, Math.max(140, window.innerHeight * 0.38));
+    const cards = Array.from(document.querySelectorAll('[data-scroll-card="true"]'));
+    const activeCard = cards.find((card) => {
+      const rect = card.getBoundingClientRect();
+      return rect.top <= probeY && rect.bottom >= probeY + 80;
+    });
+    if (activeCard) {
+      const targetTop = Math.max(0, window.scrollY + activeCard.getBoundingClientRect().top - headerOffset);
+      if (window.scrollY > targetTop + 24) {
+        window.scrollTo({ top: targetTop, behavior: 'smooth' });
+        return;
+      }
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function renderActivePanel() {
@@ -261,12 +323,18 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   return (
     <>
-      <BrandPreviewBar currentPageLabel={currentPageLabel} />
+      <BrandPreviewBar
+        currentPageLabel={currentPageLabel}
+        onOpenNav={() => window.dispatchEvent(new CustomEvent('console:open-mobile-nav'))}
+        onJoinGroup={() => setShowQrModal(true)}
+        onShowDisclaimer={() => setShowDisclaimer(true)}
+      />
       <ConsoleLayout
         brand="美股策略助手"
         sidebarNav={sidebarNav}
         activeKey={activeTab}
         onSelectNav={handleSelectTab}
+        showMobileBar={false}
       >
         {demoMeta ? (
           <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
@@ -317,6 +385,32 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
           setTimeout(() => window.dispatchEvent(new CustomEvent('holdings:import-ocr')), 80);
         }}
       />
+      {(tabHistory.length > 0 || showScrollTop) ? (
+        <div className="fixed bottom-24 right-4 z-40 flex flex-col gap-2 sm:hidden" aria-label="页面快捷操作">
+          {tabHistory.length > 0 ? (
+            <button
+              type="button"
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 shadow-lg shadow-slate-900/10 backdrop-blur active:bg-slate-100"
+              aria-label="返回上一页"
+              title="返回上一页"
+              onClick={handleMobileBack}
+            >
+              <ArrowLeft className="h-5 w-5" aria-hidden="true" />
+            </button>
+          ) : null}
+          {showScrollTop ? (
+            <button
+              type="button"
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 shadow-lg shadow-slate-900/10 backdrop-blur active:bg-slate-100"
+              aria-label="回到顶部"
+              title="回到顶部"
+              onClick={handleScrollTop}
+            >
+              <ArrowUp className="h-5 w-5" aria-hidden="true" />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <GlobalSearch
         open={globalSearchOpen}
         onClose={() => setGlobalSearchOpen(false)}
@@ -329,6 +423,31 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
           );
         }}
       />
+      {showQrModal ? (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/70 p-4" role="dialog" aria-modal="true" aria-label="加入群聊二维码" onClick={() => setShowQrModal(false)}>
+          <div className="relative w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+            <button type="button" aria-label="关闭" className="absolute -top-3 -right-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-700 shadow-md transition-colors hover:bg-slate-100" onClick={() => setShowQrModal(false)}>
+              <X className="h-4 w-4" />
+            </button>
+            <div className="overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <img src="https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEUUA9qDZ5H_XnPECnDzzMGTTIc2b_5_gAC8B4AAtk5cFTHSrIufYF2bDsE.jpg" alt="加入群聊二维码" className="block w-full" />
+              <p className="px-4 py-3 text-center text-xs text-slate-600">使用微信 / QQ 扫码加入群聊</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {showDisclaimer ? (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/60 p-4" role="dialog" aria-modal="true" onClick={() => setShowDisclaimer(false)}>
+          <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <button type="button" aria-label="关闭" className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => setShowDisclaimer(false)}>
+              <X className="h-4 w-4" />
+            </button>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-600">免责声明</div>
+            <h3 className="mt-1 text-lg font-bold text-slate-900">非官方、非投资建议</h3>
+            <p className="mt-4 text-sm leading-7 text-slate-500">本工具中的策略说明由公开的金渐成公众号文章整理、总结和结构化而来，仅用于个人学习、记录和辅助决策。本工具与金渐成本人及其公众号无官方关联、无授权关系，也不代表金渐成本人观点或服务。页面中的计划、提醒、演示数据和计算结果均为辅助工具输出，不构成任何投资建议。投资有风险，请独立判断并自行承担决策结果。</p>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

@@ -1,34 +1,34 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, ArrowRight, Bell, CalendarClock, Calculator, ListChecks, MoreHorizontal, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
+import { Activity, ArrowRight, Bell, CalendarClock, Calculator, ChevronDown, ListChecks, MoreHorizontal, Pencil, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
 import { loadNotifyStatus, readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { deletePlan } from '../app/plan.js';
+import { deleteSellPlan } from '../app/sellPlans.js';
 import { clearDcaState } from '../app/dca.js';
 import { showActionToast } from '../app/toast.js';
-import { Card, Pill, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
+import { Card, cx, primaryButtonClass } from '../components/experience-ui.jsx';
 import { NewPlanExperience } from './NewPlanExperience.jsx';
 import {
   buildRuleDetailUrl,
   extractPurchaseAmount
 } from '../app/tradePlansHelpers.js';
 
-// 加仓计划 / 定投计划已合并为本 tab 的二级视图，按需 lazy 加载。
-const HomeExperienceLazy = lazy(() => import('./HomeExperience.jsx').then((m) => ({ default: m.HomeExperience })));
+// 定投 / 卖出 / VIX / 回测仍按需 lazy 加载，列表页只展示计划分类与卡片。
 const DcaExperienceLazy = lazy(() => import('./DcaExperience.jsx').then((m) => ({ default: m.DcaExperience })));
 const SellPlanExperienceLazy = lazy(() => import('./SellPlanExperience.jsx').then((m) => ({ default: m.SellPlanExperience })));
 const VixDashboardLazy = lazy(() => import('./VixDashboard.jsx').then((m) => ({ default: m.VixDashboard })));
 const DcaCalculatorExperienceLazy = lazy(() => import('./DcaCalculatorExperience.jsx').then((m) => ({ default: m.DcaCalculatorExperience })));
 
 // 子视图与 URL hash 对应关系：
-//   ''  / '#list' → 列表（默认）
-//   '#home'      → 加仓
-//   '#dca'       → 定投
-//   '#sell'      → 卖出
-//   '#vix'       → VIX 面板
-//   '#calc'      → DCA 回测
-//   '#new'       → 新建（覆盖整个 tab，独占视图）
-// 说明：原 '#ledger'（台账）/ '#position'（仓位）已迁至「持仓总览 → 交易记录 / 持仓分析」子页，
-//   旧 hash 进入时回落到默认列表视图。
+//   ''  / '#list' → 全部（默认）
+//   '#home'      → 加仓分类列表
+//   '#dca'       → 定投分类列表
+//   '#sell'      → 卖出分类列表
+//   '#vix'       → VIX 信号
+//   '#calc'      → 回测工具
+//   '#new'       → 新建加仓 wizard
+//   '#dca-new'   → 新建定投表单
+//   '#sell-new'  → 新建卖出表单
 const SUB_VIEW_HASH = {
   list: '',
   home: '#home',
@@ -36,7 +36,9 @@ const SUB_VIEW_HASH = {
   sell: '#sell',
   vix: '#vix',
   calc: '#calc',
-  new: '#new'
+  new: '#new',
+  dcaNew: '#dca-new',
+  sellNew: '#sell-new'
 };
 
 function parseSubViewFromHash(hash = '') {
@@ -46,6 +48,8 @@ function parseSubViewFromHash(hash = '') {
   if (hash === '#sell') return 'sell';
   if (hash === '#vix') return 'vix';
   if (hash === '#calc') return 'calc';
+  if (hash === '#dca-new') return 'dcaNew';
+  if (hash === '#sell-new') return 'sellNew';
   return 'list';
 }
 
@@ -55,38 +59,119 @@ function getInitialSubView() {
 }
 
 function SubViewLoadingFallback() {
-  return (
-    <div className="flex h-full min-h-[40vh] items-center justify-center text-sm text-slate-500">
-      加载中…
-    </div>
-  );
+  return <Card className="text-sm text-slate-500">正在加载交易计划模块…</Card>;
 }
 
 const SUB_TABS = [
-  { key: 'list', label: '列表', icon: ListChecks },
+  { key: 'list', label: '全部', icon: ListChecks },
   { key: 'home', label: '加仓', icon: TrendingUp },
   { key: 'dca', label: '定投', icon: CalendarClock },
   { key: 'sell', label: '卖出', icon: TrendingDown },
-  { key: 'vix', label: 'VIX', icon: Activity },
-  { key: 'calc', label: '回测', icon: Calculator }
+  { key: 'vix', label: 'VIX 信号', icon: Activity },
+  { key: 'calc', label: '回测工具', icon: Calculator }
 ];
 
+const TYPE_META = {
+  plan: { label: '加仓', tone: 'indigo' },
+  dca: { label: '定投', tone: 'emerald' },
+  sell: { label: '卖出', tone: 'amber' }
+};
+
+const TONE_CLASS = {
+  indigo: {
+    pill: 'bg-indigo-50 text-indigo-700',
+    icon: 'bg-indigo-100 text-indigo-600',
+    bar: 'bg-indigo-500'
+  },
+  emerald: {
+    pill: 'bg-emerald-50 text-emerald-700',
+    icon: 'bg-emerald-100 text-emerald-600',
+    bar: 'bg-emerald-500'
+  },
+  amber: {
+    pill: 'bg-amber-50 text-amber-700',
+    icon: 'bg-amber-100 text-amber-600',
+    bar: 'bg-amber-500'
+  }
+};
+
+const EMPTY_STATE = {
+  list: {
+    icon: ListChecks,
+    title: '暂无交易计划',
+    description: '创建第一个计划，开始自动化交易',
+    cta: '新建计划',
+    type: 'menu',
+    tone: 'indigo',
+    links: []
+  },
+  home: {
+    icon: TrendingUp,
+    title: '暂无加仓计划',
+    description: '在价格下跌时分批买入，降低持仓成本',
+    cta: '创建加仓策略',
+    type: 'plan',
+    tone: 'indigo',
+    links: [
+      { label: '设置定投', type: 'dca' },
+      { label: '设置卖出规则', type: 'sell' }
+    ]
+  },
+  dca: {
+    icon: CalendarClock,
+    title: '暂无定投计划',
+    description: '定期定额投资，平滑市场波动',
+    cta: '设置定投',
+    type: 'dca',
+    tone: 'emerald',
+    links: [
+      { label: '创建加仓', type: 'plan' },
+      { label: '设置卖出', type: 'sell' }
+    ]
+  },
+  sell: {
+    icon: TrendingDown,
+    title: '暂无卖出计划',
+    description: '达到目标收益率时分批止盈',
+    cta: '设置卖出规则',
+    type: 'sell',
+    tone: 'amber',
+    links: [
+      { label: '创建加仓', type: 'plan' },
+      { label: '设置定投', type: 'dca' }
+    ]
+  }
+};
+
 export function TradePlansExperience({ links, inPagesDir = false, embedded = false }) {
-  // 子视图（list / home / dca / new）通过 URL hash 持久化，方便刷新和浏览器前进后退。
   const [subView, setSubView] = useState(getInitialSubView);
   const [testingRowId, setTestingRowId] = useState('');
-  // 仅判断是否已配置任一推送通道，未配置时在顶部提示一行链接。
   const [channelConfigured, setChannelConfigured] = useState(true);
   const notifyClientId = useMemo(() => readNotifyClientConfig().notifyClientId || '', []);
   const [planRefreshKey, setPlanRefreshKey] = useState(0);
-  const { previewRows, hasPlans } = useMemo(() => {
+  const { previewRows = [] } = useMemo(() => {
     void planRefreshKey;
     return buildTradePlanCenter();
   }, [planRefreshKey]);
-  const planCountLabel = `${previewRows.length} 个计划`;
+  const typeCounts = useMemo(() => ({
+    list: previewRows.length,
+    home: previewRows.filter((row) => row.sourceType === 'plan').length,
+    dca: previewRows.filter((row) => row.sourceType === 'dca').length,
+    sell: previewRows.filter((row) => row.sourceType === 'sell').length
+  }), [previewRows]);
+  const planCountLabel = `共 ${previewRows.length} 个计划`;
+  const visibleRows = useMemo(() => {
+    if (subView === 'home') return previewRows.filter((row) => row.sourceType === 'plan');
+    if (subView === 'dca') return previewRows.filter((row) => row.sourceType === 'dca');
+    if (subView === 'sell') return previewRows.filter((row) => row.sourceType === 'sell');
+    return previewRows;
+  }, [previewRows, subView]);
+  const hasVisiblePlans = visibleRows.length > 0;
 
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [openMenuRowId, setOpenMenuRowId] = useState('');
   const menuContainerRef = useRef(null);
+  const createMenuRef = useRef(null);
 
   function gotoSubView(nextView, { push = false } = {}) {
     if (typeof window === 'undefined') {
@@ -104,13 +189,30 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
       }
     }
     setSubView(nextView);
-    if (nextView === 'new') {
+    if (nextView === 'new' || nextView === 'dcaNew' || nextView === 'sellNew') {
       window.scrollTo({ top: 0, behavior: 'auto' });
     }
   }
 
   function enterNewPlanView() {
     gotoSubView('new', { push: true });
+  }
+
+  function enterCreateView(type) {
+    setCreateMenuOpen(false);
+    if (type === 'dca') {
+      gotoSubView('dcaNew', { push: true });
+      return;
+    }
+    if (type === 'sell') {
+      gotoSubView('sellNew', { push: true });
+      return;
+    }
+    if (type === 'calc') {
+      gotoSubView('calc', { push: true });
+      return;
+    }
+    enterNewPlanView();
   }
 
   function exitNewPlanView() {
@@ -123,6 +225,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   function handleSelectSubTab(nextView) {
     if (nextView === subView) return;
+    setCreateMenuOpen(false);
     gotoSubView(nextView);
   }
 
@@ -139,7 +242,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     };
   }, []);
 
-  // 拉取一次通知状态，仅用于决定是否展示顶部「未配置」提示行。
   useEffect(() => {
     let cancelled = false;
     async function refreshChannelStatus() {
@@ -160,17 +262,23 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     };
   }, [notifyClientId]);
 
-  // 点击外部关闭 row 的 ··· 菜单。
   useEffect(() => {
-    if (!openMenuRowId) return undefined;
+    if (!openMenuRowId && !createMenuOpen) return undefined;
     function handleClickOutside(event) {
-      const node = menuContainerRef.current;
-      if (node && !node.contains(event.target)) {
+      const rowNode = menuContainerRef.current;
+      const createNode = createMenuRef.current;
+      if (rowNode && !rowNode.contains(event.target)) {
         setOpenMenuRowId('');
+      }
+      if (createNode && !createNode.contains(event.target)) {
+        setCreateMenuOpen(false);
       }
     }
     function handleKeyDown(event) {
-      if (event.key === 'Escape') setOpenMenuRowId('');
+      if (event.key === 'Escape') {
+        setOpenMenuRowId('');
+        setCreateMenuOpen(false);
+      }
     }
     document.addEventListener('mousedown', handleClickOutside);
     document.addEventListener('keydown', handleKeyDown);
@@ -178,13 +286,16 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [openMenuRowId]);
+  }, [openMenuRowId, createMenuOpen]);
 
   function handleDeletePlanRow(row) {
     if (!row) return;
     if (row.sourceType === 'dca') {
       clearDcaState();
       showActionToast('删除定投计划', 'success');
+    } else if (row.sourceType === 'sell' && row.sourceId) {
+      deleteSellPlan(row.sourceId);
+      showActionToast('删除卖出计划', 'success');
     } else if (row.sourceType === 'plan' && row.sourceId) {
       const removed = deletePlan(row.sourceId);
       if (!removed) return;
@@ -220,7 +331,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
     return {
       eventId: `${normalizedRuleId}:manual-test:${Date.now()}`,
-      eventType: 'plan-test',
+      eventType: row?.sourceType === 'sell' ? 'sell-plan-test' : 'plan-test',
       ruleId: normalizedRuleId,
       symbol: String(row?.symbol || '').trim(),
       strategyName: normalizedPlanName,
@@ -229,7 +340,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
       detailUrl,
       title: '交易计划测试提醒',
       summary: `${normalizedPlanName} 测试提醒`,
-      body: `这是「${normalizedPlanName}」的测试通知。已触发您设置的购买条件${row?.triggerLabel ? `（${row.triggerLabel}）` : ''}，请前往网页查看当前投资策略。`
+      body: `这是「${normalizedPlanName}」的测试通知。已触发您设置的条件${row?.triggerLabel ? `（${row.triggerLabel}）` : ''}，请前往网页查看当前投资策略。`
     };
   }
 
@@ -262,34 +373,117 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     }
   }
 
+  function handleEditRow(row) {
+    setOpenMenuRowId('');
+    if (row?.sourceType === 'dca') {
+      gotoSubView('dcaNew', { push: true });
+      return;
+    }
+    if (row?.sourceType === 'sell') {
+      gotoSubView('sellNew', { push: true });
+      return;
+    }
+    if (row?.sourceType === 'plan') {
+      showActionToast('编辑加仓策略', 'warning', {
+        description: '当前加仓策略编辑仍沿用新建向导入口，请进入后按现有参数重新保存。'
+      });
+      enterNewPlanView();
+    }
+  }
+
+  function renderCreateMenu() {
+    const options = [
+      { label: '加仓策略（按回撤/均线）', type: 'plan', icon: TrendingUp },
+      { label: '定投计划', type: 'dca', icon: CalendarClock },
+      { label: '卖出计划', type: 'sell', icon: TrendingDown },
+      { label: '从回测结果创建...', type: 'calc', icon: Calculator, separated: true }
+    ];
+
+    return (
+      <div className="relative" ref={createMenuRef}>
+        <button
+          type="button"
+          onClick={() => setCreateMenuOpen((value) => !value)}
+          aria-haspopup="menu"
+          aria-expanded={createMenuOpen}
+          className={cx(primaryButtonClass, 'min-h-10 px-3.5 py-2')}
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          新建计划
+          <ChevronDown className={cx('h-4 w-4 transition-transform', createMenuOpen ? 'rotate-180' : '')} aria-hidden="true" />
+        </button>
+        {createMenuOpen ? (
+          <div role="menu" className="absolute right-0 top-12 z-20 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white py-2 shadow-xl shadow-slate-900/10">
+            {options.map((option) => {
+              const Icon = option.icon;
+              return (
+                <div key={option.type}>
+                  {option.separated ? <div className="my-1 h-px bg-slate-100" /> : null}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => enterCreateView(option.type)}
+                    className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-sm font-semibold text-slate-700 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                  >
+                    <Icon className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                    {option.label}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  function renderPageHeader() {
+    return (
+      <div className="rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:px-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">TRADE PLANS</div>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">交易计划</h1>
+            <p className="mt-1 text-sm text-slate-500">{planCountLabel} · {channelConfigured ? '通知已就绪' : '通知未配置'}</p>
+          </div>
+          {renderCreateMenu()}
+        </div>
+        <div className="mt-5">{renderSubTabBar()}</div>
+      </div>
+    );
+  }
+
   function renderSubTabBar() {
     return (
-      <div className="inline-flex flex-wrap gap-1 rounded-2xl border border-slate-200 bg-slate-100/70 p-1" role="tablist" aria-label="交易计划分类">
-        {SUB_TABS.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = subView === tab.key;
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => handleSelectSubTab(tab.key)}
-              role="tab"
-              id={`trade-plan-tab-${tab.key}`}
-              aria-selected={isActive}
-              aria-pressed={isActive}
-              aria-controls={`trade-plan-panel-${tab.key}`}
-              className={cx(
-                'inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-sm font-semibold transition-colors',
-                isActive
-                  ? 'bg-white text-indigo-700 shadow-sm'
-                  : 'text-slate-500 hover:bg-white/60 hover:text-slate-700'
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {tab.label}
-            </button>
-          );
-        })}
+      <div className="overflow-x-auto border-b border-slate-200" role="tablist" aria-label="交易计划分类">
+        <div className="flex min-w-max items-center gap-0">
+          {SUB_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = subView === tab.key;
+            const count = typeCounts[tab.key];
+            const label = typeof count === 'number' ? `${tab.label} · ${count}` : tab.label;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => handleSelectSubTab(tab.key)}
+                role="tab"
+                id={`trade-plan-tab-${tab.key}`}
+                aria-selected={isActive}
+                aria-controls={`trade-plan-panel-${tab.key}`}
+                className={cx(
+                  'inline-flex min-h-12 shrink-0 items-center gap-1.5 border-b-2 px-4 py-3 text-sm font-semibold transition-all duration-200',
+                  isActive
+                    ? 'border-indigo-500 text-indigo-700'
+                    : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800'
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
     );
   }
@@ -322,7 +516,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
               role="menuitem"
               disabled={isTesting}
               onClick={() => handleTestNotify(row)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="hidden w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:flex"
             >
               <Bell className="h-4 w-4 text-slate-400" />
               {isTesting ? '正在发送' : '测试通知'}
@@ -336,12 +530,21 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
               <ArrowRight className="h-4 w-4 text-slate-400" />
               查看更多
             </button>
-            <div className="h-px bg-slate-100" />
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => handleEditRow(row)}
+              className="hidden w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 sm:flex"
+            >
+              <Pencil className="h-4 w-4 text-slate-400" />
+              编辑
+            </button>
+            <div className="hidden h-px bg-slate-100 sm:block" />
             <button
               type="button"
               role="menuitem"
               onClick={() => handleDeletePlanRow(row)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
+              className="hidden w-full items-center gap-2 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 sm:flex"
             >
               <Trash2 className="h-4 w-4" />
               删除
@@ -352,72 +555,135 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     );
   }
 
-  function renderPlansList() {
-    if (!hasPlans) {
-      return (
-        <Card className="min-w-0">
-          <div className="rounded-2xl border border-dashed border-indigo-200 bg-slate-50 px-6 py-8 text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
-              <ListChecks className="h-6 w-6" aria-hidden="true" />
-            </div>
-            <div className="text-base font-bold text-slate-900">选择一个目标开始</div>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              <button type="button" onClick={enterNewPlanView} className={cx(primaryButtonClass, 'inline-flex items-center justify-center gap-1.5 w-full min-h-10 px-3 py-2 text-xs')}>
-                <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
-                按回撤加仓
-              </button>
-              <button type="button" onClick={() => handleSelectSubTab('dca')} className={cx(secondaryButtonClass, 'inline-flex items-center justify-center gap-1.5 w-full min-h-10 px-3 py-2 text-xs')}>
-                <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
-                设置定投
-              </button>
-              <button type="button" onClick={() => handleSelectSubTab('sell')} className={cx(secondaryButtonClass, 'inline-flex items-center justify-center gap-1.5 w-full min-h-10 px-3 py-2 text-xs')}>
-                <TrendingDown className="h-3.5 w-3.5" aria-hidden="true" />
-                设置卖出规则
-              </button>
-              <button type="button" onClick={() => handleSelectSubTab('vix')} className={cx(secondaryButtonClass, 'inline-flex items-center justify-center gap-1.5 w-full min-h-10 px-3 py-2 text-xs')}>
-                <Activity className="h-3.5 w-3.5" aria-hidden="true" />
-                查看 VIX 规则
-              </button>
-            </div>
-          </div>
-        </Card>
-      );
-    }
-
+  function renderEmptyState() {
+    const config = EMPTY_STATE[subView] || EMPTY_STATE.list;
+    const Icon = config.icon;
+    const tone = TONE_CLASS[config.tone] || TONE_CLASS.indigo;
     return (
       <Card className="min-w-0">
-        <div className="grid gap-3">
-          {previewRows.map((row) => (
-            <div
-              key={row.id}
-              className="relative w-full rounded-xl border border-slate-200 bg-white px-4 py-3 transition-colors hover:bg-slate-50"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1 space-y-1">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <Pill tone={row.statusTone}>{row.statusLabel}</Pill>
-                    <Pill tone="slate">{row.typeLabel}</Pill>
-                  </div>
-                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                    <span className="text-sm font-bold text-slate-900">{row.planName}</span>
-                    <span className="text-xs text-slate-400">{row.symbol}</span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-slate-500">
-                    <span>{row.triggerLabel}</span>
-                    <span className="text-slate-300" aria-hidden="true">·</span>
-                    <span>{row.nextExecutionLabel}</span>
-                  </div>
-                </div>
-                {renderRowMenu(row)}
+        <div className="rounded-3xl border border-dashed border-indigo-200 bg-slate-50 px-6 py-10 text-center">
+          <div className={cx('mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl', tone.icon)}>
+            <Icon className="h-8 w-8" aria-hidden="true" />
+          </div>
+          <div className="text-lg font-bold text-slate-950">{config.title}</div>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">{config.description}</p>
+          <div className="mt-6">
+            <button type="button" onClick={() => enterCreateView(config.type)} className={cx(primaryButtonClass, 'min-h-10 px-4 py-2')}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              {config.cta}
+            </button>
+          </div>
+          {config.links.length ? (
+            <div className="mt-5 text-sm text-slate-500">
+              <span>或者从其他类型开始：</span>
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                {config.links.map((link) => (
+                  <button key={link.type} type="button" onClick={() => enterCreateView(link.type)} className="font-semibold text-indigo-600 underline-offset-4 hover:underline">
+                    {link.label}
+                  </button>
+                ))}
               </div>
             </div>
-          ))}
+          ) : null}
         </div>
       </Card>
     );
   }
 
-  // 《新建计划》子视图直接覆盖当前内容。
+  function renderPlanCard(row) {
+    const meta = TYPE_META[row.sourceType] || { label: row.cardTypeLabel || row.typeLabel, tone: row.cardTone || 'indigo' };
+    const tone = TONE_CLASS[row.cardTone || meta.tone] || TONE_CLASS.indigo;
+    const progressValue = Math.max(0, Math.min(100, Number(row.progressValue || 0) * 100));
+    const progressItems = Array.isArray(row.progressItems) ? row.progressItems : [];
+    const isTesting = testingRowId === row.id;
+
+    return (
+      <div key={row.id} className="relative w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-100 hover:shadow-lg hover:shadow-slate-200/70 sm:px-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={cx('inline-flex items-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold', tone.pill)}>{row.cardTypeLabel || meta.label}</span>
+              <span className="truncate text-sm font-bold text-slate-950">{row.planName}</span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium text-slate-500">
+              <span className="font-bold text-slate-700">{row.symbol || '--'}</span>
+              <span className="text-slate-300" aria-hidden="true">·</span>
+              <span>{row.progressLabel || row.triggerLabel}</span>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
+              aria-label="测试通知"
+              title="测试通知"
+              disabled={isTesting}
+              onClick={() => handleTestNotify(row)}
+            >
+              <Bell className={cx('h-4 w-4', isTesting ? 'animate-pulse' : '')} />
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              aria-label="编辑计划"
+              title="编辑计划"
+              onClick={() => handleEditRow(row)}
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+              aria-label="删除计划"
+              title="删除计划"
+              onClick={() => handleDeletePlanRow(row)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+            {renderRowMenu(row)}
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+              <div className={cx('h-full rounded-full', tone.bar)} style={{ width: `${progressValue}%` }} />
+            </div>
+            <span className="min-w-0 text-xs font-semibold text-slate-500 sm:shrink-0">{row.progressCaption || row.nextExecutionLabel}</span>
+          </div>
+          {progressItems.length ? (
+            <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-4">
+              {progressItems.map((item, index) => (
+                <div key={`${row.id}-${item.label}-${index}`} className="rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                  <div className="font-semibold text-slate-700">{item.label}{item.detail ? `（${item.detail}）` : ''}</div>
+                  <div className="mt-1 text-slate-400">{item.status}</div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="mt-4 border-t border-slate-100 pt-3 text-xs font-medium text-slate-500">
+          {row.footerLabel || `${row.triggerLabel} · ${row.nextExecutionLabel}`}
+        </div>
+      </div>
+    );
+  }
+
+  function renderPlansList() {
+    if (!hasVisiblePlans) {
+      return renderEmptyState();
+    }
+
+    return (
+      <Card className="min-w-0 p-4 sm:p-5">
+        <div className="grid gap-3">
+          {visibleRows.map((row) => renderPlanCard(row))}
+        </div>
+      </Card>
+    );
+  }
+
   if (subView === 'new') {
     return (
       <NewPlanExperience
@@ -428,60 +694,67 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     );
   }
 
-  // 加仓 / 定投 二级视图：外层共享二级 tab 切换，内嵌各自的 Experience 组件。
-  if (subView === 'home' || subView === 'dca' || subView === 'sell' || subView === 'vix' || subView === 'calc') {
+  if (subView === 'dcaNew') {
     return (
       <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
-        {renderSubTabBar()}
-        <div role="tabpanel" id={`trade-plan-panel-${subView}`} aria-labelledby={`trade-plan-tab-${subView}`}>
         <Suspense fallback={<SubViewLoadingFallback />}>
-          {subView === 'home' ? (
-            <HomeExperienceLazy links={links} inPagesDir={inPagesDir} embedded />
-          ) : subView === 'dca' ? (
-            <DcaExperienceLazy
-              links={links}
-              inPagesDir={inPagesDir}
-              embedded
-              onAfterSave={() => gotoSubView('list')}
-            />
-          ) : subView === 'sell' ? (
-            <SellPlanExperienceLazy
-              links={links}
-              embedded
-              onAfterSave={() => gotoSubView('list')}
-            />
-          ) : subView === 'vix' ? (
-            <VixDashboardLazy embedded />
-          ) : (
-            <DcaCalculatorExperienceLazy embedded />
-          )}
+          <DcaExperienceLazy
+            links={links}
+            inPagesDir={inPagesDir}
+            embedded
+            onAfterSave={() => gotoSubView('dca')}
+          />
         </Suspense>
+      </div>
+    );
+  }
+
+  if (subView === 'sellNew') {
+    return (
+      <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
+        <Suspense fallback={<SubViewLoadingFallback />}>
+          <SellPlanExperienceLazy
+            links={links}
+            embedded
+            onAfterSave={() => gotoSubView('sell')}
+          />
+        </Suspense>
+      </div>
+    );
+  }
+
+  if (subView === 'vix' || subView === 'calc') {
+    return (
+      <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
+        {renderPageHeader()}
+        <div role="tabpanel" id={`trade-plan-panel-${subView}`} aria-labelledby={`trade-plan-tab-${subView}`} className="trade-plan-tab-panel">
+          <Suspense fallback={<SubViewLoadingFallback />}>
+            {subView === 'vix' ? <VixDashboardLazy embedded /> : <DcaCalculatorExperienceLazy embedded />}
+          </Suspense>
         </div>
       </div>
     );
   }
 
-  // 默认：列表视图.
   return (
     <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
-
-      {renderSubTabBar()}
+      {renderPageHeader()}
 
       {channelConfigured ? null : (
         <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700">
           <Bell className="h-4 w-4 text-amber-600" />
-          <span>通知通道尚未配置，测试 / 触发通知不会推送。</span>
+          <span>通知未配置 · 测试 / 触发通知不会推送。</span>
           <a
             className="ml-auto inline-flex items-center gap-1 font-semibold text-amber-700 underline-offset-4 hover:underline"
             href={links.notify}
           >
-            去配置
+            去设置
             <ArrowRight className="h-4 w-4" />
           </a>
         </div>
       )}
 
-      <div role="tabpanel" id="trade-plan-panel-list" aria-labelledby="trade-plan-tab-list">
+      <div role="tabpanel" id={`trade-plan-panel-${subView}`} aria-labelledby={`trade-plan-tab-${subView}`} className="trade-plan-tab-panel">
         {renderPlansList()}
       </div>
     </div>

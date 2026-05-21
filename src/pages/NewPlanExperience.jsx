@@ -814,7 +814,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                 <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
                   <div className="border-b border-slate-100 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-900">档位确认明细</div>
                   <div className="overflow-x-auto">
-                    <table className="min-w-full text-left text-sm">
+                    <table className="min-w-[560px] text-left text-sm whitespace-nowrap">
                       <thead className="bg-white text-[11px] uppercase tracking-[0.16em] text-slate-400">
                         <tr>
                           <th className="px-4 py-3 font-bold">档位</th>
@@ -842,7 +842,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
             </Card>
           </div>
 
-          <div className="min-w-0 space-y-6 lg:sticky lg:top-4">
+          <div className={cx("min-w-0 space-y-6 lg:sticky lg:top-4 lg:block", planStep !== 4 && "hidden")}>
             <Card className="min-w-0 overflow-hidden border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white">
               <SectionHeading eyebrow="结果预览" title="策略成本预览" />
               <div className="mt-6 rounded-[24px] border border-white/80 bg-white/90 p-5 shadow-sm">

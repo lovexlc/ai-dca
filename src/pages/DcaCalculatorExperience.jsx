@@ -100,8 +100,8 @@ export function DcaCalculatorExperience({ embedded = false }) {
         avgCost: summary.avgCost,
         appliedAt: new Date().toISOString()
       }));
-    } catch (_e) { /* ignore quota */ }
-    window.location.hash = '#dca';
+    } catch { /* ignore quota */ }
+    window.location.hash = '#dca-new';
   }
 
   // PR 2.5b part 2：把回测均价反向预填到减仓计划页（SellPlanExperience）。
@@ -113,7 +113,7 @@ export function DcaCalculatorExperience({ embedded = false }) {
         avgCost: summary.avgCost,
         appliedAt: new Date().toISOString()
       }));
-    } catch (_e) { /* ignore quota */ }
+    } catch { /* ignore quota */ }
     window.location.hash = '#sell';
   }
 
@@ -242,10 +242,10 @@ export function DcaCalculatorExperience({ embedded = false }) {
                     type="button"
                     onClick={handleApplyStrategy}
                     className={cx(primaryButtonClass, 'inline-flex items-center gap-1.5')}
-                    title="点击以此回测参数在 「定投」 页预填一份新定投计划"
+                    title="点击以此回测参数创建一份新的定投计划"
                   >
                     <Send className="h-4 w-4" />
-                    应用此策略
+                    应用此策略创建定投计划
                   </button>
                   <button
                     type="button"

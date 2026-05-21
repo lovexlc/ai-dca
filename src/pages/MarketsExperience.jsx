@@ -288,9 +288,9 @@ function ThemeExploreButton({ theme }) {
     <button
       type="button"
       onClick={onClick}
-      className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50/60 px-3 py-1 text-xs font-medium text-indigo-600 transition hover:border-indigo-300 hover:bg-indigo-50"
+      className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
     >
-      <Sparkles size={12} />
+      <Search size={12} />
       借助 AI 深入探索此主题
     </button>
   );
@@ -820,10 +820,10 @@ function SummaryModule({ themes = [], loading, onRefresh }) {
                   className="flex w-full items-start justify-between gap-4 text-left"
                   aria-expanded={isOpen}
                 >
-                  <span className="min-w-0 flex-1 text-[15px] font-semibold leading-snug text-slate-900">{t.title}</span>
+                  <span className="min-w-0 flex-1 text-[16px] font-semibold leading-snug text-slate-900">{t.title}</span>
                   <span className="flex shrink-0 items-center gap-2 pt-0.5">
-                    {isOpen && sources.length > 0 && (
-                      <span className="hidden items-center gap-1.5 sm:flex">
+                    {sources.length > 0 && (
+                      <span className="flex items-center gap-1.5">
                         <span className="flex -space-x-1">
                           {sources.slice(0, 3).map((s, i) => {
                             const fav = siteFavicon(s.url);
@@ -853,7 +853,7 @@ function SummaryModule({ themes = [], loading, onRefresh }) {
                 </button>
                 {isOpen && (
                   <div className="space-y-3 pt-3">
-                    <p className="text-[14px] leading-relaxed text-slate-700">{t.detail}</p>
+                    <p className="text-[13.5px] leading-[1.7] text-slate-600">{t.detail}</p>
                     <ThemeExploreButton theme={t} />
                   </div>
                 )}

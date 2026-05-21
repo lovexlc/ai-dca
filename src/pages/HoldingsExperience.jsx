@@ -47,7 +47,6 @@ import {
   detectFundKind,
   getExpectedLatestNavDate,
   getLedgerCodeList,
-  getActiveHoldingCodeList,
   getSwitchChainCodeList,
   getTodayShanghaiDate,
   getTransactionErrors,
@@ -500,45 +499,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       sortingFn: numericSortFn,
     },
     {
-      id: 'ledgerEffectiveCost',
-      accessorFn: (row) => (row.ledgerEffectiveCost == null ? null : row.ledgerEffectiveCost),
-      meta: { label: '实际成本' },
-      header: ({ column }) => <DataTableColumnHeader column={column} label="实际成本" />,
-      cell: ({ row }) => {
-        const v = row.original.ledgerEffectiveCost;
-        if (v == null) return <span className="text-muted-foreground">—</span>;
-        const cls = v < 0 ? 'text-emerald-600 font-semibold' : '';
-        return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v, 2)}</span>;
-      },
-      sortingFn: numericSortFn,
-    },
-    {
-      id: 'ledgerRealizedPnl',
-      accessorFn: (row) => (row.ledgerRealizedPnl == null ? null : row.ledgerRealizedPnl),
-      meta: { label: '已实现盈亏' },
-      header: ({ column }) => <DataTableColumnHeader column={column} label="已实现盈亏" />,
-      cell: ({ row }) => {
-        const v = row.original.ledgerRealizedPnl;
-        if (v == null) return <span className="text-muted-foreground">—</span>;
-        const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
-        return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v, 2)}</span>;
-      },
-      sortingFn: numericSortFn,
-    },
-    {
-      id: 'ledgerUnrealizedPnl',
-      accessorFn: (row) => (row.ledgerUnrealizedPnl == null ? null : row.ledgerUnrealizedPnl),
-      meta: { label: '台账浮盈' },
-      header: ({ column }) => <DataTableColumnHeader column={column} label="台账浮盈" />,
-      cell: ({ row }) => {
-        const v = row.original.ledgerUnrealizedPnl;
-        if (v == null) return <span className="text-muted-foreground">—</span>;
-        const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
-        return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v, 2)}</span>;
-      },
-      sortingFn: numericSortFn,
-    },
-    {
       id: 'weightPct',
       accessorFn: (row) => (row.weightPct == null ? null : row.weightPct),
       meta: { label: '仓位占比' },
@@ -875,11 +835,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     // 进入页面时无条件触发一次净值刷新（包含所有持仓代码）。
     // autoNavTriggeredRef 保证整个 mount 周期内只跑一次；手动刷新走 handleManualRefresh，独立于此。
     if (autoNavTriggeredRef.current) return;
-    // 当前仍有持仓的 code（totalShares > 0），再并入切换链路里出现过的代码，
-    // 后者用于「未切换基准」对照价的及时刷新，避免 baseline 价冻结在切换那天的口子。
-    const activeCodes = getActiveHoldingCodeList(transactions);
+    // 拉取所有交易代码（含已卖出/清仓代码），确保卖出净值和清仓收益也能拿到最新确认 NAV。
+    const ledgerCodes = getLedgerCodeList(transactions);
     const chainCodes = getSwitchChainCodeList(transactions);
-    const codes = [...new Set([...activeCodes, ...chainCodes])].sort();
+    const codes = [...new Set([...ledgerCodes, ...chainCodes])].sort();
     if (!codes.length) return;
     autoNavTriggeredRef.current = true;
     for (const code of codes) navAttemptedCodesRef.current.add(code);
@@ -954,11 +913,11 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   function handleManualRefresh() {
-    // 手动刷新：当前持仓 + 切换链路里出现过的代码，保证「未切换基准」 baseline 价也能同步刷新。
-    const activeCodes = getActiveHoldingCodeList(transactions);
+    // 手动刷新：所有交易代码 + 切换链路里出现过的代码，保证已卖出/清仓记录也能同步确认 NAV。
+    const ledgerCodes = getLedgerCodeList(transactions);
     const chainCodes = getSwitchChainCodeList(transactions);
-    const codes = [...new Set([...activeCodes, ...chainCodes])].sort();
-    // 摊薄成本法改造后，前端数据全部本地存储，服务端不会自动推送新口径。
+    const codes = [...new Set([...ledgerCodes, ...chainCodes])].sort();
+    // 批次成本法改造后，前端数据全部本地存储，服务端不会自动推送新口径。
     // 这里先在本地静默重算一遍派生字段（avgCost / totalCost / 未实现收益等），
     // 让用户即便没拉到新净值也能立刻看到新口径下的均价。再异步刷新最新净值。
     setLedger((prev) => {
@@ -1013,15 +972,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     });
   }
 
-  // 点击「基金汇总」（侧边栏切到 summary）、或切到主 tab 「已卖出」时，
-  // 扫描一轮交易记录把净值留空的项用最新快照填上。
+  // 净值快照更新后，立即扫描交易记录，把价格为空 / 0 且日期匹配的场外/QDII 买卖单回填确认 NAV。
+  // 这样已卖出/清仓记录不需要用户再打开某个弹窗，也能在刷新净值后自动修正收益。
   useEffect(() => {
-    if (sidePanelOpen && sidePanelTab === 'summary' && selectedCode) {
-      autoFillTransactionPricesFromSnapshots();
-    }
+    autoFillTransactionPricesFromSnapshots();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sidePanelOpen, sidePanelTab, selectedCode, snapshotsByCode]);
-  // 4.2: 原「切到 sold tab 时自动回填净值」的 effect 随 tab 一起删除
+  }, [snapshotsByCode]);
 
   // 从「该基金汇总」弹窗点击 买入 / 卖出：预填代码/名称/标签，默认「三点前」=true。
   // 日期默认今天（T 日）；NAV 未公布，价格留空、事后回填。
@@ -1178,8 +1134,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       ...prepared,
       id: draftMode === 'edit' && draft.id ? draft.id : undefined
     });
-    // 带 costPrice 的 SELL 是“已卖出快速登记”，不占用持仓，跳过份额校验。
-    if (normalized.type === 'SELL' && !(normalized.costPrice > 0)) {
+    // SELL 如果本地已有持仓，就必须校验可卖份额；costPrice 只作为清仓成本覆盖，不再让基金汇总跳过扣减。
+    if (normalized.type === 'SELL') {
       const targetAgg = aggregateByCodeMap.get(normalized.code);
       let available = targetAgg ? targetAgg.totalShares : 0;
       if (draftMode === 'edit' && draft.id) {
@@ -1189,7 +1145,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           else if (existing.type === 'BUY') available -= existing.shares;
         }
       }
-      if (normalized.shares > available + 1e-6) {
+      const allowStandaloneCostPrice = normalized.costPrice > 0 && available <= 1e-6;
+      if (!allowStandaloneCostPrice && normalized.shares > available + 1e-6) {
         showActionToast('保存失败', 'error', {
           description: `SELL 份额 ${formatShares(normalized.shares)} 超过当前持仓 ${formatShares(Math.max(available, 0))}。`
         });
@@ -1289,7 +1246,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       return;
     }
     const normalized = normalizeTransaction({ ...prepared, id: editingBuffer.id });
-    if (normalized.type === 'SELL' && !(normalized.costPrice > 0)) {
+    if (normalized.type === 'SELL') {
       const targetAgg = aggregateByCodeMap.get(normalized.code);
       let available = targetAgg ? targetAgg.totalShares : 0;
       const existing = transactions.find((tx) => tx.id === editingBuffer.id);
@@ -1297,7 +1254,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         if (existing.type === 'SELL') available += existing.shares;
         else if (existing.type === 'BUY') available -= existing.shares;
       }
-      if (normalized.shares > available + 1e-6) {
+      const allowStandaloneCostPrice = normalized.costPrice > 0 && available <= 1e-6;
+      if (!allowStandaloneCostPrice && normalized.shares > available + 1e-6) {
         showActionToast('保存失败', 'error', {
           description: `SELL 份额 ${formatShares(normalized.shares)} 超过当前持仓 ${formatShares(Math.max(available, 0))}。`
         });
@@ -2729,6 +2687,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             setSidePanelTab('create');
             setSidePanelOpen(true);
           },
+          onPasteExcel: openPasteModal,
+          onOcr: openOcrModal,
           onCopyTable: handleCopyVisibleTable,
           copyTitle: mainViewTab === 'aggregate' ? '复制基金汇总为 TSV' : '复制成交流水为 TSV',
         }}

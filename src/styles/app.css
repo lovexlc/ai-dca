@@ -244,3 +244,26 @@ header.rounded-2xl {
   padding-top: 0.75rem !important;
   padding-bottom: 0.75rem !important;
 }
+
+
+/* Trade plan tab content transition */
+.trade-plan-tab-panel {
+  animation: tradePlanTabEnter 200ms ease-out both;
+}
+
+@keyframes tradePlanTabEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trade-plan-tab-panel {
+    animation: none;
+  }
+}

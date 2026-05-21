@@ -1,0 +1,35 @@
+name = "ai-dca-sync"
+main = "src/index.js"
+compatibility_date = "2026-03-30"
+compatibility_flags = ["nodejs_compat"]
+
+[[routes]]
+pattern = "tools.freebacktrack.tech/api/sync/*"
+zone_name = "freebacktrack.tech"
+
+# TODO: create Cloudflare D1 database and KV namespace, then fill real IDs.
+# Suggested names:
+#   D1: ai-dca-sync-db
+#   KV: ai-dca-sync-backups
+[[d1_databases]]
+binding = "DB"
+database_name = "ai-dca-sync-db"
+database_id = "b0e5feab-dbcf-4ba7-9f3f-2e5169e8d868"
+
+[[kv_namespaces]]
+binding = "SYNC_BACKUPS"
+id = "34af9b7435a84b5290e179875d272f27"
+preview_id = "577dcaf049df4be48ee874617d405ff7"
+
+[placement]
+mode = "smart"
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true

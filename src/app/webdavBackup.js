@@ -12,7 +12,14 @@ export const WEBDAV_CONFIG_KEY = 'aiDcaWebDavConfig';
 export const WEBDAV_META_KEY = 'aiDcaWebDavLastSync';
 
 const LS_PREFIX = 'aiDca';
-const TRANSIENT_KEYS = new Set(['aiDcaPendingToasts', WEBDAV_CONFIG_KEY, WEBDAV_META_KEY]);
+const TRANSIENT_KEYS = new Set([
+  'aiDcaPendingToasts',
+  'aiDcaCloudSyncSession',
+  'aiDcaCloudSyncMeta',
+  'aiDcaSecureSyncRememberedKey',
+  WEBDAV_CONFIG_KEY,
+  WEBDAV_META_KEY
+]);
 const BACKUP_FILENAME = 'ai-dca-backup.json';
 const BACKUP_VERSION = 1;
 
