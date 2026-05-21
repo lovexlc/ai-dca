@@ -15,6 +15,16 @@ const HOME_OPTIONS = [
   { value: 'backup', label: '数据同步' }
 ];
 
+const GUIDE_INDEX_ITEMS = [
+  { label: '手机通知', target: 'guide-notify' },
+  { label: '三账户体系', target: 'guide-accounts' },
+  { label: '宽基 ETF', target: 'guide-index-etf' },
+  { label: '个股策略', target: 'guide-stock' },
+  { label: '做 T / 负成本', target: 'guide-t' },
+  { label: '操作纪律', target: 'guide-discipline' },
+  { label: '全站 README', target: 'guide-readme' }
+];
+
 const ACCOUNT_CARDS = [
   {
     title: '进取型',
@@ -230,6 +240,15 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
     }
   }
 
+  function scrollToGuideSection(targetId) {
+    if (typeof window === 'undefined') return;
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    const offset = window.matchMedia('(max-width: 639px)').matches ? 96 : 24;
+    const top = Math.max(0, window.scrollY + target.getBoundingClientRect().top - offset);
+    window.scrollTo({ top, behavior: 'smooth' });
+  }
+
   function refreshDemoMeta() {
     const next = readDemoDataMeta();
     setDemoMeta(next);
@@ -359,11 +378,20 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
             <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
               <h3 className="text-sm font-bold text-indigo-900">指南索引</h3>
               <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-indigo-700">
-                {['手机通知', '三账户体系', '宽基 ETF', '个股策略', '做 T / 负成本', '操作纪律', '全站 README'].map((item) => <span key={item} className="rounded-full bg-white px-3 py-1">{item}</span>)}
+                {GUIDE_INDEX_ITEMS.map((item) => (
+                  <button
+                    key={item.target}
+                    type="button"
+                    className="rounded-full bg-white px-3 py-1 text-left transition-colors hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
+                    onClick={() => scrollToGuideSection(item.target)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
               </div>
             </div>
 
-        <section className="space-y-5">
+        <section id="guide-notify" className="scroll-mt-24 space-y-5">
           <SectionHeading eyebrow="刚需功能" title="先把手机通知配好" description="策略触发时能不能提醒到手机，是这个工具从“看板”变成“执行助手”的关键。复制完整链接也可以，系统会自动解析。" />
           <div className="grid gap-6 lg:grid-cols-3">
             <Card>
@@ -390,7 +418,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
           </div>
         </section>
 
-        <section className="space-y-5">
+        <section id="guide-accounts" className="scroll-mt-24 space-y-5">
           <SectionHeading eyebrow="资产配置" title="三账户体系" />
           <div className="grid gap-6 md:grid-cols-3">
             {ACCOUNT_CARDS.map((account) => <AccountCard key={account.title} account={account} />)}
@@ -398,7 +426,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
           <GuideButton onClick={() => navigate('holdings')}>前往持仓总览 →</GuideButton>
         </section>
 
-        <section className="space-y-5">
+        <section id="guide-index-etf" className="scroll-mt-24 space-y-5">
           <SectionHeading eyebrow="只买不卖" title="宽基指数 ETF 策略" />
           <Card className="relative space-y-5 pr-14">
             <InfoPopover title="宽基指数 ETF 策略" sections={INDEX_DETAILS} />
@@ -410,7 +438,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
           </Card>
         </section>
 
-        <section className="space-y-5">
+        <section id="guide-stock" className="scroll-mt-24 space-y-5">
           <SectionHeading eyebrow="第一兼唯一" title="个股投资策略" />
           <Card className="relative space-y-5 pr-14">
             <InfoPopover title="个股投资策略" sections={STOCK_DETAILS} />
@@ -423,14 +451,14 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
         </section>
 
         <section className="grid gap-6 lg:grid-cols-2">
-          <div className="space-y-5">
+          <div id="guide-t" className="scroll-mt-24 space-y-5">
             <SectionHeading eyebrow="终极目标" title="做 T 与负成本持股" />
             <Card className="relative pr-14">
               <InfoPopover title="做 T 与负成本" sections={T_DETAILS} />
               <ul className="space-y-3 text-sm leading-6 text-slate-600"><li>做 T 目的：腾出资金和仓位 &gt; 降低成本。</li><li>负成本路径：做 T + 逢高减仓（倒金字塔卖出法）→ 最终负成本长期持有。</li><li>安全边际：仓位 + 资金 + 成本，三者缺一不可。</li></ul>
             </Card>
           </div>
-          <div className="space-y-5">
+          <div id="guide-discipline" className="scroll-mt-24 space-y-5">
             <SectionHeading eyebrow="铁律" title="操作纪律" />
             <Card className="relative pr-14">
               <InfoPopover title="操作纪律" sections={DISCIPLINE_DETAILS} />
@@ -439,7 +467,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
           </div>
         </section>
 
-        <section className="space-y-5">
+        <section id="guide-readme" className="scroll-mt-24 space-y-5">
           <SectionHeading eyebrow="全站 README" title="每个功能页能做什么" />
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             <ReadmeCard title="持仓总览" description="记录真实资产底账，管理交易流水、成本、收益、市值和三账户分配。" bullets={['新增或导入交易流水', '确认成本与收益', '分配进取/稳健/防守账户']} cta="前往持仓总览" onClick={() => navigate('holdings')} />

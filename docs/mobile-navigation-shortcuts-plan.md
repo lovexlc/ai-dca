@@ -24,3 +24,8 @@
 - [done] 回到顶部按钮改为上下文感知：当前视口位于 `data-scroll-card` 内时，优先滚回该 card 顶部；已经在 card 顶部时才滚回页面顶部。
 - [done] `Card` 组件默认输出 `data-scroll-card="true"`，并透传 `id` / `data-*` 等属性，所有 card 统一遵循该交互策略。
 - [done] 「指南索引与折叠详情」展开内容增加移动端 sticky 小顶栏，滚动浏览时提示仍在该 card 内。
+
+
+## Follow-up: clickable guide index
+- [done] 「指南索引」改为可点击目录按钮，点击后在当前展开 card 内平滑跳转到对应内容段落。
+- [done] 为手机通知、三账户体系、宽基 ETF、个股策略、做 T / 负成本、操作纪律、全站 README 增加锚点。
