@@ -26,7 +26,46 @@ const TONE_NEUTRAL = 'text-slate-500';
 
 const ACCOUNT_PILL_TONE = { aggressive: 'red', stable: 'indigo', defensive: 'emerald' };
 
-// 三账户 mini 卡片：紧凑版（PC hero 中部 + 移动端总市值下方共用）
+// 账户分配堆叠条形图
+function AccountAllocationBar({ accountAllocation }) {
+	if (!Array.isArray(accountAllocation) || !accountAllocation.length) return null;
+	
+	const segments = [
+		{ key: 'aggressive', bgColor: 'bg-red-500', label: '进取型' },
+		{ key: 'stable', bgColor: 'bg-indigo-500', label: '稳健型' },
+		{ key: 'defensive', bgColor: 'bg-emerald-500', label: '防守型' },
+	];
+	
+	return (
+		<div className="flex items-center gap-3 min-w-0">
+			<div className="flex-1 min-w-0 flex h-2 rounded-full bg-slate-100 overflow-hidden">
+				{accountAllocation.map((item) => (
+					item.ratio > 0 ? (
+						<div
+							key={item.key}
+							className={segments.find(s => s.key === item.key)?.bgColor}
+							style={{ width: `${item.ratio * 100}%` }}
+							title={`${item.label} ${item.ratio * 100}%`}
+						/>
+					) : null
+				))}
+			</div>
+			<div className="flex shrink-0 gap-1.5 text-[11px]">
+				{accountAllocation.map((item) => (
+					item.ratio > 0 ? (
+						<div key={item.key} className="flex items-center gap-1">
+							<div className={cx(
+								segments.find(s => s.key === item.key)?.bgColor,
+								'w-2 h-2 rounded-full'
+							)} />
+							<span className="text-slate-600">{formatPercent(item.ratio, 0)}</span>
+						</div>
+					) : null
+				))}
+			</div>
+		</div>
+	);
+}
 function AccountCardsGrid({ accountAllocation, className = '' }) {
 	if (!Array.isArray(accountAllocation) || !accountAllocation.length) return null;
 	return (
@@ -140,16 +179,16 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 					</div>
 					{refreshBtn ? <div className="shrink-0">{refreshBtn}</div> : null}
 				</div>
-				<AccountCardsGrid accountAllocation={accountAllocation} />
+				<AccountAllocationBar accountAllocation={accountAllocation} />
 				<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)] gap-1">
-					<KpiCol label="今日收益(元)" value={todayProfit} rate={todayReturnRate} align="left" centerRate />
-					<KpiCol label="持有收益(元)" value={unrealizedProfit} rate={unrealizedReturnRate} centerRate />
-					<KpiCol label="累计收益(元)" value={cumulativeProfit} rate={cumulativeReturnRate} align="right" centerRate />
+				<KpiCol label="今日收益(元)" value={todayProfit} rate={todayReturnRate} align="center" centerRate />
+				<KpiCol label="持有收益(元)" value={unrealizedProfit} rate={unrealizedReturnRate} align="center" centerRate />
+				<KpiCol label="累计收益(元)" value={cumulativeProfit} rate={cumulativeReturnRate} align="center" centerRate />
 				</div>
 			</section>
 
-			{/* PC 端：v7.3 横向 stat-bar（左金额+起算日 · 中 账户分配三卡片 · 右 3 KPI · 最右刷新） */}
-			<section className="hidden sm:flex sm:items-end sm:gap-8 sm:px-1 sm:pb-4 sm:border-b sm:border-slate-100">
+			{/* PC 端：v7.3 横向 stat-bar（左金额+起算日 · 中 账户分配堆叠条 · 右 3 KPI · 最右刷新） */}
+			<section className="hidden sm:flex sm:items-end sm:gap-6 sm:px-1 sm:pb-4 sm:border-b sm:border-slate-100">
 				<div className="min-w-0 shrink-0">
 					<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</div>
 					<div className="mt-1 whitespace-nowrap text-4xl font-extrabold tracking-tight tabular-nums text-slate-900">
@@ -159,15 +198,15 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 				</div>
 				{Array.isArray(accountAllocation) && accountAllocation.length ? (
 					<div className="flex-1 min-w-0">
-						<AccountCardsGrid accountAllocation={accountAllocation} className="mx-auto max-w-xl" />
+						<AccountAllocationBar accountAllocation={accountAllocation} />
 					</div>
 				) : (
 					<div className="flex-1" aria-hidden="true" />
 				)}
-				<div className="flex gap-8 shrink-0">
-					<KpiCol label="今日" value={todayProfit} rate={todayReturnRate} align="right" />
-					<KpiCol label="持有" value={unrealizedProfit} rate={unrealizedReturnRate} align="right" />
-					<KpiCol label="累计" value={cumulativeProfit} rate={cumulativeReturnRate} align="right" />
+				<div className="flex gap-6 shrink-0">
+				<KpiCol label="今日" value={todayProfit} rate={todayReturnRate} align="center" />
+				<KpiCol label="持有" value={unrealizedProfit} rate={unrealizedReturnRate} align="center" />
+				<KpiCol label="累计" value={cumulativeProfit} rate={cumulativeReturnRate} align="center" />
 				</div>
 				{refreshBtn ? <div className="shrink-0">{refreshBtn}</div> : null}
 			</section>
