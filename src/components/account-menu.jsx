@@ -1,12 +1,23 @@
 import { useEffect, useState } from 'react';
-import { KeyRound, Loader2, LogOut, UserRound } from 'lucide-react';
+import { Home, KeyRound, Loader2, LogOut, UserRound } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
 import { loadCloudSyncMeta, refreshRemoteCloudMeta, restoreEncryptedCloudBackup, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
 import { clearRememberedKey, generateSecurityPassword } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
 import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
+import { persistWorkspacePrefs, readWorkspacePrefs } from '../app/workspacePrefs.js';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.jsx';
-import { cx, inputClass, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from './experience-ui.jsx';
+import { cx, inputClass, primaryButtonClass, secondaryButtonClass, SelectField, subtleButtonClass } from './experience-ui.jsx';
+
+const HOME_OPTIONS = [
+  { value: 'strategy', label: '策略指南' },
+  { value: 'holdings', label: '持仓总览' },
+  { value: 'tradePlans', label: '交易计划' },
+  { value: 'notify', label: '通知设置' },
+  { value: 'markets', label: '行情中心' },
+  { value: 'fundSwitch', label: '基金切换' },
+  { value: 'backup', label: '数据同步' }
+];
 
 export function AccountMenu() {
   const [session, setSession] = useState(() => loadCloudSession());
@@ -16,6 +27,8 @@ export function AccountMenu() {
   const [lastError, setLastError] = useState('');
   const [form, setForm] = useState({ username: '', password: '', securityPassword: '', rememberDevice: true });
   const [busy, setBusy] = useState('');
+  const [homePref, setHomePref] = useState(() => readWorkspacePrefs().homepageTab);
+  const [homeSaved, setHomeSaved] = useState(false);
 
   useEffect(() => {
     function refreshLocalState(event) {
@@ -114,6 +127,15 @@ export function AccountMenu() {
     showToast({ title: '已退出账户', tone: 'slate' });
   }
 
+  function handleSaveHomePref() {
+    const next = persistWorkspacePrefs({ homepageTab: homePref });
+    setHomePref(next.homepageTab);
+    setHomeSaved(true);
+    const label = HOME_OPTIONS.find((item) => item.value === next.homepageTab)?.label || '策略指南';
+    showToast({ title: '默认首页已保存', description: `下次打开会默认跳到「${label}」。`, tone: 'emerald' });
+    window.setTimeout(() => setHomeSaved(false), 1800);
+  }
+
   const authDisabledReason = busy
     ? '处理中'
     : !form.username
@@ -183,6 +205,13 @@ export function AccountMenu() {
               </div>
             </div>
             <div className="text-xs text-slate-500">范围 {preview.keys.length} 项 · {formatBytes(previewBytes)}</div>
+            <div className="space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                <Home className="h-3.5 w-3.5 text-indigo-500" aria-hidden="true" />默认首页
+              </div>
+              <SelectField options={HOME_OPTIONS} value={homePref} onChange={(event) => { setHomePref(event.target.value); setHomeSaved(false); }} />
+              <button type="button" className={cx(secondaryButtonClass, "w-full justify-center text-xs")} onClick={handleSaveHomePref}>{homeSaved ? '已保存' : '保存默认首页'}</button>
+            </div>
             {lastError ? <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600">{lastError}</div> : null}
             <button type="button" className={cx(subtleButtonClass, 'w-full justify-center')} onClick={handleLogout}>
               <LogOut className="h-4 w-4" />

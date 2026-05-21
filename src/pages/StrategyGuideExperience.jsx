@@ -2,21 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Bell, BookOpen, CloudUpload, ListChecks, Wallet, Trash2, X,
   Sparkles, Calendar, ChevronRight, Clock, Layers, ShieldCheck, Target,
-  Activity, FileText, Settings, TrendingUp, Repeat
+  Activity, FileText, TrendingUp, Repeat
 } from 'lucide-react';
 import { clearDemoData, hasPotentialUserData, installDemoData, readDemoDataMeta } from '../app/demoData.js';
-import { persistWorkspacePrefs, readWorkspacePrefs } from '../app/workspacePrefs.js';
-import { Card, Pill, SectionHeading, SelectField, cx, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
-
-const HOME_OPTIONS = [
-  { value: 'strategy', label: '策略指南' },
-  { value: 'holdings', label: '持仓总览' },
-  { value: 'tradePlans', label: '交易计划' },
-  { value: 'notify', label: '通知设置' },
-  { value: 'markets', label: '行情中心' },
-  { value: 'fundSwitch', label: '基金切换' },
-  { value: 'backup', label: '数据同步' }
-];
+import { Card, Pill, SectionHeading, cx, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
 
 const ACCOUNT_CARDS = [
   {
@@ -561,7 +550,6 @@ const CHAPTER_EYEBROW = {
 
 export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange }) {
   const [demoMeta, setDemoMeta] = useState(() => readDemoDataMeta());
-  const [prefs, setPrefs] = useState(() => readWorkspacePrefs());
   const [message, setMessage] = useState('');
   const [showAi, setShowAi] = useState(false);
   const [recent, setRecent] = useState(() => readRecent());
@@ -635,12 +623,6 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
     clearDemoData();
     setMessage('演示数据已清除。你可以重新生成 Demo，或开始录入真实数据。');
     refreshDemoMeta();
-  }
-
-  function handleSaveHome() {
-    const next = persistWorkspacePrefs({ homepageTab: prefs.homepageTab });
-    setPrefs(next);
-    setMessage(`已将「${HOME_OPTIONS.find((item) => item.value === next.homepageTab)?.label || '策略指南'}」设为默认首页。`);
   }
 
   const dashboardStatus = useMemo(() => {
@@ -717,22 +699,6 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
           </div>
         </section>
 
-        <details className="group rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-6">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left">
-            <span>
-              <SectionLabel icon={Settings}>工作台设置</SectionLabel>
-              <span className="mt-1 block text-base font-semibold text-slate-900">默认首页</span>
-            </span>
-            <ChevronRight className="h-5 w-5 text-slate-400 transition-transform group-open:rotate-90" aria-hidden="true" />
-          </summary>
-          <div className="mt-5 space-y-5">
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px_auto] lg:items-end">
-              <SectionHeading eyebrow="偏好设置" title="默认打开哪个页面？" description="带 ?tab= 的链接仍会优先打开指定页面。" />
-              <SelectField options={HOME_OPTIONS} value={prefs.homepageTab} onChange={(event) => setPrefs((current) => ({ ...current, homepageTab: event.target.value }))} />
-              <GuideButton onClick={handleSaveHome}>保存默认主页</GuideButton>
-            </div>
-          </div>
-        </details>
       </main>
 
       <FloatingAi onClick={() => setShowAi(true)} />
