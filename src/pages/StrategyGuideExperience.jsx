@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authClient.js';
 import {
   Bell, BookOpen, CloudUpload, ListChecks, Wallet, Trash2, X,
   Sparkles, Calendar, ChevronRight, Clock, Layers, ShieldCheck, Target,
@@ -156,9 +157,16 @@ function SectionLabel({ icon: Icon, children, action }) {
 
 function WelcomeHero() {
   const greeting = getGreeting();
+  const [session, setSession] = useState(() => loadCloudSession());
+  useEffect(() => {
+    function onSession(event) { setSession(event?.detail?.session || loadCloudSession()); }
+    window.addEventListener(CLOUD_SYNC_SESSION_EVENT, onSession);
+    return () => window.removeEventListener(CLOUD_SYNC_SESSION_EVENT, onSession);
+  }, []);
+  const displayName = session?.accessToken && session?.username ? session.username : 'dudu';
   return (
     <div className="relative px-5 pt-10 pb-8 sm:px-6 sm:pt-14 sm:pb-10">
-      <h1 className="text-center text-3xl font-bold tracking-tight text-slate-900 sm:text-[36px]">{greeting}，dudu</h1>
+      <h1 className="text-center text-3xl font-bold tracking-tight text-slate-900 sm:text-[36px]">{greeting}，{displayName}</h1>
     </div>
   );
 }

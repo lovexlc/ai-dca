@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Home, KeyRound, Loader2, LogOut, UserRound, X } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
@@ -31,6 +31,7 @@ export function AccountMenu() {
   const [homeSaved, setHomeSaved] = useState(false);
   const [open, setOpen] = useState(false);
   const [authMode, setAuthMode] = useState('login');
+  const dropdownRef = useRef(null);
 
   useEffect(() => {
     function refreshLocalState(event) {
@@ -75,15 +76,22 @@ export function AccountMenu() {
 
   useEffect(() => {
     if (!open || typeof document === 'undefined') return undefined;
+    const isDropdown = Boolean(session?.accessToken);
     const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    if (!isDropdown) document.body.style.overflow = 'hidden';
     function onKey(event) { if (event.key === 'Escape') setOpen(false); }
+    function onClickOutside(event) {
+      if (!isDropdown) return;
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setOpen(false);
+    }
     window.addEventListener('keydown', onKey);
+    if (isDropdown) document.addEventListener('mousedown', onClickOutside);
     return () => {
-      document.body.style.overflow = prev;
+      if (!isDropdown) document.body.style.overflow = prev;
       window.removeEventListener('keydown', onKey);
+      if (isDropdown) document.removeEventListener('mousedown', onClickOutside);
     };
-  }, [open]);
+  }, [open, session?.accessToken]);
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -174,12 +182,12 @@ export function AccountMenu() {
     : '等待同步';
 
   return (
-    <>
+    <div className="relative ml-auto" ref={dropdownRef}>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => setOpen((value) => !value)}
         className={cx(
-          'ml-auto inline-flex h-8 items-center gap-2 rounded-full border px-2.5 text-xs font-bold shadow-sm transition-colors',
+          'inline-flex h-8 items-center gap-2 rounded-full border px-2.5 text-xs font-bold shadow-sm transition-colors',
           loggedIn
             ? 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
             : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-700'
@@ -195,33 +203,13 @@ export function AccountMenu() {
         <span className="hidden max-w-[7rem] truncate sm:inline">{loggedIn ? session.username : '登录'}</span>
       </button>
 
-      {open && typeof document !== "undefined" ? createPortal((
+      {open && loggedIn ? (
         <div
-          className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4"
-          onClick={() => setOpen(false)}
+          role="dialog"
+          aria-modal="false"
+          className="absolute right-0 top-full z-50 mt-2 w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-xl"
+          onClick={(event) => event.stopPropagation()}
         >
-          <div
-            role="dialog"
-            aria-modal="true"
-            className="relative flex max-h-[95vh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:max-h-[90vh] sm:rounded-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
-              <div className="min-w-0">
-                <div className="text-sm font-bold text-slate-900">{loggedIn ? '账户中心' : (authMode === 'register' ? '注册账户' : '账户登录')}</div>
-                <div className="mt-0.5 truncate text-xs text-slate-500">{loggedIn ? session.username : '登录后自动恢复并备份'}</div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                aria-label="关闭"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="overflow-y-auto px-5 py-4 text-slate-900">
-              {loggedIn ? (
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
                     <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white">{initial}</span>
@@ -258,7 +246,35 @@ export function AccountMenu() {
                     退出登录
                   </button>
                 </div>
-              ) : (
+        </div>
+      ) : null}
+
+      {open && !loggedIn && typeof document !== "undefined" ? createPortal((
+        <div
+          className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4"
+          onClick={() => setOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="relative flex max-h-[95vh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:max-h-[90vh] sm:rounded-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
+              <div className="min-w-0">
+                <div className="text-sm font-bold text-slate-900">{authMode === 'register' ? '注册账户' : '账户登录'}</div>
+                <div className="mt-0.5 truncate text-xs text-slate-500">登录后自动恢复并备份</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="关闭"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto px-5 py-4 text-slate-900">
                 <div className="space-y-3">
                   <div className="flex gap-1 rounded-xl bg-slate-100 p-1 text-xs font-semibold">
                     <button
@@ -313,11 +329,10 @@ export function AccountMenu() {
                   </button>
                   {authDisabledReason ? <div className="text-xs text-slate-400">{authDisabledReason}</div> : null}
                 </div>
-              )}
             </div>
           </div>
         </div>
       ), document.body) : null}
-    </>
+    </div>
   );
 }
