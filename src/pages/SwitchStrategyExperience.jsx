@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ClipboardList, Info, RefreshCw, Radio, PlayCircle, ChevronDown, Settings2, Sparkles } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { AlertTriangle, ClipboardList, Info, RefreshCw, Radio, PlayCircle, ChevronDown, Settings2, Sparkles, X, ChevronRight } from 'lucide-react';
 import { Card, Pill, SectionHeading, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 import { readLedgerState, persistLedgerState } from '../app/holdingsLedger.js';
 import { aggregateByCode, buildTransactionId, detectFundKind, normalizeTransaction } from '../app/holdingsLedgerCore.js';
@@ -315,6 +316,9 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   // 「记录此次切换」快捷入口的 Modal 表单状态。
   // 为 null 时不渲染 Modal；设为表单对象后开启录入。
   const [quickRecord, setQuickRecord] = useState(null);
+  // worker 最近一次计算里点击「查看候选」后弹出的详情 modal。
+  // 为空时不渲染 modal；设为 { bench, sellLower, buyOther, cls } 后弹起。
+  const [snapshotCandModal, setSnapshotCandModal] = useState(null);
   const [aggregates, setAggregates] = useState([]);
   const [refreshTick, setRefreshTick] = useState(0);
 
@@ -1339,50 +1343,18 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                                 <div className="min-w-0">净值 <span className="font-semibold text-slate-800">{formatPrice(bench.benchmarkNav)}</span>{bench.benchmarkNavDate ? <span className="ml-1 whitespace-nowrap text-slate-400">@{bench.benchmarkNavDate}</span> : null}</div>
                                 <div className="min-w-0">溢价 <span className="font-semibold text-slate-800">{formatPercent(bench.benchmarkPremiumPct, 2, true)}</span></div>
                               </div>
-                            <div className="mt-3 overflow-x-auto">
-                              <table className="min-w-[520px] w-full overflow-hidden rounded-lg border border-slate-200 text-xs">
-                                <thead className="bg-slate-50 text-slate-500">
-                                  <tr>
-                                    <th className="px-3 py-2 text-left">候选</th>
-                                    <th className="px-3 py-2 text-right">现价</th>
-                                    <th className="px-3 py-2 text-right">净值</th>
-                                    <th className="px-3 py-2 text-right">溢价</th>
-                                    <th className="px-3 py-2 text-right">与基准差</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {(bench.candidates || []).map((c) => {
-                                    // v3: class-aware highlight. diff = bench.premium - cand.premium.
-                                    //   bench=L → gap = -diff; 规则 A: gap < sellLower
-                                    //   bench=H → gap = diff;  规则 B: gap > buyOther
-                                    const diff = Number(c.spreadVsBenchmarkPct);
-                                    const benchClass = cls[bench.benchmarkCode];
-                                    const candClass = cls[c.code];
-                                    const eligible = (benchClass === 'H' || benchClass === 'L') && (candClass === 'H' || candClass === 'L') && benchClass !== candClass;
-                                    let inA = false;
-                                    let inB = false;
-                                    if (eligible && Number.isFinite(diff)) {
-                                      const gap = benchClass === 'H' ? diff : -diff;
-                                      if (benchClass === 'L' && Number.isFinite(sellLower) && gap < sellLower) inA = true;
-                                      if (benchClass === 'H' && Number.isFinite(buyOther) && gap > buyOther) inB = true;
-                                    }
-                                    const colorCls = inA ? 'text-emerald-700 font-semibold' : inB ? 'text-rose-700 font-semibold' : 'text-slate-600';
-                                    return (
-                                      <tr key={`snap-${bench.benchmarkCode}-${c.code}`} className="border-t border-slate-100">
-                                        <td className="px-3 py-2"><span className="font-semibold">{c.code}</span>{c.name ? <span className="ml-1 text-slate-400">{c.name}</span> : null}</td>
-                                        <td className="px-3 py-2 text-right">{formatPrice(c.price)}</td>
-                                        <td className="px-3 py-2 text-right">{formatPrice(c.nav)}{c.navDate ? <span className="ml-1 text-slate-400">@{c.navDate}</span> : null}</td>
-                                        <td className="px-3 py-2 text-right">{formatPercent(c.premiumPct, 2, true)}</td>
-                                        <td className={cx('px-3 py-2 text-right', colorCls)}>{formatPercent(c.spreadVsBenchmarkPct, 2, true)}</td>
-                                      </tr>
-                                    );
-                                  })}
-                                  {(!bench.candidates || bench.candidates.length === 0) ? (
-                                    <tr><td colSpan={5} className="px-3 py-4 text-center text-slate-400">快照中暂无候选数据。</td></tr>
-                                  ) : null}
-                                </tbody>
-                              </table>
-                            </div>
+                            {bench.candidates && bench.candidates.length > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => setSnapshotCandModal({ bench, sellLower, buyOther, cls })}
+                                className="mt-3 flex w-full items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 transition-colors hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
+                              >
+                                <span className="font-medium">查看 {bench.candidates.length} 个候选详情</span>
+                                <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                              </button>
+                            ) : (
+                              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-center text-xs text-slate-400">快照中暂无候选数据。</div>
+                            )}
                           </div>
                         ));
                       })()}
@@ -1867,6 +1839,79 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           </div>
         </div>
       )}
+
+      {snapshotCandModal && typeof document !== "undefined" ? createPortal((
+        <div
+          className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4"
+          onClick={() => setSnapshotCandModal(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
+              <div className="min-w-0">
+                <div className="text-xs uppercase tracking-[0.18em] text-slate-400">快照候选详情</div>
+                <div className="mt-0.5 text-sm font-semibold text-slate-900">基准 {snapshotCandModal.bench.benchmarkCode}{snapshotCandModal.bench.benchmarkName ? <span className="ml-1 font-normal text-slate-500">· {snapshotCandModal.bench.benchmarkName}</span> : null}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSnapshotCandModal(null)}
+                className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="关闭"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto px-2 py-3 sm:px-4 sm:py-4">
+              <div className="overflow-x-auto">
+                <table className="min-w-[520px] w-full overflow-hidden rounded-lg border border-slate-200 text-xs">
+                  <thead className="bg-slate-50 text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2 text-left">候选</th>
+                      <th className="px-3 py-2 text-right">现价</th>
+                      <th className="px-3 py-2 text-right">净值</th>
+                      <th className="px-3 py-2 text-right">溢价</th>
+                      <th className="px-3 py-2 text-right">与基准差</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(snapshotCandModal.bench.candidates || []).map((c) => {
+                      const diff = Number(c.spreadVsBenchmarkPct);
+                      const benchClass = snapshotCandModal.cls[snapshotCandModal.bench.benchmarkCode];
+                      const candClass = snapshotCandModal.cls[c.code];
+                      const eligible = (benchClass === 'H' || benchClass === 'L') && (candClass === 'H' || candClass === 'L') && benchClass !== candClass;
+                      let inA = false;
+                      let inB = false;
+                      if (eligible && Number.isFinite(diff)) {
+                        const gap = benchClass === 'H' ? diff : -diff;
+                        if (benchClass === 'L' && Number.isFinite(snapshotCandModal.sellLower) && gap < snapshotCandModal.sellLower) inA = true;
+                        if (benchClass === 'H' && Number.isFinite(snapshotCandModal.buyOther) && gap > snapshotCandModal.buyOther) inB = true;
+                      }
+                      const colorCls = inA ? 'text-emerald-700 font-semibold' : inB ? 'text-rose-700 font-semibold' : 'text-slate-600';
+                      return (
+                        <tr key={`modal-${snapshotCandModal.bench.benchmarkCode}-${c.code}`} className="border-t border-slate-100">
+                          <td className="px-3 py-2"><span className="font-semibold">{c.code}</span>{c.name ? <span className="ml-1 text-slate-400">{c.name}</span> : null}</td>
+                          <td className="px-3 py-2 text-right">{formatPrice(c.price)}</td>
+                          <td className="px-3 py-2 text-right">{formatPrice(c.nav)}{c.navDate ? <span className="ml-1 text-slate-400">@{c.navDate}</span> : null}</td>
+                          <td className="px-3 py-2 text-right">{formatPercent(c.premiumPct, 2, true)}</td>
+                          <td className={cx('px-3 py-2 text-right', colorCls)}>{formatPercent(c.spreadVsBenchmarkPct, 2, true)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-3 px-1 text-[11px] leading-5 text-slate-400">
+                <div><span className="font-semibold text-emerald-700">绿色</span>：命中规则 A（差价收窄，低→高）。</div>
+                <div><span className="font-semibold text-rose-700">红色</span>：命中规则 B（差价扩大，高→低）。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ), document.body) : null}
 
     </div>
   );
