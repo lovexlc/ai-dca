@@ -2056,11 +2056,14 @@ async function fetchHoldingsNavSnapshots(env, codes = [], options = {}) {
     const kind = kindByCode[code];
     let cacheValid = false;
     if (cached && Number.isFinite(Number(cached.latestNav)) && cached.latestNavDate) {
-      if (kind === 'exchange') {
-        cacheValid = true;
-      } else if (todayShanghai) {
+      if (todayShanghai) {
         const expected = getExpectedLatestNavDate(kind, todayShanghai);
         cacheValid = String(cached.latestNavDate) >= expected;
+      } else if (kind === 'exchange') {
+        // Without an execution date, keep the historical exchange-cache fallback.
+        // Scheduled holdings jobs always pass todayShanghai and therefore require
+        // same-trading-day cache freshness before skipping an upstream refresh.
+        cacheValid = true;
       }
     }
     if (cacheValid) {
