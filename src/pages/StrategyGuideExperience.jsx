@@ -690,7 +690,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
             <ToolEntry icon={Wallet} title="持仓总览" value={dashboardStatus.holdings} onClick={() => navigate('holdings')} />
             <ToolEntry icon={ListChecks} title="交易计划" value={dashboardStatus.plans} onClick={() => navigate('tradePlans', { hash: '#new' })} />
             <ToolEntry icon={Bell} title="通知设置" value={dashboardStatus.notify} onClick={() => navigate('notify')} />
-            <ToolEntry icon={CloudUpload} title="数据同步" value={dashboardStatus.backup} onClick={() => navigate('backup')} />
+            <ToolEntry icon={Repeat} title="基金切换" value="对比工具" onClick={() => navigate('fundSwitch')} />
           </div>
         </section>
 
