@@ -814,7 +814,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
                 <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
                   <div className="border-b border-slate-100 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-900">档位确认明细</div>
                   <div className="overflow-x-auto">
-                    <table className="min-w-full text-left text-sm">
+                    <table className="min-w-[560px] text-left text-sm whitespace-nowrap">
                       <thead className="bg-white text-[11px] uppercase tracking-[0.16em] text-slate-400">
                         <tr>
                           <th className="px-4 py-3 font-bold">档位</th>
