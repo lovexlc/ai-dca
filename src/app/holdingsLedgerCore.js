@@ -326,7 +326,7 @@ export function getLedgerCodeList(transactions = []) {
  * 仅返回「当前仍有持仓」的 code list：跑一遍移动摊薄（与 aggregateByCode 一致），
  * 只保留 BUY/SELL 抵冲后 totalShares > 0 的 code。
  * 适用于净值拉取、行情刷新 等“只需要活跃持仓”的场景，避免给已清仓的 code 调 nav 接口。
- * 已结清交易（SELL 带 costPrice）不参与持仓本身，不会让一个已清仓的 code 重新变“活跃”。
+ * SELL 带 costPrice 时仍要扣减已有持仓；若本地没有对应 BUY 批次，则视为独立已结清记录。
  */
 export function getActiveHoldingCodeList(transactions = []) {
   const normalizedTxs = sanitizeTransactions(transactions, { filterInvalid: false });
@@ -345,7 +345,7 @@ export function getActiveHoldingCodeList(transactions = []) {
       if (tx.type === 'BUY') {
         runShares = round(runShares + tx.shares, 4);
       } else if (tx.type === 'SELL') {
-        if (tx.costPrice > 0) continue; // 已结清交易不动持仓
+        if (isPendingOtcSell(tx)) continue;
         runShares = round(runShares - tx.shares, 4);
         if (runShares <= 0) runShares = 0;
       }
@@ -575,15 +575,13 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
         bucket.firstBuyDate = tx.date;
       }
     } else if (tx.type === 'SELL') {
-      // 自洽的“已结清交易”（自带 costPrice）独立成笔，不参与持仓份额扣减。
-      if (!(tx.costPrice > 0)) {
-        if (isPendingOtcSell(tx)) {
-          // 待确认（场外/QDII、NAV 未回填）：记为 pending，不入 sellShares/sellAmount。
-          bucket.pendingSellShares = round(bucket.pendingSellShares + tx.shares, 4);
-        } else {
-          bucket.sellShares = round(bucket.sellShares + tx.shares, 4);
-          bucket.sellAmount = round(bucket.sellAmount + tx.price * tx.shares, 2);
-        }
+      if (isPendingOtcSell(tx)) {
+        // 待确认（场外/QDII、NAV 未回填）：记为 pending，不入 sellShares/sellAmount。
+        bucket.pendingSellShares = round(bucket.pendingSellShares + tx.shares, 4);
+      } else {
+        // 即使 SELL 带 costPrice，也仍要作为卖出份额计入汇总；costPrice 只影响清仓收益口径。
+        bucket.sellShares = round(bucket.sellShares + tx.shares, 4);
+        bucket.sellAmount = round(bucket.sellAmount + tx.price * tx.shares, 2);
       }
     }
     if (tx.date && tx.date > bucket.lastTxDate) {
@@ -600,10 +598,9 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       if (tx.type === 'BUY') {
         pushCostLot(costLots, tx.shares, tx.price);
       } else if (tx.type === 'SELL') {
-        // 独立已结清交易（自带 costPrice）不动持仓。
-        if (tx.costPrice > 0) continue;
         // 待确认 SELL（场外/QDII NAV 未回填）：份额不提前扣减，等 NAV 回填后自动生效。
         if (isPendingOtcSell(tx)) continue;
+        // costPrice 只是该笔清仓收益的成本覆盖值；若本地存在 BUY 批次，基金汇总仍必须扣减这些份额。
         consumeCostLots(costLots, tx.shares);
       }
     }
@@ -898,17 +895,18 @@ export function buildSoldLots(transactions = []) {
         continue;
       }
       if (tx.type !== 'SELL') continue;
-      // 优先使用本笔自带 costPrice（独立已结清快速登记），否则取被卖出买入批次的平均成本。
-      const standalone = tx.costPrice > 0;
+      // 优先使用本笔自带 costPrice 计算清仓收益；但只要本地有 BUY 批次，SELL 仍要消耗批次，避免基金汇总不扣减份额。
       const pending = isPendingOtcSell(tx);
-      const consumed = (!standalone && !pending) ? consumeCostLots(costLots, tx.shares) : null;
-      const avgCost = standalone ? tx.costPrice : round(consumed?.avgCost || 0, 4);
+      const consumed = pending ? null : consumeCostLots(costLots, tx.shares);
+      const hasCostOverride = tx.costPrice > 0;
+      const standalone = hasCostOverride && !(consumed?.consumedShares > 0);
+      const avgCost = hasCostOverride ? tx.costPrice : round(consumed?.avgCost || 0, 4);
       const pairTx = tx.switchPairId ? txById.get(tx.switchPairId) : null;
       const isSwitch = Boolean(pairTx && pairTx.type === 'BUY' && pairTx.code && pairTx.code !== tx.code);
       const sellShares = tx.shares;
       const sellPrice = pending ? 0 : tx.price;
       const proceeds = pending ? null : round(sellPrice * sellShares, 2);
-      const costBasis = standalone
+      const costBasis = hasCostOverride
         ? round(avgCost * sellShares, 2)
         : round(consumed?.consumedCost || avgCost * sellShares, 2);
       const hasAvgCost = avgCost > 0;

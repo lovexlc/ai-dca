@@ -1134,8 +1134,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       ...prepared,
       id: draftMode === 'edit' && draft.id ? draft.id : undefined
     });
-    // 带 costPrice 的 SELL 是“已卖出快速登记”，不占用持仓，跳过份额校验。
-    if (normalized.type === 'SELL' && !(normalized.costPrice > 0)) {
+    // SELL 如果本地已有持仓，就必须校验可卖份额；costPrice 只作为清仓成本覆盖，不再让基金汇总跳过扣减。
+    if (normalized.type === 'SELL') {
       const targetAgg = aggregateByCodeMap.get(normalized.code);
       let available = targetAgg ? targetAgg.totalShares : 0;
       if (draftMode === 'edit' && draft.id) {
@@ -1145,7 +1145,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           else if (existing.type === 'BUY') available -= existing.shares;
         }
       }
-      if (normalized.shares > available + 1e-6) {
+      const allowStandaloneCostPrice = normalized.costPrice > 0 && available <= 1e-6;
+      if (!allowStandaloneCostPrice && normalized.shares > available + 1e-6) {
         showActionToast('保存失败', 'error', {
           description: `SELL 份额 ${formatShares(normalized.shares)} 超过当前持仓 ${formatShares(Math.max(available, 0))}。`
         });
@@ -1245,7 +1246,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       return;
     }
     const normalized = normalizeTransaction({ ...prepared, id: editingBuffer.id });
-    if (normalized.type === 'SELL' && !(normalized.costPrice > 0)) {
+    if (normalized.type === 'SELL') {
       const targetAgg = aggregateByCodeMap.get(normalized.code);
       let available = targetAgg ? targetAgg.totalShares : 0;
       const existing = transactions.find((tx) => tx.id === editingBuffer.id);
@@ -1253,7 +1254,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         if (existing.type === 'SELL') available += existing.shares;
         else if (existing.type === 'BUY') available -= existing.shares;
       }
-      if (normalized.shares > available + 1e-6) {
+      const allowStandaloneCostPrice = normalized.costPrice > 0 && available <= 1e-6;
+      if (!allowStandaloneCostPrice && normalized.shares > available + 1e-6) {
         showActionToast('保存失败', 'error', {
           description: `SELL 份额 ${formatShares(normalized.shares)} 超过当前持仓 ${formatShares(Math.max(available, 0))}。`
         });
