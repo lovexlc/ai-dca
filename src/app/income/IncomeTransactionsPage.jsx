@@ -302,7 +302,7 @@ function Row({ tx, onClick }) {
 		<button
 			type="button"
 			onClick={onClick}
-			className="grid min-w-0 w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 rounded-xl border border-slate-100 bg-white px-3 py-2.5 text-left transition-colors hover:bg-slate-50 active:bg-slate-100"
+			className="grid min-w-0 w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 rounded-xl border border-slate-100 bg-white px-3 py-2.5 text-left transition-colors hover:bg-slate-50 active:bg-slate-100"
 		>
 			<span className={cx('inline-flex w-12 shrink-0 items-center justify-center rounded px-1.5 py-0.5 text-[11px] font-semibold', tone)}>
 				{label}
@@ -311,7 +311,7 @@ function Row({ tx, onClick }) {
 				<div className="truncate text-[13px] font-medium text-slate-800">{getAssetTypeLabel(tx.code)} | {tx.name || tx.code || '—'}</div>
 				<div className="mt-0.5 text-[11px] text-slate-400 tabular-nums">{toIsoDay(tx.date)}</div>
 			</span>
-			<span className="min-w-0 max-w-[42%] shrink-0 truncate whitespace-nowrap text-right text-[13px] font-semibold tabular-nums text-slate-800">{amount === null ? '—' : formatCurrency(amount, '¥', 2)}</span>
+			<span className="shrink-0 whitespace-nowrap text-right text-[13px] font-semibold tabular-nums text-slate-800">{amount === null ? '—' : formatCurrency(amount, '¥', 2)}</span>
 		</button>
 	);
 }
