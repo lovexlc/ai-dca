@@ -97,6 +97,30 @@ function AccountCardsGrid({ accountAllocation, className = '' }) {
 		</div>
 	);
 }
+// PC 端账户分配指示器：竖向堆叠（进取 / 稳健 / 防守 三行）。
+function AccountAllocationStackPc({ accountAllocation }) {
+	if (!Array.isArray(accountAllocation) || !accountAllocation.length) return null;
+	const SEG_BY_KEY = {
+		aggressive: { bgColor: 'bg-red-500', label: '进取型' },
+		stable: { bgColor: 'bg-indigo-500', label: '稳健型' },
+		defensive: { bgColor: 'bg-emerald-500', label: '防守型' },
+	};
+	return (
+		<div className="flex flex-col gap-1 text-sm">
+			{accountAllocation.map((item) => {
+				const seg = SEG_BY_KEY[item.key];
+				if (!seg || !(item.ratio > 0)) return null;
+				return (
+					<div key={item.key} className="flex items-center gap-1.5">
+						<div className={cx(seg.bgColor, 'w-2.5 h-2.5 rounded-full shrink-0')} />
+						<span className="text-slate-600 whitespace-nowrap">{seg.label}</span>
+						<span className="text-slate-500 font-medium tabular-nums">{formatPercent(item.ratio, 0)}</span>
+					</div>
+				);
+			})}
+		</div>
+	);
+}
 
 const TILES = [
 	{ route: ROUTES.INCOME, Icon: BarChart3, label: '收益明细', labelShort: '收益' },
@@ -200,8 +224,8 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 				</div>
 			</section>
 
-		{/* PC 端：v7.3 横向 stat-bar（左金额+起算日 · 中 账户分配指示器 · 右 3 KPI · 最右刷新） */}
-		<section className="hidden sm:flex sm:items-center sm:gap-6 sm:px-1 sm:pb-4 sm:border-b sm:border-slate-100">
+		{/* PC 端：v7.4 横向 stat-bar（左金额+起算日 · 中 账户分配竖向堆叠 · 右 3 KPI · 最右刷新） */}
+		<section className="hidden sm:flex sm:items-start sm:gap-6 sm:px-1 sm:pb-4 sm:border-b sm:border-slate-100">
 				<div className="min-w-0 shrink-0">
 					<div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</div>
 					<div className="mt-1 whitespace-nowrap text-4xl font-extrabold tracking-tight tabular-nums text-slate-900">
@@ -210,13 +234,13 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 					{inceptionDate ? <div className="text-[11px] text-slate-400 mt-0.5">起 {inceptionDate}</div> : null}
 				</div>
 				{Array.isArray(accountAllocation) && accountAllocation.length ? (
-					<div className="flex-1 min-w-0">
-						<AccountAllocationIndicator accountAllocation={accountAllocation} />
+					<div className="flex-1 min-w-0 self-center">
+						<AccountAllocationStackPc accountAllocation={accountAllocation} />
 					</div>
 				) : (
 					<div className="flex-1" aria-hidden="true" />
 				)}
-				<div className="flex gap-6 shrink-0">
+				<div className="flex gap-6 shrink-0 self-center">
 				<KpiCol label="今日" value={todayProfit} rate={todayReturnRate} align="center" />
 				<KpiCol label="持有" value={unrealizedProfit} rate={unrealizedReturnRate} align="center" />
 				<KpiCol label="累计" value={cumulativeProfit} rate={cumulativeReturnRate} align="center" />
