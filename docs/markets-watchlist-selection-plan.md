@@ -12,7 +12,7 @@
 - [done] 在主内容区插入选中标的详情与 tab。
 - [done] 让右侧研究面板显示当前标的上下文与标的快捷问题。
 - [done] 运行前端静态检查和 diff 检查。
-- [in_progress] 提交、推送，并等待 GitHub Pages 部署。
+- [done] 提交、推送，并等待 GitHub Pages 部署。
 
 ## 关键决策
 - 点击整行只负责选中标的与同步右侧研究上下文；不会自动发起 AI 请求，避免误触消耗。
@@ -28,3 +28,6 @@
 - 已让右侧研究面板显示当前标的，并将快捷问题切换为该标的上下文。
 - `npx eslint src/pages/MarketsExperience.jsx`：通过，0 errors，仅保留既有 warnings。
 - `git diff --check -- src/pages/MarketsExperience.jsx docs/markets-watchlist-selection-plan.md`：通过。
+
+- GitHub Pages 部署成功：`https://github.com/lovexlc/ai-dca/actions/runs/26224235812`。
+- Commit：`b0e96a1 fix(markets): link watchlist selection to research`。
