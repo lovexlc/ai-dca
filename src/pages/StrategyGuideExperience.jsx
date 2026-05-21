@@ -74,6 +74,7 @@ const LEARN_CARDS = [
   { id: 'guide-stock', title: '个股投资策略', meta: '7 分钟阅读', icon: Target, tint: 'from-rose-50 to-rose-100/40', accent: 'text-rose-500' },
   { id: 'guide-t', title: '做 T 与负成本', meta: '4 分钟阅读', icon: Activity, tint: 'from-violet-50 to-violet-100/40', accent: 'text-violet-500' },
   { id: 'guide-discipline', title: '操作纪律', meta: '5 分钟阅读', icon: ShieldCheck, tint: 'from-emerald-50 to-emerald-100/40', accent: 'text-emerald-500' },
+  { id: 'guide-demo', title: '生成 Demo 数据', meta: '新手辅助', icon: Sparkles, tint: 'from-indigo-50 to-indigo-100/40', accent: 'text-indigo-500' },
   { id: 'guide-readme', title: '全站 README', meta: '8 分钟阅读', icon: FileText, tint: 'from-slate-50 to-slate-100/40', accent: 'text-slate-500' }
 ];
 
@@ -451,7 +452,7 @@ function AccountModalBody({ account }) {
   );
 }
 
-function ChapterModalBody({ id, navigate, closeModal }) {
+function ChapterModalBody({ id, navigate, closeModal, demoMeta, onInstallDemo, onClearDemo }) {
   function go(tab, options) { closeModal(); navigate(tab, options); }
   if (id === 'guide-notify') {
     return (
@@ -490,7 +491,6 @@ function ChapterModalBody({ id, navigate, closeModal }) {
         <SimpleTable headers={['', 'QQQ（纳指100）', 'SPY/VOO（标普500）']} rows={[['首买跌幅', '9%', '6.5%（参考）'], ['每档间隔', '3.5%', '2.5-3%（参考）'], ['档数', '7', '6（参考）'], ['倍数', '1-1-1.5-1.5-2-2-3', '同左']]} />
         <SimpleTable headers={['VIX', '等级', '操作']} rows={[['<25', '平静', '常规定投，不追高'], ['25-30', '警戒', '保持定投 + 准备备用资金'], ['30-40', '中高恐慌', '加仓宽基'], ['40-50', '高恐慌', '宽基 + 个股全开'], ['≥50', '极端恐慌', '重仓，资金至少打 50%']]} />
         <InfoSections sections={INDEX_DETAILS} />
-        <GuideButton onClick={() => go('tradePlans')}>前往交易计划 →</GuideButton>
       </div>
     );
   }
@@ -502,7 +502,6 @@ function ChapterModalBody({ id, navigate, closeModal }) {
         </div>
         <SimpleTable headers={['规则', '参数']} rows={[['买入', '首买跌 30%（优质 20%+），每档 4-5%，≥6 档'], ['仓位', '单只上限 50%，总仓 7-8.5 成，70% 底仓 + 30% 做 T'], ['减仓', '+15% / +25% / +35% 分档减仓']]} />
         <InfoSections sections={STOCK_DETAILS} />
-        <GuideButton onClick={() => go('tradePlans')}>前往交易计划 →</GuideButton>
       </div>
     );
   }
@@ -510,7 +509,6 @@ function ChapterModalBody({ id, navigate, closeModal }) {
     return (
       <div className="space-y-5">
         <InfoSections sections={T_DETAILS} />
-        <GuideButton onClick={() => go('holdings')}>查看持仓做 T 记录 →</GuideButton>
       </div>
     );
   }
@@ -518,6 +516,21 @@ function ChapterModalBody({ id, navigate, closeModal }) {
     return (
       <div className="space-y-5">
         <InfoSections sections={DISCIPLINE_DETAILS} />
+      </div>
+    );
+  }
+  if (id === 'guide-demo') {
+    return (
+      <div className="space-y-5">
+        <SectionHeading eyebrow="新手辅助" title="需要一套示例数据吗？" description="生成随机 Demo，快速理解持仓、交易计划、通知和账户体系。看完记得清除 Demo 再录入真实数据。" />
+        <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
+          <p className="text-sm leading-6 text-slate-600">演示数据会写入持仓、交易计划、定投、账户分配和关注列表。如已有本地数据，建议先去「数据同步」导出备份。</p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <GuideButton variant="secondary" onClick={onInstallDemo}>{demoMeta ? '重新生成 Demo' : '生成演示数据'}</GuideButton>
+            {demoMeta ? <GuideButton variant="secondary" onClick={onClearDemo}><Trash2 className="h-4 w-4" />清除 Demo</GuideButton> : null}
+          </div>
+          {demoMeta ? <p className="mt-3 text-xs text-slate-500">当前使用的是演示数据。</p> : null}
+        </div>
       </div>
     );
   }
@@ -542,6 +555,7 @@ const CHAPTER_EYEBROW = {
   'guide-stock': '第一兼唯一',
   'guide-t': '终极目标',
   'guide-discipline': '铁律',
+  'guide-demo': '新手辅助',
   'guide-readme': '全站 README'
 };
 
@@ -707,18 +721,11 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left">
             <span>
               <SectionLabel icon={Settings}>工作台设置</SectionLabel>
-              <span className="mt-1 block text-base font-semibold text-slate-900">演示数据 · 默认首页</span>
+              <span className="mt-1 block text-base font-semibold text-slate-900">默认首页</span>
             </span>
             <ChevronRight className="h-5 w-5 text-slate-400 transition-transform group-open:rotate-90" aria-hidden="true" />
           </summary>
           <div className="mt-5 space-y-5">
-            <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
-              <SectionHeading eyebrow="新手辅助" title="需要一套示例数据吗？" description="生成随机 Demo，快速理解持仓、交易计划、通知和账户体系。" />
-              <div className="mt-3 flex flex-wrap gap-3">
-                <GuideButton variant="secondary" onClick={handleInstallDemo}>{demoMeta ? '重新生成 Demo' : '生成演示数据'}</GuideButton>
-                {demoMeta ? <GuideButton variant="secondary" onClick={handleClearDemo}><Trash2 className="h-4 w-4" />清除 Demo</GuideButton> : null}
-              </div>
-            </div>
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px_auto] lg:items-end">
               <SectionHeading eyebrow="偏好设置" title="默认打开哪个页面？" description="带 ?tab= 的链接仍会优先打开指定页面。" />
               <SelectField options={HOME_OPTIONS} value={prefs.homepageTab} onChange={(event) => setPrefs((current) => ({ ...current, homepageTab: event.target.value }))} />
@@ -745,7 +752,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
         title={chapterMeta ? chapterMeta.title : ''}
         onClose={() => setActiveChapter(null)}
       >
-        {chapterMeta ? <ChapterModalBody id={chapterMeta.id} navigate={navigate} closeModal={() => setActiveChapter(null)} /> : null}
+        {chapterMeta ? <ChapterModalBody id={chapterMeta.id} navigate={navigate} closeModal={() => setActiveChapter(null)} demoMeta={demoMeta} onInstallDemo={handleInstallDemo} onClearDemo={handleClearDemo} /> : null}
       </DetailModal>
 
 
