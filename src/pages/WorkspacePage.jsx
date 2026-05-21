@@ -259,7 +259,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     try {
       const RECENT_KEY = 'aiDcaRecentGuideAnchors';
       const raw = JSON.parse(window.localStorage.getItem(RECENT_KEY) || '[]');
-      const list = (Array.isArray(raw) ? raw : []).filter((x) => x && x.id !== `tab:${normalizedTab}`);
+      const list = Array.isArray(raw) ? raw.filter(Boolean) : [];
       list.unshift({ id: `tab:${normalizedTab}`, ts: Date.now() });
       window.localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 12)));
     } catch {

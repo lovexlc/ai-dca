@@ -133,7 +133,7 @@ function readRecent() {
 function pushRecent(id) {
   if (typeof window === 'undefined' || !id) return;
   try {
-    const list = readRecent().filter((item) => item && item.id !== id);
+    const list = readRecent();
     list.unshift({ id, ts: Date.now() });
     window.localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 12)));
   } catch {}
@@ -673,7 +673,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
           <section className="space-y-3">
             <SectionLabel icon={BookOpen}>Recently visited</SectionLabel>
             <div className="-mx-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-2 sm:mx-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {visibleRecent.map((r) => <RecentCard key={r.id} entry={r} onActivate={handleRecentActivate} />)}
+              {visibleRecent.map((r, idx) => <RecentCard key={`${r.id}-${r.ts || idx}`} entry={r} onActivate={handleRecentActivate} />)}
             </div>
           </section>
         ) : null}
