@@ -212,6 +212,17 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 				</nav>
 				{quickActions && (quickActions.onCopyTable || quickActions.onNewTransaction || quickActions.onPasteExcel || quickActions.onOcr) ? (
 					<div className="flex shrink-0 items-center gap-2">
+						{quickActions.onCopyTable ? (
+							<button
+								type="button"
+								onClick={quickActions.onCopyTable}
+								title={quickActions.copyTitle || '复制表格'}
+								className="inline-flex items-center gap-1.5 h-8 rounded-full border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
+							>
+								<Copy className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+								<span>复制表格</span>
+							</button>
+						) : null}
 						{quickActions.onPasteExcel ? (
 							<button
 								type="button"
@@ -234,17 +245,6 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 								<span>截图 OCR</span>
 							</button>
 						) : null}
-						{quickActions.onCopyTable ? (
-							<button
-								type="button"
-								onClick={quickActions.onCopyTable}
-								title={quickActions.copyTitle || '复制表格'}
-								className="inline-flex items-center gap-1.5 h-8 rounded-full border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
-							>
-								<Copy className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-								<span>复制表格</span>
-							</button>
-						) : null}
 						{quickActions.onNewTransaction ? (
 							<button
 								type="button"
@@ -253,7 +253,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 								className="inline-flex items-center gap-1.5 h-8 rounded-full bg-rose-500 px-3 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-rose-600"
 							>
 								<Plus className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />
-								<span>新增交易</span>
+								<span>新增单笔</span>
 							</button>
 						) : null}
 					</div>
