@@ -11,17 +11,22 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
     <div className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-slate-200 bg-white px-3 sm:gap-3 sm:px-6">
       <div className="flex shrink-0 items-center gap-2">
         {onOpenNav ? (
-          <button
-            type="button"
-            aria-label="打开导航"
-            onClick={onOpenNav}
-            className="relative inline-flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-sm transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
-          >
-            <LineChart className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />
-            <span className="absolute -bottom-1 -right-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-white bg-slate-900 text-white shadow-sm sm:hidden" aria-hidden="true">
-              <Menu className="h-2.5 w-2.5" strokeWidth={2.6} />
+          <>
+            <button
+              type="button"
+              aria-label="打开导航"
+              onClick={onOpenNav}
+              className="relative inline-flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-sm transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 sm:hidden"
+            >
+              <LineChart className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />
+              <span className="absolute -bottom-1 -right-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-white bg-slate-900 text-white shadow-sm" aria-hidden="true">
+                <Menu className="h-2.5 w-2.5" strokeWidth={2.6} />
+              </span>
+            </button>
+            <span className="hidden h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-indigo-500 to-purple-500 text-white sm:inline-flex" aria-hidden="true">
+              <LineChart className="h-4 w-4" strokeWidth={2.4} />
             </span>
-          </button>
+          </>
         ) : (
           <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-indigo-500 to-purple-500 text-white">
             <LineChart className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />
