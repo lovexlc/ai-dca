@@ -4,7 +4,6 @@ import {
   CloudDownload,
   CloudUpload,
   Download,
-  KeyRound,
   Eye,
   EyeOff,
   FolderSync,
@@ -15,8 +14,7 @@ import {
   Wifi
 } from 'lucide-react';
 import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authClient.js';
-import { loadCloudSyncMeta, refreshRemoteCloudMeta, restoreEncryptedCloudBackup, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
-import { generateSecurityPassword, loadRememberedKey } from '../app/secureVault.js';
+import { loadCloudSyncMeta, refreshRemoteCloudMeta } from '../app/cloudSync.js';
 import { showToast } from '../app/toast.js';
 import {
   applyBackupEnvelope,
@@ -87,8 +85,6 @@ function StatusPill({ meta }) {
 export function BackupExperience({ links, embedded = false }) {
   const [cloudSession, setCloudSession] = useState(() => loadCloudSession());
   const [cloudMeta, setCloudMeta] = useState(() => loadCloudSyncMeta());
-  const [rememberedKey, setRememberedKey] = useState(() => loadRememberedKey());
-  const [accountForm, setAccountForm] = useState({ securityPassword: '', rememberDevice: true });
 
   const [config, setConfig] = useState(() => ({
     baseUrl: '',
@@ -122,15 +118,23 @@ export function BackupExperience({ links, embedded = false }) {
   }, [refreshPreview]);
 
   useEffect(() => {
-    function handleSessionChanged(event) {
-      setCloudSession(event?.detail?.session || loadCloudSession());
+    function refreshCloudStatus(event) {
+      if (event?.detail?.session !== undefined) setCloudSession(event.detail.session || loadCloudSession());
+      else setCloudSession(loadCloudSession());
       refreshRemoteCloudMeta().then((remoteMeta) => {
         if (remoteMeta) setCloudMeta(remoteMeta);
       }).catch(() => {});
+      refreshPreview();
     }
-    window.addEventListener(CLOUD_SYNC_SESSION_EVENT, handleSessionChanged);
-    return () => window.removeEventListener(CLOUD_SYNC_SESSION_EVENT, handleSessionChanged);
-  }, []);
+    window.addEventListener(CLOUD_SYNC_SESSION_EVENT, refreshCloudStatus);
+    window.addEventListener('cloud-sync:auto-uploaded', refreshCloudStatus);
+    window.addEventListener('cloud-sync:auto-restored', refreshCloudStatus);
+    return () => {
+      window.removeEventListener(CLOUD_SYNC_SESSION_EVENT, refreshCloudStatus);
+      window.removeEventListener('cloud-sync:auto-uploaded', refreshCloudStatus);
+      window.removeEventListener('cloud-sync:auto-restored', refreshCloudStatus);
+    };
+  }, [refreshPreview]);
 
   const totalBytes = useMemo(
     () => preview.keys.reduce((acc, key) => acc + (preview.entries[key]?.length || 0), 0),
@@ -140,47 +144,6 @@ export function BackupExperience({ links, embedded = false }) {
   function updateField(field, value) {
     setConfig((prev) => ({ ...prev, [field]: value }));
     setDirty(true);
-  }
-
-  function updateAccountField(field, value) {
-    setAccountForm((prev) => ({ ...prev, [field]: value }));
-  }
-
-  async function handleCloudUpload() {
-    setBusy('cloud-upload');
-    try {
-      const result = await uploadEncryptedCloudBackup({
-        securityPassword: accountForm.securityPassword,
-        rememberDevice: accountForm.rememberDevice,
-        useRemembered: Boolean(rememberedKey && !accountForm.securityPassword)
-      });
-      setCloudMeta(result);
-      setRememberedKey(loadRememberedKey());
-      showToast({ title: '已加密上传', description: `版本 ${result.version} · ${result.keyCount} 项`, tone: 'emerald' });
-    } catch (err) {
-      showToast({ title: '上传失败', description: err?.message || String(err), tone: 'red' });
-    } finally {
-      setBusy('');
-    }
-  }
-
-  async function handleCloudRestore() {
-    const confirmed = window.confirm('从账户云端恢复会覆盖当前浏览器本地数据。是否继续？');
-    if (!confirmed) return;
-    setBusy('cloud-restore');
-    try {
-      const result = await restoreEncryptedCloudBackup({
-        securityPassword: accountForm.securityPassword,
-        useRemembered: Boolean(rememberedKey && !accountForm.securityPassword)
-      });
-      setCloudMeta({ version: result.version, updatedAt: result.updatedAt, keyCount: result.restoredKeyCount });
-      refreshPreview();
-      showToast({ title: '已从账户恢复', description: `已写入 ${result.restoredKeyCount} 项`, tone: 'emerald', durationMs: 5000 });
-    } catch (err) {
-      showToast({ title: '恢复失败', description: err?.message || String(err), tone: 'red' });
-    } finally {
-      setBusy('');
-    }
   }
 
   function handleSaveConfig() {
@@ -275,23 +238,6 @@ export function BackupExperience({ links, embedded = false }) {
   }
 
   const cloudLoggedIn = Boolean(cloudSession?.accessToken);
-  const securityReady = accountForm.securityPassword.length >= 8 || Boolean(rememberedKey);
-  const cloudUploadDisabledReason = busy
-    ? '任务执行中'
-    : !cloudLoggedIn
-    ? '请先登录'
-    : accountForm.securityPassword.length < 8 && !rememberedKey
-    ? '填写安全密码或使用本设备密钥'
-    : !preview.keys.length
-    ? '当前没有可上传数据'
-    : '';
-  const cloudRestoreDisabledReason = busy
-    ? '任务执行中'
-    : !cloudLoggedIn
-    ? '请先登录'
-    : !securityReady
-    ? '输入安全密码或使用本设备密钥'
-    : '';
 
   const configMissingReason = !config.baseUrl
     ? '填写服务器地址后可同步'
@@ -313,38 +259,22 @@ export function BackupExperience({ links, embedded = false }) {
       <Card id="account-sync">
         <SectionHeading
           eyebrow="账户同步"
-          title="加密备份"
+          title="自动加密同步"
           action={cloudLoggedIn ? <Pill tone="emerald">{cloudSession.username}</Pill> : <Pill tone="slate">未登录</Pill>}
         />
-        <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
-          <label className="space-y-1.5 text-sm text-slate-600">
-            <span className="font-semibold text-slate-700">安全密码</span>
-            <div className="flex gap-2">
-              <input className={inputClass} type="password" value={accountForm.securityPassword} onChange={(event) => updateAccountField('securityPassword', event.target.value)} autoComplete="off" />
-              <button type="button" className={cx(subtleButtonClass, 'h-10 shrink-0 px-3')} onClick={() => updateAccountField('securityPassword', generateSecurityPassword())}>生成</button>
-            </div>
-          </label>
-          <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 lg:pb-3">
-            <input type="checkbox" checked={accountForm.rememberDevice} onChange={(event) => updateAccountField('rememberDevice', event.target.checked)} />
-            记住本设备
-          </label>
-        </div>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          <button type="button" className={cx(primaryButtonClass, 'h-auto justify-start px-4 py-3 text-left')} onClick={handleCloudUpload} disabled={Boolean(cloudUploadDisabledReason)} title={cloudUploadDisabledReason || undefined}>
-            {busy === 'cloud-upload' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
-            加密上传账户备份
-          </button>
-          <button type="button" className={cx(secondaryButtonClass, 'h-auto justify-start px-4 py-3 text-left')} onClick={handleCloudRestore} disabled={Boolean(cloudRestoreDisabledReason)} title={cloudRestoreDisabledReason || undefined}>
-            {busy === 'cloud-restore' ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
-            从账户恢复
-          </button>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
-          <span>云端：{cloudMeta?.version ? `版本 ${cloudMeta.version}` : '暂无记录'}</span>
-          <span>范围：{preview.keys.length} 项 · {formatBytes(totalBytes)}</span>
-          {rememberedKey ? <span>本设备已解锁</span> : null}
-          {cloudUploadDisabledReason ? <span>上传：{cloudUploadDisabledReason}</span> : null}
-          {cloudRestoreDisabledReason ? <span>恢复：{cloudRestoreDisabledReason}</span> : null}
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+            <div className="text-xs font-semibold text-slate-400">状态</div>
+            <div className="mt-1 text-sm font-bold text-slate-800">{cloudLoggedIn ? '自动同步中' : '右上角登录'}</div>
+          </div>
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+            <div className="text-xs font-semibold text-slate-400">云端</div>
+            <div className="mt-1 text-sm font-bold text-slate-800">{cloudMeta?.version ? `版本 ${cloudMeta.version}` : '暂无记录'}</div>
+          </div>
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+            <div className="text-xs font-semibold text-slate-400">范围</div>
+            <div className="mt-1 text-sm font-bold text-slate-800">{preview.keys.length} 项 · {formatBytes(totalBytes)}</div>
+          </div>
         </div>
       </Card>
 

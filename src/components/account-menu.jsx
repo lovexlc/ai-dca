@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Loader2, LogOut, UserRound } from 'lucide-react';
+import { KeyRound, Loader2, LogOut, UserRound } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
+import { refreshRemoteCloudMeta, restoreEncryptedCloudBackup, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
+import { clearRememberedKey, generateSecurityPassword } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.jsx';
 import { cx, inputClass, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from './experience-ui.jsx';
 
 export function AccountMenu() {
   const [session, setSession] = useState(() => loadCloudSession());
-  const [form, setForm] = useState({ username: '', password: '' });
+  const [form, setForm] = useState({ username: '', password: '', securityPassword: '', rememberDevice: true });
   const [busy, setBusy] = useState('');
 
   useEffect(() => {
@@ -29,6 +31,26 @@ export function AccountMenu() {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
+  async function runInitialSync(nextSession, action) {
+    const remoteMeta = nextSession?.latestBackupMeta || await refreshRemoteCloudMeta();
+    const hasRemoteBackup = Boolean(remoteMeta?.version);
+    if (hasRemoteBackup) {
+      await restoreEncryptedCloudBackup({ securityPassword: form.securityPassword });
+      window.dispatchEvent(new CustomEvent('cloud-sync:auto-restored'));
+    }
+    try {
+      await uploadEncryptedCloudBackup({
+        securityPassword: form.securityPassword,
+        rememberDevice: form.rememberDevice,
+        force: action === 'register' || !hasRemoteBackup
+      });
+      window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded'));
+    } catch (err) {
+      if (!String(err?.message || err).includes('当前没有可同步的数据')) throw err;
+    }
+    return hasRemoteBackup;
+  }
+
   async function handleAuth(action) {
     setBusy(action);
     try {
@@ -36,9 +58,14 @@ export function AccountMenu() {
         ? await registerCloudAccount(form)
         : await loginCloudAccount(form);
       setSession(nextSession);
-      showToast({ title: action === 'register' ? '账户已注册' : '已登录', description: nextSession?.username || '', tone: 'emerald' });
+      const restored = await runInitialSync(nextSession, action);
+      showToast({
+        title: action === 'register' ? '账户已注册' : '已登录',
+        description: restored ? '已自动恢复并开启备份' : '已开启自动备份',
+        tone: 'emerald'
+      });
     } catch (err) {
-      showToast({ title: action === 'register' ? '注册失败' : '登录失败', description: err?.message || String(err), tone: 'red' });
+      showToast({ title: action === 'register' ? '注册/同步失败' : '登录/同步失败', description: err?.message || String(err), tone: 'red' });
     } finally {
       setBusy('');
     }
@@ -46,6 +73,7 @@ export function AccountMenu() {
 
   function handleLogout() {
     clearCloudSession();
+    clearRememberedKey();
     setSession(null);
     showToast({ title: '已退出账户', tone: 'slate' });
   }
@@ -56,6 +84,8 @@ export function AccountMenu() {
     ? '填写用户名'
     : !form.password
     ? '填写登录密码'
+    : form.securityPassword.length < 8
+    ? '填写安全密码'
     : '';
   const loggedIn = Boolean(session?.accessToken);
   const initial = loggedIn ? String(session.username || '?').slice(0, 1).toUpperCase() : '';
@@ -89,7 +119,7 @@ export function AccountMenu() {
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white">{initial}</span>
               <div className="min-w-0">
                 <div className="truncate text-sm font-bold text-slate-900">{session.username}</div>
-                <div className="text-xs text-slate-500">账户同步已启用</div>
+                <div className="text-xs text-slate-500">自动同步已启用</div>
               </div>
             </div>
             <button type="button" className={cx(subtleButtonClass, 'w-full justify-center')} onClick={handleLogout}>
@@ -101,7 +131,7 @@ export function AccountMenu() {
           <div className="space-y-3">
             <div>
               <div className="text-sm font-bold text-slate-900">账户登录</div>
-              <div className="mt-1 text-xs text-slate-500">登录后自动保存加密备份</div>
+              <div className="mt-1 text-xs text-slate-500">登录后自动恢复并备份</div>
             </div>
             <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
               用户名
@@ -111,13 +141,24 @@ export function AccountMenu() {
               登录密码
               <input className={inputClass} type="password" value={form.password} onChange={(event) => updateField('password', event.target.value)} autoComplete="current-password" />
             </label>
+            <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
+              安全密码
+              <div className="flex gap-2">
+                <input className={inputClass} type="password" value={form.securityPassword} onChange={(event) => updateField('securityPassword', event.target.value)} autoComplete="off" />
+                <button type="button" className={cx(subtleButtonClass, 'h-10 shrink-0 px-3')} onClick={() => updateField('securityPassword', generateSecurityPassword())}>生成</button>
+              </div>
+            </label>
+            <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600">
+              <input type="checkbox" checked={form.rememberDevice} onChange={(event) => updateField('rememberDevice', event.target.checked)} />
+              记住本设备
+            </label>
             <div className="grid grid-cols-2 gap-2">
               <button type="button" className={cx(primaryButtonClass, 'justify-center')} onClick={() => handleAuth('login')} disabled={Boolean(authDisabledReason)} title={authDisabledReason || undefined}>
                 {busy === 'login' ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserRound className="h-4 w-4" />}
                 登录
               </button>
               <button type="button" className={cx(secondaryButtonClass, 'justify-center')} onClick={() => handleAuth('register')} disabled={Boolean(authDisabledReason)} title={authDisabledReason || undefined}>
-                {busy === 'register' ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserRound className="h-4 w-4" />}
+                {busy === 'register' ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
                 注册
               </button>
             </div>
