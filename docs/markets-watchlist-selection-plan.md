@@ -31,3 +31,13 @@
 
 - GitHub Pages 部署成功：`https://github.com/lovexlc/ai-dca/actions/runs/26224235812`。
 - Commit：`b0e96a1 fix(markets): link watchlist selection to research`。
+
+
+## 交互修正：未点击保留原内容，点击后全页切换
+- 用户反馈：未点击左侧监控列表时应保持原市场页内容；点击后中间区域要完全覆盖为标的详情，而不是叠加在原内容上方。
+- [done] 取消默认自动选中第一个监控标的。
+- [done] 仅当用户点击监控列表标的后渲染标的详情页。
+- [done] 标的详情页出现时隐藏原指数、市场概况、新闻、财报模块。
+- [done] 在标的详情页顶部增加“首页”返回入口，清空选中标的并恢复原市场页内容。
+- 验证：`npx eslint src/pages/MarketsExperience.jsx` 通过，0 errors，22 个既有 warnings。
+- 验证：`git diff --check -- src/pages/MarketsExperience.jsx docs/markets-watchlist-selection-plan.md` 通过。

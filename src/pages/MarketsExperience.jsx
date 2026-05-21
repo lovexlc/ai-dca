@@ -820,7 +820,7 @@ const SYMBOL_DETAIL_TABS = [
   { key: 'earnings', label: '财报' },
 ];
 
-function SymbolDetailPanel({ row, market, sparkPoints, news = [], earnings = [], activeTab, onTabChange, onAnalyze }) {
+function SymbolDetailPanel({ row, market, sparkPoints, news = [], earnings = [], activeTab, onTabChange, onAnalyze, onBack }) {
   if (!row || !row.symbol) return null;
   const pct = Number(row.changePercent);
   const change = Number(row.change);
@@ -838,6 +838,14 @@ function SymbolDetailPanel({ row, market, sparkPoints, news = [], earnings = [],
   return (
     <Card className="overflow-hidden p-0">
       <div className="border-b border-[#e8eaed] px-4 py-4 sm:px-5">
+        <button
+          type="button"
+          onClick={onBack}
+          className="mb-3 inline-flex items-center gap-2 text-sm font-medium text-[#1f1f1f] hover:text-[#1a73e8]"
+        >
+          <ArrowUp size={16} className="-rotate-90" />
+          首页
+        </button>
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 text-[13px] text-[#5f6368]">
@@ -1555,12 +1563,8 @@ export function MarketsExperience() {
   const watchSymbols = useMemo(() => watch[market] || [], [watch, market]);
 
   useEffect(() => {
-    if (!watchSymbols.length) {
-      if (selectedSymbol) setSelectedSymbol('');
-      return;
-    }
-    if (!selectedSymbol || !watchSymbols.includes(selectedSymbol)) {
-      setSelectedSymbol(watchSymbols[0]);
+    if (selectedSymbol && !watchSymbols.includes(selectedSymbol)) {
+      setSelectedSymbol('');
       setSymbolDetailTab('overview');
     }
   }, [selectedSymbol, watchSymbols]);
@@ -2207,67 +2211,73 @@ export function MarketsExperience() {
               handleSelectSymbol(selectedQuote, { openResearch: true });
               setPendingAnalysis({ symbol: selectedQuote.symbol, name: selectedQuote.name });
             }}
+            onBack={() => {
+              setSelectedSymbol('');
+              setSymbolDetailTab('overview');
+            }}
           />
-        ) : null}
+        ) : (
+          <>
+            {indices.length ? (
+              <div className="-mx-2 overflow-x-auto px-2 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="flex snap-x snap-mandatory gap-3 pb-1">
+                  {indices.map((entry) => (
+                    <IndexCard
+                      key={entry.symbol}
+                      entry={entry}
+                      onPick={(e) => handlePickMover(e)}
+                      sparkPoints={klineMap[entry.symbol]}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : !indicesLoading ? (
+              <p className="text-sm text-slate-400">指数数据暂未加载。</p>
+            ) : null}
 
-        {indices.length ? (
-          <div className="-mx-2 overflow-x-auto px-2 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <div className="flex snap-x snap-mandatory gap-3 pb-1">
-              {indices.map((entry) => (
-                <IndexCard
-                  key={entry.symbol}
-                  entry={entry}
-                  onPick={(e) => handlePickMover(e)}
-                  sparkPoints={klineMap[entry.symbol]}
+            {market === 'us' && (
+              <div className="hidden lg:block">
+                <SummaryModule
+                  themes={summary.themes}
+                  loading={summaryLoading}
+                  generatedAt={summary.generatedAt}
+                  onRefresh={() => refreshSummary(true)}
                 />
-              ))}
-            </div>
-          </div>
-        ) : !indicesLoading ? (
-          <p className="text-sm text-slate-400">指数数据暂未加载。</p>
-        ) : null}
+              </div>
+            )}
 
-        {market === 'us' && (
-          <div className="hidden lg:block">
-            <SummaryModule
-              themes={summary.themes}
-              loading={summaryLoading}
-              generatedAt={summary.generatedAt}
-              onRefresh={() => refreshSummary(true)}
-            />
-          </div>
-        )}
+            <Card className="lg:hidden">
+              <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">移动端研究入口</div>
+              <div className="mt-2 text-base font-bold text-slate-900">研究助手</div>
+              <button type="button" className={cx(primaryButtonClass, 'mt-4 w-full')} onClick={() => setResearchMode('conversation')}>
+                打开研究助手
+              </button>
+            </Card>
 
-        <Card className="lg:hidden">
-          <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">移动端研究入口</div>
-          <div className="mt-2 text-base font-bold text-slate-900">研究助手</div>
-          <button type="button" className={cx(primaryButtonClass, 'mt-4 w-full')} onClick={() => setResearchMode('conversation')}>
-            打开研究助手
-          </button>
-        </Card>
+            <Card className="hidden space-y-3 lg:block">
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-semibold text-slate-800">最新动态</h2>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  实时
+                </span>
+                {newsLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
+                {market === 'cn' && <Pill tone="slate">A 股新闻源建设中</Pill>}
+              </div>
+              <LatestNewsList items={news} />
+            </Card>
 
-        <Card className="hidden space-y-3 lg:block">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold text-slate-800">最新动态</h2>
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              实时
-            </span>
-            {newsLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
-            {market === 'cn' && <Pill tone="slate">A 股新闻源建设中</Pill>}
-          </div>
-          <LatestNewsList items={news} />
-        </Card>
-
-        {market === 'us' && (
-          <Card className="hidden space-y-3 lg:block">
-            <div className="flex items-center gap-2">
-              <CalendarDays size={16} className="text-indigo-500" />
-              <h2 className="text-base font-semibold text-slate-800">即将发布的财报</h2>
-              {earningsLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
-            </div>
-            <EarningsCalendar items={earnings} />
-          </Card>
+            {market === 'us' && (
+              <Card className="hidden space-y-3 lg:block">
+                <div className="flex items-center gap-2">
+                  <CalendarDays size={16} className="text-indigo-500" />
+                  <h2 className="text-base font-semibold text-slate-800">即将发布的财报</h2>
+                  {earningsLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
+                </div>
+                <EarningsCalendar items={earnings} />
+              </Card>
+            )}
+          </>
         )}
       </main>
 
