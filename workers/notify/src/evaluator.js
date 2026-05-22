@@ -1,7 +1,7 @@
 import { buildMovingAverageValues, buildNasdaqStrategyPlan, buildPeakDrawdownStrategyPlan, findLatestFiniteValue, mapReferencePrice } from '../../../src/app/strategyEngine.js';
 import { compileNotifyRules } from './rules.js';
 import { sendBarkNotification } from './channels/bark.js';
-import { isRegistrationPairedToScope, normalizeGcmRegistrations, normalizeNotifyGroupId } from './gcm.js';
+import { isRegistrationPairedToScope, normalizeGcmRegistrations, normalizeNotifyGroupId, sendGcmNotification } from './gcm.js';
 import { tryPublishWs } from './wsHub.js';
 
 const DEFAULT_PUBLIC_DATA_BASE_URL = 'https://tools.freebacktrack.tech';
@@ -394,7 +394,12 @@ async function deliverNotification(env, notification, options = {}) {
   } else {
     // 推送策略：WS 在线直推；如果设备当前没有在线 socket，tryPublishWs 会写入
     // notify:queue:device:<deviceInstallationId> 离线队列。设备下一次 WebSocket
-    // 连接成功时由 WsHub 自动 drain 并补发，不再离线走 FCM 兜底。
+    // 连接成功时由 WsHub 自动 drain 并补发。
+    //
+    // 持仓收益属于定时强提醒：仅靠 App 常驻 WS 通道“送达”不一定会触发系统通知，
+    // 不能因此跳过 FCM。否则 Worker 会把事件记为 delivered + 写入收益 dedup，
+    // 用户端却没有弹通知，后续 21:30 兜底也不会再补发。
+    const shouldAlsoSendFcm = String(notification.eventType || '').trim() === 'holdings-daily-return';
     const baseData = {
       eventId: notification.eventId || '',
       eventType: notification.eventType || '',
@@ -439,7 +444,9 @@ async function deliverNotification(env, notification, options = {}) {
         results.push({
           channel: 'ws',
           status: 'delivered',
-          detail: `App 常驻通道送达（连接数 ${Number(wsValue.delivered || 0)}），跳过 FCM`,
+          detail: shouldAlsoSendFcm
+            ? `App 常驻通道送达（连接数 ${Number(wsValue.delivered || 0)}），收益提醒继续发送 FCM 系统通知`
+            : `App 常驻通道送达（连接数 ${Number(wsValue.delivered || 0)}），跳过 FCM`,
           ...baseMeta
         });
         return;
@@ -462,6 +469,48 @@ async function deliverNotification(env, notification, options = {}) {
         ...baseMeta
       });
     });
+
+    if (shouldAlsoSendFcm) {
+      const gcmSettledList = await Promise.allSettled(
+        gcmRegistrationsToDeliver.map((registration) =>
+          sendGcmNotification({
+            env,
+            projectId: settings.gcmProjectId,
+            packageName: registration.packageName || settings.gcmPackageName,
+            token: registration.token,
+            title: notification.title,
+            body: notification.body,
+            data: baseData
+          })
+        )
+      );
+
+      gcmRegistrationsToDeliver.forEach((registration, idx) => {
+        const baseMeta = {
+          configKey: `gcm-registration:${registration.id}`,
+          configType: 'gcm-registration',
+          configId: registration.id,
+          configLabel: registration.deviceName || 'Android Device'
+        };
+        const settled = gcmSettledList[idx];
+        if (settled.status === 'fulfilled') {
+          results.push({
+            ...settled.value,
+            detail: settled.value?.status === 'delivered'
+              ? `FCM 系统通知已发送：${settled.value?.detail || '已发送到 Android 设备'}`
+              : settled.value?.detail,
+            ...baseMeta
+          });
+          return;
+        }
+        results.push({
+          channel: 'gcm',
+          status: 'failed',
+          detail: settled.reason instanceof Error ? settled.reason.message : 'FCM 系统通知发送失败',
+          ...baseMeta
+        });
+      });
+    }
   }
 
   // PC 浏览器渠道（方案 A，前端轮询消费）。
