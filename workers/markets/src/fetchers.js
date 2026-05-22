@@ -12,6 +12,7 @@ const YAHOO_SEARCH_HOST = 'https://' + 'query2.finance.yahoo.com';
 const EM_PUSH2_HOST = 'https://' + 'push2.eastmoney.com';
 const EM_PUSH2HIS_HOST = 'https://' + 'push2his.eastmoney.com';
 const EM_SEARCH_HOST = 'https://' + 'searchapi.eastmoney.com';
+const SINA_CN_HOST = 'https://' + 'quotes.sina.cn';
 const FINNHUB_HOST = 'https://' + 'finnhub.io';
 
 // 轻量级并发限流。与index.js 里的版本语义一致，这里独立定义避免跨文件依赖。
@@ -66,6 +67,68 @@ function buildUrl(base, path, params = {}) {
     u.searchParams.set(k, String(v));
   }
   return u.toString();
+}
+
+function toSinaSymbol(code) {
+  const lower = String(code || '').toLowerCase();
+  if (/^(sh|sz|bj)\d{6}$/.test(lower)) return lower;
+  if (/^\d{6}$/.test(lower)) {
+    return lower.startsWith('6') || lower.startsWith('51') || lower.startsWith('56') || lower.startsWith('58')
+      ? `sh${lower}`
+      : `sz${lower}`;
+  }
+  return lower;
+}
+
+function normalizeSinaKlineRows(rows = [], intervalLabel = '1d') {
+  return rows
+    .map((row) => {
+      const rawDay = String(row?.day || row?.date || '').trim();
+      if (!rawDay) return null;
+      const dateText = rawDay.includes(' ') ? rawDay.replace(' ', 'T') : `${rawDay}T00:00:00`;
+      const t = Math.floor(new Date(`${dateText}+08:00`).getTime() / 1000);
+      if (!Number.isFinite(t)) return null;
+      return {
+        t,
+        o: round(row?.open, 4),
+        h: round(row?.high, 4),
+        l: round(row?.low, 4),
+        c: round(row?.close, 4),
+        v: Number(row?.volume) || 0
+      };
+    })
+    .filter((bar) => bar && [bar.o, bar.h, bar.l, bar.c].every((value) => Number.isFinite(value)))
+    .sort((left, right) => left.t - right.t);
+}
+
+const SINA_SCALE_MAP = { '1m': 1, '5m': 5, '15m': 15, '30m': 30, '60m': 60, '1d': 240, '1w': 240, '1mo': 240 };
+
+export async function fetchSinaKline(code, { intervalLabel = '1d', limit = 500 } = {}) {
+  const symbol = toSinaSymbol(code);
+  if (!symbol) throw new Error('sina bad code ' + code);
+  const scale = SINA_SCALE_MAP[intervalLabel] || 240;
+  const url = buildUrl(SINA_CN_HOST, '/cn/api/json_v2.php/CN_MarketDataService.getKLineData', {
+    symbol,
+    scale,
+    ma: 'no',
+    datalen: limit
+  });
+  const res = await fetch(url, {
+    headers: { ...COMMON_HEADERS, referer: 'https://finance.sina.com.cn' },
+    cf: { cacheTtl: 30 }
+  });
+  if (!res.ok) throw new Error('sina kline ' + code + ' HTTP ' + res.status);
+  const rows = await res.json().catch(() => null);
+  if (!Array.isArray(rows)) throw new Error('sina kline ' + code + ' invalid response');
+  const candles = normalizeSinaKlineRows(rows, intervalLabel);
+  if (!candles.length) throw new Error('sina kline ' + code + ' empty');
+  return {
+    symbol,
+    interval: intervalLabel,
+    name: '',
+    source: 'sina-kline',
+    candles
+  };
 }
 
 // ===================== Yahoo Finance Chart API（美股 quotes + K 线） =====================
