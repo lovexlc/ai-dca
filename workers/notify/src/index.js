@@ -582,6 +582,47 @@ function getClientRecentEvents(clientRecord = {}) {
   return Array.isArray(clientRecord?.state?.recentEvents) ? clientRecord.state.recentEvents : [];
 }
 
+function hasPcQueuedChannel(event = {}) {
+  return Array.isArray(event?.channels)
+    && event.channels.some((channel) => String(channel?.channel || '').trim() === 'pc'
+      && String(channel?.status || '').trim() === 'queued');
+}
+
+function isSuccessfulEventChannel(channel = {}) {
+  const status = String(channel?.status || '').trim();
+  return status === 'delivered'
+    || status === 'skipped'
+    || (String(channel?.channel || '').trim() === 'pc' && status === 'queued');
+}
+
+function isPositiveEventChannel(channel = {}) {
+  const status = String(channel?.status || '').trim();
+  return status === 'delivered'
+    || (String(channel?.channel || '').trim() === 'pc' && status === 'queued');
+}
+
+function shouldTreatEventAsDelivered(event = {}) {
+  const channels = Array.isArray(event?.channels) ? event.channels : [];
+  return channels.length > 0
+    && channels.every(isSuccessfulEventChannel)
+    && channels.some(isPositiveEventChannel);
+}
+
+function normalizeEventForClient(event = {}) {
+  if (!event || String(event?.status || '').trim() === 'delivered') return event;
+  return shouldTreatEventAsDelivered(event)
+    ? { ...event, status: 'delivered' }
+    : event;
+}
+
+function shouldExposeEventForClientPoll(event = {}) {
+  if (!event) return false;
+  if (String(event?.status || '').trim() !== 'delivered') return true;
+  // PC 浏览器以 /events 轮询为投递通道；即使 overall status 已视为 delivered，
+  // 仍需把包含 pc/queued channel 的事件返回给浏览器完成本地弹窗。
+  return hasPcQueuedChannel(event);
+}
+
 function getClientDeliveryFailures(clientRecord = {}) {
   return Object.values(typeof clientRecord?.state?.deliveryFailures === 'object' && clientRecord.state.deliveryFailures
     ? clientRecord.state.deliveryFailures
@@ -719,10 +760,11 @@ async function handleEvents(request, env) {
     await writeSettings(env, settings);
   }
 
-  // 过滤 status==='delivered' 的事件：全部 channels 都 delivered或skipped 的事件
-  // 说明后台认定已送达、客户端不需要再重复拉取。
+  // 默认过滤后台已确认送达的事件；但 PC 浏览器通知依赖 /events 轮询，
+  // 包含 pc/queued channel 的事件即使 overall status 视为 delivered，也要继续返回给浏览器本地弹窗。
   const pendingEvents = getClientRecentEvents(auth.clientRecord)
-    .filter((event) => event && event.status !== 'delivered');
+    .map(normalizeEventForClient)
+    .filter(shouldExposeEventForClientPoll);
 
   return jsonResponse({
     events: pendingEvents

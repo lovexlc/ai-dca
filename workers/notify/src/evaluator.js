@@ -464,9 +464,6 @@ async function deliverNotification(env, notification, options = {}) {
     });
   }
 
-  const deliveredCount = results.filter((result) => result.status === 'delivered').length;
-  const configuredCount = results.filter((result) => result.status !== 'skipped').length;
-
   // PC 浏览器渠道（方案 A，前端轮询消费）。
   // worker 不直接 push 到浏览器，只在 event.channels 里登记一条 queued 状态，
   // 让用户/调试能从 /api/notify/events 看到 pc 渠道存在。
@@ -481,6 +478,9 @@ async function deliverNotification(env, notification, options = {}) {
       configLabel: currentClientLabel ? `PC · ${currentClientLabel}` : 'PC 浏览器'
     });
   }
+
+  const deliveredCount = results.filter(isPositiveDelivery).length;
+  const configuredCount = results.filter((result) => result.status !== 'skipped').length;
 
   try {
     console.log('[notify][deliver] result', JSON.stringify({
@@ -503,12 +503,10 @@ async function deliverNotification(env, notification, options = {}) {
     // 日志序列化失败不阻断返回。
   }
 
-  // status === 'delivered' 定义：当且仅当所有 channels 都是 delivered 或 skipped，
-  // 且至少有一个 delivered。任何 queued / failed / 未知状态都不计 delivered。
-  // 这样 /api/notify/events 按 status 过滤后，PC 渠道 queued 事件仍会返回给前端轮询。
-  const allTerminal = results.length > 0
-    && results.every((result) => result.status === 'delivered' || result.status === 'skipped');
-  const anyDelivered = results.some((result) => result.status === 'delivered');
+  // status === 'delivered' 定义：所有 channels 都已成功闭环或被跳过，且至少一个渠道成功。
+  // PC 浏览器渠道采用前端轮询，channel=pc/status=queued 表示已进入 PC 拉取队列，按成功闭环处理。
+  const allTerminal = results.length > 0 && results.every(isDeliveryTerminalSuccess);
+  const anyDelivered = results.some(isPositiveDelivery);
   const overallStatus = allTerminal && anyDelivered
     ? 'delivered'
     : configuredCount > 0 ? 'failed' : 'skipped';
@@ -636,7 +634,7 @@ function updateDeliveryFailures(previousFailures, results = [], nowIso) {
       continue;
     }
 
-    if (result.status === 'delivered') {
+    if (result.status === 'delivered' || isPcQueuedResult(result)) {
       delete nextFailures[configKey];
       continue;
     }
@@ -674,6 +672,21 @@ function updateDeliveryFailures(previousFailures, results = [], nowIso) {
     nextFailures,
     removals
   };
+}
+
+function isPcQueuedResult(result = {}) {
+  return String(result?.channel || '').trim() === 'pc'
+    && String(result?.status || '').trim() === 'queued';
+}
+
+function isDeliveryTerminalSuccess(result = {}) {
+  const status = String(result?.status || '').trim();
+  return status === 'delivered' || status === 'skipped' || isPcQueuedResult(result);
+}
+
+function isPositiveDelivery(result = {}) {
+  const status = String(result?.status || '').trim();
+  return status === 'delivered' || isPcQueuedResult(result);
 }
 
 // PR 2b尾巴：worker 侧 VIX 跨阈值检测 + 24h 同级防抖。
