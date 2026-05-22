@@ -1,43 +1,34 @@
 {
   "dataset": "etf_latest_nav_manifest",
-  "generatedAt": "2026-05-21T10:52:53.819Z",
+  "generatedAt": "2026-05-22T04:57:34.371Z",
   "source": "eastmoney:f10/lsjz",
-  "successCount": 10,
-  "failureCount": 2,
-  "failures": [
-    {
-      "code": "159513",
-      "error": "fetch failed"
-    },
-    {
-      "code": "159941",
-      "error": "fetch failed"
-    }
-  ],
+  "successCount": 12,
+  "failureCount": 0,
+  "failures": [],
   "items": [
     {
       "code": "159513",
       "name": "大成纳斯达克100ETF(QDII)",
-      "latestNav": 1.6464,
-      "latestNavDate": "2026-05-19",
-      "previousNav": 1.6583,
-      "previousNavDate": "2026-05-18"
+      "latestNav": 1.6742,
+      "latestNavDate": "2026-05-20",
+      "previousNav": 1.6464,
+      "previousNavDate": "2026-05-19"
     },
     {
       "code": "159941",
       "name": "广发纳斯达克100ETF",
-      "latestNav": 1.476,
-      "latestNavDate": "2026-05-19",
-      "previousNav": 1.4864,
-      "previousNavDate": "2026-05-18"
+      "latestNav": 1.5008,
+      "latestNavDate": "2026-05-20",
+      "previousNav": 1.476,
+      "previousNavDate": "2026-05-19"
     },
     {
       "code": "513100",
       "name": "国泰纳斯达克100ETF",
-      "latestNav": 1.9675,
-      "latestNavDate": "2026-05-19",
-      "previousNav": 1.9811,
-      "previousNavDate": "2026-05-18"
+      "latestNav": 2.0006,
+      "latestNavDate": "2026-05-20",
+      "previousNav": 1.9675,
+      "previousNavDate": "2026-05-19"
     },
     {
       "code": "159696",
@@ -66,18 +57,18 @@
     {
       "code": "513300",
       "name": "华夏纳斯达克100ETF(QDII)",
-      "latestNav": 2.4434,
-      "latestNavDate": "2026-05-19",
-      "previousNav": 2.4578,
-      "previousNavDate": "2026-05-18"
+      "latestNav": 2.4847,
+      "latestNavDate": "2026-05-20",
+      "previousNav": 2.4434,
+      "previousNavDate": "2026-05-19"
     },
     {
       "code": "159501",
       "name": "嘉实纳斯达克100ETF(QDII)",
-      "latestNav": 1.8467,
-      "latestNavDate": "2026-05-19",
-      "previousNav": 1.8595,
-      "previousNavDate": "2026-05-18"
+      "latestNav": 1.8779,
+      "latestNavDate": "2026-05-20",
+      "previousNav": 1.8467,
+      "previousNavDate": "2026-05-19"
     },
     {
       "code": "513870",
@@ -98,10 +89,10 @@
     {
       "code": "513110",
       "name": "华泰柏瑞纳斯达克100ETF(QDII)",
-      "latestNav": 2.2598,
-      "latestNavDate": "2026-05-19",
-      "previousNav": 2.2754,
-      "previousNavDate": "2026-05-18"
+      "latestNav": 2.2978,
+      "latestNavDate": "2026-05-20",
+      "previousNav": 2.2598,
+      "previousNavDate": "2026-05-19"
     },
     {
       "code": "159659",
