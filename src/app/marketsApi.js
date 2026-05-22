@@ -92,6 +92,12 @@ export async function fetchEarnings(market, { refresh = false } = {}) {
   return getJson('/earnings?market=' + encodeURIComponent(market) + q);
 }
 
+
+export async function fetchFinancials(symbol, { refresh = false } = {}) {
+  const q = refresh ? '?refresh=1' : '';
+  return getJson('/financials/' + encodeURIComponent(symbol) + q);
+}
+
 export async function fetchProfile(symbol) {
   return getJson('/profile/' + encodeURIComponent(symbol));
 }

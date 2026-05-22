@@ -16,6 +16,7 @@ import {
   fetchFinnhubCompanyNews,
   fetchFinnhubMarketNews,
   fetchFinnhubEarningsCalendar,
+  fetchYahooFinancials,
   fetchTavilyNews,
   fetchCnnFearGreed,
   hostToSourceName
@@ -135,6 +136,9 @@ export default {
       }
       if ((m = path.match(/^\/profile\/(.+)$/))) {
         return await handleProfile(env, decodeURIComponent(m[1]));
+      }
+      if ((m = path.match(/^\/financials\/(.+)$/))) {
+        return await handleFinancials(env, decodeURIComponent(m[1]), url.searchParams.get('refresh') === '1');
       }
       if (path === '/ask' && request.method === 'POST') {
         const body = await request.json().catch(() => ({}));
@@ -582,6 +586,33 @@ async function _handleProfileImpl(env, rawSymbol) {
   if (!env.FINNHUB_TOKEN) return errorJson('FINNHUB_TOKEN not configured', 500);
   const profile = await fetchFinnhubProfile(code, { token: env.FINNHUB_TOKEN });
   return json({ symbol: code, profile });
+}
+
+
+async function handleFinancials(env, rawSymbol, forceRefresh) {
+  const { market, code } = classifySymbol(rawSymbol);
+  if (!market) return errorJson('invalid symbol', 400);
+  if (market === 'us' && !/^[A-Z0-9.^-]{1,16}$/.test(code)) return errorJson('invalid symbol', 400);
+  if (market !== 'us') {
+    return json({
+      symbol: code,
+      market,
+      generatedAt: new Date().toISOString(),
+      statements: {
+        income: { annual: [], quarterly: [] },
+        balance: { annual: [], quarterly: [] },
+        cashflow: { annual: [], quarterly: [] }
+      }
+    });
+  }
+  const key = 'financials:us:' + code;
+  if (!forceRefresh) {
+    const cached = await kvGetJson(env, key);
+    if (cached && cached.statements) return json({ ...cached, cached: true });
+  }
+  const payload = { ...(await fetchYahooFinancials(code)), generatedAt: new Date().toISOString() };
+  await kvPutJson(env, key, payload, { ttlSeconds: 6 * 3600 });
+  return json({ ...payload, cached: false });
 }
 
 async function handleAsk(env, body) {

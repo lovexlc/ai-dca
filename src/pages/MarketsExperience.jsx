@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import '../styles/ai-chat.css';
-import { ArrowDown, ArrowUp, CalendarDays, ChevronDown, ChevronRight, ChevronUp, Compass, Edit3, ExternalLink, History, ListPlus, Loader2, Newspaper, Plus, RefreshCw, Search, Send, Sparkles, Star, Trash2, TrendingUp, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, CalendarDays, ChevronDown, ChevronRight, ChevronUp, Edit3, ExternalLink, History, ListPlus, Loader2, Plus, RefreshCw, Search, Send, Sparkles, Star, Trash2, TrendingUp, X } from 'lucide-react';
 import {
   Card,
   Pill,
@@ -16,6 +16,7 @@ import {
   askMarkets,
   askMarketsStream,
   fetchEarnings,
+  fetchFinancials,
   fetchIndices,
   fetchKline,
   fetchMovers,
@@ -31,7 +32,7 @@ import { showActionToast } from '../app/toast.js';
 import { buildStockAnalysisPrompt } from '../app/stockAnalysisPrompt.js';
 import { Sparkline } from '../components/markets/Sparkline.jsx';
 import { MarketsChartCodeBlock } from '../components/markets/MarketsChartBlock.jsx';
-import { Area, CartesianGrid, ComposedChart, Customized, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, Bar, CartesianGrid, ComposedChart, Customized, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 const MARKETS = [
   { key: 'us', label: '美股' },
@@ -817,8 +818,8 @@ function EarningsCalendar({ items = [], initialLimit = 5 }) {
 
 const SYMBOL_DETAIL_TABS = [
   { key: 'overview', label: '概览' },
-  { key: 'news', label: '动态' },
   { key: 'earnings', label: '财报' },
+  { key: 'financials', label: '财务' },
 ];
 
 // 图表时间范围 tab：Google Finance 风格。每个 range 映射到 worker 接受的 tf。
@@ -1064,8 +1065,15 @@ function ChartToolbarPopover({ label, active, children, align = 'left' }) {
     function onDown(e) {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
     }
+    function onKey(e) {
+      if (e.key === 'Escape') setOpen(false);
+    }
     document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
   }, [open]);
   return (
     <div ref={ref} className="relative">
@@ -1096,12 +1104,158 @@ function ChartToolbarPopover({ label, active, children, align = 'left' }) {
   );
 }
 
+
+const FINANCIAL_TABS = [
+  { key: 'income', label: '损益表' },
+  { key: 'balance', label: '资产负债表' },
+  { key: 'cashflow', label: '现金流量' },
+];
+const FINANCIAL_PERIODS = [
+  { key: 'quarterly', label: '季度' },
+  { key: 'annual', label: '年度' },
+];
+const FINANCIAL_CHART_MARGIN = { top: 8, right: 8, bottom: 0, left: 0 };
+const FINANCIAL_AXIS_TICK = { fontSize: 11, fill: '#5f6368' };
+const FINANCIAL_TOOLTIP_STYLE = { borderRadius: 10, borderColor: '#e8eaed', boxShadow: 'none' };
+const FINANCIAL_FIELDS = {
+  income: [
+    ['totalRevenue', '收入'],
+    ['grossProfit', '毛利润'],
+    ['operatingIncome', '营业利润'],
+    ['netIncome', '净利润'],
+  ],
+  balance: [
+    ['totalAssets', '总资产'],
+    ['totalLiab', '总负债'],
+    ['totalStockholderEquity', '股东权益'],
+    ['cash', '现金'],
+  ],
+  cashflow: [
+    ['totalCashFromOperatingActivities', '经营现金流'],
+    ['capitalExpenditures', '资本开支'],
+    ['freeCashFlow', '自由现金流'],
+    ['changeInCash', '现金净变化'],
+  ],
+};
+function financialFieldLabel(key) {
+  const all = Object.values(FINANCIAL_FIELDS).flat();
+  return (all.find(([k]) => k === key) || [key, key])[1];
+}
+function financialValue(row, key) {
+  if (!row || !row.fields) return null;
+  if (key === 'freeCashFlow') {
+    const op = Number(row.fields.totalCashFromOperatingActivities);
+    const capex = Number(row.fields.capitalExpenditures);
+    return Number.isFinite(op) && Number.isFinite(capex) ? op + capex : null;
+  }
+  const n = Number(row.fields[key]);
+  return Number.isFinite(n) ? n : null;
+}
+function formatFinancialCompact(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '--';
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return (n / 1e12).toFixed(2) + 'T';
+  if (abs >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+  if (abs >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  return formatNumber(n, 0);
+}
+function FinancialsPanel({ financials, loading }) {
+  const [statement, setStatement] = useState('income');
+  const [period, setPeriod] = useState('quarterly');
+  const rows = useMemo(() => {
+    const raw = financials?.statements?.[statement]?.[period];
+    return (Array.isArray(raw) ? raw : []).slice().sort((a, b) => Number(a.endDate || 0) - Number(b.endDate || 0)).slice(-6);
+  }, [financials, statement, period]);
+  const fields = FINANCIAL_FIELDS[statement] || [];
+  const chartRows = rows.map((row) => {
+    const out = { period: row.period?.slice(0, 7) || row.period };
+    fields.slice(0, 3).forEach(([key]) => { out[key] = financialValue(row, key); });
+    return out;
+  });
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <div className="h-8 w-64 animate-pulse rounded-lg bg-[#f1f3f4]" />
+        <div className="h-52 animate-pulse rounded-xl bg-[#f1f3f4]" />
+        <div className="h-36 animate-pulse rounded-xl bg-[#f1f3f4]" />
+      </div>
+    );
+  }
+  if (!rows.length) {
+    return <div className="rounded-xl border border-[#e8eaed] bg-[#f8fafd] px-4 py-6 text-sm text-[#5f6368]">暂无财务报表数据。</div>;
+  }
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex rounded-full bg-[#f1f3f4] p-1">
+          {FINANCIAL_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setStatement(tab.key)}
+              className={cx('rounded-full px-3 py-1 text-[13px] font-medium transition', statement === tab.key ? 'bg-white text-[#1f1f1f] shadow-[0_1px_2px_rgba(60,64,67,0.12)]' : 'text-[#5f6368] hover:text-[#1f1f1f]')}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex rounded-full border border-[#dadce0] bg-white p-0.5">
+          {FINANCIAL_PERIODS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setPeriod(tab.key)}
+              className={cx('rounded-full px-3 py-1 text-[12px] font-medium transition', period === tab.key ? 'bg-[#e8f0fe] text-[#1a73e8]' : 'text-[#5f6368] hover:bg-[#f1f3f4]')}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="h-56 rounded-xl border border-[#e8eaed] bg-white p-3">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={chartRows} margin={FINANCIAL_CHART_MARGIN}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f3f4" vertical={false} />
+            <XAxis dataKey="period" tick={FINANCIAL_AXIS_TICK} />
+            <YAxis tickFormatter={formatFinancialCompact} tick={FINANCIAL_AXIS_TICK} width={48} />
+            <Tooltip formatter={(v, name) => [formatFinancialCompact(v), financialFieldLabel(name)]} contentStyle={FINANCIAL_TOOLTIP_STYLE} />
+            {fields.slice(0, 3).map(([key], idx) => (
+              <Bar key={key} dataKey={key} fill={['#1a73e8', '#34a853', '#f9ab00'][idx % 3]} radius={[4, 4, 0, 0]} />
+            ))}
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-[#e8eaed] bg-white">
+        <table className="min-w-[720px] w-full border-separate border-spacing-0 text-sm">
+          <thead className="sticky top-0 z-10 bg-[#f8fafd] text-[12px] text-[#5f6368]">
+            <tr>
+              <th className="sticky left-0 z-20 border-b border-[#e8eaed] bg-[#f8fafd] px-3 py-2 text-left font-medium">指标</th>
+              {rows.map((row) => <th key={row.period} className="border-b border-[#e8eaed] px-3 py-2 text-right font-medium tabular-nums">{row.period}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {fields.map(([key, label]) => (
+              <tr key={key} className="hover:bg-[#f8fafd]">
+                <td className="sticky left-0 border-b border-[#f1f3f4] bg-white px-3 py-2 font-medium text-[#1f1f1f]">{label}</td>
+                {rows.map((row) => <td key={row.period} className="border-b border-[#f1f3f4] px-3 py-2 text-right tabular-nums text-[#1f1f1f]">{formatFinancialCompact(financialValue(row, key))}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function SymbolDetailPanel({
   row,
   market,
   sparkPoints,
   news = [],
   earnings = [],
+  financials = null,
+  financialsLoading = false,
   activeTab,
   onTabChange,
   onAnalyze,
@@ -1114,6 +1268,26 @@ function SymbolDetailPanel({
   inWatch,
   onToggleWatch,
 }) {
+  const [chartType, setChartType] = useState('line');
+  const [indicators, setIndicators] = useState(() => new Set());
+  const [compareSymbols, setCompareSymbols] = useState([]);
+  const [compareInput, setCompareInput] = useState('');
+  const [compareCandlesMap, setCompareCandlesMap] = useState({});
+  const rowSymbol = row && row.symbol ? String(row.symbol).toUpperCase() : '';
+  // 当前 symbol 或时间范围切换时清空对比
+  useEffect(() => { setCompareSymbols([]); }, [rowSymbol]);
+  useEffect(() => {
+    if (!chartTf || !compareSymbols.length) return;
+    compareSymbols.forEach((sym) => {
+      const key = `${sym}|${chartTf}`;
+      if (compareCandlesMap[key]) return;
+      fetchKline(sym, { timeframe: chartTf }).then((res) => {
+        if (Array.isArray(res && res.candles) && res.candles.length >= 2) {
+          setCompareCandlesMap((prev) => ({ ...prev, [key]: res.candles }));
+        }
+      }).catch(() => {});
+    });
+  }, [compareSymbols, chartTf, compareCandlesMap]);
   if (!row || !row.symbol) return null;
   const pct = Number(row.changePercent);
   const change = Number(row.change);
@@ -1130,25 +1304,6 @@ function SymbolDetailPanel({
   const exchangeLabel = row.exchange || (market === 'us' ? 'NASDAQ/NYSE' : 'A 股');
   const currencyLabel = row.currency || (market === 'us' ? 'USD' : 'CNY');
   const stateLabel = marketStateLabel(row.marketState, market);
-  const [chartType, setChartType] = useState('line');
-  const [indicators, setIndicators] = useState(() => new Set());
-  const [compareSymbols, setCompareSymbols] = useState([]);
-  const [compareInput, setCompareInput] = useState('');
-  const [compareCandlesMap, setCompareCandlesMap] = useState({});
-  // 当前 symbol 或时间范围切换时清空对比
-  useEffect(() => { setCompareSymbols([]); }, [row && row.symbol]);
-  useEffect(() => {
-    if (!chartTf || !compareSymbols.length) return;
-    compareSymbols.forEach((sym) => {
-      const key = `${sym}|${chartTf}`;
-      if (compareCandlesMap[key]) return;
-      fetchKline(sym, { timeframe: chartTf }).then((res) => {
-        if (Array.isArray(res && res.candles) && res.candles.length >= 2) {
-          setCompareCandlesMap((prev) => ({ ...prev, [key]: res.candles }));
-        }
-      }).catch(() => {});
-    });
-  }, [compareSymbols, chartTf, compareCandlesMap]);
   const toggleIndicator = (k) => setIndicators((prev) => {
     const next = new Set(prev);
     if (next.has(k)) next.delete(k); else next.add(k);
@@ -1366,7 +1521,11 @@ function SymbolDetailPanel({
           ) : sparkFallback ? (
             <Sparkline points={sparkFallback} width={720} height={210} tone={tone} showFill markLast className="h-full w-full" />
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">{chartLoading ? '加载中…' : '暂无趋势数据'}</div>
+            chartLoading ? (
+              <div className="h-full w-full animate-pulse rounded-xl bg-gradient-to-r from-[#f1f3f4] via-white to-[#f1f3f4]" />
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">暂无趋势数据</div>
+            )
           )}
         </div>
 
@@ -1390,7 +1549,8 @@ function SymbolDetailPanel({
 
       <div className="px-3 py-4 sm:px-1">
         {activeTab === 'overview' ? (
-          <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+          <div className="space-y-5">
+            <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
             <div className="flex items-center justify-between border-b border-[#e8eaed] py-2">
               <span className="text-[#5f6368]">最新价</span>
               <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(row.price)}</span>
@@ -1415,11 +1575,19 @@ function SymbolDetailPanel({
               <span className="text-[#5f6368]">交易状态</span>
               <span className="font-medium text-[#1f1f1f]">{stateLabel}</span>
             </div>
+            </div>
+            <div className="border-t border-[#e8eaed] pt-4">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-[#1f1f1f]">相关新闻</h3>
+                <span className="text-[12px] text-[#5f6368]">按决策优先级后置</span>
+              </div>
+              <NewsList items={(relatedNews.length ? relatedNews : news.slice(0, 5)).slice(0, 5)} />
+            </div>
           </div>
-        ) : activeTab === 'news' ? (
-          <NewsList items={relatedNews.length ? relatedNews : news.slice(0, 8)} />
-        ) : (
+        ) : activeTab === 'earnings' ? (
           <EarningsCalendar items={relatedEarnings.length ? relatedEarnings : earnings.slice(0, 5)} />
+        ) : (
+          <FinancialsPanel financials={financials} loading={financialsLoading} />
         )}
       </div>
     </section>
@@ -1520,6 +1688,7 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [pending, setPending] = useState(false);
+  const [searchDepth, setSearchDepth] = useState('fast');
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -1527,8 +1696,9 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
     async (raw, opts = {}) => {
       const question = String(raw || '').trim();
       if (!question || pending) return;
-      const useDepth = opts.depth === 'deep' ? 'deep' : 'fast';
-      const useContext = typeof opts.context === 'string' ? opts.context : '';
+      const useDepth = opts.depth === 'deep' ? 'deep' : opts.depth === 'fast' ? 'fast' : searchDepth;
+      const focusContext = selectedSymbol ? `当前标的：${selectedSymbol}${selectedQuote?.name ? ` / ${selectedQuote.name}` : ''}；价格 ${formatNumber(selectedQuote?.price)} ${formatPercent(selectedQuote?.changePercent)}。` : '';
+      const useContext = [focusContext, typeof opts.context === 'string' ? opts.context : ''].filter(Boolean).join('\n');
       setInput('');
       onModeChange?.('conversation');
       setMessages((prev) => [
@@ -1617,7 +1787,7 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
         setPending(false);
       }
     },
-    [market, pending, onModeChange, selectedSymbol],
+    [market, pending, onModeChange, selectedSymbol, selectedQuote, searchDepth],
   );
 
   const onSubmit = useCallback(
@@ -1699,7 +1869,7 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
         {messages.length === 0 ? (
           <div className="flex flex-col gap-5 pb-2">
             {selectedSymbol ? (
-              <div className="rounded-2xl border border-[#e8eaed] bg-[#f8fafd] px-4 py-3">
+              <div className="rounded-xl border border-[#e8eaed] bg-[#f8fafd] px-4 py-3">
                 <div className="text-[12px] font-medium text-[#5f6368]">当前研究标的</div>
                 <div className="mt-1 flex items-center justify-between gap-3">
                   <div className="min-w-0">
@@ -1731,46 +1901,15 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
                 <button
                   key={q}
                   type="button"
-                  onClick={() => send(q)}
+                  onClick={() => send(q, { depth: searchDepth })}
                   disabled={pending}
                   title="点击提问"
-                  className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left text-[14px] text-[#1f1f1f] shadow-sm transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-900 disabled:opacity-60 disabled:hover:border-slate-200 disabled:hover:bg-white"
+                  className="group flex w-full items-center justify-between gap-3 rounded-xl border border-[#e8eaed] bg-white px-4 py-3 text-left text-[14px] text-[#1f1f1f] transition hover:border-[#d2e3fc] hover:bg-[#f8fafd] disabled:opacity-60 disabled:hover:border-[#e8eaed] disabled:hover:bg-white"
                 >
                   <span className="flex-1">{q}</span>
                   <Send size={16} className="shrink-0 text-slate-400 transition group-hover:text-indigo-600" />
                 </button>
               ))}
-            </div>
-            <div className="flex flex-col gap-2">
-              <p className="text-[13px] font-medium text-[#5f6368]">探索可能性</p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => send('对当前市场进行深度概况分析，给出关键板块、风险与机会', { depth: 'deep' })}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-[#f1f3f4] px-3.5 py-2 text-[13px] text-[#1f1f1f] transition hover:bg-[#e8eaed] disabled:opacity-60"
-                >
-                  <Compass size={14} className="text-[#1a73e8]" />
-                  深度搜索
-                </button>
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => send('请分析我监控列表中股票的近期表现与关键变化', { depth: 'deep' })}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-[#f1f3f4] px-3.5 py-2 text-[13px] text-[#1f1f1f] transition hover:bg-[#e8eaed] disabled:opacity-60"
-                >
-                  <TrendingUp size={14} className="text-[#1a73e8]" />
-                  分析我的监控列表
-                </button>
-                <button
-                  type="button"
-                  onClick={() => inputRef.current?.focus()}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-[#f1f3f4] px-3.5 py-2 text-[13px] text-[#1f1f1f] transition hover:bg-[#e8eaed]"
-                >
-                  <Sparkles size={14} className="text-[#1a73e8]" />
-                  搜索或询问任意内容
-                </button>
-              </div>
             </div>
           </div>
         ) : (
@@ -1835,8 +1974,23 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
           </div>
         )}
       </div>
-      <form onSubmit={onSubmit} className="mx-3 mb-3 mt-1 flex h-12 items-center gap-2 rounded-full bg-[#f1f3f4] px-4">
-        <Sparkles size={16} className="shrink-0 text-[#1a73e8]" />
+      <div className="mx-3 mt-1 flex items-center gap-2">
+        {[{ key: 'fast', label: '普通' }, { key: 'deep', label: '深度' }].map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => setSearchDepth(item.key)}
+            className={cx('rounded-full px-3 py-1 text-[12px] font-medium transition', searchDepth === item.key ? 'bg-[#e8f0fe] text-[#1a73e8]' : 'bg-[#f1f3f4] text-[#5f6368] hover:text-[#1f1f1f]')}
+          >
+            {item.label}
+          </button>
+        ))}
+        {selectedSymbol ? <span className="ml-auto truncate text-[11px] text-[#5f6368]">已注入 {selectedSymbol}</span> : null}
+      </div>
+      <form onSubmit={onSubmit} className="mx-3 mb-3 mt-2 flex h-12 items-center gap-2 rounded-full bg-[#f1f3f4] px-3">
+        <button type="button" aria-label="添加上下文或附件" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#e8eaed]">
+          <Plus size={16} />
+        </button>
         <input
           ref={inputRef}
           type="text"
@@ -2015,6 +2169,9 @@ export function MarketsExperience() {
   // 各 tf 的 close 序列缓存：键为 `${symbol}|${tf}`。
   const [chartCandlesMap, setChartCandlesMap] = useState({});
   const [chartLoading, setChartLoading] = useState(false);
+  const [financialsMap, setFinancialsMap] = useState({});
+  const [financialsLoading, setFinancialsLoading] = useState(false);
+  const financialsInflightRef = useRef(new Set());
   const chartInflightRef = useRef(new Set());
   const [vpHeight, setVpHeight] = useState(null);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)').matches : false);
@@ -2222,6 +2379,30 @@ export function MarketsExperience() {
     })();
     return () => { cancelled = true; };
   }, [selectedSymbol, chartRange, chartCandlesMap]);
+
+
+
+  // 当前标的切到财务 tab 时按需拉 Yahoo quoteSummary 三大表。
+  useEffect(() => {
+    if (!selectedSymbol || market !== 'us' || symbolDetailTab !== 'financials') return;
+    if (financialsMap[selectedSymbol]) return;
+    if (financialsInflightRef.current.has(selectedSymbol)) return;
+    financialsInflightRef.current.add(selectedSymbol);
+    setFinancialsLoading(true);
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetchFinancials(selectedSymbol);
+        if (!cancelled) setFinancialsMap((prev) => ({ ...prev, [selectedSymbol]: r }));
+      } catch (_) {
+        if (!cancelled) setFinancialsMap((prev) => ({ ...prev, [selectedSymbol]: { statements: { income: { annual: [], quarterly: [] }, balance: { annual: [], quarterly: [] }, cashflow: { annual: [], quarterly: [] } } } }));
+      } finally {
+        financialsInflightRef.current.delete(selectedSymbol);
+        if (!cancelled) setFinancialsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedSymbol, market, symbolDetailTab, financialsMap]);
 
   useEffect(() => {
     refreshIndices(false);
@@ -2740,6 +2921,8 @@ export function MarketsExperience() {
             sparkPoints={klineMap[selectedQuote.symbol]}
             news={news}
             earnings={earnings}
+            financials={financialsMap[selectedQuote.symbol]}
+            financialsLoading={financialsLoading && !financialsMap[selectedQuote.symbol]}
             activeTab={symbolDetailTab}
             onTabChange={setSymbolDetailTab}
             chartRange={chartRange}

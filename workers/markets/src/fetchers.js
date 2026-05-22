@@ -149,6 +149,75 @@ export async function fetchYahooQuotesBatch(symbols, opts = {}) {
   return out;
 }
 
+
+// Yahoo quoteSummary：三大财务报表（年度 + 季度）。只用于美股详情页的「财务」tab。
+export async function fetchYahooFinancials(symbol) {
+  const modules = [
+    'incomeStatementHistory',
+    'incomeStatementHistoryQuarterly',
+    'balanceSheetHistory',
+    'balanceSheetHistoryQuarterly',
+    'cashflowStatementHistory',
+    'cashflowStatementHistoryQuarterly'
+  ].join(',');
+  const url = buildUrl(YAHOO_HOST, '/v10/finance/quoteSummary/' + encodeURIComponent(symbol), { modules });
+  const res = await fetch(url, { headers: COMMON_HEADERS, cf: { cacheTtl: 1800 } });
+  if (!res.ok) throw new Error('yahoo financials ' + symbol + ' HTTP ' + res.status);
+  const data = await res.json().catch(() => ({}));
+  const result = data && data.quoteSummary && data.quoteSummary.result && data.quoteSummary.result[0];
+  if (!result) {
+    const err = data && data.quoteSummary && data.quoteSummary.error;
+    throw new Error('yahoo financials ' + symbol + ' ' + ((err && err.code) || 'no-result'));
+  }
+  return normalizeYahooFinancials(result, symbol);
+}
+
+function unwrapFinancialValue(value) {
+  if (value == null) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'object' && Number.isFinite(Number(value.raw))) return Number(value.raw);
+  return null;
+}
+
+function normalizeStatementRows(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  return list.map((row) => {
+    const endRaw = unwrapFinancialValue(row && row.endDate);
+    const fields = {};
+    for (const [key, value] of Object.entries(row || {})) {
+      if (key === 'maxAge' || key === 'endDate') continue;
+      const n = unwrapFinancialValue(value);
+      if (n != null) fields[key] = n;
+    }
+    return {
+      period: endRaw ? new Date(endRaw * 1000).toISOString().slice(0, 10) : '',
+      endDate: endRaw || null,
+      fields
+    };
+  }).filter((row) => row.period && Object.keys(row.fields).length);
+}
+
+export function normalizeYahooFinancials(raw, symbol) {
+  return {
+    symbol,
+    market: 'us',
+    statements: {
+      income: {
+        annual: normalizeStatementRows(raw?.incomeStatementHistory?.incomeStatementHistory),
+        quarterly: normalizeStatementRows(raw?.incomeStatementHistoryQuarterly?.incomeStatementHistory)
+      },
+      balance: {
+        annual: normalizeStatementRows(raw?.balanceSheetHistory?.balanceSheetStatements),
+        quarterly: normalizeStatementRows(raw?.balanceSheetHistoryQuarterly?.balanceSheetStatements)
+      },
+      cashflow: {
+        annual: normalizeStatementRows(raw?.cashflowStatementHistory?.cashflowStatements),
+        quarterly: normalizeStatementRows(raw?.cashflowStatementHistoryQuarterly?.cashflowStatements)
+      }
+    }
+  };
+}
+
 export async function searchYahooSymbols(query, { limit = 8 } = {}) {
   const q = String(query || '').trim();
   if (!q) return [];
