@@ -1,111 +1,96 @@
 {
   "dataset": "etf_latest_nav_manifest",
-  "generatedAt": "2026-05-22T07:27:53.479Z",
+  "generatedAt": "2026-05-22T10:34:39.345Z",
   "source": "eastmoney:f10/lsjz",
-  "maxLatestNavDate": "2026-05-20",
+  "maxLatestNavDate": "2026-05-21",
   "attemptedCount": 12,
-  "successCount": 12,
+  "successCount": 4,
   "fetchedCount": 12,
-  "staleCount": 0,
+  "staleCount": 8,
   "failureCount": 0,
   "failures": [],
-  "staleItems": [],
-  "items": [
+  "staleItems": [
     {
       "code": "159513",
       "name": "大成纳斯达克100ETF(QDII)",
-      "latestNav": 1.6742,
       "latestNavDate": "2026-05-20",
-      "previousNav": 1.6464,
-      "previousNavDate": "2026-05-19"
+      "expectedLatestNavDate": "2026-05-21"
     },
     {
       "code": "159941",
       "name": "广发纳斯达克100ETF",
-      "latestNav": 1.5008,
       "latestNavDate": "2026-05-20",
-      "previousNav": 1.476,
-      "previousNavDate": "2026-05-19"
+      "expectedLatestNavDate": "2026-05-21"
     },
     {
       "code": "513100",
       "name": "国泰纳斯达克100ETF",
-      "latestNav": 2.0006,
       "latestNavDate": "2026-05-20",
-      "previousNav": 1.9675,
-      "previousNavDate": "2026-05-19"
-    },
-    {
-      "code": "159696",
-      "name": "易方达纳斯达克100ETF(QDI)",
-      "latestNav": 1.8611,
-      "latestNavDate": "2026-05-20",
-      "previousNav": 1.8303,
-      "previousNavDate": "2026-05-19"
-    },
-    {
-      "code": "159632",
-      "name": "华安纳斯达克100ETF(QDII)",
-      "latestNav": 2.2702,
-      "latestNavDate": "2026-05-20",
-      "previousNav": 2.2323,
-      "previousNavDate": "2026-05-19"
-    },
-    {
-      "code": "513390",
-      "name": "博时纳斯达克100ETF(QDII)",
-      "latestNav": 2.2437,
-      "latestNavDate": "2026-05-20",
-      "previousNav": 2.2061,
-      "previousNavDate": "2026-05-19"
+      "expectedLatestNavDate": "2026-05-21"
     },
     {
       "code": "513300",
       "name": "华夏纳斯达克100ETF(QDII)",
-      "latestNav": 2.4847,
       "latestNavDate": "2026-05-20",
-      "previousNav": 2.4434,
-      "previousNavDate": "2026-05-19"
+      "expectedLatestNavDate": "2026-05-21"
     },
     {
       "code": "159501",
       "name": "嘉实纳斯达克100ETF(QDII)",
-      "latestNav": 1.8779,
       "latestNavDate": "2026-05-20",
-      "previousNav": 1.8467,
-      "previousNavDate": "2026-05-19"
-    },
-    {
-      "code": "513870",
-      "name": "富国纳斯达克100ETF(QDII)",
-      "latestNav": 1.9046,
-      "latestNavDate": "2026-05-20",
-      "previousNav": 1.873,
-      "previousNavDate": "2026-05-19"
+      "expectedLatestNavDate": "2026-05-21"
     },
     {
       "code": "159660",
       "name": "汇添富纳斯达克100ETF",
-      "latestNav": 2.1846,
       "latestNavDate": "2026-05-20",
-      "previousNav": 2.1484,
-      "previousNavDate": "2026-05-19"
+      "expectedLatestNavDate": "2026-05-21"
     },
     {
       "code": "513110",
       "name": "华泰柏瑞纳斯达克100ETF(QDII)",
-      "latestNav": 2.2978,
       "latestNavDate": "2026-05-20",
-      "previousNav": 2.2598,
-      "previousNavDate": "2026-05-19"
+      "expectedLatestNavDate": "2026-05-21"
     },
     {
       "code": "159659",
       "name": "招商纳斯达克100ETF(QDII)",
-      "latestNav": 2.1536,
       "latestNavDate": "2026-05-20",
-      "previousNav": 2.1177,
-      "previousNavDate": "2026-05-19"
+      "expectedLatestNavDate": "2026-05-21"
+    }
+  ],
+  "items": [
+    {
+      "code": "159696",
+      "name": "易方达纳斯达克100ETF(QDI)",
+      "latestNav": 1.8638,
+      "latestNavDate": "2026-05-21",
+      "previousNav": 1.8611,
+      "previousNavDate": "2026-05-20"
+    },
+    {
+      "code": "159632",
+      "name": "华安纳斯达克100ETF(QDII)",
+      "latestNav": 2.2734,
+      "latestNavDate": "2026-05-21",
+      "previousNav": 2.2702,
+      "previousNavDate": "2026-05-20"
+    },
+    {
+      "code": "513390",
+      "name": "博时纳斯达克100ETF(QDII)",
+      "latestNav": 2.2462,
+      "latestNavDate": "2026-05-21",
+      "previousNav": 2.2437,
+      "previousNavDate": "2026-05-20"
+    },
+    {
+      "code": "513870",
+      "name": "富国纳斯达克100ETF(QDII)",
+      "latestNav": 1.9073,
+      "latestNavDate": "2026-05-21",
+      "previousNav": 1.9046,
+      "previousNavDate": "2026-05-20"
     }
   ]
 }
