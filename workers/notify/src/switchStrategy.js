@@ -43,9 +43,6 @@ export function navCacheKey(code) {
   return `${NAV_CACHE_PREFIX}${sanitizeCode(code)}`;
 }
 
-// 导出 getNav 模块的函数供外部使用
-export { fetchLatestNav, fetchLatestNavMap, fetchLatestNavMapWithCache, getLatestNavWithCache, NAV_CACHE_PREFIX };
-
 const FUND_CODE_PATTERN = /^\d{6}$/;
 const MAX_CANDIDATES = 20;
 // 与前端 SwitchStrategyExperience 的 DEFAULT_PREFS 保持一致。

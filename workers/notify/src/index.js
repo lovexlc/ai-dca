@@ -3,6 +3,11 @@ import { buildPublicGcmRegistration, buildPublicGcmRegistrations, checkGcmConnec
 import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
 import { handleBark, isBarkRoute } from './bark.js';
 import { WsHub, tryPublishWs } from './wsHub.js';
+import {
+  fetchLatestNavMapWithCache,
+  getLatestNavWithCache,
+  NAV_CACHE_PREFIX
+} from './getNav.js';
 
 // 把 Durable Object 类型重新导出，让 Workers runtime 能在加载 wrangler 绑定时
 // 通过 entry module 的导出表找到 class_name="WsHub"。
@@ -12,11 +17,7 @@ import {
   buildSwitchTriggerNotification,
   computeSwitchSnapshot,
   evaluateSwitchTriggers,
-  fetchLatestNav,
-  fetchLatestNavMap,
-  fetchLatestNavMapWithCache,
   fetchSinaPrices,
-  getLatestNavWithCache,
   isInTradingSession,
   isSwitchConfigRunnable,
   navCacheKey,
