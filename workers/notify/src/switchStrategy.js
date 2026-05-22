@@ -18,10 +18,17 @@
 //   - sign = +1 表示 benchmark 比 candidate 贵；-1 表示反向
 //   level 提升或 sign 翻转都会推送一次；维持或下降不重复推。
 
+import {
+  fetchLatestNav,
+  fetchLatestNavMap,
+  fetchLatestNavMapWithCache,
+  getLatestNavWithCache,
+  NAV_CACHE_PREFIX
+} from './getNav.js';
+
 export const SWITCH_CONFIG_PREFIX = 'switch:config:';
 export const SWITCH_SNAPSHOT_PREFIX = 'switch:snapshot:';
 export const SWITCH_STATE_PREFIX = 'switch:state:';
-export const NAV_CACHE_PREFIX = 'nav:cache:';
 
 export function switchConfigKey(clientId) {
   return `${SWITCH_CONFIG_PREFIX}${clientId}`;
@@ -35,6 +42,9 @@ export function switchStateKey(clientId) {
 export function navCacheKey(code) {
   return `${NAV_CACHE_PREFIX}${sanitizeCode(code)}`;
 }
+
+// 导出 getNav 模块的函数供外部使用
+export { fetchLatestNav, fetchLatestNavMap, fetchLatestNavMapWithCache, getLatestNavWithCache, NAV_CACHE_PREFIX };
 
 const FUND_CODE_PATTERN = /^\d{6}$/;
 const MAX_CANDIDATES = 20;
@@ -227,179 +237,9 @@ export async function fetchSinaPrices(codes = []) {
   return map;
 }
 
-// --- 最新单位净值 ----------------------------------------------------------
-
-function stripTrailingSlash(value = '') {
-  return String(value || '').replace(/\/+$/, '');
-}
-
-export async function fetchLatestNav(env, code) {
-  const c = sanitizeCode(code);
-  if (!c) return null;
-  const baseUrl = stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || 'https://tools.freebacktrack.tech');
-  try {
-    const response = await fetch(`${baseUrl}/data/${c}/latest-nav.json`, {
-      headers: { accept: 'application/json' },
-      // 一天内 NAV 不会变化太多次；缓存 10 分钟即可。
-      cf: { cacheTtl: 600, cacheEverything: true }
-    });
-    if (!response.ok) return null;
-    const payload = await response.json().catch(() => null);
-    const nav = Number(payload?.latestNav);
-    if (!Number.isFinite(nav) || nav <= 0) return null;
-    return {
-      code: c,
-      name: String(payload?.name || '').trim(),
-      nav,
-      latestNavDate: String(payload?.latestNavDate || '').trim()
-    };
-  } catch (_error) {
-    return null;
-  }
-}
-
-export async function fetchLatestNavMap(env, codes = []) {
-  const list = Array.from(new Set(codes.map((c) => sanitizeCode(c)).filter(Boolean)));
-  const results = await Promise.all(list.map((code) => fetchLatestNav(env, code)));
-  const map = {};
-  for (const entry of results) {
-    if (entry && entry.code) map[entry.code] = entry;
-  }
-  return map;
-}
-
-/**
- * 批量获取最新净值，支持 KV 缓存。
- * 
- * 这个版本接受 readCache/writeCache 函数，用于与 KV 存储集成。
- * 所有涉及净值的批量获取都应使用这个方法。
- * 
- * @param {Object} env - Worker env
- * @param {string[]} codes - 基金代码列表
- * @param {string[]} fundKinds - 对应的基金类型（如果为空，默认为 'exchange'）
- * @param {Object} options
- * @param {boolean} options.forceRefresh - 强制刷新
- * @param {string} options.todayDate - 当前日期
- * @param {Function} options.readCache - 从 KV 读缓存
- * @param {Function} options.writeCache - 写入 KV 缓存
- * @param {Function} options.getExpectedLatestNavDate - 获取预期净值日期的函数
- * @returns {Promise<Object>} { code → nav data }
- */
-export async function fetchLatestNavMapWithCache(
-  env,
-  codes = [],
-  fundKinds = [],
-  {
-    forceRefresh = false,
-    todayDate = '',
-    readCache = null,
-    writeCache = null,
-    getExpectedLatestNavDate = null
-  } = {}
-) {
-  const list = Array.from(new Set(codes.map((c) => sanitizeCode(c)).filter(Boolean)));
-  const results = await Promise.all(
-    list.map((code, idx) => {
-      const kind = fundKinds[idx] || 'exchange';
-      return getLatestNavWithCache(env, code, kind, {
-        forceRefresh,
-        todayDate,
-        readCache,
-        writeCache,
-        getExpectedLatestNavDate
-      });
-    })
-  );
-  const map = {};
-  for (const entry of results) {
-    if (entry && entry.code) map[entry.code] = entry;
-  }
-  return map;
-}
-
-/**
- * 统一的净值获取方法，支持 KV 缓存。
- * 
- * 优先从 KV 读取缓存；若缓存过期则从源拉取并写回 KV。
- * 支持 A 股（新浪源）和美股（Yahoo）的区分。
- * 
- * @param {Object} env - Worker env
- * @param {string} code - 基金代码
- * @param {string} fundKind - 基金类型 ('exchange'|'otc'|'qdii'|'us-stock')
- * @param {Object} options
- * @param {boolean} options.forceRefresh - 强制从源拉取，忽略缓存
- * @param {string} options.todayDate - 当前日期（用于判断净值是否最新），默认系统当前时间
- * @param {Function} options.readCache - 从 KV 读缓存函数
- * @param {Function} options.writeCache - 写入 KV 缓存函数
- * @returns {Promise<Object|null>} { code, name, nav, latestNavDate } 或 null
- */
-export async function getLatestNavWithCache(
-  env,
-  code,
-  fundKind = 'exchange',
-  {
-    forceRefresh = false,
-    todayDate = '',
-    readCache = null,
-    writeCache = null,
-    getExpectedLatestNavDate = null
-  } = {}
-) {
-  const c = sanitizeCode(code);
-  if (!c) return null;
-
-  // 如果没提供 KV 操作函数，则跳过缓存逻辑
-  const hasCacheOps = typeof readCache === 'function' && typeof writeCache === 'function';
-  const key = hasCacheOps ? `nav:cache:${c}` : '';
-
-  // 1. 先查 KV 缓存
-  if (!forceRefresh && hasCacheOps) {
-    try {
-      const cached = await readCache(key, null);
-      if (cached && cached.code === c) {
-        // 判断缓存是否仍然有效
-        if (getExpectedLatestNavDate && todayDate) {
-          const expectedDate = getExpectedLatestNavDate(fundKind, todayDate);
-          const cachedDate = String(cached.latestNavDate || '').trim();
-          if (cachedDate >= expectedDate) {
-            // 缓存仍然有效，直接返回
-            return cached;
-          }
-        } else if (!getExpectedLatestNavDate || !todayDate) {
-          // 如果没有提供判断函数或日期，保守地使用缓存（只要存在）
-          return cached;
-        }
-      }
-    } catch (_error) {
-      // 缓存读失败，继续走源拉取
-    }
-  }
-
-  // 2. 从源拉取
-  let nav = null;
-  if (fundKind === 'us-stock' || fundKind === 'us') {
-    // 美股：从 Yahoo Finance（未来实现）
-    // nav = await fetchYahooPrice(c);
-    console.warn(`[nav] us-stock 暂未实现：${c}`);
-    return null;
-  } else {
-    // A 股：从 latest-nav.json
-    nav = await fetchLatestNav(env, c);
-  }
-
-  if (!nav) return null;
-
-  // 3. 写入 KV 缓存
-  if (hasCacheOps) {
-    try {
-      await writeCache(key, nav);
-    } catch (_error) {
-      console.warn(`[nav] 缓存写入失败 ${c}:`, _error);
-    }
-  }
-
-  return nav;
-}
+// 净值获取相关的函数已抽离到 getNav.js 模块
+// 其中 fetchLatestNav, fetchLatestNavMap, fetchLatestNavMapWithCache, getLatestNavWithCache
+// 由该模块导出并在本文件顶部导入
 
 /**
  * 直接用最新净值更新现有 snapshot，避免完整重算。
