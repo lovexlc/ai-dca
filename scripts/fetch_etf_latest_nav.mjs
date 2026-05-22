@@ -170,12 +170,14 @@ async function main() {
   let okCount = 0;
   let failCount = 0;
   const failures = [];
+  const currentResults = [];
   // 串行，避免被东财限频
   for (const entry of etfs) {
     try {
       const fetched = await fetchWithRetry(entry.code);
       const file = await writeNavFile(outputDir, entry, fetched, generatedAt);
       okCount += 1;
+      currentResults.push({ entry, fetched });
       console.log(`  ✓ ${entry.code} latest=${fetched.latest.dwjz} (${fetched.latest.fsrq}) -> ${path.relative(process.cwd(), file)}`);
     } catch (error) {
       failCount += 1;
@@ -186,35 +188,46 @@ async function main() {
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
 
-  // 写个 manifest 便于前端一次加载
+  // 写 manifest 便于前端一次加载。
+  // 关键保护：manifest 只使用本轮网络抓取成功的结果，不再回读磁盘旧文件。
+  // 如果某些 code 本轮失败，不能把旧 latest-nav.json 混进 items；否则会暴露过期 latestNavDate。
+  const maxLatestNavDate = currentResults
+    .map((item) => item.fetched.latest.fsrq)
+    .filter(Boolean)
+    .sort()
+    .at(-1) || '';
+  const staleResults = currentResults.filter((item) => maxLatestNavDate && item.fetched.latest.fsrq !== maxLatestNavDate);
+  const freshResults = currentResults.filter((item) => !maxLatestNavDate || item.fetched.latest.fsrq === maxLatestNavDate);
   const manifestPath = path.join(outputDir, 'etf_latest_nav.json');
   const manifest = {
     dataset: 'etf_latest_nav_manifest',
     generatedAt,
     source: 'eastmoney:f10/lsjz',
-    successCount: okCount,
+    maxLatestNavDate,
+    attemptedCount: etfs.length,
+    successCount: freshResults.length,
+    fetchedCount: okCount,
+    staleCount: staleResults.length,
     failureCount: failCount,
     failures,
-    items: []
+    staleItems: staleResults.map(({ entry, fetched }) => ({
+      code: entry.code,
+      name: entry.name || '',
+      latestNavDate: fetched.latest.fsrq,
+      expectedLatestNavDate: maxLatestNavDate
+    })),
+    items: freshResults.map(({ entry, fetched }) => ({
+      code: entry.code,
+      name: entry.name || '',
+      latestNav: fetched.latest.dwjz,
+      latestNavDate: fetched.latest.fsrq,
+      previousNav: fetched.previous?.dwjz ?? null,
+      previousNavDate: fetched.previous?.fsrq ?? ''
+    }))
   };
-  for (const entry of etfs) {
-    try {
-      const file = path.join(outputDir, entry.code, 'latest-nav.json');
-      const raw = await fs.readFile(file, 'utf8');
-      const parsed = JSON.parse(raw);
-      manifest.items.push({
-        code: parsed.code,
-        name: parsed.name,
-        latestNav: parsed.latestNav,
-        latestNavDate: parsed.latestNavDate,
-        previousNav: parsed.previousNav,
-        previousNavDate: parsed.previousNavDate
-      });
-    } catch {}
-  }
   await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 
-  console.log(`[fetch_etf_latest_nav] ok=${okCount} fail=${failCount} manifest=${path.relative(process.cwd(), manifestPath)}`);
+  console.log(`[fetch_etf_latest_nav] fetched=${okCount} fresh=${freshResults.length} stale=${staleResults.length} fail=${failCount} maxDate=${maxLatestNavDate || '-'} manifest=${path.relative(process.cwd(), manifestPath)}`);
   // 部分成功也让 CI 继续走 (不以 fail 退出)
 }
 

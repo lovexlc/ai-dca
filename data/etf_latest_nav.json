@@ -1,10 +1,15 @@
 {
   "dataset": "etf_latest_nav_manifest",
-  "generatedAt": "2026-05-22T04:57:34.371Z",
+  "generatedAt": "2026-05-22T07:27:53.479Z",
   "source": "eastmoney:f10/lsjz",
+  "maxLatestNavDate": "2026-05-20",
+  "attemptedCount": 12,
   "successCount": 12,
+  "fetchedCount": 12,
+  "staleCount": 0,
   "failureCount": 0,
   "failures": [],
+  "staleItems": [],
   "items": [
     {
       "code": "159513",
