@@ -405,17 +405,15 @@ export async function getLatestNavWithCache(
  * 直接用最新净值更新现有 snapshot，避免完整重算。
  * 保留原有的价格和触发状态，仅补充/刷新净值及相关的溢价字段。
  * 
- * 改进：
- * - 当提供 getLatestNavFn（支持 KV 缓存）时，自动使用新方法，减少重复拉取
- * - 未提供 getLatestNavFn 时降级到旧方法（fetchLatestNavMap），保持向后兼容
- * - 支持区分 A 股/美股市场，使用对应的数据源
+ * 使用支持 KV 缓存的 getLatestNavFn 进行净值获取，确保数据新鲜度和性能。
+ * 通过并行批量拉取，快速响应净值更新。
  * 
  * @param {Object} snapshot - 现有快照
  * @param {Object} env - Worker env（用于 KV 操作）
- * @param {Function} getLatestNavFn - [可选] 支持 KV 缓存的净值获取函数
+ * @param {Function} getLatestNavFn - 支持 KV 缓存的净值获取函数（必需）
  * @returns {Promise<Object>} 更新后的 snapshot
  */
-export async function refreshSnapshotWithLatestNav(snapshot, env, getLatestNavFn = null) {
+export async function refreshSnapshotWithLatestNav(snapshot, env, getLatestNavFn) {
   if (!snapshot || !Array.isArray(snapshot.byBenchmark)) {
     return snapshot;
   }
@@ -441,28 +439,22 @@ export async function refreshSnapshotWithLatestNav(snapshot, env, getLatestNavFn
     return snapshot;
   }
 
-  // 批量拉取最新净值（优先用 getLatestNavFn 支持 KV 缓存，否则降级到旧方法）
+  // 批量拉取最新净值（使用统一的 KV 缓存方法）
   let navByCode = {};
   try {
-    if (getLatestNavFn && typeof getLatestNavFn === 'function') {
-      // 使用新方法：支持 KV 缓存的单个获取，并行处理
-      const results = await Promise.all(
-        Array.from(allCodes).map(code => 
-          getLatestNavFn(env, code, codeToKind[code] || 'exchange', { forceRefresh: false })
-            .catch(() => null)
-        )
-      );
-      for (const result of results) {
-        if (result && result.code) {
-          navByCode[result.code] = result;
-        }
+    // 使用支持 KV 缓存的方法，并行处理所有基金代码
+    const results = await Promise.all(
+      Array.from(allCodes).map(code => 
+        getLatestNavFn(env, code, codeToKind[code] || 'exchange', { forceRefresh: false })
+          .catch(() => null)
+      )
+    );
+    for (const result of results) {
+      if (result && result.code) {
+        navByCode[result.code] = result;
       }
-      console.log(`[switch] refreshSnapshotWithLatestNav: 用 KV 缓存拉取 ${Object.keys(navByCode).length}/${allCodes.size} 个基金`);
-    } else {
-      // 降级到旧方法（不支持 KV 缓存，但保持兼容性）
-      navByCode = await fetchLatestNavMap(env, Array.from(allCodes));
-      console.log(`[switch] refreshSnapshotWithLatestNav: 用旧方法拉取 ${Object.keys(navByCode).length}/${allCodes.size} 个基金`);
     }
+    console.log(`[switch] refreshSnapshotWithLatestNav: 用 KV 缓存拉取 ${Object.keys(navByCode).length}/${allCodes.size} 个基金`);
   } catch (_error) {
     console.warn('[switch] refreshSnapshotWithLatestNav: fetch failed', _error);
     return snapshot;
