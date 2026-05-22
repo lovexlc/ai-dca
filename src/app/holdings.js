@@ -225,17 +225,7 @@ export async function recognizeHoldingsFile(file, onProgress) {
   };
 }
 
-export async function requestHoldingsNav(codes = []) {
-  const normalizedCodes = getHoldingCodeList(codes.map((code) => ({ code })));
-  if (!normalizedCodes.length) {
-    return {
-      items: [],
-      cache: null,
-      successCount: 0,
-      failureCount: 0
-    };
-  }
-
+async function requestHoldingsNavBatch(codes = []) {
   const response = await fetch(HOLDINGS_NAV_ENDPOINT, {
     method: 'POST',
     headers: {
@@ -243,7 +233,7 @@ export async function requestHoldingsNav(codes = []) {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      codes: normalizedCodes
+      codes
     })
   });
 
@@ -298,9 +288,61 @@ export async function requestHoldingsNav(codes = []) {
         codeCount: Math.max(Number(payload.cache.codeCount) || 0, 0)
       }
       : null,
-    successCount: Math.max(Number(payload.successCount) || 0, items.filter((item) => item.ok).length),
-    failureCount: Math.max(Number(payload.failureCount) || 0, items.filter((item) => item.ok === false).length),
-    generatedAt: String(payload.generatedAt || '').trim(),
-    expiresAt: String(payload.expiresAt || '').trim()
+    successCount: Math.max(Number(payload?.successCount) || 0, 0),
+    failureCount: Math.max(Number(payload?.failureCount) || 0, 0),
+    generatedAt: String(payload?.generatedAt || '').trim(),
+    expiresAt: String(payload?.expiresAt || '').trim()
+  };
+}
+
+export async function requestHoldingsNav(codes = []) {
+  const normalizedCodes = getHoldingCodeList(codes.map((code) => ({ code })));
+  if (!normalizedCodes.length) {
+    return {
+      items: [],
+      cache: null,
+      successCount: 0,
+      failureCount: 0
+    };
+  }
+
+  const batchSize = 60;
+  const batches = [];
+  for (let i = 0; i < normalizedCodes.length; i += batchSize) {
+    batches.push(normalizedCodes.slice(i, i + batchSize));
+  }
+
+  const results = [];
+  for (const batch of batches) {
+    results.push(await requestHoldingsNavBatch(batch));
+  }
+
+  if (results.length === 1) {
+    return results[0];
+  }
+
+  const items = results.flatMap((res) => res.items || []);
+  const caches = results.map((res) => res.cache).filter(Boolean);
+  const cache = caches.length
+    ? {
+      key: caches.map((c) => c.key).filter(Boolean).join('+'),
+      hit: caches.every((c) => c.hit === true),
+      source: caches.map((c) => c.source).find(Boolean) || '',
+      stale: caches.some((c) => c.stale === true),
+      codeCount: items.length
+    }
+    : null;
+  const successCount = results.reduce((sum, res) => sum + (res.successCount || 0), 0);
+  const failureCount = results.reduce((sum, res) => sum + (res.failureCount || 0), 0);
+  const generatedAt = results.map((res) => res.generatedAt).filter(Boolean).sort().at(-1) || '';
+  const expiresAt = results.map((res) => res.expiresAt).filter(Boolean).sort().at(0) || '';
+
+  return {
+    items,
+    cache,
+    successCount,
+    failureCount,
+    generatedAt,
+    expiresAt
   };
 }

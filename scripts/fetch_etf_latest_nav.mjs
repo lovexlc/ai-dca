@@ -22,11 +22,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
+import { fetchFundNavSnapshot } from '../workers/notify/src/getNav.js';
 
 const DEFAULT_SOURCE = 'data/all_nasdq.json';
 const DEFAULT_OUTPUT_DIR = 'data';
-const DEFAULT_PAGE_SIZE = 8;
-const REQUEST_TIMEOUT_MS = 20000;
 const MAX_RETRIES = 2;
 
 function parseArgs(argv) {
@@ -52,63 +51,21 @@ async function readEtfList(sourcePath) {
     .filter((entry) => /^\d{6}$/.test(entry.code));
 }
 
-function normalizeDate(value) {
-  const text = String(value || '').trim();
-  if (!text) return '';
-  // 東财 lsjz 返回 YYYY-MM-DD
-  const m = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return m ? `${m[1]}-${m[2]}-${m[3]}` : '';
-}
-
-function roundNav(value, digits = 4) {
-  const v = Number(value);
-  if (!Number.isFinite(v)) return null;
-  const factor = Math.pow(10, digits);
-  return Math.round(v * factor) / factor;
-}
-
 async function fetchOnce(code) {
-  const url = new URL('https://api.fund.eastmoney.com/f10/lsjz');
-  url.searchParams.set('fundCode', code);
-  url.searchParams.set('pageIndex', '1');
-  url.searchParams.set('pageSize', String(DEFAULT_PAGE_SIZE));
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  let response;
-  try {
-    response = await fetch(url.toString(), {
-      signal: controller.signal,
-      headers: {
-        accept: 'application/json, text/plain, */*',
-        referer: 'https://fundf10.eastmoney.com/',
-        'user-agent': 'Mozilla/5.0 (compatible; ai-dca-action)'
-      }
-    });
-  } finally {
-    clearTimeout(timer);
+  const snapshot = await fetchFundNavSnapshot(code, new Date().toISOString());
+  if (!snapshot || snapshot.ok === false) {
+    throw new Error('snapshot missing');
   }
-
-  const text = await response.text();
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  let payload;
-  try { payload = JSON.parse(text); } catch { throw new Error('non-JSON response'); }
-
-  const errCode = Number(payload?.ErrCode || 0);
-  if (errCode !== 0) throw new Error(payload?.ErrMsg || `ErrCode ${errCode}`);
-
-  const rows = Array.isArray(payload?.Data?.LSJZList) ? payload.Data.LSJZList : [];
-  const validRows = rows
-    .map((row) => ({
-      dwjz: roundNav(row?.DWJZ),
-      fsrq: normalizeDate(row?.FSRQ)
-    }))
-    .filter((r) => Number.isFinite(r.dwjz) && r.dwjz > 0 && r.fsrq);
-
-  if (validRows.length === 0) throw new Error('no DWJZ rows');
-
-  const latest = validRows[0];
-  const previous = validRows[1] || null;
+  const latest = {
+    dwjz: snapshot.latestNav,
+    fsrq: snapshot.latestNavDate
+  };
+  const previous = snapshot.previousNav
+    ? {
+      dwjz: snapshot.previousNav,
+      fsrq: snapshot.previousNavDate
+    }
+    : null;
   return { latest, previous };
 }
 

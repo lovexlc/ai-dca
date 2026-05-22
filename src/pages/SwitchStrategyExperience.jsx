@@ -19,8 +19,8 @@ import {
 // 真实溢价计算：
 //   溢价 % = (当前成交价 − 最新单位净值) / 最新单位净值
 //
-// 数据源（每个交易日 15:30 由 GitHub Action 拉取）：
-// - data/<code>/latest-nav.json：场内 ETF 最新单位净值 (東财 f10/lsjz 的 DWJZ)
+// 数据源：
+// - 最新净值：/api/holdings/nav（worker 统一接口，内部走 getNav）
 // - data/all_nasdq.json：候选基金 universe（纳指 100 场内 ETF 全集，与持仓解耦）
 // - 当前价：持仓 ledger 中的 latestNav（A 股开盘期间由 notify worker push2 推送，收盘后是最后成交价）；
 //   非持仓候选取 data/<code>/daily-sina.json 最后一根 K 线 close 作为代理。
@@ -179,32 +179,6 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function etfLatestNavManifestPath(inPagesDir) {
-  return inPagesDir ? '../data/etf_latest_nav.json' : './data/etf_latest_nav.json';
-}
-
-async function loadEtfLatestNavManifest({ inPagesDir = false } = {}) {
-  const response = await fetch(etfLatestNavManifestPath(inPagesDir), {
-    headers: { Accept: 'application/json' },
-    cache: 'no-store'
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const payload = await response.json();
-  const navByCode = {};
-  for (const item of payload?.items || []) {
-    if (item?.code && Number.isFinite(item.latestNav) && item.latestNav > 0) {
-      navByCode[item.code] = {
-        code: item.code,
-        name: item.name || '',
-        latestNav: item.latestNav,
-        latestNavDate: item.latestNavDate || '',
-        previousNav: Number.isFinite(item.previousNav) && item.previousNav > 0 ? item.previousNav : null,
-        previousNavDate: item.previousNavDate || ''
-      };
-    }
-  }
-  return navByCode;
-}
 
 function nasdqListPath(inPagesDir) {
   return inPagesDir ? `../data/all_nasdq.json` : `./data/all_nasdq.json`;
@@ -824,7 +798,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, [exchangeFunds, benchmarkCodesJoined, premiumClassKey]);
 
   // 拉取所有候选 ETF 的最新单位净值（候选池来自 data/all_nasdq.json，不仅限于持仓）。
-  // 优化：使用统一的 data/etf_latest_nav.json 清单而不是逐个调用 data/<code>/latest-nav.json。
+  // 统一走 worker 的 /api/holdings/nav（内部由 getNav 处理）。
   const loadNav = useCallback(async () => {
     setNavState((prev) => ({ ...prev, loading: true, error: '' }));
     try {
@@ -833,39 +807,23 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         setNavState({ loading: false, error: '', navByCode: {}, generatedAt: nowIso() });
         return;
       }
-      let navByCode = {};
-      try {
-        // Phase 0：从统一的 etf_latest_nav.json 清单拉取所有 ETF 净值
-        navByCode = await loadEtfLatestNavManifest({ inPagesDir });
-      } catch (_e) {
-        // 清单加载失败，继续降级到 Phase 1 fallback
-      }
-      // Phase 1 (NAV 分层) fallback：GitHub Action 预生成的 latest-nav.json 会过期或缺失。
-      // 对 null 的 code，走与持仓页 KPI 同源的 ocr-proxy /api/holdings/nav（DWJZ）补齐。
-      // 详见 docs/data-glossary.md、docs/nav-source-stratification-plan.md。
-      const fallbackCodes = codes.filter((code) => !navByCode[code]);
-      if (fallbackCodes.length > 0) {
-        try {
-          const fallback = await requestHoldingsNav(fallbackCodes);
-          for (const item of fallback?.items || []) {
-            if (!item?.code || navByCode[item.code]) continue;
-            if (!item.ok || !(item.latestNav > 0)) continue;
-            navByCode[item.code] = {
-              code: item.code,
-              name: item.name || '',
-              latestNav: item.latestNav,
-              latestNavDate: item.latestNavDate || '',
-              previousNav: Number.isFinite(item.previousNav) && item.previousNav > 0 ? item.previousNav : null,
-              previousNavDate: item.previousNavDate || ''
-            };
-          }
-        } catch (_e) {
-          // 静默降级失败，下面的空 navByCode 会提示用户
-        }
+      const navByCode = {};
+      const result = await requestHoldingsNav(codes);
+      for (const item of result?.items || []) {
+        if (!item?.code) continue;
+        if (!item.ok || !(item.latestNav > 0)) continue;
+        navByCode[item.code] = {
+          code: item.code,
+          name: item.name || '',
+          latestNav: item.latestNav,
+          latestNavDate: item.latestNavDate || '',
+          previousNav: Number.isFinite(item.previousNav) && item.previousNav > 0 ? item.previousNav : null,
+          previousNavDate: item.previousNavDate || ''
+        };
       }
       setNavState({
         loading: false,
-        error: Object.keys(navByCode).length === 0 ? '未拿到 ETF 最新净值。请检查 GitHub Action 是否跑过并生成 data/etf_latest_nav.json。' : '',
+        error: Object.keys(navByCode).length === 0 ? '未拿到 ETF 最新净值，请稍后重试。' : '',
         navByCode,
         generatedAt: nowIso()
       });

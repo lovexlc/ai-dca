@@ -18,6 +18,13 @@ import {
   PROMPT_VERSION
 } from './geminiPrompt.js';
 import { fetchFundLimit, fetchFundLimitsBatch, mapLimit } from './fundLimit.js';
+import {
+  fetchExchangeQuoteSnapshot as getNavExchangeQuoteSnapshot,
+  fetchFundNavHistory as getNavFundNavHistory,
+  fetchFundNavHistoryWithMonthlyKv as getNavFundNavHistoryWithMonthlyKv,
+  fetchFundNavSnapshot as getNavFundNavSnapshot,
+  fetchHoldingSnapshot as getNavHoldingSnapshot
+} from '../../notify/src/getNav.js';
 
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -1455,60 +1462,7 @@ async function readHoldingsBaselinePayload(request, env, key, ttlMs, codes) {
 }
 
 async function fetchFundNavSnapshot(code, generatedAt) {
-  const url = new URL('https://api.fund.eastmoney.com/f10/lsjz');
-  url.searchParams.set('fundCode', code);
-  url.searchParams.set('pageIndex', '1');
-  url.searchParams.set('pageSize', '6');
-
-  const response = await fetch(url.toString(), {
-    headers: {
-      accept: 'application/json, text/plain, */*',
-      referer: 'https://fundf10.eastmoney.com/',
-      'user-agent': 'Mozilla/5.0'
-    }
-  });
-
-  const rawText = await response.text();
-  let payload = {};
-
-  if (rawText) {
-    try {
-      payload = JSON.parse(rawText);
-    } catch (_error) {
-      throw new Error(`${code} 净值接口返回了非 JSON 响应。`);
-    }
-  }
-
-  if (!response.ok) {
-    throw new Error(`${code} 净值接口请求失败：HTTP ${response.status}`);
-  }
-
-  if (Number(payload?.ErrCode || 0) !== 0) {
-    throw new Error(payload?.ErrMsg || `${code} 净值接口返回错误。`);
-  }
-
-  const rows = Array.isArray(payload?.Data?.LSJZList) ? payload.Data.LSJZList : [];
-  const latestIndex = rows.findIndex((row) => Number(row?.DWJZ) > 0);
-  if (latestIndex < 0) {
-    throw new Error(`${code} 暂未查询到最新净值。`);
-  }
-
-  const latestRow = rows[latestIndex];
-  const previousRow = rows.slice(latestIndex + 1).find((row) => Number(row?.DWJZ) > 0);
-  if (!previousRow) {
-    throw new Error(`${code} 暂未查询到上一交易日净值。`);
-  }
-
-  return {
-    ok: true,
-    code,
-    name: '',
-    latestNav: roundHolding(Number(latestRow?.DWJZ) || 0, 4),
-    latestNavDate: normalizeDate(latestRow?.FSRQ || ''),
-    previousNav: roundHolding(Number(previousRow?.DWJZ) || 0, 4),
-    previousNavDate: normalizeDate(previousRow?.FSRQ || ''),
-    updatedAt: generatedAt
-  };
+  return getNavFundNavSnapshot(code, generatedAt);
 }
 
 // 拉取一段时间内的历史 NAV 序列（DWJZ 单位净值），按日期升序返回。
@@ -1618,131 +1572,11 @@ async function deleteNavHistoryKvKey(env, key) {
 }
 
 async function fetchFundNavHistoryWithMonthlyKv(code, fromDate, toDate, env, options = {}) {
-  const today = String(options.today || todayShanghaiIsoDate()).slice(0, 10);
-  const ttlMs = Math.max(60_000, Number(options.ttlMs) || 0);
-  const forceBypass = options.forceBypass === true;
-  const generatedAt = String(options.generatedAt || nowShanghaiIso());
-
-  if (!hasNavHistoryKv(env)) {
-    const items = await fetchFundNavHistory(code, fromDate, toDate);
-    return {
-      items,
-      cache: { source: 'live', hit: false, kv: { enabled: false } }
-    };
-  }
-
-  const months = enumerateMonthKeys(fromDate, toDate);
-  const cachedItems = [];
-  const missingMonths = [];
-  let kvHits = 0;
-
-  for (const monthKey of months) {
-    const key = buildNavHistoryKvKey(code, monthKey);
-    if (forceBypass) {
-      await deleteNavHistoryKvKey(env, key);
-      missingMonths.push(monthKey);
-      continue;
-    }
-    const payload = await readJsonFromNavHistoryKv(env, key);
-    if (isNavHistoryKvMonthFresh(payload, monthKey, today, ttlMs)) {
-      kvHits += 1;
-      cachedItems.push(...filterNavItemsByDateRange(payload.items, fromDate, toDate));
-    } else {
-      missingMonths.push(monthKey);
-    }
-  }
-
-  const fetchedItems = [];
-  for (const monthKey of missingMonths) {
-    const monthStart = firstOfMonthIso(monthKey);
-    const monthEnd = lastOfMonthIso(monthKey);
-    const fetchFrom = monthStart;
-    const fetchTo = minIsoDate(monthEnd, today);
-    let monthItems = [];
-    if (fetchFrom <= fetchTo) {
-      monthItems = await fetchFundNavHistory(code, fetchFrom, fetchTo);
-    }
-    const monthPayload = {
-      version: 1,
-      code,
-      month: monthKey,
-      from: fetchFrom,
-      to: fetchTo,
-      count: monthItems.length,
-      items: monthItems,
-      generatedAt,
-      expiresAt: monthKey < monthKeyFromIsoDate(today)
-        ? null
-        : epochMsToShanghaiIso(Date.parse(generatedAt) + ttlMs),
-      updatedAt: generatedAt
-    };
-    await putJsonToNavHistoryKv(env, buildNavHistoryKvKey(code, monthKey), monthPayload);
-    fetchedItems.push(...filterNavItemsByDateRange(monthItems, fromDate, toDate));
-  }
-
-  const items = filterNavItemsByDateRange([...cachedItems, ...fetchedItems], fromDate, toDate);
-  const hadLiveFetch = missingMonths.length > 0;
-  return {
-    items,
-    cache: {
-      source: hadLiveFetch ? (kvHits > 0 ? 'kv-partial' : 'kv-fill') : 'kv',
-      hit: !hadLiveFetch,
-      kv: {
-        enabled: true,
-        monthKeys: months,
-        hitMonths: kvHits,
-        missMonths: missingMonths.length,
-        force: forceBypass
-      }
-    }
-  };
+  return getNavFundNavHistoryWithMonthlyKv(code, fromDate, toDate, env, options);
 }
 
 async function fetchFundNavHistory(code, fromDate, toDate) {
-  const headers = {
-    accept: 'application/json, text/plain, */*',
-    referer: 'https://fundf10.eastmoney.com/jjjz_' + encodeURIComponent(code) + '.html',
-    'user-agent': 'Mozilla/5.0'
-  };
-  const items = [];
-  const pageSize = 40;
-  let pageIndex = 1;
-  for (let p = 0; p < 50; p++) {
-    const url = new URL('https://api.fund.eastmoney.com/f10/lsjz');
-    url.searchParams.set('fundCode', code);
-    url.searchParams.set('pageIndex', String(pageIndex));
-    url.searchParams.set('pageSize', String(pageSize));
-    url.searchParams.set('startDate', fromDate);
-    url.searchParams.set('endDate', toDate);
-
-    const response = await fetch(url.toString(), { headers });
-    if (!response.ok) {
-      throw new Error(`${code} 净值历史接口请求失败：HTTP ${response.status}`);
-    }
-    const rawText = await response.text();
-    let payload;
-    try {
-      payload = rawText ? JSON.parse(rawText) : {};
-    } catch (_error) {
-      throw new Error(`${code} 净值历史接口返回了非 JSON 响应。`);
-    }
-    if (Number(payload?.ErrCode || 0) !== 0) {
-      throw new Error(payload?.ErrMsg || `${code} 净值历史接口返回错误。`);
-    }
-    const rows = Array.isArray(payload?.Data?.LSJZList) ? payload.Data.LSJZList : [];
-    for (const row of rows) {
-      const nav = Number(row?.DWJZ);
-      const date = normalizeDate(row?.FSRQ || '');
-      if (!date || !Number.isFinite(nav) || nav <= 0) continue;
-      items.push({ date, nav: roundHolding(nav, 4) });
-    }
-    const total = Number(payload?.TotalCount) || 0;
-    if (pageIndex * pageSize >= total) break;
-    if (!rows.length) break;
-    pageIndex++;
-  }
-  items.sort((a, b) => a.date.localeCompare(b.date));
-  return items;
+  return getNavFundNavHistory(code, fromDate, toDate);
 }
 
 // 单 code + 单区间的稳定 cache key，作为 caches.default 的 Request URL 参数。
@@ -2149,74 +1983,11 @@ function shiftIsoDateDays(isoDate, deltaDays) {
 }
 
 async function fetchExchangeQuoteSnapshot(code, generatedAt) {
-  const market = resolveExchangeMarket(code);
-  const url = new URL('https://push2.eastmoney.com/api/qt/stock/get');
-  url.searchParams.set('secid', `${market}.${code}`);
-  url.searchParams.set('fields', 'f43,f60,f86,f57,f58,f1');
-  url.searchParams.set('_', String(Date.now()));
-
-  const response = await fetch(url.toString(), {
-    headers: {
-      accept: 'application/json, text/plain, */*',
-      referer: 'https://quote.eastmoney.com/',
-      'user-agent': 'Mozilla/5.0'
-    }
-  });
-
-  const rawText = await response.text();
-  if (!response.ok) {
-    throw new Error(`${code} 场内行情请求失败：HTTP ${response.status}`);
-  }
-
-  let payload = {};
-  if (rawText) {
-    try {
-      payload = JSON.parse(rawText);
-    } catch (_error) {
-      throw new Error(`${code} 场内行情接口返回了非 JSON 响应。`);
-    }
-  }
-
-  const data = payload?.data;
-  if (!data || typeof data !== 'object') {
-    throw new Error(`${code} 暂未查询到场内实时行情。`);
-  }
-
-  const scale = Math.max(Math.min(Number(data.f1) || 3, 6), 0);
-  const divisor = Math.pow(10, scale);
-  const latestRaw = Number(data.f43);
-  const previousRaw = Number(data.f60);
-  if (!(latestRaw > 0)) {
-    throw new Error(`${code} 场内行情暂无最新交易价。`);
-  }
-  if (!(previousRaw > 0)) {
-    throw new Error(`${code} 场内行情缺少昨收价。`);
-  }
-
-  const latestPrice = roundHolding(latestRaw / divisor, 4);
-  const previousPrice = roundHolding(previousRaw / divisor, 4);
-  const latestDate = formatShanghaiDateFromEpochSec(data.f86);
-  const previousDate = shiftIsoDateDays(latestDate, -1);
-  const name = String(data.f58 || '').trim();
-
-  return {
-    ok: true,
-    code,
-    name,
-    latestNav: latestPrice,
-    latestNavDate: latestDate,
-    previousNav: previousPrice,
-    previousNavDate: previousDate,
-    updatedAt: generatedAt,
-    priceSource: 'exchange-quote'
-  };
+  return getNavExchangeQuoteSnapshot(code, generatedAt);
 }
 
 async function fetchHoldingSnapshot(code, generatedAt) {
-  if (isExchangeFundCode(code)) {
-    return fetchExchangeQuoteSnapshot(code, generatedAt);
-  }
-  return fetchFundNavSnapshot(code, generatedAt);
+  return getNavHoldingSnapshot(code, generatedAt);
 }
 
 async function fetchLiveHoldingsNavPayload(codes, env, key, ttlMsOverride) {

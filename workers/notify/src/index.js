@@ -3,11 +3,6 @@ import { buildPublicGcmRegistration, buildPublicGcmRegistrations, checkGcmConnec
 import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
 import { handleBark, isBarkRoute } from './bark.js';
 import { WsHub, tryPublishWs } from './wsHub.js';
-import {
-  fetchLatestNavMapWithCache,
-  getLatestNavWithCache,
-  NAV_CACHE_PREFIX
-} from './getNav.js';
 
 // 把 Durable Object 类型重新导出，让 Workers runtime 能在加载 wrangler 绑定时
 // 通过 entry module 的导出表找到 class_name="WsHub"。
@@ -28,6 +23,11 @@ import {
   switchStateKey,
   testGetNav513100
 } from './switchStrategy.js';
+import {
+  fetchFundNavSnapshot,
+  fetchLatestNavMapWithCache,
+  getLatestNavWithCache
+} from './getNav.js';
 
 const SETTINGS_KEY = 'notify:settings';
 const PAIRING_CODE_TTL_MS = 10 * 60 * 1000;
@@ -1780,10 +1780,16 @@ function getTodayShanghaiDate() {
  * @param {boolean} forceRefresh - 强制刷新，忽略缓存
  * @returns {Promise<Object|null>} { code, name, nav, latestNavDate } 或 null
  */
-async function getLatestNav(env, code, fundKind = 'exchange', forceRefresh = false) {
+async function getLatestNav(env, code, fundKind = 'exchange', forceRefreshOrOptions = false) {
   if (!env || !env.NOTIFY_STATE) return null;
 
-  const todayDate = getTodayShanghaiDate();
+  const options = (forceRefreshOrOptions && typeof forceRefreshOrOptions === 'object')
+    ? forceRefreshOrOptions
+    : {};
+  const forceRefresh = (forceRefreshOrOptions && typeof forceRefreshOrOptions === 'object')
+    ? options.forceRefresh === true
+    : forceRefreshOrOptions === true;
+  const todayDate = options.todayDate || getTodayShanghaiDate();
   const readCache = async (key, fallback) => readJson(env, key, fallback);
   const writeCache = async (key, value) => writeJson(env, key, value);
 
@@ -2074,7 +2080,6 @@ function isAfterShanghaiNavCacheCutoff() {
 async function fetchHoldingsNavSnapshots(env, codes = [], options = {}) {
   if (!codes.length) return {};
   const { bucketKindByCode = {}, todayShanghai = '' } = options;
-  const baseUrl = String(env?.PUBLIC_DATA_BASE_URL || 'https://tools.freebacktrack.tech').replace(/\/+$/, '');
 
   // 逐 code 解析 effective kind（exchange / otc / qdii）以决定缓存有效期。
   const kindByCode = {};
@@ -2179,67 +2184,29 @@ async function fetchHoldingsNavSnapshots(env, codes = [], options = {}) {
   }
 
   if (navMissing.length) {
-    // 拉新：优先走 service binding，未绑定时回落公共域名（后者在同 zone 会 405，仅演习使用）。
-    const fetchUrl = `${baseUrl}/api/holdings/nav`;
-    const requestInit = {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'accept': 'application/json' },
-      body: JSON.stringify({ codes: navMissing })
+    const generatedAt = new Date().toISOString();
+    const queue = [...navMissing];
+    const results = [];
+    const worker = async () => {
+      while (queue.length) {
+        const code = queue.shift();
+        if (!code) continue;
+        try {
+          const snap = await fetchFundNavSnapshot(code, generatedAt);
+          results.push(snap);
+        } catch (fetchErr) {
+          results.push({
+            ok: false,
+            code,
+            error: fetchErr?.message || String(fetchErr),
+            updatedAt: generatedAt
+          });
+        }
+      }
     };
-    let response;
-    let viaBinding = false;
-    try {
-      if (env?.OCR_PROXY?.fetch) {
-        viaBinding = true;
-        response = await env.OCR_PROXY.fetch(new Request('https://internal/api/holdings/nav', requestInit));
-      } else {
-        response = await fetch(fetchUrl, requestInit);
-      }
-    } catch (fetchErr) {
-      console.log('[notify][nav] fetch threw', JSON.stringify({
-        viaBinding,
-        message: fetchErr?.message || String(fetchErr)
-      }));
-      // 连报错都拉不到：如果有旧缓存 → 降级用。
-      let staleUsed = 0;
-      for (const code of navMissing) {
-        if (cachedByCode[code]) { result[code] = cachedByCode[code]; staleUsed += 1; }
-      }
-      console.log('[notify][nav][cache] fallback to stale on fetch-throw', JSON.stringify({ staleUsed }));
-      if (staleUsed !== navMissing.length) {
-        throw new Error(`拉取净值失败：fetch threw ${fetchErr?.message || fetchErr}`);
-      }
-    }
-
-    if (response) {
-      const bodyText = await response.text().catch(() => '');
-      console.log('[notify][nav] fetch result', JSON.stringify({
-        viaBinding,
-        status: response.status,
-        ok: response.ok,
-        missingCount: navMissing.length,
-        bodyLen: bodyText.length,
-        bodyPreview: bodyText.slice(0, 240)
-      }));
-
-      if (!response.ok) {
-        let staleUsed = 0;
-        for (const code of navMissing) {
-          if (cachedByCode[code]) { result[code] = cachedByCode[code]; staleUsed += 1; }
-        }
-        console.log('[notify][nav][cache] fallback to stale on non-ok', JSON.stringify({ staleUsed, status: response.status }));
-        if (staleUsed !== navMissing.length) {
-          throw new Error(`拉取净值失败：状态 ${response.status}`);
-        }
-      } else {
-        let data = {};
-        try { data = JSON.parse(bodyText); } catch (_e) { data = {}; }
-        // ocr-proxy 返回 { items: [...] }；兼容旧字段 snapshots。
-        list.push(...(Array.isArray(data?.items)
-          ? data.items
-          : (Array.isArray(data?.snapshots) ? data.snapshots : [])));
-      }
-    }
+    const concurrency = Math.min(6, queue.length);
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+    list.push(...results);
   }
 
   let written = 0, skippedExchange = 0, skippedSameOrOlder = 0;
