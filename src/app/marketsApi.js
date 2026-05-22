@@ -195,24 +195,45 @@ export async function askMarketsStream({
 
 // Watchlist (localStorage). Stored per market for convenience.
 const WATCHLIST_KEY = 'markets:watchlist:v1';
+const WATCHLIST_DEFAULTS_VERSION = 1;
+
+export const CN_ETF_WATCHLIST_PRESETS = [
+  { symbol: '513100', name: '纳指 ETF', exchange: '上交所', currency: 'CNY' },
+  { symbol: '513500', name: '标普 500 ETF', exchange: '上交所', currency: 'CNY' }
+];
+
+const DEFAULT_CN_WATCHLIST = CN_ETF_WATCHLIST_PRESETS.map((item) => item.symbol);
+
+function normalizeWatchlist(value = {}) {
+  const rawUs = Array.isArray(value.us) ? value.us : [];
+  const rawCn = Array.isArray(value.cn) ? value.cn : [];
+  const hasCnDefaults = Number(value.defaultsVersion) >= WATCHLIST_DEFAULTS_VERSION;
+  const cn = hasCnDefaults
+    ? rawCn
+    : Array.from(new Set([...DEFAULT_CN_WATCHLIST, ...rawCn]));
+
+  return {
+    ...value,
+    us: rawUs,
+    cn,
+    defaultsVersion: WATCHLIST_DEFAULTS_VERSION
+  };
+}
 
 export function loadWatchlist() {
   try {
     const raw = localStorage.getItem(WATCHLIST_KEY);
-    if (!raw) return { us: [], cn: [] };
+    if (!raw) return normalizeWatchlist({ us: [], cn: [] });
     const parsed = JSON.parse(raw);
-    return {
-      us: Array.isArray(parsed.us) ? parsed.us : [],
-      cn: Array.isArray(parsed.cn) ? parsed.cn : []
-    };
+    return normalizeWatchlist(parsed);
   } catch (err) {
-    return { us: [], cn: [] };
+    return normalizeWatchlist({ us: [], cn: [] });
   }
 }
 
 export function saveWatchlist(list) {
   try {
-    localStorage.setItem(WATCHLIST_KEY, JSON.stringify(list || { us: [], cn: [] }));
+    localStorage.setItem(WATCHLIST_KEY, JSON.stringify(normalizeWatchlist(list || { us: [], cn: [] })));
   } catch (err) {
     // ignore quota errors
   }

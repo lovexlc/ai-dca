@@ -26,7 +26,8 @@ import {
   fetchSummary,
   searchSymbols,
   loadWatchlist,
-  removeFromWatchlist
+  removeFromWatchlist,
+  CN_ETF_WATCHLIST_PRESETS
 } from '../app/marketsApi.js';
 import { showActionToast } from '../app/toast.js';
 import { buildStockAnalysisPrompt } from '../app/stockAnalysisPrompt.js';
@@ -38,6 +39,8 @@ const MARKETS = [
   { key: 'us', label: '美股' },
   { key: 'cn', label: 'A股' }
 ];
+
+const CN_ETF_PRESET_MAP = Object.fromEntries(CN_ETF_WATCHLIST_PRESETS.map((item) => [item.symbol, item]));
 
 function formatNumber(value, fractionDigits = 2) {
   const n = Number(value);
@@ -1531,7 +1534,7 @@ function SymbolDetailPanel({
 
         {/* 详情 tab */}
         <div className="mt-3 flex gap-5 border-b border-[#e8eaed] text-sm font-medium text-[#5f6368]">
-          {SYMBOL_DETAIL_TABS.map((tab) => (
+          {(market === 'us' ? SYMBOL_DETAIL_TABS : SYMBOL_DETAIL_TABS.filter((tab) => tab.key === 'overview')).map((tab) => (
             <button
               key={tab.key}
               type="button"
@@ -2514,10 +2517,12 @@ export function MarketsExperience() {
         const q = watchQuotes[sym] || {};
         return {
           symbol: sym,
-          name: q.name || sym,
+          name: q.name || CN_ETF_PRESET_MAP[sym]?.name || sym,
           price: q.price,
           changePercent: q.changePercent,
-          change: q.change
+          change: q.change,
+          exchange: q.exchange || CN_ETF_PRESET_MAP[sym]?.exchange,
+          currency: q.currency || CN_ETF_PRESET_MAP[sym]?.currency
         };
       }),
     [watch, market, watchQuotes]
@@ -2598,9 +2603,8 @@ export function MarketsExperience() {
           )}
         </div>
 
-        {/* 股票板块（仅美股） */}
-        {market === 'us' && (
-          <div className="px-1">
+        {/* 搜索与板块 */}
+        <div className="px-1">
             <div className="flex items-center justify-between gap-2 py-2">
               {sectorSearchOpen ? (
                 <form className="flex min-w-0 flex-1 items-center" onSubmit={handleAddSymbol}>
@@ -2611,7 +2615,7 @@ export function MarketsExperience() {
                       className="h-10 w-full rounded-full border-[#dadce0] bg-white pl-9 pr-9 text-sm"
                       value={symbolInput}
                       onChange={(e) => setSymbolInput(e.target.value)}
-                      placeholder={market === 'cn' ? '搜索股票，如 600519 / 茅台' : '搜索股票，如 AAPL / Apple'}
+                      placeholder={market === 'cn' ? '搜索 ETF / 股票，如 513100 / 标普500' : '搜索股票，如 AAPL / Apple'}
                     />
                     <button
                       type="button"
@@ -2628,7 +2632,7 @@ export function MarketsExperience() {
                   </div>
                 </form>
               ) : (
-                <h3 className="text-base font-semibold text-[#1f1f1f]">股票板块</h3>
+                <h3 className="text-base font-semibold text-[#1f1f1f]">{market === 'cn' ? 'ETF / 股票' : '股票板块'}</h3>
               )}
               <div className="flex shrink-0 items-center gap-0.5">
                 {!sectorSearchOpen && (
@@ -2678,7 +2682,7 @@ export function MarketsExperience() {
             ) : null}
             {sectorsOpen && (
               sectors.length === 0 ? (
-                <p className="px-2 py-2 text-sm text-[#5f6368]">{sectorsLoading ? '加载中…' : '暂无数据'}</p>
+                <p className="px-2 py-2 text-sm text-[#5f6368]">{sectorsLoading ? '加载中…' : (market === 'cn' ? '可搜索并添加更多 A股 / ETF 标的' : '暂无数据')}</p>
               ) : (
                 <ul className="divide-y divide-[#e8eaed]">
                   {sectors.map((row) => (
@@ -2695,7 +2699,6 @@ export function MarketsExperience() {
               )
             )}
           </div>
-        )}
       </aside>
 
       {/* PC-only sidebar: Google Finance Beta-style compact (设计不变) */}
@@ -2754,9 +2757,8 @@ export function MarketsExperience() {
             </div>
           )}
 
-          {/* 组 2：股票板块（仅美股），S&P 11 行业指数 */}
-          {market === 'us' && (
-            <>
+          {/* 组 2：搜索与板块。美股显示 S&P 11 行业；A股用于添加 ETF / 股票。 */}
+          <>
               <div className="border-t border-slate-200/60 px-1 pt-1">
                 <div className={cx('flex items-center gap-1 rounded-md', !sectorSearchOpen && 'hover:bg-[#f1f3f4]')}>
                   {sectorSearchOpen ? (
@@ -2771,7 +2773,7 @@ export function MarketsExperience() {
                           className="h-8 w-full rounded-full border-[#dadce0] bg-white pl-8 pr-8 text-sm"
                           value={symbolInput}
                           onChange={(e) => setSymbolInput(e.target.value)}
-                          placeholder={market === 'cn' ? '600519 / 茅台' : 'AAPL / Apple'}
+                          placeholder={market === 'cn' ? '513100 / 标普500' : 'AAPL / Apple'}
                         />
                         <button
                           type="button"
@@ -2796,7 +2798,7 @@ export function MarketsExperience() {
                       >
                         {sectorsOpen ? <ChevronDown size={16} className="text-[#5f6368]" /> : <ChevronRight size={16} className="text-[#5f6368]" />}
                         <TrendingUp size={14} className="text-indigo-400" />
-                        <span>股票板块</span>
+                        <span>{market === 'cn' ? 'ETF / 股票' : '股票板块'}</span>
                         {sectorsLoading && <Loader2 size={12} className="ml-1 animate-spin text-slate-400" />}
                       </button>
                       <button
@@ -2840,7 +2842,7 @@ export function MarketsExperience() {
                     </div>
                   ) : null}
                   {sectors.length === 0 ? (
-                    <p className="px-2 py-1 text-xs text-slate-400">加载中…</p>
+                    <p className="px-2 py-1 text-xs text-slate-400">{sectorsLoading ? '加载中…' : (market === 'cn' ? '可搜索并添加更多 A股 / ETF 标的' : '暂无数据')}</p>
                   ) : (
                     <ul>
                       {sectors.map((row) => (
@@ -2857,8 +2859,7 @@ export function MarketsExperience() {
                   )}
                 </div>
               )}
-            </>
-          )}
+          </>
         </div>
       </aside>
 
@@ -2868,10 +2869,10 @@ export function MarketsExperience() {
             <div className="font-semibold text-slate-900">未配置自选</div>
             <div className="mt-3 flex flex-wrap gap-2">
               <button type="button" className={cx(primaryButtonClass, 'min-h-10 px-3 py-2 text-xs')} onClick={() => { setSectorsOpen(true); setSectorSearchOpen(true); }}>
-                添加第一个标的
+                {market === 'cn' ? '搜索 A股 / ETF' : '添加第一个标的'}
               </button>
-              <button type="button" className={cx(secondaryButtonClass, 'min-h-10 px-3 py-2 text-xs')} onClick={() => setPendingAnalysis({ symbol: 'QQQ', name: 'Nasdaq 100 ETF' })}>
-                开始研究 QQQ
+              <button type="button" className={cx(secondaryButtonClass, 'min-h-10 px-3 py-2 text-xs')} onClick={() => setPendingAnalysis(market === 'cn' ? { symbol: '513100', name: '纳指 ETF' } : { symbol: 'QQQ', name: 'Nasdaq 100 ETF' })}>
+                {market === 'cn' ? '开始研究纳指 ETF' : '开始研究 QQQ'}
               </button>
             </div>
           </div>
@@ -3007,7 +3008,7 @@ export function MarketsExperience() {
                   实时
                 </span>
                 {newsLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
-                {market === 'cn' && <Pill tone="slate">A 股新闻源建设中</Pill>}
+                {market === 'cn' && <Pill tone="slate">A股新闻源建设中</Pill>}
               </div>
               <LatestNewsList items={news} />
             </div>
