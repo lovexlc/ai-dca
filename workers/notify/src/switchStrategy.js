@@ -264,6 +264,117 @@ export async function fetchLatestNavMap(env, codes = []) {
   return map;
 }
 
+/**
+ * 直接用最新净值更新现有 snapshot，避免完整重算。
+ * 保留原有的价格和触发状态，仅补充/刷新净值及相关的溢价字段。
+ * 这样可以规避防抖机制且快速响应净值更新。
+ */
+export async function refreshSnapshotWithLatestNav(snapshot, env) {
+  if (!snapshot || !Array.isArray(snapshot.byBenchmark)) {
+    return snapshot;
+  }
+
+  // 第一步：收集所有相关的基金代码
+  const allCodes = new Set();
+  for (const group of snapshot.byBenchmark) {
+    if (group?.benchmarkCode) allCodes.add(group.benchmarkCode);
+    for (const cand of (group?.candidates || [])) {
+      if (cand?.code) allCodes.add(cand.code);
+    }
+  }
+
+  if (allCodes.size === 0) {
+    return snapshot;
+  }
+
+  // 第二步：批量拉取最新净值
+  let navByCode = {};
+  try {
+    navByCode = await fetchLatestNavMap(env, Array.from(allCodes));
+  } catch (_error) {
+    // 拉取失败不影响返回原 snapshot
+    console.warn('[switch] refreshSnapshotWithLatestNav: fetchLatestNavMap failed', _error);
+    return snapshot;
+  }
+
+  // 第三步：更新 snapshot 中的净值，重新计算溢价
+  const NAV_STALE_DAYS = 14;
+  function navAgeDays(dateStr) {
+    if (!dateStr) return Infinity;
+    const t = Date.parse(dateStr);
+    if (!Number.isFinite(t)) return Infinity;
+    const ref = Date.parse(snapshot.computedAt) || Date.now();
+    return (ref - t) / 86400000;
+  }
+
+  const updatedByBenchmark = snapshot.byBenchmark.map((group) => {
+    const benchmarkCode = group.benchmarkCode || '';
+    const benchNav = Number(navByCode?.[benchmarkCode]?.nav);
+    const benchNavDate = String(navByCode?.[benchmarkCode]?.latestNavDate || '').trim();
+    const benchPrice = group.benchmarkPrice; // 保留原有价格，不重新拉取
+    const benchNavStale = benchNav && navAgeDays(benchNavDate) > NAV_STALE_DAYS;
+    const benchPremium = Number.isFinite(benchPrice) && Number.isFinite(benchNav) && benchNav > 0 && !benchNavStale
+      ? ((benchPrice - benchNav) / benchNav) * 100
+      : null;
+
+    const updatedCandidates = (group.candidates || []).map((cand) => {
+      const candNav = Number(navByCode?.[cand.code]?.nav);
+      const candNavDate = String(navByCode?.[cand.code]?.latestNavDate || '').trim();
+      const candPrice = cand.price; // 保留原有价格
+      const navMissing = !Number.isFinite(candNav) || candNav <= 0;
+      const navStale = !navMissing && navAgeDays(candNavDate) > NAV_STALE_DAYS;
+      const priceMissing = !Number.isFinite(candPrice) || candPrice <= 0;
+      const candPremium = (!navMissing && !priceMissing && !navStale)
+        ? ((candPrice - candNav) / candNav) * 100
+        : null;
+      const diff = Number.isFinite(benchPremium) && Number.isFinite(candPremium)
+        ? benchPremium - candPremium
+        : null;
+
+      let note = '';
+      if (navMissing) note = 'nav-missing';
+      else if (navStale) note = 'nav-stale';
+      else if (priceMissing) note = 'price-missing';
+      else if (!Number.isFinite(benchPremium)) note = 'benchmark-unavailable';
+
+      return {
+        ...cand,
+        nav: Number.isFinite(candNav) ? candNav : cand.nav,
+        navDate: candNavDate || cand.navDate,
+        premiumPct: Number.isFinite(candPremium) ? candPremium : cand.premiumPct,
+        spreadVsBenchmarkPct: Number.isFinite(diff) ? diff : cand.spreadVsBenchmarkPct,
+        note
+      };
+    });
+
+    return {
+      ...group,
+      benchmarkNav: Number.isFinite(benchNav) ? benchNav : group.benchmarkNav,
+      benchmarkNavDate: benchNavDate || group.benchmarkNavDate,
+      benchmarkPremiumPct: Number.isFinite(benchPremium) ? benchPremium : group.benchmarkPremiumPct,
+      benchmarkNote: !Number.isFinite(benchPrice) || benchPrice <= 0
+        ? 'price-missing'
+        : (!Number.isFinite(benchNav) || benchNav <= 0)
+          ? 'nav-missing'
+          : (benchNavStale ? 'nav-stale' : ''),
+      candidates: updatedCandidates
+    };
+  });
+
+  // 第四步：重新计算 ready 标志和 signals
+  const ready = updatedByBenchmark.some((b) =>
+    Number.isFinite(b.benchmarkPremiumPct)
+    && b.candidates.some((c) => Number.isFinite(c.spreadVsBenchmarkPct))
+  );
+
+  // 保留原 signals 和 triggers（这些是触发决策，不应因净值刷新而改变）
+  return {
+    ...snapshot,
+    byBenchmark: updatedByBenchmark,
+    ready
+  };
+}
+
 // --- 快照与触发 ------------------------------------------------------------
 
 // 计算 worker 快照，与前端 SwitchStrategyExperience.fundsWithPremium / intraSignals 同语义。

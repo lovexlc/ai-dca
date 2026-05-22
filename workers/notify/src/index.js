@@ -12,15 +12,16 @@ import {
   buildSwitchTriggerNotification,
   computeSwitchSnapshot,
   evaluateSwitchTriggers,
+  fetchLatestNavMap,
   fetchSinaPrices,
   isInTradingSession,
   isSwitchConfigRunnable,
   normalizeSwitchConfig,
+  refreshSnapshotWithLatestNav,
   switchConfigKey,
   switchSnapshotKey,
   switchStateKey
 } from './switchStrategy.js';
-import { fetchLatestNavMap } from './switchStrategy.js';
 
 const SETTINGS_KEY = 'notify:settings';
 const PAIRING_CODE_TTL_MS = 10 * 60 * 1000;
@@ -2786,17 +2787,17 @@ async function handleSwitchSnapshotGet(request, env) {
   let snapshot = await readSwitchSnapshotForClient(env, auth.clientId);
   const config = await readSwitchConfigForClient(env, auth.clientId);
 
-  // 自动重算：当 KV 里的 snapshot 是基于陈旧 NAV 算出时，立刻按当前 latest-nav.json 重算一次。
+  // 自动刷新净值：当 KV 里的 snapshot 是基于陈旧 NAV 算出时，直接补充最新净值，避免完整重算。
   // 背景：runSwitchStrategyTick 受 isInTradingSession 限制，仅在交易时段触发；
   //   而 GH Action 把 T 日 NAV 写入 data/<code>/latest-nav.json 的时间往往晚于收盘。
-  //   收盘后用户进入「基金切换」，单靠 GET 不会触发重算，会看到 T-1 NAV。
+  //   收盘后用户进入「基金切换」，单靠 GET 不会触发重算。
   // 实现：
   //   - 防抖 1：snapshot.computedAt 距今 < 3 分钟 → 跳过（cron 或并发 GET 刚算过）。
   //   - 检测：用 benchmarkCodes[0] 作为探针，对比 latest-nav.json.latestNavDate 与 snapshot 里该 code 的 navDate；
-  //     若线上更新，则触发一次 runSwitchStrategyForOneClient（不走 isInTradingSession，仅刷快照不推送）。
-  //   - 失败保护：探测/重算异常不影响返回（继续返回旧 snapshot）。
+  //     若线上更新，则直接用 refreshSnapshotWithLatestNav() 补充净值（无需重算价格等）。
+  //   - 失败保护：补充异常不影响返回（继续返回旧 snapshot）。
   try {
-    if (config && isSwitchConfigRunnable({ ...config, enabled: true })) {
+    if (snapshot && config && isSwitchConfigRunnable({ ...config, enabled: true })) {
       const benchmarkCodes = Array.isArray(config.benchmarkCodes) ? config.benchmarkCodes : [];
       const probeCode = benchmarkCodes[0]
         || (Array.isArray(config.enabledCodes) ? config.enabledCodes[0] : null);
@@ -2805,6 +2806,7 @@ async function handleSwitchSnapshotGet(request, env) {
         const tooRecent = Number.isFinite(computedAtMs) && computedAtMs > 0
           && (Date.now() - computedAtMs) < 3 * 60 * 1000;
         if (!tooRecent) {
+          // 从现有 snapshot 中提取基准净值日期
           let snapshotNavDate = '';
           if (snapshot) {
             const byBenchmark = Array.isArray(snapshot.byBenchmark) ? snapshot.byBenchmark : [];
@@ -2816,34 +2818,34 @@ async function handleSwitchSnapshotGet(request, env) {
                 if (cand?.navDate) { snapshotNavDate = String(cand.navDate); break; }
               }
             }
-            if (!snapshotNavDate && snapshot.benchmarkCode === probeCode) {
-              snapshotNavDate = String(snapshot.benchmarkNavDate || '');
-            }
           }
+          // 检测是否有更新的净值
           const latest = await fetchLatestNav(env, probeCode);
           const latestDate = String(latest?.latestNavDate || '');
-          const stale = !snapshot || (latestDate && (!snapshotNavDate || latestDate > snapshotNavDate));
+          const stale = latestDate && (!snapshotNavDate || latestDate > snapshotNavDate);
           if (stale) {
             try {
-              await runSwitchStrategyForOneClient(env, auth.clientId, config, {
-                reason: 'switch-snapshot-stale-autorerun'
-              });
-              snapshot = await readSwitchSnapshotForClient(env, auth.clientId);
-              console.log('[notify] switch snapshot auto-rerun', JSON.stringify({
-                clientId: auth.clientId.slice(0, 18),
-                probeCode,
-                latestDate,
-                prevSnapshotNavDate: snapshotNavDate
-              }));
-            } catch (rerunErr) {
-              console.warn('[notify] switch snapshot auto-rerun failed', String(rerunErr && rerunErr.message || rerunErr));
+              // 直接补充最新净值，而不是完整重算
+              const refreshedSnapshot = await refreshSnapshotWithLatestNav(snapshot, env);
+              if (refreshedSnapshot) {
+                snapshot = refreshedSnapshot;
+                console.log('[notify] switch snapshot refreshed with latest nav', JSON.stringify({
+                  clientId: auth.clientId.slice(0, 18),
+                  probeCode,
+                  latestDate,
+                  prevSnapshotNavDate: snapshotNavDate
+                }));
+              }
+            } catch (refreshErr) {
+              console.warn('[notify] switch snapshot refresh failed, returning stale data:', String(refreshErr && refreshErr.message || refreshErr));
             }
           }
         }
       }
     }
   } catch (_error) {
-    // 防御：自动重算检测异常不影响正常返回。
+    // 防御：自动刷新异常不影响正常返回。
+    console.warn('[notify] switch snapshot auto-refresh exception:', _error);
   }
 
   return jsonResponse({
