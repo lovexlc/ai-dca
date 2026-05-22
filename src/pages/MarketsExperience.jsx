@@ -820,7 +820,62 @@ const SYMBOL_DETAIL_TABS = [
   { key: 'earnings', label: '财报' },
 ];
 
-function SymbolDetailPanel({ row, market, sparkPoints, news = [], earnings = [], activeTab, onTabChange, onAnalyze, onBack }) {
+// 图表时间范围 tab：Google Finance 风格。每个 range 映射到 worker 接受的 tf。
+// 客户端再按 range 截取 candles 最后一段，保证视觉粒度合理。
+const CHART_RANGE_TABS = [
+  { key: '1d', label: '1天', tf: '5m', daysBack: 1 },
+  { key: '5d', label: '5天', tf: '5m', daysBack: 5 },
+  { key: '1mo', label: '1月', tf: '60m', daysBack: 31 },
+  { key: '6mo', label: '6月', tf: '1w', daysBack: 31 * 6 },
+  { key: 'ytd', label: 'YTD', tf: '1w', daysBack: null },
+  { key: '1y', label: '1年', tf: '1w', daysBack: 365 },
+  { key: '5y', label: '5年', tf: '1mo', daysBack: 365 * 5 },
+  { key: 'max', label: '最大', tf: '1mo', daysBack: null },
+];
+
+function sliceCandlesForRange(candles, rangeKey) {
+  const arr = Array.isArray(candles) ? candles : [];
+  if (!arr.length) return arr;
+  const cfg = CHART_RANGE_TABS.find((r) => r.key === rangeKey);
+  if (!cfg) return arr;
+  if (rangeKey === 'ytd') {
+    const y = new Date().getFullYear();
+    const startSec = Date.UTC(y, 0, 1) / 1000;
+    return arr.filter((c) => Number(c && c.t) >= startSec);
+  }
+  if (cfg.daysBack == null) return arr;
+  const cutoffSec = Math.floor(Date.now() / 1000) - cfg.daysBack * 86400;
+  const filtered = arr.filter((c) => Number(c && c.t) >= cutoffSec);
+  return filtered.length >= 2 ? filtered : arr;
+}
+
+function marketStateLabel(state, marketCode) {
+  const v = String(state || '').toUpperCase();
+  if (v === 'REGULAR') return '交易中';
+  if (v === 'PRE') return '盘前';
+  if (v === 'POST' || v === 'POSTPOST') return '盘后';
+  if (v === 'CLOSED') return '已收盘';
+  if (v === 'PREPRE') return '盘前候开';
+  return marketCode === 'cn' ? '已收盘' : '已收盘';
+}
+
+function SymbolDetailPanel({
+  row,
+  market,
+  sparkPoints,
+  news = [],
+  earnings = [],
+  activeTab,
+  onTabChange,
+  onAnalyze,
+  onBack,
+  chartRange,
+  onChartRangeChange,
+  chartPoints,
+  chartLoading,
+  inWatch,
+  onToggleWatch,
+}) {
   if (!row || !row.symbol) return null;
   const pct = Number(row.changePercent);
   const change = Number(row.change);
@@ -834,50 +889,108 @@ function SymbolDetailPanel({ row, market, sparkPoints, news = [], earnings = [],
     return text.includes(symbolKey) || (nameKey && nameKey !== symbolKey && text.includes(nameKey));
   });
   const relatedEarnings = (earnings || []).filter((it) => String(it.symbol || '').toUpperCase() === String(row.symbol || '').toUpperCase());
+  const exchangeLabel = row.exchange || (market === 'us' ? 'NASDAQ/NYSE' : 'A 股');
+  const currencyLabel = row.currency || (market === 'us' ? 'USD' : 'CNY');
+  const stateLabel = marketStateLabel(row.marketState, market);
+  const chartPts = (chartPoints && chartPoints.length >= 2) ? chartPoints : sparkPoints;
 
   return (
-    <Card className="overflow-hidden p-0">
-      <div className="border-b border-[#e8eaed] px-4 py-4 sm:px-5">
+    <section className="-mx-2 sm:mx-0">
+      <div className="px-3 pt-1 sm:px-1">
         <button
           type="button"
           onClick={onBack}
-          className="mb-3 inline-flex items-center gap-2 text-sm font-medium text-[#1f1f1f] hover:text-[#1a73e8]"
+          className="mb-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-[#5f6368] hover:text-[#1f1f1f]"
         >
-          <ArrowUp size={16} className="-rotate-90" />
+          <ArrowUp size={14} className="-rotate-90" />
           首页
         </button>
+        {/* Header：极简金融工作台头部 */}
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 text-[13px] text-[#5f6368]">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] text-[#5f6368]">
               <span>{market === 'us' ? '美股' : 'A 股'}</span>
               <span>·</span>
+              <span className="truncate">{exchangeLabel}</span>
+              <span>·</span>
               <span>{row.symbol}</span>
+              <span>·</span>
+              <span>{currencyLabel}</span>
             </div>
-            <h2 className="mt-1 truncate text-2xl font-semibold tracking-tight text-[#1f1f1f] sm:text-3xl">{row.name || row.symbol}</h2>
+            <h2 className="mt-0.5 truncate text-base font-medium text-[#1f1f1f] sm:text-lg">{row.name || row.symbol}</h2>
             <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <span className="text-2xl font-medium tabular-nums text-[#1f1f1f] sm:text-3xl">{formatNumber(row.price)}</span>
+              <span className="text-[34px] font-medium leading-none tabular-nums text-[#1f1f1f] sm:text-[40px]">{formatNumber(row.price)}</span>
               <span className={cx('text-sm font-medium tabular-nums', positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#5f6368]')}>
-                {Number.isFinite(change) ? `${change > 0 ? '+' : ''}${formatNumber(change)}` : '--'} · {formatPercent(row.changePercent)} 今天
+                {Number.isFinite(change) ? `${change > 0 ? '+' : ''}${formatNumber(change)}` : '--'}
+                <span className="mx-1 text-[#5f6368]">·</span>
+                {formatPercent(row.changePercent)}
               </span>
+              <span className="text-[12px] text-[#5f6368]">今日</span>
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-[#5f6368]">
+              <span>{stateLabel}</span>
+              {row.lastUpdated ? <><span>·</span><span>更新于 {formatClock(row.lastUpdated)}</span></> : null}
+              {Number.isFinite(Number(row.previousClose)) ? <><span>·</span><span>昨收 <span className="tabular-nums">{formatNumber(row.previousClose)}</span></span></> : null}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onAnalyze}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#e8f0fe] px-3 py-2 text-sm font-medium text-[#1a73e8] transition hover:bg-[#d2e3fc]"
-          >
-            <Sparkles size={15} />
-            研究
-          </button>
+          <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
+            <button
+              type="button"
+              onClick={onToggleWatch}
+              className={cx(
+                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition',
+                inWatch
+                  ? 'border border-[#dadce0] bg-white text-[#1f1f1f] hover:bg-[#f1f3f4]'
+                  : 'bg-[#1f1f1f] text-white hover:bg-[#3c3c3c]'
+              )}
+            >
+              <Star size={14} className={inWatch ? 'fill-amber-400 text-amber-400' : ''} />
+              {inWatch ? '已添加' : '添加自选'}
+            </button>
+            <button
+              type="button"
+              onClick={onAnalyze}
+              className="inline-flex items-center gap-1.5 rounded-full bg-[#e8f0fe] px-3 py-1.5 text-sm font-medium text-[#1a73e8] transition hover:bg-[#d2e3fc]"
+            >
+              <Sparkles size={14} />
+              研究
+            </button>
+          </div>
         </div>
-        <div className="mt-4 h-44 rounded-2xl bg-[#f8fafd] px-2 py-2">
-          {sparkPoints && sparkPoints.length >= 2 ? (
-            <Sparkline points={sparkPoints} width={720} height={170} tone={tone} showFill markLast className="h-full w-full" />
+
+        {/* 时间范围 tab（横向 chip 行；移动端可滚） */}
+        <div className="mt-3 -mx-3 overflow-x-auto px-3 sm:-mx-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex w-max items-center gap-1 sm:w-auto">
+            {CHART_RANGE_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => onChartRangeChange && onChartRangeChange(tab.key)}
+                className={cx(
+                  'shrink-0 rounded-full px-3 py-1 text-[13px] font-medium transition',
+                  chartRange === tab.key
+                    ? 'bg-[#e8f0fe] text-[#1a73e8]'
+                    : 'text-[#5f6368] hover:bg-[#f1f3f4]'
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+            {chartLoading ? <Loader2 size={12} className="ml-1 animate-spin text-slate-400" /> : null}
+          </div>
+        </div>
+
+        {/* 图表区 */}
+        <div className="mt-2 h-44 rounded-xl bg-white px-1 py-1 sm:h-56">
+          {chartPts && chartPts.length >= 2 ? (
+            <Sparkline points={chartPts} width={720} height={210} tone={tone} showFill markLast className="h-full w-full" />
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">趋势加载中…</div>
+            <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">{chartLoading ? '加载中…' : '暂无趋势数据'}</div>
           )}
         </div>
-        <div className="mt-4 flex gap-6 border-b border-[#e8eaed] text-sm font-medium text-[#5f6368]">
+
+        {/* 详情 tab */}
+        <div className="mt-3 flex gap-5 border-b border-[#e8eaed] text-sm font-medium text-[#5f6368]">
           {SYMBOL_DETAIL_TABS.map((tab) => (
             <button
               key={tab.key}
@@ -893,24 +1006,33 @@ function SymbolDetailPanel({ row, market, sparkPoints, news = [], earnings = [],
           ))}
         </div>
       </div>
-      <div className="px-4 py-4 sm:px-5">
+
+      <div className="px-3 py-4 sm:px-1">
         {activeTab === 'overview' ? (
-          <div className="grid gap-3 text-sm sm:grid-cols-2">
-            <div className="rounded-2xl bg-[#f8fafd] px-3 py-3">
-              <div className="text-xs text-[#5f6368]">最新价</div>
-              <div className="mt-1 font-medium tabular-nums text-[#1f1f1f]">{formatNumber(row.price)}</div>
+          <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+            <div className="flex items-center justify-between border-b border-[#e8eaed] py-2">
+              <span className="text-[#5f6368]">最新价</span>
+              <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(row.price)}</span>
             </div>
-            <div className="rounded-2xl bg-[#f8fafd] px-3 py-3">
-              <div className="text-xs text-[#5f6368]">今日涨跌幅</div>
-              <div className={cx('mt-1 font-medium tabular-nums', positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#1f1f1f]')}>{formatPercent(row.changePercent)}</div>
+            <div className="flex items-center justify-between border-b border-[#e8eaed] py-2">
+              <span className="text-[#5f6368]">今日涨跌幅</span>
+              <span className={cx('font-medium tabular-nums', positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#1f1f1f]')}>{formatPercent(row.changePercent)}</span>
             </div>
-            <div className="rounded-2xl bg-[#f8fafd] px-3 py-3">
-              <div className="text-xs text-[#5f6368]">涨跌额</div>
-              <div className="mt-1 font-medium tabular-nums text-[#1f1f1f]">{Number.isFinite(change) ? `${change > 0 ? '+' : ''}${formatNumber(change)}` : '--'}</div>
+            <div className="flex items-center justify-between border-b border-[#e8eaed] py-2">
+              <span className="text-[#5f6368]">涨跌额</span>
+              <span className="font-medium tabular-nums text-[#1f1f1f]">{Number.isFinite(change) ? `${change > 0 ? '+' : ''}${formatNumber(change)}` : '--'}</span>
             </div>
-            <div className="rounded-2xl bg-[#f8fafd] px-3 py-3">
-              <div className="text-xs text-[#5f6368]">市场</div>
-              <div className="mt-1 font-medium text-[#1f1f1f]">{market === 'us' ? '美股' : 'A 股'}</div>
+            <div className="flex items-center justify-between border-b border-[#e8eaed] py-2">
+              <span className="text-[#5f6368]">昨收</span>
+              <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(row.previousClose)}</span>
+            </div>
+            <div className="flex items-center justify-between border-b border-[#e8eaed] py-2">
+              <span className="text-[#5f6368]">市场</span>
+              <span className="font-medium text-[#1f1f1f]">{market === 'us' ? '美股' : 'A 股'}</span>
+            </div>
+            <div className="flex items-center justify-between border-b border-[#e8eaed] py-2">
+              <span className="text-[#5f6368]">交易状态</span>
+              <span className="font-medium text-[#1f1f1f]">{stateLabel}</span>
             </div>
           </div>
         ) : activeTab === 'news' ? (
@@ -919,9 +1041,10 @@ function SymbolDetailPanel({ row, market, sparkPoints, news = [], earnings = [],
           <EarningsCalendar items={relatedEarnings.length ? relatedEarnings : earnings.slice(0, 5)} />
         )}
       </div>
-    </Card>
+    </section>
   );
 }
+
 
 function SummaryModule({ themes = [], loading, onRefresh }) {
   const hasContent = Array.isArray(themes) && themes.length > 0;
@@ -1507,6 +1630,11 @@ export function MarketsExperience() {
   const [researchMode, setResearchMode] = useState('peek');
   const [selectedSymbol, setSelectedSymbol] = useState('');
   const [symbolDetailTab, setSymbolDetailTab] = useState('overview');
+  const [chartRange, setChartRange] = useState('1d');
+  // 各 tf 的 close 序列缓存：键为 `${symbol}|${tf}`。
+  const [chartCandlesMap, setChartCandlesMap] = useState({});
+  const [chartLoading, setChartLoading] = useState(false);
+  const chartInflightRef = useRef(new Set());
   const [vpHeight, setVpHeight] = useState(null);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)').matches : false);
   useEffect(() => {
@@ -1687,6 +1815,32 @@ export function MarketsExperience() {
       setSectorsLoading(false);
     }
   }, [market, ensureKlines]);
+
+  // 当 selectedSymbol / chartRange 变化时拉取对应 tf 的 candles。
+  useEffect(() => {
+    if (!selectedSymbol) return;
+    const cfg = CHART_RANGE_TABS.find((r) => r.key === chartRange);
+    if (!cfg) return;
+    const cacheKey = `${selectedSymbol}|${cfg.tf}`;
+    if (chartCandlesMap[cacheKey]) return;
+    if (chartInflightRef.current.has(cacheKey)) return;
+    chartInflightRef.current.add(cacheKey);
+    setChartLoading(true);
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetchKline(selectedSymbol, { timeframe: cfg.tf });
+        const candles = Array.isArray(r && r.candles) ? r.candles : [];
+        if (!cancelled) setChartCandlesMap((prev) => ({ ...prev, [cacheKey]: candles }));
+      } catch (_) {
+        if (!cancelled) setChartCandlesMap((prev) => ({ ...prev, [cacheKey]: [] }));
+      } finally {
+        chartInflightRef.current.delete(cacheKey);
+        if (!cancelled) setChartLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedSymbol, chartRange, chartCandlesMap]);
 
   useEffect(() => {
     refreshIndices(false);
@@ -2207,6 +2361,27 @@ export function MarketsExperience() {
             earnings={earnings}
             activeTab={symbolDetailTab}
             onTabChange={setSymbolDetailTab}
+            chartRange={chartRange}
+            onChartRangeChange={setChartRange}
+            chartPoints={(() => {
+              const cfg = CHART_RANGE_TABS.find((r) => r.key === chartRange);
+              if (!cfg) return undefined;
+              const cacheKey = `${selectedQuote.symbol}|${cfg.tf}`;
+              const candles = chartCandlesMap[cacheKey];
+              if (!Array.isArray(candles) || candles.length < 2) return undefined;
+              const sliced = sliceCandlesForRange(candles, chartRange);
+              return sliced.map((c) => Number(c && c.c)).filter((v) => Number.isFinite(v));
+            })()}
+            chartLoading={chartLoading}
+            inWatch={(watch[market] || []).includes(selectedQuote.symbol)}
+            onToggleWatch={() => {
+              const list = watch[market] || [];
+              if (list.includes(selectedQuote.symbol)) {
+                setWatch(removeFromWatchlist(market, selectedQuote.symbol));
+              } else {
+                setWatch(addToWatchlist(market, selectedQuote.symbol));
+              }
+            }}
             onAnalyze={() => {
               handleSelectSymbol(selectedQuote, { openResearch: true });
               setPendingAnalysis({ symbol: selectedQuote.symbol, name: selectedQuote.name });
@@ -2246,17 +2421,23 @@ export function MarketsExperience() {
               </div>
             )}
 
-            <Card className="lg:hidden">
-              <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">移动端研究入口</div>
-              <div className="mt-2 text-base font-bold text-slate-900">研究助手</div>
-              <button type="button" className={cx(primaryButtonClass, 'mt-4 w-full')} onClick={() => setResearchMode('conversation')}>
-                打开研究助手
-              </button>
-            </Card>
+            {/* 移动端研究入口（轻量，去重卡片） */}
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-2 rounded-full border border-[#dadce0] bg-white px-4 py-2.5 text-sm font-medium text-[#1f1f1f] hover:bg-[#f1f3f4] lg:hidden"
+              onClick={() => setResearchMode('conversation')}
+            >
+              <span className="inline-flex items-center gap-2">
+                <Sparkles size={14} className="text-[#1a73e8]" />
+                研究助手
+              </span>
+              <ChevronRight size={16} className="text-[#5f6368]" />
+            </button>
 
-            <Card className="hidden space-y-3 lg:block">
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-semibold text-slate-800">最新动态</h2>
+            {/* 最新动态（去重卡片为分组小节） */}
+            <div className="hidden space-y-2 lg:block">
+              <div className="flex items-center gap-2 border-b border-[#e8eaed] pb-1.5">
+                <h2 className="text-[15px] font-semibold text-[#1f1f1f]">最新动态</h2>
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                   实时
@@ -2265,17 +2446,17 @@ export function MarketsExperience() {
                 {market === 'cn' && <Pill tone="slate">A 股新闻源建设中</Pill>}
               </div>
               <LatestNewsList items={news} />
-            </Card>
+            </div>
 
             {market === 'us' && (
-              <Card className="hidden space-y-3 lg:block">
-                <div className="flex items-center gap-2">
+              <div className="hidden space-y-2 lg:block">
+                <div className="flex items-center gap-2 border-b border-[#e8eaed] pb-1.5">
                   <CalendarDays size={16} className="text-indigo-500" />
-                  <h2 className="text-base font-semibold text-slate-800">即将发布的财报</h2>
+                  <h2 className="text-[15px] font-semibold text-[#1f1f1f]">即将发布的财报</h2>
                   {earningsLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
                 </div>
                 <EarningsCalendar items={earnings} />
-              </Card>
+              </div>
             )}
           </>
         )}
