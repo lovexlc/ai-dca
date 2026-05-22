@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Home, KeyRound, Loader2, LogOut, UserRound, X } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
-import { loadCloudSyncMeta, refreshRemoteCloudMeta, restoreEncryptedCloudBackup, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
+import { ensureLocalChangeBaseline, loadCloudSyncMeta, refreshRemoteCloudMeta, restoreEncryptedCloudBackup, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
 import { clearRememberedKey, generateSecurityPassword } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
 import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
@@ -100,21 +100,25 @@ export function AccountMenu() {
   async function runInitialSync(nextSession, action) {
     const remoteMeta = nextSession?.latestBackupMeta || await refreshRemoteCloudMeta();
     const hasRemoteBackup = Boolean(remoteMeta?.version);
+    ensureLocalChangeBaseline();
     if (hasRemoteBackup) {
-      await restoreEncryptedCloudBackup({ securityPassword: form.securityPassword });
-      window.dispatchEvent(new CustomEvent('cloud-sync:auto-restored'));
+      const restored = await restoreEncryptedCloudBackup({
+        securityPassword: form.securityPassword,
+        onlyIfRemoteNewer: true
+      });
+      window.dispatchEvent(new CustomEvent('cloud-sync:auto-restored', { detail: { result: restored } }));
+      return restored?.skipped ? 'skipped-restore' : 'restored';
     }
-    try {
-      await uploadEncryptedCloudBackup({
+    if (action === 'register') {
+      const uploaded = await uploadEncryptedCloudBackup({
         securityPassword: form.securityPassword,
         rememberDevice: form.rememberDevice,
-        force: action === 'register' || !hasRemoteBackup
+        force: true
       });
-      window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded'));
-    } catch (err) {
-      if (!String(err?.message || err).includes('当前没有可同步的数据')) throw err;
+      window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result: uploaded } }));
+      return uploaded?.skipped ? 'skipped-upload' : 'uploaded';
     }
-    return hasRemoteBackup;
+    return 'no-remote';
   }
 
   async function handleAuth(action) {
@@ -126,13 +130,13 @@ export function AccountMenu() {
       setSession(nextSession);
       setSyncState('syncing');
       setLastError('');
-      const restored = await runInitialSync(nextSession, action);
+      const syncResult = await runInitialSync(nextSession, action);
       setMeta(loadCloudSyncMeta());
       setPreview(collectBackupPayload());
       setSyncState('synced');
       showToast({
         title: action === 'register' ? '账户已注册' : '已登录',
-        description: restored ? '已自动恢复并开启备份' : '已开启自动备份',
+        description: syncResult === 'restored' ? '已恢复云端较新数据' : syncResult === 'uploaded' ? '已创建云端备份' : '本地与云端无需更新',
         tone: 'emerald'
       });
       setOpen(false);
@@ -263,7 +267,7 @@ export function AccountMenu() {
             <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
               <div className="min-w-0">
                 <div className="text-sm font-bold text-slate-900">{authMode === 'register' ? '注册账户' : '账户登录'}</div>
-                <div className="mt-0.5 truncate text-xs text-slate-500">登录后自动恢复并备份</div>
+                <div className="mt-0.5 truncate text-xs text-slate-500">登录后按变更自动同步</div>
               </div>
               <button
                 type="button"
