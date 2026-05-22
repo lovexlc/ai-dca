@@ -11,7 +11,7 @@
 // Legacy alias: /api/notify/bark/... is still accepted for back-compat with
 // any out-of-tree callers, but the client UI no longer surfaces it.
 
-import { normalizeGcmRegistrations, resolveGcmProjectId, sendGcmNotification } from './gcm.js';
+import { normalizeGcmRegistrations } from './gcm.js';
 import { tryPublishWs } from './wsHub.js';
 
 const QUICK_PATH_PREFIX = '/api/notify/quick/';
@@ -160,33 +160,22 @@ export async function handleBark(request, env, deps = {}) {
   dataPayload.barkKey = key;
   dataPayload.source = 'bark';
 
-  const projectId = resolveGcmProjectId(settings, env);
-
   try {
-    const result = await sendGcmNotification({
-      env,
-      projectId,
-      packageName: registration.packageName,
-      token: registration.token,
+    const result = await tryPublishWs(env, registration.deviceInstallationId || registration.id, {
       title: finalTitle,
       body: finalBody,
-      data: dataPayload
+      data: dataPayload,
+      source: 'bark',
     });
-    // 实时通道双路发送（fire-and-forget）。不阻塞、不重试，失败仅记日志。
-    // 客户端只要在线且 settings 里开了开关，会收到这条。
-    try {
-      await tryPublishWs(env, registration.deviceInstallationId || registration.id, {
-        title: finalTitle,
-        body: finalBody,
-        data: dataPayload,
-        source: 'bark',
-      });
-    } catch (_) { /* 吞掉，WS 不走不影响 FCM 返回 */ }
-    const ok = result && result.status === 'delivered';
+    const delivered = Boolean(result && result.ok && Number(result.delivered || 0) > 0);
+    const queued = Boolean(result && result.queued);
+    const ok = delivered || queued;
     return jsonResponse({
       ok: Boolean(ok),
       code: ok ? 200 : 502,
-      message: ok ? 'success' : (result && result.detail) || 'delivery not delivered',
+      message: delivered ? 'success' : queued ? 'queued' : (result && result.error) || 'delivery not delivered',
+      delivery: delivered ? 'delivered' : queued ? 'queued' : 'failed',
+      queueSize: Number(result?.queueSize || 0),
       timestamp: Math.floor(Date.now() / 1000),
       registrationId: registration.id || ''
     }, { status: ok ? 200 : 502, origin });

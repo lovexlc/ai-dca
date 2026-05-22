@@ -192,12 +192,14 @@ if (DeliveryReceiptStore.isAlreadyDisplayed(context, messageId)) return
 
 ## 离线 catch-up
 
-v1 不做。理由：
+当前实现已经切到 **在线直推 / 离线入队 / 上线补发**：
 
-- FCM 路径已经覆盖了离线 → 上线的延迟送达。
-- 引入 catch-up 需要在 worker 端持久化未送达消息，KV 写入成本和复杂度都大幅上升。
-
-如果后续 v2 要做：在 KV 里 `notify:undelivered:<devId>` 存最近 24 小时未确认消息，客户端 `hello` 帧附带 `lastSeenMessageId`，server 把缺漏补发。
+- Worker 发送业务消息时先调用 `tryPublishWs(env, deviceInstallationId, payload)`。
+- 如果 WsHub 当前有在线 socket，直接通过 WebSocket 下发，返回 `delivered > 0`。
+- 如果没有在线 socket，或 DO publish 失败，消息写入 KV：`notify:queue:device:<deviceInstallationId>`。
+- 队列保留最近 100 条，TTL 3 天；同一 `messageId` / `eventId` 会覆盖旧记录，避免重复积压。
+- 客户端下一次连接 `/api/notify/ws/:deviceInstallationId` 成功后，WsHub 会自动 drain 该设备队列，把 queued 消息以 `type: "notify"`、`queued: true` 帧补发。
+- 如果上线补发中 socket 异常，未发出的消息会重新写回队列，避免连接瞬断丢消息。
 
 ## 实施阶段
 
@@ -215,8 +217,8 @@ v1 不做。理由：
 
 | 风险 | 影响 | 缓解 |
 |---|---|---|
-| MIUI / 鸿蒙后台限制比预期严，service 仍被杀 | 实时通道形同虚设 | FCM 兜底；WorkManager 心跳重启；引导用户配权限 |
-| Cloudflare DO 计费/限流意外触发 | worker 侧报错 | 双发用 `Promise.allSettled`，FCM 路径不受影响 |
+| MIUI / 鸿蒙后台限制比预期严，service 仍被杀 | 实时通道暂时不可达 | 消息写入 KV 离线队列；App 下次 WebSocket 连接成功后自动补发；同时引导用户配保活权限 |
+| Cloudflare DO / KV 计费或限流意外触发 | worker 侧报错或入队失败 | `tryPublishWs` 返回 `failed` 并记录日志；事件保留在 recentEvents 供 `/api/notify/events` 查看 |
 | 客户端 ws 频繁断连导致电量异常 | 用户投诉 | 退避封顶 60s；网络不可用时彻底停止重连，等 NetworkCallback |
 | 同一台设备多 socket 重复推送 | 同一条消息弹两次 | `messageId` 客户端去重；DO 端发送时也对每个 socket 去重 |
 | WebSocket 升级被运营商 / 中间盒断 | 实时通道完全不工作 | 自动 fallback：客户端 ws 连续 N 次连接失败后停一段时间，期间纯靠 FCM |

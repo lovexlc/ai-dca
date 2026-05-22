@@ -1,8 +1,8 @@
 // WsHub —— 实时长连接通道的 Durable Object 骨架（per device installation id）。
 //
-// v1 阶段只承载「在线即推、离线丢弃」的弱实时通道，与 FCM 形成双发。
+// v2 阶段承载「在线即推、离线入队、上线补拉」的实时通道。
 // 客户端规模约定：一个 deviceInstallationId 通常 1-2 个并发长连接
-// （手机 + 偶尔的桌面调试），不做 fan-out 广播，不做离线 catch-up。
+// （手机 + 偶尔的桌面调试），在线 fan-out；离线消息写入 NOTIFY_STATE KV。
 //
 // 接入路径在后续一次单独的 PR 中接通：
 //   1. wrangler.toml 增加 [[durable_objects.bindings]] WS_HUB + migrations
@@ -17,6 +17,9 @@
 
 const PING_INTERVAL_MS = 30_000
 const MAX_IDLE_MS = 75_000
+const QUEUE_KEY_PREFIX = "notify:queue:device:"
+const QUEUE_TTL_SECONDS = 3 * 24 * 60 * 60
+const MAX_QUEUED_MESSAGES = 100
 
 /**
  * 服务端 → 客户端的控制帧约定（与业务推送区分）。
@@ -29,6 +32,92 @@ const FRAME = Object.freeze({
   PONG: "pong",
   NOTIFY: "notify",
 })
+
+
+function queueKey(deviceInstallationId) {
+  return `${QUEUE_KEY_PREFIX}${String(deviceInstallationId || '').trim()}`
+}
+
+function normalizeQueuePayload(value) {
+  if (!value || typeof value !== 'object') return { messages: [] }
+  const messages = Array.isArray(value.messages) ? value.messages.filter(Boolean) : []
+  return { ...value, messages }
+}
+
+function resolveMessageId(payload = {}) {
+  const data = payload && typeof payload.data === 'object' && payload.data ? payload.data : {}
+  return String(
+    payload.messageId
+    || payload.id
+    || data.messageId
+    || data.eventId
+    || data.id
+    || ''
+  ).trim()
+}
+
+function buildQueuedMessage(payload = {}, reason = 'offline') {
+  const queuedAt = new Date().toISOString()
+  const messageId = resolveMessageId(payload) || `queued:${queuedAt}:${crypto.randomUUID()}`
+  return {
+    id: messageId,
+    messageId,
+    queuedAt,
+    reason,
+    payload: payload || {},
+  }
+}
+
+async function readQueue(env, deviceInstallationId) {
+  if (!env || !env.NOTIFY_STATE || !deviceInstallationId) return { messages: [] }
+  const raw = await env.NOTIFY_STATE.get(queueKey(deviceInstallationId))
+  if (!raw) return { messages: [] }
+  try {
+    return normalizeQueuePayload(JSON.parse(raw))
+  } catch {
+    return { messages: [] }
+  }
+}
+
+async function writeQueue(env, deviceInstallationId, queue) {
+  if (!env || !env.NOTIFY_STATE || !deviceInstallationId) return
+  const normalized = normalizeQueuePayload(queue)
+  if (!normalized.messages.length) {
+    await env.NOTIFY_STATE.delete(queueKey(deviceInstallationId))
+    return
+  }
+  await env.NOTIFY_STATE.put(
+    queueKey(deviceInstallationId),
+    JSON.stringify({
+      ...normalized,
+      updatedAt: new Date().toISOString(),
+    }),
+    { expirationTtl: QUEUE_TTL_SECONDS },
+  )
+}
+
+export async function enqueueWsMessage(env, deviceInstallationId, payload, reason = 'offline') {
+  if (!env || !env.NOTIFY_STATE || !deviceInstallationId) return { queued: false, skipped: true }
+  const queued = buildQueuedMessage(payload || {}, reason)
+  const queue = await readQueue(env, deviceInstallationId)
+  const existingIndex = queue.messages.findIndex((item) => item && item.messageId === queued.messageId)
+  if (existingIndex >= 0) {
+    queue.messages[existingIndex] = { ...queue.messages[existingIndex], payload: queued.payload, reason, queuedAt: queued.queuedAt }
+  } else {
+    queue.messages.push(queued)
+  }
+  queue.messages = queue.messages.slice(-MAX_QUEUED_MESSAGES)
+  await writeQueue(env, deviceInstallationId, queue)
+  return { queued: true, queueSize: queue.messages.length, messageId: queued.messageId }
+}
+
+async function drainWsQueue(env, deviceInstallationId) {
+  if (!env || !env.NOTIFY_STATE || !deviceInstallationId) return []
+  const queue = await readQueue(env, deviceInstallationId)
+  if (!queue.messages.length) return []
+  await env.NOTIFY_STATE.delete(queueKey(deviceInstallationId))
+  return queue.messages
+}
 
 export class WsHub {
   /**
@@ -84,6 +173,7 @@ export class WsHub {
     const server = pair[1]
 
     server.accept()
+    const deviceInstallationId = String(request.headers.get("x-device-installation-id") || "").trim()
     const id = crypto.randomUUID()
     this.sockets.set(server, { id, lastSeenMs: Date.now() })
 
@@ -119,6 +209,15 @@ export class WsHub {
         ts: Date.now(),
       }),
     )
+
+    if (deviceInstallationId) {
+      this.#drainQueuedMessages(server, deviceInstallationId).catch((error) => {
+        console.log("[notify][ws] drain queue failed", JSON.stringify({
+          deviceInstallationId,
+          message: error instanceof Error ? error.message : String(error),
+        }))
+      })
+    }
 
     this.#ensureHeartbeat()
 
@@ -172,6 +271,44 @@ export class WsHub {
   }
 
   /**
+   * 连接建立后补发该设备的离线队列。成功取出后即清空 KV；如果单条发送失败，
+   * 剩余消息会重新入队，避免上线瞬间 socket 异常导致消息丢失。
+   *
+   * @param {WebSocket} socket
+   * @param {string} deviceInstallationId
+   */
+  async #drainQueuedMessages(socket, deviceInstallationId) {
+    const messages = await drainWsQueue(this.env, deviceInstallationId)
+    if (!messages.length) return
+    const failed = []
+    for (const item of messages) {
+      try {
+        socket.send(JSON.stringify({
+          type: FRAME.NOTIFY,
+          ts: Date.now(),
+          queued: true,
+          queuedAt: item.queuedAt || '',
+          messageId: item.messageId || item.id || '',
+          data: item.payload || {},
+        }))
+      } catch (_error) {
+        failed.push(item)
+      }
+    }
+    if (failed.length) {
+      const existing = await readQueue(this.env, deviceInstallationId)
+      await writeQueue(this.env, deviceInstallationId, {
+        messages: [...failed, ...existing.messages].slice(-MAX_QUEUED_MESSAGES),
+      })
+    }
+    console.log("[notify][ws] drained queued messages", JSON.stringify({
+      deviceInstallationId,
+      delivered: messages.length - failed.length,
+      requeued: failed.length,
+    }))
+  }
+
+  /**
    * 30s 周期下发 server ping，并清理 75s 内没有任何收发动作的死连接。
    * 仅在有连接时启动 timer，最后一个连接断开时停止。
    */
@@ -203,7 +340,7 @@ export class WsHub {
 
 /**
  * 从外部 Worker 代码并发发布一条 payload 到指定设备的 WsHub。
- * 这是 fire-and-forget 语义：任何异常都会被吞掉，只记日志。
+ * 在线时直接送达；如果当前没有在线 socket 或发送失败，则写入离线队列。
  *
  * @param {Record<string, unknown>} env
  * @param {string} deviceInstallationId
@@ -224,16 +361,22 @@ export async function tryPublishWs(env, deviceInstallationId, payload) {
         const text = await res.text()
         console.log("[notify][ws] publish non-ok", JSON.stringify({ status: res.status, body: text.slice(0, 200) }))
       } catch (_) {}
-      return { ok: false, status: res.status }
+      const queued = await enqueueWsMessage(env, deviceInstallationId, payload, `publish-status-${res.status}`)
+      return { ok: false, status: res.status, ...queued }
     }
     let parsed = null
     try { parsed = await res.json() } catch (_) { parsed = null }
-    return { ok: true, ...parsed }
+    if (!parsed || Number(parsed.delivered || 0) <= 0) {
+      const queued = await enqueueWsMessage(env, deviceInstallationId, payload, 'offline')
+      return { ok: true, ...(parsed || {}), ...queued }
+    }
+    return { ok: true, queued: false, ...parsed }
   } catch (error) {
     console.log("[notify][ws] publish error", JSON.stringify({
       deviceInstallationId,
       message: error instanceof Error ? error.message : String(error),
     }))
-    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+    const queued = await enqueueWsMessage(env, deviceInstallationId, payload, 'publish-error')
+    return { ok: false, error: error instanceof Error ? error.message : String(error), ...queued }
   }
 }

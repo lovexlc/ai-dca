@@ -1,7 +1,7 @@
 import { buildMovingAverageValues, buildNasdaqStrategyPlan, buildPeakDrawdownStrategyPlan, findLatestFiniteValue, mapReferencePrice } from '../../../src/app/strategyEngine.js';
 import { compileNotifyRules } from './rules.js';
 import { sendBarkNotification } from './channels/bark.js';
-import { isRegistrationPairedToScope, normalizeGcmRegistrations, normalizeNotifyGroupId, resolveGcmProjectId, sendGcmNotification } from './gcm.js';
+import { isRegistrationPairedToScope, normalizeGcmRegistrations, normalizeNotifyGroupId } from './gcm.js';
 import { tryPublishWs } from './wsHub.js';
 
 const DEFAULT_PUBLIC_DATA_BASE_URL = 'https://tools.freebacktrack.tech';
@@ -392,13 +392,9 @@ async function deliverNotification(env, notification, options = {}) {
       configLabel: 'Android'
     });
   } else {
-    // 推送策略：WS（App 常驻）优先，FCM 兌底。
-    // - 先试 WS：tryPublishWs 返回 { ok, delivered, failed, total }。
-    //   delivered > 0 表示该设备至少一个长连接在线、成功收到 frame，干脆记为
-    //   「App 已探测到」→ 跳过 FCM，避免同一事件双弹。
-    // - WS 未 ok / delivered=0 的设备才走 FCM，保留原有 fan-out 语义。
-    // - Workers Paid 套餐 subrequest 上限 1000，两轮串行 (WS → FCM) 没频颈风险。
-    const projectId = resolveGcmProjectId(settings, env);
+    // 推送策略：WS 在线直推；如果设备当前没有在线 socket，tryPublishWs 会写入
+    // notify:queue:device:<deviceInstallationId> 离线队列。设备下一次 WebSocket
+    // 连接成功时由 WsHub 自动 drain 并补发，不再离线走 FCM 兜底。
     const baseData = {
       eventId: notification.eventId || '',
       eventType: notification.eventType || '',
@@ -430,28 +426,7 @@ async function deliverNotification(env, notification, options = {}) {
       return Boolean(v.ok) && Number(v.delivered || 0) > 0;
     });
 
-    // 2) 只对 WS 未送达的设备发 FCM 兌底。
-    const fcmTargetIndexes = [];
-    gcmRegistrationsToDeliver.forEach((_, idx) => {
-      if (!wsDeliveredFlags[idx]) fcmTargetIndexes.push(idx);
-    });
-    const fcmSettledByIdx = new Map();
-    if (fcmTargetIndexes.length) {
-      const settledList = await Promise.allSettled(
-        fcmTargetIndexes.map((idx) => sendGcmNotification({
-          env,
-          projectId,
-          packageName: gcmRegistrationsToDeliver[idx].packageName,
-          token: gcmRegistrationsToDeliver[idx].token,
-          title: notification.title,
-          body: notification.body,
-          data: baseData
-        }))
-      );
-      fcmTargetIndexes.forEach((idx, i) => fcmSettledByIdx.set(idx, settledList[i]));
-    }
-
-    // 3) 合并写 results。WS 送达的设备记 channel='ws' / status='delivered'。
+    // 2) 合并写 results。WS 送达的设备记 delivered；离线入队的设备记 queued。
     gcmRegistrationsToDeliver.forEach((registration, idx) => {
       const baseMeta = {
         configKey: `gcm-registration:${registration.id}`,
@@ -469,25 +444,23 @@ async function deliverNotification(env, notification, options = {}) {
         });
         return;
       }
-      const settled = fcmSettledByIdx.get(idx);
-      if (settled && settled.status === 'fulfilled') {
-        results.push({ ...settled.value, ...baseMeta });
-      } else if (settled) {
-        const error = settled.reason;
+      const wsValue = wsSettledList[idx].status === 'fulfilled' ? (wsSettledList[idx].value || {}) : {};
+      if (wsValue.queued) {
         results.push({
-          channel: 'gcm',
-          status: 'failed',
-          detail: error instanceof Error ? error.message : 'Android 推送失败',
+          channel: 'ws',
+          status: 'queued',
+          detail: `App 当前离线，已写入离线队列（待投递 ${Number(wsValue.queueSize || 0)} 条）`,
           ...baseMeta
         });
-      } else {
-        results.push({
-          channel: 'gcm',
-          status: 'failed',
-          detail: 'FCM 兌底未执行',
-          ...baseMeta
-        });
+        return;
       }
+      const wsError = wsSettledList[idx].status === 'rejected' ? wsSettledList[idx].reason : null;
+      results.push({
+        channel: 'ws',
+        status: 'failed',
+        detail: wsError instanceof Error ? wsError.message : (wsValue.error || '实时通道投递失败，未能入队'),
+        ...baseMeta
+      });
     });
   }
 
