@@ -12,10 +12,14 @@ import {
   buildSwitchTriggerNotification,
   computeSwitchSnapshot,
   evaluateSwitchTriggers,
+  fetchLatestNav,
   fetchLatestNavMap,
+  fetchLatestNavMapWithCache,
   fetchSinaPrices,
+  getLatestNavWithCache,
   isInTradingSession,
   isSwitchConfigRunnable,
+  navCacheKey,
   normalizeSwitchConfig,
   refreshSnapshotWithLatestNav,
   switchConfigKey,
@@ -1753,6 +1757,34 @@ function getExpectedLatestNavDate(kind, todayShanghai) {
   return getPreviousTradingDayShanghai(T);
 }
 
+/**
+ * 统一的净值获取方法，可用于所有涉及净值的业务逻辑。
+ * 
+ * 支持 KV 缓存、自动判断A股vs美股、自动从源拉取并缓存。
+ * 所有其他地方的净值查询都应通过这个方法。
+ * 
+ * @param {Object} env - Worker env (NOTIFY_STATE binding)
+ * @param {string} code - 基金代码
+ * @param {string} fundKind - 基金类型 ('exchange'|'otc'|'qdii'|'us-stock'，默认 'exchange')
+ * @param {boolean} forceRefresh - 强制刷新，忽略缓存
+ * @returns {Promise<Object|null>} { code, name, nav, latestNavDate } 或 null
+ */
+async function getLatestNav(env, code, fundKind = 'exchange', forceRefresh = false) {
+  if (!env || !env.NOTIFY_STATE) return null;
+
+  const todayDate = getTodayShanghaiDate();
+  const readCache = async (key, fallback) => readJson(env, key, fallback);
+  const writeCache = async (key, value) => writeJson(env, key, value);
+
+  return getLatestNavWithCache(env, code, fundKind, {
+    forceRefresh,
+    todayDate,
+    readCache,
+    writeCache,
+    getExpectedLatestNavDate
+  });
+}
+
 function getShanghaiDateParts(date = new Date()) {
   // 使用 Intl 拿到 Asia/Shanghai 的年月日/小时/分钟（包依轻量，Worker 运行时可用）。
   const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -2819,8 +2851,8 @@ async function handleSwitchSnapshotGet(request, env) {
               }
             }
           }
-          // 检测是否有更新的净值
-          const latest = await fetchLatestNav(env, probeCode);
+          // 检测是否有更新的净值（使用统一的 getLatestNav 方法，支持 KV 缓存）
+          const latest = await getLatestNav(env, probeCode, 'exchange');
           const latestDate = String(latest?.latestNavDate || '');
           const stale = latestDate && (!snapshotNavDate || latestDate > snapshotNavDate);
           if (stale) {
@@ -2887,7 +2919,16 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
     ...(config.enabledCodes || [])
   ]));
   const effectivePriceMap = priceMap || await fetchSinaPrices(codes).catch(() => ({}));
-  const effectiveNavMap = navByCode || await fetchLatestNavMap(env, codes);
+  
+  // 使用统一的净值获取方法（支持 KV 缓存）
+  const effectiveNavMap = navByCode || await fetchLatestNavMapWithCache(env, codes, [], {
+    forceRefresh: false,
+    todayDate: getTodayShanghaiDate(),
+    readCache: async (key, fallback) => readJson(env, key, fallback),
+    writeCache: async (key, value) => writeJson(env, key, value),
+    getExpectedLatestNavDate
+  });
+  
   const computedAtIso = computedAt || new Date().toISOString();
   const snapshot = computeSwitchSnapshot(config, effectivePriceMap, effectiveNavMap, computedAtIso);
   const prevState = (await readJson(env, switchStateKey(clientId), null)) || {};
@@ -2962,7 +3003,13 @@ async function runSwitchStrategyTick(env, scheduledMs, reason = 'switch-cron') {
   const codeList = Array.from(allCodes);
   const [priceMap, navByCode] = await Promise.all([
     fetchSinaPrices(codeList).catch(() => ({})),
-    fetchLatestNavMap(env, codeList)
+    fetchLatestNavMapWithCache(env, codeList, [], {
+      forceRefresh: false,
+      todayDate: getTodayShanghaiDate(),
+      readCache: async (key, fallback) => readJson(env, key, fallback),
+      writeCache: async (key, value) => writeJson(env, key, value),
+      getExpectedLatestNavDate
+    })
   ]);
   const computedAt = new Date(scheduledMs).toISOString();
   for (const { clientId, config } of enabledList) {
