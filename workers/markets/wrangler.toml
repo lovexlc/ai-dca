@@ -28,21 +28,9 @@ binding = "AI"
 binding = "AGENT"
 service = "ai-dca-markets-agent"
 
-[placement]
-mode = "smart"
-
-[limits]
-cpu_ms = 300000
-
-[observability]
-enabled = true
-head_sampling_rate = 1
-
-[observability.logs]
-enabled = true
-head_sampling_rate = 1
-persist = true
-invocation_logs = true
+# Keep deployment on baseline Workers entitlements. Advanced placement,
+# elevated CPU limits, and persisted invocation logs can fail to deploy on
+# accounts that do not currently expose those entitlements.
 
 # 定时抓取：所有 cron 表达式用 UTC。
 #   A 股：北京 09:30-15:00 工作日，每 2 分钟刷一次盘中报价 -> UTC 01:30-07:00 MON-FRI
