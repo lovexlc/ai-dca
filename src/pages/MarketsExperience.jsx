@@ -31,6 +31,7 @@ import { showActionToast } from '../app/toast.js';
 import { buildStockAnalysisPrompt } from '../app/stockAnalysisPrompt.js';
 import { Sparkline } from '../components/markets/Sparkline.jsx';
 import { MarketsChartCodeBlock } from '../components/markets/MarketsChartBlock.jsx';
+import { Area, CartesianGrid, ComposedChart, Customized, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 const MARKETS = [
   { key: 'us', label: '美股' },
@@ -859,6 +860,242 @@ function marketStateLabel(state, marketCode) {
   return marketCode === 'cn' ? '已收盘' : '已收盘';
 }
 
+// ---------- 图表工具栏（图表类型 / 指标 / 对比标的） ----------
+const CHART_TYPE_OPTIONS = [
+  { key: 'line', label: '折线', hint: '只看收盘价走势' },
+  { key: 'area', label: '面积', hint: '折线 + 渐变填充' },
+  { key: 'candle', label: 'K 线', hint: '开高低收烛台' },
+];
+const CHART_TYPE_LABEL = CHART_TYPE_OPTIONS.reduce((acc, o) => { acc[o.key] = o.label; return acc; }, {});
+
+const INDICATOR_OPTIONS = [
+  { key: 'ma5', label: 'MA5', hint: '5 日均线' },
+  { key: 'ma10', label: 'MA10', hint: '10 日均线' },
+  { key: 'ma20', label: 'MA20', hint: '20 日均线' },
+  { key: 'ma60', label: 'MA60', hint: '60 日均线' },
+  { key: 'boll', label: 'BOLL', hint: '布林带 (20, 2)' },
+];
+
+const MA_COLORS = { ma5: '#1a73e8', ma10: '#ea4335', ma20: '#f9ab00', ma60: '#9aa0a6' };
+const COMPARE_COLORS = ['#9333ea', '#10b981', '#f43f5e'];
+const CHART_UP = '#a50e0e';
+const CHART_DOWN = '#137333';
+
+function computeMA(closes, period) {
+  const out = new Array(closes.length).fill(null);
+  let sum = 0;
+  for (let i = 0; i < closes.length; i += 1) {
+    sum += closes[i];
+    if (i >= period) sum -= closes[i - period];
+    if (i >= period - 1) out[i] = sum / period;
+  }
+  return out;
+}
+
+function computeBOLL(closes, period = 20, mult = 2) {
+  const upper = []; const mid = []; const lower = [];
+  for (let i = 0; i < closes.length; i += 1) {
+    if (i < period - 1) { upper.push(null); mid.push(null); lower.push(null); continue; }
+    let sum = 0;
+    for (let j = i - period + 1; j <= i; j += 1) sum += closes[j];
+    const mean = sum / period;
+    let sq = 0;
+    for (let j = i - period + 1; j <= i; j += 1) sq += (closes[j] - mean) * (closes[j] - mean);
+    const sd = Math.sqrt(sq / period);
+    mid.push(mean); upper.push(mean + mult * sd); lower.push(mean - mult * sd);
+  }
+  return { upper, mid, lower };
+}
+
+function fmtChartLabel(t, tf) {
+  if (!Number.isFinite(Number(t))) return '';
+  const d = new Date(Number(t) * 1000);
+  if (tf === '5m' || tf === '15m' || tf === '60m') {
+    return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }
+  return d.toLocaleDateString('zh-CN', { year: '2-digit', month: '2-digit', day: '2-digit' });
+}
+
+function CandlesLayerPanel({ xAxisMap, yAxisMap, data }) {
+  if (!xAxisMap || !yAxisMap || !data) return null;
+  const xAxis = Object.values(xAxisMap)[0];
+  const yAxis = Object.values(yAxisMap)[0];
+  if (!xAxis || !yAxis || typeof yAxis.scale !== 'function') return null;
+  const xScale = xAxis.scale;
+  const yScale = yAxis.scale;
+  const bw = typeof xScale.bandwidth === 'function'
+    ? xScale.bandwidth()
+    : Math.max(2, (xAxis.width || 0) / Math.max(1, data.length));
+  const w = Math.max(1.5, bw * 0.6);
+  return (
+    <g>
+      {data.map((d, i) => {
+        if (!Number.isFinite(d.o) || !Number.isFinite(d.h) || !Number.isFinite(d.l) || !Number.isFinite(d.c)) return null;
+        const cxRaw = xScale(d.label);
+        if (typeof cxRaw !== 'number' || Number.isNaN(cxRaw)) return null;
+        const cx = cxRaw + (typeof xScale.bandwidth === 'function' ? bw / 2 : 0);
+        const up = d.c >= d.o;
+        const color = up ? CHART_UP : CHART_DOWN;
+        const yH = yScale(d.h);
+        const yL = yScale(d.l);
+        const yTop = yScale(Math.max(d.o, d.c));
+        const yBot = yScale(Math.min(d.o, d.c));
+        const bodyH = Math.max(1, yBot - yTop);
+        return (
+          <g key={i}>
+            <line x1={cx} x2={cx} y1={yH} y2={yL} stroke={color} strokeWidth={1} />
+            <rect x={cx - w / 2} y={yTop} width={w} height={bodyH} fill={color} />
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, tone }) {
+  const cmpList = (compareSeries || []).filter((s) => Array.isArray(s.candles) && s.candles.length >= 2);
+  const normalized = cmpList.length > 0;
+  const rows = useMemo(() => {
+    const arr = Array.isArray(candles) ? candles : [];
+    if (arr.length < 2) return [];
+    const base = Number(arr[0].c) || 1;
+    return arr.map((c) => {
+      const close = Number(c.c);
+      return {
+        label: fmtChartLabel(c.t, tf),
+        t: Number(c.t),
+        o: Number(c.o), h: Number(c.h), l: Number(c.l), c: close,
+        main: normalized ? (close / base) * 100 : close,
+      };
+    });
+  }, [candles, tf, normalized]);
+  const indicatorLines = useMemo(() => {
+    if (normalized || !Array.isArray(candles) || candles.length === 0) return [];
+    const closes = candles.map((c) => Number(c.c));
+    const out = [];
+    [['ma5', 5], ['ma10', 10], ['ma20', 20], ['ma60', 60]].forEach(([key, period]) => {
+      if (indicators.has(key)) {
+        out.push({ key, color: MA_COLORS[key], values: computeMA(closes, period), label: key.toUpperCase(), dashed: false });
+      }
+    });
+    if (indicators.has('boll')) {
+      const b = computeBOLL(closes, 20, 2);
+      out.push({ key: 'boll_upper', color: '#94a3b8', values: b.upper, label: 'BOLL 上', dashed: true });
+      out.push({ key: 'boll_mid', color: '#cbd5e1', values: b.mid, label: 'BOLL 中', dashed: true });
+      out.push({ key: 'boll_lower', color: '#94a3b8', values: b.lower, label: 'BOLL 下', dashed: true });
+    }
+    return out;
+  }, [candles, indicators, normalized]);
+  const finalRows = useMemo(() => {
+    return rows.map((r, i) => {
+      const out = { ...r };
+      indicatorLines.forEach((il) => { out[il.key] = il.values[i]; });
+      cmpList.forEach((s, ci) => {
+        const sc = s.candles[i];
+        const cb = Number(s.candles[0] && s.candles[0].c) || 1;
+        if (sc && Number.isFinite(Number(sc.c))) {
+          out[`cmp_${ci}`] = (Number(sc.c) / cb) * 100;
+        }
+      });
+      return out;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, indicatorLines, JSON.stringify(cmpList.map((s) => s.symbol))]);
+
+  if (finalRows.length < 2) {
+    return <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">暂无数据</div>;
+  }
+  const mainColor = tone === 'up' ? CHART_UP : tone === 'down' ? CHART_DOWN : '#1a73e8';
+  const showCandle = chartType === 'candle' && !normalized;
+  const showArea = chartType === 'area' && !normalized;
+  const showLine = chartType === 'line' || normalized;
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <ComposedChart data={finalRows} margin={{ top: 6, right: 8, left: 0, bottom: 4 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#f1f3f4" vertical={false} />
+        <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#5f6368' }} minTickGap={40} />
+        <YAxis tick={{ fontSize: 10, fill: '#5f6368' }} domain={['auto', 'auto']} width={44} />
+        <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12 }} />
+        {showArea ? (
+          <Area type="monotone" dataKey="main" stroke={mainColor} fill={mainColor} fillOpacity={0.12} dot={false} strokeWidth={1.5} isAnimationActive={false} />
+        ) : null}
+        {showLine ? (
+          <Line type="monotone" dataKey="main" stroke={mainColor} dot={false} strokeWidth={1.5} isAnimationActive={false} />
+        ) : null}
+        {showCandle ? (
+          <Line type="monotone" dataKey="c" stroke="transparent" dot={false} isAnimationActive={false} />
+        ) : null}
+        {showCandle ? (
+          <Customized component={<CandlesLayerPanel data={finalRows} />} />
+        ) : null}
+        {indicatorLines.map((il) => (
+          <Line
+            key={il.key}
+            type="monotone"
+            dataKey={il.key}
+            stroke={il.color}
+            strokeDasharray={il.dashed ? '3 3' : '0'}
+            dot={false}
+            strokeWidth={1}
+            isAnimationActive={false}
+          />
+        ))}
+        {cmpList.map((s, ci) => (
+          <Line
+            key={`cmp_${ci}`}
+            type="monotone"
+            dataKey={`cmp_${ci}`}
+            stroke={COMPARE_COLORS[ci % COMPARE_COLORS.length]}
+            dot={false}
+            strokeWidth={1.25}
+            isAnimationActive={false}
+          />
+        ))}
+      </ComposedChart>
+    </ResponsiveContainer>
+  );
+}
+
+function ChartToolbarPopover({ label, active, children, align = 'left' }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    function onDown(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={cx(
+          'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[12px] font-medium transition',
+          active
+            ? 'border-[#1a73e8] bg-[#e8f0fe] text-[#1a73e8]'
+            : 'border-[#dadce0] bg-white text-[#5f6368] hover:bg-[#f1f3f4]'
+        )}
+      >
+        {label}
+        <ChevronDown size={12} className={cx('transition', open ? 'rotate-180' : '')} />
+      </button>
+      {open ? (
+        <div
+          className={cx(
+            'absolute z-30 mt-1 min-w-[180px] rounded-xl border border-[#e8eaed] bg-white p-2 shadow-lg',
+            align === 'right' ? 'right-0' : 'left-0'
+          )}
+        >
+          {typeof children === 'function' ? children({ close: () => setOpen(false) }) : children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function SymbolDetailPanel({
   row,
   market,
@@ -871,7 +1108,8 @@ function SymbolDetailPanel({
   onBack,
   chartRange,
   onChartRangeChange,
-  chartPoints,
+  chartCandles,
+  chartTf,
   chartLoading,
   inWatch,
   onToggleWatch,
@@ -892,7 +1130,45 @@ function SymbolDetailPanel({
   const exchangeLabel = row.exchange || (market === 'us' ? 'NASDAQ/NYSE' : 'A 股');
   const currencyLabel = row.currency || (market === 'us' ? 'USD' : 'CNY');
   const stateLabel = marketStateLabel(row.marketState, market);
-  const chartPts = (chartPoints && chartPoints.length >= 2) ? chartPoints : sparkPoints;
+  const [chartType, setChartType] = useState('line');
+  const [indicators, setIndicators] = useState(() => new Set());
+  const [compareSymbols, setCompareSymbols] = useState([]);
+  const [compareInput, setCompareInput] = useState('');
+  const [compareCandlesMap, setCompareCandlesMap] = useState({});
+  // 当前 symbol 或时间范围切换时清空对比
+  useEffect(() => { setCompareSymbols([]); }, [row && row.symbol]);
+  useEffect(() => {
+    if (!chartTf || !compareSymbols.length) return;
+    compareSymbols.forEach((sym) => {
+      const key = `${sym}|${chartTf}`;
+      if (compareCandlesMap[key]) return;
+      fetchKline(sym, { timeframe: chartTf }).then((res) => {
+        if (Array.isArray(res && res.candles) && res.candles.length >= 2) {
+          setCompareCandlesMap((prev) => ({ ...prev, [key]: res.candles }));
+        }
+      }).catch(() => {});
+    });
+  }, [compareSymbols, chartTf, compareCandlesMap]);
+  const toggleIndicator = (k) => setIndicators((prev) => {
+    const next = new Set(prev);
+    if (next.has(k)) next.delete(k); else next.add(k);
+    return next;
+  });
+  const addCompare = () => {
+    const v = (compareInput || '').trim().toUpperCase();
+    if (!v) return;
+    if (compareSymbols.includes(v) || v === String(row && row.symbol || '').toUpperCase()) {
+      setCompareInput('');
+      return;
+    }
+    if (compareSymbols.length >= 3) return;
+    setCompareSymbols((prev) => [...prev, v]);
+    setCompareInput('');
+  };
+  const removeCompare = (sym) => setCompareSymbols((prev) => prev.filter((x) => x !== sym));
+  const compareSeries = compareSymbols.map((sym) => ({ symbol: sym, candles: compareCandlesMap[`${sym}|${chartTf}`] }));
+  const hasFullCandles = Array.isArray(chartCandles) && chartCandles.length >= 2;
+  const sparkFallback = (!hasFullCandles && Array.isArray(sparkPoints) && sparkPoints.length >= 2) ? sparkPoints : null;
 
   return (
     <section className="-mx-2 sm:mx-0">
@@ -980,10 +1256,115 @@ function SymbolDetailPanel({
           </div>
         </div>
 
+        {/* 图表工具栏 */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <ChartToolbarPopover
+            label={`图表 · ${CHART_TYPE_LABEL[chartType] || '折线'}`}
+            active={chartType !== 'line'}
+          >
+            {({ close }) => (
+              <div className="flex flex-col gap-0.5">
+                {CHART_TYPE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => { setChartType(opt.key); close(); }}
+                    className={cx(
+                      'flex items-start gap-2 rounded-lg px-2 py-1.5 text-left transition',
+                      chartType === opt.key ? 'bg-[#e8f0fe]' : 'hover:bg-[#f1f3f4]'
+                    )}
+                  >
+                    <span className={cx('text-[13px] font-medium', chartType === opt.key ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>{opt.label}</span>
+                    <span className="ml-auto text-[11px] text-[#9aa0a6]">{opt.hint}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </ChartToolbarPopover>
+
+          <ChartToolbarPopover
+            label={indicators.size ? `指标 · ${indicators.size}` : '指标'}
+            active={indicators.size > 0}
+          >
+            <div className="flex flex-col gap-0.5">
+              {INDICATOR_OPTIONS.map((opt) => (
+                <label key={opt.key} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[#f1f3f4]">
+                  <input
+                    type="checkbox"
+                    checked={indicators.has(opt.key)}
+                    onChange={() => toggleIndicator(opt.key)}
+                    className="h-3.5 w-3.5 accent-[#1a73e8]"
+                  />
+                  <span className="text-[13px] text-[#1f1f1f]">{opt.label}</span>
+                  <span className="ml-auto text-[11px] text-[#9aa0a6]">{opt.hint}</span>
+                </label>
+              ))}
+            </div>
+          </ChartToolbarPopover>
+
+          <ChartToolbarPopover
+            label={compareSymbols.length ? `对比 · ${compareSymbols.length}` : '对比'}
+            active={compareSymbols.length > 0}
+          >
+            <div className="flex flex-col gap-2">
+              {compareSymbols.length ? (
+                <div className="flex flex-wrap gap-1">
+                  {compareSymbols.map((sym, ci) => (
+                    <span
+                      key={sym}
+                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
+                      style={{ background: `${COMPARE_COLORS[ci % COMPARE_COLORS.length]}1a`, color: COMPARE_COLORS[ci % COMPARE_COLORS.length] }}
+                    >
+                      {sym}
+                      <button type="button" onClick={() => removeCompare(sym)} aria-label="移除">
+                        <X size={10} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  value={compareInput}
+                  onChange={(e) => setCompareInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') addCompare(); }}
+                  placeholder="如 MSFT"
+                  className="w-32 rounded-lg border border-[#dadce0] bg-white px-2 py-1 text-[12px] focus:border-[#1a73e8] focus:outline-none"
+                  disabled={compareSymbols.length >= 3}
+                />
+                <button
+                  type="button"
+                  onClick={addCompare}
+                  disabled={!compareInput.trim() || compareSymbols.length >= 3}
+                  className="rounded-lg bg-[#1a73e8] px-2 py-1 text-[12px] font-medium text-white disabled:bg-[#dadce0]"
+                >
+                  添加
+                </button>
+              </div>
+              <p className="text-[11px] leading-snug text-[#94a3b8]">最多 3 个；启用对比后图表自动归一化为 100，便于比较走势。</p>
+            </div>
+          </ChartToolbarPopover>
+
+          <div className="ml-auto flex items-center gap-1 text-[11px] text-[#9aa0a6]">
+            {chartLoading ? <Loader2 size={12} className="animate-spin" /> : null}
+            {compareSymbols.length > 0 ? <span>归一化 = 100</span> : null}
+          </div>
+        </div>
+
         {/* 图表区 */}
-        <div className="mt-2 h-44 rounded-xl bg-white px-1 py-1 sm:h-56">
-          {chartPts && chartPts.length >= 2 ? (
-            <Sparkline points={chartPts} width={720} height={210} tone={tone} showFill markLast className="h-full w-full" />
+        <div className="mt-2 h-48 rounded-xl bg-white px-1 py-1 sm:h-64">
+          {hasFullCandles ? (
+            <SymbolDetailChart
+              candles={chartCandles}
+              tf={chartTf}
+              chartType={chartType}
+              indicators={indicators}
+              compareSeries={compareSeries}
+              tone={tone}
+            />
+          ) : sparkFallback ? (
+            <Sparkline points={sparkFallback} width={720} height={210} tone={tone} showFill markLast className="h-full w-full" />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">{chartLoading ? '加载中…' : '暂无趋势数据'}</div>
           )}
@@ -2363,15 +2744,15 @@ export function MarketsExperience() {
             onTabChange={setSymbolDetailTab}
             chartRange={chartRange}
             onChartRangeChange={setChartRange}
-            chartPoints={(() => {
+            chartCandles={(() => {
               const cfg = CHART_RANGE_TABS.find((r) => r.key === chartRange);
               if (!cfg) return undefined;
               const cacheKey = `${selectedQuote.symbol}|${cfg.tf}`;
               const candles = chartCandlesMap[cacheKey];
               if (!Array.isArray(candles) || candles.length < 2) return undefined;
-              const sliced = sliceCandlesForRange(candles, chartRange);
-              return sliced.map((c) => Number(c && c.c)).filter((v) => Number.isFinite(v));
+              return sliceCandlesForRange(candles, chartRange);
             })()}
+            chartTf={(CHART_RANGE_TABS.find((r) => r.key === chartRange) || {}).tf}
             chartLoading={chartLoading}
             inWatch={(watch[market] || []).includes(selectedQuote.symbol)}
             onToggleWatch={() => {
