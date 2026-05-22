@@ -3167,10 +3167,13 @@ export default {
           if (String(reg.token || '').trim() !== token) {
             return jsonResponse({ ok: false, message: 'token 与注册记录不一致。' }, { status: 401, origin });
           }
-          // 验证通过，转发给 WsHub Durable Object。
+          // 验证通过，转发给 WsHub Durable Object，并把设备 ID 通过内部 header
+          // 带给 DO，用于上线后自动 drain 该设备的离线队列。
           const id = env.WS_HUB.idFromName(deviceInstallationId);
           const stub = env.WS_HUB.get(id);
-          return await stub.fetch('https://ws-hub/connect', request);
+          const forwardedHeaders = new Headers(request.headers);
+          forwardedHeaders.set('x-device-installation-id', deviceInstallationId);
+          return await stub.fetch('https://ws-hub/connect', new Request(request, { headers: forwardedHeaders }));
         }
 
         return jsonResponse({ ok: false, message: 'invalid ws route' }, { status: 404, origin });
