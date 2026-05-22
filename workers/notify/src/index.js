@@ -1757,6 +1757,15 @@ function getExpectedLatestNavDate(kind, todayShanghai) {
   return getPreviousTradingDayShanghai(T);
 }
 
+function getTodayShanghaiDate() {
+  try {
+    return getShanghaiDateParts(new Date()).date;
+  } catch (_error) {
+    const shifted = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    return shifted.toISOString().slice(0, 10);
+  }
+}
+
 /**
  * 统一的净值获取方法，可用于所有涉及净值的业务逻辑。
  * 
