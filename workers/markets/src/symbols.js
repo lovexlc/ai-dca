@@ -58,9 +58,15 @@ export function classifySymbol(input) {
   if (/^(sh|sz|bj)\d{6}$/i.test(s)) {
     return { market: 'cn', code: s.toLowerCase() };
   }
-  // A 股 6 位裸代码 → 自动加前缀
+  // A 股 6 位裸代码 → 自动加前缀。
+  // 51/56/58 开头通常是上交所 ETF/基金；15 开头通常是深交所 ETF。
+  // 之前 513100 / 513500 被误判成 sz，导致东方财富 secid 错误、K 线为空。
   if (/^\d{6}$/.test(s)) {
-    const prefix = s.startsWith('6') ? 'sh' : s.startsWith('4') || s.startsWith('8') ? 'bj' : 'sz';
+    const prefix = s.startsWith('6') || s.startsWith('51') || s.startsWith('56') || s.startsWith('58')
+      ? 'sh'
+      : s.startsWith('4') || s.startsWith('8')
+        ? 'bj'
+        : 'sz';
     return { market: 'cn', code: `${prefix}${s}` };
   }
   // 指数（^DJI 等）或裸字母代码 → 美股

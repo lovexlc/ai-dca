@@ -24,3 +24,8 @@
 - `git diff --check -- src/app/marketsApi.js src/pages/MarketsExperience.jsx docs/markets-cn-etf-parity-plan.md`：通过。
 - `npm run lint -- src/app/marketsApi.js src/pages/MarketsExperience.jsx` 会被项目既有全局 lint error 阻断；本次文件的 focused eslint 已通过。
 - `npm run build:app` 默认 Node 堆内存 OOM；提高堆内存的本地构建在工具超时时间内未返回。最终以前端 GitHub Pages Action 为准。
+
+## 热修记录：513xxx ETF 前缀识别
+- 问题：`513100` / `513500` 裸代码被自动识别为 `sz513100` / `sz513500`，东方财富 secid 错误，导致报价和 K 线返回空数据。
+- 修复：A股裸代码识别中将 `51` / `56` / `58` 开头 ETF/基金映射为上交所 `sh`；`15` 等继续按深交所 `sz`。
+- 影响：A股行情页默认的纳指 ETF、标普 500 ETF 会走正确的 `sh513100` / `sh513500` 数据源。
