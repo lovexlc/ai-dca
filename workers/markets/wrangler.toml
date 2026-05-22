@@ -22,11 +22,9 @@ zone_name = "freebacktrack.tech"
 [ai]
 binding = "AI"
 
-# M3：Service binding 指向 ai-dca-markets-agent（MoltWorker 容器 Worker），
-# 用于 deep 深度问答的 SSE 流式透传（路由 /api/markets/ask/stream）。
-[[services]]
-binding = "AGENT"
-service = "ai-dca-markets-agent"
+# Deep research streaming service binding is intentionally omitted from this
+# deployment profile for now. The market data routes do not depend on it, and
+# Cloudflare service binding validation is currently blocking deploys.
 
 # Keep deployment on baseline Workers entitlements. Advanced placement,
 # elevated CPU limits, and persisted invocation logs can fail to deploy on
