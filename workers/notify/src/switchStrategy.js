@@ -821,3 +821,29 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
     body_md
   };
 }
+
+/**
+ * 测试方法：获取 513100 的最新净值
+ * 用于验证统一 NAV 方法对美股 QDII 的支持
+ */
+export async function testGetNav513100(env) {
+  const code = '513100';
+  try {
+    const result = await getLatestNavWithCache(env, code, 'qdii');
+    return {
+      success: true,
+      code,
+      fundKind: 'qdii',
+      data: result,
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    return {
+      success: false,
+      code,
+      fundKind: 'qdii',
+      error: String(error),
+      timestamp: new Date().toISOString()
+    };
+  }
+}

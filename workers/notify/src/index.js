@@ -24,7 +24,8 @@ import {
   refreshSnapshotWithLatestNav,
   switchConfigKey,
   switchSnapshotKey,
-  switchStateKey
+  switchStateKey,
+  testGetNav513100
 } from './switchStrategy.js';
 
 const SETTINGS_KEY = 'notify:settings';
@@ -2977,6 +2978,20 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
   };
 }
 
+async function handleSwitchTestNav(request, env) {
+  const origin = readOrigin(request);
+  try {
+    const result = await testGetNav513100(env);
+    return jsonResponse(result, { status: result.success ? 200 : 400, origin });
+  } catch (error) {
+    return jsonResponse({
+      success: false,
+      error: String(error),
+      timestamp: new Date().toISOString()
+    }, { status: 500, origin });
+  }
+}
+
 async function runSwitchStrategyTick(env, scheduledMs, reason = 'switch-cron') {
   const scheduledIso = new Date(scheduledMs).toISOString();
   console.log('[notify] runSwitchStrategyTick enter', JSON.stringify({
@@ -3126,6 +3141,10 @@ export default {
 
       if (request.method === 'POST' && url.pathname === '/api/notify/switch/run') {
         return await handleSwitchRunPost(request, env);
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/notify/switch/test-nav') {
+        return await handleSwitchTestNav(request, env);
       }
 
       if (request.method === 'GET' && url.pathname === '/api/notify/health') {
