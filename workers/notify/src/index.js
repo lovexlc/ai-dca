@@ -2858,7 +2858,8 @@ async function handleSwitchSnapshotGet(request, env) {
           if (stale) {
             try {
               // 直接补充最新净值，而不是完整重算
-              const refreshedSnapshot = await refreshSnapshotWithLatestNav(snapshot, env);
+              // 将 getLatestNav 函数传递给 refreshSnapshotWithLatestNav，使其支持 KV 缓存
+              const refreshedSnapshot = await refreshSnapshotWithLatestNav(snapshot, env, getLatestNav);
               if (refreshedSnapshot) {
                 snapshot = refreshedSnapshot;
                 console.log('[notify] switch snapshot refreshed with latest nav', JSON.stringify({

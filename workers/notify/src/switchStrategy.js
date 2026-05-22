@@ -404,19 +404,36 @@ export async function getLatestNavWithCache(
 /**
  * 直接用最新净值更新现有 snapshot，避免完整重算。
  * 保留原有的价格和触发状态，仅补充/刷新净值及相关的溢价字段。
- * 这样可以规避防抖机制且快速响应净值更新。
+ * 
+ * 改进：
+ * - 当提供 getLatestNavFn（支持 KV 缓存）时，自动使用新方法，减少重复拉取
+ * - 未提供 getLatestNavFn 时降级到旧方法（fetchLatestNavMap），保持向后兼容
+ * - 支持区分 A 股/美股市场，使用对应的数据源
+ * 
+ * @param {Object} snapshot - 现有快照
+ * @param {Object} env - Worker env（用于 KV 操作）
+ * @param {Function} getLatestNavFn - [可选] 支持 KV 缓存的净值获取函数
+ * @returns {Promise<Object>} 更新后的 snapshot
  */
-export async function refreshSnapshotWithLatestNav(snapshot, env) {
+export async function refreshSnapshotWithLatestNav(snapshot, env, getLatestNavFn = null) {
   if (!snapshot || !Array.isArray(snapshot.byBenchmark)) {
     return snapshot;
   }
 
-  // 第一步：收集所有相关的基金代码
+  // 收集所有相关的基金代码
   const allCodes = new Set();
+  const codeToKind = {}; // 记录每个代码的基金类型
+  
   for (const group of snapshot.byBenchmark) {
-    if (group?.benchmarkCode) allCodes.add(group.benchmarkCode);
+    if (group?.benchmarkCode) {
+      allCodes.add(group.benchmarkCode);
+      codeToKind[group.benchmarkCode] = 'exchange'; // 基准默认为场内 ETF
+    }
     for (const cand of (group?.candidates || [])) {
-      if (cand?.code) allCodes.add(cand.code);
+      if (cand?.code) {
+        allCodes.add(cand.code);
+        codeToKind[cand.code] = 'exchange'; // 候选默认为场内 ETF
+      }
     }
   }
 
@@ -424,13 +441,30 @@ export async function refreshSnapshotWithLatestNav(snapshot, env) {
     return snapshot;
   }
 
-  // 第二步：批量拉取最新净值
+  // 批量拉取最新净值（优先用 getLatestNavFn 支持 KV 缓存，否则降级到旧方法）
   let navByCode = {};
   try {
-    navByCode = await fetchLatestNavMap(env, Array.from(allCodes));
+    if (getLatestNavFn && typeof getLatestNavFn === 'function') {
+      // 使用新方法：支持 KV 缓存的单个获取，并行处理
+      const results = await Promise.all(
+        Array.from(allCodes).map(code => 
+          getLatestNavFn(env, code, codeToKind[code] || 'exchange', { forceRefresh: false })
+            .catch(() => null)
+        )
+      );
+      for (const result of results) {
+        if (result && result.code) {
+          navByCode[result.code] = result;
+        }
+      }
+      console.log(`[switch] refreshSnapshotWithLatestNav: 用 KV 缓存拉取 ${Object.keys(navByCode).length}/${allCodes.size} 个基金`);
+    } else {
+      // 降级到旧方法（不支持 KV 缓存，但保持兼容性）
+      navByCode = await fetchLatestNavMap(env, Array.from(allCodes));
+      console.log(`[switch] refreshSnapshotWithLatestNav: 用旧方法拉取 ${Object.keys(navByCode).length}/${allCodes.size} 个基金`);
+    }
   } catch (_error) {
-    // 拉取失败不影响返回原 snapshot
-    console.warn('[switch] refreshSnapshotWithLatestNav: fetchLatestNavMap failed', _error);
+    console.warn('[switch] refreshSnapshotWithLatestNav: fetch failed', _error);
     return snapshot;
   }
 
