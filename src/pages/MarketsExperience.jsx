@@ -32,7 +32,7 @@ import {
 } from '../app/marketsApi.js';
 import { showActionToast } from '../app/toast.js';
 import { buildStockAnalysisPrompt } from '../app/stockAnalysisPrompt.js';
-import { requestHoldingsNav } from '../app/holdings.js';
+import { requestHoldingsNav, requestHoldingsNavHistory } from '../app/holdings.js';
 import { Sparkline } from '../components/markets/Sparkline.jsx';
 import { MarketsChartCodeBlock } from '../components/markets/MarketsChartBlock.jsx';
 import { Area, Bar, CartesianGrid, ComposedChart, Customized, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -863,6 +863,85 @@ function sliceCandlesForRange(candles, rangeKey) {
   return filtered.length >= 2 ? filtered : arr;
 }
 
+function shanghaiDateFromEpochSec(sec) {
+  const n = Number(sec);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  try {
+    return new Date(n * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+  } catch (_error) {
+    return new Date(n * 1000).toISOString().slice(0, 10);
+  }
+}
+
+function epochSecFromShanghaiDate(date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return 0;
+  const t = Date.parse(`${date}T15:00:00+08:00`);
+  return Number.isFinite(t) ? Math.floor(t / 1000) : 0;
+}
+
+function navHistoryDaysForRange(rangeKey) {
+  const cfg = CHART_RANGE_TABS.find((r) => r.key === rangeKey);
+  if (rangeKey === '1d') return 30;
+  if (rangeKey === '5d') return 45;
+  if (rangeKey === 'ytd') {
+    const start = new Date(new Date().getFullYear(), 0, 1);
+    return Math.max(30, Math.ceil((Date.now() - start.getTime()) / 86400000) + 10);
+  }
+  if (!cfg || cfg.daysBack == null) return 3650;
+  return Math.max(30, Math.min(3650, cfg.daysBack + 10));
+}
+
+function findNavOnOrBefore(navItems, date) {
+  if (!Array.isArray(navItems) || !date) return null;
+  let found = null;
+  for (const item of navItems) {
+    if (item.date <= date) found = item;
+    else break;
+  }
+  return found;
+}
+
+function buildCnFundParamCandles(priceCandles, navItems, param, premiumState) {
+  if (param === 'price') return priceCandles;
+  const sortedNav = (Array.isArray(navItems) ? navItems : [])
+    .filter((item) => item && /^\d{4}-\d{2}-\d{2}$/.test(String(item.date || '')) && Number(item.nav) > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (param === 'nav') {
+    return sortedNav
+      .map((item) => {
+        const t = epochSecFromShanghaiDate(item.date);
+        const v = Number(item.nav);
+        return t && Number.isFinite(v) && v > 0 ? { t, o: v, h: v, l: v, c: v, date: item.date } : null;
+      })
+      .filter(Boolean);
+  }
+  if (param === 'premium') {
+    const qqqChangePercent = Number(premiumState?.data?.qqqChangePercent);
+    const qqqFactor = Number.isFinite(qqqChangePercent) ? (1 + qqqChangePercent / 100) : 1;
+    return (Array.isArray(priceCandles) ? priceCandles : [])
+      .map((candle) => {
+        const date = shanghaiDateFromEpochSec(candle?.t);
+        const navItem = findNavOnOrBefore(sortedNav, date);
+        const nav = Number(navItem?.nav);
+        if (!date || !Number.isFinite(nav) || nav <= 0) return null;
+        const iopv = nav * qqqFactor;
+        if (!Number.isFinite(iopv) || iopv <= 0) return null;
+        const toPremium = (value) => {
+          const n = Number(value);
+          return Number.isFinite(n) ? ((n - iopv) / iopv) * 100 : null;
+        };
+        const o = toPremium(candle.o);
+        const h = toPremium(candle.h);
+        const l = toPremium(candle.l);
+        const c = toPremium(candle.c);
+        if (![o, h, l, c].every(Number.isFinite)) return null;
+        return { t: Number(candle.t), o, h, l, c, date, nav, iopv };
+      })
+      .filter(Boolean);
+  }
+  return priceCandles;
+}
+
 function marketStateLabel(state, marketCode) {
   const v = String(state || '').toUpperCase();
   if (v === 'REGULAR') return '交易中';
@@ -1400,6 +1479,7 @@ function SymbolDetailPanel({
   inWatch,
   onToggleWatch,
   premiumState,
+  navHistoryState,
 }) {
   const [chartType, setChartType] = useState('line');
   const [cnFundParam, setCnFundParam] = useState('price');
@@ -1498,8 +1578,13 @@ function SymbolDetailPanel({
   });
   const comparePendingSymbols = compareSymbols.filter((sym) => compareLoadingMap[`${sym}|${chartTf}`]);
   const compareReadyCount = compareSeries.filter((s) => Array.isArray(s.candles) && s.candles.length >= 2).length;
-  const hasFullCandles = Array.isArray(chartCandles) && chartCandles.length >= 2;
-  const sparkFallback = (!hasFullCandles && Array.isArray(sparkPoints) && sparkPoints.length >= 2) ? sparkPoints : null;
+  const effectiveChartCandles = market !== 'cn' || cnFundParam === 'price'
+    ? chartCandles
+    : buildCnFundParamCandles(chartCandles, navHistoryState?.items, cnFundParam, premiumState);
+  const metricLoading = market === 'cn' && cnFundParam !== 'price' && navHistoryState?.loading;
+  const metricError = market === 'cn' && cnFundParam !== 'price' ? navHistoryState?.error : '';
+  const hasFullCandles = Array.isArray(effectiveChartCandles) && effectiveChartCandles.length >= 2;
+  const sparkFallback = cnFundParam === 'price' && (!hasFullCandles && Array.isArray(sparkPoints) && sparkPoints.length >= 2) ? sparkPoints : null;
 
   return (
     <section className="-mx-2 sm:mx-0">
@@ -1717,7 +1802,7 @@ function SymbolDetailPanel({
           </ChartToolbarPopover>
 
           <div className="ml-auto flex items-center gap-1 text-[11px] text-[#9aa0a6]">
-            {chartLoading ? <Loader2 size={12} className="animate-spin" /> : null}
+            {chartLoading || metricLoading ? <Loader2 size={12} className="animate-spin" /> : null}
             {market === 'cn' ? <span>{CN_FUND_PARAM_LABEL[cnFundParam]}</span> : null}
             {compareSymbols.length > 0 ? <span>归一化 = 100</span> : null}
           </div>
@@ -1751,21 +1836,21 @@ function SymbolDetailPanel({
           ) : null}
           {hasFullCandles ? (
             <SymbolDetailChart
-              candles={chartCandles}
+              candles={effectiveChartCandles}
               tf={chartTf}
-              chartType={chartType}
+              chartType={cnFundParam === 'price' ? chartType : 'line'}
               indicators={indicators}
               compareSeries={compareSeries}
               tone={tone}
-              symbol={row.symbol}
+              symbol={cnFundParam === 'price' ? row.symbol : CN_FUND_PARAM_LABEL[cnFundParam]}
             />
           ) : sparkFallback ? (
             <Sparkline points={sparkFallback} width={720} height={210} tone={tone} showFill markLast className="h-full w-full" />
           ) : (
-            chartLoading ? (
+            chartLoading || metricLoading ? (
               <div className="h-full w-full animate-pulse rounded-xl bg-gradient-to-r from-[#f1f3f4] via-white to-[#f1f3f4]" />
             ) : (
-              <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">暂无趋势数据</div>
+              <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">{metricError || (cnFundParam === 'price' ? '暂无趋势数据' : `暂无${CN_FUND_PARAM_LABEL[cnFundParam]}历史数据`)}</div>
             )
           )}
         </div>
@@ -2414,6 +2499,7 @@ export function MarketsExperience() {
   const [chartCandlesMap, setChartCandlesMap] = useState({});
   const [chartLoading, setChartLoading] = useState(false);
   const [premiumMap, setPremiumMap] = useState({});
+  const [navHistoryMap, setNavHistoryMap] = useState({});
   const premiumInflightRef = useRef(new Set());
   const [financialsMap, setFinancialsMap] = useState({});
   const [financialsLoading, setFinancialsLoading] = useState(false);
@@ -2835,6 +2921,28 @@ export function MarketsExperience() {
     return () => { cancelled = true; };
   }, [market, selectedSymbol, selectedQuote?.price, premiumMap]);
 
+  useEffect(() => {
+    if (market !== 'cn' || !selectedSymbol) return;
+    const symbol = String(selectedSymbol || '').trim();
+    if (!/^\d{6}$/.test(symbol)) return;
+    const days = navHistoryDaysForRange(chartRange);
+    const key = `${symbol}|${days}`;
+    if (navHistoryMap[key]?.items?.length || navHistoryMap[key]?.loading || navHistoryMap[key]?.error) return;
+    let cancelled = false;
+    setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: true, items: prev[key]?.items || [], error: '' } }));
+    requestHoldingsNavHistory(symbol, { days })
+      .then((payload) => {
+        if (cancelled) return;
+        const items = Array.isArray(payload?.items) ? payload.items : [];
+        setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items, error: items.length ? '' : '暂无净值历史数据' } }));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items: prev[key]?.items || [], error: error instanceof Error ? error.message : '净值历史加载失败' } }));
+      });
+    return () => { cancelled = true; };
+  }, [market, selectedSymbol, chartRange, navHistoryMap]);
+
   const marketStatusLabel = indicesLoading ? '刷新中' : (indices.length ? `${indices.length} 个指数` : '待加载');
 
   return (
@@ -3241,6 +3349,7 @@ export function MarketsExperience() {
             chartTf={(CHART_RANGE_TABS.find((r) => r.key === chartRange) || {}).tf}
             chartLoading={chartLoading}
             premiumState={premiumMap[selectedQuote.symbol]}
+            navHistoryState={navHistoryMap[`${selectedQuote.symbol}|${navHistoryDaysForRange(chartRange)}`]}
             inWatch={(watch[market] || []).includes(selectedQuote.symbol)}
             onToggleWatch={() => {
               const list = watch[market] || [];
