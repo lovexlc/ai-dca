@@ -1005,8 +1005,10 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
       const out = { ...r };
       indicatorLines.forEach((il) => { out[il.key] = il.values[i]; });
       cmpList.forEach((s, ci) => {
-        const sc = s.candles[i];
-        const cb = Number(s.candles[0] && s.candles[0].c) || 1;
+        const offset = Math.max(0, s.candles.length - rows.length);
+        const aligned = s.candles.slice(offset);
+        const sc = aligned[i];
+        const cb = Number(aligned[0] && aligned[0].c) || 1;
         if (sc && Number.isFinite(Number(sc.c))) {
           out[`cmp_${ci}`] = (Number(sc.c) / cb) * 100;
         }
@@ -1070,7 +1072,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
   );
 }
 
-function ChartToolbarPopover({ label, active, children, align = 'left' }) {
+function ChartToolbarPopover({ label, active, children, align = 'left', panelClassName = '' }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -1107,6 +1109,7 @@ function ChartToolbarPopover({ label, active, children, align = 'left' }) {
         <div
           className={cx(
             'absolute z-30 mt-1 min-w-[180px] rounded-xl border border-[#e8eaed] bg-white p-2 shadow-lg',
+            panelClassName,
             align === 'right' ? 'right-0' : 'left-0'
           )}
         >
@@ -1377,8 +1380,29 @@ function SymbolDetailPanel({
     if (next.has(k)) next.delete(k); else next.add(k);
     return next;
   });
-  const addCompare = () => {
-    const v = (compareInput || '').trim().toUpperCase();
+  const compareCandidates = (() => {
+    const base = market === 'cn'
+      ? [
+        ...CN_ETF_WATCHLIST_PRESETS.map((item) => ({ symbol: item.symbol, name: item.name })),
+        { symbol: 'QQQ', name: '纳指 100 ETF' }
+      ]
+      : [
+        { symbol: 'QQQ', name: '纳指 100 ETF' },
+        { symbol: 'SPY', name: '标普 500 ETF' },
+        { symbol: 'VOO', name: '标普 500 ETF' }
+      ];
+    const current = String(row && row.symbol || '').toUpperCase();
+    const seen = new Set();
+    return base
+      .map((item) => ({ ...item, symbol: String(item.symbol || '').trim().toUpperCase() }))
+      .filter((item) => {
+        if (!item.symbol || item.symbol === current || seen.has(item.symbol)) return false;
+        seen.add(item.symbol);
+        return true;
+      });
+  })();
+  const addCompareSymbol = (raw) => {
+    const v = String(raw || '').trim().toUpperCase();
     if (!v) return;
     if (compareSymbols.includes(v) || v === String(row && row.symbol || '').toUpperCase()) {
       setCompareInput('');
@@ -1388,8 +1412,15 @@ function SymbolDetailPanel({
     setCompareSymbols((prev) => [...prev, v]);
     setCompareInput('');
   };
+  const addCompare = () => addCompareSymbol(compareInput);
   const removeCompare = (sym) => setCompareSymbols((prev) => prev.filter((x) => x !== sym));
-  const compareSeries = compareSymbols.map((sym) => ({ symbol: sym, candles: compareCandlesMap[`${sym}|${chartTf}`] }));
+  const compareSeries = compareSymbols.map((sym) => {
+    const rawCandles = compareCandlesMap[`${sym}|${chartTf}`];
+    return {
+      symbol: sym,
+      candles: Array.isArray(rawCandles) ? sliceCandlesForRange(rawCandles, chartRange) : rawCandles
+    };
+  });
   const hasFullCandles = Array.isArray(chartCandles) && chartCandles.length >= 2;
   const sparkFallback = (!hasFullCandles && Array.isArray(sparkPoints) && sparkPoints.length >= 2) ? sparkPoints : null;
 
@@ -1528,6 +1559,8 @@ function SymbolDetailPanel({
           <ChartToolbarPopover
             label={compareSymbols.length ? `对比 · ${compareSymbols.length}` : '对比'}
             active={compareSymbols.length > 0}
+            align="right"
+            panelClassName="w-72 max-w-[calc(100vw-2rem)]"
           >
             <div className="flex flex-col gap-2">
               {compareSymbols.length ? (
@@ -1539,33 +1572,55 @@ function SymbolDetailPanel({
                       style={{ background: `${COMPARE_COLORS[ci % COMPARE_COLORS.length]}1a`, color: COMPARE_COLORS[ci % COMPARE_COLORS.length] }}
                     >
                       {sym}
-                      <button type="button" onClick={() => removeCompare(sym)} aria-label="移除">
+                      <button type="button" onClick={() => removeCompare(sym)} aria-label={`移除 ${sym}`}>
                         <X size={10} />
                       </button>
                     </span>
                   ))}
                 </div>
-              ) : null}
-              <div className="flex items-center gap-1">
+              ) : (
+                <p className="text-[12px] leading-snug text-[#5f6368]">选择一个标的后，图表会立即切换为归一化对比走势。</p>
+              )}
+              <div className="flex flex-wrap gap-1">
+                {compareCandidates.map((item) => {
+                  const disabled = compareSymbols.includes(item.symbol) || compareSymbols.length >= 3;
+                  return (
+                    <button
+                      key={item.symbol}
+                      type="button"
+                      onClick={() => addCompareSymbol(item.symbol)}
+                      disabled={disabled}
+                      className={cx(
+                        'rounded-full border px-2.5 py-1 text-[12px] font-medium transition',
+                        disabled ? 'border-[#e8eaed] bg-[#f8fafd] text-[#c4c7c5]' : 'border-[#dadce0] bg-white text-[#1f1f1f] hover:bg-[#f1f3f4]'
+                      )}
+                      title={item.name || item.symbol}
+                    >
+                      {item.symbol}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex min-w-0 items-center gap-1">
                 <input
                   type="text"
                   value={compareInput}
                   onChange={(e) => setCompareInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') addCompare(); }}
-                  placeholder="如 MSFT"
-                  className="w-32 rounded-lg border border-[#dadce0] bg-white px-2 py-1 text-[12px] focus:border-[#1a73e8] focus:outline-none"
+                  placeholder={market === 'cn' ? '输入 513500 / QQQ' : '输入 MSFT / QQQ'}
+                  className="min-w-0 flex-1 rounded-lg border border-[#dadce0] bg-white px-2 py-1.5 text-[12px] focus:border-[#1a73e8] focus:outline-none"
                   disabled={compareSymbols.length >= 3}
                 />
                 <button
                   type="button"
                   onClick={addCompare}
                   disabled={!compareInput.trim() || compareSymbols.length >= 3}
-                  className="rounded-lg bg-[#1a73e8] px-2 py-1 text-[12px] font-medium text-white disabled:bg-[#dadce0]"
+                  className="shrink-0 rounded-lg bg-[#1a73e8] px-3 py-1.5 text-[12px] font-medium text-white disabled:bg-[#dadce0]"
                 >
                   添加
                 </button>
               </div>
-              <p className="text-[11px] leading-snug text-[#94a3b8]">最多 3 个；启用对比后图表自动归一化为 100，便于比较走势。</p>
+              <p className="text-[11px] leading-snug text-[#94a3b8]">最多 3 个；对比后主图和标的都会归一化为 100，适合看相对走势。</p>
             </div>
           </ChartToolbarPopover>
 
