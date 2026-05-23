@@ -2452,62 +2452,7 @@ export function MarketsExperience() {
     return () => { cancelled = true; };
   }, [selectedSymbol, chartRange, chartCandlesMap]);
 
-  useEffect(() => {
-    if (market !== 'cn' || !selectedSymbol) return;
-    const price = Number(selectedQuote?.price);
-    const symbol = String(selectedSymbol || '').trim();
-    if (!symbol || !Number.isFinite(price) || price <= 0) return;
-    const cachedPremium = premiumMap[symbol]?.data;
-    if (cachedPremium && Math.abs(Number(cachedPremium.price) - price) < 0.000001) return;
-    if (premiumInflightRef.current.has(symbol)) return;
-    premiumInflightRef.current.add(symbol);
-    setPremiumMap((prev) => ({ ...prev, [symbol]: { loading: true, data: prev[symbol]?.data || null, error: '' } }));
-    let cancelled = false;
-    (async () => {
-      try {
-        const [navResult, qqqQuote] = await Promise.all([
-          requestHoldingsNav([symbol]),
-          fetchQuote('QQQ')
-        ]);
-        const navItem = (navResult?.items || []).find((item) => item && item.code === symbol) || null;
-        const baseNav = Number(navItem?.latestNav);
-        const qqqChangePercent = Number(qqqQuote?.changePercent);
-        if (!Number.isFinite(baseNav) || baseNav <= 0) throw new Error('缺少上一工作日净值');
-        if (!Number.isFinite(qqqChangePercent)) throw new Error('缺少 QQQ 涨幅');
-        const iopv = baseNav * (1 + qqqChangePercent / 100);
-        const premiumPercent = iopv > 0 ? ((price - iopv) / iopv) * 100 : null;
-        if (!cancelled) {
-          setPremiumMap((prev) => ({
-            ...prev,
-            [symbol]: {
-              loading: false,
-              error: '',
-              data: {
-                symbol,
-                price,
-                baseNav,
-                navDate: navItem?.latestNavDate || '',
-                qqqChangePercent,
-                iopv,
-                premiumPercent,
-                updatedAt: new Date().toISOString()
-              }
-            }
-          }));
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setPremiumMap((prev) => ({
-            ...prev,
-            [symbol]: { loading: false, data: prev[symbol]?.data || null, error: error instanceof Error ? error.message : '溢价计算失败' }
-          }));
-        }
-      } finally {
-        premiumInflightRef.current.delete(symbol);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [market, selectedSymbol, selectedQuote?.price, premiumMap]);
+
 
 
 
@@ -2658,6 +2603,63 @@ export function MarketsExperience() {
     () => watchRows.find((row) => row.symbol === selectedSymbol) || null,
     [selectedSymbol, watchRows]
   );
+
+  useEffect(() => {
+    if (market !== 'cn' || !selectedSymbol) return;
+    const price = Number(selectedQuote?.price);
+    const symbol = String(selectedSymbol || '').trim();
+    if (!symbol || !Number.isFinite(price) || price <= 0) return;
+    const cachedPremium = premiumMap[symbol]?.data;
+    if (cachedPremium && Math.abs(Number(cachedPremium.price) - price) < 0.000001) return;
+    if (premiumInflightRef.current.has(symbol)) return;
+    premiumInflightRef.current.add(symbol);
+    setPremiumMap((prev) => ({ ...prev, [symbol]: { loading: true, data: prev[symbol]?.data || null, error: '' } }));
+    let cancelled = false;
+    (async () => {
+      try {
+        const [navResult, qqqQuote] = await Promise.all([
+          requestHoldingsNav([symbol]),
+          fetchQuote('QQQ')
+        ]);
+        const navItem = (navResult?.items || []).find((item) => item && item.code === symbol) || null;
+        const baseNav = Number(navItem?.latestNav);
+        const qqqChangePercent = Number(qqqQuote?.changePercent);
+        if (!Number.isFinite(baseNav) || baseNav <= 0) throw new Error('缺少上一工作日净值');
+        if (!Number.isFinite(qqqChangePercent)) throw new Error('缺少 QQQ 涨幅');
+        const iopv = baseNav * (1 + qqqChangePercent / 100);
+        const premiumPercent = iopv > 0 ? ((price - iopv) / iopv) * 100 : null;
+        if (!cancelled) {
+          setPremiumMap((prev) => ({
+            ...prev,
+            [symbol]: {
+              loading: false,
+              error: '',
+              data: {
+                symbol,
+                price,
+                baseNav,
+                navDate: navItem?.latestNavDate || '',
+                qqqChangePercent,
+                iopv,
+                premiumPercent,
+                updatedAt: new Date().toISOString()
+              }
+            }
+          }));
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPremiumMap((prev) => ({
+            ...prev,
+            [symbol]: { loading: false, data: prev[symbol]?.data || null, error: error instanceof Error ? error.message : '溢价计算失败' }
+          }));
+        }
+      } finally {
+        premiumInflightRef.current.delete(symbol);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [market, selectedSymbol, selectedQuote?.price, premiumMap]);
 
   const marketStatusLabel = indicesLoading ? '刷新中' : (indices.length ? `${indices.length} 个指数` : '待加载');
 
