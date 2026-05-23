@@ -19,6 +19,7 @@ import {
   fetchFinancials,
   fetchIndices,
   fetchKline,
+  fetchQuote,
   fetchMovers,
   fetchNews,
   fetchQuotes,
@@ -31,6 +32,7 @@ import {
 } from '../app/marketsApi.js';
 import { showActionToast } from '../app/toast.js';
 import { buildStockAnalysisPrompt } from '../app/stockAnalysisPrompt.js';
+import { requestHoldingsNav } from '../app/holdings.js';
 import { Sparkline } from '../components/markets/Sparkline.jsx';
 import { MarketsChartCodeBlock } from '../components/markets/MarketsChartBlock.jsx';
 import { Area, Bar, CartesianGrid, ComposedChart, Customized, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -49,6 +51,13 @@ function formatNumber(value, fractionDigits = 2) {
 }
 
 function formatPercent(value, fractionDigits = 2) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '--';
+  const sign = n > 0 ? '+' : '';
+  return sign + n.toFixed(fractionDigits) + '%';
+}
+
+function formatSignedPercent(value, fractionDigits = 2) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '--';
   const sign = n > 0 ? '+' : '';
@@ -879,6 +888,7 @@ const INDICATOR_OPTIONS = [
   { key: 'ma60', label: 'MA60', hint: '60 日均线' },
   { key: 'boll', label: 'BOLL', hint: '布林带 (20, 2)' },
 ];
+const CN_PREMIUM_INDICATOR = { key: 'premium', label: '溢价', hint: '按 QQQ 涨幅估算 IOPV' };
 
 const MA_COLORS = { ma5: '#1a73e8', ma10: '#ea4335', ma20: '#f9ab00', ma60: '#9aa0a6' };
 const COMPARE_COLORS = ['#9333ea', '#10b981', '#f43f5e'];
@@ -1251,6 +1261,59 @@ function FinancialsPanel({ financials, loading }) {
   );
 }
 
+function PremiumInsightCard({ premiumState }) {
+  const data = premiumState && premiumState.data;
+  if (premiumState?.loading) {
+    return (
+      <div className="mt-3 rounded-xl border border-[#e8eaed] bg-[#f8fafd] p-3 text-sm text-[#5f6368]">
+        <div className="flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> 正在计算溢价…</div>
+      </div>
+    );
+  }
+  if (premiumState?.error) {
+    return (
+      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+        溢价暂不可用：{premiumState.error}
+      </div>
+    );
+  }
+  if (!data) return null;
+  const premium = Number(data.premiumPercent);
+  const premiumPositive = Number.isFinite(premium) && premium > 0;
+  const premiumNegative = Number.isFinite(premium) && premium < 0;
+  return (
+    <div className="mt-3 rounded-xl border border-[#e8eaed] bg-[#f8fafd] p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[12px] font-medium text-[#5f6368]">估算溢价</div>
+          <div className={cx('mt-1 text-2xl font-semibold tabular-nums', premiumPositive ? 'text-[#a50e0e]' : premiumNegative ? 'text-[#137333]' : 'text-[#1f1f1f]')}>
+            {formatSignedPercent(data.premiumPercent)}
+          </div>
+        </div>
+        <div className="text-right text-[12px] leading-5 text-[#5f6368]">
+          <div>价格 <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(data.price, 4)}</span></div>
+          <div>IOPV <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(data.iopv, 4)}</span></div>
+        </div>
+      </div>
+      <div className="mt-3 grid gap-2 text-[12px] sm:grid-cols-2">
+        <div className="rounded-lg bg-white px-3 py-2">
+          <div className="text-[#5f6368]">上一工作日净值</div>
+          <div className="mt-0.5 font-medium tabular-nums text-[#1f1f1f]">{formatNumber(data.baseNav, 4)}{data.navDate ? <span className="ml-1 text-[#9aa0a6]">@{data.navDate}</span> : null}</div>
+        </div>
+        <div className="rounded-lg bg-white px-3 py-2">
+          <div className="text-[#5f6368]">QQQ 涨幅</div>
+          <div className="mt-0.5 font-medium tabular-nums text-[#1f1f1f]">{formatSignedPercent(data.qqqChangePercent)}</div>
+        </div>
+      </div>
+      <div className="mt-3 rounded-lg border-l-2 border-indigo-200 bg-white px-3 py-2 text-[12px] leading-5 text-[#5f6368]">
+        iopv = 上一工作日净值 × (1 + QQQ涨幅) = {formatNumber(data.baseNav, 4)} × (1 + {formatSignedPercent(data.qqqChangePercent)}) = {formatNumber(data.iopv, 4)}<br />
+        溢价 = (价格 − iopv) / iopv = ({formatNumber(data.price, 4)} − {formatNumber(data.iopv, 4)}) / {formatNumber(data.iopv, 4)}
+      </div>
+      <p className="mt-2 text-[11px] leading-4 text-[#9aa0a6]">估算值用于盘中快速判断折溢价；实际 IOPV 仍可能受汇率、成分股权重和基金公司披露口径影响。</p>
+    </div>
+  );
+}
+
 function SymbolDetailPanel({
   row,
   market,
@@ -1270,12 +1333,14 @@ function SymbolDetailPanel({
   chartLoading,
   inWatch,
   onToggleWatch,
+  premiumState,
 }) {
   const [chartType, setChartType] = useState('line');
   const [indicators, setIndicators] = useState(() => new Set());
   const [compareSymbols, setCompareSymbols] = useState([]);
   const [compareInput, setCompareInput] = useState('');
   const [compareCandlesMap, setCompareCandlesMap] = useState({});
+  const indicatorOptions = market === 'cn' ? [...INDICATOR_OPTIONS, CN_PREMIUM_INDICATOR] : INDICATOR_OPTIONS;
   const rowSymbol = row && row.symbol ? String(row.symbol).toUpperCase() : '';
   // 当前 symbol 或时间范围切换时清空对比
   useEffect(() => { setCompareSymbols([]); }, [rowSymbol]);
@@ -1445,7 +1510,7 @@ function SymbolDetailPanel({
             active={indicators.size > 0}
           >
             <div className="flex flex-col gap-0.5">
-              {INDICATOR_OPTIONS.map((opt) => (
+              {indicatorOptions.map((opt) => (
                 <label key={opt.key} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[#f1f3f4]">
                   <input
                     type="checkbox"
@@ -1531,6 +1596,8 @@ function SymbolDetailPanel({
             )
           )}
         </div>
+
+        {market === 'cn' && indicators.has('premium') ? <PremiumInsightCard premiumState={premiumState} /> : null}
 
         {/* 详情 tab */}
         <div className="mt-3 flex gap-5 border-b border-[#e8eaed] text-sm font-medium text-[#5f6368]">
@@ -2172,6 +2239,8 @@ export function MarketsExperience() {
   // 各 tf 的 close 序列缓存：键为 `${symbol}|${tf}`。
   const [chartCandlesMap, setChartCandlesMap] = useState({});
   const [chartLoading, setChartLoading] = useState(false);
+  const [premiumMap, setPremiumMap] = useState({});
+  const premiumInflightRef = useRef(new Set());
   const [financialsMap, setFinancialsMap] = useState({});
   const [financialsLoading, setFinancialsLoading] = useState(false);
   const financialsInflightRef = useRef(new Set());
@@ -2382,6 +2451,63 @@ export function MarketsExperience() {
     })();
     return () => { cancelled = true; };
   }, [selectedSymbol, chartRange, chartCandlesMap]);
+
+  useEffect(() => {
+    if (market !== 'cn' || !selectedSymbol) return;
+    const price = Number(selectedQuote?.price);
+    const symbol = String(selectedSymbol || '').trim();
+    if (!symbol || !Number.isFinite(price) || price <= 0) return;
+    const cachedPremium = premiumMap[symbol]?.data;
+    if (cachedPremium && Math.abs(Number(cachedPremium.price) - price) < 0.000001) return;
+    if (premiumInflightRef.current.has(symbol)) return;
+    premiumInflightRef.current.add(symbol);
+    setPremiumMap((prev) => ({ ...prev, [symbol]: { loading: true, data: prev[symbol]?.data || null, error: '' } }));
+    let cancelled = false;
+    (async () => {
+      try {
+        const [navResult, qqqQuote] = await Promise.all([
+          requestHoldingsNav([symbol]),
+          fetchQuote('QQQ')
+        ]);
+        const navItem = (navResult?.items || []).find((item) => item && item.code === symbol) || null;
+        const baseNav = Number(navItem?.latestNav);
+        const qqqChangePercent = Number(qqqQuote?.changePercent);
+        if (!Number.isFinite(baseNav) || baseNav <= 0) throw new Error('缺少上一工作日净值');
+        if (!Number.isFinite(qqqChangePercent)) throw new Error('缺少 QQQ 涨幅');
+        const iopv = baseNav * (1 + qqqChangePercent / 100);
+        const premiumPercent = iopv > 0 ? ((price - iopv) / iopv) * 100 : null;
+        if (!cancelled) {
+          setPremiumMap((prev) => ({
+            ...prev,
+            [symbol]: {
+              loading: false,
+              error: '',
+              data: {
+                symbol,
+                price,
+                baseNav,
+                navDate: navItem?.latestNavDate || '',
+                qqqChangePercent,
+                iopv,
+                premiumPercent,
+                updatedAt: new Date().toISOString()
+              }
+            }
+          }));
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPremiumMap((prev) => ({
+            ...prev,
+            [symbol]: { loading: false, data: prev[symbol]?.data || null, error: error instanceof Error ? error.message : '溢价计算失败' }
+          }));
+        }
+      } finally {
+        premiumInflightRef.current.delete(symbol);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [market, selectedSymbol, selectedQuote?.price, premiumMap]);
 
 
 
@@ -2938,6 +3064,7 @@ export function MarketsExperience() {
             })()}
             chartTf={(CHART_RANGE_TABS.find((r) => r.key === chartRange) || {}).tf}
             chartLoading={chartLoading}
+            premiumState={premiumMap[selectedQuote.symbol]}
             inWatch={(watch[market] || []).includes(selectedQuote.symbol)}
             onToggleWatch={() => {
               const list = watch[market] || [];
