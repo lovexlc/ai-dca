@@ -880,6 +880,12 @@ const CHART_TYPE_OPTIONS = [
   { key: 'candle', label: 'K 线', hint: '开高低收烛台' },
 ];
 const CHART_TYPE_LABEL = CHART_TYPE_OPTIONS.reduce((acc, o) => { acc[o.key] = o.label; return acc; }, {});
+const CN_FUND_PARAM_OPTIONS = [
+  { key: 'price', label: '价格', hint: '场内交易价格' },
+  { key: 'nav', label: '净值', hint: '上一工作日确认净值' },
+  { key: 'premium', label: '溢价', hint: '价格相对估算 IOPV' },
+];
+const CN_FUND_PARAM_LABEL = CN_FUND_PARAM_OPTIONS.reduce((acc, o) => { acc[o.key] = o.label; return acc; }, {});
 
 const INDICATOR_OPTIONS = [
   { key: 'ma5', label: 'MA5', hint: '5 日均线' },
@@ -888,8 +894,6 @@ const INDICATOR_OPTIONS = [
   { key: 'ma60', label: 'MA60', hint: '60 日均线' },
   { key: 'boll', label: 'BOLL', hint: '布林带 (20, 2)' },
 ];
-const CN_PREMIUM_INDICATOR = { key: 'premium', label: '溢价', hint: '按 QQQ 涨幅估算 IOPV' };
-
 const MA_COLORS = { ma5: '#1a73e8', ma10: '#ea4335', ma20: '#f9ab00', ma60: '#9aa0a6' };
 const COMPARE_COLORS = ['#9333ea', '#10b981', '#f43f5e'];
 const CHART_UP = '#a50e0e';
@@ -1287,6 +1291,42 @@ function FinancialsPanel({ financials, loading }) {
   );
 }
 
+function NavInsightCard({ premiumState }) {
+  const data = premiumState && premiumState.data;
+  if (premiumState?.loading) {
+    return (
+      <div className="mt-3 rounded-xl border border-[#e8eaed] bg-[#f8fafd] p-3 text-sm text-[#5f6368]">
+        <div className="flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> 正在获取净值…</div>
+      </div>
+    );
+  }
+  if (premiumState?.error) {
+    return (
+      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+        净值暂不可用：{premiumState.error}
+      </div>
+    );
+  }
+  if (!data) return null;
+  return (
+    <div className="mt-3 rounded-xl border border-[#e8eaed] bg-[#f8fafd] p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[12px] font-medium text-[#5f6368]">上一工作日净值</div>
+          <div className="mt-1 text-2xl font-semibold tabular-nums text-[#1f1f1f]">{formatNumber(data.baseNav, 4)}</div>
+          {data.navDate ? <div className="mt-1 text-[11px] text-[#9aa0a6]">确认日期 {data.navDate}</div> : null}
+        </div>
+        <div className="text-right text-[12px] leading-5 text-[#5f6368]">
+          <div>场内价格 <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(data.price, 4)}</span></div>
+          <div>估算 IOPV <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(data.iopv, 4)}</span></div>
+          <div>估算溢价 <span className={cx('font-medium tabular-nums', Number(data.premiumPercent) > 0 ? 'text-[#a50e0e]' : Number(data.premiumPercent) < 0 ? 'text-[#137333]' : 'text-[#1f1f1f]')}>{formatSignedPercent(data.premiumPercent)}</span></div>
+        </div>
+      </div>
+      <p className="mt-2 text-[11px] leading-4 text-[#9aa0a6]">净值取基金最新确认 NAV，场内基金盘中交易仍以价格为准。</p>
+    </div>
+  );
+}
+
 function PremiumInsightCard({ premiumState }) {
   const data = premiumState && premiumState.data;
   if (premiumState?.loading) {
@@ -1362,16 +1402,18 @@ function SymbolDetailPanel({
   premiumState,
 }) {
   const [chartType, setChartType] = useState('line');
+  const [cnFundParam, setCnFundParam] = useState('price');
   const [indicators, setIndicators] = useState(() => new Set());
   const [compareSymbols, setCompareSymbols] = useState([]);
   const [compareInput, setCompareInput] = useState('');
   const [compareCandlesMap, setCompareCandlesMap] = useState({});
   const [compareLoadingMap, setCompareLoadingMap] = useState({});
   const [compareErrorMap, setCompareErrorMap] = useState({});
-  const indicatorOptions = market === 'cn' ? [...INDICATOR_OPTIONS, CN_PREMIUM_INDICATOR] : INDICATOR_OPTIONS;
+  const indicatorOptions = INDICATOR_OPTIONS;
   const rowSymbol = row && row.symbol ? String(row.symbol).toUpperCase() : '';
   // 当前 symbol 或时间范围切换时清空对比
   useEffect(() => { setCompareSymbols([]); }, [rowSymbol]);
+  useEffect(() => { if (market !== 'cn') setCnFundParam('price'); }, [market]);
   useEffect(() => {
     if (!chartTf || !compareSymbols.length) return;
     compareSymbols.forEach((sym) => {
@@ -1547,6 +1589,21 @@ function SymbolDetailPanel({
 
         {/* 图表工具栏 */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
+          {market === 'cn' ? (
+            <label className="inline-flex items-center gap-1.5 rounded-full border border-[#dadce0] bg-white px-2.5 py-1 text-[13px] font-medium text-[#1f1f1f]">
+              <span className="text-[#5f6368]">参数</span>
+              <select
+                value={cnFundParam}
+                onChange={(e) => setCnFundParam(e.target.value)}
+                className="bg-transparent text-[13px] font-medium text-[#1f1f1f] outline-none"
+                aria-label="A股基金图表参数"
+              >
+                {CN_FUND_PARAM_OPTIONS.map((opt) => (
+                  <option key={opt.key} value={opt.key}>{opt.label}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <ChartToolbarPopover
             label={`图表 · ${CHART_TYPE_LABEL[chartType] || '折线'}`}
             active={chartType !== 'line'}
@@ -1661,6 +1718,7 @@ function SymbolDetailPanel({
 
           <div className="ml-auto flex items-center gap-1 text-[11px] text-[#9aa0a6]">
             {chartLoading ? <Loader2 size={12} className="animate-spin" /> : null}
+            {market === 'cn' ? <span>{CN_FUND_PARAM_LABEL[cnFundParam]}</span> : null}
             {compareSymbols.length > 0 ? <span>归一化 = 100</span> : null}
           </div>
         </div>
@@ -1712,7 +1770,8 @@ function SymbolDetailPanel({
           )}
         </div>
 
-        {market === 'cn' && indicators.has('premium') ? <PremiumInsightCard premiumState={premiumState} /> : null}
+        {market === 'cn' && cnFundParam === 'nav' ? <NavInsightCard premiumState={premiumState} /> : null}
+        {market === 'cn' && cnFundParam === 'premium' ? <PremiumInsightCard premiumState={premiumState} /> : null}
 
         {/* 详情 tab */}
         <div className="mt-3 flex gap-5 border-b border-[#e8eaed] text-sm font-medium text-[#5f6368]">
