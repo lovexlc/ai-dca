@@ -35,7 +35,7 @@ import { buildStockAnalysisPrompt } from '../app/stockAnalysisPrompt.js';
 import { requestHoldingsNav } from '../app/holdings.js';
 import { Sparkline } from '../components/markets/Sparkline.jsx';
 import { MarketsChartCodeBlock } from '../components/markets/MarketsChartBlock.jsx';
-import { Area, Bar, CartesianGrid, ComposedChart, Customized, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, Bar, CartesianGrid, ComposedChart, Customized, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 const MARKETS = [
   { key: 'us', label: '美股' },
@@ -966,8 +966,14 @@ function CandlesLayerPanel({ xAxisMap, yAxisMap, data }) {
   );
 }
 
-function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, tone }) {
+function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, tone, symbol }) {
   const cmpList = (compareSeries || []).filter((s) => Array.isArray(s.candles) && s.candles.length >= 2);
+  const cmpSignature = JSON.stringify(cmpList.map((s) => ({
+    symbol: s.symbol,
+    length: s.candles.length,
+    first: s.candles[0] && s.candles[0].t,
+    last: s.candles[s.candles.length - 1] && s.candles[s.candles.length - 1].t
+  })));
   const normalized = cmpList.length > 0;
   const rows = useMemo(() => {
     const arr = Array.isArray(candles) ? candles : [];
@@ -1015,28 +1021,41 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
       });
       return out;
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, indicatorLines, JSON.stringify(cmpList.map((s) => s.symbol))]);
+  }, [rows, indicatorLines, cmpSignature]);
 
   if (finalRows.length < 2) {
     return <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">暂无数据</div>;
   }
-  const mainColor = tone === 'up' ? CHART_UP : tone === 'down' ? CHART_DOWN : '#1a73e8';
+  const mainColor = normalized ? '#1a73e8' : tone === 'up' ? CHART_UP : tone === 'down' ? CHART_DOWN : '#1a73e8';
   const showCandle = chartType === 'candle' && !normalized;
   const showArea = chartType === 'area' && !normalized;
   const showLine = chartType === 'line' || normalized;
+  const legendPayload = normalized
+    ? [
+      { value: symbol || '当前标的', type: 'line', color: mainColor, id: 'main' },
+      ...cmpList.map((s, ci) => ({ value: s.symbol, type: 'line', color: COMPARE_COLORS[ci % COMPARE_COLORS.length], id: `cmp_${ci}` }))
+    ]
+    : undefined;
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <ComposedChart data={finalRows} margin={{ top: 6, right: 8, left: 0, bottom: 4 }}>
+      <ComposedChart data={finalRows} margin={{ top: 8, right: 12, bottom: normalized ? 10 : 0, left: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#f1f3f4" vertical={false} />
-        <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#5f6368' }} minTickGap={40} />
-        <YAxis tick={{ fontSize: 10, fill: '#5f6368' }} domain={['auto', 'auto']} width={44} />
-        <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12 }} />
+        <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#9aa0a6' }} minTickGap={40} />
+        <YAxis tick={{ fontSize: 11, fill: '#9aa0a6' }} domain={['auto', 'auto']} width={44} />
+        <Tooltip
+          contentStyle={{ borderRadius: 12, border: '1px solid #e8eaed', boxShadow: '0 8px 24px rgba(60,64,67,0.12)' }}
+          formatter={(value, name) => {
+            const n = Number(value);
+            const label = name === 'main' ? (symbol || '当前标的') : String(name).replace('cmp_', '对比 ');
+            return [Number.isFinite(n) ? n.toFixed(normalized ? 2 : 4) : value, label];
+          }}
+        />
+        {normalized ? <Legend payload={legendPayload} wrapperStyle={{ fontSize: 11, paddingTop: 4 }} /> : null}
         {showArea ? (
-          <Area type="monotone" dataKey="main" stroke={mainColor} fill={mainColor} fillOpacity={0.12} dot={false} strokeWidth={1.5} isAnimationActive={false} />
+          <Area type="monotone" dataKey="main" name={symbol || '当前标的'} stroke={mainColor} fill={mainColor} fillOpacity={0.12} dot={false} strokeWidth={1.5} isAnimationActive={false} />
         ) : null}
         {showLine ? (
-          <Line type="monotone" dataKey="main" stroke={mainColor} dot={false} strokeWidth={1.5} isAnimationActive={false} />
+          <Line type="monotone" dataKey="main" name={symbol || '当前标的'} stroke={mainColor} dot={false} strokeWidth={normalized ? 2 : 1.5} isAnimationActive={false} />
         ) : null}
         {showCandle ? (
           <Line type="monotone" dataKey="c" stroke="transparent" dot={false} isAnimationActive={false} />
@@ -1049,6 +1068,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
             key={il.key}
             type="monotone"
             dataKey={il.key}
+            name={il.label}
             stroke={il.color}
             strokeDasharray={il.dashed ? '3 3' : '0'}
             dot={false}
@@ -1061,9 +1081,12 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
             key={`cmp_${ci}`}
             type="monotone"
             dataKey={`cmp_${ci}`}
+            name={s.symbol}
             stroke={COMPARE_COLORS[ci % COMPARE_COLORS.length]}
             dot={false}
-            strokeWidth={1.25}
+            strokeWidth={1.8}
+            strokeDasharray={ci === 1 ? '5 3' : ci === 2 ? '2 3' : '0'}
+            connectNulls
             isAnimationActive={false}
           />
         ))}
@@ -1343,6 +1366,8 @@ function SymbolDetailPanel({
   const [compareSymbols, setCompareSymbols] = useState([]);
   const [compareInput, setCompareInput] = useState('');
   const [compareCandlesMap, setCompareCandlesMap] = useState({});
+  const [compareLoadingMap, setCompareLoadingMap] = useState({});
+  const [compareErrorMap, setCompareErrorMap] = useState({});
   const indicatorOptions = market === 'cn' ? [...INDICATOR_OPTIONS, CN_PREMIUM_INDICATOR] : INDICATOR_OPTIONS;
   const rowSymbol = row && row.symbol ? String(row.symbol).toUpperCase() : '';
   // 当前 symbol 或时间范围切换时清空对比
@@ -1351,14 +1376,22 @@ function SymbolDetailPanel({
     if (!chartTf || !compareSymbols.length) return;
     compareSymbols.forEach((sym) => {
       const key = `${sym}|${chartTf}`;
-      if (compareCandlesMap[key]) return;
+      if (compareCandlesMap[key] || compareLoadingMap[key] || compareErrorMap[key]) return;
+      setCompareLoadingMap((prev) => ({ ...prev, [key]: true }));
+      setCompareErrorMap((prev) => ({ ...prev, [key]: false }));
       fetchKline(sym, { timeframe: chartTf }).then((res) => {
         if (Array.isArray(res && res.candles) && res.candles.length >= 2) {
           setCompareCandlesMap((prev) => ({ ...prev, [key]: res.candles }));
+        } else {
+          setCompareErrorMap((prev) => ({ ...prev, [key]: true }));
         }
-      }).catch(() => {});
+      }).catch(() => {
+        setCompareErrorMap((prev) => ({ ...prev, [key]: true }));
+      }).finally(() => {
+        setCompareLoadingMap((prev) => ({ ...prev, [key]: false }));
+      });
     });
-  }, [compareSymbols, chartTf, compareCandlesMap]);
+  }, [compareSymbols, chartTf, compareCandlesMap, compareLoadingMap, compareErrorMap]);
   if (!row || !row.symbol) return null;
   const pct = Number(row.changePercent);
   const change = Number(row.change);
@@ -1421,6 +1454,8 @@ function SymbolDetailPanel({
       candles: Array.isArray(rawCandles) ? sliceCandlesForRange(rawCandles, chartRange) : rawCandles
     };
   });
+  const comparePendingSymbols = compareSymbols.filter((sym) => compareLoadingMap[`${sym}|${chartTf}`]);
+  const compareReadyCount = compareSeries.filter((s) => Array.isArray(s.candles) && s.candles.length >= 2).length;
   const hasFullCandles = Array.isArray(chartCandles) && chartCandles.length >= 2;
   const sparkFallback = (!hasFullCandles && Array.isArray(sparkPoints) && sparkPoints.length >= 2) ? sparkPoints : null;
 
@@ -1631,7 +1666,31 @@ function SymbolDetailPanel({
         </div>
 
         {/* 图表区 */}
-        <div className="mt-2 h-48 rounded-xl bg-white px-1 py-1 sm:h-64">
+        <div className="relative mt-2 h-48 rounded-xl bg-white px-1 py-1 sm:h-64">
+          {compareSymbols.length > 0 ? (
+            <div className="pointer-events-none absolute left-3 top-2 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1 text-[11px]">
+              <span className="rounded-full bg-white/90 px-2 py-0.5 font-medium text-[#1a73e8] shadow-sm">{row.symbol}</span>
+              {compareSeries.map((item, ci) => {
+                const ready = Array.isArray(item.candles) && item.candles.length >= 2;
+                const loading = compareLoadingMap[`${item.symbol}|${chartTf}`];
+                const failed = compareErrorMap[`${item.symbol}|${chartTf}`];
+                return (
+                  <span
+                    key={item.symbol}
+                    className="rounded-full bg-white/90 px-2 py-0.5 font-medium shadow-sm"
+                    style={{ color: failed ? '#9aa0a6' : COMPARE_COLORS[ci % COMPARE_COLORS.length] }}
+                  >
+                    {item.symbol}{loading ? ' 加载中' : failed ? ' 无数据' : ready ? '' : ' 等待'}
+                  </span>
+                );
+              })}
+            </div>
+          ) : null}
+          {compareSymbols.length > 0 && compareReadyCount === 0 && comparePendingSymbols.length > 0 ? (
+            <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 flex -translate-y-1/2 justify-center text-[12px] text-[#5f6368]">
+              <span className="inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1 shadow-sm"><Loader2 size={12} className="animate-spin" /> 正在加载对比线</span>
+            </div>
+          ) : null}
           {hasFullCandles ? (
             <SymbolDetailChart
               candles={chartCandles}
@@ -1640,6 +1699,7 @@ function SymbolDetailPanel({
               indicators={indicators}
               compareSeries={compareSeries}
               tone={tone}
+              symbol={row.symbol}
             />
           ) : sparkFallback ? (
             <Sparkline points={sparkFallback} width={720} height={210} tone={tone} showFill markLast className="h-full w-full" />
