@@ -7,7 +7,7 @@
 
 1. 把"哪条链路用哪套 NAV"写死成文档（代码注释 + `docs/data-glossary.md`）。
 2. 给所有可能呈现 T-1 末端的位置加用户可感知的标记（tooltip / 时间戳后缀），避免再发生"持仓页 +X% 但累计图末端比昨天小"的对账困惑。
-3. SwitchStrategy 离线 `data/<code>/latest-nav.json` 失效时降级到 `/api/holdings/nav`，与主链路同源。
+3. SwitchStrategy 前端统一走 `/api/holdings/nav`（内部 getNav），不再直读 `data/<code>/latest-nav.json`。
 4. 添加最小回归用例：navHistoryClient T-1 边界 / latestNav 覆盖逻辑 / SwitchStrategy fallback。
 
 **显式不做**（用户已拍板"接受漂移"）：
@@ -23,7 +23,7 @@
 - [x] step-3：IncomeSummary 收益曲线：`useCumulativeSparkline` 返回 `{ series, lastIso }`；IncomeSection 透传 `cumulativeLastIso`；IncomeSummary PC sparkline 下方渲染「截至 YYYY-MM-DD 公布净值」，鼠标悬停有补充 tooltip
 - [x] step-4：IncomeDetail 主图（ReturnChart）：ChartTooltip 收 `lastIso` prop，`label === lastIso` 时末行追加「公布单位净值，不含今日实时变动」（已在上一轮 commit 775f975 随 IncomeDetail 交互一同入仓）
 - [x] step-5：ReturnCalendar：当前日单元如果用 latestNav 推算盈亏，给单元加 tooltip「实时估算，明日定盘后更新」；如果未推算只显示 0，加 tooltip「今日定盘后更新」
-- [x] step-6：SwitchStrategy（`src/pages/SwitchStrategyExperience.jsx:loadEtfLatestNav` 调用站点 loadNav）：对 `loadEtfLatestNav` 返回 null 的 code 批量降级调 `requestHoldingsNav(fallbackCodes)`（同 /api/holdings/nav）补齐 navByCode，与持仓页 KPI 同源
+- [x] step-6：SwitchStrategy（`src/pages/SwitchStrategyExperience.jsx` 的 loadNav）：直接调用 `requestHoldingsNav(codes)` 拉取全量 navByCode，与持仓页 KPI 同源
 - [x] step-7：建 `docs/data-glossary.md`（最小版）：罗列 `latestNav` / `previousNav` / `navHistory[].nav` / `marketValue` / `pricePulse.changePct` 五个字段的来源、时效、计算口径
 - [x] step-8：冒烟验证（降级方案）
   - cf-browser-mcp 在该 SPA 上 hydrate 失败（`evaluate` 报 `Cannot read properties of undefined (reading 'slice')`，`#root` 20s 超时），无法用 UI 截图；改用 **bundle 内容 grep** 作为证据。

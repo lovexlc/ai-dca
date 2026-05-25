@@ -1,8 +1,7 @@
 // A-share OTC fund historical unit NAV (DWJZ).
-// API: api.fund.eastmoney.com/f10/lsjz with Referer set to fundf10.eastmoney.com/jjjz_<code>.html.
+// 统一复用 getNav 的历史净值方法。
 
-const EM_API = 'https://api.fund.eastmoney.com/f10/lsjz';
-const EM_REFERER_PREFIX = 'https://fundf10.eastmoney.com/jjjz_';
+import { fetchFundNavHistory } from '../../../../../notify/src/getNav.js';
 
 function rangeStartDate(range) {
 	const end = new Date();
@@ -25,40 +24,8 @@ function rangeStartDate(range) {
 
 export async function fetchEastmoneyFund(code, range) {
 	const dates = rangeStartDate(range);
-	const referer = EM_REFERER_PREFIX + encodeURIComponent(code) + '.html';
-	const headers = {
-		'user-agent': 'Mozilla/5.0 (markets-agent fund-backtest skill)',
-		referer,
-		accept: 'application/json, text/javascript, */*; q=0.01',
-		'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
-	};
-	const all = [];
-	const pageSize = 40;
-	let pageIndex = 1;
-	for (let p = 0; p < 50; p++) {
-		const qs = '?fundCode=' + encodeURIComponent(code)
-			+ '&pageIndex=' + pageIndex
-			+ '&pageSize=' + pageSize
-			+ '&startDate=' + encodeURIComponent(dates.startStr)
-			+ '&endDate=' + encodeURIComponent(dates.endStr);
-		const r = await fetch(EM_API + qs, { headers });
-		if (!r.ok) throw new Error('eastmoney_http_' + r.status);
-		const j = await r.json().catch(() => null);
-		if (!j || j.ErrCode !== 0) {
-			const msg = j ? String(j.ErrMsg || '').slice(0, 40) : '';
-			throw new Error('eastmoney_err_' + (j && j.ErrCode) + '_' + msg);
-		}
-		const rows = (j.Data && j.Data.LSJZList) || [];
-		for (const row of rows) {
-			const close = parseFloat(row.DWJZ);
-			if (!isFinite(close)) continue;
-			all.push({ date: row.FSRQ, close });
-		}
-		const total = Number(j.TotalCount) || 0;
-		if (pageIndex * pageSize >= total) break;
-		if (!rows.length) break;
-		pageIndex++;
-	}
-	all.sort((a, b) => a.date.localeCompare(b.date));
-	return all;
+	const items = await fetchFundNavHistory(code, dates.startStr, dates.endStr);
+	return (Array.isArray(items) ? items : [])
+		.filter((item) => item && item.date)
+		.map((item) => ({ date: item.date, close: item.nav }));
 }

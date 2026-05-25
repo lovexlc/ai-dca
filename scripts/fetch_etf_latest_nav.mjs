@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // 为每只场内 ETF 拉取「最新单位净值」，落到 data/<code>/latest-nav.json。
 //
-// 数据源：https://api.fund.eastmoney.com/f10/lsjz?fundCode=<code>&pageIndex=1&pageSize=6
-// 与 workers/ocr-proxy fetchFundNavSnapshot 同源。场内 ETF 也能从该接口拿到 DWJZ。
+// 数据源：统一复用 workers/notify getNav 的 fetchFundNavSnapshot（底层仍是东财 lsjz）。
 //
 // 输出结构：
 // {

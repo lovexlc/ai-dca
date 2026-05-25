@@ -32,7 +32,7 @@
 | ETF（场内） | 同接口走「最后成交价」分支 `workers/ocr-proxy/src/index.js:1878-1881` | `latestNav` = `latestPrice` | 实时分钟价 |
 | 实时回写覆盖 | notify worker 在 A 股开盘期间 push2 写入 `latestNav` | 直接覆盖 ocr-proxy 上游 | 实时 |
 | ReturnCalendar / IncomeDetail / ReturnChart / DailyFundBreakdown / useCumulativeSparkline | `fetchNavHistory` → `/api/holdings/nav-history` + IndexedDB 缓存 `src/app/navHistoryClient.js`、`workers/ocr-proxy/src/index.js:1605` | `items[].nav`（仅公布单位净值） | T+1 公布值，**交易时段不与 latestNav 同步** |
-| SwitchStrategy | GitHub Action 静态导出 `data/<code>/latest-nav.json` `src/pages/SwitchStrategyExperience.jsx:184-198` | `payload.latestNav` | T-1 离线产物 |
+| SwitchStrategy | 前端：`/api/holdings/nav`（getNav）；后端信号：`data/<code>/latest-nav.json`（getNav） | `payload.latestNav` | 前端实时/公布，信号端仍可能是 T-1 |
 | 行情中心（HomeExperience） | markets worker K 线 + `selectedFund.current_price` `src/pages/HomeExperience.jsx:352-366` | `latestBar.close` / `firstBar.open` | 实时 K 线，**不走 nav 链路** |
 | Holdings 录入回填 | ocr 识别 + live snapshot.latestNav `workers/ocr-proxy/src/index.js:700-702` | `liveSnapshot.latestNav` | 主接口同源 |
 
@@ -40,7 +40,7 @@
 
 - 开盘期间持仓页 KPI 用 push2 写入的实时 `latestNav`，但 IncomeSummary / IncomeDetail 累计图末端用 `fetchNavHistory` 公布单位净值（T-1）→ 同一时刻两个数字差几个点。
 - 行情中心"今日涨跌"用 K 线 `(close - open) / open`，持仓"今日涨跌"用 `(latestNav - previousNav) / previousNav` → 同一只 ETF 同一天可能呈现两个完全不同的百分比。
-- SwitchStrategy 拿离线 latest-nav.json，与主链路在 T-1 收盘前可能差一天。
+- SwitchStrategy 后端信号仍依赖离线 latest-nav.json，与主链路在 T-1 收盘前可能差一天；前端已改为 /api/holdings/nav。
 
 ---
 
