@@ -1073,6 +1073,19 @@ function buildCnFundParamCandles(priceCandles, navItems, param, premiumState) {
     .filter((item) => item && /^\d{4}-\d{2}-\d{2}$/.test(String(item.date || '')) && Number(item.nav) > 0)
     .sort((a, b) => a.date.localeCompare(b.date));
   if (param === 'nav') {
+    const priceTimeline = Array.isArray(priceCandles) ? priceCandles : [];
+    if (priceTimeline.length >= 2) {
+      return priceTimeline
+        .map((candle) => {
+          const date = shanghaiDateFromEpochSec(candle?.t);
+          const navItem = findNavOnOrBefore(sortedNav, date);
+          const v = Number(navItem?.nav);
+          return date && Number.isFinite(v) && v > 0
+            ? { t: Number(candle.t), o: v, h: v, l: v, c: v, date: navItem.date }
+            : null;
+        })
+        .filter(Boolean);
+    }
     return sortedNav
       .map((item) => {
         const t = epochSecFromShanghaiDate(item.date);
