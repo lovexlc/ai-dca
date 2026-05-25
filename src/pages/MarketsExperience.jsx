@@ -2507,7 +2507,7 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
   );
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-white lg:h-[calc(100vh-1.5rem)] lg:max-h-[820px] lg:rounded-2xl lg:border lg:border-slate-200">
+    <div className="flex h-full min-h-0 w-full flex-col bg-white lg:h-auto lg:min-h-0 lg:rounded-2xl lg:border lg:border-slate-200">
       {pending && (
         <div className="relative h-0.5 w-full shrink-0 overflow-hidden bg-[#e8f0fe]">
           <div className="gf-progress-bar absolute inset-y-0 left-0 bg-[#1a73e8]" />
