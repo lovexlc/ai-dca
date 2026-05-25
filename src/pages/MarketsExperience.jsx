@@ -73,6 +73,12 @@ function formatTime(value) {
   return d.toLocaleString('zh-CN', { hour12: false });
 }
 
+function formatSymbolDisplay(value) {
+  const raw = String(value || '').trim();
+  const match = /^(sh|sz|bj)(\d{6})$/i.exec(raw);
+  return match ? match[2] : raw;
+}
+
 
 function formatLargeNumber(value) {
   const n = Number(value);
@@ -368,7 +374,7 @@ function IndexCard({ entry, onPick, sparkPoints }) {
       onClick={() => onPick && onPick(entry)}
       className="group flex w-[140px] min-w-0 shrink-0 snap-start flex-col items-start gap-1 overflow-hidden rounded-xl border border-slate-200/70 bg-white p-3 text-left shadow-sm transition hover:shadow-md sm:w-[150px] lg:w-[160px]"
     >
-      <div className="line-clamp-1 w-full text-[15px] font-semibold leading-tight text-slate-900">{entry.name || entry.symbol}</div>
+      <div className="line-clamp-1 w-full text-[15px] font-semibold leading-tight text-slate-900">{entry.name || formatSymbolDisplay(entry.symbol)}</div>
       <div className="w-full truncate text-[13px] leading-tight tabular-nums text-slate-700">{formatNumber(entry.price)}</div>
       {hasChange && (
         <div className="text-[11px] tabular-nums text-slate-500">({change >= 0 ? '+' : ''}{formatNumber(Math.abs(change))})</div>
@@ -425,7 +431,7 @@ function MoversTable({ rows = [], onPick, klineMap = {}, initialLimit = 4 }) {
               negative && 'bg-emerald-50/30'
             )}>
               <td className="px-3 py-2 align-top font-mono text-xs text-slate-600">
-                <div>{row.symbol}</div>
+                <div>{formatSymbolDisplay(row.symbol)}</div>
                 {row.industry ? (
                   <div className="mt-0.5 text-[10px] font-normal text-slate-400">{row.industry}</div>
                 ) : null}
@@ -537,10 +543,10 @@ function SortableMarketTable({ title = '', rows = [], market, onPick, onRemove, 
               return (
                 <tr key={`${market || row.market || ''}:${row.symbol}`} className={cx('hover:bg-indigo-50/40', positive && 'bg-rose-50/20', negative && 'bg-emerald-50/20')}>
                   <td className="px-3 py-2 align-top font-mono text-xs text-slate-600">
-                    <div>{row.symbol}</div>
+                    <div>{formatSymbolDisplay(row.symbol)}</div>
                     {row.exchange || row.industry ? <div className="mt-0.5 text-[10px] font-normal text-slate-400">{row.exchange || row.industry}</div> : null}
                   </td>
-                  <td className="px-3 py-2 align-top text-slate-800">{row.name || row.symbol}</td>
+                  <td className="px-3 py-2 align-top text-slate-800">{row.name || formatSymbolDisplay(row.symbol)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{valueOrDash(rowMetric(row, MARKET_TABLE_METRICS.price))}</td>
                   <td className={cx('px-3 py-2 text-right tabular-nums font-semibold', changeToneClass(row.changePercent))}>{formatPercent(row.changePercent)}</td>
                   <td className="px-3 py-2 text-right">
@@ -614,8 +620,8 @@ function WatchlistTable({ rows = [], market, onRemove }) {
         <tbody className="divide-y divide-slate-100">
           {rows.map((row) => (
             <tr key={row.symbol} className="hover:bg-indigo-50/40">
-              <td className="px-3 py-2 font-mono text-xs text-slate-600">{row.symbol}</td>
-              <td className="px-3 py-2 text-slate-800">{row.name || row.symbol}</td>
+              <td className="px-3 py-2 font-mono text-xs text-slate-600">{formatSymbolDisplay(row.symbol)}</td>
+              <td className="px-3 py-2 text-slate-800">{row.name || formatSymbolDisplay(row.symbol)}</td>
               <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.price)}</td>
               <td className={cx('px-3 py-2 text-right tabular-nums', changeToneClass(row.changePercent))}>
                 {formatPercent(row.changePercent)}
@@ -638,13 +644,15 @@ function WatchlistTable({ rows = [], market, onRemove }) {
   );
 }
 
-function SidebarRow({ symbol, name, price, changePercent, sparkPoints, selected = false, onSelect, onRemove, onAnalyze }) {
+function SidebarRow({ symbol, name, price, changePercent, sparkPoints, selected = false, onSelect }) {
   const pct = Number(changePercent);
   const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
   const up = pct > 0;
   const textTone = flat ? 'text-[#5f6368]' : up ? 'text-[#a50e0e]' : 'text-[#137333]';
   const ArrowIcon = flat ? null : up ? ArrowUp : ArrowDown;
   const sparkTone = flat ? 'flat' : up ? 'up' : 'down';
+  const displaySymbol = formatSymbolDisplay(symbol);
+  const showName = name && name !== symbol && name !== displaySymbol;
   return (
     <li className="group relative">
       <div
@@ -664,10 +672,8 @@ function SidebarRow({ symbol, name, price, changePercent, sparkPoints, selected 
         )}
       >
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-medium leading-tight text-[#1f1f1f]">{symbol}</div>
-          {name && name !== symbol ? (
-            <div className="truncate text-[11px] leading-tight text-[#5f6368]">{name}</div>
-          ) : null}
+          <div className="truncate text-[13px] font-medium leading-tight text-[#1f1f1f]">{displaySymbol}</div>
+          {showName ? <div className="truncate text-[11px] leading-tight text-[#5f6368]">{name}</div> : null}
         </div>
         {sparkPoints && sparkPoints.length >= 2 ? (
           <Sparkline points={sparkPoints} width={76} height={28} tone={sparkTone} showFill markLast />
@@ -681,38 +687,12 @@ function SidebarRow({ symbol, name, price, changePercent, sparkPoints, selected 
             <span>{formatPercent(changePercent)}</span>
           </div>
         </div>
-        {(onAnalyze || onRemove) ? (
-          <div className="absolute right-1 top-1/2 hidden -translate-y-1/2 flex-col gap-0.5 group-hover:flex">
-            {onAnalyze ? (
-              <button
-                type="button"
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAnalyze(); }}
-                className="rounded p-0.5 text-slate-300 hover:text-indigo-500"
-                title="AI 分析"
-                aria-label="AI 分析"
-              >
-                <Sparkles size={11} />
-              </button>
-            ) : null}
-            {onRemove ? (
-              <button
-                type="button"
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}
-                className="rounded p-0.5 text-slate-300 hover:text-rose-500"
-                title="移除自选"
-                aria-label="移除自选"
-              >
-                <Trash2 size={11} />
-              </button>
-            ) : null}
-          </div>
-        ) : null}
       </div>
     </li>
   );
 }
 
-function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints, selected = false, onSelect, onAnalyze }) {
+function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints, selected = false, onSelect }) {
   const pct = Number(changePercent);
   const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
   const up = pct > 0;
@@ -721,6 +701,8 @@ function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints, sel
   const circleBg = flat ? 'bg-[#bdc1c6]' : up ? 'bg-[#a50e0e]' : 'bg-[#137333]';
   const ArrowIcon = flat ? null : up ? ArrowUp : ArrowDown;
   const sparkTone = flat ? 'flat' : up ? 'up' : 'down';
+  const displaySymbol = formatSymbolDisplay(symbol);
+  const showName = name && name !== symbol && name !== displaySymbol;
   return (
     <li
       role="button"
@@ -739,10 +721,8 @@ function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints, sel
       )}
     >
       <div className="min-w-0 flex-1">
-        <div className="truncate text-base font-semibold leading-tight text-[#1f1f1f]">{symbol}</div>
-        {name && name !== symbol ? (
-          <div className="truncate text-sm leading-tight text-[#5f6368]">{name}</div>
-        ) : null}
+        <div className="truncate text-base font-semibold leading-tight text-[#1f1f1f]">{displaySymbol}</div>
+        {showName ? <div className="truncate text-sm leading-tight text-[#5f6368]">{name}</div> : null}
       </div>
       {sparkPoints && sparkPoints.length >= 2 ? (
         <Sparkline points={sparkPoints} width={86} height={32} tone={sparkTone} showFill markLast />
@@ -760,17 +740,6 @@ function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints, sel
           ) : null}
         </div>
       </div>
-      {onAnalyze ? (
-        <button
-          type="button"
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAnalyze(); }}
-          className="ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4] hover:text-indigo-500"
-          title="AI 分析"
-          aria-label="AI 分析"
-        >
-          <Sparkles size={16} />
-        </button>
-      ) : null}
     </li>
   );
 }
@@ -1218,6 +1187,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
     first: s.candles[0] && s.candles[0].t,
     last: s.candles[s.candles.length - 1] && s.candles[s.candles.length - 1].t
   })));
+  const displayMainSymbol = formatSymbolDisplay(symbol);
   const normalized = cmpList.length > 0;
   const rows = useMemo(() => {
     const arr = Array.isArray(candles) ? candles : [];
@@ -1276,8 +1246,8 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
   const showLine = chartType === 'line' || normalized;
   const legendPayload = normalized
     ? [
-      { value: symbol || '当前标的', type: 'line', color: mainColor, id: 'main' },
-      ...cmpList.map((s, ci) => ({ value: s.symbol, type: 'line', color: COMPARE_COLORS[ci % COMPARE_COLORS.length], id: `cmp_${ci}` }))
+      { value: displayMainSymbol || '当前标的', type: 'line', color: mainColor, id: 'main' },
+      ...cmpList.map((s, ci) => ({ value: formatSymbolDisplay(s.symbol), type: 'line', color: COMPARE_COLORS[ci % COMPARE_COLORS.length], id: `cmp_${ci}` }))
     ]
     : undefined;
   return (
@@ -1290,16 +1260,16 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
           contentStyle={{ borderRadius: 12, border: '1px solid #e8eaed', boxShadow: '0 8px 24px rgba(60,64,67,0.12)' }}
           formatter={(value, name) => {
             const n = Number(value);
-            const label = name === 'main' ? (symbol || '当前标的') : String(name).replace('cmp_', '对比 ');
+            const label = name === 'main' ? (displayMainSymbol || '当前标的') : formatSymbolDisplay(name);
             return [Number.isFinite(n) ? n.toFixed(normalized ? 2 : 4) : value, label];
           }}
         />
         {normalized ? <Legend payload={legendPayload} wrapperStyle={{ fontSize: 11, paddingTop: 4 }} /> : null}
         {showArea ? (
-          <Area type="monotone" dataKey="main" name={symbol || '当前标的'} stroke={mainColor} fill={mainColor} fillOpacity={0.12} dot={false} strokeWidth={1.5} isAnimationActive={false} />
+          <Area type="monotone" dataKey="main" name={displayMainSymbol || '当前标的'} stroke={mainColor} fill={mainColor} fillOpacity={0.12} dot={false} strokeWidth={1.5} isAnimationActive={false} />
         ) : null}
         {showLine ? (
-          <Line type="monotone" dataKey="main" name={symbol || '当前标的'} stroke={mainColor} dot={false} strokeWidth={normalized ? 2 : 1.5} isAnimationActive={false} />
+          <Line type="monotone" dataKey="main" name={displayMainSymbol || '当前标的'} stroke={mainColor} dot={false} strokeWidth={normalized ? 2 : 1.5} isAnimationActive={false} />
         ) : null}
         {showCandle ? (
           <Line type="monotone" dataKey="c" stroke="transparent" dot={false} isAnimationActive={false} />
@@ -1325,7 +1295,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
             key={`cmp_${ci}`}
             type="monotone"
             dataKey={`cmp_${ci}`}
-            name={s.symbol}
+            name={formatSymbolDisplay(s.symbol)}
             stroke={COMPARE_COLORS[ci % COMPARE_COLORS.length]}
             dot={false}
             strokeWidth={1.8}
@@ -1676,6 +1646,7 @@ function SymbolDetailPanel({
     });
   }, [compareSymbols, chartTf, compareCandlesMap, compareLoadingMap, compareErrorMap]);
   if (!row || !row.symbol) return null;
+  const displaySymbol = formatSymbolDisplay(row.symbol);
   const pct = Number(row.changePercent);
   const change = Number(row.change);
   const positive = Number.isFinite(pct) && pct > 0;
@@ -1766,11 +1737,11 @@ function SymbolDetailPanel({
               <span>·</span>
               <span className="truncate">{exchangeLabel}</span>
               <span>·</span>
-              <span>{row.symbol}</span>
+              <span>{displaySymbol}</span>
               <span>·</span>
               <span>{currencyLabel}</span>
             </div>
-            <h2 className="mt-0.5 truncate text-base font-medium text-[#1f1f1f] sm:text-lg">{row.name || row.symbol}</h2>
+            <h2 className="mt-0.5 truncate text-base font-medium text-[#1f1f1f] sm:text-lg">{row.name || displaySymbol}</h2>
             <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <span className="text-[34px] font-medium leading-none tabular-nums text-[#1f1f1f] sm:text-[40px]">{formatNumber(row.price)}</span>
               <span className={cx('text-sm font-medium tabular-nums', positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#5f6368]')}>
@@ -1836,19 +1807,29 @@ function SymbolDetailPanel({
         {/* 图表工具栏 */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {market === 'cn' ? (
-            <label className="inline-flex items-center gap-1.5 rounded-full border border-[#dadce0] bg-white px-2.5 py-1 text-[13px] font-medium text-[#1f1f1f]">
-              <span className="text-[#5f6368]">参数</span>
-              <select
-                value={cnFundParam}
-                onChange={(e) => setCnFundParam(e.target.value)}
-                className="bg-transparent text-[13px] font-medium text-[#1f1f1f] outline-none"
-                aria-label="A股基金图表参数"
-              >
-                {CN_FUND_PARAM_OPTIONS.map((opt) => (
-                  <option key={opt.key} value={opt.key}>{opt.label}</option>
-                ))}
-              </select>
-            </label>
+            <ChartToolbarPopover
+              label="参数"
+              active={cnFundParam !== 'price'}
+            >
+              {({ close }) => (
+                <div className="flex flex-col gap-0.5">
+                  {CN_FUND_PARAM_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => { setCnFundParam(opt.key); close(); }}
+                      className={cx(
+                        'flex items-start gap-2 rounded-lg px-2 py-1.5 text-left transition',
+                        cnFundParam === opt.key ? 'bg-[#e8f0fe]' : 'hover:bg-[#f1f3f4]'
+                      )}
+                    >
+                      <span className={cx('text-[13px] font-medium', cnFundParam === opt.key ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>{opt.label}</span>
+                      <span className="ml-auto text-[11px] text-[#9aa0a6]">{opt.hint}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </ChartToolbarPopover>
           ) : null}
           <ChartToolbarPopover
             label={`图表 · ${CHART_TYPE_LABEL[chartType] || '折线'}`}
@@ -1895,7 +1876,7 @@ function SymbolDetailPanel({
           </ChartToolbarPopover>
 
           <ChartToolbarPopover
-            label={compareSymbols.length ? `对比 · ${compareSymbols.length}` : '对比'}
+            label="对比"
             active={compareSymbols.length > 0}
             align="right"
             panelClassName="w-72 max-w-[calc(100vw-2rem)]"
@@ -1909,8 +1890,8 @@ function SymbolDetailPanel({
                       className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
                       style={{ background: `${COMPARE_COLORS[ci % COMPARE_COLORS.length]}1a`, color: COMPARE_COLORS[ci % COMPARE_COLORS.length] }}
                     >
-                      {sym}
-                      <button type="button" onClick={() => removeCompare(sym)} aria-label={`移除 ${sym}`}>
+                      {formatSymbolDisplay(sym)}
+                      <button type="button" onClick={() => removeCompare(sym)} aria-label={`移除 ${formatSymbolDisplay(sym)}`}>
                         <X size={10} />
                       </button>
                     </span>
@@ -1932,9 +1913,9 @@ function SymbolDetailPanel({
                         'rounded-full border px-2.5 py-1 text-[12px] font-medium transition',
                         disabled ? 'border-[#e8eaed] bg-[#f8fafd] text-[#c4c7c5]' : 'border-[#dadce0] bg-white text-[#1f1f1f] hover:bg-[#f1f3f4]'
                       )}
-                      title={item.name || item.symbol}
+                      title={item.name || formatSymbolDisplay(item.symbol)}
                     >
-                      {item.symbol}
+                      {formatSymbolDisplay(item.symbol)}
                     </button>
                   );
                 })}
@@ -1964,7 +1945,6 @@ function SymbolDetailPanel({
 
           <div className="ml-auto flex items-center gap-1 text-[11px] text-[#9aa0a6]">
             {chartLoading || metricLoading ? <Loader2 size={12} className="animate-spin" /> : null}
-            {market === 'cn' ? <span>{CN_FUND_PARAM_LABEL[cnFundParam]}</span> : null}
             {compareSymbols.length > 0 ? <span>归一化 = 100</span> : null}
           </div>
         </div>
@@ -1973,7 +1953,7 @@ function SymbolDetailPanel({
         <div className="relative mt-2 h-48 rounded-xl bg-white px-1 py-1 sm:h-64">
           {compareSymbols.length > 0 ? (
             <div className="pointer-events-none absolute left-3 top-2 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1 text-[11px]">
-              <span className="rounded-full bg-white/90 px-2 py-0.5 font-medium text-[#1a73e8] shadow-sm">{row.symbol}</span>
+              <span className="rounded-full bg-white/90 px-2 py-0.5 font-medium text-[#1a73e8] shadow-sm">{displaySymbol}</span>
               {compareSeries.map((item, ci) => {
                 const ready = Array.isArray(item.candles) && item.candles.length >= 2;
                 const loading = compareLoadingMap[`${item.symbol}|${chartTf}`];
@@ -1984,7 +1964,7 @@ function SymbolDetailPanel({
                     className="rounded-full bg-white/90 px-2 py-0.5 font-medium shadow-sm"
                     style={{ color: failed ? '#9aa0a6' : COMPARE_COLORS[ci % COMPARE_COLORS.length] }}
                   >
-                    {item.symbol}{loading ? ' 加载中' : failed ? ' 无数据' : ready ? '' : ' 等待'}
+                    {formatSymbolDisplay(item.symbol)}{loading ? ' 加载中' : failed ? ' 无数据' : ready ? '' : ' 等待'}
                   </span>
                 );
               })}
@@ -2003,7 +1983,7 @@ function SymbolDetailPanel({
               indicators={indicators}
               compareSeries={compareSeries}
               tone={tone}
-              symbol={cnFundParam === 'price' ? row.symbol : CN_FUND_PARAM_LABEL[cnFundParam]}
+              symbol={cnFundParam === 'price' ? displaySymbol : CN_FUND_PARAM_LABEL[cnFundParam]}
             />
           ) : sparkFallback ? (
             <Sparkline points={sparkFallback} width={720} height={210} tone={tone} showFill markLast className="h-full w-full" />
@@ -2181,13 +2161,14 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
   const [searchDepth, setSearchDepth] = useState('fast');
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
+  const displaySelectedSymbol = formatSymbolDisplay(selectedSymbol);
 
   const send = useCallback(
     async (raw, opts = {}) => {
       const question = String(raw || '').trim();
       if (!question || pending) return;
       const useDepth = opts.depth === 'deep' ? 'deep' : opts.depth === 'fast' ? 'fast' : searchDepth;
-      const focusContext = selectedSymbol ? `当前标的：${selectedSymbol}${selectedQuote?.name ? ` / ${selectedQuote.name}` : ''}；价格 ${formatNumber(selectedQuote?.price)} ${formatPercent(selectedQuote?.changePercent)}。` : '';
+      const focusContext = displaySelectedSymbol ? `当前标的：${displaySelectedSymbol}${selectedQuote?.name ? ` / ${selectedQuote.name}` : ''}；价格 ${formatNumber(selectedQuote?.price)} ${formatPercent(selectedQuote?.changePercent)}。` : '';
       const useContext = [focusContext, typeof opts.context === 'string' ? opts.context : ''].filter(Boolean).join('\n');
       setInput('');
       onModeChange?.('conversation');
@@ -2277,7 +2258,7 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
         setPending(false);
       }
     },
-    [market, pending, onModeChange, selectedSymbol, selectedQuote, searchDepth],
+    [market, pending, onModeChange, displaySelectedSymbol, selectedSymbol, selectedQuote, searchDepth],
   );
 
   const onSubmit = useCallback(
@@ -2363,7 +2344,7 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
                 <div className="text-[12px] font-medium text-[#5f6368]">当前研究标的</div>
                 <div className="mt-1 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="truncate text-[16px] font-semibold text-[#1f1f1f]">{selectedSymbol}</div>
+                    <div className="truncate text-[16px] font-semibold text-[#1f1f1f]">{displaySelectedSymbol}</div>
                     {selectedQuote?.name ? <div className="truncate text-[12px] text-[#5f6368]">{selectedQuote.name}</div> : null}
                   </div>
                   <div className="shrink-0 text-right">
@@ -2380,9 +2361,9 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
             </div>
             <div className="flex flex-col gap-2">
               {(selectedSymbol ? [
-                `${selectedSymbol} 最新行情怎么看？`,
-                `${selectedSymbol} 最近有哪些关键变化？`,
-                `${selectedSymbol} 和我的监控列表相比表现如何？`,
+                `${displaySelectedSymbol} 最新行情怎么看？`,
+                `${displaySelectedSymbol} 最近有哪些关键变化？`,
+                `${displaySelectedSymbol} 和我的监控列表相比表现如何？`,
               ] : [
                 '今日市场行情如何？',
                 '哪些板块涨幅居前？',
@@ -2475,7 +2456,7 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
             {item.label}
           </button>
         ))}
-        {selectedSymbol ? <span className="ml-auto truncate text-[11px] text-[#5f6368]">已注入 {selectedSymbol}</span> : null}
+        {selectedSymbol ? <span className="ml-auto truncate text-[11px] text-[#5f6368]">已注入 {displaySelectedSymbol}</span> : null}
       </div>
       <form onSubmit={onSubmit} className="mx-3 mb-3 mt-2 flex h-12 items-center gap-2 rounded-full bg-[#f1f3f4] px-3">
         <button type="button" aria-label="添加上下文或附件" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#e8eaed]">
@@ -2566,6 +2547,7 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
           {watchSymbols.length > 0 && (
             <div className="flex gap-2 overflow-x-auto px-4 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {watchSymbols.slice(0, 8).map((sym) => {
+                const displaySym = formatSymbolDisplay(sym);
                 const q = watchQuotes[sym] || {};
                 const pct = Number(q.changePercent);
                 const pos = pct >= 0;
@@ -2573,10 +2555,10 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
                   <button
                     key={sym}
                     type="button"
-                    onClick={() => { onModeChange?.('conversation'); send(sym + ' 最新行情分析'); }}
+                    onClick={() => { onModeChange?.('conversation'); send(displaySym + ' 最新行情分析'); }}
                     className="flex shrink-0 items-center gap-1.5 rounded-full border border-[#e8eaed] bg-white px-3 py-1.5"
                   >
-                    <span className="text-[12px] font-semibold text-[#1f1f1f]">{sym}</span>
+                    <span className="text-[12px] font-semibold text-[#1f1f1f]">{displaySym}</span>
                     {q.changePercent != null && (
                       <span className={cx('text-[11px] font-medium tabular-nums', pos ? 'text-[#34a853]' : 'text-[#ea4335]')}>
                         {pos ? '+' : ''}{pct.toFixed(2)}%
@@ -2992,17 +2974,6 @@ export function MarketsExperience() {
     showActionToast('已加入自选', 'success');
   }
 
-  function handleRemove(targetMarket, symbol) {
-    const next = removeFromWatchlist(targetMarket, symbol, watch.activeListId);
-    setWatch(next);
-    if (symbol === selectedSymbol && targetMarket === market) {
-      const active = (next.lists || []).find((item) => item.id === next.activeListId) || next;
-      const nextList = active[targetMarket] || [];
-      setSelectedSymbol(nextList[0] || '');
-      setSymbolDetailTab('overview');
-    }
-  }
-
   function handlePickMover(row) {
     const next = addToWatchlist(market, row.symbol, watch.activeListId);
     setWatch(next);
@@ -3201,10 +3172,6 @@ export function MarketsExperience() {
                       sparkPoints={klineMap[row.symbol]}
                       selected={row.symbol === selectedSymbol}
                       onSelect={() => handleSelectSymbol(row)}
-                      onAnalyze={() => {
-                        handleSelectSymbol(row, { openResearch: true });
-                        setPendingAnalysis({ symbol: row.symbol, name: row.name });
-                      }}
                     />
                   ))}
                 </ul>
@@ -3279,7 +3246,7 @@ export function MarketsExperience() {
                     {symbolSearchResults.map((row) => (
                       <li key={`${row.market || market}:${row.symbol}`}>
                         <button type="button" className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-[#f8fafd]" onClick={() => handlePickSymbolSearch(row)}>
-                          <span className="min-w-0"><span className="block truncate text-sm font-semibold text-[#1f1f1f]">{row.symbol}</span><span className="block truncate text-xs text-[#5f6368]">{row.marketLabel ? `${row.marketLabel} · ` : ''}{row.name || row.exchange || '--'}</span></span>
+                          <span className="min-w-0"><span className="block truncate text-sm font-semibold text-[#1f1f1f]">{formatSymbolDisplay(row.symbol)}</span><span className="block truncate text-xs text-[#5f6368]">{row.marketLabel ? `${row.marketLabel} · ` : ''}{row.name || row.exchange || '--'}</span></span>
                           <span className="shrink-0 rounded-full bg-[#e8f0fe] px-2 py-1 text-xs font-semibold text-[#1a73e8]">加入</span>
                         </button>
                       </li>
@@ -3353,11 +3320,6 @@ export function MarketsExperience() {
                       sparkPoints={klineMap[row.symbol]}
                       selected={row.symbol === selectedSymbol}
                       onSelect={() => handleSelectSymbol(row)}
-                      onRemove={() => handleRemove(market, row.symbol)}
-                      onAnalyze={() => {
-                        handleSelectSymbol(row, { openResearch: true });
-                        setPendingAnalysis({ symbol: row.symbol, name: row.name });
-                      }}
                     />
                   ))}
                 </ul>
@@ -3438,7 +3400,7 @@ export function MarketsExperience() {
                           {symbolSearchResults.map((row) => (
                             <li key={`${row.market || market}:${row.symbol}`}>
                               <button type="button" className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-[#f8fafd]" onClick={() => handlePickSymbolSearch(row)}>
-                                <span className="min-w-0"><span className="block truncate text-xs font-semibold text-[#1f1f1f]">{row.symbol}</span><span className="block truncate text-[11px] text-[#5f6368]">{row.marketLabel ? `${row.marketLabel} · ` : ''}{row.name || row.exchange || '--'}</span></span>
+                                <span className="min-w-0"><span className="block truncate text-xs font-semibold text-[#1f1f1f]">{formatSymbolDisplay(row.symbol)}</span><span className="block truncate text-[11px] text-[#5f6368]">{row.marketLabel ? `${row.marketLabel} · ` : ''}{row.name || row.exchange || '--'}</span></span>
                                 <span className="shrink-0 rounded-full bg-[#e8f0fe] px-2 py-0.5 text-[11px] font-semibold text-[#1a73e8]">加入</span>
                               </button>
                             </li>
@@ -3584,58 +3546,6 @@ export function MarketsExperience() {
               <p className="text-sm text-slate-400">指数数据暂未加载。</p>
             ) : null}
 
-            {watchTopMovers.length ? (
-              <div className="hidden space-y-2 lg:block">
-                <div className="flex items-center gap-2 border-b border-[#e8eaed] pb-1.5">
-                  <Star size={16} className="text-amber-400" />
-                  <h2 className="text-[15px] font-semibold text-[#1f1f1f]">Top movers in your list</h2>
-                  <span className="text-[11px] text-[#5f6368]">{activeWatchList.name}</span>
-                </div>
-                <SortableMarketTable
-                  rows={watchTopMovers}
-                  market={market}
-                  onRemove={handleRemove}
-                  klineMap={klineMap}
-                  action="remove"
-                  compact
-                />
-              </div>
-            ) : null}
-
-            {watchRows.length ? (
-              <div className="hidden space-y-2 lg:block">
-                <div className="flex items-center gap-2 border-b border-[#e8eaed] pb-1.5">
-                  <h2 className="text-[15px] font-semibold text-[#1f1f1f]">Your list</h2>
-                  <span className="text-[11px] text-[#5f6368]">{activeWatchList.name}</span>
-                  {watchLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
-                </div>
-                <SortableMarketTable
-                  rows={watchRows}
-                  market={market}
-                  onRemove={handleRemove}
-                  klineMap={klineMap}
-                  action="remove"
-                  initialSort="symbol"
-                  initialDirection="asc"
-                />
-              </div>
-            ) : null}
-
-            {movers.length ? (
-              <div className="hidden space-y-2 lg:block">
-                <div className="flex items-center gap-2 border-b border-[#e8eaed] pb-1.5">
-                  <TrendingUp size={16} className="text-indigo-500" />
-                  <h2 className="text-[15px] font-semibold text-[#1f1f1f]">Market trends</h2>
-                  {moversLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
-                </div>
-                <SortableMarketTable
-                  rows={movers}
-                  market={market}
-                  onPick={handlePickMover}
-                  klineMap={klineMap}
-                />
-              </div>
-            ) : null}
 
             {market === 'us' && (
               <div className="hidden lg:block">
