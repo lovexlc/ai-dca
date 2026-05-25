@@ -3541,10 +3541,8 @@ export function MarketsExperience() {
 
   return (
     <div className={cx(
-      "flex flex-col gap-5 lg:grid lg:h-[calc(100vh-6rem)] lg:min-h-0 lg:items-stretch lg:gap-4 lg:overflow-hidden lg:pb-0",
-      selectedSymbol
-        ? "pb-4 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_400px]"
-        : "pb-[140px] lg:grid-cols-[280px_minmax(0,1fr)_360px] xl:grid-cols-[320px_minmax(0,1fr)_400px]"
+      "flex flex-col gap-5 lg:grid lg:h-[calc(100vh-6rem)] lg:min-h-0 lg:grid-cols-[280px_minmax(0,1fr)_360px] lg:items-stretch lg:gap-4 lg:overflow-hidden lg:pb-0 xl:grid-cols-[320px_minmax(0,1fr)_400px]",
+      selectedSymbol ? "pb-4" : "pb-[140px]"
     )}>
       {/* Mobile-only sidebar: Google Finance Beta style */}
       <aside className={cx("order-2 flex flex-col gap-2 lg:hidden", selectedSymbol && "hidden")}>
@@ -3706,7 +3704,7 @@ export function MarketsExperience() {
       </aside>
 
       {/* PC-only sidebar: Google Finance Beta-style compact (设计不变) */}
-      <aside className={cx("order-2 hidden flex-col gap-3 lg:order-1 lg:h-full lg:min-h-0 lg:overflow-hidden", selectedSymbol ? "lg:hidden" : "lg:flex")}>
+      <aside className="order-2 hidden flex-col gap-3 lg:order-1 lg:flex lg:h-full lg:min-h-0 lg:overflow-hidden">
         <div className="flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain bg-transparent pr-1 [scrollbar-gutter:stable]">
           {/* 顶部工具栏：「列表 ▾」下拉 + 添加 + 全屏 */}
           <div className="flex items-center justify-between gap-1 px-1 py-2">
@@ -3876,30 +3874,28 @@ export function MarketsExperience() {
         ) : null}
 
         <div className={cx(
-          "sticky top-0 z-20 flex items-center justify-between gap-3 bg-white/95 px-1 py-2 backdrop-blur transition-all duration-500 ease-out will-change-transform",
-          selectedQuote && "justify-end",
+          "sticky top-0 z-20 items-center justify-between gap-3 bg-white/95 px-1 py-2 backdrop-blur transition-all duration-500 ease-out will-change-transform",
+          selectedQuote ? "hidden lg:flex" : "flex",
           selectedQuote && detailHeaderHidden && "pointer-events-none -translate-y-full opacity-0"
         )}>
-          {!selectedQuote ? (
-            <div className="flex items-center gap-3">
-              {MARKETS.map((m) => (
-                <button
-                  key={m.key}
-                  type="button"
-                  className={cx(
-                    'rounded-full px-3 py-1 text-sm transition',
-                    market === m.key
-                      ? 'border border-slate-900 font-medium text-slate-900'
-                      : 'text-slate-600 hover:text-slate-900'
-                  )}
-                  onClick={() => setMarket(m.key)}
-                >
-                  {m.label}
-                </button>
-              ))}
-              {indicesLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
-            </div>
-          ) : <div aria-hidden="true" />}
+          <div className="flex items-center gap-3">
+            {MARKETS.map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                className={cx(
+                  'rounded-full px-3 py-1 text-sm transition',
+                  market === m.key
+                    ? 'border border-slate-900 font-medium text-slate-900'
+                    : 'text-slate-600 hover:text-slate-900'
+                )}
+                onClick={() => setMarket(m.key)}
+              >
+                {m.label}
+              </button>
+            ))}
+            {indicesLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
+          </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
