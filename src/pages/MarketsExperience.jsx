@@ -2005,28 +2005,6 @@ function SymbolDetailPanel({
           </div>
         </div>
 
-        {/* 时间范围 tab（横向 chip 行；移动端可滚） */}
-        <div className="mt-3 -mx-3 overflow-x-auto px-3 sm:-mx-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="flex w-max items-center gap-1 sm:w-auto">
-            {CHART_RANGE_TABS.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => onChartRangeChange && onChartRangeChange(tab.key)}
-                className={cx(
-                  'shrink-0 rounded-full px-3 py-1 text-[13px] font-medium transition',
-                  chartRange === tab.key
-                    ? 'bg-[#e8f0fe] text-[#1a73e8]'
-                    : 'text-[#5f6368] hover:bg-[#f1f3f4]'
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-            {chartLoading ? <Loader2 size={12} className="ml-1 animate-spin text-slate-400" /> : null}
-          </div>
-        </div>
-
         {/* 图表工具栏 */}
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl bg-[#f1f3f4] px-3 py-2">
           {market === 'cn' ? (
@@ -2227,6 +2205,28 @@ function SymbolDetailPanel({
               <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">{metricError || (cnFundParam === 'price' ? '暂无趋势数据' : `暂无${CN_FUND_PARAM_LABEL[cnFundParam]}历史数据`)}</div>
             )
           )}
+        </div>
+
+        {/* 时间范围 tab（横向 chip 行；移动端可滚） */}
+        <div className="mt-3 -mx-3 overflow-x-auto px-3 sm:-mx-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex w-max items-center gap-1 sm:w-auto">
+            {CHART_RANGE_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => onChartRangeChange && onChartRangeChange(tab.key)}
+                className={cx(
+                  'shrink-0 rounded-full px-3 py-1 text-[13px] font-medium transition',
+                  chartRange === tab.key
+                    ? 'bg-[#e8f0fe] text-[#1a73e8]'
+                    : 'text-[#5f6368] hover:bg-[#f1f3f4]'
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+            {chartLoading ? <Loader2 size={12} className="ml-1 animate-spin text-slate-400" /> : null}
+          </div>
         </div>
 
         {compareSymbols.length > 0 ? (
