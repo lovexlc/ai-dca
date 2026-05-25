@@ -2023,8 +2023,8 @@ function SymbolDetailPanel({
   const sparkFallback = cnFundParam === 'price' && (!hasFullCandles && Array.isArray(sparkPoints) && sparkPoints.length >= 2) ? sparkPoints : null;
 
   return (
-    <section className="-mx-3 sm:mx-0">
-      <div className="px-2 pt-0 sm:px-1 sm:pt-1">
+    <section className="mx-0">
+      <div className="px-4 pt-0 sm:px-1 sm:pt-1">
         <button
           type="button"
           onClick={onBack}
@@ -2401,7 +2401,7 @@ function SymbolDetailPanel({
         </div>
       </div>
 
-      <div className="px-2 py-3 sm:px-1 sm:py-4">
+      <div className="px-4 py-3 sm:px-1 sm:py-4">
         {activeTab === 'overview' ? (
           <div className="space-y-5">
             <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
@@ -3059,6 +3059,7 @@ export function MarketsExperience() {
     return () => vp.removeEventListener('resize', handler);
   }, []);
   const researchDragRef = useRef({ startY: 0, lastY: 0, startT: 0, dragging: false, moved: false });
+  const mainRef = useRef(null);
   const asideRef = useRef(null);
   const isDraggingRef = useRef(false);
   // 供侧边自选行【AI 分析】按钮跨组件触发右侧 ResearchPanel 发起结构化问答。
@@ -3096,6 +3097,15 @@ export function MarketsExperience() {
       setSymbolDetailTab('overview');
     }
   }, [selectedSymbol, watchSymbols]);
+
+  useEffect(() => {
+    if (!selectedSymbol || !isMobile) return;
+    setResearchMode('peek');
+    requestAnimationFrame(() => {
+      mainRef.current?.scrollTo?.({ top: 0, behavior: 'auto' });
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    });
+  }, [selectedSymbol, isMobile]);
 
   const refreshIndices = useCallback(async (forceRefresh = false) => {
     setIndicesLoading(true);
@@ -3385,7 +3395,7 @@ export function MarketsExperience() {
     if (!row || !row.symbol) return;
     setSelectedSymbol(row.symbol);
     setSymbolDetailTab('overview');
-    if (options.openResearch) setResearchMode('conversation');
+    setResearchMode(options.openResearch ? 'conversation' : 'peek');
   }
 
   const watchRows = useMemo(
@@ -3507,7 +3517,7 @@ export function MarketsExperience() {
   const marketStatusLabel = indicesLoading ? '刷新中' : (indices.length ? `${indices.length} 个指数` : '待加载');
 
   return (
-    <div className="flex flex-col gap-5 pb-[140px] lg:grid lg:h-[calc(100vh-6rem)] lg:min-h-0 lg:grid-cols-[280px_minmax(0,1fr)_360px] lg:items-stretch lg:gap-4 lg:overflow-hidden lg:pb-0 xl:grid-cols-[320px_minmax(0,1fr)_400px]">
+    <div className={cx("flex flex-col gap-5 lg:grid lg:h-[calc(100vh-6rem)] lg:min-h-0 lg:grid-cols-[280px_minmax(0,1fr)_360px] lg:items-stretch lg:gap-4 lg:overflow-hidden lg:pb-0 xl:grid-cols-[320px_minmax(0,1fr)_400px]", selectedSymbol ? "pb-4" : "pb-[140px]")}>
       {/* Mobile-only sidebar: Google Finance Beta style */}
       <aside className="order-2 flex flex-col gap-2 lg:hidden">
         <div className="px-1">
@@ -3822,7 +3832,7 @@ export function MarketsExperience() {
         </div>
       </aside>
 
-      <main className="order-1 flex min-w-0 flex-col gap-5 lg:order-2 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
+      <main ref={mainRef} className="order-1 flex min-w-0 flex-col gap-5 lg:order-2 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
         {!watchRows.length ? (
           <div className="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/50 px-4 py-4 text-sm text-slate-600">
             <div className="font-semibold text-slate-900">未配置自选</div>
@@ -3948,19 +3958,6 @@ export function MarketsExperience() {
               </div>
             )}
 
-            {/* 移动端研究入口（轻量，去重卡片） */}
-            <button
-              type="button"
-              className="flex w-full items-center justify-between gap-2 rounded-full border border-[#dadce0] bg-white px-4 py-2.5 text-sm font-medium text-[#1f1f1f] hover:bg-[#f1f3f4] lg:hidden"
-              onClick={() => setResearchMode('conversation')}
-            >
-              <span className="inline-flex items-center gap-2">
-                <Sparkles size={14} className="text-[#1a73e8]" />
-                研究助手
-              </span>
-              <ChevronRight size={16} className="text-[#5f6368]" />
-            </button>
-
             {/* 最新动态（去重卡片为分组小节） */}
             <div className="hidden space-y-2 lg:block">
               <div className="flex items-center gap-2 border-b border-[#e8eaed] pb-1.5">
@@ -4000,8 +3997,8 @@ export function MarketsExperience() {
         className={cx(
           'bg-white',
           'lg:relative lg:z-auto lg:order-3 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:gap-3 lg:bg-transparent lg:overflow-hidden lg:rounded-none lg:border-t-0 lg:shadow-none',
-          'fixed inset-x-0 bottom-0 z-40 flex flex-col overflow-hidden border-t border-[#e8eaed] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] [transition:height_300ms_ease-out]',
-          researchMode === 'conversation' ? 'top-0 rounded-none' : 'rounded-t-2xl'
+          selectedSymbol ? 'hidden lg:flex' : 'fixed inset-x-0 bottom-0 z-40 flex flex-col overflow-hidden border-t border-[#e8eaed] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] [transition:height_300ms_ease-out]',
+          !selectedSymbol && (researchMode === 'conversation' ? 'top-0 rounded-none' : 'rounded-t-2xl')
         )}
         style={isMobile && !isDraggingRef.current ? {
           height: (
