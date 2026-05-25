@@ -1202,6 +1202,7 @@ function CandlesLayerPanel({ xAxisMap, yAxisMap, data }) {
 }
 
 function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, tone, symbol, onHover, onLeave, onLock, lockOnClick = false }) {
+  const chartShellRef = useRef(null);
   const cmpList = (compareSeries || []).filter((series) => Array.isArray(series.candles) && series.candles.length >= 2);
   const cmpSignature = JSON.stringify(cmpList.map((series) => ({
     symbol: series.symbol,
@@ -1279,6 +1280,13 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
   const showArea = chartType === 'area' && !normalized;
   const showLine = chartType === 'line' || normalized;
   const showBar = chartType === 'bar' && !normalized;
+  const pickRowFromPointer = (event) => {
+    const rect = chartShellRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || finalRows.length < 2) return null;
+    const x = Math.min(Math.max(event.clientX - rect.left, 0), rect.width);
+    const index = Math.min(finalRows.length - 1, Math.max(0, Math.round((x / rect.width) * (finalRows.length - 1))));
+    return finalRows[index] || null;
+  };
   const getChartPayload = (state) => {
     const index = Number.isInteger(state?.activeTooltipIndex) ? state.activeTooltipIndex : -1;
     return state?.activePayload?.[0]?.payload || (index >= 0 ? finalRows[index] : null);
@@ -1288,8 +1296,18 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
     const payload = getChartPayload(state);
     if (payload) onHover(payload);
   };
+  const handlePointerMove = (event) => {
+    if (!onHover) return;
+    const payload = pickRowFromPointer(event);
+    if (payload) onHover(payload);
+  };
   const handleChartLeave = () => {
     if (onLeave) onLeave();
+  };
+  const handlePointerLock = (event) => {
+    if (!lockOnClick || !onLock) return;
+    const payload = pickRowFromPointer(event);
+    if (payload) onLock(payload);
   };
   const handleChartLock = (state) => {
     if (!lockOnClick || !onLock) return;
@@ -1303,8 +1321,15 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
     ]
     : undefined;
   return (
-    <ResponsiveContainer width="100%" height="100%">
-      <ComposedChart
+    <div
+      ref={chartShellRef}
+      className="h-full w-full touch-pan-y"
+      onPointerMove={handlePointerMove}
+      onPointerLeave={handleChartLeave}
+      onPointerDown={handlePointerLock}
+    >
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart
         data={finalRows}
         margin={{ top: 12, right: 12, left: 4, bottom: 8 }}
         onMouseMove={handleChartPoint}
@@ -1377,16 +1402,27 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
             isAnimationActive={false}
           />
         ))}
-      </ComposedChart>
-    </ResponsiveContainer>
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 
-function ChartToolbarPopover({ label, icon, active, children, align = 'left', panelClassName = '', buttonClassName = '' }) {
+function ChartToolbarPopover({ label, icon, active, children, align = 'left', panelClassName = '', buttonClassName = '', fixedPanel = false }) {
   const [open, setOpen] = useState(false);
+  const [panelStyle, setPanelStyle] = useState(null);
   const ref = useRef(null);
+  const buttonRef = useRef(null);
+  const updateFixedPanelPosition = useCallback(() => {
+    if (!fixedPanel || !buttonRef.current || typeof window === 'undefined') return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    const width = Math.min(480, Math.max(0, window.innerWidth - 16));
+    const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
+    setPanelStyle({ left, top: rect.bottom + 6, width });
+  }, [fixedPanel]);
   useEffect(() => {
     if (!open) return undefined;
+    updateFixedPanelPosition();
     function onDown(e) {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
     }
@@ -1395,14 +1431,23 @@ function ChartToolbarPopover({ label, icon, active, children, align = 'left', pa
     }
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
+    if (fixedPanel) {
+      window.addEventListener('resize', updateFixedPanelPosition);
+      window.addEventListener('scroll', updateFixedPanelPosition, true);
+    }
     return () => {
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
+      if (fixedPanel) {
+        window.removeEventListener('resize', updateFixedPanelPosition);
+        window.removeEventListener('scroll', updateFixedPanelPosition, true);
+      }
     };
-  }, [open]);
+  }, [open, fixedPanel, updateFixedPanelPosition]);
   return (
     <div ref={ref} className="relative">
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cx(
@@ -1418,10 +1463,13 @@ function ChartToolbarPopover({ label, icon, active, children, align = 'left', pa
       {open ? (
         <div
           className={cx(
-            'absolute z-30 mt-1 min-w-[190px] rounded-[14px] border border-[rgba(17,24,39,0.08)] bg-white p-1.5 shadow-[0_6px_18px_rgba(0,0,0,0.10)]',
+            fixedPanel
+              ? 'fixed z-50 min-w-[190px] rounded-[14px] border border-[rgba(17,24,39,0.08)] bg-white p-1.5 shadow-[0_6px_18px_rgba(0,0,0,0.10)]'
+              : 'absolute z-30 mt-1 min-w-[190px] rounded-[14px] border border-[rgba(17,24,39,0.08)] bg-white p-1.5 shadow-[0_6px_18px_rgba(0,0,0,0.10)]',
             panelClassName,
-            align === 'right' ? 'right-0' : 'left-0'
+            !fixedPanel && (align === 'right' ? 'right-0' : 'left-0')
           )}
+          style={fixedPanel && panelStyle ? panelStyle : undefined}
         >
           {typeof children === 'function' ? children({ close: () => setOpen(false) }) : children}
         </div>
@@ -2117,30 +2165,31 @@ function SymbolDetailPanel({
             label={compareSymbols.length ? `对比 · ${compareSymbols.length}` : '对比'}
             active={compareSymbols.length > 0}
             align="right"
-            panelClassName="w-[520px] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border-[#dfe3eb] bg-white p-0 shadow-xl"
+            fixedPanel
+            panelClassName="max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border-[#dfe3eb] bg-white p-0 shadow-xl"
             buttonClassName={compareSymbols.length ? 'border border-[rgba(17,24,39,0.08)] bg-[#eef1f5] text-[#202124] shadow-none' : ''}
           >
-            <div className="max-h-[560px] overflow-hidden text-[#202124]">
-              <div className="flex items-center gap-4 border-b-2 border-[#1a73e8] bg-[#f8fafd] px-6 py-5">
-                <Search size={22} className="shrink-0 text-[#1a73e8]" />
+            <div className="max-h-[520px] overflow-hidden text-[#202124]">
+              <div className="flex h-16 items-center gap-3 border-b-2 border-[#1a73e8] bg-[#f8fafd] px-4">
+                <Search size={20} className="shrink-0 text-[#1a73e8]" />
                 <input
                   type="text"
                   value={compareInput}
                   onChange={(e) => setCompareInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') addCompare(); }}
                   placeholder="搜索股票代码..."
-                  className="min-w-0 flex-1 bg-transparent text-[24px] font-medium text-[#202124] placeholder:text-[#8f96a3] outline-none"
+                  className="min-w-0 flex-1 bg-transparent text-[20px] font-medium text-[#202124] placeholder:text-[#8f96a3] outline-none"
                   disabled={compareSymbols.length >= 3}
                   autoFocus
                 />
                 {compareInput ? (
                   <button type="button" onClick={() => setCompareInput('')} className="rounded-full p-1 text-[#3c4043] hover:bg-black/5" aria-label="清空搜索">
-                    <X size={22} />
+                    <X size={20} />
                   </button>
                 ) : null}
               </div>
-              <div className="max-h-[452px] overflow-y-auto px-6 py-5">
-                <div className="mb-4 flex items-center justify-between text-[20px] font-semibold text-[#5f6368]">
+              <div className="max-h-[392px] overflow-y-auto px-4 py-4">
+                <div className="mb-3 flex items-center justify-between text-[15px] font-semibold text-[#5f6368]">
                   <span>{compareInput ? '搜索结果' : '所有股票代码'}</span>
                   {compareSearchLoading ? <span className="inline-flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> 搜索中</span> : null}
                 </div>
@@ -2158,17 +2207,17 @@ function SymbolDetailPanel({
                         onClick={() => addCompareSymbol(item.symbol)}
                         disabled={disabled}
                         className={cx(
-                          'flex items-center gap-5 rounded-xl px-3 py-4 text-left transition',
+                          'flex items-center gap-4 rounded-xl px-2.5 py-3 text-left transition',
                           disabled ? 'cursor-default opacity-45' : 'hover:bg-[#f8fafd]'
                         )}
                       >
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-[28px] font-semibold leading-tight text-[#202124]">{item.symbol}</div>
-                          <div className="mt-1 truncate text-[18px] font-medium text-[#5f6368]">{quote.name || item.name || item.symbol}</div>
+                          <div className="truncate text-[22px] font-semibold leading-tight text-[#202124]">{item.symbol}</div>
+                          <div className="mt-0.5 truncate text-[15px] font-medium text-[#5f6368]">{quote.name || item.name || item.symbol}</div>
                         </div>
                         <div className="shrink-0 text-right">
-                          <div className="text-[28px] font-semibold tabular-nums text-[#202124]">{Number.isFinite(quote.price) ? `$${formatNumber(quote.price, 2)}` : '--'}</div>
-                          <div className={cx('mt-1 text-[18px] font-semibold tabular-nums', toneClass)}>
+                          <div className="text-[22px] font-semibold tabular-nums text-[#202124]">{Number.isFinite(quote.price) ? `$${formatNumber(quote.price, 2)}` : '--'}</div>
+                          <div className={cx('mt-0.5 text-[15px] font-semibold tabular-nums', toneClass)}>
                             {formatSignedPercent(quote.changePercent)} {rowPositive ? '↑' : rowNegative ? '↓' : ''}
                           </div>
                         </div>
