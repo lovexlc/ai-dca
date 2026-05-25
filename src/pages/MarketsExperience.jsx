@@ -1302,10 +1302,10 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
         onMouseMove={handleChartPoint}
         onClick={handleChartPoint}
       >
-        <CartesianGrid stroke="#dfe3eb" vertical strokeDasharray="0" />
-        <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#5f6368' }} minTickGap={40} axisLine={false} tickLine={false} />
+        <CartesianGrid stroke="rgba(17,24,39,0.09)" vertical strokeDasharray="0" />
+        <XAxis dataKey="label" tick={{ fontSize: 12, fill: 'rgba(17,24,39,0.62)' }} minTickGap={40} axisLine={false} tickLine={false} />
         <YAxis
-          tick={{ fontSize: 12, fill: '#5f6368' }}
+          tick={{ fontSize: 12, fill: 'rgba(17,24,39,0.62)' }}
           domain={['auto', 'auto']}
           width={44}
           axisLine={false}
@@ -1314,7 +1314,9 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
         />
         <Tooltip
           cursor={{ stroke: '#9aa0a6', strokeDasharray: '2 5', strokeWidth: 1.5 }}
-          contentStyle={{ borderRadius: 12, borderColor: '#dfe3eb', boxShadow: '0 12px 32px rgba(60,64,67,0.16)' }}
+          contentStyle={{ borderRadius: 16, borderColor: 'rgba(17,24,39,0.08)', boxShadow: '0 6px 18px rgba(0,0,0,0.10)', padding: '12px 14px', minWidth: 160, maxWidth: 200, lineHeight: 1.25 }}
+          labelStyle={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 8 }}
+          itemStyle={{ fontSize: 14, lineHeight: 1.25, paddingTop: 4, paddingBottom: 4 }}
           formatter={(value, name) => {
             const key = String(name);
             if (key.includes('_price') || key.includes('_base') || key.includes('_change')) return null;
@@ -1325,10 +1327,10 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
           }}
         />
         {showArea ? (
-          <Area type="monotone" dataKey="main" name={displayMainSymbol || '当前标的'} stroke={mainColor} fill={mainColor} fillOpacity={0.12} dot={false} strokeWidth={1.5} isAnimationActive={false} />
+          <Area type="monotone" dataKey="main" name={displayMainSymbol || '当前标的'} stroke={mainColor} fill={mainColor} fillOpacity={0.12} dot={false} strokeWidth={3} isAnimationActive={false} />
         ) : null}
         {showLine ? (
-          <Line type="monotone" dataKey="main" name={displayMainSymbol || '当前标的'} stroke={mainColor} dot={false} strokeWidth={normalized ? 2 : 1.5} isAnimationActive={false} />
+          <Line type="monotone" dataKey="main" name={displayMainSymbol || '当前标的'} stroke={mainColor} dot={false} strokeWidth={3} isAnimationActive={false} />
         ) : null}
         {showBar ? (
           <Bar dataKey="main" name={displayMainSymbol || '当前标的'} fill={mainColor} fillOpacity={0.72} radius={[3, 3, 0, 0]} isAnimationActive={false} />
@@ -1361,7 +1363,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
             stroke={COMPARE_COLORS[ci % COMPARE_COLORS.length]}
             dot={false}
             activeDot={{ r: 4 }}
-            strokeWidth={2}
+            strokeWidth={2.5}
             connectNulls
             isAnimationActive={false}
           />
@@ -1395,19 +1397,19 @@ function ChartToolbarPopover({ label, icon, active, children, align = 'left', pa
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cx(
-          'inline-flex h-9 items-center gap-1.5 rounded-xl px-2.5 text-[14px] font-semibold text-[#202124] transition hover:bg-white/70 sm:px-3 sm:text-[15px]',
-          active ? 'bg-white shadow-[0_1px_3px_rgba(60,64,67,0.18)]' : 'bg-transparent',
+          'inline-flex h-[38px] items-center gap-2 rounded-[14px] px-3 text-[15px] font-semibold text-[#202124] transition hover:bg-white/70',
+          active ? 'border border-[rgba(17,24,39,0.08)] bg-white/60 shadow-[0_2px_8px_rgba(0,0,0,0.06)]' : 'border border-transparent bg-transparent',
           buttonClassName
         )}
       >
         {icon ? <span className="text-[16px] leading-none text-[#202124]" aria-hidden="true">{icon}</span> : null}
         <span>{label}</span>
-        <ChevronDown size={16} className={cx('transition', open ? 'rotate-180' : '')} />
+        <ChevronDown size={14} className={cx('transition', open ? 'rotate-180' : '')} />
       </button>
       {open ? (
         <div
           className={cx(
-            'absolute z-30 mt-1 min-w-[190px] rounded-2xl border border-[#dfe3eb] bg-white p-1.5 shadow-[0_8px_28px_rgba(60,64,67,0.18)]',
+            'absolute z-30 mt-1 min-w-[190px] rounded-[14px] border border-[rgba(17,24,39,0.08)] bg-white p-1.5 shadow-[0_6px_18px_rgba(0,0,0,0.10)]',
             panelClassName,
             align === 'right' ? 'right-0' : 'left-0'
           )}
@@ -2006,7 +2008,7 @@ function SymbolDetailPanel({
         </div>
 
         {/* 图表工具栏 */}
-        <div className="mt-5 flex flex-wrap items-center gap-3 rounded-[24px] bg-[#f1f3f4] px-3 py-2 sm:gap-4 sm:px-4">
+        <div className="mt-3 flex min-h-14 flex-wrap items-center gap-2.5 rounded-[20px] bg-[#f1f3f4] px-4 py-[9px]">
           {market === 'cn' ? (
             <ChartToolbarPopover
               icon="⌁"
@@ -2085,7 +2087,7 @@ function SymbolDetailPanel({
             active={compareSymbols.length > 0}
             align="right"
             panelClassName="w-[520px] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border-[#dfe3eb] bg-white p-0 shadow-xl"
-            buttonClassName={compareSymbols.length ? 'bg-[#e8f0fe] text-[#1a73e8]' : ''}
+            buttonClassName={compareSymbols.length ? 'border border-[rgba(17,24,39,0.08)] bg-[#eef1f5] text-[#202124] shadow-none' : ''}
           >
             <div className="max-h-[560px] overflow-hidden text-[#202124]">
               <div className="flex items-center gap-4 border-b-2 border-[#1a73e8] bg-[#f8fafd] px-6 py-5">
@@ -2159,10 +2161,10 @@ function SymbolDetailPanel({
         </div>
 
         {/* 图表区 */}
-        <div className="relative mt-1 h-48 rounded-[20px] bg-[#f1f3f4] px-3 pb-3 pt-5 sm:h-64 sm:px-4 sm:pt-6">
+        <div className="relative mt-3 h-[360px] rounded-[20px] bg-[#f1f3f4] p-4 sm:h-[400px]">
           {compareSymbols.length > 0 ? (
-            <div className="absolute left-4 top-3 z-10 flex max-w-[calc(100%-2rem)] flex-wrap items-center gap-1 text-[11px] sm:left-5">
-              <span className="inline-flex items-center gap-1 rounded-full border border-[#dfe3eb] bg-[#f8fafd]/95 px-2 py-0.5 font-semibold text-[#1a73e8] shadow-sm">
+            <div className="absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 text-[14px]">
+              <span className="inline-flex h-8 items-center gap-2 rounded-2xl border border-[rgba(17,24,39,0.08)] bg-[#f8fafd]/95 px-3.5 font-semibold text-[#1a73e8] shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
                 <span className="size-2 rounded-sm" style={{ background: COMPARE_MAIN_COLOR }} />
                 {displaySymbol}
               </span>
@@ -2174,7 +2176,7 @@ function SymbolDetailPanel({
                 return (
                   <span
                     key={item.symbol}
-                    className="inline-flex items-center gap-1 rounded-full border border-[#dfe3eb] bg-[#f8fafd]/95 px-2 py-0.5 font-semibold shadow-sm"
+                    className="inline-flex h-8 items-center gap-2 rounded-2xl border border-[rgba(17,24,39,0.08)] bg-[#f8fafd]/95 px-3.5 font-semibold shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
                     style={{ color: markerColor }}
                   >
                     <span className="size-2 rounded-full" style={{ background: markerColor }} />
@@ -2212,9 +2214,9 @@ function SymbolDetailPanel({
         </div>
 
         {/* 时间范围 tab（Google Finance 风格横向标签） */}
-        <div className="mt-1 overflow-x-auto rounded-[18px] bg-[#f1f3f4] px-3 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="mt-3 flex h-12 items-center overflow-x-auto rounded-[20px] bg-[#f1f3f4] p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div
-            className="flex w-max items-center gap-2 text-[13px] font-semibold text-[#5f6368] sm:w-auto sm:gap-3"
+            className="flex w-max items-center gap-2 text-[15px] font-medium text-[#5f6368] sm:w-auto"
             role="tablist"
             aria-label="股票图表标签页"
           >
@@ -2231,9 +2233,9 @@ function SymbolDetailPanel({
                   tabIndex={selected ? 0 : -1}
                   onClick={() => onChartRangeChange && onChartRangeChange(tab.key)}
                   className={cx(
-                    'relative shrink-0 rounded-lg px-2.5 py-1 transition-colors',
+                    'relative flex h-9 min-w-[52px] shrink-0 items-center justify-center rounded-[14px] px-3 transition-colors',
                     selected
-                      ? 'bg-[#e8eaed] text-[#202124]'
+                      ? 'bg-[#EEF1F5] font-bold text-[#202124]'
                       : 'text-[#5f6368] hover:bg-white/60 hover:text-[#202124]'
                   )}
                 >
@@ -2247,14 +2249,14 @@ function SymbolDetailPanel({
 
         {compareSymbols.length > 0 ? (
           <div className="overflow-hidden bg-white text-[13px]">
-            <div className="grid grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] items-center gap-2 border-b border-[#dfe3eb] px-4 py-2.5 text-right text-[13px] font-semibold text-[#5f6368]">
+            <div className="grid h-11 grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] items-center gap-2 border-b border-[rgba(17,24,39,0.08)] px-4 text-right text-[13px] font-semibold text-[#5f6368]">
               <div className="text-left">股票代码</div>
               <div>价格</div>
               <div>涨跌额</div>
               <div>涨跌幅</div>
               <div>昨收盘</div>
             </div>
-            {activeChartRow?.label ? <div className="border-b border-[#eef1f5] bg-[#f8fafd] px-4 py-1.5 text-[12px] font-medium text-[#5f6368]">图表定位：{activeChartRow.label}</div> : null}
+            {activeChartRow?.label ? <div className="flex h-10 items-center border-b border-[rgba(17,24,39,0.08)] bg-[#f8fafd] px-4 text-[13px] font-semibold text-[#5f6368]">图表定位：{activeChartRow.label}</div> : null}
             {compareTableRows.map((item, index) => {
               const markerColor = index === 0 ? COMPARE_MAIN_COLOR : COMPARE_COLORS[(index - 1) % COMPARE_COLORS.length];
               const rowPositive = Number.isFinite(item.changePercent) && item.changePercent > 0;
@@ -2262,18 +2264,18 @@ function SymbolDetailPanel({
               const toneClass = rowPositive ? 'text-[#a50e0e]' : rowNegative ? 'text-[#137333]' : 'text-[#1f1f1f]';
               const displayRowSymbol = formatSymbolDisplay(item.symbol);
               return (
-                <div key={`${item.symbol}-${index}`} className="grid grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] items-center gap-2 border-b border-[#dfe3eb] px-4 py-2.5 text-right text-[13px] tabular-nums">
-                  <div className="flex min-w-0 items-center gap-2.5 text-left">
+                <div key={`${item.symbol}-${index}`} className="grid h-[78px] grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] items-center gap-2 border-b border-[rgba(17,24,39,0.08)] px-4 text-right text-[16px] tabular-nums">
+                  <div className="flex min-w-0 items-center gap-3 text-left">
                     <span className="size-3 shrink-0 rounded-sm" style={{ background: markerColor }} />
                     <div className="min-w-0">
-                      <div className="truncate text-[14px] font-semibold text-[#202124]">{displayRowSymbol}</div>
-                      <div className="truncate text-[12px] text-[#5f6368]">{item.name}</div>
+                      <div className="truncate text-[18px] font-bold leading-tight text-[#202124]">{displayRowSymbol}</div>
+                      <div className="mt-1 truncate text-[13px] text-[rgba(17,24,39,0.64)]">{item.name}</div>
                     </div>
                   </div>
-                  <div className="font-semibold text-[#202124]">{Number.isFinite(item.price) ? `$${formatNumber(item.price, 2)}` : '--'}</div>
-                  <div className={cx('font-semibold', toneClass)}>{Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
-                  <div className={cx('font-semibold', toneClass)}>{Number.isFinite(item.changePercent) ? `${formatSignedPercent(item.changePercent)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
-                  <div className="font-semibold text-[#202124]">{Number.isFinite(item.previousClose) ? `$${formatNumber(item.previousClose, 2)}` : '--'}</div>
+                  <div className="text-[17px] font-bold text-[#202124]">{Number.isFinite(item.price) ? `$${formatNumber(item.price, 2)}` : '--'}</div>
+                  <div className={cx('text-[16px] font-bold', toneClass)}>{Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
+                  <div className={cx('text-[16px] font-bold', toneClass)}>{Number.isFinite(item.changePercent) ? `${formatSignedPercent(item.changePercent)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
+                  <div className="text-[17px] font-bold text-[#202124]">{Number.isFinite(item.previousClose) ? `$${formatNumber(item.previousClose, 2)}` : '--'}</div>
                 </div>
               );
             })}
