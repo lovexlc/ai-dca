@@ -42,9 +42,9 @@ test.describe('workspace smoke', () => {
 
     await waitForWorkspace(page, '美股策略助手');
     await expect(page.getByText('策略指南').first()).toBeVisible();
-    await page.getByText(/金字塔加仓法|个股投资策略|操作纪律/).first().click();
-    await expect(page.getByRole('dialog').first()).toBeVisible({ timeout: 10_000 });
     await expectNoHorizontalOverflow(page);
+    await page.getByRole('button').filter({ hasText: '金字塔加仓法' }).first().click();
+    await expect(page.getByRole('dialog').filter({ hasText: '只买不卖' })).toBeVisible({ timeout: 10_000 });
     await expectNoCrash(page);
   });
 
@@ -54,13 +54,15 @@ test.describe('workspace smoke', () => {
     await waitForWorkspace(page, '通知设置');
     await ensureNotifyConfigExpanded(page);
 
-    await page.getByRole('tab', { name: 'Android' }).click();
-    const androidInput = page.getByPlaceholder(/android-|完整测试 URL/).first();
+    await page.getByRole('tab', { name: /^Android$/ }).click();
+    await expect(page.getByRole('tab', { name: /^Android$/ })).toHaveAttribute('aria-selected', 'true');
+    const androidInput = page.getByLabel('Android 设备 ID / 测试 URL');
     await androidInput.fill('https://example.com/test?device=android-e2e-smoke-123456');
     await expect(androidInput).toHaveValue(/android-e2e-smoke-123456|example\.com/);
 
-    await page.getByRole('tab', { name: 'iOS' }).click();
-    const iosInput = page.locator('input').last();
+    await page.getByRole('tab', { name: /^iOS$/ }).click();
+    await expect(page.getByRole('tab', { name: /^iOS$/ })).toHaveAttribute('aria-selected', 'true');
+    const iosInput = page.getByLabel('Bark 链接或 Device Key');
     await iosInput.fill('https://api.day.app/e2e-device-key/Smoke');
     await expect(iosInput).toHaveValue(/api\.day\.app|e2e-device-key/);
     await expectNoCrash(page);

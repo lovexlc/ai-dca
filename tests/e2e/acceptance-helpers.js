@@ -132,7 +132,11 @@ export async function openMarketsCnEtfDetail(page) {
 export async function selectCnFundMetric(page, value) {
   const paramSelect = page.getByLabel('A股基金图表参数').first();
   await paramSelect.selectOption(value);
-  await expect(page.locator('[aria-label="页面加载中"], .animate-pulse')).toHaveCount(0, { timeout: 10_000 });
+  await expect(page.locator('[aria-label="页面加载中"]')).toHaveCount(0, { timeout: 10_000 });
+  const loadingText = value === 'nav' ? '正在获取净值' : value === 'premium' ? '正在计算溢价' : '';
+  if (loadingText) {
+    await expect(page.getByText(loadingText)).toHaveCount(0, { timeout: 10_000 });
+  }
   await expect(page.locator('.recharts-wrapper svg').first()).toBeVisible({ timeout: 10_000 });
 }
 
@@ -141,4 +145,5 @@ export async function ensureNotifyConfigExpanded(page) {
   if (await expand.isVisible().catch(() => false)) {
     await expand.click();
   }
+  await expect(page.getByRole('tablist', { name: '通知平台' })).toBeVisible({ timeout: 10_000 });
 }
