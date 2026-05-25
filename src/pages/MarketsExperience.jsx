@@ -967,14 +967,14 @@ const SYMBOL_DETAIL_TABS = [
 // 图表时间范围 tab：Google Finance 风格。每个 range 映射到 worker 接受的 tf。
 // 客户端再按 range 截取 candles 最后一段，保证视觉粒度合理。
 const CHART_RANGE_TABS = [
-  { key: '1d', label: '1天', tf: '5m', daysBack: 1 },
-  { key: '5d', label: '5天', tf: '5m', daysBack: 5 },
-  { key: '1mo', label: '1月', tf: '1d', daysBack: 31 },
-  { key: '6mo', label: '6月', tf: '1d', daysBack: 31 * 6 },
-  { key: 'ytd', label: 'YTD', tf: '1d', daysBack: null },
-  { key: '1y', label: '1年', tf: '1d', daysBack: 365 },
-  { key: '5y', label: '5年', tf: '1d', daysBack: 365 * 5 },
-  { key: 'max', label: '最大', tf: '1d', daysBack: null },
+  { key: '1d', label: '1 天', tabId: '1dayTab', tf: '5m', daysBack: 1 },
+  { key: '5d', label: '5 天', tabId: '5dayTab', tf: '5m', daysBack: 5 },
+  { key: '1mo', label: '1 个月', tabId: '1monthTab', tf: '1d', daysBack: 31 },
+  { key: '6mo', label: '6 个月', tabId: '6monthTab', tf: '1d', daysBack: 31 * 6 },
+  { key: 'ytd', label: '年初至今', tabId: 'ytdTab', tf: '1d', daysBack: null },
+  { key: '1y', label: '1 年', tabId: '1yearTab', tf: '1d', daysBack: 365 },
+  { key: '5y', label: '5 年', tabId: '5yearTab', tf: '1d', daysBack: 365 * 5 },
+  { key: 'max', label: '最大', tabId: 'maxTab', tf: '1d', daysBack: null },
 ];
 
 function sliceCandlesForRange(candles, rangeKey) {
@@ -2207,25 +2207,37 @@ function SymbolDetailPanel({
           )}
         </div>
 
-        {/* 时间范围 tab（横向 chip 行；移动端可滚） */}
+        {/* 时间范围 tab（Google Finance 风格横向标签） */}
         <div className="mt-3 -mx-3 overflow-x-auto px-3 sm:-mx-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="flex w-max items-center gap-1 sm:w-auto">
-            {CHART_RANGE_TABS.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => onChartRangeChange && onChartRangeChange(tab.key)}
-                className={cx(
-                  'shrink-0 rounded-full px-3 py-1 text-[13px] font-medium transition',
-                  chartRange === tab.key
-                    ? 'bg-[#e8f0fe] text-[#1a73e8]'
-                    : 'text-[#5f6368] hover:bg-[#f1f3f4]'
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-            {chartLoading ? <Loader2 size={12} className="ml-1 animate-spin text-slate-400" /> : null}
+          <div
+            className="flex w-max items-center gap-7 border-b border-[#dadce0] text-[14px] font-medium text-[#5f6368] sm:w-auto sm:gap-8"
+            role="tablist"
+            aria-label="股票图表标签页"
+          >
+            {CHART_RANGE_TABS.map((tab) => {
+              const selected = chartRange === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  role="tab"
+                  data-tab-id={tab.tabId}
+                  aria-label={tab.label}
+                  aria-selected={selected}
+                  tabIndex={selected ? 0 : -1}
+                  onClick={() => onChartRangeChange && onChartRangeChange(tab.key)}
+                  className={cx(
+                    'relative shrink-0 border-b-2 px-0 pb-2 pt-1 transition-colors',
+                    selected
+                      ? 'border-[#1a73e8] text-[#202124]'
+                      : 'border-transparent text-[#5f6368] hover:text-[#202124]'
+                  )}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+            {chartLoading ? <Loader2 size={12} className="mb-2 animate-spin text-slate-400" /> : null}
           </div>
         </div>
 
