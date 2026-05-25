@@ -1669,6 +1669,10 @@ function SymbolDetailPanel({
   const [indicators, setIndicators] = useState(() => new Set());
   const [compareSymbols, setCompareSymbols] = useState([]);
   const [compareInput, setCompareInput] = useState('');
+  const [compareSearchResults, setCompareSearchResults] = useState([]);
+  const [compareSearchLoading, setCompareSearchLoading] = useState(false);
+  const [compareSearchError, setCompareSearchError] = useState('');
+  const compareSearchSeqRef = useRef(0);
   const [compareCandlesMap, setCompareCandlesMap] = useState({});
   const [compareLoadingMap, setCompareLoadingMap] = useState({});
   const [compareErrorMap, setCompareErrorMap] = useState({});
@@ -1678,6 +1682,53 @@ function SymbolDetailPanel({
   // 当前 symbol 或时间范围切换时清空对比
   useEffect(() => { setCompareSymbols([]); }, [rowSymbol]);
   useEffect(() => { if (market !== 'cn') setCnFundParam('price'); }, [market]);
+  useEffect(() => {
+    const q = compareInput.trim();
+    const seq = ++compareSearchSeqRef.current;
+    if (q.length < 1 || compareSymbols.length >= 3) {
+      setCompareSearchResults([]);
+      setCompareSearchLoading(false);
+      setCompareSearchError('');
+      return undefined;
+    }
+    const controller = new AbortController();
+    setCompareSearchLoading(true);
+    setCompareSearchError('');
+    const timer = window.setTimeout(() => {
+      searchSymbols(market, q, { limit: 10, signal: controller.signal })
+        .then((res) => {
+          if (seq !== compareSearchSeqRef.current) return;
+          const rows = Array.isArray(res && res.results) ? res.results : [];
+          const current = String(rowSymbol || '').toUpperCase();
+          const seen = new Set();
+          setCompareSearchResults(rows.map((item) => {
+            const symbol = String(item.symbol || item.code || item.ticker || '').trim().toUpperCase();
+            return {
+              ...item,
+              symbol,
+              name: item.name || item.shortName || item.displayName || symbol,
+              market: item.market || market
+            };
+          }).filter((item) => {
+            if (!item.symbol || item.symbol === current || seen.has(item.symbol)) return false;
+            seen.add(item.symbol);
+            return true;
+          }));
+        })
+        .catch(() => {
+          if (controller.signal.aborted || seq !== compareSearchSeqRef.current) return;
+          setCompareSearchResults([]);
+          setCompareSearchError('搜索失败，稍后再试');
+        })
+        .finally(() => {
+          if (seq === compareSearchSeqRef.current) setCompareSearchLoading(false);
+        });
+    }, 220);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [compareInput, compareSymbols.length, market, rowSymbol]);
   useEffect(() => {
     if (!chartTf || !compareSymbols.length) return;
     compareSymbols.forEach((sym) => {
@@ -1727,7 +1778,15 @@ function SymbolDetailPanel({
         return true;
       });
   })();
+  const compareSearchCandidates = compareSearchResults
+    .map((item) => ({
+      ...item,
+      symbol: String(item.symbol || '').trim().toUpperCase(),
+      name: item.name || item.shortName || item.displayName || item.symbol
+    }))
+    .filter((item) => item.symbol);
   const compareCandidateKey = compareCandidates.map((item) => item.symbol).join('|');
+  const compareSearchCandidateKey = compareSearchCandidates.map((item) => item.symbol).join('|');
   const compareSymbolKey = compareSymbols.join('|');
   const backgroundStyle = (background) => ({ background });
   const normalizeCompareQuote = (symbol, fallback = {}) => {
@@ -1756,6 +1815,7 @@ function SymbolDetailPanel({
   useEffect(() => {
     const symbols = Array.from(new Set([
       ...compareCandidates.map((item) => item.symbol),
+      ...compareSearchCandidates.map((item) => item.symbol),
       ...compareSymbols
     ].map((sym) => String(sym || '').toUpperCase()).filter(Boolean)));
     const missing = symbols.filter((sym) => sym !== String(row?.symbol || '').toUpperCase() && !compareQuoteMap[sym]);
@@ -1780,12 +1840,23 @@ function SymbolDetailPanel({
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [compareCandidateKey, compareSymbolKey, compareQuoteMap, row?.symbol]);
-  const visibleCompareCandidates = compareCandidates.filter((item) => {
+  }, [compareCandidateKey, compareSearchCandidateKey, compareSymbolKey, compareQuoteMap, row?.symbol]);
+  const visibleCompareCandidates = (() => {
     const q = compareInput.trim().toUpperCase();
-    if (!q) return true;
-    return item.symbol.includes(q) || String(item.name || '').toUpperCase().includes(q);
-  });
+    const source = q
+      ? [
+        ...compareSearchCandidates,
+        ...compareCandidates.filter((item) => item.symbol.includes(q) || String(item.name || '').toUpperCase().includes(q))
+      ]
+      : compareCandidates;
+    const seen = new Set();
+    return source.filter((item) => {
+      const symbol = String(item.symbol || '').toUpperCase();
+      if (!symbol || seen.has(symbol)) return false;
+      seen.add(symbol);
+      return true;
+    });
+  })();
   const pct = Number(row?.changePercent);
   const change = Number(row?.change);
   const positive = Number.isFinite(pct) && pct > 0;
@@ -2007,7 +2078,10 @@ function SymbolDetailPanel({
                 ) : null}
               </div>
               <div className="max-h-[348px] overflow-y-auto px-3 py-3">
-                <div className="mb-2 text-[13px] text-[#5f6368]">所有股票代码</div>
+                <div className="mb-2 flex items-center justify-between text-[13px] text-[#5f6368]">
+                  <span>{compareInput ? '搜索结果' : '所有股票代码'}</span>
+                  {compareSearchLoading ? <span className="inline-flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> 搜索中</span> : null}
+                </div>
                 <div className="flex flex-col">
                   {visibleCompareCandidates.map((item) => {
                     const quote = normalizeCompareQuote(item.symbol, item);
@@ -2039,7 +2113,9 @@ function SymbolDetailPanel({
                       </button>
                     );
                   })}
-                  {!visibleCompareCandidates.length ? (
+                  {compareSearchError ? (
+                    <div className="py-8 text-center text-[13px] text-[#a50e0e]">{compareSearchError}</div>
+                  ) : !visibleCompareCandidates.length && !compareSearchLoading ? (
                     <div className="py-8 text-center text-[13px] text-[#5f6368]">没有匹配的代码</div>
                   ) : null}
                 </div>
@@ -2063,6 +2139,7 @@ function SymbolDetailPanel({
                 {row.symbol}
               </span>
               {compareSeries.map((item, ci) => {
+                const markerColor = COMPARE_COLORS[ci % COMPARE_COLORS.length];
                 const ready = Array.isArray(item.candles) && item.candles.length >= 2;
                 const loading = compareLoadingMap[`${item.symbol}|${chartTf}`];
                 const failed = compareErrorMap[`${item.symbol}|${chartTf}`];
@@ -2070,9 +2147,9 @@ function SymbolDetailPanel({
                   <span
                     key={item.symbol}
                     className="inline-flex items-center gap-1 rounded-full bg-white/95 px-3 py-1 font-medium shadow-sm"
-                    style={{ color: COMPARE_COLORS[ci % COMPARE_COLORS.length] }}
+                    style={{ color: markerColor }}
                   >
-                    <span className="size-2 rounded-full" style={{ background: COMPARE_COLORS[ci % COMPARE_COLORS.length] }} />
+                    <span className="size-2 rounded-full" style={{ background: markerColor }} />
                     {item.symbol}{loading ? ' 加载中' : failed ? ' 无数据' : ready ? '' : ' 等待'}
                   </span>
                 );
@@ -2115,6 +2192,7 @@ function SymbolDetailPanel({
               <div>昨收盘</div>
             </div>
             {compareTableRows.map((item, index) => {
+              const markerColor = index === 0 ? COMPARE_MAIN_COLOR : COMPARE_COLORS[(index - 1) % COMPARE_COLORS.length];
               const rowPositive = Number.isFinite(item.changePercent) && item.changePercent > 0;
               const rowNegative = Number.isFinite(item.changePercent) && item.changePercent < 0;
               const toneClass = rowPositive ? 'text-[#a50e0e]' : rowNegative ? 'text-[#137333]' : 'text-[#1f1f1f]';
