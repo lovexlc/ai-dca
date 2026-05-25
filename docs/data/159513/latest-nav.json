@@ -2,10 +2,10 @@
   "dataset": "etf_latest_nav_eastmoney",
   "code": "159513",
   "name": "大成纳斯达克100ETF(QDII)",
-  "latestNav": 1.6748,
-  "latestNavDate": "2026-05-21",
-  "previousNav": 1.6742,
-  "previousNavDate": "2026-05-20",
+  "latestNav": 1.683,
+  "latestNavDate": "2026-05-22",
+  "previousNav": 1.6748,
+  "previousNavDate": "2026-05-21",
   "source": "eastmoney:f10/lsjz",
-  "generatedAt": "2026-05-23T04:35:03.088Z"
+  "generatedAt": "2026-05-25T11:36:43.279Z"
 }

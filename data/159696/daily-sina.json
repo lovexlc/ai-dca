@@ -4,32 +4,16 @@
   "fund_name": "易方达纳斯达克100ETF(QDI)",
   "index_key": "nasdaq100",
   "range": {
-    "start_date": "2024-05-23",
-    "end_date": "2026-05-22",
+    "start_date": "2024-05-27",
+    "end_date": "2026-05-25",
     "lookback_days": 730
   },
   "requested_bars": 700,
   "source": "sina:CN_MarketDataService.getKLineData",
   "source_symbol": "sz159696",
   "fund_list_source": "/home/runner/work/ai-dca/ai-dca/data/all_nasdq.json",
-  "generated_at": "2026-05-23T04:34:57.512Z",
+  "generated_at": "2026-05-25T11:36:37.676Z",
   "bars": [
-    {
-      "date": "2024-05-23",
-      "open": 1.262,
-      "close": 1.271,
-      "high": 1.273,
-      "low": 1.262,
-      "volume": 7627239
-    },
-    {
-      "date": "2024-05-24",
-      "open": 1.259,
-      "close": 1.251,
-      "high": 1.259,
-      "low": 1.25,
-      "volume": 2737277
-    },
     {
       "date": "2024-05-27",
       "open": 1.262,
@@ -3885,6 +3869,14 @@
       "high": 1.942,
       "low": 1.926,
       "volume": 62523533
+    },
+    {
+      "date": "2026-05-25",
+      "open": 2,
+      "close": 2.02,
+      "high": 2.021,
+      "low": 1.98,
+      "volume": 93409800
     }
   ]
 }
