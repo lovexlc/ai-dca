@@ -2304,10 +2304,6 @@ function SymbolDetailPanel({
               <div>涨跌幅</div>
               <div>昨收盘</div>
             </div>
-            <div className="flex h-10 items-center justify-between gap-3 border-b border-[rgba(17,24,39,0.08)] bg-[#f8fafd] px-4 text-[13px] font-semibold text-[#5f6368]">
-              <span>图表定位：{activeCursorLabel || '最新价 / 当前数据'}</span>
-              {lockedChartRow ? <button type="button" onClick={clearLockedChartRow} className="rounded-full px-2 py-0.5 text-[12px] text-[#1a73e8] hover:bg-[#e8f0fe]">取消锁定</button> : null}
-            </div>
             {compareTableRows.map((item, index) => {
               const markerColor = index === 0 ? COMPARE_MAIN_COLOR : COMPARE_COLORS[(index - 1) % COMPARE_COLORS.length];
               const rowPositive = Number.isFinite(item.changePercent) && item.changePercent > 0;
