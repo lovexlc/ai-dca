@@ -2114,30 +2114,32 @@ function SymbolDetailPanel({
               )}
             </ChartToolbarPopover>
           ) : null}
-          <ChartToolbarPopover
-            icon={(CHART_TYPE_OPTIONS.find((opt) => opt.key === chartType) || {}).icon || '⌁'}
-            label={CHART_TYPE_LABEL[chartType] || '折线图'}
-            active={chartType !== 'line'}
-          >
-            {({ close }) => (
-              <div className="flex flex-col gap-0.5">
-                {CHART_TYPE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    onClick={() => { setChartType(opt.key); close(); }}
-                    className={cx(
-                      'flex items-center gap-3 rounded-lg px-3 py-2 text-left transition',
-                      chartType === opt.key ? 'bg-[#e8f0fe]' : 'hover:bg-[#f1f3f4]'
-                    )}
-                  >
-                    <span className="w-5 text-center text-[18px] leading-none text-[#202124]">{opt.icon}</span>
-                    <span className={cx('text-[14px] font-medium', chartType === opt.key ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>{opt.label}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </ChartToolbarPopover>
+          {!isMobile ? (
+            <ChartToolbarPopover
+              icon={(CHART_TYPE_OPTIONS.find((opt) => opt.key === chartType) || {}).icon || '⌁'}
+              label={CHART_TYPE_LABEL[chartType] || '折线图'}
+              active={chartType !== 'line'}
+            >
+              {({ close }) => (
+                <div className="flex flex-col gap-0.5">
+                  {CHART_TYPE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => { setChartType(opt.key); close(); }}
+                      className={cx(
+                        'flex items-center gap-3 rounded-lg px-3 py-2 text-left transition',
+                        chartType === opt.key ? 'bg-[#e8f0fe]' : 'hover:bg-[#f1f3f4]'
+                      )}
+                    >
+                      <span className="w-5 text-center text-[18px] leading-none text-[#202124]">{opt.icon}</span>
+                      <span className={cx('text-[14px] font-medium', chartType === opt.key ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </ChartToolbarPopover>
+          ) : null}
 
           <ChartToolbarPopover
             icon="▥"
