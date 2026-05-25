@@ -2706,7 +2706,7 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
   );
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-white lg:h-auto lg:min-h-0 lg:rounded-2xl lg:border lg:border-slate-200">
+    <div className="flex h-full min-h-0 w-full flex-col bg-white lg:h-full lg:min-h-0 lg:rounded-2xl lg:border lg:border-slate-200">
       {pending && (
         <div className="relative h-0.5 w-full shrink-0 overflow-hidden bg-[#e8f0fe]">
           <div className="gf-progress-bar absolute inset-y-0 left-0 bg-[#1a73e8]" />
@@ -3351,7 +3351,7 @@ export function MarketsExperience() {
   const marketStatusLabel = indicesLoading ? '刷新中' : (indices.length ? `${indices.length} 个指数` : '待加载');
 
   return (
-    <div className="flex flex-col gap-5 pb-[140px] lg:grid lg:grid-cols-[280px_minmax(0,1fr)_360px] lg:items-start lg:gap-4 lg:pb-6 xl:grid-cols-[320px_minmax(0,1fr)_400px]">
+    <div className="flex flex-col gap-5 pb-[140px] lg:grid lg:h-[calc(100vh-6rem)] lg:min-h-0 lg:grid-cols-[280px_minmax(0,1fr)_360px] lg:items-stretch lg:gap-4 lg:overflow-hidden lg:pb-0 xl:grid-cols-[320px_minmax(0,1fr)_400px]">
       {/* Mobile-only sidebar: Google Finance Beta style */}
       <aside className="order-2 flex flex-col gap-2 lg:hidden">
         <div className="px-1">
@@ -3516,8 +3516,8 @@ export function MarketsExperience() {
       </aside>
 
       {/* PC-only sidebar: Google Finance Beta-style compact (设计不变) */}
-      <aside className="order-2 hidden flex-col gap-3 lg:order-1 lg:sticky lg:top-2 lg:flex">
-        <div className="bg-transparent">
+      <aside className="order-2 hidden flex-col gap-3 lg:order-1 lg:flex lg:h-full lg:min-h-0 lg:overflow-hidden">
+        <div className="flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain bg-transparent pr-1 [scrollbar-gutter:stable]">
           {/* 顶部工具栏：「列表 ▾」下拉 + 添加 + 全屏 */}
           <div className="flex items-center justify-between gap-1 px-1 py-2">
             <WatchlistSelector
@@ -3675,7 +3675,7 @@ export function MarketsExperience() {
         </div>
       </aside>
 
-      <main className="order-1 flex min-w-0 flex-col gap-5 lg:order-2">
+      <main className="order-1 flex min-w-0 flex-col gap-5 lg:order-2 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
         {!watchRows.length ? (
           <div className="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/50 px-4 py-4 text-sm text-slate-600">
             <div className="font-semibold text-slate-900">未配置自选</div>
@@ -3903,7 +3903,7 @@ export function MarketsExperience() {
         ref={asideRef}
         className={cx(
           'bg-white',
-          'lg:relative lg:z-auto lg:order-3 lg:flex lg:flex-col lg:gap-3 lg:bg-transparent lg:sticky lg:top-2 lg:bottom-auto lg:h-auto lg:overflow-visible lg:rounded-none lg:border-t-0 lg:shadow-none',
+          'lg:relative lg:z-auto lg:order-3 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:gap-3 lg:bg-transparent lg:overflow-hidden lg:rounded-none lg:border-t-0 lg:shadow-none',
           'fixed inset-x-0 bottom-0 z-40 flex flex-col overflow-hidden border-t border-[#e8eaed] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] [transition:height_300ms_ease-out]',
           researchMode === 'conversation' ? 'top-0 rounded-none' : 'rounded-t-2xl'
         )}
