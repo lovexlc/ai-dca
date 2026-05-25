@@ -1224,7 +1224,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
         h: Number(candle.h),
         l: Number(candle.l),
         c: close,
-        main: normalized ? (close / base) * 100 : close,
+        main: normalized ? ((close / base) - 1) * 100 : close,
         mainPrice: close,
         mainBase: base,
         mainChange: close - base,
@@ -1260,7 +1260,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
         const base = Number(aligned[0] && aligned[0].c) || 1;
         if (candle && Number.isFinite(Number(candle.c))) {
           const close = Number(candle.c);
-          out[`cmp_${ci}`] = (close / base) * 100;
+          out[`cmp_${ci}`] = ((close / base) - 1) * 100;
           out[`cmp_${ci}_price`] = close;
           out[`cmp_${ci}_base`] = base;
           out[`cmp_${ci}_change`] = close - base;
@@ -1310,7 +1310,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
           width={44}
           axisLine={false}
           tickLine={false}
-          tickFormatter={(value) => normalized ? `${(Number(value) - 100).toFixed(1)}%` : formatNumber(value, 2)}
+          tickFormatter={(value) => normalized ? `${Number(value).toFixed(1)}%` : formatNumber(value, 2)}
         />
         <Tooltip
           cursor={{ stroke: '#9aa0a6', strokeDasharray: '2 5', strokeWidth: 1.5 }}
@@ -1320,7 +1320,8 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
             if (key.includes('_price') || key.includes('_base') || key.includes('_change')) return null;
             const n = Number(value);
             const label = name === 'main' ? (displayMainSymbol || '当前标的') : formatSymbolDisplay(name);
-            return [Number.isFinite(n) ? n.toFixed(normalized ? 2 : 4) : value, label];
+            if (!Number.isFinite(n)) return [value, label];
+            return normalized ? [`${n.toFixed(2)}%`, label] : [n.toFixed(4), label];
           }}
         />
         {showArea ? (
@@ -2123,7 +2124,7 @@ function SymbolDetailPanel({
                   ))}
                 </div>
               ) : (
-                <p className="text-[12px] leading-snug text-[#5f6368]">选择一个标的后，图表会立即切换为归一化对比走势。</p>
+                <p className="text-[12px] leading-snug text-[#5f6368]">选择一个标的后，图表会切换为涨幅对比走势。</p>
               )}
               <div className="flex flex-wrap gap-1">
                 {compareCandidates.map((item) => {
@@ -2169,7 +2170,7 @@ function SymbolDetailPanel({
 
           <div className="ml-auto flex items-center gap-1 text-[11px] text-[#9aa0a6]">
             {chartLoading || metricLoading ? <Loader2 size={12} className="animate-spin" /> : null}
-            {compareSymbols.length > 0 ? <span>归一化 = 100</span> : null}
+            {compareSymbols.length > 0 ? <span>涨幅(%)</span> : null}
           </div>
         </div>
 
