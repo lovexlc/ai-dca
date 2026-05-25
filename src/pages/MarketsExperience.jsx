@@ -37,7 +37,7 @@ import { buildStockAnalysisPrompt } from '../app/stockAnalysisPrompt.js';
 import { requestHoldingsNav, requestHoldingsNavHistory } from '../app/holdings.js';
 import { Sparkline } from '../components/markets/Sparkline.jsx';
 import { MarketsChartCodeBlock } from '../components/markets/MarketsChartBlock.jsx';
-import { Area, Bar, CartesianGrid, ComposedChart, Customized, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, Bar, CartesianGrid, ComposedChart, Customized, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 const MARKETS = [
   { key: 'us', label: '美股' },
@@ -1133,9 +1133,10 @@ function marketStateLabel(state, marketCode) {
 
 // ---------- 图表工具栏（图表类型 / 指标 / 对比标的） ----------
 const CHART_TYPE_OPTIONS = [
-  { key: 'line', label: '折线', hint: '只看收盘价走势' },
-  { key: 'area', label: '面积', hint: '折线 + 渐变填充' },
-  { key: 'candle', label: 'K 线', hint: '开高低收烛台' },
+  { key: 'line', label: '折线图', hint: '只看收盘价走势', icon: '⌁' },
+  { key: 'area', label: '面积图', hint: '折线 + 渐变填充', icon: '▰' },
+  { key: 'candle', label: 'K 线图', hint: '开高低收烛台', icon: '▥' },
+  { key: 'bar', label: '柱形图', hint: '柱形展示收盘价', icon: '▮' },
 ];
 const CHART_TYPE_LABEL = CHART_TYPE_OPTIONS.reduce((acc, o) => { acc[o.key] = o.label; return acc; }, {});
 const CN_FUND_PARAM_OPTIONS = [
@@ -1231,32 +1232,39 @@ function CandlesLayerPanel({ xAxisMap, yAxisMap, data }) {
   );
 }
 
-function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, tone, symbol }) {
-  const cmpList = (compareSeries || []).filter((s) => Array.isArray(s.candles) && s.candles.length >= 2);
-  const cmpSignature = JSON.stringify(cmpList.map((s) => ({
-    symbol: s.symbol,
-    length: s.candles.length,
-    first: s.candles[0] && s.candles[0].t,
-    last: s.candles[s.candles.length - 1] && s.candles[s.candles.length - 1].t
+function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, tone, symbol, onHover }) {
+  const cmpList = (compareSeries || []).filter((series) => Array.isArray(series.candles) && series.candles.length >= 2);
+  const cmpSignature = JSON.stringify(cmpList.map((series) => ({
+    symbol: series.symbol,
+    length: series.candles.length,
+    first: series.candles[0] && series.candles[0].t,
+    last: series.candles[series.candles.length - 1] && series.candles[series.candles.length - 1].t
   })));
   const normalized = cmpList.length > 0;
   const rows = useMemo(() => {
     const arr = Array.isArray(candles) ? candles : [];
     if (arr.length < 2) return [];
     const base = Number(arr[0].c) || 1;
-    return arr.map((c) => {
-      const close = Number(c.c);
+    return arr.map((candle) => {
+      const close = Number(candle.c);
       return {
-        label: fmtChartLabel(c.t, tf),
-        t: Number(c.t),
-        o: Number(c.o), h: Number(c.h), l: Number(c.l), c: close,
+        label: fmtChartLabel(candle.t, tf),
+        t: Number(candle.t),
+        o: Number(candle.o),
+        h: Number(candle.h),
+        l: Number(candle.l),
+        c: close,
         main: normalized ? (close / base) * 100 : close,
+        mainPrice: close,
+        mainBase: base,
+        mainChange: close - base,
+        mainChangePercent: base ? ((close / base) - 1) * 100 : null,
       };
     });
   }, [candles, tf, normalized]);
   const indicatorLines = useMemo(() => {
     if (normalized || !Array.isArray(candles) || candles.length === 0) return [];
-    const closes = candles.map((c) => Number(c.c));
+    const closes = candles.map((candle) => Number(candle.c));
     const out = [];
     [['ma5', 5], ['ma10', 10], ['ma20', 20], ['ma60', 60]].forEach(([key, period]) => {
       if (indicators.has(key)) {
@@ -1264,24 +1272,29 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
       }
     });
     if (indicators.has('boll')) {
-      const b = computeBOLL(closes, 20, 2);
-      out.push({ key: 'boll_upper', color: '#94a3b8', values: b.upper, label: 'BOLL 上', dashed: true });
-      out.push({ key: 'boll_mid', color: '#cbd5e1', values: b.mid, label: 'BOLL 中', dashed: true });
-      out.push({ key: 'boll_lower', color: '#94a3b8', values: b.lower, label: 'BOLL 下', dashed: true });
+      const boll = computeBOLL(closes, 20, 2);
+      out.push({ key: 'boll_upper', color: '#94a3b8', values: boll.upper, label: 'BOLL 上', dashed: true });
+      out.push({ key: 'boll_mid', color: '#cbd5e1', values: boll.mid, label: 'BOLL 中', dashed: true });
+      out.push({ key: 'boll_lower', color: '#94a3b8', values: boll.lower, label: 'BOLL 下', dashed: true });
     }
     return out;
   }, [candles, indicators, normalized]);
   const finalRows = useMemo(() => {
-    return rows.map((r, i) => {
-      const out = { ...r };
-      indicatorLines.forEach((il) => { out[il.key] = il.values[i]; });
-      cmpList.forEach((s, ci) => {
-        const offset = Math.max(0, s.candles.length - rows.length);
-        const aligned = s.candles.slice(offset);
-        const sc = aligned[i];
-        const cb = Number(aligned[0] && aligned[0].c) || 1;
-        if (sc && Number.isFinite(Number(sc.c))) {
-          out[`cmp_${ci}`] = (Number(sc.c) / cb) * 100;
+    return rows.map((row, index) => {
+      const out = { ...row };
+      indicatorLines.forEach((line) => { out[line.key] = line.values[index]; });
+      cmpList.forEach((series, ci) => {
+        const offset = Math.max(0, series.candles.length - rows.length);
+        const aligned = series.candles.slice(offset);
+        const candle = aligned[index];
+        const base = Number(aligned[0] && aligned[0].c) || 1;
+        if (candle && Number.isFinite(Number(candle.c))) {
+          const close = Number(candle.c);
+          out[`cmp_${ci}`] = (close / base) * 100;
+          out[`cmp_${ci}_price`] = close;
+          out[`cmp_${ci}_base`] = base;
+          out[`cmp_${ci}_change`] = close - base;
+          out[`cmp_${ci}_changePercent`] = base ? ((close / base) - 1) * 100 : null;
         }
       });
       return out;
@@ -1295,62 +1308,78 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
   const showCandle = chartType === 'candle' && !normalized;
   const showArea = chartType === 'area' && !normalized;
   const showLine = chartType === 'line' || normalized;
-  const legendPayload = normalized
-    ? [
-      { value: symbol || '当前标的', type: 'line', color: mainColor, id: 'main' },
-      ...cmpList.map((s, ci) => ({ value: s.symbol, type: 'line', color: COMPARE_COLORS[ci % COMPARE_COLORS.length], id: `cmp_${ci}` }))
-    ]
-    : undefined;
+  const showBar = chartType === 'bar' && !normalized;
+  const handleChartPoint = (state) => {
+    const payload = state && state.activePayload && state.activePayload[0] && state.activePayload[0].payload;
+    if (payload && onHover) onHover(payload);
+  };
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <ComposedChart data={finalRows} margin={{ top: 8, right: 12, bottom: normalized ? 10 : 0, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#f1f3f4" vertical={false} />
-        <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#9aa0a6' }} minTickGap={40} />
-        <YAxis tick={{ fontSize: 11, fill: '#9aa0a6' }} domain={['auto', 'auto']} width={44} />
+      <ComposedChart
+        data={finalRows}
+        margin={{ top: 12, right: 12, left: 4, bottom: 8 }}
+        onMouseMove={handleChartPoint}
+        onClick={handleChartPoint}
+      >
+        <CartesianGrid stroke="#dfe3eb" vertical strokeDasharray="0" />
+        <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#5f6368' }} minTickGap={40} axisLine={false} tickLine={false} />
+        <YAxis
+          tick={{ fontSize: 12, fill: '#5f6368' }}
+          domain={['auto', 'auto']}
+          width={44}
+          axisLine={false}
+          tickLine={false}
+          tickFormatter={(value) => normalized ? `${(Number(value) - 100).toFixed(1)}%` : formatNumber(value, 2)}
+        />
         <Tooltip
-          contentStyle={{ borderRadius: 12, border: '1px solid #e8eaed', boxShadow: '0 8px 24px rgba(60,64,67,0.12)' }}
+          cursor={{ stroke: '#9aa0a6', strokeDasharray: '2 5', strokeWidth: 1.5 }}
+          contentStyle={{ borderRadius: 12, borderColor: '#dfe3eb', boxShadow: '0 12px 32px rgba(60,64,67,0.16)' }}
           formatter={(value, name) => {
+            const key = String(name);
+            if (key.includes('_price') || key.includes('_base') || key.includes('_change')) return null;
             const n = Number(value);
-            const label = name === 'main' ? (symbol || '当前标的') : String(name).replace('cmp_', '对比 ');
-            return [Number.isFinite(n) ? n.toFixed(normalized ? 2 : 4) : value, label];
+            const label = key === 'main' ? (symbol || '当前标的') : key.replace('cmp_', '对比 ');
+            return [Number.isFinite(n) ? (normalized ? `${(n - 100).toFixed(2)}%` : n.toFixed(4)) : value, label];
           }}
         />
-        {normalized ? <Legend payload={legendPayload} wrapperStyle={{ fontSize: 11, paddingTop: 4 }} /> : null}
         {showArea ? (
-          <Area type="monotone" dataKey="main" name={symbol || '当前标的'} stroke={mainColor} fill={mainColor} fillOpacity={0.12} dot={false} strokeWidth={1.5} isAnimationActive={false} />
+          <Area type="monotone" dataKey="main" name={symbol || '当前标的'} stroke={mainColor} fill={mainColor} fillOpacity={0.12} dot={false} strokeWidth={1.8} isAnimationActive={false} />
         ) : null}
         {showLine ? (
-          <Line type="monotone" dataKey="main" name={symbol || '当前标的'} stroke={mainColor} dot={false} strokeWidth={normalized ? 2 : 1.5} isAnimationActive={false} />
+          <Line type="monotone" dataKey="main" name={symbol || '当前标的'} stroke={mainColor} dot={false} activeDot={{ r: 4 }} strokeWidth={normalized ? 2.2 : 1.8} isAnimationActive={false} />
+        ) : null}
+        {showBar ? (
+          <Bar dataKey="main" name={symbol || '当前标的'} fill={mainColor} fillOpacity={0.72} radius={[3, 3, 0, 0]} isAnimationActive={false} />
         ) : null}
         {showCandle ? (
-          <Line type="monotone" dataKey="c" stroke="transparent" dot={false} isAnimationActive={false} />
+          <Line type="monotone" dataKey="c" stroke="transparent" dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
         ) : null}
         {showCandle ? (
           <Customized component={<CandlesLayerPanel data={finalRows} />} />
         ) : null}
-        {indicatorLines.map((il) => (
+        {indicatorLines.map((line) => (
           <Line
-            key={il.key}
+            key={line.key}
             type="monotone"
-            dataKey={il.key}
-            name={il.label}
-            stroke={il.color}
-            strokeDasharray={il.dashed ? '3 3' : '0'}
+            dataKey={line.key}
+            name={line.label}
+            stroke={line.color}
+            strokeDasharray={line.dashed ? '3 3' : '0'}
             dot={false}
             strokeWidth={1}
             isAnimationActive={false}
           />
         ))}
-        {cmpList.map((s, ci) => (
+        {cmpList.map((series, ci) => (
           <Line
             key={`cmp_${ci}`}
             type="monotone"
             dataKey={`cmp_${ci}`}
-            name={s.symbol}
+            name={series.symbol}
             stroke={COMPARE_COLORS[ci % COMPARE_COLORS.length]}
             dot={false}
-            strokeWidth={1.8}
-            strokeDasharray={ci === 1 ? '5 3' : ci === 2 ? '2 3' : '0'}
+            activeDot={{ r: 4 }}
+            strokeWidth={2}
             connectNulls
             isAnimationActive={false}
           />
@@ -1360,7 +1389,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
   );
 }
 
-function ChartToolbarPopover({ label, active, children, align = 'left', panelClassName = '', buttonClassName = '' }) {
+function ChartToolbarPopover({ label, icon, active, children, align = 'left', panelClassName = '', buttonClassName = '' }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -1384,20 +1413,19 @@ function ChartToolbarPopover({ label, active, children, align = 'left', panelCla
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cx(
-          'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[12px] font-medium transition',
-          active
-            ? 'border-[#1a73e8] bg-[#e8f0fe] text-[#1a73e8]'
-            : 'border-[#dadce0] bg-white text-[#5f6368] hover:bg-[#f1f3f4]',
+          'inline-flex h-10 items-center gap-2 rounded-lg px-3 text-[14px] font-semibold text-[#202124] transition hover:bg-white/70',
+          active ? 'bg-white shadow-sm' : 'bg-transparent',
           buttonClassName
         )}
       >
-        {label}
-        <ChevronDown size={12} className={cx('transition', open ? 'rotate-180' : '')} />
+        {icon ? <span className="text-[18px] leading-none text-[#202124]" aria-hidden="true">{icon}</span> : null}
+        <span>{label}</span>
+        <ChevronDown size={16} className={cx('transition', open ? 'rotate-180' : '')} />
       </button>
       {open ? (
         <div
           className={cx(
-            'absolute z-30 mt-1 min-w-[180px] rounded-xl border border-[#e8eaed] bg-white p-2 shadow-lg',
+            'absolute z-30 mt-1 min-w-[190px] rounded-xl border border-[#dfe3eb] bg-white p-1.5 shadow-lg',
             panelClassName,
             align === 'right' ? 'right-0' : 'left-0'
           )}
@@ -1408,6 +1436,7 @@ function ChartToolbarPopover({ label, active, children, align = 'left', panelCla
     </div>
   );
 }
+
 
 
 const FINANCIAL_TABS = [
@@ -1677,10 +1706,12 @@ function SymbolDetailPanel({
   const [compareLoadingMap, setCompareLoadingMap] = useState({});
   const [compareErrorMap, setCompareErrorMap] = useState({});
   const [compareQuoteMap, setCompareQuoteMap] = useState({});
+  const [activeChartRow, setActiveChartRow] = useState(null);
   const indicatorOptions = INDICATOR_OPTIONS;
   const rowSymbol = row && row.symbol ? String(row.symbol).toUpperCase() : '';
   // 当前 symbol 或时间范围切换时清空对比
-  useEffect(() => { setCompareSymbols([]); }, [rowSymbol]);
+  useEffect(() => { setCompareSymbols([]); setActiveChartRow(null); }, [rowSymbol]);
+  useEffect(() => { setActiveChartRow(null); }, [chartRange, cnFundParam]);
   useEffect(() => { if (market !== 'cn') setCnFundParam('price'); }, [market]);
   useEffect(() => {
     const q = compareInput.trim();
@@ -1895,7 +1926,30 @@ function SymbolDetailPanel({
   });
   const comparePendingSymbols = compareSymbols.filter((sym) => compareLoadingMap[`${sym}|${chartTf}`]);
   const compareReadyCount = compareSeries.filter((s) => Array.isArray(s.candles) && s.candles.length >= 2).length;
-  const compareTableRows = [normalizeCompareQuote(row.symbol, row), ...compareSymbols.map((sym) => normalizeCompareQuote(sym, compareCandidates.find((item) => item.symbol === sym)))];
+  const applyHoverSnapshot = (quoteRow, keyPrefix) => {
+    if (!activeChartRow) return quoteRow;
+    const priceKey = keyPrefix === 'main' ? 'mainPrice' : `${keyPrefix}price`;
+    const baseKey = keyPrefix === 'main' ? 'mainBase' : `${keyPrefix}base`;
+    const changeKey = keyPrefix === 'main' ? 'mainChange' : `${keyPrefix}change`;
+    const pctKey = keyPrefix === 'main' ? 'mainChangePercent' : `${keyPrefix}changePercent`;
+    const price = Number(activeChartRow[priceKey]);
+    const change = Number(activeChartRow[changeKey]);
+    const changePercent = Number(activeChartRow[pctKey]);
+    const previousClose = Number(activeChartRow[baseKey]);
+    if (!Number.isFinite(price)) return quoteRow;
+    return {
+      ...quoteRow,
+      price,
+      change: Number.isFinite(change) ? change : quoteRow.change,
+      changePercent: Number.isFinite(changePercent) ? changePercent : quoteRow.changePercent,
+      previousClose: Number.isFinite(previousClose) ? previousClose : quoteRow.previousClose,
+      snapshotLabel: activeChartRow.label
+    };
+  };
+  const compareTableRows = [
+    applyHoverSnapshot(normalizeCompareQuote(row.symbol, row), 'main'),
+    ...compareSymbols.map((sym, index) => applyHoverSnapshot(normalizeCompareQuote(sym, compareCandidates.find((item) => item.symbol === sym)), `cmp_${index}_`))
+  ];
   const effectiveChartCandles = market !== 'cn' || cnFundParam === 'price'
     ? chartCandles
     : buildCnFundParamCandles(chartCandles, navHistoryState?.items, cnFundParam, premiumState);
@@ -1991,14 +2045,14 @@ function SymbolDetailPanel({
         </div>
 
         {/* 图表工具栏 */}
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl bg-[#f1f3f4] px-3 py-2">
           {market === 'cn' ? (
-            <label className="inline-flex items-center gap-1.5 rounded-full border border-[#dadce0] bg-white px-2.5 py-1 text-[13px] font-medium text-[#1f1f1f]">
-              <span className="text-[#5f6368]">参数</span>
+            <label className="inline-flex h-10 items-center gap-2 rounded-lg bg-transparent px-3 text-[14px] font-semibold text-[#202124] hover:bg-white/70">
+              <span className="text-[18px] leading-none">⌁</span><span>参数</span>
               <select
                 value={cnFundParam}
                 onChange={(e) => setCnFundParam(e.target.value)}
-                className="bg-transparent text-[13px] font-medium text-[#1f1f1f] outline-none"
+                className="bg-transparent text-[14px] font-semibold text-[#202124] outline-none"
                 aria-label="A股基金图表参数"
               >
                 {CN_FUND_PARAM_OPTIONS.map((opt) => (
@@ -2008,7 +2062,8 @@ function SymbolDetailPanel({
             </label>
           ) : null}
           <ChartToolbarPopover
-            label={`图表 · ${CHART_TYPE_LABEL[chartType] || '折线'}`}
+            icon={(CHART_TYPE_OPTIONS.find((opt) => opt.key === chartType) || {}).icon || '⌁'}
+            label={CHART_TYPE_LABEL[chartType] || '折线图'}
             active={chartType !== 'line'}
           >
             {({ close }) => (
@@ -2019,12 +2074,12 @@ function SymbolDetailPanel({
                     type="button"
                     onClick={() => { setChartType(opt.key); close(); }}
                     className={cx(
-                      'flex items-start gap-2 rounded-lg px-2 py-1.5 text-left transition',
+                      'flex items-center gap-3 rounded-lg px-3 py-2 text-left transition',
                       chartType === opt.key ? 'bg-[#e8f0fe]' : 'hover:bg-[#f1f3f4]'
                     )}
                   >
-                    <span className={cx('text-[13px] font-medium', chartType === opt.key ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>{opt.label}</span>
-                    <span className="ml-auto text-[11px] text-[#9aa0a6]">{opt.hint}</span>
+                    <span className="w-5 text-center text-[18px] leading-none text-[#202124]">{opt.icon}</span>
+                    <span className={cx('text-[14px] font-medium', chartType === opt.key ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>{opt.label}</span>
                   </button>
                 ))}
               </div>
@@ -2032,6 +2087,7 @@ function SymbolDetailPanel({
           </ChartToolbarPopover>
 
           <ChartToolbarPopover
+            icon="▥"
             label={indicators.size ? `指标 · ${indicators.size}` : '指标'}
             active={indicators.size > 0}
           >
@@ -2052,6 +2108,7 @@ function SymbolDetailPanel({
           </ChartToolbarPopover>
 
           <ChartToolbarPopover
+            icon="≋"
             label={compareSymbols.length ? `对比 · ${compareSymbols.length}` : '对比'}
             active={compareSymbols.length > 0}
             align="right"
@@ -2131,11 +2188,11 @@ function SymbolDetailPanel({
         </div>
 
         {/* 图表区 */}
-        <div className="relative mt-2 h-48 rounded-xl bg-white px-1 py-1 sm:h-64">
+        <div className="relative mt-0 h-56 rounded-b-2xl bg-[#f8fafd] px-3 pb-3 pt-4 sm:h-72">
           {compareSymbols.length > 0 ? (
             <div className="pointer-events-none absolute left-3 top-2 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 text-[12px]">
-              <span className="inline-flex items-center gap-1 rounded-full bg-white/95 px-3 py-1 font-medium text-[#2563eb] shadow-sm">
-                <span className="size-2 rounded-sm bg-[#2563eb]" />
+              <span className="inline-flex items-center gap-2 rounded-full border border-[#dfe3eb] bg-[#f8fafd] px-3 py-1.5 font-medium text-[#2563eb]">
+                <span className="size-3 rounded-sm bg-[#2563eb]" />
                 {row.symbol}
               </span>
               {compareSeries.map((item, ci) => {
@@ -2146,11 +2203,14 @@ function SymbolDetailPanel({
                 return (
                   <span
                     key={item.symbol}
-                    className="inline-flex items-center gap-1 rounded-full bg-white/95 px-3 py-1 font-medium shadow-sm"
+                    className="inline-flex items-center gap-2 rounded-full border border-[#dfe3eb] bg-[#f8fafd] px-3 py-1.5 font-medium"
                     style={{ color: markerColor }}
                   >
-                    <span className="size-2 rounded-full" style={{ background: markerColor }} />
+                    <span className="size-3 rounded-full" style={{ background: markerColor }} />
                     {item.symbol}{loading ? ' 加载中' : failed ? ' 无数据' : ready ? '' : ' 等待'}
+                    <button type="button" className="pointer-events-auto -mr-1 inline-flex size-5 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#e8eaed]" onClick={() => removeCompare(item.symbol)} aria-label={`移除 ${item.symbol}`}>
+                      <X size={14} />
+                    </button>
                   </span>
                 );
               })}
@@ -2170,6 +2230,7 @@ function SymbolDetailPanel({
               compareSeries={compareSeries}
               tone={tone}
               symbol={cnFundParam === 'price' ? row.symbol : CN_FUND_PARAM_LABEL[cnFundParam]}
+              onHover={(payload) => setActiveChartRow((prev) => (prev && payload && prev.t === payload.t ? prev : payload))}
             />
           ) : sparkFallback ? (
             <Sparkline points={sparkFallback} width={720} height={210} tone={tone} showFill markLast className="h-full w-full" />
@@ -2183,26 +2244,27 @@ function SymbolDetailPanel({
         </div>
 
         {compareSymbols.length > 0 ? (
-          <div className="mt-3 overflow-hidden border-y border-[#dfe3eb] bg-white text-[13px]">
-            <div className="grid grid-cols-[minmax(180px,1fr)_110px_110px_110px_110px] items-center gap-3 px-3 py-2 text-right text-[#5f6368]">
+          <div className="overflow-hidden bg-white text-[13px]">
+            <div className="grid grid-cols-[minmax(180px,1fr)_110px_110px_110px_110px] items-center gap-3 border-b border-[#dfe3eb] px-6 py-3 text-right text-[14px] text-[#5f6368]">
               <div className="text-left">股票代码</div>
               <div>价格</div>
               <div>涨跌额</div>
               <div>涨跌幅</div>
               <div>昨收盘</div>
             </div>
+            {activeChartRow?.label ? <div className="px-6 py-2 text-[12px] text-[#5f6368]">图表定位：{activeChartRow.label}</div> : null}
             {compareTableRows.map((item, index) => {
               const markerColor = index === 0 ? COMPARE_MAIN_COLOR : COMPARE_COLORS[(index - 1) % COMPARE_COLORS.length];
               const rowPositive = Number.isFinite(item.changePercent) && item.changePercent > 0;
               const rowNegative = Number.isFinite(item.changePercent) && item.changePercent < 0;
               const toneClass = rowPositive ? 'text-[#a50e0e]' : rowNegative ? 'text-[#137333]' : 'text-[#1f1f1f]';
               return (
-                <div key={`${item.symbol}-${index}`} className="grid grid-cols-[minmax(180px,1fr)_110px_110px_110px_110px] items-center gap-3 border-t border-[#dfe3eb] px-3 py-2 text-right tabular-nums">
+                <div key={`${item.symbol}-${index}`} className="grid grid-cols-[minmax(180px,1fr)_110px_110px_110px_110px] items-center gap-3 border-b border-[#dfe3eb] px-6 py-3 text-right tabular-nums">
                   <div className="flex min-w-0 items-center gap-3 text-left">
                     <span className="size-3 shrink-0 rounded-sm" style={{ background: markerColor }} />
                     <div className="min-w-0">
-                      <div className="truncate font-semibold text-[#202124]">{item.symbol}</div>
-                      <div className="truncate text-[12px] text-[#5f6368]">{item.name}</div>
+                      <div className="truncate text-[15px] font-semibold text-[#202124]">{item.symbol}</div>
+                      <div className="truncate text-[13px] text-[#5f6368]">{item.name}</div>
                     </div>
                   </div>
                   <div className="font-semibold text-[#202124]">{Number.isFinite(item.price) ? `$${formatNumber(item.price, 2)}` : '--'}</div>
