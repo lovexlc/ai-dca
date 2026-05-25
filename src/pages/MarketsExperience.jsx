@@ -1310,9 +1310,14 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
   const showLine = chartType === 'line' || normalized;
   const showBar = chartType === 'bar' && !normalized;
   const handleChartPoint = (state) => {
-    const payload = state && state.activePayload && state.activePayload[0] && state.activePayload[0].payload;
-    if (payload && onHover) onHover(payload);
+    if (!onHover) return;
+    const index = Number.isInteger(state?.activeTooltipIndex) ? state.activeTooltipIndex : -1;
+    const payload = state?.activePayload?.[0]?.payload || (index >= 0 ? finalRows[index] : null);
+    if (payload) onHover(payload);
   };
+  useEffect(() => {
+    if (onHover && finalRows.length > 0) onHover(finalRows[finalRows.length - 1]);
+  }, [finalRows.length, finalRows[finalRows.length - 1]?.t]);
   return (
     <ResponsiveContainer width="100%" height="100%">
       <ComposedChart
