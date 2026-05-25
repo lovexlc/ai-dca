@@ -1912,7 +1912,11 @@ function SymbolDetailPanel({
     setCompareInput('');
   };
   const addCompare = () => addCompareSymbol(compareInput);
-  const removeCompare = (sym) => setCompareSymbols((prev) => prev.filter((x) => x !== sym));
+  const removeCompare = (sym) => {
+    setCompareSymbols((prev) => prev.filter((x) => x !== sym));
+    setHoveredChartRow(null);
+    setLockedChartRow(null);
+  };
   const compareSeries = compareSymbols.map((sym) => {
     const rawCandles = compareCandlesMap[`${sym}|${chartTf}`];
     return {
@@ -2208,11 +2212,20 @@ function SymbolDetailPanel({
                 return (
                   <span
                     key={item.symbol}
-                    className="inline-flex h-8 items-center gap-2 rounded-2xl border border-[rgba(17,24,39,0.08)] bg-[#f8fafd]/95 px-3.5 font-semibold shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
+                    className="inline-flex h-8 items-center gap-2 rounded-2xl border border-[rgba(17,24,39,0.08)] bg-[#f8fafd]/95 py-0.5 pl-3.5 pr-1.5 font-semibold shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
                     style={{ color: markerColor }}
                   >
-                    <span className="size-2 rounded-full" style={{ background: markerColor }} />
-                    {formatSymbolDisplay(item.symbol)}{loading ? ' 加载中' : failed ? ' 无数据' : ready ? '' : ' 等待'}
+                    <span className="size-2 shrink-0 rounded-full" style={{ background: markerColor }} />
+                    <span className="min-w-0 truncate">{formatSymbolDisplay(item.symbol)}{loading ? ' 加载中' : failed ? ' 无数据' : ready ? '' : ' 等待'}</span>
+                    <button
+                      type="button"
+                      onClick={(event) => { event.stopPropagation(); removeCompare(item.symbol); }}
+                      className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-[#5f6368] transition hover:bg-black/5 hover:text-[#202124] focus:outline-none focus:ring-2 focus:ring-[#1a73e8]/30"
+                      aria-label={`删除对比标的 ${item.symbol}`}
+                      title={`删除 ${item.symbol}`}
+                    >
+                      <X size={14} aria-hidden="true" />
+                    </button>
                   </span>
                 );
               })}
