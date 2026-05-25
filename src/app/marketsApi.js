@@ -196,6 +196,7 @@ export async function askMarketsStream({
 // Watchlist (localStorage). Stored per market for convenience.
 const WATCHLIST_KEY = 'markets:watchlist:v1';
 const WATCHLIST_DEFAULTS_VERSION = 1;
+const DEFAULT_WATCHLIST_ID = 'default';
 
 export const CN_ETF_WATCHLIST_PRESETS = [
   { symbol: '513100', name: '纳指 ETF', exchange: '上交所', currency: 'CNY' },
@@ -205,17 +206,43 @@ export const CN_ETF_WATCHLIST_PRESETS = [
 const DEFAULT_CN_WATCHLIST = CN_ETF_WATCHLIST_PRESETS.map((item) => item.symbol);
 
 function normalizeWatchlist(value = {}) {
+  const now = new Date().toISOString();
   const rawUs = Array.isArray(value.us) ? value.us : [];
   const rawCn = Array.isArray(value.cn) ? value.cn : [];
   const hasCnDefaults = Number(value.defaultsVersion) >= WATCHLIST_DEFAULTS_VERSION;
   const cn = hasCnDefaults
     ? rawCn
     : Array.from(new Set([...DEFAULT_CN_WATCHLIST, ...rawCn]));
+  const seedList = {
+    id: DEFAULT_WATCHLIST_ID,
+    name: '默认列表',
+    us: rawUs,
+    cn,
+    createdAt: value.createdAt || now,
+    updatedAt: value.updatedAt || now,
+  };
+  const rawLists = Array.isArray(value.lists) ? value.lists : [];
+  const lists = rawLists.length
+    ? rawLists.map((item, index) => ({
+      id: String(item.id || (index === 0 ? DEFAULT_WATCHLIST_ID : `list-${index + 1}`)),
+      name: String(item.name || (index === 0 ? '默认列表' : `列表 ${index + 1}`)),
+      us: Array.isArray(item.us) ? item.us : [],
+      cn: Array.isArray(item.cn) ? item.cn : [],
+      createdAt: item.createdAt || now,
+      updatedAt: item.updatedAt || now,
+    }))
+    : [seedList];
+  if (!lists.some((item) => item.id === DEFAULT_WATCHLIST_ID)) lists.unshift(seedList);
+  let activeListId = String(value.activeListId || DEFAULT_WATCHLIST_ID);
+  if (!lists.some((item) => item.id === activeListId)) activeListId = lists[0].id;
+  const activeList = lists.find((item) => item.id === activeListId) || lists[0] || seedList;
 
   return {
     ...value,
-    us: rawUs,
-    cn,
+    us: activeList.us || [],
+    cn: activeList.cn || [],
+    lists,
+    activeListId,
     defaultsVersion: WATCHLIST_DEFAULTS_VERSION
   };
 }
