@@ -2662,6 +2662,7 @@ export function MarketsExperience() {
   const [premiumMap, setPremiumMap] = useState({});
   const [navHistoryMap, setNavHistoryMap] = useState({});
   const premiumInflightRef = useRef(new Set());
+  const navHistoryInflightRef = useRef(new Set());
   const [financialsMap, setFinancialsMap] = useState({});
   const [financialsLoading, setFinancialsLoading] = useState(false);
   const financialsInflightRef = useRef(new Set());
@@ -3128,8 +3129,9 @@ export function MarketsExperience() {
     if (!/^\d{6}$/.test(symbol)) return;
     const days = navHistoryDaysForRange(chartRange);
     const key = `${symbol}|${days}`;
-    if (navHistoryMap[key]?.items?.length || navHistoryMap[key]?.loading || navHistoryMap[key]?.error) return;
+    if (navHistoryMap[key]?.items?.length || navHistoryMap[key]?.loading || navHistoryMap[key]?.error || navHistoryInflightRef.current.has(key)) return;
     let cancelled = false;
+    navHistoryInflightRef.current.add(key);
     setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: true, items: prev[key]?.items || [], error: '' } }));
     requestHoldingsNavHistory(symbol, { days })
       .then((payload) => {
@@ -3140,9 +3142,12 @@ export function MarketsExperience() {
       .catch((error) => {
         if (cancelled) return;
         setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items: prev[key]?.items || [], error: error instanceof Error ? error.message : '净值历史加载失败' } }));
+      })
+      .finally(() => {
+        navHistoryInflightRef.current.delete(key);
       });
     return () => { cancelled = true; };
-  }, [market, selectedSymbol, chartRange, navHistoryMap]);
+  }, [market, selectedSymbol, chartRange]);
 
   const marketStatusLabel = indicesLoading ? '刷新中' : (indices.length ? `${indices.length} 个指数` : '待加载');
 
