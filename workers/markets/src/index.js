@@ -7,8 +7,8 @@ import {
   fetchYahooQuotesBatch,
   fetchEastmoneyKline,
   fetchSinaKline,
-  fetchEastmoneyQuote,
-  fetchEastmoneyQuotesBatch,
+  fetchSinaQuote,
+  fetchSinaQuotesBatch,
   fetchEastmoneyMovers,
   searchYahooSymbols,
   searchEastmoneySymbols,
@@ -200,7 +200,7 @@ async function refreshIndices(env, market) {
       console.warn('cnn fng fetch failed', (err && err.message) || err);
     }
   } else if (market === 'cn') {
-    const quoteMap = await fetchEastmoneyQuotesBatch(CN_INDICES.map((it) => it.symbol));
+    const quoteMap = await fetchSinaQuotesBatch(CN_INDICES.map((it) => it.symbol));
     indexes = CN_INDICES.map((it) => {
       const q = quoteMap[it.symbol] || {};
       return { ...q, key: it.key, name: it.name, symbol: it.symbol };
@@ -269,7 +269,7 @@ async function handleQuote(env, rawSymbol) {
   if (!market) return errorJson('invalid symbol', 400);
   const cacheKey = 'quote:' + code;
   const cached = await kvGetJson(env, cacheKey);
-  if (cached && cached.asOf && Date.now() - new Date(cached.asOf).getTime() < 90000) {
+  if (cached && cached.asOf && Date.now() - new Date(cached.asOf).getTime() < 90000 && (market === 'us' || cached.source === 'sina-quote')) {
     return json({ ...cached, cached: true });
   }
   let quote;
@@ -277,7 +277,7 @@ async function handleQuote(env, rawSymbol) {
     const raw = await fetchYahooChart(code, { range: '1d', interval: '5m' });
     quote = normalizeYahooQuote(raw);
   } else {
-    quote = await fetchEastmoneyQuote(code);
+    quote = await fetchSinaQuote(code);
   }
   await kvPutJson(env, cacheKey, quote, { ttlSeconds: 300 });
   return json({ ...quote, cached: false });
@@ -291,18 +291,32 @@ async function handleBatchQuotes(env, symbolsParam) {
     return errorJson('symbols too many (max 60)', 400);
   }
   const out = {};
-  await mapLimit(list, 5, async (raw) => {
+  const cnItems = [];
+  const usItems = [];
+  for (const raw of list) {
+    const { market, code } = classifySymbol(raw);
+    if (!market) continue;
+    if (market === 'cn') cnItems.push({ raw, code });
+    else usItems.push({ raw, code });
+  }
+  if (cnItems.length) {
     try {
-      const { market, code } = classifySymbol(raw);
-      if (!market) return;
-      if (market === 'us') {
-        const r = await fetchYahooChart(code, { range: '1d', interval: '5m' });
-        out[raw] = normalizeYahooQuote(r);
-      } else {
-        out[raw] = await fetchEastmoneyQuote(code);
+      const quoteMap = await fetchSinaQuotesBatch(cnItems.map((item) => item.code));
+      for (const item of cnItems) {
+        out[item.raw] = quoteMap[item.code] || { symbol: item.raw, error: 'sina quote missing' };
       }
     } catch (err) {
-      out[raw] = { symbol: raw, error: String((err && err.message) || err) };
+      for (const item of cnItems) {
+        out[item.raw] = { symbol: item.raw, error: String((err && err.message) || err) };
+      }
+    }
+  }
+  await mapLimit(usItems, 5, async (item) => {
+    try {
+      const r = await fetchYahooChart(item.code, { range: '1d', interval: '5m' });
+      out[item.raw] = normalizeYahooQuote(r);
+    } catch (err) {
+      out[item.raw] = { symbol: item.raw, error: String((err && err.message) || err) };
     }
   });
   return json({ quotes: out, generatedAt: new Date().toISOString() });
@@ -319,7 +333,8 @@ async function handleKline(env, rawSymbol, params) {
     if (cached && cached.candles && cached.candles.length) {
       const lastT = cached.candles[cached.candles.length - 1].t * 1000;
       const stale = tf === '1d' && Date.now() - lastT > 36 * 3600 * 1000;
-      if (!stale) return json({ ...cached, cached: true });
+      const sourceOk = market !== 'cn' || cached.source === 'sina-kline';
+      if (!stale && sourceOk) return json({ ...cached, cached: true });
     }
   }
   const fresh = await refreshKline(env, market, code, tf);
@@ -335,10 +350,10 @@ async function refreshKline(env, market, code, tf) {
     payload = { ...normalizeYahooKline(raw, tf), market, generatedAt: new Date().toISOString() };
   } else {
     try {
-      payload = { ...(await fetchEastmoneyKline(code, { intervalLabel: tf, limit: 500 })), market, generatedAt: new Date().toISOString() };
+      payload = { ...(await fetchSinaKline(code, { intervalLabel: tf, limit: 500 })), market, generatedAt: new Date().toISOString() };
     } catch (err) {
-      console.warn('eastmoney kline failed, fallback to sina', code, tf, (err && err.message) || err);
-      payload = { ...(await fetchSinaKline(code, { intervalLabel: tf, limit: 500 })), market, generatedAt: new Date().toISOString(), fallback: 'sina' };
+      console.warn('sina kline failed, fallback to eastmoney', code, tf, (err && err.message) || err);
+      payload = { ...(await fetchEastmoneyKline(code, { intervalLabel: tf, limit: 500 })), market, generatedAt: new Date().toISOString(), fallback: 'eastmoney' };
     }
   }
   await r2PutJson(env, klineKey(market, code, tf), payload);
@@ -635,7 +650,7 @@ async function handleAsk(env, body) {
       if (!market) continue;
       const q = market === 'us'
         ? normalizeYahooQuote(await fetchYahooChart(code, { range: '1d', interval: '5m' }))
-        : await fetchEastmoneyQuote(code);
+        : await fetchSinaQuote(code);
       quoteSnapshots.push(q);
     } catch (err) {
       console.warn('snapshot fail', raw, err);
