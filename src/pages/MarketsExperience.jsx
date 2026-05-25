@@ -1000,12 +1000,12 @@ const SYMBOL_DETAIL_TABS = [
 const CHART_RANGE_TABS = [
   { key: '1d', label: '1天', tf: '5m', daysBack: 1 },
   { key: '5d', label: '5天', tf: '5m', daysBack: 5 },
-  { key: '1mo', label: '1月', tf: '60m', daysBack: 31 },
-  { key: '6mo', label: '6月', tf: '1w', daysBack: 31 * 6 },
-  { key: 'ytd', label: 'YTD', tf: '1w', daysBack: null },
-  { key: '1y', label: '1年', tf: '1w', daysBack: 365 },
-  { key: '5y', label: '5年', tf: '1mo', daysBack: 365 * 5 },
-  { key: 'max', label: '最大', tf: '1mo', daysBack: null },
+  { key: '1mo', label: '1月', tf: '1d', daysBack: 31 },
+  { key: '6mo', label: '6月', tf: '1d', daysBack: 31 * 6 },
+  { key: 'ytd', label: 'YTD', tf: '1d', daysBack: null },
+  { key: '1y', label: '1年', tf: '1d', daysBack: 365 },
+  { key: '5y', label: '5年', tf: '1d', daysBack: 365 * 5 },
+  { key: 'max', label: '最大', tf: '1d', daysBack: null },
 ];
 
 function sliceCandlesForRange(candles, rangeKey) {
@@ -1019,7 +1019,12 @@ function sliceCandlesForRange(candles, rangeKey) {
     return arr.filter((c) => Number(c && c.t) >= startSec);
   }
   if (cfg.daysBack == null) return arr;
-  const cutoffSec = Math.floor(Date.now() / 1000) - cfg.daysBack * 86400;
+  const maxSec = arr.reduce((max, candle) => {
+    const t = Number(candle && candle.t);
+    return Number.isFinite(t) && t > max ? t : max;
+  }, 0);
+  const anchorSec = maxSec > 0 ? maxSec : Math.floor(Date.now() / 1000);
+  const cutoffSec = anchorSec - cfg.daysBack * 86400;
   const filtered = arr.filter((c) => Number(c && c.t) >= cutoffSec);
   return filtered.length >= 2 ? filtered : arr;
 }
