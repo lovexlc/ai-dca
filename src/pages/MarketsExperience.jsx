@@ -1135,7 +1135,10 @@ const INDICATOR_OPTIONS = [
   { key: 'boll', label: 'BOLL', hint: '布林带 (20, 2)' },
 ];
 const MA_COLORS = { ma5: '#1a73e8', ma10: '#ea4335', ma20: '#f9ab00', ma60: '#9aa0a6' };
-const COMPARE_COLORS = ['#9333ea', '#10b981', '#f43f5e'];
+const COMPARE_COLORS = ['#e37400', '#9333ea', '#10b981'];
+const COMPARE_MAIN_COLOR = '#2563eb';
+const COMPARE_TEXT_CLASSES = ['text-[#e37400]', 'text-[#9333ea]', 'text-[#10b981]'];
+const COMPARE_DOT_CLASSES = ['bg-[#e37400]', 'bg-[#9333ea]', 'bg-[#10b981]'];
 const CHART_UP = '#a50e0e';
 const CHART_DOWN = '#137333';
 
@@ -1270,7 +1273,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
   if (finalRows.length < 2) {
     return <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">暂无数据</div>;
   }
-  const mainColor = normalized ? '#1a73e8' : tone === 'up' ? CHART_UP : tone === 'down' ? CHART_DOWN : '#1a73e8';
+  const mainColor = normalized ? COMPARE_MAIN_COLOR : tone === 'up' ? CHART_UP : tone === 'down' ? CHART_DOWN : '#1a73e8';
   const showCandle = chartType === 'candle' && !normalized;
   const showArea = chartType === 'area' && !normalized;
   const showLine = chartType === 'line' || normalized;
@@ -1339,7 +1342,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
   );
 }
 
-function ChartToolbarPopover({ label, active, children, align = 'left', panelClassName = '' }) {
+function ChartToolbarPopover({ label, active, children, align = 'left', panelClassName = '', buttonClassName = '' }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -1366,7 +1369,8 @@ function ChartToolbarPopover({ label, active, children, align = 'left', panelCla
           'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[12px] font-medium transition',
           active
             ? 'border-[#1a73e8] bg-[#e8f0fe] text-[#1a73e8]'
-            : 'border-[#dadce0] bg-white text-[#5f6368] hover:bg-[#f1f3f4]'
+            : 'border-[#dadce0] bg-white text-[#5f6368] hover:bg-[#f1f3f4]',
+          buttonClassName
         )}
       >
         {label}
@@ -1650,6 +1654,7 @@ function SymbolDetailPanel({
   const [compareCandlesMap, setCompareCandlesMap] = useState({});
   const [compareLoadingMap, setCompareLoadingMap] = useState({});
   const [compareErrorMap, setCompareErrorMap] = useState({});
+  const [compareQuoteMap, setCompareQuoteMap] = useState({});
   const indicatorOptions = INDICATOR_OPTIONS;
   const rowSymbol = row && row.symbol ? String(row.symbol).toUpperCase() : '';
   // 当前 symbol 或时间范围切换时清空对比
@@ -1675,22 +1680,6 @@ function SymbolDetailPanel({
       });
     });
   }, [compareSymbols, chartTf, compareCandlesMap, compareLoadingMap, compareErrorMap]);
-  if (!row || !row.symbol) return null;
-  const pct = Number(row.changePercent);
-  const change = Number(row.change);
-  const positive = Number.isFinite(pct) && pct > 0;
-  const negative = Number.isFinite(pct) && pct < 0;
-  const tone = positive ? 'up' : negative ? 'down' : 'flat';
-  const symbolKey = String(row.symbol || '').toLowerCase();
-  const nameKey = String(row.name || '').toLowerCase();
-  const relatedNews = (news || []).filter((it) => {
-    const text = `${it.title || ''} ${it.source || ''}`.toLowerCase();
-    return text.includes(symbolKey) || (nameKey && nameKey !== symbolKey && text.includes(nameKey));
-  });
-  const relatedEarnings = (earnings || []).filter((it) => String(it.symbol || '').toUpperCase() === String(row.symbol || '').toUpperCase());
-  const exchangeLabel = row.exchange || (market === 'us' ? 'NASDAQ/NYSE' : 'A 股');
-  const currencyLabel = row.currency || (market === 'us' ? 'USD' : 'CNY');
-  const stateLabel = marketStateLabel(row.marketState, market);
   const toggleIndicator = (k) => setIndicators((prev) => {
     const next = new Set(prev);
     if (next.has(k)) next.delete(k); else next.add(k);
@@ -1705,6 +1694,9 @@ function SymbolDetailPanel({
       : [
         { symbol: 'QQQ', name: '纳指 100 ETF' },
         { symbol: 'SPY', name: '标普 500 ETF' },
+        { symbol: 'TSLA', name: 'Tesla Inc' },
+        { symbol: 'MSFT', name: 'Microsoft Corp' },
+        { symbol: 'TQQQ', name: 'ProShares UltraPro QQQ' },
         { symbol: 'VOO', name: '标普 500 ETF' }
       ];
     const current = String(row && row.symbol || '').toUpperCase();
@@ -1717,6 +1709,81 @@ function SymbolDetailPanel({
         return true;
       });
   })();
+  const compareCandidateKey = compareCandidates.map((item) => item.symbol).join('|');
+  const compareSymbolKey = compareSymbols.join('|');
+  const backgroundStyle = (background) => ({ background });
+  const normalizeCompareQuote = (symbol, fallback = {}) => {
+    const upper = String(symbol || '').toUpperCase();
+    const quote = compareQuoteMap[upper] || (upper === String(row?.symbol || '').toUpperCase() ? row : null) || fallback || {};
+    const price = Number(quote.price);
+    const pctValue = Number(quote.changePercent);
+    const prevClose = Number(quote.previousClose);
+    const changeValue = Number.isFinite(Number(quote.change))
+      ? Number(quote.change)
+      : (Number.isFinite(price) && Number.isFinite(prevClose)
+        ? price - prevClose
+        : (Number.isFinite(price) && Number.isFinite(pctValue) && pctValue !== -100 ? price - (price / (1 + pctValue / 100)) : NaN));
+    const previousClose = Number.isFinite(prevClose)
+      ? prevClose
+      : (Number.isFinite(price) && Number.isFinite(changeValue) ? price - changeValue : NaN);
+    return {
+      symbol: upper,
+      name: quote.name || fallback.name || upper,
+      price,
+      change: changeValue,
+      changePercent: pctValue,
+      previousClose
+    };
+  };
+  useEffect(() => {
+    const symbols = Array.from(new Set([
+      ...compareCandidates.map((item) => item.symbol),
+      ...compareSymbols
+    ].map((sym) => String(sym || '').toUpperCase()).filter(Boolean)));
+    const missing = symbols.filter((sym) => sym !== String(row?.symbol || '').toUpperCase() && !compareQuoteMap[sym]);
+    if (!missing.length) return;
+    let cancelled = false;
+    fetchQuotes(missing)
+      .then((payload) => {
+        if (cancelled) return;
+        const quotes = payload?.quotes && typeof payload.quotes === 'object' ? payload.quotes : {};
+        setCompareQuoteMap((prev) => {
+          const next = { ...prev };
+          let changed = false;
+          missing.forEach((sym) => {
+            const quote = quotes[sym] || quotes[sym.toUpperCase()] || null;
+            if (quote) {
+              next[sym] = quote;
+              changed = true;
+            }
+          });
+          return changed ? next : prev;
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [compareCandidateKey, compareSymbolKey, compareQuoteMap, row?.symbol]);
+  const visibleCompareCandidates = compareCandidates.filter((item) => {
+    const q = compareInput.trim().toUpperCase();
+    if (!q) return true;
+    return item.symbol.includes(q) || String(item.name || '').toUpperCase().includes(q);
+  });
+  const pct = Number(row?.changePercent);
+  const change = Number(row?.change);
+  const positive = Number.isFinite(pct) && pct > 0;
+  const negative = Number.isFinite(pct) && pct < 0;
+  const tone = positive ? 'up' : negative ? 'down' : 'flat';
+  const symbolKey = String(row?.symbol || '').toLowerCase();
+  const nameKey = String(row?.name || '').toLowerCase();
+  const relatedNews = (news || []).filter((it) => {
+    const text = `${it.title || ''} ${it.source || ''}`.toLowerCase();
+    return text.includes(symbolKey) || (nameKey && nameKey !== symbolKey && text.includes(nameKey));
+  });
+  const relatedEarnings = (earnings || []).filter((it) => String(it.symbol || '').toUpperCase() === String(row?.symbol || '').toUpperCase());
+  const exchangeLabel = row?.exchange || (market === 'us' ? 'NASDAQ/NYSE' : 'A 股');
+  const currencyLabel = row?.currency || (market === 'us' ? 'USD' : 'CNY');
+  const stateLabel = marketStateLabel(row?.marketState, market);
+  if (!row || !row.symbol) return null;
   const addCompareSymbol = (raw) => {
     const v = String(raw || '').trim().toUpperCase();
     if (!v) return;
@@ -1739,6 +1806,7 @@ function SymbolDetailPanel({
   });
   const comparePendingSymbols = compareSymbols.filter((sym) => compareLoadingMap[`${sym}|${chartTf}`]);
   const compareReadyCount = compareSeries.filter((s) => Array.isArray(s.candles) && s.candles.length >= 2).length;
+  const compareTableRows = [normalizeCompareQuote(row.symbol, row), ...compareSymbols.map((sym) => normalizeCompareQuote(sym, compareCandidates.find((item) => item.symbol === sym)))];
   const effectiveChartCandles = market !== 'cn' || cnFundParam === 'price'
     ? chartCandles
     : buildCnFundParamCandles(chartCandles, navHistoryState?.items, cnFundParam, premiumState);
@@ -1898,67 +1966,66 @@ function SymbolDetailPanel({
             label={compareSymbols.length ? `对比 · ${compareSymbols.length}` : '对比'}
             active={compareSymbols.length > 0}
             align="right"
-            panelClassName="w-72 max-w-[calc(100vw-2rem)]"
+            panelClassName="w-[410px] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border-[#dfe3eb] bg-[#eef0f5] p-0 shadow-xl"
+            buttonClassName={compareSymbols.length ? 'bg-[#e8f0fe] text-[#1a73e8]' : ''}
           >
-            <div className="flex flex-col gap-2">
-              {compareSymbols.length ? (
-                <div className="flex flex-wrap gap-1">
-                  {compareSymbols.map((sym, ci) => (
-                    <span
-                      key={sym}
-                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
-                      style={{ background: `${COMPARE_COLORS[ci % COMPARE_COLORS.length]}1a`, color: COMPARE_COLORS[ci % COMPARE_COLORS.length] }}
-                    >
-                      {sym}
-                      <button type="button" onClick={() => removeCompare(sym)} aria-label={`移除 ${sym}`}>
-                        <X size={10} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-[12px] leading-snug text-[#5f6368]">选择一个标的后，图表会立即切换为归一化对比走势。</p>
-              )}
-              <div className="flex flex-wrap gap-1">
-                {compareCandidates.map((item) => {
-                  const disabled = compareSymbols.includes(item.symbol) || compareSymbols.length >= 3;
-                  return (
-                    <button
-                      key={item.symbol}
-                      type="button"
-                      onClick={() => addCompareSymbol(item.symbol)}
-                      disabled={disabled}
-                      className={cx(
-                        'rounded-full border px-2.5 py-1 text-[12px] font-medium transition',
-                        disabled ? 'border-[#e8eaed] bg-[#f8fafd] text-[#c4c7c5]' : 'border-[#dadce0] bg-white text-[#1f1f1f] hover:bg-[#f1f3f4]'
-                      )}
-                      title={item.name || item.symbol}
-                    >
-                      {item.symbol}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex min-w-0 items-center gap-1">
+            <div className="max-h-[420px] overflow-hidden text-[#202124]">
+              <div className="flex items-center gap-3 border-b border-[#1a73e8] bg-[#eef0f5] px-3 py-3">
+                <Search size={22} className="shrink-0 text-[#1a73e8]" />
                 <input
                   type="text"
                   value={compareInput}
                   onChange={(e) => setCompareInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') addCompare(); }}
-                  placeholder={market === 'cn' ? '输入 513500 / QQQ' : '输入 MSFT / QQQ'}
-                  className="min-w-0 flex-1 rounded-lg border border-[#dadce0] bg-white px-2 py-1.5 text-[12px] focus:border-[#1a73e8] focus:outline-none"
+                  placeholder="搜索股票代码..."
+                  className="min-w-0 flex-1 bg-transparent text-[15px] text-[#202124] placeholder:text-[#7b8090] outline-none"
                   disabled={compareSymbols.length >= 3}
+                  autoFocus
                 />
-                <button
-                  type="button"
-                  onClick={addCompare}
-                  disabled={!compareInput.trim() || compareSymbols.length >= 3}
-                  className="shrink-0 rounded-lg bg-[#1a73e8] px-3 py-1.5 text-[12px] font-medium text-white disabled:bg-[#dadce0]"
-                >
-                  添加
-                </button>
+                {compareInput ? (
+                  <button type="button" onClick={() => setCompareInput('')} className="rounded-full p-1 text-[#3c4043] hover:bg-black/5" aria-label="清空搜索">
+                    <X size={22} />
+                  </button>
+                ) : null}
               </div>
-              <p className="text-[11px] leading-snug text-[#94a3b8]">最多 3 个；对比后主图和标的都会归一化为 100，适合看相对走势。</p>
+              <div className="max-h-[348px] overflow-y-auto px-3 py-3">
+                <div className="mb-2 text-[13px] text-[#5f6368]">所有股票代码</div>
+                <div className="flex flex-col">
+                  {visibleCompareCandidates.map((item) => {
+                    const quote = normalizeCompareQuote(item.symbol, item);
+                    const disabled = compareSymbols.includes(item.symbol) || compareSymbols.length >= 3;
+                    const rowPositive = Number.isFinite(quote.changePercent) && quote.changePercent > 0;
+                    const rowNegative = Number.isFinite(quote.changePercent) && quote.changePercent < 0;
+                    const toneClass = rowPositive ? 'text-[#a50e0e]' : rowNegative ? 'text-[#137333]' : 'text-[#5f6368]';
+                    return (
+                      <button
+                        key={item.symbol}
+                        type="button"
+                        onClick={() => addCompareSymbol(item.symbol)}
+                        disabled={disabled}
+                        className={cx(
+                          'flex items-center gap-3 rounded-xl px-2 py-2.5 text-left transition',
+                          disabled ? 'cursor-default opacity-45' : 'hover:bg-white/70'
+                        )}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[20px] font-medium leading-tight text-[#202124]">{item.symbol}</div>
+                          <div className="mt-0.5 truncate text-[14px] text-[#5f6368]">{quote.name || item.name || item.symbol}</div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <div className="text-[20px] font-semibold tabular-nums text-[#202124]">{Number.isFinite(quote.price) ? `$${formatNumber(quote.price, 2)}` : '--'}</div>
+                          <div className={cx('mt-0.5 text-[14px] font-medium tabular-nums', toneClass)}>
+                            {formatSignedPercent(quote.changePercent)} {rowPositive ? '↑' : rowNegative ? '↓' : ''}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {!visibleCompareCandidates.length ? (
+                    <div className="py-8 text-center text-[13px] text-[#5f6368]">没有匹配的代码</div>
+                  ) : null}
+                </div>
+              </div>
             </div>
           </ChartToolbarPopover>
 
@@ -1972,8 +2039,11 @@ function SymbolDetailPanel({
         {/* 图表区 */}
         <div className="relative mt-2 h-48 rounded-xl bg-white px-1 py-1 sm:h-64">
           {compareSymbols.length > 0 ? (
-            <div className="pointer-events-none absolute left-3 top-2 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1 text-[11px]">
-              <span className="rounded-full bg-white/90 px-2 py-0.5 font-medium text-[#1a73e8] shadow-sm">{row.symbol}</span>
+            <div className="pointer-events-none absolute left-3 top-2 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 text-[12px]">
+              <span className="inline-flex items-center gap-1 rounded-full bg-white/95 px-3 py-1 font-medium text-[#2563eb] shadow-sm">
+                <span className="size-2 rounded-sm bg-[#2563eb]" />
+                {row.symbol}
+              </span>
               {compareSeries.map((item, ci) => {
                 const ready = Array.isArray(item.candles) && item.candles.length >= 2;
                 const loading = compareLoadingMap[`${item.symbol}|${chartTf}`];
@@ -1981,9 +2051,10 @@ function SymbolDetailPanel({
                 return (
                   <span
                     key={item.symbol}
-                    className="rounded-full bg-white/90 px-2 py-0.5 font-medium shadow-sm"
-                    style={{ color: failed ? '#9aa0a6' : COMPARE_COLORS[ci % COMPARE_COLORS.length] }}
+                    className="inline-flex items-center gap-1 rounded-full bg-white/95 px-3 py-1 font-medium shadow-sm"
+                    style={{ color: COMPARE_COLORS[ci % COMPARE_COLORS.length] }}
                   >
+                    <span className="size-2 rounded-full" style={{ background: COMPARE_COLORS[ci % COMPARE_COLORS.length] }} />
                     {item.symbol}{loading ? ' 加载中' : failed ? ' 无数据' : ready ? '' : ' 等待'}
                   </span>
                 );
@@ -2015,6 +2086,38 @@ function SymbolDetailPanel({
             )
           )}
         </div>
+
+        {compareSymbols.length > 0 ? (
+          <div className="mt-3 overflow-hidden border-y border-[#dfe3eb] bg-white text-[13px]">
+            <div className="grid grid-cols-[minmax(180px,1fr)_110px_110px_110px_110px] items-center gap-3 px-3 py-2 text-right text-[#5f6368]">
+              <div className="text-left">股票代码</div>
+              <div>价格</div>
+              <div>涨跌额</div>
+              <div>涨跌幅</div>
+              <div>昨收盘</div>
+            </div>
+            {compareTableRows.map((item, index) => {
+              const rowPositive = Number.isFinite(item.changePercent) && item.changePercent > 0;
+              const rowNegative = Number.isFinite(item.changePercent) && item.changePercent < 0;
+              const toneClass = rowPositive ? 'text-[#a50e0e]' : rowNegative ? 'text-[#137333]' : 'text-[#1f1f1f]';
+              return (
+                <div key={`${item.symbol}-${index}`} className="grid grid-cols-[minmax(180px,1fr)_110px_110px_110px_110px] items-center gap-3 border-t border-[#dfe3eb] px-3 py-2 text-right tabular-nums">
+                  <div className="flex min-w-0 items-center gap-3 text-left">
+                    <span className="size-3 shrink-0 rounded-sm" style={{ background: markerColor }} />
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold text-[#202124]">{item.symbol}</div>
+                      <div className="truncate text-[12px] text-[#5f6368]">{item.name}</div>
+                    </div>
+                  </div>
+                  <div className="font-semibold text-[#202124]">{Number.isFinite(item.price) ? `$${formatNumber(item.price, 2)}` : '--'}</div>
+                  <div className={cx('font-semibold', toneClass)}>{Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
+                  <div className={cx('font-semibold', toneClass)}>{Number.isFinite(item.changePercent) ? `${formatSignedPercent(item.changePercent)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
+                  <div className="font-semibold text-[#202124]">{Number.isFinite(item.previousClose) ? `$${formatNumber(item.previousClose, 2)}` : '--'}</div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
 
         {market === 'cn' && cnFundParam === 'nav' ? <NavInsightCard premiumState={premiumState} /> : null}
         {market === 'cn' && cnFundParam === 'premium' ? <PremiumInsightCard premiumState={premiumState} /> : null}
