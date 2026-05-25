@@ -1,0 +1,138 @@
+name: Playwright Acceptance
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'tests/e2e/**'
+      - 'playwright.config.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.lighthouserc.cjs'
+      - '.github/workflows/playwright-acceptance.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'tests/e2e/**'
+      - 'playwright.config.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.lighthouserc.cjs'
+      - '.github/workflows/playwright-acceptance.yml'
+  workflow_dispatch:
+    inputs:
+      full:
+        description: 'Run visual, accessibility, and Lighthouse acceptance in addition to smoke tests'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: playwright-acceptance
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Functional smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build app
+        run: npm run build:app
+
+      - name: Run Playwright smoke
+        run: npm run test:e2e:smoke
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-smoke-report
+          path: playwright-report
+          retention-days: 7
+
+  full:
+    name: Visual, accessibility, and Lighthouse
+    if: github.event_name == 'workflow_dispatch' && inputs.full == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build app
+        run: npm run build:app
+
+      - name: Run Playwright screenshots
+        run: npm run test:e2e:visual -- --project=chromium --project=mobile-chrome
+
+      - name: Run axe accessibility checks
+        run: npm run test:e2e:a11y -- --project=chromium
+
+      - name: Run Lighthouse CI
+        run: npx @lhci/cli@0.14.x autorun --config=.lighthouserc.cjs
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-full-report
+          path: playwright-report
+          retention-days: 7
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-screenshots
+          path: test-results/screenshots
+          retention-days: 7
+
+      - name: Upload Lighthouse report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-ci-report
+          path: .lighthouseci
+          retention-days: 7

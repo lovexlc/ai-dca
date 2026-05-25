@@ -195,41 +195,122 @@ export async function askMarketsStream({
 
 // Watchlist (localStorage). Stored per market for convenience.
 const WATCHLIST_KEY = 'markets:watchlist:v1';
+const WATCHLIST_DEFAULTS_VERSION = 1;
+const DEFAULT_WATCHLIST_ID = 'default';
+
+export const CN_ETF_WATCHLIST_PRESETS = [
+  { symbol: '513100', name: '纳指 ETF', exchange: '上交所', currency: 'CNY' },
+  { symbol: '513500', name: '标普 500 ETF', exchange: '上交所', currency: 'CNY' }
+];
+
+const DEFAULT_CN_WATCHLIST = CN_ETF_WATCHLIST_PRESETS.map((item) => item.symbol);
+
+function normalizeWatchlist(value = {}) {
+  const now = new Date().toISOString();
+  const rawUs = Array.isArray(value.us) ? value.us : [];
+  const rawCn = Array.isArray(value.cn) ? value.cn : [];
+  const hasCnDefaults = Number(value.defaultsVersion) >= WATCHLIST_DEFAULTS_VERSION;
+  const cn = hasCnDefaults
+    ? rawCn
+    : Array.from(new Set([...DEFAULT_CN_WATCHLIST, ...rawCn]));
+  const seedList = {
+    id: DEFAULT_WATCHLIST_ID,
+    name: '默认列表',
+    us: rawUs,
+    cn,
+    createdAt: value.createdAt || now,
+    updatedAt: value.updatedAt || now,
+  };
+  const rawLists = Array.isArray(value.lists) ? value.lists : [];
+  const lists = rawLists.length
+    ? rawLists.map((item, index) => ({
+      id: String(item.id || (index === 0 ? DEFAULT_WATCHLIST_ID : `list-${index + 1}`)),
+      name: String(item.name || (index === 0 ? '默认列表' : `列表 ${index + 1}`)),
+      us: Array.isArray(item.us) ? item.us : [],
+      cn: Array.isArray(item.cn) ? item.cn : [],
+      createdAt: item.createdAt || now,
+      updatedAt: item.updatedAt || now,
+    }))
+    : [seedList];
+  if (!lists.some((item) => item.id === DEFAULT_WATCHLIST_ID)) lists.unshift(seedList);
+  let activeListId = String(value.activeListId || DEFAULT_WATCHLIST_ID);
+  if (!lists.some((item) => item.id === activeListId)) activeListId = lists[0].id;
+  const activeList = lists.find((item) => item.id === activeListId) || lists[0] || seedList;
+
+  return {
+    ...value,
+    us: activeList.us || [],
+    cn: activeList.cn || [],
+    lists,
+    activeListId,
+    defaultsVersion: WATCHLIST_DEFAULTS_VERSION
+  };
+}
 
 export function loadWatchlist() {
   try {
     const raw = localStorage.getItem(WATCHLIST_KEY);
-    if (!raw) return { us: [], cn: [] };
+    if (!raw) return normalizeWatchlist({ us: [], cn: [] });
     const parsed = JSON.parse(raw);
-    return {
-      us: Array.isArray(parsed.us) ? parsed.us : [],
-      cn: Array.isArray(parsed.cn) ? parsed.cn : []
-    };
+    return normalizeWatchlist(parsed);
   } catch (err) {
-    return { us: [], cn: [] };
+    return normalizeWatchlist({ us: [], cn: [] });
   }
 }
 
 export function saveWatchlist(list) {
   try {
-    localStorage.setItem(WATCHLIST_KEY, JSON.stringify(list || { us: [], cn: [] }));
+    localStorage.setItem(WATCHLIST_KEY, JSON.stringify(normalizeWatchlist(list || { us: [], cn: [] })));
   } catch (err) {
     // ignore quota errors
   }
 }
 
-export function addToWatchlist(market, symbol) {
-  const next = loadWatchlist();
-  const list = next[market] || [];
-  if (!list.includes(symbol)) list.unshift(symbol);
-  next[market] = list.slice(0, 50);
+export function setActiveWatchlist(listId) {
+  const current = loadWatchlist();
+  const next = normalizeWatchlist({ ...current, activeListId: listId });
   saveWatchlist(next);
   return next;
 }
 
-export function removeFromWatchlist(market, symbol) {
-  const next = loadWatchlist();
-  next[market] = (next[market] || []).filter((s) => s !== symbol);
+export function createWatchlist(name = '新列表') {
+  const current = loadWatchlist();
+  const now = new Date().toISOString();
+  const id = `list-${Date.now().toString(36)}`;
+  const next = normalizeWatchlist({
+    ...current,
+    lists: [
+      ...(current.lists || []),
+      { id, name: String(name || '新列表').trim() || '新列表', us: [], cn: [], createdAt: now, updatedAt: now }
+    ],
+    activeListId: id,
+  });
   saveWatchlist(next);
   return next;
+}
+
+export function addToWatchlist(market, symbol, listId = null) {
+  const next = loadWatchlist();
+  const targetListId = String(listId || next.activeListId || DEFAULT_WATCHLIST_ID);
+  const lists = (next.lists || []).map((item) => ({ ...item }));
+  const target = lists.find((item) => item.id === targetListId) || lists[0];
+  const list = target[market] || [];
+  if (!list.includes(symbol)) list.unshift(symbol);
+  target[market] = list.slice(0, 50);
+  target.updatedAt = new Date().toISOString();
+  const saved = normalizeWatchlist({ ...next, lists, activeListId: target.id });
+  saveWatchlist(saved);
+  return saved;
+}
+
+export function removeFromWatchlist(market, symbol, listId = null) {
+  const next = loadWatchlist();
+  const targetListId = String(listId || next.activeListId || DEFAULT_WATCHLIST_ID);
+  const lists = (next.lists || []).map((item) => ({ ...item }));
+  const target = lists.find((item) => item.id === targetListId) || lists[0];
+  target[market] = (target[market] || []).filter((s) => s !== symbol);
+  target.updatedAt = new Date().toISOString();
+  const saved = normalizeWatchlist({ ...next, lists, activeListId: target.id });
+  saveWatchlist(saved);
+  return saved;
 }

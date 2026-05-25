@@ -6,6 +6,7 @@ import {
   normalizeYahooKline,
   fetchYahooQuotesBatch,
   fetchEastmoneyKline,
+  fetchSinaKline,
   fetchEastmoneyQuote,
   fetchEastmoneyQuotesBatch,
   fetchEastmoneyMovers,
@@ -333,7 +334,12 @@ async function refreshKline(env, market, code, tf) {
     const raw = await fetchYahooChart(code, { range: yahooRange, interval: yahooInterval });
     payload = { ...normalizeYahooKline(raw, tf), market, generatedAt: new Date().toISOString() };
   } else {
-    payload = { ...(await fetchEastmoneyKline(code, { intervalLabel: tf, limit: 500 })), market, generatedAt: new Date().toISOString() };
+    try {
+      payload = { ...(await fetchEastmoneyKline(code, { intervalLabel: tf, limit: 500 })), market, generatedAt: new Date().toISOString() };
+    } catch (err) {
+      console.warn('eastmoney kline failed, fallback to sina', code, tf, (err && err.message) || err);
+      payload = { ...(await fetchSinaKline(code, { intervalLabel: tf, limit: 500 })), market, generatedAt: new Date().toISOString(), fallback: 'sina' };
+    }
   }
   await r2PutJson(env, klineKey(market, code, tf), payload);
   return payload;

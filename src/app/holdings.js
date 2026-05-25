@@ -346,3 +346,55 @@ export async function requestHoldingsNav(codes = []) {
     expiresAt
   };
 }
+
+export async function requestHoldingsNavHistory(code, { from = '', to = '', days = 365, force = false } = {}) {
+  const normalized = getHoldingCodeList([{ code }]);
+  const fundCode = normalized[0];
+  if (!fundCode) {
+    return { ok: false, code: '', items: [], error: '缺少有效基金代码' };
+  }
+
+  const params = new URLSearchParams({ code: fundCode });
+  if (from) params.set('from', String(from));
+  if (to) params.set('to', String(to));
+  if (!from) params.set('days', String(Math.max(1, Math.min(Number(days) || 365, 3650))));
+  if (force) params.set('refresh', '1');
+
+  const response = await fetch(`${HOLDINGS_NAV_ENDPOINT}-history?${params.toString()}`, {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    cache: 'no-store'
+  });
+
+  const rawText = await response.text();
+  let payload = {};
+  if (rawText) {
+    try {
+      payload = JSON.parse(rawText);
+    } catch (_error) {
+      payload = { error: response.ok ? '净值历史服务返回了非标准响应。' : rawText };
+    }
+  }
+  if (!response.ok) {
+    throw new Error(payload.error || `净值历史服务请求失败：状态 ${response.status}`);
+  }
+
+  const items = (Array.isArray(payload.items) ? payload.items : [])
+    .map((item) => {
+      const date = String(item?.date || '').slice(0, 10);
+      const nav = round(Number(item?.nav) || 0, 4);
+      return /^\d{4}-\d{2}-\d{2}$/.test(date) && nav > 0 ? { date, nav } : null;
+    })
+    .filter(Boolean);
+
+  return {
+    ok: payload?.ok !== false,
+    code: fundCode,
+    from: String(payload?.from || '').trim(),
+    to: String(payload?.to || '').trim(),
+    count: Math.max(Number(payload?.count) || items.length, items.length),
+    items,
+    generatedAt: String(payload?.generatedAt || '').trim(),
+    cache: payload?.cache || null
+  };
+}

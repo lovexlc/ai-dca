@@ -582,6 +582,47 @@ function getClientRecentEvents(clientRecord = {}) {
   return Array.isArray(clientRecord?.state?.recentEvents) ? clientRecord.state.recentEvents : [];
 }
 
+function hasPcQueuedChannel(event = {}) {
+  return Array.isArray(event?.channels)
+    && event.channels.some((channel) => String(channel?.channel || '').trim() === 'pc'
+      && String(channel?.status || '').trim() === 'queued');
+}
+
+function isSuccessfulEventChannel(channel = {}) {
+  const status = String(channel?.status || '').trim();
+  return status === 'delivered'
+    || status === 'skipped'
+    || (String(channel?.channel || '').trim() === 'pc' && status === 'queued');
+}
+
+function isPositiveEventChannel(channel = {}) {
+  const status = String(channel?.status || '').trim();
+  return status === 'delivered'
+    || (String(channel?.channel || '').trim() === 'pc' && status === 'queued');
+}
+
+function shouldTreatEventAsDelivered(event = {}) {
+  const channels = Array.isArray(event?.channels) ? event.channels : [];
+  return channels.length > 0
+    && channels.every(isSuccessfulEventChannel)
+    && channels.some(isPositiveEventChannel);
+}
+
+function normalizeEventForClient(event = {}) {
+  if (!event || String(event?.status || '').trim() === 'delivered') return event;
+  return shouldTreatEventAsDelivered(event)
+    ? { ...event, status: 'delivered' }
+    : event;
+}
+
+function shouldExposeEventForClientPoll(event = {}) {
+  if (!event) return false;
+  if (String(event?.status || '').trim() !== 'delivered') return true;
+  // PC 浏览器以 /events 轮询为投递通道；即使 overall status 已视为 delivered，
+  // 仍需把包含 pc/queued channel 的事件返回给浏览器完成本地弹窗。
+  return hasPcQueuedChannel(event);
+}
+
 function getClientDeliveryFailures(clientRecord = {}) {
   return Object.values(typeof clientRecord?.state?.deliveryFailures === 'object' && clientRecord.state.deliveryFailures
     ? clientRecord.state.deliveryFailures
@@ -719,10 +760,11 @@ async function handleEvents(request, env) {
     await writeSettings(env, settings);
   }
 
-  // 过滤 status==='delivered' 的事件：全部 channels 都 delivered或skipped 的事件
-  // 说明后台认定已送达、客户端不需要再重复拉取。
+  // 默认过滤后台已确认送达的事件；但 PC 浏览器通知依赖 /events 轮询，
+  // 包含 pc/queued channel 的事件即使 overall status 视为 delivered，也要继续返回给浏览器本地弹窗。
   const pendingEvents = getClientRecentEvents(auth.clientRecord)
-    .filter((event) => event && event.status !== 'delivered');
+    .map(normalizeEventForClient)
+    .filter(shouldExposeEventForClientPoll);
 
   return jsonResponse({
     events: pendingEvents
@@ -1586,6 +1628,17 @@ function holdingsDedupKey(clientId, kind, dateKey) {
   return `${HOLDINGS_DEDUP_KEY_PREFIX}${clientId}:${kind}:${dateKey}`;
 }
 
+function hasConfirmedPushDelivery(runResult = {}) {
+  const channels = Array.isArray(runResult?.summary?.events?.[0]?.channels)
+    ? runResult.summary.events[0].channels
+    : [];
+  return channels.some((channel) => {
+    const channelName = String(channel?.channel || '').trim();
+    const status = String(channel?.status || '').trim();
+    return status === 'delivered' && (channelName === 'gcm' || channelName === 'bark');
+  });
+}
+
 /**
  * QDII 代码白名单（与前端 holdingsLedgerCore.js 保持一致）。
  * worker 拿不到基金名称，只能靠代码识别 QDII；后续如果 digest 上传了 name，可改用关键词匹配。
@@ -2424,26 +2477,31 @@ async function runHoldingsNotifications(env, kind, todayShanghai, reason = 'hold
       settings = result.settings;
       settingsDirty = true;
 
-      await writeJson(env, dedupKey, {
-        sentAt: new Date().toISOString(),
-        status: 'sent',
-        kind,
-        date: todayShanghai
-      });
-      // KV TTL
-      try {
-        await env.NOTIFY_STATE.put(
-          dedupKey,
-          JSON.stringify({
-            sentAt: new Date().toISOString(),
-            status: 'sent',
-            kind,
-            date: todayShanghai
-          }),
-          { expirationTtl: HOLDINGS_DEDUP_TTL_SECONDS }
-        );
-      } catch (_error) {
-        // TTL 写入失败不阻断主流程。
+      if (hasConfirmedPushDelivery(result)) {
+        const dedupPayload = {
+          sentAt: new Date().toISOString(),
+          status: 'sent',
+          kind,
+          date: todayShanghai
+        };
+        await writeJson(env, dedupKey, dedupPayload);
+        // KV TTL
+        try {
+          await env.NOTIFY_STATE.put(
+            dedupKey,
+            JSON.stringify(dedupPayload),
+            { expirationTtl: HOLDINGS_DEDUP_TTL_SECONDS }
+          );
+        } catch (_error) {
+          // TTL 写入失败不阻断主流程。
+        }
+      } else {
+        console.log('[notify][holdings] skip dedup: no confirmed push delivery', JSON.stringify({
+          clientId,
+          kind,
+          date: todayShanghai,
+          channels: (result?.summary?.events?.[0]?.channels || []).map((c) => ({ channel: c.channel, status: c.status }))
+        }));
       }
     } catch (_error) {
       // 推送失败不写 dedup，等下个点重试。
@@ -2663,24 +2721,32 @@ async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holding
         }))
       }));
 
-      const dedupPayload = {
-        sentAt: new Date().toISOString(),
-        status: 'sent',
-        kind: 'all',
-        date: todayShanghai
-      };
-      await writeJson(env, dedupKey, dedupPayload);
-      try {
-        await env.NOTIFY_STATE.put(
-          dedupKey,
-          JSON.stringify(dedupPayload),
-          { expirationTtl: HOLDINGS_DEDUP_TTL_SECONDS }
-        );
-      } catch (error) {
-        // TTL 写入失败不阻断主流程。
-        console.log('[notify][holdings-all] dedup ttl write failed (non-fatal)', JSON.stringify({
+      if (hasConfirmedPushDelivery(result)) {
+        const dedupPayload = {
+          sentAt: new Date().toISOString(),
+          status: 'sent',
+          kind: 'all',
+          date: todayShanghai
+        };
+        await writeJson(env, dedupKey, dedupPayload);
+        try {
+          await env.NOTIFY_STATE.put(
+            dedupKey,
+            JSON.stringify(dedupPayload),
+            { expirationTtl: HOLDINGS_DEDUP_TTL_SECONDS }
+          );
+        } catch (error) {
+          // TTL 写入失败不阻断主流程。
+          console.log('[notify][holdings-all] dedup ttl write failed (non-fatal)', JSON.stringify({
+            clientId,
+            message: error instanceof Error ? error.message : String(error)
+          }));
+        }
+      } else {
+        console.log('[notify][holdings-all] skip dedup: no confirmed push delivery', JSON.stringify({
           clientId,
-          message: error instanceof Error ? error.message : String(error)
+          date: todayShanghai,
+          channels: (result?.summary?.events?.[0]?.channels || []).map((c) => ({ channel: c.channel, status: c.status }))
         }));
       }
     } catch (error) {

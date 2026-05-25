@@ -2,10 +2,10 @@
   "dataset": "etf_latest_nav_eastmoney",
   "code": "159696",
   "name": "易方达纳斯达克100ETF(QDI)",
-  "latestNav": 1.8611,
-  "latestNavDate": "2026-05-20",
-  "previousNav": 1.8303,
-  "previousNavDate": "2026-05-19",
+  "latestNav": 1.8638,
+  "latestNavDate": "2026-05-21",
+  "previousNav": 1.8611,
+  "previousNavDate": "2026-05-20",
   "source": "eastmoney:f10/lsjz",
-  "generatedAt": "2026-05-22T07:27:53.479Z"
+  "generatedAt": "2026-05-23T04:35:03.088Z"
 }
