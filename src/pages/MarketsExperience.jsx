@@ -1348,7 +1348,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
           tickFormatter={(value) => normalized ? `${Number(value).toFixed(1)}%` : formatNumber(value, 2)}
         />
         <Tooltip
-          cursor={{ stroke: '#9aa0a6', strokeDasharray: '2 5', strokeWidth: 1.5 }}
+          cursor={false}
           contentStyle={{ borderRadius: 16, borderColor: 'rgba(17,24,39,0.08)', boxShadow: '0 6px 18px rgba(0,0,0,0.10)', padding: '12px 14px', minWidth: 160, maxWidth: 200, lineHeight: 1.25 }}
           labelStyle={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 8 }}
           itemStyle={{ fontSize: 14, lineHeight: 1.25, paddingTop: 4, paddingBottom: 4 }}
@@ -1371,7 +1371,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
           <Bar dataKey="main" name={displayMainSymbol || '当前标的'} fill={mainColor} fillOpacity={0.72} radius={[3, 3, 0, 0]} isAnimationActive={false} />
         ) : null}
         {showCandle ? (
-          <Line type="monotone" dataKey="c" stroke="transparent" dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
+          <Line type="monotone" dataKey="c" stroke="transparent" dot={false} activeDot={false} isAnimationActive={false} />
         ) : null}
         {showCandle ? (
           <Customized component={<CandlesLayerPanel data={finalRows} />} />
@@ -1397,7 +1397,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
             name={formatSymbolDisplay(series.symbol)}
             stroke={COMPARE_COLORS[ci % COMPARE_COLORS.length]}
             dot={false}
-            activeDot={{ r: 4 }}
+            activeDot={false}
             strokeWidth={2.5}
             connectNulls
             isAnimationActive={false}
