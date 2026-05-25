@@ -2102,68 +2102,74 @@ function SymbolDetailPanel({
           </ChartToolbarPopover>
 
           <ChartToolbarPopover
-            label="对比"
+            icon="≋"
+            label={compareSymbols.length ? `对比 · ${compareSymbols.length}` : '对比'}
             active={compareSymbols.length > 0}
             align="right"
-            panelClassName="w-[410px] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border-[#dfe3eb] bg-[#eef0f5] p-0 shadow-xl"
+            panelClassName="w-[520px] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border-[#dfe3eb] bg-white p-0 shadow-xl"
+            buttonClassName={compareSymbols.length ? 'bg-[#e8f0fe] text-[#1a73e8]' : ''}
           >
-            <div className="flex flex-col gap-2">
-              {compareSymbols.length ? (
-                <div className="flex flex-wrap gap-1">
-                  {compareSymbols.map((sym, ci) => (
-                    <span
-                      key={sym}
-                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
-                      style={{ background: `${COMPARE_COLORS[ci % COMPARE_COLORS.length]}1a`, color: COMPARE_COLORS[ci % COMPARE_COLORS.length] }}
-                    >
-                      {formatSymbolDisplay(sym)}
-                      <button type="button" onClick={() => removeCompare(sym)} aria-label={`移除 ${formatSymbolDisplay(sym)}`}>
-                        <X size={10} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-[12px] leading-snug text-[#5f6368]">选择一个标的后，图表会切换为涨幅对比走势。</p>
-              )}
-              <div className="flex flex-wrap gap-1">
-                {compareCandidates.map((item) => {
-                  const disabled = compareSymbols.includes(item.symbol) || compareSymbols.length >= 3;
-                  return (
-                    <button
-                      key={item.symbol}
-                      type="button"
-                      onClick={() => addCompareSymbol(item.symbol)}
-                      disabled={disabled}
-                      className={cx(
-                        'rounded-full border px-2.5 py-1 text-[12px] font-medium transition',
-                        disabled ? 'border-[#e8eaed] bg-[#f8fafd] text-[#c4c7c5]' : 'border-[#dadce0] bg-white text-[#1f1f1f] hover:bg-[#f1f3f4]'
-                      )}
-                      title={item.name || formatSymbolDisplay(item.symbol)}
-                    >
-                      {formatSymbolDisplay(item.symbol)}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex min-w-0 items-center gap-1">
+            <div className="max-h-[560px] overflow-hidden text-[#202124]">
+              <div className="flex items-center gap-4 border-b-2 border-[#1a73e8] bg-[#f8fafd] px-6 py-5">
+                <Search size={22} className="shrink-0 text-[#1a73e8]" />
                 <input
                   type="text"
                   value={compareInput}
                   onChange={(e) => setCompareInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') addCompare(); }}
-                  placeholder={market === 'cn' ? '输入 513500 / QQQ' : '输入 MSFT / QQQ'}
-                  className="min-w-0 flex-1 rounded-lg border border-[#dadce0] bg-white px-2 py-1.5 text-[12px] focus:border-[#1a73e8] focus:outline-none"
+                  placeholder="搜索股票代码..."
+                  className="min-w-0 flex-1 bg-transparent text-[24px] font-medium text-[#202124] placeholder:text-[#8f96a3] outline-none"
                   disabled={compareSymbols.length >= 3}
+                  autoFocus
                 />
-                <button
-                  type="button"
-                  onClick={addCompare}
-                  disabled={!compareInput.trim() || compareSymbols.length >= 3}
-                  className="shrink-0 rounded-lg bg-[#1a73e8] px-3 py-1.5 text-[12px] font-medium text-white disabled:bg-[#dadce0]"
-                >
-                  添加
-                </button>
+                {compareInput ? (
+                  <button type="button" onClick={() => setCompareInput('')} className="rounded-full p-1 text-[#3c4043] hover:bg-black/5" aria-label="清空搜索">
+                    <X size={22} />
+                  </button>
+                ) : null}
+              </div>
+              <div className="max-h-[452px] overflow-y-auto px-6 py-5">
+                <div className="mb-4 flex items-center justify-between text-[20px] font-semibold text-[#5f6368]">
+                  <span>{compareInput ? '搜索结果' : '所有股票代码'}</span>
+                  {compareSearchLoading ? <span className="inline-flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> 搜索中</span> : null}
+                </div>
+                <div className="flex flex-col">
+                  {visibleCompareCandidates.map((item) => {
+                    const quote = normalizeCompareQuote(item.symbol, item);
+                    const disabled = compareSymbols.includes(item.symbol) || compareSymbols.length >= 3;
+                    const rowPositive = Number.isFinite(quote.changePercent) && quote.changePercent > 0;
+                    const rowNegative = Number.isFinite(quote.changePercent) && quote.changePercent < 0;
+                    const toneClass = rowPositive ? 'text-[#a50e0e]' : rowNegative ? 'text-[#137333]' : 'text-[#5f6368]';
+                    return (
+                      <button
+                        key={item.symbol}
+                        type="button"
+                        onClick={() => addCompareSymbol(item.symbol)}
+                        disabled={disabled}
+                        className={cx(
+                          'flex items-center gap-5 rounded-xl px-3 py-4 text-left transition',
+                          disabled ? 'cursor-default opacity-45' : 'hover:bg-[#f8fafd]'
+                        )}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[28px] font-semibold leading-tight text-[#202124]">{item.symbol}</div>
+                          <div className="mt-1 truncate text-[18px] font-medium text-[#5f6368]">{quote.name || item.name || item.symbol}</div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <div className="text-[28px] font-semibold tabular-nums text-[#202124]">{Number.isFinite(quote.price) ? `$${formatNumber(quote.price, 2)}` : '--'}</div>
+                          <div className={cx('mt-1 text-[18px] font-semibold tabular-nums', toneClass)}>
+                            {formatSignedPercent(quote.changePercent)} {rowPositive ? '↑' : rowNegative ? '↓' : ''}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {compareSearchError ? (
+                    <div className="py-10 text-center text-[16px] text-[#a50e0e]">{compareSearchError}</div>
+                  ) : !visibleCompareCandidates.length && !compareSearchLoading ? (
+                    <div className="py-10 text-center text-[16px] text-[#5f6368]">没有匹配的代码</div>
+                  ) : null}
+                </div>
               </div>
             </div>
           </ChartToolbarPopover>
