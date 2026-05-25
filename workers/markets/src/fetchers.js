@@ -13,6 +13,7 @@ const EM_PUSH2_HOST = 'https://' + 'push2.eastmoney.com';
 const EM_PUSH2HIS_HOST = 'https://' + 'push2his.eastmoney.com';
 const EM_SEARCH_HOST = 'https://' + 'searchapi.eastmoney.com';
 const SINA_CN_HOST = 'https://' + 'quotes.sina.cn';
+const SINA_HQ_HOST = 'https://' + 'hq.sinajs.cn';
 const FINNHUB_HOST = 'https://' + 'finnhub.io';
 
 // 轻量级并发限流。与index.js 里的版本语义一致，这里独立定义避免跨文件依赖。
@@ -129,6 +130,89 @@ export async function fetchSinaKline(code, { intervalLabel = '1d', limit = 500 }
     source: 'sina-kline',
     candles
   };
+}
+
+async function readSinaQuoteText(response) {
+  const buffer = await response.arrayBuffer();
+  try {
+    return new TextDecoder('gb18030').decode(buffer);
+  } catch (_) {
+    return new TextDecoder().decode(buffer);
+  }
+}
+
+function parseSinaQuoteText(text) {
+  const map = new Map();
+  const re = /var\s+hq_str_(sh|sz)(\d{6})="([^"]*)";?/g;
+  let match;
+  while ((match = re.exec(String(text || ''))) !== null) {
+    const symbol = `${match[1]}${match[2]}`;
+    const fields = String(match[3] || '').split(',');
+    if (fields.length < 4 || !fields[0]) continue;
+    const current = Number(fields[3]);
+    const previousClose = Number(fields[2]);
+    const price = Number.isFinite(current) && current > 0
+      ? current
+      : (Number.isFinite(previousClose) && previousClose > 0 ? previousClose : NaN);
+    if (!Number.isFinite(price) || price <= 0) continue;
+    const change = Number.isFinite(previousClose) && previousClose > 0 ? round(price - previousClose, 4) : null;
+    const changePercent = Number.isFinite(previousClose) && previousClose > 0 ? round((change / previousClose) * 100, 4) : null;
+    const date = String(fields[30] || '').trim();
+    const time = String(fields[31] || '').trim();
+    const asOf = date ? new Date(`${date}T${time || '15:00:00'}+08:00`).toISOString() : new Date().toISOString();
+    map.set(symbol, {
+      symbol,
+      name: fields[0] || symbol,
+      market: 'cn',
+      price: round(price, 4),
+      previousClose: Number.isFinite(previousClose) && previousClose > 0 ? round(previousClose, 4) : null,
+      change,
+      changePercent,
+      open: Number.isFinite(Number(fields[1])) ? round(fields[1], 4) : null,
+      high: Number.isFinite(Number(fields[4])) ? round(fields[4], 4) : null,
+      low: Number.isFinite(Number(fields[5])) ? round(fields[5], 4) : null,
+      volume: Number(fields[8]) || null,
+      turnover: Number(fields[9]) || null,
+      currency: 'CNY',
+      exchangeTimezone: 'Asia/Shanghai',
+      marketState: time && time < '15:00:00' ? 'REGULAR' : 'CLOSED',
+      asOf,
+      source: 'sina-quote'
+    });
+  }
+  return map;
+}
+
+export async function fetchSinaQuotesBatch(codes = []) {
+  const pairs = (codes || [])
+    .map((code) => ({ raw: code, symbol: toSinaSymbol(code) }))
+    .filter((item) => item.symbol);
+  if (!pairs.length) return {};
+  const symbols = Array.from(new Set(pairs.map((item) => item.symbol)));
+  const url = SINA_HQ_HOST + '/list=' + symbols.join(',');
+  const res = await fetch(url, {
+    headers: { ...COMMON_HEADERS, referer: 'https://finance.sina.com.cn/' },
+    cf: { cacheTtl: 15 }
+  });
+  if (!res.ok) throw new Error('sina quote batch HTTP ' + res.status);
+  const text = await readSinaQuoteText(res);
+  const parsed = parseSinaQuoteText(text);
+  const out = {};
+  for (const item of pairs) {
+    const quote = parsed.get(item.symbol);
+    if (quote) out[item.raw] = quote;
+    else out[item.raw] = { symbol: item.raw, error: 'sina quote ' + item.symbol + ' empty' };
+  }
+  return out;
+}
+
+export async function fetchSinaQuote(code) {
+  const symbol = toSinaSymbol(code);
+  if (!symbol) throw new Error('sina bad code ' + code);
+  const quotes = await fetchSinaQuotesBatch([code]);
+  const quote = quotes[code];
+  if (!quote || quote.error) throw new Error((quote && quote.error) || ('sina quote ' + symbol + ' empty'));
+  return quote;
 }
 
 // ===================== Yahoo Finance Chart API（美股 quotes + K 线） =====================

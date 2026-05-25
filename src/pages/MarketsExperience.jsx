@@ -37,7 +37,7 @@ import { buildStockAnalysisPrompt } from '../app/stockAnalysisPrompt.js';
 import { requestHoldingsNav, requestHoldingsNavHistory } from '../app/holdings.js';
 import { Sparkline } from '../components/markets/Sparkline.jsx';
 import { MarketsChartCodeBlock } from '../components/markets/MarketsChartBlock.jsx';
-import { Area, Bar, CartesianGrid, ComposedChart, Customized, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, Bar, CartesianGrid, ComposedChart, Customized, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 const MARKETS = [
   { key: 'us', label: '美股' },
@@ -969,12 +969,12 @@ const SYMBOL_DETAIL_TABS = [
 const CHART_RANGE_TABS = [
   { key: '1d', label: '1天', tf: '5m', daysBack: 1 },
   { key: '5d', label: '5天', tf: '5m', daysBack: 5 },
-  { key: '1mo', label: '1月', tf: '60m', daysBack: 31 },
-  { key: '6mo', label: '6月', tf: '1w', daysBack: 31 * 6 },
-  { key: 'ytd', label: 'YTD', tf: '1w', daysBack: null },
-  { key: '1y', label: '1年', tf: '1w', daysBack: 365 },
-  { key: '5y', label: '5年', tf: '1mo', daysBack: 365 * 5 },
-  { key: 'max', label: '最大', tf: '1mo', daysBack: null },
+  { key: '1mo', label: '1月', tf: '1d', daysBack: 31 },
+  { key: '6mo', label: '6月', tf: '1d', daysBack: 31 * 6 },
+  { key: 'ytd', label: 'YTD', tf: '1d', daysBack: null },
+  { key: '1y', label: '1年', tf: '1d', daysBack: 365 },
+  { key: '5y', label: '5年', tf: '1d', daysBack: 365 * 5 },
+  { key: 'max', label: '最大', tf: '1d', daysBack: null },
 ];
 
 function sliceCandlesForRange(candles, rangeKey) {
@@ -988,7 +988,12 @@ function sliceCandlesForRange(candles, rangeKey) {
     return arr.filter((c) => Number(c && c.t) >= startSec);
   }
   if (cfg.daysBack == null) return arr;
-  const cutoffSec = Math.floor(Date.now() / 1000) - cfg.daysBack * 86400;
+  const maxSec = arr.reduce((max, candle) => {
+    const t = Number(candle && candle.t);
+    return Number.isFinite(t) && t > max ? t : max;
+  }, 0);
+  const anchorSec = maxSec > 0 ? maxSec : Math.floor(Date.now() / 1000);
+  const cutoffSec = anchorSec - cfg.daysBack * 86400;
   const filtered = arr.filter((c) => Number(c && c.t) >= cutoffSec);
   return filtered.length >= 2 ? filtered : arr;
 }
@@ -1037,6 +1042,19 @@ function buildCnFundParamCandles(priceCandles, navItems, param, premiumState) {
     .filter((item) => item && /^\d{4}-\d{2}-\d{2}$/.test(String(item.date || '')) && Number(item.nav) > 0)
     .sort((a, b) => a.date.localeCompare(b.date));
   if (param === 'nav') {
+    const priceTimeline = Array.isArray(priceCandles) ? priceCandles : [];
+    if (priceTimeline.length >= 2) {
+      return priceTimeline
+        .map((candle) => {
+          const date = shanghaiDateFromEpochSec(candle?.t);
+          const navItem = findNavOnOrBefore(sortedNav, date);
+          const v = Number(navItem?.nav);
+          return date && Number.isFinite(v) && v > 0
+            ? { t: Number(candle.t), o: v, h: v, l: v, c: v, date: navItem.date }
+            : null;
+        })
+        .filter(Boolean);
+    }
     return sortedNav
       .map((item) => {
         const t = epochSecFromShanghaiDate(item.date);
@@ -1084,9 +1102,10 @@ function marketStateLabel(state, marketCode) {
 
 // ---------- 图表工具栏（图表类型 / 指标 / 对比标的） ----------
 const CHART_TYPE_OPTIONS = [
-  { key: 'line', label: '折线', hint: '只看收盘价走势' },
-  { key: 'area', label: '面积', hint: '折线 + 渐变填充' },
-  { key: 'candle', label: 'K 线', hint: '开高低收烛台' },
+  { key: 'line', label: '折线图', hint: '只看收盘价走势', icon: '⌁' },
+  { key: 'area', label: '面积图', hint: '折线 + 渐变填充', icon: '▰' },
+  { key: 'candle', label: 'K 线图', hint: '开高低收烛台', icon: '▥' },
+  { key: 'bar', label: '柱形图', hint: '柱形展示收盘价', icon: '▮' },
 ];
 const CHART_TYPE_LABEL = CHART_TYPE_OPTIONS.reduce((acc, o) => { acc[o.key] = o.label; return acc; }, {});
 const CN_FUND_PARAM_OPTIONS = [
@@ -1104,7 +1123,10 @@ const INDICATOR_OPTIONS = [
   { key: 'boll', label: 'BOLL', hint: '布林带 (20, 2)' },
 ];
 const MA_COLORS = { ma5: '#1a73e8', ma10: '#ea4335', ma20: '#f9ab00', ma60: '#9aa0a6' };
-const COMPARE_COLORS = ['#9333ea', '#10b981', '#f43f5e'];
+const COMPARE_COLORS = ['#e37400', '#9333ea', '#10b981'];
+const COMPARE_MAIN_COLOR = '#2563eb';
+const COMPARE_TEXT_CLASSES = ['text-[#e37400]', 'text-[#9333ea]', 'text-[#10b981]'];
+const COMPARE_DOT_CLASSES = ['bg-[#e37400]', 'bg-[#9333ea]', 'bg-[#10b981]'];
 const CHART_UP = '#a50e0e';
 const CHART_DOWN = '#137333';
 
@@ -1179,13 +1201,13 @@ function CandlesLayerPanel({ xAxisMap, yAxisMap, data }) {
   );
 }
 
-function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, tone, symbol }) {
-  const cmpList = (compareSeries || []).filter((s) => Array.isArray(s.candles) && s.candles.length >= 2);
-  const cmpSignature = JSON.stringify(cmpList.map((s) => ({
-    symbol: s.symbol,
-    length: s.candles.length,
-    first: s.candles[0] && s.candles[0].t,
-    last: s.candles[s.candles.length - 1] && s.candles[s.candles.length - 1].t
+function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, tone, symbol, onHover }) {
+  const cmpList = (compareSeries || []).filter((series) => Array.isArray(series.candles) && series.candles.length >= 2);
+  const cmpSignature = JSON.stringify(cmpList.map((series) => ({
+    symbol: series.symbol,
+    length: series.candles.length,
+    first: series.candles[0] && series.candles[0].t,
+    last: series.candles[series.candles.length - 1] && series.candles[series.candles.length - 1].t
   })));
   const displayMainSymbol = formatSymbolDisplay(symbol);
   const normalized = cmpList.length > 0;
@@ -1193,19 +1215,26 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
     const arr = Array.isArray(candles) ? candles : [];
     if (arr.length < 2) return [];
     const base = Number(arr[0].c) || 1;
-    return arr.map((c) => {
-      const close = Number(c.c);
+    return arr.map((candle) => {
+      const close = Number(candle.c);
       return {
-        label: fmtChartLabel(c.t, tf),
-        t: Number(c.t),
-        o: Number(c.o), h: Number(c.h), l: Number(c.l), c: close,
+        label: fmtChartLabel(candle.t, tf),
+        t: Number(candle.t),
+        o: Number(candle.o),
+        h: Number(candle.h),
+        l: Number(candle.l),
+        c: close,
         main: normalized ? (close / base) * 100 : close,
+        mainPrice: close,
+        mainBase: base,
+        mainChange: close - base,
+        mainChangePercent: base ? ((close / base) - 1) * 100 : null,
       };
     });
   }, [candles, tf, normalized]);
   const indicatorLines = useMemo(() => {
     if (normalized || !Array.isArray(candles) || candles.length === 0) return [];
-    const closes = candles.map((c) => Number(c.c));
+    const closes = candles.map((candle) => Number(candle.c));
     const out = [];
     [['ma5', 5], ['ma10', 10], ['ma20', 20], ['ma60', 60]].forEach(([key, period]) => {
       if (indicators.has(key)) {
@@ -1213,24 +1242,29 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
       }
     });
     if (indicators.has('boll')) {
-      const b = computeBOLL(closes, 20, 2);
-      out.push({ key: 'boll_upper', color: '#94a3b8', values: b.upper, label: 'BOLL 上', dashed: true });
-      out.push({ key: 'boll_mid', color: '#cbd5e1', values: b.mid, label: 'BOLL 中', dashed: true });
-      out.push({ key: 'boll_lower', color: '#94a3b8', values: b.lower, label: 'BOLL 下', dashed: true });
+      const boll = computeBOLL(closes, 20, 2);
+      out.push({ key: 'boll_upper', color: '#94a3b8', values: boll.upper, label: 'BOLL 上', dashed: true });
+      out.push({ key: 'boll_mid', color: '#cbd5e1', values: boll.mid, label: 'BOLL 中', dashed: true });
+      out.push({ key: 'boll_lower', color: '#94a3b8', values: boll.lower, label: 'BOLL 下', dashed: true });
     }
     return out;
   }, [candles, indicators, normalized]);
   const finalRows = useMemo(() => {
-    return rows.map((r, i) => {
-      const out = { ...r };
-      indicatorLines.forEach((il) => { out[il.key] = il.values[i]; });
-      cmpList.forEach((s, ci) => {
-        const offset = Math.max(0, s.candles.length - rows.length);
-        const aligned = s.candles.slice(offset);
-        const sc = aligned[i];
-        const cb = Number(aligned[0] && aligned[0].c) || 1;
-        if (sc && Number.isFinite(Number(sc.c))) {
-          out[`cmp_${ci}`] = (Number(sc.c) / cb) * 100;
+    return rows.map((row, index) => {
+      const out = { ...row };
+      indicatorLines.forEach((line) => { out[line.key] = line.values[index]; });
+      cmpList.forEach((series, ci) => {
+        const offset = Math.max(0, series.candles.length - rows.length);
+        const aligned = series.candles.slice(offset);
+        const candle = aligned[index];
+        const base = Number(aligned[0] && aligned[0].c) || 1;
+        if (candle && Number.isFinite(Number(candle.c))) {
+          const close = Number(candle.c);
+          out[`cmp_${ci}`] = (close / base) * 100;
+          out[`cmp_${ci}_price`] = close;
+          out[`cmp_${ci}_base`] = base;
+          out[`cmp_${ci}_change`] = close - base;
+          out[`cmp_${ci}_changePercent`] = base ? ((close / base) - 1) * 100 : null;
         }
       });
       return out;
@@ -1240,66 +1274,93 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
   if (finalRows.length < 2) {
     return <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">暂无数据</div>;
   }
-  const mainColor = normalized ? '#1a73e8' : tone === 'up' ? CHART_UP : tone === 'down' ? CHART_DOWN : '#1a73e8';
+  const mainColor = normalized ? COMPARE_MAIN_COLOR : tone === 'up' ? CHART_UP : tone === 'down' ? CHART_DOWN : '#1a73e8';
   const showCandle = chartType === 'candle' && !normalized;
   const showArea = chartType === 'area' && !normalized;
   const showLine = chartType === 'line' || normalized;
+  const showBar = chartType === 'bar' && !normalized;
+  const handleChartPoint = (state) => {
+    if (!onHover) return;
+    const index = Number.isInteger(state?.activeTooltipIndex) ? state.activeTooltipIndex : -1;
+    const payload = state?.activePayload?.[0]?.payload || (index >= 0 ? finalRows[index] : null);
+    if (payload) onHover(payload);
+  };
+  useEffect(() => {
+    if (onHover && finalRows.length > 0) onHover(finalRows[finalRows.length - 1]);
+  }, [onHover, finalRows]);
   const legendPayload = normalized
     ? [
       { value: displayMainSymbol || '当前标的', type: 'line', color: mainColor, id: 'main' },
-      ...cmpList.map((s, ci) => ({ value: formatSymbolDisplay(s.symbol), type: 'line', color: COMPARE_COLORS[ci % COMPARE_COLORS.length], id: `cmp_${ci}` }))
+      ...cmpList.map((series, ci) => ({ value: formatSymbolDisplay(series.symbol), type: 'line', color: COMPARE_COLORS[ci % COMPARE_COLORS.length], id: `cmp_${ci}` }))
     ]
     : undefined;
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <ComposedChart data={finalRows} margin={{ top: 8, right: 12, bottom: normalized ? 10 : 0, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#f1f3f4" vertical={false} />
-        <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#9aa0a6' }} minTickGap={40} />
-        <YAxis tick={{ fontSize: 11, fill: '#9aa0a6' }} domain={['auto', 'auto']} width={44} />
+      <ComposedChart
+        data={finalRows}
+        margin={{ top: 12, right: 12, left: 4, bottom: 8 }}
+        onMouseMove={handleChartPoint}
+        onClick={handleChartPoint}
+      >
+        <CartesianGrid stroke="#dfe3eb" vertical strokeDasharray="0" />
+        <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#5f6368' }} minTickGap={40} axisLine={false} tickLine={false} />
+        <YAxis
+          tick={{ fontSize: 12, fill: '#5f6368' }}
+          domain={['auto', 'auto']}
+          width={44}
+          axisLine={false}
+          tickLine={false}
+          tickFormatter={(value) => normalized ? `${(Number(value) - 100).toFixed(1)}%` : formatNumber(value, 2)}
+        />
         <Tooltip
-          contentStyle={{ borderRadius: 12, border: '1px solid #e8eaed', boxShadow: '0 8px 24px rgba(60,64,67,0.12)' }}
+          cursor={{ stroke: '#9aa0a6', strokeDasharray: '2 5', strokeWidth: 1.5 }}
+          contentStyle={{ borderRadius: 12, borderColor: '#dfe3eb', boxShadow: '0 12px 32px rgba(60,64,67,0.16)' }}
           formatter={(value, name) => {
+            const key = String(name);
+            if (key.includes('_price') || key.includes('_base') || key.includes('_change')) return null;
             const n = Number(value);
             const label = name === 'main' ? (displayMainSymbol || '当前标的') : formatSymbolDisplay(name);
             return [Number.isFinite(n) ? n.toFixed(normalized ? 2 : 4) : value, label];
           }}
         />
-        {normalized ? <Legend payload={legendPayload} wrapperStyle={{ fontSize: 11, paddingTop: 4 }} /> : null}
         {showArea ? (
           <Area type="monotone" dataKey="main" name={displayMainSymbol || '当前标的'} stroke={mainColor} fill={mainColor} fillOpacity={0.12} dot={false} strokeWidth={1.5} isAnimationActive={false} />
         ) : null}
         {showLine ? (
           <Line type="monotone" dataKey="main" name={displayMainSymbol || '当前标的'} stroke={mainColor} dot={false} strokeWidth={normalized ? 2 : 1.5} isAnimationActive={false} />
         ) : null}
+        {showBar ? (
+          <Bar dataKey="main" name={displayMainSymbol || '当前标的'} fill={mainColor} fillOpacity={0.72} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+        ) : null}
         {showCandle ? (
-          <Line type="monotone" dataKey="c" stroke="transparent" dot={false} isAnimationActive={false} />
+          <Line type="monotone" dataKey="c" stroke="transparent" dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
         ) : null}
         {showCandle ? (
           <Customized component={<CandlesLayerPanel data={finalRows} />} />
         ) : null}
-        {indicatorLines.map((il) => (
+        {indicatorLines.map((line) => (
           <Line
-            key={il.key}
+            key={line.key}
             type="monotone"
-            dataKey={il.key}
-            name={il.label}
-            stroke={il.color}
-            strokeDasharray={il.dashed ? '3 3' : '0'}
+            dataKey={line.key}
+            name={line.label}
+            stroke={line.color}
+            strokeDasharray={line.dashed ? '3 3' : '0'}
             dot={false}
             strokeWidth={1}
             isAnimationActive={false}
           />
         ))}
-        {cmpList.map((s, ci) => (
+        {cmpList.map((series, ci) => (
           <Line
             key={`cmp_${ci}`}
             type="monotone"
             dataKey={`cmp_${ci}`}
-            name={formatSymbolDisplay(s.symbol)}
+            name={formatSymbolDisplay(series.symbol)}
             stroke={COMPARE_COLORS[ci % COMPARE_COLORS.length]}
             dot={false}
-            strokeWidth={1.8}
-            strokeDasharray={ci === 1 ? '5 3' : ci === 2 ? '2 3' : '0'}
+            activeDot={{ r: 4 }}
+            strokeWidth={2}
             connectNulls
             isAnimationActive={false}
           />
@@ -1309,7 +1370,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
   );
 }
 
-function ChartToolbarPopover({ label, active, children, align = 'left', panelClassName = '' }) {
+function ChartToolbarPopover({ label, icon, active, children, align = 'left', panelClassName = '', buttonClassName = '' }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -1333,19 +1394,19 @@ function ChartToolbarPopover({ label, active, children, align = 'left', panelCla
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cx(
-          'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[12px] font-medium transition',
-          active
-            ? 'border-[#1a73e8] bg-[#e8f0fe] text-[#1a73e8]'
-            : 'border-[#dadce0] bg-white text-[#5f6368] hover:bg-[#f1f3f4]'
+          'inline-flex h-10 items-center gap-2 rounded-lg px-3 text-[14px] font-semibold text-[#202124] transition hover:bg-white/70',
+          active ? 'bg-white shadow-sm' : 'bg-transparent',
+          buttonClassName
         )}
       >
-        {label}
-        <ChevronDown size={12} className={cx('transition', open ? 'rotate-180' : '')} />
+        {icon ? <span className="text-[18px] leading-none text-[#202124]" aria-hidden="true">{icon}</span> : null}
+        <span>{label}</span>
+        <ChevronDown size={16} className={cx('transition', open ? 'rotate-180' : '')} />
       </button>
       {open ? (
         <div
           className={cx(
-            'absolute z-30 mt-1 min-w-[180px] rounded-xl border border-[#e8eaed] bg-white p-2 shadow-lg',
+            'absolute z-30 mt-1 min-w-[190px] rounded-xl border border-[#dfe3eb] bg-white p-1.5 shadow-lg',
             panelClassName,
             align === 'right' ? 'right-0' : 'left-0'
           )}
@@ -1356,6 +1417,7 @@ function ChartToolbarPopover({ label, active, children, align = 'left', panelCla
     </div>
   );
 }
+
 
 
 const FINANCIAL_TABS = [
@@ -1617,14 +1679,68 @@ function SymbolDetailPanel({
   const [indicators, setIndicators] = useState(() => new Set());
   const [compareSymbols, setCompareSymbols] = useState([]);
   const [compareInput, setCompareInput] = useState('');
+  const [compareSearchResults, setCompareSearchResults] = useState([]);
+  const [compareSearchLoading, setCompareSearchLoading] = useState(false);
+  const [compareSearchError, setCompareSearchError] = useState('');
+  const compareSearchSeqRef = useRef(0);
   const [compareCandlesMap, setCompareCandlesMap] = useState({});
   const [compareLoadingMap, setCompareLoadingMap] = useState({});
   const [compareErrorMap, setCompareErrorMap] = useState({});
+  const [compareQuoteMap, setCompareQuoteMap] = useState({});
+  const [activeChartRow, setActiveChartRow] = useState(null);
   const indicatorOptions = INDICATOR_OPTIONS;
   const rowSymbol = row && row.symbol ? String(row.symbol).toUpperCase() : '';
   // 当前 symbol 或时间范围切换时清空对比
-  useEffect(() => { setCompareSymbols([]); }, [rowSymbol]);
+  useEffect(() => { setCompareSymbols([]); setActiveChartRow(null); }, [rowSymbol]);
+  useEffect(() => { setActiveChartRow(null); }, [chartRange, cnFundParam]);
   useEffect(() => { if (market !== 'cn') setCnFundParam('price'); }, [market]);
+  useEffect(() => {
+    const q = compareInput.trim();
+    const seq = ++compareSearchSeqRef.current;
+    if (q.length < 1 || compareSymbols.length >= 3) {
+      setCompareSearchResults([]);
+      setCompareSearchLoading(false);
+      setCompareSearchError('');
+      return undefined;
+    }
+    const controller = new AbortController();
+    setCompareSearchLoading(true);
+    setCompareSearchError('');
+    const timer = window.setTimeout(() => {
+      searchSymbols(market, q, { limit: 10, signal: controller.signal })
+        .then((res) => {
+          if (seq !== compareSearchSeqRef.current) return;
+          const rows = Array.isArray(res && res.results) ? res.results : [];
+          const current = String(rowSymbol || '').toUpperCase();
+          const seen = new Set();
+          setCompareSearchResults(rows.map((item) => {
+            const symbol = String(item.symbol || item.code || item.ticker || '').trim().toUpperCase();
+            return {
+              ...item,
+              symbol,
+              name: item.name || item.shortName || item.displayName || symbol,
+              market: item.market || market
+            };
+          }).filter((item) => {
+            if (!item.symbol || item.symbol === current || seen.has(item.symbol)) return false;
+            seen.add(item.symbol);
+            return true;
+          }));
+        })
+        .catch(() => {
+          if (controller.signal.aborted || seq !== compareSearchSeqRef.current) return;
+          setCompareSearchResults([]);
+          setCompareSearchError('搜索失败，稍后再试');
+        })
+        .finally(() => {
+          if (seq === compareSearchSeqRef.current) setCompareSearchLoading(false);
+        });
+    }, 220);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [compareInput, compareSymbols.length, market, rowSymbol]);
   useEffect(() => {
     if (!chartTf || !compareSymbols.length) return;
     compareSymbols.forEach((sym) => {
@@ -1676,6 +1792,9 @@ function SymbolDetailPanel({
       : [
         { symbol: 'QQQ', name: '纳指 100 ETF' },
         { symbol: 'SPY', name: '标普 500 ETF' },
+        { symbol: 'TSLA', name: 'Tesla Inc' },
+        { symbol: 'MSFT', name: 'Microsoft Corp' },
+        { symbol: 'TQQQ', name: 'ProShares UltraPro QQQ' },
         { symbol: 'VOO', name: '标普 500 ETF' }
       ];
     const current = String(row && row.symbol || '').toUpperCase();
@@ -1687,6 +1806,85 @@ function SymbolDetailPanel({
         seen.add(item.symbol);
         return true;
       });
+  })();
+  const compareSearchCandidates = compareSearchResults
+    .map((item) => ({
+      ...item,
+      symbol: String(item.symbol || '').trim().toUpperCase(),
+      name: item.name || item.shortName || item.displayName || item.symbol
+    }))
+    .filter((item) => item.symbol);
+  const compareCandidateKey = compareCandidates.map((item) => item.symbol).join('|');
+  const compareSearchCandidateKey = compareSearchCandidates.map((item) => item.symbol).join('|');
+  const compareSymbolKey = compareSymbols.join('|');
+  const backgroundStyle = (background) => ({ background });
+  const normalizeCompareQuote = (symbol, fallback = {}) => {
+    const upper = String(symbol || '').toUpperCase();
+    const quote = compareQuoteMap[upper] || (upper === String(row?.symbol || '').toUpperCase() ? row : null) || fallback || {};
+    const price = Number(quote.price);
+    const pctValue = Number(quote.changePercent);
+    const prevClose = Number(quote.previousClose);
+    const changeValue = Number.isFinite(Number(quote.change))
+      ? Number(quote.change)
+      : (Number.isFinite(price) && Number.isFinite(prevClose)
+        ? price - prevClose
+        : (Number.isFinite(price) && Number.isFinite(pctValue) && pctValue !== -100 ? price - (price / (1 + pctValue / 100)) : NaN));
+    const previousClose = Number.isFinite(prevClose)
+      ? prevClose
+      : (Number.isFinite(price) && Number.isFinite(changeValue) ? price - changeValue : NaN);
+    return {
+      symbol: upper,
+      name: quote.name || fallback.name || upper,
+      price,
+      change: changeValue,
+      changePercent: pctValue,
+      previousClose
+    };
+  };
+  useEffect(() => {
+    const symbols = Array.from(new Set([
+      ...compareCandidates.map((item) => item.symbol),
+      ...compareSearchCandidates.map((item) => item.symbol),
+      ...compareSymbols
+    ].map((sym) => String(sym || '').toUpperCase()).filter(Boolean)));
+    const missing = symbols.filter((sym) => sym !== String(row?.symbol || '').toUpperCase() && !compareQuoteMap[sym]);
+    if (!missing.length) return;
+    let cancelled = false;
+    fetchQuotes(missing)
+      .then((payload) => {
+        if (cancelled) return;
+        const quotes = payload?.quotes && typeof payload.quotes === 'object' ? payload.quotes : {};
+        setCompareQuoteMap((prev) => {
+          const next = { ...prev };
+          let changed = false;
+          missing.forEach((sym) => {
+            const quote = quotes[sym] || quotes[sym.toUpperCase()] || null;
+            if (quote) {
+              next[sym] = quote;
+              changed = true;
+            }
+          });
+          return changed ? next : prev;
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [compareCandidateKey, compareSearchCandidateKey, compareSymbolKey, compareQuoteMap, row?.symbol]);
+  const visibleCompareCandidates = (() => {
+    const q = compareInput.trim().toUpperCase();
+    const source = q
+      ? [
+        ...compareSearchCandidates,
+        ...compareCandidates.filter((item) => item.symbol.includes(q) || String(item.name || '').toUpperCase().includes(q))
+      ]
+      : compareCandidates;
+    const seen = new Set();
+    return source.filter((item) => {
+      const symbol = String(item.symbol || '').toUpperCase();
+      if (!symbol || seen.has(symbol)) return false;
+      seen.add(symbol);
+      return true;
+    });
   })();
   const addCompareSymbol = (raw) => {
     const v = String(raw || '').trim().toUpperCase();
@@ -1710,6 +1908,30 @@ function SymbolDetailPanel({
   });
   const comparePendingSymbols = compareSymbols.filter((sym) => compareLoadingMap[`${sym}|${chartTf}`]);
   const compareReadyCount = compareSeries.filter((s) => Array.isArray(s.candles) && s.candles.length >= 2).length;
+  const applyHoverSnapshot = (quoteRow, keyPrefix) => {
+    if (!activeChartRow) return quoteRow;
+    const priceKey = keyPrefix === 'main' ? 'mainPrice' : `${keyPrefix}price`;
+    const baseKey = keyPrefix === 'main' ? 'mainBase' : `${keyPrefix}base`;
+    const changeKey = keyPrefix === 'main' ? 'mainChange' : `${keyPrefix}change`;
+    const pctKey = keyPrefix === 'main' ? 'mainChangePercent' : `${keyPrefix}changePercent`;
+    const price = Number(activeChartRow[priceKey]);
+    const change = Number(activeChartRow[changeKey]);
+    const changePercent = Number(activeChartRow[pctKey]);
+    const previousClose = Number(activeChartRow[baseKey]);
+    if (!Number.isFinite(price)) return quoteRow;
+    return {
+      ...quoteRow,
+      price,
+      change: Number.isFinite(change) ? change : quoteRow.change,
+      changePercent: Number.isFinite(changePercent) ? changePercent : quoteRow.changePercent,
+      previousClose: Number.isFinite(previousClose) ? previousClose : quoteRow.previousClose,
+      snapshotLabel: activeChartRow.label
+    };
+  };
+  const compareTableRows = [
+    applyHoverSnapshot(normalizeCompareQuote(row.symbol, row), 'main'),
+    ...compareSymbols.map((sym, index) => applyHoverSnapshot(normalizeCompareQuote(sym, compareCandidates.find((item) => item.symbol === sym)), `cmp_${index}_`))
+  ];
   const effectiveChartCandles = market !== 'cn' || cnFundParam === 'price'
     ? chartCandles
     : buildCnFundParamCandles(chartCandles, navHistoryState?.items, cnFundParam, premiumState);
@@ -1805,9 +2027,10 @@ function SymbolDetailPanel({
         </div>
 
         {/* 图表工具栏 */}
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl bg-[#f1f3f4] px-3 py-2">
           {market === 'cn' ? (
             <ChartToolbarPopover
+              icon="⌁"
               label="参数"
               active={cnFundParam !== 'price'}
             >
@@ -1832,7 +2055,8 @@ function SymbolDetailPanel({
             </ChartToolbarPopover>
           ) : null}
           <ChartToolbarPopover
-            label={`图表 · ${CHART_TYPE_LABEL[chartType] || '折线'}`}
+            icon={(CHART_TYPE_OPTIONS.find((opt) => opt.key === chartType) || {}).icon || '⌁'}
+            label={CHART_TYPE_LABEL[chartType] || '折线图'}
             active={chartType !== 'line'}
           >
             {({ close }) => (
@@ -1843,12 +2067,12 @@ function SymbolDetailPanel({
                     type="button"
                     onClick={() => { setChartType(opt.key); close(); }}
                     className={cx(
-                      'flex items-start gap-2 rounded-lg px-2 py-1.5 text-left transition',
+                      'flex items-center gap-3 rounded-lg px-3 py-2 text-left transition',
                       chartType === opt.key ? 'bg-[#e8f0fe]' : 'hover:bg-[#f1f3f4]'
                     )}
                   >
-                    <span className={cx('text-[13px] font-medium', chartType === opt.key ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>{opt.label}</span>
-                    <span className="ml-auto text-[11px] text-[#9aa0a6]">{opt.hint}</span>
+                    <span className="w-5 text-center text-[18px] leading-none text-[#202124]">{opt.icon}</span>
+                    <span className={cx('text-[14px] font-medium', chartType === opt.key ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>{opt.label}</span>
                   </button>
                 ))}
               </div>
@@ -1856,6 +2080,7 @@ function SymbolDetailPanel({
           </ChartToolbarPopover>
 
           <ChartToolbarPopover
+            icon="▥"
             label={indicators.size ? `指标 · ${indicators.size}` : '指标'}
             active={indicators.size > 0}
           >
@@ -1879,7 +2104,7 @@ function SymbolDetailPanel({
             label="对比"
             active={compareSymbols.length > 0}
             align="right"
-            panelClassName="w-72 max-w-[calc(100vw-2rem)]"
+            panelClassName="w-[410px] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border-[#dfe3eb] bg-[#eef0f5] p-0 shadow-xl"
           >
             <div className="flex flex-col gap-2">
               {compareSymbols.length ? (
@@ -1939,7 +2164,6 @@ function SymbolDetailPanel({
                   添加
                 </button>
               </div>
-              <p className="text-[11px] leading-snug text-[#94a3b8]">最多 3 个；对比后主图和标的都会归一化为 100，适合看相对走势。</p>
             </div>
           </ChartToolbarPopover>
 
@@ -1950,19 +2174,20 @@ function SymbolDetailPanel({
         </div>
 
         {/* 图表区 */}
-        <div className="relative mt-2 h-48 rounded-xl bg-white px-1 py-1 sm:h-64">
+        <div className="relative mt-0 h-56 rounded-b-2xl bg-[#f8fafd] px-3 pb-3 pt-4 sm:h-72">
           {compareSymbols.length > 0 ? (
             <div className="pointer-events-none absolute left-3 top-2 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1 text-[11px]">
               <span className="rounded-full bg-white/90 px-2 py-0.5 font-medium text-[#1a73e8] shadow-sm">{displaySymbol}</span>
               {compareSeries.map((item, ci) => {
+                const markerColor = COMPARE_COLORS[ci % COMPARE_COLORS.length];
                 const ready = Array.isArray(item.candles) && item.candles.length >= 2;
                 const loading = compareLoadingMap[`${item.symbol}|${chartTf}`];
                 const failed = compareErrorMap[`${item.symbol}|${chartTf}`];
                 return (
                   <span
                     key={item.symbol}
-                    className="rounded-full bg-white/90 px-2 py-0.5 font-medium shadow-sm"
-                    style={{ color: failed ? '#9aa0a6' : COMPARE_COLORS[ci % COMPARE_COLORS.length] }}
+                    className="inline-flex items-center gap-2 rounded-full border border-[#dfe3eb] bg-[#f8fafd] px-3 py-1.5 font-medium"
+                    style={{ color: markerColor }}
                   >
                     {formatSymbolDisplay(item.symbol)}{loading ? ' 加载中' : failed ? ' 无数据' : ready ? '' : ' 等待'}
                   </span>
@@ -1984,6 +2209,7 @@ function SymbolDetailPanel({
               compareSeries={compareSeries}
               tone={tone}
               symbol={cnFundParam === 'price' ? displaySymbol : CN_FUND_PARAM_LABEL[cnFundParam]}
+              onHover={(payload) => setActiveChartRow((prev) => (prev && payload && prev.t === payload.t ? prev : payload))}
             />
           ) : sparkFallback ? (
             <Sparkline points={sparkFallback} width={720} height={210} tone={tone} showFill markLast className="h-full w-full" />
@@ -1995,6 +2221,41 @@ function SymbolDetailPanel({
             )
           )}
         </div>
+
+        {compareSymbols.length > 0 ? (
+          <div className="overflow-hidden bg-white text-[13px]">
+            <div className="grid grid-cols-[minmax(180px,1fr)_110px_110px_110px_110px] items-center gap-3 border-b border-[#dfe3eb] px-6 py-3 text-right text-[14px] text-[#5f6368]">
+              <div className="text-left">股票代码</div>
+              <div>价格</div>
+              <div>涨跌额</div>
+              <div>涨跌幅</div>
+              <div>昨收盘</div>
+            </div>
+            {activeChartRow?.label ? <div className="px-6 py-2 text-[12px] text-[#5f6368]">图表定位：{activeChartRow.label}</div> : null}
+            {compareTableRows.map((item, index) => {
+              const markerColor = index === 0 ? COMPARE_MAIN_COLOR : COMPARE_COLORS[(index - 1) % COMPARE_COLORS.length];
+              const rowPositive = Number.isFinite(item.changePercent) && item.changePercent > 0;
+              const rowNegative = Number.isFinite(item.changePercent) && item.changePercent < 0;
+              const toneClass = rowPositive ? 'text-[#a50e0e]' : rowNegative ? 'text-[#137333]' : 'text-[#1f1f1f]';
+              const displayRowSymbol = formatSymbolDisplay(item.symbol);
+              return (
+                <div key={`${item.symbol}-${index}`} className="grid grid-cols-[minmax(180px,1fr)_110px_110px_110px_110px] items-center gap-3 border-b border-[#dfe3eb] px-6 py-3 text-right tabular-nums">
+                  <div className="flex min-w-0 items-center gap-3 text-left">
+                    <span className="size-3 shrink-0 rounded-sm" style={{ background: markerColor }} />
+                    <div className="min-w-0">
+                      <div className="truncate text-[15px] font-semibold text-[#202124]">{displayRowSymbol}</div>
+                      <div className="truncate text-[13px] text-[#5f6368]">{item.name}</div>
+                    </div>
+                  </div>
+                  <div className="font-semibold text-[#202124]">{Number.isFinite(item.price) ? `$${formatNumber(item.price, 2)}` : '--'}</div>
+                  <div className={cx('font-semibold', toneClass)}>{Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
+                  <div className={cx('font-semibold', toneClass)}>{Number.isFinite(item.changePercent) ? `${formatSignedPercent(item.changePercent)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
+                  <div className="font-semibold text-[#202124]">{Number.isFinite(item.previousClose) ? `$${formatNumber(item.previousClose, 2)}` : '--'}</div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
 
         {market === 'cn' && cnFundParam === 'nav' ? <NavInsightCard premiumState={premiumState} /> : null}
         {market === 'cn' && cnFundParam === 'premium' ? <PremiumInsightCard premiumState={premiumState} /> : null}
@@ -2488,7 +2749,7 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
   );
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-white lg:h-[calc(100vh-1.5rem)] lg:max-h-[820px] lg:rounded-2xl lg:border lg:border-slate-200">
+    <div className="flex h-full min-h-0 w-full flex-col bg-white lg:h-full lg:min-h-0 lg:rounded-2xl lg:border lg:border-slate-200">
       {pending && (
         <div className="relative h-0.5 w-full shrink-0 overflow-hidden bg-[#e8f0fe]">
           <div className="gf-progress-bar absolute inset-y-0 left-0 bg-[#1a73e8]" />
@@ -2644,6 +2905,7 @@ export function MarketsExperience() {
   const [premiumMap, setPremiumMap] = useState({});
   const [navHistoryMap, setNavHistoryMap] = useState({});
   const premiumInflightRef = useRef(new Set());
+  const navHistoryInflightRef = useRef(new Set());
   const [financialsMap, setFinancialsMap] = useState({});
   const [financialsLoading, setFinancialsLoading] = useState(false);
   const financialsInflightRef = useRef(new Set());
@@ -3099,8 +3361,9 @@ export function MarketsExperience() {
     if (!/^\d{6}$/.test(symbol)) return;
     const days = navHistoryDaysForRange(chartRange);
     const key = `${symbol}|${days}`;
-    if (navHistoryMap[key]?.items?.length || navHistoryMap[key]?.loading || navHistoryMap[key]?.error) return;
+    if (navHistoryMap[key]?.items?.length || navHistoryMap[key]?.loading || navHistoryMap[key]?.error || navHistoryInflightRef.current.has(key)) return;
     let cancelled = false;
+    navHistoryInflightRef.current.add(key);
     setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: true, items: prev[key]?.items || [], error: '' } }));
     requestHoldingsNavHistory(symbol, { days })
       .then((payload) => {
@@ -3111,14 +3374,17 @@ export function MarketsExperience() {
       .catch((error) => {
         if (cancelled) return;
         setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items: prev[key]?.items || [], error: error instanceof Error ? error.message : '净值历史加载失败' } }));
+      })
+      .finally(() => {
+        navHistoryInflightRef.current.delete(key);
       });
     return () => { cancelled = true; };
-  }, [market, selectedSymbol, chartRange, navHistoryMap]);
+  }, [market, selectedSymbol, chartRange]);
 
   const marketStatusLabel = indicesLoading ? '刷新中' : (indices.length ? `${indices.length} 个指数` : '待加载');
 
   return (
-    <div className="flex flex-col gap-5 pb-[140px] lg:grid lg:grid-cols-[280px_minmax(0,1fr)_360px] lg:items-start lg:gap-4 lg:pb-6 xl:grid-cols-[320px_minmax(0,1fr)_400px]">
+    <div className="flex flex-col gap-5 pb-[140px] lg:grid lg:h-[calc(100vh-6rem)] lg:min-h-0 lg:grid-cols-[280px_minmax(0,1fr)_360px] lg:items-stretch lg:gap-4 lg:overflow-hidden lg:pb-0 xl:grid-cols-[320px_minmax(0,1fr)_400px]">
       {/* Mobile-only sidebar: Google Finance Beta style */}
       <aside className="order-2 flex flex-col gap-2 lg:hidden">
         <div className="px-1">
@@ -3279,8 +3545,8 @@ export function MarketsExperience() {
       </aside>
 
       {/* PC-only sidebar: Google Finance Beta-style compact (设计不变) */}
-      <aside className="order-2 hidden flex-col gap-3 lg:order-1 lg:sticky lg:top-2 lg:flex">
-        <div className="bg-transparent">
+      <aside className="order-2 hidden flex-col gap-3 lg:order-1 lg:flex lg:h-full lg:min-h-0 lg:overflow-hidden">
+        <div className="flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain bg-transparent pr-1 [scrollbar-gutter:stable]">
           {/* 顶部工具栏：「列表 ▾」下拉 + 添加 + 全屏 */}
           <div className="flex items-center justify-between gap-1 px-1 py-2">
             <WatchlistSelector
@@ -3433,7 +3699,7 @@ export function MarketsExperience() {
         </div>
       </aside>
 
-      <main className="order-1 flex min-w-0 flex-col gap-5 lg:order-2">
+      <main className="order-1 flex min-w-0 flex-col gap-5 lg:order-2 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
         {!watchRows.length ? (
           <div className="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/50 px-4 py-4 text-sm text-slate-600">
             <div className="font-semibold text-slate-900">未配置自选</div>
@@ -3609,7 +3875,7 @@ export function MarketsExperience() {
         ref={asideRef}
         className={cx(
           'bg-white',
-          'lg:relative lg:z-auto lg:order-3 lg:flex lg:flex-col lg:gap-3 lg:bg-transparent lg:sticky lg:top-2 lg:bottom-auto lg:h-auto lg:overflow-visible lg:rounded-none lg:border-t-0 lg:shadow-none',
+          'lg:relative lg:z-auto lg:order-3 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:gap-3 lg:bg-transparent lg:overflow-hidden lg:rounded-none lg:border-t-0 lg:shadow-none',
           'fixed inset-x-0 bottom-0 z-40 flex flex-col overflow-hidden border-t border-[#e8eaed] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] [transition:height_300ms_ease-out]',
           researchMode === 'conversation' ? 'top-0 rounded-none' : 'rounded-t-2xl'
         )}
