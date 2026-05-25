@@ -15,6 +15,7 @@ import {
   addToWatchlist,
   askMarkets,
   askMarketsStream,
+  createWatchlist,
   fetchEarnings,
   fetchFinancials,
   fetchIndices,
@@ -28,6 +29,7 @@ import {
   searchSymbols,
   loadWatchlist,
   removeFromWatchlist,
+  setActiveWatchlist,
   CN_ETF_WATCHLIST_PRESETS
 } from '../app/marketsApi.js';
 import { showActionToast } from '../app/toast.js';
@@ -70,6 +72,50 @@ function formatTime(value) {
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleString('zh-CN', { hour12: false });
 }
+
+
+function formatLargeNumber(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '--';
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return (n / 1e12).toFixed(2) + 'T';
+  if (abs >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+  if (abs >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (abs >= 1e4) return (n / 1e4).toFixed(1) + '万';
+  return n.toLocaleString('zh-CN');
+}
+
+function valueOrDash(value, digits = 2) {
+  const n = Number(value);
+  return Number.isFinite(n) ? formatNumber(n, digits) : '--';
+}
+
+function rowMetric(row, keys = []) {
+  for (const key of keys) {
+    const value = row && row[key];
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return null;
+}
+
+function sortableMetric(row, key) {
+  if (key === 'symbol' || key === 'name') return String(row[key] || '').toLowerCase();
+  if (key === 'trend') return Number(row.changePercent) || 0;
+  const value = rowMetric(row, MARKET_TABLE_METRICS[key] || [key]);
+  const n = Number(value);
+  return Number.isFinite(n) ? n : -Infinity;
+}
+
+const MARKET_TABLE_METRICS = {
+  price: ['price', 'regularMarketPrice'],
+  changePercent: ['changePercent', 'regularMarketChangePercent'],
+  previousClose: ['previousClose', 'prevClose', 'regularMarketPreviousClose'],
+  open: ['open', 'regularMarketOpen'],
+  high: ['high', 'regularMarketDayHigh', 'dayHigh'],
+  low: ['low', 'regularMarketDayLow', 'dayLow'],
+  volume: ['volume', 'regularMarketVolume'],
+  marketCap: ['marketCap', 'marketCapitalization'],
+};
 
 // HH:mm 格式，用于新闻列表左侧时间戳列。
 function formatClock(value) {
@@ -429,6 +475,121 @@ function MoversTable({ rows = [], onPick, klineMap = {}, initialLimit = 4 }) {
             <>显示更多 ({hiddenCount}) <ChevronDown size={12} /></>
           )}
         </button>
+      ) : null}
+    </div>
+  );
+}
+
+
+function SortableMarketTable({ title = '', rows = [], market, onPick, onRemove, klineMap = {}, emptyText = '暂无数据。', initialSort = 'changePercent', initialDirection = 'desc', action = 'pick', compact = false }) {
+  const [sortKey, setSortKey] = useState(initialSort);
+  const [direction, setDirection] = useState(initialDirection);
+  const sortedRows = useMemo(() => {
+    const dir = direction === 'asc' ? 1 : -1;
+    return (rows || []).slice().sort((a, b) => {
+      const av = sortableMetric(a, sortKey);
+      const bv = sortableMetric(b, sortKey);
+      if (typeof av === 'string' || typeof bv === 'string') return String(av).localeCompare(String(bv)) * dir;
+      const an = Number.isFinite(Number(av)) ? Number(av) : -Infinity;
+      const bn = Number.isFinite(Number(bv)) ? Number(bv) : -Infinity;
+      return (an - bn) * dir;
+    });
+  }, [rows, sortKey, direction]);
+  const setSort = (key) => {
+    if (sortKey === key) setDirection((v) => v === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setDirection(key === 'symbol' || key === 'name' ? 'asc' : 'desc'); }
+  };
+  const Head = ({ id, children, right = false }) => (
+    <th className={cx('whitespace-nowrap px-3 py-2', right ? 'text-right' : 'text-left')}>
+      <button type="button" onClick={() => setSort(id)} className={cx('inline-flex items-center gap-1 hover:text-slate-800', right && 'justify-end')}>
+        <span>{children}</span>
+        {sortKey === id ? <ChevronDown size={11} className={cx('transition', direction === 'asc' && 'rotate-180')} /> : null}
+      </button>
+    </th>
+  );
+  if (!rows.length) return <p className="text-sm text-slate-400">{emptyText}</p>;
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white/80">
+      {title ? <div className="border-b border-slate-100 px-3 py-2 text-sm font-semibold text-slate-900">{title}</div> : null}
+      <div className="overflow-x-auto">
+        <table className="min-w-[960px] divide-y divide-slate-200/70 text-sm">
+          <thead className="bg-slate-50/70 text-xs font-medium uppercase tracking-wider text-slate-500">
+            <tr>
+              <Head id="symbol">代码</Head>
+              <Head id="name">名称</Head>
+              <Head id="price" right>价格</Head>
+              <Head id="changePercent" right>% Change</Head>
+              <Head id="trend" right>Trend</Head>
+              <Head id="previousClose" right>Prev Close</Head>
+              <Head id="open" right>Open</Head>
+              <Head id="high" right>High</Head>
+              <Head id="low" right>Low</Head>
+              <Head id="volume" right>Volume</Head>
+              <Head id="marketCap" right>Mkt Cap</Head>
+              <th className="px-3 py-2 text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {sortedRows.map((row) => {
+              const pct = Number(row.changePercent);
+              const positive = Number.isFinite(pct) && pct > 0;
+              const negative = Number.isFinite(pct) && pct < 0;
+              return (
+                <tr key={`${market || row.market || ''}:${row.symbol}`} className={cx('hover:bg-indigo-50/40', positive && 'bg-rose-50/20', negative && 'bg-emerald-50/20')}>
+                  <td className="px-3 py-2 align-top font-mono text-xs text-slate-600">
+                    <div>{row.symbol}</div>
+                    {row.exchange || row.industry ? <div className="mt-0.5 text-[10px] font-normal text-slate-400">{row.exchange || row.industry}</div> : null}
+                  </td>
+                  <td className="px-3 py-2 align-top text-slate-800">{row.name || row.symbol}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{valueOrDash(rowMetric(row, MARKET_TABLE_METRICS.price))}</td>
+                  <td className={cx('px-3 py-2 text-right tabular-nums font-semibold', changeToneClass(row.changePercent))}>{formatPercent(row.changePercent)}</td>
+                  <td className="px-3 py-2 text-right">
+                    <div className="inline-flex justify-end">
+                      <Sparkline points={klineMap[row.symbol]} width={compact ? 56 : 72} height={24} tone={positive ? 'up' : negative ? 'down' : 'flat'} />
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{valueOrDash(rowMetric(row, MARKET_TABLE_METRICS.previousClose))}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{valueOrDash(rowMetric(row, MARKET_TABLE_METRICS.open))}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{valueOrDash(rowMetric(row, MARKET_TABLE_METRICS.high))}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{valueOrDash(rowMetric(row, MARKET_TABLE_METRICS.low))}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{formatLargeNumber(rowMetric(row, MARKET_TABLE_METRICS.volume))}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{formatLargeNumber(rowMetric(row, MARKET_TABLE_METRICS.marketCap))}</td>
+                  <td className="px-3 py-2 text-right">
+                    {action === 'remove' ? (
+                      <button type="button" className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-400 hover:border-rose-300 hover:text-rose-500" onClick={() => onRemove && onRemove(market, row.symbol)} title="移除自选"><Trash2 size={12} /> 移除</button>
+                    ) : (
+                      <button type="button" className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:border-indigo-300 hover:text-indigo-600" onClick={() => onPick && onPick(row)} title="加入自选"><Plus size={12} /> 自选</button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate }) {
+  const [open, setOpen] = useState(false);
+  const active = (lists || []).find((item) => item.id === activeListId) || lists[0];
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="inline-flex items-center gap-1 rounded-md px-1 py-1 text-[20px] leading-7 font-normal tracking-tight text-[#1f1f1f] hover:bg-[#f1f3f4]" title="列表切换">
+        <span>{active?.name || '列表'}</span>
+        <ChevronDown size={18} className="text-[#5f6368]" />
+      </button>
+      {open ? (
+        <div className="absolute left-0 top-full z-30 mt-1 w-56 overflow-hidden rounded-2xl border border-[#e8eaed] bg-white py-1 shadow-lg">
+          {(lists || []).map((item) => (
+            <button key={item.id} type="button" onClick={() => { onSelect?.(item.id); setOpen(false); }} className={cx('flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-[#f8fafd]', item.id === activeListId ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>
+              <span className="truncate">{item.name}</span>
+              <span className="text-[11px] text-[#9aa0a6]">{(item.us?.length || 0) + (item.cn?.length || 0)}</span>
+            </button>
+          ))}
+          <button type="button" onClick={() => { onCreate?.(); setOpen(false); }} className="flex w-full items-center gap-2 border-t border-[#e8eaed] px-3 py-2 text-left text-sm font-medium text-[#1a73e8] hover:bg-[#f8fafd]"><ListPlus size={14} /> 新建列表</button>
+        </div>
       ) : null}
     </div>
   );
@@ -2558,7 +2719,9 @@ export function MarketsExperience() {
     );
   }, []);
 
-  const watchSymbols = useMemo(() => watch[market] || [], [watch, market]);
+  const watchLists = Array.isArray(watch.lists) ? watch.lists : [];
+  const activeWatchList = watchLists.find((item) => item.id === watch.activeListId) || watchLists[0] || { us: [], cn: [], name: '默认列表' };
+  const watchSymbols = useMemo(() => activeWatchList[market] || [], [activeWatchList, market]);
 
   useEffect(() => {
     if (selectedSymbol && !watchSymbols.includes(selectedSymbol)) {
@@ -2650,7 +2813,7 @@ export function MarketsExperience() {
   }, [market]);
 
   const refreshWatch = useCallback(async () => {
-    const list = watch[market] || [];
+    const list = watchSymbols || [];
     if (!list.length) {
       setWatchQuotes({});
       return;
@@ -2664,7 +2827,7 @@ export function MarketsExperience() {
     } finally {
       setWatchLoading(false);
     }
-  }, [watch, market]);
+  }, [watchSymbols]);
 
   // 美股 11 大行业指数（Google Finance 同款）。A 股暂未接入。
   const refreshSectors = useCallback(async (forceRefresh = false) => {
@@ -2778,10 +2941,20 @@ export function MarketsExperience() {
     setSymbolSearchLoading(true);
     setSymbolSearchError('');
     const timer = window.setTimeout(() => {
-      searchSymbols(market, q, { limit: 8, signal: controller.signal })
-        .then((r) => {
+      Promise.all(
+        MARKETS.map((m) => searchSymbols(m.key, q, { limit: 6, signal: controller.signal })
+          .then((r) => (Array.isArray(r && r.results) ? r.results : []).map((row) => ({ ...row, market: m.key, marketLabel: m.label }))))
+      )
+        .then((groups) => {
           if (seq !== symbolSearchSeqRef.current) return;
-          setSymbolSearchResults(Array.isArray(r && r.results) ? r.results : []);
+          const seen = new Set();
+          const rows = groups.flat().filter((row) => {
+            const key = `${row.market}:${row.symbol}`;
+            if (!row.symbol || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          setSymbolSearchResults(rows.slice(0, 10));
         })
         .catch((err) => {
           if (controller.signal.aborted || seq !== symbolSearchSeqRef.current) return;
@@ -2796,14 +2969,16 @@ export function MarketsExperience() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [market, sectorSearchOpen, symbolInput]);
+  }, [sectorSearchOpen, symbolInput]);
 
-  function handleAddSymbol(event, rawOverride) {
+  function handleAddSymbol(event, rawOverride, marketOverride = market) {
     if (event && event.preventDefault) event.preventDefault();
-    const raw = (rawOverride != null ? String(rawOverride) : symbolInput).trim();
+    const raw = (rawOverride != null ? String(rawOverride) : symbolInput).trim().toUpperCase();
     if (!raw) return;
-    const next = addToWatchlist(market, raw);
+    const targetMarket = marketOverride || market;
+    const next = addToWatchlist(targetMarket, raw, watch.activeListId);
     setWatch(next);
+    setMarket(targetMarket);
     setSelectedSymbol(raw);
     setSymbolDetailTab('overview');
     setSymbolInput('');
@@ -2813,26 +2988,41 @@ export function MarketsExperience() {
 
   function handlePickSymbolSearch(row) {
     if (!row || !row.symbol) return;
-    handleAddSymbol(null, row.symbol);
+    handleAddSymbol(null, row.symbol, row.market || market);
     showActionToast('已加入自选', 'success');
   }
 
-  function handleRemove(market, symbol) {
-    const next = removeFromWatchlist(market, symbol);
+  function handleRemove(targetMarket, symbol) {
+    const next = removeFromWatchlist(targetMarket, symbol, watch.activeListId);
     setWatch(next);
-    if (symbol === selectedSymbol) {
-      const nextList = next[market] || [];
+    if (symbol === selectedSymbol && targetMarket === market) {
+      const active = (next.lists || []).find((item) => item.id === next.activeListId) || next;
+      const nextList = active[targetMarket] || [];
       setSelectedSymbol(nextList[0] || '');
       setSymbolDetailTab('overview');
     }
   }
 
   function handlePickMover(row) {
-    const next = addToWatchlist(market, row.symbol);
+    const next = addToWatchlist(market, row.symbol, watch.activeListId);
     setWatch(next);
     setSelectedSymbol(row.symbol);
     setSymbolDetailTab('overview');
     showActionToast('已加入自选', 'success');
+  }
+
+  function handleSelectWatchlist(listId) {
+    const next = setActiveWatchlist(listId);
+    setWatch(next);
+    setSelectedSymbol('');
+    setSymbolDetailTab('overview');
+  }
+
+  function handleCreateWatchlist() {
+    const next = createWatchlist(`列表 ${(watchLists || []).length + 1}`);
+    setWatch(next);
+    setSelectedSymbol('');
+    setSymbolDetailTab('overview');
   }
 
   function handleSelectSymbol(row, options = {}) {
@@ -2844,7 +3034,7 @@ export function MarketsExperience() {
 
   const watchRows = useMemo(
     () =>
-      (watch[market] || []).map((sym) => {
+      watchSymbols.map((sym) => {
         const q = watchQuotes[sym] || {};
         return {
           symbol: sym,
@@ -2852,11 +3042,22 @@ export function MarketsExperience() {
           price: q.price,
           changePercent: q.changePercent,
           change: q.change,
+          previousClose: q.previousClose,
+          open: q.open,
+          high: q.high,
+          low: q.low,
+          volume: q.volume,
+          marketCap: q.marketCap,
           exchange: q.exchange || CN_ETF_PRESET_MAP[sym]?.exchange,
           currency: q.currency || CN_ETF_PRESET_MAP[sym]?.currency
         };
       }),
-    [watch, market, watchQuotes]
+    [watchSymbols, watchQuotes]
+  );
+
+  const watchTopMovers = useMemo(
+    () => watchRows.filter((row) => Number.isFinite(Number(row.changePercent))).slice().sort((a, b) => Math.abs(Number(b.changePercent)) - Math.abs(Number(a.changePercent))).slice(0, 6),
+    [watchRows]
   );
 
   const selectedQuote = useMemo(
@@ -2951,18 +3152,17 @@ export function MarketsExperience() {
       <aside className="order-2 flex flex-col gap-2 lg:hidden">
         <div className="px-1">
           <div className="flex items-center justify-between pt-1">
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 rounded-md py-1 text-[28px] leading-8 font-normal tracking-tight text-[#1f1f1f]"
-              title="列表切换　（后续启用多人多列表）"
-            >
-              <span>列表</span>
-              <ChevronDown size={22} className="text-[#5f6368]" />
-            </button>
+            <WatchlistSelector
+              lists={watchLists}
+              activeListId={watch.activeListId}
+              onSelect={handleSelectWatchlist}
+              onCreate={handleCreateWatchlist}
+            />
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                aria-label="管理列表"
+                aria-label="新建列表"
+                onClick={handleCreateWatchlist}
                 className="inline-flex h-10 w-10 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
               >
                 <ListPlus size={22} />
@@ -3077,9 +3277,9 @@ export function MarketsExperience() {
                 ) : symbolSearchResults.length ? (
                   <ul className="divide-y divide-[#e8eaed]">
                     {symbolSearchResults.map((row) => (
-                      <li key={row.symbol}>
+                      <li key={`${row.market || market}:${row.symbol}`}>
                         <button type="button" className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-[#f8fafd]" onClick={() => handlePickSymbolSearch(row)}>
-                          <span className="min-w-0"><span className="block truncate text-sm font-semibold text-[#1f1f1f]">{row.symbol}</span><span className="block truncate text-xs text-[#5f6368]">{row.name || row.exchange || '--'}</span></span>
+                          <span className="min-w-0"><span className="block truncate text-sm font-semibold text-[#1f1f1f]">{row.symbol}</span><span className="block truncate text-xs text-[#5f6368]">{row.marketLabel ? `${row.marketLabel} · ` : ''}{row.name || row.exchange || '--'}</span></span>
                           <span className="shrink-0 rounded-full bg-[#e8f0fe] px-2 py-1 text-xs font-semibold text-[#1a73e8]">加入</span>
                         </button>
                       </li>
@@ -3116,14 +3316,12 @@ export function MarketsExperience() {
         <div className="bg-transparent">
           {/* 顶部工具栏：「列表 ▾」下拉 + 添加 + 全屏 */}
           <div className="flex items-center justify-between gap-1 px-1 py-2">
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 rounded-md px-1 py-1 text-[20px] leading-7 font-normal tracking-tight text-[#1f1f1f] hover:bg-[#f1f3f4]"
-              title="列表切换（后续启用多人多列表）"
-            >
-              <span>列表</span>
-              <ChevronDown size={18} className="text-[#5f6368]" />
-            </button>
+            <WatchlistSelector
+              lists={watchLists}
+              activeListId={watch.activeListId}
+              onSelect={handleSelectWatchlist}
+              onCreate={handleCreateWatchlist}
+            />
           </div>
 
           {/* 组 1：监控列表 */}
@@ -3238,9 +3436,9 @@ export function MarketsExperience() {
                       ) : symbolSearchResults.length ? (
                         <ul className="divide-y divide-[#e8eaed]">
                           {symbolSearchResults.map((row) => (
-                            <li key={row.symbol}>
+                            <li key={`${row.market || market}:${row.symbol}`}>
                               <button type="button" className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-[#f8fafd]" onClick={() => handlePickSymbolSearch(row)}>
-                                <span className="min-w-0"><span className="block truncate text-xs font-semibold text-[#1f1f1f]">{row.symbol}</span><span className="block truncate text-[11px] text-[#5f6368]">{row.name || row.exchange || '--'}</span></span>
+                                <span className="min-w-0"><span className="block truncate text-xs font-semibold text-[#1f1f1f]">{row.symbol}</span><span className="block truncate text-[11px] text-[#5f6368]">{row.marketLabel ? `${row.marketLabel} · ` : ''}{row.name || row.exchange || '--'}</span></span>
                                 <span className="shrink-0 rounded-full bg-[#e8f0fe] px-2 py-0.5 text-[11px] font-semibold text-[#1a73e8]">加入</span>
                               </button>
                             </li>
@@ -3350,13 +3548,12 @@ export function MarketsExperience() {
             chartLoading={chartLoading}
             premiumState={premiumMap[selectedQuote.symbol]}
             navHistoryState={navHistoryMap[`${selectedQuote.symbol}|${navHistoryDaysForRange(chartRange)}`]}
-            inWatch={(watch[market] || []).includes(selectedQuote.symbol)}
+            inWatch={watchSymbols.includes(selectedQuote.symbol)}
             onToggleWatch={() => {
-              const list = watch[market] || [];
-              if (list.includes(selectedQuote.symbol)) {
-                setWatch(removeFromWatchlist(market, selectedQuote.symbol));
+              if (watchSymbols.includes(selectedQuote.symbol)) {
+                setWatch(removeFromWatchlist(market, selectedQuote.symbol, watch.activeListId));
               } else {
-                setWatch(addToWatchlist(market, selectedQuote.symbol));
+                setWatch(addToWatchlist(market, selectedQuote.symbol, watch.activeListId));
               }
             }}
             onAnalyze={() => {
@@ -3385,6 +3582,59 @@ export function MarketsExperience() {
               </div>
             ) : !indicesLoading ? (
               <p className="text-sm text-slate-400">指数数据暂未加载。</p>
+            ) : null}
+
+            {watchTopMovers.length ? (
+              <div className="hidden space-y-2 lg:block">
+                <div className="flex items-center gap-2 border-b border-[#e8eaed] pb-1.5">
+                  <Star size={16} className="text-amber-400" />
+                  <h2 className="text-[15px] font-semibold text-[#1f1f1f]">Top movers in your list</h2>
+                  <span className="text-[11px] text-[#5f6368]">{activeWatchList.name}</span>
+                </div>
+                <SortableMarketTable
+                  rows={watchTopMovers}
+                  market={market}
+                  onRemove={handleRemove}
+                  klineMap={klineMap}
+                  action="remove"
+                  compact
+                />
+              </div>
+            ) : null}
+
+            {watchRows.length ? (
+              <div className="hidden space-y-2 lg:block">
+                <div className="flex items-center gap-2 border-b border-[#e8eaed] pb-1.5">
+                  <h2 className="text-[15px] font-semibold text-[#1f1f1f]">Your list</h2>
+                  <span className="text-[11px] text-[#5f6368]">{activeWatchList.name}</span>
+                  {watchLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
+                </div>
+                <SortableMarketTable
+                  rows={watchRows}
+                  market={market}
+                  onRemove={handleRemove}
+                  klineMap={klineMap}
+                  action="remove"
+                  initialSort="symbol"
+                  initialDirection="asc"
+                />
+              </div>
+            ) : null}
+
+            {movers.length ? (
+              <div className="hidden space-y-2 lg:block">
+                <div className="flex items-center gap-2 border-b border-[#e8eaed] pb-1.5">
+                  <TrendingUp size={16} className="text-indigo-500" />
+                  <h2 className="text-[15px] font-semibold text-[#1f1f1f]">Market trends</h2>
+                  {moversLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
+                </div>
+                <SortableMarketTable
+                  rows={movers}
+                  market={market}
+                  onPick={handlePickMover}
+                  klineMap={klineMap}
+                />
+              </div>
             ) : null}
 
             {market === 'us' && (

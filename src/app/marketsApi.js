@@ -266,18 +266,51 @@ export function saveWatchlist(list) {
   }
 }
 
-export function addToWatchlist(market, symbol) {
-  const next = loadWatchlist();
-  const list = next[market] || [];
-  if (!list.includes(symbol)) list.unshift(symbol);
-  next[market] = list.slice(0, 50);
+export function setActiveWatchlist(listId) {
+  const current = loadWatchlist();
+  const next = normalizeWatchlist({ ...current, activeListId: listId });
   saveWatchlist(next);
   return next;
 }
 
-export function removeFromWatchlist(market, symbol) {
-  const next = loadWatchlist();
-  next[market] = (next[market] || []).filter((s) => s !== symbol);
+export function createWatchlist(name = '新列表') {
+  const current = loadWatchlist();
+  const now = new Date().toISOString();
+  const id = `list-${Date.now().toString(36)}`;
+  const next = normalizeWatchlist({
+    ...current,
+    lists: [
+      ...(current.lists || []),
+      { id, name: String(name || '新列表').trim() || '新列表', us: [], cn: [], createdAt: now, updatedAt: now }
+    ],
+    activeListId: id,
+  });
   saveWatchlist(next);
   return next;
+}
+
+export function addToWatchlist(market, symbol, listId = null) {
+  const next = loadWatchlist();
+  const targetListId = String(listId || next.activeListId || DEFAULT_WATCHLIST_ID);
+  const lists = (next.lists || []).map((item) => ({ ...item }));
+  const target = lists.find((item) => item.id === targetListId) || lists[0];
+  const list = target[market] || [];
+  if (!list.includes(symbol)) list.unshift(symbol);
+  target[market] = list.slice(0, 50);
+  target.updatedAt = new Date().toISOString();
+  const saved = normalizeWatchlist({ ...next, lists, activeListId: target.id });
+  saveWatchlist(saved);
+  return saved;
+}
+
+export function removeFromWatchlist(market, symbol, listId = null) {
+  const next = loadWatchlist();
+  const targetListId = String(listId || next.activeListId || DEFAULT_WATCHLIST_ID);
+  const lists = (next.lists || []).map((item) => ({ ...item }));
+  const target = lists.find((item) => item.id === targetListId) || lists[0];
+  target[market] = (target[market] || []).filter((s) => s !== symbol);
+  target.updatedAt = new Date().toISOString();
+  const saved = normalizeWatchlist({ ...next, lists, activeListId: target.id });
+  saveWatchlist(saved);
+  return saved;
 }
