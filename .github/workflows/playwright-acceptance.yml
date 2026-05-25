@@ -11,6 +11,7 @@ on:
       - 'playwright.config.js'
       - 'package.json'
       - 'package-lock.json'
+      - '.lighthouserc.cjs'
       - '.github/workflows/playwright-acceptance.yml'
   push:
     branches:
@@ -22,11 +23,12 @@ on:
       - 'playwright.config.js'
       - 'package.json'
       - 'package-lock.json'
+      - '.lighthouserc.cjs'
       - '.github/workflows/playwright-acceptance.yml'
   workflow_dispatch:
     inputs:
       full:
-        description: 'Run visual and accessibility acceptance in addition to smoke tests'
+        description: 'Run visual, accessibility, and Lighthouse acceptance in addition to smoke tests'
         required: false
         default: 'false'
         type: choice
@@ -38,7 +40,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: playwright-acceptance-${{ github.ref }}
+  group: playwright-acceptance
   cancel-in-progress: true
 
 jobs:
@@ -78,10 +80,10 @@ jobs:
           retention-days: 7
 
   full:
-    name: Visual and accessibility
+    name: Visual, accessibility, and Lighthouse
     if: github.event_name == 'workflow_dispatch' && inputs.full == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -108,6 +110,9 @@ jobs:
       - name: Run axe accessibility checks
         run: npm run test:e2e:a11y -- --project=chromium
 
+      - name: Run Lighthouse CI
+        run: npx @lhci/cli@0.14.x autorun --config=.lighthouserc.cjs
+
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
@@ -122,4 +127,12 @@ jobs:
         with:
           name: playwright-screenshots
           path: test-results/screenshots
+          retention-days: 7
+
+      - name: Upload Lighthouse report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-ci-report
+          path: .lighthouseci
           retention-days: 7
