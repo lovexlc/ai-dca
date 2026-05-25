@@ -1451,12 +1451,12 @@ function ChartToolbarPopover({ label, icon, active, children, align = 'left', pa
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cx(
-          'inline-flex h-[38px] items-center gap-2 rounded-[14px] px-3 text-[15px] font-semibold text-[#202124] transition hover:bg-white/70',
+          'inline-flex h-9 items-center gap-1.5 rounded-[14px] px-2.5 text-[14px] font-semibold text-[#202124] transition hover:bg-white/70 sm:h-[38px] sm:gap-2 sm:px-3 sm:text-[15px]',
           active ? 'border border-[rgba(17,24,39,0.08)] bg-white/60 shadow-[0_2px_8px_rgba(0,0,0,0.06)]' : 'border border-transparent bg-transparent',
           buttonClassName
         )}
       >
-        {icon ? <span className="text-[16px] leading-none text-[#202124]" aria-hidden="true">{icon}</span> : null}
+        {icon ? <span className="text-[15px] leading-none text-[#202124] sm:text-[16px]" aria-hidden="true">{icon}</span> : null}
         <span>{label}</span>
         <ChevronDown size={14} className={cx('transition', open ? 'rotate-180' : '')} />
       </button>
@@ -2023,20 +2023,20 @@ function SymbolDetailPanel({
   const sparkFallback = cnFundParam === 'price' && (!hasFullCandles && Array.isArray(sparkPoints) && sparkPoints.length >= 2) ? sparkPoints : null;
 
   return (
-    <section className="-mx-2 sm:mx-0">
-      <div className="px-3 pt-1 sm:px-1">
+    <section className="-mx-3 sm:mx-0">
+      <div className="px-2 pt-0 sm:px-1 sm:pt-1">
         <button
           type="button"
           onClick={onBack}
-          className="mb-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-[#5f6368] hover:text-[#1f1f1f]"
+          className="mb-1 inline-flex items-center gap-1 text-[12px] font-medium text-[#5f6368] hover:text-[#1f1f1f] sm:mb-3 sm:gap-1.5 sm:text-[13px]"
         >
           <ArrowUp size={14} className="-rotate-90" />
           首页
         </button>
         {/* Header：极简金融工作台头部 */}
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-2 sm:gap-4">
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] text-[#5f6368]">
+            <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[#5f6368] sm:gap-x-1.5 sm:text-[12px]">
               <span>{market === 'us' ? '美股' : 'A 股'}</span>
               <span>·</span>
               <span className="truncate">{exchangeLabel}</span>
@@ -2045,28 +2045,28 @@ function SymbolDetailPanel({
               <span>·</span>
               <span>{currencyLabel}</span>
             </div>
-            <h2 className="mt-0.5 truncate text-base font-medium text-[#1f1f1f] sm:text-lg">{row.name || displaySymbol}</h2>
-            <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <span className="text-[34px] font-medium leading-none tabular-nums text-[#1f1f1f] sm:text-[40px]">{formatNumber(row.price)}</span>
-              <span className={cx('text-sm font-medium tabular-nums', positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#5f6368]')}>
+            <h2 className="mt-0.5 truncate text-[15px] font-medium text-[#1f1f1f] sm:text-lg">{row.name || displaySymbol}</h2>
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 sm:mt-2 sm:gap-x-3 sm:gap-y-1">
+              <span className="text-[36px] font-medium leading-none tabular-nums text-[#1f1f1f] sm:text-[40px]">{formatNumber(row.price)}</span>
+              <span className={cx('text-[13px] font-medium tabular-nums sm:text-sm', positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#5f6368]')}>
                 {Number.isFinite(change) ? `${change > 0 ? '+' : ''}${formatNumber(change)}` : '--'}
                 <span className="mx-1 text-[#5f6368]">·</span>
                 {formatPercent(row.changePercent)}
               </span>
               <span className="text-[12px] text-[#5f6368]">今日</span>
             </div>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-[#5f6368]">
+            <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-[#5f6368] sm:mt-1.5 sm:gap-x-2 sm:text-[12px]">
               <span>{stateLabel}</span>
               {row.lastUpdated ? <><span>·</span><span>更新于 {formatClock(row.lastUpdated)}</span></> : null}
               {Number.isFinite(Number(row.previousClose)) ? <><span>·</span><span>昨收 <span className="tabular-nums">{formatNumber(row.previousClose)}</span></span></> : null}
             </div>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
+          <div className="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center sm:gap-2">
             <button
               type="button"
               onClick={onToggleWatch}
               className={cx(
-                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition',
+                'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-medium transition sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-sm',
                 inWatch
                   ? 'border border-[#dadce0] bg-white text-[#1f1f1f] hover:bg-[#f1f3f4]'
                   : 'bg-[#1f1f1f] text-white hover:bg-[#3c3c3c]'
@@ -2078,7 +2078,7 @@ function SymbolDetailPanel({
             <button
               type="button"
               onClick={onAnalyze}
-              className="inline-flex items-center gap-1.5 rounded-full bg-[#e8f0fe] px-3 py-1.5 text-sm font-medium text-[#1a73e8] transition hover:bg-[#d2e3fc]"
+              className="inline-flex items-center gap-1 rounded-full bg-[#e8f0fe] px-2.5 py-1 text-[12px] font-medium text-[#1a73e8] transition hover:bg-[#d2e3fc] sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-sm"
             >
               <Sparkles size={14} />
               研究
@@ -2087,7 +2087,7 @@ function SymbolDetailPanel({
         </div>
 
         {/* 图表工具栏 */}
-        <div className="mt-3 flex min-h-14 flex-wrap items-center gap-2.5 rounded-[20px] bg-[#f1f3f4] px-4 py-[9px]">
+        <div className="mt-2 flex min-h-0 flex-wrap items-center gap-1.5 rounded-[18px] bg-[#f1f3f4] px-2.5 py-2 sm:mt-3 sm:min-h-14 sm:gap-2.5 sm:rounded-[20px] sm:px-4 sm:py-[9px]">
           {market === 'cn' ? (
             <ChartToolbarPopover
               icon="⌁"
@@ -2234,7 +2234,7 @@ function SymbolDetailPanel({
             </div>
           </ChartToolbarPopover>
 
-          <div className="ml-auto flex items-center gap-1 text-[11px] text-[#9aa0a6]">
+          <div className="ml-auto hidden items-center gap-1 text-[11px] text-[#9aa0a6] sm:flex">
             {chartLoading || metricLoading ? <Loader2 size={12} className="animate-spin" /> : null}
             {compareSymbols.length > 0 ? <span>涨幅(%)</span> : null}
           </div>
@@ -2242,14 +2242,14 @@ function SymbolDetailPanel({
 
         {/* 图表区 */}
         <div
-          className="relative mt-3 h-[360px] rounded-[20px] bg-[#f1f3f4] p-4 sm:h-[400px]"
+          className="relative mt-2 h-[248px] rounded-[18px] bg-[#f1f3f4] p-2 sm:mt-3 sm:h-[400px] sm:rounded-[20px] sm:p-4"
           onClick={(event) => {
             if (isMobile && lockedChartRow && event.target === event.currentTarget) clearLockedChartRow();
           }}
         >
           {compareSymbols.length > 0 ? (
-            <div className="absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 text-[14px]">
-              <span className="inline-flex h-8 items-center gap-2 rounded-2xl border border-[rgba(17,24,39,0.08)] bg-[#f8fafd]/95 px-3.5 font-semibold text-[#1a73e8] shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+            <div className="absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-1.5 text-[13px] sm:left-3 sm:top-3 sm:max-w-[calc(100%-1.5rem)] sm:gap-2 sm:text-[14px]">
+              <span className="inline-flex h-7 items-center gap-1.5 rounded-2xl border border-[rgba(17,24,39,0.08)] bg-[#f8fafd]/95 px-2.5 font-semibold text-[#1a73e8] shadow-[0_2px_8px_rgba(0,0,0,0.06)] sm:h-8 sm:gap-2 sm:px-3.5">
                 <span className="size-2 rounded-sm" style={{ background: COMPARE_MAIN_COLOR }} />
                 {displaySymbol}
               </span>
@@ -2261,7 +2261,7 @@ function SymbolDetailPanel({
                 return (
                   <span
                     key={item.symbol}
-                    className="inline-flex h-8 items-center gap-2 rounded-2xl border border-[rgba(17,24,39,0.08)] bg-[#f8fafd]/95 py-0.5 pl-3.5 pr-1.5 font-semibold shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
+                    className="inline-flex h-7 items-center gap-1.5 rounded-2xl border border-[rgba(17,24,39,0.08)] bg-[#f8fafd]/95 py-0.5 pl-2.5 pr-1 font-semibold shadow-[0_2px_8px_rgba(0,0,0,0.06)] sm:h-8 sm:gap-2 sm:pl-3.5 sm:pr-1.5"
                     style={{ color: markerColor }}
                   >
                     <span className="size-2 shrink-0 rounded-full" style={{ background: markerColor }} />
@@ -2269,7 +2269,7 @@ function SymbolDetailPanel({
                     <button
                       type="button"
                       onClick={(event) => { event.stopPropagation(); removeCompare(item.symbol); }}
-                      className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-[#5f6368] transition hover:bg-black/5 hover:text-[#202124] focus:outline-none focus:ring-2 focus:ring-[#1a73e8]/30"
+                      className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[#5f6368] transition hover:bg-black/5 hover:text-[#202124] focus:outline-none focus:ring-2 focus:ring-[#1a73e8]/30 sm:size-6"
                       aria-label={`删除对比标的 ${item.symbol}`}
                       title={`删除 ${item.symbol}`}
                     >
@@ -2311,9 +2311,9 @@ function SymbolDetailPanel({
         </div>
 
         {/* 时间范围 tab（Google Finance 风格横向标签） */}
-        <div className="mt-3 flex h-12 items-center overflow-x-auto rounded-[20px] bg-[#f1f3f4] p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="mt-2 flex h-10 items-center overflow-x-auto rounded-[18px] bg-[#f1f3f4] p-1 [scrollbar-width:none] sm:mt-3 sm:h-12 sm:rounded-[20px] sm:p-1.5 [&::-webkit-scrollbar]:hidden">
           <div
-            className="flex w-max items-center gap-2 text-[15px] font-medium text-[#5f6368] sm:w-auto"
+            className="flex w-max items-center gap-1 text-[14px] font-medium text-[#5f6368] sm:w-auto sm:gap-2 sm:text-[15px]"
             role="tablist"
             aria-label="股票图表标签页"
           >
@@ -2330,7 +2330,7 @@ function SymbolDetailPanel({
                   tabIndex={selected ? 0 : -1}
                   onClick={() => onChartRangeChange && onChartRangeChange(tab.key)}
                   className={cx(
-                    'relative flex h-9 min-w-[52px] shrink-0 items-center justify-center rounded-[14px] px-3 transition-colors',
+                    'relative flex h-8 min-w-[44px] shrink-0 items-center justify-center rounded-[13px] px-2.5 transition-colors sm:h-9 sm:min-w-[52px] sm:rounded-[14px] sm:px-3',
                     selected
                       ? 'bg-[#EEF1F5] font-bold text-[#202124]'
                       : 'text-[#5f6368] hover:bg-white/60 hover:text-[#202124]'
@@ -2345,13 +2345,13 @@ function SymbolDetailPanel({
         </div>
 
         {compareSymbols.length > 0 ? (
-          <div className="overflow-hidden bg-white text-[13px]">
-            <div className="grid h-11 grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] items-center gap-2 border-b border-[rgba(17,24,39,0.08)] px-4 text-right text-[13px] font-semibold text-[#5f6368]">
+          <div className="overflow-hidden bg-white text-[12px] sm:text-[13px]">
+            <div className="grid h-9 grid-cols-[minmax(104px,1fr)_76px_76px_76px] items-center gap-1.5 border-b border-[rgba(17,24,39,0.08)] px-2 text-right text-[12px] font-semibold text-[#5f6368] sm:h-11 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[13px]">
               <div className="text-left">股票代码</div>
               <div>价格</div>
               <div>涨跌额</div>
               <div>涨跌幅</div>
-              <div>昨收盘</div>
+              <div className="hidden sm:block">昨收盘</div>
             </div>
             {compareTableRows.map((item, index) => {
               const markerColor = index === 0 ? COMPARE_MAIN_COLOR : COMPARE_COLORS[(index - 1) % COMPARE_COLORS.length];
@@ -2360,18 +2360,18 @@ function SymbolDetailPanel({
               const toneClass = rowPositive ? 'text-[#a50e0e]' : rowNegative ? 'text-[#137333]' : 'text-[#1f1f1f]';
               const displayRowSymbol = formatSymbolDisplay(item.symbol);
               return (
-                <div key={`${item.symbol}-${index}`} className="grid h-[78px] grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] items-center gap-2 border-b border-[rgba(17,24,39,0.08)] px-4 text-right text-[16px] tabular-nums">
-                  <div className="flex min-w-0 items-center gap-3 text-left">
-                    <span className="size-3 shrink-0 rounded-sm" style={{ background: markerColor }} />
+                <div key={`${item.symbol}-${index}`} className="grid h-16 grid-cols-[minmax(104px,1fr)_76px_76px_76px] items-center gap-1.5 border-b border-[rgba(17,24,39,0.08)] px-2 text-right text-[14px] tabular-nums sm:h-[78px] sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[16px]">
+                  <div className="flex min-w-0 items-center gap-2 text-left sm:gap-3">
+                    <span className="size-2.5 shrink-0 rounded-sm sm:size-3" style={{ background: markerColor }} />
                     <div className="min-w-0">
-                      <div className="truncate text-[18px] font-bold leading-tight text-[#202124]">{displayRowSymbol}</div>
-                      <div className="mt-1 truncate text-[13px] text-[rgba(17,24,39,0.64)]">{item.name}</div>
+                      <div className="truncate text-[16px] font-bold leading-tight text-[#202124] sm:text-[18px]">{displayRowSymbol}</div>
+                      <div className="mt-0.5 truncate text-[12px] text-[rgba(17,24,39,0.64)] sm:mt-1 sm:text-[13px]">{item.name}</div>
                     </div>
                   </div>
-                  <div className="text-[17px] font-bold text-[#202124] transition-colors duration-[120ms]">{Number.isFinite(item.price) ? `$${formatNumber(item.price, 2)}` : '--'}</div>
-                  <div className={cx('text-[16px] font-bold transition-colors duration-[120ms]', toneClass)}>{Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
-                  <div className={cx('text-[16px] font-bold transition-colors duration-[120ms]', toneClass)}>{Number.isFinite(item.changePercent) ? `${formatSignedPercent(item.changePercent)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
-                  <div className="text-[17px] font-bold text-[#202124] transition-colors duration-[120ms]">{Number.isFinite(item.previousClose) ? `$${formatNumber(item.previousClose, 2)}` : '--'}</div>
+                  <div className="text-[15px] font-bold text-[#202124] transition-colors duration-[120ms] sm:text-[17px]">{Number.isFinite(item.price) ? `$${formatNumber(item.price, 2)}` : '--'}</div>
+                  <div className={cx('text-[14px] font-bold transition-colors duration-[120ms] sm:text-[16px]', toneClass)}>{Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
+                  <div className={cx('text-[14px] font-bold transition-colors duration-[120ms] sm:text-[16px]', toneClass)}>{Number.isFinite(item.changePercent) ? `${formatSignedPercent(item.changePercent)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
+                  <div className="hidden text-[15px] font-bold text-[#202124] transition-colors duration-[120ms] sm:block sm:text-[17px]">{Number.isFinite(item.previousClose) ? `$${formatNumber(item.previousClose, 2)}` : '--'}</div>
                 </div>
               );
             })}
@@ -2382,7 +2382,7 @@ function SymbolDetailPanel({
         {market === 'cn' && cnFundParam === 'premium' ? <PremiumInsightCard premiumState={premiumState} /> : null}
 
         {/* 详情 tab */}
-        <div className="mt-3 flex gap-5 border-b border-[#e8eaed] text-sm font-medium text-[#5f6368]">
+        <div className="mt-2 flex gap-5 border-b border-[#e8eaed] text-sm font-medium text-[#5f6368] sm:mt-3">
           {(market === 'us' ? SYMBOL_DETAIL_TABS : SYMBOL_DETAIL_TABS.filter((tab) => tab.key === 'overview')).map((tab) => (
             <button
               key={tab.key}
@@ -2399,7 +2399,7 @@ function SymbolDetailPanel({
         </div>
       </div>
 
-      <div className="px-3 py-4 sm:px-1">
+      <div className="px-2 py-3 sm:px-1 sm:py-4">
         {activeTab === 'overview' ? (
           <div className="space-y-5">
             <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
