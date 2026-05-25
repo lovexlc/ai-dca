@@ -1201,7 +1201,7 @@ function CandlesLayerPanel({ xAxisMap, yAxisMap, data }) {
   );
 }
 
-function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, tone, symbol, onHover }) {
+function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, tone, symbol, onHover, onLeave, onLock, lockOnClick = false }) {
   const cmpList = (compareSeries || []).filter((series) => Array.isArray(series.candles) && series.candles.length >= 2);
   const cmpSignature = JSON.stringify(cmpList.map((series) => ({
     symbol: series.symbol,
@@ -1279,15 +1279,23 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
   const showArea = chartType === 'area' && !normalized;
   const showLine = chartType === 'line' || normalized;
   const showBar = chartType === 'bar' && !normalized;
+  const getChartPayload = (state) => {
+    const index = Number.isInteger(state?.activeTooltipIndex) ? state.activeTooltipIndex : -1;
+    return state?.activePayload?.[0]?.payload || (index >= 0 ? finalRows[index] : null);
+  };
   const handleChartPoint = (state) => {
     if (!onHover) return;
-    const index = Number.isInteger(state?.activeTooltipIndex) ? state.activeTooltipIndex : -1;
-    const payload = state?.activePayload?.[0]?.payload || (index >= 0 ? finalRows[index] : null);
+    const payload = getChartPayload(state);
     if (payload) onHover(payload);
   };
-  useEffect(() => {
-    if (onHover && finalRows.length > 0) onHover(finalRows[finalRows.length - 1]);
-  }, [onHover, finalRows]);
+  const handleChartLeave = () => {
+    if (onLeave) onLeave();
+  };
+  const handleChartLock = (state) => {
+    if (!lockOnClick || !onLock) return;
+    const payload = getChartPayload(state);
+    if (payload) onLock(payload);
+  };
   const legendPayload = normalized
     ? [
       { value: displayMainSymbol || '当前标的', type: 'line', color: mainColor, id: 'main' },
@@ -1300,7 +1308,8 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
         data={finalRows}
         margin={{ top: 12, right: 12, left: 4, bottom: 8 }}
         onMouseMove={handleChartPoint}
-        onClick={handleChartPoint}
+        onMouseLeave={handleChartLeave}
+        onClick={handleChartLock}
       >
         <CartesianGrid stroke="rgba(17,24,39,0.09)" vertical strokeDasharray="0" />
         <XAxis dataKey="label" tick={{ fontSize: 12, fill: 'rgba(17,24,39,0.62)' }} minTickGap={40} axisLine={false} tickLine={false} />
@@ -1676,6 +1685,7 @@ function SymbolDetailPanel({
   onToggleWatch,
   premiumState,
   navHistoryState,
+  isMobile = false,
 }) {
   const [chartType, setChartType] = useState('line');
   const [cnFundParam, setCnFundParam] = useState('price');
@@ -1690,12 +1700,13 @@ function SymbolDetailPanel({
   const [compareLoadingMap, setCompareLoadingMap] = useState({});
   const [compareErrorMap, setCompareErrorMap] = useState({});
   const [compareQuoteMap, setCompareQuoteMap] = useState({});
-  const [activeChartRow, setActiveChartRow] = useState(null);
+  const [hoveredChartRow, setHoveredChartRow] = useState(null);
+  const [lockedChartRow, setLockedChartRow] = useState(null);
   const indicatorOptions = INDICATOR_OPTIONS;
   const rowSymbol = row && row.symbol ? String(row.symbol).toUpperCase() : '';
   // 当前 symbol 或时间范围切换时清空对比
-  useEffect(() => { setCompareSymbols([]); setActiveChartRow(null); }, [rowSymbol]);
-  useEffect(() => { setActiveChartRow(null); }, [chartRange, cnFundParam]);
+  useEffect(() => { setCompareSymbols([]); setHoveredChartRow(null); setLockedChartRow(null); }, [rowSymbol]);
+  useEffect(() => { setHoveredChartRow(null); setLockedChartRow(null); }, [chartRange, cnFundParam]);
   useEffect(() => { if (market !== 'cn') setCnFundParam('price'); }, [market]);
   useEffect(() => {
     const q = compareInput.trim();
@@ -1911,16 +1922,32 @@ function SymbolDetailPanel({
   });
   const comparePendingSymbols = compareSymbols.filter((sym) => compareLoadingMap[`${sym}|${chartTf}`]);
   const compareReadyCount = compareSeries.filter((s) => Array.isArray(s.candles) && s.candles.length >= 2).length;
+  const activeCursorRow = lockedChartRow || hoveredChartRow;
+  const activeCursorTime = activeCursorRow?.t ?? null;
+  const activeCursorLabel = activeCursorTime ? activeCursorRow?.label : '';
+  const handleChartHover = useCallback((payload) => {
+    setHoveredChartRow((prev) => (prev && payload && prev.t === payload.t ? prev : payload));
+  }, []);
+  const handleChartLeave = useCallback(() => {
+    setHoveredChartRow(null);
+  }, []);
+  const handleChartLock = useCallback((payload) => {
+    if (!payload) return;
+    setLockedChartRow((prev) => (prev && prev.t === payload.t ? null : payload));
+  }, []);
+  const clearLockedChartRow = useCallback(() => {
+    setLockedChartRow(null);
+  }, []);
   const applyHoverSnapshot = (quoteRow, keyPrefix) => {
-    if (!activeChartRow) return quoteRow;
+    if (!activeCursorRow) return quoteRow;
     const priceKey = keyPrefix === 'main' ? 'mainPrice' : `${keyPrefix}price`;
     const baseKey = keyPrefix === 'main' ? 'mainBase' : `${keyPrefix}base`;
     const changeKey = keyPrefix === 'main' ? 'mainChange' : `${keyPrefix}change`;
     const pctKey = keyPrefix === 'main' ? 'mainChangePercent' : `${keyPrefix}changePercent`;
-    const price = Number(activeChartRow[priceKey]);
-    const change = Number(activeChartRow[changeKey]);
-    const changePercent = Number(activeChartRow[pctKey]);
-    const previousClose = Number(activeChartRow[baseKey]);
+    const price = Number(activeCursorRow[priceKey]);
+    const change = Number(activeCursorRow[changeKey]);
+    const changePercent = Number(activeCursorRow[pctKey]);
+    const previousClose = Number(activeCursorRow[baseKey]);
     if (!Number.isFinite(price)) return quoteRow;
     return {
       ...quoteRow,
@@ -1928,7 +1955,7 @@ function SymbolDetailPanel({
       change: Number.isFinite(change) ? change : quoteRow.change,
       changePercent: Number.isFinite(changePercent) ? changePercent : quoteRow.changePercent,
       previousClose: Number.isFinite(previousClose) ? previousClose : quoteRow.previousClose,
-      snapshotLabel: activeChartRow.label
+      snapshotLabel: activeCursorRow.label
     };
   };
   const compareTableRows = [
@@ -2161,7 +2188,12 @@ function SymbolDetailPanel({
         </div>
 
         {/* 图表区 */}
-        <div className="relative mt-3 h-[360px] rounded-[20px] bg-[#f1f3f4] p-4 sm:h-[400px]">
+        <div
+          className="relative mt-3 h-[360px] rounded-[20px] bg-[#f1f3f4] p-4 sm:h-[400px]"
+          onClick={(event) => {
+            if (isMobile && lockedChartRow && event.target === event.currentTarget) clearLockedChartRow();
+          }}
+        >
           {compareSymbols.length > 0 ? (
             <div className="absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 text-[14px]">
               <span className="inline-flex h-8 items-center gap-2 rounded-2xl border border-[rgba(17,24,39,0.08)] bg-[#f8fafd]/95 px-3.5 font-semibold text-[#1a73e8] shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
@@ -2200,7 +2232,10 @@ function SymbolDetailPanel({
               compareSeries={compareSeries}
               tone={tone}
               symbol={cnFundParam === 'price' ? displaySymbol : CN_FUND_PARAM_LABEL[cnFundParam]}
-              onHover={(payload) => setActiveChartRow((prev) => (prev && payload && prev.t === payload.t ? prev : payload))}
+              onHover={handleChartHover}
+              onLeave={handleChartLeave}
+              onLock={handleChartLock}
+              lockOnClick={isMobile}
             />
           ) : sparkFallback ? (
             <Sparkline points={sparkFallback} width={720} height={210} tone={tone} showFill markLast className="h-full w-full" />
@@ -2256,7 +2291,10 @@ function SymbolDetailPanel({
               <div>涨跌幅</div>
               <div>昨收盘</div>
             </div>
-            {activeChartRow?.label ? <div className="flex h-10 items-center border-b border-[rgba(17,24,39,0.08)] bg-[#f8fafd] px-4 text-[13px] font-semibold text-[#5f6368]">图表定位：{activeChartRow.label}</div> : null}
+            <div className="flex h-10 items-center justify-between gap-3 border-b border-[rgba(17,24,39,0.08)] bg-[#f8fafd] px-4 text-[13px] font-semibold text-[#5f6368]">
+              <span>图表定位：{activeCursorLabel || '最新价 / 当前数据'}</span>
+              {lockedChartRow ? <button type="button" onClick={clearLockedChartRow} className="rounded-full px-2 py-0.5 text-[12px] text-[#1a73e8] hover:bg-[#e8f0fe]">取消锁定</button> : null}
+            </div>
             {compareTableRows.map((item, index) => {
               const markerColor = index === 0 ? COMPARE_MAIN_COLOR : COMPARE_COLORS[(index - 1) % COMPARE_COLORS.length];
               const rowPositive = Number.isFinite(item.changePercent) && item.changePercent > 0;
@@ -2272,10 +2310,10 @@ function SymbolDetailPanel({
                       <div className="mt-1 truncate text-[13px] text-[rgba(17,24,39,0.64)]">{item.name}</div>
                     </div>
                   </div>
-                  <div className="text-[17px] font-bold text-[#202124]">{Number.isFinite(item.price) ? `$${formatNumber(item.price, 2)}` : '--'}</div>
-                  <div className={cx('text-[16px] font-bold', toneClass)}>{Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
-                  <div className={cx('text-[16px] font-bold', toneClass)}>{Number.isFinite(item.changePercent) ? `${formatSignedPercent(item.changePercent)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
-                  <div className="text-[17px] font-bold text-[#202124]">{Number.isFinite(item.previousClose) ? `$${formatNumber(item.previousClose, 2)}` : '--'}</div>
+                  <div className="text-[17px] font-bold text-[#202124] transition-colors duration-[120ms]">{Number.isFinite(item.price) ? `$${formatNumber(item.price, 2)}` : '--'}</div>
+                  <div className={cx('text-[16px] font-bold transition-colors duration-[120ms]', toneClass)}>{Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
+                  <div className={cx('text-[16px] font-bold transition-colors duration-[120ms]', toneClass)}>{Number.isFinite(item.changePercent) ? `${formatSignedPercent(item.changePercent)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
+                  <div className="text-[17px] font-bold text-[#202124] transition-colors duration-[120ms]">{Number.isFinite(item.previousClose) ? `$${formatNumber(item.previousClose, 2)}` : '--'}</div>
                 </div>
               );
             })}
@@ -3801,6 +3839,7 @@ export function MarketsExperience() {
             chartLoading={chartLoading}
             premiumState={premiumMap[selectedQuote.symbol]}
             navHistoryState={navHistoryMap[`${selectedQuote.symbol}|${navHistoryDaysForRange(chartRange)}`]}
+            isMobile={isMobile}
             inWatch={watchSymbols.includes(selectedQuote.symbol)}
             onToggleWatch={() => {
               if (watchSymbols.includes(selectedQuote.symbol)) {
