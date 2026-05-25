@@ -1323,7 +1323,8 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
   return (
     <div
       ref={chartShellRef}
-      className="h-full w-full touch-pan-y"
+      className="h-full w-full touch-pan-y select-none outline-none [-webkit-tap-highlight-color:transparent] [&_*]:outline-none [&_.recharts-surface]:outline-none [&_.recharts-surface]:focus:outline-none [&_.recharts-wrapper]:outline-none"
+      tabIndex={-1}
       onPointerMove={handlePointerMove}
       onPointerLeave={handleChartLeave}
       onPointerDown={handlePointerLock}
@@ -1334,7 +1335,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
         margin={{ top: 12, right: 12, left: 4, bottom: 8 }}
         onMouseMove={handleChartPoint}
         onMouseLeave={handleChartLeave}
-        onClick={handleChartLock}
+        onClick={undefined}
       >
         <CartesianGrid stroke="rgba(17,24,39,0.09)" vertical strokeDasharray="0" />
         <XAxis dataKey="label" tick={{ fontSize: 12, fill: 'rgba(17,24,39,0.62)' }} minTickGap={40} axisLine={false} tickLine={false} />
@@ -2348,7 +2349,7 @@ function SymbolDetailPanel({
 
         {compareSymbols.length > 0 ? (
           <div className="overflow-hidden bg-white text-[12px] sm:text-[13px]">
-            <div className="grid h-9 grid-cols-[minmax(104px,1fr)_76px_76px_76px] items-center gap-1.5 border-b border-[rgba(17,24,39,0.08)] px-2 text-right text-[12px] font-semibold text-[#5f6368] sm:h-11 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[13px]">
+            <div className="grid h-9 grid-cols-[minmax(86px,1fr)_64px_60px_60px] items-center gap-1 border-b border-[rgba(17,24,39,0.08)] px-1.5 text-right text-[12px] font-semibold text-[#5f6368] sm:h-11 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[13px]">
               <div className="text-left">股票代码</div>
               <div>价格</div>
               <div>涨跌额</div>
@@ -2362,7 +2363,7 @@ function SymbolDetailPanel({
               const toneClass = rowPositive ? 'text-[#a50e0e]' : rowNegative ? 'text-[#137333]' : 'text-[#1f1f1f]';
               const displayRowSymbol = formatSymbolDisplay(item.symbol);
               return (
-                <div key={`${item.symbol}-${index}`} className="grid h-16 grid-cols-[minmax(104px,1fr)_76px_76px_76px] items-center gap-1.5 border-b border-[rgba(17,24,39,0.08)] px-2 text-right text-[14px] tabular-nums sm:h-[78px] sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[16px]">
+                <div key={`${item.symbol}-${index}`} className="grid h-16 grid-cols-[minmax(86px,1fr)_64px_60px_60px] items-center gap-1 border-b border-[rgba(17,24,39,0.08)] px-1.5 text-right text-[13px] tabular-nums sm:h-[78px] sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[16px]">
                   <div className="flex min-w-0 items-center gap-2 text-left sm:gap-3">
                     <span className="size-2.5 shrink-0 rounded-sm sm:size-3" style={{ background: markerColor }} />
                     <div className="min-w-0">
@@ -2370,9 +2371,9 @@ function SymbolDetailPanel({
                       <div className="mt-0.5 truncate text-[12px] text-[rgba(17,24,39,0.64)] sm:mt-1 sm:text-[13px]">{item.name}</div>
                     </div>
                   </div>
-                  <div className="text-[15px] font-bold text-[#202124] transition-colors duration-[120ms] sm:text-[17px]">{Number.isFinite(item.price) ? `$${formatNumber(item.price, 2)}` : '--'}</div>
-                  <div className={cx('text-[14px] font-bold transition-colors duration-[120ms] sm:text-[16px]', toneClass)}>{Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
-                  <div className={cx('text-[14px] font-bold transition-colors duration-[120ms] sm:text-[16px]', toneClass)}>{Number.isFinite(item.changePercent) ? `${formatSignedPercent(item.changePercent)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
+                  <div className="text-[14px] font-bold text-[#202124] transition-colors duration-[120ms] sm:text-[17px]">{Number.isFinite(item.price) ? `$${formatNumber(item.price, 2)}` : '--'}</div>
+                  <div className={cx('text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', toneClass)}>{Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
+                  <div className={cx('text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', toneClass)}>{Number.isFinite(item.changePercent) ? `${formatSignedPercent(item.changePercent)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
                   <div className="hidden text-[15px] font-bold text-[#202124] transition-colors duration-[120ms] sm:block sm:text-[17px]">{Number.isFinite(item.previousClose) ? `$${formatNumber(item.previousClose, 2)}` : '--'}</div>
                 </div>
               );
