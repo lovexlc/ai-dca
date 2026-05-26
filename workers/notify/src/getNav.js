@@ -284,6 +284,86 @@ function resolveExchangeMarket(code) {
   return String(code || '').startsWith('15') ? '0' : '1';
 }
 
+function sinaSymbol(code) {
+  const c = sanitizeCode(code);
+  if (!c) return '';
+  // 沪市 ETF 主要是 5 / 6 / 9 开头；深市 ETF 主要是 1 / 0 / 3 开头。
+  return /^[569]/.test(c) ? `sh${c}` : `sz${c}`;
+}
+
+export async function fetchSinaPrices(codes = []) {
+  const symbols = Array.from(new Set(codes.map((c) => sinaSymbol(c)).filter(Boolean)));
+  if (!symbols.length) return {};
+  const url = 'https://' + 'hq.sinajs.cn/list=' + symbols.join(',');
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Referer: 'https://finance.sina.com.cn/',
+      'User-Agent': 'Mozilla/5.0 (compatible; ai-dca-notify/1.0)'
+    },
+    cf: { cacheTtl: 0, cacheEverything: false }
+  });
+  if (!response.ok) {
+    throw new Error(`新浪行情请求失败：状态 ${response.status}`);
+  }
+  // 新浪原文是 GB18030，但数字、逗号、引号、等号、英文字母均为 ASCII；
+  // 这里只消费数字字段，中文名称乱码不影响解析。
+  const text = await response.text();
+  const map = {};
+  const re = /var\s+hq_str_(sh|sz)(\d{6})="([^"]*)";?/g;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    const code = match[2];
+    const fields = String(match[3] || '').split(',');
+    if (fields.length < 4) continue;
+    const price = Number(fields[3]);
+    if (!Number.isFinite(price) || price <= 0) continue;
+    map[code] = {
+      code,
+      price,
+      preClose: Number(fields[2]) || 0,
+      open: Number(fields[1]) || 0,
+      high: Number(fields[4]) || 0,
+      low: Number(fields[5]) || 0,
+      date: String(fields[30] || '').trim(),
+      time: String(fields[31] || '').trim(),
+      source: 'sina-close-price'
+    };
+  }
+  return map;
+}
+
+async function fetchSinaExchangeQuoteSnapshot(code, generatedAt = nowShanghaiIso()) {
+  const normalized = String(code || '').trim();
+  if (!/^\d{6}$/.test(normalized)) {
+    throw new Error(`${code} 新浪行情请求失败：无效基金代码。`);
+  }
+  const priceMap = await fetchSinaPrices([normalized]);
+  const quote = priceMap[normalized];
+  const latestPrice = Number(quote?.price);
+  const previousPrice = Number(quote?.preClose);
+  if (!Number.isFinite(latestPrice) || latestPrice <= 0) {
+    throw new Error(`${normalized} 新浪行情暂无最新交易价。`);
+  }
+  if (!Number.isFinite(previousPrice) || previousPrice <= 0) {
+    throw new Error(`${normalized} 新浪行情缺少昨收价。`);
+  }
+  const latestDate = normalizeDate(quote?.date || '') || epochMsToShanghaiIso(Date.parse(generatedAt)).slice(0, 10);
+  return {
+    ok: true,
+    code: normalized,
+    name: '',
+    latestNav: roundNumber(latestPrice, 4),
+    latestNavDate: latestDate,
+    previousNav: roundNumber(previousPrice, 4),
+    previousNavDate: latestDate ? shiftIsoDateDays(latestDate, -1) : '',
+    updatedAt: generatedAt,
+    source: 'sina-close-price',
+    priceSource: 'sina-close-price',
+    time: String(quote?.time || '').trim()
+  };
+}
+
 function formatShanghaiDateFromEpochSec(seconds) {
   const ms = Number(seconds) > 0 ? Number(seconds) * 1000 : Date.now();
   const shifted = new Date(ms + 8 * 60 * 60 * 1000);
@@ -372,10 +452,10 @@ export async function fetchFundNavSnapshot(code, generatedAt = nowShanghaiIso())
   };
 }
 
-export async function fetchExchangeQuoteSnapshot(code, generatedAt = nowShanghaiIso()) {
+async function fetchEastmoneyExchangeQuoteSnapshot(code, generatedAt = nowShanghaiIso()) {
   const normalized = String(code || '').trim();
   if (!/^\d{6}$/.test(normalized)) {
-    throw new Error(`${code} 场内行情请求失败：无效基金代码。`);
+    throw new Error(`${code} 东财场内行情请求失败：无效基金代码。`);
   }
 
   const market = resolveExchangeMarket(normalized);
@@ -394,7 +474,7 @@ export async function fetchExchangeQuoteSnapshot(code, generatedAt = nowShanghai
 
   const rawText = await response.text();
   if (!response.ok) {
-    throw new Error(`${normalized} 场内行情请求失败：HTTP ${response.status}`);
+    throw new Error(`${normalized} 东财场内行情请求失败：HTTP ${response.status}`);
   }
 
   let payload = {};
@@ -402,13 +482,13 @@ export async function fetchExchangeQuoteSnapshot(code, generatedAt = nowShanghai
     try {
       payload = JSON.parse(rawText);
     } catch (_error) {
-      throw new Error(`${normalized} 场内行情接口返回了非 JSON 响应。`);
+      throw new Error(`${normalized} 东财场内行情接口返回了非 JSON 响应。`);
     }
   }
 
   const data = payload?.data;
   if (!data || typeof data !== 'object') {
-    throw new Error(`${normalized} 暂未查询到场内实时行情。`);
+    throw new Error(`${normalized} 东财暂未查询到场内实时行情。`);
   }
 
   const scale = Math.max(Math.min(Number(data.f1) || 3, 6), 0);
@@ -416,10 +496,10 @@ export async function fetchExchangeQuoteSnapshot(code, generatedAt = nowShanghai
   const latestRaw = Number(data.f43);
   const previousRaw = Number(data.f60);
   if (!(latestRaw > 0)) {
-    throw new Error(`${normalized} 场内行情暂无最新交易价。`);
+    throw new Error(`${normalized} 东财场内行情暂无最新交易价。`);
   }
   if (!(previousRaw > 0)) {
-    throw new Error(`${normalized} 场内行情缺少昨收价。`);
+    throw new Error(`${normalized} 东财场内行情缺少昨收价。`);
   }
 
   const latestPrice = roundNumber(latestRaw / divisor, 4);
@@ -437,8 +517,30 @@ export async function fetchExchangeQuoteSnapshot(code, generatedAt = nowShanghai
     previousNav: previousPrice,
     previousNavDate: previousDate,
     updatedAt: generatedAt,
-    priceSource: 'exchange-quote'
+    source: 'eastmoney-exchange-quote',
+    priceSource: 'eastmoney-exchange-quote'
   };
+}
+
+export async function fetchExchangeQuoteSnapshot(code, generatedAt = nowShanghaiIso()) {
+  try {
+    return await fetchSinaExchangeQuoteSnapshot(code, generatedAt);
+  } catch (sinaError) {
+    try {
+      const fallback = await fetchEastmoneyExchangeQuoteSnapshot(code, generatedAt);
+      return {
+        ...fallback,
+        source: fallback.source || 'eastmoney-exchange-quote',
+        priceSource: fallback.priceSource || 'eastmoney-exchange-quote',
+        fallbackFrom: 'sina-close-price',
+        fallbackReason: sinaError instanceof Error ? sinaError.message : String(sinaError || '')
+      };
+    } catch (eastmoneyError) {
+      const eastmoneyMessage = eastmoneyError instanceof Error ? eastmoneyError.message : String(eastmoneyError || '');
+      const sinaMessage = sinaError instanceof Error ? sinaError.message : String(sinaError || '');
+      throw new Error(`${String(code || '').trim()} 场内行情请求失败：新浪 ${sinaMessage}; 东财 ${eastmoneyMessage}`);
+    }
+  }
 }
 
 export async function fetchHoldingSnapshot(code, generatedAt = nowShanghaiIso()) {

@@ -12,7 +12,6 @@ import {
   buildSwitchTriggerNotification,
   computeSwitchSnapshot,
   evaluateSwitchTriggers,
-  fetchSinaPrices,
   isInTradingSession,
   isSwitchConfigRunnable,
   navCacheKey,
@@ -26,6 +25,7 @@ import {
 import {
   fetchFundNavSnapshot,
   fetchLatestNavMapWithCache,
+  fetchSinaPrices,
   getLatestNavWithCache
 } from './getNav.js';
 

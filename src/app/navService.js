@@ -14,7 +14,7 @@ function normalizeSnapshotItem(item = {}) {
   const latestNav = round(Number(item?.latestNav) || 0, 4);
   const previousNav = round(Number(item?.previousNav) || 0, 4);
   const source = String(item?.source || item?.priceSource || item?.cacheSource || '').trim();
-  const valueType = source === 'exchange-quote' || source === 'sina-close-price' ? 'price' : 'nav';
+  const valueType = source === 'exchange-quote' || source === 'sina-close-price' || source === 'eastmoney-exchange-quote' ? 'price' : 'nav';
   return {
     ok: item?.ok !== false,
     code,

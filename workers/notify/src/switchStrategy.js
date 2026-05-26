@@ -22,6 +22,7 @@ import {
   fetchLatestNav,
   fetchLatestNavMap,
   fetchLatestNavMapWithCache,
+  fetchSinaPrices,
   getLatestNavWithCache,
   NAV_CACHE_PREFIX
 } from './getNav.js';
@@ -178,64 +179,8 @@ export function isInTradingSession(date = new Date()) {
   return false;
 }
 
-// --- 新浪实时报价 ----------------------------------------------------------
-//
-// 新浪 hq.sinajs.cn 强制要求 Referer，否则会 403 / 空 body。
-// 一次最多支持几十只代码，逗号分隔；本仓库一个 client 上限 20 只候选 + 1 基准 = 21
-// 个查询，远低于上限。
-
-function sinaSymbol(code) {
-  const c = sanitizeCode(code);
-  if (!c) return '';
-  // 沪市 ETF 主要是 5 / 6 / 9 开头；深市 ETF 主要是 1 / 0 / 3 开头。
-  return /^[569]/.test(c) ? `sh${c}` : `sz${c}`;
-}
-
-export async function fetchSinaPrices(codes = []) {
-  const symbols = Array.from(new Set(codes.map((c) => sinaSymbol(c)).filter(Boolean)));
-  if (!symbols.length) return {};
-  const url = `https://hq.sinajs.cn/list=${symbols.join(',')}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Referer': 'https://finance.sina.com.cn/',
-      'User-Agent': 'Mozilla/5.0 (compatible; ai-dca-notify/1.0)'
-    },
-    cf: { cacheTtl: 0, cacheEverything: false }
-  });
-  if (!response.ok) {
-    throw new Error(`新浪行情请求失败：状态 ${response.status}`);
-  }
-  // 新浪原文是 GB18030，但我们只需要数字字段，逗号、引号、=、数字、字母都是 ASCII，
-  // 无需特殊解码。中文名称会乱码但忽略即可。
-  const text = await response.text();
-  const map = {};
-  const re = /var\s+hq_str_(sh|sz)(\d{6})="([^"]*)";?/g;
-  let match;
-  while ((match = re.exec(text)) !== null) {
-    const code = match[2];
-    const fields = String(match[3] || '').split(',');
-    if (fields.length < 4) continue;
-    // ETF/股票字段：[0]=name [1]=open [2]=preClose [3]=current [4]=high [5]=low
-    // ... [30]=date [31]=time
-    const price = Number(fields[3]);
-    if (!Number.isFinite(price) || price <= 0) continue;
-    map[code] = {
-      code,
-      price,
-      preClose: Number(fields[2]) || 0,
-      open: Number(fields[1]) || 0,
-      high: Number(fields[4]) || 0,
-      low: Number(fields[5]) || 0,
-      date: String(fields[30] || '').trim(),
-      time: String(fields[31] || '').trim()
-    };
-  }
-  return map;
-}
-
 // 净值获取相关的函数已抽离到 getNav.js 模块
-// 其中 fetchLatestNav, fetchLatestNavMap, fetchLatestNavMapWithCache, getLatestNavWithCache
+// 其中 fetchLatestNav, fetchLatestNavMap, fetchLatestNavMapWithCache, fetchSinaPrices, getLatestNavWithCache
 // 由该模块导出并在本文件顶部导入
 
 /**
