@@ -392,14 +392,12 @@ async function deliverNotification(env, notification, options = {}) {
       configLabel: 'Android'
     });
   } else {
-    // 推送策略：WS 在线直推；如果设备当前没有在线 socket，tryPublishWs 会写入
-    // notify:queue:device:<deviceInstallationId> 离线队列。设备下一次 WebSocket
-    // 连接成功时由 WsHub 自动 drain 并补发。
+    // 推送策略：WS 在线直推优先；如果某台设备当前没有在线 socket，
+    // tryPublishWs 会写入 notify:queue:device:<deviceInstallationId> 离线队列，
+    // 同时该设备再走 FCM 兜底，避免离线时完全收不到系统通知。
     //
-    // 持仓收益属于定时强提醒：仅靠 App 常驻 WS 通道“送达”不一定会触发系统通知，
-    // 不能因此跳过 FCM。否则 Worker 会把事件记为 delivered + 写入收益 dedup，
-    // 用户端却没有弹通知，后续 21:30 兜底也不会再补发。
-    const shouldAlsoSendFcm = String(notification.eventType || '').trim() === 'holdings-daily-return';
+    // 关键点：同一设备只允许一个即时通道命中。WS 已在线送达时不能再发 FCM，
+    // 否则 Android 会把同一条提醒从在线通道和 FCM 各弹一次。
     const baseData = {
       eventId: notification.eventId || '',
       eventType: notification.eventType || '',
@@ -444,9 +442,7 @@ async function deliverNotification(env, notification, options = {}) {
         results.push({
           channel: 'ws',
           status: 'delivered',
-          detail: shouldAlsoSendFcm
-            ? `App 常驻通道送达（连接数 ${Number(wsValue.delivered || 0)}），收益提醒继续发送 FCM 系统通知`
-            : `App 常驻通道送达（连接数 ${Number(wsValue.delivered || 0)}），跳过 FCM`,
+          detail: `App 常驻通道送达（连接数 ${Number(wsValue.delivered || 0)}），跳过 FCM`,
           ...baseMeta
         });
         return;
@@ -470,9 +466,13 @@ async function deliverNotification(env, notification, options = {}) {
       });
     });
 
-    if (shouldAlsoSendFcm) {
+    const fcmTargets = gcmRegistrationsToDeliver
+      .map((registration, idx) => ({ registration, idx }))
+      .filter((item) => !wsDeliveredFlags[item.idx]);
+
+    if (fcmTargets.length) {
       const gcmSettledList = await Promise.allSettled(
-        gcmRegistrationsToDeliver.map((registration) =>
+        fcmTargets.map(({ registration }) =>
           sendGcmNotification({
             env,
             projectId: settings.gcmProjectId,
@@ -485,7 +485,7 @@ async function deliverNotification(env, notification, options = {}) {
         )
       );
 
-      gcmRegistrationsToDeliver.forEach((registration, idx) => {
+      fcmTargets.forEach(({ registration }, idx) => {
         const baseMeta = {
           configKey: `gcm-registration:${registration.id}`,
           configType: 'gcm-registration',
