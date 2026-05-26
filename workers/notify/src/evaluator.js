@@ -398,8 +398,10 @@ async function deliverNotification(env, notification, options = {}) {
     //
     // 关键点：同一设备只允许一个即时通道命中。WS 已在线送达时不能再发 FCM，
     // 否则 Android 会把同一条提醒从在线通道和 FCM 各弹一次。
+    const messageId = notification.eventId || '';
     const baseData = {
-      eventId: notification.eventId || '',
+      messageId,
+      eventId: messageId,
       eventType: notification.eventType || '',
       ruleId: notification.ruleId || '',
       summary: notification.summary || '',
@@ -416,6 +418,8 @@ async function deliverNotification(env, notification, options = {}) {
     const wsSettledList = await Promise.allSettled(
       gcmRegistrationsToDeliver.map((registration) =>
         tryPublishWs(env, registration.deviceInstallationId || registration.id, {
+          messageId,
+          eventId: messageId,
           title: notification.title,
           body: notification.body,
           data: baseData,
@@ -1050,6 +1054,7 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
   const nextState = {
     ruleStates: typeof storedState?.ruleStates === 'object' && storedState.ruleStates ? storedState.ruleStates : {},
     deliveryFailures: getDeliveryFailures(storedState),
+    deliveryAcks: typeof storedState?.deliveryAcks === 'object' && storedState.deliveryAcks ? storedState.deliveryAcks : {},
     lastRunAt: new Date().toISOString()
   };
   let recentEvents = Array.isArray(storedState?.recentEvents) ? storedState.recentEvents : [];

@@ -50,3 +50,42 @@ npx wrangler dev --config workers/notify/wrangler.toml --port 8788
 - 价格提醒按当前策略重算后决定是否触发
 - 同一触发区只提醒一次，离开触发区后才允许再次提醒
 - Android 端已经接入 FCM 实际下发；定时规则会发送到所有已配对的 Android 设备
+
+## 通知 ACK
+
+Worker 支持统一通知回执，用于区分“服务端已发送”和“客户端真实收到 / 展示 / 打开”。
+
+- WebSocket：客户端收到 `notify` 后，可通过同一连接发送 ACK 帧：
+
+```json
+{
+  "type": "ack",
+  "messageId": "<eventId>",
+  "eventId": "<eventId>",
+  "stage": "received",
+  "source": "ws",
+  "deviceInstallationId": "<deviceInstallationId>",
+  "ts": "2026-05-26T19:11:00+08:00"
+}
+```
+
+- FCM / 后台回执：Android 端调用：
+
+```http
+POST /api/notify/ack
+Content-Type: application/json
+```
+
+```json
+{
+  "deviceInstallationId": "<deviceInstallationId>",
+  "token": "<current-fcm-token>",
+  "messageId": "<eventId>",
+  "eventId": "<eventId>",
+  "stage": "displayed",
+  "source": "fcm",
+  "ts": "2026-05-26T19:11:00+08:00"
+}
+```
+
+`stage` 支持 `received`、`displayed`、`opened`、`deduped`、`failed`。Worker 会把 ACK 写入对应 client 的 `deliveryAcks`，并在 `/api/notify/status` 与 `/api/notify/events` 返回事件时合并到 `deliveryAck` 字段。

@@ -3,6 +3,7 @@ import { buildPublicGcmRegistration, buildPublicGcmRegistrations, checkGcmConnec
 import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
 import { handleBark, isBarkRoute } from './bark.js';
 import { WsHub, tryPublishWs } from './wsHub.js';
+import { attachDeliveryAckToEvent, recordDeliveryAck } from './ack.js';
 
 // 把 Durable Object 类型重新导出，让 Workers runtime 能在加载 wrangler 绑定时
 // 通过 entry module 的导出表找到 class_name="WsHub"。
@@ -93,6 +94,7 @@ function normalizeSettings(settings = {}) {
         ruleStates: typeof client?.state?.ruleStates === 'object' && client.state.ruleStates ? client.state.ruleStates : {},
         deliveryFailures: typeof client?.state?.deliveryFailures === 'object' && client.state.deliveryFailures ? client.state.deliveryFailures : {},
         recentEvents: Array.isArray(client?.state?.recentEvents) ? client.state.recentEvents : [],
+        deliveryAcks: typeof client?.state?.deliveryAcks === 'object' && client.state.deliveryAcks ? client.state.deliveryAcks : {},
         lastRunAt: String(client?.state?.lastRunAt || '').trim()
       },
       meta: {
@@ -139,6 +141,7 @@ function buildDefaultClientRecord(clientId = '', clientLabel = '') {
       ruleStates: {},
       deliveryFailures: {},
       recentEvents: [],
+      deliveryAcks: {},
       lastRunAt: ''
     },
     meta: {
@@ -581,6 +584,16 @@ function requireAuthenticatedGcmRegistration(selectedRegistration, token = '') {
 function getClientRecentEvents(clientRecord = {}) {
   return Array.isArray(clientRecord?.state?.recentEvents) ? clientRecord.state.recentEvents : [];
 }
+function getClientDeliveryAcks(clientRecord = {}) {
+  return (typeof clientRecord?.state?.deliveryAcks === 'object' && clientRecord.state.deliveryAcks)
+    ? clientRecord.state.deliveryAcks
+    : {};
+}
+
+function attachClientDeliveryAcks(event = {}, clientRecord = {}) {
+  return attachDeliveryAckToEvent(event, getClientDeliveryAcks(clientRecord));
+}
+
 
 function hasPcQueuedChannel(event = {}) {
   return Array.isArray(event?.channels)
@@ -738,7 +751,7 @@ async function handleStatus(request, env) {
     lastCheckedAt: String(clientRecord?.meta?.lastCheckedAt || ''),
     lastTestedAt: String(clientRecord?.meta?.lastTestedAt || ''),
     eventCount: recentEvents.length,
-    lastEvent: recentEvents[0] || null,
+    lastEvent: recentEvents[0] ? attachClientDeliveryAcks(recentEvents[0], clientRecord) : null,
     deliveryFailureCount: deliveryFailures.length,
     deliveryFailures,
     setup: {
@@ -748,6 +761,16 @@ async function handleStatus(request, env) {
       ...gcmSetup
     }
   }, { origin });
+}
+
+async function handleAck(request, env) {
+  const origin = readOrigin(request);
+  const payload = await request.json().catch(() => ({}));
+  const result = await recordDeliveryAck(env, payload, {
+    requireToken: true,
+    source: payload.source || 'http'
+  });
+  return jsonResponse(result, { origin });
 }
 
 async function handleEvents(request, env) {
@@ -763,6 +786,7 @@ async function handleEvents(request, env) {
   // 默认过滤后台已确认送达的事件；但 PC 浏览器通知依赖 /events 轮询，
   // 包含 pc/queued channel 的事件即使 overall status 视为 delivered，也要继续返回给浏览器本地弹窗。
   const pendingEvents = getClientRecentEvents(auth.clientRecord)
+    .map((event) => attachClientDeliveryAcks(event, auth.clientRecord))
     .map(normalizeEventForClient)
     .filter(shouldExposeEventForClientPoll);
 
@@ -3101,6 +3125,10 @@ export default {
 
       if (request.method === 'GET' && url.pathname === '/api/notify/events') {
         return await handleEvents(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/ack') {
+        return await handleAck(request, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/sync') {

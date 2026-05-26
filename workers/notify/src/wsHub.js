@@ -1,3 +1,5 @@
+import { recordDeliveryAck } from './ack.js';
+
 // WsHub —— 实时长连接通道的 Durable Object 骨架（per device installation id）。
 //
 // v2 阶段承载「在线即推、离线入队、上线补拉」的实时通道。
@@ -31,6 +33,7 @@ const FRAME = Object.freeze({
   PING: "ping",
   PONG: "pong",
   NOTIFY: "notify",
+  ACK: "ack",
 })
 
 
@@ -185,6 +188,20 @@ export class WsHub {
         const frame = JSON.parse(typeof event.data === "string" ? event.data : "")
         if (frame && frame.type === FRAME.PING) {
           server.send(JSON.stringify({ type: FRAME.PONG, ts: Date.now() }))
+          return
+        }
+        if (frame && frame.type === FRAME.ACK) {
+          recordDeliveryAck(this.env, frame, {
+            deviceInstallationId,
+            source: frame.source || 'ws',
+            connectionId: id,
+          }).catch((error) => {
+            console.log("[notify][ws] ack record failed", JSON.stringify({
+              deviceInstallationId,
+              messageId: frame.messageId || frame.eventId || '',
+              message: error instanceof Error ? error.message : String(error),
+            }))
+          })
         }
       } catch {
         // 忽略非 JSON 帧
@@ -247,9 +264,12 @@ export class WsHub {
     } catch {
       return new Response("invalid json", { status: 400 })
     }
+    const messageId = resolveMessageId(payload)
     const frame = JSON.stringify({
       type: FRAME.NOTIFY,
       ts: Date.now(),
+      messageId,
+      eventId: messageId,
       data: payload,
     })
     let delivered = 0
