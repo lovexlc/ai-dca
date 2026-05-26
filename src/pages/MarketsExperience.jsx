@@ -1349,16 +1349,22 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
         />
         <Tooltip
           cursor={false}
-          contentStyle={{ borderRadius: 16, borderColor: 'rgba(17,24,39,0.08)', boxShadow: '0 6px 18px rgba(0,0,0,0.10)', padding: '12px 14px', minWidth: 160, maxWidth: 200, lineHeight: 1.25 }}
-          labelStyle={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 8 }}
-          itemStyle={{ fontSize: 14, lineHeight: 1.25, paddingTop: 4, paddingBottom: 4 }}
-          formatter={(value, name) => {
+          contentStyle={{ borderRadius: 12, borderColor: '#dfe3eb', boxShadow: '0 12px 32px rgba(60,64,67,0.16)' }}
+          labelStyle={{ fontSize: 12, color: '#5f6368', marginBottom: 6 }}
+          itemStyle={{ fontSize: 12, fontWeight: 600, padding: '2px 0' }}
+          formatter={(value, name, item) => {
             const key = String(name);
             if (key.includes('_price') || key.includes('_base') || key.includes('_change')) return null;
-            const n = Number(value);
             const label = name === 'main' ? (displayMainSymbol || '当前标的') : formatSymbolDisplay(name);
+            if (normalized) {
+              const payload = item?.payload || {};
+              const priceKey = key === 'main' ? 'mainPrice' : `${key}_price`;
+              const price = Number(payload[priceKey]);
+              return [Number.isFinite(price) ? price.toFixed(4) : '--', label];
+            }
+            const n = Number(value);
             if (!Number.isFinite(n)) return [value, label];
-            return normalized ? [`${n.toFixed(2)}%`, label] : [n.toFixed(4), label];
+            return [n.toFixed(4), label];
           }}
         />
         {showArea ? (
@@ -2349,11 +2355,11 @@ function SymbolDetailPanel({
 
         {compareSymbols.length > 0 ? (
           <div className="overflow-hidden bg-white text-[12px] sm:text-[13px]">
-            <div className="grid h-9 grid-cols-[minmax(86px,1fr)_64px_60px_60px] items-center gap-1 border-b border-[rgba(17,24,39,0.08)] px-1.5 text-right text-[12px] font-semibold text-[#5f6368] sm:h-11 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[13px]">
-              <div className="text-left">股票代码</div>
-              <div>价格</div>
-              <div>涨跌额</div>
-              <div>涨跌幅</div>
+            <div className="grid h-9 grid-cols-[minmax(0,1fr)_64px_60px_64px] items-center gap-1 border-b border-[rgba(17,24,39,0.08)] px-1.5 text-right text-[12px] font-semibold text-[#5f6368] sm:h-11 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[13px]">
+              <div className="min-w-0 truncate text-left">股票代码</div>
+              <div className="whitespace-nowrap">价格</div>
+              <div className="whitespace-nowrap">涨跌额</div>
+              <div className="whitespace-nowrap">涨跌幅</div>
               <div className="hidden sm:block">昨收盘</div>
             </div>
             {compareTableRows.map((item, index) => {
@@ -2363,7 +2369,7 @@ function SymbolDetailPanel({
               const toneClass = rowPositive ? 'text-[#a50e0e]' : rowNegative ? 'text-[#137333]' : 'text-[#1f1f1f]';
               const displayRowSymbol = formatSymbolDisplay(item.symbol);
               return (
-                <div key={`${item.symbol}-${index}`} className="grid h-16 grid-cols-[minmax(86px,1fr)_64px_60px_60px] items-center gap-1 border-b border-[rgba(17,24,39,0.08)] px-1.5 text-right text-[13px] tabular-nums sm:h-[78px] sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[16px]">
+                <div key={`${item.symbol}-${index}`} className="grid h-16 grid-cols-[minmax(0,1fr)_64px_60px_64px] items-center gap-1 border-b border-[rgba(17,24,39,0.08)] px-1.5 text-right text-[13px] tabular-nums sm:h-[78px] sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[16px]">
                   <div className="flex min-w-0 items-center gap-2 text-left sm:gap-3">
                     <span className="size-2.5 shrink-0 rounded-sm sm:size-3" style={{ background: markerColor }} />
                     <div className="min-w-0">
@@ -2371,10 +2377,10 @@ function SymbolDetailPanel({
                       <div className="mt-0.5 truncate text-[12px] text-[rgba(17,24,39,0.64)] sm:mt-1 sm:text-[13px]">{item.name}</div>
                     </div>
                   </div>
-                  <div className="text-[14px] font-bold text-[#202124] transition-colors duration-[120ms] sm:text-[17px]">{Number.isFinite(item.price) ? `$${formatNumber(item.price, 2)}` : '--'}</div>
-                  <div className={cx('text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', toneClass)}>{Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
-                  <div className={cx('text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', toneClass)}>{Number.isFinite(item.changePercent) ? `${formatSignedPercent(item.changePercent)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
-                  <div className="hidden text-[15px] font-bold text-[#202124] transition-colors duration-[120ms] sm:block sm:text-[17px]">{Number.isFinite(item.previousClose) ? `$${formatNumber(item.previousClose, 2)}` : '--'}</div>
+                  <div className="whitespace-nowrap text-[14px] font-bold text-[#202124] transition-colors duration-[120ms] sm:text-[17px]">{Number.isFinite(item.price) ? `$${formatNumber(item.price, 2)}` : '--'}</div>
+                  <div className={cx('whitespace-nowrap text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', toneClass)}>{Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
+                  <div className={cx('whitespace-nowrap text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', toneClass)}>{Number.isFinite(item.changePercent) ? `${formatSignedPercent(item.changePercent)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
+                  <div className="hidden whitespace-nowrap text-[15px] font-bold text-[#202124] transition-colors duration-[120ms] sm:block sm:text-[17px]">{Number.isFinite(item.previousClose) ? `$${formatNumber(item.previousClose, 2)}` : '--'}</div>
                 </div>
               );
             })}
