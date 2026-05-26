@@ -3850,15 +3850,16 @@ export function MarketsExperience() {
     const symbol = normalizeCnFundCode(selectedSymbol);
     if (!symbol || !Number.isFinite(price) || price <= 0) return;
     const cachedState = premiumMap[symbol];
-    if (cachedState?.loading && cachedState?.data && !premiumInflightRef.current.has(symbol)) {
-      setPremiumMap((prev) => ({
-        ...prev,
-        [symbol]: { ...prev[symbol], loading: false }
-      }));
+    const cachedPremium = cachedState?.data;
+    if (cachedPremium && Math.abs(Number(cachedPremium.price) - price) < 0.000001) {
+      if (cachedState?.loading && !premiumInflightRef.current.has(symbol)) {
+        setPremiumMap((prev) => ({
+          ...prev,
+          [symbol]: { ...prev[symbol], loading: false }
+        }));
+      }
       return;
     }
-    const cachedPremium = cachedState?.data;
-    if (cachedPremium && Math.abs(Number(cachedPremium.price) - price) < 0.000001) return;
     if (premiumInflightRef.current.has(symbol)) return;
     premiumInflightRef.current.add(symbol);
     setPremiumMap((prev) => ({ ...prev, [symbol]: { loading: true, data: prev[symbol]?.data || null, error: '' } }));
@@ -3891,7 +3892,7 @@ export function MarketsExperience() {
       }
     })();
     return () => { cancelled = true; };
-  }, [market, selectedSymbol, selectedQuote?.price, premiumMap]);
+  }, [market, selectedSymbol, selectedQuote?.price]);
 
   useEffect(() => {
     if (market !== 'cn' || !selectedSymbol) return;
