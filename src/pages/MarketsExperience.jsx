@@ -1791,6 +1791,8 @@ function SymbolDetailPanel({
   const [compareCandlesMap, setCompareCandlesMap] = useState({});
   const [compareLoadingMap, setCompareLoadingMap] = useState({});
   const [compareErrorMap, setCompareErrorMap] = useState({});
+  const [compareNavHistoryMap, setCompareNavHistoryMap] = useState({});
+  const compareNavInflightRef = useRef(new Set());
   const [compareQuoteMap, setCompareQuoteMap] = useState({});
   const [hoveredChartRow, setHoveredChartRow] = useState(null);
   const [lockedChartRow, setLockedChartRow] = useState(null);
@@ -1870,6 +1872,44 @@ function SymbolDetailPanel({
       });
     });
   }, [compareSymbols, chartTf, compareCandlesMap, compareLoadingMap, compareErrorMap]);
+  useEffect(() => {
+    if (market !== 'cn' || cnFundParam === 'price' || !compareSymbols.length) return;
+    const days = navHistoryDaysForRange(chartRange);
+    compareSymbols.forEach((sym) => {
+      const code = normalizeCnFundCode(sym);
+      if (!/^\d{6}$/.test(code)) return;
+      const key = `${code}|${days}`;
+      if (compareNavHistoryMap[key]?.items?.length || compareNavHistoryMap[key]?.loading || compareNavHistoryMap[key]?.error || compareNavInflightRef.current.has(key)) return;
+      compareNavInflightRef.current.add(key);
+      setCompareNavHistoryMap((prev) => ({ ...prev, [key]: { loading: true, items: prev[key]?.items || [], error: '' } }));
+      getNavHistory(code, { days })
+        .then(async (payload) => {
+          let items = Array.isArray(payload?.items) ? payload.items : [];
+          if (items.length < 2) {
+            try {
+              const snapshot = await getNavSnapshot(code);
+              const snapshotItems = buildNavSnapshotItems(snapshot);
+              if (snapshotItems.length > items.length) items = snapshotItems;
+            } catch (_error) {
+              // 快照兜底失败时继续使用 nav-history 的结果。
+            }
+          }
+          setCompareNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items, error: items.length ? '' : '暂无净值历史数据' } }));
+        })
+        .catch(async (error) => {
+          try {
+            const snapshot = await getNavSnapshot(code);
+            const items = buildNavSnapshotItems(snapshot);
+            setCompareNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items, error: items.length ? '' : (error instanceof Error ? error.message : '净值历史加载失败') } }));
+          } catch (_fallbackError) {
+            setCompareNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items: prev[key]?.items || [], error: error instanceof Error ? error.message : '净值历史加载失败' } }));
+          }
+        })
+        .finally(() => {
+          compareNavInflightRef.current.delete(key);
+        });
+    });
+  }, [market, cnFundParam, compareSymbols, chartRange, compareNavHistoryMap]);
   if (!row || !row.symbol) return null;
   const displaySymbol = formatSymbolDisplay(row.symbol);
   const pct = Number(row.changePercent);
@@ -2012,12 +2052,24 @@ function SymbolDetailPanel({
   };
   const compareSeries = compareSymbols.map((sym) => {
     const rawCandles = compareCandlesMap[`${sym}|${chartTf}`];
+    const priceCandles = Array.isArray(rawCandles) ? sliceCandlesForRange(rawCandles, chartRange) : rawCandles;
+    const compareCode = normalizeCnFundCode(sym);
+    const compareNavKey = `${compareCode}|${navHistoryDaysForRange(chartRange)}`;
+    const compareNavItems = compareNavHistoryMap[compareNavKey]?.items;
+    const candles = market === 'cn' && cnFundParam !== 'price'
+      ? buildCnFundParamCandles(priceCandles, compareNavItems, cnFundParam, premiumState)
+      : priceCandles;
     return {
       symbol: sym,
-      candles: Array.isArray(rawCandles) ? sliceCandlesForRange(rawCandles, chartRange) : rawCandles
+      candles
     };
   });
-  const comparePendingSymbols = compareSymbols.filter((sym) => compareLoadingMap[`${sym}|${chartTf}`]);
+  const comparePendingSymbols = compareSymbols.filter((sym) => {
+    if (compareLoadingMap[`${sym}|${chartTf}`]) return true;
+    if (market !== 'cn' || cnFundParam === 'price') return false;
+    const code = normalizeCnFundCode(sym);
+    return Boolean(compareNavHistoryMap[`${code}|${navHistoryDaysForRange(chartRange)}`]?.loading);
+  });
   const compareReadyCount = compareSeries.filter((s) => Array.isArray(s.candles) && s.candles.length >= 2).length;
   const activeCursorRow = lockedChartRow || hoveredChartRow;
   const activeCursorTime = activeCursorRow?.t ?? null;
