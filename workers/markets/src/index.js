@@ -155,6 +155,38 @@ function describeKlinePayloadForLog(payload) {
   };
 }
 
+function shanghaiDateKeyFromUnixSeconds(unixSeconds) {
+  const t = Number(unixSeconds);
+  if (!Number.isFinite(t)) return '';
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date(t * 1000));
+}
+
+function keepLatestCnIntradaySession(payload, market, tf) {
+  if (market !== 'cn' || !INTRADAY_KLINE_INTERVALS.has(tf)) return payload;
+  const candles = Array.isArray(payload?.candles) ? payload.candles : [];
+  if (!candles.length) return payload;
+  const latestDate = shanghaiDateKeyFromUnixSeconds(candles[candles.length - 1]?.t);
+  if (!latestDate) return payload;
+  const filtered = candles.filter((candle) => shanghaiDateKeyFromUnixSeconds(candle?.t) === latestDate);
+  if (!filtered.length || filtered.length === candles.length) return payload;
+  console.log('[markets:kline] cn intraday latest-session filter', {
+    market,
+    tf,
+    latestDate,
+    beforeCount: candles.length,
+    afterCount: filtered.length,
+    beforeFirst: describeCandleForLog(candles[0]),
+    afterFirst: describeCandleForLog(filtered[0]),
+    afterLast: describeCandleForLog(filtered[filtered.length - 1])
+  });
+  return { ...payload, candles: filtered };
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') {
@@ -470,6 +502,7 @@ async function refreshKline(env, market, code, tf) {
       console.log('[markets:kline] fetch eastmoney fallback done', { market, code, tf, payload: describeKlinePayloadForLog(payload) });
     }
   }
+  payload = keepLatestCnIntradaySession(payload, market, tf);
   await r2PutJson(env, klineKey(market, code, tf), payload);
   console.log('[markets:kline] cache write', { market, code, tf, r2Key: klineKey(market, code, tf), payload: describeKlinePayloadForLog(payload) });
   return payload;
