@@ -2220,21 +2220,21 @@ function SymbolDetailPanel({
               type="button"
               onClick={onToggleWatch}
               className={cx(
-                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition sm:px-2.5 sm:py-1 sm:text-[12px]',
+                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-medium transition sm:px-2.5 sm:py-1 sm:text-[13px]',
                 inWatch
                   ? 'border border-[#dadce0] bg-white text-[#1f1f1f] hover:bg-[#f1f3f4]'
                   : 'bg-[#1f1f1f] text-white hover:bg-[#3c3c3c]'
               )}
             >
-              <Star size={13} className={inWatch ? 'fill-amber-400 text-amber-400' : ''} />
+              <Star size={14} className={inWatch ? 'fill-amber-400 text-amber-400' : ''} />
               {inWatch ? '已添加' : '添加自选'}
             </button>
             <button
               type="button"
               onClick={onAnalyze}
-              className="inline-flex items-center gap-1 rounded-full bg-[#e8f0fe] px-2 py-0.5 text-[11px] font-medium text-[#1a73e8] transition hover:bg-[#d2e3fc] sm:px-2.5 sm:py-1 sm:text-[12px]"
+              className="inline-flex items-center gap-1 rounded-full bg-[#e8f0fe] px-2 py-0.5 text-[12px] font-medium text-[#1a73e8] transition hover:bg-[#d2e3fc] sm:px-2.5 sm:py-1 sm:text-[13px]"
             >
-              <Sparkles size={13} />
+              <Sparkles size={14} />
               研究
             </button>
           </div>
