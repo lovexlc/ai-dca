@@ -2275,7 +2275,7 @@ function SymbolDetailPanel({
       snapshotLabel: activeCursorRow?.label || quoteRow.snapshotLabel
     };
   };
-  const displayCompareTableRows = premiumCompareMode
+  const premiumTableRows = premiumCompareMode
     ? [
       buildPremiumTableRow(normalizeCompareQuote(row.symbol, row), 'main', effectiveChartCandles),
       ...compareSymbols.map((sym, index) => buildPremiumTableRow(
@@ -2284,6 +2284,36 @@ function SymbolDetailPanel({
         compareSeries[index]?.candles
       ))
     ]
+    : [];
+  const premiumBaseValue = Number(premiumTableRows[0]?.price);
+  const premiumRowsWithSpread = premiumTableRows.map((item) => {
+    const premiumValue = Number(item.price);
+    return {
+      ...item,
+      premiumPercent: premiumValue,
+      navValue: item.change,
+      iopvValue: item.changePercent,
+      marketPrice: item.previousClose,
+      premiumSpread: Number.isFinite(premiumValue) && Number.isFinite(premiumBaseValue) ? premiumValue - premiumBaseValue : null
+    };
+  });
+  const premiumSpreadStats = premiumCompareMode && compareSymbols.length > 1
+    ? (() => {
+      const values = premiumRowsWithSpread
+        .map((item) => ({ item, value: Number(item.premiumPercent) }))
+        .filter((entry) => Number.isFinite(entry.value));
+      if (values.length < 2) return null;
+      const min = values.reduce((best, entry) => entry.value < best.value ? entry : best, values[0]);
+      const max = values.reduce((best, entry) => entry.value > best.value ? entry : best, values[0]);
+      return {
+        spread: max.value - min.value,
+        maxSymbol: formatSymbolDisplay(max.item.symbol),
+        minSymbol: formatSymbolDisplay(min.item.symbol)
+      };
+    })()
+    : null;
+  const displayCompareTableRows = premiumCompareMode
+    ? premiumRowsWithSpread
     : compareTableRows;
   const metricLoading = market === 'cn' && cnFundParam !== 'price' && navHistoryState?.loading;
   const metricError = market === 'cn' && cnFundParam !== 'price' ? navHistoryState?.error : '';
@@ -2608,12 +2638,12 @@ function SymbolDetailPanel({
 
         {compareSymbols.length > 0 ? (
           <div className="overflow-hidden bg-white text-[11px] sm:text-[13px]">
-            <div className="grid h-8 grid-cols-[minmax(44px,1fr)_58px_56px_66px] items-center gap-0.5 border-b border-[rgba(17,24,39,0.08)] px-1 text-right text-[11px] font-semibold text-[#5f6368] sm:h-10 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[13px]">
+            <div className="grid h-8 grid-cols-[minmax(44px,1fr)_58px_58px_64px] items-center gap-0.5 border-b border-[rgba(17,24,39,0.08)] px-1 text-right text-[11px] font-semibold text-[#5f6368] sm:h-10 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[13px]">
               <div className="min-w-0 truncate text-left">股票代码</div>
               <div className="whitespace-nowrap">{premiumCompareMode ? '溢价' : '价格'}</div>
-              <div className="whitespace-nowrap">{premiumCompareMode ? '净值' : '涨跌额'}</div>
-              <div className="whitespace-nowrap">{premiumCompareMode ? '估算 IOPV' : '涨跌幅'}</div>
-              <div className="hidden sm:block">{premiumCompareMode ? '估算价格' : '昨收盘'}</div>
+              <div className="whitespace-nowrap">{premiumCompareMode ? '溢价差' : '涨跌额'}</div>
+              <div className="whitespace-nowrap">{premiumCompareMode ? '价格' : '涨跌幅'}</div>
+              <div className="hidden sm:block">{premiumCompareMode ? '净值' : '昨收盘'}</div>
             </div>
             {displayCompareTableRows.map((item, index) => {
               const markerColor = index === 0 ? COMPARE_MAIN_COLOR : COMPARE_COLORS[(index - 1) % COMPARE_COLORS.length];
@@ -2621,9 +2651,13 @@ function SymbolDetailPanel({
               const rowPositive = Number.isFinite(toneValue) && toneValue > 0;
               const rowNegative = Number.isFinite(toneValue) && toneValue < 0;
               const toneClass = rowPositive ? 'text-[#a50e0e]' : rowNegative ? 'text-[#137333]' : 'text-[#1f1f1f]';
+              const spreadValue = Number(item.premiumSpread);
+              const spreadPositive = Number.isFinite(spreadValue) && spreadValue > 0;
+              const spreadNegative = Number.isFinite(spreadValue) && spreadValue < 0;
+              const spreadToneClass = spreadPositive ? 'text-[#a50e0e]' : spreadNegative ? 'text-[#137333]' : 'text-[#1f1f1f]';
               const displayRowSymbol = formatSymbolDisplay(item.symbol);
               return (
-                <div key={`${item.symbol}-${index}`} className="grid h-12 grid-cols-[minmax(44px,1fr)_58px_56px_66px] items-center gap-0.5 border-b border-[rgba(17,24,39,0.08)] px-1 text-right text-[12px] tabular-nums sm:h-16 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[16px]">
+                <div key={`${item.symbol}-${index}`} className="grid h-12 grid-cols-[minmax(44px,1fr)_58px_58px_64px] items-center gap-0.5 border-b border-[rgba(17,24,39,0.08)] px-1 text-right text-[12px] tabular-nums sm:h-16 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[16px]">
                   <div className="flex min-w-0 items-center gap-1 text-left sm:gap-3">
                     <span className="size-2 shrink-0 rounded-sm sm:size-3" style={{ background: markerColor }} />
                     <div className="min-w-0">
@@ -2632,12 +2666,21 @@ function SymbolDetailPanel({
                     </div>
                   </div>
                   <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[17px]', premiumCompareMode ? toneClass : 'text-[#202124]')}>{Number.isFinite(item.price) ? (premiumCompareMode ? formatSignedPercent(item.price) : `$${formatNumber(item.price, 2)}`) : '--'}</div>
-                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? 'text-[#202124]' : toneClass)}>{Number.isFinite(item.change) ? (premiumCompareMode ? formatNumber(item.change, 4) : `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)}`) : '--'}</div>
-                  <div className={cx('whitespace-nowrap text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? 'text-[#202124]' : toneClass)}>{Number.isFinite(item.changePercent) ? (premiumCompareMode ? formatNumber(item.changePercent, 4) : formatSignedPercent(item.changePercent)) : '--'}</div>
-                  <div className="hidden whitespace-nowrap text-[15px] font-bold text-[#202124] transition-colors duration-[120ms] sm:block sm:text-[17px]">{Number.isFinite(item.previousClose) ? `$${formatNumber(item.previousClose, 2)}` : '--'}</div>
+                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? spreadToneClass : toneClass)}>{premiumCompareMode ? (Number.isFinite(spreadValue) ? formatSignedPercent(spreadValue) : '--') : (Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)}` : '--')}</div>
+                  <div className={cx('whitespace-nowrap text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? 'text-[#202124]' : toneClass)}>{premiumCompareMode ? (Number.isFinite(item.marketPrice) ? formatNumber(item.marketPrice, 4) : '--') : (Number.isFinite(item.changePercent) ? formatSignedPercent(item.changePercent) : '--')}</div>
+                  <div className="hidden whitespace-nowrap text-[15px] font-bold text-[#202124] transition-colors duration-[120ms] sm:block sm:text-[17px]">{premiumCompareMode ? (Number.isFinite(item.navValue) ? formatNumber(item.navValue, 4) : '--') : (Number.isFinite(item.previousClose) ? `$${formatNumber(item.previousClose, 2)}` : '--')}</div>
                 </div>
               );
             })}
+            {premiumSpreadStats ? (
+              <div className="flex items-center justify-between gap-2 border-b border-[rgba(17,24,39,0.08)] px-1 py-2 text-[11px] font-medium text-[#5f6368] sm:px-4 sm:text-[13px]">
+                <span>最大/最小溢价差</span>
+                <span className="text-right tabular-nums text-[#202124]">
+                  {formatSignedPercent(premiumSpreadStats.spread)}
+                  <span className="ml-1 text-[#9aa0a6]">{premiumSpreadStats.maxSymbol} - {premiumSpreadStats.minSymbol}</span>
+                </span>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
