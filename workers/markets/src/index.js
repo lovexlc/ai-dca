@@ -117,6 +117,44 @@ function klineCacheIsStale({ cached, market, tf }) {
   return tf === '1d' && (!Number.isFinite(lastT) || Date.now() - lastT > 36 * 3600 * 1000);
 }
 
+function describeCandleForLog(candle) {
+  if (!candle) return null;
+  const t = Number(candle.t);
+  return {
+    t: Number.isFinite(t) ? t : null,
+    iso: Number.isFinite(t) ? new Date(t * 1000).toISOString() : null,
+    shanghai: Number.isFinite(t)
+      ? new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Shanghai',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).format(new Date(t * 1000))
+      : null,
+    o: candle.o,
+    h: candle.h,
+    l: candle.l,
+    c: candle.c,
+    v: candle.v
+  };
+}
+
+function describeKlinePayloadForLog(payload) {
+  const candles = Array.isArray(payload?.candles) ? payload.candles : [];
+  return {
+    source: payload?.source,
+    fallback: payload?.fallback,
+    generatedAt: payload?.generatedAt,
+    count: candles.length,
+    first: describeCandleForLog(candles[0]),
+    last: describeCandleForLog(candles[candles.length - 1])
+  };
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') {
@@ -370,15 +408,46 @@ async function handleKline(env, rawSymbol, params) {
   if (!market) return errorJson('invalid symbol', 400);
   const r2k = klineKey(market, code, tf);
   const forceRefresh = params.get('refresh') === '1';
+  console.log('[markets:kline] request', {
+    rawSymbol,
+    market,
+    code,
+    tf,
+    forceRefresh,
+    r2Key: r2k,
+    nowIso: new Date().toISOString(),
+    tradingMinute: market === 'cn' ? getShanghaiTradingMinute() : null,
+    isCnTradingSession: market === 'cn' ? isCnTradingSession() : null
+  });
   if (!forceRefresh) {
     const cached = await r2GetJson(env, r2k);
     if (cached && cached.candles && cached.candles.length) {
       const stale = klineCacheIsStale({ cached, market, tf });
       const sourceOk = market !== 'cn' || cached.source === 'sina-kline';
+      console.log('[markets:kline] cache check', {
+        rawSymbol,
+        market,
+        code,
+        tf,
+        stale,
+        sourceOk,
+        cache: describeKlinePayloadForLog(cached)
+      });
       if (!stale && sourceOk) return json({ ...cached, cached: true });
+    } else {
+      console.log('[markets:kline] cache miss', { rawSymbol, market, code, tf, r2Key: r2k });
     }
+  } else {
+    console.log('[markets:kline] force refresh skips cache', { rawSymbol, market, code, tf, r2Key: r2k });
   }
   const fresh = await refreshKline(env, market, code, tf);
+  console.log('[markets:kline] response fresh', {
+    rawSymbol,
+    market,
+    code,
+    tf,
+    payload: describeKlinePayloadForLog(fresh)
+  });
   return json({ ...fresh, cached: false });
 }
 
@@ -391,13 +460,18 @@ async function refreshKline(env, market, code, tf) {
     payload = { ...normalizeYahooKline(raw, tf), market, generatedAt: new Date().toISOString() };
   } else {
     try {
+      console.log('[markets:kline] fetch sina start', { market, code, tf, limit: 500, nowIso: new Date().toISOString() });
       payload = { ...(await fetchSinaKline(code, { intervalLabel: tf, limit: 500 })), market, generatedAt: new Date().toISOString() };
+      console.log('[markets:kline] fetch sina done', { market, code, tf, payload: describeKlinePayloadForLog(payload) });
     } catch (err) {
       console.warn('sina kline failed, fallback to eastmoney', code, tf, (err && err.message) || err);
+      console.log('[markets:kline] fetch eastmoney fallback start', { market, code, tf, limit: 500, nowIso: new Date().toISOString() });
       payload = { ...(await fetchEastmoneyKline(code, { intervalLabel: tf, limit: 500 })), market, generatedAt: new Date().toISOString(), fallback: 'eastmoney' };
+      console.log('[markets:kline] fetch eastmoney fallback done', { market, code, tf, payload: describeKlinePayloadForLog(payload) });
     }
   }
   await r2PutJson(env, klineKey(market, code, tf), payload);
+  console.log('[markets:kline] cache write', { market, code, tf, r2Key: klineKey(market, code, tf), payload: describeKlinePayloadForLog(payload) });
   return payload;
 }
 

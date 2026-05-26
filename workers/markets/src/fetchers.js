@@ -102,6 +102,19 @@ function normalizeSinaKlineRows(rows = [], intervalLabel = '1d') {
     .sort((left, right) => left.t - right.t);
 }
 
+
+function describeSinaRawRowForLog(row) {
+  if (!row) return null;
+  return {
+    day: row.day || row.date || null,
+    open: row.open,
+    high: row.high,
+    low: row.low,
+    close: row.close,
+    volume: row.volume
+  };
+}
+
 const SINA_SCALE_MAP = { '1m': 1, '5m': 5, '15m': 15, '30m': 30, '60m': 60, '1d': 240, '1w': 240, '1mo': 240 };
 
 export async function fetchSinaKline(code, { intervalLabel = '1d', limit = 500 } = {}) {
@@ -114,15 +127,42 @@ export async function fetchSinaKline(code, { intervalLabel = '1d', limit = 500 }
     ma: 'no',
     datalen: limit
   });
+  console.log('[markets:sina-kline] upstream request', { code, symbol, intervalLabel, scale, limit, url });
   const res = await fetch(url, {
     headers: { ...COMMON_HEADERS, referer: 'https://finance.sina.com.cn' },
     cf: { cacheTtl: 30 }
   });
+  console.log('[markets:sina-kline] upstream response', {
+    code,
+    symbol,
+    intervalLabel,
+    status: res.status,
+    ok: res.ok,
+    cacheStatus: res.headers.get('cf-cache-status'),
+    date: res.headers.get('date'),
+    age: res.headers.get('age')
+  });
   if (!res.ok) throw new Error('sina kline ' + code + ' HTTP ' + res.status);
   const rows = await res.json().catch(() => null);
   if (!Array.isArray(rows)) throw new Error('sina kline ' + code + ' invalid response');
+  console.log('[markets:sina-kline] upstream rows', {
+    code,
+    symbol,
+    intervalLabel,
+    count: rows.length,
+    first: describeSinaRawRowForLog(rows[0]),
+    last: describeSinaRawRowForLog(rows[rows.length - 1])
+  });
   const candles = normalizeSinaKlineRows(rows, intervalLabel);
   if (!candles.length) throw new Error('sina kline ' + code + ' empty');
+  console.log('[markets:sina-kline] normalized candles', {
+    code,
+    symbol,
+    intervalLabel,
+    count: candles.length,
+    first: candles[0],
+    last: candles[candles.length - 1]
+  });
   return {
     symbol,
     interval: intervalLabel,
