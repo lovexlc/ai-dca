@@ -19,8 +19,6 @@ import {
 } from './geminiPrompt.js';
 import { fetchFundLimit, fetchFundLimitsBatch, mapLimit } from './fundLimit.js';
 import {
-  fetchExchangeQuoteSnapshot as getNavExchangeQuoteSnapshot,
-  fetchFundNavHistory as getNavFundNavHistory,
   fetchFundNavHistoryWithMonthlyKv as getNavFundNavHistoryWithMonthlyKv,
   fetchFundNavSnapshot as getNavFundNavSnapshot,
   fetchHoldingSnapshot as getNavHoldingSnapshot
@@ -1575,9 +1573,6 @@ async function readFundNavHistoryWithMonthlyKv(code, fromDate, toDate, env, opti
   return getNavFundNavHistoryWithMonthlyKv(code, fromDate, toDate, env, options);
 }
 
-async function readFundNavHistory(code, fromDate, toDate) {
-  return getNavFundNavHistory(code, fromDate, toDate);
-}
 
 // 单 code + 单区间的稳定 cache key，作为 caches.default 的 Request URL 参数。
 async function buildNavHistoryCacheKey(code, fromDate, toDate) {
@@ -1982,9 +1977,6 @@ function shiftIsoDateDays(isoDate, deltaDays) {
   return `${y}-${m}-${d}`;
 }
 
-async function readExchangeQuoteSnapshot(code, generatedAt) {
-  return getNavExchangeQuoteSnapshot(code, generatedAt);
-}
 
 async function readHoldingSnapshot(code, generatedAt) {
   return getNavHoldingSnapshot(code, generatedAt);

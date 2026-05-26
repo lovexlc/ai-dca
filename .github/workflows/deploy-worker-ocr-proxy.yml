@@ -28,6 +28,9 @@ jobs:
         with:
           node-version: 20
 
+      - name: Check NAV access boundaries
+        run: node scripts/check_nav_access.mjs
+
       - name: Deploy ocr-proxy worker via Wrangler
         id: wrangler_deploy
         uses: cloudflare/wrangler-action@v3

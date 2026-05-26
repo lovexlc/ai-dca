@@ -32,6 +32,9 @@ jobs:
         working-directory: workers/markets-agent
         run: npm install --no-audit --no-fund
 
+      - name: Check NAV access boundaries
+        run: node scripts/check_nav_access.mjs
+
       - name: Deploy markets-agent via Wrangler
         uses: cloudflare/wrangler-action@v3
         with:

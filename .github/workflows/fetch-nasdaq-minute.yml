@@ -45,6 +45,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-nasdaq-minute.txt
 
+      - name: Check NAV access boundaries
+        run: node scripts/check_nav_access.mjs
+
       - name: Resolve target date
         shell: bash
         run: |
