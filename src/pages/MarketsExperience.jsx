@@ -7,9 +7,7 @@ import {
   Card,
   Pill,
   TextInput,
-  cx,
-  primaryButtonClass,
-  secondaryButtonClass
+  cx
 } from '../components/experience-ui.jsx';
 import {
   addToWatchlist,
@@ -1280,6 +1278,9 @@ function CandlesLayerPanel({ xAxisMap, yAxisMap, data }) {
 
 function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, compareMode = 'change', tone, symbol, onHover, onLeave, onLock, lockOnClick = false }) {
   const chartShellRef = useRef(null);
+  const pointersRef = useRef(new Map());
+  const pinchRef = useRef(null);
+  const [zoomWindow, setZoomWindow] = useState(null);
   const cmpList = (compareSeries || []).filter((series) => Array.isArray(series.candles) && series.candles.length >= 2);
   const cmpSignature = JSON.stringify(cmpList.map((series) => ({
     symbol: series.symbol,
@@ -1354,6 +1355,41 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
       return out;
     });
   }, [rows, indicatorLines, cmpSignature, compareAsValue]);
+  const finalRowsSignature = finalRows.length ? `${finalRows.length}|${finalRows[0].t}|${finalRows[finalRows.length - 1].t}` : 'empty';
+  useEffect(() => {
+    setZoomWindow(null);
+    pointersRef.current.clear();
+    pinchRef.current = null;
+  }, [finalRowsSignature]);
+  const clampZoomWindow = useCallback((start, end, total = finalRows.length) => {
+    if (total < 2) return null;
+    const minSpan = Math.min(total, Math.max(12, Math.ceil(total * 0.08)));
+    let nextStart = Math.round(start);
+    let nextEnd = Math.round(end);
+    if (nextEnd - nextStart + 1 < minSpan) {
+      const mid = (nextStart + nextEnd) / 2;
+      nextStart = Math.round(mid - (minSpan - 1) / 2);
+      nextEnd = nextStart + minSpan - 1;
+    }
+    if (nextStart < 0) {
+      nextEnd -= nextStart;
+      nextStart = 0;
+    }
+    if (nextEnd > total - 1) {
+      nextStart -= nextEnd - (total - 1);
+      nextEnd = total - 1;
+    }
+    nextStart = Math.max(0, nextStart);
+    nextEnd = Math.min(total - 1, nextEnd);
+    if (nextStart <= 0 && nextEnd >= total - 1) return null;
+    return { start: nextStart, end: nextEnd };
+  }, [finalRows.length]);
+  const visibleRows = useMemo(() => {
+    if (!zoomWindow || finalRows.length < 2) return finalRows;
+    const start = Math.max(0, Math.min(finalRows.length - 1, zoomWindow.start));
+    const end = Math.max(start + 1, Math.min(finalRows.length - 1, zoomWindow.end));
+    return finalRows.slice(start, end + 1);
+  }, [finalRows, zoomWindow]);
 
   if (finalRows.length < 2) {
     return <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">暂无数据</div>;
@@ -1365,14 +1401,14 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
   const showBar = chartType === 'bar' && !normalized;
   const pickRowFromPointer = (event) => {
     const rect = chartShellRef.current?.getBoundingClientRect();
-    if (!rect || rect.width <= 0 || finalRows.length < 2) return null;
+    if (!rect || rect.width <= 0 || visibleRows.length < 2) return null;
     const x = Math.min(Math.max(event.clientX - rect.left, 0), rect.width);
-    const index = Math.min(finalRows.length - 1, Math.max(0, Math.round((x / rect.width) * (finalRows.length - 1))));
-    return finalRows[index] || null;
+    const index = Math.min(visibleRows.length - 1, Math.max(0, Math.round((x / rect.width) * (visibleRows.length - 1))));
+    return visibleRows[index] || null;
   };
   const getChartPayload = (state) => {
     const index = Number.isInteger(state?.activeTooltipIndex) ? state.activeTooltipIndex : -1;
-    return state?.activePayload?.[0]?.payload || (index >= 0 ? finalRows[index] : null);
+    return state?.activePayload?.[0]?.payload || (index >= 0 ? visibleRows[index] : null);
   };
   const handleChartPoint = (state) => {
     if (!onHover) return;
@@ -1397,6 +1433,64 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
     const payload = getChartPayload(state);
     if (payload) onLock(payload);
   };
+  const getPointerDistance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const getPointerCenterX = (a, b) => (a.x + b.x) / 2;
+  const handlePointerDown = (event) => {
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointersRef.current.size >= 2) {
+      event.preventDefault();
+      const [a, b] = Array.from(pointersRef.current.values()).slice(0, 2);
+      const rect = chartShellRef.current?.getBoundingClientRect();
+      const baseWindow = zoomWindow || { start: 0, end: finalRows.length - 1 };
+      pinchRef.current = {
+        distance: Math.max(1, getPointerDistance(a, b)),
+        centerRatio: rect?.width ? Math.min(1, Math.max(0, (getPointerCenterX(a, b) - rect.left) / rect.width)) : 0.5,
+        start: baseWindow.start,
+        end: baseWindow.end
+      };
+      return;
+    }
+    handlePointerLock(event);
+  };
+  const handlePointerMoveZoom = (event) => {
+    if (pointersRef.current.has(event.pointerId)) {
+      pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    }
+    if (pointersRef.current.size >= 2 && pinchRef.current) {
+      event.preventDefault();
+      const [a, b] = Array.from(pointersRef.current.values()).slice(0, 2);
+      const distance = Math.max(1, getPointerDistance(a, b));
+      const base = pinchRef.current;
+      const baseSpan = Math.max(1, base.end - base.start + 1);
+      const nextSpan = baseSpan / Math.max(0.25, Math.min(4, distance / base.distance));
+      const anchor = base.start + base.centerRatio * (baseSpan - 1);
+      const nextStart = anchor - base.centerRatio * (nextSpan - 1);
+      const nextEnd = nextStart + nextSpan - 1;
+      setZoomWindow(clampZoomWindow(nextStart, nextEnd));
+      return;
+    }
+    handlePointerMove(event);
+  };
+  const handlePointerEnd = (event) => {
+    pointersRef.current.delete(event.pointerId);
+    if (pointersRef.current.size < 2) pinchRef.current = null;
+  };
+  const handleWheelZoom = (event) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    const rect = chartShellRef.current?.getBoundingClientRect();
+    const current = zoomWindow || { start: 0, end: finalRows.length - 1 };
+    const ratio = rect?.width ? Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)) : 0.5;
+    const span = current.end - current.start + 1;
+    const scale = event.deltaY < 0 ? 0.82 : 1.18;
+    const nextSpan = span * scale;
+    const anchor = current.start + ratio * (span - 1);
+    const nextStart = anchor - ratio * (nextSpan - 1);
+    setZoomWindow(clampZoomWindow(nextStart, nextStart + nextSpan - 1));
+  };
+  const handleDoubleClickReset = () => {
+    setZoomWindow(null);
+  };
   const legendPayload = normalized
     ? [
       { value: displayMainSymbol || '当前标的', type: 'line', color: mainColor, id: 'main' },
@@ -1406,15 +1500,19 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
   return (
     <div
       ref={chartShellRef}
-      className="h-full w-full touch-pan-y select-none outline-none [-webkit-tap-highlight-color:transparent] [&_*]:outline-none [&_.recharts-surface]:outline-none [&_.recharts-surface]:focus:outline-none [&_.recharts-wrapper]:outline-none"
+      className="h-full w-full touch-none select-none outline-none [-webkit-tap-highlight-color:transparent] [&_*]:outline-none [&_.recharts-surface]:outline-none [&_.recharts-surface]:focus:outline-none [&_.recharts-wrapper]:outline-none"
       tabIndex={-1}
-      onPointerMove={handlePointerMove}
-      onPointerLeave={handleChartLeave}
-      onPointerDown={handlePointerLock}
+      onPointerMove={handlePointerMoveZoom}
+      onPointerLeave={(event) => { handlePointerEnd(event); handleChartLeave(); }}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerEnd}
+      onPointerCancel={handlePointerEnd}
+      onWheel={handleWheelZoom}
+      onDoubleClick={handleDoubleClickReset}
     >
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
-        data={finalRows}
+        data={visibleRows}
         margin={{ top: 12, right: 12, left: 4, bottom: 8 }}
         onMouseMove={handleChartPoint}
         onMouseLeave={handleChartLeave}
@@ -1432,29 +1530,11 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
         />
         <Tooltip
           cursor={false}
-          contentStyle={{ borderRadius: 12, borderColor: '#dfe3eb', boxShadow: '0 12px 32px rgba(60,64,67,0.16)' }}
-          labelStyle={{ fontSize: 12, color: '#5f6368', marginBottom: 6 }}
-          itemStyle={{ fontSize: 12, fontWeight: 600, padding: '2px 0' }}
-          formatter={(value, name, item) => {
-            const key = String(name);
-            if (key.includes('_price') || key.includes('_base') || key.includes('_change')) return null;
-            const label = name === 'main' ? (displayMainSymbol || '当前标的') : formatSymbolDisplay(name);
-            if (normalized) {
-              const payload = item?.payload || {};
-              const priceKey = key === 'main' ? 'mainPrice' : `${key}_price`;
-              const price = Number(payload[priceKey]);
-              return [Number.isFinite(price) ? price.toFixed(4) : '--', label];
-            }
-            if (compareAsValue) {
-              const payload = item?.payload || {};
-              const priceKey = key === 'main' ? 'mainPrice' : `${key}_price`;
-              const price = Number(payload[priceKey]);
-              return [Number.isFinite(price) ? `${price.toFixed(2)}%` : '--', label];
-            }
-            const n = Number(value);
-            if (!Number.isFinite(n)) return [value, label];
-            return [n.toFixed(4), label];
-          }}
+          content={({ label }) => (
+            <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
+              {label}
+            </div>
+          )}
         />
         {showArea ? (
           <Area type="monotone" dataKey="main" name={displayMainSymbol || '当前标的'} stroke={mainColor} fill={mainColor} fillOpacity={0.12} dot={false} strokeWidth={3} isAnimationActive={false} />
@@ -1469,7 +1549,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
           <Line type="monotone" dataKey="c" stroke="transparent" dot={false} activeDot={false} isAnimationActive={false} />
         ) : null}
         {showCandle ? (
-          <Customized component={<CandlesLayerPanel data={finalRows} />} />
+          <Customized component={<CandlesLayerPanel data={visibleRows} />} />
         ) : null}
         {indicatorLines.map((line) => (
           <Line
