@@ -1102,8 +1102,7 @@ function marketStateLabel(state, marketCode) {
 
 // ---------- 图表工具栏（图表类型 / 指标 / 对比标的） ----------
 const CHART_TYPE_OPTIONS = [
-  { key: 'line', label: '折线图', hint: '只看收盘价走势', icon: '⌁' },
-  { key: 'area', label: '面积图', hint: '折线 + 渐变填充', icon: '▰' },
+  { key: 'area', label: '面积图', hint: '趋势 + 渐变填充', icon: '▰' },
   { key: 'candle', label: 'K 线图', hint: '开高低收烛台', icon: '▥' },
   { key: 'bar', label: '柱形图', hint: '柱形展示收盘价', icon: '▮' },
 ];
@@ -1278,7 +1277,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
   const mainColor = normalized ? COMPARE_MAIN_COLOR : tone === 'up' ? CHART_UP : tone === 'down' ? CHART_DOWN : '#1a73e8';
   const showCandle = chartType === 'candle' && !normalized;
   const showArea = chartType === 'area' && !normalized;
-  const showLine = chartType === 'line' || normalized;
+  const showLine = normalized;
   const showBar = chartType === 'bar' && !normalized;
   const pickRowFromPointer = (event) => {
     const rect = chartShellRef.current?.getBoundingClientRect();
@@ -1742,7 +1741,7 @@ function SymbolDetailPanel({
   navHistoryState,
   isMobile = false,
 }) {
-  const [chartType, setChartType] = useState('line');
+  const [chartType, setChartType] = useState('area');
   const [cnFundParam, setCnFundParam] = useState('price');
   const [indicators, setIndicators] = useState(() => new Set());
   const [compareSymbols, setCompareSymbols] = useState([]);
@@ -2114,9 +2113,9 @@ function SymbolDetailPanel({
           ) : null}
           {!isMobile ? (
             <ChartToolbarPopover
-              icon={(CHART_TYPE_OPTIONS.find((opt) => opt.key === chartType) || {}).icon || '⌁'}
-              label={CHART_TYPE_LABEL[chartType] || '折线图'}
-              active={chartType !== 'line'}
+              icon={(CHART_TYPE_OPTIONS.find((opt) => opt.key === chartType) || {}).icon || '▰'}
+              label={CHART_TYPE_LABEL[chartType] || '面积图'}
+              active={chartType !== 'area'}
             >
               {({ close }) => (
                 <div className="flex flex-col gap-0.5">
@@ -2289,7 +2288,7 @@ function SymbolDetailPanel({
             <SymbolDetailChart
               candles={effectiveChartCandles}
               tf={chartTf}
-              chartType={cnFundParam === 'price' ? chartType : 'line'}
+              chartType={cnFundParam === 'price' ? chartType : 'area'}
               indicators={indicators}
               compareSeries={compareSeries}
               tone={tone}
