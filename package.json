@@ -25,7 +25,8 @@
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test app-smoke.spec.js --project=chromium",
     "test:e2e:visual": "playwright test app-visual.spec.js",
-    "test:e2e:a11y": "playwright test app-a11y.spec.js"
+    "test:e2e:a11y": "playwright test app-a11y.spec.js",
+    "check:nav-access": "node scripts/check_nav_access.mjs"
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.3.3",

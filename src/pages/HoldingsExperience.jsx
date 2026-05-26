@@ -65,10 +65,10 @@ import {
   mergeSnapshotsFromNavResult,
   persistLedgerState,
   readLedgerState,
-  recognizeLedgerFile,
-  requestLedgerNav
+  recognizeLedgerFile
 } from '../app/holdingsLedger.js';
 import { showActionToast } from '../app/toast.js';
+import { getNavSnapshots } from '../app/navService.js';
 import {
   Pill,
   cx,
@@ -871,7 +871,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
     setNavStatus('loading');
     try {
-      const navResult = await requestLedgerNav(safeCodes);
+      const navResult = await getNavSnapshots(safeCodes);
       let mergeErrors = [];
       let nextMeta = null;
       // 用函数式 setState 基于最新 prev 合并，避免并发刷新互相覆盖。

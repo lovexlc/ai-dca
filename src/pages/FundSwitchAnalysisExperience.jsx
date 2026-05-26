@@ -3,10 +3,10 @@ import { AlertTriangle, ChevronDown, Shuffle } from 'lucide-react';
 import {
   readLedgerState,
   persistLedgerState,
-  requestLedgerNav,
   mergeSnapshotsFromNavResult,
   buildNavMetaFromResult
 } from '../app/holdingsLedger.js';
+import { getNavSnapshots } from '../app/navService.js';
 import {
   computeSwitchChainMetrics,
   sanitizeTransactions
@@ -163,7 +163,7 @@ export function FundSwitchAnalysisExperience() {
     let cancelled = false;
     (async () => {
       try {
-        const navResult = await requestLedgerNav(codes);
+        const navResult = await getNavSnapshots(codes);
         if (cancelled) return;
         setLedger((prev) => {
           const merged = mergeSnapshotsFromNavResult(prev.snapshotsByCode, navResult);

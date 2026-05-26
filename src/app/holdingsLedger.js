@@ -3,11 +3,12 @@
  * - Primary storage key: aiDcaFundHoldingsLedger (version 2).
  * - Legacy aggregate storage (aiDcaFundHoldingsState, version 1) auto-migrated
  *   on first read; each aggregate row becomes one BUY transaction (date blank).
- * - NAV fetching and OCR reuse the existing /api/holdings/nav and /api/holdings/ocr
+ * - NAV fetching and OCR reuse the existing central NAV service and /api/holdings/ocr
  *   endpoints via helpers in ./holdings.js (keeps the worker contract unchanged).
  */
 
-import { recognizeHoldingsFile, requestHoldingsNav } from './holdings.js';
+import { recognizeHoldingsFile } from './holdings.js';
+import { getNavSnapshots } from './navService.js';
 import {
   buildTransactionId,
   detectFundKind,
@@ -213,9 +214,9 @@ export function persistLedgerState(state = {}) {
   window.localStorage.setItem(LEDGER_STORAGE_KEY, JSON.stringify(payload));
 }
 
-/** Thin wrapper around /api/holdings/nav returning exactly the shape used by the page. */
+/** Thin wrapper around central NAV service returning exactly the shape used by the page. */
 export async function requestLedgerNav(codes = []) {
-  return requestHoldingsNav(codes);
+  return getNavSnapshots(codes);
 }
 
 /**

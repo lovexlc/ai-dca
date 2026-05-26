@@ -6,12 +6,12 @@ import {
   round,
   sanitizeHoldingRows
 } from './holdingsCore.js';
+import { getNavSnapshots, getNavHistory } from './navService.js';
 
 const HOLDINGS_STORAGE_KEY = 'aiDcaFundHoldingsState';
 const HOLDINGS_STORAGE_SOURCE = 'react-fund-holdings-workspace';
 const HOLDINGS_STORAGE_VERSION = 1;
 const HOLDINGS_OCR_ENDPOINT = '/api/holdings/ocr';
-const HOLDINGS_NAV_ENDPOINT = '/api/holdings/nav';
 const OCR_MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 function now() {
@@ -225,126 +225,8 @@ export async function recognizeHoldingsFile(file, onProgress) {
   };
 }
 
-async function requestHoldingsNavBatch(codes = []) {
-  const response = await fetch(HOLDINGS_NAV_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      codes
-    })
-  });
-
-  const rawText = await response.text();
-  let payload = {};
-
-  if (rawText) {
-    try {
-      payload = JSON.parse(rawText);
-    } catch (_error) {
-      payload = {
-        error: response.ok ? '净值服务返回了非标准响应。' : rawText
-      };
-    }
-  }
-
-  if (!response.ok) {
-    throw new Error(payload.error || `净值服务请求失败：状态 ${response.status}`);
-  }
-
-  const rawItems = Array.isArray(payload.items) ? payload.items : [];
-  const items = rawItems.map((item) => {
-    const code = String(item?.code || '').trim();
-    if (!isHoldingCode(code)) {
-      return null;
-    }
-
-    return {
-      ok: item?.ok !== false,
-      code,
-      name: String(item?.name || '').trim(),
-      latestNav: round(Number(item?.latestNav) || 0, 4),
-      latestNavDate: String(item?.latestNavDate || '').trim(),
-      previousNav: round(Number(item?.previousNav) || 0, 4),
-      previousNavDate: String(item?.previousNavDate || '').trim(),
-      updatedAt: String(item?.updatedAt || '').trim(),
-      error: String(item?.error || '').trim(),
-      cacheHit: item?.cacheHit === true,
-      cacheSource: String(item?.cacheSource || '').trim(),
-      cacheKey: String(item?.cacheKey || '').trim()
-    };
-  }).filter(Boolean);
-
-  return {
-    items,
-    cache: payload?.cache && typeof payload.cache === 'object'
-      ? {
-        key: String(payload.cache.key || '').trim(),
-        hit: payload.cache.hit === true,
-        source: String(payload.cache.source || '').trim(),
-        stale: payload.cache.stale === true,
-        codeCount: Math.max(Number(payload.cache.codeCount) || 0, 0)
-      }
-      : null,
-    successCount: Math.max(Number(payload?.successCount) || 0, 0),
-    failureCount: Math.max(Number(payload?.failureCount) || 0, 0),
-    generatedAt: String(payload?.generatedAt || '').trim(),
-    expiresAt: String(payload?.expiresAt || '').trim()
-  };
-}
-
 export async function requestHoldingsNav(codes = []) {
-  const normalizedCodes = getHoldingCodeList(codes.map((code) => ({ code })));
-  if (!normalizedCodes.length) {
-    return {
-      items: [],
-      cache: null,
-      successCount: 0,
-      failureCount: 0
-    };
-  }
-
-  const batchSize = 60;
-  const batches = [];
-  for (let i = 0; i < normalizedCodes.length; i += batchSize) {
-    batches.push(normalizedCodes.slice(i, i + batchSize));
-  }
-
-  const results = [];
-  for (const batch of batches) {
-    results.push(await requestHoldingsNavBatch(batch));
-  }
-
-  if (results.length === 1) {
-    return results[0];
-  }
-
-  const items = results.flatMap((res) => res.items || []);
-  const caches = results.map((res) => res.cache).filter(Boolean);
-  const cache = caches.length
-    ? {
-      key: caches.map((c) => c.key).filter(Boolean).join('+'),
-      hit: caches.every((c) => c.hit === true),
-      source: caches.map((c) => c.source).find(Boolean) || '',
-      stale: caches.some((c) => c.stale === true),
-      codeCount: items.length
-    }
-    : null;
-  const successCount = results.reduce((sum, res) => sum + (res.successCount || 0), 0);
-  const failureCount = results.reduce((sum, res) => sum + (res.failureCount || 0), 0);
-  const generatedAt = results.map((res) => res.generatedAt).filter(Boolean).sort().at(-1) || '';
-  const expiresAt = results.map((res) => res.expiresAt).filter(Boolean).sort().at(0) || '';
-
-  return {
-    items,
-    cache,
-    successCount,
-    failureCount,
-    generatedAt,
-    expiresAt
-  };
+  return getNavSnapshots(codes);
 }
 
 export async function requestHoldingsNavHistory(code, { from = '', to = '', days = 365, force = false } = {}) {
@@ -353,32 +235,7 @@ export async function requestHoldingsNavHistory(code, { from = '', to = '', days
   if (!fundCode) {
     return { ok: false, code: '', items: [], error: '缺少有效基金代码' };
   }
-
-  const params = new URLSearchParams({ code: fundCode });
-  if (from) params.set('from', String(from));
-  if (to) params.set('to', String(to));
-  if (!from) params.set('days', String(Math.max(1, Math.min(Number(days) || 365, 3650))));
-  if (force) params.set('refresh', '1');
-
-  const response = await fetch(`${HOLDINGS_NAV_ENDPOINT}-history?${params.toString()}`, {
-    method: 'GET',
-    headers: { Accept: 'application/json' },
-    cache: 'no-store'
-  });
-
-  const rawText = await response.text();
-  let payload = {};
-  if (rawText) {
-    try {
-      payload = JSON.parse(rawText);
-    } catch (_error) {
-      payload = { error: response.ok ? '净值历史服务返回了非标准响应。' : rawText };
-    }
-  }
-  if (!response.ok) {
-    throw new Error(payload.error || `净值历史服务请求失败：状态 ${response.status}`);
-  }
-
+  const payload = await getNavHistory(fundCode, { from, to, days, forceRefresh: force });
   const items = (Array.isArray(payload.items) ? payload.items : [])
     .map((item) => {
       const date = String(item?.date || '').slice(0, 10);
@@ -386,15 +243,15 @@ export async function requestHoldingsNavHistory(code, { from = '', to = '', days
       return /^\d{4}-\d{2}-\d{2}$/.test(date) && nav > 0 ? { date, nav } : null;
     })
     .filter(Boolean);
-
   return {
     ok: payload?.ok !== false,
     code: fundCode,
-    from: String(payload?.from || '').trim(),
-    to: String(payload?.to || '').trim(),
+    from: String(payload?.from || from || '').trim(),
+    to: String(payload?.to || to || '').trim(),
     count: Math.max(Number(payload?.count) || items.length, items.length),
     items,
     generatedAt: String(payload?.generatedAt || '').trim(),
-    cache: payload?.cache || null
+    cache: payload?.cache || null,
+    stale: payload?.stale === true
   };
 }

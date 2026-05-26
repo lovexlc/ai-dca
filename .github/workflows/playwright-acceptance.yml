@@ -8,6 +8,7 @@ on:
       - 'src/**'
       - 'public/**'
       - 'tests/e2e/**'
+      - 'scripts/check_nav_access.mjs'
       - 'playwright.config.js'
       - 'package.json'
       - 'package-lock.json'
@@ -20,6 +21,7 @@ on:
       - 'src/**'
       - 'public/**'
       - 'tests/e2e/**'
+      - 'scripts/check_nav_access.mjs'
       - 'playwright.config.js'
       - 'package.json'
       - 'package-lock.json'
@@ -62,6 +64,9 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Check NAV access boundaries
+        run: npm run check:nav-access
+
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
@@ -97,6 +102,9 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+
+      - name: Check NAV access boundaries
+        run: npm run check:nav-access
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium

@@ -4,7 +4,7 @@ import { AlertTriangle, ClipboardList, Info, RefreshCw, Radio, PlayCircle, Chevr
 import { Card, Pill, SectionHeading, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 import { readLedgerState, persistLedgerState } from '../app/holdingsLedger.js';
 import { aggregateByCode, buildTransactionId, detectFundKind, normalizeTransaction } from '../app/holdingsLedgerCore.js';
-import { requestHoldingsNav } from '../app/holdings.js';
+import { getNavSnapshots } from '../app/navService.js';
 import {
   loadSwitchConfigFromWorker,
   loadSwitchSnapshotFromWorker,
@@ -20,7 +20,7 @@ import {
 //   溢价 % = (当前成交价 − 最新单位净值) / 最新单位净值
 //
 // 数据源：
-// - 最新净值：/api/holdings/nav（worker 统一接口，内部走 getNav）
+// - 最新净值：central NAV service（worker 统一接口，内部走 getNav）
 // - data/all_nasdq.json：候选基金 universe（纳指 100 场内 ETF 全集，与持仓解耦）
 // - 当前价：持仓 ledger 中的 latestNav（A 股开盘期间由 notify worker push2 推送，收盘后是最后成交价）；
 //   非持仓候选取 data/<code>/daily-sina.json 最后一根 K 线 close 作为代理。
@@ -798,7 +798,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, [exchangeFunds, benchmarkCodesJoined, premiumClassKey]);
 
   // 拉取所有候选 ETF 的最新单位净值（候选池来自 data/all_nasdq.json，不仅限于持仓）。
-  // 统一走 worker 的 /api/holdings/nav（内部由 getNav 处理）。
+  // 统一走 worker 的 central NAV service（内部由 getNav 处理）。
   const loadNav = useCallback(async () => {
     setNavState((prev) => ({ ...prev, loading: true, error: '' }));
     try {
@@ -808,7 +808,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         return;
       }
       const navByCode = {};
-      const result = await requestHoldingsNav(codes);
+      const result = await getNavSnapshots(codes);
       for (const item of result?.items || []) {
         if (!item?.code) continue;
         if (!item.ok || !(item.latestNav > 0)) continue;

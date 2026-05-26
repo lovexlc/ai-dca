@@ -34,7 +34,7 @@ import {
 } from '../app/marketsApi.js';
 import { showActionToast } from '../app/toast.js';
 import { buildStockAnalysisPrompt } from '../app/stockAnalysisPrompt.js';
-import { requestHoldingsNav, requestHoldingsNavHistory } from '../app/holdings.js';
+import { getCnEtfPremiumSnapshot, getNavHistory } from '../app/navService.js';
 import { Sparkline } from '../components/markets/Sparkline.jsx';
 import { MarketsChartCodeBlock } from '../components/markets/MarketsChartBlock.jsx';
 import { Area, Bar, CartesianGrid, ComposedChart, Customized, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -3467,33 +3467,18 @@ export function MarketsExperience() {
     let cancelled = false;
     (async () => {
       try {
-        const [navResult, qqqQuote] = await Promise.all([
-          requestHoldingsNav([symbol]),
-          fetchQuote('QQQ')
-        ]);
-        const navItem = (navResult?.items || []).find((item) => item && item.code === symbol) || null;
-        const baseNav = Number(navItem?.latestNav);
-        const qqqChangePercent = Number(qqqQuote?.changePercent);
-        if (!Number.isFinite(baseNav) || baseNav <= 0) throw new Error('缺少上一工作日净值');
-        if (!Number.isFinite(qqqChangePercent)) throw new Error('缺少 QQQ 涨幅');
-        const iopv = baseNav * (1 + qqqChangePercent / 100);
-        const premiumPercent = iopv > 0 ? ((price - iopv) / iopv) * 100 : null;
+        const qqqQuote = await fetchQuote('QQQ');
+        const premium = await getCnEtfPremiumSnapshot(symbol, {
+          price,
+          qqqChangePercent: Number(qqqQuote?.changePercent)
+        });
         if (!cancelled) {
           setPremiumMap((prev) => ({
             ...prev,
             [symbol]: {
               loading: false,
               error: '',
-              data: {
-                symbol,
-                price,
-                baseNav,
-                navDate: navItem?.latestNavDate || '',
-                qqqChangePercent,
-                iopv,
-                premiumPercent,
-                updatedAt: new Date().toISOString()
-              }
+              data: premium
             }
           }));
         }
@@ -3521,7 +3506,7 @@ export function MarketsExperience() {
     let cancelled = false;
     navHistoryInflightRef.current.add(key);
     setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: true, items: prev[key]?.items || [], error: '' } }));
-    requestHoldingsNavHistory(symbol, { days })
+    getNavHistory(symbol, { days })
       .then((payload) => {
         if (cancelled) return;
         const items = Array.isArray(payload?.items) ? payload.items : [];
