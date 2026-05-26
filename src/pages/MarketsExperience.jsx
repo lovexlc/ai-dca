@@ -79,6 +79,21 @@ function formatSymbolDisplay(value) {
   return match ? match[2] : raw;
 }
 
+function formatBrowserTitleForQuote(quote) {
+  if (!quote || !quote.symbol) return '行情中心';
+  const symbol = formatSymbolDisplay(quote.symbol);
+  const price = Number(quote.price);
+  const pct = Number(quote.changePercent);
+  const currency = String(quote.currency || '').trim().toUpperCase();
+  const priceText = Number.isFinite(price)
+    ? `${currency && currency !== 'CNY' ? `${currency} ` : ''}${formatNumber(price, 2)}`
+    : '--';
+  const pctText = Number.isFinite(pct)
+    ? `${pct < 0 ? '▼' : pct > 0 ? '▲' : ''} ${Math.abs(pct).toFixed(2)}%`
+    : '--';
+  return `${symbol} ${priceText} (${pctText})`;
+}
+
 function normalizeCnFundCode(value) {
   const raw = String(value || '').trim();
   const prefixed = /^(sh|sz|bj)(\d{6})$/i.exec(raw);
@@ -3626,6 +3641,11 @@ export function MarketsExperience() {
     [selectedSymbol, selectedStoredQuote, watchRows]
   );
   const selectedCnFundCode = market === 'cn' ? normalizeCnFundCode(selectedSymbol || selectedQuote?.symbol) : '';
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.title = selectedQuote ? formatBrowserTitleForQuote(selectedQuote) : '行情中心';
+  }, [selectedQuote]);
 
   useEffect(() => {
     if (!selectedSymbol) return undefined;
