@@ -1211,17 +1211,15 @@ function CandlesLayerPanel({ xAxisMap, yAxisMap, data }) {
   if (!xAxis || !yAxis || typeof yAxis.scale !== 'function') return null;
   const xScale = xAxis.scale;
   const yScale = yAxis.scale;
-  const bw = typeof xScale.bandwidth === 'function'
-    ? xScale.bandwidth()
-    : Math.max(2, (xAxis.width || 0) / Math.max(1, data.length));
-  const w = Math.max(1.5, bw * 0.6);
+  const step = data.length > 1 && xAxis.width ? Math.max(2, xAxis.width / Math.max(1, data.length - 1)) : 8;
+  const w = Math.max(2, Math.min(10, step * 0.54));
   return (
     <g>
       {data.map((d, i) => {
         if (!Number.isFinite(d.o) || !Number.isFinite(d.h) || !Number.isFinite(d.l) || !Number.isFinite(d.c)) return null;
         const cxRaw = xScale(d.label);
         if (typeof cxRaw !== 'number' || Number.isNaN(cxRaw)) return null;
-        const cx = cxRaw + (typeof xScale.bandwidth === 'function' ? bw / 2 : 0);
+        const cx = cxRaw;
         const up = d.c >= d.o;
         const color = up ? CHART_UP : CHART_DOWN;
         const yH = yScale(d.h);
@@ -1232,7 +1230,7 @@ function CandlesLayerPanel({ xAxisMap, yAxisMap, data }) {
         return (
           <g key={i}>
             <line x1={cx} x2={cx} y1={yH} y2={yL} stroke={color} strokeWidth={1} />
-            <rect x={cx - w / 2} y={yTop} width={w} height={bodyH} fill={color} />
+            <rect x={cx - w / 2} y={yTop} width={w} height={bodyH} rx={0.8} fill={color} />
           </g>
         );
       })}
@@ -1803,6 +1801,9 @@ function SymbolDetailPanel({
   useEffect(() => { setHoveredChartRow(null); setLockedChartRow(null); }, [chartRange, cnFundParam]);
   useEffect(() => { if (market !== 'cn') setCnFundParam('price'); }, [market]);
   useEffect(() => {
+    if (market === 'cn' && cnFundParam !== 'price' && chartType !== 'area') setChartType('area');
+  }, [market, cnFundParam, chartType]);
+  useEffect(() => {
     const q = compareInput.trim();
     const seq = ++compareSearchSeqRef.current;
     if (q.length < 1 || compareSymbols.length >= 3) {
@@ -2061,6 +2062,7 @@ function SymbolDetailPanel({
   const effectiveChartCandles = market !== 'cn' || cnFundParam === 'price'
     ? chartCandles
     : buildCnFundParamCandles(chartCandles, navHistoryState?.items, cnFundParam, premiumState);
+  const effectiveChartType = market === 'cn' && cnFundParam !== 'price' ? 'area' : chartType;
   const metricLoading = market === 'cn' && cnFundParam !== 'price' && navHistoryState?.loading;
   const metricError = market === 'cn' && cnFundParam !== 'price' ? navHistoryState?.error : '';
   const hasFullCandles = Array.isArray(effectiveChartCandles) && effectiveChartCandles.length >= 2;
@@ -2125,8 +2127,8 @@ function SymbolDetailPanel({
         <div className="mt-1.5 flex min-h-0 flex-wrap items-center gap-1 rounded-[13px] bg-[#f1f3f4] px-1.5 py-1 sm:mt-2 sm:gap-1.5 sm:rounded-[15px] sm:px-2 sm:py-1.5">
           {market === 'cn' ? (
             <ChartToolbarPopover
-              icon="⌁"
-              label="参数"
+              icon={TOOLBAR_ICONS.params}
+              label={CN_FUND_PARAM_LABEL[cnFundParam] || '参数'}
               active={cnFundParam !== 'price'}
             >
               {({ close }) => (
@@ -2151,9 +2153,9 @@ function SymbolDetailPanel({
           ) : null}
           {!isMobile ? (
             <ChartToolbarPopover
-              icon={(CHART_TYPE_OPTIONS.find((opt) => opt.key === chartType) || {}).icon || '▰'}
-              label={CHART_TYPE_LABEL[chartType] || '面积图'}
-              active={chartType !== 'area'}
+              icon={(CHART_TYPE_OPTIONS.find((opt) => opt.key === effectiveChartType) || {}).icon || TOOLBAR_ICONS.area}
+              label={CHART_TYPE_LABEL[effectiveChartType] || '面积图'}
+              active={effectiveChartType !== 'area'}
             >
               {({ close }) => (
                 <div className="flex flex-col gap-0.5">
@@ -2177,7 +2179,7 @@ function SymbolDetailPanel({
           ) : null}
 
           <ChartToolbarPopover
-            icon="▥"
+            icon={TOOLBAR_ICONS.indicators}
             label={indicators.size ? `指标 · ${indicators.size}` : '指标'}
             active={indicators.size > 0}
           >
@@ -2198,7 +2200,7 @@ function SymbolDetailPanel({
           </ChartToolbarPopover>
 
           <ChartToolbarPopover
-            icon="≋"
+            icon={TOOLBAR_ICONS.compare}
             label={compareSymbols.length ? `对比 · ${compareSymbols.length}` : '对比'}
             active={compareSymbols.length > 0}
             align="right"
@@ -2326,7 +2328,7 @@ function SymbolDetailPanel({
             <SymbolDetailChart
               candles={effectiveChartCandles}
               tf={chartTf}
-              chartType={cnFundParam === 'price' ? chartType : 'area'}
+              chartType={effectiveChartType}
               indicators={indicators}
               compareSeries={compareSeries}
               tone={tone}
