@@ -1132,10 +1132,19 @@ function marketStateLabel(state, marketCode) {
 }
 
 // ---------- 图表工具栏（图表类型 / 指标 / 对比标的） ----------
+const toolbarIconClass = 'h-[18px] w-[18px] stroke-[2.2] text-[#202124]';
+const TOOLBAR_ICONS = {
+  params: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={toolbarIconClass}><path d="M4 7h10" /><path d="M18 7h2" /><circle cx="16" cy="7" r="2" /><path d="M4 17h2" /><path d="M10 17h10" /><circle cx="8" cy="17" r="2" /></svg>,
+  area: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={toolbarIconClass}><path d="M4 17l4-5 4 2 4-7 4 10" /><path d="M4 20h16" /><path d="M4 17l4-5 4 2 4-7 4 10v3H4z" fill="currentColor" opacity="0.16" stroke="none" /></svg>,
+  candle: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={toolbarIconClass}><path d="M7 4v4" /><path d="M7 16v4" /><rect x="5" y="8" width="4" height="8" rx="1" /><path d="M17 3v5" /><path d="M17 15v6" /><rect x="15" y="8" width="4" height="7" rx="1" /></svg>,
+  bar: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={toolbarIconClass}><path d="M5 20V9" /><path d="M12 20V4" /><path d="M19 20v-7" /><path d="M3 20h18" /></svg>,
+  indicators: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={toolbarIconClass}><path d="M4 17c3-8 6 4 9-4s5 0 7-6" /><path d="M4 7h4" /><path d="M16 17h4" /></svg>,
+  compare: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={toolbarIconClass}><path d="M4 8c2.5-3 5.5-3 8 0s5.5 3 8 0" /><path d="M4 16c2.5 3 5.5 3 8 0s5.5-3 8 0" /></svg>,
+};
 const CHART_TYPE_OPTIONS = [
-  { key: 'area', label: '面积图', hint: '趋势 + 渐变填充', icon: '▰' },
-  { key: 'candle', label: 'K 线图', hint: '开高低收烛台', icon: '▥' },
-  { key: 'bar', label: '柱形图', hint: '柱形展示收盘价', icon: '▮' },
+  { key: 'area', label: '面积图', hint: '趋势 + 渐变填充', icon: TOOLBAR_ICONS.area },
+  { key: 'candle', label: 'K 线图', hint: '开高低收烛台', icon: TOOLBAR_ICONS.candle },
+  { key: 'bar', label: '柱形图', hint: '柱形展示收盘价', icon: TOOLBAR_ICONS.bar },
 ];
 const CHART_TYPE_LABEL = CHART_TYPE_OPTIONS.reduce((acc, o) => { acc[o.key] = o.label; return acc; }, {});
 const CN_FUND_PARAM_OPTIONS = [
@@ -3621,8 +3630,8 @@ export function MarketsExperience() {
       .finally(() => {
         navHistoryInflightRef.current.delete(key);
       });
-    return () => { cancelled = true; };
-  }, [market, selectedSymbol, chartRange, navHistoryMap]);
+    return () => { /* keep the in-flight cache write; otherwise loading can stay true after rerender */ };
+  }, [market, selectedSymbol, chartRange]);
 
   const marketStatusLabel = indicesLoading ? '刷新中' : (indices.length ? `${indices.length} 个指数` : '待加载');
 
