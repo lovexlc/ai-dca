@@ -22,9 +22,12 @@ zone_name = "freebacktrack.tech"
 [ai]
 binding = "AI"
 
-# Deep research streaming service binding is intentionally omitted from this
-# deployment profile for now. The market data routes do not depend on it, and
-# Cloudflare service binding validation is currently blocking deploys.
+# Deep research streaming (/api/markets/ask/stream) calls the internal
+# markets-agent Worker. Without this binding, deep research returns:
+# "AGENT service binding missing".
+[[services]]
+binding = "AGENT"
+service = "ai-dca-markets-agent"
 
 # Keep deployment on baseline Workers entitlements. Advanced placement,
 # elevated CPU limits, and persisted invocation logs can fail to deploy on
