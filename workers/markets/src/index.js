@@ -75,6 +75,48 @@ function errorJson(message, status = 500, extra = {}) {
   return json({ error: String(message || 'internal error'), ...extra }, status);
 }
 
+const INTRADAY_KLINE_INTERVALS = new Set(['1m', '5m', '15m', '30m', '60m']);
+
+function getShanghaiTradingMinute(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Shanghai',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).formatToParts(date).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+  const hour = Number(parts.hour);
+  const minute = Number(parts.minute);
+  return { weekday: parts.weekday, minuteOfDay: hour * 60 + minute };
+}
+
+function isCnTradingSession(date = new Date()) {
+  const { weekday, minuteOfDay } = getShanghaiTradingMinute(date);
+  if (weekday === 'Sat' || weekday === 'Sun') return false;
+  return (minuteOfDay >= 570 && minuteOfDay <= 690) || (minuteOfDay >= 780 && minuteOfDay <= 900);
+}
+
+function klineCacheMaxAgeMs(market, tf) {
+  if (market === 'cn' && INTRADAY_KLINE_INTERVALS.has(tf)) {
+    return isCnTradingSession() ? 60 * 1000 : 6 * 3600 * 1000;
+  }
+  return null;
+}
+
+function klineCacheIsStale({ cached, market, tf }) {
+  const maxAgeMs = klineCacheMaxAgeMs(market, tf);
+  if (Number.isFinite(maxAgeMs)) {
+    const generatedAtMs = Date.parse(String(cached?.generatedAt || ''));
+    return !Number.isFinite(generatedAtMs) || Date.now() - generatedAtMs > maxAgeMs;
+  }
+  const lastCandle = Array.isArray(cached?.candles) && cached.candles.length ? cached.candles[cached.candles.length - 1] : null;
+  const lastT = Number(lastCandle?.t) * 1000;
+  return tf === '1d' && (!Number.isFinite(lastT) || Date.now() - lastT > 36 * 3600 * 1000);
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') {
@@ -331,8 +373,7 @@ async function handleKline(env, rawSymbol, params) {
   if (!forceRefresh) {
     const cached = await r2GetJson(env, r2k);
     if (cached && cached.candles && cached.candles.length) {
-      const lastT = cached.candles[cached.candles.length - 1].t * 1000;
-      const stale = tf === '1d' && Date.now() - lastT > 36 * 3600 * 1000;
+      const stale = klineCacheIsStale({ cached, market, tf });
       const sourceOk = market !== 'cn' || cached.source === 'sina-kline';
       if (!stale && sourceOk) return json({ ...cached, cached: true });
     }
