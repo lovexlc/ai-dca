@@ -1882,7 +1882,6 @@ function SymbolDetailPanel({
       name: item.name || item.shortName || item.displayName || item.symbol
     }))
     .filter((item) => item.symbol);
-  const compareCandidateKey = compareCandidates.map((item) => item.symbol).join('|');
   const compareSearchCandidateKey = compareSearchCandidates.map((item) => item.symbol).join('|');
   const compareSymbolKey = compareSymbols.join('|');
   const backgroundStyle = (background) => ({ background });
@@ -1911,7 +1910,6 @@ function SymbolDetailPanel({
   };
   useEffect(() => {
     const symbols = Array.from(new Set([
-      ...compareCandidates.map((item) => item.symbol),
       ...compareSearchCandidates.map((item) => item.symbol),
       ...compareSymbols
     ].map((sym) => String(sym || '').toUpperCase()).filter(Boolean)));
@@ -1937,7 +1935,7 @@ function SymbolDetailPanel({
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [compareCandidateKey, compareSearchCandidateKey, compareSymbolKey, compareQuoteMap, row?.symbol]);
+  }, [compareSearchCandidateKey, compareSymbolKey, compareQuoteMap, row?.symbol]);
   const visibleCompareCandidates = (() => {
     const q = compareInput.trim().toUpperCase();
     const source = q
@@ -3017,6 +3015,8 @@ export function MarketsExperience() {
   // 研究底部抽屉模式（仅 mobile）：peek=小片 / conversation=全屏展开
   const [researchMode, setResearchMode] = useState('peek');
   const [selectedSymbol, setSelectedSymbol] = useState('');
+  const selectedSymbolRef = useRef('');
+  const [selectedQuoteMap, setSelectedQuoteMap] = useState({});
   const [detailHeaderHidden, setDetailHeaderHidden] = useState(false);
   const [symbolDetailTab, setSymbolDetailTab] = useState('overview');
   const [chartRange, setChartRange] = useState('1d');
@@ -3089,13 +3089,9 @@ export function MarketsExperience() {
   const watchLists = Array.isArray(watch.lists) ? watch.lists : [];
   const activeWatchList = watchLists.find((item) => item.id === watch.activeListId) || watchLists[0] || { us: [], cn: [], name: '默认列表' };
   const watchSymbols = useMemo(() => activeWatchList[market] || [], [activeWatchList, market]);
-
   useEffect(() => {
-    if (selectedSymbol && !watchSymbols.includes(selectedSymbol)) {
-      setSelectedSymbol('');
-      setSymbolDetailTab('overview');
-    }
-  }, [selectedSymbol, watchSymbols]);
+    selectedSymbolRef.current = selectedSymbol;
+  }, [selectedSymbol]);
 
   useEffect(() => {
     if (!selectedSymbol || !isMobile) return;
@@ -3134,7 +3130,7 @@ export function MarketsExperience() {
       if (reqId !== reqIdRef.current) return;
       const list = Array.isArray(r.indexes) ? r.indexes : [];
       setIndices(list);
-      ensureKlines(list.map((it) => it.symbol).filter(Boolean));
+      if (!selectedSymbolRef.current) ensureKlines(list.map((it) => it.symbol).filter(Boolean));
       setGeneratedAt(r.generatedAt || '');
     } catch (err) {
       if (reqId !== reqIdRef.current) return;
@@ -3150,7 +3146,7 @@ export function MarketsExperience() {
       const r = await fetchMovers(market, { direction: 'mixed', refresh: forceRefresh });
       const list = Array.isArray(r.list) ? r.list : [];
       setMovers(list);
-      ensureKlines(list.map((it) => it.symbol).filter(Boolean));
+      if (!selectedSymbolRef.current) ensureKlines(list.map((it) => it.symbol).filter(Boolean));
     } catch (err) {
       showActionToast('涨跌榜加载失败', 'error');
     } finally {
@@ -3236,7 +3232,7 @@ export function MarketsExperience() {
       const r = await fetchSectors(market, { refresh: forceRefresh });
       const list = Array.isArray(r && r.sectors) ? r.sectors : [];
       setSectors(list);
-      ensureKlines(list.map((it) => it.symbol).filter(Boolean));
+      if (!selectedSymbolRef.current) ensureKlines(list.map((it) => it.symbol).filter(Boolean));
     } catch (err) {
       // 行业是增量信息，失败不弹 toast，避免骩扰。
       setSectors([]);
@@ -3319,10 +3315,11 @@ export function MarketsExperience() {
     refreshSectors(false);
   }, [refreshSectors]);
 
-  // 自选股变化时拉一下迷你图（能复用则复用 inflight，不会重发）。
+  // 自选股迷你图只在总览态加载；进入详情后避免为侧栏批量补拉 1d K 线。
   useEffect(() => {
+    if (selectedSymbol) return;
     ensureKlines(watchSymbols);
-  }, [watchSymbols, ensureKlines]);
+  }, [selectedSymbol, watchSymbols, ensureKlines]);
 
   useEffect(() => {
     const q = symbolInput.trim();
@@ -3337,20 +3334,23 @@ export function MarketsExperience() {
     setSymbolSearchLoading(true);
     setSymbolSearchError('');
     const timer = window.setTimeout(() => {
-      Promise.all(
-        MARKETS.map((m) => searchSymbols(m.key, q, { limit: 6, signal: controller.signal })
-          .then((r) => (Array.isArray(r && r.results) ? r.results : []).map((row) => ({ ...row, market: m.key, marketLabel: m.label }))))
-      )
-        .then((groups) => {
+      const activeMarket = MARKETS.find((m) => m.key === market) || MARKETS[0];
+      searchSymbols(activeMarket.key, q, { limit: 8, signal: controller.signal })
+        .then((r) => {
           if (seq !== symbolSearchSeqRef.current) return;
           const seen = new Set();
-          const rows = groups.flat().filter((row) => {
-            const key = `${row.market}:${row.symbol}`;
-            if (!row.symbol || seen.has(key)) return false;
-            seen.add(key);
+          const rows = (Array.isArray(r && r.results) ? r.results : []).map((row) => ({
+            ...row,
+            market: activeMarket.key,
+            marketLabel: activeMarket.label
+          })).filter((row) => {
+            const symbol = String(row.symbol || row.code || row.ticker || '').trim().toUpperCase();
+            if (!symbol || seen.has(symbol)) return false;
+            seen.add(symbol);
+            row.symbol = symbol;
             return true;
           });
-          setSymbolSearchResults(rows.slice(0, 10));
+          setSymbolSearchResults(rows.slice(0, 8));
         })
         .catch((err) => {
           if (controller.signal.aborted || seq !== symbolSearchSeqRef.current) return;
@@ -3365,7 +3365,26 @@ export function MarketsExperience() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [sectorSearchOpen, symbolInput]);
+  }, [sectorSearchOpen, symbolInput, market]);
+
+  function rememberSelectedQuote(row, targetMarket = market) {
+    if (!row || !row.symbol) return null;
+    const symbol = String(row.symbol || row.code || row.ticker || '').trim().toUpperCase();
+    if (!symbol) return null;
+    const key = `${targetMarket || market}:${symbol}`;
+    setSelectedQuoteMap((prev) => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        ...row,
+        symbol,
+        name: row.name || row.shortName || row.displayName || prev[key]?.name || CN_ETF_PRESET_MAP[symbol]?.name || symbol,
+        exchange: row.exchange || prev[key]?.exchange || CN_ETF_PRESET_MAP[symbol]?.exchange,
+        currency: row.currency || prev[key]?.currency || CN_ETF_PRESET_MAP[symbol]?.currency
+      }
+    }));
+    return symbol;
+  }
 
   function handleAddSymbol(event, rawOverride, marketOverride = market) {
     if (event && event.preventDefault) event.preventDefault();
@@ -3375,6 +3394,7 @@ export function MarketsExperience() {
     const next = addToWatchlist(targetMarket, raw, watch.activeListId);
     setWatch(next);
     setMarket(targetMarket);
+    rememberSelectedQuote({ symbol: raw }, targetMarket);
     setSelectedSymbol(raw);
     setSymbolDetailTab('overview');
     setSymbolInput('');
@@ -3384,8 +3404,16 @@ export function MarketsExperience() {
 
   function handlePickSymbolSearch(row) {
     if (!row || !row.symbol) return;
-    handleAddSymbol(null, row.symbol, row.market || market);
-    showActionToast('已加入自选', 'success');
+    const targetMarket = row.market || market;
+    const symbol = rememberSelectedQuote(row, targetMarket);
+    if (!symbol) return;
+    setMarket(targetMarket);
+    setSelectedSymbol(symbol);
+    setSymbolDetailTab('overview');
+    setResearchMode('peek');
+    setSymbolInput('');
+    setSymbolSearchResults([]);
+    setSectorSearchOpen(false);
   }
 
   function handlePickMover(row) {
@@ -3412,7 +3440,8 @@ export function MarketsExperience() {
 
   function handleSelectSymbol(row, options = {}) {
     if (!row || !row.symbol) return;
-    setSelectedSymbol(row.symbol);
+    const symbol = rememberSelectedQuote(row, market) || row.symbol;
+    setSelectedSymbol(symbol);
     setSymbolDetailTab('overview');
     setResearchMode(options.openResearch ? 'conversation' : 'peek');
   }
@@ -3445,10 +3474,36 @@ export function MarketsExperience() {
     [watchRows]
   );
 
+  const selectedStoredQuote = selectedSymbol ? selectedQuoteMap[`${market}:${selectedSymbol}`] : null;
   const selectedQuote = useMemo(
-    () => watchRows.find((row) => row.symbol === selectedSymbol) || null,
-    [selectedSymbol, watchRows]
+    () => watchRows.find((row) => row.symbol === selectedSymbol) || selectedStoredQuote || null,
+    [selectedSymbol, selectedStoredQuote, watchRows]
   );
+
+  useEffect(() => {
+    if (!selectedSymbol) return undefined;
+    if (watchRows.some((row) => row.symbol === selectedSymbol)) return undefined;
+    if (Number.isFinite(Number(selectedStoredQuote?.price))) return undefined;
+    let cancelled = false;
+    fetchQuote(selectedSymbol)
+      .then((quote) => {
+        if (cancelled || !quote) return;
+        setSelectedQuoteMap((prev) => {
+          const key = `${market}:${selectedSymbol}`;
+          return {
+            ...prev,
+            [key]: {
+              ...prev[key],
+              ...quote,
+              symbol: String(quote.symbol || selectedSymbol).trim().toUpperCase(),
+              name: quote.name || prev[key]?.name || CN_ETF_PRESET_MAP[selectedSymbol]?.name || selectedSymbol
+            }
+          };
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [market, selectedSymbol, selectedStoredQuote?.price, watchRows]);
 
   useEffect(() => {
     if (market !== 'cn' || !selectedSymbol) return;
@@ -3652,7 +3707,7 @@ export function MarketsExperience() {
                       <li key={`${row.market || market}:${row.symbol}`}>
                         <button type="button" className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-[#f8fafd]" onClick={() => handlePickSymbolSearch(row)}>
                           <span className="min-w-0"><span className="block truncate text-sm font-semibold text-[#1f1f1f]">{formatSymbolDisplay(row.symbol)}</span><span className="block truncate text-xs text-[#5f6368]">{row.marketLabel ? `${row.marketLabel} · ` : ''}{row.name || row.exchange || '--'}</span></span>
-                          <span className="shrink-0 rounded-full bg-[#e8f0fe] px-2 py-1 text-xs font-semibold text-[#1a73e8]">加入</span>
+                          <span className="shrink-0 rounded-full bg-[#e8f0fe] px-2 py-1 text-xs font-semibold text-[#1a73e8]">查看</span>
                         </button>
                       </li>
                     ))}
@@ -3806,7 +3861,7 @@ export function MarketsExperience() {
                             <li key={`${row.market || market}:${row.symbol}`}>
                               <button type="button" className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-[#f8fafd]" onClick={() => handlePickSymbolSearch(row)}>
                                 <span className="min-w-0"><span className="block truncate text-xs font-semibold text-[#1f1f1f]">{formatSymbolDisplay(row.symbol)}</span><span className="block truncate text-[11px] text-[#5f6368]">{row.marketLabel ? `${row.marketLabel} · ` : ''}{row.name || row.exchange || '--'}</span></span>
-                                <span className="shrink-0 rounded-full bg-[#e8f0fe] px-2 py-0.5 text-[11px] font-semibold text-[#1a73e8]">加入</span>
+                                <span className="shrink-0 rounded-full bg-[#e8f0fe] px-2 py-0.5 text-[11px] font-semibold text-[#1a73e8]">查看</span>
                               </button>
                             </li>
                           ))}
