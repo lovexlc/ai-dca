@@ -1423,7 +1423,7 @@ function ChartToolbarPopover({ label, icon, active, children, align = 'left', pa
   const updateFixedPanelPosition = useCallback(() => {
     if (!fixedPanel || !buttonRef.current || typeof window === 'undefined') return;
     const rect = buttonRef.current.getBoundingClientRect();
-    const width = Math.min(480, Math.max(0, window.innerWidth - 16));
+    const width = Math.min(360, Math.max(0, window.innerWidth - 16));
     const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
     setPanelStyle({ left, top: rect.bottom + 6, width });
   }, [fixedPanel]);
@@ -1458,14 +1458,14 @@ function ChartToolbarPopover({ label, icon, active, children, align = 'left', pa
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cx(
-          'inline-flex h-9 items-center gap-1.5 rounded-[14px] px-2.5 text-[14px] font-semibold text-[#202124] transition hover:bg-white/70 sm:h-[38px] sm:gap-2 sm:px-3 sm:text-[15px]',
+          'inline-flex h-8 items-center gap-1 rounded-[11px] px-2 text-[12px] font-semibold text-[#202124] transition hover:bg-white/70 sm:h-9 sm:gap-1.5 sm:px-2.5 sm:text-[13px]',
           active ? 'border border-[rgba(17,24,39,0.08)] bg-white/60 shadow-[0_2px_8px_rgba(0,0,0,0.06)]' : 'border border-transparent bg-transparent',
           buttonClassName
         )}
       >
-        {icon ? <span className="text-[15px] leading-none text-[#202124] sm:text-[16px]" aria-hidden="true">{icon}</span> : null}
+        {icon ? <span className="text-[13px] leading-none text-[#202124] sm:text-[14px]" aria-hidden="true">{icon}</span> : null}
         <span>{label}</span>
-        <ChevronDown size={14} className={cx('transition', open ? 'rotate-180' : '')} />
+        <ChevronDown size={12} className={cx('transition', open ? 'rotate-180' : '')} />
       </button>
       {open ? (
         <div
@@ -2031,70 +2031,61 @@ function SymbolDetailPanel({
 
   return (
     <section className="mx-0">
-      <div className="px-4 pt-0 sm:px-1 sm:pt-1">
+      <div className="px-3 pt-0 sm:px-1">
         <button
           type="button"
           onClick={onBack}
-          className="mb-1 inline-flex items-center gap-1 text-[12px] font-medium text-[#5f6368] hover:text-[#1f1f1f] sm:mb-3 sm:gap-1.5 sm:text-[13px]"
+          className="mb-0.5 inline-flex items-center gap-1 text-[11px] font-medium text-[#5f6368] hover:text-[#1f1f1f] sm:mb-1 sm:text-[12px]"
         >
-          <ArrowUp size={14} className="-rotate-90" />
+          <ArrowUp size={13} className="-rotate-90" />
           首页
         </button>
         {/* Header：极简金融工作台头部 */}
-        <div className="flex items-start justify-between gap-2 sm:gap-4">
+        <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[#5f6368] sm:gap-x-1.5 sm:text-[12px]">
-              <span>{market === 'us' ? '美股' : 'A 股'}</span>
-              <span>·</span>
-              <span className="truncate">{exchangeLabel}</span>
-              <span>·</span>
-              <span>{displaySymbol}</span>
-              <span>·</span>
-              <span>{currencyLabel}</span>
-            </div>
-            <h2 className="mt-0.5 truncate text-[15px] font-medium text-[#1f1f1f] sm:text-lg">{row.name || displaySymbol}</h2>
-            <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 sm:mt-2 sm:gap-x-3 sm:gap-y-1">
-              <span className="text-[36px] font-medium leading-none tabular-nums text-[#1f1f1f] sm:text-[40px]">{formatNumber(row.price)}</span>
-              <span className={cx('text-[13px] font-medium tabular-nums sm:text-sm', positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#5f6368]')}>
+            <h2 className="truncate text-[15px] font-medium leading-tight text-[#1f1f1f] sm:text-[17px]">{row.name || displaySymbol}</h2>
+            <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 sm:gap-x-2">
+              <span className="text-[28px] font-medium leading-none tabular-nums text-[#1f1f1f] sm:text-[32px]">{formatNumber(row.price)}</span>
+              <span className={cx('text-[12px] font-medium tabular-nums sm:text-[13px]', positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#5f6368]')}>
                 {Number.isFinite(change) ? `${change > 0 ? '+' : ''}${formatNumber(change)}` : '--'}
                 <span className="mx-1 text-[#5f6368]">·</span>
                 {formatPercent(row.changePercent)}
               </span>
-              <span className="text-[12px] text-[#5f6368]">今日</span>
+              <span className="text-[11px] text-[#5f6368]">今日</span>
             </div>
-            <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-[#5f6368] sm:mt-1.5 sm:gap-x-2 sm:text-[12px]">
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-[#5f6368] sm:text-[11px]">
               <span>{stateLabel}</span>
               {row.lastUpdated ? <><span>·</span><span>更新于 {formatClock(row.lastUpdated)}</span></> : null}
               {Number.isFinite(Number(row.previousClose)) ? <><span>·</span><span>昨收 <span className="tabular-nums">{formatNumber(row.previousClose)}</span></span></> : null}
             </div>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+          <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center">
             <button
               type="button"
               onClick={onToggleWatch}
               className={cx(
-                'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-medium transition sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-sm',
+                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition sm:px-2.5 sm:py-1 sm:text-[12px]',
                 inWatch
                   ? 'border border-[#dadce0] bg-white text-[#1f1f1f] hover:bg-[#f1f3f4]'
                   : 'bg-[#1f1f1f] text-white hover:bg-[#3c3c3c]'
               )}
             >
-              <Star size={14} className={inWatch ? 'fill-amber-400 text-amber-400' : ''} />
+              <Star size={13} className={inWatch ? 'fill-amber-400 text-amber-400' : ''} />
               {inWatch ? '已添加' : '添加自选'}
             </button>
             <button
               type="button"
               onClick={onAnalyze}
-              className="inline-flex items-center gap-1 rounded-full bg-[#e8f0fe] px-2.5 py-1 text-[12px] font-medium text-[#1a73e8] transition hover:bg-[#d2e3fc] sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-sm"
+              className="inline-flex items-center gap-1 rounded-full bg-[#e8f0fe] px-2 py-0.5 text-[11px] font-medium text-[#1a73e8] transition hover:bg-[#d2e3fc] sm:px-2.5 sm:py-1 sm:text-[12px]"
             >
-              <Sparkles size={14} />
+              <Sparkles size={13} />
               研究
             </button>
           </div>
         </div>
 
         {/* 图表工具栏 */}
-        <div className="mt-2 flex min-h-0 flex-wrap items-center gap-1.5 rounded-[18px] bg-[#f1f3f4] px-2.5 py-2 sm:mt-3 sm:min-h-14 sm:gap-2.5 sm:rounded-[20px] sm:px-4 sm:py-[9px]">
+        <div className="mt-1.5 flex min-h-0 flex-wrap items-center gap-1 rounded-[13px] bg-[#f1f3f4] px-1.5 py-1 sm:mt-2 sm:gap-1.5 sm:rounded-[15px] sm:px-2 sm:py-1.5">
           {market === 'cn' ? (
             <ChartToolbarPopover
               icon="⌁"
@@ -2175,30 +2166,30 @@ function SymbolDetailPanel({
             active={compareSymbols.length > 0}
             align="right"
             fixedPanel
-            panelClassName="max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border-[#dfe3eb] bg-white p-0 shadow-xl"
+            panelClassName="max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border-[#dfe3eb] bg-white p-0 shadow-lg"
             buttonClassName={compareSymbols.length ? 'border border-[rgba(17,24,39,0.08)] bg-[#eef1f5] text-[#202124] shadow-none' : ''}
           >
-            <div className="max-h-[520px] overflow-hidden text-[#202124]">
-              <div className="flex h-16 items-center gap-3 border-b-2 border-[#1a73e8] bg-[#f8fafd] px-4">
-                <Search size={20} className="shrink-0 text-[#1a73e8]" />
+            <div className="max-h-[420px] overflow-hidden text-[#202124]">
+              <div className="flex h-11 items-center gap-2 border-b border-[#1a73e8] bg-[#f8fafd] px-3">
+                <Search size={16} className="shrink-0 text-[#1a73e8]" />
                 <input
                   type="text"
                   value={compareInput}
                   onChange={(e) => setCompareInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') addCompare(); }}
                   placeholder="搜索股票代码..."
-                  className="min-w-0 flex-1 bg-transparent text-[20px] font-medium text-[#202124] placeholder:text-[#8f96a3] outline-none"
+                  className="min-w-0 flex-1 bg-transparent text-[15px] font-medium text-[#202124] placeholder:text-[#8f96a3] outline-none"
                   disabled={compareSymbols.length >= 3}
                   autoFocus
                 />
                 {compareInput ? (
                   <button type="button" onClick={() => setCompareInput('')} className="rounded-full p-1 text-[#3c4043] hover:bg-black/5" aria-label="清空搜索">
-                    <X size={20} />
+                    <X size={16} />
                   </button>
                 ) : null}
               </div>
-              <div className="max-h-[392px] overflow-y-auto px-4 py-4">
-                <div className="mb-3 flex items-center justify-between text-[15px] font-semibold text-[#5f6368]">
+              <div className="max-h-[344px] overflow-y-auto px-2.5 py-2">
+                <div className="mb-1.5 flex items-center justify-between text-[12px] font-semibold text-[#5f6368]">
                   <span>{compareInput ? '搜索结果' : '所有股票代码'}</span>
                   {compareSearchLoading ? <span className="inline-flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> 搜索中</span> : null}
                 </div>
@@ -2216,17 +2207,17 @@ function SymbolDetailPanel({
                         onClick={() => addCompareSymbol(item.symbol)}
                         disabled={disabled}
                         className={cx(
-                          'flex items-center gap-4 rounded-xl px-2.5 py-3 text-left transition',
+                          'flex items-center gap-2 rounded-lg px-2 py-2 text-left transition',
                           disabled ? 'cursor-default opacity-45' : 'hover:bg-[#f8fafd]'
                         )}
                       >
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-[22px] font-semibold leading-tight text-[#202124]">{item.symbol}</div>
-                          <div className="mt-0.5 truncate text-[15px] font-medium text-[#5f6368]">{quote.name || item.name || item.symbol}</div>
+                          <div className="truncate text-[16px] font-semibold leading-tight text-[#202124]">{item.symbol}</div>
+                          <div className="mt-0.5 truncate text-[12px] font-medium text-[#5f6368]">{quote.name || item.name || item.symbol}</div>
                         </div>
                         <div className="shrink-0 text-right">
-                          <div className="text-[22px] font-semibold tabular-nums text-[#202124]">{Number.isFinite(quote.price) ? `$${formatNumber(quote.price, 2)}` : '--'}</div>
-                          <div className={cx('mt-0.5 text-[15px] font-semibold tabular-nums', toneClass)}>
+                          <div className="text-[15px] font-semibold tabular-nums text-[#202124]">{Number.isFinite(quote.price) ? `$${formatNumber(quote.price, 2)}` : '--'}</div>
+                          <div className={cx('mt-0.5 text-[12px] font-semibold tabular-nums', toneClass)}>
                             {formatSignedPercent(quote.changePercent)} {rowPositive ? '↑' : rowNegative ? '↓' : ''}
                           </div>
                         </div>
@@ -2251,7 +2242,7 @@ function SymbolDetailPanel({
 
         {/* 图表区 */}
         <div
-          className="relative mt-2 h-[248px] rounded-[18px] bg-[#f1f3f4] p-2 sm:mt-3 sm:h-[400px] sm:rounded-[20px] sm:p-4"
+          className="relative mt-1.5 h-[220px] rounded-[14px] bg-[#f1f3f4] p-1.5 sm:mt-2 sm:h-[240px] sm:rounded-[16px] sm:p-2 lg:h-[280px]"
           onClick={(event) => {
             if (isMobile && lockedChartRow && event.target === event.currentTarget) clearLockedChartRow();
           }}
@@ -2320,9 +2311,9 @@ function SymbolDetailPanel({
         </div>
 
         {/* 时间范围 tab（Google Finance 风格横向标签） */}
-        <div className="mt-2 flex h-10 items-center overflow-x-auto rounded-[18px] bg-[#f1f3f4] p-1 [scrollbar-width:none] sm:mt-3 sm:h-12 sm:rounded-[20px] sm:p-1.5 [&::-webkit-scrollbar]:hidden">
+        <div className="mt-1.5 flex h-8 items-center overflow-x-auto rounded-[13px] bg-[#f1f3f4] p-0.5 [scrollbar-width:none] sm:mt-2 sm:h-9 sm:rounded-[15px] sm:p-1 [&::-webkit-scrollbar]:hidden">
           <div
-            className="flex w-max items-center gap-1 text-[14px] font-medium text-[#5f6368] sm:w-auto sm:gap-2 sm:text-[15px]"
+            className="flex w-max items-center gap-0.5 text-[12px] font-medium text-[#5f6368] sm:w-auto sm:gap-1 sm:text-[13px]"
             role="tablist"
             aria-label="股票图表标签页"
           >
@@ -2339,7 +2330,7 @@ function SymbolDetailPanel({
                   tabIndex={selected ? 0 : -1}
                   onClick={() => onChartRangeChange && onChartRangeChange(tab.key)}
                   className={cx(
-                    'relative flex h-8 min-w-[44px] shrink-0 items-center justify-center rounded-[13px] px-2.5 transition-colors sm:h-9 sm:min-w-[52px] sm:rounded-[14px] sm:px-3',
+                    'relative flex h-7 min-w-[38px] shrink-0 items-center justify-center rounded-[10px] px-2 transition-colors sm:h-7 sm:min-w-[44px] sm:rounded-[11px] sm:px-2.5',
                     selected
                       ? 'bg-[#EEF1F5] font-bold text-[#202124]'
                       : 'text-[#5f6368] hover:bg-white/60 hover:text-[#202124]'
@@ -2354,8 +2345,8 @@ function SymbolDetailPanel({
         </div>
 
         {compareSymbols.length > 0 ? (
-          <div className="overflow-hidden bg-white text-[12px] sm:text-[13px]">
-            <div className="grid h-9 grid-cols-[minmax(0,1fr)_64px_60px_64px] items-center gap-1 border-b border-[rgba(17,24,39,0.08)] px-1.5 text-right text-[12px] font-semibold text-[#5f6368] sm:h-11 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[13px]">
+          <div className="overflow-hidden bg-white text-[11px] sm:text-[13px]">
+            <div className="grid h-8 grid-cols-[minmax(44px,1fr)_58px_56px_66px] items-center gap-0.5 border-b border-[rgba(17,24,39,0.08)] px-1 text-right text-[11px] font-semibold text-[#5f6368] sm:h-10 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[13px]">
               <div className="min-w-0 truncate text-left">股票代码</div>
               <div className="whitespace-nowrap">价格</div>
               <div className="whitespace-nowrap">涨跌额</div>
@@ -2369,17 +2360,17 @@ function SymbolDetailPanel({
               const toneClass = rowPositive ? 'text-[#a50e0e]' : rowNegative ? 'text-[#137333]' : 'text-[#1f1f1f]';
               const displayRowSymbol = formatSymbolDisplay(item.symbol);
               return (
-                <div key={`${item.symbol}-${index}`} className="grid h-16 grid-cols-[minmax(0,1fr)_64px_60px_64px] items-center gap-1 border-b border-[rgba(17,24,39,0.08)] px-1.5 text-right text-[13px] tabular-nums sm:h-[78px] sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[16px]">
-                  <div className="flex min-w-0 items-center gap-2 text-left sm:gap-3">
-                    <span className="size-2.5 shrink-0 rounded-sm sm:size-3" style={{ background: markerColor }} />
+                <div key={`${item.symbol}-${index}`} className="grid h-12 grid-cols-[minmax(44px,1fr)_58px_56px_66px] items-center gap-0.5 border-b border-[rgba(17,24,39,0.08)] px-1 text-right text-[12px] tabular-nums sm:h-16 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[16px]">
+                  <div className="flex min-w-0 items-center gap-1 text-left sm:gap-3">
+                    <span className="size-2 shrink-0 rounded-sm sm:size-3" style={{ background: markerColor }} />
                     <div className="min-w-0">
-                      <div className="truncate text-[16px] font-bold leading-tight text-[#202124] sm:text-[18px]">{displayRowSymbol}</div>
-                      <div className="mt-0.5 truncate text-[12px] text-[rgba(17,24,39,0.64)] sm:mt-1 sm:text-[13px]">{item.name}</div>
+                      <div className="truncate text-[13px] font-bold leading-tight text-[#202124] sm:text-[18px]">{displayRowSymbol}</div>
+                      <div className="mt-0.5 hidden truncate text-[12px] text-[rgba(17,24,39,0.64)] sm:block sm:text-[13px]">{item.name}</div>
                     </div>
                   </div>
-                  <div className="whitespace-nowrap text-[14px] font-bold text-[#202124] transition-colors duration-[120ms] sm:text-[17px]">{Number.isFinite(item.price) ? `$${formatNumber(item.price, 2)}` : '--'}</div>
-                  <div className={cx('whitespace-nowrap text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', toneClass)}>{Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
-                  <div className={cx('whitespace-nowrap text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', toneClass)}>{Number.isFinite(item.changePercent) ? `${formatSignedPercent(item.changePercent)} ${rowPositive ? '↑' : rowNegative ? '↓' : ''}` : '--'}</div>
+                  <div className="whitespace-nowrap text-[12px] font-bold text-[#202124] transition-colors duration-[120ms] sm:text-[17px]">{Number.isFinite(item.price) ? `$${formatNumber(item.price, 2)}` : '--'}</div>
+                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[16px]', toneClass)}>{Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)}` : '--'}</div>
+                  <div className={cx('whitespace-nowrap text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', toneClass)}>{Number.isFinite(item.changePercent) ? formatSignedPercent(item.changePercent) : '--'}</div>
                   <div className="hidden whitespace-nowrap text-[15px] font-bold text-[#202124] transition-colors duration-[120ms] sm:block sm:text-[17px]">{Number.isFinite(item.previousClose) ? `$${formatNumber(item.previousClose, 2)}` : '--'}</div>
                 </div>
               );
@@ -2391,7 +2382,7 @@ function SymbolDetailPanel({
         {market === 'cn' && cnFundParam === 'premium' ? <PremiumInsightCard premiumState={premiumState} /> : null}
 
         {/* 详情 tab */}
-        <div className="mt-2 flex gap-5 border-b border-[#e8eaed] text-sm font-medium text-[#5f6368] sm:mt-3">
+        <div className="mt-1.5 flex gap-4 border-b border-[#e8eaed] text-[12px] font-medium text-[#5f6368] sm:mt-2 sm:text-[13px]">
           {(market === 'us' ? SYMBOL_DETAIL_TABS : SYMBOL_DETAIL_TABS.filter((tab) => tab.key === 'overview')).map((tab) => (
             <button
               key={tab.key}
@@ -3865,7 +3856,7 @@ export function MarketsExperience() {
 
         <div className={cx(
           "sticky top-0 z-20 items-center justify-between gap-3 bg-white/95 px-1 py-2 backdrop-blur transition-all duration-500 ease-out will-change-transform",
-          selectedQuote ? "hidden lg:flex" : "flex",
+          selectedQuote ? "hidden" : "flex",
           selectedQuote && detailHeaderHidden && "pointer-events-none -translate-y-full opacity-0"
         )}>
           <div className="flex items-center gap-3">
