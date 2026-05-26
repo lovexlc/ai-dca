@@ -16,6 +16,7 @@ import {
   askMarkets,
   askMarketsStream,
   createWatchlist,
+  deleteWatchlist,
   fetchEarnings,
   fetchFinancials,
   fetchIndices,
@@ -29,6 +30,7 @@ import {
   searchSymbols,
   loadWatchlist,
   removeFromWatchlist,
+  renameWatchlist,
   setActiveWatchlist,
   CN_ETF_WATCHLIST_PRESETS
 } from '../app/marketsApi.js';
@@ -623,9 +625,10 @@ function SortableMarketTable({ title = '', rows = [], market, onPick, onRemove, 
   );
 }
 
-function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate }) {
+function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate, onRename, onDelete }) {
   const [open, setOpen] = useState(false);
   const active = (lists || []).find((item) => item.id === activeListId) || lists[0];
+  const canDelete = (item) => item?.id !== 'default' && (lists || []).length > 1;
   return (
     <div className="relative">
       <button type="button" onClick={() => setOpen((v) => !v)} className="inline-flex items-center gap-1 rounded-md px-1 py-1 text-[20px] leading-7 font-normal tracking-tight text-[#1f1f1f] hover:bg-[#f1f3f4]" title="列表切换">
@@ -633,12 +636,34 @@ function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate }) {
         <ChevronDown size={18} className="text-[#5f6368]" />
       </button>
       {open ? (
-        <div className="absolute left-0 top-full z-30 mt-1 w-56 overflow-hidden rounded-2xl border border-[#e8eaed] bg-white py-1 shadow-lg">
+        <div className="absolute left-0 top-full z-30 mt-1 w-64 overflow-hidden rounded-2xl border border-[#e8eaed] bg-white py-1 shadow-lg">
           {(lists || []).map((item) => (
-            <button key={item.id} type="button" onClick={() => { onSelect?.(item.id); setOpen(false); }} className={cx('flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-[#f8fafd]', item.id === activeListId ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>
-              <span className="truncate">{item.name}</span>
-              <span className="text-[11px] text-[#9aa0a6]">{(item.us?.length || 0) + (item.cn?.length || 0)}</span>
-            </button>
+            <div key={item.id} className={cx('flex w-full items-center gap-1 px-3 py-2 text-sm hover:bg-[#f8fafd]', item.id === activeListId ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>
+              <button type="button" onClick={() => { onSelect?.(item.id); setOpen(false); }} className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
+                <span className="truncate">{item.name}</span>
+                <span className="text-[11px] text-[#9aa0a6]">{(item.us?.length || 0) + (item.cn?.length || 0)}</span>
+              </button>
+              <button
+                type="button"
+                aria-label={`重命名${item.name}`}
+                title="改名"
+                onClick={(event) => { event.stopPropagation(); onRename?.(item); setOpen(false); }}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#e8f0fe] hover:text-[#1a73e8]"
+              >
+                <Edit3 size={13} />
+              </button>
+              {canDelete(item) ? (
+                <button
+                  type="button"
+                  aria-label={`删除${item.name}`}
+                  title="删除"
+                  onClick={(event) => { event.stopPropagation(); onDelete?.(item); setOpen(false); }}
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#fce8e6] hover:text-[#d93025]"
+                >
+                  <Trash2 size={13} />
+                </button>
+              ) : null}
+            </div>
           ))}
           <button type="button" onClick={() => { onCreate?.(); setOpen(false); }} className="flex w-full items-center gap-2 border-t border-[#e8eaed] px-3 py-2 text-left text-sm font-medium text-[#1a73e8] hover:bg-[#f8fafd]"><ListPlus size={14} /> 新建列表</button>
         </div>
@@ -3597,6 +3622,30 @@ export function MarketsExperience() {
     setWatch(next);
     setSelectedSymbol('');
     setSymbolDetailTab('overview');
+    showActionToast('已新建列表', 'success');
+  }
+
+  function handleRenameWatchlist(list) {
+    if (!list) return;
+    const nextName = window.prompt('输入新的列表名称', list.name || '');
+    if (nextName === null) return;
+    const trimmed = nextName.trim();
+    if (!trimmed || trimmed === list.name) return;
+    const next = renameWatchlist(list.id, trimmed);
+    setWatch(next);
+    showActionToast('列表已改名', 'success');
+  }
+
+  function handleDeleteWatchlist(list) {
+    if (!list || list.id === 'default') return;
+    const total = (list.us?.length || 0) + (list.cn?.length || 0);
+    const suffix = total ? `，其中 ${total} 个标的也会移除` : '';
+    if (!window.confirm(`删除「${list.name}」${suffix}？`)) return;
+    const next = deleteWatchlist(list.id);
+    setWatch(next);
+    setSelectedSymbol('');
+    setSymbolDetailTab('overview');
+    showActionToast('列表已删除', 'success');
   }
 
   function handleSelectSymbol(row, options = {}) {
@@ -3783,6 +3832,8 @@ export function MarketsExperience() {
               activeListId={watch.activeListId}
               onSelect={handleSelectWatchlist}
               onCreate={handleCreateWatchlist}
+              onRename={handleRenameWatchlist}
+              onDelete={handleDeleteWatchlist}
             />
             <div className="flex items-center gap-1">
               <button
@@ -3943,6 +3994,8 @@ export function MarketsExperience() {
               activeListId={watch.activeListId}
               onSelect={handleSelectWatchlist}
               onCreate={handleCreateWatchlist}
+              onRename={handleRenameWatchlist}
+              onDelete={handleDeleteWatchlist}
             />
           </div>
 
