@@ -4142,20 +4142,6 @@ export function MarketsExperience() {
       </aside>
 
       <main ref={mainRef} className="order-1 flex min-w-0 flex-col gap-5 lg:order-2 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
-        {!watchRows.length ? (
-          <div className="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/50 px-4 py-4 text-sm text-slate-600">
-            <div className="font-semibold text-slate-900">未配置自选</div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button type="button" className={cx(primaryButtonClass, 'min-h-10 px-3 py-2 text-xs')} onClick={() => { setSectorsOpen(true); setSectorSearchOpen(true); }}>
-                {market === 'cn' ? '搜索 A股 / ETF' : '添加第一个标的'}
-              </button>
-              <button type="button" className={cx(secondaryButtonClass, 'min-h-10 px-3 py-2 text-xs')} onClick={() => setPendingAnalysis(market === 'cn' ? { symbol: '513100', name: '纳指 ETF' } : { symbol: 'QQQ', name: 'Nasdaq 100 ETF' })}>
-                {market === 'cn' ? '开始研究纳指 ETF' : '开始研究 QQQ'}
-              </button>
-            </div>
-          </div>
-        ) : null}
-
         <div className={cx(
           "sticky top-0 z-20 items-center justify-between gap-3 bg-white/95 px-1 py-2 backdrop-blur transition-all duration-500 ease-out will-change-transform",
           selectedQuote ? "hidden" : "flex",
