@@ -73,7 +73,13 @@ async function requestSync(path, { token = '', ...init } = {}) {
   if (token) headers.authorization = `Bearer ${token}`;
   const response = await fetch(`${getSyncBase()}${path}`, { ...init, headers });
   const data = await readJson(response);
-  if (!response.ok) throw new Error(data?.message || data?.error || `请求失败：HTTP ${response.status}`);
+  if (!response.ok) {
+    const error = new Error(data?.message || data?.error || `请求失败：HTTP ${response.status}`);
+    error.status = response.status;
+    error.data = data;
+    error.response = response;
+    throw error;
+  }
   return data;
 }
 

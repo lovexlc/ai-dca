@@ -149,7 +149,23 @@ export async function uploadEncryptedCloudBackup({ securityPassword, rememberDev
       ciphertext: encrypted.ciphertext
     }
   };
-  const result = await uploadLatestCloudBackup(payload, session);
+  let result;
+  try {
+    result = await uploadLatestCloudBackup(payload, session);
+  } catch (err) {
+    const currentVersion = Number(err?.data?.currentVersion);
+    if (!force && err?.status === 409 && Number.isFinite(currentVersion) && currentVersion >= 0) {
+      result = await uploadLatestCloudBackup({
+        ...payload,
+        baseVersion: currentVersion,
+        conflictResolution: 'retry-with-current-version'
+      }, session);
+      result.conflictResolved = true;
+      result.previousBaseVersion = localMeta?.version ?? null;
+    } else {
+      throw err;
+    }
+  }
   if (rememberDevice && encrypted.rememberedKey) {
     saveRememberedKey(encrypted.rememberedKey, { username: session.username, version: result.version, crypto: encrypted.crypto });
   }
