@@ -703,7 +703,7 @@ async function enrichHoldingExtractionRow(rawRow, generatedAt) {
 
   if (!(resolvedShares > 0) && workingRow.marketValue > 0 && isHoldingCode(resolvedCode)) {
     try {
-      const liveSnapshot = await fetchFundNavSnapshot(resolvedCode, generatedAt);
+      const liveSnapshot = await readFundNavSnapshot(resolvedCode, generatedAt);
       if (liveSnapshot.latestNav > 0) {
         resolvedUnitNav = liveSnapshot.latestNav;
         resolvedShares = roundHolding(workingRow.marketValue / liveSnapshot.latestNav, 2);
@@ -1461,7 +1461,7 @@ async function readHoldingsBaselinePayload(request, env, key, ttlMs, codes) {
   }
 }
 
-async function fetchFundNavSnapshot(code, generatedAt) {
+async function readFundNavSnapshot(code, generatedAt) {
   return getNavFundNavSnapshot(code, generatedAt);
 }
 
@@ -1571,11 +1571,11 @@ async function deleteNavHistoryKvKey(env, key) {
   } catch { /* ignore */ }
 }
 
-async function fetchFundNavHistoryWithMonthlyKv(code, fromDate, toDate, env, options = {}) {
+async function readFundNavHistoryWithMonthlyKv(code, fromDate, toDate, env, options = {}) {
   return getNavFundNavHistoryWithMonthlyKv(code, fromDate, toDate, env, options);
 }
 
-async function fetchFundNavHistory(code, fromDate, toDate) {
+async function readFundNavHistory(code, fromDate, toDate) {
   return getNavFundNavHistory(code, fromDate, toDate);
 }
 
@@ -1668,7 +1668,7 @@ async function handleHoldingsNavHistoryBatch(request, env) {
         }
       }
 
-      const navHistoryResult = await fetchFundNavHistoryWithMonthlyKv(code, fromDate, toDate, env, {
+      const navHistoryResult = await readFundNavHistoryWithMonthlyKv(code, fromDate, toDate, env, {
         today,
         ttlMs,
         forceBypass,
@@ -1785,7 +1785,7 @@ async function handleHoldingsNavHistorySingle(request, env) {
   const generatedAt = nowShanghaiIso();
   let navHistoryResult;
   try {
-    navHistoryResult = await fetchFundNavHistoryWithMonthlyKv(rawCode, fromDate, toDate, env, {
+    navHistoryResult = await readFundNavHistoryWithMonthlyKv(rawCode, fromDate, toDate, env, {
       today,
       ttlMs,
       forceBypass,
@@ -1982,11 +1982,11 @@ function shiftIsoDateDays(isoDate, deltaDays) {
   return `${y}-${m}-${d}`;
 }
 
-async function fetchExchangeQuoteSnapshot(code, generatedAt) {
+async function readExchangeQuoteSnapshot(code, generatedAt) {
   return getNavExchangeQuoteSnapshot(code, generatedAt);
 }
 
-async function fetchHoldingSnapshot(code, generatedAt) {
+async function readHoldingSnapshot(code, generatedAt) {
   return getNavHoldingSnapshot(code, generatedAt);
 }
 
@@ -2000,7 +2000,7 @@ async function fetchLiveHoldingsNavPayload(codes, env, key, ttlMsOverride) {
   // 这里改用 mapLimit(6) 限并发；东财 NAV 上游本身并不费力，6 并发 + 重试足够。
   const items = await mapLimit(codes, 6, async (code) => {
     try {
-      const snapshot = await fetchHoldingSnapshot(code, generatedAt);
+      const snapshot = await readHoldingSnapshot(code, generatedAt);
       return {
         ...snapshot,
         cacheHit: false,
