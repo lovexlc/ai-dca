@@ -1238,7 +1238,7 @@ function CandlesLayerPanel({ xAxisMap, yAxisMap, data }) {
   );
 }
 
-function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, tone, symbol, onHover, onLeave, onLock, lockOnClick = false }) {
+function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, compareMode = 'change', tone, symbol, onHover, onLeave, onLock, lockOnClick = false }) {
   const chartShellRef = useRef(null);
   const cmpList = (compareSeries || []).filter((series) => Array.isArray(series.candles) && series.candles.length >= 2);
   const cmpSignature = JSON.stringify(cmpList.map((series) => ({
@@ -1248,7 +1248,9 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
     last: series.candles[series.candles.length - 1] && series.candles[series.candles.length - 1].t
   })));
   const displayMainSymbol = formatSymbolDisplay(symbol);
-  const normalized = cmpList.length > 0;
+  const hasCompare = cmpList.length > 0;
+  const compareAsValue = hasCompare && compareMode === 'value';
+  const normalized = hasCompare && !compareAsValue;
   const rows = useMemo(() => {
     const arr = Array.isArray(candles) ? candles : [];
     if (arr.length < 2) return [];
@@ -1267,6 +1269,8 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
         mainBase: base,
         mainChange: close - base,
         mainChangePercent: base ? ((close / base) - 1) * 100 : null,
+        mainNav: Number(candle.nav),
+        mainIopv: Number(candle.iopv),
       };
     });
   }, [candles, tf, normalized]);
@@ -1298,16 +1302,18 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
         const base = Number(aligned[0] && aligned[0].c) || 1;
         if (candle && Number.isFinite(Number(candle.c))) {
           const close = Number(candle.c);
-          out[`cmp_${ci}`] = ((close / base) - 1) * 100;
+          out[`cmp_${ci}`] = compareAsValue ? close : ((close / base) - 1) * 100;
           out[`cmp_${ci}_price`] = close;
           out[`cmp_${ci}_base`] = base;
           out[`cmp_${ci}_change`] = close - base;
           out[`cmp_${ci}_changePercent`] = base ? ((close / base) - 1) * 100 : null;
+          out[`cmp_${ci}_nav`] = Number(candle.nav);
+          out[`cmp_${ci}_iopv`] = Number(candle.iopv);
         }
       });
       return out;
     });
-  }, [rows, indicatorLines, cmpSignature]);
+  }, [rows, indicatorLines, cmpSignature, compareAsValue]);
 
   if (finalRows.length < 2) {
     return <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">暂无数据</div>;
@@ -1382,7 +1388,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
           width={44}
           axisLine={false}
           tickLine={false}
-          tickFormatter={(value) => normalized ? `${Number(value).toFixed(1)}%` : formatNumber(value, 2)}
+          tickFormatter={(value) => (normalized || compareAsValue) ? `${Number(value).toFixed(1)}%` : formatNumber(value, 2)}
         />
         <Tooltip
           cursor={false}
@@ -1398,6 +1404,12 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
               const priceKey = key === 'main' ? 'mainPrice' : `${key}_price`;
               const price = Number(payload[priceKey]);
               return [Number.isFinite(price) ? price.toFixed(4) : '--', label];
+            }
+            if (compareAsValue) {
+              const payload = item?.payload || {};
+              const priceKey = key === 'main' ? 'mainPrice' : `${key}_price`;
+              const price = Number(payload[priceKey]);
+              return [Number.isFinite(price) ? `${price.toFixed(2)}%` : '--', label];
             }
             const n = Number(value);
             if (!Number.isFinite(n)) return [value, label];
@@ -2115,6 +2127,44 @@ function SymbolDetailPanel({
     ? chartCandles
     : buildCnFundParamCandles(chartCandles, navHistoryState?.items, cnFundParam, premiumState);
   const effectiveChartType = market === 'cn' && cnFundParam !== 'price' ? 'area' : chartType;
+  const premiumCompareMode = market === 'cn' && cnFundParam === 'premium';
+  const buildPremiumTableRow = (quoteRow, keyPrefix, metricCandles) => {
+    if (!premiumCompareMode) return quoteRow;
+    const lastMetric = Array.isArray(metricCandles) && metricCandles.length ? metricCandles[metricCandles.length - 1] : null;
+    const premiumKey = keyPrefix === 'main' ? 'mainPrice' : `${keyPrefix}price`;
+    const navKey = keyPrefix === 'main' ? 'mainNav' : `${keyPrefix}nav`;
+    const iopvKey = keyPrefix === 'main' ? 'mainIopv' : `${keyPrefix}iopv`;
+    const premiumValue = activeCursorRow && Number.isFinite(Number(activeCursorRow[premiumKey]))
+      ? Number(activeCursorRow[premiumKey])
+      : Number(lastMetric?.c);
+    const navValue = activeCursorRow && Number.isFinite(Number(activeCursorRow[navKey]))
+      ? Number(activeCursorRow[navKey])
+      : Number(lastMetric?.nav);
+    const iopvValue = activeCursorRow && Number.isFinite(Number(activeCursorRow[iopvKey]))
+      ? Number(activeCursorRow[iopvKey])
+      : Number(lastMetric?.iopv);
+    const marketPrice = Number.isFinite(iopvValue) && Number.isFinite(premiumValue)
+      ? iopvValue * (1 + premiumValue / 100)
+      : Number(quoteRow.price);
+    return {
+      ...quoteRow,
+      price: premiumValue,
+      change: navValue,
+      changePercent: iopvValue,
+      previousClose: marketPrice,
+      snapshotLabel: activeCursorRow?.label || quoteRow.snapshotLabel
+    };
+  };
+  const displayCompareTableRows = premiumCompareMode
+    ? [
+      buildPremiumTableRow(normalizeCompareQuote(row.symbol, row), 'main', effectiveChartCandles),
+      ...compareSymbols.map((sym, index) => buildPremiumTableRow(
+        normalizeCompareQuote(sym, compareCandidates.find((item) => item.symbol === sym)),
+        `cmp_${index}_`,
+        compareSeries[index]?.candles
+      ))
+    ]
+    : compareTableRows;
   const metricLoading = market === 'cn' && cnFundParam !== 'price' && navHistoryState?.loading;
   const metricError = market === 'cn' && cnFundParam !== 'price' ? navHistoryState?.error : '';
   const hasFullCandles = Array.isArray(effectiveChartCandles) && effectiveChartCandles.length >= 2;
@@ -2327,7 +2377,7 @@ function SymbolDetailPanel({
 
           <div className="ml-auto hidden items-center gap-1 text-[11px] text-[#9aa0a6] sm:flex">
             {chartLoading || metricLoading ? <Loader2 size={12} className="animate-spin" /> : null}
-            {compareSymbols.length > 0 ? <span>涨幅(%)</span> : null}
+            {compareSymbols.length > 0 ? <span>{premiumCompareMode ? '溢价(%)' : '涨幅(%)'}</span> : null}
           </div>
         </div>
 
@@ -2383,6 +2433,7 @@ function SymbolDetailPanel({
               chartType={effectiveChartType}
               indicators={indicators}
               compareSeries={compareSeries}
+              compareMode={premiumCompareMode ? 'value' : 'change'}
               tone={tone}
               symbol={cnFundParam === 'price' ? displaySymbol : CN_FUND_PARAM_LABEL[cnFundParam]}
               onHover={handleChartHover}
@@ -2439,15 +2490,16 @@ function SymbolDetailPanel({
           <div className="overflow-hidden bg-white text-[11px] sm:text-[13px]">
             <div className="grid h-8 grid-cols-[minmax(44px,1fr)_58px_56px_66px] items-center gap-0.5 border-b border-[rgba(17,24,39,0.08)] px-1 text-right text-[11px] font-semibold text-[#5f6368] sm:h-10 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[13px]">
               <div className="min-w-0 truncate text-left">股票代码</div>
-              <div className="whitespace-nowrap">价格</div>
-              <div className="whitespace-nowrap">涨跌额</div>
-              <div className="whitespace-nowrap">涨跌幅</div>
-              <div className="hidden sm:block">昨收盘</div>
+              <div className="whitespace-nowrap">{premiumCompareMode ? '溢价' : '价格'}</div>
+              <div className="whitespace-nowrap">{premiumCompareMode ? '净值' : '涨跌额'}</div>
+              <div className="whitespace-nowrap">{premiumCompareMode ? '估算 IOPV' : '涨跌幅'}</div>
+              <div className="hidden sm:block">{premiumCompareMode ? '估算价格' : '昨收盘'}</div>
             </div>
-            {compareTableRows.map((item, index) => {
+            {displayCompareTableRows.map((item, index) => {
               const markerColor = index === 0 ? COMPARE_MAIN_COLOR : COMPARE_COLORS[(index - 1) % COMPARE_COLORS.length];
-              const rowPositive = Number.isFinite(item.changePercent) && item.changePercent > 0;
-              const rowNegative = Number.isFinite(item.changePercent) && item.changePercent < 0;
+              const toneValue = premiumCompareMode ? Number(item.price) : Number(item.changePercent);
+              const rowPositive = Number.isFinite(toneValue) && toneValue > 0;
+              const rowNegative = Number.isFinite(toneValue) && toneValue < 0;
               const toneClass = rowPositive ? 'text-[#a50e0e]' : rowNegative ? 'text-[#137333]' : 'text-[#1f1f1f]';
               const displayRowSymbol = formatSymbolDisplay(item.symbol);
               return (
@@ -2459,9 +2511,9 @@ function SymbolDetailPanel({
                       <div className="mt-0.5 hidden truncate text-[12px] text-[rgba(17,24,39,0.64)] sm:block sm:text-[13px]">{item.name}</div>
                     </div>
                   </div>
-                  <div className="whitespace-nowrap text-[12px] font-bold text-[#202124] transition-colors duration-[120ms] sm:text-[17px]">{Number.isFinite(item.price) ? `$${formatNumber(item.price, 2)}` : '--'}</div>
-                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[16px]', toneClass)}>{Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)}` : '--'}</div>
-                  <div className={cx('whitespace-nowrap text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', toneClass)}>{Number.isFinite(item.changePercent) ? formatSignedPercent(item.changePercent) : '--'}</div>
+                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[17px]', premiumCompareMode ? toneClass : 'text-[#202124]')}>{Number.isFinite(item.price) ? (premiumCompareMode ? formatSignedPercent(item.price) : `$${formatNumber(item.price, 2)}`) : '--'}</div>
+                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? 'text-[#202124]' : toneClass)}>{Number.isFinite(item.change) ? (premiumCompareMode ? formatNumber(item.change, 4) : `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)}`) : '--'}</div>
+                  <div className={cx('whitespace-nowrap text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? 'text-[#202124]' : toneClass)}>{Number.isFinite(item.changePercent) ? (premiumCompareMode ? formatNumber(item.changePercent, 4) : formatSignedPercent(item.changePercent)) : '--'}</div>
                   <div className="hidden whitespace-nowrap text-[15px] font-bold text-[#202124] transition-colors duration-[120ms] sm:block sm:text-[17px]">{Number.isFinite(item.previousClose) ? `$${formatNumber(item.previousClose, 2)}` : '--'}</div>
                 </div>
               );
