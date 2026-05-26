@@ -1,34 +1,15 @@
 {
   "dataset": "etf_latest_nav_manifest",
-  "generatedAt": "2026-05-25T11:36:43.279Z",
+  "generatedAt": "2026-05-26T04:58:51.540Z",
   "source": "eastmoney:f10/lsjz",
   "maxLatestNavDate": "2026-05-22",
   "attemptedCount": 12,
-  "successCount": 9,
+  "successCount": 12,
   "fetchedCount": 12,
-  "staleCount": 3,
+  "staleCount": 0,
   "failureCount": 0,
   "failures": [],
-  "staleItems": [
-    {
-      "code": "513100",
-      "name": "国泰纳斯达克100ETF",
-      "latestNavDate": "2026-05-21",
-      "expectedLatestNavDate": "2026-05-22"
-    },
-    {
-      "code": "159501",
-      "name": "嘉实纳斯达克100ETF(QDII)",
-      "latestNavDate": "2026-05-21",
-      "expectedLatestNavDate": "2026-05-22"
-    },
-    {
-      "code": "159659",
-      "name": "招商纳斯达克100ETF(QDII)",
-      "latestNavDate": "2026-05-21",
-      "expectedLatestNavDate": "2026-05-22"
-    }
-  ],
+  "staleItems": [],
   "items": [
     {
       "code": "159513",
@@ -44,6 +25,14 @@
       "latestNav": 1.5097,
       "latestNavDate": "2026-05-22",
       "previousNav": 1.5029,
+      "previousNavDate": "2026-05-21"
+    },
+    {
+      "code": "513100",
+      "name": "国泰纳斯达克100ETF",
+      "latestNav": 2.0126,
+      "latestNavDate": "2026-05-22",
+      "previousNav": 2.0035,
       "previousNavDate": "2026-05-21"
     },
     {
@@ -79,6 +68,14 @@
       "previousNavDate": "2026-05-21"
     },
     {
+      "code": "159501",
+      "name": "嘉实纳斯达克100ETF(QDII)",
+      "latestNav": 1.8892,
+      "latestNavDate": "2026-05-22",
+      "previousNav": 1.8806,
+      "previousNavDate": "2026-05-21"
+    },
+    {
       "code": "513870",
       "name": "富国纳斯达克100ETF(QDII)",
       "latestNav": 1.916,
@@ -100,6 +97,14 @@
       "latestNav": 2.3115,
       "latestNavDate": "2026-05-22",
       "previousNav": 2.3011,
+      "previousNavDate": "2026-05-21"
+    },
+    {
+      "code": "159659",
+      "name": "招商纳斯达克100ETF(QDII)",
+      "latestNav": 2.1665,
+      "latestNavDate": "2026-05-22",
+      "previousNav": 2.1566,
       "previousNavDate": "2026-05-21"
     }
   ]
