@@ -1681,7 +1681,7 @@ function FinancialsPanel({ financials, loading }) {
 
 function NavInsightCard({ premiumState }) {
   const data = premiumState && premiumState.data;
-  if (premiumState?.loading) {
+  if (premiumState?.loading && !data) {
     return (
       <div className="mt-3 rounded-xl border border-[#e8eaed] bg-[#f8fafd] p-3 text-sm text-[#5f6368]">
         <div className="flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> 正在获取净值…</div>
@@ -1717,7 +1717,7 @@ function NavInsightCard({ premiumState }) {
 
 function PremiumInsightCard({ premiumState }) {
   const data = premiumState && premiumState.data;
-  if (premiumState?.loading) {
+  if (premiumState?.loading && !data) {
     return (
       <div className="mt-3 rounded-xl border border-[#e8eaed] bg-[#f8fafd] p-3 text-sm text-[#5f6368]">
         <div className="flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> 正在计算溢价…</div>
@@ -3657,7 +3657,15 @@ export function MarketsExperience() {
     const price = Number(selectedQuote?.price);
     const symbol = normalizeCnFundCode(selectedSymbol);
     if (!symbol || !Number.isFinite(price) || price <= 0) return;
-    const cachedPremium = premiumMap[symbol]?.data;
+    const cachedState = premiumMap[symbol];
+    if (cachedState?.loading && cachedState?.data && !premiumInflightRef.current.has(symbol)) {
+      setPremiumMap((prev) => ({
+        ...prev,
+        [symbol]: { ...prev[symbol], loading: false }
+      }));
+      return;
+    }
+    const cachedPremium = cachedState?.data;
     if (cachedPremium && Math.abs(Number(cachedPremium.price) - price) < 0.000001) return;
     if (premiumInflightRef.current.has(symbol)) return;
     premiumInflightRef.current.add(symbol);
