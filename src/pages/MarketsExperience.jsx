@@ -3467,10 +3467,9 @@ export function MarketsExperience() {
     let cancelled = false;
     (async () => {
       try {
-        const qqqQuote = await fetchQuote('QQQ');
         const premium = await getCnEtfPremiumSnapshot(symbol, {
           price,
-          qqqChangePercent: Number(qqqQuote?.changePercent)
+          qqqChangePercent: 0
         });
         if (!cancelled) {
           setPremiumMap((prev) => ({
