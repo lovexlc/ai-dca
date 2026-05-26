@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - 'workers/ocr-proxy/**'
+      - 'workers/notify/src/getNav.js'
+      - 'scripts/check_nav_access.mjs'
       - '.github/workflows/deploy-worker-ocr-proxy.yml'
   workflow_dispatch:
 
