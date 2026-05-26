@@ -34,7 +34,7 @@ import {
 } from '../app/marketsApi.js';
 import { showActionToast } from '../app/toast.js';
 import { buildStockAnalysisPrompt } from '../app/stockAnalysisPrompt.js';
-import { getCnEtfPremiumSnapshot, getNavHistory } from '../app/navService.js';
+import { getCnEtfPremiumSnapshot, getNavHistory, getNavSnapshot } from '../app/navService.js';
 import { Sparkline } from '../components/markets/Sparkline.jsx';
 import { MarketsChartCodeBlock } from '../components/markets/MarketsChartBlock.jsx';
 import { Area, Bar, CartesianGrid, ComposedChart, Customized, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -77,6 +77,37 @@ function formatSymbolDisplay(value) {
   const raw = String(value || '').trim();
   const match = /^(sh|sz|bj)(\d{6})$/i.exec(raw);
   return match ? match[2] : raw;
+}
+
+function normalizeCnFundCode(value) {
+  const raw = String(value || '').trim();
+  const prefixed = /^(sh|sz|bj)(\d{6})$/i.exec(raw);
+  if (prefixed) return prefixed[2];
+  const sixDigits = /(\d{6})/.exec(raw);
+  return sixDigits ? sixDigits[1] : '';
+}
+
+function buildNavSnapshotItems(snapshot) {
+  if (!snapshot) return [];
+  const rows = [];
+  const previousDate = String(snapshot.previousNavDate || '').slice(0, 10);
+  const previousNav = Number(snapshot.previousNav);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(previousDate) && Number.isFinite(previousNav) && previousNav > 0) {
+    rows.push({ date: previousDate, nav: previousNav });
+  }
+  const latestDate = String(snapshot.latestNavDate || snapshot.navDate || '').slice(0, 10);
+  const latestNav = Number(snapshot.latestNav ?? snapshot.baseNav);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(latestDate) && Number.isFinite(latestNav) && latestNav > 0) {
+    rows.push({ date: latestDate, nav: latestNav });
+  }
+  const seen = new Set();
+  return rows
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .filter((item) => {
+      if (seen.has(item.date)) return false;
+      seen.add(item.date);
+      return true;
+    });
 }
 
 
@@ -3479,6 +3510,7 @@ export function MarketsExperience() {
     () => watchRows.find((row) => row.symbol === selectedSymbol) || selectedStoredQuote || null,
     [selectedSymbol, selectedStoredQuote, watchRows]
   );
+  const selectedCnFundCode = market === 'cn' ? normalizeCnFundCode(selectedSymbol || selectedQuote?.symbol) : '';
 
   useEffect(() => {
     if (!selectedSymbol) return undefined;
@@ -3508,7 +3540,7 @@ export function MarketsExperience() {
   useEffect(() => {
     if (market !== 'cn' || !selectedSymbol) return;
     const price = Number(selectedQuote?.price);
-    const symbol = String(selectedSymbol || '').trim();
+    const symbol = normalizeCnFundCode(selectedSymbol);
     if (!symbol || !Number.isFinite(price) || price <= 0) return;
     const cachedPremium = premiumMap[symbol]?.data;
     if (cachedPremium && Math.abs(Number(cachedPremium.price) - price) < 0.000001) return;
@@ -3548,7 +3580,7 @@ export function MarketsExperience() {
 
   useEffect(() => {
     if (market !== 'cn' || !selectedSymbol) return;
-    const symbol = String(selectedSymbol || '').trim();
+    const symbol = normalizeCnFundCode(selectedSymbol);
     if (!/^\d{6}$/.test(symbol)) return;
     const days = navHistoryDaysForRange(chartRange);
     const key = `${symbol}|${days}`;
@@ -3557,20 +3589,40 @@ export function MarketsExperience() {
     navHistoryInflightRef.current.add(key);
     setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: true, items: prev[key]?.items || [], error: '' } }));
     getNavHistory(symbol, { days })
-      .then((payload) => {
+      .then(async (payload) => {
         if (cancelled) return;
-        const items = Array.isArray(payload?.items) ? payload.items : [];
+        let items = Array.isArray(payload?.items) ? payload.items : [];
+        if (items.length < 2) {
+          try {
+            const snapshot = await getNavSnapshot(symbol);
+            if (!cancelled) {
+              const snapshotItems = buildNavSnapshotItems(snapshot);
+              if (snapshotItems.length > items.length) items = snapshotItems;
+            }
+          } catch (_error) {
+            // 快照兜底失败时继续使用 nav-history 的结果。
+          }
+        }
+        if (cancelled) return;
         setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items, error: items.length ? '' : '暂无净值历史数据' } }));
       })
-      .catch((error) => {
+      .catch(async (error) => {
         if (cancelled) return;
-        setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items: prev[key]?.items || [], error: error instanceof Error ? error.message : '净值历史加载失败' } }));
+        try {
+          const snapshot = await getNavSnapshot(symbol);
+          if (cancelled) return;
+          const items = buildNavSnapshotItems(snapshot);
+          setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items, error: items.length ? '' : (error instanceof Error ? error.message : '净值历史加载失败') } }));
+        } catch (_fallbackError) {
+          if (cancelled) return;
+          setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: false, items: prev[key]?.items || [], error: error instanceof Error ? error.message : '净值历史加载失败' } }));
+        }
       })
       .finally(() => {
         navHistoryInflightRef.current.delete(key);
       });
     return () => { cancelled = true; };
-  }, [market, selectedSymbol, chartRange]);
+  }, [market, selectedSymbol, chartRange, navHistoryMap]);
 
   const marketStatusLabel = indicesLoading ? '刷新中' : (indices.length ? `${indices.length} 个指数` : '待加载');
 
@@ -3972,8 +4024,8 @@ export function MarketsExperience() {
             })()}
             chartTf={(CHART_RANGE_TABS.find((r) => r.key === chartRange) || {}).tf}
             chartLoading={chartLoading}
-            premiumState={premiumMap[selectedQuote.symbol]}
-            navHistoryState={navHistoryMap[`${selectedQuote.symbol}|${navHistoryDaysForRange(chartRange)}`]}
+            premiumState={premiumMap[selectedCnFundCode || selectedQuote.symbol]}
+            navHistoryState={navHistoryMap[`${selectedCnFundCode || selectedQuote.symbol}|${navHistoryDaysForRange(chartRange)}`]}
             isMobile={isMobile}
             inWatch={watchSymbols.includes(selectedQuote.symbol)}
             onToggleWatch={() => {
