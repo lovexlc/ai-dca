@@ -2021,6 +2021,30 @@ async function handleHoldingsRulePost(request, env) {
 // 管理员：手动触发「全仓总览」推送（可选跳过当日 dedup + 可选临时覆盖 totals）。
 // 需要 ADMIN_TEST_TOKEN 匹配。主要用于上线后手动验证推送能走通。
 
+
+function resolveAdminNotifyClient(settings = {}, env = {}) {
+  const explicitClientId = normalizeClientId(env?.ADMIN_NOTIFY_CLIENT_ID || env?.ADMIN_CLIENT_ID || '');
+  if (explicitClientId) {
+    const explicitClient = getClientRecord(settings, explicitClientId);
+    if (explicitClient?.clientId) return explicitClient;
+  }
+  const adminName = String(env?.ADMIN_NOTIFY_USERNAME || env?.ADMIN_USERNAME || 'lovexl').trim().toLowerCase();
+  const clients = Object.values(settings.clients || {}).filter((client) => normalizeClientId(client?.clientId));
+  const hasUsableChannel = (client) => Boolean(
+    String(client?.barkDeviceKey || '').trim()
+    || normalizeGcmRegistrations(settings.gcmRegistrations).some((registration) =>
+      normalizeGcmPairedClients(registration.pairedClients).some((paired) => paired.clientId === client.clientId)
+    )
+  );
+  const byLabel = clients.find((client) => {
+    const label = String(client?.clientLabel || '').trim().toLowerCase();
+    return label === adminName || label.includes(adminName);
+  });
+  if (byLabel) return byLabel;
+  const withChannel = clients.find(hasUsableChannel);
+  return withChannel || clients[0] || null;
+}
+
 async function handleAdminAlert(request, env) {
   const origin = readOrigin(request);
   const headerToken = request.headers.get('x-admin-token') || '';
@@ -2028,15 +2052,12 @@ async function handleAdminAlert(request, env) {
   if (!expected || String(headerToken || '').trim() !== expected) {
     return jsonResponse({ error: 'forbidden' }, { status: 403, origin });
   }
-  const targetClientId = normalizeClientId(env?.ADMIN_NOTIFY_CLIENT_ID || env?.ADMIN_CLIENT_ID || '');
-  if (!targetClientId) {
-    return jsonResponse({ error: 'ADMIN_NOTIFY_CLIENT_ID required' }, { status: 400, origin });
-  }
   let settings = await readSettings(env);
-  const clientRecord = getClientRecord(settings, targetClientId);
+  const clientRecord = resolveAdminNotifyClient(settings, env);
   if (!clientRecord?.clientId) {
-    return jsonResponse({ error: 'admin notify client not found' }, { status: 404, origin });
+    return jsonResponse({ error: 'admin notify client not found in KV settings' }, { status: 404, origin });
   }
+  const targetClientId = clientRecord.clientId;
   const payload = await request.json().catch(() => ({}));
   const nowIso = new Date().toISOString();
   const result = await runClientDetection(env, settings, clientRecord, {
