@@ -1860,7 +1860,7 @@ function SymbolDetailPanel({
   navHistoryState,
   isMobile = false,
 }) {
-  const [chartType, setChartType] = useState('candle');
+  const [chartType, setChartType] = useState('area');
   const [cnFundParam, setCnFundParam] = useState('price');
   const [indicators, setIndicators] = useState(() => new Set());
   const [compareSymbols, setCompareSymbols] = useState([]);
@@ -1884,7 +1884,7 @@ function SymbolDetailPanel({
   useEffect(() => { setHoveredChartRow(null); setLockedChartRow(null); }, [chartRange, cnFundParam]);
   useEffect(() => { if (market !== 'cn') setCnFundParam('price'); }, [market]);
   useEffect(() => {
-    if (chartType === 'area') setChartType('candle');
+    if (market === 'cn' && cnFundParam !== 'price' && chartType !== 'area') setChartType('area');
   }, [market, cnFundParam, chartType]);
   useEffect(() => {
     const q = compareInput.trim();
@@ -2195,7 +2195,7 @@ function SymbolDetailPanel({
   const effectiveChartCandles = market !== 'cn' || cnFundParam === 'price'
     ? chartCandles
     : buildCnFundParamCandles(chartCandles, navHistoryState?.items, cnFundParam, premiumState);
-  const effectiveChartType = chartType === 'area' ? 'candle' : chartType;
+  const effectiveChartType = market === 'cn' && cnFundParam !== 'price' ? 'area' : chartType;
   const premiumCompareMode = market === 'cn' && cnFundParam === 'premium';
   const buildPremiumTableRow = (quoteRow, keyPrefix, metricCandles) => {
     if (!premiumCompareMode) return quoteRow;
@@ -2354,9 +2354,9 @@ function SymbolDetailPanel({
           ) : null}
           {!isMobile ? (
             <ChartToolbarPopover
-              icon={(CHART_TYPE_OPTIONS.find((opt) => opt.key === effectiveChartType) || {}).icon || TOOLBAR_ICONS.candle}
-              label={CHART_TYPE_LABEL[effectiveChartType] || 'K 线图'}
-              active={effectiveChartType !== 'candle'}
+              icon={(CHART_TYPE_OPTIONS.find((opt) => opt.key === effectiveChartType) || {}).icon || TOOLBAR_ICONS.area}
+              label={CHART_TYPE_LABEL[effectiveChartType] || '面积图'}
+              active={effectiveChartType !== 'area'}
             >
               {({ close }) => (
                 <div className="flex flex-col gap-0.5">
