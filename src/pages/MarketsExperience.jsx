@@ -1832,47 +1832,6 @@ function NavInsightCard({ premiumState }) {
   );
 }
 
-function PremiumInsightCard({ premiumState }) {
-  const data = premiumState && premiumState.data;
-  if (premiumState?.loading && !data) {
-    return (
-      <div className="mt-3 rounded-xl border border-[#e8eaed] bg-[#f8fafd] p-3 text-sm text-[#5f6368]">
-        <div className="flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> 正在计算溢价…</div>
-      </div>
-    );
-  }
-  if (premiumState?.error) {
-    return (
-      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-        溢价暂不可用：{premiumState.error}
-      </div>
-    );
-  }
-  if (!data) return null;
-  const premium = Number(data.premiumPercent);
-  const premiumPositive = Number.isFinite(premium) && premium > 0;
-  const premiumNegative = Number.isFinite(premium) && premium < 0;
-  return (
-    <div className="mt-3 rounded-xl border border-[#e8eaed] bg-[#f8fafd] p-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-[12px] font-medium text-[#5f6368]">估算溢价</div>
-          <div className={cx('mt-1 text-2xl font-semibold tabular-nums', premiumPositive ? 'text-[#a50e0e]' : premiumNegative ? 'text-[#137333]' : 'text-[#1f1f1f]')}>
-            {formatSignedPercent(data.premiumPercent)}
-          </div>
-        </div>
-        <div className="text-right text-[12px] leading-5 text-[#5f6368]">
-          <div>价格 <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(data.price, 4)}</span></div>
-          <div>净值 <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(data.baseNav, 4)}</span></div>
-        </div>
-      </div>
-      <p className="mt-3 rounded-lg bg-white px-3 py-2 text-[12px] leading-5 text-[#5f6368]">
-        溢价采用最简单的（价格 − 净值）/ 净值计算。这里假设汇率、美股期货对场内所有纳指 ETF 的影响相同；如需更精准数据，请参考各大券商口径。
-      </p>
-    </div>
-  );
-}
-
 function SymbolDetailPanel({
   row,
   market,
@@ -2670,11 +2629,6 @@ function SymbolDetailPanel({
         ) : null}
 
         {market === 'cn' && cnFundParam === 'nav' ? <NavInsightCard premiumState={premiumState} /> : null}
-        {market === 'cn' && cnFundParam === 'premium' ? (
-          <p className="mt-2 rounded-xl bg-[#f8fafd] px-3 py-2 text-[11px] leading-5 text-[#5f6368] sm:text-[12px]">
-            溢价采用最简单的（价格 − 净值）/ 净值计算。这里假设汇率、美股期货对场内所有纳指 ETF 的影响相同；如需更精准数据，请参考各大券商口径。
-          </p>
-        ) : null}
 
         {/* 详情 tab */}
         <div className="mt-1.5 flex gap-4 border-b border-[#e8eaed] text-[12px] font-medium text-[#5f6368] sm:mt-2 sm:text-[13px]">
