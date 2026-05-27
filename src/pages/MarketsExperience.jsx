@@ -1133,19 +1133,16 @@ function buildCnFundParamCandles(priceCandles, navItems, param, premiumState) {
       .filter(Boolean);
   }
   if (param === 'premium') {
-    const qqqChangePercent = Number(premiumState?.data?.qqqChangePercent);
-    const qqqFactor = Number.isFinite(qqqChangePercent) ? (1 + qqqChangePercent / 100) : 1;
     return (Array.isArray(priceCandles) ? priceCandles : [])
       .map((candle) => {
         const date = shanghaiDateFromEpochSec(candle?.t);
         const navItem = findNavOnOrBefore(sortedNav, date);
         const nav = Number(navItem?.nav);
         if (!date || !Number.isFinite(nav) || nav <= 0) return null;
-        const iopv = nav * qqqFactor;
-        if (!Number.isFinite(iopv) || iopv <= 0) return null;
+        const iopv = nav;
         const toPremium = (value) => {
           const n = Number(value);
-          return Number.isFinite(n) ? ((n - iopv) / iopv) * 100 : null;
+          return Number.isFinite(n) ? ((n - nav) / nav) * 100 : null;
         };
         const o = toPremium(candle.o);
         const h = toPremium(candle.h);
@@ -1866,24 +1863,12 @@ function PremiumInsightCard({ premiumState }) {
         </div>
         <div className="text-right text-[12px] leading-5 text-[#5f6368]">
           <div>价格 <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(data.price, 4)}</span></div>
-          <div>IOPV <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(data.iopv, 4)}</span></div>
+          <div>净值 <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(data.baseNav, 4)}</span></div>
         </div>
       </div>
-      <div className="mt-3 grid gap-2 text-[12px] sm:grid-cols-2">
-        <div className="rounded-lg bg-white px-3 py-2">
-          <div className="text-[#5f6368]">上一工作日净值</div>
-          <div className="mt-0.5 font-medium tabular-nums text-[#1f1f1f]">{formatNumber(data.baseNav, 4)}{data.navDate ? <span className="ml-1 text-[#9aa0a6]">@{data.navDate}</span> : null}</div>
-        </div>
-        <div className="rounded-lg bg-white px-3 py-2">
-          <div className="text-[#5f6368]">QQQ 涨幅</div>
-          <div className="mt-0.5 font-medium tabular-nums text-[#1f1f1f]">{formatSignedPercent(data.qqqChangePercent)}</div>
-        </div>
-      </div>
-      <div className="mt-3 rounded-lg border-l-2 border-indigo-200 bg-white px-3 py-2 text-[12px] leading-5 text-[#5f6368]">
-        iopv = 上一工作日净值 × (1 + QQQ涨幅) = {formatNumber(data.baseNav, 4)} × (1 + {formatSignedPercent(data.qqqChangePercent)}) = {formatNumber(data.iopv, 4)}<br />
-        溢价 = (价格 − iopv) / iopv = ({formatNumber(data.price, 4)} − {formatNumber(data.iopv, 4)}) / {formatNumber(data.iopv, 4)}
-      </div>
-      <p className="mt-2 text-[11px] leading-4 text-[#9aa0a6]">估算值用于盘中快速判断折溢价；实际 IOPV 仍可能受汇率、成分股权重和基金公司披露口径影响。</p>
+      <p className="mt-3 rounded-lg bg-white px-3 py-2 text-[12px] leading-5 text-[#5f6368]">
+        溢价采用最简单的（价格 − 净值）/ 净值计算。这里假设汇率、美股期货对场内所有纳指 ETF 的影响相同；如需更精准数据，请参考各大券商口径。
+      </p>
     </div>
   );
 }
@@ -2685,7 +2670,11 @@ function SymbolDetailPanel({
         ) : null}
 
         {market === 'cn' && cnFundParam === 'nav' ? <NavInsightCard premiumState={premiumState} /> : null}
-        {market === 'cn' && cnFundParam === 'premium' ? <PremiumInsightCard premiumState={premiumState} /> : null}
+        {market === 'cn' && cnFundParam === 'premium' ? (
+          <p className="mt-2 rounded-xl bg-[#f8fafd] px-3 py-2 text-[11px] leading-5 text-[#5f6368] sm:text-[12px]">
+            溢价采用最简单的（价格 − 净值）/ 净值计算。这里假设汇率、美股期货对场内所有纳指 ETF 的影响相同；如需更精准数据，请参考各大券商口径。
+          </p>
+        ) : null}
 
         {/* 详情 tab */}
         <div className="mt-1.5 flex gap-4 border-b border-[#e8eaed] text-[12px] font-medium text-[#5f6368] sm:mt-2 sm:text-[13px]">

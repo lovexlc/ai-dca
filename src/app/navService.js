@@ -145,11 +145,9 @@ export async function getCnEtfPremiumSnapshot(code, { price, qqqChangePercent, f
   const snapshot = await getNavSnapshot(code, { forceRefresh });
   const baseNav = Number(snapshot?.latestNav);
   const priceValue = Number(price);
-  const qqqPct = Number(qqqChangePercent);
   if (!Number.isFinite(baseNav) || baseNav <= 0) throw new Error('缺少上一工作日净值');
   if (!Number.isFinite(priceValue) || priceValue <= 0) throw new Error('缺少当前价格');
-  if (!Number.isFinite(qqqPct)) throw new Error('缺少 QQQ 涨幅');
-  const iopv = baseNav * (1 + qqqPct / 100);
+  const iopv = baseNav;
   return {
     symbol: String(code || '').trim(),
     price: priceValue,
