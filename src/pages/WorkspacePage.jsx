@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUp, Bell, BookOpen, CloudUpload, LineChart, ListChecks, Plus, RefreshCw, Send, Shuffle, Trash2, Wallet, X } from 'lucide-react';
+import { ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, CloudUpload, LineChart, ListChecks, Plus, RefreshCw, Send, Shuffle, Trash2, Wallet, X } from 'lucide-react';
 import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, PRIMARY_TAB_META, PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
@@ -9,6 +9,8 @@ import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
 import { startCloudAutoSync } from '../app/cloudSync.js';
 import { clearDemoData, readDemoDataMeta } from '../app/demoData.js';
 import { readWorkspacePrefs } from '../app/workspacePrefs.js';
+import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authClient.js';
+import { isAnalyticsAdmin, trackPageView } from '../app/analytics.js';
 
 // 各主 tab 使用 React.lazy 按需加载，在 Vite 中会被拆成独立 chunk。
 // HomeExperience / DcaExperience 已并入 TradePlansExperience 作为二级 tab，不再在这里顶级 lazy。
@@ -19,6 +21,7 @@ const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) =>
 const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').then((m) => ({ default: m.TradePlansExperience })));
 const MarketsExperience = lazy(() => import('./MarketsExperience.jsx').then((m) => ({ default: m.MarketsExperience })));
 const StrategyGuideExperience = lazy(() => import('./StrategyGuideExperience.jsx').then((m) => ({ default: m.StrategyGuideExperience })));
+const AdminAnalyticsExperience = lazy(() => import('./AdminAnalyticsExperience.jsx').then((m) => ({ default: m.AdminAnalyticsExperience })));
 
 function readPreferredWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
   if (typeof window === 'undefined') return fallbackTab;
@@ -32,7 +35,8 @@ const WORKSPACE_TITLES = {
   markets: '行情中心',
   holdings: '持仓总览',
   notify: '通知设置',
-  backup: '数据同步'
+  backup: '数据同步',
+  adminData: '数据看板'
 };
 
 const SIDEBAR_ICONS = {
@@ -42,7 +46,8 @@ const SIDEBAR_ICONS = {
   markets: LineChart,
   holdings: Wallet,
   notify: Bell,
-  backup: CloudUpload
+  backup: CloudUpload,
+  adminData: BarChart3
 };
 
 function normalizeWorkspaceTab(value = '') {
@@ -106,6 +111,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
+  const [cloudSession, setCloudSession] = useState(() => loadCloudSession());
 
   // Legacy ?tab=home / ?tab=dca 进来时，重写为 ?tab=tradePlans + hash，使二级 tab 能在 mount 时被选中。
   useEffect(() => {
@@ -122,6 +128,20 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     // 让 TradePlansExperience 读到新 hash。
     window.dispatchEvent(new HashChangeEvent('hashchange'));
   }, []);
+
+
+  useEffect(() => {
+    function handleSessionChanged(event) {
+      const nextSession = event?.detail?.session || loadCloudSession();
+      setCloudSession(nextSession);
+    }
+    window.addEventListener(CLOUD_SYNC_SESSION_EVENT, handleSessionChanged);
+    return () => window.removeEventListener(CLOUD_SYNC_SESSION_EVENT, handleSessionChanged);
+  }, []);
+
+  useEffect(() => {
+    trackPageView(activeTab);
+  }, [activeTab]);
 
   useEffect(() => {
     function handleScroll() {
@@ -182,11 +202,13 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   const sidebarNav = useMemo(
     () =>
-      getPrimaryTabs(links).map((tab) => ({
-        ...tab,
-        icon: SIDEBAR_ICONS[tab.key]
-      })),
-    [links]
+      getPrimaryTabs(links)
+        .filter((tab) => !PRIMARY_TAB_META[tab.key]?.adminOnly || isAnalyticsAdmin(cloudSession))
+        .map((tab) => ({
+          ...tab,
+          icon: SIDEBAR_ICONS[tab.key]
+        })),
+    [links, cloudSession]
   );
   const heroTitle = WORKSPACE_TITLES[activeTab] || WORKSPACE_TITLES.strategy;
 
@@ -314,6 +336,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         return <NotifyExperience {...sharedProps} />;
       case 'backup':
         return <BackupExperience {...sharedProps} />;
+      case 'adminData':
+        return <AdminAnalyticsExperience {...sharedProps} />;
       case 'holdings':
         return <HoldingsExperience {...sharedProps} />;
       default:

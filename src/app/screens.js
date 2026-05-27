@@ -4,7 +4,7 @@ export const PROJECT_TITLE = '美股策略助手';
 // 主 tab 顺序与元数据：所有页面都通过 WorkspacePage（侧边栏 + ?tab=）展示。
 // 加仓计划（home）和定投计划（dca）已并入交易计划 tab，作为其二级 tab，不再独立出现在侧边栏。
 export const DEFAULT_WORKSPACE_TAB = 'strategy';
-export const PRIMARY_TAB_ORDER = ['strategy', 'holdings', 'tradePlans', 'fundSwitch', 'markets', 'notify', 'backup'];
+export const PRIMARY_TAB_ORDER = ['strategy', 'holdings', 'tradePlans', 'fundSwitch', 'markets', 'notify', 'backup', 'adminData'];
 
 export const PRIMARY_TAB_META = {
   strategy: { label: '策略指南', hrefKey: 'strategy' },
@@ -14,7 +14,8 @@ export const PRIMARY_TAB_META = {
   holdings: { label: '持仓总览', hrefKey: 'holdings' },
   newPlan: { label: '新建计划', hrefKey: 'newPlan' },
   notify: { label: '通知', hrefKey: 'notify' },
-  backup: { label: '数据同步', hrefKey: 'backup' }
+  backup: { label: '数据同步', hrefKey: 'backup' },
+  adminData: { label: '数据', hrefKey: 'adminData', adminOnly: true }
 };
 
 // Legacy ?tab=home / ?tab=dca 进来时映射到 tradePlans 的对应二级视图。
@@ -41,6 +42,7 @@ export function createPageLinks({ inPagesDir = false } = {}) {
     newPlan: `${indexHref}?tab=newPlan`,
     notify: `${indexHref}?tab=notify`,
     backup: `${indexHref}?tab=backup`,
+    adminData: `${indexHref}?tab=adminData`,
     // 旧入口已并入交易计划 tab 的 #new 子视图
     accumNew: `${indexHref}?tab=tradePlans#new`,
     accumEdit: indexHref,

@@ -59,6 +59,19 @@ async function ensureSchema(env) {
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL
   )`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS analytics_events (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    user_id TEXT NOT NULL DEFAULT '',
+    username TEXT NOT NULL DEFAULT '',
+    visitor_id TEXT NOT NULL DEFAULT '',
+    session_id TEXT NOT NULL DEFAULT '',
+    path TEXT NOT NULL DEFAULT '',
+    event_date TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    meta TEXT NOT NULL DEFAULT '{}'
+  )`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_analytics_events_date_type ON analytics_events (event_date, type)`).run();
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS backups (
     user_id TEXT PRIMARY KEY,
     version INTEGER NOT NULL,
@@ -99,6 +112,90 @@ async function requireUser(request, env) {
     WHERE sessions.token_hash = ? AND sessions.expires_at > ?`)
     .bind(tokenHash, nowIso()).first();
   return row || null;
+}
+
+
+async function handleTrackAnalytics(request, env, origin) {
+  const body = await readBody(request);
+  const id = String(body.id || randomId('evt_')).slice(0, 96);
+  const type = String(body.type || '').trim().slice(0, 64);
+  if (!type) return json({ message: 'missing event type' }, { status: 400, origin });
+  const createdAt = String(body.createdAt || nowIso()).slice(0, 40);
+  const eventDate = String(body.date || createdAt.slice(0, 10) || nowIso().slice(0, 10)).slice(0, 10);
+  await env.DB.prepare(`INSERT OR IGNORE INTO analytics_events
+    (id, type, user_id, username, visitor_id, session_id, path, event_date, created_at, meta)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+      id,
+      type,
+      String(body.userId || '').slice(0, 96),
+      normalizeUsername(body.username || ''),
+      String(body.visitorId || '').slice(0, 120),
+      String(body.sessionId || '').slice(0, 120),
+      String(body.path || '').slice(0, 500),
+      eventDate,
+      createdAt,
+      JSON.stringify(body.meta || {}).slice(0, 4000)
+    ).run();
+  return json({ ok: true }, { origin });
+}
+
+async function handleAdminAnalytics(request, env, origin) {
+  const user = await requireUser(request, env);
+  if (!user) return json({ message: '未登录' }, { status: 401, origin });
+  if (user.username !== 'lovexl') return json({ message: '无管理员权限' }, { status: 403, origin });
+  const url = new URL(request.url);
+  const rangeDays = Math.max(1, Math.min(Number(url.searchParams.get('rangeDays')) || 30, 365));
+  const since = new Date(Date.now() - (rangeDays - 1) * 86400000).toISOString().slice(0, 10);
+  const usersRow = await env.DB.prepare('SELECT COUNT(*) AS total FROM users').first();
+  const cardsRows = await env.DB.prepare(`SELECT
+    COUNT(CASE WHEN type = 'page_view' THEN 1 END) AS pv,
+    COUNT(DISTINCT CASE WHEN type = 'page_view' THEN visitor_id END) AS uv,
+    COUNT(CASE WHEN type = 'ai_used' THEN 1 END) AS aiEvents,
+    COUNT(DISTINCT CASE WHEN type = 'ai_used' THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS aiUsers,
+    COUNT(CASE WHEN type IN ('notify_enabled','notify_used') THEN 1 END) AS notifyEvents,
+    COUNT(DISTINCT CASE WHEN type IN ('notify_enabled','notify_used') THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS notifyUsers,
+    COUNT(CASE WHEN type = 'switch_worker_run' THEN 1 END) AS switchRuns,
+    COUNT(DISTINCT CASE WHEN type = 'switch_worker_run' THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS switchUsers
+    FROM analytics_events WHERE event_date >= ?`).bind(since).first();
+  const dailyRows = await env.DB.prepare(`SELECT event_date AS date,
+    COUNT(CASE WHEN type = 'page_view' THEN 1 END) AS pv,
+    COUNT(DISTINCT CASE WHEN type = 'page_view' THEN visitor_id END) AS uv,
+    COUNT(CASE WHEN type = 'switch_worker_run' THEN 1 END) AS switchRuns
+    FROM analytics_events WHERE event_date >= ? GROUP BY event_date ORDER BY event_date`).bind(since).all();
+  const pagesRows = await env.DB.prepare(`SELECT path AS key,
+    COUNT(*) AS pv,
+    COUNT(DISTINCT visitor_id) AS uv
+    FROM analytics_events WHERE event_date >= ? AND type = 'page_view'
+    GROUP BY path ORDER BY pv DESC LIMIT 8`).bind(since).all();
+  const recentRows = await env.DB.prepare(`SELECT id, type, user_id AS userId, username, visitor_id AS visitorId, path, event_date AS date, created_at AS createdAt, meta
+    FROM analytics_events WHERE event_date >= ? ORDER BY created_at DESC LIMIT 20`).bind(since).all();
+
+  return json({
+    rangeDays,
+    generatedAt: nowIso(),
+    cards: {
+      registeredUsers: Number(usersRow?.total) || 0,
+      pv: Number(cardsRows?.pv) || 0,
+      uv: Number(cardsRows?.uv) || 0,
+      aiUsers: Number(cardsRows?.aiUsers) || 0,
+      notifyUsers: Number(cardsRows?.notifyUsers) || 0,
+      switchRuns: Number(cardsRows?.switchRuns) || 0
+    },
+    daily: (dailyRows.results || []).map((row) => ({
+      date: String(row.date || '').slice(5),
+      fullDate: row.date,
+      pv: Number(row.pv) || 0,
+      uv: Number(row.uv) || 0,
+      switchRuns: Number(row.switchRuns) || 0
+    })),
+    pages: pagesRows.results || [],
+    features: [
+      { key: 'AI 使用', value: Number(cardsRows?.aiEvents) || 0, users: Number(cardsRows?.aiUsers) || 0 },
+      { key: '通知使用', value: Number(cardsRows?.notifyEvents) || 0, users: Number(cardsRows?.notifyUsers) || 0 },
+      { key: '切换运行', value: Number(cardsRows?.switchRuns) || 0, users: Number(cardsRows?.switchUsers) || 0 }
+    ],
+    recent: (recentRows.results || []).map((row) => ({ ...row, meta: (() => { try { return JSON.parse(row.meta || '{}'); } catch { return {}; } })() }))
+  }, { origin });
 }
 
 async function handleRegister(request, env, origin) {
@@ -192,6 +289,8 @@ export default {
     await ensureSchema(env);
     const url = new URL(request.url);
     try {
+      if (request.method === 'POST' && url.pathname === '/api/sync/analytics/track') return handleTrackAnalytics(request, env, origin);
+      if (request.method === 'GET' && url.pathname === '/api/sync/admin/analytics') return handleAdminAnalytics(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/auth/register') return handleRegister(request, env, origin);
       if (request.method === 'POST' && url.pathname === '/api/sync/auth/login') return handleLogin(request, env, origin);
       if (request.method === 'GET' && url.pathname === '/api/sync/meta') return handleMeta(request, env, origin);

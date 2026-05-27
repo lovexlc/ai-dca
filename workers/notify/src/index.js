@@ -62,6 +62,31 @@ function readOrigin(request) {
   return request.headers.get('origin') || '*';
 }
 
+async function trackAnalyticsEvent(env, type, meta = {}) {
+  try {
+    const endpoint = String(env?.ANALYTICS_ENDPOINT || 'https://tools.freebacktrack.tech/api/sync/analytics/track').trim();
+    if (!endpoint || !type) return;
+    await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: `worker:${type}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`,
+        type,
+        createdAt: new Date().toISOString(),
+        date: new Date().toISOString().slice(0, 10),
+        visitorId: String(meta.clientId || meta.reason || 'notify-worker'),
+        sessionId: 'notify-worker',
+        userId: '',
+        username: '',
+        path: '/api/notify/switch/run',
+        meta
+      })
+    });
+  } catch (_error) {
+    // 统计失败不影响通知 Worker 主流程。
+  }
+}
+
 function normalizeSettings(settings = {}) {
   const rawClients = typeof settings.clients === 'object' && settings.clients ? settings.clients : {};
   const gotifyClients = Array.isArray(settings.gotifyClients)
@@ -2973,6 +2998,7 @@ async function handleSwitchRunPost(request, env) {
     }, { status: 400, origin });
   }
   const summary = await runSwitchStrategyForOneClient(env, auth.clientId, config, { reason: 'switch-manual-run' });
+  await trackAnalyticsEvent(env, 'switch_worker_run', { clientId: auth.clientId, reason: 'switch-manual-run', triggered: summary?.triggered || 0, skipped: summary?.skipped || '' });
   const snapshot = await readSwitchSnapshotForClient(env, auth.clientId);
   return jsonResponse({ ok: true, summary, snapshot }, { origin });
 }
@@ -3097,12 +3123,13 @@ async function runSwitchStrategyTick(env, scheduledMs, reason = 'switch-cron') {
   const computedAt = new Date(scheduledMs).toISOString();
   for (const { clientId, config } of enabledList) {
     try {
-      await runSwitchStrategyForOneClient(env, clientId, config, {
+      const summary = await runSwitchStrategyForOneClient(env, clientId, config, {
         reason,
         priceMap,
         navByCode,
         computedAt
       });
+      await trackAnalyticsEvent(env, 'switch_worker_run', { clientId, reason, triggered: summary?.triggered || 0, skipped: summary?.skipped || '' });
     } catch (_error) {
       // 单个 client 失败不阻断整轮
     }
