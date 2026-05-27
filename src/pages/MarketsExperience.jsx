@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import '../styles/ai-chat.css';
-import { ArrowDown, ArrowUp, CalendarDays, ChevronDown, ChevronRight, ChevronUp, Edit3, ExternalLink, History, ListPlus, Loader2, Plus, RefreshCw, Search, Send, Sparkles, Star, Trash2, TrendingUp, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, CalendarDays, ChevronDown, ChevronRight, ChevronUp, Edit3, ExternalLink, History, ListPlus, Loader2, Plus, RefreshCw, Search, Send, Sparkles, Star, Trash2, TrendingUp, Wallet, X } from 'lucide-react';
 import {
   Card,
   Pill,
@@ -34,6 +34,8 @@ import {
   CN_ETF_WATCHLIST_PRESETS
 } from '../app/marketsApi.js';
 import { showActionToast } from '../app/toast.js';
+import { readLedgerState } from '../app/holdingsLedger.js';
+import { aggregateByCode } from '../app/holdingsLedgerCore.js';
 import { buildStockAnalysisPrompt } from '../app/stockAnalysisPrompt.js';
 import { getCnEtfPremiumSnapshot, getNavHistory, getNavSnapshot, getNavSnapshots } from '../app/navService.js';
 import { Sparkline } from '../components/markets/Sparkline.jsx';
@@ -48,6 +50,7 @@ const MARKETS = [
 
 const CN_ETF_PRESET_MAP = Object.fromEntries(CN_ETF_WATCHLIST_PRESETS.map((item) => [item.symbol, item]));
 const NASDAQ_OTC_FUND_MAP = Object.fromEntries(((nasdaqOtcCatalog && nasdaqOtcCatalog.funds) || []).map((item) => [String(item.code || '').trim(), item]));
+const MARKETS_PENDING_SYMBOL_KEY = 'markets:pendingSymbol';
 
 function formatNumber(value, fractionDigits = 2) {
   const n = Number(value);
@@ -1173,6 +1176,23 @@ function epochSecFromShanghaiDate(date, time = '15:00:00') {
   return Number.isFinite(t) ? Math.floor(t / 1000) : 0;
 }
 
+function buildHoldingTradeMarkers(transactions = [], code = '') {
+  const normalizedCode = normalizeCnFundCode(code);
+  if (!normalizedCode) return [];
+  return (Array.isArray(transactions) ? transactions : [])
+    .filter((tx) => normalizeCnFundCode(tx?.code) === normalizedCode && (tx?.type === 'BUY' || tx?.type === 'SELL') && /^\d{4}-\d{2}-\d{2}$/.test(String(tx?.date || '')))
+    .map((tx, index) => ({
+      id: tx.id || `${tx.type}-${tx.date}-${index}`,
+      type: tx.type,
+      date: tx.date,
+      t: epochSecFromShanghaiDate(tx.date, '15:00:00'),
+      price: Number(tx.price),
+      shares: Number(tx.shares),
+    }))
+    .filter((marker) => marker.t > 0)
+    .sort((a, b) => a.t - b.t);
+}
+
 function navHistoryDaysForRange(rangeKey) {
   const cfg = CHART_RANGE_TABS.find((r) => r.key === rangeKey);
   if (rangeKey === '1d') return 30;
@@ -1428,7 +1448,44 @@ function CandlesLayerPanel({ xAxisMap, yAxisMap, data }) {
   );
 }
 
-function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, compareMode = 'change', tone, symbol, onHover, onLeave, onLock, lockOnClick = false }) {
+function TradeMarkersLayer({ xAxisMap, yAxisMap, data, markers = [] }) {
+  if (!xAxisMap || !yAxisMap || !Array.isArray(data) || !data.length || !markers.length) return null;
+  const xAxis = Object.values(xAxisMap)[0];
+  const yAxis = Object.values(yAxisMap)[0];
+  if (!xAxis || !yAxis || typeof yAxis.scale !== 'function') return null;
+  const xScale = xAxis.scale;
+  const yScale = yAxis.scale;
+  const rows = data.filter((row) => Number.isFinite(Number(row?.t)) && Number.isFinite(Number(row?.main)));
+  if (!rows.length) return null;
+  return (
+    <g pointerEvents="none">
+      {markers.map((marker, index) => {
+        const markerT = Number(marker.t);
+        const row = rows.find((item) => Number(item.t) >= markerT) || rows[rows.length - 1];
+        if (!row) return null;
+        const cxRaw = xScale(row.label);
+        const cyRaw = yScale(row.main);
+        if (typeof cxRaw !== 'number' || Number.isNaN(cxRaw) || typeof cyRaw !== 'number' || Number.isNaN(cyRaw)) return null;
+        const isBuy = marker.type === 'BUY';
+        const color = isBuy ? '#d93025' : '#1a73e8';
+        const label = isBuy ? '买' : '卖';
+        const cy = Math.max(16, Math.min(yAxis.y + yAxis.height - 8, cyRaw - (isBuy ? 10 : -10)));
+        return (
+          <g key={`${marker.id || marker.type}-${marker.date}-${index}`}>
+            {isBuy ? (
+              <circle cx={cxRaw} cy={cy} r={8} fill={color} stroke="white" strokeWidth={2} />
+            ) : (
+              <path d={`M ${cxRaw} ${cy - 9} L ${cxRaw + 9} ${cy} L ${cxRaw} ${cy + 9} L ${cxRaw - 9} ${cy} Z`} fill={color} stroke="white" strokeWidth={2} />
+            )}
+            <text x={cxRaw} y={cy + 3.5} textAnchor="middle" fontSize="9" fontWeight="700" fill="white">{label}</text>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, compareMode = 'change', tone, symbol, tradeMarkers = [], onHover, onLeave, onLock, lockOnClick = false }) {
   const chartShellRef = useRef(null);
   const pointersRef = useRef(new Map());
   const pinchRef = useRef(null);
@@ -1737,6 +1794,9 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
         ) : null}
         {showCandle ? (
           <Customized component={<CandlesLayerPanel data={visibleRows} />} />
+        ) : null}
+        {!hasCompare && tradeMarkers.length ? (
+          <Customized component={<TradeMarkersLayer data={visibleRows} markers={tradeMarkers} />} />
         ) : null}
         {indicatorLines.map((line) => (
           <Line
@@ -2123,6 +2183,7 @@ function SymbolDetailPanel({
   premiumState,
   navHistoryState,
   isMobile = false,
+  tradeMarkers = [],
 }) {
   const [chartType, setChartType] = useState('area');
   const [cnFundParam, setCnFundParam] = useState('price');
@@ -2806,6 +2867,7 @@ function SymbolDetailPanel({
               onHover={handleChartHover}
               onLeave={handleChartLeave}
               onLock={handleChartLock}
+              tradeMarkers={cnFundParam === 'price' && compareSymbols.length === 0 ? tradeMarkers : []}
               lockOnClick={isMobile}
             />
           ) : sparkFallback ? (
@@ -3538,6 +3600,7 @@ export function MarketsExperience() {
   const [summary, setSummary] = useState({ themes: [], generatedAt: '' });
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [watch, setWatch] = useState(() => loadWatchlist());
+  const [holdingsLedger, setHoldingsLedger] = useState(() => readLedgerState());
   const [watchQuotes, setWatchQuotes] = useState({});
   const [watchNavSnapshots, setWatchNavSnapshots] = useState({});
   const [watchLoading, setWatchLoading] = useState(false);
@@ -3560,6 +3623,7 @@ export function MarketsExperience() {
   const [researchMode, setResearchMode] = useState('peek');
   const [selectedSymbol, setSelectedSymbol] = useState('');
   const selectedSymbolRef = useRef('');
+  const pendingSymbolHandledRef = useRef('');
   const [selectedQuoteMap, setSelectedQuoteMap] = useState({});
   const [detailHeaderHidden, setDetailHeaderHidden] = useState(false);
   const [symbolDetailTab, setSymbolDetailTab] = useState('overview');
@@ -3636,6 +3700,29 @@ export function MarketsExperience() {
   const watchLists = Array.isArray(watch.lists) ? watch.lists : [];
   const activeWatchList = watchLists.find((item) => item.id === watch.activeListId) || watchLists[0] || { us: [], cn: [], name: '默认列表' };
   const watchSymbols = useMemo(() => activeWatchList[market] || [], [activeWatchList, market]);
+  useEffect(() => {
+    const refreshHoldingsLedger = () => setHoldingsLedger(readLedgerState());
+    window.addEventListener('holdings:ledger-updated', refreshHoldingsLedger);
+    window.addEventListener('storage', refreshHoldingsLedger);
+    window.addEventListener('focus', refreshHoldingsLedger);
+    return () => {
+      window.removeEventListener('holdings:ledger-updated', refreshHoldingsLedger);
+      window.removeEventListener('storage', refreshHoldingsLedger);
+      window.removeEventListener('focus', refreshHoldingsLedger);
+    };
+  }, []);
+  const heldAggregates = useMemo(
+    () => aggregateByCode(holdingsLedger.transactions, holdingsLedger.snapshotsByCode).filter((agg) => agg.hasPosition),
+    [holdingsLedger]
+  );
+  const heldSymbols = useMemo(
+    () => Array.from(new Set(heldAggregates.map((agg) => normalizeCnFundCode(agg.code)).filter(Boolean))),
+    [heldAggregates]
+  );
+  const trackedWatchSymbols = useMemo(
+    () => market === 'cn' ? Array.from(new Set([...watchSymbols, ...heldSymbols])) : watchSymbols,
+    [market, watchSymbols, heldSymbols]
+  );
   useEffect(() => {
     selectedSymbolRef.current = selectedSymbol;
   }, [selectedSymbol]);
@@ -3752,7 +3839,7 @@ export function MarketsExperience() {
   }, [market]);
 
   const refreshWatch = useCallback(async () => {
-    const list = watchSymbols || [];
+    const list = trackedWatchSymbols || [];
     if (!list.length) {
       setWatchQuotes({});
       setWatchNavSnapshots({});
@@ -3785,7 +3872,7 @@ export function MarketsExperience() {
     } finally {
       setWatchLoading(false);
     }
-  }, [watchSymbols, market]);
+  }, [trackedWatchSymbols, market]);
 
   // 美股 11 大行业指数（Google Finance 同款）。A 股暂未接入。
   const refreshSectors = useCallback(async (forceRefresh = false) => {
@@ -3907,8 +3994,8 @@ export function MarketsExperience() {
   // 自选股迷你图只在总览态加载；进入详情后避免为侧栏批量补拉 1d K 线。
   useEffect(() => {
     if (selectedSymbol) return;
-    ensureKlines(watchSymbols);
-  }, [selectedSymbol, watchSymbols, ensureKlines]);
+    ensureKlines(trackedWatchSymbols);
+  }, [selectedSymbol, trackedWatchSymbols, ensureKlines]);
 
   useEffect(() => {
     const q = symbolInput.trim();
@@ -4058,48 +4145,59 @@ export function MarketsExperience() {
 
   function handleSelectSymbol(row, options = {}) {
     if (!row || !row.symbol) return;
-    const symbol = rememberSelectedQuote(row, market) || row.symbol;
+    const targetMarket = options.market || row.market || market;
+    if (targetMarket && targetMarket !== market) setMarket(targetMarket);
+    const symbol = rememberSelectedQuote(row, targetMarket) || row.symbol;
     setSelectedSymbol(symbol);
     setSymbolDetailTab('overview');
     setResearchMode(options.openResearch ? 'conversation' : 'peek');
   }
 
+  const buildSidebarRow = useCallback((sym, heldAggregate = null) => {
+    const code = normalizeCnFundCode(sym);
+    const q = watchQuotes[sym] || (code ? watchQuotes[code] : null) || {};
+    const snapshot = code ? watchNavSnapshots[code] : null;
+    const otcQuote = market === 'cn' && code && NASDAQ_OTC_FUND_MAP[code]
+      ? buildOtcFundQuoteFromSnapshot(sym, snapshot, q)
+      : null;
+    const merged = otcQuote || q;
+    const latestNavDate = merged.latestNavDate || snapshot?.latestNavDate || '';
+    const baseMeta = isCnOtcFundQuote(merged) || (market === 'cn' && code && NASDAQ_OTC_FUND_MAP[code])
+      ? ['场外基金', latestNavDate ? `净值日 ${latestNavDate.slice(5)}` : '净值'].join(' · ')
+      : '';
+    return {
+      symbol: sym,
+      name: market === 'cn' ? resolveCnFundName(sym, merged.name || heldAggregate?.name || CN_ETF_PRESET_MAP[sym]?.name || sym) : (merged.name || CN_ETF_PRESET_MAP[sym]?.name || sym),
+      price: merged.price,
+      changePercent: merged.changePercent,
+      change: merged.change,
+      previousClose: merged.previousClose,
+      open: merged.open,
+      high: merged.high,
+      low: merged.low,
+      volume: merged.volume,
+      marketCap: merged.marketCap,
+      exchange: merged.exchange || CN_ETF_PRESET_MAP[sym]?.exchange,
+      currency: merged.currency || CN_ETF_PRESET_MAP[sym]?.currency,
+      latestNav: merged.latestNav || snapshot?.latestNav,
+      latestNavDate,
+      valueType: merged.valueType,
+      assetType: merged.assetType,
+      source: merged.source,
+      market,
+      holding: !!heldAggregate,
+      meta: [heldAggregate ? '已持仓' : '', baseMeta, heldAggregate ? `份额 ${formatNumber(heldAggregate.totalShares, 2)}` : ''].filter(Boolean).join(' · ')
+    };
+  }, [watchQuotes, watchNavSnapshots, market]);
+
   const watchRows = useMemo(
-    () =>
-      watchSymbols.map((sym) => {
-        const code = normalizeCnFundCode(sym);
-        const q = watchQuotes[sym] || (code ? watchQuotes[code] : null) || {};
-        const snapshot = code ? watchNavSnapshots[code] : null;
-        const otcQuote = market === 'cn' && code && NASDAQ_OTC_FUND_MAP[code]
-          ? buildOtcFundQuoteFromSnapshot(sym, snapshot, q)
-          : null;
-        const merged = otcQuote || q;
-        const latestNavDate = merged.latestNavDate || snapshot?.latestNavDate || '';
-        return {
-          symbol: sym,
-          name: market === 'cn' ? resolveCnFundName(sym, merged.name || CN_ETF_PRESET_MAP[sym]?.name || sym) : (merged.name || CN_ETF_PRESET_MAP[sym]?.name || sym),
-          price: merged.price,
-          changePercent: merged.changePercent,
-          change: merged.change,
-          previousClose: merged.previousClose,
-          open: merged.open,
-          high: merged.high,
-          low: merged.low,
-          volume: merged.volume,
-          marketCap: merged.marketCap,
-          exchange: merged.exchange || CN_ETF_PRESET_MAP[sym]?.exchange,
-          currency: merged.currency || CN_ETF_PRESET_MAP[sym]?.currency,
-          latestNav: merged.latestNav || snapshot?.latestNav,
-          latestNavDate,
-          valueType: merged.valueType,
-          assetType: merged.assetType,
-          source: merged.source,
-          meta: isCnOtcFundQuote(merged) || (market === 'cn' && code && NASDAQ_OTC_FUND_MAP[code])
-            ? ['场外基金', latestNavDate ? `净值日 ${latestNavDate.slice(5)}` : '净值'].join(' · ')
-            : ''
-        };
-      }),
-    [watchSymbols, watchQuotes, watchNavSnapshots, market]
+    () => watchSymbols.map((sym) => buildSidebarRow(sym)),
+    [watchSymbols, buildSidebarRow]
+  );
+
+  const heldRows = useMemo(
+    () => market === 'cn' ? heldAggregates.map((agg) => buildSidebarRow(normalizeCnFundCode(agg.code), agg)) : [],
+    [market, heldAggregates, buildSidebarRow]
   );
 
   const watchTopMovers = useMemo(
@@ -4110,13 +4208,17 @@ export function MarketsExperience() {
   const selectedStoredQuote = selectedSymbol ? selectedQuoteMap[`${market}:${selectedSymbol}`] : null;
   const selectedQuote = useMemo(
     () => {
-      const watchRow = watchRows.find((row) => row.symbol === selectedSymbol) || null;
+      const watchRow = watchRows.find((row) => row.symbol === selectedSymbol) || heldRows.find((row) => row.symbol === selectedSymbol) || null;
       if (selectedStoredQuote && Number.isFinite(Number(selectedStoredQuote.price))) return selectedStoredQuote;
       return watchRow || selectedStoredQuote || null;
     },
-    [selectedSymbol, selectedStoredQuote, watchRows]
+    [selectedSymbol, selectedStoredQuote, watchRows, heldRows]
   );
   const selectedCnFundCode = market === 'cn' ? normalizeCnFundCode(selectedSymbol || selectedQuote?.symbol) : '';
+  const selectedTradeMarkers = useMemo(
+    () => selectedCnFundCode ? buildHoldingTradeMarkers(holdingsLedger.transactions, selectedCnFundCode) : [],
+    [holdingsLedger.transactions, selectedCnFundCode]
+  );
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -4124,8 +4226,40 @@ export function MarketsExperience() {
   }, [selectedQuote]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const openPendingSymbol = (rawValue = '') => {
+      const params = new URL(window.location.href).searchParams;
+      const raw = rawValue || params.get('symbol') || window.sessionStorage.getItem(MARKETS_PENDING_SYMBOL_KEY) || '';
+      const code = normalizeCnFundCode(raw);
+      if (!code || pendingSymbolHandledRef.current === code) return;
+      pendingSymbolHandledRef.current = code;
+      try { window.sessionStorage.removeItem(MARKETS_PENDING_SYMBOL_KEY); } catch (_error) { /* ignore */ }
+      const row = heldRows.find((item) => normalizeCnFundCode(item.symbol) === code)
+        || watchRows.find((item) => normalizeCnFundCode(item.symbol) === code)
+        || buildOtcCandidate(code, { symbol: code });
+      handleSelectSymbol({ ...row, symbol: code, market: 'cn' }, { market: 'cn' });
+    };
+    openPendingSymbol();
+    const handlePopState = () => {
+      pendingSymbolHandledRef.current = '';
+      openPendingSymbol();
+    };
+    const handleSelectEvent = (event) => {
+      pendingSymbolHandledRef.current = '';
+      openPendingSymbol(event?.detail?.symbol || '');
+    };
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('markets:select-symbol', handleSelectEvent);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('markets:select-symbol', handleSelectEvent);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heldRows.length, watchRows.length]);
+
+  useEffect(() => {
     if (!selectedSymbol) return undefined;
-    const selectedWatchRow = watchRows.find((row) => row.symbol === selectedSymbol);
+    const selectedWatchRow = watchRows.find((row) => row.symbol === selectedSymbol) || heldRows.find((row) => row.symbol === selectedSymbol);
     if (selectedWatchRow && Number.isFinite(Number(selectedWatchRow.price))) return undefined;
     if (Number.isFinite(Number(selectedStoredQuote?.price))) return undefined;
     let cancelled = false;
@@ -4331,6 +4465,30 @@ export function MarketsExperience() {
           <div className="mt-1 h-px w-full bg-[#e8eaed]" />
         </div>
 
+        {market === 'cn' && heldRows.length > 0 ? (
+          <div className="px-1">
+            <div className="flex items-center justify-between py-2">
+              <h3 className="text-base font-semibold text-[#1f1f1f]">已持仓</h3>
+              {watchLoading && <Loader2 size={13} className="animate-spin text-slate-400" />}
+            </div>
+            <ul className="divide-y divide-[#e8eaed]">
+              {heldRows.map((row) => (
+                <MobileSidebarRow
+                  key={`held-${row.symbol}`}
+                  symbol={row.symbol}
+                  name={row.name}
+                  price={row.price}
+                  changePercent={row.changePercent}
+                  sparkPoints={klineMap[row.symbol]}
+                  meta={row.meta}
+                  selected={row.symbol === selectedSymbol}
+                  onSelect={() => handleSelectSymbol(row)}
+                />
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         {/* 监控列表 */}
         <div className="px-1">
           <div className="flex items-center justify-between py-2">
@@ -4481,6 +4639,31 @@ export function MarketsExperience() {
               onDelete={handleDeleteWatchlist}
             />
           </div>
+
+          {market === 'cn' && heldRows.length > 0 ? (
+            <div className="border-t border-slate-200/60 px-1 pt-1">
+              <div className="flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-[15px] font-medium text-[#1f1f1f]">
+                <Wallet size={14} className="text-indigo-400" />
+                <span>已持仓</span>
+                {watchLoading && <Loader2 size={12} className="ml-1 animate-spin text-slate-400" />}
+              </div>
+              <ul>
+                {heldRows.map((row) => (
+                  <SidebarRow
+                    key={`held-${row.symbol}`}
+                    symbol={row.symbol}
+                    name={row.name}
+                    price={row.price}
+                    changePercent={row.changePercent}
+                    sparkPoints={klineMap[row.symbol]}
+                    meta={row.meta}
+                    selected={row.symbol === selectedSymbol}
+                    onSelect={() => handleSelectSymbol(row)}
+                  />
+                ))}
+              </ul>
+            </div>
+          ) : null}
 
           {/* 组 1：监控列表 */}
           <div className="px-1 pt-1">
@@ -4695,6 +4878,7 @@ export function MarketsExperience() {
             premiumState={premiumMap[selectedCnFundCode || selectedQuote.symbol]}
             navHistoryState={navHistoryMap[`${selectedCnFundCode || selectedQuote.symbol}|${navHistoryDaysForRange(chartRange)}`]}
             isMobile={isMobile}
+            tradeMarkers={selectedTradeMarkers}
             inWatch={watchSymbols.includes(selectedQuote.symbol)}
             onToggleWatch={() => {
               if (watchSymbols.includes(selectedQuote.symbol)) {

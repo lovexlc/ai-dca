@@ -10,6 +10,7 @@ import {
   Copy,
   FileImage,
   FileUp,
+  ExternalLink,
   LoaderCircle,
   Minus,
   Pencil,
@@ -523,7 +524,22 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       },
       sortingFn: numericSortFn,
     },
-  ], [accountAssignments, kindFilterOptions]);
+    {
+      id: 'markets',
+      meta: { label: '行情' },
+      header: () => <span className="text-xs font-semibold text-slate-500">行情</span>,
+      cell: ({ row }) => (
+        <button
+          type="button"
+          className="inline-flex h-7 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-600 transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
+          onClick={(event) => { event.stopPropagation(); navigateToMarkets(event, row.original.code); }}
+          title="查看行情详情"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />行情
+        </button>
+      ),
+    },
+  ], [accountAssignments, kindFilterOptions, links.markets]);
 
   const aggregatesTable = useReactTable({
     data: aggregatesTableData,
@@ -1638,15 +1654,22 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   // ---- Render helpers ----
-  function navigateToMarkets(event) {
+  function navigateToMarkets(event, code = '') {
     if (event && (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)) return;
     if (event) event.preventDefault();
     if (typeof window === 'undefined') return;
     const target = links.markets || './index.html?tab=markets';
     const nextUrl = new URL(target, window.location.href);
+    if (code) {
+      nextUrl.searchParams.set('symbol', normalizeFundCode(code));
+      try { window.sessionStorage.setItem('markets:pendingSymbol', normalizeFundCode(code)); } catch (_error) { /* ignore */ }
+    }
     if (window.location.href === nextUrl.href) return;
-    window.history.pushState({ tab: 'markets' }, '', nextUrl);
+    window.history.pushState({ tab: 'markets', symbol: code || '' }, '', nextUrl);
     window.dispatchEvent(new PopStateEvent('popstate'));
+    if (code) {
+      window.dispatchEvent(new CustomEvent('markets:select-symbol', { detail: { symbol: normalizeFundCode(code), market: 'cn' } }));
+    }
   }
 
   function renderKindFilter() {
@@ -2383,6 +2406,13 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             净值获取失败：{agg.snapshotError}
           </div>
         ) : null}
+        <button
+          type="button"
+          className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-100"
+          onClick={(event) => navigateToMarkets(event, agg.code)}
+        >
+          <ExternalLink className="h-4 w-4" />查看行情详情
+        </button>
         {agg.kind === 'exchange' ? null : (
           <div className="flex items-center gap-2 pt-1">
             <button

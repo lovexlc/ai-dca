@@ -212,6 +212,11 @@ export function persistLedgerState(state = {}) {
   };
 
   window.localStorage.setItem(LEDGER_STORAGE_KEY, JSON.stringify(payload));
+  try {
+    window.dispatchEvent(new CustomEvent('holdings:ledger-updated', { detail: { state: payload } }));
+  } catch (_error) {
+    // ignore event dispatch errors
+  }
 }
 
 /** Thin wrapper around central NAV service returning exactly the shape used by the page. */
