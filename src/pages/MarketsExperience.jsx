@@ -1221,17 +1221,28 @@ function epochSecFromShanghaiDate(date, time = '15:00:00') {
   return Number.isFinite(t) ? Math.floor(t / 1000) : 0;
 }
 
-function buildHoldingTradeMarkers(transactions = [], code = '') {
+function buildHoldingTradeMarkers(transactions = [], code = '', aliases = []) {
   const normalizedCode = normalizeCnFundCode(code);
-  if (!normalizedCode) return [];
+  const aliasSet = new Set(
+    [code, normalizedCode, ...(Array.isArray(aliases) ? aliases : [])]
+      .map((item) => String(item || '').trim().toUpperCase())
+      .filter(Boolean)
+  );
+  if (!normalizedCode && !aliasSet.size) return [];
   return (Array.isArray(transactions) ? transactions : [])
     .map((tx, index) => {
-      const txCode = normalizeCnFundCode(tx?.code || tx?.symbol);
+      const rawSymbol = String(tx?.code || tx?.symbol || '').trim().toUpperCase();
+      const txCode = normalizeCnFundCode(rawSymbol);
+      const symbolMatches = Boolean(
+        (normalizedCode && txCode === normalizedCode)
+        || aliasSet.has(rawSymbol)
+        || (normalizedCode && rawSymbol.includes(normalizedCode))
+      );
       const rawType = String(tx?.type || '').toUpperCase();
       const side = String(tx?.side || '').toLowerCase();
       const type = rawType === 'BUY' || side === 'buy' ? 'BUY' : rawType === 'SELL' || side === 'sell' ? 'SELL' : '';
       const date = String(tx?.date || '').slice(0, 10);
-      if (txCode !== normalizedCode || !type || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+      if (!symbolMatches || !type || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
       return {
         id: tx.id || `${type}-${date}-${index}`,
         type,
@@ -1533,6 +1544,7 @@ function TradeMarkersLayer({ xAxisMap, yAxisMap, width, height, offset, data, ma
     <g pointerEvents="none">
       {markers.map((marker, index) => {
         const markerT = Number(marker.t);
+        if (markerT < Number(rows[0].t) || markerT > Number(rows[rows.length - 1].t)) return null;
         let rowIndex = rows.findIndex((item) => Number(item.t) >= markerT);
         if (rowIndex < 0) rowIndex = rows.length - 1;
         const row = rows[rowIndex];
@@ -1541,17 +1553,20 @@ function TradeMarkersLayer({ xAxisMap, yAxisMap, width, height, offset, data, ma
         const cyRaw = yScale(row.main);
         if (typeof cxRaw !== 'number' || Number.isNaN(cxRaw) || typeof cyRaw !== 'number' || Number.isNaN(cyRaw)) return null;
         const isBuy = marker.type === 'BUY';
-        const color = isBuy ? '#d93025' : '#1a73e8';
-        const label = isBuy ? '买' : '卖';
-        const cy = Math.max(yTop + 16, Math.min(yTop + yHeight - 8, cyRaw - (isBuy ? 10 : -10)));
+        const color = isBuy ? '#f6a623' : '#5b8def';
+        const label = isBuy ? '买入' : '卖出';
+        const bubbleW = 34;
+        const bubbleH = 20;
+        const bubbleX = Math.max(plotLeft + 2, Math.min(plotLeft + plotWidth - bubbleW - 2, cxRaw - bubbleW / 2));
+        const rawBubbleY = isBuy ? cyRaw + 14 : cyRaw - bubbleH - 14;
+        const bubbleY = Math.max(yTop + 4, Math.min(yTop + yHeight - bubbleH - 4, rawBubbleY));
+        const pointerY = isBuy ? bubbleY : bubbleY + bubbleH;
         return (
           <g key={`${marker.id || marker.type}-${marker.date}-${index}`}>
-            {isBuy ? (
-              <circle cx={cxRaw} cy={cy} r={8} fill={color} stroke="white" strokeWidth={2} />
-            ) : (
-              <path d={`M ${cxRaw} ${cy - 9} L ${cxRaw + 9} ${cy} L ${cxRaw} ${cy + 9} L ${cxRaw - 9} ${cy} Z`} fill={color} stroke="white" strokeWidth={2} />
-            )}
-            <text x={cxRaw} y={cy + 3.5} textAnchor="middle" fontSize="9" fontWeight="700" fill="white">{label}</text>
+            <line x1={cxRaw} y1={cyRaw} x2={cxRaw} y2={pointerY} stroke={color} strokeWidth={2} strokeLinecap="round" opacity={0.9} />
+            <circle cx={cxRaw} cy={cyRaw} r={4.5} fill={color} stroke="white" strokeWidth={2} />
+            <rect x={bubbleX} y={bubbleY} width={bubbleW} height={bubbleH} rx={4} fill={color} opacity={0.96} />
+            <text x={bubbleX + bubbleW / 2} y={bubbleY + 14} textAnchor="middle" fontSize="12" fontWeight="700" fill="white">{label}</text>
           </g>
         );
       })}
@@ -1844,12 +1859,19 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
           cursor={false}
           content={({ label, payload }) => {
             const item = Array.isArray(payload) ? payload.find((entry) => entry && entry.dataKey === 'main') : null;
-            const value = item && item.payload ? item.payload.main : null;
+            const row = item && item.payload ? item.payload : null;
+            const value = row ? row.main : null;
+            const price = row ? Number(row.mainPrice ?? row.c ?? value) : NaN;
+            const visibleBase = Number(visibleRows[0]?.mainPrice ?? visibleRows[0]?.c);
             const showValue = !normalized && value != null && Number.isFinite(Number(value));
+            const rangePct = Number.isFinite(price) && Number.isFinite(visibleBase) && visibleBase > 0 ? ((price / visibleBase) - 1) * 100 : null;
             return (
               <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
                 <div>{label}</div>
                 {showValue ? <div className="mt-0.5 tabular-nums text-[#1f1f1f]">{formatNumber(value, 2)}</div> : null}
+                {rangePct != null ? (
+                  <div className={cx("mt-0.5 tabular-nums", rangePct > 0 ? "text-rose-600" : rangePct < 0 ? "text-emerald-600" : "text-[#5f6368]")}>较区间起点 {formatSignedPercent(rangePct)}</div>
+                ) : null}
               </div>
             );
           }}
@@ -4321,12 +4343,15 @@ export function MarketsExperience() {
     [selectedSymbol, selectedStoredQuote, watchRows, heldRows]
   );
   const selectedCnFundCode = market === 'cn' ? normalizeCnFundCode(selectedSymbol || selectedQuote?.symbol) : '';
-  const selectedTradeMarkers = useMemo(
-    () => selectedCnFundCode
-      ? buildHoldingTradeMarkers([...(holdingsLedger.transactions || []), ...(tradeLedgerEntries || [])], selectedCnFundCode)
-      : [],
-    [holdingsLedger.transactions, tradeLedgerEntries, selectedCnFundCode]
-  );
+  const selectedTradeMarkers = useMemo(() => {
+    if (!selectedCnFundCode) return [];
+    const holdingAlias = heldAggregates.find((agg) => normalizeCnFundCode(agg.code) === selectedCnFundCode);
+    return buildHoldingTradeMarkers(
+      [...(holdingsLedger.transactions || []), ...(tradeLedgerEntries || [])],
+      selectedCnFundCode,
+      [selectedSymbol, selectedQuote?.symbol, selectedQuote?.code, selectedQuote?.name, holdingAlias?.name]
+    );
+  }, [holdingsLedger.transactions, tradeLedgerEntries, selectedCnFundCode, selectedSymbol, selectedQuote?.symbol, selectedQuote?.code, selectedQuote?.name, heldAggregates]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
