@@ -185,7 +185,7 @@ export async function askMarketsStream({
     try { reader.releaseLock(); } catch (_) { /* ignore */ }
   }
   if (lastError) {
-    const msg = (lastError && (lastError.message || lastError.error)) || 'stream error';
+    const msg = (lastError && (lastError.message || lastError.detail || lastError.error)) || 'stream error';
     const err = new Error(String(msg));
     err.payload = lastError;
     throw err;

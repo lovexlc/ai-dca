@@ -264,25 +264,35 @@ async function runLoop({ question, depth = 'fast', context = '', emit, signal, s
 	let usedFallback = false;
 
 	const safeEmit = (ev) => { if (emit) { try { emit(ev); } catch {} } };
+	let forceNonStreaming = false;
 
 	for (let i = 0; i < MAX_ITERATIONS; i++) {
 		iterations = i + 1;
 		safeEmit({ type: 'progress', step: iterations, total: MAX_ITERATIONS, brief: `第 ${iterations} 轮推理` });
 
-		const callOnce = (model) => streaming
-			? callLLMStream({
-					baseUrl, apiKey, model, messages, signal,
-					onContentDelta: (d) => safeEmit({ type: 'token', delta: d }),
-					onReasoningDelta: (d) => safeEmit({ type: 'reasoning', delta: d }),
-				})
-			: callLLMOnce({ baseUrl, apiKey, model, messages, signal });
-		const r = await withRetryFallback(callOnce, modelInitial);
+		const callStreamOnce = (model) => callLLMStream({
+			baseUrl, apiKey, model, messages, signal,
+			onContentDelta: (d) => safeEmit({ type: 'token', delta: d }),
+			onReasoningDelta: (d) => safeEmit({ type: 'reasoning', delta: d }),
+		});
+		const callPlainOnce = (model) => callLLMOnce({ baseUrl, apiKey, model, messages, signal });
+		const callOnce = (streaming && !forceNonStreaming) ? callStreamOnce : callPlainOnce;
+		let r = await withRetryFallback(callOnce, modelInitial);
+		if (streaming && !forceNonStreaming && !r.ok && !(signal && signal.aborted)) {
+			// Some OpenAI-compatible gateways intermittently fail only for SSE/tool streaming.
+			// Retry the same agent loop with the non-streaming endpoint before surfacing an error.
+			forceNonStreaming = true;
+			safeEmit({ type: 'progress', step: iterations, total: MAX_ITERATIONS, brief: '流式模型失败，切换普通模式重试…' });
+			r = await withRetryFallback(callPlainOnce, modelInitial);
+			if (r.ok) usedFallback = true;
+		}
 		if (r.model_used) modelsUsed.add(r.model_used);
 		if (r.fallback) usedFallback = true;
 		if (!r.ok) {
-			safeEmit({ type: 'error', message: 'llm_call_failed', detail: (r.error || '').slice(0, 400) });
+			const userMessage = '深度研究模型暂时不可用，请稍后重试或切换普通模式。';
+			safeEmit({ type: 'error', message: userMessage, error: 'llm_call_failed', detail: (r.error || '').slice(0, 400) });
 			return {
-				ok: false, error: 'llm_call_failed', detail: r.error,
+				ok: false, error: 'llm_call_failed', message: userMessage, detail: r.error,
 				models_used: [...modelsUsed], iterations, trace,
 				sources: dedupeSources(aggregatedSources), elapsed_ms: Date.now() - started,
 			};
