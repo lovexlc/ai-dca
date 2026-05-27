@@ -34,7 +34,7 @@ import {
 } from '../app/marketsApi.js';
 import { showActionToast } from '../app/toast.js';
 import { buildStockAnalysisPrompt } from '../app/stockAnalysisPrompt.js';
-import { getCnEtfPremiumSnapshot, getNavHistory, getNavSnapshot } from '../app/navService.js';
+import { getCnEtfPremiumSnapshot, getNavHistory, getNavSnapshot, getNavSnapshots } from '../app/navService.js';
 import { Sparkline } from '../components/markets/Sparkline.jsx';
 import { MarketsChartCodeBlock } from '../components/markets/MarketsChartBlock.jsx';
 import { Area, Bar, CartesianGrid, ComposedChart, Customized, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -742,7 +742,7 @@ function WatchlistTable({ rows = [], market, onRemove }) {
   );
 }
 
-function SidebarRow({ symbol, name, price, changePercent, sparkPoints, selected = false, onSelect }) {
+function SidebarRow({ symbol, name, price, changePercent, sparkPoints, selected = false, onSelect, meta = '' }) {
   const pct = Number(changePercent);
   const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
   const up = pct > 0;
@@ -751,6 +751,7 @@ function SidebarRow({ symbol, name, price, changePercent, sparkPoints, selected 
   const sparkTone = flat ? 'flat' : up ? 'up' : 'down';
   const displaySymbol = formatSymbolDisplay(symbol);
   const showName = name && name !== symbol && name !== displaySymbol;
+  const detailText = [showName ? name : '', meta].filter(Boolean).join(' · ');
   return (
     <li className="group relative">
       <div
@@ -771,7 +772,7 @@ function SidebarRow({ symbol, name, price, changePercent, sparkPoints, selected 
       >
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13px] font-medium leading-tight text-[#1f1f1f]">{displaySymbol}</div>
-          {showName ? <div className="truncate text-[11px] leading-tight text-[#5f6368]">{name}</div> : null}
+          {detailText ? <div className="truncate text-[11px] leading-tight text-[#5f6368]">{detailText}</div> : null}
         </div>
         {sparkPoints && sparkPoints.length >= 2 ? (
           <Sparkline points={sparkPoints} width={76} height={28} tone={sparkTone} showFill markLast />
@@ -790,7 +791,7 @@ function SidebarRow({ symbol, name, price, changePercent, sparkPoints, selected 
   );
 }
 
-function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints, selected = false, onSelect }) {
+function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints, selected = false, onSelect, meta = '' }) {
   const pct = Number(changePercent);
   const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
   const up = pct > 0;
@@ -801,6 +802,7 @@ function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints, sel
   const sparkTone = flat ? 'flat' : up ? 'up' : 'down';
   const displaySymbol = formatSymbolDisplay(symbol);
   const showName = name && name !== symbol && name !== displaySymbol;
+  const detailText = [showName ? name : '', meta].filter(Boolean).join(' · ');
   return (
     <li
       role="button"
@@ -820,7 +822,7 @@ function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints, sel
     >
       <div className="min-w-0 flex-1">
         <div className="truncate text-base font-semibold leading-tight text-[#1f1f1f]">{displaySymbol}</div>
-        {showName ? <div className="truncate text-sm leading-tight text-[#5f6368]">{name}</div> : null}
+        {detailText ? <div className="truncate text-sm leading-tight text-[#5f6368]">{detailText}</div> : null}
       </div>
       {sparkPoints && sparkPoints.length >= 2 ? (
         <Sparkline points={sparkPoints} width={86} height={32} tone={sparkTone} showFill markLast />
@@ -1106,9 +1108,10 @@ function shanghaiDateFromEpochSec(sec) {
   }
 }
 
-function epochSecFromShanghaiDate(date) {
+function epochSecFromShanghaiDate(date, time = '15:00:00') {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return 0;
-  const t = Date.parse(`${date}T15:00:00+08:00`);
+  const safeTime = /^\d{2}:\d{2}(?::\d{2})?$/.test(String(time || '')) ? String(time) : '15:00:00';
+  const t = Date.parse(`${date}T${safeTime}+08:00`);
   return Number.isFinite(t) ? Math.floor(t / 1000) : 0;
 }
 
@@ -1139,9 +1142,18 @@ function buildCnFundParamCandles(priceCandles, navItems, param, premiumState, ra
   let sortedNav = (Array.isArray(navItems) ? navItems : [])
     .filter((item) => item && /^\d{4}-\d{2}-\d{2}$/.test(String(item.date || '')) && Number(item.nav) > 0)
     .sort((a, b) => a.date.localeCompare(b.date));
-  if (rangeKey === '1d' && sortedNav.length > 2) {
-    // 场外基金没有盘中分时。1 天视图按最新确认净值日展示最近两个净值点。
-    sortedNav = sortedNav.slice(-2);
+  if (param === 'nav' && rangeKey === '1d' && sortedNav.length) {
+    // 场外基金没有盘中分时。1 天视图用最新确认净值生成同一日水平线，避免把前一净值日连成斜线。
+    const latest = sortedNav[sortedNav.length - 1];
+    const v = Number(latest.nav);
+    const startT = epochSecFromShanghaiDate(latest.date, '09:30:00');
+    const endT = epochSecFromShanghaiDate(latest.date, '15:00:00');
+    return startT && endT && Number.isFinite(v) && v > 0
+      ? [
+        { t: startT, o: v, h: v, l: v, c: v, date: latest.date },
+        { t: endT, o: v, h: v, l: v, c: v, date: latest.date }
+      ]
+      : [];
   }
   if (param === 'nav') {
     const priceTimeline = Array.isArray(priceCandles) ? priceCandles : [];
@@ -2465,33 +2477,6 @@ function SymbolDetailPanel({
               )}
             </ChartToolbarPopover>
           ) : null}
-          {!isMobile ? (
-            <ChartToolbarPopover
-              icon={(CHART_TYPE_OPTIONS.find((opt) => opt.key === effectiveChartType) || {}).icon || TOOLBAR_ICONS.area}
-              label={CHART_TYPE_LABEL[effectiveChartType] || '面积图'}
-              active={effectiveChartType !== 'area'}
-            >
-              {({ close }) => (
-                <div className="flex flex-col gap-0.5">
-                  {CHART_TYPE_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.key}
-                      type="button"
-                      onClick={() => { setChartType(opt.key); close(); }}
-                      className={cx(
-                        'flex items-center gap-3 rounded-lg px-3 py-2 text-left transition',
-                        chartType === opt.key ? 'bg-[#e8f0fe]' : 'hover:bg-[#f1f3f4]'
-                      )}
-                    >
-                      <span className="w-5 text-center text-[18px] leading-none text-[#202124]">{opt.icon}</span>
-                      <span className={cx('text-[14px] font-medium', chartType === opt.key ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>{opt.label}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </ChartToolbarPopover>
-          ) : null}
-
           <ChartToolbarPopover
             icon={TOOLBAR_ICONS.indicators}
             label={indicators.size ? `指标 · ${indicators.size}` : '指标'}
@@ -3370,6 +3355,7 @@ export function MarketsExperience() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [watch, setWatch] = useState(() => loadWatchlist());
   const [watchQuotes, setWatchQuotes] = useState({});
+  const [watchNavSnapshots, setWatchNavSnapshots] = useState({});
   const [watchLoading, setWatchLoading] = useState(false);
   const [symbolInput, setSymbolInput] = useState('');
   const [symbolSearchResults, setSymbolSearchResults] = useState([]);
@@ -3582,18 +3568,37 @@ export function MarketsExperience() {
     const list = watchSymbols || [];
     if (!list.length) {
       setWatchQuotes({});
+      setWatchNavSnapshots({});
       return;
     }
     setWatchLoading(true);
     try {
       const r = await fetchQuotes(list);
-      setWatchQuotes(r.quotes || {});
+      const quotes = r.quotes || {};
+      if (market === 'cn') {
+        const otcCodes = list.map((sym) => normalizeCnFundCode(sym)).filter((code) => code && NASDAQ_OTC_FUND_MAP[code]);
+        if (otcCodes.length) {
+          try {
+            const snapshotsPayload = await getNavSnapshots(otcCodes);
+            const snapshots = Object.fromEntries((snapshotsPayload.items || []).map((item) => [item.code, item]));
+            setWatchNavSnapshots((prev) => ({ ...prev, ...snapshots }));
+            otcCodes.forEach((code) => {
+              const existing = quotes[code] || quotes[`SZ${code}`] || quotes[`SH${code}`] || {};
+              const quote = buildOtcFundQuoteFromSnapshot(code, snapshots[code], existing);
+              if (quote) quotes[code] = quote;
+            });
+          } catch (_error) {
+            // 场外基金净值是增强信息，失败时仍展示行情源返回的结果。
+          }
+        }
+      }
+      setWatchQuotes(quotes);
     } catch (err) {
       // ignore
     } finally {
       setWatchLoading(false);
     }
-  }, [watchSymbols]);
+  }, [watchSymbols, market]);
 
   // 美股 11 大行业指数（Google Finance 同款）。A 股暂未接入。
   const refreshSectors = useCallback(async (forceRefresh = false) => {
@@ -3852,24 +3857,39 @@ export function MarketsExperience() {
   const watchRows = useMemo(
     () =>
       watchSymbols.map((sym) => {
-        const q = watchQuotes[sym] || {};
+        const code = normalizeCnFundCode(sym);
+        const q = watchQuotes[sym] || (code ? watchQuotes[code] : null) || {};
+        const snapshot = code ? watchNavSnapshots[code] : null;
+        const otcQuote = market === 'cn' && code && NASDAQ_OTC_FUND_MAP[code]
+          ? buildOtcFundQuoteFromSnapshot(sym, snapshot, q)
+          : null;
+        const merged = otcQuote || q;
+        const latestNavDate = merged.latestNavDate || snapshot?.latestNavDate || '';
         return {
           symbol: sym,
-          name: q.name || CN_ETF_PRESET_MAP[sym]?.name || sym,
-          price: q.price,
-          changePercent: q.changePercent,
-          change: q.change,
-          previousClose: q.previousClose,
-          open: q.open,
-          high: q.high,
-          low: q.low,
-          volume: q.volume,
-          marketCap: q.marketCap,
-          exchange: q.exchange || CN_ETF_PRESET_MAP[sym]?.exchange,
-          currency: q.currency || CN_ETF_PRESET_MAP[sym]?.currency
+          name: market === 'cn' ? resolveCnFundName(sym, merged.name || CN_ETF_PRESET_MAP[sym]?.name || sym) : (merged.name || CN_ETF_PRESET_MAP[sym]?.name || sym),
+          price: merged.price,
+          changePercent: merged.changePercent,
+          change: merged.change,
+          previousClose: merged.previousClose,
+          open: merged.open,
+          high: merged.high,
+          low: merged.low,
+          volume: merged.volume,
+          marketCap: merged.marketCap,
+          exchange: merged.exchange || CN_ETF_PRESET_MAP[sym]?.exchange,
+          currency: merged.currency || CN_ETF_PRESET_MAP[sym]?.currency,
+          latestNav: merged.latestNav || snapshot?.latestNav,
+          latestNavDate,
+          valueType: merged.valueType,
+          assetType: merged.assetType,
+          source: merged.source,
+          meta: isCnOtcFundQuote(merged) || (market === 'cn' && code && NASDAQ_OTC_FUND_MAP[code])
+            ? ['场外基金', latestNavDate ? `净值日 ${latestNavDate.slice(5)}` : '净值'].join(' · ')
+            : ''
         };
       }),
-    [watchSymbols, watchQuotes]
+    [watchSymbols, watchQuotes, watchNavSnapshots, market]
   );
 
   const watchTopMovers = useMemo(
@@ -4120,6 +4140,7 @@ export function MarketsExperience() {
                       price={row.price}
                       changePercent={row.changePercent}
                       sparkPoints={klineMap[row.symbol]}
+                      meta={row.meta}
                       selected={row.symbol === selectedSymbol}
                       onSelect={() => handleSelectSymbol(row)}
                     />
@@ -4270,6 +4291,7 @@ export function MarketsExperience() {
                       price={row.price}
                       changePercent={row.changePercent}
                       sparkPoints={klineMap[row.symbol]}
+                      meta={row.meta}
                       selected={row.symbol === selectedSymbol}
                       onSelect={() => handleSelectSymbol(row)}
                     />
