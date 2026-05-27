@@ -1156,6 +1156,50 @@ function buildCnFundParamCandles(priceCandles, navItems, param, premiumState) {
   return priceCandles;
 }
 
+
+function isCnOtcFundQuote(row) {
+  if (!row) return false;
+  const source = String(row.source || '').toLowerCase();
+  const assetType = String(row.assetType || row.type || '').toLowerCase();
+  const exchange = String(row.exchange || '').toLowerCase();
+  return row.valueType === 'nav'
+    || assetType.includes('otc')
+    || assetType.includes('场外')
+    || exchange.includes('场外')
+    || source.includes('otc-fund')
+    || source.includes('nav-fallback');
+}
+
+function buildOtcFundQuoteFromSnapshot(symbol, snapshot, fallback = {}) {
+  const latestNav = Number(snapshot?.latestNav);
+  if (!Number.isFinite(latestNav) || latestNav <= 0) return null;
+  const previousNav = Number(snapshot?.previousNav);
+  const hasPrevious = Number.isFinite(previousNav) && previousNav > 0;
+  const change = hasPrevious ? latestNav - previousNav : 0;
+  return {
+    ...fallback,
+    symbol: String(symbol || snapshot?.code || fallback.symbol || '').trim().toUpperCase(),
+    code: String(snapshot?.code || symbol || fallback.code || '').replace(/\D/g, '').slice(-6),
+    name: snapshot?.name || fallback.name || fallback.displayName || fallback.shortName || symbol,
+    market: 'cn',
+    exchange: '场外基金',
+    currency: 'CNY',
+    price: latestNav,
+    previousClose: hasPrevious ? previousNav : latestNav,
+    change,
+    changePercent: hasPrevious ? (change / previousNav) * 100 : 0,
+    latestNav,
+    latestNavDate: snapshot?.latestNavDate || '',
+    previousNav: hasPrevious ? previousNav : null,
+    previousNavDate: snapshot?.previousNavDate || '',
+    asOf: snapshot?.updatedAt || new Date().toISOString(),
+    lastUpdated: snapshot?.updatedAt || new Date().toISOString(),
+    source: 'otc-fund-nav-fallback',
+    valueType: 'nav',
+    assetType: 'otc_fund'
+  };
+}
+
 function marketStateLabel(state, marketCode) {
   const v = String(state || '').toUpperCase();
   if (v === 'REGULAR') return '交易中';
@@ -1902,7 +1946,11 @@ function SymbolDetailPanel({
       searchSymbols(market, q, { limit: 10, signal: controller.signal })
         .then((res) => {
           if (seq !== compareSearchSeqRef.current) return;
-          const rows = Array.isArray(res && res.results) ? res.results : [];
+          const rows = Array.isArray(res && res.results) ? [...res.results] : [];
+          const otcCode = normalizeCnFundCode(q);
+          if (market === 'cn' && /^\d{6}$/.test(otcCode) && !rows.some((item) => normalizeCnFundCode(item.symbol || item.code || item.ticker) === otcCode)) {
+            rows.push({ symbol: otcCode, code: otcCode, name: otcCode, market: 'cn', exchange: '场外基金', assetType: 'otc_fund' });
+          }
           const current = String(rowSymbol || '').toUpperCase();
           const seen = new Set();
           setCompareSearchResults(rows.map((item) => {
@@ -2008,6 +2056,7 @@ function SymbolDetailPanel({
   const exchangeLabel = row.exchange || (market === 'us' ? 'NASDAQ/NYSE' : 'A 股');
   const currencyLabel = row.currency || (market === 'us' ? 'USD' : 'CNY');
   const stateLabel = marketStateLabel(row.marketState, market);
+  const isCnOtcFund = market === 'cn' && isCnOtcFundQuote(row);
   const toggleIndicator = (k) => setIndicators((prev) => {
     const next = new Set(prev);
     if (next.has(k)) next.delete(k); else next.add(k);
@@ -2192,11 +2241,14 @@ function SymbolDetailPanel({
     applyHoverSnapshot(normalizeCompareQuote(row.symbol, row), 'main'),
     ...compareSymbols.map((sym, index) => applyHoverSnapshot(normalizeCompareQuote(sym, compareCandidates.find((item) => item.symbol === sym)), `cmp_${index}_`))
   ];
-  const effectiveChartCandles = market !== 'cn' || cnFundParam === 'price'
-    ? chartCandles
-    : buildCnFundParamCandles(chartCandles, navHistoryState?.items, cnFundParam, premiumState);
+  const effectiveChartCandles = isCnOtcFund
+    ? (cnFundParam === 'premium' ? [] : buildCnFundParamCandles(chartCandles, navHistoryState?.items, 'nav', premiumState))
+    : (market !== 'cn' || cnFundParam === 'price'
+      ? chartCandles
+      : buildCnFundParamCandles(chartCandles, navHistoryState?.items, cnFundParam, premiumState));
   const effectiveChartType = market === 'cn' && cnFundParam !== 'price' ? 'area' : chartType;
   const premiumCompareMode = market === 'cn' && cnFundParam === 'premium';
+  const premiumUnavailable = isCnOtcFund && cnFundParam === 'premium';
   const buildPremiumTableRow = (quoteRow, keyPrefix, metricCandles) => {
     if (!premiumCompareMode) return quoteRow;
     const lastMetric = Array.isArray(metricCandles) && metricCandles.length ? metricCandles[metricCandles.length - 1] : null;
@@ -2264,8 +2316,8 @@ function SymbolDetailPanel({
   const displayCompareTableRows = premiumCompareMode
     ? premiumRowsWithSpread
     : compareTableRows;
-  const metricLoading = market === 'cn' && cnFundParam !== 'price' && navHistoryState?.loading;
-  const metricError = market === 'cn' && cnFundParam !== 'price' ? navHistoryState?.error : '';
+  const metricLoading = market === 'cn' && (cnFundParam !== 'price' || isCnOtcFund) && navHistoryState?.loading;
+  const metricError = market === 'cn' && (cnFundParam !== 'price' || isCnOtcFund) ? navHistoryState?.error : '';
   const hasFullCandles = Array.isArray(effectiveChartCandles) && effectiveChartCandles.length >= 2;
   const sparkFallback = cnFundParam === 'price' && (!hasFullCandles && Array.isArray(sparkPoints) && sparkPoints.length >= 2) ? sparkPoints : null;
 
@@ -2291,12 +2343,12 @@ function SymbolDetailPanel({
                 <span className="mx-1 text-[#5f6368]">·</span>
                 {formatPercent(row.changePercent)}
               </span>
-              <span className="text-[11px] text-[#5f6368]">今日</span>
+              <span className="text-[11px] text-[#5f6368]">{isCnOtcFund ? '净值' : '今日'}</span>
             </div>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-[#5f6368] sm:text-[11px]">
               <span>{stateLabel}</span>
               {row.lastUpdated ? <><span>·</span><span>更新于 {formatClock(row.lastUpdated)}</span></> : null}
-              {Number.isFinite(Number(row.previousClose)) ? <><span>·</span><span>昨收 <span className="tabular-nums">{formatNumber(row.previousClose)}</span></span></> : null}
+              {Number.isFinite(Number(row.previousClose)) ? <><span>·</span><span>{isCnOtcFund ? '前一净值' : '昨收'} <span className="tabular-nums">{formatNumber(row.previousClose)}</span></span></> : null}
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center">
@@ -2525,7 +2577,9 @@ function SymbolDetailPanel({
               <span className="inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1 shadow-sm"><Loader2 size={12} className="animate-spin" /> 正在加载对比线</span>
             </div>
           ) : null}
-          {hasFullCandles ? (
+          {premiumUnavailable ? (
+            <div className="flex h-full items-center justify-center text-sm font-medium text-[#5f6368]">场外基金无溢价数据</div>
+          ) : hasFullCandles ? (
             <SymbolDetailChart
               candles={effectiveChartCandles}
               tf={chartTf}
@@ -2585,7 +2639,9 @@ function SymbolDetailPanel({
           </div>
         </div>
 
-        {compareSymbols.length > 0 ? (
+        {premiumUnavailable ? (
+          <div className="mt-1.5 rounded-xl border border-[#e8eaed] bg-[#f8fafd] px-3 py-2 text-[12px] font-medium text-[#5f6368] sm:text-[13px]">场外基金无溢价数据</div>
+        ) : compareSymbols.length > 0 ? (
           <div className="overflow-hidden bg-white text-[11px] sm:text-[13px]">
             <div className="grid h-8 grid-cols-[minmax(44px,1fr)_58px_58px_64px] items-center gap-0.5 border-b border-[rgba(17,24,39,0.08)] px-1 text-right text-[11px] font-semibold text-[#5f6368] sm:h-10 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[13px]">
               <div className="min-w-0 truncate text-left">股票代码</div>
@@ -2658,11 +2714,11 @@ function SymbolDetailPanel({
           <div className="space-y-5">
             <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
             <div className="flex items-center justify-between border-b border-[#e8eaed] py-2">
-              <span className="text-[#5f6368]">最新价</span>
+              <span className="text-[#5f6368]">{isCnOtcFund ? '最新净值' : '最新价'}</span>
               <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(row.price)}</span>
             </div>
             <div className="flex items-center justify-between border-b border-[#e8eaed] py-2">
-              <span className="text-[#5f6368]">今日涨跌幅</span>
+              <span className="text-[#5f6368]">{isCnOtcFund ? '净值涨跌幅' : '今日涨跌幅'}</span>
               <span className={cx('font-medium tabular-nums', positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#1f1f1f]')}>{formatPercent(row.changePercent)}</span>
             </div>
             <div className="flex items-center justify-between border-b border-[#e8eaed] py-2">
@@ -3596,7 +3652,12 @@ export function MarketsExperience() {
         .then((r) => {
           if (seq !== symbolSearchSeqRef.current) return;
           const seen = new Set();
-          const rows = (Array.isArray(r && r.results) ? r.results : []).map((row) => ({
+          const rawRows = Array.isArray(r && r.results) ? [...r.results] : [];
+          const otcCode = normalizeCnFundCode(q);
+          if (activeMarket.key === 'cn' && /^\d{6}$/.test(otcCode) && !rawRows.some((row) => normalizeCnFundCode(row.symbol || row.code || row.ticker) === otcCode)) {
+            rawRows.push({ symbol: otcCode, code: otcCode, name: otcCode, market: 'cn', exchange: '场外基金', assetType: 'otc_fund' });
+          }
+          const rows = rawRows.map((row) => ({
             ...row,
             market: activeMarket.key,
             marketLabel: activeMarket.label
@@ -3757,7 +3818,11 @@ export function MarketsExperience() {
 
   const selectedStoredQuote = selectedSymbol ? selectedQuoteMap[`${market}:${selectedSymbol}`] : null;
   const selectedQuote = useMemo(
-    () => watchRows.find((row) => row.symbol === selectedSymbol) || selectedStoredQuote || null,
+    () => {
+      const watchRow = watchRows.find((row) => row.symbol === selectedSymbol) || null;
+      if (selectedStoredQuote && Number.isFinite(Number(selectedStoredQuote.price))) return selectedStoredQuote;
+      return watchRow || selectedStoredQuote || null;
+    },
     [selectedSymbol, selectedStoredQuote, watchRows]
   );
   const selectedCnFundCode = market === 'cn' ? normalizeCnFundCode(selectedSymbol || selectedQuote?.symbol) : '';
@@ -3769,7 +3834,8 @@ export function MarketsExperience() {
 
   useEffect(() => {
     if (!selectedSymbol) return undefined;
-    if (watchRows.some((row) => row.symbol === selectedSymbol)) return undefined;
+    const selectedWatchRow = watchRows.find((row) => row.symbol === selectedSymbol);
+    if (selectedWatchRow && Number.isFinite(Number(selectedWatchRow.price))) return undefined;
     if (Number.isFinite(Number(selectedStoredQuote?.price))) return undefined;
     let cancelled = false;
     fetchQuote(selectedSymbol)
@@ -3788,14 +3854,59 @@ export function MarketsExperience() {
           };
         });
       })
-      .catch(() => {});
+      .catch(async () => {
+        if (cancelled || market !== 'cn') return;
+        const code = normalizeCnFundCode(selectedSymbol);
+        if (!/^\d{6}$/.test(code)) return;
+        try {
+          const snapshot = await getNavSnapshot(code);
+          if (cancelled) return;
+          const quote = buildOtcFundQuoteFromSnapshot(selectedSymbol, snapshot, selectedStoredQuote || {});
+          if (!quote) return;
+          setSelectedQuoteMap((prev) => {
+            const key = `${market}:${selectedSymbol}`;
+            return {
+              ...prev,
+              [key]: {
+                ...prev[key],
+                ...quote,
+                name: quote.name || prev[key]?.name || selectedSymbol
+              }
+            };
+          });
+        } catch (_error) {
+          // 场外基金净值兜底也失败时保持原占位，不打扰用户。
+        }
+      });
     return () => { cancelled = true; };
   }, [market, selectedSymbol, selectedStoredQuote?.price, watchRows]);
 
   useEffect(() => {
     if (market !== 'cn' || !selectedSymbol) return;
-    const price = Number(selectedQuote?.price);
     const symbol = normalizeCnFundCode(selectedSymbol);
+    if (isCnOtcFundQuote(selectedQuote)) {
+      if (/^\d{6}$/.test(symbol)) {
+        setPremiumMap((prev) => ({
+          ...prev,
+          [symbol]: {
+            loading: false,
+            error: '',
+            data: {
+              symbol,
+              price: Number(selectedQuote?.price),
+              baseNav: Number(selectedQuote?.latestNav || selectedQuote?.price),
+              navDate: selectedQuote?.latestNavDate || '',
+              iopv: Number(selectedQuote?.latestNav || selectedQuote?.price),
+              premiumPercent: null,
+              isOtcFund: true,
+              message: '场外基金无溢价数据'
+            }
+          }
+        }));
+      }
+      return;
+    }
+    const price = Number(selectedQuote?.price);
     if (!symbol || !Number.isFinite(price) || price <= 0) return;
     const cachedState = premiumMap[symbol];
     const cachedPremium = cachedState?.data;

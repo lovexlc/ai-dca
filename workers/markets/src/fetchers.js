@@ -531,11 +531,12 @@ export async function fetchEastmoneyQuotesBatch(codes) {
 export async function searchEastmoneySymbols(query, { limit = 8 } = {}) {
   const q = String(query || '').trim();
   if (!q) return [];
+  const maxCount = Math.max(1, Math.min(Number(limit) || 8, 12));
   const url = buildUrl(EM_SEARCH_HOST, '/api/suggest/get', {
     input: q,
     type: 14,
     token: 'D43BF722C8E33BDC906FB84D85E326E8',
-    count: Math.max(1, Math.min(Number(limit) || 8, 12))
+    count: Math.max(maxCount, 12)
   });
   const res = await fetch(url, {
     headers: { ...COMMON_HEADERS, referer: 'https://quote.eastmoney.com/' },
@@ -546,19 +547,40 @@ export async function searchEastmoneySymbols(query, { limit = 8 } = {}) {
   const rows = (((data || {}).QuotationCodeTable || {}).Data) || [];
   const normalized = Array.isArray(rows) ? rows : [];
   return normalized
-    .filter((row) => row && row.Code && (row.Classify === 'AStock' || row.SecurityType === '1' || row.SecurityTypeName))
-    .slice(0, Math.max(1, Math.min(Number(limit) || 8, 12)))
+    .filter((row) => {
+      const code = String(row?.Code || '').trim();
+      if (!/^\d{6}$/.test(code)) return false;
+      const text = [row.Classify, row.SecurityType, row.SecurityTypeName, row.SecurityTypeName2, row.QuoteType, row.TypeName]
+        .map((value) => String(value || '').toLowerCase())
+        .join(' ');
+      return row.Classify === 'AStock'
+        || row.SecurityType === '1'
+        || text.includes('stock')
+        || text.includes('基金')
+        || text.includes('fund')
+        || text.includes('lof')
+        || text.includes('etf')
+        || text.includes('qdii');
+    })
+    .slice(0, maxCount)
     .map((row) => {
       const code = String(row.Code || '').trim();
       const mkt = String(row.MktNum || row.MarketType || '').trim();
+      const typeText = [row.Classify, row.SecurityTypeName, row.SecurityTypeName2, row.QuoteType, row.TypeName]
+        .map((value) => String(value || ''))
+        .join(' ');
+      const isFund = /基金|fund|lof|etf|qdii/i.test(typeText);
+      const isExchangeTradedFund = /etf|lof|场内|封闭/i.test(typeText) || ['0', '1', '2'].includes(mkt);
+      const isOtcFund = isFund && !isExchangeTradedFund;
       const prefix = mkt === '1' ? 'sh' : mkt === '0' ? 'sz' : mkt === '2' ? 'bj' : code.startsWith('6') ? 'sh' : code.startsWith('4') || code.startsWith('8') ? 'bj' : 'sz';
       return {
-        symbol: prefix + code,
+        symbol: isOtcFund ? code : prefix + code,
         code,
         name: row.Name || code,
         market: 'cn',
-        exchange: row.SecurityTypeName || (prefix === 'sh' ? '沪A' : prefix === 'bj' ? '北交所' : '深A'),
+        exchange: isOtcFund ? '场外基金' : (row.SecurityTypeName || (prefix === 'sh' ? '沪A' : prefix === 'bj' ? '北交所' : '深A')),
         type: row.Classify || row.SecurityTypeName || '',
+        assetType: isOtcFund ? 'otc_fund' : isFund ? 'exchange_fund' : 'stock',
         pinyin: row.PinYin || ''
       };
     });
