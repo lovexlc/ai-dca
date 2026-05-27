@@ -452,12 +452,12 @@ function IndexCard({ entry, onPick, sparkPoints }) {
     <button
       type="button"
       onClick={() => onPick && onPick(entry)}
-      className="group flex w-[140px] min-w-0 shrink-0 snap-start flex-col items-start gap-1 overflow-hidden rounded-xl border border-slate-200/70 bg-white p-3 text-left shadow-sm transition hover:shadow-md sm:w-[150px] lg:w-[160px]"
+      className="group flex min-h-[150px] w-[168px] min-w-0 shrink-0 snap-start flex-col items-start gap-1.5 overflow-hidden rounded-2xl border border-slate-200/70 bg-white p-3 text-left shadow-sm transition hover:shadow-md sm:w-[184px] lg:w-[200px]"
     >
-      <div className="line-clamp-1 w-full text-[15px] font-semibold leading-tight text-slate-900">{entry.name || formatSymbolDisplay(entry.symbol)}</div>
-      <div className="w-full truncate text-[13px] leading-tight tabular-nums text-slate-700">{formatNumber(entry.price)}</div>
+      <div className="line-clamp-2 min-h-[38px] w-full text-[15px] font-semibold leading-snug text-slate-900">{entry.name || formatSymbolDisplay(entry.symbol)}</div>
+      <div className="w-full truncate text-[14px] font-medium leading-tight tabular-nums text-slate-700">{formatNumber(entry.price)}</div>
       {hasChange && (
-        <div className="text-[11px] tabular-nums text-slate-500">({change >= 0 ? '+' : ''}{formatNumber(Math.abs(change))})</div>
+        <div className="text-[11px] leading-none tabular-nums text-slate-500">({change >= 0 ? '+' : ''}{formatNumber(Math.abs(change))})</div>
       )}
       <div className="flex w-full items-center gap-1.5">
         <span className={cx(
@@ -471,8 +471,8 @@ function IndexCard({ entry, onPick, sparkPoints }) {
           {positive ? <ArrowUp size={11} strokeWidth={2.5} /> : negative ? <ArrowDown size={11} strokeWidth={2.5} /> : null}
         </span>
       </div>
-      <div className="mt-1 -mx-1 w-[calc(100%+0.5rem)]">
-        <Sparkline points={sparkPoints} width={160} height={48} tone={tone} className="w-full" />
+      <div className="mt-auto -mx-1 w-[calc(100%+0.5rem)] pt-1">
+        <Sparkline points={sparkPoints} width={180} height={50} tone={tone} className="h-[50px] w-full" />
       </div>
     </button>
   );
@@ -4969,8 +4969,8 @@ export function MarketsExperience() {
         ) : (
           <>
             {indices.length ? (
-              <div className="-mx-2 overflow-x-auto px-2 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <div className="flex snap-x snap-mandatory gap-3 pb-1">
+              <div className="-mx-2 min-h-[176px] overflow-x-auto px-2 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="flex min-h-[156px] snap-x snap-mandatory items-stretch gap-3 pb-1">
                   {indices.map((entry) => (
                     <IndexCard
                       key={entry.symbol}
