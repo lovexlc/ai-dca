@@ -207,7 +207,14 @@ async function notifyXueqiuCookieIssue(env, error, context = {}) {
   };
   try {
     const existing = await kvGetJson(env, XUEQIU_COOKIE_ALERT_KEY).catch(() => null);
-    if (existing && existing.reason === reason) return;
+    if (existing) {
+      console.warn('[markets:xueqiu] alert suppressed by rate limit', {
+        reason,
+        previousReason: existing.reason || '',
+        previousGeneratedAt: existing.generatedAt || ''
+      });
+      return;
+    }
     await kvPutJson(env, XUEQIU_COOKIE_ALERT_KEY, payload, { ttlSeconds: XUEQIU_COOKIE_ALERT_TTL_SECONDS }).catch(() => {});
   } catch (_) {}
   console.warn('[markets:xueqiu] cookie issue', payload);
