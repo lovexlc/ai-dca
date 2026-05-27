@@ -1492,28 +1492,46 @@ function CandlesLayerPanel({ xAxisMap, yAxisMap, data }) {
   );
 }
 
-function TradeMarkersLayer({ xAxisMap, yAxisMap, data, markers = [] }) {
-  if (!xAxisMap || !yAxisMap || !Array.isArray(data) || !data.length || !markers.length) return null;
-  const xAxis = Object.values(xAxisMap)[0];
+function TradeMarkersLayer({ xAxisMap, yAxisMap, width, height, offset, data, markers = [] }) {
+  if (!yAxisMap || !Array.isArray(data) || !data.length || !markers.length) return null;
+  const xAxis = xAxisMap ? Object.values(xAxisMap)[0] : null;
   const yAxis = Object.values(yAxisMap)[0];
-  if (!xAxis || !yAxis || typeof yAxis.scale !== 'function') return null;
-  const xScale = xAxis.scale;
+  if (!yAxis || typeof yAxis.scale !== 'function') return null;
+  const xScale = xAxis && typeof xAxis.scale === 'function' ? xAxis.scale : null;
   const yScale = yAxis.scale;
   const rows = data.filter((row) => Number.isFinite(Number(row?.t)) && Number.isFinite(Number(row?.main)));
   if (!rows.length) return null;
+  const chartOffset = offset || {};
+  const plotLeft = Number.isFinite(Number(chartOffset.left)) ? Number(chartOffset.left) : 0;
+  const plotWidth = Number.isFinite(Number(chartOffset.width)) ? Number(chartOffset.width) : (Number(width) || 0);
+  const yTop = Number.isFinite(Number(yAxis.y)) ? Number(yAxis.y) : (Number.isFinite(Number(chartOffset.top)) ? Number(chartOffset.top) : 0);
+  const yHeight = Number.isFinite(Number(yAxis.height)) ? Number(yAxis.height) : (Number.isFinite(Number(height)) ? Number(height) : 0);
+  const xFromIndex = (rowIndex) => {
+    if (xScale) {
+      const raw = xScale(rows[rowIndex]?.label);
+      if (typeof raw === 'number' && Number.isFinite(raw)) {
+        const bandwidth = typeof xScale.bandwidth === 'function' ? Number(xScale.bandwidth()) : 0;
+        return raw + (Number.isFinite(bandwidth) ? bandwidth / 2 : 0);
+      }
+    }
+    if (rows.length <= 1 || !(plotWidth > 0)) return plotLeft + plotWidth / 2;
+    return plotLeft + (plotWidth * rowIndex) / (rows.length - 1);
+  };
   return (
     <g pointerEvents="none">
       {markers.map((marker, index) => {
         const markerT = Number(marker.t);
-        const row = rows.find((item) => Number(item.t) >= markerT) || rows[rows.length - 1];
+        let rowIndex = rows.findIndex((item) => Number(item.t) >= markerT);
+        if (rowIndex < 0) rowIndex = rows.length - 1;
+        const row = rows[rowIndex];
         if (!row) return null;
-        const cxRaw = xScale(row.label);
+        const cxRaw = xFromIndex(rowIndex);
         const cyRaw = yScale(row.main);
         if (typeof cxRaw !== 'number' || Number.isNaN(cxRaw) || typeof cyRaw !== 'number' || Number.isNaN(cyRaw)) return null;
         const isBuy = marker.type === 'BUY';
         const color = isBuy ? '#d93025' : '#1a73e8';
         const label = isBuy ? '买' : '卖';
-        const cy = Math.max(16, Math.min(yAxis.y + yAxis.height - 8, cyRaw - (isBuy ? 10 : -10)));
+        const cy = Math.max(yTop + 16, Math.min(yTop + yHeight - 8, cyRaw - (isBuy ? 10 : -10)));
         return (
           <g key={`${marker.id || marker.type}-${marker.date}-${index}`}>
             {isBuy ? (
@@ -2911,7 +2929,7 @@ function SymbolDetailPanel({
               onHover={handleChartHover}
               onLeave={handleChartLeave}
               onLock={handleChartLock}
-              tradeMarkers={cnFundParam === 'price' && compareSymbols.length === 0 ? tradeMarkers : []}
+              tradeMarkers={compareSymbols.length === 0 ? tradeMarkers : []}
               lockOnClick={isMobile}
             />
           ) : sparkFallback ? (
