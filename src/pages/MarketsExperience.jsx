@@ -1022,6 +1022,26 @@ function getLatestFinanceRow(fundData, key) {
 function detailValueRow(label, value, className = '') {
   return { label, value, className };
 }
+function buildXueqiuPremiumSnapshotFromQuote(row, symbol) {
+  const price = Number(row?.price);
+  const latestNav = Number(row?.latestNav ?? row?.unitNav);
+  const iopv = Number(row?.iopv);
+  const premiumPercent = Number(row?.premiumPercent ?? row?.premium_rate);
+  if (!Number.isFinite(price) || price <= 0) return null;
+  if (!Number.isFinite(latestNav) || latestNav <= 0) return null;
+  const effectiveIopv = Number.isFinite(iopv) && iopv > 0 ? iopv : latestNav;
+  return {
+    symbol: String(symbol || row?.symbol || '').trim(),
+    price,
+    baseNav: latestNav,
+    latestNav,
+    navDate: row?.latestNavDate || row?.navDate || '',
+    iopv: effectiveIopv,
+    premiumPercent: Number.isFinite(premiumPercent) ? premiumPercent : ((price - effectiveIopv) / effectiveIopv) * 100,
+    updatedAt: row?.lastUpdated || row?.asOf || new Date().toISOString(),
+    cache: { hit: false, source: 'xueqiu-quote', key: '' }
+  };
+}
 function formatEps(n) {
   if (n == null || !Number.isFinite(Number(n))) return '-';
   return Number(n).toFixed(2);
@@ -1180,6 +1200,16 @@ function buildCnFundParamCandles(priceCandles, navItems, param, premiumState, ra
   let sortedNav = (Array.isArray(navItems) ? navItems : [])
     .filter((item) => item && /^\d{4}-\d{2}-\d{2}$/.test(String(item.date || '')) && Number(item.nav) > 0)
     .sort((a, b) => a.date.localeCompare(b.date));
+  if (param === 'nav') {
+    const latestData = premiumState?.data || null;
+    const latestDate = String(latestData?.navDate || '').slice(0, 10);
+    const latestNav = Number(latestData?.latestNav ?? latestData?.baseNav);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(latestDate) && Number.isFinite(latestNav) && latestNav > 0) {
+      sortedNav = sortedNav.filter((item) => item.date !== latestDate);
+      sortedNav.push({ date: latestDate, nav: latestNav, source: 'xueqiu-quote' });
+      sortedNav.sort((a, b) => a.date.localeCompare(b.date));
+    }
+  }
   if (param === 'nav' && rangeKey === '1d' && sortedNav.length) {
     // 场外基金没有盘中分时。1 天视图用最新确认净值生成同一日水平线，避免把前一净值日连成斜线。
     const latest = sortedNav[sortedNav.length - 1];
@@ -1983,8 +2013,8 @@ function NavInsightCard({ premiumState }) {
         </div>
         <div className="text-right text-[12px] leading-5 text-[#5f6368]">
           <div>场内价格 <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(data.price, 4)}</span></div>
-          <div>估算 IOPV <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(data.iopv, 4)}</span></div>
-          <div>估算溢价 <span className={cx('font-medium tabular-nums', Number(data.premiumPercent) > 0 ? 'text-[#a50e0e]' : Number(data.premiumPercent) < 0 ? 'text-[#137333]' : 'text-[#1f1f1f]')}>{formatSignedPercent(data.premiumPercent)}</span></div>
+          <div>最新 IOPV <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(data.iopv, 4)}</span></div>
+          <div>最新溢价 <span className={cx('font-medium tabular-nums', Number(data.premiumPercent) > 0 ? 'text-[#a50e0e]' : Number(data.premiumPercent) < 0 ? 'text-[#137333]' : 'text-[#1f1f1f]')}>{formatSignedPercent(data.premiumPercent)}</span></div>
         </div>
       </div>
       <p className="mt-2 text-[11px] leading-4 text-[#9aa0a6]">净值取基金最新确认 NAV，场内基金盘中交易仍以价格为准。</p>
@@ -2873,7 +2903,7 @@ function SymbolDetailPanel({
           </div>
         ) : null}
 
-        {market === 'cn' && cnFundParam === 'nav' ? <NavInsightCard premiumState={premiumState} /> : null}
+        {market === 'cn' && (cnFundParam === 'nav' || cnFundParam === 'premium') ? <NavInsightCard premiumState={premiumState} /> : null}
 
         {/* 详情 tab */}
         <div className="mt-1.5 flex gap-4 border-b border-[#e8eaed] text-[12px] font-medium text-[#5f6368] sm:mt-2 sm:text-[13px]">
@@ -4180,6 +4210,14 @@ export function MarketsExperience() {
       }
       return;
     }
+    const xueqiuPremium = buildXueqiuPremiumSnapshotFromQuote(selectedQuote, symbol);
+    if (xueqiuPremium) {
+      setPremiumMap((prev) => ({
+        ...prev,
+        [symbol]: { loading: false, error: '', data: xueqiuPremium }
+      }));
+      return;
+    }
     if (premiumInflightRef.current.has(symbol)) return;
     premiumInflightRef.current.add(symbol);
     setPremiumMap((prev) => ({ ...prev, [symbol]: { loading: true, data: prev[symbol]?.data || null, error: '' } }));
@@ -4212,7 +4250,7 @@ export function MarketsExperience() {
       }
     })();
     return () => { cancelled = true; };
-  }, [market, selectedSymbol, selectedQuote?.price]);
+  }, [market, selectedSymbol, selectedQuote?.price, selectedQuote?.latestNav, selectedQuote?.iopv, selectedQuote?.premiumPercent, selectedQuote?.latestNavDate]);
 
   useEffect(() => {
     if (market !== 'cn' || !selectedSymbol) return;

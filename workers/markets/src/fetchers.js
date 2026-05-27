@@ -124,6 +124,21 @@ function normalizeXueqiuMarketState(quote = {}) {
   return 'CLOSED';
 }
 
+function formatShanghaiDateFromMs(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date(n)).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return parts.year && parts.month && parts.day ? `${parts.year}-${parts.month}-${parts.day}` : '';
+}
+
 function normalizeXueqiuQuotePayload(data, code) {
   const quote = data?.data?.quote || data?.quote || data?.data || {};
   if (!quote || typeof quote !== 'object') throw new Error('xueqiu quote empty');
@@ -149,6 +164,16 @@ function normalizeXueqiuQuotePayload(data, code) {
     volume: Number(quote.volume) || null,
     turnover: Number(quote.amount) || null,
     marketCapital: Number(quote.market_capital) || null,
+    iopv: round(quote.iopv, 4),
+    latestNav: round(quote.unit_nav, 4),
+    accumulatedNav: round(quote.acc_unit_nav, 4),
+    latestNavDate: formatShanghaiDateFromMs(quote.nav_date),
+    premiumPercent: round(quote.premium_rate, 4),
+    currentYearPercent: round(quote.current_year_percent, 4),
+    totalShares: Number(quote.total_shares) || null,
+    volumeRatio: round(quote.volume_ratio, 4),
+    high52w: round(quote.high52w, 4),
+    low52w: round(quote.low52w, 4),
     currency: quote.currency || 'CNY',
     exchangeTimezone: 'Asia/Shanghai',
     marketState: normalizeXueqiuMarketState(quote),
