@@ -89,6 +89,30 @@ export function bulkReplaceTrades(trades) {
   return { list: kept, archivedCount: archived.length };
 }
 
+function normalizeIsoDate(value = '') {
+  const v = String(value || '').trim();
+  if (!v) return '';
+  const directMatch = v.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (directMatch) {
+    const [, y, m, d] = directMatch;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  const compact = v.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (compact) {
+    const [, y, m, d] = compact;
+    return `${y}-${m}-${d}`;
+  }
+  const timestamp = Date.parse(v);
+  if (Number.isFinite(timestamp)) {
+    const dateObj = new Date(timestamp);
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const d = String(dateObj.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return '';
+}
+
 export function normalizeTrade(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const side = raw.side === 'sell' ? 'sell' : raw.side === 'buy' ? 'buy' : null;
@@ -99,13 +123,14 @@ export function normalizeTrade(raw) {
   const price = Number(raw.price);
   if (!Number.isFinite(shares) || shares <= 0) return null;
   if (!Number.isFinite(price) || price < 0) return null;
+  const isoDate = normalizeIsoDate(raw.date) || new Date().toISOString().slice(0, 10);
   return {
     id: raw.id || newId(),
     symbol,
     side,
     shares: Number(shares.toFixed(6)),
     price: Number(price.toFixed(6)),
-    date: raw.date || new Date().toISOString().slice(0, 10),
+    date: isoDate,
     fee: Number(raw.fee) > 0 ? Number(raw.fee) : 0,
     note: typeof raw.note === 'string' ? raw.note.slice(0, 200) : ''
   };
