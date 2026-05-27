@@ -2020,6 +2020,47 @@ async function handleHoldingsRulePost(request, env) {
 
 // 管理员：手动触发「全仓总览」推送（可选跳过当日 dedup + 可选临时覆盖 totals）。
 // 需要 ADMIN_TEST_TOKEN 匹配。主要用于上线后手动验证推送能走通。
+
+async function handleAdminAlert(request, env) {
+  const origin = readOrigin(request);
+  const headerToken = request.headers.get('x-admin-token') || '';
+  const expected = String(env?.ADMIN_TEST_TOKEN || env?.ADMIN_NOTIFY_TOKEN || '').trim();
+  if (!expected || String(headerToken || '').trim() !== expected) {
+    return jsonResponse({ error: 'forbidden' }, { status: 403, origin });
+  }
+  const targetClientId = normalizeClientId(env?.ADMIN_NOTIFY_CLIENT_ID || env?.ADMIN_CLIENT_ID || '');
+  if (!targetClientId) {
+    return jsonResponse({ error: 'ADMIN_NOTIFY_CLIENT_ID required' }, { status: 400, origin });
+  }
+  let settings = await readSettings(env);
+  const clientRecord = getClientRecord(settings, targetClientId);
+  if (!clientRecord?.clientId) {
+    return jsonResponse({ error: 'admin notify client not found' }, { status: 404, origin });
+  }
+  const payload = await request.json().catch(() => ({}));
+  const nowIso = new Date().toISOString();
+  const result = await runClientDetection(env, settings, clientRecord, {
+    reason: 'admin-alert',
+    testPayload: {
+      eventId: String(payload.eventId || `admin-alert-${Date.now()}`),
+      eventType: String(payload.eventType || payload.type || 'admin_alert'),
+      title: String(payload.title || '管理员告警'),
+      body: String(payload.body || payload.summary || '系统告警，请检查。'),
+      summary: String(payload.summary || payload.body || '系统告警'),
+      ruleId: String(payload.ruleId || payload.type || 'admin-alert'),
+      symbol: String(payload.symbol || '').trim(),
+      strategyName: String(payload.strategyName || '系统监控'),
+      triggerCondition: String(payload.triggerCondition || payload.reason || ''),
+      purchaseAmount: String(payload.purchaseAmount || '').trim(),
+      detailUrl: String(payload.detailUrl || payload.url || '').trim(),
+      createdAt: String(payload.createdAt || nowIso)
+    }
+  });
+  settings = result.settings;
+  await writeSettings(env, settings);
+  return jsonResponse({ ok: true, clientId: targetClientId, summary: result.summary }, { origin });
+}
+
 async function handleAdminHoldingsAllTest(request, env) {
   const origin = readOrigin(request);
   const headerToken = request.headers.get('x-admin-token') || '';
@@ -3219,6 +3260,10 @@ export default {
 
       if (request.method === 'POST' && url.pathname === '/api/notify/holdings-rule') {
         return await handleHoldingsRulePost(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/admin/alert') {
+        return await handleAdminAlert(request, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/admin/holdings-all-test') {

@@ -218,18 +218,27 @@ async function notifyXueqiuCookieIssue(env, error, context = {}) {
     await kvPutJson(env, XUEQIU_COOKIE_ALERT_KEY, payload, { ttlSeconds: XUEQIU_COOKIE_ALERT_TTL_SECONDS }).catch(() => {});
   } catch (_) {}
   console.warn('[markets:xueqiu] cookie issue', payload);
-  const webhook = String(env.MARKETS_ADMIN_NOTIFY_WEBHOOK || '').trim();
-  if (!webhook) return;
+  const notifyEndpoint = String(env.MARKETS_ADMIN_NOTIFY_ENDPOINT || 'https://tools.freebacktrack.tech/api/notify/admin/alert').trim();
+  const legacyWebhook = String(env.MARKETS_ADMIN_NOTIFY_WEBHOOK || '').trim();
+  const token = String(env.MARKETS_ADMIN_NOTIFY_TOKEN || env.ADMIN_NOTIFY_TOKEN || env.ADMIN_TEST_TOKEN || '').trim();
+  const targetUrl = notifyEndpoint || legacyWebhook;
+  if (!targetUrl) return;
   try {
     const headers = { 'content-type': 'application/json' };
-    const token = String(env.MARKETS_ADMIN_NOTIFY_TOKEN || '').trim();
-    if (token) headers.authorization = `Bearer ${token}`;
-    const res = await fetch(webhook, {
+    if (token) headers['x-admin-token'] = token;
+    const res = await fetch(targetUrl, {
       method: 'POST',
       headers,
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        ...payload,
+        eventType: 'xueqiu_cookie_issue',
+        ruleId: 'xueqiu-cookie',
+        strategyName: 'markets Worker',
+        triggerCondition: reason,
+        detailUrl: 'https://dash.cloudflare.com/'
+      })
     });
-    if (!res.ok) console.warn('[markets:xueqiu] admin notify webhook non-ok', res.status);
+    if (!res.ok) console.warn('[markets:xueqiu] admin notify non-ok', res.status);
   } catch (notifyError) {
     console.warn('[markets:xueqiu] admin notify failed', String((notifyError && notifyError.message) || notifyError));
   }
