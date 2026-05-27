@@ -12,8 +12,8 @@
 - [done] 移除东方财富 quote/K 线 fallback，仅保留搜索。
 - [done] 本地语法/烟测验证。
   - node/npm 不在当前环境，使用 git diff --check 与静态引用检查替代。
-- [in_progress] 提交并推送，触发 Worker GitHub Actions 部署。
-- [todo] 检查 Actions 与线上 Worker 版本。
+- [done] 提交并推送，触发 Worker GitHub Actions 部署。
+- [in_progress] 检查 Actions 与线上 Worker 版本。
 
 ## 关键决策
 - Cookie 不入仓库，运行时从 Worker Secret `XUEQIU_COOKIE` 读取。
