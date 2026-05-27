@@ -38,6 +38,7 @@ import { getCnEtfPremiumSnapshot, getNavHistory, getNavSnapshot } from '../app/n
 import { Sparkline } from '../components/markets/Sparkline.jsx';
 import { MarketsChartCodeBlock } from '../components/markets/MarketsChartBlock.jsx';
 import { Area, Bar, CartesianGrid, ComposedChart, Customized, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import nasdaqOtcCatalog from '../../data/all_nasdq_otc.json';
 
 const MARKETS = [
   { key: 'us', label: '美股' },
@@ -45,6 +46,7 @@ const MARKETS = [
 ];
 
 const CN_ETF_PRESET_MAP = Object.fromEntries(CN_ETF_WATCHLIST_PRESETS.map((item) => [item.symbol, item]));
+const NASDAQ_OTC_FUND_MAP = Object.fromEntries(((nasdaqOtcCatalog && nasdaqOtcCatalog.funds) || []).map((item) => [String(item.code || '').trim(), item]));
 
 function formatNumber(value, fractionDigits = 2) {
   const n = Number(value);
@@ -100,6 +102,33 @@ function normalizeCnFundCode(value) {
   if (prefixed) return prefixed[2];
   const sixDigits = /(\d{6})/.exec(raw);
   return sixDigits ? sixDigits[1] : '';
+}
+
+function resolveCnFundName(codeOrSymbol, fallback = '') {
+  const code = normalizeCnFundCode(codeOrSymbol);
+  const fallbackText = String(fallback || '').trim();
+  const isCodeOnlyFallback = fallbackText && normalizeCnFundCode(fallbackText) === code;
+  return (code && NASDAQ_OTC_FUND_MAP[code]?.name)
+    || (!isCodeOnlyFallback ? fallbackText : '')
+    || code
+    || fallbackText;
+}
+
+function buildOtcCandidate(code, fallback = {}) {
+  const normalizedCode = normalizeCnFundCode(code || fallback.code || fallback.symbol);
+  const catalog = NASDAQ_OTC_FUND_MAP[normalizedCode] || {};
+  const name = resolveCnFundName(normalizedCode, fallback.name || fallback.shortName || fallback.displayName);
+  return {
+    ...fallback,
+    symbol: normalizedCode,
+    code: normalizedCode,
+    name,
+    market: 'cn',
+    exchange: '场外基金',
+    assetType: 'otc_fund',
+    linkedSymbol: catalog.link_to || fallback.linkedSymbol || '',
+    indexKey: catalog.index_key || fallback.indexKey || ''
+  };
 }
 
 function buildNavSnapshotItems(snapshot) {
@@ -1105,14 +1134,18 @@ function findNavOnOrBefore(navItems, date) {
   return found;
 }
 
-function buildCnFundParamCandles(priceCandles, navItems, param, premiumState) {
+function buildCnFundParamCandles(priceCandles, navItems, param, premiumState, rangeKey = '') {
   if (param === 'price') return priceCandles;
-  const sortedNav = (Array.isArray(navItems) ? navItems : [])
+  let sortedNav = (Array.isArray(navItems) ? navItems : [])
     .filter((item) => item && /^\d{4}-\d{2}-\d{2}$/.test(String(item.date || '')) && Number(item.nav) > 0)
     .sort((a, b) => a.date.localeCompare(b.date));
+  if (rangeKey === '1d' && sortedNav.length > 2) {
+    // 场外基金没有盘中分时。1 天视图按最新确认净值日展示最近两个净值点。
+    sortedNav = sortedNav.slice(-2);
+  }
   if (param === 'nav') {
     const priceTimeline = Array.isArray(priceCandles) ? priceCandles : [];
-    if (priceTimeline.length >= 2) {
+    if (priceTimeline.length >= 2 && rangeKey !== '1d') {
       return priceTimeline
         .map((candle) => {
           const date = shanghaiDateFromEpochSec(candle?.t);
@@ -1156,7 +1189,6 @@ function buildCnFundParamCandles(priceCandles, navItems, param, premiumState) {
   return priceCandles;
 }
 
-
 function isCnOtcFundQuote(row) {
   if (!row) return false;
   const source = String(row.source || '').toLowerCase();
@@ -1180,7 +1212,7 @@ function buildOtcFundQuoteFromSnapshot(symbol, snapshot, fallback = {}) {
     ...fallback,
     symbol: String(symbol || snapshot?.code || fallback.symbol || '').trim().toUpperCase(),
     code: String(snapshot?.code || symbol || fallback.code || '').replace(/\D/g, '').slice(-6),
-    name: snapshot?.name || fallback.name || fallback.displayName || fallback.shortName || symbol,
+    name: resolveCnFundName(snapshot?.code || symbol || fallback.code, snapshot?.name || fallback.name || fallback.displayName || fallback.shortName),
     market: 'cn',
     exchange: '场外基金',
     currency: 'CNY',
@@ -1373,15 +1405,44 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
     return out;
   }, [candles, indicators, normalized]);
   const finalRows = useMemo(() => {
+    const alignedCompare = cmpList.map((series) => {
+      const candlesSorted = [...series.candles]
+        .filter((candle) => Number.isFinite(Number(candle?.t)) && Number.isFinite(Number(candle?.c)))
+        .sort((a, b) => Number(a.t) - Number(b.t));
+      let cursor = 0;
+      const values = rows.map((row) => {
+        const rowT = Number(row.t);
+        while (cursor + 1 < candlesSorted.length && Number(candlesSorted[cursor + 1].t) <= rowT) cursor += 1;
+        const candle = candlesSorted[cursor];
+        return candle && Number(candle.t) <= rowT ? candle : null;
+      });
+      return { values };
+    });
+    const commonBaseIndex = normalized
+      ? rows.findIndex((row, index) => Number.isFinite(Number(row.c)) && alignedCompare.every((series) => Number.isFinite(Number(series.values[index]?.c))))
+      : 0;
+    const mainBase = Number(rows[Math.max(0, commonBaseIndex)]?.c) || 1;
+    const compareBases = alignedCompare.map((series) => Number(series.values[Math.max(0, commonBaseIndex)]?.c) || 1);
     return rows.map((row, index) => {
       const out = { ...row };
       indicatorLines.forEach((line) => { out[line.key] = line.values[index]; });
-      cmpList.forEach((series, ci) => {
-        const offset = Math.max(0, series.candles.length - rows.length);
-        const aligned = series.candles.slice(offset);
-        const candle = aligned[index];
-        const base = Number(aligned[0] && aligned[0].c) || 1;
-        if (candle && Number.isFinite(Number(candle.c))) {
+      if (normalized) {
+        if (commonBaseIndex >= 0 && index >= commonBaseIndex) {
+          const close = Number(row.c);
+          out.main = Number.isFinite(close) ? ((close / mainBase) - 1) * 100 : null;
+          out.mainBase = mainBase;
+          out.mainChange = Number.isFinite(close) ? close - mainBase : null;
+          out.mainChangePercent = mainBase && Number.isFinite(close) ? ((close / mainBase) - 1) * 100 : null;
+        } else {
+          out.main = null;
+          out.mainChange = null;
+          out.mainChangePercent = null;
+        }
+      }
+      alignedCompare.forEach((series, ci) => {
+        const candle = series.values[index];
+        const base = compareBases[ci];
+        if (candle && Number.isFinite(Number(candle.c)) && (!normalized || (commonBaseIndex >= 0 && index >= commonBaseIndex))) {
           const close = Number(candle.c);
           out[`cmp_${ci}`] = compareAsValue ? close : ((close / base) - 1) * 100;
           out[`cmp_${ci}_price`] = close;
@@ -1394,7 +1455,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
       });
       return out;
     });
-  }, [rows, indicatorLines, cmpSignature, compareAsValue]);
+  }, [rows, indicatorLines, cmpSignature, compareAsValue, normalized]);
   const finalRowsSignature = finalRows.length ? `${finalRows.length}|${finalRows[0].t}|${finalRows[finalRows.length - 1].t}` : 'empty';
   useEffect(() => {
     setZoomWindow(null);
@@ -1949,7 +2010,7 @@ function SymbolDetailPanel({
           const rows = Array.isArray(res && res.results) ? [...res.results] : [];
           const otcCode = normalizeCnFundCode(q);
           if (market === 'cn' && /^\d{6}$/.test(otcCode) && !rows.some((item) => normalizeCnFundCode(item.symbol || item.code || item.ticker) === otcCode)) {
-            rows.push({ symbol: otcCode, code: otcCode, name: otcCode, market: 'cn', exchange: '场外基金', assetType: 'otc_fund' });
+            rows.push(buildOtcCandidate(otcCode));
           }
           const current = String(rowSymbol || '').toUpperCase();
           const seen = new Set();
@@ -2187,7 +2248,7 @@ function SymbolDetailPanel({
     const compareNavKey = `${compareCode}|${navHistoryDaysForRange(chartRange)}`;
     const compareNavItems = compareNavHistoryMap[compareNavKey]?.items;
     const candles = market === 'cn' && cnFundParam !== 'price'
-      ? buildCnFundParamCandles(priceCandles, compareNavItems, cnFundParam, premiumState)
+      ? buildCnFundParamCandles(priceCandles, compareNavItems, cnFundParam, premiumState, chartRange)
       : priceCandles;
     return {
       symbol: sym,
@@ -2242,10 +2303,10 @@ function SymbolDetailPanel({
     ...compareSymbols.map((sym, index) => applyHoverSnapshot(normalizeCompareQuote(sym, compareCandidates.find((item) => item.symbol === sym)), `cmp_${index}_`))
   ];
   const effectiveChartCandles = isCnOtcFund
-    ? (cnFundParam === 'premium' ? [] : buildCnFundParamCandles(chartCandles, navHistoryState?.items, 'nav', premiumState))
+    ? (cnFundParam === 'premium' ? [] : buildCnFundParamCandles([], navHistoryState?.items, 'nav', premiumState, chartRange))
     : (market !== 'cn' || cnFundParam === 'price'
       ? chartCandles
-      : buildCnFundParamCandles(chartCandles, navHistoryState?.items, cnFundParam, premiumState));
+      : buildCnFundParamCandles(chartCandles, navHistoryState?.items, cnFundParam, premiumState, chartRange));
   const effectiveChartType = market === 'cn' && cnFundParam !== 'price' ? 'area' : chartType;
   const premiumCompareMode = market === 'cn' && cnFundParam === 'premium';
   const premiumUnavailable = isCnOtcFund && cnFundParam === 'premium';
@@ -2670,10 +2731,10 @@ function SymbolDetailPanel({
                       <div className="mt-0.5 hidden truncate text-[12px] text-[rgba(17,24,39,0.64)] sm:block sm:text-[13px]">{item.name}</div>
                     </div>
                   </div>
-                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[17px]', premiumCompareMode ? toneClass : 'text-[#202124]')}>{Number.isFinite(item.price) ? (premiumCompareMode ? formatSignedPercent(item.price) : `$${formatNumber(item.price, 2)}`) : '--'}</div>
+                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[17px]', premiumCompareMode ? toneClass : 'text-[#202124]')}>{Number.isFinite(item.price) ? (premiumCompareMode ? formatSignedPercent(item.price) : (market === 'cn' ? formatNumber(item.price, 2) : `$${formatNumber(item.price, 2)}`)) : '--'}</div>
                   <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? spreadToneClass : toneClass)}>{premiumCompareMode ? (Number.isFinite(spreadValue) ? formatSignedPercent(spreadValue) : '--') : (Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)}` : '--')}</div>
                   <div className={cx('whitespace-nowrap text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? 'text-[#202124]' : toneClass)}>{premiumCompareMode ? (Number.isFinite(item.marketPrice) ? formatNumber(item.marketPrice, 4) : '--') : (Number.isFinite(item.changePercent) ? formatSignedPercent(item.changePercent) : '--')}</div>
-                  <div className="hidden whitespace-nowrap text-[15px] font-bold text-[#202124] transition-colors duration-[120ms] sm:block sm:text-[17px]">{premiumCompareMode ? (Number.isFinite(item.navValue) ? formatNumber(item.navValue, 4) : '--') : (Number.isFinite(item.previousClose) ? `$${formatNumber(item.previousClose, 2)}` : '--')}</div>
+                  <div className="hidden whitespace-nowrap text-[15px] font-bold text-[#202124] transition-colors duration-[120ms] sm:block sm:text-[17px]">{premiumCompareMode ? (Number.isFinite(item.navValue) ? formatNumber(item.navValue, 4) : '--') : (Number.isFinite(item.previousClose) ? (market === 'cn' ? formatNumber(item.previousClose, 2) : `$${formatNumber(item.previousClose, 2)}`) : '--')}</div>
                 </div>
               );
             })}
@@ -3655,7 +3716,7 @@ export function MarketsExperience() {
           const rawRows = Array.isArray(r && r.results) ? [...r.results] : [];
           const otcCode = normalizeCnFundCode(q);
           if (activeMarket.key === 'cn' && /^\d{6}$/.test(otcCode) && !rawRows.some((row) => normalizeCnFundCode(row.symbol || row.code || row.ticker) === otcCode)) {
-            rawRows.push({ symbol: otcCode, code: otcCode, name: otcCode, market: 'cn', exchange: '场外基金', assetType: 'otc_fund' });
+            rawRows.push(buildOtcCandidate(otcCode));
           }
           const rows = rawRows.map((row) => ({
             ...row,
@@ -3849,7 +3910,7 @@ export function MarketsExperience() {
               ...prev[key],
               ...quote,
               symbol: String(quote.symbol || selectedSymbol).trim().toUpperCase(),
-              name: quote.name || prev[key]?.name || CN_ETF_PRESET_MAP[selectedSymbol]?.name || selectedSymbol
+              name: resolveCnFundName(quote.symbol || selectedSymbol, quote.name || prev[key]?.name || CN_ETF_PRESET_MAP[selectedSymbol]?.name || selectedSymbol)
             }
           };
         });
@@ -3870,7 +3931,7 @@ export function MarketsExperience() {
               [key]: {
                 ...prev[key],
                 ...quote,
-                name: quote.name || prev[key]?.name || selectedSymbol
+                name: resolveCnFundName(quote.symbol || selectedSymbol, quote.name || prev[key]?.name || selectedSymbol)
               }
             };
           });
