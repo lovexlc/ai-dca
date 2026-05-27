@@ -2441,13 +2441,22 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }, { ignoreBlank: true });
     const oppositeType = draft.type === 'BUY' ? 'SELL' : 'BUY';
     const draftCodeNormalized = normalizeFundCode(draft.code);
+    const switchUsedIds = new Set(
+      transactions
+        .map((tx) => String(tx.switchPairId || '').trim())
+        .filter(Boolean),
+    );
     const switchCandidates = transactions
       .filter((tx) => (
         tx.id !== draft.id
         && tx.type === oppositeType
         && tx.code
         && tx.code !== draftCodeNormalized
-        && (!tx.switchPairId || tx.switchPairId === draft.id)
+        // 只允许选择“从未参与任何切换配对”的对手方：
+        // - 自己没有 switchPairId（没主动指向别人）
+        // - 也没被别人 switchPairId 指向（没作为别人的对手方）
+        && !tx.switchPairId
+        && !switchUsedIds.has(tx.id)
       ))
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
     const isSwitchOn = Boolean(draft.switchPairId);
@@ -2615,9 +2624,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                     )}
                     <button
                       type="button"
-                      className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500"
                       onClick={openSwitchPicker}
-                      disabled={switchCandidates.length === 0}
                     >
                       <Search className="h-3 w-3" />
                       {pairedCounterpart || pairedMissing ? '更换' : '选择对手方'}
