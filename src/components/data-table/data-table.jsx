@@ -18,10 +18,15 @@ function DataTable({
   className,
   onRowClick,
   footerRow,
+  resizable = false,
   ...props
 }) {
   return <div
-    className={cn("flex w-full flex-col gap-2.5 overflow-auto", className)}
+    className={cn(
+      "flex w-full flex-col gap-2.5 overflow-auto",
+      resizable && "md:min-h-[320px] md:min-w-[720px] md:max-h-[calc(100vh-160px)] md:max-w-[calc(100vw-48px)] md:resize",
+      className
+    )}
     {...props}
   >{children}<div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white"><Table><TableHeader>{table.getHeaderGroups().map((headerGroup) => <TableRow key={headerGroup.id}>{headerGroup.headers.map((header) => <TableHead
     key={header.id}

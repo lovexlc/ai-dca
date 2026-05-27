@@ -1949,6 +1949,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         <DataTable
           table={aggregatesTable}
           footerRow={aggregatesFooterRow}
+          resizable
           onRowClick={(row) => {
             setSelectedCode(row.original.code);
             setSidePanelTab('summary');
@@ -1983,7 +1984,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     return (
       <div className="flex flex-col gap-2">
         <DataTableToolbar table={ledgerTable} />
-        <DataTable table={ledgerTable} />
+        <DataTable table={ledgerTable} resizable />
       </div>
     );
   }

@@ -153,7 +153,7 @@ export async function getCnEtfPremiumSnapshot(code, { price, qqqChangePercent, f
     price: priceValue,
     baseNav,
     navDate: snapshot?.latestNavDate || '',
-    qqqChangePercent: qqqPct,
+    qqqChangePercent: Number.isFinite(Number(qqqChangePercent)) ? Number(qqqChangePercent) : null,
     iopv,
     premiumPercent: iopv > 0 ? ((priceValue - iopv) / iopv) * 100 : null,
     updatedAt: new Date().toISOString(),

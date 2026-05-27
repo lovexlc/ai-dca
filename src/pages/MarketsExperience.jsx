@@ -1177,7 +1177,6 @@ const TOOLBAR_ICONS = {
   compare: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={toolbarIconClass}><path d="M4 8c2.5-3 5.5-3 8 0s5.5 3 8 0" /><path d="M4 16c2.5 3 5.5 3 8 0s5.5-3 8 0" /></svg>,
 };
 const CHART_TYPE_OPTIONS = [
-  { key: 'area', label: '面积图', hint: '趋势 + 渐变填充', icon: TOOLBAR_ICONS.area },
   { key: 'candle', label: 'K 线图', hint: '开高低收烛台', icon: TOOLBAR_ICONS.candle },
   { key: 'bar', label: '柱形图', hint: '柱形展示收盘价', icon: TOOLBAR_ICONS.bar },
 ];
@@ -1527,11 +1526,17 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
         />
         <Tooltip
           cursor={false}
-          content={({ label }) => (
-            <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
-              {label}
-            </div>
-          )}
+          content={({ label, payload }) => {
+            const item = Array.isArray(payload) ? payload.find((entry) => entry && entry.dataKey === 'main') : null;
+            const value = item && item.payload ? item.payload.main : null;
+            const showValue = !normalized && value != null && Number.isFinite(Number(value));
+            return (
+              <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
+                <div>{label}</div>
+                {showValue ? <div className="mt-0.5 tabular-nums text-[#1f1f1f]">{formatNumber(value, 2)}</div> : null}
+              </div>
+            );
+          }}
         />
         {showArea ? (
           <Area type="monotone" dataKey="main" name={displayMainSymbol || '当前标的'} stroke={mainColor} fill={mainColor} fillOpacity={0.12} dot={false} strokeWidth={3} isAnimationActive={false} />
@@ -1855,7 +1860,7 @@ function SymbolDetailPanel({
   navHistoryState,
   isMobile = false,
 }) {
-  const [chartType, setChartType] = useState('area');
+  const [chartType, setChartType] = useState('candle');
   const [cnFundParam, setCnFundParam] = useState('price');
   const [indicators, setIndicators] = useState(() => new Set());
   const [compareSymbols, setCompareSymbols] = useState([]);
@@ -1879,7 +1884,7 @@ function SymbolDetailPanel({
   useEffect(() => { setHoveredChartRow(null); setLockedChartRow(null); }, [chartRange, cnFundParam]);
   useEffect(() => { if (market !== 'cn') setCnFundParam('price'); }, [market]);
   useEffect(() => {
-    if (market === 'cn' && cnFundParam !== 'price' && chartType !== 'area') setChartType('area');
+    if (chartType === 'area') setChartType('candle');
   }, [market, cnFundParam, chartType]);
   useEffect(() => {
     const q = compareInput.trim();
@@ -2190,7 +2195,7 @@ function SymbolDetailPanel({
   const effectiveChartCandles = market !== 'cn' || cnFundParam === 'price'
     ? chartCandles
     : buildCnFundParamCandles(chartCandles, navHistoryState?.items, cnFundParam, premiumState);
-  const effectiveChartType = market === 'cn' && cnFundParam !== 'price' ? 'area' : chartType;
+  const effectiveChartType = chartType === 'area' ? 'candle' : chartType;
   const premiumCompareMode = market === 'cn' && cnFundParam === 'premium';
   const buildPremiumTableRow = (quoteRow, keyPrefix, metricCandles) => {
     if (!premiumCompareMode) return quoteRow;
@@ -2349,9 +2354,9 @@ function SymbolDetailPanel({
           ) : null}
           {!isMobile ? (
             <ChartToolbarPopover
-              icon={(CHART_TYPE_OPTIONS.find((opt) => opt.key === effectiveChartType) || {}).icon || TOOLBAR_ICONS.area}
-              label={CHART_TYPE_LABEL[effectiveChartType] || '面积图'}
-              active={effectiveChartType !== 'area'}
+              icon={(CHART_TYPE_OPTIONS.find((opt) => opt.key === effectiveChartType) || {}).icon || TOOLBAR_ICONS.candle}
+              label={CHART_TYPE_LABEL[effectiveChartType] || 'K 线图'}
+              active={effectiveChartType !== 'candle'}
             >
               {({ close }) => (
                 <div className="flex flex-col gap-0.5">
