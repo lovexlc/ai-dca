@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -1585,7 +1586,9 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   // ---- Switch counterpart picker ----
   function openSwitchPicker() {
     setSwitchPickerSearch('');
-    setSwitchPickerOpen(true);
+    // 移动端某些 WebView/手势层会出现「点击后 state 已更新，但 UI 不立即重绘」的情况，
+    // 往往要等一次导航/返回（popstate）才把弹窗绘出来。这里强制同步 flush，确保立刻渲染。
+    flushSync(() => setSwitchPickerOpen(true));
   }
 
   function closeSwitchPicker() {
