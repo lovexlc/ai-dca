@@ -17,6 +17,7 @@ import {
   deleteWatchlist,
   fetchEarnings,
   fetchFinancials,
+  fetchXueqiuFundData,
   fetchIndices,
   fetchKline,
   fetchQuote,
@@ -986,6 +987,41 @@ function formatRevenue(n) {
   if (v >= 1e4) return (Number(n) / 1e4).toFixed(2) + ' 万';
   return String(n);
 }
+function formatCnMoney(value) {
+  if (value == null || !Number.isFinite(Number(value))) return '--';
+  return formatRevenue(Number(value));
+}
+function formatCnAmount(value) {
+  if (value == null || !Number.isFinite(Number(value))) return '--';
+  return formatRevenue(Number(value));
+}
+function formatMaybeDate(value) {
+  if (!value) return '--';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value).slice(0, 10) || '--';
+  return d.toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' });
+}
+function formatXueqiuDateMs(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return '--';
+  return new Date(n).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' });
+}
+function firstPairValue(value) {
+  return Array.isArray(value) ? value[0] : value;
+}
+function getXueqiuQuote(fundData) {
+  return fundData?.results?.quote_detail?.raw?.data?.quote || fundData?.results?.quote_detail?.summary?.quote || null;
+}
+function getXueqiuPayload(fundData, key) {
+  return fundData?.results?.[key]?.raw?.data || null;
+}
+function getLatestFinanceRow(fundData, key) {
+  const list = getXueqiuPayload(fundData, key)?.list;
+  return Array.isArray(list) && list.length ? list[0] : null;
+}
+function detailValueRow(label, value, className = '') {
+  return { label, value, className };
+}
 function formatEps(n) {
   if (n == null || !Number.isFinite(Number(n))) return '-';
   return Number(n).toFixed(2);
@@ -1060,6 +1096,8 @@ function EarningsCalendar({ items = [], initialLimit = 5 }) {
 
 const SYMBOL_DETAIL_TABS = [
   { key: 'overview', label: '概览' },
+  { key: 'fundFlow', label: '资金' },
+  { key: 'fundReport', label: '年报' },
   { key: 'earnings', label: '财报' },
   { key: 'financials', label: '财务' },
 ];
@@ -1954,6 +1992,83 @@ function NavInsightCard({ premiumState }) {
   );
 }
 
+
+function CnFundFlowPanel({ fundData, loading }) {
+  if (loading) return <div className="h-40 animate-pulse rounded-xl bg-[#f1f3f4]" />;
+  const flow = getXueqiuPayload(fundData, 'capital_flow');
+  const history = getXueqiuPayload(fundData, 'capital_history');
+  const pankou = getXueqiuPayload(fundData, 'pankou');
+  const latestFlow = Array.isArray(flow?.items) && flow.items.length ? flow.items[flow.items.length - 1] : null;
+  const bidAskRows = [1, 2, 3, 4, 5].map((level) => ({
+    level,
+    bidPrice: pankou?.[`bp${level}`],
+    bidVolume: pankou?.[`bc${level}`],
+    askPrice: pankou?.[`sp${level}`],
+    askVolume: pankou?.[`sc${level}`]
+  }));
+  if (!flow && !history && !pankou) return <div className="rounded-xl border border-[#e8eaed] bg-[#f8fafd] px-4 py-6 text-sm text-[#5f6368]">暂无资金和盘口数据。</div>;
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <div className="flex items-center justify-between border-b border-[#e8eaed] py-2"><span className="text-[#5f6368]">最新资金流</span><span className="font-medium tabular-nums text-[#1f1f1f]">{formatCnMoney(latestFlow?.amount)}</span></div>
+        <div className="flex items-center justify-between border-b border-[#e8eaed] py-2"><span className="text-[#5f6368]">3日净流入</span><span className="font-medium tabular-nums text-[#1f1f1f]">{formatCnMoney(history?.sum3)}</span></div>
+        <div className="flex items-center justify-between border-b border-[#e8eaed] py-2"><span className="text-[#5f6368]">5日净流入</span><span className="font-medium tabular-nums text-[#1f1f1f]">{formatCnMoney(history?.sum5)}</span></div>
+        <div className="flex items-center justify-between border-b border-[#e8eaed] py-2"><span className="text-[#5f6368]">20日净流入</span><span className="font-medium tabular-nums text-[#1f1f1f]">{formatCnMoney(history?.sum20)}</span></div>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-[#e8eaed] bg-white">
+        <div className="border-b border-[#e8eaed] bg-[#f8fafd] px-3 py-2 text-sm font-semibold text-[#1f1f1f]">盘口</div>
+        <div className="grid grid-cols-5 gap-0 text-right text-[12px] sm:text-sm">
+          <div className="px-2 py-2 text-left font-medium text-[#5f6368]">档位</div><div className="px-2 py-2 font-medium text-[#5f6368]">买价</div><div className="px-2 py-2 font-medium text-[#5f6368]">买量</div><div className="px-2 py-2 font-medium text-[#5f6368]">卖价</div><div className="px-2 py-2 font-medium text-[#5f6368]">卖量</div>
+          {bidAskRows.map((it) => (
+            <div key={it.level} className="contents">
+              <div className="border-t border-[#f1f3f4] px-2 py-2 text-left text-[#5f6368]">{it.level}档</div>
+              <div className="border-t border-[#f1f3f4] px-2 py-2 tabular-nums text-[#1f1f1f]">{formatNumber(it.bidPrice, 3)}</div>
+              <div className="border-t border-[#f1f3f4] px-2 py-2 tabular-nums text-[#1f1f1f]">{formatCnAmount(it.bidVolume)}</div>
+              <div className="border-t border-[#f1f3f4] px-2 py-2 tabular-nums text-[#1f1f1f]">{formatNumber(it.askPrice, 3)}</div>
+              <div className="border-t border-[#f1f3f4] px-2 py-2 tabular-nums text-[#1f1f1f]">{formatCnAmount(it.askVolume)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CnFundReportPanel({ fundData, loading }) {
+  if (loading) return <div className="h-40 animate-pulse rounded-xl bg-[#f1f3f4]" />;
+  const indicator = getLatestFinanceRow(fundData, 'finance_indicator');
+  const balance = getLatestFinanceRow(fundData, 'finance_balance');
+  const income = getLatestFinanceRow(fundData, 'finance_income');
+  const cashflow = getLatestFinanceRow(fundData, 'finance_cash_flow');
+  const reportName = indicator?.report_name || balance?.report_name || income?.report_name || cashflow?.report_name || '';
+  const rows = [
+    detailValueRow('报告期', reportName || '--'),
+    detailValueRow('总资产', formatCnMoney(firstPairValue(balance?.total_assets))),
+    detailValueRow('总负债', formatCnMoney(firstPairValue(balance?.total_liab))),
+    detailValueRow('资产负债率', Number.isFinite(Number(firstPairValue(indicator?.asset_liab_ratio))) ? `${formatNumber(firstPairValue(indicator?.asset_liab_ratio), 2)}%` : '--'),
+    detailValueRow('营收', formatCnMoney(firstPairValue(income?.revenue))),
+    detailValueRow('营收同比', Number.isFinite(Number(firstPairValue(indicator?.operating_income_yoy))) ? `${formatNumber(firstPairValue(indicator?.operating_income_yoy), 2)}%` : '--'),
+    detailValueRow('净利润', formatCnMoney(firstPairValue(income?.net_profit))),
+    detailValueRow('综合收益', formatCnMoney(firstPairValue(income?.total_compre_income))),
+    detailValueRow('经营现金流', formatCnMoney(firstPairValue(cashflow?.ncf_from_oa))),
+    detailValueRow('总资本周转', formatNumber(firstPairValue(indicator?.total_capital_turnover), 4)),
+  ];
+  if (!indicator && !balance && !income && !cashflow) return <div className="rounded-xl border border-[#e8eaed] bg-[#f8fafd] px-4 py-6 text-sm text-[#5f6368]">暂无基金年报数据。</div>;
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-[#e8eaed] bg-[#f8fafd] px-3 py-2 text-[12px] text-[#5f6368]">雪球返回的是基金年报口径数据，不是普通股票财报。</div>
+      <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+        {rows.map((item) => (
+          <div key={item.label} className="flex items-center justify-between border-b border-[#e8eaed] py-2">
+            <span className="text-[#5f6368]">{item.label}</span>
+            <span className="font-medium tabular-nums text-[#1f1f1f]">{item.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SymbolDetailPanel({
   row,
   market,
@@ -1962,6 +2077,8 @@ function SymbolDetailPanel({
   earnings = [],
   financials = null,
   financialsLoading = false,
+  xueqiuFundData = null,
+  xueqiuFundLoading = false,
   activeTab,
   onTabChange,
   onAnalyze,
@@ -2130,6 +2247,27 @@ function SymbolDetailPanel({
   const currencyLabel = row.currency || (market === 'us' ? 'USD' : 'CNY');
   const stateLabel = marketStateLabel(row.marketState, market);
   const isCnOtcFund = market === 'cn' && isCnOtcFundQuote(row);
+  const xueqiuQuote = getXueqiuQuote(xueqiuFundData);
+  const cnOverviewExtras = market === 'cn' && !isCnOtcFund ? [
+    detailValueRow('开盘价', formatNumber(row.open ?? xueqiuQuote?.open, 3)),
+    detailValueRow('最高价', formatNumber(row.high ?? xueqiuQuote?.high, 3)),
+    detailValueRow('最低价', formatNumber(row.low ?? xueqiuQuote?.low, 3)),
+    detailValueRow('成交额', formatCnMoney(row.turnover ?? xueqiuQuote?.amount)),
+    detailValueRow('市值', formatCnMoney(row.marketCapital ?? row.marketCap ?? xueqiuQuote?.market_capital)),
+    detailValueRow('成交量', formatCnAmount(row.volume ?? xueqiuQuote?.volume)),
+    detailValueRow('52 周最高价', formatNumber(xueqiuQuote?.high52w, 3)),
+    detailValueRow('52 周最低价', formatNumber(xueqiuQuote?.low52w, 3)),
+    detailValueRow('iOPV', formatNumber(xueqiuQuote?.iopv, 4)),
+    detailValueRow('单位净值', formatNumber(xueqiuQuote?.unit_nav, 4)),
+    detailValueRow('累计净值', formatNumber(xueqiuQuote?.acc_unit_nav, 4)),
+    detailValueRow('净值日期', formatXueqiuDateMs(xueqiuQuote?.nav_date)),
+    detailValueRow('溢价率', Number.isFinite(Number(xueqiuQuote?.premium_rate)) ? formatSignedPercent(xueqiuQuote?.premium_rate) : '--'),
+    detailValueRow('年内涨幅', Number.isFinite(Number(xueqiuQuote?.current_year_percent)) ? formatSignedPercent(xueqiuQuote?.current_year_percent) : '--'),
+    detailValueRow('总份额', formatCnAmount(xueqiuQuote?.total_shares)),
+    detailValueRow('量比', formatNumber(xueqiuQuote?.volume_ratio, 2)),
+    detailValueRow('成立日期', formatXueqiuDateMs(xueqiuQuote?.found_date)),
+    detailValueRow('上市日期', formatXueqiuDateMs(xueqiuQuote?.issue_date)),
+  ].filter((item) => item.value !== '--' && item.value !== '-').slice(0, 18) : [];
   const toggleIndicator = (k) => setIndicators((prev) => {
     const next = new Set(prev);
     if (next.has(k)) next.delete(k); else next.add(k);
@@ -2739,7 +2877,7 @@ function SymbolDetailPanel({
 
         {/* 详情 tab */}
         <div className="mt-1.5 flex gap-4 border-b border-[#e8eaed] text-[12px] font-medium text-[#5f6368] sm:mt-2 sm:text-[13px]">
-          {(market === 'us' ? SYMBOL_DETAIL_TABS : SYMBOL_DETAIL_TABS.filter((tab) => tab.key === 'overview')).map((tab) => (
+          {(market === 'us' ? SYMBOL_DETAIL_TABS.filter((tab) => tab.key === 'overview' || tab.key === 'earnings' || tab.key === 'financials') : SYMBOL_DETAIL_TABS.filter((tab) => tab.key === 'overview' || (!isCnOtcFund && (tab.key === 'fundFlow' || tab.key === 'fundReport')))).map((tab) => (
             <button
               key={tab.key}
               type="button"
@@ -2784,6 +2922,18 @@ function SymbolDetailPanel({
               <span className="font-medium text-[#1f1f1f]">{stateLabel}</span>
             </div>
             </div>
+            {xueqiuFundLoading && market === 'cn' && !cnOverviewExtras.length ? (
+              <div className="h-20 animate-pulse rounded-xl bg-[#f1f3f4]" />
+            ) : cnOverviewExtras.length ? (
+              <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                {cnOverviewExtras.map((item) => (
+                  <div key={item.label} className="flex items-center justify-between border-b border-[#e8eaed] py-2">
+                    <span className="text-[#5f6368]">{item.label}</span>
+                    <span className={cx('font-medium tabular-nums text-[#1f1f1f]', item.className)}>{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <div className="border-t border-[#e8eaed] pt-4">
               <div className="mb-2 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-[#1f1f1f]">相关新闻</h3>
@@ -2792,6 +2942,10 @@ function SymbolDetailPanel({
               <NewsList items={(relatedNews.length ? relatedNews : news.slice(0, 5)).slice(0, 5)} />
             </div>
           </div>
+        ) : activeTab === 'fundFlow' ? (
+          <CnFundFlowPanel fundData={xueqiuFundData} loading={xueqiuFundLoading} />
+        ) : activeTab === 'fundReport' ? (
+          <CnFundReportPanel fundData={xueqiuFundData} loading={xueqiuFundLoading} />
         ) : activeTab === 'earnings' ? (
           <EarningsCalendar items={relatedEarnings.length ? relatedEarnings : earnings.slice(0, 5)} />
         ) : (
@@ -3390,6 +3544,9 @@ export function MarketsExperience() {
   const [financialsMap, setFinancialsMap] = useState({});
   const [financialsLoading, setFinancialsLoading] = useState(false);
   const financialsInflightRef = useRef(new Set());
+  const [xueqiuFundDataMap, setXueqiuFundDataMap] = useState({});
+  const [xueqiuFundLoading, setXueqiuFundLoading] = useState(false);
+  const xueqiuFundInflightRef = useRef(new Set());
   const chartInflightRef = useRef(new Set());
   const [vpHeight, setVpHeight] = useState(null);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)').matches : false);
@@ -3671,6 +3828,29 @@ export function MarketsExperience() {
     })();
     return () => { cancelled = true; };
   }, [selectedSymbol, market, symbolDetailTab, financialsMap]);
+
+  useEffect(() => {
+    if (!selectedSymbol || market !== 'cn') return;
+    const code = normalizeCnFundCode(selectedSymbol);
+    if (!/^\d{6}$/.test(code) || NASDAQ_OTC_FUND_MAP[code]) return;
+    if (Object.prototype.hasOwnProperty.call(xueqiuFundDataMap, selectedSymbol)) return;
+    if (xueqiuFundInflightRef.current.has(selectedSymbol)) return;
+    xueqiuFundInflightRef.current.add(selectedSymbol);
+    setXueqiuFundLoading(true);
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetchXueqiuFundData(selectedSymbol, { raw: true });
+        if (!cancelled) setXueqiuFundDataMap((prev) => ({ ...prev, [selectedSymbol]: r }));
+      } catch (_) {
+        if (!cancelled) setXueqiuFundDataMap((prev) => ({ ...prev, [selectedSymbol]: null }));
+      } finally {
+        xueqiuFundInflightRef.current.delete(selectedSymbol);
+        if (!cancelled) setXueqiuFundLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedSymbol, market, xueqiuFundDataMap]);
 
   useEffect(() => {
     refreshIndices(false);
@@ -4458,6 +4638,8 @@ export function MarketsExperience() {
             earnings={earnings}
             financials={financialsMap[selectedQuote.symbol]}
             financialsLoading={financialsLoading && !financialsMap[selectedQuote.symbol]}
+            xueqiuFundData={xueqiuFundDataMap[selectedQuote.symbol]}
+            xueqiuFundLoading={xueqiuFundLoading && !xueqiuFundDataMap[selectedQuote.symbol]}
             activeTab={symbolDetailTab}
             onTabChange={setSymbolDetailTab}
             chartRange={chartRange}
