@@ -2625,7 +2625,16 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                     <button
                       type="button"
                       className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500"
-                      onClick={openSwitchPicker}
+                      onPointerUp={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        openSwitchPicker();
+                      }}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        openSwitchPicker();
+                      }}
                     >
                       <Search className="h-3 w-3" />
                       {pairedCounterpart || pairedMissing ? '更换' : '选择对手方'}
@@ -3051,7 +3060,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         </div>
       ) : null}
       {switchPickerOpen ? (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/40 px-4 py-6" onClick={closeSwitchPicker}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/40 px-4 py-6" onClick={closeSwitchPicker}>
           <div className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
               <div>
