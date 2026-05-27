@@ -35,6 +35,7 @@ import {
 } from '../app/marketsApi.js';
 import { showActionToast } from '../app/toast.js';
 import { readLedgerState } from '../app/holdingsLedger.js';
+import { readTradeLedger, TRADE_LEDGER_UPDATED_EVENT } from '../app/tradeLedger.js';
 import { aggregateByCode } from '../app/holdingsLedgerCore.js';
 import { buildStockAnalysisPrompt } from '../app/stockAnalysisPrompt.js';
 import { getCnEtfPremiumSnapshot, getNavHistory, getNavSnapshot, getNavSnapshots } from '../app/navService.js';
@@ -1224,16 +1225,27 @@ function buildHoldingTradeMarkers(transactions = [], code = '') {
   const normalizedCode = normalizeCnFundCode(code);
   if (!normalizedCode) return [];
   return (Array.isArray(transactions) ? transactions : [])
-    .filter((tx) => normalizeCnFundCode(tx?.code) === normalizedCode && (tx?.type === 'BUY' || tx?.type === 'SELL') && /^\d{4}-\d{2}-\d{2}$/.test(String(tx?.date || '')))
-    .map((tx, index) => ({
-      id: tx.id || `${tx.type}-${tx.date}-${index}`,
-      type: tx.type,
-      date: tx.date,
-      t: epochSecFromShanghaiDate(tx.date, '15:00:00'),
-      price: Number(tx.price),
-      shares: Number(tx.shares),
-    }))
-    .filter((marker) => marker.t > 0)
+    .map((tx, index) => {
+      const txCode = normalizeCnFundCode(tx?.code || tx?.symbol);
+      const rawType = String(tx?.type || '').toUpperCase();
+      const side = String(tx?.side || '').toLowerCase();
+      const type = rawType === 'BUY' || side === 'buy' ? 'BUY' : rawType === 'SELL' || side === 'sell' ? 'SELL' : '';
+      const date = String(tx?.date || '').slice(0, 10);
+      if (txCode !== normalizedCode || !type || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+      return {
+        id: tx.id || `${type}-${date}-${index}`,
+        type,
+        date,
+        t: epochSecFromShanghaiDate(date, '15:00:00'),
+        price: Number(tx.price),
+        shares: Number(tx.shares),
+      };
+    })
+    .filter((marker) => marker && marker.t > 0)
+    .filter((marker, index, markers) => {
+      const key = `${marker.type}|${marker.date}|${Number(marker.price) || 0}|${Number(marker.shares) || 0}`;
+      return markers.findIndex((item) => `${item.type}|${item.date}|${Number(item.price) || 0}|${Number(item.shares) || 0}` === key) === index;
+    })
     .sort((a, b) => a.t - b.t);
 }
 
@@ -3665,6 +3677,7 @@ export function MarketsExperience() {
   const [watchlistDialog, setWatchlistDialog] = useState(null);
   const [sidebarListMode, setSidebarListMode] = useState('watch');
   const [holdingsLedger, setHoldingsLedger] = useState(() => readLedgerState());
+  const [tradeLedgerEntries, setTradeLedgerEntries] = useState(() => readTradeLedger());
   const [watchQuotes, setWatchQuotes] = useState({});
   const [watchNavSnapshots, setWatchNavSnapshots] = useState({});
   const [watchLoading, setWatchLoading] = useState(false);
@@ -3766,13 +3779,17 @@ export function MarketsExperience() {
   const watchSymbols = useMemo(() => activeWatchList[market] || [], [activeWatchList, market]);
   useEffect(() => {
     const refreshHoldingsLedger = () => setHoldingsLedger(readLedgerState());
+    const refreshTradeLedger = () => setTradeLedgerEntries(readTradeLedger());
+    const refreshAllLedgers = () => { refreshHoldingsLedger(); refreshTradeLedger(); };
     window.addEventListener('holdings:ledger-updated', refreshHoldingsLedger);
-    window.addEventListener('storage', refreshHoldingsLedger);
-    window.addEventListener('focus', refreshHoldingsLedger);
+    window.addEventListener(TRADE_LEDGER_UPDATED_EVENT, refreshTradeLedger);
+    window.addEventListener('storage', refreshAllLedgers);
+    window.addEventListener('focus', refreshAllLedgers);
     return () => {
       window.removeEventListener('holdings:ledger-updated', refreshHoldingsLedger);
-      window.removeEventListener('storage', refreshHoldingsLedger);
-      window.removeEventListener('focus', refreshHoldingsLedger);
+      window.removeEventListener(TRADE_LEDGER_UPDATED_EVENT, refreshTradeLedger);
+      window.removeEventListener('storage', refreshAllLedgers);
+      window.removeEventListener('focus', refreshAllLedgers);
     };
   }, []);
   const heldAggregates = useMemo(
@@ -4305,8 +4322,10 @@ export function MarketsExperience() {
   );
   const selectedCnFundCode = market === 'cn' ? normalizeCnFundCode(selectedSymbol || selectedQuote?.symbol) : '';
   const selectedTradeMarkers = useMemo(
-    () => selectedCnFundCode ? buildHoldingTradeMarkers(holdingsLedger.transactions, selectedCnFundCode) : [],
-    [holdingsLedger.transactions, selectedCnFundCode]
+    () => selectedCnFundCode
+      ? buildHoldingTradeMarkers([...(holdingsLedger.transactions || []), ...(tradeLedgerEntries || [])], selectedCnFundCode)
+      : [],
+    [holdingsLedger.transactions, tradeLedgerEntries, selectedCnFundCode]
   );
 
   useEffect(() => {
