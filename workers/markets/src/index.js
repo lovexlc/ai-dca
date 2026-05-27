@@ -5,11 +5,13 @@ import {
   normalizeYahooQuote,
   normalizeYahooKline,
   fetchYahooQuotesBatch,
-  fetchEastmoneyKline,
   fetchSinaKline,
   fetchSinaQuote,
   fetchSinaQuotesBatch,
-  fetchEastmoneyMovers,
+  fetchXueqiuQuote,
+  fetchXueqiuQuotesBatch,
+  fetchXueqiuKline,
+  fetchXueqiuCnFundData,
   searchYahooSymbols,
   searchEastmoneySymbols,
   fetchFinnhubQuote,
@@ -187,6 +189,116 @@ function keepLatestCnIntradaySession(payload, market, tf) {
   return { ...payload, candles: filtered };
 }
 
+const XUEQIU_COOKIE_ALERT_KEY = 'alert:xueqiu-cookie';
+const XUEQIU_COOKIE_ALERT_TTL_SECONDS = 6 * 3600;
+
+function summarizeXueqiuError(error) {
+  return String((error && error.message) || error || 'unknown xueqiu error').slice(0, 300);
+}
+
+async function notifyXueqiuCookieIssue(env, error, context = {}) {
+  const reason = summarizeXueqiuError(error);
+  const payload = {
+    type: 'xueqiu_cookie_issue',
+    title: '雪球 Cookie 失效或不可用',
+    body: 'markets Worker 已降级使用新浪源。',
+    reason,
+    context,
+    generatedAt: new Date().toISOString()
+  };
+  try {
+    const existing = await kvGetJson(env, XUEQIU_COOKIE_ALERT_KEY).catch(() => null);
+    if (existing) {
+      console.warn('[markets:xueqiu] alert suppressed by rate limit', {
+        reason,
+        previousReason: existing.reason || '',
+        previousGeneratedAt: existing.generatedAt || ''
+      });
+      return;
+    }
+    await kvPutJson(env, XUEQIU_COOKIE_ALERT_KEY, payload, { ttlSeconds: XUEQIU_COOKIE_ALERT_TTL_SECONDS }).catch(() => {});
+  } catch (_) {}
+  console.warn('[markets:xueqiu] cookie issue', payload);
+  const notifyEndpoint = String(env.MARKETS_ADMIN_NOTIFY_ENDPOINT || 'https://tools.freebacktrack.tech/api/notify/admin/alert').trim();
+  const legacyWebhook = String(env.MARKETS_ADMIN_NOTIFY_WEBHOOK || '').trim();
+  const token = String(env.MARKETS_ADMIN_NOTIFY_TOKEN || env.ADMIN_NOTIFY_TOKEN || env.ADMIN_TEST_TOKEN || '').trim();
+  const targetUrl = notifyEndpoint || legacyWebhook;
+  if (!targetUrl) return;
+  try {
+    const headers = { 'content-type': 'application/json' };
+    if (token) headers['x-admin-token'] = token;
+    const res = await fetch(targetUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        ...payload,
+        eventType: 'xueqiu_cookie_issue',
+        ruleId: 'xueqiu-cookie',
+        strategyName: 'markets Worker',
+        triggerCondition: reason,
+        detailUrl: 'https://dash.cloudflare.com/'
+      })
+    });
+    if (!res.ok) console.warn('[markets:xueqiu] admin notify non-ok', res.status);
+  } catch (notifyError) {
+    console.warn('[markets:xueqiu] admin notify failed', String((notifyError && notifyError.message) || notifyError));
+  }
+}
+
+async function fetchCnQuoteWithFallback(env, code, context = {}) {
+  try {
+    const quote = await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE });
+    return quote;
+  } catch (error) {
+    await notifyXueqiuCookieIssue(env, error, { ...context, code, endpoint: 'quote' });
+    const fallback = await fetchSinaQuote(code);
+    return { ...fallback, fallback: 'sina', primaryError: summarizeXueqiuError(error) };
+  }
+}
+
+async function fetchCnQuotesBatchWithFallback(env, items = []) {
+  const out = {};
+  const codeList = items.map((item) => item.code);
+  let xueqiuMap = {};
+  try {
+    xueqiuMap = await fetchXueqiuQuotesBatch(codeList, { cookie: env.XUEQIU_COOKIE });
+  } catch (error) {
+    await notifyXueqiuCookieIssue(env, error, { endpoint: 'quotes', count: items.length });
+    xueqiuMap = {};
+  }
+  const fallbackItems = [];
+  for (const item of items) {
+    const quote = xueqiuMap[item.code];
+    if (quote && !quote.error) out[item.raw] = quote;
+    else fallbackItems.push({ ...item, primaryError: quote?.error || 'xueqiu quote missing' });
+  }
+  if (!fallbackItems.length) return out;
+  await notifyXueqiuCookieIssue(env, fallbackItems[0].primaryError, { endpoint: 'quotes', count: fallbackItems.length });
+  try {
+    const sinaMap = await fetchSinaQuotesBatch(fallbackItems.map((item) => item.code));
+    for (const item of fallbackItems) {
+      const quote = sinaMap[item.code];
+      out[item.raw] = quote && !quote.error
+        ? { ...quote, fallback: 'sina', primaryError: item.primaryError }
+        : { symbol: item.raw, error: quote?.error || 'sina quote missing', primaryError: item.primaryError };
+    }
+  } catch (error) {
+    for (const item of fallbackItems) out[item.raw] = { symbol: item.raw, error: String((error && error.message) || error), primaryError: item.primaryError };
+  }
+  return out;
+}
+
+async function fetchCnKlineWithFallback(env, code, tf) {
+  try {
+    const payload = await fetchXueqiuKline(code, { cookie: env.XUEQIU_COOKIE, intervalLabel: tf, limit: 500 });
+    return { ...payload, market: 'cn', generatedAt: new Date().toISOString() };
+  } catch (error) {
+    await notifyXueqiuCookieIssue(env, error, { code, endpoint: 'kline', tf });
+    const fallback = await fetchSinaKline(code, { intervalLabel: tf, limit: 500 });
+    return { ...fallback, market: 'cn', generatedAt: new Date().toISOString(), fallback: 'sina', primaryError: summarizeXueqiuError(error) };
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') {
@@ -250,6 +362,9 @@ export default {
       if ((m = path.match(/^\/profile\/(.+)$/))) {
         return await handleProfile(env, decodeURIComponent(m[1]));
       }
+      if ((m = path.match(/^\/xueqiu-fund-data\/(.+)$/))) {
+        return await handleXueqiuFundData(env, decodeURIComponent(m[1]), url.searchParams);
+      }
       if ((m = path.match(/^\/financials\/(.+)$/))) {
         return await handleFinancials(env, decodeURIComponent(m[1]), url.searchParams.get('refresh') === '1');
       }
@@ -312,7 +427,8 @@ async function refreshIndices(env, market) {
       console.warn('cnn fng fetch failed', (err && err.message) || err);
     }
   } else if (market === 'cn') {
-    const quoteMap = await fetchSinaQuotesBatch(CN_INDICES.map((it) => it.symbol));
+    const cnIndexItems = CN_INDICES.map((it) => ({ raw: it.symbol, code: it.symbol }));
+    const quoteMap = await fetchCnQuotesBatchWithFallback(env, cnIndexItems);
     indexes = CN_INDICES.map((it) => {
       const q = quoteMap[it.symbol] || {};
       return { ...q, key: it.key, name: it.name, symbol: it.symbol };
@@ -381,7 +497,7 @@ async function handleQuote(env, rawSymbol) {
   if (!market) return errorJson('invalid symbol', 400);
   const cacheKey = 'quote:' + code;
   const cached = await kvGetJson(env, cacheKey);
-  if (cached && cached.asOf && Date.now() - new Date(cached.asOf).getTime() < 90000 && (market === 'us' || cached.source === 'sina-quote')) {
+  if (cached && cached.asOf && Date.now() - new Date(cached.asOf).getTime() < 90000 && (market === 'us' || cached.source === 'xueqiu-quote' || cached.source === 'sina-quote')) {
     return json({ ...cached, cached: true });
   }
   let quote;
@@ -389,7 +505,7 @@ async function handleQuote(env, rawSymbol) {
     const raw = await fetchYahooChart(code, { range: '1d', interval: '5m' });
     quote = normalizeYahooQuote(raw);
   } else {
-    quote = await fetchSinaQuote(code);
+    quote = await fetchCnQuoteWithFallback(env, code, { rawSymbol });
   }
   await kvPutJson(env, cacheKey, quote, { ttlSeconds: 300 });
   return json({ ...quote, cached: false });
@@ -412,16 +528,7 @@ async function handleBatchQuotes(env, symbolsParam) {
     else usItems.push({ raw, code });
   }
   if (cnItems.length) {
-    try {
-      const quoteMap = await fetchSinaQuotesBatch(cnItems.map((item) => item.code));
-      for (const item of cnItems) {
-        out[item.raw] = quoteMap[item.code] || { symbol: item.raw, error: 'sina quote missing' };
-      }
-    } catch (err) {
-      for (const item of cnItems) {
-        out[item.raw] = { symbol: item.raw, error: String((err && err.message) || err) };
-      }
-    }
+    Object.assign(out, await fetchCnQuotesBatchWithFallback(env, cnItems));
   }
   await mapLimit(usItems, 5, async (item) => {
     try {
@@ -455,7 +562,7 @@ async function handleKline(env, rawSymbol, params) {
     const cached = await r2GetJson(env, r2k);
     if (cached && cached.candles && cached.candles.length) {
       const stale = klineCacheIsStale({ cached, market, tf });
-      const sourceOk = market !== 'cn' || cached.source === 'sina-kline';
+      const sourceOk = market !== 'cn' || cached.source === 'xueqiu-kline' || cached.source === 'sina-kline';
       console.log('[markets:kline] cache check', {
         rawSymbol,
         market,
@@ -491,16 +598,9 @@ async function refreshKline(env, market, code, tf) {
     const raw = await fetchYahooChart(code, { range: yahooRange, interval: yahooInterval });
     payload = { ...normalizeYahooKline(raw, tf), market, generatedAt: new Date().toISOString() };
   } else {
-    try {
-      console.log('[markets:kline] fetch sina start', { market, code, tf, limit: 500, nowIso: new Date().toISOString() });
-      payload = { ...(await fetchSinaKline(code, { intervalLabel: tf, limit: 500 })), market, generatedAt: new Date().toISOString() };
-      console.log('[markets:kline] fetch sina done', { market, code, tf, payload: describeKlinePayloadForLog(payload) });
-    } catch (err) {
-      console.warn('sina kline failed, fallback to eastmoney', code, tf, (err && err.message) || err);
-      console.log('[markets:kline] fetch eastmoney fallback start', { market, code, tf, limit: 500, nowIso: new Date().toISOString() });
-      payload = { ...(await fetchEastmoneyKline(code, { intervalLabel: tf, limit: 500 })), market, generatedAt: new Date().toISOString(), fallback: 'eastmoney' };
-      console.log('[markets:kline] fetch eastmoney fallback done', { market, code, tf, payload: describeKlinePayloadForLog(payload) });
-    }
+    console.log('[markets:kline] fetch xueqiu primary start', { market, code, tf, limit: 500, nowIso: new Date().toISOString() });
+    payload = await fetchCnKlineWithFallback(env, code, tf);
+    console.log('[markets:kline] fetch cn kline done', { market, code, tf, payload: describeKlinePayloadForLog(payload) });
   }
   payload = keepLatestCnIntradaySession(payload, market, tf);
   await r2PutJson(env, klineKey(market, code, tf), payload);
@@ -516,24 +616,22 @@ async function handleMovers(env, market, direction, forceRefresh) {
   }
   let list = [];
   if (market === 'cn') {
+    const cnItems = CN_TOP_TICKERS.map((symbol) => ({ raw: symbol, code: symbol }));
+    const quoteMap = await fetchCnQuotesBatchWithFallback(env, cnItems);
+    const arr = Object.values(quoteMap).filter((q) => q && q.changePercent != null && !q.error);
     if (direction === 'mixed') {
-      // 混合榜：拉一份涨幅 + 一份跌幅，按 |涨跌幅| desc 合并去重取 top30。
-      const [gainers, losers] = await Promise.all([
-        fetchEastmoneyMovers({ direction: 'gainers', limit: 20 }),
-        fetchEastmoneyMovers({ direction: 'losers', limit: 20 })
-      ]);
-      const seen = new Set();
-      const merged = [];
-      for (const r of [...(gainers || []), ...(losers || [])]) {
-        if (!r || !r.symbol || seen.has(r.symbol)) continue;
-        seen.add(r.symbol);
-        merged.push(r);
-      }
-      merged.sort((a, b) => Math.abs(Number(b.changePercent) || 0) - Math.abs(Number(a.changePercent) || 0));
-      list = merged.slice(0, 30);
+      arr.sort((a, b) => Math.abs(Number(b.changePercent) || 0) - Math.abs(Number(a.changePercent) || 0));
     } else {
-      list = await fetchEastmoneyMovers({ direction, limit: 30 });
+      arr.sort((a, b) => (direction === 'losers' ? a.changePercent - b.changePercent : b.changePercent - a.changePercent));
     }
+    list = arr.slice(0, direction === 'mixed' ? 30 : 20).map((q) => ({
+      symbol: q.symbol,
+      code: q.code || q.symbol,
+      name: q.name,
+      price: q.price,
+      changePercent: q.changePercent,
+      change: q.change
+    }));
   } else if (market === 'us') {
     // 从热门池中拉 quotes 后按涨跌幅排序。
     const quoteMap = await fetchYahooQuotesBatch(US_TOP_TICKERS, { range: '1d', interval: '5m' });
@@ -758,6 +856,23 @@ async function _handleProfileImpl(env, rawSymbol) {
 }
 
 
+
+async function handleXueqiuFundData(env, rawSymbol, params) {
+  const { market, code } = classifySymbol(rawSymbol);
+  if (market !== 'cn') return errorJson('only cn symbols are supported', 400);
+  if (!env.XUEQIU_COOKIE) return errorJson('XUEQIU_COOKIE missing', 500);
+  const includeRaw = params.get('raw') === '1';
+  const forceRefresh = params.get('refresh') === '1';
+  const cacheKey = 'xueqiu-fund-data:' + code + ':' + (includeRaw ? 'raw' : 'summary');
+  if (!forceRefresh) {
+    const cached = await kvGetJson(env, cacheKey);
+    if (cached && cached.results) return json({ ...cached, cached: true });
+  }
+  const payload = await fetchXueqiuCnFundData(code, { cookie: env.XUEQIU_COOKIE, includeRaw });
+  await kvPutJson(env, cacheKey, payload, { ttlSeconds: includeRaw ? 300 : 1800 });
+  return json({ ...payload, cached: false });
+}
+
 async function handleFinancials(env, rawSymbol, forceRefresh) {
   const { market, code } = classifySymbol(rawSymbol);
   if (!market) return errorJson('invalid symbol', 400);
@@ -798,7 +913,7 @@ async function handleAsk(env, body) {
       if (!market) continue;
       const q = market === 'us'
         ? normalizeYahooQuote(await fetchYahooChart(code, { range: '1d', interval: '5m' }))
-        : await fetchSinaQuote(code);
+        : await fetchCnQuoteWithFallback(env, code, { rawSymbol: raw, endpoint: 'ask-snapshot' });
       quoteSnapshots.push(q);
     } catch (err) {
       console.warn('snapshot fail', raw, err);

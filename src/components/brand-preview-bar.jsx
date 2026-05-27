@@ -46,7 +46,7 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
           <button
             type="button"
             onClick={onJoinGroup}
-            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:border-indigo-200 hover:text-indigo-600 sm:px-3 sm:text-xs"
+            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[12px] font-medium text-slate-600 transition-colors hover:border-indigo-200 hover:text-indigo-600 sm:px-3 sm:text-[13px]"
           >
             加入群聊
           </button>
@@ -55,9 +55,9 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
           <button
             type="button"
             onClick={onShowDisclaimer}
-            className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700 ring-1 ring-amber-200 transition-colors hover:bg-amber-100 sm:px-3 sm:text-xs"
+            className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[12px] font-medium text-amber-700 ring-1 ring-amber-200 transition-colors hover:bg-amber-100 sm:px-3 sm:text-[13px]"
           >
-            <AlertCircle className="h-3 w-3" aria-hidden="true" />
+            <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
             免责
           </button>
         ) : null}

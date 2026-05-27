@@ -2,18 +2,16 @@
 //
 // 所有外部 URL 都拆成 base + path，避免被上游平台误伤为可压缩引用。
 
-import { toEastmoneySecId } from './symbols.js';
-
 const UA = 'Mozilla/5.0 (compatible; ai-dca-markets/1.0)';
 const COMMON_HEADERS = { 'user-agent': UA, accept: '*/*' };
 
 const YAHOO_HOST = 'https://' + 'query1.finance.yahoo.com';
 const YAHOO_SEARCH_HOST = 'https://' + 'query2.finance.yahoo.com';
-const EM_PUSH2_HOST = 'https://' + 'push2.eastmoney.com';
-const EM_PUSH2HIS_HOST = 'https://' + 'push2his.eastmoney.com';
 const EM_SEARCH_HOST = 'https://' + 'searchapi.eastmoney.com';
 const SINA_CN_HOST = 'https://' + 'quotes.sina.cn';
 const SINA_HQ_HOST = 'https://' + 'hq.sinajs.cn';
+const XUEQIU_STOCK_HOST = 'https://' + 'stock.xueqiu.com';
+const XUEQIU_WEB_HOST = 'https://' + 'xueqiu.com';
 const FINNHUB_HOST = 'https://' + 'finnhub.io';
 
 // 轻量级并发限流。与index.js 里的版本语义一致，这里独立定义避免跨文件依赖。
@@ -68,6 +66,278 @@ function buildUrl(base, path, params = {}) {
     u.searchParams.set(k, String(v));
   }
   return u.toString();
+}
+
+
+function toCnSixDigits(code) {
+  const lower = String(code || '').trim().toLowerCase();
+  const match = lower.match(/(?:sh|sz|bj)?(\d{6})$/);
+  return match ? match[1] : '';
+}
+
+function toXueqiuSymbol(code) {
+  const lower = String(code || '').trim().toLowerCase();
+  if (/^(sh|sz|bj)\d{6}$/.test(lower)) return lower.toUpperCase();
+  const digits = toCnSixDigits(lower);
+  if (!digits) return '';
+  const prefix = digits.startsWith('6') || digits.startsWith('51') || digits.startsWith('56') || digits.startsWith('58') || digits.startsWith('000')
+    ? 'SH'
+    : digits.startsWith('4') || digits.startsWith('8')
+      ? 'BJ'
+      : 'SZ';
+  return prefix + digits;
+}
+
+function xueqiuHeaders(cookie, refererSymbol = '') {
+  const trimmedCookie = String(cookie || '').trim();
+  if (!trimmedCookie) throw new Error('XUEQIU_COOKIE missing');
+  const referer = refererSymbol ? `${XUEQIU_WEB_HOST}/S/${refererSymbol}` : `${XUEQIU_WEB_HOST}/`;
+  return {
+    ...COMMON_HEADERS,
+    accept: 'application/json, text/plain, */*',
+    cookie: trimmedCookie,
+    origin: XUEQIU_WEB_HOST,
+    referer,
+    'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
+    'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36'
+  };
+}
+
+async function readXueqiuJson(res, label) {
+  const text = await res.text();
+  if (!text || !text.trim()) throw new Error(`${label} empty response; XUEQIU_COOKIE may be expired`);
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (err) {
+    throw new Error(`${label} invalid json: ${String((err && err.message) || err)}`);
+  }
+  if (data && data.error_code && Number(data.error_code) !== 0) {
+    throw new Error(`${label} error_code=${data.error_code} ${data.error_description || ''}`.trim());
+  }
+  return data;
+}
+
+function normalizeXueqiuMarketState(quote = {}) {
+  const status = String(quote.status || quote.market_status || '').toLowerCase();
+  if (status === '1' || status.includes('交易') || status.includes('open')) return 'REGULAR';
+  return 'CLOSED';
+}
+
+function formatShanghaiDateFromMs(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date(n)).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return parts.year && parts.month && parts.day ? `${parts.year}-${parts.month}-${parts.day}` : '';
+}
+
+function normalizeXueqiuQuotePayload(data, code) {
+  const quote = data?.data?.quote || data?.quote || data?.data || {};
+  if (!quote || typeof quote !== 'object') throw new Error('xueqiu quote empty');
+  const symbol = String(quote.symbol || toXueqiuSymbol(code) || code || '').trim().toUpperCase();
+  const price = round(quote.current != null ? quote.current : quote.last_close, 4);
+  const previousClose = round(quote.last_close, 4);
+  if (price == null || price <= 0) throw new Error('xueqiu quote invalid price ' + symbol);
+  const change = quote.chg != null ? round(quote.chg, 4) : (previousClose != null ? round(price - previousClose, 4) : null);
+  const changePercent = quote.percent != null ? round(quote.percent, 4) : (previousClose ? round(((price - previousClose) / previousClose) * 100, 4) : null);
+  const timestamp = Number(quote.timestamp || quote.time || Date.now());
+  return {
+    symbol: symbol.toLowerCase(),
+    code: String(quote.code || toCnSixDigits(symbol) || toCnSixDigits(code) || '').trim(),
+    name: quote.name || symbol,
+    market: 'cn',
+    price,
+    previousClose,
+    change,
+    changePercent,
+    open: round(quote.open, 4),
+    high: round(quote.high, 4),
+    low: round(quote.low, 4),
+    volume: Number(quote.volume) || null,
+    turnover: Number(quote.amount) || null,
+    marketCapital: Number(quote.market_capital) || null,
+    iopv: round(quote.iopv, 4),
+    latestNav: round(quote.unit_nav, 4),
+    accumulatedNav: round(quote.acc_unit_nav, 4),
+    latestNavDate: formatShanghaiDateFromMs(quote.nav_date),
+    premiumPercent: round(quote.premium_rate, 4),
+    currentYearPercent: round(quote.current_year_percent, 4),
+    totalShares: Number(quote.total_shares) || null,
+    volumeRatio: round(quote.volume_ratio, 4),
+    high52w: round(quote.high52w, 4),
+    low52w: round(quote.low52w, 4),
+    currency: quote.currency || 'CNY',
+    exchangeTimezone: 'Asia/Shanghai',
+    marketState: normalizeXueqiuMarketState(quote),
+    asOf: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : new Date().toISOString(),
+    source: 'xueqiu-quote'
+  };
+}
+
+function normalizeXueqiuKlinePayload(data, code, intervalLabel) {
+  const payload = data?.data || {};
+  const columns = Array.isArray(payload.column) ? payload.column : [];
+  const items = Array.isArray(payload.item) ? payload.item : Array.isArray(payload.items) ? payload.items : [];
+  if (!items.length) throw new Error('xueqiu kline empty ' + code);
+  const idx = Object.fromEntries(columns.map((name, index) => [String(name), index]));
+  const get = (row, name) => row[idx[name]];
+  const candles = items.map((row) => {
+    const ts = Number(get(row, 'timestamp'));
+    return {
+      t: Number.isFinite(ts) ? Math.floor(ts / 1000) : null,
+      o: round(get(row, 'open'), 4),
+      h: round(get(row, 'high'), 4),
+      l: round(get(row, 'low'), 4),
+      c: round(get(row, 'close'), 4),
+      v: Number(get(row, 'volume')) || 0
+    };
+  }).filter((bar) => bar && Number.isFinite(bar.t) && [bar.o, bar.h, bar.l, bar.c].every((value) => Number.isFinite(value)))
+    .sort((left, right) => left.t - right.t);
+  if (!candles.length) throw new Error('xueqiu kline invalid candles ' + code);
+  return {
+    symbol: String(payload.symbol || toXueqiuSymbol(code) || code || '').trim().toLowerCase(),
+    interval: intervalLabel,
+    name: '',
+    source: 'xueqiu-kline',
+    candles
+  };
+}
+
+const XUEQIU_PERIOD_MAP = { '1d': 'day', '1w': 'week', '1mo': 'month', '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '60m': '60m' };
+
+export async function fetchXueqiuQuote(code, { cookie } = {}) {
+  const symbol = toXueqiuSymbol(code);
+  if (!symbol) throw new Error('xueqiu bad code ' + code);
+  const url = buildUrl(XUEQIU_STOCK_HOST, '/v5/stock/quote.json', { extend: 'detail', symbol });
+  const res = await fetch(url, { headers: xueqiuHeaders(cookie, symbol), cf: { cacheTtl: 15 } });
+  if (!res.ok) throw new Error('xueqiu quote ' + symbol + ' HTTP ' + res.status);
+  const data = await readXueqiuJson(res, 'xueqiu quote ' + symbol);
+  return normalizeXueqiuQuotePayload(data, code);
+}
+
+export async function fetchXueqiuQuotesBatch(codes = [], { cookie } = {}) {
+  const out = {};
+  await mapLimit(codes || [], 5, async (code) => {
+    try {
+      out[code] = await fetchXueqiuQuote(code, { cookie });
+    } catch (err) {
+      out[code] = { symbol: code, error: String((err && err.message) || err) };
+    }
+  });
+  return out;
+}
+
+export async function fetchXueqiuKline(code, { cookie, intervalLabel = '1d', limit = 500 } = {}) {
+  const symbol = toXueqiuSymbol(code);
+  if (!symbol) throw new Error('xueqiu bad code ' + code);
+  const period = XUEQIU_PERIOD_MAP[intervalLabel] || 'day';
+  const url = buildUrl(XUEQIU_STOCK_HOST, '/v5/stock/chart/kline.json', {
+    symbol,
+    begin: Date.now(),
+    period,
+    type: 'before',
+    count: -Math.max(1, Math.min(Number(limit) || 500, 1000)),
+    indicator: 'kline,pe,pb,ps,pcf,market_capital,agt,ggt,balance'
+  });
+  const res = await fetch(url, { headers: xueqiuHeaders(cookie, symbol), cf: { cacheTtl: 30 } });
+  if (!res.ok) throw new Error('xueqiu kline ' + symbol + ' HTTP ' + res.status);
+  const data = await readXueqiuJson(res, 'xueqiu kline ' + symbol);
+  return normalizeXueqiuKlinePayload(data, code, intervalLabel);
+}
+
+
+async function readXueqiuEndpoint(path, params = {}, { cookie, refererSymbol = '', label = 'xueqiu endpoint' } = {}) {
+  const url = buildUrl(XUEQIU_STOCK_HOST, path, params);
+  const res = await fetch(url, { headers: xueqiuHeaders(cookie, refererSymbol), cf: { cacheTtl: 30 } });
+  if (!res.ok) throw new Error(`${label} HTTP ${res.status}`);
+  return readXueqiuJson(res, label);
+}
+
+function summarizeXueqiuPayload(data) {
+  const root = data && typeof data === 'object' ? data : {};
+  const payload = root.data;
+  const summary = {
+    topKeys: Object.keys(root).slice(0, 30),
+    dataType: Array.isArray(payload) ? 'array' : (payload && typeof payload === 'object' ? 'object' : typeof payload)
+  };
+  if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+    summary.dataKeys = Object.keys(payload).slice(0, 60);
+    if (payload.quote && typeof payload.quote === 'object') {
+      const q = payload.quote;
+      summary.quoteKeys = Object.keys(q).slice(0, 120);
+      summary.quote = q;
+    }
+    if (Array.isArray(payload.column)) summary.columns = payload.column;
+    if (Array.isArray(payload.item)) {
+      summary.itemCount = payload.item.length;
+      summary.firstItem = payload.item[0] || null;
+      summary.lastItem = payload.item[payload.item.length - 1] || null;
+    }
+    for (const key of ['items', 'list', 'data', 'indicator', 'balance', 'income', 'cash_flow']) {
+      const value = payload[key];
+      if (Array.isArray(value)) {
+        summary[`${key}Count`] = value.length;
+        summary[`${key}Sample`] = value[0] || null;
+      } else if (value && typeof value === 'object') {
+        summary[`${key}Keys`] = Object.keys(value).slice(0, 80);
+        summary[`${key}Sample`] = value;
+      }
+    }
+  } else if (Array.isArray(payload)) {
+    summary.itemCount = payload.length;
+    summary.firstItem = payload[0] || null;
+  }
+  if (root.error_code || root.code) {
+    summary.errorCode = root.error_code || root.code;
+    summary.errorMessage = root.error_description || root.message || '';
+  }
+  return summary;
+}
+
+export async function fetchXueqiuCnFundData(code, { cookie, includeRaw = false } = {}) {
+  const symbol = toXueqiuSymbol(code);
+  if (!symbol) throw new Error('xueqiu bad code ' + code);
+  const endpoints = [
+    ['quote_detail', '/v5/stock/quote.json', { extend: 'detail', symbol }],
+    ['kline_day', '/v5/stock/chart/kline.json', { symbol, begin: Date.now(), period: 'day', type: 'before', count: -20, indicator: 'kline,pe,pb,ps,pcf,market_capital,agt,ggt,balance' }],
+    ['kline_60m', '/v5/stock/chart/kline.json', { symbol, begin: Date.now(), period: '60m', type: 'before', count: -20, indicator: 'kline,pe,pb,ps,pcf,market_capital,agt,ggt,balance' }],
+    ['capital_flow', '/v5/stock/capital/flow.json', { symbol }],
+    ['capital_history', '/v5/stock/capital/history.json', { symbol }],
+    ['f10_indicator', '/v5/stock/f10/cn/indicator.json', { symbol }],
+    ['finance_indicator', '/v5/stock/finance/cn/indicator.json', { symbol, type: 'all', is_detail: true, count: 5 }],
+    ['finance_balance', '/v5/stock/finance/cn/balance.json', { symbol, type: 'all', is_detail: true, count: 5 }],
+    ['finance_income', '/v5/stock/finance/cn/income.json', { symbol, type: 'all', is_detail: true, count: 5 }],
+    ['finance_cash_flow', '/v5/stock/finance/cn/cash_flow.json', { symbol, type: 'all', is_detail: true, count: 5 }],
+    ['pankou', '/v5/stock/realtime/pankou.json', { symbol }],
+    ['quotec', '/v5/stock/realtime/quotec.json', { symbol }]
+  ];
+  const results = {};
+  await mapLimit(endpoints, 4, async ([name, path, params]) => {
+    try {
+      const data = await readXueqiuEndpoint(path, params, { cookie, refererSymbol: symbol, label: `xueqiu ${name} ${symbol}` });
+      results[name] = {
+        ok: true,
+        summary: summarizeXueqiuPayload(data),
+        ...(includeRaw ? { raw: data } : {})
+      };
+    } catch (err) {
+      results[name] = { ok: false, error: String((err && err.message) || err) };
+    }
+  });
+  return {
+    symbol,
+    code: toCnSixDigits(symbol),
+    generatedAt: new Date().toISOString(),
+    results
+  };
 }
 
 function toSinaSymbol(code) {
@@ -432,110 +702,17 @@ export async function searchYahooSymbols(query, { limit = 8 } = {}) {
     }));
 }
 
-// ===================== 东方财富 push2his K 线（A 股 + 指数） =====================
-
-// klt: 1=1m, 5=5m, 15=15m, 30=30m, 60=60m, 101=日, 102=周, 103=月
-const EM_KLT_MAP = { '1m': 1, '5m': 5, '15m': 15, '30m': 30, '60m': 60, '1d': 101, '1w': 102, '1mo': 103 };
-
-export async function fetchEastmoneyKline(code, { intervalLabel = '1d', limit = 250 } = {}) {
-  const secid = toEastmoneySecId(code);
-  if (!secid) throw new Error('eastmoney bad code ' + code);
-  const klt = EM_KLT_MAP[intervalLabel] || 101;
-  const url = buildUrl(EM_PUSH2HIS_HOST, '/api/qt/stock/kline/get', {
-    secid,
-    fields1: 'f1,f2,f3,f4,f5,f6',
-    fields2: 'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61',
-    klt,
-    fqt: 1,
-    end: '20500101',
-    lmt: limit,
-    _: Date.now()
-  });
-  const res = await fetch(url, { headers: COMMON_HEADERS, cf: { cacheTtl: 30 } });
-  if (!res.ok) throw new Error('eastmoney ' + code + ' HTTP ' + res.status);
-  const data = await res.json();
-  const klines = (data && data.data && data.data.klines) || [];
-  const candles = klines.map((line) => {
-    const parts = String(line).split(',');
-    // 格式：date, open, close, high, low, volume, amount
-    const t = Math.floor(new Date(parts[0] + 'T00:00:00+08:00').getTime() / 1000);
-    return {
-      t,
-      o: round(parts[1], 4),
-      h: round(parts[3], 4),
-      l: round(parts[4], 4),
-      c: round(parts[2], 4),
-      v: Number(parts[5]) || 0
-    };
-  });
-  return {
-    symbol: code,
-    interval: intervalLabel,
-    name: (data && data.data && data.data.name) || '',
-    candles
-  };
-}
-
-export async function fetchEastmoneyQuote(code) {
-  const secid = toEastmoneySecId(code);
-  if (!secid) throw new Error('eastmoney bad code ' + code);
-  const url = buildUrl(EM_PUSH2_HOST, '/api/qt/stock/get', {
-    secid,
-    fields: 'f43,f44,f45,f46,f47,f48,f57,f58,f60,f168,f169,f170,f86,f292,f1,f59',
-    _: Date.now()
-  });
-  const res = await fetch(url, { headers: COMMON_HEADERS, cf: { cacheTtl: 30 } });
-  if (!res.ok) throw new Error('eastmoney quote ' + code + ' HTTP ' + res.status);
-  const data = await res.json();
-  const d = data && data.data;
-  if (!d) throw new Error('eastmoney quote ' + code + ' empty');
-  // f1 精度（例如 2 = 小数点后 2 位），f59 同。
-  const scale = Math.pow(10, d.f1 != null ? d.f1 : 2);
-  const price = d.f43 != null ? round(d.f43 / scale, 4) : null;
-  const previousClose = d.f60 != null ? round(d.f60 / scale, 4) : null;
-  const change = price != null && previousClose != null ? round(price - previousClose, 4) : null;
-  const changePercent = d.f170 != null ? round(d.f170 / 100, 4) : null;
-  return {
-    symbol: code,
-    name: d.f58 || '',
-    market: 'cn',
-    price,
-    previousClose,
-    change,
-    changePercent,
-    open: d.f46 != null ? round(d.f46 / scale, 4) : null,
-    high: d.f44 != null ? round(d.f44 / scale, 4) : null,
-    low: d.f45 != null ? round(d.f45 / scale, 4) : null,
-    volume: Number(d.f47) || null,
-    turnover: Number(d.f48) || null,
-    currency: 'CNY',
-    exchangeTimezone: 'Asia/Shanghai',
-    marketState: d.f292 === 1 ? 'REGULAR' : 'CLOSED',
-    asOf: d.f86 ? new Date(d.f86 * 1000).toISOString() : new Date().toISOString()
-  };
-}
-
-export async function fetchEastmoneyQuotesBatch(codes) {
-  const out = {};
-  // 东财 NAV 较便宜、上限 8 并发。
-  await mapLimit(codes, 8, async (code) => {
-    try {
-      out[code] = await fetchEastmoneyQuote(code);
-    } catch (err) {
-      out[code] = { symbol: code, error: String((err && err.message) || err) };
-    }
-  });
-  return out;
-}
+// ===================== 东方财富搜索（仅用于 A 股搜索候选） =====================
 
 export async function searchEastmoneySymbols(query, { limit = 8 } = {}) {
   const q = String(query || '').trim();
   if (!q) return [];
+  const maxCount = Math.max(1, Math.min(Number(limit) || 8, 12));
   const url = buildUrl(EM_SEARCH_HOST, '/api/suggest/get', {
     input: q,
     type: 14,
     token: 'D43BF722C8E33BDC906FB84D85E326E8',
-    count: Math.max(1, Math.min(Number(limit) || 8, 12))
+    count: Math.max(maxCount, 12)
   });
   const res = await fetch(url, {
     headers: { ...COMMON_HEADERS, referer: 'https://quote.eastmoney.com/' },
@@ -546,64 +723,43 @@ export async function searchEastmoneySymbols(query, { limit = 8 } = {}) {
   const rows = (((data || {}).QuotationCodeTable || {}).Data) || [];
   const normalized = Array.isArray(rows) ? rows : [];
   return normalized
-    .filter((row) => row && row.Code && (row.Classify === 'AStock' || row.SecurityType === '1' || row.SecurityTypeName))
-    .slice(0, Math.max(1, Math.min(Number(limit) || 8, 12)))
+    .filter((row) => {
+      const code = String(row?.Code || '').trim();
+      if (!/^\d{6}$/.test(code)) return false;
+      const text = [row.Classify, row.SecurityType, row.SecurityTypeName, row.SecurityTypeName2, row.QuoteType, row.TypeName]
+        .map((value) => String(value || '').toLowerCase())
+        .join(' ');
+      return row.Classify === 'AStock'
+        || row.SecurityType === '1'
+        || text.includes('stock')
+        || text.includes('基金')
+        || text.includes('fund')
+        || text.includes('lof')
+        || text.includes('etf')
+        || text.includes('qdii');
+    })
+    .slice(0, maxCount)
     .map((row) => {
       const code = String(row.Code || '').trim();
       const mkt = String(row.MktNum || row.MarketType || '').trim();
+      const typeText = [row.Classify, row.SecurityTypeName, row.SecurityTypeName2, row.QuoteType, row.TypeName]
+        .map((value) => String(value || ''))
+        .join(' ');
+      const isFund = /基金|fund|lof|etf|qdii/i.test(typeText);
+      const isExchangeTradedFund = /etf|lof|场内|封闭/i.test(typeText) || ['0', '1', '2'].includes(mkt);
+      const isOtcFund = isFund && !isExchangeTradedFund;
       const prefix = mkt === '1' ? 'sh' : mkt === '0' ? 'sz' : mkt === '2' ? 'bj' : code.startsWith('6') ? 'sh' : code.startsWith('4') || code.startsWith('8') ? 'bj' : 'sz';
       return {
-        symbol: prefix + code,
+        symbol: isOtcFund ? code : prefix + code,
         code,
         name: row.Name || code,
         market: 'cn',
-        exchange: row.SecurityTypeName || (prefix === 'sh' ? '沪A' : prefix === 'bj' ? '北交所' : '深A'),
+        exchange: isOtcFund ? '场外基金' : (row.SecurityTypeName || (prefix === 'sh' ? '沪A' : prefix === 'bj' ? '北交所' : '深A')),
         type: row.Classify || row.SecurityTypeName || '',
+        assetType: isOtcFund ? 'otc_fund' : isFund ? 'exchange_fund' : 'stock',
         pinyin: row.PinYin || ''
       };
     });
-}
-
-// 东财涨跌榜：沪深 A 股 (m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23)。
-export async function fetchEastmoneyMovers({ direction = 'gainers', limit = 20 } = {}) {
-  const order = direction === 'losers' ? 0 : 1;
-  // Eastmoney expects literal `+` in `fs`. Build query manually to avoid URL encoding it as %2B.
-  const qs = [
-    'pn=1',
-    'pz=' + limit,
-    'po=' + order,
-    'fid=f3',
-    'fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23',
-    'fields=f2,f3,f4,f12,f13,f14,f15,f16,f17,f18',
-    '_=' + Date.now()
-  ].join('&');
-  const url = EM_PUSH2_HOST + '/api/qt/clist/get?' + qs;
-  const res = await fetch(url, {
-    headers: { ...COMMON_HEADERS, referer: 'https://quote.eastmoney.com/' },
-    cf: { cacheTtl: 30 }
-  });
-  if (!res.ok) {
-    console.warn('eastmoney movers HTTP ' + res.status);
-    return [];
-  }
-  const data = await res.json().catch(() => null);
-  const diff = data && data.data && data.data.diff;
-  const rows = Array.isArray(diff)
-    ? diff
-    : diff && typeof diff === 'object'
-      ? Object.values(diff)
-      : [];
-  return rows.map((row) => {
-    const prefix = row.f13 === 1 ? 'sh' : 'sz';
-    return {
-      symbol: prefix + row.f12,
-      code: row.f12,
-      name: row.f14 || '',
-      price: row.f2,
-      changePercent: row.f3,
-      change: row.f4
-    };
-  });
 }
 
 // ===================== Finnhub（美股基本面 + 新闻） =====================

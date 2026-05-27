@@ -10,6 +10,7 @@ import {
   Copy,
   FileImage,
   FileUp,
+  ExternalLink,
   LoaderCircle,
   Minus,
   Pencil,
@@ -523,7 +524,22 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       },
       sortingFn: numericSortFn,
     },
-  ], [accountAssignments, kindFilterOptions]);
+    {
+      id: 'markets',
+      meta: { label: '行情' },
+      header: () => <span className="text-xs font-semibold text-slate-500">行情</span>,
+      cell: ({ row }) => (
+        <button
+          type="button"
+          className="inline-flex h-7 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-600 transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
+          onClick={(event) => { event.stopPropagation(); navigateToMarkets(event, row.original.code); }}
+          title="查看行情详情"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />行情
+        </button>
+      ),
+    },
+  ], [accountAssignments, kindFilterOptions, links.markets]);
 
   const aggregatesTable = useReactTable({
     data: aggregatesTableData,
@@ -979,11 +995,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshotsByCode]);
 
-  // 从「该基金汇总」弹窗点击 买入 / 卖出：预填代码/名称/标签，默认「三点前」=true。
-  // 日期默认今天（T 日）；NAV 未公布，价格留空、事后回填。
+  // 从「该基金汇总」弹窗点击 买入 / 卖出：预填代码/名称/标签。
+  // 场外/QDII 默认「三点前」= true；场内不展示三点前选项，日期默认今天、成交价留空手填。
   function openBuyOrSellFromSummary(aggSrc, type) {
     if (!aggSrc) return;
-    if (aggSrc.kind === 'exchange') return; // 场内不走这个逻辑
     const kind = aggSrc.kind || 'otc';
     const code = normalizeFundCode(aggSrc.code || '');
     const ctx = computeOtcAutoFillContext({ kind, before3pm: true });
@@ -992,7 +1007,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       name: aggSrc.name || '',
       kind,
       type,
-      before3pm: true,
+      before3pm: kind === 'exchange' ? false : true,
       date: ctx.confirmDate || getTodayShanghaiDate(),
       price: ''
     });
@@ -1638,15 +1653,22 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   // ---- Render helpers ----
-  function navigateToMarkets(event) {
+  function navigateToMarkets(event, code = '') {
     if (event && (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)) return;
     if (event) event.preventDefault();
     if (typeof window === 'undefined') return;
     const target = links.markets || './index.html?tab=markets';
     const nextUrl = new URL(target, window.location.href);
+    if (code) {
+      nextUrl.searchParams.set('symbol', normalizeFundCode(code));
+      try { window.sessionStorage.setItem('markets:pendingSymbol', normalizeFundCode(code)); } catch (_error) { /* ignore */ }
+    }
     if (window.location.href === nextUrl.href) return;
-    window.history.pushState({ tab: 'markets' }, '', nextUrl);
+    window.history.pushState({ tab: 'markets', symbol: code || '' }, '', nextUrl);
     window.dispatchEvent(new PopStateEvent('popstate'));
+    if (code) {
+      window.dispatchEvent(new CustomEvent('markets:select-symbol', { detail: { symbol: normalizeFundCode(code), market: 'cn' } }));
+    }
   }
 
   function renderKindFilter() {
@@ -1949,6 +1971,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         <DataTable
           table={aggregatesTable}
           footerRow={aggregatesFooterRow}
+          resizable
           onRowClick={(row) => {
             setSelectedCode(row.original.code);
             setSidePanelTab('summary');
@@ -1983,7 +2006,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     return (
       <div className="flex flex-col gap-2">
         <DataTableToolbar table={ledgerTable} />
-        <DataTable table={ledgerTable} />
+        <DataTable table={ledgerTable} resizable />
       </div>
     );
   }
@@ -2382,29 +2405,29 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             净值获取失败：{agg.snapshotError}
           </div>
         ) : null}
-        {agg.kind === 'exchange' ? null : (
-          <div className="flex items-center gap-2 pt-1">
-            <button
-              type="button"
-              className="flex-1 inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-500"
-              onClick={() => openBuyOrSellFromSummary(agg, 'BUY')}
-            >
-              <Plus className="h-4 w-4" />买入
-            </button>
-            <button
-              type="button"
-              className="flex-1 inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-rose-500"
-              onClick={() => openBuyOrSellFromSummary(agg, 'SELL')}
-            >
-              <Minus className="h-4 w-4" />卖出
-            </button>
-          </div>
-        )}
-        {agg.kind === 'exchange' ? (
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
-            场内 ETF 交易价格以实时成交为准，请使用顶部「新增交易」手动录入。
-          </div>
-        ) : null}
+        <button
+          type="button"
+          className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-100"
+          onClick={(event) => navigateToMarkets(event, agg.code)}
+        >
+          <ExternalLink className="h-4 w-4" />查看行情详情
+        </button>
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            type="button"
+            className="flex-1 inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-500"
+            onClick={() => openBuyOrSellFromSummary(agg, 'BUY')}
+          >
+            <Plus className="h-4 w-4" />买入
+          </button>
+          <button
+            type="button"
+            className="flex-1 inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-rose-500"
+            onClick={() => openBuyOrSellFromSummary(agg, 'SELL')}
+          >
+            <Minus className="h-4 w-4" />卖出
+          </button>
+        </div>
       </div>
     );
   }
@@ -2495,7 +2518,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
             />
           </label>
           <label className="col-span-1 text-xs text-slate-500">
-            价格（净值·选填）
+            {draft.kind === 'exchange' ? '价格（成交价·选填）' : '价格（净值·选填）'}
             <input
               className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')}
               value={draft.price}

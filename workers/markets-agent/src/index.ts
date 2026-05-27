@@ -13,7 +13,9 @@ type Env = {
 	OPENAI_BASE_URL?: string;
 	OPENAI_API_KEY?: string;
 	OPENAI_MODEL?: string;
+	OPENAI_FALLBACK_MODEL?: string;
 	TAVILY_API_KEY?: string;
+	FIRECRAWL_API_KEY?: string;
 };
 
 export class MarketsAgentContainer extends Container<Env> {
@@ -28,6 +30,7 @@ export class MarketsAgentContainer extends Container<Env> {
 			OPENAI_BASE_URL: env.OPENAI_BASE_URL ?? '',
 			OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
 			OPENAI_MODEL: env.OPENAI_MODEL ?? '',
+			OPENAI_FALLBACK_MODEL: env.OPENAI_FALLBACK_MODEL ?? '',
 			TAVILY_API_KEY: env.TAVILY_API_KEY ?? '',
 			FIRECRAWL_API_KEY: env.FIRECRAWL_API_KEY ?? '',
 		};

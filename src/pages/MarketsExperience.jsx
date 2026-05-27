@@ -2,22 +2,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import '../styles/ai-chat.css';
-import { ArrowDown, ArrowUp, CalendarDays, ChevronDown, ChevronRight, ChevronUp, Edit3, ExternalLink, History, ListPlus, Loader2, Plus, RefreshCw, Search, Send, Sparkles, Star, Trash2, TrendingUp, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, CalendarDays, ChevronDown, ChevronRight, ChevronUp, Edit3, ExternalLink, History, ListPlus, Loader2, Plus, RefreshCw, Search, Send, Sparkles, Star, Trash2, TrendingUp, Wallet, X } from 'lucide-react';
 import {
   Card,
   Pill,
   TextInput,
-  cx,
-  primaryButtonClass,
-  secondaryButtonClass
+  cx
 } from '../components/experience-ui.jsx';
 import {
   addToWatchlist,
   askMarkets,
   askMarketsStream,
   createWatchlist,
+  deleteWatchlist,
   fetchEarnings,
   fetchFinancials,
+  fetchXueqiuFundData,
   fetchIndices,
   fetchKline,
   fetchQuote,
@@ -29,15 +29,19 @@ import {
   searchSymbols,
   loadWatchlist,
   removeFromWatchlist,
+  renameWatchlist,
   setActiveWatchlist,
   CN_ETF_WATCHLIST_PRESETS
 } from '../app/marketsApi.js';
 import { showActionToast } from '../app/toast.js';
+import { readLedgerState } from '../app/holdingsLedger.js';
+import { aggregateByCode } from '../app/holdingsLedgerCore.js';
 import { buildStockAnalysisPrompt } from '../app/stockAnalysisPrompt.js';
-import { getCnEtfPremiumSnapshot, getNavHistory, getNavSnapshot } from '../app/navService.js';
+import { getCnEtfPremiumSnapshot, getNavHistory, getNavSnapshot, getNavSnapshots } from '../app/navService.js';
 import { Sparkline } from '../components/markets/Sparkline.jsx';
 import { MarketsChartCodeBlock } from '../components/markets/MarketsChartBlock.jsx';
 import { Area, Bar, CartesianGrid, ComposedChart, Customized, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import nasdaqOtcCatalog from '../../data/all_nasdq_otc.json';
 
 const MARKETS = [
   { key: 'us', label: '美股' },
@@ -45,6 +49,8 @@ const MARKETS = [
 ];
 
 const CN_ETF_PRESET_MAP = Object.fromEntries(CN_ETF_WATCHLIST_PRESETS.map((item) => [item.symbol, item]));
+const NASDAQ_OTC_FUND_MAP = Object.fromEntries(((nasdaqOtcCatalog && nasdaqOtcCatalog.funds) || []).map((item) => [String(item.code || '').trim(), item]));
+const MARKETS_PENDING_SYMBOL_KEY = 'markets:pendingSymbol';
 
 function formatNumber(value, fractionDigits = 2) {
   const n = Number(value);
@@ -79,12 +85,54 @@ function formatSymbolDisplay(value) {
   return match ? match[2] : raw;
 }
 
+function formatBrowserTitleForQuote(quote) {
+  if (!quote || !quote.symbol) return '行情中心';
+  const symbol = formatSymbolDisplay(quote.symbol);
+  const price = Number(quote.price);
+  const pct = Number(quote.changePercent);
+  const currency = String(quote.currency || '').trim().toUpperCase();
+  const priceText = Number.isFinite(price)
+    ? `${currency && currency !== 'CNY' ? `${currency} ` : ''}${formatNumber(price, 2)}`
+    : '--';
+  const pctText = Number.isFinite(pct)
+    ? `${pct < 0 ? '▼' : pct > 0 ? '▲' : ''} ${Math.abs(pct).toFixed(2)}%`
+    : '--';
+  return `${symbol} ${priceText} (${pctText})`;
+}
+
 function normalizeCnFundCode(value) {
   const raw = String(value || '').trim();
   const prefixed = /^(sh|sz|bj)(\d{6})$/i.exec(raw);
   if (prefixed) return prefixed[2];
   const sixDigits = /(\d{6})/.exec(raw);
   return sixDigits ? sixDigits[1] : '';
+}
+
+function resolveCnFundName(codeOrSymbol, fallback = '') {
+  const code = normalizeCnFundCode(codeOrSymbol);
+  const fallbackText = String(fallback || '').trim();
+  const isCodeOnlyFallback = fallbackText && normalizeCnFundCode(fallbackText) === code;
+  return (code && NASDAQ_OTC_FUND_MAP[code]?.name)
+    || (!isCodeOnlyFallback ? fallbackText : '')
+    || code
+    || fallbackText;
+}
+
+function buildOtcCandidate(code, fallback = {}) {
+  const normalizedCode = normalizeCnFundCode(code || fallback.code || fallback.symbol);
+  const catalog = NASDAQ_OTC_FUND_MAP[normalizedCode] || {};
+  const name = resolveCnFundName(normalizedCode, fallback.name || fallback.shortName || fallback.displayName);
+  return {
+    ...fallback,
+    symbol: normalizedCode,
+    code: normalizedCode,
+    name,
+    market: 'cn',
+    exchange: '场外基金',
+    assetType: 'otc_fund',
+    linkedSymbol: catalog.link_to || fallback.linkedSymbol || '',
+    indexKey: catalog.index_key || fallback.indexKey || ''
+  };
 }
 
 function buildNavSnapshotItems(snapshot) {
@@ -608,9 +656,12 @@ function SortableMarketTable({ title = '', rows = [], market, onPick, onRemove, 
   );
 }
 
-function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate }) {
+function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate, onRename, onDelete, heldCount = 0 }) {
   const [open, setOpen] = useState(false);
-  const active = (lists || []).find((item) => item.id === activeListId) || lists[0];
+  const active = activeListId === 'held'
+    ? { id: 'held', name: '已持仓', us: [], cn: Array.from({ length: heldCount }) }
+    : ((lists || []).find((item) => item.id === activeListId) || lists[0]);
+  const canDelete = (item) => item?.id !== 'default' && (lists || []).length > 1;
   return (
     <div className="relative">
       <button type="button" onClick={() => setOpen((v) => !v)} className="inline-flex items-center gap-1 rounded-md px-1 py-1 text-[20px] leading-7 font-normal tracking-tight text-[#1f1f1f] hover:bg-[#f1f3f4]" title="列表切换">
@@ -618,16 +669,80 @@ function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate }) {
         <ChevronDown size={18} className="text-[#5f6368]" />
       </button>
       {open ? (
-        <div className="absolute left-0 top-full z-30 mt-1 w-56 overflow-hidden rounded-2xl border border-[#e8eaed] bg-white py-1 shadow-lg">
+        <div className="absolute left-0 top-full z-30 mt-1 w-64 overflow-hidden rounded-2xl border border-[#e8eaed] bg-white py-1 shadow-lg">
+          {heldCount > 0 ? (
+            <div className={cx('flex w-full items-center gap-1 px-3 py-2 text-sm hover:bg-[#f8fafd]', activeListId === 'held' ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>
+              <button type="button" onClick={() => { onSelect?.('held'); setOpen(false); }} className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
+                <span className="inline-flex min-w-0 items-center gap-1.5 truncate"><Wallet size={13} className="shrink-0 text-indigo-400" />已持仓</span>
+                <span className="text-[11px] text-[#9aa0a6]">{heldCount}</span>
+              </button>
+            </div>
+          ) : null}
           {(lists || []).map((item) => (
-            <button key={item.id} type="button" onClick={() => { onSelect?.(item.id); setOpen(false); }} className={cx('flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-[#f8fafd]', item.id === activeListId ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>
-              <span className="truncate">{item.name}</span>
-              <span className="text-[11px] text-[#9aa0a6]">{(item.us?.length || 0) + (item.cn?.length || 0)}</span>
-            </button>
+            <div key={item.id} className={cx('flex w-full items-center gap-1 px-3 py-2 text-sm hover:bg-[#f8fafd]', item.id === activeListId ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>
+              <button type="button" onClick={() => { onSelect?.(item.id); setOpen(false); }} className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
+                <span className="truncate">{item.name}</span>
+                <span className="text-[11px] text-[#9aa0a6]">{(item.us?.length || 0) + (item.cn?.length || 0)}</span>
+              </button>
+              <button
+                type="button"
+                aria-label={`重命名${item.name}`}
+                title="改名"
+                onClick={(event) => { event.stopPropagation(); onRename?.(item); setOpen(false); }}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#e8f0fe] hover:text-[#1a73e8]"
+              >
+                <Edit3 size={13} />
+              </button>
+              {canDelete(item) ? (
+                <button
+                  type="button"
+                  aria-label={`删除${item.name}`}
+                  title="删除"
+                  onClick={(event) => { event.stopPropagation(); onDelete?.(item); setOpen(false); }}
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#fce8e6] hover:text-[#d93025]"
+                >
+                  <Trash2 size={13} />
+                </button>
+              ) : null}
+            </div>
           ))}
           <button type="button" onClick={() => { onCreate?.(); setOpen(false); }} className="flex w-full items-center gap-2 border-t border-[#e8eaed] px-3 py-2 text-left text-sm font-medium text-[#1a73e8] hover:bg-[#f8fafd]"><ListPlus size={14} /> 新建列表</button>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function WatchlistNameDialog({ dialog, onChangeName, onCancel, onSubmit }) {
+  if (!dialog) return null;
+  const isDelete = dialog.type === 'delete';
+  const title = isDelete ? '删除列表' : (dialog.type === 'rename' ? '编辑列表名称' : '新建列表');
+  const total = (dialog.list?.us?.length || 0) + (dialog.list?.cn?.length || 0);
+  return (
+    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/30 px-4 py-6 sm:items-center" onMouseDown={onCancel}>
+      <div className="w-full max-w-sm rounded-[28px] bg-white p-6 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="mb-5 text-center text-xl font-semibold leading-snug text-[#1f1f1f]">{title}</div>
+        {isDelete ? (
+          <div className="mb-5 rounded-2xl bg-[#f8fafd] px-4 py-3 text-sm text-[#5f6368]">
+            确认删除「<span className="font-semibold text-[#1f1f1f]">{dialog.list?.name || '列表'}</span>」？{total ? `其中 ${total} 个标的也会移除。` : ''}
+          </div>
+        ) : (
+          <label className="mb-5 block text-sm text-[#5f6368]">
+            输入新的列表名称
+            <input
+              autoFocus
+              value={dialog.name || ''}
+              onChange={(event) => onChangeName(event.target.value)}
+              onKeyDown={(event) => { if (event.key === 'Enter') onSubmit(); }}
+              className="mt-3 h-14 w-full rounded-2xl border-0 bg-[#f1f3f4] px-4 text-base text-[#1f1f1f] outline-none focus:ring-2 focus:ring-[#1a73e8]/35"
+            />
+          </label>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <button type="button" onClick={onCancel} className="h-12 rounded-2xl bg-[#f1f3f4] text-base font-semibold text-[#1f1f1f] hover:bg-[#e8eaed]">取消</button>
+          <button type="button" onClick={onSubmit} className={cx('h-12 rounded-2xl text-base font-semibold text-white', isDelete ? 'bg-[#d93025] hover:bg-[#b3261e]' : 'bg-[#1a73e8] hover:bg-[#1557b0]')}>{isDelete ? '删除' : '确定'}</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -675,7 +790,7 @@ function WatchlistTable({ rows = [], market, onRemove }) {
   );
 }
 
-function SidebarRow({ symbol, name, price, changePercent, sparkPoints, selected = false, onSelect }) {
+function SidebarRow({ symbol, name, price, changePercent, sparkPoints, selected = false, onSelect, meta = '' }) {
   const pct = Number(changePercent);
   const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
   const up = pct > 0;
@@ -684,6 +799,7 @@ function SidebarRow({ symbol, name, price, changePercent, sparkPoints, selected 
   const sparkTone = flat ? 'flat' : up ? 'up' : 'down';
   const displaySymbol = formatSymbolDisplay(symbol);
   const showName = name && name !== symbol && name !== displaySymbol;
+  const detailText = [showName ? name : '', meta].filter(Boolean).join(' · ');
   return (
     <li className="group relative">
       <div
@@ -704,7 +820,7 @@ function SidebarRow({ symbol, name, price, changePercent, sparkPoints, selected 
       >
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13px] font-medium leading-tight text-[#1f1f1f]">{displaySymbol}</div>
-          {showName ? <div className="truncate text-[11px] leading-tight text-[#5f6368]">{name}</div> : null}
+          {detailText ? <div className="truncate text-[11px] leading-tight text-[#5f6368]">{detailText}</div> : null}
         </div>
         {sparkPoints && sparkPoints.length >= 2 ? (
           <Sparkline points={sparkPoints} width={76} height={28} tone={sparkTone} showFill markLast />
@@ -723,7 +839,7 @@ function SidebarRow({ symbol, name, price, changePercent, sparkPoints, selected 
   );
 }
 
-function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints, selected = false, onSelect }) {
+function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints, selected = false, onSelect, meta = '' }) {
   const pct = Number(changePercent);
   const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
   const up = pct > 0;
@@ -734,6 +850,7 @@ function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints, sel
   const sparkTone = flat ? 'flat' : up ? 'up' : 'down';
   const displaySymbol = formatSymbolDisplay(symbol);
   const showName = name && name !== symbol && name !== displaySymbol;
+  const detailText = [showName ? name : '', meta].filter(Boolean).join(' · ');
   return (
     <li
       role="button"
@@ -753,7 +870,7 @@ function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints, sel
     >
       <div className="min-w-0 flex-1">
         <div className="truncate text-base font-semibold leading-tight text-[#1f1f1f]">{displaySymbol}</div>
-        {showName ? <div className="truncate text-sm leading-tight text-[#5f6368]">{name}</div> : null}
+        {detailText ? <div className="truncate text-sm leading-tight text-[#5f6368]">{detailText}</div> : null}
       </div>
       {sparkPoints && sparkPoints.length >= 2 ? (
         <Sparkline points={sparkPoints} width={86} height={32} tone={sparkTone} showFill markLast />
@@ -917,6 +1034,61 @@ function formatRevenue(n) {
   if (v >= 1e4) return (Number(n) / 1e4).toFixed(2) + ' 万';
   return String(n);
 }
+function formatCnMoney(value) {
+  if (value == null || !Number.isFinite(Number(value))) return '--';
+  return formatRevenue(Number(value));
+}
+function formatCnAmount(value) {
+  if (value == null || !Number.isFinite(Number(value))) return '--';
+  return formatRevenue(Number(value));
+}
+function formatMaybeDate(value) {
+  if (!value) return '--';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value).slice(0, 10) || '--';
+  return d.toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' });
+}
+function formatXueqiuDateMs(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return '--';
+  return new Date(n).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' });
+}
+function firstPairValue(value) {
+  return Array.isArray(value) ? value[0] : value;
+}
+function getXueqiuQuote(fundData) {
+  return fundData?.results?.quote_detail?.raw?.data?.quote || fundData?.results?.quote_detail?.summary?.quote || null;
+}
+function getXueqiuPayload(fundData, key) {
+  return fundData?.results?.[key]?.raw?.data || null;
+}
+function getLatestFinanceRow(fundData, key) {
+  const list = getXueqiuPayload(fundData, key)?.list;
+  return Array.isArray(list) && list.length ? list[0] : null;
+}
+function detailValueRow(label, value, className = '') {
+  return { label, value, className };
+}
+function buildXueqiuPremiumSnapshotFromQuote(row, symbol) {
+  const price = Number(row?.price);
+  const latestNav = Number(row?.latestNav ?? row?.unitNav);
+  const iopv = Number(row?.iopv);
+  const premiumPercent = Number(row?.premiumPercent ?? row?.premium_rate);
+  if (!Number.isFinite(price) || price <= 0) return null;
+  if (!Number.isFinite(latestNav) || latestNav <= 0) return null;
+  const effectiveIopv = Number.isFinite(iopv) && iopv > 0 ? iopv : latestNav;
+  return {
+    symbol: String(symbol || row?.symbol || '').trim(),
+    price,
+    baseNav: latestNav,
+    latestNav,
+    navDate: row?.latestNavDate || row?.navDate || '',
+    iopv: effectiveIopv,
+    premiumPercent: Number.isFinite(premiumPercent) ? premiumPercent : ((price - effectiveIopv) / effectiveIopv) * 100,
+    updatedAt: row?.lastUpdated || row?.asOf || new Date().toISOString(),
+    cache: { hit: false, source: 'xueqiu-quote', key: '' }
+  };
+}
 function formatEps(n) {
   if (n == null || !Number.isFinite(Number(n))) return '-';
   return Number(n).toFixed(2);
@@ -991,6 +1163,8 @@ function EarningsCalendar({ items = [], initialLimit = 5 }) {
 
 const SYMBOL_DETAIL_TABS = [
   { key: 'overview', label: '概览' },
+  { key: 'fundFlow', label: '资金' },
+  { key: 'fundReport', label: '年报' },
   { key: 'earnings', label: '财报' },
   { key: 'financials', label: '财务' },
 ];
@@ -1039,10 +1213,28 @@ function shanghaiDateFromEpochSec(sec) {
   }
 }
 
-function epochSecFromShanghaiDate(date) {
+function epochSecFromShanghaiDate(date, time = '15:00:00') {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return 0;
-  const t = Date.parse(`${date}T15:00:00+08:00`);
+  const safeTime = /^\d{2}:\d{2}(?::\d{2})?$/.test(String(time || '')) ? String(time) : '15:00:00';
+  const t = Date.parse(`${date}T${safeTime}+08:00`);
   return Number.isFinite(t) ? Math.floor(t / 1000) : 0;
+}
+
+function buildHoldingTradeMarkers(transactions = [], code = '') {
+  const normalizedCode = normalizeCnFundCode(code);
+  if (!normalizedCode) return [];
+  return (Array.isArray(transactions) ? transactions : [])
+    .filter((tx) => normalizeCnFundCode(tx?.code) === normalizedCode && (tx?.type === 'BUY' || tx?.type === 'SELL') && /^\d{4}-\d{2}-\d{2}$/.test(String(tx?.date || '')))
+    .map((tx, index) => ({
+      id: tx.id || `${tx.type}-${tx.date}-${index}`,
+      type: tx.type,
+      date: tx.date,
+      t: epochSecFromShanghaiDate(tx.date, '15:00:00'),
+      price: Number(tx.price),
+      shares: Number(tx.shares),
+    }))
+    .filter((marker) => marker.t > 0)
+    .sort((a, b) => a.t - b.t);
 }
 
 function navHistoryDaysForRange(rangeKey) {
@@ -1067,14 +1259,37 @@ function findNavOnOrBefore(navItems, date) {
   return found;
 }
 
-function buildCnFundParamCandles(priceCandles, navItems, param, premiumState) {
+function buildCnFundParamCandles(priceCandles, navItems, param, premiumState, rangeKey = '') {
   if (param === 'price') return priceCandles;
-  const sortedNav = (Array.isArray(navItems) ? navItems : [])
+  let sortedNav = (Array.isArray(navItems) ? navItems : [])
     .filter((item) => item && /^\d{4}-\d{2}-\d{2}$/.test(String(item.date || '')) && Number(item.nav) > 0)
     .sort((a, b) => a.date.localeCompare(b.date));
   if (param === 'nav') {
+    const latestData = premiumState?.data || null;
+    const latestDate = String(latestData?.navDate || '').slice(0, 10);
+    const latestNav = Number(latestData?.latestNav ?? latestData?.baseNav);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(latestDate) && Number.isFinite(latestNav) && latestNav > 0) {
+      sortedNav = sortedNav.filter((item) => item.date !== latestDate);
+      sortedNav.push({ date: latestDate, nav: latestNav, source: 'xueqiu-quote' });
+      sortedNav.sort((a, b) => a.date.localeCompare(b.date));
+    }
+  }
+  if (param === 'nav' && rangeKey === '1d' && sortedNav.length) {
+    // 场外基金没有盘中分时。1 天视图用最新确认净值生成同一日水平线，避免把前一净值日连成斜线。
+    const latest = sortedNav[sortedNav.length - 1];
+    const v = Number(latest.nav);
+    const startT = epochSecFromShanghaiDate(latest.date, '09:30:00');
+    const endT = epochSecFromShanghaiDate(latest.date, '15:00:00');
+    return startT && endT && Number.isFinite(v) && v > 0
+      ? [
+        { t: startT, o: v, h: v, l: v, c: v, date: latest.date },
+        { t: endT, o: v, h: v, l: v, c: v, date: latest.date }
+      ]
+      : [];
+  }
+  if (param === 'nav') {
     const priceTimeline = Array.isArray(priceCandles) ? priceCandles : [];
-    if (priceTimeline.length >= 2) {
+    if (priceTimeline.length >= 2 && rangeKey !== '1d') {
       return priceTimeline
         .map((candle) => {
           const date = shanghaiDateFromEpochSec(candle?.t);
@@ -1095,19 +1310,16 @@ function buildCnFundParamCandles(priceCandles, navItems, param, premiumState) {
       .filter(Boolean);
   }
   if (param === 'premium') {
-    const qqqChangePercent = Number(premiumState?.data?.qqqChangePercent);
-    const qqqFactor = Number.isFinite(qqqChangePercent) ? (1 + qqqChangePercent / 100) : 1;
     return (Array.isArray(priceCandles) ? priceCandles : [])
       .map((candle) => {
         const date = shanghaiDateFromEpochSec(candle?.t);
         const navItem = findNavOnOrBefore(sortedNav, date);
         const nav = Number(navItem?.nav);
         if (!date || !Number.isFinite(nav) || nav <= 0) return null;
-        const iopv = nav * qqqFactor;
-        if (!Number.isFinite(iopv) || iopv <= 0) return null;
+        const iopv = nav;
         const toPremium = (value) => {
           const n = Number(value);
-          return Number.isFinite(n) ? ((n - iopv) / iopv) * 100 : null;
+          return Number.isFinite(n) ? ((n - nav) / nav) * 100 : null;
         };
         const o = toPremium(candle.o);
         const h = toPremium(candle.h);
@@ -1119,6 +1331,49 @@ function buildCnFundParamCandles(priceCandles, navItems, param, premiumState) {
       .filter(Boolean);
   }
   return priceCandles;
+}
+
+function isCnOtcFundQuote(row) {
+  if (!row) return false;
+  const source = String(row.source || '').toLowerCase();
+  const assetType = String(row.assetType || row.type || '').toLowerCase();
+  const exchange = String(row.exchange || '').toLowerCase();
+  return row.valueType === 'nav'
+    || assetType.includes('otc')
+    || assetType.includes('场外')
+    || exchange.includes('场外')
+    || source.includes('otc-fund')
+    || source.includes('nav-fallback');
+}
+
+function buildOtcFundQuoteFromSnapshot(symbol, snapshot, fallback = {}) {
+  const latestNav = Number(snapshot?.latestNav);
+  if (!Number.isFinite(latestNav) || latestNav <= 0) return null;
+  const previousNav = Number(snapshot?.previousNav);
+  const hasPrevious = Number.isFinite(previousNav) && previousNav > 0;
+  const change = hasPrevious ? latestNav - previousNav : 0;
+  return {
+    ...fallback,
+    symbol: String(symbol || snapshot?.code || fallback.symbol || '').trim().toUpperCase(),
+    code: String(snapshot?.code || symbol || fallback.code || '').replace(/\D/g, '').slice(-6),
+    name: resolveCnFundName(snapshot?.code || symbol || fallback.code, snapshot?.name || fallback.name || fallback.displayName || fallback.shortName),
+    market: 'cn',
+    exchange: '场外基金',
+    currency: 'CNY',
+    price: latestNav,
+    previousClose: hasPrevious ? previousNav : latestNav,
+    change,
+    changePercent: hasPrevious ? (change / previousNav) * 100 : 0,
+    latestNav,
+    latestNavDate: snapshot?.latestNavDate || '',
+    previousNav: hasPrevious ? previousNav : null,
+    previousNavDate: snapshot?.previousNavDate || '',
+    asOf: snapshot?.updatedAt || new Date().toISOString(),
+    lastUpdated: snapshot?.updatedAt || new Date().toISOString(),
+    source: 'otc-fund-nav-fallback',
+    valueType: 'nav',
+    assetType: 'otc_fund'
+  };
 }
 
 function marketStateLabel(state, marketCode) {
@@ -1142,7 +1397,6 @@ const TOOLBAR_ICONS = {
   compare: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={toolbarIconClass}><path d="M4 8c2.5-3 5.5-3 8 0s5.5 3 8 0" /><path d="M4 16c2.5 3 5.5 3 8 0s5.5-3 8 0" /></svg>,
 };
 const CHART_TYPE_OPTIONS = [
-  { key: 'area', label: '面积图', hint: '趋势 + 渐变填充', icon: TOOLBAR_ICONS.area },
   { key: 'candle', label: 'K 线图', hint: '开高低收烛台', icon: TOOLBAR_ICONS.candle },
   { key: 'bar', label: '柱形图', hint: '柱形展示收盘价', icon: TOOLBAR_ICONS.bar },
 ];
@@ -1238,8 +1492,48 @@ function CandlesLayerPanel({ xAxisMap, yAxisMap, data }) {
   );
 }
 
-function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, compareMode = 'change', tone, symbol, onHover, onLeave, onLock, lockOnClick = false }) {
+function TradeMarkersLayer({ xAxisMap, yAxisMap, data, markers = [] }) {
+  if (!xAxisMap || !yAxisMap || !Array.isArray(data) || !data.length || !markers.length) return null;
+  const xAxis = Object.values(xAxisMap)[0];
+  const yAxis = Object.values(yAxisMap)[0];
+  if (!xAxis || !yAxis || typeof yAxis.scale !== 'function') return null;
+  const xScale = xAxis.scale;
+  const yScale = yAxis.scale;
+  const rows = data.filter((row) => Number.isFinite(Number(row?.t)) && Number.isFinite(Number(row?.main)));
+  if (!rows.length) return null;
+  return (
+    <g pointerEvents="none">
+      {markers.map((marker, index) => {
+        const markerT = Number(marker.t);
+        const row = rows.find((item) => Number(item.t) >= markerT) || rows[rows.length - 1];
+        if (!row) return null;
+        const cxRaw = xScale(row.label);
+        const cyRaw = yScale(row.main);
+        if (typeof cxRaw !== 'number' || Number.isNaN(cxRaw) || typeof cyRaw !== 'number' || Number.isNaN(cyRaw)) return null;
+        const isBuy = marker.type === 'BUY';
+        const color = isBuy ? '#d93025' : '#1a73e8';
+        const label = isBuy ? '买' : '卖';
+        const cy = Math.max(16, Math.min(yAxis.y + yAxis.height - 8, cyRaw - (isBuy ? 10 : -10)));
+        return (
+          <g key={`${marker.id || marker.type}-${marker.date}-${index}`}>
+            {isBuy ? (
+              <circle cx={cxRaw} cy={cy} r={8} fill={color} stroke="white" strokeWidth={2} />
+            ) : (
+              <path d={`M ${cxRaw} ${cy - 9} L ${cxRaw + 9} ${cy} L ${cxRaw} ${cy + 9} L ${cxRaw - 9} ${cy} Z`} fill={color} stroke="white" strokeWidth={2} />
+            )}
+            <text x={cxRaw} y={cy + 3.5} textAnchor="middle" fontSize="9" fontWeight="700" fill="white">{label}</text>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, compareMode = 'change', tone, symbol, tradeMarkers = [], onHover, onLeave, onLock, lockOnClick = false }) {
   const chartShellRef = useRef(null);
+  const pointersRef = useRef(new Map());
+  const pinchRef = useRef(null);
+  const [zoomWindow, setZoomWindow] = useState(null);
   const cmpList = (compareSeries || []).filter((series) => Array.isArray(series.candles) && series.candles.length >= 2);
   const cmpSignature = JSON.stringify(cmpList.map((series) => ({
     symbol: series.symbol,
@@ -1292,15 +1586,44 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
     return out;
   }, [candles, indicators, normalized]);
   const finalRows = useMemo(() => {
+    const alignedCompare = cmpList.map((series) => {
+      const candlesSorted = [...series.candles]
+        .filter((candle) => Number.isFinite(Number(candle?.t)) && Number.isFinite(Number(candle?.c)))
+        .sort((a, b) => Number(a.t) - Number(b.t));
+      let cursor = 0;
+      const values = rows.map((row) => {
+        const rowT = Number(row.t);
+        while (cursor + 1 < candlesSorted.length && Number(candlesSorted[cursor + 1].t) <= rowT) cursor += 1;
+        const candle = candlesSorted[cursor];
+        return candle && Number(candle.t) <= rowT ? candle : null;
+      });
+      return { values };
+    });
+    const commonBaseIndex = normalized
+      ? rows.findIndex((row, index) => Number.isFinite(Number(row.c)) && alignedCompare.every((series) => Number.isFinite(Number(series.values[index]?.c))))
+      : 0;
+    const mainBase = Number(rows[Math.max(0, commonBaseIndex)]?.c) || 1;
+    const compareBases = alignedCompare.map((series) => Number(series.values[Math.max(0, commonBaseIndex)]?.c) || 1);
     return rows.map((row, index) => {
       const out = { ...row };
       indicatorLines.forEach((line) => { out[line.key] = line.values[index]; });
-      cmpList.forEach((series, ci) => {
-        const offset = Math.max(0, series.candles.length - rows.length);
-        const aligned = series.candles.slice(offset);
-        const candle = aligned[index];
-        const base = Number(aligned[0] && aligned[0].c) || 1;
-        if (candle && Number.isFinite(Number(candle.c))) {
+      if (normalized) {
+        if (commonBaseIndex >= 0 && index >= commonBaseIndex) {
+          const close = Number(row.c);
+          out.main = Number.isFinite(close) ? ((close / mainBase) - 1) * 100 : null;
+          out.mainBase = mainBase;
+          out.mainChange = Number.isFinite(close) ? close - mainBase : null;
+          out.mainChangePercent = mainBase && Number.isFinite(close) ? ((close / mainBase) - 1) * 100 : null;
+        } else {
+          out.main = null;
+          out.mainChange = null;
+          out.mainChangePercent = null;
+        }
+      }
+      alignedCompare.forEach((series, ci) => {
+        const candle = series.values[index];
+        const base = compareBases[ci];
+        if (candle && Number.isFinite(Number(candle.c)) && (!normalized || (commonBaseIndex >= 0 && index >= commonBaseIndex))) {
           const close = Number(candle.c);
           out[`cmp_${ci}`] = compareAsValue ? close : ((close / base) - 1) * 100;
           out[`cmp_${ci}_price`] = close;
@@ -1313,7 +1636,42 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
       });
       return out;
     });
-  }, [rows, indicatorLines, cmpSignature, compareAsValue]);
+  }, [rows, indicatorLines, cmpSignature, compareAsValue, normalized]);
+  const finalRowsSignature = finalRows.length ? `${finalRows.length}|${finalRows[0].t}|${finalRows[finalRows.length - 1].t}` : 'empty';
+  useEffect(() => {
+    setZoomWindow(null);
+    pointersRef.current.clear();
+    pinchRef.current = null;
+  }, [finalRowsSignature]);
+  const clampZoomWindow = useCallback((start, end, total = finalRows.length) => {
+    if (total < 2) return null;
+    const minSpan = Math.min(total, Math.max(12, Math.ceil(total * 0.08)));
+    let nextStart = Math.round(start);
+    let nextEnd = Math.round(end);
+    if (nextEnd - nextStart + 1 < minSpan) {
+      const mid = (nextStart + nextEnd) / 2;
+      nextStart = Math.round(mid - (minSpan - 1) / 2);
+      nextEnd = nextStart + minSpan - 1;
+    }
+    if (nextStart < 0) {
+      nextEnd -= nextStart;
+      nextStart = 0;
+    }
+    if (nextEnd > total - 1) {
+      nextStart -= nextEnd - (total - 1);
+      nextEnd = total - 1;
+    }
+    nextStart = Math.max(0, nextStart);
+    nextEnd = Math.min(total - 1, nextEnd);
+    if (nextStart <= 0 && nextEnd >= total - 1) return null;
+    return { start: nextStart, end: nextEnd };
+  }, [finalRows.length]);
+  const visibleRows = useMemo(() => {
+    if (!zoomWindow || finalRows.length < 2) return finalRows;
+    const start = Math.max(0, Math.min(finalRows.length - 1, zoomWindow.start));
+    const end = Math.max(start + 1, Math.min(finalRows.length - 1, zoomWindow.end));
+    return finalRows.slice(start, end + 1);
+  }, [finalRows, zoomWindow]);
 
   if (finalRows.length < 2) {
     return <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">暂无数据</div>;
@@ -1325,14 +1683,14 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
   const showBar = chartType === 'bar' && !normalized;
   const pickRowFromPointer = (event) => {
     const rect = chartShellRef.current?.getBoundingClientRect();
-    if (!rect || rect.width <= 0 || finalRows.length < 2) return null;
+    if (!rect || rect.width <= 0 || visibleRows.length < 2) return null;
     const x = Math.min(Math.max(event.clientX - rect.left, 0), rect.width);
-    const index = Math.min(finalRows.length - 1, Math.max(0, Math.round((x / rect.width) * (finalRows.length - 1))));
-    return finalRows[index] || null;
+    const index = Math.min(visibleRows.length - 1, Math.max(0, Math.round((x / rect.width) * (visibleRows.length - 1))));
+    return visibleRows[index] || null;
   };
   const getChartPayload = (state) => {
     const index = Number.isInteger(state?.activeTooltipIndex) ? state.activeTooltipIndex : -1;
-    return state?.activePayload?.[0]?.payload || (index >= 0 ? finalRows[index] : null);
+    return state?.activePayload?.[0]?.payload || (index >= 0 ? visibleRows[index] : null);
   };
   const handleChartPoint = (state) => {
     if (!onHover) return;
@@ -1357,6 +1715,64 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
     const payload = getChartPayload(state);
     if (payload) onLock(payload);
   };
+  const getPointerDistance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const getPointerCenterX = (a, b) => (a.x + b.x) / 2;
+  const handlePointerDown = (event) => {
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointersRef.current.size >= 2) {
+      event.preventDefault();
+      const [a, b] = Array.from(pointersRef.current.values()).slice(0, 2);
+      const rect = chartShellRef.current?.getBoundingClientRect();
+      const baseWindow = zoomWindow || { start: 0, end: finalRows.length - 1 };
+      pinchRef.current = {
+        distance: Math.max(1, getPointerDistance(a, b)),
+        centerRatio: rect?.width ? Math.min(1, Math.max(0, (getPointerCenterX(a, b) - rect.left) / rect.width)) : 0.5,
+        start: baseWindow.start,
+        end: baseWindow.end
+      };
+      return;
+    }
+    handlePointerLock(event);
+  };
+  const handlePointerMoveZoom = (event) => {
+    if (pointersRef.current.has(event.pointerId)) {
+      pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    }
+    if (pointersRef.current.size >= 2 && pinchRef.current) {
+      event.preventDefault();
+      const [a, b] = Array.from(pointersRef.current.values()).slice(0, 2);
+      const distance = Math.max(1, getPointerDistance(a, b));
+      const base = pinchRef.current;
+      const baseSpan = Math.max(1, base.end - base.start + 1);
+      const nextSpan = baseSpan / Math.max(0.25, Math.min(4, distance / base.distance));
+      const anchor = base.start + base.centerRatio * (baseSpan - 1);
+      const nextStart = anchor - base.centerRatio * (nextSpan - 1);
+      const nextEnd = nextStart + nextSpan - 1;
+      setZoomWindow(clampZoomWindow(nextStart, nextEnd));
+      return;
+    }
+    handlePointerMove(event);
+  };
+  const handlePointerEnd = (event) => {
+    pointersRef.current.delete(event.pointerId);
+    if (pointersRef.current.size < 2) pinchRef.current = null;
+  };
+  const handleWheelZoom = (event) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    const rect = chartShellRef.current?.getBoundingClientRect();
+    const current = zoomWindow || { start: 0, end: finalRows.length - 1 };
+    const ratio = rect?.width ? Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)) : 0.5;
+    const span = current.end - current.start + 1;
+    const scale = event.deltaY < 0 ? 0.82 : 1.18;
+    const nextSpan = span * scale;
+    const anchor = current.start + ratio * (span - 1);
+    const nextStart = anchor - ratio * (nextSpan - 1);
+    setZoomWindow(clampZoomWindow(nextStart, nextStart + nextSpan - 1));
+  };
+  const handleDoubleClickReset = () => {
+    setZoomWindow(null);
+  };
   const legendPayload = normalized
     ? [
       { value: displayMainSymbol || '当前标的', type: 'line', color: mainColor, id: 'main' },
@@ -1366,15 +1782,19 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
   return (
     <div
       ref={chartShellRef}
-      className="h-full w-full touch-pan-y select-none outline-none [-webkit-tap-highlight-color:transparent] [&_*]:outline-none [&_.recharts-surface]:outline-none [&_.recharts-surface]:focus:outline-none [&_.recharts-wrapper]:outline-none"
+      className="h-full w-full touch-none select-none outline-none [-webkit-tap-highlight-color:transparent] [&_*]:outline-none [&_.recharts-surface]:outline-none [&_.recharts-surface]:focus:outline-none [&_.recharts-wrapper]:outline-none"
       tabIndex={-1}
-      onPointerMove={handlePointerMove}
-      onPointerLeave={handleChartLeave}
-      onPointerDown={handlePointerLock}
+      onPointerMove={handlePointerMoveZoom}
+      onPointerLeave={(event) => { handlePointerEnd(event); handleChartLeave(); }}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerEnd}
+      onPointerCancel={handlePointerEnd}
+      onWheel={handleWheelZoom}
+      onDoubleClick={handleDoubleClickReset}
     >
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
-        data={finalRows}
+        data={visibleRows}
         margin={{ top: 12, right: 12, left: 4, bottom: 8 }}
         onMouseMove={handleChartPoint}
         onMouseLeave={handleChartLeave}
@@ -1392,28 +1812,16 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
         />
         <Tooltip
           cursor={false}
-          contentStyle={{ borderRadius: 12, borderColor: '#dfe3eb', boxShadow: '0 12px 32px rgba(60,64,67,0.16)' }}
-          labelStyle={{ fontSize: 12, color: '#5f6368', marginBottom: 6 }}
-          itemStyle={{ fontSize: 12, fontWeight: 600, padding: '2px 0' }}
-          formatter={(value, name, item) => {
-            const key = String(name);
-            if (key.includes('_price') || key.includes('_base') || key.includes('_change')) return null;
-            const label = name === 'main' ? (displayMainSymbol || '当前标的') : formatSymbolDisplay(name);
-            if (normalized) {
-              const payload = item?.payload || {};
-              const priceKey = key === 'main' ? 'mainPrice' : `${key}_price`;
-              const price = Number(payload[priceKey]);
-              return [Number.isFinite(price) ? price.toFixed(4) : '--', label];
-            }
-            if (compareAsValue) {
-              const payload = item?.payload || {};
-              const priceKey = key === 'main' ? 'mainPrice' : `${key}_price`;
-              const price = Number(payload[priceKey]);
-              return [Number.isFinite(price) ? `${price.toFixed(2)}%` : '--', label];
-            }
-            const n = Number(value);
-            if (!Number.isFinite(n)) return [value, label];
-            return [n.toFixed(4), label];
+          content={({ label, payload }) => {
+            const item = Array.isArray(payload) ? payload.find((entry) => entry && entry.dataKey === 'main') : null;
+            const value = item && item.payload ? item.payload.main : null;
+            const showValue = !normalized && value != null && Number.isFinite(Number(value));
+            return (
+              <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
+                <div>{label}</div>
+                {showValue ? <div className="mt-0.5 tabular-nums text-[#1f1f1f]">{formatNumber(value, 2)}</div> : null}
+              </div>
+            );
           }}
         />
         {showArea ? (
@@ -1429,7 +1837,10 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
           <Line type="monotone" dataKey="c" stroke="transparent" dot={false} activeDot={false} isAnimationActive={false} />
         ) : null}
         {showCandle ? (
-          <Customized component={<CandlesLayerPanel data={finalRows} />} />
+          <Customized component={<CandlesLayerPanel data={visibleRows} />} />
+        ) : null}
+        {!hasCompare && tradeMarkers.length ? (
+          <Customized component={<TradeMarkersLayer data={visibleRows} markers={tradeMarkers} />} />
         ) : null}
         {indicatorLines.map((line) => (
           <Line
@@ -1706,8 +2117,8 @@ function NavInsightCard({ premiumState }) {
         </div>
         <div className="text-right text-[12px] leading-5 text-[#5f6368]">
           <div>场内价格 <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(data.price, 4)}</span></div>
-          <div>估算 IOPV <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(data.iopv, 4)}</span></div>
-          <div>估算溢价 <span className={cx('font-medium tabular-nums', Number(data.premiumPercent) > 0 ? 'text-[#a50e0e]' : Number(data.premiumPercent) < 0 ? 'text-[#137333]' : 'text-[#1f1f1f]')}>{formatSignedPercent(data.premiumPercent)}</span></div>
+          <div>最新 IOPV <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(data.iopv, 4)}</span></div>
+          <div>最新溢价 <span className={cx('font-medium tabular-nums', Number(data.premiumPercent) > 0 ? 'text-[#a50e0e]' : Number(data.premiumPercent) < 0 ? 'text-[#137333]' : 'text-[#1f1f1f]')}>{formatSignedPercent(data.premiumPercent)}</span></div>
         </div>
       </div>
       <p className="mt-2 text-[11px] leading-4 text-[#9aa0a6]">净值取基金最新确认 NAV，场内基金盘中交易仍以价格为准。</p>
@@ -1715,55 +2126,79 @@ function NavInsightCard({ premiumState }) {
   );
 }
 
-function PremiumInsightCard({ premiumState }) {
-  const data = premiumState && premiumState.data;
-  if (premiumState?.loading && !data) {
-    return (
-      <div className="mt-3 rounded-xl border border-[#e8eaed] bg-[#f8fafd] p-3 text-sm text-[#5f6368]">
-        <div className="flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> 正在计算溢价…</div>
-      </div>
-    );
-  }
-  if (premiumState?.error) {
-    return (
-      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-        溢价暂不可用：{premiumState.error}
-      </div>
-    );
-  }
-  if (!data) return null;
-  const premium = Number(data.premiumPercent);
-  const premiumPositive = Number.isFinite(premium) && premium > 0;
-  const premiumNegative = Number.isFinite(premium) && premium < 0;
+
+function CnFundFlowPanel({ fundData, loading }) {
+  if (loading) return <div className="h-40 animate-pulse rounded-xl bg-[#f1f3f4]" />;
+  const flow = getXueqiuPayload(fundData, 'capital_flow');
+  const history = getXueqiuPayload(fundData, 'capital_history');
+  const pankou = getXueqiuPayload(fundData, 'pankou');
+  const latestFlow = Array.isArray(flow?.items) && flow.items.length ? flow.items[flow.items.length - 1] : null;
+  const bidAskRows = [1, 2, 3, 4, 5].map((level) => ({
+    level,
+    bidPrice: pankou?.[`bp${level}`],
+    bidVolume: pankou?.[`bc${level}`],
+    askPrice: pankou?.[`sp${level}`],
+    askVolume: pankou?.[`sc${level}`]
+  }));
+  if (!flow && !history && !pankou) return <div className="rounded-xl border border-[#e8eaed] bg-[#f8fafd] px-4 py-6 text-sm text-[#5f6368]">暂无资金和盘口数据。</div>;
   return (
-    <div className="mt-3 rounded-xl border border-[#e8eaed] bg-[#f8fafd] p-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-[12px] font-medium text-[#5f6368]">估算溢价</div>
-          <div className={cx('mt-1 text-2xl font-semibold tabular-nums', premiumPositive ? 'text-[#a50e0e]' : premiumNegative ? 'text-[#137333]' : 'text-[#1f1f1f]')}>
-            {formatSignedPercent(data.premiumPercent)}
+    <div className="space-y-5">
+      <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <div className="flex items-center justify-between border-b border-[#e8eaed] py-2"><span className="text-[#5f6368]">最新资金流</span><span className="font-medium tabular-nums text-[#1f1f1f]">{formatCnMoney(latestFlow?.amount)}</span></div>
+        <div className="flex items-center justify-between border-b border-[#e8eaed] py-2"><span className="text-[#5f6368]">3日净流入</span><span className="font-medium tabular-nums text-[#1f1f1f]">{formatCnMoney(history?.sum3)}</span></div>
+        <div className="flex items-center justify-between border-b border-[#e8eaed] py-2"><span className="text-[#5f6368]">5日净流入</span><span className="font-medium tabular-nums text-[#1f1f1f]">{formatCnMoney(history?.sum5)}</span></div>
+        <div className="flex items-center justify-between border-b border-[#e8eaed] py-2"><span className="text-[#5f6368]">20日净流入</span><span className="font-medium tabular-nums text-[#1f1f1f]">{formatCnMoney(history?.sum20)}</span></div>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-[#e8eaed] bg-white">
+        <div className="border-b border-[#e8eaed] bg-[#f8fafd] px-3 py-2 text-sm font-semibold text-[#1f1f1f]">盘口</div>
+        <div className="grid grid-cols-5 gap-0 text-right text-[12px] sm:text-sm">
+          <div className="px-2 py-2 text-left font-medium text-[#5f6368]">档位</div><div className="px-2 py-2 font-medium text-[#5f6368]">买价</div><div className="px-2 py-2 font-medium text-[#5f6368]">买量</div><div className="px-2 py-2 font-medium text-[#5f6368]">卖价</div><div className="px-2 py-2 font-medium text-[#5f6368]">卖量</div>
+          {bidAskRows.map((it) => (
+            <div key={it.level} className="contents">
+              <div className="border-t border-[#f1f3f4] px-2 py-2 text-left text-[#5f6368]">{it.level}档</div>
+              <div className="border-t border-[#f1f3f4] px-2 py-2 tabular-nums text-[#1f1f1f]">{formatNumber(it.bidPrice, 3)}</div>
+              <div className="border-t border-[#f1f3f4] px-2 py-2 tabular-nums text-[#1f1f1f]">{formatCnAmount(it.bidVolume)}</div>
+              <div className="border-t border-[#f1f3f4] px-2 py-2 tabular-nums text-[#1f1f1f]">{formatNumber(it.askPrice, 3)}</div>
+              <div className="border-t border-[#f1f3f4] px-2 py-2 tabular-nums text-[#1f1f1f]">{formatCnAmount(it.askVolume)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CnFundReportPanel({ fundData, loading }) {
+  if (loading) return <div className="h-40 animate-pulse rounded-xl bg-[#f1f3f4]" />;
+  const indicator = getLatestFinanceRow(fundData, 'finance_indicator');
+  const balance = getLatestFinanceRow(fundData, 'finance_balance');
+  const income = getLatestFinanceRow(fundData, 'finance_income');
+  const cashflow = getLatestFinanceRow(fundData, 'finance_cash_flow');
+  const reportName = indicator?.report_name || balance?.report_name || income?.report_name || cashflow?.report_name || '';
+  const rows = [
+    detailValueRow('报告期', reportName || '--'),
+    detailValueRow('总资产', formatCnMoney(firstPairValue(balance?.total_assets))),
+    detailValueRow('总负债', formatCnMoney(firstPairValue(balance?.total_liab))),
+    detailValueRow('资产负债率', Number.isFinite(Number(firstPairValue(indicator?.asset_liab_ratio))) ? `${formatNumber(firstPairValue(indicator?.asset_liab_ratio), 2)}%` : '--'),
+    detailValueRow('营收', formatCnMoney(firstPairValue(income?.revenue))),
+    detailValueRow('营收同比', Number.isFinite(Number(firstPairValue(indicator?.operating_income_yoy))) ? `${formatNumber(firstPairValue(indicator?.operating_income_yoy), 2)}%` : '--'),
+    detailValueRow('净利润', formatCnMoney(firstPairValue(income?.net_profit))),
+    detailValueRow('综合收益', formatCnMoney(firstPairValue(income?.total_compre_income))),
+    detailValueRow('经营现金流', formatCnMoney(firstPairValue(cashflow?.ncf_from_oa))),
+    detailValueRow('总资本周转', formatNumber(firstPairValue(indicator?.total_capital_turnover), 4)),
+  ];
+  if (!indicator && !balance && !income && !cashflow) return <div className="rounded-xl border border-[#e8eaed] bg-[#f8fafd] px-4 py-6 text-sm text-[#5f6368]">暂无基金年报数据。</div>;
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-[#e8eaed] bg-[#f8fafd] px-3 py-2 text-[12px] text-[#5f6368]">雪球返回的是基金年报口径数据，不是普通股票财报。</div>
+      <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+        {rows.map((item) => (
+          <div key={item.label} className="flex items-center justify-between border-b border-[#e8eaed] py-2">
+            <span className="text-[#5f6368]">{item.label}</span>
+            <span className="font-medium tabular-nums text-[#1f1f1f]">{item.value}</span>
           </div>
-        </div>
-        <div className="text-right text-[12px] leading-5 text-[#5f6368]">
-          <div>价格 <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(data.price, 4)}</span></div>
-          <div>IOPV <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(data.iopv, 4)}</span></div>
-        </div>
+        ))}
       </div>
-      <div className="mt-3 grid gap-2 text-[12px] sm:grid-cols-2">
-        <div className="rounded-lg bg-white px-3 py-2">
-          <div className="text-[#5f6368]">上一工作日净值</div>
-          <div className="mt-0.5 font-medium tabular-nums text-[#1f1f1f]">{formatNumber(data.baseNav, 4)}{data.navDate ? <span className="ml-1 text-[#9aa0a6]">@{data.navDate}</span> : null}</div>
-        </div>
-        <div className="rounded-lg bg-white px-3 py-2">
-          <div className="text-[#5f6368]">QQQ 涨幅</div>
-          <div className="mt-0.5 font-medium tabular-nums text-[#1f1f1f]">{formatSignedPercent(data.qqqChangePercent)}</div>
-        </div>
-      </div>
-      <div className="mt-3 rounded-lg border-l-2 border-indigo-200 bg-white px-3 py-2 text-[12px] leading-5 text-[#5f6368]">
-        iopv = 上一工作日净值 × (1 + QQQ涨幅) = {formatNumber(data.baseNav, 4)} × (1 + {formatSignedPercent(data.qqqChangePercent)}) = {formatNumber(data.iopv, 4)}<br />
-        溢价 = (价格 − iopv) / iopv = ({formatNumber(data.price, 4)} − {formatNumber(data.iopv, 4)}) / {formatNumber(data.iopv, 4)}
-      </div>
-      <p className="mt-2 text-[11px] leading-4 text-[#9aa0a6]">估算值用于盘中快速判断折溢价；实际 IOPV 仍可能受汇率、成分股权重和基金公司披露口径影响。</p>
     </div>
   );
 }
@@ -1776,6 +2211,8 @@ function SymbolDetailPanel({
   earnings = [],
   financials = null,
   financialsLoading = false,
+  xueqiuFundData = null,
+  xueqiuFundLoading = false,
   activeTab,
   onTabChange,
   onAnalyze,
@@ -1790,6 +2227,7 @@ function SymbolDetailPanel({
   premiumState,
   navHistoryState,
   isMobile = false,
+  tradeMarkers = [],
 }) {
   const [chartType, setChartType] = useState('area');
   const [cnFundParam, setCnFundParam] = useState('price');
@@ -1833,7 +2271,11 @@ function SymbolDetailPanel({
       searchSymbols(market, q, { limit: 10, signal: controller.signal })
         .then((res) => {
           if (seq !== compareSearchSeqRef.current) return;
-          const rows = Array.isArray(res && res.results) ? res.results : [];
+          const rows = Array.isArray(res && res.results) ? [...res.results] : [];
+          const otcCode = normalizeCnFundCode(q);
+          if (market === 'cn' && /^\d{6}$/.test(otcCode) && !rows.some((item) => normalizeCnFundCode(item.symbol || item.code || item.ticker) === otcCode)) {
+            rows.push(buildOtcCandidate(otcCode));
+          }
           const current = String(rowSymbol || '').toUpperCase();
           const seen = new Set();
           setCompareSearchResults(rows.map((item) => {
@@ -1939,6 +2381,28 @@ function SymbolDetailPanel({
   const exchangeLabel = row.exchange || (market === 'us' ? 'NASDAQ/NYSE' : 'A 股');
   const currencyLabel = row.currency || (market === 'us' ? 'USD' : 'CNY');
   const stateLabel = marketStateLabel(row.marketState, market);
+  const isCnOtcFund = market === 'cn' && isCnOtcFundQuote(row);
+  const xueqiuQuote = getXueqiuQuote(xueqiuFundData);
+  const cnOverviewExtras = market === 'cn' && !isCnOtcFund ? [
+    detailValueRow('开盘价', formatNumber(row.open ?? xueqiuQuote?.open, 3)),
+    detailValueRow('最高价', formatNumber(row.high ?? xueqiuQuote?.high, 3)),
+    detailValueRow('最低价', formatNumber(row.low ?? xueqiuQuote?.low, 3)),
+    detailValueRow('成交额', formatCnMoney(row.turnover ?? xueqiuQuote?.amount)),
+    detailValueRow('市值', formatCnMoney(row.marketCapital ?? row.marketCap ?? xueqiuQuote?.market_capital)),
+    detailValueRow('成交量', formatCnAmount(row.volume ?? xueqiuQuote?.volume)),
+    detailValueRow('52 周最高价', formatNumber(xueqiuQuote?.high52w, 3)),
+    detailValueRow('52 周最低价', formatNumber(xueqiuQuote?.low52w, 3)),
+    detailValueRow('iOPV', formatNumber(xueqiuQuote?.iopv, 4)),
+    detailValueRow('单位净值', formatNumber(xueqiuQuote?.unit_nav, 4)),
+    detailValueRow('累计净值', formatNumber(xueqiuQuote?.acc_unit_nav, 4)),
+    detailValueRow('净值日期', formatXueqiuDateMs(xueqiuQuote?.nav_date)),
+    detailValueRow('溢价率', Number.isFinite(Number(xueqiuQuote?.premium_rate)) ? formatSignedPercent(xueqiuQuote?.premium_rate) : '--'),
+    detailValueRow('年内涨幅', Number.isFinite(Number(xueqiuQuote?.current_year_percent)) ? formatSignedPercent(xueqiuQuote?.current_year_percent) : '--'),
+    detailValueRow('总份额', formatCnAmount(xueqiuQuote?.total_shares)),
+    detailValueRow('量比', formatNumber(xueqiuQuote?.volume_ratio, 2)),
+    detailValueRow('成立日期', formatXueqiuDateMs(xueqiuQuote?.found_date)),
+    detailValueRow('上市日期', formatXueqiuDateMs(xueqiuQuote?.issue_date)),
+  ].filter((item) => item.value !== '--' && item.value !== '-').slice(0, 18) : [];
   const toggleIndicator = (k) => setIndicators((prev) => {
     const next = new Set(prev);
     if (next.has(k)) next.delete(k); else next.add(k);
@@ -2069,7 +2533,7 @@ function SymbolDetailPanel({
     const compareNavKey = `${compareCode}|${navHistoryDaysForRange(chartRange)}`;
     const compareNavItems = compareNavHistoryMap[compareNavKey]?.items;
     const candles = market === 'cn' && cnFundParam !== 'price'
-      ? buildCnFundParamCandles(priceCandles, compareNavItems, cnFundParam, premiumState)
+      ? buildCnFundParamCandles(priceCandles, compareNavItems, cnFundParam, premiumState, chartRange)
       : priceCandles;
     return {
       symbol: sym,
@@ -2123,11 +2587,14 @@ function SymbolDetailPanel({
     applyHoverSnapshot(normalizeCompareQuote(row.symbol, row), 'main'),
     ...compareSymbols.map((sym, index) => applyHoverSnapshot(normalizeCompareQuote(sym, compareCandidates.find((item) => item.symbol === sym)), `cmp_${index}_`))
   ];
-  const effectiveChartCandles = market !== 'cn' || cnFundParam === 'price'
-    ? chartCandles
-    : buildCnFundParamCandles(chartCandles, navHistoryState?.items, cnFundParam, premiumState);
+  const effectiveChartCandles = isCnOtcFund
+    ? (cnFundParam === 'premium' ? [] : buildCnFundParamCandles([], navHistoryState?.items, 'nav', premiumState, chartRange))
+    : (market !== 'cn' || cnFundParam === 'price'
+      ? chartCandles
+      : buildCnFundParamCandles(chartCandles, navHistoryState?.items, cnFundParam, premiumState, chartRange));
   const effectiveChartType = market === 'cn' && cnFundParam !== 'price' ? 'area' : chartType;
   const premiumCompareMode = market === 'cn' && cnFundParam === 'premium';
+  const premiumUnavailable = isCnOtcFund && cnFundParam === 'premium';
   const buildPremiumTableRow = (quoteRow, keyPrefix, metricCandles) => {
     if (!premiumCompareMode) return quoteRow;
     const lastMetric = Array.isArray(metricCandles) && metricCandles.length ? metricCandles[metricCandles.length - 1] : null;
@@ -2155,7 +2622,7 @@ function SymbolDetailPanel({
       snapshotLabel: activeCursorRow?.label || quoteRow.snapshotLabel
     };
   };
-  const displayCompareTableRows = premiumCompareMode
+  const premiumTableRows = premiumCompareMode
     ? [
       buildPremiumTableRow(normalizeCompareQuote(row.symbol, row), 'main', effectiveChartCandles),
       ...compareSymbols.map((sym, index) => buildPremiumTableRow(
@@ -2164,9 +2631,39 @@ function SymbolDetailPanel({
         compareSeries[index]?.candles
       ))
     ]
+    : [];
+  const premiumBaseValue = Number(premiumTableRows[0]?.price);
+  const premiumRowsWithSpread = premiumTableRows.map((item) => {
+    const premiumValue = Number(item.price);
+    return {
+      ...item,
+      premiumPercent: premiumValue,
+      navValue: item.change,
+      iopvValue: item.changePercent,
+      marketPrice: item.previousClose,
+      premiumSpread: Number.isFinite(premiumValue) && Number.isFinite(premiumBaseValue) ? premiumValue - premiumBaseValue : null
+    };
+  });
+  const premiumSpreadStats = premiumCompareMode && compareSymbols.length > 1
+    ? (() => {
+      const values = premiumRowsWithSpread
+        .map((item) => ({ item, value: Number(item.premiumPercent) }))
+        .filter((entry) => Number.isFinite(entry.value));
+      if (values.length < 2) return null;
+      const min = values.reduce((best, entry) => entry.value < best.value ? entry : best, values[0]);
+      const max = values.reduce((best, entry) => entry.value > best.value ? entry : best, values[0]);
+      return {
+        spread: max.value - min.value,
+        maxSymbol: formatSymbolDisplay(max.item.symbol),
+        minSymbol: formatSymbolDisplay(min.item.symbol)
+      };
+    })()
+    : null;
+  const displayCompareTableRows = premiumCompareMode
+    ? premiumRowsWithSpread
     : compareTableRows;
-  const metricLoading = market === 'cn' && cnFundParam !== 'price' && navHistoryState?.loading;
-  const metricError = market === 'cn' && cnFundParam !== 'price' ? navHistoryState?.error : '';
+  const metricLoading = market === 'cn' && (cnFundParam !== 'price' || isCnOtcFund) && navHistoryState?.loading;
+  const metricError = market === 'cn' && (cnFundParam !== 'price' || isCnOtcFund) ? navHistoryState?.error : '';
   const hasFullCandles = Array.isArray(effectiveChartCandles) && effectiveChartCandles.length >= 2;
   const sparkFallback = cnFundParam === 'price' && (!hasFullCandles && Array.isArray(sparkPoints) && sparkPoints.length >= 2) ? sparkPoints : null;
 
@@ -2192,12 +2689,12 @@ function SymbolDetailPanel({
                 <span className="mx-1 text-[#5f6368]">·</span>
                 {formatPercent(row.changePercent)}
               </span>
-              <span className="text-[11px] text-[#5f6368]">今日</span>
+              <span className="text-[11px] text-[#5f6368]">{isCnOtcFund ? '净值' : '今日'}</span>
             </div>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-[#5f6368] sm:text-[11px]">
               <span>{stateLabel}</span>
               {row.lastUpdated ? <><span>·</span><span>更新于 {formatClock(row.lastUpdated)}</span></> : null}
-              {Number.isFinite(Number(row.previousClose)) ? <><span>·</span><span>昨收 <span className="tabular-nums">{formatNumber(row.previousClose)}</span></span></> : null}
+              {Number.isFinite(Number(row.previousClose)) ? <><span>·</span><span>{isCnOtcFund ? '前一净值' : '昨收'} <span className="tabular-nums">{formatNumber(row.previousClose)}</span></span></> : null}
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center">
@@ -2205,21 +2702,21 @@ function SymbolDetailPanel({
               type="button"
               onClick={onToggleWatch}
               className={cx(
-                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition sm:px-2.5 sm:py-1 sm:text-[12px]',
+                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-medium transition sm:px-2.5 sm:py-1 sm:text-[13px]',
                 inWatch
                   ? 'border border-[#dadce0] bg-white text-[#1f1f1f] hover:bg-[#f1f3f4]'
                   : 'bg-[#1f1f1f] text-white hover:bg-[#3c3c3c]'
               )}
             >
-              <Star size={13} className={inWatch ? 'fill-amber-400 text-amber-400' : ''} />
+              <Star size={14} className={inWatch ? 'fill-amber-400 text-amber-400' : ''} />
               {inWatch ? '已添加' : '添加自选'}
             </button>
             <button
               type="button"
               onClick={onAnalyze}
-              className="inline-flex items-center gap-1 rounded-full bg-[#e8f0fe] px-2 py-0.5 text-[11px] font-medium text-[#1a73e8] transition hover:bg-[#d2e3fc] sm:px-2.5 sm:py-1 sm:text-[12px]"
+              className="inline-flex items-center gap-1 rounded-full bg-[#e8f0fe] px-2 py-0.5 text-[12px] font-medium text-[#1a73e8] transition hover:bg-[#d2e3fc] sm:px-2.5 sm:py-1 sm:text-[13px]"
             >
-              <Sparkles size={13} />
+              <Sparkles size={14} />
               研究
             </button>
           </div>
@@ -2253,33 +2750,6 @@ function SymbolDetailPanel({
               )}
             </ChartToolbarPopover>
           ) : null}
-          {!isMobile ? (
-            <ChartToolbarPopover
-              icon={(CHART_TYPE_OPTIONS.find((opt) => opt.key === effectiveChartType) || {}).icon || TOOLBAR_ICONS.area}
-              label={CHART_TYPE_LABEL[effectiveChartType] || '面积图'}
-              active={effectiveChartType !== 'area'}
-            >
-              {({ close }) => (
-                <div className="flex flex-col gap-0.5">
-                  {CHART_TYPE_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.key}
-                      type="button"
-                      onClick={() => { setChartType(opt.key); close(); }}
-                      className={cx(
-                        'flex items-center gap-3 rounded-lg px-3 py-2 text-left transition',
-                        chartType === opt.key ? 'bg-[#e8f0fe]' : 'hover:bg-[#f1f3f4]'
-                      )}
-                    >
-                      <span className="w-5 text-center text-[18px] leading-none text-[#202124]">{opt.icon}</span>
-                      <span className={cx('text-[14px] font-medium', chartType === opt.key ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>{opt.label}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </ChartToolbarPopover>
-          ) : null}
-
           <ChartToolbarPopover
             icon={TOOLBAR_ICONS.indicators}
             label={indicators.size ? `指标 · ${indicators.size}` : '指标'}
@@ -2426,7 +2896,9 @@ function SymbolDetailPanel({
               <span className="inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1 shadow-sm"><Loader2 size={12} className="animate-spin" /> 正在加载对比线</span>
             </div>
           ) : null}
-          {hasFullCandles ? (
+          {premiumUnavailable ? (
+            <div className="flex h-full items-center justify-center text-sm font-medium text-[#5f6368]">场外基金无溢价数据</div>
+          ) : hasFullCandles ? (
             <SymbolDetailChart
               candles={effectiveChartCandles}
               tf={chartTf}
@@ -2439,6 +2911,7 @@ function SymbolDetailPanel({
               onHover={handleChartHover}
               onLeave={handleChartLeave}
               onLock={handleChartLock}
+              tradeMarkers={cnFundParam === 'price' && compareSymbols.length === 0 ? tradeMarkers : []}
               lockOnClick={isMobile}
             />
           ) : sparkFallback ? (
@@ -2486,14 +2959,16 @@ function SymbolDetailPanel({
           </div>
         </div>
 
-        {compareSymbols.length > 0 ? (
+        {premiumUnavailable ? (
+          <div className="mt-1.5 rounded-xl border border-[#e8eaed] bg-[#f8fafd] px-3 py-2 text-[12px] font-medium text-[#5f6368] sm:text-[13px]">场外基金无溢价数据</div>
+        ) : compareSymbols.length > 0 ? (
           <div className="overflow-hidden bg-white text-[11px] sm:text-[13px]">
-            <div className="grid h-8 grid-cols-[minmax(44px,1fr)_58px_56px_66px] items-center gap-0.5 border-b border-[rgba(17,24,39,0.08)] px-1 text-right text-[11px] font-semibold text-[#5f6368] sm:h-10 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[13px]">
+            <div className="grid h-8 grid-cols-[minmax(44px,1fr)_58px_58px_64px] items-center gap-0.5 border-b border-[rgba(17,24,39,0.08)] px-1 text-right text-[11px] font-semibold text-[#5f6368] sm:h-10 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[13px]">
               <div className="min-w-0 truncate text-left">股票代码</div>
               <div className="whitespace-nowrap">{premiumCompareMode ? '溢价' : '价格'}</div>
-              <div className="whitespace-nowrap">{premiumCompareMode ? '净值' : '涨跌额'}</div>
-              <div className="whitespace-nowrap">{premiumCompareMode ? '估算 IOPV' : '涨跌幅'}</div>
-              <div className="hidden sm:block">{premiumCompareMode ? '估算价格' : '昨收盘'}</div>
+              <div className="whitespace-nowrap">{premiumCompareMode ? '溢价差' : '涨跌额'}</div>
+              <div className="whitespace-nowrap">{premiumCompareMode ? '价格' : '涨跌幅'}</div>
+              <div className="hidden sm:block">{premiumCompareMode ? '净值' : '昨收盘'}</div>
             </div>
             {displayCompareTableRows.map((item, index) => {
               const markerColor = index === 0 ? COMPARE_MAIN_COLOR : COMPARE_COLORS[(index - 1) % COMPARE_COLORS.length];
@@ -2501,9 +2976,13 @@ function SymbolDetailPanel({
               const rowPositive = Number.isFinite(toneValue) && toneValue > 0;
               const rowNegative = Number.isFinite(toneValue) && toneValue < 0;
               const toneClass = rowPositive ? 'text-[#a50e0e]' : rowNegative ? 'text-[#137333]' : 'text-[#1f1f1f]';
+              const spreadValue = Number(item.premiumSpread);
+              const spreadPositive = Number.isFinite(spreadValue) && spreadValue > 0;
+              const spreadNegative = Number.isFinite(spreadValue) && spreadValue < 0;
+              const spreadToneClass = spreadPositive ? 'text-[#a50e0e]' : spreadNegative ? 'text-[#137333]' : 'text-[#1f1f1f]';
               const displayRowSymbol = formatSymbolDisplay(item.symbol);
               return (
-                <div key={`${item.symbol}-${index}`} className="grid h-12 grid-cols-[minmax(44px,1fr)_58px_56px_66px] items-center gap-0.5 border-b border-[rgba(17,24,39,0.08)] px-1 text-right text-[12px] tabular-nums sm:h-16 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[16px]">
+                <div key={`${item.symbol}-${index}`} className="grid h-12 grid-cols-[minmax(44px,1fr)_58px_58px_64px] items-center gap-0.5 border-b border-[rgba(17,24,39,0.08)] px-1 text-right text-[12px] tabular-nums sm:h-16 sm:grid-cols-[minmax(160px,1fr)_96px_96px_96px_96px] sm:gap-2 sm:px-4 sm:text-[16px]">
                   <div className="flex min-w-0 items-center gap-1 text-left sm:gap-3">
                     <span className="size-2 shrink-0 rounded-sm sm:size-3" style={{ background: markerColor }} />
                     <div className="min-w-0">
@@ -2511,22 +2990,30 @@ function SymbolDetailPanel({
                       <div className="mt-0.5 hidden truncate text-[12px] text-[rgba(17,24,39,0.64)] sm:block sm:text-[13px]">{item.name}</div>
                     </div>
                   </div>
-                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[17px]', premiumCompareMode ? toneClass : 'text-[#202124]')}>{Number.isFinite(item.price) ? (premiumCompareMode ? formatSignedPercent(item.price) : `$${formatNumber(item.price, 2)}`) : '--'}</div>
-                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? 'text-[#202124]' : toneClass)}>{Number.isFinite(item.change) ? (premiumCompareMode ? formatNumber(item.change, 4) : `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)}`) : '--'}</div>
-                  <div className={cx('whitespace-nowrap text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? 'text-[#202124]' : toneClass)}>{Number.isFinite(item.changePercent) ? (premiumCompareMode ? formatNumber(item.changePercent, 4) : formatSignedPercent(item.changePercent)) : '--'}</div>
-                  <div className="hidden whitespace-nowrap text-[15px] font-bold text-[#202124] transition-colors duration-[120ms] sm:block sm:text-[17px]">{Number.isFinite(item.previousClose) ? `$${formatNumber(item.previousClose, 2)}` : '--'}</div>
+                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[17px]', premiumCompareMode ? toneClass : 'text-[#202124]')}>{Number.isFinite(item.price) ? (premiumCompareMode ? formatSignedPercent(item.price) : (market === 'cn' ? formatNumber(item.price, 2) : `$${formatNumber(item.price, 2)}`)) : '--'}</div>
+                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? spreadToneClass : toneClass)}>{premiumCompareMode ? (Number.isFinite(spreadValue) ? formatSignedPercent(spreadValue) : '--') : (Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)}` : '--')}</div>
+                  <div className={cx('whitespace-nowrap text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? 'text-[#202124]' : toneClass)}>{premiumCompareMode ? (Number.isFinite(item.marketPrice) ? formatNumber(item.marketPrice, 4) : '--') : (Number.isFinite(item.changePercent) ? formatSignedPercent(item.changePercent) : '--')}</div>
+                  <div className="hidden whitespace-nowrap text-[15px] font-bold text-[#202124] transition-colors duration-[120ms] sm:block sm:text-[17px]">{premiumCompareMode ? (Number.isFinite(item.navValue) ? formatNumber(item.navValue, 4) : '--') : (Number.isFinite(item.previousClose) ? (market === 'cn' ? formatNumber(item.previousClose, 2) : `$${formatNumber(item.previousClose, 2)}`) : '--')}</div>
                 </div>
               );
             })}
+            {premiumSpreadStats ? (
+              <div className="flex items-center justify-between gap-2 border-b border-[rgba(17,24,39,0.08)] px-1 py-2 text-[11px] font-medium text-[#5f6368] sm:px-4 sm:text-[13px]">
+                <span>最大/最小溢价差</span>
+                <span className="text-right tabular-nums text-[#202124]">
+                  {formatSignedPercent(premiumSpreadStats.spread)}
+                  <span className="ml-1 text-[#9aa0a6]">{premiumSpreadStats.maxSymbol} - {premiumSpreadStats.minSymbol}</span>
+                </span>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
-        {market === 'cn' && cnFundParam === 'nav' ? <NavInsightCard premiumState={premiumState} /> : null}
-        {market === 'cn' && cnFundParam === 'premium' ? <PremiumInsightCard premiumState={premiumState} /> : null}
+        {market === 'cn' && (cnFundParam === 'nav' || cnFundParam === 'premium') ? <NavInsightCard premiumState={premiumState} /> : null}
 
         {/* 详情 tab */}
         <div className="mt-1.5 flex gap-4 border-b border-[#e8eaed] text-[12px] font-medium text-[#5f6368] sm:mt-2 sm:text-[13px]">
-          {(market === 'us' ? SYMBOL_DETAIL_TABS : SYMBOL_DETAIL_TABS.filter((tab) => tab.key === 'overview')).map((tab) => (
+          {(market === 'us' ? SYMBOL_DETAIL_TABS.filter((tab) => tab.key === 'overview' || tab.key === 'earnings' || tab.key === 'financials') : SYMBOL_DETAIL_TABS.filter((tab) => tab.key === 'overview' || (!isCnOtcFund && (tab.key === 'fundFlow' || tab.key === 'fundReport')))).map((tab) => (
             <button
               key={tab.key}
               type="button"
@@ -2547,11 +3034,11 @@ function SymbolDetailPanel({
           <div className="space-y-5">
             <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
             <div className="flex items-center justify-between border-b border-[#e8eaed] py-2">
-              <span className="text-[#5f6368]">最新价</span>
+              <span className="text-[#5f6368]">{isCnOtcFund ? '最新净值' : '最新价'}</span>
               <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(row.price)}</span>
             </div>
             <div className="flex items-center justify-between border-b border-[#e8eaed] py-2">
-              <span className="text-[#5f6368]">今日涨跌幅</span>
+              <span className="text-[#5f6368]">{isCnOtcFund ? '净值涨跌幅' : '今日涨跌幅'}</span>
               <span className={cx('font-medium tabular-nums', positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#1f1f1f]')}>{formatPercent(row.changePercent)}</span>
             </div>
             <div className="flex items-center justify-between border-b border-[#e8eaed] py-2">
@@ -2571,6 +3058,18 @@ function SymbolDetailPanel({
               <span className="font-medium text-[#1f1f1f]">{stateLabel}</span>
             </div>
             </div>
+            {xueqiuFundLoading && market === 'cn' && !cnOverviewExtras.length ? (
+              <div className="h-20 animate-pulse rounded-xl bg-[#f1f3f4]" />
+            ) : cnOverviewExtras.length ? (
+              <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                {cnOverviewExtras.map((item) => (
+                  <div key={item.label} className="flex items-center justify-between border-b border-[#e8eaed] py-2">
+                    <span className="text-[#5f6368]">{item.label}</span>
+                    <span className={cx('font-medium tabular-nums text-[#1f1f1f]', item.className)}>{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <div className="border-t border-[#e8eaed] pt-4">
               <div className="mb-2 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-[#1f1f1f]">相关新闻</h3>
@@ -2579,6 +3078,10 @@ function SymbolDetailPanel({
               <NewsList items={(relatedNews.length ? relatedNews : news.slice(0, 5)).slice(0, 5)} />
             </div>
           </div>
+        ) : activeTab === 'fundFlow' ? (
+          <CnFundFlowPanel fundData={xueqiuFundData} loading={xueqiuFundLoading} />
+        ) : activeTab === 'fundReport' ? (
+          <CnFundReportPanel fundData={xueqiuFundData} loading={xueqiuFundLoading} />
         ) : activeTab === 'earnings' ? (
           <EarningsCalendar items={relatedEarnings.length ? relatedEarnings : earnings.slice(0, 5)} />
         ) : (
@@ -3141,7 +3644,11 @@ export function MarketsExperience() {
   const [summary, setSummary] = useState({ themes: [], generatedAt: '' });
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [watch, setWatch] = useState(() => loadWatchlist());
+  const [watchlistDialog, setWatchlistDialog] = useState(null);
+  const [sidebarListMode, setSidebarListMode] = useState('watch');
+  const [holdingsLedger, setHoldingsLedger] = useState(() => readLedgerState());
   const [watchQuotes, setWatchQuotes] = useState({});
+  const [watchNavSnapshots, setWatchNavSnapshots] = useState({});
   const [watchLoading, setWatchLoading] = useState(false);
   const [symbolInput, setSymbolInput] = useState('');
   const [symbolSearchResults, setSymbolSearchResults] = useState([]);
@@ -3162,6 +3669,7 @@ export function MarketsExperience() {
   const [researchMode, setResearchMode] = useState('peek');
   const [selectedSymbol, setSelectedSymbol] = useState('');
   const selectedSymbolRef = useRef('');
+  const pendingSymbolHandledRef = useRef('');
   const [selectedQuoteMap, setSelectedQuoteMap] = useState({});
   const [detailHeaderHidden, setDetailHeaderHidden] = useState(false);
   const [symbolDetailTab, setSymbolDetailTab] = useState('overview');
@@ -3176,6 +3684,9 @@ export function MarketsExperience() {
   const [financialsMap, setFinancialsMap] = useState({});
   const [financialsLoading, setFinancialsLoading] = useState(false);
   const financialsInflightRef = useRef(new Set());
+  const [xueqiuFundDataMap, setXueqiuFundDataMap] = useState({});
+  const [xueqiuFundLoading, setXueqiuFundLoading] = useState(false);
+  const xueqiuFundInflightRef = useRef(new Set());
   const chartInflightRef = useRef(new Set());
   const [vpHeight, setVpHeight] = useState(null);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)').matches : false);
@@ -3235,6 +3746,29 @@ export function MarketsExperience() {
   const watchLists = Array.isArray(watch.lists) ? watch.lists : [];
   const activeWatchList = watchLists.find((item) => item.id === watch.activeListId) || watchLists[0] || { us: [], cn: [], name: '默认列表' };
   const watchSymbols = useMemo(() => activeWatchList[market] || [], [activeWatchList, market]);
+  useEffect(() => {
+    const refreshHoldingsLedger = () => setHoldingsLedger(readLedgerState());
+    window.addEventListener('holdings:ledger-updated', refreshHoldingsLedger);
+    window.addEventListener('storage', refreshHoldingsLedger);
+    window.addEventListener('focus', refreshHoldingsLedger);
+    return () => {
+      window.removeEventListener('holdings:ledger-updated', refreshHoldingsLedger);
+      window.removeEventListener('storage', refreshHoldingsLedger);
+      window.removeEventListener('focus', refreshHoldingsLedger);
+    };
+  }, []);
+  const heldAggregates = useMemo(
+    () => aggregateByCode(holdingsLedger.transactions, holdingsLedger.snapshotsByCode).filter((agg) => agg.hasPosition),
+    [holdingsLedger]
+  );
+  const heldSymbols = useMemo(
+    () => Array.from(new Set(heldAggregates.map((agg) => normalizeCnFundCode(agg.code)).filter(Boolean))),
+    [heldAggregates]
+  );
+  const trackedWatchSymbols = useMemo(
+    () => market === 'cn' ? Array.from(new Set([...watchSymbols, ...heldSymbols])) : watchSymbols,
+    [market, watchSymbols, heldSymbols]
+  );
   useEffect(() => {
     selectedSymbolRef.current = selectedSymbol;
   }, [selectedSymbol]);
@@ -3351,21 +3885,40 @@ export function MarketsExperience() {
   }, [market]);
 
   const refreshWatch = useCallback(async () => {
-    const list = watchSymbols || [];
+    const list = trackedWatchSymbols || [];
     if (!list.length) {
       setWatchQuotes({});
+      setWatchNavSnapshots({});
       return;
     }
     setWatchLoading(true);
     try {
       const r = await fetchQuotes(list);
-      setWatchQuotes(r.quotes || {});
+      const quotes = r.quotes || {};
+      if (market === 'cn') {
+        const otcCodes = list.map((sym) => normalizeCnFundCode(sym)).filter((code) => code && NASDAQ_OTC_FUND_MAP[code]);
+        if (otcCodes.length) {
+          try {
+            const snapshotsPayload = await getNavSnapshots(otcCodes);
+            const snapshots = Object.fromEntries((snapshotsPayload.items || []).map((item) => [item.code, item]));
+            setWatchNavSnapshots((prev) => ({ ...prev, ...snapshots }));
+            otcCodes.forEach((code) => {
+              const existing = quotes[code] || quotes[`SZ${code}`] || quotes[`SH${code}`] || {};
+              const quote = buildOtcFundQuoteFromSnapshot(code, snapshots[code], existing);
+              if (quote) quotes[code] = quote;
+            });
+          } catch (_error) {
+            // 场外基金净值是增强信息，失败时仍展示行情源返回的结果。
+          }
+        }
+      }
+      setWatchQuotes(quotes);
     } catch (err) {
       // ignore
     } finally {
       setWatchLoading(false);
     }
-  }, [watchSymbols]);
+  }, [trackedWatchSymbols, market]);
 
   // 美股 11 大行业指数（Google Finance 同款）。A 股暂未接入。
   const refreshSectors = useCallback(async (forceRefresh = false) => {
@@ -3440,6 +3993,29 @@ export function MarketsExperience() {
   }, [selectedSymbol, market, symbolDetailTab, financialsMap]);
 
   useEffect(() => {
+    if (!selectedSymbol || market !== 'cn') return;
+    const code = normalizeCnFundCode(selectedSymbol);
+    if (!/^\d{6}$/.test(code) || NASDAQ_OTC_FUND_MAP[code]) return;
+    if (Object.prototype.hasOwnProperty.call(xueqiuFundDataMap, selectedSymbol)) return;
+    if (xueqiuFundInflightRef.current.has(selectedSymbol)) return;
+    xueqiuFundInflightRef.current.add(selectedSymbol);
+    setXueqiuFundLoading(true);
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetchXueqiuFundData(selectedSymbol, { raw: true });
+        if (!cancelled) setXueqiuFundDataMap((prev) => ({ ...prev, [selectedSymbol]: r }));
+      } catch (_) {
+        if (!cancelled) setXueqiuFundDataMap((prev) => ({ ...prev, [selectedSymbol]: null }));
+      } finally {
+        xueqiuFundInflightRef.current.delete(selectedSymbol);
+        if (!cancelled) setXueqiuFundLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedSymbol, market, xueqiuFundDataMap]);
+
+  useEffect(() => {
     refreshIndices(false);
     refreshNews();
     refreshEarnings(false);
@@ -3464,8 +4040,8 @@ export function MarketsExperience() {
   // 自选股迷你图只在总览态加载；进入详情后避免为侧栏批量补拉 1d K 线。
   useEffect(() => {
     if (selectedSymbol) return;
-    ensureKlines(watchSymbols);
-  }, [selectedSymbol, watchSymbols, ensureKlines]);
+    ensureKlines(trackedWatchSymbols);
+  }, [selectedSymbol, trackedWatchSymbols, ensureKlines]);
 
   useEffect(() => {
     const q = symbolInput.trim();
@@ -3485,7 +4061,12 @@ export function MarketsExperience() {
         .then((r) => {
           if (seq !== symbolSearchSeqRef.current) return;
           const seen = new Set();
-          const rows = (Array.isArray(r && r.results) ? r.results : []).map((row) => ({
+          const rawRows = Array.isArray(r && r.results) ? [...r.results] : [];
+          const otcCode = normalizeCnFundCode(q);
+          if (activeMarket.key === 'cn' && /^\d{6}$/.test(otcCode) && !rawRows.some((row) => normalizeCnFundCode(row.symbol || row.code || row.ticker) === otcCode)) {
+            rawRows.push(buildOtcCandidate(otcCode));
+          }
+          const rows = rawRows.map((row) => ({
             ...row,
             market: activeMarket.key,
             marketLabel: activeMarket.label
@@ -3571,49 +4152,124 @@ export function MarketsExperience() {
   }
 
   function handleSelectWatchlist(listId) {
+    if (listId === 'held') {
+      setSidebarListMode('held');
+      setSelectedSymbol('');
+      setSymbolDetailTab('overview');
+      return;
+    }
     const next = setActiveWatchlist(listId);
     setWatch(next);
+    setSidebarListMode('watch');
     setSelectedSymbol('');
     setSymbolDetailTab('overview');
   }
 
   function handleCreateWatchlist() {
-    const next = createWatchlist(`列表 ${(watchLists || []).length + 1}`);
+    setWatchlistDialog({ type: 'create', name: `列表 ${(watchLists || []).length + 1}` });
+  }
+
+  function handleRenameWatchlist(list) {
+    if (!list) return;
+    setWatchlistDialog({ type: 'rename', list, name: list.name || '' });
+  }
+
+  function handleDeleteWatchlist(list) {
+    if (!list || list.id === 'default') return;
+    setWatchlistDialog({ type: 'delete', list, name: list.name || '' });
+  }
+
+  function handleWatchlistDialogSubmit() {
+    if (!watchlistDialog) return;
+    if (watchlistDialog.type === 'delete') {
+      const next = deleteWatchlist(watchlistDialog.list?.id);
+      setWatch(next);
+      setSidebarListMode('watch');
+      setSelectedSymbol('');
+      setSymbolDetailTab('overview');
+      setWatchlistDialog(null);
+      showActionToast('列表已删除', 'success');
+      return;
+    }
+    const trimmed = String(watchlistDialog.name || '').trim();
+    if (!trimmed) return;
+    if (watchlistDialog.type === 'rename') {
+      if (trimmed !== watchlistDialog.list?.name) {
+        const next = renameWatchlist(watchlistDialog.list?.id, trimmed);
+        setWatch(next);
+        showActionToast('列表已改名', 'success');
+      }
+      setWatchlistDialog(null);
+      return;
+    }
+    const next = createWatchlist(trimmed);
     setWatch(next);
+    setSidebarListMode('watch');
     setSelectedSymbol('');
     setSymbolDetailTab('overview');
+    setWatchlistDialog(null);
+    showActionToast('已新建列表', 'success');
   }
 
   function handleSelectSymbol(row, options = {}) {
     if (!row || !row.symbol) return;
-    const symbol = rememberSelectedQuote(row, market) || row.symbol;
+    const targetMarket = options.market || row.market || market;
+    if (targetMarket && targetMarket !== market) setMarket(targetMarket);
+    const symbol = rememberSelectedQuote(row, targetMarket) || row.symbol;
     setSelectedSymbol(symbol);
     setSymbolDetailTab('overview');
     setResearchMode(options.openResearch ? 'conversation' : 'peek');
   }
 
+  const buildSidebarRow = useCallback((sym, heldAggregate = null) => {
+    const code = normalizeCnFundCode(sym);
+    const q = watchQuotes[sym] || (code ? watchQuotes[code] : null) || {};
+    const snapshot = code ? watchNavSnapshots[code] : null;
+    const otcQuote = market === 'cn' && code && NASDAQ_OTC_FUND_MAP[code]
+      ? buildOtcFundQuoteFromSnapshot(sym, snapshot, q)
+      : null;
+    const merged = otcQuote || q;
+    const latestNavDate = merged.latestNavDate || snapshot?.latestNavDate || '';
+    const baseMeta = isCnOtcFundQuote(merged) || (market === 'cn' && code && NASDAQ_OTC_FUND_MAP[code])
+      ? ['场外基金', latestNavDate ? `净值日 ${latestNavDate.slice(5)}` : '净值'].join(' · ')
+      : '';
+    return {
+      symbol: sym,
+      name: market === 'cn' ? resolveCnFundName(sym, merged.name || heldAggregate?.name || CN_ETF_PRESET_MAP[sym]?.name || sym) : (merged.name || CN_ETF_PRESET_MAP[sym]?.name || sym),
+      price: merged.price,
+      changePercent: merged.changePercent,
+      change: merged.change,
+      previousClose: merged.previousClose,
+      open: merged.open,
+      high: merged.high,
+      low: merged.low,
+      volume: merged.volume,
+      marketCap: merged.marketCap,
+      exchange: merged.exchange || CN_ETF_PRESET_MAP[sym]?.exchange,
+      currency: merged.currency || CN_ETF_PRESET_MAP[sym]?.currency,
+      latestNav: merged.latestNav || snapshot?.latestNav,
+      latestNavDate,
+      valueType: merged.valueType,
+      assetType: merged.assetType,
+      source: merged.source,
+      market,
+      holding: !!heldAggregate,
+      meta: [heldAggregate ? '已持仓' : '', baseMeta, heldAggregate ? `份额 ${formatNumber(heldAggregate.totalShares, 2)}` : ''].filter(Boolean).join(' · ')
+    };
+  }, [watchQuotes, watchNavSnapshots, market]);
+
   const watchRows = useMemo(
-    () =>
-      watchSymbols.map((sym) => {
-        const q = watchQuotes[sym] || {};
-        return {
-          symbol: sym,
-          name: q.name || CN_ETF_PRESET_MAP[sym]?.name || sym,
-          price: q.price,
-          changePercent: q.changePercent,
-          change: q.change,
-          previousClose: q.previousClose,
-          open: q.open,
-          high: q.high,
-          low: q.low,
-          volume: q.volume,
-          marketCap: q.marketCap,
-          exchange: q.exchange || CN_ETF_PRESET_MAP[sym]?.exchange,
-          currency: q.currency || CN_ETF_PRESET_MAP[sym]?.currency
-        };
-      }),
-    [watchSymbols, watchQuotes]
+    () => watchSymbols.map((sym) => buildSidebarRow(sym)),
+    [watchSymbols, buildSidebarRow]
   );
+
+  const heldRows = useMemo(
+    () => market === 'cn' ? heldAggregates.map((agg) => buildSidebarRow(normalizeCnFundCode(agg.code), agg)) : [],
+    [market, heldAggregates, buildSidebarRow]
+  );
+
+  const activeSidebarRows = sidebarListMode === 'held' ? heldRows : watchRows;
+  const activeSidebarEmptyText = sidebarListMode === 'held' ? '暂无已持仓基金。' : '未配置自选。';
 
   const watchTopMovers = useMemo(
     () => watchRows.filter((row) => Number.isFinite(Number(row.changePercent))).slice().sort((a, b) => Math.abs(Number(b.changePercent)) - Math.abs(Number(a.changePercent))).slice(0, 6),
@@ -3622,14 +4278,60 @@ export function MarketsExperience() {
 
   const selectedStoredQuote = selectedSymbol ? selectedQuoteMap[`${market}:${selectedSymbol}`] : null;
   const selectedQuote = useMemo(
-    () => watchRows.find((row) => row.symbol === selectedSymbol) || selectedStoredQuote || null,
-    [selectedSymbol, selectedStoredQuote, watchRows]
+    () => {
+      const watchRow = watchRows.find((row) => row.symbol === selectedSymbol) || heldRows.find((row) => row.symbol === selectedSymbol) || null;
+      if (selectedStoredQuote && Number.isFinite(Number(selectedStoredQuote.price))) return selectedStoredQuote;
+      return watchRow || selectedStoredQuote || null;
+    },
+    [selectedSymbol, selectedStoredQuote, watchRows, heldRows]
   );
   const selectedCnFundCode = market === 'cn' ? normalizeCnFundCode(selectedSymbol || selectedQuote?.symbol) : '';
+  const selectedTradeMarkers = useMemo(
+    () => selectedCnFundCode ? buildHoldingTradeMarkers(holdingsLedger.transactions, selectedCnFundCode) : [],
+    [holdingsLedger.transactions, selectedCnFundCode]
+  );
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.title = selectedQuote ? formatBrowserTitleForQuote(selectedQuote) : '行情中心';
+  }, [selectedQuote]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const openPendingSymbol = (rawValue = '') => {
+      const params = new URL(window.location.href).searchParams;
+      const raw = rawValue || params.get('symbol') || window.sessionStorage.getItem(MARKETS_PENDING_SYMBOL_KEY) || '';
+      const code = normalizeCnFundCode(raw);
+      if (!code || pendingSymbolHandledRef.current === code) return;
+      pendingSymbolHandledRef.current = code;
+      try { window.sessionStorage.removeItem(MARKETS_PENDING_SYMBOL_KEY); } catch (_error) { /* ignore */ }
+      const row = heldRows.find((item) => normalizeCnFundCode(item.symbol) === code)
+        || watchRows.find((item) => normalizeCnFundCode(item.symbol) === code)
+        || buildOtcCandidate(code, { symbol: code });
+      handleSelectSymbol({ ...row, symbol: code, market: 'cn' }, { market: 'cn' });
+    };
+    openPendingSymbol();
+    const handlePopState = () => {
+      pendingSymbolHandledRef.current = '';
+      openPendingSymbol();
+    };
+    const handleSelectEvent = (event) => {
+      pendingSymbolHandledRef.current = '';
+      openPendingSymbol(event?.detail?.symbol || '');
+    };
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('markets:select-symbol', handleSelectEvent);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('markets:select-symbol', handleSelectEvent);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heldRows.length, watchRows.length]);
 
   useEffect(() => {
     if (!selectedSymbol) return undefined;
-    if (watchRows.some((row) => row.symbol === selectedSymbol)) return undefined;
+    const selectedWatchRow = watchRows.find((row) => row.symbol === selectedSymbol) || heldRows.find((row) => row.symbol === selectedSymbol);
+    if (selectedWatchRow && Number.isFinite(Number(selectedWatchRow.price))) return undefined;
     if (Number.isFinite(Number(selectedStoredQuote?.price))) return undefined;
     let cancelled = false;
     fetchQuote(selectedSymbol)
@@ -3643,30 +4345,84 @@ export function MarketsExperience() {
               ...prev[key],
               ...quote,
               symbol: String(quote.symbol || selectedSymbol).trim().toUpperCase(),
-              name: quote.name || prev[key]?.name || CN_ETF_PRESET_MAP[selectedSymbol]?.name || selectedSymbol
+              name: resolveCnFundName(quote.symbol || selectedSymbol, quote.name || prev[key]?.name || CN_ETF_PRESET_MAP[selectedSymbol]?.name || selectedSymbol)
             }
           };
         });
       })
-      .catch(() => {});
+      .catch(async () => {
+        if (cancelled || market !== 'cn') return;
+        const code = normalizeCnFundCode(selectedSymbol);
+        if (!/^\d{6}$/.test(code)) return;
+        try {
+          const snapshot = await getNavSnapshot(code);
+          if (cancelled) return;
+          const quote = buildOtcFundQuoteFromSnapshot(selectedSymbol, snapshot, selectedStoredQuote || {});
+          if (!quote) return;
+          setSelectedQuoteMap((prev) => {
+            const key = `${market}:${selectedSymbol}`;
+            return {
+              ...prev,
+              [key]: {
+                ...prev[key],
+                ...quote,
+                name: resolveCnFundName(quote.symbol || selectedSymbol, quote.name || prev[key]?.name || selectedSymbol)
+              }
+            };
+          });
+        } catch (_error) {
+          // 场外基金净值兜底也失败时保持原占位，不打扰用户。
+        }
+      });
     return () => { cancelled = true; };
   }, [market, selectedSymbol, selectedStoredQuote?.price, watchRows]);
 
   useEffect(() => {
     if (market !== 'cn' || !selectedSymbol) return;
-    const price = Number(selectedQuote?.price);
     const symbol = normalizeCnFundCode(selectedSymbol);
+    if (isCnOtcFundQuote(selectedQuote)) {
+      if (/^\d{6}$/.test(symbol)) {
+        setPremiumMap((prev) => ({
+          ...prev,
+          [symbol]: {
+            loading: false,
+            error: '',
+            data: {
+              symbol,
+              price: Number(selectedQuote?.price),
+              baseNav: Number(selectedQuote?.latestNav || selectedQuote?.price),
+              navDate: selectedQuote?.latestNavDate || '',
+              iopv: Number(selectedQuote?.latestNav || selectedQuote?.price),
+              premiumPercent: null,
+              isOtcFund: true,
+              message: '场外基金无溢价数据'
+            }
+          }
+        }));
+      }
+      return;
+    }
+    const price = Number(selectedQuote?.price);
     if (!symbol || !Number.isFinite(price) || price <= 0) return;
     const cachedState = premiumMap[symbol];
-    if (cachedState?.loading && cachedState?.data && !premiumInflightRef.current.has(symbol)) {
+    const cachedPremium = cachedState?.data;
+    if (cachedPremium && Math.abs(Number(cachedPremium.price) - price) < 0.000001) {
+      if (cachedState?.loading && !premiumInflightRef.current.has(symbol)) {
+        setPremiumMap((prev) => ({
+          ...prev,
+          [symbol]: { ...prev[symbol], loading: false }
+        }));
+      }
+      return;
+    }
+    const xueqiuPremium = buildXueqiuPremiumSnapshotFromQuote(selectedQuote, symbol);
+    if (xueqiuPremium) {
       setPremiumMap((prev) => ({
         ...prev,
-        [symbol]: { ...prev[symbol], loading: false }
+        [symbol]: { loading: false, error: '', data: xueqiuPremium }
       }));
       return;
     }
-    const cachedPremium = cachedState?.data;
-    if (cachedPremium && Math.abs(Number(cachedPremium.price) - price) < 0.000001) return;
     if (premiumInflightRef.current.has(symbol)) return;
     premiumInflightRef.current.add(symbol);
     setPremiumMap((prev) => ({ ...prev, [symbol]: { loading: true, data: prev[symbol]?.data || null, error: '' } }));
@@ -3699,7 +4455,7 @@ export function MarketsExperience() {
       }
     })();
     return () => { cancelled = true; };
-  }, [market, selectedSymbol, selectedQuote?.price, premiumMap]);
+  }, [market, selectedSymbol, selectedQuote?.price, selectedQuote?.latestNav, selectedQuote?.iopv, selectedQuote?.premiumPercent, selectedQuote?.latestNavDate]);
 
   useEffect(() => {
     if (market !== 'cn' || !selectedSymbol) return;
@@ -3750,6 +4506,13 @@ export function MarketsExperience() {
   const marketStatusLabel = indicesLoading ? '刷新中' : (indices.length ? `${indices.length} 个指数` : '待加载');
 
   return (
+    <>
+    <WatchlistNameDialog
+      dialog={watchlistDialog}
+      onChangeName={(name) => setWatchlistDialog((prev) => prev ? { ...prev, name } : prev)}
+      onCancel={() => setWatchlistDialog(null)}
+      onSubmit={handleWatchlistDialogSubmit}
+    />
     <div className={cx(
       "flex flex-col gap-5 lg:grid lg:h-[calc(100vh-6rem)] lg:min-h-0 lg:grid-cols-[280px_minmax(0,1fr)_360px] lg:items-stretch lg:gap-4 lg:overflow-hidden lg:pb-0 xl:grid-cols-[320px_minmax(0,1fr)_400px]",
       selectedSymbol ? "pb-4" : "pb-[140px]"
@@ -3760,9 +4523,12 @@ export function MarketsExperience() {
           <div className="flex items-center justify-between pt-1">
             <WatchlistSelector
               lists={watchLists}
-              activeListId={watch.activeListId}
+              activeListId={sidebarListMode === 'held' ? 'held' : watch.activeListId}
               onSelect={handleSelectWatchlist}
               onCreate={handleCreateWatchlist}
+              onRename={handleRenameWatchlist}
+              onDelete={handleDeleteWatchlist}
+              heldCount={heldRows.length}
             />
             <div className="flex items-center gap-1">
               <button
@@ -3778,10 +4544,11 @@ export function MarketsExperience() {
           <div className="mt-1 h-px w-full bg-[#e8eaed]" />
         </div>
 
+
         {/* 监控列表 */}
         <div className="px-1">
           <div className="flex items-center justify-between py-2">
-            <h3 className="text-base font-semibold text-[#1f1f1f]">监控列表</h3>
+            <h3 className="text-base font-semibold text-[#1f1f1f]">{sidebarListMode === 'held' ? '已持仓' : '监控列表'}</h3>
             <button
               type="button"
               onClick={() => setWatchOpen((v) => !v)}
@@ -3793,11 +4560,11 @@ export function MarketsExperience() {
           </div>
           {watchOpen && (
             <>
-              {watchRows.length === 0 ? (
-                <p className="px-2 py-2 text-sm text-[#5f6368]">未配置自选。</p>
+              {activeSidebarRows.length === 0 ? (
+                <p className="px-2 py-2 text-sm text-[#5f6368]">{activeSidebarEmptyText}</p>
               ) : (
                 <ul className="divide-y divide-[#e8eaed]">
-                  {watchRows.map((row) => (
+                  {activeSidebarRows.map((row) => (
                     <MobileSidebarRow
                       key={row.symbol}
                       symbol={row.symbol}
@@ -3805,6 +4572,7 @@ export function MarketsExperience() {
                       price={row.price}
                       changePercent={row.changePercent}
                       sparkPoints={klineMap[row.symbol]}
+                      meta={row.meta}
                       selected={row.symbol === selectedSymbol}
                       onSelect={() => handleSelectSymbol(row)}
                     />
@@ -3920,11 +4688,15 @@ export function MarketsExperience() {
           <div className="flex items-center justify-between gap-1 px-1 py-2">
             <WatchlistSelector
               lists={watchLists}
-              activeListId={watch.activeListId}
+              activeListId={sidebarListMode === 'held' ? 'held' : watch.activeListId}
               onSelect={handleSelectWatchlist}
               onCreate={handleCreateWatchlist}
+              onRename={handleRenameWatchlist}
+              onDelete={handleDeleteWatchlist}
+              heldCount={heldRows.length}
             />
           </div>
+
 
           {/* 组 1：监控列表 */}
           <div className="px-1 pt-1">
@@ -3934,18 +4706,18 @@ export function MarketsExperience() {
               className="flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-[15px] font-medium text-[#1f1f1f] hover:bg-[#f1f3f4]"
             >
               {watchOpen ? <ChevronDown size={16} className="text-[#5f6368]" /> : <ChevronRight size={16} className="text-[#5f6368]" />}
-              <Star size={14} className="text-amber-400" />
-              <span>监控列表</span>
+              {sidebarListMode === 'held' ? <Wallet size={14} className="text-indigo-400" /> : <Star size={14} className="text-amber-400" />}
+              <span>{sidebarListMode === 'held' ? '已持仓' : '监控列表'}</span>
               {watchLoading && <Loader2 size={12} className="ml-1 animate-spin text-slate-400" />}
             </button>
           </div>
           {watchOpen && (
             <div className="px-1 pb-1">
-              {watchRows.length === 0 ? (
-                <p className="px-2 py-1 text-xs text-slate-400">未配置自选。</p>
+              {activeSidebarRows.length === 0 ? (
+                <p className="px-2 py-1 text-xs text-slate-400">{activeSidebarEmptyText}</p>
               ) : (
                 <ul>
-                  {watchRows.map((row) => (
+                  {activeSidebarRows.map((row) => (
                     <SidebarRow
                       key={row.symbol}
                       symbol={row.symbol}
@@ -3953,6 +4725,7 @@ export function MarketsExperience() {
                       price={row.price}
                       changePercent={row.changePercent}
                       sparkPoints={klineMap[row.symbol]}
+                      meta={row.meta}
                       selected={row.symbol === selectedSymbol}
                       onSelect={() => handleSelectSymbol(row)}
                     />
@@ -4069,20 +4842,6 @@ export function MarketsExperience() {
       </aside>
 
       <main ref={mainRef} className="order-1 flex min-w-0 flex-col gap-5 lg:order-2 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
-        {!watchRows.length ? (
-          <div className="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/50 px-4 py-4 text-sm text-slate-600">
-            <div className="font-semibold text-slate-900">未配置自选</div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button type="button" className={cx(primaryButtonClass, 'min-h-10 px-3 py-2 text-xs')} onClick={() => { setSectorsOpen(true); setSectorSearchOpen(true); }}>
-                {market === 'cn' ? '搜索 A股 / ETF' : '添加第一个标的'}
-              </button>
-              <button type="button" className={cx(secondaryButtonClass, 'min-h-10 px-3 py-2 text-xs')} onClick={() => setPendingAnalysis(market === 'cn' ? { symbol: '513100', name: '纳指 ETF' } : { symbol: 'QQQ', name: 'Nasdaq 100 ETF' })}>
-                {market === 'cn' ? '开始研究纳指 ETF' : '开始研究 QQQ'}
-              </button>
-            </div>
-          </div>
-        ) : null}
-
         <div className={cx(
           "sticky top-0 z-20 items-center justify-between gap-3 bg-white/95 px-1 py-2 backdrop-blur transition-all duration-500 ease-out will-change-transform",
           selectedQuote ? "hidden" : "flex",
@@ -4133,6 +4892,8 @@ export function MarketsExperience() {
             earnings={earnings}
             financials={financialsMap[selectedQuote.symbol]}
             financialsLoading={financialsLoading && !financialsMap[selectedQuote.symbol]}
+            xueqiuFundData={xueqiuFundDataMap[selectedQuote.symbol]}
+            xueqiuFundLoading={xueqiuFundLoading && !xueqiuFundDataMap[selectedQuote.symbol]}
             activeTab={symbolDetailTab}
             onTabChange={setSymbolDetailTab}
             chartRange={chartRange}
@@ -4150,6 +4911,7 @@ export function MarketsExperience() {
             premiumState={premiumMap[selectedCnFundCode || selectedQuote.symbol]}
             navHistoryState={navHistoryMap[`${selectedCnFundCode || selectedQuote.symbol}|${navHistoryDaysForRange(chartRange)}`]}
             isMobile={isMobile}
+            tradeMarkers={selectedTradeMarkers}
             inWatch={watchSymbols.includes(selectedQuote.symbol)}
             onToggleWatch={() => {
               if (watchSymbols.includes(selectedQuote.symbol)) {
@@ -4342,5 +5104,6 @@ export function MarketsExperience() {
         />
       </aside>
     </div>
+    </>
   );
 }

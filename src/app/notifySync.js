@@ -5,6 +5,7 @@ import { readTradeLedger } from './tradeLedger.js';
 import { groupCostBasisBySymbol } from './costTracker.js';
 import { calculatePositions } from './positionManager.js';
 import { readVixSnapshot, resolveVixSignal, VIX_THRESHOLDS } from './vixSignal.js';
+import { trackAnalyticsEvent } from './analytics.js';
 
 const NOTIFY_ENDPOINT = '/api/notify';
 const NOTIFY_CLIENT_CONFIG_KEY = 'aiDcaNotifyClientConfig';
@@ -115,6 +116,7 @@ export function persistNotifyClientConfig(nextConfig = {}) {
   };
 
   window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(payload));
+  trackAnalyticsEvent('notify_enabled', { hasBark: Boolean(payload.barkDeviceKey), clientId: payload.notifyClientId });
 }
 
 function resolveNotifyClientConfig(payload = {}) {
@@ -177,6 +179,7 @@ async function requestNotify(path, init = {}) {
     throw new Error(payload.error || `通知服务请求失败：状态 ${response.status}`);
   }
 
+  trackAnalyticsEvent('notify_used', { path });
   return payload;
 }
 

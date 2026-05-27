@@ -98,6 +98,14 @@ export async function fetchFinancials(symbol, { refresh = false } = {}) {
   return getJson('/financials/' + encodeURIComponent(symbol) + q);
 }
 
+export async function fetchXueqiuFundData(symbol, { refresh = false, raw = true } = {}) {
+  const params = [];
+  if (refresh) params.push('refresh=1');
+  if (raw) params.push('raw=1');
+  const q = params.length ? '?' + params.join('&') : '';
+  return getJson('/xueqiu-fund-data/' + encodeURIComponent(symbol) + q);
+}
+
 export async function fetchProfile(symbol) {
   return getJson('/profile/' + encodeURIComponent(symbol));
 }
@@ -185,7 +193,7 @@ export async function askMarketsStream({
     try { reader.releaseLock(); } catch (_) { /* ignore */ }
   }
   if (lastError) {
-    const msg = (lastError && (lastError.message || lastError.error)) || 'stream error';
+    const msg = (lastError && (lastError.message || lastError.detail || lastError.error)) || 'stream error';
     const err = new Error(String(msg));
     err.payload = lastError;
     throw err;
@@ -287,6 +295,34 @@ export function createWatchlist(name = '新列表') {
   });
   saveWatchlist(next);
   return next;
+}
+
+export function renameWatchlist(listId, name) {
+  const current = loadWatchlist();
+  const targetListId = String(listId || current.activeListId || DEFAULT_WATCHLIST_ID);
+  const nextName = String(name || '').trim();
+  if (!nextName) return current;
+  const now = new Date().toISOString();
+  const lists = (current.lists || []).map((item) => (
+    item.id === targetListId ? { ...item, name: nextName, updatedAt: now } : item
+  ));
+  const saved = normalizeWatchlist({ ...current, lists });
+  saveWatchlist(saved);
+  return saved;
+}
+
+export function deleteWatchlist(listId) {
+  const current = loadWatchlist();
+  const targetListId = String(listId || current.activeListId || '');
+  const currentLists = current.lists || [];
+  if (!targetListId || targetListId === DEFAULT_WATCHLIST_ID || currentLists.length <= 1) return current;
+  const lists = currentLists.filter((item) => item.id !== targetListId);
+  const activeListId = current.activeListId === targetListId
+    ? (lists.find((item) => item.id === DEFAULT_WATCHLIST_ID)?.id || lists[0]?.id || DEFAULT_WATCHLIST_ID)
+    : current.activeListId;
+  const saved = normalizeWatchlist({ ...current, lists, activeListId });
+  saveWatchlist(saved);
+  return saved;
 }
 
 export function addToWatchlist(market, symbol, listId = null) {

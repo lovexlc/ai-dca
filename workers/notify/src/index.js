@@ -62,6 +62,31 @@ function readOrigin(request) {
   return request.headers.get('origin') || '*';
 }
 
+async function trackAnalyticsEvent(env, type, meta = {}) {
+  try {
+    const endpoint = String(env?.ANALYTICS_ENDPOINT || 'https://tools.freebacktrack.tech/api/sync/analytics/track').trim();
+    if (!endpoint || !type) return;
+    await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: `worker:${type}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`,
+        type,
+        createdAt: new Date().toISOString(),
+        date: new Date().toISOString().slice(0, 10),
+        visitorId: String(meta.clientId || meta.reason || 'notify-worker'),
+        sessionId: 'notify-worker',
+        userId: '',
+        username: '',
+        path: '/api/notify/switch/run',
+        meta
+      })
+    });
+  } catch (_error) {
+    // 统计失败不影响通知 Worker 主流程。
+  }
+}
+
 function normalizeSettings(settings = {}) {
   const rawClients = typeof settings.clients === 'object' && settings.clients ? settings.clients : {};
   const gotifyClients = Array.isArray(settings.gotifyClients)
@@ -1995,6 +2020,68 @@ async function handleHoldingsRulePost(request, env) {
 
 // 管理员：手动触发「全仓总览」推送（可选跳过当日 dedup + 可选临时覆盖 totals）。
 // 需要 ADMIN_TEST_TOKEN 匹配。主要用于上线后手动验证推送能走通。
+
+
+function resolveAdminNotifyClient(settings = {}, env = {}) {
+  const explicitClientId = normalizeClientId(env?.ADMIN_NOTIFY_CLIENT_ID || env?.ADMIN_CLIENT_ID || '');
+  if (explicitClientId) {
+    const explicitClient = getClientRecord(settings, explicitClientId);
+    if (explicitClient?.clientId) return explicitClient;
+  }
+  const adminName = String(env?.ADMIN_NOTIFY_USERNAME || env?.ADMIN_USERNAME || 'lovexl').trim().toLowerCase();
+  const clients = Object.values(settings.clients || {}).filter((client) => normalizeClientId(client?.clientId));
+  const hasUsableChannel = (client) => Boolean(
+    String(client?.barkDeviceKey || '').trim()
+    || normalizeGcmRegistrations(settings.gcmRegistrations).some((registration) =>
+      normalizeGcmPairedClients(registration.pairedClients).some((paired) => paired.clientId === client.clientId)
+    )
+  );
+  const byLabel = clients.find((client) => {
+    const label = String(client?.clientLabel || '').trim().toLowerCase();
+    return label === adminName || label.includes(adminName);
+  });
+  if (byLabel) return byLabel;
+  const withChannel = clients.find(hasUsableChannel);
+  return withChannel || clients[0] || null;
+}
+
+async function handleAdminAlert(request, env) {
+  const origin = readOrigin(request);
+  const headerToken = request.headers.get('x-admin-token') || '';
+  const expected = String(env?.ADMIN_TEST_TOKEN || env?.ADMIN_NOTIFY_TOKEN || '').trim();
+  if (!expected || String(headerToken || '').trim() !== expected) {
+    return jsonResponse({ error: 'forbidden' }, { status: 403, origin });
+  }
+  let settings = await readSettings(env);
+  const clientRecord = resolveAdminNotifyClient(settings, env);
+  if (!clientRecord?.clientId) {
+    return jsonResponse({ error: 'admin notify client not found in KV settings' }, { status: 404, origin });
+  }
+  const targetClientId = clientRecord.clientId;
+  const payload = await request.json().catch(() => ({}));
+  const nowIso = new Date().toISOString();
+  const result = await runClientDetection(env, settings, clientRecord, {
+    reason: 'admin-alert',
+    testPayload: {
+      eventId: String(payload.eventId || `admin-alert-${Date.now()}`),
+      eventType: String(payload.eventType || payload.type || 'admin_alert'),
+      title: String(payload.title || '管理员告警'),
+      body: String(payload.body || payload.summary || '系统告警，请检查。'),
+      summary: String(payload.summary || payload.body || '系统告警'),
+      ruleId: String(payload.ruleId || payload.type || 'admin-alert'),
+      symbol: String(payload.symbol || '').trim(),
+      strategyName: String(payload.strategyName || '系统监控'),
+      triggerCondition: String(payload.triggerCondition || payload.reason || ''),
+      purchaseAmount: String(payload.purchaseAmount || '').trim(),
+      detailUrl: String(payload.detailUrl || payload.url || '').trim(),
+      createdAt: String(payload.createdAt || nowIso)
+    }
+  });
+  settings = result.settings;
+  await writeSettings(env, settings);
+  return jsonResponse({ ok: true, clientId: targetClientId, summary: result.summary }, { origin });
+}
+
 async function handleAdminHoldingsAllTest(request, env) {
   const origin = readOrigin(request);
   const headerToken = request.headers.get('x-admin-token') || '';
@@ -2390,9 +2477,16 @@ function formatPercent(value) {
   return `${sign}${Math.abs(value * 100).toFixed(2)}%`;
 }
 
-function buildHoldingsNotificationContent(kind, returnRate, contributors) {
+function formatShortDateLabel(dateStr) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || '').trim());
+  if (!match) return '';
+  return `${match[1].slice(-2)}-${match[2]}-${match[3]}`;
+}
+
+function buildHoldingsNotificationContent(kind, returnRate, contributors, dateKey = '') {
   const kindLabel = kind === 'exchange' ? '场内' : '场外';
-  const title = `[${kindLabel}] 当日收益 ${formatPercent(returnRate)}`;
+  const dateLabel = formatShortDateLabel(dateKey);
+  const title = `[${kindLabel}] ${dateLabel ? `${dateLabel} ` : ''}当日收益 ${formatPercent(returnRate)}`;
   const top = contributors.slice(0, 3).map((item) => `${item.code} ${formatPercent(item.ratio)}`);
   // 出于隐私考虑：推送仅展示加权收益率，不再携带 ¥ 金额；具体金额请回网页查看。
   const body = top.length
@@ -2478,7 +2572,7 @@ async function runHoldingsNotifications(env, kind, todayShanghai, reason = 'hold
     const clientRecord = getClientRecord(settings, clientId, stored.clientLabel || '');
     if (!clientRecord) continue;
 
-    const { title, body, summary, body_md } = buildHoldingsNotificationContent(kind, computed.returnRate, computed.contributors);
+    const { title, body, summary, body_md } = buildHoldingsNotificationContent(kind, computed.returnRate, computed.contributors, todayShanghai);
     const eventId = `holdings-${kind}-${todayShanghai}`;
     try {
       const result = await runClientDetection(env, settings, clientRecord, {
@@ -2541,11 +2635,12 @@ async function runHoldingsNotifications(env, kind, todayShanghai, reason = 'hold
 // 出于隐私考虑：不再展示任何 ¥ 金额（不论旧版 digest 是否携带 totals），
 // 仅显示加权收益率百分比 + 贡献 Top；具体金额引导用户去网页查看。
 // 第三个参数保留签名以兼容旧调用方，内部不再读取。
-function buildHoldingsNotificationContentAll(returnRate, contributors, _totalsLegacy = null) {
+function buildHoldingsNotificationContentAll(returnRate, contributors, dateKey = '', _totalsLegacy = null) {
   void _totalsLegacy;
   const dailyPct = formatPercent(returnRate);
+  const dateLabel = formatShortDateLabel(dateKey);
   const top = (contributors || []).slice(0, 3).map((item) => `${item.code} ${formatPercent(item.ratio)}`);
-  const title = `[持仓总览] 当日收益 ${dailyPct}`;
+  const title = `[持仓总览] ${dateLabel ? `${dateLabel} ` : ''}当日收益 ${dailyPct}`;
   const summary = `当日加权收益率 ${dailyPct}`;
   const body = top.length
     ? `今日加权收益率 ${dailyPct}；贡献 Top：${top.join('、')}。详情请打开网页查看。`
@@ -2697,7 +2792,8 @@ async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holding
 
     const { title, body, summary, body_md } = buildHoldingsNotificationContentAll(
       dailyReturnRate,
-      sortedContribs
+      sortedContribs,
+      todayShanghai
     );
 
     const clientRecord = getClientRecord(settings, clientId, stored.clientLabel || '');
@@ -2973,6 +3069,7 @@ async function handleSwitchRunPost(request, env) {
     }, { status: 400, origin });
   }
   const summary = await runSwitchStrategyForOneClient(env, auth.clientId, config, { reason: 'switch-manual-run' });
+  await trackAnalyticsEvent(env, 'switch_worker_run', { clientId: auth.clientId, reason: 'switch-manual-run', triggered: summary?.triggered || 0, skipped: summary?.skipped || '' });
   const snapshot = await readSwitchSnapshotForClient(env, auth.clientId);
   return jsonResponse({ ok: true, summary, snapshot }, { origin });
 }
@@ -3097,12 +3194,13 @@ async function runSwitchStrategyTick(env, scheduledMs, reason = 'switch-cron') {
   const computedAt = new Date(scheduledMs).toISOString();
   for (const { clientId, config } of enabledList) {
     try {
-      await runSwitchStrategyForOneClient(env, clientId, config, {
+      const summary = await runSwitchStrategyForOneClient(env, clientId, config, {
         reason,
         priceMap,
         navByCode,
         computedAt
       });
+      await trackAnalyticsEvent(env, 'switch_worker_run', { clientId, reason, triggered: summary?.triggered || 0, skipped: summary?.skipped || '' });
     } catch (_error) {
       // 单个 client 失败不阻断整轮
     }
@@ -3183,6 +3281,10 @@ export default {
 
       if (request.method === 'POST' && url.pathname === '/api/notify/holdings-rule') {
         return await handleHoldingsRulePost(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/admin/alert') {
+        return await handleAdminAlert(request, env);
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/admin/holdings-all-test') {

@@ -1,3 +1,5 @@
+import { trackAnalyticsEvent } from './analytics.js';
+
 const DEFAULT_SYNC_BASE = 'https://tools.freebacktrack.tech/api/sync';
 const SESSION_KEY = 'aiDcaCloudSyncSession';
 const SESSION_EVENT = 'cloud-sync:session-changed';
@@ -91,7 +93,9 @@ export async function registerCloudAccount({ username, password }) {
     method: 'POST',
     body: JSON.stringify({ username: normalized, passwordHash: await passwordHash(normalized, password) })
   });
-  return saveCloudSession(data);
+  const session = saveCloudSession(data);
+  trackAnalyticsEvent('user_register', { username: normalized });
+  return session;
 }
 
 export async function loginCloudAccount({ username, password }) {
@@ -100,7 +104,9 @@ export async function loginCloudAccount({ username, password }) {
     method: 'POST',
     body: JSON.stringify({ username: normalized, passwordHash: await passwordHash(normalized, password) })
   });
-  return saveCloudSession(data);
+  const session = saveCloudSession(data);
+  trackAnalyticsEvent('user_login', { username: normalized });
+  return session;
 }
 
 export async function fetchCloudSyncMeta(session = loadCloudSession()) {

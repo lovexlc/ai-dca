@@ -25,6 +25,7 @@ import {
 } from 'recharts';
 import '../../styles/ai-chat.css';
 import { askMarkets, askMarketsStream, loadWatchlist } from '../../app/marketsApi.js';
+import { trackAnalyticsEvent } from '../../app/analytics.js';
 
 const CHAT_ENDPOINT = '/api/ai-chat';
 const STORAGE_KEY = 'aiDcaChatHistory_v1';
@@ -538,6 +539,7 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
     setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
     setInput('');
     setPending(true);
+    trackAnalyticsEvent('ai_used', { mode, currentTab, length: content.length });
 
     const controller = new AbortController();
     abortRef.current = controller;
