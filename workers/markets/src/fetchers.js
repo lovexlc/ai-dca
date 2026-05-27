@@ -228,6 +228,93 @@ export async function fetchXueqiuKline(code, { cookie, intervalLabel = '1d', lim
   return normalizeXueqiuKlinePayload(data, code, intervalLabel);
 }
 
+
+async function readXueqiuEndpoint(path, params = {}, { cookie, refererSymbol = '', label = 'xueqiu endpoint' } = {}) {
+  const url = buildUrl(XUEQIU_STOCK_HOST, path, params);
+  const res = await fetch(url, { headers: xueqiuHeaders(cookie, refererSymbol), cf: { cacheTtl: 30 } });
+  if (!res.ok) throw new Error(`${label} HTTP ${res.status}`);
+  return readXueqiuJson(res, label);
+}
+
+function summarizeXueqiuPayload(data) {
+  const root = data && typeof data === 'object' ? data : {};
+  const payload = root.data;
+  const summary = {
+    topKeys: Object.keys(root).slice(0, 30),
+    dataType: Array.isArray(payload) ? 'array' : (payload && typeof payload === 'object' ? 'object' : typeof payload)
+  };
+  if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+    summary.dataKeys = Object.keys(payload).slice(0, 60);
+    if (payload.quote && typeof payload.quote === 'object') {
+      const q = payload.quote;
+      summary.quoteKeys = Object.keys(q).slice(0, 120);
+      summary.quote = q;
+    }
+    if (Array.isArray(payload.column)) summary.columns = payload.column;
+    if (Array.isArray(payload.item)) {
+      summary.itemCount = payload.item.length;
+      summary.firstItem = payload.item[0] || null;
+      summary.lastItem = payload.item[payload.item.length - 1] || null;
+    }
+    for (const key of ['items', 'list', 'data', 'indicator', 'balance', 'income', 'cash_flow']) {
+      const value = payload[key];
+      if (Array.isArray(value)) {
+        summary[`${key}Count`] = value.length;
+        summary[`${key}Sample`] = value[0] || null;
+      } else if (value && typeof value === 'object') {
+        summary[`${key}Keys`] = Object.keys(value).slice(0, 80);
+        summary[`${key}Sample`] = value;
+      }
+    }
+  } else if (Array.isArray(payload)) {
+    summary.itemCount = payload.length;
+    summary.firstItem = payload[0] || null;
+  }
+  if (root.error_code || root.code) {
+    summary.errorCode = root.error_code || root.code;
+    summary.errorMessage = root.error_description || root.message || '';
+  }
+  return summary;
+}
+
+export async function fetchXueqiuCnFundData(code, { cookie, includeRaw = false } = {}) {
+  const symbol = toXueqiuSymbol(code);
+  if (!symbol) throw new Error('xueqiu bad code ' + code);
+  const endpoints = [
+    ['quote_detail', '/v5/stock/quote.json', { extend: 'detail', symbol }],
+    ['kline_day', '/v5/stock/chart/kline.json', { symbol, begin: Date.now(), period: 'day', type: 'before', count: -20, indicator: 'kline,pe,pb,ps,pcf,market_capital,agt,ggt,balance' }],
+    ['kline_60m', '/v5/stock/chart/kline.json', { symbol, begin: Date.now(), period: '60m', type: 'before', count: -20, indicator: 'kline,pe,pb,ps,pcf,market_capital,agt,ggt,balance' }],
+    ['capital_flow', '/v5/stock/capital/flow.json', { symbol }],
+    ['capital_history', '/v5/stock/capital/history.json', { symbol }],
+    ['f10_indicator', '/v5/stock/f10/cn/indicator.json', { symbol }],
+    ['finance_indicator', '/v5/stock/finance/cn/indicator.json', { symbol, type: 'all', is_detail: true, count: 5 }],
+    ['finance_balance', '/v5/stock/finance/cn/balance.json', { symbol, type: 'all', is_detail: true, count: 5 }],
+    ['finance_income', '/v5/stock/finance/cn/income.json', { symbol, type: 'all', is_detail: true, count: 5 }],
+    ['finance_cash_flow', '/v5/stock/finance/cn/cash_flow.json', { symbol, type: 'all', is_detail: true, count: 5 }],
+    ['pankou', '/v5/stock/realtime/pankou.json', { symbol }],
+    ['quotec', '/v5/stock/realtime/quotec.json', { symbol }]
+  ];
+  const results = {};
+  await mapLimit(endpoints, 4, async ([name, path, params]) => {
+    try {
+      const data = await readXueqiuEndpoint(path, params, { cookie, refererSymbol: symbol, label: `xueqiu ${name} ${symbol}` });
+      results[name] = {
+        ok: true,
+        summary: summarizeXueqiuPayload(data),
+        ...(includeRaw ? { raw: data } : {})
+      };
+    } catch (err) {
+      results[name] = { ok: false, error: String((err && err.message) || err) };
+    }
+  });
+  return {
+    symbol,
+    code: toCnSixDigits(symbol),
+    generatedAt: new Date().toISOString(),
+    results
+  };
+}
+
 function toSinaSymbol(code) {
   const lower = String(code || '').toLowerCase();
   if (/^(sh|sz|bj)\d{6}$/.test(lower)) return lower;

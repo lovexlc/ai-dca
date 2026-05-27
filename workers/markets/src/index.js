@@ -11,6 +11,7 @@ import {
   fetchXueqiuQuote,
   fetchXueqiuQuotesBatch,
   fetchXueqiuKline,
+  fetchXueqiuCnFundData,
   searchYahooSymbols,
   searchEastmoneySymbols,
   fetchFinnhubQuote,
@@ -360,6 +361,9 @@ export default {
       }
       if ((m = path.match(/^\/profile\/(.+)$/))) {
         return await handleProfile(env, decodeURIComponent(m[1]));
+      }
+      if ((m = path.match(/^\/xueqiu-fund-data\/(.+)$/))) {
+        return await handleXueqiuFundData(env, decodeURIComponent(m[1]), url.searchParams);
       }
       if ((m = path.match(/^\/financials\/(.+)$/))) {
         return await handleFinancials(env, decodeURIComponent(m[1]), url.searchParams.get('refresh') === '1');
@@ -851,6 +855,23 @@ async function _handleProfileImpl(env, rawSymbol) {
   return json({ symbol: code, profile });
 }
 
+
+
+async function handleXueqiuFundData(env, rawSymbol, params) {
+  const { market, code } = classifySymbol(rawSymbol);
+  if (market !== 'cn') return errorJson('only cn symbols are supported', 400);
+  if (!env.XUEQIU_COOKIE) return errorJson('XUEQIU_COOKIE missing', 500);
+  const includeRaw = params.get('raw') === '1';
+  const forceRefresh = params.get('refresh') === '1';
+  const cacheKey = 'xueqiu-fund-data:' + code + ':' + (includeRaw ? 'raw' : 'summary');
+  if (!forceRefresh) {
+    const cached = await kvGetJson(env, cacheKey);
+    if (cached && cached.results) return json({ ...cached, cached: true });
+  }
+  const payload = await fetchXueqiuCnFundData(code, { cookie: env.XUEQIU_COOKIE, includeRaw });
+  await kvPutJson(env, cacheKey, payload, { ttlSeconds: includeRaw ? 300 : 1800 });
+  return json({ ...payload, cached: false });
+}
 
 async function handleFinancials(env, rawSymbol, forceRefresh) {
   const { market, code } = classifySymbol(rawSymbol);
