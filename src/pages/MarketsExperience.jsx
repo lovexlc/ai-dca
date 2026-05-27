@@ -656,9 +656,11 @@ function SortableMarketTable({ title = '', rows = [], market, onPick, onRemove, 
   );
 }
 
-function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate, onRename, onDelete }) {
+function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate, onRename, onDelete, heldCount = 0 }) {
   const [open, setOpen] = useState(false);
-  const active = (lists || []).find((item) => item.id === activeListId) || lists[0];
+  const active = activeListId === 'held'
+    ? { id: 'held', name: '已持仓', us: [], cn: Array.from({ length: heldCount }) }
+    : ((lists || []).find((item) => item.id === activeListId) || lists[0]);
   const canDelete = (item) => item?.id !== 'default' && (lists || []).length > 1;
   return (
     <div className="relative">
@@ -668,6 +670,14 @@ function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate, onRen
       </button>
       {open ? (
         <div className="absolute left-0 top-full z-30 mt-1 w-64 overflow-hidden rounded-2xl border border-[#e8eaed] bg-white py-1 shadow-lg">
+          {heldCount > 0 ? (
+            <div className={cx('flex w-full items-center gap-1 px-3 py-2 text-sm hover:bg-[#f8fafd]', activeListId === 'held' ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>
+              <button type="button" onClick={() => { onSelect?.('held'); setOpen(false); }} className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
+                <span className="inline-flex min-w-0 items-center gap-1.5 truncate"><Wallet size={13} className="shrink-0 text-indigo-400" />已持仓</span>
+                <span className="text-[11px] text-[#9aa0a6]">{heldCount}</span>
+              </button>
+            </div>
+          ) : null}
           {(lists || []).map((item) => (
             <div key={item.id} className={cx('flex w-full items-center gap-1 px-3 py-2 text-sm hover:bg-[#f8fafd]', item.id === activeListId ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>
               <button type="button" onClick={() => { onSelect?.(item.id); setOpen(false); }} className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
@@ -699,6 +709,40 @@ function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate, onRen
           <button type="button" onClick={() => { onCreate?.(); setOpen(false); }} className="flex w-full items-center gap-2 border-t border-[#e8eaed] px-3 py-2 text-left text-sm font-medium text-[#1a73e8] hover:bg-[#f8fafd]"><ListPlus size={14} /> 新建列表</button>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function WatchlistNameDialog({ dialog, onChangeName, onCancel, onSubmit }) {
+  if (!dialog) return null;
+  const isDelete = dialog.type === 'delete';
+  const title = isDelete ? '删除列表' : (dialog.type === 'rename' ? '编辑列表名称' : '新建列表');
+  const total = (dialog.list?.us?.length || 0) + (dialog.list?.cn?.length || 0);
+  return (
+    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/30 px-4 py-6 sm:items-center" onMouseDown={onCancel}>
+      <div className="w-full max-w-sm rounded-[28px] bg-white p-6 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="mb-5 text-center text-xl font-semibold leading-snug text-[#1f1f1f]">{title}</div>
+        {isDelete ? (
+          <div className="mb-5 rounded-2xl bg-[#f8fafd] px-4 py-3 text-sm text-[#5f6368]">
+            确认删除「<span className="font-semibold text-[#1f1f1f]">{dialog.list?.name || '列表'}</span>」？{total ? `其中 ${total} 个标的也会移除。` : ''}
+          </div>
+        ) : (
+          <label className="mb-5 block text-sm text-[#5f6368]">
+            输入新的列表名称
+            <input
+              autoFocus
+              value={dialog.name || ''}
+              onChange={(event) => onChangeName(event.target.value)}
+              onKeyDown={(event) => { if (event.key === 'Enter') onSubmit(); }}
+              className="mt-3 h-14 w-full rounded-2xl border-0 bg-[#f1f3f4] px-4 text-base text-[#1f1f1f] outline-none focus:ring-2 focus:ring-[#1a73e8]/35"
+            />
+          </label>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <button type="button" onClick={onCancel} className="h-12 rounded-2xl bg-[#f1f3f4] text-base font-semibold text-[#1f1f1f] hover:bg-[#e8eaed]">取消</button>
+          <button type="button" onClick={onSubmit} className={cx('h-12 rounded-2xl text-base font-semibold text-white', isDelete ? 'bg-[#d93025] hover:bg-[#b3261e]' : 'bg-[#1a73e8] hover:bg-[#1557b0]')}>{isDelete ? '删除' : '确定'}</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -3600,6 +3644,8 @@ export function MarketsExperience() {
   const [summary, setSummary] = useState({ themes: [], generatedAt: '' });
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [watch, setWatch] = useState(() => loadWatchlist());
+  const [watchlistDialog, setWatchlistDialog] = useState(null);
+  const [sidebarListMode, setSidebarListMode] = useState('watch');
   const [holdingsLedger, setHoldingsLedger] = useState(() => readLedgerState());
   const [watchQuotes, setWatchQuotes] = useState({});
   const [watchNavSnapshots, setWatchNavSnapshots] = useState({});
@@ -4106,41 +4152,63 @@ export function MarketsExperience() {
   }
 
   function handleSelectWatchlist(listId) {
+    if (listId === 'held') {
+      setSidebarListMode('held');
+      setSelectedSymbol('');
+      setSymbolDetailTab('overview');
+      return;
+    }
     const next = setActiveWatchlist(listId);
     setWatch(next);
+    setSidebarListMode('watch');
     setSelectedSymbol('');
     setSymbolDetailTab('overview');
   }
 
   function handleCreateWatchlist() {
-    const next = createWatchlist(`列表 ${(watchLists || []).length + 1}`);
-    setWatch(next);
-    setSelectedSymbol('');
-    setSymbolDetailTab('overview');
-    showActionToast('已新建列表', 'success');
+    setWatchlistDialog({ type: 'create', name: `列表 ${(watchLists || []).length + 1}` });
   }
 
   function handleRenameWatchlist(list) {
     if (!list) return;
-    const nextName = window.prompt('输入新的列表名称', list.name || '');
-    if (nextName === null) return;
-    const trimmed = nextName.trim();
-    if (!trimmed || trimmed === list.name) return;
-    const next = renameWatchlist(list.id, trimmed);
-    setWatch(next);
-    showActionToast('列表已改名', 'success');
+    setWatchlistDialog({ type: 'rename', list, name: list.name || '' });
   }
 
   function handleDeleteWatchlist(list) {
     if (!list || list.id === 'default') return;
-    const total = (list.us?.length || 0) + (list.cn?.length || 0);
-    const suffix = total ? `，其中 ${total} 个标的也会移除` : '';
-    if (!window.confirm(`删除「${list.name}」${suffix}？`)) return;
-    const next = deleteWatchlist(list.id);
+    setWatchlistDialog({ type: 'delete', list, name: list.name || '' });
+  }
+
+  function handleWatchlistDialogSubmit() {
+    if (!watchlistDialog) return;
+    if (watchlistDialog.type === 'delete') {
+      const next = deleteWatchlist(watchlistDialog.list?.id);
+      setWatch(next);
+      setSidebarListMode('watch');
+      setSelectedSymbol('');
+      setSymbolDetailTab('overview');
+      setWatchlistDialog(null);
+      showActionToast('列表已删除', 'success');
+      return;
+    }
+    const trimmed = String(watchlistDialog.name || '').trim();
+    if (!trimmed) return;
+    if (watchlistDialog.type === 'rename') {
+      if (trimmed !== watchlistDialog.list?.name) {
+        const next = renameWatchlist(watchlistDialog.list?.id, trimmed);
+        setWatch(next);
+        showActionToast('列表已改名', 'success');
+      }
+      setWatchlistDialog(null);
+      return;
+    }
+    const next = createWatchlist(trimmed);
     setWatch(next);
+    setSidebarListMode('watch');
     setSelectedSymbol('');
     setSymbolDetailTab('overview');
-    showActionToast('列表已删除', 'success');
+    setWatchlistDialog(null);
+    showActionToast('已新建列表', 'success');
   }
 
   function handleSelectSymbol(row, options = {}) {
@@ -4199,6 +4267,9 @@ export function MarketsExperience() {
     () => market === 'cn' ? heldAggregates.map((agg) => buildSidebarRow(normalizeCnFundCode(agg.code), agg)) : [],
     [market, heldAggregates, buildSidebarRow]
   );
+
+  const activeSidebarRows = sidebarListMode === 'held' ? heldRows : watchRows;
+  const activeSidebarEmptyText = sidebarListMode === 'held' ? '暂无已持仓基金。' : '未配置自选。';
 
   const watchTopMovers = useMemo(
     () => watchRows.filter((row) => Number.isFinite(Number(row.changePercent))).slice().sort((a, b) => Math.abs(Number(b.changePercent)) - Math.abs(Number(a.changePercent))).slice(0, 6),
@@ -4435,6 +4506,13 @@ export function MarketsExperience() {
   const marketStatusLabel = indicesLoading ? '刷新中' : (indices.length ? `${indices.length} 个指数` : '待加载');
 
   return (
+    <>
+    <WatchlistNameDialog
+      dialog={watchlistDialog}
+      onChangeName={(name) => setWatchlistDialog((prev) => prev ? { ...prev, name } : prev)}
+      onCancel={() => setWatchlistDialog(null)}
+      onSubmit={handleWatchlistDialogSubmit}
+    />
     <div className={cx(
       "flex flex-col gap-5 lg:grid lg:h-[calc(100vh-6rem)] lg:min-h-0 lg:grid-cols-[280px_minmax(0,1fr)_360px] lg:items-stretch lg:gap-4 lg:overflow-hidden lg:pb-0 xl:grid-cols-[320px_minmax(0,1fr)_400px]",
       selectedSymbol ? "pb-4" : "pb-[140px]"
@@ -4445,11 +4523,12 @@ export function MarketsExperience() {
           <div className="flex items-center justify-between pt-1">
             <WatchlistSelector
               lists={watchLists}
-              activeListId={watch.activeListId}
+              activeListId={sidebarListMode === 'held' ? 'held' : watch.activeListId}
               onSelect={handleSelectWatchlist}
               onCreate={handleCreateWatchlist}
               onRename={handleRenameWatchlist}
               onDelete={handleDeleteWatchlist}
+              heldCount={heldRows.length}
             />
             <div className="flex items-center gap-1">
               <button
@@ -4465,34 +4544,11 @@ export function MarketsExperience() {
           <div className="mt-1 h-px w-full bg-[#e8eaed]" />
         </div>
 
-        {market === 'cn' && heldRows.length > 0 ? (
-          <div className="px-1">
-            <div className="flex items-center justify-between py-2">
-              <h3 className="text-base font-semibold text-[#1f1f1f]">已持仓</h3>
-              {watchLoading && <Loader2 size={13} className="animate-spin text-slate-400" />}
-            </div>
-            <ul className="divide-y divide-[#e8eaed]">
-              {heldRows.map((row) => (
-                <MobileSidebarRow
-                  key={`held-${row.symbol}`}
-                  symbol={row.symbol}
-                  name={row.name}
-                  price={row.price}
-                  changePercent={row.changePercent}
-                  sparkPoints={klineMap[row.symbol]}
-                  meta={row.meta}
-                  selected={row.symbol === selectedSymbol}
-                  onSelect={() => handleSelectSymbol(row)}
-                />
-              ))}
-            </ul>
-          </div>
-        ) : null}
 
         {/* 监控列表 */}
         <div className="px-1">
           <div className="flex items-center justify-between py-2">
-            <h3 className="text-base font-semibold text-[#1f1f1f]">监控列表</h3>
+            <h3 className="text-base font-semibold text-[#1f1f1f]">{sidebarListMode === 'held' ? '已持仓' : '监控列表'}</h3>
             <button
               type="button"
               onClick={() => setWatchOpen((v) => !v)}
@@ -4504,11 +4560,11 @@ export function MarketsExperience() {
           </div>
           {watchOpen && (
             <>
-              {watchRows.length === 0 ? (
-                <p className="px-2 py-2 text-sm text-[#5f6368]">未配置自选。</p>
+              {activeSidebarRows.length === 0 ? (
+                <p className="px-2 py-2 text-sm text-[#5f6368]">{activeSidebarEmptyText}</p>
               ) : (
                 <ul className="divide-y divide-[#e8eaed]">
-                  {watchRows.map((row) => (
+                  {activeSidebarRows.map((row) => (
                     <MobileSidebarRow
                       key={row.symbol}
                       symbol={row.symbol}
@@ -4632,38 +4688,15 @@ export function MarketsExperience() {
           <div className="flex items-center justify-between gap-1 px-1 py-2">
             <WatchlistSelector
               lists={watchLists}
-              activeListId={watch.activeListId}
+              activeListId={sidebarListMode === 'held' ? 'held' : watch.activeListId}
               onSelect={handleSelectWatchlist}
               onCreate={handleCreateWatchlist}
               onRename={handleRenameWatchlist}
               onDelete={handleDeleteWatchlist}
+              heldCount={heldRows.length}
             />
           </div>
 
-          {market === 'cn' && heldRows.length > 0 ? (
-            <div className="border-t border-slate-200/60 px-1 pt-1">
-              <div className="flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-[15px] font-medium text-[#1f1f1f]">
-                <Wallet size={14} className="text-indigo-400" />
-                <span>已持仓</span>
-                {watchLoading && <Loader2 size={12} className="ml-1 animate-spin text-slate-400" />}
-              </div>
-              <ul>
-                {heldRows.map((row) => (
-                  <SidebarRow
-                    key={`held-${row.symbol}`}
-                    symbol={row.symbol}
-                    name={row.name}
-                    price={row.price}
-                    changePercent={row.changePercent}
-                    sparkPoints={klineMap[row.symbol]}
-                    meta={row.meta}
-                    selected={row.symbol === selectedSymbol}
-                    onSelect={() => handleSelectSymbol(row)}
-                  />
-                ))}
-              </ul>
-            </div>
-          ) : null}
 
           {/* 组 1：监控列表 */}
           <div className="px-1 pt-1">
@@ -4673,18 +4706,18 @@ export function MarketsExperience() {
               className="flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-[15px] font-medium text-[#1f1f1f] hover:bg-[#f1f3f4]"
             >
               {watchOpen ? <ChevronDown size={16} className="text-[#5f6368]" /> : <ChevronRight size={16} className="text-[#5f6368]" />}
-              <Star size={14} className="text-amber-400" />
-              <span>监控列表</span>
+              {sidebarListMode === 'held' ? <Wallet size={14} className="text-indigo-400" /> : <Star size={14} className="text-amber-400" />}
+              <span>{sidebarListMode === 'held' ? '已持仓' : '监控列表'}</span>
               {watchLoading && <Loader2 size={12} className="ml-1 animate-spin text-slate-400" />}
             </button>
           </div>
           {watchOpen && (
             <div className="px-1 pb-1">
-              {watchRows.length === 0 ? (
-                <p className="px-2 py-1 text-xs text-slate-400">未配置自选。</p>
+              {activeSidebarRows.length === 0 ? (
+                <p className="px-2 py-1 text-xs text-slate-400">{activeSidebarEmptyText}</p>
               ) : (
                 <ul>
-                  {watchRows.map((row) => (
+                  {activeSidebarRows.map((row) => (
                     <SidebarRow
                       key={row.symbol}
                       symbol={row.symbol}
@@ -5071,5 +5104,6 @@ export function MarketsExperience() {
         />
       </aside>
     </div>
+    </>
   );
 }
