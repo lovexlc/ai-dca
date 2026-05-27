@@ -444,6 +444,11 @@ export function NotifyExperience({ embedded = false }) {
     setNotifyMessage('');
     try {
       const eventId = `holdings-test-${Date.now()}`;
+      const now = new Date();
+      const yy = String(now.getFullYear()).slice(-2);
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const dateLabel = `${yy}-${mm}-${dd}`;
       await sendNotifyTest({
         clientId: notifyConfig.notifyClientId,
         eventId,
@@ -451,9 +456,9 @@ export function NotifyExperience({ embedded = false }) {
         ruleId: 'holdings-daily-test',
         symbol: '持仓总览',
         strategyName: '持仓当日收益',
-        title: '[持仓总览] 当日收益 +¥238.95 (+0.16%)',
-        summary: '当日 +¥238.95 (+0.16%)；总收益 +¥3,884.87 (+2.72%)',
-        body: '今日加权收益率 +¥238.95 (+0.16%)；总收益 +¥3,884.87 (+2.72%)。这是一条测试通知，用于校验推送通道是否可用。',
+        title: `[持仓总览] ${dateLabel} 当日收益 +0.16%`,
+        summary: `当日加权收益率 +0.16%`,
+        body: `今日加权收益率 +0.16%。这是一条测试通知，用于校验推送通道是否可用。`,
         triggerCondition: '手动测试'
       });
       setNotifyMessage('测试通知已发送。');

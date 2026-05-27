@@ -2415,9 +2415,16 @@ function formatPercent(value) {
   return `${sign}${Math.abs(value * 100).toFixed(2)}%`;
 }
 
-function buildHoldingsNotificationContent(kind, returnRate, contributors) {
+function formatShortDateLabel(dateStr) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || '').trim());
+  if (!match) return '';
+  return `${match[1].slice(-2)}-${match[2]}-${match[3]}`;
+}
+
+function buildHoldingsNotificationContent(kind, returnRate, contributors, dateKey = '') {
   const kindLabel = kind === 'exchange' ? '场内' : '场外';
-  const title = `[${kindLabel}] 当日收益 ${formatPercent(returnRate)}`;
+  const dateLabel = formatShortDateLabel(dateKey);
+  const title = `[${kindLabel}] ${dateLabel ? `${dateLabel} ` : ''}当日收益 ${formatPercent(returnRate)}`;
   const top = contributors.slice(0, 3).map((item) => `${item.code} ${formatPercent(item.ratio)}`);
   // 出于隐私考虑：推送仅展示加权收益率，不再携带 ¥ 金额；具体金额请回网页查看。
   const body = top.length
@@ -2503,7 +2510,7 @@ async function runHoldingsNotifications(env, kind, todayShanghai, reason = 'hold
     const clientRecord = getClientRecord(settings, clientId, stored.clientLabel || '');
     if (!clientRecord) continue;
 
-    const { title, body, summary, body_md } = buildHoldingsNotificationContent(kind, computed.returnRate, computed.contributors);
+    const { title, body, summary, body_md } = buildHoldingsNotificationContent(kind, computed.returnRate, computed.contributors, todayShanghai);
     const eventId = `holdings-${kind}-${todayShanghai}`;
     try {
       const result = await runClientDetection(env, settings, clientRecord, {
@@ -2566,11 +2573,12 @@ async function runHoldingsNotifications(env, kind, todayShanghai, reason = 'hold
 // 出于隐私考虑：不再展示任何 ¥ 金额（不论旧版 digest 是否携带 totals），
 // 仅显示加权收益率百分比 + 贡献 Top；具体金额引导用户去网页查看。
 // 第三个参数保留签名以兼容旧调用方，内部不再读取。
-function buildHoldingsNotificationContentAll(returnRate, contributors, _totalsLegacy = null) {
+function buildHoldingsNotificationContentAll(returnRate, contributors, dateKey = '', _totalsLegacy = null) {
   void _totalsLegacy;
   const dailyPct = formatPercent(returnRate);
+  const dateLabel = formatShortDateLabel(dateKey);
   const top = (contributors || []).slice(0, 3).map((item) => `${item.code} ${formatPercent(item.ratio)}`);
-  const title = `[持仓总览] 当日收益 ${dailyPct}`;
+  const title = `[持仓总览] ${dateLabel ? `${dateLabel} ` : ''}当日收益 ${dailyPct}`;
   const summary = `当日加权收益率 ${dailyPct}`;
   const body = top.length
     ? `今日加权收益率 ${dailyPct}；贡献 Top：${top.join('、')}。详情请打开网页查看。`
@@ -2722,7 +2730,8 @@ async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holding
 
     const { title, body, summary, body_md } = buildHoldingsNotificationContentAll(
       dailyReturnRate,
-      sortedContribs
+      sortedContribs,
+      todayShanghai
     );
 
     const clientRecord = getClientRecord(settings, clientId, stored.clientLabel || '');
