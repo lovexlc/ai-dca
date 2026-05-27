@@ -155,6 +155,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   // 为每个 tab 独立缓存上次的 scrollY，在切换返回时恢复。
   const scrollPositionsRef = useRef(new Map());
   const previousTabRef = useRef(activeTab);
+  const restoreScrollOnNextTabRef = useRef(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const currentPageLabel = PRIMARY_TAB_META[activeTab]?.label || '';
 
@@ -234,6 +235,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     function handlePopState() {
       const nextTab = readTabFromLocation(readPreferredWorkspaceTab(initialTab));
       scrollPositionsRef.current.set(activeTab, window.scrollY);
+      restoreScrollOnNextTabRef.current = true;
       setTabHistory((current) => current.filter((item) => item !== nextTab));
       setActiveTab(nextTab);
     }
@@ -241,13 +243,16 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     return () => window.removeEventListener('popstate', handlePopState);
   }, [activeTab, initialTab]);
 
-  // tab 变化后，恢复该 tab 以前的 scrollY（如果有）。
-  // 使用 requestAnimationFrame 等新内容进入一个 paint 后再跳，避免在 lazy 加载过程中跳到 0。
+  // 普通 tab 切换始终回到顶部，避免新 tab 在 lazy/短内容阶段套用旧 scrollY 后出现大块空白。
+  // 只有浏览器返回/移动端返回这类“回到上一个页面”的动作才恢复该 tab 的旧位置。
   useEffect(() => {
-    const saved = scrollPositionsRef.current.get(activeTab);
-    const targetY = typeof saved === 'number' ? saved : 0;
+    const shouldRestore = restoreScrollOnNextTabRef.current;
+    restoreScrollOnNextTabRef.current = false;
+    const saved = shouldRestore ? scrollPositionsRef.current.get(activeTab) : 0;
+    const targetY = typeof saved === 'number' ? Math.max(0, saved) : 0;
     const id = window.requestAnimationFrame(() => {
-      window.scrollTo({ top: targetY, behavior: 'auto' });
+      const maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      window.scrollTo({ top: Math.min(targetY, maxY), behavior: 'auto' });
     });
     return () => window.cancelAnimationFrame(id);
   }, [activeTab]);
@@ -263,6 +268,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
     // 在离开当前 tab 之前记录其 scrollY，并保存移动端返回路径。
     if (!alreadyActive) {
+      restoreScrollOnNextTabRef.current = options.restoreScroll === true;
       scrollPositionsRef.current.set(previousTabRef.current, window.scrollY);
       if (options.recordHistory !== false) {
         setTabHistory((current) => {
@@ -300,7 +306,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     const previousTab = tabHistory[tabHistory.length - 1];
     if (!previousTab) return;
     setTabHistory((current) => current.slice(0, -1));
-    handleSelectTab(previousTab, { recordHistory: false });
+    handleSelectTab(previousTab, { recordHistory: false, restoreScroll: true });
   }
 
   function handleScrollTop() {
