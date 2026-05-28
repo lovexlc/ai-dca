@@ -12,7 +12,7 @@
 // 待办：跑赢 banner 当前用清仓盈利率作为占位指标；下个迭代接入 HS300 历史做正式跑赢对比。
 
 import { useMemo, useState } from 'react';
-import { X, ChevronRight } from 'lucide-react';
+import { X, ChevronRight, Download } from 'lucide-react';
 import { formatCurrency } from '../accumulation.js';
 import { cx } from '../../components/experience-ui.jsx';
 import SubPageShell from './SubPageShell.jsx';
@@ -59,6 +59,47 @@ function getTransactionAssetLabel(tx) {
 	const kind = String(tx?.kind || '').toLowerCase();
 	if (KIND_LABELS[kind]) return `${KIND_LABELS[kind]}基金`;
 	return getAssetTypeLabel(tx?.code);
+}
+
+function csvCell(value) {
+	const text = value === null || value === undefined ? '' : String(value);
+	return `"${text.replace(/"/g, '""')}"`;
+}
+
+function buildTransactionsCsv(rows, txById) {
+	const header = ['日期', '类型', '资产类型', '代码', '名称', '价格', '份额', '金额', '备注', '切换对手方'];
+	const body = rows.map((tx) => {
+		const amount = computeAmount(tx);
+		const pair = tx?.switchPairId ? txById.get(tx.switchPairId) : null;
+		const pairLabel = pair ? `${pair.type === 'BUY' ? '买入' : '卖出'} ${pair.code || ''} ${pair.name || ''}`.trim() : '';
+		return [
+			toIsoDay(tx?.date),
+			tx?.type === 'BUY' ? '买入' : tx?.type === 'SELL' ? '卖出' : tx?.type || '',
+			getTransactionAssetLabel(tx),
+			tx?.code || '',
+			tx?.name || '',
+			Number.isFinite(Number(tx?.price)) ? Number(tx.price).toFixed(4) : '',
+			Number.isFinite(Number(tx?.shares)) ? Number(tx.shares).toFixed(4) : '',
+			Number.isFinite(amount) ? amount.toFixed(2) : '',
+			tx?.note || '',
+			pairLabel,
+		].map(csvCell).join(',');
+	});
+	return [header.map(csvCell).join(','), ...body].join('\n');
+}
+
+function downloadTextFile(filename, content, type = 'text/csv;charset=utf-8') {
+	if (typeof window === 'undefined' || typeof document === 'undefined') return false;
+	const blob = new Blob([content], { type });
+	const url = URL.createObjectURL(blob);
+	const link = document.createElement('a');
+	link.href = url;
+	link.download = filename;
+	document.body.appendChild(link);
+	link.click();
+	document.body.removeChild(link);
+	URL.revokeObjectURL(url);
+	return true;
 }
 
 function todayIso() {
@@ -153,6 +194,21 @@ export function IncomeTransactionsPage({ ledger, onBack, navigate, currentRoute,
 
 	const showBanner = !bannerDismissed && winnerLot !== null;
 
+	const txById = useMemo(() => {
+		const map = new Map();
+		for (const tx of transactions) {
+			if (tx?.id) map.set(tx.id, tx);
+		}
+		return map;
+	}, [transactions]);
+
+	function handleExportTransactions() {
+		if (!sortedDesc.length) return;
+		const csv = `\uFEFF${buildTransactionsCsv(sortedDesc, txById)}`;
+		const suffix = [lensKey, fundFilter || 'all', typeFilter || 'all'].join('-');
+		downloadTextFile(`fund-transactions-${suffix}-${todayIso()}.csv`, csv);
+	}
+
 	return (
 		<SubPageShell title="交易记录" onBack={onBack} navigate={navigate} currentRoute={currentRoute}>
 			{/* ① 全部交易汇总 */}
@@ -228,6 +284,15 @@ export function IncomeTransactionsPage({ ledger, onBack, navigate, currentRoute,
 			<div className="flex items-center justify-between gap-2 px-1">
 				<div className="text-sm font-semibold text-slate-800">明细</div>
 				<div className="flex items-center gap-1.5">
+					<button
+						type="button"
+						onClick={handleExportTransactions}
+						disabled={!sortedDesc.length}
+						className="inline-flex h-7 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+					>
+						<Download className="size-3.5" />
+						导出
+					</button>
 					<select
 						value={fundFilter}
 						onChange={(e) => setFundFilter(e.target.value)}
