@@ -1970,7 +1970,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
                 <div>{label}</div>
                 {showValue ? <div className="mt-0.5 tabular-nums text-[#1f1f1f]">{formatNumber(value, 2)}</div> : null}
                 {rangePct != null ? (
-                  <div className={cx("mt-0.5 tabular-nums", rangePct > 0 ? "text-rose-600" : rangePct < 0 ? "text-emerald-600" : "text-[#5f6368]")}>较区间起点 {formatSignedPercent(rangePct)}</div>
+                  <div className={cx("mt-0.5 tabular-nums", rangePct > 0 ? "text-rose-600" : rangePct < 0 ? "text-emerald-600" : "text-[#5f6368]")}>{formatSignedPercent(rangePct)}</div>
                 ) : null}
               </div>
             );
