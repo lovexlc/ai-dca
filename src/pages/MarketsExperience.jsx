@@ -2459,13 +2459,15 @@ function SymbolDetailPanel({
   const xueqiuQuote = getXueqiuQuote(xueqiuFundData);
   const cnOverviewExtras = market === 'cn' && !isCnOtcFund ? [
     detailValueRow('开盘价', formatNumber(row.open ?? xueqiuQuote?.open, 3)),
-    detailValueRow('最高价', formatNumber(row.high ?? xueqiuQuote?.high, 3)),
-    detailValueRow('最低价', formatNumber(row.low ?? xueqiuQuote?.low, 3)),
-    detailValueRow('成交额', formatCnMoney(row.turnover ?? xueqiuQuote?.amount)),
     detailValueRow('市值', formatCnMoney(row.marketCapital ?? row.marketCap ?? xueqiuQuote?.market_capital)),
-    detailValueRow('成交量', formatCnAmount(row.volume ?? xueqiuQuote?.volume)),
     detailValueRow('52 周最高价', formatNumber(xueqiuQuote?.high52w, 3)),
+    detailValueRow('最高价', formatNumber(row.high ?? xueqiuQuote?.high, 3)),
+    detailValueRow('平均成交量', formatCnAmount(xueqiuQuote?.avg_volume ?? xueqiuQuote?.avg_volume10 ?? xueqiuQuote?.avg_volume_10)),
     detailValueRow('52 周最低价', formatNumber(xueqiuQuote?.low52w, 3)),
+    detailValueRow('最低价', formatNumber(row.low ?? xueqiuQuote?.low, 3)),
+    detailValueRow('成交量', formatCnAmount(row.volume ?? xueqiuQuote?.volume)),
+    detailValueRow('Beta 版', formatNumber(xueqiuQuote?.beta, 2)),
+    detailValueRow('成交额', formatCnMoney(row.turnover ?? xueqiuQuote?.amount)),
     detailValueRow('iOPV', formatNumber(xueqiuQuote?.iopv, 4)),
     detailValueRow('单位净值', formatNumber(xueqiuQuote?.unit_nav, 4)),
     detailValueRow('累计净值', formatNumber(xueqiuQuote?.acc_unit_nav, 4)),
@@ -2477,6 +2479,15 @@ function SymbolDetailPanel({
     detailValueRow('成立日期', formatXueqiuDateMs(xueqiuQuote?.found_date)),
     detailValueRow('上市日期', formatXueqiuDateMs(xueqiuQuote?.issue_date)),
   ].filter((item) => item.value !== '--' && item.value !== '-').slice(0, 18) : [];
+  const overviewRows = [
+    detailValueRow(isCnOtcFund ? '最新净值' : '最新价', formatNumber(row.price)),
+    detailValueRow(isCnOtcFund ? '净值涨跌幅' : '今日涨跌幅', formatPercent(row.changePercent), positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#1f1f1f]'),
+    detailValueRow('涨跌额', Number.isFinite(change) ? `${change > 0 ? '+' : ''}${formatNumber(change)}` : '--'),
+    detailValueRow('昨收', formatNumber(row.previousClose)),
+    detailValueRow('市场', market === 'us' ? '美股' : 'A 股'),
+    detailValueRow('交易状态', stateLabel),
+    ...cnOverviewExtras,
+  ];
   const toggleIndicator = (k) => setIndicators((prev) => {
     const next = new Set(prev);
     if (next.has(k)) next.delete(k); else next.add(k);
@@ -3106,44 +3117,17 @@ function SymbolDetailPanel({
       <div className="px-4 py-3 sm:px-1 sm:py-4">
         {activeTab === 'overview' ? (
           <div className="space-y-5">
-            <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-            <div className="flex items-center justify-between border-b border-[#e8eaed] py-2">
-              <span className="text-[#5f6368]">{isCnOtcFund ? '最新净值' : '最新价'}</span>
-              <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(row.price)}</span>
-            </div>
-            <div className="flex items-center justify-between border-b border-[#e8eaed] py-2">
-              <span className="text-[#5f6368]">{isCnOtcFund ? '净值涨跌幅' : '今日涨跌幅'}</span>
-              <span className={cx('font-medium tabular-nums', positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#1f1f1f]')}>{formatPercent(row.changePercent)}</span>
-            </div>
-            <div className="flex items-center justify-between border-b border-[#e8eaed] py-2">
-              <span className="text-[#5f6368]">涨跌额</span>
-              <span className="font-medium tabular-nums text-[#1f1f1f]">{Number.isFinite(change) ? `${change > 0 ? '+' : ''}${formatNumber(change)}` : '--'}</span>
-            </div>
-            <div className="flex items-center justify-between border-b border-[#e8eaed] py-2">
-              <span className="text-[#5f6368]">昨收</span>
-              <span className="font-medium tabular-nums text-[#1f1f1f]">{formatNumber(row.previousClose)}</span>
-            </div>
-            <div className="flex items-center justify-between border-b border-[#e8eaed] py-2">
-              <span className="text-[#5f6368]">市场</span>
-              <span className="font-medium text-[#1f1f1f]">{market === 'us' ? '美股' : 'A 股'}</span>
-            </div>
-            <div className="flex items-center justify-between border-b border-[#e8eaed] py-2">
-              <span className="text-[#5f6368]">交易状态</span>
-              <span className="font-medium text-[#1f1f1f]">{stateLabel}</span>
-            </div>
-            </div>
             {xueqiuFundLoading && market === 'cn' && !cnOverviewExtras.length ? (
               <div className="h-20 animate-pulse rounded-xl bg-[#f1f3f4]" />
-            ) : cnOverviewExtras.length ? (
-              <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
-                {cnOverviewExtras.map((item) => (
-                  <div key={item.label} className="flex items-center justify-between border-b border-[#e8eaed] py-2">
-                    <span className="text-[#5f6368]">{item.label}</span>
-                    <span className={cx('font-medium tabular-nums text-[#1f1f1f]', item.className)}>{item.value}</span>
-                  </div>
-                ))}
-              </div>
             ) : null}
+            <div className="grid gap-x-10 text-[15px] sm:grid-cols-2 lg:grid-cols-3">
+              {overviewRows.map((item) => (
+                <div key={item.label} className="flex min-h-11 items-center justify-between gap-5 border-b border-[#e8eaed] py-2.5">
+                  <span className="text-[#5f6368]">{item.label}</span>
+                  <span className={cx('font-medium tabular-nums text-[#1f1f1f]', item.className)}>{item.value}</span>
+                </div>
+              ))}
+            </div>
             <div className="border-t border-[#e8eaed] pt-4">
               <div className="mb-2 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-[#1f1f1f]">相关新闻</h3>
