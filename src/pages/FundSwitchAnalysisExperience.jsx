@@ -66,21 +66,36 @@ function buildAutoSwitchChains(transactions) {
     return pick || (list.length ? list[list.length - 1] : null);
   }
 
-  // 取所有已标注 switchPairId 的 SELL，按日期 asc 处理。
-  const switchSells = txList
-    .filter((tx) => tx.type === 'SELL' && tx.code && tx.switchPairId)
-    .filter((tx) => {
-      const pair = txById.get(tx.switchPairId);
-      return pair && pair.type === 'BUY' && pair.code && pair.code !== tx.code;
-    })
-    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  // 取所有已标注 switchPairId 的切换配对，兼容 SELL → BUY 和 BUY → SELL 两种记录方向。
+  // 新版「选择对手方」只在当前交易上记录 switchPairId，买入方选择卖出方时会形成 BUY.switchPairId = SELL.id。
+  const switchPairs = [];
+  const seenPairKeys = new Set();
+  for (const tx of txList) {
+    if (!tx.code || !tx.switchPairId) continue;
+    const pair = txById.get(tx.switchPairId);
+    if (!pair || !pair.code || pair.code === tx.code) continue;
+    let sellTx = null;
+    let buyTx = null;
+    if (tx.type === 'SELL' && pair.type === 'BUY') {
+      sellTx = tx;
+      buyTx = pair;
+    } else if (tx.type === 'BUY' && pair.type === 'SELL') {
+      sellTx = pair;
+      buyTx = tx;
+    }
+    if (!sellTx || !buyTx) continue;
+    const pairKey = `${sellTx.id || ''}|${buyTx.id || ''}`;
+    if (seenPairKeys.has(pairKey)) continue;
+    seenPairKeys.add(pairKey);
+    switchPairs.push({ sellTx, buyTx });
+  }
+  switchPairs.sort((a, b) => (a.sellTx.date || '').localeCompare(b.sellTx.date || '') || (a.buyTx.date || '').localeCompare(b.buyTx.date || ''));
 
   const chains = [];
   const activeByTailCode = new Map();
   let chainSeq = 0;
 
-  for (const sellTx of switchSells) {
-    const buyTx = txById.get(sellTx.switchPairId);
+  for (const { sellTx, buyTx } of switchPairs) {
     const oldCode = sellTx.code;
     const newCode = buyTx.code;
     let chain = activeByTailCode.get(oldCode);
