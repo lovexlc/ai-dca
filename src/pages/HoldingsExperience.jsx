@@ -179,6 +179,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const [switchPickerOpen, setSwitchPickerOpen] = useState(false);
   const [switchPickerSearch, setSwitchPickerSearch] = useState('');
+  const [switchPickerSelectedIds, setSwitchPickerSelectedIds] = useState(() => new Set());
   // 切换链路 leg 选购/选卖弹窗
   // 形状：{ chainId, legIndex, role: 'buy' | 'sell' }
   const [chainPicker, setChainPicker] = useState(null);
@@ -1173,10 +1174,52 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       const list = Array.isArray(prev.transactions) ? prev.transactions : [];
       const previousTx = draftMode === 'edit' && draft.id ? list.find((tx) => tx.id === draft.id) : null;
       const previousPairId = previousTx?.switchPairId || '';
+      // 如果存在 switchAllocations，则按分配拆分/生成多笔交易；否则走单笔逻辑
+      const allocations = Array.isArray(draft.switchAllocations) && draft.switchAllocations.length ? draft.switchAllocations : null;
+      const remap = (tx, firstNewId, firstNewSwitchId) => {
+        // 清理老数据里由旧的一对一逻辑写入的反向指针。
+        if (previousPairId && previousPairId !== firstNewSwitchId && tx.id === previousPairId && tx.switchPairId === (firstNewId || normalized.id)) {
+          return { ...tx, switchPairId: '' };
+        }
+        return tx;
+      };
+
+      if (allocations) {
+        // 生成按 allocation 拆分的交易条目
+        const basePrice = Number(prepared.price) || 0;
+        const totalSharesTarget = Number(prepared.shares) || 0;
+        const allocTxs = allocations.map((a) => {
+          const counterpart = list.find((t) => t.id === a.txId) || null;
+          const counterpartPrice = Number(counterpart?.price) || 0;
+          let shares = 0;
+          if (basePrice > 0) shares = (Number(a.amount || 0) / basePrice);
+          else if (counterpartPrice > 0) shares = (Number(a.amount || 0) / counterpartPrice);
+          shares = Number(shares.toFixed(4));
+          return { ...prepared, id: undefined, price: basePrice || counterpartPrice || 0, shares, switchPairId: a.txId };
+        });
+        // 修正四舍五入导致的份额差异：把差值加到最后一笔
+        const sumShares = allocTxs.reduce((s, t) => s + (Number(t.shares) || 0), 0);
+        if (Math.abs(sumShares - totalSharesTarget) > 1e-6 && allocTxs.length) {
+          const last = allocTxs[allocTxs.length - 1];
+          last.shares = Number((Number(last.shares || 0) + (totalSharesTarget - sumShares)).toFixed(4));
+        }
+
+        const normalizedList = allocTxs.map((t, idx) => normalizeTransaction({ ...t, id: undefined }));
+        if (draftMode === 'edit' && draft.id) {
+          // 保留原 id 给第一笔，其他作为新记录追加
+          const first = normalizedList[0];
+          const others = normalizedList.slice(1);
+          const firstWithId = { ...first, id: normalized.id };
+          return {
+            ...prev,
+            transactions: [...list.map((tx) => remap(tx, firstWithId.id, firstWithId.switchPairId)), ...others.map((o) => o)]
+          };
+        }
+        return { ...prev, transactions: [...list.map((tx) => remap(tx, normalizedList[0]?.id, normalizedList[0]?.switchPairId)), ...normalizedList] };
+      }
+
       const newPairId = normalized.switchPairId || '';
-      const remap = (tx) => {
-        // 清理老数据里由旧的一对一逻辑写入的反向指针。新的配对只在当前交易上记录 switchPairId，
-        // 这样同一笔大额对手方可以按剩余金额被多笔交易继续选择。
+      const remapSingle = (tx) => {
         if (previousPairId && previousPairId !== newPairId && tx.id === previousPairId && tx.switchPairId === normalized.id) {
           return { ...tx, switchPairId: '' };
         }
@@ -1185,10 +1228,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       if (draftMode === 'edit') {
         return {
           ...prev,
-          transactions: list.map((tx) => (tx.id === normalized.id ? normalized : remap(tx)))
+          transactions: list.map((tx) => (tx.id === normalized.id ? normalized : remapSingle(tx)))
         };
       }
-      return { ...prev, transactions: [...list.map(remap), normalized] };
+      return { ...prev, transactions: [...list.map(remapSingle), normalized] };
     });
     showActionToast(draftMode === 'edit' ? '交易已更新' : '交易已新增', 'success', {
       description: `${normalized.code} ${normalized.type} ${formatShares(normalized.shares)} 份 @ ${formatNav(normalized.price)}`
@@ -1583,6 +1626,20 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   // ---- Switch counterpart picker ----
   function openSwitchPicker() {
     setSwitchPickerSearch('');
+    // 初始化多选状态：如果 draft 有 switchAllocations 或 switchPairId，预选对应 id
+    setSwitchPickerSelectedIds(() => {
+      const s = new Set();
+      try {
+        if (Array.isArray(draft?.switchAllocations)) {
+          for (const a of draft.switchAllocations) if (a && a.txId) s.add(a.txId);
+        } else if (draft?.switchPairId) {
+          s.add(draft.switchPairId);
+        }
+      } catch (e) {
+        // ignore
+      }
+      return s;
+    });
     // 移动端某些 WebView/手势层会出现「点击后 state 已更新，但 UI 不立即重绘」的情况，
     // 往往要等一次导航/返回（popstate）才把弹窗绘出来。这里强制同步 flush，确保立刻渲染。
     flushSync(() => setSwitchPickerOpen(true));
@@ -1630,8 +1687,42 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   function handleSelectSwitchCounterpart(txId) {
-    handleDraftChange('switchPairId', txId || '');
+    // 保持与旧接口兼容：单击行为改为切换选中（多选）。
+    setSwitchPickerSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (!txId) return next;
+      if (next.has(txId)) next.delete(txId);
+      else next.add(txId);
+      return next;
+    });
+  }
+
+  function computeGreedyAllocations(selectedIds, candidatesOrdered, draftAmount) {
+    let remaining = Math.max(0, Number(draftAmount) || 0);
+    const alloc = new Map();
+    for (const c of candidatesOrdered) {
+      if (!selectedIds.has(c.tx.id)) continue;
+      const avail = Number(c.availableAmount) || 0;
+      const take = Math.max(0, Math.min(avail, remaining));
+      if (take > 0) alloc.set(c.tx.id, take);
+      remaining = Math.max(0, remaining - take);
+      if (remaining <= 0) break;
+    }
+    return { alloc, remaining };
+  }
+
+  function handleConfirmSwitchSelections(candidatesOrdered) {
+    const draftAmount = getTransactionAmount(draft);
+    const { alloc, remaining } = computeGreedyAllocations(switchPickerSelectedIds, candidatesOrdered, draftAmount);
+    const allocations = [];
+    for (const [txId, amount] of alloc.entries()) allocations.push({ txId, amount });
+    // 写回 draft，用于 submit 时按照 allocations 拆分/保存
+    handleDraftChange('switchAllocations', allocations);
+    // 保持向后兼容：设置 switchPairId 为首个分配的对手方
+    if (allocations.length) handleDraftChange('switchPairId', allocations[0].txId);
+    else handleDraftChange('switchPairId', '');
     setSwitchPickerOpen(false);
+    showActionToast('已准备好分配', remaining > 0 ? 'warning' : 'success', { description: remaining > 0 ? `还有 ${formatCurrency(remaining, '¥', 2)} 未分配` : '已完成全额分配' });
   }
 
   function handleParsePaste() {
@@ -3350,6 +3441,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                     </div>
                   );
                 }
+                // 计算当前选中集的贪心分配（用于展示 allocated 数值）
+                const draftAmount = getTransactionAmount(draft);
+                const { alloc, remaining: allocRemaining } = computeGreedyAllocations(switchPickerSelectedIds, candidates, draftAmount);
+
                 return (
                   <table className="min-w-full text-sm">
                     <thead className="sticky top-0 z-10 bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
@@ -3368,16 +3463,16 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {candidates.map(({ tx, amount, usedAmount, availableAmount, canSelect, reasons, isPrevious }) => {
-                        const isSelected = draft.switchPairId === tx.id;
+                        const isSelected = switchPickerSelectedIds.has(tx.id);
+                        const allocated = Number(alloc.get(tx.id) || 0);
                         return (
                           <tr
                             key={tx.id}
                             className={cx(
                               'text-slate-700 transition-colors',
-                              canSelect ? 'cursor-pointer hover:bg-indigo-50/60' : 'cursor-not-allowed opacity-55 hover:bg-transparent',
+                              canSelect ? 'hover:bg-indigo-50/60' : 'cursor-not-allowed opacity-55 hover:bg-transparent',
                               isSelected && 'bg-indigo-50/80'
                             )}
-                            onClick={() => { if (canSelect) handleSelectSwitchCounterpart(tx.id); }}
                           >
                             <td className="whitespace-nowrap px-3 py-2 font-mono text-xs font-semibold text-slate-800">
                               <span className="inline-flex items-center gap-1">
@@ -3397,14 +3492,20 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                             <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums text-slate-700">
                               <div>{formatCurrency(availableAmount, '¥', 2)}</div>
                               {usedAmount > 0 ? <div className="text-[10px] text-slate-400">已占 {formatCurrency(usedAmount, '¥', 2)}</div> : null}
+                              {allocated > 0 ? <div className="text-[11px] font-semibold text-slate-800">分配 {formatCurrency(allocated, '¥', 2)}</div> : null}
                               {!canSelect && reasons.length ? <div className="mt-0.5 text-[10px] text-rose-500">{reasons.join(' · ')}</div> : null}
                             </td>
                             <td className="whitespace-nowrap px-3 py-2 text-right">
-                              {canSelect ? (isSelected ? (
-                                <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2 py-1 text-[11px] font-semibold text-white"><CheckCircle2 className="h-3 w-3" />已选</span>
+                              {canSelect ? (
+                                <label className="inline-flex items-center gap-2">
+                                  <input type="checkbox" checked={isSelected} onChange={() => handleSelectSwitchCounterpart(tx.id)} />
+                                  {isSelected ? (
+                                    <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2 py-1 text-[11px] font-semibold text-white"><CheckCircle2 className="h-3 w-3" />已选</span>
+                                  ) : (
+                                    <span className="inline-flex items-center rounded-lg bg-white px-2 py-1 text-[11px] font-semibold text-indigo-600 ring-1 ring-indigo-100">选择</span>
+                                  )}
+                                </label>
                               ) : (
-                                <span className="inline-flex items-center rounded-lg bg-white px-2 py-1 text-[11px] font-semibold text-indigo-600 ring-1 ring-indigo-100">选择</span>
-                              )) : (
                                 <span className="inline-flex items-center rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-400">不可选</span>
                               )}
                             </td>
@@ -3417,8 +3518,25 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               })()}
             </div>
             <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
-              <div />
-              <button type="button" className={GHOST_BTN} onClick={closeSwitchPicker}>关闭</button>
+              <div className="flex items-center gap-2">
+                <button type="button" className={GHOST_BTN} onClick={() => {
+                  // 自动选择：按顺序加入候选直到覆盖 draftAmount
+                  const need = getTransactionAmount(draft);
+                  let acc = 0;
+                  const next = new Set();
+                  for (const c of candidates) {
+                    if (acc >= need) break;
+                    if (!c.canSelect) continue;
+                    next.add(c.tx.id);
+                    acc += Number(c.availableAmount) || 0;
+                  }
+                  setSwitchPickerSelectedIds(next);
+                }}>自动分配</button>
+                <button type="button" className={PRIMARY_BTN} onClick={() => handleConfirmSwitchSelections(candidates)} disabled={switchPickerSelectedIds.size === 0}>确认选择</button>
+              </div>
+              <div>
+                <button type="button" className={GHOST_BTN} onClick={closeSwitchPicker}>关闭</button>
+              </div>
             </div>
           </div>
         </div>
