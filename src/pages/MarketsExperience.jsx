@@ -73,6 +73,12 @@ function formatSignedPercent(value, fractionDigits = 2) {
   return sign + n.toFixed(fractionDigits) + '%';
 }
 
+function formatPercentNoPlus(value, fractionDigits = 2) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '--';
+  return n.toFixed(fractionDigits) + '%';
+}
+
 function formatTime(value) {
   if (!value) return '';
   const d = new Date(value);
@@ -1971,7 +1977,7 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
               return (
                 <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
                   <div>{label}</div>
-                  <div className="mt-0.5 tabular-nums text-[#1f1f1f]"><span className="mr-1">溢价%</span>{formatSignedPercent(value)}</div>
+                  <div className="mt-0.5 tabular-nums text-[#1f1f1f]">{formatPercentNoPlus(value)}</div>
                 </div>
               );
             }
