@@ -1057,6 +1057,32 @@ function getLatestFinanceRow(fundData, key) {
   const list = getXueqiuPayload(fundData, key)?.list;
   return Array.isArray(list) && list.length ? list[0] : null;
 }
+
+function isCnMarketOpenNow(date = new Date()) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Shanghai',
+      hour12: false,
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).formatToParts(date);
+    const get = (type) => parts.find((p) => p.type === type)?.value;
+    const weekday = String(get('weekday') || '').toLowerCase();
+    if (weekday === 'sat' || weekday === 'sun') return false;
+    const hour = Number(get('hour'));
+    const minute = Number(get('minute'));
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return false;
+    const hm = hour * 60 + minute;
+    const morningOpen = 9 * 60 + 30;
+    const morningClose = 11 * 60 + 30;
+    const afternoonOpen = 13 * 60;
+    const afternoonClose = 15 * 60;
+    return (hm >= morningOpen && hm <= morningClose) || (hm >= afternoonOpen && hm <= afternoonClose);
+  } catch (_error) {
+    return false;
+  }
+}
 function detailValueRow(label, value, className = '') {
   return { label, value, className };
 }
@@ -4476,6 +4502,28 @@ export function MarketsExperience() {
     }
     const price = Number(selectedQuote?.price);
     if (!symbol || !Number.isFinite(price) || price <= 0) return;
+
+    // 1 天溢价：优先使用雪球实时返回的溢价率（premium_rate）。
+    // 历史仍按原有公式：在 buildCnFundParamCandles() 内用净值与 candle 价格计算。
+    if (chartRange === '1d' && cnFundParam === 'premium') {
+      const xueqiuQuote = getXueqiuQuote(xueqiuFundDataMap[selectedSymbol]);
+      const mergedRow = xueqiuQuote ? {
+        ...selectedQuote,
+        premium_rate: xueqiuQuote?.premium_rate,
+        iopv: xueqiuQuote?.iopv,
+        unitNav: xueqiuQuote?.unit_nav,
+        latestNavDate: xueqiuQuote?.nav_date,
+        lastUpdated: xueqiuQuote?.updated_at || xueqiuQuote?.time,
+      } : selectedQuote;
+      const xueqiuPremium1d = buildXueqiuPremiumSnapshotFromQuote(mergedRow, symbol);
+      if (xueqiuPremium1d) {
+        setPremiumMap((prev) => ({
+          ...prev,
+          [symbol]: { loading: false, error: '', data: xueqiuPremium1d }
+        }));
+        return;
+      }
+    }
     const cachedState = premiumMap[symbol];
     const cachedPremium = cachedState?.data;
     if (cachedPremium && Math.abs(Number(cachedPremium.price) - price) < 0.000001) {
@@ -4527,7 +4575,32 @@ export function MarketsExperience() {
       }
     })();
     return () => { cancelled = true; };
-  }, [market, selectedSymbol, selectedQuote?.price, selectedQuote?.latestNav, selectedQuote?.iopv, selectedQuote?.premiumPercent, selectedQuote?.latestNavDate]);
+  }, [market, selectedSymbol, chartRange, cnFundParam, selectedQuote?.price, selectedQuote?.latestNav, selectedQuote?.iopv, selectedQuote?.premiumPercent, selectedQuote?.latestNavDate, xueqiuFundDataMap]);
+
+  // 开盘盘中：1 天溢价视图轮询刷新雪球溢价率。
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    if (market !== 'cn' || !selectedSymbol) return undefined;
+    if (cnFundParam !== 'premium' || chartRange !== '1d') return undefined;
+    if (!isCnMarketOpenNow()) return undefined;
+    const code = normalizeCnFundCode(selectedSymbol);
+    if (!/^\d{6}$/.test(code) || NASDAQ_OTC_FUND_MAP[code]) return undefined;
+    let cancelled = false;
+    const timer = window.setInterval(async () => {
+      if (cancelled) return;
+      try {
+        const r = await fetchXueqiuFundData(selectedSymbol, { raw: true, refresh: true });
+        if (cancelled) return;
+        setXueqiuFundDataMap((prev) => ({ ...prev, [selectedSymbol]: r }));
+      } catch (_error) {
+        // best-effort: ignore refresh errors
+      }
+    }, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [market, selectedSymbol, cnFundParam, chartRange]);
 
   useEffect(() => {
     if (market !== 'cn' || !selectedSymbol) return;

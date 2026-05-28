@@ -1175,13 +1175,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       const previousPairId = previousTx?.switchPairId || '';
       const newPairId = normalized.switchPairId || '';
       const remap = (tx) => {
-        // 如果原配对对手不再被选中，清除它们反向的 switchPairId
+        // 清理老数据里由旧的一对一逻辑写入的反向指针。新的配对只在当前交易上记录 switchPairId，
+        // 这样同一笔大额对手方可以按剩余金额被多笔交易继续选择。
         if (previousPairId && previousPairId !== newPairId && tx.id === previousPairId && tx.switchPairId === normalized.id) {
           return { ...tx, switchPairId: '' };
-        }
-        // 新选中的对手：同步反向指向为当前 tx
-        if (newPairId && tx.id === newPairId) {
-          return { ...tx, switchPairId: normalized.id };
         }
         return tx;
       };
@@ -1593,6 +1590,43 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
 
   function closeSwitchPicker() {
     setSwitchPickerOpen(false);
+  }
+
+  function getTransactionAmount(tx) {
+    return Math.max(0, (Number(tx?.price) || 0) * (Number(tx?.shares) || 0));
+  }
+
+  function isValidSwitchCounterpart(sourceTx, targetTx) {
+    if (!sourceTx || !targetTx) return false;
+    if (sourceTx.id && targetTx.id && sourceTx.id === targetTx.id) return false;
+    if (!sourceTx.type || !targetTx.type || sourceTx.type === targetTx.type) return false;
+    const sourceCode = normalizeFundCode(sourceTx.code);
+    const targetCode = normalizeFundCode(targetTx.code);
+    return Boolean(sourceCode && targetCode && sourceCode !== targetCode);
+  }
+
+  function getSwitchCounterpartUsage(targetTx, { excludeTxId = '' } = {}) {
+    if (!targetTx?.id) return 0;
+    const txById = new Map();
+    (transactions || []).forEach((tx) => { if (tx?.id) txById.set(tx.id, tx); });
+    const usedTxIds = new Set();
+    let used = 0;
+    for (const tx of transactions || []) {
+      if (!tx?.id || tx.id === targetTx.id || tx.id === excludeTxId) continue;
+      if (tx.switchPairId !== targetTx.id) continue;
+      if (!isValidSwitchCounterpart(tx, targetTx)) continue;
+      usedTxIds.add(tx.id);
+      used += getTransactionAmount(tx);
+    }
+    const directPair = targetTx.switchPairId ? txById.get(targetTx.switchPairId) : null;
+    if (directPair?.id && directPair.id !== excludeTxId && !usedTxIds.has(directPair.id) && isValidSwitchCounterpart(directPair, targetTx)) {
+      used += getTransactionAmount(directPair);
+    }
+    return Math.max(0, used);
+  }
+
+  function getSwitchCounterpartAvailableAmount(targetTx, { excludeTxId = '' } = {}) {
+    return Math.max(0, getTransactionAmount(targetTx) - getSwitchCounterpartUsage(targetTx, { excludeTxId }));
   }
 
   function handleSelectSwitchCounterpart(txId) {
