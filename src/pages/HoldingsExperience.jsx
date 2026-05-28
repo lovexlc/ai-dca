@@ -3443,7 +3443,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                   );
                 }
                 // 计算当前选中集的贪心分配（用于展示 allocated 数值）
-                const draftAmount = getTransactionAmount(draft);
                 const { alloc, remaining: allocRemaining } = computeGreedyAllocations(switchPickerSelectedIds, candidates, draftAmount);
 
                 return (
