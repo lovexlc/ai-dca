@@ -1,6 +1,6 @@
 {
   "dataset": "nasdaq_latest_prices",
-  "generated_at": "2026-05-28T05:06:16Z",
+  "generated_at": "2026-05-28T11:06:35Z",
   "fund_list_source": "data/all_nasdq.json",
   "count": 13,
   "funds": [
