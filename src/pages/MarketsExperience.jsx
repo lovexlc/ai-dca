@@ -4505,7 +4505,7 @@ export function MarketsExperience() {
 
     // 1 天溢价：优先使用雪球实时返回的溢价率（premium_rate）。
     // 历史仍按原有公式：在 buildCnFundParamCandles() 内用净值与 candle 价格计算。
-    if (chartRange === '1d' && cnFundParam === 'premium') {
+    if (chartRange === '1d') {
       const xueqiuQuote = getXueqiuQuote(xueqiuFundDataMap[selectedSymbol]);
       const mergedRow = xueqiuQuote ? {
         ...selectedQuote,
@@ -4575,13 +4575,13 @@ export function MarketsExperience() {
       }
     })();
     return () => { cancelled = true; };
-  }, [market, selectedSymbol, chartRange, cnFundParam, selectedQuote?.price, selectedQuote?.latestNav, selectedQuote?.iopv, selectedQuote?.premiumPercent, selectedQuote?.latestNavDate, xueqiuFundDataMap]);
+  }, [market, selectedSymbol, chartRange, selectedQuote?.price, selectedQuote?.latestNav, selectedQuote?.iopv, selectedQuote?.premiumPercent, selectedQuote?.latestNavDate, xueqiuFundDataMap]);
 
   // 开盘盘中：1 天溢价视图轮询刷新雪球溢价率。
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     if (market !== 'cn' || !selectedSymbol) return undefined;
-    if (cnFundParam !== 'premium' || chartRange !== '1d') return undefined;
+    if (chartRange !== '1d') return undefined;
     if (!isCnMarketOpenNow()) return undefined;
     const code = normalizeCnFundCode(selectedSymbol);
     if (!/^\d{6}$/.test(code) || NASDAQ_OTC_FUND_MAP[code]) return undefined;
@@ -4600,7 +4600,7 @@ export function MarketsExperience() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [market, selectedSymbol, cnFundParam, chartRange]);
+  }, [market, selectedSymbol, chartRange]);
 
   useEffect(() => {
     if (market !== 'cn' || !selectedSymbol) return;
