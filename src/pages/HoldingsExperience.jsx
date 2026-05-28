@@ -190,6 +190,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const autoNavTriggeredRef = useRef(false);
   const navAttemptedCodesRef = useRef(new Set());
   const importMenuRef = useRef(null);
+  const switchPickerCandidatesRef = useRef([]);
 
 
   // ---- Persist changes to localStorage whenever ledger state changes ----
@@ -3432,6 +3433,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                   // 不再把单笔可用不足作为禁选理由，保留在展示层说明可用金额。
                   candidates.unshift({ tx: previousTx, amount, usedAmount, availableAmount, canSelect, reasons, isPrevious: true });
                 }
+                // expose candidates for outer scope buttons
+                switchPickerCandidatesRef.current = candidates;
                 if (candidates.length === 0) {
                   return (
                     <div className="flex min-h-[200px] flex-col items-center justify-center gap-2 px-6 py-10 text-center text-xs text-slate-500">
@@ -3524,7 +3527,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                   const need = getTransactionAmount(draft);
                   let acc = 0;
                   const next = new Set();
-                  for (const c of candidates) {
+                  for (const c of switchPickerCandidatesRef.current || []) {
                     if (acc >= need) break;
                     if (!c.canSelect) continue;
                     next.add(c.tx.id);
@@ -3532,7 +3535,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                   }
                   setSwitchPickerSelectedIds(next);
                 }}>自动分配</button>
-                <button type="button" className={PRIMARY_BTN} onClick={() => handleConfirmSwitchSelections(candidates)} disabled={switchPickerSelectedIds.size === 0}>确认选择</button>
+                <button type="button" className={PRIMARY_BTN} onClick={() => handleConfirmSwitchSelections(switchPickerCandidatesRef.current || [])} disabled={switchPickerSelectedIds.size === 0}>确认选择</button>
               </div>
               <div>
                 <button type="button" className={GHOST_BTN} onClick={closeSwitchPicker}>关闭</button>
