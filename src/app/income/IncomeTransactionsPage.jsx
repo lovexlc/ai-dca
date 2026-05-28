@@ -215,15 +215,26 @@ export function IncomeTransactionsPage({ ledger, onBack, navigate, currentRoute,
 			<div className="rounded-2xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4">
 				<div className="flex items-center justify-between gap-2 pb-3">
 					<div className="text-sm font-semibold text-slate-800">全部交易汇总</div>
-					<select
-						value={lensKey}
-						onChange={(e) => setLensKey(e.target.value)}
-						className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
-					>
-						{LENS_OPTIONS.map((opt) => (
-							<option key={opt.key} value={opt.key}>{opt.label}</option>
-						))}
-					</select>
+					<div className="flex items-center gap-1.5">
+						<button
+							type="button"
+							onClick={handleExportTransactions}
+							disabled={!sortedDesc.length}
+							className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+						>
+							<Download className="size-3.5" />
+							导出
+						</button>
+						<select
+							value={lensKey}
+							onChange={(e) => setLensKey(e.target.value)}
+							className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+						>
+							{LENS_OPTIONS.map((opt) => (
+								<option key={opt.key} value={opt.key}>{opt.label}</option>
+							))}
+						</select>
+					</div>
 				</div>
 				<div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
 					<SummaryStat count={summary.buyCount} label="买入" amount={summary.buyAmount} tone="buy" />
