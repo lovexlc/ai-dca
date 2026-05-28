@@ -1364,7 +1364,7 @@ function buildCnFundParamCandles(priceCandles, navItems, param, premiumState, ra
       .filter(Boolean);
   }
   if (param === 'premium') {
-    return (Array.isArray(priceCandles) ? priceCandles : [])
+    const base = (Array.isArray(priceCandles) ? priceCandles : [])
       .map((candle) => {
         const date = shanghaiDateFromEpochSec(candle?.t);
         const navItem = findNavOnOrBefore(sortedNav, date);
@@ -1383,6 +1383,33 @@ function buildCnFundParamCandles(priceCandles, navItems, param, premiumState, ra
         return { t: Number(candle.t), o, h, l, c, date, nav, iopv };
       })
       .filter(Boolean);
+
+    // 1 天溢价：补一个“最新点”，让图表跟随实时溢价刷新。
+    // 历史仍来自 base（由 candle 价格 + 当日/前一净值映射计算）。
+    if (rangeKey === '1d') {
+      const latest = premiumState?.data;
+      const premiumPercent = Number(latest?.premiumPercent);
+      if (Number.isFinite(premiumPercent)) {
+        const nowSec = Math.floor(Date.now() / 1000);
+        const nowDate = shanghaiDateFromEpochSec(nowSec);
+        const navItem = findNavOnOrBefore(sortedNav, nowDate);
+        const nav = Number(navItem?.nav);
+        if (nowDate && Number.isFinite(nav) && nav > 0) {
+          const latestPoint = {
+            t: nowSec,
+            o: premiumPercent,
+            h: premiumPercent,
+            l: premiumPercent,
+            c: premiumPercent,
+            date: nowDate,
+            nav,
+            iopv: nav,
+          };
+          return base.length ? [...base, latestPoint] : [latestPoint];
+        }
+      }
+    }
+    return base;
   }
   return priceCandles;
 }
