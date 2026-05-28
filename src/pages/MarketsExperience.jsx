@@ -657,11 +657,9 @@ function SortableMarketTable({ title = '', rows = [], market, onPick, onRemove, 
   );
 }
 
-function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate, onRename, onDelete, heldCount = 0 }) {
+function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate, onRename, onDelete }) {
   const [open, setOpen] = useState(false);
-  const active = activeListId === 'held'
-    ? { id: 'held', name: '已持仓', us: [], cn: Array.from({ length: heldCount }) }
-    : ((lists || []).find((item) => item.id === activeListId) || lists[0]);
+  const active = (lists || []).find((item) => item.id === activeListId) || lists[0];
   const canDelete = (item) => item?.id !== 'default' && (lists || []).length > 1;
   return (
     <div className="relative">
@@ -671,14 +669,6 @@ function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate, onRen
       </button>
       {open ? (
         <div className="absolute left-0 top-full z-30 mt-1 w-64 overflow-hidden rounded-2xl border border-[#e8eaed] bg-white py-1 shadow-lg">
-          {heldCount > 0 ? (
-            <div className={cx('flex w-full items-center gap-1 px-3 py-2 text-sm hover:bg-[#f8fafd]', activeListId === 'held' ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>
-              <button type="button" onClick={() => { onSelect?.('held'); setOpen(false); }} className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
-                <span className="inline-flex min-w-0 items-center gap-1.5 truncate"><Wallet size={13} className="shrink-0 text-indigo-400" />已持仓</span>
-                <span className="text-[11px] text-[#9aa0a6]">{heldCount}</span>
-              </button>
-            </div>
-          ) : null}
           {(lists || []).map((item) => (
             <div key={item.id} className={cx('flex w-full items-center gap-1 px-3 py-2 text-sm hover:bg-[#f8fafd]', item.id === activeListId ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>
               <button type="button" onClick={() => { onSelect?.(item.id); setOpen(false); }} className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
@@ -1524,6 +1514,24 @@ function TradeMarkersLayer({ xAxisMap, yAxisMap, width, height, offset, data, ma
   const yScale = yAxis.scale;
   const rows = data.filter((row) => Number.isFinite(Number(row?.t)) && Number.isFinite(Number(row?.main)));
   if (!rows.length) return null;
+  const rowsMeta = rows.map((row) => ({
+    t: Number(row.t),
+    date: String(row.date || shanghaiDateFromEpochSec(row.t) || '')
+  }));
+  let minT = Infinity;
+  let maxT = -Infinity;
+  let minDate = '';
+  let maxDate = '';
+  rowsMeta.forEach((item) => {
+    if (Number.isFinite(item.t)) {
+      if (item.t < minT) minT = item.t;
+      if (item.t > maxT) maxT = item.t;
+    }
+    if (item.date) {
+      if (!minDate || item.date < minDate) minDate = item.date;
+      if (!maxDate || item.date > maxDate) maxDate = item.date;
+    }
+  });
   const chartOffset = offset || {};
   const plotLeft = Number.isFinite(Number(chartOffset.left)) ? Number(chartOffset.left) : 0;
   const plotWidth = Number.isFinite(Number(chartOffset.width)) ? Number(chartOffset.width) : (Number(width) || 0);
@@ -1544,8 +1552,25 @@ function TradeMarkersLayer({ xAxisMap, yAxisMap, width, height, offset, data, ma
     <g pointerEvents="none">
       {markers.map((marker, index) => {
         const markerT = Number(marker.t);
-        if (markerT < Number(rows[0].t) || markerT > Number(rows[rows.length - 1].t)) return null;
-        let rowIndex = rows.findIndex((item) => Number(item.t) >= markerT);
+        const markerDate = String(marker.date || shanghaiDateFromEpochSec(markerT) || '');
+        const inTimeRange = Number.isFinite(markerT) && markerT >= minT && markerT <= maxT;
+        const inDateRange = markerDate && minDate && maxDate && markerDate >= minDate && markerDate <= maxDate;
+        if (!inTimeRange && !inDateRange) return null;
+        let rowIndex = -1;
+        if (Number.isFinite(markerT)) {
+          let bestDiff = Infinity;
+          rowsMeta.forEach((item, idx) => {
+            if (!Number.isFinite(item.t)) return;
+            const diff = Math.abs(item.t - markerT);
+            if (diff < bestDiff) {
+              bestDiff = diff;
+              rowIndex = idx;
+            }
+          });
+        }
+        if (rowIndex < 0 && markerDate) {
+          rowIndex = rowsMeta.findIndex((item) => item.date === markerDate);
+        }
         if (rowIndex < 0) rowIndex = rows.length - 1;
         const row = rows[rowIndex];
         if (!row) return null;
@@ -3697,7 +3722,6 @@ export function MarketsExperience() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [watch, setWatch] = useState(() => loadWatchlist());
   const [watchlistDialog, setWatchlistDialog] = useState(null);
-  const [sidebarListMode, setSidebarListMode] = useState('watch');
   const [holdingsLedger, setHoldingsLedger] = useState(() => readLedgerState());
   const [tradeLedgerEntries, setTradeLedgerEntries] = useState(() => readTradeLedger());
   const [watchQuotes, setWatchQuotes] = useState({});
@@ -3818,13 +3842,9 @@ export function MarketsExperience() {
     () => aggregateByCode(holdingsLedger.transactions, holdingsLedger.snapshotsByCode).filter((agg) => agg.hasPosition),
     [holdingsLedger]
   );
-  const heldSymbols = useMemo(
-    () => Array.from(new Set(heldAggregates.map((agg) => normalizeCnFundCode(agg.code)).filter(Boolean))),
-    [heldAggregates]
-  );
   const trackedWatchSymbols = useMemo(
-    () => market === 'cn' ? Array.from(new Set([...watchSymbols, ...heldSymbols])) : watchSymbols,
-    [market, watchSymbols, heldSymbols]
+    () => watchSymbols,
+    [watchSymbols]
   );
   useEffect(() => {
     selectedSymbolRef.current = selectedSymbol;
@@ -4209,15 +4229,8 @@ export function MarketsExperience() {
   }
 
   function handleSelectWatchlist(listId) {
-    if (listId === 'held') {
-      setSidebarListMode('held');
-      setSelectedSymbol('');
-      setSymbolDetailTab('overview');
-      return;
-    }
     const next = setActiveWatchlist(listId);
     setWatch(next);
-    setSidebarListMode('watch');
     setSelectedSymbol('');
     setSymbolDetailTab('overview');
   }
@@ -4241,7 +4254,6 @@ export function MarketsExperience() {
     if (watchlistDialog.type === 'delete') {
       const next = deleteWatchlist(watchlistDialog.list?.id);
       setWatch(next);
-      setSidebarListMode('watch');
       setSelectedSymbol('');
       setSymbolDetailTab('overview');
       setWatchlistDialog(null);
@@ -4261,7 +4273,6 @@ export function MarketsExperience() {
     }
     const next = createWatchlist(trimmed);
     setWatch(next);
-    setSidebarListMode('watch');
     setSelectedSymbol('');
     setSymbolDetailTab('overview');
     setWatchlistDialog(null);
@@ -4278,7 +4289,7 @@ export function MarketsExperience() {
     setResearchMode(options.openResearch ? 'conversation' : 'peek');
   }
 
-  const buildSidebarRow = useCallback((sym, heldAggregate = null) => {
+  const buildSidebarRow = useCallback((sym) => {
     const code = normalizeCnFundCode(sym);
     const q = watchQuotes[sym] || (code ? watchQuotes[code] : null) || {};
     const snapshot = code ? watchNavSnapshots[code] : null;
@@ -4292,7 +4303,7 @@ export function MarketsExperience() {
       : '';
     return {
       symbol: sym,
-      name: market === 'cn' ? resolveCnFundName(sym, merged.name || heldAggregate?.name || CN_ETF_PRESET_MAP[sym]?.name || sym) : (merged.name || CN_ETF_PRESET_MAP[sym]?.name || sym),
+      name: market === 'cn' ? resolveCnFundName(sym, merged.name || CN_ETF_PRESET_MAP[sym]?.name || sym) : (merged.name || CN_ETF_PRESET_MAP[sym]?.name || sym),
       price: merged.price,
       changePercent: merged.changePercent,
       change: merged.change,
@@ -4310,8 +4321,7 @@ export function MarketsExperience() {
       assetType: merged.assetType,
       source: merged.source,
       market,
-      holding: !!heldAggregate,
-      meta: [heldAggregate ? '已持仓' : '', baseMeta, heldAggregate ? `份额 ${formatNumber(heldAggregate.totalShares, 2)}` : ''].filter(Boolean).join(' · ')
+      meta: baseMeta
     };
   }, [watchQuotes, watchNavSnapshots, market]);
 
@@ -4320,13 +4330,8 @@ export function MarketsExperience() {
     [watchSymbols, buildSidebarRow]
   );
 
-  const heldRows = useMemo(
-    () => market === 'cn' ? heldAggregates.map((agg) => buildSidebarRow(normalizeCnFundCode(agg.code), agg)) : [],
-    [market, heldAggregates, buildSidebarRow]
-  );
-
-  const activeSidebarRows = sidebarListMode === 'held' ? heldRows : watchRows;
-  const activeSidebarEmptyText = sidebarListMode === 'held' ? '暂无已持仓基金。' : '未配置自选。';
+  const activeSidebarRows = watchRows;
+  const activeSidebarEmptyText = '未配置自选。';
 
   const watchTopMovers = useMemo(
     () => watchRows.filter((row) => Number.isFinite(Number(row.changePercent))).slice().sort((a, b) => Math.abs(Number(b.changePercent)) - Math.abs(Number(a.changePercent))).slice(0, 6),
@@ -4336,11 +4341,11 @@ export function MarketsExperience() {
   const selectedStoredQuote = selectedSymbol ? selectedQuoteMap[`${market}:${selectedSymbol}`] : null;
   const selectedQuote = useMemo(
     () => {
-      const watchRow = watchRows.find((row) => row.symbol === selectedSymbol) || heldRows.find((row) => row.symbol === selectedSymbol) || null;
+      const watchRow = watchRows.find((row) => row.symbol === selectedSymbol) || null;
       if (selectedStoredQuote && Number.isFinite(Number(selectedStoredQuote.price))) return selectedStoredQuote;
       return watchRow || selectedStoredQuote || null;
     },
-    [selectedSymbol, selectedStoredQuote, watchRows, heldRows]
+    [selectedSymbol, selectedStoredQuote, watchRows]
   );
   const selectedCnFundCode = market === 'cn' ? normalizeCnFundCode(selectedSymbol || selectedQuote?.symbol) : '';
   const selectedTradeMarkers = useMemo(() => {
@@ -4367,8 +4372,7 @@ export function MarketsExperience() {
       if (!code || pendingSymbolHandledRef.current === code) return;
       pendingSymbolHandledRef.current = code;
       try { window.sessionStorage.removeItem(MARKETS_PENDING_SYMBOL_KEY); } catch (_error) { /* ignore */ }
-      const row = heldRows.find((item) => normalizeCnFundCode(item.symbol) === code)
-        || watchRows.find((item) => normalizeCnFundCode(item.symbol) === code)
+      const row = watchRows.find((item) => normalizeCnFundCode(item.symbol) === code)
         || buildOtcCandidate(code, { symbol: code });
       handleSelectSymbol({ ...row, symbol: code, market: 'cn' }, { market: 'cn' });
     };
@@ -4388,11 +4392,11 @@ export function MarketsExperience() {
       window.removeEventListener('markets:select-symbol', handleSelectEvent);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [heldRows.length, watchRows.length]);
+  }, [watchRows.length]);
 
   useEffect(() => {
     if (!selectedSymbol) return undefined;
-    const selectedWatchRow = watchRows.find((row) => row.symbol === selectedSymbol) || heldRows.find((row) => row.symbol === selectedSymbol);
+    const selectedWatchRow = watchRows.find((row) => row.symbol === selectedSymbol);
     if (selectedWatchRow && Number.isFinite(Number(selectedWatchRow.price))) return undefined;
     if (Number.isFinite(Number(selectedStoredQuote?.price))) return undefined;
     let cancelled = false;
@@ -4585,12 +4589,11 @@ export function MarketsExperience() {
           <div className="flex items-center justify-between pt-1">
             <WatchlistSelector
               lists={watchLists}
-              activeListId={sidebarListMode === 'held' ? 'held' : watch.activeListId}
+              activeListId={watch.activeListId}
               onSelect={handleSelectWatchlist}
               onCreate={handleCreateWatchlist}
               onRename={handleRenameWatchlist}
               onDelete={handleDeleteWatchlist}
-              heldCount={heldRows.length}
             />
             <div className="flex items-center gap-1">
               <button
@@ -4610,7 +4613,7 @@ export function MarketsExperience() {
         {/* 监控列表 */}
         <div className="px-1">
           <div className="flex items-center justify-between py-2">
-            <h3 className="text-base font-semibold text-[#1f1f1f]">{sidebarListMode === 'held' ? '已持仓' : '监控列表'}</h3>
+            <h3 className="text-base font-semibold text-[#1f1f1f]">监控列表</h3>
             <button
               type="button"
               onClick={() => setWatchOpen((v) => !v)}
@@ -4750,12 +4753,11 @@ export function MarketsExperience() {
           <div className="flex items-center justify-between gap-1 px-1 py-2">
             <WatchlistSelector
               lists={watchLists}
-              activeListId={sidebarListMode === 'held' ? 'held' : watch.activeListId}
+              activeListId={watch.activeListId}
               onSelect={handleSelectWatchlist}
               onCreate={handleCreateWatchlist}
               onRename={handleRenameWatchlist}
               onDelete={handleDeleteWatchlist}
-              heldCount={heldRows.length}
             />
           </div>
 
@@ -4768,8 +4770,8 @@ export function MarketsExperience() {
               className="flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-[15px] font-medium text-[#1f1f1f] hover:bg-[#f1f3f4]"
             >
               {watchOpen ? <ChevronDown size={16} className="text-[#5f6368]" /> : <ChevronRight size={16} className="text-[#5f6368]" />}
-              {sidebarListMode === 'held' ? <Wallet size={14} className="text-indigo-400" /> : <Star size={14} className="text-amber-400" />}
-              <span>{sidebarListMode === 'held' ? '已持仓' : '监控列表'}</span>
+              <Star size={14} className="text-amber-400" />
+              <span>监控列表</span>
               {watchLoading && <Loader2 size={12} className="ml-1 animate-spin text-slate-400" />}
             </button>
           </div>

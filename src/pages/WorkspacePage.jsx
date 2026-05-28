@@ -474,7 +474,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
             </button>
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-600">免责声明</div>
             <h3 className="mt-1 text-lg font-bold text-slate-900">非官方、非投资建议</h3>
-            <p className="mt-4 text-sm leading-7 text-slate-500">本工具中的策略说明由公开的金渐成公众号文章整理、总结和结构化而来，仅用于个人学习、记录和辅助决策。本工具与金渐成本人及其公众号无官方关联、无授权关系，也不代表金渐成本人观点或服务。页面中的计划、提醒、演示数据和计算结果均为辅助工具输出，不构成任何投资建议。投资有风险，请独立判断并自行承担决策结果。</p>
+            <p className="mt-4 text-sm leading-7 text-slate-500">本工具中的部分策略说明由公开的金渐成公众号文章整理、总结和结构化而来，仅用于个人学习、记录和辅助决策。本工具与金渐成本人及其公众号无官方关联、无授权关系，也不代表金渐成本人观点或服务。页面中的计划、提醒、演示数据和计算结果均为辅助工具输出，不构成任何投资建议。投资有风险，请独立判断并自行承担决策结果。</p>
           </div>
         </div>
       ) : null}
