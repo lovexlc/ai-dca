@@ -3261,7 +3261,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               <div>
                 <div className="text-sm font-bold text-slate-900">选择基金切换对手方</div>
                 <div className="mt-0.5 text-xs text-slate-500">
-                  当前是 <span className="font-mono font-semibold text-slate-700">{draft.code || '—'}</span>{draft.name ? <> · {draft.name}</> : null} · {draft.type}，下方列出可配对的 <span className="font-semibold text-slate-700">{draft.type === 'BUY' ? '卖出' : '买入'}</span> 交易（不同代码、未被其他切换占用）。
+                  当前是 <span className="font-mono font-semibold text-slate-700">{draft.code || '—'}</span>{draft.name ? <> · {draft.name}</> : null} · {draft.type}，下方列出可配对的 <span className="font-semibold text-slate-700">{draft.type === 'BUY' ? '卖出' : '买入'}</span> 交易（不同代码、仍有可用金额）。
                 </div>
               </div>
               <button type="button" className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700" onClick={closeSwitchPicker}>
@@ -3285,29 +3285,32 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
               {(() => {
                 const oppType = draft.type === 'BUY' ? 'SELL' : 'BUY';
                 const draftCode = normalizeFundCode(draft.code);
+                const draftAmount = getTransactionAmount(draft);
                 const filterText = switchPickerSearch.trim().toLowerCase();
                 const candidates = transactions
-                  .filter((tx) => (
-                    tx.id !== draft.id
-                    && tx.type === oppType
-                    && tx.code
-                    && tx.code !== draftCode
-                    && (!tx.switchPairId || tx.switchPairId === draft.id)
-                  ))
-                  .filter((tx) => {
+                  .map((tx) => {
+                    if (tx.id === draft.id || tx.type !== oppType || !tx.code || tx.code === draftCode) return null;
+                    const amount = getTransactionAmount(tx);
+                    const usedAmount = getSwitchCounterpartUsage(tx, { excludeTxId: draft.id });
+                    const availableAmount = Math.max(0, amount - usedAmount);
+                    if (draftAmount > 0 && availableAmount + 0.01 < draftAmount) return null;
+                    return { tx, amount, usedAmount, availableAmount };
+                  })
+                  .filter(Boolean)
+                  .filter((item) => {
                     if (!filterText) return true;
-                    const code = String(tx.code || '').toLowerCase();
-                    const name = String(tx.name || '').toLowerCase();
+                    const code = String(item.tx.code || '').toLowerCase();
+                    const name = String(item.tx.name || '').toLowerCase();
                     return code.includes(filterText) || name.includes(filterText);
                   })
-                  .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+                  .sort((a, b) => String(b.tx.date || '').localeCompare(String(a.tx.date || '')));
                 if (candidates.length === 0) {
                   return (
                     <div className="flex min-h-[200px] flex-col items-center justify-center gap-2 px-6 py-10 text-center text-xs text-slate-500">
                       <Wallet className="h-8 w-8 text-slate-300" />
                       {filterText
                         ? `没有匹配 “${switchPickerSearch}” 的对手方交易。`
-                        : `暂无可配对的${oppType === 'BUY' ? '买入' : '卖出'}交易。需先创建一笔不同代码、未被配对的对手交易。`}
+                        : `暂无可配对的${oppType === 'BUY' ? '买入' : '卖出'}交易。需先创建一笔不同代码、且剩余金额足够的对手交易。`}
                     </div>
                   );
                 }
@@ -3323,13 +3326,13 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                         <th className="px-3 py-2 text-right">价</th>
                         <th className="px-3 py-2 text-right">份额</th>
                         <th className="px-3 py-2 text-right">金额</th>
+                        <th className="px-3 py-2 text-right">可用</th>
                         <th className="px-3 py-2 text-right">操作</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {candidates.map((tx) => {
+                      {candidates.map(({ tx, amount, usedAmount, availableAmount }) => {
                         const isSelected = draft.switchPairId === tx.id;
-                        const amount = (Number(tx.shares) || 0) * (Number(tx.price) || 0);
                         return (
                           <tr
                             key={tx.id}
@@ -3349,6 +3352,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                             <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">{formatNav(tx.price)}</td>
                             <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums">{formatShares(tx.shares)}</td>
                             <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums text-slate-700">{formatCurrency(amount, '¥', 2)}</td>
+                            <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums text-slate-700">
+                              <div>{formatCurrency(availableAmount, '¥', 2)}</div>
+                              {usedAmount > 0 ? <div className="text-[10px] text-slate-400">已占 {formatCurrency(usedAmount, '¥', 2)}</div> : null}
+                            </td>
                             <td className="whitespace-nowrap px-3 py-2 text-right">
                               {isSelected ? (
                                 <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2 py-1 text-[11px] font-semibold text-white"><CheckCircle2 className="h-3 w-3" />已选</span>
