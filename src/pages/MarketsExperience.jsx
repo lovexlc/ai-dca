@@ -3172,7 +3172,7 @@ function SymbolDetailPanel({
           </div>
         ) : null}
 
-        {market === 'cn' && (cnFundParam === 'nav' || cnFundParam === 'premium') ? <NavInsightCard premiumState={premiumState} /> : null}
+        {market === 'cn' && cnFundParam === 'nav' ? <NavInsightCard premiumState={premiumState} /> : null}
 
         {/* 详情 tab */}
         <div className="mt-1.5 flex gap-4 border-b border-[#e8eaed] text-[12px] font-medium text-[#5f6368] sm:mt-2 sm:text-[13px]">
