@@ -1223,24 +1223,39 @@ function epochSecFromShanghaiDate(date, time = '15:00:00') {
 
 function buildHoldingTradeMarkers(transactions = [], code = '', aliases = []) {
   const normalizedCode = normalizeCnFundCode(code);
+  const normalizeAliasText = (value = '') => String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
   const aliasSet = new Set(
     [code, normalizedCode, ...(Array.isArray(aliases) ? aliases : [])]
-      .map((item) => String(item || '').trim().toUpperCase())
+      .map(normalizeAliasText)
       .filter(Boolean)
   );
   if (!normalizedCode && !aliasSet.size) return [];
   return (Array.isArray(transactions) ? transactions : [])
     .map((tx, index) => {
-      const rawSymbol = String(tx?.code || tx?.symbol || '').trim().toUpperCase();
-      const txCode = normalizeCnFundCode(rawSymbol);
+      const rawCandidates = [
+        tx?.code,
+        tx?.symbol,
+        tx?.fundCode,
+        tx?.securityCode,
+        tx?.name,
+      ].map(normalizeAliasText).filter(Boolean);
+      const rawSymbol = rawCandidates[0] || '';
+      const txCode = normalizeCnFundCode(rawCandidates.find((item) => normalizeCnFundCode(item)) || rawSymbol);
       const symbolMatches = Boolean(
         (normalizedCode && txCode === normalizedCode)
-        || aliasSet.has(rawSymbol)
-        || (normalizedCode && rawSymbol.includes(normalizedCode))
+        || rawCandidates.some((item) => aliasSet.has(item))
+        || (normalizedCode && rawCandidates.some((item) => item.includes(normalizedCode)))
       );
       const rawType = String(tx?.type || '').toUpperCase();
       const side = String(tx?.side || '').toLowerCase();
-      const type = rawType === 'BUY' || side === 'buy' ? 'BUY' : rawType === 'SELL' || side === 'sell' ? 'SELL' : '';
+      const type = rawType === 'BUY' || rawType === '买入' || side === 'buy'
+        ? 'BUY'
+        : rawType === 'SELL' || rawType === '卖出' || side === 'sell'
+          ? 'SELL'
+          : '';
       const date = String(tx?.date || '').slice(0, 10);
       if (!symbolMatches || !type || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
       return {
@@ -1248,7 +1263,7 @@ function buildHoldingTradeMarkers(transactions = [], code = '', aliases = []) {
         type,
         date,
         t: epochSecFromShanghaiDate(date, '15:00:00'),
-        price: Number(tx.price),
+        price: Number(tx.price ?? tx.nav ?? tx.costPrice),
         shares: Number(tx.shares),
       };
     })
@@ -1547,10 +1562,17 @@ function TradeMarkersLayer({ xAxisMap, yAxisMap, width, height, offset, data, ma
         if (markerT < Number(rows[0].t) || markerT > Number(rows[rows.length - 1].t)) return null;
         let rowIndex = rows.findIndex((item) => Number(item.t) >= markerT);
         if (rowIndex < 0) rowIndex = rows.length - 1;
+        if (rowIndex > 0) {
+          const prevGap = Math.abs(Number(rows[rowIndex - 1].t) - markerT);
+          const nextGap = Math.abs(Number(rows[rowIndex].t) - markerT);
+          if (prevGap < nextGap) rowIndex -= 1;
+        }
         const row = rows[rowIndex];
         if (!row) return null;
         const cxRaw = xFromIndex(rowIndex);
-        const cyRaw = yScale(row.main);
+        const markerPrice = Number(marker.price);
+        const markerYValue = Number.isFinite(markerPrice) && markerPrice > 0 ? markerPrice : row.main;
+        const cyRaw = yScale(markerYValue);
         if (typeof cxRaw !== 'number' || Number.isNaN(cxRaw) || typeof cyRaw !== 'number' || Number.isNaN(cyRaw)) return null;
         const isBuy = marker.type === 'BUY';
         const color = isBuy ? '#f6a623' : '#5b8def';
