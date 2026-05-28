@@ -3400,10 +3400,11 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                     const usedAmount = getSwitchCounterpartUsage(tx, { excludeTxId: draft.id });
                     const availableAmount = Math.max(0, amount - usedAmount);
                     const sameCode = normalizeFundCode(tx.code) === draftCode;
-                    const canSelect = !sameCode && (draftAmount <= 0 || availableAmount + 0.01 >= draftAmount);
+                    // 允许多选场景：即使单个对手方可用金额不足，也应允许被选中，由确认时按可用金额依次分配。
+                    const canSelect = !sameCode;
                     const reasons = [];
                     if (sameCode) reasons.push('同代码不能配对');
-                    if (draftAmount > 0 && availableAmount + 0.01 < draftAmount) reasons.push('可用金额不足');
+                    // 不再把单笔可用不足作为禁选理由，保留在展示层说明可用金额。
                     return { tx, amount, usedAmount, availableAmount, canSelect, reasons, isPrevious: previousTx ? tx.id === previousTx.id : false };
                   })
                   .filter(Boolean)
@@ -3423,12 +3424,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                   const usedAmount = getSwitchCounterpartUsage(previousTx, { excludeTxId: draft.id });
                   const availableAmount = Math.max(0, amount - usedAmount);
                   const sameCode = normalizeFundCode(previousTx.code) === draftCode;
-                  const canSelect = previousTx.type === oppType && previousTx.code && !sameCode && (draftAmount <= 0 || availableAmount + 0.01 >= draftAmount);
+                  const canSelect = previousTx.type === oppType && previousTx.code && !sameCode;
                   const reasons = [];
                   if (previousTx.type !== oppType) reasons.push('类型不符');
                   if (!previousTx.code) reasons.push('缺少代码');
                   if (sameCode) reasons.push('同代码不能配对');
-                  if (draftAmount > 0 && availableAmount + 0.01 < draftAmount) reasons.push('可用金额不足');
+                  // 不再把单笔可用不足作为禁选理由，保留在展示层说明可用金额。
                   candidates.unshift({ tx: previousTx, amount, usedAmount, availableAmount, canSelect, reasons, isPrevious: true });
                 }
                 if (candidates.length === 0) {
