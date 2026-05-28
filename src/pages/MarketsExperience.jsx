@@ -1965,6 +1965,16 @@ function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, 
             const visibleBase = Number(visibleRows[0]?.mainPrice ?? visibleRows[0]?.c);
             const showValue = !normalized && value != null && Number.isFinite(Number(value));
             const rangePct = Number.isFinite(price) && Number.isFinite(visibleBase) && visibleBase > 0 ? ((price / visibleBase) - 1) * 100 : null;
+            const isPremiumPoint = row && Object.prototype.hasOwnProperty.call(row, 'iopv');
+            // If this tooltip is for premium data, only show time and premium percent labeled as "溢价%"
+            if (isPremiumPoint) {
+              return (
+                <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
+                  <div>{label}</div>
+                  <div className="mt-0.5 tabular-nums text-[#1f1f1f]"><span className="mr-1">溢价%</span>{formatSignedPercent(value)}</div>
+                </div>
+              );
+            }
             return (
               <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
                 <div>{label}</div>
