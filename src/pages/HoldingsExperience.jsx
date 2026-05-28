@@ -3287,14 +3287,33 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                 const draftCode = normalizeFundCode(draft.code);
                 const draftAmount = getTransactionAmount(draft);
                 const filterText = switchPickerSearch.trim().toLowerCase();
+                const orderedTransactions = [...(transactions || [])]
+                  .map((tx, index) => ({ tx, index }))
+                  .sort((a, b) => String(a.tx?.date || '').localeCompare(String(b.tx?.date || '')) || a.index - b.index)
+                  .map((item) => item.tx)
+                  .filter(Boolean);
+                const currentDraftIndex = draft.id
+                  ? orderedTransactions.findIndex((tx) => tx.id === draft.id)
+                  : -1;
+                const previousTx = currentDraftIndex > 0
+                  ? orderedTransactions[currentDraftIndex - 1]
+                  : (() => {
+                    const draftDate = String(draft.date || '').slice(0, 10);
+                    if (!draftDate) return null;
+                    return orderedTransactions.filter((tx) => String(tx?.date || '').slice(0, 10) < draftDate).pop() || null;
+                  })();
                 const candidates = transactions
                   .map((tx) => {
-                    if (tx.id === draft.id || tx.type !== oppType || !tx.code || tx.code === draftCode) return null;
+                    if (tx.id === draft.id || tx.type !== oppType || !tx.code) return null;
                     const amount = getTransactionAmount(tx);
                     const usedAmount = getSwitchCounterpartUsage(tx, { excludeTxId: draft.id });
                     const availableAmount = Math.max(0, amount - usedAmount);
-                    if (draftAmount > 0 && availableAmount + 0.01 < draftAmount) return null;
-                    return { tx, amount, usedAmount, availableAmount };
+                    const sameCode = normalizeFundCode(tx.code) === draftCode;
+                    const canSelect = !sameCode && (draftAmount <= 0 || availableAmount + 0.01 >= draftAmount);
+                    const reasons = [];
+                    if (sameCode) reasons.push('同代码不能配对');
+                    if (draftAmount > 0 && availableAmount + 0.01 < draftAmount) reasons.push('可用金额不足');
+                    return { tx, amount, usedAmount, availableAmount, canSelect, reasons, isPrevious: previousTx ? tx.id === previousTx.id : false };
                   })
                   .filter(Boolean)
                   .filter((item) => {
@@ -3303,14 +3322,31 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                     const name = String(item.tx.name || '').toLowerCase();
                     return code.includes(filterText) || name.includes(filterText);
                   })
-                  .sort((a, b) => String(b.tx.date || '').localeCompare(String(a.tx.date || '')));
+                  .sort((a, b) => {
+                    if (a.isPrevious && !b.isPrevious) return -1;
+                    if (!a.isPrevious && b.isPrevious) return 1;
+                    return String(b.tx.date || '').localeCompare(String(a.tx.date || '')) || String(b.tx.id || '').localeCompare(String(a.tx.id || ''));
+                  });
+                if (previousTx && !candidates.some((row) => row.tx.id === previousTx.id)) {
+                  const amount = getTransactionAmount(previousTx);
+                  const usedAmount = getSwitchCounterpartUsage(previousTx, { excludeTxId: draft.id });
+                  const availableAmount = Math.max(0, amount - usedAmount);
+                  const sameCode = normalizeFundCode(previousTx.code) === draftCode;
+                  const canSelect = previousTx.type === oppType && previousTx.code && !sameCode && (draftAmount <= 0 || availableAmount + 0.01 >= draftAmount);
+                  const reasons = [];
+                  if (previousTx.type !== oppType) reasons.push('类型不符');
+                  if (!previousTx.code) reasons.push('缺少代码');
+                  if (sameCode) reasons.push('同代码不能配对');
+                  if (draftAmount > 0 && availableAmount + 0.01 < draftAmount) reasons.push('可用金额不足');
+                  candidates.unshift({ tx: previousTx, amount, usedAmount, availableAmount, canSelect, reasons, isPrevious: true });
+                }
                 if (candidates.length === 0) {
                   return (
                     <div className="flex min-h-[200px] flex-col items-center justify-center gap-2 px-6 py-10 text-center text-xs text-slate-500">
                       <Wallet className="h-8 w-8 text-slate-300" />
                       {filterText
                         ? `没有匹配 “${switchPickerSearch}” 的对手方交易。`
-                        : `暂无可配对的${oppType === 'BUY' ? '买入' : '卖出'}交易。需先创建一笔不同代码、且剩余金额足够的对手交易。`}
+                        : `暂无可配对的${oppType === 'BUY' ? '买入' : '卖出'}交易。`}
                     </div>
                   );
                 }
@@ -3331,18 +3367,24 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {candidates.map(({ tx, amount, usedAmount, availableAmount }) => {
+                      {candidates.map(({ tx, amount, usedAmount, availableAmount, canSelect, reasons, isPrevious }) => {
                         const isSelected = draft.switchPairId === tx.id;
                         return (
                           <tr
                             key={tx.id}
                             className={cx(
-                              'cursor-pointer text-slate-700 transition-colors hover:bg-indigo-50/60',
+                              'text-slate-700 transition-colors',
+                              canSelect ? 'cursor-pointer hover:bg-indigo-50/60' : 'cursor-not-allowed opacity-55 hover:bg-transparent',
                               isSelected && 'bg-indigo-50/80'
                             )}
-                            onClick={() => handleSelectSwitchCounterpart(tx.id)}
+                            onClick={() => { if (canSelect) handleSelectSwitchCounterpart(tx.id); }}
                           >
-                            <td className="whitespace-nowrap px-3 py-2 font-mono text-xs font-semibold text-slate-800">{tx.code}</td>
+                            <td className="whitespace-nowrap px-3 py-2 font-mono text-xs font-semibold text-slate-800">
+                              <span className="inline-flex items-center gap-1">
+                                <span>{tx.code}</span>
+                                {isPrevious ? <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">上一笔</span> : null}
+                              </span>
+                            </td>
                             <td className="px-3 py-2 text-xs">{tx.name || <span className="text-slate-400">—</span>}</td>
                             <td className="px-3 py-2"><Pill tone={KIND_PILL_TONES[tx.kind] || 'slate'}>{KIND_LABELS[tx.kind] || '未知'}</Pill></td>
                             <td className="whitespace-nowrap px-3 py-2 text-xs">
@@ -3355,12 +3397,15 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
                             <td className="whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums text-slate-700">
                               <div>{formatCurrency(availableAmount, '¥', 2)}</div>
                               {usedAmount > 0 ? <div className="text-[10px] text-slate-400">已占 {formatCurrency(usedAmount, '¥', 2)}</div> : null}
+                              {!canSelect && reasons.length ? <div className="mt-0.5 text-[10px] text-rose-500">{reasons.join(' · ')}</div> : null}
                             </td>
                             <td className="whitespace-nowrap px-3 py-2 text-right">
-                              {isSelected ? (
+                              {canSelect ? (isSelected ? (
                                 <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2 py-1 text-[11px] font-semibold text-white"><CheckCircle2 className="h-3 w-3" />已选</span>
                               ) : (
                                 <span className="inline-flex items-center rounded-lg bg-white px-2 py-1 text-[11px] font-semibold text-indigo-600 ring-1 ring-indigo-100">选择</span>
+                              )) : (
+                                <span className="inline-flex items-center rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-400">不可选</span>
                               )}
                             </td>
                           </tr>
