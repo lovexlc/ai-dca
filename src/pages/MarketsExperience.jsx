@@ -866,9 +866,9 @@ function ExpandedMarketListOverlay({ open, rows, klineMap, selectedSymbol, activ
 
   if (!open) return null;
   return (
-    <div className="fixed inset-y-0 right-0 z-[70] hidden bg-white/98 px-5 py-4 backdrop-blur-sm lg:left-[236px] lg:block">
+    <div className="fixed bottom-0 right-0 z-[70] hidden bg-white/98 px-5 pb-5 pt-0 backdrop-blur-sm lg:left-[560px] lg:top-[108px] xl:left-[600px] lg:block">
       <div className="flex h-full w-full flex-col gap-3">
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e8eaed] pb-3">
+        <div className="hidden shrink-0 items-center justify-between gap-3 border-b border-[#e8eaed] pb-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs font-semibold text-[#5f6368]">
               <span>{marketLabel}</span>
@@ -4557,7 +4557,7 @@ export function MarketsExperience() {
     if (typeof window === 'undefined') return undefined;
     const openPendingSymbol = (rawValue = '') => {
       const params = new URL(window.location.href).searchParams;
-      const raw = rawValue || params.get('symbol') || window.sessionStorage.getItem(MARKETS_PENDING_SYMBOL_KEY) || '';
+      const raw = rawValue || params.get('symbol') || '';
       const code = normalizeCnFundCode(raw);
       if (!code || pendingSymbolHandledRef.current === code) return;
       pendingSymbolHandledRef.current = code;
@@ -4566,6 +4566,7 @@ export function MarketsExperience() {
         || buildOtcCandidate(code, { symbol: code });
       handleSelectSymbol({ ...row, symbol: code, market: 'cn' }, { market: 'cn' });
     };
+    try { window.sessionStorage.removeItem(MARKETS_PENDING_SYMBOL_KEY); } catch (_error) { /* ignore */ }
     openPendingSymbol();
     const handlePopState = () => {
       pendingSymbolHandledRef.current = '';
