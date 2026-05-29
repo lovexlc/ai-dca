@@ -3886,7 +3886,7 @@ function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols = [], w
   );
 }
 export function MarketsExperience() {
-  const [market, setMarket] = useState('us');
+  const [market, setMarket] = useState('cn');
   const [indices, setIndices] = useState([]);
   const [indicesLoading, setIndicesLoading] = useState(false);
   const [movers, setMovers] = useState([]);
