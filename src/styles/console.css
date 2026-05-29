@@ -1,5 +1,6 @@
 :root {
   --console-sidebar-w: 208px;
+  --console-active-sidebar-w: var(--console-sidebar-w);
   --console-sidebar-w-collapsed: 60px;
   --console-ctx-w: 360px;
   --console-topbar-h: 56px;
@@ -56,6 +57,7 @@
 
 /* ---- Shell ---- */
 .console-shell {
+  --console-active-sidebar-w: var(--console-sidebar-w);
   display: flex;
   align-items: stretch;
   min-height: calc(100vh - 0px);
@@ -129,6 +131,10 @@
 
 /* Desktop: when shell has is-nav-collapsed, render the sidebar as a narrow icon-only rail. */
 @media (min-width: 1024px) {
+  .console-shell.is-nav-collapsed {
+    --console-active-sidebar-w: var(--console-sidebar-w-collapsed);
+  }
+
   .console-shell.is-nav-collapsed > .console-sidebar {
     flex: 0 0 var(--console-sidebar-w-collapsed);
     width: var(--console-sidebar-w-collapsed);

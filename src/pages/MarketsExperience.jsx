@@ -866,7 +866,7 @@ function ExpandedMarketListOverlay({ open, rows, klineMap, selectedSymbol, activ
 
   if (!open) return null;
   return (
-    <div className="fixed bottom-0 left-0 z-[70] hidden bg-white/98 px-5 pb-5 pt-3 backdrop-blur-sm lg:right-[360px] lg:top-[34px] xl:right-[400px] lg:block">
+    <div className="fixed bottom-0 z-[70] hidden bg-white/98 px-5 pb-5 pt-3 backdrop-blur-sm lg:left-[var(--console-active-sidebar-w)] lg:right-[var(--console-ctx-w)] lg:top-[34px] lg:block">
       <div className="flex h-full w-full flex-col gap-3">
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e8eaed] pb-3">
           <div className="min-w-0">
