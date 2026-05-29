@@ -866,8 +866,8 @@ function ExpandedMarketListOverlay({ open, rows, klineMap, selectedSymbol, activ
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[70] hidden bg-white/98 px-5 py-4 backdrop-blur-sm lg:block">
-      <div className="mx-auto flex h-full max-w-[1600px] flex-col gap-3">
+    <div className="fixed inset-y-0 right-0 z-[70] hidden bg-white/98 px-5 py-4 backdrop-blur-sm lg:left-[236px] lg:block">
+      <div className="flex h-full w-full flex-col gap-3">
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e8eaed] pb-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs font-semibold text-[#5f6368]">
@@ -5041,14 +5041,21 @@ export function MarketsExperience() {
               {activeSidebarRows.length === 0 ? (
                 <p className="px-2 py-1 text-xs text-slate-400">{activeSidebarEmptyText}</p>
               ) : (
-                <MarketListTable
-                  rows={activeSidebarRows}
-                  klineMap={klineMap}
-                  selectedSymbol={selectedSymbol}
-                  onSelect={handleSelectSymbol}
-                  compact
-                  stickyHeader
-                />
+                <ul>
+                  {activeSidebarRows.map((row) => (
+                    <SidebarRow
+                      key={row.symbol}
+                      symbol={row.symbol}
+                      name={row.name}
+                      price={row.price}
+                      changePercent={row.changePercent}
+                      sparkPoints={klineMap[row.symbol]}
+                      meta={row.meta}
+                      selected={row.symbol === selectedSymbol}
+                      onSelect={() => handleSelectSymbol(row)}
+                    />
+                  ))}
+                </ul>
               )}
             </div>
           )}
