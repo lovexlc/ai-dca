@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import '../styles/ai-chat.css';
-import { ArrowDown, ArrowUp, CalendarDays, ChevronDown, ChevronRight, ChevronUp, Edit3, ExternalLink, History, ListPlus, Loader2, Plus, RefreshCw, Search, Send, Sparkles, Star, Trash2, TrendingUp, Wallet, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, CalendarDays, ChevronDown, ChevronRight, ChevronUp, Edit3, ExternalLink, History, ListPlus, Loader2, Maximize2, Minimize2, Plus, RefreshCw, Search, Send, Sparkles, Star, Trash2, TrendingUp, Wallet, X } from 'lucide-react';
 import {
   Card,
   Pill,
@@ -188,6 +188,30 @@ function rowMetric(row, keys = []) {
     if (value !== undefined && value !== null && value !== '') return value;
   }
   return null;
+}
+
+function normalizePremiumPercentValue(value, forceRate = false) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  if (forceRate || Math.abs(n) <= 1) return n * 100;
+  return n;
+}
+
+function resolvePremiumPercent(row) {
+  if (!row) return null;
+  const explicitPercent = rowMetric(row, ['premiumPercent', 'premium_rate', 'premiumPct']);
+  if (explicitPercent !== null) return normalizePremiumPercentValue(explicitPercent, false);
+  const explicitRate = rowMetric(row, ['premiumRate', 'premium']);
+  if (explicitRate !== null) return normalizePremiumPercentValue(explicitRate, false);
+  const price = Number(rowMetric(row, ['price', 'regularMarketPrice', 'latestPrice']));
+  const nav = Number(rowMetric(row, ['nav', 'latestNav', 'iopv', 'baseNav', 'estimateNav']));
+  if (!Number.isFinite(price) || !Number.isFinite(nav) || nav <= 0) return null;
+  return ((price - nav) / nav) * 100;
+}
+
+function formatPremiumPercent(row) {
+  const pct = resolvePremiumPercent(row);
+  return Number.isFinite(Number(pct)) ? formatSignedPercent(pct) : '—';
 }
 
 function sortableMetric(row, key) {
@@ -748,45 +772,121 @@ function WatchlistNameDialog({ dialog, onChangeName, onCancel, onSubmit }) {
   );
 }
 
-function WatchlistTable({ rows = [], market, onRemove }) {
+function ListExpandButton({ expanded = false, onClick, className = '' }) {
+  const Icon = expanded ? Minimize2 : Maximize2;
+  return (
+    <button
+      type="button"
+      aria-label={expanded ? '缩小列表' : '放大列表'}
+      title={expanded ? '缩小列表' : '放大列表'}
+      onClick={onClick}
+      className={cx('inline-flex h-9 w-9 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#1f1f1f]', className)}
+    >
+      <Icon size={19} strokeWidth={2.2} />
+    </button>
+  );
+}
+
+function MarketListTable({ rows = [], klineMap = {}, selectedSymbol = '', onSelect, compact = false, stickyHeader = false }) {
   if (!rows.length) {
-    return <p className="text-sm text-slate-400">未配置自选。添加标的后这里会显示监控列表。</p>;
+    return <p className="px-2 py-2 text-sm text-[#5f6368]">未配置自选。</p>;
   }
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white/80">
-      <table className="min-w-full divide-y divide-slate-200/70 text-sm">
-        <thead className="bg-slate-50/70 text-xs font-medium uppercase tracking-wider text-slate-500">
+    <div className={cx('overflow-x-auto', compact ? 'rounded-xl border border-[#e8eaed] bg-white' : 'rounded-2xl border border-[#e8eaed] bg-white shadow-sm')}>
+      <table className={cx('w-full min-w-[720px] border-separate border-spacing-0 text-sm', compact && 'min-w-[520px] text-[12px]')}>
+        <thead className={cx('bg-[#f8fafd] text-[11px] font-semibold text-[#5f6368]', stickyHeader && 'sticky top-0 z-10')}>
           <tr>
-            <th className="px-3 py-2 text-left">代码</th>
-            <th className="px-3 py-2 text-left">名称</th>
-            <th className="px-3 py-2 text-right">最新价</th>
-            <th className="px-3 py-2 text-right">涨跌幅</th>
-            <th className="px-3 py-2 text-right">操作</th>
+            <th className={cx('px-3 py-2 text-left', compact && 'px-2')}>代码</th>
+            <th className={cx('px-3 py-2 text-left', compact && 'px-2')}>名称</th>
+            <th className={cx('px-3 py-2 text-right', compact && 'px-2')}>最新价</th>
+            <th className={cx('px-3 py-2 text-right', compact && 'px-2')}>涨跌幅</th>
+            <th className={cx('px-3 py-2 text-right', compact && 'px-2')}>溢价</th>
+            {!compact ? <th className="px-3 py-2 text-right">趋势</th> : null}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
-          {rows.map((row) => (
-            <tr key={row.symbol} className="hover:bg-indigo-50/40">
-              <td className="px-3 py-2 font-mono text-xs text-slate-600">{formatSymbolDisplay(row.symbol)}</td>
-              <td className="px-3 py-2 text-slate-800">{row.name || formatSymbolDisplay(row.symbol)}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.price)}</td>
-              <td className={cx('px-3 py-2 text-right tabular-nums', changeToneClass(row.changePercent))}>
-                {formatPercent(row.changePercent)}
-              </td>
-              <td className="px-3 py-2 text-right">
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-400 hover:border-rose-300 hover:text-rose-500"
-                  onClick={() => onRemove && onRemove(market, row.symbol)}
-                  title="移除自选"
-                >
-                  <Trash2 size={12} /> 移除
-                </button>
-              </td>
-            </tr>
-          ))}
+        <tbody className="divide-y divide-[#e8eaed]">
+          {rows.map((row) => {
+            const displaySymbol = formatSymbolDisplay(row.symbol);
+            const pct = Number(row.changePercent);
+            const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
+            const up = pct > 0;
+            const premiumPct = resolvePremiumPercent(row);
+            const selected = row.symbol === selectedSymbol;
+            return (
+              <tr
+                key={row.symbol}
+                role="button"
+                tabIndex={0}
+                aria-pressed={selected}
+                onClick={() => onSelect?.(row)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onSelect?.(row);
+                  }
+                }}
+                className={cx(
+                  'cursor-pointer transition hover:bg-[#f1f3f4] focus:outline-none focus:ring-2 focus:ring-[#1a73e8]/30',
+                  selected && 'bg-[#e8f0fe] hover:bg-[#e8f0fe]'
+                )}
+              >
+                <td className={cx('whitespace-nowrap px-3 py-2 font-mono text-xs font-semibold text-[#1f1f1f]', compact && 'px-2')}>{displaySymbol}</td>
+                <td className={cx('min-w-[120px] px-3 py-2 text-[#1f1f1f]', compact && 'px-2')}>
+                  <div className="truncate font-medium">{row.name || displaySymbol}</div>
+                  {row.meta ? <div className="truncate text-[10px] text-[#5f6368]">{row.meta}</div> : null}
+                </td>
+                <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums text-[#1f1f1f]', compact && 'px-2')}>{formatNumber(row.price)}</td>
+                <td className={cx('whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums', compact && 'px-2', flat ? 'text-[#5f6368]' : up ? 'text-[#a50e0e]' : 'text-[#137333]')}>{formatPercent(row.changePercent)}</td>
+                <td className={cx('whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums', compact && 'px-2', changeToneClass(premiumPct))}>{formatPremiumPercent(row)}</td>
+                {!compact ? (
+                  <td className="px-3 py-2 text-right">
+                    <div className="inline-flex justify-end">
+                      <Sparkline points={klineMap[row.symbol]} width={86} height={26} tone={flat ? 'flat' : up ? 'up' : 'down'} showFill markLast />
+                    </div>
+                  </td>
+                ) : null}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function ExpandedMarketListOverlay({ open, rows, klineMap, selectedSymbol, activeName, marketLabel, onClose, onSelect, onCreate, loading }) {
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onClose?.();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [open, onClose]);
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[70] hidden bg-white/98 px-5 py-4 backdrop-blur-sm lg:block">
+      <div className="mx-auto flex h-full max-w-[1600px] flex-col gap-3">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e8eaed] pb-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#5f6368]">
+              <span>{marketLabel}</span>
+              {loading ? <Loader2 size={12} className="animate-spin" /> : null}
+            </div>
+            <h2 className="mt-1 truncate text-[22px] font-semibold text-[#1f1f1f]">{activeName || '监控列表'}</h2>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button type="button" onClick={onCreate} className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#1f1f1f]">
+              <ListPlus size={18} /> 新建列表
+            </button>
+            <ListExpandButton expanded onClick={onClose} />
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto rounded-2xl bg-[#f8fafd] p-3">
+          <MarketListTable rows={rows} klineMap={klineMap} selectedSymbol={selectedSymbol} onSelect={onSelect} stickyHeader />
+        </div>
+      </div>
     </div>
   );
 }
@@ -3799,6 +3899,7 @@ export function MarketsExperience() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [watch, setWatch] = useState(() => loadWatchlist());
   const [watchlistDialog, setWatchlistDialog] = useState(null);
+  const [watchListExpanded, setWatchListExpanded] = useState(false);
   const [holdingsLedger, setHoldingsLedger] = useState(() => readLedgerState());
   const [tradeLedgerEntries, setTradeLedgerEntries] = useState(() => readTradeLedger());
   const [watchQuotes, setWatchQuotes] = useState({});
@@ -4261,7 +4362,11 @@ export function MarketsExperience() {
         symbol,
         name: row.name || row.shortName || row.displayName || prev[key]?.name || CN_ETF_PRESET_MAP[symbol]?.name || symbol,
         exchange: row.exchange || prev[key]?.exchange || CN_ETF_PRESET_MAP[symbol]?.exchange,
-        currency: row.currency || prev[key]?.currency || CN_ETF_PRESET_MAP[symbol]?.currency
+        currency: row.currency || prev[key]?.currency || CN_ETF_PRESET_MAP[symbol]?.currency,
+        premiumPercent: row.premiumPercent ?? row.premium_rate ?? prev[key]?.premiumPercent,
+        premium_rate: row.premium_rate ?? row.premiumPercent ?? prev[key]?.premium_rate,
+        iopv: row.iopv ?? prev[key]?.iopv,
+        latestNav: row.latestNav ?? prev[key]?.latestNav
       }
     }));
     return symbol;
@@ -4285,6 +4390,7 @@ export function MarketsExperience() {
 
   function handlePickSymbolSearch(row) {
     if (!row || !row.symbol) return;
+    setWatchListExpanded(false);
     const targetMarket = row.market || market;
     const symbol = rememberSelectedQuote(row, targetMarket);
     if (!symbol) return;
@@ -4306,6 +4412,7 @@ export function MarketsExperience() {
   }
 
   function handleSelectWatchlist(listId) {
+    setWatchListExpanded(false);
     const next = setActiveWatchlist(listId);
     setWatch(next);
     setSelectedSymbol('');
@@ -4334,6 +4441,7 @@ export function MarketsExperience() {
       setSelectedSymbol('');
       setSymbolDetailTab('overview');
       setWatchlistDialog(null);
+      setWatchListExpanded(false);
       showActionToast('列表已删除', 'success');
       return;
     }
@@ -4353,11 +4461,13 @@ export function MarketsExperience() {
     setSelectedSymbol('');
     setSymbolDetailTab('overview');
     setWatchlistDialog(null);
+    setWatchListExpanded(false);
     showActionToast('已新建列表', 'success');
   }
 
   function handleSelectSymbol(row, options = {}) {
     if (!row || !row.symbol) return;
+    setWatchListExpanded(false);
     const targetMarket = options.market || row.market || market;
     if (targetMarket && targetMarket !== market) setMarket(targetMarket);
     const symbol = rememberSelectedQuote(row, targetMarket) || row.symbol;
@@ -4393,6 +4503,9 @@ export function MarketsExperience() {
       exchange: merged.exchange || CN_ETF_PRESET_MAP[sym]?.exchange,
       currency: merged.currency || CN_ETF_PRESET_MAP[sym]?.currency,
       latestNav: merged.latestNav || snapshot?.latestNav,
+      iopv: merged.iopv,
+      premiumPercent: merged.premiumPercent ?? merged.premium_rate,
+      premium_rate: merged.premium_rate ?? merged.premiumPercent,
       latestNavDate,
       valueType: merged.valueType,
       assetType: merged.assetType,
@@ -4703,6 +4816,18 @@ export function MarketsExperience() {
       onCancel={() => setWatchlistDialog(null)}
       onSubmit={handleWatchlistDialogSubmit}
     />
+    <ExpandedMarketListOverlay
+      open={watchListExpanded}
+      rows={activeSidebarRows}
+      klineMap={klineMap}
+      selectedSymbol={selectedSymbol}
+      activeName={activeWatchList?.name}
+      marketLabel={market === 'us' ? '美股监控列表' : 'A 股监控列表'}
+      loading={watchLoading}
+      onClose={() => setWatchListExpanded(false)}
+      onCreate={handleCreateWatchlist}
+      onSelect={handleSelectSymbol}
+    />
     <div className={cx(
       "flex flex-col gap-5 lg:grid lg:h-[calc(100vh-6rem)] lg:min-h-0 lg:grid-cols-[280px_minmax(0,1fr)_360px] lg:items-stretch lg:gap-4 lg:overflow-hidden lg:pb-0 xl:grid-cols-[320px_minmax(0,1fr)_400px]",
       selectedSymbol ? "pb-4" : "pb-[140px]"
@@ -4883,6 +5008,18 @@ export function MarketsExperience() {
               onRename={handleRenameWatchlist}
               onDelete={handleDeleteWatchlist}
             />
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                aria-label="新建列表"
+                title="新建列表"
+                onClick={handleCreateWatchlist}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
+              >
+                <ListPlus size={19} />
+              </button>
+              <ListExpandButton expanded={watchListExpanded} onClick={() => setWatchListExpanded((v) => !v)} />
+            </div>
           </div>
 
 
@@ -4904,21 +5041,14 @@ export function MarketsExperience() {
               {activeSidebarRows.length === 0 ? (
                 <p className="px-2 py-1 text-xs text-slate-400">{activeSidebarEmptyText}</p>
               ) : (
-                <ul>
-                  {activeSidebarRows.map((row) => (
-                    <SidebarRow
-                      key={row.symbol}
-                      symbol={row.symbol}
-                      name={row.name}
-                      price={row.price}
-                      changePercent={row.changePercent}
-                      sparkPoints={klineMap[row.symbol]}
-                      meta={row.meta}
-                      selected={row.symbol === selectedSymbol}
-                      onSelect={() => handleSelectSymbol(row)}
-                    />
-                  ))}
-                </ul>
+                <MarketListTable
+                  rows={activeSidebarRows}
+                  klineMap={klineMap}
+                  selectedSymbol={selectedSymbol}
+                  onSelect={handleSelectSymbol}
+                  compact
+                  stickyHeader
+                />
               )}
             </div>
           )}
