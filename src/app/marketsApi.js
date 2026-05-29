@@ -220,6 +220,8 @@ export const CN_ETF_WATCHLIST_PRESETS = [
   { symbol: '159632', name: '纳斯达克ETF 华安', exchange: '深交所', currency: 'CNY' },
   { symbol: '159513', name: '纳斯达克100ETF', exchange: '深交所', currency: 'CNY' },
   { symbol: '159501', name: '纳指ETF 嘉实', exchange: '深交所', currency: 'CNY' },
+  { symbol: '161130', name: '纳指ETF 新增1', exchange: '深交所', currency: 'CNY' },
+  { symbol: '159577', name: '纳指ETF 新增2', exchange: '深交所', currency: 'CNY' },
 ];
 
 const DEFAULT_CN_WATCHLIST = CN_ETF_WATCHLIST_PRESETS.map((item) => item.symbol);
