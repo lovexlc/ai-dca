@@ -460,22 +460,26 @@ function IndexCard({ entry, onPick, sparkPoints }) {
       onClick={() => onPick && onPick(entry)}
       className="group flex min-h-[112px] w-[140px] min-w-0 shrink-0 snap-start flex-col items-start gap-1 overflow-hidden rounded-xl border border-slate-200/70 bg-white p-2 text-left shadow-sm transition hover:shadow-md sm:w-[152px] lg:w-[160px]"
     >
-      <div className="line-clamp-2 min-h-[30px] w-full text-[13px] font-semibold leading-tight text-slate-900">{entry.name || formatSymbolDisplay(entry.symbol)}</div>
-      <div className="w-full truncate text-[12px] font-medium leading-tight tabular-nums text-slate-700">{formatNumber(entry.price)}</div>
-      {hasChange && (
-        <div className="text-[10px] leading-none tabular-nums text-slate-500">({change >= 0 ? '+' : ''}{formatNumber(Math.abs(change))})</div>
-      )}
-      <div className="flex w-full items-center gap-1">
-        <span className={cx(
-          'text-[11px] font-semibold tabular-nums',
-          positive ? 'text-rose-600' : negative ? 'text-emerald-600' : 'text-slate-500'
-        )}>{formatPercent(entry.changePercent)}</span>
-        <span className={cx(
-          'inline-flex h-[16px] w-[16px] items-center justify-center rounded-full text-white',
-          positive ? 'bg-rose-500' : negative ? 'bg-emerald-500' : 'bg-slate-300'
-        )}>
-          {positive ? <ArrowUp size={10} strokeWidth={2} /> : negative ? <ArrowDown size={10} strokeWidth={2} /> : null}
-        </span>
+      <div className="w-full flex items-start justify-between gap-2">
+        <div className="line-clamp-2 min-h-[30px] text-[13px] font-semibold leading-tight text-slate-900">{entry.name || formatSymbolDisplay(entry.symbol)}</div>
+        <div className="flex flex-col items-end ml-2">
+          <span className={cx(
+            'text-[11px] font-semibold tabular-nums',
+            positive ? 'text-rose-600' : negative ? 'text-emerald-600' : 'text-slate-500'
+          )}>{formatPercent(entry.changePercent)}</span>
+          <span className={cx(
+            'inline-flex h-[16px] w-[16px] items-center justify-center rounded-full text-white mt-1',
+            positive ? 'bg-rose-500' : negative ? 'bg-emerald-500' : 'bg-slate-300'
+          )}>
+            {positive ? <ArrowUp size={10} strokeWidth={2} /> : negative ? <ArrowDown size={10} strokeWidth={2} /> : null}
+          </span>
+        </div>
+      </div>
+      <div className="w-full flex items-center justify-between">
+        <div className="w-2/3 truncate text-[12px] font-medium leading-tight tabular-nums text-slate-700">{formatNumber(entry.price)}</div>
+        {hasChange && (
+          <div className="text-[10px] leading-none tabular-nums text-slate-500">({change >= 0 ? '+' : ''}{formatNumber(Math.abs(change))})</div>
+        )}
       </div>
       <div className="mt-auto -mx-1 w-[calc(100%+0.5rem)] pt-1">
         <Sparkline points={sparkPoints} width={140} height={36} tone={tone} className="h-[36px] w-full" />
