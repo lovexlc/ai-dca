@@ -5,6 +5,7 @@ import { Card, Pill, SectionHeading, cx, primaryButtonClass, secondaryButtonClas
 import { readLedgerState, persistLedgerState } from '../app/holdingsLedger.js';
 import { aggregateByCode, buildTransactionId, detectFundKind, normalizeTransaction } from '../app/holdingsLedgerCore.js';
 import { getNavSnapshots } from '../app/navService.js';
+import { fetchXueqiuFundData } from '../app/marketsApi.js';
 import {
   loadSwitchConfigFromWorker,
   loadSwitchSnapshotFromWorker,
@@ -20,10 +21,9 @@ import {
 //   溢价 % = (当前成交价 − 最新单位净值) / 最新单位净值
 //
 // 数据源：
-// - 最新净值：central NAV service（worker 统一接口，内部走 getNav）
+// - 雪球实时 quote：current / unit_nav / iopv / premium_rate
 // - data/all_nasdq.json：候选基金 universe（纳指 100 场内 ETF 全集，与持仓解耦）
-// - 当前价：持仓 ledger 中的 latestNav（A 股开盘期间由 notify worker push2 推送，收盘后是最后成交价）；
-//   非持仓候选取 data/<code>/daily-sina.json 最后一根 K 线 close 作为代理。
+// - 回退源：worker 的 central NAV / data/<code>/daily-sina.json
 //
 // 触发底层仍然是“两只之间的溢价差”，但 UI 只告诉用户「哪两只之间出现机会」，
 // 不在实时面板上展示具体数值，过价让用户去基金软件官方渠道查看。
@@ -238,6 +238,64 @@ function dailySinaPath(code, inPagesDir) {
   return inPagesDir ? `../data/${code}/daily-sina.json` : `./data/${code}/daily-sina.json`;
 }
 
+function getXueqiuQuoteFromFundData(fundData) {
+  return fundData?.results?.quote_detail?.raw?.data?.quote || fundData?.results?.quote_detail?.summary?.quote || null;
+}
+
+async function loadXueqiuFundDataInBatch(codes, { concurrency = 3, refresh = true } = {}) {
+  const quoteByCode = {};
+  const navByCode = {};
+  const queue = [...codes];
+
+  const worker = async () => {
+    while (queue.length > 0) {
+      const code = queue.shift();
+      try {
+        const fundData = await fetchXueqiuFundData(code, { refresh, raw: true });
+        const quote = getXueqiuQuoteFromFundData(fundData);
+        if (!quote) continue;
+        const normalizedCode = String(quote.code || code || '').trim();
+        const current = Number(quote.current);
+        const unitNav = Number(quote.unit_nav);
+        const iopv = Number(quote.iopv);
+        const premiumRate = Number(quote.premium_rate);
+        const navDate = String(quote.nav_date || '').trim();
+        const asOf = Number(quote.timestamp || quote.time || Date.now());
+
+        if (normalizedCode && Number.isFinite(current) && current > 0) {
+          quoteByCode[normalizedCode] = {
+            code: normalizedCode,
+            close: current,
+            date: Number.isFinite(asOf) ? new Date(asOf).toISOString() : ''
+          };
+        }
+        if (normalizedCode && Number.isFinite(unitNav) && unitNav > 0) {
+          navByCode[normalizedCode] = {
+            code: normalizedCode,
+            name: String(quote.name || '').trim(),
+            latestNav: unitNav,
+            latestNavDate: navDate,
+            previousNav: null,
+            previousNavDate: '',
+            source: 'xueqiu-quote',
+            iopv: Number.isFinite(iopv) && iopv > 0 ? iopv : null,
+            premiumPercent: Number.isFinite(premiumRate) ? premiumRate : null
+          };
+        }
+      } catch (_error) {
+        // fallback later
+      }
+    }
+  };
+
+  const workers = [];
+  for (let i = 0; i < Math.min(concurrency, queue.length); i += 1) {
+    workers.push(worker());
+  }
+  await Promise.all(workers);
+  return { quoteByCode, navByCode };
+}
+
 async function loadEtfLatestPrice(code, { inPagesDir = false } = {}) {
   if (!/^\d{6}$/.test(String(code || '').trim())) return null;
   const response = await fetch(dailySinaPath(code, inPagesDir), {
@@ -306,7 +364,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   // 候选基金 universe = data/all_nasdq.json 中的纳指 100 场内 ETF 全集，并非仅限于持仓。
   const [candidateUniverse, setCandidateUniverse] = useState([]);
   const [universeError, setUniverseError] = useState('');
-  // 非持仓候选的现价：取 daily-sina.json 最后一根 K 线 close 作为当前价代理。
+  // 实时行情：优先雪球 quote 的 current / unit_nav / premium_rate，必要时再回退历史源。
   const [priceState, setPriceState] = useState({ priceByCode: {} });
 
   // ---- 「自动监控」worker 驱动的场内切换信号 ----
@@ -797,81 +855,70 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     });
   }, [exchangeFunds, benchmarkCodesJoined, premiumClassKey]);
 
-  // 拉取所有候选 ETF 的最新单位净值（候选池来自 data/all_nasdq.json，不仅限于持仓）。
-  // 统一走 worker 的 central NAV service（内部由 getNav 处理）。
+  // 拉取所有候选 ETF 的雪球实时 quote（候选池来自 data/all_nasdq.json，不仅限于持仓）。
   const loadNav = useCallback(async () => {
     setNavState((prev) => ({ ...prev, loading: true, error: '' }));
     try {
       const codes = candidateUniverse.map((f) => f.code);
       if (!codes.length) {
         setNavState({ loading: false, error: '', navByCode: {}, generatedAt: nowIso() });
+        setPriceState({ priceByCode: {} });
         return;
       }
       const navByCode = {};
-      const result = await getNavSnapshots(codes);
-      for (const item of result?.items || []) {
-        if (!item?.code) continue;
-        if (!item.ok || !(item.latestNav > 0)) continue;
-        navByCode[item.code] = {
-          code: item.code,
-          name: item.name || '',
-          latestNav: item.latestNav,
-          latestNavDate: item.latestNavDate || '',
-          previousNav: Number.isFinite(item.previousNav) && item.previousNav > 0 ? item.previousNav : null,
-          previousNavDate: item.previousNavDate || ''
-        };
+      const priceByCode = {};
+      const xueqiuResult = await loadXueqiuFundDataInBatch(codes, { concurrency: 3, refresh: true });
+      Object.assign(navByCode, xueqiuResult.navByCode);
+      Object.assign(priceByCode, xueqiuResult.quoteByCode);
+
+      const missingNavCodes = codes.filter((code) => !navByCode[code]);
+      if (missingNavCodes.length) {
+        const result = await getNavSnapshots(missingNavCodes);
+        for (const item of result?.items || []) {
+          if (!item?.code) continue;
+          if (!item.ok || !(item.latestNav > 0)) continue;
+          navByCode[item.code] = {
+            code: item.code,
+            name: item.name || '',
+            latestNav: item.latestNav,
+            latestNavDate: item.latestNavDate || '',
+            previousNav: Number.isFinite(item.previousNav) && item.previousNav > 0 ? item.previousNav : null,
+            previousNavDate: item.previousNavDate || '',
+            source: item.source || 'nav-snapshot'
+          };
+        }
       }
+
+      const missingPriceCodes = codes.filter((code) => !priceByCode[code]);
+      if (missingPriceCodes.length) {
+        const fallbackPriceByCode = await loadEtfLatestPricesInBatch(missingPriceCodes, { inPagesDir, concurrency: 3 });
+        Object.assign(priceByCode, fallbackPriceByCode);
+      }
+
       setNavState({
         loading: false,
-        error: Object.keys(navByCode).length === 0 ? '未拿到 ETF 最新净值，请稍后重试。' : '',
+        error: Object.keys(navByCode).length === 0 ? '未拿到 ETF 实时数据，请稍后重试。' : '',
         navByCode,
         generatedAt: nowIso()
       });
+      setPriceState({ priceByCode });
     } catch (error) {
       setNavState((prev) => ({
         ...prev,
         loading: false,
-        error: error instanceof Error ? error.message : '净值数据加载失败'
+        error: error instanceof Error ? error.message : '实时数据加载失败'
       }));
     }
   }, [candidateUniverse, inPagesDir]);
 
   useEffect(() => { loadNav(); }, [loadNav, refreshTick]);
 
-  // 非持仓候选的现价：从 data/<code>/daily-sina.json 取最后一根 K 线 close。
-  // 持仓的候选直接用 holdings ledger 中的 latestNav（已由 notify worker 实时推送），不在此处覆盖。
-  // 优化：批量加载而不是每个都单独发起请求，并限制并发数以遵守后端调用规范。
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!candidateUniverse.length) {
-        setPriceState({ priceByCode: {} });
-        return;
-      }
-      const heldCodes = new Set(exchangeFunds.map((f) => f.code));
-      const targetCodes = candidateUniverse
-        .filter((f) => !heldCodes.has(f.code))
-        .map((f) => f.code);
-      if (!targetCodes.length) {
-        setPriceState({ priceByCode: {} });
-        return;
-      }
-      const priceByCode = await loadEtfLatestPricesInBatch(targetCodes, { inPagesDir, concurrency: 3 });
-      if (cancelled) return;
-      setPriceState({ priceByCode });
-    })();
-    return () => { cancelled = true; };
-  }, [candidateUniverse, exchangeFunds, inPagesDir, refreshTick]);
-
-  // 合并：(当前价 - 最新NAV) / 最新NAV。
-  // 候选池来自 all_nasdq.json：持仓里的取 holdings ledger 的 latestNav，否则取 daily-sina 最后一根 close。
+  // 合并：(雪球当前价 - 雪球单位净值) / 雪球单位净值。
   const fundsWithPremium = useMemo(() => {
-    const heldByCode = new Map(exchangeFunds.map((f) => [f.code, f]));
     return candidateUniverse.map((u) => {
-      const held = heldByCode.get(u.code) || null;
       const navEntry = navState.navByCode?.[u.code] || null;
       const priceEntry = priceState.priceByCode?.[u.code] || null;
-      const px = held ? Number(held.latestNav) : Number(priceEntry?.close);
+      const px = Number(priceEntry?.close);
       const nav = Number(navEntry?.latestNav);
       let premiumPct = null;
       if (Number.isFinite(px) && px > 0 && Number.isFinite(nav) && nav > 0) {
@@ -879,13 +926,14 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       }
       return {
         code: u.code,
-        name: held?.name || u.name || '',
-        kind: held?.kind || 'exchange',
-        hasPosition: Boolean(held),
+        name: navEntry?.name || u.name || '',
+        kind: exchangeFunds.find((f) => f.code === u.code)?.kind || 'exchange',
+        hasPosition: exchangeFunds.some((f) => f.code === u.code),
         latestNav: Number.isFinite(px) && px > 0 ? px : null,
-        latestPriceDate: held ? '' : (priceEntry?.date || ''),
+        latestPriceDate: priceEntry?.date || '',
         navLatest: nav > 0 ? nav : null,
         navLatestDate: navEntry?.latestNavDate || '',
+        premiumRate: navEntry?.premiumPercent ?? null,
         premiumPct
       };
     });
@@ -981,7 +1029,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     if (!topBench || !minFund) {
       return {
         ready: false,
-        message: navState.loading ? '正在加载 ETF 净值…' : (navState.error || 'ETF 净值数据未就绪。')
+        message: navState.loading ? '正在加载雪球实时数据…' : (navState.error || '实时数据未就绪。')
       };
     }
     const benchPrem = topBench.premiumPct;
@@ -1366,7 +1414,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           {navState.error ? (
             <div className="flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>净值数据加载异常：{navState.error}</span>
+              <span>实时数据加载异常：{navState.error}</span>
             </div>
           ) : null}
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -1397,8 +1445,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                   draggable
                   onDragStart={(e) => handleChipDragStart(e, code)}
                   title={hasNav
-                    ? `NAV ${f.navLatest.toFixed(4)} (${f.navLatestDate})・现价 ${formatPrice(f.latestNav)} (${priceSourceLabel})`
-                    : '净值数据未就绪'}
+                    ? `雪球净值 ${f.navLatest.toFixed(4)} (${f.navLatestDate})・现价 ${formatPrice(f.latestNav)} (${priceSourceLabel})`
+                    : '实时数据未就绪'}
                   className={cx(
                     'group inline-flex select-none items-center gap-1.5 rounded-full border px-2 py-1 text-xs font-semibold transition-colors cursor-grab active:cursor-grabbing',
                     cur === 'H' ? 'border-rose-200 bg-rose-50 text-rose-800' :

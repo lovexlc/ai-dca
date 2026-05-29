@@ -1,5 +1,6 @@
 import { getHoldingCodeList, isHoldingCode, round } from './holdingsCore.js';
 import { fetchNavHistory, fetchNavHistoryBatch } from './navHistoryClient.js';
+import { fetchXueqiuFundData } from './marketsApi.js';
 
 const HOLDINGS_NAV_ENDPOINT = '/api/holdings/nav';
 const latestInflight = new Map();
@@ -42,6 +43,10 @@ function normalizeCacheMeta(cache = null) {
     stale: cache.stale === true,
     codeCount: Math.max(Number(cache.codeCount) || 0, 0)
   };
+}
+
+function extractXueqiuQuote(payload = {}) {
+  return payload?.results?.quote_detail?.raw?.data?.quote || payload?.results?.quote_detail?.summary?.quote || null;
 }
 
 function normalizeSnapshotPayload(payload = {}) {
@@ -142,11 +147,39 @@ export async function getNavHistoryBatch({ forceRefresh = false, ...options } = 
 }
 
 export async function getCnEtfPremiumSnapshot(code, { price, qqqChangePercent, forceRefresh = false } = {}) {
+  const priceValue = Number(price);
+  if (!Number.isFinite(priceValue) || priceValue <= 0) throw new Error('缺少当前价格');
+  if (/^\d{6}$/.test(String(code || '').trim())) {
+    try {
+      const fundData = await fetchXueqiuFundData(code, { refresh: forceRefresh, raw: true });
+      const quote = extractXueqiuQuote(fundData);
+      const iopv = round(Number(quote?.iopv) || 0, 4);
+      const latestNav = round(Number(quote?.unit_nav) || 0, 4);
+      const premiumPercent = round(Number(quote?.premium_rate) || 0, 4);
+      if (Number.isFinite(iopv) && iopv > 0) {
+        return {
+          symbol: String(code || '').trim(),
+          price: priceValue,
+          baseNav: Number.isFinite(latestNav) && latestNav > 0 ? latestNav : iopv,
+          navDate: String(quote?.nav_date || '').trim(),
+          qqqChangePercent: Number.isFinite(Number(qqqChangePercent)) ? Number(qqqChangePercent) : null,
+          iopv,
+          premiumPercent: Number.isFinite(premiumPercent) && quote?.premium_rate !== undefined
+            ? premiumPercent
+            : ((priceValue - iopv) / iopv) * 100,
+          updatedAt: new Date().toISOString(),
+          source: 'xueqiu-quote',
+          cache: null
+        };
+      }
+    } catch (_error) {
+      // fallback to snapshot
+    }
+  }
+
   const snapshot = await getNavSnapshot(code, { forceRefresh });
   const baseNav = Number(snapshot?.latestNav);
-  const priceValue = Number(price);
   if (!Number.isFinite(baseNav) || baseNav <= 0) throw new Error('缺少上一工作日净值');
-  if (!Number.isFinite(priceValue) || priceValue <= 0) throw new Error('缺少当前价格');
   const iopv = baseNav;
   return {
     symbol: String(code || '').trim(),
