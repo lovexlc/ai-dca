@@ -1,4 +1,4 @@
-import { applyBackupEnvelope, buildBackupEnvelope } from './webdavBackup.js';
+import { applyBackupEnvelope, buildBackupEnvelope, isBackupPayloadKey } from './webdavBackup.js';
 import { fetchCloudSyncMeta, fetchLatestCloudBackup, loadCloudSession, uploadLatestCloudBackup } from './authClient.js';
 import { decryptBackupEnvelope, encryptBackupEnvelope, loadRememberedKey, saveRememberedKey } from './secureVault.js';
 
@@ -103,7 +103,7 @@ function markLocalChanged({ signature, keyCount } = {}) {
 
 function isSyncableKey(key = '') {
   const value = String(key || '');
-  return value.startsWith('aiDca') && !TRANSIENT_SYNC_KEYS.has(value);
+  return isBackupPayloadKey(value) && !TRANSIENT_SYNC_KEYS.has(value);
 }
 
 function shouldUploadSnapshot(snapshot, meta, { force = false } = {}) {

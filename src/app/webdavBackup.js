@@ -4,14 +4,34 @@
 // - 浏览器依赖 Basic Auth 访问 WebDAV。默认直连，但大多数第三方 WebDAV
 //   不开 CORS，因此提供可选的 `proxyUrl` 字段，通过 Cloudflare Worker 中转。
 //   配套的 Worker 脚本放在 `workers/webdav-cors-proxy.js`。
-// - 导出范围：localStorage 中所有以 `aiDca` 开头的 key（自动覆盖未来新增 key），并排除
-//   瞬时/不可恢复项（如 `aiDcaPendingToasts`）。
+// - 导出范围：只同步业务白名单 key，避免最近访问、行情缓存、分析日志等 UI/缓存数据推高云端版本。
 // - 凭据以明文存在 localStorage，KEY = `aiDcaWebDavConfig`（用户已明确选择）。
 
 export const WEBDAV_CONFIG_KEY = 'aiDcaWebDavConfig';
 export const WEBDAV_META_KEY = 'aiDcaWebDavLastSync';
 
 const LS_PREFIX = 'aiDca';
+export const SYNCABLE_STORAGE_KEYS = new Set([
+  'aiDcaAccountAssignments',
+  'aiDcaAccumulationState',
+  'aiDcaDcaState',
+  'aiDcaFundHoldingsLedger',
+  'aiDcaFundHoldingsState',
+  'aiDcaHomeDashboardState',
+  'aiDcaNotifyClientConfig',
+  'aiDcaPlanState',
+  'aiDcaPlanStore',
+  'aiDcaPositionSnapshot',
+  'aiDcaSellPlanDraft',
+  'aiDcaSellPlanStore',
+  'aiDcaSwitchStrategyPrefs',
+  'aiDcaSwitchStrategyWorkerConfig',
+  'aiDcaTradeLedger',
+  'aiDcaTradeLedgerArchive',
+  'aiDcaVixState',
+  'aiDcaWebNotifyConfig',
+  'aiDcaWorkspacePrefs'
+]);
 const TRANSIENT_KEYS = new Set([
   'aiDcaPendingToasts',
   'aiDcaCloudSyncSession',
@@ -28,6 +48,10 @@ function safeLocalStorage() {
     return null;
   }
   return window.localStorage;
+}
+
+export function isBackupPayloadKey(key = '') {
+  return SYNCABLE_STORAGE_KEYS.has(String(key || ''));
 }
 
 export function loadWebDavConfig() {
@@ -127,8 +151,7 @@ export function collectBackupPayload() {
   for (let i = 0; i < ls.length; i += 1) {
     const key = ls.key(i);
     if (!key) continue;
-    if (!key.startsWith(LS_PREFIX)) continue;
-    if (TRANSIENT_KEYS.has(key)) continue;
+    if (!isBackupPayloadKey(key)) continue;
     const value = ls.getItem(key);
     if (value === null) continue;
     entries[key] = value; // 保留原始字符串，避免二次 JSON.parse 改变数据
@@ -164,7 +187,7 @@ export function applyBackupEnvelope(envelope, { wipePrefix = true } = {}) {
       const key = ls.key(i);
       if (!key) continue;
       if (!key.startsWith(LS_PREFIX)) continue;
-      if (TRANSIENT_KEYS.has(key)) continue; // 保留 WebDAV 配置和 sync 元数据
+      if (!isBackupPayloadKey(key)) continue; // 保留登录态、WebDAV 配置、缓存和 UI 临时状态
       toDelete.push(key);
     }
     toDelete.forEach((key) => ls.removeItem(key));
@@ -173,8 +196,7 @@ export function applyBackupEnvelope(envelope, { wipePrefix = true } = {}) {
   let restored = 0;
   Object.entries(payload).forEach(([key, value]) => {
     if (typeof key !== 'string') return;
-    if (!key.startsWith(LS_PREFIX)) return;
-    if (TRANSIENT_KEYS.has(key)) return;
+    if (!isBackupPayloadKey(key)) return;
     if (value === null || value === undefined) return;
     const str = typeof value === 'string' ? value : JSON.stringify(value);
     ls.setItem(key, str);
