@@ -240,9 +240,11 @@ function formatPremiumPercent(row) {
 
 function resolveFundFeeRate(row) {
   if (!row) return null;
+  const cachedAnnualFeeRate = Number(row.fundFee?.annualFeeRate);
+  if (Number.isFinite(cachedAnnualFeeRate)) return cachedAnnualFeeRate;
   const explicit = rowMetric(row, ['feeRate', 'expenseRatio', 'managementFeeRate', 'fundFeeRate', 'annualFeeRate']);
   const n = Number(explicit);
-  if (Number.isFinite(n)) return Math.abs(n) <= 1 ? n * 100 : n;
+  if (Number.isFinite(n)) return Math.abs(n) < 0.05 ? n * 100 : n;
   const code = normalizeCnFundCode(row.code || row.symbol);
   const fallback = code ? CN_FUND_FEE_RATE_FALLBACK[code] : null;
   return Number.isFinite(Number(fallback)) ? Number(fallback) : null;
