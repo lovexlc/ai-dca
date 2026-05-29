@@ -207,8 +207,19 @@ const WATCHLIST_DEFAULTS_VERSION = 1;
 const DEFAULT_WATCHLIST_ID = 'default';
 
 export const CN_ETF_WATCHLIST_PRESETS = [
-  { symbol: '513100', name: '纳指 ETF', exchange: '上交所', currency: 'CNY' },
-  { symbol: '513500', name: '标普 500 ETF', exchange: '上交所', currency: 'CNY' }
+  // 用户指定的默认 A 股监控列表（以代码覆盖）
+  { symbol: '513870', name: '纳指ETF 富国', exchange: '上交所', currency: 'CNY' },
+  { symbol: '513390', name: '纳指100ETF', exchange: '上交所', currency: 'CNY' },
+  { symbol: '513300', name: '纳斯达克ETF', exchange: '上交所', currency: 'CNY' },
+  { symbol: '513110', name: '纳指ETF 华夏', exchange: '上交所', currency: 'CNY' },
+  { symbol: '513100', name: '纳指ETF 国泰', exchange: '上交所', currency: 'CNY' },
+  { symbol: '159941', name: '纳指ETF 广发', exchange: '深交所', currency: 'CNY' },
+  { symbol: '159696', name: '纳指ETF 易方达', exchange: '深交所', currency: 'CNY' },
+  { symbol: '159660', name: '纳指ETF 汇添富', exchange: '深交所', currency: 'CNY' },
+  { symbol: '159659', name: '纳斯达克100 ETF', exchange: '深交所', currency: 'CNY' },
+  { symbol: '159632', name: '纳斯达克ETF 华安', exchange: '深交所', currency: 'CNY' },
+  { symbol: '159513', name: '纳斯达克100ETF', exchange: '深交所', currency: 'CNY' },
+  { symbol: '159501', name: '纳指ETF 嘉实', exchange: '深交所', currency: 'CNY' },
 ];
 
 const DEFAULT_CN_WATCHLIST = CN_ETF_WATCHLIST_PRESETS.map((item) => item.symbol);
