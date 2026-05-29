@@ -250,7 +250,16 @@ function resolveFundFeeRate(row) {
 
 function formatFeeRate(row) {
   const rate = resolveFundFeeRate(row);
-  return Number.isFinite(Number(rate)) ? `${formatNumber(rate, 2).replace(/\.00$/, '')}%` : '—';
+  return Number.isFinite(Number(rate)) ? formatNumber(rate, 1) : '—';
+}
+
+function feeRateToneClass(row) {
+  const rate = resolveFundFeeRate(row);
+  const n = Number(rate);
+  if (!Number.isFinite(n)) return 'text-[#5f6368]';
+  if (n >= 1) return 'text-[#d93025]';
+  if (n >= 0.8) return 'text-[#f29900]';
+  return 'text-[#137333]';
 }
 
 function formatTotalShares(value) {
@@ -895,7 +904,7 @@ function MarketListTable({ rows = [], klineMap = {}, selectedSymbol = '', onSele
                 <td className={cx('whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums', compact && 'px-2', changeToneClass(premiumPct))}>{formatPremiumPercent(row)}</td>
                 {!compact ? <td className={cx('whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums', changeToneClass(Number(row.currentYearPercent)))}>{formatYearPercent(row)}</td> : null}
                 {!compact ? <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-[#1f1f1f]">{formatTotalShares(row.totalShares)}</td> : null}
-                {!compact ? <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-[#1f1f1f]">{formatFeeRate(row)}</td> : null}
+                {!compact ? <td className={cx('whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums', feeRateToneClass(row))}>{formatFeeRate(row)}</td> : null}
                 {!compact ? (
                   <td className="px-3 py-2 text-right">
                     <div className="inline-flex justify-end">
