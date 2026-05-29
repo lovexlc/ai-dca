@@ -51,6 +51,9 @@ const MARKETS = [
 
 const CN_ETF_PRESET_MAP = Object.fromEntries(CN_ETF_WATCHLIST_PRESETS.map((item) => [item.symbol, item]));
 const NASDAQ_OTC_FUND_MAP = Object.fromEntries(((nasdaqOtcCatalog && nasdaqOtcCatalog.funds) || []).map((item) => [String(item.code || '').trim(), item]));
+const CN_FUND_FEE_RATE_FALLBACK = {
+  '513100': 0.8,
+};
 const MARKETS_PENDING_SYMBOL_KEY = 'markets:pendingSymbol';
 
 function formatNumber(value, fractionDigits = 2) {
@@ -212,6 +215,34 @@ function resolvePremiumPercent(row) {
 function formatPremiumPercent(row) {
   const pct = resolvePremiumPercent(row);
   return Number.isFinite(Number(pct)) ? formatSignedPercent(pct) : '—';
+}
+
+function resolveFundFeeRate(row) {
+  if (!row) return null;
+  const explicit = rowMetric(row, ['feeRate', 'expenseRatio', 'managementFeeRate', 'fundFeeRate', 'annualFeeRate']);
+  const n = Number(explicit);
+  if (Number.isFinite(n)) return Math.abs(n) <= 1 ? n * 100 : n;
+  const code = normalizeCnFundCode(row.code || row.symbol);
+  const fallback = code ? CN_FUND_FEE_RATE_FALLBACK[code] : null;
+  return Number.isFinite(Number(fallback)) ? Number(fallback) : null;
+}
+
+function formatFeeRate(row) {
+  const rate = resolveFundFeeRate(row);
+  return Number.isFinite(Number(rate)) ? `${formatNumber(rate, 2).replace(/\.00$/, '')}%` : '—';
+}
+
+function formatTotalShares(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return '—';
+  if (n >= 100000000) return `${formatNumber(n / 100000000, 2)}亿`;
+  if (n >= 10000) return `${formatNumber(n / 10000, 2)}万`;
+  return formatNumber(n, 2);
+}
+
+function formatYearPercent(row) {
+  const pct = Number(rowMetric(row, ['currentYearPercent', 'ytdPercent', 'yearPercent']));
+  return Number.isFinite(pct) ? formatSignedPercent(pct) : '—';
 }
 
 function sortableMetric(row, key) {
@@ -793,7 +824,7 @@ function MarketListTable({ rows = [], klineMap = {}, selectedSymbol = '', onSele
   }
   return (
     <div className={cx('overflow-x-auto', compact ? 'rounded-xl border border-[#e8eaed] bg-white' : 'rounded-2xl border border-[#e8eaed] bg-white shadow-sm')}>
-      <table className={cx('w-full min-w-[720px] border-separate border-spacing-0 text-sm', compact && 'min-w-[520px] text-[12px]')}>
+      <table className={cx('w-full min-w-[980px] border-separate border-spacing-0 text-sm', compact && 'min-w-[520px] text-[12px]')}>
         <thead className={cx('bg-[#f8fafd] text-[11px] font-semibold text-[#5f6368]', stickyHeader && 'sticky top-0 z-10')}>
           <tr>
             <th className={cx('px-3 py-2 text-left', compact && 'px-2')}>代码</th>
@@ -801,6 +832,9 @@ function MarketListTable({ rows = [], klineMap = {}, selectedSymbol = '', onSele
             <th className={cx('px-3 py-2 text-right', compact && 'px-2')}>最新价</th>
             <th className={cx('px-3 py-2 text-right', compact && 'px-2')}>涨跌幅</th>
             <th className={cx('px-3 py-2 text-right', compact && 'px-2')}>溢价</th>
+            {!compact ? <th className="px-3 py-2 text-right">年内涨幅</th> : null}
+            {!compact ? <th className="px-3 py-2 text-right">总份额</th> : null}
+            {!compact ? <th className="px-3 py-2 text-right">费率</th> : null}
             {!compact ? <th className="px-3 py-2 text-right">趋势</th> : null}
           </tr>
         </thead>
@@ -838,6 +872,9 @@ function MarketListTable({ rows = [], klineMap = {}, selectedSymbol = '', onSele
                 <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums text-[#1f1f1f]', compact && 'px-2')}>{formatNumber(row.price)}</td>
                 <td className={cx('whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums', compact && 'px-2', flat ? 'text-[#5f6368]' : up ? 'text-[#a50e0e]' : 'text-[#137333]')}>{formatPercent(row.changePercent)}</td>
                 <td className={cx('whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums', compact && 'px-2', changeToneClass(premiumPct))}>{formatPremiumPercent(row)}</td>
+                {!compact ? <td className={cx('whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums', changeToneClass(Number(row.currentYearPercent)))}>{formatYearPercent(row)}</td> : null}
+                {!compact ? <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-[#1f1f1f]">{formatTotalShares(row.totalShares)}</td> : null}
+                {!compact ? <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-[#1f1f1f]">{formatFeeRate(row)}</td> : null}
                 {!compact ? (
                   <td className="px-3 py-2 text-right">
                     <div className="inline-flex justify-end">
@@ -4506,6 +4543,9 @@ export function MarketsExperience() {
       iopv: merged.iopv,
       premiumPercent: merged.premiumPercent ?? merged.premium_rate,
       premium_rate: merged.premium_rate ?? merged.premiumPercent,
+      currentYearPercent: merged.currentYearPercent ?? merged.current_year_percent,
+      totalShares: merged.totalShares ?? merged.total_shares,
+      feeRate: merged.feeRate ?? merged.expenseRatio ?? merged.managementFeeRate,
       latestNavDate,
       valueType: merged.valueType,
       assetType: merged.assetType,
