@@ -106,6 +106,21 @@ export async function fetchXueqiuFundData(symbol, { refresh = false, raw = true 
   return getJson('/xueqiu-fund-data/' + encodeURIComponent(symbol) + q);
 }
 
+export async function fetchFundFees(codes, { refresh = false, signal } = {}) {
+  const list = Array.isArray(codes) ? codes.map((code) => String(code || '').trim()).filter(Boolean) : [];
+  if (!list.length) return { items: [], successCount: 0, failureCount: 0 };
+  return fetch('/api/fund-fee' + (refresh ? '?refresh=1' : ''), {
+    method: 'POST',
+    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    body: JSON.stringify({ codes: list }),
+    signal,
+    cache: 'no-store'
+  }).then((res) => {
+    if (!res.ok) throw new Error('fund fee api HTTP ' + res.status);
+    return res.json();
+  });
+}
+
 export async function fetchProfile(symbol) {
   return getJson('/profile/' + encodeURIComponent(symbol));
 }

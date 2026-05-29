@@ -16,6 +16,7 @@ import {
   createWatchlist,
   deleteWatchlist,
   fetchEarnings,
+  fetchFundFees,
   fetchFinancials,
   fetchXueqiuFundData,
   fetchIndices,
@@ -4060,6 +4061,7 @@ export function MarketsExperience() {
   const [tradeLedgerEntries, setTradeLedgerEntries] = useState(() => readTradeLedger());
   const [watchQuotes, setWatchQuotes] = useState({});
   const [watchNavSnapshots, setWatchNavSnapshots] = useState({});
+  const [fundFeesByCode, setFundFeesByCode] = useState({});
   const [watchLoading, setWatchLoading] = useState(false);
   const [symbolInput, setSymbolInput] = useState('');
   const [symbolSearchResults, setSymbolSearchResults] = useState([]);
@@ -4326,6 +4328,21 @@ export function MarketsExperience() {
             });
           } catch (_error) {
             // 场外基金净值是增强信息，失败时仍展示行情源返回的结果。
+          }
+        }
+        const feeCodes = list.map((sym) => normalizeCnFundCode(sym)).filter((code) => /^\d{6}$/.test(code));
+        if (feeCodes.length) {
+          try {
+            const feePayload = await fetchFundFees(feeCodes);
+            const nextFees = {};
+            (feePayload.items || []).forEach((item) => {
+              if (item?.ok && item?.data?.code) nextFees[item.data.code] = item.data;
+            });
+            if (Object.keys(nextFees).length) {
+              setFundFeesByCode((prev) => ({ ...prev, ...nextFees }));
+            }
+          } catch (_error) {
+            // 费率是增强信息，失败时保留行情与本地 fallback。
           }
         }
       }
@@ -4734,7 +4751,8 @@ export function MarketsExperience() {
       premium_rate: merged.premium_rate ?? merged.premiumPercent,
       currentYearPercent: merged.currentYearPercent ?? merged.current_year_percent,
       totalShares: merged.totalShares ?? merged.total_shares,
-      feeRate: merged.feeRate ?? merged.expenseRatio ?? merged.managementFeeRate,
+      feeRate: fundFeesByCode[code]?.annualFeeRate ?? merged.feeRate ?? merged.expenseRatio ?? merged.managementFeeRate,
+      fundFee: fundFeesByCode[code] || null,
       latestNavDate,
       valueType: merged.valueType,
       assetType: merged.assetType,
@@ -4742,7 +4760,7 @@ export function MarketsExperience() {
       market,
       meta: baseMeta
     };
-  }, [watchQuotes, watchNavSnapshots, market]);
+  }, [watchQuotes, watchNavSnapshots, fundFeesByCode, market]);
 
   const watchRows = useMemo(
     () => watchSymbols.map((sym) => buildSidebarRow(sym)),

@@ -18,6 +18,7 @@ import {
   PROMPT_VERSION
 } from './geminiPrompt.js';
 import { fetchFundLimit, fetchFundLimitsBatch, mapLimit } from './fundLimit.js';
+import { fetchFundFee, fetchFundFeesBatch } from './fundFee.js';
 import {
   fetchFundNavHistoryWithMonthlyKv as getNavFundNavHistoryWithMonthlyKv,
   fetchFundNavSnapshot as getNavFundNavSnapshot,
@@ -2587,6 +2588,62 @@ export default {
       } catch (error) {
         return jsonResponse({
           error: error instanceof Error ? error.message : '基金限额代理执行失败。'
+        }, 502);
+      }
+    }
+
+    if (url.pathname === '/api/fund-fee') {
+      // GET ?code=XXXXXX        → 单 code
+      // POST { codes: [...] }   → 批量，场外走蛋卷，场内 ETF 自动降级 F10
+      if (request.method !== 'GET' && request.method !== 'POST') {
+        return jsonResponse({
+          error: 'Method not allowed'
+        }, 405, {
+          allow: 'GET, POST, OPTIONS'
+        });
+      }
+
+      try {
+        const force = url.searchParams.get('refresh') === '1' || url.searchParams.get('force') === '1';
+
+        if (request.method === 'POST') {
+          let payload = {};
+          try {
+            payload = await request.json();
+          } catch (_e) {
+            payload = {};
+          }
+          const rawCodes = Array.isArray(payload?.codes) ? payload.codes
+            : typeof payload?.codes === 'string' ? payload.codes.split(',')
+            : [];
+          if (rawCodes.length > 60) {
+            return jsonResponse({ error: '单次最多查询 60 个基金代码。' }, 400);
+          }
+          const batch = await fetchFundFeesBatch({ codes: rawCodes, force, env, ctx, concurrency: 4 });
+          if (!batch.ok) {
+            return jsonResponse({ error: batch.error, items: [], successCount: 0, failureCount: 0 }, batch.status || 400);
+          }
+          return jsonResponse({
+            items: batch.items,
+            successCount: batch.successCount,
+            failureCount: batch.failureCount,
+            generatedAt: new Date().toISOString()
+          });
+        }
+
+        const code = (url.searchParams.get('code') || '').trim();
+        const result = await fetchFundFee({ code, force, env, ctx });
+        if (!result.ok) {
+          return jsonResponse({
+            error: result.error,
+            code: result.code,
+            tried: result.tried
+          }, result.status || 502);
+        }
+        return jsonResponse(result.data);
+      } catch (error) {
+        return jsonResponse({
+          error: error instanceof Error ? error.message : '基金费率代理执行失败。'
         }, 502);
       }
     }
