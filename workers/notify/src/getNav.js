@@ -10,6 +10,7 @@
 
 const FUND_CODE_PATTERN = /^\d{6}$/;
 export const NAV_CACHE_PREFIX = 'nav:cache:';
+const DEFAULT_PUBLIC_DATA_BASE_URL = 'https://tools.freebacktrack.tech';
 
 function sanitizeCode(value) {
   const code = String(value || '').trim();
@@ -20,8 +21,60 @@ function stripTrailingSlash(value = '') {
   return String(value || '').replace(/\/+$/, '');
 }
 
+function publicDataBaseUrl(env = null) {
+  return stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || DEFAULT_PUBLIC_DATA_BASE_URL);
+}
+
+function xueqiuFundDataUrl(baseUrl, code, { refresh = false, raw = true } = {}) {
+  const params = new URLSearchParams();
+  if (refresh) params.set('refresh', '1');
+  if (raw) params.set('raw', '1');
+  const query = params.toString();
+  return `${stripTrailingSlash(baseUrl || DEFAULT_PUBLIC_DATA_BASE_URL)}/api/markets/xueqiu-fund-data/${encodeURIComponent(code)}${query ? `?${query}` : ''}`;
+}
+
+function extractXueqiuQuoteFromFundData(payload) {
+  return payload?.results?.quote_detail?.raw?.data?.quote || payload?.results?.quote_detail?.summary?.quote || null;
+}
+
+async function fetchXueqiuQuoteSnapshot(code, { refresh = false, env = null } = {}) {
+  const c = sanitizeCode(code);
+  if (!c) return null;
+  try {
+    const response = await fetch(xueqiuFundDataUrl(publicDataBaseUrl(env), c, { refresh, raw: true }), {
+      headers: { accept: 'application/json' },
+      cf: { cacheTtl: 15, cacheEverything: false }
+    });
+    if (!response.ok) return null;
+    const payload = await response.json().catch(() => null);
+    const quote = extractXueqiuQuoteFromFundData(payload);
+    if (!quote) return null;
+    const price = Number(quote.current);
+    const nav = Number(quote.unit_nav);
+    if (!Number.isFinite(price) || price <= 0) return null;
+    return {
+      code: c,
+      name: String(quote.name || '').trim(),
+      price,
+      preClose: Number(quote.last_close) || 0,
+      open: Number(quote.open) || 0,
+      high: Number(quote.high) || 0,
+      low: Number(quote.low) || 0,
+      date: String(quote.nav_date || quote.timestamp || '').trim(),
+      time: String(quote.time || '').trim(),
+      source: 'xueqiu-quote',
+      latestNav: Number.isFinite(nav) && nav > 0 ? nav : price,
+      latestNavDate: String(quote.nav_date || '').trim(),
+      iopv: Number(quote.iopv) || null,
+      premiumPercent: Number(quote.premium_rate) || null
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
 /**
- * 拉取单个基金的最新净值（从源拉取，不使用缓存）
+ * 拉取单个基金的最新净值（优先雪球实时 quote，失败再回退到 latest-nav.json；不使用缓存）
  * 
  * @param {Object} env - Worker env
  * @param {string} code - 基金代码
@@ -30,7 +83,21 @@ function stripTrailingSlash(value = '') {
 export async function fetchLatestNav(env, code) {
   const c = sanitizeCode(code);
   if (!c) return null;
-  const baseUrl = stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || 'https://tools.freebacktrack.tech');
+  const xueqiu = await fetchXueqiuQuoteSnapshot(c, { refresh: false, env });
+  if (xueqiu) {
+    return {
+      code: c,
+      name: xueqiu.name,
+      nav: xueqiu.latestNav,
+      latestNavDate: xueqiu.latestNavDate,
+      source: xueqiu.source,
+      price: xueqiu.price,
+      iopv: xueqiu.iopv,
+      premiumPercent: xueqiu.premiumPercent
+    };
+  }
+
+  const baseUrl = publicDataBaseUrl(env);
   try {
     const response = await fetch(`${baseUrl}/data/${c}/latest-nav.json`, {
       headers: { accept: 'application/json' },
@@ -292,8 +359,21 @@ function sinaSymbol(code) {
 }
 
 export async function fetchSinaPrices(codes = []) {
-  const symbols = Array.from(new Set(codes.map((c) => sinaSymbol(c)).filter(Boolean)));
-  if (!symbols.length) return {};
+  const list = Array.from(new Set(codes.map((c) => sanitizeCode(c)).filter(Boolean)));
+  if (!list.length) return {};
+
+  const xueqiuResults = await Promise.all(list.map((code) => fetchXueqiuQuoteSnapshot(code, { refresh: false })));
+  const map = {};
+  for (const item of xueqiuResults) {
+    if (!item || !item.code) continue;
+    map[item.code] = item;
+  }
+
+  const missing = list.filter((code) => !map[code]);
+  if (!missing.length) return map;
+
+  const symbols = Array.from(new Set(missing.map((c) => sinaSymbol(c)).filter(Boolean)));
+  if (!symbols.length) return map;
   const url = 'https://' + 'hq.sinajs.cn/list=' + symbols.join(',');
   const response = await fetch(url, {
     method: 'GET',
@@ -309,7 +389,6 @@ export async function fetchSinaPrices(codes = []) {
   // 新浪原文是 GB18030，但数字、逗号、引号、等号、英文字母均为 ASCII；
   // 这里只消费数字字段，中文名称乱码不影响解析。
   const text = await response.text();
-  const map = {};
   const re = /var\s+hq_str_(sh|sz)(\d{6})="([^"]*)";?/g;
   let match;
   while ((match = re.exec(text)) !== null) {
