@@ -2,10 +2,10 @@
   "dataset": "etf_latest_nav_eastmoney",
   "code": "513100",
   "name": "国泰纳斯达克100ETF",
-  "latestNav": 2.0453,
-  "latestNavDate": "2026-05-26",
-  "previousNav": 2.0109,
-  "previousNavDate": "2026-05-25",
+  "latestNav": 2.0435,
+  "latestNavDate": "2026-05-27",
+  "previousNav": 2.0453,
+  "previousNavDate": "2026-05-26",
   "source": "eastmoney:f10/lsjz",
-  "generatedAt": "2026-05-28T11:06:35.741Z"
+  "generatedAt": "2026-05-29T05:10:14.683Z"
 }
