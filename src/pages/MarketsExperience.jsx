@@ -145,6 +145,26 @@ function buildOtcCandidate(code, fallback = {}) {
   };
 }
 
+function normalizeSearchResults(rawRows, marketKey, query = '') {
+  const seen = new Set();
+  const rows = Array.isArray(rawRows) ? [...rawRows] : [];
+  const otcCode = normalizeCnFundCode(query);
+  if (marketKey === 'cn' && /^\d{6}$/.test(otcCode) && !rows.some((row) => normalizeCnFundCode(row.symbol || row.code || row.ticker) === otcCode)) {
+    rows.push(buildOtcCandidate(otcCode));
+  }
+  return rows.map((row) => {
+    const symbol = String(row && (row.symbol || row.code || row.ticker) || '').trim().toUpperCase();
+    if (!symbol || seen.has(symbol)) return null;
+    seen.add(symbol);
+    return {
+      ...row,
+      symbol,
+      market: marketKey,
+      marketLabel: marketKey === 'cn' ? 'A股' : '美股',
+    };
+  }).filter(Boolean);
+}
+
 function buildNavSnapshotItems(snapshot) {
   if (!snapshot) return [];
   const rows = [];
@@ -891,7 +911,29 @@ function MarketListTable({ rows = [], klineMap = {}, selectedSymbol = '', onSele
   );
 }
 
-function ExpandedMarketListOverlay({ open, rows, klineMap, selectedSymbol, activeName, marketLabel, onClose, onSelect, onCreate, loading }) {
+function ExpandedMarketListOverlay({
+  open,
+  rows,
+  klineMap,
+  selectedSymbol,
+  activeName,
+  marketLabel,
+  onClose,
+  onSelect,
+  onCreate,
+  loading,
+  searchOpen,
+  searchValue,
+  searchResults,
+  searchLoading,
+  searchError,
+  watchSymbols = [],
+  onSearchToggle,
+  onSearchChange,
+  onSearchClear,
+  onSearchResultSelect,
+  onSearchResultAdd,
+}) {
   useEffect(() => {
     if (!open) return undefined;
     const onKeyDown = (event) => {
@@ -914,12 +956,89 @@ function ExpandedMarketListOverlay({ open, rows, klineMap, selectedSymbol, activ
             <h2 className="mt-1 truncate text-[22px] font-semibold text-[#1f1f1f]">{activeName || '监控列表'}</h2>
           </div>
           <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onSearchToggle}
+              className={cx('inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition', searchOpen ? 'bg-[#e8f0fe] text-[#1a73e8]' : 'text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#1f1f1f]')}
+            >
+              <Search size={16} /> 基金搜索
+            </button>
             <button type="button" onClick={onCreate} className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#1f1f1f]">
               <ListPlus size={18} /> 新建列表
             </button>
             <ListExpandButton expanded onClick={onClose} />
           </div>
         </div>
+        {searchOpen ? (
+          <div className="rounded-2xl border border-[#e8eaed] bg-white p-3 shadow-sm">
+            <div className="flex items-center gap-2 rounded-full bg-[#f1f3f4] px-3 py-2">
+              <Search size={15} className="shrink-0 text-[#5f6368]" />
+              <input
+                autoFocus
+                value={searchValue}
+                onChange={(event) => onSearchChange?.(event.target.value)}
+                placeholder="搜索基金代码 / 名称，例如 513100、纳指ETF"
+                className="min-w-0 flex-1 bg-transparent text-sm text-[#1f1f1f] placeholder:text-[#5f6368] focus:outline-none"
+              />
+              {searchValue ? (
+                <button
+                  type="button"
+                  aria-label="清空搜索"
+                  onClick={onSearchClear}
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#5f6368] hover:bg-white"
+                >
+                  <X size={14} />
+                </button>
+              ) : null}
+            </div>
+            {searchValue.trim() ? (
+              <div className="mt-3 overflow-hidden rounded-2xl border border-[#e8eaed] bg-[#f8fafd]">
+                {searchLoading ? (
+                  <div className="flex items-center gap-2 px-3 py-3 text-sm text-[#5f6368]"><Loader2 size={14} className="animate-spin" />搜索中…</div>
+                ) : searchError ? (
+                  <div className="px-3 py-3 text-sm text-rose-600">{searchError}</div>
+                ) : searchResults.length ? (
+                  <ul className="divide-y divide-[#e8eaed]">
+                    {searchResults.map((row) => {
+                      const symbol = formatSymbolDisplay(row.symbol);
+                      const displayName = row.name || row.exchange || '--';
+                      const alreadyAdded = watchSymbols.includes(row.symbol);
+                      return (
+                        <li key={`${row.market || marketLabel}:${row.symbol}`} className="flex items-center gap-3 px-3 py-2 hover:bg-white">
+                          <button
+                            type="button"
+                            className="min-w-0 flex-1 text-left"
+                            onClick={() => onSearchResultSelect?.(row)}
+                          >
+                            <div className="truncate text-sm font-semibold text-[#1f1f1f]">{symbol}</div>
+                            <div className="truncate text-xs text-[#5f6368]">{row.marketLabel ? `${row.marketLabel} · ` : ''}{displayName}</div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onSearchResultAdd?.(row)}
+                            disabled={alreadyAdded}
+                            className={cx(
+                              'shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition',
+                              alreadyAdded ? 'bg-[#e8eaed] text-[#9aa0a6]' : 'bg-[#e8f0fe] text-[#1a73e8] hover:bg-[#d2e3fc]'
+                            )}
+                          >
+                            {alreadyAdded ? '已加入' : '加入自选'}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <div className="px-3 py-3 text-sm text-[#5f6368]">没有找到匹配标的</div>
+                )}
+              </div>
+            ) : (
+              <div className="mt-3 rounded-2xl border border-dashed border-[#e8eaed] bg-[#f8fafd] px-3 py-3 text-sm text-[#5f6368]">
+                输入基金代码或名称，搜索后可直接加入当前自选列表。
+              </div>
+            )}
+          </div>
+        ) : null}
         <div className="min-h-0 flex-1 overflow-auto rounded-2xl bg-[#f8fafd] p-3">
           <MarketListTable rows={rows} klineMap={klineMap} selectedSymbol={selectedSymbol} onSelect={onSelect} stickyHeader />
         </div>
@@ -3946,9 +4065,15 @@ export function MarketsExperience() {
   const [symbolSearchResults, setSymbolSearchResults] = useState([]);
   const [symbolSearchLoading, setSymbolSearchLoading] = useState(false);
   const [symbolSearchError, setSymbolSearchError] = useState('');
+  const [watchOverlaySearchOpen, setWatchOverlaySearchOpen] = useState(false);
+  const [watchOverlaySearchInput, setWatchOverlaySearchInput] = useState('');
+  const [watchOverlaySearchResults, setWatchOverlaySearchResults] = useState([]);
+  const [watchOverlaySearchLoading, setWatchOverlaySearchLoading] = useState(false);
+  const [watchOverlaySearchError, setWatchOverlaySearchError] = useState('');
   const [generatedAt, setGeneratedAt] = useState('');
   const reqIdRef = useRef(0);
   const symbolSearchSeqRef = useRef(0);
+  const watchOverlaySearchSeqRef = useRef(0);
   const [klineMap, setKlineMap] = useState({});
   const klineInflightRef = useRef(new Set());
   const [sectors, setSectors] = useState([]);
@@ -4386,6 +4511,41 @@ export function MarketsExperience() {
     };
   }, [sectorSearchOpen, symbolInput, market]);
 
+  useEffect(() => {
+    const q = watchOverlaySearchInput.trim();
+    const seq = ++watchOverlaySearchSeqRef.current;
+    if (!watchOverlaySearchOpen || q.length < 1) {
+      setWatchOverlaySearchResults([]);
+      setWatchOverlaySearchLoading(false);
+      setWatchOverlaySearchError('');
+      return undefined;
+    }
+    const controller = new AbortController();
+    setWatchOverlaySearchLoading(true);
+    setWatchOverlaySearchError('');
+    const timer = window.setTimeout(() => {
+      const activeMarket = MARKETS.find((m) => m.key === market) || MARKETS[0];
+      searchSymbols(activeMarket.key, q, { limit: 10, signal: controller.signal })
+        .then((r) => {
+          if (seq !== watchOverlaySearchSeqRef.current) return;
+          const rows = normalizeSearchResults(Array.isArray(r && r.results) ? r.results : [], activeMarket.key, q);
+          setWatchOverlaySearchResults(rows.slice(0, 10));
+        })
+        .catch((err) => {
+          if (controller.signal.aborted || seq !== watchOverlaySearchSeqRef.current) return;
+          setWatchOverlaySearchResults([]);
+          setWatchOverlaySearchError('搜索失败，稍后再试');
+        })
+        .finally(() => {
+          if (seq === watchOverlaySearchSeqRef.current) setWatchOverlaySearchLoading(false);
+        });
+    }, 220);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [watchOverlaySearchOpen, watchOverlaySearchInput, market]);
+
   function rememberSelectedQuote(row, targetMarket = market) {
     if (!row || !row.symbol) return null;
     const symbol = String(row.symbol || row.code || row.ticker || '').trim().toUpperCase();
@@ -4438,6 +4598,35 @@ export function MarketsExperience() {
     setSymbolInput('');
     setSymbolSearchResults([]);
     setSectorSearchOpen(false);
+  }
+
+  function handleToggleWatchOverlaySearch() {
+    setWatchOverlaySearchOpen((prev) => {
+      const next = !prev;
+      if (!next) {
+        setWatchOverlaySearchInput('');
+        setWatchOverlaySearchResults([]);
+        setWatchOverlaySearchError('');
+      }
+      return next;
+    });
+  }
+
+  function handleClearWatchOverlaySearch() {
+    setWatchOverlaySearchInput('');
+    setWatchOverlaySearchResults([]);
+    setWatchOverlaySearchError('');
+  }
+
+  function handleAddSearchResult(row) {
+    if (!row || !row.symbol) return;
+    const targetMarket = row.market || market;
+    const symbol = String(row.symbol || row.code || row.ticker || '').trim().toUpperCase();
+    if (!symbol) return;
+    const next = addToWatchlist(targetMarket, symbol, watch.activeListId);
+    setWatch(next);
+    rememberSelectedQuote(row, targetMarket);
+    showActionToast('已加入自选', 'success');
   }
 
   function handlePickMover(row) {
@@ -4865,7 +5054,18 @@ export function MarketsExperience() {
       activeName={activeWatchList?.name}
       marketLabel={market === 'us' ? '美股监控列表' : 'A 股监控列表'}
       loading={watchLoading}
-      onClose={() => setWatchListExpanded(false)}
+      searchOpen={watchOverlaySearchOpen}
+      searchValue={watchOverlaySearchInput}
+      searchResults={watchOverlaySearchResults}
+      searchLoading={watchOverlaySearchLoading}
+      searchError={watchOverlaySearchError}
+      watchSymbols={watchSymbols}
+      onSearchToggle={handleToggleWatchOverlaySearch}
+      onSearchChange={setWatchOverlaySearchInput}
+      onSearchClear={handleClearWatchOverlaySearch}
+      onSearchResultSelect={handlePickSymbolSearch}
+      onSearchResultAdd={handleAddSearchResult}
+      onClose={() => { setWatchListExpanded(false); setWatchOverlaySearchOpen(false); handleClearWatchOverlaySearch(); }}
       onCreate={handleCreateWatchlist}
       onSelect={handleSelectSymbol}
     />
