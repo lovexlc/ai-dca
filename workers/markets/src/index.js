@@ -79,6 +79,13 @@ function errorJson(message, status = 500, extra = {}) {
 
 const INTRADAY_KLINE_INTERVALS = new Set(['1m', '5m', '15m', '30m', '60m']);
 
+function roundNumber(value, precision = 4) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  const factor = 10 ** precision;
+  return Math.round(n * factor) / factor;
+}
+
 function getShanghaiTradingMinute(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Shanghai',
@@ -330,6 +337,10 @@ export default {
       if (path === '/quotes') {
         return await handleBatchQuotes(env, url.searchParams.get('symbols') || '');
       }
+      if (path === '/fund-metrics') {
+        const body = request.method === 'POST' ? await request.json().catch(() => ({})) : {};
+        return await handleFundMetrics(env, body, url.searchParams);
+      }
       if (path === '/search') {
         const market = (url.searchParams.get('market') || 'us').toLowerCase();
         return await handleSearch(env, market, url.searchParams.get('q') || '', url.searchParams.get('limit') || '8');
@@ -539,6 +550,137 @@ async function handleBatchQuotes(env, symbolsParam) {
     }
   });
   return json({ quotes: out, generatedAt: new Date().toISOString() });
+}
+
+function normalizeFundMetricFromQuote(code, quote, { cached = false, cachePolicy = '', primaryError = '' } = {}) {
+  const price = roundNumber(quote?.price, 4);
+  const latestNav = roundNumber(quote?.latestNav, 4);
+  const iopv = roundNumber(quote?.iopv, 4);
+  const navBase = Number.isFinite(iopv) && iopv > 0
+    ? iopv
+    : (Number.isFinite(latestNav) && latestNav > 0 ? latestNav : null);
+  const explicitPremium = roundNumber(quote?.premiumPercent, 4);
+  const computedPremium = Number.isFinite(price) && price > 0 && Number.isFinite(navBase) && navBase > 0
+    ? roundNumber(((price - navBase) / navBase) * 100, 4)
+    : null;
+  const premiumPercent = explicitPremium != null ? explicitPremium : computedPremium;
+  return {
+    ok: !quote?.error,
+    code: String(quote?.code || code || '').trim(),
+    symbol: String(quote?.symbol || code || '').trim(),
+    name: String(quote?.name || '').trim(),
+    market: 'cn',
+    price,
+    currentPrice: price,
+    close: price,
+    previousClose: roundNumber(quote?.previousClose, 4),
+    change: roundNumber(quote?.change, 4),
+    changePercent: roundNumber(quote?.changePercent, 4),
+    latestNav,
+    navBase,
+    iopv,
+    premiumPercent,
+    latestNavDate: String(quote?.latestNavDate || '').trim(),
+    navDate: String(quote?.latestNavDate || '').trim(),
+    marketState: String(quote?.marketState || '').trim(),
+    asOf: String(quote?.asOf || new Date().toISOString()).trim(),
+    source: String(quote?.source || '').trim(),
+    fallback: quote?.fallback || '',
+    primaryError: primaryError || quote?.primaryError || '',
+    error: quote?.error || '',
+    cached,
+    cachePolicy
+  };
+}
+
+function normalizeFundMetricCodes(codes = []) {
+  const list = (Array.isArray(codes) ? codes : String(codes || '').split(','))
+    .map((code) => String(code || '').trim())
+    .filter(Boolean);
+  const out = [];
+  const seen = new Set();
+  for (const raw of list) {
+    const { market, code } = classifySymbol(raw);
+    const digits = String(code || '').replace(/^(sh|sz|bj)/i, '');
+    if (market !== 'cn' || !/^\d{6}$/.test(digits)) continue;
+    if (seen.has(digits)) continue;
+    seen.add(digits);
+    out.push(digits);
+  }
+  return out;
+}
+
+async function readCachedFundMetric(env, cacheKey) {
+  const cached = await kvGetJson(env, cacheKey).catch(() => null);
+  if (!cached || !cached.code) return null;
+  return { ...cached, cached: true, cachePolicy: 'kv-closed-session' };
+}
+
+async function fetchFreshFundMetric(env, code, cachePolicy) {
+  const cacheKey = 'fund-metrics:' + code;
+  try {
+    const quote = await fetchCnQuoteWithFallback(env, code, { endpoint: 'fund-metrics' });
+    const item = normalizeFundMetricFromQuote(code, quote, { cached: false, cachePolicy });
+    await kvPutJson(env, cacheKey, item, { ttlSeconds: 24 * 3600 }).catch(() => {});
+    return item;
+  } catch (error) {
+    return {
+      ok: false,
+      code,
+      symbol: code,
+      market: 'cn',
+      price: null,
+      currentPrice: null,
+      close: null,
+      previousClose: null,
+      change: null,
+      changePercent: null,
+      latestNav: null,
+      navBase: null,
+      iopv: null,
+      premiumPercent: null,
+      latestNavDate: '',
+      navDate: '',
+      marketState: '',
+      asOf: new Date().toISOString(),
+      source: '',
+      fallback: '',
+      primaryError: '',
+      error: String((error && error.message) || error),
+      cached: false,
+      cachePolicy
+    };
+  }
+}
+
+async function handleFundMetrics(env, body = {}, params = new URLSearchParams()) {
+  const rawCodes = Array.isArray(body?.codes) && body.codes.length ? body.codes : (params.get('codes') || params.get('symbols') || '');
+  const codes = normalizeFundMetricCodes(rawCodes);
+  if (!codes.length) return errorJson('missing valid cn fund codes', 400);
+  if (codes.length > 60) return errorJson('codes too many (max 60)', 400);
+
+  const forceRefresh = body?.refresh === true || params.get('refresh') === '1';
+  const tradingSession = isCnTradingSession();
+  const shouldReadCache = !forceRefresh && !tradingSession;
+  const cachePolicy = shouldReadCache ? 'kv-closed-session' : (forceRefresh ? 'live-refresh' : 'live-trading-session');
+
+  const items = await mapLimit(codes, 5, async (code) => {
+    const cacheKey = 'fund-metrics:' + code;
+    if (shouldReadCache) {
+      const cached = await readCachedFundMetric(env, cacheKey);
+      if (cached) return cached;
+    }
+    return await fetchFreshFundMetric(env, code, cachePolicy);
+  });
+
+  return json({
+    items,
+    successCount: items.filter((item) => item && item.ok !== false).length,
+    failureCount: items.filter((item) => !item || item.ok === false).length,
+    generatedAt: new Date().toISOString(),
+    tradingSession,
+    cachePolicy
+  });
 }
 
 async function handleKline(env, rawSymbol, params) {

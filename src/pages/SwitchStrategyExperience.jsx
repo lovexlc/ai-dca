@@ -5,7 +5,6 @@ import { Card, Pill, SectionHeading, cx, primaryButtonClass, secondaryButtonClas
 import { readLedgerState, persistLedgerState } from '../app/holdingsLedger.js';
 import { aggregateByCode, buildTransactionId, detectFundKind, normalizeTransaction } from '../app/holdingsLedgerCore.js';
 import { getNavSnapshots } from '../app/navService.js';
-import { fetchXueqiuFundData } from '../app/marketsApi.js';
 import {
   loadSwitchConfigFromWorker,
   loadSwitchSnapshotFromWorker,
@@ -21,9 +20,9 @@ import {
 //   溢价 % = (当前成交价 − 最新单位净值) / 最新单位净值
 //
 // 数据源：
-// - 雪球实时 quote：current / unit_nav / iopv / premium_rate
+// - markets Worker fund metrics：price / latestNav / iopv / premiumPercent
 // - data/all_nasdq.json：候选基金 universe（纳指 100 场内 ETF 全集，与持仓解耦）
-// - 回退源：worker 的 central NAV / data/<code>/daily-sina.json
+// - 回退源：由 Worker 在统一接口内处理
 //
 // 触发底层仍然是“两只之间的溢价差”，但 UI 只告诉用户「哪两只之间出现机会」，
 // 不在实时面板上展示具体数值，过价让用户去基金软件官方渠道查看。
@@ -234,115 +233,6 @@ function limitSortValue(limit) {
   return null;
 }
 
-function dailySinaPath(code, inPagesDir) {
-  return inPagesDir ? `../data/${code}/daily-sina.json` : `./data/${code}/daily-sina.json`;
-}
-
-function getXueqiuQuoteFromFundData(fundData) {
-  return fundData?.results?.quote_detail?.raw?.data?.quote || fundData?.results?.quote_detail?.summary?.quote || null;
-}
-
-async function loadXueqiuFundDataInBatch(codes, { concurrency = 3, refresh = true } = {}) {
-  const quoteByCode = {};
-  const navByCode = {};
-  const queue = [...codes];
-
-  const worker = async () => {
-    while (queue.length > 0) {
-      const code = queue.shift();
-      try {
-        const fundData = await fetchXueqiuFundData(code, { refresh, raw: true });
-        const quote = getXueqiuQuoteFromFundData(fundData);
-        if (!quote) continue;
-        const normalizedCode = String(quote.code || code || '').trim();
-        const current = Number(quote.current);
-        const unitNav = Number(quote.unit_nav);
-        const iopv = Number(quote.iopv);
-        const premiumRate = Number(quote.premium_rate);
-        const navDate = String(quote.nav_date || '').trim();
-        const asOf = Number(quote.timestamp || quote.time || Date.now());
-
-        if (normalizedCode && Number.isFinite(current) && current > 0) {
-          quoteByCode[normalizedCode] = {
-            code: normalizedCode,
-            close: current,
-            date: Number.isFinite(asOf) ? new Date(asOf).toISOString() : ''
-          };
-        }
-        if (normalizedCode && Number.isFinite(unitNav) && unitNav > 0) {
-          navByCode[normalizedCode] = {
-            code: normalizedCode,
-            name: String(quote.name || '').trim(),
-            latestNav: unitNav,
-            latestNavDate: navDate,
-            previousNav: null,
-            previousNavDate: '',
-            source: 'xueqiu-quote',
-            iopv: Number.isFinite(iopv) && iopv > 0 ? iopv : null,
-            premiumPercent: Number.isFinite(premiumRate) ? premiumRate : null
-          };
-        }
-      } catch (_error) {
-        // fallback later
-      }
-    }
-  };
-
-  const workers = [];
-  for (let i = 0; i < Math.min(concurrency, queue.length); i += 1) {
-    workers.push(worker());
-  }
-  await Promise.all(workers);
-  return { quoteByCode, navByCode };
-}
-
-async function loadEtfLatestPrice(code, { inPagesDir = false } = {}) {
-  if (!/^\d{6}$/.test(String(code || '').trim())) return null;
-  const response = await fetch(dailySinaPath(code, inPagesDir), {
-    headers: { Accept: 'application/json' },
-    cache: 'no-store'
-  });
-  if (response.status === 404) return null;
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const payload = await response.json();
-  const bars = Array.isArray(payload?.bars) ? payload.bars : [];
-  if (!bars.length) return null;
-  const last = bars[bars.length - 1];
-  const close = Number(last?.close);
-  if (!Number.isFinite(close) || close <= 0) return null;
-  return {
-    code: String(payload?.fund_code || code),
-    name: payload?.fund_name || '',
-    close,
-    date: last?.date || ''
-  };
-}
-
-// 批量加载非持仓候选的现价：优化后从各个 daily-sina.json 并行加载（限制并发数）
-async function loadEtfLatestPricesInBatch(codes, { inPagesDir = false, concurrency = 3 } = {}) {
-  const priceByCode = {};
-  const queue = [...codes];
-  const pending = [];
-
-  const worker = async () => {
-    while (queue.length > 0) {
-      const code = queue.shift();
-      try {
-        const result = await loadEtfLatestPrice(code, { inPagesDir });
-        if (result) priceByCode[result.code] = result;
-      } catch (_e) {
-        // 静默跳过失败的单个请求
-      }
-    }
-  };
-
-  for (let i = 0; i < Math.min(concurrency, codes.length); i += 1) {
-    pending.push(worker());
-  }
-  await Promise.all(pending);
-  return priceByCode;
-}
-
 export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false, initialView = 'opportunity', hideViewTabs = false } = {}) {
   const [prefs, setPrefs] = useState(readPrefs);
   // 「记录此次切换」快捷入口的 Modal 表单状态。
@@ -364,7 +254,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   // 候选基金 universe = data/all_nasdq.json 中的纳指 100 场内 ETF 全集，并非仅限于持仓。
   const [candidateUniverse, setCandidateUniverse] = useState([]);
   const [universeError, setUniverseError] = useState('');
-  // 实时行情：优先雪球 quote 的 current / unit_nav / premium_rate，必要时再回退历史源。
+  // 实时行情：统一来自 markets Worker fund metrics。
   const [priceState, setPriceState] = useState({ priceByCode: {} });
 
   // ---- 「自动监控」worker 驱动的场内切换信号 ----
@@ -855,7 +745,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     });
   }, [exchangeFunds, benchmarkCodesJoined, premiumClassKey]);
 
-  // 拉取所有候选 ETF 的雪球实时 quote（候选池来自 data/all_nasdq.json，不仅限于持仓）。
+  // 拉取所有候选 ETF 的 Worker 统一指标（候选池来自 data/all_nasdq.json，不仅限于持仓）。
   const loadNav = useCallback(async () => {
     setNavState((prev) => ({ ...prev, loading: true, error: '' }));
     try {
@@ -867,32 +757,30 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       }
       const navByCode = {};
       const priceByCode = {};
-      const xueqiuResult = await loadXueqiuFundDataInBatch(codes, { concurrency: 3, refresh: true });
-      Object.assign(navByCode, xueqiuResult.navByCode);
-      Object.assign(priceByCode, xueqiuResult.quoteByCode);
-
-      const missingNavCodes = codes.filter((code) => !navByCode[code]);
-      if (missingNavCodes.length) {
-        const result = await getNavSnapshots(missingNavCodes);
-        for (const item of result?.items || []) {
-          if (!item?.code) continue;
-          if (!item.ok || !(item.latestNav > 0)) continue;
-          navByCode[item.code] = {
+      const result = await getNavSnapshots(codes, { forceRefresh: true });
+      for (const item of result?.items || []) {
+        if (!item?.code || item.ok === false) continue;
+        const price = Number(item.price ?? item.currentPrice ?? item.close);
+        const latestNav = Number(item.latestNav);
+        navByCode[item.code] = {
+          code: item.code,
+          name: item.name || '',
+          latestNav: Number.isFinite(latestNav) && latestNav > 0 ? latestNav : null,
+          latestNavDate: item.latestNavDate || item.navDate || '',
+          previousNav: Number.isFinite(item.previousNav) && item.previousNav > 0 ? item.previousNav : null,
+          previousNavDate: item.previousNavDate || '',
+          source: item.source || 'fund-metrics',
+          iopv: Number.isFinite(Number(item.iopv)) && Number(item.iopv) > 0 ? Number(item.iopv) : null,
+          navBase: Number.isFinite(Number(item.navBase)) && Number(item.navBase) > 0 ? Number(item.navBase) : null,
+          premiumPercent: Number.isFinite(Number(item.premiumPercent)) ? Number(item.premiumPercent) : null
+        };
+        if (Number.isFinite(price) && price > 0) {
+          priceByCode[item.code] = {
             code: item.code,
-            name: item.name || '',
-            latestNav: item.latestNav,
-            latestNavDate: item.latestNavDate || '',
-            previousNav: Number.isFinite(item.previousNav) && item.previousNav > 0 ? item.previousNav : null,
-            previousNavDate: item.previousNavDate || '',
-            source: item.source || 'nav-snapshot'
+            close: price,
+            date: item.asOf || item.updatedAt || result.generatedAt || ''
           };
         }
-      }
-
-      const missingPriceCodes = codes.filter((code) => !priceByCode[code]);
-      if (missingPriceCodes.length) {
-        const fallbackPriceByCode = await loadEtfLatestPricesInBatch(missingPriceCodes, { inPagesDir, concurrency: 3 });
-        Object.assign(priceByCode, fallbackPriceByCode);
       }
 
       setNavState({
@@ -909,21 +797,18 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         error: error instanceof Error ? error.message : '实时数据加载失败'
       }));
     }
-  }, [candidateUniverse, inPagesDir]);
+  }, [candidateUniverse]);
 
   useEffect(() => { loadNav(); }, [loadNav, refreshTick]);
 
-  // 合并：(雪球当前价 - 雪球单位净值) / 雪球单位净值。
+  // 合并 Worker 返回的价格、净值与溢价；浏览器不再重复计算溢价。
   const fundsWithPremium = useMemo(() => {
     return candidateUniverse.map((u) => {
       const navEntry = navState.navByCode?.[u.code] || null;
       const priceEntry = priceState.priceByCode?.[u.code] || null;
       const px = Number(priceEntry?.close);
       const nav = Number(navEntry?.latestNav);
-      let premiumPct = null;
-      if (Number.isFinite(px) && px > 0 && Number.isFinite(nav) && nav > 0) {
-        premiumPct = ((px - nav) / nav) * 100;
-      }
+      const premiumPct = Number.isFinite(Number(navEntry?.premiumPercent)) ? Number(navEntry.premiumPercent) : null;
       return {
         code: u.code,
         name: navEntry?.name || u.name || '',
@@ -933,7 +818,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         latestPriceDate: priceEntry?.date || '',
         navLatest: nav > 0 ? nav : null,
         navLatestDate: navEntry?.latestNavDate || '',
-        premiumRate: navEntry?.premiumPercent ?? null,
+        premiumRate: premiumPct,
         premiumPct
       };
     });
@@ -1029,7 +914,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     if (!topBench || !minFund) {
       return {
         ready: false,
-        message: navState.loading ? '正在加载雪球实时数据…' : (navState.error || '实时数据未就绪。')
+        message: navState.loading ? '正在加载实时基金指标…' : (navState.error || '实时数据未就绪。')
       };
     }
     const benchPrem = topBench.premiumPct;

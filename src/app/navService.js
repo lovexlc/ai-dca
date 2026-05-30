@@ -1,12 +1,18 @@
 import { getHoldingCodeList, isHoldingCode, round } from './holdingsCore.js';
 import { fetchNavHistory, fetchNavHistoryBatch } from './navHistoryClient.js';
-import { fetchXueqiuFundData } from './marketsApi.js';
+import { fetchFundMetrics } from './marketsApi.js';
 
-const HOLDINGS_NAV_ENDPOINT = '/api/holdings/nav';
+const FUND_METRICS_ENDPOINT = '/api/markets/fund-metrics';
 const latestInflight = new Map();
 
 function normalizeCodes(codes = []) {
   return getHoldingCodeList((Array.isArray(codes) ? codes : [codes]).map((code) => ({ code })));
+}
+
+function roundNullable(value, precision = 4) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return round(n, precision);
 }
 
 function normalizeSnapshotItem(item = {}) {
@@ -15,7 +21,11 @@ function normalizeSnapshotItem(item = {}) {
   const latestNav = round(Number(item?.latestNav) || 0, 4);
   const previousNav = round(Number(item?.previousNav) || 0, 4);
   const source = String(item?.source || item?.priceSource || item?.cacheSource || '').trim();
-  const valueType = source === 'exchange-quote' || source === 'sina-close-price' || source === 'eastmoney-exchange-quote' ? 'price' : 'nav';
+  const price = roundNullable(item?.price ?? item?.currentPrice ?? item?.close, 4);
+  const iopv = roundNullable(item?.iopv, 4);
+  const navBase = roundNullable(item?.navBase, 4);
+  const premiumPercent = roundNullable(item?.premiumPercent, 4);
+  const valueType = price > 0 ? 'fund-metrics' : 'nav';
   return {
     ok: item?.ok !== false,
     code,
@@ -30,6 +40,19 @@ function normalizeSnapshotItem(item = {}) {
     cacheSource: String(item?.cacheSource || '').trim(),
     cacheKey: String(item?.cacheKey || '').trim(),
     source,
+    price,
+    currentPrice: price,
+    close: price,
+    previousClose: roundNullable(item?.previousClose, 4),
+    change: roundNullable(item?.change, 4),
+    changePercent: roundNullable(item?.changePercent, 4),
+    iopv,
+    navBase,
+    premiumPercent,
+    marketState: String(item?.marketState || '').trim(),
+    asOf: String(item?.asOf || item?.updatedAt || '').trim(),
+    fallback: String(item?.fallback || '').trim(),
+    cachePolicy: String(item?.cachePolicy || '').trim(),
     valueType
   };
 }
@@ -45,10 +68,6 @@ function normalizeCacheMeta(cache = null) {
   };
 }
 
-function extractXueqiuQuote(payload = {}) {
-  return payload?.results?.quote_detail?.raw?.data?.quote || payload?.results?.quote_detail?.summary?.quote || null;
-}
-
 function normalizeSnapshotPayload(payload = {}) {
   const items = (Array.isArray(payload?.items) ? payload.items : [])
     .map(normalizeSnapshotItem)
@@ -59,32 +78,14 @@ function normalizeSnapshotPayload(payload = {}) {
     successCount: Math.max(Number(payload?.successCount) || items.filter((item) => item.ok !== false).length, 0),
     failureCount: Math.max(Number(payload?.failureCount) || items.filter((item) => item.ok === false).length, 0),
     generatedAt: String(payload?.generatedAt || '').trim(),
-    expiresAt: String(payload?.expiresAt || '').trim()
+    expiresAt: String(payload?.expiresAt || '').trim(),
+    tradingSession: payload?.tradingSession === true,
+    cachePolicy: String(payload?.cachePolicy || '').trim()
   };
 }
 
 async function fetchSnapshotBatch(codes = [], { forceRefresh = false } = {}) {
-  const params = forceRefresh ? '?refresh=1' : '';
-  const response = await fetch(`${HOLDINGS_NAV_ENDPOINT}${params}`, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ codes })
-  });
-  const rawText = await response.text();
-  let payload = {};
-  if (rawText) {
-    try {
-      payload = JSON.parse(rawText);
-    } catch (_error) {
-      payload = { error: response.ok ? '净值服务返回了非标准响应。' : rawText };
-    }
-  }
-  if (!response.ok) {
-    throw new Error(payload.error || `净值服务请求失败：状态 ${response.status}`);
-  }
+  const payload = await fetchFundMetrics(codes, { refresh: forceRefresh });
   return normalizeSnapshotPayload(payload);
 }
 
@@ -147,52 +148,24 @@ export async function getNavHistoryBatch({ forceRefresh = false, ...options } = 
 }
 
 export async function getCnEtfPremiumSnapshot(code, { price, qqqChangePercent, forceRefresh = false } = {}) {
-  const priceValue = Number(price);
-  if (!Number.isFinite(priceValue) || priceValue <= 0) throw new Error('缺少当前价格');
-  if (/^\d{6}$/.test(String(code || '').trim())) {
-    try {
-      const fundData = await fetchXueqiuFundData(code, { refresh: forceRefresh, raw: true });
-      const quote = extractXueqiuQuote(fundData);
-      const iopv = round(Number(quote?.iopv) || 0, 4);
-      const latestNav = round(Number(quote?.unit_nav) || 0, 4);
-      const premiumPercent = round(Number(quote?.premium_rate) || 0, 4);
-      if (Number.isFinite(iopv) && iopv > 0) {
-        return {
-          symbol: String(code || '').trim(),
-          price: priceValue,
-          baseNav: Number.isFinite(latestNav) && latestNav > 0 ? latestNav : iopv,
-          navDate: String(quote?.nav_date || '').trim(),
-          qqqChangePercent: Number.isFinite(Number(qqqChangePercent)) ? Number(qqqChangePercent) : null,
-          iopv,
-          premiumPercent: Number.isFinite(premiumPercent) && quote?.premium_rate !== undefined
-            ? premiumPercent
-            : ((priceValue - iopv) / iopv) * 100,
-          updatedAt: new Date().toISOString(),
-          source: 'xueqiu-quote',
-          cache: null
-        };
-      }
-    } catch (_error) {
-      // fallback to snapshot
-    }
-  }
-
   const snapshot = await getNavSnapshot(code, { forceRefresh });
-  const baseNav = Number(snapshot?.latestNav);
-  if (!Number.isFinite(baseNav) || baseNav <= 0) throw new Error('缺少上一工作日净值');
-  const iopv = baseNav;
+  const priceValue = Number(snapshot?.price ?? snapshot?.currentPrice ?? price);
+  const baseNav = Number(snapshot?.navBase ?? snapshot?.iopv ?? snapshot?.latestNav);
+  if (!Number.isFinite(priceValue) || priceValue <= 0) throw new Error('缺少当前价格');
+  if (!Number.isFinite(baseNav) || baseNav <= 0) throw new Error('缺少净值基准');
   return {
     symbol: String(code || '').trim(),
     price: priceValue,
     baseNav,
-    navDate: snapshot?.latestNavDate || '',
+    navDate: snapshot?.navDate || snapshot?.latestNavDate || '',
     qqqChangePercent: Number.isFinite(Number(qqqChangePercent)) ? Number(qqqChangePercent) : null,
-    iopv,
-    premiumPercent: iopv > 0 ? ((priceValue - iopv) / iopv) * 100 : null,
-    updatedAt: new Date().toISOString(),
+    iopv: Number(snapshot?.iopv) || baseNav,
+    premiumPercent: Number.isFinite(Number(snapshot?.premiumPercent)) ? Number(snapshot.premiumPercent) : null,
+    updatedAt: snapshot?.asOf || new Date().toISOString(),
+    source: snapshot?.source || '',
     cache: snapshot ? {
-      hit: snapshot.cacheHit === true,
-      source: snapshot.cacheSource || snapshot.source || '',
+      hit: snapshot.cached === true || snapshot.cacheHit === true,
+      source: snapshot.cachePolicy || snapshot.cacheSource || snapshot.source || '',
       key: snapshot.cacheKey || ''
     } : null
   };
@@ -203,7 +176,7 @@ export function clearNavServiceMemoryCache() {
 }
 
 export const __internals = {
-  HOLDINGS_NAV_ENDPOINT,
+  FUND_METRICS_ENDPOINT,
   normalizeCodes,
   normalizeSnapshotItem,
   normalizeSnapshotPayload

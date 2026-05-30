@@ -6,19 +6,30 @@ This file defines the default execution flow for agents working in this reposito
 
 When the user gives a new requirement, follow this sequence by default:
 
-1. Start in plan mode and confirm the requirement with the user first.
-2. Use Stitch to produce the page design or interaction design before coding.
-3. Wait for the user's confirmation on the Stitch design.
-4. After the design is confirmed, move directly into code implementation without asking for another confirmation.
-5. After implementation, use agent-browser to verify the result in the browser.
-6. If agent-browser is unavailable, use the closest available browser automation or browser testing fallback and continue verification.
-7. After verification passes, commit and push directly without asking the user for an extra confirmation.
+1. Start in plan mode for every new request: state the goal, list key steps, identify affected areas and risks, then begin execution.
+2. If the plan has unclear points or requires a decision, discuss it with the user first using ask-survey when available, or a direct question when ask-survey is unavailable.
+3. For multi-step, multi-file, cross-module, or risky work, write the plan to `docs/<task>_plan.md` before implementation. Follow the location convention used by files such as `docs/income-dashboard-plan.md`.
+4. The plan file must include the goal, a step checklist with statuses (`todo` / `in_progress` / `done`), key decisions, open confirmations, deliverables, and verification records.
+5. Update the plan file immediately after each completed step: mark the status, add actual output, and append or split steps when the work changes.
+6. Use Stitch to produce the page design or interaction design before coding when the requirement is product, page, or UI related.
+7. Wait for the user's confirmation on the Stitch design.
+8. After the design is confirmed, move directly into code implementation without asking for another confirmation.
+9. After implementation, verify the result according to the frontend/backend verification rules below.
+10. After verification passes, commit and push directly without asking the user for an extra confirmation.
 
 ## Scope Notes
 
 - This workflow is the default for product and page-related requirements in this repository.
 - If a requirement is purely backend, data, or infrastructure work and Stitch is not applicable, explain that briefly during the planning step and continue with the rest of the flow.
+- Exception: simple answers, one-off information lookup, or one-line-level small edits may be handled directly without creating a plan file.
 - If a higher-priority system, developer, or environment rule conflicts with this file, follow the higher-priority rule and then continue as close to this workflow as possible.
+
+## Verification Requirements
+
+- **Frontend changes**: Any change involving pages, components, styles, interaction logic, UI routing, or other frontend layers must be checked in a real browser with the cf-browser tool. Navigate with `goto`, then use `wait_for`, `screenshot`, `get_text`, or `get_markdown` to verify rendering. For interactive flows, reproduce them with `click`, `type_text`, `hover`, `scroll`, or `press_key`, then capture evidence with `screenshot`. For mobile validation, call `set_viewport` first, for example `width:390,height:844,isMobile:true,hasTouch:true`. Call `close_session` after verification.
+- **Backend changes**: Any change involving services, Workers, API routes, or data-processing logic must be smoke-tested with `curl` or an equivalent script against the affected interface. Cover a normal request plus at least one error path, such as bad input, missing permission, or a boundary value. Record HTTP status codes and key response fields.
+- Before production release, use the deployment environment such as GitHub Actions preview or staging when available. Prefer local smoke tests for logic that can be reproduced locally.
+- Final summaries for frontend or backend changes must include verification evidence: screenshots, key rendered text, API responses, or HTTP status codes. Do not report only "verified".
 
 ## Mobile UI Guardrails
 
@@ -54,7 +65,7 @@ When the user gives a new requirement, follow this sequence by default:
   - Cloudflare 凭证存在 repo Actions secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`，不依赖本机 `.env.local`
 - 修改 `workers/*` 的标准链路：`git commit` → `git push origin main` → 等 GitHub Actions run 跑出绿勾 → 取 Worker `Current Version ID`。
 - `apply_patch` 成功 ≠ 已 commit；已 commit ≠ 已 push；已 push ≠ Actions 跑过；Actions 绿了 ≠ 用户能搜到（raw / CDN 缓存）。
-- 回报时必须附上四件证据：
+- Worker 改动的回报必须附上四件证据：
   - 本地路径 + 行号
   - GitHub commit SHA + 以 SHA 固定的 raw 链接（不要用 `main` 分支 raw，CDN 会缓存）
   - GitHub Actions run URL（`https://github.com/<owner>/<repo>/actions/runs/<id>`）+ 状态 success

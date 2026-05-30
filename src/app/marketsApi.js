@@ -106,6 +106,16 @@ export async function fetchXueqiuFundData(symbol, { refresh = false, raw = true 
   return getJson('/xueqiu-fund-data/' + encodeURIComponent(symbol) + q);
 }
 
+export async function fetchFundMetrics(codes, { refresh = false, signal } = {}) {
+  const list = (Array.isArray(codes) ? codes : [codes])
+    .map((code) => String(code || '').trim())
+    .filter(Boolean);
+  if (!list.length) {
+    return { items: [], successCount: 0, failureCount: 0, generatedAt: '', tradingSession: false, cachePolicy: '' };
+  }
+  return postJson('/fund-metrics' + (refresh ? '?refresh=1' : ''), { codes: list, refresh }, { signal });
+}
+
 export async function fetchFundFees(codes, { refresh = false, signal } = {}) {
   const list = Array.isArray(codes) ? codes.map((code) => String(code || '').trim()).filter(Boolean) : [];
   if (!list.length) return { items: [], successCount: 0, failureCount: 0 };

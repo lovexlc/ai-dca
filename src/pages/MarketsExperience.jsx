@@ -1336,53 +1336,8 @@ function getLatestFinanceRow(fundData, key) {
   return Array.isArray(list) && list.length ? list[0] : null;
 }
 
-function isCnMarketOpenNow(date = new Date()) {
-  try {
-    const parts = new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Asia/Shanghai',
-      hour12: false,
-      weekday: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).formatToParts(date);
-    const get = (type) => parts.find((p) => p.type === type)?.value;
-    const weekday = String(get('weekday') || '').toLowerCase();
-    if (weekday === 'sat' || weekday === 'sun') return false;
-    const hour = Number(get('hour'));
-    const minute = Number(get('minute'));
-    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return false;
-    const hm = hour * 60 + minute;
-    const morningOpen = 9 * 60 + 30;
-    const morningClose = 11 * 60 + 30;
-    const afternoonOpen = 13 * 60;
-    const afternoonClose = 15 * 60;
-    return (hm >= morningOpen && hm <= morningClose) || (hm >= afternoonOpen && hm <= afternoonClose);
-  } catch (_error) {
-    return false;
-  }
-}
 function detailValueRow(label, value, className = '') {
   return { label, value, className };
-}
-function buildXueqiuPremiumSnapshotFromQuote(row, symbol) {
-  const price = Number(row?.price);
-  const latestNav = Number(row?.latestNav ?? row?.unitNav);
-  const iopv = Number(row?.iopv);
-  const premiumPercent = Number(row?.premiumPercent ?? row?.premium_rate);
-  if (!Number.isFinite(price) || price <= 0) return null;
-  if (!Number.isFinite(latestNav) || latestNav <= 0) return null;
-  const effectiveIopv = Number.isFinite(iopv) && iopv > 0 ? iopv : latestNav;
-  return {
-    symbol: String(symbol || row?.symbol || '').trim(),
-    price,
-    baseNav: latestNav,
-    latestNav,
-    navDate: row?.latestNavDate || row?.navDate || '',
-    iopv: effectiveIopv,
-    premiumPercent: Number.isFinite(premiumPercent) ? premiumPercent : ((price - effectiveIopv) / effectiveIopv) * 100,
-    updatedAt: row?.lastUpdated || row?.asOf || new Date().toISOString(),
-    cache: { hit: false, source: 'xueqiu-quote', key: '' }
-  };
 }
 function formatEps(n) {
   if (n == null || !Number.isFinite(Number(n))) return '-';
@@ -4917,32 +4872,10 @@ export function MarketsExperience() {
       }
       return;
     }
-    const price = Number(selectedQuote?.price);
-    if (!symbol || !Number.isFinite(price) || price <= 0) return;
-
-    // 1 天溢价：优先使用雪球实时返回的溢价率（premium_rate）。
-    // 历史仍按原有公式：在 buildCnFundParamCandles() 内用净值与 candle 价格计算。
-    if (chartRange === '1d') {
-      const xueqiuQuote = getXueqiuQuote(xueqiuFundDataMap[selectedSymbol]);
-      const mergedRow = xueqiuQuote ? {
-        ...selectedQuote,
-        premium_rate: xueqiuQuote?.premium_rate,
-        iopv: xueqiuQuote?.iopv,
-        unitNav: xueqiuQuote?.unit_nav,
-        latestNavDate: xueqiuQuote?.nav_date,
-        lastUpdated: xueqiuQuote?.updated_at || xueqiuQuote?.time,
-      } : selectedQuote;
-      const xueqiuPremium1d = buildXueqiuPremiumSnapshotFromQuote(mergedRow, symbol);
-      if (xueqiuPremium1d) {
-        setPremiumMap((prev) => ({
-          ...prev,
-          [symbol]: { loading: false, error: '', data: xueqiuPremium1d }
-        }));
-        return;
-      }
-    }
+    if (!symbol) return;
     const cachedState = premiumMap[symbol];
     const cachedPremium = cachedState?.data;
+    const price = Number(selectedQuote?.price);
     if (cachedPremium && Math.abs(Number(cachedPremium.price) - price) < 0.000001) {
       if (cachedState?.loading && !premiumInflightRef.current.has(symbol)) {
         setPremiumMap((prev) => ({
@@ -4950,14 +4883,6 @@ export function MarketsExperience() {
           [symbol]: { ...prev[symbol], loading: false }
         }));
       }
-      return;
-    }
-    const xueqiuPremium = buildXueqiuPremiumSnapshotFromQuote(selectedQuote, symbol);
-    if (xueqiuPremium) {
-      setPremiumMap((prev) => ({
-        ...prev,
-        [symbol]: { loading: false, error: '', data: xueqiuPremium }
-      }));
       return;
     }
     if (premiumInflightRef.current.has(symbol)) return;
@@ -4992,32 +4917,7 @@ export function MarketsExperience() {
       }
     })();
     return () => { cancelled = true; };
-  }, [market, selectedSymbol, chartRange, selectedQuote?.price, selectedQuote?.latestNav, selectedQuote?.iopv, selectedQuote?.premiumPercent, selectedQuote?.latestNavDate, xueqiuFundDataMap]);
-
-  // 开盘盘中：1 天溢价视图轮询刷新雪球溢价率。
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    if (market !== 'cn' || !selectedSymbol) return undefined;
-    if (chartRange !== '1d') return undefined;
-    if (!isCnMarketOpenNow()) return undefined;
-    const code = normalizeCnFundCode(selectedSymbol);
-    if (!/^\d{6}$/.test(code) || NASDAQ_OTC_FUND_MAP[code]) return undefined;
-    let cancelled = false;
-    const timer = window.setInterval(async () => {
-      if (cancelled) return;
-      try {
-        const r = await fetchXueqiuFundData(selectedSymbol, { raw: true, refresh: true });
-        if (cancelled) return;
-        setXueqiuFundDataMap((prev) => ({ ...prev, [selectedSymbol]: r }));
-      } catch (_error) {
-        // best-effort: ignore refresh errors
-      }
-    }, 5000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [market, selectedSymbol, chartRange]);
+  }, [market, selectedSymbol, chartRange, selectedQuote?.price]);
 
   useEffect(() => {
     if (market !== 'cn' || !selectedSymbol) return;
