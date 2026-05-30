@@ -11,6 +11,7 @@ import { cx } from '../../components/experience-ui.jsx';
 import { formatCurrency } from '../accumulation.js';
 import { fetchNavHistoryBatch } from '../navHistoryClient.js';
 import { singleDayFundPnl } from '../portfolioSeries.js';
+import { kindNameByCode, mergeSnapshotNavForDate } from './dailyFundBreakdownData.js';
 
 const TONE_UP = 'text-rose-600';
 const TONE_DOWN = 'text-emerald-600';
@@ -60,6 +61,8 @@ export function DailyFundBreakdown({ ledger, selectedDate, className = '' }) {
   );
   const codes = useMemo(() => uniqCodes(transactions), [transactions]);
   const nameMap = useMemo(() => nameByCode(transactions), [transactions]);
+  const txMetaByCode = useMemo(() => kindNameByCode(transactions), [transactions]);
+  const snapshotsByCode = useMemo(() => ledger?.snapshotsByCode || {}, [ledger]);
 
   const [state, setState] = useState({ status: 'idle', rows: [], stale: false, error: null });
 
@@ -80,7 +83,8 @@ export function DailyFundBreakdown({ ledger, selectedDate, className = '' }) {
           to: selectedDate
         });
         if (cancelled) return;
-        const rows = singleDayFundPnl({ tx: transactions, navByCode, date: selectedDate });
+        const mergedNavByCode = mergeSnapshotNavForDate(navByCode, snapshotsByCode, txMetaByCode, selectedDate);
+        const rows = singleDayFundPnl({ tx: transactions, navByCode: mergedNavByCode, date: selectedDate });
         setState({ status: 'ready', rows, stale: anyStale, error: null });
       } catch (err) {
         if (cancelled) return;
@@ -90,7 +94,7 @@ export function DailyFundBreakdown({ ledger, selectedDate, className = '' }) {
     return () => {
       cancelled = true;
     };
-  }, [selectedDate, codes, transactions]);
+  }, [selectedDate, codes, transactions, snapshotsByCode, txMetaByCode]);
 
   const isLoading = state.status === 'loading';
   const isError = state.status === 'error';
