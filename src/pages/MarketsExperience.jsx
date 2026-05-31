@@ -850,24 +850,31 @@ function ListExpandButton({ expanded = false, onClick, className = '' }) {
   );
 }
 
-function MarketListTable({ rows = [], klineMap = {}, selectedSymbol = '', onSelect, compact = false, stickyHeader = false }) {
+function MarketListTable({ rows = [], klineMap = {}, selectedSymbol = '', onSelect, compact = false, stickyHeader = false, stickyFirstColumn = false }) {
   if (!rows.length) {
     return <p className="px-2 py-2 text-sm text-[#5f6368]">未配置自选。</p>;
   }
+  const cellPad = compact ? 'px-2 py-2' : 'px-3 py-2';
+  const stickyHeadCell = stickyFirstColumn
+    ? 'sticky left-0 z-20 border-r border-[#e8eaed] bg-[#f8fafd] shadow-[8px_0_12px_-12px_rgba(60,64,67,0.45)]'
+    : '';
+  const stickyBodyCell = (selected) => stickyFirstColumn
+    ? cx('sticky left-0 z-10 border-r border-[#e8eaed] shadow-[8px_0_12px_-12px_rgba(60,64,67,0.35)]', selected ? 'bg-[#e8f0fe]' : 'bg-white group-hover:bg-[#f1f3f4]')
+    : '';
   return (
     <div className={cx('overflow-x-auto', compact ? 'rounded-xl border border-[#e8eaed] bg-white' : 'rounded-2xl border border-[#e8eaed] bg-white shadow-sm')}>
-      <table className={cx('w-full min-w-[980px] border-separate border-spacing-0 text-sm', compact && 'min-w-[520px] text-[12px]')}>
+      <table className={cx('w-full min-w-[980px] border-separate border-spacing-0 text-sm', compact && 'min-w-[900px] text-[12px]')}>
         <thead className={cx('bg-[#f8fafd] text-[11px] font-semibold text-[#5f6368]', stickyHeader && 'sticky top-0 z-10')}>
           <tr>
-            <th className={cx('px-3 py-2 text-left', compact && 'px-2')}>代码</th>
-            <th className={cx('px-3 py-2 text-left', compact && 'px-2')}>名称</th>
-            <th className={cx('px-3 py-2 text-right', compact && 'px-2')}>最新价</th>
-            <th className={cx('px-3 py-2 text-right', compact && 'px-2')}>涨跌幅</th>
-            <th className={cx('px-3 py-2 text-right', compact && 'px-2')}>溢价</th>
-            {!compact ? <th className="px-3 py-2 text-right">年内涨幅</th> : null}
-            {!compact ? <th className="px-3 py-2 text-right">总份额</th> : null}
-            {!compact ? <th className="px-3 py-2 text-right">费率</th> : null}
-            {!compact ? <th className="px-3 py-2 text-right">趋势</th> : null}
+            <th className={cx(cellPad, 'text-left', stickyHeadCell)}>代码</th>
+            <th className={cx(cellPad, 'text-left')}>名称</th>
+            <th className={cx(cellPad, 'text-right')}>最新价</th>
+            <th className={cx(cellPad, 'text-right')}>涨跌幅</th>
+            <th className={cx(cellPad, 'text-right')}>溢价</th>
+            <th className={cx(cellPad, 'text-right')}>年内涨幅</th>
+            <th className={cx(cellPad, 'text-right')}>总份额</th>
+            <th className={cx(cellPad, 'text-right')}>费率</th>
+            <th className={cx(cellPad, 'text-right')}>趋势</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-[#e8eaed]">
@@ -892,28 +899,26 @@ function MarketListTable({ rows = [], klineMap = {}, selectedSymbol = '', onSele
                   }
                 }}
                 className={cx(
-                  'cursor-pointer transition hover:bg-[#f1f3f4] focus:outline-none focus:ring-2 focus:ring-[#1a73e8]/30',
+                  'group cursor-pointer transition hover:bg-[#f1f3f4] focus:outline-none focus:ring-2 focus:ring-[#1a73e8]/30',
                   selected && 'bg-[#e8f0fe] hover:bg-[#e8f0fe]'
                 )}
               >
-                <td className={cx('whitespace-nowrap px-3 py-2 font-mono text-xs font-semibold text-[#1f1f1f]', compact && 'px-2')}>{displaySymbol}</td>
-                <td className={cx('min-w-[120px] px-3 py-2 text-[#1f1f1f]', compact && 'px-2')}>
+                <td className={cx(cellPad, 'w-[88px] whitespace-nowrap font-mono text-xs font-semibold text-[#1f1f1f]', stickyBodyCell(selected))}>{displaySymbol}</td>
+                <td className={cx(cellPad, 'min-w-[120px] text-[#1f1f1f]')}>
                   <div className="truncate font-medium">{row.name || displaySymbol}</div>
                   {row.meta ? <div className="truncate text-[10px] text-[#5f6368]">{row.meta}</div> : null}
                 </td>
-                <td className={cx('whitespace-nowrap px-3 py-2 text-right tabular-nums text-[#1f1f1f]', compact && 'px-2')}>{formatNumber(row.price)}</td>
-                <td className={cx('whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums', compact && 'px-2', flat ? 'text-[#5f6368]' : up ? 'text-[#a50e0e]' : 'text-[#137333]')}>{formatPercent(row.changePercent)}</td>
-                <td className={cx('whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums', compact && 'px-2', changeToneClass(premiumPct))}>{formatPremiumPercent(row)}</td>
-                {!compact ? <td className={cx('whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums', changeToneClass(Number(row.currentYearPercent)))}>{formatYearPercent(row)}</td> : null}
-                {!compact ? <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-[#1f1f1f]">{formatTotalShares(row.totalShares)}</td> : null}
-                {!compact ? <td className={cx('whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums', feeRateToneClass(row))}>{formatFeeRate(row)}</td> : null}
-                {!compact ? (
-                  <td className="px-3 py-2 text-right">
-                    <div className="inline-flex justify-end">
-                      <Sparkline points={klineMap[row.symbol]} width={86} height={26} tone={flat ? 'flat' : up ? 'up' : 'down'} showFill markLast />
-                    </div>
-                  </td>
-                ) : null}
+                <td className={cx(cellPad, 'whitespace-nowrap text-right tabular-nums text-[#1f1f1f]')}>{formatNumber(row.price)}</td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums', flat ? 'text-[#5f6368]' : up ? 'text-[#a50e0e]' : 'text-[#137333]')}>{formatPercent(row.changePercent)}</td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums', changeToneClass(premiumPct))}>{formatPremiumPercent(row)}</td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums', changeToneClass(Number(row.currentYearPercent)))}>{formatYearPercent(row)}</td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-right tabular-nums text-[#1f1f1f]')}>{formatTotalShares(row.totalShares)}</td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums', feeRateToneClass(row))}>{formatFeeRate(row)}</td>
+                <td className={cx(cellPad, 'text-right')}>
+                  <div className="inline-flex justify-end">
+                    <Sparkline points={klineMap[row.symbol]} width={compact ? 72 : 86} height={compact ? 24 : 26} tone={flat ? 'flat' : up ? 'up' : 'down'} showFill markLast />
+                  </div>
+                </td>
               </tr>
             );
           })}
@@ -1052,7 +1057,7 @@ function ExpandedMarketListOverlay({
           </div>
         ) : null}
         <div className="min-h-0 flex-1 overflow-auto rounded-2xl bg-[#f8fafd] p-3">
-          <MarketListTable rows={rows} klineMap={klineMap} selectedSymbol={selectedSymbol} onSelect={onSelect} stickyHeader />
+          <MarketListTable rows={rows} klineMap={klineMap} selectedSymbol={selectedSymbol} onSelect={onSelect} stickyHeader stickyFirstColumn />
         </div>
       </div>
     </div>
@@ -5047,21 +5052,14 @@ export function MarketsExperience() {
               {activeSidebarRows.length === 0 ? (
                 <p className="px-2 py-2 text-sm text-[#5f6368]">{activeSidebarEmptyText}</p>
               ) : (
-                <ul className="divide-y divide-[#e8eaed]">
-                  {activeSidebarRows.map((row) => (
-                    <MobileSidebarRow
-                      key={row.symbol}
-                      symbol={row.symbol}
-                      name={row.name}
-                      price={row.price}
-                      changePercent={row.changePercent}
-                      sparkPoints={klineMap[row.symbol]}
-                      meta={row.meta}
-                      selected={row.symbol === selectedSymbol}
-                      onSelect={() => handleSelectSymbol(row)}
-                    />
-                  ))}
-                </ul>
+                <MarketListTable
+                  rows={activeSidebarRows}
+                  klineMap={klineMap}
+                  selectedSymbol={selectedSymbol}
+                  onSelect={handleSelectSymbol}
+                  compact
+                  stickyFirstColumn
+                />
               )}
             </>
           )}
