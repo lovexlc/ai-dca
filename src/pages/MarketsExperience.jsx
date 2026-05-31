@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import '../styles/ai-chat.css';
-import { ArrowDown, ArrowUp, CalendarDays, ChevronDown, ChevronRight, ChevronUp, Edit3, ExternalLink, History, ListPlus, Loader2, Maximize2, Minimize2, Plus, RefreshCw, Search, Send, Sparkles, Star, Trash2, TrendingUp, Wallet, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, CalendarDays, ChevronDown, ChevronRight, ChevronUp, Edit3, ExternalLink, History, ListPlus, Loader2, Plus, RefreshCw, Search, Send, Sparkles, Star, Trash2, TrendingUp, Wallet, X } from 'lucide-react';
 import {
   Card,
   Pill,
@@ -42,6 +42,24 @@ import { buildStockAnalysisPrompt } from '../app/stockAnalysisPrompt.js';
 import { getCnEtfPremiumSnapshot, getNavHistory, getNavSnapshot, getNavSnapshots } from '../app/navService.js';
 import { Sparkline } from '../components/markets/Sparkline.jsx';
 import { MarketsChartCodeBlock } from '../components/markets/MarketsChartBlock.jsx';
+import { ExpandedMarketListOverlay } from './markets/ExpandedMarketListOverlay.jsx';
+import { ListExpandButton } from './markets/ListExpandButton.jsx';
+import { MarketListTable } from './markets/MarketListTable.jsx';
+import { WatchlistNameDialog, WatchlistSelector } from './markets/WatchlistControls.jsx';
+import {
+  MARKET_TABLE_METRICS,
+  changeToneClass,
+  formatLargeNumber,
+  formatNumber,
+  formatPercent,
+  formatPercentNoPlus,
+  formatSignedPercent,
+  formatSymbolDisplay,
+  normalizeCnFundCode,
+  rowMetric,
+  sortableMetric,
+  valueOrDash
+} from './markets/marketDisplayUtils.js';
 import { Area, Bar, CartesianGrid, ComposedChart, Customized, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import nasdaqOtcCatalog from '../../data/all_nasdq_otc.json';
 
@@ -52,48 +70,13 @@ const MARKETS = [
 
 const CN_ETF_PRESET_MAP = Object.fromEntries(CN_ETF_WATCHLIST_PRESETS.map((item) => [item.symbol, item]));
 const NASDAQ_OTC_FUND_MAP = Object.fromEntries(((nasdaqOtcCatalog && nasdaqOtcCatalog.funds) || []).map((item) => [String(item.code || '').trim(), item]));
-const CN_FUND_FEE_RATE_FALLBACK = {
-  '513100': 0.8,
-};
 const MARKETS_PENDING_SYMBOL_KEY = 'markets:pendingSymbol';
-
-function formatNumber(value, fractionDigits = 2) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return '--';
-  return n.toLocaleString('zh-CN', { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
-}
-
-function formatPercent(value, fractionDigits = 2) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return '--';
-  const sign = n > 0 ? '+' : '';
-  return sign + n.toFixed(fractionDigits) + '%';
-}
-
-function formatSignedPercent(value, fractionDigits = 2) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return '--';
-  const sign = n > 0 ? '+' : '';
-  return sign + n.toFixed(fractionDigits) + '%';
-}
-
-function formatPercentNoPlus(value, fractionDigits = 2) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return '--';
-  return n.toFixed(fractionDigits) + '%';
-}
 
 function formatTime(value) {
   if (!value) return '';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleString('zh-CN', { hour12: false });
-}
-
-function formatSymbolDisplay(value) {
-  const raw = String(value || '').trim();
-  const match = /^(sh|sz|bj)(\d{6})$/i.exec(raw);
-  return match ? match[2] : raw;
 }
 
 function formatBrowserTitleForQuote(quote) {
@@ -109,14 +92,6 @@ function formatBrowserTitleForQuote(quote) {
     ? `${pct < 0 ? '▼' : pct > 0 ? '▲' : ''} ${Math.abs(pct).toFixed(2)}%`
     : '--';
   return `${symbol} ${priceText} (${pctText})`;
-}
-
-function normalizeCnFundCode(value) {
-  const raw = String(value || '').trim();
-  const prefixed = /^(sh|sz|bj)(\d{6})$/i.exec(raw);
-  if (prefixed) return prefixed[2];
-  const sixDigits = /(\d{6})/.exec(raw);
-  return sixDigits ? sixDigits[1] : '';
 }
 
 function resolveCnFundName(codeOrSymbol, fallback = '') {
@@ -189,113 +164,6 @@ function buildNavSnapshotItems(snapshot) {
     });
 }
 
-
-function formatLargeNumber(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return '--';
-  const abs = Math.abs(n);
-  if (abs >= 1e12) return (n / 1e12).toFixed(2) + 'T';
-  if (abs >= 1e9) return (n / 1e9).toFixed(2) + 'B';
-  if (abs >= 1e6) return (n / 1e6).toFixed(1) + 'M';
-  if (abs >= 1e4) return (n / 1e4).toFixed(1) + '万';
-  return n.toLocaleString('zh-CN');
-}
-
-function valueOrDash(value, digits = 2) {
-  const n = Number(value);
-  return Number.isFinite(n) ? formatNumber(n, digits) : '--';
-}
-
-function rowMetric(row, keys = []) {
-  for (const key of keys) {
-    const value = row && row[key];
-    if (value !== undefined && value !== null && value !== '') return value;
-  }
-  return null;
-}
-
-function normalizePremiumPercentValue(value, forceRate = false) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return null;
-  if (forceRate || Math.abs(n) <= 1) return n * 100;
-  return n;
-}
-
-function resolvePremiumPercent(row) {
-  if (!row) return null;
-  const explicitPercent = rowMetric(row, ['premiumPercent', 'premium_rate', 'premiumPct']);
-  if (explicitPercent !== null) return normalizePremiumPercentValue(explicitPercent, false);
-  const explicitRate = rowMetric(row, ['premiumRate', 'premium']);
-  if (explicitRate !== null) return normalizePremiumPercentValue(explicitRate, false);
-  const price = Number(rowMetric(row, ['price', 'regularMarketPrice', 'latestPrice']));
-  const nav = Number(rowMetric(row, ['nav', 'latestNav', 'iopv', 'baseNav', 'estimateNav']));
-  if (!Number.isFinite(price) || !Number.isFinite(nav) || nav <= 0) return null;
-  return ((price - nav) / nav) * 100;
-}
-
-function formatPremiumPercent(row) {
-  const pct = resolvePremiumPercent(row);
-  return Number.isFinite(Number(pct)) ? formatSignedPercent(pct) : '—';
-}
-
-function resolveFundFeeRate(row) {
-  if (!row) return null;
-  const cachedAnnualFeeRate = Number(row.fundFee?.annualFeeRate);
-  if (Number.isFinite(cachedAnnualFeeRate)) return cachedAnnualFeeRate;
-  const explicit = rowMetric(row, ['feeRate', 'expenseRatio', 'managementFeeRate', 'fundFeeRate', 'annualFeeRate']);
-  const n = Number(explicit);
-  if (Number.isFinite(n)) return Math.abs(n) < 0.05 ? n * 100 : n;
-  const code = normalizeCnFundCode(row.code || row.symbol);
-  const fallback = code ? CN_FUND_FEE_RATE_FALLBACK[code] : null;
-  return Number.isFinite(Number(fallback)) ? Number(fallback) : null;
-}
-
-function formatFeeRate(row) {
-  const rate = resolveFundFeeRate(row);
-  return Number.isFinite(Number(rate)) ? formatNumber(rate, 1) : '—';
-}
-
-function feeRateToneClass(row) {
-  const rate = resolveFundFeeRate(row);
-  const n = Number(rate);
-  if (!Number.isFinite(n)) return 'text-[#5f6368]';
-  if (n >= 1) return 'text-[#d93025]';
-  if (n >= 0.8) return 'text-[#f29900]';
-  return 'text-[#137333]';
-}
-
-function formatTotalShares(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) return '—';
-  if (n >= 100000000) return `${formatNumber(n / 100000000, 2)}亿`;
-  if (n >= 10000) return `${formatNumber(n / 10000, 2)}万`;
-  return formatNumber(n, 2);
-}
-
-function formatYearPercent(row) {
-  const pct = Number(rowMetric(row, ['currentYearPercent', 'ytdPercent', 'yearPercent']));
-  return Number.isFinite(pct) ? formatSignedPercent(pct) : '—';
-}
-
-function sortableMetric(row, key) {
-  if (key === 'symbol' || key === 'name') return String(row[key] || '').toLowerCase();
-  if (key === 'trend') return Number(row.changePercent) || 0;
-  const value = rowMetric(row, MARKET_TABLE_METRICS[key] || [key]);
-  const n = Number(value);
-  return Number.isFinite(n) ? n : -Infinity;
-}
-
-const MARKET_TABLE_METRICS = {
-  price: ['price', 'regularMarketPrice'],
-  changePercent: ['changePercent', 'regularMarketChangePercent'],
-  previousClose: ['previousClose', 'prevClose', 'regularMarketPreviousClose'],
-  open: ['open', 'regularMarketOpen'],
-  high: ['high', 'regularMarketDayHigh', 'dayHigh'],
-  low: ['low', 'regularMarketDayLow', 'dayLow'],
-  volume: ['volume', 'regularMarketVolume'],
-  marketCap: ['marketCap', 'marketCapitalization'],
-};
-
 // HH:mm 格式，用于新闻列表左侧时间戳列。
 function formatClock(value) {
   if (!value) return '';
@@ -364,12 +232,6 @@ function isToday(value) {
   if (Number.isNaN(d.getTime())) return false;
   const now = new Date();
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-}
-
-function changeToneClass(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n === 0) return 'text-slate-500';
-  return n > 0 ? 'text-rose-600' : 'text-emerald-600';
 }
 
 // 从 URL 中抽取 host。解析失败时返回空字符串。
@@ -749,316 +611,6 @@ function SortableMarketTable({ title = '', rows = [], market, onPick, onRemove, 
             })}
           </tbody>
         </table>
-      </div>
-    </div>
-  );
-}
-
-function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate, onRename, onDelete }) {
-  const [open, setOpen] = useState(false);
-  const active = (lists || []).find((item) => item.id === activeListId) || lists[0];
-  const canDelete = (item) => item?.id !== 'default' && (lists || []).length > 1;
-  return (
-    <div className="relative">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="inline-flex items-center gap-1 rounded-md px-1 py-1 text-[20px] leading-7 font-normal tracking-tight text-[#1f1f1f] hover:bg-[#f1f3f4]" title="列表切换">
-        <span>{active?.name || '列表'}</span>
-        <ChevronDown size={18} className="text-[#5f6368]" />
-      </button>
-      {open ? (
-        <div className="absolute left-0 top-full z-30 mt-1 w-64 overflow-hidden rounded-2xl border border-[#e8eaed] bg-white py-1 shadow-lg">
-          {(lists || []).map((item) => (
-            <div key={item.id} className={cx('flex w-full items-center gap-1 px-3 py-2 text-sm hover:bg-[#f8fafd]', item.id === activeListId ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>
-              <button type="button" onClick={() => { onSelect?.(item.id); setOpen(false); }} className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
-                <span className="truncate">{item.name}</span>
-                <span className="text-[11px] text-[#9aa0a6]">{(item.us?.length || 0) + (item.cn?.length || 0)}</span>
-              </button>
-              <button
-                type="button"
-                aria-label={`重命名${item.name}`}
-                title="改名"
-                onClick={(event) => { event.stopPropagation(); onRename?.(item); setOpen(false); }}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#e8f0fe] hover:text-[#1a73e8]"
-              >
-                <Edit3 size={13} />
-              </button>
-              {canDelete(item) ? (
-                <button
-                  type="button"
-                  aria-label={`删除${item.name}`}
-                  title="删除"
-                  onClick={(event) => { event.stopPropagation(); onDelete?.(item); setOpen(false); }}
-                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#fce8e6] hover:text-[#d93025]"
-                >
-                  <Trash2 size={13} />
-                </button>
-              ) : null}
-            </div>
-          ))}
-          <button type="button" onClick={() => { onCreate?.(); setOpen(false); }} className="flex w-full items-center gap-2 border-t border-[#e8eaed] px-3 py-2 text-left text-sm font-medium text-[#1a73e8] hover:bg-[#f8fafd]"><ListPlus size={14} /> 新建列表</button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function WatchlistNameDialog({ dialog, onChangeName, onCancel, onSubmit }) {
-  if (!dialog) return null;
-  const isDelete = dialog.type === 'delete';
-  const title = isDelete ? '删除列表' : (dialog.type === 'rename' ? '编辑列表名称' : '新建列表');
-  const total = (dialog.list?.us?.length || 0) + (dialog.list?.cn?.length || 0);
-  return (
-    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/30 px-4 py-6 sm:items-center" onMouseDown={onCancel}>
-      <div className="w-full max-w-sm rounded-[28px] bg-white p-6 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="mb-5 text-center text-xl font-semibold leading-snug text-[#1f1f1f]">{title}</div>
-        {isDelete ? (
-          <div className="mb-5 rounded-2xl bg-[#f8fafd] px-4 py-3 text-sm text-[#5f6368]">
-            确认删除「<span className="font-semibold text-[#1f1f1f]">{dialog.list?.name || '列表'}</span>」？{total ? `其中 ${total} 个标的也会移除。` : ''}
-          </div>
-        ) : (
-          <label className="mb-5 block text-sm text-[#5f6368]">
-            输入新的列表名称
-            <input
-              autoFocus
-              value={dialog.name || ''}
-              onChange={(event) => onChangeName(event.target.value)}
-              onKeyDown={(event) => { if (event.key === 'Enter') onSubmit(); }}
-              className="mt-3 h-14 w-full rounded-2xl border-0 bg-[#f1f3f4] px-4 text-base text-[#1f1f1f] outline-none focus:ring-2 focus:ring-[#1a73e8]/35"
-            />
-          </label>
-        )}
-        <div className="grid grid-cols-2 gap-3">
-          <button type="button" onClick={onCancel} className="h-12 rounded-2xl bg-[#f1f3f4] text-base font-semibold text-[#1f1f1f] hover:bg-[#e8eaed]">取消</button>
-          <button type="button" onClick={onSubmit} className={cx('h-12 rounded-2xl text-base font-semibold text-white', isDelete ? 'bg-[#d93025] hover:bg-[#b3261e]' : 'bg-[#1a73e8] hover:bg-[#1557b0]')}>{isDelete ? '删除' : '确定'}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ListExpandButton({ expanded = false, onClick, className = '' }) {
-  const Icon = expanded ? Minimize2 : Maximize2;
-  return (
-    <button
-      type="button"
-      aria-label={expanded ? '缩小列表' : '放大列表'}
-      title={expanded ? '缩小列表' : '放大列表'}
-      onClick={onClick}
-      className={cx('inline-flex h-9 w-9 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#1f1f1f]', className)}
-    >
-      <Icon size={19} strokeWidth={2.2} />
-    </button>
-  );
-}
-
-function MarketListTable({ rows = [], klineMap = {}, selectedSymbol = '', onSelect, compact = false, stickyHeader = false, stickyFirstColumn = false }) {
-  if (!rows.length) {
-    return <p className="px-2 py-2 text-sm text-[#5f6368]">未配置自选。</p>;
-  }
-  const cellPad = compact ? 'px-2 py-2' : 'px-3 py-2';
-  const stickyHeadCell = stickyFirstColumn
-    ? 'sticky left-0 z-20 border-r border-[#e8eaed] bg-[#f8fafd] shadow-[8px_0_12px_-12px_rgba(60,64,67,0.45)]'
-    : '';
-  const stickyBodyCell = (selected) => stickyFirstColumn
-    ? cx('sticky left-0 z-10 border-r border-[#e8eaed] shadow-[8px_0_12px_-12px_rgba(60,64,67,0.35)]', selected ? 'bg-[#e8f0fe]' : 'bg-white group-hover:bg-[#f1f3f4]')
-    : '';
-  return (
-    <div className={cx('overflow-x-auto', compact ? 'rounded-xl border border-[#e8eaed] bg-white' : 'rounded-2xl border border-[#e8eaed] bg-white shadow-sm')}>
-      <table className={cx('w-full min-w-[980px] border-separate border-spacing-0 text-sm', compact && 'min-w-[900px] text-[12px]')}>
-        <thead className={cx('bg-[#f8fafd] text-[11px] font-semibold text-[#5f6368]', stickyHeader && 'sticky top-0 z-10')}>
-          <tr>
-            <th className={cx(cellPad, 'text-left', stickyHeadCell)}>代码</th>
-            <th className={cx(cellPad, 'text-left')}>名称</th>
-            <th className={cx(cellPad, 'text-right')}>最新价</th>
-            <th className={cx(cellPad, 'text-right')}>涨跌幅</th>
-            <th className={cx(cellPad, 'text-right')}>溢价</th>
-            <th className={cx(cellPad, 'text-right')}>年内涨幅</th>
-            <th className={cx(cellPad, 'text-right')}>总份额</th>
-            <th className={cx(cellPad, 'text-right')}>费率</th>
-            <th className={cx(cellPad, 'text-right')}>趋势</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-[#e8eaed]">
-          {rows.map((row) => {
-            const displaySymbol = formatSymbolDisplay(row.symbol);
-            const pct = Number(row.changePercent);
-            const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
-            const up = pct > 0;
-            const premiumPct = resolvePremiumPercent(row);
-            const selected = row.symbol === selectedSymbol;
-            return (
-              <tr
-                key={row.symbol}
-                role="button"
-                tabIndex={0}
-                aria-pressed={selected}
-                onClick={() => onSelect?.(row)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    onSelect?.(row);
-                  }
-                }}
-                className={cx(
-                  'group cursor-pointer transition hover:bg-[#f1f3f4] focus:outline-none focus:ring-2 focus:ring-[#1a73e8]/30',
-                  selected && 'bg-[#e8f0fe] hover:bg-[#e8f0fe]'
-                )}
-              >
-                <td className={cx(cellPad, 'w-[88px] whitespace-nowrap font-mono text-xs font-semibold text-[#1f1f1f]', stickyBodyCell(selected))}>{displaySymbol}</td>
-                <td className={cx(cellPad, 'min-w-[120px] text-[#1f1f1f]')}>
-                  <div className="truncate font-medium">{row.name || displaySymbol}</div>
-                  {row.meta ? <div className="truncate text-[10px] text-[#5f6368]">{row.meta}</div> : null}
-                </td>
-                <td className={cx(cellPad, 'whitespace-nowrap text-right tabular-nums text-[#1f1f1f]')}>{formatNumber(row.price)}</td>
-                <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums', flat ? 'text-[#5f6368]' : up ? 'text-[#a50e0e]' : 'text-[#137333]')}>{formatPercent(row.changePercent)}</td>
-                <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums', changeToneClass(premiumPct))}>{formatPremiumPercent(row)}</td>
-                <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums', changeToneClass(Number(row.currentYearPercent)))}>{formatYearPercent(row)}</td>
-                <td className={cx(cellPad, 'whitespace-nowrap text-right tabular-nums text-[#1f1f1f]')}>{formatTotalShares(row.totalShares)}</td>
-                <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums', feeRateToneClass(row))}>{formatFeeRate(row)}</td>
-                <td className={cx(cellPad, 'text-right')}>
-                  <div className="inline-flex justify-end">
-                    <Sparkline points={klineMap[row.symbol]} width={compact ? 72 : 86} height={compact ? 24 : 26} tone={flat ? 'flat' : up ? 'up' : 'down'} showFill markLast />
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function ExpandedMarketListOverlay({
-  open,
-  rows,
-  klineMap,
-  selectedSymbol,
-  activeName,
-  marketLabel,
-  onClose,
-  onSelect,
-  onCreate,
-  loading,
-  searchOpen,
-  searchValue,
-  searchResults,
-  searchLoading,
-  searchError,
-  watchSymbols = [],
-  onSearchToggle,
-  onSearchChange,
-  onSearchClear,
-  onSearchResultSelect,
-  onSearchResultAdd,
-}) {
-  useEffect(() => {
-    if (!open) return undefined;
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') onClose?.();
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [open, onClose]);
-
-  if (!open) return null;
-  return (
-    <div className="fixed bottom-0 z-[70] hidden bg-white/98 px-5 pb-5 pt-3 backdrop-blur-sm lg:left-[var(--console-active-sidebar-w)] lg:right-[var(--console-ctx-w)] lg:top-[34px] lg:block">
-      <div className="flex h-full w-full flex-col gap-3">
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e8eaed] pb-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-xs font-semibold text-[#5f6368]">
-              <span>{marketLabel}</span>
-              {loading ? <Loader2 size={12} className="animate-spin" /> : null}
-            </div>
-            <h2 className="mt-1 truncate text-[22px] font-semibold text-[#1f1f1f]">{activeName || '监控列表'}</h2>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={onSearchToggle}
-              className={cx('inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition', searchOpen ? 'bg-[#e8f0fe] text-[#1a73e8]' : 'text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#1f1f1f]')}
-            >
-              <Search size={16} /> 基金搜索
-            </button>
-            <button type="button" onClick={onCreate} className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#1f1f1f]">
-              <ListPlus size={18} /> 新建列表
-            </button>
-            <ListExpandButton expanded onClick={onClose} />
-          </div>
-        </div>
-        {searchOpen ? (
-          <div className="rounded-2xl border border-[#e8eaed] bg-white p-3 shadow-sm">
-            <div className="flex items-center gap-2 rounded-full bg-[#f1f3f4] px-3 py-2">
-              <Search size={15} className="shrink-0 text-[#5f6368]" />
-              <input
-                autoFocus
-                value={searchValue}
-                onChange={(event) => onSearchChange?.(event.target.value)}
-                placeholder="搜索基金代码 / 名称，例如 513100、纳指ETF"
-                className="min-w-0 flex-1 bg-transparent text-sm text-[#1f1f1f] placeholder:text-[#5f6368] focus:outline-none"
-              />
-              {searchValue ? (
-                <button
-                  type="button"
-                  aria-label="清空搜索"
-                  onClick={onSearchClear}
-                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#5f6368] hover:bg-white"
-                >
-                  <X size={14} />
-                </button>
-              ) : null}
-            </div>
-            {searchValue.trim() ? (
-              <div className="mt-3 overflow-hidden rounded-2xl border border-[#e8eaed] bg-[#f8fafd]">
-                {searchLoading ? (
-                  <div className="flex items-center gap-2 px-3 py-3 text-sm text-[#5f6368]"><Loader2 size={14} className="animate-spin" />搜索中…</div>
-                ) : searchError ? (
-                  <div className="px-3 py-3 text-sm text-rose-600">{searchError}</div>
-                ) : searchResults.length ? (
-                  <ul className="divide-y divide-[#e8eaed]">
-                    {searchResults.map((row) => {
-                      const symbol = formatSymbolDisplay(row.symbol);
-                      const displayName = row.name || row.exchange || '--';
-                      const alreadyAdded = watchSymbols.includes(row.symbol);
-                      return (
-                        <li key={`${row.market || marketLabel}:${row.symbol}`} className="flex items-center gap-3 px-3 py-2 hover:bg-white">
-                          <button
-                            type="button"
-                            className="min-w-0 flex-1 text-left"
-                            onClick={() => onSearchResultSelect?.(row)}
-                          >
-                            <div className="truncate text-sm font-semibold text-[#1f1f1f]">{symbol}</div>
-                            <div className="truncate text-xs text-[#5f6368]">{row.marketLabel ? `${row.marketLabel} · ` : ''}{displayName}</div>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onSearchResultAdd?.(row)}
-                            disabled={alreadyAdded}
-                            className={cx(
-                              'shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition',
-                              alreadyAdded ? 'bg-[#e8eaed] text-[#9aa0a6]' : 'bg-[#e8f0fe] text-[#1a73e8] hover:bg-[#d2e3fc]'
-                            )}
-                          >
-                            {alreadyAdded ? '已加入' : '加入自选'}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : (
-                  <div className="px-3 py-3 text-sm text-[#5f6368]">没有找到匹配标的</div>
-                )}
-              </div>
-            ) : (
-              <div className="mt-3 rounded-2xl border border-dashed border-[#e8eaed] bg-[#f8fafd] px-3 py-3 text-sm text-[#5f6368]">
-                输入基金代码或名称，搜索后可直接加入当前自选列表。
-              </div>
-            )}
-          </div>
-        ) : null}
-        <div className="min-h-0 flex-1 overflow-auto rounded-2xl bg-[#f8fafd] p-3">
-          <MarketListTable rows={rows} klineMap={klineMap} selectedSymbol={selectedSymbol} onSelect={onSelect} stickyHeader stickyFirstColumn />
-        </div>
       </div>
     </div>
   );
