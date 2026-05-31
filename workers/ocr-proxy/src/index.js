@@ -1979,8 +1979,9 @@ function shiftIsoDateDays(isoDate, deltaDays) {
 }
 
 
-async function readHoldingSnapshot(code, generatedAt) {
-  return getNavHoldingSnapshot(code, generatedAt);
+async function readHoldingSnapshot(code, generatedAt, env) {
+  // Live price/NAV/premium snapshots are normalized in notify/getNav.js via markets/fund-metrics.
+  return getNavHoldingSnapshot(code, generatedAt, env);
 }
 
 async function fetchLiveHoldingsNavPayload(codes, env, key, ttlMsOverride) {
@@ -1990,10 +1991,10 @@ async function fetchLiveHoldingsNavPayload(codes, env, key, ttlMsOverride) {
     ? ttlMsOverride
     : getHoldingsNavCacheTtlMs(env);
   // 以前是无限并发 Promise.all：冷缓存时 60 code 可能同时打 60 个上游。
-  // 这里改用 mapLimit(6) 限并发；东财 NAV 上游本身并不费力，6 并发 + 重试足够。
+  // 这里改用 mapLimit(6) 限并发；统一的 markets/fund-metrics 上游 6 并发足够。
   const items = await mapLimit(codes, 6, async (code) => {
     try {
-      const snapshot = await readHoldingSnapshot(code, generatedAt);
+      const snapshot = await readHoldingSnapshot(code, generatedAt, env);
       return {
         ...snapshot,
         cacheHit: false,

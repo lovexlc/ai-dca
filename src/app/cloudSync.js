@@ -55,6 +55,96 @@ function snapshotFromEnvelope(envelope) {
   return createLocalDataSnapshot(envelope || { payload: {} });
 }
 
+function normalizeEnvelopePayload(envelope = {}) {
+  const payload = envelope?.payload && typeof envelope.payload === 'object' ? envelope.payload : {};
+  const keys = Array.from(new Set([
+    ...(Array.isArray(envelope?.keys) ? envelope.keys : []),
+    ...Object.keys(payload)
+  ].map((key) => String(key || '')).filter(Boolean))).sort();
+  return { payload, keys };
+}
+
+function previewKeys(keys = [], limit = 6) {
+  const list = (Array.isArray(keys) ? keys : []).slice(0, limit);
+  const suffix = keys.length > limit ? ` 等 ${keys.length} 项` : '';
+  return `${list.join('、')}${suffix}`;
+}
+
+export function mergeBackupEnvelopes(remoteEnvelope = {}, localEnvelope = {}) {
+  const remote = normalizeEnvelopePayload(remoteEnvelope);
+  const local = normalizeEnvelopePayload(localEnvelope);
+  const payload = { ...remote.payload, ...local.payload };
+  const keys = Object.keys(payload).filter((key) => isBackupPayloadKey(key)).sort();
+  return {
+    version: Number(localEnvelope?.version || remoteEnvelope?.version || 1) || 1,
+    exportedAt: nowIso(),
+    source: 'ai-dca',
+    keyCount: keys.length,
+    keys,
+    payload: keys.reduce((acc, key) => {
+      acc[key] = payload[key];
+      return acc;
+    }, {})
+  };
+}
+
+export function summarizeBackupConflict({ localEnvelope = null, remoteEnvelope = null, remote = null, localMeta = null } = {}) {
+  const local = normalizeEnvelopePayload(localEnvelope || buildBackupEnvelope());
+  const remoteData = normalizeEnvelopePayload(remoteEnvelope || { payload: {} });
+  const localSet = new Set(local.keys);
+  const remoteSet = new Set(remoteData.keys);
+  const remoteOnlyKeys = remoteData.keys.filter((key) => !localSet.has(key));
+  const localOnlyKeys = local.keys.filter((key) => !remoteSet.has(key));
+  const changedKeys = remoteData.keys.filter((key) => localSet.has(key) && remoteData.payload[key] !== local.payload[key]);
+  const sameKeys = remoteData.keys.filter((key) => localSet.has(key) && remoteData.payload[key] === local.payload[key]);
+  const parts = [];
+  if (changedKeys.length) parts.push(`${changedKeys.length} 项两端都改过：${previewKeys(changedKeys)}`);
+  if (remoteOnlyKeys.length) parts.push(`${remoteOnlyKeys.length} 项只在云端存在：${previewKeys(remoteOnlyKeys)}`);
+  if (localOnlyKeys.length) parts.push(`${localOnlyKeys.length} 项只在本机存在：${previewKeys(localOnlyKeys)}`);
+  if (!parts.length) parts.push('两端数据内容一致，仅版本元数据不同');
+  return {
+    hasConflict: changedKeys.length > 0 || remoteOnlyKeys.length > 0 || localOnlyKeys.length > 0,
+    remoteVersion: remote?.version ?? null,
+    remoteUpdatedAt: remote?.updatedAt || remote?.encryptedEnvelope?.meta?.localUpdatedAt || '',
+    remoteKeyCount: remoteData.keys.length,
+    localVersion: localMeta?.version ?? null,
+    localUpdatedAt: localMeta?.localUpdatedAt || '',
+    localKeyCount: local.keys.length,
+    changedKeys,
+    remoteOnlyKeys,
+    localOnlyKeys,
+    sameKeyCount: sameKeys.length,
+    summaryText: parts.join('；')
+  };
+}
+
+function createCloudSyncConflictError(conflict, cause = null) {
+  const error = new Error('云端数据已更新，请选择合并本机数据或拉取云端覆盖本地');
+  error.status = 409;
+  error.isCloudSyncConflict = true;
+  error.conflict = conflict || null;
+  error.cause = cause || undefined;
+  return error;
+}
+
+async function readRemoteBackupWithEnvelope({ securityPassword = '', useRemembered = false } = {}) {
+  const remote = await fetchLatestCloudBackup(loadCloudSession());
+  const encryptedEnvelope = remote?.encryptedEnvelope;
+  if (!encryptedEnvelope?.ciphertext) return { remote, envelope: null };
+  const remembered = useRemembered ? loadRememberedKey() : null;
+  const secret = remembered?.rawKey ? `raw:${remembered.rawKey}` : securityPassword;
+  const envelope = await decryptBackupEnvelope(encryptedEnvelope, secret);
+  return { remote, envelope };
+}
+
+export async function prepareCloudSyncConflict({ securityPassword = '', useRemembered = false } = {}) {
+  const localEnvelope = buildBackupEnvelope();
+  const currentMeta = ensureLocalChangeBaseline({ localSnapshot: createLocalDataSnapshot(localEnvelope) });
+  const { remote, envelope: remoteEnvelope } = await readRemoteBackupWithEnvelope({ securityPassword, useRemembered });
+  if (!remoteEnvelope) return null;
+  return summarizeBackupConflict({ localEnvelope, remoteEnvelope, remote, localMeta: currentMeta });
+}
+
 export function loadCloudSyncMeta() {
   const ls = storage();
   if (!ls) return null;
@@ -155,13 +245,18 @@ export async function uploadEncryptedCloudBackup({ securityPassword, rememberDev
   } catch (err) {
     const currentVersion = Number(err?.data?.currentVersion);
     if (!force && err?.status === 409 && Number.isFinite(currentVersion) && currentVersion >= 0) {
-      result = await uploadLatestCloudBackup({
-        ...payload,
-        baseVersion: currentVersion,
-        conflictResolution: 'retry-with-current-version'
-      }, session);
-      result.conflictResolved = true;
-      result.previousBaseVersion = localMeta?.version ?? null;
+      let conflict = null;
+      try {
+        conflict = await prepareCloudSyncConflict({ securityPassword, useRemembered });
+      } catch (_conflictError) {
+        conflict = {
+          hasConflict: true,
+          remoteVersion: currentVersion,
+          localVersion: localMeta?.version ?? null,
+          summaryText: '云端版本已变化，但当前设备暂时无法解密云端数据生成明细。'
+        };
+      }
+      throw createCloudSyncConflictError(conflict, err);
     } else {
       throw err;
     }
@@ -182,6 +277,71 @@ export async function uploadEncryptedCloudBackup({ securityPassword, rememberDev
     direction: 'upload'
   });
   return result;
+}
+
+export async function mergeLocalIntoCloudBackup({ securityPassword = '', rememberDevice = true, useRemembered = false } = {}) {
+  const session = loadCloudSession();
+  if (!session?.accessToken) throw new Error('请先登录账户');
+  const localEnvelope = buildBackupEnvelope();
+  const localSnapshot = createLocalDataSnapshot(localEnvelope);
+  const localMeta = ensureLocalChangeBaseline({ localSnapshot });
+  const { remote, envelope: remoteEnvelope } = await readRemoteBackupWithEnvelope({ securityPassword, useRemembered });
+  if (!remoteEnvelope) {
+    return uploadEncryptedCloudBackup({ securityPassword, rememberDevice, force: true, useRemembered });
+  }
+  const mergedEnvelope = mergeBackupEnvelopes(remoteEnvelope, localEnvelope);
+  const remembered = useRemembered ? loadRememberedKey() : null;
+  const encrypted = await encryptBackupEnvelope(mergedEnvelope, securityPassword, {
+    rememberDevice,
+    rawKey: remembered?.rawKey || '',
+    cryptoMeta: remembered?.crypto || null
+  });
+  const result = await uploadLatestCloudBackup({
+    baseVersion: remote.version ?? null,
+    clientUpdatedAt: localMeta?.localUpdatedAt || mergedEnvelope.exportedAt,
+    conflictResolution: 'merge-local-over-remote',
+    encryptedEnvelope: {
+      version: encrypted.version,
+      source: encrypted.source,
+      crypto: encrypted.crypto,
+      meta: {
+        ...encrypted.meta,
+        localSignature: createLocalDataSnapshot(mergedEnvelope).signature,
+        localUpdatedAt: localMeta?.localUpdatedAt || mergedEnvelope.exportedAt
+      },
+      ciphertext: encrypted.ciphertext
+    }
+  }, session);
+  if (rememberDevice && encrypted.rememberedKey) {
+    saveRememberedKey(encrypted.rememberedKey, { username: session.username, version: result.version, crypto: encrypted.crypto });
+  }
+  suppressAutoUpload = true;
+  try {
+    applyBackupEnvelope(mergedEnvelope, { wipePrefix: true });
+  } finally {
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => { suppressAutoUpload = false; }, 0);
+    } else {
+      suppressAutoUpload = false;
+    }
+  }
+  const mergedSnapshot = createLocalDataSnapshot(mergedEnvelope);
+  lastObservedSignature = mergedSnapshot.signature;
+  saveCloudSyncMeta({
+    ...localMeta,
+    version: result.version,
+    updatedAt: result.updatedAt,
+    keyCount: mergedEnvelope.keyCount,
+    localSignature: mergedSnapshot.signature,
+    localKeyCount: mergedSnapshot.keyCount,
+    localUpdatedAt: localMeta?.localUpdatedAt || mergedEnvelope.exportedAt,
+    uploadedSignature: mergedSnapshot.signature,
+    uploadedAt: result.updatedAt,
+    remoteSignature: mergedSnapshot.signature,
+    remoteUpdatedAt: result.updatedAt,
+    direction: 'merge'
+  });
+  return { ...result, mergedKeyCount: mergedEnvelope.keyCount, conflictResolution: 'merge-local-over-remote' };
 }
 
 export async function restoreEncryptedCloudBackup({ securityPassword = '', useRemembered = false, onlyIfRemoteNewer = false } = {}) {
@@ -302,7 +462,12 @@ export function scheduleCloudAutoUpload({ delay = 2500, changed = false } = {}) 
       const result = await uploadEncryptedCloudBackup({ useRemembered: true, rememberDevice: true });
       window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result } }));
     } catch (err) {
-      window.dispatchEvent(new CustomEvent('cloud-sync:auto-error', { detail: { message: err?.message || String(err) } }));
+      window.dispatchEvent(new CustomEvent('cloud-sync:auto-error', {
+        detail: {
+          message: err?.message || String(err),
+          conflict: err?.isCloudSyncConflict ? err.conflict : null
+        }
+      }));
     } finally {
       autoUploadInFlight = false;
     }

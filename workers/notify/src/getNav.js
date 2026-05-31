@@ -25,56 +25,114 @@ function publicDataBaseUrl(env = null) {
   return stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || DEFAULT_PUBLIC_DATA_BASE_URL);
 }
 
-function xueqiuFundDataUrl(baseUrl, code, { refresh = false, raw = true } = {}) {
+function fundMetricsUrl(baseUrl, { refresh = false } = {}) {
   const params = new URLSearchParams();
   if (refresh) params.set('refresh', '1');
-  if (raw) params.set('raw', '1');
   const query = params.toString();
-  return `${stripTrailingSlash(baseUrl || DEFAULT_PUBLIC_DATA_BASE_URL)}/api/markets/xueqiu-fund-data/${encodeURIComponent(code)}${query ? `?${query}` : ''}`;
+  return `${stripTrailingSlash(baseUrl || DEFAULT_PUBLIC_DATA_BASE_URL)}/api/markets/fund-metrics${query ? `?${query}` : ''}`;
 }
 
-function extractXueqiuQuoteFromFundData(payload) {
-  return payload?.results?.quote_detail?.raw?.data?.quote || payload?.results?.quote_detail?.summary?.quote || null;
-}
-
-async function fetchXueqiuQuoteSnapshot(code, { refresh = false, env = null } = {}) {
-  const c = sanitizeCode(code);
-  if (!c) return null;
-  try {
-    const response = await fetch(xueqiuFundDataUrl(publicDataBaseUrl(env), c, { refresh, raw: true }), {
-      headers: { accept: 'application/json' },
-      cf: { cacheTtl: 15, cacheEverything: false }
-    });
-    if (!response.ok) return null;
-    const payload = await response.json().catch(() => null);
-    const quote = extractXueqiuQuoteFromFundData(payload);
-    if (!quote) return null;
-    const price = Number(quote.current);
-    const nav = Number(quote.unit_nav);
-    if (!Number.isFinite(price) || price <= 0) return null;
-    return {
-      code: c,
-      name: String(quote.name || '').trim(),
-      price,
-      preClose: Number(quote.last_close) || 0,
-      open: Number(quote.open) || 0,
-      high: Number(quote.high) || 0,
-      low: Number(quote.low) || 0,
-      date: String(quote.nav_date || quote.timestamp || '').trim(),
-      time: String(quote.time || '').trim(),
-      source: 'xueqiu-quote',
-      latestNav: Number.isFinite(nav) && nav > 0 ? nav : price,
-      latestNavDate: String(quote.nav_date || '').trim(),
-      iopv: Number(quote.iopv) || null,
-      premiumPercent: Number(quote.premium_rate) || null
-    };
-  } catch (_error) {
-    return null;
+async function fetchFundMetricsMap(env, codes = [], { refresh = false } = {}) {
+  const list = Array.from(new Set(codes.map((c) => sanitizeCode(c)).filter(Boolean)));
+  if (!list.length) return {};
+  const url = fundMetricsUrl(publicDataBaseUrl(env), { refresh });
+  const init = {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({ codes: list, refresh }),
+    cf: { cacheTtl: refresh ? 0 : 15, cacheEverything: false }
+  };
+  const response = env?.MARKETS && typeof env.MARKETS.fetch === 'function'
+    ? await env.MARKETS.fetch(new Request(url, init))
+    : await fetch(url, init);
+  if (!response.ok) {
+    throw new Error(`fund-metrics 请求失败：HTTP ${response.status}`);
   }
+  const payload = await response.json().catch(() => ({}));
+  const out = {};
+  for (const item of Array.isArray(payload?.items) ? payload.items : []) {
+    const code = sanitizeCode(item?.code || '');
+    if (!code || item?.ok === false) continue;
+    out[code] = item;
+  }
+  return out;
+}
+
+function metricToLatestNav(metric) {
+  const code = sanitizeCode(metric?.code || '');
+  if (!code) return null;
+  const nav = Number(metric?.latestNav ?? metric?.navBase ?? metric?.iopv ?? metric?.price);
+  const price = Number(metric?.price ?? metric?.currentPrice ?? metric?.close);
+  if (!Number.isFinite(nav) || nav <= 0) return null;
+  return {
+    code,
+    name: String(metric?.name || '').trim(),
+    nav,
+    latestNavDate: String(metric?.latestNavDate || metric?.navDate || '').trim(),
+    source: metric?.source || 'fund-metrics',
+    price: Number.isFinite(price) && price > 0 ? price : null,
+    iopv: Number(metric?.iopv) || null,
+    premiumPercent: Number(metric?.premiumPercent) || null
+  };
+}
+
+function metricToPrice(metric) {
+  const code = sanitizeCode(metric?.code || '');
+  const price = Number(metric?.price ?? metric?.currentPrice ?? metric?.close);
+  if (!code || !Number.isFinite(price) || price <= 0) return null;
+  return {
+    code,
+    name: String(metric?.name || '').trim(),
+    price,
+    preClose: Number(metric?.previousClose) || 0,
+    date: String(metric?.asOf || metric?.latestNavDate || metric?.navDate || '').slice(0, 10),
+    time: String(metric?.asOf || '').slice(11, 19),
+    source: metric?.source || 'fund-metrics',
+    latestNav: Number(metric?.latestNav) || null,
+    latestNavDate: String(metric?.latestNavDate || metric?.navDate || '').trim(),
+    iopv: Number(metric?.iopv) || null,
+    premiumPercent: Number(metric?.premiumPercent) || null
+  };
+}
+
+function metricToHoldingSnapshot(metric, generatedAt = nowShanghaiIso()) {
+  const code = sanitizeCode(metric?.code || '');
+  if (!code) return null;
+  const price = Number(metric?.price ?? metric?.currentPrice ?? metric?.close);
+  const previousPrice = Number(metric?.previousClose);
+  const nav = Number(metric?.latestNav ?? metric?.navBase ?? metric?.iopv);
+  const navDate = String(metric?.latestNavDate || metric?.navDate || '').trim();
+  const latestNav = Number.isFinite(price) && price > 0
+    ? price
+    : (Number.isFinite(nav) && nav > 0 ? nav : NaN);
+  const previousNav = Number.isFinite(previousPrice) && previousPrice > 0
+    ? previousPrice
+    : NaN;
+  if (!Number.isFinite(latestNav) || latestNav <= 0) return null;
+  return {
+    ok: true,
+    code,
+    name: String(metric?.name || '').trim(),
+    latestNav: roundNumber(latestNav, 4),
+    latestNavDate: String(metric?.asOf || navDate || generatedAt).slice(0, 10),
+    previousNav: Number.isFinite(previousNav) && previousNav > 0 ? roundNumber(previousNav, 4) : 0,
+    previousNavDate: '',
+    updatedAt: generatedAt,
+    source: metric?.source || 'fund-metrics',
+    priceSource: metric?.source || 'fund-metrics',
+    fundLatestNav: Number.isFinite(nav) && nav > 0 ? roundNumber(nav, 4) : null,
+    fundLatestNavDate: navDate,
+    iopv: Number(metric?.iopv) || null,
+    premiumPercent: Number(metric?.premiumPercent) || null,
+    cachePolicy: String(metric?.cachePolicy || '').trim()
+  };
 }
 
 /**
- * 拉取单个基金的最新净值（优先雪球实时 quote，失败再回退到 latest-nav.json；不使用缓存）
+ * 拉取单个基金的最新净值（统一走 markets/fund-metrics；不再单独回退其他实时源）
  * 
  * @param {Object} env - Worker env
  * @param {string} code - 基金代码
@@ -83,37 +141,9 @@ async function fetchXueqiuQuoteSnapshot(code, { refresh = false, env = null } = 
 export async function fetchLatestNav(env, code) {
   const c = sanitizeCode(code);
   if (!c) return null;
-  const xueqiu = await fetchXueqiuQuoteSnapshot(c, { refresh: false, env });
-  if (xueqiu) {
-    return {
-      code: c,
-      name: xueqiu.name,
-      nav: xueqiu.latestNav,
-      latestNavDate: xueqiu.latestNavDate,
-      source: xueqiu.source,
-      price: xueqiu.price,
-      iopv: xueqiu.iopv,
-      premiumPercent: xueqiu.premiumPercent
-    };
-  }
-
-  const baseUrl = publicDataBaseUrl(env);
   try {
-    const response = await fetch(`${baseUrl}/data/${c}/latest-nav.json`, {
-      headers: { accept: 'application/json' },
-      // 一天内 NAV 不会变化太多次；缓存 10 分钟即可。
-      cf: { cacheTtl: 600, cacheEverything: true }
-    });
-    if (!response.ok) return null;
-    const payload = await response.json().catch(() => null);
-    const nav = Number(payload?.latestNav);
-    if (!Number.isFinite(nav) || nav <= 0) return null;
-    return {
-      code: c,
-      name: String(payload?.name || '').trim(),
-      nav,
-      latestNavDate: String(payload?.latestNavDate || '').trim()
-    };
+    const metrics = await fetchFundMetricsMap(env, [c], { refresh: false });
+    return metricToLatestNav(metrics[c]);
   } catch (_error) {
     return null;
   }
@@ -149,7 +179,7 @@ export async function fetchLatestNavMap(env, codes = []) {
  * 1. 如果提供了 KV 操作函数，优先查缓存
  * 2. 若缓存过期/不存在，从源拉取
  * 3. 将新数据写回缓存
- * 4. 支持 A 股（latest-nav.json）和美股（Yahoo，暂未实现）
+ * 4. 支持 A 股（markets/fund-metrics）和美股（Yahoo，暂未实现）
  * 
  * @param {Object} env - Worker env
  * @param {string} code - 基金代码
@@ -212,7 +242,7 @@ export async function getLatestNavWithCache(
     console.warn(`[nav] us-stock 暂未实现：${c}`);
     return null;
   } else {
-    // A 股：从 latest-nav.json
+    // A 股：统一从 markets/fund-metrics 获取，缓存仍由调用方控制。
     nav = await fetchLatestNav(env, c);
   }
 
@@ -329,127 +359,24 @@ function normalizeDate(rawValue = '') {
   return text;
 }
 
-function shiftIsoDateDays(isoDate, deltaDays) {
-  if (!isoDate || typeof isoDate !== 'string') return '';
-  const parts = isoDate.split('-').map((part) => Number(part));
-  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return '';
-  const ref = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
-  ref.setUTCDate(ref.getUTCDate() + deltaDays);
-  const y = ref.getUTCFullYear();
-  const m = String(ref.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(ref.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 export function isExchangeFundCode(code) {
   const normalized = String(code || '').trim();
   if (!/^\d{6}$/.test(normalized)) return false;
   return EXCHANGE_FUND_CODE_PREFIXES.some((prefix) => normalized.startsWith(prefix));
 }
 
-function resolveExchangeMarket(code) {
-  return String(code || '').startsWith('15') ? '0' : '1';
-}
-
-function sinaSymbol(code) {
-  const c = sanitizeCode(code);
-  if (!c) return '';
-  // 沪市 ETF 主要是 5 / 6 / 9 开头；深市 ETF 主要是 1 / 0 / 3 开头。
-  return /^[569]/.test(c) ? `sh${c}` : `sz${c}`;
-}
-
-export async function fetchSinaPrices(codes = []) {
+// Legacy API name kept for existing notify switch-strategy callers.
+// The implementation no longer calls Sina directly; it is backed by markets/fund-metrics.
+export async function fetchSinaPrices(codes = [], env = null) {
   const list = Array.from(new Set(codes.map((c) => sanitizeCode(c)).filter(Boolean)));
   if (!list.length) return {};
-
-  const xueqiuResults = await Promise.all(list.map((code) => fetchXueqiuQuoteSnapshot(code, { refresh: false })));
+  const metrics = await fetchFundMetricsMap(env, list, { refresh: false });
   const map = {};
-  for (const item of xueqiuResults) {
-    if (!item || !item.code) continue;
-    map[item.code] = item;
-  }
-
-  const missing = list.filter((code) => !map[code]);
-  if (!missing.length) return map;
-
-  const symbols = Array.from(new Set(missing.map((c) => sinaSymbol(c)).filter(Boolean)));
-  if (!symbols.length) return map;
-  const url = 'https://' + 'hq.sinajs.cn/list=' + symbols.join(',');
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      Referer: 'https://finance.sina.com.cn/',
-      'User-Agent': 'Mozilla/5.0 (compatible; ai-dca-notify/1.0)'
-    },
-    cf: { cacheTtl: 0, cacheEverything: false }
-  });
-  if (!response.ok) {
-    throw new Error(`新浪行情请求失败：状态 ${response.status}`);
-  }
-  // 新浪原文是 GB18030，但数字、逗号、引号、等号、英文字母均为 ASCII；
-  // 这里只消费数字字段，中文名称乱码不影响解析。
-  const text = await response.text();
-  const re = /var\s+hq_str_(sh|sz)(\d{6})="([^"]*)";?/g;
-  let match;
-  while ((match = re.exec(text)) !== null) {
-    const code = match[2];
-    const fields = String(match[3] || '').split(',');
-    if (fields.length < 4) continue;
-    const price = Number(fields[3]);
-    if (!Number.isFinite(price) || price <= 0) continue;
-    map[code] = {
-      code,
-      price,
-      preClose: Number(fields[2]) || 0,
-      open: Number(fields[1]) || 0,
-      high: Number(fields[4]) || 0,
-      low: Number(fields[5]) || 0,
-      date: String(fields[30] || '').trim(),
-      time: String(fields[31] || '').trim(),
-      source: 'sina-close-price'
-    };
+  for (const code of list) {
+    const quote = metricToPrice(metrics[code]);
+    if (quote) map[code] = quote;
   }
   return map;
-}
-
-async function fetchSinaExchangeQuoteSnapshot(code, generatedAt = nowShanghaiIso()) {
-  const normalized = String(code || '').trim();
-  if (!/^\d{6}$/.test(normalized)) {
-    throw new Error(`${code} 新浪行情请求失败：无效基金代码。`);
-  }
-  const priceMap = await fetchSinaPrices([normalized]);
-  const quote = priceMap[normalized];
-  const latestPrice = Number(quote?.price);
-  const previousPrice = Number(quote?.preClose);
-  if (!Number.isFinite(latestPrice) || latestPrice <= 0) {
-    throw new Error(`${normalized} 新浪行情暂无最新交易价。`);
-  }
-  if (!Number.isFinite(previousPrice) || previousPrice <= 0) {
-    throw new Error(`${normalized} 新浪行情缺少昨收价。`);
-  }
-  const latestDate = normalizeDate(quote?.date || '') || epochMsToShanghaiIso(Date.parse(generatedAt)).slice(0, 10);
-  return {
-    ok: true,
-    code: normalized,
-    name: '',
-    latestNav: roundNumber(latestPrice, 4),
-    latestNavDate: latestDate,
-    previousNav: roundNumber(previousPrice, 4),
-    previousNavDate: latestDate ? shiftIsoDateDays(latestDate, -1) : '',
-    updatedAt: generatedAt,
-    source: 'sina-close-price',
-    priceSource: 'sina-close-price',
-    time: String(quote?.time || '').trim()
-  };
-}
-
-function formatShanghaiDateFromEpochSec(seconds) {
-  const ms = Number(seconds) > 0 ? Number(seconds) * 1000 : Date.now();
-  const shifted = new Date(ms + 8 * 60 * 60 * 1000);
-  const y = shifted.getUTCFullYear();
-  const m = String(shifted.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(shifted.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
 }
 
 function epochMsToShanghaiIso(ms) {
@@ -469,164 +396,26 @@ function nowShanghaiIso() {
   return epochMsToShanghaiIso(Date.now());
 }
 
-export async function fetchFundNavSnapshot(code, generatedAt = nowShanghaiIso()) {
+export async function fetchFundNavSnapshot(code, generatedAt = nowShanghaiIso(), env = null) {
   const normalized = String(code || '').trim();
   if (!/^\d{6}$/.test(normalized)) {
     throw new Error(`${code} 净值接口请求失败：无效基金代码。`);
   }
-
-  const url = new URL('https://api.fund.eastmoney.com/f10/lsjz');
-  url.searchParams.set('fundCode', normalized);
-  url.searchParams.set('pageIndex', '1');
-  url.searchParams.set('pageSize', '6');
-
-  const response = await fetch(url.toString(), {
-    headers: {
-      accept: 'application/json, text/plain, */*',
-      referer: 'https://fundf10.eastmoney.com/',
-      'user-agent': 'Mozilla/5.0'
-    }
-  });
-
-  const rawText = await response.text();
-  let payload = {};
-
-  if (rawText) {
-    try {
-      payload = JSON.parse(rawText);
-    } catch (_error) {
-      throw new Error(`${normalized} 净值接口返回了非 JSON 响应。`);
-    }
-  }
-
-  if (!response.ok) {
-    throw new Error(`${normalized} 净值接口请求失败：HTTP ${response.status}`);
-  }
-
-  if (Number(payload?.ErrCode || 0) !== 0) {
-    throw new Error(payload?.ErrMsg || `${normalized} 净值接口返回错误。`);
-  }
-
-  const rows = Array.isArray(payload?.Data?.LSJZList) ? payload.Data.LSJZList : [];
-  const latestIndex = rows.findIndex((row) => Number(row?.DWJZ) > 0);
-  if (latestIndex < 0) {
-    throw new Error(`${normalized} 暂未查询到最新净值。`);
-  }
-
-  const latestRow = rows[latestIndex];
-  const previousRow = rows.slice(latestIndex + 1).find((row) => Number(row?.DWJZ) > 0);
-  if (!previousRow) {
-    throw new Error(`${normalized} 暂未查询到上一交易日净值。`);
-  }
-
-  return {
-    ok: true,
-    code: normalized,
-    name: '',
-    latestNav: roundNumber(Number(latestRow?.DWJZ) || 0, 4),
-    latestNavDate: normalizeDate(latestRow?.FSRQ || ''),
-    previousNav: roundNumber(Number(previousRow?.DWJZ) || 0, 4),
-    previousNavDate: normalizeDate(previousRow?.FSRQ || ''),
-    updatedAt: generatedAt
-  };
+  const metrics = await fetchFundMetricsMap(env, [normalized], { refresh: false });
+  const snapshot = metricToHoldingSnapshot(metrics[normalized], generatedAt);
+  if (!snapshot) throw new Error(`${normalized} fund-metrics 暂无可用净值/价格。`);
+  return snapshot;
 }
 
-async function fetchEastmoneyExchangeQuoteSnapshot(code, generatedAt = nowShanghaiIso()) {
-  const normalized = String(code || '').trim();
-  if (!/^\d{6}$/.test(normalized)) {
-    throw new Error(`${code} 东财场内行情请求失败：无效基金代码。`);
-  }
-
-  const market = resolveExchangeMarket(normalized);
-  const url = new URL('https://push2.eastmoney.com/api/qt/stock/get');
-  url.searchParams.set('secid', `${market}.${normalized}`);
-  url.searchParams.set('fields', 'f43,f60,f86,f57,f58,f1');
-  url.searchParams.set('_', String(Date.now()));
-
-  const response = await fetch(url.toString(), {
-    headers: {
-      accept: 'application/json, text/plain, */*',
-      referer: 'https://quote.eastmoney.com/',
-      'user-agent': 'Mozilla/5.0'
-    }
-  });
-
-  const rawText = await response.text();
-  if (!response.ok) {
-    throw new Error(`${normalized} 东财场内行情请求失败：HTTP ${response.status}`);
-  }
-
-  let payload = {};
-  if (rawText) {
-    try {
-      payload = JSON.parse(rawText);
-    } catch (_error) {
-      throw new Error(`${normalized} 东财场内行情接口返回了非 JSON 响应。`);
-    }
-  }
-
-  const data = payload?.data;
-  if (!data || typeof data !== 'object') {
-    throw new Error(`${normalized} 东财暂未查询到场内实时行情。`);
-  }
-
-  const scale = Math.max(Math.min(Number(data.f1) || 3, 6), 0);
-  const divisor = Math.pow(10, scale);
-  const latestRaw = Number(data.f43);
-  const previousRaw = Number(data.f60);
-  if (!(latestRaw > 0)) {
-    throw new Error(`${normalized} 东财场内行情暂无最新交易价。`);
-  }
-  if (!(previousRaw > 0)) {
-    throw new Error(`${normalized} 东财场内行情缺少昨收价。`);
-  }
-
-  const latestPrice = roundNumber(latestRaw / divisor, 4);
-  const previousPrice = roundNumber(previousRaw / divisor, 4);
-  const latestDate = formatShanghaiDateFromEpochSec(data.f86);
-  const previousDate = shiftIsoDateDays(latestDate, -1);
-  const name = String(data.f58 || '').trim();
-
-  return {
-    ok: true,
-    code: normalized,
-    name,
-    latestNav: latestPrice,
-    latestNavDate: latestDate,
-    previousNav: previousPrice,
-    previousNavDate: previousDate,
-    updatedAt: generatedAt,
-    source: 'eastmoney-exchange-quote',
-    priceSource: 'eastmoney-exchange-quote'
-  };
+export async function fetchExchangeQuoteSnapshot(code, generatedAt = nowShanghaiIso(), env = null) {
+  return fetchFundNavSnapshot(code, generatedAt, env);
 }
 
-export async function fetchExchangeQuoteSnapshot(code, generatedAt = nowShanghaiIso()) {
-  try {
-    return await fetchSinaExchangeQuoteSnapshot(code, generatedAt);
-  } catch (sinaError) {
-    try {
-      const fallback = await fetchEastmoneyExchangeQuoteSnapshot(code, generatedAt);
-      return {
-        ...fallback,
-        source: fallback.source || 'eastmoney-exchange-quote',
-        priceSource: fallback.priceSource || 'eastmoney-exchange-quote',
-        fallbackFrom: 'sina-close-price',
-        fallbackReason: sinaError instanceof Error ? sinaError.message : String(sinaError || '')
-      };
-    } catch (eastmoneyError) {
-      const eastmoneyMessage = eastmoneyError instanceof Error ? eastmoneyError.message : String(eastmoneyError || '');
-      const sinaMessage = sinaError instanceof Error ? sinaError.message : String(sinaError || '');
-      throw new Error(`${String(code || '').trim()} 场内行情请求失败：新浪 ${sinaMessage}; 东财 ${eastmoneyMessage}`);
-    }
-  }
-}
-
-export async function fetchHoldingSnapshot(code, generatedAt = nowShanghaiIso()) {
+export async function fetchHoldingSnapshot(code, generatedAt = nowShanghaiIso(), env = null) {
   if (isExchangeFundCode(code)) {
-    return fetchExchangeQuoteSnapshot(code, generatedAt);
+    return fetchExchangeQuoteSnapshot(code, generatedAt, env);
   }
-  return fetchFundNavSnapshot(code, generatedAt);
+  return fetchFundNavSnapshot(code, generatedAt, env);
 }
 
 // ---------------------------------------------------------------------------

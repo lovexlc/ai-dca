@@ -3,7 +3,7 @@ import { join, relative } from 'node:path';
 
 const ROOT = process.cwd();
 const EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx']);
-const IGNORE_DIRS = new Set(['.git', 'node_modules', '.frontend-build', 'frontend-dist', 'react-assets', 'dist', 'coverage', 'test-results', 'playwright-report']);
+const IGNORE_DIRS = new Set(['.git', 'node_modules', '.frontend-build', 'frontend-dist', 'react-assets', 'react-assets-v2', 'dist', 'coverage', 'test-results', 'playwright-report']);
 
 const ALLOW_NAV_API_ENDPOINTS = new Set([
   'src/app/navService.js',

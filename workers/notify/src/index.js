@@ -2229,7 +2229,7 @@ function isAfterShanghaiNavCacheCutoff() {
  * 本函数内部再通过 resolveHoldingKindAsync 区分 qdii。
  *
  * 口径：
- *   - exchange：场内基金/ETF 用交易所行情价（新浪 current/收盘价）与昨收价 preClose。
+ *   - exchange：场内基金/ETF 用 markets/fund-metrics 行情价与昨收价 preClose。
  *     不使用基金单位净值 NAV；字段仍命名 latestNav/previousNav 只是为了兼容既有计算函数。
  *   - otc / qdii：场外基金继续用单位净值 NAV。
  *
@@ -2309,7 +2309,7 @@ async function fetchHoldingsNavSnapshots(env, codes = [], options = {}) {
 
   if (exchangeMissing.length) {
     try {
-      const priceMap = await fetchSinaPrices(exchangeMissing);
+      const priceMap = await fetchSinaPrices(exchangeMissing, env);
       let priceCount = 0;
       for (const code of exchangeMissing) {
         const quote = priceMap?.[code];
@@ -2326,18 +2326,18 @@ async function fetchHoldingsNavSnapshots(env, codes = [], options = {}) {
           latestNavDate: String(quote?.date || todayShanghai || '').trim(),
           previousNav: previousPrice,
           previousNavDate: '',
-          source: 'sina-close-price',
+          source: quote?.source || 'fund-metrics',
           time: String(quote?.time || '').trim(),
           ok: true
         });
       }
-      console.log('[notify][price] sina result', JSON.stringify({
+      console.log('[notify][price] fund-metrics result', JSON.stringify({
         requested: exchangeMissing.length,
         priceCount,
         sample: exchangeMissing.slice(0, 5)
       }));
     } catch (priceErr) {
-      console.log('[notify][price] sina fetch failed', JSON.stringify({
+      console.log('[notify][price] fund-metrics fetch failed', JSON.stringify({
         message: priceErr?.message || String(priceErr),
         requested: exchangeMissing.length
       }));
@@ -2356,7 +2356,7 @@ async function fetchHoldingsNavSnapshots(env, codes = [], options = {}) {
         const code = queue.shift();
         if (!code) continue;
         try {
-          const snap = await fetchFundNavSnapshot(code, generatedAt);
+          const snap = await fetchFundNavSnapshot(code, generatedAt, env);
           results.push(snap);
         } catch (fetchErr) {
           results.push({
@@ -2888,8 +2888,8 @@ async function runHoldingsNotificationsAll(env, todayShanghai, reason = 'holding
 // 场内切换策略
 // 前端在「交易计划中心 / 切换」tab 配置基准 + 候选 + 阈值后 POST 到 KV，
 // Cron Trigger（A 股交易时段每分钟）扫描所有 client 的配置：
-// 1. 拉取实时盘中价（新浪 hq.sinajs.cn）
-// 2. 拉取最新单位净值（PUBLIC_DATA_BASE_URL/data/<code>/latest-nav.json）
+// 1. 拉取实时盘中价（统一走 markets/fund-metrics）
+// 2. 拉取最新单位净值（统一走 markets/fund-metrics，保留 KV 缓存）
 // 3. 计算 (price - nav) / nav 溢价 %
 // 4. 「基准 - 候选」溢价差跨越任一阈值（1% / 8% 等）→ 推送到该 client 已配对的设备
 // 去重：(基准, 候选) 对维护 (level, sign)，level 升档或方向翻转才推送一次。
@@ -2985,11 +2985,11 @@ async function handleSwitchSnapshotGet(request, env) {
 
   // 自动刷新净值：当 KV 里的 snapshot 是基于陈旧 NAV 算出时，直接补充最新净值，避免完整重算。
   // 背景：runSwitchStrategyTick 受 isInTradingSession 限制，仅在交易时段触发；
-  //   而 GH Action 把 T 日 NAV 写入 data/<code>/latest-nav.json 的时间往往晚于收盘。
+  //   而统一 markets/fund-metrics 的 T 日 NAV 可能晚于收盘才可用。
   //   收盘后用户进入「基金切换」，单靠 GET 不会触发重算。
   // 实现：
   //   - 防抖 1：snapshot.computedAt 距今 < 3 分钟 → 跳过（cron 或并发 GET 刚算过）。
-  //   - 检测：用 benchmarkCodes[0] 作为探针，对比 latest-nav.json.latestNavDate 与 snapshot 里该 code 的 navDate；
+  //   - 检测：用 benchmarkCodes[0] 作为探针，对比最新 latestNavDate 与 snapshot 里该 code 的 navDate；
   //     若线上更新，则直接用 refreshSnapshotWithLatestNav() 补充净值（无需重算价格等）。
   //   - 失败保护：补充异常不影响返回（继续返回旧 snapshot）。
   try {
@@ -3084,7 +3084,7 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
     ...(Array.isArray(config.benchmarkCodes) ? config.benchmarkCodes : []),
     ...(config.enabledCodes || [])
   ]));
-  const effectivePriceMap = priceMap || await fetchSinaPrices(codes).catch(() => ({}));
+  const effectivePriceMap = priceMap || await fetchSinaPrices(codes, env).catch(() => ({}));
   
   // 使用统一的净值获取方法（支持 KV 缓存）
   const effectiveNavMap = navByCode || await fetchLatestNavMapWithCache(env, codes, [], {
@@ -3182,7 +3182,7 @@ async function runSwitchStrategyTick(env, scheduledMs, reason = 'switch-cron') {
   }
   const codeList = Array.from(allCodes);
   const [priceMap, navByCode] = await Promise.all([
-    fetchSinaPrices(codeList).catch(() => ({})),
+    fetchSinaPrices(codeList, env).catch(() => ({})),
     fetchLatestNavMapWithCache(env, codeList, [], {
       forceRefresh: false,
       todayDate: getTodayShanghaiDate(),

@@ -63,6 +63,10 @@ invocation_logs = true
 binding = "OCR_PROXY"
 service = "ai-dca-ocr-proxy"
 
+[[services]]
+binding = "MARKETS"
+service = "ai-dca-markets"
+
 # WsHub Durable Object：实时长连接通道。
 # 每个 deviceInstallationId 一个 instance，承载在线即推 + ping/pong。
 [[durable_objects.bindings]]

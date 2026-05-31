@@ -7,8 +7,8 @@
 //   enabled: true
 //
 // 每分钟（仅 A 股交易时段 9:30-11:30 / 13:00-15:00 周一至周五）由 Cron Trigger 触发：
-//   1. 拉取所有相关 ETF 的实时盘中价（优先雪球 quote，失败再回退新浪 hq.sinajs.cn）
-//   2. 拉取最新单位净值（优先雪球 quote 的 unit_nav / nav_date，失败再回退 PUBLIC_DATA_BASE_URL/data/<code>/latest-nav.json）
+//   1. 拉取所有相关 ETF 的实时盘中价（统一走 markets/fund-metrics）
+//   2. 拉取最新单位净值（统一走 markets/fund-metrics，保留 KV 缓存）
 //   3. 计算每只候选与基准的 (price - nav) / nav 溢价百分比
 //   4. 取「基准溢价 - 候选溢价」绝对值，跨越任一阈值即触发
 //   5. 推送到该 client 已配对的设备（Bark + FCM 通道，复用既有 runClientDetection 流程）
@@ -181,6 +181,7 @@ export function isInTradingSession(date = new Date()) {
 
 // 净值获取相关的函数已抽离到 getNav.js 模块
 // 其中 fetchLatestNav, fetchLatestNavMap, fetchLatestNavMapWithCache, fetchSinaPrices, getLatestNavWithCache
+// 均由 getNav.js 统一接入 markets/fund-metrics；fetchSinaPrices 是兼容旧调用名。
 // 由该模块导出并在本文件顶部导入
 
 /**

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Home, KeyRound, Loader2, LogOut, UserRound, X } from 'lucide-react';
+import { AlertTriangle, CloudDownload, GitMerge, Home, KeyRound, Loader2, LogOut, UserRound, X } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
-import { ensureLocalChangeBaseline, loadCloudSyncMeta, refreshRemoteCloudMeta, restoreEncryptedCloudBackup, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
-import { clearRememberedKey, generateSecurityPassword } from '../app/secureVault.js';
+import { ensureLocalChangeBaseline, loadCloudSyncMeta, mergeLocalIntoCloudBackup, prepareCloudSyncConflict, refreshRemoteCloudMeta, restoreEncryptedCloudBackup, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
+import { clearRememberedKey, generateSecurityPassword, loadRememberedKey } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
 import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
 import { persistWorkspacePrefs, readWorkspacePrefs } from '../app/workspacePrefs.js';
@@ -19,6 +19,34 @@ const HOME_OPTIONS = [
   { value: 'backup', label: '数据同步' }
 ];
 
+const SYNC_KEY_LABELS = {
+  aiDcaAccountAssignments: '账户分配',
+  aiDcaAccumulationState: '加仓模型',
+  aiDcaDcaState: '定投计划',
+  aiDcaFundHoldingsLedger: '持仓账本',
+  aiDcaFundHoldingsState: '持仓状态',
+  aiDcaHomeDashboardState: '首页仪表盘',
+  aiDcaNotifyClientConfig: '通知配置',
+  aiDcaPlanState: '建仓计划',
+  aiDcaPlanStore: '计划列表',
+  aiDcaPositionSnapshot: '持仓快照',
+  aiDcaSellPlanStore: '卖出计划',
+  aiDcaSwitchStrategyPrefs: '基金切换偏好',
+  aiDcaTradeLedger: '交易流水',
+  aiDcaWorkspacePrefs: '工作区偏好'
+};
+
+function formatSyncTime(value = '') {
+  if (!value) return '-';
+  try { return new Date(value).toLocaleString('zh-CN', { hour12: false }); } catch { return value; }
+}
+
+function formatKeyList(keys = [], limit = 4) {
+  const list = (Array.isArray(keys) ? keys : []).slice(0, limit).map((key) => SYNC_KEY_LABELS[key] || key);
+  if (!list.length) return '无';
+  return `${list.join('、')}${keys.length > limit ? ` 等 ${keys.length} 项` : ''}`;
+}
+
 export function AccountMenu() {
   const [session, setSession] = useState(() => loadCloudSession());
   const [meta, setMeta] = useState(() => loadCloudSyncMeta());
@@ -27,6 +55,8 @@ export function AccountMenu() {
   const [lastError, setLastError] = useState('');
   const [form, setForm] = useState({ username: '', password: '', securityPassword: '', rememberDevice: true });
   const [busy, setBusy] = useState('');
+  const [conflict, setConflict] = useState(null);
+  const [conflictPassword, setConflictPassword] = useState('');
   const [homePref, setHomePref] = useState(() => readWorkspacePrefs().homepageTab);
   const [homeSaved, setHomeSaved] = useState(false);
   const [open, setOpen] = useState(false);
@@ -48,11 +78,14 @@ export function AccountMenu() {
     }
     function handleSyncDone(event) {
       setSyncState('synced');
+      setConflict(null);
       setLastError('');
       refreshLocalState(event);
     }
     function handleSyncError(event) {
-      setSyncState('error');
+      const nextConflict = event?.detail?.conflict || null;
+      setConflict(nextConflict);
+      setSyncState(nextConflict ? 'conflict' : 'error');
       setLastError(event?.detail?.message || '同步失败');
       refreshLocalState(event);
     }
@@ -102,6 +135,14 @@ export function AccountMenu() {
     const hasRemoteBackup = Boolean(remoteMeta?.version);
     ensureLocalChangeBaseline();
     if (hasRemoteBackup) {
+      const nextConflict = await prepareCloudSyncConflict({
+        securityPassword: form.securityPassword,
+        useRemembered: false
+      });
+      if (nextConflict?.hasConflict) {
+        setConflict(nextConflict);
+        return 'conflict';
+      }
       const restored = await restoreEncryptedCloudBackup({
         securityPassword: form.securityPassword,
         onlyIfRemoteNewer: true
@@ -133,15 +174,71 @@ export function AccountMenu() {
       const syncResult = await runInitialSync(nextSession, action);
       setMeta(loadCloudSyncMeta());
       setPreview(collectBackupPayload());
-      setSyncState('synced');
+      setSyncState(syncResult === 'conflict' ? 'conflict' : 'synced');
       showToast({
         title: action === 'register' ? '账户已注册' : '已登录',
-        description: syncResult === 'restored' ? '已恢复云端较新数据' : syncResult === 'uploaded' ? '已创建云端备份' : '本地与云端无需更新',
+        description: syncResult === 'conflict' ? '检测到云端与本机都有不同数据，请选择合并或拉取云端。' : syncResult === 'restored' ? '已恢复云端较新数据' : syncResult === 'uploaded' ? '已创建云端备份' : '本地与云端无需更新',
+        tone: syncResult === 'conflict' ? 'amber' : 'emerald'
+      });
+      if (syncResult !== 'conflict') setOpen(false);
+    } catch (err) {
+      if (err?.isCloudSyncConflict) {
+        setConflict(err.conflict || null);
+        setSyncState('conflict');
+        setLastError(err.message || '云端数据已更新');
+        setOpen(true);
+        showToast({ title: '检测到同步冲突', description: err?.conflict?.summaryText || err.message, tone: 'amber' });
+      } else {
+        showToast({ title: action === 'register' ? '注册/同步失败' : '登录/同步失败', description: err?.message || String(err), tone: 'red' });
+      }
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function handleResolveConflict(mode) {
+    const remembered = loadRememberedKey();
+    const useRemembered = Boolean(remembered?.rawKey);
+    const secret = useRemembered ? '' : (conflictPassword || form.securityPassword);
+    if (!useRemembered && secret.length < 8) {
+      showToast({ title: '需要安全密码', description: '请输入安全密码后再处理冲突。', tone: 'amber' });
+      return;
+    }
+    const busyKey = mode === 'merge' ? 'merge-conflict' : 'pull-conflict';
+    setBusy(busyKey);
+    setLastError('');
+    try {
+      const result = mode === 'merge'
+        ? await mergeLocalIntoCloudBackup({
+          securityPassword: secret,
+          rememberDevice: form.rememberDevice,
+          useRemembered
+        })
+        : await restoreEncryptedCloudBackup({
+          securityPassword: secret,
+          useRemembered,
+          onlyIfRemoteNewer: false
+        });
+      setConflict(null);
+      setConflictPassword('');
+      setMeta(loadCloudSyncMeta());
+      setPreview(collectBackupPayload());
+      setSyncState('synced');
+      window.dispatchEvent(new CustomEvent(mode === 'merge' ? 'cloud-sync:auto-uploaded' : 'cloud-sync:auto-restored', { detail: { result } }));
+      showToast({
+        title: mode === 'merge' ? '已合并并同步' : '已拉取云端',
+        description: mode === 'merge' ? '本机数据已合并到云端，远端独有数据也已保留到本机。' : '云端版本已覆盖本机数据。',
         tone: 'emerald'
       });
-      setOpen(false);
     } catch (err) {
-      showToast({ title: action === 'register' ? '注册/同步失败' : '登录/同步失败', description: err?.message || String(err), tone: 'red' });
+      if (err?.isCloudSyncConflict) {
+        setConflict(err.conflict || conflict);
+        setSyncState('conflict');
+      } else {
+        setSyncState('error');
+      }
+      setLastError(err?.message || String(err));
+      showToast({ title: '处理冲突失败', description: err?.message || String(err), tone: 'red' });
     } finally {
       setBusy('');
     }
@@ -151,6 +248,8 @@ export function AccountMenu() {
     clearCloudSession();
     clearRememberedKey();
     setSession(null);
+    setConflict(null);
+    setConflictPassword('');
     showToast({ title: '已退出账户', tone: 'slate' });
   }
 
@@ -181,6 +280,8 @@ export function AccountMenu() {
     ? '同步中'
     : syncState === 'error'
     ? '同步失败'
+    : syncState === 'conflict'
+    ? '待处理冲突'
     : meta?.version
     ? `已同步 v${meta.version}`
     : '等待同步';
@@ -237,6 +338,66 @@ export function AccountMenu() {
                     </div>
                   </div>
                   <div className="text-xs text-slate-500">范围 {preview.keys.length} 项 · {formatBytes(previewBytes)}</div>
+                  {conflict ? (
+                    <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
+                        <div className="min-w-0">
+                          <div className="font-bold text-amber-950">发现多端同步冲突</div>
+                          <div className="mt-1 leading-5">{conflict.summaryText || '云端版本与本机数据不一致。'}</div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-lg bg-white/70 px-2 py-2">
+                          <div className="font-semibold text-amber-700">云端版本</div>
+                          <div className="mt-0.5 text-amber-950">v{conflict.remoteVersion ?? '-'}</div>
+                          <div className="mt-0.5 text-[11px] text-amber-700">{formatSyncTime(conflict.remoteUpdatedAt)}</div>
+                        </div>
+                        <div className="rounded-lg bg-white/70 px-2 py-2">
+                          <div className="font-semibold text-amber-700">本机数据</div>
+                          <div className="mt-0.5 text-amber-950">{conflict.localKeyCount ?? preview.keys.length} 项</div>
+                          <div className="mt-0.5 text-[11px] text-amber-700">{formatSyncTime(conflict.localUpdatedAt)}</div>
+                        </div>
+                      </div>
+                      <div className="space-y-1 text-[11px] leading-5 text-amber-800">
+                        {conflict.changedKeys?.length ? <div>两端不同：{formatKeyList(conflict.changedKeys)}</div> : null}
+                        {conflict.remoteOnlyKeys?.length ? <div>云端独有：{formatKeyList(conflict.remoteOnlyKeys)}</div> : null}
+                        {conflict.localOnlyKeys?.length ? <div>本机独有：{formatKeyList(conflict.localOnlyKeys)}</div> : null}
+                      </div>
+                      {!loadRememberedKey()?.rawKey ? (
+                        <label className="block space-y-1 text-[11px] font-semibold text-amber-800">
+                          安全密码
+                          <input
+                            className={cx(inputClass, 'h-9 border-amber-200 bg-white text-xs')}
+                            type="password"
+                            value={conflictPassword}
+                            onChange={(event) => setConflictPassword(event.target.value)}
+                            autoComplete="off"
+                          />
+                        </label>
+                      ) : null}
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          className={cx(primaryButtonClass, 'justify-center text-xs')}
+                          onClick={() => handleResolveConflict('merge')}
+                          disabled={Boolean(busy)}
+                        >
+                          {busy === 'merge-conflict' ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitMerge className="h-4 w-4" />}
+                          合并本机
+                        </button>
+                        <button
+                          type="button"
+                          className={cx(secondaryButtonClass, 'justify-center bg-white text-xs')}
+                          onClick={() => handleResolveConflict('pull')}
+                          disabled={Boolean(busy)}
+                        >
+                          {busy === 'pull-conflict' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />}
+                          拉取云端
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
                     <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
                       <Home className="h-3.5 w-3.5 text-indigo-500" aria-hidden="true" />默认首页
