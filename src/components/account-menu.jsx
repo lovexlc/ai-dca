@@ -189,6 +189,8 @@ export function AccountMenu() {
         setOpen(true);
         showToast({ title: '检测到同步冲突', description: err?.conflict?.summaryText || err.message, tone: 'amber' });
       } else {
+        setSyncState('error');
+        setLastError(err?.message || String(err));
         showToast({ title: action === 'register' ? '注册/同步失败' : '登录/同步失败', description: err?.message || String(err), tone: 'red' });
       }
     } finally {
