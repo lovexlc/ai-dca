@@ -170,6 +170,7 @@ export function createEmptyTransaction(overrides = {}) {
     costPrice: '',
     switchPairId: '',
     note: '',
+    tags: [],
     ...overrides
   };
 }
@@ -177,6 +178,8 @@ export function createEmptyTransaction(overrides = {}) {
 export function normalizeTransaction(tx = {}, { idPrefix = 'tx' } = {}) {
   const code = normalizeFundCode(tx?.code || '');
   const kind = normalizeFundKind(tx?.kind, code, tx?.name || '');
+  const rawTags = Array.isArray(tx?.tags) ? tx.tags.filter((t) => typeof t === 'string' && t.trim()) : [];
+  const tags = rawTags.length > 0 ? rawTags : (kind === 'qdii' ? ['qdii', 'otc'] : [kind]);
   return {
     id: String(tx?.id || '').trim() || buildTransactionId(idPrefix),
     code,
@@ -188,7 +191,8 @@ export function normalizeTransaction(tx = {}, { idPrefix = 'tx' } = {}) {
     shares: parsePositiveDecimal(tx?.shares, 4),
     costPrice: parsePositiveDecimal(tx?.costPrice, 4),
     switchPairId: String(tx?.switchPairId || '').trim(),
-    note: String(tx?.note || '').trim()
+    note: String(tx?.note || '').trim(),
+    tags
   };
 }
 

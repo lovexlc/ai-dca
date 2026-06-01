@@ -3,6 +3,8 @@ import { formatCurrency } from '../../app/accumulation.js';
 import {
   KIND_LABELS,
   KIND_PILL_TONES,
+  TAG_LABELS,
+  TAG_PILL_TONES,
   formatNav,
   formatShares,
   formatSignedCurrency,
@@ -25,7 +27,11 @@ export function HoldingSummaryPanel({ aggregate, onNavigateToMarkets, onBuyOrSel
         <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">当前基金</div>
         <div className="mt-1 flex items-center gap-2">
           <span className="font-mono text-base font-bold text-slate-900">{agg.code}</span>
-          <Pill tone={KIND_PILL_TONES[agg.kind] || 'slate'}>{KIND_LABELS[agg.kind] || '未知'}</Pill>
+          {(Array.isArray(agg.tags) && agg.tags.length > 0 ? agg.tags : [agg.kind]).map((tag) => (
+            <Pill key={tag} tone={TAG_PILL_TONES[tag] || KIND_PILL_TONES[tag] || 'slate'}>
+              {TAG_LABELS[tag] || KIND_LABELS[tag] || tag}
+            </Pill>
+          ))}
         </div>
         {agg.name ? <div className="mt-1 text-sm text-slate-600">{agg.name}</div> : null}
       </div>

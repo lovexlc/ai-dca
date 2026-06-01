@@ -1,12 +1,16 @@
-import { Save, Search, Trash2, X } from 'lucide-react';
+import { Save, Search, Trash2, X, Plus } from 'lucide-react';
+import { useState } from 'react';
 import {
   getTransactionErrors,
   normalizeFundCode,
   summarizeTransactionErrors
 } from '../../app/holdingsLedgerCore.js';
 import {
+  ALL_TAGS,
   KIND_LABELS,
   KIND_PILL_TONES,
+  TAG_LABELS,
+  TAG_PILL_TONES,
   PRIMARY_BTN,
   SUBTLE_BTN,
   formatNav,
@@ -51,6 +55,20 @@ export function TransactionDraftPanel({
   const isSwitchOn = Boolean(draft.switchPairId);
   const pairedCounterpart = draft.switchPairId ? transactions.find((tx) => tx.id === draft.switchPairId) : null;
   const pairedMissing = Boolean(draft.switchPairId) && !pairedCounterpart;
+  const [showTagPicker, setShowTagPicker] = useState(false);
+  const currentTags = Array.isArray(draft.tags) ? draft.tags : [];
+
+  function addTag(tag) {
+    if (!currentTags.includes(tag)) {
+      onDraftChange('tags', [...currentTags, tag]);
+    }
+  }
+
+  function removeTag(tag) {
+    onDraftChange('tags', currentTags.filter((t) => t !== tag));
+  }
+
+  const availableTags = ALL_TAGS.filter((t) => !currentTags.includes(t));
 
   return (
     <div className="space-y-3">
@@ -84,18 +102,36 @@ export function TransactionDraftPanel({
             placeholder="如 长信电子信息"
           />
         </label>
-        <label className="col-span-1 text-xs text-slate-500">
-          标签
-          <select
-            className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')}
-            value={draft.kind}
-            onChange={(event) => onDraftChange('kind', event.target.value)}
-          >
-            <option value="otc">场外</option>
-            <option value="exchange">场内</option>
-            <option value="qdii">QDII</option>
-          </select>
-        </label>
+        <div className="col-span-2 text-xs text-slate-500">
+          <div className="mb-1">标签</div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {currentTags.map((tag) => (
+              <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                {TAG_LABELS[tag] || KIND_LABELS[tag] || tag}
+                <button type="button" className="ml-0.5 text-indigo-400 hover:text-indigo-600" onClick={() => removeTag(tag)}>×</button>
+              </span>
+            ))}
+            <div className="relative">
+              <button type="button" className={SUBTLE_BTN} onClick={() => setShowTagPicker((v) => !v)}>
+                <Plus className="h-3 w-3" /> 添加
+              </button>
+              {showTagPicker && availableTags.length > 0 ? (
+                <div className="absolute left-0 top-full z-10 mt-1 flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-2 shadow-lg" style={{ minWidth: 180 }}>
+                  {availableTags.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 hover:bg-indigo-100 hover:text-indigo-700"
+                      onClick={() => { addTag(tag); setShowTagPicker(false); }}
+                    >
+                      {TAG_LABELS[tag] || KIND_LABELS[tag] || tag}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
         <label className="col-span-1 text-xs text-slate-500">
           类型
           <select

@@ -441,10 +441,17 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     const aggTodayProfitHolidayDays = isLatestNavToday && aggPreviousNavDateStr && aggLatestNavDateStr
       ? countHolidayWorkdaysBetween(aggPreviousNavDateStr, aggLatestNavDateStr)
       : 0;
+    const tagSet = new Set();
+    for (const tx of bucket.transactions) {
+      if (Array.isArray(tx.tags)) tx.tags.forEach((t) => tagSet.add(t));
+    }
+    if (tagSet.size === 0) tagSet.add(resolvedKind);
+
     aggregates.push({
       code: bucket.code,
       name: bucket.name || snapshot?.name || '',
       kind: bucket.kind,
+      tags: [...tagSet],
       transactions: bucket.transactions,
       buyShares: bucket.buyShares,
       sellShares: bucket.sellShares,

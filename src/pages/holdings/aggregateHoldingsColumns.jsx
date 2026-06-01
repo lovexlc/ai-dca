@@ -5,6 +5,8 @@ import { ACCOUNT_TYPES, getAssignedAccount } from '../../app/accountManager.js';
 import {
   KIND_LABELS,
   KIND_PILL_TONES,
+  TAG_LABELS,
+  TAG_PILL_TONES,
   formatNav,
   formatShares,
   formatSignedCurrency,
@@ -46,14 +48,24 @@ export function createAggregateHoldingsColumns({
       accessorFn: (row) => row.kind,
       meta: { label: '标签', variant: 'multiSelect', options: kindFilterOptions },
       header: ({ column }) => <DataTableColumnHeader column={column} label="标签" />,
-      cell: ({ row }) => (
-        <Pill tone={KIND_PILL_TONES[row.original.kind] || 'slate'}>
-          {KIND_LABELS[row.original.kind] || '未知'}
-        </Pill>
-      ),
+      cell: ({ row }) => {
+        const tags = Array.isArray(row.original.tags) && row.original.tags.length > 0
+          ? row.original.tags
+          : [row.original.kind];
+        return (
+          <div className="flex flex-wrap gap-1">
+            {tags.map((tag) => (
+              <Pill key={tag} tone={TAG_PILL_TONES[tag] || KIND_PILL_TONES[tag] || 'slate'}>
+                {TAG_LABELS[tag] || KIND_LABELS[tag] || tag}
+              </Pill>
+            ))}
+          </div>
+        );
+      },
       filterFn: (row, columnId, filterValue) => {
         if (!Array.isArray(filterValue) || filterValue.length === 0) return true;
-        return filterValue.includes(row.getValue(columnId));
+        const tags = Array.isArray(row.original.tags) ? row.original.tags : [row.original.kind];
+        return tags.some((t) => filterValue.includes(t));
       },
     },
     {

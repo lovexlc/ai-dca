@@ -8,6 +8,15 @@ export const KIND_LABELS = { otc: '场外', exchange: '场内', qdii: 'QDII' };
 export const KIND_PILL_TONES = { otc: 'indigo', exchange: 'amber', qdii: 'purple' };
 export const KIND_FILTER_LABELS = { all: '全部', otc: '场外', exchange: '场内', qdii: 'QDII' };
 export const KIND_FILTER_KEYS = ['all', 'otc', 'exchange', 'qdii'];
+
+export const ALL_TAGS = ['otc', 'exchange', 'qdii', '美股', '港股', '指数', '行业', '债基', '货基', '混合'];
+export const TAG_LABELS = { otc: '场外', exchange: '场内', qdii: 'QDII', 美股: '美股', 港股: '港股', 指数: '指数', 行业: '行业', 债基: '债基', 货基: '货基', 混合: '混合' };
+export const TAG_PILL_TONES = { otc: 'indigo', exchange: 'amber', qdii: 'purple', 美股: 'emerald', 港股: 'emerald', 指数: 'slate', 行业: 'slate', 债基: 'slate', 货基: 'slate', 混合: 'slate' };
+
+export function resolveTagsFromKind(kind = 'otc') {
+  if (kind === 'qdii') return ['qdii', 'otc'];
+  return [kind];
+}
 export const LEDGER_COLUMN_COUNT = 18;
 export const PRIMARY_BTN = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-indigo-200/70 transition-colors hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
 export const GHOST_BTN = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
@@ -86,7 +95,8 @@ export function transactionToDraft(tx) {
     costPrice: tx.costPrice > 0 ? String(tx.costPrice) : '',
     switchPairId: String(tx.switchPairId || ''),
     before3pm: true,
-    note: String(tx.note || '')
+    note: String(tx.note || ''),
+    tags: Array.isArray(tx.tags) ? [...tx.tags] : []
   };
 }
 
