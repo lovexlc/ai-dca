@@ -68,7 +68,7 @@ export function HoldingSummaryPanel({ aggregate, onNavigateToMarkets, onBuyOrSel
         <div className="min-w-0">
           <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">今日盈亏</dt>
           <dd className={cx('mt-1 min-w-0 truncate whitespace-nowrap tabular-nums', todayTone)}>
-            {agg.hasTodayNav ? `${formatSignedCurrency(agg.todayProfit)} (${formatSignedPercent(agg.todayReturnRate)})` : '—'}
+            {agg.hasCurrentPrice ? `${formatSignedCurrency(agg.hasTodayNav ? agg.todayProfit : 0)} (${formatSignedPercent(agg.hasTodayNav ? agg.todayReturnRate : 0)})` : '—'}
             {agg.hasTodayNav && agg.todayProfitHolidayDays > 0 ? (
               <sup
                 className="ml-1 inline-block rounded-sm bg-amber-50 px-1 py-px align-super text-[9px] font-semibold text-amber-700 ring-1 ring-amber-200"

@@ -169,7 +169,7 @@ export function createAggregateHoldingsColumns({
       header: ({ column }) => <DataTableColumnHeader column={column} label="当日收益" />,
       cell: ({ row }) => {
         if (!row.original.hasCurrentPrice) return <span className="text-muted-foreground">—</span>;
-        const v = row.original.todayProfit;
+        const v = row.original.hasTodayNav ? row.original.todayProfit : 0;
         const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
         return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v, 2)}</span>;
       },
@@ -182,7 +182,7 @@ export function createAggregateHoldingsColumns({
       header: ({ column }) => <DataTableColumnHeader column={column} label="当日收益率" />,
       cell: ({ row }) => {
         if (!row.original.hasCurrentPrice) return <span className="text-muted-foreground">—</span>;
-        const v = row.original.todayReturnRate;
+        const v = row.original.hasTodayNav ? row.original.todayReturnRate : 0;
         const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
         return <span className={cx('tabular-nums', cls)}>{formatSignedPercent(v)}</span>;
       },

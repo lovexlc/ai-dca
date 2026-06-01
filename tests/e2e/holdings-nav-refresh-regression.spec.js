@@ -41,7 +41,7 @@ function ledgerFixture() {
   };
 }
 
-test('holdings manual refresh updates OTC today return rate from latest NAV snapshot', async ({ page }) => {
+test('holdings manual refresh keeps stale OTC NAV out of today return', async ({ page }) => {
   await page.addInitScript(({ key, ledger }) => {
     window.localStorage.setItem(key, JSON.stringify(ledger));
   }, { key: LEDGER_KEY, ledger: ledgerFixture() });
@@ -85,5 +85,5 @@ test('holdings manual refresh updates OTC today return rate from latest NAV snap
   await page.getByRole('button', { name: /同步净值|正在同步/ }).click();
 
   const row = page.getByRole('row').filter({ hasText: '000001' }).first();
-  await expect(row).toContainText(/\+2%\+¥ 20\.00\+2%/, { timeout: 10_000 });
+  await expect(row).toContainText(/¥ 0\.000%/, { timeout: 10_000 });
 });

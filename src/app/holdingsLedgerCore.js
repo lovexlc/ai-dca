@@ -152,11 +152,12 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
     hasChangePercent,
     isLatestNavToday
   });
-  const hasDailyReturn = getHasDailyReturn(resolvedKind, {
+  const hasDailyReturnInput = getHasDailyReturn(resolvedKind, {
     hasCurrentPrice,
     hasPreviousPrice,
     hasChangePercent
   });
+  const hasDailyReturn = hasTodayNav && hasDailyReturnInput;
   const marketValue = hasCurrentPrice ? round(currentPrice * normalized.shares, 2) : 0;
   const unrealizedProfit = hasCurrentPrice ? round((currentPrice - normalized.price) * normalized.shares, 2) : 0;
   const unrealizedReturnRate = cost > 0 ? round(((marketValue / cost) - 1) * 100, 2) : 0;
@@ -212,7 +213,7 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
     hasPreviousNav: hasPreviousPrice,
     hasCurrentPrice,
     hasChangePercent,
-    hasTodayNav: hasDailyReturn,
+    hasTodayNav,
     hasExpectedNav: hasTodayNav,
     latestNav,
     previousNav,
@@ -478,11 +479,12 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       hasChangePercent,
       isLatestNavToday
     });
-    const hasDailyReturn = getHasDailyReturn(resolvedKind, {
+    const hasDailyReturnInput = getHasDailyReturn(resolvedKind, {
       hasCurrentPrice,
       hasPreviousPrice,
       hasChangePercent
     });
+    const hasDailyReturn = hasExpectedNav && hasDailyReturnInput;
     const todayProfit = totalShares > 0 && hasDailyReturn
       ? round(previousValue * (changePercent / 100), 2)
       : 0;
@@ -532,7 +534,7 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       hasPreviousNav: hasPreviousPrice,
       hasCurrentPrice,
       hasChangePercent,
-      hasTodayNav: hasDailyReturn,
+      hasTodayNav: hasExpectedNav,
       hasExpectedNav,
       todayProfitSpanDays: aggTodayProfitSpanDays,
       todayProfitHolidayDays: aggTodayProfitHolidayDays,

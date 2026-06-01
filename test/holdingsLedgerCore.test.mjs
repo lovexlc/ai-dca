@@ -27,7 +27,7 @@ test('场外持仓刷新后从 latest/previous NAV 反推当日收益率', () =>
     }
   };
 
-  const [agg] = aggregateByCode(transactions, snapshotsByCode, { todayDate: '2026-06-01' });
+  const [agg] = aggregateByCode(transactions, snapshotsByCode, { todayDate: '2026-05-29' });
   assert.equal(agg.todayProfit, 20);
   assert.equal(agg.todayReturnRate, 2);
   assert.equal(agg.hasTodayNav, true);
@@ -35,6 +35,41 @@ test('场外持仓刷新后从 latest/previous NAV 反推当日收益率', () =>
   const summary = summarizePortfolio([agg]);
   assert.equal(summary.todayProfit, 20);
   assert.equal(summary.todayReturnRate, 2);
+});
+
+test('境内场外基金净值日期未到今天时不显示昨天当日收益', () => {
+  const transactions = [{
+    id: 'buy-otc-stale',
+    code: '000001',
+    name: '场外测试基金',
+    kind: 'otc',
+    type: 'BUY',
+    date: '2026-05-20',
+    price: 1,
+    shares: 1000
+  }];
+  const snapshotsByCode = {
+    '000001': {
+      code: '000001',
+      name: '场外测试基金',
+      latestNav: 1.02,
+      latestNavDate: '2026-05-29',
+      previousNav: 1,
+      previousNavDate: '2026-05-28',
+      changePercent: null
+    }
+  };
+
+  const [agg] = aggregateByCode(transactions, snapshotsByCode, { todayDate: '2026-06-02' });
+  assert.equal(agg.hasExpectedNav, false);
+  assert.equal(agg.hasTodayNav, false);
+  assert.equal(agg.todayProfit, 0);
+  assert.equal(agg.todayReturnRate, 0);
+
+  const summary = summarizePortfolio([agg]);
+  assert.equal(summary.todayReadyCount, 0);
+  assert.equal(summary.todayProfit, 0);
+  assert.equal(summary.todayReturnRate, 0);
 });
 
 test('场外 QDII 使用 fund-metrics 规范化后的 previousNav', () => {
