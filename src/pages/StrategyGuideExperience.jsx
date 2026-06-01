@@ -606,11 +606,11 @@ function ChapterModalBody({ id, navigate, closeModal, demoMeta, onInstallDemo, o
   if (id === 'guide-demo') {
     return (
       <div className="space-y-5">
-        <SectionHeading eyebrow="新手辅助" title="需要一套示例数据吗？" description="生成随机 Demo，快速理解持仓、交易计划、通知和账户体系。看完记得清除 Demo 再录入真实数据。" />
+        <SectionHeading eyebrow="新手辅助" title="需要一套示例数据吗？" description="生成纳指 ETF Demo，快速理解持仓、交易计划、通知和账户体系。看完记得清除 Demo 再录入真实数据。" />
         <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
-          <p className="text-sm leading-6 text-slate-600">演示数据会写入持仓、交易计划、定投、账户分配和关注列表。如已有本地数据，建议先去「数据同步」导出备份。</p>
+          <p className="text-sm leading-6 text-slate-600">演示数据会写入所有纳指 ETF mock 持仓、交易计划、定投、账户分配和关注列表；买入价锚定 2026-03-01。如已有本地数据，建议先去「数据同步」导出备份。</p>
           <div className="mt-3 flex flex-wrap gap-3">
-            <GuideButton variant="secondary" onClick={onInstallDemo}>{demoMeta ? '重新生成 Demo' : '生成演示数据'}</GuideButton>
+            <GuideButton variant="secondary" onClick={onInstallDemo}>{demoMeta ? '重新生成 Demo' : '生成demo数据'}</GuideButton>
             {demoMeta ? <GuideButton variant="secondary" onClick={onClearDemo}><Trash2 className="h-4 w-4" />清除 Demo</GuideButton> : null}
           </div>
           {demoMeta ? <p className="mt-3 text-xs text-slate-500">当前使用的是演示数据。</p> : null}
@@ -707,7 +707,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
   function handleInstallDemo() {
     if (hasUserData && !window.confirm('检测到已有本地数据。生成演示数据会覆盖当前持仓、计划和定投数据。建议先到「数据同步」导出备份。确认继续？')) return;
     const meta = installDemoData();
-    setMessage('演示数据已生成。下一步建议配置手机通知，完整体验「计划触发 → 手机提醒」的流程。');
+    setMessage('纳指 ETF Demo 数据已生成。下一步建议配置手机通知，完整体验「计划触发 → 手机提醒」的流程。');
     setDemoMeta(meta);
     onDemoDataChange?.(meta);
   }

@@ -21,6 +21,25 @@ const DEMO_KEYS = [
   WORKSPACE_PREFS_KEY
 ];
 
+const NASDAQ_ETF_DEMO_POSITIONS = [
+  ['159513', '大成纳斯达克100ETF(QDII)', 'stable', 1.476, 1.85],
+  ['159941', '广发纳斯达克100ETF', 'stable', 1.337, 1.691],
+  ['513100', '国泰纳斯达克100ETF', 'stable', 1.802, 2.266],
+  ['159696', '易方达纳斯达克100ETF(QDI)', 'aggressive', 1.653, 2.071],
+  ['159632', '华安纳斯达克100ETF(QDII)', 'aggressive', 1.997, 2.493],
+  ['513390', '博时纳斯达克100ETF(QDII)', 'aggressive', 1.984, 2.469],
+  ['513300', '华夏纳斯达克100ETF(QDII)', 'aggressive', 2.183, 2.749],
+  ['159501', '嘉实纳斯达克100ETF(QDII)', 'defensive', 1.673, 2.119],
+  ['513870', '富国纳斯达克100ETF(QDII)', 'defensive', 1.681, 2.114],
+  ['159660', '汇添富纳斯达克100ETF', 'defensive', 1.932, 2.407],
+  ['513110', '华泰柏瑞纳斯达克100ETF(QDII)', 'defensive', 2.026, 2.521],
+  ['159659', '招商纳斯达克100ETF(QDII)', 'defensive', 1.903, 2.368]
+];
+
+const DEMO_BUY_DATE = '2026-03-01';
+const DEMO_BUY_PRICE_DATE = '2026-03-02';
+const DEMO_LATEST_PRICE_DATE = '2026-05-29';
+
 function seededRandom(seed = '') {
   let hash = 2166136261;
   for (const ch of String(seed || 'demo')) {
@@ -95,35 +114,27 @@ function makePlan({ id, symbol, name, basePrice, totalBudget, assetType }) {
 export function generateDemoData({ seed = `demo-${Date.now().toString(36)}` } = {}) {
   const random = seededRandom(seed);
   const now = new Date().toISOString();
-  const positions = [
-    ['QQQ', 'Invesco QQQ Trust', 'stable', 520, 535],
-    ['SPY', 'SPDR S&P 500 ETF', 'stable', 590, 604],
-    ['VOO', 'Vanguard S&P 500 ETF', 'stable', 540, 552],
-    ['AAPL', 'Apple', 'aggressive', 210, 228],
-    ['NVDA', 'NVIDIA', 'aggressive', 112, 129],
-    ['TSLA', 'Tesla', 'aggressive', 205, 238],
-    ['TSM', 'Taiwan Semiconductor', 'aggressive', 162, 178],
-    ['BRK.B', 'Berkshire Hathaway', 'defensive', 430, 448],
-    ['KO', 'Coca-Cola', 'defensive', 61, 64],
-    ['SCHD', 'Schwab US Dividend Equity ETF', 'defensive', 76, 79]
-  ];
+  const positions = NASDAQ_ETF_DEMO_POSITIONS;
 
   const transactions = [];
   const snapshotsByCode = {};
   positions.forEach(([code, name, , basePrice, latest], idx) => {
-    const shares = 4 + Math.floor(random() * 18);
-    transactions.push(buildTx({ code, name, date: '2025-10-18', price: basePrice, shares, note: 'Demo：初始建仓' }, idx * 3 + 1));
-    transactions.push(buildTx({ code, name, date: '2026-01-16', price: basePrice * (0.88 + random() * 0.07), shares: shares * 0.45, note: 'Demo：回撤加仓' }, idx * 3 + 2));
-    if (idx % 3 === 1) {
-      transactions.push(buildTx({ code, name, type: 'SELL', date: '2026-04-12', price: latest * 1.06, shares: shares * 0.18, note: 'Demo：做 T 减仓' }, idx * 3 + 3));
-    }
+    const shares = 1000 + Math.floor(random() * 18) * 100;
+    transactions.push(buildTx({
+      code,
+      name,
+      date: DEMO_BUY_DATE,
+      price: basePrice,
+      shares,
+      note: `Demo：纳指 ETF 模拟持仓，买入价锚定 ${DEMO_BUY_PRICE_DATE}`
+    }, idx + 1));
     snapshotsByCode[code] = {
       code,
       name,
       latestNav: round(latest, 4),
-      latestNavDate: '2026-05-18',
+      latestNavDate: DEMO_LATEST_PRICE_DATE,
       previousNav: round(latest * (0.99 + random() * 0.02), 4),
-      previousNavDate: '2026-05-17',
+      previousNavDate: '2026-05-28',
       updatedAt: now,
       cacheHit: true,
       cacheSource: 'demo',
@@ -132,27 +143,27 @@ export function generateDemoData({ seed = `demo-${Date.now().toString(36)}` } = 
     };
   });
 
-  const qqqPlan = makePlan({ id: 'demo-plan-qqq', symbol: 'QQQ', name: 'QQQ · 宽基金字塔 Demo', basePrice: 560, totalBudget: 24000, assetType: 'index' });
-  const aaplPlan = makePlan({ id: 'demo-plan-aapl', symbol: 'AAPL', name: 'AAPL · 个股建仓 Demo', basePrice: 235, totalBudget: 15000, assetType: 'stock' });
-  const nvdaPlan = makePlan({ id: 'demo-plan-nvda', symbol: 'NVDA', name: 'NVDA · 高波动个股 Demo', basePrice: 145, totalBudget: 18000, assetType: 'stock' });
-  const plans = [qqqPlan, aaplPlan, nvdaPlan];
-  const planStore = { source: 'react-plan-store', version: 1, activePlanId: qqqPlan.id, plans };
+  const primaryPlan = makePlan({ id: 'demo-plan-513100', symbol: '513100', name: '国泰纳斯达克100ETF · 金字塔 Demo', basePrice: 1.802, totalBudget: 24000, assetType: 'index' });
+  const secondaryPlan = makePlan({ id: 'demo-plan-159941', symbol: '159941', name: '广发纳斯达克100ETF · 分批加仓 Demo', basePrice: 1.337, totalBudget: 18000, assetType: 'index' });
+  const satellitePlan = makePlan({ id: 'demo-plan-513870', symbol: '513870', name: '富国纳斯达克100ETF · 观察 Demo', basePrice: 1.681, totalBudget: 12000, assetType: 'index' });
+  const plans = [primaryPlan, secondaryPlan, satellitePlan];
+  const planStore = { source: 'react-plan-store', version: 1, activePlanId: primaryPlan.id, plans };
 
   const dcaState = {
     source: 'react-dca',
     version: 5,
-    symbol: 'QQQ',
+    symbol: '513100',
     initialInvestment: 0,
     recurringInvestment: 1000,
     frequency: '每月',
     executionDay: 8,
     termMonths: 12,
     targetReturn: 30,
-    currentPrice: 535,
-    rollingHigh: 560,
+    currentPrice: 2.266,
+    rollingHigh: 2.32,
     capitalPool: 2700,
     currentLevel: -1,
-    linkedPlanId: qqqPlan.id,
+    linkedPlanId: primaryPlan.id,
     createdAt: now,
     updatedAt: now
   };
@@ -184,10 +195,10 @@ export function generateDemoData({ seed = `demo-${Date.now().toString(36)}` } = 
       switchChains: []
     },
     planStore,
-    activePlan: qqqPlan,
+    activePlan: primaryPlan,
     dcaState,
     accountAssignments,
-    watchlist: { us: positions.map(([code]) => code), cn: [] },
+    watchlist: { us: [], cn: positions.map(([code]) => code) },
     workspacePrefs,
     meta
   };

@@ -13,6 +13,7 @@ export function AggregateHoldingsTableSection({
   tableData,
   aggregates,
   onCreateFirstTransaction,
+  onInstallDemoData,
   onRowClick
 }) {
   if (tableData.length === 0) {
@@ -27,9 +28,20 @@ export function AggregateHoldingsTableSection({
         <h3 className="mb-2 text-base font-semibold text-slate-900">{aggregates.length === 0 ? '暂无交易记录' : '暂无当前持仓'}</h3>
         <p className="mb-6 max-w-xs text-sm leading-6 text-slate-500">{aggregates.length === 0 ? '添加你的第一笔交易，开始追踪投资组合收益与风险敞口。' : emptyHint}</p>
         {aggregates.length === 0 ? (
-          <button type="button" className={primaryButtonClass} onClick={onCreateFirstTransaction}>
-            <Plus className="h-4 w-4" />录入第一笔交易
-          </button>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <button type="button" className={primaryButtonClass} onClick={onCreateFirstTransaction}>
+              <Plus className="h-4 w-4" />录入第一笔交易
+            </button>
+            {onInstallDemoData ? (
+              <button
+                type="button"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                onClick={onInstallDemoData}
+              >
+                生成demo数据
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </div>
     );

@@ -75,6 +75,7 @@ import {
 } from '../app/holdingsHelpers.js';
 import { readTradeLedger } from '../app/tradeLedger.js';
 import { groupCostBasisBySymbol, attachUnrealized } from '../app/costTracker.js';
+import { hasPotentialUserData, installDemoData } from '../app/demoData.js';
 
 
 export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = false } = {}) {
@@ -278,6 +279,17 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   );
   function handleAccountChange(symbol, accountType) {
     setAccountAssignments((current) => assignAccount(symbol, accountType, current));
+  }
+
+  function handleInstallDemoData() {
+    if (typeof window !== 'undefined' && hasPotentialUserData() && !window.confirm('检测到已有本地数据。生成演示数据会覆盖当前持仓、计划和定投数据。建议先到「数据同步」导出备份。确认继续？')) return;
+    installDemoData();
+    setLedger(readLedgerState());
+    setAccountAssignments(readAccountAssignments());
+    setTradeLedgerEntries(readTradeLedger());
+    showActionToast('生成 Demo 数据', 'success', {
+      description: '已生成纳指 ETF 模拟持仓，买入价锚定 2026-03-01。'
+    });
   }
   const aggregateColumns = useMemo(() => createAggregateHoldingsColumns({
     accountAssignments,
@@ -1035,6 +1047,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           setSidePanelTab('create');
           setSidePanelOpen(true);
         }}
+        onInstallDemoData={handleInstallDemoData}
         onRowClick={(row) => {
           setSelectedCode(row.original.code);
           setSidePanelTab('summary');
