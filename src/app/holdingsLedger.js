@@ -35,13 +35,20 @@ function normalizeSnapshotEntry(entry = {}) {
   if (!isValidFundCode(code)) {
     return null;
   }
+  const latestNav = round(Number(entry?.latestNav) || 0, 4);
+  const price = round(Number(entry?.price ?? entry?.currentPrice ?? entry?.close) || 0, 4);
   return {
     code,
     name: normalizeFundName(entry?.name || ''),
-    latestNav: round(Number(entry?.latestNav) || 0, 4),
+    latestNav,
     latestNavDate: String(entry?.latestNavDate || '').trim(),
     previousNav: round(Number(entry?.previousNav) || 0, 4),
     previousNavDate: String(entry?.previousNavDate || '').trim(),
+    price,
+    currentPrice: price > 0 ? price : latestNav,
+    previousClose: round(Number(entry?.previousClose) || 0, 4),
+    change: round(Number(entry?.change) || 0, 4),
+    changePercent: round(Number(entry?.changePercent) || 0, 4),
     updatedAt: String(entry?.updatedAt || '').trim(),
     cacheHit: entry?.cacheHit === true,
     cacheSource: String(entry?.cacheSource || '').trim(),
@@ -293,6 +300,10 @@ export function mergeSnapshotsFromNavResult(existing = {}, navResult = null) {
       latestNavDate: item?.latestNavDate,
       previousNav: item?.previousNav,
       previousNavDate: item?.previousNavDate,
+      price: item?.price ?? item?.currentPrice ?? item?.close,
+      previousClose: item?.previousClose,
+      change: item?.change,
+      changePercent: item?.changePercent,
       updatedAt: item?.updatedAt || updatedAt,
       cacheHit: item?.cacheHit,
       cacheSource: item?.cacheSource,

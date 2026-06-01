@@ -27,7 +27,11 @@
       "Bash(npx playwright *)",
       "Bash(gh auth *)",
       "Bash(git pull *)",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(git rebase *)",
+      "Bash(git show *)",
+      "Bash(git cherry-pick *)",
+      "Bash(awk *)"
     ]
   }
 }

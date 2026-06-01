@@ -99,16 +99,16 @@ export function createAggregateHoldingsColumns({
     },
     {
       id: 'latestNav',
-      accessorFn: (row) => row.valuationPrice || row.latestNav,
+      accessorFn: (row) => row.currentPrice ?? row.latestNav,
       meta: { label: '当前价格' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="当前价格" />,
       cell: ({ row }) => {
         const r = row.original;
-        if (!r.hasLatestNav && !r.hasPrice) return <span className="text-muted-foreground">—</span>;
+        if (!r.hasCurrentPrice) return <span className="text-muted-foreground">—</span>;
         return (
           <span className="tabular-nums">
-            {r.hasPrice ? formatNav(r.price) : formatNav(r.latestNav)}
-            {r.kind === 'exchange' && r.hasLatestNav && r.hasPrice ? (
+            {formatNav(r.currentPrice ?? r.latestNav)}
+            {r.kind === 'exchange' && r.latestNav ? (
               <span className="ml-1 text-[10px] text-muted-foreground">NAV {formatNav(r.latestNav)}</span>
             ) : null}
           </span>
@@ -130,7 +130,7 @@ export function createAggregateHoldingsColumns({
       meta: { label: '总收益' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="总收益" />,
       cell: ({ row }) => {
-        if (!row.original.hasLatestNav) return <span className="text-muted-foreground">—</span>;
+        if (!row.original.hasCurrentPrice) return <span className="text-muted-foreground">—</span>;
         const v = row.original.unrealizedProfit;
         const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
         return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v, 2)}</span>;
@@ -143,7 +143,7 @@ export function createAggregateHoldingsColumns({
       meta: { label: '总收益率' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="总收益率" />,
       cell: ({ row }) => {
-        if (!row.original.hasLatestNav) return <span className="text-muted-foreground">—</span>;
+        if (!row.original.hasCurrentPrice) return <span className="text-muted-foreground">—</span>;
         const v = row.original.unrealizedReturnRate;
         const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
         return <span className={cx('tabular-nums', cls)}>{formatSignedPercent(v)}</span>;
@@ -156,7 +156,7 @@ export function createAggregateHoldingsColumns({
       meta: { label: '当日收益' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="当日收益" />,
       cell: ({ row }) => {
-        if (!row.original.hasLatestNav) return <span className="text-muted-foreground">—</span>;
+        if (!row.original.hasCurrentPrice) return <span className="text-muted-foreground">—</span>;
         const v = row.original.todayProfit;
         const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
         return <span className={cx('tabular-nums', cls)}>{formatSignedCurrency(v, 2)}</span>;
@@ -169,7 +169,7 @@ export function createAggregateHoldingsColumns({
       meta: { label: '当日收益率' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="当日收益率" />,
       cell: ({ row }) => {
-        if (!row.original.hasLatestNav) return <span className="text-muted-foreground">—</span>;
+        if (!row.original.hasCurrentPrice) return <span className="text-muted-foreground">—</span>;
         const v = row.original.todayReturnRate;
         const cls = v > 0 ? 'text-rose-600' : v < 0 ? 'text-emerald-600' : '';
         return <span className={cx('tabular-nums', cls)}>{formatSignedPercent(v)}</span>;

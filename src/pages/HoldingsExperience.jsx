@@ -234,7 +234,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           ledgerRealizedPnl: summary.realizedPnl,
           ledgerIsNegativeCost: summary.isNegativeCost,
         } : { ...agg, accountType };
-        const price = Number(agg.latestNav) || 0;
+        const price = Number(agg.currentPrice ?? agg.latestNav) || 0;
         if (summary && price > 0) {
           const withUnreal = attachUnrealized(summary, price);
           base.ledgerUnrealizedPnl = withUnreal.unrealizedPnl;
@@ -242,15 +242,15 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         }
         return base;
       });
-      // PR 4.5 收尾：仓位占比在表中可视化。总市值走 hasLatestNav 的行，以避免未定价的场外基金拉低总合计。
+      // PR 4.5 收尾：仓位占比在表中可视化。总市值走有当前价格的行，以避免未定价资产拉低总合计。
       const totalMv = enriched.reduce(
-        (sum, row) => sum + (row.hasLatestNav ? (Number(row.marketValue) || 0) : 0),
+        (sum, row) => sum + (row.hasCurrentPrice ? (Number(row.marketValue) || 0) : 0),
         0,
       );
       if (totalMv <= 0) return enriched;
       return enriched.map((row) => ({
         ...row,
-        weightPct: row.hasLatestNav ? ((Number(row.marketValue) || 0) / totalMv) * 100 : null,
+        weightPct: row.hasCurrentPrice ? ((Number(row.marketValue) || 0) / totalMv) * 100 : null,
       }));
     },
     [accountAssignments, aggregates, costBasisBySymbol],
@@ -696,7 +696,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       return agg.code.toLowerCase().includes(searchNeedle)
         || (agg.name || '').toLowerCase().includes(searchNeedle);
     });
-    const header = ['基金代码', '基金名称', '标签', '总份额', '平均成本', '当前净值', '总市值', '总收益(元)', '总收益率', '当日收益(元)', '当日收益率'];
+    const header = ['基金代码', '基金名称', '标签', '总份额', '平均成本', '当前价格', '总市值', '总收益(元)', '总收益率', '当日收益(元)', '当日收益率'];
     const rows = filtered.map((agg) => {
       const kindLabel = agg.kind === 'exchange' ? '场内' : '场外';
       return [
@@ -705,10 +705,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         kindLabel,
         formatShares(agg.totalShares),
         formatNav(agg.avgCost),
-        agg.hasLatestNav ? formatNav(agg.latestNav) : '',
-        agg.hasLatestNav ? agg.marketValue.toFixed(2) : '',
-        agg.hasLatestNav ? agg.unrealizedProfit.toFixed(2) : '',
-        agg.hasLatestNav ? `${agg.unrealizedReturnRate.toFixed(2)}%` : '',
+        agg.hasCurrentPrice ? formatNav(agg.currentPrice ?? agg.latestNav) : '',
+        agg.hasCurrentPrice ? agg.marketValue.toFixed(2) : '',
+        agg.hasCurrentPrice ? agg.unrealizedProfit.toFixed(2) : '',
+        agg.hasCurrentPrice ? `${agg.unrealizedReturnRate.toFixed(2)}%` : '',
         agg.hasTodayNav ? agg.todayProfit.toFixed(2) : '',
         agg.hasTodayNav ? `${agg.todayReturnRate.toFixed(2)}%` : ''
       ].join('\t');
