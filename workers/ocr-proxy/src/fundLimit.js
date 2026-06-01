@@ -91,6 +91,22 @@ function parseConfirmDays(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function normalizeLimitChannel(value) {
+  if (value == null) return null;
+  const s = String(value).trim().toLowerCase();
+  if (!s) return null;
+  if (/直销|app|官网|微信|柜台|本公司/.test(s)) return 'app';
+  if (/代销|银行|券商|第三方|销售机构/.test(s)) return 'channel';
+  return null;
+}
+
+function inferLimitChannelFromText(text = '') {
+  const s = String(text || '');
+  if (/本公司直销渠道|直销渠道|大成基金 APP|基金 APP|官网|微信公众|微信|直销柜台/.test(s)) return 'app';
+  if (/代销渠道|销售机构|银行|券商|第三方平台/.test(s)) return 'channel';
+  return null;
+}
+
 // 「10,000.00」「1万」「1.5亿」「100元」全部接受。「暂无相关数据」「无限制」→ null。
 function parseMoney(value) {
   if (value == null) return null;
@@ -259,6 +275,8 @@ async function tryAnnouncement(code, env, ctx, force = false) {
     buyStatusText: llmJson.buyStatusText || null,
     minPurchase: parseMoney(llmJson.minPurchase),
     maxPurchasePerDay: parseMoney(llmJson.maxPurchasePerDay),
+    limitChannel: normalizeLimitChannel(llmJson.limitChannel) || inferLimitChannelFromText(llmJson.limitChannelText || top.TITLE || '') || inferLimitChannelFromText(noticeContent),
+    limitChannelText: llmJson.limitChannelText || null,
     redeemStatus: classifyRedeemStatus(llmJson.redeemStatus || llmJson.redeemStatusText),
     fixedInvest: classifyFixedInvest(llmJson.fixedInvest),
     fixedInvestMin: parseMoney(llmJson.fixedInvestMin),
@@ -310,6 +328,8 @@ async function callAnnouncementLLM(env, code, title, noticeContent) {
     '  "buyStatusText": string | null,                              // 公告中原文，如「限制大额申购」',
     '  "minPurchase": number | null,                                // 单笔最低申购金额（元），只填公告明文提及的金额',
     '  "maxPurchasePerDay": number | null,                          // 单日累计限额（元），公告中「超过 X 元不受理」里的 X',
+    '  "limitChannel": "app" | "channel" | null,                    // 限额口径渠道：直销/APP/官网/微信等填 app，代销/银行/券商等填 channel',
+    '  "limitChannelText": string | null,                           // 公告中原文渠道描述，如「本公司直销渠道」',
     '  "redeemStatus": "open" | "suspended" | null,',
     '  "fixedInvest": true | false | null,                          // 定投是否受限；false 表示公告明文说暂停定投',
     '  "fixedInvestMin": number | null,                             // 定投起点（元）',
@@ -322,6 +342,7 @@ async function callAnnouncementLLM(env, code, title, noticeContent) {
     '- 如果公告明说「暂停大额申购」，需同时填 buyStatus="limit_large"，maxPurchasePerDay=null 或 0（表示不接受任何大额）。',
     '- 如果公告明说「暂停申购」（非大额），buyStatus="suspended"。',
     '- 如果公告明说「恢复大额申购 / 恢复正常申购」，buyStatus="open"。',
+    '- 如果公告中的限额只针对直销/APP/官网/微信/直销柜台等渠道，limitChannel="app"；如果只针对代销/银行/券商/第三方渠道，limitChannel="channel"。',
     '- 不要包裹代码块，不要加任何中文说明，只返 JSON 对象。'
   ].join('\n');
 
@@ -505,6 +526,8 @@ function mergeResults(code, ann, f10, detail) {
     buyStatusText: null,
     minPurchase: null,
     maxPurchasePerDay: null,
+    limitChannel: null,
+    limitChannelText: null,
     redeemStatus: null,
     fixedInvest: null,
     fixedInvestMin: null,
@@ -520,11 +543,15 @@ function mergeResults(code, ann, f10, detail) {
     if (detail.redeemStatus != null) merged.redeemStatus = detail.redeemStatus;
     if (detail.minPurchase != null) merged.minPurchase = detail.minPurchase;
     if (detail.maxPurchasePerDay != null) merged.maxPurchasePerDay = detail.maxPurchasePerDay;
+    if (detail.limitChannel != null) merged.limitChannel = detail.limitChannel;
+    if (detail.limitChannelText) merged.limitChannelText = detail.limitChannelText;
   }
   // F10 (中)
   if (f10) {
     if (f10.minPurchase != null) merged.minPurchase = f10.minPurchase;
     if (f10.maxPurchasePerDay != null) merged.maxPurchasePerDay = f10.maxPurchasePerDay;
+    if (f10.limitChannel != null) merged.limitChannel = f10.limitChannel;
+    if (f10.limitChannelText) merged.limitChannelText = f10.limitChannelText;
     if (f10.redeemStatus != null) merged.redeemStatus = f10.redeemStatus;
     if (f10.fixedInvest != null) merged.fixedInvest = f10.fixedInvest;
     if (f10.fixedInvestMin != null) merged.fixedInvestMin = f10.fixedInvestMin;
@@ -537,6 +564,8 @@ function mergeResults(code, ann, f10, detail) {
     if (ann.buyStatusText) merged.buyStatusText = ann.buyStatusText;
     if (ann.minPurchase != null) merged.minPurchase = ann.minPurchase;
     if (ann.maxPurchasePerDay != null) merged.maxPurchasePerDay = ann.maxPurchasePerDay;
+    if (ann.limitChannel != null) merged.limitChannel = ann.limitChannel;
+    if (ann.limitChannelText) merged.limitChannelText = ann.limitChannelText;
     if (ann.redeemStatus != null) merged.redeemStatus = ann.redeemStatus;
     if (ann.fixedInvest != null) merged.fixedInvest = ann.fixedInvest;
     if (ann.fixedInvestMin != null) merged.fixedInvestMin = ann.fixedInvestMin;

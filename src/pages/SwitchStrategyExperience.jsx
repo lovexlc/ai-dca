@@ -174,6 +174,19 @@ function limitLabelFor(buyStatus) {
   }
 }
 
+function isAppChannelFund(fund = {}) {
+  const shareClass = String(fund?.share_class || '').trim().toUpperCase();
+  return Boolean(shareClass) && shareClass !== 'A' && shareClass !== 'C';
+}
+
+function hasAppLimitChannel(limit = {}) {
+  const channel = String(limit?.purchaseChannel || limit?.limitChannel || '').trim().toLowerCase();
+  if (channel === 'app' || channel === 'direct') return true;
+  if (String(limit?.code || '').trim() === '000834' && Number(limit?.maxPurchasePerDay) === 500) return true;
+  const text = String(limit?.purchaseChannelText || limit?.limitChannelText || limit?.buyStatusText || '').trim();
+  return /直销|APP|App|app|官网|微信公众|直销柜台/.test(text);
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -1609,6 +1622,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                   <li key={groupId} className="flex flex-col gap-1 rounded-xl px-1 py-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <Pill tone="indigo">{(f.share_class || 'A') + (f.currency === 'USD' ? ' / 美元' : '')}</Pill>
+                      {isAppChannelFund(f) ? <Pill tone="slate">App</Pill> : null}
                       <span className="font-semibold text-slate-700">{f.code}</span>
                       <span className="text-slate-500">{f.name || ''}</span>
                     </div>
@@ -1616,7 +1630,10 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                       <div className="flex flex-wrap items-center gap-2 pl-1 text-xs text-slate-500">
                         <Pill tone={limitToneFor(limit.buyStatus)} className="px-2 py-1 text-[11px]">{limitLabelFor(limit.buyStatus)}</Pill>
                         {Number(limit.maxPurchasePerDay) > 0 && (
-                          <span>单户日上限 <span className="font-semibold text-slate-700 tabular-nums">{formatLimitAmount(limit.maxPurchasePerDay)}</span></span>
+                          <span className="inline-flex flex-wrap items-center gap-1">
+                            单户日上限 <span className="font-semibold text-slate-700 tabular-nums">{formatLimitAmount(limit.maxPurchasePerDay)}</span>
+                            {hasAppLimitChannel(limit) ? <Pill tone="slate" className="px-1.5 py-0.5 text-[10px]">App</Pill> : null}
+                          </span>
                         )}
                         {Number(limit.minPurchase) > 0 && (
                           <span>起购 <span className="tabular-nums">{formatLimitAmount(limit.minPurchase)}</span></span>
