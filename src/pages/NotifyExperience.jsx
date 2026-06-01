@@ -23,6 +23,7 @@ import {
 import { aggregateByCode, buildHoldingsNotifyDigest, summarizePortfolio } from '../app/holdingsLedgerCore.js';
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { showActionToast } from '../app/toast.js';
+import { trackAnalyticsEvent } from '../app/analytics.js';
 import {
   Card,
   Field,
@@ -172,6 +173,13 @@ export function NotifyExperience({ embedded = false }) {
     const next = !webNotifyEnabled;
     persistWebNotifyConfig({ pcEnabled: next });
     setWebNotifyEnabled(next);
+    if (next) {
+      trackAnalyticsEvent('notify_enabled', {
+        hasBark: barkConfigured,
+        clientId: notifyConfig.notifyClientId,
+        platforms: ['pc']
+      });
+    }
   }
 
   useEffect(() => {
@@ -324,7 +332,11 @@ export function NotifyExperience({ embedded = false }) {
         throw new Error('请粘贴 Bark 完整链接或 Device Key');
       }
       await saveNotifySettings({ barkDeviceKey: parsedBarkKey });
-      persistNotifyClientConfig({ barkDeviceKey: parsedBarkKey });
+      persistNotifyClientConfig({
+        barkDeviceKey: parsedBarkKey,
+        _hasAndroid: androidConfigured,
+        _hasPC: webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled
+      });
       setNotifyConfig((current) => ({ ...current, barkDeviceKey: parsedBarkKey }));
       await refreshNotifyData();
       setNotifyMessage('Bark 配置已保存。');
@@ -354,7 +366,9 @@ export function NotifyExperience({ embedded = false }) {
       });
       persistNotifyClientConfig({
         notifyClientId: notifyConfig.notifyClientId,
-        notifyClientLabel: notifyConfig.notifyClientLabel
+        notifyClientLabel: notifyConfig.notifyClientLabel,
+        _hasAndroid: true,
+        _hasPC: webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled
       });
       setAndroidPairingCode('');
       await refreshNotifyData();

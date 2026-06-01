@@ -24,6 +24,32 @@ function Card({ title, value, icon: Icon, hint }) {
   );
 }
 
+function NotifyCard({ total, platformUsers = {} }) {
+  const platforms = [
+    { key: 'ios', label: 'iOS', color: 'bg-blue-100 text-blue-700' },
+    { key: 'android', label: 'Android', color: 'bg-green-100 text-green-700' },
+    { key: 'pc', label: 'PC', color: 'bg-purple-100 text-purple-700' }
+  ];
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-xs font-semibold text-slate-500">通知使用人数</div>
+        <Bell className="h-4 w-4 text-slate-400" />
+      </div>
+      <div className="mt-2 text-2xl font-bold tabular-nums text-slate-900">{total}</div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {platforms.map((p) => (
+          <span key={p.key} className={cx('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium', platformUsers[p.key] ? p.color : 'bg-slate-50 text-slate-400')}>
+            {p.label}
+            <span className="font-bold tabular-nums">{platformUsers[p.key] || 0}</span>
+          </span>
+        ))}
+      </div>
+      <div className="mt-1 text-xs text-slate-400">按设备平台去重</div>
+    </div>
+  );
+}
+
 function EmptyChart() {
   return <div className="flex h-full items-center justify-center text-sm text-slate-400">暂无统计数据</div>;
 }
@@ -85,7 +111,6 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
     { title: 'PV', value: summary.cards.pv, icon: Eye, hint: `${rangeDays} 天页面访问` },
     { title: 'UV', value: summary.cards.uv, icon: MousePointerClick, hint: '按访客 ID 去重' },
     { title: 'Worker 跑切换', value: summary.cards.switchRuns, icon: Shuffle, hint: '切换运行/使用次数' },
-    { title: '通知使用人数', value: summary.cards.notifyUsers, icon: Bell, hint: '启用或触发通知用户' },
     { title: 'AI 使用人数', value: summary.cards.aiUsers, icon: Bot, hint: '发送 AI 请求用户' }
   ];
 
@@ -111,6 +136,7 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {cards.map((card) => <Card key={card.title} {...card} />)}
+        <NotifyCard total={summary.cards.notifyUsers} platformUsers={summary.cards.notifyPlatformUsers} />
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">

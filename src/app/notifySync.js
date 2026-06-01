@@ -116,7 +116,15 @@ export function persistNotifyClientConfig(nextConfig = {}) {
   };
 
   window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(payload));
-  trackAnalyticsEvent('notify_enabled', { hasBark: Boolean(payload.barkDeviceKey), clientId: payload.notifyClientId });
+  const platforms = [];
+  if (Boolean(payload.barkDeviceKey)) platforms.push('ios');
+  if (nextConfig && nextConfig._hasAndroid) platforms.push('android');
+  if (nextConfig && nextConfig._hasPC) platforms.push('pc');
+  trackAnalyticsEvent('notify_enabled', {
+    hasBark: Boolean(payload.barkDeviceKey),
+    clientId: payload.notifyClientId,
+    platforms
+  });
 }
 
 function resolveNotifyClientConfig(payload = {}) {
@@ -179,7 +187,8 @@ async function requestNotify(path, init = {}) {
     throw new Error(payload.error || `通知服务请求失败：状态 ${response.status}`);
   }
 
-  trackAnalyticsEvent('notify_used', { path });
+  const platform = path.includes('/gcm/') ? 'android' : 'ios';
+  trackAnalyticsEvent('notify_used', { path, platform });
   return payload;
 }
 

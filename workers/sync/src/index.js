@@ -169,6 +169,12 @@ async function handleAdminAnalytics(request, env, origin) {
     GROUP BY path ORDER BY pv DESC LIMIT 8`).bind(since).all();
   const recentRows = await env.DB.prepare(`SELECT id, type, user_id AS userId, username, visitor_id AS visitorId, path, event_date AS date, created_at AS createdAt, meta
     FROM analytics_events WHERE event_date >= ? ORDER BY created_at DESC LIMIT 20`).bind(since).all();
+  const platformRows = await env.DB.prepare(`SELECT
+    COUNT(DISTINCT CASE WHEN type = 'notify_enabled' AND json_extract(meta, '$.hasBark') = 1 THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS iosUsers,
+    COUNT(DISTINCT CASE WHEN type = 'notify_used' AND json_extract(meta, '$.platform') = 'android' THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS androidUsers,
+    COUNT(DISTINCT CASE WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'android') THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS androidEnabledUsers,
+    COUNT(DISTINCT CASE WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'pc') THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS pcUsers
+    FROM analytics_events WHERE event_date >= ? AND type IN ('notify_enabled','notify_used')`).bind(since).first();
 
   return json({
     rangeDays,
@@ -179,7 +185,12 @@ async function handleAdminAnalytics(request, env, origin) {
       uv: Number(cardsRows?.uv) || 0,
       aiUsers: Number(cardsRows?.aiUsers) || 0,
       notifyUsers: Number(cardsRows?.notifyUsers) || 0,
-      switchRuns: Number(cardsRows?.switchRuns) || 0
+      switchRuns: Number(cardsRows?.switchRuns) || 0,
+      notifyPlatformUsers: {
+        ios: Number(platformRows?.iosUsers) || 0,
+        android: (Number(platformRows?.androidUsers) || 0) || (Number(platformRows?.androidEnabledUsers) || 0),
+        pc: Number(platformRows?.pcUsers) || 0
+      }
     },
     daily: (dailyRows.results || []).map((row) => ({
       date: String(row.date || '').slice(5),

@@ -205,7 +205,12 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
       uv: uniqueCount(pageEvents, (event) => event.visitorId),
       aiUsers: uniqueCount(aiEvents, (event) => event.userId || event.visitorId),
       notifyUsers: uniqueCount(notifyEvents, (event) => event.userId || event.visitorId),
-      switchRuns: switchEvents.length
+      switchRuns: switchEvents.length,
+      notifyPlatformUsers: {
+        ios: uniqueCount(notifyEvents.filter((e) => e.type === 'notify_enabled' && e.meta?.hasBark), (e) => e.userId || e.visitorId),
+        android: uniqueCount(notifyEvents.filter((e) => (e.type === 'notify_used' && e.meta?.platform === 'android') || (e.type === 'notify_enabled' && Array.isArray(e.meta?.platforms) && e.meta.platforms.includes('android'))), (e) => e.userId || e.visitorId),
+        pc: uniqueCount(notifyEvents.filter((e) => e.type === 'notify_enabled' && Array.isArray(e.meta?.platforms) && e.meta.platforms.includes('pc')), (e) => e.userId || e.visitorId)
+      }
     },
     daily: dailySeries(events, rangeDays),
     pages: Array.from(pageMap.values()).map((row) => ({ key: row.key, pv: row.pv, uv: row.uvSet.size })).sort((a, b) => b.pv - a.pv).slice(0, 8),
