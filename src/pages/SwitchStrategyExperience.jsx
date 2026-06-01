@@ -187,6 +187,10 @@ function hasAppLimitChannel(limit = {}) {
   return /直销|APP|App|app|官网|微信公众|直销柜台/.test(text);
 }
 
+function shouldShowAppTag(fund = {}, limit = {}) {
+  return isAppChannelFund(fund) || hasAppLimitChannel(limit);
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -1622,7 +1626,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                   <li key={groupId} className="flex flex-col gap-1 rounded-xl px-1 py-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <Pill tone="indigo">{(f.share_class || 'A') + (f.currency === 'USD' ? ' / 美元' : '')}</Pill>
-                      {isAppChannelFund(f) ? <Pill tone="slate">App</Pill> : null}
+                      {shouldShowAppTag(f, limit) ? <Pill tone="slate">App</Pill> : null}
                       <span className="font-semibold text-slate-700">{f.code}</span>
                       <span className="text-slate-500">{f.name || ''}</span>
                     </div>
@@ -1632,7 +1636,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
                         {Number(limit.maxPurchasePerDay) > 0 && (
                           <span className="inline-flex flex-wrap items-center gap-1">
                             单户日上限 <span className="font-semibold text-slate-700 tabular-nums">{formatLimitAmount(limit.maxPurchasePerDay)}</span>
-                            {hasAppLimitChannel(limit) ? <Pill tone="slate" className="px-1.5 py-0.5 text-[10px]">App</Pill> : null}
                           </span>
                         )}
                         {Number(limit.minPurchase) > 0 && (
