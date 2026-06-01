@@ -31,7 +31,11 @@
       "Bash(git rebase *)",
       "Bash(git show *)",
       "Bash(git cherry-pick *)",
-      "Bash(awk *)"
+      "Bash(awk *)",
+      "Bash(npx vite *)",
+      "Bash(curl -s http://127.0.0.1:4173/)",
+      "Bash(curl -s --max-time 5 http://127.0.0.1:4173/)",
+      "Bash(curl -v http://127.0.0.1:4173/)"
     ]
   }
 }
