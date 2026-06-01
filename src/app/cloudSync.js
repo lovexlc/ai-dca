@@ -1,6 +1,6 @@
 import { applyBackupEnvelope, buildBackupEnvelope, isBackupPayloadKey } from './webdavBackup.js';
 import { fetchCloudSyncMeta, fetchLatestCloudBackup, loadCloudSession, uploadLatestCloudBackup } from './authClient.js';
-import { decryptBackupEnvelope, encryptBackupEnvelope, loadRememberedKey, saveRememberedKey } from './secureVault.js';
+import { decryptBackupEnvelope, encryptBackupEnvelope, loadRememberedKey, rememberKeyForEncryptedEnvelope, saveRememberedKey } from './secureVault.js';
 
 export const CLOUD_SYNC_META_KEY = 'aiDcaCloudSyncMeta';
 
@@ -344,7 +344,7 @@ export async function mergeLocalIntoCloudBackup({ securityPassword = '', remembe
   return { ...result, mergedKeyCount: mergedEnvelope.keyCount, conflictResolution: 'merge-local-over-remote' };
 }
 
-export async function restoreEncryptedCloudBackup({ securityPassword = '', useRemembered = false, onlyIfRemoteNewer = false } = {}) {
+export async function restoreEncryptedCloudBackup({ securityPassword = '', useRemembered = false, rememberDevice = true, onlyIfRemoteNewer = false } = {}) {
   const session = loadCloudSession();
   if (!session?.accessToken) throw new Error('请先登录账户');
   const remote = await fetchLatestCloudBackup(session);
@@ -353,6 +353,12 @@ export async function restoreEncryptedCloudBackup({ securityPassword = '', useRe
   const remembered = useRemembered ? loadRememberedKey() : null;
   const secret = remembered?.rawKey ? `raw:${remembered.rawKey}` : securityPassword;
   const envelope = await decryptBackupEnvelope(encryptedEnvelope, secret);
+  if (rememberDevice && !remembered?.rawKey && securityPassword) {
+    await rememberKeyForEncryptedEnvelope(encryptedEnvelope, securityPassword, {
+      username: session.username,
+      version: remote.version
+    });
+  }
   const remoteSnapshot = snapshotFromEnvelope(envelope);
   const currentEnvelope = buildBackupEnvelope();
   const currentSnapshot = createLocalDataSnapshot(currentEnvelope);

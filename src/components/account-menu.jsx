@@ -144,12 +144,13 @@ export function AccountMenu() {
       }
       const restored = await restoreEncryptedCloudBackup({
         securityPassword: form.securityPassword,
+        rememberDevice: form.rememberDevice,
         onlyIfRemoteNewer: true
       });
       window.dispatchEvent(new CustomEvent('cloud-sync:auto-restored', { detail: { result: restored } }));
       return restored?.skipped ? 'skipped-restore' : 'restored';
     }
-    if (action === 'register') {
+    if (action === 'register' || collectBackupPayload().keys.length > 0) {
       const uploaded = await uploadEncryptedCloudBackup({
         securityPassword: form.securityPassword,
         rememberDevice: form.rememberDevice,
@@ -218,6 +219,7 @@ export function AccountMenu() {
         : await restoreEncryptedCloudBackup({
           securityPassword: secret,
           useRemembered,
+          rememberDevice: form.rememberDevice,
           onlyIfRemoteNewer: false
         });
       setConflict(null);

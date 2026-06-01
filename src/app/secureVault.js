@@ -139,6 +139,16 @@ export async function decryptBackupEnvelope(encryptedEnvelope, securityPasswordO
   return JSON.parse(TEXT_DECODER.decode(decrypted));
 }
 
+export async function rememberKeyForEncryptedEnvelope(encryptedEnvelope, securityPassword, meta = {}) {
+  const cryptoMeta = encryptedEnvelope?.crypto || {};
+  const salt = base64ToBytes(cryptoMeta.salt || '');
+  const iterations = Number(cryptoMeta.iterations) || DEFAULT_ITERATIONS;
+  const key = await deriveKey(securityPassword, salt, iterations);
+  const rawKey = await exportRawKey(key);
+  saveRememberedKey(rawKey, { ...meta, crypto: cryptoMeta });
+  return rawKey;
+}
+
 export function saveRememberedKey(rawKeyBase64, meta = {}) {
   if (typeof window === 'undefined' || !window.localStorage || !rawKeyBase64) return;
   window.localStorage.setItem(REMEMBERED_KEY, JSON.stringify({ rawKey: rawKeyBase64, savedAt: new Date().toISOString(), ...meta }));
