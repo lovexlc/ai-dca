@@ -142,6 +142,15 @@ export function AccountMenu() {
         setConflict(nextConflict);
         return 'conflict';
       }
+      if (nextConflict?.hasLocalChanges) {
+        const merged = await mergeLocalIntoCloudBackup({
+          securityPassword: form.securityPassword,
+          rememberDevice: form.rememberDevice,
+          useRemembered: false
+        });
+        window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result: merged } }));
+        return 'merged';
+      }
       const restored = await restoreEncryptedCloudBackup({
         securityPassword: form.securityPassword,
         rememberDevice: form.rememberDevice,
@@ -177,7 +186,7 @@ export function AccountMenu() {
       setSyncState(syncResult === 'conflict' ? 'conflict' : 'synced');
       showToast({
         title: action === 'register' ? '账户已注册' : '已登录',
-        description: syncResult === 'conflict' ? '检测到云端与本机都有不同数据，请选择合并或拉取云端。' : syncResult === 'restored' ? '已恢复云端较新数据' : syncResult === 'uploaded' ? '已创建云端备份' : '本地与云端无需更新',
+        description: syncResult === 'conflict' ? '检测到云端与本机都有不同数据，请选择合并或拉取云端。' : syncResult === 'restored' ? '已恢复云端较新数据' : syncResult === 'merged' ? '已自动合并本机与云端数据' : syncResult === 'uploaded' ? '已创建云端备份' : '本地与云端无需更新',
         tone: syncResult === 'conflict' ? 'amber' : 'emerald'
       });
       if (syncResult !== 'conflict') setOpen(false);

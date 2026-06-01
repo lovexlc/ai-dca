@@ -9,17 +9,17 @@ import {
 test('summarizeBackupConflict reports changed, remote-only, and local-only keys', () => {
   const localEnvelope = {
     version: 1,
-    keys: ['aiDcaPlanStore', 'aiDcaTradeLedger'],
+    keys: ['aiDcaWorkspacePrefs', 'aiDcaTradeLedger'],
     payload: {
-      aiDcaPlanStore: '{"local":true}',
+      aiDcaWorkspacePrefs: '{"local":true}',
       aiDcaTradeLedger: '{"only":"local"}'
     }
   };
   const remoteEnvelope = {
     version: 1,
-    keys: ['aiDcaPlanStore', 'aiDcaFundHoldingsLedger'],
+    keys: ['aiDcaWorkspacePrefs', 'aiDcaFundHoldingsLedger'],
     payload: {
-      aiDcaPlanStore: '{"remote":true}',
+      aiDcaWorkspacePrefs: '{"remote":true}',
       aiDcaFundHoldingsLedger: '{"only":"remote"}'
     }
   };
@@ -32,38 +32,165 @@ test('summarizeBackupConflict reports changed, remote-only, and local-only keys'
   });
 
   assert.equal(summary.hasConflict, true);
+  assert.equal(summary.hasChanges, true);
+  assert.equal(summary.hasLocalChanges, true);
   assert.equal(summary.remoteVersion, 8);
-  assert.deepEqual(summary.changedKeys, ['aiDcaPlanStore']);
+  assert.deepEqual(summary.changedKeys, ['aiDcaWorkspacePrefs']);
+  assert.deepEqual(summary.unresolvedChangedKeys, ['aiDcaWorkspacePrefs']);
   assert.deepEqual(summary.remoteOnlyKeys, ['aiDcaFundHoldingsLedger']);
   assert.deepEqual(summary.localOnlyKeys, ['aiDcaTradeLedger']);
-  assert.match(summary.summaryText, /两端都改过/);
+  assert.match(summary.summaryText, /需要手动选择/);
   assert.match(summary.summaryText, /只在云端存在/);
   assert.match(summary.summaryText, /只在本机存在/);
 });
 
-test('mergeBackupEnvelopes keeps remote-only keys and lets local win on shared keys', () => {
+test('summarizeBackupConflict treats domain record differences as auto mergeable', () => {
+  const localEnvelope = {
+    version: 1,
+    keys: ['aiDcaPlanStore', 'aiDcaTradeLedger'],
+    payload: {
+      aiDcaPlanStore: JSON.stringify({ plans: [{ id: 'local-plan' }], activePlanId: 'local-plan' }),
+      aiDcaTradeLedger: JSON.stringify([{ id: 'trade-local', updatedAt: '2026-05-02T10:00:00.000Z' }])
+    }
+  };
   const remoteEnvelope = {
     version: 1,
     keys: ['aiDcaPlanStore', 'aiDcaFundHoldingsLedger'],
     payload: {
-      aiDcaPlanStore: '{"remote":true}',
+      aiDcaPlanStore: JSON.stringify({ plans: [{ id: 'remote-plan' }], activePlanId: 'remote-plan' }),
+      aiDcaFundHoldingsLedger: JSON.stringify({ transactions: [], snapshotsByCode: {} })
+    }
+  };
+
+  const summary = summarizeBackupConflict({ localEnvelope, remoteEnvelope });
+
+  assert.equal(summary.hasChanges, true);
+  assert.equal(summary.hasConflict, false);
+  assert.equal(summary.hasLocalChanges, true);
+  assert.deepEqual(summary.autoMergeChangedKeys, ['aiDcaPlanStore']);
+  assert.deepEqual(summary.unresolvedChangedKeys, []);
+  assert.deepEqual(summary.autoMergeKeys, ['aiDcaFundHoldingsLedger', 'aiDcaPlanStore', 'aiDcaTradeLedger']);
+  assert.match(summary.summaryText, /可自动合并/);
+});
+
+test('mergeBackupEnvelopes keeps remote-only keys and lets local win on simple shared keys', () => {
+  const remoteEnvelope = {
+    version: 1,
+    keys: ['aiDcaWorkspacePrefs', 'aiDcaFundHoldingsLedger'],
+    payload: {
+      aiDcaWorkspacePrefs: '{"remote":true}',
       aiDcaFundHoldingsLedger: '{"only":"remote"}'
     }
   };
   const localEnvelope = {
     version: 1,
-    keys: ['aiDcaPlanStore', 'aiDcaTradeLedger'],
+    keys: ['aiDcaWorkspacePrefs', 'aiDcaTradeLedger'],
     payload: {
-      aiDcaPlanStore: '{"local":true}',
+      aiDcaWorkspacePrefs: '{"local":true}',
       aiDcaTradeLedger: '{"only":"local"}'
     }
   };
 
   const merged = mergeBackupEnvelopes(remoteEnvelope, localEnvelope);
 
-  assert.deepEqual(merged.keys, ['aiDcaFundHoldingsLedger', 'aiDcaPlanStore', 'aiDcaTradeLedger']);
+  assert.deepEqual(merged.keys, ['aiDcaFundHoldingsLedger', 'aiDcaTradeLedger', 'aiDcaWorkspacePrefs']);
   assert.equal(merged.keyCount, 3);
-  assert.equal(merged.payload.aiDcaPlanStore, '{"local":true}');
+  assert.equal(merged.payload.aiDcaWorkspacePrefs, '{"local":true}');
   assert.equal(merged.payload.aiDcaFundHoldingsLedger, '{"only":"remote"}');
   assert.equal(merged.payload.aiDcaTradeLedger, '{"only":"local"}');
+});
+
+test('mergeBackupEnvelopes unions trade ledger entries by id', () => {
+  const remoteEnvelope = {
+    version: 1,
+    keys: ['aiDcaTradeLedger'],
+    payload: {
+      aiDcaTradeLedger: JSON.stringify([
+        { id: 'trade-remote', symbol: 'QQQ', side: 'buy', date: '2026-05-01', shares: 1, price: 400 },
+        { id: 'trade-shared', symbol: 'QQQ', side: 'buy', date: '2026-05-02', shares: 1, price: 410, updatedAt: '2026-05-02T10:00:00.000Z' }
+      ])
+    }
+  };
+  const localEnvelope = {
+    version: 1,
+    keys: ['aiDcaTradeLedger'],
+    payload: {
+      aiDcaTradeLedger: JSON.stringify([
+        { id: 'trade-local', symbol: 'NVDA', side: 'buy', date: '2026-05-03', shares: 2, price: 100 },
+        { id: 'trade-shared', symbol: 'QQQ', side: 'buy', date: '2026-05-02', shares: 1, price: 420, updatedAt: '2026-05-02T11:00:00.000Z' }
+      ])
+    }
+  };
+
+  const merged = mergeBackupEnvelopes(remoteEnvelope, localEnvelope);
+  const list = JSON.parse(merged.payload.aiDcaTradeLedger);
+  assert.deepEqual(list.map((item) => item.id), ['trade-remote', 'trade-shared', 'trade-local']);
+  assert.equal(list.find((item) => item.id === 'trade-shared').price, 420);
+});
+
+test('mergeBackupEnvelopes merges holdings ledger transactions and snapshots', () => {
+  const remoteEnvelope = {
+    version: 1,
+    keys: ['aiDcaFundHoldingsLedger'],
+    payload: {
+      aiDcaFundHoldingsLedger: JSON.stringify({
+        source: 'react-fund-holdings-ledger',
+        version: 2,
+        transactions: [{ id: 'tx-remote', code: '021000', type: 'BUY', date: '2026-05-01', price: 2, shares: 10 }],
+        snapshotsByCode: { '021000': { latestNav: 2.1 } },
+        switchChains: []
+      })
+    }
+  };
+  const localEnvelope = {
+    version: 1,
+    keys: ['aiDcaFundHoldingsLedger'],
+    payload: {
+      aiDcaFundHoldingsLedger: JSON.stringify({
+        source: 'react-fund-holdings-ledger',
+        version: 2,
+        transactions: [{ id: 'tx-local', code: '513100', type: 'BUY', date: '2026-05-02', price: 2.3, shares: 20 }],
+        snapshotsByCode: { '513100': { price: 2.3 } },
+        switchChains: []
+      })
+    }
+  };
+
+  const merged = mergeBackupEnvelopes(remoteEnvelope, localEnvelope);
+  const ledger = JSON.parse(merged.payload.aiDcaFundHoldingsLedger);
+  assert.deepEqual(ledger.transactions.map((tx) => tx.id), ['tx-remote', 'tx-local']);
+  assert.equal(ledger.snapshotsByCode['021000'].latestNav, 2.1);
+  assert.equal(ledger.snapshotsByCode['513100'].price, 2.3);
+});
+
+test('mergeBackupEnvelopes merges plan store plans by id and keeps local active plan', () => {
+  const remoteEnvelope = {
+    version: 1,
+    keys: ['aiDcaPlanStore'],
+    payload: {
+      aiDcaPlanStore: JSON.stringify({
+        source: 'react-plan-store',
+        version: 1,
+        activePlanId: 'remote-plan',
+        plans: [{ id: 'remote-plan', symbol: 'QQQ', updatedAt: '2026-05-01T10:00:00.000Z' }]
+      })
+    }
+  };
+  const localEnvelope = {
+    version: 1,
+    keys: ['aiDcaPlanStore'],
+    payload: {
+      aiDcaPlanStore: JSON.stringify({
+        source: 'react-plan-store',
+        version: 1,
+        activePlanId: 'local-plan',
+        plans: [{ id: 'local-plan', symbol: '513100', updatedAt: '2026-05-02T10:00:00.000Z' }]
+      })
+    }
+  };
+
+  const merged = mergeBackupEnvelopes(remoteEnvelope, localEnvelope);
+  const store = JSON.parse(merged.payload.aiDcaPlanStore);
+  assert.deepEqual(store.plans.map((plan) => plan.id), ['remote-plan', 'local-plan']);
+  assert.equal(store.activePlanId, 'local-plan');
 });

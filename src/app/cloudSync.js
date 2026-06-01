@@ -11,6 +11,15 @@ const TRANSIENT_SYNC_KEYS = new Set([
   'aiDcaSecureSyncRememberedKey'
 ]);
 
+const DOMAIN_MERGE_PAYLOAD_KEYS = new Set([
+  'aiDcaPlanStore',
+  'aiDcaFundHoldingsLedger',
+  'aiDcaTradeLedger',
+  'aiDcaTradeLedgerArchive',
+  'aiDcaSellPlanStore',
+  'aiDcaAccountAssignments'
+]);
+
 function storage() {
   if (typeof window === 'undefined' || !window.localStorage) return null;
   return window.localStorage;
@@ -70,10 +79,138 @@ function previewKeys(keys = [], limit = 6) {
   return `${list.join('、')}${suffix}`;
 }
 
+function parsePayloadJson(value) {
+  try {
+    return JSON.parse(String(value || ''));
+  } catch {
+    return null;
+  }
+}
+
+function stringifyPayloadJson(value) {
+  return JSON.stringify(value);
+}
+
+function recordTimestamp(record = {}) {
+  return parseTime(record?.updatedAt || record?.updated_at || record?.modifiedAt || record?.date || record?.createdAt || record?.created_at);
+}
+
+function mergeRecordsById(remoteList = [], localList = [], { localWinsOnTie = true } = {}) {
+  const map = new Map();
+  for (const record of Array.isArray(remoteList) ? remoteList : []) {
+    if (!record || typeof record !== 'object') continue;
+    const id = String(record.id || '').trim();
+    if (!id) continue;
+    map.set(id, record);
+  }
+  for (const record of Array.isArray(localList) ? localList : []) {
+    if (!record || typeof record !== 'object') continue;
+    const id = String(record.id || '').trim();
+    if (!id) continue;
+    const existing = map.get(id);
+    if (!existing) {
+      map.set(id, record);
+      continue;
+    }
+    const localTime = recordTimestamp(record);
+    const remoteTime = recordTimestamp(existing);
+    if (localTime > remoteTime || (localWinsOnTie && localTime === remoteTime)) {
+      map.set(id, record);
+    }
+  }
+  return Array.from(map.values());
+}
+
+function sortRecords(list = []) {
+  return [...list].sort((a, b) => {
+    const da = String(a?.date || a?.createdAt || a?.updatedAt || '');
+    const db = String(b?.date || b?.createdAt || b?.updatedAt || '');
+    if (da !== db) return da.localeCompare(db);
+    return String(a?.id || '').localeCompare(String(b?.id || ''));
+  });
+}
+
+function mergeArrayPayload(remoteValue, localValue) {
+  const remote = parsePayloadJson(remoteValue);
+  const local = parsePayloadJson(localValue);
+  if (!Array.isArray(remote) || !Array.isArray(local)) return localValue ?? remoteValue;
+  return stringifyPayloadJson(sortRecords(mergeRecordsById(remote, local)));
+}
+
+function mergePlanStorePayload(remoteValue, localValue) {
+  const remote = parsePayloadJson(remoteValue);
+  const local = parsePayloadJson(localValue);
+  if (!remote || typeof remote !== 'object' || !local || typeof local !== 'object') return localValue ?? remoteValue;
+  const plans = sortRecords(mergeRecordsById(remote.plans, local.plans));
+  const activePlanId = plans.some((plan) => plan.id === local.activePlanId)
+    ? local.activePlanId
+    : (plans.some((plan) => plan.id === remote.activePlanId) ? remote.activePlanId : plans[0]?.id || '');
+  return stringifyPayloadJson({
+    ...remote,
+    ...local,
+    plans,
+    activePlanId
+  });
+}
+
+function mergeObjectByCode(remoteValue, localValue) {
+  const remote = parsePayloadJson(remoteValue);
+  const local = parsePayloadJson(localValue);
+  if (!remote || typeof remote !== 'object' || !local || typeof local !== 'object') return localValue ?? remoteValue;
+  return stringifyPayloadJson({ ...remote, ...local });
+}
+
+function mergeHoldingsLedgerPayload(remoteValue, localValue) {
+  const remote = parsePayloadJson(remoteValue);
+  const local = parsePayloadJson(localValue);
+  if (!remote || typeof remote !== 'object' || !local || typeof local !== 'object') return localValue ?? remoteValue;
+  const transactions = sortRecords(mergeRecordsById(remote.transactions, local.transactions));
+  const switchChains = sortRecords(mergeRecordsById(remote.switchChains, local.switchChains));
+  const snapshotsByCode = {
+    ...(remote.snapshotsByCode && typeof remote.snapshotsByCode === 'object' ? remote.snapshotsByCode : {}),
+    ...(local.snapshotsByCode && typeof local.snapshotsByCode === 'object' ? local.snapshotsByCode : {})
+  };
+  return stringifyPayloadJson({
+    ...remote,
+    ...local,
+    transactions,
+    switchChains,
+    snapshotsByCode,
+    lastNavMeta: local.lastNavMeta || remote.lastNavMeta || {}
+  });
+}
+
+function mergePayloadValue(key, remoteValue, localValue) {
+  if (localValue == null) return remoteValue;
+  if (remoteValue == null) return localValue;
+  switch (key) {
+    case 'aiDcaPlanStore':
+      return mergePlanStorePayload(remoteValue, localValue);
+    case 'aiDcaFundHoldingsLedger':
+      return mergeHoldingsLedgerPayload(remoteValue, localValue);
+    case 'aiDcaTradeLedger':
+    case 'aiDcaTradeLedgerArchive':
+    case 'aiDcaSellPlanStore':
+      return mergeArrayPayload(remoteValue, localValue);
+    case 'aiDcaAccountAssignments':
+      return mergeObjectByCode(remoteValue, localValue);
+    default:
+      return localValue;
+  }
+}
+
+function canAutoMergeChangedKey(key) {
+  return DOMAIN_MERGE_PAYLOAD_KEYS.has(String(key || ''));
+}
+
 export function mergeBackupEnvelopes(remoteEnvelope = {}, localEnvelope = {}) {
   const remote = normalizeEnvelopePayload(remoteEnvelope);
   const local = normalizeEnvelopePayload(localEnvelope);
-  const payload = { ...remote.payload, ...local.payload };
+  const allKeys = Array.from(new Set([...remote.keys, ...local.keys])).filter((key) => isBackupPayloadKey(key)).sort();
+  const payload = allKeys.reduce((acc, key) => {
+    acc[key] = mergePayloadValue(key, remote.payload[key], local.payload[key]);
+    return acc;
+  }, {});
   const keys = Object.keys(payload).filter((key) => isBackupPayloadKey(key)).sort();
   return {
     version: Number(localEnvelope?.version || remoteEnvelope?.version || 1) || 1,
@@ -96,14 +233,20 @@ export function summarizeBackupConflict({ localEnvelope = null, remoteEnvelope =
   const remoteOnlyKeys = remoteData.keys.filter((key) => !localSet.has(key));
   const localOnlyKeys = local.keys.filter((key) => !remoteSet.has(key));
   const changedKeys = remoteData.keys.filter((key) => localSet.has(key) && remoteData.payload[key] !== local.payload[key]);
+  const autoMergeChangedKeys = changedKeys.filter((key) => canAutoMergeChangedKey(key));
+  const unresolvedChangedKeys = changedKeys.filter((key) => !canAutoMergeChangedKey(key));
+  const autoMergeKeys = Array.from(new Set([...autoMergeChangedKeys, ...remoteOnlyKeys, ...localOnlyKeys])).sort();
   const sameKeys = remoteData.keys.filter((key) => localSet.has(key) && remoteData.payload[key] === local.payload[key]);
   const parts = [];
-  if (changedKeys.length) parts.push(`${changedKeys.length} 项两端都改过：${previewKeys(changedKeys)}`);
+  if (unresolvedChangedKeys.length) parts.push(`${unresolvedChangedKeys.length} 项需要手动选择：${previewKeys(unresolvedChangedKeys)}`);
+  if (autoMergeKeys.length) parts.push(`${autoMergeKeys.length} 项可自动合并：${previewKeys(autoMergeKeys)}`);
   if (remoteOnlyKeys.length) parts.push(`${remoteOnlyKeys.length} 项只在云端存在：${previewKeys(remoteOnlyKeys)}`);
   if (localOnlyKeys.length) parts.push(`${localOnlyKeys.length} 项只在本机存在：${previewKeys(localOnlyKeys)}`);
   if (!parts.length) parts.push('两端数据内容一致，仅版本元数据不同');
   return {
-    hasConflict: changedKeys.length > 0 || remoteOnlyKeys.length > 0 || localOnlyKeys.length > 0,
+    hasChanges: changedKeys.length > 0 || remoteOnlyKeys.length > 0 || localOnlyKeys.length > 0,
+    hasConflict: unresolvedChangedKeys.length > 0,
+    hasLocalChanges: changedKeys.length > 0 || localOnlyKeys.length > 0,
     remoteVersion: remote?.version ?? null,
     remoteUpdatedAt: remote?.updatedAt || remote?.encryptedEnvelope?.meta?.localUpdatedAt || '',
     remoteKeyCount: remoteData.keys.length,
@@ -111,6 +254,9 @@ export function summarizeBackupConflict({ localEnvelope = null, remoteEnvelope =
     localUpdatedAt: localMeta?.localUpdatedAt || '',
     localKeyCount: local.keys.length,
     changedKeys,
+    autoMergeChangedKeys,
+    unresolvedChangedKeys,
+    autoMergeKeys,
     remoteOnlyKeys,
     localOnlyKeys,
     sameKeyCount: sameKeys.length,
@@ -248,13 +394,16 @@ export async function uploadEncryptedCloudBackup({ securityPassword, rememberDev
       let conflict = null;
       try {
         conflict = await prepareCloudSyncConflict({ securityPassword, useRemembered });
-      } catch (_conflictError) {
+      } catch {
         conflict = {
           hasConflict: true,
           remoteVersion: currentVersion,
           localVersion: localMeta?.version ?? null,
           summaryText: '云端版本已变化，但当前设备暂时无法解密云端数据生成明细。'
         };
+      }
+      if (!conflict?.hasConflict && conflict?.hasLocalChanges) {
+        return mergeLocalIntoCloudBackup({ securityPassword, rememberDevice, useRemembered });
       }
       throw createCloudSyncConflictError(conflict, err);
     } else {
