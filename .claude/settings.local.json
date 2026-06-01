@@ -25,7 +25,9 @@
       "Bash(useradd *)",
       "Bash(chpasswd)",
       "Bash(npx playwright *)",
-      "Bash(gh auth *)"
+      "Bash(gh auth *)",
+      "Bash(git pull *)",
+      "Bash(git stash *)"
     ]
   }
 }

@@ -28,6 +28,7 @@ import {
   FUND_CODE_PATTERN,
   TRANSACTION_TYPES,
   getExpectedLatestNavDate,
+  getTodayShanghaiDate,
   normalizeFundCode,
   normalizeFundKind,
   normalizeIsoDate,
