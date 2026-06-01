@@ -19,9 +19,50 @@ import {
   roundNumber
 } from './marketRuntime.js';
 
-function normalizeFundMetricFromQuote(code, quote, { cached = false, cachePolicy = '', primaryError = '' } = {}) {
-  const price = roundNumber(quote?.price, 4);
-  const latestNav = roundNumber(quote?.latestNav, 4);
+function firstPositiveNumber(...values) {
+  for (const value of values) {
+    const rounded = roundNumber(value, 4);
+    if (Number.isFinite(rounded) && rounded > 0) return rounded;
+  }
+  return null;
+}
+
+function deriveChangePercent(currentValue, previousValue, explicitChangePercent = null) {
+  const explicit = roundNumber(explicitChangePercent, 4);
+  if (Number.isFinite(explicit)) return explicit;
+  if (!Number.isFinite(currentValue) || currentValue <= 0) return null;
+  if (!Number.isFinite(previousValue) || previousValue <= 0) return null;
+  return roundNumber(((currentValue - previousValue) / previousValue) * 100, 4);
+}
+
+function derivePreviousValue(currentValue, changePercent = null, change = null) {
+  const explicitChange = roundNumber(change, 4);
+  if (Number.isFinite(currentValue) && currentValue > 0 && Number.isFinite(explicitChange) && explicitChange !== 0) {
+    const previous = roundNumber(currentValue - explicitChange, 4);
+    if (Number.isFinite(previous) && previous > 0) return previous;
+  }
+  const pct = roundNumber(changePercent, 4);
+  if (Number.isFinite(currentValue) && currentValue > 0 && Number.isFinite(pct) && pct !== -100) {
+    const previous = roundNumber(currentValue / (1 + pct / 100), 4);
+    if (Number.isFinite(previous) && previous > 0) return previous;
+  }
+  return null;
+}
+
+export function normalizeFundMetricFromQuote(code, quote, { cached = false, cachePolicy = '', primaryError = '', exchange = isExchangeTradedFund(code) } = {}) {
+  const price = firstPositiveNumber(quote?.price, quote?.currentPrice, quote?.close);
+  const latestNav = firstPositiveNumber(quote?.latestNav, !exchange ? quote?.currentPrice : null);
+  const currentValue = exchange ? price : latestNav;
+  const rawPreviousClose = firstPositiveNumber(quote?.previousClose, quote?.previous_close);
+  const rawPreviousNav = firstPositiveNumber(quote?.previousNav, quote?.previous_nav);
+  const previousValue = exchange
+    ? firstPositiveNumber(rawPreviousClose, rawPreviousNav, derivePreviousValue(currentValue, quote?.changePercent, quote?.change))
+    : firstPositiveNumber(rawPreviousNav, rawPreviousClose, derivePreviousValue(currentValue, quote?.changePercent, quote?.change));
+  const changePercent = deriveChangePercent(currentValue, previousValue, quote?.changePercent);
+  const explicitChange = roundNumber(quote?.change, 4);
+  const change = Number.isFinite(explicitChange)
+    ? explicitChange
+    : (Number.isFinite(currentValue) && Number.isFinite(previousValue) ? roundNumber(currentValue - previousValue, 4) : null);
   const iopv = roundNumber(quote?.iopv, 4);
   const navBase = Number.isFinite(iopv) && iopv > 0
     ? iopv
@@ -38,11 +79,13 @@ function normalizeFundMetricFromQuote(code, quote, { cached = false, cachePolicy
     name: String(quote?.name || '').trim(),
     market: 'cn',
     price,
-    currentPrice: price,
-    close: price,
-    previousClose: roundNumber(quote?.previousClose, 4),
-    change: roundNumber(quote?.change, 4),
-    changePercent: roundNumber(quote?.changePercent, 4),
+    currentPrice: currentValue,
+    close: currentValue,
+    previousClose: previousValue,
+    previousNav: previousValue,
+    previousNavDate: String(quote?.previousNavDate || quote?.previous_nav_date || '').trim(),
+    change,
+    changePercent,
     latestNav,
     navBase,
     iopv,
@@ -90,7 +133,7 @@ async function readCachedFundMetric(env, cacheKey) {
   const hasNav = Number(cached.latestNav) > 0;
   const hasPrice = Number(cached.price) > 0;
   if (!hasNav && !hasPrice) return null;
-  return { ...cached, cached: true, cachePolicy: 'kv-closed-session' };
+  return normalizeFundMetricFromQuote(cached.code, cached, { cached: true, cachePolicy: 'kv-closed-session' });
 }
 
 function isDanjuanUpdatedToday(updatedAtMs) {
@@ -107,7 +150,7 @@ async function fetchFreshFundMetric(env, code, cachePolicy) {
     const quote = exchange
       ? await fetchCnQuoteWithFallback(env, code, { endpoint: 'fund-metrics' })
       : await fetchDanjuanFundNav(code);
-    const item = normalizeFundMetricFromQuote(code, quote, { cached: false, cachePolicy });
+    const item = normalizeFundMetricFromQuote(code, quote, { cached: false, cachePolicy, exchange });
     // 场内始终缓存；场外仅当 updated_at 是今天时缓存（净值已发布）
     const shouldCache = exchange || isDanjuanUpdatedToday(quote?.updatedAt);
     if (shouldCache) {
@@ -124,6 +167,8 @@ async function fetchFreshFundMetric(env, code, cachePolicy) {
       currentPrice: null,
       close: null,
       previousClose: null,
+      previousNav: null,
+      previousNavDate: '',
       change: null,
       changePercent: null,
       latestNav: null,

@@ -245,18 +245,26 @@ function compareTxChrono(a, b) {
 
 function getSnapshotCurrentPrice(snapshot = null, kind = '') {
   const resolvedKind = normalizeFundKind(kind, snapshot?.code || '', snapshot?.name || '');
-  const rawValue = resolvedKind === 'exchange'
-    ? Number(snapshot?.price ?? snapshot?.currentPrice ?? snapshot?.latestNav)
-    : Number(snapshot?.latestNav ?? snapshot?.currentPrice ?? snapshot?.price);
-  return round(rawValue > 0 ? rawValue : 0, 4);
+  const candidates = resolvedKind === 'exchange'
+    ? [snapshot?.price, snapshot?.currentPrice, snapshot?.latestNav]
+    : [snapshot?.latestNav, snapshot?.currentPrice, snapshot?.price];
+  for (const candidate of candidates) {
+    const value = Number(candidate);
+    if (Number.isFinite(value) && value > 0) return round(value, 4);
+  }
+  return 0;
 }
 
 function getSnapshotPreviousPrice(snapshot = null, kind = '') {
   const resolvedKind = normalizeFundKind(kind, snapshot?.code || '', snapshot?.name || '');
-  const rawValue = resolvedKind === 'exchange'
-    ? Number(snapshot?.previousClose ?? snapshot?.previousNav)
-    : Number(snapshot?.previousNav ?? snapshot?.previousClose);
-  return round(rawValue > 0 ? rawValue : 0, 4);
+  const candidates = resolvedKind === 'exchange'
+    ? [snapshot?.previousClose, snapshot?.previousNav]
+    : [snapshot?.previousNav];
+  for (const candidate of candidates) {
+    const value = Number(candidate);
+    if (Number.isFinite(value) && value > 0) return round(value, 4);
+  }
+  return 0;
 }
 
 function getSnapshotChangePercent(snapshot = null, kind = '') {

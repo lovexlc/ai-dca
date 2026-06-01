@@ -37,6 +37,7 @@ function normalizeSnapshotEntry(entry = {}) {
   }
   const latestNav = round(Number(entry?.latestNav) || 0, 4);
   const price = round(Number(entry?.price ?? entry?.currentPrice ?? entry?.close) || 0, 4);
+  const previousNav = round(Number(entry?.previousNav || entry?.previousClose) || 0, 4);
   const rawChangePercent = entry?.changePercent;
   const changePercent = rawChangePercent === null || rawChangePercent === undefined || rawChangePercent === ''
     ? null
@@ -46,7 +47,7 @@ function normalizeSnapshotEntry(entry = {}) {
     name: normalizeFundName(entry?.name || ''),
     latestNav,
     latestNavDate: String(entry?.latestNavDate || '').trim(),
-    previousNav: round(Number(entry?.previousNav) || 0, 4),
+    previousNav,
     previousNavDate: String(entry?.previousNavDate || '').trim(),
     price,
     currentPrice: price > 0 ? price : latestNav,
@@ -302,7 +303,7 @@ export function mergeSnapshotsFromNavResult(existing = {}, navResult = null) {
       name: item?.name || '',
       latestNav: item?.latestNav,
       latestNavDate: item?.latestNavDate,
-      previousNav: item?.previousNav,
+      previousNav: item?.previousNav ?? item?.previousClose,
       previousNavDate: item?.previousNavDate,
       price: item?.price ?? item?.currentPrice ?? item?.close,
       previousClose: item?.previousClose,
