@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Activity, Bell, Bot, Eye, MousePointerClick, RefreshCw, ShieldCheck, Shuffle, Trash2, Users } from 'lucide-react';
+import { Activity, Bell, Bot, ChevronDown, Eye, MousePointerClick, RefreshCw, ShieldCheck, Shuffle, Trash2, Users } from 'lucide-react';
 import { buildAnalyticsSummary, clearAnalyticsEvents, fetchRemoteAnalyticsSummary, isAnalyticsAdmin, trackAnalyticsEvent } from '../app/analytics.js';
 import { loadCloudSession } from '../app/authClient.js';
 import { cx } from '../components/experience-ui.jsx';
@@ -25,27 +25,42 @@ function Card({ title, value, icon: Icon, hint }) {
 }
 
 function NotifyCard({ total, platformUsers = {} }) {
+  const [expanded, setExpanded] = useState(false);
   const platforms = [
-    { key: 'ios', label: 'iOS', color: 'bg-blue-100 text-blue-700' },
-    { key: 'android', label: 'Android', color: 'bg-green-100 text-green-700' },
-    { key: 'pc', label: 'PC', color: 'bg-purple-100 text-purple-700' }
+    { key: 'ios', label: 'iOS', color: 'bg-blue-100 text-blue-700', count: platformUsers.ios || 0 },
+    { key: 'android', label: 'Android', color: 'bg-green-100 text-green-700', count: platformUsers.android || 0 },
+    { key: 'pc', label: 'PC', color: 'bg-purple-100 text-purple-700', count: platformUsers.pc || 0 }
   ];
+  const activePlatforms = platforms.filter((p) => p.count > 0);
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div
+      className="group cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
+      onClick={() => setExpanded((v) => !v)}
+    >
       <div className="flex items-center justify-between gap-3">
         <div className="text-xs font-semibold text-slate-500">通知使用人数</div>
-        <Bell className="h-4 w-4 text-slate-400" />
+        <div className="flex items-center gap-1.5">
+          <Bell className="h-4 w-4 text-slate-400" />
+          <ChevronDown className={cx('h-3.5 w-3.5 text-slate-300 transition-transform', expanded && 'rotate-180')} />
+        </div>
       </div>
       <div className="mt-2 text-2xl font-bold tabular-nums text-slate-900">{total}</div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {platforms.map((p) => (
-          <span key={p.key} className={cx('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium', platformUsers[p.key] ? p.color : 'bg-slate-50 text-slate-400')}>
-            {p.label}
-            <span className="font-bold tabular-nums">{platformUsers[p.key] || 0}</span>
-          </span>
-        ))}
-      </div>
-      <div className="mt-1 text-xs text-slate-400">按设备平台去重</div>
+      {!expanded && activePlatforms.length > 0 && (
+        <div className="mt-1 text-xs text-slate-400">{activePlatforms.map((p) => `${p.label} ${p.count}`).join(' · ')}</div>
+      )}
+      {expanded && (
+        <div className="mt-2 space-y-1.5 border-t border-slate-100 pt-2">
+          {platforms.map((p) => (
+            <div key={p.key} className="flex items-center justify-between">
+              <span className={cx('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', p.count > 0 ? p.color : 'bg-slate-50 text-slate-400')}>
+                {p.label}
+              </span>
+              <span className="text-sm font-bold tabular-nums text-slate-700">{p.count}</span>
+            </div>
+          ))}
+          <div className="pt-1 text-xs text-slate-400">按设备平台去重</div>
+        </div>
+      )}
     </div>
   );
 }
