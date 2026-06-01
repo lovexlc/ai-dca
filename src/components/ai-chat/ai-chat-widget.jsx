@@ -265,7 +265,6 @@ const TAB_LABELS = {
   tradePlans: '交易计划',
   fundSwitch: '基金切换',
   notify: '提醒中心',
-  backup: '数据备份',
 };
 
 // 市场行情模式首屏热门问题（固定 6 条）。后续可换为从 worker /hot-questions 拉取。

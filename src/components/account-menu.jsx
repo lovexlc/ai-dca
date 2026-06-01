@@ -15,8 +15,7 @@ const HOME_OPTIONS = [
   { value: 'tradePlans', label: '交易计划' },
   { value: 'notify', label: '通知设置' },
   { value: 'markets', label: '行情中心' },
-  { value: 'fundSwitch', label: '基金切换' },
-  { value: 'backup', label: '数据同步' }
+  { value: 'fundSwitch', label: '基金切换' }
 ];
 
 const SYNC_KEY_LABELS = {

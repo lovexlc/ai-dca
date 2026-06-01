@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authClient.js';
 import {
-  Bell, BookOpen, CloudUpload, ListChecks, Wallet, Trash2, X,
+  Bell, BookOpen, ListChecks, Wallet, Trash2, X,
   Sparkles, Calendar, ChevronRight, Clock, Layers, ShieldCheck, Target,
   Activity, FileText, TrendingUp, Repeat, Loader2
 } from 'lucide-react';
@@ -76,8 +76,7 @@ const TAB_RECENT_META = {
   'tab:tradePlans': { title: '交易计划', icon: ListChecks, tint: 'from-emerald-50 to-emerald-100/40', accent: 'text-emerald-500' },
   'tab:fundSwitch': { title: '基金切换', icon: Repeat, tint: 'from-sky-50 to-sky-100/40', accent: 'text-sky-500' },
   'tab:markets': { title: '行情中心', icon: TrendingUp, tint: 'from-amber-50 to-amber-100/40', accent: 'text-amber-500' },
-  'tab:notify': { title: '通知设置', icon: Bell, tint: 'from-rose-50 to-rose-100/40', accent: 'text-rose-500' },
-  'tab:backup': { title: '数据同步', icon: CloudUpload, tint: 'from-violet-50 to-violet-100/40', accent: 'text-violet-500' }
+  'tab:notify': { title: '通知设置', icon: Bell, tint: 'from-rose-50 to-rose-100/40', accent: 'text-rose-500' }
 };
 
 const ACCOUNT_RECENT_META = {
@@ -626,7 +625,6 @@ function ChapterModalBody({ id, navigate, closeModal, demoMeta, onInstallDemo, o
         <ReadmeCard title="通知设置" description="配置 iOS Bark、Android 推送或 PC 浏览器通知，策略触发时主动提醒你。" bullets={['复制完整链接自动解析', '发送测试通知', '同步交易计划规则']} cta="前往通知设置" onClick={() => go('notify')} />
         <ReadmeCard title="行情中心" description="查看关注标的、市场指数和 VIX 风险信号。" bullets={['维护美股关注列表', '观察指数和恐慌信号', '辅助判断是否进入加仓区']} cta="前往行情中心" onClick={() => go('markets')} />
         <ReadmeCard title="基金切换" description="辅助比较同类基金、ETF 或替代标的之间的切换机会。" bullets={['比较候选标的', '分析切换收益', '差异足够大时才执行']} cta="前往基金切换" onClick={() => go('fundSwitch')} />
-        <ReadmeCard title="数据同步" description="备份和恢复本地数据，避免浏览器清理或换设备导致数据丢失。" bullets={['导出当前数据', '恢复历史备份', '换设备前先备份']} cta="前往备份" onClick={() => go('backup')} />
       </div>
     );
   }
@@ -721,7 +719,7 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
 
   const dashboardStatus = useMemo(() => {
     if (typeof window === 'undefined') {
-      return { holdings: '待录入', plans: '0 个', notify: '未配置', backup: '未配置' };
+      return { holdings: '待录入', plans: '0 个', notify: '未配置' };
     }
     function readJson(key) {
       try { return JSON.parse(window.localStorage.getItem(key) || 'null'); } catch { return null; }

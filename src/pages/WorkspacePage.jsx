@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, CloudUpload, LineChart, ListChecks, Plus, RefreshCw, Send, Shuffle, Trash2, Wallet, X } from 'lucide-react';
+import { ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, LineChart, ListChecks, Plus, Send, Shuffle, Trash2, Wallet, X } from 'lucide-react';
 import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, PRIMARY_TAB_META, PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
@@ -7,6 +7,7 @@ import { MobileTabBar } from '../components/mobile-tab-bar.jsx';
 import { GlobalSearch } from '../components/global-search.jsx';
 import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
 import { startCloudAutoSync } from '../app/cloudSync.js';
+import { showToast } from '../app/toast.js';
 import { clearDemoData, readDemoDataMeta } from '../app/demoData.js';
 import { readWorkspacePrefs } from '../app/workspacePrefs.js';
 import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authClient.js';
@@ -14,7 +15,6 @@ import { isAnalyticsAdmin, trackPageView } from '../app/analytics.js';
 
 // 各主 tab 使用 React.lazy 按需加载，在 Vite 中会被拆成独立 chunk。
 // HomeExperience / DcaExperience 已并入 TradePlansExperience 作为二级 tab，不再在这里顶级 lazy。
-const BackupExperience = lazy(() => import('./BackupExperience.jsx').then((m) => ({ default: m.BackupExperience })));
 const FundSwitchExperience = lazy(() => import('./FundSwitchExperience.jsx').then((m) => ({ default: m.FundSwitchExperience })));
 const HoldingsExperience = lazy(() => import('./HoldingsExperience.jsx').then((m) => ({ default: m.HoldingsExperience })));
 const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) => ({ default: m.NotifyExperience })));
@@ -35,7 +35,6 @@ const WORKSPACE_TITLES = {
   markets: '行情中心',
   holdings: '持仓总览',
   notify: '通知设置',
-  backup: '数据同步',
   adminData: '数据看板'
 };
 
@@ -46,7 +45,6 @@ const SIDEBAR_ICONS = {
   markets: LineChart,
   holdings: Wallet,
   notify: Bell,
-  backup: CloudUpload,
   adminData: BarChart3
 };
 
@@ -160,14 +158,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const currentPageLabel = PRIMARY_TAB_META[activeTab]?.label || '';
 
   const quickAction = useMemo(() => {
-    if (activeTab === 'backup') {
-      return {
-        label: '刷新预览',
-        icon: RefreshCw,
-        mode: 'custom',
-        action: () => window.dispatchEvent(new CustomEvent('backup:refresh-preview'))
-      };
-    }
     if (activeTab === 'notify') {
       return {
         label: '测试通知',
@@ -219,6 +209,25 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   useEffect(() => {
     startCloudAutoSync();
+  }, []);
+
+  // 未登录用户提示注册/登录以启用云同步
+  useEffect(() => {
+    if (!cloudSession?.accessToken) {
+      const toastKey = 'aiDcaLoginPromptShown';
+      try {
+        if (sessionStorage.getItem(toastKey)) return;
+        sessionStorage.setItem(toastKey, '1');
+      } catch { /* ignore */ }
+      setTimeout(() => {
+        showToast({
+          title: '登录账号自动同步数据',
+          description: '点击右上角登录，数据变更后自动同步到云端，换设备也不丢。',
+          tone: 'indigo',
+          durationMs: 6000
+        });
+      }, 1500);
+    }
   }, []);
 
   useEffect(() => {
@@ -340,8 +349,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         return <MarketsExperience {...sharedProps} />;
       case 'notify':
         return <NotifyExperience {...sharedProps} />;
-      case 'backup':
-        return <BackupExperience {...sharedProps} />;
       case 'adminData':
         return <AdminAnalyticsExperience {...sharedProps} />;
       case 'holdings':
