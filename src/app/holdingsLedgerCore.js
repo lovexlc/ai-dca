@@ -146,15 +146,23 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
   const hasCurrentPrice = currentPrice > 0;
   const hasPreviousPrice = previousPrice > 0;
   const hasChangePercent = Number.isFinite(changePercent);
-  const hasTodayNav = resolvedKind === 'exchange'
-    ? hasCurrentPrice && hasChangePercent
-    : isLatestNavToday && hasCurrentPrice && hasPreviousPrice && hasChangePercent;
+  const hasTodayNav = getHasTodayNav(resolvedKind, {
+    hasCurrentPrice,
+    hasPreviousPrice,
+    hasChangePercent,
+    isLatestNavToday
+  });
+  const hasDailyReturn = getHasDailyReturn(resolvedKind, {
+    hasCurrentPrice,
+    hasPreviousPrice,
+    hasChangePercent
+  });
   const marketValue = hasCurrentPrice ? round(currentPrice * normalized.shares, 2) : 0;
   const unrealizedProfit = hasCurrentPrice ? round((currentPrice - normalized.price) * normalized.shares, 2) : 0;
   const unrealizedReturnRate = cost > 0 ? round(((marketValue / cost) - 1) * 100, 2) : 0;
   const previousValue = hasPreviousPrice ? previousPrice * normalized.shares : 0;
-  const todayProfit = hasTodayNav ? round(previousValue * (changePercent / 100), 2) : 0;
-  const todayReturnRate = hasTodayNav ? round(changePercent, 2) : 0;
+  const todayProfit = hasDailyReturn ? round(previousValue * (changePercent / 100), 2) : 0;
+  const todayReturnRate = hasDailyReturn ? round(changePercent, 2) : 0;
 
   if (normalized.type === 'SELL') {
     const proceeds = round(normalized.price * normalized.shares, 2);
@@ -204,7 +212,8 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
     hasPreviousNav: hasPreviousPrice,
     hasCurrentPrice,
     hasChangePercent,
-    hasTodayNav,
+    hasTodayNav: hasDailyReturn,
+    hasExpectedNav: hasTodayNav,
     latestNav,
     previousNav,
     currentPrice,
@@ -251,14 +260,43 @@ function getSnapshotPreviousPrice(snapshot = null, kind = '') {
 }
 
 function getSnapshotChangePercent(snapshot = null, kind = '') {
-  const explicit = Number(snapshot?.changePercent);
-  if (Number.isFinite(explicit)) {
+  const rawExplicit = snapshot?.changePercent;
+  const explicit = Number(rawExplicit);
+  if (rawExplicit !== null && rawExplicit !== undefined && rawExplicit !== '' && Number.isFinite(explicit)) {
     return round(explicit, 2);
   }
+  const rawChange = Number(snapshot?.change);
+  const previousPriceForChange = getSnapshotPreviousPrice(snapshot, kind);
+  if (Number.isFinite(rawChange) && rawChange !== 0 && previousPriceForChange > 0) {
+    return round((rawChange / previousPriceForChange) * 100, 2);
+  }
   const currentPrice = getSnapshotCurrentPrice(snapshot, kind);
-  const previousPrice = getSnapshotPreviousPrice(snapshot, kind);
-  if (!(currentPrice > 0) || !(previousPrice > 0)) return 0;
+  const previousPrice = previousPriceForChange;
+  if (!(currentPrice > 0) || !(previousPrice > 0)) return null;
   return round(((currentPrice - previousPrice) / previousPrice) * 100, 2);
+}
+
+function getHasTodayNav(resolvedKind, {
+  hasCurrentPrice = false,
+  hasPreviousPrice = false,
+  hasChangePercent = false,
+  isLatestNavToday = false
+} = {}) {
+  if (resolvedKind === 'exchange') {
+    return hasCurrentPrice && hasChangePercent;
+  }
+  return hasCurrentPrice && hasPreviousPrice && hasChangePercent && isLatestNavToday;
+}
+
+function getHasDailyReturn(resolvedKind, {
+  hasCurrentPrice = false,
+  hasPreviousPrice = false,
+  hasChangePercent = false
+} = {}) {
+  if (resolvedKind === 'exchange') {
+    return hasCurrentPrice && hasChangePercent;
+  }
+  return hasCurrentPrice && hasPreviousPrice && hasChangePercent;
 }
 
 /**
@@ -426,12 +464,21 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     const unrealizedProfit = hasCurrentPrice && totalShares > 0 ? round(marketValue - totalCost, 2) : 0;
     const unrealizedReturnRate = totalCost > 0 ? round((marketValue / totalCost - 1) * 100, 2) : 0;
     const previousValue = hasPreviousPrice && totalShares > 0 ? previousPrice * totalShares : 0;
-    const todayProfit = totalShares > 0 && hasChangePercent
+    const hasExpectedNav = getHasTodayNav(resolvedKind, {
+      hasCurrentPrice,
+      hasPreviousPrice,
+      hasChangePercent,
+      isLatestNavToday
+    });
+    const hasDailyReturn = getHasDailyReturn(resolvedKind, {
+      hasCurrentPrice,
+      hasPreviousPrice,
+      hasChangePercent
+    });
+    const todayProfit = totalShares > 0 && hasDailyReturn
       ? round(previousValue * (changePercent / 100), 2)
       : 0;
-    const todayReturnRate = resolvedKind === 'exchange'
-      ? (hasCurrentPrice && hasChangePercent ? changePercent : 0)
-      : (isLatestNavToday && hasCurrentPrice && hasPreviousPrice && hasChangePercent ? changePercent : 0);
+    const todayReturnRate = hasDailyReturn ? changePercent : 0;
 
     const aggLatestNavDateStr = String(snapshot?.latestNavDate || '');
     const aggPreviousNavDateStr = String(snapshot?.previousNavDate || '');
@@ -477,9 +524,8 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       hasPreviousNav: hasPreviousPrice,
       hasCurrentPrice,
       hasChangePercent,
-      hasTodayNav: resolvedKind === 'exchange'
-        ? (hasCurrentPrice && hasChangePercent)
-        : (isLatestNavToday && hasCurrentPrice && hasPreviousPrice && hasChangePercent),
+      hasTodayNav: hasDailyReturn,
+      hasExpectedNav,
       todayProfitSpanDays: aggTodayProfitSpanDays,
       todayProfitHolidayDays: aggTodayProfitHolidayDays,
       snapshotError: String(snapshot?.error || ''),
@@ -556,7 +602,7 @@ export function summarizePortfolio(aggregates = [], soldSummary = null) {
         else if (agg.kind === 'qdii') qdiiNavDates.add(agg.latestNavDate);
         else if (agg.kind === 'otc') otcNavDates.add(agg.latestNavDate);
       }
-      if (agg.hasTodayNav) navTodayReadyCount += 1;
+      if (agg.hasExpectedNav || agg.hasTodayNav) navTodayReadyCount += 1;
     }
     if (agg.kind === 'qdii') qdiiCount += 1;
     if (agg.hasCurrentPrice && agg.hasPreviousNav && agg.hasTodayNav) {

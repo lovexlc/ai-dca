@@ -37,6 +37,10 @@ function normalizeSnapshotEntry(entry = {}) {
   }
   const latestNav = round(Number(entry?.latestNav) || 0, 4);
   const price = round(Number(entry?.price ?? entry?.currentPrice ?? entry?.close) || 0, 4);
+  const rawChangePercent = entry?.changePercent;
+  const changePercent = rawChangePercent === null || rawChangePercent === undefined || rawChangePercent === ''
+    ? null
+    : (Number.isFinite(Number(rawChangePercent)) ? round(Number(rawChangePercent), 4) : null);
   return {
     code,
     name: normalizeFundName(entry?.name || ''),
@@ -48,7 +52,7 @@ function normalizeSnapshotEntry(entry = {}) {
     currentPrice: price > 0 ? price : latestNav,
     previousClose: round(Number(entry?.previousClose) || 0, 4),
     change: round(Number(entry?.change) || 0, 4),
-    changePercent: round(Number(entry?.changePercent) || 0, 4),
+    changePercent,
     updatedAt: String(entry?.updatedAt || '').trim(),
     cacheHit: entry?.cacheHit === true,
     cacheSource: String(entry?.cacheSource || '').trim(),
