@@ -93,14 +93,26 @@ async function readCachedFundMetric(env, cacheKey) {
   return { ...cached, cached: true, cachePolicy: 'kv-closed-session' };
 }
 
+function isDanjuanUpdatedToday(updatedAtMs) {
+  if (!updatedAtMs) return false;
+  const shanghai = new Date(updatedAtMs).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+  return shanghai === today;
+}
+
 async function fetchFreshFundMetric(env, code, cachePolicy) {
   const cacheKey = 'fund-metrics:' + code;
+  const exchange = isExchangeTradedFund(code);
   try {
-    const quote = isExchangeTradedFund(code)
+    const quote = exchange
       ? await fetchCnQuoteWithFallback(env, code, { endpoint: 'fund-metrics' })
       : await fetchDanjuanFundNav(code);
     const item = normalizeFundMetricFromQuote(code, quote, { cached: false, cachePolicy });
-    await kvPutJson(env, cacheKey, item, { ttlSeconds: 24 * 3600 }).catch(() => {});
+    // 场内始终缓存；场外仅当 updated_at 是今天时缓存（净值已发布）
+    const shouldCache = exchange || isDanjuanUpdatedToday(quote?.updatedAt);
+    if (shouldCache) {
+      await kvPutJson(env, cacheKey, item, { ttlSeconds: 24 * 3600 }).catch(() => {});
+    }
     return item;
   } catch (error) {
     return {

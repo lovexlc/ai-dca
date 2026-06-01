@@ -797,7 +797,8 @@ export async function fetchDanjuanFundNav(code) {
     asOf: new Date().toISOString(),
     source: 'danjuan',
     fallback: 'danjuan',
-    primaryError: ''
+    primaryError: '',
+    updatedAt: Number(d.updated_at) || 0
   };
 }
 
