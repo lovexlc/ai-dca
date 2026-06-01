@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Activity, Bell, Bot, ChevronDown, Eye, MousePointerClick, RefreshCw, ShieldCheck, Shuffle, Trash2, Users } from 'lucide-react';
+import { Activity, Bell, Bot, Calendar, ChevronDown, Clock, Eye, MousePointerClick, RefreshCw, ShieldCheck, Shuffle, Trash2, UserRound, Users } from 'lucide-react';
 import { buildAnalyticsSummary, clearAnalyticsEvents, fetchRemoteAnalyticsSummary, isAnalyticsAdmin, trackAnalyticsEvent } from '../app/analytics.js';
 import { loadCloudSession } from '../app/authClient.js';
 import { cx } from '../components/experience-ui.jsx';
@@ -214,14 +214,73 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
         </div>
 
         <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-3 text-base font-bold text-slate-900">最近事件</h2>
+          <div className="mb-3 flex items-center gap-2">
+            <UserRound className="h-4 w-4 text-indigo-500" />
+            <h2 className="text-base font-bold text-slate-900">用户活跃列表</h2>
+          </div>
           <div className="max-h-80 overflow-auto rounded-2xl border border-slate-100">
-            {(summary.recent || []).length ? (summary.recent || []).map((event) => (
-              <div key={event.id} className="border-b border-slate-100 px-3 py-2 last:border-b-0">
-                <div className="flex items-center justify-between gap-3 text-sm"><span className="font-semibold text-slate-800">{event.type}</span><span className="text-xs text-slate-400">{new Date(event.createdAt).toLocaleString()}</span></div>
-                <div className="mt-1 truncate text-xs text-slate-500">{event.username || event.visitorId} · {event.meta?.tab || event.path}</div>
-              </div>
-            )) : <div className="px-3 py-8 text-center text-sm text-slate-400">暂无事件</div>}
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-xs text-slate-500 sticky top-0"><tr><th className="px-3 py-2 text-left">用户</th><th className="px-3 py-2 text-right">事件数</th><th className="px-3 py-2 text-right">最后活跃</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {(summary.userActivity || []).length ? (summary.userActivity || []).map((row) => (
+                  <tr key={row.user}>
+                    <td className="px-3 py-2 font-semibold text-slate-800">{row.username || row.user}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-600">{row.events}</td>
+                    <td className="px-3 py-2 text-right text-xs text-slate-400">{row.lastActive ? new Date(row.lastActive).toLocaleString() : '-'}</td>
+                  </tr>
+                )) : <tr><td colSpan={3} className="px-3 py-8 text-center text-slate-400">暂无用户活动</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-amber-500" />
+              <h2 className="text-base font-bold text-slate-900">按小时分布</h2>
+            </div>
+            <span className="text-xs text-slate-400">24h 活跃时段</span>
+          </div>
+          <div className="h-56">
+            {(summary.hourlyActivity || []).some((d) => d.events) ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={summary.hourlyActivity || []} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                  <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="hour" tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={(h) => `${h}时`} interval={2} />
+                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
+                  <Tooltip labelFormatter={(h) => `${h}:00-${h}:59`} />
+                  <Bar dataKey="events" name="事件数" fill="#f59e0b" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                  <Bar dataKey="users" name="用户数" fill="#6366f1" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : <EmptyChart />}
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-emerald-500" />
+              <h2 className="text-base font-bold text-slate-900">按星期分布</h2>
+            </div>
+            <span className="text-xs text-slate-400">周活跃规律</span>
+          </div>
+          <div className="h-56">
+            {(summary.dailyActivity || []).some((d) => d.events) ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={(summary.dailyActivity || []).map((d) => ({ ...d, label: ['日', '一', '二', '三', '四', '五', '六'][d.dow] }))} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                  <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} />
+                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
+                  <Tooltip />
+                  <Bar dataKey="events" name="事件数" fill="#10b981" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                  <Bar dataKey="users" name="用户数" fill="#6366f1" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : <EmptyChart />}
           </div>
         </div>
       </section>

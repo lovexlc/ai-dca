@@ -169,6 +169,27 @@ async function handleAdminAnalytics(request, env, origin) {
     GROUP BY path ORDER BY pv DESC LIMIT 8`).bind(since).all();
   const recentRows = await env.DB.prepare(`SELECT id, type, user_id AS userId, username, visitor_id AS visitorId, path, event_date AS date, created_at AS createdAt, meta
     FROM analytics_events WHERE event_date >= ? ORDER BY created_at DESC LIMIT 20`).bind(since).all();
+  const userActivityRows = await env.DB.prepare(`SELECT
+    COALESCE(NULLIF(username, ''), visitor_id) AS user,
+    username,
+    COUNT(*) AS events,
+    COUNT(DISTINCT type) AS eventTypes,
+    MAX(created_at) AS lastActive
+    FROM analytics_events WHERE event_date >= ? AND COALESCE(NULLIF(username, ''), visitor_id) != ''
+    GROUP BY COALESCE(NULLIF(username, ''), visitor_id)
+    ORDER BY lastActive DESC LIMIT 20`).bind(since).all();
+  const hourlyRows = await env.DB.prepare(`SELECT
+    CAST(strftime('%H', created_at) AS INTEGER) AS hour,
+    COUNT(*) AS events,
+    COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), visitor_id)) AS users
+    FROM analytics_events WHERE event_date >= ?
+    GROUP BY hour ORDER BY hour`).bind(since).all();
+  const dowRows = await env.DB.prepare(`SELECT
+    CAST(strftime('%w', created_at) AS INTEGER) AS dow,
+    COUNT(*) AS events,
+    COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), visitor_id)) AS users
+    FROM analytics_events WHERE event_date >= ?
+    GROUP BY dow ORDER BY dow`).bind(since).all();
   const platformRows = await env.DB.prepare(`SELECT
     COUNT(DISTINCT CASE
       WHEN type = 'notify_enabled' AND json_extract(meta, '$.hasBark') = 1 THEN COALESCE(NULLIF(user_id, ''), visitor_id)
@@ -212,7 +233,22 @@ async function handleAdminAnalytics(request, env, origin) {
       { key: '通知使用', value: Number(cardsRows?.notifyEvents) || 0, users: Number(cardsRows?.notifyUsers) || 0 },
       { key: '切换运行', value: Number(cardsRows?.switchRuns) || 0, users: Number(cardsRows?.switchUsers) || 0 }
     ],
-    recent: (recentRows.results || []).map((row) => ({ ...row, meta: (() => { try { return JSON.parse(row.meta || '{}'); } catch { return {}; } })() }))
+    recent: (recentRows.results || []).map((row) => ({ ...row, meta: (() => { try { return JSON.parse(row.meta || '{}'); } catch { return {}; } })() })),
+    userActivity: (userActivityRows.results || []).map((row) => ({
+      user: String(row.user || ''),
+      username: String(row.username || ''),
+      events: Number(row.events) || 0,
+      eventTypes: Number(row.eventTypes) || 0,
+      lastActive: String(row.lastActive || '')
+    })),
+    hourlyActivity: Array.from({ length: 24 }, (_, hour) => {
+      const row = (hourlyRows.results || []).find((r) => Number(r.hour) === hour);
+      return { hour, events: Number(row?.events) || 0, users: Number(row?.users) || 0 };
+    }),
+    dailyActivity: Array.from({ length: 7 }, (_, dow) => {
+      const row = (dowRows.results || []).find((r) => Number(r.dow) === dow);
+      return { dow, events: Number(row?.events) || 0, users: Number(row?.users) || 0 };
+    })
   }, { origin });
 }
 
