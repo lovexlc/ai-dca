@@ -170,10 +170,17 @@ async function handleAdminAnalytics(request, env, origin) {
   const recentRows = await env.DB.prepare(`SELECT id, type, user_id AS userId, username, visitor_id AS visitorId, path, event_date AS date, created_at AS createdAt, meta
     FROM analytics_events WHERE event_date >= ? ORDER BY created_at DESC LIMIT 20`).bind(since).all();
   const platformRows = await env.DB.prepare(`SELECT
-    COUNT(DISTINCT CASE WHEN type = 'notify_enabled' AND json_extract(meta, '$.hasBark') = 1 THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS iosUsers,
-    COUNT(DISTINCT CASE WHEN type = 'notify_used' AND json_extract(meta, '$.platform') = 'android' THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS androidUsers,
-    COUNT(DISTINCT CASE WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'android') THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS androidEnabledUsers,
-    COUNT(DISTINCT CASE WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'pc') THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS pcUsers
+    COUNT(DISTINCT CASE
+      WHEN type = 'notify_enabled' AND json_extract(meta, '$.hasBark') = 1 THEN COALESCE(NULLIF(user_id, ''), visitor_id)
+      WHEN type = 'notify_used' AND (json_extract(meta, '$.platform') = 'ios' OR json_extract(meta, '$.path') NOT LIKE '%/gcm/%') THEN COALESCE(NULLIF(user_id, ''), visitor_id)
+    END) AS iosUsers,
+    COUNT(DISTINCT CASE
+      WHEN type = 'notify_used' AND (json_extract(meta, '$.platform') = 'android' OR json_extract(meta, '$.path') LIKE '%/gcm/%') THEN COALESCE(NULLIF(user_id, ''), visitor_id)
+      WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'android') THEN COALESCE(NULLIF(user_id, ''), visitor_id)
+    END) AS androidUsers,
+    COUNT(DISTINCT CASE
+      WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'pc') THEN COALESCE(NULLIF(user_id, ''), visitor_id)
+    END) AS pcUsers
     FROM analytics_events WHERE event_date >= ? AND type IN ('notify_enabled','notify_used')`).bind(since).first();
 
   return json({
@@ -188,7 +195,7 @@ async function handleAdminAnalytics(request, env, origin) {
       switchRuns: Number(cardsRows?.switchRuns) || 0,
       notifyPlatformUsers: {
         ios: Number(platformRows?.iosUsers) || 0,
-        android: (Number(platformRows?.androidUsers) || 0) || (Number(platformRows?.androidEnabledUsers) || 0),
+        android: Number(platformRows?.androidUsers) || 0,
         pc: Number(platformRows?.pcUsers) || 0
       }
     },
