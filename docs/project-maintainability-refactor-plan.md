@@ -61,31 +61,31 @@ Improve the project maintainability by increasing cohesion, reducing coupling, c
   - done: Verify tests, production build, and browser rendering for the affected holdings page.
 - Markets continuation phase:
   - done: Audit remaining high-coupling sections in `src/pages/MarketsExperience.jsx` after the watchlist extraction.
-  - in_progress: Extract news/theme/earnings presentation helpers from `src/pages/MarketsExperience.jsx`.
+  - done: Extract news/theme/earnings presentation helpers from `src/pages/MarketsExperience.jsx`.
     - implemented: added `src/pages/markets/MarketNewsPanels.jsx` for news lists, latest-news list, theme exploration button, shared news source helpers, and earnings calendar presentation.
     - implemented: `src/pages/MarketsExperience.jsx` now imports those helpers/components and no longer defines the duplicated news/theme/earnings presentation blocks locally.
-    - validation pending: real-browser validation is blocked in the current sandbox because Chromium exits during startup with `sandbox_host_linux.cc:41 Operation not permitted`; an escalated browser run was rejected, and an Xvfb retry after installing `xauth` still failed on Chromium crashpad socket permissions.
-  - in_progress: Extract chart presentation components from `src/pages/MarketsExperience.jsx`.
+    - browser validation blocked: real-browser validation is blocked in the current sandbox because Chromium exits during startup with `sandbox_host_linux.cc:41 Operation not permitted`; an escalated browser run was rejected, and an Xvfb retry after installing `xauth` still failed on Chromium crashpad socket permissions.
+  - done: Extract chart presentation components from `src/pages/MarketsExperience.jsx`.
     - implemented: added `src/pages/markets/MarketChartPanel.jsx` for `SymbolDetailChart`, chart toolbar popover, chart option constants, indicator constants, and compare colors.
     - implemented: `src/pages/MarketsExperience.jsx` now keeps chart data orchestration and imports chart presentation from `src/pages/markets/MarketChartPanel.jsx`.
     - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass.
-  - in_progress: Extract financial and CN fund detail panels from `src/pages/MarketsExperience.jsx`.
+  - done: Extract financial and CN fund detail panels from `src/pages/MarketsExperience.jsx`.
     - implemented: added `src/pages/markets/MarketFinancialPanels.jsx` for `FinancialsPanel`, CN fund flow/report panels, NAV insight display, and shared CN fund detail formatters.
     - implemented: `src/pages/MarketsExperience.jsx` now imports these detail panels/helpers and keeps selected-symbol state plus data fetching local.
     - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass.
-  - in_progress: Extract Markets sidebar/index row presentation and remove unreachable table leftovers.
+  - done: Extract Markets sidebar/index row presentation and remove unreachable table leftovers.
     - implemented: added `src/pages/markets/MarketSidebarRows.jsx` for `IndexCard`, `SidebarRow`, and `MobileSidebarRow`.
     - implemented: removed unused `MoversTable` and `SortableMarketTable` definitions that had no call sites.
     - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass.
-  - in_progress: Extract Markets chart range and CN fund metric candle helpers.
+  - done: Extract Markets chart range and CN fund metric candle helpers.
     - implemented: added `src/pages/markets/marketFundMetrics.js` for chart range tabs, Shanghai date helpers, holdings trade marker builder, NAV history range logic, CN fund metric candle construction, and CN OTC fund quote detection.
     - implemented: kept data fetching, selected symbol state, premium snapshot state, and OTC fallback quote construction in `src/pages/MarketsExperience.jsx`.
     - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass.
-  - in_progress: Extract Markets AI research panel.
+  - done: Extract Markets AI research panel.
     - implemented: added `src/pages/markets/MarketsResearchPanel.jsx` for `MarketsResearchPanel`, markdown rendering, AI chart code blocks, stock analysis prompt generation, and Markets AI API calls.
     - implemented: `src/pages/MarketsExperience.jsx` now keeps research mode state, pending-analysis state, selected-symbol wiring, and passes them into the extracted panel.
     - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass.
-  - in_progress: Extract Markets symbol detail panel.
+  - done: Extract Markets symbol detail panel.
     - implemented: added `src/pages/markets/MarketSymbolDetailPanel.jsx` for `SymbolDetailPanel`, compare search, chart controls, detail tabs, and CN fund metric wiring.
     - implemented: kept top-level selected symbol, quote maps, fetch orchestration, OTC candidate construction, and layout in `src/pages/MarketsExperience.jsx`.
     - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass.
@@ -207,3 +207,119 @@ Improve the project maintainability by increasing cohesion, reducing coupling, c
     - backend smoke: Worker `fetch` entry with in-memory `NOTIFY_STATE` returned `normal 200 smoke-client` for authenticated `GET /api/notify/status?clientId=smoke-client`.
     - backend smoke: authenticated `GET /api/notify/events?clientId=smoke-client` returned `events 200 0`.
     - backend smoke: status endpoint without `x-notify-client-secret` returned `missing-secret 500 缺少浏览器鉴权信息，请刷新页面后重试。`.
+  - done: Extract notify Worker GCM presentation/auth helpers.
+    - implemented: added `workers/notify/src/gcmPresentation.js` for public GCM setup projection and Android registration token validation.
+    - implemented: `workers/notify/src/index.js` now imports GCM presentation/auth helpers while keeping GCM route parsing and state mutation local.
+    - validation: `node -e "import('./workers/notify/src/index.js')..."` pass with `notify worker import ok`.
+    - validation: `node -e "import('./workers/notify/src/gcmPresentation.js')..."` pass with `gcm presentation import ok`.
+    - validation: `node --test test/*.mjs` pass, 9 test files.
+    - validation: `npm run build` pass.
+    - backend smoke: Worker `fetch` entry with in-memory `NOTIFY_STATE` returned `normal 200 smoke-client` for authenticated `GET /api/notify/status?clientId=smoke-client`.
+    - backend smoke: status endpoint without `x-notify-client-secret` returned `missing-secret 500 缺少浏览器鉴权信息，请刷新页面后重试。`.
+  - done: Extract notify Worker holdings NAV/date support helpers.
+    - implemented: added `workers/notify/src/holdingsNavSupport.js` for holdings rule/dedup keys, delivery confirmation detection, QDII kind resolution, Shanghai trading-day/date helpers, expected NAV date calculation, unified latest NAV cache wrapper, and holdings digest normalization.
+    - implemented: `workers/notify/src/index.js` now imports holdings support helpers while keeping holdings route handlers and notification orchestration local.
+    - validation: `node -e "import('./workers/notify/src/index.js')..."` pass with `notify worker import ok`.
+    - validation: `node -e "import('./workers/notify/src/holdingsNavSupport.js')..."` pass with `holdings nav support import ok`.
+    - validation: `node --test test/*.mjs` pass, 9 test files.
+    - validation: `npm run build` pass.
+    - backend smoke: Worker `fetch` entry with in-memory `NOTIFY_STATE` returned `normal 200 smoke-client` for authenticated `GET /api/notify/status?clientId=smoke-client`.
+    - backend smoke: status endpoint without `x-notify-client-secret` returned `missing-secret 500 缺少浏览器鉴权信息，请刷新页面后重试。`.
+  - done: Extract notify Worker holdings return calculation and notification content helpers.
+    - implemented: added `workers/notify/src/holdingsNotificationContent.js` for weighted holdings return readiness/calculation and privacy-preserving holdings notification title/body/markdown formatting.
+    - implemented: `workers/notify/src/index.js` now imports holdings calculation/content helpers while keeping KV scans, dedup, and dispatch orchestration local.
+    - validation: `node -e "import('./workers/notify/src/index.js')..."` pass with `notify worker import ok`.
+    - validation: `node -e "import('./workers/notify/src/holdingsNotificationContent.js')..."` pass with `holdings notification content import ok`.
+    - validation: `node --test test/*.mjs` pass, 9 test files.
+    - validation: `npm run build` pass.
+    - backend smoke: Worker `fetch` entry with in-memory `NOTIFY_STATE` returned `normal 200 smoke-client` for authenticated `GET /api/notify/status?clientId=smoke-client`.
+    - backend smoke: status endpoint without `x-notify-client-secret` returned `missing-secret 500 缺少浏览器鉴权信息，请刷新页面后重试。`.
+  - done: Extract notify Worker holdings snapshot fetch/cache helper.
+    - implemented: added `workers/notify/src/holdingsSnapshotFetch.js` for holdings NAV/price snapshot cache reads, upstream refresh fan-out, exchange price fallback handling, and KV write policy.
+    - implemented: `workers/notify/src/index.js` now imports `fetchHoldingsNavSnapshots` and `isExchangeLikeCode`, keeping holdings route/debug orchestration local.
+    - validation: `node -e "import('./workers/notify/src/index.js')..."` pass with `notify worker import ok`.
+    - validation: `node -e "import('./workers/notify/src/holdingsSnapshotFetch.js')..."` pass with `holdings snapshot fetch import ok`.
+    - validation: `node --test test/*.mjs` pass, 9 test files.
+    - validation: `npm run build` pass.
+    - backend smoke: Worker `fetch` entry with in-memory `NOTIFY_STATE` returned `normal 200 smoke-client` for authenticated `GET /api/notify/status?clientId=smoke-client`.
+    - backend smoke: status endpoint without `x-notify-client-secret` returned `missing-secret 500 缺少浏览器鉴权信息，请刷新页面后重试。`.
+  - done: Extract notify Worker client and GCM route handlers.
+    - implemented: added `workers/notify/src/notifyClientRoutes.js` for notify status/events/ack/sync/settings handlers and analytics tracking used by switch-strategy runs.
+    - implemented: added `workers/notify/src/gcmRoutes.js` for Android GCM registration, pairing-key, pair/unpair, device-side unpair, device-id reset, and connection check route handlers.
+    - implemented: `workers/notify/src/index.js` now imports client/GCM route handlers while retaining top-level route dispatch and unrelated admin/debug GCM lookups.
+    - fix: restored the `fetchSinaPrices` import in `workers/notify/src/index.js`; switch-strategy runtime still uses it for live price maps after holdings snapshot extraction.
+    - cleanup: removed dead Gotify account creation handlers from `workers/notify/src/index.js`; `/api/notify/gotify-account` already returns 410 directly.
+    - validation: `node -e "import('./workers/notify/src/index.js')..."` pass with `notify worker import ok`.
+    - validation: `node -e "Promise.all([import('./workers/notify/src/gcmRoutes.js'), import('./workers/notify/src/notifyClientRoutes.js')])..."` pass with `notify route imports ok`.
+    - validation: `node --test test/*.mjs` pass, 9 test files.
+    - validation: `npm run build` pass.
+    - backend smoke: Worker `fetch` entry with in-memory `NOTIFY_STATE` returned `status 200 smoke-client` for authenticated `GET /api/notify/status?clientId=smoke-client`.
+    - backend smoke: authenticated `GET /api/notify/events?clientId=smoke-client` returned `events 200 0`.
+    - backend smoke: invalid `POST /api/notify/gcm/register` returned `gcm-register-bad 500 注册 Android GCM 设备前需要先提供 Firebase Project ID。`.
+- OCR Proxy Worker continuation phase:
+  - done: Extract OCR Worker HTTP and upstream model response helpers.
+    - implemented: added `workers/ocr-proxy/src/ocrHttp.js` for JSON response headers.
+    - implemented: added `workers/ocr-proxy/src/ocrModelResponse.js` for image byte base64 conversion, integer env parsing, retryable upstream error detection, structured JSON response extraction, and fallback comparison parsing.
+    - implemented: `workers/ocr-proxy/src/index.js` now imports those helpers while keeping route handlers and upstream model orchestration in the entry module.
+    - implemented: fixed a stale `summarizeHoldingRowErrors` import from `src/app/holdingsCore.js` by keeping the OCR-only summary formatting local to `workers/ocr-proxy/src/index.js`.
+    - validation: `node -e "import('./workers/ocr-proxy/src/index.js')..."` pass with `ocr worker import ok`.
+    - validation: `node -e "Promise.all([import('./workers/ocr-proxy/src/ocrHttp.js'), import('./workers/ocr-proxy/src/ocrModelResponse.js')])..."` pass with `ocr helper imports ok`.
+    - validation: `node --test test/*.mjs` pass, 9 test files.
+    - validation: `npm run build` pass.
+    - backend smoke: Worker `fetch` entry returned `health 200 ocr-proxy` for `GET /api/health`.
+    - backend smoke: Worker `fetch` entry returned `options 204 GET, POST, OPTIONS` for `OPTIONS /api/ocr`.
+    - backend smoke: Worker `fetch` entry returned `wrong-method 405 Method not allowed POST, OPTIONS` for `GET /api/ocr`.
+  - done: Extract OCR Worker fund catalog and name-resolution helpers.
+    - implemented: added `workers/ocr-proxy/src/fundCatalog.js` for Eastmoney fund catalog loading/cache, code lookup, fuzzy name scoring, online suggest fallback, and visible holding-code extraction.
+    - implemented: `workers/ocr-proxy/src/index.js` now imports fund catalog resolution helpers and keeps holding-row enrichment orchestration local.
+    - validation: `node -e "import('./workers/ocr-proxy/src/index.js')..."` pass with `ocr worker import ok`.
+    - validation: `node -e "import('./workers/ocr-proxy/src/fundCatalog.js')..."` pass with `fund catalog import ok`.
+    - validation: `node --test test/*.mjs` pass, 9 test files.
+    - validation: `npm run build` pass.
+    - backend smoke: Worker `fetch` entry returned `health 200 ocr-proxy` for `GET /api/health`.
+    - backend smoke: Worker `fetch` entry returned `options 204 GET, POST, OPTIONS` for `OPTIONS /api/ocr`.
+    - backend smoke: Worker `fetch` entry returned `wrong-method 405 Method not allowed POST, OPTIONS` for `GET /api/ocr`.
+  - done: Extract OCR Worker holdings OCR row parsing and enrichment helpers.
+    - implemented: added `workers/ocr-proxy/src/holdingsOcrRows.js` for holding OCR row normalization, amount/share parsing, fund-code/name enrichment, optional NAV-based share estimation, validation warning formatting, preview lines, and confidence scoring.
+    - implemented: `workers/ocr-proxy/src/index.js` now injects `readFundNavSnapshot` and generated Shanghai timestamp into the extracted holdings row helper, keeping Worker runtime access at the route layer.
+    - validation: `node -e "import('./workers/ocr-proxy/src/index.js')..."` pass with `ocr worker import ok`.
+    - validation: `node -e "import('./workers/ocr-proxy/src/holdingsOcrRows.js')..."` pass with `holdings ocr rows import ok`.
+    - validation: `node --test test/*.mjs` pass, 9 test files.
+    - validation: `npm run build` pass.
+    - backend smoke: Worker `fetch` entry returned `health 200 ocr-proxy` for `GET /api/health`.
+    - backend smoke: Worker `fetch` entry returned `options 204 GET, POST, OPTIONS` for `OPTIONS /api/holdings/ocr`.
+    - backend smoke: Worker `fetch` entry returned `wrong-method 405 Method not allowed POST, OPTIONS` for `GET /api/holdings/ocr`.
+  - done: Extract OCR Worker holdings NAV route and cache helpers.
+    - implemented: added `workers/ocr-proxy/src/holdingsNavRoutes.js` for `/api/holdings/nav`, `/api/holdings/nav-history`, edge/baseline cache resolution, NAV history monthly KV support, Shanghai-time TTL helpers, and live snapshot fan-out.
+    - implemented: `workers/ocr-proxy/src/index.js` now imports holdings NAV route handlers plus `nowShanghaiIso` and `readFundNavSnapshot` for OCR row enrichment, reducing the entry module's route/cache responsibilities.
+    - cleanup: removed duplicate private monthly-KV helper copies from `holdingsNavRoutes.js`; monthly KV internals remain owned by `workers/notify/src/getNav.js`.
+    - validation: `node -e "import('./workers/ocr-proxy/src/index.js')..."` pass with `ocr worker import ok`.
+    - validation: `node -e "import('./workers/ocr-proxy/src/holdingsNavRoutes.js')..."` pass with `holdings nav routes import ok`.
+    - validation: `node --test test/*.mjs` pass, 9 test files.
+    - validation: `npm run build` pass.
+    - backend smoke: Worker `fetch` entry with stubbed `caches.default` returned `nav-cache 200 1 edge-cache 510300` for `GET /api/holdings/nav?codes=510300`.
+    - backend smoke: same route returned `nav-bad 400 请求中缺少有效的 6 位基金代码。` for invalid code.
+    - backend smoke: Worker `fetch` entry with stubbed `caches.default` returned `history-cache 200 true edge-cache` for `GET /api/holdings/nav-history?code=510300&from=2026-05-01&to=2026-05-29`.
+    - backend smoke: same route returned `history-bad 400 请求中缺少有效的 6 位基金代码（参数 code）。` for invalid code.
+- Holdings ledger core continuation phase:
+  - done: Extract holdings ledger basics and transaction normalization helpers.
+    - implemented: added `src/app/holdingsLedgerBasics.js` for fund code/kind constants, Shanghai expected NAV date helpers, fund-kind detection, transaction normalization, validation, and ledger code listing.
+    - implemented: `src/app/holdingsLedgerCore.js` now imports and re-exports the extracted basics so existing callers can keep using the same public module path.
+    - validation: `node -e "import('./src/app/holdingsLedgerCore.js')..."` pass with `holdings ledger core import ok`.
+    - validation: `node -e "import('./src/app/holdingsLedgerBasics.js')..."` pass with `holdings ledger basics import ok`.
+    - validation: `node --test test/*.mjs` pass, 9 test files.
+    - validation: `npm run build` pass.
+  - done: Extract holdings ledger Excel paste parser.
+    - implemented: added `src/app/holdingsLedgerPaste.js` for Excel/TSV/CSV delimiter detection, header mapping, type/kind cell normalization, transaction draft parsing, validation, and switch-pair hint matching.
+    - implemented: `src/app/holdingsLedgerCore.js` now re-exports `parseExcelPaste` from the extracted parser module, preserving existing imports.
+    - validation: `node -e "import('./src/app/holdingsLedgerCore.js')..."` pass with `core import function`.
+    - validation: `node -e "import('./src/app/holdingsLedgerPaste.js')..."` pass with `paste import function`.
+    - validation: `node --test test/*.mjs` pass, 9 test files.
+    - validation: `npm run build` pass.
+  - done: Extract holdings switch-chain metrics helpers.
+    - implemented: added `src/app/holdingsSwitchChains.js` for switch-chain normalization and chain/baseline/cash-flow metric calculation.
+    - implemented: `src/app/holdingsLedgerCore.js` now re-exports `normalizeSwitchChain`, `normalizeSwitchChains`, and `computeSwitchChainMetrics` from the extracted module.
+    - validation: `node -e "import('./src/app/holdingsLedgerCore.js')..."` pass with `core switch exports function function`.
+    - validation: `node -e "import('./src/app/holdingsSwitchChains.js')..."` pass with `switch chains import function function`.
+    - validation: `node --test test/*.mjs` pass, 9 test files.
+    - validation: `npm run build` pass.

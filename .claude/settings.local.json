@@ -24,7 +24,8 @@
       "Bash(curl -s \"https://tools.freebacktrack.tech/api/markets/fund-metrics\" -X POST -H \"content-type: application/json\" -d '{\"codes\":[\"159632\"],\"refresh\":true}')",
       "Bash(useradd *)",
       "Bash(chpasswd)",
-      "Bash(npx playwright *)"
+      "Bash(npx playwright *)",
+      "Bash(gh auth *)"
     ]
   }
 }
