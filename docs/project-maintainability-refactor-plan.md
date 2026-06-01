@@ -12,6 +12,7 @@ Improve the project maintainability by increasing cohesion, reducing coupling, c
 - done: Implement phase 1 as a narrow, behavior-preserving refactor with tests/build verification.
 - done: Update docs with module ownership and dependency rules.
 - done: Complete the Markets watchlist maintainability phase and stop before broader refactors.
+- done: Start the Holdings maintainability phase with behavior-preserving UI/helper extraction.
 
 ## Key Decisions
 
@@ -21,6 +22,7 @@ Improve the project maintainability by increasing cohesion, reducing coupling, c
 - Each phase must have focused tests and build/browser verification before moving on.
 - Start with the Markets page because it is one of the largest mixed-responsibility modules and was recently changed.
 - Current scope is limited to extracting Markets watchlist UI and pure display helpers; data fetching and state flow stay unchanged.
+- Holdings phase scope is limited to extracting local presentation components and pure helpers; ledger persistence, calculations, imports, and nav fetching stay unchanged.
 
 ## Open Confirmations
 
@@ -41,6 +43,52 @@ Improve the project maintainability by increasing cohesion, reducing coupling, c
 - Phase 3 extraction:
   - `src/pages/markets/WatchlistControls.jsx` owns watchlist switching plus create/rename/delete dialog UI.
   - The Markets page now imports watchlist UI modules from `src/pages/markets/` and keeps API/data orchestration local.
+- Holdings phase:
+  - done: Identify local UI/helper seams in `src/pages/HoldingsExperience.jsx`.
+  - done: Extract transaction import modal presentation into `src/pages/holdings/TransactionImportModals.jsx`.
+  - done: Remove stale unused render helpers left behind by earlier holdings page changes.
+  - done: Extract aggregate holdings table column definitions into `src/pages/holdings/aggregateHoldingsColumns.jsx`.
+  - done: Remove unreachable legacy ledger transaction table column path after the page was confirmed fixed to aggregate overview.
+  - done: Extract holdings side panel shell into `src/pages/holdings/HoldingsSidePanel.jsx`.
+  - done: Remove unreachable legacy switch-chain picker/view path after the page was confirmed fixed to aggregate overview.
+  - done: Extract switch-counterpart allocation picker modal into `src/pages/holdings/SwitchCounterpartPickerModal.jsx`.
+  - done: Extract selected holding summary side-panel content into `src/pages/holdings/HoldingSummaryPanel.jsx`.
+  - done: Extract transaction draft side-panel form into `src/pages/holdings/TransactionDraftPanel.jsx`.
+  - done: Remove unreachable legacy switch-chain overview section from `src/pages/HoldingsExperience.jsx`.
+  - done: Remove unreachable legacy ledger transaction row UI from `src/pages/HoldingsExperience.jsx`.
+  - done: Extract aggregate holdings table section into `src/pages/holdings/AggregateHoldingsTableSection.jsx`.
+  - done: Remove unreachable legacy holdings table branches now that the page is fixed to the aggregate overview.
+  - done: Verify tests, production build, and browser rendering for the affected holdings page.
+- Markets continuation phase:
+  - done: Audit remaining high-coupling sections in `src/pages/MarketsExperience.jsx` after the watchlist extraction.
+  - in_progress: Extract news/theme/earnings presentation helpers from `src/pages/MarketsExperience.jsx`.
+    - implemented: added `src/pages/markets/MarketNewsPanels.jsx` for news lists, latest-news list, theme exploration button, shared news source helpers, and earnings calendar presentation.
+    - implemented: `src/pages/MarketsExperience.jsx` now imports those helpers/components and no longer defines the duplicated news/theme/earnings presentation blocks locally.
+    - validation pending: real-browser validation is blocked in the current sandbox because Chromium exits during startup with `sandbox_host_linux.cc:41 Operation not permitted`; an escalated browser run was rejected, and an Xvfb retry after installing `xauth` still failed on Chromium crashpad socket permissions.
+  - in_progress: Extract chart presentation components from `src/pages/MarketsExperience.jsx`.
+    - implemented: added `src/pages/markets/MarketChartPanel.jsx` for `SymbolDetailChart`, chart toolbar popover, chart option constants, indicator constants, and compare colors.
+    - implemented: `src/pages/MarketsExperience.jsx` now keeps chart data orchestration and imports chart presentation from `src/pages/markets/MarketChartPanel.jsx`.
+    - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass.
+  - in_progress: Extract financial and CN fund detail panels from `src/pages/MarketsExperience.jsx`.
+    - implemented: added `src/pages/markets/MarketFinancialPanels.jsx` for `FinancialsPanel`, CN fund flow/report panels, NAV insight display, and shared CN fund detail formatters.
+    - implemented: `src/pages/MarketsExperience.jsx` now imports these detail panels/helpers and keeps selected-symbol state plus data fetching local.
+    - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass.
+  - in_progress: Extract Markets sidebar/index row presentation and remove unreachable table leftovers.
+    - implemented: added `src/pages/markets/MarketSidebarRows.jsx` for `IndexCard`, `SidebarRow`, and `MobileSidebarRow`.
+    - implemented: removed unused `MoversTable` and `SortableMarketTable` definitions that had no call sites.
+    - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass.
+  - in_progress: Extract Markets chart range and CN fund metric candle helpers.
+    - implemented: added `src/pages/markets/marketFundMetrics.js` for chart range tabs, Shanghai date helpers, holdings trade marker builder, NAV history range logic, CN fund metric candle construction, and CN OTC fund quote detection.
+    - implemented: kept data fetching, selected symbol state, premium snapshot state, and OTC fallback quote construction in `src/pages/MarketsExperience.jsx`.
+    - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass.
+  - in_progress: Extract Markets AI research panel.
+    - implemented: added `src/pages/markets/MarketsResearchPanel.jsx` for `MarketsResearchPanel`, markdown rendering, AI chart code blocks, stock analysis prompt generation, and Markets AI API calls.
+    - implemented: `src/pages/MarketsExperience.jsx` now keeps research mode state, pending-analysis state, selected-symbol wiring, and passes them into the extracted panel.
+    - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass.
+  - in_progress: Extract Markets symbol detail panel.
+    - implemented: added `src/pages/markets/MarketSymbolDetailPanel.jsx` for `SymbolDetailPanel`, compare search, chart controls, detail tabs, and CN fund metric wiring.
+    - implemented: kept top-level selected symbol, quote maps, fetch orchestration, OTC candidate construction, and layout in `src/pages/MarketsExperience.jsx`.
+    - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass.
 - Updated maintainability docs.
 
 ## Verification
@@ -51,3 +99,111 @@ Improve the project maintainability by increasing cohesion, reducing coupling, c
 - Browser desktop `1280x900` expanded watchlist: same table headers; first cell `position: sticky`, `left: 0px`; expanded overlay still renders the `基金搜索` button.
 - Browser desktop watchlist selector: visible active label `默认列表`; rename button count 1; create button present.
 - Screenshots: `test-results/markets-phase-mobile-watchlist-table.png`, `test-results/markets-phase-desktop-watchlist-table.png`.
+- Holdings extraction verification:
+  - `node --test test/*.mjs`: pass, 9 test files.
+  - `npm run build`: pass.
+  - Browser desktop `1280x900` at `/?tab=holdings`: holdings page renders `粘贴 Excel` and `截图 OCR`; paste modal opens with `从 Excel 粘贴交易流水`, `解析预览`, `导入有效行`, and default column-order hint; OCR modal opens with `从截图识别交易流水`, `选择截图文件`, `导入有效行`, and PNG/JPG hint.
+  - Screenshot: `test-results/holdings-import-modal-refactor.png`.
+  - Aggregate columns extraction check: browser desktop `1280x900` at `/?tab=holdings` renders holdings summary cards and empty state; paste modal still opens with `从 Excel 粘贴交易流水`, `解析预览`, and `导入有效行`.
+  - Screenshot: `test-results/holdings-aggregate-columns-refactor.png`.
+  - Ledger columns extraction check: browser desktop `1280x900` at `/?tab=holdings` renders summary cards, `交易记录`, empty transaction state, `粘贴 Excel`, and `截图 OCR`; paste modal still opens with `从 Excel 粘贴交易流水`, `解析预览`, and `导入有效行`.
+  - Side panel extraction check: browser desktop `1280x900` at `/?tab=holdings`; click `新增单笔` opens the `新增交易` side panel, close button is present, and the code input/form content renders.
+  - Switch-counterpart picker extraction check: browser desktop `1280x900` with seeded local ledger data; open `新增单笔`, enable `这是一笔基金切换`, click `选择对手方`; modal renders `选择基金切换对手方`, candidate `测试基金B`, `自动分配`, `确认选择`, and `可用` column.
+  - Screenshot: `test-results/holdings-switch-counterpart-picker-refactor.png`.
+  - Holding summary panel extraction check: `node --test test/*.mjs` pass, 62 tests; `npm run build` pass; browser desktop `1280x900` with seeded local ledger data opens summary side panel from `测试基金A` row and renders `当前基金`, `000001`, `查看行情详情`, `买入`, and `卖出`.
+  - Screenshot: `test-results/holdings-summary-panel-refactor.png`.
+  - Transaction draft panel extraction check: `node --test test/*.mjs` pass, 62 tests; `npm run build` pass; browser desktop `1280x900` opens `新增交易`, renders `代码`, `名称`, `日期`, `保存交易`, and accepts input values `000001` / `测试基金A`.
+  - Screenshot: `test-results/holdings-transaction-draft-panel-refactor.png`.
+  - Legacy switch-chain branch removal check: `node --test test/*.mjs` pass, 62 tests; `npm run build` pass; browser desktop `1280x900` with seeded switch-chain ledger data confirms the holdings overview still renders `粘贴 Excel`, `截图 OCR`, and aggregate row `测试基金A`. Current UI has no reachable switch-chain tab because the holdings page is fixed to the aggregate overview; `switchViewReachable=false` was recorded during validation.
+  - Screenshot: `test-results/holdings-switch-chain-view-refactor-overview.png`.
+  - Legacy ledger row branch removal check: `node --test test/*.mjs` pass, 62 tests; `npm run build` pass; browser desktop `1280x900` with seeded ledger data confirms holdings remains functional after removing the unreachable row table path: `000001`, `测试基金A`, side panel `该基金汇总` / `当前基金`, and `粘贴 Excel` / `截图 OCR` render.
+  - Screenshot: `test-results/holdings-ledger-row-refactor.png`.
+  - Aggregate holdings table section extraction check: `node --test test/*.mjs` pass, 62 tests; `npm run build` pass; browser desktop `1280x900` with seeded ledger data renders `000001`, `测试基金A`, aggregate footer `合计` / `1 只持仓`, side panel `该基金汇总` / `当前基金`, and quick actions `粘贴 Excel` / `截图 OCR`.
+  - Screenshot: `test-results/holdings-aggregate-section-refactor.png`.
+  - Unreachable legacy branch cleanup check: removed `mainViewTab` branching, legacy ledger table rendering, legacy switch-chain picker/view rendering, and their orphan component files; grep found no remaining references to `mainViewTab`, `renderLedgerTable`, `renderSwitchChainView`, `LedgerTransactionRow`, `SwitchChainPickerModal`, `SwitchChainView`, or `ledgerTransactionColumns`.
+  - Cleanup verification: `node --test test/*.mjs` pass, 62 tests; `npm run build` pass with `HoldingsExperience.js` chunk reduced to 132.01 kB gzip 39.18 kB; browser desktop `1280x900` with seeded ledger and legacy switch-chain data renders `粘贴 Excel`, `截图 OCR`, `000001`, `测试基金A`, `该基金汇总`, `当前基金`, and confirms no `自由拼接切换链路` / `新建链路` UI is rendered.
+  - Screenshot: `test-results/holdings-legacy-branch-cleanup.png`.
+  - Final holdings refactor audit: no running Vite process; grep found no remaining references to removed legacy symbols (`mainViewTab`, `renderLedgerTable`, `renderSwitchChainView`, `LedgerTransactionRow`, `SwitchChainPickerModal`, `SwitchChainView`, `ledgerTransactionColumns`); active holdings component files are `AggregateHoldingsTableSection.jsx`, `HoldingSummaryPanel.jsx`, `HoldingsSidePanel.jsx`, `SwitchCounterpartPickerModal.jsx`, `TransactionDraftPanel.jsx`, `TransactionImportModals.jsx`, and `aggregateHoldingsColumns.jsx`.
+  - Project-wide continuation audit: largest remaining files are `src/pages/MarketsExperience.jsx` (5154 lines), `workers/notify/src/index.js` (3460), `workers/ocr-proxy/src/index.js` (2674), `src/pages/SwitchStrategyExperience.jsx` (1811), and `src/app/holdingsLedgerCore.js` (1493). Next refactor target is the remaining Markets page because it is the largest frontend page and the prior Markets phase already established local module boundaries under `src/pages/markets/`.
+- Markets news/theme/earnings extraction implementation check:
+  - `src/pages/MarketsExperience.jsx` reduced from 5154 lines to 4725 lines; `src/pages/markets/MarketNewsPanels.jsx` added with 335 lines.
+  - Duplicate local definitions for `formatClock`, `sourceInitials`, `siteHost`, `siteFavicon`, `ThemeExploreButton`, `NewsList`, `LatestNewsList`, and `EarningsCalendar` were removed from `src/pages/MarketsExperience.jsx`.
+  - `node --test test/*.mjs`: pass, 9 test files.
+  - `npm run build`: pass; `MarketsExperience.js` chunk is 152.20 kB gzip 47.13 kB.
+  - Browser validation status: not passed yet. `npx vite --host 127.0.0.1 --port 5173` started successfully, but Chromium validation could not run in this sandbox (`Operation not permitted` during browser startup). Screenshot `test-results/markets-news-panels-refactor.png` was not produced.
+- Markets chart extraction implementation check:
+  - `src/pages/MarketsExperience.jsx` reduced from 4725 lines to 4095 lines; `src/pages/markets/MarketChartPanel.jsx` added with 656 lines.
+  - Chart rendering and toolbar presentation moved out of the page while `MarketsExperience.jsx` retains data loading, compare-symbol state, and CN fund metric orchestration.
+  - `node --test test/*.mjs`: pass, 9 test files.
+  - `npm run build`: pass; `MarketsExperience.js` chunk is 152.41 kB gzip 47.14 kB.
+  - Browser validation status: still blocked by local Chromium sandbox/crashpad permissions as recorded above.
+- Markets financial/detail panel extraction implementation check:
+  - `src/pages/MarketsExperience.jsx` reduced from 4095 lines to 3804 lines; `src/pages/markets/MarketFinancialPanels.jsx` added with 298 lines.
+  - Financial statements, CN fund flow, and CN fund report presentation moved out of the page. Page-level symbol detail still owns active tab, quote state, chart state, and fetched payload wiring.
+  - `node --test test/*.mjs`: pass, 9 test files.
+  - `npm run build`: pass; `MarketsExperience.js` chunk is 152.41 kB gzip 47.20 kB.
+  - Browser validation status: still blocked by local Chromium sandbox/crashpad permissions as recorded above.
+- Markets sidebar/index row extraction implementation check:
+  - `src/pages/MarketsExperience.jsx` reduced from 3804 lines to 3484 lines; `src/pages/markets/MarketSidebarRows.jsx` added with 146 lines.
+  - Removed unused `MoversTable` and `SortableMarketTable`; grep found no remaining definitions or JSX call sites for those components.
+  - `node --test test/*.mjs`: pass, 9 test files.
+  - `npm run build`: pass; `MarketsExperience.js` chunk is 152.41 kB gzip 47.45 kB.
+  - Browser validation status: still blocked by local Chromium sandbox/crashpad permissions as recorded above.
+- Markets fund metric helper extraction implementation check:
+  - `src/pages/MarketsExperience.jsx` reduced from 3484 lines to 3244 lines; `src/pages/markets/marketFundMetrics.js` added with 242 lines.
+  - Chart range tabs, NAV history range selection, Shanghai date conversion, trade marker generation, CN fund metric candle generation, and OTC quote detection moved into a pure helper module.
+  - `node --test test/*.mjs`: pass, 9 test files.
+  - `npm run build`: pass; `MarketsExperience.js` chunk is 152.42 kB gzip 47.37 kB.
+  - Browser validation status: still blocked by local Chromium sandbox/crashpad permissions as recorded above.
+- Markets AI research panel extraction implementation check:
+  - `src/pages/MarketsExperience.jsx` reduced from 3244 lines to 2789 lines; `src/pages/markets/MarketsResearchPanel.jsx` added with 460 lines.
+  - Research markdown rendering, AI chart code blocks, fast/deep Markets AI calls, streamed response handling, and `markets:research` event handling moved into the extracted component.
+  - `node --test test/*.mjs`: pass, 9 test files.
+  - `npm run build`: pass; `MarketsExperience.js` chunk is 152.42 kB gzip 47.42 kB.
+  - Browser validation status: still blocked by local Chromium sandbox/crashpad permissions as recorded above.
+- Markets symbol detail panel extraction implementation check:
+  - `src/pages/MarketsExperience.jsx` reduced from 2789 lines to 1878 lines; `src/pages/markets/MarketSymbolDetailPanel.jsx` added with 917 lines.
+  - `buildNavSnapshotItems` moved into `src/pages/markets/marketFundMetrics.js` so both the page and symbol detail panel share the same snapshot-to-history fallback logic.
+  - Symbol detail compare search, compare quotes, compare chart data, detail tabs, chart controls, and CN fund metric view logic moved into the extracted component.
+  - `npm run build`: initial run caught an incorrect `getNavHistory/getNavSnapshot` import from `marketsApi`; fixed to import from `src/app/navService.js`.
+  - `npm run build`: pass after the import fix; `MarketsExperience.js` chunk is 152.48 kB gzip 47.33 kB.
+  - `node --test test/*.mjs`: pass, 9 test files.
+  - Browser validation status: still blocked by local Chromium sandbox/crashpad permissions as recorded above.
+- Notify Worker continuation phase:
+  - done: Extract client settings/authentication helpers from the monolithic notify Worker entry.
+    - implemented: added `workers/notify/src/clientSettings.js` for notify settings normalization, client record upsert/read helpers, client secret hashing/authentication, pairing code helpers, group resolution, and current-client request helpers.
+    - implemented: `workers/notify/src/index.js` now imports those helpers and keeps routing, response handling, GCM setup display, delivery, switch strategy, and notification orchestration in the entry module.
+    - validation: `node -e "import('./workers/notify/src/index.js')..."` pass with `notify worker import ok`; `node -e "import('./workers/notify/src/clientSettings.js')..."` pass with `client settings import ok`.
+    - validation: `node --test test/*.mjs` pass, 9 test files.
+    - validation: `npm run build` pass.
+    - backend smoke: Worker `fetch` entry with an in-memory `NOTIFY_STATE` KV equivalent returned `GET /api/notify/status?clientId=smoke-client` + `x-notify-client-secret` as HTTP 200, with `setup.clientId="smoke-client"` and `notifyGroupMemberCount=1`.
+    - backend smoke: same endpoint without `x-notify-client-secret` returned HTTP 500 and error `缺少浏览器鉴权信息，请刷新页面后重试。`.
+  - done: Extract notify Worker HTTP response and KV storage infrastructure helpers.
+    - implemented: added `workers/notify/src/notifyHttp.js` for JSON responses, CORS headers, empty OPTIONS responses, and origin reading.
+    - implemented: added `workers/notify/src/notifyStorage.js` for `NOTIFY_STATE` binding checks, JSON read/write, and normalized notify settings read/write.
+    - implemented: `workers/notify/src/index.js` now imports those infrastructure helpers and no longer defines response/storage primitives locally.
+    - validation: `node -e "import('./workers/notify/src/index.js')..."` pass with `notify worker import ok`.
+    - validation: `node -e "Promise.all([import('./workers/notify/src/notifyHttp.js'), import('./workers/notify/src/notifyStorage.js')])..."` pass with `notify infra imports ok`.
+    - validation: `node --test test/*.mjs` pass, 9 test files.
+    - validation: `npm run build` pass.
+    - backend smoke: Worker `fetch` entry with in-memory `NOTIFY_STATE` returned `normal 200 smoke-client` for authenticated `GET /api/notify/status?clientId=smoke-client`.
+    - backend smoke: same endpoint without `x-notify-client-secret` returned `missing-secret 500 缺少浏览器鉴权信息，请刷新页面后重试。`.
+  - done: Extract notify Worker GCM registration state helpers.
+    - implemented: added `workers/notify/src/gcmRegistrationState.js` for registration upsert/find, pairing-client upsert/removal, pairing-code lookup, and check-state mutation helpers.
+    - implemented: `workers/notify/src/index.js` now imports those GCM state helpers and keeps GCM route request parsing plus response behavior local.
+    - validation: `node -e "import('./workers/notify/src/index.js')..."` pass with `notify worker import ok`.
+    - validation: `node -e "import('./workers/notify/src/gcmRegistrationState.js')..."` pass with `gcm registration state import ok`.
+    - validation: `node --test test/*.mjs` pass, 9 test files.
+    - validation: `npm run build` pass.
+    - backend smoke: Worker `fetch` entry with in-memory `NOTIFY_STATE` returned `normal 200 smoke-client` for authenticated `GET /api/notify/status?clientId=smoke-client`.
+    - backend smoke: same endpoint without `x-notify-client-secret` returned `missing-secret 500 缺少浏览器鉴权信息，请刷新页面后重试。`.
+  - done: Extract notify Worker client event and run-summary state helpers.
+    - implemented: added `workers/notify/src/clientEventState.js` for recent event access, delivery ack attachment, PC poll visibility normalization, delivery failure listing, empty/merged run summaries, and synced-settings removal handling.
+    - implemented: `workers/notify/src/index.js` now imports those client event helpers and keeps status/events/sync/run route orchestration local.
+    - validation: `node -e "import('./workers/notify/src/index.js')..."` pass with `notify worker import ok`.
+    - validation: `node -e "import('./workers/notify/src/clientEventState.js')..."` pass with `client event state import ok`.
+    - validation: `node --test test/*.mjs` pass, 9 test files.
+    - validation: `npm run build` pass.
+    - backend smoke: Worker `fetch` entry with in-memory `NOTIFY_STATE` returned `normal 200 smoke-client` for authenticated `GET /api/notify/status?clientId=smoke-client`.
+    - backend smoke: authenticated `GET /api/notify/events?clientId=smoke-client` returned `events 200 0`.
+    - backend smoke: status endpoint without `x-notify-client-secret` returned `missing-secret 500 缺少浏览器鉴权信息，请刷新页面后重试。`.

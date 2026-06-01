@@ -396,6 +396,18 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
     && latestNavDate <= todayDate;
   const cost = round(normalized.price * normalized.shares, 2);
 
+  // 场内基金用实时价格估值，场外/QDII 用净值
+  const isExchange = resolvedKind === 'exchange';
+  const price = round(Number(snapshot?.price) || 0, 4);
+  const previousClose = round(Number(snapshot?.previousClose) || 0, 4);
+  const hasPrice = isExchange && price > 0;
+  const hasPreviousClose = isExchange && previousClose > 0;
+  const valuationPrice = hasPrice ? price : latestNav;
+  const hasValuation = hasPrice || hasLatestNav;
+  const prevPrice = hasPreviousClose ? previousClose : previousNav;
+  const hasPrevPrice = hasPreviousClose || hasPreviousNav;
+  const isFreshForToday = hasPrice || isLatestNavToday;
+
   if (normalized.type === 'SELL') {
     const proceeds = round(normalized.price * normalized.shares, 2);
     return {
@@ -420,14 +432,14 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
     };
   }
 
-  const marketValue = hasLatestNav ? round(latestNav * normalized.shares, 2) : 0;
-  const unrealizedProfit = hasLatestNav ? round((latestNav - normalized.price) * normalized.shares, 2) : 0;
-  const unrealizedReturnRate = hasLatestNav && cost > 0 ? round((unrealizedProfit / cost) * 100, 2) : 0;
-  const todayProfit = hasLatestNav && hasPreviousNav && isLatestNavToday
-    ? round((latestNav - previousNav) * normalized.shares, 2)
+  const marketValue = hasValuation ? round(valuationPrice * normalized.shares, 2) : 0;
+  const unrealizedProfit = hasValuation ? round((valuationPrice - normalized.price) * normalized.shares, 2) : 0;
+  const unrealizedReturnRate = hasValuation && cost > 0 ? round((unrealizedProfit / cost) * 100, 2) : 0;
+  const todayProfit = hasValuation && hasPrevPrice && isFreshForToday
+    ? round((valuationPrice - prevPrice) * normalized.shares, 2)
     : 0;
-  const previousValue = hasPreviousNav && isLatestNavToday ? previousNav * normalized.shares : 0;
-  const todayReturnRate = hasLatestNav && hasPreviousNav && isLatestNavToday && previousValue > 0
+  const previousValue = hasPrevPrice && isFreshForToday ? prevPrice * normalized.shares : 0;
+  const todayReturnRate = hasValuation && hasPrevPrice && isFreshForToday && previousValue > 0
     ? round((todayProfit / previousValue) * 100, 2)
     : 0;
 
@@ -448,7 +460,7 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
     todayReturnRate,
     hasLatestNav,
     hasPreviousNav,
-    hasTodayNav: isLatestNavToday,
+    hasTodayNav: isFreshForToday,
     latestNav,
     previousNav,
     latestNavDate,
@@ -627,18 +639,34 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       && latestNavDateStr >= expectedLatestNavDate
       && latestNavDateStr <= todayDate;
 
+    // 场内基金用实时价格估值，场外/QDII 用净值
+    const isExchange = resolvedKind === 'exchange';
+    const price = round(Number(snapshot?.price) || 0, 4);
+    const previousClose = round(Number(snapshot?.previousClose) || 0, 4);
+    const hasPrice = isExchange && price > 0;
+    const hasPreviousClose = isExchange && previousClose > 0;
+
+    // 估值基准：场内用市场价，场外/QDII 用净值
+    const valuationPrice = hasPrice ? price : latestNav;
+    const hasValuation = hasPrice || hasLatestNav;
+    // 今日涨跌基准：场内用昨收，场外/QDII 用前日净值
+    const prevPrice = hasPreviousClose ? previousClose : previousNav;
+    const hasPrevPrice = hasPreviousClose || hasPreviousNav;
+    // 场内实时价格无需日期校验，场外/QDII 需要 NAV 日期新鲜度检查
+    const isFreshForToday = hasPrice || isLatestNavToday;
+
     // 买入批次扣减法：详见上方第二趟计算。
     // BUY 追加批次；SELL 按 FIFO 消耗批次；剩余成本和均价只来自未卖出的批次。
     const totalShares = bucket.movingTotalShares;
     const avgCost = bucket.movingAvgCost;
     const totalCost = bucket.movingTotalCost;
-    const marketValue = hasLatestNav && totalShares > 0 ? round(totalShares * latestNav, 2) : 0;
-    const unrealizedProfit = hasLatestNav && totalShares > 0 ? round(marketValue - totalCost, 2) : 0;
+    const marketValue = hasValuation && totalShares > 0 ? round(totalShares * valuationPrice, 2) : 0;
+    const unrealizedProfit = hasValuation && totalShares > 0 ? round(marketValue - totalCost, 2) : 0;
     const unrealizedReturnRate = totalCost > 0 ? round((unrealizedProfit / totalCost) * 100, 2) : 0;
-    const todayProfit = hasLatestNav && hasPreviousNav && totalShares > 0 && isLatestNavToday
-      ? round((latestNav - previousNav) * totalShares, 2)
+    const todayProfit = hasValuation && hasPrevPrice && totalShares > 0 && isFreshForToday
+      ? round((valuationPrice - prevPrice) * totalShares, 2)
       : 0;
-    const previousValue = hasPreviousNav && totalShares > 0 && isLatestNavToday ? previousNav * totalShares : 0;
+    const previousValue = hasPrevPrice && totalShares > 0 && isFreshForToday ? prevPrice * totalShares : 0;
     const todayReturnRate = previousValue > 0
       ? round((todayProfit / previousValue) * 100, 2)
       : 0;
@@ -666,6 +694,10 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       previousNav,
       latestNavDate: aggLatestNavDateStr,
       previousNavDate: aggPreviousNavDateStr,
+      price,
+      previousClose,
+      hasPrice,
+      valuationPrice,
       marketValue,
       unrealizedProfit,
       unrealizedReturnRate,
@@ -675,7 +707,7 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       hasPosition: totalShares > 0,
       hasLatestNav,
       hasPreviousNav,
-      hasTodayNav: isLatestNavToday,
+      hasTodayNav: isFreshForToday,
       todayProfitSpanDays: aggTodayProfitSpanDays,
       todayProfitHolidayDays: aggTodayProfitHolidayDays,
       snapshotError: String(snapshot?.error || ''),
@@ -737,7 +769,8 @@ export function summarizePortfolio(aggregates = [], soldSummary = null) {
     }
     summary.assetCount += 1;
     summary.totalCost = round(summary.totalCost + agg.totalCost, 2);
-    if (agg.hasLatestNav) {
+    const hasValuation = agg.hasPrice || agg.hasLatestNav;
+    if (hasValuation) {
       summary.pricedCount += 1;
       summary.marketValue = round(summary.marketValue + agg.marketValue, 2);
       if (agg.snapshotUpdatedAt && agg.snapshotUpdatedAt > summary.latestSnapshotAt) {
@@ -755,7 +788,7 @@ export function summarizePortfolio(aggregates = [], soldSummary = null) {
       if (agg.hasTodayNav) navTodayReadyCount += 1;
     }
     if (agg.kind === 'qdii') qdiiCount += 1;
-    if (agg.hasLatestNav && agg.hasPreviousNav && agg.hasTodayNav) {
+    if (hasValuation && (agg.hasPrice || agg.hasPreviousNav) && agg.hasTodayNav) {
       summary.todayReadyCount += 1;
       summary.todayProfit = round(summary.todayProfit + agg.todayProfit, 2);
       summary.previousMarketValue = round(summary.previousMarketValue + agg.previousValue, 2);

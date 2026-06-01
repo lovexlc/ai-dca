@@ -15,7 +15,8 @@ const pillToneClasses = {
   indigo: 'bg-indigo-50 text-indigo-700',
   emerald: 'bg-emerald-50 text-emerald-600',
   red: 'bg-red-50 text-red-500',
-  amber: 'bg-amber-50 text-amber-600'
+  amber: 'bg-amber-50 text-amber-600',
+  purple: 'bg-purple-50 text-purple-700'
 };
 
 const statAccentClasses = {

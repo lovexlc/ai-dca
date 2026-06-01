@@ -17,8 +17,8 @@
 - [x] step-3：识别「同名不同义」+「同义不同名」+「死代码」
 - [x] step-4：写本 plan，列出问题与初步修复方向
 - [x] step-5：与用户对齐修复优先级 + 决策项（ask-survey）—— 见末尾「决策结果」
-- [ ] step-6：按优先级拆子任务（每项独立 plan + 独立 commit）—— Phase 1 见 `docs/nav-source-stratification-plan.md`
-- [ ] step-7：执行 + 验证 + 部署证据
+- [x] step-6：按优先级拆子任务（每项独立 plan + 独立 commit）—— Phase 1 见 `docs/nav-source-stratification-plan.md`
+- [x] step-7：执行 + 验证 + 部署证据（Phase 1-4 全部完成）
 
 ---
 

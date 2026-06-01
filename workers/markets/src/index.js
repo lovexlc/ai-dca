@@ -22,7 +22,8 @@ import {
   fetchYahooFinancials,
   fetchTavilyNews,
   fetchCnnFearGreed,
-  hostToSourceName
+  hostToSourceName,
+  fetchDanjuanFundNav
 } from './fetchers.js';
 import { askWithGrounding, summarizeMarkets } from './ai.js';
 import { kvGetJson, kvPutJson, r2GetJson, r2PutJson, klineKey } from './storage.js';
@@ -80,6 +81,7 @@ function errorJson(message, status = 500, extra = {}) {
 const INTRADAY_KLINE_INTERVALS = new Set(['1m', '5m', '15m', '30m', '60m']);
 
 function roundNumber(value, precision = 4) {
+  if (value == null) return null;
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
   const factor = 10 ** precision;
@@ -593,6 +595,14 @@ function normalizeFundMetricFromQuote(code, quote, { cached = false, cachePolicy
   };
 }
 
+// 场内基金前缀，与前端 holdingsLedgerCore.js EXCHANGE_PREFIXES 保持一致
+const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '56', '58', '53', '54']);
+
+function isExchangeTradedFund(code) {
+  const digits = String(code || '').replace(/^(sh|sz|bj)/i, '');
+  return /^\d{6}$/.test(digits) && EXCHANGE_PREFIXES.has(digits.slice(0, 2));
+}
+
 function normalizeFundMetricCodes(codes = []) {
   const list = (Array.isArray(codes) ? codes : String(codes || '').split(','))
     .map((code) => String(code || '').trim())
@@ -613,13 +623,24 @@ function normalizeFundMetricCodes(codes = []) {
 async function readCachedFundMetric(env, cacheKey) {
   const cached = await kvGetJson(env, cacheKey).catch(() => null);
   if (!cached || !cached.code) return null;
+  // 跳过无有效数据的缓存（失败结果或旧格式 price=0）
+  const hasNav = Number(cached.latestNav) > 0;
+  const hasPrice = Number(cached.price) > 0;
+  if (!hasNav && !hasPrice) return null;
   return { ...cached, cached: true, cachePolicy: 'kv-closed-session' };
 }
 
 async function fetchFreshFundMetric(env, code, cachePolicy) {
   const cacheKey = 'fund-metrics:' + code;
   try {
-    const quote = await fetchCnQuoteWithFallback(env, code, { endpoint: 'fund-metrics' });
+    let quote;
+    if (isExchangeTradedFund(code)) {
+      // 场内基金：Xueqiu/Sina 行情
+      quote = await fetchCnQuoteWithFallback(env, code, { endpoint: 'fund-metrics' });
+    } else {
+      // 场外基金：蛋卷基金净值
+      quote = await fetchDanjuanFundNav(code);
+    }
     const item = normalizeFundMetricFromQuote(code, quote, { cached: false, cachePolicy });
     await kvPutJson(env, cacheKey, item, { ttlSeconds: 24 * 3600 }).catch(() => {});
     return item;

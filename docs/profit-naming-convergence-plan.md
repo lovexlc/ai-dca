@@ -93,5 +93,5 @@
 
 - Phase 1 NAV 分层：✅ (commit `ea1a86a`)
 - **Phase 2 收益口径收敛：✅ (commit `e373e3d`)**
-- Phase 3 holdingsCore 死代码清理：⏳
-- Phase 4 颜色 + BUY/SELL 中性化：⏳
+- Phase 3 holdingsCore 死代码清理：✅ (removed buildHoldingMetrics/summarizeHoldingRows/summarizeHoldingRowErrors)
+- Phase 4 颜色 + BUY/SELL 中性化：✅ (BUY/SELL tags → neutral gray + arrows)

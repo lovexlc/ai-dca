@@ -13,6 +13,7 @@ const SINA_HQ_HOST = 'https://' + 'hq.sinajs.cn';
 const XUEQIU_STOCK_HOST = 'https://' + 'stock.xueqiu.com';
 const XUEQIU_WEB_HOST = 'https://' + 'xueqiu.com';
 const FINNHUB_HOST = 'https://' + 'finnhub.io';
+const DANJUAN_HOST = 'https://' + 'danjuanapp.com';
 
 // 轻量级并发限流。与index.js 里的版本语义一致，这里独立定义避免跨文件依赖。
 async function mapLimit(items, limit, worker) {
@@ -760,6 +761,55 @@ export async function searchEastmoneySymbols(query, { limit = 8 } = {}) {
         pinyin: row.PinYin || ''
       };
     });
+}
+
+// ===================== 蛋卷基金（场外基金净值） =====================
+
+export async function fetchDanjuanFundNav(code) {
+  const fundCode = String(code || '').replace(/^(sh|sz|bj)/i, '');
+  if (!/^\d{6}$/.test(fundCode)) throw new Error('danjuan invalid fund code: ' + code);
+  // /djapi/fund/derived/ 返回 unit_nav + nav_grtd（日涨跌幅），/detail/ 不含净值
+  const url = DANJUAN_HOST + '/djapi/fund/derived/' + fundCode;
+  const res = await fetch(url, {
+    headers: {
+      ...COMMON_HEADERS,
+      referer: 'https://danjuanfunds.com/',
+      'accept-language': 'zh-CN,zh;q=0.9'
+    },
+    cf: { cacheTtl: 300 }
+  });
+  if (!res.ok) throw new Error('danjuan fund derived HTTP ' + res.status);
+  const body = await res.json().catch(() => ({}));
+  if (body?.result_code !== 0 && body?.result_code !== '0') {
+    throw new Error('danjuan fund derived error: ' + JSON.stringify(body?.result_code));
+  }
+  const d = body?.data || {};
+  const nav = Number(d.unit_nav);
+  const changePercent = Number(d.nav_grtd);
+  // 从净值和涨跌幅反算前日净值
+  const prevNav = Number.isFinite(nav) && Number.isFinite(changePercent) && changePercent !== -100
+    ? round(nav / (1 + changePercent / 100), 4) : null;
+  const change = Number.isFinite(nav) && Number.isFinite(prevNav)
+    ? round(nav - prevNav, 4) : null;
+  return {
+    code: fundCode,
+    symbol: fundCode,
+    name: '',
+    price: null,
+    currentPrice: null,
+    close: null,
+    previousClose: Number.isFinite(prevNav) ? prevNav : null,
+    change: Number.isFinite(change) ? change : null,
+    changePercent: Number.isFinite(changePercent) ? changePercent : null,
+    latestNav: Number.isFinite(nav) ? nav : null,
+    latestNavDate: String(d.end_date || '').trim(),
+    iopv: null,
+    marketState: '',
+    asOf: new Date().toISOString(),
+    source: 'danjuan',
+    fallback: 'danjuan',
+    primaryError: ''
+  };
 }
 
 // ===================== Finnhub（美股基本面 + 新闻） =====================

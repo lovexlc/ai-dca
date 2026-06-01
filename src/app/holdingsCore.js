@@ -110,10 +110,6 @@ export function isHoldingRowComplete(row = {}, options = {}) {
   return Object.keys(getHoldingRowErrors(row, options)).length === 0;
 }
 
-export function summarizeHoldingRowErrors(errors = {}) {
-  return Object.values(errors).filter(Boolean).join(' ');
-}
-
 export function getHoldingCodeList(rows = []) {
   const codeSet = new Set();
 
@@ -125,93 +121,6 @@ export function getHoldingCodeList(rows = []) {
   }
 
   return [...codeSet].sort();
-}
-
-export function buildHoldingMetrics(row = {}, snapshot = null) {
-  const normalizedRow = normalizeHoldingRow(row);
-  const latestNav = round(Number(snapshot?.latestNav) || 0, 4);
-  const previousNav = round(Number(snapshot?.previousNav) || 0, 4);
-  const hasLatestNav = latestNav > 0;
-  const hasPreviousNav = previousNav > 0;
-
-  const cost = round(normalizedRow.avgCost * normalizedRow.shares, 2);
-  const marketValue = hasLatestNav ? round(latestNav * normalizedRow.shares, 2) : 0;
-  const totalProfit = hasLatestNav ? round((latestNav - normalizedRow.avgCost) * normalizedRow.shares, 2) : 0;
-  const todayProfit = hasLatestNav && hasPreviousNav
-    ? round((latestNav - previousNav) * normalizedRow.shares, 2)
-    : 0;
-
-  return {
-    row: normalizedRow,
-    hasLatestNav,
-    hasPreviousNav,
-    latestNav,
-    previousNav,
-    cost,
-    marketValue,
-    totalProfit,
-    todayProfit
-  };
-}
-
-export function summarizeHoldingRows(rows = [], snapshotsByCode = {}) {
-  const normalizedRows = sanitizeHoldingRows(rows, { filterInvalid: false });
-  const summary = {
-    rowCount: normalizedRows.length,
-    meaningfulRowCount: 0,
-    positionCount: 0,
-    fetchableCount: 0,
-    pricedCount: 0,
-    todayReadyCount: 0,
-    totalCost: 0,
-    marketValue: 0,
-    totalProfit: 0,
-    todayProfit: 0,
-    latestSnapshotAt: '',
-    latestNavDate: ''
-  };
-
-  for (const row of normalizedRows) {
-    if (!hasMeaningfulHoldingRow(row)) {
-      continue;
-    }
-
-    summary.meaningfulRowCount += 1;
-    const hasValidCode = HOLDING_CODE_PATTERN.test(row.code);
-    if (hasValidCode) {
-      summary.fetchableCount += 1;
-    }
-    if (!hasValidCode) {
-      continue;
-    }
-    if (!(row.avgCost > 0 && row.shares > 0)) {
-      continue;
-    }
-
-    summary.positionCount += 1;
-    const snapshot = snapshotsByCode?.[row.code] || null;
-    const metrics = buildHoldingMetrics(row, snapshot);
-    summary.totalCost = round(summary.totalCost + metrics.cost, 2);
-
-    if (metrics.hasLatestNav) {
-      summary.pricedCount += 1;
-      summary.marketValue = round(summary.marketValue + metrics.marketValue, 2);
-      summary.totalProfit = round(summary.totalProfit + metrics.totalProfit, 2);
-      if (snapshot?.updatedAt && String(snapshot.updatedAt) > summary.latestSnapshotAt) {
-        summary.latestSnapshotAt = String(snapshot.updatedAt);
-      }
-      if (snapshot?.latestNavDate && String(snapshot.latestNavDate) > summary.latestNavDate) {
-        summary.latestNavDate = String(snapshot.latestNavDate);
-      }
-    }
-
-    if (metrics.hasLatestNav && metrics.hasPreviousNav) {
-      summary.todayReadyCount += 1;
-      summary.todayProfit = round(summary.todayProfit + metrics.todayProfit, 2);
-    }
-  }
-
-  return summary;
 }
 
 export function isHoldingCode(value = '') {

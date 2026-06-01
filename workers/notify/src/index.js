@@ -3,7 +3,45 @@ import { buildPublicGcmRegistration, buildPublicGcmRegistrations, checkGcmConnec
 import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
 import { handleBark, isBarkRoute } from './bark.js';
 import { WsHub, tryPublishWs } from './wsHub.js';
-import { attachDeliveryAckToEvent, recordDeliveryAck } from './ack.js';
+import { recordDeliveryAck } from './ack.js';
+import { emptyResponse, jsonResponse, readOrigin } from './notifyHttp.js';
+import { ensureStateBinding, readJson, readSettings, writeJson, writeSettings } from './notifyStorage.js';
+import {
+  appendClientRunSummary,
+  applySettingsRemovals,
+  attachClientDeliveryAcks,
+  buildEmptyRunSummary,
+  getClientDeliveryFailures,
+  getClientRecentEvents,
+  normalizeEventForClient,
+  shouldExposeEventForClientPoll
+} from './clientEventState.js';
+import {
+  applyGcmCheckState,
+  findGcmRegistration,
+  findGcmRegistrationByPairingCode,
+  removeGcmPairedClient,
+  removeGcmPairedGroup,
+  upsertGcmPairedClient,
+  upsertGcmRegistration
+} from './gcmRegistrationState.js';
+import {
+  buildPairingCode,
+  buildScopedNotifySettings,
+  ensureAuthenticatedClient,
+  getClientRecord,
+  getNotifyGroupMembers,
+  hashText,
+  normalizeClientId,
+  normalizeClientName,
+  normalizeDeviceInstallationId,
+  normalizePairingCode,
+  normalizeSettings,
+  randomString,
+  readCurrentClientId,
+  resolveClientGroupId,
+  upsertClientRecord
+} from './clientSettings.js';
 
 // 把 Durable Object 类型重新导出，让 Workers runtime 能在加载 wrangler 绑定时
 // 通过 entry module 的导出表找到 class_name="WsHub"。
@@ -30,37 +68,7 @@ import {
   getLatestNavWithCache
 } from './getNav.js';
 
-const SETTINGS_KEY = 'notify:settings';
 const PAIRING_CODE_TTL_MS = 10 * 60 * 1000;
-const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const CLIENT_SECRET_HEADER = 'x-notify-client-secret';
-
-function jsonResponse(payload, { status = 200, origin = '*' } = {}) {
-  return new Response(JSON.stringify(payload, null, 2), {
-    status,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'access-control-allow-origin': origin,
-      'access-control-allow-methods': 'GET,POST,OPTIONS',
-      'access-control-allow-headers': `content-type, ${CLIENT_SECRET_HEADER}`
-    }
-  });
-}
-
-function emptyResponse({ status = 204, origin = '*' } = {}) {
-  return new Response(null, {
-    status,
-    headers: {
-      'access-control-allow-origin': origin,
-      'access-control-allow-methods': 'GET,POST,OPTIONS',
-      'access-control-allow-headers': `content-type, ${CLIENT_SECRET_HEADER}`
-    }
-  });
-}
-
-function readOrigin(request) {
-  return request.headers.get('origin') || '*';
-}
 
 async function trackAnalyticsEvent(env, type, meta = {}) {
   try {
@@ -85,303 +93,6 @@ async function trackAnalyticsEvent(env, type, meta = {}) {
   } catch (_error) {
     // 统计失败不影响通知 Worker 主流程。
   }
-}
-
-function normalizeSettings(settings = {}) {
-  const rawClients = typeof settings.clients === 'object' && settings.clients ? settings.clients : {};
-  const gotifyClients = Array.isArray(settings.gotifyClients)
-    ? settings.gotifyClients.map((client) => ({
-        id: String(client?.id || '').trim(),
-        baseUrl: String(client?.baseUrl || '').trim(),
-        username: String(client?.username || '').trim(),
-        token: String(client?.token || '').trim(),
-        appId: Number(client?.appId) || 0,
-        userId: Number(client?.userId) || 0,
-        createdAt: String(client?.createdAt || '').trim()
-      })).filter((client) => client.id && client.baseUrl && client.token)
-    : [];
-  const gcmRegistrations = normalizeGcmRegistrations(settings.gcmRegistrations);
-  const clients = Object.entries(rawClients).reduce((map, [clientId, client]) => {
-    const normalizedClientId = normalizeClientId(client?.clientId || clientId);
-
-    if (!normalizedClientId) {
-      return map;
-    }
-
-    map[normalizedClientId] = {
-      clientId: normalizedClientId,
-      clientLabel: normalizeClientName(client?.clientLabel || client?.notifyClientLabel || client?.clientName || ''),
-      notifyGroupId: normalizeNotifyGroupId(client?.notifyGroupId || normalizedClientId) || normalizedClientId,
-      clientSecretHash: String(client?.clientSecretHash || '').trim(),
-      barkDeviceKey: String(client?.barkDeviceKey || '').trim(),
-      payload: normalizeNotifyPayload(client?.payload || {}),
-      state: {
-        ruleStates: typeof client?.state?.ruleStates === 'object' && client.state.ruleStates ? client.state.ruleStates : {},
-        deliveryFailures: typeof client?.state?.deliveryFailures === 'object' && client.state.deliveryFailures ? client.state.deliveryFailures : {},
-        recentEvents: Array.isArray(client?.state?.recentEvents) ? client.state.recentEvents : [],
-        deliveryAcks: typeof client?.state?.deliveryAcks === 'object' && client.state.deliveryAcks ? client.state.deliveryAcks : {},
-        lastRunAt: String(client?.state?.lastRunAt || '').trim()
-      },
-      meta: {
-        counts: {
-          planRuleCount: Number(client?.meta?.counts?.planRuleCount) || 0,
-          dcaRuleCount: Number(client?.meta?.counts?.dcaRuleCount) || 0,
-          totalRuleCount: Number(client?.meta?.counts?.totalRuleCount) || 0
-        },
-        lastSyncedAt: String(client?.meta?.lastSyncedAt || '').trim(),
-        lastCheckedAt: String(client?.meta?.lastCheckedAt || '').trim(),
-        lastTestedAt: String(client?.meta?.lastTestedAt || '').trim()
-      }
-    };
-
-    return map;
-  }, {});
-
-  return {
-    clients,
-    gotifyBaseUrl: String(settings.gotifyBaseUrl || '').trim(),
-    gotifyUsername: String(settings.gotifyUsername || '').trim(),
-    gotifyPassword: String(settings.gotifyPassword || '').trim(),
-    gotifyToken: String(settings.gotifyToken || '').trim(),
-    gotifyClients,
-    gcmProjectId: String(settings.gcmProjectId || '').trim(),
-    gcmPackageName: String(settings.gcmPackageName || '').trim(),
-    gcmRegistrations,
-    gcmLastCheckAt: String(settings.gcmLastCheckAt || '').trim(),
-    gcmLastCheckStatus: String(settings.gcmLastCheckStatus || '').trim(),
-    gcmLastCheckDetail: String(settings.gcmLastCheckDetail || '').trim()
-  };
-}
-
-function buildDefaultClientRecord(clientId = '', clientLabel = '') {
-  const normalizedClientId = normalizeClientId(clientId);
-  return {
-    clientId: normalizedClientId,
-    clientLabel: normalizeClientName(clientLabel),
-    notifyGroupId: normalizeNotifyGroupId(normalizedClientId) || normalizedClientId,
-    clientSecretHash: '',
-    barkDeviceKey: '',
-    payload: normalizeNotifyPayload({}),
-    state: {
-      ruleStates: {},
-      deliveryFailures: {},
-      recentEvents: [],
-      deliveryAcks: {},
-      lastRunAt: ''
-    },
-    meta: {
-      counts: {
-        planRuleCount: 0,
-        dcaRuleCount: 0,
-        totalRuleCount: 0
-      },
-      lastSyncedAt: '',
-      lastCheckedAt: '',
-      lastTestedAt: ''
-    }
-  };
-}
-
-function getClientRecord(settings, clientId = '', clientLabel = '') {
-  const normalizedClientId = normalizeClientId(clientId);
-
-  if (!normalizedClientId) {
-    return buildDefaultClientRecord('', clientLabel);
-  }
-
-  const existing = settings.clients?.[normalizedClientId] || null;
-  const nextClientLabel = normalizeClientName(clientLabel) || String(existing?.clientLabel || '').trim();
-
-  return {
-    ...buildDefaultClientRecord(normalizedClientId, nextClientLabel),
-    ...(existing || {}),
-    clientId: normalizedClientId,
-    clientLabel: nextClientLabel
-  };
-}
-
-function upsertClientRecord(settings, clientId = '', patch = {}) {
-  const normalizedClientId = normalizeClientId(clientId);
-
-  if (!normalizedClientId) {
-    throw new Error('缺少浏览器 clientId。');
-  }
-
-  const current = getClientRecord(settings, normalizedClientId);
-  const nextRecord = {
-    ...buildDefaultClientRecord(normalizedClientId, patch.clientLabel ?? current.clientLabel),
-    ...current,
-    ...patch,
-    clientId: normalizedClientId,
-    clientLabel: normalizeClientName(patch.clientLabel ?? current.clientLabel ?? ''),
-    notifyGroupId: normalizeNotifyGroupId(patch.notifyGroupId ?? current.notifyGroupId ?? normalizedClientId) || normalizedClientId,
-    clientSecretHash: String(patch.clientSecretHash ?? current.clientSecretHash ?? '').trim(),
-    barkDeviceKey: String(patch.barkDeviceKey ?? current.barkDeviceKey ?? '').trim(),
-    payload: normalizeNotifyPayload(patch.payload ?? current.payload ?? {}),
-    state: {
-      ...buildDefaultClientRecord(normalizedClientId).state,
-      ...(current.state || {}),
-      ...(patch.state || {})
-    },
-    meta: {
-      ...buildDefaultClientRecord(normalizedClientId).meta,
-      ...(current.meta || {}),
-      ...(patch.meta || {}),
-      counts: {
-        ...buildDefaultClientRecord(normalizedClientId).meta.counts,
-        ...(current.meta?.counts || {}),
-        ...(patch.meta?.counts || {})
-      }
-    }
-  };
-
-  return normalizeSettings({
-    ...settings,
-    clients: {
-      ...(settings.clients || {}),
-      [normalizedClientId]: nextRecord
-    }
-  });
-}
-
-function buildScopedNotifySettings(settings, clientId = '') {
-  const clientRecord = getClientRecord(settings, clientId);
-
-  return {
-    ...settings,
-    barkDeviceKey: clientRecord.barkDeviceKey,
-    clientId: clientRecord.clientId,
-    clientLabel: clientRecord.clientLabel,
-    notifyGroupId: clientRecord.notifyGroupId
-  };
-}
-
-function normalizeClientId(value = '') {
-  return String(value || '').trim().slice(0, 120);
-}
-
-function normalizeClientName(value = '') {
-  return String(value || '').trim().slice(0, 120);
-}
-
-function normalizeClientSecret(value = '') {
-  return String(value || '').trim().slice(0, 240);
-}
-
-function normalizeDeviceInstallationId(value = '') {
-  return String(value || '').trim().slice(0, 160);
-}
-
-function normalizePairingCode(value = '') {
-  return String(value || '').trim().replace(/\s+/g, '').toUpperCase();
-}
-
-function randomString(length = 16) {
-  const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  const bytes = crypto.getRandomValues(new Uint8Array(length));
-  return Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('');
-}
-
-function buildPairingCode(length = 8) {
-  const bytes = crypto.getRandomValues(new Uint8Array(length));
-  return Array.from(bytes, (value) => PAIRING_CODE_ALPHABET[value % PAIRING_CODE_ALPHABET.length]).join('');
-}
-
-async function hashText(value = '') {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(value || '')));
-  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('');
-}
-
-function isFutureIso(value = '') {
-  const normalizedValue = String(value || '').trim();
-  const expiresAt = Date.parse(normalizedValue);
-
-  return Number.isFinite(expiresAt) && expiresAt > Date.now();
-}
-
-function readCurrentClientId(request) {
-  const url = new URL(request.url);
-  return normalizeClientId(url.searchParams.get('clientId'));
-}
-
-function readCurrentClientSecret(request) {
-  return normalizeClientSecret(request.headers.get(CLIENT_SECRET_HEADER));
-}
-
-function resolveClientGroupId(settings, clientId = '', clientLabel = '') {
-  const clientRecord = getClientRecord(settings, clientId, clientLabel);
-  return normalizeNotifyGroupId(clientRecord.notifyGroupId || clientRecord.clientId) || clientRecord.clientId;
-}
-
-function getNotifyGroupMembers(settings, groupId = '') {
-  const normalizedGroupId = normalizeNotifyGroupId(groupId);
-
-  if (!normalizedGroupId) {
-    return [];
-  }
-
-  return Object.values(settings.clients || {}).filter((client) => (
-    resolveClientGroupId(settings, client?.clientId, client?.clientLabel) === normalizedGroupId
-  ));
-}
-
-function requireMatchingClientId(request, payload = {}) {
-  const queryClientId = readCurrentClientId(request);
-  const bodyClientId = normalizeClientId(payload.clientId);
-  const currentClientId = queryClientId || bodyClientId;
-
-  if (!currentClientId) {
-    throw new Error('缺少浏览器 clientId。');
-  }
-
-  if (queryClientId && bodyClientId && queryClientId !== bodyClientId) {
-    throw new Error('浏览器 clientId 不匹配。');
-  }
-
-  return currentClientId;
-}
-
-async function ensureAuthenticatedClient(request, settings, options = {}) {
-  const clientId = requireMatchingClientId(request, options?.payload);
-  const clientSecret = readCurrentClientSecret(request);
-  const desiredClientLabel = normalizeClientName(options?.clientLabel || '');
-
-  if (!clientSecret) {
-    throw new Error('缺少浏览器鉴权信息，请刷新页面后重试。');
-  }
-
-  const existingClient = settings.clients?.[clientId] || null;
-  const clientSecretHash = await hashText(clientSecret);
-
-  if (String(existingClient?.clientSecretHash || '').trim() && existingClient.clientSecretHash !== clientSecretHash) {
-    throw new Error('浏览器鉴权失败，请回到原浏览器页面重新加载后重试。');
-  }
-
-  const needsSecretBootstrap = !existingClient || !String(existingClient.clientSecretHash || '').trim();
-  const needsLabelUpdate = desiredClientLabel && desiredClientLabel !== String(existingClient?.clientLabel || '').trim();
-  const resolvedGroupId = normalizeNotifyGroupId(existingClient?.notifyGroupId || clientId) || clientId;
-
-  if (needsSecretBootstrap || needsLabelUpdate) {
-    const nextSettings = upsertClientRecord(settings, clientId, {
-      clientLabel: needsLabelUpdate ? desiredClientLabel : String(existingClient?.clientLabel || desiredClientLabel || '').trim(),
-      notifyGroupId: resolvedGroupId,
-      clientSecretHash
-    });
-
-    return {
-      didUpdate: true,
-      clientId,
-      clientRecord: getClientRecord(nextSettings, clientId, desiredClientLabel),
-      settings: nextSettings
-    };
-  }
-
-  return {
-    didUpdate: false,
-    clientId,
-    clientRecord: getClientRecord(settings, clientId, desiredClientLabel),
-    settings
-  };
 }
 
 function buildPublicGcmSetup(settings, env, options = {}) {
@@ -416,170 +127,6 @@ function buildPublicGcmSetup(settings, env, options = {}) {
   };
 }
 
-function applyGcmCheckState(registrations = [], matcher = null, details = {}) {
-  if (typeof matcher !== 'function') {
-    return registrations;
-  }
-
-  return registrations.map((registration) => (
-    matcher(registration)
-      ? {
-          ...registration,
-          lastCheckedAt: String(details.checkedAt || '').trim(),
-          lastCheckStatus: String(details.status || '').trim(),
-          lastCheckDetail: String(details.detail || '').trim(),
-          updatedAt: String(details.updatedAt || registration.updatedAt || '').trim()
-        }
-      : registration
-  ));
-}
-
-function upsertGcmRegistration(registrations = [], candidate = {}) {
-  const normalizedToken = String(candidate.token || '').trim();
-  const normalizedId = String(candidate.id || '').trim();
-  const normalizedDeviceInstallationId = normalizeDeviceInstallationId(candidate.deviceInstallationId || candidate.id);
-  let replaced = false;
-  const nextRegistrations = registrations.map((registration) => {
-    const registrationDeviceInstallationId = normalizeDeviceInstallationId(registration.deviceInstallationId || registration.id);
-    const sameRegistration = (
-      normalizedDeviceInstallationId && registrationDeviceInstallationId === normalizedDeviceInstallationId
-    ) || (
-      normalizedId && registration.id === normalizedId
-    ) || (
-      normalizedToken && registration.token === normalizedToken
-    );
-
-    if (!sameRegistration) {
-      return registration;
-    }
-
-    replaced = true;
-    return {
-      ...registration,
-      ...candidate
-    };
-  });
-
-  if (!replaced) {
-    nextRegistrations.push(candidate);
-  }
-
-  return nextRegistrations;
-}
-
-function upsertGcmPairedClient(pairedClients = [], candidate = {}) {
-  const normalizedClientId = normalizeClientId(candidate.clientId);
-  let replaced = false;
-  const nextPairedClients = pairedClients.map((client) => {
-    if (client.clientId !== normalizedClientId) {
-      return client;
-    }
-
-    replaced = true;
-    return {
-      ...client,
-      ...candidate
-    };
-  });
-
-  if (!replaced && normalizedClientId) {
-    nextPairedClients.push(candidate);
-  }
-
-  return nextPairedClients;
-}
-
-function removeGcmPairedClient(pairedClients = [], clientId = '') {
-  const normalizedClientId = normalizeClientId(clientId);
-
-  if (!normalizedClientId) {
-    return normalizeGcmPairedClients(pairedClients);
-  }
-
-  return normalizeGcmPairedClients(pairedClients).filter((client) => client.clientId !== normalizedClientId);
-}
-
-function removeGcmPairedGroup(pairedClients = [], groupId = '') {
-  const normalizedGroupId = normalizeNotifyGroupId(groupId);
-
-  if (!normalizedGroupId) {
-    return normalizeGcmPairedClients(pairedClients);
-  }
-
-  return normalizeGcmPairedClients(pairedClients).filter((client) => client.groupId !== normalizedGroupId);
-}
-
-function findGcmRegistration(settings, { deviceInstallationId = '', registrationId = '', token = '' } = {}) {
-  const registrations = Array.isArray(settings.gcmRegistrations) ? settings.gcmRegistrations : [];
-  const normalizedDeviceInstallationId = normalizeDeviceInstallationId(deviceInstallationId);
-  const normalizedRegistrationId = String(registrationId || '').trim();
-  const normalizedToken = String(token || '').trim();
-
-  if (normalizedDeviceInstallationId) {
-    return registrations.find((registration) => (
-      normalizeDeviceInstallationId(registration.deviceInstallationId || registration.id) === normalizedDeviceInstallationId
-    )) || null;
-  }
-
-  if (normalizedRegistrationId) {
-    return registrations.find((registration) => registration.id === normalizedRegistrationId) || null;
-  }
-
-  if (normalizedToken) {
-    return registrations.find((registration) => registration.token === normalizedToken) || null;
-  }
-
-  return registrations[0] || null;
-}
-
-async function findGcmRegistrationByPairingCode(settings, pairingCode = '') {
-  const normalizedPairingCode = normalizePairingCode(pairingCode);
-
-  if (!normalizedPairingCode) {
-    return null;
-  }
-
-  const pairingCodeHash = await hashText(normalizedPairingCode);
-
-  return (Array.isArray(settings.gcmRegistrations) ? settings.gcmRegistrations : []).find((registration) => (
-    isFutureIso(registration.pairingCodeExpiresAt)
-    && String(registration.pairingCodeHash || '').trim() === pairingCodeHash
-  )) || null;
-}
-
-function ensureStateBinding(env) {
-  if (!env.NOTIFY_STATE) {
-    throw new Error('未配置 NOTIFY_STATE KV 绑定。');
-  }
-}
-
-async function readJson(env, key, fallback) {
-  ensureStateBinding(env);
-  const rawValue = await env.NOTIFY_STATE.get(key);
-  if (!rawValue) {
-    return fallback;
-  }
-
-  try {
-    return JSON.parse(rawValue);
-  } catch (_error) {
-    return fallback;
-  }
-}
-
-async function writeJson(env, key, value) {
-  ensureStateBinding(env);
-  await env.NOTIFY_STATE.put(key, JSON.stringify(value));
-}
-
-async function readSettings(env) {
-  return normalizeSettings(await readJson(env, SETTINGS_KEY, {}));
-}
-
-async function writeSettings(env, settings) {
-  await writeJson(env, SETTINGS_KEY, normalizeSettings(settings));
-}
-
 function requireCurrentClientId(request) {
   const currentClientId = readCurrentClientId(request);
 
@@ -604,143 +151,6 @@ function requireAuthenticatedGcmRegistration(selectedRegistration, token = '') {
   if (String(selectedRegistration.token || '').trim() !== normalizedToken) {
     throw new Error('Android 设备鉴权失败，请使用当前 app 里的有效 token 重新请求。');
   }
-}
-
-function getClientRecentEvents(clientRecord = {}) {
-  return Array.isArray(clientRecord?.state?.recentEvents) ? clientRecord.state.recentEvents : [];
-}
-function getClientDeliveryAcks(clientRecord = {}) {
-  return (typeof clientRecord?.state?.deliveryAcks === 'object' && clientRecord.state.deliveryAcks)
-    ? clientRecord.state.deliveryAcks
-    : {};
-}
-
-function attachClientDeliveryAcks(event = {}, clientRecord = {}) {
-  return attachDeliveryAckToEvent(event, getClientDeliveryAcks(clientRecord));
-}
-
-
-function hasPcQueuedChannel(event = {}) {
-  return Array.isArray(event?.channels)
-    && event.channels.some((channel) => String(channel?.channel || '').trim() === 'pc'
-      && String(channel?.status || '').trim() === 'queued');
-}
-
-function isSuccessfulEventChannel(channel = {}) {
-  const status = String(channel?.status || '').trim();
-  return status === 'delivered'
-    || status === 'skipped'
-    || (String(channel?.channel || '').trim() === 'pc' && status === 'queued');
-}
-
-function isPositiveEventChannel(channel = {}) {
-  const status = String(channel?.status || '').trim();
-  return status === 'delivered'
-    || (String(channel?.channel || '').trim() === 'pc' && status === 'queued');
-}
-
-function shouldTreatEventAsDelivered(event = {}) {
-  const channels = Array.isArray(event?.channels) ? event.channels : [];
-  return channels.length > 0
-    && channels.every(isSuccessfulEventChannel)
-    && channels.some(isPositiveEventChannel);
-}
-
-function normalizeEventForClient(event = {}) {
-  if (!event || String(event?.status || '').trim() === 'delivered') return event;
-  return shouldTreatEventAsDelivered(event)
-    ? { ...event, status: 'delivered' }
-    : event;
-}
-
-function shouldExposeEventForClientPoll(event = {}) {
-  if (!event) return false;
-  if (String(event?.status || '').trim() !== 'delivered') return true;
-  // PC 浏览器以 /events 轮询为投递通道；即使 overall status 已视为 delivered，
-  // 仍需把包含 pc/queued channel 的事件返回给浏览器完成本地弹窗。
-  return hasPcQueuedChannel(event);
-}
-
-function getClientDeliveryFailures(clientRecord = {}) {
-  return Object.values(typeof clientRecord?.state?.deliveryFailures === 'object' && clientRecord.state.deliveryFailures
-    ? clientRecord.state.deliveryFailures
-    : {});
-}
-
-function buildEmptyRunSummary() {
-  return {
-    triggeredCount: 0,
-    deliveredCount: 0,
-    events: [],
-    clientCount: 0,
-    clients: []
-  };
-}
-
-function appendClientRunSummary(summary = buildEmptyRunSummary(), clientSummary = {}) {
-  const nextEvents = [
-    ...(Array.isArray(summary.events) ? summary.events : []),
-    ...(Array.isArray(clientSummary.events) ? clientSummary.events : [])
-  ].sort((left, right) => (
-    Date.parse(String(right?.createdAt || '')) - Date.parse(String(left?.createdAt || ''))
-  )).slice(0, 30);
-
-  return {
-    triggeredCount: Number(summary.triggeredCount) + (Number(clientSummary.triggeredCount) || 0),
-    deliveredCount: Number(summary.deliveredCount) + (Number(clientSummary.deliveredCount) || 0),
-    events: nextEvents,
-    clientCount: Number(summary.clientCount) + 1,
-    clients: [
-      ...(Array.isArray(summary.clients) ? summary.clients : []),
-      {
-        clientId: String(clientSummary.clientId || '').trim(),
-        clientLabel: String(clientSummary.clientLabel || '').trim(),
-        triggeredCount: Number(clientSummary.triggeredCount) || 0,
-        deliveredCount: Number(clientSummary.deliveredCount) || 0,
-        eventCount: Array.isArray(clientSummary.events) ? clientSummary.events.length : 0
-      }
-    ]
-  };
-}
-
-function applySettingsRemovals(settings, clientId = '', removals = []) {
-  const nextSettings = normalizeSettings(settings);
-
-  for (const removal of removals) {
-    const configType = String(removal?.configType || '').trim();
-    const configKey = String(removal?.configKey || '').trim();
-    const configId = String(removal?.configId || '').trim();
-
-    if (!configType || !configKey) {
-      continue;
-    }
-
-    if (configType === 'bark-client') {
-      const targetClientId = normalizeClientId(configId || clientId);
-
-      if (!targetClientId) {
-        continue;
-      }
-
-      nextSettings.clients[targetClientId] = {
-        ...getClientRecord(nextSettings, targetClientId),
-        barkDeviceKey: ''
-      };
-      continue;
-    }
-
-    if (configType === 'gotify-client') {
-      nextSettings.gotifyClients = nextSettings.gotifyClients.filter((client) => `gotify-client:${client.id}` !== configKey && String(client.id || '').trim() !== configId);
-      continue;
-    }
-
-    if (configType === 'gotify-legacy') {
-      nextSettings.gotifyBaseUrl = '';
-      nextSettings.gotifyToken = '';
-    }
-  }
-
-  return nextSettings;
 }
 
 async function handleStatus(request, env) {
