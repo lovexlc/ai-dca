@@ -151,16 +151,24 @@ export async function handleFundMetrics(env, body = {}, params = new URLSearchPa
   if (codes.length > 60) return errorJson('codes too many (max 60)', 400);
 
   const forceRefresh = body?.refresh === true || params.get('refresh') === '1';
-  const tradingSession = isCnTradingSession();
-  const shouldReadCache = !forceRefresh && !tradingSession;
-  const cachePolicy = shouldReadCache ? 'kv-closed-session' : (forceRefresh ? 'live-refresh' : 'live-trading-session');
+  const { weekday, minuteOfDay } = getShanghaiTradingMinute();
+  const isWeekday = weekday !== 'Sat' && weekday !== 'Sun';
+  const tradingSession = isWeekday && ((minuteOfDay >= 570 && minuteOfDay <= 690) || (minuteOfDay >= 780 && minuteOfDay <= 900));
 
   const items = await mapLimit(codes, 5, async (code) => {
     const cacheKey = 'fund-metrics:' + code;
     const exchange = isExchangeTradedFund(code);
-    // 场内：盘中拉活数据，收盘后读缓存
-    // 场外：盘中读缓存（净值不会盘中更新），盘后拉活数据（净值已发布）
-    const codeShouldReadCache = exchange ? shouldReadCache : !forceRefresh && tradingSession;
+    // 场内：盘中拉活数据，非交易时段读缓存
+    // 场外：周末/节假日始终读缓存；交易日盘中读缓存，盘后拉活数据并按 updated_at 判断是否缓存
+    let codeShouldReadCache;
+    if (forceRefresh) {
+      codeShouldReadCache = false;
+    } else if (exchange) {
+      codeShouldReadCache = !tradingSession;
+    } else {
+      // 场外：非交易日（周末/节假日）直接读缓存，交易日盘中也读缓存
+      codeShouldReadCache = !isWeekday || tradingSession;
+    }
     const codeCachePolicy = codeShouldReadCache
       ? 'kv-closed-session'
       : (forceRefresh ? 'live-refresh' : (exchange ? 'live-trading-session' : 'live-post-close'));
@@ -176,8 +184,7 @@ export async function handleFundMetrics(env, body = {}, params = new URLSearchPa
     successCount: items.filter((item) => item && item.ok !== false).length,
     failureCount: items.filter((item) => !item || item.ok === false).length,
     generatedAt: new Date().toISOString(),
-    tradingSession,
-    cachePolicy
+    tradingSession
   });
 }
 
