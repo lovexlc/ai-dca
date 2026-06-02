@@ -1,4 +1,5 @@
 import { normalizeNotifyGroupId, normalizeGcmRegistrations } from './gcm.js';
+import { normalizeServerChan3Config } from './channels/serverChan3.js';
 import { normalizeNotifyPayload } from './rules.js';
 
 export const CLIENT_SECRET_HEADER = 'x-notify-client-secret';
@@ -31,6 +32,7 @@ export function normalizeSettings(settings = {}) {
       notifyGroupId: normalizeNotifyGroupId(client?.notifyGroupId || normalizedClientId) || normalizedClientId,
       clientSecretHash: String(client?.clientSecretHash || '').trim(),
       barkDeviceKey: String(client?.barkDeviceKey || '').trim(),
+      serverChan3: normalizeServerChan3Config(client?.serverChan3 || {}),
       payload: normalizeNotifyPayload(client?.payload || {}),
       state: {
         ruleStates: typeof client?.state?.ruleStates === 'object' && client.state.ruleStates ? client.state.ruleStates : {},
@@ -78,6 +80,7 @@ export function buildDefaultClientRecord(clientId = '', clientLabel = '') {
     notifyGroupId: normalizeNotifyGroupId(normalizedClientId) || normalizedClientId,
     clientSecretHash: '',
     barkDeviceKey: '',
+    serverChan3: normalizeServerChan3Config({}),
     payload: normalizeNotifyPayload({}),
     state: {
       ruleStates: {},
@@ -134,6 +137,7 @@ export function upsertClientRecord(settings, clientId = '', patch = {}) {
     notifyGroupId: normalizeNotifyGroupId(patch.notifyGroupId ?? current.notifyGroupId ?? normalizedClientId) || normalizedClientId,
     clientSecretHash: String(patch.clientSecretHash ?? current.clientSecretHash ?? '').trim(),
     barkDeviceKey: String(patch.barkDeviceKey ?? current.barkDeviceKey ?? '').trim(),
+    serverChan3: normalizeServerChan3Config(patch.serverChan3 ?? current.serverChan3 ?? {}),
     payload: normalizeNotifyPayload(patch.payload ?? current.payload ?? {}),
     state: {
       ...buildDefaultClientRecord(normalizedClientId).state,
@@ -167,6 +171,7 @@ export function buildScopedNotifySettings(settings, clientId = '') {
   return {
     ...settings,
     barkDeviceKey: clientRecord.barkDeviceKey,
+    serverChan3: clientRecord.serverChan3,
     clientId: clientRecord.clientId,
     clientLabel: clientRecord.clientLabel,
     notifyGroupId: clientRecord.notifyGroupId

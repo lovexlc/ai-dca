@@ -14,6 +14,8 @@ const NOTIFY_CLIENT_SECRET_HEADER = 'x-notify-client-secret';
 function buildDefaultNotifyClientConfig() {
   return {
     barkDeviceKey: '',
+    serverChan3Uid: '',
+    serverChan3SendKey: '',
     notifyClientId: '',
     notifyClientLabel: '',
     notifyClientSecret: ''
@@ -78,7 +80,9 @@ export function readNotifyClientConfig() {
     const saved = JSON.parse(window.localStorage.getItem(NOTIFY_CLIENT_CONFIG_KEY) || 'null');
     const nextConfig = {
       ...buildDefaultNotifyClientConfig(),
-      barkDeviceKey: String(saved?.barkDeviceKey || '').trim()
+      barkDeviceKey: String(saved?.barkDeviceKey || '').trim(),
+      serverChan3Uid: String(saved?.serverChan3Uid || '').trim(),
+      serverChan3SendKey: String(saved?.serverChan3SendKey || '').trim()
     };
 
     nextConfig.notifyClientId = normalizeNotifyClientId(saved?.notifyClientId) || createNotifyClientId();
@@ -110,6 +114,8 @@ export function persistNotifyClientConfig(nextConfig = {}) {
     ...current,
     ...nextConfig,
     barkDeviceKey: String(nextConfig.barkDeviceKey ?? current.barkDeviceKey ?? '').trim(),
+    serverChan3Uid: String(nextConfig.serverChan3Uid ?? current.serverChan3Uid ?? '').trim(),
+    serverChan3SendKey: String(nextConfig.serverChan3SendKey ?? current.serverChan3SendKey ?? '').trim(),
     notifyClientId: normalizeNotifyClientId(nextConfig.notifyClientId ?? current.notifyClientId ?? '') || current.notifyClientId,
     notifyClientLabel: normalizeNotifyClientLabel(nextConfig.notifyClientLabel ?? current.notifyClientLabel ?? '') || current.notifyClientLabel,
     notifyClientSecret: normalizeNotifyClientSecret(nextConfig.notifyClientSecret ?? current.notifyClientSecret ?? '') || current.notifyClientSecret
@@ -118,7 +124,7 @@ export function persistNotifyClientConfig(nextConfig = {}) {
   window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(payload));
   const platforms = [];
   if (Boolean(payload.barkDeviceKey)) platforms.push('ios');
-  if (nextConfig && nextConfig._hasAndroid) platforms.push('android');
+  if ((nextConfig && nextConfig._hasAndroid) || Boolean(payload.serverChan3Uid && payload.serverChan3SendKey)) platforms.push('android');
   if (nextConfig && nextConfig._hasPC) platforms.push('pc');
   trackAnalyticsEvent('notify_enabled', {
     hasBark: Boolean(payload.barkDeviceKey),

@@ -249,9 +249,10 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
         const status = await loadNotifyStatus(notifyClientId);
         if (cancelled) return;
         const barkConfigured = Boolean(status?.configured?.bark);
+        const serverChan3Configured = Boolean(status?.configured?.serverChan3 || status?.setup?.serverChan3?.configured);
         const androidConfigured = Array.isArray(status?.setup?.gcmCurrentClientRegistrations)
           && status.setup.gcmCurrentClientRegistrations.length > 0;
-        setChannelConfigured(barkConfigured || androidConfigured);
+        setChannelConfigured(barkConfigured || androidConfigured || serverChan3Configured);
       } catch {
         if (!cancelled) setChannelConfigured(true);
       }

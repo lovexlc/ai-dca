@@ -11,6 +11,7 @@ import {
   shouldExposeEventForClientPoll
 } from './clientEventState.js';
 import { buildPublicGcmSetup } from './gcmPresentation.js';
+import { maskServerChan3SendKey, normalizeServerChan3Config } from './channels/serverChan3.js';
 import {
   buildScopedNotifySettings,
   ensureAuthenticatedClient,
@@ -76,6 +77,7 @@ async function handleStatus(request, env) {
   return jsonResponse({
     configured: {
       bark: Boolean(clientRecord.barkDeviceKey),
+      serverChan3: Boolean(clientRecord.serverChan3?.uid && clientRecord.serverChan3?.sendKey),
       gotify: false,
       gcm: Boolean(gcmSetup.gcmServiceAccountConfigured && gcmSetup.gcmCurrentClientRegistrationCount)
     },
@@ -93,6 +95,11 @@ async function handleStatus(request, env) {
     deliveryFailures,
     setup: {
       barkDeviceKey: clientRecord.barkDeviceKey,
+      serverChan3: {
+        uid: String(clientRecord.serverChan3?.uid || ''),
+        sendKeyMasked: maskServerChan3SendKey(clientRecord.serverChan3?.sendKey || ''),
+        configured: Boolean(clientRecord.serverChan3?.uid && clientRecord.serverChan3?.sendKey)
+      },
       clientId: clientRecord.clientId,
       clientLabel: clientRecord.clientLabel,
       ...gcmSetup
@@ -236,7 +243,8 @@ async function handleSettings(request, env) {
   const currentClientId = auth.clientId;
   const nextSettings = upsertClientRecord(settings, currentClientId, {
     clientLabel: currentClientLabel || auth.clientRecord.clientLabel,
-    barkDeviceKey: String(payload?.barkDeviceKey || '').trim()
+    barkDeviceKey: String(payload?.barkDeviceKey ?? auth.clientRecord.barkDeviceKey ?? '').trim(),
+    serverChan3: normalizeServerChan3Config(payload?.serverChan3 ?? auth.clientRecord.serverChan3 ?? {})
   });
   const nextClientRecord = getClientRecord(nextSettings, currentClientId);
 
@@ -246,6 +254,11 @@ async function handleSettings(request, env) {
     ok: true,
     setup: {
       barkDeviceKey: nextClientRecord.barkDeviceKey,
+      serverChan3: {
+        uid: String(nextClientRecord.serverChan3?.uid || ''),
+        sendKeyMasked: maskServerChan3SendKey(nextClientRecord.serverChan3?.sendKey || ''),
+        configured: Boolean(nextClientRecord.serverChan3?.uid && nextClientRecord.serverChan3?.sendKey)
+      },
       clientId: nextClientRecord.clientId,
       clientLabel: nextClientRecord.clientLabel,
       ...buildPublicGcmSetup(nextSettings, env, {

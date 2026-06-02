@@ -31,6 +31,7 @@ export function NotifyConfigCard({
   handlePairAndroidCode,
   handleUnpairAndroidRegistration,
   handleSaveNotifyConfig,
+  handleSaveServerChan3Config,
   isSavingSettings,
   webNotifySupported,
   webNotifyPermission,
@@ -145,6 +146,51 @@ export function NotifyConfigCard({
             {notifyPlatform === 'android' ? (
               <div className="space-y-4" role="tabpanel" id="notify-panel">
                 <h3 className="text-base font-bold text-slate-900">Android 设备绑定</h3>
+                <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Server酱³ Android 推送</div>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        使用官方 Server酱³ 服务端 API 发送到 Android。填写 UID 与 SendKey 后，通知 Worker 会通过 https://&lt;uid&gt;.push.ft07.com/send/&lt;sendkey&gt;.send 投递。
+                      </p>
+                    </div>
+                    <Pill tone={notifyConfig.serverChan3Uid ? 'emerald' : 'slate'}>
+                      {notifyConfig.serverChan3Uid ? '已填写' : '未配置'}
+                    </Pill>
+                  </div>
+                  <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end">
+                    <Field label="Server酱³ UID" helper="例如接口域名里的 uid：<uid>.push.ft07.com">
+                      <TextInput
+                        value={notifyConfig.serverChan3Uid || ''}
+                        placeholder="uid"
+                        onChange={(event) => setNotifyConfig((current) => ({ ...current, serverChan3Uid: event.target.value }))}
+                      />
+                    </Field>
+                    <Field label="Server酱³ SendKey" helper="保存后仅在本机 localStorage 保留明文，服务端状态只回显掩码。">
+                      <TextInput
+                        value={notifyConfig.serverChan3SendKey || ''}
+                        placeholder="sendkey"
+                        onChange={(event) => setNotifyConfig((current) => ({ ...current, serverChan3SendKey: event.target.value }))}
+                      />
+                    </Field>
+                    <div className="flex flex-col gap-1">
+                      <button
+                        className={primaryButtonClass}
+                        type="button"
+                        onClick={handleSaveServerChan3Config}
+                        disabled={isSavingSettings || !String(notifyConfig.serverChan3Uid || '').trim() || !String(notifyConfig.serverChan3SendKey || '').trim()}
+                      >
+                        <Save className="h-4 w-4" />
+                        {isSavingSettings ? '正在保存' : '保存 Server酱³'}
+                      </button>
+                    </div>
+                  </div>
+                  {androidSetup?.serverChan3?.configured ? (
+                    <div className="mt-3 text-xs text-slate-500">
+                      云端已保存：{androidSetup.serverChan3.uid} / {androidSetup.serverChan3.sendKeyMasked || '已隐藏'}
+                    </div>
+                  ) : null}
+                </div>
                 <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
                   <Field label="Android 设备 ID / 测试 URL" helper="粘贴 Android App 里的设备 ID 或完整测试 URL，系统会自动识别。">
                     <TextInput

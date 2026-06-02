@@ -124,6 +124,20 @@ export function applySettingsRemovals(settings, clientId = '', removals = []) {
       continue;
     }
 
+    if (configType === 'serverchan3-client') {
+      const targetClientId = normalizeClientId(configId || clientId);
+
+      if (!targetClientId) {
+        continue;
+      }
+
+      nextSettings.clients[targetClientId] = {
+        ...getClientRecord(nextSettings, targetClientId),
+        serverChan3: { uid: '', sendKey: '' }
+      };
+      continue;
+    }
+
     if (configType === 'gotify-client') {
       nextSettings.gotifyClients = nextSettings.gotifyClients.filter((client) => `gotify-client:${client.id}` !== configKey && String(client.id || '').trim() !== configId);
       continue;

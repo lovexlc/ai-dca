@@ -1,4 +1,5 @@
 import { sendBarkNotification } from './channels/bark.js';
+import { sendServerChan3Notification } from './channels/serverChan3.js';
 import { isRegistrationPairedToScope, normalizeGcmRegistrations, normalizeNotifyGroupId, sendGcmNotification } from './gcm.js';
 import { tryPublishWs } from './wsHub.js';
 
@@ -47,10 +48,14 @@ export async function deliverNotification(env, notification, options = {}) {
   const settings = typeof env.__notifySettings === 'object' && env.__notifySettings ? env.__notifySettings : {};
   const results = [];
   const barkDeviceKey = String(settings.barkDeviceKey || '').trim();
+  const serverChan3 = settings.serverChan3 && typeof settings.serverChan3 === 'object' ? settings.serverChan3 : {};
+  const serverChan3Uid = String(serverChan3.uid || '').trim();
+  const serverChan3SendKey = String(serverChan3.sendKey || '').trim();
   const currentClientId = String(env.__notifyCurrentClientId || '').trim();
   const currentGroupId = normalizeNotifyGroupId(settings.notifyGroupId || currentClientId);
   const currentClientLabel = String(settings.clientLabel || '').trim();
   const barkConfigKey = currentClientId ? `bark-client:${currentClientId}` : 'bark-client:unknown';
+  const serverChan3ConfigKey = currentClientId ? `serverchan3-client:${currentClientId}` : 'serverchan3-client:unknown';
   const limitGcmRegistrations = Math.max(Number(options.limitGcmRegistrations) || 0, 0);
   const gcmRegistrations = normalizeGcmRegistrations(settings.gcmRegistrations);
   const selectedGcmRegistrations = gcmRegistrations.filter((registration) => (
@@ -85,6 +90,30 @@ export async function deliverNotification(env, notification, options = {}) {
       configType: 'bark-client',
       configId: currentClientId || 'unknown',
       configLabel: currentClientLabel ? `Bark · ${currentClientLabel}` : 'Bark'
+    });
+  }
+
+  try {
+    results.push({
+      ...(await sendServerChan3Notification({
+        ...notification,
+        uid: serverChan3Uid,
+        sendKey: serverChan3SendKey
+      })),
+      configKey: serverChan3ConfigKey,
+      configType: 'serverchan3-client',
+      configId: currentClientId || 'unknown',
+      configLabel: currentClientLabel ? `Server酱³ · ${currentClientLabel}` : 'Server酱³'
+    });
+  } catch (error) {
+    results.push({
+      channel: 'serverchan3',
+      status: 'failed',
+      detail: error instanceof Error ? error.message : 'Server酱³ 推送失败',
+      configKey: serverChan3ConfigKey,
+      configType: 'serverchan3-client',
+      configId: currentClientId || 'unknown',
+      configLabel: currentClientLabel ? `Server酱³ · ${currentClientLabel}` : 'Server酱³'
     });
   }
 
@@ -241,6 +270,7 @@ export async function deliverNotification(env, notification, options = {}) {
       gcmRegSelected: selectedGcmRegistrations.length,
       gcmRegToDeliver: gcmRegistrationsToDeliver.length,
       barkConfigured: !!barkDeviceKey,
+      serverChan3Configured: !!(serverChan3Uid && serverChan3SendKey),
       results: results.map((r) => ({
         channel: r.channel,
         status: r.status,
@@ -270,9 +300,11 @@ export async function deliverNotification(env, notification, options = {}) {
 export function buildChannelRemovalEvent(removal, nowIso) {
   const channelLabel = String(removal.configLabel || '').trim() || (removal.configType === 'bark-client'
     ? 'Bark'
-    : removal.configType === 'gotify-client'
-      ? `Gotify 账号 ${removal.configId || ''}`.trim()
-      : 'Gotify 默认通道');
+    : removal.configType === 'serverchan3-client'
+      ? 'Server酱³'
+      : removal.configType === 'gotify-client'
+        ? `Gotify 账号 ${removal.configId || ''}`.trim()
+        : 'Gotify 默认通道');
 
   return {
     id: `channel-removal:${removal.configKey}:${Date.now()}`,

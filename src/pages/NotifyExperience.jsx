@@ -53,6 +53,8 @@ export function NotifyExperience({ embedded = false }) {
     const persistedConfig = readNotifyClientConfig();
     return {
       barkDeviceKey: persistedConfig.barkDeviceKey || '',
+      serverChan3Uid: persistedConfig.serverChan3Uid || '',
+      serverChan3SendKey: persistedConfig.serverChan3SendKey || '',
       notifyClientId: persistedConfig.notifyClientId || '',
       notifyClientLabel: persistedConfig.notifyClientLabel || ''
     };
@@ -98,12 +100,14 @@ export function NotifyExperience({ embedded = false }) {
     ? androidSetup.gcmCurrentClientRegistrations
     : [];
   const barkConfigured = Boolean(notifyStatus?.configured?.bark);
-  const androidConfigured = pairedAndroidDevices.length > 0;
+  const serverChan3Configured = Boolean(notifyStatus?.configured?.serverChan3 || androidSetup?.serverChan3?.configured);
+  const androidConfigured = pairedAndroidDevices.length > 0 || serverChan3Configured;
 
   const summary = useMemo(() => {
     const channelLabels = [];
     if (barkConfigured) channelLabels.push('iOS Bark');
-    if (androidConfigured) channelLabels.push('Android');
+    if (pairedAndroidDevices.length > 0) channelLabels.push('Android FCM');
+    if (serverChan3Configured) channelLabels.push('Server酱³');
     if (webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled) {
       channelLabels.push('PC 浏览器');
     }
@@ -112,9 +116,10 @@ export function NotifyExperience({ embedded = false }) {
       channelNote: channelLabels.length
         ? `${channelLabels.join(' / ')} 可发送`
         : '请先配置 iOS Bark、绑定 Android 设备，或授权 PC 浏览器通知',
-      androidDeviceCount: pairedAndroidDevices.length
+      androidDeviceCount: pairedAndroidDevices.length,
+      serverChan3Configured
     };
-  }, [barkConfigured, androidConfigured, pairedAndroidDevices.length, webNotifySupported, webNotifyPermission, webNotifyEnabled]);
+  }, [barkConfigured, pairedAndroidDevices.length, serverChan3Configured, webNotifySupported, webNotifyPermission, webNotifyEnabled]);
 
   async function handleRequestWebNotifyPermission() {
     const result = await requestWebNotifyPermission();
@@ -168,7 +173,9 @@ export function NotifyExperience({ embedded = false }) {
         setNotifyStatus(statusPayload);
         setNotifyConfig((current) => ({
           ...current,
-          barkDeviceKey: current.barkDeviceKey || statusPayload?.setup?.barkDeviceKey || ''
+          barkDeviceKey: current.barkDeviceKey || statusPayload?.setup?.barkDeviceKey || '',
+          serverChan3Uid: current.serverChan3Uid || statusPayload?.setup?.serverChan3?.uid || '',
+          serverChan3SendKey: current.serverChan3SendKey || ''
         }));
         setNotifyError('');
       } catch (error) {
@@ -280,7 +287,9 @@ export function NotifyExperience({ embedded = false }) {
     setNotifyStatus(statusPayload);
     setNotifyConfig((current) => ({
       ...current,
-      barkDeviceKey: current.barkDeviceKey || statusPayload?.setup?.barkDeviceKey || ''
+      barkDeviceKey: current.barkDeviceKey || statusPayload?.setup?.barkDeviceKey || '',
+      serverChan3Uid: current.serverChan3Uid || statusPayload?.setup?.serverChan3?.uid || '',
+      serverChan3SendKey: current.serverChan3SendKey || ''
     }));
     setNotifyError('');
   }
@@ -308,6 +317,40 @@ export function NotifyExperience({ embedded = false }) {
       const message = error instanceof Error ? error.message : '通知配置保存失败';
       setNotifyError(message);
       showActionToast('保存 Bark 配置', 'error', { description: message });
+    } finally {
+      setIsSavingSettings(false);
+    }
+  }
+
+  async function handleSaveServerChan3Config() {
+    setIsSavingSettings(true);
+    setNotifyError('');
+    setNotifyMessage('');
+    try {
+      const uid = String(notifyConfig.serverChan3Uid || '').trim();
+      const sendKey = String(notifyConfig.serverChan3SendKey || '').trim();
+      if (!uid || !sendKey) {
+        throw new Error('请填写 Server酱³ UID 和 SendKey');
+      }
+      await saveNotifySettings({
+        serverChan3: { uid, sendKey },
+        barkDeviceKey: notifyConfig.barkDeviceKey
+      });
+      persistNotifyClientConfig({
+        serverChan3Uid: uid,
+        serverChan3SendKey: sendKey,
+        barkDeviceKey: notifyConfig.barkDeviceKey,
+        _hasAndroid: true,
+        _hasPC: webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled
+      });
+      setNotifyConfig((current) => ({ ...current, serverChan3Uid: uid, serverChan3SendKey: sendKey }));
+      await refreshNotifyData();
+      setNotifyMessage('Server酱³ Android 推送配置已保存。');
+      showActionToast('保存 Server酱³ 配置', 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Server酱³ 配置保存失败';
+      setNotifyError(message);
+      showActionToast('保存 Server酱³ 配置', 'error', { description: message });
     } finally {
       setIsSavingSettings(false);
     }
@@ -494,6 +537,7 @@ export function NotifyExperience({ embedded = false }) {
         handlePairAndroidCode={handlePairAndroidCode}
         handleUnpairAndroidRegistration={handleUnpairAndroidRegistration}
         handleSaveNotifyConfig={handleSaveNotifyConfig}
+        handleSaveServerChan3Config={handleSaveServerChan3Config}
         isSavingSettings={isSavingSettings}
         webNotifySupported={webNotifySupported}
         webNotifyPermission={webNotifyPermission}
@@ -684,7 +728,7 @@ export function NotifyExperience({ embedded = false }) {
     <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
 <div className="grid gap-4 md:grid-cols-3">
         <StatCard accent="indigo" eyebrow="通道状态" value={summary.channelStatus} note={summary.channelNote} />
-        <StatCard eyebrow="已关联 Android" value={`${summary.androidDeviceCount} 台`} note="在 Android tab 添加 / 解绑设备" />
+        <StatCard eyebrow="Android 通道" value={serverChan3Configured ? 'Server酱³' : `${summary.androidDeviceCount} 台`} note="在 Android tab 添加 FCM 或 Server酱³" />
         <StatCard eyebrow="iOS Bark" value={barkConfigured ? '已配置' : '未配置'} note="在 iOS tab 填入 Bark device key" />
       </div>
 
