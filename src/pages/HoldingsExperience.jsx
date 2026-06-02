@@ -1,14 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import {
-  AlertTriangle,
-  ClipboardPaste,
-  Copy,
-  FileUp,
-  Plus,
-  Wallet
-} from 'lucide-react';
-import {
   getCoreRowModel,
   getFacetedRowModel,
   getFacetedUniqueValues,
@@ -19,15 +11,10 @@ import {
 } from '@tanstack/react-table';
 import { formatCurrency } from '../app/accumulation.js';
 import { assignAccount, getAccountAllocation, getAssignedAccount, readAccountAssignments } from '../app/accountManager.js';
-import { IncomeSection } from '../app/income/IncomeSection.jsx';
-import { useIncomeRoute, ROUTES } from '../app/incomeRoute.js';
-import { AggregateHoldingsTableSection } from './holdings/AggregateHoldingsTableSection.jsx';
-import { HoldingSummaryPanel } from './holdings/HoldingSummaryPanel.jsx';
-import { HoldingsSidePanel } from './holdings/HoldingsSidePanel.jsx';
-import { OcrImportModal, PasteImportModal } from './holdings/TransactionImportModals.jsx';
+import { useIncomeRoute } from '../app/incomeRoute.js';
+import { HoldingsOverviewShell } from './holdings/HoldingsOverviewShell.jsx';
 import { createAggregateHoldingsColumns } from './holdings/aggregateHoldingsColumns.jsx';
-import { SwitchCounterpartPickerModal } from './holdings/SwitchCounterpartPickerModal.jsx';
-import { TransactionDraftPanel } from './holdings/TransactionDraftPanel.jsx';
+import { buildAggregateHoldingsTsv } from './holdings/holdingsClipboardExport.js';
 import {
   aggregateByCode,
   buildLedgerRows,
@@ -58,10 +45,6 @@ import {
 import { showActionToast } from '../app/toast.js';
 import { getNavSnapshots } from '../app/navService.js';
 import {
-  cx,
-  primaryButtonClass
-} from '../components/experience-ui.jsx';
-import {
   KIND_FILTER_KEYS,
   KIND_FILTER_LABELS,
   createOcrState,
@@ -89,7 +72,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [draftMode, setDraftMode] = useState('create');
   const [navStatus, setNavStatus] = useState('idle');
   const [ocrState, setOcrState] = useState(() => createOcrState());
-  const [primaryTabKey, setPrimaryTabKey] = useState('holdings');
   const [pasteModalOpen, setPasteModalOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
   useEffect(() => {
@@ -148,14 +130,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       return prev;
     });
   }, [pasteResult]);
-  const [importMenuOpen, setImportMenuOpen] = useState(false);
   const [switchPickerOpen, setSwitchPickerOpen] = useState(false);
   const [switchPickerSearch, setSwitchPickerSearch] = useState('');
   const [switchPickerSelectedIds, setSwitchPickerSelectedIds] = useState(() => new Set());
   const fileInputRef = useRef(null);
   const autoNavTriggeredRef = useRef(false);
   const navAttemptedCodesRef = useRef(new Set());
-  const importMenuRef = useRef(null);
 
 
   // ---- Persist changes to localStorage whenever ledger state changes ----
@@ -212,8 +192,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     () => summarizePortfolio(aggregates, soldSummary),
     [aggregates, soldSummary]
   );
-  const searchNeedle = searchText.trim().toLowerCase();
-
   // ---- TanStack Table (shadcn / tablecn) for the 「基金汇总」 view ----
   // PR 3.5 part 1：交易台账以 symbol 为维度聚合成本/盈亏，以 ledger* 字段挂到持仓行上；UI 呈现留给 part 2。
   const costBasisBySymbol = useMemo(
@@ -335,24 +313,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     for (const code of codes) navAttemptedCodesRef.current.add(code);
     void refreshNavForCodes(codes, { silent: true });
   }, [transactions]);
-
-  useEffect(() => {
-    if (!importMenuOpen) return undefined;
-    function handle(event) {
-      if (!importMenuRef.current) return;
-      if (importMenuRef.current.contains(event.target)) return;
-      setImportMenuOpen(false);
-    }
-    function handleKey(event) {
-      if (event.key === 'Escape') setImportMenuOpen(false);
-    }
-    document.addEventListener('mousedown', handle);
-    document.addEventListener('keydown', handleKey);
-    return () => {
-      document.removeEventListener('mousedown', handle);
-      document.removeEventListener('keydown', handleKey);
-    };
-  }, [importMenuOpen]);
 
   async function refreshNavForCodes(codes, { silent = false } = {}) {
     const safeCodes = (Array.isArray(codes) ? codes : []).filter(Boolean);
@@ -701,31 +661,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   function buildAggregateTsv() {
-    const filtered = aggregates.filter((agg) => {
-      if (!agg.hasPosition) return false;
-      if (kindFilter !== 'all' && agg.kind !== kindFilter) return false;
-      if (!searchNeedle) return true;
-      return agg.code.toLowerCase().includes(searchNeedle)
-        || (agg.name || '').toLowerCase().includes(searchNeedle);
-    });
-    const header = ['基金代码', '基金名称', '标签', '总份额', '平均成本', '当前价格', '总市值', '总收益(元)', '总收益率', '当日收益(元)', '当日收益率'];
-    const rows = filtered.map((agg) => {
-      const kindLabel = agg.kind === 'exchange' ? '场内' : '场外';
-      return [
-        agg.code,
-        agg.name || '',
-        kindLabel,
-        formatShares(agg.totalShares),
-        formatNav(agg.avgCost),
-        agg.hasCurrentPrice ? formatNav(agg.currentPrice ?? agg.latestNav) : '',
-        agg.hasCurrentPrice ? agg.marketValue.toFixed(2) : '',
-        agg.hasCurrentPrice ? agg.unrealizedProfit.toFixed(2) : '',
-        agg.hasCurrentPrice ? `${agg.unrealizedReturnRate.toFixed(2)}%` : '',
-        agg.hasTodayNav ? agg.todayProfit.toFixed(2) : '',
-        agg.hasTodayNav ? `${agg.todayReturnRate.toFixed(2)}%` : ''
-      ].join('\t');
-    });
-    return { count: filtered.length, tsv: [header.join('\t'), ...rows].join('\n') };
+    return buildAggregateHoldingsTsv({ aggregates, kindFilter, searchText });
   }
 
   async function handleCopyVisibleTable() {
@@ -1036,152 +972,112 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
   }
 
-  function renderAggregatesTable() {
-    return (
-      <AggregateHoldingsTableSection
-        table={aggregatesTable}
-        tableData={aggregatesTableData}
-        aggregates={aggregates}
-        onCreateFirstTransaction={() => {
+  return (
+    <HoldingsOverviewShell
+      embedded={embedded}
+      migrationNoticeVisible={migrationNoticeVisible}
+      ledger={ledger}
+      portfolio={portfolio}
+      inceptionDate={inceptionDate}
+      incomeRoute={incomeRoute}
+      accountAllocation={accountAllocation}
+      navRefresh={{
+        onClick: handleManualRefresh,
+        loading: navStatus === 'loading',
+        hasFailures: (ledger.lastNavMeta?.failureCount || 0) > 0,
+        title: (ledger.lastNavMeta?.failureCount || 0) > 0
+          ? `净值同步有 ${ledger.lastNavMeta.failureCount} 项失败`
+          : '同步净值',
+      }}
+      quickActions={{
+        onNewTransaction: () => {
           resetDraft(emptyDraft({ type: 'BUY' }));
           setSidePanelTab('create');
           setSidePanelOpen(true);
-        }}
-        onInstallDemoData={handleInstallDemoData}
-        onRowClick={(row) => {
-          setSelectedCode(row.original.code);
-          setSidePanelTab('summary');
-          setSidePanelOpen(true);
-        }}
-      />
-    );
-  }
-
-
-  function renderDraftPanel() {
-    return (
-      <TransactionDraftPanel
-        draft={draft}
-        draftMode={draftMode}
-        transactions={transactions}
-        onDraftChange={handleDraftChange}
-        onResetDraft={() => resetDraft()}
-        onSubmit={submitDraft}
-        onDeleteTransaction={handleDeleteTransaction}
-        onDeleted={() => setSidePanelOpen(false)}
-        onOpenSwitchPicker={openSwitchPicker}
-      />
-    );
-  }
-
-  const content = (
-    <div className={cx('flex flex-col gap-4 px-4 sm:px-6', embedded ? '' : 'mx-auto max-w-[1600px]')}>
-      {migrationNoticeVisible ? (
-        <div className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-none" />
-          <div>
-            检测到从旧持仓汇总迁入的交易，请点击行内编辑按钮补录交易日期。迁入时间：{ledger.legacyMigrationAt?.slice(0, 10) || '—'}
-          </div>
-        </div>
-      ) : null}
-      <IncomeSection
-        ledger={ledger}
-        portfolio={portfolio}
-        inceptionDate={inceptionDate}
-        onEditTransaction={handleEditTransaction}
-        accountAllocation={accountAllocation}
-        navRefresh={{
-          onClick: handleManualRefresh,
-          loading: navStatus === 'loading',
-          hasFailures: (ledger.lastNavMeta?.failureCount || 0) > 0,
-          title: (ledger.lastNavMeta?.failureCount || 0) > 0
-            ? `净值同步有 ${ledger.lastNavMeta.failureCount} 项失败`
-            : '同步净值',
-        }}
-        quickActions={{
-          onNewTransaction: () => {
-            resetDraft(emptyDraft({ type: 'BUY' }));
-            setSidePanelTab('create');
-            setSidePanelOpen(true);
-          },
-          onPasteExcel: openPasteModal,
-          onOcr: openOcrModal,
-          onCopyTable: handleCopyVisibleTable,
-          copyTitle: '复制基金汇总为 TSV',
-        }}
-      />
-      {incomeRoute === ROUTES.OVERVIEW ? (<>
-      <div className="grid grid-cols-1 gap-4">
-        <section className="min-w-0 rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-          {/* v7.1: 「复制表格 / + 新增交易」已合并到 IncomeSummary hero 行右侧，原 hidden sm:flex header strip 一并移除（及其 px-4 py-3 border-b）。 */}
-          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleOcrFile} />
-          <div className="min-h-[480px] px-1">
-            {renderAggregatesTable()}
-          </div>
-          <div className="border-t border-slate-100 px-4 py-2 text-[11px] text-slate-400">
-            {`持仓中 ${portfolio.assetCount} 只基金；累计 ${ledgerRows.length} 笔流水。`}
-          </div>
-        </section>
-      </div>
-      <PasteImportModal
-        open={pasteModalOpen}
-        pasteText={pasteText}
-        pasteResult={pasteResult}
-        pastePreviewIndex={pastePreviewIndex}
-        setPastePreviewIndex={setPastePreviewIndex}
-        onClose={closePasteModal}
-        onPasteTextChange={(value) => { setPasteText(value); setPasteResult(null); }}
-        onParse={handleParsePaste}
-        onRowFieldChange={handlePasteRowFieldChange}
-        onImport={handleImportPasted}
-      />
-      <OcrImportModal
-        open={ocrModalOpen}
-        ocrState={ocrState}
-        ocrPreview={ocrPreview}
-        ocrPreviewIndex={ocrPreviewIndex}
-        setOcrPreviewIndex={setOcrPreviewIndex}
-        ocrWarningsExpanded={ocrWarningsExpanded}
-        setOcrWarningsExpanded={setOcrWarningsExpanded}
-        onClose={closeOcrModal}
-        onTriggerOcr={handleTriggerOcr}
-        onRowFieldChange={handleOcrRowFieldChange}
-        onImport={handleImportOcr}
-      />
-      </>) : null}
-      <SwitchCounterpartPickerModal
-        open={switchPickerOpen}
-        draft={draft}
-        transactions={transactions}
-        selectedIds={switchPickerSelectedIds}
-        search={switchPickerSearch}
-        onSearchChange={setSwitchPickerSearch}
-        onToggle={handleSelectSwitchCounterpart}
-        onAutoSelect={setSwitchPickerSelectedIds}
-        onConfirm={handleConfirmSwitchAllocations}
-        onClose={closeSwitchPicker}
-      />
-      {/* v6.1 fix: sidePanel 是 fixed overlay 全局 modal，必须在 OVERVIEW Fragment 外渲染，
-          否则在 TRANSACTIONS 子页点击行编辑时不出现，要跳主页才能看到。*/}
-      <HoldingsSidePanel
-        open={sidePanelOpen}
-        title={sidePanelTab === 'summary' ? '该基金汇总' : draftMode === 'edit' ? '编辑交易' : '新增交易'}
-        onClose={() => setSidePanelOpen(false)}
-      >
-        <div>
-          {sidePanelTab === 'summary' ? (
-            <HoldingSummaryPanel
-              aggregate={selectedAggregate}
-              onNavigateToMarkets={navigateToMarkets}
-              onBuyOrSell={openBuyOrSellFromSummary}
-            />
-          ) : renderDraftPanel()}
-        </div>
-      </HoldingsSidePanel>
-    </div>
+        },
+        onPasteExcel: openPasteModal,
+        onOcr: openOcrModal,
+        onCopyTable: handleCopyVisibleTable,
+        copyTitle: '复制基金汇总为 TSV',
+      }}
+      fileInputRef={fileInputRef}
+      onOcrFile={handleOcrFile}
+      aggregatesTable={aggregatesTable}
+      aggregatesTableData={aggregatesTableData}
+      aggregates={aggregates}
+      ledgerRows={ledgerRows}
+      onCreateFirstTransaction={() => {
+        resetDraft(emptyDraft({ type: 'BUY' }));
+        setSidePanelTab('create');
+        setSidePanelOpen(true);
+      }}
+      onInstallDemoData={handleInstallDemoData}
+      onAggregateRowClick={(row) => {
+        setSelectedCode(row.original.code);
+        setSidePanelTab('summary');
+        setSidePanelOpen(true);
+      }}
+      pasteModal={{
+        open: pasteModalOpen,
+        pasteText,
+        pasteResult,
+        pastePreviewIndex,
+        setPastePreviewIndex,
+        onClose: closePasteModal,
+        onPasteTextChange: (value) => {
+          setPasteText(value);
+          setPasteResult(null);
+        },
+        onParse: handleParsePaste,
+        onRowFieldChange: handlePasteRowFieldChange,
+        onImport: handleImportPasted,
+      }}
+      ocrModal={{
+        open: ocrModalOpen,
+        ocrState,
+        ocrPreview,
+        ocrPreviewIndex,
+        setOcrPreviewIndex,
+        ocrWarningsExpanded,
+        setOcrWarningsExpanded,
+        onClose: closeOcrModal,
+        onTriggerOcr: handleTriggerOcr,
+        onRowFieldChange: handleOcrRowFieldChange,
+        onImport: handleImportOcr,
+      }}
+      switchPicker={{
+        open: switchPickerOpen,
+        draft,
+        transactions,
+        selectedIds: switchPickerSelectedIds,
+        search: switchPickerSearch,
+        onSearchChange: setSwitchPickerSearch,
+        onToggle: handleSelectSwitchCounterpart,
+        onAutoSelect: setSwitchPickerSelectedIds,
+        onConfirm: handleConfirmSwitchAllocations,
+        onClose: closeSwitchPicker,
+      }}
+      sidePanel={{
+        open: sidePanelOpen,
+        title: sidePanelTab === 'summary' ? '该基金汇总' : draftMode === 'edit' ? '编辑交易' : '新增交易',
+        onClose: () => setSidePanelOpen(false),
+        tab: sidePanelTab,
+        selectedAggregate,
+        onNavigateToMarkets: navigateToMarkets,
+        onBuyOrSell: openBuyOrSellFromSummary,
+        draft,
+        draftMode,
+        transactions,
+        onDraftChange: handleDraftChange,
+        onResetDraft: () => resetDraft(),
+        onSubmit: submitDraft,
+        onDeleteTransaction: handleDeleteTransaction,
+        onDeleted: () => setSidePanelOpen(false),
+        onOpenSwitchPicker: openSwitchPicker,
+        onEditTransaction: handleEditTransaction,
+      }}
+    />
   );
-
-  return content;
 }
 
 export default HoldingsExperience;
