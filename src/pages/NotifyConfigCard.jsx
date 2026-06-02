@@ -149,9 +149,6 @@ export function NotifyConfigCard({
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="text-sm font-semibold text-slate-900">Server酱³ Android 推送</div>
-                      <p className="mt-1 text-xs leading-5 text-slate-500">
-                        使用官方 Server酱³ 服务端 API 发送到 Android。填写 UID 与 SendKey 后，通知 Worker 会通过 https://&lt;uid&gt;.push.ft07.com/send/&lt;sendkey&gt;.send 投递。
-                      </p>
                     </div>
                     <Pill tone={serverChan3Configured ? 'emerald' : notifyConfig.serverChan3Uid ? 'amber' : 'slate'}>
                       {serverChan3StatusLabel}
@@ -194,9 +191,6 @@ export function NotifyConfigCard({
                   <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="text-sm font-semibold text-slate-900">旧版 Android App 兼容入口</div>
-                      <p className="mt-1 text-xs leading-5 text-slate-500">
-                        Android 设备 ID / 测试 URL 正在逐步废弃；新配置优先使用上方 Server酱³。
-                      </p>
                     </div>
                     <Pill tone="slate">旧版</Pill>
                   </div>
