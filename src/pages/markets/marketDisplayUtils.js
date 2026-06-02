@@ -77,6 +77,10 @@ export function rowMetric(row, keys = []) {
   return null;
 }
 
+function isFiniteRate(value) {
+  return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+}
+
 function normalizePremiumPercentValue(value, forceRate = false) {
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
@@ -103,14 +107,16 @@ export function formatPremiumPercent(row) {
 
 export function resolveFundFeeRate(row) {
   if (!row) return null;
+  const operationFeeRate = combineRuleRates(row.fundFee?.operationFees);
+  if (isFiniteRate(operationFeeRate)) return operationFeeRate;
   const cachedAnnualFeeRate = Number(row.fundFee?.annualFeeRate);
   if (Number.isFinite(cachedAnnualFeeRate)) return cachedAnnualFeeRate;
   const explicit = rowMetric(row, ['feeRate', 'expenseRatio', 'managementFeeRate', 'fundFeeRate', 'annualFeeRate']);
   const n = Number(explicit);
-  if (Number.isFinite(n)) return Math.abs(n) < 0.05 ? n * 100 : n;
+  if (isFiniteRate(explicit)) return Math.abs(n) < 0.05 ? n * 100 : n;
   const code = normalizeCnFundCode(row.code || row.symbol);
   const fallback = code ? CN_FUND_FEE_RATE_FALLBACK[code] : null;
-  return Number.isFinite(Number(fallback)) ? Number(fallback) : null;
+  return isFiniteRate(fallback) ? Number(fallback) : null;
 }
 
 function parseRateValue(value) {
@@ -129,9 +135,21 @@ function parseRateValue(value) {
   return Math.round((Math.abs(n) <= 1 && !/%/.test(text) ? n * 100 : n) * 10000) / 10000;
 }
 
+function parsePercentNumber(value) {
+  const n = Number(String(value ?? '').replace(/,/g, '').trim());
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * 10000) / 10000;
+}
+
 function ratesFromRuleRows(rows = []) {
   return (Array.isArray(rows) ? rows : [])
     .map((row) => {
+      if (row && typeof row === 'object' && !Array.isArray(row)) {
+        const unit = String(row.unit ?? '').trim();
+        if (unit === '1') return null;
+        if (unit === '2' && row.value != null) return parsePercentNumber(row.value);
+        if (row.value != null) return parseRateValue(row.value);
+      }
       const values = Array.isArray(row)
         ? row
         : row && typeof row === 'object'
@@ -141,13 +159,19 @@ function ratesFromRuleRows(rows = []) {
       const fallbackText = values.length > 1 ? values[values.length - 1] : values[0];
       return parseRateValue(percentText ?? fallbackText);
     })
-    .filter((rate) => Number.isFinite(Number(rate)));
+    .filter(isFiniteRate);
+}
+
+function combineRuleRates(rows = []) {
+  const rates = ratesFromRuleRows(rows);
+  if (!rates.length) return null;
+  return Math.round(rates.reduce((sum, rate) => sum + Number(rate), 0) * 10000) / 10000;
 }
 
 export function resolveRedeemFeeRate(row) {
   const explicit = rowMetric(row, ['redeemFeeRate', 'redemptionFeeRate', 'sellFeeRate']);
   const explicitRate = parseRateValue(explicit);
-  if (Number.isFinite(Number(explicitRate))) return explicitRate;
+  if (isFiniteRate(explicitRate)) return explicitRate;
   const rates = ratesFromRuleRows(row?.fundFee?.redeemRules);
   if (!rates.length) return null;
   return Math.max(...rates);
@@ -155,12 +179,12 @@ export function resolveRedeemFeeRate(row) {
 
 export function formatRedeemFeeRate(row) {
   const rate = resolveRedeemFeeRate(row);
-  return Number.isFinite(Number(rate)) ? formatNumber(rate, 2) : '—';
+  return isFiniteRate(rate) ? formatNumber(rate, 2) : '—';
 }
 
 export function formatFeeRate(row) {
   const rate = resolveFundFeeRate(row);
-  return Number.isFinite(Number(rate)) ? formatNumber(rate, 1) : '—';
+  return isFiniteRate(rate) ? formatNumber(rate, 1) : '—';
 }
 
 export function feeRateToneClass(row) {

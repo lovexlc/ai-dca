@@ -60,6 +60,16 @@ function parsePercent(value) {
   return Math.round((Math.abs(n) <= 1 && !/%/.test(text) ? n * 100 : n) * 10000) / 10000;
 }
 
+function isFiniteRate(value) {
+  return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+}
+
+function parsePercentNumber(value) {
+  const n = Number(String(value ?? '').replace(/,/g, '').trim());
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * 10000) / 10000;
+}
+
 function normalizeRateTable(table) {
   if (!Array.isArray(table)) return [];
   return table
@@ -102,7 +112,7 @@ function pickRateFromRows(rows, labels) {
 }
 
 function combineAnnualFee(...rates) {
-  const nums = rates.filter((n) => Number.isFinite(Number(n))).map(Number);
+  const nums = rates.filter(isFiniteRate).map(Number);
   if (!nums.length) return null;
   return Math.round(nums.reduce((sum, n) => sum + n, 0) * 10000) / 10000;
 }
@@ -110,6 +120,12 @@ function combineAnnualFee(...rates) {
 function rateRowsToNumbers(rows = []) {
   return (Array.isArray(rows) ? rows : [])
     .map((row) => {
+      if (row && typeof row === 'object' && !Array.isArray(row)) {
+        const unit = String(row.unit ?? '').trim();
+        if (unit === '1') return null;
+        if (unit === '2' && row.value != null) return parsePercentNumber(row.value);
+        if (row.value != null) return parsePercent(row.value);
+      }
       const values = Array.isArray(row)
         ? row
         : row && typeof row === 'object'
@@ -119,7 +135,7 @@ function rateRowsToNumbers(rows = []) {
       const fallbackText = values.length > 1 ? values[values.length - 1] : values[0];
       return parsePercent(percentText ?? fallbackText);
     })
-    .filter((rate) => Number.isFinite(Number(rate)));
+    .filter(isFiniteRate);
 }
 
 function combineRateRows(rows = []) {

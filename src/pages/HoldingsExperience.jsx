@@ -314,7 +314,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     void refreshNavForCodes(codes, { silent: true });
   }, [transactions]);
 
-  async function refreshNavForCodes(codes, { silent = false } = {}) {
+  async function refreshNavForCodes(codes, { silent = false, forceRefresh = false } = {}) {
     const safeCodes = (Array.isArray(codes) ? codes : []).filter(Boolean);
     if (!safeCodes.length) {
       if (!silent) showActionToast('净值刷新', 'warning', { description: '当前没有可刷新的基金代码。' });
@@ -322,7 +322,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
     setNavStatus('loading');
     try {
-      const navResult = await getNavSnapshots(safeCodes);
+      const navResult = await getNavSnapshots(safeCodes, { forceRefresh });
       let mergeErrors = [];
       let nextMeta = null;
       // 用函数式 setState 基于最新 prev 合并，避免并发刷新互相覆盖。
@@ -380,7 +380,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     });
     // 手动刷新清空已尝试集合，所有代码都重新走一遍。
     navAttemptedCodesRef.current.clear();
-    void refreshNavForCodes(codes, { silent: false });
+    void refreshNavForCodes(codes, { silent: false, forceRefresh: true });
   }
 
   // ---- Draft (quick add) handlers ----
