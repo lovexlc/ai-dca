@@ -54,6 +54,7 @@ import {
   runHoldingsNotifications,
   runHoldingsNotificationsAll
 } from './holdingsNotificationRoutes.js';
+import { normalizeServerChan3Config } from './channels/serverChan3.js';
 
 // 把 Durable Object 类型重新导出，让 Workers runtime 能在加载 wrangler 绑定时
 // 通过 entry module 的导出表找到 class_name="WsHub"。
@@ -107,12 +108,24 @@ async function handleTest(request, env) {
   const origin = readOrigin(request);
   const payload = await request.json().catch(() => ({}));
   let settings = await readSettings(env);
-  const auth = await ensureAuthenticatedClient(request, settings);
+  const auth = await ensureAuthenticatedClient(request, settings, {
+    clientLabel: payload?.clientLabel || payload?.notifyClientLabel || '',
+    payload
+  });
   settings = auth.settings;
   const currentClientId = auth.clientId;
-  const clientRecord = auth.clientRecord;
+  let clientRecord = auth.clientRecord;
+  const testServerChan3 = normalizeServerChan3Config(payload?.serverChan3 || {});
 
-  if (auth.didUpdate) {
+  if (testServerChan3.uid && testServerChan3.sendKey) {
+    settings = upsertClientRecord(settings, currentClientId, {
+      clientLabel: String(payload?.clientLabel || clientRecord.clientLabel || '').trim(),
+      serverChan3: testServerChan3
+    });
+    clientRecord = getClientRecord(settings, currentClientId, payload?.clientLabel || clientRecord.clientLabel);
+  }
+
+  if (auth.didUpdate || (testServerChan3.uid && testServerChan3.sendKey)) {
     await writeSettings(env, settings);
   }
 
