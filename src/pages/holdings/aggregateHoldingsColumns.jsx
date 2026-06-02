@@ -213,20 +213,5 @@ export function createAggregateHoldingsColumns({
       },
       sortingFn: numericSortFn,
     },
-    {
-      id: 'markets',
-      meta: { label: '行情' },
-      header: () => <span className="text-xs font-semibold text-slate-500">行情</span>,
-      cell: ({ row }) => (
-        <button
-          type="button"
-          className="inline-flex h-7 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-600 transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
-          onClick={(event) => { event.stopPropagation(); onNavigateToMarkets(event, row.original.code); }}
-          title="查看行情详情"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />行情
-        </button>
-      ),
-    },
   ];
 }
