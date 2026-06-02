@@ -45,6 +45,11 @@ export function HoldingSummaryPanel({ aggregate, onNavigateToMarkets, onBuyOrSel
                 卖出{formatShares(agg.pendingSellShares)} 份待确认
               </span>
             ) : null}
+            {agg.pendingBuyAmount > 0 ? (
+              <span className="ml-2 rounded-full bg-sky-50 px-1.5 py-px text-[10px] font-medium text-sky-600" title={agg.kind === 'qdii' ? 'QDII 申购：T 日净值由 T+1 晚公布，T+2 确认后自动生成份额' : '场外申购：T 日晚公布 NAV，T+1 确认后自动生成份额'}>
+                买入{formatCurrency(agg.pendingBuyAmount, '¥', 2)}待确认
+              </span>
+            ) : null}
           </dd>
         </div>
         <div className="min-w-0">
@@ -57,7 +62,7 @@ export function HoldingSummaryPanel({ aggregate, onNavigateToMarkets, onBuyOrSel
         </div>
         <div className="min-w-0">
           <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">总市值</dt>
-          <dd className="mt-1 min-w-0 truncate whitespace-nowrap tabular-nums text-slate-900">{agg.hasLatestNav ? formatCurrency(agg.marketValue, '¥', 2) : '—'}</dd>
+          <dd className="mt-1 min-w-0 truncate whitespace-nowrap tabular-nums text-slate-900">{agg.hasLatestNav || agg.pendingBuyAmount > 0 ? formatCurrency(agg.marketValue, '¥', 2) : '—'}</dd>
         </div>
         <div className="min-w-0">
           <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">累计盈亏</dt>
