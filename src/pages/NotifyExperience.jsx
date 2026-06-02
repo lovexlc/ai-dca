@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Bell, ChevronDown, ChevronUp, History, Laptop, RefreshCw, Save, Send, Trash2, Wallet } from 'lucide-react';
+import { ChevronDown, ChevronUp, RefreshCw, Wallet } from 'lucide-react';
 import {
   loadNotifyEvents,
   loadNotifyStatus,
@@ -24,49 +24,21 @@ import { aggregateByCode, buildHoldingsNotifyDigest, summarizePortfolio } from '
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { showActionToast } from '../app/toast.js';
 import { trackAnalyticsEvent } from '../app/analytics.js';
+import { NotifyConfigCard } from './NotifyConfigCard.jsx';
+import { NotifyHistoryCard } from './NotifyHistoryCard.jsx';
 import {
   Card,
-  Field,
   Pill,
   StatCard,
-  TextInput,
   cx,
-  primaryButtonClass,
   secondaryButtonClass
 } from '../components/experience-ui.jsx';
 import {
-  ANDROID_APK_DOWNLOAD_URL,
   formatEventTimeLabel,
   resolveEventStatusMeta
 } from '../app/tradePlansHelpers.js';
 import { parseAndroidNotifyInput, parseBarkInput } from '../app/notifyParsers.js';
-
-// 提醒历史中的「测试通知」仅在展示后 30 分钟内保留，超过后从前端过滤。
-const TEST_EVENT_TTL_MS = 30 * 60 * 1000;
-
-function isTestEvent(event = {}) {
-  const ruleId = String(event?.ruleId || '').toLowerCase();
-  const eventType = String(event?.eventType || event?.type || '').toLowerCase();
-  if (ruleId === 'test' || ruleId.startsWith('test:') || ruleId.includes('-test')) return true;
-  if (eventType.includes('test')) return true;
-  return false;
-}
-
-// 通知中心：把原本散落在《交易计划》tab 里的推送通道配置（iOS Bark、Android 配对、
-// 共享组生成/加入、设备列表）抽到独立 tab。其他 tab 只通过 readNotifyClientConfig
-// 读取已配置好的 clientId 来发送通知，配置入口只在这里。
-// 将后端/网络错误转为用户友好文案。保留原始错误于控制台方便开发者调试。
-function humanizeNotifyError(error) {
-  const raw = error instanceof Error ? error.message : String(error || '');
-  if (typeof console !== 'undefined' && raw) console.warn('[notify]', raw);
-  if (!raw) return '通知服务暂时不可用，请稍后重试';
-  const text = raw.toLowerCase();
-  if (/status\s*5\d\d|http\s*5\d\d|\b5\d\d\b/.test(text)) return '通知服务暂时不可用，请稍后重试';
-  if (/status\s*4\d\d|http\s*4\d\d/.test(text)) return '通知服务请求被拒绝，请检查配置';
-  if (/network|fetch|abort|timeout|enotfound|econnre/.test(text)) return '网络连接不稳定，请检查网络后重试';
-  if (/cors/.test(text)) return '跨域请求被默认限制，请配置 CORS 代理或使用同域部署';
-  return raw;
-}
+import { getVisibleNotifyEvents, humanizeNotifyError } from './notifyHistoryHelpers.js';
 
 export function NotifyExperience({ embedded = false }) {
   const [notifyStatus, setNotifyStatus] = useState(null);
@@ -286,16 +258,7 @@ export function NotifyExperience({ embedded = false }) {
 
   // 按 30 分钟 TTL 过滤测试通知，其他事件原样保留。
   // 依赖 eventsTick 是为了让定时器触发重评估。
-  const visibleEvents = useMemo(() => {
-    const now = Date.now();
-    return notifyEvents.filter((event) => {
-      if (!isTestEvent(event)) return true;
-      const createdAt = Date.parse(String(event?.createdAt || ''));
-      if (!Number.isFinite(createdAt)) return false;
-      return now - createdAt <= TEST_EVENT_TTL_MS;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notifyEvents, eventsTick]);
+  const visibleEvents = useMemo(() => getVisibleNotifyEvents(notifyEvents, eventsTick), [notifyEvents, eventsTick]);
 
   async function refreshNotifyEvents() {
     setEventsLoading(true);
@@ -510,312 +473,37 @@ export function NotifyExperience({ embedded = false }) {
 
   function renderConfigCard() {
     return (
-      <Card className="min-w-0">
-        <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between">
-          <button
-            type="button"
-            aria-label={isConfigCollapsed ? '展开通知接入配置' : '收起通知接入配置'}
-            aria-expanded={!isConfigCollapsed}
-            onClick={() => setConfigCollapsed((prev) => !prev)}
-            className="flex w-full min-w-0 items-start gap-3 text-left lg:flex-1"
-          >
-            <div className="min-w-0 flex-1">
-              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">通知接入</div>
-              <div className="mt-1 text-base font-bold text-slate-900 sm:text-lg">消息推送配置</div>
-              <div className="mt-1 text-xs leading-5 text-slate-500">
-                {isConfigCollapsed
-                  ? summary.channelNote
-                  : '统一管理 iOS Bark、Android 设备配对，以及多浏览器共享通知组。其他 tab 触发通知时复用这里的配置。'}
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-2 pt-1">
-              <Pill tone={(barkConfigured || androidConfigured) ? 'emerald' : 'slate'}>
-                {summary.channelStatus}
-              </Pill>
-              {isConfigCollapsed
-                ? <ChevronDown className="h-5 w-5 text-slate-400" />
-                : <ChevronUp className="h-5 w-5 text-slate-400" />}
-            </div>
-          </button>
-          {isConfigCollapsed ? null : (
-            <div className="flex w-full items-center justify-center gap-1 rounded-2xl bg-slate-100 p-1 lg:inline-flex lg:w-auto lg:justify-start" role="tablist" aria-label="通知平台">
-              <button
-                className={cx(
-                  'flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition-colors lg:flex-none',
-                  notifyPlatform === 'ios' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                )}
-                type="button"
-                role="tab"
-                aria-selected={notifyPlatform === 'ios'}
-                aria-pressed={notifyPlatform === 'ios'}
-                aria-controls="notify-panel"
-                onClick={() => setNotifyPlatform('ios')}
-              >
-                iOS
-              </button>
-              <button
-                className={cx(
-                  'flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition-colors lg:flex-none',
-                  notifyPlatform === 'android' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                )}
-                type="button"
-                role="tab"
-                aria-selected={notifyPlatform === 'android'}
-                aria-pressed={notifyPlatform === 'android'}
-                aria-controls="notify-panel"
-                onClick={() => setNotifyPlatform('android')}
-              >
-                Android
-              </button>
-              <button
-                className={cx(
-                  'flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition-colors lg:flex-none',
-                  notifyPlatform === 'pc' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                )}
-                type="button"
-                role="tab"
-                aria-selected={notifyPlatform === 'pc'}
-                aria-pressed={notifyPlatform === 'pc'}
-                aria-controls="notify-panel"
-                onClick={() => setNotifyPlatform('pc')}
-              >
-                PC 浏览器
-              </button>
-            </div>
-          )}
-        </div>
-        {isConfigCollapsed ? null : (
-        <>
-        {notifyPlatform === 'android' ? (
-          <div className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
-            APK 下载地址：
-            <a
-              className="ml-1 inline-flex items-center gap-1 font-semibold underline underline-offset-4"
-              href={ANDROID_APK_DOWNLOAD_URL}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {ANDROID_APK_DOWNLOAD_URL}
-              <ArrowRight className="h-4 w-4" />
-            </a>
-          </div>
-        ) : null}
-        {notifyError ? (
-          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            {notifyError}
-          </div>
-        ) : null}
-        {notifyMessage ? (
-          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            {notifyMessage}
-          </div>
-        ) : null}
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-5 py-5">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-sm font-semibold text-slate-900">当前浏览器</div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">推送终端身份</div>
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl bg-slate-50 px-4 py-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">浏览器标签</div>
-              <div className="mt-2 text-sm font-semibold text-slate-700">{notifyConfig.notifyClientLabel}</div>
-            </div>
-            <div className="rounded-2xl bg-slate-50 px-4 py-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">已绑定 Android 设备</div>
-              <div className="mt-2 text-sm font-semibold text-slate-700">{pairedAndroidDevices.length} 台</div>
-            </div>
-          </div>
-          <div className="mt-4 rounded-2xl bg-slate-950 px-4 py-3 font-mono text-xs text-slate-100">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">浏览器 uniqId</div>
-            <div className="mt-2 break-all">{notifyConfig.notifyClientId}</div>
-          </div>
-        </div>
-        <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-5">
-          {notifyPlatform === 'android' ? (
-            <div className="space-y-4" role="tabpanel" id="notify-panel">
-              <h3 className="text-base font-bold text-slate-900">Android 设备绑定</h3>
-              <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
-                  <Field label="Android 设备 ID / 测试 URL" helper="粘贴 Android App 里的设备 ID 或完整测试 URL，系统会自动识别。">
-                    <TextInput
-                      value={androidPairingCode}
-                      placeholder="粘贴完整测试 URL 或 android- 开头 ID"
-                      onChange={(event) => setAndroidPairingCode(event.target.value)}
-                    />
-                  </Field>
-                  <div className="flex flex-col gap-1">
-                    <button className={primaryButtonClass} type="button" onClick={handlePairAndroidCode} disabled={isPairingAndroid || !androidPairingCode.trim()}>
-                      <Save className="h-4 w-4" />
-                      {isPairingAndroid ? '正在绑定 Android 设备' : '绑定 Android 设备'}
-                    </button>
-                    {androidPairingCode.trim() ? null : <span className="text-xs text-slate-400">粘贴 Android 链接或 ID 后可绑定</span>}
-                  </div>
-                </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-semibold text-slate-900">当前浏览器已关联的 Android 设备</div>
-                  <Pill tone={pairedAndroidDevices.length ? 'emerald' : 'slate'}>
-                    {pairedAndroidDevices.length ? `${pairedAndroidDevices.length} 台已关联` : '未关联'}
-                  </Pill>
-                </div>
-                {pairedAndroidDevices.length ? (
-                  <div className="mt-4 space-y-3">
-                    {pairedAndroidDevices.map((registration) => (
-                      <div key={registration.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="text-sm font-semibold text-slate-900">{registration.deviceName || 'Android Device'}</div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Pill tone={registration.lastCheckStatus === 'validated' ? 'emerald' : 'slate'}>
-                              {registration.lastCheckStatus === 'validated' ? 'FCM 已校验' : registration.lastCheckStatus || '待校验'}
-                            </Pill>
-                            <button
-                              className={cx(
-                                secondaryButtonClass,
-                                'border-rose-200 bg-white px-3 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60'
-                              )}
-                              type="button"
-                              disabled={unpairingRegistrationId === registration.id}
-                              onClick={() => handleUnpairAndroidRegistration(registration.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              {unpairingRegistrationId === registration.id ? '正在解绑' : '解绑设备'}
-                            </button>
-                          </div>
-                        </div>
-                        <div className="mt-2 text-sm text-slate-500">{registration.packageName || androidSetup?.gcmPackageName || '未记录包名'}</div>
-                        <div className="mt-3 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
-                          <div>Android uniqId: {registration.deviceInstallationId || registration.id || '--'}</div>
-                          <div>Token: {registration.tokenMasked || '--'}</div>
-                          <div>绑定时间: {formatEventTimeLabel(registration.updatedAt || registration.createdAt)}</div>
-                          <div>最近校验: {formatEventTimeLabel(registration.lastCheckedAt)}</div>
-                          <div>配对状态: {registration.pairedToCurrentClient ? '当前浏览器已绑定' : '未绑定'}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center">
-                    <div className="text-sm font-semibold text-slate-900">未绑定 Android 设备</div>
-                    <div className="mt-1 text-xs text-slate-400">粘贴设备 ID 后绑定</div>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : notifyPlatform === 'pc' ? (
-            <div className="space-y-4" role="tabpanel" id="notify-panel">
-              <h3 className="text-base font-bold text-slate-900">PC 浏览器通知</h3>
-              <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
-                <div className="flex items-start gap-3">
-                  <Laptop className="mt-1 h-5 w-5 text-indigo-500" />
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-slate-900">PC 浏览器桌面通知</div>
-                    <p className="mt-2 text-sm leading-6 text-slate-500">
-                      支持 Chrome / Edge / Brave / Arc 等 Chromium 系浏览器。在本浏览器打开此页面时，按 30 秒间隔检查最新事件并弹出桌面通知；浏览器关闭后不工作，如需后台推送请同时启用 iOS Bark 或 Android。
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">浏览器支持</div>
-                    <div className="mt-2 text-sm font-semibold text-slate-700">
-                      {webNotifySupported ? '✓ 支持' : '× 不支持 Notification API'}
-                    </div>
-                  </div>
-                  <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">通知权限</div>
-                    <div className="mt-2 text-sm font-semibold text-slate-700">
-                      {webNotifyPermission === 'granted'
-                        ? '✓ 已授权'
-                        : webNotifyPermission === 'denied'
-                        ? '× 已拒绝（请到浏览器站点设置中开启）'
-                        : '⚠ 未授权'}
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-5 flex flex-wrap items-center gap-3">
-                  <button
-                    className={primaryButtonClass}
-                    type="button"
-                    onClick={handleRequestWebNotifyPermission}
-                    disabled={!webNotifySupported || webNotifyPermission === 'granted' || webNotifyPermission === 'denied'}
-                    title={pcPermissionReason || undefined}
-                  >
-                    <Bell className="h-4 w-4" />
-                    {webNotifyPermission === 'granted' ? '已授权浏览器通知' : '授权浏览器通知'}
-                  </button>
-                  <button
-                    className={secondaryButtonClass}
-                    type="button"
-                    onClick={handleSendLocalWebNotifyTest}
-                    disabled={!webNotifySupported || webNotifyPermission !== 'granted'}
-                    title={pcTestDisabledReason || undefined}
-                  >
-                    <Send className="h-4 w-4" />
-                    发送本地测试通知
-                  </button>
-                </div>
-                {(pcPermissionReason || pcTestDisabledReason) ? (
-                  <div className="mt-3 text-xs text-slate-500">
-                    {pcTestDisabledReason || pcPermissionReason}
-                  </div>
-                ) : null}
-                <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
-                  <div className="min-w-0 pr-2">
-                    <div className="text-sm font-semibold text-slate-900">启用前台轮询</div>
-                    <div className="mt-1 text-xs leading-5 text-slate-500">
-                      开启后，本浏览器每 30 秒检查一次最新事件，命中即弹桌面通知。仅在页面打开时工作。
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleToggleWebNotifyEnabled}
-                    disabled={!webNotifySupported || webNotifyPermission !== 'granted'}
-                    title={pcTestDisabledReason || undefined}
-                    className={cx(
-                      'relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-                      webNotifyEnabled ? 'bg-emerald-500' : 'bg-slate-300'
-                    )}
-                    aria-pressed={webNotifyEnabled}
-                    aria-label="启用 PC 前台轮询"
-                  >
-                    <span
-                      className={cx(
-                        'inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform',
-                        webNotifyEnabled ? 'translate-x-5' : 'translate-x-0.5'
-                      )}
-                    />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div role="tabpanel" id="notify-panel">
-              <h3 className="text-base font-bold text-slate-900">iOS Bark 配置</h3>
-              <div className="mt-4 text-sm font-semibold text-slate-900">iOS Bark 链接或 Device Key</div>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
-                可以粘贴完整 Bark 链接，例如 https://api.day.app/xxx/推送内容；系统会自动提取 Device Key。
-              </p>
-              <div className="mt-5 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
-                <Field label="Bark 链接或 Device Key" helper="不用手动截取，复制 Bark 里显示的完整链接也可以。">
-                  <TextInput
-                    value={notifyConfig.barkDeviceKey}
-                    onChange={(event) => setNotifyConfig((current) => ({ ...current, barkDeviceKey: event.target.value }))}
-                  />
-                </Field>
-                <div className="flex flex-col gap-1">
-                  <button className={primaryButtonClass} type="button" onClick={handleSaveNotifyConfig} disabled={isSavingSettings || !notifyConfig.barkDeviceKey.trim()}>
-                    <Save className="h-4 w-4" />
-                    {isSavingSettings ? '正在保存 Bark 配置' : '保存 Bark 配置'}
-                  </button>
-                  {notifyConfig.barkDeviceKey.trim() ? null : <span className="text-xs text-slate-400">粘贴 Bark 链接或 Device Key 后可保存</span>}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-        </>
-        )}
-      </Card>
+      <NotifyConfigCard
+        isConfigCollapsed={isConfigCollapsed}
+        setConfigCollapsed={setConfigCollapsed}
+        summary={summary}
+        barkConfigured={barkConfigured}
+        androidConfigured={androidConfigured}
+        notifyPlatform={notifyPlatform}
+        setNotifyPlatform={setNotifyPlatform}
+        notifyError={notifyError}
+        notifyMessage={notifyMessage}
+        notifyConfig={notifyConfig}
+        setNotifyConfig={setNotifyConfig}
+        androidPairingCode={androidPairingCode}
+        setAndroidPairingCode={setAndroidPairingCode}
+        isPairingAndroid={isPairingAndroid}
+        pairedAndroidDevices={pairedAndroidDevices}
+        androidSetup={androidSetup}
+        unpairingRegistrationId={unpairingRegistrationId}
+        handlePairAndroidCode={handlePairAndroidCode}
+        handleUnpairAndroidRegistration={handleUnpairAndroidRegistration}
+        handleSaveNotifyConfig={handleSaveNotifyConfig}
+        isSavingSettings={isSavingSettings}
+        webNotifySupported={webNotifySupported}
+        webNotifyPermission={webNotifyPermission}
+        webNotifyEnabled={webNotifyEnabled}
+        pcPermissionReason={pcPermissionReason}
+        pcTestDisabledReason={pcTestDisabledReason}
+        handleRequestWebNotifyPermission={handleRequestWebNotifyPermission}
+        handleSendLocalWebNotifyTest={handleSendLocalWebNotifyTest}
+        handleToggleWebNotifyEnabled={handleToggleWebNotifyEnabled}
+      />
     );
   }
 
@@ -913,81 +601,6 @@ export function NotifyExperience({ embedded = false }) {
     );
   }
 
-  function renderHistoryCard() {
-    const eventsLastSyncedLabel = eventsLastSyncedAt
-      ? formatEventTimeLabel(eventsLastSyncedAt)
-      : '尚未拉取';
-    const showEmpty = !eventsLoading && !eventsError && visibleEvents.length === 0;
-    return (
-      <Card>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
-              <History className="h-3.5 w-3.5 text-slate-400" />
-              提醒历史
-            </div>
-            <div className="mt-1 text-base font-bold text-slate-900 sm:text-lg">最近推送记录</div>
-            <p className="mt-1 text-xs leading-5 text-slate-500">
-              集中展示交易计划与定投提醒的推送记录。测试通知仅保留 30 分钟，超过后从列表中自动移除。
-            </p>
-            <p className="mt-1 text-xs text-slate-400">上次拉取：{eventsLastSyncedLabel}</p>
-          </div>
-          <button
-            type="button"
-            className={cx(secondaryButtonClass, eventsLoading && 'cursor-not-allowed opacity-60')}
-            onClick={refreshNotifyEvents}
-            disabled={eventsLoading}
-          >
-            <RefreshCw className="h-4 w-4" />
-            {eventsLoading ? '正在加载' : '刷新历史'}
-          </button>
-        </div>
-        {eventsError ? (
-          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            {eventsError}
-          </div>
-        ) : null}
-        {showEmpty ? (
-          <p className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-            暂无推送记录。发出测试通知或等待交易计划规则触发后可在此查看。
-          </p>
-        ) : null}
-        {visibleEvents.length ? (
-          <ul className="mt-4 space-y-2">
-            {visibleEvents.map((event, index) => {
-              const statusKey = String(event?.status || '').trim();
-              const meta = resolveEventStatusMeta
-                ? resolveEventStatusMeta(statusKey)
-                : { tone: statusKey === 'delivered' ? 'emerald' : 'rose', label: statusKey || '未知' };
-              const timeLabel = formatEventTimeLabel(event?.createdAt);
-              const title = String(event?.title || event?.summary || event?.eventType || '未命名事件');
-              const summary = String(event?.summary || event?.body || '');
-              const ruleId = String(event?.ruleId || '').trim();
-              const key = `${event?.id || ''}-${event?.createdAt || ''}-${index}`;
-              return (
-                <li key={key} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="min-w-0 text-sm font-semibold text-slate-800">{title}</div>
-                    <div className="flex items-center gap-2">
-                      <Pill tone={meta?.tone || 'slate'}>{meta?.label || event?.status || '未知'}</Pill>
-                      <span className="text-xs text-slate-400">{timeLabel}</span>
-                    </div>
-                  </div>
-                  {summary ? (
-                    <p className="mt-1 text-xs leading-5 text-slate-500">{summary}</p>
-                  ) : null}
-                  {ruleId ? (
-                    <p className="mt-1 text-[11px] text-slate-400">规则标识：{ruleId}</p>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        ) : null}
-      </Card>
-    );
-  }
-
   function renderHoldingsRuleBody() {
     const digest = holdingsRule.digest || null;
     const exchangeCount = Array.isArray(digest?.exchange) ? digest.exchange.length : 0;
@@ -1078,7 +691,15 @@ export function NotifyExperience({ embedded = false }) {
       <div className="space-y-6">
         {renderConfigCard()}
         {renderStrategyCard()}
-        {renderHistoryCard()}
+        <NotifyHistoryCard
+          visibleEvents={visibleEvents}
+          eventsLoading={eventsLoading}
+          eventsError={eventsError}
+          eventsLastSyncedAt={eventsLastSyncedAt}
+          refreshNotifyEvents={refreshNotifyEvents}
+          formatEventTimeLabel={formatEventTimeLabel}
+          resolveEventStatusMeta={resolveEventStatusMeta}
+        />
       </div>
     </div>
   );

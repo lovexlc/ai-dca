@@ -89,6 +89,24 @@ Improve the project maintainability by increasing cohesion, reducing coupling, c
     - implemented: added `src/pages/markets/MarketSymbolDetailPanel.jsx` for `SymbolDetailPanel`, compare search, chart controls, detail tabs, and CN fund metric wiring.
     - implemented: kept top-level selected symbol, quote maps, fetch orchestration, OTC candidate construction, and layout in `src/pages/MarketsExperience.jsx`.
     - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass.
+  - done: Extract Markets OTC/search normalization helpers.
+    - implemented: added `src/pages/markets/marketOtcHelpers.js` for OTC fund quote formatting, OTC candidate creation, CN fund name resolution, search result normalization, and browser title formatting.
+    - implemented: `src/pages/MarketsExperience.jsx` now binds the OTC helper module to the local OTC catalog and keeps data fetching, selection state, and UI orchestration in the page.
+    - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass.
+    - browser validation status: still blocked by local Chromium sandbox/crashpad permissions as recorded above.
+  - done: Extract Markets sidebar/search shell.
+    - implemented: added `src/pages/markets/MarketsSidebar.jsx` for the mobile and desktop watchlist sidebar, sector/watchlist search shells, and the shared search-result presentation.
+    - implemented: `src/pages/MarketsExperience.jsx` now owns sidebar state and handlers but no longer renders the sidebar layout directly.
+    - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass.
+    - note: browser validation remains pending because the current sandbox blocks Chromium startup with `Operation not permitted`.
+  - done: Extract Markets watchlist pricing enhancement helpers and catalog bindings.
+    - implemented: added `src/pages/markets/marketsCatalog.js` to own the CN ETF preset map, OTC fund catalog binding, OTC fund-name resolution, and OTC quote formatting helpers used by the Markets page.
+    - implemented: added `src/pages/markets/marketsWatchData.js` to centralize watchlist quote loading plus CN OTC NAV and fund-fee enrichment, so `src/pages/MarketsExperience.jsx` now only applies returned state updates.
+    - implemented: `src/pages/MarketsExperience.jsx` now calls the watch-data helper and uses catalog helpers for OTC detection and fund metadata fallbacks, while keeping selection/state orchestration local.
+    - validation: `node -e "import('./src/pages/markets/marketsCatalog.js')..."` pass with `marketsCatalog import ok`.
+    - validation: `node --test test/*.mjs` pass, 12 test files.
+    - validation: `npm run build` pass; `MarketsExperience.js` chunk is 157.53 kB gzip 49.52 kB.
+    - file size: `src/pages/MarketsExperience.jsx` reduced from 1390 lines to 1340 lines; new `src/pages/markets/marketsCatalog.js` is 50 lines and `src/pages/markets/marketsWatchData.js` is 48 lines.
 - Updated maintainability docs.
 
 ## Verification
@@ -124,7 +142,17 @@ Improve the project maintainability by increasing cohesion, reducing coupling, c
   - Cleanup verification: `node --test test/*.mjs` pass, 62 tests; `npm run build` pass with `HoldingsExperience.js` chunk reduced to 132.01 kB gzip 39.18 kB; browser desktop `1280x900` with seeded ledger and legacy switch-chain data renders `粘贴 Excel`, `截图 OCR`, `000001`, `测试基金A`, `该基金汇总`, `当前基金`, and confirms no `自由拼接切换链路` / `新建链路` UI is rendered.
   - Screenshot: `test-results/holdings-legacy-branch-cleanup.png`.
   - Final holdings refactor audit: no running Vite process; grep found no remaining references to removed legacy symbols (`mainViewTab`, `renderLedgerTable`, `renderSwitchChainView`, `LedgerTransactionRow`, `SwitchChainPickerModal`, `SwitchChainView`, `ledgerTransactionColumns`); active holdings component files are `AggregateHoldingsTableSection.jsx`, `HoldingSummaryPanel.jsx`, `HoldingsSidePanel.jsx`, `SwitchCounterpartPickerModal.jsx`, `TransactionDraftPanel.jsx`, `TransactionImportModals.jsx`, and `aggregateHoldingsColumns.jsx`.
-  - Project-wide continuation audit: largest remaining files are `src/pages/MarketsExperience.jsx` (5154 lines), `workers/notify/src/index.js` (3460), `workers/ocr-proxy/src/index.js` (2674), `src/pages/SwitchStrategyExperience.jsx` (1811), and `src/app/holdingsLedgerCore.js` (1493). Next refactor target is the remaining Markets page because it is the largest frontend page and the prior Markets phase already established local module boundaries under `src/pages/markets/`.
+  - Project-wide continuation audit: largest remaining frontend page is now `src/pages/MarketsExperience.jsx` at 1390 lines after the Markets continuation extraction sequence. The remaining Markets file mostly owns state, data fetching, and orchestration; extracted local modules under `src/pages/markets/` now own watchlist tables, overlays, sidebar rows, sidebar/search shell, news panels, chart panels, financial panels, AI research, symbol detail, display helpers, fund metric helpers, and OTC/search helpers.
+- Holdings clipboard export helper extraction implementation check:
+  - `src/pages/HoldingsExperience.jsx` reduced from 1187 lines to 1164 lines.
+  - Added `src/pages/holdings/holdingsClipboardExport.js` for aggregate TSV assembly and filter handling.
+  - `src/pages/HoldingsExperience.jsx` now keeps clipboard I/O and toast behavior local while delegating TSV formatting to the helper.
+  - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass; `HoldingsExperience.js` chunk is 136.82 kB gzip 41.07 kB.
+- Holdings overview shell extraction implementation check:
+  - `src/pages/HoldingsExperience.jsx` reduced from 1162 lines to 1083 lines; `src/pages/holdings/HoldingsOverviewShell.jsx` added with 143 lines.
+  - `src/pages/HoldingsExperience.jsx` now keeps ledger state, NAV refresh, import parsing, draft submit/delete, routing, and table orchestration local while delegating the overview layout, `IncomeSection` wiring, aggregate table container, import modals, switch picker, and side panel composition to the shell.
+  - Removed stale import-menu state/ref/effect left behind by the prior UI extraction.
+  - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass; `HoldingsExperience.js` chunk is 138.34 kB gzip 41.85 kB.
 - Markets news/theme/earnings extraction implementation check:
   - `src/pages/MarketsExperience.jsx` reduced from 5154 lines to 4725 lines; `src/pages/markets/MarketNewsPanels.jsx` added with 335 lines.
   - Duplicate local definitions for `formatClock`, `sourceInitials`, `siteHost`, `siteFavicon`, `ThemeExploreButton`, `NewsList`, `LatestNewsList`, and `EarningsCalendar` were removed from `src/pages/MarketsExperience.jsx`.
@@ -169,6 +197,100 @@ Improve the project maintainability by increasing cohesion, reducing coupling, c
   - `npm run build`: pass after the import fix; `MarketsExperience.js` chunk is 152.48 kB gzip 47.33 kB.
   - `node --test test/*.mjs`: pass, 9 test files.
   - Browser validation status: still blocked by local Chromium sandbox/crashpad permissions as recorded above.
+- Markets summary/sidebar/OTC continuation implementation check:
+  - `src/pages/MarketsExperience.jsx` reduced from 1878 lines to 1390 lines.
+  - Added `src/pages/markets/marketOtcHelpers.js` for OTC quote fallback construction, CN fund name resolution, OTC candidate construction, search result normalization, and browser-title formatting.
+  - Added `src/pages/markets/MarketsSidebar.jsx` for the mobile and desktop watchlist sidebar, sector search shell, search result presentation, and sidebar watchlist controls.
+  - Moved `SummaryModule` into `src/pages/markets/MarketNewsPanels.jsx`; the page now imports it with other news/theme presentation pieces.
+  - `node --test test/*.mjs`: pass, 9 test files.
+  - `npm run build`: pass; `MarketsExperience.js` chunk is 153.04 kB gzip 47.94 kB.
+  - Browser validation status: still blocked by local Chromium sandbox/crashpad permissions as recorded above.
+- Markets research shell extraction implementation check:
+  - `src/pages/MarketsExperience.jsx` reduced from 1390 lines to 1372 lines.
+  - Added `src/pages/markets/MarketsResearchShell.jsx` for the mobile research handle, height behavior, and aside container wrapper.
+  - `src/pages/MarketsExperience.jsx` now keeps the research state and drag handlers, while the aside layout is delegated to the extracted shell.
+  - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass; `MarketsExperience.js` chunk is 153.67 kB gzip 48.11 kB.
+- Markets main content shell extraction implementation check:
+  - `src/pages/MarketsExperience.jsx` reduced from 1372 lines to 1270 lines; `src/pages/markets/MarketsMainContent.jsx` added with 168 lines.
+  - `src/pages/MarketsExperience.jsx` now keeps market fetches, selected-symbol state, watchlist mutation, quote caching, and chart/NAV/premium orchestration local while delegating the center-column layout, market tabs, refresh button, index cards, summary/news/earnings panels, and symbol-detail composition to the shell.
+  - Removed stale page-local derived values (`watchTopMovers`, `marketStatusLabel`) that no longer had call sites after previous presentation extractions.
+  - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass; `MarketsExperience.js` chunk is 154.76 kB gzip 48.54 kB.
+- Markets Worker news fetcher extraction implementation check:
+  - `workers/markets/src/fetchers.js` reduced from 970 lines to 844 lines.
+  - Added `workers/markets/src/newsFetchers.js` with Tavily news search, news source host normalization, and CNN Fear & Greed fetching.
+  - `workers/markets/src/index.js` now imports news/emotion helpers from `newsFetchers.js`, while quote/search/financial fetchers remain in `fetchers.js`.
+  - validation: `node -e "import('./workers/markets/src/index.js')..."` pass; `node -e "import('./workers/markets/src/newsFetchers.js')..."` pass.
+- Notify Worker notification-rule helper extraction implementation check:
+  - `workers/notify/src/evaluator.js` reduced from 911 lines to 555 lines.
+  - Added `workers/notify/src/notificationRuleEvaluation.js` for market-map loading, plan-rule evaluation, DCA window resolution, and notification message construction.
+  - `workers/notify/src/evaluator.js` now keeps notification-cycle orchestration and state accumulation local while importing the extracted helpers.
+  - validation: `node -e "Promise.all([import('./workers/notify/src/evaluator.js'), import('./workers/notify/src/notificationRuleEvaluation.js')])..."` pass with `notify evaluator imports ok`.
+- OCR Proxy Worker fund route extraction implementation check:
+  - `workers/ocr-proxy/src/index.js` reduced from 911 lines to 837 lines.
+  - Added `workers/ocr-proxy/src/fundRoutes.js` for `/api/fund-limit` and `/api/fund-fee` request dispatch.
+  - `workers/ocr-proxy/src/index.js` now keeps OCR, holdings NAV, and AI chat orchestration local while delegating fund route handling.
+  - validation: `node -e "Promise.all([import('./workers/ocr-proxy/src/index.js'), import('./workers/ocr-proxy/src/fundRoutes.js')])..."` pass with `ocr proxy imports ok`.
+- OCR Proxy Worker AI chat extraction implementation check:
+  - `workers/ocr-proxy/src/index.js` reduced from 837 lines to 581 lines.
+  - Added `workers/ocr-proxy/src/aiChatRoutes.js` for `/api/ai-chat` request handling and knowledge retrieval.
+  - `workers/ocr-proxy/src/index.js` now keeps OCR, holdings NAV, and fund route orchestration local while delegating AI chat handling.
+  - validation: `node -e "Promise.all([import('./workers/ocr-proxy/src/index.js'), import('./workers/ocr-proxy/src/aiChatRoutes.js')])..."` pass with `ocr ai chat imports ok`.
+- OCR Proxy Worker image OCR route extraction implementation check:
+  - `workers/ocr-proxy/src/index.js` reduced from 581 lines to 168 lines.
+  - Added `workers/ocr-proxy/src/imageOcrRoutes.js` for `/api/ocr` and `/api/holdings/ocr` request handling, image Workers AI calls, retry handling, row normalization, and OCR response assembly.
+  - `workers/ocr-proxy/src/index.js` now serves as the OCR Proxy router/health entrypoint and delegates image OCR, AI chat, fund metadata, and holdings NAV routes to focused modules.
+  - validation: `node -e "Promise.all([import('./workers/ocr-proxy/src/index.js'), import('./workers/ocr-proxy/src/imageOcrRoutes.js')])..."` pass with `ocr image routes imports ok`.
+- SwitchStrategy helper extraction implementation check:
+  - `src/pages/SwitchStrategyExperience.jsx` reduced from 1831 lines to 1613 lines.
+  - Added `src/pages/switchStrategyHelpers.js` for switch-strategy prefs persistence, formatting helpers, limit label/tone helpers, Nasdaq universe loaders, OTC grouping, and limit sorting.
+  - `src/pages/SwitchStrategyExperience.jsx` now imports those helpers and keeps UI/state/workflow orchestration local.
+  - `node --test test/*.mjs`: pass, 9 test files; `npm run build` pass.
+  - Browser validation status: not run for this extraction.
+- SwitchStrategy panel extraction implementation check:
+  - `src/pages/SwitchStrategyExperience.jsx` reduced from 1613 lines to 1325 lines.
+  - Added `src/pages/SwitchStrategyPanels.jsx` for the worker monitor card, quick ledger record modal, and worker snapshot candidate modal.
+  - `src/pages/SwitchStrategyExperience.jsx` keeps worker sync effects, strategy state, ledger persistence, and modal open/save handlers local.
+  - `node --test test/*.mjs`: pass, 9 test files; `npm run build` pass.
+  - Browser validation status: not run for this extraction.
+- SwitchStrategy classification extraction implementation check:
+  - `src/pages/SwitchStrategyExperience.jsx` reduced from 1325 lines to 1167 lines.
+  - Added `src/pages/SwitchStrategyClassificationPanel.jsx` for the H/L classification and chip grouping UI.
+  - `src/pages/SwitchStrategyExperience.jsx` now keeps prefs orchestration and market data loading local while delegating the large classification presentation block.
+  - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass; `SwitchStrategyExperience.js` chunk is 50.38 kB gzip 14.65 kB.
+- SwitchStrategy opportunity extraction implementation check:
+  - `src/pages/SwitchStrategyExperience.jsx` reduced from 1167 lines to 970 lines.
+  - Added `src/pages/SwitchStrategyOpportunityPanels.jsx` for the intra-switch opportunity card and the OTC fund opportunity/list presentation.
+  - `src/pages/SwitchStrategyExperience.jsx` now keeps the strategy state, signal derivation, and record/save orchestration local while delegating the remaining opportunity overview UI.
+  - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass; `SwitchStrategyExperience.js` chunk is 50.82 kB gzip 14.88 kB.
+- Notify page history extraction implementation check:
+  - `src/pages/NotifyExperience.jsx` reduced from 1085 lines to 984 lines.
+  - Added `src/pages/NotifyHistoryCard.jsx` for the reminder history presentation and refresh action.
+  - Added `src/pages/notifyHistoryHelpers.js` for user-facing notify error normalization and 30-minute test-event filtering.
+  - `src/pages/NotifyExperience.jsx` keeps notification channel configuration, remote sync, holdings rule state, and event fetch orchestration local.
+  - `node --test test/*.mjs`: pass, 9 test files; `npm run build` pass.
+  - Browser validation status: not run for this extraction.
+- Notify page configuration card extraction implementation check:
+  - `src/pages/NotifyExperience.jsx` reduced from 984 lines to 706 lines.
+  - Added `src/pages/NotifyConfigCard.jsx` for iOS Bark, Android pairing, and PC browser notification configuration presentation.
+  - `src/pages/NotifyExperience.jsx` keeps notification status loading, config persistence, pairing/unpairing, permission handling, and toast orchestration local.
+  - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass; `NotifyExperience.js` chunk is 27.85 kB gzip 8.97 kB.
+- NewPlan shell extraction implementation check:
+  - `src/pages/NewPlanExperience.jsx` reduced from 971 lines to 926 lines.
+  - Added `src/pages/NewPlanShell.jsx` for the hero, step navigation, and bottom action bar shell UI.
+  - `src/pages/NewPlanExperience.jsx` keeps plan data loading, strategy calculation, step state, and save/sync orchestration local.
+  - `node --test test/*.mjs`: pass, 9 test files; `npm run build` pass.
+  - Browser validation status: not run for this extraction.
+- NewPlan selection/template extraction implementation check:
+  - `src/pages/NewPlanExperience.jsx` reduced from 926 lines to 757 lines.
+  - Added `src/pages/NewPlanSelectionCards.jsx` for the first-step symbol picker, quick US-stock shortcuts, second-step strategy template selection, and stock screening checklist.
+  - `src/pages/NewPlanExperience.jsx` keeps market loading, quote fetching, derived strategy inputs, plan calculation, and save/sync orchestration local.
+  - `node --test test/*.mjs`: pass, 9 test files; `npm run build` pass.
+  - Browser validation status: not run for this extraction.
+- NewPlan configuration extraction implementation check:
+  - `src/pages/NewPlanExperience.jsx` reduced from 757 lines to 513 lines.
+  - Added `src/pages/NewPlanConfigCards.jsx` for the third-step parameter controls and fourth-step confirmation table.
+  - `src/pages/NewPlanExperience.jsx` now keeps only plan orchestration, derived state, and cross-step wiring; the step panels and preview shell are delegated to local components.
+  - validation: `node --test test/*.mjs` pass, 9 test files; `npm run build` pass.
 - Notify Worker continuation phase:
   - done: Extract client settings/authentication helpers from the monolithic notify Worker entry.
     - implemented: added `workers/notify/src/clientSettings.js` for notify settings normalization, client record upsert/read helpers, client secret hashing/authentication, pairing code helpers, group resolution, and current-client request helpers.
@@ -188,6 +310,14 @@ Improve the project maintainability by increasing cohesion, reducing coupling, c
     - validation: `npm run build` pass.
     - backend smoke: Worker `fetch` entry with in-memory `NOTIFY_STATE` returned `normal 200 smoke-client` for authenticated `GET /api/notify/status?clientId=smoke-client`.
     - backend smoke: same endpoint without `x-notify-client-secret` returned `missing-secret 500 缺少浏览器鉴权信息，请刷新页面后重试。`.
+  - done: Extract markets Worker shared runtime helpers and CN fund-metrics/kline routes.
+    - implemented: added `workers/markets/src/marketRuntime.js` for JSON/CORS helpers, concurrency limiting, Shanghai trading-session checks, CN kline cache freshness, CN intraday session trimming, and Xueqiu fallback/cookie-notification helpers.
+    - implemented: added `workers/markets/src/fundMetricsRoutes.js` for `/fund-metrics` and `/kline` route handling plus CN fund metric normalization/cache logic.
+    - implemented: `workers/markets/src/index.js` now imports the extracted runtime and route modules while keeping the rest of the markets routing and higher-level orchestration local.
+    - validation: `node -e "Promise.all([import('./workers/markets/src/index.js'), import('./workers/markets/src/marketRuntime.js'), import('./workers/markets/src/fundMetricsRoutes.js')])..."` pass with `markets imports ok`.
+    - validation: `node --test test/*.mjs` pass, 9 test files.
+    - validation: `npm run build` pass; `MarketsExperience.js` chunk is 153.67 kB gzip 48.11 kB.
+    - file size: `workers/markets/src/index.js` reduced from 1228 lines to 741 lines; new `workers/markets/src/marketRuntime.js` is 278 lines and `workers/markets/src/fundMetricsRoutes.js` is 230 lines.
   - done: Extract notify Worker GCM registration state helpers.
     - implemented: added `workers/notify/src/gcmRegistrationState.js` for registration upsert/find, pairing-client upsert/removal, pairing-code lookup, and check-state mutation helpers.
     - implemented: `workers/notify/src/index.js` now imports those GCM state helpers and keeps GCM route request parsing plus response behavior local.
@@ -256,6 +386,28 @@ Improve the project maintainability by increasing cohesion, reducing coupling, c
     - backend smoke: Worker `fetch` entry with in-memory `NOTIFY_STATE` returned `status 200 smoke-client` for authenticated `GET /api/notify/status?clientId=smoke-client`.
     - backend smoke: authenticated `GET /api/notify/events?clientId=smoke-client` returned `events 200 0`.
     - backend smoke: invalid `POST /api/notify/gcm/register` returned `gcm-register-bad 500 注册 Android GCM 设备前需要先提供 Firebase Project ID。`.
+  - done: Extract notify Worker switch strategy routes and cron orchestration.
+    - implemented: added `workers/notify/src/switchStrategyRoutes.js` for switch config read/write, stale-snapshot refresh, manual run handling, switch test-nav, and cron orchestration.
+    - implemented: `workers/notify/src/index.js` now delegates `/api/notify/switch/*` handling and the switch cron path to the extracted module, while keeping unrelated notify/GCM/Bark/WebSocket routing in the entrypoint.
+    - validation: `node -e "import('./workers/notify/src/index.js')..."` pass with `notify worker import ok`.
+    - validation: `node --test test/*.mjs` pass, 9 test files.
+    - validation: `npm run build` pass; `SwitchStrategyExperience.js` chunk is 50.82 kB gzip 14.88 kB.
+    - file size: `workers/notify/src/index.js` reduced from 1414 lines to 1076 lines; new `workers/notify/src/switchStrategyRoutes.js` is 318 lines.
+  - done: Extract notify Worker delivery engine from evaluator.
+    - implemented: added `workers/notify/src/deliveryEngine.js` for Bark/WS/GCM/PC delivery fan-out, delivery failure tracking, and channel-removal event helpers.
+    - implemented: `workers/notify/src/evaluator.js` now keeps signal-evaluation logic local and imports the shared delivery engine instead of carrying the channel delivery plumbing inline.
+    - validation: `node -e "Promise.all([import('./workers/notify/src/index.js'), import('./workers/notify/src/evaluator.js'), import('./workers/notify/src/deliveryEngine.js')])..."` pass with `notify imports ok`.
+    - validation: `node --test test/*.mjs` pass, 9 test files.
+    - validation: `npm run build` pass; `NotifyExperience.js` chunk is 27.85 kB gzip 8.97 kB.
+    - file size: `workers/notify/src/evaluator.js` reduced from 1272 lines to 911 lines; new `workers/notify/src/deliveryEngine.js` is 345 lines.
+  - done: Extract notify Worker holdings notification routes and scheduled dispatch.
+    - implemented: added `workers/notify/src/holdingsNotificationRoutes.js` for holdings rule CRUD, admin alert dispatch, admin all-holdings test diagnostics, holdings rule KV scanning, and scheduled holdings notification runners.
+    - implemented: `workers/notify/src/index.js` now delegates `/api/notify/holdings-rule`, `/api/notify/admin/alert`, `/api/notify/admin/holdings-all-test`, and the holdings cron branches to the extracted module while keeping the Worker entrypoint focused on routing.
+    - implemented: preserved the existing delivery behavior by passing `runClientDetection` from the entrypoint into admin and scheduled holdings helpers instead of duplicating notification-cycle orchestration.
+    - validation: `node -e "Promise.all([import('./workers/notify/src/index.js'), import('./workers/notify/src/holdingsNotificationRoutes.js')])..."` pass with `imports ok`.
+    - validation: `node --test test/*.mjs` pass, 9 test files.
+    - validation: `npm run build` pass; `NotifyExperience.js` chunk is 27.83 kB gzip 8.96 kB.
+    - file size: `workers/notify/src/index.js` reduced from 1076 lines to 449 lines; new `workers/notify/src/holdingsNotificationRoutes.js` is 616 lines.
 - OCR Proxy Worker continuation phase:
   - done: Extract OCR Worker HTTP and upstream model response helpers.
     - implemented: added `workers/ocr-proxy/src/ocrHttp.js` for JSON response headers.

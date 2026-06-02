@@ -23,8 +23,6 @@ import {
   removeFromWatchlist,
   renameWatchlist,
   setActiveWatchlist,
-  CN_ETF_WATCHLIST_PRESETS,
-  CN_OTC_WATCHLIST_PRESETS
 } from '../app/marketsApi.js';
 import { showActionToast } from '../app/toast.js';
 import { readLedgerState } from '../app/holdingsLedger.js';
@@ -43,20 +41,24 @@ import {
   isCnOtcFundQuote,
   navHistoryDaysForRange,
 } from './markets/marketFundMetrics.js';
+import { loadWatchQuotesWithEnhancements } from './markets/marketsWatchData.js';
 import {
   formatNumber,
   formatSymbolDisplay,
   normalizeCnFundCode,
 } from './markets/marketDisplayUtils.js';
 import {
-  buildOtcCandidate as buildOtcCandidateWithCatalog,
-  buildOtcFundQuoteFromSnapshot as buildOtcFundQuoteFromSnapshotWithCatalog,
-  formatBrowserTitleForQuote as formatBrowserTitleForQuoteBase,
   formatTime,
-  normalizeSearchResults as normalizeSearchResultsWithCatalog,
-  resolveCnFundName as resolveCnFundNameWithCatalog,
 } from './markets/marketOtcHelpers.js';
-import nasdaqOtcCatalog from '../../data/all_nasdq_otc.json';
+import {
+  CN_ETF_PRESET_MAP,
+  buildOtcCandidate,
+  buildOtcFundQuoteFromSnapshot,
+  formatBrowserTitleForQuote,
+  hasNasdaqOtcFund,
+  normalizeSearchResults,
+  resolveCnFundName,
+} from './markets/marketsCatalog.js';
 import {
   formatSwitchLimitAmount,
   switchLimitToneFor,
@@ -68,16 +70,7 @@ const MARKETS = [
   { key: 'cn', label: 'A股' }
 ];
 
-const CN_ETF_PRESET_MAP = Object.fromEntries(CN_ETF_WATCHLIST_PRESETS.map((item) => [item.symbol, item]));
-const CN_OTC_PRESET_MAP = Object.fromEntries(CN_OTC_WATCHLIST_PRESETS.map((item) => [item.symbol, item]));
-const NASDAQ_OTC_FUND_MAP = Object.fromEntries(((nasdaqOtcCatalog && nasdaqOtcCatalog.funds) || []).map((item) => [String(item.code || '').trim(), item]));
 const MARKETS_PENDING_SYMBOL_KEY = 'markets:pendingSymbol';
-
-const resolveCnFundName = (codeOrSymbol, fallback = '') => resolveCnFundNameWithCatalog(codeOrSymbol, fallback, NASDAQ_OTC_FUND_MAP);
-const buildOtcCandidate = (code, fallback = {}) => buildOtcCandidateWithCatalog(code, fallback, NASDAQ_OTC_FUND_MAP, resolveCnFundNameWithCatalog);
-const normalizeSearchResults = (rawRows, marketKey, query = '') => normalizeSearchResultsWithCatalog(rawRows, marketKey, query, buildOtcCandidate, NASDAQ_OTC_FUND_MAP);
-const buildOtcFundQuoteFromSnapshot = (symbol, snapshot, fallback = {}) => buildOtcFundQuoteFromSnapshotWithCatalog(symbol, snapshot, fallback, resolveCnFundNameWithCatalog, NASDAQ_OTC_FUND_MAP);
-const formatBrowserTitleForQuote = (quote) => formatBrowserTitleForQuoteBase(quote, formatNumber, formatSymbolDisplay);
 
 // 行情中心底部“搜索或提问”输入条。提交后向全局 AI 抽屉发 prefill 事件，
 // 抽屉会自动切到市场行情模式并预填问题。
@@ -355,39 +348,20 @@ export function MarketsExperience() {
     }
     setWatchLoading(true);
     try {
-      const r = await fetchQuotes(list);
-      const quotes = r.quotes || {};
-      if (market === 'cn') {
-        const otcCodes = list.map((sym) => normalizeCnFundCode(sym)).filter((code) => code && NASDAQ_OTC_FUND_MAP[code]);
-        if (otcCodes.length) {
-          try {
-            const snapshotsPayload = await getNavSnapshots(otcCodes);
-            const snapshots = Object.fromEntries((snapshotsPayload.items || []).map((item) => [item.code, item]));
-            setWatchNavSnapshots((prev) => ({ ...prev, ...snapshots }));
-            otcCodes.forEach((code) => {
-              const existing = quotes[code] || quotes[`SZ${code}`] || quotes[`SH${code}`] || {};
-              const quote = buildOtcFundQuoteFromSnapshot(code, snapshots[code], existing);
-              if (quote) quotes[code] = quote;
-            });
-          } catch (_error) {
-            // 场外基金净值是增强信息，失败时仍展示行情源返回的结果。
-          }
-        }
-        const feeCodes = list.map((sym) => normalizeCnFundCode(sym)).filter((code) => /^\d{6}$/.test(code));
-        if (feeCodes.length) {
-          try {
-            const feePayload = await fetchFundFees(feeCodes);
-            const nextFees = {};
-            (feePayload.items || []).forEach((item) => {
-              if (item?.ok && item?.data?.code) nextFees[item.data.code] = item.data;
-            });
-            if (Object.keys(nextFees).length) {
-              setFundFeesByCode((prev) => ({ ...prev, ...nextFees }));
-            }
-          } catch (_error) {
-            // 费率是增强信息，失败时保留行情与本地 fallback。
-          }
-        }
+      const { quotes, navSnapshots, fundFees } = await loadWatchQuotesWithEnhancements({
+        symbols: list,
+        market,
+        fetchQuotes,
+        getNavSnapshots,
+        fetchFundFees,
+        buildOtcFundQuoteFromSnapshot,
+        hasNasdaqOtcFund,
+      });
+      if (Object.keys(navSnapshots).length) {
+        setWatchNavSnapshots((prev) => ({ ...prev, ...navSnapshots }));
+      }
+      if (Object.keys(fundFees).length) {
+        setFundFeesByCode((prev) => ({ ...prev, ...fundFees }));
       }
       setWatchQuotes(quotes);
     } catch (err) {
@@ -527,7 +501,7 @@ export function MarketsExperience() {
   useEffect(() => {
     if (!selectedSymbol || market !== 'cn') return;
     const code = normalizeCnFundCode(selectedSymbol);
-    if (!/^\d{6}$/.test(code) || NASDAQ_OTC_FUND_MAP[code]) return;
+    if (!/^\d{6}$/.test(code) || hasNasdaqOtcFund(code)) return;
     if (Object.prototype.hasOwnProperty.call(xueqiuFundDataMap, selectedSymbol)) return;
     if (xueqiuFundInflightRef.current.has(selectedSymbol)) return;
     xueqiuFundInflightRef.current.add(selectedSymbol);
@@ -821,12 +795,12 @@ export function MarketsExperience() {
     const code = normalizeCnFundCode(sym);
     const q = watchQuotes[sym] || (code ? watchQuotes[code] : null) || {};
     const snapshot = code ? watchNavSnapshots[code] : null;
-    const otcQuote = market === 'cn' && code && NASDAQ_OTC_FUND_MAP[code]
+    const otcQuote = market === 'cn' && hasNasdaqOtcFund(code)
       ? buildOtcFundQuoteFromSnapshot(sym, snapshot, q)
       : null;
     const merged = otcQuote || q;
     const latestNavDate = merged.latestNavDate || snapshot?.latestNavDate || '';
-    const isOtc = isCnOtcFundQuote(merged) || (market === 'cn' && code && NASDAQ_OTC_FUND_MAP[code]);
+    const isOtc = isCnOtcFundQuote(merged) || (market === 'cn' && hasNasdaqOtcFund(code));
     const fundLimit = code ? fundLimitsByCode[code] || null : null;
     let baseMeta = '';
     if (isOtc) {

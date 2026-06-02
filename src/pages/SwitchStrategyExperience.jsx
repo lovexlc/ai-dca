@@ -1,7 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { AlertTriangle, ClipboardList, Info, RefreshCw, Radio, PlayCircle, ChevronDown, Settings2, Sparkles, X, ChevronRight } from 'lucide-react';
-import { Card, Pill, SectionHeading, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 import { readLedgerState, persistLedgerState } from '../app/holdingsLedger.js';
 import { aggregateByCode, buildTransactionId, detectFundKind, normalizeTransaction } from '../app/holdingsLedgerCore.js';
 import { getNavSnapshots } from '../app/navService.js';
@@ -13,242 +10,31 @@ import {
   runSwitchOnce,
   saveSwitchConfigToWorker
 } from '../app/switchStrategySync.js';
+import {
+  formatSwitchDate as formatDate,
+  formatSwitchLimitAmount as formatLimitAmount,
+  formatSwitchPercent as formatPercent,
+  formatSwitchPrice as formatPrice,
+  loadNasdaqList as loadNasdqList,
+  loadNasdaqOtcList as loadNasdqOtcList,
+  limitSortValue,
+  nowIso,
+  otcGroupIdOf,
+  readSwitchPrefs as readPrefs,
+  shouldShowAppTag,
+  switchLimitLabelFor as limitLabelFor,
+  switchLimitToneFor as limitToneFor,
+  writeSwitchPrefs as writePrefs,
+} from './switchStrategyHelpers.js';
+import {
+  SwitchStrategyQuickRecordModal,
+  SwitchStrategySnapshotModal,
+  SwitchStrategyWorkerPanel
+} from './SwitchStrategyPanels.jsx';
+import { SwitchStrategyClassificationPanel } from './SwitchStrategyClassificationPanel.jsx';
+import { SwitchStrategyOpportunityPanels } from './SwitchStrategyOpportunityPanels.jsx';
 
-// 场内 / 场外纳指 100 切换套利策略实时建议器。
-//
-// 真实溢价计算：
-//   溢价 % = (当前成交价 − 最新单位净值) / 最新单位净值
-//
-// 数据源：
-// - markets Worker fund metrics：price / latestNav / iopv / premiumPercent
-// - data/all_nasdq.json：候选基金 universe（纳指 100 场内 ETF 全集，与持仓解耦）
-// - 回退源：由 Worker 在统一接口内处理
-//
-// 触发底层仍然是“两只之间的溢价差”，但 UI 只告诉用户「哪两只之间出现机会」，
-// 不在实时面板上展示具体数值，过价让用户去基金软件官方渠道查看。
-//
-// 持久化：
-// - aiDcaSwitchStrategyPrefs：基准 ETF、候选基金、阈值
-
-const SWITCH_PREFS_KEY = 'aiDcaSwitchStrategyPrefs';
-
-// v3 持仓 + H/L 双维度语义：
-//   benchmarkCodes = 持仓基准（从持仓详情自动派生，不手选）
-//   enabledCodes   = 用户勾选的候选，UI 仅呈现「对侧分类」的 ETF
-//   premiumClass   = { [code]: 'H' | 'L' }，每只 ETF 的溢价中枢标签（与持仓/候选解耦）
-//   gap = H溢价 − L溢价（始终 H 在前，正常市况 > 0）
-//   bench ∈ L 持有 → 仅看规则 A：gap < intraSellLowerPct → 卖 bench(L) 买 cand(H)
-//   bench ∈ H 持有 → 仅看规则 B：gap > intraBuyOtherPct  → 卖 bench(H) 买 cand(L)
-//   同类、未分类都不触发，UI 会提示补全分类。
-const DEFAULT_PREFS = {
-  benchmarkCodes: ['513100'],
-  enabledCodes: [],
-  premiumClass: {},
-  arbTargetPct: 2,
-  intraSellLowerPct: 1,
-  intraBuyOtherPct: 3,
-  otcPremiumThresholdPct: 8,
-  otcMinIntraPremiumLow: 1,
-  otcMinIntraPremiumHigh: 2
-};
-
-function readPrefs() {
-  if (typeof window === 'undefined') return { ...DEFAULT_PREFS };
-  try {
-    const raw = window.localStorage?.getItem(SWITCH_PREFS_KEY);
-    if (!raw) return { ...DEFAULT_PREFS };
-    const parsed = JSON.parse(raw);
-    // 兼容旧格式：parsed.benchmarkCode (string) → [benchmarkCode]。
-    let benchmarkCodes = Array.isArray(parsed?.benchmarkCodes) ? parsed.benchmarkCodes.filter(Boolean) : null;
-    if (!benchmarkCodes && typeof parsed?.benchmarkCode === 'string' && parsed.benchmarkCode) {
-      benchmarkCodes = [parsed.benchmarkCode];
-    }
-    if (!Array.isArray(benchmarkCodes) || !benchmarkCodes.length) {
-      benchmarkCodes = [...DEFAULT_PREFS.benchmarkCodes];
-    }
-    const { benchmarkCode: _legacyBenchmark, ...rest } = parsed || {};
-    void _legacyBenchmark;
-    // premiumClass：只保留值为 'H' | 'L'。未出现在持仓或候选中的代码不会出现在这里（运行时过滤）。
-    const rawClass = (parsed && typeof parsed.premiumClass === 'object' && parsed.premiumClass) ? parsed.premiumClass : {};
-    const premiumClass = {};
-    for (const [code, value] of Object.entries(rawClass)) {
-      const v = String(value || '').trim().toUpperCase();
-      if (/^\d{6}$/.test(String(code)) && (v === 'H' || v === 'L')) premiumClass[code] = v;
-    }
-    return {
-      ...DEFAULT_PREFS,
-      ...rest,
-      benchmarkCodes,
-      enabledCodes: Array.isArray(parsed?.enabledCodes) ? parsed.enabledCodes : [],
-      premiumClass
-    };
-  } catch {
-    return { ...DEFAULT_PREFS };
-  }
-}
-
-function writePrefs(prefs) {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage?.setItem(SWITCH_PREFS_KEY, JSON.stringify(prefs));
-  } catch (_error) {
-    // ignore
-  }
-}
-
-function formatPercent(value, digits = 2, withSign = false) {
-  // 先抦掉 null / undefined，避免 Number(null) → 0 被当成「0.00%」。
-  if (value === null || value === undefined || value === '') return '—';
-  const v = Number(value);
-  if (!Number.isFinite(v)) return '—';
-  const fixed = v.toFixed(digits);
-  if (withSign && v > 0) return `+${fixed}%`;
-  return `${fixed}%`;
-}
-
-function formatPrice(value) {
-  const v = Number(value);
-  if (!Number.isFinite(v) || v <= 0) return '—';
-  return v.toFixed(4);
-}
-
-function formatDate(value) {
-  const rawValue = String(value || '').trim();
-  if (!rawValue) return '—';
-  const timestamp = Date.parse(rawValue);
-  if (!Number.isFinite(timestamp)) return rawValue;
-  try {
-    return new Intl.DateTimeFormat('zh-CN', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    }).format(new Date(timestamp)).replace(/\//g, '-');
-  } catch (_error) {
-    return rawValue;
-  }
-}
-
-function formatLimitAmount(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) return '—';
-  if (n >= 100000000) return `${(n / 100000000).toFixed(2).replace(/\.?0+$/, '')} 亿`;
-  if (n >= 10000) return `${(n / 10000).toFixed(2).replace(/\.?0+$/, '')} 万`;
-  return n.toLocaleString('zh-CN');
-}
-
-function limitToneFor(buyStatus) {
-  switch (buyStatus) {
-    case 'open':
-      return 'emerald';
-    case 'limit_large':
-      return 'amber';
-    case 'limit':
-      return 'amber';
-    case 'suspended':
-      return 'red';
-    case 'closed':
-      return 'red';
-    default:
-      return 'slate';
-  }
-}
-
-function limitLabelFor(buyStatus) {
-  switch (buyStatus) {
-    case 'open':
-      return '正常申购';
-    case 'limit_large':
-      return '限大额';
-    case 'limit':
-      return '限额';
-    case 'suspended':
-      return '暂停申购';
-    case 'closed':
-      return '已关闭';
-    default:
-      return buyStatus || '未知';
-  }
-}
-
-function isAppChannelFund(fund = {}) {
-  const shareClass = String(fund?.share_class || '').trim().toUpperCase();
-  return Boolean(shareClass) && shareClass !== 'A' && shareClass !== 'C';
-}
-
-function hasAppLimitChannel(limit = {}) {
-  const channel = String(limit?.purchaseChannel || limit?.limitChannel || '').trim().toLowerCase();
-  if (channel === 'app' || channel === 'direct') return true;
-  if (String(limit?.code || '').trim() === '000834' && Number(limit?.maxPurchasePerDay) === 500) return true;
-  const text = String(limit?.purchaseChannelText || limit?.limitChannelText || limit?.buyStatusText || '').trim();
-  return /直销|APP|App|app|官网|微信公众|直销柜台/.test(text);
-}
-
-function shouldShowAppTag(fund = {}, limit = {}) {
-  return isAppChannelFund(fund) || hasAppLimitChannel(limit);
-}
-
-function nowIso() {
-  return new Date().toISOString();
-}
-
-
-function nasdqListPath(inPagesDir) {
-  return inPagesDir ? `../data/all_nasdq.json` : `./data/all_nasdq.json`;
-}
-
-async function loadNasdqList({ inPagesDir = false } = {}) {
-  const response = await fetch(nasdqListPath(inPagesDir), {
-    headers: { Accept: 'application/json' },
-    cache: 'no-store'
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const payload = await response.json();
-  return Array.isArray(payload?.etfs) ? payload.etfs : [];
-}
-
-function nasdqOtcListPath(inPagesDir) {
-  return inPagesDir ? `../data/all_nasdq_otc.json` : `./data/all_nasdq_otc.json`;
-}
-
-async function loadNasdqOtcList({ inPagesDir = false } = {}) {
-  const response = await fetch(nasdqOtcListPath(inPagesDir), {
-    headers: { Accept: 'application/json' },
-    cache: 'no-store'
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const payload = await response.json();
-  return Array.isArray(payload?.funds) ? payload.funds : [];
-}
-
-// 场外纳指基金「按基金公司去重」分组键。
-// - etf_link: 用 link_to (场内 ETF 代码) 作为公司组，同公司同产品多份额归一组
-// - standalone_qdii: 按名称前缀 (摩根/宝盈/南方/国泰...) 归并同公司多份额
-function otcGroupIdOf(fund) {
-  if (!fund) return '';
-  if (fund.kind === 'etf_link' && fund.link_to) return 'etf:' + fund.link_to;
-  const name = String(fund.name || '');
-  const m = name.match(/^(摩根|宝盈|南方|国泰|大成|广发|华安|博时|华夏|嘉实|富国|汇添富|华泰柏瑞|招商|易方达)/);
-  if (m) return 'qdii:' + m[1];
-  return 'self:' + (fund.code || '');
-}
-
-// 限额排序键:
-//   suspended/closed -> -Infinity (沉底)
-//   maxPurchasePerDay > 0 -> 该金额 (具体限额)
-//   open 且无 max -> Infinity (不限, 最优)
-//   未知 / 加载中 -> null (待定)
-function limitSortValue(limit) {
-  if (!limit) return null;
-  if (limit.buyStatus === 'suspended' || limit.buyStatus === 'closed') return -Infinity;
-  const m = Number(limit.maxPurchasePerDay);
-  if (Number.isFinite(m) && m > 0) return m;
-  if (limit.buyStatus === 'open') return Infinity;
-  return null;
-}
+// 场内 / 场外纳指 100 切换套利策略实时建议器；纯格式化、偏好读写和候选列表 helper 在 switchStrategyHelpers.js。
 
 export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false, initialView = 'opportunity', hideViewTabs = false } = {}) {
   const [prefs, setPrefs] = useState(readPrefs);
@@ -1110,719 +896,72 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
   return (
     <div className="space-y-6">
-      <Card>
-        <SectionHeading
-          eyebrow="自动监控"
-          title="worker 每分钟扫描场内切换信号"
-        />
-        <div className="mt-5 space-y-4">
-          <div className="flex flex-wrap items-center gap-3 text-sm">
-            <label className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5">
-              <input
-                type="checkbox"
-                className="h-4 w-4"
-                checked={Boolean(workerConfig.enabled)}
-                disabled={workerStatus.loading || workerStatus.saving}
-                onChange={(e) => handleWorkerToggle(e.target.checked)}
-              />
-              <span className="font-semibold text-slate-700">启用 worker 自动监控</span>
-            </label>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs text-slate-600">
-              <Radio className="h-3.5 w-3.5" />
-              cron: 周一至周五 09:30-11:30 / 13:00-15:00
-            </span>
-            <div className="ml-auto flex flex-col items-end gap-1">
-              <button
-                type="button"
-                className={cx(secondaryButtonClass, 'h-9 px-3 text-xs')}
-                onClick={handleWorkerRunOnce}
-                disabled={Boolean(workerRunDisabledReason)}
-                title={workerRunDisabledReason || (workerConfig.enabled ? '手动跑一次：拉价 + 算 diff + 命中规则 A/B 则推送' : '手动跑一次：拉价 + 算 diff，未启用监控不推送')}
-              >
-                <PlayCircle className="h-4 w-4" />
-                {workerStatus.running ? '运行中…' : '手动跑一次'}
-              </button>
-              {workerRunDisabledReason ? <span className="text-[11px] text-slate-400">{workerRunDisabledReason}</span> : null}
-            </div>
-          </div>
-          {workerStatus.error ? (
-            <div className="flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{workerStatus.error}</span>
-            </div>
-          ) : null}
-          {workerStatus.notice && !workerStatus.error ? (
-            <div className="flex items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-              <Info className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{workerStatus.notice}</span>
-            </div>
-          ) : null}
-          <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
-            <button
-              type="button"
-              onClick={() => setWorkerConfigExpanded((prev) => !prev)}
-              className="w-full rounded-lg p-2 text-left transition-colors hover:bg-slate-50"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  {(() => {
-                    const sellLower = Number.isFinite(Number(prefs?.intraSellLowerPct)) ? prefs.intraSellLowerPct : null;
-                    const buyOther = Number.isFinite(Number(prefs?.intraBuyOtherPct)) ? prefs.intraBuyOtherPct : null;
-                    const fmtCls = (c) => `${c}${switchSummary.cls[c] === 'H' ? 'H' : (switchSummary.cls[c] === 'L' ? 'L' : '')}`;
-                    const fmtList = (arr) => (arr || []).map(fmtCls).join(', ');
-                    if (!switchSummary.benches.length) {
-                      return <span className="text-slate-500">未配置基准（在上方 H/L 表拖入你的持仓代码）</span>;
-                    }
-                    const Lline = switchSummary.Lrow ? (
-                      <span key="L" className="text-slate-500">
-                        <span className="font-semibold text-slate-700">L 基准 {switchSummary.Lrow.benches.length} 只</span>
-                        <span className="text-[11px] text-slate-400">{' '}({fmtList(switchSummary.Lrow.benches)})</span>
-                        {' · 候选 '}<span className="font-semibold text-slate-700">{switchSummary.Lrow.cands.length}</span> 对{' '}
-                        <span className="text-[11px] text-slate-400">({fmtList(switchSummary.Lrow.cands) || '无'})</span>
-                        {' · 规则 A：H-L ≤'}<span className="font-semibold text-slate-700">{sellLower !== null ? `${sellLower}%` : '—'}</span>
-                      </span>
-                    ) : null;
-                    const Hline = switchSummary.Hrow ? (
-                      <span key="H" className="text-slate-500">
-                        <span className="font-semibold text-slate-700">H 基准 {switchSummary.Hrow.benches.length} 只</span>
-                        <span className="text-[11px] text-slate-400">{' '}({fmtList(switchSummary.Hrow.benches)})</span>
-                        {' · 候选 '}<span className="font-semibold text-slate-700">{switchSummary.Hrow.cands.length}</span> 对{' '}
-                        <span className="text-[11px] text-slate-400">({fmtList(switchSummary.Hrow.cands) || '无'})</span>
-                        {' · 规则 B：H-L ≥'}<span className="font-semibold text-slate-700">{buyOther !== null ? `${buyOther}%` : '—'}</span>
-                      </span>
-                    ) : null;
-                    return (
-                      <div className="flex flex-col gap-1">
-                        {Lline}
-                        {Hline}
-                      </div>
-                    );
-                  })()}
-                </div>
-                <ChevronDown className={cx('h-4 w-4 shrink-0 transition-transform', workerConfigExpanded ? 'rotate-180' : '')} />
-              </div>
-            </button>
+      <SwitchStrategyWorkerPanel
+        prefs={prefs}
+        switchSummary={switchSummary}
+        workerConfig={workerConfig}
+        workerStatus={workerStatus}
+        workerConfigExpanded={workerConfigExpanded}
+        workerSnapshot={workerSnapshot}
+        workerRunDisabledReason={workerRunDisabledReason}
+        handleWorkerToggle={handleWorkerToggle}
+        handleWorkerRunOnce={handleWorkerRunOnce}
+        setWorkerConfigExpanded={setWorkerConfigExpanded}
+        setSnapshotCandModal={setSnapshotCandModal}
+        formatDate={formatDate}
+        formatPrice={formatPrice}
+        formatPercent={formatPercent}
+      />
+      <SwitchStrategyClassificationPanel
+        prefs={prefs}
+        benchmarkSummary={benchmarkSummary}
+        navUpdatedHint={navUpdatedHint}
+        navError={navState.error}
+        onRefresh={() => setRefreshTick((n) => n + 1)}
+        setPrefValue={setPrefValue}
+        fundsWithPremium={fundsWithPremium}
+        exchangeFunds={exchangeFunds}
+        universeError={universeError}
+        nasdaqPoolExpanded={nasdaqPoolExpanded}
+        setNasdaqPoolExpanded={setNasdaqPoolExpanded}
+        setNasdaqPoolTouched={setNasdaqPoolTouched}
+        dragOverZone={dragOverZone}
+        handleChipDragStart={handleChipDragStart}
+        handleZoneDragOver={handleZoneDragOver}
+        handleZoneDragLeave={handleZoneDragLeave}
+        handleZoneDrop={handleZoneDrop}
+        setCodeClass={setCodeClass}
+        formatPrice={formatPrice}
+      />
+      <SwitchStrategyOpportunityPanels
+        prefs={prefs}
+        setPrefValue={setPrefValue}
+        intraSignals={intraSignals}
+        openQuickRecordFromIntra={openQuickRecordFromIntra}
+        otcSignal={otcSignal}
+        openQuickRecordFromOtc={openQuickRecordFromOtc}
+        otcGroups={otcGroups}
+        showAllOtc={showAllOtc}
+        setShowAllOtc={setShowAllOtc}
+        shouldShowAppTag={shouldShowAppTag}
+        formatLimitAmount={formatLimitAmount}
+        limitLabelFor={limitLabelFor}
+        limitToneFor={limitToneFor}
+      />
 
-            {workerConfigExpanded ? (
-              <div className="mt-3 space-y-3">
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                  {/* 单一数据源：选择的 prefs.benchmarkCodes / enabledCodes / 阈值。 */}
-                  {workerConfig.updatedAt ? (
-                    <span className="ml-auto text-[11px] text-slate-400">上次同步 {formatDate(workerConfig.updatedAt) || workerConfig.updatedAt}</span>
-                  ) : null}
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">worker 最近一次计算</div>
-                    {workerSnapshot?.computedAt ? (
-                      <div className="text-xs text-slate-500">算于 {formatDate(workerSnapshot.computedAt) || workerSnapshot.computedAt}</div>
-                    ) : <div className="text-xs text-slate-400">尚无快照</div>}
-                  </div>
-                  {workerSnapshot ? (
-                    <div className="mt-3 space-y-2 text-sm">
-                      {(() => {
-                        // 兼容旧版快照（顶层 benchmarkCode + candidates）。
-                        const benchSnapshots = Array.isArray(workerSnapshot.byBenchmark) && workerSnapshot.byBenchmark.length
-                          ? workerSnapshot.byBenchmark
-                          : (workerSnapshot.benchmarkCode ? [{
-                              benchmarkCode: workerSnapshot.benchmarkCode,
-                              benchmarkName: workerSnapshot.benchmarkName,
-                              benchmarkPrice: workerSnapshot.benchmarkPrice,
-                              benchmarkNav: workerSnapshot.benchmarkNav,
-                              benchmarkNavDate: workerSnapshot.benchmarkNavDate,
-                              benchmarkPremiumPct: workerSnapshot.benchmarkPremiumPct,
-                              candidates: workerSnapshot.candidates || []
-                            }] : []);
-                        if (!benchSnapshots.length) {
-                          return (
-                            <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-400">
-                              快照中暂无基准数据。
-                            </div>
-                          );
-                        }
-                        const sellLower = Number(workerSnapshot.intraSellLowerPct);
-                        const buyOther = Number(workerSnapshot.intraBuyOtherPct);
-                        const cls = prefs.premiumClass || {};
-                        return benchSnapshots.map((bench) => (
-                          <div key={`bench-${bench.benchmarkCode}`} className="rounded-xl border border-slate-200 bg-white p-3">
-                              <div className="text-xs uppercase tracking-[0.18em] text-slate-400">基准 {bench.benchmarkCode}{bench.benchmarkName ? ` · ${bench.benchmarkName}` : ''}</div>
-                              <div className="mt-1 grid grid-cols-1 sm:grid-cols-3 gap-x-2 gap-y-1 text-xs text-slate-600">
-                                <div className="min-w-0">现价 <span className="font-semibold text-slate-800">{formatPrice(bench.benchmarkPrice)}</span></div>
-                                <div className="min-w-0">净值 <span className="font-semibold text-slate-800">{formatPrice(bench.benchmarkNav)}</span>{bench.benchmarkNavDate ? <span className="ml-1 whitespace-nowrap text-slate-400">@{bench.benchmarkNavDate}</span> : null}</div>
-                                <div className="min-w-0">溢价 <span className="font-semibold text-slate-800">{formatPercent(bench.benchmarkPremiumPct, 2, true)}</span></div>
-                              </div>
-                            {bench.candidates && bench.candidates.length > 0 ? (
-                              <button
-                                type="button"
-                                onClick={() => setSnapshotCandModal({ bench, sellLower, buyOther, cls })}
-                                className="mt-3 flex w-full items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 transition-colors hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
-                              >
-                                <span className="font-medium">查看 {bench.candidates.length} 个候选详情</span>
-                                <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                              </button>
-                            ) : (
-                              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-center text-xs text-slate-400">快照中暂无候选数据。</div>
-                            )}
-                          </div>
-                        ));
-                      })()}
-                      {(workerSnapshot.triggers || []).length > 0 ? (
-                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                          <div className="font-semibold">本轮触发 {workerSnapshot.triggers.length} 个信号</div>
-                          <ul className="mt-1 list-disc pl-4">
-                            {workerSnapshot.triggers.map((t, idx) => (
-                              <li key={`trig-${idx}`}>规则 {t.rule || (Number(t.diffPct ?? t.spreadPct) >= 0 ? 'B' : 'A')} · 卖 {t.fromCode} → 买 {t.toCode}：diff {formatPercent(t.diffPct ?? t.spreadPct, 2, true)}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-400">
-                      暂无最近一次计算结果，先手动跑一次或等待 worker 扫描。
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </Card>
+      <SwitchStrategyQuickRecordModal
+        quickRecord={quickRecord}
+        setQuickRecord={setQuickRecord}
+        quickRecordValid={quickRecordValid}
+        saveQuickRecord={saveQuickRecord}
+      />
 
-      <Card>
-        <SectionHeading
-          eyebrow="规则配置"
-          title="场内 / 场外纳指 100 切换套利"
-        />
-        <div className="mt-5 space-y-4">
-          <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
-            <Info className="h-4 w-4 text-slate-400" />
-            <span>{benchmarkSummary}</span>
-            {navUpdatedHint ? (
-              <>
-                <span className="hidden md:inline text-slate-300">·</span>
-                <span className="text-slate-500">{navUpdatedHint}</span>
-              </>
-            ) : null}
-            <button
-              type="button"
-              className={cx(secondaryButtonClass, 'ml-auto h-9 px-3 text-xs')}
-              onClick={() => setRefreshTick((n) => n + 1)}
-            >
-              <RefreshCw className="h-4 w-4" />
-              重新读取数据
-            </button>
-          </div>
-          {navState.error ? (
-            <div className="flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>实时数据加载异常：{navState.error}</span>
-            </div>
-          ) : null}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">套利目标</div>
-              <input
-                type="number"
-                step="0.5"
-                className="w-24 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 focus:border-indigo-300 focus:outline-none"
-                value={prefs.arbTargetPct}
-                onChange={(e) => setPrefValue('arbTargetPct', e.target.value)}
-              />
-              <span className="text-sm text-slate-600">% / 周期</span>
-            </div>
-          </div>
-          {(() => {
-            const cls = prefs.premiumClass || {};
-            const heldSet = new Set(exchangeFunds.map((f) => f.code));
-            const renderChip = (f) => {
-              const code = f.code;
-              const cur = cls[code] || null;
-              const isHeld = heldSet.has(code);
-              const hasNav = Number.isFinite(f.navLatest);
-              const priceSourceLabel = f.latestPriceDate || 'daily';
-              return (
-                <div
-                  key={code}
-                  draggable
-                  onDragStart={(e) => handleChipDragStart(e, code)}
-                  title={hasNav
-                    ? `雪球净值 ${f.navLatest.toFixed(4)} (${f.navLatestDate})・现价 ${formatPrice(f.latestNav)} (${priceSourceLabel})`
-                    : '实时数据未就绪'}
-                  className={cx(
-                    'group inline-flex select-none items-center gap-1.5 rounded-full border px-2 py-1 text-xs font-semibold transition-colors cursor-grab active:cursor-grabbing',
-                    cur === 'H' ? 'border-rose-200 bg-rose-50 text-rose-800' :
-                    cur === 'L' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' :
-                    'border-slate-200 bg-white text-slate-600'
-                  )}
-                >
-                  <span>{code}</span>
-                  {f.name ? (
-                    <>
-                      <span className="text-slate-400">·</span>
-                      <span className="max-w-[100px] truncate text-slate-500">{f.name}</span>
-                    </>
-                  ) : null}
-                  {isHeld ? <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-800">持</span> : null}
-                  <span className="ml-1 inline-flex overflow-hidden rounded border border-slate-200 text-[10px]">
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setCodeClass(code, cur === 'H' ? null : 'H'); }}
-                      className={cx('px-1.5 py-0.5', cur === 'H' ? 'bg-rose-500 text-white' : 'bg-white text-slate-500 hover:bg-rose-50 hover:text-rose-700')}
-                     aria-label={`将 ${code} 设为 H 组`}>设为 H</button>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setCodeClass(code, cur === 'L' ? null : 'L'); }}
-                      className={cx('px-1.5 py-0.5 border-l border-slate-200', cur === 'L' ? 'bg-emerald-500 text-white' : 'bg-white text-slate-500 hover:bg-emerald-50 hover:text-emerald-700')}
-                     aria-label={`将 ${code} 设为 L 组`}>设为 L</button>
-                  </span>
-                </div>
-              );
-            };
-            const poolList = fundsWithPremium.filter((f) => !cls[f.code]);
-            const hList = fundsWithPremium.filter((f) => cls[f.code] === 'H');
-            const lList = fundsWithPremium.filter((f) => cls[f.code] === 'L');
-            return (
-              <div className="space-y-3">
-                <div
-                  onDragOver={(e) => handleZoneDragOver(e, 'pool')}
-                  onDragLeave={handleZoneDragLeave}
-                  onDrop={(e) => handleZoneDrop(e, null)}
-                  className={cx(
-                    'rounded-2xl border bg-white p-4 transition-colors',
-                    dragOverZone === 'pool' ? 'border-indigo-400 ring-2 ring-indigo-200' : 'border-slate-200'
-                  )}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNasdaqPoolTouched(true);
-                      setNasdaqPoolExpanded((prev) => !prev);
-                    }}
-                    className="flex w-full items-center justify-between rounded-lg p-1 text-left transition-colors hover:bg-slate-50"
-                  >
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">所有纳指 ETF（未分类）</div>
-                    <div className="flex items-center gap-2">
-                      <div className="text-xs text-slate-500">{poolList.length} / 共 {fundsWithPremium.length} 只</div>
-                      <ChevronDown className={cx('h-4 w-4 shrink-0 text-slate-400 transition-transform', nasdaqPoolExpanded ? 'rotate-180' : '')} />
-                    </div>
-                  </button>
-                  {universeError ? (
-                    <div className="mt-2 text-xs text-rose-600">候选基金列表加载失败：{universeError}</div>
-                  ) : null}
-                  {nasdaqPoolExpanded ? (
-                    <>
-                      <div className="mt-3 flex min-h-[44px] flex-wrap gap-2">
-                        {fundsWithPremium.length === 0 ? (
-                          <div className="text-sm text-slate-500">候选基金尚未加载。</div>
-                        ) : poolList.length === 0 ? (
-                          <div className="text-xs text-slate-400">所有 ETF 都已分类。可把 chip 拖回此处取消分类。</div>
-                        ) : poolList.map(renderChip)}
-                      </div>
-                      <div className="mt-2 text-[11px] text-slate-500">点击每个 chip 右侧的 <strong className="text-rose-700">设为 H</strong> / <strong className="text-emerald-700">设为 L</strong> 完成分类；桌面端仍支持拖放作为辅助操作。</div>
-                    </>
-                  ) : null}
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div
-                    onDragOver={(e) => handleZoneDragOver(e, 'H')}
-                    onDragLeave={handleZoneDragLeave}
-                    onDrop={(e) => handleZoneDrop(e, 'H')}
-                    className={cx(
-                      'rounded-2xl border bg-white p-4 transition-colors',
-                      dragOverZone === 'H' ? 'border-rose-400 ring-2 ring-rose-200' : 'border-rose-200'
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-500">高溢价组 H</div>
-                      <div className="text-xs text-slate-500">{hList.length} 只</div>
-                    </div>
-                    <div className="mt-3 flex min-h-[44px] flex-wrap gap-2">
-                      {hList.length === 0 ? (
-                        <div className="text-xs text-slate-400">点击未分类 chip 的“设为 H”。</div>
-                      ) : hList.map(renderChip)}
-                    </div>
-                  </div>
-                  <div
-                    onDragOver={(e) => handleZoneDragOver(e, 'L')}
-                    onDragLeave={handleZoneDragLeave}
-                    onDrop={(e) => handleZoneDrop(e, 'L')}
-                    className={cx(
-                      'rounded-2xl border bg-white p-4 transition-colors',
-                      dragOverZone === 'L' ? 'border-emerald-400 ring-2 ring-emerald-200' : 'border-emerald-200'
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600">低溢价组 L</div>
-                      <div className="text-xs text-slate-500">{lList.length} 只</div>
-                    </div>
-                    <div className="mt-3 flex min-h-[44px] flex-wrap gap-2">
-                      {lList.length === 0 ? (
-                        <div className="text-xs text-slate-400">点击未分类 chip 的“设为 L”。</div>
-                      ) : lList.map(renderChip)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-      </Card>
-
-      <Card>
-        <SectionHeading
-          eyebrow="机会概览"
-          title="在持有的场内 ETF 之间倒换"
-        />
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
-            <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="intra-sell-lower">规则 A · 低溢价持仓换高溢价</label>
-            <div className="mt-1 text-slate-700">
-              H溢价 − L溢价 {'<'}
-              <input
-                type="number"
-                step="0.5"
-                id="intra-sell-lower"
-                aria-label="规则 A 阈值，默认 1%"
-                value={prefs.intraSellLowerPct}
-                onChange={(e) => setPrefValue('intraSellLowerPct', e.target.value)}
-                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
-              />
-              %（差价收窄，低→高）→ 卖 L 买 H
-            </div>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
-            <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="intra-buy-other">规则 B · 高溢价持仓换低溢价</label>
-            <div className="mt-1 text-slate-700">
-              H溢价 − L溢价 {'>'}
-              <input
-                type="number"
-                step="0.5"
-                id="intra-buy-other"
-                aria-label="规则 B 阈值，默认 3%"
-                value={prefs.intraBuyOtherPct}
-                onChange={(e) => setPrefValue('intraBuyOtherPct', e.target.value)}
-                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
-              />
-              %（差价扩大，高→低）→ 卖 H 买 L
-            </div>
-          </div>
-        </div>
-        <div className="mt-4 space-y-2">
-          {!benchmark ? null : null}
-          {benchmark && intraSignals.length === 0 ? null : null}
-          {intraSignals.map((sig, idx) => (
-            <div
-              key={`${sig.kind}-${sig.from}-${sig.to}-${idx}`}
-              className="flex flex-col gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 sm:flex-row sm:items-start sm:gap-3"
-            >
-              <div className="flex min-w-0 flex-1 items-start gap-2 sm:gap-3">
-                <Pill tone={sig.kind === 'A' ? 'indigo' : 'emerald'}>规则 {sig.kind}</Pill>
-                <div className="min-w-0 flex-1">
-                  <div className="font-semibold text-slate-700">卖 {sig.from} → 买 {sig.to}</div>
-                  <div className="text-xs text-slate-500">{sig.fromName || ''} → {sig.toName || ''}。{sig.description}。</div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => openQuickRecordFromIntra(sig)}
-                className={cx(secondaryButtonClass, 'h-8 w-full px-3 text-xs sm:w-auto')}
-                title="记录此次切换到持仓 ledger"
-              >
-                <ClipboardList className="h-4 w-4" />
-                记录此次切换
-              </button>
-            </div>
-          ))}
-        </div>
-
-      </Card>
-
-      <Card>
-        <SectionHeading
-          eyebrow="机会概览"
-          title="纳指（场外）基金"
-        />
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
-            <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="otc-premium-threshold">基准溢价阈值 · 默认 8%</label>
-            <div className="mt-1 text-slate-700">
-              &gt;
-              <input
-                type="number"
-                step="0.5"
-                id="otc-premium-threshold"
-                aria-label="场外基准溢价阈值，默认 8%"
-                value={prefs.otcPremiumThresholdPct}
-                onChange={(e) => setPrefValue('otcPremiumThresholdPct', e.target.value)}
-                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
-              />%
-            </div>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">场内最低溢价阈值</div>
-            <div className="mt-1 text-slate-700">
-              &lt;
-              <input
-                type="number"
-                step="0.5"
-                id="otc-strong-threshold"
-                aria-label="场外强信号阈值，默认 1%"
-                value={prefs.otcMinIntraPremiumLow}
-                onChange={(e) => setPrefValue('otcMinIntraPremiumLow', e.target.value)}
-                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
-              /><span className="sr-only">场外强信号阈值</span>%（强） / &lt;
-              <input
-                type="number"
-                step="0.5"
-                id="otc-weak-threshold"
-                aria-label="场外弱信号阈值，默认 2%"
-                value={prefs.otcMinIntraPremiumHigh}
-                onChange={(e) => setPrefValue('otcMinIntraPremiumHigh', e.target.value)}
-                className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
-              /><span className="sr-only">场外弱信号阈值</span>%（弱）
-            </div>
-          </div>
-        </div>
-        {(otcSignal.ready ? otcSignal.triggered : true) && (
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-            {otcSignal.ready ? (
-              <div className="flex flex-col gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 sm:flex-row sm:items-start sm:gap-3">
-                <div className="flex min-w-0 flex-1 items-start gap-2 sm:gap-3">
-                  <Pill tone={otcSignal.intraLowHard ? 'emerald' : 'amber'}>{otcSignal.level}</Pill>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-slate-700">
-                      卖 {otcSignal.benchCode} → 申购场外 QDII 联接基金
-                    </div>
-                    <div className="text-xs text-slate-500">「{otcSignal.benchCode} {otcSignal.benchName}」溢价偏高且「{otcSignal.lowestCode} {otcSignal.lowestName}」溢价偏低，出现反向套利机会。</div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={openQuickRecordFromOtc}
-                  className={cx(secondaryButtonClass, 'h-8 w-full px-3 text-xs sm:w-auto')}
-                  title="记录此次场内→场外切换到持仓 ledger"
-                >
-                  <ClipboardList className="h-4 w-4" />
-                  记录此次切换
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-sm text-slate-500">
-                <Info className="h-4 w-4 text-slate-400" />
-                {otcSignal.message}
-              </div>
-            )}
-          </div>
-        )}
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center justify-between">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">纳指（场外）基金</div>
-          </div>
-          {otcGroups.length === 0 ? null : (
-            <>
-              <ul className="mt-2 space-y-1 text-sm text-slate-700">
-                {(showAllOtc ? otcGroups : otcGroups.slice(0, 5)).map(({ groupId, fund: f, limit }) => (
-                  <li key={groupId} className="flex flex-col gap-1 rounded-xl px-1 py-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Pill tone="indigo">{(f.share_class || 'A') + (f.currency === 'USD' ? ' / 美元' : '')}</Pill>
-                      {shouldShowAppTag(f, limit) ? <Pill tone="slate">App</Pill> : null}
-                      <span className="font-semibold text-slate-700">{f.code}</span>
-                      <span className="text-slate-500">{f.name || ''}</span>
-                    </div>
-                    {limit ? (
-                      <div className="flex flex-wrap items-center gap-2 pl-1 text-xs text-slate-500">
-                        <Pill tone={limitToneFor(limit.buyStatus)} className="px-2 py-1 text-[11px]">{limitLabelFor(limit.buyStatus)}</Pill>
-                        {Number(limit.maxPurchasePerDay) > 0 && (
-                          <span className="inline-flex flex-wrap items-center gap-1">
-                            单户日上限 <span className="font-semibold text-slate-700 tabular-nums">{formatLimitAmount(limit.maxPurchasePerDay)}</span>
-                          </span>
-                        )}
-                        {Number(limit.minPurchase) > 0 && (
-                          <span>起购 <span className="tabular-nums">{formatLimitAmount(limit.minPurchase)}</span></span>
-                        )}
-                        {limit.fixedInvest === false ? (
-                          <span className="text-slate-400">定投暂停</span>
-                        ) : Number(limit.fixedInvestMin) > 0 ? (
-                          <span>定投起额 <span className="tabular-nums">{formatLimitAmount(limit.fixedInvestMin)}</span></span>
-                        ) : null}
-                        {limit.effectiveDate && (
-                          <span className="text-slate-400">生效 {limit.effectiveDate}</span>
-                        )}
-                        {limit.sourceUrl && (
-                          <a
-                            href={limit.sourceUrl}
-                            target="_blank"
-                            rel="noreferrer noopener"
-                            className="ml-auto text-indigo-500 hover:text-indigo-600 hover:underline"
-                            title={limit.sourceTitle || '基金公司限额公告'}
-                          >
-                            公告 ↗
-                          </a>
-                        )}
-                      </div>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-              {otcGroups.length > 5 && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllOtc((v) => !v)}
-                  className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-indigo-500 hover:text-indigo-600"
-                >
-                  {showAllOtc ? '收起' : '展示更多'}
-                  <ChevronDown className={`h-4 w-4 transition-transform ${showAllOtc ? 'rotate-180' : ''}`} />
-                </button>
-              )}
-            </>
-          )}
-        </div>
-      </Card>
-
-      {quickRecord && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-slate-900/40 p-3 sm:items-center sm:p-4">
-          <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl sm:rounded-3xl sm:p-6">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">快捷记录</div>
-                <div className="mt-1 text-lg font-semibold text-slate-800">登记一次场内 / 场外切换</div>
-                <div className="mt-1 text-xs text-slate-500">写入持仓 ledger 的一对 SELL/BUY 交易，并自动配对 switchPairId，复盘与持仓总览均会读取。</div>
-              </div>
-              <button type="button" onClick={() => setQuickRecord(null)} className="text-xs text-slate-400 hover:text-slate-600">关闭</button>
-            </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-xs text-slate-500 sm:col-span-2">
-                日期
-                <input
-                  type="date"
-                  value={quickRecord.date || ''}
-                  onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, date: e.target.value } : prev))}
-                  className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none"
-                />
-              </label>
-              <div className="rounded-2xl border border-rose-100 bg-rose-50/60 p-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-500">卖出</div>
-                <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">代码
-                  <input value={quickRecord.sellCode || ''} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, sellCode: e.target.value.trim() } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none" />
-                </label>
-                <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">名称
-                  <input value={quickRecord.sellName || ''} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, sellName: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none" />
-                </label>
-                <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">成交价
-                  <input type="number" step="0.0001" value={quickRecord.sellPrice} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, sellPrice: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-800 focus:border-indigo-300 focus:outline-none" />
-                </label>
-                <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">份额
-                  <input type="number" step="1" value={quickRecord.sellShares} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, sellShares: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-800 focus:border-indigo-300 focus:outline-none" />
-                </label>
-              </div>
-              <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600">买入</div>
-                <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">代码
-                  <input value={quickRecord.buyCode || ''} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, buyCode: e.target.value.trim() } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none" />
-                </label>
-                <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">名称
-                  <input value={quickRecord.buyName || ''} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, buyName: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none" />
-                </label>
-                <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">成交价
-                  <input type="number" step="0.0001" value={quickRecord.buyPrice} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, buyPrice: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-800 focus:border-indigo-300 focus:outline-none" />
-                </label>
-                <label className="mt-2 flex flex-col gap-1 text-xs text-slate-500">份额
-                  <input type="number" step="1" value={quickRecord.buyShares} onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, buyShares: e.target.value } : prev))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums text-slate-800 focus:border-indigo-300 focus:outline-none" />
-                </label>
-              </div>
-              <label className="flex flex-col gap-1 text-xs text-slate-500 sm:col-span-2">备注
-                <textarea
-                  rows={2}
-                  value={quickRecord.note || ''}
-                  onChange={(e) => setQuickRecord((prev) => (prev ? { ...prev, note: e.target.value } : prev))}
-                  className="resize-y rounded-md border border-slate-200 bg-white px-2 py-1 text-sm leading-5 text-slate-800 focus:border-indigo-300 focus:outline-none"
-                />
-              </label>
-            </div>
-            {!quickRecordValid && (
-              <div className="mt-3 text-xs text-rose-500">需要填写卖出 / 买入的代码、成交价和份额（均为正数）。</div>
-            )}
-            <div className="mt-5 flex items-center justify-end gap-2">
-              <button type="button" onClick={() => setQuickRecord(null)} className={cx(secondaryButtonClass, 'h-9 px-4 text-xs')}>取消</button>
-              <button type="button" onClick={saveQuickRecord} disabled={!quickRecordValid} className={cx(primaryButtonClass, 'h-9 px-4 text-xs', !quickRecordValid && 'cursor-not-allowed opacity-50')}>保存到持仓 ledger</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {snapshotCandModal && typeof document !== "undefined" ? createPortal((
-        <div
-          className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4"
-          onClick={() => setSnapshotCandModal(null)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
-              <div className="min-w-0">
-                <div className="text-xs uppercase tracking-[0.18em] text-slate-400">快照候选详情</div>
-                <div className="mt-0.5 text-sm font-semibold text-slate-900">基准 {snapshotCandModal.bench.benchmarkCode}{snapshotCandModal.bench.benchmarkName ? <span className="ml-1 font-normal text-slate-500">· {snapshotCandModal.bench.benchmarkName}</span> : null}</div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSnapshotCandModal(null)}
-                className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                aria-label="关闭"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="overflow-y-auto px-2 py-3 sm:px-4 sm:py-4">
-              <div className="overflow-x-auto">
-                <table className="min-w-[520px] w-full overflow-hidden rounded-lg border border-slate-200 text-xs">
-                  <thead className="bg-slate-50 text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2 text-left">候选</th>
-                      <th className="px-3 py-2 text-right">现价</th>
-                      <th className="px-3 py-2 text-right">净值</th>
-                      <th className="px-3 py-2 text-right">溢价</th>
-                      <th className="px-3 py-2 text-right">与基准差</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(snapshotCandModal.bench.candidates || []).map((c) => {
-                      const diff = Number(c.spreadVsBenchmarkPct);
-                      const benchClass = snapshotCandModal.cls[snapshotCandModal.bench.benchmarkCode];
-                      const candClass = snapshotCandModal.cls[c.code];
-                      const eligible = (benchClass === 'H' || benchClass === 'L') && (candClass === 'H' || candClass === 'L') && benchClass !== candClass;
-                      let inA = false;
-                      let inB = false;
-                      if (eligible && Number.isFinite(diff)) {
-                        const gap = benchClass === 'H' ? diff : -diff;
-                        if (benchClass === 'L' && Number.isFinite(snapshotCandModal.sellLower) && gap < snapshotCandModal.sellLower) inA = true;
-                        if (benchClass === 'H' && Number.isFinite(snapshotCandModal.buyOther) && gap > snapshotCandModal.buyOther) inB = true;
-                      }
-                      const colorCls = inA ? 'text-emerald-700 font-semibold' : inB ? 'text-rose-700 font-semibold' : 'text-slate-600';
-                      return (
-                        <tr key={`modal-${snapshotCandModal.bench.benchmarkCode}-${c.code}`} className="border-t border-slate-100">
-                          <td className="px-3 py-2"><span className="font-semibold">{c.code}</span>{c.name ? <span className="ml-1 text-slate-400">{c.name}</span> : null}</td>
-                          <td className="px-3 py-2 text-right">{formatPrice(c.price)}</td>
-                          <td className="px-3 py-2 text-right">{formatPrice(c.nav)}{c.navDate ? <span className="ml-1 text-slate-400">@{c.navDate}</span> : null}</td>
-                          <td className="px-3 py-2 text-right">{formatPercent(c.premiumPct, 2, true)}</td>
-                          <td className={cx('px-3 py-2 text-right', colorCls)}>{formatPercent(c.spreadVsBenchmarkPct, 2, true)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <div className="mt-3 px-1 text-[11px] leading-5 text-slate-400">
-                <div><span className="font-semibold text-emerald-700">绿色</span>：命中规则 A（差价收窄，低→高）。</div>
-                <div><span className="font-semibold text-rose-700">红色</span>：命中规则 B（差价扩大，高→低）。</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      ), document.body) : null}
+      <SwitchStrategySnapshotModal
+        snapshotCandModal={snapshotCandModal}
+        setSnapshotCandModal={setSnapshotCandModal}
+        formatPrice={formatPrice}
+        formatPercent={formatPercent}
+      />
 
     </div>
   );

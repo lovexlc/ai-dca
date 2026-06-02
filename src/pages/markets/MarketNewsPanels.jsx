@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
-import { ChevronDown, ChevronRight, ExternalLink, Search } from 'lucide-react';
-import { cx } from '../../components/experience-ui.jsx';
+import { ChevronDown, ChevronRight, ChevronUp, ExternalLink, Loader2, RefreshCw, Search } from 'lucide-react';
+import { Card, cx } from '../../components/experience-ui.jsx';
 
 export function formatClock(value) {
   if (!value) return '';
@@ -169,6 +169,91 @@ export function NewsList({ items = [] }) {
         );
       })}
     </ul>
+  );
+}
+
+export function SummaryModule({ themes = [], loading, onRefresh }) {
+  const hasContent = Array.isArray(themes) && themes.length > 0;
+  const [expanded, setExpanded] = useState({ 0: true });
+  const toggleTheme = useCallback((idx) => {
+    setExpanded((prev) => ({ ...prev, [idx]: !prev[idx] }));
+  }, []);
+  return (
+    <Card className="space-y-0">
+      <div className="flex items-center justify-between gap-3 pb-1">
+        <h2 className="text-lg font-semibold text-slate-900">美国市场概况</h2>
+        <div className="flex items-center gap-2">
+          {loading && <Loader2 size={12} className="animate-spin text-slate-400" />}
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={onRefresh}
+              aria-label="重新生成主题"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-indigo-600"
+            >
+              <RefreshCw size={12} />
+            </button>
+          )}
+        </div>
+      </div>
+      {hasContent ? (
+        <ul className="divide-y divide-slate-200/70">
+          {themes.map((t, idx) => {
+            const isOpen = !!expanded[idx];
+            const sources = (t.sources || []).filter((s) => s && s.url);
+            return (
+              <li key={idx} className="py-3.5 first:pt-3 last:pb-3">
+                <button
+                  type="button"
+                  onClick={() => toggleTheme(idx)}
+                  className="flex w-full items-start justify-between gap-4 text-left"
+                  aria-expanded={isOpen}
+                >
+                  <span className="min-w-0 flex-1 text-[16px] font-semibold leading-snug text-slate-900">{t.title}</span>
+                  <span className="flex shrink-0 items-center gap-2 pt-0.5">
+                    {sources.length > 0 && (
+                      <span className="flex items-center gap-1.5">
+                        <span className="flex -space-x-1">
+                          {sources.slice(0, 3).map((s, i) => {
+                            const fav = siteFavicon(s.url);
+                            return fav ? (
+                              <img
+                                key={i}
+                                src={fav}
+                                alt=""
+                                loading="lazy"
+                                className="h-4 w-4 rounded-full ring-2 ring-white"
+                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                              />
+                            ) : (
+                              <span key={i} className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-[8px] font-semibold text-slate-500 ring-2 ring-white">
+                                {sourceInitials(s.source || siteHost(s.url))}
+                              </span>
+                            );
+                          })}
+                        </span>
+                        <span className="text-[11px] text-slate-500">{sources.length}个网站</span>
+                      </span>
+                    )}
+                    {isOpen
+                      ? <ChevronUp size={18} className="text-slate-400" />
+                      : <ChevronDown size={18} className="text-slate-400" />}
+                  </span>
+                </button>
+                {isOpen && (
+                  <div className="space-y-3 pt-3">
+                    <p className="text-[13.5px] leading-[1.7] text-slate-600">{t.detail}</p>
+                    <ThemeExploreButton theme={t} />
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : !loading ? (
+        <p className="py-3 text-sm text-slate-400">暂未生成主题摘要。点右侧刷新按钮可请求重新生成。</p>
+      ) : null}
+    </Card>
   );
 }
 
