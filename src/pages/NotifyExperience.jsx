@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp, RefreshCw, Wallet } from 'lucide-react';
+import { ChevronDown, ChevronUp, RefreshCw, Send, Wallet } from 'lucide-react';
 import {
   loadNotifyEvents,
   loadNotifyStatus,
