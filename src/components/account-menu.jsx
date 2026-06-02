@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, CloudDownload, GitMerge, Home, KeyRound, Loader2, LogOut, UserRound, X } from 'lucide-react';
+import { AlertTriangle, CloudDownload, GitMerge, Home, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
 import { ensureLocalChangeBaseline, loadCloudSyncMeta, mergeLocalIntoCloudBackup, prepareCloudSyncConflict, refreshRemoteCloudMeta, restoreEncryptedCloudBackup, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
 import { clearRememberedKey, generateSecurityPassword, loadRememberedKey } from '../app/secureVault.js';
@@ -56,6 +56,7 @@ export function AccountMenu() {
   const [busy, setBusy] = useState('');
   const [conflict, setConflict] = useState(null);
   const [conflictPassword, setConflictPassword] = useState('');
+  const [manualSyncPassword, setManualSyncPassword] = useState('');
   const [homePref, setHomePref] = useState(() => readWorkspacePrefs().homepageTab);
   const [homeSaved, setHomeSaved] = useState(false);
   const [open, setOpen] = useState(false);
@@ -256,6 +257,89 @@ export function AccountMenu() {
     }
   }
 
+  async function handleManualSync() {
+    const remembered = loadRememberedKey();
+    const useRemembered = Boolean(remembered?.rawKey);
+    const secret = useRemembered ? '' : (manualSyncPassword || form.securityPassword);
+    if (!useRemembered && secret.length < 8) {
+      showToast({ title: '需要安全密码', description: '请输入安全密码后再同步。', tone: 'amber' });
+      return;
+    }
+    setBusy('manual-sync');
+    setSyncState('syncing');
+    setLastError('');
+    try {
+      const remoteMeta = await refreshRemoteCloudMeta();
+      const hasRemoteBackup = Boolean(remoteMeta?.version);
+      ensureLocalChangeBaseline();
+      let syncResult = 'no-remote';
+      let result = null;
+
+      if (hasRemoteBackup) {
+        const nextConflict = await prepareCloudSyncConflict({
+          securityPassword: secret,
+          useRemembered
+        });
+        if (nextConflict?.hasConflict) {
+          setConflict(nextConflict);
+          setSyncState('conflict');
+          showToast({ title: '检测到同步冲突', description: nextConflict.summaryText, tone: 'amber' });
+          return;
+        }
+        if (nextConflict?.hasLocalChanges) {
+          result = await mergeLocalIntoCloudBackup({
+            securityPassword: secret,
+            rememberDevice: form.rememberDevice,
+            useRemembered
+          });
+          syncResult = 'merged';
+          window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result } }));
+        } else {
+          result = await restoreEncryptedCloudBackup({
+            securityPassword: secret,
+            useRemembered,
+            rememberDevice: form.rememberDevice,
+            onlyIfRemoteNewer: true
+          });
+          syncResult = result?.skipped ? 'skipped-restore' : 'restored';
+          window.dispatchEvent(new CustomEvent('cloud-sync:auto-restored', { detail: { result } }));
+        }
+      } else if (collectBackupPayload().keys.length > 0) {
+        result = await uploadEncryptedCloudBackup({
+          securityPassword: secret,
+          rememberDevice: form.rememberDevice,
+          force: true,
+          useRemembered
+        });
+        syncResult = result?.skipped ? 'skipped-upload' : 'uploaded';
+        window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result } }));
+      }
+
+      setManualSyncPassword('');
+      setConflict(null);
+      setMeta(loadCloudSyncMeta());
+      setPreview(collectBackupPayload());
+      setSyncState('synced');
+      showToast({
+        title: '手动同步完成',
+        description: syncResult === 'restored' ? '已恢复云端较新数据。' : syncResult === 'merged' ? '已合并本机与云端数据。' : syncResult === 'uploaded' ? '已创建云端备份。' : '本地与云端无需更新。',
+        tone: 'emerald'
+      });
+    } catch (err) {
+      if (err?.isCloudSyncConflict) {
+        setConflict(err.conflict || null);
+        setSyncState('conflict');
+        showToast({ title: '检测到同步冲突', description: err?.conflict?.summaryText || err.message, tone: 'amber' });
+      } else {
+        setSyncState('error');
+        showToast({ title: '手动同步失败', description: err?.message || String(err), tone: 'red' });
+      }
+      setLastError(err?.message || String(err));
+    } finally {
+      setBusy('');
+    }
+  }
+
   function handleLogout() {
     clearCloudSession();
     clearRememberedKey();
@@ -284,6 +368,7 @@ export function AccountMenu() {
     ? '填写安全密码'
     : '';
   const loggedIn = Boolean(session?.accessToken);
+  const hasRememberedSyncKey = loggedIn && Boolean(loadRememberedKey()?.rawKey);
   const initial = loggedIn ? String(session.username || '?').slice(0, 1).toUpperCase() : '';
   const previewBytes = preview.keys.reduce((sum, key) => sum + (preview.entries[key]?.length || 0), 0);
   const statusLabel = !loggedIn
@@ -350,6 +435,34 @@ export function AccountMenu() {
                     </div>
                   </div>
                   <div className="text-xs text-slate-500">范围 {preview.keys.length} 项 · {formatBytes(previewBytes)}</div>
+                  <div className="space-y-2 rounded-xl border border-indigo-100 bg-indigo-50/70 p-3">
+                    <div className="flex items-start gap-2 text-xs text-indigo-900">
+                      <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 text-indigo-600" aria-hidden="true" />
+                      <div className="min-w-0">
+                        <div className="font-bold">手动同步</div>
+                        <div className="mt-0.5 leading-5 text-indigo-700">登录后仍停在等待同步时，可手动检查云端并上传或合并本机数据。</div>
+                      </div>
+                    </div>
+                    {!hasRememberedSyncKey ? (
+                      <input
+                        className={cx(inputClass, 'h-9 border-indigo-200 bg-white text-xs')}
+                        type="password"
+                        value={manualSyncPassword}
+                        onChange={(event) => setManualSyncPassword(event.target.value)}
+                        placeholder="安全密码"
+                        autoComplete="off"
+                      />
+                    ) : null}
+                    <button
+                      type="button"
+                      className={cx(primaryButtonClass, 'min-h-9 w-full justify-center px-3 py-2 text-xs')}
+                      onClick={handleManualSync}
+                      disabled={Boolean(busy)}
+                    >
+                      {busy === 'manual-sync' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                      {busy === 'manual-sync' ? '正在同步' : '立即同步'}
+                    </button>
+                  </div>
                   {conflict ? (
                     <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
                       <div className="flex items-start gap-2">
