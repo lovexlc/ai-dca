@@ -551,10 +551,10 @@ function ChapterModalBody({ id, navigate, closeModal, demoMeta, onInstallDemo, o
           </Card>
           <Card>
             <Pill tone="emerald">Android</Pill>
-            <h3 className="mt-3 text-base font-bold text-slate-900">复制完整测试 URL</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-500">打开 Android 推送 App，复制灰色框里的消息推送 ID 或完整测试 URL，系统会自动提取。</p>
-            <ScreenshotImage src="/strategy-guide/android-example.jpg" alt="Android 复制推送 ID 示例" caption="复制灰色框里的 android-... ID。" />
-            <button type="button" className={cx(primaryButtonClass, 'mt-5 w-full')} onClick={() => go('notify')}>去绑定 Android 设备</button>
+            <h3 className="mt-3 text-base font-bold text-slate-900">配置 Server酱³</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-500">在通知页填写 Server酱³ UID 与 SendKey，保存后会作为一台 Android 推送设备。旧版 App 的设备 ID / 测试 URL 入口仅保留兼容。</p>
+            <ScreenshotImage src="/strategy-guide/android-example.jpg" alt="Android 旧版推送 ID 示例" caption="旧版 android-... ID 仍可兼容绑定。" />
+            <button type="button" className={cx(primaryButtonClass, 'mt-5 w-full')} onClick={() => go('notify')}>去配置 Android 推送</button>
           </Card>
           <Card>
             <Pill tone="slate">PC 浏览器</Pill>

@@ -102,12 +102,13 @@ export function NotifyExperience({ embedded = false }) {
   const barkConfigured = Boolean(notifyStatus?.configured?.bark);
   const serverChan3Configured = Boolean(notifyStatus?.configured?.serverChan3 || androidSetup?.serverChan3?.configured);
   const androidConfigured = pairedAndroidDevices.length > 0 || serverChan3Configured;
+  const androidDeviceCount = pairedAndroidDevices.length + (serverChan3Configured ? 1 : 0);
 
   const summary = useMemo(() => {
     const channelLabels = [];
     if (barkConfigured) channelLabels.push('iOS Bark');
-    if (pairedAndroidDevices.length > 0) channelLabels.push('Android FCM');
-    if (serverChan3Configured) channelLabels.push('Server酱³');
+    if (serverChan3Configured) channelLabels.push('Android Server酱³');
+    if (pairedAndroidDevices.length > 0) channelLabels.push('Android FCM 旧版');
     if (webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled) {
       channelLabels.push('PC 浏览器');
     }
@@ -115,11 +116,11 @@ export function NotifyExperience({ embedded = false }) {
       channelStatus: channelLabels.length ? '已配置' : '未配置',
       channelNote: channelLabels.length
         ? `${channelLabels.join(' / ')} 可发送`
-        : '请先配置 iOS Bark、绑定 Android 设备，或授权 PC 浏览器通知',
-      androidDeviceCount: pairedAndroidDevices.length,
+        : '请先配置 iOS Bark、Android Server酱³，或授权 PC 浏览器通知',
+      androidDeviceCount,
       serverChan3Configured
     };
-  }, [barkConfigured, pairedAndroidDevices.length, serverChan3Configured, webNotifySupported, webNotifyPermission, webNotifyEnabled]);
+  }, [androidDeviceCount, barkConfigured, pairedAndroidDevices.length, serverChan3Configured, webNotifySupported, webNotifyPermission, webNotifyEnabled]);
 
   async function handleRequestWebNotifyPermission() {
     const result = await requestWebNotifyPermission();
@@ -728,7 +729,7 @@ export function NotifyExperience({ embedded = false }) {
     <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
 <div className="grid gap-4 md:grid-cols-3">
         <StatCard accent="indigo" eyebrow="通道状态" value={summary.channelStatus} note={summary.channelNote} />
-        <StatCard eyebrow="Android 通道" value={serverChan3Configured ? 'Server酱³' : `${summary.androidDeviceCount} 台`} note="在 Android tab 添加 FCM 或 Server酱³" />
+        <StatCard eyebrow="Android 通道" value={`${summary.androidDeviceCount} 台`} note="优先使用 Server酱³，旧 FCM 设备保留兼容" />
         <StatCard eyebrow="iOS Bark" value={barkConfigured ? '已配置' : '未配置'} note="在 iOS tab 填入 Bark device key" />
       </div>
 

@@ -42,6 +42,14 @@ export function NotifyConfigCard({
   handleSendLocalWebNotifyTest,
   handleToggleWebNotifyEnabled
 }) {
+  const serverChan3Configured = Boolean(summary?.serverChan3Configured || androidSetup?.serverChan3?.configured);
+  const androidDeviceCount = Number(summary?.androidDeviceCount ?? pairedAndroidDevices.length + (serverChan3Configured ? 1 : 0));
+  const serverChan3StatusLabel = serverChan3Configured
+    ? '已配置'
+    : notifyConfig.serverChan3Uid
+      ? '待保存'
+      : '未配置';
+
   return (
     <Card className="min-w-0">
       <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between">
@@ -58,7 +66,7 @@ export function NotifyConfigCard({
             <div className="mt-1 text-xs leading-5 text-slate-500">
               {isConfigCollapsed
                 ? summary.channelNote
-                : '统一管理 iOS Bark、Android 设备配对，以及多浏览器共享通知组。其他 tab 触发通知时复用这里的配置。'}
+                : '统一管理 iOS Bark、Android Server酱³，以及多浏览器共享通知组。旧版 Android 设备配对入口保留兼容。'}
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2 pt-1">
@@ -100,7 +108,7 @@ export function NotifyConfigCard({
         <>
           {notifyPlatform === 'android' ? (
             <div className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
-              APK 下载地址：
+              旧版 Android App 下载地址：
               <a
                 className="ml-1 inline-flex items-center gap-1 font-semibold underline underline-offset-4"
                 href={ANDROID_APK_DOWNLOAD_URL}
@@ -133,8 +141,8 @@ export function NotifyConfigCard({
                 <div className="mt-2 text-sm font-semibold text-slate-700">{notifyConfig.notifyClientLabel}</div>
               </div>
               <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">已绑定 Android 设备</div>
-                <div className="mt-2 text-sm font-semibold text-slate-700">{pairedAndroidDevices.length} 台</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Android 推送设备</div>
+                <div className="mt-2 text-sm font-semibold text-slate-700">{androidDeviceCount} 台</div>
               </div>
             </div>
             <div className="mt-4 rounded-2xl bg-slate-950 px-4 py-3 font-mono text-xs text-slate-100">
@@ -145,7 +153,7 @@ export function NotifyConfigCard({
           <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-5">
             {notifyPlatform === 'android' ? (
               <div className="space-y-4" role="tabpanel" id="notify-panel">
-                <h3 className="text-base font-bold text-slate-900">Android 设备绑定</h3>
+                <h3 className="text-base font-bold text-slate-900">Android 推送设置</h3>
                 <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -154,8 +162,8 @@ export function NotifyConfigCard({
                         使用官方 Server酱³ 服务端 API 发送到 Android。填写 UID 与 SendKey 后，通知 Worker 会通过 https://&lt;uid&gt;.push.ft07.com/send/&lt;sendkey&gt;.send 投递。
                       </p>
                     </div>
-                    <Pill tone={notifyConfig.serverChan3Uid ? 'emerald' : 'slate'}>
-                      {notifyConfig.serverChan3Uid ? '已填写' : '未配置'}
+                    <Pill tone={serverChan3Configured ? 'emerald' : notifyConfig.serverChan3Uid ? 'amber' : 'slate'}>
+                      {serverChan3StatusLabel}
                     </Pill>
                   </div>
                   <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end">
@@ -191,30 +199,56 @@ export function NotifyConfigCard({
                     </div>
                   ) : null}
                 </div>
-                <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
-                  <Field label="Android 设备 ID / 测试 URL" helper="粘贴 Android App 里的设备 ID 或完整测试 URL，系统会自动识别。">
-                    <TextInput
-                      value={androidPairingCode}
-                      placeholder="粘贴完整测试 URL 或 android- 开头 ID"
-                      onChange={(event) => setAndroidPairingCode(event.target.value)}
-                    />
-                  </Field>
-                  <div className="flex flex-col gap-1">
-                    <button className={primaryButtonClass} type="button" onClick={handlePairAndroidCode} disabled={isPairingAndroid || !androidPairingCode.trim()}>
-                      <Save className="h-4 w-4" />
-                      {isPairingAndroid ? '正在绑定 Android 设备' : '绑定 Android 设备'}
-                    </button>
-                    {androidPairingCode.trim() ? null : <span className="text-xs text-slate-400">粘贴 Android 链接或 ID 后可绑定</span>}
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 px-5 py-5">
+                  <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">旧版 Android App 兼容入口</div>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        Android 设备 ID / 测试 URL 正在逐步废弃；新配置优先使用上方 Server酱³。
+                      </p>
+                    </div>
+                    <Pill tone="slate">旧版</Pill>
+                  </div>
+                  <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+                    <Field label="Android 设备 ID / 测试 URL" helper="仅用于保留旧 App 设备；粘贴设备 ID 或完整测试 URL 后会自动识别。">
+                      <TextInput
+                        value={androidPairingCode}
+                        placeholder="粘贴完整测试 URL 或 android- 开头 ID"
+                        onChange={(event) => setAndroidPairingCode(event.target.value)}
+                      />
+                    </Field>
+                    <div className="flex flex-col gap-1">
+                      <button className={secondaryButtonClass} type="button" onClick={handlePairAndroidCode} disabled={isPairingAndroid || !androidPairingCode.trim()}>
+                        <Save className="h-4 w-4" />
+                        {isPairingAndroid ? '正在绑定旧版设备' : '绑定旧版设备'}
+                      </button>
+                      {androidPairingCode.trim() ? null : <span className="text-xs text-slate-400">旧 App 链接或 ID 可继续绑定</span>}
+                    </div>
                   </div>
                 </div>
 
                 <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-slate-900">当前浏览器已关联的 Android 设备</div>
-                    <Pill tone={pairedAndroidDevices.length ? 'emerald' : 'slate'}>
-                      {pairedAndroidDevices.length ? `${pairedAndroidDevices.length} 台已关联` : '未关联'}
+                    <div className="text-sm font-semibold text-slate-900">当前 Android 推送设备</div>
+                    <Pill tone={androidDeviceCount ? 'emerald' : 'slate'}>
+                      {androidDeviceCount ? `${androidDeviceCount} 台可用` : '未配置'}
                     </Pill>
                   </div>
+                  {serverChan3Configured ? (
+                    <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-sm font-semibold text-slate-900">Server酱³ Android</div>
+                        <Pill tone="emerald">已配置</Pill>
+                      </div>
+                      <div className="mt-2 text-sm text-slate-500">
+                        {androidSetup?.serverChan3?.uid ? `UID: ${androidSetup.serverChan3.uid}` : 'Server酱³ Android 推送通道'}
+                      </div>
+                      <div className="mt-3 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
+                        <div>通道类型: Server酱³</div>
+                        <div>SendKey: {androidSetup?.serverChan3?.sendKeyMasked || '已隐藏'}</div>
+                      </div>
+                    </div>
+                  ) : null}
                   {pairedAndroidDevices.length ? (
                     <div className="mt-4 space-y-3">
                       {pairedAndroidDevices.map((registration) => (
@@ -250,10 +284,10 @@ export function NotifyConfigCard({
                         </div>
                       ))}
                     </div>
-                  ) : (
+                  ) : serverChan3Configured ? null : (
                     <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center">
-                      <div className="text-sm font-semibold text-slate-900">未绑定 Android 设备</div>
-                      <div className="mt-1 text-xs text-slate-400">粘贴设备 ID 后绑定</div>
+                      <div className="text-sm font-semibold text-slate-900">未绑定旧版 Android App 设备</div>
+                      <div className="mt-1 text-xs text-slate-400">旧版设备 ID / 测试 URL 入口保留兼容；新配置请使用 Server酱³。</div>
                     </div>
                   )}
                 </div>
