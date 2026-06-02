@@ -107,8 +107,30 @@ function combineAnnualFee(...rates) {
   return Math.round(nums.reduce((sum, n) => sum + n, 0) * 10000) / 10000;
 }
 
+function rateRowsToNumbers(rows = []) {
+  return (Array.isArray(rows) ? rows : [])
+    .map((row) => {
+      const values = Array.isArray(row)
+        ? row
+        : row && typeof row === 'object'
+          ? Object.values(row)
+          : [row];
+      const percentText = values.find((value) => /[%％]/.test(String(value || '')));
+      const fallbackText = values.length > 1 ? values[values.length - 1] : values[0];
+      return parsePercent(percentText ?? fallbackText);
+    })
+    .filter((rate) => Number.isFinite(Number(rate)));
+}
+
+function combineRateRows(rows = []) {
+  return combineAnnualFee(...rateRowsToNumbers(rows));
+}
+
 function buildUnifiedFee({ code, source, fundType, purchaseRules = [], redeemRules = [], operationFees = [], managementFeeRate = null, custodyFeeRate = null, salesServiceFeeRate = null, notice = '' }) {
-  const annualFeeRate = combineAnnualFee(managementFeeRate, custodyFeeRate, salesServiceFeeRate);
+  const operationFeeRate = combineRateRows(operationFees);
+  const annualFeeRate = fundType === 'otc' && operationFeeRate != null
+    ? operationFeeRate
+    : combineAnnualFee(managementFeeRate, custodyFeeRate, salesServiceFeeRate);
   return {
     code,
     fundType,
@@ -116,6 +138,7 @@ function buildUnifiedFee({ code, source, fundType, purchaseRules = [], redeemRul
     managementFeeRate,
     custodyFeeRate,
     salesServiceFeeRate,
+    operationFeeRate,
     annualFeeRate,
     purchaseRules,
     redeemRules,

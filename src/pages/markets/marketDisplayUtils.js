@@ -113,6 +113,51 @@ export function resolveFundFeeRate(row) {
   return Number.isFinite(Number(fallback)) ? Number(fallback) : null;
 }
 
+function parseRateValue(value) {
+  if (value == null) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.abs(value) <= 1 ? value * 100 : value;
+  const text = String(value || '')
+    .replace(/,/g, '')
+    .replace(/％/g, '%')
+    .replace(/每年|年|\(.*?\)|（.*?）/g, '')
+    .trim();
+  if (!text || /暂无|不适用|无|--|—/.test(text)) return null;
+  const match = text.match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const n = Number(match[0]);
+  if (!Number.isFinite(n)) return null;
+  return Math.round((Math.abs(n) <= 1 && !/%/.test(text) ? n * 100 : n) * 10000) / 10000;
+}
+
+function ratesFromRuleRows(rows = []) {
+  return (Array.isArray(rows) ? rows : [])
+    .map((row) => {
+      const values = Array.isArray(row)
+        ? row
+        : row && typeof row === 'object'
+          ? Object.values(row)
+          : [row];
+      const percentText = values.find((value) => /[%％]/.test(String(value || '')));
+      const fallbackText = values.length > 1 ? values[values.length - 1] : values[0];
+      return parseRateValue(percentText ?? fallbackText);
+    })
+    .filter((rate) => Number.isFinite(Number(rate)));
+}
+
+export function resolveRedeemFeeRate(row) {
+  const explicit = rowMetric(row, ['redeemFeeRate', 'redemptionFeeRate', 'sellFeeRate']);
+  const explicitRate = parseRateValue(explicit);
+  if (Number.isFinite(Number(explicitRate))) return explicitRate;
+  const rates = ratesFromRuleRows(row?.fundFee?.redeemRules);
+  if (!rates.length) return null;
+  return Math.max(...rates);
+}
+
+export function formatRedeemFeeRate(row) {
+  const rate = resolveRedeemFeeRate(row);
+  return Number.isFinite(Number(rate)) ? formatNumber(rate, 2) : '—';
+}
+
 export function formatFeeRate(row) {
   const rate = resolveFundFeeRate(row);
   return Number.isFinite(Number(rate)) ? formatNumber(rate, 1) : '—';

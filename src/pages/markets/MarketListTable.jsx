@@ -19,10 +19,12 @@ import {
   formatNumber,
   formatPercent,
   formatPremiumPercent,
+  formatRedeemFeeRate,
   formatSymbolDisplay,
   formatTotalShares,
   formatYearPercent,
   resolveFundFeeRate,
+  resolveRedeemFeeRate,
   resolvePremiumPercent
 } from './marketDisplayUtils.js';
 import {
@@ -182,6 +184,14 @@ export function MarketListTable({
       cell: ({ row }) => <span className={cx('font-semibold tabular-nums', feeRateToneClass(row.original))}>{formatFeeRate(row.original)}</span>,
       sortingFn: numericSortFn,
     },
+    {
+      id: 'redeemFeeRate',
+      accessorFn: (row) => Number(resolveRedeemFeeRate(row)),
+      meta: { label: '卖出费率' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="卖出费率" />,
+      cell: ({ row }) => <span className="font-semibold tabular-nums text-[#5f6368]">{formatRedeemFeeRate(row.original)}</span>,
+      sortingFn: numericSortFn,
+    },
     !hideTrendColumn ? {
       id: 'trend',
       accessorFn: (row) => Number(row.changePercent),
@@ -250,6 +260,7 @@ export function MarketListTable({
             <th className={cx(cellPad, 'text-right')}>年内涨幅</th>
             <th className={cx(cellPad, 'text-right')}>总份额</th>
             <th className={cx(cellPad, 'text-right')}>费率</th>
+            <th className={cx(cellPad, 'text-right')}>卖出费率</th>
             {!hideTrendColumn ? <th className={cx(cellPad, 'text-right')}>趋势</th> : null}
           </tr>
         </thead>
@@ -315,6 +326,7 @@ export function MarketListTable({
                 <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums', changeToneClass(Number(row.currentYearPercent)))}>{formatYearPercent(row)}</td>
                 <td className={cx(cellPad, 'whitespace-nowrap text-right tabular-nums text-[#1f1f1f]')}>{formatTotalShares(row.totalShares)}</td>
                 <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums', feeRateToneClass(row))}>{formatFeeRate(row)}</td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums text-[#5f6368]')}>{formatRedeemFeeRate(row)}</td>
                 {!hideTrendColumn ? (
                   <td className={cx(cellPad, 'text-right')}>
                     <div className="inline-flex justify-end">
