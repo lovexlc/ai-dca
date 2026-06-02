@@ -87,6 +87,7 @@ export function getActiveHoldingCodeList(transactions = []) {
     let runShares = 0;
     for (const tx of sortedTxs) {
       if (tx.type === 'BUY') {
+        if (isPendingOtcBuy(tx)) continue;
         runShares = round(runShares + tx.shares, 4);
       } else if (tx.type === 'SELL') {
         if (isPendingOtcSell(tx)) continue;
@@ -94,7 +95,7 @@ export function getActiveHoldingCodeList(transactions = []) {
         if (runShares <= 0) runShares = 0;
       }
     }
-    if (runShares > 0) active.push(code);
+    if (runShares > 0 || sortedTxs.some((tx) => isPendingOtcBuy(tx))) active.push(code);
   }
   return active.sort();
 }
@@ -368,6 +369,17 @@ export function isPendingOtcSell(tx) {
   return !(Number(tx.price) > 0);
 }
 
+/**
+ * 场外/QDII 基金 BUY 可先按金额提交，等 NAV 回填后再反推份额。
+ * price 为空/0 且 amount > 0 时，先把金额记为待确认申购款。
+ */
+export function isPendingOtcBuy(tx) {
+  if (!tx || tx.type !== 'BUY') return false;
+  const kind = String(tx.kind || '').toLowerCase();
+  if (kind !== 'otc' && kind !== 'qdii') return false;
+  return !(Number(tx.price) > 0) && Number(tx.amount) > 0;
+}
+
 function pushCostLot(lots, shares, price) {
   const qty = round(Number(shares) || 0, 4);
   const px = Number(price) || 0;
@@ -435,6 +447,7 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
         buyAmount: 0,
         sellShares: 0,
         sellAmount: 0,
+        pendingBuyAmount: 0,
         pendingSellShares: 0,
         firstBuyDate: '',
         lastTxDate: ''
@@ -449,8 +462,13 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       bucket.kind = tx.kind;
     }
     if (tx.type === 'BUY') {
-      bucket.buyShares = round(bucket.buyShares + tx.shares, 4);
-      bucket.buyAmount = round(bucket.buyAmount + tx.price * tx.shares, 2);
+      if (isPendingOtcBuy(tx)) {
+        bucket.pendingBuyAmount = round(bucket.pendingBuyAmount + tx.amount, 2);
+        bucket.buyAmount = round(bucket.buyAmount + tx.amount, 2);
+      } else {
+        bucket.buyShares = round(bucket.buyShares + tx.shares, 4);
+        bucket.buyAmount = round(bucket.buyAmount + tx.price * tx.shares, 2);
+      }
       if (tx.date && (!bucket.firstBuyDate || tx.date < bucket.firstBuyDate)) {
         bucket.firstBuyDate = tx.date;
       }
@@ -476,6 +494,8 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     const costLots = [];
     for (const tx of sortedTxs) {
       if (tx.type === 'BUY') {
+        // 待确认 BUY（场外/QDII NAV 未回填）：金额先计入 pending，不提前生成份额/成本批次。
+        if (isPendingOtcBuy(tx)) continue;
         pushCostLot(costLots, tx.shares, tx.price);
       } else if (tx.type === 'SELL') {
         // 待确认 SELL（场外/QDII NAV 未回填）：份额不提前扣减，等 NAV 回填后自动生效。
@@ -519,8 +539,11 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     // BUY 追加批次；SELL 按 FIFO 消耗批次；剩余成本和均价只来自未卖出的批次。
     const totalShares = bucket.movingTotalShares;
     const avgCost = bucket.movingAvgCost;
-    const totalCost = bucket.movingTotalCost;
-    const marketValue = hasCurrentPrice && totalShares > 0 ? round(totalShares * currentPrice, 2) : 0;
+    const pendingBuyAmount = round(Number(bucket.pendingBuyAmount) || 0, 2);
+    const confirmedTotalCost = bucket.movingTotalCost;
+    const totalCost = round(confirmedTotalCost + pendingBuyAmount, 2);
+    const confirmedMarketValue = hasCurrentPrice && totalShares > 0 ? round(totalShares * currentPrice, 2) : 0;
+    const marketValue = round(confirmedMarketValue + pendingBuyAmount, 2);
     const unrealizedProfit = hasCurrentPrice && totalShares > 0 ? round(marketValue - totalCost, 2) : 0;
     const unrealizedReturnRate = totalCost > 0 ? round((marketValue / totalCost - 1) * 100, 2) : 0;
     const previousValue = hasPreviousPrice && totalShares > 0 ? previousPrice * totalShares : 0;
@@ -568,6 +591,7 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       tags: [...tagSet],
       transactions: bucket.transactions,
       buyShares: bucket.buyShares,
+      pendingBuyAmount,
       sellShares: bucket.sellShares,
       pendingSellShares: bucket.pendingSellShares || 0,
       totalShares,
@@ -589,7 +613,7 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       todayProfit,
       todayReturnRate,
       previousValue: round(previousValue, 2),
-      hasPosition: totalShares > 0,
+      hasPosition: totalShares > 0 || pendingBuyAmount > 0,
       hasLatestNav: hasCurrentPrice,
       hasPreviousNav: hasPreviousPrice,
       hasCurrentPrice,
@@ -657,9 +681,11 @@ export function summarizePortfolio(aggregates = [], soldSummary = null) {
     }
     summary.assetCount += 1;
     summary.totalCost = round(summary.totalCost + agg.totalCost, 2);
+    if (agg.hasCurrentPrice || Number(agg.pendingBuyAmount) > 0) {
+      summary.marketValue = round(summary.marketValue + agg.marketValue, 2);
+    }
     if (agg.hasCurrentPrice) {
       summary.pricedCount += 1;
-      summary.marketValue = round(summary.marketValue + agg.marketValue, 2);
       if (agg.snapshotUpdatedAt && agg.snapshotUpdatedAt > summary.latestSnapshotAt) {
         summary.latestSnapshotAt = agg.snapshotUpdatedAt;
       }

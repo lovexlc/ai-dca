@@ -59,12 +59,6 @@ import {
   normalizeSearchResults,
   resolveCnFundName,
 } from './markets/marketsCatalog.js';
-import {
-  formatSwitchLimitAmount,
-  switchLimitToneFor,
-  switchLimitLabelFor,
-} from './switchStrategyHelpers.js';
-
 const MARKETS = [
   { key: 'us', label: '美股' },
   { key: 'cn', label: 'A股' }
@@ -805,13 +799,6 @@ export function MarketsExperience() {
     let baseMeta = '';
     if (isOtc) {
       const parts = ['场外基金'];
-      if (fundLimit) {
-        const tone = switchLimitToneFor(fundLimit.buyStatus);
-        const label = switchLimitLabelFor(fundLimit.buyStatus);
-        const amt = fundLimit.maxPurchasePerDay;
-        const amtText = Number(amt) > 0 ? ` 日限${formatSwitchLimitAmount(amt)}` : '';
-        parts.push(`${label}${amtText}`);
-      }
       parts.push(latestNavDate ? `净值日 ${latestNavDate.slice(5)}` : '净值');
       baseMeta = parts.join(' · ');
     }
@@ -1182,6 +1169,8 @@ export function MarketsExperience() {
       onCreate={handleCreateWatchlist}
       onSelect={handleSelectSymbol}
       showLimitColumn={isActiveOtcList && market === 'cn'}
+      hidePremiumColumn={isActiveOtcList && market === 'cn'}
+      hideTrendColumn={isActiveOtcList && market === 'cn'}
     />
     <div className={cx(
       "flex flex-col gap-5 lg:grid lg:h-[calc(100vh-6rem)] lg:min-h-0 lg:grid-cols-[280px_minmax(0,1fr)_360px] lg:items-stretch lg:gap-4 lg:overflow-hidden lg:pb-0 xl:grid-cols-[320px_minmax(0,1fr)_400px]",

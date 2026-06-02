@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   aggregateByCode,
+  getActiveHoldingCodeList,
   getTransactionErrors,
   normalizeTransaction,
   summarizePortfolio
@@ -266,4 +267,50 @@ test('场外 BUY 可先录入金额，净值确认后自动推导份额', () => 
   }, { todayDate: '2026-06-01' });
   assert.equal(agg.totalShares, 810.0446);
   assert.equal(agg.totalCost, 1000);
+});
+
+test('场外待确认 BUY 金额计入行市值和组合总市值', () => {
+  const pendingBuy = {
+    id: 'pending-buy-amount',
+    code: '000001',
+    name: '场外测试基金',
+    kind: 'otc',
+    type: 'BUY',
+    date: '2026-06-02',
+    price: 0,
+    shares: 0,
+    amount: 1000
+  };
+  const confirmedBuy = {
+    id: 'confirmed-buy',
+    code: '000001',
+    name: '场外测试基金',
+    kind: 'otc',
+    type: 'BUY',
+    date: '2026-05-29',
+    price: 1,
+    shares: 500
+  };
+
+  const [agg] = aggregateByCode([confirmedBuy, pendingBuy], {
+    '000001': {
+      code: '000001',
+      latestNav: 1.1,
+      latestNavDate: '2026-06-02',
+      previousNav: 1,
+      previousNavDate: '2026-06-01'
+    }
+  }, { todayDate: '2026-06-02' });
+
+  assert.equal(agg.totalShares, 500);
+  assert.equal(agg.pendingBuyAmount, 1000);
+  assert.equal(agg.marketValue, 1550);
+  assert.equal(agg.totalCost, 1500);
+  assert.equal(agg.unrealizedProfit, 50);
+
+  const summary = summarizePortfolio([agg]);
+  assert.equal(summary.marketValue, 1550);
+  assert.equal(summary.totalCost, 1500);
+  assert.equal(summary.unrealizedProfit, 50);
+  assert.deepEqual(getActiveHoldingCodeList([pendingBuy]), ['000001']);
 });

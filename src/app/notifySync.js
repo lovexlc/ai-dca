@@ -123,7 +123,7 @@ export function persistNotifyClientConfig(nextConfig = {}) {
 
   window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(payload));
   const platforms = [];
-  if (Boolean(payload.barkDeviceKey)) platforms.push('ios');
+  if (payload.barkDeviceKey) platforms.push('ios');
   if ((nextConfig && nextConfig._hasAndroid) || Boolean(payload.serverChan3Uid && payload.serverChan3SendKey)) platforms.push('android');
   if (nextConfig && nextConfig._hasPC) platforms.push('pc');
   trackAnalyticsEvent('notify_enabled', {
@@ -356,6 +356,12 @@ export function syncTradePlanRules(payload = buildNotifySyncPayload()) {
 
 export function sendNotifyTest(payload = {}) {
   const clientConfig = resolveNotifyClientConfig(payload);
+  const savedConfig = readNotifyClientConfig();
+  const serverChan3Uid = String(payload.serverChan3Uid ?? savedConfig.serverChan3Uid ?? '').trim();
+  const serverChan3SendKey = String(payload.serverChan3SendKey ?? savedConfig.serverChan3SendKey ?? '').trim();
+  const serverChan3 = payload.serverChan3 && typeof payload.serverChan3 === 'object'
+    ? payload.serverChan3
+    : (serverChan3Uid && serverChan3SendKey ? { uid: serverChan3Uid, sendKey: serverChan3SendKey } : undefined);
 
   return requestNotify('/test', {
     clientConfig,
@@ -367,6 +373,10 @@ export function sendNotifyTest(payload = {}) {
       'content-type': 'application/json'
     },
     body: JSON.stringify({
+      ...payload,
+      clientId: clientConfig.clientId,
+      clientLabel: clientConfig.clientLabel,
+      ...(serverChan3 ? { serverChan3 } : {}),
       title: String(payload.title || '交易计划测试提醒'),
       body: String(payload.body || '这是一条测试通知，用来校验当前已接入的提醒通道是否可用。'),
       summary: String(payload.summary || '测试通知'),

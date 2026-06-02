@@ -97,6 +97,11 @@ export function createAggregateHoldingsColumns({
               卖出{formatShares(row.original.pendingSellShares)} 份待确认
             </span>
           ) : null}
+          {row.original.pendingBuyAmount > 0 ? (
+            <span className="ml-1 rounded-full bg-sky-50 px-1.5 py-px text-[10px] font-medium text-sky-600" title={row.original.kind === 'qdii' ? 'QDII 申购：T 日净值由 T+1 晚公布，T+2 确认后自动生成份额' : '场外申购：T 日晚公布 NAV，T+1 确认后自动生成份额'}>
+              买入{formatCurrency(row.original.pendingBuyAmount, '¥', 2)}待确认
+            </span>
+          ) : null}
         </span>
       ),
       sortingFn: numericSortFn,
