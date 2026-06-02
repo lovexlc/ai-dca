@@ -44,11 +44,7 @@ export function NotifyConfigCard({
 }) {
   const serverChan3Configured = Boolean(summary?.serverChan3Configured || androidSetup?.serverChan3?.configured);
   const androidDeviceCount = Number(summary?.androidDeviceCount ?? pairedAndroidDevices.length + (serverChan3Configured ? 1 : 0));
-  const serverChan3StatusLabel = serverChan3Configured
-    ? '已配置'
-    : notifyConfig.serverChan3Uid
-      ? '待保存'
-      : '未配置';
+  const serverChan3StatusLabel = serverChan3Configured ? '已配置' : '未配置';
 
   return (
     <Card className="min-w-0">
@@ -156,13 +152,8 @@ export function NotifyConfigCard({
                 <h3 className="text-base font-bold text-slate-900">Android 推送设置</h3>
                 <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold text-slate-900">Server酱³ Android 推送</div>
-                      <p className="mt-1 text-xs leading-5 text-slate-500">
-                        使用官方 Server酱³ 服务端 API 发送到 Android。填写 UID 与 SendKey 后，通知 Worker 会通过 https://&lt;uid&gt;.push.ft07.com/send/&lt;sendkey&gt;.send 投递。
-                      </p>
-                    </div>
-                    <Pill tone={serverChan3Configured ? 'emerald' : notifyConfig.serverChan3Uid ? 'amber' : 'slate'}>
+                    <div className="text-sm font-semibold text-slate-900">Server酱³ Android 推送</div>
+                    <Pill tone={serverChan3Configured ? 'emerald' : 'slate'}>
                       {serverChan3StatusLabel}
                     </Pill>
                   </div>
@@ -201,12 +192,7 @@ export function NotifyConfigCard({
                 </div>
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 px-5 py-5">
                   <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold text-slate-900">旧版 Android App 兼容入口</div>
-                      <p className="mt-1 text-xs leading-5 text-slate-500">
-                        Android 设备 ID / 测试 URL 正在逐步废弃；新配置优先使用上方 Server酱³。
-                      </p>
-                    </div>
+                    <div className="text-sm font-semibold text-slate-900">旧版 Android App 兼容入口</div>
                     <Pill tone="slate">旧版</Pill>
                   </div>
                   <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
