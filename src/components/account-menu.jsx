@@ -382,6 +382,96 @@ export function AccountMenu() {
     : meta?.version
     ? `已同步 v${meta.version}`
     : '等待同步';
+  const conflictModal = conflict && typeof document !== 'undefined' ? createPortal((
+    <div className="fixed inset-0 z-[140] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cloud-sync-conflict-title"
+        className="flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-t-2xl bg-white text-slate-900 shadow-2xl sm:max-h-[88vh] sm:rounded-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-amber-100 bg-amber-50 px-5 py-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+              <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <div id="cloud-sync-conflict-title" className="text-sm font-bold text-amber-950">发现多端同步冲突</div>
+              <div className="mt-1 text-xs leading-5 text-amber-800">{conflict.summaryText || '云端版本与本机数据不一致。'}</div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setConflict(null)}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-amber-700 hover:bg-amber-100"
+            aria-label="稍后处理同步冲突"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-amber-100 bg-amber-50/70 px-3 py-3 text-xs">
+                <div className="font-semibold text-amber-700">云端版本</div>
+                <div className="mt-1 text-sm font-bold text-amber-950">v{conflict.remoteVersion ?? '-'}</div>
+                <div className="mt-1 text-[11px] leading-5 text-amber-700">{formatSyncTime(conflict.remoteUpdatedAt)}</div>
+              </div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-xs">
+                <div className="font-semibold text-slate-500">本机数据</div>
+                <div className="mt-1 text-sm font-bold text-slate-900">{conflict.localKeyCount ?? preview.keys.length} 项</div>
+                <div className="mt-1 text-[11px] leading-5 text-slate-500">{formatSyncTime(conflict.localUpdatedAt)}</div>
+              </div>
+            </div>
+
+            <div className="space-y-2 rounded-xl border border-slate-100 bg-white px-3 py-3 text-xs leading-5 text-slate-600">
+              {conflict.changedKeys?.length ? <div><span className="font-semibold text-slate-900">两端不同：</span>{formatKeyList(conflict.changedKeys, 12)}</div> : null}
+              {conflict.remoteOnlyKeys?.length ? <div><span className="font-semibold text-slate-900">云端独有：</span>{formatKeyList(conflict.remoteOnlyKeys, 12)}</div> : null}
+              {conflict.localOnlyKeys?.length ? <div><span className="font-semibold text-slate-900">本机独有：</span>{formatKeyList(conflict.localOnlyKeys, 12)}</div> : null}
+            </div>
+
+            {!loadRememberedKey()?.rawKey ? (
+              <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
+                安全密码
+                <input
+                  className={cx(inputClass, 'border-amber-200 bg-white')}
+                  type="password"
+                  value={conflictPassword}
+                  onChange={(event) => setConflictPassword(event.target.value)}
+                  autoComplete="off"
+                />
+              </label>
+            ) : null}
+
+            {lastError ? <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600">{lastError}</div> : null}
+          </div>
+        </div>
+
+        <div className="grid gap-2 border-t border-slate-100 bg-white px-5 py-4 sm:grid-cols-2">
+          <button
+            type="button"
+            className={cx(primaryButtonClass, 'justify-center')}
+            onClick={() => handleResolveConflict('merge')}
+            disabled={Boolean(busy)}
+          >
+            {busy === 'merge-conflict' ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitMerge className="h-4 w-4" />}
+            合并本机
+          </button>
+          <button
+            type="button"
+            className={cx(secondaryButtonClass, 'justify-center bg-white')}
+            onClick={() => handleResolveConflict('pull')}
+            disabled={Boolean(busy)}
+          >
+            {busy === 'pull-conflict' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />}
+            拉取云端
+          </button>
+        </div>
+      </div>
+    </div>
+  ), document.body) : null;
 
   return (
     <div className="relative ml-auto" ref={dropdownRef}>
@@ -463,66 +553,6 @@ export function AccountMenu() {
                       {busy === 'manual-sync' ? '正在同步' : '立即同步'}
                     </button>
                   </div>
-                  {conflict ? (
-                    <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                      <div className="flex items-start gap-2">
-                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
-                        <div className="min-w-0">
-                          <div className="font-bold text-amber-950">发现多端同步冲突</div>
-                          <div className="mt-1 leading-5">{conflict.summaryText || '云端版本与本机数据不一致。'}</div>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="rounded-lg bg-white/70 px-2 py-2">
-                          <div className="font-semibold text-amber-700">云端版本</div>
-                          <div className="mt-0.5 text-amber-950">v{conflict.remoteVersion ?? '-'}</div>
-                          <div className="mt-0.5 text-[11px] text-amber-700">{formatSyncTime(conflict.remoteUpdatedAt)}</div>
-                        </div>
-                        <div className="rounded-lg bg-white/70 px-2 py-2">
-                          <div className="font-semibold text-amber-700">本机数据</div>
-                          <div className="mt-0.5 text-amber-950">{conflict.localKeyCount ?? preview.keys.length} 项</div>
-                          <div className="mt-0.5 text-[11px] text-amber-700">{formatSyncTime(conflict.localUpdatedAt)}</div>
-                        </div>
-                      </div>
-                      <div className="space-y-1 text-[11px] leading-5 text-amber-800">
-                        {conflict.changedKeys?.length ? <div>两端不同：{formatKeyList(conflict.changedKeys)}</div> : null}
-                        {conflict.remoteOnlyKeys?.length ? <div>云端独有：{formatKeyList(conflict.remoteOnlyKeys)}</div> : null}
-                        {conflict.localOnlyKeys?.length ? <div>本机独有：{formatKeyList(conflict.localOnlyKeys)}</div> : null}
-                      </div>
-                      {!loadRememberedKey()?.rawKey ? (
-                        <label className="block space-y-1 text-[11px] font-semibold text-amber-800">
-                          安全密码
-                          <input
-                            className={cx(inputClass, 'h-9 border-amber-200 bg-white text-xs')}
-                            type="password"
-                            value={conflictPassword}
-                            onChange={(event) => setConflictPassword(event.target.value)}
-                            autoComplete="off"
-                          />
-                        </label>
-                      ) : null}
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <button
-                          type="button"
-                          className={cx(primaryButtonClass, 'justify-center text-xs')}
-                          onClick={() => handleResolveConflict('merge')}
-                          disabled={Boolean(busy)}
-                        >
-                          {busy === 'merge-conflict' ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitMerge className="h-4 w-4" />}
-                          合并本机
-                        </button>
-                        <button
-                          type="button"
-                          className={cx(secondaryButtonClass, 'justify-center bg-white text-xs')}
-                          onClick={() => handleResolveConflict('pull')}
-                          disabled={Boolean(busy)}
-                        >
-                          {busy === 'pull-conflict' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />}
-                          拉取云端
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
                   <div className="space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
                     <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
                       <Home className="h-3.5 w-3.5 text-indigo-500" aria-hidden="true" />默认首页
@@ -538,6 +568,7 @@ export function AccountMenu() {
                 </div>
         </div>
       ) : null}
+      {conflictModal}
 
       {open && !loggedIn && typeof document !== "undefined" ? createPortal((
         <div
