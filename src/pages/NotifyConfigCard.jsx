@@ -63,11 +63,6 @@ export function NotifyConfigCard({
           <div className="min-w-0 flex-1">
             <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">通知接入</div>
             <div className="mt-1 text-base font-bold text-slate-900 sm:text-lg">消息推送配置</div>
-            <div className="mt-1 text-xs leading-5 text-slate-500">
-              {isConfigCollapsed
-                ? summary.channelNote
-                : '统一管理 iOS Bark、Android Server酱³，以及多浏览器共享通知组。旧版 Android 设备配对入口保留兼容。'}
-            </div>
           </div>
           <div className="flex shrink-0 items-center gap-2 pt-1">
             <Pill tone={(barkConfigured || androidConfigured) ? 'emerald' : 'slate'}>
@@ -108,7 +103,7 @@ export function NotifyConfigCard({
         <>
           {notifyPlatform === 'android' ? (
             <div className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
-              旧版 Android App 下载地址：
+              Android App 下载地址：
               <a
                 className="ml-1 inline-flex items-center gap-1 font-semibold underline underline-offset-4"
                 href={ANDROID_APK_DOWNLOAD_URL}
@@ -159,7 +154,7 @@ export function NotifyConfigCard({
                     <div>
                       <div className="text-sm font-semibold text-slate-900">Server酱³ Android 推送</div>
                       <p className="mt-1 text-xs leading-5 text-slate-500">
-                        使用官方 Server酱³ 服务端 API 发送到 Android。填写 UID 与 SendKey 后，通知 Worker 会通过 https://&lt;uid&gt;.push.ft07.com/send/&lt;sendkey&gt;.send 投递。
+                        前往https://sc3.ft07.com/sendkey登陆
                       </p>
                     </div>
                     <Pill tone={serverChan3Configured ? 'emerald' : notifyConfig.serverChan3Uid ? 'amber' : 'slate'}>
@@ -167,14 +162,14 @@ export function NotifyConfigCard({
                     </Pill>
                   </div>
                   <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end">
-                    <Field label="Server酱³ UID" helper="例如接口域名里的 uid：<uid>.push.ft07.com">
+                    <Field label="Server酱³ UID">
                       <TextInput
                         value={notifyConfig.serverChan3Uid || ''}
                         placeholder="uid"
                         onChange={(event) => setNotifyConfig((current) => ({ ...current, serverChan3Uid: event.target.value }))}
                       />
                     </Field>
-                    <Field label="Server酱³ SendKey" helper="保存后仅在本机 localStorage 保留明文，服务端状态只回显掩码。">
+                    <Field label="Server酱³ SendKey">
                       <TextInput
                         value={notifyConfig.serverChan3SendKey || ''}
                         placeholder="sendkey"
@@ -203,14 +198,12 @@ export function NotifyConfigCard({
                   <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="text-sm font-semibold text-slate-900">旧版 Android App 兼容入口</div>
-                      <p className="mt-1 text-xs leading-5 text-slate-500">
-                        Android 设备 ID / 测试 URL 正在逐步废弃；新配置优先使用上方 Server酱³。
-                      </p>
+  
                     </div>
                     <Pill tone="slate">旧版</Pill>
                   </div>
                   <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
-                    <Field label="Android 设备 ID / 测试 URL" helper="仅用于保留旧 App 设备；粘贴设备 ID 或完整测试 URL 后会自动识别。">
+                    <Field label="Android 设备 ID / 测试 URL">
                       <TextInput
                         value={androidPairingCode}
                         placeholder="粘贴完整测试 URL 或 android- 开头 ID"
@@ -222,7 +215,6 @@ export function NotifyConfigCard({
                         <Save className="h-4 w-4" />
                         {isPairingAndroid ? '正在绑定旧版设备' : '绑定旧版设备'}
                       </button>
-                      {androidPairingCode.trim() ? null : <span className="text-xs text-slate-400">旧 App 链接或 ID 可继续绑定</span>}
                     </div>
                   </div>
                 </div>
@@ -287,7 +279,6 @@ export function NotifyConfigCard({
                   ) : serverChan3Configured ? null : (
                     <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center">
                       <div className="text-sm font-semibold text-slate-900">未绑定旧版 Android App 设备</div>
-                      <div className="mt-1 text-xs text-slate-400">旧版设备 ID / 测试 URL 入口保留兼容；新配置请使用 Server酱³。</div>
                     </div>
                   )}
                 </div>
@@ -300,9 +291,6 @@ export function NotifyConfigCard({
                     <Laptop className="mt-1 h-5 w-5 text-indigo-500" />
                     <div className="min-w-0">
                       <div className="text-sm font-semibold text-slate-900">PC 浏览器桌面通知</div>
-                      <p className="mt-2 text-sm leading-6 text-slate-500">
-                        支持 Chrome / Edge / Brave / Arc 等 Chromium 系浏览器。在本浏览器打开此页面时，按 30 秒间隔检查最新事件并弹出桌面通知；浏览器关闭后不工作，如需后台推送请同时启用 iOS Bark 或 Android。
-                      </p>
                     </div>
                   </div>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -353,9 +341,6 @@ export function NotifyConfigCard({
                   <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
                     <div className="min-w-0 pr-2">
                       <div className="text-sm font-semibold text-slate-900">启用前台轮询</div>
-                      <div className="mt-1 text-xs leading-5 text-slate-500">
-                        开启后，本浏览器每 30 秒检查一次最新事件，命中即弹桌面通知。仅在页面打开时工作。
-                      </div>
                     </div>
                     <button
                       type="button"
