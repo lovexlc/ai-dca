@@ -33,7 +33,8 @@ export function TransactionDraftPanel({
     ...draft,
     code: normalizeFundCode(draft.code),
     price: Number(draft.price || 0),
-    shares: Number(draft.shares || 0)
+    shares: Number(draft.shares || 0),
+    amount: Number(draft.amount || 0)
   }, { ignoreBlank: true });
   const oppositeType = draft.type === 'BUY' ? 'SELL' : 'BUY';
   const draftCodeNormalized = normalizeFundCode(draft.code);
@@ -162,16 +163,30 @@ export function TransactionDraftPanel({
             inputMode="decimal"
           />
         </label>
-        <label className="col-span-1 text-xs text-slate-500">
-          份额 *
-          <input
-            className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')}
-            value={draft.shares}
-            onChange={(event) => onDraftChange('shares', event.target.value)}
-            placeholder="0.0000"
-            inputMode="decimal"
-          />
-        </label>
+        {draft.kind !== 'exchange' && draft.type === 'BUY' ? (
+          <label className="col-span-1 text-xs text-slate-500">
+            金额 *
+            <input
+              className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')}
+              value={draft.amount || ''}
+              onChange={(event) => onDraftChange('amount', event.target.value)}
+              placeholder="0.00"
+              inputMode="decimal"
+            />
+            <span className="mt-1 block text-[10px] text-slate-400">净值确认后自动计算份额。</span>
+          </label>
+        ) : (
+          <label className="col-span-1 text-xs text-slate-500">
+            份额 *
+            <input
+              className={cx(tableInputClass, 'mt-1 h-10 rounded-xl bg-slate-50 px-3')}
+              value={draft.shares}
+              onChange={(event) => onDraftChange('shares', event.target.value)}
+              placeholder="0.0000"
+              inputMode="decimal"
+            />
+          </label>
+        )}
         {draft.kind !== 'exchange' ? (
           <div className="col-span-2 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2.5">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">

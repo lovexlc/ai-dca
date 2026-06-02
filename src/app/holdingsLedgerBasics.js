@@ -167,6 +167,7 @@ export function createEmptyTransaction(overrides = {}) {
     date: '',
     price: '',
     shares: '',
+    amount: '',
     costPrice: '',
     switchPairId: '',
     note: '',
@@ -178,17 +179,24 @@ export function createEmptyTransaction(overrides = {}) {
 export function normalizeTransaction(tx = {}, { idPrefix = 'tx' } = {}) {
   const code = normalizeFundCode(tx?.code || '');
   const kind = normalizeFundKind(tx?.kind, code, tx?.name || '');
+  const type = normalizeTransactionType(tx?.type);
   const rawTags = Array.isArray(tx?.tags) ? tx.tags.filter((t) => typeof t === 'string' && t.trim()) : [];
   const tags = rawTags.length > 0 ? rawTags : (kind === 'qdii' ? ['qdii', 'otc'] : [kind]);
+  const price = parsePositiveDecimal(tx?.price, 4);
+  const amount = parsePositiveDecimal(tx?.amount, 2);
+  const rawShares = parsePositiveDecimal(tx?.shares, 4);
+  const canDeriveSharesFromAmount = type === 'BUY' && kind !== 'exchange' && amount > 0 && price > 0;
+  const shares = rawShares > 0 ? rawShares : (canDeriveSharesFromAmount ? round(amount / price, 4) : 0);
   return {
     id: String(tx?.id || '').trim() || buildTransactionId(idPrefix),
     code,
     name: normalizeFundName(tx?.name || ''),
     kind,
-    type: normalizeTransactionType(tx?.type),
+    type,
     date: normalizeIsoDate(tx?.date),
-    price: parsePositiveDecimal(tx?.price, 4),
-    shares: parsePositiveDecimal(tx?.shares, 4),
+    price,
+    shares,
+    amount,
     costPrice: parsePositiveDecimal(tx?.costPrice, 4),
     switchPairId: String(tx?.switchPairId || '').trim(),
     note: String(tx?.note || '').trim(),
@@ -203,6 +211,7 @@ export function hasMeaningfulTransaction(tx = {}) {
       || String(tx?.date || '').trim()
       || Number(tx?.price) > 0
       || Number(tx?.shares) > 0
+      || Number(tx?.amount) > 0
       || Number(tx?.costPrice) > 0
       || String(tx?.note || '').trim()
   );
@@ -234,8 +243,11 @@ export function getTransactionErrors(tx = {}, { ignoreBlank = false } = {}) {
   if (normalized.price < 0) {
     errors.price = '交易价格不能为负数。';
   }
-  if (!(normalized.shares > 0)) {
-    errors.shares = '交易份额必须大于 0。';
+  const canUseAmount = normalized.type === 'BUY' && normalized.kind !== 'exchange' && normalized.amount > 0;
+  if (!(normalized.shares > 0) && !canUseAmount) {
+    errors.shares = normalized.type === 'BUY' && normalized.kind !== 'exchange'
+      ? '交易份额或金额必须大于 0。'
+      : '交易份额必须大于 0。';
   }
   return errors;
 }

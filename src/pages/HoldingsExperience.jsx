@@ -399,24 +399,32 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       let changed = false;
       const nextList = list.map((tx) => {
         const existingPrice = Number(tx?.price) || 0;
-        if (existingPrice > 0) return tx;
         const kind = String(tx?.kind || '').toLowerCase();
         if (kind === 'exchange') return tx;
         const code = normalizeFundCode(tx?.code || '');
         if (!code) return tx;
-        const snap = snapMap[code];
-        if (!snap) return tx;
         const txDate = String(tx?.date || '');
         if (!txDate) return tx;
-        let resolved = 0;
-        if (String(snap.latestNavDate || '') === txDate && Number(snap.latestNav) > 0) {
-          resolved = Number(snap.latestNav);
-        } else if (String(snap.previousNavDate || '') === txDate && Number(snap.previousNav) > 0) {
-          resolved = Number(snap.previousNav);
+        let resolved = existingPrice;
+        if (!(resolved > 0)) {
+          const snap = snapMap[code];
+          if (!snap) return tx;
+          if (String(snap.latestNavDate || '') === txDate && Number(snap.latestNav) > 0) {
+            resolved = Number(snap.latestNav);
+          } else if (String(snap.previousNavDate || '') === txDate && Number(snap.previousNav) > 0) {
+            resolved = Number(snap.previousNav);
+          }
         }
         if (!(resolved > 0)) return tx;
+        const amount = Number(tx?.amount) || 0;
+        const shares = Number(tx?.shares) || 0;
+        const nextShares = tx?.type === 'BUY' && amount > 0 && !(shares > 0)
+          ? Number((amount / resolved).toFixed(4))
+          : shares;
+        const nextPrice = Number(resolved.toFixed(4));
+        if (nextPrice === existingPrice && nextShares === shares) return tx;
         changed = true;
-        return { ...tx, price: Number(resolved.toFixed(4)) };
+        return { ...tx, price: nextPrice, shares: nextShares };
       });
       if (!changed) return prev;
       return { ...prev, transactions: nextList };
@@ -460,7 +468,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         const nextKind = prev.kind && prev.kind !== 'otc' ? prev.kind : detectFundKind(nextCode);
         return { ...prev, code: nextCode, name: existingName, kind: nextKind };
       }
-      if (field === 'price' || field === 'shares' || field === 'costPrice') {
+      if (field === 'price' || field === 'shares' || field === 'amount' || field === 'costPrice') {
         return { ...prev, [field]: sanitizeDecimalInput(value) };
       }
       if (field === 'before3pm') {
@@ -501,7 +509,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       code: normalizeFundCode(draft.code),
       kind: normalizeFundKind(draft.kind, draft.code),
       price: Number(draft.price),
-      shares: Number(draft.shares)
+      shares: Number(draft.shares),
+      amount: Number(draft.amount)
     };
     const errors = getTransactionErrors(prepared);
     if (Object.keys(errors).length) {
@@ -595,7 +604,9 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       return { ...prev, transactions: [...list.map(remapSingle), normalized] };
     });
     showActionToast(draftMode === 'edit' ? '交易已更新' : '交易已新增', 'success', {
-      description: `${normalized.code} ${normalized.type} ${formatShares(normalized.shares)} 份 @ ${formatNav(normalized.price)}`
+      description: normalized.shares > 0
+        ? `${normalized.code} ${normalized.type} ${formatShares(normalized.shares)} 份 @ ${formatNav(normalized.price)}`
+        : `${normalized.code} ${normalized.type} ${formatCurrency(normalized.amount, '¥', 2)}`
     });
     resetDraft();
     setSelectedCode(normalized.code);
@@ -818,7 +829,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         let nextValue = value;
         if (field === 'code') {
           nextValue = sanitizeCodeInput(value);
-        } else if (field === 'price' || field === 'shares' || field === 'costPrice') {
+        } else if (field === 'price' || field === 'shares' || field === 'amount' || field === 'costPrice') {
           nextValue = sanitizeDecimalInput(value);
         } else if (field === 'type') {
           nextValue = String(value || '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
@@ -839,7 +850,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         let nextValue = value;
         if (field === 'code') {
           nextValue = sanitizeCodeInput(value);
-        } else if (field === 'price' || field === 'shares' || field === 'costPrice') {
+        } else if (field === 'price' || field === 'shares' || field === 'amount' || field === 'costPrice') {
           nextValue = sanitizeDecimalInput(value);
         } else if (field === 'type') {
           nextValue = String(value || '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';

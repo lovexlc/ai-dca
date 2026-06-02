@@ -1,7 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { aggregateByCode, summarizePortfolio } from '../src/app/holdingsLedgerCore.js';
+import {
+  aggregateByCode,
+  getTransactionErrors,
+  normalizeTransaction,
+  summarizePortfolio
+} from '../src/app/holdingsLedgerCore.js';
 import { mergeSnapshotsFromNavResult } from '../src/app/holdingsLedger.js';
 
 test('场外持仓刷新后从 latest/previous NAV 反推当日收益率', () => {
@@ -229,4 +234,36 @@ test('场内 ETF 行情时间不是今天时不显示今日收益', () => {
   assert.equal(summary.todayReadyCount, 0);
   assert.equal(summary.todayProfit, 0);
   assert.equal(summary.todayReturnRate, 0);
+});
+
+test('场外 BUY 可先录入金额，净值确认后自动推导份额', () => {
+  const pending = {
+    id: 'buy-otc-amount',
+    code: '000001',
+    name: '场外测试基金',
+    kind: 'otc',
+    type: 'BUY',
+    date: '2026-06-01',
+    price: 0,
+    shares: 0,
+    amount: 1000
+  };
+
+  assert.deepEqual(getTransactionErrors(pending), {});
+
+  const confirmed = normalizeTransaction({ ...pending, price: 1.2345 });
+  assert.equal(confirmed.amount, 1000);
+  assert.equal(confirmed.shares, 810.0446);
+
+  const [agg] = aggregateByCode([confirmed], {
+    '000001': {
+      code: '000001',
+      latestNav: 1.2345,
+      latestNavDate: '2026-06-01',
+      previousNav: 1.2,
+      previousNavDate: '2026-05-29'
+    }
+  }, { todayDate: '2026-06-01' });
+  assert.equal(agg.totalShares, 810.0446);
+  assert.equal(agg.totalCost, 1000);
 });

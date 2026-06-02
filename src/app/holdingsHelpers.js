@@ -92,6 +92,7 @@ export function transactionToDraft(tx) {
     date: String(tx.date || ''),
     price: tx.price > 0 ? String(tx.price) : '',
     shares: tx.shares > 0 ? String(tx.shares) : '',
+    amount: tx.amount > 0 ? String(tx.amount) : '',
     costPrice: tx.costPrice > 0 ? String(tx.costPrice) : '',
     switchPairId: String(tx.switchPairId || ''),
     before3pm: true,
