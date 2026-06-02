@@ -313,27 +313,30 @@ function normalizeWatchlist(value = {}) {
       updatedAt: item.updatedAt || now,
     }))
     : [seedList];
-  // v1→v2 迁移：重命名默认列表 + 插入场外基金列表。
-  if (!hasOtcDefaults) {
+  // 迁移：确保默认列表命名正确 + 场外基金列表始终存在。
+  {
     const defaultIdx = lists.findIndex((item) => item.id === DEFAULT_WATCHLIST_ID);
     if (defaultIdx >= 0) {
       const old = lists[defaultIdx];
-      lists[defaultIdx] = {
-        ...old,
-        name: '默认-场内基金',
-        type: 'cn_etf',
-        cn: Array.from(new Set([...DEFAULT_CN_WATCHLIST, ...(old.cn || [])])),
-      };
+      if (old.name !== '默认-场内基金' || old.type !== 'cn_etf' || !hasOtcDefaults) {
+        lists[defaultIdx] = {
+          ...old,
+          name: '默认-场内基金',
+          type: 'cn_etf',
+          cn: hasOtcDefaults ? (old.cn || []) : Array.from(new Set([...DEFAULT_CN_WATCHLIST, ...(old.cn || [])])),
+        };
+      }
     }
     if (!lists.some((item) => item.id === DEFAULT_OTC_LIST_ID)) {
-      const insertIdx = defaultIdx >= 0 ? defaultIdx + 1 : 1;
-      lists.splice(insertIdx, 0, otcSeedList);
+      const afterDefault = lists.findIndex((item) => item.id === DEFAULT_WATCHLIST_ID);
+      lists.splice(afterDefault >= 0 ? afterDefault + 1 : lists.length, 0, otcSeedList);
     }
   }
-  if (!lists.some((item) => item.id === DEFAULT_WATCHLIST_ID)) lists.unshift(seedList);
-  if (!hasOtcDefaults && !lists.some((item) => item.id === DEFAULT_OTC_LIST_ID)) {
-    const afterDefault = lists.findIndex((item) => item.id === DEFAULT_WATCHLIST_ID);
-    lists.splice(afterDefault >= 0 ? afterDefault + 1 : 1, 0, otcSeedList);
+  if (!lists.some((item) => item.id === DEFAULT_WATCHLIST_ID)) {
+    lists.unshift(seedList);
+    if (!lists.some((item) => item.id === DEFAULT_OTC_LIST_ID)) {
+      lists.splice(1, 0, otcSeedList);
+    }
   }
   let activeListId = String(value.activeListId || DEFAULT_WATCHLIST_ID);
   if (!lists.some((item) => item.id === activeListId)) activeListId = lists[0].id;
