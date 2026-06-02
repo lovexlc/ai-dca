@@ -13,12 +13,9 @@
  *   - 总份额 = 当前持仓份额（客态全部卖光则 0）
  *   - 总收益仅算未实现（mark-to-market），不包含卖出已实现盈亏
  *   - 当日收益 = (latestNav − previousNav) × totalShares
- *     仅当持仓的 latestNavDate === "该 kind 的预期最新 NAV 日期" 时计入：
+ *     仅当持仓的 latestNavDate === 今日时计入：
  *       · exchange（场内 ETF）：盘中实时，预期 = 今日（非交易日则上一个工作日）。
- *       · otc（境内场外）：T 日 NAV 在 T 日晚（约 21:00）发布，预期 = 今日（非交易日回退到上一个工作日）。
- *         T 日早晨 NAV 尚未发布时 isLatestNavToday=false，"当日收益"留空，避免把 T-1 涨跌误显示成今日。
- *       · qdii（场外 QDII，海外标的）：净值 T+1 发布，预期 = 上一个工作日。周一回退到上周五（T-3），
- *         周二~周五回退到前一天（T-1）；这样 4-24（周五）的 NAV 在周一就能正确视为"最新可用"NAV。
+ *       · otc / qdii：没有今日 NAV 时，"当日收益"为 0，避免把 T-1 / QDII 上一净值日涨跌误显示成今日。
  *   - QDII 识别：优先看 transaction.kind，否则按持仓名称中的关键词（QDII / 纳指 / 标普 / 海外… ）+
  *     代码白名单兜底；都不命中则按代码前缀分 exchange / otc 两档。
  */
@@ -136,7 +133,8 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
   // 同样按名称+代码重新识别 QDII，避免存量 kind='otc' 误判。
   const resolvedKind = normalizeFundKind(normalized.kind, normalized.code, normalized.name || snapshot?.name || '');
   const expectedLatestNavDate = getExpectedLatestNavDate(resolvedKind, todayDate);
-  const isLatestNavToday = !!latestNavDate
+  const isLiteralToday = !!latestNavDate && latestNavDate === todayDate;
+  const isLatestNavExpected = !!latestNavDate
     && latestNavDate >= expectedLatestNavDate
     && latestNavDate <= todayDate;
   const cost = round(normalized.price * normalized.shares, 2);
@@ -150,7 +148,13 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
     hasCurrentPrice,
     hasPreviousPrice,
     hasChangePercent,
-    isLatestNavToday
+    isLiteralToday
+  });
+  const hasExpectedNav = getHasExpectedNav(resolvedKind, {
+    hasCurrentPrice,
+    hasPreviousPrice,
+    hasChangePercent,
+    isLatestNavExpected
   });
   const hasDailyReturnInput = getHasDailyReturn(resolvedKind, {
     hasCurrentPrice,
@@ -195,8 +199,8 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
   }
 
   const previousNavDateStr = String(snapshot?.previousNavDate || '');
-  const todayProfitSpanDays = isLatestNavToday && previousNavDateStr && latestNavDate ? Math.max(0, calendarDaysBetween(previousNavDateStr, latestNavDate)) : 0;
-  const todayProfitHolidayDays = isLatestNavToday && previousNavDateStr && latestNavDate ? countHolidayWorkdaysBetween(previousNavDateStr, latestNavDate) : 0;
+  const todayProfitSpanDays = hasTodayNav && previousNavDateStr && latestNavDate ? Math.max(0, calendarDaysBetween(previousNavDateStr, latestNavDate)) : 0;
+  const todayProfitHolidayDays = hasTodayNav && previousNavDateStr && latestNavDate ? countHolidayWorkdaysBetween(previousNavDateStr, latestNavDate) : 0;
   return {
     tx: normalized,
     isSell: false,
@@ -214,7 +218,7 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
     hasCurrentPrice,
     hasChangePercent,
     hasTodayNav,
-    hasExpectedNav: hasTodayNav,
+    hasExpectedNav,
     latestNav,
     previousNav,
     currentPrice,
@@ -289,12 +293,24 @@ function getHasTodayNav(resolvedKind, {
   hasCurrentPrice = false,
   hasPreviousPrice = false,
   hasChangePercent = false,
-  isLatestNavToday = false
+  isLiteralToday = false
 } = {}) {
   if (resolvedKind === 'exchange') {
     return hasCurrentPrice && hasChangePercent;
   }
-  return hasCurrentPrice && hasPreviousPrice && hasChangePercent && isLatestNavToday;
+  return hasCurrentPrice && hasPreviousPrice && hasChangePercent && isLiteralToday;
+}
+
+function getHasExpectedNav(resolvedKind, {
+  hasCurrentPrice = false,
+  hasPreviousPrice = false,
+  hasChangePercent = false,
+  isLatestNavExpected = false
+} = {}) {
+  if (resolvedKind === 'exchange') {
+    return hasCurrentPrice && hasChangePercent;
+  }
+  return hasCurrentPrice && hasPreviousPrice && hasChangePercent && isLatestNavExpected;
 }
 
 function getHasDailyReturn(resolvedKind, {
@@ -460,7 +476,8 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     const hasPreviousPrice = previousPrice > 0;
     const hasChangePercent = Number.isFinite(changePercent);
     const expectedLatestNavDate = getExpectedLatestNavDate(resolvedKind, todayDate);
-    const isLatestNavToday = !!latestNavDateStr
+    const isLiteralToday = !!latestNavDateStr && latestNavDateStr === todayDate;
+    const isLatestNavExpected = !!latestNavDateStr
       && latestNavDateStr >= expectedLatestNavDate
       && latestNavDateStr <= todayDate;
 
@@ -473,18 +490,24 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     const unrealizedProfit = hasCurrentPrice && totalShares > 0 ? round(marketValue - totalCost, 2) : 0;
     const unrealizedReturnRate = totalCost > 0 ? round((marketValue / totalCost - 1) * 100, 2) : 0;
     const previousValue = hasPreviousPrice && totalShares > 0 ? previousPrice * totalShares : 0;
-    const hasExpectedNav = getHasTodayNav(resolvedKind, {
+    const hasExpectedNav = getHasExpectedNav(resolvedKind, {
       hasCurrentPrice,
       hasPreviousPrice,
       hasChangePercent,
-      isLatestNavToday
+      isLatestNavExpected
+    });
+    const hasTodayNav = getHasTodayNav(resolvedKind, {
+      hasCurrentPrice,
+      hasPreviousPrice,
+      hasChangePercent,
+      isLiteralToday
     });
     const hasDailyReturnInput = getHasDailyReturn(resolvedKind, {
       hasCurrentPrice,
       hasPreviousPrice,
       hasChangePercent
     });
-    const hasDailyReturn = hasExpectedNav && hasDailyReturnInput;
+    const hasDailyReturn = hasTodayNav && hasDailyReturnInput;
     const todayProfit = totalShares > 0 && hasDailyReturn
       ? round(previousValue * (changePercent / 100), 2)
       : 0;
@@ -492,10 +515,10 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
 
     const aggLatestNavDateStr = String(snapshot?.latestNavDate || '');
     const aggPreviousNavDateStr = String(snapshot?.previousNavDate || '');
-    const aggTodayProfitSpanDays = isLatestNavToday && aggPreviousNavDateStr && aggLatestNavDateStr
+    const aggTodayProfitSpanDays = hasTodayNav && aggPreviousNavDateStr && aggLatestNavDateStr
       ? Math.max(0, calendarDaysBetween(aggPreviousNavDateStr, aggLatestNavDateStr))
       : 0;
-    const aggTodayProfitHolidayDays = isLatestNavToday && aggPreviousNavDateStr && aggLatestNavDateStr
+    const aggTodayProfitHolidayDays = hasTodayNav && aggPreviousNavDateStr && aggLatestNavDateStr
       ? countHolidayWorkdaysBetween(aggPreviousNavDateStr, aggLatestNavDateStr)
       : 0;
     const tagSet = new Set();
@@ -534,7 +557,7 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       hasPreviousNav: hasPreviousPrice,
       hasCurrentPrice,
       hasChangePercent,
-      hasTodayNav: hasExpectedNav,
+      hasTodayNav,
       hasExpectedNav,
       todayProfitSpanDays: aggTodayProfitSpanDays,
       todayProfitHolidayDays: aggTodayProfitHolidayDays,

@@ -72,7 +72,7 @@ test('境内场外基金净值日期未到今天时不显示昨天当日收益',
   assert.equal(summary.todayReturnRate, 0);
 });
 
-test('场外 QDII 使用 fund-metrics 规范化后的 previousNav', () => {
+test('场外 QDII 上一净值日可视为预期覆盖但不计入今日收益', () => {
   const transactions = [{
     id: 'buy-021000',
     code: '021000',
@@ -103,6 +103,47 @@ test('场外 QDII 使用 fund-metrics 规范化后的 previousNav', () => {
   assert.equal(agg.currentPrice, 2.368);
   assert.equal(agg.previousPrice, 2.362);
   assert.equal(agg.hasPreviousNav, true);
+  assert.equal(agg.hasExpectedNav, true);
+  assert.equal(agg.hasTodayNav, false);
+  assert.equal(agg.todayProfit, 0);
+  assert.equal(agg.todayReturnRate, 0);
+
+  const summary = summarizePortfolio([agg]);
+  assert.equal(summary.navDateCoverage, 'full');
+  assert.equal(summary.todayReadyCount, 0);
+  assert.equal(summary.todayProfit, 0);
+  assert.equal(summary.todayReturnRate, 0);
+});
+
+test('场外 QDII 只有净值日期等于今天时才计算今日收益', () => {
+  const transactions = [{
+    id: 'buy-021000-today',
+    code: '021000',
+    name: '景顺长城纳斯达克科技市值加权ETF联接(QDII)A',
+    kind: 'otc',
+    type: 'BUY',
+    date: '2026-05-20',
+    price: 2.3,
+    shares: 1000
+  }];
+  const navResult = {
+    items: [{
+      code: '021000',
+      name: '',
+      latestNav: 2.368,
+      latestNavDate: '2026-06-01',
+      previousNav: 2.362,
+      previousNavDate: '2026-05-29',
+      previousClose: 2.362,
+      change: 0.006,
+      changePercent: 0.254
+    }]
+  };
+  const { snapshotsByCode } = mergeSnapshotsFromNavResult({}, navResult);
+
+  const [agg] = aggregateByCode(transactions, snapshotsByCode, { todayDate: '2026-06-01' });
+  assert.equal(agg.kind, 'qdii');
+  assert.equal(agg.hasExpectedNav, true);
   assert.equal(agg.hasTodayNav, true);
   assert.equal(agg.todayProfit, 5.91);
   assert.equal(agg.todayReturnRate, 0.25);
