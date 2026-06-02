@@ -27,6 +27,7 @@ export function ExpandedMarketListOverlay({
   onSearchClear,
   onSearchResultSelect,
   onSearchResultAdd,
+  showLimitColumn = false,
 }) {
   useEffect(() => {
     if (!open) return undefined;
@@ -134,7 +135,7 @@ export function ExpandedMarketListOverlay({
           </div>
         ) : null}
         <div className="min-h-0 flex-1 overflow-auto rounded-2xl bg-[#f8fafd] p-3">
-          <MarketListTable rows={rows} klineMap={klineMap} selectedSymbol={selectedSymbol} onSelect={onSelect} stickyHeader stickyFirstColumn />
+          <MarketListTable rows={rows} klineMap={klineMap} selectedSymbol={selectedSymbol} onSelect={onSelect} stickyHeader stickyFirstColumn showLimitColumn={showLimitColumn} />
         </div>
       </div>
     </div>

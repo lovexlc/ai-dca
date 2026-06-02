@@ -228,8 +228,9 @@ export async function askMarketsStream({
 
 // Watchlist (localStorage). Stored per market for convenience.
 const WATCHLIST_KEY = 'markets:watchlist:v1';
-const WATCHLIST_DEFAULTS_VERSION = 1;
+const WATCHLIST_DEFAULTS_VERSION = 2;
 const DEFAULT_WATCHLIST_ID = 'default';
+const DEFAULT_OTC_LIST_ID = 'default-otc';
 
 export const CN_ETF_WATCHLIST_PRESETS = [
   // 用户指定的默认 A 股监控列表（以代码覆盖）
@@ -245,7 +246,6 @@ export const CN_ETF_WATCHLIST_PRESETS = [
   { symbol: '159632', name: '纳斯达克ETF 华安', exchange: '深交所', currency: 'CNY' },
   { symbol: '159513', name: '纳斯达克100ETF', exchange: '深交所', currency: 'CNY' },
   { symbol: '159501', name: '纳指ETF 嘉实', exchange: '深交所', currency: 'CNY' },
-  { symbol: '161130', name: '纳指ETF 新增1', exchange: '深交所', currency: 'CNY' },
   { symbol: '159577', name: '纳指ETF 新增2', exchange: '深交所', currency: 'CNY' },
   { symbol: '513500', name: '标准500ETF 博时', exchange: '深交所', currency: 'CNY' },
   { symbol: '513650', name: '标普500ETF 南方', exchange: '深交所', currency: 'CNY' },
@@ -254,34 +254,87 @@ export const CN_ETF_WATCHLIST_PRESETS = [
 
 const DEFAULT_CN_WATCHLIST = CN_ETF_WATCHLIST_PRESETS.map((item) => item.symbol);
 
+// 默认场外纳指基金列表：A 类 CNY 份额，排除机构专用 I 类。
+export const CN_OTC_WATCHLIST_PRESETS = [
+  { symbol: '000834', name: '大成纳指100联接A' },
+  { symbol: '270042', name: '广发纳指100联接A' },
+  { symbol: '161130', name: '易方达纳指100联接A' },
+  { symbol: '040046', name: '华安纳指100联接A' },
+  { symbol: '016055', name: '博时纳指100联接A' },
+  { symbol: '015299', name: '华夏纳指100联接A' },
+  { symbol: '016532', name: '嘉实纳指100联接A' },
+  { symbol: '018966', name: '汇添富纳指100联接A' },
+  { symbol: '019524', name: '华泰柏瑞纳指100联接A' },
+  { symbol: '019547', name: '招商纳指100联接A' },
+  { symbol: '160213', name: '国泰纳指100指数' },
+  { symbol: '019172', name: '摩根纳指100指数A' },
+  { symbol: '019736', name: '宝盈纳指100指数A' },
+];
+
+const DEFAULT_CN_OTC_WATCHLIST = CN_OTC_WATCHLIST_PRESETS.map((item) => item.symbol);
+
 function normalizeWatchlist(value = {}) {
   const now = new Date().toISOString();
   const rawUs = Array.isArray(value.us) ? value.us : [];
   const rawCn = Array.isArray(value.cn) ? value.cn : [];
-  const hasCnDefaults = Number(value.defaultsVersion) >= WATCHLIST_DEFAULTS_VERSION;
+  const version = Number(value.defaultsVersion) || 0;
+  const hasCnDefaults = version >= 1;
+  const hasOtcDefaults = version >= WATCHLIST_DEFAULTS_VERSION;
   const cn = hasCnDefaults
     ? rawCn
     : Array.from(new Set([...DEFAULT_CN_WATCHLIST, ...rawCn]));
   const seedList = {
     id: DEFAULT_WATCHLIST_ID,
-    name: '默认列表',
+    name: '默认-场内基金',
+    type: 'cn_etf',
     us: rawUs,
     cn,
     createdAt: value.createdAt || now,
     updatedAt: value.updatedAt || now,
   };
+  const otcSeedList = {
+    id: DEFAULT_OTC_LIST_ID,
+    name: '默认-场外基金',
+    type: 'cn_otc',
+    us: [],
+    cn: [...DEFAULT_CN_OTC_WATCHLIST],
+    createdAt: now,
+    updatedAt: now,
+  };
   const rawLists = Array.isArray(value.lists) ? value.lists : [];
-  const lists = rawLists.length
+  let lists = rawLists.length
     ? rawLists.map((item, index) => ({
       id: String(item.id || (index === 0 ? DEFAULT_WATCHLIST_ID : `list-${index + 1}`)),
-      name: String(item.name || (index === 0 ? '默认列表' : `列表 ${index + 1}`)),
+      name: String(item.name || (index === 0 ? '默认-场内基金' : `列表 ${index + 1}`)),
+      type: item.type || undefined,
       us: Array.isArray(item.us) ? item.us : [],
       cn: Array.isArray(item.cn) ? item.cn : [],
       createdAt: item.createdAt || now,
       updatedAt: item.updatedAt || now,
     }))
     : [seedList];
+  // v1→v2 迁移：重命名默认列表 + 插入场外基金列表。
+  if (!hasOtcDefaults) {
+    const defaultIdx = lists.findIndex((item) => item.id === DEFAULT_WATCHLIST_ID);
+    if (defaultIdx >= 0) {
+      const old = lists[defaultIdx];
+      lists[defaultIdx] = {
+        ...old,
+        name: '默认-场内基金',
+        type: 'cn_etf',
+        cn: Array.from(new Set([...DEFAULT_CN_WATCHLIST, ...(old.cn || [])])),
+      };
+    }
+    if (!lists.some((item) => item.id === DEFAULT_OTC_LIST_ID)) {
+      const insertIdx = defaultIdx >= 0 ? defaultIdx + 1 : 1;
+      lists.splice(insertIdx, 0, otcSeedList);
+    }
+  }
   if (!lists.some((item) => item.id === DEFAULT_WATCHLIST_ID)) lists.unshift(seedList);
+  if (!hasOtcDefaults && !lists.some((item) => item.id === DEFAULT_OTC_LIST_ID)) {
+    const afterDefault = lists.findIndex((item) => item.id === DEFAULT_WATCHLIST_ID);
+    lists.splice(afterDefault >= 0 ? afterDefault + 1 : 1, 0, otcSeedList);
+  }
   let activeListId = String(value.activeListId || DEFAULT_WATCHLIST_ID);
   if (!lists.some((item) => item.id === activeListId)) activeListId = lists[0].id;
   const activeList = lists.find((item) => item.id === activeListId) || lists[0] || seedList;

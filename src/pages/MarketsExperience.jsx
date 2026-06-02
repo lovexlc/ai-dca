@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, ChevronDown, ChevronRight, ChevronUp, ListPlus, Loader2, Plus, RefreshCw, Search, Star, TrendingUp, X } from 'lucide-react';
 import {
-  Card,
-  Pill,
-  TextInput,
   cx
 } from '../components/experience-ui.jsx';
 import {
@@ -27,7 +23,8 @@ import {
   removeFromWatchlist,
   renameWatchlist,
   setActiveWatchlist,
-  CN_ETF_WATCHLIST_PRESETS
+  CN_ETF_WATCHLIST_PRESETS,
+  CN_OTC_WATCHLIST_PRESETS
 } from '../app/marketsApi.js';
 import { showActionToast } from '../app/toast.js';
 import { readLedgerState } from '../app/holdingsLedger.js';
@@ -35,34 +32,36 @@ import { readTradeLedger, TRADE_LEDGER_UPDATED_EVENT } from '../app/tradeLedger.
 import { aggregateByCode } from '../app/holdingsLedgerCore.js';
 import { getCnEtfPremiumSnapshot, getNavHistory, getNavSnapshot, getNavSnapshots } from '../app/navService.js';
 import { ExpandedMarketListOverlay } from './markets/ExpandedMarketListOverlay.jsx';
-import { ListExpandButton } from './markets/ListExpandButton.jsx';
-import { MarketListTable } from './markets/MarketListTable.jsx';
-import { SymbolDetailPanel } from './markets/MarketSymbolDetailPanel.jsx';
-import { MarketsResearchPanel } from './markets/MarketsResearchPanel.jsx';
-import { IndexCard, MobileSidebarRow, SidebarRow } from './markets/MarketSidebarRows.jsx';
-import {
-  EarningsCalendar,
-  LatestNewsList,
-  ThemeExploreButton,
-  siteFavicon,
-  siteHost,
-  sourceInitials,
-} from './markets/MarketNewsPanels.jsx';
-import { WatchlistNameDialog, WatchlistSelector } from './markets/WatchlistControls.jsx';
+import { MarketsMainContent } from './markets/MarketsMainContent.jsx';
+import { MarketsResearchShell } from './markets/MarketsResearchShell.jsx';
+import { MarketsSidebar } from './markets/MarketsSidebar.jsx';
+import { WatchlistNameDialog } from './markets/WatchlistControls.jsx';
 import {
   CHART_RANGE_TABS,
   buildNavSnapshotItems,
   buildHoldingTradeMarkers,
   isCnOtcFundQuote,
   navHistoryDaysForRange,
-  sliceCandlesForRange,
 } from './markets/marketFundMetrics.js';
 import {
   formatNumber,
   formatSymbolDisplay,
   normalizeCnFundCode,
 } from './markets/marketDisplayUtils.js';
+import {
+  buildOtcCandidate as buildOtcCandidateWithCatalog,
+  buildOtcFundQuoteFromSnapshot as buildOtcFundQuoteFromSnapshotWithCatalog,
+  formatBrowserTitleForQuote as formatBrowserTitleForQuoteBase,
+  formatTime,
+  normalizeSearchResults as normalizeSearchResultsWithCatalog,
+  resolveCnFundName as resolveCnFundNameWithCatalog,
+} from './markets/marketOtcHelpers.js';
 import nasdaqOtcCatalog from '../../data/all_nasdq_otc.json';
+import {
+  formatSwitchLimitAmount,
+  switchLimitToneFor,
+  switchLimitLabelFor,
+} from './switchStrategyHelpers.js';
 
 const MARKETS = [
   { key: 'us', label: '美股' },
@@ -70,192 +69,15 @@ const MARKETS = [
 ];
 
 const CN_ETF_PRESET_MAP = Object.fromEntries(CN_ETF_WATCHLIST_PRESETS.map((item) => [item.symbol, item]));
+const CN_OTC_PRESET_MAP = Object.fromEntries(CN_OTC_WATCHLIST_PRESETS.map((item) => [item.symbol, item]));
 const NASDAQ_OTC_FUND_MAP = Object.fromEntries(((nasdaqOtcCatalog && nasdaqOtcCatalog.funds) || []).map((item) => [String(item.code || '').trim(), item]));
 const MARKETS_PENDING_SYMBOL_KEY = 'markets:pendingSymbol';
 
-function formatTime(value) {
-  if (!value) return '';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleString('zh-CN', { hour12: false });
-}
-
-function formatBrowserTitleForQuote(quote) {
-  if (!quote || !quote.symbol) return '行情中心';
-  const symbol = formatSymbolDisplay(quote.symbol);
-  const price = Number(quote.price);
-  const pct = Number(quote.changePercent);
-  const currency = String(quote.currency || '').trim().toUpperCase();
-  const priceText = Number.isFinite(price)
-    ? `${currency && currency !== 'CNY' ? `${currency} ` : ''}${formatNumber(price, 2)}`
-    : '--';
-  const pctText = Number.isFinite(pct)
-    ? `${pct < 0 ? '▼' : pct > 0 ? '▲' : ''} ${Math.abs(pct).toFixed(2)}%`
-    : '--';
-  return `${symbol} ${priceText} (${pctText})`;
-}
-
-function resolveCnFundName(codeOrSymbol, fallback = '') {
-  const code = normalizeCnFundCode(codeOrSymbol);
-  const fallbackText = String(fallback || '').trim();
-  const isCodeOnlyFallback = fallbackText && normalizeCnFundCode(fallbackText) === code;
-  return (code && NASDAQ_OTC_FUND_MAP[code]?.name)
-    || (!isCodeOnlyFallback ? fallbackText : '')
-    || code
-    || fallbackText;
-}
-
-function buildOtcCandidate(code, fallback = {}) {
-  const normalizedCode = normalizeCnFundCode(code || fallback.code || fallback.symbol);
-  const catalog = NASDAQ_OTC_FUND_MAP[normalizedCode] || {};
-  const name = resolveCnFundName(normalizedCode, fallback.name || fallback.shortName || fallback.displayName);
-  return {
-    ...fallback,
-    symbol: normalizedCode,
-    code: normalizedCode,
-    name,
-    market: 'cn',
-    exchange: '场外基金',
-    assetType: 'otc_fund',
-    linkedSymbol: catalog.link_to || fallback.linkedSymbol || '',
-    indexKey: catalog.index_key || fallback.indexKey || ''
-  };
-}
-
-function normalizeSearchResults(rawRows, marketKey, query = '') {
-  const seen = new Set();
-  const rows = Array.isArray(rawRows) ? [...rawRows] : [];
-  const otcCode = normalizeCnFundCode(query);
-  if (marketKey === 'cn' && /^\d{6}$/.test(otcCode) && !rows.some((row) => normalizeCnFundCode(row.symbol || row.code || row.ticker) === otcCode)) {
-    rows.push(buildOtcCandidate(otcCode));
-  }
-  return rows.map((row) => {
-    const symbol = String(row && (row.symbol || row.code || row.ticker) || '').trim().toUpperCase();
-    if (!symbol || seen.has(symbol)) return null;
-    seen.add(symbol);
-    return {
-      ...row,
-      symbol,
-      market: marketKey,
-      marketLabel: marketKey === 'cn' ? 'A股' : '美股',
-    };
-  }).filter(Boolean);
-}
-
-function buildOtcFundQuoteFromSnapshot(symbol, snapshot, fallback = {}) {
-  const latestNav = Number(snapshot?.latestNav);
-  if (!Number.isFinite(latestNav) || latestNav <= 0) return null;
-  const previousNav = Number(snapshot?.previousNav);
-  const hasPrevious = Number.isFinite(previousNav) && previousNav > 0;
-  const change = hasPrevious ? latestNav - previousNav : 0;
-  return {
-    ...fallback,
-    symbol: String(symbol || snapshot?.code || fallback.symbol || '').trim().toUpperCase(),
-    code: String(snapshot?.code || symbol || fallback.code || '').replace(/\D/g, '').slice(-6),
-    name: resolveCnFundName(snapshot?.code || symbol || fallback.code, snapshot?.name || fallback.name || fallback.displayName || fallback.shortName),
-    market: 'cn',
-    exchange: '场外基金',
-    currency: 'CNY',
-    price: latestNav,
-    previousClose: hasPrevious ? previousNav : latestNav,
-    change,
-    changePercent: hasPrevious ? (change / previousNav) * 100 : 0,
-    latestNav,
-    latestNavDate: snapshot?.latestNavDate || '',
-    previousNav: hasPrevious ? previousNav : null,
-    previousNavDate: snapshot?.previousNavDate || '',
-    asOf: snapshot?.updatedAt || new Date().toISOString(),
-    lastUpdated: snapshot?.updatedAt || new Date().toISOString(),
-    source: 'otc-fund-nav-fallback',
-    valueType: 'nav',
-    assetType: 'otc_fund'
-  };
-}
-
-function SummaryModule({ themes = [], loading, onRefresh }) {
-  const hasContent = Array.isArray(themes) && themes.length > 0;
-  const [expanded, setExpanded] = useState({ 0: true });
-  const toggleTheme = useCallback((idx) => {
-    setExpanded((prev) => ({ ...prev, [idx]: !prev[idx] }));
-  }, []);
-  return (
-    <Card className="space-y-0">
-      <div className="flex items-center justify-between gap-3 pb-1">
-        <h2 className="text-lg font-semibold text-slate-900">美国市场概况</h2>
-        <div className="flex items-center gap-2">
-          {loading && <Loader2 size={12} className="animate-spin text-slate-400" />}
-          {onRefresh && (
-            <button
-              type="button"
-              onClick={onRefresh}
-              aria-label="重新生成主题"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-indigo-600"
-            >
-              <RefreshCw size={12} />
-            </button>
-          )}
-        </div>
-      </div>
-      {hasContent ? (
-        <ul className="divide-y divide-slate-200/70">
-          {themes.map((t, idx) => {
-            const isOpen = !!expanded[idx];
-            const sources = (t.sources || []).filter((s) => s && s.url);
-            return (
-              <li key={idx} className="py-3.5 first:pt-3 last:pb-3">
-                <button
-                  type="button"
-                  onClick={() => toggleTheme(idx)}
-                  className="flex w-full items-start justify-between gap-4 text-left"
-                  aria-expanded={isOpen}
-                >
-                  <span className="min-w-0 flex-1 text-[16px] font-semibold leading-snug text-slate-900">{t.title}</span>
-                  <span className="flex shrink-0 items-center gap-2 pt-0.5">
-                    {sources.length > 0 && (
-                      <span className="flex items-center gap-1.5">
-                        <span className="flex -space-x-1">
-                          {sources.slice(0, 3).map((s, i) => {
-                            const fav = siteFavicon(s.url);
-                            return fav ? (
-                              <img
-                                key={i}
-                                src={fav}
-                                alt=""
-                                loading="lazy"
-                                className="h-4 w-4 rounded-full ring-2 ring-white"
-                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                              />
-                            ) : (
-                              <span key={i} className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-[8px] font-semibold text-slate-500 ring-2 ring-white">
-                                {sourceInitials(s.source || siteHost(s.url))}
-                              </span>
-                            );
-                          })}
-                        </span>
-                        <span className="text-[11px] text-slate-500">{sources.length}个网站</span>
-                      </span>
-                    )}
-                    {isOpen
-                      ? <ChevronUp size={18} className="text-slate-400" />
-                      : <ChevronDown size={18} className="text-slate-400" />}
-                  </span>
-                </button>
-                {isOpen && (
-                  <div className="space-y-3 pt-3">
-                    <p className="text-[13.5px] leading-[1.7] text-slate-600">{t.detail}</p>
-                    <ThemeExploreButton theme={t} />
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      ) : !loading ? (
-        <p className="py-3 text-sm text-slate-400">暂未生成主题摘要。点右侧刷新按钮可请求重新生成。</p>
-      ) : null}
-    </Card>
-  );
-}
+const resolveCnFundName = (codeOrSymbol, fallback = '') => resolveCnFundNameWithCatalog(codeOrSymbol, fallback, NASDAQ_OTC_FUND_MAP);
+const buildOtcCandidate = (code, fallback = {}) => buildOtcCandidateWithCatalog(code, fallback, NASDAQ_OTC_FUND_MAP, resolveCnFundNameWithCatalog);
+const normalizeSearchResults = (rawRows, marketKey, query = '') => normalizeSearchResultsWithCatalog(rawRows, marketKey, query, buildOtcCandidate, NASDAQ_OTC_FUND_MAP);
+const buildOtcFundQuoteFromSnapshot = (symbol, snapshot, fallback = {}) => buildOtcFundQuoteFromSnapshotWithCatalog(symbol, snapshot, fallback, resolveCnFundNameWithCatalog, NASDAQ_OTC_FUND_MAP);
+const formatBrowserTitleForQuote = (quote) => formatBrowserTitleForQuoteBase(quote, formatNumber, formatSymbolDisplay);
 
 // 行情中心底部“搜索或提问”输入条。提交后向全局 AI 抽屉发 prefill 事件，
 // 抽屉会自动切到市场行情模式并预填问题。
@@ -281,6 +103,7 @@ export function MarketsExperience() {
   const [watchQuotes, setWatchQuotes] = useState({});
   const [watchNavSnapshots, setWatchNavSnapshots] = useState({});
   const [fundFeesByCode, setFundFeesByCode] = useState({});
+  const [fundLimitsByCode, setFundLimitsByCode] = useState({});
   const [watchLoading, setWatchLoading] = useState(false);
   const [symbolInput, setSymbolInput] = useState('');
   const [symbolSearchResults, setSymbolSearchResults] = useState([]);
@@ -383,6 +206,7 @@ export function MarketsExperience() {
 
   const watchLists = Array.isArray(watch.lists) ? watch.lists : [];
   const activeWatchList = watchLists.find((item) => item.id === watch.activeListId) || watchLists[0] || { us: [], cn: [], name: '默认列表' };
+  const isActiveOtcList = activeWatchList.type === 'cn_otc' || activeWatchList.id === 'default-otc';
   const watchSymbols = useMemo(() => activeWatchList[market] || [], [activeWatchList, market]);
   useEffect(() => {
     const refreshHoldingsLedger = () => setHoldingsLedger(readLedgerState());
@@ -571,6 +395,61 @@ export function MarketsExperience() {
     } finally {
       setWatchLoading(false);
     }
+  }, [trackedWatchSymbols, market]);
+
+  // 场外基金申购限额：批量拉取，仅限当前活跃列表含 6 位数代码时触发。
+  useEffect(() => {
+    if (market !== 'cn') { setFundLimitsByCode({}); return undefined; }
+    const codes = (trackedWatchSymbols || [])
+      .map((sym) => normalizeCnFundCode(sym))
+      .filter((code) => /^\d{6}$/.test(code));
+    if (!codes.length) { setFundLimitsByCode({}); return undefined; }
+    const ctrl = new AbortController();
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await fetch('/api/fund-limit', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ codes }),
+          cache: 'no-store',
+          signal: ctrl.signal
+        });
+        if (!resp.ok) {
+          if (resp.status === 405) {
+            const entries = await Promise.all(
+              codes.map((code) =>
+                fetch(`/api/fund-limit?code=${encodeURIComponent(code)}`, { cache: 'no-store', signal: ctrl.signal })
+                  .then((r) => (r.ok ? r.json() : null))
+                  .then((data) => [code, data])
+                  .catch(() => [code, null])
+              )
+            );
+            if (cancelled) return;
+            const next = {};
+            for (const [code, data] of entries) {
+              if (data && typeof data === 'object') next[code] = data;
+            }
+            setFundLimitsByCode(next);
+            return;
+          }
+          return;
+        }
+        const payload = await resp.json();
+        if (cancelled) return;
+        const next = {};
+        const items = Array.isArray(payload?.items) ? payload.items : [];
+        for (const item of items) {
+          if (item && item.ok && item.code && item.data && typeof item.data === 'object') {
+            next[item.code] = item.data;
+          }
+        }
+        setFundLimitsByCode(next);
+      } catch (err) {
+        if (err && err.name === 'AbortError') return;
+      }
+    })();
+    return () => { cancelled = true; ctrl.abort(); };
   }, [trackedWatchSymbols, market]);
 
   // 美股 11 大行业指数（Google Finance 同款）。A 股暂未接入。
@@ -947,9 +826,21 @@ export function MarketsExperience() {
       : null;
     const merged = otcQuote || q;
     const latestNavDate = merged.latestNavDate || snapshot?.latestNavDate || '';
-    const baseMeta = isCnOtcFundQuote(merged) || (market === 'cn' && code && NASDAQ_OTC_FUND_MAP[code])
-      ? ['场外基金', latestNavDate ? `净值日 ${latestNavDate.slice(5)}` : '净值'].join(' · ')
-      : '';
+    const isOtc = isCnOtcFundQuote(merged) || (market === 'cn' && code && NASDAQ_OTC_FUND_MAP[code]);
+    const fundLimit = code ? fundLimitsByCode[code] || null : null;
+    let baseMeta = '';
+    if (isOtc) {
+      const parts = ['场外基金'];
+      if (fundLimit) {
+        const tone = switchLimitToneFor(fundLimit.buyStatus);
+        const label = switchLimitLabelFor(fundLimit.buyStatus);
+        const amt = fundLimit.maxPurchasePerDay;
+        const amtText = Number(amt) > 0 ? ` 日限${formatSwitchLimitAmount(amt)}` : '';
+        parts.push(`${label}${amtText}`);
+      }
+      parts.push(latestNavDate ? `净值日 ${latestNavDate.slice(5)}` : '净值');
+      baseMeta = parts.join(' · ');
+    }
     return {
       symbol: sym,
       name: market === 'cn' ? resolveCnFundName(sym, merged.name || CN_ETF_PRESET_MAP[sym]?.name || sym) : (merged.name || CN_ETF_PRESET_MAP[sym]?.name || sym),
@@ -976,10 +867,11 @@ export function MarketsExperience() {
       valueType: merged.valueType,
       assetType: merged.assetType,
       source: merged.source,
+      fundLimit,
       market,
       meta: baseMeta
     };
-  }, [watchQuotes, watchNavSnapshots, fundFeesByCode, market]);
+  }, [watchQuotes, watchNavSnapshots, fundFeesByCode, fundLimitsByCode, market]);
 
   const watchRows = useMemo(
     () => watchSymbols.map((sym) => buildSidebarRow(sym)),
@@ -988,11 +880,6 @@ export function MarketsExperience() {
 
   const activeSidebarRows = watchRows;
   const activeSidebarEmptyText = '未配置自选。';
-
-  const watchTopMovers = useMemo(
-    () => watchRows.filter((row) => Number.isFinite(Number(row.changePercent))).slice().sort((a, b) => Math.abs(Number(b.changePercent)) - Math.abs(Number(a.changePercent))).slice(0, 6),
-    [watchRows]
-  );
 
   const selectedStoredQuote = selectedSymbol ? selectedQuoteMap[`${market}:${selectedSymbol}`] : null;
   const selectedQuote = useMemo(
@@ -1218,7 +1105,77 @@ export function MarketsExperience() {
     return () => { /* keep the in-flight cache write; otherwise loading can stay true after rerender */ };
   }, [market, selectedSymbol, chartRange]);
 
-  const marketStatusLabel = indicesLoading ? '刷新中' : (indices.length ? `${indices.length} 个指数` : '待加载');
+  function handleResearchHandleClick() {
+    if (researchDragRef.current.moved) {
+      researchDragRef.current.moved = false;
+      return;
+    }
+    setResearchMode((mode) => mode === 'peek' ? 'conversation' : 'peek');
+  }
+
+  function handleResearchDragInit(event) {
+    const aside = asideRef.current;
+    const startH = aside ? aside.offsetHeight : (researchMode === 'peek' ? 130 : 600);
+    researchDragRef.current = { startY: event.clientY, lastY: event.clientY, startH, startT: Date.now(), dragging: true, moved: false };
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch (_error) { /* best-effort */ }
+    isDraggingRef.current = true;
+    if (aside) {
+      aside.style.transition = 'none';
+      aside.style.height = `${startH}px`;
+    }
+    if (researchMode === 'peek') setResearchMode('conversation');
+  }
+
+  function handleResearchDragMove(event) {
+    const dragState = researchDragRef.current;
+    if (!dragState.dragging) return;
+    const dy = event.clientY - dragState.startY;
+    dragState.lastY = event.clientY;
+    if (Math.abs(dy) > 6) dragState.moved = true;
+    const vh = vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844);
+    const peekH = 130;
+    const fullH = vh;
+    let nextHeight = dragState.startH - dy;
+    if (nextHeight > fullH) nextHeight = fullH + Math.min((nextHeight - fullH) * 0.3, 36);
+    if (nextHeight < peekH) nextHeight = peekH - Math.min((peekH - nextHeight) * 0.3, 36);
+    if (asideRef.current) asideRef.current.style.height = `${nextHeight}px`;
+  }
+
+  function handleResearchDragEnd(event) {
+    const dragState = researchDragRef.current;
+    if (!dragState.dragging) return;
+    dragState.dragging = false;
+    const dy = event.clientY - dragState.startY;
+    const dt = Math.max(Date.now() - dragState.startT, 1);
+    const velocity = dy / dt;
+    let nextMode = researchMode;
+    if (researchMode === 'peek' && (dy < -60 || velocity < -0.4)) nextMode = 'conversation';
+    else if (researchMode === 'conversation' && (dy > 60 || velocity > 0.4)) nextMode = 'peek';
+    const aside = asideRef.current;
+    if (aside) {
+      aside.style.transition = '';
+      const vh = vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844);
+      const target = nextMode === 'conversation' ? vh : nextMode === 'search' ? vh : 130;
+      aside.style.height = `${target}px`;
+    }
+    isDraggingRef.current = false;
+    if (nextMode !== researchMode) setResearchMode(nextMode);
+    else if (researchMode === 'conversation' && nextMode === 'conversation') {
+      setResearchMode((mode) => mode);
+    }
+  }
+
+  function handleResearchDragCancel() {
+    researchDragRef.current.dragging = false;
+    const aside = asideRef.current;
+    if (aside) {
+      aside.style.transition = '';
+      const vh = vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844);
+      const target = researchMode === 'conversation' ? vh : researchMode === 'search' ? vh : 130;
+      aside.style.height = `${target}px`;
+    }
+    isDraggingRef.current = false;
+  }
 
   return (
     <>
@@ -1250,601 +1207,141 @@ export function MarketsExperience() {
       onClose={() => { setWatchListExpanded(false); setWatchOverlaySearchOpen(false); handleClearWatchOverlaySearch(); }}
       onCreate={handleCreateWatchlist}
       onSelect={handleSelectSymbol}
+      showLimitColumn={isActiveOtcList && market === 'cn'}
     />
     <div className={cx(
       "flex flex-col gap-5 lg:grid lg:h-[calc(100vh-6rem)] lg:min-h-0 lg:grid-cols-[280px_minmax(0,1fr)_360px] lg:items-stretch lg:gap-4 lg:overflow-hidden lg:pb-0 xl:grid-cols-[320px_minmax(0,1fr)_400px]",
       selectedSymbol ? "pb-4" : "pb-[140px]"
     )}>
-      {/* Mobile-only sidebar: Google Finance Beta style */}
-      <aside className={cx("order-2 flex flex-col gap-2 lg:hidden", selectedSymbol && "hidden")}>
-        <div className="px-1">
-          <div className="flex items-center justify-between pt-1">
-            <WatchlistSelector
-              lists={watchLists}
-              activeListId={watch.activeListId}
-              onSelect={handleSelectWatchlist}
-              onCreate={handleCreateWatchlist}
-              onRename={handleRenameWatchlist}
-              onDelete={handleDeleteWatchlist}
-            />
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                aria-label="新建列表"
-                onClick={handleCreateWatchlist}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
-              >
-                <ListPlus size={22} />
-              </button>
-            </div>
-          </div>
-          <div className="mt-1 h-px w-full bg-[#e8eaed]" />
-        </div>
+      <MarketsSidebar
+        market={market}
+        selectedSymbol={selectedSymbol}
+        watchLists={watchLists}
+        activeWatchListId={watch.activeListId}
+        watchListExpanded={watchListExpanded}
+        watchOpen={watchOpen}
+        sectorsOpen={sectorsOpen}
+        sectorSearchOpen={sectorSearchOpen}
+        symbolInput={symbolInput}
+        symbolSearchResults={symbolSearchResults}
+        symbolSearchLoading={symbolSearchLoading}
+        symbolSearchError={symbolSearchError}
+        activeSidebarRows={activeSidebarRows}
+        activeSidebarEmptyText={activeSidebarEmptyText}
+        klineMap={klineMap}
+        watchLoading={watchLoading}
+        sectors={sectors}
+        sectorsLoading={sectorsLoading}
+        onSelectWatchlist={handleSelectWatchlist}
+        onCreateWatchlist={handleCreateWatchlist}
+        onRenameWatchlist={handleRenameWatchlist}
+        onDeleteWatchlist={handleDeleteWatchlist}
+        onToggleWatchListExpanded={() => setWatchListExpanded((v) => !v)}
+        onToggleWatchOpen={() => setWatchOpen((v) => !v)}
+        onToggleSectorsOpen={() => setSectorsOpen((v) => !v)}
+        onOpenSectorSearch={() => {
+          setSectorsOpen(true);
+          setSectorSearchOpen(true);
+        }}
+        onCloseSectorSearch={() => {
+          setSectorSearchOpen(false);
+          setSymbolInput('');
+          setSymbolSearchResults([]);
+        }}
+        onSymbolInputChange={setSymbolInput}
+        onSubmitSymbol={handleAddSymbol}
+        onPickSymbolSearch={handlePickSymbolSearch}
+        onSelectSymbol={handleSelectSymbol}
+      />
 
-
-        {/* 监控列表 */}
-        <div className="px-1">
-          <div className="flex items-center justify-between py-2">
-            <h3 className="text-base font-semibold text-[#1f1f1f]">监控列表</h3>
-            <button
-              type="button"
-              onClick={() => setWatchOpen((v) => !v)}
-              aria-label={watchOpen ? '折叠' : '展开'}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
-            >
-              {watchOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-            </button>
-          </div>
-          {watchOpen && (
-            <>
-              {activeSidebarRows.length === 0 ? (
-                <p className="px-2 py-2 text-sm text-[#5f6368]">{activeSidebarEmptyText}</p>
-              ) : (
-                <MarketListTable
-                  rows={activeSidebarRows}
-                  klineMap={klineMap}
-                  selectedSymbol={selectedSymbol}
-                  onSelect={handleSelectSymbol}
-                  compact
-                  stickyFirstColumn
-                />
-              )}
-            </>
-          )}
-        </div>
-
-        {/* 搜索与板块 */}
-        <div className="px-1">
-            <div className="flex items-center justify-between gap-2 py-2">
-              {sectorSearchOpen ? (
-                <form className="flex min-w-0 flex-1 items-center" onSubmit={handleAddSymbol}>
-                  <div className="relative min-w-0 flex-1">
-                    <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#5f6368]" />
-                    <TextInput
-                      autoFocus
-                      className="h-10 w-full rounded-full border-[#dadce0] bg-white pl-9 pr-9 text-sm"
-                      value={symbolInput}
-                      onChange={(e) => setSymbolInput(e.target.value)}
-                      placeholder={market === 'cn' ? '搜索 ETF / 股票，如 513100 / 标普500' : '搜索股票，如 AAPL / Apple'}
-                    />
-                    <button
-                      type="button"
-                      aria-label="关闭搜索"
-                      className="absolute right-1.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
-                      onClick={() => {
-                        setSectorSearchOpen(false);
-                        setSymbolInput('');
-                        setSymbolSearchResults([]);
-                      }}
-                    >
-                      <X size={15} />
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <h3 className="text-base font-semibold text-[#1f1f1f]">{market === 'cn' ? 'ETF / 股票' : '股票板块'}</h3>
-              )}
-              <div className="flex shrink-0 items-center gap-0.5">
-                {!sectorSearchOpen && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSectorsOpen(true);
-                      setSectorSearchOpen(true);
-                    }}
-                    aria-label="搜索并添加自选"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
-                  >
-                    <Search size={19} />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setSectorsOpen((v) => !v)}
-                  aria-label={sectorsOpen ? '折叠' : '展开'}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
-                >
-                  {sectorsOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                </button>
-              </div>
-            </div>
-            {sectorsOpen && sectorSearchOpen && symbolInput.trim() ? (
-              <div className="mb-2 rounded-2xl border border-[#e8eaed] bg-white shadow-sm">
-                {symbolSearchLoading ? (
-                  <div className="flex items-center gap-2 px-3 py-2 text-sm text-[#5f6368]"><Loader2 size={14} className="animate-spin" />搜索中…</div>
-                ) : symbolSearchError ? (
-                  <div className="px-3 py-2 text-sm text-rose-600">{symbolSearchError}</div>
-                ) : symbolSearchResults.length ? (
-                  <ul className="divide-y divide-[#e8eaed]">
-                    {symbolSearchResults.map((row) => (
-                      <li key={`${row.market || market}:${row.symbol}`}>
-                        <button type="button" className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-[#f8fafd]" onClick={() => handlePickSymbolSearch(row)}>
-                          <span className="min-w-0"><span className="block truncate text-sm font-semibold text-[#1f1f1f]">{formatSymbolDisplay(row.symbol)}</span><span className="block truncate text-xs text-[#5f6368]">{row.marketLabel ? `${row.marketLabel} · ` : ''}{row.name || row.exchange || '--'}</span></span>
-                          <span className="shrink-0 rounded-full bg-[#e8f0fe] px-2 py-1 text-xs font-semibold text-[#1a73e8]">查看</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="px-3 py-2 text-sm text-[#5f6368]">没有找到匹配标的</div>
-                )}
-              </div>
-            ) : null}
-            {sectorsOpen && (
-              sectors.length === 0 ? (
-                <p className="px-2 py-2 text-sm text-[#5f6368]">{sectorsLoading ? '加载中…' : (market === 'cn' ? '可搜索并添加更多 A股 / ETF 标的' : '暂无数据')}</p>
-              ) : (
-                <ul className="divide-y divide-[#e8eaed]">
-                  {sectors.map((row) => (
-                    <MobileSidebarRow
-                      key={row.symbol}
-                      symbol={row.shortCode || row.symbol}
-                      name={row.name}
-                      price={row.price}
-                      changePercent={row.changePercent}
-                      sparkPoints={klineMap[row.symbol]}
-                    />
-                  ))}
-                </ul>
-              )
-            )}
-          </div>
-      </aside>
-
-      {/* PC-only sidebar: Google Finance Beta-style compact (设计不变) */}
-      <aside className="order-2 hidden flex-col gap-3 lg:order-1 lg:flex lg:h-full lg:min-h-0 lg:overflow-hidden">
-        <div className="flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain bg-transparent pr-1 [scrollbar-gutter:stable]">
-          {/* 顶部工具栏：「列表 ▾」下拉 + 添加 + 全屏 */}
-          <div className="flex items-center justify-between gap-1 px-1 py-2">
-            <WatchlistSelector
-              lists={watchLists}
-              activeListId={watch.activeListId}
-              onSelect={handleSelectWatchlist}
-              onCreate={handleCreateWatchlist}
-              onRename={handleRenameWatchlist}
-              onDelete={handleDeleteWatchlist}
-            />
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                aria-label="新建列表"
-                title="新建列表"
-                onClick={handleCreateWatchlist}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
-              >
-                <ListPlus size={19} />
-              </button>
-              <ListExpandButton expanded={watchListExpanded} onClick={() => setWatchListExpanded((v) => !v)} />
-            </div>
-          </div>
-
-
-          {/* 组 1：监控列表 */}
-          <div className="px-1 pt-1">
-            <button
-              type="button"
-              onClick={() => setWatchOpen((v) => !v)}
-              className="flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-[15px] font-medium text-[#1f1f1f] hover:bg-[#f1f3f4]"
-            >
-              {watchOpen ? <ChevronDown size={16} className="text-[#5f6368]" /> : <ChevronRight size={16} className="text-[#5f6368]" />}
-              <Star size={14} className="text-amber-400" />
-              <span>监控列表</span>
-              {watchLoading && <Loader2 size={12} className="ml-1 animate-spin text-slate-400" />}
-            </button>
-          </div>
-          {watchOpen && (
-            <div className="px-1 pb-1">
-              {activeSidebarRows.length === 0 ? (
-                <p className="px-2 py-1 text-xs text-slate-400">{activeSidebarEmptyText}</p>
-              ) : (
-                <ul>
-                  {activeSidebarRows.map((row) => (
-                    <SidebarRow
-                      key={row.symbol}
-                      symbol={row.symbol}
-                      name={row.name}
-                      price={row.price}
-                      changePercent={row.changePercent}
-                      sparkPoints={klineMap[row.symbol]}
-                      meta={row.meta}
-                      selected={row.symbol === selectedSymbol}
-                      onSelect={() => handleSelectSymbol(row)}
-                    />
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-
-          {/* 组 2：搜索与板块。美股显示 S&P 11 行业；A股用于添加 ETF / 股票。 */}
-          <>
-              <div className="border-t border-slate-200/60 px-1 pt-1">
-                <div className={cx('flex items-center gap-1 rounded-md', !sectorSearchOpen && 'hover:bg-[#f1f3f4]')}>
-                  {sectorSearchOpen ? (
-                    <form className="flex min-w-0 flex-1 items-center gap-2 py-1" onSubmit={handleAddSymbol}>
-                      <button type="button" onClick={() => setSectorsOpen((v) => !v)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]">
-                        {sectorsOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                      </button>
-                      <div className="relative min-w-0 flex-1">
-                        <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5f6368]" />
-                        <TextInput
-                          autoFocus
-                          className="h-8 w-full rounded-full border-[#dadce0] bg-white pl-8 pr-8 text-sm"
-                          value={symbolInput}
-                          onChange={(e) => setSymbolInput(e.target.value)}
-                          placeholder={market === 'cn' ? '513100 / 标普500' : 'AAPL / Apple'}
-                        />
-                        <button
-                          type="button"
-                          aria-label="关闭搜索"
-                          className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
-                          onClick={() => {
-                            setSectorSearchOpen(false);
-                            setSymbolInput('');
-                            setSymbolSearchResults([]);
-                          }}
-                        >
-                          <X size={13} />
-                        </button>
-                      </div>
-                    </form>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setSectorsOpen((v) => !v)}
-                        className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-2 text-left text-[15px] font-medium text-[#1f1f1f]"
-                      >
-                        {sectorsOpen ? <ChevronDown size={16} className="text-[#5f6368]" /> : <ChevronRight size={16} className="text-[#5f6368]" />}
-                        <TrendingUp size={14} className="text-indigo-400" />
-                        <span>{market === 'cn' ? 'ETF / 股票' : '股票板块'}</span>
-                        {sectorsLoading && <Loader2 size={12} className="ml-1 animate-spin text-slate-400" />}
-                      </button>
-                      <button
-                        type="button"
-                        title="搜索并添加自选"
-                        aria-label="搜索并添加自选"
-                        onClick={() => {
-                          setSectorsOpen(true);
-                          setSectorSearchOpen(true);
-                        }}
-                        className="mr-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#5f6368] hover:bg-white"
-                      >
-                        <Search size={16} />
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-              {sectorsOpen && (
-                <div className="px-1 pb-2 pt-1">
-                  {sectorSearchOpen && symbolInput.trim() ? (
-                    <div className="mb-2 overflow-hidden rounded-xl border border-[#e8eaed] bg-white shadow-sm">
-                      {symbolSearchLoading ? (
-                        <div className="flex items-center gap-2 px-3 py-2 text-xs text-[#5f6368]"><Loader2 size={13} className="animate-spin" />搜索中…</div>
-                      ) : symbolSearchError ? (
-                        <div className="px-3 py-2 text-xs text-rose-600">{symbolSearchError}</div>
-                      ) : symbolSearchResults.length ? (
-                        <ul className="divide-y divide-[#e8eaed]">
-                          {symbolSearchResults.map((row) => (
-                            <li key={`${row.market || market}:${row.symbol}`}>
-                              <button type="button" className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-[#f8fafd]" onClick={() => handlePickSymbolSearch(row)}>
-                                <span className="min-w-0"><span className="block truncate text-xs font-semibold text-[#1f1f1f]">{formatSymbolDisplay(row.symbol)}</span><span className="block truncate text-[11px] text-[#5f6368]">{row.marketLabel ? `${row.marketLabel} · ` : ''}{row.name || row.exchange || '--'}</span></span>
-                                <span className="shrink-0 rounded-full bg-[#e8f0fe] px-2 py-0.5 text-[11px] font-semibold text-[#1a73e8]">查看</span>
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <div className="px-3 py-2 text-xs text-[#5f6368]">没有找到匹配标的</div>
-                      )}
-                    </div>
-                  ) : null}
-                  {sectors.length === 0 ? (
-                    <p className="px-2 py-1 text-xs text-slate-400">{sectorsLoading ? '加载中…' : (market === 'cn' ? '可搜索并添加更多 A股 / ETF 标的' : '暂无数据')}</p>
-                  ) : (
-                    <ul>
-                      {sectors.map((row) => (
-                        <SidebarRow
-                          key={row.symbol}
-                          symbol={row.shortCode || row.symbol}
-                          name={row.name}
-                          price={row.price}
-                          changePercent={row.changePercent}
-                          sparkPoints={klineMap[row.symbol]}
-                        />
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
-          </>
-        </div>
-      </aside>
-
-      <main ref={mainRef} className="order-1 flex min-w-0 flex-col gap-5 lg:order-2 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
-        <div className={cx(
-          "sticky top-0 z-20 items-center justify-between gap-3 bg-white/95 px-1 py-2 backdrop-blur transition-all duration-500 ease-out will-change-transform",
-          selectedQuote ? "hidden" : "flex",
-          !selectedQuote && detailHeaderHidden && "pointer-events-none -translate-y-full opacity-0"
-        )}>
-          <div className="flex items-center gap-3">
-            {MARKETS.map((m) => (
-              <button
-                key={m.key}
-                type="button"
-                className={cx(
-                  'rounded-full px-3 py-1 text-sm transition',
-                  market === m.key
-                    ? 'border border-slate-900 font-medium text-slate-900'
-                    : 'text-slate-600 hover:text-slate-900'
-                )}
-                onClick={() => setMarket(m.key)}
-              >
-                {m.label}
-              </button>
-            ))}
-            {indicesLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              aria-label="刷新"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-              onClick={() => {
-                refreshIndices(true);
-                refreshNews();
-                refreshEarnings(true);
-                refreshWatch();
-                refreshSummary(true);
-              }}
-            >
-              <RefreshCw size={14} />
-            </button>
-          </div>
-        </div>
-
-        {selectedQuote ? (
-          <SymbolDetailPanel
-            row={selectedQuote}
-            market={market}
-            sparkPoints={klineMap[selectedQuote.symbol]}
-            news={news}
-            earnings={earnings}
-            financials={financialsMap[selectedQuote.symbol]}
-            financialsLoading={financialsLoading && !financialsMap[selectedQuote.symbol]}
-            xueqiuFundData={xueqiuFundDataMap[selectedQuote.symbol]}
-            xueqiuFundLoading={xueqiuFundLoading && !xueqiuFundDataMap[selectedQuote.symbol]}
-            activeTab={symbolDetailTab}
-            onTabChange={setSymbolDetailTab}
-            chartRange={chartRange}
-            onChartRangeChange={setChartRange}
-            chartCandles={(() => {
-              const cfg = CHART_RANGE_TABS.find((r) => r.key === chartRange);
-              if (!cfg) return undefined;
-              const cacheKey = `${selectedQuote.symbol}|${cfg.tf}`;
-              const candles = chartCandlesMap[cacheKey];
-              if (!Array.isArray(candles) || candles.length < 2) return undefined;
-              return sliceCandlesForRange(candles, chartRange);
-            })()}
-            chartTf={(CHART_RANGE_TABS.find((r) => r.key === chartRange) || {}).tf}
-            chartLoading={chartLoading}
-            premiumState={premiumMap[selectedCnFundCode || selectedQuote.symbol]}
-            navHistoryState={navHistoryMap[`${selectedCnFundCode || selectedQuote.symbol}|${navHistoryDaysForRange(chartRange)}`]}
-            isMobile={isMobile}
-            tradeMarkers={selectedTradeMarkers}
-            buildOtcCandidate={buildOtcCandidate}
-            inWatch={watchSymbols.includes(selectedQuote.symbol)}
-            onToggleWatch={() => {
-              if (watchSymbols.includes(selectedQuote.symbol)) {
-                setWatch(removeFromWatchlist(market, selectedQuote.symbol, watch.activeListId));
-              } else {
-                setWatch(addToWatchlist(market, selectedQuote.symbol, watch.activeListId));
-              }
-            }}
-            onAnalyze={() => {
-              handleSelectSymbol(selectedQuote, { openResearch: true });
-              setPendingAnalysis({ symbol: selectedQuote.symbol, name: selectedQuote.name });
-            }}
-            onBack={() => {
-              setSelectedSymbol('');
-              setSymbolDetailTab('overview');
-            }}
-          />
-        ) : (
-          <>
-            {indices.length ? (
-              <div className="-mx-2 min-h-[176px] overflow-x-auto px-2 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <div className="flex min-h-[156px] snap-x snap-mandatory items-stretch gap-3 pb-1">
-                  {indices.map((entry) => (
-                    <IndexCard
-                      key={entry.symbol}
-                      entry={entry}
-                      onPick={(e) => handlePickMover(e)}
-                      sparkPoints={klineMap[entry.symbol]}
-                    />
-                  ))}
-                </div>
-              </div>
-            ) : !indicesLoading ? (
-              <p className="text-sm text-slate-400">指数数据暂未加载。</p>
-            ) : null}
-
-
-            {market === 'us' && (
-              <div className="hidden lg:block">
-                <SummaryModule
-                  themes={summary.themes}
-                  loading={summaryLoading}
-                  generatedAt={summary.generatedAt}
-                  onRefresh={() => refreshSummary(true)}
-                />
-              </div>
-            )}
-
-            {/* 最新动态（去重卡片为分组小节） */}
-            <div className="hidden space-y-2 lg:block">
-              <div className="flex items-center gap-2 border-b border-[#e8eaed] pb-1.5">
-                <h2 className="text-[15px] font-semibold text-[#1f1f1f]">最新动态</h2>
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  实时
-                </span>
-                {newsLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
-                {market === 'cn' && <Pill tone="slate">A股新闻源建设中</Pill>}
-              </div>
-              <LatestNewsList items={news} />
-            </div>
-
-            {market === 'us' && (
-              <div className="hidden space-y-2 lg:block">
-                <div className="flex items-center gap-2 border-b border-[#e8eaed] pb-1.5">
-                  <CalendarDays size={16} className="text-indigo-500" />
-                  <h2 className="text-[15px] font-semibold text-[#1f1f1f]">即将发布的财报</h2>
-                  {earningsLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
-                </div>
-                <EarningsCalendar items={earnings} />
-              </div>
-            )}
-          </>
-        )}
-      </main>
+      <MarketsMainContent
+        mainRef={mainRef}
+        market={market}
+        onMarketChange={setMarket}
+        selectedQuote={selectedQuote}
+        detailHeaderHidden={detailHeaderHidden}
+        indices={indices}
+        indicesLoading={indicesLoading}
+        klineMap={klineMap}
+        onPickIndex={handlePickMover}
+        onRefreshAll={() => {
+          refreshIndices(true);
+          refreshNews();
+          refreshEarnings(true);
+          refreshWatch();
+          refreshSummary(true);
+        }}
+        news={news}
+        newsLoading={newsLoading}
+        earnings={earnings}
+        earningsLoading={earningsLoading}
+        summary={summary}
+        summaryLoading={summaryLoading}
+        onRefreshSummary={() => refreshSummary(true)}
+        detail={{
+          financials: financialsMap[selectedQuote?.symbol],
+          financialsLoading: financialsLoading && !financialsMap[selectedQuote?.symbol],
+          xueqiuFundData: xueqiuFundDataMap[selectedQuote?.symbol],
+          xueqiuFundLoading: xueqiuFundLoading && !xueqiuFundDataMap[selectedQuote?.symbol],
+          activeTab: symbolDetailTab,
+          onTabChange: setSymbolDetailTab,
+          chartRange,
+          onChartRangeChange: setChartRange,
+          chartCandlesMap,
+          chartLoading,
+          selectedCnFundCode,
+          premiumState: premiumMap[selectedCnFundCode || selectedQuote?.symbol],
+          navHistoryMap,
+          isMobile,
+          tradeMarkers: selectedTradeMarkers,
+          buildOtcCandidate,
+          inWatch: watchSymbols.includes(selectedQuote?.symbol),
+          onToggleWatch: () => {
+            if (!selectedQuote) return;
+            if (watchSymbols.includes(selectedQuote.symbol)) {
+              setWatch(removeFromWatchlist(market, selectedQuote.symbol, watch.activeListId));
+            } else {
+              setWatch(addToWatchlist(market, selectedQuote.symbol, watch.activeListId));
+            }
+          },
+          onAnalyze: () => {
+            if (!selectedQuote) return;
+            handleSelectSymbol(selectedQuote, { openResearch: true });
+            setPendingAnalysis({ symbol: selectedQuote.symbol, name: selectedQuote.name });
+          },
+          onBack: () => {
+            setSelectedSymbol('');
+            setSymbolDetailTab('overview');
+          },
+        }}
+      />
 
       {/* Backdrop when conversation */}
       {researchMode === 'conversation' && (
         <div className="fixed inset-0 z-30 bg-white lg:hidden" onClick={() => setResearchMode('peek')} />
       )}
       {/* Research panel: PC = sticky aside / Mobile = bottom sheet */}
-      <aside
-        id="markets-research-anchor"
-        ref={asideRef}
-        className={cx(
-          'bg-white',
-          'lg:relative lg:z-auto lg:order-3 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:gap-3 lg:bg-transparent lg:overflow-hidden lg:rounded-none lg:border-t-0 lg:shadow-none',
-          selectedSymbol ? 'hidden lg:flex' : 'fixed inset-x-0 bottom-0 z-40 flex flex-col overflow-hidden border-t border-[#e8eaed] shadow-[0_-4px_16px_rgba(0,0,0,0.06)] [transition:height_300ms_ease-out]',
-          !selectedSymbol && (researchMode === 'conversation' ? 'top-0 rounded-none' : 'rounded-t-2xl')
-        )}
-        style={isMobile && !isDraggingRef.current ? {
-          height: (
-            researchMode === 'conversation'
-              ? (vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844))
-              : researchMode === 'search'
-                ? (vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844))
-                : 130
-          ) + 'px'
-        } : undefined}
-      >
-        {/* Drag handle */}
-        <div
-          role="button"
-          tabIndex={0}
-          aria-label={researchMode === 'peek' ? '展开研究' : '收起研究'}
-          className="flex h-9 w-full shrink-0 cursor-pointer touch-none select-none items-center justify-center bg-white lg:hidden"
-          onClick={() => {
-            if (researchDragRef.current.moved) { researchDragRef.current.moved = false; return; }
-            setResearchMode((m) => m === 'peek' ? 'conversation' : 'peek');
-          }}
-          onPointerDown={(e) => {
-            const a = asideRef.current;
-            const startH = a ? a.offsetHeight : (researchMode === 'peek' ? 130 : 600);
-            researchDragRef.current = { startY: e.clientY, lastY: e.clientY, startH, startT: Date.now(), dragging: true, moved: false };
-            try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_error) { /* best-effort */ }
-            isDraggingRef.current = true;
-            if (a) {
-              a.style.transition = 'none';
-              a.style.height = startH + 'px';
-            }
-            // 从 peek 拖动开始时立即切到 conversation，让用户马上看到当前面板内容随高度出现
-            if (researchMode === 'peek') setResearchMode('conversation');
-          }}
-          onPointerMove={(e) => {
-            const r = researchDragRef.current;
-            if (!r.dragging) return;
-            const dy = e.clientY - r.startY;
-            r.lastY = e.clientY;
-            if (Math.abs(dy) > 6) r.moved = true;
-            // 跟手改 height：上拉(dy<0)长高，下滑(dy>0)变矮；边界外做阻尼
-            const vh = (vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844));
-            const peekH = 130;
-            const fullH = vh;
-            let newH = r.startH - dy;
-            if (newH > fullH) newH = fullH + Math.min((newH - fullH) * 0.3, 36);
-            if (newH < peekH) newH = peekH - Math.min((peekH - newH) * 0.3, 36);
-            const a = asideRef.current;
-            if (a) a.style.height = newH + 'px';
-          }}
-          onPointerUp={(e) => {
-            const r = researchDragRef.current;
-            if (!r.dragging) return;
-            r.dragging = false;
-            const dy = e.clientY - r.startY;
-            const dt = Math.max(Date.now() - r.startT, 1);
-            const v = dy / dt; // px/ms
-            let next = researchMode;
-            if (researchMode === 'peek' && (dy < -60 || v < -0.4)) next = 'conversation';
-            else if (researchMode === 'conversation' && (dy > 60 || v > 0.4)) next = 'peek';
-            const a = asideRef.current;
-            if (a) {
-              a.style.transition = '';
-              // 显式写一次目标 height 触发 className 上的 height transition；React render 后会写相同值，不打断动画
-              const vh = (vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844));
-              const target = next === 'conversation' ? vh : next === 'search' ? vh : 130;
-              a.style.height = target + 'px';
-            }
-            isDraggingRef.current = false;
-            if (next !== researchMode) setResearchMode(next);
-            else if (researchMode === 'conversation' && next === 'conversation') {
-              // pointerDown 时已 setResearchMode('conversation')，松手没切回，强制一次 re-render 让 React style 接管
-              setResearchMode((m) => m);
-            }
-          }}
-          onPointerCancel={() => {
-            researchDragRef.current.dragging = false;
-            const a = asideRef.current;
-            if (a) {
-              a.style.transition = '';
-              const vh = (vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844));
-              const target = researchMode === 'conversation' ? vh : researchMode === 'search' ? vh : 130;
-              a.style.height = target + 'px';
-            }
-            isDraggingRef.current = false;
-          }}
-          onTouchMove={(e) => { e.preventDefault(); }}
-        >
-          <span className="h-1 w-9 rounded-full bg-[#dadce0]" />
-        </div>
-        <MarketsResearchPanel
-          market={market}
-          mode={researchMode}
-          onModeChange={setResearchMode}
-          watchSymbols={watchSymbols}
-          watchQuotes={watchQuotes}
-          selectedSymbol={selectedSymbol}
-          selectedQuote={selectedQuote}
-          pendingAnalysis={pendingAnalysis}
-          onAnalysisConsumed={() => setPendingAnalysis(null)}
-        />
-      </aside>
+      <MarketsResearchShell
+        market={market}
+        mode={researchMode}
+        onModeChange={setResearchMode}
+        watchSymbols={watchSymbols}
+        watchQuotes={watchQuotes}
+        selectedSymbol={selectedSymbol}
+        selectedQuote={selectedQuote}
+        pendingAnalysis={pendingAnalysis}
+        onAnalysisConsumed={() => setPendingAnalysis(null)}
+        isMobile={isMobile}
+        vpHeight={vpHeight}
+        asideRef={asideRef}
+        researchDragRef={researchDragRef}
+        isDraggingRef={isDraggingRef}
+        onHandleClick={handleResearchHandleClick}
+        onDragInit={handleResearchDragInit}
+        onDragMove={handleResearchDragMove}
+        onDragEnd={handleResearchDragEnd}
+        onDragCancel={handleResearchDragCancel}
+      />
     </div>
     </>
   );
