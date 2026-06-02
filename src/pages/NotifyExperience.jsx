@@ -283,13 +283,31 @@ export function NotifyExperience({ embedded = false }) {
     }
   }
 
-  async function refreshNotifyData() {
+  async function refreshNotifyData({ serverChan3Fallback = null } = {}) {
     const statusPayload = await loadNotifyStatus(notifyConfig.notifyClientId);
-    setNotifyStatus(statusPayload);
+    const fallbackConfigured = Boolean(serverChan3Fallback?.configured || (serverChan3Fallback?.uid && serverChan3Fallback?.sendKeyMasked));
+    const nextStatus = fallbackConfigured && !statusPayload?.setup?.serverChan3?.configured
+      ? {
+        ...statusPayload,
+        configured: {
+          ...(statusPayload?.configured || {}),
+          serverChan3: true
+        },
+        setup: {
+          ...(statusPayload?.setup || {}),
+          serverChan3: {
+            ...(statusPayload?.setup?.serverChan3 || {}),
+            ...serverChan3Fallback,
+            configured: true
+          }
+        }
+      }
+      : statusPayload;
+    setNotifyStatus(nextStatus);
     setNotifyConfig((current) => ({
       ...current,
-      barkDeviceKey: current.barkDeviceKey || statusPayload?.setup?.barkDeviceKey || '',
-      serverChan3Uid: current.serverChan3Uid || statusPayload?.setup?.serverChan3?.uid || '',
+      barkDeviceKey: current.barkDeviceKey || nextStatus?.setup?.barkDeviceKey || '',
+      serverChan3Uid: current.serverChan3Uid || nextStatus?.setup?.serverChan3?.uid || '',
       serverChan3SendKey: current.serverChan3SendKey || ''
     }));
     setNotifyError('');
@@ -333,11 +351,20 @@ export function NotifyExperience({ embedded = false }) {
       if (!uid || !sendKey) {
         throw new Error('请填写 Server酱³ UID 和 SendKey');
       }
-      await saveNotifySettings({
+      const savedSettings = await saveNotifySettings({
+        clientId: notifyConfig.notifyClientId,
+        clientLabel: notifyConfig.notifyClientLabel,
         serverChan3: { uid, sendKey },
         barkDeviceKey: notifyConfig.barkDeviceKey
       });
+      const savedServerChan3 = savedSettings?.setup?.serverChan3 || {
+        uid,
+        sendKeyMasked: sendKey ? `${sendKey.slice(0, 6)}...${sendKey.slice(-4)}` : '',
+        configured: true
+      };
       persistNotifyClientConfig({
+        notifyClientId: notifyConfig.notifyClientId,
+        notifyClientLabel: notifyConfig.notifyClientLabel,
         serverChan3Uid: uid,
         serverChan3SendKey: sendKey,
         barkDeviceKey: notifyConfig.barkDeviceKey,
@@ -345,7 +372,18 @@ export function NotifyExperience({ embedded = false }) {
         _hasPC: webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled
       });
       setNotifyConfig((current) => ({ ...current, serverChan3Uid: uid, serverChan3SendKey: sendKey }));
-      await refreshNotifyData();
+      setNotifyStatus((current) => ({
+        ...(current || {}),
+        configured: {
+          ...(current?.configured || {}),
+          serverChan3: true
+        },
+        setup: {
+          ...(current?.setup || {}),
+          serverChan3: savedServerChan3
+        }
+      }));
+      await refreshNotifyData({ serverChan3Fallback: savedServerChan3 });
       setNotifyMessage('Server酱³ Android 推送配置已保存。');
       showActionToast('保存 Server酱³ 配置', 'success');
     } catch (error) {
