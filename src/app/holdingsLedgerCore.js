@@ -133,7 +133,10 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
   // 同样按名称+代码重新识别 QDII，避免存量 kind='otc' 误判。
   const resolvedKind = normalizeFundKind(normalized.kind, normalized.code, normalized.name || snapshot?.name || '');
   const expectedLatestNavDate = getExpectedLatestNavDate(resolvedKind, todayDate);
-  const isLiteralToday = !!latestNavDate && latestNavDate === todayDate;
+  const quoteDate = getSnapshotQuoteDate(snapshot, resolvedKind);
+  const isLiteralToday = resolvedKind === 'exchange'
+    ? quoteDate === todayDate
+    : (!!latestNavDate && latestNavDate === todayDate);
   const isLatestNavExpected = !!latestNavDate
     && latestNavDate >= expectedLatestNavDate
     && latestNavDate <= todayDate;
@@ -194,7 +197,10 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
       previousPrice,
       changePercent,
       latestNavDate,
-      previousNavDate: String(snapshot?.previousNavDate || '')
+      previousNavDate: String(snapshot?.previousNavDate || ''),
+      quoteDate,
+      asOf: String(snapshot?.asOf || ''),
+      marketState: String(snapshot?.marketState || '')
     };
   }
 
@@ -226,6 +232,9 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
     changePercent,
     latestNavDate,
     previousNavDate: previousNavDateStr,
+    quoteDate,
+    asOf: String(snapshot?.asOf || ''),
+    marketState: String(snapshot?.marketState || ''),
     todayProfitSpanDays,
     todayProfitHolidayDays
   };
@@ -289,6 +298,28 @@ function getSnapshotChangePercent(snapshot = null, kind = '') {
   return round(((currentPrice - previousPrice) / previousPrice) * 100, 2);
 }
 
+function shanghaiDateFromTimestamp(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const direct = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) return direct ? direct[1] : '';
+  try {
+    return new Date(parsed).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+  } catch {
+    return new Date(parsed).toISOString().slice(0, 10);
+  }
+}
+
+function getSnapshotQuoteDate(snapshot = null, resolvedKind = '') {
+  const explicit = String(snapshot?.quoteDate || '').slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(explicit)) return explicit;
+  const asOfDate = shanghaiDateFromTimestamp(snapshot?.asOf || snapshot?.updatedAt || '');
+  if (asOfDate) return asOfDate;
+  if (resolvedKind === 'exchange') return String(snapshot?.latestNavDate || '').slice(0, 10);
+  return '';
+}
+
 function getHasTodayNav(resolvedKind, {
   hasCurrentPrice = false,
   hasPreviousPrice = false,
@@ -296,7 +327,7 @@ function getHasTodayNav(resolvedKind, {
   isLiteralToday = false
 } = {}) {
   if (resolvedKind === 'exchange') {
-    return hasCurrentPrice && hasChangePercent;
+    return hasCurrentPrice && hasChangePercent && isLiteralToday;
   }
   return hasCurrentPrice && hasPreviousPrice && hasChangePercent && isLiteralToday;
 }
@@ -476,7 +507,10 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     const hasPreviousPrice = previousPrice > 0;
     const hasChangePercent = Number.isFinite(changePercent);
     const expectedLatestNavDate = getExpectedLatestNavDate(resolvedKind, todayDate);
-    const isLiteralToday = !!latestNavDateStr && latestNavDateStr === todayDate;
+    const quoteDate = getSnapshotQuoteDate(snapshot, resolvedKind);
+    const isLiteralToday = resolvedKind === 'exchange'
+      ? quoteDate === todayDate
+      : (!!latestNavDateStr && latestNavDateStr === todayDate);
     const isLatestNavExpected = !!latestNavDateStr
       && latestNavDateStr >= expectedLatestNavDate
       && latestNavDateStr <= todayDate;
@@ -546,6 +580,9 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       changePercent,
       latestNavDate: aggLatestNavDateStr,
       previousNavDate: aggPreviousNavDateStr,
+      quoteDate,
+      asOf: String(snapshot?.asOf || ''),
+      marketState: String(snapshot?.marketState || ''),
       marketValue,
       unrealizedProfit,
       unrealizedReturnRate,

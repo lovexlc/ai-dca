@@ -51,6 +51,7 @@ function normalizeSnapshotItem(item = {}) {
     premiumPercent,
     marketState: String(item?.marketState || '').trim(),
     asOf: String(item?.asOf || item?.updatedAt || '').trim(),
+    quoteDate: String(item?.quoteDate || '').trim(),
     fallback: String(item?.fallback || '').trim(),
     cachePolicy: String(item?.cachePolicy || '').trim(),
     valueType

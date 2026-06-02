@@ -172,7 +172,9 @@ test('场内 ETF 使用 price/previousClose 计算当日收益', () => {
       change: 0.092,
       changePercent: 4.05,
       latestNav: 2.065,
-      latestNavDate: '2026-05-29'
+      latestNavDate: '2026-05-29',
+      asOf: '2026-06-01T02:00:00.000Z',
+      quoteDate: '2026-06-01'
     }]
   };
   const { snapshotsByCode } = mergeSnapshotsFromNavResult({}, navResult);
@@ -184,4 +186,47 @@ test('场内 ETF 使用 price/previousClose 计算当日收益', () => {
   assert.equal(agg.hasTodayNav, true);
   assert.equal(agg.todayProfit, 92.06);
   assert.equal(agg.todayReturnRate, 4.05);
+});
+
+test('场内 ETF 行情时间不是今天时不显示今日收益', () => {
+  const transactions = [{
+    id: 'buy-513100-stale',
+    code: '513100',
+    name: '纳指ETF国泰',
+    kind: 'exchange',
+    type: 'BUY',
+    date: '2026-05-20',
+    price: 2.2,
+    shares: 1000
+  }];
+  const navResult = {
+    items: [{
+      code: '513100',
+      name: '纳指ETF国泰',
+      price: 2.365,
+      currentPrice: 2.365,
+      close: 2.365,
+      previousClose: 2.273,
+      previousNav: 2.273,
+      change: 0.092,
+      changePercent: 4.05,
+      latestNav: 2.065,
+      latestNavDate: '2026-05-29',
+      asOf: '2026-06-01T07:00:00.000Z',
+      quoteDate: '2026-06-01'
+    }]
+  };
+  const { snapshotsByCode } = mergeSnapshotsFromNavResult({}, navResult);
+
+  const [agg] = aggregateByCode(transactions, snapshotsByCode, { todayDate: '2026-06-02' });
+  assert.equal(agg.kind, 'exchange');
+  assert.equal(agg.quoteDate, '2026-06-01');
+  assert.equal(agg.hasTodayNav, false);
+  assert.equal(agg.todayProfit, 0);
+  assert.equal(agg.todayReturnRate, 0);
+
+  const summary = summarizePortfolio([agg]);
+  assert.equal(summary.todayReadyCount, 0);
+  assert.equal(summary.todayProfit, 0);
+  assert.equal(summary.todayReturnRate, 0);
 });

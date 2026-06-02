@@ -60,6 +60,7 @@ test('fund-metrics keeps exchange ETF price as current value', () => {
     latestNavDate: '2026-05-29',
     iopv: 2.0647,
     premiumPercent: 14.54,
+    asOf: '2026-06-01T07:00:00.000Z',
     source: 'xueqiu-quote'
   }, { exchange: true, cachePolicy: 'live-refresh' });
 
@@ -74,4 +75,25 @@ test('fund-metrics keeps exchange ETF price as current value', () => {
   assert.equal(item.latestNav, 2.065);
   assert.equal(item.navBase, 2.0647);
   assert.equal(item.premiumPercent, 14.54);
+  assert.equal(item.quoteDate, '2026-06-01');
+});
+
+test('fund-metrics marks stale exchange ETF quote as closed with quoteDate', () => {
+  const item = normalizeFundMetricFromQuote('513100', {
+    code: '513100',
+    symbol: 'sh513100',
+    name: '纳指ETF国泰',
+    price: 2.365,
+    currentPrice: 2.365,
+    previousClose: 2.273,
+    changePercent: 4.05,
+    latestNav: 2.065,
+    latestNavDate: '2026-05-29',
+    marketState: 'REGULAR',
+    asOf: '2000-01-01T07:00:00.000Z',
+    source: 'xueqiu-quote'
+  }, { exchange: true, cachePolicy: 'live-refresh' });
+
+  assert.equal(item.quoteDate, '2000-01-01');
+  assert.equal(item.marketState, 'CLOSED');
 });

@@ -27,6 +27,27 @@ function firstPositiveNumber(...values) {
   return null;
 }
 
+function shanghaiDateFromTimestamp(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const direct = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) return direct ? direct[1] : '';
+  try {
+    return new Date(parsed).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+  } catch {
+    return new Date(parsed).toISOString().slice(0, 10);
+  }
+}
+
+function todayShanghaiDate() {
+  try {
+    return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+  } catch {
+    return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  }
+}
+
 function deriveChangePercent(currentValue, previousValue, explicitChangePercent = null) {
   const explicit = roundNumber(explicitChangePercent, 4);
   if (Number.isFinite(explicit)) return explicit;
@@ -72,6 +93,13 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
     ? roundNumber(((price - navBase) / navBase) * 100, 4)
     : null;
   const premiumPercent = explicitPremium != null ? explicitPremium : computedPremium;
+  const asOf = String(quote?.asOf || new Date().toISOString()).trim();
+  const quoteDate = shanghaiDateFromTimestamp(quote?.quoteDate || asOf);
+  const todayDate = todayShanghaiDate();
+  const rawMarketState = String(quote?.marketState || '').trim();
+  const marketState = exchange && quoteDate && quoteDate < todayDate
+    ? 'CLOSED'
+    : rawMarketState;
   return {
     ok: !quote?.error,
     code: String(quote?.code || code || '').trim(),
@@ -92,8 +120,9 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
     premiumPercent,
     latestNavDate: String(quote?.latestNavDate || '').trim(),
     navDate: String(quote?.latestNavDate || '').trim(),
-    marketState: String(quote?.marketState || '').trim(),
-    asOf: String(quote?.asOf || new Date().toISOString()).trim(),
+    marketState,
+    asOf,
+    quoteDate,
     source: String(quote?.source || '').trim(),
     fallback: quote?.fallback || '',
     primaryError: primaryError || quote?.primaryError || '',
