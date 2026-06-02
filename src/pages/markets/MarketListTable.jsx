@@ -30,6 +30,11 @@ import {
   switchLimitToneFor,
   switchLimitLabelFor,
 } from '../switchStrategyHelpers.js';
+import {
+  getExpectedLatestNavDate,
+  getTodayShanghaiDate,
+  normalizeFundKind,
+} from '../../app/holdingsLedgerBasics.js';
 
 const numericSortFn = (rowA, rowB, columnId) => {
   const a = rowA.getValue(columnId);
@@ -41,6 +46,18 @@ const numericSortFn = (rowA, rowB, columnId) => {
   if (bN) return -1;
   return Number(a) - Number(b);
 };
+
+function normalizeDateKey(value) {
+  return String(value || '').trim().slice(0, 10);
+}
+
+function isExpectedLatestChangeRow(row, todayDate) {
+  const latestNavDate = normalizeDateKey(row?.latestNavDate);
+  if (!latestNavDate) return false;
+  const kind = normalizeFundKind(row?.kind || row?.assetType, row?.code || row?.symbol, row?.name || '');
+  const expectedLatestNavDate = getExpectedLatestNavDate(kind, todayDate);
+  return latestNavDate >= expectedLatestNavDate && latestNavDate <= todayDate;
+}
 
 export function MarketListTable({
   rows = [],
@@ -55,6 +72,10 @@ export function MarketListTable({
   hideTrendColumn = false,
   dataTable = false,
 }) {
+  const todayDate = getTodayShanghaiDate();
+  const isLatestChangeRow = (row) => {
+    return isExpectedLatestChangeRow(row, todayDate);
+  };
   const columns = useMemo(() => ([
     {
       id: 'symbol',
@@ -95,7 +116,13 @@ export function MarketListTable({
       cell: ({ row }) => {
         const pct = Number(row.original.changePercent);
         const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
-        return <span className={cx('font-semibold tabular-nums', flat ? 'text-[#5f6368]' : pct > 0 ? 'text-[#a50e0e]' : 'text-[#137333]')}>{formatPercent(row.original.changePercent)}</span>;
+        const latest = isExpectedLatestChangeRow(row.original, todayDate);
+        return (
+          <span className="inline-flex items-center justify-end gap-1.5">
+            <span className={cx('font-semibold tabular-nums', flat ? 'text-[#5f6368]' : pct > 0 ? 'text-[#a50e0e]' : 'text-[#137333]')}>{formatPercent(row.original.changePercent)}</span>
+            {latest ? <span className="rounded-full bg-[#e8f0fe] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#1a73e8]">最新</span> : null}
+          </span>
+        );
       },
       sortingFn: numericSortFn,
     },
@@ -171,7 +198,7 @@ export function MarketListTable({
       },
       sortingFn: numericSortFn,
     } : null,
-  ].filter(Boolean)), [showLimitColumn, hidePremiumColumn, hideTrendColumn, klineMap]);
+  ].filter(Boolean)), [showLimitColumn, hidePremiumColumn, hideTrendColumn, klineMap, todayDate]);
   const table = useReactTable({
     data: rows,
     columns,
@@ -258,7 +285,12 @@ export function MarketListTable({
                   {row.meta ? <div className="truncate text-[10px] text-[#5f6368]">{row.meta}</div> : null}
                 </td>
                 <td className={cx(cellPad, 'whitespace-nowrap text-right tabular-nums text-[#1f1f1f]')}>{formatNumber(row.price)}</td>
-                <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums', flat ? 'text-[#5f6368]' : up ? 'text-[#a50e0e]' : 'text-[#137333]')}>{formatPercent(row.changePercent)}</td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-right')}>
+                  <span className="inline-flex items-center justify-end gap-1.5">
+                    <span className={cx('font-semibold tabular-nums', flat ? 'text-[#5f6368]' : up ? 'text-[#a50e0e]' : 'text-[#137333]')}>{formatPercent(row.changePercent)}</span>
+                    {isLatestChangeRow(row) ? <span className="rounded-full bg-[#e8f0fe] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#1a73e8]">最新</span> : null}
+                  </span>
+                </td>
                 {showLimitColumn ? (
                   <td className={cx(cellPad, 'whitespace-nowrap text-right text-xs')}>
                     {row.fundLimit ? (
