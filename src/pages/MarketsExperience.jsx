@@ -60,7 +60,7 @@ import {
   normalizeSearchResults,
   resolveCnFundName,
 } from './markets/marketsCatalog.js';
-import { shouldShowAppTag } from './switchStrategyHelpers.js';
+
 const MARKETS = [
   { key: 'us', label: '美股' },
   { key: 'cn', label: 'A股' }
@@ -799,11 +799,10 @@ export function MarketsExperience() {
     const isOtc = isCnOtcFundQuote(merged) || (market === 'cn' && hasNasdaqOtcFund(code));
     const fundLimit = code ? fundLimitsByCode[code] || null : null;
     const fundMeta = code ? NASDAQ_OTC_FUND_MAP[code] || null : null;
-    const showAppTag = shouldShowAppTag(fundMeta, fundLimit);
+
     let baseMeta = '';
     if (isOtc) {
       const parts = ['场外基金'];
-      if (showAppTag) parts.push('App');
       parts.push(latestNavDate ? `净值日 ${latestNavDate.slice(5)}` : '净值');
       baseMeta = parts.join(' · ');
     }
