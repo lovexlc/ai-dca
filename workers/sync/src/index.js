@@ -176,6 +176,7 @@ async function handleAdminAnalytics(request, env, origin) {
     COUNT(DISTINCT type) AS eventTypes,
     MAX(created_at) AS lastActive
     FROM analytics_events WHERE event_date >= ? AND COALESCE(NULLIF(username, ''), visitor_id) != ''
+    AND NOT (type = 'switch_worker_run' AND json_extract(meta, '$.reason') = 'switch-cron')
     GROUP BY COALESCE(NULLIF(username, ''), visitor_id)
     ORDER BY lastActive DESC LIMIT 20`).bind(since).all();
   const hourlyRows = await env.DB.prepare(`SELECT
@@ -183,12 +184,14 @@ async function handleAdminAnalytics(request, env, origin) {
     COUNT(*) AS events,
     COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), visitor_id)) AS users
     FROM analytics_events WHERE event_date >= ?
+    AND NOT (type = 'switch_worker_run' AND json_extract(meta, '$.reason') = 'switch-cron')
     GROUP BY hour ORDER BY hour`).bind(since).all();
   const dowRows = await env.DB.prepare(`SELECT
     CAST(strftime('%w', created_at) AS INTEGER) AS dow,
     COUNT(*) AS events,
     COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), visitor_id)) AS users
     FROM analytics_events WHERE event_date >= ?
+    AND NOT (type = 'switch_worker_run' AND json_extract(meta, '$.reason') = 'switch-cron')
     GROUP BY dow ORDER BY dow`).bind(since).all();
   const platformRows = await env.DB.prepare(`SELECT
     COUNT(DISTINCT CASE

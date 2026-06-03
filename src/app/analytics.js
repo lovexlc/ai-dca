@@ -218,7 +218,9 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
     recent: events.slice(-20).reverse(),
     userActivity: (() => {
       const userMap = new Map();
-      events.forEach((event) => {
+      // 排除后台 worker 自动跑的事件（如 switch-cron），只统计用户真实操作
+      const realUserEvents = events.filter((e) => !(e.type === 'switch_worker_run' && e.meta?.reason === 'switch-cron'));
+      realUserEvents.forEach((event) => {
         const user = event.username || event.userId || event.visitorId || '';
         if (!user) return;
         const row = userMap.get(user) || { user, username: event.username || '', events: 0, eventTypes: new Set(), lastActive: '' };
@@ -233,11 +235,11 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
         .map((row) => ({ ...row, eventTypes: row.eventTypes.size }));
     })(),
     hourlyActivity: Array.from({ length: 24 }, (_, hour) => {
-      const hourEvents = events.filter((e) => { try { return new Date(e.createdAt).getHours() === hour; } catch { return false; } });
+      const hourEvents = events.filter((e) => { try { return new Date(e.createdAt).getHours() === hour; } catch { return false; } }).filter((e) => !(e.type === 'switch_worker_run' && e.meta?.reason === 'switch-cron'));
       return { hour, events: hourEvents.length, users: uniqueCount(hourEvents, (e) => e.userId || e.visitorId) };
     }),
     dailyActivity: Array.from({ length: 7 }, (_, dow) => {
-      const dowEvents = events.filter((e) => { try { return new Date(e.createdAt).getDay() === dow; } catch { return false; } });
+      const dowEvents = events.filter((e) => { try { return new Date(e.createdAt).getDay() === dow; } catch { return false; } }).filter((e) => !(e.type === 'switch_worker_run' && e.meta?.reason === 'switch-cron'));
       return { dow, events: dowEvents.length, users: uniqueCount(dowEvents, (e) => e.userId || e.visitorId) };
     })
   };
