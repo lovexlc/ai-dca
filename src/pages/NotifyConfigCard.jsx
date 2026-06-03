@@ -174,7 +174,7 @@ export function NotifyConfigCard({
                         className={primaryButtonClass}
                         type="button"
                         onClick={handleSaveServerChan3Config}
-                        disabled={isSavingSettings || !String(notifyConfig.serverChan3Uid || '').trim() || !String(notifyConfig.serverChan3SendKey || '').trim()}
+                        disabled={isSavingSettings || !String(notifyConfig.serverChan3Uid || '').trim() || (!serverChan3Configured && !String(notifyConfig.serverChan3SendKey || '').trim())}
                       >
                         <Save className="h-4 w-4" />
                         {isSavingSettings ? '正在保存' : '保存 Server酱³'}

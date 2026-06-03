@@ -241,10 +241,14 @@ async function handleSettings(request, env) {
   });
   settings = auth.settings;
   const currentClientId = auth.clientId;
+  const nextServerChan3 = normalizeServerChan3Config(payload?.serverChan3 ?? auth.clientRecord.serverChan3 ?? {});
+  if (!nextServerChan3.sendKey && auth.clientRecord.serverChan3?.sendKey) {
+    nextServerChan3.sendKey = auth.clientRecord.serverChan3.sendKey;
+  }
   const nextSettings = upsertClientRecord(settings, currentClientId, {
     clientLabel: currentClientLabel || auth.clientRecord.clientLabel,
     barkDeviceKey: String(payload?.barkDeviceKey ?? auth.clientRecord.barkDeviceKey ?? '').trim(),
-    serverChan3: normalizeServerChan3Config(payload?.serverChan3 ?? auth.clientRecord.serverChan3 ?? {})
+    serverChan3: nextServerChan3
   });
   const nextClientRecord = getClientRecord(nextSettings, currentClientId);
 

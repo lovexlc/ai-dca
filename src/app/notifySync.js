@@ -349,6 +349,7 @@ export function syncTradePlanRules(payload = buildNotifySyncPayload()) {
     },
     body: JSON.stringify({
       ...payload,
+      clientId: clientConfig.clientId,
       clientLabel: clientConfig.clientLabel
     })
   });
@@ -399,6 +400,7 @@ export function saveNotifySettings(payload = {}) {
     },
     body: JSON.stringify({
       ...payload,
+      clientId: clientConfig.clientId,
       clientLabel: clientConfig.clientLabel
     })
   });

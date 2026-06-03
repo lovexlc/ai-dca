@@ -348,13 +348,13 @@ export function NotifyExperience({ embedded = false }) {
     try {
       const uid = String(notifyConfig.serverChan3Uid || '').trim();
       const sendKey = String(notifyConfig.serverChan3SendKey || '').trim();
-      if (!uid || !sendKey) {
+      if (!uid || (!sendKey && !serverChan3Configured)) {
         throw new Error('请填写 Server酱³ UID 和 SendKey');
       }
       const savedSettings = await saveNotifySettings({
         clientId: notifyConfig.notifyClientId,
         clientLabel: notifyConfig.notifyClientLabel,
-        serverChan3: { uid, sendKey },
+        serverChan3: sendKey ? { uid, sendKey } : { uid },
         barkDeviceKey: notifyConfig.barkDeviceKey
       });
       const savedServerChan3 = savedSettings?.setup?.serverChan3 || {
@@ -366,12 +366,12 @@ export function NotifyExperience({ embedded = false }) {
         notifyClientId: notifyConfig.notifyClientId,
         notifyClientLabel: notifyConfig.notifyClientLabel,
         serverChan3Uid: uid,
-        serverChan3SendKey: sendKey,
+        ...(sendKey ? { serverChan3SendKey: sendKey } : {}),
         barkDeviceKey: notifyConfig.barkDeviceKey,
         _hasAndroid: true,
         _hasPC: webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled
       });
-      setNotifyConfig((current) => ({ ...current, serverChan3Uid: uid, serverChan3SendKey: sendKey }));
+      setNotifyConfig((current) => ({ ...current, serverChan3Uid: uid, ...(sendKey ? { serverChan3SendKey: sendKey } : {}) }));
       setNotifyStatus((current) => ({
         ...(current || {}),
         configured: {
