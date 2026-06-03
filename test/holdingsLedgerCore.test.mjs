@@ -78,7 +78,42 @@ test('境内场外基金净值日期未到今天时不显示昨天当日收益',
   assert.equal(summary.todayReturnRate, 0);
 });
 
-test('场外 QDII 上一净值日可视为预期覆盖但不计入今日收益', () => {
+test('境内场外基金最新净值达到预期披露日时计算最新披露日收益', () => {
+  const transactions = [{
+    id: 'buy-otc-expected',
+    code: '000001',
+    name: '场外测试基金',
+    kind: 'otc',
+    type: 'BUY',
+    date: '2026-05-20',
+    price: 1,
+    shares: 1000
+  }];
+  const snapshotsByCode = {
+    '000001': {
+      code: '000001',
+      name: '场外测试基金',
+      latestNav: 1.02,
+      latestNavDate: '2026-06-02',
+      previousNav: 1,
+      previousNavDate: '2026-06-01',
+      changePercent: null
+    }
+  };
+
+  const [agg] = aggregateByCode(transactions, snapshotsByCode, { todayDate: '2026-06-03' });
+  assert.equal(agg.hasExpectedNav, true);
+  assert.equal(agg.hasTodayNav, true);
+  assert.equal(agg.todayProfit, 20);
+  assert.equal(agg.todayReturnRate, 2);
+
+  const summary = summarizePortfolio([agg]);
+  assert.equal(summary.todayReadyCount, 1);
+  assert.equal(summary.todayProfit, 20);
+  assert.equal(summary.todayReturnRate, 2);
+});
+
+test('场外 QDII 上一净值日可视为预期覆盖并计入最新披露日收益', () => {
   const transactions = [{
     id: 'buy-021000',
     code: '021000',
@@ -110,18 +145,18 @@ test('场外 QDII 上一净值日可视为预期覆盖但不计入今日收益',
   assert.equal(agg.previousPrice, 2.362);
   assert.equal(agg.hasPreviousNav, true);
   assert.equal(agg.hasExpectedNav, true);
-  assert.equal(agg.hasTodayNav, false);
-  assert.equal(agg.todayProfit, 0);
-  assert.equal(agg.todayReturnRate, 0);
+  assert.equal(agg.hasTodayNav, true);
+  assert.equal(agg.todayProfit, 5.91);
+  assert.equal(agg.todayReturnRate, 0.25);
 
   const summary = summarizePortfolio([agg]);
   assert.equal(summary.navDateCoverage, 'full');
-  assert.equal(summary.todayReadyCount, 0);
-  assert.equal(summary.todayProfit, 0);
-  assert.equal(summary.todayReturnRate, 0);
+  assert.equal(summary.todayReadyCount, 1);
+  assert.equal(summary.todayProfit, 5.91);
+  assert.equal(summary.todayReturnRate, 0.25);
 });
 
-test('场外 QDII 只有净值日期等于今天时才计算今日收益', () => {
+test('场外 QDII 净值日期等于今天时仍计算最新披露日收益', () => {
   const transactions = [{
     id: 'buy-021000-today',
     code: '021000',
