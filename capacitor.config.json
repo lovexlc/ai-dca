@@ -1,0 +1,13 @@
+{
+  "appId": "tech.freebacktrack.aidca",
+  "appName": "美股策略助手",
+  "webDir": "frontend-dist",
+  "server": {
+    "url": "https://tools.freebacktrack.tech",
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#ffffff"
+  }
+}
