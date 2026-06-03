@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Crown, Lock, Sparkles, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { clearPremiumState, markAppEntryAdShown, readPremiumState, shouldShowAppEntryAd, writePremiumState } from '../app/monetization.js';
-import { cx } from '../lib/utils.js';
 
 export function usePremiumState() {
   const [premium, setPremium] = useState(() => readPremiumState());

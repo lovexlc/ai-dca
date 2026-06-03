@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, LineChart, ListChecks, Plus, Send, Shuffle, Trash2, Wallet, X } from 'lucide-react';
+import { ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, Crown, LineChart, ListChecks, Plus, Send, Shuffle, Trash2, Wallet, X } from 'lucide-react';
 import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, PRIMARY_TAB_META, PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
@@ -22,6 +22,7 @@ const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').the
 const MarketsExperience = lazy(() => import('./MarketsExperience.jsx').then((m) => ({ default: m.MarketsExperience })));
 const StrategyGuideExperience = lazy(() => import('./StrategyGuideExperience.jsx').then((m) => ({ default: m.StrategyGuideExperience })));
 const AdminAnalyticsExperience = lazy(() => import('./AdminAnalyticsExperience.jsx').then((m) => ({ default: m.AdminAnalyticsExperience })));
+const PremiumExperience = lazy(() => import('./PremiumExperience.jsx').then((m) => ({ default: m.PremiumExperience })));
 
 function readPreferredWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
   if (typeof window === 'undefined') return fallbackTab;
@@ -33,6 +34,7 @@ const WORKSPACE_TITLES = {
   tradePlans: '交易计划中心',
   fundSwitch: '基金切换收益分析',
   markets: '行情中心',
+  premium: '高级版',
   holdings: '持仓总览',
   notify: '通知设置',
   adminData: '数据看板'
@@ -43,6 +45,7 @@ const SIDEBAR_ICONS = {
   tradePlans: ListChecks,
   fundSwitch: Shuffle,
   markets: LineChart,
+  premium: Crown,
   holdings: Wallet,
   notify: Bell,
   adminData: BarChart3
@@ -347,6 +350,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         return <FundSwitchExperience {...sharedProps} />;
       case 'markets':
         return <MarketsExperience {...sharedProps} />;
+      case 'premium':
+        return <PremiumExperience {...sharedProps} />;
       case 'notify':
         return <NotifyExperience {...sharedProps} />;
       case 'adminData':

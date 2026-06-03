@@ -4,13 +4,14 @@ export const PROJECT_TITLE = '美股策略助手';
 // 主 tab 顺序与元数据：所有页面都通过 WorkspacePage（侧边栏 + ?tab=）展示。
 // 加仓计划（home）和定投计划（dca）已并入交易计划 tab，作为其二级 tab，不再独立出现在侧边栏。
 export const DEFAULT_WORKSPACE_TAB = 'strategy';
-export const PRIMARY_TAB_ORDER = ['strategy', 'holdings', 'tradePlans', 'fundSwitch', 'markets', 'notify', 'adminData'];
+export const PRIMARY_TAB_ORDER = ['strategy', 'holdings', 'tradePlans', 'fundSwitch', 'markets', 'premium', 'notify', 'adminData'];
 
 export const PRIMARY_TAB_META = {
   strategy: { label: '策略指南', hrefKey: 'strategy' },
   tradePlans: { label: '交易计划', hrefKey: 'tradePlans' },
   fundSwitch: { label: '基金切换', hrefKey: 'fundSwitch' },
   markets: { label: '行情中心', hrefKey: 'markets' },
+  premium: { label: '高级版', hrefKey: 'premium' },
   holdings: { label: '持仓总览', hrefKey: 'holdings' },
   newPlan: { label: '新建计划', hrefKey: 'newPlan' },
   notify: { label: '通知', hrefKey: 'notify' },
@@ -37,6 +38,7 @@ export function createPageLinks({ inPagesDir = false } = {}) {
     dca: `${indexHref}?tab=tradePlans#dca`,
     fundSwitch: `${indexHref}?tab=fundSwitch`,
     markets: `${indexHref}?tab=markets`,
+    premium: `${indexHref}?tab=premium`,
     holdings: `${indexHref}?tab=holdings`,
     newPlan: `${indexHref}?tab=newPlan`,
     notify: `${indexHref}?tab=notify`,
