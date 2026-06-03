@@ -198,9 +198,10 @@ export async function deliverNotification(env, notification, options = {}) {
       });
     });
 
+    // Web 虚拟设备没有 FCM token，跳过 FCM 回退
     const fcmTargets = gcmRegistrationsToDeliver
       .map((registration, idx) => ({ registration, idx }))
-      .filter((item) => !wsDeliveredFlags[item.idx]);
+      .filter((item) => !wsDeliveredFlags[item.idx] && !item.registration.isWebClient);
 
     if (fcmTargets.length) {
       const gcmSettledList = await Promise.allSettled(
@@ -246,15 +247,33 @@ export async function deliverNotification(env, notification, options = {}) {
   }
 
   if (currentClientId.startsWith('web:')) {
-    results.push({
-      channel: 'pc',
-      status: 'queued',
-      detail: '已写入事件，等待 PC 浏览器轮询拉取后本地弹窗',
-      configKey: `pc-client:${currentClientId}`,
-      configType: 'pc-client',
-      configId: currentClientId,
-      configLabel: currentClientLabel ? `PC · ${currentClientLabel}` : 'PC 浏览器'
-    });
+    // 检查 web 虚拟设备是否已通过 WS 送达
+    const webWsDeviceId = `web-ws:${currentClientId}`;
+    const webWsResult = results.find((r) => (
+      r.configType === 'gcm-registration' && r.configId === webWsDeviceId && r.channel === 'ws' && r.status === 'delivered'
+    ));
+
+    if (webWsResult) {
+      results.push({
+        channel: 'ws',
+        status: 'delivered',
+        detail: 'PC 浏览器实时通道送达',
+        configKey: `pc-client:${currentClientId}`,
+        configType: 'pc-client',
+        configId: currentClientId,
+        configLabel: currentClientLabel ? `PC · ${currentClientLabel}` : 'PC 浏览器'
+      });
+    } else {
+      results.push({
+        channel: 'pc',
+        status: 'queued',
+        detail: '已写入事件，等待 PC 浏览器轮询拉取后本地弹窗',
+        configKey: `pc-client:${currentClientId}`,
+        configType: 'pc-client',
+        configId: currentClientId,
+        configLabel: currentClientLabel ? `PC · ${currentClientLabel}` : 'PC 浏览器'
+      });
+    }
   }
 
   const deliveredCount = results.filter((result) => String(result?.status || '') === 'delivered' || (String(result?.channel || '') === 'pc' && String(result?.status || '') === 'queued')).length;

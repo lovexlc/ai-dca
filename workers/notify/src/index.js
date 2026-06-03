@@ -34,10 +34,13 @@ import {
   getClientRecord,
   hashText,
   normalizeClientId,
+  normalizeClientSecret,
   normalizeDeviceInstallationId,
+  randomString,
   readCurrentClientId,
   upsertClientRecord
 } from './clientSettings.js';
+import { normalizeGcmRegistrations } from './gcm.js';
 import {
   handleSwitchConfigGet,
   handleSwitchConfigPost,
@@ -313,6 +316,97 @@ export default {
       }
 
       if (request.method === 'GET' && url.pathname === '/api/notify/health') {
+        return jsonResponse({ ok: true }, { origin });
+      }
+
+      // ── Web 客户端 WebSocket 注册 ──────────────────────────────
+      // PC 浏览器通过此端点获取 deviceInstallationId + token，然后接入 WsHub。
+      if (request.method === 'POST' && url.pathname === '/api/notify/ws/register') {
+        const payload = await request.json().catch(() => ({}));
+        const clientId = normalizeClientId(payload?.clientId);
+        const clientSecret = normalizeClientSecret(payload?.clientSecret);
+
+        if (!clientId || !clientSecret) {
+          return jsonResponse({ ok: false, message: '缺少 clientId 或 clientSecret。' }, { status: 400, origin });
+        }
+
+        let settings = await readSettings(env);
+        const existingClient = settings.clients?.[clientId];
+
+        if (!existingClient) {
+          return jsonResponse({ ok: false, message: '客户端未注册，请先同步通知配置。' }, { status: 404, origin });
+        }
+
+        const clientSecretHash = await hashText(clientSecret);
+        if (existingClient.clientSecretHash && existingClient.clientSecretHash !== clientSecretHash) {
+          return jsonResponse({ ok: false, message: 'clientSecret 验证失败。' }, { status: 401, origin });
+        }
+
+        // 生成虚拟设备 ID 和 token
+        const deviceInstallationId = `web-ws:${clientId}`;
+        const wsToken = randomString(64);
+
+        // 在 gcmRegistrations 中创建/更新 web 虚拟设备记录
+        const registrations = normalizeGcmRegistrations(settings.gcmRegistrations);
+        const existingIdx = registrations.findIndex((r) => r.deviceInstallationId === deviceInstallationId);
+
+        const webDevice = {
+          id: deviceInstallationId,
+          deviceInstallationId,
+          deviceName: `Web · ${existingClient.clientLabel || clientId}`,
+          packageName: '',
+          token: wsToken,
+          isWebClient: true,
+          pairedClients: [{
+            clientId,
+            groupId: existingClient.notifyGroupId || clientId,
+            clientName: existingClient.clientLabel || '',
+            pairedAt: new Date().toISOString(),
+            lastSeenAt: new Date().toISOString()
+          }],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        if (existingIdx >= 0) {
+          registrations[existingIdx] = { ...registrations[existingIdx], ...webDevice };
+        } else {
+          registrations.push(webDevice);
+        }
+
+        settings.gcmRegistrations = registrations;
+        await writeSettings(env, settings);
+
+        return jsonResponse({ ok: true, deviceInstallationId, token: wsToken }, { origin });
+      }
+
+      // ── Web 客户端 WebSocket 注销 ──────────────────────────────
+      if (request.method === 'POST' && url.pathname === '/api/notify/ws/unregister') {
+        const payload = await request.json().catch(() => ({}));
+        const clientId = normalizeClientId(payload?.clientId);
+        const clientSecret = normalizeClientSecret(payload?.clientSecret);
+
+        if (!clientId || !clientSecret) {
+          return jsonResponse({ ok: false, message: '缺少 clientId 或 clientSecret。' }, { status: 400, origin });
+        }
+
+        let settings = await readSettings(env);
+        const existingClient = settings.clients?.[clientId];
+
+        if (!existingClient) {
+          return jsonResponse({ ok: false, message: '客户端未注册。' }, { status: 404, origin });
+        }
+
+        const clientSecretHash = await hashText(clientSecret);
+        if (existingClient.clientSecretHash && existingClient.clientSecretHash !== clientSecretHash) {
+          return jsonResponse({ ok: false, message: 'clientSecret 验证失败。' }, { status: 401, origin });
+        }
+
+        const deviceInstallationId = `web-ws:${clientId}`;
+        const registrations = normalizeGcmRegistrations(settings.gcmRegistrations);
+        settings.gcmRegistrations = registrations.filter((r) => r.deviceInstallationId !== deviceInstallationId);
+        await writeSettings(env, settings);
+
         return jsonResponse({ ok: true }, { origin });
       }
 

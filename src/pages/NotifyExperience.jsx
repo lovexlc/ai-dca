@@ -78,6 +78,13 @@ export function NotifyExperience({ embedded = false }) {
   // 「提醒策略」内的多条策略默认全部收起，点击标题切换展开。
   // 取值：'rules' | 'holdings' | null。同时只展开一条，避免页面过长。
   const [expandedStrategy, setExpandedStrategy] = useState(null);
+  // WebSocket 实时通道状态（由 entry-screen.jsx 通过自定义事件更新）
+  const [notifyWsStatus, setNotifyWsStatus] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.__aiDcaNotifyWsStatus || 'idle';
+    }
+    return 'idle';
+  });
   // PC 浏览器前台通知（方案 A）：仅在页面打开时弹桌面 Notification。
   // 开关 webNotifyEnabled 写到 localStorage，由 entry-screen.jsx 启动的全局 poller 读取。
   const [webNotifySupported, setWebNotifySupported] = useState(() => getWebNotifyState().supported);
@@ -164,6 +171,22 @@ export function NotifyExperience({ embedded = false }) {
     window.addEventListener('notify:test-pc', handleSendLocalWebNotifyTest);
     return () => window.removeEventListener('notify:test-pc', handleSendLocalWebNotifyTest);
   }, [webNotifySupported, webNotifyPermission]);
+
+  // 监听 WS 连接状态变化（由 entry-screen.jsx 的 CustomEvent 派发）
+  useEffect(() => {
+    function handleWsStatusChange(event) {
+      const newStatus = event?.detail?.status;
+      if (newStatus) {
+        setNotifyWsStatus(newStatus);
+      }
+    }
+    window.addEventListener('ai-dca-notify-ws-status', handleWsStatusChange);
+    // 初始化时同步一次当前状态
+    if (typeof window !== 'undefined' && window.__aiDcaNotifyWsStatus) {
+      setNotifyWsStatus(window.__aiDcaNotifyWsStatus);
+    }
+    return () => window.removeEventListener('ai-dca-notify-ws-status', handleWsStatusChange);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -586,6 +609,7 @@ export function NotifyExperience({ embedded = false }) {
         handleRequestWebNotifyPermission={handleRequestWebNotifyPermission}
         handleSendLocalWebNotifyTest={handleSendLocalWebNotifyTest}
         handleToggleWebNotifyEnabled={handleToggleWebNotifyEnabled}
+        notifyWsStatus={notifyWsStatus}
       />
     );
   }

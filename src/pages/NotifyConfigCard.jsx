@@ -1,4 +1,4 @@
-import { ArrowRight, Bell, ChevronDown, ChevronUp, Laptop, Save, Send, Trash2 } from 'lucide-react';
+import { ArrowRight, Bell, ChevronDown, ChevronUp, Laptop, Loader2, Save, Send, Trash2, Wifi, WifiOff } from 'lucide-react';
 import { ANDROID_APK_DOWNLOAD_URL, formatEventTimeLabel } from '../app/tradePlansHelpers.js';
 import {
   Card,
@@ -40,7 +40,8 @@ export function NotifyConfigCard({
   pcTestDisabledReason,
   handleRequestWebNotifyPermission,
   handleSendLocalWebNotifyTest,
-  handleToggleWebNotifyEnabled
+  handleToggleWebNotifyEnabled,
+  notifyWsStatus = 'idle'
 }) {
   const serverChan3Configured = Boolean(summary?.serverChan3Configured || androidSetup?.serverChan3?.configured);
   const androidDeviceCount = Number(summary?.androidDeviceCount ?? pairedAndroidDevices.length + (serverChan3Configured ? 1 : 0));
@@ -332,7 +333,36 @@ export function NotifyConfigCard({
                   ) : null}
                   <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
                     <div className="min-w-0 pr-2">
-                      <div className="text-sm font-semibold text-slate-900">启用前台轮询</div>
+                      <div className="text-sm font-semibold text-slate-900">实时推送通道</div>
+                      <div className="mt-0.5 text-xs text-slate-500">通过 WebSocket 长连接接收通知，无需轮询</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {notifyWsStatus === 'connected' ? (
+                        <>
+                          <Wifi className="h-4 w-4 text-emerald-500" />
+                          <span className="text-xs font-semibold text-emerald-600">已连接</span>
+                        </>
+                      ) : notifyWsStatus === 'connecting' || notifyWsStatus === 'reconnecting' ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
+                          <span className="text-xs font-semibold text-amber-600">连接中</span>
+                        </>
+                      ) : notifyWsStatus === 'fallback' ? (
+                        <>
+                          <WifiOff className="h-4 w-4 text-slate-400" />
+                          <span className="text-xs font-semibold text-slate-500">轮询模式</span>
+                        </>
+                      ) : (
+                        <>
+                          <WifiOff className="h-4 w-4 text-slate-300" />
+                          <span className="text-xs font-semibold text-slate-400">未启用</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+                    <div className="min-w-0 pr-2">
+                      <div className="text-sm font-semibold text-slate-900">启用通知推送</div>
                     </div>
                     <button
                       type="button"
@@ -344,7 +374,7 @@ export function NotifyConfigCard({
                         webNotifyEnabled ? 'bg-emerald-500' : 'bg-slate-300'
                       )}
                       aria-pressed={webNotifyEnabled}
-                      aria-label="启用 PC 前台轮询"
+                      aria-label="启用 PC 通知推送"
                     >
                       <span
                         className={cx(
