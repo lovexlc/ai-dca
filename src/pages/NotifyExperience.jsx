@@ -104,9 +104,15 @@ export function NotifyExperience({ embedded = false }) {
   }
 
   const androidSetup = notifyStatus?.setup || null;
-  const pairedAndroidDevices = Array.isArray(androidSetup?.gcmCurrentClientRegistrations)
+  const currentClientRegistrations = Array.isArray(androidSetup?.gcmCurrentClientRegistrations)
     ? androidSetup.gcmCurrentClientRegistrations
     : [];
+  const pairedAndroidDevices = currentClientRegistrations.filter((registration) => (
+    !registration?.isWebClient && !String(registration?.deviceInstallationId || registration?.id || '').startsWith('web-ws:')
+  ));
+  const pairedWebWsDevices = currentClientRegistrations.filter((registration) => (
+    registration?.isWebClient || String(registration?.deviceInstallationId || registration?.id || '').startsWith('web-ws:')
+  ));
   const barkConfigured = Boolean(notifyStatus?.configured?.bark);
   const serverChan3Configured = Boolean(notifyStatus?.configured?.serverChan3 || androidSetup?.serverChan3?.configured);
   const androidConfigured = pairedAndroidDevices.length > 0 || serverChan3Configured;
@@ -597,6 +603,7 @@ export function NotifyExperience({ embedded = false }) {
         setAndroidPairingCode={setAndroidPairingCode}
         isPairingAndroid={isPairingAndroid}
         pairedAndroidDevices={pairedAndroidDevices}
+        pairedWebWsDevices={pairedWebWsDevices}
         androidSetup={androidSetup}
         unpairingRegistrationId={unpairingRegistrationId}
         handlePairAndroidCode={handlePairAndroidCode}

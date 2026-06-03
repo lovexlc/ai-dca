@@ -28,7 +28,7 @@ import { showActionToast } from '../app/toast.js';
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { readTradeLedger, TRADE_LEDGER_UPDATED_EVENT } from '../app/tradeLedger.js';
 import { aggregateByCode } from '../app/holdingsLedgerCore.js';
-import { getCnEtfPremiumSnapshot, getNavHistory, getNavSnapshot, getNavSnapshots } from '../app/navService.js';
+import { getCnEtfPremiumSnapshot, getNavHistory, getNavSnapshot, getNavSnapshots, mergePricePushItems } from '../app/navService.js';
 import { ExpandedMarketListOverlay } from './markets/ExpandedMarketListOverlay.jsx';
 import { MarketsMainContent } from './markets/MarketsMainContent.jsx';
 import { MarketsResearchShell } from './markets/MarketsResearchShell.jsx';
@@ -541,6 +541,49 @@ export function MarketsExperience() {
   useEffect(() => {
     refreshWatch();
   }, [refreshWatch]);
+
+  // ---- WS 行情订阅：自选代码变化时重新订阅 ----
+  useEffect(() => {
+    const symbols = trackedWatchSymbols || [];
+    if (!symbols.length) return;
+    if (typeof window !== 'undefined' && typeof window.__aiDcaSubscribeMarketData === 'function') {
+      window.__aiDcaSubscribeMarketData(symbols);
+    }
+  }, [trackedWatchSymbols]);
+
+  // ---- WS 行情推送：接收实时价格更新 ----
+  useEffect(() => {
+    function handlePricePush(event) {
+      const items = event?.detail?.items;
+      if (!Array.isArray(items) || !items.length) return;
+      setWatchQuotes((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        for (const item of items) {
+          const code = String(item?.code || '').trim();
+          if (!code) continue;
+          const existing = next[code];
+          if (!existing) continue; // 只更新已有的自选
+          const updated = { ...existing };
+          if (item.price != null && item.price > 0) {
+            updated.price = item.price;
+            updated.currentPrice = item.price;
+            updated.close = item.price;
+          }
+          if (item.change != null) updated.change = item.change;
+          if (item.changePercent != null) updated.changePercent = item.changePercent;
+          if (item.premiumPercent != null) updated.premiumPercent = item.premiumPercent;
+          if (item.marketState) updated.marketState = item.marketState;
+          if (item.asOf) updated.asOf = item.asOf;
+          next[code] = updated;
+          changed = true;
+        }
+        return changed ? next : prev;
+      });
+    }
+    window.addEventListener('ai-dca-price-push', handlePricePush);
+    return () => window.removeEventListener('ai-dca-price-push', handlePricePush);
+  }, []);
 
   useEffect(() => {
     refreshSectors(false);

@@ -124,6 +124,7 @@ export function startNotifyRealtime({ clientId, clientSecret, onStatusChange, de
         reconnectMs = INITIAL_RECONNECT_MS;
         setStatus('connected');
         startPing();
+        flushPendingSubscribe();
         break;
 
       case 'ping':
@@ -137,8 +138,41 @@ export function startNotifyRealtime({ clientId, clientSecret, onStatusChange, de
         handleNotifyFrame(frame);
         break;
 
+      case 'price_push':
+        handlePricePushFrame(frame);
+        break;
+
       default:
         if (debug) console.info('[notifyWs] unknown frame type:', frame.type);
+    }
+  }
+
+  function handlePricePushFrame(frame) {
+    const items = Array.isArray(frame.items) ? frame.items : [];
+    if (!items.length) return;
+    if (debug) console.info('[notifyWs] price_push received:', items.length, 'items');
+    // 通过自定义事件广播给页面组件
+    try {
+      window.dispatchEvent(new CustomEvent('ai-dca-price-push', { detail: { items, ts: frame.ts } }));
+    } catch (_e) { /* ignore */ }
+  }
+
+  // 待发送的订阅列表（连接建立前缓存）
+  let pendingSymbols = null;
+
+  function sendSubscribeFrame(symbols) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'subscribe', symbols }));
+    } else {
+      pendingSymbols = symbols;
+    }
+  }
+
+  // 连接成功后自动发送待订阅
+  function flushPendingSubscribe() {
+    if (pendingSymbols && ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'subscribe', symbols: pendingSymbols }));
+      pendingSymbols = null;
     }
   }
 
@@ -304,7 +338,7 @@ export function startNotifyRealtime({ clientId, clientSecret, onStatusChange, de
     return status;
   }
 
-  currentInstance = { disconnect, getStatus };
+  currentInstance = { disconnect, getStatus, subscribeMarketData: sendSubscribeFrame };
   registerAndConnect();
 
   return currentInstance;

@@ -27,7 +27,7 @@ try {
     if (typeof window !== 'undefined' && typeof window.__aiDcaDisconnectNotifyWs === 'function') {
       try { window.__aiDcaDisconnectNotifyWs(); } catch (_e) { /* ignore */ }
     }
-    const { disconnect } = startNotifyRealtime({
+    const { disconnect, subscribeMarketData } = startNotifyRealtime({
       clientId: notifyConfig.notifyClientId,
       clientSecret: notifyConfig.notifyClientSecret,
       debug: true,
@@ -40,6 +40,7 @@ try {
     });
     if (typeof window !== 'undefined') {
       window.__aiDcaDisconnectNotifyWs = disconnect;
+      window.__aiDcaSubscribeMarketData = subscribeMarketData;
     }
   }
 } catch (_error) {

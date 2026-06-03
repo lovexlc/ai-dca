@@ -26,6 +26,7 @@ export function NotifyConfigCard({
   setAndroidPairingCode,
   isPairingAndroid,
   pairedAndroidDevices,
+  pairedWebWsDevices = [],
   androidSetup,
   unpairingRegistrationId,
   handlePairAndroidCode,
@@ -360,6 +361,24 @@ export function NotifyConfigCard({
                       )}
                     </div>
                   </div>
+                  {pairedWebWsDevices.length ? (
+                    <div className="mt-3 space-y-3">
+                      {pairedWebWsDevices.map((registration) => (
+                        <div key={registration.id} className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-4">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="text-sm font-semibold text-slate-900">{registration.deviceName || 'WebSocket 浏览器通道'}</div>
+                            <Pill tone="emerald">WebSocket 已绑定</Pill>
+                          </div>
+                          <div className="mt-3 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
+                            <div>通道 ID: {registration.deviceInstallationId || registration.id || '--'}</div>
+                            <div>Token: {registration.tokenMasked || '--'}</div>
+                            <div>绑定时间: {formatEventTimeLabel(registration.updatedAt || registration.createdAt)}</div>
+                            <div>配对状态: {registration.pairedToCurrentClient ? '当前浏览器已绑定' : '未绑定'}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                   <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
                     <div className="min-w-0 pr-2">
                       <div className="text-sm font-semibold text-slate-900">启用通知推送</div>

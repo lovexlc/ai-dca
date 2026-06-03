@@ -43,7 +43,7 @@ import {
   recognizeLedgerFile
 } from '../app/holdingsLedger.js';
 import { showActionToast } from '../app/toast.js';
-import { getNavSnapshots } from '../app/navService.js';
+import { getNavSnapshots, mergePricePushItems } from '../app/navService.js';
 import {
   KIND_FILTER_KEYS,
   KIND_FILTER_LABELS,
@@ -313,6 +313,38 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     for (const code of codes) navAttemptedCodesRef.current.add(code);
     void refreshNavForCodes(codes, { silent: true });
   }, [transactions]);
+
+  // ---- WS 行情订阅：持仓代码变化时重新订阅 ----
+  useEffect(() => {
+    const ledgerCodes = getLedgerCodeList(transactions);
+    const chainCodes = getSwitchChainCodeList(transactions);
+    const codes = [...new Set([...ledgerCodes, ...chainCodes])].sort();
+    if (!codes.length) return;
+    if (typeof window !== 'undefined' && typeof window.__aiDcaSubscribeMarketData === 'function') {
+      window.__aiDcaSubscribeMarketData(codes);
+    }
+  }, [transactions]);
+
+  // ---- WS 行情推送：接收实时价格更新 ----
+  useEffect(() => {
+    function handlePricePush(event) {
+      const items = event?.detail?.items;
+      if (!Array.isArray(items) || !items.length) return;
+      setLedger((prev) => {
+        const existingItems = Object.entries(prev.snapshotsByCode || {}).map(([code, snap]) => ({ code, ...snap }));
+        const merged = mergePricePushItems(existingItems, items);
+        if (merged === existingItems) return prev;
+        const nextSnapshotsByCode = { ...(prev.snapshotsByCode || {}) };
+        for (const item of merged) {
+          const code = String(item?.code || '').trim();
+          if (code) nextSnapshotsByCode[code] = item;
+        }
+        return { ...prev, snapshotsByCode: nextSnapshotsByCode };
+      });
+    }
+    window.addEventListener('ai-dca-price-push', handlePricePush);
+    return () => window.removeEventListener('ai-dca-price-push', handlePricePush);
+  }, []);
 
   async function refreshNavForCodes(codes, { silent = false, forceRefresh = false } = {}) {
     const safeCodes = (Array.isArray(codes) ? codes : []).filter(Boolean);

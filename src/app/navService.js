@@ -189,3 +189,67 @@ export const __internals = {
   normalizeSnapshotItem,
   normalizeSnapshotPayload
 };
+
+/**
+ * 将 WS 推送的行情数据合并到已有的 navSnapshots 中。
+ * 只更新价格相关字段，保留原有非价格字段不变。
+ *
+ * @param {Array<object>} existing - 现有的 navSnapshots.items
+ * @param {Array<object>} pushItems - WS 推送的 price_push items
+ * @returns {Array<object>} 合并后的新数组（不修改原数组）
+ */
+export function mergePricePushItems(existing = [], pushItems = []) {
+  if (!Array.isArray(existing) || !existing.length) return existing;
+  if (!Array.isArray(pushItems) || !pushItems.length) return existing;
+
+  // 构建 code -> pushItem 的索引
+  const pushMap = new Map();
+  for (const item of pushItems) {
+    const code = String(item?.code || '').trim();
+    if (code) pushMap.set(code, item);
+  }
+
+  if (pushMap.size === 0) return existing;
+
+  let changed = false;
+  const merged = existing.map((snapshot) => {
+    const code = String(snapshot?.code || '').trim();
+    const pushItem = pushMap.get(code);
+    if (!pushItem) return snapshot;
+
+    const updated = { ...snapshot };
+    if (pushItem.price != null && pushItem.price > 0) {
+      updated.price = round(Number(pushItem.price), 4);
+      updated.currentPrice = updated.price;
+      updated.close = updated.price;
+    }
+    if (pushItem.change != null) {
+      updated.change = roundNullable(pushItem.change, 4);
+    }
+    if (pushItem.changePercent != null) {
+      updated.changePercent = roundNullable(pushItem.changePercent, 4);
+    }
+    if (pushItem.premiumPercent != null) {
+      updated.premiumPercent = roundNullable(pushItem.premiumPercent, 4);
+    }
+    if (pushItem.latestNav != null) {
+      updated.latestNav = round(Number(pushItem.latestNav), 4);
+    }
+    if (pushItem.navBase != null) {
+      updated.navBase = roundNullable(pushItem.navBase, 4);
+    }
+    if (pushItem.iopv != null) {
+      updated.iopv = roundNullable(pushItem.iopv, 4);
+    }
+    if (pushItem.marketState) {
+      updated.marketState = String(pushItem.marketState).trim();
+    }
+    if (pushItem.asOf) {
+      updated.asOf = String(pushItem.asOf).trim();
+    }
+    changed = true;
+    return updated;
+  });
+
+  return changed ? merged : existing;
+}

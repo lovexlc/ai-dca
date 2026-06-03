@@ -34,6 +34,9 @@ const FRAME = Object.freeze({
   PONG: "pong",
   NOTIFY: "notify",
   ACK: "ack",
+  SUBSCRIBE: "subscribe",
+  UNSUBSCRIBE: "unsubscribe",
+  PRICE_PUSH: "price_push",
 })
 
 
@@ -151,6 +154,10 @@ export class WsHub {
         return this.#handleConnect(request)
       case "/publish":
         return this.#handlePublish(request)
+      case "/prices":
+        return this.#handlePricePush(request)
+      case "/subscribed-symbols":
+        return this.#handleSubscribedSymbols()
       case "/stats":
         return new Response(
           JSON.stringify({ connections: this.sockets.size }),
@@ -178,12 +185,11 @@ export class WsHub {
     server.accept()
     const deviceInstallationId = String(request.headers.get("x-device-installation-id") || "").trim()
     const id = crypto.randomUUID()
-    this.sockets.set(server, { id, lastSeenMs: Date.now() })
+    this.sockets.set(server, { id, lastSeenMs: Date.now(), subscribedSymbols: new Set() })
 
     server.addEventListener("message", (event) => {
       const meta = this.sockets.get(server)
       if (meta) meta.lastSeenMs = Date.now()
-      // 收到客户端 pong / 业务上行（v1 暂不消费业务上行）
       try {
         const frame = JSON.parse(typeof event.data === "string" ? event.data : "")
         if (frame && frame.type === FRAME.PING) {
@@ -202,6 +208,28 @@ export class WsHub {
               message: error instanceof Error ? error.message : String(error),
             }))
           })
+          return
+        }
+        // 行情订阅：客户端发送 { type: "subscribe", symbols: [...] }
+        if (frame && frame.type === FRAME.SUBSCRIBE && Array.isArray(frame.symbols)) {
+          if (!meta.subscribedSymbols) meta.subscribedSymbols = new Set()
+          for (const s of frame.symbols) {
+            if (typeof s === 'string' && s.trim()) meta.subscribedSymbols.add(s.trim())
+          }
+          console.log("[notify][ws] subscribe", JSON.stringify({
+            connectionId: id,
+            symbols: [...meta.subscribedSymbols],
+          }))
+          return
+        }
+        // 取消订阅：客户端发送 { type: "unsubscribe", symbols: [...] }
+        if (frame && frame.type === FRAME.UNSUBSCRIBE && Array.isArray(frame.symbols)) {
+          if (meta.subscribedSymbols) {
+            for (const s of frame.symbols) {
+              if (typeof s === 'string') meta.subscribedSymbols.delete(s.trim())
+            }
+          }
+          return
         }
       } catch {
         // 忽略非 JSON 帧
@@ -286,6 +314,76 @@ export class WsHub {
     }
     return new Response(
       JSON.stringify({ delivered, failed, total: delivered + failed }),
+      { headers: { "content-type": "application/json" } },
+    )
+  }
+
+  /**
+   * 接收行情数据并推送给订阅了相关代码的连接。
+   * 请求体：{ items: [{ code, price, change, changePercent, premiumPercent, ... }] }
+   */
+  async #handlePricePush(request) {
+    if (request.method !== "POST") {
+      return new Response("method not allowed", { status: 405 })
+    }
+    let body
+    try {
+      body = await request.json()
+    } catch {
+      return new Response("invalid json", { status: 400 })
+    }
+    const items = Array.isArray(body?.items) ? body.items : []
+    if (!items.length) {
+      return new Response(JSON.stringify({ delivered: 0, subscribed: 0 }), { headers: { "content-type": "application/json" } })
+    }
+
+    const priceCodes = new Set(items.map((item) => String(item?.code || '').trim()).filter(Boolean))
+    const frame = JSON.stringify({
+      type: FRAME.PRICE_PUSH,
+      ts: Date.now(),
+      items,
+    })
+
+    let delivered = 0
+    let failed = 0
+    let subscribed = 0
+    for (const [socket, meta] of this.sockets) {
+      const subs = meta?.subscribedSymbols
+      if (!subs || subs.size === 0) continue
+      // 检查是否有交集：该连接订阅的代码与本次推送的代码
+      const hasOverlap = items.some((item) => subs.has(String(item?.code || '').trim()))
+      if (!hasOverlap) continue
+      subscribed++
+      try {
+        socket.send(frame)
+        delivered++
+      } catch {
+        failed++
+        try { socket.close(1011, "send failed") } catch {}
+        this.sockets.delete(socket)
+      }
+    }
+
+    return new Response(
+      JSON.stringify({ delivered, failed, subscribed, total: items.length }),
+      { headers: { "content-type": "application/json" } },
+    )
+  }
+
+  /**
+   * 返回当前所有连接订阅的代码并集（供 cron 决定拉取哪些代码）。
+   */
+  #handleSubscribedSymbols() {
+    const allSymbols = new Set()
+    for (const [, meta] of this.sockets) {
+      if (meta?.subscribedSymbols) {
+        for (const s of meta.subscribedSymbols) {
+          allSymbols.add(s)
+        }
+      }
+    }
+    return new Response(
+      JSON.stringify({ symbols: [...allSymbols], connections: this.sockets.size }),
       { headers: { "content-type": "application/json" } },
     )
   }
@@ -398,5 +496,50 @@ export async function tryPublishWs(env, deviceInstallationId, payload) {
     }))
     const queued = await enqueueWsMessage(env, deviceInstallationId, payload, 'publish-error')
     return { ok: false, error: error instanceof Error ? error.message : String(error), ...queued }
+  }
+}
+
+/**
+ * 向指定设备的 WsHub 推送行情数据。
+ * 只有订阅了相关代码的连接才会收到。
+ *
+ * @param {Record<string, unknown>} env
+ * @param {string} deviceInstallationId
+ * @param {Array<object>} items - 行情数据数组
+ */
+export async function tryPublishPrices(env, deviceInstallationId, items) {
+  if (!env || !env.WS_HUB || !deviceInstallationId || !Array.isArray(items) || !items.length) {
+    return { skipped: true }
+  }
+  try {
+    const id = env.WS_HUB.idFromName(String(deviceInstallationId))
+    const stub = env.WS_HUB.get(id)
+    const res = await stub.fetch("https://ws-hub/prices", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ items }),
+    })
+    if (!res.ok) return { ok: false, status: res.status }
+    const parsed = await res.json().catch(() => null)
+    return { ok: true, ...(parsed || {}) }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+/**
+ * 获取指定设备 WsHub 上所有连接订阅的代码并集。
+ */
+export async function getSubscribedSymbols(env, deviceInstallationId) {
+  if (!env || !env.WS_HUB || !deviceInstallationId) return []
+  try {
+    const id = env.WS_HUB.idFromName(String(deviceInstallationId))
+    const stub = env.WS_HUB.get(id)
+    const res = await stub.fetch("https://ws-hub/subscribed-symbols")
+    if (!res.ok) return []
+    const parsed = await res.json().catch(() => null)
+    return Array.isArray(parsed?.symbols) ? parsed.symbols : []
+  } catch {
+    return []
   }
 }

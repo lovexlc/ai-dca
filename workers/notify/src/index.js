@@ -3,6 +3,7 @@ import { readSettings, writeSettings } from './notifyStorage.js';
 import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
 import { handleBark, isBarkRoute } from './bark.js';
 import { WsHub, tryPublishWs } from './wsHub.js';
+import { runMarketDataPush } from './marketDataPush.js';
 import { emptyResponse, jsonResponse, readOrigin } from './notifyHttp.js';
 import {
   handleAck,
@@ -513,11 +514,25 @@ export default {
     if (cron === '* 1-7 * * MON-FRI') {
       console.log('[notify] scheduled dispatch -> runSwitchStrategyTick', JSON.stringify({ cron }));
       ctx.waitUntil(runSwitchStrategyTick(env, scheduledMs, { reason: 'switch-cron', runClientDetection }));
+      // 场内切换 cron 每分钟运行一次，也顺便推送行情
+      ctx.waitUntil(runMarketDataPush(env).catch((error) => {
+        console.log('[notify] marketPush error', JSON.stringify({
+          message: error instanceof Error ? error.message : String(error),
+        }));
+      }));
       return;
     }
 
     console.log('[notify] scheduled dispatch -> runDetection', JSON.stringify({ cron }));
     ctx.waitUntil(runDetection(env, 'scheduled'));
+
+    // 行情数据 WS 推送：每次 cron 都尝试推送，由 runMarketDataPush 内部判断
+    // 是否有活跃订阅、是否在交易时段、数据是否有变化。
+    ctx.waitUntil(runMarketDataPush(env).catch((error) => {
+      console.log('[notify] marketPush error', JSON.stringify({
+        message: error instanceof Error ? error.message : String(error),
+      }));
+    }));
 
     try {
       const todayShanghai = shanghaiDate || getShanghaiDateParts(new Date(scheduledMs)).date;
