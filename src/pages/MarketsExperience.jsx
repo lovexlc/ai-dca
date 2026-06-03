@@ -41,7 +41,7 @@ import {
   isCnOtcFundQuote,
   navHistoryDaysForRange,
 } from './markets/marketFundMetrics.js';
-import { loadWatchQuotesWithEnhancements } from './markets/marketsWatchData.js';
+import { loadWatchQuotesWithEnhancements, readCachedFundLimits, writeCachedFundLimits } from './markets/marketsWatchData.js';
 import {
   formatNumber,
   formatSymbolDisplay,
@@ -374,6 +374,11 @@ export function MarketsExperience() {
       .map((sym) => normalizeCnFundCode(sym))
       .filter((code) => /^\d{6}$/.test(code));
     if (!codes.length) { setFundLimitsByCode({}); return undefined; }
+    const cached = readCachedFundLimits(codes);
+    if (Object.keys(cached.dataByCode).length) {
+      setFundLimitsByCode((prev) => ({ ...prev, ...cached.dataByCode }));
+    }
+    if (!cached.missing.length) return undefined;
     const ctrl = new AbortController();
     let cancelled = false;
     (async () => {
@@ -381,14 +386,14 @@ export function MarketsExperience() {
         const resp = await fetch('/api/fund-limit', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ codes }),
+          body: JSON.stringify({ codes: cached.missing }),
           cache: 'no-store',
           signal: ctrl.signal
         });
         if (!resp.ok) {
           if (resp.status === 405) {
             const entries = await Promise.all(
-              codes.map((code) =>
+              cached.missing.map((code) =>
                 fetch(`/api/fund-limit?code=${encodeURIComponent(code)}`, { cache: 'no-store', signal: ctrl.signal })
                   .then((r) => (r.ok ? r.json() : null))
                   .then((data) => [code, data])
@@ -400,7 +405,8 @@ export function MarketsExperience() {
             for (const [code, data] of entries) {
               if (data && typeof data === 'object') next[code] = data;
             }
-            setFundLimitsByCode(next);
+            writeCachedFundLimits(next);
+            setFundLimitsByCode((prev) => ({ ...prev, ...next }));
             return;
           }
           return;
@@ -414,7 +420,8 @@ export function MarketsExperience() {
             next[item.code] = item.data;
           }
         }
-        setFundLimitsByCode(next);
+        writeCachedFundLimits(next);
+        setFundLimitsByCode((prev) => ({ ...prev, ...next }));
       } catch (err) {
         if (err && err.name === 'AbortError') return;
       }
