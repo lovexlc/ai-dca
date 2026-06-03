@@ -12,6 +12,18 @@ export function isExchangeLikeCode(code) {
   return /^(1[5-9]|5\d)\d{4}$/.test(String(code || ''));
 }
 
+function shanghaiDateFromTimestamp(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) return '';
+  try {
+    return new Date(parsed).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+  } catch (_e) {
+    return new Date(parsed).toISOString().slice(0, 10);
+  }
+}
+
 function isAfterShanghaiNavCacheCutoff() {
   // 返回当前上海时间是否 >= 15:30。场内 NAV 只在这个点之后才写缓存，避免缓存盘中报价。
   try {
@@ -68,7 +80,12 @@ export async function fetchHoldingsNavSnapshots(env, codes = [], options = {}) {
     if (cached && Number.isFinite(Number(cached.latestNav)) && cached.latestNavDate) {
       if (todayShanghai) {
         const expected = getExpectedLatestNavDate(kind, todayShanghai);
-        cacheValid = String(cached.latestNavDate) >= expected;
+        if (kind === 'exchange') {
+          cacheValid = String(cached.latestNavDate) >= expected;
+        } else {
+          const sourceUpdatedDate = shanghaiDateFromTimestamp(cached.sourceUpdatedAt);
+          cacheValid = sourceUpdatedDate === todayShanghai || String(cached.latestNavDate) >= expected;
+        }
       } else if (kind === 'exchange') {
         cacheValid = true;
       }
@@ -178,7 +195,13 @@ export async function fetchHoldingsNavSnapshots(env, codes = [], options = {}) {
     const cached = cachedByCode[code];
     const freshDate = String(snap.latestNavDate || '');
     const cachedDate = String(cached?.latestNavDate || '');
-    const isNewer = freshDate && (!cachedDate || freshDate > cachedDate);
+    const freshSourceUpdatedDate = shanghaiDateFromTimestamp(snap.sourceUpdatedAt);
+    const cachedSourceUpdatedDate = shanghaiDateFromTimestamp(cached?.sourceUpdatedAt);
+    const sourceFreshenedToday = kind !== 'exchange'
+      && todayShanghai
+      && freshSourceUpdatedDate === todayShanghai
+      && cachedSourceUpdatedDate !== todayShanghai;
+    const isNewer = freshDate && (!cachedDate || freshDate > cachedDate || sourceFreshenedToday);
 
     if (!isNewer) { skippedSameOrOlder += 1; continue; }
 

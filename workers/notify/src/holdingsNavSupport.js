@@ -38,7 +38,6 @@ function resolveKindFromMetric(metric) {
 export async function resolveHoldingKindAsync(code, bucketKind, env) {
   const codeStr = String(code || '');
   if (bucketKind === 'exchange') return 'exchange';
-  if (bucketKind === 'qdii') return 'qdii';
   try {
     const metrics = await fetchFundMetricsForCodes(env, [codeStr], { refresh: false });
     const resolved = resolveKindFromMetric(metrics?.[codeStr]);
@@ -198,11 +197,7 @@ export function normalizeHoldingsDigest(digest) {
       const weight = Number(entry?.weight);
       if (!FUND_CODE_PATTERN.test(code)) continue;
       if (!Number.isFinite(weight) || weight <= 0 || weight > 1) continue;
-      const rawKind = String(entry?.kind || '').trim().toLowerCase();
-      const kind = rawKind === 'exchange' || rawKind === 'qdii' || rawKind === 'otc'
-        ? rawKind
-        : (bucket === 'exchange' ? 'exchange' : 'otc');
-      result[bucket].push({ code, weight, kind });
+      result[bucket].push({ code, weight });
       totalWeight += weight;
     }
   }

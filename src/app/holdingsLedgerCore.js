@@ -800,15 +800,14 @@ export function buildHoldingsNotifyDigest({ aggregates = [], summary = null } = 
       if (!Number.isFinite(marketValue) || marketValue <= 0) continue;
       const weight = round(marketValue / totalMarketValue, 6);
       if (!Number.isFinite(weight) || weight <= 0) continue;
-      const resolvedKind = agg.kind === 'exchange' || agg.kind === 'qdii' ? agg.kind : 'otc';
-      const entry = { code: String(agg.code), weight, kind: resolvedKind };
+      const entry = { code: String(agg.code), weight };
       if (agg.kind === 'exchange') exchange.push(entry);
       else otc.push(entry);
     }
   }
 
   // 出于隐私考虑：digest 不上传任何资产/金额字段（market value、cost、profit、return rate 等）。
-  // 仅上传 per-fund code、kind 与组合内相对 weight，由 worker 拉取 NAV 后计算加权收益率；
+  // 仅上传 per-fund code 与组合内相对 weight，由 worker 拉取 NAV 后计算加权收益率；
   // 推送中只显示百分比，具体金额引导用户回到网页查看。
 
   return {

@@ -3,6 +3,25 @@ import {
   resolveHoldingKindAsync
 } from './holdingsNavSupport.js';
 
+function shanghaiDateFromTimestamp(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) return '';
+  try {
+    return new Date(parsed).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+  } catch (_e) {
+    return new Date(parsed).toISOString().slice(0, 10);
+  }
+}
+
+function isOtcSnapshotReady(snap, latestNavDate, todayShanghai, expectedLatestNavDate) {
+  if (!latestNavDate || latestNavDate > todayShanghai) return false;
+  const sourceUpdatedDate = shanghaiDateFromTimestamp(snap?.sourceUpdatedAt);
+  if (sourceUpdatedDate === todayShanghai) return true;
+  return latestNavDate >= expectedLatestNavDate;
+}
+
 export async function computeWeightedReturn(bucket, snapshotsByCode, todayShanghai, kind = 'exchange', env = null) {
   // 返回 { ready, returnRate, contributors[] }。
   // ready=false 表示还有代码的 latestNavDate 未达预期最新日期，在调用方侧跳过。
@@ -16,18 +35,17 @@ export async function computeWeightedReturn(bucket, snapshotsByCode, todayShangh
     const latestNav = Number(snap?.latestNav);
     const previousNav = Number(snap?.previousNav);
     const latestNavDate = String(snap?.latestNavDate || '');
-    const entryKind = String(entry?.kind || '').trim().toLowerCase();
-    const bucketKind = entryKind === 'exchange' || entryKind === 'qdii' || entryKind === 'otc'
-      ? entryKind
-      : kind;
-    const effectiveKind = await resolveHoldingKindAsync(entry.code, bucketKind, env);
+    const effectiveKind = await resolveHoldingKindAsync(entry.code, kind, env);
     const expectedLatestNavDate = getExpectedLatestNavDate(effectiveKind, todayShanghai);
+    const dateReady = effectiveKind === 'exchange'
+      ? latestNavDate >= expectedLatestNavDate && latestNavDate <= todayShanghai
+      : isOtcSnapshotReady(snap, latestNavDate, todayShanghai, expectedLatestNavDate);
     if (!Number.isFinite(latestNav) || !Number.isFinite(previousNav) || previousNav <= 0) {
       // 缺少净值或昨日净值 → 在加权中跳过，但如果是 latestNavDate 不达预期日期造成的，则整套跳过。
-      if (!latestNavDate || latestNavDate < expectedLatestNavDate) ready = false;
+      if (!dateReady) ready = false;
       continue;
     }
-    if (latestNavDate < expectedLatestNavDate || latestNavDate > todayShanghai) {
+    if (!dateReady) {
       ready = false;
       continue;
     }
