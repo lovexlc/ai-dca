@@ -196,12 +196,12 @@ async function handleAdminAnalytics(request, env, origin) {
   const platformRows = await env.DB.prepare(`SELECT
     COUNT(DISTINCT CASE
       WHEN type = 'notify_enabled' AND json_extract(meta, '$.hasBark') = 1 THEN COALESCE(NULLIF(user_id, ''), visitor_id)
-      WHEN type = 'notify_used' AND (json_extract(meta, '$.platform') = 'ios' OR json_extract(meta, '$.path') NOT LIKE '%/gcm/%') THEN COALESCE(NULLIF(user_id, ''), visitor_id)
+      WHEN type = 'notify_used' AND json_extract(meta, '$.platform') = 'ios' THEN COALESCE(NULLIF(user_id, ''), visitor_id)
     END) AS iosUsers,
     COUNT(DISTINCT CASE
-      WHEN type = 'notify_used' AND (json_extract(meta, '$.platform') = 'android' OR json_extract(meta, '$.path') LIKE '%/gcm/%') THEN COALESCE(NULLIF(user_id, ''), visitor_id)
-      WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'android') THEN COALESCE(NULLIF(user_id, ''), visitor_id)
-    END) AS androidUsers,
+      WHEN type = 'notify_used' AND json_extract(meta, '$.platform') = 'serverchan3' THEN COALESCE(NULLIF(user_id, ''), visitor_id)
+      WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'serverchan3') THEN COALESCE(NULLIF(user_id, ''), visitor_id)
+    END) AS serverChan3Users,
     COUNT(DISTINCT CASE
       WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'pc') THEN COALESCE(NULLIF(user_id, ''), visitor_id)
     END) AS pcUsers
@@ -219,7 +219,7 @@ async function handleAdminAnalytics(request, env, origin) {
       switchRuns: Number(cardsRows?.switchRuns) || 0,
       notifyPlatformUsers: {
         ios: Number(platformRows?.iosUsers) || 0,
-        android: Number(platformRows?.androidUsers) || 0,
+        serverchan3: Number(platformRows?.serverChan3Users) || 0,
         pc: Number(platformRows?.pcUsers) || 0
       }
     },

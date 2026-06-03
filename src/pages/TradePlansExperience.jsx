@@ -250,9 +250,8 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
         if (cancelled) return;
         const barkConfigured = Boolean(status?.configured?.bark);
         const serverChan3Configured = Boolean(status?.configured?.serverChan3 || status?.setup?.serverChan3?.configured);
-        const androidConfigured = Array.isArray(status?.setup?.gcmCurrentClientRegistrations)
-          && status.setup.gcmCurrentClientRegistrations.length > 0;
-        setChannelConfigured(barkConfigured || androidConfigured || serverChan3Configured);
+        const pcConfigured = Boolean(status?.configured?.webWs || status?.setup?.webWsCurrentClientRegistrationCount);
+        setChannelConfigured(barkConfigured || serverChan3Configured || pcConfigured);
       } catch {
         if (!cancelled) setChannelConfigured(true);
       }

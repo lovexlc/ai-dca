@@ -70,7 +70,7 @@ async function handleStatus(request, env) {
 
   const recentEvents = getClientRecentEvents(clientRecord);
   const deliveryFailures = getClientDeliveryFailures(clientRecord);
-  const gcmSetup = buildPublicGcmSetup(settings, env, {
+  const webWsSetup = buildPublicGcmSetup(settings, env, {
     clientId: currentClientId
   });
 
@@ -79,7 +79,7 @@ async function handleStatus(request, env) {
       bark: Boolean(clientRecord.barkDeviceKey),
       serverChan3: Boolean(clientRecord.serverChan3?.uid && clientRecord.serverChan3?.sendKey),
       gotify: false,
-      gcm: Boolean(gcmSetup.gcmServiceAccountConfigured && gcmSetup.gcmCurrentClientRegistrationCount)
+      webWs: Boolean(webWsSetup.webWsCurrentClientRegistrationCount)
     },
     counts: {
       planRuleCount: Number(clientRecord?.meta?.counts?.planRuleCount) || 0,
@@ -102,7 +102,7 @@ async function handleStatus(request, env) {
       },
       clientId: clientRecord.clientId,
       clientLabel: clientRecord.clientLabel,
-      ...gcmSetup
+      ...webWsSetup
     }
   }, { origin });
 }

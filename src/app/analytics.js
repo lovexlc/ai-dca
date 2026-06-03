@@ -207,8 +207,8 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
       notifyUsers: uniqueCount(notifyEvents, (event) => event.userId || event.visitorId),
       switchRuns: switchEvents.length,
       notifyPlatformUsers: {
-        ios: uniqueCount(notifyEvents.filter((e) => (e.type === 'notify_enabled' && e.meta?.hasBark) || (e.type === 'notify_used' && (e.meta?.platform === 'ios' || (e.meta?.path && !e.meta.path.includes('/gcm/'))))), (e) => e.userId || e.visitorId),
-        android: uniqueCount(notifyEvents.filter((e) => (e.type === 'notify_used' && (e.meta?.platform === 'android' || (e.meta?.path && e.meta.path.includes('/gcm/')))) || (e.type === 'notify_enabled' && Array.isArray(e.meta?.platforms) && e.meta.platforms.includes('android'))), (e) => e.userId || e.visitorId),
+        ios: uniqueCount(notifyEvents.filter((e) => (e.type === 'notify_enabled' && e.meta?.hasBark) || (e.type === 'notify_used' && e.meta?.platform === 'ios')), (e) => e.userId || e.visitorId),
+        serverchan3: uniqueCount(notifyEvents.filter((e) => (e.type === 'notify_used' && e.meta?.platform === 'serverchan3') || (e.type === 'notify_enabled' && Array.isArray(e.meta?.platforms) && e.meta.platforms.includes('serverchan3'))), (e) => e.userId || e.visitorId),
         pc: uniqueCount(notifyEvents.filter((e) => e.type === 'notify_enabled' && Array.isArray(e.meta?.platforms) && e.meta.platforms.includes('pc')), (e) => e.userId || e.visitorId)
       }
     },

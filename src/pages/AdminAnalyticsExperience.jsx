@@ -28,7 +28,7 @@ function NotifyCard({ total, platformUsers = {} }) {
   const [expanded, setExpanded] = useState(false);
   const platforms = [
     { key: 'ios', label: 'iOS', color: 'bg-blue-100 text-blue-700', count: platformUsers.ios || 0 },
-    { key: 'android', label: 'Android', color: 'bg-green-100 text-green-700', count: platformUsers.android || 0 },
+    { key: 'serverchan3', label: 'Server酱³', color: 'bg-green-100 text-green-700', count: platformUsers.serverchan3 || 0 },
     { key: 'pc', label: 'PC', color: 'bg-purple-100 text-purple-700', count: platformUsers.pc || 0 }
   ];
   const activePlatforms = platforms.filter((p) => p.count > 0);

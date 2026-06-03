@@ -137,8 +137,7 @@ export async function runMarketDataPush(env) {
   const settings = await readSettings(env);
   const registrations = Array.isArray(settings.gcmRegistrations) ? settings.gcmRegistrations : [];
 
-  // 收集所有有活跃 WS 连接的 deviceInstallationId
-  // （包括 web 虚拟设备和 Android 设备）
+  // 收集所有有活跃 WS 连接的 deviceInstallationId。
   const allDeviceIds = registrations
     .map((r) => String(r?.deviceInstallationId || r?.id || '').trim())
     .filter(Boolean);

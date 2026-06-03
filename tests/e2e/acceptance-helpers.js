@@ -99,7 +99,7 @@ export async function mockAcceptanceNetwork(page) {
   await page.route('**/api/notify/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith('/status')) {
-      return route.fulfill({ json: { configured: { bark: false }, setup: { barkDeviceKey: '', gcmCurrentClientRegistrations: [] } } });
+      return route.fulfill({ json: { configured: { bark: false, webWs: false }, setup: { barkDeviceKey: '', webWsCurrentClientRegistrations: [] } } });
     }
     if (url.pathname.endsWith('/events')) return route.fulfill({ json: { events: [] } });
     if (url.pathname.endsWith('/holdings-rule')) return route.fulfill({ json: { enabled: false, digest: null } });

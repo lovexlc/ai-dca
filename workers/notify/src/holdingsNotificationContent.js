@@ -76,7 +76,7 @@ export function buildHoldingsNotificationContent(kind, returnRate, contributors,
   const body = top.length
     ? `今日${kindLabel}加权收益率 ${formatPercent(returnRate)}；贡献 Top：${top.join('、')}。详情请打开网页查看。`
     : `今日${kindLabel}加权收益率 ${formatPercent(returnRate)}。详情请打开网页查看。`;
-  // Android 客户端 MarkdownRenderer 支持 **bold** / 列表 / 空行；这里给出更清晰的视觉层次。
+  // 富文本通道支持 **bold** / 列表 / 空行；这里给出更清晰的视觉层次。
   const topMdItems = contributors.slice(0, 3).map((item) => `- ${item.code} **${formatPercent(item.ratio)}**`);
   const bodyMdLines = [`**${kindLabel}加权收益率 ${formatPercent(returnRate)}**`];
   if (topMdItems.length) {
@@ -102,7 +102,7 @@ export function buildHoldingsNotificationContentAll(returnRate, contributors, da
     ? `今日加权收益率 ${dailyPct}；贡献 Top：${top.join('、')}。详情请打开网页查看。`
     : `今日加权收益率 ${dailyPct}。详情请打开网页查看。`;
 
-  // Android 客户端 MarkdownRenderer 支持 **bold** / 列表 / 空行；这里给出更清晰的视觉层次。
+  // 富文本通道支持 **bold** / 列表 / 空行；这里给出更清晰的视觉层次。
   const topMdItems = (contributors || []).slice(0, 3).map((item) => `- ${item.code} **${formatPercent(item.ratio)}**`);
   const bodyMdLines = [`**当日加权收益率 ${dailyPct}**`];
   if (topMdItems.length) {

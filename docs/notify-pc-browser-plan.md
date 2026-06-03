@@ -7,7 +7,7 @@
 - 方案 = A（用户 2026-05-18 10:49 确认）
 - 不引入 Service Worker、不引入 VAPID、不改 `workers/notify`
 - 触发链路：客户端定期拉 `/api/notify/events`，diff 出新事件后用 `new Notification(...)` 弹本地
-- 与现有 iOS Bark / Android FCM 是平行渠道（用户三个都开就收三份）
+- 与 iOS Bark / Server酱³ 平行；旧 Android FCM 通道已废弃
 
 ## 步骤
 

@@ -21,15 +21,6 @@ import {
   findGcmRegistration
 } from './gcmRegistrationState.js';
 import {
-  handleGcmCheck,
-  handleGcmPair,
-  handleGcmPairingKey,
-  handleGcmRegister,
-  handleGcmResetDeviceId,
-  handleGcmUnpair,
-  handleGcmUnpairFromDevice
-} from './gcmRoutes.js';
-import {
   buildScopedNotifySettings,
   ensureAuthenticatedClient,
   getClientRecord,
@@ -259,30 +250,8 @@ export default {
         return jsonResponse({ error: 'Gotify 通知能力已移除。' }, { status: 410, origin });
       }
 
-      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/register') {
-        return await handleGcmRegister(request, env);
-      }
-
-      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/check') {
-        return await handleGcmCheck(request, env);
-      }
-
-      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/pairing-key') {
-        return await handleGcmPairingKey(request, env);
-      }
-
-      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/pair') {
-        return await handleGcmPair(request, env);
-      }
-
-      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/unpair') {
-        return await handleGcmUnpair(request, env);
-      }
-      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/unpair-from-device') {
-        return await handleGcmUnpairFromDevice(request, env);
-      }
-      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/reset-device-id') {
-        return await handleGcmResetDeviceId(request, env);
+      if (request.method === 'POST' && url.pathname.startsWith('/api/notify/gcm/')) {
+        return jsonResponse({ error: '旧版 Android GCM/FCM 推送已下线。' }, { status: 410, origin });
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/run') {
@@ -356,7 +325,7 @@ export default {
         const deviceInstallationId = `web-ws:${clientId}`;
         const wsToken = randomString(64);
 
-        // 在 gcmRegistrations 中创建/更新 web 虚拟设备记录
+        // 历史存储字段仍叫 gcmRegistrations；现在只保留 PC WebSocket 虚拟设备。
         const registrations = normalizeGcmRegistrations(settings.gcmRegistrations);
         const existingIdx = registrations.findIndex((r) => r.deviceInstallationId === deviceInstallationId);
 
@@ -464,6 +433,9 @@ export default {
           const reg = findGcmRegistration(settings, { deviceInstallationId });
           if (!reg) {
             return jsonResponse({ ok: false, message: '未找到设备注册记录。' }, { status: 404, origin });
+          }
+          if (!reg.isWebClient && !String(reg.deviceInstallationId || reg.id || '').startsWith('web-ws:')) {
+            return jsonResponse({ ok: false, message: '旧版 Android GCM/FCM 设备已下线。' }, { status: 410, origin });
           }
           if (String(reg.token || '').trim() !== token) {
             return jsonResponse({ ok: false, message: 'token 与注册记录不一致。' }, { status: 401, origin });

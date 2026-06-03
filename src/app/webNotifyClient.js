@@ -3,7 +3,7 @@
 // 设计思路：
 // - 不引入 Service Worker / VAPID / Web Push。只在页面打开、且用户授予 Notification 权限后，
 //   定期拉 `/api/notify/events`，diff 出新事件后用 `new Notification(...)` 本地弹窗。
-// - 与现有 iOS Bark / Android FCM 平行：不改 worker，三个渠道独立订阅。
+// - 与 iOS Bark / Server酱³ 平行，PC 浏览器只负责本地桌面通知。
 // - 同一个 tab 只保持一个 poller 实例（通过 stop() handle 避免 HMR 重复启动）。
 
 import { loadNotifyEvents } from './notifySync.js';

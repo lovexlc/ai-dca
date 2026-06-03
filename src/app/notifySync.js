@@ -128,7 +128,7 @@ export function persistNotifyClientConfig(nextConfig = {}) {
   }
   const platforms = [];
   if (payload.barkDeviceKey) platforms.push('ios');
-  if ((storedNextConfig && storedNextConfig._hasAndroid) || Boolean(payload.serverChan3Uid && payload.serverChan3SendKey)) platforms.push('android');
+  if ((storedNextConfig && storedNextConfig._hasServerChan3) || Boolean(payload.serverChan3Uid && payload.serverChan3SendKey)) platforms.push('serverchan3');
   if (storedNextConfig && storedNextConfig._hasPC) platforms.push('pc');
   trackAnalyticsEvent('notify_enabled', {
     hasBark: Boolean(payload.barkDeviceKey),
@@ -160,7 +160,7 @@ export function mergeNotifyStatusIntoClientConfig(statusPayload = {}, currentCon
 
   persistNotifyClientConfig({
     ...nextConfig,
-    _hasAndroid: serverChan3Configured,
+    _hasServerChan3: serverChan3Configured,
     _hasPC: false,
     _skipTrack: true
   });
@@ -231,7 +231,7 @@ async function requestNotify(path, init = {}) {
     throw new Error(payload.error || `通知服务请求失败：状态 ${response.status}`);
   }
 
-  const platform = path.includes('/gcm/') ? 'android' : 'ios';
+  const platform = path.includes('/ws/') ? 'pc' : path.includes('/settings') ? 'serverchan3' : 'ios';
   trackAnalyticsEvent('notify_used', { path, platform });
   return payload;
 }
@@ -440,45 +440,6 @@ export function saveNotifySettings(payload = {}) {
       ...payload,
       clientId: clientConfig.clientId,
       clientLabel: clientConfig.clientLabel
-    })
-  });
-}
-
-export function pairAndroidDevice(payload = {}) {
-  const clientConfig = resolveNotifyClientConfig(payload);
-
-  return requestNotify('/gcm/pair', {
-    clientConfig,
-    query: {
-      clientId: clientConfig.clientId
-    },
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json'
-    },
-    body: JSON.stringify({
-      ...payload,
-      clientId: clientConfig.clientId,
-      clientName: clientConfig.clientLabel
-    })
-  });
-}
-
-export function unpairAndroidDevice(payload = {}) {
-  const clientConfig = resolveNotifyClientConfig(payload);
-
-  return requestNotify('/gcm/unpair', {
-    clientConfig,
-    query: {
-      clientId: clientConfig.clientId
-    },
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json'
-    },
-    body: JSON.stringify({
-      ...payload,
-      clientId: clientConfig.clientId
     })
   });
 }

@@ -11,7 +11,7 @@
 //   2. 拉取最新单位净值（统一走 markets/fund-metrics，保留 KV 缓存）
 //   3. 计算每只候选与基准的 (price - nav) / nav 溢价百分比
 //   4. 取「基准溢价 - 候选溢价」绝对值，跨越任一阈值即触发
-//   5. 推送到该 client 已配对的设备（Bark + FCM 通道，复用既有 runClientDetection 流程）
+//   5. 复用既有 runClientDetection 流程推送到该 client 的通知通道
 //
 // 去重：每对 (benchmark, candidate) 维护 (level, sign)：
 //   - level = 跨越的阈值数 (0 / 1 / 2)

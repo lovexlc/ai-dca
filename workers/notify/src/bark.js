@@ -4,9 +4,9 @@
 //   /api/notify/quick/:key/:title/:body
 //   /api/notify/quick/:key/:title/:subtitle/:body
 //
-// :key matches a paired Android device by its registration id
-// (deviceInstallationId, fallback to id). All query string and form/JSON
-// body params are forwarded to FCM `data`.
+// :key matches a paired WebSocket registration id (deviceInstallationId,
+// fallback to id). Query string and form/JSON body params are forwarded in
+// the realtime payload `data`.
 //
 // Legacy alias: /api/notify/bark/... is still accepted for back-compat with
 // any out-of-tree callers, but the client UI no longer surfaces it.

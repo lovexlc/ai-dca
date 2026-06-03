@@ -6,13 +6,11 @@ import {
   loadHoldingsNotifyRule,
   saveHoldingsNotifyRule,
   mergeNotifyStatusIntoClientConfig,
-  pairAndroidDevice,
   persistNotifyClientConfig,
   readNotifyClientConfig,
   saveNotifySettings,
   sendNotifyTest,
-  syncTradePlanRules,
-  unpairAndroidDevice
+  syncTradePlanRules
 } from '../app/notifySync.js';
 import {
   getWebNotifyState,
@@ -38,7 +36,7 @@ import {
   formatEventTimeLabel,
   resolveEventStatusMeta
 } from '../app/tradePlansHelpers.js';
-import { parseAndroidNotifyInput, parseBarkInput } from '../app/notifyParsers.js';
+import { parseBarkInput } from '../app/notifyParsers.js';
 import { getVisibleNotifyEvents, humanizeNotifyError } from './notifyHistoryHelpers.js';
 
 export function NotifyExperience({ embedded = false }) {
@@ -46,10 +44,7 @@ export function NotifyExperience({ embedded = false }) {
   const [notifyError, setNotifyError] = useState('');
   const [notifyMessage, setNotifyMessage] = useState('');
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [isPairingAndroid, setIsPairingAndroid] = useState(false);
-  const [unpairingRegistrationId, setUnpairingRegistrationId] = useState('');
   const [notifyPlatform, setNotifyPlatform] = useState('ios');
-  const [androidPairingCode, setAndroidPairingCode] = useState('');
   const [notifyConfig, setNotifyConfig] = useState(() => {
     const persistedConfig = readNotifyClientConfig();
     return {
@@ -73,7 +68,7 @@ export function NotifyExperience({ embedded = false }) {
   const [eventsTick, setEventsTick] = useState(0);
   const [isSyncingRules, setIsSyncingRules] = useState(false);
   const [rulesLastSyncedAt, setRulesLastSyncedAt] = useState('');
-  // 「消息推送配置」默认在检测到已配置（iOS Bark 或 Android 任意一项）后自动收起，
+  // 「消息推送配置」默认在检测到已配置（Bark / Server酱³ / PC 任意一项）后自动收起，
   // 点击卡片头部可手动展开。null 表示尚未从远端收到 status，默认保持展开。
   const [configCollapsed, setConfigCollapsed] = useState(null);
   // 「提醒策略」内的多条策略默认全部收起，点击标题切换展开。
@@ -103,38 +98,32 @@ export function NotifyExperience({ embedded = false }) {
     }
   }
 
-  const androidSetup = notifyStatus?.setup || null;
-  const currentClientRegistrations = Array.isArray(androidSetup?.gcmCurrentClientRegistrations)
-    ? androidSetup.gcmCurrentClientRegistrations
+  const notifySetup = notifyStatus?.setup || null;
+  const currentClientRegistrations = Array.isArray(notifySetup?.webWsCurrentClientRegistrations)
+    ? notifySetup.webWsCurrentClientRegistrations
     : [];
-  const pairedAndroidDevices = currentClientRegistrations.filter((registration) => (
-    !registration?.isWebClient && !String(registration?.deviceInstallationId || registration?.id || '').startsWith('web-ws:')
-  ));
   const pairedWebWsDevices = currentClientRegistrations.filter((registration) => (
     registration?.isWebClient || String(registration?.deviceInstallationId || registration?.id || '').startsWith('web-ws:')
   ));
   const barkConfigured = Boolean(notifyStatus?.configured?.bark);
-  const serverChan3Configured = Boolean(notifyStatus?.configured?.serverChan3 || androidSetup?.serverChan3?.configured);
-  const androidConfigured = pairedAndroidDevices.length > 0 || serverChan3Configured;
-  const androidDeviceCount = pairedAndroidDevices.length + (serverChan3Configured ? 1 : 0);
+  const serverChan3Configured = Boolean(notifyStatus?.configured?.serverChan3 || notifySetup?.serverChan3?.configured);
+  const pcConfigured = Boolean(webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled);
 
   const summary = useMemo(() => {
     const channelLabels = [];
     if (barkConfigured) channelLabels.push('iOS Bark');
-    if (serverChan3Configured) channelLabels.push('Android Server酱³');
-    if (pairedAndroidDevices.length > 0) channelLabels.push('Android FCM 旧版');
-    if (webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled) {
+    if (serverChan3Configured) channelLabels.push('Server酱³');
+    if (pcConfigured) {
       channelLabels.push('PC 浏览器');
     }
     return {
       channelStatus: channelLabels.length ? '已配置' : '未配置',
       channelNote: channelLabels.length
         ? `${channelLabels.join(' / ')} 可发送`
-        : '请先配置 iOS Bark、Android Server酱³，或授权 PC 浏览器通知',
-      androidDeviceCount,
+        : '请先配置 iOS Bark、Server酱³，或授权 PC 浏览器通知',
       serverChan3Configured
     };
-  }, [androidDeviceCount, barkConfigured, pairedAndroidDevices.length, serverChan3Configured, webNotifySupported, webNotifyPermission, webNotifyEnabled]);
+  }, [barkConfigured, pcConfigured, serverChan3Configured]);
 
   async function handleRequestWebNotifyPermission() {
     const result = await requestWebNotifyPermission();
@@ -246,8 +235,8 @@ export function NotifyExperience({ embedded = false }) {
   // 之后由用户手动切换展开/收起，不再被远端覆盖。
   useEffect(() => {
     if (configCollapsed !== null || !notifyStatus) return;
-    setConfigCollapsed(barkConfigured || androidConfigured);
-  }, [notifyStatus, barkConfigured, androidConfigured, configCollapsed]);
+    setConfigCollapsed(barkConfigured || serverChan3Configured || pcConfigured);
+  }, [notifyStatus, barkConfigured, serverChan3Configured, pcConfigured, configCollapsed]);
   const isConfigCollapsed = configCollapsed === true;
   const pcPermissionReason = !webNotifySupported
     ? '当前浏览器不支持 Notification API'
@@ -357,7 +346,7 @@ export function NotifyExperience({ embedded = false }) {
       await saveNotifySettings({ barkDeviceKey: parsedBarkKey });
       persistNotifyClientConfig({
         barkDeviceKey: parsedBarkKey,
-        _hasAndroid: androidConfigured,
+        _hasServerChan3: serverChan3Configured,
         _hasPC: webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled
       });
       setNotifyConfig((current) => ({ ...current, barkDeviceKey: parsedBarkKey }));
@@ -400,7 +389,7 @@ export function NotifyExperience({ embedded = false }) {
         serverChan3Uid: uid,
         ...(sendKey ? { serverChan3SendKey: sendKey } : {}),
         barkDeviceKey: notifyConfig.barkDeviceKey,
-        _hasAndroid: true,
+        _hasServerChan3: true,
         _hasPC: webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled
       });
       setNotifyConfig((current) => ({ ...current, serverChan3Uid: uid, ...(sendKey ? { serverChan3SendKey: sendKey } : {}) }));
@@ -416,7 +405,7 @@ export function NotifyExperience({ embedded = false }) {
         }
       }));
       await refreshNotifyData({ serverChan3Fallback: savedServerChan3 });
-      setNotifyMessage('Server酱³ Android 推送配置已保存。');
+      setNotifyMessage('Server酱³ 推送配置已保存。');
       showActionToast('保存 Server酱³ 配置', 'success');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Server酱³ 配置保存失败';
@@ -424,61 +413,6 @@ export function NotifyExperience({ embedded = false }) {
       showActionToast('保存 Server酱³ 配置', 'error', { description: message });
     } finally {
       setIsSavingSettings(false);
-    }
-  }
-
-  async function handlePairAndroidCode() {
-    setIsPairingAndroid(true);
-    setNotifyError('');
-    setNotifyMessage('');
-    try {
-      const parsedAndroidId = parseAndroidNotifyInput(androidPairingCode);
-      if (!parsedAndroidId) {
-        throw new Error('请粘贴 Android 完整测试链接、消息推送 ID 或配对码');
-      }
-      await pairAndroidDevice({
-        deviceInstallationId: parsedAndroidId,
-        clientId: notifyConfig.notifyClientId,
-        clientName: notifyConfig.notifyClientLabel
-      });
-      persistNotifyClientConfig({
-        notifyClientId: notifyConfig.notifyClientId,
-        notifyClientLabel: notifyConfig.notifyClientLabel,
-        _hasAndroid: true,
-        _hasPC: webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled
-      });
-      setAndroidPairingCode('');
-      await refreshNotifyData();
-      setNotifyMessage('Android 设备已绑定到当前浏览器。');
-      showActionToast('绑定 Android 设备', 'success');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Android 设备绑定失败';
-      setNotifyError(message);
-      showActionToast('绑定 Android 设备', 'error', { description: message });
-    } finally {
-      setIsPairingAndroid(false);
-    }
-  }
-
-  async function handleUnpairAndroidRegistration(registrationId = '') {
-    if (!registrationId) return;
-    setUnpairingRegistrationId(registrationId);
-    setNotifyError('');
-    setNotifyMessage('');
-    try {
-      await unpairAndroidDevice({
-        registrationId,
-        clientId: notifyConfig.notifyClientId
-      });
-      await refreshNotifyData();
-      setNotifyMessage('Android 设备已解绑。');
-      showActionToast('解绑 Android 设备', 'success');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Android 设备解绑失败';
-      setNotifyError(message);
-      showActionToast('解绑 Android 设备', 'error', { description: message });
-    } finally {
-      setUnpairingRegistrationId('');
     }
   }
 
@@ -592,22 +526,15 @@ export function NotifyExperience({ embedded = false }) {
         setConfigCollapsed={setConfigCollapsed}
         summary={summary}
         barkConfigured={barkConfigured}
-        androidConfigured={androidConfigured}
+        serverChan3Configured={serverChan3Configured}
         notifyPlatform={notifyPlatform}
         setNotifyPlatform={setNotifyPlatform}
         notifyError={notifyError}
         notifyMessage={notifyMessage}
         notifyConfig={notifyConfig}
         setNotifyConfig={setNotifyConfig}
-        androidPairingCode={androidPairingCode}
-        setAndroidPairingCode={setAndroidPairingCode}
-        isPairingAndroid={isPairingAndroid}
-        pairedAndroidDevices={pairedAndroidDevices}
         pairedWebWsDevices={pairedWebWsDevices}
-        androidSetup={androidSetup}
-        unpairingRegistrationId={unpairingRegistrationId}
-        handlePairAndroidCode={handlePairAndroidCode}
-        handleUnpairAndroidRegistration={handleUnpairAndroidRegistration}
+        notifySetup={notifySetup}
         handleSaveNotifyConfig={handleSaveNotifyConfig}
         handleSaveServerChan3Config={handleSaveServerChan3Config}
         isSavingSettings={isSavingSettings}
@@ -799,9 +726,9 @@ export function NotifyExperience({ embedded = false }) {
 
   return (
     <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
-<div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-3">
         <StatCard accent="indigo" eyebrow="通道状态" value={summary.channelStatus} note={summary.channelNote} />
-        <StatCard eyebrow="Android 通道" value={`${summary.androidDeviceCount} 台`} note="优先使用 Server酱³，旧 FCM 设备保留兼容" />
+        <StatCard eyebrow="Server酱³" value={serverChan3Configured ? '已配置' : '未配置'} note="用于跨平台系统通知推送" />
         <StatCard eyebrow="iOS Bark" value={barkConfigured ? '已配置' : '未配置'} note="在 iOS tab 填入 Bark device key" />
       </div>
 
