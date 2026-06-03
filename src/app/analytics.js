@@ -209,7 +209,13 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
       notifyPlatformUsers: {
         ios: uniqueCount(notifyEvents.filter((e) => (e.type === 'notify_enabled' && e.meta?.hasBark) || (e.type === 'notify_used' && e.meta?.platform === 'ios')), (e) => e.userId || e.visitorId),
         serverchan3: uniqueCount(notifyEvents.filter((e) => (e.type === 'notify_used' && e.meta?.platform === 'serverchan3') || (e.type === 'notify_enabled' && Array.isArray(e.meta?.platforms) && e.meta.platforms.includes('serverchan3'))), (e) => e.userId || e.visitorId),
-        pc: uniqueCount(notifyEvents.filter((e) => e.type === 'notify_enabled' && Array.isArray(e.meta?.platforms) && e.meta.platforms.includes('pc')), (e) => e.userId || e.visitorId)
+        pc: uniqueCount(notifyEvents.filter((e) => (e.type === 'notify_used' && e.meta?.platform === 'pc') || (e.type === 'notify_enabled' && Array.isArray(e.meta?.platforms) && e.meta.platforms.includes('pc'))), (e) => e.userId || e.visitorId),
+        unknown: uniqueCount(notifyEvents.filter((e) => {
+          const platforms = Array.isArray(e.meta?.platforms) ? e.meta.platforms : [];
+          if (e.type === 'notify_used') return !['ios', 'serverchan3', 'pc'].includes(String(e.meta?.platform || ''));
+          if (e.type === 'notify_enabled') return !e.meta?.hasBark && !platforms.some((platform) => ['serverchan3', 'pc'].includes(platform));
+          return false;
+        }), (e) => e.userId || e.visitorId)
       }
     },
     daily: dailySeries(events, rangeDays),

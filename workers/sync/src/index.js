@@ -204,7 +204,15 @@ async function handleAdminAnalytics(request, env, origin) {
     END) AS serverChan3Users,
     COUNT(DISTINCT CASE
       WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'pc') THEN COALESCE(NULLIF(user_id, ''), visitor_id)
-    END) AS pcUsers
+      WHEN type = 'notify_used' AND json_extract(meta, '$.platform') = 'pc' THEN COALESCE(NULLIF(user_id, ''), visitor_id)
+    END) AS pcUsers,
+    COUNT(DISTINCT CASE
+      WHEN type = 'notify_used' AND COALESCE(json_extract(meta, '$.platform'), '') NOT IN ('ios', 'serverchan3', 'pc') THEN COALESCE(NULLIF(user_id, ''), visitor_id)
+      WHEN type = 'notify_enabled'
+        AND COALESCE(json_extract(meta, '$.hasBark'), 0) != 1
+        AND NOT EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value IN ('serverchan3', 'pc'))
+        THEN COALESCE(NULLIF(user_id, ''), visitor_id)
+    END) AS unknownUsers
     FROM analytics_events WHERE event_date >= ? AND type IN ('notify_enabled','notify_used')`).bind(since).first();
 
   return json({
@@ -220,7 +228,8 @@ async function handleAdminAnalytics(request, env, origin) {
       notifyPlatformUsers: {
         ios: Number(platformRows?.iosUsers) || 0,
         serverchan3: Number(platformRows?.serverChan3Users) || 0,
-        pc: Number(platformRows?.pcUsers) || 0
+        pc: Number(platformRows?.pcUsers) || 0,
+        unknown: Number(platformRows?.unknownUsers) || 0
       }
     },
     daily: (dailyRows.results || []).map((row) => ({

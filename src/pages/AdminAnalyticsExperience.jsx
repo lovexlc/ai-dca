@@ -29,7 +29,8 @@ function NotifyCard({ total, platformUsers = {} }) {
   const platforms = [
     { key: 'ios', label: 'iOS', color: 'bg-blue-100 text-blue-700', count: platformUsers.ios || 0 },
     { key: 'serverchan3', label: 'Server酱³', color: 'bg-green-100 text-green-700', count: platformUsers.serverchan3 || 0 },
-    { key: 'pc', label: 'PC', color: 'bg-purple-100 text-purple-700', count: platformUsers.pc || 0 }
+    { key: 'pc', label: 'PC', color: 'bg-purple-100 text-purple-700', count: platformUsers.pc || 0 },
+    { key: 'unknown', label: '未知/历史', color: 'bg-slate-100 text-slate-600', count: platformUsers.unknown || 0 }
   ];
   const activePlatforms = platforms.filter((p) => p.count > 0);
   return (
@@ -58,7 +59,7 @@ function NotifyCard({ total, platformUsers = {} }) {
               <span className="text-sm font-bold tabular-nums text-slate-700">{p.count}</span>
             </div>
           ))}
-          <div className="pt-1 text-xs text-slate-400">按设备平台去重</div>
+          <div className="pt-1 text-xs text-slate-400">按设备平台去重，未知/历史为旧埋点或未带平台的通知事件</div>
         </div>
       )}
     </div>
