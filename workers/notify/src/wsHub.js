@@ -563,18 +563,26 @@ export async function tryPublishPrices(env, deviceInstallationId, items, options
 }
 
 /**
- * 获取指定设备 WsHub 上所有连接订阅的代码并集。
+ * 获取指定设备 WsHub 上所有在线连接订阅的代码并集。
  */
-export async function getSubscribedSymbols(env, deviceInstallationId) {
-  if (!env || !env.WS_HUB || !deviceInstallationId) return []
+export async function getSubscriptionSnapshot(env, deviceInstallationId) {
+  if (!env || !env.WS_HUB || !deviceInstallationId) return { symbols: [], connections: 0 }
   try {
     const id = env.WS_HUB.idFromName(String(deviceInstallationId))
     const stub = env.WS_HUB.get(id)
     const res = await stub.fetch("https://ws-hub/subscribed-symbols")
-    if (!res.ok) return []
+    if (!res.ok) return { symbols: [], connections: 0 }
     const parsed = await res.json().catch(() => null)
-    return Array.isArray(parsed?.symbols) ? parsed.symbols : []
+    return {
+      symbols: Array.isArray(parsed?.symbols) ? parsed.symbols : [],
+      connections: Math.max(Number(parsed?.connections) || 0, 0),
+    }
   } catch {
-    return []
+    return { symbols: [], connections: 0 }
   }
+}
+
+export async function getSubscribedSymbols(env, deviceInstallationId) {
+  const snapshot = await getSubscriptionSnapshot(env, deviceInstallationId)
+  return snapshot.symbols
 }

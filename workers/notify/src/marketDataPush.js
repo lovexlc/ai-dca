@@ -3,7 +3,7 @@
 // 在交易时段定时从 markets worker 拉取订阅代码的最新行情，
 // 通过 WsHub Durable Object 推送给已订阅的 WS 连接。
 
-import { getSubscribedSymbols, tryPublishPrices } from './wsHub.js';
+import { getSubscriptionSnapshot, tryPublishPrices } from './wsHub.js';
 import { readSettings } from './notifyStorage.js';
 
 // markets worker 的基础 URL（与前端 marketsApi.js 一致）
@@ -84,6 +84,10 @@ async function fetchQuotesFromMarkets(symbols, env) {
  */
 function isCnFundCode(code) {
   return /^(15|50|51|52|53|54|56|58)\d{4}$/.test(code);
+}
+
+function isWebWsDeviceId(value = '') {
+  return String(value || '').trim().startsWith('web-ws:');
 }
 
 /**
@@ -190,28 +194,31 @@ export async function runMarketDataPush(env) {
   const settings = await readSettings(env);
   const registrations = Array.isArray(settings.gcmRegistrations) ? settings.gcmRegistrations : [];
 
-  // 收集所有有活跃 WS 连接的 deviceInstallationId。
+  // 只扫描 WebSocket 虚拟设备；没有在线连接/订阅时不请求上游行情源。
   const allDeviceIds = registrations
     .map((r) => String(r?.deviceInstallationId || r?.id || '').trim())
-    .filter(Boolean);
+    .filter(isWebWsDeviceId);
 
   if (!allDeviceIds.length) {
     return { skipped: true, reason: 'no-devices' };
   }
 
-  // 并发获取每个设备的订阅代码
+  // 并发获取每个设备的在线连接数与订阅代码。
   const deviceSubscriptions = await Promise.all(
     allDeviceIds.map(async (deviceId) => {
-      const symbols = await getSubscribedSymbols(env, deviceId);
-      return { deviceId, symbols };
+      const snapshot = await getSubscriptionSnapshot(env, deviceId);
+      return {
+        deviceId,
+        symbols: snapshot.symbols,
+        connections: snapshot.connections,
+      };
     })
   );
 
-  // 过滤掉没有订阅的设备
-  const activeSubscriptions = deviceSubscriptions.filter((d) => d.symbols.length > 0);
+  const activeSubscriptions = deviceSubscriptions.filter((d) => d.connections > 0 && d.symbols.length > 0);
 
   if (!activeSubscriptions.length) {
-    return { skipped: true, reason: 'no-subscriptions' };
+    return { skipped: true, reason: 'no-online-subscriptions' };
   }
 
   // 去重：收集所有订阅代码
