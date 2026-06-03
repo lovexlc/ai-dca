@@ -63,6 +63,11 @@ function isExpectedLatestChangeRow(row, todayDate) {
   return latestNavDate >= expectedLatestNavDate && latestNavDate <= todayDate;
 }
 
+function resolveLimitSortValue(limit) {
+  if (!limit || limit.buyStatus === 'suspended' || limit.buyStatus === 'closed') return 0;
+  return Number(limit.maxPurchasePerDay) || 0;
+}
+
 const RETURN_COLUMNS = [
   { id: 'return1w', label: '近1周' },
   { id: 'return1m', label: '近1月' },
@@ -145,7 +150,7 @@ export function MarketListTable({
     },
     showLimitColumn ? {
       id: 'limit',
-      accessorFn: (row) => Number(row.fundLimit?.maxPurchasePerDay) || 0,
+      accessorFn: (row) => resolveLimitSortValue(row.fundLimit),
       meta: { label: '限额' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="限额" />,
       cell: ({ row }) => {
