@@ -63,6 +63,15 @@ import { normalizeServerChan3Config } from './channels/serverChan3.js';
 // 把 Durable Object 类型重新导出，让 Workers runtime 能在加载 wrangler 绑定时
 // 通过 entry module 的导出表找到 class_name="WsHub"。
 export { WsHub };
+
+function safeDecodePathSegment(value = '') {
+  try {
+    return decodeURIComponent(String(value || ''));
+  } catch (_) {
+    return String(value || '');
+  }
+}
+
 async function runClientDetection(env, settings, clientRecord, { reason = 'manual-run', testPayload = null } = {}) {
   const currentClientId = normalizeClientId(clientRecord?.clientId);
 
@@ -418,7 +427,7 @@ export default {
         const slashIdx = tail.indexOf('/');
         const deviceInstallationIdRaw = slashIdx === -1 ? tail : tail.slice(0, slashIdx);
         const subpath = slashIdx === -1 ? '' : tail.slice(slashIdx + 1);
-        const deviceInstallationId = normalizeDeviceInstallationId(deviceInstallationIdRaw || '');
+        const deviceInstallationId = normalizeDeviceInstallationId(safeDecodePathSegment(deviceInstallationIdRaw || ''));
 
         if (!deviceInstallationId) {
           return jsonResponse({ ok: false, message: '缺少 deviceInstallationId。' }, { status: 400, origin });
