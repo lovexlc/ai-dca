@@ -798,7 +798,14 @@ export async function fetchDanjuanFundNav(code) {
     source: 'danjuan',
     fallback: 'danjuan',
     primaryError: '',
-    updatedAt: Number(d.updated_at) || 0
+    updatedAt: Number(d.updated_at) || 0,
+    ytdReturn: round(Number(d.nav_grlty), 4),
+    return1w: round(Number(d.nav_grl1w), 4),
+    return1m: round(Number(d.nav_grl1m), 4),
+    return3m: round(Number(d.nav_grl3m), 4),
+    return6m: round(Number(d.nav_grl6m), 4),
+    return1y: round(Number(d.nav_grl1y), 4),
+    returnBase: round(Number(d.nav_grbase), 4),
   };
 }
 

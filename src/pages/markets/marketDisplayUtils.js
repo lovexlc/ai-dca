@@ -205,7 +205,7 @@ export function formatTotalShares(value) {
 }
 
 export function formatYearPercent(row) {
-  const pct = Number(rowMetric(row, ['currentYearPercent', 'ytdPercent', 'yearPercent']));
+  const pct = Number(rowMetric(row, ['ytdReturn', 'currentYearPercent', 'ytdPercent', 'yearPercent']));
   return Number.isFinite(pct) ? formatSignedPercent(pct) : '—';
 }
 

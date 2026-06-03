@@ -95,6 +95,13 @@ export function buildOtcFundQuoteFromSnapshot(symbol, snapshot, fallback = {}, r
     lastUpdated: snapshot?.updatedAt || new Date().toISOString(),
     source: 'otc-fund-nav-fallback',
     valueType: 'nav',
-    assetType: 'otc_fund'
+    assetType: 'otc_fund',
+    ytdReturn: snapshot?.ytdReturn ?? null,
+    return1w: snapshot?.return1w ?? null,
+    return1m: snapshot?.return1m ?? null,
+    return3m: snapshot?.return3m ?? null,
+    return6m: snapshot?.return6m ?? null,
+    return1y: snapshot?.return1y ?? null,
+    returnBase: snapshot?.returnBase ?? null,
   };
 }

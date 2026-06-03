@@ -128,7 +128,14 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
     primaryError: primaryError || quote?.primaryError || '',
     error: quote?.error || '',
     cached,
-    cachePolicy
+    cachePolicy,
+    ytdReturn: quote?.ytdReturn ?? null,
+    return1w: quote?.return1w ?? null,
+    return1m: quote?.return1m ?? null,
+    return3m: quote?.return3m ?? null,
+    return6m: quote?.return6m ?? null,
+    return1y: quote?.return1y ?? null,
+    returnBase: quote?.returnBase ?? null,
   };
 }
 

@@ -54,7 +54,14 @@ function normalizeSnapshotItem(item = {}) {
     quoteDate: String(item?.quoteDate || '').trim(),
     fallback: String(item?.fallback || '').trim(),
     cachePolicy: String(item?.cachePolicy || '').trim(),
-    valueType
+    valueType,
+    ytdReturn: item?.ytdReturn ?? null,
+    return1w: item?.return1w ?? null,
+    return1m: item?.return1m ?? null,
+    return3m: item?.return3m ?? null,
+    return6m: item?.return6m ?? null,
+    return1y: item?.return1y ?? null,
+    returnBase: item?.returnBase ?? null,
   };
 }
 
