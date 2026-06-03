@@ -229,11 +229,26 @@ export function mergePricePushItems(existing = [], pushItems = []) {
     if (pushItem.changePercent != null) {
       updated.changePercent = roundNullable(pushItem.changePercent, 4);
     }
+    if (pushItem.prevClose != null || pushItem.previousClose != null) {
+      const prevClose = pushItem.prevClose ?? pushItem.previousClose;
+      updated.previousClose = roundNullable(prevClose, 4);
+      updated.previousNav = roundNullable(prevClose, 4);
+    }
     if (pushItem.premiumPercent != null) {
       updated.premiumPercent = roundNullable(pushItem.premiumPercent, 4);
     }
     if (pushItem.latestNav != null) {
       updated.latestNav = round(Number(pushItem.latestNav), 4);
+    }
+    if (pushItem.latestNavDate) {
+      updated.latestNavDate = String(pushItem.latestNavDate).trim();
+      updated.navDate = updated.latestNavDate;
+    }
+    if (pushItem.estimatedNav != null) {
+      updated.estimatedNav = roundNullable(pushItem.estimatedNav, 4);
+    }
+    if (pushItem.estimatedNavSource) {
+      updated.estimatedNavSource = String(pushItem.estimatedNavSource).trim();
     }
     if (pushItem.navBase != null) {
       updated.navBase = roundNullable(pushItem.navBase, 4);
@@ -246,6 +261,16 @@ export function mergePricePushItems(existing = [], pushItems = []) {
     }
     if (pushItem.asOf) {
       updated.asOf = String(pushItem.asOf).trim();
+    }
+    if (pushItem.quoteAt) {
+      updated.quoteAt = String(pushItem.quoteAt).trim();
+      updated.asOf = updated.quoteAt;
+    }
+    if (pushItem.quoteDate) {
+      updated.quoteDate = String(pushItem.quoteDate).trim();
+    }
+    if (pushItem.source) {
+      updated.source = String(pushItem.source).trim();
     }
     changed = true;
     return updated;

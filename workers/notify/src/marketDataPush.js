@@ -12,6 +12,24 @@ const MARKETS_API_BASE = 'https://tools.freebacktrack.tech/api/markets';
 // KV 缓存 key 前缀，避免同一代码在短时间内重复请求
 const PRICE_CACHE_PREFIX = 'market-push-cache:';
 const PRICE_CACHE_TTL = 90; // 秒
+const MARKET_TOPICS = ['market.price', 'market.premium'];
+
+function numberOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function positiveNumberOrNull(value) {
+  const n = numberOrNull(value);
+  return n != null && n > 0 ? n : null;
+}
+
+function roundNumber(value, precision = 4) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  const factor = 10 ** precision;
+  return Math.round(n * factor) / factor;
+}
 
 /**
  * 从 markets worker 批量获取 fund-metrics 数据。
@@ -20,11 +38,14 @@ async function fetchFundMetricsFromMarkets(codes, env) {
   if (!codes.length) return [];
   const url = `${MARKETS_API_BASE}/fund-metrics`;
   try {
-    const res = await fetch(url, {
+    const init = {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'accept': 'application/json' },
       body: JSON.stringify({ codes }),
-    });
+    };
+    const res = env?.MARKETS && typeof env.MARKETS.fetch === 'function'
+      ? await env.MARKETS.fetch(new Request(url, init))
+      : await fetch(url, init);
     if (!res.ok) {
       console.log('[marketPush] fund-metrics fetch failed', JSON.stringify({ status: res.status }));
       return [];
@@ -66,25 +87,53 @@ function isCnFundCode(code) {
 }
 
 /**
- * 将行情数据标准化为推送格式。
+ * 将 markets 数据标准化为 WS market_snapshot item。
  */
-function normalizePriceItem(item) {
+export function normalizeMarketSnapshotItem(item) {
   const code = String(item?.code || item?.symbol || '').trim();
   if (!code) return null;
+  const price = positiveNumberOrNull(item?.price ?? item?.currentPrice ?? item?.close);
+  const latestNav = positiveNumberOrNull(item?.latestNav);
+  const navBase = positiveNumberOrNull(item?.navBase);
+  const iopv = positiveNumberOrNull(item?.iopv);
+  const estimatedNav = positiveNumberOrNull(item?.estimatedNav ?? item?.estimateNav ?? item?.estimate_nav ?? item?.iopv);
+  const premiumBase = estimatedNav ?? iopv ?? navBase ?? latestNav;
+  const explicitPremium = numberOrNull(item?.premiumPercent);
+  const premiumPercentRaw = explicitPremium != null
+    ? explicitPremium
+    : (price != null && premiumBase != null && premiumBase > 0 ? ((price - premiumBase) / premiumBase) * 100 : null);
+  const premiumPercent = roundNumber(premiumPercentRaw, 4);
+  const prevClose = positiveNumberOrNull(item?.previousClose ?? item?.prevClose ?? item?.previousNav);
+  const quoteAt = String(item?.asOf || item?.quoteAt || item?.updatedAt || item?.quoteDate || '').trim();
   return {
     code,
     name: String(item?.name || '').trim(),
-    price: Number(item?.price || item?.currentPrice || item?.close || 0) || 0,
-    change: Number(item?.change || 0) || 0,
-    changePercent: Number(item?.changePercent || 0) || 0,
-    premiumPercent: item?.premiumPercent != null ? Number(item.premiumPercent) : null,
-    latestNav: item?.latestNav != null ? Number(item.latestNav) : null,
-    navBase: item?.navBase != null ? Number(item.navBase) : null,
-    iopv: item?.iopv != null ? Number(item.iopv) : null,
+    market: String(item?.market || '').trim() || (isCnFundCode(code) ? 'cn' : ''),
+    kind: isCnFundCode(code) ? 'exchange_fund' : String(item?.kind || item?.assetType || '').trim(),
+    fundKind: String(item?.fundKind || '').trim(),
+    price: price ?? 0,
+    prevClose,
+    previousClose: prevClose,
+    change: numberOrNull(item?.change) ?? 0,
+    changePercent: numberOrNull(item?.changePercent) ?? 0,
+    premiumPercent,
+    latestNav,
+    latestNavDate: String(item?.latestNavDate || item?.navDate || '').trim(),
+    estimatedNav,
+    estimatedNavSource: estimatedNav != null ? String(item?.estimatedNavSource || (iopv != null ? 'iopv' : '')).trim() : '',
+    navBase,
+    navBaseSource: navBase != null ? String(item?.navBaseSource || '').trim() : '',
+    iopv,
     marketState: String(item?.marketState || '').trim(),
-    asOf: String(item?.asOf || item?.quoteDate || '').trim(),
+    quoteAt,
+    quoteDate: String(item?.quoteDate || '').trim(),
+    asOf: quoteAt,
+    source: String(item?.source || '').trim(),
+    updatedAt: String(item?.updatedAt || '').trim(),
   };
 }
+
+export const normalizePriceItem = normalizeMarketSnapshotItem;
 
 /**
  * 从 KV 缓存读取已推送的行情，避免短时间内重复推送相同数据。
@@ -125,7 +174,11 @@ function hasSignificantChange(oldItem, newItem) {
     oldItem.change !== newItem.change ||
     oldItem.changePercent !== newItem.changePercent ||
     oldItem.premiumPercent !== newItem.premiumPercent ||
-    oldItem.marketState !== newItem.marketState
+    oldItem.marketState !== newItem.marketState ||
+    oldItem.latestNav !== newItem.latestNav ||
+    oldItem.latestNavDate !== newItem.latestNavDate ||
+    oldItem.estimatedNav !== newItem.estimatedNav ||
+    oldItem.quoteAt !== newItem.quoteAt
   );
 }
 
@@ -180,7 +233,7 @@ export async function runMarketDataPush(env) {
 
   // 合并并标准化
   const allItems = [...cnItems, ...usItems]
-    .map(normalizePriceItem)
+    .map(normalizeMarketSnapshotItem)
     .filter(Boolean);
 
   if (!allItems.length) {
@@ -207,7 +260,12 @@ export async function runMarketDataPush(env) {
     const deviceItems = changedItems.filter((item) => symbols.includes(item.code));
     if (!deviceItems.length) continue;
 
-    const result = await tryPublishPrices(env, deviceId, deviceItems);
+    const result = await tryPublishPrices(env, deviceId, deviceItems, {
+      type: 'market_snapshot',
+      source: 'markets/fund-metrics',
+      session: 'regular',
+      topics: MARKET_TOPICS,
+    });
     if (result?.ok) {
       totalDelivered += Number(result.delivered || 0);
     }

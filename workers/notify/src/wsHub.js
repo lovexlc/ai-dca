@@ -37,6 +37,7 @@ const FRAME = Object.freeze({
   SUBSCRIBE: "subscribe",
   UNSUBSCRIBE: "unsubscribe",
   PRICE_PUSH: "price_push",
+  MARKET_SNAPSHOT: "market_snapshot",
 })
 
 
@@ -185,7 +186,12 @@ export class WsHub {
     server.accept()
     const deviceInstallationId = String(request.headers.get("x-device-installation-id") || "").trim()
     const id = crypto.randomUUID()
-    this.sockets.set(server, { id, lastSeenMs: Date.now(), subscribedSymbols: new Set() })
+    this.sockets.set(server, {
+      id,
+      lastSeenMs: Date.now(),
+      subscribedSymbols: new Set(),
+      subscribedTopics: new Set(),
+    })
 
     server.addEventListener("message", (event) => {
       const meta = this.sockets.get(server)
@@ -210,15 +216,21 @@ export class WsHub {
           })
           return
         }
-        // 行情订阅：客户端发送 { type: "subscribe", symbols: [...] }
+        // 行情订阅：客户端发送 { type: "subscribe", symbols: [...], topics?: [...] }
         if (frame && frame.type === FRAME.SUBSCRIBE && Array.isArray(frame.symbols)) {
           if (!meta.subscribedSymbols) meta.subscribedSymbols = new Set()
+          if (!meta.subscribedTopics) meta.subscribedTopics = new Set()
           for (const s of frame.symbols) {
             if (typeof s === 'string' && s.trim()) meta.subscribedSymbols.add(s.trim())
+          }
+          const topics = Array.isArray(frame.topics) ? frame.topics : ['market.price']
+          for (const topic of topics) {
+            if (typeof topic === 'string' && topic.trim()) meta.subscribedTopics.add(topic.trim())
           }
           console.log("[notify][ws] subscribe", JSON.stringify({
             connectionId: id,
             symbols: [...meta.subscribedSymbols],
+            topics: [...meta.subscribedTopics],
           }))
           return
         }
@@ -227,6 +239,11 @@ export class WsHub {
           if (meta.subscribedSymbols) {
             for (const s of frame.symbols) {
               if (typeof s === 'string') meta.subscribedSymbols.delete(s.trim())
+            }
+          }
+          if (meta.subscribedTopics && Array.isArray(frame.topics)) {
+            for (const topic of frame.topics) {
+              if (typeof topic === 'string') meta.subscribedTopics.delete(topic.trim())
             }
           }
           return
@@ -337,10 +354,16 @@ export class WsHub {
       return new Response(JSON.stringify({ delivered: 0, subscribed: 0 }), { headers: { "content-type": "application/json" } })
     }
 
-    const priceCodes = new Set(items.map((item) => String(item?.code || '').trim()).filter(Boolean))
+    const frameType = body?.type === FRAME.PRICE_PUSH ? FRAME.PRICE_PUSH : FRAME.MARKET_SNAPSHOT
+    const source = String(body?.source || '').trim()
+    const session = String(body?.session || '').trim()
+    const topics = Array.isArray(body?.topics) ? body.topics.map((t) => String(t || '').trim()).filter(Boolean) : []
     const frame = JSON.stringify({
-      type: FRAME.PRICE_PUSH,
+      type: frameType,
       ts: Date.now(),
+      source,
+      session,
+      topics,
       items,
     })
 
@@ -350,6 +373,11 @@ export class WsHub {
     for (const [socket, meta] of this.sockets) {
       const subs = meta?.subscribedSymbols
       if (!subs || subs.size === 0) continue
+      const subscribedTopics = meta?.subscribedTopics || new Set()
+      if (topics.length && subscribedTopics.size) {
+        const hasTopicOverlap = topics.some((topic) => subscribedTopics.has(topic))
+        if (!hasTopicOverlap) continue
+      }
       // 检查是否有交集：该连接订阅的代码与本次推送的代码
       const hasOverlap = items.some((item) => subs.has(String(item?.code || '').trim()))
       if (!hasOverlap) continue
@@ -506,8 +534,9 @@ export async function tryPublishWs(env, deviceInstallationId, payload) {
  * @param {Record<string, unknown>} env
  * @param {string} deviceInstallationId
  * @param {Array<object>} items - 行情数据数组
+ * @param {object} options - 发送元数据
  */
-export async function tryPublishPrices(env, deviceInstallationId, items) {
+export async function tryPublishPrices(env, deviceInstallationId, items, options = {}) {
   if (!env || !env.WS_HUB || !deviceInstallationId || !Array.isArray(items) || !items.length) {
     return { skipped: true }
   }
@@ -517,7 +546,13 @@ export async function tryPublishPrices(env, deviceInstallationId, items) {
     const res = await stub.fetch("https://ws-hub/prices", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ items }),
+      body: JSON.stringify({
+        type: options.type || FRAME.MARKET_SNAPSHOT,
+        source: options.source || '',
+        session: options.session || '',
+        topics: Array.isArray(options.topics) ? options.topics : ['market.price', 'market.premium'],
+        items,
+      }),
     })
     if (!res.ok) return { ok: false, status: res.status }
     const parsed = await res.json().catch(() => null)

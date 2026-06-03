@@ -557,28 +557,17 @@ export function MarketsExperience() {
       const items = event?.detail?.items;
       if (!Array.isArray(items) || !items.length) return;
       setWatchQuotes((prev) => {
+        const existingItems = Object.entries(prev || {}).map(([code, quote]) => ({ code, ...quote }));
+        const merged = mergePricePushItems(existingItems, items);
+        if (merged === existingItems) return prev;
         const next = { ...prev };
-        let changed = false;
-        for (const item of items) {
+        for (const item of merged) {
           const code = String(item?.code || '').trim();
-          if (!code) continue;
-          const existing = next[code];
-          if (!existing) continue; // 只更新已有的自选
-          const updated = { ...existing };
-          if (item.price != null && item.price > 0) {
-            updated.price = item.price;
-            updated.currentPrice = item.price;
-            updated.close = item.price;
+          if (code && Object.prototype.hasOwnProperty.call(prev, code)) {
+            next[code] = item;
           }
-          if (item.change != null) updated.change = item.change;
-          if (item.changePercent != null) updated.changePercent = item.changePercent;
-          if (item.premiumPercent != null) updated.premiumPercent = item.premiumPercent;
-          if (item.marketState) updated.marketState = item.marketState;
-          if (item.asOf) updated.asOf = item.asOf;
-          next[code] = updated;
-          changed = true;
         }
-        return changed ? next : prev;
+        return next;
       });
     }
     window.addEventListener('ai-dca-price-push', handlePricePush);

@@ -142,6 +142,10 @@ export function startNotifyRealtime({ clientId, clientSecret, onStatusChange, de
         handlePricePushFrame(frame);
         break;
 
+      case 'market_snapshot':
+        handleMarketSnapshotFrame(frame);
+        break;
+
       default:
         if (debug) console.info('[notifyWs] unknown frame type:', frame.type);
     }
@@ -157,21 +161,59 @@ export function startNotifyRealtime({ clientId, clientSecret, onStatusChange, de
     } catch (_e) { /* ignore */ }
   }
 
+  function handleMarketSnapshotFrame(frame) {
+    const items = Array.isArray(frame.items) ? frame.items : [];
+    if (!items.length) return;
+    if (debug) console.info('[notifyWs] market_snapshot received:', items.length, 'items');
+    try {
+      window.dispatchEvent(new CustomEvent('ai-dca-price-push', {
+        detail: {
+          items,
+          ts: frame.ts,
+          source: frame.source || '',
+          session: frame.session || '',
+          topics: Array.isArray(frame.topics) ? frame.topics : []
+        }
+      }));
+      window.dispatchEvent(new CustomEvent('ai-dca-market-snapshot', {
+        detail: {
+          items,
+          ts: frame.ts,
+          source: frame.source || '',
+          session: frame.session || '',
+          topics: Array.isArray(frame.topics) ? frame.topics : []
+        }
+      }));
+    } catch (_e) { /* ignore */ }
+  }
+
   // 待发送的订阅列表（连接建立前缓存）
   let pendingSymbols = null;
 
-  function sendSubscribeFrame(symbols) {
+  function buildSubscribePayload(symbols, options = {}) {
+    const safeSymbols = Array.from(new Set((Array.isArray(symbols) ? symbols : [])
+      .map((s) => String(s || '').trim())
+      .filter(Boolean)));
+    const topics = Array.isArray(options?.topics) && options.topics.length
+      ? options.topics
+      : ['market.price', 'market.premium'];
+    return { type: 'subscribe', symbols: safeSymbols, topics };
+  }
+
+  function sendSubscribeFrame(symbols, options = {}) {
+    const payload = buildSubscribePayload(symbols, options);
+    if (!payload.symbols.length) return;
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'subscribe', symbols }));
+      ws.send(JSON.stringify(payload));
     } else {
-      pendingSymbols = symbols;
+      pendingSymbols = payload;
     }
   }
 
   // 连接成功后自动发送待订阅
   function flushPendingSubscribe() {
     if (pendingSymbols && ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'subscribe', symbols: pendingSymbols }));
+      ws.send(JSON.stringify(pendingSymbols));
       pendingSymbols = null;
     }
   }
