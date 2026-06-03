@@ -11,7 +11,7 @@ export const PRIMARY_TAB_META = {
   tradePlans: { label: '交易计划', hrefKey: 'tradePlans' },
   fundSwitch: { label: '基金切换', hrefKey: 'fundSwitch' },
   markets: { label: '行情中心', hrefKey: 'markets' },
-  premium: { label: '高级版', hrefKey: 'premium' },
+  premium: { label: '高级版', hrefKey: 'premium', adminOnly: true },
   holdings: { label: '持仓总览', hrefKey: 'holdings' },
   newPlan: { label: '新建计划', hrefKey: 'newPlan' },
   notify: { label: '通知', hrefKey: 'notify' },

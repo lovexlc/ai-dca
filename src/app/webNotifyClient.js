@@ -11,6 +11,7 @@ import { isInTradingSession } from './tradingSession.js';
 
 const WEB_NOTIFY_CONFIG_KEY = 'aiDcaWebNotifyConfig';
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
+const WEB_NOTIFICATION_POPUPS_ENABLED = false;
 // 首次启用时补推近 15 分钟内未看事件，避免“刚启用 PC 通知刚好挫过刚触发的事件”。
 const FIRST_RUN_REPLAY_WINDOW_MS = 15 * 60 * 1000;
 
@@ -61,6 +62,9 @@ export function persistWebNotifyConfig(nextConfig = {}) {
  * - Safari 桌面版支持（iOS Safari 仅 16.4+ 企联 PWA 才支持，这里不担保）
  */
 export function getWebNotifyState() {
+  if (!WEB_NOTIFICATION_POPUPS_ENABLED) {
+    return { supported: false, permission: 'denied' };
+  }
   if (typeof window === 'undefined' || typeof window.Notification === 'undefined') {
     return { supported: false, permission: 'default' };
   }
@@ -71,6 +75,7 @@ export function getWebNotifyState() {
 }
 
 export async function requestWebNotifyPermission() {
+  if (!WEB_NOTIFICATION_POPUPS_ENABLED) return 'denied';
   const state = getWebNotifyState();
   if (!state.supported) return 'denied';
   if (state.permission === 'granted' || state.permission === 'denied') {
@@ -86,6 +91,7 @@ export async function requestWebNotifyPermission() {
 
 /** 本地弹出一条 PC 桌面通知。调用前请确保 permission==='granted'。 */
 export function showLocalWebNotification({ title, body, tag, icon } = {}) {
+  if (!WEB_NOTIFICATION_POPUPS_ENABLED) return null;
   const state = getWebNotifyState();
   if (!state.supported || state.permission !== 'granted') return null;
   try {

@@ -158,6 +158,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const previousTabRef = useRef(activeTab);
   const restoreScrollOnNextTabRef = useRef(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const isAdminUser = isAnalyticsAdmin(cloudSession);
   const currentPageLabel = PRIMARY_TAB_META[activeTab]?.label || '';
 
   const quickAction = useMemo(() => {
@@ -197,14 +198,20 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const sidebarNav = useMemo(
     () =>
       getPrimaryTabs(links)
-        .filter((tab) => !PRIMARY_TAB_META[tab.key]?.adminOnly || isAnalyticsAdmin(cloudSession))
+        .filter((tab) => !PRIMARY_TAB_META[tab.key]?.adminOnly || isAdminUser)
         .map((tab) => ({
           ...tab,
           icon: SIDEBAR_ICONS[tab.key]
         })),
-    [links, cloudSession]
+    [links, isAdminUser]
   );
   const heroTitle = WORKSPACE_TITLES[activeTab] || WORKSPACE_TITLES.strategy;
+
+  useEffect(() => {
+    if (PRIMARY_TAB_META[activeTab]?.adminOnly && !isAdminUser) {
+      setActiveTab(DEFAULT_WORKSPACE_TAB);
+    }
+  }, [activeTab, isAdminUser]);
 
   useEffect(() => {
     document.title = heroTitle;
@@ -271,6 +278,9 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   function handleSelectTab(nextTab, options = {}) {
     const normalizedTab = normalizeWorkspaceTab(nextTab);
+    if (PRIMARY_TAB_META[normalizedTab]?.adminOnly && !isAdminUser) {
+      return;
+    }
     const hash = typeof options.hash === 'string' ? options.hash : '';
     const alreadyActive = normalizedTab === activeTab;
     const hashMatches = (window.location.hash || '') === hash;
@@ -351,11 +361,11 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       case 'markets':
         return <MarketsExperience {...sharedProps} />;
       case 'premium':
-        return <PremiumExperience {...sharedProps} />;
+        return isAdminUser ? <PremiumExperience {...sharedProps} /> : <StrategyGuideExperience {...sharedProps} onNavigate={handleSelectTab} onDemoDataChange={setDemoMeta} />;
       case 'notify':
         return <NotifyExperience {...sharedProps} />;
       case 'adminData':
-        return <AdminAnalyticsExperience {...sharedProps} />;
+        return isAdminUser ? <AdminAnalyticsExperience {...sharedProps} /> : <StrategyGuideExperience {...sharedProps} onNavigate={handleSelectTab} onDemoDataChange={setDemoMeta} />;
       case 'holdings':
         return <HoldingsExperience {...sharedProps} />;
       default:
