@@ -62,6 +62,23 @@ test('fund-metrics derives previousNav when source only has NAV and change perce
   assert.equal(item.changePercent, 0.254);
 });
 
+test('fund-metrics exposes Danjuan QDII metadata as fundKind', () => {
+  const item = normalizeFundMetricFromQuote('008971', {
+    code: '008971',
+    latestNav: 6.5651,
+    previousClose: 6.5328,
+    changePercent: 0.4944,
+    latestNavDate: '2026-06-02',
+    fundType: 'QDII',
+    fundTypeCode: 11,
+    source: 'danjuan'
+  }, { exchange: false });
+
+  assert.equal(item.fundKind, 'qdii');
+  assert.equal(item.fundType, 'QDII');
+  assert.equal(item.fundTypeCode, 11);
+});
+
 test('fund-metrics keeps exchange ETF price as current value', () => {
   const item = normalizeFundMetricFromQuote('513100', {
     code: '513100',

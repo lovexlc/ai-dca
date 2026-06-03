@@ -16,7 +16,11 @@ export async function computeWeightedReturn(bucket, snapshotsByCode, todayShangh
     const latestNav = Number(snap?.latestNav);
     const previousNav = Number(snap?.previousNav);
     const latestNavDate = String(snap?.latestNavDate || '');
-    const effectiveKind = await resolveHoldingKindAsync(entry.code, kind, env);
+    const entryKind = String(entry?.kind || '').trim().toLowerCase();
+    const bucketKind = entryKind === 'exchange' || entryKind === 'qdii' || entryKind === 'otc'
+      ? entryKind
+      : kind;
+    const effectiveKind = await resolveHoldingKindAsync(entry.code, bucketKind, env);
     const expectedLatestNavDate = getExpectedLatestNavDate(effectiveKind, todayShanghai);
     if (!Number.isFinite(latestNav) || !Number.isFinite(previousNav) || previousNav <= 0) {
       // 缺少净值或昨日净值 → 在加权中跳过，但如果是 latestNavDate 不达预期日期造成的，则整套跳过。

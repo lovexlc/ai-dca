@@ -199,8 +199,8 @@ export async function handleAdminHoldingsAllTest(request, env, options = {}) {
       const otcBucket = digest.otc || [];
       const codes = [...exchangeBucket, ...otcBucket].map((entry) => entry.code);
       const bucketKindByCode = {};
-      for (const e of exchangeBucket) bucketKindByCode[e.code] = 'exchange';
-      for (const e of otcBucket) bucketKindByCode[e.code] = 'otc';
+      for (const e of exchangeBucket) bucketKindByCode[e.code] = e.kind || 'exchange';
+      for (const e of otcBucket) bucketKindByCode[e.code] = e.kind || 'otc';
 
       let snapshotsByCode = {};
       try {
@@ -325,7 +325,7 @@ export async function runHoldingsNotifications(env, kind, todayShanghai, reason 
     if (!bucket.length) continue;
 
     const codes = bucket.map((entry) => entry.code);
-    const bucketKindByCode = Object.fromEntries(codes.map((c) => [c, kind]));
+    const bucketKindByCode = Object.fromEntries(bucket.map((entry) => [entry.code, entry.kind || kind]));
     let snapshotsByCode = {};
     try {
       snapshotsByCode = await fetchHoldingsNavSnapshots(env, codes, { bucketKindByCode, todayShanghai });
@@ -460,8 +460,8 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
 
     const codes = [...exchangeBucket, ...otcBucket].map((entry) => entry.code);
     const bucketKindByCode = {};
-    for (const e of exchangeBucket) bucketKindByCode[e.code] = 'exchange';
-    for (const e of otcBucket) bucketKindByCode[e.code] = 'otc';
+    for (const e of exchangeBucket) bucketKindByCode[e.code] = e.kind || 'exchange';
+    for (const e of otcBucket) bucketKindByCode[e.code] = e.kind || 'otc';
     let snapshotsByCode = {};
     try {
       snapshotsByCode = await fetchHoldingsNavSnapshots(env, codes, { bucketKindByCode, todayShanghai });

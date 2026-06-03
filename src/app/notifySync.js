@@ -455,7 +455,11 @@ function normalizeHoldingsDigest(digest) {
       const weight = Number(entry?.weight);
       if (!/^\d{6}$/.test(code)) continue;
       if (!Number.isFinite(weight) || weight <= 0) continue;
-      result[bucket].push({ code, weight });
+      const rawKind = String(entry?.kind || '').trim().toLowerCase();
+      const kind = rawKind === 'exchange' || rawKind === 'qdii' || rawKind === 'otc'
+        ? rawKind
+        : (bucket === 'exchange' ? 'exchange' : 'otc');
+      result[bucket].push({ code, weight, kind });
     }
   }
   // 组合层 totals 已不再传输：workers/notify/src/index.js 出于隐私考虑统一丢弃 totals（只依赖 code/weight 加权计算收益率）。
@@ -477,7 +481,7 @@ export function loadHoldingsNotifyRule() {
 
 /**
  * 保存当前 client 的「持仓当日总收益」通知规则。
- * 仅同步代码 + 组合权重，不上传份额/成本/金额。
+ * 仅同步代码 + 持仓类型 + 组合权重，不上传份额/成本/金额。
  */
 export function saveHoldingsNotifyRule({ enabled = false, digest = null } = {}) {
   const clientConfig = resolveNotifyClientConfig();

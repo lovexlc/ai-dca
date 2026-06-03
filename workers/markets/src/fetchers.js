@@ -14,6 +14,7 @@ const XUEQIU_STOCK_HOST = 'https://' + 'stock.xueqiu.com';
 const XUEQIU_WEB_HOST = 'https://' + 'xueqiu.com';
 const FINNHUB_HOST = 'https://' + 'finnhub.io';
 const DANJUAN_HOST = 'https://' + 'danjuanapp.com';
+const DANJUAN_FUNDS_HOST = 'https://' + 'danjuanfunds.com';
 
 // 轻量级并发限流。与index.js 里的版本语义一致，这里独立定义避免跨文件依赖。
 async function mapLimit(items, limit, worker) {
@@ -753,6 +754,35 @@ export async function searchEastmoneySymbols(query, { limit = 8 } = {}) {
 }
 
 // ===================== 蛋卷基金（场外基金净值） =====================
+
+export async function fetchDanjuanFundMeta(code) {
+  const fundCode = String(code || '').replace(/^(sh|sz|bj)/i, '');
+  if (!/^\d{6}$/.test(fundCode)) throw new Error('danjuan invalid fund code: ' + code);
+  const url = DANJUAN_FUNDS_HOST + '/djapi/fund/' + fundCode;
+  const res = await fetch(url, {
+    headers: {
+      ...COMMON_HEADERS,
+      referer: 'https://danjuanfunds.com/',
+      'accept-language': 'zh-CN,zh;q=0.9'
+    },
+    cf: { cacheTtl: 86400 }
+  });
+  if (!res.ok) throw new Error('danjuan fund meta HTTP ' + res.status);
+  const body = await res.json().catch(() => ({}));
+  if (body?.result_code !== 0 && body?.result_code !== '0') {
+    throw new Error('danjuan fund meta error: ' + JSON.stringify(body?.result_code));
+  }
+  const d = body?.data || {};
+  return {
+    code: String(d.fd_code || fundCode).trim(),
+    symbol: String(d.fd_code || fundCode).trim(),
+    name: String(d.fd_name || '').trim(),
+    fullName: String(d.fd_full_name || '').trim(),
+    fundType: String(d.type_desc || '').trim(),
+    fundTypeCode: d.fd_type ?? d.type ?? null,
+    source: 'danjuan'
+  };
+}
 
 export async function fetchDanjuanFundNav(code) {
   const fundCode = String(code || '').replace(/^(sh|sz|bj)/i, '');

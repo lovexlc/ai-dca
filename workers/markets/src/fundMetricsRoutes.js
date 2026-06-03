@@ -1,4 +1,5 @@
 import {
+  fetchDanjuanFundMeta,
   fetchDanjuanFundNav,
   fetchYahooChart,
   normalizeYahooKline
@@ -80,6 +81,16 @@ function derivePreviousValue(currentValue, changePercent = null, change = null) 
   return null;
 }
 
+function normalizeFundKindFromQuote(quote, exchange) {
+  if (exchange) return 'exchange';
+  const rawKind = String(quote?.fundKind || '').trim().toLowerCase();
+  if (rawKind === 'qdii' || rawKind === 'otc') return rawKind;
+  const typeCode = Number(quote?.fundTypeCode);
+  if (Number.isFinite(typeCode) && typeCode === 11) return 'qdii';
+  const fundType = String(quote?.fundType || quote?.typeDesc || '').trim().toUpperCase();
+  return fundType.includes('QDII') ? 'qdii' : 'otc';
+}
+
 export function normalizeFundMetricFromQuote(code, quote, { cached = false, cachePolicy = '', primaryError = '', exchange = isExchangeTradedFund(code) } = {}) {
   const price = firstPositiveNumber(quote?.price, quote?.currentPrice, quote?.close);
   const latestNav = firstPositiveNumber(quote?.latestNav, !exchange ? quote?.currentPrice : null);
@@ -111,12 +122,17 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
   const marketState = exchange && quoteDate && quoteDate < todayDate
     ? 'CLOSED'
     : rawMarketState;
+  const fundKind = normalizeFundKindFromQuote(quote, exchange);
   return {
     ok: !quote?.error,
     code: String(quote?.code || code || '').trim(),
     symbol: String(quote?.symbol || code || '').trim(),
     name: String(quote?.name || '').trim(),
     market: 'cn',
+    fundKind,
+    fundType: String(quote?.fundType || quote?.typeDesc || '').trim(),
+    fundTypeCode: quote?.fundTypeCode ?? null,
+    fullName: String(quote?.fullName || '').trim(),
     price,
     currentPrice: currentValue,
     close: currentValue,
@@ -181,7 +197,27 @@ async function readCachedFundMetric(env, cacheKey) {
   const hasNav = Number(cached.latestNav) > 0;
   const hasPrice = Number(cached.price) > 0;
   if (!hasNav && !hasPrice) return null;
-  return normalizeFundMetricFromQuote(cached.code, cached, { cached: true, cachePolicy: 'kv-closed-session' });
+  const code = String(cached.code || '').trim();
+  let quote = cached;
+  if (!isExchangeTradedFund(code) && !cached.fundKind && !cached.fundType) {
+    const meta = await fetchDanjuanFundMetaWithCache(env, code).catch(() => null);
+    if (meta) {
+      quote = { ...cached, ...meta };
+      await kvPutJson(env, cacheKey, quote, { ttlSeconds: 24 * 3600 }).catch(() => {});
+    }
+  }
+  return normalizeFundMetricFromQuote(code, quote, { cached: true, cachePolicy: 'kv-closed-session' });
+}
+
+async function fetchDanjuanFundMetaWithCache(env, code) {
+  const cacheKey = 'fund-meta:' + code;
+  const cached = await kvGetJson(env, cacheKey).catch(() => null);
+  if (cached && cached.code === code && cached.fundType) return cached;
+  const meta = await fetchDanjuanFundMeta(code);
+  if (meta && meta.code) {
+    await kvPutJson(env, cacheKey, meta, { ttlSeconds: 30 * 24 * 3600 }).catch(() => {});
+  }
+  return meta;
 }
 
 function isDanjuanUpdatedToday(updatedAtMs) {
@@ -195,9 +231,13 @@ async function fetchFreshFundMetric(env, code, cachePolicy) {
   const cacheKey = 'fund-metrics:' + code;
   const exchange = isExchangeTradedFund(code);
   try {
-    const quote = exchange
+    let quote = exchange
       ? await fetchCnQuoteWithFallback(env, code, { endpoint: 'fund-metrics' })
       : await fetchDanjuanFundNav(code);
+    if (!exchange) {
+      const meta = await fetchDanjuanFundMetaWithCache(env, code).catch(() => null);
+      if (meta) quote = { ...quote, ...meta };
+    }
     const item = normalizeFundMetricFromQuote(code, quote, { cached: false, cachePolicy, exchange });
     // 场内始终缓存；场外仅当 updated_at 是今天时缓存（净值已发布）
     const shouldCache = exchange || isDanjuanUpdatedToday(quote?.updatedAt);
@@ -211,6 +251,10 @@ async function fetchFreshFundMetric(env, code, cachePolicy) {
       code,
       symbol: code,
       market: 'cn',
+      fundKind: exchange ? 'exchange' : 'otc',
+      fundType: '',
+      fundTypeCode: null,
+      fullName: '',
       price: null,
       currentPrice: null,
       close: null,

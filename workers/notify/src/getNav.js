@@ -61,6 +61,10 @@ async function fetchFundMetricsMap(env, codes = [], { refresh = false } = {}) {
   return out;
 }
 
+export async function fetchFundMetricsForCodes(env, codes = [], options = {}) {
+  return fetchFundMetricsMap(env, codes, options);
+}
+
 function metricToLatestNav(metric) {
   const code = sanitizeCode(metric?.code || '');
   if (!code) return null;
@@ -75,7 +79,10 @@ function metricToLatestNav(metric) {
     source: metric?.source || 'fund-metrics',
     price: Number.isFinite(price) && price > 0 ? price : null,
     iopv: Number(metric?.iopv) || null,
-    premiumPercent: Number(metric?.premiumPercent) || null
+    premiumPercent: Number(metric?.premiumPercent) || null,
+    fundKind: String(metric?.fundKind || '').trim(),
+    fundType: String(metric?.fundType || '').trim(),
+    fundTypeCode: metric?.fundTypeCode ?? null
   };
 }
 
@@ -94,7 +101,10 @@ function metricToPrice(metric) {
     latestNav: Number(metric?.latestNav) || null,
     latestNavDate: String(metric?.latestNavDate || metric?.navDate || '').trim(),
     iopv: Number(metric?.iopv) || null,
-    premiumPercent: Number(metric?.premiumPercent) || null
+    premiumPercent: Number(metric?.premiumPercent) || null,
+    fundKind: String(metric?.fundKind || '').trim(),
+    fundType: String(metric?.fundType || '').trim(),
+    fundTypeCode: metric?.fundTypeCode ?? null
   };
 }
 
@@ -127,7 +137,10 @@ function metricToHoldingSnapshot(metric, generatedAt = nowShanghaiIso()) {
     fundLatestNavDate: navDate,
     iopv: Number(metric?.iopv) || null,
     premiumPercent: Number(metric?.premiumPercent) || null,
-    cachePolicy: String(metric?.cachePolicy || '').trim()
+    cachePolicy: String(metric?.cachePolicy || '').trim(),
+    fundKind: String(metric?.fundKind || '').trim(),
+    fundType: String(metric?.fundType || '').trim(),
+    fundTypeCode: metric?.fundTypeCode ?? null
   };
 }
 

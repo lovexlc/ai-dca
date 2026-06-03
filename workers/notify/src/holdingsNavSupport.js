@@ -1,4 +1,4 @@
-import { getLatestNavWithCache } from './getNav.js';
+import { fetchFundMetricsForCodes, getLatestNavWithCache } from './getNav.js';
 import { readJson, writeJson } from './notifyStorage.js';
 
 export const HOLDINGS_RULE_KEY_PREFIX = 'holdings-rule:';
@@ -21,87 +21,31 @@ export function hasConfirmedPushDelivery(runResult = {}) {
   return channels.some((channel) => {
     const channelName = String(channel?.channel || '').trim();
     const status = String(channel?.status || '').trim();
-    return status === 'delivered' && (channelName === 'gcm' || channelName === 'bark');
+    return (status === 'delivered' && ['bark', 'serverchan3', 'ws'].includes(channelName))
+      || (channelName === 'pc' && status === 'queued');
   });
 }
 
-/**
- * QDII 代码白名单（与前端 holdingsLedgerCore.js 保持一致）。
- * worker 拿不到基金名称，只能靠代码识别 QDII；后续如果 digest 上传了 name，可改用关键词匹配。
- * 并作为 `getFundType` 接口失败时的兜底。
- */
-const HOLDINGS_QDII_CODE_SET = new Set([
-  '021000', // 南方纳斯达克100指数发起(QDII)I
-  '006075', // 博时标普500ETF联接(QDII)C
-  '019172'  // 摩根纳斯达克100(QDII)人民币A
-]);
-
-/** 东财 F10 jbgk「基金类型」在 KV 里的缓存前缀。值为 JSON `{ type: string, ts: number }`。 */
-const FUND_TYPE_KEY_PREFIX = 'fundtype:';
-/** 成功调接口后缓存 30 天。基金类型几乎不变，不需要频繁刷新。 */
-const FUND_TYPE_TTL_SECONDS = 30 * 24 * 3600;
-/** 接口失败后的负缓存时间（1 小时），避免连续打接口。 */
-const FUND_TYPE_NEG_TTL_SECONDS = 3600;
-
-async function getFundType(code, env) {
-  const codeStr = String(code || '').trim();
-  if (!codeStr) return '';
-  if (!env || !env.NOTIFY_STATE) return '';
-  const key = FUND_TYPE_KEY_PREFIX + codeStr;
-  try {
-    const raw = await env.NOTIFY_STATE.get(key);
-    if (raw) {
-      try {
-        const obj = JSON.parse(raw);
-        if (obj && typeof obj.type === 'string') return obj.type;
-      } catch (_e) {
-        // 兼容旧格式：直接存了字符串。
-        return raw;
-      }
-    }
-  } catch (_e) {
-    // KV 读失败，继续走接口。
-  }
-
-  let fundType = '';
-  try {
-    const url = `https://fundf10.eastmoney.com/jbgk_${codeStr}.html`;
-    const resp = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; ai-dca-notify/1.0)',
-        'Referer': 'https://fundf10.eastmoney.com/'
-      },
-      // Cloudflare edge cache 1 天，减少重复拉取。
-      cf: { cacheTtl: 86400, cacheEverything: true }
-    });
-    if (resp && resp.ok) {
-      const html = await resp.text();
-      const match = html.match(/基金类型[^<]*<\/[^>]+>\s*<[^>]*>\s*([^<]+?)\s*</);
-      if (match) fundType = match[1].trim();
-    }
-  } catch (_e) {
-    // 接口失败，走负缓存。
-  }
-
-  try {
-    await env.NOTIFY_STATE.put(
-      key,
-      JSON.stringify({ type: fundType, ts: Date.now() }),
-      { expirationTtl: fundType ? FUND_TYPE_TTL_SECONDS : FUND_TYPE_NEG_TTL_SECONDS }
-    );
-  } catch (_e) {
-    // 写缓存失败不阻断主流程。
-  }
-
-  return fundType;
+function resolveKindFromMetric(metric) {
+  const fundKind = String(metric?.fundKind || '').trim().toLowerCase();
+  if (fundKind === 'exchange' || fundKind === 'qdii' || fundKind === 'otc') return fundKind;
+  const typeCode = Number(metric?.fundTypeCode);
+  if (Number.isFinite(typeCode) && typeCode === 11) return 'qdii';
+  const fundType = String(metric?.fundType || '').trim().toUpperCase();
+  return fundType.includes('QDII') ? 'qdii' : '';
 }
 
 export async function resolveHoldingKindAsync(code, bucketKind, env) {
   const codeStr = String(code || '');
   if (bucketKind === 'exchange') return 'exchange';
-  const fundType = await getFundType(codeStr, env);
-  if (fundType && /海外|QDII/i.test(fundType)) return 'qdii';
-  if (!fundType && HOLDINGS_QDII_CODE_SET.has(codeStr)) return 'qdii';
+  if (bucketKind === 'qdii') return 'qdii';
+  try {
+    const metrics = await fetchFundMetricsForCodes(env, [codeStr], { refresh: false });
+    const resolved = resolveKindFromMetric(metrics?.[codeStr]);
+    if (resolved) return resolved;
+  } catch (_e) {
+    // 元数据不可用时按原 bucket 处理，不做名称/代码猜测。
+  }
   return bucketKind || 'otc';
 }
 
@@ -254,7 +198,11 @@ export function normalizeHoldingsDigest(digest) {
       const weight = Number(entry?.weight);
       if (!FUND_CODE_PATTERN.test(code)) continue;
       if (!Number.isFinite(weight) || weight <= 0 || weight > 1) continue;
-      result[bucket].push({ code, weight });
+      const rawKind = String(entry?.kind || '').trim().toLowerCase();
+      const kind = rawKind === 'exchange' || rawKind === 'qdii' || rawKind === 'otc'
+        ? rawKind
+        : (bucket === 'exchange' ? 'exchange' : 'otc');
+      result[bucket].push({ code, weight, kind });
       totalWeight += weight;
     }
   }
