@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 
 import { normalizeFundMetricFromQuote } from '../workers/markets/src/fundMetricsRoutes.js';
 
+const SOURCE_UPDATED_AT_MS = Date.UTC(2026, 4, 29, 8, 0, 0);
+const SOURCE_UPDATED_AT_SEC = SOURCE_UPDATED_AT_MS / 1000;
+
 test('fund-metrics normalizes Danjuan OTC NAV into stable front-end fields', () => {
   const item = normalizeFundMetricFromQuote('021000', {
     code: '021000',
@@ -15,6 +18,7 @@ test('fund-metrics normalizes Danjuan OTC NAV into stable front-end fields', () 
     changePercent: 0.254,
     latestNav: 2.368,
     latestNavDate: '2026-05-29',
+    updatedAt: SOURCE_UPDATED_AT_MS,
     source: 'danjuan'
   }, { exchange: false, cachePolicy: 'kv-closed-session' });
 
@@ -28,6 +32,19 @@ test('fund-metrics normalizes Danjuan OTC NAV into stable front-end fields', () 
   assert.equal(item.change, 0.006);
   assert.equal(item.changePercent, 0.254);
   assert.equal(item.latestNavDate, '2026-05-29');
+  assert.equal(item.updatedAt, '2026-05-29T08:00:00.000Z');
+});
+
+test('fund-metrics normalizes source updatedAt from second timestamp', () => {
+  const item = normalizeFundMetricFromQuote('021000', {
+    code: '021000',
+    latestNav: 2.368,
+    changePercent: 0.254,
+    latestNavDate: '2026-05-29',
+    updatedAt: SOURCE_UPDATED_AT_SEC
+  }, { exchange: false });
+
+  assert.equal(item.updatedAt, '2026-05-29T08:00:00.000Z');
 });
 
 test('fund-metrics derives previousNav when source only has NAV and change percent', () => {

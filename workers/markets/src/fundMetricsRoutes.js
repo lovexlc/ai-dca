@@ -48,6 +48,16 @@ function todayShanghaiDate() {
   }
 }
 
+function normalizeSourceUpdatedAt(value = '') {
+  if (value == null || value === '') return '';
+  const numeric = Number(value);
+  const parsed = Number.isFinite(numeric)
+    ? (numeric > 0 && numeric < 1e12 ? numeric * 1000 : numeric)
+    : Date.parse(String(value));
+  if (!Number.isFinite(parsed) || parsed <= 0) return '';
+  return new Date(parsed).toISOString();
+}
+
 function deriveChangePercent(currentValue, previousValue, explicitChangePercent = null) {
   const explicit = roundNumber(explicitChangePercent, 4);
   if (Number.isFinite(explicit)) return explicit;
@@ -94,6 +104,7 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
     : null;
   const premiumPercent = explicitPremium != null ? explicitPremium : computedPremium;
   const asOf = String(quote?.asOf || new Date().toISOString()).trim();
+  const updatedAt = normalizeSourceUpdatedAt(quote?.updatedAt);
   const quoteDate = shanghaiDateFromTimestamp(quote?.quoteDate || asOf);
   const todayDate = todayShanghaiDate();
   const rawMarketState = String(quote?.marketState || '').trim();
@@ -122,6 +133,7 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
     navDate: String(quote?.latestNavDate || '').trim(),
     marketState,
     asOf,
+    updatedAt,
     quoteDate,
     source: String(quote?.source || '').trim(),
     fallback: quote?.fallback || '',
