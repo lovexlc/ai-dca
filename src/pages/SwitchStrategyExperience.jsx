@@ -12,18 +12,11 @@ import {
 } from '../app/switchStrategySync.js';
 import {
   formatSwitchDate as formatDate,
-  formatSwitchLimitAmount as formatLimitAmount,
   formatSwitchPercent as formatPercent,
   formatSwitchPrice as formatPrice,
   loadNasdaqList as loadNasdqList,
-  loadNasdaqOtcList as loadNasdqOtcList,
-  limitSortValue,
   nowIso,
-  otcGroupIdOf,
   readSwitchPrefs as readPrefs,
-  shouldShowAppTag,
-  switchLimitLabelFor as limitLabelFor,
-  switchLimitToneFor as limitToneFor,
   writeSwitchPrefs as writePrefs,
 } from './switchStrategyHelpers.js';
 import {
@@ -74,13 +67,9 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     lastSyncedAt: ''
   });
   const [workerConfigExpanded, setWorkerConfigExpanded] = useState(false);
-  const [fundLimitsByCode, setFundLimitsByCode] = useState({});
   // “所有纳指 ETF（未分类）”折叠状态：当 H/L 组都有内容时默认折叠。
   const [nasdaqPoolExpanded, setNasdaqPoolExpanded] = useState(true);
   const [nasdaqPoolTouched, setNasdaqPoolTouched] = useState(false);
-  // 场外纳指基金全集 (data/all_nasdq_otc.json)。
-  const [otcUniverse, setOtcUniverse] = useState([]);
-  const [showAllOtc, setShowAllOtc] = useState(false);
   const [switchView, setSwitchView] = useState(initialView === 'config' ? 'config' : 'opportunity');
 
   const premiumClassCounts = useMemo(() => {
@@ -355,78 +344,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     [aggregates]
   );
 
-  // 拉取所有场外纳指候选的申购限额 (ocr-proxy worker, 公告 LLM 优先)。
-  // 排除 C 类：C/A 共用份额公告，前端只比较 A/非AC。
-  const otcCodesKey = useMemo(
-    () => otcUniverse
-      .filter((f) => f && f.share_class !== 'C' && /^\d{6}$/.test(String(f.code || '')))
-      .map((f) => f.code)
-      .sort()
-      .join(','),
-    [otcUniverse]
-  );
-  useEffect(() => {
-    if (!otcCodesKey) {
-      setFundLimitsByCode({});
-      return undefined;
-    }
-    // 原先是 N 个 fetch fan-out、无并发上限也无 abort；现在走 POST 批量 + AbortController。
-    // Worker 内部 mapLimit(4) 复用 fetchFundLimit，三路源 * code 的放大在服务端收敛。
-    const codes = otcCodesKey.split(',');
-    const ctrl = new AbortController();
-    let cancelled = false;
-    (async () => {
-      try {
-        const resp = await fetch('/api/fund-limit', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ codes }),
-          cache: 'no-store',
-          signal: ctrl.signal
-        });
-        if (!resp.ok) {
-          // 老 Worker 可能还是 405（未上线新路由），回退 GET fan-out 保底。
-          if (resp.status === 405) {
-            const entries = await Promise.all(
-              codes.map((code) =>
-                fetch(`/api/fund-limit?code=${encodeURIComponent(code)}`, { cache: 'no-store', signal: ctrl.signal })
-                  .then((r) => (r.ok ? r.json() : null))
-                  .then((data) => [code, data])
-                  .catch(() => [code, null])
-              )
-            );
-            if (cancelled) return;
-            const next = {};
-            for (const [code, data] of entries) {
-              if (data && typeof data === 'object') next[code] = data;
-            }
-            setFundLimitsByCode(next);
-            return;
-          }
-          return;
-        }
-        const payload = await resp.json();
-        if (cancelled) return;
-        const next = {};
-        const items = Array.isArray(payload?.items) ? payload.items : [];
-        for (const item of items) {
-          if (item && item.ok && item.code && item.data && typeof item.data === 'object') {
-            next[item.code] = item.data;
-          }
-        }
-        setFundLimitsByCode(next);
-      } catch (err) {
-        if (err && err.name === 'AbortError') return;
-        // 静默失败；下一轮 refreshTick 会重试。
-      }
-    })();
-    return () => {
-      cancelled = true;
-      ctrl.abort();
-    };
-  }, [otcCodesKey, refreshTick]);
-
-
   // 候选基金 universe（来自 data/all_nasdq.json）
   useEffect(() => {
     let cancelled = false;
@@ -443,65 +360,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       });
     return () => { cancelled = true; };
   }, [inPagesDir, refreshTick]);
-
-  // 场外纳指基金全集加载。
-  useEffect(() => {
-    let cancelled = false;
-    loadNasdqOtcList({ inPagesDir })
-      .then((list) => { if (!cancelled) setOtcUniverse(Array.isArray(list) ? list : []); })
-      .catch(() => { if (!cancelled) setOtcUniverse([]); });
-    return () => { cancelled = true; };
-  }, [inPagesDir, refreshTick]);
-
-  // 场外纳指「按基金公司去重 + 选代表 + 按限额降序」。
-  // 每组候选 = {A 类, 非 AC 类}。
-  // 规则：若非 AC 类限额 > A 类限额 → 用非 AC，否则用 A。
-  const otcGroups = useMemo(() => {
-    const groups = new Map();
-    for (const f of otcUniverse) {
-      if (!f || f.share_class === 'C') continue;
-      if (!/^\d{6}$/.test(String(f.code || ''))) continue;
-      const gid = otcGroupIdOf(f);
-      if (!groups.has(gid)) groups.set(gid, { id: gid, members: [] });
-      groups.get(gid).members.push(f);
-    }
-    const result = [];
-    for (const g of groups.values()) {
-      const aCands = g.members.filter((f) => f.share_class === 'A');
-      const nonACands = g.members.filter((f) => f.share_class && f.share_class !== 'A' && f.share_class !== 'C');
-      const aPick = aCands.find((f) => f.currency === 'CNY') || aCands[0] || null;
-      const nPick = nonACands.find((f) => f.currency === 'CNY') || nonACands[0] || null;
-      const aLimit = aPick ? fundLimitsByCode[aPick.code] : null;
-      const nLimit = nPick ? fundLimitsByCode[nPick.code] : null;
-      const aVal = limitSortValue(aLimit);
-      const nVal = limitSortValue(nLimit);
-      let chosen = null, chosenLimit = null, chosenVal = null;
-      if (nPick && nVal != null && (aVal == null || nVal > aVal)) {
-        chosen = nPick; chosenLimit = nLimit; chosenVal = nVal;
-      } else if (aPick) {
-        chosen = aPick; chosenLimit = aLimit; chosenVal = aVal;
-      } else if (nPick) {
-        chosen = nPick; chosenLimit = nLimit; chosenVal = nVal;
-      } else {
-        continue;
-      }
-      result.push({
-        groupId: g.id,
-        fund: chosen,
-        limit: chosenLimit,
-        sortValue: chosenVal,
-        memberCount: g.members.length
-      });
-    }
-    const rank = (v) => {
-      if (v == null) return -2;
-      if (v === Infinity) return Number.MAX_VALUE;
-      if (v === -Infinity) return -1;
-      return v;
-    };
-    result.sort((a, b) => rank(b.sortValue) - rank(a.sortValue));
-    return result;
-  }, [otcUniverse, fundLimitsByCode]);
 
   // 候选集合 = 用户在 H/L 两表里拖入的代码 ∩ 排除持仓。
   // 不再让用户手动勾选“候选基金”：入 H/L 即可作为候选。
@@ -940,13 +798,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         openQuickRecordFromIntra={openQuickRecordFromIntra}
         otcSignal={otcSignal}
         openQuickRecordFromOtc={openQuickRecordFromOtc}
-        otcGroups={otcGroups}
-        showAllOtc={showAllOtc}
-        setShowAllOtc={setShowAllOtc}
-        shouldShowAppTag={shouldShowAppTag}
-        formatLimitAmount={formatLimitAmount}
-        limitLabelFor={limitLabelFor}
-        limitToneFor={limitToneFor}
+        links={links}
       />
 
       <SwitchStrategyQuickRecordModal
