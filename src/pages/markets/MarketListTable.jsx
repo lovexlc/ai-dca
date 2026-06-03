@@ -118,6 +118,17 @@ export function MarketListTable({
       },
     },
     {
+      id: 'tags',
+      accessorFn: (row) => shouldShowAppTag(row.fundMeta, row.fundLimit) ? 'App' : '',
+      meta: { label: '标签' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="标签" />,
+      cell: ({ row }) => (
+        shouldShowAppTag(row.original.fundMeta, row.original.fundLimit)
+          ? <span className="inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">App</span>
+          : <span className="text-[#9aa0a6]">—</span>
+      ),
+    },
+    {
       id: 'price',
       accessorFn: (row) => Number(row.price),
       meta: { label: '最新价' },
@@ -150,21 +161,17 @@ export function MarketListTable({
       header: ({ column }) => <DataTableColumnHeader column={column} label="限额" />,
       cell: ({ row }) => {
         const limit = row.original.fundLimit;
-        const appTag = shouldShowAppTag(row.original.fundMeta, limit);
-        if (!limit && !appTag) return <span className="text-[#9aa0a6]">—</span>;
+        if (!limit) return <span className="text-[#9aa0a6]">—</span>;
         return (
           <div className="flex flex-col items-end gap-0.5">
             <div className="flex flex-wrap justify-end gap-1">
-              {limit ? (
-                <span className={cx(
-                  'inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
-                  switchLimitToneFor(limit.buyStatus) === 'emerald' ? 'bg-emerald-50 text-emerald-700' :
-                  switchLimitToneFor(limit.buyStatus) === 'amber' ? 'bg-amber-50 text-amber-700' :
-                  switchLimitToneFor(limit.buyStatus) === 'red' ? 'bg-red-50 text-red-700' :
-                  'bg-slate-50 text-slate-500'
-                )}>{switchLimitLabelFor(limit.buyStatus)}</span>
-              ) : null}
-              {appTag ? <span className="inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">App</span> : null}
+              <span className={cx(
+                'inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
+                switchLimitToneFor(limit.buyStatus) === 'emerald' ? 'bg-emerald-50 text-emerald-700' :
+                switchLimitToneFor(limit.buyStatus) === 'amber' ? 'bg-amber-50 text-amber-700' :
+                switchLimitToneFor(limit.buyStatus) === 'red' ? 'bg-red-50 text-red-700' :
+                'bg-slate-50 text-slate-500'
+              )}>{switchLimitLabelFor(limit.buyStatus)}</span>
             </div>
             {Number(limit?.maxPurchasePerDay) > 0 ? (
               <span className="tabular-nums text-[#5f6368]">{formatSwitchLimitAmount(limit.maxPurchasePerDay)}</span>
@@ -320,24 +327,6 @@ export function MarketListTable({
       },
     },
   });
-
-  if (!rows.length) {
-    return <p className="px-2 py-2 text-sm text-[#5f6368]">未配置自选。</p>;
-  }
-  if (dataTable) {
-    return (
-      <div className="flex min-w-0 flex-col gap-2">
-        <DataTableToolbar table={table}>
-          <DataTableViewOptions table={table} />
-        </DataTableToolbar>
-        <DataTable
-          table={table}
-          className="[&_td]:text-right [&_td:first-child]:text-left [&_td:nth-child(2)]:text-left [&_th]:whitespace-nowrap"
-          onRowClick={(tableRow) => onSelect?.(tableRow.original)}
-        />
-      </div>
-    );
-  }
   const [localVisibility, setLocalVisibility] = useState(DEFAULT_HIDDEN_COLUMNS);
   const visibility = controlledVisibility ?? localVisibility;
   const setVisibility = onColumnVisibilityChange ?? setLocalVisibility;
@@ -352,6 +341,23 @@ export function MarketListTable({
     return () => document.removeEventListener('mousedown', handler);
   }, [menuOpen]);
 
+  if (!rows.length) {
+    return <p className="px-2 py-2 text-sm text-[#5f6368]">未配置自选。</p>;
+  }
+  if (dataTable) {
+    return (
+      <div className="flex min-w-0 flex-col gap-2">
+        <DataTableToolbar table={table}>
+          <DataTableViewOptions table={table} />
+        </DataTableToolbar>
+        <DataTable
+          table={table}
+          className="[&_td]:text-right [&_td:first-child]:text-left [&_td:nth-child(2)]:text-left [&_td:nth-child(3)]:text-left [&_th]:whitespace-nowrap"
+          onRowClick={(tableRow) => onSelect?.(tableRow.original)}
+        />
+      </div>
+    );
+  }
   const cellPad = compact ? 'px-2 py-2' : 'px-3 py-2';
   const stickyHeadCell = stickyFirstColumn
     ? 'sticky left-0 z-20 border-r border-[#e8eaed] bg-[#f8fafd] shadow-[8px_0_12px_-12px_rgba(60,64,67,0.45)]'
@@ -391,6 +397,7 @@ export function MarketListTable({
           <tr>
             <th className={cx(cellPad, 'text-left', stickyHeadCell)}>代码</th>
             <th className={cx(cellPad, 'text-left')}>名称</th>
+            <th className={cx(cellPad, 'text-left')}>标签</th>
             <th className={cx(cellPad, 'text-right')}>最新价</th>
             <th className={cx(cellPad, 'text-right')}>涨跌幅</th>
             {showLimitColumn ? <th className={cx(cellPad, 'text-right')}>限额</th> : null}
@@ -434,6 +441,11 @@ export function MarketListTable({
                   <div className="truncate font-medium">{row.name || displaySymbol}</div>
                   {row.meta ? <div className="truncate text-[10px] text-[#5f6368]">{row.meta}</div> : null}
                 </td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-left text-xs')}>
+                  {shouldShowAppTag(row.fundMeta, row.fundLimit)
+                    ? <span className="inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">App</span>
+                    : <span className="text-[#9aa0a6]">—</span>}
+                </td>
                 <td className={cx(cellPad, 'whitespace-nowrap text-right tabular-nums text-[#1f1f1f]')}>{formatNumber(row.price)}</td>
                 <td className={cx(cellPad, 'whitespace-nowrap text-right')}>
                   <span className="inline-flex items-center justify-end gap-1.5">
@@ -443,19 +455,16 @@ export function MarketListTable({
                 </td>
                 {showLimitColumn ? (
                   <td className={cx(cellPad, 'whitespace-nowrap text-right text-xs')}>
-                    {row.fundLimit || shouldShowAppTag(row.fundMeta, row.fundLimit) ? (
+                    {row.fundLimit ? (
                       <div className="flex flex-col items-end gap-0.5">
                         <div className="flex flex-wrap justify-end gap-1">
-                          {row.fundLimit ? (
-                            <span className={cx(
-                              'inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
-                              switchLimitToneFor(row.fundLimit.buyStatus) === 'emerald' ? 'bg-emerald-50 text-emerald-700' :
-                              switchLimitToneFor(row.fundLimit.buyStatus) === 'amber' ? 'bg-amber-50 text-amber-700' :
-                              switchLimitToneFor(row.fundLimit.buyStatus) === 'red' ? 'bg-red-50 text-red-700' :
-                              'bg-slate-50 text-slate-500'
-                            )}>{switchLimitLabelFor(row.fundLimit.buyStatus)}</span>
-                          ) : null}
-                          {shouldShowAppTag(row.fundMeta, row.fundLimit) ? <span className="inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">App</span> : null}
+                          <span className={cx(
+                            'inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
+                            switchLimitToneFor(row.fundLimit.buyStatus) === 'emerald' ? 'bg-emerald-50 text-emerald-700' :
+                            switchLimitToneFor(row.fundLimit.buyStatus) === 'amber' ? 'bg-amber-50 text-amber-700' :
+                            switchLimitToneFor(row.fundLimit.buyStatus) === 'red' ? 'bg-red-50 text-red-700' :
+                            'bg-slate-50 text-slate-500'
+                          )}>{switchLimitLabelFor(row.fundLimit.buyStatus)}</span>
                         </div>
                         {Number(row.fundLimit?.maxPurchasePerDay) > 0 ? (
                           <span className="tabular-nums text-[#5f6368]">{formatSwitchLimitAmount(row.fundLimit.maxPurchasePerDay)}</span>

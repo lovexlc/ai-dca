@@ -93,6 +93,7 @@ export function MarketsSidebar({
   onSelectSymbol,
   showLimitColumn = false,
   hidePremiumColumn = false,
+  hideTrendColumn = false,
 }) {
   const sectorEmptyText = sectorsLoading ? '加载中…' : (market === 'cn' ? '可搜索并添加更多 A股 / ETF 标的' : '暂无数据');
   return (
@@ -145,8 +146,10 @@ export function MarketsSidebar({
                 onSelect={onSelectSymbol}
                 compact
                 stickyFirstColumn
+                dataTable
                 showLimitColumn={showLimitColumn}
                 hidePremiumColumn={hidePremiumColumn}
+                hideTrendColumn={hideTrendColumn}
               />
             )
           )}

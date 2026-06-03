@@ -1229,6 +1229,7 @@ export function MarketsExperience() {
         onSelectSymbol={handleSelectSymbol}
         showLimitColumn={isActiveOtcList && market === 'cn'}
         hidePremiumColumn={isActiveOtcList && market === 'cn'}
+        hideTrendColumn={isActiveOtcList && market === 'cn'}
       />
 
       <MarketsMainContent
