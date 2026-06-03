@@ -5,6 +5,7 @@ import {
   loadNotifyStatus,
   loadHoldingsNotifyRule,
   saveHoldingsNotifyRule,
+  mergeNotifyStatusIntoClientConfig,
   pairAndroidDevice,
   persistNotifyClientConfig,
   readNotifyClientConfig,
@@ -195,10 +196,11 @@ export function NotifyExperience({ embedded = false }) {
         const statusPayload = await loadNotifyStatus(notifyConfig.notifyClientId);
         if (cancelled) return;
         setNotifyStatus(statusPayload);
+        const mergedConfig = mergeNotifyStatusIntoClientConfig(statusPayload, readNotifyClientConfig());
         setNotifyConfig((current) => ({
           ...current,
-          barkDeviceKey: current.barkDeviceKey || statusPayload?.setup?.barkDeviceKey || '',
-          serverChan3Uid: current.serverChan3Uid || statusPayload?.setup?.serverChan3?.uid || '',
+          barkDeviceKey: current.barkDeviceKey || mergedConfig.barkDeviceKey || '',
+          serverChan3Uid: current.serverChan3Uid || mergedConfig.serverChan3Uid || '',
           serverChan3SendKey: current.serverChan3SendKey || ''
         }));
         setNotifyError('');
@@ -327,10 +329,11 @@ export function NotifyExperience({ embedded = false }) {
       }
       : statusPayload;
     setNotifyStatus(nextStatus);
+    const mergedConfig = mergeNotifyStatusIntoClientConfig(nextStatus, notifyConfig);
     setNotifyConfig((current) => ({
       ...current,
-      barkDeviceKey: current.barkDeviceKey || nextStatus?.setup?.barkDeviceKey || '',
-      serverChan3Uid: current.serverChan3Uid || nextStatus?.setup?.serverChan3?.uid || '',
+      barkDeviceKey: current.barkDeviceKey || mergedConfig.barkDeviceKey || '',
+      serverChan3Uid: current.serverChan3Uid || mergedConfig.serverChan3Uid || '',
       serverChan3SendKey: current.serverChan3SendKey || ''
     }));
     setNotifyError('');
