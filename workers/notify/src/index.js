@@ -437,17 +437,6 @@ export default {
       } else if (hhmm === '21:30') {
         console.log('[notify] scheduled dispatch -> runHoldingsNotifications', JSON.stringify({ kind: 'otc', hhmm, todayShanghai }));
         ctx.waitUntil(runHoldingsNotificationsAll(env, todayShanghai, 'holdings-scheduled-2130', { runClientDetection }));
-      } else if (hhmm === '23:35') {
-        // 临时测试分支：晚 23:35 手动验证全仓总览推送，bypass dedup 以允许同一天重复发送。
-        // 验证完成后移除本分支 与 wrangler.toml 中的 "35 15 * * *" cron。
-        // eventIdOverride 带上分钟时间戳，避免与同一天其他推送（如 admin 测试）的 eventId 撞车
-        // 导致 FCM/iOS 在设备端被去重咽住。
-        console.log('[notify] scheduled dispatch -> runHoldingsNotificationsAll (test 23:35)', JSON.stringify({ hhmm, todayShanghai }));
-        ctx.waitUntil(runHoldingsNotificationsAll(env, todayShanghai, 'holdings-test-2335', {
-          bypassDedup: true,
-          eventIdOverride: `holdings-all-test-${todayShanghai}-${Date.now()}`,
-          runClientDetection
-        }));
       } else {
         console.log('[notify] scheduled holdings dispatch skipped', JSON.stringify({ hhmm, todayShanghai }));
       }
