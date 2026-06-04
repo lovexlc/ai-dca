@@ -54,14 +54,14 @@
 - [x] 0.4 解密前做格式校验：检查空密文、`payload.version>2`、`crypto.alg!==AES-GCM`、坏 base64，分别报 `ERR_CORRUPTED`/`ERR_FORMAT`。commit 00845a8。
 
 ### 阶段 1 — envelope v3：KEK/DEK + 验证块（中风险，需迁移）
-- [ ] 1.1 新增随机 DEK；用 KEK（密码派生）AES-GCM 包裹 DEK 存入 envelope。
-- [ ] 1.2 envelope 内加「verifier」：用 DEK 加密固定常量；解密先验 verifier → 精确区分「密码错」与「数据损坏」。
-- [ ] 1.3 「记住本设备」改为存 DEK（而非某次派生的 AES key），彻底消除 A 类不一致。
-- [ ] 1.4 v2→v3 兼容读取 + 首次写自动升级；保留 v2 解密路径一个过渡期。
+- [x] 1.1 新增随机 DEK；用 KEK（密码派生）AES-GCM 包裹 DEK 存入 envelope。（secureVault.js encryptBackupEnvelopeV3；crypto.wrappedDek/wrapIv/salt）
+- [x] 1.2 envelope 内加「verifier」：用 DEK 加密固定常量；解密先验 verifier → 精确区分「密码错」与「数据损坏」。（verifyV3Verifier；crypto.verifier/verifierIv）
+- [x] 1.3 「记住本设备」改为存 DEK（而非某次派生的 AES key），彻底消除 A 类不一致。（rememberKeyForEncryptedEnvelope 解包 DEK 存储；重传复用 KEK 包裹块、仅换数据 IV，密码端仍可解）
+- [x] 1.4 v2→v3 兼容读取 + 首次写自动升级；保留 v2 解密路径一个过渡期。（密码写默认出 v3；version≤2 走原 v2 读路径；旧 remembered 走 v2 写路径）
 - [ ] 1.5 （可选）KDF 升级 Argon2id（评估包体积/WASM）或 PBKDF2 迭代提至当前推荐值。
 
 ### 阶段 2 — 服务端一致性（中风险，Worker 改动走 GitHub Actions）
-- [ ] 2.1 密文与版本写入单一强一致存储：密文 BLOB 直接进 D1 backups 行（或 R2 单对象 + 条件写），淘汰 D1+KV 双写漂移。
+- [ ] 2.1 密文与版本写入单一强一致存储：密文 BLOB 直接进 D1 backups 行（或 R2 单对象 + 条件写），淘汰 D1+KV 双写漂移。（说明：Worker 仅校验 ciphertext+source，不看 version，v3 新字段透明透传，阶段1 无需服务端改动）
 - [ ] 2.2 写入加密文完整性校验和（sha256(ciphertext)）入库；读出时校验，不一致返回明确错误码而非把坏 blob 发给端侧。
 - [ ] 2.3 读路径保证 version 与 blob 同源原子返回。
 
@@ -91,6 +91,6 @@
 | --- | --- | --- |
 | done | 现状调研 + 根因定位 | 见上「根因诊断」，含文件行号证据 |
 | done | 阶段 0 止血 | 0.1–0.4 全部完成：错误分型+RAW信封+iterations 修复 00845a8；UI 接线 2ad195c；eslint exit 0 + `node --test` 7/7 |
-| todo | 阶段 1 envelope v3 | 依赖阶段 0 |
+| done | 阶段 1 envelope v3 | 1.1–1.4 完成（KEK/DEK + verifier + 记住 DEK + v2→v3 兼容）commit 63125be；`node --test` 11/11 + eslint exit 0；1.5 KDF 升级可选未做 |
 | todo | 阶段 2 服务端一致性 | Worker 改动走 Actions |
 | todo | 阶段 3 冲突体验 | 增量 |
