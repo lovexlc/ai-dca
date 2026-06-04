@@ -127,7 +127,7 @@ export function MarketListTable({
       id: 'price',
       accessorFn: (row) => Number(row.price),
       meta: { label: '最新价' },
-      header: ({ column }) => <DataTableColumnHeader column={column} label="最新价" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="最新价" className="justify-end" />,
       cell: ({ row }) => <span className="tabular-nums">{formatNumber(row.original.price)}</span>,
       sortingFn: numericSortFn,
     },
@@ -135,7 +135,7 @@ export function MarketListTable({
       id: 'changePercent',
       accessorFn: (row) => Number(row.changePercent),
       meta: { label: '涨跌幅' },
-      header: ({ column }) => <DataTableColumnHeader column={column} label="涨跌幅" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="涨跌幅" className="justify-end" />,
       cell: ({ row }) => {
         const pct = Number(row.original.changePercent);
         const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
@@ -153,7 +153,7 @@ export function MarketListTable({
       id: 'limit',
       accessorFn: (row) => resolveLimitSortValue(row.fundLimit),
       meta: { label: '限额' },
-      header: ({ column }) => <DataTableColumnHeader column={column} label="限额" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="限额" className="justify-end" />,
       cell: ({ row }) => {
         const limit = row.original.fundLimit;
         const appTag = shouldShowAppTag(row.original.fundMeta, limit);
@@ -185,7 +185,7 @@ export function MarketListTable({
       id: 'premium',
       accessorFn: (row) => Number(resolvePremiumPercent(row)),
       meta: { label: '溢价' },
-      header: ({ column }) => <DataTableColumnHeader column={column} label="溢价" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="溢价" className="justify-end" />,
       cell: ({ row }) => {
         const premiumPct = resolvePremiumPercent(row.original);
         return <span className={cx('font-semibold tabular-nums', changeToneClass(premiumPct))}>{formatPremiumPercent(row.original)}</span>;
@@ -196,7 +196,7 @@ export function MarketListTable({
       id: 'currentYearPercent',
       accessorFn: (row) => Number(row.ytdReturn ?? row.currentYearPercent),
       meta: { label: '今年以来' },
-      header: ({ column }) => <DataTableColumnHeader column={column} label="今年以来" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="今年以来" className="justify-end" />,
       cell: ({ row }) => <span className={cx('font-semibold tabular-nums', changeToneClass(Number(row.original.ytdReturn ?? row.original.currentYearPercent)))}>{formatYearPercent(row.original)}</span>,
       sortingFn: numericSortFn,
     },
@@ -204,7 +204,7 @@ export function MarketListTable({
       id: 'return1w',
       accessorFn: (row) => Number(row.return1w),
       meta: { label: '近1周' },
-      header: ({ column }) => <DataTableColumnHeader column={column} label="近1周" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="近1周" className="justify-end" />,
       cell: ({ row }) => {
         const v = Number(row.original.return1w);
         return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
@@ -215,7 +215,7 @@ export function MarketListTable({
       id: 'return1m',
       accessorFn: (row) => Number(row.return1m),
       meta: { label: '近1月' },
-      header: ({ column }) => <DataTableColumnHeader column={column} label="近1月" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="近1月" className="justify-end" />,
       cell: ({ row }) => {
         const v = Number(row.original.return1m);
         return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
@@ -226,7 +226,7 @@ export function MarketListTable({
       id: 'return3m',
       accessorFn: (row) => Number(row.return3m),
       meta: { label: '近3月' },
-      header: ({ column }) => <DataTableColumnHeader column={column} label="近3月" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="近3月" className="justify-end" />,
       cell: ({ row }) => {
         const v = Number(row.original.return3m);
         return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
@@ -237,7 +237,7 @@ export function MarketListTable({
       id: 'return6m',
       accessorFn: (row) => Number(row.return6m),
       meta: { label: '近6月' },
-      header: ({ column }) => <DataTableColumnHeader column={column} label="近6月" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="近6月" className="justify-end" />,
       cell: ({ row }) => {
         const v = Number(row.original.return6m);
         return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
@@ -248,7 +248,7 @@ export function MarketListTable({
       id: 'return1y',
       accessorFn: (row) => Number(row.return1y),
       meta: { label: '近1年' },
-      header: ({ column }) => <DataTableColumnHeader column={column} label="近1年" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="近1年" className="justify-end" />,
       cell: ({ row }) => {
         const v = Number(row.original.return1y);
         return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
@@ -259,7 +259,7 @@ export function MarketListTable({
       id: 'returnBase',
       accessorFn: (row) => Number(row.returnBase),
       meta: { label: '成立以来' },
-      header: ({ column }) => <DataTableColumnHeader column={column} label="成立以来" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="成立以来" className="justify-end" />,
       cell: ({ row }) => {
         const v = Number(row.original.returnBase);
         return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
@@ -270,7 +270,7 @@ export function MarketListTable({
       id: 'totalShares',
       accessorFn: (row) => Number(row.totalShares),
       meta: { label: '总份额' },
-      header: ({ column }) => <DataTableColumnHeader column={column} label="总份额" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="总份额" className="justify-end" />,
       cell: ({ row }) => <span className="tabular-nums">{formatTotalShares(row.original.totalShares)}</span>,
       sortingFn: numericSortFn,
     },
@@ -278,7 +278,7 @@ export function MarketListTable({
       id: 'feeRate',
       accessorFn: (row) => Number(resolveFundFeeRate(row)),
       meta: { label: '费率' },
-      header: ({ column }) => <DataTableColumnHeader column={column} label="费率" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="费率" className="justify-end" />,
       cell: ({ row }) => <span className={cx('font-semibold tabular-nums', feeRateToneClass(row.original))}>{formatFeeRate(row.original)}</span>,
       sortingFn: numericSortFn,
     },
@@ -286,7 +286,7 @@ export function MarketListTable({
       id: 'redeemFeeRate',
       accessorFn: (row) => Number(resolveRedeemFeeRate(row)),
       meta: { label: '卖出费率' },
-      header: ({ column }) => <DataTableColumnHeader column={column} label="卖出费率" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="卖出费率" className="justify-end" />,
       cell: ({ row }) => <span className="font-semibold tabular-nums text-[#5f6368]">{formatRedeemFeeRate(row.original)}</span>,
       sortingFn: numericSortFn,
     },
@@ -294,7 +294,7 @@ export function MarketListTable({
       id: 'trend',
       accessorFn: (row) => Number(row.changePercent),
       meta: { label: '趋势' },
-      header: ({ column }) => <DataTableColumnHeader column={column} label="趋势" />,
+      header: ({ column }) => <DataTableColumnHeader column={column} label="趋势" className="justify-end" />,
       cell: ({ row }) => {
         const pct = Number(row.original.changePercent);
         const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
