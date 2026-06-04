@@ -13,7 +13,7 @@ export function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [pending, setPending] = useState(false);
-  const [searchDepth, setSearchDepth] = useState('fast');
+  const searchDepth = 'fast';
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
   const displaySelectedSymbol = formatSymbolDisplay(selectedSymbol);
@@ -300,19 +300,11 @@ export function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols 
           </div>
         )}
       </div>
-      <div className="mx-3 mt-1 flex items-center gap-2">
-        {[{ key: 'fast', label: '普通' }, { key: 'deep', label: '深度' }].map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() => setSearchDepth(item.key)}
-            className={cx('rounded-full px-3 py-1 text-[12px] font-medium transition', searchDepth === item.key ? 'bg-[#e8f0fe] text-[#1a73e8]' : 'bg-[#f1f3f4] text-[#5f6368] hover:text-[#1f1f1f]')}
-          >
-            {item.label}
-          </button>
-        ))}
-        {selectedSymbol ? <span className="ml-auto truncate text-[11px] text-[#5f6368]">已注入 {displaySelectedSymbol}</span> : null}
-      </div>
+      {selectedSymbol ? (
+        <div className="mx-3 mt-1 flex justify-end">
+          <span className="truncate text-[11px] text-[#5f6368]">已注入 {displaySelectedSymbol}</span>
+        </div>
+      ) : null}
       <form onSubmit={onSubmit} className="mx-3 mb-3 mt-2 flex h-12 items-center gap-2 rounded-full bg-[#f1f3f4] px-3">
         <button type="button" aria-label="添加上下文或附件" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#e8eaed]">
           <Plus size={16} />

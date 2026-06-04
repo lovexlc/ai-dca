@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  cx
-} from '../components/experience-ui.jsx';
+import { cx } from '../components/experience-ui.jsx';
 import {
   addToWatchlist,
   createWatchlist,
@@ -30,6 +28,7 @@ import { readTradeLedger, TRADE_LEDGER_UPDATED_EVENT } from '../app/tradeLedger.
 import { aggregateByCode } from '../app/holdingsLedgerCore.js';
 import { getCnEtfPremiumSnapshot, getNavHistory, getNavSnapshot, getNavSnapshots, mergePricePushItems } from '../app/navService.js';
 import { ExpandedMarketListOverlay } from './markets/ExpandedMarketListOverlay.jsx';
+import { MarketsFullTablePanel } from './markets/MarketsFullTablePanel.jsx';
 import { MarketsMainContent } from './markets/MarketsMainContent.jsx';
 import { MarketsResearchShell } from './markets/MarketsResearchShell.jsx';
 import { MarketsSidebar } from './markets/MarketsSidebar.jsx';
@@ -42,14 +41,7 @@ import {
   navHistoryDaysForRange,
 } from './markets/marketFundMetrics.js';
 import { loadWatchQuotesWithEnhancements, readCachedFundLimits, writeCachedFundLimits } from './markets/marketsWatchData.js';
-import {
-  formatNumber,
-  formatSymbolDisplay,
-  normalizeCnFundCode,
-} from './markets/marketDisplayUtils.js';
-import {
-  formatTime,
-} from './markets/marketOtcHelpers.js';
+import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import {
   CN_ETF_PRESET_MAP,
@@ -119,6 +111,7 @@ export function MarketsExperience() {
   // 研究底部抽屉模式（仅 mobile）：peek=小片 / conversation=全屏展开
   const [researchMode, setResearchMode] = useState('peek');
   const [selectedSymbol, setSelectedSymbol] = useState('');
+  const [fullTableMode, setFullTableMode] = useState(true);
   const selectedSymbolRef = useRef('');
   const pendingSymbolHandledRef = useRef('');
   const [selectedQuoteMap, setSelectedQuoteMap] = useState({});
@@ -794,6 +787,7 @@ export function MarketsExperience() {
     setMarket(targetMarket);
     rememberSelectedQuote({ symbol: raw }, targetMarket);
     setSelectedSymbol(raw);
+    setFullTableMode(false);
     setSymbolDetailTab('overview');
     setSymbolInput('');
     setSymbolSearchResults([]);
@@ -814,6 +808,7 @@ export function MarketsExperience() {
     if (!symbol) return;
     setMarket(targetMarket);
     setSelectedSymbol(symbol);
+    setFullTableMode(false);
     setSymbolDetailTab('overview');
     setResearchMode('peek');
     setSymbolInput('');
@@ -871,6 +866,7 @@ export function MarketsExperience() {
     const next = addToWatchlist(market, row.symbol, watch.activeListId);
     setWatch(next);
     setSelectedSymbol(row.symbol);
+    setFullTableMode(false);
     setSymbolDetailTab('overview');
     showActionToast('已加入自选', 'success');
     trackFeatureEvent('markets', 'symbol_add', {
@@ -885,6 +881,7 @@ export function MarketsExperience() {
     const next = setActiveWatchlist(listId);
     setWatch(next);
     setSelectedSymbol('');
+    setFullTableMode(true);
     setSymbolDetailTab('overview');
     trackFeatureEvent('markets', 'watchlist_select', {
       listIdLength: String(listId || '').length,
@@ -959,6 +956,7 @@ export function MarketsExperience() {
     if (targetMarket && targetMarket !== market) setMarket(targetMarket);
     const symbol = rememberSelectedQuote(row, targetMarket) || row.symbol;
     setSelectedSymbol(symbol);
+    setFullTableMode(false);
     setSymbolDetailTab('overview');
     setResearchMode(options.openResearch ? 'conversation' : 'peek');
     trackFeatureEvent('markets', 'symbol_select', {
@@ -1332,6 +1330,9 @@ export function MarketsExperience() {
     isDraggingRef.current = false;
   }
 
+  const otcTableColumnProps = { showLimitColumn: isActiveOtcList && market === 'cn', hidePremiumColumn: isActiveOtcList && market === 'cn', hideTrendColumn: isActiveOtcList && market === 'cn' };
+  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, ...otcTableColumnProps };
+
   return (
     <>
     <WatchlistNameDialog
@@ -1362,12 +1363,11 @@ export function MarketsExperience() {
       onClose={() => { setWatchListExpanded(false); setWatchOverlaySearchOpen(false); handleClearWatchOverlaySearch(); }}
       onCreate={handleCreateWatchlist}
       onSelect={handleSelectSymbol}
-      showLimitColumn={isActiveOtcList && market === 'cn'}
-      hidePremiumColumn={isActiveOtcList && market === 'cn'}
-      hideTrendColumn={isActiveOtcList && market === 'cn'}
+      {...otcTableColumnProps}
     />
     <div className={cx(
       "flex flex-col gap-5 lg:grid lg:h-[calc(100vh-6rem)] lg:min-h-0 lg:grid-cols-[280px_minmax(0,1fr)_360px] lg:items-stretch lg:gap-4 lg:overflow-hidden lg:pb-0 xl:grid-cols-[320px_minmax(0,1fr)_400px]",
+      fullTableMode && !selectedSymbol && "lg:grid-cols-[minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)]",
       selectedSymbol ? "pb-4" : "pb-[140px]"
     )}>
       <MarketsSidebar
@@ -1409,9 +1409,9 @@ export function MarketsExperience() {
         onSubmitSymbol={handleAddSymbol}
         onPickSymbolSearch={handlePickSymbolSearch}
         onSelectSymbol={handleSelectSymbol}
-        showLimitColumn={isActiveOtcList && market === 'cn'}
-        hidePremiumColumn={isActiveOtcList && market === 'cn'}
-        hideTrendColumn={isActiveOtcList && market === 'cn'}
+        {...otcTableColumnProps}
+        mobileHidden={fullTableMode && !selectedSymbol}
+        desktopHidden={fullTableMode && !selectedSymbol}
       />
 
       <MarketsMainContent
@@ -1438,6 +1438,8 @@ export function MarketsExperience() {
         summary={summary}
         summaryLoading={summaryLoading}
         onRefreshSummary={() => refreshSummary(true)}
+        fullTableMode={fullTableMode}
+        fullTablePanel={<MarketsFullTablePanel {...fullTablePanelProps} />}
         detail={{
           financials: financialsMap[selectedQuote?.symbol],
           financialsLoading: financialsLoading && !financialsMap[selectedQuote?.symbol],
@@ -1471,6 +1473,7 @@ export function MarketsExperience() {
           },
           onBack: () => {
             setSelectedSymbol('');
+            setFullTableMode(true);
             setSymbolDetailTab('overview');
           },
         }}
@@ -1481,6 +1484,7 @@ export function MarketsExperience() {
         <div className="fixed inset-0 z-30 bg-white lg:hidden" onClick={() => setResearchMode('peek')} />
       )}
       {/* Research panel: PC = sticky aside / Mobile = bottom sheet */}
+      {!(fullTableMode && !selectedSymbol) && (
       <MarketsResearchShell
         market={market}
         mode={researchMode}
@@ -1502,6 +1506,7 @@ export function MarketsExperience() {
         onDragEnd={handleResearchDragEnd}
         onDragCancel={handleResearchDragCancel}
       />
+      )}
     </div>
     </>
   );
