@@ -1,16 +1,19 @@
 import { Crown, Sparkles } from 'lucide-react';
 import { PREMIUM_FEATURES, clearPremiumState, readPremiumState, writePremiumState } from '../app/monetization.js';
 import { usePremiumState } from '../components/monetization.jsx';
+import { trackFeatureEvent } from '../app/analytics.js';
 
 export function PremiumExperience({ embedded = false }) {
   const premium = usePremiumState();
 
   function unlockPreview() {
     writePremiumState({ unlocked: true, plan: 'preview', source: 'manual-preview' });
+    trackFeatureEvent('premium', 'unlock_preview', { wasUnlocked: premium.unlocked });
   }
 
   function resetPreview() {
     clearPremiumState();
+    trackFeatureEvent('premium', 'reset_preview', { wasUnlocked: premium.unlocked, plan: premium.plan || '' });
   }
 
   return (

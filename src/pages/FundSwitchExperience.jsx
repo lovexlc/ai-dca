@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import { History, Settings2 } from 'lucide-react';
 import { Card, cx } from '../components/experience-ui.jsx';
 import { FundSwitchAnalysisExperience } from './FundSwitchAnalysisExperience.jsx';
-import { trackAnalyticsEvent } from '../app/analytics.js';
+import { trackFeatureEvent } from '../app/analytics.js';
 
 // PC：机会 + 复盘 同屏两列；App：子 tab 切换。
 const SwitchStrategyExperienceLazy = lazy(() =>
@@ -26,7 +26,11 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
   const [mobileTab, setMobileTab] = useState('config');
 
   useEffect(() => {
-    trackAnalyticsEvent('switch_used', { view: 'fundSwitch' });
+    trackFeatureEvent('fund_switch', 'view_open', {
+      view: 'fundSwitch',
+      embedded,
+      inPagesDir
+    });
   }, []);
 
   return (
@@ -39,7 +43,13 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
             <button
               key={t.id}
               type="button"
-              onClick={() => { setMobileTab(t.id); trackAnalyticsEvent('switch_used', { view: t.id }); }}
+              onClick={() => {
+                setMobileTab(t.id);
+                trackFeatureEvent('fund_switch', 'mobile_subtab_select', {
+                  view: t.id,
+                  previousView: mobileTab
+                });
+              }}
               aria-pressed={mobileTab === t.id}
               className={cx(
                 'inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors',

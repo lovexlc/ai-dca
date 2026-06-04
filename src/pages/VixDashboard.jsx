@@ -10,6 +10,7 @@ import {
 import { loadBacktestCandles } from '../app/dcaCalculator.js';
 import { LineChart, Line, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip, ReferenceLine } from 'recharts';
 import { showToast } from '../app/toast.js';
+import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import {
   Card,
   SectionHeading,
@@ -81,11 +82,21 @@ export function VixDashboard({ embedded = false }) {
   const levels = useMemo(() => listVixLevels(), []);
   const vixPosition = getVixPosition(snapshot?.value);
 
+  const vixMeta = () => ({
+    embedded,
+    hasSnapshot: Boolean(snapshot),
+    signalLevel: signal.level || '',
+    historyCount: history.length,
+    hasHistoryError: Boolean(historyError)
+  });
+
   async function handleRefresh() {
     if (loading) return;
     const previousValue = Number(snapshot?.value);
+    const startedAt = Date.now();
     setLoading(true);
     setError('');
+    trackFeatureEvent('vix', 'refresh_start', vixMeta());
     try {
       const next = await fetchVixSnapshot();
       if (next) {
@@ -96,11 +107,25 @@ export function VixDashboard({ embedded = false }) {
           description: `${Number(next.value).toFixed(2)} · ${new Date(next.asOf || Date.now()).toLocaleString('zh-CN', { hour12: false })}`,
           tone: unchanged ? 'slate' : 'emerald'
         });
+        trackActionResult('vix', 'refresh', 'success', {
+          ...vixMeta(),
+          unchanged,
+          durationMs: Date.now() - startedAt
+        });
       } else {
         setError('后端返回了一个无法解析的数据包。');
+        trackActionResult('vix', 'refresh', 'empty', {
+          ...vixMeta(),
+          durationMs: Date.now() - startedAt
+        });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '拉取 ^VIX 失败');
+      trackActionResult('vix', 'refresh', 'error', {
+        ...vixMeta(),
+        durationMs: Date.now() - startedAt,
+        errorMessage: err?.message || ''
+      });
     } finally {
       setLoading(false);
     }
@@ -117,8 +142,10 @@ export function VixDashboard({ embedded = false }) {
   // PR 2b：入页拉 ^VIX 30 日日 K。
   useEffect(() => {
     let cancelled = false;
+    const startedAt = Date.now();
     setHistoryLoading(true);
     setHistoryError('');
+    trackFeatureEvent('vix', 'history_load_start', { embedded });
     loadBacktestCandles('^VIX', VIX_HISTORY_TIMEFRAME)
       .then((candles) => {
         if (cancelled) return;
@@ -130,10 +157,20 @@ export function VixDashboard({ embedded = false }) {
           }))
           .filter((row) => row.close != null);
         setHistory(rows);
+        trackActionResult('vix', 'history_load', rows.length ? 'success' : 'empty', {
+          embedded,
+          candleCount: rows.length,
+          durationMs: Date.now() - startedAt
+        });
       })
       .catch((err) => {
         if (cancelled) return;
         setHistoryError(err instanceof Error ? err.message : '拉取 ^VIX 历史失败');
+        trackActionResult('vix', 'history_load', 'error', {
+          embedded,
+          durationMs: Date.now() - startedAt,
+          errorMessage: err?.message || ''
+        });
       })
       .finally(() => {
         if (!cancelled) setHistoryLoading(false);
@@ -145,6 +182,7 @@ export function VixDashboard({ embedded = false }) {
     const num = Number(manualValue);
     if (!Number.isFinite(num) || num <= 0) {
       setError('请输入一个有效的 VIX 数值');
+      trackActionResult('vix', 'manual_apply', 'validation_error', { ...vixMeta(), reason: 'invalid_number' });
       return;
     }
     setError('');
@@ -159,6 +197,10 @@ export function VixDashboard({ embedded = false }) {
     setSnapshot(next);
     setManualValue('');
     showToast({ title: '已使用手动 VIX', description: `当前 VIX ${num.toFixed(2)}`, tone: 'emerald' });
+    trackActionResult('vix', 'manual_apply', 'success', {
+      ...vixMeta(),
+      hadPrevious: Number.isFinite(Number(snapshot?.value))
+    });
   }
 
   function renderVixThermometer() {

@@ -50,6 +50,7 @@ import {
 import {
   formatTime,
 } from './markets/marketOtcHelpers.js';
+import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import {
   CN_ETF_PRESET_MAP,
   NASDAQ_OTC_FUND_MAP,
@@ -171,6 +172,19 @@ export function MarketsExperience() {
   // 供侧边自选行【AI 分析】按钮跨组件触发右侧 ResearchPanel 发起结构化问答。
   // shape: { symbol, name } | null
   const [pendingAnalysis, setPendingAnalysis] = useState(null);
+  const summarizeMarkets = () => ({
+    market,
+    selected: Boolean(selectedSymbol),
+    selectedSymbolLength: String(selectedSymbol || '').length,
+    selectedTab: symbolDetailTab,
+    chartRange,
+    watchlistCount: Array.isArray(watchLists) ? watchLists.length : 0,
+    watchSymbolCount: Array.isArray(watchSymbols) ? watchSymbols.length : 0,
+    activeWatchlistType: activeWatchList?.type || '',
+    isOtcList: Boolean(isActiveOtcList),
+    researchMode,
+    isMobile
+  });
 
   const ensureKlines = useCallback(async (symbols) => {
     const uniq = Array.from(new Set((symbols || []).filter(Boolean)));
@@ -256,6 +270,8 @@ export function MarketsExperience() {
   const refreshIndices = useCallback(async (forceRefresh = false) => {
     setIndicesLoading(true);
     const reqId = ++reqIdRef.current;
+    const startedAt = Date.now();
+    trackFeatureEvent('markets', 'indices_refresh_start', { market, forceRefresh });
     try {
       const r = await fetchIndices(market, { refresh: forceRefresh });
       if (reqId !== reqIdRef.current) return;
@@ -263,9 +279,21 @@ export function MarketsExperience() {
       setIndices(list);
       if (!selectedSymbolRef.current) ensureKlines(list.map((it) => it.symbol).filter(Boolean));
       setGeneratedAt(r.generatedAt || '');
+      trackActionResult('markets', 'indices_refresh', 'success', {
+        market,
+        forceRefresh,
+        itemCount: list.length,
+        durationMs: Date.now() - startedAt
+      });
     } catch (err) {
       if (reqId !== reqIdRef.current) return;
       showActionToast('指数加载失败', 'error');
+      trackActionResult('markets', 'indices_refresh', 'error', {
+        market,
+        forceRefresh,
+        durationMs: Date.now() - startedAt,
+        errorMessage: err?.message || ''
+      });
     } finally {
       if (reqId === reqIdRef.current) setIndicesLoading(false);
     }
@@ -273,13 +301,26 @@ export function MarketsExperience() {
 
   const refreshMovers = useCallback(async (forceRefresh = false) => {
     setMoversLoading(true);
+    const startedAt = Date.now();
     try {
       const r = await fetchMovers(market, { direction: 'mixed', refresh: forceRefresh });
       const list = Array.isArray(r.list) ? r.list : [];
       setMovers(list);
       if (!selectedSymbolRef.current) ensureKlines(list.map((it) => it.symbol).filter(Boolean));
+      trackActionResult('markets', 'movers_refresh', 'success', {
+        market,
+        forceRefresh,
+        itemCount: list.length,
+        durationMs: Date.now() - startedAt
+      });
     } catch (err) {
       showActionToast('涨跌榜加载失败', 'error');
+      trackActionResult('markets', 'movers_refresh', 'error', {
+        market,
+        forceRefresh,
+        durationMs: Date.now() - startedAt,
+        errorMessage: err?.message || ''
+      });
     } finally {
       setMoversLoading(false);
     }
@@ -340,9 +381,11 @@ export function MarketsExperience() {
     if (!list.length) {
       setWatchQuotes({});
       setWatchNavSnapshots({});
+      trackActionResult('markets', 'watch_refresh', 'empty', { market });
       return;
     }
     setWatchLoading(true);
+    const startedAt = Date.now();
     try {
       const { quotes, navSnapshots, fundFees } = await loadWatchQuotesWithEnhancements({
         symbols: list,
@@ -360,8 +403,22 @@ export function MarketsExperience() {
         setFundFeesByCode((prev) => ({ ...prev, ...fundFees }));
       }
       setWatchQuotes(quotes);
+      trackActionResult('markets', 'watch_refresh', 'success', {
+        market,
+        symbolCount: list.length,
+        quoteCount: Object.keys(quotes || {}).length,
+        navSnapshotCount: Object.keys(navSnapshots || {}).length,
+        fundFeeCount: Object.keys(fundFees || {}).length,
+        durationMs: Date.now() - startedAt
+      });
     } catch (err) {
       // ignore
+      trackActionResult('markets', 'watch_refresh', 'error', {
+        market,
+        symbolCount: list.length,
+        durationMs: Date.now() - startedAt,
+        errorMessage: err?.message || ''
+      });
     } finally {
       setWatchLoading(false);
     }
@@ -548,6 +605,11 @@ export function MarketsExperience() {
     if (!symbols.length) return;
     if (typeof window !== 'undefined' && typeof window.__aiDcaSubscribeMarketData === 'function') {
       window.__aiDcaSubscribeMarketData(symbols);
+      trackFeatureEvent('markets', 'market_subscribe', {
+        market,
+        symbolCount: symbols.length,
+        activeWatchlistType: activeWatchList?.type || ''
+      });
     }
   }, [trackedWatchSymbols]);
 
@@ -556,6 +618,11 @@ export function MarketsExperience() {
     function handlePricePush(event) {
       const items = event?.detail?.items;
       if (!Array.isArray(items) || !items.length) return;
+      trackFeatureEvent('markets', 'price_push_receive', {
+        itemCount: items.length,
+        watchSymbolCount: trackedWatchSymbols.length,
+        selected: Boolean(selectedSymbolRef.current)
+      });
       setWatchQuotes((prev) => {
         const existingItems = Object.entries(prev || {}).map(([code, quote]) => ({ code, ...quote }));
         const merged = mergePricePushItems(existingItems, items);
@@ -619,11 +686,23 @@ export function MarketsExperience() {
             return true;
           });
           setSymbolSearchResults(rows.slice(0, 8));
+          trackActionResult('markets', 'symbol_search', 'success', {
+            market: activeMarket.key,
+            source: 'sidebar',
+            queryLength: q.length,
+            resultCount: rows.length
+          });
         })
         .catch((err) => {
           if (controller.signal.aborted || seq !== symbolSearchSeqRef.current) return;
           setSymbolSearchResults([]);
           setSymbolSearchError('搜索失败，稍后再试');
+          trackActionResult('markets', 'symbol_search', 'error', {
+            market: activeMarket.key,
+            source: 'sidebar',
+            queryLength: q.length,
+            errorMessage: err?.message || ''
+          });
         })
         .finally(() => {
           if (seq === symbolSearchSeqRef.current) setSymbolSearchLoading(false);
@@ -654,11 +733,23 @@ export function MarketsExperience() {
           if (seq !== watchOverlaySearchSeqRef.current) return;
           const rows = normalizeSearchResults(Array.isArray(r && r.results) ? r.results : [], activeMarket.key, q);
           setWatchOverlaySearchResults(rows.slice(0, 10));
+          trackActionResult('markets', 'symbol_search', 'success', {
+            market: activeMarket.key,
+            source: 'watch_overlay',
+            queryLength: q.length,
+            resultCount: rows.length
+          });
         })
         .catch((err) => {
           if (controller.signal.aborted || seq !== watchOverlaySearchSeqRef.current) return;
           setWatchOverlaySearchResults([]);
           setWatchOverlaySearchError('搜索失败，稍后再试');
+          trackActionResult('markets', 'symbol_search', 'error', {
+            market: activeMarket.key,
+            source: 'watch_overlay',
+            queryLength: q.length,
+            errorMessage: err?.message || ''
+          });
         })
         .finally(() => {
           if (seq === watchOverlaySearchSeqRef.current) setWatchOverlaySearchLoading(false);
@@ -707,6 +798,12 @@ export function MarketsExperience() {
     setSymbolInput('');
     setSymbolSearchResults([]);
     setSectorSearchOpen(false);
+    trackFeatureEvent('markets', 'symbol_add', {
+      source: rawOverride != null ? 'quick_add_override' : 'manual_input',
+      market: targetMarket,
+      symbolLength: raw.length,
+      ...summarizeMarkets()
+    });
   }
 
   function handlePickSymbolSearch(row) {
@@ -722,6 +819,12 @@ export function MarketsExperience() {
     setSymbolInput('');
     setSymbolSearchResults([]);
     setSectorSearchOpen(false);
+    trackFeatureEvent('markets', 'symbol_select', {
+      source: 'search_result',
+      market: targetMarket,
+      symbolLength: symbol.length,
+      hasName: Boolean(row.name || row.shortName || row.displayName)
+    });
   }
 
   function handleToggleWatchOverlaySearch() {
@@ -734,12 +837,17 @@ export function MarketsExperience() {
       }
       return next;
     });
+    trackFeatureEvent('markets', 'watch_overlay_search_toggle', {
+      nextOpen: !watchOverlaySearchOpen,
+      ...summarizeMarkets()
+    });
   }
 
   function handleClearWatchOverlaySearch() {
     setWatchOverlaySearchInput('');
     setWatchOverlaySearchResults([]);
     setWatchOverlaySearchError('');
+    trackFeatureEvent('markets', 'watch_overlay_search_clear', summarizeMarkets());
   }
 
   function handleAddSearchResult(row) {
@@ -751,6 +859,12 @@ export function MarketsExperience() {
     setWatch(next);
     rememberSelectedQuote(row, targetMarket);
     showActionToast('已加入自选', 'success');
+    trackFeatureEvent('markets', 'symbol_add', {
+      source: 'watch_overlay_search_result',
+      market: targetMarket,
+      symbolLength: symbol.length,
+      watchSymbolCount: (next?.lists || []).find((item) => item.id === next.activeListId)?.[targetMarket]?.length || 0
+    });
   }
 
   function handlePickMover(row) {
@@ -759,6 +873,11 @@ export function MarketsExperience() {
     setSelectedSymbol(row.symbol);
     setSymbolDetailTab('overview');
     showActionToast('已加入自选', 'success');
+    trackFeatureEvent('markets', 'symbol_add', {
+      source: 'mover_or_index',
+      market,
+      symbolLength: String(row.symbol || '').length
+    });
   }
 
   function handleSelectWatchlist(listId) {
@@ -767,20 +886,28 @@ export function MarketsExperience() {
     setWatch(next);
     setSelectedSymbol('');
     setSymbolDetailTab('overview');
+    trackFeatureEvent('markets', 'watchlist_select', {
+      listIdLength: String(listId || '').length,
+      listCount: watchLists.length,
+      market
+    });
   }
 
   function handleCreateWatchlist() {
     setWatchlistDialog({ type: 'create', name: `列表 ${(watchLists || []).length + 1}` });
+    trackFeatureEvent('markets', 'watchlist_dialog_open', { type: 'create', listCount: watchLists.length });
   }
 
   function handleRenameWatchlist(list) {
     if (!list) return;
     setWatchlistDialog({ type: 'rename', list, name: list.name || '' });
+    trackFeatureEvent('markets', 'watchlist_dialog_open', { type: 'rename', listIdLength: String(list.id || '').length });
   }
 
   function handleDeleteWatchlist(list) {
     if (!list || list.id === 'default') return;
     setWatchlistDialog({ type: 'delete', list, name: list.name || '' });
+    trackFeatureEvent('markets', 'watchlist_dialog_open', { type: 'delete', listIdLength: String(list.id || '').length });
   }
 
   function handleWatchlistDialogSubmit() {
@@ -793,6 +920,9 @@ export function MarketsExperience() {
       setWatchlistDialog(null);
       setWatchListExpanded(false);
       showActionToast('列表已删除', 'success');
+      trackActionResult('markets', 'watchlist_delete', 'success', {
+        listCount: (next?.lists || []).length
+      });
       return;
     }
     const trimmed = String(watchlistDialog.name || '').trim();
@@ -802,6 +932,9 @@ export function MarketsExperience() {
         const next = renameWatchlist(watchlistDialog.list?.id, trimmed);
         setWatch(next);
         showActionToast('列表已改名', 'success');
+        trackActionResult('markets', 'watchlist_rename', 'success', {
+          nameLength: trimmed.length
+        });
       }
       setWatchlistDialog(null);
       return;
@@ -813,6 +946,10 @@ export function MarketsExperience() {
     setWatchlistDialog(null);
     setWatchListExpanded(false);
     showActionToast('已新建列表', 'success');
+    trackActionResult('markets', 'watchlist_create', 'success', {
+      nameLength: trimmed.length,
+      listCount: (next?.lists || []).length
+    });
   }
 
   function handleSelectSymbol(row, options = {}) {
@@ -824,6 +961,12 @@ export function MarketsExperience() {
     setSelectedSymbol(symbol);
     setSymbolDetailTab('overview');
     setResearchMode(options.openResearch ? 'conversation' : 'peek');
+    trackFeatureEvent('markets', 'symbol_select', {
+      source: options.source || 'watchlist',
+      market: targetMarket,
+      symbolLength: String(symbol || '').length,
+      openResearch: Boolean(options.openResearch)
+    });
   }
 
   const buildSidebarRow = useCallback((sym) => {

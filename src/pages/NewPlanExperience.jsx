@@ -26,6 +26,7 @@ import { EXTRA_SYMBOL_CODES, findExtraSymbol } from '../app/extraSymbols.js';
 import { fetchKline, fetchQuote } from '../app/marketsApi.js';
 import { getAssetType, getAssetTypeLabel, getStrategyParams } from '../app/assetType.js';
 import { validateScreening } from '../app/stockScreener.js';
+import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 
 const PLAN_STEPS = [
   { id: 1, title: '选标的' },
@@ -74,6 +75,25 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   const [planStep, setPlanStep] = useState(1);
   const [maxUnlockedStep, setMaxUnlockedStep] = useState(1);
   const [symbolSearch, setSymbolSearch] = useState('');
+  const prevSymbolRef = useRef('');
+  const prevStrategyRef = useRef('');
+  const prevFrequencyRef = useRef('');
+  const newPlanMeta = () => ({
+    embedded,
+    step: planStep,
+    maxUnlockedStep,
+    symbolLength: String(state.symbol || '').trim().length,
+    selectedStrategy: state.selectedStrategy || 'ma120-risk',
+    selectedAssetType,
+    marketEntryCount: marketEntries.length,
+    filteredMarketEntryCount: filteredMarketEntries.length,
+    hasMarketError: Boolean(marketError),
+    hasSelectedFund: Boolean(selectedFund),
+    isSelectedExtraSymbol,
+    screeningOk: Boolean(screeningResult?.ok),
+    layerCount: Array.isArray(computed?.layers) ? computed.layers.length : 0,
+    customDrawdownEnabled: Boolean(customDrawdown.enabled)
+  });
 
   // 选中美股快选标的（QQQ/SPY/Mag7/TSM 等）时，去 markets worker 拉一次实时 quote；symbol 不再是 extra 时清空。
   useEffect(() => {
@@ -83,14 +103,30 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       return undefined;
     }
     let cancelled = false;
+    const startedAt = Date.now();
+    trackFeatureEvent('new_plan', 'extra_quote_refresh_start', {
+      symbolLength: sym.length
+    });
     setExtraQuote({ symbol: sym, price: 0, currency: '', asOf: '', loading: true, error: '' });
     fetchQuote(sym).then((q) => {
       if (cancelled) return;
       const price = Number(q?.price) || 0;
       setExtraQuote({ symbol: sym, price, currency: String(q?.currency || ''), asOf: String(q?.asOf || ''), loading: false, error: '' });
+      trackActionResult('new_plan', 'extra_quote_refresh', price > 0 ? 'success' : 'empty', {
+        symbolLength: sym.length,
+        hasPrice: price > 0,
+        currency: String(q?.currency || ''),
+        durationMs: Date.now() - startedAt
+      });
     }).catch((err) => {
       if (cancelled) return;
       setExtraQuote({ symbol: sym, price: 0, currency: '', asOf: '', loading: false, error: err instanceof Error ? err.message : '行情获取失败' });
+      trackActionResult('new_plan', 'extra_quote_refresh', 'error', {
+        symbolLength: sym.length,
+        durationMs: Date.now() - startedAt,
+        errorName: err?.name || '',
+        errorMessage: String(err?.message || err || '').slice(0, 160)
+      });
     });
     return () => { cancelled = true; };
   }, [state.symbol]);
@@ -107,6 +143,8 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
 
   useEffect(() => {
     let cancelled = false;
+    const startedAt = Date.now();
+    trackFeatureEvent('new_plan', 'market_entries_load_start', { inPagesDir });
 
     loadLatestNasdaqPrices({ inPagesDir })
       .then((entries) => {
@@ -116,6 +154,11 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
 
         setMarketEntries(entries);
         setMarketError('');
+        trackActionResult('new_plan', 'market_entries_load', Array.isArray(entries) && entries.length ? 'success' : 'empty', {
+          inPagesDir,
+          entryCount: Array.isArray(entries) ? entries.length : 0,
+          durationMs: Date.now() - startedAt
+        });
       })
       .catch((error) => {
         if (cancelled) {
@@ -124,6 +167,12 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
 
         setMarketEntries([]);
         setMarketError(error instanceof Error ? error.message : '标的数据加载失败');
+        trackActionResult('new_plan', 'market_entries_load', 'error', {
+          inPagesDir,
+          durationMs: Date.now() - startedAt,
+          errorName: error?.name || '',
+          errorMessage: String(error?.message || error || '').slice(0, 160)
+        });
       });
 
     return () => {
@@ -187,6 +236,11 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
 
     let cancelled = false;
     const nextCode = isSelectedExtraSymbol ? selectedSymbolCode : benchmarkFund.code;
+    const startedAt = Date.now();
+    trackFeatureEvent('new_plan', 'daily_series_load_start', {
+      symbolLength: String(nextCode || '').length,
+      isSelectedExtraSymbol
+    });
 
     setDailySeriesState({
       code: nextCode,
@@ -213,6 +267,12 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
             bars: Array.isArray(bars) ? bars : [],
             ready: true
           });
+          trackActionResult('new_plan', 'daily_series_load', Array.isArray(bars) && bars.length ? 'success' : 'empty', {
+            symbolLength: String(nextCode || '').length,
+            isSelectedExtraSymbol,
+            barCount: Array.isArray(bars) ? bars.length : 0,
+            durationMs: Date.now() - startedAt
+          });
         }
       })
       .catch(() => {
@@ -221,6 +281,11 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
             code: nextCode,
             bars: [],
             ready: true
+          });
+          trackActionResult('new_plan', 'daily_series_load', 'error', {
+            symbolLength: String(nextCode || '').length,
+            isSelectedExtraSymbol,
+            durationMs: Date.now() - startedAt
           });
         }
       });
@@ -357,8 +422,18 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     const target = Math.max(1, Math.min(4, Number(nextStep) || 1));
     if (target > maxUnlockedStep + 1) {
       showToast({ title: '先完成当前步骤', description: '请按顺序继续，避免跳到还没有上下文的预览。', tone: 'amber' });
+      trackActionResult('new_plan', 'step_select', 'validation_error', {
+        ...newPlanMeta(),
+        targetStep: target,
+        reason: 'step_locked'
+      });
       return;
     }
+    trackFeatureEvent('new_plan', 'step_select', {
+      ...newPlanMeta(),
+      fromStep: planStep,
+      targetStep: target
+    });
     setPlanStep(target);
     setMaxUnlockedStep((current) => Math.max(current, target));
   }
@@ -369,6 +444,8 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     }
 
     setIsSaving(true);
+    const startedAt = Date.now();
+    trackFeatureEvent('new_plan', 'create_start', newPlanMeta());
     persistPlanState({
       ...state,
       selectedStrategy,
@@ -392,6 +469,11 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
         tone: syncFailed ? 'amber' : 'emerald',
         persist: true
       });
+      trackActionResult('new_plan', 'create', syncFailed ? 'partial' : 'success', {
+        ...newPlanMeta(),
+        syncFailed,
+        durationMs: Date.now() - startedAt
+      });
       if (typeof onBack === 'function') {
         // 嵌入在《交易计划》中使用：保存成功后返回交易计划视图，而不跳转到加仓计划首页。
         onBack();
@@ -400,6 +482,44 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       }
     }
   }
+
+  useEffect(() => {
+    const previous = prevSymbolRef.current;
+    const current = String(state.symbol || '').trim();
+    if (previous && previous !== current) {
+      trackFeatureEvent('new_plan', 'symbol_change', {
+        previousLength: previous.length,
+        symbolLength: current.length,
+        source: EXTRA_SYMBOL_CODES.has(current) ? 'extra_symbol' : 'fund_list'
+      });
+    }
+    prevSymbolRef.current = current;
+  }, [state.symbol]);
+
+  useEffect(() => {
+    const previous = prevStrategyRef.current;
+    const current = state.selectedStrategy || 'ma120-risk';
+    if (previous && previous !== current) {
+      trackFeatureEvent('new_plan', 'strategy_change', {
+        previousStrategy: previous,
+        selectedStrategy: current,
+        selectedAssetType
+      });
+    }
+    prevStrategyRef.current = current;
+  }, [state.selectedStrategy, selectedAssetType]);
+
+  useEffect(() => {
+    const previous = prevFrequencyRef.current;
+    const current = state.frequency || '';
+    if (previous && previous !== current) {
+      trackFeatureEvent('new_plan', 'frequency_change', {
+        previousFrequency: previous,
+        frequency: current
+      });
+    }
+    prevFrequencyRef.current = current;
+  }, [state.frequency]);
 
   return (
     <>

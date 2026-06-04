@@ -26,6 +26,7 @@ import {
 } from './SwitchStrategyPanels.jsx';
 import { SwitchStrategyClassificationPanel } from './SwitchStrategyClassificationPanel.jsx';
 import { SwitchStrategyOpportunityPanels } from './SwitchStrategyOpportunityPanels.jsx';
+import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 
 // 场内 / 场外纳指 100 切换套利策略实时建议器；纯格式化、偏好读写和候选列表 helper 在 switchStrategyHelpers.js。
 
@@ -72,6 +73,27 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   const [nasdaqPoolTouched, setNasdaqPoolTouched] = useState(false);
   const [switchView, setSwitchView] = useState(initialView === 'config' ? 'config' : 'opportunity');
 
+  const switchMeta = () => ({
+    embedded,
+    initialView,
+    switchView,
+    workerEnabled: Boolean(workerConfig.enabled),
+    workerHasSnapshot: Boolean(workerSnapshot),
+    workerConfigExpanded,
+    benchmarkCount: Array.isArray(prefs?.benchmarkCodes) ? prefs.benchmarkCodes.length : 0,
+    enabledCodeCount: Array.isArray(prefs?.enabledCodes) ? prefs.enabledCodes.length : 0,
+    exchangeHoldingCount: Array.isArray(exchangeFunds) ? exchangeFunds.length : 0,
+    universeCount: Array.isArray(candidateUniverse) ? candidateUniverse.length : 0,
+    hClassCount: premiumClassCounts.h,
+    lClassCount: premiumClassCounts.l,
+    pairCount: Number(switchSummary?.pairs || 0),
+    intraSignalCount: Array.isArray(intraSignals) ? intraSignals.length : 0,
+    otcReady: Boolean(otcSignal?.ready),
+    otcTriggered: Boolean(otcSignal?.triggered),
+    navError: Boolean(navState.error),
+    universeError: Boolean(universeError)
+  });
+
   const premiumClassCounts = useMemo(() => {
     const cls = (prefs && prefs.premiumClass) || {};
     let h = 0;
@@ -98,6 +120,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   // 首次入页：从 worker 拉取配置 + 快照。失败不阻断 UI（本地缓存仍可用）。
   useEffect(() => {
     let cancelled = false;
+    const startedAt = Date.now();
+    trackFeatureEvent('switch_strategy', 'worker_initial_load_start', switchMeta());
     (async () => {
       try {
         setWorkerStatus((prev) => ({ ...prev, loading: true, error: '' }));
@@ -118,6 +142,12 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           error: '',
           lastSyncedAt: new Date().toISOString()
         }));
+        trackActionResult('switch_strategy', 'worker_initial_load', 'success', {
+          ...switchMeta(),
+          hasConfig: Boolean(config),
+          hasSnapshot: Boolean(snapshotPayload?.snapshot),
+          durationMs: Date.now() - startedAt
+        });
       } catch (error) {
         if (cancelled) return;
         setWorkerStatus((prev) => ({
@@ -125,6 +155,12 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           loading: false,
           error: error?.message || '加载 worker 配置失败'
         }));
+        trackActionResult('switch_strategy', 'worker_initial_load', 'error', {
+          ...switchMeta(),
+          durationMs: Date.now() - startedAt,
+          errorName: error?.name || '',
+          errorMessage: String(error?.message || error || '').slice(0, 160)
+        });
       }
     })();
     return () => { cancelled = true; };
@@ -132,6 +168,13 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
   const persistWorkerConfig = useCallback(async (nextConfig) => {
     const normalized = normalizeSwitchConfigShape(nextConfig);
+    const startedAt = Date.now();
+    trackFeatureEvent('switch_strategy', 'worker_config_save_start', {
+      enabled: Boolean(normalized.enabled),
+      benchmarkCount: Array.isArray(normalized.benchmarkCodes) ? normalized.benchmarkCodes.length : 0,
+      enabledCodeCount: Array.isArray(normalized.enabledCodes) ? normalized.enabledCodes.length : 0,
+      classCount: Object.keys(normalized.premiumClass || {}).length
+    });
     setWorkerConfig(normalized);
     setWorkerStatus((prev) => ({ ...prev, saving: true, error: '', notice: '' }));
     try {
@@ -165,16 +208,37 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       try {
         const runPayload = await runSwitchOnce();
         if (runPayload?.snapshot) setWorkerSnapshot(runPayload.snapshot);
+        trackActionResult('switch_strategy', 'worker_post_config_run', 'success', {
+          triggeredCount: Number(runPayload?.summary?.triggered || 0),
+          pushedCount: Number(runPayload?.summary?.pushed || 0),
+          hasSnapshot: Boolean(runPayload?.snapshot)
+        });
       } catch (runErr) {
         // 静默失败：下一轮定时拉取会填上，不覆盖 saving notice。
         if (typeof console !== 'undefined') console.warn('[switch] post-config run failed', runErr);
+        trackActionResult('switch_strategy', 'worker_post_config_run', 'error', {
+          errorName: runErr?.name || '',
+          errorMessage: String(runErr?.message || runErr || '').slice(0, 160)
+        });
       }
+      trackActionResult('switch_strategy', 'worker_config_save', 'success', {
+        enabled: Boolean(stored.enabled),
+        benchmarkCount: Array.isArray(benchmarkCodes) ? benchmarkCodes.length : 0,
+        candidateCount,
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       setWorkerStatus((prev) => ({
         ...prev,
         saving: false,
         error: error?.message || '保存到 worker 失败'
       }));
+      trackActionResult('switch_strategy', 'worker_config_save', 'error', {
+        enabled: Boolean(normalized.enabled),
+        durationMs: Date.now() - startedAt,
+        errorName: error?.name || '',
+        errorMessage: String(error?.message || error || '').slice(0, 160)
+      });
     }
   }, []);
 
@@ -194,6 +258,11 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
   // 启用时将页面 prefs 一起带上，worker 立刻获得可运行的配置。
   const handleWorkerToggle = useCallback((enabled) => {
+    trackFeatureEvent('switch_strategy', 'worker_toggle', {
+      enabled: Boolean(enabled),
+      benchmarkCount: Array.isArray(prefs?.benchmarkCodes) ? prefs.benchmarkCodes.length : 0,
+      enabledCodeCount: Array.isArray(prefs?.enabledCodes) ? prefs.enabledCodes.length : 0
+    });
     if (enabled) {
       const benchmarkCodes = Array.from(new Set([
         ...(prefs?.benchmarkCodes || []),
@@ -303,6 +372,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, []);
 
   const handleWorkerRunOnce = useCallback(async () => {
+    const startedAt = Date.now();
+    trackFeatureEvent('switch_strategy', 'worker_run_once_start', switchMeta());
     setWorkerStatus((prev) => ({ ...prev, running: true, error: '', notice: '' }));
     try {
       const payload = await runSwitchOnce();
@@ -319,12 +390,25 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           : '手动执行完成：当前未触达阈值。',
         lastSyncedAt: new Date().toISOString()
       }));
+      trackActionResult('switch_strategy', 'worker_run_once', 'success', {
+        ...switchMeta(),
+        triggeredCount: triggered,
+        pushedCount: pushed,
+        hasSnapshot: Boolean(payload?.snapshot),
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       setWorkerStatus((prev) => ({
         ...prev,
         running: false,
         error: error?.message || '手动运行失败'
       }));
+      trackActionResult('switch_strategy', 'worker_run_once', 'error', {
+        ...switchMeta(),
+        durationMs: Date.now() - startedAt,
+        errorName: error?.name || '',
+        errorMessage: String(error?.message || error || '').slice(0, 160)
+      });
     }
   }, []);
 
@@ -408,12 +492,20 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
   // 拉取所有候选 ETF 的 Worker 统一指标（候选池来自 data/all_nasdq.json，不仅限于持仓）。
   const loadNav = useCallback(async () => {
+    const startedAt = Date.now();
+    trackFeatureEvent('switch_strategy', 'metrics_refresh_start', {
+      universeCount: candidateUniverse.length
+    });
     setNavState((prev) => ({ ...prev, loading: true, error: '' }));
     try {
       const codes = candidateUniverse.map((f) => f.code);
       if (!codes.length) {
         setNavState({ loading: false, error: '', navByCode: {}, generatedAt: nowIso() });
         setPriceState({ priceByCode: {} });
+        trackActionResult('switch_strategy', 'metrics_refresh', 'empty', {
+          universeCount: 0,
+          durationMs: Date.now() - startedAt
+        });
         return;
       }
       const navByCode = {};
@@ -451,12 +543,24 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         generatedAt: nowIso()
       });
       setPriceState({ priceByCode });
+      trackActionResult('switch_strategy', 'metrics_refresh', Object.keys(navByCode).length === 0 ? 'empty' : 'success', {
+        requestedCount: codes.length,
+        successCount: Object.keys(navByCode).length,
+        priceCount: Object.keys(priceByCode).length,
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       setNavState((prev) => ({
         ...prev,
         loading: false,
         error: error instanceof Error ? error.message : '实时数据加载失败'
       }));
+      trackActionResult('switch_strategy', 'metrics_refresh', 'error', {
+        universeCount: candidateUniverse.length,
+        durationMs: Date.now() - startedAt,
+        errorName: error?.name || '',
+        errorMessage: String(error?.message || error || '').slice(0, 160)
+      });
     }
   }, [candidateUniverse]);
 
@@ -505,11 +609,24 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   const benchmark = benchmarks[0] || null;
 
   function setPrefValue(key, value) {
+    trackFeatureEvent('switch_strategy', 'pref_change', {
+      key,
+      valueKind: value === '' ? 'empty' : Number.isFinite(Number(value)) ? 'number' : typeof value,
+      ...switchMeta()
+    });
     setPrefs((prev) => ({ ...prev, [key]: value }));
   }
   // 拖拽分类：将 code 套入 H / L / 未分类。targetClass=null 表示从分类中移出。
   function setCodeClass(code, targetClass) {
     if (!code) return;
+    const beforeClass = prefs?.premiumClass?.[code] || null;
+    trackFeatureEvent('switch_strategy', 'code_class_change', {
+      codeLength: String(code || '').length,
+      beforeClass,
+      targetClass: targetClass || 'none',
+      via: 'button_or_drop',
+      ...switchMeta()
+    });
     setPrefs((prev) => {
       const cls = { ...((prev && prev.premiumClass) || {}) };
       if (targetClass === 'H' || targetClass === 'L') cls[code] = targetClass;
@@ -539,6 +656,10 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     setDragOverZone(null);
     const code = event.dataTransfer ? event.dataTransfer.getData('text/plain') : '';
     if (!code) return;
+    trackFeatureEvent('switch_strategy', 'code_drop', {
+      codeLength: String(code || '').length,
+      targetClass: targetClass || 'none'
+    });
     setCodeClass(code, targetClass);
   }, []);
 
@@ -663,6 +784,13 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   //   3. 两笔交易 (SELL + BUY) 互指 switchPairId，复盘页 buildAutoSwitchChains 会自动推导出切换链路；
   //      持仓总览也读同一份 holdings ledger，无需额外同步。
   const openQuickRecordFromIntra = useCallback((sig) => {
+    trackFeatureEvent('switch_strategy', 'quick_record_open', {
+      sourceKind: 'intra',
+      ruleKind: sig?.kind || '',
+      fromCodeLength: String(sig?.from || '').length,
+      toCodeLength: String(sig?.to || '').length,
+      intraSignalCount: intraSignals.length
+    });
     setQuickRecord({
       date: new Date().toISOString().slice(0, 10),
       sellCode: sig?.from || '',
@@ -676,9 +804,15 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       note: `规则 ${sig?.kind || ''} · ${sig?.description || ''}`.trim(),
       sourceKind: 'intra'
     });
-  }, []);
+  }, [intraSignals.length]);
 
   const openQuickRecordFromOtc = useCallback(() => {
+    trackFeatureEvent('switch_strategy', 'quick_record_open', {
+      sourceKind: 'otc',
+      benchCodeLength: String(otcSignal?.benchCode || '').length,
+      lowestCodeLength: String(otcSignal?.lowestCode || '').length,
+      otcLevel: otcSignal?.level || ''
+    });
     setQuickRecord({
       date: new Date().toISOString().slice(0, 10),
       sellCode: otcSignal?.benchCode || '',
@@ -709,8 +843,24 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     const sellShares = Number(quickRecord.sellShares);
     const buyPrice = Number(quickRecord.buyPrice);
     const buyShares = Number(quickRecord.buyShares);
-    if (!quickRecord.sellCode || !quickRecord.buyCode) return;
-    if (!(sellPrice > 0) || !(sellShares > 0) || !(buyPrice > 0) || !(buyShares > 0)) return;
+    if (!quickRecord.sellCode || !quickRecord.buyCode) {
+      trackActionResult('switch_strategy', 'quick_record_save', 'validation_error', {
+        reason: 'missing_code',
+        sourceKind: quickRecord.sourceKind || ''
+      });
+      return;
+    }
+    if (!(sellPrice > 0) || !(sellShares > 0) || !(buyPrice > 0) || !(buyShares > 0)) {
+      trackActionResult('switch_strategy', 'quick_record_save', 'validation_error', {
+        reason: 'invalid_trade_numbers',
+        sourceKind: quickRecord.sourceKind || '',
+        hasSellPrice: sellPrice > 0,
+        hasSellShares: sellShares > 0,
+        hasBuyPrice: buyPrice > 0,
+        hasBuyShares: buyShares > 0
+      });
+      return;
+    }
     const sellId = buildTransactionId('quick');
     const buyId = buildTransactionId('quick');
     const sellTx = normalizeTransaction({
@@ -749,6 +899,11 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         window.dispatchEvent(new StorageEvent('storage', { key: 'aiDcaFundHoldingsLedger' }));
       }
     } catch (_error) { /* ignore */ }
+    trackActionResult('switch_strategy', 'quick_record_save', 'success', {
+      sourceKind: quickRecord.sourceKind || '',
+      sellCodeLength: String(quickRecord.sellCode || '').length,
+      buyCodeLength: String(quickRecord.buyCode || '').length
+    });
     setQuickRecord(null);
   }, [quickRecord]);
 
@@ -765,7 +920,13 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         handleWorkerToggle={handleWorkerToggle}
         handleWorkerRunOnce={handleWorkerRunOnce}
         setWorkerConfigExpanded={setWorkerConfigExpanded}
-        setSnapshotCandModal={setSnapshotCandModal}
+        setSnapshotCandModal={(payload) => {
+          trackFeatureEvent('switch_strategy', 'snapshot_candidates_open', {
+            benchmarkCodeLength: String(payload?.bench?.benchmarkCode || '').length,
+            candidateCount: Array.isArray(payload?.bench?.candidates) ? payload.bench.candidates.length : 0
+          });
+          setSnapshotCandModal(payload);
+        }}
         formatDate={formatDate}
         formatPrice={formatPrice}
         formatPercent={formatPercent}
@@ -775,7 +936,10 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         benchmarkSummary={benchmarkSummary}
         navUpdatedHint={navUpdatedHint}
         navError={navState.error}
-        onRefresh={() => setRefreshTick((n) => n + 1)}
+        onRefresh={() => {
+          trackFeatureEvent('switch_strategy', 'manual_refresh_click', switchMeta());
+          setRefreshTick((n) => n + 1);
+        }}
         setPrefValue={setPrefValue}
         fundsWithPremium={fundsWithPremium}
         exchangeFunds={exchangeFunds}

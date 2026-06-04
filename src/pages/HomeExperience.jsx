@@ -15,6 +15,7 @@ import { readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { deletePlan, readPlanList, readPlanState, setActivePlanId } from '../app/plan.js';
 import { buildMovingAverageValues, buildNasdaqStrategyPlan, buildPeakDrawdownStrategyPlan, findLatestFiniteValue, mapReferencePrice, resolveNextTriggerLayer } from '../app/strategyEngine.js';
 import { showActionToast } from '../app/toast.js';
+import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import { resolveVixSignal, readVixSnapshot, VIX_THRESHOLDS } from '../app/vixSignal.js';
 import { Card, Pill, SectionHeading, cx, primaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
 import {
@@ -78,6 +79,21 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
   const [activeBarId, setActiveBarId] = useState('');
   const [layersExpanded, setLayersExpanded] = useState(false);
 
+  const homeMeta = () => ({
+    embedded,
+    inPagesDir,
+    planCount: planList.length,
+    activePlanIdLength: String(activePlanId || '').length,
+    selectedCodeLength: String(selectedCode || '').length,
+    selectedStrategy,
+    timeframe,
+    hasMarketError: Boolean(marketError),
+    hasPulseError: Boolean(pulseError),
+    layerCount: executionLayers?.length || 0,
+    completedLayerCount: completedLayerCount || 0,
+    watchlistCodeCount: watchlistCodes.length
+  });
+
   const planState = useMemo(
     () => planList.find((plan) => plan.id === activePlanId) || initialPlanState,
     [activePlanId, initialPlanState, planList]
@@ -86,16 +102,28 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
 
   useEffect(() => {
     let cancelled = false;
+    const startedAt = Date.now();
+    trackFeatureEvent('home', 'market_data_load_start', { inPagesDir });
     loadLatestNasdaqPrices({ inPagesDir })
       .then((entries) => {
         if (cancelled) return;
         setMarketEntries(entries);
         setMarketError('');
+        trackActionResult('home', 'market_data_load', Array.isArray(entries) && entries.length ? 'success' : 'empty', {
+          inPagesDir,
+          entryCount: Array.isArray(entries) ? entries.length : 0,
+          durationMs: Date.now() - startedAt
+        });
       })
       .catch((error) => {
         if (cancelled) return;
         setMarketEntries([]);
         setMarketError(error instanceof Error ? error.message : '现价数据加载失败');
+        trackActionResult('home', 'market_data_load', 'error', {
+          inPagesDir,
+          durationMs: Date.now() - startedAt,
+          errorMessage: error?.message || ''
+        });
       });
     return () => { cancelled = true; };
   }, [inPagesDir]);
@@ -183,6 +211,12 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
     }
     let cancelled = false;
     setIsLoadingPulse(true);
+    const startedAt = Date.now();
+    trackFeatureEvent('home', 'pulse_data_load_start', {
+      codeLength: String(selectedFund.code || '').length,
+      hasOutputPath: Boolean(selectedFund.output_path),
+      has15mPath: Boolean(selectedFund.output_path_15m)
+    });
     const requests = [
       loadNasdaqMinuteSnapshot(selectedFund, { inPagesDir }),
       selectedFund?.output_path_15m
@@ -210,7 +244,15 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
           }
         }
       })
-      .finally(() => { if (!cancelled) setIsLoadingPulse(false); });
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingPulse(false);
+          trackActionResult('home', 'pulse_data_load', pulseError ? 'error' : 'success', {
+            codeLength: String(selectedFund.code || '').length,
+            durationMs: Date.now() - startedAt
+          });
+        }
+      });
     return () => { cancelled = true; };
   }, [inPagesDir, selectedFund]);
 
@@ -396,6 +438,11 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
       setSelectedCode(targetPlan.symbol);
       setWatchlistCodes((current) => (current.includes(targetPlan.symbol) ? current : [...current, targetPlan.symbol]));
     }
+    trackFeatureEvent('home', 'plan_select', {
+      planIdLength: String(planId || '').length,
+      targetSymbolLength: String(targetPlan.symbol || '').length,
+      planCount: planList.length
+    });
   }
 
   function handleDeletePlanItem(planId) {
@@ -413,6 +460,11 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
       }
     }
     showActionToast('删除加仓计划', 'success');
+    trackActionResult('home', 'plan_delete', 'success', {
+      planIdLength: normalizedId.length,
+      wasActive: activePlanId === normalizedId,
+      remainingPlanCount: nextList.length
+    });
   }
 
   async function handlePlanTestNotify(plan) {
@@ -423,6 +475,8 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
     setPlanTestError('');
     setPlanTestNotice('');
     const planLabel = String(plan?.name || plan?.symbol || '交易计划').trim();
+    const startedAt = Date.now();
+    trackFeatureEvent('home', 'plan_test_notify_start', { planIdLength: normalizedPlanId.length, planLabelLength: planLabel.length });
     try {
       await sendNotifyTest({
         clientId: notifyClientId,
@@ -433,10 +487,19 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
       });
       setPlanTestNotice(`已发送「${planLabel}」的测试通知。`);
       showActionToast('测试通知', 'success', { description: `已发送「${planLabel}」的测试通知。` });
+      trackActionResult('home', 'plan_test_notify', 'success', {
+        planIdLength: normalizedPlanId.length,
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : '测试通知发送失败。';
       setPlanTestError(message);
       showActionToast('测试通知', 'error', { description: message });
+      trackActionResult('home', 'plan_test_notify', 'error', {
+        planIdLength: normalizedPlanId.length,
+        durationMs: Date.now() - startedAt,
+        errorMessage: message
+      });
     } finally {
       setTestingPlanId('');
     }
@@ -749,7 +812,10 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
             {executionLayers.length > 5 ? (
               <button
                 type="button"
-                onClick={() => setLayersExpanded((prev) => !prev)}
+                onClick={() => {
+                  trackFeatureEvent('home', 'layers_expand_toggle', { nextExpanded: !layersExpanded, layerCount: executionLayers.length });
+                  setLayersExpanded((prev) => !prev);
+                }}
                 className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700"
               >
                 {layersExpanded ? '收起' : `加载更多（剩余 ${executionLayers.length - 5} 档）`}
@@ -767,7 +833,10 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
                       <button
                         key={option.key}
                         type="button"
-                        onClick={() => setTimeframe(option.key)}
+                        onClick={() => {
+                          trackFeatureEvent('home', 'timeframe_change', { from: timeframe, to: option.key });
+                          setTimeframe(option.key);
+                        }}
                         className={cx(
                           'rounded-md px-2.5 py-0.5 text-xs font-medium transition-colors',
                           timeframe === option.key ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:text-slate-700'
@@ -844,7 +913,10 @@ export function HomeExperience({ links, inPagesDir = false, embedded = false }) 
                     <button
                       key={option.key}
                       type="button"
-                      onClick={() => setTimeframe(option.key)}
+                      onClick={() => {
+                        trackFeatureEvent('home', 'timeframe_change', { from: timeframe, to: option.key });
+                        setTimeframe(option.key);
+                      }}
                       className={cx(
                         'rounded-md px-2.5 py-0.5 text-xs font-medium transition-colors',
                         timeframe === option.key ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:text-slate-700'

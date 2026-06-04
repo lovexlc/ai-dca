@@ -22,7 +22,7 @@ import {
 import { aggregateByCode, buildHoldingsNotifyDigest, summarizePortfolio } from '../app/holdingsLedgerCore.js';
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { showActionToast } from '../app/toast.js';
-import { trackAnalyticsEvent } from '../app/analytics.js';
+import { trackActionResult, trackAnalyticsEvent, trackFeatureEvent } from '../app/analytics.js';
 import { NotifyConfigCard } from './NotifyConfigCard.jsx';
 import { NotifyHistoryCard } from './NotifyHistoryCard.jsx';
 import {
@@ -108,6 +108,20 @@ export function NotifyExperience({ embedded = false }) {
   const barkConfigured = Boolean(notifyStatus?.configured?.bark);
   const serverChan3Configured = Boolean(notifyStatus?.configured?.serverChan3 || notifySetup?.serverChan3?.configured);
   const pcConfigured = Boolean(webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled);
+  const notifyMeta = () => ({
+    embedded,
+    platformTab: notifyPlatform,
+    barkConfigured,
+    serverChan3Configured,
+    pcConfigured,
+    webNotifySupported,
+    webNotifyPermission,
+    webNotifyEnabled,
+    wsStatus: notifyWsStatus,
+    holdingsRuleEnabled: Boolean(holdingsRule.enabled),
+    visibleEventCount: visibleEvents.length,
+    pairedWebWsCount: pairedWebWsDevices.length
+  });
 
   const summary = useMemo(() => {
     const channelLabels = [];
@@ -126,6 +140,8 @@ export function NotifyExperience({ embedded = false }) {
   }, [barkConfigured, pcConfigured, serverChan3Configured]);
 
   async function handleRequestWebNotifyPermission() {
+    const startedAt = Date.now();
+    trackFeatureEvent('notify', 'pc_permission_request_start', notifyMeta());
     const result = await requestWebNotifyPermission();
     setWebNotifyPermission(result);
     setWebNotifySupported(getWebNotifyState().supported);
@@ -137,6 +153,11 @@ export function NotifyExperience({ embedded = false }) {
     } else if (result === 'denied') {
       showActionToast({ tone: 'negative', message: '浏览器已拒绝通知。请到地址栏 🔒 → 通知 → 允许后重试。' });
     }
+    trackActionResult('notify', 'pc_permission_request', result === 'granted' ? 'success' : result === 'denied' ? 'denied' : 'dismissed', {
+      ...notifyMeta(),
+      result,
+      durationMs: Date.now() - startedAt
+    });
   }
 
   function handleSendLocalWebNotifyTest() {
@@ -148,12 +169,17 @@ export function NotifyExperience({ embedded = false }) {
     if (!note) {
       showActionToast({ tone: 'negative', message: '未能弹出通知，请先完成浏览器授权。' });
     }
+    trackActionResult('notify', 'pc_local_test', note ? 'success' : 'error', notifyMeta());
   }
 
   function handleToggleWebNotifyEnabled() {
     const next = !webNotifyEnabled;
     persistWebNotifyConfig({ pcEnabled: next });
     setWebNotifyEnabled(next);
+    trackFeatureEvent('notify', 'pc_toggle', {
+      ...notifyMeta(),
+      enabled: next
+    });
     if (next) {
       trackAnalyticsEvent('notify_enabled', {
         hasBark: barkConfigured,
@@ -291,13 +317,25 @@ export function NotifyExperience({ embedded = false }) {
   async function refreshNotifyEvents() {
     setEventsLoading(true);
     setEventsError('');
+    const startedAt = Date.now();
+    trackFeatureEvent('notify', 'events_refresh_start', notifyMeta());
     try {
       const payload = await loadNotifyEvents(notifyConfig.notifyClientId);
       const list = Array.isArray(payload?.events) ? payload.events : [];
       setNotifyEvents(list);
       setEventsLastSyncedAt(new Date().toISOString());
+      trackActionResult('notify', 'events_refresh', 'success', {
+        ...notifyMeta(),
+        eventCount: list.length,
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       setEventsError(humanizeNotifyError(error));
+      trackActionResult('notify', 'events_refresh', 'error', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt,
+        errorMessage: error?.message || ''
+      });
     } finally {
       setEventsLoading(false);
     }
@@ -338,6 +376,11 @@ export function NotifyExperience({ embedded = false }) {
     setIsSavingSettings(true);
     setNotifyError('');
     setNotifyMessage('');
+    const startedAt = Date.now();
+    trackFeatureEvent('notify', 'bark_save_start', {
+      ...notifyMeta(),
+      inputLength: String(notifyConfig.barkDeviceKey || '').length
+    });
     try {
       const parsedBarkKey = parseBarkInput(notifyConfig.barkDeviceKey);
       if (!parsedBarkKey) {
@@ -353,10 +396,19 @@ export function NotifyExperience({ embedded = false }) {
       await refreshNotifyData();
       setNotifyMessage('Bark 配置已保存。');
       showActionToast('保存 Bark 配置', 'success');
+      trackActionResult('notify', 'bark_save', 'success', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : '通知配置保存失败';
       setNotifyError(message);
       showActionToast('保存 Bark 配置', 'error', { description: message });
+      trackActionResult('notify', 'bark_save', 'error', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt,
+        errorMessage: message
+      });
     } finally {
       setIsSavingSettings(false);
     }
@@ -366,6 +418,12 @@ export function NotifyExperience({ embedded = false }) {
     setIsSavingSettings(true);
     setNotifyError('');
     setNotifyMessage('');
+    const startedAt = Date.now();
+    trackFeatureEvent('notify', 'serverchan3_save_start', {
+      ...notifyMeta(),
+      hasUid: Boolean(notifyConfig.serverChan3Uid),
+      hasSendKey: Boolean(notifyConfig.serverChan3SendKey)
+    });
     try {
       const uid = String(notifyConfig.serverChan3Uid || '').trim();
       const sendKey = String(notifyConfig.serverChan3SendKey || '').trim();
@@ -407,10 +465,19 @@ export function NotifyExperience({ embedded = false }) {
       await refreshNotifyData({ serverChan3Fallback: savedServerChan3 });
       setNotifyMessage('Server酱³ 推送配置已保存。');
       showActionToast('保存 Server酱³ 配置', 'success');
+      trackActionResult('notify', 'serverchan3_save', 'success', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Server酱³ 配置保存失败';
       setNotifyError(message);
       showActionToast('保存 Server酱³ 配置', 'error', { description: message });
+      trackActionResult('notify', 'serverchan3_save', 'error', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt,
+        errorMessage: message
+      });
     } finally {
       setIsSavingSettings(false);
     }
@@ -420,6 +487,11 @@ export function NotifyExperience({ embedded = false }) {
     setIsSavingHoldingsRule(true);
     setNotifyError('');
     setNotifyMessage('');
+    const startedAt = Date.now();
+    trackFeatureEvent('notify', 'holdings_rule_toggle_start', {
+      ...notifyMeta(),
+      nextEnabled
+    });
     try {
       const digest = buildLatestHoldingsDigest();
       const payload = await saveHoldingsNotifyRule({ enabled: nextEnabled, digest });
@@ -430,10 +502,23 @@ export function NotifyExperience({ embedded = false }) {
       });
       setNotifyMessage(nextEnabled ? '持仓当日收益提醒已启用。' : '持仓当日收益提醒已关闭。');
       showActionToast(nextEnabled ? '启用持仓提醒' : '关闭持仓提醒', 'success');
+      trackActionResult('notify', 'holdings_rule_toggle', 'success', {
+        ...notifyMeta(),
+        nextEnabled,
+        hasDigest: Boolean(digest),
+        digestItemCount: Array.isArray(digest?.items) ? digest.items.length : 0,
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : '保存持仓通知规则失败';
       setNotifyError(message);
       showActionToast('保存持仓提醒', 'error', { description: message });
+      trackActionResult('notify', 'holdings_rule_toggle', 'error', {
+        ...notifyMeta(),
+        nextEnabled,
+        durationMs: Date.now() - startedAt,
+        errorMessage: message
+      });
     } finally {
       setIsSavingHoldingsRule(false);
     }
@@ -443,6 +528,8 @@ export function NotifyExperience({ embedded = false }) {
     setIsSyncingHoldingsDigest(true);
     setNotifyError('');
     setNotifyMessage('');
+    const startedAt = Date.now();
+    trackFeatureEvent('notify', 'holdings_digest_sync_start', notifyMeta());
     try {
       const digest = buildLatestHoldingsDigest();
       const payload = await saveHoldingsNotifyRule({ enabled: holdingsRule.enabled, digest });
@@ -453,10 +540,21 @@ export function NotifyExperience({ embedded = false }) {
       });
       setNotifyMessage('持仓快照已同步。');
       showActionToast('同步持仓快照', 'success');
+      trackActionResult('notify', 'holdings_digest_sync', 'success', {
+        ...notifyMeta(),
+        hasDigest: Boolean(digest),
+        digestItemCount: Array.isArray(digest?.items) ? digest.items.length : 0,
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : '同步持仓快照失败';
       setNotifyError(message);
       showActionToast('同步持仓快照', 'error', { description: message });
+      trackActionResult('notify', 'holdings_digest_sync', 'error', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt,
+        errorMessage: message
+      });
     } finally {
       setIsSyncingHoldingsDigest(false);
     }
@@ -467,6 +565,8 @@ export function NotifyExperience({ embedded = false }) {
     setIsTestingHoldingsNotify(true);
     setNotifyError('');
     setNotifyMessage('');
+    const startedAt = Date.now();
+    trackFeatureEvent('notify', 'holdings_test_start', notifyMeta());
     try {
       const eventId = `holdings-test-${Date.now()}`;
       const now = new Date();
@@ -490,10 +590,19 @@ export function NotifyExperience({ embedded = false }) {
       showActionToast('测试通知', 'success', {
         description: '已发送「持仓总览」样式的测试推送。'
       });
+      trackActionResult('notify', 'holdings_test', 'success', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : '测试通知发送失败';
       setNotifyError(message);
       showActionToast('测试通知', 'error', { description: message });
+      trackActionResult('notify', 'holdings_test', 'error', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt,
+        errorMessage: message
+      });
     } finally {
       setIsTestingHoldingsNotify(false);
     }
@@ -503,6 +612,8 @@ export function NotifyExperience({ embedded = false }) {
     setIsSyncingRules(true);
     setNotifyError('');
     setNotifyMessage('');
+    const startedAt = Date.now();
+    trackFeatureEvent('notify', 'trade_rules_sync_start', notifyMeta());
     try {
       await syncTradePlanRules();
       setRulesLastSyncedAt(new Date().toISOString());
@@ -510,10 +621,19 @@ export function NotifyExperience({ embedded = false }) {
       showActionToast('同步通知规则', 'success');
       // 同步后遵便重新拉取一次提醒历史，避免进页后才发现有新记录。
       await refreshNotifyEvents();
+      trackActionResult('notify', 'trade_rules_sync', 'success', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : '通知规则同步失败';
       setNotifyError(message);
       showActionToast('同步通知规则', 'error', { description: message });
+      trackActionResult('notify', 'trade_rules_sync', 'error', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt,
+        errorMessage: message
+      });
     } finally {
       setIsSyncingRules(false);
     }

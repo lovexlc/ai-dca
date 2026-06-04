@@ -12,6 +12,7 @@ import {
   buildRuleDetailUrl,
   extractPurchaseAmount
 } from '../app/tradePlansHelpers.js';
+import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 
 // 定投 / 卖出 / VIX / 回测仍按需 lazy 加载，列表页只展示计划分类与卡片。
 const DcaExperienceLazy = lazy(() => import('./DcaExperience.jsx').then((m) => ({ default: m.DcaExperience })));
@@ -167,6 +168,16 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     return previewRows;
   }, [previewRows, subView]);
   const hasVisiblePlans = visibleRows.length > 0;
+  const tradePlansMeta = () => ({
+    subView,
+    totalCount: previewRows.length,
+    visibleCount: visibleRows.length,
+    planCount: typeCounts.home,
+    dcaCount: typeCounts.dca,
+    sellCount: typeCounts.sell,
+    channelConfigured,
+    embedded
+  });
 
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [openMenuRowId, setOpenMenuRowId] = useState('');
@@ -200,6 +211,10 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   function enterCreateView(type) {
     setCreateMenuOpen(false);
+    trackFeatureEvent('trade_plans', 'create_open', {
+      type,
+      ...tradePlansMeta()
+    });
     if (type === 'dca') {
       gotoSubView('dcaNew', { push: true });
       return;
@@ -227,6 +242,11 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     if (nextView === subView) return;
     setCreateMenuOpen(false);
     gotoSubView(nextView);
+    trackFeatureEvent('trade_plans', 'subtab_select', {
+      from: subView,
+      to: nextView,
+      ...tradePlansMeta()
+    });
   }
 
   useEffect(() => {
@@ -290,6 +310,12 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   function handleDeletePlanRow(row) {
     if (!row) return;
+    const meta = {
+      sourceType: row.sourceType || '',
+      rowIdLength: String(row.id || '').length,
+      hasNotifyRule: Boolean(row.ruleId),
+      ...tradePlansMeta()
+    };
     if (row.sourceType === 'dca') {
       clearDcaState();
       showActionToast('删除定投计划', 'success');
@@ -305,6 +331,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     }
     setOpenMenuRowId('');
     setPlanRefreshKey((value) => value + 1);
+    trackActionResult('trade_plans', 'delete', 'success', meta);
   }
 
   function buildRowTestPayload(row) {
@@ -348,6 +375,14 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     if (!row?.id) return;
     setOpenMenuRowId('');
     setTestingRowId(row.id);
+    const startedAt = Date.now();
+    trackFeatureEvent('trade_plans', 'notify_test_start', {
+      sourceType: row.sourceType || '',
+      hasRuleId: Boolean(row.ruleId),
+      hasSymbol: Boolean(row.symbol),
+      channelConfigured,
+      ...tradePlansMeta()
+    });
     try {
       await sendNotifyTest({
         clientId: notifyClientId,
@@ -356,10 +391,19 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
       showActionToast('测试通知', 'success', {
         description: `已发送「${row.planName}」的测试通知。`
       });
+      trackActionResult('trade_plans', 'notify_test', 'success', {
+        sourceType: row.sourceType || '',
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : '测试通知发送失败';
       showActionToast('测试通知', 'error', {
         description: `${message}。请到《消息通知》页面检查推送通道接入。`
+      });
+      trackActionResult('trade_plans', 'notify_test', 'error', {
+        sourceType: row.sourceType || '',
+        durationMs: Date.now() - startedAt,
+        errorMessage: message
       });
     } finally {
       setTestingRowId('');
@@ -368,6 +412,11 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   function handleViewMore(row) {
     setOpenMenuRowId('');
+    trackFeatureEvent('trade_plans', 'view_more', {
+      actionKey: row?.actionKey || '',
+      sourceType: row?.sourceType || '',
+      ...tradePlansMeta()
+    });
     if (row?.actionKey === 'home' || row?.actionKey === 'dca' || row?.actionKey === 'sell') {
       handleSelectSubTab(row.actionKey);
     }
@@ -375,6 +424,11 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   function handleEditRow(row) {
     setOpenMenuRowId('');
+    trackFeatureEvent('trade_plans', 'edit_open', {
+      sourceType: row?.sourceType || '',
+      rowIdLength: String(row?.id || '').length,
+      ...tradePlansMeta()
+    });
     if (row?.sourceType === 'dca') {
       gotoSubView('dcaNew', { push: true });
       return;

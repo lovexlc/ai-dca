@@ -21,6 +21,7 @@ import {
 } from '../app/holdingsHelpers.js';
 import { formatCurrency } from '../app/accumulation.js';
 import { Pill, cx } from '../components/experience-ui.jsx';
+import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 
 const LEDGER_STORAGE_KEY = 'aiDcaFundHoldingsLedger';
 
@@ -176,6 +177,11 @@ export function FundSwitchAnalysisExperience() {
     if (!codes.length) return undefined;
     navRefreshTriggeredRef.current = true;
     let cancelled = false;
+    const startedAt = Date.now();
+    trackFeatureEvent('fund_switch_analysis', 'nav_refresh_start', {
+      chainCount: chains.length,
+      codeCount: codes.length
+    });
     (async () => {
       try {
         const navResult = await getNavSnapshots(codes);
@@ -191,9 +197,20 @@ export function FundSwitchAnalysisExperience() {
           persistLedgerState(nextState);
           return nextState;
         });
+        trackActionResult('fund_switch_analysis', 'nav_refresh', 'success', {
+          chainCount: chains.length,
+          codeCount: codes.length,
+          durationMs: Date.now() - startedAt
+        });
       } catch (_err) {
         // 静默失败：下次 mount 重试。
         navRefreshTriggeredRef.current = false;
+        trackActionResult('fund_switch_analysis', 'nav_refresh', 'error', {
+          chainCount: chains.length,
+          codeCount: codes.length,
+          durationMs: Date.now() - startedAt,
+          errorMessage: _err?.message || ''
+        });
       }
     })();
     return () => {
@@ -215,11 +232,17 @@ export function FundSwitchAnalysisExperience() {
   }, [transactions]);
 
   function toggleExpanded(id) {
+    const wasExpanded = expanded.has(id);
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
+    });
+    trackFeatureEvent('fund_switch_analysis', 'chain_toggle', {
+      chainIdLength: String(id || '').length,
+      nextExpanded: !wasExpanded,
+      chainCount: chains.length
     });
   }
 

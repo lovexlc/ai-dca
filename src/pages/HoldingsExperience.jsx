@@ -59,6 +59,7 @@ import {
 import { readTradeLedger } from '../app/tradeLedger.js';
 import { groupCostBasisBySymbol, attachUnrealized } from '../app/costTracker.js';
 import { hasPotentialUserData, installDemoData } from '../app/demoData.js';
+import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 
 
 export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = false } = {}) {
@@ -74,21 +75,33 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [ocrState, setOcrState] = useState(() => createOcrState());
   const [pasteModalOpen, setPasteModalOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  const summarizeHoldings = () => ({
+    transactionCount: Array.isArray(transactions) ? transactions.length : 0,
+    aggregateCount: Array.isArray(aggregates) ? aggregates.length : 0,
+    activePositionCount: Array.isArray(aggregatesTableData) ? aggregatesTableData.length : 0,
+    soldLotCount: Array.isArray(soldLots) ? soldLots.length : 0,
+    hasSearch: Boolean(String(searchText || '').trim()),
+    kindFilter,
+    selected: Boolean(selectedCode),
+    embedded
+  });
   useEffect(() => {
     function onMobileNew() {
       // 4.2: 已卖出 tab 已移除 (迁移到 #/liquidation)，默认留 BUY
       resetDraft(emptyDraft({ type: 'BUY' }));
       setSidePanelTab('create');
       setSidePanelOpen(true);
+      trackFeatureEvent('holdings', 'quick_new_open', { source: 'mobile_event' });
     }
-    function onMobilePaste() { openPasteModal(); }
-    function onMobileOcr() { openOcrModal(); }
+    function onMobilePaste() { openPasteModal('mobile_event'); }
+    function onMobileOcr() { openOcrModal('mobile_event'); }
     function onSelectFund(event) {
       const code = event && event.detail && event.detail.code;
       if (!code) return;
       setSelectedCode(code);
       setSidePanelTab('summary');
       setSidePanelOpen(true);
+      trackFeatureEvent('holdings', 'fund_summary_open', { source: 'mobile_event', codeLength: String(code).length });
     }
     window.addEventListener('holdings:new', onMobileNew);
     window.addEventListener('holdings:import-paste', onMobilePaste);
@@ -257,10 +270,15 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   );
   function handleAccountChange(symbol, accountType) {
     setAccountAssignments((current) => assignAccount(symbol, accountType, current));
+    trackFeatureEvent('holdings', 'account_assign', {
+      accountType,
+      symbolLength: String(symbol || '').length,
+      ...summarizeHoldings()
+    });
   }
 
   function handleInstallDemoData() {
-    if (typeof window !== 'undefined' && hasPotentialUserData() && !window.confirm('检测到已有本地数据。生成演示数据会覆盖当前持仓、计划和定投数据。建议先到「数据同步」导出备份。确认继续？')) return;
+    if (typeof window !== 'undefined' && hasPotentialUserData() && !window.confirm('检测到已有本地数据。生成演示数据会覆盖当前持仓、计划和定投数据。建议先登录账号完成云同步。确认继续？')) return;
     installDemoData();
     setLedger(readLedgerState());
     setAccountAssignments(readAccountAssignments());
@@ -268,6 +286,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     showActionToast('生成 Demo 数据', 'success', {
       description: '已生成纳指 ETF 模拟持仓，买入价锚定 2026-03-01。'
     });
+    trackFeatureEvent('holdings', 'demo_install', { hadExistingData: hasPotentialUserData() });
   }
   const aggregateColumns = useMemo(() => createAggregateHoldingsColumns({
     accountAssignments,
@@ -322,6 +341,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     if (!codes.length) return;
     if (typeof window !== 'undefined' && typeof window.__aiDcaSubscribeMarketData === 'function') {
       window.__aiDcaSubscribeMarketData(codes);
+      trackFeatureEvent('holdings', 'market_subscribe', {
+        symbolCount: codes.length,
+        source: 'holdings'
+      });
     }
   }, [transactions]);
 
@@ -330,6 +353,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     function handlePricePush(event) {
       const items = event?.detail?.items;
       if (!Array.isArray(items) || !items.length) return;
+      trackFeatureEvent('holdings', 'price_push_receive', {
+        itemCount: items.length,
+        subscribedPositionCount: aggregatesTableData.length
+      });
       setLedger((prev) => {
         const existingItems = Object.entries(prev.snapshotsByCode || {}).map(([code, snap]) => ({ code, ...snap }));
         const merged = mergePricePushItems(existingItems, items);
@@ -353,6 +380,13 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       return;
     }
     setNavStatus('loading');
+    const startedAt = Date.now();
+    trackFeatureEvent('holdings', 'nav_refresh_start', {
+      codeCount: safeCodes.length,
+      silent,
+      forceRefresh,
+      ...summarizeHoldings()
+    });
     try {
       const navResult = await getNavSnapshots(safeCodes, { forceRefresh });
       let mergeErrors = [];
@@ -385,6 +419,14 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           showActionToast('净值刷新', 'success', { description: `成功更新 ${nextMeta.successCount} 个基金净值。` });
         }
       }
+      trackActionResult('holdings', 'nav_refresh', errors.length && nextMeta.successCount === 0 ? 'error' : errors.length ? 'partial' : 'success', {
+        codeCount: safeCodes.length,
+        successCount: nextMeta?.successCount || 0,
+        failureCount: errors.length,
+        silent,
+        forceRefresh,
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       setNavStatus('error');
       // 网络异常允许下次重试。
@@ -392,6 +434,13 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       if (!silent) {
         showActionToast('净值刷新', 'error', { description: error?.message || '净值服务暂时不可用。' });
       }
+      trackActionResult('holdings', 'nav_refresh', 'error', {
+        codeCount: safeCodes.length,
+        silent,
+        forceRefresh,
+        durationMs: Date.now() - startedAt,
+        errorMessage: error?.message || ''
+      });
     }
   }
 
@@ -412,6 +461,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     });
     // 手动刷新清空已尝试集合，所有代码都重新走一遍。
     navAttemptedCodesRef.current.clear();
+    trackFeatureEvent('holdings', 'manual_refresh_click', { codeCount: codes.length, ...summarizeHoldings() });
     void refreshNavForCodes(codes, { silent: false, forceRefresh: true });
   }
 
@@ -489,6 +539,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     resetDraft(next);
     setSidePanelTab('create');
     setSidePanelOpen(true);
+    trackFeatureEvent('holdings', 'trade_from_summary_open', {
+      type,
+      kind,
+      codeLength: code.length,
+      hasPosition: Boolean(aggSrc.hasPosition)
+    });
   }
 
   function handleDraftChange(field, value) {
@@ -547,6 +603,13 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     const errors = getTransactionErrors(prepared);
     if (Object.keys(errors).length) {
       showActionToast('保存失败', 'error', { description: summarizeTransactionErrors(errors) });
+      trackActionResult('holdings', 'transaction_save', 'validation_error', {
+        mode: draftMode,
+        errorFields: Object.keys(errors),
+        type: prepared.type,
+        kind: prepared.kind,
+        hasSwitchAllocations: Array.isArray(draft.switchAllocations) && draft.switchAllocations.length > 0
+      });
       return;
     }
     const normalized = normalizeTransaction({
@@ -568,6 +631,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       if (!allowStandaloneCostPrice && normalized.shares > available + 1e-6) {
         showActionToast('保存失败', 'error', {
           description: `SELL 份额 ${formatShares(normalized.shares)} 超过当前持仓 ${formatShares(Math.max(available, 0))}。`
+        });
+        trackActionResult('holdings', 'transaction_save', 'validation_error', {
+          mode: draftMode,
+          type: normalized.type,
+          kind: normalized.kind,
+          reason: 'sell_exceeds_available'
         });
         return;
       }
@@ -644,6 +713,15 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     setSelectedCode(normalized.code);
     setSidePanelTab('summary');
     setSidePanelOpen(false);
+    trackActionResult('holdings', 'transaction_save', 'success', {
+      mode: draftMode,
+      type: normalized.type,
+      kind: normalized.kind,
+      codeLength: normalized.code.length,
+      hasCostPrice: normalized.costPrice > 0,
+      hasSwitchPair: Boolean(normalized.switchPairId),
+      switchAllocationCount: Array.isArray(draft.switchAllocations) ? draft.switchAllocations.length : 0
+    });
   }
 
   function handleDeleteTransaction(txId) {
@@ -661,6 +739,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         .map((item) => (item.switchPairId === txId ? { ...item, switchPairId: '' } : item))
     }));
     showActionToast('交易已删除', 'success');
+    trackActionResult('holdings', 'transaction_delete', 'success', {
+      type: tx.type,
+      kind: tx.kind,
+      codeLength: String(tx.code || '').length,
+      hadSwitchPair: Boolean(tx.switchPairId)
+    });
     return true;
   }
 
@@ -675,6 +759,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     setDraftMode('edit');
     setSidePanelTab('create');
     setSidePanelOpen(true);
+    trackFeatureEvent('holdings', 'transaction_edit_open', {
+      type: tx.type,
+      kind: tx.kind,
+      codeLength: String(tx.code || '').length,
+      source: 'side_panel'
+    });
   }
 
   // ---- Copy visible table to clipboard ----
@@ -712,6 +802,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     const label = '基金汇总';
     if (payload.count === 0) {
       showActionToast('复制表格', 'warning', { description: '当前没有可复制的行。' });
+      trackActionResult('holdings', 'copy_table', 'empty', { ...summarizeHoldings() });
       return;
     }
     const ok = await writeClipboard(payload.tsv);
@@ -720,6 +811,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     } else {
       showActionToast('复制失败', 'error', { description: '浏览器拒绝写入剪贴板，请手动复制。' });
     }
+    trackActionResult('holdings', 'copy_table', ok ? 'success' : 'error', {
+      rowCount: payload.count,
+      ...summarizeHoldings()
+    });
   }
 
   // ---- OCR import ----
@@ -727,11 +822,17 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     if (!fileInputRef.current) return;
     fileInputRef.current.value = '';
     fileInputRef.current.click();
+    trackFeatureEvent('holdings', 'ocr_file_picker_open');
   }
 
   async function handleOcrFile(event) {
     const file = event?.target?.files?.[0];
     if (!file) return;
+    const startedAt = Date.now();
+    trackFeatureEvent('holdings', 'ocr_file_selected', {
+      fileType: String(file.type || '').slice(0, 80),
+      fileSizeBucket: file.size > 2_000_000 ? 'gt_2m' : file.size > 500_000 ? '500k_2m' : 'lte_500k'
+    });
     // 「截图 OCR」现改为弹窗内预览流程：识别后仅填充预览表格，用户确认后才会写入 ledger。
     if (!ocrModalOpen) setOcrModalOpen(true);
     setOcrPreview(null);
@@ -766,6 +867,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           model: result.model || ''
         });
         showActionToast('OCR 导入', 'error', { description: '未能识别出有效的持仓记录。' });
+        trackActionResult('holdings', 'ocr_recognize', 'empty', {
+          durationMs: Date.now() - startedAt,
+          warningCount: Array.isArray(result.warnings) ? result.warnings.length : 0,
+          provider: result.provider || '',
+          model: result.model || ''
+        });
         return;
       }
       setOcrPreview({
@@ -786,12 +893,24 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       showActionToast('OCR 识别', 'success', {
         description: `识别出 ${drafts.length} 行，有效 ${validCount} 行，请在弹窗内确认后导入。`
       });
+      trackActionResult('holdings', 'ocr_recognize', 'success', {
+        durationMs: Date.now() - startedAt,
+        rowCount: drafts.length,
+        validCount,
+        warningCount: Array.isArray(result.warnings) ? result.warnings.length : 0,
+        provider: result.provider || '',
+        model: result.model || ''
+      });
     } catch (error) {
       setOcrState(createOcrState({
         status: 'error',
         error: error?.message || '识别失败，请稍后重试。'
       }));
       showActionToast('OCR 导入', 'error', { description: error?.message || '识别失败。' });
+      trackActionResult('holdings', 'ocr_recognize', 'error', {
+        durationMs: Date.now() - startedAt,
+        errorMessage: error?.message || ''
+      });
     } finally {
       // 允许同一个文件被重复选择，在弹窗内重新上传。
       if (event?.target) event.target.value = '';
@@ -799,10 +918,11 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   // ---- Excel paste import ----
-  function openPasteModal() {
+  function openPasteModal(source = 'toolbar') {
     setPasteModalOpen(true);
     setPasteText('');
     setPasteResult(null);
+    trackFeatureEvent('holdings', 'paste_modal_open', { source });
   }
 
   function closePasteModal() {
@@ -810,12 +930,13 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   // ---- OCR import modal controls ----
-  function openOcrModal() {
+  function openOcrModal(source = 'toolbar') {
     setOcrModalOpen(true);
     setOcrPreview(null);
     setOcrState(createOcrState());
     setOcrWarningsExpanded(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    trackFeatureEvent('holdings', 'ocr_modal_open', { source });
   }
 
   function closeOcrModal() {
@@ -831,6 +952,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     const validRows = ocrPreview.rows.filter((row) => Object.keys(row.errors).length === 0);
     if (!validRows.length) {
       showActionToast('导入失败', 'error', { description: '没有有效行可导入，请重传或手动录入。' });
+      trackActionResult('holdings', 'ocr_import', 'validation_error', {
+        rowCount: ocrPreview.rows.length,
+        validCount: 0
+      });
       return;
     }
     // 重新生成 id，避免与现有流水 id 冲突（与 Excel 粘贴导入一致的打包逻辑）。
@@ -850,6 +975,11 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     setOcrState(createOcrState());
     setOcrWarningsExpanded(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    trackActionResult('holdings', 'ocr_import', 'success', {
+      rowCount: ocrPreview.rows.length,
+      importedCount: validDrafts.length,
+      skippedCount: skipped
+    });
   }
 
   // 在 OCR 预览表格里逐行修改某个字段。修改后同步重算 errors，让「状态/问题」列即时刷新。
@@ -914,6 +1044,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     // 移动端某些 WebView/手势层会出现「点击后 state 已更新，但 UI 不立即重绘」的情况，
     // 往往要等一次导航/返回（popstate）才把弹窗绘出来。这里强制同步 flush，确保立刻渲染。
     flushSync(() => setSwitchPickerOpen(true));
+    trackFeatureEvent('holdings', 'switch_picker_open', {
+      candidateCount: transactions.length,
+      selectedCount: switchPickerSelectedIds.size
+    });
   }
 
   function closeSwitchPicker() {
@@ -939,23 +1073,37 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     else handleDraftChange('switchPairId', '');
     setSwitchPickerOpen(false);
     showActionToast('已准备好分配', remaining > 0 ? 'warning' : 'success', { description: remaining > 0 ? `还有 ${formatCurrency(remaining, '¥', 2)} 未分配` : '已完成全额分配' });
+    trackActionResult('holdings', 'switch_allocation_confirm', remaining > 0 ? 'partial' : 'success', {
+      allocationCount: allocations.length,
+      hasRemaining: remaining > 0
+    });
   }
 
   function handleParsePaste() {
     const text = pasteText;
     if (!text.trim()) {
       showActionToast('粘贴解析', 'warning', { description: '粘贴区为空，请从 Excel 复制一段数据再试。' });
+      trackActionResult('holdings', 'paste_parse', 'empty');
       return;
     }
     const result = parseExcelPaste(text);
     setPasteResult(result);
     if (!result.rows.length) {
       showActionToast('粘贴解析', 'warning', { description: '没有识别到有效行，请检查格式。' });
+      trackActionResult('holdings', 'paste_parse', 'empty', {
+        textLengthBucket: text.length > 5000 ? 'gt_5k' : text.length > 1000 ? '1k_5k' : 'lte_1k'
+      });
       return;
     }
     const validCount = result.rows.filter((row) => Object.keys(row.errors).length === 0).length;
     showActionToast('粘贴解析', 'success', {
       description: `识别 ${result.rows.length} 行，其中有效 ${validCount} 行${result.headerDetected ? '（已识别表头）' : '（按位置映射）'}。`
+    });
+    trackActionResult('holdings', 'paste_parse', 'success', {
+      rowCount: result.rows.length,
+      validCount,
+      headerDetected: Boolean(result.headerDetected),
+      textLengthBucket: text.length > 5000 ? 'gt_5k' : text.length > 1000 ? '1k_5k' : 'lte_1k'
     });
   }
 
@@ -964,6 +1112,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     const validRows = pasteResult.rows.filter((row) => Object.keys(row.errors).length === 0);
     if (!validRows.length) {
       showActionToast('导入失败', 'error', { description: '没有有效行可导入，请根据提示修改后重试。' });
+      trackActionResult('holdings', 'paste_import', 'validation_error', {
+        rowCount: pasteResult.rows.length,
+        validCount: 0
+      });
       return;
     }
     // 重新生成 id 并重映射 switchPairId，保留批次内切换配对同时避免与现有流水 id 冲突。
@@ -990,6 +1142,11 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       description: skipped > 0
         ? `已导入 ${validDrafts.length} 笔，跳过 ${skipped} 笔无效行。`
         : `已导入 ${validDrafts.length} 笔交易。`
+    });
+    trackActionResult('holdings', 'paste_import', 'success', {
+      rowCount: pasteResult.rows.length,
+      importedCount: validDrafts.length,
+      skippedCount: skipped
     });
     setPasteModalOpen(false);
     setPasteText('');
