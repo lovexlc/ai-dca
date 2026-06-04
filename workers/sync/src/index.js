@@ -1,4 +1,20 @@
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
+const FEATURE_PREFIXES = [
+  { prefix: 'holdings', label: '持仓管理' },
+  { prefix: 'markets', label: '行情中心' },
+  { prefix: 'dca_calculator', label: 'DCA 回测' },
+  { prefix: 'dca', label: '定投计划' },
+  { prefix: 'sell_plan', label: '卖出计划' },
+  { prefix: 'new_plan', label: '新建策略' },
+  { prefix: 'trade_plans', label: '交易计划' },
+  { prefix: 'switch_strategy', label: '切换策略' },
+  { prefix: 'fund_switch_analysis', label: '切换分析' },
+  { prefix: 'fund_switch', label: '基金切换' },
+  { prefix: 'notify', label: '消息通知' },
+  { prefix: 'home', label: '首页' },
+  { prefix: 'vix', label: 'VIX 面板' },
+  { prefix: 'premium', label: '高级版' }
+];
 
 function corsHeaders(origin = '*') {
   return {
@@ -220,6 +236,71 @@ async function handleAdminAnalytics(request, env, origin) {
         THEN COALESCE(NULLIF(user_id, ''), visitor_id)
     END) AS unknownUsers
     FROM analytics_events WHERE event_date >= ? AND type IN ('notify_enabled','notify_used')`).bind(since).first();
+  const featureWhere = FEATURE_PREFIXES.map(() => 'type LIKE ?').join(' OR ');
+  const featureCase = `CASE ${FEATURE_PREFIXES.map((item) => `WHEN type LIKE '${item.prefix}_%' THEN '${item.prefix}'`).join(' ')} END`;
+  const featureGroupRows = await env.DB.prepare(`SELECT
+    prefix,
+    COUNT(*) AS total,
+    COUNT(CASE WHEN json_extract(meta, '$.status') = 'success' THEN 1 END) AS success,
+    COUNT(CASE WHEN json_extract(meta, '$.status') IN ('error', 'validation_error') THEN 1 END) AS error,
+    COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), visitor_id)) AS users
+    FROM (
+      SELECT ${featureCase} AS prefix, meta, user_id, visitor_id
+      FROM analytics_events WHERE event_date >= ? AND (${featureWhere})
+    )
+    WHERE prefix IS NOT NULL
+    GROUP BY prefix`).bind(since, ...FEATURE_PREFIXES.map((item) => `${item.prefix}_%`)).all();
+  const featureDetailRows = await env.DB.prepare(`SELECT
+    type,
+    COUNT(*) AS count,
+    COUNT(CASE WHEN json_extract(meta, '$.status') = 'success' THEN 1 END) AS success,
+    COUNT(CASE WHEN json_extract(meta, '$.status') IN ('error', 'validation_error') THEN 1 END) AS error,
+    COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), visitor_id)) AS users
+    FROM analytics_events WHERE event_date >= ? AND (${featureWhere})
+    GROUP BY type ORDER BY count DESC`).bind(since, ...FEATURE_PREFIXES.map((item) => `${item.prefix}_%`)).all();
+  const featureDetailMap = new Map();
+  for (const row of featureGroupRows.results || []) {
+    const prefix = String(row.prefix || '');
+    const matched = FEATURE_PREFIXES.find((item) => item.prefix === prefix);
+    if (!matched) continue;
+    featureDetailMap.set(prefix, {
+      prefix,
+      label: matched.label,
+      total: Number(row.total) || 0,
+      success: Number(row.success) || 0,
+      error: Number(row.error) || 0,
+      users: Number(row.users) || 0,
+      actions: []
+    });
+  }
+  for (const row of featureDetailRows.results || []) {
+    const type = String(row.type || '');
+    const matched = FEATURE_PREFIXES.find((item) => type.startsWith(`${item.prefix}_`));
+    if (!matched) continue;
+    const action = type.slice(matched.prefix.length + 1);
+    let group = featureDetailMap.get(matched.prefix);
+    if (!group) {
+      group = { prefix: matched.prefix, label: matched.label, total: 0, success: 0, error: 0, users: 0, actions: [] };
+      featureDetailMap.set(matched.prefix, group);
+    }
+    const count = Number(row.count) || 0;
+    const success = Number(row.success) || 0;
+    const error = Number(row.error) || 0;
+    group.actions.push({
+      action,
+      label: action,
+      count,
+      success,
+      error,
+      users: Number(row.users) || 0
+    });
+  }
+  const featureDetails = Array.from(featureDetailMap.values())
+    .sort((a, b) => b.total - a.total)
+    .map((group) => ({
+      ...group,
+      actions: group.actions.sort((a, b) => b.count - a.count)
+    }));
 
   return json({
     rangeDays,
@@ -251,6 +332,7 @@ async function handleAdminAnalytics(request, env, origin) {
       { key: '通知使用', value: Number(cardsRows?.notifyEvents) || 0, users: Number(cardsRows?.notifyUsers) || 0 },
       { key: '切换运行', value: Number(cardsRows?.switchRuns) || 0, users: Number(cardsRows?.switchUsers) || 0 }
     ],
+    featureDetails,
     recent: (recentRows.results || []).map((row) => ({ ...row, meta: (() => { try { return JSON.parse(row.meta || '{}'); } catch { return {}; } })() })),
     userActivity: (userActivityRows.results || []).map((row) => ({
       user: String(row.user || ''),
