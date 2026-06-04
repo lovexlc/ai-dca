@@ -14,17 +14,13 @@ import {
   formatSwitchDate as formatDate,
   formatSwitchPercent as formatPercent,
   formatSwitchPrice as formatPrice,
-  applySwitchRuleToPrefs,
-  buildSwitchRuleId,
   loadNasdaqList as loadNasdqList,
-  normalizeSwitchRules,
   nowIso,
   readSwitchPrefs as readPrefs,
   writeSwitchPrefs as writePrefs,
 } from './switchStrategyHelpers.js';
 import {
   SwitchStrategyQuickRecordModal,
-  SwitchStrategyRulesPanel,
   SwitchStrategySnapshotModal,
   SwitchStrategyWorkerPanel
 } from './SwitchStrategyPanels.jsx';
@@ -75,7 +71,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   // “所有纳指 ETF（未分类）”折叠状态：当 H/L 组都有内容时默认折叠。
   const [nasdaqPoolExpanded, setNasdaqPoolExpanded] = useState(true);
   const [nasdaqPoolTouched, setNasdaqPoolTouched] = useState(false);
-  const [switchView, setSwitchView] = useState(initialView === 'rules' ? 'rules' : (initialView === 'config' ? 'config' : 'opportunity'));
+  const [switchView, setSwitchView] = useState(initialView === 'config' ? 'config' : 'opportunity');
 
   const switchMeta = () => ({
     embedded,
@@ -118,7 +114,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   useEffect(() => { writePrefs(prefs); }, [prefs]);
 
   useEffect(() => {
-    setSwitchView(initialView === 'rules' ? 'rules' : (initialView === 'config' ? 'config' : 'opportunity'));
+    setSwitchView(initialView === 'config' ? 'config' : 'opportunity');
   }, [initialView]);
 
   // 首次入页：从 worker 拉取配置 + 快照。失败不阻断 UI（本地缓存仍可用）。
@@ -281,7 +277,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         benchmarkCodes,
         enabledCodes,
         premiumClass: (prefs && typeof prefs.premiumClass === 'object' && prefs.premiumClass) ? prefs.premiumClass : {},
-        rules: normalizeSwitchRules(prefs?.rules, prefs),
         intraSellLowerPct: Number(prefs?.intraSellLowerPct),
         intraBuyOtherPct: Number(prefs?.intraBuyOtherPct)
       });
@@ -309,7 +304,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       benchmarkCodes: prefs?.benchmarkCodes || [],
       enabledCodes: prefs?.enabledCodes || [],
       premiumClass: prefs?.premiumClass || {},
-      rules: normalizeSwitchRules(prefs?.rules, prefs),
       intraSellLowerPct: prefs?.intraSellLowerPct,
       intraBuyOtherPct: prefs?.intraBuyOtherPct
     });
@@ -330,7 +324,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       !sameCodes(workerConfig.benchmarkCodes || [], desired.benchmarkCodes)
       || !sameCodes(workerConfig.enabledCodes || [], desired.enabledCodes)
       || !sameClassMap(workerConfig.premiumClass || {}, desired.premiumClass)
-      || JSON.stringify(workerConfig.rules || []) !== JSON.stringify(desired.rules || [])
       || Number(workerConfig.intraSellLowerPct) !== desired.intraSellLowerPct
       || Number(workerConfig.intraBuyOtherPct) !== desired.intraBuyOtherPct
     );
@@ -345,13 +338,11 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     workerConfig.benchmarkCodes,
     workerConfig.enabledCodes,
     workerConfig.premiumClass,
-    workerConfig.rules,
     workerConfig.intraSellLowerPct,
     workerConfig.intraBuyOtherPct,
     prefs?.benchmarkCodes,
     prefs?.enabledCodes,
     prefs?.premiumClass,
-    prefs?.rules,
     prefs?.intraSellLowerPct,
     prefs?.intraBuyOtherPct,
     persistWorkerConfig,
@@ -464,7 +455,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     setPrefs((prev) => {
       const before = Array.isArray(prev.enabledCodes) ? prev.enabledCodes : [];
       if (before.length === next.length && before.every((v, i) => v === next[i])) return prev;
-      return updateActiveRuleInPrefs(prev, { enabledCodes: next });
+      return { ...prev, enabledCodes: next };
     });
   }, [exchangeFunds, premiumClassKey]);
 
@@ -472,7 +463,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   // 里所有 code 都必须落在 exchangeFunds 之内。这里在 exchangeFunds 变化后：
   //   1) 先按原顺序保留仍然持仓且已分类（H/L）的 code；
   //   2) 再把当前持仓中已分类、但尚未列入 benchmarkCodes 的 code 追加进去；
-  //   3) 如果最终为空，保留空基准，让当前规则从未配置状态开始。
+  //   3) 如果最终为空（极端情况：暂时没有任何已分类持仓），fallback 到第一只持仓 ETF。
   // 这样：
   //   - 新增已分类持仓（例如再买入一只 L 类 ETF）会自动成为基准；
   //   - 持仓但还没分类的 ETF（premiumClass 没标 H/L，例如 563020）不会被算成基准，
@@ -491,9 +482,11 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       // 按 exchangeFunds 顺序追加尚未在 benchmarkCodes 中、但已分类的持仓 code。
       const appended = heldClassified.filter((code) => !keptSet.has(code));
       const merged = [...kept, ...appended];
-      const next = merged;
+      // fallback：如果没有任何已分类持仓，至少保住一个非空 benchmarkCodes（用首个持仓），
+      // 避免下游空数组造成的边角问题；用户分类后下次 effect 会刷成正确值。
+      const next = merged.length ? merged : [heldOrder[0]];
       if (next.length === before.length && next.every((v, i) => v === before[i])) return prev;
-      return updateActiveRuleInPrefs(prev, { benchmarkCodes: next });
+      return { ...prev, benchmarkCodes: next };
     });
   }, [exchangeFunds, benchmarkCodesJoined, premiumClassKey]);
 
@@ -621,70 +614,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       valueKind: value === '' ? 'empty' : Number.isFinite(Number(value)) ? 'number' : typeof value,
       ...switchMeta()
     });
-    setPrefs((prev) => updateActiveRuleInPrefs(prev, { [key]: value }));
-  }
-  function updateActiveRuleInPrefs(prev, patch) {
-    const rules = normalizeSwitchRules(prev?.rules, prev);
-    const activeId = String(prev?.activeRuleId || rules[0]?.id || '').trim();
-    const activeIndex = Math.max(0, rules.findIndex((rule) => rule.id === activeId));
-    const nextRules = rules.map((rule, index) => (
-      index === activeIndex ? { ...rule, ...patch } : rule
-    ));
-    const nextActive = normalizeSwitchRules(nextRules, prev)[activeIndex] || nextRules[0];
-    return applySwitchRuleToPrefs({
-      ...prev,
-      rules: normalizeSwitchRules(nextRules, prev),
-      activeRuleId: nextActive.id
-    }, nextActive);
-  }
-  function handleRuleChange(ruleId, patch) {
-    setPrefs((prev) => {
-      const rules = normalizeSwitchRules(prev?.rules, prev);
-      const nextRules = rules.map((rule) => (rule.id === ruleId ? { ...rule, ...patch } : rule));
-      const activeRule = nextRules.find((rule) => rule.id === (prev.activeRuleId || ruleId)) || nextRules[0];
-      return applySwitchRuleToPrefs({
-        ...prev,
-        rules: normalizeSwitchRules(nextRules, prev),
-        activeRuleId: activeRule.id
-      }, activeRule);
-    });
-  }
-  function handleRuleSelect(ruleId) {
-    setPrefs((prev) => {
-      const rules = normalizeSwitchRules(prev?.rules, prev);
-      const nextActive = rules.find((rule) => rule.id === ruleId) || rules[0];
-      return applySwitchRuleToPrefs({ ...prev, rules, activeRuleId: nextActive.id }, nextActive);
-    });
-  }
-  function handleRuleAdd() {
-    setPrefs((prev) => {
-      const currentRules = normalizeSwitchRules(prev?.rules, prev);
-      const nextRule = {
-        id: buildSwitchRuleId('switch-rule'),
-        name: `规则 ${currentRules.length + 1}`,
-        enabled: true,
-        benchmarkCodes: [],
-        enabledCodes: [],
-        premiumClass: {},
-        arbTargetPct: 2,
-        intraSellLowerPct: 1,
-        intraBuyOtherPct: 3,
-        otcPremiumThresholdPct: 8,
-        otcMinIntraPremiumLow: 1,
-        otcMinIntraPremiumHigh: 2
-      };
-      const nextRules = normalizeSwitchRules([...currentRules, nextRule], prev);
-      return applySwitchRuleToPrefs({ ...prev, rules: nextRules, activeRuleId: nextRule.id }, nextRule);
-    });
-  }
-  function handleRuleRemove(ruleId) {
-    setPrefs((prev) => {
-      const currentRules = normalizeSwitchRules(prev?.rules, prev);
-      if (currentRules.length <= 1) return prev;
-      const nextRules = normalizeSwitchRules(currentRules.filter((rule) => rule.id !== ruleId), prev);
-      const nextActive = nextRules.find((rule) => rule.id === prev.activeRuleId) || nextRules[0];
-      return applySwitchRuleToPrefs({ ...prev, rules: nextRules, activeRuleId: nextActive.id }, nextActive);
-    });
+    setPrefs((prev) => ({ ...prev, [key]: value }));
   }
   // 拖拽分类：将 code 套入 H / L / 未分类。targetClass=null 表示从分类中移出。
   function setCodeClass(code, targetClass) {
@@ -701,7 +631,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       const cls = { ...((prev && prev.premiumClass) || {}) };
       if (targetClass === 'H' || targetClass === 'L') cls[code] = targetClass;
       else delete cls[code];
-      return updateActiveRuleInPrefs(prev, { premiumClass: cls });
+      return { ...prev, premiumClass: cls };
     });
   }
   // 拖拽状态：高亮当前悬停中的接收区。
@@ -837,18 +767,11 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       + (Hrow ? Hrow.benches.length * Hrow.cands.length : 0);
     return { benches, Lbenches, Hbenches, Lrow, Hrow, pairs, Hpool, Lpool, cls };
   }, [prefs?.benchmarkCodes, prefs?.enabledCodes, prefs?.premiumClass]);
-  const validSwitchRuleCount = useMemo(() => {
-    return normalizeSwitchRules(prefs?.rules, prefs).filter((rule) => (
-      rule.enabled !== false && Number(rule.intraBuyOtherPct) > Number(rule.intraSellLowerPct)
-    )).length;
-  }, [prefs?.rules, prefs?.intraSellLowerPct, prefs?.intraBuyOtherPct]);
 
   const workerRunDisabledReason = workerStatus.running
     ? '正在运行'
     : workerStatus.saving
     ? '配置同步中'
-    : validSwitchRuleCount === 0
-    ? '先配置有效规则'
     : !switchSummary.benches.length
     ? '先配置 H/L 基准'
     : switchSummary.pairs === 0
@@ -1007,14 +930,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         formatDate={formatDate}
         formatPrice={formatPrice}
         formatPercent={formatPercent}
-      />
-      <SwitchStrategyRulesPanel
-        rules={normalizeSwitchRules(prefs?.rules, prefs)}
-        activeRuleId={prefs.activeRuleId}
-        onRuleSelect={handleRuleSelect}
-        onRuleChange={handleRuleChange}
-        onRuleAdd={handleRuleAdd}
-        onRuleRemove={handleRuleRemove}
       />
       <SwitchStrategyClassificationPanel
         prefs={prefs}

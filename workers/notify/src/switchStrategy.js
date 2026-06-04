@@ -57,16 +57,6 @@ const MAX_CANDIDATES = 20;
 //     同类、未分类、cand 未分类 都不触发。
 const DEFAULT_INTRA_SELL_LOWER_PCT = 1;   // 规则 A：差价收窄阈值
 const DEFAULT_INTRA_BUY_OTHER_PCT = 3;    // 规则 B：差价扩大阈值
-const DEFAULT_SWITCH_RULE = {
-  id: 'rule-default',
-  name: '默认规则',
-  enabled: true,
-  benchmarkCodes: [],
-  enabledCodes: [],
-  premiumClass: {},
-  intraSellLowerPct: DEFAULT_INTRA_SELL_LOWER_PCT,
-  intraBuyOtherPct: DEFAULT_INTRA_BUY_OTHER_PCT
-};
 const DELAYED_OPEN_PREMIUM_THRESHOLD_PCT = 10;
 const DELAYED_OPEN_UNTIL_MINUTE = 10 * 60 + 30;
 
@@ -82,84 +72,6 @@ function pickPercent(value, fallback) {
   if (num < -50) return -50;
   if (num > 50) return 50;
   return num;
-}
-
-function normalizeSwitchRule(rule = {}, index = 0, fallbackSource = {}) {
-  const fallback = index === 0
-    ? {
-        ...DEFAULT_SWITCH_RULE,
-        intraSellLowerPct: fallbackSource?.intraSellLowerPct,
-        intraBuyOtherPct: fallbackSource?.intraBuyOtherPct
-      }
-    : {
-        ...DEFAULT_SWITCH_RULE,
-        id: `rule-${index + 1}`,
-        name: `规则 ${index + 1}`
-      };
-  return {
-    id: String(rule?.id || fallback.id || `rule-${index + 1}`).trim().slice(0, 64),
-    name: String(rule?.name || fallback.name || `规则 ${index + 1}`).trim().slice(0, 40),
-    enabled: rule?.enabled !== false,
-    benchmarkCodes: normalizeCodeList(rule?.benchmarkCodes, fallback.benchmarkCodes || fallbackSource?.benchmarkCodes),
-    enabledCodes: normalizeCodeList(rule?.enabledCodes, fallback.enabledCodes || fallbackSource?.enabledCodes),
-    premiumClass: normalizePremiumClass(rule?.premiumClass || fallback.premiumClass || fallbackSource?.premiumClass),
-    intraSellLowerPct: pickPercent(rule?.intraSellLowerPct, fallback.intraSellLowerPct),
-    intraBuyOtherPct: pickPercent(rule?.intraBuyOtherPct, fallback.intraBuyOtherPct)
-  };
-}
-
-function normalizeSwitchRules(input, fallbackSource = {}) {
-  const raw = Array.isArray(input) ? input : [];
-  const source = raw.length ? raw.map((rule, index) => (
-    index === 0 ? {
-      ...rule,
-      benchmarkCodes: rule?.benchmarkCodes ?? fallbackSource?.benchmarkCodes,
-      enabledCodes: rule?.enabledCodes ?? fallbackSource?.enabledCodes,
-      premiumClass: rule?.premiumClass ?? fallbackSource?.premiumClass
-    } : rule
-  )) : [{
-    ...DEFAULT_SWITCH_RULE,
-    benchmarkCodes: fallbackSource?.benchmarkCodes,
-    enabledCodes: fallbackSource?.enabledCodes,
-    premiumClass: fallbackSource?.premiumClass,
-    intraSellLowerPct: fallbackSource?.intraSellLowerPct,
-    intraBuyOtherPct: fallbackSource?.intraBuyOtherPct
-  }];
-  const seen = new Set();
-  const rules = [];
-  for (const item of source) {
-    const rule = normalizeSwitchRule(item, rules.length, fallbackSource);
-    if (!rule.id || seen.has(rule.id)) rule.id = `rule-${rules.length + 1}`;
-    seen.add(rule.id);
-    rules.push(rule);
-    if (rules.length >= MAX_CANDIDATES / 2) break;
-  }
-  return rules.length ? rules : [normalizeSwitchRule(DEFAULT_SWITCH_RULE, 0, fallbackSource)];
-}
-
-function normalizeCodeList(input, fallback = []) {
-  const raw = Array.isArray(input) ? input : fallback;
-  const seen = new Set();
-  const codes = [];
-  for (const item of raw || []) {
-    const code = sanitizeCode(item);
-    if (!code || seen.has(code)) continue;
-    seen.add(code);
-    codes.push(code);
-    if (codes.length >= MAX_CANDIDATES) break;
-  }
-  return codes;
-}
-
-function normalizePremiumClass(input = {}) {
-  const rawClass = input && typeof input === 'object' ? input : {};
-  const premiumClass = {};
-  for (const [code, value] of Object.entries(rawClass)) {
-    const c = sanitizeCode(code);
-    const v = String(value || '').trim().toUpperCase();
-    if (c && (v === 'H' || v === 'L')) premiumClass[c] = v;
-  }
-  return premiumClass;
 }
 
 // 配置与前端 aiDcaSwitchStrategyPrefs 同名，不重复定义一套参数。
@@ -197,42 +109,23 @@ export function normalizeSwitchConfig(input = {}) {
     enabledCodes.push(code);
     if (enabledCodes.length >= MAX_CANDIDATES) break;
   }
-  const legacyPremiumClass = normalizePremiumClass(input?.premiumClass);
-  const rules = normalizeSwitchRules(input?.rules, {
-    ...input,
-    benchmarkCodes,
-    enabledCodes,
-    premiumClass: legacyPremiumClass
-  });
-  const unionBenchmarks = [];
-  const unionEnabled = [];
-  const unionClass = {};
-  const seenBench = new Set();
-  const seenEnabled = new Set();
-  for (const rule of rules) {
-    for (const code of rule.benchmarkCodes || []) {
-      if (!seenBench.has(code)) {
-        seenBench.add(code);
-        unionBenchmarks.push(code);
-      }
-    }
-    for (const code of rule.enabledCodes || []) {
-      if (!seenBench.has(code) && !seenEnabled.has(code)) {
-        seenEnabled.add(code);
-        unionEnabled.push(code);
-      }
-    }
-    Object.assign(unionClass, normalizePremiumClass(rule.premiumClass));
+  // premiumClass: 仅保留出现在 benchmarkCodes / enabledCodes 中的代码，且值为 'H' | 'L'。
+  const premiumClass = {};
+  const rawClass = (input && typeof input.premiumClass === 'object' && input.premiumClass) ? input.premiumClass : {};
+  const validCodes = new Set([...benchmarkCodes, ...enabledCodes]);
+  for (const [code, value] of Object.entries(rawClass)) {
+    const c = sanitizeCode(code);
+    if (!c || !validCodes.has(c)) continue;
+    const v = String(value || '').trim().toUpperCase();
+    if (v === 'H' || v === 'L') premiumClass[c] = v;
   }
-  const primaryRule = rules[0] || DEFAULT_SWITCH_RULE;
   return {
     enabled: Boolean(input?.enabled),
-    benchmarkCodes: unionBenchmarks.length ? unionBenchmarks : benchmarkCodes,
-    enabledCodes: unionEnabled.length ? unionEnabled : enabledCodes,
-    premiumClass: Object.keys(unionClass).length ? unionClass : legacyPremiumClass,
-    rules,
-    intraSellLowerPct: pickPercent(input?.intraSellLowerPct, primaryRule.intraSellLowerPct),
-    intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, primaryRule.intraBuyOtherPct),
+    benchmarkCodes,
+    enabledCodes,
+    premiumClass,
+    intraSellLowerPct: pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
+    intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
     clientLabel: String(input?.clientLabel || '').trim().slice(0, 120),
     updatedAt: String(input?.updatedAt || '').trim() || new Date().toISOString()
   };
@@ -240,21 +133,18 @@ export function normalizeSwitchConfig(input = {}) {
 
 export function isSwitchConfigRunnable(config) {
   if (!config || !config.enabled) return false;
-  const rules = normalizeSwitchRules(config.rules, config).filter((rule) => rule.enabled);
-  if (!rules.length) return false;
-  for (const rule of rules) {
-    if (!(rule.intraBuyOtherPct > rule.intraSellLowerPct)) continue;
-    const benches = Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes : [];
-    if (!benches.length) continue;
-    const enabled = Array.isArray(rule.enabledCodes) ? rule.enabledCodes : [];
-    const cls = normalizePremiumClass(rule.premiumClass);
-    const pool = Array.from(new Set([...benches, ...enabled])).filter((c) => cls[c] === 'H' || cls[c] === 'L');
-    for (const b of benches) {
-      const bc = cls[b];
-      if (bc !== 'H' && bc !== 'L') continue;
-      const opp = bc === 'H' ? 'L' : 'H';
-      if (pool.some((c) => c !== b && cls[c] === opp)) return true;
-    }
+  if (!Number.isFinite(config.intraSellLowerPct) || !Number.isFinite(config.intraBuyOtherPct)) return false;
+  if (config.intraBuyOtherPct <= config.intraSellLowerPct) return false;
+  const benches = Array.isArray(config.benchmarkCodes) ? config.benchmarkCodes : [];
+  if (!benches.length) return false;
+  const enabled = Array.isArray(config.enabledCodes) ? config.enabledCodes : [];
+  const cls = (config && typeof config.premiumClass === 'object' && config.premiumClass) ? config.premiumClass : {};
+  const pool = Array.from(new Set([...benches, ...enabled])).filter((c) => cls[c] === 'H' || cls[c] === 'L');
+  for (const b of benches) {
+    const bc = cls[b];
+    if (bc !== 'H' && bc !== 'L') continue;
+    const opp = bc === 'H' ? 'L' : 'H';
+    if (pool.some((c) => c !== b && cls[c] === opp)) return true;
   }
   return false;
 }
@@ -490,87 +380,88 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     return (ref - t) / 86400000;
   }
 
-  const rules = normalizeSwitchRules(config.rules, config);
-  const byBenchmark = rules.flatMap((ruleConfig) => {
-    const benchmarkCodes = Array.isArray(ruleConfig.benchmarkCodes) ? ruleConfig.benchmarkCodes : [];
-    const enabledCodes = Array.isArray(ruleConfig.enabledCodes) ? ruleConfig.enabledCodes : [];
-    const premiumClass = normalizePremiumClass(ruleConfig.premiumClass);
-    const classifiedPool = Array.from(new Set([...benchmarkCodes, ...enabledCodes]))
-      .filter((c) => premiumClass[c] === 'H' || premiumClass[c] === 'L');
-    return benchmarkCodes.map((benchmarkCode) => {
-      const benchmarkClass = premiumClass[benchmarkCode] || null;
-      const oppClass = benchmarkClass === 'H' ? 'L' : (benchmarkClass === 'L' ? 'H' : null);
-      const eligibleCodes = oppClass
-        ? classifiedPool.filter((c) => c !== benchmarkCode && premiumClass[c] === oppClass)
-        : enabledCodes;
+  const benchmarkCodes = Array.isArray(config.benchmarkCodes) ? config.benchmarkCodes : [];
+  const enabledCodes = Array.isArray(config.enabledCodes) ? config.enabledCodes : [];
+  const premiumClass = (config && typeof config.premiumClass === 'object' && config.premiumClass) ? config.premiumClass : {};
 
-      const benchPrice = Number(priceMap?.[benchmarkCode]?.price);
-      const benchNav = Number(navByCode?.[benchmarkCode]?.nav);
-      const benchNavDate = String(navByCode?.[benchmarkCode]?.latestNavDate || '').trim();
-      const benchNavStale = navAgeDays(benchNavDate) > NAV_STALE_DAYS;
-      const benchDelayedOpen = getDelayedOpenInfo(benchmarkCode, priceMap, navByCode, computedAtIso, navAgeDays);
-      const benchPremium = Number.isFinite(benchPrice) && Number.isFinite(benchNav) && benchNav > 0 && !benchNavStale && !benchDelayedOpen.delayed
-        ? ((benchPrice - benchNav) / benchNav) * 100
+  // 候选池 = (enabledCodes ∪ benchmarkCodes) \ self，这样一 H 一 L 的两只持仓
+  // 也能互为候选，而不是仅限于 enabledCodes（= 非持仓分类代码）。
+  const classifiedPool = Array.from(new Set([...benchmarkCodes, ...enabledCodes]))
+    .filter((c) => premiumClass[c] === 'H' || premiumClass[c] === 'L');
+  const byBenchmark = benchmarkCodes.map((benchmarkCode) => {
+    // v3：bench 已分类时，只留对立类（H↔L）的候选，同类/未分类全部剔除。
+    const benchmarkClass = premiumClass[benchmarkCode] || null;
+    const oppClass = benchmarkClass === 'H' ? 'L' : (benchmarkClass === 'L' ? 'H' : null);
+    const eligibleCodes = oppClass
+      ? classifiedPool.filter((c) => c !== benchmarkCode && premiumClass[c] === oppClass)
+      : enabledCodes;
+
+    const benchPrice = Number(priceMap?.[benchmarkCode]?.price);
+    const benchNav = Number(navByCode?.[benchmarkCode]?.nav);
+    const benchNavDate = String(navByCode?.[benchmarkCode]?.latestNavDate || '').trim();
+    const benchNavStale = navAgeDays(benchNavDate) > NAV_STALE_DAYS;
+    const benchDelayedOpen = getDelayedOpenInfo(benchmarkCode, priceMap, navByCode, computedAtIso, navAgeDays);
+    const benchPremium = Number.isFinite(benchPrice) && Number.isFinite(benchNav) && benchNav > 0 && !benchNavStale && !benchDelayedOpen.delayed
+      ? ((benchPrice - benchNav) / benchNav) * 100
+      : null;
+
+    const candidates = eligibleCodes.map((code) => {
+      const candPrice = Number(priceMap?.[code]?.price);
+      const candNav = Number(navByCode?.[code]?.nav);
+      const candNavDate = String(navByCode?.[code]?.latestNavDate || '').trim();
+      const navMissing = !Number.isFinite(candNav) || candNav <= 0;
+      const navStale = !navMissing && navAgeDays(candNavDate) > NAV_STALE_DAYS;
+      const priceMissing = !Number.isFinite(candPrice) || candPrice <= 0;
+      const candDelayedOpen = getDelayedOpenInfo(code, priceMap, navByCode, computedAtIso, navAgeDays);
+      const candPremium = (!navMissing && !priceMissing && !navStale && !candDelayedOpen.delayed)
+        ? ((candPrice - candNav) / candNav) * 100
         : null;
-
-      const candidates = eligibleCodes.map((code) => {
-        const candPrice = Number(priceMap?.[code]?.price);
-        const candNav = Number(navByCode?.[code]?.nav);
-        const candNavDate = String(navByCode?.[code]?.latestNavDate || '').trim();
-        const navMissing = !Number.isFinite(candNav) || candNav <= 0;
-        const navStale = !navMissing && navAgeDays(candNavDate) > NAV_STALE_DAYS;
-        const priceMissing = !Number.isFinite(candPrice) || candPrice <= 0;
-        const candDelayedOpen = getDelayedOpenInfo(code, priceMap, navByCode, computedAtIso, navAgeDays);
-        const candPremium = (!navMissing && !priceMissing && !navStale && !candDelayedOpen.delayed)
-          ? ((candPrice - candNav) / candNav) * 100
-          : null;
-        const diff = Number.isFinite(benchPremium) && Number.isFinite(candPremium)
-          ? benchPremium - candPremium
-          : null;
-        let note = '';
-        if (navMissing) note = 'nav-missing';
-        else if (navStale) note = 'nav-stale';
-        else if (priceMissing) note = 'price-missing';
-        else if (candDelayedOpen.delayed) note = 'delayed-open';
-        else if (benchDelayedOpen.delayed) note = 'benchmark-delayed-open';
-        else if (!Number.isFinite(benchPremium)) note = 'benchmark-unavailable';
-        return {
-          code,
-          name: navByCode?.[code]?.name || '',
-          price: Number.isFinite(candPrice) ? candPrice : null,
-          nav: Number.isFinite(candNav) ? candNav : null,
-          navDate: candNavDate,
-          premiumPct: Number.isFinite(candPremium) ? candPremium : null,
-          previousClosePremiumPct: Number.isFinite(candDelayedOpen.previousClosePremiumPct) ? candDelayedOpen.previousClosePremiumPct : null,
-          delayedOpen: Boolean(candDelayedOpen.delayed),
-          delayedUntil: candDelayedOpen.delayedUntil || '',
-          spreadVsBenchmarkPct: Number.isFinite(diff) ? diff : null,
-          candClass: premiumClass[code] || null,
-          note
-        };
-      });
-
+      const diff = Number.isFinite(benchPremium) && Number.isFinite(candPremium)
+        ? benchPremium - candPremium
+        : null;
+      // 标注原因，供 UI / 调试使用；评估器看到 spreadVsBenchmarkPct=null 就不会触发。
+      let note = '';
+      if (navMissing) note = 'nav-missing';
+      else if (navStale) note = 'nav-stale';
+      else if (priceMissing) note = 'price-missing';
+      else if (candDelayedOpen.delayed) note = 'delayed-open';
+      else if (benchDelayedOpen.delayed) note = 'benchmark-delayed-open';
+      else if (!Number.isFinite(benchPremium)) note = 'benchmark-unavailable';
       return {
-        ruleId: ruleConfig.id,
-        ruleName: ruleConfig.name,
-        benchmarkCode,
-        benchmarkName: navByCode?.[benchmarkCode]?.name || '',
-        benchmarkClass,
-        benchmarkPrice: Number.isFinite(benchPrice) ? benchPrice : null,
-        benchmarkNav: Number.isFinite(benchNav) ? benchNav : null,
-        benchmarkNavDate: benchNavDate,
-        benchmarkPremiumPct: Number.isFinite(benchPremium) ? benchPremium : null,
-        benchmarkPreviousClosePremiumPct: Number.isFinite(benchDelayedOpen.previousClosePremiumPct) ? benchDelayedOpen.previousClosePremiumPct : null,
-        benchmarkDelayedOpen: Boolean(benchDelayedOpen.delayed),
-        benchmarkDelayedUntil: benchDelayedOpen.delayedUntil || '',
-        benchmarkNote: !Number.isFinite(benchPrice) || benchPrice <= 0
-          ? 'price-missing'
-          : (!Number.isFinite(benchNav) || benchNav <= 0)
-            ? 'nav-missing'
-            : (benchNavStale ? 'nav-stale' : (benchDelayedOpen.delayed ? 'delayed-open' : '')),
-        candidates
+        code,
+        name: navByCode?.[code]?.name || '',
+        price: Number.isFinite(candPrice) ? candPrice : null,
+        nav: Number.isFinite(candNav) ? candNav : null,
+        navDate: candNavDate,
+        premiumPct: Number.isFinite(candPremium) ? candPremium : null,
+        previousClosePremiumPct: Number.isFinite(candDelayedOpen.previousClosePremiumPct) ? candDelayedOpen.previousClosePremiumPct : null,
+        delayedOpen: Boolean(candDelayedOpen.delayed),
+        delayedUntil: candDelayedOpen.delayedUntil || '',
+        // diff = benchPremium − candPremium，与页面 intraSignals 中同名。
+        spreadVsBenchmarkPct: Number.isFinite(diff) ? diff : null,
+        candClass: premiumClass[code] || null,
+        note
       };
     });
+
+    return {
+      benchmarkCode,
+      benchmarkName: navByCode?.[benchmarkCode]?.name || '',
+      benchmarkClass,
+      benchmarkPrice: Number.isFinite(benchPrice) ? benchPrice : null,
+      benchmarkNav: Number.isFinite(benchNav) ? benchNav : null,
+      benchmarkNavDate: benchNavDate,
+      benchmarkPremiumPct: Number.isFinite(benchPremium) ? benchPremium : null,
+      benchmarkPreviousClosePremiumPct: Number.isFinite(benchDelayedOpen.previousClosePremiumPct) ? benchDelayedOpen.previousClosePremiumPct : null,
+      benchmarkDelayedOpen: Boolean(benchDelayedOpen.delayed),
+      benchmarkDelayedUntil: benchDelayedOpen.delayedUntil || '',
+      benchmarkNote: !Number.isFinite(benchPrice) || benchPrice <= 0
+        ? 'price-missing'
+        : (!Number.isFinite(benchNav) || benchNav <= 0)
+          ? 'nav-missing'
+          : (benchNavStale ? 'nav-stale' : (benchDelayedOpen.delayed ? 'delayed-open' : '')),
+      candidates
+    };
   });
 
   const ready = byBenchmark.some((b) =>
@@ -580,15 +471,13 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
 
   // signals: 与前端原 intraSignals 同语义的「当前命中规则」列表（无 dedup，每次快照重算）。
   // 前端 UI 直接渲染这一列表，避免浏览器再独立算一份。
+  const sellLowerCfg = Number(config.intraSellLowerPct);
+  const buyOtherCfg = Number(config.intraBuyOtherPct);
   const signals = [];
   for (const group of byBenchmark) {
     const benchCode = group?.benchmarkCode || '';
     if (!benchCode) continue;
     if (!Number.isFinite(group?.benchmarkPremiumPct)) continue;
-    const ruleConfig = rules.find((rule) => rule.id === group.ruleId);
-    if (!ruleConfig || !ruleConfig.enabled) continue;
-    if (!(Number(ruleConfig.intraBuyOtherPct) > Number(ruleConfig.intraSellLowerPct))) continue;
-    const premiumClass = normalizePremiumClass(ruleConfig.premiumClass);
     const benchClass = premiumClass[benchCode];
     for (const cand of (group.candidates || [])) {
       const candClass = premiumClass[cand.code];
@@ -597,32 +486,24 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       let gap = NaN;
       if (benchClass === 'H') gap = diff;
       else if (benchClass === 'L') gap = -diff;
-      const rule = classifyRule({
-        benchClass,
-        candClass,
-        gap,
-        sellLower: Number(ruleConfig.intraSellLowerPct),
-        buyOther: Number(ruleConfig.intraBuyOtherPct)
-      });
+      const rule = classifyRule({ benchClass, candClass, gap, sellLower: sellLowerCfg, buyOther: buyOtherCfg });
       if (rule === 'none') continue;
       const hCode = benchClass === 'H' ? benchCode : cand.code;
       const lCode = benchClass === 'H' ? cand.code : benchCode;
       const tag = rule === 'A' ? '差价收窄' : '差价扩大';
       const arrow = rule === 'A' ? '低→高' : '高→低';
       const cmp = rule === 'A' ? '<' : '>';
-      const threshold = rule === 'A' ? Number(ruleConfig.intraSellLowerPct) : Number(ruleConfig.intraBuyOtherPct);
+      const threshold = rule === 'A' ? sellLowerCfg : buyOtherCfg;
       const gapStr = (gap >= 0 ? '+' : '') + gap.toFixed(2);
       signals.push({
         kind: rule,
-        ruleId: ruleConfig.id,
-        ruleName: ruleConfig.name,
         from: benchCode,
         fromName: group.benchmarkName || benchCode,
         to: cand.code,
         toName: cand.name || cand.code,
         gapPct: gap,
         threshold,
-        description: `${hCode}(H) − ${lCode}(L) 溢价差 ${gapStr}% ${cmp} ${threshold}%（${ruleConfig.name} · ${tag}，${arrow}）：卖 ${benchCode} 买 ${cand.code}`
+        description: `${hCode}(H) − ${lCode}(L) 溢价差 ${gapStr}% ${cmp} ${threshold}%（${tag}，${arrow}）：卖 ${benchCode} 买 ${cand.code}`
       });
     }
   }
@@ -631,9 +512,8 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     computedAt: computedAtIso,
     intraSellLowerPct: Number(config.intraSellLowerPct),
     intraBuyOtherPct: Number(config.intraBuyOtherPct),
-    rules,
     // 随快照一起带 premiumClass，供 evaluateSwitchTriggers 使用。
-    premiumClass: config.premiumClass || {},
+    premiumClass,
     byBenchmark,
     // signals: 前端 UI 直接渲染的「当前命中规则」列表（无 dedup）。
     signals,
@@ -659,7 +539,9 @@ function classifyRule({ benchClass, candClass, gap, sellLower, buyOther }) {
 }
 
 export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
-  const rules = normalizeSwitchRules(snapshot.rules, snapshot);
+  const sellLower = Number(snapshot.intraSellLowerPct);
+  const buyOther = Number(snapshot.intraBuyOtherPct);
+  const premiumClass = (snapshot && typeof snapshot.premiumClass === 'object' && snapshot.premiumClass) ? snapshot.premiumClass : {};
   const nextTriggerStates = {};
   const triggers = [];
 
@@ -668,17 +550,14 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
     const benchmark = group?.benchmarkCode || '';
     const benchName = group?.benchmarkName || '';
     if (!benchmark) continue;
-    const ruleConfig = rules.find((rule) => rule.id === group.ruleId);
-    if (!ruleConfig) continue;
-    const premiumClass = normalizePremiumClass(ruleConfig.premiumClass);
     const benchClass = premiumClass[benchmark];
     for (const cand of group.candidates || []) {
+      const pairKey = `${benchmark}:${cand.code}`;
       const candClass = premiumClass[cand.code];
       // Number(null) 会变成 0，会被误当作「diff = 0%」。仅在原始值为 number 时才计算。
       const rawDiff = cand.spreadVsBenchmarkPct;
       const diff = (typeof rawDiff === 'number' && Number.isFinite(rawDiff)) ? rawDiff : NaN;
       if (!Number.isFinite(diff)) {
-        const pairKey = `${benchmark}:${cand.code}:${ruleConfig.id}`;
         const prev = prevTriggerStates?.[pairKey];
         if (prev) nextTriggerStates[pairKey] = prev;
         continue;
@@ -688,36 +567,24 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
       let gap = NaN;
       if (benchClass === 'H') gap = diff;
       else if (benchClass === 'L') gap = -diff;
-      const pairKey = `${benchmark}:${cand.code}:${ruleConfig.id}`;
-      if (!ruleConfig.enabled || !(Number(ruleConfig.intraBuyOtherPct) > Number(ruleConfig.intraSellLowerPct))) {
-        const prev = prevTriggerStates?.[pairKey];
-        if (prev) nextTriggerStates[pairKey] = { ...prev, rule: 'none', updatedAt: snapshot.computedAt };
-        continue;
-      }
-      const rule = classifyRule({
-        benchClass,
-        candClass,
-        gap,
-        sellLower: Number(ruleConfig.intraSellLowerPct),
-        buyOther: Number(ruleConfig.intraBuyOtherPct)
-      });
+      const rule = classifyRule({ benchClass, candClass, gap, sellLower, buyOther });
+      // 方向始终是「卖持仓 bench, 买候选 cand」。
       const fromCode = rule === 'none' ? '' : benchmark;
       const toCode = rule === 'none' ? '' : cand.code;
       const fromName = benchName;
       const toName = cand.name || '';
-      const threshold = rule === 'A' ? Number(ruleConfig.intraSellLowerPct) : (rule === 'B' ? Number(ruleConfig.intraBuyOtherPct) : NaN);
+      const threshold = rule === 'A' ? sellLower : (rule === 'B' ? buyOther : NaN);
       const prev = prevTriggerStates?.[pairKey] || { rule: 'none' };
       const prevRule = String(prev.rule || 'none');
       if (rule !== 'none' && rule !== prevRule) {
         triggers.push({
           pairKey,
           rule,
-          ruleId: ruleConfig.id,
-          ruleName: ruleConfig.name,
           fromCode,
           toCode,
           fromName,
           toName,
+          // diffPct 字段保留为「H−L gap」（UI 渲染以该值为准）。
           diffPct: gap,
           gapPct: gap,
           threshold,
@@ -727,8 +594,6 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
       }
       nextTriggerStates[pairKey] = {
         rule,
-        ruleId: ruleConfig.id,
-        ruleName: ruleConfig.name,
         fromCode,
         lastDiffPct: diff,
         lastGapPct: Number.isFinite(gap) ? gap : null,
@@ -756,17 +621,16 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
   //   bench.class === 'H' → H = fromCode；bench.class === 'L' → H = toCode。
   const benchHCode = trigger.benchClass === 'H' ? trigger.fromCode : trigger.toCode;
   const benchmarkEntry = (Array.isArray(snapshot?.byBenchmark) ? snapshot.byBenchmark : [])
-    .find((b) => b?.benchmarkCode === benchHCode && (!trigger.ruleId || b?.ruleId === trigger.ruleId)) || null;
+    .find((b) => b?.benchmarkCode === benchHCode) || null;
   const navDate = String(benchmarkEntry?.benchmarkNavDate || '').trim();
   const navHint = navDate ? ` · NAV ${navDate}` : '';
   const arrow = trigger.rule === 'A' ? '低→高' : '高→低';
-  const rulePrefix = trigger.ruleName ? `${trigger.ruleName} · ` : '';
   const title = `切换 ${trigger.rule} ${arrow} | ${trigger.fromCode}→${trigger.toCode}`;
   const body = `H−L ${gapStr}% ${cmp} ${threshold}%${navHint}\n卖 ${fromLabel} → 买 ${toLabel}\n下单前请以基金软件实时溢价为准。`;
-  const summary = `${rulePrefix}切换 ${trigger.rule} ${trigger.fromCode}→${trigger.toCode} ${gapStr}%`;
+  const summary = `切换 ${trigger.rule} ${trigger.fromCode}→${trigger.toCode} ${gapStr}%`;
   const ruleLabel = trigger.rule === 'A'
-    ? `${rulePrefix}规则 A 低→高：H溢价 − L溢价 < ${threshold}%（差价收窄，从持仓 L 换到 H）`
-    : `${rulePrefix}规则 B 高→低：H溢价 − L溢价 > ${threshold}%（差价扩大，从持仓 H 换到 L）`;
+    ? `规则 A 低→高：H溢价 − L溢价 < ${threshold}%（差价收窄，从持仓 L 换到 H）`
+    : `规则 B 高→低：H溢价 − L溢价 > ${threshold}%（差价扩大，从持仓 H 换到 L）`;
   const baseUrl = stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || 'https://tools.freebacktrack.tech');
   const detailUrl = `${baseUrl}/index.html?tab=tradePlans#switch`;
   // 同一对 + 同一规则 + 同一分钟，只发一次。
@@ -781,7 +645,7 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
   return {
     eventId,
     eventType: 'switch-strategy-trigger',
-    ruleId: `switch:${trigger.ruleId || trigger.fromCode}`,
+    ruleId: `switch:${trigger.fromCode}`,
     symbol: trigger.fromCode,
     strategyName: '场内切换',
     triggerCondition: ruleLabel,

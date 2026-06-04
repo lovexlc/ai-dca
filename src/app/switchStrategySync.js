@@ -15,16 +15,6 @@ const FUND_CODE_PATTERN = /^\d{6}$/;
 // 与页面 SwitchStrategyExperience 的 DEFAULT_PREFS 保持同名及同默认。
 const DEFAULT_INTRA_SELL_LOWER_PCT = 1; // 规则 A
 const DEFAULT_INTRA_BUY_OTHER_PCT = 3;  // 规则 B
-const DEFAULT_SWITCH_RULE = {
-  id: 'rule-default',
-  name: '默认规则',
-  enabled: true,
-  benchmarkCodes: [],
-  enabledCodes: [],
-  premiumClass: {},
-  intraSellLowerPct: DEFAULT_INTRA_SELL_LOWER_PCT,
-  intraBuyOtherPct: DEFAULT_INTRA_BUY_OTHER_PCT
-};
 
 export function buildDefaultSwitchConfig() {
   return {
@@ -34,90 +24,11 @@ export function buildDefaultSwitchConfig() {
     // 每只 ETF 的溢价中枢标签：'H' 高溢价 / 'L' 低溢价。
     // 仅对出现在 benchmarkCodes / enabledCodes 中的代码生效。
     premiumClass: {},
-    rules: [DEFAULT_SWITCH_RULE],
     intraSellLowerPct: DEFAULT_INTRA_SELL_LOWER_PCT,
     intraBuyOtherPct: DEFAULT_INTRA_BUY_OTHER_PCT,
     clientLabel: '',
     updatedAt: ''
   };
-}
-
-function normalizeSwitchRule(rule = {}, index = 0, fallbackSource = {}) {
-  const fallback = index === 0
-    ? {
-        ...DEFAULT_SWITCH_RULE,
-        intraSellLowerPct: fallbackSource?.intraSellLowerPct,
-        intraBuyOtherPct: fallbackSource?.intraBuyOtherPct
-      }
-    : {
-        ...DEFAULT_SWITCH_RULE,
-        id: `rule-${index + 1}`,
-        name: `规则 ${index + 1}`
-      };
-  return {
-    id: String(rule?.id || fallback.id || `rule-${index + 1}`).trim().slice(0, 64),
-    name: String(rule?.name || fallback.name || `规则 ${index + 1}`).trim().slice(0, 40),
-    enabled: rule?.enabled !== false,
-    benchmarkCodes: normalizeCodeList(rule?.benchmarkCodes, fallback.benchmarkCodes || fallbackSource?.benchmarkCodes),
-    enabledCodes: normalizeCodeList(rule?.enabledCodes, fallback.enabledCodes || fallbackSource?.enabledCodes),
-    premiumClass: normalizePremiumClass(rule?.premiumClass || fallback.premiumClass || fallbackSource?.premiumClass),
-    intraSellLowerPct: pickPercent(rule?.intraSellLowerPct, fallback.intraSellLowerPct),
-    intraBuyOtherPct: pickPercent(rule?.intraBuyOtherPct, fallback.intraBuyOtherPct)
-  };
-}
-
-function normalizeSwitchRules(input, fallbackSource = {}) {
-  const raw = Array.isArray(input) ? input : [];
-  const source = raw.length ? raw.map((rule, index) => (
-    index === 0 ? {
-      ...rule,
-      benchmarkCodes: rule?.benchmarkCodes ?? fallbackSource?.benchmarkCodes,
-      enabledCodes: rule?.enabledCodes ?? fallbackSource?.enabledCodes,
-      premiumClass: rule?.premiumClass ?? fallbackSource?.premiumClass
-    } : rule
-  )) : [{
-    ...DEFAULT_SWITCH_RULE,
-    benchmarkCodes: fallbackSource?.benchmarkCodes,
-    enabledCodes: fallbackSource?.enabledCodes,
-    premiumClass: fallbackSource?.premiumClass,
-    intraSellLowerPct: fallbackSource?.intraSellLowerPct,
-    intraBuyOtherPct: fallbackSource?.intraBuyOtherPct
-  }];
-  const seen = new Set();
-  const rules = [];
-  for (const item of source) {
-    const rule = normalizeSwitchRule(item, rules.length, fallbackSource);
-    if (!rule.id || seen.has(rule.id)) rule.id = `rule-${rules.length + 1}`;
-    seen.add(rule.id);
-    rules.push(rule);
-    if (rules.length >= 10) break;
-  }
-  return rules.length ? rules : [normalizeSwitchRule(DEFAULT_SWITCH_RULE, 0, fallbackSource)];
-}
-
-function normalizeCodeList(input, fallback = []) {
-  const raw = Array.isArray(input) ? input : fallback;
-  const seen = new Set();
-  const codes = [];
-  for (const item of raw || []) {
-    const code = sanitizeFundCode(item);
-    if (!code || seen.has(code)) continue;
-    seen.add(code);
-    codes.push(code);
-    if (codes.length >= 20) break;
-  }
-  return codes;
-}
-
-function normalizePremiumClass(input = {}) {
-  const rawClass = input && typeof input === 'object' ? input : {};
-  const premiumClass = {};
-  for (const [code, value] of Object.entries(rawClass)) {
-    const c = sanitizeFundCode(code);
-    const v = String(value || '').trim().toUpperCase();
-    if (c && (v === 'H' || v === 'L')) premiumClass[c] = v;
-  }
-  return premiumClass;
 }
 
 export function readSwitchConfigCache() {
@@ -175,17 +86,22 @@ export function normalizeSwitchConfigShape(input = {}) {
     if (enabledCodes.length >= 20) break;
   }
   // premiumClass：仅保留出现在 benchmarkCodes 或 enabledCodes 中的代码，且值为 'H' | 'L'。
-  const premiumClass = normalizePremiumClass(input?.premiumClass);
-  const rules = normalizeSwitchRules(input?.rules, input);
-  const primaryRule = rules[0] || DEFAULT_SWITCH_RULE;
+  const premiumClass = {};
+  const rawClass = (input && typeof input.premiumClass === 'object' && input.premiumClass) ? input.premiumClass : {};
+  const validCodes = new Set([...benchmarkCodes, ...enabledCodes]);
+  for (const [code, value] of Object.entries(rawClass)) {
+    const c = sanitizeFundCode(code);
+    if (!c || !validCodes.has(c)) continue;
+    const v = String(value || '').trim().toUpperCase();
+    if (v === 'H' || v === 'L') premiumClass[c] = v;
+  }
   return {
     enabled: Boolean(input?.enabled),
     benchmarkCodes,
     enabledCodes,
     premiumClass,
-    rules,
-    intraSellLowerPct: pickPercent(input?.intraSellLowerPct, primaryRule.intraSellLowerPct),
-    intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, primaryRule.intraBuyOtherPct),
+    intraSellLowerPct: pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
+    intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
     clientLabel: String(input?.clientLabel || '').trim().slice(0, 120),
     updatedAt: String(input?.updatedAt || '').trim()
   };
@@ -256,7 +172,6 @@ export async function saveSwitchConfigToWorker(config) {
       benchmarkCodes: next.benchmarkCodes,
       enabledCodes: next.enabledCodes,
       premiumClass: next.premiumClass,
-      rules: next.rules,
       intraSellLowerPct: next.intraSellLowerPct,
       intraBuyOtherPct: next.intraBuyOtherPct,
       clientLabel: clientConfig?.notifyClientLabel || ''

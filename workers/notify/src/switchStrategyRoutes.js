@@ -94,7 +94,6 @@ export async function handleSwitchConfigPost(request, env) {
       : (payload?.benchmarkCode ? [payload.benchmarkCode] : []),
     enabledCodes: payload?.enabledCodes ?? payload?.candidateCodes,
     premiumClass: payload?.premiumClass,
-    rules: payload?.rules,
     intraSellLowerPct: payload?.intraSellLowerPct,
     intraBuyOtherPct: payload?.intraBuyOtherPct,
     clientLabel: auth.clientRecord?.clientLabel || ''
