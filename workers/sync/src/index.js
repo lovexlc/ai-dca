@@ -81,10 +81,16 @@ async function ensureSchema(env) {
     bytes INTEGER NOT NULL DEFAULT 0,
     content_hash TEXT NOT NULL DEFAULT ''
   )`).run();
-  try {
-    await env.DB.prepare("ALTER TABLE backups ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''").run();
-  } catch {
-    // 现有表可能已存在。
+  for (const alter of [
+    "ALTER TABLE backups ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE backups ADD COLUMN envelope TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE backups ADD COLUMN cipher_sha256 TEXT NOT NULL DEFAULT ''"
+  ]) {
+    try {
+      await env.DB.prepare(alter).run();
+    } catch {
+      // 现有表可能已存在该列。
+    }
   }
 }
 
@@ -302,10 +308,47 @@ async function handleMeta(request, env, origin) {
 async function handleGetLatest(request, env, origin) {
   const user = await requireUser(request, env);
   if (!user) return json({ message: '未登录' }, { status: 401, origin });
-  const meta = await env.DB.prepare('SELECT version, updated_at AS updatedAt, key_count AS keyCount, bytes, kv_key AS kvKey FROM backups WHERE user_id = ?').bind(user.id).first();
+  const meta = await env.DB.prepare('SELECT version, updated_at AS updatedAt, key_count AS keyCount, bytes, kv_key AS kvKey, envelope, cipher_sha256 AS cipherSha256 FROM backups WHERE user_id = ?').bind(user.id).first();
   if (!meta) return json({ version: null, encryptedEnvelope: null }, { origin });
-  const encryptedEnvelope = await env.SYNC_BACKUPS.get(meta.kvKey, { type: 'json' });
-  return json({ ...meta, encryptedEnvelope }, { origin });
+  let encoded = meta.envelope ? String(meta.envelope) : '';
+  let backfilled = false;
+  if (!encoded) {
+    // 旧行：密文仅在 KV，回退读取并惰性回填进 D1（强一致主存储）。
+    const legacy = await env.SYNC_BACKUPS.get(meta.kvKey);
+    encoded = legacy ? String(legacy) : '';
+    backfilled = Boolean(encoded);
+  } else if (meta.cipherSha256) {
+    // 校验 D1 内密文完整性：不一致绝不把坏 blob 发给端侧。
+    const actual = await sha256Hex(encoded);
+    if (actual !== String(meta.cipherSha256)) {
+      return json({ message: '云端密文完整性校验失败，请重传备份', code: 'STORAGE_CORRUPTED' }, { status: 409, origin });
+    }
+  }
+  if (!encoded) return json({ version: null, encryptedEnvelope: null }, { origin });
+  let encryptedEnvelope = null;
+  try {
+    encryptedEnvelope = JSON.parse(encoded);
+  } catch {
+    return json({ message: '云端密文解析失败，请重传备份', code: 'STORAGE_CORRUPTED' }, { status: 409, origin });
+  }
+  if (backfilled) {
+    // 旧 KV blob 回填进 D1 主存储，不改版本，幂等。
+    const cipherSha = await sha256Hex(encoded);
+    try {
+      await env.DB.prepare('UPDATE backups SET envelope = ?, cipher_sha256 = ? WHERE user_id = ?')
+        .bind(encoded, cipherSha, user.id).run();
+    } catch {
+      // 回填失败不影响本次读取。
+    }
+  }
+  return json({
+    version: meta.version,
+    updatedAt: meta.updatedAt,
+    keyCount: meta.keyCount,
+    bytes: meta.bytes,
+    kvKey: meta.kvKey,
+    encryptedEnvelope
+  }, { origin });
 }
 
 async function handlePutLatest(request, env, origin) {
@@ -335,15 +378,22 @@ async function handlePutLatest(request, env, origin) {
   const version = current ? Number(current.version) + 1 : 1;
   const kvKey = current?.kvKey || `backup:${user.id}`;
   const encoded = JSON.stringify(encryptedEnvelope);
-  await env.SYNC_BACKUPS.put(kvKey, encoded);
+  const cipherSha = await sha256Hex(encoded);
   const updatedAt = nowIso();
   const keyCount = Number(encryptedEnvelope?.meta?.keyCount) || 0;
+  // 强一致主存储：密文 BLOB + 完整性校验和 + 版本元数据写入同一 D1 行（单次原子写）。
   if (current) {
-    await env.DB.prepare('UPDATE backups SET version = ?, updated_at = ?, key_count = ?, bytes = ?, content_hash = ? WHERE user_id = ?')
-      .bind(version, updatedAt, keyCount, encoded.length, incomingHash, user.id).run();
+    await env.DB.prepare('UPDATE backups SET version = ?, updated_at = ?, key_count = ?, bytes = ?, content_hash = ?, envelope = ?, cipher_sha256 = ? WHERE user_id = ?')
+      .bind(version, updatedAt, keyCount, encoded.length, incomingHash, encoded, cipherSha, user.id).run();
   } else {
-    await env.DB.prepare('INSERT INTO backups (user_id, version, kv_key, updated_at, key_count, bytes, content_hash) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(user.id, version, kvKey, updatedAt, keyCount, encoded.length, incomingHash).run();
+    await env.DB.prepare('INSERT INTO backups (user_id, version, kv_key, updated_at, key_count, bytes, content_hash, envelope, cipher_sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(user.id, version, kvKey, updatedAt, keyCount, encoded.length, incomingHash, encoded, cipherSha).run();
+  }
+  // KV 镜像仅为旧 Worker 回滚兼容（尽力而为，不阻塞、不影响一致性）。
+  try {
+    await env.SYNC_BACKUPS.put(kvKey, encoded);
+  } catch {
+    // 镜像失败不影响主存储一致性。
   }
   return json({ version, updatedAt, keyCount, bytes: encoded.length }, { origin });
 }
