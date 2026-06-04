@@ -6,25 +6,10 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Check, Pin, PinOff } from 'lucide-react';
 import { DataTable } from '../../components/data-table/data-table.jsx';
 import { DataTableColumnHeader } from '../../components/data-table/data-table-column-header.jsx';
 import { DataTableToolbar } from '../../components/data-table/data-table-toolbar.jsx';
 import { DataTableViewOptions } from '../../components/data-table/data-table-view-options.jsx';
-import { Button } from '../../components/ui/button.jsx';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '../../components/ui/command.jsx';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '../../components/ui/popover.jsx';
 import { cx } from '../../components/experience-ui.jsx';
 import { Sparkline } from '../../components/markets/Sparkline.jsx';
 import {
@@ -130,59 +115,6 @@ const RETURN_COLUMNS = [
 ];
 
 const DEFAULT_HIDDEN_COLUMNS = Object.fromEntries(RETURN_COLUMNS.map((c) => [c.id, false]));
-
-function DataTablePinOptions({ table, pinnedColumnId, onPinColumn, disabled = false }) {
-  const columns = table.getAllColumns().filter((column) => (
-    typeof column.columnDef?.accessorFn !== 'undefined'
-  ));
-  const activeColumn = columns.find((column) => column.id === pinnedColumnId);
-  const activeLabel = activeColumn?.columnDef?.meta?.label || activeColumn?.id || '';
-
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          aria-label="选择固定列"
-          role="combobox"
-          variant="outline"
-          size="sm"
-          className={cx(
-            'flex h-8 gap-1.5 font-normal',
-            pinnedColumnId ? 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-50' : ''
-          )}
-          disabled={disabled}
-          title={pinnedColumnId ? `当前固定列：${activeLabel}` : '固定列'}
-        >
-          {pinnedColumnId ? <PinOff className="text-indigo-600" /> : <Pin className="text-muted-foreground" />}
-          固定列
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-48 p-0">
-        <Command>
-          <CommandInput placeholder="搜索列..." />
-          <CommandList>
-            <CommandEmpty>没有找到列。</CommandEmpty>
-            <CommandGroup>
-              <CommandItem onSelect={() => onPinColumn?.('')}>
-                <span className="truncate">不固定</span>
-                <Check className={cx('ml-auto size-4 shrink-0', pinnedColumnId ? 'opacity-0' : 'opacity-100')} />
-              </CommandItem>
-              {columns.map((column) => {
-                const selected = column.id === pinnedColumnId;
-                return (
-                  <CommandItem key={column.id} onSelect={() => onPinColumn?.(selected ? '' : column.id)}>
-                    <span className="truncate">{column.columnDef.meta?.label ?? column.id}</span>
-                    <Check className={cx('ml-auto size-4 shrink-0', selected ? 'opacity-100' : 'opacity-0')} />
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
-}
 
 export function MarketListTable({
   rows = [],
@@ -542,19 +474,7 @@ export function MarketListTable({
     return <p className="px-2 py-2 text-sm text-[#5f6368]">未配置自选。</p>;
   }
   if (dataTable) {
-    const pinOptions = autoPinColumn ? (
-      <DataTablePinOptions
-        table={table}
-        pinnedColumnId={pinTargetColumnId}
-        onPinColumn={setPinTargetColumnId}
-      />
-    ) : null;
-    const viewOptions = (
-      <>
-        {pinOptions}
-        <DataTableViewOptions table={table} />
-      </>
-    );
+    const viewOptions = <DataTableViewOptions table={table} />;
     const header = typeof dataTableHeader === 'function'
       ? dataTableHeader({ table, viewOptions })
       : dataTableHeader;

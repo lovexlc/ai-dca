@@ -164,6 +164,19 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
                 )}
               </button>
             )}
+            {canHide && (
+              <button
+                type="button"
+                onClick={() => {
+                  column.toggleVisibility(false);
+                  setOpen(false);
+                }}
+                className="flex items-center gap-2 rounded-md px-3 py-2.5 text-sm hover:bg-accent"
+              >
+                <EyeOff className="size-4" />
+                隐藏列
+              </button>
+            )}
             {pinningEnabled && (
               <button
                 type="button"
@@ -178,19 +191,6 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
                   {isPinTarget ? '取消固定列' : '固定此列'}
                 </span>
                 {isPinTarget && <span className="text-xs text-indigo-600">已选择</span>}
-              </button>
-            )}
-            {canHide && (
-              <button
-                type="button"
-                onClick={() => {
-                  column.toggleVisibility(false);
-                  setOpen(false);
-                }}
-                className="flex items-center gap-2 rounded-md px-3 py-2.5 text-sm hover:bg-accent"
-              >
-                <EyeOff className="size-4" />
-                隐藏列
               </button>
             )}
           </div>
