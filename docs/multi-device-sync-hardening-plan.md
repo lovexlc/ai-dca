@@ -50,7 +50,7 @@
 ### 阶段 0 — 止血与可诊断（最高优先，低风险）
 - [x] 0.1 修 iterations falsy bug：`secureVault.js` 新增 `normalizeIterations`（`Number.isFinite(n)&&n>0 ? n : DEFAULT_ITERATIONS`），用于 decrypt 与 rememberKey 两处。commit 00845a8。
 - [x] 0.2 解密支持 RAW-AES-GCM envelope：`decryptBackupEnvelope` 用 `isRawKeyEnvelope`（`kdf==='RAW-AES-GCM'` 或 salt 为空）判定；用密码解 RAW 信封抛 `ERR_NEED_DEVICE_KEY`，`raw:` 路径正常解。设备密钥仍仅本地，未改上传 payload。commit 00845a8。
-- [~] 0.3 错误分型：`SecureVaultError` + `SECURE_VAULT_ERROR_CODES`（WRONG_PASSWORD / NEED_DEVICE_KEY / CORRUPTED / FORMAT）**已落地**（commit 00845a8）；UI 按 `.code` 分支的接线（account-menu.jsx：重输密码 / 用其它设备 / 重传覆盖）**待做**。
+- [x] 0.3 错误分型 + UI 接线：`SecureVaultError` + `SECURE_VAULT_ERROR_CODES`（WRONG_PASSWORD / NEED_DEVICE_KEY / CORRUPTED / FORMAT）落地（commit 00845a8）；`account-menu.jsx` 新增 `errorCode` state、`renderSyncError()` 按 `.code` 分支出动作按钮（WRONG_PASSWORD→重新输入密码；NEED_DEVICE_KEY/CORRUPTED→`handleForceReupload` 用安全密码 `force:true,useRemembered:false` 重加密覆盖云端，密钥仅本地）。验证：`npx eslint src/components/account-menu.jsx` exit 0、`node --test test/secureVault.test.mjs` 7/7。commit 2ad195c。
 - [x] 0.4 解密前做格式校验：检查空密文、`payload.version>2`、`crypto.alg!==AES-GCM`、坏 base64，分别报 `ERR_CORRUPTED`/`ERR_FORMAT`。commit 00845a8。
 
 ### 阶段 1 — envelope v3：KEK/DEK + 验证块（中风险，需迁移）
@@ -90,7 +90,7 @@
 | 状态 | 步骤 | 备注 |
 | --- | --- | --- |
 | done | 现状调研 + 根因定位 | 见上「根因诊断」，含文件行号证据 |
-| in_progress | 阶段 0 止血 | 错误分型+RAW信封+iterations 修复已提交 00845a8，`node --test` 7/7 通过；仅剩 0.3 UI 接线 |
+| done | 阶段 0 止血 | 0.1–0.4 全部完成：错误分型+RAW信封+iterations 修复 00845a8；UI 接线 2ad195c；eslint exit 0 + `node --test` 7/7 |
 | todo | 阶段 1 envelope v3 | 依赖阶段 0 |
 | todo | 阶段 2 服务端一致性 | Worker 改动走 Actions |
 | todo | 阶段 3 冲突体验 | 增量 |
