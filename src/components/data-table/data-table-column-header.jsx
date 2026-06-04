@@ -97,6 +97,33 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
             <ChevronsUpDown className="text-muted-foreground" />
           )
         ) : null}
+        {pinningEnabled ? (
+          <span
+            role="button"
+            tabIndex={0}
+            title={isPinTarget ? "取消固定列" : "固定此列"}
+            aria-label={isPinTarget ? "取消固定列" : "固定此列"}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onPinColumn?.(isPinTarget ? '' : column.id);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                event.stopPropagation();
+                onPinColumn?.(isPinTarget ? '' : column.id);
+              }
+            }}
+            className={cn(
+              "ml-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full transition hover:bg-background",
+              isPinTarget ? "text-indigo-600" : "text-muted-foreground/60 hover:text-foreground"
+            )}
+          >
+            {isPinTarget ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+          </span>
+        ) : null}
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
