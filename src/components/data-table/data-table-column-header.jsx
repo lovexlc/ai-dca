@@ -99,29 +99,15 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
         ) : null}
         {pinningEnabled ? (
           <span
-            role="button"
-            tabIndex={0}
-            title={isPinTarget ? "取消固定列" : "固定此列"}
-            aria-label={isPinTarget ? "取消固定列" : "固定此列"}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onPinColumn?.(isPinTarget ? '' : column.id);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                event.stopPropagation();
-                onPinColumn?.(isPinTarget ? '' : column.id);
-              }
-            }}
             className={cn(
-              "ml-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full transition hover:bg-background",
-              isPinTarget ? "text-indigo-600" : "text-muted-foreground/60 hover:text-foreground"
+              "ml-1 inline-flex h-6 shrink-0 items-center gap-1 rounded-full border px-1.5 text-[11px] font-medium transition",
+              isPinTarget
+                ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                : "border-slate-200 bg-white text-slate-500 group-hover:border-slate-300 group-hover:text-slate-700"
             )}
           >
-            {isPinTarget ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+            {isPinTarget ? <PinOff className="size-3" /> : <Pin className="size-3" />}
+            {isPinTarget ? '已固定' : '固定'}
           </span>
         ) : null}
       </DropdownMenuTrigger>
