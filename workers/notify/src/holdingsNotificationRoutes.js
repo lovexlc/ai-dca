@@ -325,7 +325,7 @@ export async function runHoldingsNotifications(env, kind, todayShanghai, reason 
     if (!bucket.length) continue;
 
     const codes = bucket.map((entry) => entry.code);
-    const bucketKindByCode = Object.fromEntries(codes.map((c) => [c, kind]));
+    const bucketKindByCode = Object.fromEntries(bucket.map((entry) => [entry.code, kind]));
     let snapshotsByCode = {};
     try {
       snapshotsByCode = await fetchHoldingsNavSnapshots(env, codes, { bucketKindByCode, todayShanghai });

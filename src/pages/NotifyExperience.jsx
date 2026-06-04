@@ -5,13 +5,12 @@ import {
   loadNotifyStatus,
   loadHoldingsNotifyRule,
   saveHoldingsNotifyRule,
-  pairAndroidDevice,
+  mergeNotifyStatusIntoClientConfig,
   persistNotifyClientConfig,
   readNotifyClientConfig,
   saveNotifySettings,
   sendNotifyTest,
-  syncTradePlanRules,
-  unpairAndroidDevice
+  syncTradePlanRules
 } from '../app/notifySync.js';
 import {
   getWebNotifyState,
@@ -23,7 +22,7 @@ import {
 import { aggregateByCode, buildHoldingsNotifyDigest, summarizePortfolio } from '../app/holdingsLedgerCore.js';
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { showActionToast } from '../app/toast.js';
-import { trackAnalyticsEvent } from '../app/analytics.js';
+import { trackActionResult, trackAnalyticsEvent, trackFeatureEvent } from '../app/analytics.js';
 import { NotifyConfigCard } from './NotifyConfigCard.jsx';
 import { NotifyHistoryCard } from './NotifyHistoryCard.jsx';
 import {
@@ -37,7 +36,7 @@ import {
   formatEventTimeLabel,
   resolveEventStatusMeta
 } from '../app/tradePlansHelpers.js';
-import { parseAndroidNotifyInput, parseBarkInput } from '../app/notifyParsers.js';
+import { parseBarkInput } from '../app/notifyParsers.js';
 import { getVisibleNotifyEvents, humanizeNotifyError } from './notifyHistoryHelpers.js';
 
 export function NotifyExperience({ embedded = false }) {
@@ -45,10 +44,7 @@ export function NotifyExperience({ embedded = false }) {
   const [notifyError, setNotifyError] = useState('');
   const [notifyMessage, setNotifyMessage] = useState('');
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [isPairingAndroid, setIsPairingAndroid] = useState(false);
-  const [unpairingRegistrationId, setUnpairingRegistrationId] = useState('');
   const [notifyPlatform, setNotifyPlatform] = useState('ios');
-  const [androidPairingCode, setAndroidPairingCode] = useState('');
   const [notifyConfig, setNotifyConfig] = useState(() => {
     const persistedConfig = readNotifyClientConfig();
     return {
@@ -72,12 +68,19 @@ export function NotifyExperience({ embedded = false }) {
   const [eventsTick, setEventsTick] = useState(0);
   const [isSyncingRules, setIsSyncingRules] = useState(false);
   const [rulesLastSyncedAt, setRulesLastSyncedAt] = useState('');
-  // 「消息推送配置」默认在检测到已配置（iOS Bark 或 Android 任意一项）后自动收起，
+  // 「消息推送配置」默认在检测到已配置（Bark / Server酱³ / PC 任意一项）后自动收起，
   // 点击卡片头部可手动展开。null 表示尚未从远端收到 status，默认保持展开。
   const [configCollapsed, setConfigCollapsed] = useState(null);
   // 「提醒策略」内的多条策略默认全部收起，点击标题切换展开。
   // 取值：'rules' | 'holdings' | null。同时只展开一条，避免页面过长。
   const [expandedStrategy, setExpandedStrategy] = useState(null);
+  // WebSocket 实时通道状态（由 entry-screen.jsx 通过自定义事件更新）
+  const [notifyWsStatus, setNotifyWsStatus] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.__aiDcaNotifyWsStatus || 'idle';
+    }
+    return 'idle';
+  });
   // PC 浏览器前台通知（方案 A）：仅在页面打开时弹桌面 Notification。
   // 开关 webNotifyEnabled 写到 localStorage，由 entry-screen.jsx 启动的全局 poller 读取。
   const [webNotifySupported, setWebNotifySupported] = useState(() => getWebNotifyState().supported);
@@ -95,34 +98,50 @@ export function NotifyExperience({ embedded = false }) {
     }
   }
 
-  const androidSetup = notifyStatus?.setup || null;
-  const pairedAndroidDevices = Array.isArray(androidSetup?.gcmCurrentClientRegistrations)
-    ? androidSetup.gcmCurrentClientRegistrations
+  const notifySetup = notifyStatus?.setup || null;
+  const currentClientRegistrations = Array.isArray(notifySetup?.webWsCurrentClientRegistrations)
+    ? notifySetup.webWsCurrentClientRegistrations
     : [];
+  const pairedWebWsDevices = currentClientRegistrations.filter((registration) => (
+    registration?.isWebClient || String(registration?.deviceInstallationId || registration?.id || '').startsWith('web-ws:')
+  ));
   const barkConfigured = Boolean(notifyStatus?.configured?.bark);
-  const serverChan3Configured = Boolean(notifyStatus?.configured?.serverChan3 || androidSetup?.serverChan3?.configured);
-  const androidConfigured = pairedAndroidDevices.length > 0 || serverChan3Configured;
-  const androidDeviceCount = pairedAndroidDevices.length + (serverChan3Configured ? 1 : 0);
+  const serverChan3Configured = Boolean(notifyStatus?.configured?.serverChan3 || notifySetup?.serverChan3?.configured);
+  const pcConfigured = Boolean(webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled);
+  const notifyMeta = () => ({
+    embedded,
+    platformTab: notifyPlatform,
+    barkConfigured,
+    serverChan3Configured,
+    pcConfigured,
+    webNotifySupported,
+    webNotifyPermission,
+    webNotifyEnabled,
+    wsStatus: notifyWsStatus,
+    holdingsRuleEnabled: Boolean(holdingsRule.enabled),
+    visibleEventCount: visibleEvents.length,
+    pairedWebWsCount: pairedWebWsDevices.length
+  });
 
   const summary = useMemo(() => {
     const channelLabels = [];
     if (barkConfigured) channelLabels.push('iOS Bark');
-    if (serverChan3Configured) channelLabels.push('Android Server酱³');
-    if (pairedAndroidDevices.length > 0) channelLabels.push('Android FCM 旧版');
-    if (webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled) {
+    if (serverChan3Configured) channelLabels.push('Server酱³');
+    if (pcConfigured) {
       channelLabels.push('PC 浏览器');
     }
     return {
       channelStatus: channelLabels.length ? '已配置' : '未配置',
       channelNote: channelLabels.length
         ? `${channelLabels.join(' / ')} 可发送`
-        : '请先配置 iOS Bark、Android Server酱³，或授权 PC 浏览器通知',
-      androidDeviceCount,
+        : '请先配置 iOS Bark、Server酱³，或授权 PC 浏览器通知',
       serverChan3Configured
     };
-  }, [androidDeviceCount, barkConfigured, pairedAndroidDevices.length, serverChan3Configured, webNotifySupported, webNotifyPermission, webNotifyEnabled]);
+  }, [barkConfigured, pcConfigured, serverChan3Configured]);
 
   async function handleRequestWebNotifyPermission() {
+    const startedAt = Date.now();
+    trackFeatureEvent('notify', 'pc_permission_request_start', notifyMeta());
     const result = await requestWebNotifyPermission();
     setWebNotifyPermission(result);
     setWebNotifySupported(getWebNotifyState().supported);
@@ -134,6 +153,11 @@ export function NotifyExperience({ embedded = false }) {
     } else if (result === 'denied') {
       showActionToast({ tone: 'negative', message: '浏览器已拒绝通知。请到地址栏 🔒 → 通知 → 允许后重试。' });
     }
+    trackActionResult('notify', 'pc_permission_request', result === 'granted' ? 'success' : result === 'denied' ? 'denied' : 'dismissed', {
+      ...notifyMeta(),
+      result,
+      durationMs: Date.now() - startedAt
+    });
   }
 
   function handleSendLocalWebNotifyTest() {
@@ -145,12 +169,17 @@ export function NotifyExperience({ embedded = false }) {
     if (!note) {
       showActionToast({ tone: 'negative', message: '未能弹出通知，请先完成浏览器授权。' });
     }
+    trackActionResult('notify', 'pc_local_test', note ? 'success' : 'error', notifyMeta());
   }
 
   function handleToggleWebNotifyEnabled() {
     const next = !webNotifyEnabled;
     persistWebNotifyConfig({ pcEnabled: next });
     setWebNotifyEnabled(next);
+    trackFeatureEvent('notify', 'pc_toggle', {
+      ...notifyMeta(),
+      enabled: next
+    });
     if (next) {
       trackAnalyticsEvent('notify_enabled', {
         hasBark: barkConfigured,
@@ -165,6 +194,22 @@ export function NotifyExperience({ embedded = false }) {
     return () => window.removeEventListener('notify:test-pc', handleSendLocalWebNotifyTest);
   }, [webNotifySupported, webNotifyPermission]);
 
+  // 监听 WS 连接状态变化（由 entry-screen.jsx 的 CustomEvent 派发）
+  useEffect(() => {
+    function handleWsStatusChange(event) {
+      const newStatus = event?.detail?.status;
+      if (newStatus) {
+        setNotifyWsStatus(newStatus);
+      }
+    }
+    window.addEventListener('ai-dca-notify-ws-status', handleWsStatusChange);
+    // 初始化时同步一次当前状态
+    if (typeof window !== 'undefined' && window.__aiDcaNotifyWsStatus) {
+      setNotifyWsStatus(window.__aiDcaNotifyWsStatus);
+    }
+    return () => window.removeEventListener('ai-dca-notify-ws-status', handleWsStatusChange);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     async function refreshNotifyPanel() {
@@ -172,10 +217,11 @@ export function NotifyExperience({ embedded = false }) {
         const statusPayload = await loadNotifyStatus(notifyConfig.notifyClientId);
         if (cancelled) return;
         setNotifyStatus(statusPayload);
+        const mergedConfig = mergeNotifyStatusIntoClientConfig(statusPayload, readNotifyClientConfig());
         setNotifyConfig((current) => ({
           ...current,
-          barkDeviceKey: current.barkDeviceKey || statusPayload?.setup?.barkDeviceKey || '',
-          serverChan3Uid: current.serverChan3Uid || statusPayload?.setup?.serverChan3?.uid || '',
+          barkDeviceKey: current.barkDeviceKey || mergedConfig.barkDeviceKey || '',
+          serverChan3Uid: current.serverChan3Uid || mergedConfig.serverChan3Uid || '',
           serverChan3SendKey: current.serverChan3SendKey || ''
         }));
         setNotifyError('');
@@ -215,8 +261,8 @@ export function NotifyExperience({ embedded = false }) {
   // 之后由用户手动切换展开/收起，不再被远端覆盖。
   useEffect(() => {
     if (configCollapsed !== null || !notifyStatus) return;
-    setConfigCollapsed(barkConfigured || androidConfigured);
-  }, [notifyStatus, barkConfigured, androidConfigured, configCollapsed]);
+    setConfigCollapsed(barkConfigured || serverChan3Configured || pcConfigured);
+  }, [notifyStatus, barkConfigured, serverChan3Configured, pcConfigured, configCollapsed]);
   const isConfigCollapsed = configCollapsed === true;
   const pcPermissionReason = !webNotifySupported
     ? '当前浏览器不支持 Notification API'
@@ -271,13 +317,25 @@ export function NotifyExperience({ embedded = false }) {
   async function refreshNotifyEvents() {
     setEventsLoading(true);
     setEventsError('');
+    const startedAt = Date.now();
+    trackFeatureEvent('notify', 'events_refresh_start', notifyMeta());
     try {
       const payload = await loadNotifyEvents(notifyConfig.notifyClientId);
       const list = Array.isArray(payload?.events) ? payload.events : [];
       setNotifyEvents(list);
       setEventsLastSyncedAt(new Date().toISOString());
+      trackActionResult('notify', 'events_refresh', 'success', {
+        ...notifyMeta(),
+        eventCount: list.length,
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       setEventsError(humanizeNotifyError(error));
+      trackActionResult('notify', 'events_refresh', 'error', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt,
+        errorMessage: error?.message || ''
+      });
     } finally {
       setEventsLoading(false);
     }
@@ -304,10 +362,11 @@ export function NotifyExperience({ embedded = false }) {
       }
       : statusPayload;
     setNotifyStatus(nextStatus);
+    const mergedConfig = mergeNotifyStatusIntoClientConfig(nextStatus, notifyConfig);
     setNotifyConfig((current) => ({
       ...current,
-      barkDeviceKey: current.barkDeviceKey || nextStatus?.setup?.barkDeviceKey || '',
-      serverChan3Uid: current.serverChan3Uid || nextStatus?.setup?.serverChan3?.uid || '',
+      barkDeviceKey: current.barkDeviceKey || mergedConfig.barkDeviceKey || '',
+      serverChan3Uid: current.serverChan3Uid || mergedConfig.serverChan3Uid || '',
       serverChan3SendKey: current.serverChan3SendKey || ''
     }));
     setNotifyError('');
@@ -317,6 +376,11 @@ export function NotifyExperience({ embedded = false }) {
     setIsSavingSettings(true);
     setNotifyError('');
     setNotifyMessage('');
+    const startedAt = Date.now();
+    trackFeatureEvent('notify', 'bark_save_start', {
+      ...notifyMeta(),
+      inputLength: String(notifyConfig.barkDeviceKey || '').length
+    });
     try {
       const parsedBarkKey = parseBarkInput(notifyConfig.barkDeviceKey);
       if (!parsedBarkKey) {
@@ -325,17 +389,26 @@ export function NotifyExperience({ embedded = false }) {
       await saveNotifySettings({ barkDeviceKey: parsedBarkKey });
       persistNotifyClientConfig({
         barkDeviceKey: parsedBarkKey,
-        _hasAndroid: androidConfigured,
+        _hasServerChan3: serverChan3Configured,
         _hasPC: webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled
       });
       setNotifyConfig((current) => ({ ...current, barkDeviceKey: parsedBarkKey }));
       await refreshNotifyData();
       setNotifyMessage('Bark 配置已保存。');
       showActionToast('保存 Bark 配置', 'success');
+      trackActionResult('notify', 'bark_save', 'success', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : '通知配置保存失败';
       setNotifyError(message);
       showActionToast('保存 Bark 配置', 'error', { description: message });
+      trackActionResult('notify', 'bark_save', 'error', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt,
+        errorMessage: message
+      });
     } finally {
       setIsSavingSettings(false);
     }
@@ -345,16 +418,22 @@ export function NotifyExperience({ embedded = false }) {
     setIsSavingSettings(true);
     setNotifyError('');
     setNotifyMessage('');
+    const startedAt = Date.now();
+    trackFeatureEvent('notify', 'serverchan3_save_start', {
+      ...notifyMeta(),
+      hasUid: Boolean(notifyConfig.serverChan3Uid),
+      hasSendKey: Boolean(notifyConfig.serverChan3SendKey)
+    });
     try {
       const uid = String(notifyConfig.serverChan3Uid || '').trim();
       const sendKey = String(notifyConfig.serverChan3SendKey || '').trim();
-      if (!uid || !sendKey) {
+      if (!uid || (!sendKey && !serverChan3Configured)) {
         throw new Error('请填写 Server酱³ UID 和 SendKey');
       }
       const savedSettings = await saveNotifySettings({
         clientId: notifyConfig.notifyClientId,
         clientLabel: notifyConfig.notifyClientLabel,
-        serverChan3: { uid, sendKey },
+        serverChan3: sendKey ? { uid, sendKey } : { uid },
         barkDeviceKey: notifyConfig.barkDeviceKey
       });
       const savedServerChan3 = savedSettings?.setup?.serverChan3 || {
@@ -366,12 +445,12 @@ export function NotifyExperience({ embedded = false }) {
         notifyClientId: notifyConfig.notifyClientId,
         notifyClientLabel: notifyConfig.notifyClientLabel,
         serverChan3Uid: uid,
-        serverChan3SendKey: sendKey,
+        ...(sendKey ? { serverChan3SendKey: sendKey } : {}),
         barkDeviceKey: notifyConfig.barkDeviceKey,
-        _hasAndroid: true,
+        _hasServerChan3: true,
         _hasPC: webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled
       });
-      setNotifyConfig((current) => ({ ...current, serverChan3Uid: uid, serverChan3SendKey: sendKey }));
+      setNotifyConfig((current) => ({ ...current, serverChan3Uid: uid, ...(sendKey ? { serverChan3SendKey: sendKey } : {}) }));
       setNotifyStatus((current) => ({
         ...(current || {}),
         configured: {
@@ -384,69 +463,23 @@ export function NotifyExperience({ embedded = false }) {
         }
       }));
       await refreshNotifyData({ serverChan3Fallback: savedServerChan3 });
-      setNotifyMessage('Server酱³ Android 推送配置已保存。');
+      setNotifyMessage('Server酱³ 推送配置已保存。');
       showActionToast('保存 Server酱³ 配置', 'success');
+      trackActionResult('notify', 'serverchan3_save', 'success', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Server酱³ 配置保存失败';
       setNotifyError(message);
       showActionToast('保存 Server酱³ 配置', 'error', { description: message });
+      trackActionResult('notify', 'serverchan3_save', 'error', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt,
+        errorMessage: message
+      });
     } finally {
       setIsSavingSettings(false);
-    }
-  }
-
-  async function handlePairAndroidCode() {
-    setIsPairingAndroid(true);
-    setNotifyError('');
-    setNotifyMessage('');
-    try {
-      const parsedAndroidId = parseAndroidNotifyInput(androidPairingCode);
-      if (!parsedAndroidId) {
-        throw new Error('请粘贴 Android 完整测试链接、消息推送 ID 或配对码');
-      }
-      await pairAndroidDevice({
-        deviceInstallationId: parsedAndroidId,
-        clientId: notifyConfig.notifyClientId,
-        clientName: notifyConfig.notifyClientLabel
-      });
-      persistNotifyClientConfig({
-        notifyClientId: notifyConfig.notifyClientId,
-        notifyClientLabel: notifyConfig.notifyClientLabel,
-        _hasAndroid: true,
-        _hasPC: webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled
-      });
-      setAndroidPairingCode('');
-      await refreshNotifyData();
-      setNotifyMessage('Android 设备已绑定到当前浏览器。');
-      showActionToast('绑定 Android 设备', 'success');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Android 设备绑定失败';
-      setNotifyError(message);
-      showActionToast('绑定 Android 设备', 'error', { description: message });
-    } finally {
-      setIsPairingAndroid(false);
-    }
-  }
-
-  async function handleUnpairAndroidRegistration(registrationId = '') {
-    if (!registrationId) return;
-    setUnpairingRegistrationId(registrationId);
-    setNotifyError('');
-    setNotifyMessage('');
-    try {
-      await unpairAndroidDevice({
-        registrationId,
-        clientId: notifyConfig.notifyClientId
-      });
-      await refreshNotifyData();
-      setNotifyMessage('Android 设备已解绑。');
-      showActionToast('解绑 Android 设备', 'success');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Android 设备解绑失败';
-      setNotifyError(message);
-      showActionToast('解绑 Android 设备', 'error', { description: message });
-    } finally {
-      setUnpairingRegistrationId('');
     }
   }
 
@@ -454,6 +487,11 @@ export function NotifyExperience({ embedded = false }) {
     setIsSavingHoldingsRule(true);
     setNotifyError('');
     setNotifyMessage('');
+    const startedAt = Date.now();
+    trackFeatureEvent('notify', 'holdings_rule_toggle_start', {
+      ...notifyMeta(),
+      nextEnabled
+    });
     try {
       const digest = buildLatestHoldingsDigest();
       const payload = await saveHoldingsNotifyRule({ enabled: nextEnabled, digest });
@@ -464,10 +502,23 @@ export function NotifyExperience({ embedded = false }) {
       });
       setNotifyMessage(nextEnabled ? '持仓当日收益提醒已启用。' : '持仓当日收益提醒已关闭。');
       showActionToast(nextEnabled ? '启用持仓提醒' : '关闭持仓提醒', 'success');
+      trackActionResult('notify', 'holdings_rule_toggle', 'success', {
+        ...notifyMeta(),
+        nextEnabled,
+        hasDigest: Boolean(digest),
+        digestItemCount: Array.isArray(digest?.items) ? digest.items.length : 0,
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : '保存持仓通知规则失败';
       setNotifyError(message);
       showActionToast('保存持仓提醒', 'error', { description: message });
+      trackActionResult('notify', 'holdings_rule_toggle', 'error', {
+        ...notifyMeta(),
+        nextEnabled,
+        durationMs: Date.now() - startedAt,
+        errorMessage: message
+      });
     } finally {
       setIsSavingHoldingsRule(false);
     }
@@ -477,6 +528,8 @@ export function NotifyExperience({ embedded = false }) {
     setIsSyncingHoldingsDigest(true);
     setNotifyError('');
     setNotifyMessage('');
+    const startedAt = Date.now();
+    trackFeatureEvent('notify', 'holdings_digest_sync_start', notifyMeta());
     try {
       const digest = buildLatestHoldingsDigest();
       const payload = await saveHoldingsNotifyRule({ enabled: holdingsRule.enabled, digest });
@@ -487,10 +540,21 @@ export function NotifyExperience({ embedded = false }) {
       });
       setNotifyMessage('持仓快照已同步。');
       showActionToast('同步持仓快照', 'success');
+      trackActionResult('notify', 'holdings_digest_sync', 'success', {
+        ...notifyMeta(),
+        hasDigest: Boolean(digest),
+        digestItemCount: Array.isArray(digest?.items) ? digest.items.length : 0,
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : '同步持仓快照失败';
       setNotifyError(message);
       showActionToast('同步持仓快照', 'error', { description: message });
+      trackActionResult('notify', 'holdings_digest_sync', 'error', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt,
+        errorMessage: message
+      });
     } finally {
       setIsSyncingHoldingsDigest(false);
     }
@@ -501,6 +565,8 @@ export function NotifyExperience({ embedded = false }) {
     setIsTestingHoldingsNotify(true);
     setNotifyError('');
     setNotifyMessage('');
+    const startedAt = Date.now();
+    trackFeatureEvent('notify', 'holdings_test_start', notifyMeta());
     try {
       const eventId = `holdings-test-${Date.now()}`;
       const now = new Date();
@@ -524,10 +590,19 @@ export function NotifyExperience({ embedded = false }) {
       showActionToast('测试通知', 'success', {
         description: '已发送「持仓总览」样式的测试推送。'
       });
+      trackActionResult('notify', 'holdings_test', 'success', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : '测试通知发送失败';
       setNotifyError(message);
       showActionToast('测试通知', 'error', { description: message });
+      trackActionResult('notify', 'holdings_test', 'error', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt,
+        errorMessage: message
+      });
     } finally {
       setIsTestingHoldingsNotify(false);
     }
@@ -537,6 +612,8 @@ export function NotifyExperience({ embedded = false }) {
     setIsSyncingRules(true);
     setNotifyError('');
     setNotifyMessage('');
+    const startedAt = Date.now();
+    trackFeatureEvent('notify', 'trade_rules_sync_start', notifyMeta());
     try {
       await syncTradePlanRules();
       setRulesLastSyncedAt(new Date().toISOString());
@@ -544,10 +621,19 @@ export function NotifyExperience({ embedded = false }) {
       showActionToast('同步通知规则', 'success');
       // 同步后遵便重新拉取一次提醒历史，避免进页后才发现有新记录。
       await refreshNotifyEvents();
+      trackActionResult('notify', 'trade_rules_sync', 'success', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : '通知规则同步失败';
       setNotifyError(message);
       showActionToast('同步通知规则', 'error', { description: message });
+      trackActionResult('notify', 'trade_rules_sync', 'error', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt,
+        errorMessage: message
+      });
     } finally {
       setIsSyncingRules(false);
     }
@@ -560,21 +646,15 @@ export function NotifyExperience({ embedded = false }) {
         setConfigCollapsed={setConfigCollapsed}
         summary={summary}
         barkConfigured={barkConfigured}
-        androidConfigured={androidConfigured}
+        serverChan3Configured={serverChan3Configured}
         notifyPlatform={notifyPlatform}
         setNotifyPlatform={setNotifyPlatform}
         notifyError={notifyError}
         notifyMessage={notifyMessage}
         notifyConfig={notifyConfig}
         setNotifyConfig={setNotifyConfig}
-        androidPairingCode={androidPairingCode}
-        setAndroidPairingCode={setAndroidPairingCode}
-        isPairingAndroid={isPairingAndroid}
-        pairedAndroidDevices={pairedAndroidDevices}
-        androidSetup={androidSetup}
-        unpairingRegistrationId={unpairingRegistrationId}
-        handlePairAndroidCode={handlePairAndroidCode}
-        handleUnpairAndroidRegistration={handleUnpairAndroidRegistration}
+        pairedWebWsDevices={pairedWebWsDevices}
+        notifySetup={notifySetup}
         handleSaveNotifyConfig={handleSaveNotifyConfig}
         handleSaveServerChan3Config={handleSaveServerChan3Config}
         isSavingSettings={isSavingSettings}
@@ -586,6 +666,7 @@ export function NotifyExperience({ embedded = false }) {
         handleRequestWebNotifyPermission={handleRequestWebNotifyPermission}
         handleSendLocalWebNotifyTest={handleSendLocalWebNotifyTest}
         handleToggleWebNotifyEnabled={handleToggleWebNotifyEnabled}
+        notifyWsStatus={notifyWsStatus}
       />
     );
   }
@@ -765,9 +846,9 @@ export function NotifyExperience({ embedded = false }) {
 
   return (
     <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
-<div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-3">
         <StatCard accent="indigo" eyebrow="通道状态" value={summary.channelStatus} note={summary.channelNote} />
-        <StatCard eyebrow="Android 通道" value={`${summary.androidDeviceCount} 台`} note="优先使用 Server酱³，旧 FCM 设备保留兼容" />
+        <StatCard eyebrow="Server酱³" value={serverChan3Configured ? '已配置' : '未配置'} note="用于跨平台系统通知推送" />
         <StatCard eyebrow="iOS Bark" value={barkConfigured ? '已配置' : '未配置'} note="在 iOS tab 填入 Bark device key" />
       </div>
 

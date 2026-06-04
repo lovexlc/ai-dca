@@ -110,27 +110,65 @@ export function persistNotifyClientConfig(nextConfig = {}) {
   }
 
   const current = readNotifyClientConfig();
+  const { _skipTrack, ...storedNextConfig } = nextConfig || {};
   const payload = {
     ...current,
-    ...nextConfig,
-    barkDeviceKey: String(nextConfig.barkDeviceKey ?? current.barkDeviceKey ?? '').trim(),
-    serverChan3Uid: String(nextConfig.serverChan3Uid ?? current.serverChan3Uid ?? '').trim(),
-    serverChan3SendKey: String(nextConfig.serverChan3SendKey ?? current.serverChan3SendKey ?? '').trim(),
-    notifyClientId: normalizeNotifyClientId(nextConfig.notifyClientId ?? current.notifyClientId ?? '') || current.notifyClientId,
-    notifyClientLabel: normalizeNotifyClientLabel(nextConfig.notifyClientLabel ?? current.notifyClientLabel ?? '') || current.notifyClientLabel,
-    notifyClientSecret: normalizeNotifyClientSecret(nextConfig.notifyClientSecret ?? current.notifyClientSecret ?? '') || current.notifyClientSecret
+    ...storedNextConfig,
+    barkDeviceKey: String(storedNextConfig.barkDeviceKey ?? current.barkDeviceKey ?? '').trim(),
+    serverChan3Uid: String(storedNextConfig.serverChan3Uid ?? current.serverChan3Uid ?? '').trim(),
+    serverChan3SendKey: String(storedNextConfig.serverChan3SendKey ?? current.serverChan3SendKey ?? '').trim(),
+    notifyClientId: normalizeNotifyClientId(storedNextConfig.notifyClientId ?? current.notifyClientId ?? '') || current.notifyClientId,
+    notifyClientLabel: normalizeNotifyClientLabel(storedNextConfig.notifyClientLabel ?? current.notifyClientLabel ?? '') || current.notifyClientLabel,
+    notifyClientSecret: normalizeNotifyClientSecret(storedNextConfig.notifyClientSecret ?? current.notifyClientSecret ?? '') || current.notifyClientSecret
   };
 
   window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(payload));
+  if (_skipTrack) {
+    return;
+  }
   const platforms = [];
   if (payload.barkDeviceKey) platforms.push('ios');
-  if ((nextConfig && nextConfig._hasAndroid) || Boolean(payload.serverChan3Uid && payload.serverChan3SendKey)) platforms.push('android');
-  if (nextConfig && nextConfig._hasPC) platforms.push('pc');
+  if ((storedNextConfig && storedNextConfig._hasServerChan3) || Boolean(payload.serverChan3Uid && payload.serverChan3SendKey)) platforms.push('serverchan3');
+  if (storedNextConfig && storedNextConfig._hasPC) platforms.push('pc');
   trackAnalyticsEvent('notify_enabled', {
     hasBark: Boolean(payload.barkDeviceKey),
     clientId: payload.notifyClientId,
     platforms
   });
+}
+
+export function mergeNotifyStatusIntoClientConfig(statusPayload = {}, currentConfig = readNotifyClientConfig()) {
+  const setup = statusPayload?.setup && typeof statusPayload.setup === 'object' ? statusPayload.setup : {};
+  const serverChan3 = setup.serverChan3 && typeof setup.serverChan3 === 'object' ? setup.serverChan3 : {};
+  const serverChan3Configured = Boolean(statusPayload?.configured?.serverChan3 || serverChan3.configured);
+  const nextConfig = {
+    barkDeviceKey: String(currentConfig.barkDeviceKey || setup.barkDeviceKey || '').trim(),
+    serverChan3Uid: String(currentConfig.serverChan3Uid || serverChan3.uid || '').trim(),
+    serverChan3SendKey: String(currentConfig.serverChan3SendKey || '').trim()
+  };
+
+  if (setup.clientId) {
+    nextConfig.notifyClientId = setup.clientId;
+  }
+  if (setup.clientLabel) {
+    nextConfig.notifyClientLabel = setup.clientLabel;
+  }
+
+  if (serverChan3Configured && serverChan3.uid && serverChan3.uid !== currentConfig.serverChan3Uid) {
+    nextConfig.serverChan3Uid = String(serverChan3.uid).trim();
+  }
+
+  persistNotifyClientConfig({
+    ...nextConfig,
+    _hasServerChan3: serverChan3Configured,
+    _hasPC: false,
+    _skipTrack: true
+  });
+
+  return {
+    ...currentConfig,
+    ...nextConfig
+  };
 }
 
 function resolveNotifyClientConfig(payload = {}) {
@@ -193,7 +231,7 @@ async function requestNotify(path, init = {}) {
     throw new Error(payload.error || `通知服务请求失败：状态 ${response.status}`);
   }
 
-  const platform = path.includes('/gcm/') ? 'android' : 'ios';
+  const platform = path.includes('/ws/') ? 'pc' : path.includes('/settings') ? 'serverchan3' : 'ios';
   trackAnalyticsEvent('notify_used', { path, platform });
   return payload;
 }
@@ -349,6 +387,7 @@ export function syncTradePlanRules(payload = buildNotifySyncPayload()) {
     },
     body: JSON.stringify({
       ...payload,
+      clientId: clientConfig.clientId,
       clientLabel: clientConfig.clientLabel
     })
   });
@@ -399,46 +438,8 @@ export function saveNotifySettings(payload = {}) {
     },
     body: JSON.stringify({
       ...payload,
-      clientLabel: clientConfig.clientLabel
-    })
-  });
-}
-
-export function pairAndroidDevice(payload = {}) {
-  const clientConfig = resolveNotifyClientConfig(payload);
-
-  return requestNotify('/gcm/pair', {
-    clientConfig,
-    query: {
-      clientId: clientConfig.clientId
-    },
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json'
-    },
-    body: JSON.stringify({
-      ...payload,
       clientId: clientConfig.clientId,
-      clientName: clientConfig.clientLabel
-    })
-  });
-}
-
-export function unpairAndroidDevice(payload = {}) {
-  const clientConfig = resolveNotifyClientConfig(payload);
-
-  return requestNotify('/gcm/unpair', {
-    clientConfig,
-    query: {
-      clientId: clientConfig.clientId
-    },
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json'
-    },
-    body: JSON.stringify({
-      ...payload,
-      clientId: clientConfig.clientId
+      clientLabel: clientConfig.clientLabel
     })
   });
 }

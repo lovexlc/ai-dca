@@ -35,7 +35,23 @@
       "Bash(npx vite *)",
       "Bash(curl -s http://127.0.0.1:4173/)",
       "Bash(curl -s --max-time 5 http://127.0.0.1:4173/)",
-      "Bash(curl -v http://127.0.0.1:4173/)"
+      "Bash(curl -v http://127.0.0.1:4173/)",
+      "Bash(fuser -k 4173/tcp)",
+      "Bash(codex --version)",
+      "Read(//root/**)",
+      "Read(//root/.config/**)",
+      "Read(//root/.codex/**)",
+      "Read(//root/.config/codex/**)",
+      "Bash(curl *)",
+      "Bash(codex --help)",
+      "Bash(codex -p compat --help)",
+      "Bash(codex doctor *)",
+      "Bash(COMPAT_API_KEY=\"sk-uZAod8Ao7EnH42KkvOAHUg6zSWUBv0yzMmzRgwhvuVLVPVVG\" codex -p compat doctor)",
+      "Bash(COMPAT_API_KEY=\"sk-uZAod8Ao7EnH42KkvOAHUg6zSWUBv0yzMmzRgwhvuVLVPVVG\" codex -p compat exec \"say hello\")",
+      "Bash(codex -p plus exec \"say hello\")",
+      "Bash(npx vitest *)",
+      "Bash(git reset *)",
+      "Bash(read code *)"
     ]
   }
 }

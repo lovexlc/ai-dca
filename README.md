@@ -5,14 +5,14 @@
 - React 前端工作台（多 tab 控制台 + 持仓 / 计划 / 切换 / 通知 / 备份）
 - Cloudflare Worker：
   - `ocr-proxy` — OCR/识别代理、持仓 NAV、限购扫描、AI 问答（RAG）
-  - `notify` — 推送（FCM / Bark / Gotify）、规则同步、定时事件、实时 WS 通道
+  - `notify` — 推送（Bark / Server酱³ / PC WebSocket）、规则同步、定时事件
   - `webdav-cors-proxy` — 备份页用的 WebDAV CORS 代理
 - 数据抓取与静态页面发布脚本
 - 知识库构建脚本（写入 Cloudflare Vectorize，供 AI 助手检索）
 
-Android 推送接收端已经拆分到独立仓库，不再放在本项目内：
+旧 Android GCM/FCM 推送接收端已废弃，不再维护：
 
-- `ai-dca-android-notify`
+- `ai-dca-android-notify`（deprecated）
 
 ## 功能概览
 
@@ -34,7 +34,7 @@ Android 推送接收端已经拆分到独立仓库，不再放在本项目内：
   - 全部场外纳指 100 基金按基金公司分组展示
 - **通知设置** `notify`
   - 提醒规则同步、测试通知按钮、最近提醒记录
-  - FCM / Bark / Gotify 多通道；Android 端通过 `deviceInstallationId` 直绑（已弃用配对码）
+  - Bark / Server酱³ / PC 浏览器实时通道
   - 持仓晚盘通知 20:30 / 21:30 统一全量推送（in + out + 总览），支持 `body_md`
 - **数据同步** `backup`
   - WebDAV 备份 / 恢复（通过 `webdav-cors-proxy` worker 转发 CORS）
@@ -158,7 +158,6 @@ npm run worker:webdav:dev   # webdav-cors-proxy（端口 8789）
 | 路径 | 用途 |
 | --- | --- |
 | `GET/POST /api/notify/status` `events` `sync` `test` `settings` | 通知规则与测试 |
-| `POST /api/notify/gcm/{register,check,pair,unpair,unpair-from-device,pairing-key}` | Android FCM 配对（已主用 `deviceInstallationId`） |
 | `POST /api/notify/run` | 手动触发推送循环 |
 | `GET/POST /api/notify/holdings-rule` | 持仓规则读写 |
 | `GET/POST /api/notify/switch/{config,snapshot,run}` | 切换信号配置 / 快照 / 触发 |
@@ -191,7 +190,7 @@ Worker 改动的回报必须附四件证据：本地路径行号、commit SHA + 
 ## 备注
 
 - 仓库目录名当前仍可能为 `ai-dca-stragety`，但项目语义上就是 `ai-dca`
-- Android app 已迁移到独立仓库，后续移动端推送侧变更应在 `ai-dca-android-notify` 中维护
+- 旧 Android GCM/FCM app 已废弃；当前通知通道为 Bark、Server酱³ 和 PC WebSocket
 - 时区：所有时间戳一律渲染为 Asia/Shanghai（UTC+8）
 
 ## 社区支持

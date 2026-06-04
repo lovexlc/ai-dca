@@ -61,6 +61,10 @@ async function fetchFundMetricsMap(env, codes = [], { refresh = false } = {}) {
   return out;
 }
 
+export async function fetchFundMetricsForCodes(env, codes = [], options = {}) {
+  return fetchFundMetricsMap(env, codes, options);
+}
+
 function metricToLatestNav(metric) {
   const code = sanitizeCode(metric?.code || '');
   if (!code) return null;
@@ -75,7 +79,10 @@ function metricToLatestNav(metric) {
     source: metric?.source || 'fund-metrics',
     price: Number.isFinite(price) && price > 0 ? price : null,
     iopv: Number(metric?.iopv) || null,
-    premiumPercent: Number(metric?.premiumPercent) || null
+    premiumPercent: Number(metric?.premiumPercent) || null,
+    fundKind: String(metric?.fundKind || '').trim(),
+    fundType: String(metric?.fundType || '').trim(),
+    fundTypeCode: metric?.fundTypeCode ?? null
   };
 }
 
@@ -94,40 +101,52 @@ function metricToPrice(metric) {
     latestNav: Number(metric?.latestNav) || null,
     latestNavDate: String(metric?.latestNavDate || metric?.navDate || '').trim(),
     iopv: Number(metric?.iopv) || null,
-    premiumPercent: Number(metric?.premiumPercent) || null
+    premiumPercent: Number(metric?.premiumPercent) || null,
+    fundKind: String(metric?.fundKind || '').trim(),
+    fundType: String(metric?.fundType || '').trim(),
+    fundTypeCode: metric?.fundTypeCode ?? null
   };
 }
 
 function metricToHoldingSnapshot(metric, generatedAt = nowShanghaiIso()) {
   const code = sanitizeCode(metric?.code || '');
   if (!code) return null;
+  const fundKind = String(metric?.fundKind || '').trim().toLowerCase();
+  const exchangeMetric = fundKind === 'exchange' || isExchangeFundCode(code);
   const price = Number(metric?.price ?? metric?.currentPrice ?? metric?.close);
   const previousPrice = Number(metric?.previousClose);
   const nav = Number(metric?.latestNav ?? metric?.navBase ?? metric?.iopv);
+  const previousFundNav = Number(metric?.previousNav);
   const navDate = String(metric?.latestNavDate || metric?.navDate || '').trim();
-  const latestNav = Number.isFinite(price) && price > 0
+  const asOfDate = String(metric?.asOf || generatedAt).slice(0, 10);
+  const sourceUpdatedAt = String(metric?.updatedAt || '').trim();
+  const latestNav = exchangeMetric && Number.isFinite(price) && price > 0
     ? price
     : (Number.isFinite(nav) && nav > 0 ? nav : NaN);
-  const previousNav = Number.isFinite(previousPrice) && previousPrice > 0
+  const previousNav = exchangeMetric && Number.isFinite(previousPrice) && previousPrice > 0
     ? previousPrice
-    : NaN;
+    : (Number.isFinite(previousFundNav) && previousFundNav > 0 ? previousFundNav : NaN);
   if (!Number.isFinite(latestNav) || latestNav <= 0) return null;
   return {
     ok: true,
     code,
     name: String(metric?.name || '').trim(),
     latestNav: roundNumber(latestNav, 4),
-    latestNavDate: String(metric?.asOf || navDate || generatedAt).slice(0, 10),
+    latestNavDate: exchangeMetric && Number.isFinite(price) && price > 0 ? asOfDate : navDate,
     previousNav: Number.isFinite(previousNav) && previousNav > 0 ? roundNumber(previousNav, 4) : 0,
     previousNavDate: '',
     updatedAt: generatedAt,
+    sourceUpdatedAt,
     source: metric?.source || 'fund-metrics',
     priceSource: metric?.source || 'fund-metrics',
     fundLatestNav: Number.isFinite(nav) && nav > 0 ? roundNumber(nav, 4) : null,
     fundLatestNavDate: navDate,
     iopv: Number(metric?.iopv) || null,
     premiumPercent: Number(metric?.premiumPercent) || null,
-    cachePolicy: String(metric?.cachePolicy || '').trim()
+    cachePolicy: String(metric?.cachePolicy || '').trim(),
+    fundKind: String(metric?.fundKind || '').trim(),
+    fundType: String(metric?.fundType || '').trim(),
+    fundTypeCode: metric?.fundTypeCode ?? null
   };
 }
 

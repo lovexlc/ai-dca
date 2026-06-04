@@ -1,6 +1,6 @@
 import { sendBarkNotification } from './channels/bark.js';
 import { sendServerChan3Notification } from './channels/serverChan3.js';
-import { isRegistrationPairedToScope, normalizeGcmRegistrations, normalizeNotifyGroupId, sendGcmNotification } from './gcm.js';
+import { isRegistrationPairedToScope, normalizeGcmRegistrations, normalizeNotifyGroupId } from './gcm.js';
 import { tryPublishWs } from './wsHub.js';
 
 export const MAX_RECENT_EVENTS = 30;
@@ -44,6 +44,11 @@ function selectGcmRegistrationsForDelivery(registrations = [], { currentClientId
     .slice(0, limit);
 }
 
+function isWebWsRegistration(registration = {}) {
+  return Boolean(registration?.isWebClient)
+    || String(registration?.deviceInstallationId || registration?.id || '').startsWith('web-ws:');
+}
+
 export async function deliverNotification(env, notification, options = {}) {
   const settings = typeof env.__notifySettings === 'object' && env.__notifySettings ? env.__notifySettings : {};
   const results = [];
@@ -58,13 +63,16 @@ export async function deliverNotification(env, notification, options = {}) {
   const serverChan3ConfigKey = currentClientId ? `serverchan3-client:${currentClientId}` : 'serverchan3-client:unknown';
   const limitGcmRegistrations = Math.max(Number(options.limitGcmRegistrations) || 0, 0);
   const gcmRegistrations = normalizeGcmRegistrations(settings.gcmRegistrations);
-  const selectedGcmRegistrations = gcmRegistrations.filter((registration) => (
+  const selectedWsRegistrations = gcmRegistrations.filter((registration) => (
+    isWebWsRegistration(registration)
+    && (
     isRegistrationPairedToScope(registration, {
       clientId: currentClientId,
       currentGroupId: currentGroupId || currentClientId
     })
+    )
   ));
-  const gcmRegistrationsToDeliver = selectGcmRegistrationsForDelivery(selectedGcmRegistrations, {
+  const wsRegistrationsToDeliver = selectGcmRegistrationsForDelivery(selectedWsRegistrations, {
     currentClientId,
     currentGroupId,
     limit: limitGcmRegistrations
@@ -117,17 +125,7 @@ export async function deliverNotification(env, notification, options = {}) {
     });
   }
 
-  if (!selectedGcmRegistrations.length) {
-    results.push({
-      channel: 'gcm',
-      status: 'skipped',
-      detail: '还没有已配对的 Android 设备',
-      configKey: currentClientId ? `gcm-client:${currentClientId}` : 'gcm:paired',
-      configType: 'gcm',
-      configId: currentClientId || 'paired',
-      configLabel: 'Android'
-    });
-  } else {
+  if (selectedWsRegistrations.length) {
     const messageId = notification.eventId || '';
     const baseData = {
       messageId,
@@ -145,7 +143,7 @@ export async function deliverNotification(env, notification, options = {}) {
     };
 
     const wsSettledList = await Promise.allSettled(
-      gcmRegistrationsToDeliver.map((registration) =>
+      wsRegistrationsToDeliver.map((registration) =>
         tryPublishWs(env, registration.deviceInstallationId || registration.id, {
           messageId,
           eventId: messageId,
@@ -162,19 +160,19 @@ export async function deliverNotification(env, notification, options = {}) {
       return Boolean(v.ok) && Number(v.delivered || 0) > 0;
     });
 
-    gcmRegistrationsToDeliver.forEach((registration, idx) => {
+    wsRegistrationsToDeliver.forEach((registration, idx) => {
       const baseMeta = {
-        configKey: `gcm-registration:${registration.id}`,
-        configType: 'gcm-registration',
+        configKey: `web-ws-registration:${registration.id}`,
+        configType: 'web-ws-registration',
         configId: registration.id,
-        configLabel: registration.deviceName || 'Android Device'
+        configLabel: registration.deviceName || 'PC 浏览器实时通道'
       };
       if (wsDeliveredFlags[idx]) {
         const wsValue = wsSettledList[idx].status === 'fulfilled' ? (wsSettledList[idx].value || {}) : {};
         results.push({
           channel: 'ws',
           status: 'delivered',
-          detail: `App 常驻通道送达（连接数 ${Number(wsValue.delivered || 0)}），跳过 FCM`,
+          detail: `PC 浏览器实时通道送达（连接数 ${Number(wsValue.delivered || 0)}）`,
           ...baseMeta
         });
         return;
@@ -184,7 +182,7 @@ export async function deliverNotification(env, notification, options = {}) {
         results.push({
           channel: 'ws',
           status: 'queued',
-          detail: `App 当前离线，已写入离线队列（待投递 ${Number(wsValue.queueSize || 0)} 条）`,
+          detail: `PC 浏览器当前离线，已写入离线队列（待投递 ${Number(wsValue.queueSize || 0)} 条）`,
           ...baseMeta
         });
         return;
@@ -197,64 +195,36 @@ export async function deliverNotification(env, notification, options = {}) {
         ...baseMeta
       });
     });
-
-    const fcmTargets = gcmRegistrationsToDeliver
-      .map((registration, idx) => ({ registration, idx }))
-      .filter((item) => !wsDeliveredFlags[item.idx]);
-
-    if (fcmTargets.length) {
-      const gcmSettledList = await Promise.allSettled(
-        fcmTargets.map(({ registration }) =>
-          sendGcmNotification({
-            env,
-            projectId: settings.gcmProjectId,
-            packageName: registration.packageName || settings.gcmPackageName,
-            token: registration.token,
-            title: notification.title,
-            body: notification.body,
-            data: baseData
-          })
-        )
-      );
-
-      fcmTargets.forEach(({ registration }, idx) => {
-        const baseMeta = {
-          configKey: `gcm-registration:${registration.id}`,
-          configType: 'gcm-registration',
-          configId: registration.id,
-          configLabel: registration.deviceName || 'Android Device'
-        };
-        const settled = gcmSettledList[idx];
-        if (settled.status === 'fulfilled') {
-          results.push({
-            ...settled.value,
-            detail: settled.value?.status === 'delivered'
-              ? `FCM 系统通知已发送：${settled.value?.detail || '已发送到 Android 设备'}`
-              : settled.value?.detail,
-            ...baseMeta
-          });
-          return;
-        }
-        results.push({
-          channel: 'gcm',
-          status: 'failed',
-          detail: settled.reason instanceof Error ? settled.reason.message : 'FCM 系统通知发送失败',
-          ...baseMeta
-        });
-      });
-    }
   }
 
   if (currentClientId.startsWith('web:')) {
-    results.push({
-      channel: 'pc',
-      status: 'queued',
-      detail: '已写入事件，等待 PC 浏览器轮询拉取后本地弹窗',
-      configKey: `pc-client:${currentClientId}`,
-      configType: 'pc-client',
-      configId: currentClientId,
-      configLabel: currentClientLabel ? `PC · ${currentClientLabel}` : 'PC 浏览器'
-    });
+    // 检查 web 虚拟设备是否已通过 WS 送达
+    const webWsDeviceId = `web-ws:${currentClientId}`;
+    const webWsResult = results.find((r) => (
+      r.configType === 'web-ws-registration' && r.configId === webWsDeviceId && r.channel === 'ws' && r.status === 'delivered'
+    ));
+
+    if (webWsResult) {
+      results.push({
+        channel: 'ws',
+        status: 'delivered',
+        detail: 'PC 浏览器实时通道送达',
+        configKey: `pc-client:${currentClientId}`,
+        configType: 'pc-client',
+        configId: currentClientId,
+        configLabel: currentClientLabel ? `PC · ${currentClientLabel}` : 'PC 浏览器'
+      });
+    } else {
+      results.push({
+        channel: 'pc',
+        status: 'queued',
+        detail: '已写入事件，等待 PC 浏览器轮询拉取后本地弹窗',
+        configKey: `pc-client:${currentClientId}`,
+        configType: 'pc-client',
+        configId: currentClientId,
+        configLabel: currentClientLabel ? `PC · ${currentClientLabel}` : 'PC 浏览器'
+      });
+    }
   }
 
   const deliveredCount = results.filter((result) => String(result?.status || '') === 'delivered' || (String(result?.channel || '') === 'pc' && String(result?.status || '') === 'queued')).length;
@@ -267,8 +237,8 @@ export async function deliverNotification(env, notification, options = {}) {
       clientId: String(env.__notifyCurrentClientId || ''),
       delivered: deliveredCount,
       configured: configuredCount,
-      gcmRegSelected: selectedGcmRegistrations.length,
-      gcmRegToDeliver: gcmRegistrationsToDeliver.length,
+      wsRegSelected: selectedWsRegistrations.length,
+      wsRegToDeliver: wsRegistrationsToDeliver.length,
       barkConfigured: !!barkDeviceKey,
       serverChan3Configured: !!(serverChan3Uid && serverChan3SendKey),
       results: results.map((r) => ({

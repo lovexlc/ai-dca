@@ -18,7 +18,7 @@ export function normalizeSettings(settings = {}) {
         createdAt: String(client?.createdAt || '').trim()
       })).filter((client) => client.id && client.baseUrl && client.token)
     : [];
-  const gcmRegistrations = normalizeGcmRegistrations(settings.gcmRegistrations);
+  const gcmRegistrations = normalizeGcmRegistrations(settings.gcmRegistrations).filter((registration) => registration.isWebClient);
   const clients = Object.entries(rawClients).reduce((map, [clientId, client]) => {
     const normalizedClientId = normalizeClientId(client?.clientId || clientId);
 
@@ -63,12 +63,7 @@ export function normalizeSettings(settings = {}) {
     gotifyPassword: String(settings.gotifyPassword || '').trim(),
     gotifyToken: String(settings.gotifyToken || '').trim(),
     gotifyClients,
-    gcmProjectId: String(settings.gcmProjectId || '').trim(),
-    gcmPackageName: String(settings.gcmPackageName || '').trim(),
-    gcmRegistrations,
-    gcmLastCheckAt: String(settings.gcmLastCheckAt || '').trim(),
-    gcmLastCheckStatus: String(settings.gcmLastCheckStatus || '').trim(),
-    gcmLastCheckDetail: String(settings.gcmLastCheckDetail || '').trim()
+    gcmRegistrations
   };
 }
 

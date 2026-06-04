@@ -228,7 +228,7 @@ export async function askMarketsStream({
 
 // Watchlist (localStorage). Stored per market for convenience.
 const WATCHLIST_KEY = 'markets:watchlist:v1';
-const WATCHLIST_DEFAULTS_VERSION = 2;
+const WATCHLIST_DEFAULTS_VERSION = 3;
 const DEFAULT_WATCHLIST_ID = 'default';
 const DEFAULT_OTC_LIST_ID = 'default-otc';
 
@@ -254,21 +254,44 @@ export const CN_ETF_WATCHLIST_PRESETS = [
 
 const DEFAULT_CN_WATCHLIST = CN_ETF_WATCHLIST_PRESETS.map((item) => item.symbol);
 
-// 默认场外纳指基金列表：A 类 CNY 份额，排除机构专用 I 类。
+// 默认场外纳指基金列表：纳指场外全集，包含基金公司自有 F/I 类、C 类和美元份额。
 export const CN_OTC_WATCHLIST_PRESETS = [
-  { symbol: '000834', name: '大成纳指100联接A' },
-  { symbol: '270042', name: '广发纳指100联接A' },
-  { symbol: '161130', name: '易方达纳指100联接A' },
-  { symbol: '040046', name: '华安纳指100联接A' },
-  { symbol: '016055', name: '博时纳指100联接A' },
-  { symbol: '015299', name: '华夏纳指100联接A' },
-  { symbol: '016532', name: '嘉实纳指100联接A' },
-  { symbol: '018966', name: '汇添富纳指100联接A' },
-  { symbol: '019524', name: '华泰柏瑞纳指100联接A' },
-  { symbol: '019547', name: '招商纳指100联接A' },
-  { symbol: '160213', name: '国泰纳指100指数' },
-  { symbol: '019172', name: '摩根纳指100指数A' },
-  { symbol: '019736', name: '宝盈纳指100指数A' },
+  { symbol: '000834', name: '大成纳斯达克100ETF联接(QDII)A' },
+  { symbol: '008971', name: '大成纳斯达克100ETF联接(QDII)C' },
+  { symbol: '270042', name: '广发纳指100ETF联接(QDII)人民币A' },
+  { symbol: '006479', name: '广发纳指100ETF联接(QDII)人民币C' },
+  { symbol: '000055', name: '广发纳指100ETF联接(QDII)美元A' },
+  { symbol: '006480', name: '广发纳指100ETF联接(QDII)美元C' },
+  { symbol: '021778', name: '广发纳指100ETF联接(QDII)人民币F' },
+  { symbol: '161130', name: '易方达纳斯达克100ETF联接(QDII-LOF)A人民币' },
+  { symbol: '012870', name: '易方达纳斯达克100ETF联接(QDII-LOF)C人民币' },
+  { symbol: '003722', name: '易方达纳斯达克100ETF联接(QDII-LOF)A美元现汇' },
+  { symbol: '040046', name: '华安纳斯达克100ETF联接(QDII)A' },
+  { symbol: '014978', name: '华安纳斯达克100ETF联接(QDII)C' },
+  { symbol: '016055', name: '博时纳斯达克100ETF发起式联接(QDII)A人民币' },
+  { symbol: '016057', name: '博时纳斯达克100ETF发起式联接(QDII)C人民币' },
+  { symbol: '016056', name: '博时纳斯达克100ETF发起式联接(QDII)A美元' },
+  { symbol: '016058', name: '博时纳斯达克100ETF发起式联接(QDII)C美元' },
+  { symbol: '015299', name: '华夏纳斯达克100ETF发起式联接(QDII)A' },
+  { symbol: '015300', name: '华夏纳斯达克100ETF发起式联接(QDII)C' },
+  { symbol: '016532', name: '嘉实纳斯达克100ETF发起联接(QDII)A人民币' },
+  { symbol: '016533', name: '嘉实纳斯达克100ETF发起联接(QDII)C人民币' },
+  { symbol: '016534', name: '嘉实纳斯达克100ETF发起联接(QDII)A美元现汇' },
+  { symbol: '016535', name: '嘉实纳斯达克100ETF发起联接(QDII)C美元现汇' },
+  { symbol: '021838', name: '嘉实纳斯达克100ETF发起联接(QDII)I人民币' },
+  { symbol: '018966', name: '汇添富纳斯达克100ETF发起式联接(QDII)人民币A' },
+  { symbol: '018967', name: '汇添富纳斯达克100ETF发起式联接(QDII)人民币C' },
+  { symbol: '019524', name: '华泰柏瑞纳斯达克100ETF发起式联接(QDII)A' },
+  { symbol: '019525', name: '华泰柏瑞纳斯达克100ETF发起式联接(QDII)C' },
+  { symbol: '019547', name: '招商纳斯达克100ETF发起式联接(QDII)A' },
+  { symbol: '019548', name: '招商纳斯达克100ETF发起式联接(QDII)C' },
+  { symbol: '160213', name: '国泰纳斯达克100指数(QDII)' },
+  { symbol: '019172', name: '摩根纳斯达克100指数(QDII)人民币A' },
+  { symbol: '019173', name: '摩根纳斯达克100指数(QDII)人民币C' },
+  { symbol: '019174', name: '摩根纳斯达克100指数(QDII)美元A' },
+  { symbol: '019736', name: '宝盈纳斯达克100指数发起(QDII)A人民币' },
+  { symbol: '019737', name: '宝盈纳斯达克100指数发起(QDII)C人民币' },
+  { symbol: '021000', name: '南方纳斯达克100指数发起(QDII)I人民币' },
 ];
 
 const DEFAULT_CN_OTC_WATCHLIST = CN_OTC_WATCHLIST_PRESETS.map((item) => item.symbol);
@@ -330,6 +353,15 @@ function normalizeWatchlist(value = {}) {
     if (!lists.some((item) => item.id === DEFAULT_OTC_LIST_ID)) {
       const afterDefault = lists.findIndex((item) => item.id === DEFAULT_WATCHLIST_ID);
       lists.splice(afterDefault >= 0 ? afterDefault + 1 : lists.length, 0, otcSeedList);
+    } else if (!hasOtcDefaults) {
+      const otcIdx = lists.findIndex((item) => item.id === DEFAULT_OTC_LIST_ID);
+      const old = lists[otcIdx];
+      lists[otcIdx] = {
+        ...old,
+        name: '默认-场外基金',
+        type: 'cn_otc',
+        cn: Array.from(new Set([...DEFAULT_CN_OTC_WATCHLIST, ...(old.cn || [])])),
+      };
     }
   }
   if (!lists.some((item) => item.id === DEFAULT_WATCHLIST_ID)) {

@@ -3,6 +3,7 @@ import { readSettings, writeSettings } from './notifyStorage.js';
 import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
 import { handleBark, isBarkRoute } from './bark.js';
 import { WsHub, tryPublishWs } from './wsHub.js';
+import { runMarketDataPush } from './marketDataPush.js';
 import { emptyResponse, jsonResponse, readOrigin } from './notifyHttp.js';
 import {
   handleAck,
@@ -20,24 +21,18 @@ import {
   findGcmRegistration
 } from './gcmRegistrationState.js';
 import {
-  handleGcmCheck,
-  handleGcmPair,
-  handleGcmPairingKey,
-  handleGcmRegister,
-  handleGcmResetDeviceId,
-  handleGcmUnpair,
-  handleGcmUnpairFromDevice
-} from './gcmRoutes.js';
-import {
   buildScopedNotifySettings,
   ensureAuthenticatedClient,
   getClientRecord,
   hashText,
   normalizeClientId,
+  normalizeClientSecret,
   normalizeDeviceInstallationId,
+  randomString,
   readCurrentClientId,
   upsertClientRecord
 } from './clientSettings.js';
+import { normalizeGcmRegistrations } from './gcm.js';
 import {
   handleSwitchConfigGet,
   handleSwitchConfigPost,
@@ -59,6 +54,15 @@ import { normalizeServerChan3Config } from './channels/serverChan3.js';
 // 把 Durable Object 类型重新导出，让 Workers runtime 能在加载 wrangler 绑定时
 // 通过 entry module 的导出表找到 class_name="WsHub"。
 export { WsHub };
+
+function safeDecodePathSegment(value = '') {
+  try {
+    return decodeURIComponent(String(value || ''));
+  } catch (_) {
+    return String(value || '');
+  }
+}
+
 async function runClientDetection(env, settings, clientRecord, { reason = 'manual-run', testPayload = null } = {}) {
   const currentClientId = normalizeClientId(clientRecord?.clientId);
 
@@ -246,30 +250,8 @@ export default {
         return jsonResponse({ error: 'Gotify 通知能力已移除。' }, { status: 410, origin });
       }
 
-      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/register') {
-        return await handleGcmRegister(request, env);
-      }
-
-      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/check') {
-        return await handleGcmCheck(request, env);
-      }
-
-      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/pairing-key') {
-        return await handleGcmPairingKey(request, env);
-      }
-
-      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/pair') {
-        return await handleGcmPair(request, env);
-      }
-
-      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/unpair') {
-        return await handleGcmUnpair(request, env);
-      }
-      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/unpair-from-device') {
-        return await handleGcmUnpairFromDevice(request, env);
-      }
-      if (request.method === 'POST' && url.pathname === '/api/notify/gcm/reset-device-id') {
-        return await handleGcmResetDeviceId(request, env);
+      if (request.method === 'POST' && url.pathname.startsWith('/api/notify/gcm/')) {
+        return jsonResponse({ error: '旧版 Android GCM/FCM 推送已下线。' }, { status: 410, origin });
       }
 
       if (request.method === 'POST' && url.pathname === '/api/notify/run') {
@@ -316,6 +298,97 @@ export default {
         return jsonResponse({ ok: true }, { origin });
       }
 
+      // ── Web 客户端 WebSocket 注册 ──────────────────────────────
+      // PC 浏览器通过此端点获取 deviceInstallationId + token，然后接入 WsHub。
+      if (request.method === 'POST' && url.pathname === '/api/notify/ws/register') {
+        const payload = await request.json().catch(() => ({}));
+        const clientId = normalizeClientId(payload?.clientId);
+        const clientSecret = normalizeClientSecret(payload?.clientSecret);
+
+        if (!clientId || !clientSecret) {
+          return jsonResponse({ ok: false, message: '缺少 clientId 或 clientSecret。' }, { status: 400, origin });
+        }
+
+        let settings = await readSettings(env);
+        const existingClient = settings.clients?.[clientId];
+
+        if (!existingClient) {
+          return jsonResponse({ ok: false, message: '客户端未注册，请先同步通知配置。' }, { status: 404, origin });
+        }
+
+        const clientSecretHash = await hashText(clientSecret);
+        if (existingClient.clientSecretHash && existingClient.clientSecretHash !== clientSecretHash) {
+          return jsonResponse({ ok: false, message: 'clientSecret 验证失败。' }, { status: 401, origin });
+        }
+
+        // 生成虚拟设备 ID 和 token
+        const deviceInstallationId = `web-ws:${clientId}`;
+        const wsToken = randomString(64);
+
+        // 历史存储字段仍叫 gcmRegistrations；现在只保留 PC WebSocket 虚拟设备。
+        const registrations = normalizeGcmRegistrations(settings.gcmRegistrations);
+        const existingIdx = registrations.findIndex((r) => r.deviceInstallationId === deviceInstallationId);
+
+        const webDevice = {
+          id: deviceInstallationId,
+          deviceInstallationId,
+          deviceName: `Web · ${existingClient.clientLabel || clientId}`,
+          packageName: '',
+          token: wsToken,
+          isWebClient: true,
+          pairedClients: [{
+            clientId,
+            groupId: existingClient.notifyGroupId || clientId,
+            clientName: existingClient.clientLabel || '',
+            pairedAt: new Date().toISOString(),
+            lastSeenAt: new Date().toISOString()
+          }],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        if (existingIdx >= 0) {
+          registrations[existingIdx] = { ...registrations[existingIdx], ...webDevice };
+        } else {
+          registrations.push(webDevice);
+        }
+
+        settings.gcmRegistrations = registrations;
+        await writeSettings(env, settings);
+
+        return jsonResponse({ ok: true, deviceInstallationId, token: wsToken }, { origin });
+      }
+
+      // ── Web 客户端 WebSocket 注销 ──────────────────────────────
+      if (request.method === 'POST' && url.pathname === '/api/notify/ws/unregister') {
+        const payload = await request.json().catch(() => ({}));
+        const clientId = normalizeClientId(payload?.clientId);
+        const clientSecret = normalizeClientSecret(payload?.clientSecret);
+
+        if (!clientId || !clientSecret) {
+          return jsonResponse({ ok: false, message: '缺少 clientId 或 clientSecret。' }, { status: 400, origin });
+        }
+
+        let settings = await readSettings(env);
+        const existingClient = settings.clients?.[clientId];
+
+        if (!existingClient) {
+          return jsonResponse({ ok: false, message: '客户端未注册。' }, { status: 404, origin });
+        }
+
+        const clientSecretHash = await hashText(clientSecret);
+        if (existingClient.clientSecretHash && existingClient.clientSecretHash !== clientSecretHash) {
+          return jsonResponse({ ok: false, message: 'clientSecret 验证失败。' }, { status: 401, origin });
+        }
+
+        const deviceInstallationId = `web-ws:${clientId}`;
+        const registrations = normalizeGcmRegistrations(settings.gcmRegistrations);
+        settings.gcmRegistrations = registrations.filter((r) => r.deviceInstallationId !== deviceInstallationId);
+        await writeSettings(env, settings);
+
+        return jsonResponse({ ok: true }, { origin });
+      }
+
       // 实时通道 WebSocket 升级：客户端在 Sec-WebSocket-Protocol 头里用
       // "jijin-token-<fcmToken>" 携带 token。验证后转发给该设备的 WsHub Durable Object。
       if (url.pathname.startsWith('/api/notify/ws/')) {
@@ -323,7 +396,7 @@ export default {
         const slashIdx = tail.indexOf('/');
         const deviceInstallationIdRaw = slashIdx === -1 ? tail : tail.slice(0, slashIdx);
         const subpath = slashIdx === -1 ? '' : tail.slice(slashIdx + 1);
-        const deviceInstallationId = normalizeDeviceInstallationId(deviceInstallationIdRaw || '');
+        const deviceInstallationId = normalizeDeviceInstallationId(safeDecodePathSegment(deviceInstallationIdRaw || ''));
 
         if (!deviceInstallationId) {
           return jsonResponse({ ok: false, message: '缺少 deviceInstallationId。' }, { status: 400, origin });
@@ -360,6 +433,9 @@ export default {
           const reg = findGcmRegistration(settings, { deviceInstallationId });
           if (!reg) {
             return jsonResponse({ ok: false, message: '未找到设备注册记录。' }, { status: 404, origin });
+          }
+          if (!reg.isWebClient && !String(reg.deviceInstallationId || reg.id || '').startsWith('web-ws:')) {
+            return jsonResponse({ ok: false, message: '旧版 Android GCM/FCM 设备已下线。' }, { status: 410, origin });
           }
           if (String(reg.token || '').trim() !== token) {
             return jsonResponse({ ok: false, message: 'token 与注册记录不一致。' }, { status: 401, origin });
@@ -419,11 +495,25 @@ export default {
     if (cron === '* 1-7 * * MON-FRI') {
       console.log('[notify] scheduled dispatch -> runSwitchStrategyTick', JSON.stringify({ cron }));
       ctx.waitUntil(runSwitchStrategyTick(env, scheduledMs, { reason: 'switch-cron', runClientDetection }));
+      // 场内切换 cron 每分钟运行一次，也顺便推送行情
+      ctx.waitUntil(runMarketDataPush(env).catch((error) => {
+        console.log('[notify] marketPush error', JSON.stringify({
+          message: error instanceof Error ? error.message : String(error),
+        }));
+      }));
       return;
     }
 
     console.log('[notify] scheduled dispatch -> runDetection', JSON.stringify({ cron }));
     ctx.waitUntil(runDetection(env, 'scheduled'));
+
+    // 行情数据 WS 推送：每次 cron 都尝试推送，由 runMarketDataPush 内部判断
+    // 是否有活跃订阅、是否在交易时段、数据是否有变化。
+    ctx.waitUntil(runMarketDataPush(env).catch((error) => {
+      console.log('[notify] marketPush error', JSON.stringify({
+        message: error instanceof Error ? error.message : String(error),
+      }));
+    }));
 
     try {
       const todayShanghai = shanghaiDate || getShanghaiDateParts(new Date(scheduledMs)).date;
@@ -437,17 +527,6 @@ export default {
       } else if (hhmm === '21:30') {
         console.log('[notify] scheduled dispatch -> runHoldingsNotifications', JSON.stringify({ kind: 'otc', hhmm, todayShanghai }));
         ctx.waitUntil(runHoldingsNotificationsAll(env, todayShanghai, 'holdings-scheduled-2130', { runClientDetection }));
-      } else if (hhmm === '23:35') {
-        // 临时测试分支：晚 23:35 手动验证全仓总览推送，bypass dedup 以允许同一天重复发送。
-        // 验证完成后移除本分支 与 wrangler.toml 中的 "35 15 * * *" cron。
-        // eventIdOverride 带上分钟时间戳，避免与同一天其他推送（如 admin 测试）的 eventId 撞车
-        // 导致 FCM/iOS 在设备端被去重咽住。
-        console.log('[notify] scheduled dispatch -> runHoldingsNotificationsAll (test 23:35)', JSON.stringify({ hhmm, todayShanghai }));
-        ctx.waitUntil(runHoldingsNotificationsAll(env, todayShanghai, 'holdings-test-2335', {
-          bypassDedup: true,
-          eventIdOverride: `holdings-all-test-${todayShanghai}-${Date.now()}`,
-          runClientDetection
-        }));
       } else {
         console.log('[notify] scheduled holdings dispatch skipped', JSON.stringify({ hhmm, todayShanghai }));
       }

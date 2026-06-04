@@ -7,6 +7,7 @@ import { readPlanList } from '../app/plan.js';
 import { showToast } from '../app/toast.js';
 import { Card, Field, NumberInput, Pill, SectionHeading, SelectField, StatCard, TextInput, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 import { EXTRA_SYMBOL_GROUPS } from '../app/extraSymbols.js';
+import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 
 const DAY_OPTIONS = [1, 8, 15, 28];
 const CALC_APPLY_KEY = 'aiDcaCalcApply';
@@ -19,6 +20,17 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
   const [planList] = useState(() => readPlanList());
   const [isSaving, setIsSaving] = useState(false);
   const projection = useMemo(() => buildDcaProjection(state, { planList }), [planList, state]);
+  const dcaMeta = () => ({
+    embedded,
+    symbolLength: String(state.symbol || '').length,
+    frequency: state.frequency,
+    executionDay: state.executionDay,
+    hasLinkedPlan: Boolean(state.linkedPlanId),
+    planCount: planList.length,
+    isLinkedPlan: Boolean(projection.isLinkedPlan),
+    smartDcaMode: projection.smartDcaMode || '',
+    years: Number(state.years) || 0
+  });
   const linkedPlanOptions = useMemo(
     () => [
       { label: '不关联加仓策略', value: '' },
@@ -54,6 +66,11 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
         description: `${payload.symbol} · 频率 ${mappedFreq} · 单期 $${payload.amount}。可修改后保存。`,
         tone: 'emerald'
       });
+      trackFeatureEvent('dca', 'prefill_from_calculator', {
+        symbolLength: String(payload.symbol || '').length,
+        mappedFrequency: mappedFreq,
+        amountBucket: Number(payload.amount) > 5000 ? 'gt_5000' : Number(payload.amount) > 1000 ? '1000_5000' : 'lte_1000'
+      });
     } catch (_e) { /* ignore */ }
     try { window.sessionStorage.removeItem(CALC_APPLY_KEY); } catch (_e) { /* ignore */ }
   }, []);
@@ -65,6 +82,8 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
 
     setIsSaving(true);
     persistDcaState(state, projection);
+    const startedAt = Date.now();
+    trackFeatureEvent('dca', 'save_start', dcaMeta());
 
     let syncFailed = false;
     try {
@@ -78,6 +97,11 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
         description: syncFailed ? '定投计划已保存，本次通知规则未同步。' : '定投计划已保存，正在返回交易计划列表。',
         tone: syncFailed ? 'amber' : 'emerald',
         persist: true
+      });
+      trackActionResult('dca', 'save', syncFailed ? 'partial' : 'success', {
+        ...dcaMeta(),
+        syncFailed,
+        durationMs: Date.now() - startedAt
       });
       if (typeof onAfterSave === 'function') {
         onAfterSave();
@@ -94,6 +118,11 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
       linkedPlanId: nextPlanId,
       symbol: targetPlan?.symbol || current.symbol
     }));
+    trackFeatureEvent('dca', 'linked_plan_change', {
+      linked: Boolean(nextPlanId),
+      targetSymbolLength: String(targetPlan?.symbol || '').length,
+      planCount: planList.length
+    });
   }
 
   const content = (

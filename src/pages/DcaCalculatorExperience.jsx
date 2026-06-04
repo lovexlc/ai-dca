@@ -10,6 +10,7 @@ import {
 } from '../app/dcaCalculator.js';
 import { formatCurrency } from '../app/accumulation.js';
 import { EXTRA_SYMBOL_GROUPS } from '../app/extraSymbols.js';
+import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import {
   Card,
   Field,
@@ -48,6 +49,15 @@ export function DcaCalculatorExperience({ embedded = false }) {
 
   const freqMeta = DCA_FREQUENCIES.find((f) => f.value === frequency) || DCA_FREQUENCIES[0];
   const tfMeta = DCA_TIMEFRAMES.find((t) => t.value === timeframe) || DCA_TIMEFRAMES[2];
+  const calculatorMeta = () => ({
+    embedded,
+    symbolLength: String(symbol || '').trim().length,
+    timeframe,
+    frequency,
+    amountBucket: Number(amount) > 5000 ? 'gt_5000' : Number(amount) > 1000 ? '1000_5000' : Number(amount) > 0 ? 'lte_1000' : 'zero',
+    hasResult: Boolean(result?.ok),
+    rowCount: Array.isArray(result?.rows) ? result.rows.length : 0
+  });
 
   const chartData = useMemo(() => {
     if (!result?.ok) return [];
@@ -56,9 +66,19 @@ export function DcaCalculatorExperience({ embedded = false }) {
 
   async function handleRun() {
     if (loading) return;
+    const startedAt = Date.now();
     const trimmed = String(symbol || '').trim().toUpperCase();
+    trackFeatureEvent('dca_calculator', 'run_start', {
+      ...calculatorMeta(),
+      symbolLength: trimmed.length
+    });
     if (!trimmed) {
       setError('请输入标的代码');
+      trackActionResult('dca_calculator', 'run', 'validation_error', {
+        ...calculatorMeta(),
+        reason: 'missing_symbol',
+        durationMs: Date.now() - startedAt
+      });
       return;
     }
     setLoading(true);
@@ -68,6 +88,11 @@ export function DcaCalculatorExperience({ embedded = false }) {
       const rawCandles = await loadBacktestCandles(trimmed, timeframe);
       if (!rawCandles.length) {
         setError('未拉到 K 线数据，可能是代码输错或后端暂不支持。');
+        trackActionResult('dca_calculator', 'run', 'empty', {
+          ...calculatorMeta(),
+          candleCount: 0,
+          durationMs: Date.now() - startedAt
+        });
         return;
       }
       const backtest = calculateDcaBacktest({
@@ -77,11 +102,31 @@ export function DcaCalculatorExperience({ embedded = false }) {
       });
       if (!backtest.ok) {
         setError(backtest.reason === 'invalid_input' ? '请检查金额与频率' : '回测计算失败');
+        trackActionResult('dca_calculator', 'run', 'validation_error', {
+          ...calculatorMeta(),
+          reason: backtest.reason || 'calculation_failed',
+          candleCount: rawCandles.length,
+          durationMs: Date.now() - startedAt
+        });
         return;
       }
       setResult(backtest);
+      trackActionResult('dca_calculator', 'run', 'success', {
+        ...calculatorMeta(),
+        candleCount: rawCandles.length,
+        rowCount: Array.isArray(backtest.rows) ? backtest.rows.length : 0,
+        periodCount: Number(backtest.summary?.periods) || 0,
+        profitable: Number(backtest.summary?.profit) >= 0,
+        durationMs: Date.now() - startedAt
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : '拉取数据失败');
+      trackActionResult('dca_calculator', 'run', 'error', {
+        ...calculatorMeta(),
+        durationMs: Date.now() - startedAt,
+        errorName: err?.name || '',
+        errorMessage: String(err?.message || err || '').slice(0, 160)
+      });
     } finally {
       setLoading(false);
     }
@@ -92,6 +137,11 @@ export function DcaCalculatorExperience({ embedded = false }) {
 
   function handleApplyStrategy() {
     if (!summary) return;
+    trackFeatureEvent('dca_calculator', 'apply_to_dca', {
+      ...calculatorMeta(),
+      periodCount: Number(summary.periods) || 0,
+      profitable: Number(summary.profit) >= 0
+    });
     try {
       window.sessionStorage.setItem(CALC_APPLY_KEY, JSON.stringify({
         symbol: String(symbol || '').trim().toUpperCase(),
@@ -107,6 +157,11 @@ export function DcaCalculatorExperience({ embedded = false }) {
   // PR 2.5b part 2：把回测均价反向预填到减仓计划页（SellPlanExperience）。
   function handleApplyToSellPlan() {
     if (!summary) return;
+    trackFeatureEvent('dca_calculator', 'apply_to_sell_plan', {
+      ...calculatorMeta(),
+      periodCount: Number(summary.periods) || 0,
+      profitable: Number(summary.profit) >= 0
+    });
     try {
       window.sessionStorage.setItem(SELL_APPLY_KEY, JSON.stringify({
         symbol: String(symbol || '').trim().toUpperCase(),
@@ -136,7 +191,14 @@ export function DcaCalculatorExperience({ embedded = false }) {
                     <button
                       key={s.code}
                       type="button"
-                      onClick={() => setSymbol(s.code)}
+                      onClick={() => {
+                        trackFeatureEvent('dca_calculator', 'preset_symbol_select', {
+                          groupKey: group.key,
+                          symbolLength: String(s.code || '').length,
+                          fromSymbolLength: String(symbol || '').trim().length
+                        });
+                        setSymbol(s.code);
+                      }}
                       className={cx(
                         'rounded-full border px-3 py-1 text-xs font-semibold transition-all',
                         symbol === s.code

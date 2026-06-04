@@ -21,3 +21,11 @@ docs/holdings-nav-cache/
 workers/ocr-proxy/.dev.vars
 workers/**/.wrangler/
 docs/交易计划中心.md
+
+# Capacitor / Android build artifacts
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+.wrangler/
+test-results/

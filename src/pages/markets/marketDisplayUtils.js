@@ -77,6 +77,10 @@ export function rowMetric(row, keys = []) {
   return null;
 }
 
+function isFiniteRate(value) {
+  return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+}
+
 function normalizePremiumPercentValue(value, forceRate = false) {
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
@@ -103,19 +107,84 @@ export function formatPremiumPercent(row) {
 
 export function resolveFundFeeRate(row) {
   if (!row) return null;
+  const operationFeeRate = combineRuleRates(row.fundFee?.operationFees);
+  if (isFiniteRate(operationFeeRate)) return operationFeeRate;
   const cachedAnnualFeeRate = Number(row.fundFee?.annualFeeRate);
   if (Number.isFinite(cachedAnnualFeeRate)) return cachedAnnualFeeRate;
   const explicit = rowMetric(row, ['feeRate', 'expenseRatio', 'managementFeeRate', 'fundFeeRate', 'annualFeeRate']);
   const n = Number(explicit);
-  if (Number.isFinite(n)) return Math.abs(n) < 0.05 ? n * 100 : n;
+  if (isFiniteRate(explicit)) return Math.abs(n) < 0.05 ? n * 100 : n;
   const code = normalizeCnFundCode(row.code || row.symbol);
   const fallback = code ? CN_FUND_FEE_RATE_FALLBACK[code] : null;
-  return Number.isFinite(Number(fallback)) ? Number(fallback) : null;
+  return isFiniteRate(fallback) ? Number(fallback) : null;
+}
+
+function parseRateValue(value) {
+  if (value == null) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.abs(value) <= 1 ? value * 100 : value;
+  const text = String(value || '')
+    .replace(/,/g, '')
+    .replace(/％/g, '%')
+    .replace(/每年|年|\(.*?\)|（.*?）/g, '')
+    .trim();
+  if (!text || /暂无|不适用|无|--|—/.test(text)) return null;
+  const match = text.match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const n = Number(match[0]);
+  if (!Number.isFinite(n)) return null;
+  return Math.round((Math.abs(n) <= 1 && !/%/.test(text) ? n * 100 : n) * 10000) / 10000;
+}
+
+function parsePercentNumber(value) {
+  const n = Number(String(value ?? '').replace(/,/g, '').trim());
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * 10000) / 10000;
+}
+
+function ratesFromRuleRows(rows = []) {
+  return (Array.isArray(rows) ? rows : [])
+    .map((row) => {
+      if (row && typeof row === 'object' && !Array.isArray(row)) {
+        const unit = String(row.unit ?? '').trim();
+        if (unit === '1') return null;
+        if (unit === '2' && row.value != null) return parsePercentNumber(row.value);
+        if (row.value != null) return parseRateValue(row.value);
+      }
+      const values = Array.isArray(row)
+        ? row
+        : row && typeof row === 'object'
+          ? Object.values(row)
+          : [row];
+      const percentText = values.find((value) => /[%％]/.test(String(value || '')));
+      const fallbackText = values.length > 1 ? values[values.length - 1] : values[0];
+      return parseRateValue(percentText ?? fallbackText);
+    })
+    .filter(isFiniteRate);
+}
+
+function combineRuleRates(rows = []) {
+  const rates = ratesFromRuleRows(rows);
+  if (!rates.length) return null;
+  return Math.round(rates.reduce((sum, rate) => sum + Number(rate), 0) * 10000) / 10000;
+}
+
+export function resolveRedeemFeeRate(row) {
+  const explicit = rowMetric(row, ['redeemFeeRate', 'redemptionFeeRate', 'sellFeeRate']);
+  const explicitRate = parseRateValue(explicit);
+  if (isFiniteRate(explicitRate)) return explicitRate;
+  const rates = ratesFromRuleRows(row?.fundFee?.redeemRules);
+  if (!rates.length) return null;
+  return Math.max(...rates);
+}
+
+export function formatRedeemFeeRate(row) {
+  const rate = resolveRedeemFeeRate(row);
+  return isFiniteRate(rate) ? formatNumber(rate, 2) : '—';
 }
 
 export function formatFeeRate(row) {
   const rate = resolveFundFeeRate(row);
-  return Number.isFinite(Number(rate)) ? formatNumber(rate, 1) : '—';
+  return isFiniteRate(rate) ? formatNumber(rate, 1) : '—';
 }
 
 export function feeRateToneClass(row) {
@@ -136,7 +205,7 @@ export function formatTotalShares(value) {
 }
 
 export function formatYearPercent(row) {
-  const pct = Number(rowMetric(row, ['currentYearPercent', 'ytdPercent', 'yearPercent']));
+  const pct = Number(rowMetric(row, ['ytdReturn', 'currentYearPercent', 'ytdPercent', 'yearPercent']));
   return Number.isFinite(pct) ? formatSignedPercent(pct) : '—';
 }
 

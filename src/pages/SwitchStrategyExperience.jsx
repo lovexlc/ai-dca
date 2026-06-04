@@ -12,18 +12,11 @@ import {
 } from '../app/switchStrategySync.js';
 import {
   formatSwitchDate as formatDate,
-  formatSwitchLimitAmount as formatLimitAmount,
   formatSwitchPercent as formatPercent,
   formatSwitchPrice as formatPrice,
   loadNasdaqList as loadNasdqList,
-  loadNasdaqOtcList as loadNasdqOtcList,
-  limitSortValue,
   nowIso,
-  otcGroupIdOf,
   readSwitchPrefs as readPrefs,
-  shouldShowAppTag,
-  switchLimitLabelFor as limitLabelFor,
-  switchLimitToneFor as limitToneFor,
   writeSwitchPrefs as writePrefs,
 } from './switchStrategyHelpers.js';
 import {
@@ -33,6 +26,7 @@ import {
 } from './SwitchStrategyPanels.jsx';
 import { SwitchStrategyClassificationPanel } from './SwitchStrategyClassificationPanel.jsx';
 import { SwitchStrategyOpportunityPanels } from './SwitchStrategyOpportunityPanels.jsx';
+import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 
 // 场内 / 场外纳指 100 切换套利策略实时建议器；纯格式化、偏好读写和候选列表 helper 在 switchStrategyHelpers.js。
 
@@ -74,14 +68,31 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     lastSyncedAt: ''
   });
   const [workerConfigExpanded, setWorkerConfigExpanded] = useState(false);
-  const [fundLimitsByCode, setFundLimitsByCode] = useState({});
   // “所有纳指 ETF（未分类）”折叠状态：当 H/L 组都有内容时默认折叠。
   const [nasdaqPoolExpanded, setNasdaqPoolExpanded] = useState(true);
   const [nasdaqPoolTouched, setNasdaqPoolTouched] = useState(false);
-  // 场外纳指基金全集 (data/all_nasdq_otc.json)。
-  const [otcUniverse, setOtcUniverse] = useState([]);
-  const [showAllOtc, setShowAllOtc] = useState(false);
   const [switchView, setSwitchView] = useState(initialView === 'config' ? 'config' : 'opportunity');
+
+  const switchMeta = () => ({
+    embedded,
+    initialView,
+    switchView,
+    workerEnabled: Boolean(workerConfig.enabled),
+    workerHasSnapshot: Boolean(workerSnapshot),
+    workerConfigExpanded,
+    benchmarkCount: Array.isArray(prefs?.benchmarkCodes) ? prefs.benchmarkCodes.length : 0,
+    enabledCodeCount: Array.isArray(prefs?.enabledCodes) ? prefs.enabledCodes.length : 0,
+    exchangeHoldingCount: Array.isArray(exchangeFunds) ? exchangeFunds.length : 0,
+    universeCount: Array.isArray(candidateUniverse) ? candidateUniverse.length : 0,
+    hClassCount: premiumClassCounts.h,
+    lClassCount: premiumClassCounts.l,
+    pairCount: Number(switchSummary?.pairs || 0),
+    intraSignalCount: Array.isArray(intraSignals) ? intraSignals.length : 0,
+    otcReady: Boolean(otcSignal?.ready),
+    otcTriggered: Boolean(otcSignal?.triggered),
+    navError: Boolean(navState.error),
+    universeError: Boolean(universeError)
+  });
 
   const premiumClassCounts = useMemo(() => {
     const cls = (prefs && prefs.premiumClass) || {};
@@ -109,6 +120,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   // 首次入页：从 worker 拉取配置 + 快照。失败不阻断 UI（本地缓存仍可用）。
   useEffect(() => {
     let cancelled = false;
+    const startedAt = Date.now();
+    trackFeatureEvent('switch_strategy', 'worker_initial_load_start', switchMeta());
     (async () => {
       try {
         setWorkerStatus((prev) => ({ ...prev, loading: true, error: '' }));
@@ -129,6 +142,12 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           error: '',
           lastSyncedAt: new Date().toISOString()
         }));
+        trackActionResult('switch_strategy', 'worker_initial_load', 'success', {
+          ...switchMeta(),
+          hasConfig: Boolean(config),
+          hasSnapshot: Boolean(snapshotPayload?.snapshot),
+          durationMs: Date.now() - startedAt
+        });
       } catch (error) {
         if (cancelled) return;
         setWorkerStatus((prev) => ({
@@ -136,6 +155,12 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           loading: false,
           error: error?.message || '加载 worker 配置失败'
         }));
+        trackActionResult('switch_strategy', 'worker_initial_load', 'error', {
+          ...switchMeta(),
+          durationMs: Date.now() - startedAt,
+          errorName: error?.name || '',
+          errorMessage: String(error?.message || error || '').slice(0, 160)
+        });
       }
     })();
     return () => { cancelled = true; };
@@ -143,6 +168,13 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
   const persistWorkerConfig = useCallback(async (nextConfig) => {
     const normalized = normalizeSwitchConfigShape(nextConfig);
+    const startedAt = Date.now();
+    trackFeatureEvent('switch_strategy', 'worker_config_save_start', {
+      enabled: Boolean(normalized.enabled),
+      benchmarkCount: Array.isArray(normalized.benchmarkCodes) ? normalized.benchmarkCodes.length : 0,
+      enabledCodeCount: Array.isArray(normalized.enabledCodes) ? normalized.enabledCodes.length : 0,
+      classCount: Object.keys(normalized.premiumClass || {}).length
+    });
     setWorkerConfig(normalized);
     setWorkerStatus((prev) => ({ ...prev, saving: true, error: '', notice: '' }));
     try {
@@ -176,16 +208,37 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       try {
         const runPayload = await runSwitchOnce();
         if (runPayload?.snapshot) setWorkerSnapshot(runPayload.snapshot);
+        trackActionResult('switch_strategy', 'worker_post_config_run', 'success', {
+          triggeredCount: Number(runPayload?.summary?.triggered || 0),
+          pushedCount: Number(runPayload?.summary?.pushed || 0),
+          hasSnapshot: Boolean(runPayload?.snapshot)
+        });
       } catch (runErr) {
         // 静默失败：下一轮定时拉取会填上，不覆盖 saving notice。
         if (typeof console !== 'undefined') console.warn('[switch] post-config run failed', runErr);
+        trackActionResult('switch_strategy', 'worker_post_config_run', 'error', {
+          errorName: runErr?.name || '',
+          errorMessage: String(runErr?.message || runErr || '').slice(0, 160)
+        });
       }
+      trackActionResult('switch_strategy', 'worker_config_save', 'success', {
+        enabled: Boolean(stored.enabled),
+        benchmarkCount: Array.isArray(benchmarkCodes) ? benchmarkCodes.length : 0,
+        candidateCount,
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       setWorkerStatus((prev) => ({
         ...prev,
         saving: false,
         error: error?.message || '保存到 worker 失败'
       }));
+      trackActionResult('switch_strategy', 'worker_config_save', 'error', {
+        enabled: Boolean(normalized.enabled),
+        durationMs: Date.now() - startedAt,
+        errorName: error?.name || '',
+        errorMessage: String(error?.message || error || '').slice(0, 160)
+      });
     }
   }, []);
 
@@ -205,6 +258,11 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
   // 启用时将页面 prefs 一起带上，worker 立刻获得可运行的配置。
   const handleWorkerToggle = useCallback((enabled) => {
+    trackFeatureEvent('switch_strategy', 'worker_toggle', {
+      enabled: Boolean(enabled),
+      benchmarkCount: Array.isArray(prefs?.benchmarkCodes) ? prefs.benchmarkCodes.length : 0,
+      enabledCodeCount: Array.isArray(prefs?.enabledCodes) ? prefs.enabledCodes.length : 0
+    });
     if (enabled) {
       const benchmarkCodes = Array.from(new Set([
         ...(prefs?.benchmarkCodes || []),
@@ -314,6 +372,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, []);
 
   const handleWorkerRunOnce = useCallback(async () => {
+    const startedAt = Date.now();
+    trackFeatureEvent('switch_strategy', 'worker_run_once_start', switchMeta());
     setWorkerStatus((prev) => ({ ...prev, running: true, error: '', notice: '' }));
     try {
       const payload = await runSwitchOnce();
@@ -330,12 +390,25 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           : '手动执行完成：当前未触达阈值。',
         lastSyncedAt: new Date().toISOString()
       }));
+      trackActionResult('switch_strategy', 'worker_run_once', 'success', {
+        ...switchMeta(),
+        triggeredCount: triggered,
+        pushedCount: pushed,
+        hasSnapshot: Boolean(payload?.snapshot),
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       setWorkerStatus((prev) => ({
         ...prev,
         running: false,
         error: error?.message || '手动运行失败'
       }));
+      trackActionResult('switch_strategy', 'worker_run_once', 'error', {
+        ...switchMeta(),
+        durationMs: Date.now() - startedAt,
+        errorName: error?.name || '',
+        errorMessage: String(error?.message || error || '').slice(0, 160)
+      });
     }
   }, []);
 
@@ -355,78 +428,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     [aggregates]
   );
 
-  // 拉取所有场外纳指候选的申购限额 (ocr-proxy worker, 公告 LLM 优先)。
-  // 排除 C 类：C/A 共用份额公告，前端只比较 A/非AC。
-  const otcCodesKey = useMemo(
-    () => otcUniverse
-      .filter((f) => f && f.share_class !== 'C' && /^\d{6}$/.test(String(f.code || '')))
-      .map((f) => f.code)
-      .sort()
-      .join(','),
-    [otcUniverse]
-  );
-  useEffect(() => {
-    if (!otcCodesKey) {
-      setFundLimitsByCode({});
-      return undefined;
-    }
-    // 原先是 N 个 fetch fan-out、无并发上限也无 abort；现在走 POST 批量 + AbortController。
-    // Worker 内部 mapLimit(4) 复用 fetchFundLimit，三路源 * code 的放大在服务端收敛。
-    const codes = otcCodesKey.split(',');
-    const ctrl = new AbortController();
-    let cancelled = false;
-    (async () => {
-      try {
-        const resp = await fetch('/api/fund-limit', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ codes }),
-          cache: 'no-store',
-          signal: ctrl.signal
-        });
-        if (!resp.ok) {
-          // 老 Worker 可能还是 405（未上线新路由），回退 GET fan-out 保底。
-          if (resp.status === 405) {
-            const entries = await Promise.all(
-              codes.map((code) =>
-                fetch(`/api/fund-limit?code=${encodeURIComponent(code)}`, { cache: 'no-store', signal: ctrl.signal })
-                  .then((r) => (r.ok ? r.json() : null))
-                  .then((data) => [code, data])
-                  .catch(() => [code, null])
-              )
-            );
-            if (cancelled) return;
-            const next = {};
-            for (const [code, data] of entries) {
-              if (data && typeof data === 'object') next[code] = data;
-            }
-            setFundLimitsByCode(next);
-            return;
-          }
-          return;
-        }
-        const payload = await resp.json();
-        if (cancelled) return;
-        const next = {};
-        const items = Array.isArray(payload?.items) ? payload.items : [];
-        for (const item of items) {
-          if (item && item.ok && item.code && item.data && typeof item.data === 'object') {
-            next[item.code] = item.data;
-          }
-        }
-        setFundLimitsByCode(next);
-      } catch (err) {
-        if (err && err.name === 'AbortError') return;
-        // 静默失败；下一轮 refreshTick 会重试。
-      }
-    })();
-    return () => {
-      cancelled = true;
-      ctrl.abort();
-    };
-  }, [otcCodesKey, refreshTick]);
-
-
   // 候选基金 universe（来自 data/all_nasdq.json）
   useEffect(() => {
     let cancelled = false;
@@ -443,65 +444,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       });
     return () => { cancelled = true; };
   }, [inPagesDir, refreshTick]);
-
-  // 场外纳指基金全集加载。
-  useEffect(() => {
-    let cancelled = false;
-    loadNasdqOtcList({ inPagesDir })
-      .then((list) => { if (!cancelled) setOtcUniverse(Array.isArray(list) ? list : []); })
-      .catch(() => { if (!cancelled) setOtcUniverse([]); });
-    return () => { cancelled = true; };
-  }, [inPagesDir, refreshTick]);
-
-  // 场外纳指「按基金公司去重 + 选代表 + 按限额降序」。
-  // 每组候选 = {A 类, 非 AC 类}。
-  // 规则：若非 AC 类限额 > A 类限额 → 用非 AC，否则用 A。
-  const otcGroups = useMemo(() => {
-    const groups = new Map();
-    for (const f of otcUniverse) {
-      if (!f || f.share_class === 'C') continue;
-      if (!/^\d{6}$/.test(String(f.code || ''))) continue;
-      const gid = otcGroupIdOf(f);
-      if (!groups.has(gid)) groups.set(gid, { id: gid, members: [] });
-      groups.get(gid).members.push(f);
-    }
-    const result = [];
-    for (const g of groups.values()) {
-      const aCands = g.members.filter((f) => f.share_class === 'A');
-      const nonACands = g.members.filter((f) => f.share_class && f.share_class !== 'A' && f.share_class !== 'C');
-      const aPick = aCands.find((f) => f.currency === 'CNY') || aCands[0] || null;
-      const nPick = nonACands.find((f) => f.currency === 'CNY') || nonACands[0] || null;
-      const aLimit = aPick ? fundLimitsByCode[aPick.code] : null;
-      const nLimit = nPick ? fundLimitsByCode[nPick.code] : null;
-      const aVal = limitSortValue(aLimit);
-      const nVal = limitSortValue(nLimit);
-      let chosen = null, chosenLimit = null, chosenVal = null;
-      if (nPick && nVal != null && (aVal == null || nVal > aVal)) {
-        chosen = nPick; chosenLimit = nLimit; chosenVal = nVal;
-      } else if (aPick) {
-        chosen = aPick; chosenLimit = aLimit; chosenVal = aVal;
-      } else if (nPick) {
-        chosen = nPick; chosenLimit = nLimit; chosenVal = nVal;
-      } else {
-        continue;
-      }
-      result.push({
-        groupId: g.id,
-        fund: chosen,
-        limit: chosenLimit,
-        sortValue: chosenVal,
-        memberCount: g.members.length
-      });
-    }
-    const rank = (v) => {
-      if (v == null) return -2;
-      if (v === Infinity) return Number.MAX_VALUE;
-      if (v === -Infinity) return -1;
-      return v;
-    };
-    result.sort((a, b) => rank(b.sortValue) - rank(a.sortValue));
-    return result;
-  }, [otcUniverse, fundLimitsByCode]);
 
   // 候选集合 = 用户在 H/L 两表里拖入的代码 ∩ 排除持仓。
   // 不再让用户手动勾选“候选基金”：入 H/L 即可作为候选。
@@ -550,12 +492,20 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
   // 拉取所有候选 ETF 的 Worker 统一指标（候选池来自 data/all_nasdq.json，不仅限于持仓）。
   const loadNav = useCallback(async () => {
+    const startedAt = Date.now();
+    trackFeatureEvent('switch_strategy', 'metrics_refresh_start', {
+      universeCount: candidateUniverse.length
+    });
     setNavState((prev) => ({ ...prev, loading: true, error: '' }));
     try {
       const codes = candidateUniverse.map((f) => f.code);
       if (!codes.length) {
         setNavState({ loading: false, error: '', navByCode: {}, generatedAt: nowIso() });
         setPriceState({ priceByCode: {} });
+        trackActionResult('switch_strategy', 'metrics_refresh', 'empty', {
+          universeCount: 0,
+          durationMs: Date.now() - startedAt
+        });
         return;
       }
       const navByCode = {};
@@ -593,12 +543,24 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         generatedAt: nowIso()
       });
       setPriceState({ priceByCode });
+      trackActionResult('switch_strategy', 'metrics_refresh', Object.keys(navByCode).length === 0 ? 'empty' : 'success', {
+        requestedCount: codes.length,
+        successCount: Object.keys(navByCode).length,
+        priceCount: Object.keys(priceByCode).length,
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       setNavState((prev) => ({
         ...prev,
         loading: false,
         error: error instanceof Error ? error.message : '实时数据加载失败'
       }));
+      trackActionResult('switch_strategy', 'metrics_refresh', 'error', {
+        universeCount: candidateUniverse.length,
+        durationMs: Date.now() - startedAt,
+        errorName: error?.name || '',
+        errorMessage: String(error?.message || error || '').slice(0, 160)
+      });
     }
   }, [candidateUniverse]);
 
@@ -647,11 +609,24 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   const benchmark = benchmarks[0] || null;
 
   function setPrefValue(key, value) {
+    trackFeatureEvent('switch_strategy', 'pref_change', {
+      key,
+      valueKind: value === '' ? 'empty' : Number.isFinite(Number(value)) ? 'number' : typeof value,
+      ...switchMeta()
+    });
     setPrefs((prev) => ({ ...prev, [key]: value }));
   }
   // 拖拽分类：将 code 套入 H / L / 未分类。targetClass=null 表示从分类中移出。
   function setCodeClass(code, targetClass) {
     if (!code) return;
+    const beforeClass = prefs?.premiumClass?.[code] || null;
+    trackFeatureEvent('switch_strategy', 'code_class_change', {
+      codeLength: String(code || '').length,
+      beforeClass,
+      targetClass: targetClass || 'none',
+      via: 'button_or_drop',
+      ...switchMeta()
+    });
     setPrefs((prev) => {
       const cls = { ...((prev && prev.premiumClass) || {}) };
       if (targetClass === 'H' || targetClass === 'L') cls[code] = targetClass;
@@ -681,6 +656,10 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     setDragOverZone(null);
     const code = event.dataTransfer ? event.dataTransfer.getData('text/plain') : '';
     if (!code) return;
+    trackFeatureEvent('switch_strategy', 'code_drop', {
+      codeLength: String(code || '').length,
+      targetClass: targetClass || 'none'
+    });
     setCodeClass(code, targetClass);
   }, []);
 
@@ -805,6 +784,13 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   //   3. 两笔交易 (SELL + BUY) 互指 switchPairId，复盘页 buildAutoSwitchChains 会自动推导出切换链路；
   //      持仓总览也读同一份 holdings ledger，无需额外同步。
   const openQuickRecordFromIntra = useCallback((sig) => {
+    trackFeatureEvent('switch_strategy', 'quick_record_open', {
+      sourceKind: 'intra',
+      ruleKind: sig?.kind || '',
+      fromCodeLength: String(sig?.from || '').length,
+      toCodeLength: String(sig?.to || '').length,
+      intraSignalCount: intraSignals.length
+    });
     setQuickRecord({
       date: new Date().toISOString().slice(0, 10),
       sellCode: sig?.from || '',
@@ -818,9 +804,15 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       note: `规则 ${sig?.kind || ''} · ${sig?.description || ''}`.trim(),
       sourceKind: 'intra'
     });
-  }, []);
+  }, [intraSignals.length]);
 
   const openQuickRecordFromOtc = useCallback(() => {
+    trackFeatureEvent('switch_strategy', 'quick_record_open', {
+      sourceKind: 'otc',
+      benchCodeLength: String(otcSignal?.benchCode || '').length,
+      lowestCodeLength: String(otcSignal?.lowestCode || '').length,
+      otcLevel: otcSignal?.level || ''
+    });
     setQuickRecord({
       date: new Date().toISOString().slice(0, 10),
       sellCode: otcSignal?.benchCode || '',
@@ -851,8 +843,24 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     const sellShares = Number(quickRecord.sellShares);
     const buyPrice = Number(quickRecord.buyPrice);
     const buyShares = Number(quickRecord.buyShares);
-    if (!quickRecord.sellCode || !quickRecord.buyCode) return;
-    if (!(sellPrice > 0) || !(sellShares > 0) || !(buyPrice > 0) || !(buyShares > 0)) return;
+    if (!quickRecord.sellCode || !quickRecord.buyCode) {
+      trackActionResult('switch_strategy', 'quick_record_save', 'validation_error', {
+        reason: 'missing_code',
+        sourceKind: quickRecord.sourceKind || ''
+      });
+      return;
+    }
+    if (!(sellPrice > 0) || !(sellShares > 0) || !(buyPrice > 0) || !(buyShares > 0)) {
+      trackActionResult('switch_strategy', 'quick_record_save', 'validation_error', {
+        reason: 'invalid_trade_numbers',
+        sourceKind: quickRecord.sourceKind || '',
+        hasSellPrice: sellPrice > 0,
+        hasSellShares: sellShares > 0,
+        hasBuyPrice: buyPrice > 0,
+        hasBuyShares: buyShares > 0
+      });
+      return;
+    }
     const sellId = buildTransactionId('quick');
     const buyId = buildTransactionId('quick');
     const sellTx = normalizeTransaction({
@@ -891,6 +899,11 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         window.dispatchEvent(new StorageEvent('storage', { key: 'aiDcaFundHoldingsLedger' }));
       }
     } catch (_error) { /* ignore */ }
+    trackActionResult('switch_strategy', 'quick_record_save', 'success', {
+      sourceKind: quickRecord.sourceKind || '',
+      sellCodeLength: String(quickRecord.sellCode || '').length,
+      buyCodeLength: String(quickRecord.buyCode || '').length
+    });
     setQuickRecord(null);
   }, [quickRecord]);
 
@@ -907,7 +920,13 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         handleWorkerToggle={handleWorkerToggle}
         handleWorkerRunOnce={handleWorkerRunOnce}
         setWorkerConfigExpanded={setWorkerConfigExpanded}
-        setSnapshotCandModal={setSnapshotCandModal}
+        setSnapshotCandModal={(payload) => {
+          trackFeatureEvent('switch_strategy', 'snapshot_candidates_open', {
+            benchmarkCodeLength: String(payload?.bench?.benchmarkCode || '').length,
+            candidateCount: Array.isArray(payload?.bench?.candidates) ? payload.bench.candidates.length : 0
+          });
+          setSnapshotCandModal(payload);
+        }}
         formatDate={formatDate}
         formatPrice={formatPrice}
         formatPercent={formatPercent}
@@ -917,7 +936,10 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         benchmarkSummary={benchmarkSummary}
         navUpdatedHint={navUpdatedHint}
         navError={navState.error}
-        onRefresh={() => setRefreshTick((n) => n + 1)}
+        onRefresh={() => {
+          trackFeatureEvent('switch_strategy', 'manual_refresh_click', switchMeta());
+          setRefreshTick((n) => n + 1);
+        }}
         setPrefValue={setPrefValue}
         fundsWithPremium={fundsWithPremium}
         exchangeFunds={exchangeFunds}
@@ -940,13 +962,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         openQuickRecordFromIntra={openQuickRecordFromIntra}
         otcSignal={otcSignal}
         openQuickRecordFromOtc={openQuickRecordFromOtc}
-        otcGroups={otcGroups}
-        showAllOtc={showAllOtc}
-        setShowAllOtc={setShowAllOtc}
-        shouldShowAppTag={shouldShowAppTag}
-        formatLimitAmount={formatLimitAmount}
-        limitLabelFor={limitLabelFor}
-        limitToneFor={limitToneFor}
+        links={links}
       />
 
       <SwitchStrategyQuickRecordModal

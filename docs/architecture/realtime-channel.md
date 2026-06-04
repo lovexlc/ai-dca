@@ -74,18 +74,9 @@ workers/notify/src/wsHub.js
 | `/api/notify/ws/:deviceInstallationId` | `GET` (Upgrade) | 客户端建立 WebSocket。`Sec-WebSocket-Protocol` 携带 token 鉴权 |
 | `/api/notify/ws/health/:deviceInstallationId` | `GET` | 返回该设备当前在线连接数（调试用） |
 
-### 双发逻辑
+### 实时发送逻辑
 
-现有 `sendGcmNotification(...)` 调用点改成：
-
-```js
-await Promise.allSettled([
-  sendGcmNotification({ env, ..., data }),         // 现状
-  sendWsNotification({ env, deviceInstallationId, data }),  // 新增
-])
-```
-
-`sendWsNotification` 内部 = `env.WS_HUB.get(env.WS_HUB.idFromName(devId)).fetch("/dispatch", { method: "POST", body: JSON.stringify(data) })`。Durable Object 不在线（无活跃 socket）时 `fetch` 仍然成功，只是没人收，等同 no-op。
+旧 Android FCM fallback 已移除。当前仅对 `web-ws:` 虚拟设备调用 WsHub，在线直接送达，离线写入队列后等待浏览器重连补发。
 
 ### 鉴权
 
@@ -205,12 +196,11 @@ if (DeliveryReceiptStore.isAlreadyDisplayed(context, messageId)) return
 
 按顺序，每步独立 commit / 独立 PR：
 
-1. **共享 payload handler**：把 `NotifyMessagingService` 的 Bark 解析逻辑抽到 `BarkPayloadHandler`，FCM 路径切过去。零新功能，仅重构 + 单测。
+1. **共享 payload handler**：抽取通知 payload 解析逻辑。零新功能，仅重构 + 单测。
 2. **Worker：Durable Object 骨架**：`wsHub.js` + 路由 + 鉴权。客户端先不接，用 `wscat` 验通。
-3. **Worker：双发**：在所有调 `sendGcmNotification` 的地方并发调 `sendWsNotification`。DO 没在线时 no-op。
-4. **Android：RealtimeChannelService**：前台服务 + WebSocket + 自动重连 + 接 `BarkPayloadHandler`。设置开关默认关，仅 dev 自测。
-5. **Android：保活引导 UI**：电池优化 + MIUI 自启动入口。
-6. **打开默认开关 + 灰度**：先在你和家人的几台设备上跑 1-2 周，看实际到达率和断线频率。
+3. **Worker：实时发送**：通知触发时对 `web-ws:` 注册投递到 WsHub，离线时入队。
+4. **PC 浏览器：RealtimeChannel**：WebSocket + 自动重连 + 通知事件处理。
+5. **打开默认开关 + 灰度**：先在常用浏览器上跑 1-2 周，看实际到达率和断线频率。
 7. **观察期**：根据实战数据决定是否做 v2 catch-up / 心跳间隔调优。
 
 ## 风险与降级

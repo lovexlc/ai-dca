@@ -13,9 +13,9 @@
  *   - 总份额 = 当前持仓份额（客态全部卖光则 0）
  *   - 总收益仅算未实现（mark-to-market），不包含卖出已实现盈亏
  *   - 当日收益 = (latestNav − previousNav) × totalShares
- *     仅当持仓的 latestNavDate === 今日时计入：
- *       · exchange（场内 ETF）：盘中实时，预期 = 今日（非交易日则上一个工作日）。
- *       · otc / qdii：没有今日 NAV 时，"当日收益"为 0，避免把 T-1 / QDII 上一净值日涨跌误显示成今日。
+ *     · exchange（场内 ETF）：盘中实时，仅当行情日期为今天时计入。
+ *     · otc / qdii：按该类型的期望最新披露净值日计入；场外晚间披露的 T 日净值、
+ *       QDII 天然滞后的 T-1 净值都应展示为最新披露日收益。
  *   - QDII 识别：优先看 transaction.kind，否则按持仓名称中的关键词（QDII / 纳指 / 标普 / 海外… ）+
  *     代码白名单兜底；都不命中则按代码前缀分 exchange / otc 两档。
  */
@@ -138,9 +138,15 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
   const isLiteralToday = resolvedKind === 'exchange'
     ? quoteDate === todayDate
     : (!!latestNavDate && latestNavDate === todayDate);
+  const minDailyReturnNavDate = resolvedKind === 'exchange'
+    ? expectedLatestNavDate
+    : getExpectedLatestNavDate('qdii', todayDate);
   const isLatestNavExpected = !!latestNavDate
-    && latestNavDate >= expectedLatestNavDate
+    && latestNavDate >= minDailyReturnNavDate
     && latestNavDate <= todayDate;
+  const hasExpectedNavDate = resolvedKind === 'exchange'
+    ? isLiteralToday
+    : isLatestNavExpected;
   const cost = round(normalized.price * normalized.shares, 2);
   const currentPrice = getSnapshotCurrentPrice(snapshot, resolvedKind);
   const previousPrice = getSnapshotPreviousPrice(snapshot, resolvedKind);
@@ -152,7 +158,7 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
     hasCurrentPrice,
     hasPreviousPrice,
     hasChangePercent,
-    isLiteralToday
+    isLiteralToday: hasExpectedNavDate
   });
   const hasExpectedNav = getHasExpectedNav(resolvedKind, {
     hasCurrentPrice,
@@ -531,9 +537,15 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     const isLiteralToday = resolvedKind === 'exchange'
       ? quoteDate === todayDate
       : (!!latestNavDateStr && latestNavDateStr === todayDate);
+    const minDailyReturnNavDate = resolvedKind === 'exchange'
+      ? expectedLatestNavDate
+      : getExpectedLatestNavDate('qdii', todayDate);
     const isLatestNavExpected = !!latestNavDateStr
-      && latestNavDateStr >= expectedLatestNavDate
+      && latestNavDateStr >= minDailyReturnNavDate
       && latestNavDateStr <= todayDate;
+    const hasExpectedNavDate = resolvedKind === 'exchange'
+      ? isLiteralToday
+      : isLatestNavExpected;
 
     // 买入批次扣减法：详见上方第二趟计算。
     // BUY 追加批次；SELL 按 FIFO 消耗批次；剩余成本和均价只来自未卖出的批次。
@@ -557,7 +569,7 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       hasCurrentPrice,
       hasPreviousPrice,
       hasChangePercent,
-      isLiteralToday
+      isLiteralToday: hasExpectedNavDate
     });
     const hasDailyReturnInput = getHasDailyReturn(resolvedKind, {
       hasCurrentPrice,

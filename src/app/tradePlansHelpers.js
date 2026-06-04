@@ -70,5 +70,3 @@ export function extractPurchaseAmount(row) {
   const match = summary.match(/[¥$]\s?\d+(?:\.\d+)?/);
   return match ? match[0].replace(/\s+/g, '') : '';
 }
-
-export const ANDROID_APK_DOWNLOAD_URL = 'https://sc3.ft07.com/client';

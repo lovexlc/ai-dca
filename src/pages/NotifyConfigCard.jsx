@@ -1,5 +1,5 @@
-import { ArrowRight, Bell, ChevronDown, ChevronUp, Laptop, Save, Send, Trash2 } from 'lucide-react';
-import { ANDROID_APK_DOWNLOAD_URL, formatEventTimeLabel } from '../app/tradePlansHelpers.js';
+import { Bell, ChevronDown, ChevronUp, Laptop, Loader2, Save, Send, Wifi, WifiOff } from 'lucide-react';
+import { formatEventTimeLabel } from '../app/tradePlansHelpers.js';
 import {
   Card,
   Field,
@@ -15,21 +15,15 @@ export function NotifyConfigCard({
   setConfigCollapsed,
   summary,
   barkConfigured,
-  androidConfigured,
+  serverChan3Configured,
   notifyPlatform,
   setNotifyPlatform,
   notifyError,
   notifyMessage,
   notifyConfig,
   setNotifyConfig,
-  androidPairingCode,
-  setAndroidPairingCode,
-  isPairingAndroid,
-  pairedAndroidDevices,
-  androidSetup,
-  unpairingRegistrationId,
-  handlePairAndroidCode,
-  handleUnpairAndroidRegistration,
+  pairedWebWsDevices = [],
+  notifySetup,
   handleSaveNotifyConfig,
   handleSaveServerChan3Config,
   isSavingSettings,
@@ -40,11 +34,12 @@ export function NotifyConfigCard({
   pcTestDisabledReason,
   handleRequestWebNotifyPermission,
   handleSendLocalWebNotifyTest,
-  handleToggleWebNotifyEnabled
+  handleToggleWebNotifyEnabled,
+  notifyWsStatus = 'idle'
 }) {
-  const serverChan3Configured = Boolean(summary?.serverChan3Configured || androidSetup?.serverChan3?.configured);
-  const androidDeviceCount = Number(summary?.androidDeviceCount ?? pairedAndroidDevices.length + (serverChan3Configured ? 1 : 0));
-  const serverChan3StatusLabel = serverChan3Configured ? '已配置' : '未配置';
+  const isServerChan3Configured = Boolean(summary?.serverChan3Configured || serverChan3Configured || notifySetup?.serverChan3?.configured);
+  const serverChan3StatusLabel = isServerChan3Configured ? '已配置' : '未配置';
+  const hasAnyChannel = Boolean(barkConfigured || isServerChan3Configured || webNotifyEnabled);
 
   return (
     <Card className="min-w-0">
@@ -61,7 +56,7 @@ export function NotifyConfigCard({
             <div className="mt-1 text-base font-bold text-slate-900 sm:text-lg">消息推送配置</div>
           </div>
           <div className="flex shrink-0 items-center gap-2 pt-1">
-            <Pill tone={(barkConfigured || androidConfigured) ? 'emerald' : 'slate'}>
+            <Pill tone={hasAnyChannel ? 'emerald' : 'slate'}>
               {summary.channelStatus}
             </Pill>
             {isConfigCollapsed
@@ -73,7 +68,7 @@ export function NotifyConfigCard({
           <div className="flex w-full items-center justify-center gap-1 rounded-2xl bg-slate-100 p-1 lg:inline-flex lg:w-auto lg:justify-start" role="tablist" aria-label="通知平台">
             {[
               ['ios', 'iOS'],
-              ['android', 'Android'],
+              ['serverchan3', 'Server酱³'],
               ['pc', 'PC 浏览器']
             ].map(([key, label]) => (
               <button
@@ -97,20 +92,6 @@ export function NotifyConfigCard({
       </div>
       {isConfigCollapsed ? null : (
         <>
-          {notifyPlatform === 'android' ? (
-            <div className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
-              Android App 下载地址：
-              <a
-                className="ml-1 inline-flex items-center gap-1 font-semibold underline underline-offset-4"
-                href={ANDROID_APK_DOWNLOAD_URL}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {ANDROID_APK_DOWNLOAD_URL}
-                <ArrowRight className="h-4 w-4" />
-              </a>
-            </div>
-          ) : null}
           {notifyError ? (
             <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
               {notifyError}
@@ -132,8 +113,8 @@ export function NotifyConfigCard({
                 <div className="mt-2 text-sm font-semibold text-slate-700">{notifyConfig.notifyClientLabel}</div>
               </div>
               <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Android 推送设备</div>
-                <div className="mt-2 text-sm font-semibold text-slate-700">{androidDeviceCount} 台</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">PC 实时通道</div>
+                <div className="mt-2 text-sm font-semibold text-slate-700">{pairedWebWsDevices.length} 个</div>
               </div>
             </div>
             <div className="mt-4 rounded-2xl bg-slate-950 px-4 py-3 font-mono text-xs text-slate-100">
@@ -142,15 +123,15 @@ export function NotifyConfigCard({
             </div>
           </div>
           <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-5">
-            {notifyPlatform === 'android' ? (
+            {notifyPlatform === 'serverchan3' ? (
               <div className="space-y-4" role="tabpanel" id="notify-panel">
-                <h3 className="text-base font-bold text-slate-900">Android 推送设置</h3>
+                <h3 className="text-base font-bold text-slate-900">Server酱³ 推送设置</h3>
                 <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <div className="text-sm font-semibold text-slate-900">Server酱³ Android 推送</div>
+                      <div className="text-sm font-semibold text-slate-900">Server酱³ 系统通知</div>
                     </div>
-                    <Pill tone={serverChan3Configured ? 'emerald' : notifyConfig.serverChan3Uid ? 'amber' : 'slate'}>
+                    <Pill tone={isServerChan3Configured ? 'emerald' : notifyConfig.serverChan3Uid ? 'amber' : 'slate'}>
                       {serverChan3StatusLabel}
                     </Pill>
                   </div>
@@ -174,105 +155,18 @@ export function NotifyConfigCard({
                         className={primaryButtonClass}
                         type="button"
                         onClick={handleSaveServerChan3Config}
-                        disabled={isSavingSettings || !String(notifyConfig.serverChan3Uid || '').trim() || !String(notifyConfig.serverChan3SendKey || '').trim()}
+                        disabled={isSavingSettings || !String(notifyConfig.serverChan3Uid || '').trim() || (!isServerChan3Configured && !String(notifyConfig.serverChan3SendKey || '').trim())}
                       >
                         <Save className="h-4 w-4" />
                         {isSavingSettings ? '正在保存' : '保存 Server酱³'}
                       </button>
                     </div>
                   </div>
-                  {androidSetup?.serverChan3?.configured ? (
+                  {notifySetup?.serverChan3?.configured ? (
                     <div className="mt-3 text-xs text-slate-500">
-                      云端已保存：{androidSetup.serverChan3.uid} / {androidSetup.serverChan3.sendKeyMasked || '已隐藏'}
+                      云端已保存：{notifySetup.serverChan3.uid} / {notifySetup.serverChan3.sendKeyMasked || '已隐藏'}
                     </div>
                   ) : null}
-                </div>
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 px-5 py-5">
-                  <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold text-slate-900">旧版 Android App 兼容入口</div>
-                    </div>
-                    <Pill tone="slate">旧版</Pill>
-                  </div>
-                  <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
-                    <Field label="Android 设备 ID / 测试 URL">
-                      <TextInput
-                        value={androidPairingCode}
-                        placeholder="粘贴完整测试 URL 或 android- 开头 ID"
-                        onChange={(event) => setAndroidPairingCode(event.target.value)}
-                      />
-                    </Field>
-                    <div className="flex flex-col gap-1">
-                      <button className={secondaryButtonClass} type="button" onClick={handlePairAndroidCode} disabled={isPairingAndroid || !androidPairingCode.trim()}>
-                        <Save className="h-4 w-4" />
-                        {isPairingAndroid ? '正在绑定旧版设备' : '绑定旧版设备'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-slate-900">当前 Android 推送设备</div>
-                    <Pill tone={androidDeviceCount ? 'emerald' : 'slate'}>
-                      {androidDeviceCount ? `${androidDeviceCount} 台可用` : '未配置'}
-                    </Pill>
-                  </div>
-                  {serverChan3Configured ? (
-                    <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-sm font-semibold text-slate-900">Server酱³ Android</div>
-                        <Pill tone="emerald">已配置</Pill>
-                      </div>
-                      <div className="mt-2 text-sm text-slate-500">
-                        {androidSetup?.serverChan3?.uid ? `UID: ${androidSetup.serverChan3.uid}` : 'Server酱³ Android 推送通道'}
-                      </div>
-                      <div className="mt-3 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
-                        <div>通道类型: Server酱³</div>
-                        <div>SendKey: {androidSetup?.serverChan3?.sendKeyMasked || '已隐藏'}</div>
-                      </div>
-                    </div>
-                  ) : null}
-                  {pairedAndroidDevices.length ? (
-                    <div className="mt-4 space-y-3">
-                      {pairedAndroidDevices.map((registration) => (
-                        <div key={registration.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="text-sm font-semibold text-slate-900">{registration.deviceName || 'Android Device'}</div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Pill tone={registration.lastCheckStatus === 'validated' ? 'emerald' : 'slate'}>
-                                {registration.lastCheckStatus === 'validated' ? 'FCM 已校验' : registration.lastCheckStatus || '待校验'}
-                              </Pill>
-                              <button
-                                className={cx(
-                                  secondaryButtonClass,
-                                  'border-rose-200 bg-white px-3 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60'
-                                )}
-                                type="button"
-                                disabled={unpairingRegistrationId === registration.id}
-                                onClick={() => handleUnpairAndroidRegistration(registration.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                {unpairingRegistrationId === registration.id ? '正在解绑' : '解绑设备'}
-                              </button>
-                            </div>
-                          </div>
-                          <div className="mt-2 text-sm text-slate-500">{registration.packageName || androidSetup?.gcmPackageName || '未记录包名'}</div>
-                          <div className="mt-3 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
-                            <div>Android uniqId: {registration.deviceInstallationId || registration.id || '--'}</div>
-                            <div>Token: {registration.tokenMasked || '--'}</div>
-                            <div>绑定时间: {formatEventTimeLabel(registration.updatedAt || registration.createdAt)}</div>
-                            <div>最近校验: {formatEventTimeLabel(registration.lastCheckedAt)}</div>
-                            <div>配对状态: {registration.pairedToCurrentClient ? '当前浏览器已绑定' : '未绑定'}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : serverChan3Configured ? null : (
-                    <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center">
-                      <div className="text-sm font-semibold text-slate-900">未绑定旧版 Android App 设备</div>
-                    </div>
-                  )}
                 </div>
               </div>
             ) : notifyPlatform === 'pc' ? (
@@ -332,7 +226,54 @@ export function NotifyConfigCard({
                   ) : null}
                   <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
                     <div className="min-w-0 pr-2">
-                      <div className="text-sm font-semibold text-slate-900">启用前台轮询</div>
+                      <div className="text-sm font-semibold text-slate-900">实时推送通道</div>
+                      <div className="mt-0.5 text-xs text-slate-500">通过 WebSocket 长连接接收通知，无需轮询</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {notifyWsStatus === 'connected' ? (
+                        <>
+                          <Wifi className="h-4 w-4 text-emerald-500" />
+                          <span className="text-xs font-semibold text-emerald-600">已连接</span>
+                        </>
+                      ) : notifyWsStatus === 'connecting' || notifyWsStatus === 'reconnecting' ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
+                          <span className="text-xs font-semibold text-amber-600">连接中</span>
+                        </>
+                      ) : notifyWsStatus === 'fallback' ? (
+                        <>
+                          <WifiOff className="h-4 w-4 text-slate-400" />
+                          <span className="text-xs font-semibold text-slate-500">轮询模式</span>
+                        </>
+                      ) : (
+                        <>
+                          <WifiOff className="h-4 w-4 text-slate-300" />
+                          <span className="text-xs font-semibold text-slate-400">未启用</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {pairedWebWsDevices.length ? (
+                    <div className="mt-3 space-y-3">
+                      {pairedWebWsDevices.map((registration) => (
+                        <div key={registration.id} className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-4">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="text-sm font-semibold text-slate-900">{registration.deviceName || 'WebSocket 浏览器通道'}</div>
+                            <Pill tone="emerald">WebSocket 已绑定</Pill>
+                          </div>
+                          <div className="mt-3 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
+                            <div>通道 ID: {registration.deviceInstallationId || registration.id || '--'}</div>
+                            <div>Token: {registration.tokenMasked || '--'}</div>
+                            <div>绑定时间: {formatEventTimeLabel(registration.updatedAt || registration.createdAt)}</div>
+                            <div>配对状态: {registration.pairedToCurrentClient ? '当前浏览器已绑定' : '未绑定'}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+                    <div className="min-w-0 pr-2">
+                      <div className="text-sm font-semibold text-slate-900">启用通知推送</div>
                     </div>
                     <button
                       type="button"
@@ -344,7 +285,7 @@ export function NotifyConfigCard({
                         webNotifyEnabled ? 'bg-emerald-500' : 'bg-slate-300'
                       )}
                       aria-pressed={webNotifyEnabled}
-                      aria-label="启用 PC 前台轮询"
+                      aria-label="启用 PC 通知推送"
                     >
                       <span
                         className={cx(

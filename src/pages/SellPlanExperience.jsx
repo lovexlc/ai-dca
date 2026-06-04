@@ -21,6 +21,7 @@ import { readTradeLedger } from '../app/tradeLedger.js';
 import { groupCostBasisBySymbol } from '../app/costTracker.js';
 import { calculatePositions } from '../app/positionManager.js';
 import { showToast } from '../app/toast.js';
+import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import {
   Card,
   Field,
@@ -49,6 +50,18 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave }) {
   const [state, setState] = useState(() => readSellPlanDraft());
   const [planList] = useState(() => readPlanList());
   const [isSaving, setIsSaving] = useState(false);
+  const sellPlanMeta = () => ({
+    embedded,
+    symbolLength: String(state.symbol || '').trim().length,
+    assetType,
+    sellable,
+    tierCount: state.gainTriggers.length || MIN_SELL_TIERS,
+    ratioPercentTotal,
+    hasLinkedPlan: Boolean(state.linkedPlanId),
+    planCount: planList.length,
+    hasWeightInfo: Boolean(weightInfo),
+    weightExceeded: Boolean(weightInfo?.exceedsCap)
+  });
 
   // PR 2.5b part 2：读 DCA 计算器反向预填（sessionStorage aiDcaSellApply），并侍后清除。
   useEffect(() => {
@@ -69,6 +82,10 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave }) {
       tone: 'emerald',
       title: '已从 DCA 回测预填',
       description: `${String(payload.symbol).toUpperCase()} · 平均成本 ${Number(payload.avgCost).toFixed(2)}`
+    });
+    trackFeatureEvent('sell_plan', 'prefill_from_calculator', {
+      symbolLength: String(payload.symbol || '').trim().length,
+      hasAvgCost: Number(payload.avgCost) > 0
     });
   }, []);
 
@@ -126,6 +143,12 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave }) {
 
   function handleLinkedPlanChange(nextPlanId = '') {
     const target = planList.find((p) => p.id === nextPlanId) || null;
+    trackFeatureEvent('sell_plan', 'linked_plan_change', {
+      nextLinked: Boolean(nextPlanId),
+      hadLinked: Boolean(state.linkedPlanId),
+      planCount: planList.length,
+      targetSymbolLength: String(target?.symbol || '').length
+    });
     setState((current) => ({
       ...current,
       linkedPlanId: nextPlanId,
@@ -135,6 +158,11 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave }) {
 
   function handleTierCountChange(nextCount) {
     const safeCount = Math.max(MIN_SELL_TIERS, Math.min(MAX_SELL_TIERS, Number(nextCount) || MIN_SELL_TIERS));
+    trackFeatureEvent('sell_plan', 'tier_count_change', {
+      fromCount: state.gainTriggers.length || MIN_SELL_TIERS,
+      toCount: safeCount,
+      symbolLength: String(state.symbol || '').trim().length
+    });
     setState((current) => {
       const gains = normalizeArrayLength(current.gainTriggers, safeCount, DEFAULT_GAIN_TRIGGERS);
       const ratios = normalizeArrayLength(current.sellRatios, safeCount, DEFAULT_SELL_RATIOS);
@@ -163,8 +191,15 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave }) {
 
   async function handleSave() {
     if (isSaving) return;
+    const startedAt = Date.now();
+    trackFeatureEvent('sell_plan', 'save_start', sellPlanMeta());
     if (!String(state.symbol || '').trim()) {
       showToast({ title: '请先选择标的', tone: 'amber' });
+      trackActionResult('sell_plan', 'save', 'validation_error', {
+        ...sellPlanMeta(),
+        reason: 'missing_symbol',
+        durationMs: Date.now() - startedAt
+      });
       return;
     }
     if (!sellable) {
@@ -173,11 +208,22 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave }) {
         description: `${state.symbol} 是宽基指数，按策略只买不减仓。`,
         tone: 'amber'
       });
+      trackActionResult('sell_plan', 'save', 'validation_error', {
+        ...sellPlanMeta(),
+        reason: 'unsellable_asset',
+        durationMs: Date.now() - startedAt
+      });
       return;
     }
     setIsSaving(true);
     try {
       const saved = saveSellPlan(state);
+      trackActionResult('sell_plan', 'save', 'success', {
+        ...sellPlanMeta(),
+        savedSymbolLength: String(saved.symbol || '').length,
+        savedTierCount: Array.isArray(saved.gainTriggers) ? saved.gainTriggers.length : 0,
+        durationMs: Date.now() - startedAt
+      });
       showToast({
         title: '卖出计划已保存',
         description: `${saved.symbol} · ${saved.gainTriggers.length} 档，预计总收入 ${formatCurrency(projection.totalProceeds, '$ ')}`,
@@ -252,7 +298,14 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave }) {
                         <button
                           key={s.code}
                           type="button"
-                          onClick={() => setState((current) => ({ ...current, symbol: s.code }))}
+                          onClick={() => {
+                            trackFeatureEvent('sell_plan', 'preset_symbol_select', {
+                              groupKey: group.key,
+                              symbolLength: String(s.code || '').length,
+                              fromSymbolLength: String(state.symbol || '').trim().length
+                            });
+                            setState((current) => ({ ...current, symbol: s.code }));
+                          }}
                           className={cx(
                             'rounded-full border px-3 py-1 text-xs font-semibold transition-all',
                             state.symbol === s.code
@@ -436,7 +489,10 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave }) {
                 <button
                   type="button"
                   className={secondaryButtonClass}
-                  onClick={() => setState({ ...defaultSellPlanState, gainTriggers: [...DEFAULT_GAIN_TRIGGERS], sellRatios: [...DEFAULT_SELL_RATIOS] })}
+                  onClick={() => {
+                    trackFeatureEvent('sell_plan', 'reset_defaults', sellPlanMeta());
+                    setState({ ...defaultSellPlanState, gainTriggers: [...DEFAULT_GAIN_TRIGGERS], sellRatios: [...DEFAULT_SELL_RATIOS] });
+                  }}
                 >
                   重置为默认
                 </button>

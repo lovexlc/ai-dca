@@ -32,14 +32,73 @@ export function MarketsMainContent({
   summary,
   summaryLoading,
   onRefreshSummary,
+  fullTableMode = false,
+  fullTablePanel,
   detail,
 }) {
+  const showFullTable = fullTableMode && !selectedQuote;
+  const noSelectedContent = (
+    <>
+      {indices.length ? (
+        <div className="-mx-2 min-h-[176px] overflow-x-auto px-2 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex min-h-[156px] snap-x snap-mandatory items-stretch gap-3 pb-1">
+            {indices.map((entry) => (
+              <IndexCard
+                key={entry.symbol}
+                entry={entry}
+                onPick={onPickIndex}
+                sparkPoints={klineMap[entry.symbol]}
+              />
+            ))}
+          </div>
+        </div>
+      ) : !indicesLoading ? (
+        <p className="text-sm text-slate-400">指数数据暂未加载。</p>
+      ) : null}
+
+      {market === 'us' && (
+        <div className="hidden lg:block">
+          <SummaryModule
+            themes={summary.themes}
+            loading={summaryLoading}
+            generatedAt={summary.generatedAt}
+            onRefresh={onRefreshSummary}
+          />
+        </div>
+      )}
+
+      <div className="hidden space-y-2 lg:block">
+        <div className="flex items-center gap-2 border-b border-[#e8eaed] pb-1.5">
+          <h2 className="text-[15px] font-semibold text-[#1f1f1f]">最新动态</h2>
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            实时
+          </span>
+          {newsLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
+          {market === 'cn' && <Pill tone="slate">A股新闻源建设中</Pill>}
+        </div>
+        <LatestNewsList items={news} />
+      </div>
+
+      {market === 'us' && (
+        <div className="hidden space-y-2 lg:block">
+          <div className="flex items-center gap-2 border-b border-[#e8eaed] pb-1.5">
+            <CalendarDays size={16} className="text-indigo-500" />
+            <h2 className="text-[15px] font-semibold text-[#1f1f1f]">即将发布的财报</h2>
+            {earningsLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
+          </div>
+          <EarningsCalendar items={earnings} />
+        </div>
+      )}
+    </>
+  );
+
   return (
     <main ref={mainRef} className="order-1 flex min-w-0 flex-col gap-5 lg:order-2 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
       <div className={cx(
-        "sticky top-0 z-20 items-center justify-between gap-3 bg-white/95 px-1 py-2 backdrop-blur transition-all duration-500 ease-out will-change-transform",
-        selectedQuote ? "hidden" : "flex",
-        !selectedQuote && detailHeaderHidden && "pointer-events-none -translate-y-full opacity-0"
+        'sticky top-0 z-20 items-center justify-between gap-3 bg-white/95 px-1 py-2 backdrop-blur transition-all duration-500 ease-out will-change-transform',
+        selectedQuote ? 'hidden' : 'flex',
+        !selectedQuote && detailHeaderHidden && 'pointer-events-none -translate-y-full opacity-0'
       )}>
         <div className="flex items-center gap-3">
           {MARKET_TABS.map((m) => (
@@ -71,7 +130,9 @@ export function MarketsMainContent({
         </div>
       </div>
 
-      {selectedQuote ? (
+      {showFullTable ? (
+        fullTablePanel
+      ) : selectedQuote ? (
         <SymbolDetailPanel
           row={selectedQuote}
           market={market}
@@ -107,59 +168,7 @@ export function MarketsMainContent({
           onBack={detail.onBack}
         />
       ) : (
-        <>
-          {indices.length ? (
-            <div className="-mx-2 min-h-[176px] overflow-x-auto px-2 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              <div className="flex min-h-[156px] snap-x snap-mandatory items-stretch gap-3 pb-1">
-                {indices.map((entry) => (
-                  <IndexCard
-                    key={entry.symbol}
-                    entry={entry}
-                    onPick={onPickIndex}
-                    sparkPoints={klineMap[entry.symbol]}
-                  />
-                ))}
-              </div>
-            </div>
-          ) : !indicesLoading ? (
-            <p className="text-sm text-slate-400">指数数据暂未加载。</p>
-          ) : null}
-
-          {market === 'us' && (
-            <div className="hidden lg:block">
-              <SummaryModule
-                themes={summary.themes}
-                loading={summaryLoading}
-                generatedAt={summary.generatedAt}
-                onRefresh={onRefreshSummary}
-              />
-            </div>
-          )}
-
-          <div className="hidden space-y-2 lg:block">
-            <div className="flex items-center gap-2 border-b border-[#e8eaed] pb-1.5">
-              <h2 className="text-[15px] font-semibold text-[#1f1f1f]">最新动态</h2>
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                实时
-              </span>
-              {newsLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
-              {market === 'cn' && <Pill tone="slate">A股新闻源建设中</Pill>}
-            </div>
-            <LatestNewsList items={news} />
-          </div>
-
-          {market === 'us' && (
-            <div className="hidden space-y-2 lg:block">
-              <div className="flex items-center gap-2 border-b border-[#e8eaed] pb-1.5">
-                <CalendarDays size={16} className="text-indigo-500" />
-                <h2 className="text-[15px] font-semibold text-[#1f1f1f]">即将发布的财报</h2>
-                {earningsLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
-              </div>
-              <EarningsCalendar items={earnings} />
-            </div>
-          )}
-        </>
+        noSelectedContent
       )}
     </main>
   );

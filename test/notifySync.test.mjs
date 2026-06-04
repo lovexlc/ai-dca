@@ -89,3 +89,41 @@ test('buildNotifySyncPayload: positionDigest 在 totalAssets<=0 时为 null', as
   const payload = mod.buildNotifySyncPayload();
   assert.equal(payload.positionDigest, null);
 });
+
+test('mergeNotifyStatusIntoClientConfig: 刷新后用云端 Server酱³ 状态恢复 UID', async () => {
+  const memory = installStorage({
+    aiDcaNotifyClientConfig: JSON.stringify({
+      barkDeviceKey: '',
+      serverChan3Uid: '',
+      serverChan3SendKey: '',
+      notifyClientId: 'web:client-1',
+      notifyClientLabel: 'Web 控制台',
+      notifyClientSecret: 'secret-1'
+    })
+  });
+  const mod = await freshImport();
+
+  const merged = mod.mergeNotifyStatusIntoClientConfig({
+    configured: {
+      serverChan3: true
+    },
+    setup: {
+      clientId: 'web:client-1',
+      clientLabel: 'Web 控制台',
+      serverChan3: {
+        uid: 'uid-123',
+        sendKeyMasked: 'sendke...abcd',
+        configured: true
+      }
+    }
+  });
+
+  assert.equal(merged.serverChan3Uid, 'uid-123');
+  assert.equal(merged.serverChan3SendKey, '');
+
+  const stored = JSON.parse(memory.get('aiDcaNotifyClientConfig'));
+  assert.equal(stored.serverChan3Uid, 'uid-123');
+  assert.equal(stored.serverChan3SendKey, '');
+  assert.equal(stored.notifyClientId, 'web:client-1');
+  assert.equal(stored.notifyClientSecret, 'secret-1');
+});

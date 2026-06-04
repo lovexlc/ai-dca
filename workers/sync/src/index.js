@@ -176,6 +176,7 @@ async function handleAdminAnalytics(request, env, origin) {
     COUNT(DISTINCT type) AS eventTypes,
     MAX(created_at) AS lastActive
     FROM analytics_events WHERE event_date >= ? AND COALESCE(NULLIF(username, ''), visitor_id) != ''
+    AND NOT (type = 'switch_worker_run' AND json_extract(meta, '$.reason') = 'switch-cron')
     GROUP BY COALESCE(NULLIF(username, ''), visitor_id)
     ORDER BY lastActive DESC LIMIT 20`).bind(since).all();
   const hourlyRows = await env.DB.prepare(`SELECT
@@ -183,25 +184,35 @@ async function handleAdminAnalytics(request, env, origin) {
     COUNT(*) AS events,
     COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), visitor_id)) AS users
     FROM analytics_events WHERE event_date >= ?
+    AND NOT (type = 'switch_worker_run' AND json_extract(meta, '$.reason') = 'switch-cron')
     GROUP BY hour ORDER BY hour`).bind(since).all();
   const dowRows = await env.DB.prepare(`SELECT
     CAST(strftime('%w', created_at) AS INTEGER) AS dow,
     COUNT(*) AS events,
     COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), visitor_id)) AS users
     FROM analytics_events WHERE event_date >= ?
+    AND NOT (type = 'switch_worker_run' AND json_extract(meta, '$.reason') = 'switch-cron')
     GROUP BY dow ORDER BY dow`).bind(since).all();
   const platformRows = await env.DB.prepare(`SELECT
     COUNT(DISTINCT CASE
       WHEN type = 'notify_enabled' AND json_extract(meta, '$.hasBark') = 1 THEN COALESCE(NULLIF(user_id, ''), visitor_id)
-      WHEN type = 'notify_used' AND (json_extract(meta, '$.platform') = 'ios' OR json_extract(meta, '$.path') NOT LIKE '%/gcm/%') THEN COALESCE(NULLIF(user_id, ''), visitor_id)
+      WHEN type = 'notify_used' AND json_extract(meta, '$.platform') = 'ios' THEN COALESCE(NULLIF(user_id, ''), visitor_id)
     END) AS iosUsers,
     COUNT(DISTINCT CASE
-      WHEN type = 'notify_used' AND (json_extract(meta, '$.platform') = 'android' OR json_extract(meta, '$.path') LIKE '%/gcm/%') THEN COALESCE(NULLIF(user_id, ''), visitor_id)
-      WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'android') THEN COALESCE(NULLIF(user_id, ''), visitor_id)
-    END) AS androidUsers,
+      WHEN type = 'notify_used' AND json_extract(meta, '$.platform') = 'serverchan3' THEN COALESCE(NULLIF(user_id, ''), visitor_id)
+      WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'serverchan3') THEN COALESCE(NULLIF(user_id, ''), visitor_id)
+    END) AS serverChan3Users,
     COUNT(DISTINCT CASE
       WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'pc') THEN COALESCE(NULLIF(user_id, ''), visitor_id)
-    END) AS pcUsers
+      WHEN type = 'notify_used' AND json_extract(meta, '$.platform') = 'pc' THEN COALESCE(NULLIF(user_id, ''), visitor_id)
+    END) AS pcUsers,
+    COUNT(DISTINCT CASE
+      WHEN type = 'notify_used' AND COALESCE(json_extract(meta, '$.platform'), '') NOT IN ('ios', 'serverchan3', 'pc') THEN COALESCE(NULLIF(user_id, ''), visitor_id)
+      WHEN type = 'notify_enabled'
+        AND COALESCE(json_extract(meta, '$.hasBark'), 0) != 1
+        AND NOT EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value IN ('serverchan3', 'pc'))
+        THEN COALESCE(NULLIF(user_id, ''), visitor_id)
+    END) AS unknownUsers
     FROM analytics_events WHERE event_date >= ? AND type IN ('notify_enabled','notify_used')`).bind(since).first();
 
   return json({
@@ -216,8 +227,9 @@ async function handleAdminAnalytics(request, env, origin) {
       switchRuns: Number(cardsRows?.switchRuns) || 0,
       notifyPlatformUsers: {
         ios: Number(platformRows?.iosUsers) || 0,
-        android: Number(platformRows?.androidUsers) || 0,
-        pc: Number(platformRows?.pcUsers) || 0
+        serverchan3: Number(platformRows?.serverChan3Users) || 0,
+        pc: Number(platformRows?.pcUsers) || 0,
+        unknown: Number(platformRows?.unknownUsers) || 0
       }
     },
     daily: (dailyRows.results || []).map((row) => ({

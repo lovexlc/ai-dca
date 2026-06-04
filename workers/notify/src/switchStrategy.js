@@ -11,7 +11,7 @@
 //   2. 拉取最新单位净值（统一走 markets/fund-metrics，保留 KV 缓存）
 //   3. 计算每只候选与基准的 (price - nav) / nav 溢价百分比
 //   4. 取「基准溢价 - 候选溢价」绝对值，跨越任一阈值即触发
-//   5. 推送到该 client 已配对的设备（Bark + FCM 通道，复用既有 runClientDetection 流程）
+//   5. 复用既有 runClientDetection 流程推送到该 client 的通知通道
 //
 // 去重：每对 (benchmark, candidate) 维护 (level, sign)：
 //   - level = 跨越的阈值数 (0 / 1 / 2)
@@ -57,6 +57,8 @@ const MAX_CANDIDATES = 20;
 //     同类、未分类、cand 未分类 都不触发。
 const DEFAULT_INTRA_SELL_LOWER_PCT = 1;   // 规则 A：差价收窄阈值
 const DEFAULT_INTRA_BUY_OTHER_PCT = 3;    // 规则 B：差价扩大阈值
+const DELAYED_OPEN_PREMIUM_THRESHOLD_PCT = 10;
+const DELAYED_OPEN_UNTIL_MINUTE = 10 * 60 + 30;
 
 function sanitizeCode(value) {
   const code = String(value || '').trim();
@@ -179,6 +181,43 @@ export function isInTradingSession(date = new Date()) {
   return false;
 }
 
+function positiveNumber(value) {
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : NaN;
+}
+
+function previousCloseOf(priceEntry) {
+  return positiveNumber(priceEntry?.previousClose ?? priceEntry?.prevClose ?? priceEntry?.preClose);
+}
+
+export function getDelayedOpenInfo(code, priceMap, navByCode, computedAt, navAgeDays = null) {
+  const { weekday, hour, minute } = getShanghaiHourMinute(new Date(computedAt || Date.now()));
+  if (weekday === 'Sat' || weekday === 'Sun') return { delayed: false };
+  const marketMinute = hour * 60 + minute;
+  if (marketMinute >= DELAYED_OPEN_UNTIL_MINUTE) return { delayed: false };
+
+  const previousClose = previousCloseOf(priceMap?.[code]);
+  const nav = positiveNumber(navByCode?.[code]?.nav);
+  if (!Number.isFinite(previousClose) || !Number.isFinite(nav)) return { delayed: false };
+  if (typeof navAgeDays === 'function') {
+    const navDate = String(navByCode?.[code]?.latestNavDate || '').trim();
+    if (navAgeDays(navDate) > 14) return { delayed: false };
+  }
+
+  const previousClosePremiumPct = ((previousClose - nav) / nav) * 100;
+  if (!Number.isFinite(previousClosePremiumPct) || previousClosePremiumPct <= DELAYED_OPEN_PREMIUM_THRESHOLD_PCT) {
+    return { delayed: false, previousClosePremiumPct };
+  }
+  return {
+    delayed: true,
+    previousClosePremiumPct,
+    previousClose,
+    nav,
+    delayedUntilMinute: DELAYED_OPEN_UNTIL_MINUTE,
+    delayedUntil: '10:30'
+  };
+}
+
 // 净值获取相关的函数已抽离到 getNav.js 模块
 // 其中 fetchLatestNav, fetchLatestNavMap, fetchLatestNavMapWithCache, fetchSinaPrices, getLatestNavWithCache
 // 均由 getNav.js 统一接入 markets/fund-metrics；fetchSinaPrices 是兼容旧调用名。
@@ -259,7 +298,8 @@ export async function refreshSnapshotWithLatestNav(snapshot, env, getLatestNavFn
     const benchNavDate = String(navByCode?.[benchmarkCode]?.latestNavDate || '').trim();
     const benchPrice = group.benchmarkPrice; // 保留原有价格，不重新拉取
     const benchNavStale = benchNav && navAgeDays(benchNavDate) > NAV_STALE_DAYS;
-    const benchPremium = Number.isFinite(benchPrice) && Number.isFinite(benchNav) && benchNav > 0 && !benchNavStale
+    const benchDelayedOpen = Boolean(group.benchmarkDelayedOpen);
+    const benchPremium = Number.isFinite(benchPrice) && Number.isFinite(benchNav) && benchNav > 0 && !benchNavStale && !benchDelayedOpen
       ? ((benchPrice - benchNav) / benchNav) * 100
       : null;
 
@@ -270,7 +310,8 @@ export async function refreshSnapshotWithLatestNav(snapshot, env, getLatestNavFn
       const navMissing = !Number.isFinite(candNav) || candNav <= 0;
       const navStale = !navMissing && navAgeDays(candNavDate) > NAV_STALE_DAYS;
       const priceMissing = !Number.isFinite(candPrice) || candPrice <= 0;
-      const candPremium = (!navMissing && !priceMissing && !navStale)
+      const candDelayedOpen = Boolean(cand.delayedOpen);
+      const candPremium = (!navMissing && !priceMissing && !navStale && !candDelayedOpen)
         ? ((candPrice - candNav) / candNav) * 100
         : null;
       const diff = Number.isFinite(benchPremium) && Number.isFinite(candPremium)
@@ -281,6 +322,8 @@ export async function refreshSnapshotWithLatestNav(snapshot, env, getLatestNavFn
       if (navMissing) note = 'nav-missing';
       else if (navStale) note = 'nav-stale';
       else if (priceMissing) note = 'price-missing';
+      else if (candDelayedOpen) note = 'delayed-open';
+      else if (benchDelayedOpen) note = 'benchmark-delayed-open';
       else if (!Number.isFinite(benchPremium)) note = 'benchmark-unavailable';
 
       return {
@@ -302,7 +345,7 @@ export async function refreshSnapshotWithLatestNav(snapshot, env, getLatestNavFn
         ? 'price-missing'
         : (!Number.isFinite(benchNav) || benchNav <= 0)
           ? 'nav-missing'
-          : (benchNavStale ? 'nav-stale' : ''),
+          : (benchNavStale ? 'nav-stale' : (benchDelayedOpen ? 'delayed-open' : '')),
       candidates: updatedCandidates
     };
   });
@@ -357,7 +400,8 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     const benchNav = Number(navByCode?.[benchmarkCode]?.nav);
     const benchNavDate = String(navByCode?.[benchmarkCode]?.latestNavDate || '').trim();
     const benchNavStale = navAgeDays(benchNavDate) > NAV_STALE_DAYS;
-    const benchPremium = Number.isFinite(benchPrice) && Number.isFinite(benchNav) && benchNav > 0 && !benchNavStale
+    const benchDelayedOpen = getDelayedOpenInfo(benchmarkCode, priceMap, navByCode, computedAtIso, navAgeDays);
+    const benchPremium = Number.isFinite(benchPrice) && Number.isFinite(benchNav) && benchNav > 0 && !benchNavStale && !benchDelayedOpen.delayed
       ? ((benchPrice - benchNav) / benchNav) * 100
       : null;
 
@@ -368,7 +412,8 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       const navMissing = !Number.isFinite(candNav) || candNav <= 0;
       const navStale = !navMissing && navAgeDays(candNavDate) > NAV_STALE_DAYS;
       const priceMissing = !Number.isFinite(candPrice) || candPrice <= 0;
-      const candPremium = (!navMissing && !priceMissing && !navStale)
+      const candDelayedOpen = getDelayedOpenInfo(code, priceMap, navByCode, computedAtIso, navAgeDays);
+      const candPremium = (!navMissing && !priceMissing && !navStale && !candDelayedOpen.delayed)
         ? ((candPrice - candNav) / candNav) * 100
         : null;
       const diff = Number.isFinite(benchPremium) && Number.isFinite(candPremium)
@@ -379,6 +424,8 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       if (navMissing) note = 'nav-missing';
       else if (navStale) note = 'nav-stale';
       else if (priceMissing) note = 'price-missing';
+      else if (candDelayedOpen.delayed) note = 'delayed-open';
+      else if (benchDelayedOpen.delayed) note = 'benchmark-delayed-open';
       else if (!Number.isFinite(benchPremium)) note = 'benchmark-unavailable';
       return {
         code,
@@ -387,6 +434,9 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
         nav: Number.isFinite(candNav) ? candNav : null,
         navDate: candNavDate,
         premiumPct: Number.isFinite(candPremium) ? candPremium : null,
+        previousClosePremiumPct: Number.isFinite(candDelayedOpen.previousClosePremiumPct) ? candDelayedOpen.previousClosePremiumPct : null,
+        delayedOpen: Boolean(candDelayedOpen.delayed),
+        delayedUntil: candDelayedOpen.delayedUntil || '',
         // diff = benchPremium − candPremium，与页面 intraSignals 中同名。
         spreadVsBenchmarkPct: Number.isFinite(diff) ? diff : null,
         candClass: premiumClass[code] || null,
@@ -402,11 +452,14 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       benchmarkNav: Number.isFinite(benchNav) ? benchNav : null,
       benchmarkNavDate: benchNavDate,
       benchmarkPremiumPct: Number.isFinite(benchPremium) ? benchPremium : null,
+      benchmarkPreviousClosePremiumPct: Number.isFinite(benchDelayedOpen.previousClosePremiumPct) ? benchDelayedOpen.previousClosePremiumPct : null,
+      benchmarkDelayedOpen: Boolean(benchDelayedOpen.delayed),
+      benchmarkDelayedUntil: benchDelayedOpen.delayedUntil || '',
       benchmarkNote: !Number.isFinite(benchPrice) || benchPrice <= 0
         ? 'price-missing'
         : (!Number.isFinite(benchNav) || benchNav <= 0)
           ? 'nav-missing'
-          : (benchNavStale ? 'nav-stale' : ''),
+          : (benchNavStale ? 'nav-stale' : (benchDelayedOpen.delayed ? 'delayed-open' : '')),
       candidates
     };
   });

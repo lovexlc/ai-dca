@@ -91,11 +91,16 @@ export function MarketsSidebar({
   onSubmitSymbol,
   onPickSymbolSearch,
   onSelectSymbol,
+  showLimitColumn = false,
+  hidePremiumColumn = false,
+  hideTrendColumn = false,
+  mobileHidden = false,
+  desktopHidden = false,
 }) {
   const sectorEmptyText = sectorsLoading ? '加载中…' : (market === 'cn' ? '可搜索并添加更多 A股 / ETF 标的' : '暂无数据');
   return (
     <>
-      <aside className={cx('order-2 flex flex-col gap-2 lg:hidden', selectedSymbol && 'hidden')}>
+      <aside className={cx('order-2 flex flex-col gap-2 lg:hidden', (mobileHidden || selectedSymbol) && 'hidden')}>
         <div className="px-1">
           <div className="flex items-center justify-between pt-1">
             <WatchlistSelector
@@ -143,6 +148,10 @@ export function MarketsSidebar({
                 onSelect={onSelectSymbol}
                 compact
                 stickyFirstColumn
+                dataTable
+                showLimitColumn={showLimitColumn}
+                hidePremiumColumn={hidePremiumColumn}
+                hideTrendColumn={hideTrendColumn}
               />
             )
           )}
@@ -227,7 +236,7 @@ export function MarketsSidebar({
         </div>
       </aside>
 
-      <aside className="order-2 hidden flex-col gap-3 lg:order-1 lg:flex lg:h-full lg:min-h-0 lg:overflow-hidden">
+      <aside className={cx('order-2 hidden flex-col gap-3 lg:order-1 lg:flex lg:h-full lg:min-h-0 lg:overflow-hidden', desktopHidden && 'lg:hidden')}>
         <div className="flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain bg-transparent pr-1 [scrollbar-gutter:stable]">
           <div className="flex items-center justify-between gap-1 px-1 py-2">
             <WatchlistSelector
