@@ -52,6 +52,42 @@ const numericSortFn = (rowA, rowB, columnId) => {
   return Number(a) - Number(b);
 };
 
+const textIncludesFilterFn = (row, columnId, filterValue) => {
+  const query = String(filterValue || '').trim().toLowerCase();
+  if (!query) return true;
+  return String(row.getValue(columnId) ?? '').toLowerCase().includes(query);
+};
+
+const numberRangeFilterFn = (row, columnId, filterValue) => {
+  if (!filterValue || typeof filterValue !== 'object' || Array.isArray(filterValue)) return true;
+  const min = filterValue.min === '' || filterValue.min == null ? null : Number(filterValue.min);
+  const max = filterValue.max === '' || filterValue.max == null ? null : Number(filterValue.max);
+  const hasMin = Number.isFinite(min);
+  const hasMax = Number.isFinite(max);
+  if (!hasMin && !hasMax) return true;
+  const value = Number(row.getValue(columnId));
+  if (!Number.isFinite(value)) return false;
+  if (hasMin && value < min) return false;
+  if (hasMax && value > max) return false;
+  return true;
+};
+
+function resolveLimitFilterValues(row) {
+  const values = [];
+  const status = row?.fundLimit?.buyStatus;
+  if (status) values.push(status);
+  if (shouldShowAppTag(row?.fundMeta, row?.fundLimit)) values.push('app');
+  if (!status && !shouldShowAppTag(row?.fundMeta, row?.fundLimit)) values.push('none');
+  return values;
+}
+
+const limitFilterFn = (row, _columnId, filterValue) => {
+  const selected = Array.isArray(filterValue) ? filterValue : filterValue ? [filterValue] : [];
+  if (!selected.length) return true;
+  const values = resolveLimitFilterValues(row.original);
+  return selected.some((item) => values.includes(item));
+};
+
 function normalizeDateKey(value) {
   return String(value || '').trim().slice(0, 10);
 }
@@ -100,6 +136,7 @@ export function MarketListTable({
   const todayDate = getTodayShanghaiDate();
   const tableScrollRef = useRef(null);
   const [columnPinning, setColumnPinning] = useState({ left: [] });
+  const [pinTargetColumnId, setPinTargetColumnId] = useState('');
   const isLatestChangeRow = (row) => {
     return isExpectedLatestChangeRow(row, todayDate);
   };
@@ -107,15 +144,16 @@ export function MarketListTable({
     {
       id: 'symbol',
       accessorFn: (row) => formatSymbolDisplay(row.symbol),
-      meta: { label: '代码' },
+      meta: { label: '代码', variant: 'text' },
       enableHiding: false,
       header: ({ column }) => <DataTableColumnHeader column={column} label="代码" />,
       cell: ({ row }) => <span className="font-mono text-xs font-semibold tabular-nums">{formatSymbolDisplay(row.original.symbol)}</span>,
+      filterFn: textIncludesFilterFn,
     },
     {
       id: 'name',
-      accessorFn: (row) => row.name || '',
-      meta: { label: '名称' },
+      accessorFn: (row) => [row.name, row.meta, row.symbol].filter(Boolean).join(' '),
+      meta: { label: '名称', variant: 'text' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="名称" />,
       cell: ({ row }) => {
         const displaySymbol = formatSymbolDisplay(row.original.symbol);
@@ -126,19 +164,21 @@ export function MarketListTable({
           </div>
         );
       },
+      filterFn: textIncludesFilterFn,
     },
     {
       id: 'price',
       accessorFn: (row) => Number(row.price),
-      meta: { label: '最新价' },
+      meta: { label: '最新价', variant: 'number' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="最新价" className="justify-end" />,
       cell: ({ row }) => <span className="tabular-nums">{formatNumber(row.original.price)}</span>,
       sortingFn: numericSortFn,
+      filterFn: numberRangeFilterFn,
     },
     {
       id: 'changePercent',
       accessorFn: (row) => Number(row.changePercent),
-      meta: { label: '涨跌幅' },
+      meta: { label: '涨跌幅', variant: 'number' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="涨跌幅" className="justify-end" />,
       cell: ({ row }) => {
         const pct = Number(row.original.changePercent);
@@ -152,11 +192,24 @@ export function MarketListTable({
         );
       },
       sortingFn: numericSortFn,
+      filterFn: numberRangeFilterFn,
     },
     showLimitColumn ? {
       id: 'limit',
       accessorFn: (row) => resolveLimitSortValue(row.fundLimit),
-      meta: { label: '限额' },
+      meta: {
+        label: '限额',
+        variant: 'multiSelect',
+        options: [
+          { value: 'open', label: '正常申购' },
+          { value: 'limit_large', label: '限大额' },
+          { value: 'limit', label: '限额' },
+          { value: 'suspended', label: '暂停申购' },
+          { value: 'closed', label: '已关闭' },
+          { value: 'app', label: 'App' },
+          { value: 'none', label: '无限额' },
+        ],
+      },
       header: ({ column }) => <DataTableColumnHeader column={column} label="限额" className="justify-end" />,
       cell: ({ row }) => {
         const limit = row.original.fundLimit;
@@ -184,112 +237,123 @@ export function MarketListTable({
         );
       },
       sortingFn: numericSortFn,
+      filterFn: limitFilterFn,
     } : null,
     !hidePremiumColumn ? {
       id: 'premium',
       accessorFn: (row) => Number(resolvePremiumPercent(row)),
-      meta: { label: '溢价' },
+      meta: { label: '溢价', variant: 'number' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="溢价" className="justify-end" />,
       cell: ({ row }) => {
         const premiumPct = resolvePremiumPercent(row.original);
         return <span className={cx('font-semibold tabular-nums', changeToneClass(premiumPct))}>{formatPremiumPercent(row.original)}</span>;
       },
       sortingFn: numericSortFn,
+      filterFn: numberRangeFilterFn,
     } : null,
     {
       id: 'currentYearPercent',
       accessorFn: (row) => Number(row.ytdReturn ?? row.currentYearPercent),
-      meta: { label: '今年以来' },
+      meta: { label: '今年以来', variant: 'number' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="今年以来" className="justify-end" />,
       cell: ({ row }) => <span className={cx('font-semibold tabular-nums', changeToneClass(Number(row.original.ytdReturn ?? row.original.currentYearPercent)))}>{formatYearPercent(row.original)}</span>,
       sortingFn: numericSortFn,
+      filterFn: numberRangeFilterFn,
     },
     {
       id: 'return1w',
       accessorFn: (row) => Number(row.return1w),
-      meta: { label: '近1周' },
+      meta: { label: '近1周', variant: 'number' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="近1周" className="justify-end" />,
       cell: ({ row }) => {
         const v = Number(row.original.return1w);
         return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
       },
       sortingFn: numericSortFn,
+      filterFn: numberRangeFilterFn,
     },
     {
       id: 'return1m',
       accessorFn: (row) => Number(row.return1m),
-      meta: { label: '近1月' },
+      meta: { label: '近1月', variant: 'number' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="近1月" className="justify-end" />,
       cell: ({ row }) => {
         const v = Number(row.original.return1m);
         return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
       },
       sortingFn: numericSortFn,
+      filterFn: numberRangeFilterFn,
     },
     {
       id: 'return3m',
       accessorFn: (row) => Number(row.return3m),
-      meta: { label: '近3月' },
+      meta: { label: '近3月', variant: 'number' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="近3月" className="justify-end" />,
       cell: ({ row }) => {
         const v = Number(row.original.return3m);
         return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
       },
       sortingFn: numericSortFn,
+      filterFn: numberRangeFilterFn,
     },
     {
       id: 'return6m',
       accessorFn: (row) => Number(row.return6m),
-      meta: { label: '近6月' },
+      meta: { label: '近6月', variant: 'number' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="近6月" className="justify-end" />,
       cell: ({ row }) => {
         const v = Number(row.original.return6m);
         return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
       },
       sortingFn: numericSortFn,
+      filterFn: numberRangeFilterFn,
     },
     {
       id: 'return1y',
       accessorFn: (row) => Number(row.return1y),
-      meta: { label: '近1年' },
+      meta: { label: '近1年', variant: 'number' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="近1年" className="justify-end" />,
       cell: ({ row }) => {
         const v = Number(row.original.return1y);
         return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
       },
       sortingFn: numericSortFn,
+      filterFn: numberRangeFilterFn,
     },
     {
       id: 'returnBase',
       accessorFn: (row) => Number(row.returnBase),
-      meta: { label: '成立以来' },
+      meta: { label: '成立以来', variant: 'number' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="成立以来" className="justify-end" />,
       cell: ({ row }) => {
         const v = Number(row.original.returnBase);
         return Number.isFinite(v) ? <span className={cx('font-semibold tabular-nums', changeToneClass(v))}>{formatSignedPercent(v)}</span> : <span className="text-[#9aa0a6]">—</span>;
       },
       sortingFn: numericSortFn,
+      filterFn: numberRangeFilterFn,
     },
     {
       id: 'totalShares',
       accessorFn: (row) => Number(row.totalShares),
-      meta: { label: '总份额' },
+      meta: { label: '总份额', variant: 'number' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="总份额" className="justify-end" />,
       cell: ({ row }) => <span className="tabular-nums">{formatTotalShares(row.original.totalShares)}</span>,
       sortingFn: numericSortFn,
+      filterFn: numberRangeFilterFn,
     },
     {
       id: 'feeRate',
       accessorFn: (row) => Number(resolveFundFeeRate(row)),
-      meta: { label: '费率' },
+      meta: { label: '费率', variant: 'number' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="费率" className="justify-end" />,
       cell: ({ row }) => <span className={cx('font-semibold tabular-nums', feeRateToneClass(row.original))}>{formatFeeRate(row.original)}</span>,
       sortingFn: numericSortFn,
+      filterFn: numberRangeFilterFn,
     },
     {
       id: 'redeemFeeRate',
       accessorFn: (row) => Number(resolveRedeemFeeRate(row)),
-      meta: { label: '卖出费率' },
+      meta: { label: '卖出费率', variant: 'number' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="卖出费率" className="justify-end" />,
       cell: ({ row }) => {
         const redeemTiers = formatRedeemFeeTiers(row.original);
@@ -303,11 +367,12 @@ export function MarketListTable({
         );
       },
       sortingFn: numericSortFn,
+      filterFn: numberRangeFilterFn,
     },
     !hideTrendColumn ? {
       id: 'trend',
       accessorFn: (row) => Number(row.changePercent),
-      meta: { label: '趋势' },
+      meta: { label: '趋势', variant: 'number' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="趋势" className="justify-end" />,
       cell: ({ row }) => {
         const pct = Number(row.original.changePercent);
@@ -319,6 +384,7 @@ export function MarketListTable({
         );
       },
       sortingFn: numericSortFn,
+      filterFn: numberRangeFilterFn,
     } : null,
   ].filter(Boolean)), [showLimitColumn, hidePremiumColumn, hideTrendColumn, klineMap, todayDate]);
   const table = useReactTable({
@@ -330,6 +396,11 @@ export function MarketListTable({
     getPaginationRowModel: getPaginationRowModel(),
     state: { columnPinning },
     onColumnPinningChange: setColumnPinning,
+    meta: {
+      pinningEnabled: Boolean(autoPinColumn),
+      pinnedColumnId: pinTargetColumnId,
+      onPinColumn: setPinTargetColumnId,
+    },
     initialState: {
       sorting: [{ id: 'changePercent', desc: true }],
       pagination: { pageSize: 50 },
@@ -377,19 +448,18 @@ export function MarketListTable({
     return () => window.removeEventListener('resize', onResize);
   }, [autoPinColumn, dataTable, table, rows.length]);
 
+  useEffect(() => {
+    if (!pinTargetColumnId) setColumnPinning({ left: [] });
+  }, [pinTargetColumnId]);
+
   const handleDataTableScroll = (event) => {
-    if (!autoPinColumn || !dataTable) return;
+    if (!autoPinColumn || !dataTable || !pinTargetColumnId) return;
     const scrollLeft = event.currentTarget.scrollLeft;
-    const offsets = autoPinOffsetsRef.current || {};
-    const visible = table.getVisibleLeafColumns();
-    const nextPinned = [];
-    for (const column of visible) {
-      const offset = offsets[column.id];
-      if (typeof offset === 'number' && scrollLeft >= offset) nextPinned.push(column.id);
-    }
-    const currentPinned = columnPinning.left || [];
-    if (nextPinned.length === currentPinned.length && nextPinned.every((id, index) => id === currentPinned[index])) return;
-    setColumnPinning({ left: nextPinned });
+    const offset = autoPinOffsetsRef.current?.[pinTargetColumnId];
+    const nextLeft = typeof offset === 'number' && scrollLeft >= offset ? [pinTargetColumnId] : [];
+    const currentLeft = columnPinning.left || [];
+    if (nextLeft.length === currentLeft.length && nextLeft.every((id, index) => id === currentLeft[index])) return;
+    setColumnPinning({ left: nextLeft });
   };
 
   if (!rows.length) {

@@ -814,6 +814,10 @@ export function MarketsExperience() {
     setSymbolInput('');
     setSymbolSearchResults([]);
     setSectorSearchOpen(false);
+    setWatchOverlaySearchOpen(false);
+    setWatchOverlaySearchInput('');
+    setWatchOverlaySearchResults([]);
+    setWatchOverlaySearchError('');
     trackFeatureEvent('markets', 'symbol_select', {
       source: 'search_result',
       market: targetMarket,
@@ -1331,7 +1335,7 @@ export function MarketsExperience() {
   }
 
   const otcTableColumnProps = { showLimitColumn: isActiveOtcList && market === 'cn', hidePremiumColumn: isActiveOtcList && market === 'cn', hideTrendColumn: isActiveOtcList && market === 'cn' };
-  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, ...otcTableColumnProps };
+  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, ...otcTableColumnProps };
 
   return (
     <>

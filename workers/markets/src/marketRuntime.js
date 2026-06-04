@@ -179,7 +179,7 @@ export async function notifyXueqiuCookieIssue(env, error, context = {}) {
   const payload = {
     type: 'xueqiu_cookie_issue',
     title: '雪球 Cookie 失效或不可用',
-    body: 'markets Worker 已降级使用新浪源。',
+    body: 'markets Worker 已改用可用的兜底数据或缓存。',
     reason,
     context,
     generatedAt: new Date().toISOString()

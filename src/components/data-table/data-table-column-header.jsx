@@ -8,6 +8,8 @@ import {
   ChevronsUpDown,
   EyeOff,
   ListFilter,
+  Pin,
+  PinOff,
   X,
 } from "lucide-react";
 import {
@@ -23,7 +25,26 @@ function hasFilterValue(value) {
   if (value == null) return false;
   if (Array.isArray(value)) return value.length > 0;
   if (typeof value === "string") return value.trim() !== "";
+  if (typeof value === "object") {
+    return Object.values(value).some((item) => {
+      if (item == null) return false;
+      if (typeof item === "string") return item.trim() !== "";
+      return true;
+    });
+  }
   return true;
+}
+
+function updateNumberFilter(column, key, rawValue) {
+  const current = column.getFilterValue();
+  const next = {
+    ...(current && typeof current === "object" && !Array.isArray(current) ? current : {}),
+    [key]: rawValue,
+  };
+  Object.keys(next).forEach((field) => {
+    if (String(next[field] ?? "").trim() === "") delete next[field];
+  });
+  column.setFilterValue(Object.keys(next).length ? next : undefined);
 }
 
 function DataTableColumnHeader({ column, label, className, ...props }) {
@@ -31,8 +52,12 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
   const canSort = column.getCanSort();
   const canFilter = column.getCanFilter() && Boolean(variant);
   const canHide = column.getCanHide();
+  const pinningEnabled = Boolean(column?.columnDef?.accessorFn && column?.table?.options?.meta?.pinningEnabled);
+  const pinTargetColumnId = column?.table?.options?.meta?.pinnedColumnId || '';
+  const isPinTarget = pinTargetColumnId === column.id;
+  const onPinColumn = column?.table?.options?.meta?.onPinColumn;
 
-  if (!canSort && !canFilter && !canHide) {
+  if (!canSort && !canFilter && !canHide && !pinningEnabled) {
     return <div className={cn(className)}>{label}</div>;
   }
 
@@ -112,6 +137,22 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
                 )}
               </button>
             )}
+            {pinningEnabled && (
+              <button
+                type="button"
+                onClick={() => {
+                  onPinColumn?.(isPinTarget ? '' : column.id);
+                  setOpen(false);
+                }}
+                className="flex items-center justify-between rounded-md px-3 py-2.5 text-sm hover:bg-accent"
+              >
+                <span className="flex items-center gap-2">
+                  {isPinTarget ? <PinOff className="size-4" /> : <Pin className="size-4" />}
+                  {isPinTarget ? '取消固定列' : '固定此列'}
+                </span>
+                {isPinTarget && <span className="text-xs text-indigo-600">已选择</span>}
+              </button>
+            )}
             {canHide && (
               <button
                 type="button"
@@ -148,15 +189,25 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
               />
             )}
             {variant === "number" && (
-              <Input
-                autoFocus
-                type="number"
-                inputMode="numeric"
-                placeholder={`筛选 ${label}`}
-                value={(filterValue ?? "")}
-                onChange={(event) => column.setFilterValue(event.target.value)}
-                className="h-9"
-              />
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  autoFocus
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="最小值"
+                  value={(filterValue && typeof filterValue === "object" && !Array.isArray(filterValue) ? filterValue.min : "") ?? ""}
+                  onChange={(event) => updateNumberFilter(column, "min", event.target.value)}
+                  className="h-9"
+                />
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="最大值"
+                  value={(filterValue && typeof filterValue === "object" && !Array.isArray(filterValue) ? filterValue.max : "") ?? ""}
+                  onChange={(event) => updateNumberFilter(column, "max", event.target.value)}
+                  className="h-9"
+                />
+              </div>
             )}
             {(variant === "select" || variant === "multiSelect") && (
               <FacetedChoices

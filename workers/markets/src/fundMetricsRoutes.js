@@ -1,6 +1,7 @@
 import {
   fetchDanjuanFundMeta,
   fetchDanjuanFundNav,
+  fetchXueqiuQuote,
   fetchYahooChart,
   normalizeYahooKline
 } from './fetchers.js';
@@ -10,14 +11,15 @@ import {
   describeKlinePayloadForLog,
   errorJson,
   fetchCnKlineWithFallback,
-  fetchCnQuoteWithFallback,
   getShanghaiTradingMinute,
   isCnTradingSession,
   json,
   keepLatestCnIntradaySession,
   klineCacheIsStale,
   mapLimit,
-  roundNumber
+  notifyXueqiuCookieIssue,
+  roundNumber,
+  summarizeXueqiuError
 } from './marketRuntime.js';
 
 function firstPositiveNumber(...values) {
@@ -232,7 +234,7 @@ async function fetchFreshFundMetric(env, code, cachePolicy) {
   const exchange = isExchangeTradedFund(code);
   try {
     let quote = exchange
-      ? await fetchCnQuoteWithFallback(env, code, { endpoint: 'fund-metrics' })
+      ? await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE })
       : await fetchDanjuanFundNav(code);
     if (!exchange) {
       const meta = await fetchDanjuanFundMetaWithCache(env, code).catch(() => null);
@@ -246,6 +248,19 @@ async function fetchFreshFundMetric(env, code, cachePolicy) {
     }
     return item;
   } catch (error) {
+    const primaryError = summarizeXueqiuError(error);
+    if (exchange) {
+      await notifyXueqiuCookieIssue(env, error, { code, endpoint: 'fund-metrics' });
+      const cached = await readCachedFundMetric(env, cacheKey);
+      if (cached) {
+        return {
+          ...cached,
+          fallback: 'kv',
+          primaryError,
+          cachePolicy: 'kv-live-fallback'
+        };
+      }
+    }
     return {
       ok: false,
       code,
@@ -273,8 +288,8 @@ async function fetchFreshFundMetric(env, code, cachePolicy) {
       asOf: new Date().toISOString(),
       source: '',
       fallback: '',
-      primaryError: '',
-      error: String((error && error.message) || error),
+      primaryError: exchange ? primaryError : '',
+      error: exchange ? `xueqiu quote unavailable: ${primaryError}` : String((error && error.message) || error),
       cached: false,
       cachePolicy
     };
@@ -377,8 +392,8 @@ export async function handleKline(env, rawSymbol, params) {
 async function refreshKline(env, market, code, tf) {
   let payload;
   if (market === 'us') {
-    const yahooRange = { '1d': '1mo', '1w': '1y', '1mo': '5y', '5m': '5d', '15m': '1mo', '60m': '3mo' }[tf] || '1mo';
-    const yahooInterval = { '1d': '1d', '1w': '1wk', '1mo': '1mo', '5m': '5m', '15m': '15m', '60m': '60m' }[tf] || '1d';
+    const yahooRange = { '1d': '5y', '1y': '5y', '1w': '5y', '1mo': '5y', '5m': '5d', '15m': '1mo', '60m': '3mo' }[tf] || '5y';
+    const yahooInterval = { '1d': '1d', '1y': '1d', '1w': '1wk', '1mo': '1mo', '5m': '5m', '15m': '15m', '60m': '60m' }[tf] || '1d';
     const raw = await fetchYahooChart(code, { range: yahooRange, interval: yahooInterval });
     payload = { ...normalizeYahooKline(raw, tf), market, generatedAt: new Date().toISOString() };
   } else {

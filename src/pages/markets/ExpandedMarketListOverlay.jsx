@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
-import { ListPlus, Loader2, Search, X } from 'lucide-react';
+import { ListPlus, Loader2, Search } from 'lucide-react';
 import { cx } from '../../components/experience-ui.jsx';
 import { MarketListTable } from './MarketListTable.jsx';
 import { ListExpandButton } from './ListExpandButton.jsx';
-import { formatSymbolDisplay } from './marketDisplayUtils.js';
+import { MarketSymbolSearchBox } from './MarketSymbolSearchBox.jsx';
 
 export function ExpandedMarketListOverlay({
   open,
@@ -67,74 +67,19 @@ export function ExpandedMarketListOverlay({
           </div>
         </div>
         {searchOpen ? (
-          <div className="rounded-2xl border border-[#e8eaed] bg-white p-3 shadow-sm">
-            <div className="flex items-center gap-2 rounded-full bg-[#f1f3f4] px-3 py-2">
-              <Search size={15} className="shrink-0 text-[#5f6368]" />
-              <input
-                autoFocus
-                value={searchValue}
-                onChange={(event) => onSearchChange?.(event.target.value)}
-                placeholder="搜索基金代码 / 名称，例如 513100、纳指ETF"
-                className="min-w-0 flex-1 bg-transparent text-sm text-[#1f1f1f] placeholder:text-[#5f6368] focus:outline-none"
-              />
-              {searchValue ? (
-                <button
-                  type="button"
-                  aria-label="清空搜索"
-                  onClick={onSearchClear}
-                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#5f6368] hover:bg-white"
-                >
-                  <X size={14} />
-                </button>
-              ) : null}
-            </div>
-            {searchValue.trim() ? (
-              <div className="mt-3 overflow-hidden rounded-2xl border border-[#e8eaed] bg-[#f8fafd]">
-                {searchLoading ? (
-                  <div className="flex items-center gap-2 px-3 py-3 text-sm text-[#5f6368]"><Loader2 size={14} className="animate-spin" />搜索中…</div>
-                ) : searchError ? (
-                  <div className="px-3 py-3 text-sm text-rose-600">{searchError}</div>
-                ) : searchResults.length ? (
-                  <ul className="divide-y divide-[#e8eaed]">
-                    {searchResults.map((row) => {
-                      const symbol = formatSymbolDisplay(row.symbol);
-                      const displayName = row.name || row.exchange || '--';
-                      const alreadyAdded = watchSymbols.includes(row.symbol);
-                      return (
-                        <li key={`${row.market || marketLabel}:${row.symbol}`} className="flex items-center gap-3 px-3 py-2 hover:bg-white">
-                          <button
-                            type="button"
-                            className="min-w-0 flex-1 text-left"
-                            onClick={() => onSearchResultSelect?.(row)}
-                          >
-                            <div className="truncate text-sm font-semibold text-[#1f1f1f]">{symbol}</div>
-                            <div className="truncate text-xs text-[#5f6368]">{row.marketLabel ? `${row.marketLabel} · ` : ''}{displayName}</div>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onSearchResultAdd?.(row)}
-                            disabled={alreadyAdded}
-                            className={cx(
-                              'shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition',
-                              alreadyAdded ? 'bg-[#e8eaed] text-[#9aa0a6]' : 'bg-[#e8f0fe] text-[#1a73e8] hover:bg-[#d2e3fc]'
-                            )}
-                          >
-                            {alreadyAdded ? '已加入' : '加入自选'}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : (
-                  <div className="px-3 py-3 text-sm text-[#5f6368]">没有找到匹配标的</div>
-                )}
-              </div>
-            ) : (
-              <div className="mt-3 rounded-2xl border border-dashed border-[#e8eaed] bg-[#f8fafd] px-3 py-3 text-sm text-[#5f6368]">
-                输入基金代码或名称，搜索后可直接加入当前自选列表。
-              </div>
-            )}
-          </div>
+          <MarketSymbolSearchBox
+            autoFocus
+            searchValue={searchValue}
+            searchResults={searchResults}
+            searchLoading={searchLoading}
+            searchError={searchError}
+            watchSymbols={watchSymbols}
+            marketLabel={marketLabel}
+            onSearchChange={onSearchChange}
+            onSearchClear={onSearchClear}
+            onSearchResultSelect={onSearchResultSelect}
+            onSearchResultAdd={onSearchResultAdd}
+          />
         ) : null}
         <div className="min-h-0 flex-1 overflow-auto rounded-2xl bg-[#f8fafd] p-3">
           <MarketListTable

@@ -71,7 +71,7 @@ function toXueqiuSymbol(code) {
   if (/^(sh|sz|bj)\d{6}$/.test(lower)) return lower.toUpperCase();
   const digits = toCnSixDigits(lower);
   if (!digits) return '';
-  const prefix = digits.startsWith('6') || digits.startsWith('51') || digits.startsWith('56') || digits.startsWith('58') || digits.startsWith('000')
+  const prefix = digits.startsWith('6') || digits.startsWith('5') || digits.startsWith('000')
     ? 'SH'
     : digits.startsWith('4') || digits.startsWith('8')
       ? 'BJ'
@@ -335,7 +335,7 @@ function toSinaSymbol(code) {
   const lower = String(code || '').toLowerCase();
   if (/^(sh|sz|bj)\d{6}$/.test(lower)) return lower;
   if (/^\d{6}$/.test(lower)) {
-    return lower.startsWith('6') || lower.startsWith('51') || lower.startsWith('56') || lower.startsWith('58')
+    return lower.startsWith('6') || lower.startsWith('5')
       ? `sh${lower}`
       : `sz${lower}`;
   }
