@@ -22,7 +22,7 @@ export function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols 
     async (raw, opts = {}) => {
       const question = String(raw || '').trim();
       if (!question || pending) return;
-      const useDepth = opts.depth === 'deep' ? 'deep' : opts.depth === 'fast' ? 'fast' : searchDepth;
+      const useDepth = 'fast';
       const focusContext = displaySelectedSymbol ? `当前标的：${displaySelectedSymbol}${selectedQuote?.name ? ` / ${selectedQuote.name}` : ''}；价格 ${formatNumber(selectedQuote?.price)} ${formatPercent(selectedQuote?.changePercent)}。` : '';
       const useContext = [focusContext, typeof opts.context === 'string' ? opts.context : ''].filter(Boolean).join('\n');
       setInput('');
@@ -39,11 +39,11 @@ export function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols 
         const listSymbols = Array.isArray(wl[market]) ? wl[market] : [];
         const symbols = Array.from(new Set([focusSymbol, ...listSymbols].filter(Boolean))).slice(0, 10);
         if (useDepth === 'deep') {
-          // 深度模式走 SSE 流式 agent，可实时拉取工具调用 / token / sources。
+          // 研究模式走 SSE 流式 agent，可实时拉取工具调用 / token / sources。
           let streamed = '';
           const streamedSources = [];
           const seenSourceUrls = new Set();
-          let stage = '深度搜索启动中…';
+          let stage = '研究启动中…';
           const renderPending = () => {
             setMessages((prev) => {
               const next = prev.slice();
@@ -75,7 +75,7 @@ export function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols 
                 renderPending();
               }
             } else if (type === 'started') {
-              stage = '已启动深度模式…';
+              stage = '已启动研究模式…';
               renderPending();
             }
           };
@@ -113,7 +113,7 @@ export function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols 
         setPending(false);
       }
     },
-    [market, pending, onModeChange, displaySelectedSymbol, selectedSymbol, selectedQuote, searchDepth],
+    [market, pending, onModeChange, displaySelectedSymbol, selectedSymbol, selectedQuote],
   );
 
   const onSubmit = useCallback(
@@ -125,7 +125,7 @@ export function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols 
   );
 
   // 外部（侧边自选行）点击「AI 分析」时会设置 pendingAnalysis，
-  // 这里接收后拼金渐成 prompt、深度模式发送，并通知父级清除标记。
+  // 这里接收后拼金渐成 prompt，并通知父级清除标记。
   useEffect(() => {
     if (!pendingAnalysis || !pendingAnalysis.symbol) return;
     if (pending) return; // 上一轮还在跑，等它结束后下个 effect cycle 再试
@@ -135,7 +135,7 @@ export function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols 
       market,
     });
     if (prompt) {
-      send(prompt, { depth: 'deep' });
+      send(prompt, { depth: 'fast' });
     }
     onAnalysisConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -146,13 +146,13 @@ export function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols 
     if (el && messages.length > 0) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
-  // 主题探索按钮触发：在右栏以深度模式自动提问。面板默认仍是快速，此次问答后并不锁定深度。
+  // 主题探索按钮触发：在右栏自动提问。
   useEffect(() => {
     const onResearch = (event) => {
       const detail = event && event.detail ? event.detail : {};
       const q = String(detail.question || '').trim();
       if (!q) return;
-      send(q, { depth: 'deep', context: detail.context || '' });
+      send(q, { depth: 'fast', context: detail.context || '' });
     };
     window.addEventListener('markets:research', onResearch);
     return () => window.removeEventListener('markets:research', onResearch);
@@ -227,7 +227,7 @@ export function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols 
                 <button
                   key={q}
                   type="button"
-                  onClick={() => send(q, { depth: searchDepth })}
+                  onClick={() => send(q, { depth: 'fast' })}
                   disabled={pending}
                   title="点击提问"
                   className="group flex w-full items-center justify-between gap-3 rounded-xl border border-[#e8eaed] bg-white px-4 py-3 text-left text-[14px] text-[#1f1f1f] transition hover:border-[#d2e3fc] hover:bg-[#f8fafd] disabled:opacity-60 disabled:hover:border-[#e8eaed] disabled:hover:bg-white"
@@ -387,7 +387,7 @@ export function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols 
           <div className="px-4 pt-3 pb-2">
             <div className="flex items-center gap-2 mb-1.5">
               <Sparkles size={14} className="text-[#1a73e8]" />
-              <span className="text-[13px] font-semibold text-[#1f1f1f]">AI 深度探索</span>
+              <span className="text-[13px] font-semibold text-[#1f1f1f]">AI 研究</span>
             </div>
             <p className="text-[12px] text-[#5f6368]">📈 关于您监控列表的最新数据洞见</p>
           </div>
