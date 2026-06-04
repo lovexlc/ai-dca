@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { AlertTriangle, CloudDownload, GitMerge, Home, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
 import { ensureLocalChangeBaseline, loadCloudSyncMeta, mergeLocalIntoCloudBackup, prepareCloudSyncConflict, refreshRemoteCloudMeta, restoreEncryptedCloudBackup, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
-import { clearRememberedKey, generateSecurityPassword, loadRememberedKey } from '../app/secureVault.js';
+import { clearRememberedKey, generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
 import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
 import { persistWorkspacePrefs, readWorkspacePrefs } from '../app/workspacePrefs.js';
@@ -52,6 +52,7 @@ export function AccountMenu() {
   const [preview, setPreview] = useState(() => collectBackupPayload());
   const [syncState, setSyncState] = useState('idle');
   const [lastError, setLastError] = useState('');
+  const [errorCode, setErrorCode] = useState('');
   const [form, setForm] = useState({ username: '', password: '', securityPassword: '', rememberDevice: true });
   const [busy, setBusy] = useState('');
   const [conflict, setConflict] = useState(null);
@@ -75,11 +76,13 @@ export function AccountMenu() {
     function handleSyncStarted() {
       setSyncState('syncing');
       setLastError('');
+      setErrorCode('');
     }
     function handleSyncDone(event) {
       setSyncState('synced');
       setConflict(null);
       setLastError('');
+      setErrorCode('');
       refreshLocalState(event);
     }
     function handleSyncError(event) {
@@ -87,6 +90,7 @@ export function AccountMenu() {
       setConflict(nextConflict);
       setSyncState(nextConflict ? 'conflict' : 'error');
       setLastError(event?.detail?.message || '同步失败');
+      setErrorCode(nextConflict ? '' : (event?.detail?.code || ''));
       refreshLocalState(event);
     }
     window.addEventListener(CLOUD_SYNC_SESSION_EVENT, refreshLocalState);
@@ -181,6 +185,7 @@ export function AccountMenu() {
       setSession(nextSession);
       setSyncState('syncing');
       setLastError('');
+      setErrorCode('');
       const syncResult = await runInitialSync(nextSession, action);
       setMeta(loadCloudSyncMeta());
       setPreview(collectBackupPayload());
@@ -192,6 +197,7 @@ export function AccountMenu() {
       });
       if (syncResult !== 'conflict') setOpen(false);
     } catch (err) {
+      setErrorCode('');
       if (err?.isCloudSyncConflict) {
         setConflict(err.conflict || null);
         setSyncState('conflict');
@@ -201,6 +207,7 @@ export function AccountMenu() {
       } else {
         setSyncState('error');
         setLastError(err?.message || String(err));
+        setErrorCode(err?.code || '');
         showToast({ title: action === 'register' ? '注册/同步失败' : '登录/同步失败', description: err?.message || String(err), tone: 'red' });
       }
     } finally {
@@ -219,6 +226,7 @@ export function AccountMenu() {
     const busyKey = mode === 'merge' ? 'merge-conflict' : 'pull-conflict';
     setBusy(busyKey);
     setLastError('');
+    setErrorCode('');
     try {
       const result = mode === 'merge'
         ? await mergeLocalIntoCloudBackup({
@@ -251,6 +259,7 @@ export function AccountMenu() {
         setSyncState('error');
       }
       setLastError(err?.message || String(err));
+      setErrorCode(err?.isCloudSyncConflict ? '' : (err?.code || ''));
       showToast({ title: '处理冲突失败', description: err?.message || String(err), tone: 'red' });
     } finally {
       setBusy('');
@@ -268,6 +277,7 @@ export function AccountMenu() {
     setBusy('manual-sync');
     setSyncState('syncing');
     setLastError('');
+    setErrorCode('');
     try {
       const remoteMeta = await refreshRemoteCloudMeta();
       const hasRemoteBackup = Boolean(remoteMeta?.version);
@@ -283,6 +293,7 @@ export function AccountMenu() {
         if (nextConflict?.hasConflict) {
           setConflict(nextConflict);
           setSyncState('conflict');
+          setErrorCode('');
           showToast({ title: '检测到同步冲突', description: nextConflict.summaryText, tone: 'amber' });
           return;
         }
@@ -335,6 +346,7 @@ export function AccountMenu() {
         showToast({ title: '手动同步失败', description: err?.message || String(err), tone: 'red' });
       }
       setLastError(err?.message || String(err));
+      setErrorCode(err?.isCloudSyncConflict ? '' : (err?.code || ''));
     } finally {
       setBusy('');
     }
@@ -347,6 +359,69 @@ export function AccountMenu() {
     setConflict(null);
     setConflictPassword('');
     showToast({ title: '已退出账户', tone: 'slate' });
+  }
+
+  function handleRetrySecurityPassword() {
+    setLastError('');
+    setErrorCode('');
+    setManualSyncPassword('');
+    setConflictPassword('');
+  }
+
+  function handleForceReupload() {
+    const secret = manualSyncPassword || conflictPassword || form.securityPassword;
+    if (!secret || secret.length < 8) {
+      showToast({ title: '需要安全密码', description: '请输入安全密码后再重传覆盖云端。', tone: 'amber' });
+      return;
+    }
+    setBusy('force-reupload');
+    setSyncState('syncing');
+    setLastError('');
+    setErrorCode('');
+    uploadEncryptedCloudBackup({ securityPassword: secret, rememberDevice: form.rememberDevice, force: true, useRemembered: false })
+      .then((result) => {
+        setManualSyncPassword('');
+        setConflict(null);
+        setMeta(loadCloudSyncMeta());
+        setPreview(collectBackupPayload());
+        setSyncState('synced');
+        window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result } }));
+        showToast({ title: '已重传覆盖云端', description: '云端已替换为本机安全密码加密的备份。', tone: 'emerald' });
+      })
+      .catch((err) => {
+        setSyncState('error');
+        setLastError(err?.message || String(err));
+        setErrorCode(err?.code || '');
+        showToast({ title: '重传覆盖失败', description: err?.message || String(err), tone: 'red' });
+      })
+      .finally(() => setBusy(''));
+  }
+
+  function getSyncErrorAction() {
+    if (busy) return null;
+    switch (errorCode) {
+      case SECURE_VAULT_ERROR_CODES.WRONG_PASSWORD:
+        return { label: '重新输入密码', onClick: handleRetrySecurityPassword };
+      case SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY:
+        return { label: '用安全密码重传覆盖', onClick: handleForceReupload };
+      case SECURE_VAULT_ERROR_CODES.CORRUPTED:
+        return { label: '重传覆盖云端', onClick: handleForceReupload };
+      default:
+        return null;
+    }
+  }
+
+  function renderSyncError() {
+    if (!lastError) return null;
+    const action = getSyncErrorAction();
+    return (
+      <div className="space-y-2">
+        <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600">{lastError}</div>
+        {action ? (
+          <button type="button" className={cx(subtleButtonClass, 'w-full justify-center')} onClick={action.onClick}>{action.label}</button>
+        ) : null}
+      </div>
+    );
   }
 
   function handleSaveHomePref() {
@@ -445,7 +520,7 @@ export function AccountMenu() {
               </label>
             ) : null}
 
-            {lastError ? <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600">{lastError}</div> : null}
+            {renderSyncError()}
           </div>
         </div>
 
@@ -560,7 +635,7 @@ export function AccountMenu() {
                     <SelectField options={HOME_OPTIONS} value={homePref} onChange={(event) => { setHomePref(event.target.value); setHomeSaved(false); }} />
                     <button type="button" className={cx(secondaryButtonClass, "w-full justify-center text-xs")} onClick={handleSaveHomePref}>{homeSaved ? '已保存' : '保存默认首页'}</button>
                   </div>
-                  {lastError ? <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600">{lastError}</div> : null}
+                  {renderSyncError()}
                   <button type="button" className={cx(subtleButtonClass, 'w-full justify-center')} onClick={() => { handleLogout(); setOpen(false); }}>
                     <LogOut className="h-4 w-4" />
                     退出登录
