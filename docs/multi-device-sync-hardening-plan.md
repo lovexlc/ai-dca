@@ -66,8 +66,8 @@
 - [x] 2.3 读路径保证 version 与 blob 同源原子返回（同一 D1 行内读出 version+ciphertext+checksum）。
 
 ### 阶段 3 — 冲突体验（低风险，增量）
-- [ ] 3.1 给可同步记录补充逻辑时钟/版本向量，LWW 之外保留并集合并，减少「云端覆盖本地」。
-- [ ] 3.2 冲突 UI 收敛为单一「合并/采用云端/采用本地」三选一（沿用现有 409 流程）。
+- [x] 3.1 给可同步记录补充逻辑时钟/版本向量，LWW 之外保留并集合并，减少「云端覆盖本地」。（`cloudSync.js` 新增 `compareRecordVersions`：rev/_rev/revision/clock → 时间戳 → origin 设备确定性裁决；`mergeRecordsById` 按此并集合并，向后兼容旧数据（无 rev 时退回原 LWW））
+- [x] 3.2 冲突 UI 收敛为单一「合并/采用云端/采用本地」三选一（沿用现有 409 流程）。（`account-menu.jsx` 弹窗扩为三按钮；`cloudSync.js` 新增 `overwriteCloudWithLocal`（force 上传、baseVersion=null 强覆盖云端）；仅上传本机已加密 envelope，用户密钥仍只在本地）
 
 ## 验证计划（证据留痕）
 - 端侧单测：扩展 `test/secureVault.test.mjs` —
@@ -93,4 +93,4 @@
 | done | 阶段 0 止血 | 0.1–0.4 全部完成：错误分型+RAW信封+iterations 修复 00845a8；UI 接线 2ad195c；eslint exit 0 + `node --test` 7/7 |
 | done | 阶段 1 envelope v3 | 1.1–1.4 完成（KEK/DEK + verifier + 记住 DEK + v2→v3 兼容）commit 63125be；`node --test` 11/11 + eslint exit 0；1.5 KDF 升级可选未做 |
 | done | 阶段 2 服务端一致性 | 2.1–2.3 完成：D1 行内存储 + sha256 校验和 + 坏 blob 返 409 `STORAGE_CORRUPTED` + KV-only 惰性回填 commit 1cd398c；本地 worker 单测 8/8；真实账号 lovexl 数据冲烟 11/11 PASS（密文逐字节一致 + 回填校验和匹配 + 篡改→409 不泄露）；部署走 deploy-worker-sync.yml |
-| todo | 阶段 3 冲突体验 | 增量 |
+| done | 阶段 3 冲突体验 | 3.1逻辑时钟（`compareRecordVersions` rev→时间戳→origin）+ 3.2 三选一冲突 UI + `overwriteCloudWithLocal` 强覆盖；仅客户端、向后兼容、不上传明文密钥；`node --test test/cloudSyncConflict.test.mjs` 10/10 + eslint exit 0 |

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  compareRecordVersions,
   mergeBackupEnvelopes,
   summarizeBackupConflict
 } from '../src/app/cloudSync.js';
@@ -193,4 +194,52 @@ test('mergeBackupEnvelopes merges plan store plans by id and keeps local active 
   const store = JSON.parse(merged.payload.aiDcaPlanStore);
   assert.deepEqual(store.plans.map((plan) => plan.id), ['remote-plan', 'local-plan']);
   assert.equal(store.activePlanId, 'local-plan');
+});
+
+test('compareRecordVersions lets higher revision win regardless of timestamp', () => {
+  // 逻辑时钟：rev 高者胜，即使它的墙钟时间更早（时钟漂移场景）。
+  const older = { rev: 5, updatedAt: '2026-05-01T00:00:00.000Z' };
+  const newer = { rev: 2, updatedAt: '2026-05-09T00:00:00.000Z' };
+  assert.equal(compareRecordVersions(older, newer) > 0, true);
+  assert.equal(compareRecordVersions(newer, older) < 0, true);
+});
+
+test('compareRecordVersions falls back to timestamp when revisions tie or are absent', () => {
+  assert.equal(compareRecordVersions({ rev: 3, updatedAt: '2026-05-09T00:00:00.000Z' }, { rev: 3, updatedAt: '2026-05-01T00:00:00.000Z' }) > 0, true);
+  assert.equal(compareRecordVersions({ updatedAt: '2026-05-09T00:00:00.000Z' }, { updatedAt: '2026-05-01T00:00:00.000Z' }) > 0, true);
+});
+
+test('compareRecordVersions breaks exact ties deterministically by origin device', () => {
+  const base = { updatedAt: '2026-05-02T10:00:00.000Z' };
+  assert.equal(compareRecordVersions({ ...base, deviceId: 'device-b' }, { ...base, deviceId: 'device-a' }) > 0, true);
+  assert.equal(compareRecordVersions({ ...base, deviceId: 'device-a' }, { ...base, deviceId: 'device-b' }) < 0, true);
+  assert.equal(compareRecordVersions({ ...base, deviceId: 'device-a' }, { ...base, deviceId: 'device-a' }), 0);
+  assert.equal(compareRecordVersions({ ...base }, { ...base }), 0);
+});
+
+test('mergeBackupEnvelopes uses record revision over timestamp when unioning by id', () => {
+  const remoteEnvelope = {
+    version: 1,
+    keys: ['aiDcaTradeLedger'],
+    payload: {
+      aiDcaTradeLedger: JSON.stringify([
+        { id: 'trade-shared', symbol: 'QQQ', side: 'buy', date: '2026-05-02', shares: 1, price: 999, rev: 5, updatedAt: '2026-05-02T08:00:00.000Z' }
+      ])
+    }
+  };
+  const localEnvelope = {
+    version: 1,
+    keys: ['aiDcaTradeLedger'],
+    payload: {
+      aiDcaTradeLedger: JSON.stringify([
+        { id: 'trade-shared', symbol: 'QQQ', side: 'buy', date: '2026-05-02', shares: 1, price: 420, rev: 2, updatedAt: '2026-05-02T11:00:00.000Z' }
+      ])
+    }
+  };
+
+  const merged = mergeBackupEnvelopes(remoteEnvelope, localEnvelope);
+  const list = JSON.parse(merged.payload.aiDcaTradeLedger);
+  assert.equal(list.length, 1);
+  // 远端 rev=5 胜出，尽管本机 updatedAt 更新。
+  assert.equal(list[0].price, 999);
 });

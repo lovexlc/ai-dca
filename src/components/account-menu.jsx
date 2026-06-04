@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, CloudDownload, GitMerge, Home, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
+import { AlertTriangle, CloudDownload, CloudUpload, GitMerge, Home, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
-import { ensureLocalChangeBaseline, loadCloudSyncMeta, mergeLocalIntoCloudBackup, prepareCloudSyncConflict, refreshRemoteCloudMeta, restoreEncryptedCloudBackup, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
+import { ensureLocalChangeBaseline, loadCloudSyncMeta, mergeLocalIntoCloudBackup, overwriteCloudWithLocal, prepareCloudSyncConflict, refreshRemoteCloudMeta, restoreEncryptedCloudBackup, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
 import { clearRememberedKey, generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
 import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
@@ -223,34 +223,31 @@ export function AccountMenu() {
       showToast({ title: '需要安全密码', description: '请输入安全密码后再处理冲突。', tone: 'amber' });
       return;
     }
-    const busyKey = mode === 'merge' ? 'merge-conflict' : 'pull-conflict';
+    const busyKey = mode === 'merge' ? 'merge-conflict' : mode === 'local' ? 'local-conflict' : 'pull-conflict';
     setBusy(busyKey);
     setLastError('');
     setErrorCode('');
     try {
-      const result = mode === 'merge'
-        ? await mergeLocalIntoCloudBackup({
-          securityPassword: secret,
-          rememberDevice: form.rememberDevice,
-          useRemembered
-        })
-        : await restoreEncryptedCloudBackup({
-          securityPassword: secret,
-          useRemembered,
-          rememberDevice: form.rememberDevice,
-          onlyIfRemoteNewer: false
-        });
+      let result;
+      if (mode === 'merge') {
+        result = await mergeLocalIntoCloudBackup({ securityPassword: secret, rememberDevice: form.rememberDevice, useRemembered });
+      } else if (mode === 'local') {
+        result = await overwriteCloudWithLocal({ securityPassword: secret, rememberDevice: form.rememberDevice, useRemembered });
+      } else {
+        result = await restoreEncryptedCloudBackup({ securityPassword: secret, useRemembered, rememberDevice: form.rememberDevice, onlyIfRemoteNewer: false });
+      }
       setConflict(null);
       setConflictPassword('');
       setMeta(loadCloudSyncMeta());
       setPreview(collectBackupPayload());
       setSyncState('synced');
-      window.dispatchEvent(new CustomEvent(mode === 'merge' ? 'cloud-sync:auto-uploaded' : 'cloud-sync:auto-restored', { detail: { result } }));
-      showToast({
-        title: mode === 'merge' ? '已合并并同步' : '已拉取云端',
-        description: mode === 'merge' ? '本机数据已合并到云端，远端独有数据也已保留到本机。' : '云端版本已覆盖本机数据。',
-        tone: 'emerald'
-      });
+      window.dispatchEvent(new CustomEvent(mode === 'pull' ? 'cloud-sync:auto-restored' : 'cloud-sync:auto-uploaded', { detail: { result } }));
+      const toastByMode = {
+        merge: { title: '已合并并同步', description: '本机数据已合并到云端，远端独有数据也已保留到本机。' },
+        local: { title: '已采用本机', description: '已用本机数据强制覆盖云端版本。' },
+        pull: { title: '已采用云端', description: '云端版本已覆盖本机数据。' }
+      };
+      showToast({ ...toastByMode[mode], tone: 'emerald' });
     } catch (err) {
       if (err?.isCloudSyncConflict) {
         setConflict(err.conflict || conflict);
@@ -524,7 +521,7 @@ export function AccountMenu() {
           </div>
         </div>
 
-        <div className="grid gap-2 border-t border-slate-100 bg-white px-5 py-4 sm:grid-cols-2">
+        <div className="grid gap-2 border-t border-slate-100 bg-white px-5 py-4 sm:grid-cols-3">
           <button
             type="button"
             className={cx(primaryButtonClass, 'justify-center')}
@@ -532,7 +529,7 @@ export function AccountMenu() {
             disabled={Boolean(busy)}
           >
             {busy === 'merge-conflict' ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitMerge className="h-4 w-4" />}
-            合并本机
+            合并
           </button>
           <button
             type="button"
@@ -541,7 +538,16 @@ export function AccountMenu() {
             disabled={Boolean(busy)}
           >
             {busy === 'pull-conflict' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />}
-            拉取云端
+            采用云端
+          </button>
+          <button
+            type="button"
+            className={cx(secondaryButtonClass, 'justify-center bg-white')}
+            onClick={() => handleResolveConflict('local')}
+            disabled={Boolean(busy)}
+          >
+            {busy === 'local-conflict' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
+            采用本地
           </button>
         </div>
       </div>

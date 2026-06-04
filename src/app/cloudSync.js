@@ -95,6 +95,32 @@ function recordTimestamp(record = {}) {
   return parseTime(record?.updatedAt || record?.updated_at || record?.modifiedAt || record?.date || record?.createdAt || record?.created_at);
 }
 
+// 逻辑时钟：每条记录可带单调递增的修订号 + 稳定的来源设备 id，
+// 让多端合并在墙钟时间错乱（时钟漂移）时仍可确定性裁决，避免静默丢边。
+function recordRevision(record = {}) {
+  const raw = record?.rev ?? record?._rev ?? record?.revision ?? record?.clock;
+  const num = Number(raw);
+  return Number.isFinite(num) ? num : null;
+}
+
+function recordOrigin(record = {}) {
+  return String(record?.deviceId || record?.origin || record?.deviceID || record?.updatedBy || '').trim();
+}
+
+// >0：local 胜；<0：remote 胜；0：真正平局。优先级：修订号 → 时间戳 → 来源 id。
+export function compareRecordVersions(local = {}, remote = {}) {
+  const revL = recordRevision(local);
+  const revR = recordRevision(remote);
+  if (revL !== null && revR !== null && revL !== revR) return revL > revR ? 1 : -1;
+  const tL = recordTimestamp(local);
+  const tR = recordTimestamp(remote);
+  if (tL !== tR) return tL > tR ? 1 : -1;
+  const oL = recordOrigin(local);
+  const oR = recordOrigin(remote);
+  if (oL && oR && oL !== oR) return oL > oR ? 1 : -1;
+  return 0;
+}
+
 function mergeRecordsById(remoteList = [], localList = [], { localWinsOnTie = true } = {}) {
   const map = new Map();
   for (const record of Array.isArray(remoteList) ? remoteList : []) {
@@ -112,9 +138,8 @@ function mergeRecordsById(remoteList = [], localList = [], { localWinsOnTie = tr
       map.set(id, record);
       continue;
     }
-    const localTime = recordTimestamp(record);
-    const remoteTime = recordTimestamp(existing);
-    if (localTime > remoteTime || (localWinsOnTie && localTime === remoteTime)) {
+    const order = compareRecordVersions(record, existing);
+    if (order > 0 || (order === 0 && localWinsOnTie)) {
       map.set(id, record);
     }
   }
@@ -491,6 +516,12 @@ export async function mergeLocalIntoCloudBackup({ securityPassword = '', remembe
     direction: 'merge'
   });
   return { ...result, mergedKeyCount: mergedEnvelope.keyCount, conflictResolution: 'merge-local-over-remote' };
+}
+
+export async function overwriteCloudWithLocal({ securityPassword = '', rememberDevice = true, useRemembered = false } = {}) {
+  // "采用本地"：忽略云端内容，用本机数据强制覆盖云端（force 上传，baseVersion=null）。
+  // 仅上传本机已加密 envelope；用户密钥仍只在本地，不会上传明文密钥。
+  return uploadEncryptedCloudBackup({ securityPassword, rememberDevice, useRemembered, force: true });
 }
 
 export async function restoreEncryptedCloudBackup({ securityPassword = '', useRemembered = false, rememberDevice = true, onlyIfRemoteNewer = false } = {}) {
