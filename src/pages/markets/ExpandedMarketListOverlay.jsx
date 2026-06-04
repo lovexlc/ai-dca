@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
-import { ListPlus, Loader2, Search } from 'lucide-react';
-import { cx } from '../../components/experience-ui.jsx';
+import { ListPlus, Loader2, Search, X } from 'lucide-react';
 import { MarketListTable } from './MarketListTable.jsx';
 import { ListExpandButton } from './ListExpandButton.jsx';
 import { MarketSymbolSearchBox } from './MarketSymbolSearchBox.jsx';
@@ -53,34 +52,46 @@ export function ExpandedMarketListOverlay({
             <h2 className="mt-1 truncate text-[22px] font-semibold text-[#1f1f1f]">{activeName || '监控列表'}</h2>
           </div>
           <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={onSearchToggle}
-              className={cx('inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition', searchOpen ? 'bg-[#e8f0fe] text-[#1a73e8]' : 'text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#1f1f1f]')}
-            >
-              <Search size={16} /> 基金搜索
-            </button>
+            {searchOpen ? (
+              <div className="flex w-[360px] items-center gap-1.5">
+                <MarketSymbolSearchBox
+                  autoFocus
+                  inline
+                  searchValue={searchValue}
+                  searchResults={searchResults}
+                  searchLoading={searchLoading}
+                  searchError={searchError}
+                  watchSymbols={watchSymbols}
+                  marketLabel={marketLabel}
+                  onSearchChange={onSearchChange}
+                  onSearchClear={onSearchClear}
+                  onSearchResultSelect={onSearchResultSelect}
+                  onSearchResultAdd={onSearchResultAdd}
+                />
+                <button
+                  type="button"
+                  onClick={onSearchToggle}
+                  aria-label="关闭基金搜索"
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={onSearchToggle}
+                className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
+              >
+                <Search size={16} /> 基金搜索
+              </button>
+            )}
             <button type="button" onClick={onCreate} className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#1f1f1f]">
               <ListPlus size={18} /> 新建列表
             </button>
             <ListExpandButton expanded onClick={onClose} />
           </div>
         </div>
-        {searchOpen ? (
-          <MarketSymbolSearchBox
-            autoFocus
-            searchValue={searchValue}
-            searchResults={searchResults}
-            searchLoading={searchLoading}
-            searchError={searchError}
-            watchSymbols={watchSymbols}
-            marketLabel={marketLabel}
-            onSearchChange={onSearchChange}
-            onSearchClear={onSearchClear}
-            onSearchResultSelect={onSearchResultSelect}
-            onSearchResultAdd={onSearchResultAdd}
-          />
-        ) : null}
         <div className="min-h-0 flex-1 overflow-auto rounded-2xl bg-[#f8fafd] p-3">
           <MarketListTable
             rows={rows}
