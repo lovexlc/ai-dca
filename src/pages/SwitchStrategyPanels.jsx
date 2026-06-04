@@ -155,10 +155,13 @@ export function SwitchStrategyWorkerPanel({
                         intraSellLowerPct: workerSnapshot.intraSellLowerPct,
                         intraBuyOtherPct: workerSnapshot.intraBuyOtherPct
                       }];
-                      const cls = prefs.premiumClass || {};
                       return benchSnapshots.map((bench) => (
-                        <div key={`bench-${bench.benchmarkCode}`} className="rounded-xl border border-slate-200 bg-white p-3">
-                          <div className="text-xs uppercase tracking-[0.18em] text-slate-400">基准 {bench.benchmarkCode}{bench.benchmarkName ? ` · ${bench.benchmarkName}` : ''}</div>
+                        (() => {
+                          const benchRule = rules.find((rule) => rule.id === bench.ruleId) || rules[0] || {};
+                          const cls = benchRule.premiumClass || prefs.premiumClass || {};
+                          return (
+                        <div key={`bench-${bench.ruleId || 'legacy'}-${bench.benchmarkCode}`} className="rounded-xl border border-slate-200 bg-white p-3">
+                          <div className="text-xs uppercase tracking-[0.18em] text-slate-400">{bench.ruleName ? `${bench.ruleName} · ` : ''}基准 {bench.benchmarkCode}{bench.benchmarkName ? ` · ${bench.benchmarkName}` : ''}</div>
                           <div className="mt-1 grid grid-cols-1 gap-x-2 gap-y-1 text-xs text-slate-600 sm:grid-cols-3">
                             <div className="min-w-0">现价 <span className="font-semibold text-slate-800">{formatPrice(bench.benchmarkPrice)}</span></div>
                             <div className="min-w-0">净值 <span className="font-semibold text-slate-800">{formatPrice(bench.benchmarkNav)}</span>{bench.benchmarkNavDate ? <span className="ml-1 whitespace-nowrap text-slate-400">@{bench.benchmarkNavDate}</span> : null}</div>
@@ -167,7 +170,7 @@ export function SwitchStrategyWorkerPanel({
                           {bench.candidates && bench.candidates.length > 0 ? (
                             <button
                               type="button"
-                              onClick={() => setSnapshotCandModal({ bench, rules, cls })}
+                              onClick={() => setSnapshotCandModal({ bench, rules: [benchRule], cls })}
                               className="mt-3 flex w-full items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 transition-colors hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
                             >
                               <span className="font-medium">查看 {bench.candidates.length} 个候选详情</span>
@@ -177,6 +180,8 @@ export function SwitchStrategyWorkerPanel({
                             <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-center text-xs text-slate-400">快照中暂无候选数据。</div>
                           )}
                         </div>
+                          );
+                        })()
                       ));
                     })()}
                     {(workerSnapshot.triggers || []).length > 0 ? (
@@ -280,6 +285,8 @@ export function SwitchStrategyQuickRecordModal({ quickRecord, setQuickRecord, qu
 
 export function SwitchStrategyRulesPanel({
   rules,
+  activeRuleId,
+  onRuleSelect,
   onRuleChange,
   onRuleAdd,
   onRuleRemove
@@ -293,8 +300,12 @@ export function SwitchStrategyRulesPanel({
       <div className="mt-5 space-y-3">
         {(rules || []).map((rule, index) => {
           const disabledRemove = (rules || []).length <= 1;
+          const active = rule.id === activeRuleId || (!activeRuleId && index === 0);
+          const classifiedCount = Object.keys(rule.premiumClass || {}).length;
+          const benchmarkCount = Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes.length : 0;
+          const candidateCount = Array.isArray(rule.enabledCodes) ? rule.enabledCodes.length : 0;
           return (
-            <div key={rule.id || index} className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div key={rule.id || index} className={cx('rounded-2xl border bg-white p-4', active ? 'border-indigo-300 ring-2 ring-indigo-100' : 'border-slate-200')}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
                 <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
                   规则名称
@@ -315,6 +326,14 @@ export function SwitchStrategyRulesPanel({
                 </label>
                 <button
                   type="button"
+                  onClick={() => onRuleSelect(rule.id)}
+                  className={cx(secondaryButtonClass, 'h-9 px-3 text-xs', active && 'border-indigo-200 bg-indigo-50 text-indigo-700')}
+                  title="切换到这条规则并编辑完整配置"
+                >
+                  {active ? '编辑中' : '编辑'}
+                </button>
+                <button
+                  type="button"
                   onClick={() => onRuleRemove(rule.id)}
                   disabled={disabledRemove}
                   className={cx(secondaryButtonClass, 'h-9 px-3 text-xs', disabledRemove && 'cursor-not-allowed opacity-50')}
@@ -323,6 +342,11 @@ export function SwitchStrategyRulesPanel({
                   <Trash2 className="h-4 w-4" />
                   删除
                 </button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500">
+                <span className="rounded-full bg-slate-100 px-2 py-1">基准 {benchmarkCount} 只</span>
+                <span className="rounded-full bg-slate-100 px-2 py-1">候选 {candidateCount} 只</span>
+                <span className="rounded-full bg-slate-100 px-2 py-1">已分类 {classifiedCount} 只</span>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <label className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">

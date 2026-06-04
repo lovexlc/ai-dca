@@ -19,6 +19,9 @@ const DEFAULT_SWITCH_RULE = {
   id: 'rule-default',
   name: '默认规则',
   enabled: true,
+  benchmarkCodes: [],
+  enabledCodes: [],
+  premiumClass: {},
   intraSellLowerPct: DEFAULT_INTRA_SELL_LOWER_PCT,
   intraBuyOtherPct: DEFAULT_INTRA_BUY_OTHER_PCT
 };
@@ -55,6 +58,9 @@ function normalizeSwitchRule(rule = {}, index = 0, fallbackSource = {}) {
     id: String(rule?.id || fallback.id || `rule-${index + 1}`).trim().slice(0, 64),
     name: String(rule?.name || fallback.name || `规则 ${index + 1}`).trim().slice(0, 40),
     enabled: rule?.enabled !== false,
+    benchmarkCodes: normalizeCodeList(rule?.benchmarkCodes, fallback.benchmarkCodes || fallbackSource?.benchmarkCodes),
+    enabledCodes: normalizeCodeList(rule?.enabledCodes, fallback.enabledCodes || fallbackSource?.enabledCodes),
+    premiumClass: normalizePremiumClass(rule?.premiumClass || fallback.premiumClass || fallbackSource?.premiumClass),
     intraSellLowerPct: pickPercent(rule?.intraSellLowerPct, fallback.intraSellLowerPct),
     intraBuyOtherPct: pickPercent(rule?.intraBuyOtherPct, fallback.intraBuyOtherPct)
   };
@@ -62,8 +68,18 @@ function normalizeSwitchRule(rule = {}, index = 0, fallbackSource = {}) {
 
 function normalizeSwitchRules(input, fallbackSource = {}) {
   const raw = Array.isArray(input) ? input : [];
-  const source = raw.length ? raw : [{
+  const source = raw.length ? raw.map((rule, index) => (
+    index === 0 ? {
+      ...rule,
+      benchmarkCodes: rule?.benchmarkCodes ?? fallbackSource?.benchmarkCodes,
+      enabledCodes: rule?.enabledCodes ?? fallbackSource?.enabledCodes,
+      premiumClass: rule?.premiumClass ?? fallbackSource?.premiumClass
+    } : rule
+  )) : [{
     ...DEFAULT_SWITCH_RULE,
+    benchmarkCodes: fallbackSource?.benchmarkCodes,
+    enabledCodes: fallbackSource?.enabledCodes,
+    premiumClass: fallbackSource?.premiumClass,
     intraSellLowerPct: fallbackSource?.intraSellLowerPct,
     intraBuyOtherPct: fallbackSource?.intraBuyOtherPct
   }];
@@ -77,6 +93,31 @@ function normalizeSwitchRules(input, fallbackSource = {}) {
     if (rules.length >= 10) break;
   }
   return rules.length ? rules : [normalizeSwitchRule(DEFAULT_SWITCH_RULE, 0, fallbackSource)];
+}
+
+function normalizeCodeList(input, fallback = []) {
+  const raw = Array.isArray(input) ? input : fallback;
+  const seen = new Set();
+  const codes = [];
+  for (const item of raw || []) {
+    const code = sanitizeFundCode(item);
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    codes.push(code);
+    if (codes.length >= 20) break;
+  }
+  return codes;
+}
+
+function normalizePremiumClass(input = {}) {
+  const rawClass = input && typeof input === 'object' ? input : {};
+  const premiumClass = {};
+  for (const [code, value] of Object.entries(rawClass)) {
+    const c = sanitizeFundCode(code);
+    const v = String(value || '').trim().toUpperCase();
+    if (c && (v === 'H' || v === 'L')) premiumClass[c] = v;
+  }
+  return premiumClass;
 }
 
 export function readSwitchConfigCache() {
@@ -134,15 +175,7 @@ export function normalizeSwitchConfigShape(input = {}) {
     if (enabledCodes.length >= 20) break;
   }
   // premiumClass：仅保留出现在 benchmarkCodes 或 enabledCodes 中的代码，且值为 'H' | 'L'。
-  const premiumClass = {};
-  const rawClass = (input && typeof input.premiumClass === 'object' && input.premiumClass) ? input.premiumClass : {};
-  const validCodes = new Set([...benchmarkCodes, ...enabledCodes]);
-  for (const [code, value] of Object.entries(rawClass)) {
-    const c = sanitizeFundCode(code);
-    if (!c || !validCodes.has(c)) continue;
-    const v = String(value || '').trim().toUpperCase();
-    if (v === 'H' || v === 'L') premiumClass[c] = v;
-  }
+  const premiumClass = normalizePremiumClass(input?.premiumClass);
   const rules = normalizeSwitchRules(input?.rules, input);
   const primaryRule = rules[0] || DEFAULT_SWITCH_RULE;
   return {

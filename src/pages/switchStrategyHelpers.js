@@ -5,14 +5,22 @@ export const DEFAULT_SWITCH_RULE = {
   id: 'rule-default',
   name: '默认规则',
   enabled: true,
+  benchmarkCodes: ['513100'],
+  enabledCodes: [],
+  premiumClass: {},
+  arbTargetPct: 2,
   intraSellLowerPct: 1,
-  intraBuyOtherPct: 3
+  intraBuyOtherPct: 3,
+  otcPremiumThresholdPct: 8,
+  otcMinIntraPremiumLow: 1,
+  otcMinIntraPremiumHigh: 2
 };
 
 export const DEFAULT_SWITCH_PREFS = {
   benchmarkCodes: ['513100'],
   enabledCodes: [],
   premiumClass: {},
+  activeRuleId: 'rule-default',
   rules: [DEFAULT_SWITCH_RULE],
   arbTargetPct: 2,
   intraSellLowerPct: 1,
@@ -30,6 +38,30 @@ function pickPercent(value, fallback) {
   return num;
 }
 
+function normalizeCodeList(input, fallback = []) {
+  const raw = Array.isArray(input) ? input : fallback;
+  const seen = new Set();
+  const codes = [];
+  for (const item of raw || []) {
+    const code = String(item || '').trim();
+    if (!FUND_CODE_PATTERN.test(code) || seen.has(code)) continue;
+    seen.add(code);
+    codes.push(code);
+    if (codes.length >= 20) break;
+  }
+  return codes;
+}
+
+function normalizePremiumClass(input = {}) {
+  const rawClass = input && typeof input === 'object' ? input : {};
+  const premiumClass = {};
+  for (const [code, value] of Object.entries(rawClass)) {
+    const v = String(value || '').trim().toUpperCase();
+    if (FUND_CODE_PATTERN.test(String(code)) && (v === 'H' || v === 'L')) premiumClass[code] = v;
+  }
+  return premiumClass;
+}
+
 export function buildSwitchRuleId(prefix = 'rule') {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -38,23 +70,51 @@ export function normalizeSwitchRule(rule = {}, index = 0) {
   const fallback = index === 0 ? DEFAULT_SWITCH_RULE : {
     ...DEFAULT_SWITCH_RULE,
     id: `rule-${index + 1}`,
-    name: `规则 ${index + 1}`
+    name: `规则 ${index + 1}`,
+    benchmarkCodes: [],
+    enabledCodes: [],
+    premiumClass: {}
   };
   return {
     id: String(rule?.id || fallback.id || `rule-${index + 1}`).trim().slice(0, 64),
     name: String(rule?.name || fallback.name || `规则 ${index + 1}`).trim().slice(0, 40),
     enabled: rule?.enabled !== false,
+    benchmarkCodes: normalizeCodeList(rule?.benchmarkCodes, fallback.benchmarkCodes),
+    enabledCodes: normalizeCodeList(rule?.enabledCodes, fallback.enabledCodes),
+    premiumClass: normalizePremiumClass(rule?.premiumClass || fallback.premiumClass),
+    arbTargetPct: pickPercent(rule?.arbTargetPct, fallback.arbTargetPct),
     intraSellLowerPct: pickPercent(rule?.intraSellLowerPct, fallback.intraSellLowerPct),
-    intraBuyOtherPct: pickPercent(rule?.intraBuyOtherPct, fallback.intraBuyOtherPct)
+    intraBuyOtherPct: pickPercent(rule?.intraBuyOtherPct, fallback.intraBuyOtherPct),
+    otcPremiumThresholdPct: pickPercent(rule?.otcPremiumThresholdPct, fallback.otcPremiumThresholdPct),
+    otcMinIntraPremiumLow: pickPercent(rule?.otcMinIntraPremiumLow, fallback.otcMinIntraPremiumLow),
+    otcMinIntraPremiumHigh: pickPercent(rule?.otcMinIntraPremiumHigh, fallback.otcMinIntraPremiumHigh)
   };
 }
 
 export function normalizeSwitchRules(input, fallbackSource = {}) {
   const rawRules = Array.isArray(input) ? input : [];
-  const sourceRules = rawRules.length ? rawRules : [{
+  const sourceRules = rawRules.length ? rawRules.map((rule, index) => (
+    index === 0 ? {
+      ...rule,
+      benchmarkCodes: rule?.benchmarkCodes ?? fallbackSource?.benchmarkCodes,
+      enabledCodes: rule?.enabledCodes ?? fallbackSource?.enabledCodes,
+      premiumClass: rule?.premiumClass ?? fallbackSource?.premiumClass,
+      arbTargetPct: rule?.arbTargetPct ?? fallbackSource?.arbTargetPct,
+      otcPremiumThresholdPct: rule?.otcPremiumThresholdPct ?? fallbackSource?.otcPremiumThresholdPct,
+      otcMinIntraPremiumLow: rule?.otcMinIntraPremiumLow ?? fallbackSource?.otcMinIntraPremiumLow,
+      otcMinIntraPremiumHigh: rule?.otcMinIntraPremiumHigh ?? fallbackSource?.otcMinIntraPremiumHigh
+    } : rule
+  )) : [{
     ...DEFAULT_SWITCH_RULE,
+    benchmarkCodes: fallbackSource?.benchmarkCodes,
+    enabledCodes: fallbackSource?.enabledCodes,
+    premiumClass: fallbackSource?.premiumClass,
+    arbTargetPct: fallbackSource?.arbTargetPct,
     intraSellLowerPct: fallbackSource?.intraSellLowerPct,
-    intraBuyOtherPct: fallbackSource?.intraBuyOtherPct
+    intraBuyOtherPct: fallbackSource?.intraBuyOtherPct,
+    otcPremiumThresholdPct: fallbackSource?.otcPremiumThresholdPct,
+    otcMinIntraPremiumLow: fallbackSource?.otcMinIntraPremiumLow,
+    otcMinIntraPremiumHigh: fallbackSource?.otcMinIntraPremiumHigh
   }];
   const seen = new Set();
   const normalized = [];
@@ -66,6 +126,23 @@ export function normalizeSwitchRules(input, fallbackSource = {}) {
     if (normalized.length >= 10) break;
   }
   return normalized.length ? normalized : [normalizeSwitchRule(DEFAULT_SWITCH_RULE, 0)];
+}
+
+export function applySwitchRuleToPrefs(prefs = {}, rule = {}) {
+  const normalizedRule = normalizeSwitchRule(rule, 0);
+  return {
+    ...prefs,
+    activeRuleId: normalizedRule.id,
+    benchmarkCodes: normalizedRule.benchmarkCodes,
+    enabledCodes: normalizedRule.enabledCodes,
+    premiumClass: normalizedRule.premiumClass,
+    arbTargetPct: normalizedRule.arbTargetPct,
+    intraSellLowerPct: normalizedRule.intraSellLowerPct,
+    intraBuyOtherPct: normalizedRule.intraBuyOtherPct,
+    otcPremiumThresholdPct: normalizedRule.otcPremiumThresholdPct,
+    otcMinIntraPremiumLow: normalizedRule.otcMinIntraPremiumLow,
+    otcMinIntraPremiumHigh: normalizedRule.otcMinIntraPremiumHigh
+  };
 }
 
 export function readSwitchPrefs(defaults = DEFAULT_SWITCH_PREFS) {
@@ -83,24 +160,20 @@ export function readSwitchPrefs(defaults = DEFAULT_SWITCH_PREFS) {
     }
     const { benchmarkCode: _legacyBenchmark, ...rest } = parsed || {};
     void _legacyBenchmark;
-    const rawClass = (parsed && typeof parsed.premiumClass === 'object' && parsed.premiumClass) ? parsed.premiumClass : {};
-    const premiumClass = {};
-    for (const [code, value] of Object.entries(rawClass)) {
-      const v = String(value || '').trim().toUpperCase();
-      if (FUND_CODE_PATTERN.test(String(code)) && (v === 'H' || v === 'L')) premiumClass[code] = v;
-    }
-    const rules = normalizeSwitchRules(parsed?.rules, parsed);
-    const primaryRule = rules[0] || DEFAULT_SWITCH_RULE;
-    return {
+    const premiumClass = normalizePremiumClass(parsed?.premiumClass);
+    const rules = normalizeSwitchRules(parsed?.rules, {
+      ...parsed,
+      benchmarkCodes,
+      premiumClass
+    });
+    const activeRuleId = String(parsed?.activeRuleId || '').trim();
+    const activeRule = rules.find((rule) => rule.id === activeRuleId) || rules[0] || DEFAULT_SWITCH_RULE;
+    return applySwitchRuleToPrefs({
       ...defaults,
       ...rest,
-      benchmarkCodes,
-      enabledCodes: Array.isArray(parsed?.enabledCodes) ? parsed.enabledCodes : [],
-      premiumClass,
       rules,
-      intraSellLowerPct: parsed?.intraSellLowerPct ?? primaryRule.intraSellLowerPct,
-      intraBuyOtherPct: parsed?.intraBuyOtherPct ?? primaryRule.intraBuyOtherPct
-    };
+      activeRuleId: activeRule.id
+    }, activeRule);
   } catch {
     return { ...defaults };
   }
