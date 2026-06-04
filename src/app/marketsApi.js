@@ -228,7 +228,7 @@ export async function askMarketsStream({
 
 // Watchlist (localStorage). Stored per market for convenience.
 const WATCHLIST_KEY = 'markets:watchlist:v1';
-const WATCHLIST_DEFAULTS_VERSION = 3;
+const WATCHLIST_DEFAULTS_VERSION = 4;
 const DEFAULT_WATCHLIST_ID = 'default';
 const DEFAULT_OTC_LIST_ID = 'default-otc';
 
@@ -245,8 +245,10 @@ export const CN_ETF_WATCHLIST_PRESETS = [
   { symbol: '159659', name: '纳斯达克100 ETF', exchange: '深交所', currency: 'CNY' },
   { symbol: '159632', name: '纳斯达克ETF 华安', exchange: '深交所', currency: 'CNY' },
   { symbol: '159513', name: '纳斯达克100ETF', exchange: '深交所', currency: 'CNY' },
+  { symbol: '159509', name: '纳指科技ETF 景顺', exchange: '深交所', currency: 'CNY' },
   { symbol: '159501', name: '纳指ETF 嘉实', exchange: '深交所', currency: 'CNY' },
   { symbol: '159577', name: '纳指ETF 新增2', exchange: '深交所', currency: 'CNY' },
+  { symbol: '161128', name: '标普信息科技LOF 易方达', exchange: '深交所', currency: 'CNY' },
   { symbol: '513500', name: '标准500ETF 博时', exchange: '深交所', currency: 'CNY' },
   { symbol: '513650', name: '标普500ETF 南方', exchange: '深交所', currency: 'CNY' },
   { symbol: '159612', name: '标普500ETF 国泰', exchange: '深交所', currency: 'CNY' },

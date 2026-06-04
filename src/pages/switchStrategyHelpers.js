@@ -1,9 +1,19 @@
 const SWITCH_PREFS_KEY = 'aiDcaSwitchStrategyPrefs';
+const FUND_CODE_PATTERN = /^\d{6}$/;
+
+export const DEFAULT_SWITCH_RULE = {
+  id: 'rule-default',
+  name: '默认规则',
+  enabled: true,
+  intraSellLowerPct: 1,
+  intraBuyOtherPct: 3
+};
 
 export const DEFAULT_SWITCH_PREFS = {
   benchmarkCodes: ['513100'],
   enabledCodes: [],
   premiumClass: {},
+  rules: [DEFAULT_SWITCH_RULE],
   arbTargetPct: 2,
   intraSellLowerPct: 1,
   intraBuyOtherPct: 3,
@@ -11,6 +21,52 @@ export const DEFAULT_SWITCH_PREFS = {
   otcMinIntraPremiumLow: 1,
   otcMinIntraPremiumHigh: 2
 };
+
+function pickPercent(value, fallback) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  if (num < -50) return -50;
+  if (num > 50) return 50;
+  return num;
+}
+
+export function buildSwitchRuleId(prefix = 'rule') {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export function normalizeSwitchRule(rule = {}, index = 0) {
+  const fallback = index === 0 ? DEFAULT_SWITCH_RULE : {
+    ...DEFAULT_SWITCH_RULE,
+    id: `rule-${index + 1}`,
+    name: `规则 ${index + 1}`
+  };
+  return {
+    id: String(rule?.id || fallback.id || `rule-${index + 1}`).trim().slice(0, 64),
+    name: String(rule?.name || fallback.name || `规则 ${index + 1}`).trim().slice(0, 40),
+    enabled: rule?.enabled !== false,
+    intraSellLowerPct: pickPercent(rule?.intraSellLowerPct, fallback.intraSellLowerPct),
+    intraBuyOtherPct: pickPercent(rule?.intraBuyOtherPct, fallback.intraBuyOtherPct)
+  };
+}
+
+export function normalizeSwitchRules(input, fallbackSource = {}) {
+  const rawRules = Array.isArray(input) ? input : [];
+  const sourceRules = rawRules.length ? rawRules : [{
+    ...DEFAULT_SWITCH_RULE,
+    intraSellLowerPct: fallbackSource?.intraSellLowerPct,
+    intraBuyOtherPct: fallbackSource?.intraBuyOtherPct
+  }];
+  const seen = new Set();
+  const normalized = [];
+  for (const raw of sourceRules) {
+    const rule = normalizeSwitchRule(raw, normalized.length);
+    if (!rule.id || seen.has(rule.id)) rule.id = buildSwitchRuleId('rule');
+    seen.add(rule.id);
+    normalized.push(rule);
+    if (normalized.length >= 10) break;
+  }
+  return normalized.length ? normalized : [normalizeSwitchRule(DEFAULT_SWITCH_RULE, 0)];
+}
 
 export function readSwitchPrefs(defaults = DEFAULT_SWITCH_PREFS) {
   if (typeof window === 'undefined') return { ...defaults };
@@ -31,14 +87,19 @@ export function readSwitchPrefs(defaults = DEFAULT_SWITCH_PREFS) {
     const premiumClass = {};
     for (const [code, value] of Object.entries(rawClass)) {
       const v = String(value || '').trim().toUpperCase();
-      if (/^\d{6}$/.test(String(code)) && (v === 'H' || v === 'L')) premiumClass[code] = v;
+      if (FUND_CODE_PATTERN.test(String(code)) && (v === 'H' || v === 'L')) premiumClass[code] = v;
     }
+    const rules = normalizeSwitchRules(parsed?.rules, parsed);
+    const primaryRule = rules[0] || DEFAULT_SWITCH_RULE;
     return {
       ...defaults,
       ...rest,
       benchmarkCodes,
       enabledCodes: Array.isArray(parsed?.enabledCodes) ? parsed.enabledCodes : [],
-      premiumClass
+      premiumClass,
+      rules,
+      intraSellLowerPct: parsed?.intraSellLowerPct ?? primaryRule.intraSellLowerPct,
+      intraBuyOtherPct: parsed?.intraBuyOtherPct ?? primaryRule.intraBuyOtherPct
     };
   } catch {
     return { ...defaults };

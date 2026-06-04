@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
-import { History, Settings2 } from 'lucide-react';
+import { History, ListChecks, Settings2 } from 'lucide-react';
 import { Card, cx } from '../components/experience-ui.jsx';
 import { FundSwitchAnalysisExperience } from './FundSwitchAnalysisExperience.jsx';
 import { trackFeatureEvent } from '../app/analytics.js';
@@ -18,7 +18,8 @@ function SubViewLoadingFallback() {
 }
 
 const MOBILE_TABS = [
-  { id: 'config', label: '规则', icon: Settings2 },
+  { id: 'config', label: '机会', icon: Settings2 },
+  { id: 'rules', label: '规则', icon: ListChecks },
   { id: 'analysis', label: '复盘', icon: History }
 ];
 
@@ -67,7 +68,7 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
         {/* 左：机会 / 规则 */}
         <div className={cx('min-w-0', mobileTab === 'analysis' ? 'hidden lg:block' : '')}>
           <Suspense fallback={<SubViewLoadingFallback />}>
-            <SwitchStrategyExperienceLazy links={links} inPagesDir={inPagesDir} embedded hideViewTabs initialView={mobileTab === 'config' ? 'config' : 'opportunity'} />
+            <SwitchStrategyExperienceLazy links={links} inPagesDir={inPagesDir} embedded hideViewTabs initialView={mobileTab === 'rules' ? 'rules' : (mobileTab === 'config' ? 'config' : 'opportunity')} />
           </Suspense>
         </div>
         {/* 右：复盘（PC 端 sticky 占满视口内可见区） */}

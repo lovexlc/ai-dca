@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { AlertTriangle, ClipboardList, ChevronDown, ChevronRight, Info, PlayCircle, Radio, X } from 'lucide-react';
+import { AlertTriangle, ClipboardList, ChevronDown, ChevronRight, Info, PlayCircle, Plus, Radio, Trash2, X } from 'lucide-react';
 import { Card, Pill, SectionHeading, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 export function SwitchStrategyWorkerPanel({
@@ -75,8 +75,12 @@ export function SwitchStrategyWorkerPanel({
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
                 {(() => {
-                  const sellLower = Number.isFinite(Number(prefs?.intraSellLowerPct)) ? prefs.intraSellLowerPct : null;
-                  const buyOther = Number.isFinite(Number(prefs?.intraBuyOtherPct)) ? prefs.intraBuyOtherPct : null;
+                  const rules = Array.isArray(prefs?.rules) && prefs.rules.length ? prefs.rules : [{
+                    name: '默认规则',
+                    enabled: true,
+                    intraSellLowerPct: prefs?.intraSellLowerPct,
+                    intraBuyOtherPct: prefs?.intraBuyOtherPct
+                  }];
                   const fmtCls = (c) => `${c}${switchSummary.cls[c] === 'H' ? 'H' : (switchSummary.cls[c] === 'L' ? 'L' : '')}`;
                   const fmtList = (arr) => (arr || []).map(fmtCls).join(', ');
                   if (!switchSummary.benches.length) {
@@ -88,7 +92,7 @@ export function SwitchStrategyWorkerPanel({
                       <span className="text-[11px] text-slate-400">{' '}({fmtList(switchSummary.Lrow.benches)})</span>
                       {' · 候选 '}<span className="font-semibold text-slate-700">{switchSummary.Lrow.cands.length}</span> 对{' '}
                       <span className="text-[11px] text-slate-400">({fmtList(switchSummary.Lrow.cands) || '无'})</span>
-                      {' · 规则 A：H-L ≤'}<span className="font-semibold text-slate-700">{sellLower !== null ? `${sellLower}%` : '—'}</span>
+                      {' · 启用规则 '}<span className="font-semibold text-slate-700">{rules.filter((r) => r.enabled !== false).length}</span> 条
                     </span>
                   ) : null;
                   const Hline = switchSummary.Hrow ? (
@@ -97,7 +101,7 @@ export function SwitchStrategyWorkerPanel({
                       <span className="text-[11px] text-slate-400">{' '}({fmtList(switchSummary.Hrow.benches)})</span>
                       {' · 候选 '}<span className="font-semibold text-slate-700">{switchSummary.Hrow.cands.length}</span> 对{' '}
                       <span className="text-[11px] text-slate-400">({fmtList(switchSummary.Hrow.cands) || '无'})</span>
-                      {' · 规则 B：H-L ≥'}<span className="font-semibold text-slate-700">{buyOther !== null ? `${buyOther}%` : '—'}</span>
+                      {' · 启用规则 '}<span className="font-semibold text-slate-700">{rules.filter((r) => r.enabled !== false).length}</span> 条
                     </span>
                   ) : null;
                   return (
@@ -147,8 +151,10 @@ export function SwitchStrategyWorkerPanel({
                           </div>
                         );
                       }
-                      const sellLower = Number(workerSnapshot.intraSellLowerPct);
-                      const buyOther = Number(workerSnapshot.intraBuyOtherPct);
+                      const rules = Array.isArray(workerSnapshot.rules) && workerSnapshot.rules.length ? workerSnapshot.rules : [{
+                        intraSellLowerPct: workerSnapshot.intraSellLowerPct,
+                        intraBuyOtherPct: workerSnapshot.intraBuyOtherPct
+                      }];
                       const cls = prefs.premiumClass || {};
                       return benchSnapshots.map((bench) => (
                         <div key={`bench-${bench.benchmarkCode}`} className="rounded-xl border border-slate-200 bg-white p-3">
@@ -161,7 +167,7 @@ export function SwitchStrategyWorkerPanel({
                           {bench.candidates && bench.candidates.length > 0 ? (
                             <button
                               type="button"
-                              onClick={() => setSnapshotCandModal({ bench, sellLower, buyOther, cls })}
+                              onClick={() => setSnapshotCandModal({ bench, rules, cls })}
                               className="mt-3 flex w-full items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 transition-colors hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
                             >
                               <span className="font-medium">查看 {bench.candidates.length} 个候选详情</span>
@@ -178,7 +184,7 @@ export function SwitchStrategyWorkerPanel({
                         <div className="font-semibold">本轮触发 {workerSnapshot.triggers.length} 个信号</div>
                         <ul className="mt-1 list-disc pl-4">
                           {workerSnapshot.triggers.map((t, idx) => (
-                            <li key={`trig-${idx}`}>规则 {t.rule || (Number(t.diffPct ?? t.spreadPct) >= 0 ? 'B' : 'A')} · 卖 {t.fromCode} → 买 {t.toCode}：diff {formatPercent(t.diffPct ?? t.spreadPct, 2, true)}</li>
+                            <li key={`trig-${idx}`}>{t.ruleName ? `${t.ruleName} · ` : ''}规则 {t.rule || (Number(t.diffPct ?? t.spreadPct) >= 0 ? 'B' : 'A')} · 卖 {t.fromCode} → 买 {t.toCode}：diff {formatPercent(t.diffPct ?? t.spreadPct, 2, true)}</li>
                           ))}
                         </ul>
                       </div>
@@ -272,6 +278,100 @@ export function SwitchStrategyQuickRecordModal({ quickRecord, setQuickRecord, qu
   );
 }
 
+export function SwitchStrategyRulesPanel({
+  rules,
+  onRuleChange,
+  onRuleAdd,
+  onRuleRemove
+}) {
+  return (
+    <Card>
+      <SectionHeading
+        eyebrow="规则列表"
+        title="配置多条场内切换规则"
+      />
+      <div className="mt-5 space-y-3">
+        {(rules || []).map((rule, index) => {
+          const disabledRemove = (rules || []).length <= 1;
+          return (
+            <div key={rule.id || index} className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                  规则名称
+                  <input
+                    value={rule.name || ''}
+                    onChange={(event) => onRuleChange(rule.id, { name: event.target.value })}
+                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold normal-case tracking-normal text-slate-800 focus:border-indigo-300 focus:outline-none"
+                  />
+                </label>
+                <label className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={rule.enabled !== false}
+                    onChange={(event) => onRuleChange(rule.id, { enabled: event.target.checked })}
+                  />
+                  启用
+                </label>
+                <button
+                  type="button"
+                  onClick={() => onRuleRemove(rule.id)}
+                  disabled={disabledRemove}
+                  className={cx(secondaryButtonClass, 'h-9 px-3 text-xs', disabledRemove && 'cursor-not-allowed opacity-50')}
+                  title={disabledRemove ? '至少保留一条规则' : '删除规则'}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  删除
+                </button>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                  <span className="block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">规则 A · 低→高</span>
+                  <span className="mt-2 flex items-center gap-1">
+                    H溢价 − L溢价 &lt;
+                    <input
+                      type="number"
+                      step="0.5"
+                      aria-label={`${rule.name || '规则'} 规则 A 阈值`}
+                      value={rule.intraSellLowerPct}
+                      onChange={(event) => onRuleChange(rule.id, { intraSellLowerPct: event.target.value })}
+                      className="w-20 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold tabular-nums focus:border-indigo-300 focus:outline-none"
+                    />
+                    %
+                  </span>
+                </label>
+                <label className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                  <span className="block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">规则 B · 高→低</span>
+                  <span className="mt-2 flex items-center gap-1">
+                    H溢价 − L溢价 &gt;
+                    <input
+                      type="number"
+                      step="0.5"
+                      aria-label={`${rule.name || '规则'} 规则 B 阈值`}
+                      value={rule.intraBuyOtherPct}
+                      onChange={(event) => onRuleChange(rule.id, { intraBuyOtherPct: event.target.value })}
+                      className="w-20 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold tabular-nums focus:border-indigo-300 focus:outline-none"
+                    />
+                    %
+                  </span>
+                </label>
+              </div>
+            </div>
+          );
+        })}
+        <button
+          type="button"
+          onClick={onRuleAdd}
+          className={cx(secondaryButtonClass, 'h-10 w-full justify-center px-4 text-sm')}
+        >
+          <Plus className="h-4 w-4" />
+          新增规则
+        </button>
+      </div>
+    </Card>
+  );
+}
+
 export function SwitchStrategySnapshotModal({ snapshotCandModal, setSnapshotCandModal, formatPrice, formatPercent }) {
   if (!snapshotCandModal || typeof document === 'undefined') return null;
   return createPortal((
@@ -321,8 +421,15 @@ export function SwitchStrategySnapshotModal({ snapshotCandModal, setSnapshotCand
                   let inB = false;
                   if (eligible && Number.isFinite(diff)) {
                     const gap = benchClass === 'H' ? diff : -diff;
-                    if (benchClass === 'L' && Number.isFinite(snapshotCandModal.sellLower) && gap < snapshotCandModal.sellLower) inA = true;
-                    if (benchClass === 'H' && Number.isFinite(snapshotCandModal.buyOther) && gap > snapshotCandModal.buyOther) inB = true;
+                    const rules = Array.isArray(snapshotCandModal.rules) && snapshotCandModal.rules.length ? snapshotCandModal.rules : [];
+                    for (const rule of rules) {
+                      if (rule.enabled === false) continue;
+                      const sellLower = Number(rule.intraSellLowerPct);
+                      const buyOther = Number(rule.intraBuyOtherPct);
+                      if (!(buyOther > sellLower)) continue;
+                      if (benchClass === 'L' && Number.isFinite(sellLower) && gap < sellLower) inA = true;
+                      if (benchClass === 'H' && Number.isFinite(buyOther) && gap > buyOther) inB = true;
+                    }
                   }
                   const colorCls = inA ? 'text-emerald-700 font-semibold' : inB ? 'text-rose-700 font-semibold' : 'text-slate-600';
                   return (
