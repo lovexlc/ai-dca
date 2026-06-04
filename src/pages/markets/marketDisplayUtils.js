@@ -182,6 +182,36 @@ export function formatRedeemFeeRate(row) {
   return isFiniteRate(rate) ? formatNumber(rate, 2) : '—';
 }
 
+export function resolveRedeemFeeTiers(row) {
+  const rules = row?.fundFee?.redeemRules;
+  if (!Array.isArray(rules) || !rules.length) return [];
+  return rules
+    .map((rule) => {
+      if (rule && typeof rule === 'object' && !Array.isArray(rule)) {
+        const name = String(rule.name ?? '').trim().replace(/(\d)\.0(?=\D|$)/g, '$1');
+        const unit = String(rule.unit ?? '').trim();
+        if (rule.value == null || rule.value === '') return name || null;
+        let valueText;
+        if (unit === '1') {
+          valueText = `${String(rule.value).trim()}元`;
+        } else {
+          const rate = unit === '2' ? parsePercentNumber(rule.value) : parseRateValue(rule.value);
+          valueText = isFiniteRate(rate) ? `${formatNumber(rate, 2)}%` : `${String(rule.value).trim()}%`;
+        }
+        return name ? `${name}：${valueText}` : valueText;
+      }
+      const cells = (Array.isArray(rule) ? rule : [rule])
+        .map((cell) => String(cell ?? '').trim())
+        .filter(Boolean);
+      return cells.length ? cells.join(' ') : null;
+    })
+    .filter(Boolean);
+}
+
+export function formatRedeemFeeTiers(row) {
+  return resolveRedeemFeeTiers(row).join('\n');
+}
+
 export function formatFeeRate(row) {
   const rate = resolveFundFeeRate(row);
   return isFiniteRate(rate) ? formatNumber(rate, 1) : '—';

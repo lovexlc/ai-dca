@@ -20,6 +20,7 @@ import {
   formatPercent,
   formatPremiumPercent,
   formatRedeemFeeRate,
+  formatRedeemFeeTiers,
   formatSignedPercent,
   formatSymbolDisplay,
   formatTotalShares,
@@ -287,7 +288,17 @@ export function MarketListTable({
       accessorFn: (row) => Number(resolveRedeemFeeRate(row)),
       meta: { label: '卖出费率' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="卖出费率" className="justify-end" />,
-      cell: ({ row }) => <span className="font-semibold tabular-nums text-[#5f6368]">{formatRedeemFeeRate(row.original)}</span>,
+      cell: ({ row }) => {
+        const redeemTiers = formatRedeemFeeTiers(row.original);
+        return (
+          <span
+            className={cx('font-semibold tabular-nums text-[#5f6368]', redeemTiers.includes('\n') && 'cursor-help underline decoration-dotted underline-offset-2')}
+            title={redeemTiers || undefined}
+          >
+            {formatRedeemFeeRate(row.original)}
+          </span>
+        );
+      },
       sortingFn: numericSortFn,
     },
     !hideTrendColumn ? {
@@ -491,7 +502,7 @@ export function MarketListTable({
                 })}
                 <td className={cx(cellPad, 'whitespace-nowrap text-right tabular-nums text-[#1f1f1f]')}>{formatTotalShares(row.totalShares)}</td>
                 <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums', feeRateToneClass(row))}>{formatFeeRate(row)}</td>
-                <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums text-[#5f6368]')}>{formatRedeemFeeRate(row)}</td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums text-[#5f6368]', formatRedeemFeeTiers(row).includes('\n') && 'cursor-help underline decoration-dotted underline-offset-2')} title={formatRedeemFeeTiers(row) || undefined}>{formatRedeemFeeRate(row)}</td>
                 {!hideTrendColumn ? (
                   <td className={cx(cellPad, 'text-right')}>
                     <div className="inline-flex justify-end">
