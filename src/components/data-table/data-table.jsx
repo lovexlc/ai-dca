@@ -19,6 +19,8 @@ function DataTable({
   onRowClick,
   footerRow,
   resizable = false,
+  onHorizontalScroll,
+  tableScrollRef,
   ...props
 }) {
   return <div
@@ -28,7 +30,7 @@ function DataTable({
       className
     )}
     {...props}
-  >{children}<div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white"><Table><TableHeader>{table.getHeaderGroups().map((headerGroup) => <TableRow key={headerGroup.id}>{headerGroup.headers.map((header) => <TableHead
+  >{children}<div ref={tableScrollRef} onScroll={onHorizontalScroll} className="overflow-x-auto rounded-2xl border border-slate-200 bg-white"><Table><TableHeader>{table.getHeaderGroups().map((headerGroup) => <TableRow key={headerGroup.id}>{headerGroup.headers.map((header) => <TableHead
     key={header.id}
     colSpan={header.colSpan}
     style={{

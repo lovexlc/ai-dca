@@ -95,8 +95,11 @@ export function MarketListTable({
   columnVisibility: controlledVisibility,
   onColumnVisibilityChange,
   dataTableHeader,
+  autoPinColumn = false,
 }) {
   const todayDate = getTodayShanghaiDate();
+  const tableScrollRef = useRef(null);
+  const [columnPinning, setColumnPinning] = useState({ left: [] });
   const isLatestChangeRow = (row) => {
     return isExpectedLatestChangeRow(row, todayDate);
   };
@@ -325,6 +328,8 @@ export function MarketListTable({
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    state: { columnPinning },
+    onColumnPinningChange: setColumnPinning,
     initialState: {
       sorting: [{ id: 'changePercent', desc: true }],
       pagination: { pageSize: 50 },
@@ -352,6 +357,41 @@ export function MarketListTable({
     return () => document.removeEventListener('mousedown', handler);
   }, [menuOpen]);
 
+  const autoPinOffsetsRef = useRef({});
+  useEffect(() => {
+    if (!autoPinColumn || !dataTable) return undefined;
+    const el = tableScrollRef.current;
+    if (!el) return undefined;
+    const measure = () => {
+      const offsets = {};
+      let acc = 0;
+      table.getVisibleLeafColumns().forEach((column) => {
+        offsets[column.id] = acc;
+        acc += column.getSize();
+      });
+      autoPinOffsetsRef.current = offsets;
+    };
+    measure();
+    const onResize = () => measure();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [autoPinColumn, dataTable, table, rows.length]);
+
+  const handleDataTableScroll = (event) => {
+    if (!autoPinColumn || !dataTable) return;
+    const scrollLeft = event.currentTarget.scrollLeft;
+    const offsets = autoPinOffsetsRef.current || {};
+    const visible = table.getVisibleLeafColumns();
+    const nextPinned = [];
+    for (const column of visible) {
+      const offset = offsets[column.id];
+      if (typeof offset === 'number' && scrollLeft >= offset) nextPinned.push(column.id);
+    }
+    const currentPinned = columnPinning.left || [];
+    if (nextPinned.length === currentPinned.length && nextPinned.every((id, index) => id === currentPinned[index])) return;
+    setColumnPinning({ left: nextPinned });
+  };
+
   if (!rows.length) {
     return <p className="px-2 py-2 text-sm text-[#5f6368]">未配置自选。</p>;
   }
@@ -369,6 +409,8 @@ export function MarketListTable({
         )}
         <DataTable
           table={table}
+          tableScrollRef={tableScrollRef}
+          onHorizontalScroll={handleDataTableScroll}
           className="[&_td]:text-right [&_td:first-child]:text-left [&_td:nth-child(2)]:text-left [&_th]:whitespace-nowrap"
           onRowClick={(tableRow) => onSelect?.(tableRow.original)}
         />

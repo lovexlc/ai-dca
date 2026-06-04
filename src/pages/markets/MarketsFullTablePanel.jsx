@@ -58,6 +58,7 @@ export function MarketsFullTablePanel({
             hideTrendColumn={hideTrendColumn}
             dataTable
             dataTableHeader={renderHeader}
+            autoPinColumn
           />
         </div>
       </div>
@@ -72,6 +73,7 @@ export function MarketsFullTablePanel({
           stickyFirstColumn
           dataTable
           dataTableHeader={renderHeader}
+          autoPinColumn
           showLimitColumn={showLimitColumn}
           hidePremiumColumn={hidePremiumColumn}
           hideTrendColumn={hideTrendColumn}
