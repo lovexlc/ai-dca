@@ -23,14 +23,11 @@ export function MarketsFullTablePanel({
 
   const marketLabel = market === 'cn' ? 'A 股监控列表' : '美股监控列表';
 
-  return (
-    <>
-      <div className="hidden min-h-0 flex-1 flex-col gap-3 lg:flex">
-        <div className="flex items-center justify-between gap-3 border-b border-[#e8eaed] pb-3">
-          <div className="min-w-0">
-            <div className="text-xs font-semibold text-[#5f6368]">{marketLabel}</div>
-            <h2 className="mt-1 truncate text-[22px] font-semibold text-[#1f1f1f]">{activeWatchListName || '监控列表'}</h2>
-          </div>
+  const renderHeader = ({ viewOptions }) => (
+    <div className="flex items-center justify-between gap-3 border-b border-[#e8eaed] pb-3">
+      <div className="flex min-w-0 items-end gap-3">
+        <div className="min-w-0">
+          <div className="text-xs font-semibold text-[#5f6368]">{marketLabel}</div>
           <WatchlistSelector
             lists={watchLists}
             activeListId={activeWatchListId}
@@ -40,6 +37,14 @@ export function MarketsFullTablePanel({
             onDelete={onDeleteWatchlist}
           />
         </div>
+      </div>
+      <div className="shrink-0">{viewOptions}</div>
+    </div>
+  );
+
+  return (
+    <>
+      <div className="hidden min-h-0 flex-1 flex-col lg:flex">
         <div className="min-h-0 flex-1 overflow-auto rounded-2xl bg-[#f8fafd] p-3">
           <MarketListTable
             rows={rows}
@@ -52,25 +57,12 @@ export function MarketsFullTablePanel({
             hidePremiumColumn={hidePremiumColumn}
             hideTrendColumn={hideTrendColumn}
             dataTable
+            dataTableHeader={renderHeader}
           />
         </div>
       </div>
 
       <div className="lg:hidden">
-        <div className="mb-2 flex items-center justify-between gap-3 border-b border-[#e8eaed] px-1 pb-2">
-          <div className="min-w-0">
-            <div className="text-[11px] font-semibold text-[#5f6368]">{marketLabel}</div>
-            <h2 className="truncate text-base font-semibold text-[#1f1f1f]">{activeWatchListName || '监控列表'}</h2>
-          </div>
-          <WatchlistSelector
-            lists={watchLists}
-            activeListId={activeWatchListId}
-            onSelect={onSelectWatchlist}
-            onCreate={onCreateWatchlist}
-            onRename={onRenameWatchlist}
-            onDelete={onDeleteWatchlist}
-          />
-        </div>
         <MarketListTable
           rows={rows}
           klineMap={klineMap}
@@ -79,6 +71,7 @@ export function MarketsFullTablePanel({
           compact
           stickyFirstColumn
           dataTable
+          dataTableHeader={renderHeader}
           showLimitColumn={showLimitColumn}
           hidePremiumColumn={hidePremiumColumn}
           hideTrendColumn={hideTrendColumn}

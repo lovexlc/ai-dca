@@ -93,6 +93,7 @@ export function MarketListTable({
   dataTable = false,
   columnVisibility: controlledVisibility,
   onColumnVisibilityChange,
+  dataTableHeader,
 }) {
   const todayDate = getTodayShanghaiDate();
   const isLatestChangeRow = (row) => {
@@ -344,11 +345,17 @@ export function MarketListTable({
     return <p className="px-2 py-2 text-sm text-[#5f6368]">未配置自选。</p>;
   }
   if (dataTable) {
+    const viewOptions = <DataTableViewOptions table={table} />;
+    const header = typeof dataTableHeader === 'function'
+      ? dataTableHeader({ table, viewOptions })
+      : dataTableHeader;
     return (
       <div className="flex min-w-0 flex-col gap-2">
-        <DataTableToolbar table={table}>
-          <DataTableViewOptions table={table} />
-        </DataTableToolbar>
+        {header || (
+          <DataTableToolbar table={table}>
+            {viewOptions}
+          </DataTableToolbar>
+        )}
         <DataTable
           table={table}
           className="[&_td]:text-right [&_td:first-child]:text-left [&_td:nth-child(2)]:text-left [&_th]:whitespace-nowrap"
