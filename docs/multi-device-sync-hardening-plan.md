@@ -61,9 +61,9 @@
 - [ ] 1.5 （可选）KDF 升级 Argon2id（评估包体积/WASM）或 PBKDF2 迭代提至当前推荐值。
 
 ### 阶段 2 — 服务端一致性（中风险，Worker 改动走 GitHub Actions）
-- [ ] 2.1 密文与版本写入单一强一致存储：密文 BLOB 直接进 D1 backups 行（或 R2 单对象 + 条件写），淘汰 D1+KV 双写漂移。（说明：Worker 仅校验 ciphertext+source，不看 version，v3 新字段透明透传，阶段1 无需服务端改动）
-- [ ] 2.2 写入加密文完整性校验和（sha256(ciphertext)）入库；读出时校验，不一致返回明确错误码而非把坏 blob 发给端侧。
-- [ ] 2.3 读路径保证 version 与 blob 同源原子返回。
+- [x] 2.1 密文与版本写入单一强一致存储：密文 BLOB 直接进 D1 backups 行（决策3=D1 行内），读路径以 D1 为准、KV 仅作旧数据兜底；旧 KV-only 行在读时惰性回填进 D1。淘汰 D1+KV 双写漂移。
+- [x] 2.2 写入加密文完整性校验和（sha256(ciphertext)）入库；读出时校验，不一致返回 409 `STORAGE_CORRUPTED` 且绝不把坏 blob 发给端侧。
+- [x] 2.3 读路径保证 version 与 blob 同源原子返回（同一 D1 行内读出 version+ciphertext+checksum）。
 
 ### 阶段 3 — 冲突体验（低风险，增量）
 - [ ] 3.1 给可同步记录补充逻辑时钟/版本向量，LWW 之外保留并集合并，减少「云端覆盖本地」。
@@ -92,5 +92,5 @@
 | done | 现状调研 + 根因定位 | 见上「根因诊断」，含文件行号证据 |
 | done | 阶段 0 止血 | 0.1–0.4 全部完成：错误分型+RAW信封+iterations 修复 00845a8；UI 接线 2ad195c；eslint exit 0 + `node --test` 7/7 |
 | done | 阶段 1 envelope v3 | 1.1–1.4 完成（KEK/DEK + verifier + 记住 DEK + v2→v3 兼容）commit 63125be；`node --test` 11/11 + eslint exit 0；1.5 KDF 升级可选未做 |
-| todo | 阶段 2 服务端一致性 | Worker 改动走 Actions |
+| done | 阶段 2 服务端一致性 | 2.1–2.3 完成：D1 行内存储 + sha256 校验和 + 坏 blob 返 409 `STORAGE_CORRUPTED` + KV-only 惰性回填 commit 1cd398c；本地 worker 单测 8/8；真实账号 lovexl 数据冲烟 11/11 PASS（密文逐字节一致 + 回填校验和匹配 + 篡改→409 不泄露）；部署走 deploy-worker-sync.yml |
 | todo | 阶段 3 冲突体验 | 增量 |
