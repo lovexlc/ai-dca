@@ -11,6 +11,8 @@ const DEFAULT_ITERATIONS = 310000;
 const SALT_BYTES = 16;
 const IV_BYTES = 12;
 const REMEMBERED_KEY = 'aiDcaSecureSyncRememberedKey';
+// v3：用 DEK 加密的固定常量，作为「密码/设备密钥正确性」验证块。
+const VERIFIER_CONSTANT = new TextEncoder().encode('ai-dca-secure-sync/v3-verifier');
 
 export const SECURE_VAULT_ERROR_CODES = {
   WRONG_PASSWORD: 'ERR_WRONG_PASSWORD',
@@ -122,6 +124,82 @@ export async function computeBackupContentHash(envelope) {
 }
 
 export async function encryptBackupEnvelope(envelope, securityPassword, options = {}) {
+  const rememberedRawKey0 = String(options.rawKey || '').trim();
+  const rememberedCrypto0 = options.cryptoMeta || {};
+  const isV3Remembered = Boolean(rememberedRawKey0 && rememberedCrypto0 && rememberedCrypto0.wrappedDek);
+  // 旧版「记住本设备」只存了派生 AES key（无 wrappedDek）→ 过渡期继续产出 v2 RAW 信封，避免破坏该设备。
+  if (options.legacyVersion === 2 || (rememberedRawKey0 && !isV3Remembered)) {
+    return encryptBackupEnvelopeV2(envelope, securityPassword, options);
+  }
+  return encryptBackupEnvelopeV3(envelope, securityPassword, options);
+}
+
+async function encryptBackupEnvelopeV3(envelope, securityPassword, options = {}) {
+  const rememberedRawKey = String(options.rawKey || '').trim();
+  const rememberedCrypto = options.cryptoMeta || {};
+  const reuse = Boolean(rememberedRawKey && rememberedCrypto.wrappedDek);
+  const iv = randomBytes(IV_BYTES);
+  let dekKey;
+  let cryptoBlock;
+  let exportedDek;
+  if (reuse) {
+    // 复用既有 KEK 包裹块（密码仍可派生），仅用同一 DEK 重新加密数据，换新 IV。
+    dekKey = await importRawKey(rememberedRawKey);
+    cryptoBlock = {
+      alg: CIPHER_NAME,
+      kdf: rememberedCrypto.kdf || `${KDF_NAME}-${HASH_NAME}`,
+      iterations: normalizeIterations(rememberedCrypto.iterations),
+      salt: rememberedCrypto.salt || '',
+      wrapIv: rememberedCrypto.wrapIv || '',
+      wrappedDek: rememberedCrypto.wrappedDek || '',
+      verifierIv: rememberedCrypto.verifierIv || '',
+      verifier: rememberedCrypto.verifier || '',
+      iv: bytesToBase64(iv)
+    };
+    exportedDek = rememberedRawKey;
+  } else {
+    const salt = randomBytes(SALT_BYTES);
+    const iterations = Number(options.iterations) || DEFAULT_ITERATIONS;
+    const kek = await deriveKey(securityPassword, salt, iterations);
+    const dekBytes = randomBytes(KEY_LENGTH / 8);
+    const dekBase64 = bytesToBase64(dekBytes);
+    dekKey = await importRawKey(dekBase64);
+    const wrapIv = randomBytes(IV_BYTES);
+    const wrappedDek = new Uint8Array(await ensureCrypto().subtle.encrypt({ name: CIPHER_NAME, iv: wrapIv }, kek, dekBytes));
+    const verifierIv = randomBytes(IV_BYTES);
+    const verifier = new Uint8Array(await ensureCrypto().subtle.encrypt({ name: CIPHER_NAME, iv: verifierIv }, dekKey, VERIFIER_CONSTANT));
+    cryptoBlock = {
+      alg: CIPHER_NAME,
+      kdf: `${KDF_NAME}-${HASH_NAME}`,
+      iterations,
+      salt: bytesToBase64(salt),
+      wrapIv: bytesToBase64(wrapIv),
+      wrappedDek: bytesToBase64(wrappedDek),
+      verifierIv: bytesToBase64(verifierIv),
+      verifier: bytesToBase64(verifier),
+      iv: bytesToBase64(iv)
+    };
+    exportedDek = options.rememberDevice ? dekBase64 : '';
+  }
+  const plaintext = TEXT_ENCODER.encode(JSON.stringify(envelope || {}));
+  const contentHash = await computeBackupContentHash(envelope);
+  const encrypted = await ensureCrypto().subtle.encrypt({ name: CIPHER_NAME, iv }, dekKey, plaintext);
+  return {
+    version: 3,
+    source: 'ai-dca-secure-sync',
+    crypto: cryptoBlock,
+    meta: {
+      keyCount: Number(envelope?.keyCount) || 0,
+      exportedAt: envelope?.exportedAt || new Date().toISOString(),
+      schemaVersion: Number(envelope?.version) || 1,
+      contentHash
+    },
+    ciphertext: bytesToBase64(new Uint8Array(encrypted)),
+    rememberedKey: exportedDek
+  };
+}
+
+async function encryptBackupEnvelopeV2(envelope, securityPassword, options = {}) {
   const rememberedRawKey = String(options.rawKey || '').trim();
   const rememberedCrypto = options.cryptoMeta || {};
   const hasRememberedKdf = rememberedRawKey && rememberedCrypto.salt && rememberedCrypto.iterations;
@@ -163,7 +241,7 @@ export async function decryptBackupEnvelope(encryptedEnvelope, securityPasswordO
     throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.CORRUPTED, '云端密文为空或缺失');
   }
   const version = Number(payload.version);
-  if (Number.isFinite(version) && version > 2) {
+  if (Number.isFinite(version) && version > 3) {
     throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.FORMAT, `不支持的备份版本 v${version}，请升级后重试`);
   }
   const alg = String(cryptoMeta.alg || CIPHER_NAME);
@@ -182,6 +260,11 @@ export async function decryptBackupEnvelope(encryptedEnvelope, securityPasswordO
     iv = base64ToBytes(cryptoMeta.iv || '');
   } catch {
     throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.CORRUPTED, '云端密文 IV 异常');
+  }
+
+  // v3：KEK/DEK + verifier。优先走 v3 解密路径。
+  if (Number(payload.version) === 3 && cryptoMeta.wrappedDek) {
+    return decryptBackupEnvelopeV3(cryptoMeta, cipherBytes, iv, String(securityPasswordOrKey || ''));
   }
 
   const provided = String(securityPasswordOrKey || '');
@@ -227,8 +310,81 @@ export async function decryptBackupEnvelope(encryptedEnvelope, securityPasswordO
   }
 }
 
+async function verifyV3Verifier(dekKey, cryptoMeta) {
+  if (!cryptoMeta.verifier || !cryptoMeta.verifierIv) return null;
+  try {
+    const iv = base64ToBytes(cryptoMeta.verifierIv);
+    const out = new Uint8Array(await ensureCrypto().subtle.decrypt({ name: CIPHER_NAME, iv }, dekKey, base64ToBytes(cryptoMeta.verifier)));
+    if (out.length !== VERIFIER_CONSTANT.length) return false;
+    for (let i = 0; i < out.length; i += 1) {
+      if (out[i] !== VERIFIER_CONSTANT[i]) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function unwrapDekBytesWithPassword(securityPassword, cryptoMeta) {
+  const salt = base64ToBytes(cryptoMeta.salt || '');
+  const iterations = normalizeIterations(cryptoMeta.iterations);
+  const kek = await deriveKey(securityPassword, salt, iterations);
+  const wrapIv = base64ToBytes(cryptoMeta.wrapIv || '');
+  const wrapped = base64ToBytes(cryptoMeta.wrappedDek || '');
+  return new Uint8Array(await ensureCrypto().subtle.decrypt({ name: CIPHER_NAME, iv: wrapIv }, kek, wrapped));
+}
+
+async function decryptBackupEnvelopeV3(cryptoMeta, cipherBytes, iv, provided) {
+  const isRawKeyInput = provided.startsWith('raw:');
+  let dekKey;
+  if (isRawKeyInput) {
+    try {
+      dekKey = await importRawKey(provided.slice(4));
+    } catch {
+      throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY, '本设备密钥无效');
+    }
+    if ((await verifyV3Verifier(dekKey, cryptoMeta)) === false) {
+      throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY);
+    }
+  } else {
+    let dekBytes;
+    try {
+      dekBytes = await unwrapDekBytesWithPassword(provided, cryptoMeta);
+    } catch {
+      // KEK 解包 DEK 失败：密码错（GCM 校验失败）或密码格式不合法。
+      throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.WRONG_PASSWORD);
+    }
+    try {
+      dekKey = await importRawKey(bytesToBase64(dekBytes));
+    } catch {
+      throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.CORRUPTED, 'DEK 无法导入');
+    }
+    if ((await verifyV3Verifier(dekKey, cryptoMeta)) === false) {
+      throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.CORRUPTED, '验证块校验失败');
+    }
+  }
+  let decrypted;
+  try {
+    decrypted = await ensureCrypto().subtle.decrypt({ name: CIPHER_NAME, iv }, dekKey, cipherBytes);
+  } catch {
+    throw new SecureVaultError(isRawKeyInput ? SECURE_VAULT_ERROR_CODES.NEED_DEVICE_KEY : SECURE_VAULT_ERROR_CODES.CORRUPTED);
+  }
+  try {
+    return JSON.parse(TEXT_DECODER.decode(decrypted));
+  } catch {
+    throw new SecureVaultError(SECURE_VAULT_ERROR_CODES.CORRUPTED, '解密成功但备份内容无法解析');
+  }
+}
+
 export async function rememberKeyForEncryptedEnvelope(encryptedEnvelope, securityPassword, meta = {}) {
   const cryptoMeta = encryptedEnvelope?.crypto || {};
+  // v3：记住本设备 = 存 DEK（而非某次派生的 AES key），envelope 仍保留密码可派生的 wrappedDek。
+  if (Number(encryptedEnvelope?.version) === 3 && cryptoMeta.wrappedDek) {
+    const dekBytes = await unwrapDekBytesWithPassword(securityPassword, cryptoMeta);
+    const rawKey = bytesToBase64(dekBytes);
+    saveRememberedKey(rawKey, { ...meta, crypto: cryptoMeta });
+    return rawKey;
+  }
   const salt = base64ToBytes(cryptoMeta.salt || '');
   const iterations = normalizeIterations(cryptoMeta.iterations);
   const key = await deriveKey(securityPassword, salt, iterations);

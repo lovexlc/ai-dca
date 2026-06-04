@@ -100,7 +100,7 @@ test('iterations=0 in a PBKDF2 envelope still decrypts (normalizeIterations fall
 test('an unsupported future version throws FORMAT', async () => {
   installLocalStorageMock();
   const encrypted = await encryptBackupEnvelope(SAMPLE_ENVELOPE, 'security-password-123', {});
-  encrypted.version = 3;
+  encrypted.version = 4;
   await assert.rejects(
     () => decryptBackupEnvelope(encrypted, 'security-password-123'),
     (err) => err instanceof SecureVaultError && err.code === SECURE_VAULT_ERROR_CODES.FORMAT
@@ -123,4 +123,61 @@ test('an empty ciphertext throws CORRUPTED', async () => {
     () => decryptBackupEnvelope({ version: 2, crypto: { alg: 'AES-GCM' }, ciphertext: '' }, 'security-password-123'),
     (err) => err instanceof SecureVaultError && err.code === SECURE_VAULT_ERROR_CODES.CORRUPTED
   );
+});
+
+test('v3 envelope: password round-trip carries wrappedDek + verifier', async () => {
+  installLocalStorageMock();
+  const enc = await encryptBackupEnvelope(SAMPLE_ENVELOPE, 'security-password-123', { rememberDevice: false });
+  assert.equal(enc.version, 3);
+  assert.ok(enc.crypto.wrappedDek, 'expected wrappedDek in v3 crypto block');
+  assert.ok(enc.crypto.verifier, 'expected verifier in v3 crypto block');
+  assert.equal(enc.rememberedKey, '');
+  const restored = await decryptBackupEnvelope(enc, 'security-password-123');
+  assert.deepEqual(restored, SAMPLE_ENVELOPE);
+});
+
+test('v3 envelope: tampered verifier with correct password throws CORRUPTED', async () => {
+  installLocalStorageMock();
+  const enc = await encryptBackupEnvelope(SAMPLE_ENVELOPE, 'security-password-123', {});
+  assert.equal(enc.version, 3);
+  enc.crypto.verifier = 'AAAAAAAAAAAAAAAAAAAAAA==';
+  await assert.rejects(
+    () => decryptBackupEnvelope(enc, 'security-password-123'),
+    (err) => err instanceof SecureVaultError && err.code === SECURE_VAULT_ERROR_CODES.CORRUPTED
+  );
+});
+
+test('v3 remembered-device re-upload stays password-decryptable (root-cause-A fix)', async () => {
+  installLocalStorageMock();
+  const seed = await encryptBackupEnvelope(SAMPLE_ENVELOPE, 'security-password-123', { rememberDevice: true });
+  assert.equal(seed.version, 3);
+  const dek = seed.rememberedKey;
+  assert.equal(typeof dek, 'string');
+  assert.ok(dek.length > 20);
+
+  // 设备用记住的 DEK + 原有 crypto 块重新加密（模拟后续自动上传）。
+  const reEnc = await encryptBackupEnvelope(SAMPLE_ENVELOPE, '', {
+    rawKey: dek,
+    cryptoMeta: seed.crypto,
+    rememberDevice: true
+  });
+  assert.equal(reEnc.version, 3);
+  // KEK 包裹块保留（密码仍可派生），数据 IV 换新。
+  assert.equal(reEnc.crypto.wrappedDek, seed.crypto.wrappedDek);
+  assert.notEqual(reEnc.crypto.iv, seed.crypto.iv);
+
+  // 关键：只有记住设备上传的信封，另一台只有密码的设备仍可解密。
+  const byPassword = await decryptBackupEnvelope(reEnc, 'security-password-123');
+  assert.deepEqual(byPassword, SAMPLE_ENVELOPE);
+  const byKey = await decryptBackupEnvelope(reEnc, `raw:${dek}`);
+  assert.deepEqual(byKey, SAMPLE_ENVELOPE);
+});
+
+test('legacy v2 envelope still decrypts with password (v2->v3 compat)', async () => {
+  installLocalStorageMock();
+  const v2 = await encryptBackupEnvelope(SAMPLE_ENVELOPE, 'security-password-123', { legacyVersion: 2 });
+  assert.equal(v2.version, 2);
+  assert.ok(!v2.crypto.wrappedDek, 'v2 envelope must not carry wrappedDek');
+  const restored = await decryptBackupEnvelope(v2, 'security-password-123');
+  assert.deepEqual(restored, SAMPLE_ENVELOPE);
 });
