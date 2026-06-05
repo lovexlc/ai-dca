@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Bell, ChevronDown, ChevronUp, ExternalLink, Info, Laptop, Loader2, Save, Send, Wifi, WifiOff, X } from 'lucide-react';
 import { formatEventTimeLabel } from '../app/tradePlansHelpers.js';
+import { FeatureHelp } from '../components/FeatureHelp.jsx';
 import {
   Card,
   Field,
@@ -87,6 +88,7 @@ export function NotifyConfigCard({
               : <ChevronUp className="h-5 w-5 text-slate-400" />}
           </div>
         </button>
+        <FeatureHelp topic="notify-test" className="self-start" />
         {isConfigCollapsed ? null : (
           <div className="flex w-full items-center justify-center gap-1 rounded-2xl bg-slate-100 p-1 lg:inline-flex lg:w-auto lg:justify-start" role="tablist" aria-label="通知平台">
             {platformTabs.map(([key, label]) => (
@@ -146,7 +148,10 @@ export function NotifyConfigCard({
           <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-5">
             {notifyPlatform === 'serverchan3' ? (
               <div className="space-y-4" role="tabpanel" id="notify-panel">
-                <h3 className="text-base font-bold text-slate-900">Server酱³ 推送设置</h3>
+                <div className="flex items-center gap-1.5">
+                  <h3 className="text-base font-bold text-slate-900">Server酱³ 推送设置</h3>
+                  <FeatureHelp topic="android-notify" />
+                </div>
                 <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>

@@ -1,5 +1,6 @@
 import { Save, Search, Trash2, X, Plus } from 'lucide-react';
 import { useState } from 'react';
+import { FeatureHelp } from '../../components/FeatureHelp.jsx';
 import {
   getTransactionErrors,
   normalizeFundCode,
@@ -74,8 +75,11 @@ export function TransactionDraftPanel({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-          {draftMode === 'edit' ? '编辑交易' : '新增交易'}
+        <div className="flex items-center gap-1">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+            {draftMode === 'edit' ? '编辑交易' : '新增交易'}
+          </div>
+          <FeatureHelp topic="holdings-edit" />
         </div>
         {draftMode === 'edit' ? (
           <button type="button" className={SUBTLE_BTN} onClick={onResetDraft}>

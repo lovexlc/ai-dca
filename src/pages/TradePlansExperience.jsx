@@ -8,6 +8,7 @@ import { clearDcaState } from '../app/dca.js';
 import { showActionToast } from '../app/toast.js';
 import { Card, cx, primaryButtonClass } from '../components/experience-ui.jsx';
 import { NewPlanExperience } from './NewPlanExperience.jsx';
+import { FeatureHelp } from '../components/FeatureHelp.jsx';
 import {
   buildRuleDetailUrl,
   extractPurchaseAmount
@@ -497,7 +498,10 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">TRADE PLANS</div>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">交易计划</h1>
+            <div className="mt-1 flex items-center gap-1.5">
+              <h1 className="text-2xl font-bold tracking-tight text-slate-950">交易计划</h1>
+              <FeatureHelp topic="trade-plans" />
+            </div>
             <p className="mt-1 text-sm text-slate-500">{planCountLabel} · {channelConfigured ? '通知已就绪' : '通知未配置'}</p>
           </div>
           {renderCreateMenu()}
