@@ -12,6 +12,7 @@ import {
 } from '../components/experience-ui.jsx';
 
 const BARK_EXAMPLE_IMAGE_URL = 'https://bark.day.app/_media/example.jpg';
+const SERVERCHAN3_EXAMPLE_IMAGE_URL = 'https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEVDnpqInOCSSCH6N6JmuEmQYx9pQYIFAAC4CMAAuKuEFX0k_jBmJTJgDsE.jpg';
 
 export function NotifyConfigCard({
   isConfigCollapsed,
@@ -44,6 +45,7 @@ export function NotifyConfigCard({
   const serverChan3StatusLabel = isServerChan3Configured ? '已配置' : '未配置';
   const hasAnyChannel = Boolean(barkConfigured || isServerChan3Configured || webNotifyEnabled);
   const [isBarkTipOpen, setBarkTipOpen] = useState(false);
+  const [isServerChan3TipOpen, setServerChan3TipOpen] = useState(false);
 
   return (
     <Card className="min-w-0">
@@ -72,7 +74,7 @@ export function NotifyConfigCard({
           <div className="flex w-full items-center justify-center gap-1 rounded-2xl bg-slate-100 p-1 lg:inline-flex lg:w-auto lg:justify-start" role="tablist" aria-label="通知平台">
             {[
               ['ios', 'iOS'],
-              ['serverchan3', 'Server酱³'],
+              ['serverchan3', 'Andriod'],
               ['pc', 'PC 浏览器']
             ].map(([key, label]) => (
               <button
@@ -133,7 +135,18 @@ export function NotifyConfigCard({
                 <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <div className="text-sm font-semibold text-slate-900">Server酱³ 系统通知</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-sm font-semibold text-slate-900">Server酱³ 系统通知</div>
+                        <button
+                          type="button"
+                          className="inline-flex h-7 items-center gap-1 rounded-full border border-indigo-100 bg-indigo-50 px-2.5 text-xs font-semibold text-indigo-700 transition-colors hover:border-indigo-200 hover:bg-indigo-100"
+                          onClick={() => setServerChan3TipOpen(true)}
+                          aria-label="查看 Server酱³ 配置示例图"
+                        >
+                          <Info className="h-3.5 w-3.5" />
+                          tips
+                        </button>
+                      </div>
                     </div>
                     <Pill tone={isServerChan3Configured ? 'emerald' : notifyConfig.serverChan3Uid ? 'amber' : 'slate'}>
                       {serverChan3StatusLabel}
@@ -203,6 +216,34 @@ export function NotifyConfigCard({
                   {notifySetup?.serverChan3?.configured ? (
                     <div className="mt-3 text-xs text-slate-500">
                       云端已保存：{notifySetup.serverChan3.uid} / {notifySetup.serverChan3.sendKeyMasked || '已隐藏'}
+                    </div>
+                  ) : null}
+                  {isServerChan3TipOpen ? (
+                    <div
+                      className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/70 p-4"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-label="Server酱³ 配置示例图"
+                      onClick={() => setServerChan3TipOpen(false)}
+                    >
+                      <div
+                        className="relative max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-white p-3 shadow-2xl"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-slate-500 shadow hover:bg-white hover:text-slate-800"
+                          onClick={() => setServerChan3TipOpen(false)}
+                          aria-label="关闭 Server酱³ 示例图"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                        <img
+                          src={SERVERCHAN3_EXAMPLE_IMAGE_URL}
+                          alt="Server酱³ 示例：查看安卓配置设置地址"
+                          className="mx-auto max-h-[84vh] w-auto rounded-xl object-contain"
+                        />
+                      </div>
                     </div>
                   ) : null}
                 </div>

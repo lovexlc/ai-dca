@@ -54,8 +54,17 @@ test.describe('workspace smoke', () => {
     await waitForWorkspace(page, '消息推送配置');
     await ensureNotifyConfigExpanded(page);
 
-    await page.getByRole('tab', { name: /^Server酱³$/ }).click();
-    await expect(page.getByRole('tab', { name: /^Server酱³$/ })).toHaveAttribute('aria-selected', 'true');
+    await page.getByRole('tab', { name: /^Andriod$/ }).click();
+    await expect(page.getByRole('tab', { name: /^Andriod$/ })).toHaveAttribute('aria-selected', 'true');
+    await page.getByRole('button', { name: '查看 Server酱³ 配置示例图' }).click();
+    const serverChan3TipDialog = page.getByRole('dialog', { name: 'Server酱³ 配置示例图' });
+    await expect(serverChan3TipDialog).toBeVisible();
+    await expect(serverChan3TipDialog.getByRole('img', { name: /Server酱³ 示例/ })).toHaveAttribute(
+      'src',
+      'https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEVDnpqInOCSSCH6N6JmuEmQYx9pQYIFAAC4CMAAuKuEFX0k_jBmJTJgDsE.jpg'
+    );
+    await serverChan3TipDialog.getByRole('button', { name: '关闭 Server酱³ 示例图' }).click();
+    await expect(serverChan3TipDialog).toBeHidden();
     await expect(page.locator('body')).toContainText('安卓端使用 Server酱³ 时，先打开客户端下载地址安装客户端');
     await expect(page.getByRole('link', { name: /安卓客户端下载地址/ })).toHaveAttribute('href', 'https://sc3.ft07.com/client');
     await expect(page.getByRole('link', { name: /安卓配置设置地址/ })).toHaveAttribute('href', 'https://sc3.ft07.com/sendkey');
