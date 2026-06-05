@@ -129,12 +129,27 @@ export async function fetchHoldingsNavSnapshots(env, codes = [], options = {}) {
         priceCount += 1;
         list.push({
           code,
-          latestNav: latestPrice,
+          price: latestPrice,
+          currentPrice: latestPrice,
+          close: latestPrice,
+          previousClose: previousPrice,
+          change: Number.isFinite(Number(quote?.change)) ? Number(quote.change) : latestPrice - previousPrice,
+          changePercent: Number.isFinite(Number(quote?.changePercent))
+            ? Number(quote.changePercent)
+            : ((latestPrice / previousPrice) - 1) * 100,
+          latestNav: Number.isFinite(Number(quote?.latestNav)) && Number(quote.latestNav) > 0
+            ? Number(quote.latestNav)
+            : latestPrice,
           latestNavDate: String(quote?.date || todayShanghai || '').trim(),
           previousNav: previousPrice,
+          quoteDate: String(quote?.quoteDate || quote?.date || todayShanghai || '').trim(),
           previousNavDate: '',
           source: quote?.source || 'fund-metrics',
+          priceSource: quote?.source || 'fund-metrics',
+          valueType: 'price',
           time: String(quote?.time || '').trim(),
+          asOf: String(quote?.asOf || quote?.updatedAt || '').trim(),
+          marketState: String(quote?.marketState || '').trim(),
           ok: true
         });
       }

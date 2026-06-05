@@ -11,26 +11,45 @@ function isOtcSnapshotReady(latestNavDate, todayShanghai, expectedLatestNavDate)
   return latestNavDate >= expectedLatestNavDate;
 }
 
+function numberOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function snapshotValueFields(snapshot = null, effectiveKind = 'otc') {
+  const exchange = effectiveKind === 'exchange';
+  const currentValue = exchange
+    ? numberOrNull(snapshot?.price ?? snapshot?.currentPrice ?? snapshot?.close ?? snapshot?.latestNav)
+    : numberOrNull(snapshot?.latestNav ?? snapshot?.currentPrice ?? snapshot?.price);
+  const previousValue = exchange
+    ? numberOrNull(snapshot?.previousClose ?? snapshot?.previousNav)
+    : numberOrNull(snapshot?.previousNav);
+  const valueDate = String(exchange
+    ? (snapshot?.quoteDate || snapshot?.latestNavDate || '')
+    : (snapshot?.latestNavDate || '')
+  ).slice(0, 10);
+  return { currentValue, previousValue, valueDate };
+}
+
 export async function computeWeightedReturn(bucket, snapshotsByCode, todayShanghai, kind = 'exchange', env = null) {
   // 返回 { ready, returnRate, contributors[] }。
-  // ready=false 表示还有代码的 latestNavDate 未达预期最新日期，在调用方侧跳过。
+  // ready=false 表示还有代码的 valueDate 未达预期最新日期，在调用方侧跳过。
   // 期望最新日期按「单只」实际 kind 计算：
-  //   exchange = 当日；otc（境内场外）= 当日（晚 21 点后才会刷）；qdii = 上一交易日（周一 T-3）。
+  //   exchange = 当日行情价；otc（境内场外）= 当日净值（晚 21 点后才会刷）；
+  //   qdii = 上一交易日净值（周一 T-3）。
   // bucket 仍是 exchange/otc 两档，但 otc bucket 里可能夹杂了 QDII，需要逐代码区分。
   let ready = true;
   const eligible = [];
   for (const entry of bucket) {
     const snap = snapshotsByCode[entry.code];
-    const latestNav = Number(snap?.latestNav);
-    const previousNav = Number(snap?.previousNav);
-    const latestNavDate = String(snap?.latestNavDate || '');
     const effectiveKind = await resolveHoldingKindAsync(entry.code, kind, env);
     const expectedLatestNavDate = getExpectedLatestNavDate(effectiveKind, todayShanghai);
+    const { currentValue, previousValue, valueDate } = snapshotValueFields(snap, effectiveKind);
     const dateReady = effectiveKind === 'exchange'
-      ? latestNavDate >= expectedLatestNavDate && latestNavDate <= todayShanghai
-      : isOtcSnapshotReady(latestNavDate, todayShanghai, expectedLatestNavDate);
-    if (!Number.isFinite(latestNav) || !Number.isFinite(previousNav) || previousNav <= 0) {
-      // 缺少净值或昨日净值 → 在加权中跳过，但如果是 latestNavDate 不达预期日期造成的，则整套跳过。
+      ? valueDate >= expectedLatestNavDate && valueDate <= todayShanghai
+      : isOtcSnapshotReady(valueDate, todayShanghai, expectedLatestNavDate);
+    if (currentValue == null || previousValue == null) {
+      // 缺少价格/净值或前值 → 在加权中跳过，但如果是日期不达预期造成的，则整套跳过。
       if (!dateReady) ready = false;
       continue;
     }
@@ -41,9 +60,12 @@ export async function computeWeightedReturn(bucket, snapshotsByCode, todayShangh
     eligible.push({
       code: entry.code,
       weight: entry.weight,
-      latestNav,
-      previousNav,
-      ratio: latestNav / previousNav - 1
+      kind: effectiveKind,
+      valueType: effectiveKind === 'exchange' ? 'price' : 'nav',
+      currentValue,
+      previousValue,
+      valueDate,
+      ratio: currentValue / previousValue - 1
     });
   }
 

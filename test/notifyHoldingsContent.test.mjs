@@ -61,3 +61,28 @@ test('notify holdings is ready when otc latestNavDate reaches expected date', as
   assert.equal(result.contributors.length, 1);
   assert.equal(result.contributors[0].code, '021000');
 });
+
+test('notify holdings exchange return uses market price fields instead of fund NAV', async () => {
+  const result = await computeWeightedReturn([{
+    code: '513100',
+    weight: 1
+  }], {
+    '513100': {
+      code: '513100',
+      price: 2.365,
+      currentPrice: 2.365,
+      previousClose: 2.273,
+      latestNav: 2.065,
+      previousNav: 2.001,
+      latestNavDate: '2026-06-05',
+      quoteDate: '2026-06-05'
+    }
+  }, '2026-06-05', 'exchange', null);
+
+  assert.equal(result.ready, true);
+  assert.equal(result.contributors.length, 1);
+  assert.equal(result.contributors[0].valueType, 'price');
+  assert.equal(result.contributors[0].currentValue, 2.365);
+  assert.equal(result.contributors[0].previousValue, 2.273);
+  assert.equal(Number(result.contributors[0].ratio.toFixed(6)), Number(((2.365 / 2.273) - 1).toFixed(6)));
+});
