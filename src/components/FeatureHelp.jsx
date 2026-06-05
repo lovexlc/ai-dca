@@ -57,29 +57,6 @@ const HELP_CONTENT = {
     ],
     screenshots: ['交易计划卡片右上角的 🔔 测试 / ✏️ 编辑 / 🗑 删除 按钮']
   },
-  'notify-test': {
-    title: '测试通知是否成功',
-    summary: '配置好通知渠道后，在哪里点测试、怎么判断收到。',
-    sections: [
-      {
-        heading: '在哪里测试',
-        steps: [
-          '进入「通知」页，展开「消息推送配置」。',
-          '按平台标签（iOS / Andriod / PC 浏览器）切到你用的渠道。',
-          '每个渠道保存后，下方都有「测试」按钮，点一下会真实推送一条测试通知。'
-        ]
-      },
-      {
-        heading: '怎么判断成功',
-        steps: [
-          '对应设备（iPhone Bark / 安卓 Server酱³ / 当前浏览器）收到推送即代表成功。',
-          '页面下方的通知事件列表也会记录这条测试（测试通知约保留 30 分钟）。',
-          '如果提示发送失败，按提示检查对应渠道的 Key / 配置后重试。'
-        ]
-      }
-    ],
-    screenshots: ['「消息推送配置」里各渠道的「测试」按钮位置']
-  },
   'android-notify': {
     title: '安卓：下载哪个 & 怎么配置',
     summary: '安卓系统通知通过第三方「Server酱³」转发，本产品本身是网页 / PWA。',
@@ -117,7 +94,15 @@ const HELP_CONTENT = {
       {
         heading: '获取并填写',
         steps: [
-          '在 iPhone 安装 Bark App，打开后复制它显示的完整推送链接（形如 https://api.day.app/xxx/推送内容）。',
+          {
+            text: '在 iPhone 安装 Bark App，打开后复制它显示的完整推送链接（形如 https://api.day.app/xxx/推送内容）。',
+            image: {
+              // 把附件截图放到 public/strategy-guide/ 后，将下方 src 填成对应路径即可显示图片。
+              src: '',
+              alt: '自动批准全部 MCP 工具（auto approve all mcp tools）设置截图',
+              caption: '第一个红色图标：auto approve all mcp tools（自动批准全部 MCP 工具）'
+            }
+          },
           '在「通知」页切到「iOS」标签，把整段链接或 Device Key 粘贴进输入框，点「保存 Bark 配置」。',
           '不用手动截取 Device Key，系统会自动从链接里提取。'
         ]
@@ -136,6 +121,35 @@ const HELP_CONTENT = {
     ]
   }
 };
+
+// 渲染帮助弹窗里的配图：有 src 用真实图片，否则回退为虚线占位框（可附说明文字）。
+function renderHelpShot(shot, key) {
+  const image = shot && typeof shot === 'object' ? shot : null;
+  if (image?.src) {
+    return (
+      <figure key={key} className="space-y-1.5">
+        <img
+          src={image.src}
+          alt={image.alt || image.caption || '示例图'}
+          loading="lazy"
+          className="mx-auto max-h-[60vh] w-auto rounded-xl border border-slate-200 object-contain"
+        />
+        {image.caption ? (
+          <figcaption className="text-center text-xs text-slate-400">{image.caption}</figcaption>
+        ) : null}
+      </figure>
+    );
+  }
+  return (
+    <div
+      key={key}
+      className="flex min-h-24 flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-center text-xs text-slate-400"
+    >
+      <span className="text-base">📷</span>
+      <span>配图占位：{typeof shot === 'string' ? shot : shot?.caption || ''}</span>
+    </div>
+  );
+}
 
 export function FeatureHelp({ topic, className, hintText, hintActive = false, hintDelayMs = 60000 }) {
   const [open, setOpen] = useState(false);
@@ -199,41 +213,24 @@ export function FeatureHelp({ topic, className, hintText, hintActive = false, hi
                   <div className="text-sm font-semibold text-slate-900">{section.heading}</div>
                 ) : null}
                 <ol className="list-decimal space-y-1.5 pl-5">
-                  {section.steps.map((step, stepIndex) => (
-                    <li key={stepIndex} className="break-words">{step}</li>
-                  ))}
+                  {section.steps.map((step, stepIndex) => {
+                    const stepText = typeof step === 'string' ? step : step?.text;
+                    const stepImage = step && typeof step === 'object' ? step.image : null;
+                    return (
+                      <li key={stepIndex} className="break-words">
+                        <span>{stepText}</span>
+                        {stepImage ? (
+                          <div className="mt-2">{renderHelpShot(stepImage, `step-${stepIndex}`)}</div>
+                        ) : null}
+                      </li>
+                    );
+                  })}
                 </ol>
               </div>
             ))}
             {Array.isArray(content.screenshots) && content.screenshots.length ? (
               <div className="space-y-2">
-                {content.screenshots.map((shot, shotIndex) => {
-                  const image = shot && typeof shot === 'object' ? shot : null;
-                  if (image?.src) {
-                    return (
-                      <figure key={shotIndex} className="space-y-1.5">
-                        <img
-                          src={image.src}
-                          alt={image.alt || image.caption || '示例图'}
-                          loading="lazy"
-                          className="mx-auto max-h-[60vh] w-auto rounded-xl border border-slate-200 object-contain"
-                        />
-                        {image.caption ? (
-                          <figcaption className="text-center text-xs text-slate-400">{image.caption}</figcaption>
-                        ) : null}
-                      </figure>
-                    );
-                  }
-                  return (
-                    <div
-                      key={shotIndex}
-                      className="flex min-h-24 flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-center text-xs text-slate-400"
-                    >
-                      <span className="text-base">📷</span>
-                      <span>配图占位：{typeof shot === 'string' ? shot : shot?.caption || ''}</span>
-                    </div>
-                  );
-                })}
+                {content.screenshots.map((shot, shotIndex) => renderHelpShot(shot, shotIndex))}
               </div>
             ) : null}
           </div>

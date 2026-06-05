@@ -84,7 +84,6 @@ export function NotifyConfigCard({
               : <ChevronUp className="h-5 w-5 text-slate-400" />}
           </div>
         </button>
-        <FeatureHelp topic="notify-test" className="self-start" />
         {isConfigCollapsed ? null : (
           <div className="flex w-full items-center justify-center gap-1 rounded-2xl bg-slate-100 p-1 lg:inline-flex lg:w-auto lg:justify-start" role="tablist" aria-label="通知平台">
             {platformTabs.map(([key, label]) => (
