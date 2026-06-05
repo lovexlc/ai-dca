@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp, RefreshCw, Send, Wallet } from 'lucide-react';
 import {
   loadNotifyEvents,
   loadNotifyStatus,
@@ -25,26 +24,22 @@ import { showActionToast } from '../app/toast.js';
 import { trackActionResult, trackAnalyticsEvent, trackFeatureEvent } from '../app/analytics.js';
 import { NotifyConfigCard } from './NotifyConfigCard.jsx';
 import { NotifyHistoryCard } from './NotifyHistoryCard.jsx';
-import {
-  Card,
-  Pill,
-  StatCard,
-  cx,
-  secondaryButtonClass
-} from '../components/experience-ui.jsx';
-import {
-  formatEventTimeLabel,
-  resolveEventStatusMeta
-} from '../app/tradePlansHelpers.js';
+import { NotifyStrategyCard } from './NotifyStrategyCard.jsx';
+import { StatCard, cx } from '../components/experience-ui.jsx';
+import { formatEventTimeLabel, resolveEventStatusMeta } from '../app/tradePlansHelpers.js';
 import { parseBarkInput } from '../app/notifyParsers.js';
 import { getVisibleNotifyEvents, humanizeNotifyError } from './notifyHistoryHelpers.js';
+import { assertNotifyTestDelivered, detectNotifySurface, getAvailableNotifyPlatforms } from './notifySurfaceHelpers.js';
 
 export function NotifyExperience({ embedded = false }) {
+  const notifySurface = useMemo(() => detectNotifySurface(), []);
+  const availablePlatforms = useMemo(() => getAvailableNotifyPlatforms(notifySurface), [notifySurface]);
+  const pcFeaturesAvailable = availablePlatforms.some(([key]) => key === 'pc');
   const [notifyStatus, setNotifyStatus] = useState(null);
   const [notifyError, setNotifyError] = useState('');
   const [notifyMessage, setNotifyMessage] = useState('');
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [notifyPlatform, setNotifyPlatform] = useState('ios');
+  const [notifyPlatform, setNotifyPlatform] = useState(() => availablePlatforms[0]?.[0] || 'ios');
   const [notifyConfig, setNotifyConfig] = useState(() => {
     const persistedConfig = readNotifyClientConfig();
     return {
@@ -59,6 +54,7 @@ export function NotifyExperience({ embedded = false }) {
   const [isSavingHoldingsRule, setIsSavingHoldingsRule] = useState(false);
   const [isSyncingHoldingsDigest, setIsSyncingHoldingsDigest] = useState(false);
   const [isTestingHoldingsNotify, setIsTestingHoldingsNotify] = useState(false);
+  const [testingNotifyChannel, setTestingNotifyChannel] = useState('');
   // 提醒历史与规则同步：从各 tab 合并到本页，避免交易计划中心重复采点。
   const [notifyEvents, setNotifyEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(false);
@@ -107,14 +103,14 @@ export function NotifyExperience({ embedded = false }) {
   ));
   const barkConfigured = Boolean(notifyStatus?.configured?.bark);
   const serverChan3Configured = Boolean(notifyStatus?.configured?.serverChan3 || notifySetup?.serverChan3?.configured);
-  const pcConfigured = Boolean(webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled);
+  const pcConfigured = Boolean(pcFeaturesAvailable && webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled);
   const notifyMeta = () => ({
     embedded,
     platformTab: notifyPlatform,
     barkConfigured,
     serverChan3Configured,
     pcConfigured,
-    webNotifySupported,
+    webNotifySupported: pcFeaturesAvailable && webNotifySupported,
     webNotifyPermission,
     webNotifyEnabled,
     wsStatus: notifyWsStatus,
@@ -134,10 +130,20 @@ export function NotifyExperience({ embedded = false }) {
       channelStatus: channelLabels.length ? '已配置' : '未配置',
       channelNote: channelLabels.length
         ? `${channelLabels.join(' / ')} 可发送`
-        : '请先配置 iOS Bark、Server酱³，或授权 PC 浏览器通知',
+        : pcFeaturesAvailable
+          ? '请先配置 iOS Bark、Server酱³，或授权 PC 浏览器通知'
+          : notifySurface.isNativeAndroid
+            ? '请先配置 Server酱³'
+            : '请先配置 iOS Bark 或 Server酱³',
       serverChan3Configured
     };
-  }, [barkConfigured, pcConfigured, serverChan3Configured]);
+  }, [barkConfigured, pcConfigured, pcFeaturesAvailable, serverChan3Configured, notifySurface.isNativeAndroid]);
+
+  useEffect(() => {
+    if (!availablePlatforms.some(([key]) => key === notifyPlatform)) {
+      setNotifyPlatform(availablePlatforms[0]?.[0] || 'ios');
+    }
+  }, [availablePlatforms, notifyPlatform]);
 
   async function handleRequestWebNotifyPermission() {
     const startedAt = Date.now();
@@ -483,6 +489,136 @@ export function NotifyExperience({ embedded = false }) {
     }
   }
 
+  async function handleTestBarkNotify() {
+    setTestingNotifyChannel('ios');
+    setNotifyError('');
+    setNotifyMessage('');
+    const startedAt = Date.now();
+    trackFeatureEvent('notify', 'bark_test_start', {
+      ...notifyMeta(),
+      inputLength: String(notifyConfig.barkDeviceKey || '').length
+    });
+    try {
+      const parsedBarkKey = parseBarkInput(notifyConfig.barkDeviceKey);
+      if (!parsedBarkKey) {
+        throw new Error('请先填写 iOS Bark 链接或 Device Key');
+      }
+      const payload = await sendNotifyTest({
+        clientId: notifyConfig.notifyClientId,
+        clientLabel: notifyConfig.notifyClientLabel,
+        targetChannel: 'bark',
+        barkDeviceKey: parsedBarkKey,
+        eventId: `notify-channel-test-ios-${Date.now()}`,
+        eventType: 'notify-channel-test',
+        ruleId: 'notify-channel-test-ios',
+        symbol: 'iOS Bark',
+        strategyName: '消息推送配置',
+        title: 'iOS Bark 测试通知',
+        summary: 'iOS Bark 测试',
+        body: '这是一条用于检查 iOS Bark 配置是否正确的测试通知。',
+        triggerCondition: '手动测试'
+      });
+      assertNotifyTestDelivered(payload, 'iOS Bark 测试通知发送失败，请检查 Bark 链接或 Device Key');
+      persistNotifyClientConfig({
+        barkDeviceKey: parsedBarkKey,
+        _hasServerChan3: serverChan3Configured,
+        _hasPC: webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled
+      });
+      setNotifyConfig((current) => ({ ...current, barkDeviceKey: parsedBarkKey }));
+      await refreshNotifyData();
+      await refreshNotifyEvents();
+      setNotifyMessage('iOS Bark 测试通知已发送。');
+      showActionToast('iOS Bark 测试通知', 'success', { description: '请在 iPhone 上检查 Bark 是否收到。' });
+      trackActionResult('notify', 'bark_test', 'success', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'iOS Bark 测试通知发送失败';
+      setNotifyError(message);
+      showActionToast('iOS Bark 测试通知', 'error', { description: message });
+      trackActionResult('notify', 'bark_test', 'error', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt,
+        errorMessage: message
+      });
+    } finally {
+      setTestingNotifyChannel('');
+    }
+  }
+
+  async function handleTestServerChan3Notify() {
+    setTestingNotifyChannel('serverchan3');
+    setNotifyError('');
+    setNotifyMessage('');
+    const startedAt = Date.now();
+    trackFeatureEvent('notify', 'serverchan3_test_start', {
+      ...notifyMeta(),
+      hasUid: Boolean(notifyConfig.serverChan3Uid),
+      hasSendKey: Boolean(notifyConfig.serverChan3SendKey)
+    });
+    try {
+      const uid = String(notifyConfig.serverChan3Uid || '').trim();
+      const sendKey = String(notifyConfig.serverChan3SendKey || '').trim();
+      if (!uid || (!sendKey && !serverChan3Configured)) {
+        throw new Error('请填写 Server酱³ UID 和 SendKey 后再测试');
+      }
+      const payload = await sendNotifyTest({
+        clientId: notifyConfig.notifyClientId,
+        clientLabel: notifyConfig.notifyClientLabel,
+        targetChannel: 'serverchan3',
+        serverChan3: sendKey ? { uid, sendKey } : { uid },
+        serverChan3Uid: uid,
+        ...(sendKey ? { serverChan3SendKey: sendKey } : {}),
+        eventId: `notify-channel-test-serverchan3-${Date.now()}`,
+        eventType: 'notify-channel-test',
+        ruleId: 'notify-channel-test-serverchan3',
+        symbol: 'Andriod Server酱³',
+        strategyName: '消息推送配置',
+        title: 'Andriod 消息测试通知',
+        summary: 'Andriod 消息测试',
+        body: '这是一条用于检查 Andriod Server酱³ 配置是否正确的测试通知。',
+        triggerCondition: '手动测试'
+      });
+      assertNotifyTestDelivered(payload, 'Server酱³ 测试通知发送失败，请检查 UID 或 SendKey');
+      persistNotifyClientConfig({
+        notifyClientId: notifyConfig.notifyClientId,
+        notifyClientLabel: notifyConfig.notifyClientLabel,
+        serverChan3Uid: uid,
+        ...(sendKey ? { serverChan3SendKey: sendKey } : {}),
+        barkDeviceKey: notifyConfig.barkDeviceKey,
+        _hasServerChan3: true,
+        _hasPC: webNotifySupported && webNotifyPermission === 'granted' && webNotifyEnabled
+      });
+      setNotifyConfig((current) => ({ ...current, serverChan3Uid: uid, ...(sendKey ? { serverChan3SendKey: sendKey } : {}) }));
+      await refreshNotifyData({
+        serverChan3Fallback: {
+          uid,
+          sendKeyMasked: sendKey ? `${sendKey.slice(0, 6)}...${sendKey.slice(-4)}` : notifySetup?.serverChan3?.sendKeyMasked || '',
+          configured: true
+        }
+      });
+      await refreshNotifyEvents();
+      setNotifyMessage('Andriod 消息测试通知已发送。');
+      showActionToast('Andriod 消息测试通知', 'success', { description: '请在 Server酱³ 安卓客户端检查是否收到。' });
+      trackActionResult('notify', 'serverchan3_test', 'success', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Server酱³ 测试通知发送失败';
+      setNotifyError(message);
+      showActionToast('Andriod 消息测试通知', 'error', { description: message });
+      trackActionResult('notify', 'serverchan3_test', 'error', {
+        ...notifyMeta(),
+        durationMs: Date.now() - startedAt,
+        errorMessage: message
+      });
+    } finally {
+      setTestingNotifyChannel('');
+    }
+  }
+
   async function handleToggleHoldingsRule(nextEnabled) {
     setIsSavingHoldingsRule(true);
     setNotifyError('');
@@ -649,6 +785,7 @@ export function NotifyExperience({ embedded = false }) {
         serverChan3Configured={serverChan3Configured}
         notifyPlatform={notifyPlatform}
         setNotifyPlatform={setNotifyPlatform}
+        availablePlatforms={availablePlatforms}
         notifyError={notifyError}
         notifyMessage={notifyMessage}
         notifyConfig={notifyConfig}
@@ -657,7 +794,11 @@ export function NotifyExperience({ embedded = false }) {
         notifySetup={notifySetup}
         handleSaveNotifyConfig={handleSaveNotifyConfig}
         handleSaveServerChan3Config={handleSaveServerChan3Config}
+        handleTestBarkNotify={handleTestBarkNotify}
+        handleTestServerChan3Notify={handleTestServerChan3Notify}
         isSavingSettings={isSavingSettings}
+        isTestingBarkNotify={testingNotifyChannel === 'ios'}
+        isTestingServerChan3Notify={testingNotifyChannel === 'serverchan3'}
         webNotifySupported={webNotifySupported}
         webNotifyPermission={webNotifyPermission}
         webNotifyEnabled={webNotifyEnabled}
@@ -671,101 +812,10 @@ export function NotifyExperience({ embedded = false }) {
     );
   }
 
-  // 「提醒策略」：将原本独立的「交易计划规则同步」与「持仓当日收益提醒」合并为一张可折叠卡片。
-  // 每条默认收起，点击头部切换展开 / 收起，同时只展开一条。
   function renderStrategyCard() {
     const rulesLastSyncedLabel = rulesLastSyncedAt
       ? formatEventTimeLabel(rulesLastSyncedAt)
       : '本次会话尚未同步';
-    const holdingsEnabled = Boolean(holdingsRule.enabled);
-    const items = [
-      {
-        key: 'rules',
-        icon: <RefreshCw className="h-4 w-4 text-indigo-500" />,
-        title: '交易计划规则同步',
-        subtitle: `上次同步：${rulesLastSyncedLabel}`,
-        pill: null,
-        body: renderSyncRulesBody()
-      },
-      {
-        key: 'holdings',
-        icon: <Wallet className="h-4 w-4 text-emerald-500" />,
-        title: '持仓当日收益提醒',
-        subtitle: '北京时间 15:30 推场内；20:30 / 21:30 推全仓总览',
-        pill: holdingsEnabled
-          ? { tone: 'emerald', label: '已启用' }
-          : { tone: 'slate', label: '未启用' },
-        body: renderHoldingsRuleBody()
-      }
-    ];
-    return (
-      <Card>
-        <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Strategies</div>
-        <div className="mt-1 text-base font-bold text-slate-900 sm:text-lg">提醒策略 · {items.length} 条</div>
-        <div className="mt-4 space-y-3">
-          {items.map((item) => {
-            const expanded = expandedStrategy === item.key;
-            return (
-              <div key={item.key} className="rounded-2xl border border-slate-200 bg-white">
-                <button
-                  type="button"
-                  onClick={() => setExpandedStrategy(expanded ? null : item.key)}
-                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
-                  aria-expanded={expanded}
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    {item.icon}
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-slate-800">{item.title}</div>
-                      <div className="mt-0.5 truncate text-xs text-slate-500">{item.subtitle}</div>
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {item.pill ? <Pill tone={item.pill.tone}>{item.pill.label}</Pill> : null}
-                    {expanded
-                      ? <ChevronUp className="h-4 w-4 text-slate-400" />
-                      : <ChevronDown className="h-4 w-4 text-slate-400" />}
-                  </div>
-                </button>
-                {expanded ? (
-                  <div className="border-t border-slate-100 px-4 py-4">
-                    {item.body}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-      </Card>
-    );
-  }
-
-  function renderSyncRulesBody() {
-    const lastSyncedLabel = rulesLastSyncedAt
-      ? formatEventTimeLabel(rulesLastSyncedAt)
-      : '本次会话尚未同步';
-    return (
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs leading-5 text-slate-500">
-            将本机交易计划与定投规则同步到云端。交易计划中心修改后会自动同步，这里只是手动补同步入口。
-          </p>
-          <p className="mt-1 text-xs text-slate-400">上次同步：{lastSyncedLabel}</p>
-        </div>
-        <button
-          type="button"
-          className={cx(secondaryButtonClass, isSyncingRules && 'cursor-not-allowed opacity-60')}
-          onClick={handleSyncRules}
-          disabled={isSyncingRules}
-        >
-          <RefreshCw className="h-4 w-4" />
-          {isSyncingRules ? '正在同步' : '同步通知规则'}
-        </button>
-      </div>
-    );
-  }
-
-  function renderHoldingsRuleBody() {
     const digest = holdingsRule.digest || null;
     const exchangeCount = Array.isArray(digest?.exchange) ? digest.exchange.length : 0;
     const otcCount = Array.isArray(digest?.otc) ? digest.otc.length : 0;
@@ -778,78 +828,35 @@ export function NotifyExperience({ embedded = false }) {
       ? formatEventTimeLabel(digest.generatedAt)
       : '尚未同步';
     const hasDigest = exchangeCount + otcCount > 0;
-    const isToggleBusy = isSavingHoldingsRule;
-
     return (
-      <div>
-        <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-          <input
-            type="checkbox"
-            className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-            checked={Boolean(holdingsRule.enabled)}
-            disabled={isToggleBusy}
-            onChange={(event) => handleToggleHoldingsRule(event.target.checked)}
-          />
-          <div className="min-w-0 text-sm leading-6 text-slate-700">
-            <div className="font-semibold text-slate-800">启用持仓当日收益推送</div>
-            <div className="mt-1 text-xs text-slate-500">
-              仅同步代码与组合权重到云端，不会上传份额、成本或金额。关闭后云端不再推送。
-            </div>
-          </div>
-        </label>
-
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700">
-            <div className="text-xs text-slate-500">场内持仓</div>
-            <div className="mt-1 text-base font-semibold text-slate-900">{exchangeCount} 只</div>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700">
-            <div className="text-xs text-slate-500">场外持仓</div>
-            <div className="mt-1 text-base font-semibold text-slate-900">{otcCount} 只</div>
-          </div>
-        </div>
-
-        <div className="mt-3 text-xs leading-6 text-slate-500">
-          <div>快照生成时间：{generatedLabel}</div>
-          <div>云端保存时间：{updatedLabel}</div>
-          <div>覆盖权重：{(totalWeight * 100).toFixed(2)}%</div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            className={cx(secondaryButtonClass, isSyncingHoldingsDigest && 'cursor-not-allowed opacity-60')}
-            onClick={handleSyncHoldingsDigest}
-            disabled={isSyncingHoldingsDigest}
-          >
-            <RefreshCw className="h-4 w-4" />
-            {isSyncingHoldingsDigest ? '正在同步快照' : '立即同步快照'}
-          </button>
-          <button
-            type="button"
-            className={cx(secondaryButtonClass, isTestingHoldingsNotify && 'cursor-not-allowed opacity-60')}
-            onClick={handleTestHoldingsNotify}
-            disabled={isTestingHoldingsNotify}
-          >
-            <Send className="h-4 w-4" />
-            {isTestingHoldingsNotify ? '正在发送测试' : '消息测试'}
-          </button>
-          {!hasDigest ? (
-            <span className="text-xs text-amber-600">
-              当前云端未保存持仓快照，点击「立即同步快照」后才会调度推送。
-            </span>
-          ) : null}
-        </div>
-      </div>
+      <NotifyStrategyCard
+        expandedStrategy={expandedStrategy}
+        setExpandedStrategy={setExpandedStrategy}
+        rulesLastSyncedLabel={rulesLastSyncedLabel}
+        holdingsRule={holdingsRule}
+        holdingsDigestStats={{ exchangeCount, otcCount, totalWeight, updatedLabel, generatedLabel, hasDigest }}
+        isSyncingRules={isSyncingRules}
+        isSavingHoldingsRule={isSavingHoldingsRule}
+        isSyncingHoldingsDigest={isSyncingHoldingsDigest}
+        isTestingHoldingsNotify={isTestingHoldingsNotify}
+        handleSyncRules={handleSyncRules}
+        handleToggleHoldingsRule={handleToggleHoldingsRule}
+        handleSyncHoldingsDigest={handleSyncHoldingsDigest}
+        handleTestHoldingsNotify={handleTestHoldingsNotify}
+      />
     );
   }
 
   return (
     <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className={cx('grid gap-4', pcFeaturesAvailable ? 'md:grid-cols-3' : 'sm:grid-cols-2')}>
         <StatCard accent="indigo" eyebrow="通道状态" value={summary.channelStatus} note={summary.channelNote} />
-        <StatCard eyebrow="Server酱³" value={serverChan3Configured ? '已配置' : '未配置'} note="用于跨平台系统通知推送" />
-        <StatCard eyebrow="iOS Bark" value={barkConfigured ? '已配置' : '未配置'} note="在 iOS tab 填入 Bark device key" />
+        {availablePlatforms.some(([key]) => key === 'serverchan3') ? (
+          <StatCard eyebrow="Server酱³" value={serverChan3Configured ? '已配置' : '未配置'} note="用于 Android 系统通知推送" />
+        ) : null}
+        {availablePlatforms.some(([key]) => key === 'ios') ? (
+          <StatCard eyebrow="iOS Bark" value={barkConfigured ? '已配置' : '未配置'} note="在 iOS tab 填入 Bark device key" />
+        ) : null}
       </div>
 
       <div className="space-y-6">

@@ -333,7 +333,7 @@ export async function evaluatePositionDigest(env, positionDigest, options = {}) 
   return { delivered, skipped };
 }
 
-export async function runNotificationCycle(env, payload = {}, storedState = {}, { reason = 'scheduled', testPayload = null } = {}) {
+export async function runNotificationCycle(env, payload = {}, storedState = {}, { reason = 'scheduled', testPayload = null, targetChannels = null } = {}) {
   const nextState = {
     ruleStates: typeof storedState?.ruleStates === 'object' && storedState.ruleStates ? storedState.ruleStates : {},
     deliveryFailures: getDeliveryFailures(storedState),
@@ -352,7 +352,8 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
 
   if (testPayload) {
     const delivery = await deliverNotification(env, testPayload, {
-      limitGcmRegistrations: 1
+      limitGcmRegistrations: 1,
+      targetChannels
     });
     const failureUpdate = updateDeliveryFailures(nextState.deliveryFailures, delivery.results, new Date().toISOString());
     nextState.deliveryFailures = failureUpdate.nextFailures;

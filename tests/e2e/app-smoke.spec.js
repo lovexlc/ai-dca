@@ -69,12 +69,15 @@ test.describe('workspace smoke', () => {
     await expect(page.getByRole('link', { name: /安卓客户端下载地址/ })).toHaveAttribute('href', 'https://sc3.ft07.com/client');
     await expect(page.getByRole('link', { name: /安卓配置设置地址/ })).toHaveAttribute('href', 'https://sc3.ft07.com/sendkey');
     await expect(page.locator('body')).toContainText('不要随意泄漏 UID 或 SendKey');
+    const serverChanTestButton = page.getByRole('button', { name: '消息推送测试' });
+    await expect(serverChanTestButton).toBeDisabled();
     const serverChanUidInput = page.getByLabel('Server酱³ UID');
     const serverChanSendKeyInput = page.getByLabel('Server酱³ SendKey');
     await serverChanUidInput.fill('uid-e2e-smoke');
     await serverChanSendKeyInput.fill('sendkey-e2e-smoke-123456');
     await expect(serverChanUidInput).toHaveValue('uid-e2e-smoke');
     await expect(serverChanSendKeyInput).toHaveValue('sendkey-e2e-smoke-123456');
+    await expect(serverChanTestButton).toBeEnabled();
 
     await page.getByRole('tab', { name: /^iOS$/ }).click();
     await expect(page.getByRole('tab', { name: /^iOS$/ })).toHaveAttribute('aria-selected', 'true');
@@ -84,9 +87,12 @@ test.describe('workspace smoke', () => {
     await expect(barkTipDialog.getByRole('img', { name: /Bark 示例/ })).toHaveAttribute('src', 'https://bark.day.app/_media/example.jpg');
     await barkTipDialog.getByRole('button', { name: '关闭 Bark 示例图' }).click();
     await expect(barkTipDialog).toBeHidden();
+    const iosTestButton = page.getByRole('button', { name: '消息推送测试' });
+    await expect(iosTestButton).toBeDisabled();
     const iosInput = page.getByLabel('Bark 链接或 Device Key');
     await iosInput.fill('https://api.day.app/e2e-device-key/Smoke');
     await expect(iosInput).toHaveValue(/api\.day\.app|e2e-device-key/);
+    await expect(iosTestButton).toBeEnabled();
     await expectNoCrash(page);
   });
 

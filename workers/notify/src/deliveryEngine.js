@@ -49,6 +49,24 @@ function isWebWsRegistration(registration = {}) {
     || String(registration?.deviceInstallationId || registration?.id || '').startsWith('web-ws:');
 }
 
+function normalizeDeliveryTargetChannels(channels = null) {
+  if (!channels) return null;
+  const list = Array.isArray(channels) ? channels : [channels];
+  const normalized = list
+    .map((channel) => String(channel || '').trim().toLowerCase())
+    .map((channel) => {
+      if (channel === 'ios') return 'bark';
+      if (channel === 'android' || channel === 'andriod' || channel === 'serverchan') return 'serverchan3';
+      return channel;
+    })
+    .filter((channel) => ['bark', 'serverchan3', 'pc', 'ws'].includes(channel));
+  return normalized.length ? new Set(normalized) : null;
+}
+
+function shouldDeliverToChannel(targetChannels, channel = '') {
+  return !targetChannels || targetChannels.has(String(channel || '').trim().toLowerCase());
+}
+
 export async function deliverNotification(env, notification, options = {}) {
   const settings = typeof env.__notifySettings === 'object' && env.__notifySettings ? env.__notifySettings : {};
   const results = [];
@@ -62,6 +80,11 @@ export async function deliverNotification(env, notification, options = {}) {
   const barkConfigKey = currentClientId ? `bark-client:${currentClientId}` : 'bark-client:unknown';
   const serverChan3ConfigKey = currentClientId ? `serverchan3-client:${currentClientId}` : 'serverchan3-client:unknown';
   const limitGcmRegistrations = Math.max(Number(options.limitGcmRegistrations) || 0, 0);
+  const targetChannels = normalizeDeliveryTargetChannels(options.targetChannels);
+  const shouldDeliverBark = shouldDeliverToChannel(targetChannels, 'bark');
+  const shouldDeliverServerChan3 = shouldDeliverToChannel(targetChannels, 'serverchan3');
+  const shouldDeliverPc = shouldDeliverToChannel(targetChannels, 'pc');
+  const shouldDeliverWs = shouldDeliverToChannel(targetChannels, 'ws') || shouldDeliverPc;
   const gcmRegistrations = normalizeGcmRegistrations(settings.gcmRegistrations);
   const selectedWsRegistrations = gcmRegistrations.filter((registration) => (
     isWebWsRegistration(registration)
@@ -78,54 +101,58 @@ export async function deliverNotification(env, notification, options = {}) {
     limit: limitGcmRegistrations
   });
 
-  try {
-    results.push({
-      ...(await sendBarkNotification({
-        ...notification,
-        deviceKey: barkDeviceKey
-      })),
-      configKey: barkConfigKey,
-      configType: 'bark-client',
-      configId: currentClientId || 'unknown',
-      configLabel: currentClientLabel ? `Bark · ${currentClientLabel}` : 'Bark'
-    });
-  } catch (error) {
-    results.push({
-      channel: 'bark',
-      status: 'failed',
-      detail: error instanceof Error ? error.message : 'Bark 推送失败',
-      configKey: barkConfigKey,
-      configType: 'bark-client',
-      configId: currentClientId || 'unknown',
-      configLabel: currentClientLabel ? `Bark · ${currentClientLabel}` : 'Bark'
-    });
+  if (shouldDeliverBark) {
+    try {
+      results.push({
+        ...(await sendBarkNotification({
+          ...notification,
+          deviceKey: barkDeviceKey
+        })),
+        configKey: barkConfigKey,
+        configType: 'bark-client',
+        configId: currentClientId || 'unknown',
+        configLabel: currentClientLabel ? `Bark · ${currentClientLabel}` : 'Bark'
+      });
+    } catch (error) {
+      results.push({
+        channel: 'bark',
+        status: 'failed',
+        detail: error instanceof Error ? error.message : 'Bark 推送失败',
+        configKey: barkConfigKey,
+        configType: 'bark-client',
+        configId: currentClientId || 'unknown',
+        configLabel: currentClientLabel ? `Bark · ${currentClientLabel}` : 'Bark'
+      });
+    }
   }
 
-  try {
-    results.push({
-      ...(await sendServerChan3Notification({
-        ...notification,
-        uid: serverChan3Uid,
-        sendKey: serverChan3SendKey
-      })),
-      configKey: serverChan3ConfigKey,
-      configType: 'serverchan3-client',
-      configId: currentClientId || 'unknown',
-      configLabel: currentClientLabel ? `Server酱³ · ${currentClientLabel}` : 'Server酱³'
-    });
-  } catch (error) {
-    results.push({
-      channel: 'serverchan3',
-      status: 'failed',
-      detail: error instanceof Error ? error.message : 'Server酱³ 推送失败',
-      configKey: serverChan3ConfigKey,
-      configType: 'serverchan3-client',
-      configId: currentClientId || 'unknown',
-      configLabel: currentClientLabel ? `Server酱³ · ${currentClientLabel}` : 'Server酱³'
-    });
+  if (shouldDeliverServerChan3) {
+    try {
+      results.push({
+        ...(await sendServerChan3Notification({
+          ...notification,
+          uid: serverChan3Uid,
+          sendKey: serverChan3SendKey
+        })),
+        configKey: serverChan3ConfigKey,
+        configType: 'serverchan3-client',
+        configId: currentClientId || 'unknown',
+        configLabel: currentClientLabel ? `Server酱³ · ${currentClientLabel}` : 'Server酱³'
+      });
+    } catch (error) {
+      results.push({
+        channel: 'serverchan3',
+        status: 'failed',
+        detail: error instanceof Error ? error.message : 'Server酱³ 推送失败',
+        configKey: serverChan3ConfigKey,
+        configType: 'serverchan3-client',
+        configId: currentClientId || 'unknown',
+        configLabel: currentClientLabel ? `Server酱³ · ${currentClientLabel}` : 'Server酱³'
+      });
+    }
   }
 
-  if (selectedWsRegistrations.length) {
+  if (shouldDeliverWs && selectedWsRegistrations.length) {
     const messageId = notification.eventId || '';
     const baseData = {
       messageId,
@@ -197,7 +224,7 @@ export async function deliverNotification(env, notification, options = {}) {
     });
   }
 
-  if (currentClientId.startsWith('web:')) {
+  if (shouldDeliverPc && currentClientId.startsWith('web:')) {
     // 检查 web 虚拟设备是否已通过 WS 送达
     const webWsDeviceId = `web-ws:${currentClientId}`;
     const webWsResult = results.find((r) => (

@@ -22,6 +22,7 @@ export function NotifyConfigCard({
   serverChan3Configured,
   notifyPlatform,
   setNotifyPlatform,
+  availablePlatforms,
   notifyError,
   notifyMessage,
   notifyConfig,
@@ -30,7 +31,11 @@ export function NotifyConfigCard({
   notifySetup,
   handleSaveNotifyConfig,
   handleSaveServerChan3Config,
+  handleTestBarkNotify,
+  handleTestServerChan3Notify,
   isSavingSettings,
+  isTestingBarkNotify = false,
+  isTestingServerChan3Notify = false,
   webNotifySupported,
   webNotifyPermission,
   webNotifyEnabled,
@@ -41,9 +46,21 @@ export function NotifyConfigCard({
   handleToggleWebNotifyEnabled,
   notifyWsStatus = 'idle'
 }) {
+  const platformTabs = Array.isArray(availablePlatforms) && availablePlatforms.length
+    ? availablePlatforms
+    : [
+      ['ios', 'iOS'],
+      ['serverchan3', 'Andriod'],
+      ['pc', 'PC 浏览器']
+    ];
+  const pcTabAvailable = platformTabs.some(([key]) => key === 'pc');
   const isServerChan3Configured = Boolean(summary?.serverChan3Configured || serverChan3Configured || notifySetup?.serverChan3?.configured);
   const serverChan3StatusLabel = isServerChan3Configured ? '已配置' : '未配置';
   const hasAnyChannel = Boolean(barkConfigured || isServerChan3Configured || webNotifyEnabled);
+  const hasBarkInput = Boolean(String(notifyConfig.barkDeviceKey || '').trim());
+  const hasServerChan3Uid = Boolean(String(notifyConfig.serverChan3Uid || '').trim());
+  const hasServerChan3SendKey = Boolean(String(notifyConfig.serverChan3SendKey || '').trim());
+  const canUseServerChan3Input = hasServerChan3Uid && (isServerChan3Configured || hasServerChan3SendKey);
   const [isBarkTipOpen, setBarkTipOpen] = useState(false);
   const [isServerChan3TipOpen, setServerChan3TipOpen] = useState(false);
 
@@ -72,11 +89,7 @@ export function NotifyConfigCard({
         </button>
         {isConfigCollapsed ? null : (
           <div className="flex w-full items-center justify-center gap-1 rounded-2xl bg-slate-100 p-1 lg:inline-flex lg:w-auto lg:justify-start" role="tablist" aria-label="通知平台">
-            {[
-              ['ios', 'iOS'],
-              ['serverchan3', 'Andriod'],
-              ['pc', 'PC 浏览器']
-            ].map(([key, label]) => (
+            {platformTabs.map(([key, label]) => (
               <button
                 key={key}
                 className={cx(
@@ -118,10 +131,12 @@ export function NotifyConfigCard({
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">浏览器标签</div>
                 <div className="mt-2 text-sm font-semibold text-slate-700">{notifyConfig.notifyClientLabel}</div>
               </div>
-              <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">PC 实时通道</div>
-                <div className="mt-2 text-sm font-semibold text-slate-700">{pairedWebWsDevices.length} 个</div>
-              </div>
+              {pcTabAvailable ? (
+                <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">PC 实时通道</div>
+                  <div className="mt-2 text-sm font-semibold text-slate-700">{pairedWebWsDevices.length} 个</div>
+                </div>
+              ) : null}
             </div>
             <div className="mt-4 rounded-2xl bg-slate-950 px-4 py-3 font-mono text-xs text-slate-100">
               <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">浏览器 uniqId</div>
@@ -148,7 +163,7 @@ export function NotifyConfigCard({
                         </button>
                       </div>
                     </div>
-                    <Pill tone={isServerChan3Configured ? 'emerald' : notifyConfig.serverChan3Uid ? 'amber' : 'slate'}>
+                    <Pill tone={isServerChan3Configured ? 'emerald' : hasServerChan3Uid ? 'amber' : 'slate'}>
                       {serverChan3StatusLabel}
                     </Pill>
                   </div>
@@ -203,13 +218,23 @@ export function NotifyConfigCard({
                     </Field>
                     <div className="flex flex-col gap-1">
                       <button
-                        className={primaryButtonClass}
+                        className={cx(primaryButtonClass, 'w-full')}
                         type="button"
                         onClick={handleSaveServerChan3Config}
-                        disabled={isSavingSettings || !String(notifyConfig.serverChan3Uid || '').trim() || (!isServerChan3Configured && !String(notifyConfig.serverChan3SendKey || '').trim())}
+                        disabled={isSavingSettings || !canUseServerChan3Input}
                       >
                         <Save className="h-4 w-4" />
                         {isSavingSettings ? '正在保存' : '保存 Server酱³'}
+                      </button>
+                      <button
+                        className={cx(secondaryButtonClass, 'w-full')}
+                        type="button"
+                        onClick={handleTestServerChan3Notify}
+                        disabled={isSavingSettings || isTestingServerChan3Notify || !canUseServerChan3Input}
+                        title={canUseServerChan3Input ? undefined : '填写 UID 和 SendKey 后可测试'}
+                      >
+                        {isTestingServerChan3Notify ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                        {isTestingServerChan3Notify ? '正在发送测试' : '消息推送测试'}
                       </button>
                     </div>
                   </div>
@@ -402,11 +427,21 @@ export function NotifyConfigCard({
                     />
                   </Field>
                   <div className="flex flex-col gap-1">
-                    <button className={primaryButtonClass} type="button" onClick={handleSaveNotifyConfig} disabled={isSavingSettings || !notifyConfig.barkDeviceKey.trim()}>
+                    <button className={cx(primaryButtonClass, 'w-full')} type="button" onClick={handleSaveNotifyConfig} disabled={isSavingSettings || !hasBarkInput}>
                       <Save className="h-4 w-4" />
                       {isSavingSettings ? '正在保存 Bark 配置' : '保存 Bark 配置'}
                     </button>
-                    {notifyConfig.barkDeviceKey.trim() ? null : <span className="text-xs text-slate-400">粘贴 Bark 链接或 Device Key 后可保存</span>}
+                    <button
+                      className={cx(secondaryButtonClass, 'w-full')}
+                      type="button"
+                      onClick={handleTestBarkNotify}
+                      disabled={isSavingSettings || isTestingBarkNotify || !hasBarkInput}
+                      title={hasBarkInput ? undefined : '粘贴 Bark 链接或 Device Key 后可测试'}
+                    >
+                      {isTestingBarkNotify ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      {isTestingBarkNotify ? '正在发送测试' : '消息推送测试'}
+                    </button>
+                    {hasBarkInput ? null : <span className="text-xs text-slate-400">粘贴 Bark 链接或 Device Key 后可保存和测试</span>}
                   </div>
                 </div>
                 {isBarkTipOpen ? (

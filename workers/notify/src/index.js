@@ -63,7 +63,15 @@ function safeDecodePathSegment(value = '') {
   }
 }
 
-async function runClientDetection(env, settings, clientRecord, { reason = 'manual-run', testPayload = null } = {}) {
+function normalizeTestTargetChannel(value = '') {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'ios' || normalized === 'bark') return 'bark';
+  if (normalized === 'android' || normalized === 'andriod' || normalized === 'serverchan' || normalized === 'serverchan3') return 'serverchan3';
+  if (normalized === 'pc' || normalized === 'ws') return normalized;
+  return '';
+}
+
+async function runClientDetection(env, settings, clientRecord, { reason = 'manual-run', testPayload = null, targetChannels = null } = {}) {
   const currentClientId = normalizeClientId(clientRecord?.clientId);
 
   if (!currentClientId) {
@@ -77,7 +85,8 @@ async function runClientDetection(env, settings, clientRecord, { reason = 'manua
   env.__notifyCurrentClientId = currentClientId;
   const cycle = await runNotificationCycle(env, clientRecord.payload, clientRecord.state, {
     reason,
-    testPayload
+    testPayload,
+    targetChannels
   });
   let nextSettings = settings;
 
@@ -119,17 +128,27 @@ async function handleTest(request, env) {
   settings = auth.settings;
   const currentClientId = auth.clientId;
   let clientRecord = auth.clientRecord;
-  const testServerChan3 = normalizeServerChan3Config(payload?.serverChan3 || {});
+  let testServerChan3 = normalizeServerChan3Config(payload?.serverChan3 || {});
+  const testBarkDeviceKey = String(payload?.barkDeviceKey || '').trim();
+  const targetChannel = normalizeTestTargetChannel(payload?.targetChannel || payload?.channel || payload?.platform);
 
-  if (testServerChan3.uid && testServerChan3.sendKey) {
+  if (testServerChan3.uid && !testServerChan3.sendKey && clientRecord.serverChan3?.sendKey) {
+    testServerChan3 = {
+      ...testServerChan3,
+      sendKey: clientRecord.serverChan3.sendKey
+    };
+  }
+
+  if (testBarkDeviceKey || (testServerChan3.uid && testServerChan3.sendKey)) {
     settings = upsertClientRecord(settings, currentClientId, {
       clientLabel: String(payload?.clientLabel || clientRecord.clientLabel || '').trim(),
-      serverChan3: testServerChan3
+      ...(testBarkDeviceKey ? { barkDeviceKey: testBarkDeviceKey } : {}),
+      ...(testServerChan3.uid && testServerChan3.sendKey ? { serverChan3: testServerChan3 } : {})
     });
     clientRecord = getClientRecord(settings, currentClientId, payload?.clientLabel || clientRecord.clientLabel);
   }
 
-  if (auth.didUpdate || (testServerChan3.uid && testServerChan3.sendKey)) {
+  if (auth.didUpdate || testBarkDeviceKey || (testServerChan3.uid && testServerChan3.sendKey)) {
     await writeSettings(env, settings);
   }
 
@@ -147,7 +166,8 @@ async function handleTest(request, env) {
       triggerCondition: String(payload.triggerCondition || '').trim(),
       purchaseAmount: String(payload.purchaseAmount || '').trim(),
       detailUrl: String(payload.detailUrl || payload.url || '').trim()
-    }
+    },
+    targetChannels: targetChannel ? [targetChannel] : null
   });
   settings = result.settings;
   await writeSettings(env, settings);
