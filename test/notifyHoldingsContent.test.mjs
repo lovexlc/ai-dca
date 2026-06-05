@@ -4,12 +4,11 @@ import assert from 'node:assert/strict';
 import { computeWeightedReturn } from '../workers/notify/src/holdingsNotificationContent.js';
 
 test('notify holdings no longer trusts same-day source update; requires latestNavDate to reach expected', async () => {
-  // digest 谎称 qdii，但 env=null 时按 bucket(otc) 处理，期望最新净值日 = 当日(2026-06-03)。
+  // digest 未携带 kind 且 env=null 时按 bucket(otc) 处理，期望最新净值日 = 当日(2026-06-03)。
   // latestNavDate 仍是 T-1(2026-06-02)，即便 sourceUpdatedAt 是今天，也不再判 ready。
   const result = await computeWeightedReturn([{
     code: '021000',
-    weight: 1,
-    kind: 'qdii'
+    weight: 1
   }], {
     '021000': {
       code: '021000',
@@ -27,8 +26,7 @@ test('notify holdings no longer trusts same-day source update; requires latestNa
 test('notify holdings does not trust digest kind without source freshness', async () => {
   const result = await computeWeightedReturn([{
     code: '021000',
-    weight: 1,
-    kind: 'qdii'
+    weight: 1
   }], {
     '021000': {
       code: '021000',
@@ -60,6 +58,25 @@ test('notify holdings is ready when otc latestNavDate reaches expected date', as
   assert.equal(result.ready, true);
   assert.equal(result.contributors.length, 1);
   assert.equal(result.contributors[0].code, '021000');
+});
+
+test('notify holdings trusts explicit qdii kind from digest without metadata env', async () => {
+  const result = await computeWeightedReturn([{
+    code: '021000',
+    weight: 1,
+    kind: 'qdii'
+  }], {
+    '021000': {
+      code: '021000',
+      latestNav: 2.3925,
+      previousNav: 2.3806,
+      latestNavDate: '2026-06-02'
+    }
+  }, '2026-06-03', 'otc', null);
+
+  assert.equal(result.ready, true);
+  assert.equal(result.contributors.length, 1);
+  assert.equal(result.contributors[0].kind, 'qdii');
 });
 
 test('notify holdings exchange return uses market price fields instead of fund NAV', async () => {

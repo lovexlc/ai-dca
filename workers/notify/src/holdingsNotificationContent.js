@@ -31,6 +31,11 @@ function snapshotValueFields(snapshot = null, effectiveKind = 'otc') {
   return { currentValue, previousValue, valueDate };
 }
 
+function normalizeDigestKind(kind) {
+  const value = String(kind || '').trim().toLowerCase();
+  return value === 'exchange' || value === 'otc' || value === 'qdii' ? value : '';
+}
+
 export async function computeWeightedReturn(bucket, snapshotsByCode, todayShanghai, kind = 'exchange', env = null) {
   // 返回 { ready, returnRate, contributors[] }。
   // ready=false 表示还有代码的 valueDate 未达预期最新日期，在调用方侧跳过。
@@ -42,7 +47,8 @@ export async function computeWeightedReturn(bucket, snapshotsByCode, todayShangh
   const eligible = [];
   for (const entry of bucket) {
     const snap = snapshotsByCode[entry.code];
-    const effectiveKind = await resolveHoldingKindAsync(entry.code, kind, env);
+    const digestKind = normalizeDigestKind(entry.kind);
+    const effectiveKind = digestKind || await resolveHoldingKindAsync(entry.code, kind, env);
     const expectedLatestNavDate = getExpectedLatestNavDate(effectiveKind, todayShanghai);
     const { currentValue, previousValue, valueDate } = snapshotValueFields(snap, effectiveKind);
     const dateReady = effectiveKind === 'exchange'

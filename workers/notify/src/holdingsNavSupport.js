@@ -195,9 +195,11 @@ export function normalizeHoldingsDigest(digest) {
     for (const entry of list) {
       const code = String(entry?.code || '').trim();
       const weight = Number(entry?.weight);
+      const rawKind = String(entry?.kind || bucket).trim().toLowerCase();
+      const kind = rawKind === 'exchange' || rawKind === 'otc' || rawKind === 'qdii' ? rawKind : bucket;
       if (!FUND_CODE_PATTERN.test(code)) continue;
       if (!Number.isFinite(weight) || weight <= 0 || weight > 1) continue;
-      result[bucket].push({ code, weight });
+      result[bucket].push({ code, weight, kind });
       totalWeight += weight;
     }
   }

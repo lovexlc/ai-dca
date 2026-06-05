@@ -800,7 +800,8 @@ export function buildHoldingsNotifyDigest({ aggregates = [], summary = null } = 
       if (!Number.isFinite(marketValue) || marketValue <= 0) continue;
       const weight = round(marketValue / totalMarketValue, 6);
       if (!Number.isFinite(weight) || weight <= 0) continue;
-      const entry = { code: String(agg.code), weight };
+      const kind = normalizeFundKind(agg.kind, agg.code, agg.name);
+      const entry = { code: String(agg.code), weight, kind };
       if (agg.kind === 'exchange') exchange.push(entry);
       else otc.push(entry);
     }

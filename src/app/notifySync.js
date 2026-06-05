@@ -446,7 +446,9 @@ function normalizeHoldingsDigest(digest) {
       const weight = Number(entry?.weight);
       if (!/^\d{6}$/.test(code)) continue;
       if (!Number.isFinite(weight) || weight <= 0) continue;
-      result[bucket].push({ code, weight });
+      const rawKind = String(entry?.kind || bucket).trim().toLowerCase();
+      const kind = rawKind === 'exchange' || rawKind === 'otc' || rawKind === 'qdii' ? rawKind : bucket;
+      result[bucket].push({ code, weight, kind });
     }
   }
   // 组合层 totals 已不再传输：workers/notify/src/index.js 出于隐私考虑统一丢弃 totals（只依赖 code/weight 加权计算收益率）。
