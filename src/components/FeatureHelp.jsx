@@ -92,10 +92,9 @@ const HELP_CONTENT = {
     summary: 'iOS 用 Bark 接收系统通知：粘贴 Bark 链接或 Device Key 即可。',
     sections: [
       {
-        heading: '获取并填写',
         steps: [
           {
-            text: '在 iPhone 安装 Bark App，打开后复制它显示的完整推送链接（形如 https://api.day.app/xxx/推送内容）。',
+            text: '下载：在 iPhone 的 App Store 安装 Bark App。',
             image: {
               // 把附件截图放到 public/strategy-guide/ 后，将下方 src 填成对应路径即可显示图片。
               src: '',
@@ -103,13 +102,10 @@ const HELP_CONTENT = {
               caption: '第一个红色图标：auto approve all mcp tools（自动批准全部 MCP 工具）'
             }
           },
-          '在「通知」页切到「iOS」标签，把整段链接或 Device Key 粘贴进输入框，点「保存 Bark 配置」。',
-          '不用手动截取 Device Key，系统会自动从链接里提取。'
+          '打开复制链接：打开 Bark App，复制它显示的完整推送链接（形如 https://api.day.app/xxx/推送内容）。',
+          '填入网页：在本网页「通知」页切到「iOS」标签，把整段链接或 Device Key 粘贴进输入框，点「保存 Bark 配置」（系统会自动提取 Device Key）。',
+          '测试消息发送：点「消息推送测试」，iPhone 上的 Bark 收到推送即配置成功。'
         ]
-      },
-      {
-        heading: '测试',
-        steps: ['保存后点「消息推送测试」，iPhone 上的 Bark 收到推送即配置成功。']
       }
     ],
     screenshots: [
