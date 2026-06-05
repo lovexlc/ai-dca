@@ -152,4 +152,41 @@ test.describe('watchlist OTC defaults', () => {
     await expect(visibleText(page, '000834')).toBeVisible({ timeout: 10000 });
     await expect(visibleText(page, '270042')).toBeVisible({ timeout: 10000 });
   });
+
+  test('v4 OTC defaults migrate to include S&P 500 OTC funds', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('markets:watchlist:v1', JSON.stringify({
+        lists: [
+          {
+            id: 'default',
+            name: '默认-场内基金',
+            type: 'cn_etf',
+            us: [],
+            cn: ['513100'],
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z'
+          },
+          {
+            id: 'default-otc',
+            name: '默认-场外基金',
+            type: 'cn_otc',
+            us: [],
+            cn: ['000834', '270042'],
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z'
+          }
+        ],
+        activeListId: 'default-otc',
+        defaultsVersion: 4
+      }));
+    });
+
+    await page.goto('./index.html?tab=markets');
+    await waitForWorkspace(page, '行情中心');
+
+    await expect(activeListSelector(page, '默认-场外基金')).toBeVisible({ timeout: 10000 });
+    await expect(visibleText(page, '017641')).toBeVisible({ timeout: 10000 });
+    await expect(visibleText(page, '050025')).toBeVisible({ timeout: 10000 });
+    await expect(visibleText(page, '012860')).toBeVisible({ timeout: 10000 });
+  });
 });

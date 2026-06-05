@@ -230,7 +230,7 @@ export async function askMarketsStream({
 
 // Watchlist (localStorage). Stored per market for convenience.
 const WATCHLIST_KEY = 'markets:watchlist:v1';
-const WATCHLIST_DEFAULTS_VERSION = 4;
+const WATCHLIST_DEFAULTS_VERSION = 5;
 const DEFAULT_WATCHLIST_ID = 'default';
 const DEFAULT_OTC_LIST_ID = 'default-otc';
 
@@ -258,7 +258,7 @@ export const CN_ETF_WATCHLIST_PRESETS = [
 
 const DEFAULT_CN_WATCHLIST = CN_ETF_WATCHLIST_PRESETS.map((item) => item.symbol);
 
-// 默认场外纳指基金列表：纳指场外全集，包含基金公司自有 F/I 类、C 类和美元份额。
+// 默认场外基金列表：纳指 100 场外全集 + 标普 500 场外全集，包含基金公司自有 F/I/E 类、C 类和美元份额。
 export const CN_OTC_WATCHLIST_PRESETS = [
   { symbol: '000834', name: '大成纳斯达克100ETF联接(QDII)A' },
   { symbol: '008971', name: '大成纳斯达克100ETF联接(QDII)C' },
@@ -296,6 +296,19 @@ export const CN_OTC_WATCHLIST_PRESETS = [
   { symbol: '019736', name: '宝盈纳斯达克100指数发起(QDII)A人民币' },
   { symbol: '019737', name: '宝盈纳斯达克100指数发起(QDII)C人民币' },
   { symbol: '021000', name: '南方纳斯达克100指数发起(QDII)I人民币' },
+  { symbol: '017641', name: '摩根标普500指数(QDII)人民币A' },
+  { symbol: '019305', name: '摩根标普500指数(QDII)人民币C' },
+  { symbol: '017028', name: '国泰标普500ETF发起联接(QDII)A人民币' },
+  { symbol: '017030', name: '国泰标普500ETF发起联接(QDII)C人民币' },
+  { symbol: '018064', name: '华夏标普500ETF发起式联接(QDII)A人民币' },
+  { symbol: '018065', name: '华夏标普500ETF发起式联接(QDII)C人民币' },
+  { symbol: '050025', name: '博时标普500ETF联接(QDII)A人民币' },
+  { symbol: '006075', name: '博时标普500ETF联接(QDII)C人民币' },
+  { symbol: '018738', name: '博时标普500ETF联接(QDII)E人民币' },
+  { symbol: '007721', name: '天弘标普500发起(QDII-FOF)A' },
+  { symbol: '007722', name: '天弘标普500发起(QDII-FOF)C' },
+  { symbol: '022523', name: '易方达标普500指数(QDII-LOF)A人民币' },
+  { symbol: '012860', name: '易方达标普500指数(QDII-LOF)C人民币' },
 ];
 
 const DEFAULT_CN_OTC_WATCHLIST = CN_OTC_WATCHLIST_PRESETS.map((item) => item.symbol);
