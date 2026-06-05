@@ -9,14 +9,18 @@ const ALLOW_NAV_API_ENDPOINTS = new Set([
   'src/app/navService.js',
   'src/app/navHistoryClient.js',
   'workers/ocr-proxy/src/index.js',
+  'workers/ocr-proxy/src/holdingsNavRoutes.js',
   'tests/e2e/acceptance-helpers.js',
+  'tests/e2e/holdings-nav-refresh-regression.spec.js',
   'scripts/check_nav_access.mjs'
 ]);
 
 const ALLOW_NAV_UPSTREAM_SOURCE = new Set([
   'workers/notify/src/getNav.js',
   'workers/notify/src/index.js',
+  'workers/notify/src/holdingsSnapshotFetch.js',
   'workers/notify/src/switchStrategy.js',
+  'workers/ocr-proxy/src/holdingsNavRoutes.js',
   'workers/markets-agent/container/skills/fund-backtest/lib/eastmoney.js',
   'scripts/fetch_etf_latest_nav.mjs',
   'scripts/check_nav_access.mjs'
