@@ -72,13 +72,48 @@ const numberRangeFilterFn = (row, columnId, filterValue) => {
   return true;
 };
 
+const LIMIT_FILTER_OPTIONS = [
+  { value: 'open', label: '正常申购' },
+  { value: 'limit_large', label: '限大额' },
+  { value: 'limit', label: '限额' },
+  { value: 'suspended', label: '暂停申购' },
+  { value: 'closed', label: '已关闭' },
+  { value: 'app', label: 'App' },
+  { value: 'none', label: '无限额' },
+];
+
+function normalizeLimitStatus(value) {
+  if (value == null) return '';
+  const raw = String(value).trim();
+  if (!raw) return '';
+  const key = raw.toLowerCase();
+  if (['open', 'limit_large', 'limit', 'suspended', 'closed'].includes(key)) return key;
+  if (/已关闭|关闭|停止/.test(raw)) return 'closed';
+  if (/暂停申购|暂停/.test(raw)) return 'suspended';
+  if (/限大额|大额限制|大额申购/.test(raw)) return 'limit_large';
+  if (/限额|限购/.test(raw)) return 'limit';
+  if (/正常|开放|开通|可申购|不限/.test(raw)) return 'open';
+  if (raw === '0' || raw === '001') return 'open';
+  if (raw === '1' || raw === '002') return 'limit_large';
+  if (raw === '2' || raw === '003') return 'suspended';
+  return '';
+}
+
 function resolveLimitFilterValues(row) {
   const values = [];
-  const status = row?.fundLimit?.buyStatus;
+  const status = normalizeLimitStatus(row?.fundLimit?.buyStatus || row?.fundLimit?.buyStatusText);
   if (status) values.push(status);
   if (shouldShowAppTag(row?.fundMeta, row?.fundLimit)) values.push('app');
   if (!status && !shouldShowAppTag(row?.fundMeta, row?.fundLimit)) values.push('none');
   return values;
+}
+
+function getAvailableLimitFilterOptions(rows) {
+  const available = new Set();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    resolveLimitFilterValues(row).forEach((value) => available.add(value));
+  }
+  return LIMIT_FILTER_OPTIONS.filter((option) => available.has(option.value));
 }
 
 const limitFilterFn = (row, _columnId, filterValue) => {
@@ -137,6 +172,7 @@ export function MarketListTable({
   const tableScrollRef = useRef(null);
   const [columnPinning, setColumnPinning] = useState({ left: [] });
   const [pinTargetColumnId, setPinTargetColumnId] = useState('');
+  const limitFilterOptions = useMemo(() => getAvailableLimitFilterOptions(rows), [rows]);
   const isLatestChangeRow = (row) => {
     return isExpectedLatestChangeRow(row, todayDate);
   };
@@ -200,15 +236,7 @@ export function MarketListTable({
       meta: {
         label: '限额',
         variant: 'multiSelect',
-        options: [
-          { value: 'open', label: '正常申购' },
-          { value: 'limit_large', label: '限大额' },
-          { value: 'limit', label: '限额' },
-          { value: 'suspended', label: '暂停申购' },
-          { value: 'closed', label: '已关闭' },
-          { value: 'app', label: 'App' },
-          { value: 'none', label: '无限额' },
-        ],
+        options: limitFilterOptions,
       },
       header: ({ column }) => <DataTableColumnHeader column={column} label="限额" className="justify-end" />,
       cell: ({ row }) => {
@@ -386,7 +414,7 @@ export function MarketListTable({
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
     } : null,
-  ].filter(Boolean)), [showLimitColumn, hidePremiumColumn, hideTrendColumn, klineMap, todayDate]);
+  ].filter(Boolean)), [showLimitColumn, hidePremiumColumn, hideTrendColumn, klineMap, todayDate, limitFilterOptions]);
   const table = useReactTable({
     data: rows,
     columns,
