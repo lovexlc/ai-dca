@@ -6,6 +6,7 @@
 // 的预填填能力与加载体验）。
 
 import { readNotifyClientConfig } from './notifySync.js';
+import { apiUrl } from './apiBase.js';
 
 const NOTIFY_ENDPOINT = '/api/notify';
 const NOTIFY_CLIENT_SECRET_HEADER = 'x-notify-client-secret';
@@ -139,13 +140,7 @@ function sanitizeFundCode(value) {
 }
 
 function buildSwitchUrl(path, query = {}) {
-  const origin = typeof window === 'undefined' ? 'https://localhost' : window.location.origin;
-  const url = new URL(`${NOTIFY_ENDPOINT}${path}`, origin);
-  Object.entries(query || {}).forEach(([key, value]) => {
-    if (value === undefined || value === null || value === '') return;
-    url.searchParams.set(key, String(value));
-  });
-  return `${url.pathname}${url.search}`;
+  return apiUrl(`${NOTIFY_ENDPOINT}${path}`, query);
 }
 
 async function readJsonResponse(response) {

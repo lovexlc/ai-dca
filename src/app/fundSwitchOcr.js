@@ -1,3 +1,5 @@
+import { apiUrl } from './apiBase.js';
+
 const OCR_ENDPOINT = '/api/ocr';
 
 function now() {
@@ -50,7 +52,7 @@ export async function recognizeFundSwitchFile(file, fallbackComparison, onProgre
     message: '正在识别交易明细'
   });
 
-  const response = await fetch(OCR_ENDPOINT, {
+  const response = await fetch(apiUrl(OCR_ENDPOINT), {
     method: 'POST',
     headers: {
       Accept: 'application/json'

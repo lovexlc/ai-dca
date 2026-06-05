@@ -26,6 +26,7 @@ import {
 import '../../styles/ai-chat.css';
 import { askMarkets, askMarketsStream, loadWatchlist } from '../../app/marketsApi.js';
 import { trackAnalyticsEvent } from '../../app/analytics.js';
+import { apiUrl } from '../../app/apiBase.js';
 
 const CHAT_ENDPOINT = '/api/ai-chat';
 const STORAGE_KEY = 'aiDcaChatHistory_v1';
@@ -697,7 +698,7 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
         })),
         ...(ctxParts.length > 0 ? { pageContext: ctxParts.join('\n\n') } : {}),
       };
-      const res = await fetch(CHAT_ENDPOINT, {
+      const res = await fetch(apiUrl(CHAT_ENDPOINT), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),

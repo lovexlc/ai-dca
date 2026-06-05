@@ -7,6 +7,7 @@
 import { loadNotifyEvents } from './notifySync.js';
 import { showLocalWebNotification, readWebNotifyConfig, persistWebNotifyConfig, getWebNotifyState } from './webNotifyClient.js';
 import { isInTradingSession } from './tradingSession.js';
+import { apiUrl, wsApiUrl } from './apiBase.js';
 
 const WS_CONNECT_URL = '/api/notify/ws/register';
 const WS_UNREGISTER_URL = '/api/notify/ws/unregister';
@@ -35,9 +36,7 @@ function sortEventsAsc(events = []) {
 }
 
 function buildWsUrl(deviceInstallationId, token) {
-  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = window.location.host;
-  return `${proto}//${host}/api/notify/ws/${encodeURIComponent(deviceInstallationId)}`;
+  return wsApiUrl(`/api/notify/ws/${encodeURIComponent(deviceInstallationId)}`);
 }
 
 /**
@@ -327,7 +326,7 @@ export function startNotifyRealtime({ clientId, clientSecret, onStatusChange, de
     setStatus('connecting');
 
     try {
-      const res = await fetch(WS_CONNECT_URL, {
+      const res = await fetch(apiUrl(WS_CONNECT_URL), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ clientId, clientSecret })
@@ -367,7 +366,7 @@ export function startNotifyRealtime({ clientId, clientSecret, onStatusChange, de
     setStatus('stopped');
     // 尝试注销（fire-and-forget）
     if (deviceInstallationId && clientId && clientSecret) {
-      fetch(WS_UNREGISTER_URL, {
+      fetch(apiUrl(WS_UNREGISTER_URL), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ clientId, clientSecret })

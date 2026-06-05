@@ -4,6 +4,7 @@ stitch-previews/
 node_modules/
 frontend-dist/
 .frontend-build/
+.edgeone-pages/
 # Build artifacts written into docs/ by scripts/publish_react_pages.mjs.
 # Pages source = GitHub Actions; runner regenerates these from src/ + root data/.
 # Other files inside docs/ (CNAME, home-redesign.md, ops/, pages/, previews/, react-assets/) remain tracked.

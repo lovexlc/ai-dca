@@ -1,5 +1,7 @@
 // Markets API client. Talks to ai-dca-markets worker mounted at /api/markets/* on tools.freebacktrack.tech.
 
+import { apiUrl } from './apiBase.js';
+
 const DEFAULT_BASE = 'https://tools.freebacktrack.tech/api/markets';
 
 function resolveBase() {
@@ -119,7 +121,7 @@ export async function fetchFundMetrics(codes, { refresh = false, signal } = {}) 
 export async function fetchFundFees(codes, { refresh = false, signal } = {}) {
   const list = Array.isArray(codes) ? codes.map((code) => String(code || '').trim()).filter(Boolean) : [];
   if (!list.length) return { items: [], successCount: 0, failureCount: 0 };
-  return fetch('/api/fund-fee' + (refresh ? '?refresh=1' : ''), {
+  return fetch(apiUrl('/api/fund-fee' + (refresh ? '?refresh=1' : '')), {
     method: 'POST',
     headers: { accept: 'application/json', 'content-type': 'application/json' },
     body: JSON.stringify({ codes: list }),

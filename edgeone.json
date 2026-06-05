@@ -1,0 +1,6 @@
+{
+  "buildCommand": "npm run build:edgeone",
+  "outputDirectory": ".edgeone-pages",
+  "installCommand": "npm ci",
+  "nodeVersion": "20.18.0"
+}

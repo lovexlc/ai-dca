@@ -6,6 +6,7 @@ import { groupCostBasisBySymbol } from './costTracker.js';
 import { calculatePositions } from './positionManager.js';
 import { readVixSnapshot, resolveVixSignal, VIX_THRESHOLDS } from './vixSignal.js';
 import { trackAnalyticsEvent } from './analytics.js';
+import { apiUrl } from './apiBase.js';
 
 const NOTIFY_ENDPOINT = '/api/notify';
 const NOTIFY_CLIENT_CONFIG_KEY = 'aiDcaNotifyClientConfig';
@@ -198,17 +199,7 @@ async function readJsonResponse(response) {
 }
 
 function buildNotifyUrl(path, query = {}) {
-  const url = new URL(`${NOTIFY_ENDPOINT}${path}`, typeof window === 'undefined' ? 'https://localhost' : window.location.origin);
-
-  Object.entries(query || {}).forEach(([key, value]) => {
-    if (value === undefined || value === null || value === '') {
-      return;
-    }
-
-    url.searchParams.set(key, String(value));
-  });
-
-  return `${url.pathname}${url.search}`;
+  return apiUrl(`${NOTIFY_ENDPOINT}${path}`, query);
 }
 
 async function requestNotify(path, init = {}) {

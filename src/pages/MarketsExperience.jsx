@@ -43,6 +43,7 @@ import {
 import { loadWatchQuotesWithEnhancements, readCachedFundLimits, writeCachedFundLimits } from './markets/marketsWatchData.js';
 import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
+import { apiUrl } from '../app/apiBase.js';
 import {
   CN_ETF_PRESET_MAP,
   NASDAQ_OTC_FUND_MAP,
@@ -433,7 +434,7 @@ export function MarketsExperience() {
     let cancelled = false;
     (async () => {
       try {
-        const resp = await fetch('/api/fund-limit', {
+        const resp = await fetch(apiUrl('/api/fund-limit'), {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ codes: cached.missing }),
@@ -444,7 +445,7 @@ export function MarketsExperience() {
           if (resp.status === 405) {
             const entries = await Promise.all(
               cached.missing.map((code) =>
-                fetch(`/api/fund-limit?code=${encodeURIComponent(code)}`, { cache: 'no-store', signal: ctrl.signal })
+                fetch(apiUrl('/api/fund-limit', { code }), { cache: 'no-store', signal: ctrl.signal })
                   .then((r) => (r.ok ? r.json() : null))
                   .then((data) => [code, data])
                   .catch(() => [code, null])
