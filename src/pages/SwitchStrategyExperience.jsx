@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { readLedgerState, persistLedgerState } from '../app/holdingsLedger.js';
 import { aggregateByCode, buildTransactionId, detectFundKind, normalizeTransaction } from '../app/holdingsLedgerCore.js';
 import { getNavSnapshots } from '../app/navService.js';
@@ -69,7 +69,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     lastSyncedAt: ''
   });
   const [workerConfigExpanded, setWorkerConfigExpanded] = useState(false);
-  const postConfigRunKeyRef = useRef('');
   // “所有纳指 ETF（未分类）”折叠状态：当 H/L 组都有内容时默认折叠。
   const [nasdaqPoolExpanded, setNasdaqPoolExpanded] = useState(true);
   const [nasdaqPoolTouched, setNasdaqPoolTouched] = useState(false);
@@ -205,30 +204,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
           : `配置已保存（未启用自动监控 · ${baseHint}）。`,
         lastSyncedAt: new Date().toISOString()
       }));
-      // 配置推完后马上跳一次 worker run，让页面的「场内信号」立刻拿到新 prefs
-      // 计算出的 snapshot.signals（不启用监控时 worker 也会计 snapshot、仅不推送）。
-      // 同一份归一化配置只自动 run 一次；否则保存响应中的 metadata 或重复 autosave
-      // 会把 /switch/run 放大成连续请求。
-      try {
-        const runKey = buildSwitchConfigSyncKey(stored);
-        if (postConfigRunKeyRef.current !== runKey) {
-          postConfigRunKeyRef.current = runKey;
-          const runPayload = await runSwitchOnce();
-          if (runPayload?.snapshot) setWorkerSnapshot(runPayload.snapshot);
-          trackActionResult('switch_strategy', 'worker_post_config_run', 'success', {
-            triggeredCount: Number(runPayload?.summary?.triggered || 0),
-            pushedCount: Number(runPayload?.summary?.pushed || 0),
-            hasSnapshot: Boolean(runPayload?.snapshot)
-          });
-        }
-      } catch (runErr) {
-        // 静默失败：下一轮定时拉取会填上，不覆盖 saving notice。
-        if (typeof console !== 'undefined') console.warn('[switch] post-config run failed', runErr);
-        trackActionResult('switch_strategy', 'worker_post_config_run', 'error', {
-          errorName: runErr?.name || '',
-          errorMessage: String(runErr?.message || runErr || '').slice(0, 160)
-        });
-      }
       trackActionResult('switch_strategy', 'worker_config_save', 'success', {
         enabled: Boolean(stored.enabled),
         benchmarkCount: Array.isArray(benchmarkCodes) ? benchmarkCodes.length : 0,
