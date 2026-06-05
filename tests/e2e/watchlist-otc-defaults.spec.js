@@ -1,11 +1,26 @@
 import { expect, test } from '@playwright/test';
 import { mockAcceptanceNetwork, waitForWorkspace } from './acceptance-helpers.js';
 
+function activeListSelector(page, name) {
+  return page.locator('button[title="列表切换"]:visible').filter({ hasText: name }).first();
+}
+
+function visibleListOption(page, name) {
+  return page.locator('button:visible').filter({ hasText: name }).last();
+}
+
+function visibleText(page, text) {
+  return page.locator(`:text("${text}"):visible`).first();
+}
+
 test.describe('watchlist OTC defaults', () => {
   test.beforeEach(async ({ page }) => {
     await mockAcceptanceNetwork(page);
     // Mock fund-limit API
     await page.route('**/api/fund-limit**', async (route) => {
+      return route.fulfill({ json: { items: [] } });
+    });
+    await page.route('**/api/fund-fee**', async (route) => {
       return route.fulfill({ json: { items: [] } });
     });
   });
@@ -15,12 +30,12 @@ test.describe('watchlist OTC defaults', () => {
     await waitForWorkspace(page, '行情中心');
 
     // Click the watchlist selector to open dropdown
-    const selectorButton = page.getByRole('button', { name: /列表切换|默认/ }).first();
+    const selectorButton = activeListSelector(page, '默认-场内基金');
     await selectorButton.click();
 
     // Should see both default lists
-    await expect(page.getByText('默认-场内基金')).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('默认-场外基金')).toBeVisible({ timeout: 5000 });
+    await expect(visibleListOption(page, '默认-场内基金')).toBeVisible({ timeout: 5000 });
+    await expect(visibleListOption(page, '默认-场外基金')).toBeVisible({ timeout: 5000 });
   });
 
   test('existing user with v1 watchlist gets OTC list after migration', async ({ page }) => {
@@ -44,12 +59,42 @@ test.describe('watchlist OTC defaults', () => {
     await waitForWorkspace(page, '行情中心');
 
     // Click the watchlist selector
-    const selectorButton = page.getByRole('button', { name: /列表切换|默认/ }).first();
+    const selectorButton = activeListSelector(page, '默认-场内基金');
     await selectorButton.click();
 
     // Should see renamed default + new OTC list
-    await expect(page.getByText('默认-场内基金')).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('默认-场外基金')).toBeVisible({ timeout: 5000 });
+    await expect(visibleListOption(page, '默认-场内基金')).toBeVisible({ timeout: 5000 });
+    await expect(visibleListOption(page, '默认-场外基金')).toBeVisible({ timeout: 5000 });
+  });
+
+  test('created empty list keeps selector and fund search usable', async ({ page }) => {
+    await page.goto('./index.html?tab=markets');
+    await waitForWorkspace(page, '行情中心');
+
+    await activeListSelector(page, '默认-场内基金').click();
+    await page.getByRole('button', { name: '新建列表' }).click();
+    await page.getByLabel('输入新的列表名称').fill('空分组');
+    await page.getByRole('button', { name: '确定' }).click();
+
+    await expect(activeListSelector(page, '空分组')).toBeVisible();
+    await expect(visibleText(page, '未配置自选。')).toBeVisible();
+    await expect(page.getByRole('button', { name: /基金搜索/ }).first()).toBeVisible();
+
+    await activeListSelector(page, '空分组').click();
+    await visibleListOption(page, '默认-场外基金').click();
+    await expect(activeListSelector(page, '默认-场外基金')).toBeVisible();
+
+    await activeListSelector(page, '默认-场外基金').click();
+    await visibleListOption(page, '空分组').click();
+    await expect(visibleText(page, '未配置自选。')).toBeVisible();
+
+    await page.getByRole('button', { name: /基金搜索/ }).first().click();
+    await page.locator('input[placeholder*="搜索基金代码"]:visible').first().fill('513100');
+    await expect(page.locator('button:visible').filter({ hasText: '加入自选' }).first()).toBeVisible();
+    await page.locator('button:visible').filter({ hasText: '加入自选' }).first().click();
+
+    await expect(page.locator(':text("未配置自选。"):visible')).toHaveCount(0);
+    await expect(visibleText(page, '513100')).toBeVisible();
   });
 
   test('OTC list shows fund limit info in sidebar meta', async ({ page }) => {
@@ -101,10 +146,10 @@ test.describe('watchlist OTC defaults', () => {
 
     // The active list should be the OTC list
     // Check that the list name shows in the selector
-    await expect(page.getByText('默认-场外基金').first()).toBeVisible({ timeout: 10000 });
+    await expect(activeListSelector(page, '默认-场外基金')).toBeVisible({ timeout: 10000 });
 
     // Check that OTC fund codes are visible in the sidebar
-    await expect(page.getByText('000834').first()).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('270042').first()).toBeVisible({ timeout: 10000 });
+    await expect(visibleText(page, '000834')).toBeVisible({ timeout: 10000 });
+    await expect(visibleText(page, '270042')).toBeVisible({ timeout: 10000 });
   });
 });

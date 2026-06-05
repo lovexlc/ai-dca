@@ -470,14 +470,31 @@ export function MarketListTable({
     setColumnPinning({ left: nextLeft });
   };
 
+  const viewOptions = dataTable ? <DataTableViewOptions table={table} /> : null;
+  const header = dataTable
+    ? (typeof dataTableHeader === 'function'
+      ? dataTableHeader({ table, viewOptions })
+      : dataTableHeader)
+    : null;
+
   if (!rows.length) {
+    if (dataTable) {
+      return (
+        <div className="flex min-w-0 flex-col gap-2">
+          {header || (
+            <DataTableToolbar table={table}>
+              {viewOptions}
+            </DataTableToolbar>
+          )}
+          <div className="rounded-2xl border border-[#e8eaed] bg-white px-4 py-12 text-center text-sm text-[#5f6368]">
+            未配置自选。
+          </div>
+        </div>
+      );
+    }
     return <p className="px-2 py-2 text-sm text-[#5f6368]">未配置自选。</p>;
   }
   if (dataTable) {
-    const viewOptions = <DataTableViewOptions table={table} />;
-    const header = typeof dataTableHeader === 'function'
-      ? dataTableHeader({ table, viewOptions })
-      : dataTableHeader;
     return (
       <div className="flex min-w-0 flex-col gap-2">
         {header || (
