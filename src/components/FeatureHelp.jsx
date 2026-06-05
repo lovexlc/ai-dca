@@ -9,6 +9,10 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 
+// 示例图：从原 Bark / Server酱³ tips 弹层迁移而来。
+const BARK_EXAMPLE_IMAGE_URL = 'https://bark.day.app/_media/example.jpg';
+const SERVERCHAN3_EXAMPLE_IMAGE_URL = 'https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEVDnpqInOCSSCH6N6JmuEmQYx9pQYIFAAC4CMAAuKuEFX0k_jBmJTJgDsE.jpg';
+
 // 各功能旁「页面状」帮助图标弹窗的内容。集中维护，方便后续按用户反馈调整文案。
 const HELP_CONTENT = {
   'holdings-edit': {
@@ -98,7 +102,38 @@ const HELP_CONTENT = {
         ]
       }
     ],
-    screenshots: ['「Andriod」面板：下载链接、UID / SendKey 输入框与保存 / 测试按钮']
+    screenshots: [
+      {
+        src: SERVERCHAN3_EXAMPLE_IMAGE_URL,
+        alt: 'Server酱³ 示例：查看安卓配置设置地址',
+        caption: '在「安卓配置设置地址」查看 UID / SendKey'
+      }
+    ]
+  },
+  'ios-notify': {
+    title: 'iOS：配置 Bark 推送',
+    summary: 'iOS 用 Bark 接收系统通知：粘贴 Bark 链接或 Device Key 即可。',
+    sections: [
+      {
+        heading: '获取并填写',
+        steps: [
+          '在 iPhone 安装 Bark App，打开后复制它显示的完整推送链接（形如 https://api.day.app/xxx/推送内容）。',
+          '在「通知」页切到「iOS」标签，把整段链接或 Device Key 粘贴进输入框，点「保存 Bark 配置」。',
+          '不用手动截取 Device Key，系统会自动从链接里提取。'
+        ]
+      },
+      {
+        heading: '测试',
+        steps: ['保存后点「消息推送测试」，iPhone 上的 Bark 收到推送即配置成功。']
+      }
+    ],
+    screenshots: [
+      {
+        src: BARK_EXAMPLE_IMAGE_URL,
+        alt: 'Bark 示例：复制完整 Bark 链接或 Device Key',
+        caption: '复制 Bark 里显示的完整链接或 Device Key'
+      }
+    ]
   }
 };
 
@@ -142,15 +177,33 @@ export function FeatureHelp({ topic, className }) {
             ))}
             {Array.isArray(content.screenshots) && content.screenshots.length ? (
               <div className="space-y-2">
-                {content.screenshots.map((label, shotIndex) => (
-                  <div
-                    key={shotIndex}
-                    className="flex min-h-24 flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-center text-xs text-slate-400"
-                  >
-                    <span className="text-base">📷</span>
-                    <span>配图占位：{label}</span>
-                  </div>
-                ))}
+                {content.screenshots.map((shot, shotIndex) => {
+                  const image = shot && typeof shot === 'object' ? shot : null;
+                  if (image?.src) {
+                    return (
+                      <figure key={shotIndex} className="space-y-1.5">
+                        <img
+                          src={image.src}
+                          alt={image.alt || image.caption || '示例图'}
+                          loading="lazy"
+                          className="mx-auto max-h-[60vh] w-auto rounded-xl border border-slate-200 object-contain"
+                        />
+                        {image.caption ? (
+                          <figcaption className="text-center text-xs text-slate-400">{image.caption}</figcaption>
+                        ) : null}
+                      </figure>
+                    );
+                  }
+                  return (
+                    <div
+                      key={shotIndex}
+                      className="flex min-h-24 flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-center text-xs text-slate-400"
+                    >
+                      <span className="text-base">📷</span>
+                      <span>配图占位：{typeof shot === 'string' ? shot : shot?.caption || ''}</span>
+                    </div>
+                  );
+                })}
               </div>
             ) : null}
           </div>
