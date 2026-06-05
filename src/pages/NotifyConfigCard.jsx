@@ -58,6 +58,8 @@ export function NotifyConfigCard({
   const hasServerChan3Uid = Boolean(String(notifyConfig.serverChan3Uid || '').trim());
   const hasServerChan3SendKey = Boolean(String(notifyConfig.serverChan3SendKey || '').trim());
   const canUseServerChan3Input = hasServerChan3Uid && (isServerChan3Configured || hasServerChan3SendKey);
+  const serverChan3InputEmpty = !isServerChan3Configured && !hasServerChan3Uid && !hasServerChan3SendKey;
+  const barkInputEmpty = !barkConfigured && !hasBarkInput;
 
   return (
     <Card className="min-w-0">
@@ -144,7 +146,11 @@ export function NotifyConfigCard({
               <div className="space-y-4" role="tabpanel" id="notify-panel">
                 <div className="flex items-center gap-1.5">
                   <h3 className="text-base font-bold text-slate-900">Server酱³ 推送设置</h3>
-                  <FeatureHelp topic="android-notify" />
+                  <FeatureHelp
+                    topic="android-notify"
+                    hintText="还没填？点这里看怎么获取 UID / SendKey"
+                    hintActive={serverChan3InputEmpty}
+                  />
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -365,7 +371,11 @@ export function NotifyConfigCard({
               <div role="tabpanel" id="notify-panel">
                 <div className="flex items-center gap-1.5">
                   <h3 className="text-base font-bold text-slate-900">iOS Bark 配置</h3>
-                  <FeatureHelp topic="ios-notify" />
+                  <FeatureHelp
+                    topic="ios-notify"
+                    hintText="还没填？点这里看怎么获取 Bark 链接"
+                    hintActive={barkInputEmpty}
+                  />
                 </div>
                 <div className="mt-4 text-sm font-semibold text-slate-900">iOS Bark 链接或 Device Key</div>
                 <p className="mt-2 text-sm leading-6 text-slate-500">

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -137,25 +137,55 @@ const HELP_CONTENT = {
   }
 };
 
-export function FeatureHelp({ topic, className }) {
+export function FeatureHelp({ topic, className, hintText, hintActive = false, hintDelayMs = 60000 }) {
   const [open, setOpen] = useState(false);
+  const [showHint, setShowHint] = useState(false);
+  const dismissedRef = useRef(false);
   const content = HELP_CONTENT[topic];
+
+  // 输入框迟迟未填写时，延时在帮助图标上浮一个引导气泡；填写或点开帮助后即消失。
+  useEffect(() => {
+    if (!hintText || !hintActive || dismissedRef.current) {
+      setShowHint(false);
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      if (!dismissedRef.current) setShowHint(true);
+    }, hintDelayMs);
+    return () => clearTimeout(timer);
+  }, [hintText, hintActive, hintDelayMs]);
+
   if (!content) return null;
+
+  const handleOpen = () => {
+    dismissedRef.current = true;
+    setShowHint(false);
+    setOpen(true);
+  };
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-label={`查看「${content.title}」使用帮助`}
-        title="使用帮助"
-        className={cn(
-          'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600',
-          className
-        )}
-      >
-        <FileText className="h-4 w-4" />
-      </button>
+      <span className={cn('relative inline-flex', className)}>
+        <button
+          type="button"
+          onClick={handleOpen}
+          aria-label={`查看「${content.title}」使用帮助`}
+          title="使用帮助"
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+        >
+          <FileText className="h-4 w-4" />
+        </button>
+        {showHint ? (
+          <button
+            type="button"
+            onClick={handleOpen}
+            className="absolute bottom-full left-1/2 z-20 mb-2 max-w-[200px] -translate-x-1/2 rounded-lg bg-slate-900 px-3 py-1.5 text-left text-xs font-medium leading-snug text-white shadow-lg animate-bounce"
+          >
+            {hintText}
+            <span className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1 rotate-45 bg-slate-900" />
+          </button>
+        ) : null}
+      </span>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
