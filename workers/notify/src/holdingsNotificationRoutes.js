@@ -166,6 +166,7 @@ export async function handleAdminHoldingsAllTest(request, env, options = {}) {
     return jsonResponse({ error: 'clientId required' }, { status: 400, origin });
   }
   const bypassDedup = payload?.bypassDedup !== false;
+  const allowPartial = payload?.allowPartial !== false;
   const totalsOverride = payload?.totalsOverride && typeof payload.totalsOverride === 'object'
     ? payload.totalsOverride
     : null;
@@ -177,6 +178,7 @@ export async function handleAdminHoldingsAllTest(request, env, options = {}) {
   console.log('[notify][admin-test-all] ENTER', JSON.stringify({
     onlyClientId,
     bypassDedup,
+    allowPartial,
     eventIdOverride,
     todayShanghai,
     totalsKeys: totalsOverride ? Object.keys(totalsOverride) : null
@@ -187,6 +189,7 @@ export async function handleAdminHoldingsAllTest(request, env, options = {}) {
     await runHoldingsNotificationsAll(env, todayShanghai, 'admin-test-all', {
       onlyClientId,
       bypassDedup,
+      allowPartial,
       totalsOverride,
       eventIdOverride,
       runClientDetection: options.runClientDetection
@@ -236,7 +239,8 @@ export async function handleAdminHoldingsAllTest(request, env, options = {}) {
         ...(otcRes.contributors || [])
       ];
       const totalWeightAll = allEligible.reduce((sum, item) => sum + item.weight, 0);
-      const wouldDispatch = exchangeReady && otcReady && allEligible.length > 0 && totalWeightAll > 0;
+      const completeReady = exchangeReady && otcReady;
+      const wouldDispatch = (completeReady || allowPartial) && allEligible.length > 0 && totalWeightAll > 0;
       debug = {
         hasStored: !!stored,
         enabled: stored?.enabled === true,
@@ -247,6 +251,7 @@ export async function handleAdminHoldingsAllTest(request, env, options = {}) {
         otcReady,
         exchangeContribCount: exchangeRes.contributors?.length || 0,
         otcContribCount: otcRes.contributors?.length || 0,
+        completeReady,
         wouldDispatch,
         perCode
       };
@@ -264,6 +269,7 @@ export async function handleAdminHoldingsAllTest(request, env, options = {}) {
     todayShanghai,
     onlyClientId,
     bypassDedup,
+    allowPartial,
     eventIdOverride,
     totalsOverride: totalsOverride ? Object.keys(totalsOverride) : null,
     debug
@@ -401,6 +407,7 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
   const runClientDetection = resolveRunClientDetection(options);
   const onlyClientId = String(options?.onlyClientId || '').trim() || null;
   const bypassDedup = options?.bypassDedup === true;
+  const allowPartial = options?.allowPartial === true || String(reason || '').includes('2130');
   const totalsOverride = options?.totalsOverride && typeof options.totalsOverride === 'object'
     ? options.totalsOverride
     : null;
@@ -410,6 +417,7 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
     reason,
     onlyClientId,
     bypassDedup,
+    allowPartial,
     eventIdOverride,
     totalsOverride: totalsOverride ? Object.keys(totalsOverride) : null
   }));
@@ -494,7 +502,8 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
     );
     const exchangeReady = !exchangeBucket.length || exchangeRes.ready;
     const otcReady = !otcBucket.length || otcRes.ready;
-    if (!exchangeReady || !otcReady) {
+    const completeReady = exchangeReady && otcReady;
+    if (!completeReady && !allowPartial) {
       console.log('[notify] runHoldingsNotificationsAll skip: not ready', JSON.stringify({
         clientId,
         exchangeReady,
@@ -509,7 +518,29 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
       ...(exchangeRes.contributors || []),
       ...(otcRes.contributors || [])
     ];
-    if (!allEligible.length) continue;
+    if (!allEligible.length) {
+      console.log('[notify][holdings-all] skip: no eligible contributors', JSON.stringify({
+        clientId,
+        exchangeReady,
+        otcReady,
+        allowPartial
+      }));
+      continue;
+    }
+    const partialDispatch = !completeReady;
+    const activeDedupKey = partialDispatch ? holdingsDedupKey(clientId, 'all-partial', todayShanghai) : dedupKey;
+    if (partialDispatch && !bypassDedup) {
+      const partialDedup = await readJson(env, activeDedupKey, null);
+      if (partialDedup && partialDedup.status === 'sent') {
+        console.log('[notify][holdings-all] skip: partial dedup hit', JSON.stringify({
+          clientId,
+          dedupKey: activeDedupKey,
+          sentAt: partialDedup.sentAt
+        }));
+        continue;
+      }
+    }
+
     const totalWeightAll = allEligible.reduce((sum, item) => sum + item.weight, 0);
     if (!(totalWeightAll > 0)) continue;
     const dailyReturnRate = allEligible.reduce(
@@ -523,11 +554,17 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
       }))
       .sort((a, b) => Math.abs(b.ratio) - Math.abs(a.ratio));
 
-    const { title, body, summary, body_md } = buildHoldingsNotificationContentAll(
+    let { title, body, summary, body_md } = buildHoldingsNotificationContentAll(
       dailyReturnRate,
       sortedContribs,
       todayShanghai
     );
+    if (partialDispatch) {
+      title = title.replace('[持仓总览]', '[持仓总览·部分]');
+      summary = `${summary}（部分标的净值未更新）`;
+      body = `${body} 部分标的净值尚未更新，本次按已更新持仓计算。`;
+      body_md = `${body_md}\n\n部分标的净值尚未更新，本次按已更新持仓计算。`;
+    }
 
     const clientRecord = getClientRecord(settings, clientId, stored.clientLabel || '');
     if (!clientRecord) {
@@ -535,12 +572,15 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
       continue;
     }
 
-    const eventId = eventIdOverride || `holdings-all-${todayShanghai}`;
+    const eventId = eventIdOverride || `holdings-all${partialDispatch ? '-partial' : ''}-${todayShanghai}`;
     console.log('[notify][holdings-all] dispatching', JSON.stringify({
       clientId,
       eventId,
       contribCount: allEligible.length,
-      dailyReturnRate
+      dailyReturnRate,
+      partialDispatch,
+      exchangeReady,
+      otcReady
     }));
     try {
       const result = await runClientDetection(env, settings, clientRecord, {
@@ -552,10 +592,10 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
           body,
           body_md,
           summary,
-          ruleId: 'holdings-daily-all',
+          ruleId: partialDispatch ? 'holdings-daily-all-partial' : 'holdings-daily-all',
           symbol: '持仓总览',
           strategyName: '持仓当日收益',
-          triggerCondition: `${todayShanghai} all`,
+          triggerCondition: `${todayShanghai} ${partialDispatch ? 'all-partial' : 'all'}`,
           purchaseAmount: '',
           detailUrl: ''
         }
@@ -578,13 +618,14 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
         const dedupPayload = {
           sentAt: new Date().toISOString(),
           status: 'sent',
-          kind: 'all',
-          date: todayShanghai
+          kind: partialDispatch ? 'all-partial' : 'all',
+          date: todayShanghai,
+          partial: partialDispatch
         };
-        await writeJson(env, dedupKey, dedupPayload);
+        await writeJson(env, activeDedupKey, dedupPayload);
         try {
           await env.NOTIFY_STATE.put(
-            dedupKey,
+            activeDedupKey,
             JSON.stringify(dedupPayload),
             { expirationTtl: HOLDINGS_DEDUP_TTL_SECONDS }
           );
