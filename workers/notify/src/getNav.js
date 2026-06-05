@@ -25,6 +25,18 @@ function publicDataBaseUrl(env = null) {
   return stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || DEFAULT_PUBLIC_DATA_BASE_URL);
 }
 
+function shanghaiDateFromTimestamp(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) return '';
+  try {
+    return new Date(parsed).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+  } catch (_e) {
+    return new Date(parsed).toISOString().slice(0, 10);
+  }
+}
+
 function fundMetricsUrl(baseUrl, { refresh = false } = {}) {
   const params = new URLSearchParams();
   if (refresh) params.set('refresh', '1');
@@ -95,7 +107,7 @@ function metricToPrice(metric) {
     name: String(metric?.name || '').trim(),
     price,
     preClose: Number(metric?.previousClose) || 0,
-    date: String(metric?.asOf || metric?.latestNavDate || metric?.navDate || '').slice(0, 10),
+    date: shanghaiDateFromTimestamp(metric?.asOf) || String(metric?.latestNavDate || metric?.navDate || '').slice(0, 10),
     time: String(metric?.asOf || '').slice(11, 19),
     source: metric?.source || 'fund-metrics',
     latestNav: Number(metric?.latestNav) || null,
@@ -118,7 +130,7 @@ function metricToHoldingSnapshot(metric, generatedAt = nowShanghaiIso()) {
   const nav = Number(metric?.latestNav ?? metric?.navBase ?? metric?.iopv);
   const previousFundNav = Number(metric?.previousNav);
   const navDate = String(metric?.latestNavDate || metric?.navDate || '').trim();
-  const asOfDate = String(metric?.asOf || generatedAt).slice(0, 10);
+  const asOfDate = shanghaiDateFromTimestamp(metric?.asOf || generatedAt);
   const sourceUpdatedAt = String(metric?.updatedAt || '').trim();
   const latestNav = exchangeMetric && Number.isFinite(price) && price > 0
     ? price
@@ -386,10 +398,10 @@ export function isExchangeFundCode(code) {
 
 // Legacy API name kept for existing notify switch-strategy callers.
 // The implementation no longer calls Sina directly; it is backed by markets/fund-metrics.
-export async function fetchSinaPrices(codes = [], env = null) {
+export async function fetchSinaPrices(codes = [], env = null, { refresh = false } = {}) {
   const list = Array.from(new Set(codes.map((c) => sanitizeCode(c)).filter(Boolean)));
   if (!list.length) return {};
-  const metrics = await fetchFundMetricsMap(env, list, { refresh: false });
+  const metrics = await fetchFundMetricsMap(env, list, { refresh });
   const map = {};
   for (const code of list) {
     const quote = metricToPrice(metrics[code]);

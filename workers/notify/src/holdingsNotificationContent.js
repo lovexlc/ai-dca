@@ -3,22 +3,11 @@ import {
   resolveHoldingKindAsync
 } from './holdingsNavSupport.js';
 
-function shanghaiDateFromTimestamp(value = '') {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  const parsed = Date.parse(raw);
-  if (!Number.isFinite(parsed)) return '';
-  try {
-    return new Date(parsed).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
-  } catch (_e) {
-    return new Date(parsed).toISOString().slice(0, 10);
-  }
-}
-
-function isOtcSnapshotReady(snap, latestNavDate, todayShanghai, expectedLatestNavDate) {
+function isOtcSnapshotReady(latestNavDate, todayShanghai, expectedLatestNavDate) {
+  // 收紧：场外/QDII 必须 latestNavDate >= 期望最新净值日期（且不超过今天）才算 ready。
+  // 不再因 sourceUpdatedAt===今天 就提前判 ready，避免用 T-1 净值误报当日收益、
+  // 并写入 dedup 抑制掉当晚真正的 T 日净值通知。
   if (!latestNavDate || latestNavDate > todayShanghai) return false;
-  const sourceUpdatedDate = shanghaiDateFromTimestamp(snap?.sourceUpdatedAt);
-  if (sourceUpdatedDate === todayShanghai) return true;
   return latestNavDate >= expectedLatestNavDate;
 }
 
@@ -39,7 +28,7 @@ export async function computeWeightedReturn(bucket, snapshotsByCode, todayShangh
     const expectedLatestNavDate = getExpectedLatestNavDate(effectiveKind, todayShanghai);
     const dateReady = effectiveKind === 'exchange'
       ? latestNavDate >= expectedLatestNavDate && latestNavDate <= todayShanghai
-      : isOtcSnapshotReady(snap, latestNavDate, todayShanghai, expectedLatestNavDate);
+      : isOtcSnapshotReady(latestNavDate, todayShanghai, expectedLatestNavDate);
     if (!Number.isFinite(latestNav) || !Number.isFinite(previousNav) || previousNav <= 0) {
       // 缺少净值或昨日净值 → 在加权中跳过，但如果是 latestNavDate 不达预期日期造成的，则整套跳过。
       if (!dateReady) ready = false;

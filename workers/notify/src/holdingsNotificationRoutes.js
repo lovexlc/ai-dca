@@ -204,7 +204,7 @@ export async function handleAdminHoldingsAllTest(request, env, options = {}) {
 
       let snapshotsByCode = {};
       try {
-        snapshotsByCode = await fetchHoldingsNavSnapshots(env, codes, { bucketKindByCode, todayShanghai });
+        snapshotsByCode = await fetchHoldingsNavSnapshots(env, codes, { bucketKindByCode, todayShanghai, refreshExchange: true });
       } catch (_e) {
         snapshotsByCode = {};
       }
@@ -328,7 +328,7 @@ export async function runHoldingsNotifications(env, kind, todayShanghai, reason 
     const bucketKindByCode = Object.fromEntries(bucket.map((entry) => [entry.code, kind]));
     let snapshotsByCode = {};
     try {
-      snapshotsByCode = await fetchHoldingsNavSnapshots(env, codes, { bucketKindByCode, todayShanghai });
+      snapshotsByCode = await fetchHoldingsNavSnapshots(env, codes, { bucketKindByCode, todayShanghai, refreshExchange: kind === 'exchange' });
     } catch (_error) {
       continue;
     }
@@ -464,7 +464,7 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
     for (const e of otcBucket) bucketKindByCode[e.code] = 'otc';
     let snapshotsByCode = {};
     try {
-      snapshotsByCode = await fetchHoldingsNavSnapshots(env, codes, { bucketKindByCode, todayShanghai });
+      snapshotsByCode = await fetchHoldingsNavSnapshots(env, codes, { bucketKindByCode, todayShanghai, refreshExchange: true });
     } catch (error) {
       console.log('[notify][holdings-all] skip: nav fetch failed', JSON.stringify({
         clientId,

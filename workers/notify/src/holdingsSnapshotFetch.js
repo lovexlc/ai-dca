@@ -51,7 +51,7 @@ function isAfterShanghaiNavCacheCutoff() {
  */
 export async function fetchHoldingsNavSnapshots(env, codes = [], options = {}) {
   if (!codes.length) return {};
-  const { bucketKindByCode = {}, todayShanghai = '' } = options;
+  const { bucketKindByCode = {}, todayShanghai = '', refreshExchange = false } = options;
 
   const kindByCode = {};
   for (const code of codes) {
@@ -116,7 +116,7 @@ export async function fetchHoldingsNavSnapshots(env, codes = [], options = {}) {
 
   if (exchangeMissing.length) {
     try {
-      const priceMap = await fetchSinaPrices(exchangeMissing, env);
+      const priceMap = await fetchSinaPrices(exchangeMissing, env, { refresh: refreshExchange });
       let priceCount = 0;
       for (const code of exchangeMissing) {
         const quote = priceMap?.[code];
