@@ -1,4 +1,4 @@
-import { Bell, ChevronDown, ChevronUp, Laptop, Loader2, Save, Send, Wifi, WifiOff } from 'lucide-react';
+import { Bell, ChevronDown, ChevronUp, ExternalLink, Laptop, Loader2, Save, Send, Wifi, WifiOff } from 'lucide-react';
 import { formatEventTimeLabel } from '../app/tradePlansHelpers.js';
 import {
   Card,
@@ -135,6 +135,38 @@ export function NotifyConfigCard({
                       {serverChan3StatusLabel}
                     </Pill>
                   </div>
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+                    安卓端使用 Server酱³ 时，先打开客户端下载地址安装客户端，再进入安卓配置设置地址获取 SendKey。
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <a
+                      className="flex min-h-20 items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition-colors hover:border-indigo-200 hover:bg-indigo-50"
+                      href="https://sc3.ft07.com/client"
+                      target="_blank"
+                      rel="noreferrer noopener"
+                    >
+                      <span className="min-w-0">
+                        <span className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">安卓客户端下载地址</span>
+                        <span className="mt-2 block break-all text-sm font-semibold text-slate-700">https://sc3.ft07.com/client</span>
+                      </span>
+                      <ExternalLink className="mt-1 h-4 w-4 shrink-0 text-slate-400" />
+                    </a>
+                    <a
+                      className="flex min-h-20 items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition-colors hover:border-indigo-200 hover:bg-indigo-50"
+                      href="https://sc3.ft07.com/sendkey"
+                      target="_blank"
+                      rel="noreferrer noopener"
+                    >
+                      <span className="min-w-0">
+                        <span className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">安卓配置设置地址</span>
+                        <span className="mt-2 block break-all text-sm font-semibold text-slate-700">https://sc3.ft07.com/sendkey</span>
+                      </span>
+                      <ExternalLink className="mt-1 h-4 w-4 shrink-0 text-slate-400" />
+                    </a>
+                  </div>
+                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
+                    Server酱³ 属于第三方通知服务，目前无需付费；请仔细甄别来源，不要随意泄漏 UID 或 SendKey。
+                  </div>
                   <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end">
                     <Field label="Server酱³ UID">
                       <TextInput
@@ -145,8 +177,10 @@ export function NotifyConfigCard({
                     </Field>
                     <Field label="Server酱³ SendKey">
                       <TextInput
+                        type="password"
                         value={notifyConfig.serverChan3SendKey || ''}
-                        placeholder="sendkey"
+                        placeholder="粘贴 SendKey"
+                        autoComplete="off"
                         onChange={(event) => setNotifyConfig((current) => ({ ...current, serverChan3SendKey: event.target.value }))}
                       />
                     </Field>

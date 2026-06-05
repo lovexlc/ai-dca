@@ -53,9 +53,9 @@ test.describe('visual acceptance', () => {
 
   test('notify config screenshot', async ({ page }) => {
     await page.goto('./index.html?tab=notify');
-    await waitForWorkspace(page, '通知设置');
+    await waitForWorkspace(page, '消息推送配置');
     await ensureNotifyConfigExpanded(page);
-    await page.getByRole('tab', { name: 'Android' }).click();
+    await page.getByRole('tab', { name: 'Server酱³' }).click();
     await page.screenshot({ path: screenshotPath('notify-config'), fullPage: true });
   });
 });

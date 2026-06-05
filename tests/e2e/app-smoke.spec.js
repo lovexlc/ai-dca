@@ -48,17 +48,24 @@ test.describe('workspace smoke', () => {
     await expectNoCrash(page);
   });
 
-  test('notify config tabs accept pasted iOS and Android links', async ({ page }) => {
+  test('notify config tabs accept pasted iOS and ServerChan settings', async ({ page }) => {
     await page.goto('./index.html?tab=notify');
 
-    await waitForWorkspace(page, '通知设置');
+    await waitForWorkspace(page, '消息推送配置');
     await ensureNotifyConfigExpanded(page);
 
-    await page.getByRole('tab', { name: /^Android$/ }).click();
-    await expect(page.getByRole('tab', { name: /^Android$/ })).toHaveAttribute('aria-selected', 'true');
-    const androidInput = page.getByLabel('Android 设备 ID / 测试 URL');
-    await androidInput.fill('https://example.com/test?device=android-e2e-smoke-123456');
-    await expect(androidInput).toHaveValue(/android-e2e-smoke-123456|example\.com/);
+    await page.getByRole('tab', { name: /^Server酱³$/ }).click();
+    await expect(page.getByRole('tab', { name: /^Server酱³$/ })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('body')).toContainText('安卓端使用 Server酱³ 时，先打开客户端下载地址安装客户端');
+    await expect(page.getByRole('link', { name: /安卓客户端下载地址/ })).toHaveAttribute('href', 'https://sc3.ft07.com/client');
+    await expect(page.getByRole('link', { name: /安卓配置设置地址/ })).toHaveAttribute('href', 'https://sc3.ft07.com/sendkey');
+    await expect(page.locator('body')).toContainText('不要随意泄漏 UID 或 SendKey');
+    const serverChanUidInput = page.getByLabel('Server酱³ UID');
+    const serverChanSendKeyInput = page.getByLabel('Server酱³ SendKey');
+    await serverChanUidInput.fill('uid-e2e-smoke');
+    await serverChanSendKeyInput.fill('sendkey-e2e-smoke-123456');
+    await expect(serverChanUidInput).toHaveValue('uid-e2e-smoke');
+    await expect(serverChanSendKeyInput).toHaveValue('sendkey-e2e-smoke-123456');
 
     await page.getByRole('tab', { name: /^iOS$/ }).click();
     await expect(page.getByRole('tab', { name: /^iOS$/ })).toHaveAttribute('aria-selected', 'true');
