@@ -34,6 +34,11 @@ function resolveRunClientDetection(options = {}) {
   return options.runClientDetection;
 }
 
+function normalizeDigestKind(kind) {
+  const value = String(kind || '').trim().toLowerCase();
+  return value === 'exchange' || value === 'otc' || value === 'qdii' ? value : '';
+}
+
 export async function handleHoldingsRuleGet(request, env) {
   const origin = readOrigin(request);
   let settings = await readSettings(env);
@@ -218,14 +223,19 @@ export async function handleAdminHoldingsAllTest(request, env, options = {}) {
       const otcReady = !otcBucket.length || otcRes.ready;
 
       const perCode = [];
-      for (const code of codes) {
+      const digestKindCounts = {};
+      for (const entry of [...exchangeBucket, ...otcBucket]) {
+        const code = entry.code;
         const bucketKind = bucketKindByCode[code] || (isExchangeLikeCode(code) ? 'exchange' : 'otc');
-        const effectiveKind = await resolveHoldingKindAsync(code, bucketKind, env);
+        const digestKind = normalizeDigestKind(entry.kind);
+        if (digestKind) digestKindCounts[digestKind] = (digestKindCounts[digestKind] || 0) + 1;
+        const effectiveKind = digestKind || await resolveHoldingKindAsync(code, bucketKind, env);
         const expected = getExpectedLatestNavDate(effectiveKind, todayShanghai);
         const snap = snapshotsByCode?.[code] || null;
         perCode.push({
           code,
           bucketKind,
+          digestKind,
           effectiveKind,
           expectedLatestNavDate: expected,
           latestNavDate: snap?.latestNavDate || '',
@@ -253,6 +263,7 @@ export async function handleAdminHoldingsAllTest(request, env, options = {}) {
         otcContribCount: otcRes.contributors?.length || 0,
         completeReady,
         wouldDispatch,
+        digestKindCounts,
         perCode
       };
     } catch (_e) {
