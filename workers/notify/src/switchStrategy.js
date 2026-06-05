@@ -57,12 +57,19 @@ const MAX_CANDIDATES = 20;
 //     同类、未分类、cand 未分类 都不触发。
 const DEFAULT_INTRA_SELL_LOWER_PCT = 1;   // 规则 A：差价收窄阈值
 const DEFAULT_INTRA_BUY_OTHER_PCT = 3;    // 规则 B：差价扩大阈值
+const DEFAULT_OTC_PREMIUM_THRESHOLD_PCT = 8;
+const DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW = 1;
+const DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH = 2;
 const DELAYED_OPEN_PREMIUM_THRESHOLD_PCT = 10;
 const DELAYED_OPEN_UNTIL_MINUTE = 10 * 60 + 30;
 
 function sanitizeCode(value) {
   const code = String(value || '').trim();
   return FUND_CODE_PATTERN.test(code) ? code : '';
+}
+
+function stripTrailingSlash(value = '') {
+  return String(value || '').replace(/\/+$/, '');
 }
 
 function pickPercent(value, fallback) {
@@ -79,7 +86,8 @@ function pickPercent(value, fallback) {
 //  - benchmarkCodes: 持仓基准（前端从持仓详情自动派生，禁止手挑非持仓代码）
 //  - enabledCodes:   候选（前端按 premiumClass 过滤后只剩对侧）
 //  - premiumClass:   { [code]: 'H' | 'L' }，每只 ETF 的溢价中枢标签
-//  - intraSellLowerPct / intraBuyOtherPct: 阈值，与页面同名同义。
+//  - intraSellLowerPct / intraBuyOtherPct: 场内阈值，与页面同名同义。
+//  - otcPremiumThresholdPct / otcMinIntraPremiumLow / otcMinIntraPremiumHigh: 场外切换阈值。
 //  - 触发逻辑：每对 (bench, cand) 仅当 cand.class !== bench.class 且都已分类时考虑：
 //      bench=L → 看 gap = H溢价 − L溢价 < sellLower → 规则 A：卖 bench(L) 买 cand(H)
 //      bench=H → 看 gap > buyOther                  → 规则 B：卖 bench(H) 买 cand(L)
@@ -126,6 +134,9 @@ export function normalizeSwitchConfig(input = {}) {
     premiumClass,
     intraSellLowerPct: pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
     intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
+    otcPremiumThresholdPct: pickPercent(input?.otcPremiumThresholdPct, DEFAULT_OTC_PREMIUM_THRESHOLD_PCT),
+    otcMinIntraPremiumLow: pickPercent(input?.otcMinIntraPremiumLow, DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW),
+    otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH),
     clientLabel: String(input?.clientLabel || '').trim().slice(0, 120),
     updatedAt: String(input?.updatedAt || '').trim() || new Date().toISOString()
   };
@@ -138,6 +149,8 @@ export function isSwitchConfigRunnable(config) {
   const benches = Array.isArray(config.benchmarkCodes) ? config.benchmarkCodes : [];
   if (!benches.length) return false;
   const enabled = Array.isArray(config.enabledCodes) ? config.enabledCodes : [];
+  const benchSet = new Set(benches);
+  const hasOtcCandidates = enabled.some((c) => c && !benchSet.has(c));
   const cls = (config && typeof config.premiumClass === 'object' && config.premiumClass) ? config.premiumClass : {};
   const pool = Array.from(new Set([...benches, ...enabled])).filter((c) => cls[c] === 'H' || cls[c] === 'L');
   for (const b of benches) {
@@ -146,7 +159,7 @@ export function isSwitchConfigRunnable(config) {
     const opp = bc === 'H' ? 'L' : 'H';
     if (pool.some((c) => c !== b && cls[c] === opp)) return true;
   }
-  return false;
+  return hasOtcCandidates;
 }
 
 // --- 时间窗口 -------------------------------------------------------------
@@ -383,6 +396,106 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
   const benchmarkCodes = Array.isArray(config.benchmarkCodes) ? config.benchmarkCodes : [];
   const enabledCodes = Array.isArray(config.enabledCodes) ? config.enabledCodes : [];
   const premiumClass = (config && typeof config.premiumClass === 'object' && config.premiumClass) ? config.premiumClass : {};
+  const otcPremiumThresholdPct = pickPercent(config.otcPremiumThresholdPct, DEFAULT_OTC_PREMIUM_THRESHOLD_PCT);
+  const otcMinIntraPremiumLow = pickPercent(config.otcMinIntraPremiumLow, DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW);
+  const otcMinIntraPremiumHigh = pickPercent(config.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH);
+  const allConfigCodes = Array.from(new Set([...benchmarkCodes, ...enabledCodes]));
+
+  function buildPremiumEntry(code) {
+    const price = Number(priceMap?.[code]?.price);
+    const nav = Number(navByCode?.[code]?.nav);
+    const navDate = String(navByCode?.[code]?.latestNavDate || '').trim();
+    const navMissing = !Number.isFinite(nav) || nav <= 0;
+    const navStale = !navMissing && navAgeDays(navDate) > NAV_STALE_DAYS;
+    const priceMissing = !Number.isFinite(price) || price <= 0;
+    const delayedOpen = getDelayedOpenInfo(code, priceMap, navByCode, computedAtIso, navAgeDays);
+    const premiumPct = (!navMissing && !priceMissing && !navStale && !delayedOpen.delayed)
+      ? ((price - nav) / nav) * 100
+      : null;
+    let note = '';
+    if (navMissing) note = 'nav-missing';
+    else if (navStale) note = 'nav-stale';
+    else if (priceMissing) note = 'price-missing';
+    else if (delayedOpen.delayed) note = 'delayed-open';
+    return {
+      code,
+      name: navByCode?.[code]?.name || '',
+      price: Number.isFinite(price) ? price : null,
+      nav: Number.isFinite(nav) ? nav : null,
+      navDate,
+      premiumPct: Number.isFinite(premiumPct) ? premiumPct : null,
+      previousClosePremiumPct: Number.isFinite(delayedOpen.previousClosePremiumPct) ? delayedOpen.previousClosePremiumPct : null,
+      delayedOpen: Boolean(delayedOpen.delayed),
+      delayedUntil: delayedOpen.delayedUntil || '',
+      note
+    };
+  }
+
+  const premiumByCode = {};
+  for (const code of allConfigCodes) {
+    premiumByCode[code] = buildPremiumEntry(code);
+  }
+
+  function computeOtcSignal() {
+    let topBench = null;
+    // 场外触发必须从“持仓基准”发起；未持有候选即使高溢价也不能作为卖出侧触发推送。
+    for (const code of benchmarkCodes) {
+      const entry = premiumByCode[code];
+      if (!entry || !Number.isFinite(entry.premiumPct)) continue;
+      if (!topBench || entry.premiumPct > topBench.premiumPct) topBench = entry;
+    }
+
+    let minFund = null;
+    for (const code of enabledCodes) {
+      const entry = premiumByCode[code];
+      if (!entry || !Number.isFinite(entry.premiumPct)) continue;
+      if (!minFund || entry.premiumPct < minFund.premiumPct) minFund = entry;
+    }
+
+    if (!topBench || !minFund) {
+      return {
+        ready: false,
+        message: 'otc-signal-unavailable',
+        otcPremiumThresholdPct,
+        otcMinIntraPremiumLow,
+        otcMinIntraPremiumHigh
+      };
+    }
+
+    const benchHigh = topBench.premiumPct > otcPremiumThresholdPct;
+    const intraLowSoft = minFund.premiumPct < otcMinIntraPremiumHigh;
+    const intraLowHard = minFund.premiumPct < otcMinIntraPremiumLow;
+    const triggered = benchHigh && (intraLowSoft || intraLowHard);
+    const rule = triggered
+      ? (intraLowHard ? 'OTC_STRONG' : 'OTC_WEAK')
+      : 'none';
+    const level = rule === 'OTC_STRONG' ? '强信号' : (rule === 'OTC_WEAK' ? '弱信号' : '未触发');
+
+    return {
+      ready: true,
+      benchCode: topBench.code,
+      benchName: topBench.name || topBench.code,
+      benchPremiumPct: topBench.premiumPct,
+      benchPrice: topBench.price,
+      benchNav: topBench.nav,
+      benchNavDate: topBench.navDate,
+      lowestCode: minFund.code,
+      lowestName: minFund.name || minFund.code,
+      lowestPremiumPct: minFund.premiumPct,
+      lowestPrice: minFund.price,
+      lowestNav: minFund.nav,
+      lowestNavDate: minFund.navDate,
+      benchHigh,
+      intraLowSoft,
+      intraLowHard,
+      triggered,
+      rule,
+      level,
+      otcPremiumThresholdPct,
+      otcMinIntraPremiumLow,
+      otcMinIntraPremiumHigh
+    };
+  }
 
   // 候选池 = (enabledCodes ∪ benchmarkCodes) \ self，这样一 H 一 L 的两只持仓
   // 也能互为候选，而不是仅限于 enabledCodes（= 非持仓分类代码）。
@@ -464,10 +577,11 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     };
   });
 
+  const otcSignal = computeOtcSignal();
   const ready = byBenchmark.some((b) =>
     Number.isFinite(b.benchmarkPremiumPct)
     && b.candidates.some((c) => Number.isFinite(c.spreadVsBenchmarkPct))
-  );
+  ) || Boolean(otcSignal.ready);
 
   // signals: 与前端原 intraSignals 同语义的「当前命中规则」列表（无 dedup，每次快照重算）。
   // 前端 UI 直接渲染这一列表，避免浏览器再独立算一份。
@@ -512,6 +626,10 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
     computedAt: computedAtIso,
     intraSellLowerPct: Number(config.intraSellLowerPct),
     intraBuyOtherPct: Number(config.intraBuyOtherPct),
+    otcPremiumThresholdPct,
+    otcMinIntraPremiumLow,
+    otcMinIntraPremiumHigh,
+    otcSignal,
     // 随快照一起带 premiumClass，供 evaluateSwitchTriggers 使用。
     premiumClass,
     byBenchmark,
@@ -544,6 +662,12 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
   const premiumClass = (snapshot && typeof snapshot.premiumClass === 'object' && snapshot.premiumClass) ? snapshot.premiumClass : {};
   const nextTriggerStates = {};
   const triggers = [];
+
+  function preservePreviousOtcStates() {
+    for (const [key, value] of Object.entries(prevTriggerStates || {})) {
+      if (String(key).startsWith('otc:')) nextTriggerStates[key] = value;
+    }
+  }
 
   const groups = Array.isArray(snapshot.byBenchmark) ? snapshot.byBenchmark : [];
   for (const group of groups) {
@@ -602,10 +726,99 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
     }
   }
 
+  const otc = snapshot?.otcSignal;
+  if (otc?.ready && otc.benchCode && otc.lowestCode) {
+    const pairKey = `otc:${otc.benchCode}:${otc.lowestCode}`;
+    const rule = otc.triggered
+      ? (otc.intraLowHard ? 'OTC_STRONG' : 'OTC_WEAK')
+      : 'none';
+    const prev = prevTriggerStates?.[pairKey] || { rule: 'none' };
+    const prevRule = String(prev.rule || 'none');
+    if (rule !== 'none' && rule !== prevRule) {
+      triggers.push({
+        kind: 'otc',
+        pairKey,
+        rule,
+        fromCode: otc.benchCode,
+        fromName: otc.benchName || '',
+        toCode: otc.lowestCode,
+        toName: otc.lowestName || '',
+        level: otc.level || (rule === 'OTC_STRONG' ? '强信号' : '弱信号'),
+        benchPremiumPct: otc.benchPremiumPct,
+        lowestPremiumPct: otc.lowestPremiumPct,
+        threshold: otc.otcPremiumThresholdPct,
+        lowThreshold: otc.otcMinIntraPremiumLow,
+        highThreshold: otc.otcMinIntraPremiumHigh
+      });
+    }
+    nextTriggerStates[pairKey] = {
+      rule,
+      fromCode: otc.benchCode,
+      toCode: otc.lowestCode,
+      level: otc.level || '',
+      lastBenchPremiumPct: Number.isFinite(otc.benchPremiumPct) ? otc.benchPremiumPct : null,
+      lastLowestPremiumPct: Number.isFinite(otc.lowestPremiumPct) ? otc.lowestPremiumPct : null,
+      updatedAt: snapshot.computedAt
+    };
+  } else {
+    preservePreviousOtcStates();
+  }
+
   return { triggers, nextTriggerStates };
 }
 
+function formatSignedPercentText(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '—';
+  return `${num >= 0 ? '+' : ''}${num.toFixed(2)}%`;
+}
+
+function buildOtcSwitchTriggerNotification(snapshot, trigger, env) {
+  const fromLabel = trigger.fromName ? `${trigger.fromCode} ${trigger.fromName}` : trigger.fromCode;
+  const refLabel = trigger.toName ? `${trigger.toCode} ${trigger.toName}` : trigger.toCode;
+  const benchPremium = formatSignedPercentText(trigger.benchPremiumPct);
+  const lowestPremium = formatSignedPercentText(trigger.lowestPremiumPct);
+  const threshold = Number(trigger.threshold);
+  const lowThreshold = Number(trigger.lowThreshold);
+  const highThreshold = Number(trigger.highThreshold);
+  const signalThreshold = trigger.rule === 'OTC_STRONG' ? lowThreshold : highThreshold;
+  const level = trigger.level || (trigger.rule === 'OTC_STRONG' ? '强信号' : '弱信号');
+  const baseUrl = stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || 'https://tools.freebacktrack.tech');
+  const detailUrl = `${baseUrl}/index.html?tab=tradePlans#switch`;
+  const minuteKey = String(snapshot?.computedAt || '').slice(0, 16);
+  const eventId = `switch:${trigger.pairKey}:R${trigger.rule}:${minuteKey}`;
+  const title = `场外切换 ${level} | ${trigger.fromCode}→场外QDII`;
+  const ruleLabel = trigger.rule === 'OTC_STRONG'
+    ? `场外强信号：基准溢价 > ${threshold}% 且场内最低溢价 < ${lowThreshold}%`
+    : `场外弱信号：基准溢价 > ${threshold}% 且场内最低溢价 < ${highThreshold}%`;
+  const body = `基准溢价 ${benchPremium} > ${threshold}% · 场内最低 ${lowestPremium} < ${signalThreshold}%\n卖 ${fromLabel} → 申购场外 QDII 联接基金\n参考低溢价 ${refLabel}；下单前请以基金软件实时溢价和申购限额为准。`;
+  const summary = `场外切换 ${level} ${trigger.fromCode}→场外QDII ${benchPremium}/${lowestPremium}`;
+  const body_md = [
+    `**基准溢价 ${benchPremium}** > ${threshold}%`,
+    `**场内最低 ${lowestPremium}** < ${signalThreshold}%（参考 ${refLabel}）`,
+    `卖 **${fromLabel}** → 申购 **场外 QDII 联接基金**`,
+    `*下单前请以基金软件实时溢价和申购限额为准。*`
+  ].join('\n');
+  return {
+    eventId,
+    eventType: 'switch-strategy-trigger',
+    ruleId: `switch-otc:${trigger.fromCode}`,
+    symbol: trigger.fromCode,
+    strategyName: '场外切换',
+    triggerCondition: ruleLabel,
+    purchaseAmount: '',
+    detailUrl,
+    title,
+    body,
+    summary,
+    body_md
+  };
+}
+
 export function buildSwitchTriggerNotification(snapshot, trigger, env) {
+  if (trigger?.kind === 'otc' || String(trigger?.rule || '').startsWith('OTC_')) {
+    return buildOtcSwitchTriggerNotification(snapshot, trigger, env);
+  }
   // v3 通知格式（持仓 bench + H/L 双维度）：
   //   title:   切换 A 低→高 | 159632→513100
   //   body:    H−L +0.85% < 1%  · NAV 2026-04-28

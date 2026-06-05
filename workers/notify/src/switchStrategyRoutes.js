@@ -96,6 +96,9 @@ export async function handleSwitchConfigPost(request, env) {
     premiumClass: payload?.premiumClass,
     intraSellLowerPct: payload?.intraSellLowerPct,
     intraBuyOtherPct: payload?.intraBuyOtherPct,
+    otcPremiumThresholdPct: payload?.otcPremiumThresholdPct,
+    otcMinIntraPremiumLow: payload?.otcMinIntraPremiumLow,
+    otcMinIntraPremiumHigh: payload?.otcMinIntraPremiumHigh,
     clientLabel: auth.clientRecord?.clientLabel || ''
   });
   return jsonResponse({ ok: true, config: nextConfig }, { origin });
@@ -174,7 +177,7 @@ export async function handleSwitchRunPost(request, env, { runClientDetection }) 
   if (!config || !isSwitchConfigRunnable({ ...config, enabled: true })) {
     return jsonResponse({
       ok: false,
-      error: '当前没有可计算的「切换」配置：请先选择基准 ETF、候选 ETF，并在 H/L 两表里各有至少一只已分类。'
+      error: '当前没有可计算的「切换」配置：请先选择基准 ETF 和候选 ETF；场内自动推送还需要 H/L 两表里各有至少一只已分类。'
     }, { status: 400, origin });
   }
   const summary = await runSwitchStrategyForOneClient(env, auth.clientId, config, {

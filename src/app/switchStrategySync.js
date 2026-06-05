@@ -15,6 +15,9 @@ const FUND_CODE_PATTERN = /^\d{6}$/;
 // 与页面 SwitchStrategyExperience 的 DEFAULT_PREFS 保持同名及同默认。
 const DEFAULT_INTRA_SELL_LOWER_PCT = 1; // 规则 A
 const DEFAULT_INTRA_BUY_OTHER_PCT = 3;  // 规则 B
+const DEFAULT_OTC_PREMIUM_THRESHOLD_PCT = 8;
+const DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW = 1;
+const DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH = 2;
 
 export function buildDefaultSwitchConfig() {
   return {
@@ -26,6 +29,9 @@ export function buildDefaultSwitchConfig() {
     premiumClass: {},
     intraSellLowerPct: DEFAULT_INTRA_SELL_LOWER_PCT,
     intraBuyOtherPct: DEFAULT_INTRA_BUY_OTHER_PCT,
+    otcPremiumThresholdPct: DEFAULT_OTC_PREMIUM_THRESHOLD_PCT,
+    otcMinIntraPremiumLow: DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW,
+    otcMinIntraPremiumHigh: DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH,
     clientLabel: '',
     updatedAt: ''
   };
@@ -102,6 +108,9 @@ export function normalizeSwitchConfigShape(input = {}) {
     premiumClass,
     intraSellLowerPct: pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
     intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
+    otcPremiumThresholdPct: pickPercent(input?.otcPremiumThresholdPct, DEFAULT_OTC_PREMIUM_THRESHOLD_PCT),
+    otcMinIntraPremiumLow: pickPercent(input?.otcMinIntraPremiumLow, DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW),
+    otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH),
     clientLabel: String(input?.clientLabel || '').trim().slice(0, 120),
     updatedAt: String(input?.updatedAt || '').trim()
   };
@@ -174,6 +183,9 @@ export async function saveSwitchConfigToWorker(config) {
       premiumClass: next.premiumClass,
       intraSellLowerPct: next.intraSellLowerPct,
       intraBuyOtherPct: next.intraBuyOtherPct,
+      otcPremiumThresholdPct: next.otcPremiumThresholdPct,
+      otcMinIntraPremiumLow: next.otcMinIntraPremiumLow,
+      otcMinIntraPremiumHigh: next.otcMinIntraPremiumHigh,
       clientLabel: clientConfig?.notifyClientLabel || ''
     }
   });

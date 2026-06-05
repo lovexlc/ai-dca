@@ -278,7 +278,10 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         enabledCodes,
         premiumClass: (prefs && typeof prefs.premiumClass === 'object' && prefs.premiumClass) ? prefs.premiumClass : {},
         intraSellLowerPct: Number(prefs?.intraSellLowerPct),
-        intraBuyOtherPct: Number(prefs?.intraBuyOtherPct)
+        intraBuyOtherPct: Number(prefs?.intraBuyOtherPct),
+        otcPremiumThresholdPct: Number(prefs?.otcPremiumThresholdPct),
+        otcMinIntraPremiumLow: Number(prefs?.otcMinIntraPremiumLow),
+        otcMinIntraPremiumHigh: Number(prefs?.otcMinIntraPremiumHigh)
       });
     } else {
       void persistWorkerConfig({ ...workerConfig, enabled: false });
@@ -295,7 +298,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     //   prefs.premiumClass 里有些 code 不在 benchmark ∪ enabled 里 → 服务端归一化
     //   会剔除它们 → 本地 diff 用未归一化的 prefs 比较时永远 != → 800ms 反复
     //   POST /switch/config，浏览器看上去一直在刷新。
-    // 同理 intraSellLowerPct / intraBuyOtherPct 若为 NaN，归一化会 fallback 到
+    // 同理各类阈值若为 NaN，归一化会 fallback 到
     // 默认值，也会形成同款死循环。
     const desired = normalizeSwitchConfigShape({
       ...workerConfig,
@@ -305,7 +308,10 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       enabledCodes: prefs?.enabledCodes || [],
       premiumClass: prefs?.premiumClass || {},
       intraSellLowerPct: prefs?.intraSellLowerPct,
-      intraBuyOtherPct: prefs?.intraBuyOtherPct
+      intraBuyOtherPct: prefs?.intraBuyOtherPct,
+      otcPremiumThresholdPct: prefs?.otcPremiumThresholdPct,
+      otcMinIntraPremiumLow: prefs?.otcMinIntraPremiumLow,
+      otcMinIntraPremiumHigh: prefs?.otcMinIntraPremiumHigh
     });
     if (!desired.benchmarkCodes.length) return undefined;
     const sameCodes = (a, b) => {
@@ -326,6 +332,9 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       || !sameClassMap(workerConfig.premiumClass || {}, desired.premiumClass)
       || Number(workerConfig.intraSellLowerPct) !== desired.intraSellLowerPct
       || Number(workerConfig.intraBuyOtherPct) !== desired.intraBuyOtherPct
+      || Number(workerConfig.otcPremiumThresholdPct) !== desired.otcPremiumThresholdPct
+      || Number(workerConfig.otcMinIntraPremiumLow) !== desired.otcMinIntraPremiumLow
+      || Number(workerConfig.otcMinIntraPremiumHigh) !== desired.otcMinIntraPremiumHigh
     );
     if (!drift) return undefined;
     const timer = setTimeout(() => {
@@ -340,11 +349,17 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     workerConfig.premiumClass,
     workerConfig.intraSellLowerPct,
     workerConfig.intraBuyOtherPct,
+    workerConfig.otcPremiumThresholdPct,
+    workerConfig.otcMinIntraPremiumLow,
+    workerConfig.otcMinIntraPremiumHigh,
     prefs?.benchmarkCodes,
     prefs?.enabledCodes,
     prefs?.premiumClass,
     prefs?.intraSellLowerPct,
     prefs?.intraBuyOtherPct,
+    prefs?.otcPremiumThresholdPct,
+    prefs?.otcMinIntraPremiumLow,
+    prefs?.otcMinIntraPremiumHigh,
     persistWorkerConfig,
     workerConfig
   ]);
