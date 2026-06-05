@@ -1,4 +1,5 @@
-import { Bell, ChevronDown, ChevronUp, ExternalLink, Laptop, Loader2, Save, Send, Wifi, WifiOff } from 'lucide-react';
+import { useState } from 'react';
+import { Bell, ChevronDown, ChevronUp, ExternalLink, Info, Laptop, Loader2, Save, Send, Wifi, WifiOff, X } from 'lucide-react';
 import { formatEventTimeLabel } from '../app/tradePlansHelpers.js';
 import {
   Card,
@@ -9,6 +10,8 @@ import {
   primaryButtonClass,
   secondaryButtonClass
 } from '../components/experience-ui.jsx';
+
+const BARK_EXAMPLE_IMAGE_URL = 'https://bark.day.app/_media/example.jpg';
 
 export function NotifyConfigCard({
   isConfigCollapsed,
@@ -40,6 +43,7 @@ export function NotifyConfigCard({
   const isServerChan3Configured = Boolean(summary?.serverChan3Configured || serverChan3Configured || notifySetup?.serverChan3?.configured);
   const serverChan3StatusLabel = isServerChan3Configured ? '已配置' : '未配置';
   const hasAnyChannel = Boolean(barkConfigured || isServerChan3Configured || webNotifyEnabled);
+  const [isBarkTipOpen, setBarkTipOpen] = useState(false);
 
   return (
     <Card className="min-w-0">
@@ -334,7 +338,18 @@ export function NotifyConfigCard({
             ) : (
               <div role="tabpanel" id="notify-panel">
                 <h3 className="text-base font-bold text-slate-900">iOS Bark 配置</h3>
-                <div className="mt-4 text-sm font-semibold text-slate-900">iOS Bark 链接或 Device Key</div>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <div className="text-sm font-semibold text-slate-900">iOS Bark 链接或 Device Key</div>
+                  <button
+                    type="button"
+                    className="inline-flex h-7 items-center gap-1 rounded-full border border-indigo-100 bg-indigo-50 px-2.5 text-xs font-semibold text-indigo-700 transition-colors hover:border-indigo-200 hover:bg-indigo-100"
+                    onClick={() => setBarkTipOpen(true)}
+                    aria-label="查看 iOS Bark 链接示例图"
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                    tips
+                  </button>
+                </div>
                 <p className="mt-2 text-sm leading-6 text-slate-500">
                   可以粘贴完整 Bark 链接，例如 https://api.day.app/xxx/推送内容；系统会自动提取 Device Key。
                 </p>
@@ -353,6 +368,34 @@ export function NotifyConfigCard({
                     {notifyConfig.barkDeviceKey.trim() ? null : <span className="text-xs text-slate-400">粘贴 Bark 链接或 Device Key 后可保存</span>}
                   </div>
                 </div>
+                {isBarkTipOpen ? (
+                  <div
+                    className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/70 p-4"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="iOS Bark 链接示例图"
+                    onClick={() => setBarkTipOpen(false)}
+                  >
+                    <div
+                      className="relative max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-white p-3 shadow-2xl"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-slate-500 shadow hover:bg-white hover:text-slate-800"
+                        onClick={() => setBarkTipOpen(false)}
+                        aria-label="关闭 Bark 示例图"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                      <img
+                        src={BARK_EXAMPLE_IMAGE_URL}
+                        alt="Bark 示例：复制完整 Bark 链接或 Device Key"
+                        className="mx-auto max-h-[84vh] w-auto rounded-xl object-contain"
+                      />
+                    </div>
+                  </div>
+                ) : null}
               </div>
             )}
           </div>

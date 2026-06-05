@@ -69,6 +69,12 @@ test.describe('workspace smoke', () => {
 
     await page.getByRole('tab', { name: /^iOS$/ }).click();
     await expect(page.getByRole('tab', { name: /^iOS$/ })).toHaveAttribute('aria-selected', 'true');
+    await page.getByRole('button', { name: '查看 iOS Bark 链接示例图' }).click();
+    const barkTipDialog = page.getByRole('dialog', { name: 'iOS Bark 链接示例图' });
+    await expect(barkTipDialog).toBeVisible();
+    await expect(barkTipDialog.getByRole('img', { name: /Bark 示例/ })).toHaveAttribute('src', 'https://bark.day.app/_media/example.jpg');
+    await barkTipDialog.getByRole('button', { name: '关闭 Bark 示例图' }).click();
+    await expect(barkTipDialog).toBeHidden();
     const iosInput = page.getByLabel('Bark 链接或 Device Key');
     await iosInput.fill('https://api.day.app/e2e-device-key/Smoke');
     await expect(iosInput).toHaveValue(/api\.day\.app|e2e-device-key/);
