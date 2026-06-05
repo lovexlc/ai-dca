@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  buildSwitchConfigSyncKey,
   buildDefaultSwitchConfig,
   normalizeSwitchConfigShape
 } from '../src/app/switchStrategySync.js';
@@ -56,6 +57,31 @@ test('switch config sync keeps OTC thresholds in frontend shape', () => {
   assert.equal(normalized.otcPremiumThresholdPct, 9.5);
   assert.equal(normalized.otcMinIntraPremiumLow, 0.5);
   assert.equal(normalized.otcMinIntraPremiumHigh, 1.5);
+});
+
+test('frontend switch config sync key ignores metadata and numeric string shape', () => {
+  const first = buildSwitchConfigSyncKey({
+    ...BASE_CONFIG,
+    updatedAt: '2026-06-04T01:00:00.000Z',
+    clientLabel: 'browser-a'
+  });
+  const sameEffectiveConfig = buildSwitchConfigSyncKey({
+    ...BASE_CONFIG,
+    benchmarkCodes: ['513100'],
+    enabledCodes: ['159501'],
+    otcPremiumThresholdPct: '9.5',
+    otcMinIntraPremiumLow: '0.5',
+    otcMinIntraPremiumHigh: '1.5',
+    updatedAt: '2026-06-04T01:01:00.000Z',
+    clientLabel: 'browser-b'
+  });
+  const changedThreshold = buildSwitchConfigSyncKey({
+    ...BASE_CONFIG,
+    otcPremiumThresholdPct: 10
+  });
+
+  assert.equal(first, sameEffectiveConfig);
+  assert.notEqual(first, changedThreshold);
 });
 
 test('notify worker switch config keeps OTC thresholds after normalization', () => {

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { readLedgerState, persistLedgerState } from '../app/holdingsLedger.js';
 import { aggregateByCode, buildTransactionId, detectFundKind, normalizeTransaction } from '../app/holdingsLedgerCore.js';
 import { getNavSnapshots } from '../app/navService.js';
 import {
+  buildSwitchConfigSyncKey,
   loadSwitchConfigFromWorker,
   loadSwitchSnapshotFromWorker,
   normalizeSwitchConfigShape,
@@ -68,6 +69,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     lastSyncedAt: ''
   });
   const [workerConfigExpanded, setWorkerConfigExpanded] = useState(false);
+  const postConfigRunKeyRef = useRef('');
   // “所有纳指 ETF（未分类）”折叠状态：当 H/L 组都有内容时默认折叠。
   const [nasdaqPoolExpanded, setNasdaqPoolExpanded] = useState(true);
   const [nasdaqPoolTouched, setNasdaqPoolTouched] = useState(false);
@@ -205,14 +207,20 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       }));
       // 配置推完后马上跳一次 worker run，让页面的「场内信号」立刻拿到新 prefs
       // 计算出的 snapshot.signals（不启用监控时 worker 也会计 snapshot、仅不推送）。
+      // 同一份归一化配置只自动 run 一次；否则保存响应中的 metadata 或重复 autosave
+      // 会把 /switch/run 放大成连续请求。
       try {
-        const runPayload = await runSwitchOnce();
-        if (runPayload?.snapshot) setWorkerSnapshot(runPayload.snapshot);
-        trackActionResult('switch_strategy', 'worker_post_config_run', 'success', {
-          triggeredCount: Number(runPayload?.summary?.triggered || 0),
-          pushedCount: Number(runPayload?.summary?.pushed || 0),
-          hasSnapshot: Boolean(runPayload?.snapshot)
-        });
+        const runKey = buildSwitchConfigSyncKey(stored);
+        if (postConfigRunKeyRef.current !== runKey) {
+          postConfigRunKeyRef.current = runKey;
+          const runPayload = await runSwitchOnce();
+          if (runPayload?.snapshot) setWorkerSnapshot(runPayload.snapshot);
+          trackActionResult('switch_strategy', 'worker_post_config_run', 'success', {
+            triggeredCount: Number(runPayload?.summary?.triggered || 0),
+            pushedCount: Number(runPayload?.summary?.pushed || 0),
+            hasSnapshot: Boolean(runPayload?.snapshot)
+          });
+        }
       } catch (runErr) {
         // 静默失败：下一轮定时拉取会填上，不覆盖 saving notice。
         if (typeof console !== 'undefined') console.warn('[switch] post-config run failed', runErr);
@@ -288,6 +296,37 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     }
   }, [workerConfig, persistWorkerConfig, prefs]);
 
+  const desiredWorkerConfig = useMemo(() => normalizeSwitchConfigShape({
+    // enabled 保留开关状态：未启用时仍然同步配置，worker run 仅计不推。
+    enabled: Boolean(workerConfig.enabled),
+    benchmarkCodes: prefs?.benchmarkCodes || [],
+    enabledCodes: prefs?.enabledCodes || [],
+    premiumClass: prefs?.premiumClass || {},
+    intraSellLowerPct: prefs?.intraSellLowerPct,
+    intraBuyOtherPct: prefs?.intraBuyOtherPct,
+    otcPremiumThresholdPct: prefs?.otcPremiumThresholdPct,
+    otcMinIntraPremiumLow: prefs?.otcMinIntraPremiumLow,
+    otcMinIntraPremiumHigh: prefs?.otcMinIntraPremiumHigh
+  }), [
+    workerConfig.enabled,
+    prefs?.benchmarkCodes,
+    prefs?.enabledCodes,
+    prefs?.premiumClass,
+    prefs?.intraSellLowerPct,
+    prefs?.intraBuyOtherPct,
+    prefs?.otcPremiumThresholdPct,
+    prefs?.otcMinIntraPremiumLow,
+    prefs?.otcMinIntraPremiumHigh
+  ]);
+  const desiredWorkerConfigKey = useMemo(
+    () => buildSwitchConfigSyncKey(desiredWorkerConfig),
+    [desiredWorkerConfig]
+  );
+  const workerConfigKey = useMemo(
+    () => buildSwitchConfigSyncKey(workerConfig),
+    [workerConfig]
+  );
+
   // prefs 变动同步到 worker（debounce 800ms）。
   // v4：不再受 enabled 制约 —— 只要本地 prefs 与 worker 存的不一致就推。UI 现在统一
   // 渲染 worker 计算的 signals，必须保证 worker 这边的 benchmarkCodes / premiumClass 始终
@@ -300,68 +339,18 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     //   POST /switch/config，浏览器看上去一直在刷新。
     // 同理各类阈值若为 NaN，归一化会 fallback 到
     // 默认值，也会形成同款死循环。
-    const desired = normalizeSwitchConfigShape({
-      ...workerConfig,
-      // enabled 保留开关状态：未启用时仍然同步配置，worker run 仅计不推。
-      enabled: Boolean(workerConfig.enabled),
-      benchmarkCodes: prefs?.benchmarkCodes || [],
-      enabledCodes: prefs?.enabledCodes || [],
-      premiumClass: prefs?.premiumClass || {},
-      intraSellLowerPct: prefs?.intraSellLowerPct,
-      intraBuyOtherPct: prefs?.intraBuyOtherPct,
-      otcPremiumThresholdPct: prefs?.otcPremiumThresholdPct,
-      otcMinIntraPremiumLow: prefs?.otcMinIntraPremiumLow,
-      otcMinIntraPremiumHigh: prefs?.otcMinIntraPremiumHigh
-    });
-    if (!desired.benchmarkCodes.length) return undefined;
-    const sameCodes = (a, b) => {
-      if (a.length !== b.length) return false;
-      const sa = a.slice().sort();
-      const sb = b.slice().sort();
-      return sa.every((v, i) => v === sb[i]);
-    };
-    const sameClassMap = (a, b) => {
-      const ka = Object.keys(a || {}).sort();
-      const kb = Object.keys(b || {}).sort();
-      if (ka.length !== kb.length) return false;
-      return ka.every((k, i) => k === kb[i] && a[k] === b[k]);
-    };
-    const drift = (
-      !sameCodes(workerConfig.benchmarkCodes || [], desired.benchmarkCodes)
-      || !sameCodes(workerConfig.enabledCodes || [], desired.enabledCodes)
-      || !sameClassMap(workerConfig.premiumClass || {}, desired.premiumClass)
-      || Number(workerConfig.intraSellLowerPct) !== desired.intraSellLowerPct
-      || Number(workerConfig.intraBuyOtherPct) !== desired.intraBuyOtherPct
-      || Number(workerConfig.otcPremiumThresholdPct) !== desired.otcPremiumThresholdPct
-      || Number(workerConfig.otcMinIntraPremiumLow) !== desired.otcMinIntraPremiumLow
-      || Number(workerConfig.otcMinIntraPremiumHigh) !== desired.otcMinIntraPremiumHigh
-    );
-    if (!drift) return undefined;
+    if (!desiredWorkerConfig.benchmarkCodes.length) return undefined;
+    if (workerConfigKey === desiredWorkerConfigKey) return undefined;
     const timer = setTimeout(() => {
       // 直接下发已归一化的 desired，避免 server 再次裁剪后产生新的状态差。
-      void persistWorkerConfig(desired);
+      void persistWorkerConfig(desiredWorkerConfig);
     }, 800);
     return () => clearTimeout(timer);
   }, [
-    workerConfig.enabled,
-    workerConfig.benchmarkCodes,
-    workerConfig.enabledCodes,
-    workerConfig.premiumClass,
-    workerConfig.intraSellLowerPct,
-    workerConfig.intraBuyOtherPct,
-    workerConfig.otcPremiumThresholdPct,
-    workerConfig.otcMinIntraPremiumLow,
-    workerConfig.otcMinIntraPremiumHigh,
-    prefs?.benchmarkCodes,
-    prefs?.enabledCodes,
-    prefs?.premiumClass,
-    prefs?.intraSellLowerPct,
-    prefs?.intraBuyOtherPct,
-    prefs?.otcPremiumThresholdPct,
-    prefs?.otcMinIntraPremiumLow,
-    prefs?.otcMinIntraPremiumHigh,
+    desiredWorkerConfig,
+    desiredWorkerConfigKey,
     persistWorkerConfig,
-    workerConfig
+    workerConfigKey
   ]);
 
   // 自动刷新「worker 最近一次计算」：从 worker 拉取 snapshot（只保留最后一条）。

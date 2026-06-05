@@ -116,6 +116,23 @@ export function normalizeSwitchConfigShape(input = {}) {
   };
 }
 
+export function buildSwitchConfigSyncKey(input = {}) {
+  const normalized = normalizeSwitchConfigShape(input);
+  const premiumEntries = Object.entries(normalized.premiumClass || {})
+    .sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify({
+    enabled: Boolean(normalized.enabled),
+    benchmarkCodes: (normalized.benchmarkCodes || []).slice().sort(),
+    enabledCodes: (normalized.enabledCodes || []).slice().sort(),
+    premiumClass: premiumEntries,
+    intraSellLowerPct: normalized.intraSellLowerPct,
+    intraBuyOtherPct: normalized.intraBuyOtherPct,
+    otcPremiumThresholdPct: normalized.otcPremiumThresholdPct,
+    otcMinIntraPremiumLow: normalized.otcMinIntraPremiumLow,
+    otcMinIntraPremiumHigh: normalized.otcMinIntraPremiumHigh
+  });
+}
+
 function sanitizeFundCode(value) {
   const code = String(value || '').trim();
   return FUND_CODE_PATTERN.test(code) ? code : '';
