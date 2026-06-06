@@ -277,11 +277,16 @@ async function handleAdminAnalytics(request, env, origin) {
     COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), visitor_id)) AS users
     FROM analytics_events WHERE event_date >= ? AND type = 'premium_survey_submit'`).bind(since).first();
   const premiumSurveyInterestRows = await env.DB.prepare(`SELECT
-    value AS key,
+    interest.value AS key,
     COUNT(*) AS count
-    FROM analytics_events, json_each(json_extract(meta, '$.interestOptions'))
-    WHERE event_date >= ? AND type = 'premium_survey_submit' AND value IS NOT NULL AND value != ''
-    GROUP BY value ORDER BY count DESC LIMIT 20`).bind(since).all();
+    FROM analytics_events AS event,
+      json_each(CASE
+        WHEN json_valid(event.meta) AND json_type(event.meta, '$.interestOptions') = 'array'
+          THEN json_extract(event.meta, '$.interestOptions')
+        ELSE '[]'
+      END) AS interest
+    WHERE event.event_date >= ? AND event.type = 'premium_survey_submit' AND interest.value IS NOT NULL AND interest.value != ''
+    GROUP BY interest.value ORDER BY count DESC LIMIT 20`).bind(since).all();
   const premiumSurveyPriceRows = await env.DB.prepare(`SELECT
     COALESCE(json_extract(meta, '$.priceOption'), '') AS key,
     COUNT(*) AS count
