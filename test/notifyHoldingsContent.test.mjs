@@ -79,7 +79,7 @@ test('notify holdings trusts explicit qdii kind from digest without metadata env
   assert.equal(result.contributors[0].kind, 'qdii');
 });
 
-test('notify holdings identifies known QDII by full code table without metadata env', async () => {
+test('notify holdings does not identify QDII without project-provided kind', async () => {
   const result = await computeWeightedReturn([{
     code: '021778',
     weight: 1
@@ -92,9 +92,8 @@ test('notify holdings identifies known QDII by full code table without metadata 
     }
   }, '2026-06-03', 'otc', null);
 
-  assert.equal(result.ready, true);
-  assert.equal(result.contributors.length, 1);
-  assert.equal(result.contributors[0].kind, 'qdii');
+  assert.equal(result.ready, false);
+  assert.equal(result.contributors.length, 0);
 });
 
 test('notify holdings exchange return uses market price fields instead of fund NAV', async () => {

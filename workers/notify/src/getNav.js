@@ -44,9 +44,26 @@ function fundMetricsUrl(baseUrl, { refresh = false } = {}) {
   return `${stripTrailingSlash(baseUrl || DEFAULT_PUBLIC_DATA_BASE_URL)}/api/markets/fund-metrics${query ? `?${query}` : ''}`;
 }
 
-async function fetchFundMetricsMap(env, codes = [], { refresh = false } = {}) {
+function normalizeFundKind(value = '') {
+  const kind = String(value || '').trim().toLowerCase();
+  return kind === 'exchange' || kind === 'qdii' || kind === 'otc' ? kind : '';
+}
+
+function normalizeFundKindHints(codes = [], fundKinds = {}) {
+  const out = {};
+  for (const code of codes) {
+    const c = sanitizeCode(code);
+    if (!c) continue;
+    const kind = normalizeFundKind(fundKinds?.[c] || fundKinds?.[code]);
+    if (kind) out[c] = kind;
+  }
+  return out;
+}
+
+async function fetchFundMetricsMap(env, codes = [], { refresh = false, fundKinds = {} } = {}) {
   const list = Array.from(new Set(codes.map((c) => sanitizeCode(c)).filter(Boolean)));
   if (!list.length) return {};
+  const kindHints = normalizeFundKindHints(list, fundKinds);
   const url = fundMetricsUrl(publicDataBaseUrl(env), { refresh });
   const init = {
     method: 'POST',
@@ -54,7 +71,7 @@ async function fetchFundMetricsMap(env, codes = [], { refresh = false } = {}) {
       accept: 'application/json',
       'content-type': 'application/json'
     },
-    body: JSON.stringify({ codes: list, refresh }),
+    body: JSON.stringify({ codes: list, refresh, fundKinds: kindHints }),
     cf: { cacheTtl: refresh ? 0 : 15, cacheEverything: false }
   };
   const response = env?.MARKETS && typeof env.MARKETS.fetch === 'function'
@@ -398,10 +415,10 @@ export function isExchangeFundCode(code) {
 
 // Legacy API name kept for existing notify switch-strategy callers.
 // The implementation no longer calls Sina directly; it is backed by markets/fund-metrics.
-export async function fetchSinaPrices(codes = [], env = null, { refresh = false } = {}) {
+export async function fetchSinaPrices(codes = [], env = null, { refresh = false, fundKinds = {} } = {}) {
   const list = Array.from(new Set(codes.map((c) => sanitizeCode(c)).filter(Boolean)));
   if (!list.length) return {};
-  const metrics = await fetchFundMetricsMap(env, list, { refresh });
+  const metrics = await fetchFundMetricsMap(env, list, { refresh, fundKinds });
   const map = {};
   for (const code of list) {
     const quote = metricToPrice(metrics[code]);
@@ -427,12 +444,12 @@ function nowShanghaiIso() {
   return epochMsToShanghaiIso(Date.now());
 }
 
-export async function fetchFundNavSnapshot(code, generatedAt = nowShanghaiIso(), env = null) {
+export async function fetchFundNavSnapshot(code, generatedAt = nowShanghaiIso(), env = null, options = {}) {
   const normalized = String(code || '').trim();
   if (!/^\d{6}$/.test(normalized)) {
     throw new Error(`${code} 净值接口请求失败：无效基金代码。`);
   }
-  const metrics = await fetchFundMetricsMap(env, [normalized], { refresh: false });
+  const metrics = await fetchFundMetricsMap(env, [normalized], { refresh: false, fundKinds: options.fundKinds || {} });
   const snapshot = metricToHoldingSnapshot(metrics[normalized], generatedAt);
   if (!snapshot) throw new Error(`${normalized} fund-metrics 暂无可用净值/价格。`);
   return snapshot;

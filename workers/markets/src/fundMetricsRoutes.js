@@ -21,7 +21,6 @@ import {
   roundNumber,
   summarizeXueqiuError
 } from './marketRuntime.js';
-import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
 
 function firstPositiveNumber(...values) {
   for (const value of values) {
@@ -84,18 +83,19 @@ function derivePreviousValue(currentValue, changePercent = null, change = null) 
   return null;
 }
 
-function normalizeFundKindFromQuote(quote, exchange) {
-  if (exchange) return 'exchange';
-  if (isKnownQdiiFundCode(quote?.code || quote?.symbol)) return 'qdii';
-  const rawKind = String(quote?.fundKind || '').trim().toLowerCase();
-  if (rawKind === 'qdii' || rawKind === 'otc') return rawKind;
-  const typeCode = Number(quote?.fundTypeCode);
-  if (Number.isFinite(typeCode) && typeCode === 11) return 'qdii';
-  const fundType = String(quote?.fundType || quote?.typeDesc || '').trim().toUpperCase();
-  return fundType.includes('QDII') ? 'qdii' : 'otc';
+function normalizeFundKindHint(value = '') {
+  const raw = String(value || '').trim().toLowerCase();
+  return raw === 'exchange' || raw === 'qdii' || raw === 'otc' ? raw : '';
 }
 
-export function normalizeFundMetricFromQuote(code, quote, { cached = false, cachePolicy = '', primaryError = '', exchange = isExchangeTradedFund(code) } = {}) {
+function normalizeFundKindFromQuote(quote, exchange, hintedKind = '') {
+  if (exchange) return 'exchange';
+  const normalizedHint = normalizeFundKindHint(hintedKind);
+  if (normalizedHint === 'qdii' || normalizedHint === 'otc') return normalizedHint;
+  return 'otc';
+}
+
+export function normalizeFundMetricFromQuote(code, quote, { cached = false, cachePolicy = '', primaryError = '', exchange = isExchangeTradedFund(code), fundKind = '' } = {}) {
   const price = firstPositiveNumber(quote?.price, quote?.currentPrice, quote?.close);
   const latestNav = firstPositiveNumber(quote?.latestNav, !exchange ? quote?.currentPrice : null);
   const currentValue = exchange ? price : latestNav;
@@ -126,14 +126,14 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
   const marketState = exchange && quoteDate && quoteDate < todayDate
     ? 'CLOSED'
     : rawMarketState;
-  const fundKind = normalizeFundKindFromQuote(quote, exchange);
+  const resolvedFundKind = normalizeFundKindFromQuote(quote, exchange, fundKind || quote?.requestedFundKind);
   return {
     ok: !quote?.error,
     code: String(quote?.code || code || '').trim(),
     symbol: String(quote?.symbol || code || '').trim(),
     name: String(quote?.name || '').trim(),
     market: 'cn',
-    fundKind,
+    fundKind: resolvedFundKind,
     fundType: String(quote?.fundType || quote?.typeDesc || '').trim(),
     fundTypeCode: quote?.fundTypeCode ?? null,
     fullName: String(quote?.fullName || '').trim(),
@@ -195,7 +195,26 @@ function normalizeFundMetricCodes(codes = []) {
   return out;
 }
 
-async function readCachedFundMetric(env, cacheKey) {
+function normalizeFundKindHints(body = {}) {
+  const raw = body?.fundKinds && typeof body.fundKinds === 'object' ? body.fundKinds : {};
+  const out = {};
+  for (const [rawCode, rawKind] of Object.entries(raw)) {
+    const { market, code } = classifySymbol(rawCode);
+    const digits = String(code || rawCode || '').replace(/^(sh|sz|bj)/i, '');
+    const kind = normalizeFundKindHint(rawKind);
+    if (market === 'cn' && /^\d{6}$/.test(digits) && kind) out[digits] = kind;
+    if (!market && /^\d{6}$/.test(digits) && kind) out[digits] = kind;
+  }
+  for (const item of Array.isArray(body?.items) ? body.items : []) {
+    const { market, code } = classifySymbol(item?.code || item?.symbol || '');
+    const digits = String(code || '').replace(/^(sh|sz|bj)/i, '');
+    const kind = normalizeFundKindHint(item?.fundKind || item?.kind);
+    if (market === 'cn' && /^\d{6}$/.test(digits) && kind) out[digits] = kind;
+  }
+  return out;
+}
+
+async function readCachedFundMetric(env, cacheKey, fundKind = '') {
   const cached = await kvGetJson(env, cacheKey).catch(() => null);
   if (!cached || !cached.code) return null;
   const hasNav = Number(cached.latestNav) > 0;
@@ -210,7 +229,7 @@ async function readCachedFundMetric(env, cacheKey) {
       await kvPutJson(env, cacheKey, quote, { ttlSeconds: 24 * 3600 }).catch(() => {});
     }
   }
-  return normalizeFundMetricFromQuote(code, quote, { cached: true, cachePolicy: 'kv-closed-session' });
+  return normalizeFundMetricFromQuote(code, quote, { cached: true, cachePolicy: 'kv-closed-session', fundKind });
 }
 
 async function fetchDanjuanFundMetaWithCache(env, code) {
@@ -231,7 +250,7 @@ function isDanjuanUpdatedToday(updatedAtMs) {
   return shanghai === today;
 }
 
-async function fetchFreshFundMetric(env, code, cachePolicy) {
+async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '') {
   const cacheKey = 'fund-metrics:' + code;
   const exchange = isExchangeTradedFund(code);
   try {
@@ -242,7 +261,7 @@ async function fetchFreshFundMetric(env, code, cachePolicy) {
       const meta = await fetchDanjuanFundMetaWithCache(env, code).catch(() => null);
       if (meta) quote = { ...quote, ...meta };
     }
-    const item = normalizeFundMetricFromQuote(code, quote, { cached: false, cachePolicy, exchange });
+    const item = normalizeFundMetricFromQuote(code, quote, { cached: false, cachePolicy, exchange, fundKind });
     // 场内始终缓存；场外仅当 updated_at 是今天时缓存（净值已发布）
     const shouldCache = exchange || isDanjuanUpdatedToday(quote?.updatedAt);
     if (shouldCache) {
@@ -303,6 +322,7 @@ export async function handleFundMetrics(env, body = {}, params = new URLSearchPa
   const codes = normalizeFundMetricCodes(rawCodes);
   if (!codes.length) return errorJson('missing valid cn fund codes', 400);
   if (codes.length > 60) return errorJson('codes too many (max 60)', 400);
+  const fundKindHints = normalizeFundKindHints(body);
 
   const forceRefresh = body?.refresh === true || params.get('refresh') === '1';
   const { weekday, minuteOfDay } = getShanghaiTradingMinute();
@@ -312,6 +332,7 @@ export async function handleFundMetrics(env, body = {}, params = new URLSearchPa
   const items = await mapLimit(codes, 5, async (code) => {
     const cacheKey = 'fund-metrics:' + code;
     const exchange = isExchangeTradedFund(code);
+    const requestedKind = exchange ? 'exchange' : normalizeFundKindHint(fundKindHints[code]);
     // 场内：盘中拉活数据，非交易时段读缓存
     // 场外：周末/节假日始终读缓存；交易日盘中读缓存，盘后拉活数据并按 updated_at 判断是否缓存
     let codeShouldReadCache;
@@ -327,10 +348,10 @@ export async function handleFundMetrics(env, body = {}, params = new URLSearchPa
       ? 'kv-closed-session'
       : (forceRefresh ? 'live-refresh' : (exchange ? 'live-trading-session' : 'live-post-close'));
     if (codeShouldReadCache) {
-      const cached = await readCachedFundMetric(env, cacheKey);
+      const cached = await readCachedFundMetric(env, cacheKey, requestedKind);
       if (cached) return cached;
     }
-    return await fetchFreshFundMetric(env, code, codeCachePolicy);
+    return await fetchFreshFundMetric(env, code, codeCachePolicy, requestedKind);
   });
 
   return json({

@@ -116,7 +116,7 @@ export async function fetchHoldingsNavSnapshots(env, codes = [], options = {}) {
 
   if (exchangeMissing.length) {
     try {
-      const priceMap = await fetchSinaPrices(exchangeMissing, env, { refresh: refreshExchange });
+      const priceMap = await fetchSinaPrices(exchangeMissing, env, { refresh: refreshExchange, fundKinds: kindByCode });
       let priceCount = 0;
       for (const code of exchangeMissing) {
         const quote = priceMap?.[code];
@@ -178,7 +178,7 @@ export async function fetchHoldingsNavSnapshots(env, codes = [], options = {}) {
         const code = queue.shift();
         if (!code) continue;
         try {
-          const snap = await fetchFundNavSnapshot(code, generatedAt, env);
+          const snap = await fetchFundNavSnapshot(code, generatedAt, env, { fundKinds: kindByCode });
           results.push(snap);
         } catch (fetchErr) {
           results.push({

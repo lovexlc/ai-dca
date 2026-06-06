@@ -3,8 +3,6 @@ import fs from 'node:fs/promises';
 const FUND_CODE_SEARCH_URL = 'https://fund.eastmoney.com/js/fundcode_search.js';
 const DATA_OUT = 'data/all_qdii.json';
 const APP_CODES_OUT = 'src/app/qdiiFundCodes.js';
-const MARKETS_CODES_OUT = 'workers/markets/src/qdiiFundCodes.js';
-const WORKER_CODES_OUT = 'workers/notify/src/qdiiFundCodes.js';
 
 function parseFundCodeSearch(text = '') {
   const match = String(text).match(/var\s+r\s*=\s*(\[[\s\S]*\]);?/);
@@ -87,8 +85,6 @@ async function main() {
 
   await fs.writeFile(DATA_OUT, `${JSON.stringify(payload, null, 2)}\n`);
   await fs.writeFile(APP_CODES_OUT, buildCodeModule(qdii, { includeNames: true }));
-  await fs.writeFile(MARKETS_CODES_OUT, buildCodeModule(qdii));
-  await fs.writeFile(WORKER_CODES_OUT, buildCodeModule(qdii));
   console.log(JSON.stringify({ generatedAt, count: qdii.length, sample: qdii.slice(0, 5) }, null, 2));
 }
 

@@ -1,16 +1,8 @@
-import { getNearestTradingDayShanghai, getPreviousTradingDayShanghai } from './holidaysCN.js';
 import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
+import { getNearestTradingDayShanghai, getPreviousTradingDayShanghai } from './holidaysCN.js';
 
 export const FUND_CODE_PATTERN = /^\d{6}$/;
 export const EXCHANGE_PREFIXES = ['15', '50', '51', '52', '56', '58', '53', '54'];
-
-const QDII_NAME_KEYWORDS = [
-  'QDII', '纳指', '纳斯达克', '标普', 'S&P', '美国', '美股', '北美',
-  '香港', '恒生', 'H股', '港股',
-  '日经', '日本', '德国', '法国', '英国', '欧洲', '欧洲股',
-  '亚太', '亚洲', '新兴市场', '印度', '越南', '东南亚', '中东', '沙特', '俄罗斯',
-  '全球', '海外', '国际', '中概互联', '中概', '原油', '油气', '石油'
-];
 
 export const TRANSACTION_TYPES = ['BUY', 'SELL'];
 export const FUND_KINDS = ['otc', 'exchange', 'qdii'];
@@ -63,12 +55,7 @@ export function isValidFundCode(code = '') {
 
 export function detectQdiiByName(name = '', code = '') {
   const normalizedCode = normalizeFundCode(code);
-  if (normalizedCode && isKnownQdiiFundCode(normalizedCode)) {
-    return true;
-  }
-  const text = String(name || '').toUpperCase();
-  if (!text) return false;
-  return QDII_NAME_KEYWORDS.some((kw) => text.includes(String(kw).toUpperCase()));
+  return Boolean(normalizedCode && isKnownQdiiFundCode(normalizedCode));
 }
 
 export function detectFundKind(code = '', name = '') {

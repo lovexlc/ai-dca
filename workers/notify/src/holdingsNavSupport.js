@@ -1,6 +1,5 @@
-import { fetchFundMetricsForCodes, getLatestNavWithCache } from './getNav.js';
+import { getLatestNavWithCache } from './getNav.js';
 import { readJson, writeJson } from './notifyStorage.js';
-import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
 
 export const HOLDINGS_RULE_KEY_PREFIX = 'holdings-rule:';
 const HOLDINGS_DEDUP_KEY_PREFIX = 'holdings-dedup:';
@@ -27,29 +26,10 @@ export function hasConfirmedPushDelivery(runResult = {}) {
   });
 }
 
-function resolveKindFromMetric(metric) {
-  const code = String(metric?.code || '').trim();
-  if (isKnownQdiiFundCode(code)) return 'qdii';
-  const fundKind = String(metric?.fundKind || '').trim().toLowerCase();
-  if (fundKind === 'exchange' || fundKind === 'qdii' || fundKind === 'otc') return fundKind;
-  const typeCode = Number(metric?.fundTypeCode);
-  if (Number.isFinite(typeCode) && typeCode === 11) return 'qdii';
-  const fundType = String(metric?.fundType || '').trim().toUpperCase();
-  return fundType.includes('QDII') ? 'qdii' : '';
-}
-
 export async function resolveHoldingKindAsync(code, bucketKind, env) {
-  const codeStr = String(code || '');
-  if (bucketKind === 'exchange') return 'exchange';
-  if (isKnownQdiiFundCode(codeStr)) return 'qdii';
-  try {
-    const metrics = await fetchFundMetricsForCodes(env, [codeStr], { refresh: false });
-    const resolved = resolveKindFromMetric(metrics?.[codeStr]);
-    if (resolved) return resolved;
-  } catch (_e) {
-    // 元数据不可用时按原 bucket 处理，不做名称/代码猜测。
-  }
-  return bucketKind || 'otc';
+  const kind = String(bucketKind || '').trim().toLowerCase();
+  if (kind === 'exchange' || kind === 'qdii' || kind === 'otc') return kind;
+  return 'otc';
 }
 
 export function isChinaMarketHoliday(dateStr) {

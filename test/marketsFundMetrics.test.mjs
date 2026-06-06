@@ -64,7 +64,7 @@ test('fund-metrics derives previousNav when source only has NAV and change perce
   assert.equal(item.changePercent, 0.254);
 });
 
-test('fund-metrics exposes Danjuan QDII metadata as fundKind', () => {
+test('fund-metrics keeps Danjuan QDII metadata without classifying from it', () => {
   const item = normalizeFundMetricFromQuote('008971', {
     code: '008971',
     latestNav: 6.5651,
@@ -76,12 +76,12 @@ test('fund-metrics exposes Danjuan QDII metadata as fundKind', () => {
     source: 'danjuan'
   }, { exchange: false });
 
-  assert.equal(item.fundKind, 'qdii');
+  assert.equal(item.fundKind, 'otc');
   assert.equal(item.fundType, 'QDII');
   assert.equal(item.fundTypeCode, 11);
 });
 
-test('fund-metrics identifies known QDII by full code table without metadata', () => {
+test('fund-metrics uses project-provided QDII kind hint', () => {
   const item = normalizeFundMetricFromQuote('021000', {
     code: '021000',
     latestNav: 2.3756,
@@ -89,7 +89,7 @@ test('fund-metrics identifies known QDII by full code table without metadata', (
     changePercent: -0.44,
     latestNavDate: '2026-06-04',
     source: 'danjuan'
-  }, { exchange: false });
+  }, { exchange: false, fundKind: 'qdii' });
 
   assert.equal(item.fundKind, 'qdii');
 });

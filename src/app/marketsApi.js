@@ -1,8 +1,10 @@
 // Markets API client. Talks to ai-dca-markets worker mounted at /api/markets/* on tools.freebacktrack.tech.
 
 import { apiUrl } from './apiBase.js';
+import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
 
 const DEFAULT_BASE = 'https://tools.freebacktrack.tech/api/markets';
+const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '56', '58', '53', '54']);
 
 function resolveBase() {
   if (typeof window !== 'undefined' && window.__MARKETS_API_BASE__) {
@@ -115,7 +117,13 @@ export async function fetchFundMetrics(codes, { refresh = false, signal } = {}) 
   if (!list.length) {
     return { items: [], successCount: 0, failureCount: 0, generatedAt: '', tradingSession: false, cachePolicy: '' };
   }
-  return postJson('/fund-metrics' + (refresh ? '?refresh=1' : ''), { codes: list, refresh }, { signal });
+  const fundKinds = Object.fromEntries(list.map((code) => {
+    const digits = String(code || '').replace(/^(sh|sz|bj)/i, '').replace(/\D/g, '');
+    const normalized = digits.length === 6 ? digits : code;
+    if (/^\d{6}$/.test(normalized) && EXCHANGE_PREFIXES.has(normalized.slice(0, 2))) return [normalized, 'exchange'];
+    return [normalized, isKnownQdiiFundCode(normalized) ? 'qdii' : 'otc'];
+  }));
+  return postJson('/fund-metrics' + (refresh ? '?refresh=1' : ''), { codes: list, refresh, fundKinds }, { signal });
 }
 
 export async function fetchFundFees(codes, { refresh = false, signal } = {}) {
