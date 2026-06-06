@@ -8,9 +8,9 @@ export function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate
   const canDelete = (item) => item?.id !== 'default' && (lists || []).length > 1;
   return (
     <div className="relative">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="inline-flex items-center gap-1 rounded-md px-1 py-1 text-[20px] leading-7 font-normal tracking-tight text-[#1f1f1f] hover:bg-[#f1f3f4]" title="列表切换">
-        <span>{active?.name || '列表'}</span>
-        <ChevronDown size={18} className="text-[#5f6368]" />
+      <button type="button" onClick={() => setOpen((v) => !v)} className="inline-flex max-w-[min(62vw,18rem)] items-center gap-1 rounded-md px-1 py-1 text-[17px] leading-6 font-normal tracking-tight text-[#1f1f1f] hover:bg-[#f1f3f4] sm:max-w-none sm:text-[20px] sm:leading-7" title="列表切换">
+        <span className="truncate whitespace-nowrap">{active?.name || '列表'}</span>
+        <ChevronDown size={18} className="shrink-0 text-[#5f6368]" />
       </button>
       {open ? (
         <div className="absolute left-0 top-full z-30 mt-1 w-64 overflow-hidden rounded-2xl border border-[#e8eaed] bg-white py-1 shadow-lg">
