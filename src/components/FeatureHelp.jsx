@@ -96,23 +96,29 @@ const HELP_CONTENT = {
           {
             text: '下载：在 iPhone 的 App Store 安装 Bark App。',
             image: {
-              // 把附件截图放到 public/strategy-guide/ 后，将下方 src 填成对应路径即可显示图片。
-              src: '',
+              src: '/strategy-guide/bark-example-step1.jpg',
               alt: '自动批准全部 MCP 工具（auto approve all mcp tools）设置截图',
               caption: '第一个红色图标：auto approve all mcp tools（自动批准全部 MCP 工具）'
             }
           },
-          '打开复制链接：打开 Bark App，复制它显示的完整推送链接（形如 https://api.day.app/xxx/推送内容）。',
-          '填入网页：在本网页「通知」页切到「iOS」标签，把整段链接或 Device Key 粘贴进输入框，点「保存 Bark 配置」（系统会自动提取 Device Key）。',
+          {
+            text: '打开复制链接：打开 Bark App，复制它显示的完整推送链接（形如 https://api.day.app/xxx/推送内容）。',
+            image: {
+              src: BARK_EXAMPLE_IMAGE_URL,
+              alt: 'Bark 示例：复制完整 Bark 链接或 Device Key',
+              caption: '复制 Bark 里显示的完整链接或 Device Key'
+            }
+          },
+          {
+            text: '填入网页：在本网页「通知」页切到「iOS」标签，把整段链接或 Device Key 粘贴进输入框，点「保存 Bark 配置」（系统会自动提取 Device Key）。',
+            image: {
+              src: '/strategy-guide/bark-example-step3.jpg',
+              alt: 'iOS 填入 Bark 链接并保存配置示例',
+              caption: '粘贴链接 / Device Key 后点「保存 Bark 配置」'
+            }
+          },
           '测试消息发送：点「消息推送测试」，iPhone 上的 Bark 收到推送即配置成功。'
         ]
-      }
-    ],
-    screenshots: [
-      {
-        src: BARK_EXAMPLE_IMAGE_URL,
-        alt: 'Bark 示例：复制完整 Bark 链接或 Device Key',
-        caption: '复制 Bark 里显示的完整链接或 Device Key'
       }
     ]
   }
