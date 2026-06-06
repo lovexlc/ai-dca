@@ -1,10 +1,10 @@
 {
   "dataset": "etf_latest_nav_eastmoney",
-  "code": "513100",
-  "name": "国泰纳斯达克100ETF",
-  "latestNav": 2.205,
+  "code": "159509",
+  "name": "景顺长城纳斯达克科技ETF(QDII)",
+  "latestNav": 2.714,
   "latestNavDate": "2026-06-05",
-  "previousNav": 2.24,
+  "previousNav": 2.813,
   "previousNavDate": "",
   "source": "eastmoney:f10/lsjz",
   "generatedAt": "2026-06-06T04:51:14.005Z"

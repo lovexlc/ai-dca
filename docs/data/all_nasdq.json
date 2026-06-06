@@ -13,6 +13,11 @@
       "index_key": "nasdaq100"
     },
     {
+      "code": "159509",
+      "name": "景顺长城纳斯达克科技ETF(QDII)",
+      "index_key": "nasdaq100"
+    },
+    {
       "code": "159941",
       "name": "广发纳斯达克100ETF",
       "index_key": "nasdaq100"
@@ -65,6 +70,11 @@
     {
       "code": "159659",
       "name": "招商纳斯达克100ETF(QDII)",
+      "index_key": "nasdaq100"
+    },
+    {
+      "code": "161128",
+      "name": "易方达标普信息科技指数(QDII-LOF)A",
       "index_key": "nasdaq100"
     }
   ]

@@ -4,56 +4,16 @@
   "fund_name": "嘉实纳斯达克100ETF(QDII)",
   "index_key": "nasdaq100",
   "range": {
-    "start_date": "2024-05-30",
-    "end_date": "2026-05-29",
+    "start_date": "2024-06-06",
+    "end_date": "2026-06-05",
     "lookback_days": 730
   },
   "requested_bars": 700,
   "source": "sina:CN_MarketDataService.getKLineData",
   "source_symbol": "sz159501",
   "fund_list_source": "/home/runner/work/ai-dca/ai-dca/data/all_nasdq.json",
-  "generated_at": "2026-05-30T04:46:37.804Z",
+  "generated_at": "2026-06-06T04:51:10.673Z",
   "bars": [
-    {
-      "date": "2024-05-30",
-      "open": 1.274,
-      "close": 1.268,
-      "high": 1.274,
-      "low": 1.267,
-      "volume": 22577200
-    },
-    {
-      "date": "2024-05-31",
-      "open": 1.258,
-      "close": 1.26,
-      "high": 1.262,
-      "low": 1.256,
-      "volume": 53446100
-    },
-    {
-      "date": "2024-06-03",
-      "open": 1.265,
-      "close": 1.269,
-      "high": 1.269,
-      "low": 1.265,
-      "volume": 24593800
-    },
-    {
-      "date": "2024-06-04",
-      "open": 1.271,
-      "close": 1.265,
-      "high": 1.271,
-      "low": 1.264,
-      "volume": 19411814
-    },
-    {
-      "date": "2024-06-05",
-      "open": 1.273,
-      "close": 1.273,
-      "high": 1.276,
-      "low": 1.271,
-      "volume": 18164700
-    },
     {
       "date": "2024-06-06",
       "open": 1.299,
@@ -3885,6 +3845,46 @@
       "high": 2.123,
       "low": 2.093,
       "volume": 112159500
+    },
+    {
+      "date": "2026-06-01",
+      "open": 2.151,
+      "close": 2.2,
+      "high": 2.214,
+      "low": 2.145,
+      "volume": 226321100
+    },
+    {
+      "date": "2026-06-02",
+      "open": 2.2,
+      "close": 2.185,
+      "high": 2.209,
+      "low": 2.13,
+      "volume": 163818331
+    },
+    {
+      "date": "2026-06-03",
+      "open": 2.185,
+      "close": 2.153,
+      "high": 2.202,
+      "low": 2.13,
+      "volume": 146754125
+    },
+    {
+      "date": "2026-06-04",
+      "open": 2.12,
+      "close": 2.107,
+      "high": 2.131,
+      "low": 2.104,
+      "volume": 114988896
+    },
+    {
+      "date": "2026-06-05",
+      "open": 2.094,
+      "close": 2.087,
+      "high": 2.111,
+      "low": 2.064,
+      "volume": 115968294
     }
   ]
 }
