@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUp, Loader2, Search, Sparkles, Star, X } from 'lucide-react';
 import { fetchKline, fetchQuotes, searchSymbols, CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsApi.js';
 import { getNavHistory, getNavSnapshot } from '../../app/navService.js';
+import { getXueqiuQuote } from '../../app/xueqiuQuote.js';
 import { Sparkline } from '../../components/markets/Sparkline.jsx';
 import { cx } from '../../components/experience-ui.jsx';
 import {
@@ -16,7 +17,7 @@ import {
   SymbolDetailChart,
   TOOLBAR_ICONS,
 } from './MarketChartPanel.jsx';
-import { CnFundFlowPanel, CnFundReportPanel, FinancialsPanel, detailValueRow, formatCnAmount, formatCnMoney, formatXueqiuDateMs, getXueqiuQuote } from './MarketFinancialPanels.jsx';
+import { CnFundFlowPanel, CnFundReportPanel, FinancialsPanel, detailValueRow, formatCnAmount, formatCnMoney, formatXueqiuDateMs } from './MarketFinancialPanels.jsx';
 import { EarningsCalendar, NewsList, formatClock } from './MarketNewsPanels.jsx';
 import {
   CHART_RANGE_TABS,

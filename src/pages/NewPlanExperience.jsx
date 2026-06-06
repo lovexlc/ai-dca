@@ -23,10 +23,11 @@ import {
   strategyOptions
 } from '../app/newPlan.js';
 import { EXTRA_SYMBOL_CODES, findExtraSymbol } from '../app/extraSymbols.js';
-import { fetchKline, fetchQuote } from '../app/marketsApi.js';
+import { fetchKline, fetchQuote, fetchXueqiuFundData } from '../app/marketsApi.js';
 import { getAssetType, getAssetTypeLabel, getStrategyParams } from '../app/assetType.js';
 import { validateScreening } from '../app/stockScreener.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
+import { getXueqiuQuote, resolveQuotePeakPrice } from '../app/xueqiuQuote.js';
 
 const PLAN_STEPS = [
   { id: 1, title: '选标的' },
@@ -70,7 +71,8 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     multiplierBase: 1,
     multiplierStep: 0.5
   });
-  const [extraQuote, setExtraQuote] = useState({ symbol: '', price: 0, currency: '', asOf: '', loading: false, error: '' });
+  const [extraQuote, setExtraQuote] = useState({ symbol: '', price: 0, high52w: 0, currency: '', asOf: '', loading: false, error: '' });
+  const [xueqiuQuoteState, setXueqiuQuoteState] = useState({ symbol: '', quote: null, loading: false, error: '' });
   const [screeningAnswers, setScreeningAnswers] = useState(() => readPlanState().screeningAnswers || {});
   const [planStep, setPlanStep] = useState(1);
   const [maxUnlockedStep, setMaxUnlockedStep] = useState(1);
@@ -99,7 +101,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   useEffect(() => {
     const sym = String(state.symbol || '').trim().toUpperCase();
     if (!sym || !EXTRA_SYMBOL_CODES.has(sym)) {
-      setExtraQuote({ symbol: '', price: 0, currency: '', asOf: '', loading: false, error: '' });
+      setExtraQuote({ symbol: '', price: 0, high52w: 0, currency: '', asOf: '', loading: false, error: '' });
       return undefined;
     }
     let cancelled = false;
@@ -107,11 +109,19 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     trackFeatureEvent('new_plan', 'extra_quote_refresh_start', {
       symbolLength: sym.length
     });
-    setExtraQuote({ symbol: sym, price: 0, currency: '', asOf: '', loading: true, error: '' });
+    setExtraQuote({ symbol: sym, price: 0, high52w: 0, currency: '', asOf: '', loading: true, error: '' });
     fetchQuote(sym).then((q) => {
       if (cancelled) return;
       const price = Number(q?.price) || 0;
-      setExtraQuote({ symbol: sym, price, currency: String(q?.currency || ''), asOf: String(q?.asOf || ''), loading: false, error: '' });
+      setExtraQuote({
+        symbol: sym,
+        price,
+        high52w: resolveQuotePeakPrice(q),
+        currency: String(q?.currency || ''),
+        asOf: String(q?.asOf || ''),
+        loading: false,
+        error: ''
+      });
       trackActionResult('new_plan', 'extra_quote_refresh', price > 0 ? 'success' : 'empty', {
         symbolLength: sym.length,
         hasPrice: price > 0,
@@ -120,7 +130,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       });
     }).catch((err) => {
       if (cancelled) return;
-      setExtraQuote({ symbol: sym, price: 0, currency: '', asOf: '', loading: false, error: err instanceof Error ? err.message : '行情获取失败' });
+      setExtraQuote({ symbol: sym, price: 0, high52w: 0, currency: '', asOf: '', loading: false, error: err instanceof Error ? err.message : '行情获取失败' });
       trackActionResult('new_plan', 'extra_quote_refresh', 'error', {
         symbolLength: sym.length,
         durationMs: Date.now() - startedAt,
@@ -128,6 +138,44 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
         errorMessage: String(err?.message || err || '').slice(0, 160)
       });
     });
+    return () => { cancelled = true; };
+  }, [state.symbol]);
+
+  useEffect(() => {
+    const sym = String(state.symbol || '').trim().toUpperCase();
+    if (!sym || EXTRA_SYMBOL_CODES.has(sym) || !/^\d{6}$/.test(sym)) {
+      setXueqiuQuoteState({ symbol: '', quote: null, loading: false, error: '' });
+      return undefined;
+    }
+
+    let cancelled = false;
+    const startedAt = Date.now();
+    setXueqiuQuoteState({ symbol: sym, quote: null, loading: true, error: '' });
+    trackFeatureEvent('new_plan', 'xueqiu_peak_refresh_start', {
+      symbolLength: sym.length
+    });
+
+    fetchXueqiuFundData(sym, { raw: true }).then((payload) => {
+      if (cancelled) return;
+      const quote = getXueqiuQuote(payload);
+      const peakPrice = resolveQuotePeakPrice(quote);
+      setXueqiuQuoteState({ symbol: sym, quote, loading: false, error: '' });
+      trackActionResult('new_plan', 'xueqiu_peak_refresh', peakPrice > 0 ? 'success' : 'empty', {
+        symbolLength: sym.length,
+        hasPeakPrice: peakPrice > 0,
+        durationMs: Date.now() - startedAt
+      });
+    }).catch((err) => {
+      if (cancelled) return;
+      setXueqiuQuoteState({ symbol: sym, quote: null, loading: false, error: err instanceof Error ? err.message : '雪球高点获取失败' });
+      trackActionResult('new_plan', 'xueqiu_peak_refresh', 'error', {
+        symbolLength: sym.length,
+        durationMs: Date.now() - startedAt,
+        errorName: err?.name || '',
+        errorMessage: String(err?.message || err || '').slice(0, 160)
+      });
+    });
+
     return () => { cancelled = true; };
   }, [state.symbol]);
 
@@ -305,11 +353,23 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   const expectedDailySeriesCode = isSelectedExtraSymbol ? selectedSymbolCode : benchmarkFund?.code;
   const isSelectedDailySeriesReady = !expectedDailySeriesCode || (dailySeriesState.code === expectedDailySeriesCode && dailySeriesState.ready);
   const activeExtraQuotePrice = isSelectedExtraSymbol && extraQuote.symbol === selectedSymbolCode ? Number(extraQuote.price) || 0 : 0;
+  const activeExtraPeakPrice = isSelectedExtraSymbol && extraQuote.symbol === selectedSymbolCode ? resolveQuotePeakPrice(extraQuote) : 0;
+  const activeXueqiuPeakPrice = !isSelectedExtraSymbol && xueqiuQuoteState.symbol === selectedSymbolCode
+    ? resolveQuotePeakPrice(xueqiuQuoteState.quote)
+    : 0;
 
   const derivedStageHigh = useMemo(() => {
     const values = selectedDailySeries
       .flatMap((bar) => [Number(bar.high) || 0, Number(bar.close) || 0])
       .filter((value) => Number.isFinite(value) && value > 0);
+
+    if (activeXueqiuPeakPrice > 0) {
+      return activeXueqiuPeakPrice;
+    }
+
+    if (activeExtraPeakPrice > 0) {
+      return activeExtraPeakPrice;
+    }
 
     if (values.length) {
       return Math.max(...values);
@@ -320,7 +380,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     }
 
     return Number(benchmarkFund?.current_price) || Number(selectedFund?.current_price) || 0;
-  }, [activeExtraQuotePrice, benchmarkFund, isSelectedExtraSymbol, selectedDailySeries, selectedFund]);
+  }, [activeExtraPeakPrice, activeExtraQuotePrice, activeXueqiuPeakPrice, benchmarkFund, isSelectedExtraSymbol, selectedDailySeries, selectedFund]);
   const derivedMa120 = useMemo(
     () => {
       const ma120 = findLatestFiniteValue(buildMovingAverageValues(selectedDailySeries, 120));
@@ -348,7 +408,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       return;
     }
 
-    const syncKey = `${selectedSymbolCode}:${selectedStrategy}:${isSelectedExtraSymbol ? `${derivedStageHigh}:${derivedMa120}:${derivedMa200}` : benchmarkFund?.code}`;
+    const syncKey = `${selectedSymbolCode}:${selectedStrategy}:${benchmarkFund?.code || ''}:${derivedStageHigh}:${derivedMa120}:${derivedMa200}`;
     if (autoSeedRef.current === syncKey) {
       return;
     }

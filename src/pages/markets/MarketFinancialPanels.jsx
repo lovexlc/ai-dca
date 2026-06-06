@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Bar, CartesianGrid, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { getXueqiuQuote } from '../../app/xueqiuQuote.js';
 import { cx } from '../../components/experience-ui.jsx';
 import { formatNumber, formatSignedPercent } from './marketDisplayUtils.js';
 
@@ -27,9 +28,6 @@ export function formatXueqiuDateMs(value) {
 }
 function firstPairValue(value) {
   return Array.isArray(value) ? value[0] : value;
-}
-export function getXueqiuQuote(fundData) {
-  return fundData?.results?.quote_detail?.raw?.data?.quote || fundData?.results?.quote_detail?.summary?.quote || null;
 }
 function getXueqiuPayload(fundData, key) {
   return fundData?.results?.[key]?.raw?.data || null;

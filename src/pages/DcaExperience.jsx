@@ -116,7 +116,8 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
     setState((current) => ({
       ...current,
       linkedPlanId: nextPlanId,
-      symbol: targetPlan?.symbol || current.symbol
+      symbol: targetPlan?.symbol || current.symbol,
+      rollingHigh: targetPlan ? Number(targetPlan.basePrice) || current.rollingHigh : current.rollingHigh
     }));
     trackFeatureEvent('dca', 'linked_plan_change', {
       linked: Boolean(nextPlanId),
