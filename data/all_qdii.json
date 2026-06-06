@@ -1,7 +1,7 @@
 {
   "dataset": "all_qdii",
   "version": 1,
-  "generatedAt": "2026-06-06T00:26:49.049Z",
+  "generatedAt": "2026-06-06T00:39:13.717Z",
   "source": "https://fund.eastmoney.com/js/fundcode_search.js",
   "sourceNote": "天天基金 fundcode_search.js; entries whose type/name contains QDII or 海外.",
   "count": 733,

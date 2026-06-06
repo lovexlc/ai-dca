@@ -9,6 +9,7 @@ import {
   summarizePortfolio
 } from '../src/app/holdingsLedgerCore.js';
 import { mergeSnapshotsFromNavResult } from '../src/app/holdingsLedger.js';
+import { getKnownQdiiFundName } from '../src/app/qdiiFundCodes.js';
 
 test('场外持仓刷新后从 latest/previous NAV 反推当日收益率', () => {
   const transactions = [{
@@ -180,6 +181,11 @@ test('持仓分类通过全量 QDII 代码表识别不含 QDII 名称的基金',
   const [agg] = aggregateByCode(transactions, snapshotsByCode, { todayDate: '2026-06-05' });
   assert.equal(agg.kind, 'qdii');
   assert.equal(agg.hasTodayNav, true);
+});
+
+test('全量 QDII 代码表提供新增持仓名称回填', () => {
+  assert.equal(getKnownQdiiFundName('021000'), '南方纳斯达克100指数发起(QDII)I');
+  assert.equal(getKnownQdiiFundName('999999'), '');
 });
 
 test('场外 QDII 净值日期等于今天时仍计算最新披露日收益', () => {
