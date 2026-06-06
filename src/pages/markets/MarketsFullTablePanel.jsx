@@ -127,7 +127,7 @@ export function MarketsFullTablePanel({
         </div>
       </div>
 
-      <div className="lg:hidden">
+      <div className="px-3 sm:px-0 lg:hidden">
         <MarketListTable
           rows={rows}
           klineMap={klineMap}
