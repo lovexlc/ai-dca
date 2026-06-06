@@ -57,10 +57,6 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
   const isPinTarget = pinTargetColumnId === column.id;
   const onPinColumn = column?.table?.options?.meta?.onPinColumn;
 
-  if (!canSort && !canFilter && !canHide && !pinningEnabled) {
-    return <div className={cn(className)}>{label}</div>;
-  }
-
   const [open, setOpen] = React.useState(false);
   const [view, setView] = React.useState("menu");
   React.useEffect(() => {
@@ -70,6 +66,10 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
   const filterValue = column.getFilterValue();
   const isFiltered = hasFilterValue(filterValue);
   const sortDir = column.getIsSorted();
+
+  if (!canSort && !canFilter && !canHide && !pinningEnabled) {
+    return <div className={cn(className)}>{label}</div>;
+  }
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -99,15 +99,31 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
         ) : null}
         {pinningEnabled ? (
           <span
+            role="button"
+            tabIndex={0}
+            aria-label={isPinTarget ? `取消固定${label}列` : `固定${label}列`}
+            title={isPinTarget ? '取消固定列' : '固定此列'}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onPinColumn?.(isPinTarget ? '' : column.id);
+              setOpen(false);
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return;
+              event.preventDefault();
+              event.stopPropagation();
+              onPinColumn?.(isPinTarget ? '' : column.id);
+              setOpen(false);
+            }}
             className={cn(
-              "ml-1 inline-flex h-6 shrink-0 items-center gap-1 rounded-full border px-1.5 text-[11px] font-medium transition",
+              "ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition",
               isPinTarget
                 ? "border-indigo-200 bg-indigo-50 text-indigo-700"
-                : "border-slate-200 bg-white text-slate-500 group-hover:border-slate-300 group-hover:text-slate-700"
+                : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700"
             )}
           >
             {isPinTarget ? <PinOff className="size-3" /> : <Pin className="size-3" />}
-            {isPinTarget ? '已固定' : '固定'}
           </span>
         ) : null}
       </DropdownMenuTrigger>

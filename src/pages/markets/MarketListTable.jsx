@@ -486,7 +486,7 @@ export function MarketListTable({
     const offset = autoPinOffsetsRef.current?.[pinTargetColumnId];
     const shouldPin = el && typeof offset === 'number' ? el.scrollLeft >= offset : false;
     setColumnPinning({ left: shouldPin ? [pinTargetColumnId] : [] });
-  }, [pinTargetColumnId]);
+  }, [autoPinColumn, dataTable, pinTargetColumnId]);
 
   const handleDataTableScroll = (event) => {
     if (!autoPinColumn || !dataTable || !pinTargetColumnId) return;
