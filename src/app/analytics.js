@@ -5,6 +5,7 @@ const CLOUD_SESSION_KEY = 'aiDcaCloudSyncSession';
 const DEFAULT_SYNC_BASE = 'https://tools.freebacktrack.tech/api/sync';
 const MAX_EVENTS = 5000;
 const ADMIN_USERS = new Set(['lovexl']);
+const SESSION_START_KEY = 'aiDcaAnalyticsSessionStarted_v1';
 const SENSITIVE_META_KEYS = new Set([
   'amount',
   'baseUrl',
@@ -213,6 +214,71 @@ export function trackPageView(tab) {
   return trackAnalyticsEvent('page_view', { tab: tab || '', feature: 'navigation', action: 'page_view' });
 }
 
+function normalizeAdSlotMeta(meta = {}) {
+  return {
+    slotId: String(meta.slotId || '').slice(0, 80),
+    pageTab: String(meta.pageTab || '').slice(0, 40),
+    position: String(meta.position || '').slice(0, 80),
+    adProvider: String(meta.adProvider || meta.provider || '').slice(0, 60),
+    isMobile: Boolean(meta.isMobile),
+    visibleMs: Math.max(0, Math.round(Number(meta.visibleMs) || 0)),
+    viewport: String(meta.viewport || '').slice(0, 40)
+  };
+}
+
+export function trackAdSlotView(meta = {}) {
+  const payload = normalizeAdSlotMeta(meta);
+  if (!payload.slotId) return null;
+  return trackAnalyticsEvent('ad_slot_view', {
+    feature: 'ads',
+    action: 'slot_view',
+    ...payload
+  });
+}
+
+export function trackAdSlotClick(meta = {}) {
+  const payload = normalizeAdSlotMeta(meta);
+  if (!payload.slotId) return null;
+  return trackAnalyticsEvent('ad_slot_click', {
+    feature: 'ads',
+    action: 'slot_click',
+    ...payload
+  });
+}
+
+export function trackSessionStart(meta = {}) {
+  if (typeof window === 'undefined') return null;
+  const storage = window.sessionStorage;
+  const sessionId = getAnalyticsSessionId();
+  if (storage?.getItem(SESSION_START_KEY) === sessionId) return null;
+  storage?.setItem(SESSION_START_KEY, sessionId);
+  return trackAnalyticsEvent('session_start', {
+    feature: 'session',
+    action: 'start',
+    ...meta
+  });
+}
+
+export function trackSessionHeartbeat(meta = {}) {
+  return trackAnalyticsEvent('session_heartbeat', {
+    feature: 'session',
+    action: 'heartbeat',
+    ...meta
+  });
+}
+
+export function trackPageEngagement(meta = {}) {
+  return trackAnalyticsEvent('page_engagement', {
+    feature: 'engagement',
+    action: 'page_engagement',
+    tab: String(meta.tab || '').slice(0, 40),
+    durationMs: Math.max(0, Math.round(Number(meta.durationMs) || 0)),
+    activeTimeMs: Math.max(0, Math.round(Number(meta.activeTimeMs) || 0)),
+    maxScrollPct: Math.max(0, Math.min(100, Math.round(Number(meta.maxScrollPct) || 0))),
+    visibilityChanges: Math.max(0, Math.round(Number(meta.visibilityChanges) || 0))
+  });
+}
+
 export function trackFeatureEvent(feature, action, meta = {}) {
   return trackAnalyticsEvent(`${feature}_${action}`, {
     feature,
@@ -274,6 +340,12 @@ function count(events, type) {
   return events.filter((event) => event.type === type).length;
 }
 
+function average(rows, selector) {
+  const values = rows.map(selector).filter((value) => Number.isFinite(value));
+  if (!values.length) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
 function dailySeries(events, rangeDays, type) {
   const dates = [];
   for (let i = rangeDays - 1; i >= 0; i -= 1) dates.push(daysAgo(i));
@@ -300,6 +372,12 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
   const notifyEvents = events.filter((event) => event.type === 'notify_used' || event.type === 'notify_enabled');
   const aiEvents = events.filter((event) => event.type === 'ai_used');
   const switchEvents = events.filter((event) => event.type === 'switch_worker_run' || event.type === 'switch_used');
+  const adViewEvents = events.filter((event) => event.type === 'ad_slot_view');
+  const adClickEvents = events.filter((event) => event.type === 'ad_slot_click');
+  const sessionStartEvents = events.filter((event) => event.type === 'session_start');
+  const sessionHeartbeatEvents = events.filter((event) => event.type === 'session_heartbeat');
+  const pageEngagementEvents = events.filter((event) => event.type === 'page_engagement');
+  const premiumSurveySubmitEvents = events.filter((event) => event.type === 'premium_survey_submit');
 
   const pageMap = new Map();
   pageEvents.forEach((event) => {
@@ -315,6 +393,69 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
     { key: '通知使用', value: notifyEvents.length, users: uniqueCount(notifyEvents, (event) => event.userId || event.visitorId) },
     { key: '切换运行', value: switchEvents.length, users: uniqueCount(switchEvents, (event) => event.userId || event.visitorId) }
   ];
+
+  const adSlotMap = new Map();
+  [...adViewEvents, ...adClickEvents].forEach((event) => {
+    const slotId = String(event.meta?.slotId || 'unknown');
+    const pageTab = String(event.meta?.pageTab || '');
+    const position = String(event.meta?.position || '');
+    const adProvider = String(event.meta?.adProvider || '');
+    const key = [slotId, pageTab, position, adProvider].join('|');
+    const row = adSlotMap.get(key) || {
+      slotId,
+      pageTab,
+      position,
+      adProvider,
+      views: 0,
+      clicks: 0,
+      userSet: new Set(),
+      visibleMsTotal: 0,
+      visibleSamples: 0
+    };
+    if (event.visitorId) row.userSet.add(event.userId || event.visitorId);
+    if (event.type === 'ad_slot_view') {
+      row.views += 1;
+      const visibleMs = Number(event.meta?.visibleMs);
+      if (Number.isFinite(visibleMs) && visibleMs > 0) {
+        row.visibleMsTotal += visibleMs;
+        row.visibleSamples += 1;
+      }
+    } else {
+      row.clicks += 1;
+    }
+    adSlotMap.set(key, row);
+  });
+
+  const engagementTabMap = new Map();
+  pageEngagementEvents.forEach((event) => {
+    const tab = String(event.meta?.tab || 'unknown');
+    const row = engagementTabMap.get(tab) || {
+      tab,
+      events: 0,
+      userSet: new Set(),
+      durationMsTotal: 0,
+      activeTimeMsTotal: 0,
+      maxScrollPctTotal: 0
+    };
+    row.events += 1;
+    if (event.visitorId) row.userSet.add(event.userId || event.visitorId);
+    row.durationMsTotal += Math.max(0, Number(event.meta?.durationMs) || 0);
+    row.activeTimeMsTotal += Math.max(0, Number(event.meta?.activeTimeMs) || 0);
+    row.maxScrollPctTotal += Math.max(0, Math.min(100, Number(event.meta?.maxScrollPct) || 0));
+    engagementTabMap.set(tab, row);
+  });
+
+  const surveyInterestMap = new Map();
+  const surveyPriceMap = new Map();
+  premiumSurveySubmitEvents.forEach((event) => {
+    const interests = Array.isArray(event.meta?.interestOptions) ? event.meta.interestOptions : [];
+    interests.forEach((interest) => {
+      const key = String(interest || '').slice(0, 80);
+      if (key) surveyInterestMap.set(key, (surveyInterestMap.get(key) || 0) + 1);
+    });
+    const priceOption = String(event.meta?.priceOption || '').slice(0, 80);
+    if (priceOption) surveyPriceMap.set(priceOption, (surveyPriceMap.get(priceOption) || 0) + 1);
+  });
 
   // 按 feature 前缀聚合详细事件（trackFeatureEvent / trackActionResult 产生的 event.type = `${feature}_${action}`）
   const FEATURE_PREFIXES = [
@@ -401,6 +542,47 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
     pages: Array.from(pageMap.values()).map((row) => ({ key: row.key, pv: row.pv, uv: row.uvSet.size })).sort((a, b) => b.pv - a.pv).slice(0, 8),
     features: featureRows,
     featureDetails,
+    ads: {
+      views: adViewEvents.length,
+      clicks: adClickEvents.length,
+      users: uniqueCount([...adViewEvents, ...adClickEvents], (event) => event.userId || event.visitorId),
+      ctr: adViewEvents.length ? adClickEvents.length / adViewEvents.length : 0,
+      avgVisibleMs: average(adViewEvents, (event) => Number(event.meta?.visibleMs) || 0),
+      slots: Array.from(adSlotMap.values()).map((row) => ({
+        slotId: row.slotId,
+        pageTab: row.pageTab,
+        position: row.position,
+        adProvider: row.adProvider,
+        views: row.views,
+        clicks: row.clicks,
+        users: row.userSet.size,
+        ctr: row.views ? row.clicks / row.views : 0,
+        avgVisibleMs: row.visibleSamples ? row.visibleMsTotal / row.visibleSamples : 0
+      })).sort((a, b) => b.views - a.views).slice(0, 20)
+    },
+    engagement: {
+      sessions: sessionStartEvents.length,
+      sessionUsers: uniqueCount(sessionStartEvents, (event) => event.userId || event.visitorId),
+      heartbeats: sessionHeartbeatEvents.length,
+      pageEvents: pageEngagementEvents.length,
+      avgDurationMs: average(pageEngagementEvents, (event) => Number(event.meta?.durationMs) || 0),
+      avgActiveTimeMs: average(pageEngagementEvents, (event) => Number(event.meta?.activeTimeMs) || 0),
+      avgScrollPct: average(pageEngagementEvents, (event) => Number(event.meta?.maxScrollPct) || 0),
+      byTab: Array.from(engagementTabMap.values()).map((row) => ({
+        tab: row.tab,
+        events: row.events,
+        users: row.userSet.size,
+        avgDurationMs: row.events ? row.durationMsTotal / row.events : 0,
+        avgActiveTimeMs: row.events ? row.activeTimeMsTotal / row.events : 0,
+        avgScrollPct: row.events ? row.maxScrollPctTotal / row.events : 0
+      })).sort((a, b) => b.events - a.events).slice(0, 20)
+    },
+    premiumSurvey: {
+      submits: premiumSurveySubmitEvents.length,
+      users: uniqueCount(premiumSurveySubmitEvents, (event) => event.userId || event.visitorId),
+      interests: Array.from(surveyInterestMap.entries()).map(([key, countValue]) => ({ key, count: countValue })).sort((a, b) => b.count - a.count),
+      priceOptions: Array.from(surveyPriceMap.entries()).map(([key, countValue]) => ({ key, count: countValue })).sort((a, b) => b.count - a.count)
+    },
     recent: events.slice(-20).reverse(),
     userActivity: (() => {
       const userMap = new Map();

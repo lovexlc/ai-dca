@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Activity, Bell, Bot, Calendar, ChevronDown, ChevronRight, Clock, Eye, MousePointerClick, RefreshCw, ShieldCheck, Shuffle, Trash2, UserRound, Users } from 'lucide-react';
+import { Activity, Bell, Bot, Calendar, ChevronDown, ChevronRight, Clock, Eye, MessageSquareText, MousePointerClick, Percent, RefreshCw, ShieldCheck, Shuffle, Sparkles, Trash2, UserRound, Users } from 'lucide-react';
 import { buildAnalyticsSummary, clearAnalyticsEvents, fetchRemoteAnalyticsSummary, isAnalyticsAdmin, trackAnalyticsEvent } from '../app/analytics.js';
 import { loadCloudSession } from '../app/authClient.js';
 import { cx } from '../components/experience-ui.jsx';
@@ -68,6 +68,18 @@ function NotifyCard({ total, platformUsers = {} }) {
 
 function EmptyChart() {
   return <div className="flex h-full items-center justify-center text-sm text-slate-400">暂无统计数据</div>;
+}
+
+function formatPercent(value) {
+  return `${((Number(value) || 0) * 100).toFixed(1)}%`;
+}
+
+function formatDuration(ms) {
+  const seconds = Math.round((Number(ms) || 0) / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
 }
 
 const FEATURE_COLORS = {
@@ -248,7 +260,11 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
     { title: 'PV', value: summary.cards.pv, icon: Eye, hint: `${rangeDays} 天页面访问` },
     { title: 'UV', value: summary.cards.uv, icon: MousePointerClick, hint: '按访客 ID 去重' },
     { title: 'Worker 跑切换', value: summary.cards.switchRuns, icon: Shuffle, hint: '切换运行/使用次数' },
-    { title: 'AI 使用人数', value: summary.cards.aiUsers, icon: Bot, hint: '发送 AI 请求用户' }
+    { title: 'AI 使用人数', value: summary.cards.aiUsers, icon: Bot, hint: '发送 AI 请求用户' },
+    { title: '广告曝光', value: summary.ads?.views || 0, icon: Eye, hint: `点击 ${summary.ads?.clicks || 0} · CTR ${formatPercent(summary.ads?.ctr)}` },
+    { title: '会话数', value: summary.engagement?.sessions || 0, icon: Activity, hint: `用户 ${summary.engagement?.sessionUsers || 0} · 心跳 ${summary.engagement?.heartbeats || 0}` },
+    { title: '平均活跃', value: formatDuration(summary.engagement?.avgActiveTimeMs), icon: Clock, hint: `平均滚动 ${Math.round(Number(summary.engagement?.avgScrollPct) || 0)}%` },
+    { title: '问卷提交', value: summary.premiumSurvey?.submits || 0, icon: MessageSquareText, hint: `提交用户 ${summary.premiumSurvey?.users || 0}` }
   ];
 
   return (
@@ -274,6 +290,110 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {cards.map((card) => <Card key={card.title} {...card} />)}
         <NotifyCard total={summary.cards.notifyUsers} platformUsers={summary.cards.notifyPlatformUsers} />
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
+        <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Percent className="h-4 w-4 text-sky-500" />
+              <h2 className="text-base font-bold text-slate-900">广告位表现</h2>
+            </div>
+            <span className="text-xs text-slate-400">曝光 / 点击 / CTR</span>
+          </div>
+          <div className="overflow-hidden rounded-2xl border border-slate-100">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-xs text-slate-500">
+                <tr>
+                  <th className="px-3 py-2 text-left">广告位</th>
+                  <th className="px-3 py-2 text-left">位置</th>
+                  <th className="px-3 py-2 text-right">曝光</th>
+                  <th className="px-3 py-2 text-right">点击</th>
+                  <th className="px-3 py-2 text-right">CTR</th>
+                  <th className="px-3 py-2 text-right">可见时长</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {(summary.ads?.slots || []).length ? (summary.ads.slots || []).map((row) => (
+                  <tr key={`${row.slotId}-${row.pageTab}-${row.position}`}>
+                    <td className="px-3 py-2 font-semibold text-slate-800">{row.slotId}</td>
+                    <td className="px-3 py-2 text-slate-500">{[row.pageTab, row.position].filter(Boolean).join(' / ') || '-'}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.views}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.clicks}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{formatPercent(row.ctr)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">{formatDuration(row.avgVisibleMs)}</td>
+                  </tr>
+                )) : <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">暂无广告位统计</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Activity className="h-4 w-4 text-emerald-500" />
+              <h2 className="text-base font-bold text-slate-900">页面参与度</h2>
+            </div>
+            <span className="text-xs text-slate-400">停留 / 活跃 / 滚动</span>
+          </div>
+          <div className="overflow-hidden rounded-2xl border border-slate-100">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-xs text-slate-500">
+                <tr>
+                  <th className="px-3 py-2 text-left">Tab</th>
+                  <th className="px-3 py-2 text-right">事件</th>
+                  <th className="px-3 py-2 text-right">用户</th>
+                  <th className="px-3 py-2 text-right">活跃</th>
+                  <th className="px-3 py-2 text-right">滚动</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {(summary.engagement?.byTab || []).length ? (summary.engagement.byTab || []).map((row) => (
+                  <tr key={row.tab}>
+                    <td className="px-3 py-2 font-semibold text-slate-800">{row.tab || 'unknown'}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.events}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.users}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">{formatDuration(row.avgActiveTimeMs)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">{Math.round(Number(row.avgScrollPct) || 0)}%</td>
+                  </tr>
+                )) : <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-400">暂无页面参与度统计</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-amber-500" />
+            <h2 className="text-base font-bold text-slate-900">高级版问卷</h2>
+          </div>
+          <span className="text-xs text-slate-400">固定选项汇总，不含自由文本和持仓信息</span>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="overflow-hidden rounded-2xl border border-slate-100">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-3 py-2 text-left">关注功能</th><th className="px-3 py-2 text-right">次数</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {(summary.premiumSurvey?.interests || []).length ? (summary.premiumSurvey.interests || []).map((row) => (
+                  <tr key={row.key}><td className="px-3 py-2 text-slate-700">{row.key}</td><td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.count}</td></tr>
+                )) : <tr><td colSpan={2} className="px-3 py-8 text-center text-slate-400">暂无关注功能反馈</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <div className="overflow-hidden rounded-2xl border border-slate-100">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-3 py-2 text-left">价格选项</th><th className="px-3 py-2 text-right">次数</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {(summary.premiumSurvey?.priceOptions || []).length ? (summary.premiumSurvey.priceOptions || []).map((row) => (
+                  <tr key={row.key}><td className="px-3 py-2 text-slate-700">{row.key}</td><td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.count}</td></tr>
+                )) : <tr><td colSpan={2} className="px-3 py-8 text-center text-slate-400">暂无价格反馈</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">

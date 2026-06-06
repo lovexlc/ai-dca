@@ -11,7 +11,7 @@ import { showToast } from '../app/toast.js';
 import { clearDemoData, readDemoDataMeta } from '../app/demoData.js';
 import { readWorkspacePrefs } from '../app/workspacePrefs.js';
 import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authClient.js';
-import { isAnalyticsAdmin, trackPageView } from '../app/analytics.js';
+import { isAnalyticsAdmin, trackPageEngagement, trackPageView, trackSessionHeartbeat, trackSessionStart } from '../app/analytics.js';
 
 // 各主 tab 使用 React.lazy 按需加载，在 Vite 中会被拆成独立 chunk。
 // HomeExperience / DcaExperience 已并入 TradePlansExperience 作为二级 tab，不再在这里顶级 lazy。
@@ -142,6 +142,57 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   useEffect(() => {
     trackPageView(activeTab);
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
+  useEffect(() => {
+    trackSessionStart({ entryTab: activeTabRef.current });
+    const timer = window.setInterval(() => {
+      trackSessionHeartbeat({ activeTab: activeTabRef.current });
+    }, 60000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const startedAt = Date.now();
+    let activeTimeMs = 0;
+    let lastActiveAt = document.visibilityState === 'visible' ? startedAt : 0;
+    let visibilityChanges = 0;
+    let maxScrollPct = 0;
+
+    function updateScrollDepth() {
+      const scrollable = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+      const pct = Math.max(0, Math.min(100, (window.scrollY / scrollable) * 100));
+      maxScrollPct = Math.max(maxScrollPct, pct);
+    }
+
+    function handleVisibilityChange() {
+      visibilityChanges += 1;
+      const now = Date.now();
+      if (document.visibilityState === 'hidden') {
+        if (lastActiveAt) activeTimeMs += now - lastActiveAt;
+        lastActiveAt = 0;
+      } else {
+        lastActiveAt = now;
+      }
+    }
+
+    updateScrollDepth();
+    window.addEventListener('scroll', updateScrollDepth, { passive: true });
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      updateScrollDepth();
+      if (lastActiveAt) activeTimeMs += Date.now() - lastActiveAt;
+      trackPageEngagement({
+        tab: activeTab,
+        durationMs: Date.now() - startedAt,
+        activeTimeMs,
+        maxScrollPct,
+        visibilityChanges
+      });
+      window.removeEventListener('scroll', updateScrollDepth);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [activeTab]);
 
   useEffect(() => {
@@ -157,6 +208,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const scrollPositionsRef = useRef(new Map());
   const previousTabRef = useRef(activeTab);
   const restoreScrollOnNextTabRef = useRef(false);
+  const activeTabRef = useRef(activeTab);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const isAdminUser = isAnalyticsAdmin(cloudSession);
   const currentPageLabel = PRIMARY_TAB_META[activeTab]?.label || '';
@@ -361,7 +413,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       case 'markets':
         return <MarketsExperience {...sharedProps} />;
       case 'premium':
-        return isAdminUser ? <PremiumExperience {...sharedProps} /> : <StrategyGuideExperience {...sharedProps} onNavigate={handleSelectTab} onDemoDataChange={setDemoMeta} />;
+        return <PremiumExperience {...sharedProps} />;
       case 'notify':
         return <NotifyExperience {...sharedProps} />;
       case 'adminData':

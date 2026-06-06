@@ -236,6 +236,58 @@ async function handleAdminAnalytics(request, env, origin) {
         THEN COALESCE(NULLIF(user_id, ''), visitor_id)
     END) AS unknownUsers
     FROM analytics_events WHERE event_date >= ? AND type IN ('notify_enabled','notify_used')`).bind(since).first();
+  const adSummaryRow = await env.DB.prepare(`SELECT
+    COUNT(CASE WHEN type = 'ad_slot_view' THEN 1 END) AS views,
+    COUNT(CASE WHEN type = 'ad_slot_click' THEN 1 END) AS clicks,
+    COUNT(DISTINCT CASE WHEN type IN ('ad_slot_view', 'ad_slot_click') THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS users,
+    AVG(CASE WHEN type = 'ad_slot_view' THEN CAST(json_extract(meta, '$.visibleMs') AS REAL) END) AS avgVisibleMs
+    FROM analytics_events WHERE event_date >= ? AND type IN ('ad_slot_view','ad_slot_click')`).bind(since).first();
+  const adSlotRows = await env.DB.prepare(`SELECT
+    COALESCE(json_extract(meta, '$.slotId'), 'unknown') AS slotId,
+    COALESCE(json_extract(meta, '$.pageTab'), '') AS pageTab,
+    COALESCE(json_extract(meta, '$.position'), '') AS position,
+    COALESCE(json_extract(meta, '$.adProvider'), '') AS adProvider,
+    COUNT(CASE WHEN type = 'ad_slot_view' THEN 1 END) AS views,
+    COUNT(CASE WHEN type = 'ad_slot_click' THEN 1 END) AS clicks,
+    COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), visitor_id)) AS users,
+    AVG(CASE WHEN type = 'ad_slot_view' THEN CAST(json_extract(meta, '$.visibleMs') AS REAL) END) AS avgVisibleMs
+    FROM analytics_events WHERE event_date >= ? AND type IN ('ad_slot_view','ad_slot_click')
+    GROUP BY slotId, pageTab, position, adProvider
+    ORDER BY views DESC LIMIT 20`).bind(since).all();
+  const engagementSummaryRow = await env.DB.prepare(`SELECT
+    COUNT(CASE WHEN type = 'session_start' THEN 1 END) AS sessions,
+    COUNT(DISTINCT CASE WHEN type = 'session_start' THEN COALESCE(NULLIF(user_id, ''), visitor_id) END) AS sessionUsers,
+    COUNT(CASE WHEN type = 'session_heartbeat' THEN 1 END) AS heartbeats,
+    COUNT(CASE WHEN type = 'page_engagement' THEN 1 END) AS pageEvents,
+    AVG(CASE WHEN type = 'page_engagement' THEN CAST(json_extract(meta, '$.durationMs') AS REAL) END) AS avgDurationMs,
+    AVG(CASE WHEN type = 'page_engagement' THEN CAST(json_extract(meta, '$.activeTimeMs') AS REAL) END) AS avgActiveTimeMs,
+    AVG(CASE WHEN type = 'page_engagement' THEN CAST(json_extract(meta, '$.maxScrollPct') AS REAL) END) AS avgScrollPct
+    FROM analytics_events WHERE event_date >= ? AND type IN ('session_start','session_heartbeat','page_engagement')`).bind(since).first();
+  const engagementTabRows = await env.DB.prepare(`SELECT
+    COALESCE(json_extract(meta, '$.tab'), 'unknown') AS tab,
+    COUNT(*) AS events,
+    COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), visitor_id)) AS users,
+    AVG(CAST(json_extract(meta, '$.durationMs') AS REAL)) AS avgDurationMs,
+    AVG(CAST(json_extract(meta, '$.activeTimeMs') AS REAL)) AS avgActiveTimeMs,
+    AVG(CAST(json_extract(meta, '$.maxScrollPct') AS REAL)) AS avgScrollPct
+    FROM analytics_events WHERE event_date >= ? AND type = 'page_engagement'
+    GROUP BY tab ORDER BY events DESC LIMIT 20`).bind(since).all();
+  const premiumSurveyRow = await env.DB.prepare(`SELECT
+    COUNT(*) AS submits,
+    COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), visitor_id)) AS users
+    FROM analytics_events WHERE event_date >= ? AND type = 'premium_survey_submit'`).bind(since).first();
+  const premiumSurveyInterestRows = await env.DB.prepare(`SELECT
+    value AS key,
+    COUNT(*) AS count
+    FROM analytics_events, json_each(json_extract(meta, '$.interestOptions'))
+    WHERE event_date >= ? AND type = 'premium_survey_submit' AND value IS NOT NULL AND value != ''
+    GROUP BY value ORDER BY count DESC LIMIT 20`).bind(since).all();
+  const premiumSurveyPriceRows = await env.DB.prepare(`SELECT
+    COALESCE(json_extract(meta, '$.priceOption'), '') AS key,
+    COUNT(*) AS count
+    FROM analytics_events
+    WHERE event_date >= ? AND type = 'premium_survey_submit' AND COALESCE(json_extract(meta, '$.priceOption'), '') != ''
+    GROUP BY key ORDER BY count DESC LIMIT 20`).bind(since).all();
   const featureWhere = FEATURE_PREFIXES.map(() => 'type LIKE ?').join(' OR ');
   const featureCase = `CASE ${FEATURE_PREFIXES.map((item) => `WHEN type LIKE '${item.prefix}_%' THEN '${item.prefix}'`).join(' ')} END`;
   const featureGroupRows = await env.DB.prepare(`SELECT
@@ -333,6 +385,47 @@ async function handleAdminAnalytics(request, env, origin) {
       { key: '切换运行', value: Number(cardsRows?.switchRuns) || 0, users: Number(cardsRows?.switchUsers) || 0 }
     ],
     featureDetails,
+    ads: {
+      views: Number(adSummaryRow?.views) || 0,
+      clicks: Number(adSummaryRow?.clicks) || 0,
+      users: Number(adSummaryRow?.users) || 0,
+      ctr: Number(adSummaryRow?.views) ? (Number(adSummaryRow?.clicks) || 0) / Number(adSummaryRow.views) : 0,
+      avgVisibleMs: Number(adSummaryRow?.avgVisibleMs) || 0,
+      slots: (adSlotRows.results || []).map((row) => ({
+        slotId: String(row.slotId || 'unknown'),
+        pageTab: String(row.pageTab || ''),
+        position: String(row.position || ''),
+        adProvider: String(row.adProvider || ''),
+        views: Number(row.views) || 0,
+        clicks: Number(row.clicks) || 0,
+        users: Number(row.users) || 0,
+        ctr: Number(row.views) ? (Number(row.clicks) || 0) / Number(row.views) : 0,
+        avgVisibleMs: Number(row.avgVisibleMs) || 0
+      }))
+    },
+    engagement: {
+      sessions: Number(engagementSummaryRow?.sessions) || 0,
+      sessionUsers: Number(engagementSummaryRow?.sessionUsers) || 0,
+      heartbeats: Number(engagementSummaryRow?.heartbeats) || 0,
+      pageEvents: Number(engagementSummaryRow?.pageEvents) || 0,
+      avgDurationMs: Number(engagementSummaryRow?.avgDurationMs) || 0,
+      avgActiveTimeMs: Number(engagementSummaryRow?.avgActiveTimeMs) || 0,
+      avgScrollPct: Number(engagementSummaryRow?.avgScrollPct) || 0,
+      byTab: (engagementTabRows.results || []).map((row) => ({
+        tab: String(row.tab || 'unknown'),
+        events: Number(row.events) || 0,
+        users: Number(row.users) || 0,
+        avgDurationMs: Number(row.avgDurationMs) || 0,
+        avgActiveTimeMs: Number(row.avgActiveTimeMs) || 0,
+        avgScrollPct: Number(row.avgScrollPct) || 0
+      }))
+    },
+    premiumSurvey: {
+      submits: Number(premiumSurveyRow?.submits) || 0,
+      users: Number(premiumSurveyRow?.users) || 0,
+      interests: (premiumSurveyInterestRows.results || []).map((row) => ({ key: String(row.key || ''), count: Number(row.count) || 0 })),
+      priceOptions: (premiumSurveyPriceRows.results || []).map((row) => ({ key: String(row.key || ''), count: Number(row.count) || 0 }))
+    },
     recent: (recentRows.results || []).map((row) => ({ ...row, meta: (() => { try { return JSON.parse(row.meta || '{}'); } catch { return {}; } })() })),
     userActivity: (userActivityRows.results || []).map((row) => ({
       user: String(row.user || ''),
