@@ -13,6 +13,15 @@ export function resolveQuotePeakPrice(...quotes) {
   for (const quote of quotes) {
     if (!quote || typeof quote !== 'object') continue;
     yearHighCandidates.push(
+      quote.allTimeHigh,
+      quote.all_time_high,
+      quote.historyHigh,
+      quote.history_high,
+      quote.highest,
+      quote.highestPrice,
+      quote.highest_price,
+      quote.maxPrice,
+      quote.max_price,
       quote.high52w,
       quote.high_52w,
       quote.high52Week,

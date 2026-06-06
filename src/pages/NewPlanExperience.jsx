@@ -52,7 +52,12 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   });
   const [marketEntries, setMarketEntries] = useState([]);
   const [marketError, setMarketError] = useState('');
-  const [dailySeriesState, setDailySeriesState] = useState({
+  const [selectedDailySeriesState, setSelectedDailySeriesState] = useState({
+    code: '',
+    bars: [],
+    ready: false
+  });
+  const [benchmarkDailySeriesState, setBenchmarkDailySeriesState] = useState({
     code: '',
     bars: [],
     ready: false
@@ -273,8 +278,8 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   const benchmarkNameLabel = formatMarketName(benchmarkFund || { code: BENCHMARK_CODE });
 
   useEffect(() => {
-    if (!isSelectedExtraSymbol && !benchmarkFund?.code) {
-      setDailySeriesState({
+    if (!selectedSymbolCode) {
+      setSelectedDailySeriesState({
         code: '',
         bars: [],
         ready: false
@@ -283,14 +288,14 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     }
 
     let cancelled = false;
-    const nextCode = isSelectedExtraSymbol ? selectedSymbolCode : benchmarkFund.code;
+    const nextCode = selectedSymbolCode;
     const startedAt = Date.now();
     trackFeatureEvent('new_plan', 'daily_series_load_start', {
       symbolLength: String(nextCode || '').length,
       isSelectedExtraSymbol
     });
 
-    setDailySeriesState({
+    setSelectedDailySeriesState({
       code: nextCode,
       bars: [],
       ready: false
@@ -310,7 +315,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     seriesPromise
       .then((bars) => {
         if (!cancelled) {
-          setDailySeriesState({
+          setSelectedDailySeriesState({
             code: nextCode,
             bars: Array.isArray(bars) ? bars : [],
             ready: true
@@ -325,7 +330,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       })
       .catch(() => {
         if (!cancelled) {
-          setDailySeriesState({
+          setSelectedDailySeriesState({
             code: nextCode,
             bars: [],
             ready: true
@@ -341,22 +346,87 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     return () => {
       cancelled = true;
     };
-  }, [benchmarkFund?.code, inPagesDir, isSelectedExtraSymbol, selectedSymbolCode]);
+  }, [inPagesDir, isSelectedExtraSymbol, selectedSymbolCode]);
+
+  useEffect(() => {
+    if (!benchmarkFund?.code) {
+      setBenchmarkDailySeriesState({
+        code: '',
+        bars: [],
+        ready: false
+      });
+      return;
+    }
+
+    let cancelled = false;
+    const nextCode = benchmarkFund.code;
+    const startedAt = Date.now();
+    trackFeatureEvent('new_plan', 'benchmark_daily_series_load_start', {
+      symbolLength: String(nextCode || '').length
+    });
+
+    setBenchmarkDailySeriesState({
+      code: nextCode,
+      bars: [],
+      ready: false
+    });
+
+    loadNasdaqDailySeries(nextCode, { inPagesDir })
+      .then((bars) => {
+        if (!cancelled) {
+          setBenchmarkDailySeriesState({
+            code: nextCode,
+            bars: Array.isArray(bars) ? bars : [],
+            ready: true
+          });
+          trackActionResult('new_plan', 'benchmark_daily_series_load', Array.isArray(bars) && bars.length ? 'success' : 'empty', {
+            symbolLength: String(nextCode || '').length,
+            barCount: Array.isArray(bars) ? bars.length : 0,
+            durationMs: Date.now() - startedAt
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBenchmarkDailySeriesState({
+            code: nextCode,
+            bars: [],
+            ready: true
+          });
+          trackActionResult('new_plan', 'benchmark_daily_series_load', 'error', {
+            symbolLength: String(nextCode || '').length,
+            durationMs: Date.now() - startedAt
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [benchmarkFund?.code, inPagesDir]);
 
   const selectedDailySeries = useMemo(
     () => {
-      const expectedCode = isSelectedExtraSymbol ? selectedSymbolCode : benchmarkFund?.code;
-      return dailySeriesState.code === expectedCode ? dailySeriesState.bars : [];
+      const expectedCode = selectedSymbolCode;
+      return selectedDailySeriesState.code === expectedCode ? selectedDailySeriesState.bars : [];
     },
-    [benchmarkFund?.code, dailySeriesState.bars, dailySeriesState.code, isSelectedExtraSymbol, selectedSymbolCode]
+    [selectedDailySeriesState.bars, selectedDailySeriesState.code, selectedSymbolCode]
   );
-  const expectedDailySeriesCode = isSelectedExtraSymbol ? selectedSymbolCode : benchmarkFund?.code;
-  const isSelectedDailySeriesReady = !expectedDailySeriesCode || (dailySeriesState.code === expectedDailySeriesCode && dailySeriesState.ready);
+  const benchmarkDailySeries = useMemo(
+    () => benchmarkDailySeriesState.code === benchmarkFund?.code ? benchmarkDailySeriesState.bars : [],
+    [benchmarkDailySeriesState.bars, benchmarkDailySeriesState.code, benchmarkFund?.code]
+  );
+  const movingAverageDailySeries = isSelectedExtraSymbol ? selectedDailySeries : benchmarkDailySeries;
+  const expectedSelectedDailySeriesCode = selectedSymbolCode;
+  const isSelectedDailySeriesReady = !expectedSelectedDailySeriesCode || (selectedDailySeriesState.code === expectedSelectedDailySeriesCode && selectedDailySeriesState.ready);
+  const expectedBenchmarkDailySeriesCode = benchmarkFund?.code;
+  const isBenchmarkDailySeriesReady = !expectedBenchmarkDailySeriesCode || (benchmarkDailySeriesState.code === expectedBenchmarkDailySeriesCode && benchmarkDailySeriesState.ready);
   const activeExtraQuotePrice = isSelectedExtraSymbol && extraQuote.symbol === selectedSymbolCode ? Number(extraQuote.price) || 0 : 0;
   const activeExtraPeakPrice = isSelectedExtraSymbol && extraQuote.symbol === selectedSymbolCode ? resolveQuotePeakPrice(extraQuote) : 0;
   const activeXueqiuPeakPrice = !isSelectedExtraSymbol && xueqiuQuoteState.symbol === selectedSymbolCode
     ? resolveQuotePeakPrice(xueqiuQuoteState.quote)
     : 0;
+  const hasQuotePeakPrice = activeXueqiuPeakPrice > 0 || activeExtraPeakPrice > 0;
 
   const derivedStageHigh = useMemo(() => {
     const values = selectedDailySeries
@@ -383,28 +453,32 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   }, [activeExtraPeakPrice, activeExtraQuotePrice, activeXueqiuPeakPrice, benchmarkFund, isSelectedExtraSymbol, selectedDailySeries, selectedFund]);
   const derivedMa120 = useMemo(
     () => {
-      const ma120 = findLatestFiniteValue(buildMovingAverageValues(selectedDailySeries, 120));
+      const ma120 = findLatestFiniteValue(buildMovingAverageValues(movingAverageDailySeries, 120));
       if (ma120 > 0) return ma120;
       if (isSelectedExtraSymbol) return activeExtraQuotePrice;
       return Number(benchmarkFund?.current_price) || Number(selectedFund?.current_price) || 0;
     },
-    [activeExtraQuotePrice, benchmarkFund, isSelectedExtraSymbol, selectedDailySeries, selectedFund]
+    [activeExtraQuotePrice, benchmarkFund, isSelectedExtraSymbol, movingAverageDailySeries, selectedFund]
   );
   const derivedMa200 = useMemo(
     () => {
-      const ma200 = findLatestFiniteValue(buildMovingAverageValues(selectedDailySeries, 200));
+      const ma200 = findLatestFiniteValue(buildMovingAverageValues(movingAverageDailySeries, 200));
       if (ma200 > 0) return ma200;
       return derivedMa120 > 0 ? derivedMa120 * 0.85 : 0;
     },
-    [derivedMa120, selectedDailySeries]
+    [derivedMa120, movingAverageDailySeries]
   );
 
   useEffect(() => {
-    if (!isSelectedExtraSymbol && (!benchmarkFund?.code || !isSelectedDailySeriesReady)) {
+    if (selectedStrategy === 'peak-drawdown' && !hasQuotePeakPrice && !isSelectedDailySeriesReady) {
       return;
     }
 
-    if (isSelectedExtraSymbol && !isSelectedDailySeriesReady) {
+    if (selectedStrategy !== 'peak-drawdown' && !isSelectedExtraSymbol && (!benchmarkFund?.code || !isBenchmarkDailySeriesReady)) {
+      return;
+    }
+
+    if (selectedStrategy !== 'peak-drawdown' && isSelectedExtraSymbol && !isSelectedDailySeriesReady) {
       return;
     }
 
@@ -424,7 +498,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       return next;
     });
     autoSeedRef.current = syncKey;
-  }, [activeExtraQuotePrice, benchmarkFund?.code, derivedMa120, derivedMa200, derivedStageHigh, isSelectedDailySeriesReady, isSelectedExtraSymbol, selectedStrategy, selectedSymbolCode]);
+  }, [activeExtraQuotePrice, benchmarkFund?.code, derivedMa120, derivedMa200, derivedStageHigh, hasQuotePeakPrice, isBenchmarkDailySeriesReady, isSelectedDailySeriesReady, isSelectedExtraSymbol, selectedStrategy, selectedSymbolCode]);
 
   const filteredMarketEntries = useMemo(() => {
     const keyword = symbolSearch.trim().toLowerCase();
