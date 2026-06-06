@@ -12,6 +12,9 @@ import {
 // 示例图：从原 Bark / Server酱³ tips 弹层迁移而来。
 const BARK_EXAMPLE_IMAGE_URL = 'https://bark.day.app/_media/example.jpg';
 const SERVERCHAN3_EXAMPLE_IMAGE_URL = 'https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEVDnpqInOCSSCH6N6JmuEmQYx9pQYIFAAC4CMAAuKuEFX0k_jBmJTJgDsE.jpg';
+// 仓库内截图改走 jsDelivr GitHub CDN（国内访问更快）。
+const BARK_STEP1_IMAGE_URL = 'https://cdn.jsdelivr.net/gh/lovexlc/ai-dca@main/public/strategy-guide/bark-example-step1.jpg';
+const BARK_STEP3_IMAGE_URL = 'https://cdn.jsdelivr.net/gh/lovexlc/ai-dca@main/public/strategy-guide/bark-example-step3.jpg';
 
 // 各功能旁「页面状」帮助图标弹窗的内容。集中维护，方便后续按用户反馈调整文案。
 const HELP_CONTENT = {
@@ -96,9 +99,9 @@ const HELP_CONTENT = {
           {
             text: '下载：在 iPhone 的 App Store 安装 Bark App。',
             image: {
-              src: '/strategy-guide/bark-example-step1.jpg',
-              alt: '自动批准全部 MCP 工具（auto approve all mcp tools）设置截图',
-              caption: '第一个红色图标：auto approve all mcp tools（自动批准全部 MCP 工具）'
+              src: BARK_STEP1_IMAGE_URL,
+              alt: 'App Store 搜索 Bark 后选择图中第一个红色图标',
+              caption: '图中第一个红色图标：Bark - 给你的手机发推送'
             }
           },
           {
@@ -112,7 +115,7 @@ const HELP_CONTENT = {
           {
             text: '填入网页：在本网页「通知」页切到「iOS」标签，把整段链接或 Device Key 粘贴进输入框，点「保存 Bark 配置」（系统会自动提取 Device Key）。',
             image: {
-              src: '/strategy-guide/bark-example-step3.jpg',
+              src: BARK_STEP3_IMAGE_URL,
               alt: 'iOS 填入 Bark 链接并保存配置示例',
               caption: '粘贴链接 / Device Key 后点「保存 Bark 配置」'
             }

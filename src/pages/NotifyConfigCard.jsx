@@ -372,16 +372,13 @@ export function NotifyConfigCard({
                   <h3 className="text-base font-bold text-slate-900">iOS Bark 配置</h3>
                   <FeatureHelp
                     topic="ios-notify"
-                    hintText="还没填？点这里看怎么获取 Bark 链接"
+                    hintText="未填写通知链接，点击查看介绍"
                     hintActive={barkInputEmpty}
+                    hintDelayMs={0}
                   />
                 </div>
-                <div className="mt-4 text-sm font-semibold text-slate-900">iOS Bark 链接或 Device Key</div>
-                <p className="mt-2 text-sm leading-6 text-slate-500">
-                  可以粘贴完整 Bark 链接，例如 https://api.day.app/xxx/推送内容；系统会自动提取 Device Key。
-                </p>
                 <div className="mt-5 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
-                  <Field label="Bark 链接或 Device Key" helper="不用手动截取，复制 Bark 里显示的完整链接也可以。">
+                  <Field label="Bark 链接或 Device Key">
                     <TextInput
                       value={notifyConfig.barkDeviceKey}
                       onChange={(event) => setNotifyConfig((current) => ({ ...current, barkDeviceKey: event.target.value }))}
