@@ -21,6 +21,7 @@ import {
   roundNumber,
   summarizeXueqiuError
 } from './marketRuntime.js';
+import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
 
 function firstPositiveNumber(...values) {
   for (const value of values) {
@@ -85,6 +86,7 @@ function derivePreviousValue(currentValue, changePercent = null, change = null) 
 
 function normalizeFundKindFromQuote(quote, exchange) {
   if (exchange) return 'exchange';
+  if (isKnownQdiiFundCode(quote?.code || quote?.symbol)) return 'qdii';
   const rawKind = String(quote?.fundKind || '').trim().toLowerCase();
   if (rawKind === 'qdii' || rawKind === 'otc') return rawKind;
   const typeCode = Number(quote?.fundTypeCode);

@@ -7,11 +7,11 @@ test('notify holdings no longer trusts same-day source update; requires latestNa
   // digest 未携带 kind 且 env=null 时按 bucket(otc) 处理，期望最新净值日 = 当日(2026-06-03)。
   // latestNavDate 仍是 T-1(2026-06-02)，即便 sourceUpdatedAt 是今天，也不再判 ready。
   const result = await computeWeightedReturn([{
-    code: '021000',
+    code: '022951',
     weight: 1
   }], {
-    '021000': {
-      code: '021000',
+    '022951': {
+      code: '022951',
       latestNav: 2.3925,
       previousNav: 2.3806,
       latestNavDate: '2026-06-02',
@@ -25,11 +25,11 @@ test('notify holdings no longer trusts same-day source update; requires latestNa
 
 test('notify holdings does not trust digest kind without source freshness', async () => {
   const result = await computeWeightedReturn([{
-    code: '021000',
+    code: '022951',
     weight: 1
   }], {
-    '021000': {
-      code: '021000',
+    '022951': {
+      code: '022951',
       latestNav: 2.3925,
       previousNav: 2.3806,
       latestNavDate: '2026-06-02'
@@ -70,6 +70,24 @@ test('notify holdings trusts explicit qdii kind from digest without metadata env
       code: '021000',
       latestNav: 2.3925,
       previousNav: 2.3806,
+      latestNavDate: '2026-06-02'
+    }
+  }, '2026-06-03', 'otc', null);
+
+  assert.equal(result.ready, true);
+  assert.equal(result.contributors.length, 1);
+  assert.equal(result.contributors[0].kind, 'qdii');
+});
+
+test('notify holdings identifies known QDII by full code table without metadata env', async () => {
+  const result = await computeWeightedReturn([{
+    code: '021778',
+    weight: 1
+  }], {
+    '021778': {
+      code: '021778',
+      latestNav: 1.02,
+      previousNav: 1,
       latestNavDate: '2026-06-02'
     }
   }, '2026-06-03', 'otc', null);

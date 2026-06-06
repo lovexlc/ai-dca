@@ -8,8 +8,8 @@ const SOURCE_UPDATED_AT_MS = Date.UTC(2026, 4, 29, 8, 0, 0);
 const SOURCE_UPDATED_AT_SEC = SOURCE_UPDATED_AT_MS / 1000;
 
 test('fund-metrics normalizes Danjuan OTC NAV into stable front-end fields', () => {
-  const item = normalizeFundMetricFromQuote('021000', {
-    code: '021000',
+  const item = normalizeFundMetricFromQuote('022951', {
+    code: '022951',
     symbol: '021000',
     price: null,
     currentPrice: null,
@@ -23,7 +23,7 @@ test('fund-metrics normalizes Danjuan OTC NAV into stable front-end fields', () 
     source: 'danjuan'
   }, { exchange: false, cachePolicy: 'kv-closed-session' });
 
-  assert.equal(item.code, '021000');
+  assert.equal(item.code, '022951');
   assert.equal(item.price, null);
   assert.equal(item.currentPrice, 2.368);
   assert.equal(item.close, 2.368);
@@ -34,6 +34,7 @@ test('fund-metrics normalizes Danjuan OTC NAV into stable front-end fields', () 
   assert.equal(item.changePercent, 0.254);
   assert.equal(item.latestNavDate, '2026-05-29');
   assert.equal(item.updatedAt, '2026-05-29T08:00:00.000Z');
+  assert.equal(item.fundKind, 'otc');
 });
 
 test('fund-metrics normalizes source updatedAt from second timestamp', () => {
@@ -78,6 +79,19 @@ test('fund-metrics exposes Danjuan QDII metadata as fundKind', () => {
   assert.equal(item.fundKind, 'qdii');
   assert.equal(item.fundType, 'QDII');
   assert.equal(item.fundTypeCode, 11);
+});
+
+test('fund-metrics identifies known QDII by full code table without metadata', () => {
+  const item = normalizeFundMetricFromQuote('021000', {
+    code: '021000',
+    latestNav: 2.3756,
+    previousClose: 2.3861,
+    changePercent: -0.44,
+    latestNavDate: '2026-06-04',
+    source: 'danjuan'
+  }, { exchange: false });
+
+  assert.equal(item.fundKind, 'qdii');
 });
 
 test('fund-metrics keeps exchange ETF price as current value', () => {

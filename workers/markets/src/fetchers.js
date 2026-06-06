@@ -828,6 +828,7 @@ export async function fetchDanjuanFundNav(code) {
     source: 'danjuan',
     fallback: 'danjuan',
     primaryError: '',
+    fundTypeCode: d.fd_type ?? null,
     updatedAt: Number(d.updated_at) || 0,
     ytdReturn: round(Number(d.nav_grlty), 4),
     return1w: round(Number(d.nav_grl1w), 4),

@@ -1,4 +1,5 @@
 import { getNearestTradingDayShanghai, getPreviousTradingDayShanghai } from './holidaysCN.js';
+import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
 
 export const FUND_CODE_PATTERN = /^\d{6}$/;
 export const EXCHANGE_PREFIXES = ['15', '50', '51', '52', '56', '58', '53', '54'];
@@ -10,12 +11,6 @@ const QDII_NAME_KEYWORDS = [
   '亚太', '亚洲', '新兴市场', '印度', '越南', '东南亚', '中东', '沙特', '俄罗斯',
   '全球', '海外', '国际', '中概互联', '中概', '原油', '油气', '石油'
 ];
-
-const QDII_CODE_WHITELIST = new Set([
-  '021000',
-  '006075',
-  '019172'
-]);
 
 export const TRANSACTION_TYPES = ['BUY', 'SELL'];
 export const FUND_KINDS = ['otc', 'exchange', 'qdii'];
@@ -68,7 +63,7 @@ export function isValidFundCode(code = '') {
 
 export function detectQdiiByName(name = '', code = '') {
   const normalizedCode = normalizeFundCode(code);
-  if (normalizedCode && QDII_CODE_WHITELIST.has(normalizedCode)) {
+  if (normalizedCode && isKnownQdiiFundCode(normalizedCode)) {
     return true;
   }
   const text = String(name || '').toUpperCase();
