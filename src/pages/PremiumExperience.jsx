@@ -1,7 +1,5 @@
 import { useState } from 'react';
-import { Check, Crown, MessageSquare, Sparkles } from 'lucide-react';
-import { PREMIUM_FEATURES, clearPremiumState, writePremiumState } from '../app/monetization.js';
-import { usePremiumState } from '../components/monetization.jsx';
+import { Check, MessageSquare } from 'lucide-react';
 import { trackFeatureEvent } from '../app/analytics.js';
 
 const STORAGE_KEY = 'aiDcaPremiumSurveyState';
@@ -41,18 +39,7 @@ function saveSurveyState(next) {
 }
 
 export function PremiumExperience({ embedded = false }) {
-  const premium = usePremiumState();
   const [survey, setSurvey] = useState(() => readSurveyState());
-
-  function unlockPreview() {
-    writePremiumState({ unlocked: true, plan: 'preview', source: 'manual-preview' });
-    trackFeatureEvent('premium', 'unlock_preview', { wasUnlocked: premium.unlocked });
-  }
-
-  function resetPreview() {
-    clearPremiumState();
-    trackFeatureEvent('premium', 'reset_preview', { wasUnlocked: premium.unlocked, plan: premium.plan || '' });
-  }
 
   function toggleInterest(key) {
     const interests = survey.interests.includes(key)
@@ -89,33 +76,7 @@ export function PremiumExperience({ embedded = false }) {
   const canSubmit = survey.interests.length > 0 || survey.price;
 
   return (
-    <div className={embedded ? 'mx-auto max-w-6xl space-y-5 px-4 sm:px-6' : 'mx-auto max-w-6xl space-y-5 px-6'}>
-      <section className="overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-indigo-50 p-6 shadow-sm">
-        <div className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-700">
-          <Crown className="h-4 w-4" />
-          Premium preview
-        </div>
-        <h1 className="mt-4 text-3xl font-black text-slate-950">高级版功能共创</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600">这里先开放高级版入口，用于收集功能优先级反馈。问卷只记录选项，不收集持仓、标的、金额、交易流水等个人投资信息。</p>
-        <div className="mt-5 flex flex-wrap gap-3">
-          <button type="button" className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white shadow-sm active:bg-slate-800" onClick={unlockPreview}>
-            <Sparkles className="h-4 w-4" />
-            预览解锁高级版
-          </button>
-          <button type="button" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-sm" onClick={resetPreview}>恢复免费版</button>
-        </div>
-        <div className="mt-4 text-xs text-slate-500">当前状态：{premium.unlocked ? `高级版已解锁 · ${premium.plan || 'premium'}` : '免费版'}</div>
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-2">
-        {PREMIUM_FEATURES.map((item) => (
-          <div key={item.key} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="text-sm font-black text-slate-900">{item.title}</div>
-            <p className="mt-2 text-sm leading-6 text-slate-500">{item.description}</p>
-          </div>
-        ))}
-      </section>
-
+    <div className={embedded ? 'mx-auto max-w-4xl px-4 sm:px-6' : 'mx-auto max-w-4xl px-6'}>
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-center gap-2 text-sm font-black text-slate-900">
           <MessageSquare className="h-4 w-4 text-amber-500" />
@@ -168,11 +129,6 @@ export function PremiumExperience({ embedded = false }) {
           </button>
           {survey.submitted ? <span className="text-sm font-semibold text-emerald-600">已记录反馈</span> : null}
         </div>
-      </section>
-
-      <section className="rounded-2xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">
-        <div className="text-sm font-black text-slate-800">隐私边界</div>
-        <p className="mt-2 leading-6">高级版问卷只记录选择项和页面行为统计，不采集持仓笔数、资产金额、交易明细、基金代码、股票代码或自由文本。</p>
       </section>
     </div>
   );
