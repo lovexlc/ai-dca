@@ -526,7 +526,7 @@ export function MarketsExperience() {
     return () => { cancelled = true; };
   }, [selectedSymbol, chartRange, chartCandlesMap]);
 
-  // A 股场内基金的 52 周高低点以 1 日 K 线计算，避免直接信 quote.high52w 的复权/口径异常值。
+  // A 股场内基金详情里的高低点以近 365 日 1 日 K 线计算，避免直接信 quote.high52w 的复权/口径异常值。
   useEffect(() => {
     if (!selectedSymbol || market !== 'cn') return;
     const code = normalizeCnFundCode(selectedSymbol);

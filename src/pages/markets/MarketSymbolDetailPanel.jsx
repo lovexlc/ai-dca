@@ -238,11 +238,9 @@ export function SymbolDetailPanel({
   const cnOverviewExtras = market === 'cn' && !isCnOtcFund ? [
     detailValueRow('开盘价', formatNumber(row.open ?? xueqiuQuote?.open, 3)),
     detailValueRow('市值', formatCnMoney(row.marketCapital ?? row.marketCap ?? xueqiuQuote?.market_capital)),
-    detailValueRow('52 周最高价', formatNumber(yearHigh, 3)),
-    detailValueRow('最高价', formatNumber(row.high ?? xueqiuQuote?.high, 3)),
+    detailValueRow('最高价', formatNumber(yearHigh ?? row.high ?? xueqiuQuote?.high, 3)),
     detailValueRow('平均成交量', formatCnAmount(xueqiuQuote?.avg_volume ?? xueqiuQuote?.avg_volume10 ?? xueqiuQuote?.avg_volume_10)),
-    detailValueRow('52 周最低价', formatNumber(yearLow, 3)),
-    detailValueRow('最低价', formatNumber(row.low ?? xueqiuQuote?.low, 3)),
+    detailValueRow('最低价', formatNumber(yearLow ?? row.low ?? xueqiuQuote?.low, 3)),
     detailValueRow('成交量', formatCnAmount(row.volume ?? xueqiuQuote?.volume)),
     detailValueRow('Beta 版', formatNumber(xueqiuQuote?.beta, 2)),
     detailValueRow('成交额', formatCnMoney(row.turnover ?? xueqiuQuote?.amount)),
