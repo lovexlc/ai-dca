@@ -846,6 +846,10 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
             embedded
             initialDca={editingDca}
             mode={editingDca?.id ? 'replace' : 'create'}
+            onCancel={() => {
+              setEditingDca(null);
+              gotoSubView('dca');
+            }}
             onAfterSave={() => {
               setEditingDca(null);
               setPlanRefreshKey((value) => value + 1);

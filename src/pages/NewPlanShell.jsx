@@ -69,7 +69,7 @@ export function NewPlanFooter({
           ) : (
             <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} disabled={isSaving} type="button" onClick={handleCreatePlan}>
               <Save className="h-4 w-4" />
-              {isSaving ? '正在保存计划' : '保存计划并开启提醒'}
+              {isSaving ? '正在保存计划' : '保存计划并同步提醒'}
               <ArrowRight className="h-4 w-4" />
             </button>
           )}

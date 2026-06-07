@@ -43,7 +43,9 @@ export function NewPlanExperienceLayout(props) {
     maxLayerWeight,
     maxUnlockedStep,
     onBack,
+    planChangeSummary,
     planStep,
+    planValidation,
     screeningAnswers,
     screeningResult,
     selectedAnchorNameLabel,
@@ -143,7 +145,10 @@ export function NewPlanExperienceLayout(props) {
               formatFundPrice={formatFundPrice}
               formatPercent={formatPercent}
               formatCurrency={formatCurrency}
+              isEditing={isEditing}
               isNameDirtyRef={isNameDirtyRef}
+              planChangeSummary={planChangeSummary}
+              planValidation={planValidation}
             />
           </div>
 

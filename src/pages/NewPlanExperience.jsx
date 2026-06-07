@@ -52,8 +52,8 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   const [extraQuote, setExtraQuote] = useState({ symbol: '', price: 0, high52w: 0, currency: '', asOf: '', loading: false, error: '' });
   const [xueqiuQuoteState, setXueqiuQuoteState] = useState({ symbol: '', quote: null, loading: false, error: '' });
   const [screeningAnswers, setScreeningAnswers] = useState(() => initialPlan?.screeningAnswers || readPlanState().screeningAnswers || {});
-  const [planStep, setPlanStep] = useState(1);
-  const [maxUnlockedStep, setMaxUnlockedStep] = useState(1);
+  const [planStep, setPlanStep] = useState(() => (isEditing ? 3 : 1));
+  const [maxUnlockedStep, setMaxUnlockedStep] = useState(() => (isEditing ? 4 : 1));
   const [symbolSearch, setSymbolSearch] = useState('');
   const newPlanMeta = () => ({
     embedded,
@@ -498,6 +498,65 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     [computed.layers]
   );
   const selectedFrequencyLabel = frequencyOptions.find((item) => item.value === state.frequency)?.label || state.frequency;
+  const planValidation = useMemo(() => {
+    const blocking = [];
+    const warnings = [];
+    const symbol = String(state.symbol || '').trim();
+    const totalBudget = Number(state.totalBudget);
+    const basePrice = Number(state.basePrice);
+    const riskControlPrice = Number(state.riskControlPrice);
+    const investableCapital = Number(computed.investableCapital);
+
+    if (!symbol) {
+      blocking.push({ step: 1, message: '请先选择或填写投资标的。' });
+    }
+    if (!selectedStrategy) {
+      blocking.push({ step: 2, message: '请选择策略模板。' });
+    }
+    if (!Number.isFinite(totalBudget) || totalBudget <= 0) {
+      blocking.push({ step: 3, message: '总投资额必须大于 0。' });
+    }
+    if (!Number.isFinite(investableCapital) || investableCapital <= 0) {
+      blocking.push({ step: 3, message: '现金留存比例过高，当前可投入资金为 0。' });
+    }
+    if (!Number.isFinite(basePrice) || basePrice <= 0) {
+      blocking.push({ step: 3, message: selectedStrategy === 'peak-drawdown' ? '阶段高点必须大于 0。' : '120日线触发价必须大于 0。' });
+    }
+    if (selectedStrategy === 'ma120-risk' && (!Number.isFinite(riskControlPrice) || riskControlPrice <= 0)) {
+      warnings.push('200日线风控价为空，深水档位会缺少风控参考。');
+    }
+    if (selectedAssetType === 'stock' && !screeningResult.passed) {
+      warnings.push(screeningResult.message || '个股自查尚未全部通过。');
+    }
+    if (computed.layers.length > 8) {
+      warnings.push('档位数量较多，移动端执行时建议先展开确认明细。');
+    }
+
+    return { blocking, warnings };
+  }, [computed.investableCapital, computed.layers.length, screeningResult.message, screeningResult.passed, selectedAssetType, selectedStrategy, state.basePrice, state.riskControlPrice, state.symbol, state.totalBudget]);
+  const planChangeSummary = useMemo(() => {
+    if (!isEditing || !initialPlan) return [];
+    const changes = [];
+    const changedNumber = (left, right, precision = 4) => Math.abs((Number(left) || 0) - (Number(right) || 0)) > 10 ** -precision;
+    const normalizeList = (values = []) => (Array.isArray(values) ? values : []).map((value) => Number(value) || 0);
+    const changedList = (left, right) => {
+      const a = normalizeList(left);
+      const b = normalizeList(right);
+      if (a.length !== b.length) return true;
+      return a.some((value, index) => Math.abs(value - b[index]) > 0.0001);
+    };
+
+    if (String(initialPlan.name || '') !== String(state.name || '')) changes.push('计划名称');
+    if (String(initialPlan.symbol || '') !== String(state.symbol || '')) changes.push('投资标的');
+    if (String(initialPlan.selectedStrategy || 'ma120-risk') !== String(selectedStrategy || 'ma120-risk')) changes.push('策略模板');
+    if (changedNumber(initialPlan.totalBudget, state.totalBudget, 2)) changes.push('总投资额');
+    if (changedNumber(initialPlan.cashReservePct, state.cashReservePct, 2)) changes.push('现金留存');
+    if (changedNumber(initialPlan.basePrice, state.basePrice, 4)) changes.push(selectedStrategy === 'peak-drawdown' ? '阶段高点' : '120日线触发价');
+    if (changedNumber(initialPlan.riskControlPrice, state.riskControlPrice, 4)) changes.push('200日线风控价');
+    if (String(initialPlan.frequency || '') !== String(state.frequency || '')) changes.push('执行频率');
+    if (changedList(initialPlan.layerWeights, computed.layerWeights) || changedList(initialPlan.triggerDrops, computed.triggerDrops)) changes.push('档位配置');
+    return changes;
+  }, [computed.layerWeights, computed.triggerDrops, initialPlan, isEditing, selectedStrategy, state.basePrice, state.cashReservePct, state.frequency, state.name, state.riskControlPrice, state.symbol, state.totalBudget]);
 
   useEffect(() => {
     if (isNameDirtyRef.current) return;
@@ -547,6 +606,18 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       return;
     }
 
+    const blocking = planValidation.blocking[0];
+    if (blocking) {
+      setPlanStep(blocking.step);
+      setMaxUnlockedStep((current) => Math.max(current, blocking.step));
+      showToast({ title: '先完善加仓计划', description: blocking.message, tone: 'amber' });
+      trackActionResult('new_plan', isEditing ? 'edit_save' : 'create', 'validation_error', {
+        ...newPlanMeta(),
+        reason: blocking.message
+      });
+      return;
+    }
+
     setIsSaving(true);
     const startedAt = Date.now();
     trackFeatureEvent('new_plan', isEditing ? 'edit_save_start' : 'create_start', newPlanMeta());
@@ -569,7 +640,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     } finally {
       showToast({
         title: isEditing ? '加仓计划已更新' : '加仓计划已保存',
-        description: syncFailed ? '计划已保存，本次提醒规则未同步。' : '计划已保存并开启提醒，正在返回总览。',
+        description: syncFailed ? '计划已保存，本次提醒规则未同步。' : '计划已保存，提醒规则已同步。',
         tone: syncFailed ? 'amber' : 'emerald',
         persist: true
       });
@@ -622,7 +693,9 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       maxLayerWeight={maxLayerWeight}
       maxUnlockedStep={maxUnlockedStep}
       onBack={onBack}
+      planChangeSummary={planChangeSummary}
       planStep={planStep}
+      planValidation={planValidation}
       screeningAnswers={screeningAnswers}
       screeningResult={screeningResult}
       selectedAnchorNameLabel={selectedAnchorNameLabel}

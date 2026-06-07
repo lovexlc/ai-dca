@@ -1,4 +1,5 @@
 import { Card, Field, NumberInput, SectionHeading, SelectField, TextInput, cx } from '../components/experience-ui.jsx';
+import { AlertTriangle, CheckCircle2, History } from 'lucide-react';
 import { EXTRA_SYMBOL_CODES, findExtraSymbol, isExtraSymbol } from '../app/extraSymbols.js';
 
 export function NewPlanConfigCards({
@@ -30,8 +31,14 @@ export function NewPlanConfigCards({
   formatFundPrice,
   formatPercent,
   formatCurrency,
+  isEditing = false,
+  planChangeSummary = [],
+  planValidation = { blocking: [], warnings: [] },
   isNameDirtyRef
 }) {
+  const blockingChecks = Array.isArray(planValidation?.blocking) ? planValidation.blocking : [];
+  const warningChecks = Array.isArray(planValidation?.warnings) ? planValidation.warnings : [];
+
   return (
     <>
       <Card className={cx('min-w-0 overflow-hidden', planStep !== 3 && 'hidden')}>
@@ -206,9 +213,95 @@ export function NewPlanConfigCards({
             </div>
           </div>
 
+          <div className={cx('rounded-2xl border px-4 py-4', blockingChecks.length ? 'border-rose-200 bg-rose-50' : 'border-emerald-200 bg-emerald-50')}>
+            <div className="flex items-start gap-3">
+              {blockingChecks.length ? (
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
+              ) : (
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+              )}
+              <div className="min-w-0">
+                <div className={cx('text-sm font-bold', blockingChecks.length ? 'text-rose-900' : 'text-emerald-900')}>保存前检查</div>
+                <div className={cx('mt-1 text-sm', blockingChecks.length ? 'text-rose-700' : 'text-emerald-700')}>
+                  {blockingChecks.length ? '仍有关键参数需要补全，保存时会跳回对应步骤。' : '核心参数已完整，可以保存计划并同步提醒规则。'}
+                </div>
+              </div>
+            </div>
+            {blockingChecks.length ? (
+              <ul className="mt-3 space-y-2 text-sm text-rose-700">
+                {blockingChecks.map((item) => (
+                  <li key={`${item.step}-${item.message}`}>第 {item.step} 步：{item.message}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+
+          {warningChecks.length ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-amber-900">建议确认</div>
+                  <ul className="mt-2 space-y-2 text-sm text-amber-800">
+                    {warningChecks.map((message) => (
+                      <li key={message}>{message}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {isEditing ? (
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+              <div className="flex items-start gap-3">
+                <History className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" />
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-slate-900">本次变更</div>
+                  <div className="mt-1 text-sm text-slate-500">
+                    {planChangeSummary.length ? '保存后会替换这些关键配置，并重新同步提醒规则。' : '关键参数未变化，保存会刷新提醒规则。'}
+                  </div>
+                </div>
+              </div>
+              {planChangeSummary.length ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {planChangeSummary.map((item) => (
+                    <span key={item} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">{item}</span>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-900">档位确认明细</div>
-            <div className="overflow-x-auto">
+            <div className="divide-y divide-slate-100 sm:hidden">
+              {computed.layers.map((layer) => {
+                const capitalRatio = formatPercent((computed.totalWeight ? layer.weight / computed.totalWeight : 0) * 100, 1);
+                return (
+                  <div key={layer.id} className="px-4 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-slate-900">{layer.label}</div>
+                        <div className="mt-1 text-xs text-slate-500">{formatFundPrice(layer.price, selectedInstrumentCurrency)} · {formatPercent(layer.drawdown, 1)}</div>
+                      </div>
+                      <div className="shrink-0 rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700">{capitalRatio}</div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                      <div className="rounded-xl bg-slate-50 px-3 py-2">
+                        <div className="font-semibold text-slate-400">计划金额</div>
+                        <div className="mt-1 font-bold text-slate-900">{formatCurrency(layer.amount, '¥ ')}</div>
+                      </div>
+                      <div className="rounded-xl bg-slate-50 px-3 py-2">
+                        <div className="font-semibold text-slate-400">预估份额</div>
+                        <div className="mt-1 font-bold text-slate-900">{layer.shares.toFixed(2)}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="hidden overflow-x-auto sm:block">
               <table className="min-w-[560px] text-left text-sm whitespace-nowrap">
                 <thead className="bg-white text-[11px] uppercase tracking-[0.16em] text-slate-400">
                   <tr>
