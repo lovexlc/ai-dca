@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Calendar, Clock3, Layers3, Save, Target, TrendingUp, Wallet } from 'lucide-react';
 import { formatCurrency, formatPercent } from '../app/accumulation.js';
-import { buildDcaProjection, frequencyOptions, persistDcaState, readDcaState } from '../app/dca.js';
+import { buildDcaProjection, defaultDcaState, frequencyOptions, persistDcaState } from '../app/dca.js';
 import { syncTradePlanRules } from '../app/notifySync.js';
 import { readPlanList } from '../app/plan.js';
 import { showToast } from '../app/toast.js';
@@ -13,15 +13,36 @@ const DAY_OPTIONS = [1, 8, 15, 28];
 const CALC_APPLY_KEY = 'aiDcaCalcApply';
 const CALC_FREQ_TO_DCA = { weekly: '每周', biweekly: '每周', monthly: '每月' };
 
+function buildInitialDcaState(initialDca = null) {
+  if (initialDca?.id) {
+    return {
+      ...defaultDcaState,
+      ...initialDca,
+      isConfigured: Boolean(initialDca.isConfigured)
+    };
+  }
+
+  return {
+    ...defaultDcaState,
+    id: '',
+    name: '',
+    isConfigured: false,
+    createdAt: '',
+    updatedAt: ''
+  };
+}
+
 // onAfterSave: 当该页被嵌入交易计划二级 tab 时，保存后由父控件接管跳转（避免整页 reload）。
 // 未传时保留原行为：保存后跳转到 links.tradePlans。
-export function DcaExperience({ links, embedded = false, onAfterSave }) {
-  const [state, setState] = useState(() => readDcaState());
+export function DcaExperience({ links, embedded = false, onAfterSave, initialDca = null, mode = 'create' }) {
+  const isEditing = mode === 'replace' && Boolean(initialDca?.id);
+  const [state, setState] = useState(() => buildInitialDcaState(initialDca));
   const [planList] = useState(() => readPlanList());
   const [isSaving, setIsSaving] = useState(false);
   const projection = useMemo(() => buildDcaProjection(state, { planList }), [planList, state]);
   const dcaMeta = () => ({
     embedded,
+    isEditing,
     symbolLength: String(state.symbol || '').length,
     frequency: state.frequency,
     executionDay: state.executionDay,
@@ -41,10 +62,6 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
     ],
     [planList]
   );
-
-  useEffect(() => {
-    persistDcaState(state, projection);
-  }, [state, projection]);
 
   // PR 2.5b：从 DCA 回测计算器跳过来时，读取 sessionStorage 预填表单。
   useEffect(() => {
@@ -81,9 +98,13 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
     }
 
     setIsSaving(true);
-    persistDcaState(state, projection);
+    const persisted = persistDcaState(
+      { ...state, isConfigured: true },
+      projection,
+      { mode: isEditing ? 'replace' : 'create', activate: true }
+    );
     const startedAt = Date.now();
-    trackFeatureEvent('dca', 'save_start', dcaMeta());
+    trackFeatureEvent('dca', isEditing ? 'edit_save_start' : 'save_start', dcaMeta());
 
     let syncFailed = false;
     try {
@@ -93,18 +114,18 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
       syncFailed = true;
     } finally {
       showToast({
-        title: '定投计划已保存',
+        title: isEditing ? '定投计划已更新' : '定投计划已保存',
         description: syncFailed ? '定投计划已保存，本次提醒规则未同步。' : '定投计划已保存并开启提醒，正在返回交易计划列表。',
         tone: syncFailed ? 'amber' : 'emerald',
         persist: true
       });
-      trackActionResult('dca', 'save', syncFailed ? 'partial' : 'success', {
+      trackActionResult('dca', isEditing ? 'edit_save' : 'save', syncFailed ? 'partial' : 'success', {
         ...dcaMeta(),
         syncFailed,
         durationMs: Date.now() - startedAt
       });
       if (typeof onAfterSave === 'function') {
-        onAfterSave();
+        onAfterSave(persisted);
       } else {
         window.location.href = links.tradePlans;
       }
@@ -141,10 +162,14 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
           <Card className="lg:col-span-2 lg:col-start-4 lg:row-start-1 lg:sticky lg:top-4">
             <SectionHeading
               eyebrow="计划参数"
-              title="策略参数设置"
+              title={isEditing ? '编辑定投参数' : '新建定投计划'}
             />
 
             <div className="mt-6 space-y-5">
+              <Field label="计划名称" helper="用于交易计划列表和提醒记录。留空会按标的与频率自动命名。">
+                <TextInput value={state.name || ''} onChange={(event) => setState((current) => ({ ...current, name: event.target.value }))} placeholder="例如：QQQ 每周定投" />
+              </Field>
+
               {projection.isLinkedPlan ? (
                 <div className="grid gap-4 md:grid-cols-2">
                   <Field label="单周期投入总额" helper={`这个预算会按「${projection.linkedPlanName}」的层级权重拆成多笔，周期总额保持不变。`}>
@@ -387,7 +412,7 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
             <a className={cx(secondaryButtonClass, 'w-full sm:w-auto')} href={links.tradePlans}>取消</a>
             <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} disabled={isSaving} type="button" onClick={handleSave}>
               <Save className="h-4 w-4" />
-              {isSaving ? '正在保存定投' : '保存并开启提醒'}
+              {isSaving ? '正在保存定投' : '保存计划并开启提醒'}
               <ArrowRight className="h-4 w-4" />
             </button>
           </div>

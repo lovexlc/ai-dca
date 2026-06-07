@@ -24,7 +24,7 @@ test('buildNotifySyncPayload: 空 localStorage 仍返回 plans/dca/sellPlans/pos
   const mod = await freshImport();
   const payload = mod.buildNotifySyncPayload();
   assert.ok(payload && typeof payload === 'object');
-  for (const key of ['plans', 'dca', 'sellPlans', 'positionDigest', 'syncedAt']) {
+  for (const key of ['plans', 'dca', 'dcaList', 'sellPlans', 'positionDigest', 'syncedAt']) {
     assert.ok(Object.prototype.hasOwnProperty.call(payload, key), `payload 缺少 ${key}`);
   }
   assert.ok('vix' in payload, 'payload 缺少 vix');
@@ -32,7 +32,51 @@ test('buildNotifySyncPayload: 空 localStorage 仍返回 plans/dca/sellPlans/pos
   assert.equal(payload.positionDigest, null);
   assert.equal(payload.vix, null);
   assert.equal(payload.dca, null);
+  assert.deepEqual(payload.dcaList, []);
   assert.ok(typeof payload.syncedAt === 'string' && payload.syncedAt.length > 0);
+});
+
+test('buildNotifySyncPayload: 多个定投计划进入 dcaList，同时保留 active dca 兼容字段', async () => {
+  installStorage({
+    aiDcaDcaStore: JSON.stringify({
+      source: 'react-dca-store',
+      version: 1,
+      activeDcaId: 'dca-spy-monthly',
+      plans: [
+        {
+          id: 'dca-qqq-weekly',
+          name: 'QQQ 每周定投',
+          symbol: 'QQQ',
+          frequency: '每周',
+          executionDay: 2,
+          recurringInvestment: 300,
+          termMonths: 12,
+          isConfigured: true,
+          createdAt: '2026-05-10T00:00:00.000Z',
+          updatedAt: '2026-05-10T00:00:00.000Z'
+        },
+        {
+          id: 'dca-spy-monthly',
+          name: 'SPY 每月定投',
+          symbol: 'SPY',
+          frequency: '每月',
+          executionDay: 8,
+          recurringInvestment: 500,
+          termMonths: 24,
+          isConfigured: true,
+          createdAt: '2026-05-11T00:00:00.000Z',
+          updatedAt: '2026-05-11T00:00:00.000Z'
+        }
+      ]
+    })
+  });
+
+  const mod = await freshImport();
+  const payload = mod.buildNotifySyncPayload();
+  assert.equal(payload.dcaList.length, 2);
+  assert.deepEqual(payload.dcaList.map((dca) => dca.id), ['dca-qqq-weekly', 'dca-spy-monthly']);
+  assert.equal(payload.dca.id, 'dca-spy-monthly');
+  assert.equal(payload.dca.name, 'SPY 每月定投');
 });
 
 test('buildNotifySyncPayload: sellPlans 取自 aiDcaSellPlanStore 并仅含精简字段', async () => {

@@ -22,6 +22,7 @@ const SYNC_KEY_LABELS = {
   aiDcaAccountAssignments: '账户分配',
   aiDcaAccumulationState: '加仓模型',
   aiDcaDcaState: '定投计划',
+  aiDcaDcaStore: '定投计划列表',
   aiDcaFundHoldingsLedger: '持仓账本',
   aiDcaFundHoldingsState: '持仓状态',
   aiDcaHomeDashboardState: '首页仪表盘',

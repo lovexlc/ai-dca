@@ -196,6 +196,45 @@ test('mergeBackupEnvelopes merges plan store plans by id and keeps local active 
   assert.equal(store.activePlanId, 'local-plan');
 });
 
+test('mergeBackupEnvelopes merges dca store plans by id and keeps local active dca', () => {
+  const remoteEnvelope = {
+    version: 1,
+    keys: ['aiDcaDcaStore'],
+    payload: {
+      aiDcaDcaStore: JSON.stringify({
+        source: 'react-dca-store',
+        version: 1,
+        activeDcaId: 'remote-dca',
+        plans: [
+          { id: 'remote-dca', symbol: 'QQQ', recurringInvestment: 300, updatedAt: '2026-05-01T10:00:00.000Z' },
+          { id: 'shared-dca', symbol: 'SPY', recurringInvestment: 400, updatedAt: '2026-05-02T10:00:00.000Z' }
+        ]
+      })
+    }
+  };
+  const localEnvelope = {
+    version: 1,
+    keys: ['aiDcaDcaStore'],
+    payload: {
+      aiDcaDcaStore: JSON.stringify({
+        source: 'react-dca-store',
+        version: 1,
+        activeDcaId: 'local-dca',
+        plans: [
+          { id: 'local-dca', symbol: 'NVDA', recurringInvestment: 500, updatedAt: '2026-05-03T10:00:00.000Z' },
+          { id: 'shared-dca', symbol: 'SPY', recurringInvestment: 450, updatedAt: '2026-05-02T11:00:00.000Z' }
+        ]
+      })
+    }
+  };
+
+  const merged = mergeBackupEnvelopes(remoteEnvelope, localEnvelope);
+  const store = JSON.parse(merged.payload.aiDcaDcaStore);
+  assert.deepEqual(store.plans.map((plan) => plan.id), ['remote-dca', 'shared-dca', 'local-dca']);
+  assert.equal(store.plans.find((plan) => plan.id === 'shared-dca').recurringInvestment, 450);
+  assert.equal(store.activeDcaId, 'local-dca');
+});
+
 test('compareRecordVersions lets higher revision win regardless of timestamp', () => {
   // 逻辑时钟：rev 高者胜，即使它的墙钟时间更早（时钟漂移场景）。
   const older = { rev: 5, updatedAt: '2026-05-01T00:00:00.000Z' };

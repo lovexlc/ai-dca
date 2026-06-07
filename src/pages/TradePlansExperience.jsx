@@ -101,7 +101,7 @@ const EMPTY_STATE = {
   list: {
     icon: ListChecks,
     title: '暂无交易计划',
-    description: '创建第一个计划，开始自动化交易',
+    description: '创建第一个计划，开始管理交易提醒',
     cta: '新建计划',
     type: 'menu',
     tone: 'indigo',
@@ -153,6 +153,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   const [planRefreshKey, setPlanRefreshKey] = useState(0);
   const [expandedRowIds, setExpandedRowIds] = useState(() => new Set());
   const [editingPlan, setEditingPlan] = useState(null);
+  const [editingDca, setEditingDca] = useState(null);
   const { previewRows = [] } = useMemo(() => {
     void planRefreshKey;
     return buildTradePlanCenter();
@@ -210,6 +211,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   function enterNewPlanView() {
     setEditingPlan(null);
+    setEditingDca(null);
     gotoSubView('new', { push: true });
   }
 
@@ -220,6 +222,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
       ...tradePlansMeta()
     });
     if (type === 'dca') {
+      setEditingDca(null);
       gotoSubView('dcaNew', { push: true });
       return;
     }
@@ -235,6 +238,8 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   }
 
   function exitNewPlanView() {
+    setEditingPlan(null);
+    setPlanRefreshKey((value) => value + 1);
     if (typeof window !== 'undefined' && window.location.hash === '#new') {
       window.history.back();
       return;
@@ -441,6 +446,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
       ...tradePlansMeta()
     });
     if (row?.sourceType === 'dca') {
+      setEditingDca(row.editPayload || null);
       gotoSubView('dcaNew', { push: true });
       return;
     }
@@ -838,7 +844,13 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
             links={links}
             inPagesDir={inPagesDir}
             embedded
-            onAfterSave={() => gotoSubView('dca')}
+            initialDca={editingDca}
+            mode={editingDca?.id ? 'replace' : 'create'}
+            onAfterSave={() => {
+              setEditingDca(null);
+              setPlanRefreshKey((value) => value + 1);
+              gotoSubView('dca');
+            }}
           />
         </Suspense>
       </div>

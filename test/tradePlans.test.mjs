@@ -21,9 +21,13 @@ function seedSellPlanStore(plans) {
   memory.set('aiDcaSellPlanStore', JSON.stringify(plans));
 }
 
-function seedBuyPlanStore(plans) {
-  // plan.js 定义 PLAN_KEY = 'aiDcaPlanStore'
-  memory.set('aiDcaPlanStore', JSON.stringify(plans));
+function seedDcaStore(plans, activeDcaId = '') {
+  memory.set('aiDcaDcaStore', JSON.stringify({
+    source: 'react-dca-store',
+    version: 1,
+    activeDcaId: activeDcaId || plans[0]?.id || '',
+    plans
+  }));
 }
 
 const { buildTradePlanCenter } = await import('../src/app/tradePlans.js');
@@ -100,4 +104,42 @@ test('sortRows: sell 在 dca 之前', () => {
   if (firstDca !== -1) {
     assert.ok(firstSell < firstDca, `sell(${firstSell}) should come before dca(${firstDca})`);
   }
+});
+
+test('buildDcaRows: aiDcaDcaStore 中多个定投计划分别生成列表卡片', () => {
+  resetStore();
+  seedDcaStore([
+    {
+      id: 'dca-weekly-qqq',
+      name: 'QQQ 每周定投',
+      symbol: 'QQQ',
+      frequency: '每周',
+      executionDay: 2,
+      recurringInvestment: 300,
+      termMonths: 12,
+      isConfigured: true,
+      createdAt: '2026-05-10T00:00:00Z',
+      updatedAt: '2026-05-10T00:00:00Z'
+    },
+    {
+      id: 'dca-monthly-spy',
+      name: 'SPY 每月定投',
+      symbol: 'SPY',
+      frequency: '每月',
+      executionDay: 8,
+      recurringInvestment: 500,
+      termMonths: 24,
+      isConfigured: true,
+      createdAt: '2026-05-11T00:00:00Z',
+      updatedAt: '2026-05-11T00:00:00Z'
+    }
+  ], 'dca-weekly-qqq');
+
+  const center = buildTradePlanCenter(new Date('2026-05-18T00:00:00Z'));
+  const dcaRows = center.previewRows.filter((row) => row.sourceType === 'dca');
+  assert.equal(dcaRows.length, 2);
+  assert.deepEqual(new Set(dcaRows.map((row) => row.ruleId)), new Set(['dca:dca-weekly-qqq', 'dca:dca-monthly-spy']));
+  assert.deepEqual(new Set(dcaRows.map((row) => row.planName)), new Set(['QQQ 每周定投', 'SPY 每月定投']));
+  assert.ok(dcaRows.every((row) => row.editPayload?.id === row.sourceId));
+  assert.ok(dcaRows.every((row) => Array.isArray(row.detailItems) && row.detailItems.length > 0));
 });

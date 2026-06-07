@@ -13,6 +13,7 @@ const TRANSIENT_SYNC_KEYS = new Set([
 
 const DOMAIN_MERGE_PAYLOAD_KEYS = new Set([
   'aiDcaPlanStore',
+  'aiDcaDcaStore',
   'aiDcaFundHoldingsLedger',
   'aiDcaTradeLedger',
   'aiDcaTradeLedgerArchive',
@@ -162,20 +163,30 @@ function mergeArrayPayload(remoteValue, localValue) {
   return stringifyPayloadJson(sortRecords(mergeRecordsById(remote, local)));
 }
 
-function mergePlanStorePayload(remoteValue, localValue) {
+function mergePlanLikeStorePayload(remoteValue, localValue, { activeKey = 'activePlanId' } = {}) {
   const remote = parsePayloadJson(remoteValue);
   const local = parsePayloadJson(localValue);
   if (!remote || typeof remote !== 'object' || !local || typeof local !== 'object') return localValue ?? remoteValue;
   const plans = sortRecords(mergeRecordsById(remote.plans, local.plans));
-  const activePlanId = plans.some((plan) => plan.id === local.activePlanId)
-    ? local.activePlanId
-    : (plans.some((plan) => plan.id === remote.activePlanId) ? remote.activePlanId : plans[0]?.id || '');
+  const localActiveId = String(local?.[activeKey] || '').trim();
+  const remoteActiveId = String(remote?.[activeKey] || '').trim();
+  const activeId = plans.some((plan) => plan.id === localActiveId)
+    ? localActiveId
+    : (plans.some((plan) => plan.id === remoteActiveId) ? remoteActiveId : plans[0]?.id || '');
   return stringifyPayloadJson({
     ...remote,
     ...local,
     plans,
-    activePlanId
+    [activeKey]: activeId
   });
+}
+
+function mergePlanStorePayload(remoteValue, localValue) {
+  return mergePlanLikeStorePayload(remoteValue, localValue, { activeKey: 'activePlanId' });
+}
+
+function mergeDcaStorePayload(remoteValue, localValue) {
+  return mergePlanLikeStorePayload(remoteValue, localValue, { activeKey: 'activeDcaId' });
 }
 
 function mergeObjectByCode(remoteValue, localValue) {
@@ -211,6 +222,8 @@ function mergePayloadValue(key, remoteValue, localValue) {
   switch (key) {
     case 'aiDcaPlanStore':
       return mergePlanStorePayload(remoteValue, localValue);
+    case 'aiDcaDcaStore':
+      return mergeDcaStorePayload(remoteValue, localValue);
     case 'aiDcaFundHoldingsLedger':
       return mergeHoldingsLedgerPayload(remoteValue, localValue);
     case 'aiDcaTradeLedger':

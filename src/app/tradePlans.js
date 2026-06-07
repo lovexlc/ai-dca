@@ -1,5 +1,5 @@
 import { formatCurrency, formatPercent } from './accumulation.js';
-import { buildDcaProjection, hasSavedDcaState, readDcaState } from './dca.js';
+import { buildDcaProjection, readDcaList } from './dca.js';
 import { buildPlan, readPlanList } from './plan.js';
 import { readSellPlanList } from './sellPlans.js';
 import { buildSellPlan } from './sellStrategy.js';
@@ -118,6 +118,15 @@ function buildPlanRows(planList = []) {
     const computed = buildPlan(plan);
     const displayPlanName = resolveDisplayPlanName(plan);
     const totalLayers = computed.layers.length;
+    const layerItems = computed.layers.map((item, itemIndex) => ({
+      id: item.id || `layer-${itemIndex + 1}`,
+      label: `第${itemIndex + 1}层`,
+      detail: Number.isFinite(Number(item.drawdown)) ? `-${Number(item.drawdown).toFixed(1)}%` : '',
+      amount: formatCurrency(item.amount, '¥ '),
+      price: formatReferencePrice(item.price),
+      trigger: resolveLayerTriggerLabel({ ...plan }, { ...item, order: itemIndex + 1 }, totalLayers),
+      status: '待执行'
+    }));
     return computed.layers.map((layer, index) => {
       const order = index + 1;
       return ({
@@ -134,7 +143,7 @@ function buildPlanRows(planList = []) {
       statusTone: order === 1 ? 'indigo' : 'slate',
       cardTypeLabel: '加仓',
       cardTone: 'indigo',
-      progressLabel: `${totalLayers}层策略 · 第 ${Math.min(order + 1, totalLayers)}/${totalLayers} 层待执行`,
+      progressLabel: `${totalLayers}层策略 · 第 ${order}/${totalLayers} 层待执行`,
       progressValue: totalLayers > 1 ? Math.min(Math.max((order - 1) / (totalLayers - 1), 0), 1) : 0,
       progressCaption: `当前监控：${resolveLayerTriggerLabel({ ...plan }, { ...layer, order }, totalLayers)}`,
       progressItems: computed.layers.slice(0, 4).map((item, itemIndex) => ({
@@ -150,6 +159,11 @@ function buildPlanRows(planList = []) {
       triggerExplain: `${resolveLayerTriggerLabel({ ...plan }, { ...layer, order }, computed.layers.length)}，参考买入价 ${formatReferencePrice(layer.price)}。`,
       notificationMethod: '预留站内提醒 / 消息通知',
       reminderLog: ['尚未开启通知，后续可追加提醒渠道。'],
+      detailItems: layerItems.map((item, itemIndex) => ({
+        ...item,
+        status: itemIndex + 1 < order ? '已执行' : itemIndex + 1 === order ? '当前监控' : '待执行'
+      })),
+      editPayload: plan,
       order,
       createdAt: plan.createdAt || plan.updatedAt || ''
     });
@@ -157,27 +171,47 @@ function buildPlanRows(planList = []) {
   });
 }
 
-function buildDcaRows(dcaState, now = new Date(), planList = readPlanList()) {
-  if (!hasSavedDcaState()) {
+function buildDcaRows(dcaList = [], now = new Date(), planList = readPlanList()) {
+  if (!Array.isArray(dcaList) || !dcaList.length) {
     return [];
   }
 
-  const projection = buildDcaProjection(dcaState, { planList });
+  return dcaList.flatMap((dcaState) => {
+    const projection = buildDcaProjection(dcaState, { planList });
 
-  if (!projection.effectiveSymbol) {
-    return [];
-  }
+    if (!projection.effectiveSymbol) {
+      return [];
+    }
 
-  const nextExecutionDate = getNextExecutionDate(dcaState.frequency, dcaState.executionDay, now);
-  const nextExecutionLabel = formatDateLabel(nextExecutionDate);
+    const nextExecutionDate = getNextExecutionDate(dcaState.frequency, dcaState.executionDay, now);
+    const nextExecutionLabel = formatDateLabel(nextExecutionDate);
+    const sourceId = dcaState.id || `${projection.effectiveSymbol}-${dcaState.frequency}-${dcaState.executionDay}-${projection.linkedPlanId || 'standard'}`;
+    const detailItems = projection.isLinkedPlan
+      ? projection.linkedPlanSplit.map((item) => ({
+          id: item.id,
+          label: item.label,
+          detail: item.drawdown > 0 ? `回撤 ${formatPercent(item.drawdown, 1)}` : '首批',
+          amount: formatCurrency(item.amount, '¥ '),
+          price: '',
+          trigger: item.drawdown > 0 ? `参考回撤 ${formatPercent(item.drawdown, 1)}` : '首批参考区间',
+          status: '周期内分批'
+        }))
+      : projection.schedule.slice(0, 4).map((item) => ({
+          id: item.id,
+          label: item.label,
+          detail: item.note,
+          amount: formatCurrency(item.contribution, '¥ '),
+          price: '',
+          trigger: projection.cadenceLabel,
+          status: '待执行'
+        }));
 
-  return [
-    {
-      id: `dca-${projection.effectiveSymbol}-${dcaState.frequency}-${dcaState.executionDay}-${projection.linkedPlanId || 'standard'}`,
-      ruleId: `dca:${projection.effectiveSymbol}:${dcaState.frequency}:${dcaState.executionDay}:${projection.linkedPlanId || 'standard'}`,
+    return [{
+      id: `dca-${sourceId}`,
+      ruleId: `dca:${sourceId}`,
       sourceType: 'dca',
-      sourceId: projection.effectiveSymbol,
-      planName: `${projection.effectiveSymbol} 定投计划`,
+      sourceId,
+      planName: dcaState.name || `${projection.effectiveSymbol} 定投计划`,
       typeLabel: projection.isLinkedPlan ? '定投 + 策略分批' : '固定定投',
       symbol: projection.effectiveSymbol,
       triggerLabel: projection.cadenceLabel,
@@ -205,10 +239,12 @@ function buildDcaRows(dcaState, now = new Date(), planList = readPlanList()) {
         : `${projection.cadenceLabel}，下一次计划执行日期 ${nextExecutionLabel}。`,
       notificationMethod: '预留执行前提醒',
       reminderLog: ['执行前提醒功能待接入。'],
+      detailItems,
+      editPayload: dcaState,
       order: 999,
-      createdAt: ''
-    }
-  ];
+      createdAt: dcaState.createdAt || dcaState.updatedAt || ''
+    }];
+  });
 }
 
 // PR 1.5：将已保存的卖出计划按分档拆为交易计划中心的行。
@@ -302,7 +338,7 @@ function buildPreviewRows(rows = []) {
 export function buildTradePlanCenter(now = new Date()) {
   const planList = readPlanList();
   const planRows = buildPlanRows(planList);
-  const dcaRows = buildDcaRows(readDcaState(), now, planList);
+  const dcaRows = buildDcaRows(readDcaList(), now, planList);
   const sellPlanRows = buildSellPlanRows(readSellPlanList());
   const rows = sortRows([...planRows, ...sellPlanRows, ...dcaRows]);
   const previewRows = buildPreviewRows(rows);

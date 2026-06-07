@@ -6,6 +6,7 @@ export const SYNCABLE_STORAGE_KEYS = new Set([
   'aiDcaAccountAssignments',
   'aiDcaAccumulationState',
   'aiDcaDcaState',
+  'aiDcaDcaStore',
   'aiDcaFundHoldingsLedger',
   'aiDcaFundHoldingsState',
   'aiDcaHomeDashboardState',
@@ -23,7 +24,7 @@ export const SYNCABLE_STORAGE_KEYS = new Set([
   'aiDcaWebNotifyConfig',
   'aiDcaWorkspacePrefs'
 ]);
-const TRANSIENT_KEYS = new Set([
+const _TRANSIENT_KEYS = new Set([
   'aiDcaPendingToasts',
   'aiDcaCloudSyncSession',
   'aiDcaCloudSyncMeta',

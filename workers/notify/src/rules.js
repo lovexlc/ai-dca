@@ -42,6 +42,8 @@ function normalizeDca(dca = null) {
   }
 
   return {
+    id: String(dca.id || '').trim(),
+    name: String(dca.name || '').trim(),
     symbol,
     initialInvestment: Number(dca.initialInvestment) || 0,
     recurringInvestment: Number(dca.recurringInvestment) || 0,
@@ -49,8 +51,22 @@ function normalizeDca(dca = null) {
     executionDay: Number(dca.executionDay) || 1,
     termMonths: Number(dca.termMonths) || 0,
     targetReturn: Number(dca.targetReturn) || 0,
-    linkedPlanId: String(dca.linkedPlanId || '').trim()
+    linkedPlanId: String(dca.linkedPlanId || '').trim(),
+    isConfigured: dca.isConfigured !== false,
+    createdAt: String(dca.createdAt || '').trim(),
+    updatedAt: String(dca.updatedAt || '').trim()
   };
+}
+
+function normalizeDcaListPayload(payload = {}) {
+  if (Array.isArray(payload.dcaList)) {
+    return payload.dcaList
+      .map((dca) => normalizeDca(dca))
+      .filter((dca) => dca && dca.isConfigured);
+  }
+
+  const legacyDca = normalizeDca(payload.dca);
+  return legacyDca && legacyDca.isConfigured ? [legacyDca] : [];
 }
 
 function resolveInvestableCapital(plan = {}) {
@@ -76,12 +92,14 @@ function resolvePlanFirstLayerAmount(plan = null) {
 }
 
 export function normalizeNotifyPayload(payload = {}) {
+  const dcaList = normalizeDcaListPayload(payload);
   return {
     syncedAt: String(payload.syncedAt || new Date().toISOString()),
     plans: normalizeList(payload.plans)
       .map((plan) => normalizePlan(plan))
       .filter((plan) => plan && plan.isConfigured),
-    dca: normalizeDca(payload.dca)
+    dca: dcaList[0] || null,
+    dcaList
   };
 }
 
@@ -104,24 +122,33 @@ export function compileNotifyRules(payload = {}) {
     enabled: true
   }));
 
-  const linkedPlan = normalized.dca?.linkedPlanId
-    ? normalized.plans.find((plan) => plan.id === normalized.dca.linkedPlanId) || null
-    : null;
-  const dcaSymbol = linkedPlan?.symbol || normalized.dca?.symbol || '';
-  const dcaRules = normalized.dca && dcaSymbol
-    ? [{
-        ruleId: `dca:${dcaSymbol}:${normalized.dca.frequency}:${normalized.dca.executionDay}:${normalized.dca.linkedPlanId || 'standard'}`,
+  const dcaRules = normalized.dcaList
+    .map((dca) => {
+      const linkedPlan = dca.linkedPlanId
+        ? normalized.plans.find((plan) => plan.id === dca.linkedPlanId) || null
+        : null;
+      const dcaSymbol = linkedPlan?.symbol || dca.symbol || '';
+      if (!dcaSymbol) {
+        return null;
+      }
+
+      const fallbackRuleId = `dca:${dcaSymbol}:${dca.frequency}:${dca.executionDay}:${dca.linkedPlanId || 'standard'}`;
+      return {
+        ruleId: dca.id ? `dca:${dca.id}` : fallbackRuleId,
         type: 'dca-schedule',
+        dcaId: dca.id,
+        dcaName: dca.name,
         symbol: dcaSymbol,
-        frequency: normalized.dca.frequency,
-        executionDay: normalized.dca.executionDay,
-        recurringInvestment: normalized.dca.recurringInvestment,
+        frequency: dca.frequency,
+        executionDay: dca.executionDay,
+        recurringInvestment: dca.recurringInvestment,
         linkedPlanId: linkedPlan?.id || '',
-        linkedPlanName: linkedPlan?.name || dcaSymbol,
+        linkedPlanName: linkedPlan?.name || dca.name || dcaSymbol,
         firstExecutionAmount: resolvePlanFirstLayerAmount(linkedPlan),
         enabled: true
-      }]
-    : [];
+      };
+    })
+    .filter(Boolean);
 
   return {
     normalized,

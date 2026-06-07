@@ -1,4 +1,4 @@
-import { DCA_KEY, readDcaState } from './dca.js';
+import { readDcaList, readDcaState } from './dca.js';
 import { readPlanList } from './plan.js';
 import { readSellPlanList } from './sellPlans.js';
 import { readTradeLedger } from './tradeLedger.js';
@@ -92,7 +92,7 @@ export function readNotifyClientConfig() {
     window.localStorage.setItem(NOTIFY_CLIENT_CONFIG_KEY, JSON.stringify(nextConfig));
 
     return nextConfig;
-  } catch (_error) {
+  } catch {
     const nextConfig = {
       ...buildDefaultNotifyClientConfig(),
       notifyClientId: createNotifyClientId(),
@@ -191,7 +191,7 @@ async function readJsonResponse(response) {
 
   try {
     return JSON.parse(rawText);
-  } catch (_error) {
+  } catch {
     return {
       error: rawText
     };
@@ -227,14 +227,6 @@ async function requestNotify(path, init = {}) {
   return payload;
 }
 
-function hasPersistedDca() {
-  if (typeof window === 'undefined') {
-    return false;
-  }
-
-  return Boolean(window.localStorage.getItem(DCA_KEY));
-}
-
 // PR 4.5：weight_alert 规则 — 生成仓位占比摘要（不上传总资产/价格，仅传权重 %）。
 // worker 只需 weightPct 就能发 “X 超 50% 仓位上限” 提醒。
 // PR 2b：vix_signal 规则 — 上传当前 VIX 读数 + 阈值表，让 worker 能发 “跳到 30 / 40 / 50 ” 的跨阈值提醒。
@@ -262,7 +254,7 @@ function buildPositionDigest() {
   let snapshot;
   try {
     snapshot = JSON.parse(window.localStorage.getItem('aiDcaPositionSnapshot') || 'null');
-  } catch (_e) { return null; }
+  } catch { return null; }
   if (!snapshot || typeof snapshot !== 'object') return null;
 
   const totalAssets = Number(snapshot.totalAssets) || 0;
@@ -299,7 +291,8 @@ function buildPositionDigest() {
 
 export function buildNotifySyncPayload() {
   const plans = readPlanList();
-  const dca = hasPersistedDca() ? readDcaState() : null;
+  const dcaList = readDcaList();
+  const dca = dcaList.length ? readDcaState() : null;
   // PR 1.5：worker 计算盈利% 需要当前价。从 positionSnapshot.prices 拿（用户在 PositionManager / Holdings 页上刷价后写入）。
   let snapshotPrices = {};
   try {
@@ -307,7 +300,7 @@ export function buildNotifySyncPayload() {
     if (snap && typeof snap === 'object' && snap.prices && typeof snap.prices === 'object') {
       snapshotPrices = snap.prices;
     }
-  } catch (_e) { /* ignore */ }
+  } catch { /* ignore */ }
   // PR 1.5：sell_layer 规则 — 上传已保存的卖出计划列表，让 worker 能生成“盈利 X% → 卖 Y%”提醒。
   // 只传一个精简快照，并附带 currentPrice 供 worker 计算盈利%。
   const sellPlans = readSellPlanList().map((plan) => {
@@ -331,6 +324,7 @@ export function buildNotifySyncPayload() {
   return {
     plans,
     dca,
+    dcaList,
     sellPlans,
     positionDigest,
     vix: vixDigest,

@@ -4,10 +4,15 @@ import { buildPlan, readPlanList } from './plan.js';
 import { calculatePyramidBuyAmount, calculateSmartDcaAmount, resolvePyramidLevel } from './smartDca.js';
 
 export const DCA_KEY = 'aiDcaDcaState';
+export const DCA_STORE_KEY = 'aiDcaDcaStore';
+const DCA_SOURCE = 'react-dca';
+const DCA_STORE_SOURCE = 'react-dca-store';
 
 export const frequencyOptions = ['每日', '每周', '每月', '每季'];
 
 export const defaultDcaState = {
+  id: '',
+  name: '',
   symbol: '纳指基金',
   initialInvestment: 1500,
   recurringInvestment: 800,
@@ -23,6 +28,10 @@ export const defaultDcaState = {
   createdAt: '',
   updatedAt: ''
 };
+
+function buildDcaId() {
+  return `dca-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 function getExecutionCount(frequency, termMonths) {
   const months = Math.max(Number(termMonths) || 0, 1);
@@ -69,6 +78,22 @@ function normalizeLinkedPlanId(value) {
   return String(value || '').trim();
 }
 
+function normalizeDcaName(value = '') {
+  return String(value || '').trim();
+}
+
+function buildDcaName(state = {}, computed = null, timestamp = '') {
+  const explicitName = normalizeDcaName(state.name);
+  if (explicitName) {
+    return explicitName;
+  }
+
+  const symbol = computed?.effectiveSymbol || state.symbol || defaultDcaState.symbol;
+  const frequency = state.frequency || defaultDcaState.frequency;
+  const dateLabel = String(timestamp || state.createdAt || state.updatedAt || '').slice(0, 10);
+  return `${symbol} · ${frequency}定投${dateLabel ? ` · ${dateLabel}` : ''}`;
+}
+
 function buildLinkedPlanSplit(linkedPlan = null, cycleBudget = 0) {
   if (!linkedPlan || !(Number(cycleBudget) > 0)) {
     return [];
@@ -113,6 +138,28 @@ function readSavedSymbol(saved) {
   }
 
   return normalizeSavedSymbol(saved.symbol);
+}
+
+function normalizeDcaState(saved = {}, { assumeConfigured = false } = {}) {
+  return {
+    id: String(saved.id || '').trim(),
+    name: normalizeDcaName(saved.name),
+    symbol: hasOwnField(saved, 'symbol') ? readSavedSymbol(saved) : defaultDcaState.symbol,
+    initialInvestment: readSavedNumber(saved, 'initialInvestment', defaultDcaState.initialInvestment),
+    recurringInvestment: readSavedNumber(saved, ['recurringInvestment', 'monthlyInvestment'], defaultDcaState.recurringInvestment),
+    frequency: saved.frequency || defaultDcaState.frequency,
+    executionDay: readSavedNumber(saved, 'executionDay', defaultDcaState.executionDay),
+    termMonths: readSavedNumber(saved, 'termMonths', defaultDcaState.termMonths),
+    targetReturn: readSavedNumber(saved, 'targetReturn', defaultDcaState.targetReturn),
+    currentPrice: readSavedNumber(saved, 'currentPrice', defaultDcaState.currentPrice),
+    rollingHigh: readSavedNumber(saved, 'rollingHigh', defaultDcaState.rollingHigh),
+    capitalPool: readSavedNumber(saved, 'capitalPool', defaultDcaState.capitalPool),
+    currentLevel: readSavedNumber(saved, 'currentLevel', defaultDcaState.currentLevel),
+    linkedPlanId: normalizeLinkedPlanId(saved.linkedPlanId),
+    isConfigured: typeof saved.isConfigured === 'boolean' ? saved.isConfigured : assumeConfigured,
+    createdAt: String(saved.createdAt || saved.updatedAt || ''),
+    updatedAt: String(saved.updatedAt || '')
+  };
 }
 
 export function buildDcaProjection(state, { planList = readPlanList() } = {}) {
@@ -201,79 +248,37 @@ export function buildDcaProjection(state, { planList = readPlanList() } = {}) {
   };
 }
 
-export function readDcaState() {
-  if (typeof window === 'undefined') {
-    return defaultDcaState;
-  }
+function serializeDcaState(state, computed = buildDcaProjection(state), { id = '', createdAt = '', updatedAt = '' } = {}) {
+  const timestamp = updatedAt || new Date().toISOString();
+  const normalized = normalizeDcaState(
+    {
+      ...state,
+      id: id || state.id || buildDcaId(),
+      createdAt: createdAt || state.createdAt || timestamp,
+      updatedAt: timestamp,
+      isConfigured: state.isConfigured !== false
+    },
+    { assumeConfigured: true }
+  );
+  const normalizedSymbol = normalizeSavedSymbol(computed.effectiveSymbol || normalized.symbol);
 
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(DCA_KEY) || 'null');
-    if (!saved) {
-      return defaultDcaState;
-    }
-
-    return {
-      symbol: readSavedSymbol(saved),
-      initialInvestment: readSavedNumber(saved, 'initialInvestment', defaultDcaState.initialInvestment),
-      recurringInvestment: readSavedNumber(saved, ['recurringInvestment', 'monthlyInvestment'], defaultDcaState.recurringInvestment),
-      frequency: saved.frequency || defaultDcaState.frequency,
-      executionDay: readSavedNumber(saved, 'executionDay', defaultDcaState.executionDay),
-      termMonths: readSavedNumber(saved, 'termMonths', defaultDcaState.termMonths),
-      targetReturn: readSavedNumber(saved, 'targetReturn', defaultDcaState.targetReturn),
-      currentPrice: readSavedNumber(saved, 'currentPrice', defaultDcaState.currentPrice),
-      rollingHigh: readSavedNumber(saved, 'rollingHigh', defaultDcaState.rollingHigh),
-      capitalPool: readSavedNumber(saved, 'capitalPool', defaultDcaState.capitalPool),
-      currentLevel: readSavedNumber(saved, 'currentLevel', defaultDcaState.currentLevel),
-      linkedPlanId: normalizeLinkedPlanId(saved.linkedPlanId),
-      createdAt: String(saved.createdAt || saved.updatedAt || ''),
-      updatedAt: String(saved.updatedAt || '')
-    };
-  } catch (_error) {
-    return defaultDcaState;
-  }
-}
-
-export function hasSavedDcaState() {
-  if (typeof window === 'undefined') {
-    return false;
-  }
-
-  return Boolean(window.localStorage.getItem(DCA_KEY));
-}
-
-// 清空定投状态。定投只保存一份，清空后 tradePlans 列表中的 dca 行会自动消失。
-export function clearDcaState() {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  window.localStorage.removeItem(DCA_KEY);
-}
-
-export function persistDcaState(state, computed = buildDcaProjection(state)) {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  const existingState = readDcaState();
-  const timestamp = new Date().toISOString();
-  const createdAt = String(state.createdAt || existingState.createdAt || existingState.updatedAt || timestamp);
-  const normalizedSymbol = normalizeSavedSymbol(computed.effectiveSymbol || state.symbol);
-  const payload = {
-    source: 'react-dca',
-    version: 5,
+  return {
+    source: DCA_SOURCE,
+    version: 6,
+    id: normalized.id,
+    name: buildDcaName(normalized, computed, normalized.createdAt),
     symbol: normalizedSymbol,
-    initialInvestment: round(state.initialInvestment, 2),
-    recurringInvestment: round(state.recurringInvestment, 2),
-    frequency: state.frequency || defaultDcaState.frequency,
-    executionDay: Math.max(Number(state.executionDay) || 1, 1),
-    termMonths: Math.max(Number(state.termMonths) || 1, 1),
-    targetReturn: round(state.targetReturn, 2),
-    currentPrice: round(state.currentPrice, 4),
-    rollingHigh: round(state.rollingHigh, 4),
+    initialInvestment: round(normalized.initialInvestment, 2),
+    recurringInvestment: round(normalized.recurringInvestment, 2),
+    frequency: normalized.frequency || defaultDcaState.frequency,
+    executionDay: Math.max(Number(normalized.executionDay) || 1, 1),
+    termMonths: Math.max(Number(normalized.termMonths) || 1, 1),
+    targetReturn: round(normalized.targetReturn, 2),
+    currentPrice: round(normalized.currentPrice, 4),
+    rollingHigh: round(normalized.rollingHigh, 4),
     capitalPool: round(computed.poolBalance, 2),
-    currentLevel: Math.max(Number(state.currentLevel) || computed.smartLevel || -1, -1),
-    linkedPlanId: normalizeLinkedPlanId(state.linkedPlanId),
+    currentLevel: Math.max(Number(normalized.currentLevel) || computed.smartLevel || -1, -1),
+    linkedPlanId: normalizeLinkedPlanId(normalized.linkedPlanId),
     executionCount: computed.executionCount,
     totalInvestment: round(computed.totalInvestment, 2),
     cadenceLabel: computed.cadenceLabel,
@@ -282,9 +287,205 @@ export function persistDcaState(state, computed = buildDcaProjection(state)) {
     smartDcaMode: computed.smartDcaMode,
     poolBalance: round(computed.poolBalance, 2),
     dropPct: round(computed.dropPct, 2),
-    createdAt,
+    isConfigured: true,
+    createdAt: normalized.createdAt,
     updatedAt: timestamp
   };
+}
 
-  window.localStorage.setItem(DCA_KEY, JSON.stringify(payload));
+function persistDcaStore(store) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(DCA_STORE_KEY, JSON.stringify(store));
+
+  const activeDca = store.plans.find((plan) => plan.id === store.activeDcaId) || store.plans[0] || null;
+  if (activeDca) {
+    window.localStorage.setItem(DCA_KEY, JSON.stringify(activeDca));
+  } else {
+    window.localStorage.removeItem(DCA_KEY);
+  }
+}
+
+function normalizeDcaStore(rawStore) {
+  const plans = (Array.isArray(rawStore?.plans) ? rawStore.plans : [])
+    .map((plan) => normalizeDcaState(plan, { assumeConfigured: true }))
+    .filter((plan) => plan.isConfigured);
+
+  const activeDcaId = plans.some((plan) => plan.id === rawStore?.activeDcaId)
+    ? String(rawStore.activeDcaId || '')
+    : plans[0]?.id || '';
+
+  return {
+    source: DCA_STORE_SOURCE,
+    version: 1,
+    activeDcaId,
+    plans
+  };
+}
+
+function readLegacyDcaState() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(DCA_KEY) || 'null');
+    if (!saved) {
+      return null;
+    }
+
+    return normalizeDcaState(saved, { assumeConfigured: true });
+  } catch {
+    return null;
+  }
+}
+
+export function readDcaStore() {
+  if (typeof window === 'undefined') {
+    return {
+      source: DCA_STORE_SOURCE,
+      version: 1,
+      activeDcaId: '',
+      plans: []
+    };
+  }
+
+  try {
+    const rawStore = JSON.parse(window.localStorage.getItem(DCA_STORE_KEY) || 'null');
+    const normalizedStore = normalizeDcaStore(rawStore);
+    if (normalizedStore.plans.length) {
+      return normalizedStore;
+    }
+  } catch {
+    // fall through to legacy migration
+  }
+
+  const legacyState = readLegacyDcaState();
+  if (legacyState) {
+    const serializedLegacy = serializeDcaState(
+      legacyState,
+      buildDcaProjection(legacyState),
+      {
+        id: legacyState.id || buildDcaId(),
+        createdAt: legacyState.createdAt || legacyState.updatedAt || new Date().toISOString(),
+        updatedAt: legacyState.updatedAt || new Date().toISOString()
+      }
+    );
+    const migratedStore = {
+      source: DCA_STORE_SOURCE,
+      version: 1,
+      activeDcaId: serializedLegacy.id,
+      plans: [serializedLegacy]
+    };
+    persistDcaStore(migratedStore);
+    return migratedStore;
+  }
+
+  return {
+    source: DCA_STORE_SOURCE,
+    version: 1,
+    activeDcaId: '',
+    plans: []
+  };
+}
+
+export function readDcaList() {
+  return readDcaStore().plans;
+}
+
+export function readDcaState(dcaId = '') {
+  const store = readDcaStore();
+  const targetId = String(dcaId || '').trim();
+  const targetDca = targetId
+    ? store.plans.find((plan) => plan.id === targetId) || null
+    : null;
+  const activeDca = targetDca || store.plans.find((plan) => plan.id === store.activeDcaId) || store.plans[0] || null;
+  return activeDca || defaultDcaState;
+}
+
+export function hasSavedDcaState() {
+  return readDcaList().length > 0;
+}
+
+export function setActiveDcaId(dcaId = '') {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const store = readDcaStore();
+  const activeDca = store.plans.find((plan) => plan.id === dcaId);
+  if (!activeDca) {
+    return null;
+  }
+
+  persistDcaStore({
+    ...store,
+    activeDcaId: activeDca.id
+  });
+  return activeDca;
+}
+
+export function clearDcaState(dcaId = '') {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const targetId = String(dcaId || '').trim();
+  if (!targetId) {
+    window.localStorage.removeItem(DCA_STORE_KEY);
+    window.localStorage.removeItem(DCA_KEY);
+    return;
+  }
+
+  const store = readDcaStore();
+  const remaining = store.plans.filter((plan) => plan.id !== targetId);
+  if (remaining.length === store.plans.length) {
+    return;
+  }
+
+  const nextActiveId = store.activeDcaId === targetId
+    ? (remaining[0]?.id || '')
+    : store.activeDcaId;
+
+  persistDcaStore({
+    source: DCA_STORE_SOURCE,
+    version: 1,
+    activeDcaId: nextActiveId,
+    plans: remaining
+  });
+}
+
+export function persistDcaState(state, computed = buildDcaProjection(state), { activate = true, mode = 'replace' } = {}) {
+  if (typeof window === 'undefined') {
+    return serializeDcaState(state, computed);
+  }
+
+  const store = readDcaStore();
+  const timestamp = new Date().toISOString();
+  const plans = [...store.plans];
+  const existingIndex = state.id ? plans.findIndex((plan) => plan.id === state.id) : -1;
+  const shouldUpdate = mode === 'replace' && existingIndex >= 0;
+  const persisted = serializeDcaState(state, computed, {
+    id: shouldUpdate ? plans[existingIndex].id : (state.id || buildDcaId()),
+    createdAt: shouldUpdate ? plans[existingIndex].createdAt : (state.createdAt || timestamp),
+    updatedAt: timestamp
+  });
+
+  if (shouldUpdate) {
+    plans.splice(existingIndex, 1, persisted);
+  } else {
+    plans.unshift(persisted);
+  }
+
+  const nextStore = {
+    source: DCA_STORE_SOURCE,
+    version: 1,
+    activeDcaId: activate ? persisted.id : (store.activeDcaId || persisted.id),
+    plans
+  };
+
+  persistDcaStore(nextStore);
+  return persisted;
 }
