@@ -42,6 +42,7 @@ import {
 } from './markets/marketFundMetrics.js';
 import { loadWatchQuotesWithEnhancements, readCachedFundLimits, writeCachedFundLimits } from './markets/marketsWatchData.js';
 import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
+import { useCnFundDailyCandles } from './markets/useCnFundDailyCandles.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import { apiUrl } from '../app/apiBase.js';
 import {
@@ -526,32 +527,7 @@ export function MarketsExperience() {
     return () => { cancelled = true; };
   }, [selectedSymbol, chartRange, chartCandlesMap]);
 
-  // A 股场内基金详情里的高低点以近 365 日 1 日 K 线计算，避免直接信 quote.high52w 的复权/口径异常值。
-  useEffect(() => {
-    if (!selectedSymbol || market !== 'cn') return;
-    const code = normalizeCnFundCode(selectedSymbol);
-    if (!/^\d{6}$/.test(code) || hasNasdaqOtcFund(code)) return;
-    const cacheKey = `${selectedSymbol}|1d`;
-    if (chartCandlesMap[cacheKey]) return;
-    if (chartInflightRef.current.has(cacheKey)) return;
-    chartInflightRef.current.add(cacheKey);
-    let cancelled = false;
-    (async () => {
-      try {
-        const r = await fetchKline(selectedSymbol, { timeframe: '1d' });
-        const candles = Array.isArray(r && r.candles) ? r.candles : [];
-        if (!cancelled) setChartCandlesMap((prev) => ({ ...prev, [cacheKey]: candles }));
-      } catch (_) {
-        if (!cancelled) setChartCandlesMap((prev) => ({ ...prev, [cacheKey]: [] }));
-      } finally {
-        chartInflightRef.current.delete(cacheKey);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [market, selectedSymbol, chartCandlesMap]);
-
-
-
+  useCnFundDailyCandles({ market, selectedSymbol, chartCandlesMap, chartInflightRef, fetchKline, hasNasdaqOtcFund, setChartCandlesMap });
 
 
   // 当前标的切到财务 tab 时按需拉 Yahoo quoteSummary 三大表。

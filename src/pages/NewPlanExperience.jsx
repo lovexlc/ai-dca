@@ -367,13 +367,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     };
   }, [benchmarkFund?.code, inPagesDir]);
 
-  const selectedDailySeries = useMemo(
-    () => {
-      const expectedCode = selectedSymbolCode;
-      return selectedDailySeriesState.code === expectedCode ? selectedDailySeriesState.bars : [];
-    },
-    [selectedDailySeriesState.bars, selectedDailySeriesState.code, selectedSymbolCode]
-  );
+  const selectedDailySeries = selectedDailySeriesState.code === selectedSymbolCode ? selectedDailySeriesState.bars : [];
   const benchmarkDailySeries = useMemo(
     () => benchmarkDailySeriesState.code === benchmarkFund?.code ? benchmarkDailySeriesState.bars : [],
     [benchmarkDailySeriesState.bars, benchmarkDailySeriesState.code, benchmarkFund?.code]
