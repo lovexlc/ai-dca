@@ -23,6 +23,7 @@ import {
   CHART_RANGE_TABS,
   buildCnFundParamCandles,
   buildNavSnapshotItems,
+  deriveCandlestickExtrema,
   isCnOtcFundQuote,
   navHistoryDaysForRange,
   sliceCandlesForRange,
@@ -64,6 +65,7 @@ export function SymbolDetailPanel({
   chartRange,
   onChartRangeChange,
   chartCandles,
+  dailyCandles,
   chartTf,
   chartLoading,
   inWatch,
@@ -228,13 +230,18 @@ export function SymbolDetailPanel({
   const stateLabel = marketStateLabel(row.marketState, market);
   const isCnOtcFund = market === 'cn' && isCnOtcFundQuote(row);
   const xueqiuQuote = getXueqiuQuote(xueqiuFundData);
+  const yearExtrema = market === 'cn' && !isCnOtcFund
+    ? deriveCandlestickExtrema(dailyCandles, { daysBack: 365 })
+    : null;
+  const yearHigh = yearExtrema?.count ? yearExtrema.high : null;
+  const yearLow = yearExtrema?.count ? yearExtrema.low : null;
   const cnOverviewExtras = market === 'cn' && !isCnOtcFund ? [
     detailValueRow('开盘价', formatNumber(row.open ?? xueqiuQuote?.open, 3)),
     detailValueRow('市值', formatCnMoney(row.marketCapital ?? row.marketCap ?? xueqiuQuote?.market_capital)),
-    detailValueRow('52 周最高价', formatNumber(xueqiuQuote?.high52w, 3)),
+    detailValueRow('52 周最高价', formatNumber(yearHigh, 3)),
     detailValueRow('最高价', formatNumber(row.high ?? xueqiuQuote?.high, 3)),
     detailValueRow('平均成交量', formatCnAmount(xueqiuQuote?.avg_volume ?? xueqiuQuote?.avg_volume10 ?? xueqiuQuote?.avg_volume_10)),
-    detailValueRow('52 周最低价', formatNumber(xueqiuQuote?.low52w, 3)),
+    detailValueRow('52 周最低价', formatNumber(yearLow, 3)),
     detailValueRow('最低价', formatNumber(row.low ?? xueqiuQuote?.low, 3)),
     detailValueRow('成交量', formatCnAmount(row.volume ?? xueqiuQuote?.volume)),
     detailValueRow('Beta 版', formatNumber(xueqiuQuote?.beta, 2)),

@@ -526,6 +526,30 @@ export function MarketsExperience() {
     return () => { cancelled = true; };
   }, [selectedSymbol, chartRange, chartCandlesMap]);
 
+  // A 股场内基金的 52 周高低点以 1 日 K 线计算，避免直接信 quote.high52w 的复权/口径异常值。
+  useEffect(() => {
+    if (!selectedSymbol || market !== 'cn') return;
+    const code = normalizeCnFundCode(selectedSymbol);
+    if (!/^\d{6}$/.test(code) || hasNasdaqOtcFund(code)) return;
+    const cacheKey = `${selectedSymbol}|1d`;
+    if (chartCandlesMap[cacheKey]) return;
+    if (chartInflightRef.current.has(cacheKey)) return;
+    chartInflightRef.current.add(cacheKey);
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetchKline(selectedSymbol, { timeframe: '1d' });
+        const candles = Array.isArray(r && r.candles) ? r.candles : [];
+        if (!cancelled) setChartCandlesMap((prev) => ({ ...prev, [cacheKey]: candles }));
+      } catch (_) {
+        if (!cancelled) setChartCandlesMap((prev) => ({ ...prev, [cacheKey]: [] }));
+      } finally {
+        chartInflightRef.current.delete(cacheKey);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [market, selectedSymbol, chartCandlesMap]);
+
 
 
 

@@ -155,6 +155,7 @@ export function MarketsMainContent({
             if (!Array.isArray(candles) || candles.length < 2) return undefined;
             return sliceCandlesForRange(candles, detail.chartRange);
           })()}
+          dailyCandles={detail.chartCandlesMap[`${selectedQuote.symbol}|1d`]}
           chartTf={(CHART_RANGE_TABS.find((r) => r.key === detail.chartRange) || {}).tf}
           chartLoading={detail.chartLoading}
           premiumState={detail.premiumState}

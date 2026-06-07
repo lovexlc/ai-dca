@@ -389,22 +389,28 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     ? resolveQuotePeakPrice(xueqiuQuoteState.quote)
     : 0;
   const hasQuotePeakPrice = activeXueqiuPeakPrice > 0 || activeExtraPeakPrice > 0;
-
-  const derivedStageHigh = useMemo(() => {
+  const activeDailySeriesPeakPrice = useMemo(() => {
     const values = selectedDailySeries
       .flatMap((bar) => [Number(bar.high) || 0, Number(bar.close) || 0])
       .filter((value) => Number.isFinite(value) && value > 0);
+    return values.length ? Math.max(...values) : 0;
+  }, [selectedDailySeries]);
 
-    if (activeXueqiuPeakPrice > 0) {
-      return activeXueqiuPeakPrice;
+  const derivedStageHigh = useMemo(() => {
+    if (!isSelectedExtraSymbol && activeDailySeriesPeakPrice > 0) {
+      return activeDailySeriesPeakPrice;
     }
 
     if (activeExtraPeakPrice > 0) {
       return activeExtraPeakPrice;
     }
 
-    if (values.length) {
-      return Math.max(...values);
+    if (activeXueqiuPeakPrice > 0) {
+      return activeXueqiuPeakPrice;
+    }
+
+    if (activeDailySeriesPeakPrice > 0) {
+      return activeDailySeriesPeakPrice;
     }
 
     if (isSelectedExtraSymbol) {
@@ -412,7 +418,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     }
 
     return Number(benchmarkFund?.current_price) || Number(selectedFund?.current_price) || 0;
-  }, [activeExtraPeakPrice, activeExtraQuotePrice, activeXueqiuPeakPrice, benchmarkFund, isSelectedExtraSymbol, selectedDailySeries, selectedFund]);
+  }, [activeDailySeriesPeakPrice, activeExtraPeakPrice, activeExtraQuotePrice, activeXueqiuPeakPrice, benchmarkFund, isSelectedExtraSymbol, selectedFund]);
   const derivedMa120 = useMemo(
     () => {
       const ma120 = findLatestFiniteValue(buildMovingAverageValues(movingAverageDailySeries, 120));
@@ -432,8 +438,9 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   );
 
   useEffect(() => {
-    if (selectedStrategy === 'peak-drawdown' && !hasQuotePeakPrice && !isSelectedDailySeriesReady) {
-      return;
+    if (selectedStrategy === 'peak-drawdown') {
+      if (!isSelectedExtraSymbol && !isSelectedDailySeriesReady) return;
+      if (isSelectedExtraSymbol && !hasQuotePeakPrice && !isSelectedDailySeriesReady) return;
     }
 
     if (selectedStrategy !== 'peak-drawdown' && !isSelectedExtraSymbol && (!benchmarkFund?.code || !isBenchmarkDailySeriesReady)) {

@@ -3,9 +3,26 @@ import assert from 'node:assert/strict';
 
 import { fetchXueqiuQuote } from '../workers/markets/src/fetchers.js';
 import { handleFundMetrics, handleKline, normalizeFundMetricFromQuote } from '../workers/markets/src/fundMetricsRoutes.js';
+import { deriveCandlestickExtrema } from '../src/pages/markets/marketFundMetrics.js';
 
 const SOURCE_UPDATED_AT_MS = Date.UTC(2026, 4, 29, 8, 0, 0);
 const SOURCE_UPDATED_AT_SEC = SOURCE_UPDATED_AT_MS / 1000;
+
+test('CN fund 52-week extrema are derived from daily candles instead of quote aliases', () => {
+  const candles = [
+    { t: Date.UTC(2025, 5, 1) / 1000, h: 5.464, l: 0.776 },
+    { t: Date.UTC(2026, 5, 1) / 1000, h: 2.386, l: 2.046 },
+    { t: Date.UTC(2026, 5, 3) / 1000, h: 2.577, l: 2.277 },
+    { t: Date.UTC(2026, 5, 5) / 1000, h: 2.249, l: 2.2 }
+  ];
+
+  const extrema = deriveCandlestickExtrema(candles, { daysBack: 365 });
+
+  assert.equal(extrema.high, 2.577);
+  assert.equal(extrema.low, 2.046);
+  assert.equal(extrema.highDate, '2026-06-03');
+  assert.equal(extrema.lowDate, '2026-06-01');
+});
 
 test('fund-metrics normalizes Danjuan OTC NAV into stable front-end fields', () => {
   const item = normalizeFundMetricFromQuote('022951', {

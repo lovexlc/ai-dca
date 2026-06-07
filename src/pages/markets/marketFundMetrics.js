@@ -57,6 +57,50 @@ export function sliceCandlesForRange(candles, rangeKey) {
   return filtered.length >= 2 ? filtered : arr;
 }
 
+export function deriveCandlestickExtrema(candles, { daysBack = 365 } = {}) {
+  const arr = (Array.isArray(candles) ? candles : [])
+    .map((candle) => {
+      const t = Number(candle?.t ?? candle?.timestamp);
+      const high = Number(candle?.h ?? candle?.high);
+      const low = Number(candle?.l ?? candle?.low);
+      return { t, high, low };
+    })
+    .filter((item) => Number.isFinite(item.t) && item.t > 0);
+  if (!arr.length) return { high: null, low: null, highDate: '', lowDate: '', count: 0 };
+
+  const maxT = arr.reduce((max, item) => Math.max(max, item.t), 0);
+  const normalizedDaysBack = Number(daysBack);
+  const cutoffT = Number.isFinite(normalizedDaysBack) && normalizedDaysBack > 0
+    ? maxT - normalizedDaysBack * 86400
+    : -Infinity;
+
+  let high = null;
+  let highT = 0;
+  let low = null;
+  let lowT = 0;
+  let count = 0;
+  for (const item of arr) {
+    if (item.t < cutoffT) continue;
+    count += 1;
+    if (Number.isFinite(item.high) && item.high > 0 && (high == null || item.high > high)) {
+      high = item.high;
+      highT = item.t;
+    }
+    if (Number.isFinite(item.low) && item.low > 0 && (low == null || item.low < low)) {
+      low = item.low;
+      lowT = item.t;
+    }
+  }
+
+  return {
+    high,
+    low,
+    highDate: highT ? shanghaiDateFromEpochSec(highT) : '',
+    lowDate: lowT ? shanghaiDateFromEpochSec(lowT) : '',
+    count,
+  };
+}
+
 export function shanghaiDateFromEpochSec(sec) {
   const n = Number(sec);
   if (!Number.isFinite(n) || n <= 0) return '';
