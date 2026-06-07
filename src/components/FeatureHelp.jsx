@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { FileText } from 'lucide-react';
+import { CircleHelp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Dialog,
@@ -189,10 +189,10 @@ export function FeatureHelp({ topic, className, hintText, hintActive = false, hi
           type="button"
           onClick={handleOpen}
           aria-label={`查看「${content.title}」使用帮助`}
-          title="使用帮助"
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+          title="页面介绍 / 使用帮助"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-indigo-200 bg-indigo-50 text-indigo-700 shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-100 hover:text-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
         >
-          <FileText className="h-4 w-4" />
+          <CircleHelp className="h-4 w-4" strokeWidth={2.4} />
         </button>
         {showHint ? (
           <button
