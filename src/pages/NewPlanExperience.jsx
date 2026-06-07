@@ -6,10 +6,8 @@ import { loadLatestNasdaqPrices, loadNasdaqDailySeries } from '../app/nasdaqPric
 import { syncTradePlanRules } from '../app/notifySync.js';
 import { persistPlanState, readPlanState } from '../app/plan.js';
 import { showToast } from '../app/toast.js';
-import { NewPlanFooter, NewPlanHero, NewPlanStepNav } from './NewPlanShell.jsx';
-import { NewPlanConfigCards } from './NewPlanConfigCards.jsx';
-import { NewPlanSelectionCards } from './NewPlanSelectionCards.jsx';
-import { NewPlanPreviewSidebar } from './NewPlanPreviewSidebar.jsx';
+import { NewPlanExperienceLayout } from './NewPlanExperienceLayout.jsx';
+import { buildInitialCustomDrawdown, buildInitialPlanState, useNewPlanChangeTracking } from './newPlanExperienceState.js';
 
 import {
   BENCHMARK_CODE,
@@ -28,60 +26,6 @@ import { getAssetType, getAssetTypeLabel, getStrategyParams } from '../app/asset
 import { validateScreening } from '../app/stockScreener.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import { getXueqiuQuote, resolveQuotePeakPrice } from '../app/xueqiuQuote.js';
-
-const PLAN_STEPS = [
-  { id: 1, title: '选标的' },
-  { id: 2, title: '选模板' },
-  { id: 3, title: '调参数' },
-  { id: 4, title: '预览确认' }
-];
-
-function buildInitialPlanState(initialPlan = null) {
-  if (initialPlan?.id) {
-    return {
-      ...readPlanState(),
-      ...initialPlan,
-      isConfigured: Boolean(initialPlan.isConfigured)
-    };
-  }
-
-  const template = readPlanState();
-  return {
-    ...template,
-    id: '',
-    name: '',
-    isConfigured: false,
-    createdAt: '',
-    updatedAt: ''
-  };
-}
-
-function buildInitialCustomDrawdown(initialPlan = null) {
-  const triggerDrops = Array.isArray(initialPlan?.triggerDrops) ? initialPlan.triggerDrops.map(Number).filter(Number.isFinite) : [];
-  const layerWeights = Array.isArray(initialPlan?.layerWeights) ? initialPlan.layerWeights.map(Number).filter(Number.isFinite) : [];
-
-  if (initialPlan?.selectedStrategy === 'peak-drawdown' && triggerDrops.length >= 2 && layerWeights.length >= 2) {
-    return {
-      enabled: true,
-      levels: triggerDrops.length,
-      firstDrop: triggerDrops[0],
-      stepDrop: Math.max(triggerDrops[1] - triggerDrops[0], 1),
-      multiplierMode: Math.abs((layerWeights[0] || 0) - (layerWeights[1] || 0)) < 0.01 ? 'fixed' : 'increment',
-      multiplierBase: layerWeights[0] || 1,
-      multiplierStep: Math.max((layerWeights[1] || layerWeights[0] || 1) - (layerWeights[0] || 1), 0)
-    };
-  }
-
-  return {
-    enabled: false,
-    levels: 6,
-    firstDrop: 10,
-    stepDrop: 5,
-    multiplierMode: 'increment',
-    multiplierBase: 1,
-    multiplierStep: 0.5
-  };
-}
 
 export function NewPlanExperience({ links, inPagesDir = false, embedded = false, onBack = null, initialPlan = null, mode = 'create' }) {
   const isEditing = mode === 'replace' && Boolean(initialPlan?.id);
@@ -111,9 +55,6 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   const [planStep, setPlanStep] = useState(1);
   const [maxUnlockedStep, setMaxUnlockedStep] = useState(1);
   const [symbolSearch, setSymbolSearch] = useState('');
-  const prevSymbolRef = useRef('');
-  const prevStrategyRef = useRef('');
-  const prevFrequencyRef = useRef('');
   const newPlanMeta = () => ({
     embedded,
     step: planStep,
@@ -646,154 +587,60 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     }
   }
 
-  useEffect(() => {
-    const previous = prevSymbolRef.current;
-    const current = String(state.symbol || '').trim();
-    if (previous && previous !== current) {
-      trackFeatureEvent('new_plan', 'symbol_change', {
-        previousLength: previous.length,
-        symbolLength: current.length,
-        source: EXTRA_SYMBOL_CODES.has(current) ? 'extra_symbol' : 'fund_list'
-      });
-    }
-    prevSymbolRef.current = current;
-  }, [state.symbol]);
-
-  useEffect(() => {
-    const previous = prevStrategyRef.current;
-    const current = state.selectedStrategy || 'ma120-risk';
-    if (previous && previous !== current) {
-      trackFeatureEvent('new_plan', 'strategy_change', {
-        previousStrategy: previous,
-        selectedStrategy: current,
-        selectedAssetType
-      });
-    }
-    prevStrategyRef.current = current;
-  }, [state.selectedStrategy, selectedAssetType]);
-
-  useEffect(() => {
-    const previous = prevFrequencyRef.current;
-    const current = state.frequency || '';
-    if (previous && previous !== current) {
-      trackFeatureEvent('new_plan', 'frequency_change', {
-        previousFrequency: previous,
-        frequency: current
-      });
-    }
-    prevFrequencyRef.current = current;
-  }, [state.frequency]);
+  useNewPlanChangeTracking({ state, selectedAssetType });
 
   return (
-    <>
-      <NewPlanHero
-        links={links}
-        onBack={onBack}
-        isEditing={isEditing}
-        selectedFundCode={selectedFund?.code || state.symbol}
-        benchmarkCodeLabel={benchmarkCodeLabel}
-        activeStrategyLabel={activeStrategy.label}
-        formatMarketCode={formatMarketCode}
-      />
-
-      <div className="mx-auto max-w-6xl space-y-6 px-6 pt-8">
-        <NewPlanStepNav planSteps={PLAN_STEPS} planStep={planStep} maxUnlockedStep={maxUnlockedStep} goToPlanStep={goToPlanStep} />
-        {/* 左侧主内容较宽随页面滚动，右侧成本预览上下文面板较窄并 sticky。 */}
-        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.9fr)]">
-          <div className="min-w-0 space-y-6">
-            <NewPlanSelectionCards
-              planStep={planStep}
-              marketError={marketError}
-              selectedAssetTypeLabel={selectedAssetTypeLabel}
-              symbolSearch={symbolSearch}
-              setSymbolSearch={setSymbolSearch}
-              marketEntries={marketEntries}
-              filteredMarketEntries={filteredMarketEntries}
-              state={state}
-              setState={setState}
-              selectedFund={selectedFund}
-              selectedFundLabel={selectedFundLabel}
-              selectedFundCurrency={selectedFundCurrency}
-              benchmarkNameLabel={benchmarkNameLabel}
-              benchmarkFund={benchmarkFund}
-              benchmarkCurrency={benchmarkCurrency}
-              extraQuote={extraQuote}
-              selectedStrategy={selectedStrategy}
-              activeStrategyLabel={activeStrategy.label}
-              selectedStrategyParams={selectedStrategyParams}
-              frequencyOptions={frequencyOptions}
-              selectedAssetType={selectedAssetType}
-              screeningAnswers={screeningAnswers}
-              setScreeningAnswers={setScreeningAnswers}
-              screeningResult={screeningResult}
-              derivedStageHigh={derivedStageHigh}
-              derivedMa120={derivedMa120}
-              derivedMa200={derivedMa200}
-              isBasePriceDirtyRef={isBasePriceDirtyRef}
-              isRiskPriceDirtyRef={isRiskPriceDirtyRef}
-              formatFundPrice={formatFundPrice}
-              formatPercent={formatPercent}
-              formatMarketLabel={formatMarketLabel}
-            />
-            <NewPlanConfigCards
-              planStep={planStep}
-              selectedStrategy={selectedStrategy}
-              activeStrategyLabel={activeStrategy.label}
-              computed={computed}
-              selectedFund={selectedFund}
-              selectedFundLabel={selectedFundLabel}
-              selectedFundCurrency={selectedFundCurrency}
-              benchmarkNameLabel={benchmarkNameLabel}
-              benchmarkFund={benchmarkFund}
-              benchmarkCurrency={benchmarkCurrency}
-              extraQuote={extraQuote}
-              state={state}
-              setState={setState}
-              selectedAssetTypeLabel={selectedAssetTypeLabel}
-              selectedStrategyParams={selectedStrategyParams}
-              selectedFrequencyLabel={selectedFrequencyLabel}
-              frequencyOptions={frequencyOptions}
-              selectedInstrumentCurrency={selectedInstrumentCurrency}
-              customDrawdown={customDrawdown}
-              setCustomDrawdown={setCustomDrawdown}
-              isBasePriceDirtyRef={isBasePriceDirtyRef}
-              isRiskPriceDirtyRef={isRiskPriceDirtyRef}
-              derivedStageHigh={derivedStageHigh}
-              derivedMa120={derivedMa120}
-              derivedMa200={derivedMa200}
-              formatFundPrice={formatFundPrice}
-              formatPercent={formatPercent}
-              formatCurrency={formatCurrency}
-              isNameDirtyRef={isNameDirtyRef}
-            />
-          </div>
-
-          <NewPlanPreviewSidebar
-            planStep={planStep}
-            computed={computed}
-            maxLayerWeight={maxLayerWeight}
-            selectedStrategy={selectedStrategy}
-            selectedInstrumentCurrency={selectedInstrumentCurrency}
-            selectedAnchorNameLabel={selectedAnchorNameLabel}
-            formatFundPrice={formatFundPrice}
-            formatPercent={formatPercent}
-            formatCurrency={formatCurrency}
-          />
-        </div>
-      </div>
-
-      <NewPlanFooter
-        links={links}
-        planStep={planStep}
-        isSaving={isSaving}
-        activeStrategy={activeStrategy}
-        computed={computed}
-        goToPlanStep={goToPlanStep}
-        handleCreatePlan={handleCreatePlan}
-        onBack={onBack}
-        isEditing={isEditing}
-        formatCurrency={formatCurrency}
-      />
-    </>
+    <NewPlanExperienceLayout
+      activeStrategy={activeStrategy}
+      benchmarkCodeLabel={benchmarkCodeLabel}
+      benchmarkCurrency={benchmarkCurrency}
+      benchmarkFund={benchmarkFund}
+      benchmarkNameLabel={benchmarkNameLabel}
+      computed={computed}
+      customDrawdown={customDrawdown}
+      derivedMa120={derivedMa120}
+      derivedMa200={derivedMa200}
+      derivedStageHigh={derivedStageHigh}
+      extraQuote={extraQuote}
+      filteredMarketEntries={filteredMarketEntries}
+      formatCurrency={formatCurrency}
+      formatFundPrice={formatFundPrice}
+      formatMarketCode={formatMarketCode}
+      formatMarketLabel={formatMarketLabel}
+      formatPercent={formatPercent}
+      frequencyOptions={frequencyOptions}
+      goToPlanStep={goToPlanStep}
+      handleCreatePlan={handleCreatePlan}
+      isBasePriceDirtyRef={isBasePriceDirtyRef}
+      isEditing={isEditing}
+      isNameDirtyRef={isNameDirtyRef}
+      isRiskPriceDirtyRef={isRiskPriceDirtyRef}
+      isSaving={isSaving}
+      links={links}
+      marketEntries={marketEntries}
+      marketError={marketError}
+      maxLayerWeight={maxLayerWeight}
+      maxUnlockedStep={maxUnlockedStep}
+      onBack={onBack}
+      planStep={planStep}
+      screeningAnswers={screeningAnswers}
+      screeningResult={screeningResult}
+      selectedAnchorNameLabel={selectedAnchorNameLabel}
+      selectedAssetType={selectedAssetType}
+      selectedAssetTypeLabel={selectedAssetTypeLabel}
+      selectedFund={selectedFund}
+      selectedFundCurrency={selectedFundCurrency}
+      selectedFundLabel={selectedFundLabel}
+      selectedFrequencyLabel={selectedFrequencyLabel}
+      selectedInstrumentCurrency={selectedInstrumentCurrency}
+      selectedStrategy={selectedStrategy}
+      selectedStrategyParams={selectedStrategyParams}
+      setCustomDrawdown={setCustomDrawdown}
+      setScreeningAnswers={setScreeningAnswers}
+      setState={setState}
+      setSymbolSearch={setSymbolSearch}
+      state={state}
+      symbolSearch={symbolSearch}
+    />
   );
 }

@@ -4,7 +4,7 @@ import { loadNotifyStatus, readNotifyClientConfig, sendNotifyTest } from '../app
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { deletePlan } from '../app/plan.js';
 import { deleteSellPlan } from '../app/sellPlans.js';
-import { clearDcaState, setActiveDcaId } from '../app/dca.js';
+import { clearDcaState } from '../app/dca.js';
 import { showActionToast } from '../app/toast.js';
 import { Card, cx, primaryButtonClass } from '../components/experience-ui.jsx';
 import { NewPlanExperience } from './NewPlanExperience.jsx';
@@ -441,7 +441,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
       ...tradePlansMeta()
     });
     if (row?.sourceType === 'dca') {
-      setActiveDcaId(row.sourceId);
       gotoSubView('dcaNew', { push: true });
       return;
     }
