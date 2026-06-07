@@ -1,5 +1,5 @@
 import { ArrowRight, Save } from 'lucide-react';
-import { Card, PageHero, Pill, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
+import { PageHero, Pill, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 export function NewPlanStepNav({ planSteps, planStep, maxUnlockedStep, goToPlanStep }) {
   return (
@@ -36,6 +36,8 @@ export function NewPlanFooter({
   computed,
   goToPlanStep,
   handleCreatePlan,
+  onBack,
+  isEditing = false,
   formatCurrency
 }) {
   return (
@@ -53,7 +55,11 @@ export function NewPlanFooter({
           </div>
         </div>
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-          <a className={cx(secondaryButtonClass, 'w-full sm:w-auto')} href={links.home}>取消</a>
+          {typeof onBack === 'function' ? (
+            <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={onBack}>取消</button>
+          ) : (
+            <a className={cx(secondaryButtonClass, 'w-full sm:w-auto')} href={links.home}>取消</a>
+          )}
           {planStep > 1 ? <button className={cx(secondaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={() => goToPlanStep(planStep - 1)}>上一步</button> : null}
           {planStep < 4 ? (
             <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} type="button" onClick={() => goToPlanStep(planStep + 1)}>
@@ -63,7 +69,7 @@ export function NewPlanFooter({
           ) : (
             <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} disabled={isSaving} type="button" onClick={handleCreatePlan}>
               <Save className="h-4 w-4" />
-              {isSaving ? '正在保存策略' : '确认创建并返回总览'}
+              {isSaving ? '正在保存计划' : '保存计划并开启提醒'}
               <ArrowRight className="h-4 w-4" />
             </button>
           )}
@@ -73,14 +79,14 @@ export function NewPlanFooter({
   );
 }
 
-export function NewPlanHero({ links, onBack, selectedFundCode, benchmarkCodeLabel, activeStrategyLabel, formatMarketCode }) {
+export function NewPlanHero({ links, onBack, isEditing = false, selectedFundCode, benchmarkCodeLabel, activeStrategyLabel, formatMarketCode }) {
   return (
     <PageHero
       backHref={onBack ? undefined : links.home}
       onBack={onBack || undefined}
       backLabel={onBack ? '返回交易计划' : '返回加仓计划'}
-      eyebrow="策略新建"
-      title="新建建仓计划"
+      eyebrow={isEditing ? '策略编辑' : '策略新建'}
+      title={isEditing ? '编辑建仓计划' : '新建建仓计划'}
       badges={[
         <Pill key="symbol" tone="indigo">{formatMarketCode(selectedFundCode) || '未选择标的'}</Pill>,
         <Pill key="benchmark" tone="slate">{benchmarkCodeLabel}</Pill>,

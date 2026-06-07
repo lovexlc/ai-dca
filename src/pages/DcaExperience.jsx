@@ -50,7 +50,7 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     let raw;
-    try { raw = window.sessionStorage.getItem(CALC_APPLY_KEY); } catch (_e) { return; }
+    try { raw = window.sessionStorage.getItem(CALC_APPLY_KEY); } catch { return; }
     if (!raw) return;
     try {
       const payload = JSON.parse(raw);
@@ -71,8 +71,8 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
         mappedFrequency: mappedFreq,
         amountBucket: Number(payload.amount) > 5000 ? 'gt_5000' : Number(payload.amount) > 1000 ? '1000_5000' : 'lte_1000'
       });
-    } catch (_e) { /* ignore */ }
-    try { window.sessionStorage.removeItem(CALC_APPLY_KEY); } catch (_e) { /* ignore */ }
+    } catch { /* ignore */ }
+    try { window.sessionStorage.removeItem(CALC_APPLY_KEY); } catch { /* ignore */ }
   }, []);
 
   async function handleSave() {
@@ -88,13 +88,13 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
     let syncFailed = false;
     try {
       await syncTradePlanRules();
-    } catch (_error) {
+    } catch {
       // Keep the local plan saved even if notification sync is unavailable.
       syncFailed = true;
     } finally {
       showToast({
-        title: '保存并开始策略成功',
-        description: syncFailed ? '定投计划已保存，本次通知规则未同步。' : '定投计划已保存，正在返回交易计划列表。',
+        title: '定投计划已保存',
+        description: syncFailed ? '定投计划已保存，本次提醒规则未同步。' : '定投计划已保存并开启提醒，正在返回交易计划列表。',
         tone: syncFailed ? 'amber' : 'emerald',
         persist: true
       });
@@ -387,7 +387,7 @@ export function DcaExperience({ links, embedded = false, onAfterSave }) {
             <a className={cx(secondaryButtonClass, 'w-full sm:w-auto')} href={links.tradePlans}>取消</a>
             <button className={cx(primaryButtonClass, 'w-full sm:w-auto')} disabled={isSaving} type="button" onClick={handleSave}>
               <Save className="h-4 w-4" />
-              {isSaving ? '正在保存定投' : '保存并开始策略'}
+              {isSaving ? '正在保存定投' : '保存并开启提醒'}
               <ArrowRight className="h-4 w-4" />
             </button>
           </div>

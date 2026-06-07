@@ -36,20 +36,57 @@ const PLAN_STEPS = [
   { id: 4, title: '预览确认' }
 ];
 
-
-export function NewPlanExperience({ links, inPagesDir = false, embedded = false, onBack = null }) {
-  const dashboardState = readHomeDashboardState();
-  const [state, setState] = useState(() => {
-    const template = readPlanState();
+function buildInitialPlanState(initialPlan = null) {
+  if (initialPlan?.id) {
     return {
-      ...template,
-      id: '',
-      name: '',
-      isConfigured: false,
-      createdAt: '',
-      updatedAt: ''
+      ...readPlanState(),
+      ...initialPlan,
+      isConfigured: Boolean(initialPlan.isConfigured)
     };
-  });
+  }
+
+  const template = readPlanState();
+  return {
+    ...template,
+    id: '',
+    name: '',
+    isConfigured: false,
+    createdAt: '',
+    updatedAt: ''
+  };
+}
+
+function buildInitialCustomDrawdown(initialPlan = null) {
+  const triggerDrops = Array.isArray(initialPlan?.triggerDrops) ? initialPlan.triggerDrops.map(Number).filter(Number.isFinite) : [];
+  const layerWeights = Array.isArray(initialPlan?.layerWeights) ? initialPlan.layerWeights.map(Number).filter(Number.isFinite) : [];
+
+  if (initialPlan?.selectedStrategy === 'peak-drawdown' && triggerDrops.length >= 2 && layerWeights.length >= 2) {
+    return {
+      enabled: true,
+      levels: triggerDrops.length,
+      firstDrop: triggerDrops[0],
+      stepDrop: Math.max(triggerDrops[1] - triggerDrops[0], 1),
+      multiplierMode: Math.abs((layerWeights[0] || 0) - (layerWeights[1] || 0)) < 0.01 ? 'fixed' : 'increment',
+      multiplierBase: layerWeights[0] || 1,
+      multiplierStep: Math.max((layerWeights[1] || layerWeights[0] || 1) - (layerWeights[0] || 1), 0)
+    };
+  }
+
+  return {
+    enabled: false,
+    levels: 6,
+    firstDrop: 10,
+    stepDrop: 5,
+    multiplierMode: 'increment',
+    multiplierBase: 1,
+    multiplierStep: 0.5
+  };
+}
+
+export function NewPlanExperience({ links, inPagesDir = false, embedded = false, onBack = null, initialPlan = null, mode = 'create' }) {
+  const isEditing = mode === 'replace' && Boolean(initialPlan?.id);
+  const dashboardState = readHomeDashboardState();
+  const [state, setState] = useState(() => buildInitialPlanState(initialPlan));
   const [marketEntries, setMarketEntries] = useState([]);
   const [marketError, setMarketError] = useState('');
   const [selectedDailySeriesState, setSelectedDailySeriesState] = useState({
@@ -64,21 +101,13 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
   });
   const [isSaving, setIsSaving] = useState(false);
   const autoSeedRef = useRef('');
-  const isBasePriceDirtyRef = useRef(false);
-  const isRiskPriceDirtyRef = useRef(false);
-  const isNameDirtyRef = useRef(false);
-  const [customDrawdown, setCustomDrawdown] = useState({
-    enabled: false,
-    levels: 6,
-    firstDrop: 10,
-    stepDrop: 5,
-    multiplierMode: 'increment',
-    multiplierBase: 1,
-    multiplierStep: 0.5
-  });
+  const isBasePriceDirtyRef = useRef(isEditing);
+  const isRiskPriceDirtyRef = useRef(isEditing);
+  const isNameDirtyRef = useRef(Boolean(initialPlan?.name));
+  const [customDrawdown, setCustomDrawdown] = useState(() => buildInitialCustomDrawdown(initialPlan));
   const [extraQuote, setExtraQuote] = useState({ symbol: '', price: 0, high52w: 0, currency: '', asOf: '', loading: false, error: '' });
   const [xueqiuQuoteState, setXueqiuQuoteState] = useState({ symbol: '', quote: null, loading: false, error: '' });
-  const [screeningAnswers, setScreeningAnswers] = useState(() => readPlanState().screeningAnswers || {});
+  const [screeningAnswers, setScreeningAnswers] = useState(() => initialPlan?.screeningAnswers || readPlanState().screeningAnswers || {});
   const [planStep, setPlanStep] = useState(1);
   const [maxUnlockedStep, setMaxUnlockedStep] = useState(1);
   const [symbolSearch, setSymbolSearch] = useState('');
@@ -579,7 +608,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
 
     setIsSaving(true);
     const startedAt = Date.now();
-    trackFeatureEvent('new_plan', 'create_start', newPlanMeta());
+    trackFeatureEvent('new_plan', isEditing ? 'edit_save_start' : 'create_start', newPlanMeta());
     persistPlanState({
       ...state,
       selectedStrategy,
@@ -588,22 +617,22 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       screeningAnswers,
       screeningResult,
       isConfigured: true
-    }, computed, { mode: 'create', activate: true });
+    }, computed, { mode: isEditing ? 'replace' : 'create', activate: true });
 
     let syncFailed = false;
     try {
       await syncTradePlanRules();
-    } catch (_error) {
+    } catch {
       // The local strategy has already been saved. Keep navigation responsive.
       syncFailed = true;
     } finally {
       showToast({
-        title: '确认创建并返回总览成功',
-        description: syncFailed ? '策略已保存，本次通知规则未同步。' : '策略已保存，正在返回总览。',
+        title: isEditing ? '加仓计划已更新' : '加仓计划已保存',
+        description: syncFailed ? '计划已保存，本次提醒规则未同步。' : '计划已保存并开启提醒，正在返回总览。',
         tone: syncFailed ? 'amber' : 'emerald',
         persist: true
       });
-      trackActionResult('new_plan', 'create', syncFailed ? 'partial' : 'success', {
+      trackActionResult('new_plan', isEditing ? 'edit_save' : 'create', syncFailed ? 'partial' : 'success', {
         ...newPlanMeta(),
         syncFailed,
         durationMs: Date.now() - startedAt
@@ -660,6 +689,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       <NewPlanHero
         links={links}
         onBack={onBack}
+        isEditing={isEditing}
         selectedFundCode={selectedFund?.code || state.symbol}
         benchmarkCodeLabel={benchmarkCodeLabel}
         activeStrategyLabel={activeStrategy.label}
@@ -760,6 +790,8 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
         computed={computed}
         goToPlanStep={goToPlanStep}
         handleCreatePlan={handleCreatePlan}
+        onBack={onBack}
+        isEditing={isEditing}
         formatCurrency={formatCurrency}
       />
     </>

@@ -1,10 +1,10 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, ArrowRight, Bell, CalendarClock, Calculator, ChevronDown, ListChecks, MoreHorizontal, Pencil, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
+import { Activity, ArrowRight, Bell, CalendarClock, Calculator, ChevronDown, ChevronUp, ListChecks, MoreHorizontal, Pencil, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
 import { loadNotifyStatus, readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { deletePlan } from '../app/plan.js';
 import { deleteSellPlan } from '../app/sellPlans.js';
-import { clearDcaState } from '../app/dca.js';
+import { clearDcaState, setActiveDcaId } from '../app/dca.js';
 import { showActionToast } from '../app/toast.js';
 import { Card, cx, primaryButtonClass } from '../components/experience-ui.jsx';
 import { NewPlanExperience } from './NewPlanExperience.jsx';
@@ -151,6 +151,8 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   const [channelConfigured, setChannelConfigured] = useState(true);
   const notifyClientId = useMemo(() => readNotifyClientConfig().notifyClientId || '', []);
   const [planRefreshKey, setPlanRefreshKey] = useState(0);
+  const [expandedRowIds, setExpandedRowIds] = useState(() => new Set());
+  const [editingPlan, setEditingPlan] = useState(null);
   const { previewRows = [] } = useMemo(() => {
     void planRefreshKey;
     return buildTradePlanCenter();
@@ -207,6 +209,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   }
 
   function enterNewPlanView() {
+    setEditingPlan(null);
     gotoSubView('new', { push: true });
   }
 
@@ -311,6 +314,13 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   function handleDeletePlanRow(row) {
     if (!row) return;
+    if (typeof window !== 'undefined') {
+      const label = row.planName || row.detailTitle || '该交易计划';
+      if (!window.confirm(`确认删除「${label}」？删除后本地计划无法恢复。`)) {
+        setOpenMenuRowId('');
+        return;
+      }
+    }
     const meta = {
       sourceType: row.sourceType || '',
       rowIdLength: String(row.id || '').length,
@@ -318,7 +328,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
       ...tradePlansMeta()
     };
     if (row.sourceType === 'dca') {
-      clearDcaState();
+      clearDcaState(row.sourceId);
       showActionToast('删除定投计划', 'success');
     } else if (row.sourceType === 'sell' && row.sourceId) {
       deleteSellPlan(row.sourceId);
@@ -431,6 +441,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
       ...tradePlansMeta()
     });
     if (row?.sourceType === 'dca') {
+      setActiveDcaId(row.sourceId);
       gotoSubView('dcaNew', { push: true });
       return;
     }
@@ -439,11 +450,21 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
       return;
     }
     if (row?.sourceType === 'plan') {
-      showActionToast('编辑加仓策略', 'warning', {
-        description: '当前加仓策略编辑仍沿用新建向导入口，请进入后按现有参数重新保存。'
-      });
-      enterNewPlanView();
+      setEditingPlan(row.editPayload || null);
+      gotoSubView('new', { push: true });
     }
+  }
+
+  function toggleRowExpanded(rowId = '') {
+    setExpandedRowIds((current) => {
+      const next = new Set(current);
+      if (next.has(rowId)) {
+        next.delete(rowId);
+      } else {
+        next.add(rowId);
+      }
+      return next;
+    });
   }
 
   function renderCreateMenu() {
@@ -565,49 +586,68 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
           <MoreHorizontal className="h-5 w-5" />
         </button>
         {isOpen ? (
-          <div
-            role="menu"
-            className="absolute right-0 top-10 z-10 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
-          >
+          <>
             <button
               type="button"
-              role="menuitem"
-              disabled={isTesting}
-              onClick={() => handleTestNotify(row)}
-              className="hidden w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:flex"
+              aria-label="关闭操作菜单"
+              className="fixed inset-0 z-40 cursor-default bg-slate-900/30 sm:hidden"
+              onClick={() => setOpenMenuRowId('')}
+            />
+            <div
+              role="menu"
+              className="fixed inset-x-0 bottom-0 z-50 rounded-t-2xl border border-slate-200 bg-white p-3 shadow-2xl sm:absolute sm:inset-auto sm:right-0 sm:top-10 sm:z-10 sm:w-44 sm:overflow-hidden sm:rounded-xl sm:p-0 sm:shadow-lg"
             >
-              <Bell className="h-4 w-4 text-slate-400" />
-              {isTesting ? '正在发送' : '测试通知'}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => handleViewMore(row)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-            >
-              <ArrowRight className="h-4 w-4 text-slate-400" />
-              查看更多
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => handleEditRow(row)}
-              className="hidden w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 sm:flex"
-            >
-              <Pencil className="h-4 w-4 text-slate-400" />
-              编辑
-            </button>
-            <div className="hidden h-px bg-slate-100 sm:block" />
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => handleDeletePlanRow(row)}
-              className="hidden w-full items-center gap-2 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 sm:flex"
-            >
-              <Trash2 className="h-4 w-4" />
-              删除
-            </button>
-          </div>
+              <div className="px-2 pb-2 pt-1 sm:hidden">
+                <div className="mx-auto h-1 w-10 rounded-full bg-slate-200" />
+                <div className="mt-3 truncate text-sm font-bold text-slate-900">{row.planName || '交易计划'}</div>
+              </div>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={isTesting}
+                onClick={() => handleTestNotify(row)}
+                className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-0 sm:gap-2 sm:rounded-none sm:font-normal"
+              >
+                <Bell className="h-4 w-4 text-slate-400" />
+                {isTesting ? '正在发送' : '测试通知'}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => handleViewMore(row)}
+                className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:min-h-0 sm:gap-2 sm:rounded-none sm:font-normal"
+              >
+                <ArrowRight className="h-4 w-4 text-slate-400" />
+                查看更多
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => handleEditRow(row)}
+                className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:min-h-0 sm:gap-2 sm:rounded-none sm:font-normal"
+              >
+                <Pencil className="h-4 w-4 text-slate-400" />
+                编辑
+              </button>
+              <div className="my-1 h-px bg-slate-100 sm:my-0" />
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => handleDeletePlanRow(row)}
+                className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-semibold text-rose-600 hover:bg-rose-50 sm:min-h-0 sm:gap-2 sm:rounded-none sm:font-normal"
+              >
+                <Trash2 className="h-4 w-4" />
+                删除
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpenMenuRowId('')}
+                className="mt-2 flex min-h-12 w-full items-center justify-center rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600 sm:hidden"
+              >
+                取消
+              </button>
+            </div>
+          </>
         ) : null}
       </div>
     );
@@ -653,6 +693,8 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     const tone = TONE_CLASS[row.cardTone || meta.tone] || TONE_CLASS.indigo;
     const progressValue = Math.max(0, Math.min(100, Number(row.progressValue || 0) * 100));
     const progressItems = Array.isArray(row.progressItems) ? row.progressItems : [];
+    const detailItems = Array.isArray(row.detailItems) ? row.detailItems : [];
+    const isExpanded = expandedRowIds.has(row.id);
     const isTesting = testingRowId === row.id;
 
     return (
@@ -672,7 +714,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
           <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
+              className="hidden h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-60 sm:inline-flex"
               aria-label="测试通知"
               title="测试通知"
               disabled={isTesting}
@@ -682,7 +724,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
             </button>
             <button
               type="button"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              className="hidden h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 sm:inline-flex"
               aria-label="编辑计划"
               title="编辑计划"
               onClick={() => handleEditRow(row)}
@@ -691,7 +733,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
             </button>
             <button
               type="button"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+              className="hidden h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 sm:inline-flex"
               aria-label="删除计划"
               title="删除计划"
               onClick={() => handleDeletePlanRow(row)}
@@ -722,8 +764,43 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
         </div>
 
         <div className="mt-4 border-t border-slate-100 pt-3 text-xs font-medium text-slate-500">
-          {row.footerLabel || `${row.triggerLabel} · ${row.nextExecutionLabel}`}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>{row.footerLabel || `${row.triggerLabel} · ${row.nextExecutionLabel}`}</span>
+            {detailItems.length ? (
+              <button
+                type="button"
+                className="inline-flex min-h-9 items-center justify-center gap-1 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-indigo-200 hover:text-indigo-700"
+                onClick={() => toggleRowExpanded(row.id)}
+                aria-expanded={isExpanded}
+              >
+                {isExpanded ? '收起层级' : '展开层级'}
+                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </button>
+            ) : null}
+          </div>
         </div>
+        {isExpanded && detailItems.length ? (
+          <div className="mt-3 overflow-hidden rounded-xl border border-slate-200">
+            <div className="grid grid-cols-[0.8fr_0.8fr_0.9fr_1.3fr_0.8fr] gap-3 bg-slate-50 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+              <span>层级</span>
+              <span>价格</span>
+              <span>金额</span>
+              <span>触发条件</span>
+              <span>状态</span>
+            </div>
+            <div className="divide-y divide-slate-100 bg-white">
+              {detailItems.map((item, index) => (
+                <div key={`${row.id}-detail-${item.id || index}`} className="grid grid-cols-1 gap-1 px-3 py-3 text-xs text-slate-600 sm:grid-cols-[0.8fr_0.8fr_0.9fr_1.3fr_0.8fr] sm:gap-3 sm:items-center">
+                  <div className="font-semibold text-slate-800">{item.label}{item.detail ? `（${item.detail}）` : ''}</div>
+                  <div>{item.price || '--'}</div>
+                  <div className="font-semibold text-slate-900">{item.amount || '--'}</div>
+                  <div>{item.trigger || '--'}</div>
+                  <div className="font-semibold text-indigo-600">{item.status || '待执行'}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -747,6 +824,8 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
       <NewPlanExperience
         links={links}
         embedded
+        initialPlan={editingPlan}
+        mode={editingPlan?.id ? 'replace' : 'create'}
         onBack={exitNewPlanView}
       />
     );
