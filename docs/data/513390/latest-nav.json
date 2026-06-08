@@ -2,10 +2,10 @@
   "dataset": "etf_latest_nav_eastmoney",
   "code": "513390",
   "name": "博时纳斯达克100ETF(QDII)",
-  "latestNav": 2.423,
-  "latestNavDate": "2026-06-05",
-  "previousNav": 2.453,
+  "latestNav": 2.33,
+  "latestNavDate": "2026-06-08",
+  "previousNav": 2.423,
   "previousNavDate": "",
   "source": "eastmoney:f10/lsjz",
-  "generatedAt": "2026-06-06T04:51:14.005Z"
+  "generatedAt": "2026-06-08T12:15:48.878Z"
 }

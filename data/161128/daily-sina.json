@@ -4,32 +4,16 @@
   "fund_name": "易方达标普信息科技指数(QDII-LOF)A",
   "index_key": "nasdaq100",
   "range": {
-    "start_date": "2024-06-06",
-    "end_date": "2026-06-05",
+    "start_date": "2024-06-11",
+    "end_date": "2026-06-08",
     "lookback_days": 730
   },
   "requested_bars": 700,
   "source": "sina:CN_MarketDataService.getKLineData",
   "source_symbol": "sz161128",
   "fund_list_source": "/home/runner/work/ai-dca/ai-dca/data/all_nasdq.json",
-  "generated_at": "2026-06-06T04:51:13.402Z",
+  "generated_at": "2026-06-08T12:15:47.685Z",
   "bars": [
-    {
-      "date": "2024-06-06",
-      "open": 5.015,
-      "close": 4.966,
-      "high": 5.08,
-      "low": 4.915,
-      "volume": 11370465
-    },
-    {
-      "date": "2024-06-07",
-      "open": 4.966,
-      "close": 4.978,
-      "high": 5.009,
-      "low": 4.944,
-      "volume": 5564835
-    },
     {
       "date": "2024-06-11",
       "open": 4.9,
@@ -3885,6 +3869,14 @@
       "high": 7.246,
       "low": 7.102,
       "volume": 40476988
+    },
+    {
+      "date": "2026-06-08",
+      "open": 6.8,
+      "close": 6.828,
+      "high": 6.928,
+      "low": 6.796,
+      "volume": 45488223
     }
   ]
 }
