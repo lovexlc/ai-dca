@@ -1,14 +1,13 @@
 import {
   cpSync,
   existsSync,
-  mkdirSync,
   readFileSync,
   readdirSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { join, resolve, sep } from 'node:path';
+import { join, resolve } from 'node:path';
 
 const root = process.cwd();
 const distDir = resolve(root, process.env.REACT_DIST_DIR || 'frontend-dist');
@@ -17,10 +16,6 @@ const publicDir = resolve(root, 'public');
 const pageTemplatePath = resolve(distDir, 'index.html');
 const distAssetsDir = resolve(distDir, 'react-assets');
 const docsAssetsDir = resolve(docsDir, 'react-assets-v2');
-const dataDir = resolve(root, 'data');
-const docsDataDir = resolve(docsDir, 'data');
-const holdingsCacheDir = resolve(dataDir, 'holdings-nav-cache');
-const docsHoldingsCacheDir = resolve(docsDir, 'holdings-nav-cache');
 
 if (!existsSync(pageTemplatePath)) {
   throw new Error(`Missing built page template: ${pageTemplatePath}`);
@@ -105,26 +100,6 @@ function ignoreLocalPermissionError(error, label) {
     return true;
   }
   return false;
-}
-
-mkdirSync(docsDataDir, { recursive: true });
-if (existsSync(dataDir)) {
-  try {
-    cpSync(dataDir, docsDataDir, {
-      recursive: true,
-      force: true,
-      filter: (source) => source !== holdingsCacheDir && !source.startsWith(`${holdingsCacheDir}${sep}`)
-    });
-  } catch (error) {
-    if (!ignoreLocalPermissionError(error, 'docs/data sync')) {
-      throw error;
-    }
-  }
-}
-
-rmSync(docsHoldingsCacheDir, { recursive: true, force: true });
-if (existsSync(holdingsCacheDir)) {
-  cpSync(holdingsCacheDir, docsHoldingsCacheDir, { recursive: true, force: true });
 }
 
 writeFileSync(resolve(docsDir, '.nojekyll'), '', 'utf8');

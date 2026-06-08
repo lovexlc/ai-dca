@@ -1,7 +1,6 @@
 // 美股标的快选清单：QQQ/VOO 指数 + Mag7 个股 + 台积电 ADR。
 // 用于在「新建加仓计划」和「定投计划」页提供一键选择，不依赖纳指基金清单。
-// 这些标的不在 data/nasdaq_latest.json 的行情清单里，因此选中后
-// 当前价/MA 等字段不会被自动填充，需要用户手动填入触发价与风控价。
+// 这些标的不在纳指基金候选池里，行情由 markets Worker 实时拉取。
 
 export const EXTRA_SYMBOL_GROUPS = [
   {

@@ -22,7 +22,6 @@ const ALLOW_NAV_UPSTREAM_SOURCE = new Set([
   'workers/notify/src/switchStrategy.js',
   'workers/ocr-proxy/src/holdingsNavRoutes.js',
   'workers/markets-agent/container/skills/fund-backtest/lib/eastmoney.js',
-  'scripts/fetch_etf_latest_nav.mjs',
   'scripts/check_nav_access.mjs'
 ]);
 

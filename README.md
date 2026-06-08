@@ -59,13 +59,7 @@ workers/
   webdav-cors-proxy/    备份页用 WebDAV CORS 代理
 scripts/
   build_kb.mjs                  构建知识库 → 写入 Vectorize
-  fetch_nasdaq_etf_daily_sina.mjs   纳指基金/ETF 日线
-  fetch_etf_latest_nav.mjs          ETF 最新 NAV
-  fetch_market_indices.mjs          大盘指数滚动 ticker 数据源
-  fetch_nasdaq100_benchmark.py      纳指 100 基准
-  fetch_nasdaq_etf_minute.py        纳指 ETF 分钟线
   publish_react_pages.mjs           前端静态产物发布
-data/                 本地数据文件（含 all_nasdq_otc.json 等）
 docs/                 静态站点产物 + 架构 / 运维文档（`architecture/`, `ops/`）
 .github/workflows/    GitHub Actions（Pages、ocr-proxy、notify、Build KB 等）
 .frontend-build/      本地构建中间产物（git ignored）
@@ -104,13 +98,13 @@ npm run build:app
 npm run build
 ```
 
-## 数据相关命令
+## 行情与净值
 
-```bash
-npm run data:fetch-nasdaq-daily        # 纳指基金/ETF 日线
-npm run data:fetch-nasdaq-benchmark    # 纳指 100 基准
-npm run data:fetch-market-indices      # 持仓页右上角大盘指数 ticker 数据
-```
+运行时行情/净值统一走 Worker：
+
+- 场内基金/ETF：`markets` Worker 从雪球获取。
+- 场外基金：`markets`/`notify` 链路从蛋卷获取。
+- 纳指候选池和 QDII 识别表内置在 `src/app/nasdaqCatalog.js`、`src/app/qdiiFundCodes.js`。
 
 ## Worker 开发
 

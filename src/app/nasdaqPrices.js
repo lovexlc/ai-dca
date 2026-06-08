@@ -1,10 +1,12 @@
+import { fetchFundMetrics, fetchKline, fetchQuote } from './marketsApi.js';
+import { NASDAQ_ETFS } from './nasdaqCatalog.js';
+
 const BENCHMARK_CODE = 'nas-daq100';
 const BENCHMARK_NAME = 'NASDAQ 100 Index';
 const BENCHMARK_CURRENCY = '$';
 const BENCHMARK_SYMBOL = '^NDX';
-const BENCHMARK_MINUTE_OUTPUT_PATH = `data/${BENCHMARK_CODE}/intraday-1m.json`;
-const BENCHMARK_FIFTEEN_MINUTE_OUTPUT_PATH = `data/${BENCHMARK_CODE}/intraday-15m.json`;
-const BENCHMARK_DAILY_OUTPUT_PATH = `data/${BENCHMARK_CODE}/daily-sina.json`;
+
+const INTRADAY_TFS = new Set(['1m', '5m', '15m', '30m', '60m']);
 
 function normalizeFundKey(value = '') {
   return String(value)
@@ -33,109 +35,165 @@ function buildAliases(entry = {}) {
   return [...aliases].filter(Boolean);
 }
 
-export function latestNasdaqPriceManifestPath({ inPagesDir = false } = {}) {
-  return inPagesDir ? '../data/nasdaq_latest.json' : './data/nasdaq_latest.json';
+async function loadCatalogEntries() {
+  return NASDAQ_ETFS.map((entry) => ({
+    code: String(entry?.code || '').trim(),
+    name: String(entry?.name || '').trim(),
+    index_key: String(entry?.index_key || 'nasdaq100').trim() || 'nasdaq100'
+  })).filter((entry) => /^\d{6}$/.test(entry.code));
 }
 
-function normalizeSnapshotPath(value = '') {
-  return String(value || '')
-    .trim()
-    .replace(/^\.\.\/\.\.\//, '')
-    .replace(/^\.\//, '')
-    .replace(/^\/+/, '');
+function marketKlineRef(symbol, tf) {
+  return `markets://kline/${encodeURIComponent(symbol)}?tf=${encodeURIComponent(tf)}`;
 }
 
-export function nasdaqDataPath(outputPath, { inPagesDir = false } = {}) {
-  const normalized = normalizeSnapshotPath(outputPath);
+export function latestNasdaqPriceManifestPath() {
+  return 'markets://fund-metrics';
+}
 
-  if (!normalized) {
-    return '';
+export function nasdaqDataPath(outputPath) {
+  return String(outputPath || '').trim();
+}
+
+export function nasdaqDailyHistoryPath(fundCode = '') {
+  const symbol = resolveMarketSymbol(fundCode);
+  return symbol ? marketKlineRef(symbol, '1d') : '';
+}
+
+function shanghaiDateFromTimestamp(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const direct = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) return direct ? direct[1] : '';
+  try {
+    return new Date(parsed).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+  } catch {
+    return new Date(parsed).toISOString().slice(0, 10);
   }
-
-  return inPagesDir ? `../${normalized}` : `./${normalized}`;
 }
 
-export function nasdaqDailyHistoryPath(fundCode = '', { inPagesDir = false } = {}) {
-  const normalizedCode = String(fundCode || '').trim();
-  if (!normalizedCode) {
-    return '';
+function datePartsFromUnixSeconds(unixSeconds, timeZone) {
+  const t = Number(unixSeconds);
+  if (!Number.isFinite(t) || t <= 0) return null;
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).formatToParts(new Date(t * 1000)).reduce((acc, part) => {
+      acc[part.type] = part.value;
+      return acc;
+    }, {});
+    if (!parts.year || !parts.month || !parts.day) return null;
+    return {
+      date: `${parts.year}-${parts.month}-${parts.day}`,
+      datetime: `${parts.year}-${parts.month}-${parts.day} ${parts.hour || '00'}:${parts.minute || '00'}:${parts.second || '00'}`
+    };
+  } catch {
+    const iso = new Date(t * 1000).toISOString();
+    return { date: iso.slice(0, 10), datetime: iso.replace('T', ' ').slice(0, 19) };
   }
-
-  return inPagesDir ? `../data/${normalizedCode}/daily-sina.json` : `./data/${normalizedCode}/daily-sina.json`;
 }
 
-async function loadJsonIfExists(path = '') {
-  if (!path) {
+function resolveMarketSymbol(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return raw === BENCHMARK_CODE ? BENCHMARK_SYMBOL : raw;
+}
+
+function parseMarketKlineRef(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw.startsWith('markets://kline/')) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'markets:' || url.hostname !== 'kline') return null;
+    const symbol = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
+    const tf = url.searchParams.get('tf') || '1d';
+    return { symbol, tf };
+  } catch {
     return null;
   }
-
-  const response = await fetch(path, {
-    headers: {
-      Accept: 'application/json'
-    },
-    cache: 'no-store'
-  });
-
-  if (response.status === 404) {
-    return null;
-  }
-
-  if (!response.ok) {
-    throw new Error(`现价数据加载失败: HTTP ${response.status}`);
-  }
-
-  return response.json();
 }
 
-async function loadBenchmarkFallbackEntry({ inPagesDir = false } = {}) {
-  const snapshot = await loadJsonIfExists(nasdaqDataPath(BENCHMARK_MINUTE_OUTPUT_PATH, { inPagesDir }));
-  const bars = Array.isArray(snapshot?.bars) ? snapshot.bars : [];
-  const latestBar = bars[bars.length - 1] || null;
-
-  if (!latestBar) {
-    return null;
+function currentPriceFromMetric(metric = {}) {
+  const candidates = [metric.currentPrice, metric.price, metric.close, metric.latestNav, metric.navBase, metric.iopv];
+  for (const value of candidates) {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return n;
   }
+  return 0;
+}
 
+function normalizeMetricEntry(entry = {}, metric = null) {
+  const currentPrice = currentPriceFromMetric(metric);
+  const asOf = String(metric?.asOf || metric?.updatedAt || '').trim();
+  const latestNavDate = String(metric?.latestNavDate || metric?.navDate || '').trim();
+  const date = String(metric?.quoteDate || '').trim()
+    || shanghaiDateFromTimestamp(asOf)
+    || latestNavDate.slice(0, 10);
+  return {
+    ...entry,
+    currency: '¥',
+    date,
+    datetime: asOf || date,
+    current_price: currentPrice,
+    price: currentPrice,
+    previous_close: Number(metric?.previousClose ?? metric?.previousNav) || 0,
+    change: Number(metric?.change) || 0,
+    change_percent: Number(metric?.changePercent) || 0,
+    latest_nav: Number(metric?.latestNav) || 0,
+    latest_nav_date: latestNavDate,
+    output_path: marketKlineRef(entry.code, '1m'),
+    output_path_15m: marketKlineRef(entry.code, '15m'),
+    daily_output_path: marketKlineRef(entry.code, '1d'),
+    source: String(metric?.source || '').trim() || 'markets-fund-metrics'
+  };
+}
+
+function normalizeBenchmarkEntry(quote = null) {
+  const price = Number(quote?.price ?? quote?.currentPrice ?? quote?.close) || 0;
+  const asOf = String(quote?.asOf || '').trim();
+  const date = shanghaiDateFromTimestamp(asOf);
   return {
     code: BENCHMARK_CODE,
     name: BENCHMARK_NAME,
     index_key: 'nasdaq100',
-    currency: String(snapshot?.currency || '').trim() || BENCHMARK_CURRENCY,
-    date: String(snapshot?.date || latestBar.datetime || '').trim().slice(0, 10),
-    datetime: String(latestBar.datetime || snapshot?.date || '').trim(),
-    current_price: Number(latestBar.close) || Number(latestBar.open) || 0,
-    output_path: BENCHMARK_MINUTE_OUTPUT_PATH,
-    output_path_15m: BENCHMARK_FIFTEEN_MINUTE_OUTPUT_PATH,
-    daily_output_path: BENCHMARK_DAILY_OUTPUT_PATH,
-    source_symbol: BENCHMARK_SYMBOL
+    currency: BENCHMARK_CURRENCY,
+    date,
+    datetime: asOf || date,
+    current_price: price,
+    price,
+    previous_close: Number(quote?.previousClose) || 0,
+    change: Number(quote?.change) || 0,
+    change_percent: Number(quote?.changePercent) || 0,
+    output_path: marketKlineRef(BENCHMARK_SYMBOL, '1m'),
+    output_path_15m: marketKlineRef(BENCHMARK_SYMBOL, '15m'),
+    daily_output_path: marketKlineRef(BENCHMARK_SYMBOL, '1d'),
+    source_symbol: BENCHMARK_SYMBOL,
+    source: String(quote?.source || '').trim() || 'markets-quote'
   };
 }
 
 export async function loadLatestNasdaqPrices({ inPagesDir = false } = {}) {
-  const response = await fetch(latestNasdaqPriceManifestPath({ inPagesDir }), {
-    headers: {
-      Accept: 'application/json'
-    },
-    cache: 'no-store'
-  });
-
-  if (!response.ok) {
-    throw new Error(`现价数据加载失败: HTTP ${response.status}`);
-  }
-
-  const payload = await response.json();
-  const funds = Array.isArray(payload?.funds) ? payload.funds : [];
-
-  if (funds.some((entry) => String(entry?.code || '').trim() === BENCHMARK_CODE)) {
-    return funds;
-  }
-
-  try {
-    const benchmarkEntry = await loadBenchmarkFallbackEntry({ inPagesDir });
-    return benchmarkEntry ? [benchmarkEntry, ...funds] : funds;
-  } catch {
-    return funds;
-  }
+  void inPagesDir;
+  const entries = await loadCatalogEntries();
+  const codes = entries.map((entry) => entry.code);
+  const [metricsPayload, benchmarkQuote] = await Promise.all([
+    fetchFundMetrics(codes),
+    fetchQuote(BENCHMARK_SYMBOL)
+  ]);
+  const metricMap = new Map((Array.isArray(metricsPayload?.items) ? metricsPayload.items : [])
+    .map((item) => [String(item?.code || '').trim(), item]));
+  return [
+    normalizeBenchmarkEntry(benchmarkQuote),
+    ...entries.map((entry) => normalizeMetricEntry(entry, metricMap.get(entry.code) || null))
+  ];
 }
 
 export function findLatestNasdaqPrice(entries = [], fundKey = '') {
@@ -157,58 +215,62 @@ export function findLatestNasdaqPrice(entries = [], fundKey = '') {
   return fuzzyMatches.length === 1 ? fuzzyMatches[0] : null;
 }
 
-export async function loadNasdaqMinuteSnapshot(snapshotOrPath, { inPagesDir = false } = {}) {
-  const outputPath = typeof snapshotOrPath === 'string' ? snapshotOrPath : snapshotOrPath?.output_path;
-  const resolvedPath = nasdaqDataPath(outputPath, { inPagesDir });
-
-  if (!resolvedPath) {
-    throw new Error('分钟线数据路径缺失');
-  }
-
-  const response = await fetch(resolvedPath, {
-    headers: {
-      Accept: 'application/json'
-    },
-    cache: 'no-store'
-  });
-
-  if (!response.ok) {
-    throw new Error(`分钟线数据加载失败: HTTP ${response.status}`);
-  }
-
-  return response.json();
+function normalizeKlineBars(payload = {}, { daily = false } = {}) {
+  const candles = Array.isArray(payload?.candles) ? payload.candles : [];
+  const timeZone = payload?.market === 'cn' ? 'Asia/Shanghai' : 'America/New_York';
+  return candles.map((bar) => {
+    const parts = datePartsFromUnixSeconds(bar?.t, timeZone);
+    if (!parts) return null;
+    const close = Number(bar?.c);
+    if (!Number.isFinite(close)) return null;
+    return {
+      date: parts.date,
+      datetime: daily ? parts.date : parts.datetime,
+      open: Number(bar?.o) || close,
+      high: Number(bar?.h) || close,
+      low: Number(bar?.l) || close,
+      close,
+      volume: Number(bar?.v) || 0,
+      amount: Number(bar?.amount) || 0
+    };
+  }).filter(Boolean);
 }
 
-export async function loadNasdaqDailySeries(fundCode = '', { inPagesDir = false } = {}) {
-  const resolvedPath = nasdaqDailyHistoryPath(fundCode, { inPagesDir });
-  if (!resolvedPath) {
+export async function loadNasdaqMinuteSnapshot(snapshotOrPath) {
+  const parsed = typeof snapshotOrPath === 'string'
+    ? parseMarketKlineRef(snapshotOrPath)
+    : parseMarketKlineRef(snapshotOrPath?.output_path || '');
+  const symbol = parsed?.symbol || resolveMarketSymbol(snapshotOrPath?.code || '');
+  const tf = parsed?.tf || '1m';
+  if (!symbol) {
+    throw new Error('分钟线数据标的缺失');
+  }
+  const payload = await fetchKline(symbol, { timeframe: tf });
+  const bars = normalizeKlineBars(payload, { daily: !INTRADAY_TFS.has(tf) });
+  const latestBar = bars[bars.length - 1] || null;
+  return {
+    code: snapshotOrPath?.code || (symbol === BENCHMARK_SYMBOL ? BENCHMARK_CODE : symbol),
+    symbol,
+    source: payload?.source || 'markets-kline',
+    interval: tf,
+    date: latestBar?.date || '',
+    bars
+  };
+}
+
+export async function loadNasdaqDailySeries(fundCode = '') {
+  const symbol = resolveMarketSymbol(fundCode);
+  if (!symbol) {
     return [];
   }
-
-  const response = await fetch(resolvedPath, {
-    headers: {
-      Accept: 'application/json'
-    },
-    cache: 'no-store'
-  });
-
-  if (response.status === 404) {
-    return [];
-  }
-
-  if (!response.ok) {
-    throw new Error(`日线数据加载失败: HTTP ${response.status}`);
-  }
-
-  const payload = await response.json();
-  return Array.isArray(payload?.bars) ? payload.bars : [];
+  const payload = await fetchKline(symbol, { timeframe: '1d' });
+  return normalizeKlineBars(payload, { daily: true });
 }
 
 export function formatPriceAsOf(snapshot) {
-  const raw = String(snapshot?.datetime || snapshot?.date || '').trim();
+  const raw = String(snapshot?.datetime || snapshot?.date || snapshot?.asOf || '').trim();
   if (!raw) {
     return '';
   }
-
-  return raw.replace(/:\d{2}$/, '');
+  return raw.replace('T', ' ').replace(/:\d{2}(?:\.\d{3}Z?)?$/, '');
 }

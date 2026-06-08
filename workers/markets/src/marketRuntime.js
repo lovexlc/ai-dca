@@ -1,7 +1,4 @@
 import {
-  fetchSinaKline,
-  fetchSinaQuote,
-  fetchSinaQuotesBatch,
   fetchXueqiuKline,
   fetchXueqiuQuote,
   fetchXueqiuQuotesBatch
@@ -179,7 +176,7 @@ export async function notifyXueqiuCookieIssue(env, error, context = {}) {
   const payload = {
     type: 'xueqiu_cookie_issue',
     title: '雪球 Cookie 失效或不可用',
-    body: 'markets Worker 已改用可用的兜底数据或缓存。',
+    body: 'markets Worker 已停止使用旧行情源；场内行情将只使用雪球数据或有效缓存。',
     reason,
     context,
     generatedAt: new Date().toISOString()
@@ -229,8 +226,7 @@ export async function fetchCnQuoteWithFallback(env, code, context = {}) {
     return quote;
   } catch (error) {
     await notifyXueqiuCookieIssue(env, error, { ...context, code, endpoint: 'quote' });
-    const fallback = await fetchSinaQuote(code);
-    return { ...fallback, fallback: 'sina', primaryError: summarizeXueqiuError(error) };
+    throw error;
   }
 }
 
@@ -252,16 +248,12 @@ export async function fetchCnQuotesBatchWithFallback(env, items = []) {
   }
   if (!fallbackItems.length) return out;
   await notifyXueqiuCookieIssue(env, fallbackItems[0].primaryError, { endpoint: 'quotes', count: fallbackItems.length });
-  try {
-    const sinaMap = await fetchSinaQuotesBatch(fallbackItems.map((item) => item.code));
-    for (const item of fallbackItems) {
-      const quote = sinaMap[item.code];
-      out[item.raw] = quote && !quote.error
-        ? { ...quote, fallback: 'sina', primaryError: item.primaryError }
-        : { symbol: item.raw, error: quote?.error || 'sina quote missing', primaryError: item.primaryError };
-    }
-  } catch (error) {
-    for (const item of fallbackItems) out[item.raw] = { symbol: item.raw, error: String((error && error.message) || error), primaryError: item.primaryError };
+  for (const item of fallbackItems) {
+    out[item.raw] = {
+      symbol: item.raw,
+      error: item.primaryError || 'xueqiu quote missing',
+      primaryError: item.primaryError || 'xueqiu quote missing'
+    };
   }
   return out;
 }
@@ -272,7 +264,6 @@ export async function fetchCnKlineWithFallback(env, code, tf) {
     return { ...payload, market: 'cn', generatedAt: new Date().toISOString() };
   } catch (error) {
     await notifyXueqiuCookieIssue(env, error, { code, endpoint: 'kline', tf });
-    const fallback = await fetchSinaKline(code, { intervalLabel: tf, limit: 500 });
-    return { ...fallback, market: 'cn', generatedAt: new Date().toISOString(), fallback: 'sina', primaryError: summarizeXueqiuError(error) };
+    throw error;
   }
 }

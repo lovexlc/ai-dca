@@ -398,7 +398,7 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
   }
 
   const compiled = compileNotifyRules(payload);
-  const latestMarketMap = compiled.planRules.length ? await loadLatestMarketMap(env) : {};
+  const latestMarketMap = compiled.planRules.length ? await loadLatestMarketMap(env, compiled.planRules) : {};
   const dailyCache = new Map();
   const events = [];
   const now = new Date();

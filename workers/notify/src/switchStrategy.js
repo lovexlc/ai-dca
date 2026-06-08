@@ -22,7 +22,7 @@ import {
   fetchLatestNav,
   fetchLatestNavMap,
   fetchLatestNavMapWithCache,
-  fetchSinaPrices,
+  fetchFundMetricPrices,
   getLatestNavWithCache,
   NAV_CACHE_PREFIX
 } from './getNav.js';
@@ -232,8 +232,8 @@ export function getDelayedOpenInfo(code, priceMap, navByCode, computedAt, navAge
 }
 
 // 净值获取相关的函数已抽离到 getNav.js 模块
-// 其中 fetchLatestNav, fetchLatestNavMap, fetchLatestNavMapWithCache, fetchSinaPrices, getLatestNavWithCache
-// 均由 getNav.js 统一接入 markets/fund-metrics；fetchSinaPrices 是兼容旧调用名。
+// 其中 fetchLatestNav, fetchLatestNavMap, fetchLatestNavMapWithCache, fetchFundMetricPrices, getLatestNavWithCache
+// 均由 getNav.js 统一接入 markets/fund-metrics。
 // 由该模块导出并在本文件顶部导入
 
 /**

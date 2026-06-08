@@ -10,7 +10,7 @@
 | `latestNav` | 最新净值（可能是当日实时） | ocr-proxy `/api/holdings/nav`（内部统一走 getNav）→ 天天基金 DWJZ；开盘期间 notify worker push2 实时覆盖；ETF 走最后成交价分支 | 交易时段：实时；非交易时段：T-1 公布 | HoldingsExperience KPI / Notify digest / TopN / Holdings 录入回填 |
 | `previousNav` | 上一交易日公布净值 | 同上 `/api/holdings/nav` `snapshot.previousNav` | T-1 | 持仓页「今日盈亏」分母 |
 | `navHistory[].nav` | 指定区间逐日公布单位净值 | ocr-proxy `/api/holdings/nav-history`（内部统一走 getNav）→ 天天基金历史表 | **末端始终 = T-1**，不含当日实时变动 | IncomeSummary 曲线 / IncomeDetail 主图 / ReturnChart / ReturnCalendar / useCumulativeSparkline / DailyFundBreakdown |
-| `latest-nav.json` | GitHub Action 预生成的离线净值 | `lovexlc/ai-dca` Actions 周期任务产物，供 notify worker 的 getNav 使用 | T-1 或更早（取决于上次 Action 跑的时间） | SwitchStrategy 后端信号计算（前端不再直接读取） |
+| SwitchStrategy 指标 | 切换策略所需价格/净值 | 场内：markets Worker fund metrics；场外：蛋卷 NAV 历史 | 场内实时或有效缓存；场外按公布净值 | SwitchStrategy 前端与 notify 后端信号计算 |
 | K 线 `latestBar.close` / `firstBar.open` | 行情中心 K 线最新/开盘点价 | markets worker 分钟级 K 线 | 实时（仅 ETF/股票，场外基金无效） | HomeExperience `pricePulse.changePct`（与持仓页今日涨跌口径不同） |
 
 ### 分层原则
@@ -23,7 +23,7 @@
 
 - ❌ 把 `latestNav` 填回 `navHistory` 末端伪造实时曲线 → 会让 TWR / cumulativeProfit 隐含「当日交易时段未公布的估算净值」，难以复现 / 对账。
 - ❌ 用 K 线 `(close - open) / open` 去跟持仓页「今日涨跌」对账 → 两者分母不同（K 线是当日开盘价，持仓页是 T-1 公布净值）。后续 Phase 4 统一。
-- ❌ SwitchStrategy 直接信任 `latest-nav.json` 不做时效检查 → 可能暴露两三天前的 NAV。改为统一走 getNav 后应确保时效判断仍然有效。
+- ❌ SwitchStrategy 自行读取离线净值文件 → 可能暴露过期 NAV。应统一走 Worker 数据源，并保留时效判断。
 
 ## profit / returnRate 字段表（Phase 2 收敛后）
 

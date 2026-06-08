@@ -8,7 +8,7 @@ import {
 import { trackAnalyticsEvent } from './notifyClientRoutes.js';
 import {
   fetchLatestNavMapWithCache,
-  fetchSinaPrices
+  fetchFundMetricPrices
 } from './getNav.js';
 import {
   getExpectedLatestNavDate,
@@ -199,7 +199,7 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
     ...(Array.isArray(config.benchmarkCodes) ? config.benchmarkCodes : []),
     ...(config.enabledCodes || [])
   ]));
-  const effectivePriceMap = priceMap || await fetchSinaPrices(codes, env).catch(() => ({}));
+  const effectivePriceMap = priceMap || await fetchFundMetricPrices(codes, env).catch(() => ({}));
 
   const effectiveNavMap = navByCode || await fetchLatestNavMapWithCache(env, codes, [], {
     forceRefresh: false,
@@ -294,7 +294,7 @@ export async function runSwitchStrategyTick(env, scheduledMs, { reason = 'switch
   }
   const codeList = Array.from(allCodes);
   const [priceMap, navByCode] = await Promise.all([
-    fetchSinaPrices(codeList, env).catch(() => ({})),
+    fetchFundMetricPrices(codeList, env).catch(() => ({})),
     fetchLatestNavMapWithCache(env, codeList, [], {
       forceRefresh: false,
       todayDate: getTodayShanghaiDate(),

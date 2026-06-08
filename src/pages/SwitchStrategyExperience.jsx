@@ -49,7 +49,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     generatedAt: ''
   });
 
-  // 候选基金 universe = data/all_nasdq.json 中的纳指 100 场内 ETF 全集，并非仅限于持仓。
+  // 候选基金 universe = 内置纳指 100 场内 ETF 全集，并非仅限于持仓。
   const [candidateUniverse, setCandidateUniverse] = useState([]);
   const [universeError, setUniverseError] = useState('');
   // 实时行情：统一来自 markets Worker fund metrics。
@@ -407,7 +407,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     [aggregates]
   );
 
-  // 候选基金 universe（来自 data/all_nasdq.json）
+  // 候选基金 universe（内置纳指 ETF 候选池）
   useEffect(() => {
     let cancelled = false;
     loadNasdqList({ inPagesDir })
@@ -469,7 +469,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     });
   }, [exchangeFunds, benchmarkCodesJoined, premiumClassKey]);
 
-  // 拉取所有候选 ETF 的 Worker 统一指标（候选池来自 data/all_nasdq.json，不仅限于持仓）。
+  // 拉取所有候选 ETF 的 Worker 统一指标（候选池为内置纳指 ETF 全集，不仅限于持仓）。
   const loadNav = useCallback(async () => {
     const startedAt = Date.now();
     trackFeatureEvent('switch_strategy', 'metrics_refresh_start', {

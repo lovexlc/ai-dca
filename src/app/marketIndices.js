@@ -1,6 +1,4 @@
-function marketIndicesPath({ inPagesDir = false } = {}) {
-  return inPagesDir ? '../data/market_indices.json' : './data/market_indices.json';
-}
+import { fetchIndices } from './marketsApi.js';
 
 function toNumber(value) {
   const number = Number(value);
@@ -34,44 +32,27 @@ function normalizeMarketIndexEntry(entry = {}) {
   };
 }
 
-function normalizeMarketIndicesPayload(payload = {}) {
-  const rawIndexes = Array.isArray(payload.indexes)
-    ? payload.indexes
-    : Array.isArray(payload.indices)
-      ? payload.indices
-      : Array.isArray(payload.items)
-        ? payload.items
-        : [];
+function normalizeMarketIndicesPayload(payloads = []) {
+  const list = Array.isArray(payloads) ? payloads : [payloads];
+  const rawIndexes = list.flatMap((payload) => {
+    if (Array.isArray(payload?.indexes)) return payload.indexes;
+    if (Array.isArray(payload?.indices)) return payload.indices;
+    if (Array.isArray(payload?.items)) return payload.items;
+    return [];
+  });
 
   return {
-    dataset: String(payload.dataset ?? payload.datasetName ?? 'market_indices_latest').trim() || 'market_indices_latest',
-    source: String(payload.source ?? '').trim(),
-    generated_at: String(payload.generated_at ?? payload.generatedAt ?? '').trim(),
+    dataset: 'market_indices_latest',
+    source: 'markets-worker',
+    generated_at: list.map((payload) => String(payload?.generatedAt || payload?.generated_at || '').trim()).filter(Boolean).sort().at(-1) || '',
     indexes: rawIndexes.map((entry) => normalizeMarketIndexEntry(entry)).filter((entry) => entry.key && entry.name)
   };
 }
 
-export async function loadLatestMarketIndices({ inPagesDir = false } = {}) {
-  const response = await fetch(marketIndicesPath({ inPagesDir }), {
-    headers: {
-      Accept: 'application/json'
-    },
-    cache: 'no-store'
-  });
-
-  if (response.status === 404) {
-    return {
-      dataset: 'market_indices_latest',
-      source: '',
-      generated_at: '',
-      indexes: []
-    };
-  }
-
-  if (!response.ok) {
-    throw new Error(`指数行情加载失败: HTTP ${response.status}`);
-  }
-
-  const payload = await response.json();
-  return normalizeMarketIndicesPayload(payload);
+export async function loadLatestMarketIndices() {
+  const payloads = await Promise.all([
+    fetchIndices('cn'),
+    fetchIndices('us')
+  ]);
+  return normalizeMarketIndicesPayload(payloads);
 }

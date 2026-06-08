@@ -2,7 +2,7 @@ import {
   CN_ETF_WATCHLIST_PRESETS,
   CN_OTC_WATCHLIST_PRESETS
 } from '../../app/marketsApi.js';
-import nasdaqOtcCatalog from '../../../data/all_nasdq_otc.json' with { type: 'json' };
+import { NASDAQ_OTC_FUND_MAP } from '../../app/nasdaqCatalog.js';
 import { formatNumber, formatSymbolDisplay, normalizeCnFundCode } from './marketDisplayUtils.js';
 import {
   buildOtcCandidate as buildOtcCandidateBase,
@@ -20,9 +20,7 @@ export const CN_OTC_PRESET_MAP = Object.fromEntries(
   CN_OTC_WATCHLIST_PRESETS.map((item) => [item.symbol, item])
 );
 
-export const NASDAQ_OTC_FUND_MAP = Object.fromEntries(
-  ((nasdaqOtcCatalog && nasdaqOtcCatalog.funds) || []).map((item) => [String(item.code || '').trim(), item])
-);
+export { NASDAQ_OTC_FUND_MAP };
 
 export function hasNasdaqOtcFund(codeOrSymbol) {
   const code = normalizeCnFundCode(codeOrSymbol);

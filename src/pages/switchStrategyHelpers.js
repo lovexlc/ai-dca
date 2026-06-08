@@ -1,3 +1,5 @@
+import { NASDAQ_ETFS, NASDAQ_OTC_FUNDS } from '../app/nasdaqCatalog.js';
+
 const SWITCH_PREFS_KEY = 'aiDcaSwitchStrategyPrefs';
 
 export const DEFAULT_SWITCH_PREFS = {
@@ -150,32 +152,14 @@ export function nowIso() {
   return new Date().toISOString();
 }
 
-export function nasdaqListPath(inPagesDir) {
-  return inPagesDir ? `../data/all_nasdq.json` : `./data/all_nasdq.json`;
-}
-
 export async function loadNasdaqList({ inPagesDir = false } = {}) {
-  const response = await fetch(nasdaqListPath(inPagesDir), {
-    headers: { Accept: 'application/json' },
-    cache: 'no-store'
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const payload = await response.json();
-  return Array.isArray(payload?.etfs) ? payload.etfs : [];
-}
-
-export function nasdaqOtcListPath(inPagesDir) {
-  return inPagesDir ? `../data/all_nasdq_otc.json` : `./data/all_nasdq_otc.json`;
+  void inPagesDir;
+  return NASDAQ_ETFS.map((item) => ({ ...item }));
 }
 
 export async function loadNasdaqOtcList({ inPagesDir = false } = {}) {
-  const response = await fetch(nasdaqOtcListPath(inPagesDir), {
-    headers: { Accept: 'application/json' },
-    cache: 'no-store'
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const payload = await response.json();
-  return Array.isArray(payload?.funds) ? payload.funds : [];
+  void inPagesDir;
+  return NASDAQ_OTC_FUNDS.map((item) => ({ ...item }));
 }
 
 export function otcGroupIdOf(fund) {

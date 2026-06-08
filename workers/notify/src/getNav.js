@@ -413,9 +413,7 @@ export function isExchangeFundCode(code) {
   return EXCHANGE_FUND_CODE_PREFIXES.some((prefix) => normalized.startsWith(prefix));
 }
 
-// Legacy API name kept for existing notify switch-strategy callers.
-// The implementation no longer calls Sina directly; it is backed by markets/fund-metrics.
-export async function fetchSinaPrices(codes = [], env = null, { refresh = false, fundKinds = {} } = {}) {
+export async function fetchFundMetricPrices(codes = [], env = null, { refresh = false, fundKinds = {} } = {}) {
   const list = Array.from(new Set(codes.map((c) => sanitizeCode(c)).filter(Boolean)));
   if (!list.length) return {};
   const metrics = await fetchFundMetricsMap(env, list, { refresh, fundKinds });

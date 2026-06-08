@@ -18,7 +18,7 @@ Unify Worker-side fund price, NAV, IOPV, and premium retrieval through the marke
 ## Decisions
 
 - Existing KV/cache reads remain valid and are not replaced by fresh upstream calls when they are fresh enough.
-- Live refreshes use `markets/fund-metrics`; old direct `latest-nav.json`, Eastmoney, and Sina branches should not be used as separate live metric sources outside markets.
+- Live refreshes use `markets/fund-metrics`; old offline NAV, Eastmoney, and Sina branches should not be used as separate live metric sources outside markets.
 - Xueqiu failure should not fan out into different live-source branches. The markets endpoint may still return cached/marked fallback fields if that is its explicit contract.
 
 ## Open Items

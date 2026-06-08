@@ -7,7 +7,7 @@
 
 1. 把"哪条链路用哪套 NAV"写死成文档（代码注释 + `docs/data-glossary.md`）。
 2. 给所有可能呈现 T-1 末端的位置加用户可感知的标记（tooltip / 时间戳后缀），避免再发生"持仓页 +X% 但累计图末端比昨天小"的对账困惑。
-3. SwitchStrategy 前端统一走 `/api/holdings/nav`（内部 getNav），不再直读 `data/<code>/latest-nav.json`。
+3. SwitchStrategy 前端统一走 markets Worker 指标，后端信号不再依赖离线净值文件。
 4. 添加最小回归用例：navHistoryClient T-1 边界 / latestNav 覆盖逻辑 / SwitchStrategy fallback。
 
 **显式不做**（用户已拍板"接受漂移"）：

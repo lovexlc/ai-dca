@@ -1,6 +1,6 @@
 import {
   fetchFundNavSnapshot,
-  fetchSinaPrices
+  fetchFundMetricPrices
 } from './getNav.js';
 import {
   getExpectedLatestNavDate,
@@ -116,7 +116,7 @@ export async function fetchHoldingsNavSnapshots(env, codes = [], options = {}) {
 
   if (exchangeMissing.length) {
     try {
-      const priceMap = await fetchSinaPrices(exchangeMissing, env, { refresh: refreshExchange, fundKinds: kindByCode });
+      const priceMap = await fetchFundMetricPrices(exchangeMissing, env, { refresh: refreshExchange, fundKinds: kindByCode });
       let priceCount = 0;
       for (const code of exchangeMissing) {
         const quote = priceMap?.[code];

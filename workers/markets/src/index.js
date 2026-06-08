@@ -29,7 +29,7 @@ import {
   US_SECTORS,
   classifySymbol
 } from './symbols.js';
-import { tagIndices } from './data/index-constituents.js';
+import { tagIndices } from './indexConstituents.js';
 import {
   CORS_HEADERS,
   errorJson,
@@ -242,7 +242,7 @@ async function handleQuote(env, rawSymbol) {
   if (!market) return errorJson('invalid symbol', 400);
   const cacheKey = 'quote:' + code;
   const cached = await kvGetJson(env, cacheKey);
-  if (cached && cached.asOf && Date.now() - new Date(cached.asOf).getTime() < 90000 && (market === 'us' || cached.source === 'xueqiu-quote' || cached.source === 'sina-quote')) {
+  if (cached && cached.asOf && Date.now() - new Date(cached.asOf).getTime() < 90000 && (market === 'us' || cached.source === 'xueqiu-quote')) {
     return json({ ...cached, cached: true });
   }
   let quote;

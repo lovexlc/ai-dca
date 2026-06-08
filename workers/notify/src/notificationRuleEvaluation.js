@@ -1,7 +1,13 @@
 import { buildMovingAverageValues, buildNasdaqStrategyPlan, buildPeakDrawdownStrategyPlan, findLatestFiniteValue, mapReferencePrice } from '../../../src/app/strategyEngine.js';
+import { fetchFundNavHistoryWithMonthlyKv } from './getNav.js';
 
 const DEFAULT_PUBLIC_DATA_BASE_URL = 'https://tools.freebacktrack.tech';
 const DEFAULT_TIMEZONE = 'Asia/Shanghai';
+const DEFAULT_MARKETS_API_BASE = 'https://tools.freebacktrack.tech/api/markets';
+const BENCHMARK_SYMBOL_MAP = {
+  'nas-daq100': '^NDX'
+};
+const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '53', '54', '56', '58']);
 
 export function roundPrice(value) {
   return Number.isFinite(Number(value)) ? Number(Number(value).toFixed(3)) : 0;
@@ -46,12 +52,22 @@ export function buildNotificationEventId(ruleId = '', context = '', now = new Da
   return `${normalizedRuleId}:${normalizedContext}:${now.getTime()}`;
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url, {
+function marketsUrl(path = '') {
+  return `${DEFAULT_MARKETS_API_BASE}${String(path || '').startsWith('/') ? path : `/${path}`}`;
+}
+
+async function fetchMarketsJson(env, path, init = {}) {
+  const url = marketsUrl(path);
+  const request = new Request(url, {
+    ...init,
     headers: {
-      accept: 'application/json'
+      accept: 'application/json',
+      ...(init.headers || {})
     }
   });
+  const response = env?.MARKETS && typeof env.MARKETS.fetch === 'function'
+    ? await env.MARKETS.fetch(request)
+    : await fetch(request);
 
   if (!response.ok) {
     throw new Error(`请求 ${url} 失败：状态 ${response.status}`);
@@ -75,17 +91,81 @@ export function buildNotificationDetailUrl(env, tab = 'tradePlans', ruleId = '')
   return url.toString();
 }
 
-export async function loadLatestMarketMap(env) {
-  const payload = await fetchJson(`${getBaseUrl(env)}/data/nasdaq_latest.json`);
-  const entries = Array.isArray(payload) ? payload : [];
+function resolveMarketSymbol(symbol = '') {
+  const raw = String(symbol || '').trim();
+  return BENCHMARK_SYMBOL_MAP[raw] || raw;
+}
 
-  return entries.reduce((map, entry) => {
-    const code = String(entry?.code || '').trim();
-    if (code) {
-      map[code] = entry;
+function isSixDigitFundCode(symbol = '') {
+  return /^\d{6}$/.test(String(symbol || '').trim());
+}
+
+function isExchangeFundCode(symbol = '') {
+  const code = String(symbol || '').trim();
+  return isSixDigitFundCode(code) && EXCHANGE_PREFIXES.has(code.slice(0, 2));
+}
+
+function normalizeQuoteEntry(symbol, item = {}) {
+  const rawSymbol = String(symbol || '').trim();
+  const price = Number(item?.price ?? item?.currentPrice ?? item?.close ?? item?.latestNav ?? item?.navBase ?? item?.iopv) || 0;
+  const currency = String(item?.currency || '').trim() || (isSixDigitFundCode(rawSymbol) ? '¥' : '$');
+  return {
+    code: rawSymbol,
+    symbol: rawSymbol,
+    name: String(item?.name || rawSymbol).trim(),
+    currency,
+    current_price: price,
+    price,
+    previous_close: Number(item?.previousClose ?? item?.previousNav) || 0,
+    change: Number(item?.change) || 0,
+    change_percent: Number(item?.changePercent) || 0,
+    date: String(item?.quoteDate || item?.latestNavDate || '').trim(),
+    datetime: String(item?.asOf || item?.updatedAt || '').trim(),
+    source: String(item?.source || '').trim() || 'markets'
+  };
+}
+
+export async function loadLatestMarketMap(env, rulesOrSymbols = []) {
+  const symbols = new Set();
+  for (const item of Array.isArray(rulesOrSymbols) ? rulesOrSymbols : []) {
+    if (typeof item === 'string') {
+      if (item.trim()) symbols.add(item.trim());
+      continue;
     }
-    return map;
-  }, {});
+    if (item?.symbol) symbols.add(String(item.symbol).trim());
+    if (item?.referenceSymbol) symbols.add(String(item.referenceSymbol).trim());
+  }
+  const list = [...symbols].filter(Boolean);
+  if (!list.length) return {};
+
+  const fundCodes = list.filter(isSixDigitFundCode);
+  const quoteSymbols = list.filter((symbol) => !isSixDigitFundCode(symbol));
+  const map = {};
+
+  if (fundCodes.length) {
+    const payload = await fetchMarketsJson(env, '/fund-metrics', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ codes: fundCodes })
+    });
+    for (const item of Array.isArray(payload?.items) ? payload.items : []) {
+      const code = String(item?.code || '').trim();
+      if (code && item?.ok !== false) map[code] = normalizeQuoteEntry(code, item);
+    }
+  }
+
+  if (quoteSymbols.length) {
+    const resolved = quoteSymbols.map(resolveMarketSymbol);
+    const payload = await fetchMarketsJson(env, `/quotes?symbols=${encodeURIComponent(resolved.join(','))}`);
+    const quotes = payload?.quotes && typeof payload.quotes === 'object' ? payload.quotes : {};
+    quoteSymbols.forEach((original, index) => {
+      const key = resolved[index];
+      const item = quotes[key] || quotes[original] || null;
+      if (item && !item.error) map[original] = normalizeQuoteEntry(original, item);
+    });
+  }
+
+  return map;
 }
 
 export function buildStageHighPrice(bars = []) {
@@ -96,7 +176,6 @@ export function buildStageHighPrice(bars = []) {
   return values.length ? Math.max(...values) : 0;
 }
 
-// nasdaq_latest.json 不可用时，从 daily-sina bars 末尾取最新有效 close 作为当前价格的兑底。
 export function getLatestBarClose(bars = []) {
   for (let index = bars.length - 1; index >= 0; index -= 1) {
     const close = Number(bars[index]?.close);
@@ -127,6 +206,57 @@ export function resolveDeepestTriggeredLayer(layers = [], currentPrice = 0) {
   return completed.length ? completed[completed.length - 1] : null;
 }
 
+function shiftIsoDateDays(isoDate, deltaDays) {
+  const parts = String(isoDate || '').split('-').map((part) => Number(part));
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return '';
+  const ref = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+  ref.setUTCDate(ref.getUTCDate() + deltaDays);
+  return `${ref.getUTCFullYear()}-${String(ref.getUTCMonth() + 1).padStart(2, '0')}-${String(ref.getUTCDate()).padStart(2, '0')}`;
+}
+
+function todayShanghaiIsoDate() {
+  try {
+    return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+  } catch {
+    return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  }
+}
+
+function marketCandleToDailyBar(candle = {}, timeZone = 'America/New_York') {
+  const t = Number(candle?.t);
+  const close = Number(candle?.c);
+  if (!Number.isFinite(t) || !Number.isFinite(close) || close <= 0) return null;
+  const date = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date(t * 1000));
+  return {
+    date,
+    open: Number(candle?.o) || close,
+    high: Number(candle?.h) || close,
+    low: Number(candle?.l) || close,
+    close,
+    volume: Number(candle?.v) || 0
+  };
+}
+
+async function loadDanjuanDailyBars(env, cache, code) {
+  const today = todayShanghaiIsoDate();
+  const from = shiftIsoDateDays(today, -900);
+  const cacheKey = `danjuan:${code}:${from}:${today}`;
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+  const result = await fetchFundNavHistoryWithMonthlyKv(code, from, today, env, { today, ttlMs: 24 * 60 * 60 * 1000 });
+  const bars = (Array.isArray(result?.items) ? result.items : []).map((item) => {
+    const nav = Number(item?.nav);
+    if (!item?.date || !Number.isFinite(nav) || nav <= 0) return null;
+    return { date: item.date, open: nav, high: nav, low: nav, close: nav, volume: 0 };
+  }).filter(Boolean);
+  cache.set(cacheKey, bars);
+  return bars;
+}
+
 async function loadDailyBars(env, cache, code) {
   const normalizedCode = String(code || '').trim();
   if (!normalizedCode) {
@@ -137,8 +267,18 @@ async function loadDailyBars(env, cache, code) {
     return cache.get(normalizedCode);
   }
 
-  const payload = await fetchJson(`${getBaseUrl(env)}/data/${normalizedCode}/daily-sina.json`);
-  const bars = Array.isArray(payload?.bars) ? payload.bars : [];
+  if (isSixDigitFundCode(normalizedCode) && !isExchangeFundCode(normalizedCode)) {
+    const bars = await loadDanjuanDailyBars(env, cache, normalizedCode);
+    cache.set(normalizedCode, bars);
+    return bars;
+  }
+
+  const symbol = resolveMarketSymbol(normalizedCode);
+  const payload = await fetchMarketsJson(env, `/kline/${encodeURIComponent(symbol)}?tf=1d`);
+  const timeZone = payload?.market === 'cn' ? 'Asia/Shanghai' : 'America/New_York';
+  const bars = (Array.isArray(payload?.candles) ? payload.candles : [])
+    .map((candle) => marketCandleToDailyBar(candle, timeZone))
+    .filter(Boolean);
   cache.set(normalizedCode, bars);
   return bars;
 }
@@ -297,8 +437,6 @@ export async function evaluatePlanRule(rule, env, latestMarketMap, dailyCache) {
   const benchmarkEntry = latestMarketMap[rule.referenceSymbol] || selectedEntry || null;
   const benchmarkBars = await loadDailyBars(env, dailyCache, rule.referenceSymbol);
 
-  // 当 nasdaq_latest.json 拉不到 / symbol 不在里面时，回退到 daily-sina 最新 close，
-  // 避免 displayCurrentPrice = 0 导致 resolveDeepestTriggeredLayer 永远返回 null。
   const fallbackBenchmarkClose = getLatestBarClose(benchmarkBars);
   let currentFundPrice = Number(selectedEntry?.current_price) || 0;
   let currentBenchmarkPrice = Number(benchmarkEntry?.current_price) || 0;

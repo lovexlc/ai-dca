@@ -221,6 +221,9 @@ async function readCachedFundMetric(env, cacheKey, fundKind = '') {
   const hasPrice = Number(cached.price) > 0;
   if (!hasNav && !hasPrice) return null;
   const code = String(cached.code || '').trim();
+  if (isExchangeTradedFund(code) && String(cached.source || '').trim() !== 'xueqiu-quote') {
+    return null;
+  }
   let quote = cached;
   if (!isExchangeTradedFund(code) && !cached.fundKind && !cached.fundType) {
     const meta = await fetchDanjuanFundMetaWithCache(env, code).catch(() => null);
@@ -384,7 +387,7 @@ export async function handleKline(env, rawSymbol, params) {
     const cached = await r2GetJson(env, r2k);
     if (cached && cached.candles && cached.candles.length) {
       const stale = klineCacheIsStale({ cached, market, tf });
-      const sourceOk = market !== 'cn' || cached.source === 'xueqiu-kline' || cached.source === 'sina-kline';
+      const sourceOk = market !== 'cn' || cached.source === 'xueqiu-kline';
       console.log('[markets:kline] cache check', {
         rawSymbol,
         market,
