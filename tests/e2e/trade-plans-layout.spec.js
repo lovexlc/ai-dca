@@ -78,6 +78,7 @@ test.describe('trade plans layout', () => {
     await expectNoHorizontalOverflow(page);
 
     const actionMenuBounds = await page.evaluate(() => {
+      const trigger = document.querySelector('button[aria-label="更多操作"]');
       const menu = document.querySelector('[role="menu"]');
       const edit = [...document.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent?.includes('编辑'));
       const del = [...document.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent?.includes('删除'));
@@ -87,6 +88,7 @@ test.describe('trade plans layout', () => {
       };
       return {
         viewportHeight: window.innerHeight,
+        trigger: rectFor(trigger),
         menu: rectFor(menu),
         edit: rectFor(edit),
         delete: rectFor(del)
@@ -96,5 +98,8 @@ test.describe('trade plans layout', () => {
     expect(actionMenuBounds.menu.bottom).toBeLessThanOrEqual(actionMenuBounds.viewportHeight);
     expect(actionMenuBounds.edit.bottom).toBeLessThanOrEqual(actionMenuBounds.viewportHeight);
     expect(actionMenuBounds.delete.bottom).toBeLessThanOrEqual(actionMenuBounds.viewportHeight);
+    const belowGap = Math.abs(actionMenuBounds.menu.top - actionMenuBounds.trigger.bottom);
+    const aboveGap = Math.abs(actionMenuBounds.trigger.top - actionMenuBounds.menu.bottom);
+    expect(Math.min(belowGap, aboveGap)).toBeLessThanOrEqual(12);
   });
 });

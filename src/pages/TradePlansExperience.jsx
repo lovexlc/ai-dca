@@ -187,6 +187,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   const [openMenuRowId, setOpenMenuRowId] = useState('');
   const menuContainerRef = useRef(null);
   const createMenuRef = useRef(null);
+  const [openMenuPlacement, setOpenMenuPlacement] = useState('below');
 
   function gotoSubView(nextView, { push = false } = {}) {
     if (typeof window === 'undefined') {
@@ -585,7 +586,15 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
           className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
           onClick={(event) => {
             event.stopPropagation();
-            setOpenMenuRowId(isOpen ? '' : row.id);
+            if (isOpen) {
+              setOpenMenuRowId('');
+              return;
+            }
+            const rect = event.currentTarget.getBoundingClientRect();
+            const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+            const estimatedMenuHeight = window.matchMedia?.('(min-width: 640px)')?.matches ? 180 : 210;
+            setOpenMenuPlacement(viewportHeight - rect.bottom < estimatedMenuHeight + 12 ? 'above' : 'below');
+            setOpenMenuRowId(row.id);
           }}
         >
           <MoreHorizontal className="h-5 w-5" />
@@ -595,17 +604,16 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
             <button
               type="button"
               aria-label="关闭操作菜单"
-              className="fixed inset-0 z-[110] cursor-default bg-slate-900/30 sm:hidden"
+              className="fixed inset-0 z-[110] cursor-default bg-transparent sm:hidden"
               onClick={() => setOpenMenuRowId('')}
             />
             <div
               role="menu"
-              className="fixed inset-x-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-[120] max-h-[calc(100dvh-7rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl sm:absolute sm:inset-auto sm:right-0 sm:top-10 sm:z-10 sm:w-44 sm:max-h-none sm:overflow-hidden sm:rounded-xl sm:p-0 sm:shadow-lg"
+              className={cx(
+                'absolute right-0 z-[120] w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-2xl shadow-slate-900/15 sm:right-0 sm:top-10 sm:z-10 sm:w-44 sm:p-0 sm:shadow-lg',
+                openMenuPlacement === 'above' ? 'bottom-10 sm:bottom-auto' : 'top-10'
+              )}
             >
-              <div className="px-2 pb-2 pt-1 sm:hidden">
-                <div className="mx-auto h-1 w-10 rounded-full bg-slate-200" />
-                <div className="mt-3 truncate text-sm font-bold text-slate-900">{row.planName || '交易计划'}</div>
-              </div>
               <button
                 type="button"
                 role="menuitem"
@@ -643,13 +651,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
               >
                 <Trash2 className="h-4 w-4" />
                 删除
-              </button>
-              <button
-                type="button"
-                onClick={() => setOpenMenuRowId('')}
-                className="mt-2 flex min-h-12 w-full items-center justify-center rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600 sm:hidden"
-              >
-                取消
               </button>
             </div>
           </>
