@@ -65,4 +65,36 @@ test.describe('trade plans layout', () => {
     await expect(page.getByText('当前监控', { exact: true })).toBeVisible();
     await expectNoHorizontalOverflow(page);
   });
+
+  test('mobile action menu keeps edit and delete visible without scrolling', async ({ page }) => {
+    await seedLongTradePlan(page);
+    await page.goto('./index.html?tab=tradePlans');
+    await waitForWorkspace(page, '交易计划');
+
+    await page.getByRole('button', { name: '更多操作' }).click();
+    await expect(page.getByRole('menu')).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: '编辑' })).toBeInViewport();
+    await expect(page.getByRole('menuitem', { name: '删除' })).toBeInViewport();
+    await expectNoHorizontalOverflow(page);
+
+    const actionMenuBounds = await page.evaluate(() => {
+      const menu = document.querySelector('[role="menu"]');
+      const edit = [...document.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent?.includes('编辑'));
+      const del = [...document.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent?.includes('删除'));
+      const rectFor = (node) => {
+        const rect = node.getBoundingClientRect();
+        return { top: rect.top, bottom: rect.bottom };
+      };
+      return {
+        viewportHeight: window.innerHeight,
+        menu: rectFor(menu),
+        edit: rectFor(edit),
+        delete: rectFor(del)
+      };
+    });
+
+    expect(actionMenuBounds.menu.bottom).toBeLessThanOrEqual(actionMenuBounds.viewportHeight);
+    expect(actionMenuBounds.edit.bottom).toBeLessThanOrEqual(actionMenuBounds.viewportHeight);
+    expect(actionMenuBounds.delete.bottom).toBeLessThanOrEqual(actionMenuBounds.viewportHeight);
+  });
 });

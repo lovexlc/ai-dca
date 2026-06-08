@@ -595,12 +595,12 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
             <button
               type="button"
               aria-label="关闭操作菜单"
-              className="fixed inset-0 z-40 cursor-default bg-slate-900/30 sm:hidden"
+              className="fixed inset-0 z-[110] cursor-default bg-slate-900/30 sm:hidden"
               onClick={() => setOpenMenuRowId('')}
             />
             <div
               role="menu"
-              className="fixed inset-x-0 bottom-0 z-50 rounded-t-2xl border border-slate-200 bg-white p-3 shadow-2xl sm:absolute sm:inset-auto sm:right-0 sm:top-10 sm:z-10 sm:w-44 sm:overflow-hidden sm:rounded-xl sm:p-0 sm:shadow-lg"
+              className="fixed inset-x-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-[120] max-h-[calc(100dvh-7rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl sm:absolute sm:inset-auto sm:right-0 sm:top-10 sm:z-10 sm:w-44 sm:max-h-none sm:overflow-hidden sm:rounded-xl sm:p-0 sm:shadow-lg"
             >
               <div className="px-2 pb-2 pt-1 sm:hidden">
                 <div className="mx-auto h-1 w-10 rounded-full bg-slate-200" />
