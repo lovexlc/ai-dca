@@ -669,6 +669,27 @@ export async function fetchFundNavHistoryWithMonthlyKv(code, fromDate, toDate, e
 }
 
 export async function fetchFundNavHistory(code, fromDate, toDate) {
+  let eastmoneyItems = [];
+  let eastmoneyError = null;
+  try {
+    eastmoneyItems = await fetchEastmoneyFundNavHistory(code, fromDate, toDate);
+  } catch (error) {
+    eastmoneyError = error;
+  }
+
+  try {
+    const danjuanItems = await fetchDanjuanFundNavHistory(code, fromDate, toDate);
+    const merged = mergeNavHistoryByDate(eastmoneyItems, danjuanItems);
+    if (merged.length) return merged;
+  } catch (_error) {
+    // Danjuan is a fallback source. Keep Eastmoney as the primary behavior when it is usable.
+  }
+
+  if (eastmoneyError) throw eastmoneyError;
+  return eastmoneyItems;
+}
+
+async function fetchEastmoneyFundNavHistory(code, fromDate, toDate) {
   const normalized = String(code || '').trim();
   if (!/^\d{6}$/.test(normalized)) {
     throw new Error('净值历史接口请求失败：无效基金代码。');
@@ -717,4 +738,75 @@ export async function fetchFundNavHistory(code, fromDate, toDate) {
   }
   items.sort((a, b) => a.date.localeCompare(b.date));
   return items;
+}
+
+async function fetchDanjuanFundNavHistory(code, fromDate, toDate) {
+  const normalized = String(code || '').trim();
+  if (!/^\d{6}$/.test(normalized)) {
+    throw new Error('蛋卷净值历史接口请求失败：无效基金代码。');
+  }
+
+  const headers = {
+    accept: 'application/json, text/plain, */*',
+    referer: 'https://danjuanfunds.com/',
+    'user-agent': 'Mozilla/5.0'
+  };
+  const items = [];
+  const pageSize = 100;
+  for (let page = 1; page <= 50; page++) {
+    const url = new URL(`https://danjuanfunds.com/djapi/fund/nav/history/${encodeURIComponent(normalized)}`);
+    url.searchParams.set('page', String(page));
+    url.searchParams.set('size', String(pageSize));
+
+    const response = await fetch(url.toString(), { headers });
+    if (!response.ok) {
+      throw new Error(`${normalized} 蛋卷净值历史接口请求失败：HTTP ${response.status}`);
+    }
+    const rawText = await response.text();
+    let payload;
+    try {
+      payload = rawText ? JSON.parse(rawText) : {};
+    } catch (_error) {
+      throw new Error(`${normalized} 蛋卷净值历史接口返回了非 JSON 响应。`);
+    }
+
+    const rows = Array.isArray(payload?.data?.items) ? payload.data.items : [];
+    if (!rows.length) break;
+
+    let reachedBeforeRange = false;
+    for (const row of rows) {
+      const date = normalizeDate(row?.date || '').slice(0, 10);
+      const nav = Number(row?.nav ?? row?.value);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      if (date < fromDate) {
+        reachedBeforeRange = true;
+        continue;
+      }
+      if (date > toDate || !Number.isFinite(nav) || nav <= 0) continue;
+      items.push({ date, nav: roundNumber(nav, 4) });
+    }
+
+    const totalItems = Number(payload?.data?.total_items) || 0;
+    if (reachedBeforeRange || (totalItems > 0 && page * pageSize >= totalItems)) break;
+  }
+
+  items.sort((a, b) => a.date.localeCompare(b.date));
+  return items;
+}
+
+function mergeNavHistoryByDate(primaryItems = [], fallbackItems = []) {
+  const byDate = new Map();
+  for (const item of Array.isArray(fallbackItems) ? fallbackItems : []) {
+    const date = String(item?.date || '').slice(0, 10);
+    const nav = Number(item?.nav);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(nav) || nav <= 0) continue;
+    byDate.set(date, { date, nav: roundNumber(nav, 4) });
+  }
+  for (const item of Array.isArray(primaryItems) ? primaryItems : []) {
+    const date = String(item?.date || '').slice(0, 10);
+    const nav = Number(item?.nav);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(nav) || nav <= 0) continue;
+    byDate.set(date, { date, nav: roundNumber(nav, 4) });
+  }
+  return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
