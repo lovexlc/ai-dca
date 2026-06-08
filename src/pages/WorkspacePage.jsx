@@ -51,6 +51,8 @@ const SIDEBAR_ICONS = {
   adminData: BarChart3
 };
 
+const HASH_ROUTE_TABS = new Set(['tradePlans', 'holdings']);
+
 function normalizeWorkspaceTab(value = '') {
   return PRIMARY_TAB_ORDER.includes(value) ? value : DEFAULT_WORKSPACE_TAB;
 }
@@ -294,7 +296,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   useEffect(() => {
     const canonicalUrl = buildWorkspaceUrl(activeTab, { inPagesDir });
-    if (activeTab === 'tradePlans' && window.location.hash) {
+    if (HASH_ROUTE_TABS.has(activeTab) && window.location.hash) {
       canonicalUrl.hash = window.location.hash;
     }
     if (window.location.href !== canonicalUrl.href) {

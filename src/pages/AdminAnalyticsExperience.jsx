@@ -10,6 +10,7 @@ const RANGE_OPTIONS = [
   { key: 30, label: '30 天' },
   { key: 90, label: '90 天' }
 ];
+const CHART_INITIAL_DIMENSION = { width: 1, height: 1 };
 
 function Card({ title, value, icon: Icon, hint }) {
   return (
@@ -402,9 +403,9 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
             <h2 className="text-base font-bold text-slate-900">PV / UV 趋势</h2>
             <span className="text-xs text-slate-400">近 {rangeDays} 天</span>
           </div>
-          <div className="h-72">
+          <div className="h-72 min-w-0">
             {summary.daily.some((d) => d.pv || d.uv) ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={CHART_INITIAL_DIMENSION}>
                 <AreaChart data={summary.daily} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                   <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#64748b' }} />
@@ -423,9 +424,9 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
             <h2 className="text-base font-bold text-slate-900">功能使用</h2>
             <span className="text-xs text-slate-400">次数 / 人数</span>
           </div>
-          <div className="h-72">
+          <div className="h-72 min-w-0">
             {(summary.features || []).some((d) => d.value || d.users) ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={CHART_INITIAL_DIMENSION}>
                 <BarChart data={summary.features || []} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                   <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="key" tick={{ fontSize: 11, fill: '#64748b' }} />
@@ -486,9 +487,9 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
             </div>
             <span className="text-xs text-slate-400">24h 活跃时段</span>
           </div>
-          <div className="h-56">
+          <div className="h-56 min-w-0">
             {(summary.hourlyActivity || []).some((d) => d.events) ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={CHART_INITIAL_DIMENSION}>
                 <BarChart data={summary.hourlyActivity || []} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                   <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="hour" tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={(h) => `${h}时`} interval={2} />
@@ -510,9 +511,9 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
             </div>
             <span className="text-xs text-slate-400">周活跃规律</span>
           </div>
-          <div className="h-56">
+          <div className="h-56 min-w-0">
             {(summary.dailyActivity || []).some((d) => d.events) ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={CHART_INITIAL_DIMENSION}>
                 <BarChart data={(summary.dailyActivity || []).map((d) => ({ ...d, label: ['日', '一', '二', '三', '四', '五', '六'][d.dow] }))} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                   <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} />

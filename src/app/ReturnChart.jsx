@@ -31,6 +31,7 @@ const BENCH_LABEL = '沪深300';
 const PORTFOLIO_LABEL = '我的组合';
 const PORTFOLIO_COLOR = '#e11d48'; // rose-600
 const BENCH_COLOR = '#475569'; // slate-600
+const CHART_INITIAL_DIMENSION = { width: 1, height: 1 };
 
 function todayShanghaiIso() {
   try {
@@ -329,13 +330,13 @@ function ReturnChart({
         </div>
       ) : null}
 
-      <div className={cx(hideHeader ? 'h-56 w-full sm:h-56 lg:h-52' : 'mt-3 h-56 w-full sm:h-56 lg:h-52', chartClassName)}>
+      <div className={cx(hideHeader ? 'h-56 min-w-0 w-full sm:h-56 lg:h-52' : 'mt-3 h-56 min-w-0 w-full sm:h-56 lg:h-52', chartClassName)}>
         {isEmpty || !state.data.length ? (
           <div className="flex h-full items-center justify-center text-[11px] text-slate-400">
             {isLoading ? '准备中…' : '暂无数据'}
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={CHART_INITIAL_DIMENSION}>
             <AreaChart
               data={state.data}
               onClick={handleChartClick}

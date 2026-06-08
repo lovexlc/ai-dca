@@ -167,7 +167,7 @@ export function ConsoleLayout({
           aria-label="模块导航"
           hidden={mobileSidebarHidden}
           aria-hidden={mobileSidebarHidden ? 'true' : undefined}
-          {...(mobileSidebarHidden ? { inert: '' } : {})}
+          {...(mobileSidebarHidden ? { inert: true } : {})}
         >
           <div className="console-sidebar__mobile-header">
             <span className="console-brand">{brand}</span>

@@ -48,6 +48,7 @@ const POSITION_CONFIG_KEY = 'aiDcaPositionSnapshot';
 const BAR_COLOR_INDEX = '#16a34a'; // 宽基 — 绿
 const BAR_COLOR_STOCK = '#2563eb'; // 个股 — 蓝
 const BAR_COLOR_OVER  = '#e11d48'; // 超仓 — 红
+const CHART_INITIAL_DIMENSION = { width: 1, height: 1 };
 
 function readPositionConfig() {
 	if (typeof window === 'undefined') return {};
@@ -194,8 +195,8 @@ function PositionCapPanel({ positions }) {
 			{chartData.length === 0 ? (
 				<div className="py-6 text-center text-sm text-slate-400">暂无持仓数据</div>
 			) : (
-				<div className="h-56 w-full">
-					<ResponsiveContainer width="100%" height="100%">
+				<div className="h-56 min-w-0 w-full">
+					<ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={CHART_INITIAL_DIMENSION}>
 						<BarChart data={chartData} margin={CAP_BAR_MARGIN}>
 							<CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
 							<XAxis dataKey="code" tick={CAP_BAR_TICK_X} interval={0} angle={chartData.length > 8 ? -30 : 0} textAnchor={chartData.length > 8 ? 'end' : 'middle'} height={chartData.length > 8 ? 48 : 30} />
@@ -384,8 +385,8 @@ function VarietyChart({ slices, total }) {
 	}
 	return (
 		<div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-[260px_minmax(0,1fr)] sm:items-center">
-			<div className="h-[220px]">
-				<ResponsiveContainer width="100%" height="100%">
+			<div className="h-[220px] min-w-0">
+				<ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={CHART_INITIAL_DIMENSION}>
 					<PieChart>
 						<Pie
 							data={slices}
@@ -427,8 +428,8 @@ function KindChart({ slices, total }) {
 	}
 	return (
 		<div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-[220px_minmax(0,1fr)] sm:items-center">
-			<div className="h-[200px]">
-				<ResponsiveContainer width="100%" height="100%">
+			<div className="h-[200px] min-w-0">
+				<ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={CHART_INITIAL_DIMENSION}>
 					<PieChart>
 						<Pie
 							data={slices}

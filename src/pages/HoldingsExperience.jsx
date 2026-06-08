@@ -310,6 +310,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       sorting: [{ id: 'marketValue', desc: true }],
       pagination: { pageSize: 50 },
     },
+    autoResetAll: false,
+    autoResetPageIndex: false,
   });
 
   const selectedAggregate = selectedCode ? aggregateByCodeMap.get(selectedCode) : null;
