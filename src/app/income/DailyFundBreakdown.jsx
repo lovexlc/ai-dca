@@ -24,6 +24,14 @@ function shiftDays(iso, delta) {
   return d.toISOString().slice(0, 10);
 }
 
+function todayShanghaiIso() {
+  try {
+    return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
 function uniqCodes(txs) {
   const set = new Set();
   for (const tx of txs || []) {
@@ -63,6 +71,7 @@ export function DailyFundBreakdown({ ledger, selectedDate, className = '' }) {
   const nameMap = useMemo(() => nameByCode(transactions), [transactions]);
   const txMetaByCode = useMemo(() => kindNameByCode(transactions), [transactions]);
   const snapshotsByCode = useMemo(() => ledger?.snapshotsByCode || {}, [ledger]);
+  const today = useMemo(() => todayShanghaiIso(), []);
 
   const [state, setState] = useState({ status: 'idle', rows: [], stale: false, error: null });
 
@@ -74,13 +83,16 @@ export function DailyFundBreakdown({ ledger, selectedDate, className = '' }) {
     }
     setState((p) => ({ ...p, status: 'loading', error: null }));
     const from = shiftDays(selectedDate, -30);
+    const to = selectedDate < today ? today : selectedDate;
     (async () => {
       try {
         // P3：批量拉取所有持仓 code 近 30 天 NAV。
+        // 历史日期也拉到 today，避免批量接口 / 本地缓存只按更宽区间命中时，
+        // selectedDate 之前的真实 NAV 被窄窗口漏掉，导致明细全部显示「未更新」。
         const { navByCode, stale: anyStale } = await fetchNavHistoryBatch({
           codes,
           from,
-          to: selectedDate
+          to
         });
         if (cancelled) return;
         const mergedNavByCode = mergeSnapshotNavForDate(navByCode, snapshotsByCode, txMetaByCode, selectedDate);
@@ -94,7 +106,7 @@ export function DailyFundBreakdown({ ledger, selectedDate, className = '' }) {
     return () => {
       cancelled = true;
     };
-  }, [selectedDate, codes, transactions, snapshotsByCode, txMetaByCode]);
+  }, [selectedDate, codes, transactions, snapshotsByCode, txMetaByCode, today]);
 
   const isLoading = state.status === 'loading';
   const isError = state.status === 'error';
