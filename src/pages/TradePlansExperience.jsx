@@ -703,17 +703,17 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     const isTesting = testingRowId === row.id;
 
     return (
-      <div key={row.id} className="relative w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-100 hover:shadow-lg hover:shadow-slate-200/70 sm:px-5">
-        <div className="flex items-start justify-between gap-3">
+      <div key={row.id} className="relative min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-100 hover:shadow-lg hover:shadow-slate-200/70 sm:px-5">
+        <div className="flex min-w-0 items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
               <span className={cx('inline-flex items-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold', tone.pill)}>{row.cardTypeLabel || meta.label}</span>
-              <span className="truncate text-sm font-bold text-slate-950">{row.planName}</span>
+              <span className="line-clamp-2 min-w-0 flex-1 basis-0 text-sm font-bold leading-5 text-slate-950 sm:truncate" title={row.planName}>{row.planName}</span>
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium text-slate-500">
-              <span className="font-bold text-slate-700">{row.symbol || '--'}</span>
+            <div className="mt-2 flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium text-slate-500">
+              <span className="shrink-0 font-bold text-slate-700">{row.symbol || '--'}</span>
               <span className="text-slate-300" aria-hidden="true">·</span>
-              <span>{row.progressLabel || row.triggerLabel}</span>
+              <span className="min-w-0 max-w-full break-words leading-5">{row.progressLabel || row.triggerLabel}</span>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -749,32 +749,32 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
           </div>
         </div>
 
-        <div className="mt-4 space-y-2">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-            <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+        <div className="mt-4 min-w-0 space-y-2">
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <div className="relative h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-100">
               <div className={cx('h-full rounded-full', tone.bar)} style={{ width: `${progressValue}%` }} />
             </div>
-            <span className="min-w-0 text-xs font-semibold text-slate-500 sm:shrink-0">{row.progressCaption || row.nextExecutionLabel}</span>
+            <span className="block min-w-0 max-w-full break-words text-xs font-semibold leading-5 text-slate-500 sm:max-w-[45%] sm:shrink-0 sm:truncate" title={row.progressCaption || row.nextExecutionLabel}>{row.progressCaption || row.nextExecutionLabel}</span>
           </div>
           {progressItems.length ? (
-            <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            <div className="grid min-w-0 gap-2 sm:grid-cols-3 lg:grid-cols-4">
               {progressItems.map((item, index) => (
-                <div key={`${row.id}-${item.label}-${index}`} className="rounded-xl bg-slate-50 px-3 py-2 text-xs">
-                  <div className="font-semibold text-slate-700">{item.label}{item.detail ? `（${item.detail}）` : ''}</div>
-                  <div className="mt-1 text-slate-400">{item.status}</div>
+                <div key={`${row.id}-${item.label}-${index}`} className="min-w-0 rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                  <div className="break-words font-semibold text-slate-700">{item.label}{item.detail ? `（${item.detail}）` : ''}</div>
+                  <div className="mt-1 break-words text-slate-400">{item.status}</div>
                 </div>
               ))}
             </div>
           ) : null}
         </div>
 
-        <div className="mt-4 border-t border-slate-100 pt-3 text-xs font-medium text-slate-500">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <span>{row.footerLabel || `${row.triggerLabel} · ${row.nextExecutionLabel}`}</span>
+        <div className="mt-4 min-w-0 border-t border-slate-100 pt-3 text-xs font-medium text-slate-500">
+          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span className="min-w-0 max-w-full break-words leading-5 sm:truncate" title={row.footerLabel || `${row.triggerLabel} · ${row.nextExecutionLabel}`}>{row.footerLabel || `${row.triggerLabel} · ${row.nextExecutionLabel}`}</span>
             {detailItems.length ? (
               <button
                 type="button"
-                className="inline-flex min-h-9 items-center justify-center gap-1 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-indigo-200 hover:text-indigo-700"
+                className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-indigo-200 hover:text-indigo-700"
                 onClick={() => toggleRowExpanded(row.id)}
                 aria-expanded={isExpanded}
               >
@@ -785,8 +785,8 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
           </div>
         </div>
         {isExpanded && detailItems.length ? (
-          <div className="mt-3 overflow-hidden rounded-xl border border-slate-200">
-            <div className="grid grid-cols-[0.8fr_0.8fr_0.9fr_1.3fr_0.8fr] gap-3 bg-slate-50 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+          <div className="mt-3 min-w-0 overflow-hidden rounded-xl border border-slate-200">
+            <div className="hidden grid-cols-[0.8fr_0.8fr_0.9fr_1.3fr_0.8fr] gap-3 bg-slate-50 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400 sm:grid">
               <span>层级</span>
               <span>价格</span>
               <span>金额</span>
@@ -795,12 +795,12 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
             </div>
             <div className="divide-y divide-slate-100 bg-white">
               {detailItems.map((item, index) => (
-                <div key={`${row.id}-detail-${item.id || index}`} className="grid grid-cols-1 gap-1 px-3 py-3 text-xs text-slate-600 sm:grid-cols-[0.8fr_0.8fr_0.9fr_1.3fr_0.8fr] sm:gap-3 sm:items-center">
-                  <div className="font-semibold text-slate-800">{item.label}{item.detail ? `（${item.detail}）` : ''}</div>
-                  <div>{item.price || '--'}</div>
-                  <div className="font-semibold text-slate-900">{item.amount || '--'}</div>
-                  <div>{item.trigger || '--'}</div>
-                  <div className="font-semibold text-indigo-600">{item.status || '待执行'}</div>
+                <div key={`${row.id}-detail-${item.id || index}`} className="grid min-w-0 grid-cols-1 gap-1 px-3 py-3 text-xs text-slate-600 sm:grid-cols-[0.8fr_0.8fr_0.9fr_1.3fr_0.8fr] sm:gap-3 sm:items-center">
+                  <div className="break-words font-semibold text-slate-800">{item.label}{item.detail ? `（${item.detail}）` : ''}</div>
+                  <div className="break-words">{item.price || '--'}</div>
+                  <div className="break-words font-semibold text-slate-900">{item.amount || '--'}</div>
+                  <div className="break-words">{item.trigger || '--'}</div>
+                  <div className="break-words font-semibold text-indigo-600">{item.status || '待执行'}</div>
                 </div>
               ))}
             </div>
