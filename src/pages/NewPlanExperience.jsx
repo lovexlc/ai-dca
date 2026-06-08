@@ -27,6 +27,8 @@ import { validateScreening } from '../app/stockScreener.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import { getXueqiuQuote, resolveQuotePeakPrice } from '../app/xueqiuQuote.js';
 
+const EMPTY_DAILY_SERIES = [];
+
 export function NewPlanExperience({ links, inPagesDir = false, embedded = false, onBack = null, initialPlan = null, mode = 'create' }) {
   const isEditing = mode === 'replace' && Boolean(initialPlan?.id);
   const dashboardState = readHomeDashboardState();
@@ -227,17 +229,18 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     () => marketEntries.find((entry) => entry.code === state.symbol) || null,
     [marketEntries, state.symbol]
   );
-  const benchmarkFund = useMemo(
-    () => marketEntries.find((entry) => entry.code === BENCHMARK_CODE) || selectedFund || null,
-    [marketEntries, selectedFund]
+  const fallbackBenchmarkFund = useMemo(
+    () => marketEntries.find((entry) => entry.code === BENCHMARK_CODE) || null,
+    [marketEntries]
   );
+  const benchmarkFund = selectedFund || selectedExtraSymbol || fallbackBenchmarkFund || null;
   const selectedFundCurrency = resolveMarketCurrency(selectedFund);
   const benchmarkCurrency = resolveMarketCurrency(benchmarkFund);
   const selectedInstrumentCurrency = isSelectedExtraSymbol ? (extraQuote.currency || selectedExtraSymbol?.currency || 'USD') : selectedFundCurrency;
   const selectedFundLabel = formatMarketLabel(selectedFund || selectedExtraSymbol || { code: state.symbol });
   const selectedAnchorNameLabel = formatMarketName(selectedFund || selectedExtraSymbol || { code: state.symbol });
-  const benchmarkCodeLabel = formatMarketCode(benchmarkFund?.code || BENCHMARK_CODE);
-  const benchmarkNameLabel = formatMarketName(benchmarkFund || { code: BENCHMARK_CODE });
+  const benchmarkCodeLabel = formatMarketCode(benchmarkFund?.code || state.symbol || BENCHMARK_CODE);
+  const benchmarkNameLabel = formatMarketName(benchmarkFund || selectedExtraSymbol || { code: state.symbol || BENCHMARK_CODE });
 
   useEffect(() => {
     if (!selectedSymbolCode) {
@@ -367,12 +370,12 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
     };
   }, [benchmarkFund?.code, inPagesDir]);
 
-  const selectedDailySeries = selectedDailySeriesState.code === selectedSymbolCode ? selectedDailySeriesState.bars : [];
+  const selectedDailySeries = selectedDailySeriesState.code === selectedSymbolCode ? selectedDailySeriesState.bars : EMPTY_DAILY_SERIES;
   const benchmarkDailySeries = useMemo(
-    () => benchmarkDailySeriesState.code === benchmarkFund?.code ? benchmarkDailySeriesState.bars : [],
+    () => benchmarkDailySeriesState.code === benchmarkFund?.code ? benchmarkDailySeriesState.bars : EMPTY_DAILY_SERIES,
     [benchmarkDailySeriesState.bars, benchmarkDailySeriesState.code, benchmarkFund?.code]
   );
-  const movingAverageDailySeries = isSelectedExtraSymbol ? selectedDailySeries : benchmarkDailySeries;
+  const movingAverageDailySeries = selectedDailySeries.length ? selectedDailySeries : benchmarkDailySeries;
   const expectedSelectedDailySeriesCode = selectedSymbolCode;
   const isSelectedDailySeriesReady = !expectedSelectedDailySeriesCode || (selectedDailySeriesState.code === expectedSelectedDailySeriesCode && selectedDailySeriesState.ready);
   const expectedBenchmarkDailySeriesCode = benchmarkFund?.code;
@@ -411,14 +414,14 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       return activeExtraQuotePrice;
     }
 
-    return Number(benchmarkFund?.current_price) || Number(selectedFund?.current_price) || 0;
+    return Number(selectedFund?.current_price) || Number(benchmarkFund?.current_price) || 0;
   }, [activeDailySeriesPeakPrice, activeExtraPeakPrice, activeExtraQuotePrice, activeXueqiuPeakPrice, benchmarkFund, isSelectedExtraSymbol, selectedFund]);
   const derivedMa120 = useMemo(
     () => {
       const ma120 = findLatestFiniteValue(buildMovingAverageValues(movingAverageDailySeries, 120));
       if (ma120 > 0) return ma120;
       if (isSelectedExtraSymbol) return activeExtraQuotePrice;
-      return Number(benchmarkFund?.current_price) || Number(selectedFund?.current_price) || 0;
+      return Number(selectedFund?.current_price) || Number(benchmarkFund?.current_price) || 0;
     },
     [activeExtraQuotePrice, benchmarkFund, isSelectedExtraSymbol, movingAverageDailySeries, selectedFund]
   );
@@ -437,7 +440,7 @@ export function NewPlanExperience({ links, inPagesDir = false, embedded = false,
       if (isSelectedExtraSymbol && !hasQuotePeakPrice && !isSelectedDailySeriesReady) return;
     }
 
-    if (selectedStrategy !== 'peak-drawdown' && !isSelectedExtraSymbol && (!benchmarkFund?.code || !isBenchmarkDailySeriesReady)) {
+    if (selectedStrategy !== 'peak-drawdown' && !isSelectedExtraSymbol && !isSelectedDailySeriesReady && (!benchmarkFund?.code || !isBenchmarkDailySeriesReady)) {
       return;
     }
 
