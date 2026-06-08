@@ -184,8 +184,12 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 	const todayReturnRate = portfolio?.todayReturnRate;
 	const unrealizedProfit = portfolio?.unrealizedProfit;
 	const unrealizedReturnRate = portfolio?.unrealizedReturnRate;
-	const cumulativeProfit = portfolio?.cumulativeProfit;
-	const cumulativeReturnRate = portfolio?.cumulativeReturnRate;
+	const cumulativeProfit = Number.isFinite(cumulativeSeries?.profit)
+		? cumulativeSeries.profit
+		: portfolio?.cumulativeProfit;
+	const cumulativeReturnRate = Number.isFinite(cumulativeSeries?.returnRatePct)
+		? cumulativeSeries.returnRatePct
+		: portfolio?.cumulativeReturnRate;
 
 	const refreshBtn = navRefresh ? (
 		<button

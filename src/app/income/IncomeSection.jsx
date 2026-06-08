@@ -86,7 +86,7 @@ function OverviewSummary({ ledger, portfolio, inceptionDate, navigate, navRefres
 			inceptionDate={inceptionDate}
 			navigate={navigate}
 			navRefresh={navRefresh}
-			cumulativeSeries={sparkline?.series}
+			cumulativeSeries={sparkline}
 			cumulativeLastIso={sparkline?.lastIso}
 			quickActions={quickActions}
 			accountAllocation={accountAllocation}

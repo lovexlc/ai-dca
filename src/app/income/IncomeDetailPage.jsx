@@ -247,7 +247,7 @@ function MobileRangeSheet({ open, activeRange, inceptionEnabled, onClose, onSele
   );
 }
 
-export function IncomeDetailPage({ ledger, portfolio, onBack, navigate, currentRoute }) {
+export function IncomeDetailPage({ ledger, onBack, navigate, currentRoute }) {
   const [{ range, customFrom, customTo }, setRange, setCustom] = useRangeUrlSync({ defaultRange: DEFAULT_RANGE });
   const transactions = useMemo(() => (Array.isArray(ledger?.transactions) ? ledger.transactions : []), [ledger]);
   const inceptionDate = useMemo(() => firstBuyDate(transactions), [transactions]);
@@ -392,9 +392,9 @@ export function IncomeDetailPage({ ledger, portfolio, onBack, navigate, currentR
   const todayProfit = todayState.series?.windowProfit ?? null;
   const rangeRate = rangeSeries?.twrReturnRate ?? null;
   const annualized = rangeSeries?.annualizedTwrReturnRate ?? null;
-  // 累计盈亏 = portfolio.cumulativeProfit（含已实现盈亏），与 IncomeSummary 顶部卡片同口径同数字，避免「同名两个值」误导。
-  const cumulativeProfit = portfolio?.cumulativeProfit ?? null;
-  const cumulativeReturnRate = portfolio?.cumulativeReturnRate ?? null;
+  // 累计盈亏统一使用投资以来 buildPortfolioSeries 口径，和区间收益 / 曲线 / 日历同源。
+  const cumulativeProfit = inceptionState.series?.windowProfit ?? null;
+  const cumulativeReturnRate = inceptionState.series?.twrReturnRate ?? null;
   const benchRate = benchState.rate;
   const alphaRate = Number.isFinite(rangeRate) && Number.isFinite(benchRate) ? rangeRate - benchRate : null;
   const alphaVerb = alphaRate === null ? null : alphaRate >= 0 ? '跑赢' : '落后';
@@ -438,7 +438,7 @@ export function IncomeDetailPage({ ledger, portfolio, onBack, navigate, currentR
           primary={renderCurrency(cumulativeProfit)}
           primaryClass={signClass(cumulativeProfit)}
           sub={Number.isFinite(cumulativeReturnRate)
-            ? `${cumulativeReturnRate >= 0 ? '+' : ''}${cumulativeReturnRate.toFixed(2)}% 已卖出`
+            ? `${renderPercent(cumulativeReturnRate)} 投资以来`
             : (inceptionDate ? `起 ${inceptionDate}` : null)}
         />
         <BigKpi
