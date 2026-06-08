@@ -669,75 +669,7 @@ export async function fetchFundNavHistoryWithMonthlyKv(code, fromDate, toDate, e
 }
 
 export async function fetchFundNavHistory(code, fromDate, toDate) {
-  let eastmoneyItems = [];
-  let eastmoneyError = null;
-  try {
-    eastmoneyItems = await fetchEastmoneyFundNavHistory(code, fromDate, toDate);
-  } catch (error) {
-    eastmoneyError = error;
-  }
-
-  try {
-    const danjuanItems = await fetchDanjuanFundNavHistory(code, fromDate, toDate);
-    const merged = mergeNavHistoryByDate(eastmoneyItems, danjuanItems);
-    if (merged.length) return merged;
-  } catch (_error) {
-    // Danjuan is a fallback source. Keep Eastmoney as the primary behavior when it is usable.
-  }
-
-  if (eastmoneyError) throw eastmoneyError;
-  return eastmoneyItems;
-}
-
-async function fetchEastmoneyFundNavHistory(code, fromDate, toDate) {
-  const normalized = String(code || '').trim();
-  if (!/^\d{6}$/.test(normalized)) {
-    throw new Error('净值历史接口请求失败：无效基金代码。');
-  }
-  const headers = {
-    accept: 'application/json, text/plain, */*',
-    referer: 'https://fundf10.eastmoney.com/jjjz_' + encodeURIComponent(normalized) + '.html',
-    'user-agent': 'Mozilla/5.0'
-  };
-  const items = [];
-  const pageSize = 40;
-  let pageIndex = 1;
-  for (let p = 0; p < 50; p++) {
-    const url = new URL('https://api.fund.eastmoney.com/f10/lsjz');
-    url.searchParams.set('fundCode', normalized);
-    url.searchParams.set('pageIndex', String(pageIndex));
-    url.searchParams.set('pageSize', String(pageSize));
-    url.searchParams.set('startDate', fromDate);
-    url.searchParams.set('endDate', toDate);
-
-    const response = await fetch(url.toString(), { headers });
-    if (!response.ok) {
-      throw new Error(`${normalized} 净值历史接口请求失败：HTTP ${response.status}`);
-    }
-    const rawText = await response.text();
-    let payload;
-    try {
-      payload = rawText ? JSON.parse(rawText) : {};
-    } catch (_error) {
-      throw new Error(`${normalized} 净值历史接口返回了非 JSON 响应。`);
-    }
-    if (Number(payload?.ErrCode || 0) !== 0) {
-      throw new Error(payload?.ErrMsg || `${normalized} 净值历史接口返回错误。`);
-    }
-    const rows = Array.isArray(payload?.Data?.LSJZList) ? payload.Data.LSJZList : [];
-    for (const row of rows) {
-      const nav = Number(row?.DWJZ);
-      const date = normalizeDate(row?.FSRQ || '');
-      if (!date || !Number.isFinite(nav) || nav <= 0) continue;
-      items.push({ date, nav: roundNumber(nav, 4) });
-    }
-    const total = Number(payload?.TotalCount) || 0;
-    if (pageIndex * pageSize >= total) break;
-    if (!rows.length) break;
-    pageIndex++;
-  }
-  items.sort((a, b) => a.date.localeCompare(b.date));
-  return items;
+  return fetchDanjuanFundNavHistory(code, fromDate, toDate);
 }
 
 async function fetchDanjuanFundNavHistory(code, fromDate, toDate) {
@@ -792,21 +724,4 @@ async function fetchDanjuanFundNavHistory(code, fromDate, toDate) {
 
   items.sort((a, b) => a.date.localeCompare(b.date));
   return items;
-}
-
-function mergeNavHistoryByDate(primaryItems = [], fallbackItems = []) {
-  const byDate = new Map();
-  for (const item of Array.isArray(fallbackItems) ? fallbackItems : []) {
-    const date = String(item?.date || '').slice(0, 10);
-    const nav = Number(item?.nav);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(nav) || nav <= 0) continue;
-    byDate.set(date, { date, nav: roundNumber(nav, 4) });
-  }
-  for (const item of Array.isArray(primaryItems) ? primaryItems : []) {
-    const date = String(item?.date || '').slice(0, 10);
-    const nav = Number(item?.nav);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(nav) || nav <= 0) continue;
-    byDate.set(date, { date, nav: roundNumber(nav, 4) });
-  }
-  return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
