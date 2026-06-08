@@ -78,7 +78,7 @@ export function NewPlanExperienceLayout(props) {
         formatMarketCode={formatMarketCode}
       />
 
-      <div className="mx-auto max-w-6xl space-y-6 px-6 pt-8">
+      <div className="mx-auto max-w-6xl space-y-6 px-6 pb-[calc(17rem+env(safe-area-inset-bottom))] pt-8 sm:pb-36">
         <NewPlanStepNav planSteps={PLAN_STEPS} planStep={planStep} maxUnlockedStep={maxUnlockedStep} goToPlanStep={goToPlanStep} />
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.9fr)]">
           <div className="min-w-0 space-y-6">
