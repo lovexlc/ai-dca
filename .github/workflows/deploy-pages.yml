@@ -8,6 +8,7 @@ on:
       - 'src/**'
       - 'public/**'
       - 'scripts/**'
+      - 'workers/notify/src/**'
       - 'index.html'
       - 'package.json'
       - '.github/workflows/deploy-pages.yml'
