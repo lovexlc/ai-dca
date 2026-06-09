@@ -26,6 +26,11 @@ export function SwitchStrategyWorkerPanel({
   formatPrice,
   formatPercent
 }) {
+  const ruleList = Array.isArray(rules) ? rules : [];
+  const activeRule = ruleList.find((rule) => rule.id === activeRuleId) || ruleList[0] || null;
+  const activeRuleIndex = Math.max(0, ruleList.findIndex((rule) => rule.id === activeRule?.id));
+  const activeBenchCount = Array.isArray(activeRule?.benchmarkCodes) ? activeRule.benchmarkCodes.length : 0;
+  const activeCandidateCount = Array.isArray(activeRule?.enabledCodes) ? activeRule.enabledCodes.length : 0;
   return (
     <Card>
       <SectionHeading
@@ -76,7 +81,10 @@ export function SwitchStrategyWorkerPanel({
         ) : null}
         <div className="rounded-2xl border border-slate-200 bg-white p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">规则列表</div>
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">监控规则</div>
+              <div className="mt-0.5 text-[11px] text-slate-500">{ruleList.length || 0} 条规则</div>
+            </div>
             <button
               type="button"
               onClick={onRuleAdd}
@@ -87,72 +95,76 @@ export function SwitchStrategyWorkerPanel({
               新增规则
             </button>
           </div>
-          <div className="mt-3 grid gap-2 md:grid-cols-2">
-            {(rules || []).map((rule, index) => {
-              const isActive = rule.id === activeRuleId;
-              const benchCount = Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes.length : 0;
-              const candidateCount = Array.isArray(rule.enabledCodes) ? rule.enabledCodes.length : 0;
-              return (
-                <div
-                  key={rule.id || `rule-${index}`}
-                  className={cx(
-                    'rounded-xl border p-2 transition-colors',
-                    isActive ? 'border-indigo-300 bg-indigo-50/70' : 'border-slate-200 bg-slate-50/70'
-                  )}
+          <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+            <div className="min-w-0">
+              <label className="sr-only" htmlFor="switch-rule-selector">选择监控规则</label>
+              <div className="relative">
+                <select
+                  id="switch-rule-selector"
+                  value={activeRule?.id || ''}
+                  onChange={(event) => onRuleSelect?.(event.target.value)}
+                  className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-3 pr-9 text-sm font-semibold text-slate-800 focus:border-indigo-300 focus:bg-white focus:outline-none"
                 >
-                  <button
-                    type="button"
-                    onClick={() => onRuleSelect?.(rule.id)}
-                    className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1 text-left hover:bg-white/70"
-                  >
-                    <Pill tone={rule.enabled ? 'emerald' : 'slate'}>{rule.enabled ? '启用' : '停用'}</Pill>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-semibold text-slate-800">{rule.name || `规则 ${index + 1}`}</div>
-                      <div className="truncate text-[11px] text-slate-500">{benchCount} 基准 · {candidateCount} 候选</div>
-                    </div>
-                  </button>
-                  {isActive ? (
-                    <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-indigo-100 pt-2">
-                      <input
-                        value={rule.name || ''}
-                        onChange={(event) => onRuleNameChange?.(rule.id, event.target.value)}
-                        aria-label="当前规则名称"
-                        className="h-8 min-w-[160px] flex-1 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none"
-                      />
-                      <label className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-600">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4"
-                          checked={Boolean(rule.enabled)}
-                          onChange={(event) => onRuleEnabledChange?.(rule.id, event.target.checked)}
-                        />
-                        启用
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => onRuleDuplicate?.(rule.id)}
-                        className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-600 hover:border-indigo-200 hover:text-indigo-700"
-                        title="复制规则"
-                        aria-label="复制当前规则"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onRuleRemove?.(rule.id)}
-                        disabled={(rules || []).length <= 1}
-                        className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-600 hover:border-rose-200 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
-                        title={(rules || []).length <= 1 ? '至少保留一条规则' : '删除规则'}
-                        aria-label="删除当前规则"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
+                  {ruleList.map((rule, index) => {
+                    const benchCount = Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes.length : 0;
+                    const candidateCount = Array.isArray(rule.enabledCodes) ? rule.enabledCodes.length : 0;
+                    return (
+                      <option key={rule.id || `rule-${index}`} value={rule.id}>
+                        {rule.enabled ? '启用' : '停用'} · {rule.name || `规则 ${index + 1}`} · {benchCount} 基准 / {candidateCount} 候选
+                      </option>
+                    );
+                  })}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+              </div>
+            </div>
+            <div className="flex min-w-0 items-center gap-2 lg:justify-end">
+              <Pill tone={activeRule?.enabled ? 'emerald' : 'slate'}>{activeRule?.enabled ? '启用' : '停用'}</Pill>
+              <div className="truncate text-xs text-slate-500">
+                当前第 {activeRule ? activeRuleIndex + 1 : 0} 条 · {activeBenchCount} 基准 · {activeCandidateCount} 候选
+              </div>
+            </div>
           </div>
+          {activeRule ? (
+            <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  value={activeRule.name || ''}
+                  onChange={(event) => onRuleNameChange?.(activeRule.id, event.target.value)}
+                  aria-label="当前规则名称"
+                  className="h-9 min-w-[180px] flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none"
+                />
+                <label className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={Boolean(activeRule.enabled)}
+                    onChange={(event) => onRuleEnabledChange?.(activeRule.id, event.target.checked)}
+                  />
+                  启用
+                </label>
+                <button
+                  type="button"
+                  onClick={() => onRuleDuplicate?.(activeRule.id)}
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 hover:border-indigo-200 hover:text-indigo-700"
+                  title="复制规则"
+                  aria-label="复制当前规则"
+                >
+                  <Copy className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRuleRemove?.(activeRule.id)}
+                  disabled={ruleList.length <= 1}
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 hover:border-rose-200 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  title={ruleList.length <= 1 ? '至少保留一条规则' : '删除规则'}
+                  aria-label="删除当前规则"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
           <button
