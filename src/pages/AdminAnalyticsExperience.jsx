@@ -60,7 +60,7 @@ function NotifyCard({ total, platformUsers = {} }) {
               <span className="text-sm font-bold tabular-nums text-slate-700">{p.count}</span>
             </div>
           ))}
-          <div className="pt-1 text-xs text-slate-400">按设备平台去重，未知/历史为旧埋点或未带平台的通知事件</div>
+          <div className="pt-1 text-xs text-slate-400">按设备平台去重，未知/历史仅保留近 7 天仍无明确平台的通知用户</div>
         </div>
       )}
     </div>

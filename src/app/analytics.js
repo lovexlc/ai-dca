@@ -336,6 +336,73 @@ function uniqueCount(events, selector) {
   return s.size;
 }
 
+function notifyUserKey(event) {
+  return event.userId || event.visitorId || '';
+}
+
+function notifyEventDate(event) {
+  return String(event.date || event.createdAt || '').slice(0, 10);
+}
+
+function getNotifyPlatforms(event) {
+  return Array.isArray(event.meta?.platforms) ? event.meta.platforms.map((platform) => String(platform || '')) : [];
+}
+
+function isKnownNotifyEvent(event, platform) {
+  const platforms = getNotifyPlatforms(event);
+  if (event.type === 'notify_used') return String(event.meta?.platform || '') === platform;
+  if (event.type !== 'notify_enabled') return false;
+  if (platform === 'ios') return Boolean(event.meta?.hasBark) || platforms.includes('ios');
+  return platforms.includes(platform);
+}
+
+function isUnknownNotifyEvent(event) {
+  const platforms = getNotifyPlatforms(event);
+  if (event.type === 'notify_used') return !['ios', 'serverchan3', 'pc'].includes(String(event.meta?.platform || ''));
+  if (event.type === 'notify_enabled') {
+    return !event.meta?.hasBark && !platforms.some((platform) => ['ios', 'serverchan3', 'pc'].includes(platform));
+  }
+  return false;
+}
+
+function buildNotifyPlatformUserCounts(notifyEvents) {
+  const recentUnknownSince = daysAgo(6);
+  const userMap = new Map();
+  notifyEvents.forEach((event) => {
+    const key = notifyUserKey(event);
+    if (!key) return;
+    const row = userMap.get(key) || {
+      ios: false,
+      serverchan3: false,
+      pc: false,
+      unknown: false,
+      lastUnknownDate: ''
+    };
+    row.ios = row.ios || isKnownNotifyEvent(event, 'ios');
+    row.serverchan3 = row.serverchan3 || isKnownNotifyEvent(event, 'serverchan3');
+    row.pc = row.pc || isKnownNotifyEvent(event, 'pc');
+    if (isUnknownNotifyEvent(event)) {
+      row.unknown = true;
+      const date = notifyEventDate(event);
+      if (date > row.lastUnknownDate) row.lastUnknownDate = date;
+    }
+    userMap.set(key, row);
+  });
+  const rows = Array.from(userMap.values());
+  return {
+    ios: rows.filter((row) => row.ios).length,
+    serverchan3: rows.filter((row) => row.serverchan3).length,
+    pc: rows.filter((row) => row.pc).length,
+    unknown: rows.filter((row) => (
+      row.unknown &&
+      !row.ios &&
+      !row.serverchan3 &&
+      !row.pc &&
+      row.lastUnknownDate >= recentUnknownSince
+    )).length
+  };
+}
+
 function count(events, type) {
   return events.filter((event) => event.type === type).length;
 }
@@ -526,17 +593,7 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
       aiUsers: uniqueCount(aiEvents, (event) => event.userId || event.visitorId),
       notifyUsers: uniqueCount(notifyEvents, (event) => event.userId || event.visitorId),
       switchRuns: switchEvents.length,
-      notifyPlatformUsers: {
-        ios: uniqueCount(notifyEvents.filter((e) => (e.type === 'notify_enabled' && e.meta?.hasBark) || (e.type === 'notify_used' && e.meta?.platform === 'ios')), (e) => e.userId || e.visitorId),
-        serverchan3: uniqueCount(notifyEvents.filter((e) => (e.type === 'notify_used' && e.meta?.platform === 'serverchan3') || (e.type === 'notify_enabled' && Array.isArray(e.meta?.platforms) && e.meta.platforms.includes('serverchan3'))), (e) => e.userId || e.visitorId),
-        pc: uniqueCount(notifyEvents.filter((e) => (e.type === 'notify_used' && e.meta?.platform === 'pc') || (e.type === 'notify_enabled' && Array.isArray(e.meta?.platforms) && e.meta.platforms.includes('pc'))), (e) => e.userId || e.visitorId),
-        unknown: uniqueCount(notifyEvents.filter((e) => {
-          const platforms = Array.isArray(e.meta?.platforms) ? e.meta.platforms : [];
-          if (e.type === 'notify_used') return !['ios', 'serverchan3', 'pc'].includes(String(e.meta?.platform || ''));
-          if (e.type === 'notify_enabled') return !e.meta?.hasBark && !platforms.some((platform) => ['serverchan3', 'pc'].includes(platform));
-          return false;
-        }), (e) => e.userId || e.visitorId)
-      }
+      notifyPlatformUsers: buildNotifyPlatformUserCounts(notifyEvents)
     },
     daily: dailySeries(events, rangeDays),
     pages: Array.from(pageMap.values()).map((row) => ({ key: row.key, pv: row.pv, uv: row.uvSet.size })).sort((a, b) => b.pv - a.pv).slice(0, 8),

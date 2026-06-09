@@ -168,6 +168,7 @@ async function handleAdminAnalytics(request, env, origin) {
   const url = new URL(request.url);
   const rangeDays = Math.max(1, Math.min(Number(url.searchParams.get('rangeDays')) || 30, 365));
   const since = new Date(Date.now() - (rangeDays - 1) * 86400000).toISOString().slice(0, 10);
+  const recentUnknownSince = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
   const usersRow = await env.DB.prepare('SELECT COUNT(*) AS total FROM users').first();
   const cardsRows = await env.DB.prepare(`SELECT
     COUNT(CASE WHEN type = 'page_view' THEN 1 END) AS pv,
@@ -215,27 +216,67 @@ async function handleAdminAnalytics(request, env, origin) {
     FROM analytics_events WHERE event_date >= ?
     AND NOT (type = 'switch_worker_run' AND json_extract(meta, '$.reason') = 'switch-cron')
     GROUP BY dow ORDER BY dow`).bind(since).all();
-  const platformRows = await env.DB.prepare(`SELECT
-    COUNT(DISTINCT CASE
-      WHEN type = 'notify_enabled' AND json_extract(meta, '$.hasBark') = 1 THEN COALESCE(NULLIF(user_id, ''), visitor_id)
-      WHEN type = 'notify_used' AND json_extract(meta, '$.platform') = 'ios' THEN COALESCE(NULLIF(user_id, ''), visitor_id)
-    END) AS iosUsers,
-    COUNT(DISTINCT CASE
-      WHEN type = 'notify_used' AND json_extract(meta, '$.platform') = 'serverchan3' THEN COALESCE(NULLIF(user_id, ''), visitor_id)
-      WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'serverchan3') THEN COALESCE(NULLIF(user_id, ''), visitor_id)
-    END) AS serverChan3Users,
-    COUNT(DISTINCT CASE
-      WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'pc') THEN COALESCE(NULLIF(user_id, ''), visitor_id)
-      WHEN type = 'notify_used' AND json_extract(meta, '$.platform') = 'pc' THEN COALESCE(NULLIF(user_id, ''), visitor_id)
-    END) AS pcUsers,
-    COUNT(DISTINCT CASE
-      WHEN type = 'notify_used' AND COALESCE(json_extract(meta, '$.platform'), '') NOT IN ('ios', 'serverchan3', 'pc') THEN COALESCE(NULLIF(user_id, ''), visitor_id)
-      WHEN type = 'notify_enabled'
-        AND COALESCE(json_extract(meta, '$.hasBark'), 0) != 1
-        AND NOT EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value IN ('serverchan3', 'pc'))
-        THEN COALESCE(NULLIF(user_id, ''), visitor_id)
+  const platformRows = await env.DB.prepare(`WITH notify_events AS (
+    SELECT
+      NULLIF(COALESCE(NULLIF(user_id, ''), visitor_id), '') AS uid,
+      type,
+      event_date,
+      meta
+    FROM analytics_events
+    WHERE event_date >= ? AND type IN ('notify_enabled','notify_used')
+  ),
+  notify_flags AS (
+    SELECT
+      uid,
+      MAX(CASE
+        WHEN type = 'notify_enabled' AND json_extract(meta, '$.hasBark') = 1 THEN 1
+        WHEN type = 'notify_used' AND json_extract(meta, '$.platform') = 'ios' THEN 1
+        ELSE 0
+      END) AS has_ios,
+      MAX(CASE
+        WHEN type = 'notify_used' AND json_extract(meta, '$.platform') = 'serverchan3' THEN 1
+        WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'serverchan3') THEN 1
+        ELSE 0
+      END) AS has_serverchan3,
+      MAX(CASE
+        WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'pc') THEN 1
+        WHEN type = 'notify_used' AND json_extract(meta, '$.platform') = 'pc' THEN 1
+        ELSE 0
+      END) AS has_pc,
+      MAX(CASE
+        WHEN type = 'notify_used' AND COALESCE(json_extract(meta, '$.platform'), '') NOT IN ('ios', 'serverchan3', 'pc') THEN 1
+        WHEN type = 'notify_enabled'
+          AND COALESCE(json_extract(meta, '$.hasBark'), 0) != 1
+          AND NOT EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value IN ('serverchan3', 'pc'))
+          THEN 1
+        ELSE 0
+      END) AS has_unknown,
+      MAX(CASE
+        WHEN type = 'notify_used' AND COALESCE(json_extract(meta, '$.platform'), '') NOT IN ('ios', 'serverchan3', 'pc') THEN event_date
+        WHEN type = 'notify_enabled'
+          AND COALESCE(json_extract(meta, '$.hasBark'), 0) != 1
+          AND NOT EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value IN ('serverchan3', 'pc'))
+          THEN event_date
+        ELSE ''
+      END) AS last_unknown_date
+    FROM notify_events
+    WHERE uid IS NOT NULL
+    GROUP BY uid
+  )
+  SELECT
+    SUM(CASE WHEN has_ios = 1 THEN 1 ELSE 0 END) AS iosUsers,
+    SUM(CASE WHEN has_serverchan3 = 1 THEN 1 ELSE 0 END) AS serverChan3Users,
+    SUM(CASE WHEN has_pc = 1 THEN 1 ELSE 0 END) AS pcUsers,
+    SUM(CASE
+      WHEN has_unknown = 1
+        AND has_ios = 0
+        AND has_serverchan3 = 0
+        AND has_pc = 0
+        AND last_unknown_date >= ?
+        THEN 1
+      ELSE 0
     END) AS unknownUsers
-    FROM analytics_events WHERE event_date >= ? AND type IN ('notify_enabled','notify_used')`).bind(since).first();
+    FROM notify_flags`).bind(since, recentUnknownSince).first();
   const adSummaryRow = await env.DB.prepare(`SELECT
     COUNT(CASE WHEN type = 'ad_slot_view' THEN 1 END) AS views,
     COUNT(CASE WHEN type = 'ad_slot_click' THEN 1 END) AS clicks,
