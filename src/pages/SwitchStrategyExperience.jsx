@@ -689,9 +689,34 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     setPrefs((prev) => {
       const current = getActiveSwitchRule(prev);
       const cls = { ...((current && current.premiumClass) || {}) };
-      if (targetClass === 'H' || targetClass === 'L') cls[code] = targetClass;
-      else delete cls[code];
-      return updateActiveSwitchRule(prev, { premiumClass: cls });
+      const heldCodes = new Set(exchangeFunds.map((fund) => fund.code));
+      const isHeld = heldCodes.has(code);
+      const benchmarkCodes = Array.isArray(current?.benchmarkCodes) ? current.benchmarkCodes.filter(Boolean) : [];
+      const enabledCodes = Array.isArray(current?.enabledCodes) ? current.enabledCodes.filter(Boolean) : [];
+      let nextBenchmarkCodes = benchmarkCodes;
+      let nextEnabledCodes = enabledCodes;
+      if (targetClass === 'H' || targetClass === 'L') {
+        cls[code] = targetClass;
+        if (isHeld) {
+          nextBenchmarkCodes = Array.from(new Set([...benchmarkCodes, code]));
+          nextEnabledCodes = enabledCodes.filter((item) => item !== code);
+        } else {
+          nextEnabledCodes = Array.from(new Set([...enabledCodes, code]));
+          nextBenchmarkCodes = benchmarkCodes.filter((item) => item !== code);
+        }
+      } else {
+        delete cls[code];
+        if (isHeld) {
+          nextBenchmarkCodes = benchmarkCodes.filter((item) => item !== code);
+        } else {
+          nextEnabledCodes = enabledCodes.filter((item) => item !== code);
+        }
+      }
+      return updateActiveSwitchRule(prev, {
+        benchmarkCodes: nextBenchmarkCodes,
+        enabledCodes: nextEnabledCodes,
+        premiumClass: cls
+      });
     });
   }
   // 拖拽状态：高亮当前悬停中的接收区。
