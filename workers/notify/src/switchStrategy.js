@@ -46,6 +46,7 @@ export function navCacheKey(code) {
 
 const FUND_CODE_PATTERN = /^\d{6}$/;
 const MAX_CANDIDATES = 20;
+const MAX_SWITCH_RULES = 12;
 // 与前端 SwitchStrategyExperience 的 DEFAULT_PREFS 保持一致。
 // v3 持仓 + H/L 双维度：
 //   benchmarkCodes = 持仓基准（前端从持仓详情自动派生，worker 端只接收）
@@ -60,6 +61,7 @@ const DEFAULT_INTRA_BUY_OTHER_PCT = 3;    // 规则 B：差价扩大阈值
 const DEFAULT_OTC_PREMIUM_THRESHOLD_PCT = 8;
 const DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW = 1;
 const DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH = 2;
+const DEFAULT_ARB_TARGET_PCT = 2;
 const DELAYED_OPEN_PREMIUM_THRESHOLD_PCT = 10;
 const DELAYED_OPEN_UNTIL_MINUTE = 10 * 60 + 30;
 
@@ -81,19 +83,16 @@ function pickPercent(value, fallback) {
   return num;
 }
 
-// 配置与前端 aiDcaSwitchStrategyPrefs 同名，不重复定义一套参数。
-// v3 持仓 + H/L 双维度（持仓决定基准，H/L 决定方向）：
-//  - benchmarkCodes: 持仓基准（前端从持仓详情自动派生，禁止手挑非持仓代码）
-//  - enabledCodes:   候选（前端按 premiumClass 过滤后只剩对侧）
-//  - premiumClass:   { [code]: 'H' | 'L' }，每只 ETF 的溢价中枢标签
-//  - intraSellLowerPct / intraBuyOtherPct: 场内阈值，与页面同名同义。
-//  - otcPremiumThresholdPct / otcMinIntraPremiumLow / otcMinIntraPremiumHigh: 场外切换阈值。
-//  - 触发逻辑：每对 (bench, cand) 仅当 cand.class !== bench.class 且都已分类时考虑：
-//      bench=L → 看 gap = H溢价 − L溢价 < sellLower → 规则 A：卖 bench(L) 买 cand(H)
-//      bench=H → 看 gap > buyOther                  → 规则 B：卖 bench(H) 买 cand(L)
-//  - 未分类的 bench 或 cand：不触发，前端会有提示。
-export function normalizeSwitchConfig(input = {}) {
-  // 兼容旧格式：input.benchmarkCode (string) → [benchmarkCode]。
+function defaultSwitchRuleName(index = 0) {
+  return index === 0 ? '默认规则' : `规则 ${index + 1}`;
+}
+
+function sanitizeRuleId(value) {
+  const id = String(value || '').trim();
+  return /^[A-Za-z0-9:_-]{1,64}$/.test(id) ? id : '';
+}
+
+function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, readEnabled = true } = {}) {
   const rawBenchmarks = Array.isArray(input?.benchmarkCodes)
     ? input.benchmarkCodes
     : (input?.benchmarkCode ? [input.benchmarkCode] : []);
@@ -117,7 +116,6 @@ export function normalizeSwitchConfig(input = {}) {
     enabledCodes.push(code);
     if (enabledCodes.length >= MAX_CANDIDATES) break;
   }
-  // premiumClass: 仅保留出现在 benchmarkCodes / enabledCodes 中的代码，且值为 'H' | 'L'。
   const premiumClass = {};
   const rawClass = (input && typeof input.premiumClass === 'object' && input.premiumClass) ? input.premiumClass : {};
   const validCodes = new Set([...benchmarkCodes, ...enabledCodes]);
@@ -127,31 +125,89 @@ export function normalizeSwitchConfig(input = {}) {
     const v = String(value || '').trim().toUpperCase();
     if (v === 'H' || v === 'L') premiumClass[c] = v;
   }
+  const rawName = String(input?.name || input?.ruleName || '').trim();
+  const rawEnabled = readEnabled ? input?.enabled : undefined;
   return {
-    enabled: Boolean(input?.enabled),
+    id: sanitizeRuleId(input?.id || input?.ruleId) || `rule-${index + 1}`,
+    name: (rawName || defaultSwitchRuleName(index)).slice(0, 40),
+    enabled: rawEnabled === undefined ? Boolean(defaultEnabled) : Boolean(rawEnabled),
     benchmarkCodes,
     enabledCodes,
     premiumClass,
+    arbTargetPct: pickPercent(input?.arbTargetPct, DEFAULT_ARB_TARGET_PCT),
     intraSellLowerPct: pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
     intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
     otcPremiumThresholdPct: pickPercent(input?.otcPremiumThresholdPct, DEFAULT_OTC_PREMIUM_THRESHOLD_PCT),
     otcMinIntraPremiumLow: pickPercent(input?.otcMinIntraPremiumLow, DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW),
-    otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH),
+    otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH)
+  };
+}
+
+// 配置与前端 aiDcaSwitchStrategyPrefs 同名，不重复定义一套参数。
+// v3 持仓 + H/L 双维度（持仓决定基准，H/L 决定方向）：
+//  - benchmarkCodes: 持仓基准（前端从持仓详情自动派生，禁止手挑非持仓代码）
+//  - enabledCodes:   候选（前端按 premiumClass 过滤后只剩对侧）
+//  - premiumClass:   { [code]: 'H' | 'L' }，每只 ETF 的溢价中枢标签
+//  - intraSellLowerPct / intraBuyOtherPct: 场内阈值，与页面同名同义。
+//  - otcPremiumThresholdPct / otcMinIntraPremiumLow / otcMinIntraPremiumHigh: 场外切换阈值。
+//  - 触发逻辑：每对 (bench, cand) 仅当 cand.class !== bench.class 且都已分类时考虑：
+//      bench=L → 看 gap = H溢价 − L溢价 < sellLower → 规则 A：卖 bench(L) 买 cand(H)
+//      bench=H → 看 gap > buyOther                  → 规则 B：卖 bench(H) 买 cand(L)
+//  - 未分类的 bench 或 cand：不触发，前端会有提示。
+export function normalizeSwitchConfig(input = {}) {
+  const rawRules = Array.isArray(input?.rules) ? input.rules : [];
+  const rules = [];
+  const usedIds = new Set();
+  if (rawRules.length) {
+    for (const rawRule of rawRules.slice(0, MAX_SWITCH_RULES)) {
+      const normalizedRule = normalizeSwitchRule(rawRule, rules.length);
+      let id = normalizedRule.id;
+      if (usedIds.has(id)) id = `${id}-${rules.length + 1}`;
+      usedIds.add(id);
+      rules.push({ ...normalizedRule, id });
+    }
+  } else {
+    const legacyRule = normalizeSwitchRule({
+      ...input,
+      id: input?.ruleId || 'rule-1',
+      name: input?.ruleName || input?.name || '默认规则'
+    }, 0, { defaultEnabled: true, readEnabled: false });
+    rules.push(legacyRule);
+    usedIds.add(legacyRule.id);
+  }
+  if (!rules.length) rules.push(normalizeSwitchRule({ id: 'rule-1', name: '默认规则' }, 0));
+  const requestedActiveId = sanitizeRuleId(input?.activeRuleId);
+  const activeRule = rules.find((rule) => rule.id === requestedActiveId) || rules[0];
+  return {
+    enabled: Boolean(input?.enabled),
+    activeRuleId: activeRule.id,
+    rules,
+    ruleEnabled: activeRule.enabled,
+    ruleName: activeRule.name,
+    benchmarkCodes: activeRule.benchmarkCodes,
+    enabledCodes: activeRule.enabledCodes,
+    premiumClass: activeRule.premiumClass,
+    arbTargetPct: activeRule.arbTargetPct,
+    intraSellLowerPct: activeRule.intraSellLowerPct,
+    intraBuyOtherPct: activeRule.intraBuyOtherPct,
+    otcPremiumThresholdPct: activeRule.otcPremiumThresholdPct,
+    otcMinIntraPremiumLow: activeRule.otcMinIntraPremiumLow,
+    otcMinIntraPremiumHigh: activeRule.otcMinIntraPremiumHigh,
     clientLabel: String(input?.clientLabel || '').trim().slice(0, 120),
     updatedAt: String(input?.updatedAt || '').trim() || new Date().toISOString()
   };
 }
 
-export function isSwitchConfigRunnable(config) {
-  if (!config || !config.enabled) return false;
-  if (!Number.isFinite(config.intraSellLowerPct) || !Number.isFinite(config.intraBuyOtherPct)) return false;
-  if (config.intraBuyOtherPct <= config.intraSellLowerPct) return false;
-  const benches = Array.isArray(config.benchmarkCodes) ? config.benchmarkCodes : [];
+function isSwitchRuleRunnable(rule) {
+  if (!rule || !rule.enabled) return false;
+  if (!Number.isFinite(rule.intraSellLowerPct) || !Number.isFinite(rule.intraBuyOtherPct)) return false;
+  if (rule.intraBuyOtherPct <= rule.intraSellLowerPct) return false;
+  const benches = Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes : [];
   if (!benches.length) return false;
-  const enabled = Array.isArray(config.enabledCodes) ? config.enabledCodes : [];
+  const enabled = Array.isArray(rule.enabledCodes) ? rule.enabledCodes : [];
   const benchSet = new Set(benches);
   const hasOtcCandidates = enabled.some((c) => c && !benchSet.has(c));
-  const cls = (config && typeof config.premiumClass === 'object' && config.premiumClass) ? config.premiumClass : {};
+  const cls = (rule && typeof rule.premiumClass === 'object' && rule.premiumClass) ? rule.premiumClass : {};
   const pool = Array.from(new Set([...benches, ...enabled])).filter((c) => cls[c] === 'H' || cls[c] === 'L');
   for (const b of benches) {
     const bc = cls[b];
@@ -160,6 +216,26 @@ export function isSwitchConfigRunnable(config) {
     if (pool.some((c) => c !== b && cls[c] === opp)) return true;
   }
   return hasOtcCandidates;
+}
+
+export function getRunnableSwitchRules(input = {}, { forceEnabled = false } = {}) {
+  const config = normalizeSwitchConfig(input);
+  if (!forceEnabled && !config.enabled) return [];
+  return (config.rules || []).filter((rule) => isSwitchRuleRunnable(rule));
+}
+
+export function collectSwitchConfigCodes(input = {}) {
+  const config = normalizeSwitchConfig(input);
+  const codes = new Set();
+  for (const rule of config.rules || []) {
+    for (const code of (rule.benchmarkCodes || [])) codes.add(code);
+    for (const code of (rule.enabledCodes || [])) codes.add(code);
+  }
+  return Array.from(codes);
+}
+
+export function isSwitchConfigRunnable(config) {
+  return getRunnableSwitchRules(config).length > 0;
 }
 
 // --- 时间窗口 -------------------------------------------------------------
@@ -610,6 +686,8 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       const threshold = rule === 'A' ? sellLowerCfg : buyOtherCfg;
       const gapStr = (gap >= 0 ? '+' : '') + gap.toFixed(2);
       signals.push({
+        ruleId: config.ruleId || config.id || '',
+        ruleName: config.ruleName || config.name || '',
         kind: rule,
         from: benchCode,
         fromName: group.benchmarkName || benchCode,
@@ -624,6 +702,9 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
 
   return {
     computedAt: computedAtIso,
+    ruleId: config.ruleId || config.id || '',
+    ruleName: config.ruleName || config.name || '',
+    ruleEnabled: config.enabled !== false,
     intraSellLowerPct: Number(config.intraSellLowerPct),
     intraBuyOtherPct: Number(config.intraBuyOtherPct),
     otcPremiumThresholdPct,
@@ -802,9 +883,9 @@ function buildOtcSwitchTriggerNotification(snapshot, trigger, env) {
   return {
     eventId,
     eventType: 'switch-strategy-trigger',
-    ruleId: `switch-otc:${trigger.fromCode}`,
+    ruleId: trigger.ruleId ? `switch-otc:${trigger.ruleId}:${trigger.fromCode}` : `switch-otc:${trigger.fromCode}`,
     symbol: trigger.fromCode,
-    strategyName: '场外切换',
+    strategyName: trigger.ruleName ? `场外切换 · ${trigger.ruleName}` : '场外切换',
     triggerCondition: ruleLabel,
     purchaseAmount: '',
     detailUrl,
@@ -858,9 +939,9 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
   return {
     eventId,
     eventType: 'switch-strategy-trigger',
-    ruleId: `switch:${trigger.fromCode}`,
+    ruleId: trigger.ruleId ? `switch:${trigger.ruleId}:${trigger.fromCode}` : `switch:${trigger.fromCode}`,
     symbol: trigger.fromCode,
-    strategyName: '场内切换',
+    strategyName: trigger.ruleName ? `场内切换 · ${trigger.ruleName}` : '场内切换',
     triggerCondition: ruleLabel,
     purchaseAmount: '',
     detailUrl,

@@ -12,6 +12,7 @@ const NOTIFY_ENDPOINT = '/api/notify';
 const NOTIFY_CLIENT_SECRET_HEADER = 'x-notify-client-secret';
 const LOCAL_CACHE_KEY = 'aiDcaSwitchStrategyWorkerConfig';
 const FUND_CODE_PATTERN = /^\d{6}$/;
+const MAX_SWITCH_RULES = 12;
 
 // 与页面 SwitchStrategyExperience 的 DEFAULT_PREFS 保持同名及同默认。
 const DEFAULT_INTRA_SELL_LOWER_PCT = 1; // 规则 A
@@ -19,20 +20,113 @@ const DEFAULT_INTRA_BUY_OTHER_PCT = 3;  // 规则 B
 const DEFAULT_OTC_PREMIUM_THRESHOLD_PCT = 8;
 const DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW = 1;
 const DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH = 2;
+const DEFAULT_ARB_TARGET_PCT = 2;
+
+function defaultSwitchRuleName(index = 0) {
+  return index === 0 ? '默认规则' : `规则 ${index + 1}`;
+}
+
+function sanitizeRuleId(value) {
+  const id = String(value || '').trim();
+  return /^[A-Za-z0-9:_-]{1,64}$/.test(id) ? id : '';
+}
+
+export function buildSwitchRuleId(prefix = 'rule') {
+  const safePrefix = String(prefix || 'rule').replace(/[^A-Za-z0-9:_-]/g, '').slice(0, 24) || 'rule';
+  const timePart = Date.now().toString(36);
+  const randomPart = Math.random().toString(36).slice(2, 8);
+  return `${safePrefix}-${timePart}-${randomPart}`;
+}
+
+function serializeRule(rule = {}) {
+  return {
+    id: rule.id,
+    name: rule.name,
+    enabled: Boolean(rule.enabled),
+    benchmarkCodes: Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes : [],
+    enabledCodes: Array.isArray(rule.enabledCodes) ? rule.enabledCodes : [],
+    premiumClass: rule.premiumClass || {},
+    arbTargetPct: rule.arbTargetPct,
+    intraSellLowerPct: rule.intraSellLowerPct,
+    intraBuyOtherPct: rule.intraBuyOtherPct,
+    otcPremiumThresholdPct: rule.otcPremiumThresholdPct,
+    otcMinIntraPremiumLow: rule.otcMinIntraPremiumLow,
+    otcMinIntraPremiumHigh: rule.otcMinIntraPremiumHigh
+  };
+}
+
+export function normalizeSwitchRuleShape(input = {}, index = 0, { defaultEnabled = true, readEnabled = true } = {}) {
+  const rawBenchmarks = Array.isArray(input?.benchmarkCodes)
+    ? input.benchmarkCodes
+    : (input?.benchmarkCode ? [input.benchmarkCode] : []);
+  const benchmarkCodes = [];
+  const seen = new Set();
+  for (const raw of rawBenchmarks) {
+    const code = sanitizeFundCode(raw);
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    benchmarkCodes.push(code);
+    if (benchmarkCodes.length >= 20) break;
+  }
+  const enabledCodesRaw = Array.isArray(input?.enabledCodes)
+    ? input.enabledCodes
+    : Array.isArray(input?.candidateCodes) ? input.candidateCodes : [];
+  const enabledCodes = [];
+  for (const raw of enabledCodesRaw) {
+    const code = sanitizeFundCode(raw);
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    enabledCodes.push(code);
+    if (enabledCodes.length >= 20) break;
+  }
+  const premiumClass = {};
+  const rawClass = (input && typeof input.premiumClass === 'object' && input.premiumClass) ? input.premiumClass : {};
+  const validCodes = new Set([...benchmarkCodes, ...enabledCodes]);
+  for (const [code, value] of Object.entries(rawClass)) {
+    const c = sanitizeFundCode(code);
+    if (!c || !validCodes.has(c)) continue;
+    const v = String(value || '').trim().toUpperCase();
+    if (v === 'H' || v === 'L') premiumClass[c] = v;
+  }
+  const rawName = String(input?.name || input?.ruleName || '').trim();
+  const rawEnabled = readEnabled ? input?.enabled : undefined;
+  return {
+    id: sanitizeRuleId(input?.id || input?.ruleId) || `rule-${index + 1}`,
+    name: (rawName || defaultSwitchRuleName(index)).slice(0, 40),
+    enabled: rawEnabled === undefined ? Boolean(defaultEnabled) : Boolean(rawEnabled),
+    benchmarkCodes,
+    enabledCodes,
+    premiumClass,
+    arbTargetPct: pickPercent(input?.arbTargetPct, DEFAULT_ARB_TARGET_PCT),
+    intraSellLowerPct: pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
+    intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
+    otcPremiumThresholdPct: pickPercent(input?.otcPremiumThresholdPct, DEFAULT_OTC_PREMIUM_THRESHOLD_PCT),
+    otcMinIntraPremiumLow: pickPercent(input?.otcMinIntraPremiumLow, DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW),
+    otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH)
+  };
+}
 
 export function buildDefaultSwitchConfig() {
+  const defaultRule = normalizeSwitchRuleShape({
+    id: 'rule-1',
+    name: '默认规则'
+  }, 0);
   return {
     enabled: false,
-    benchmarkCodes: [],
-    enabledCodes: [],
+    activeRuleId: defaultRule.id,
+    rules: [defaultRule],
+    ruleEnabled: defaultRule.enabled,
+    benchmarkCodes: defaultRule.benchmarkCodes,
+    enabledCodes: defaultRule.enabledCodes,
     // 每只 ETF 的溢价中枢标签：'H' 高溢价 / 'L' 低溢价。
-    // 仅对出现在 benchmarkCodes / enabledCodes 中的代码生效。
-    premiumClass: {},
-    intraSellLowerPct: DEFAULT_INTRA_SELL_LOWER_PCT,
-    intraBuyOtherPct: DEFAULT_INTRA_BUY_OTHER_PCT,
-    otcPremiumThresholdPct: DEFAULT_OTC_PREMIUM_THRESHOLD_PCT,
-    otcMinIntraPremiumLow: DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW,
-    otcMinIntraPremiumHigh: DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH,
+    // 仅对出现在当前规则 benchmarkCodes / enabledCodes 中的代码生效。
+    premiumClass: defaultRule.premiumClass,
+    arbTargetPct: defaultRule.arbTargetPct,
+    intraSellLowerPct: defaultRule.intraSellLowerPct,
+    intraBuyOtherPct: defaultRule.intraBuyOtherPct,
+    otcPremiumThresholdPct: defaultRule.otcPremiumThresholdPct,
+    otcMinIntraPremiumLow: defaultRule.otcMinIntraPremiumLow,
+    otcMinIntraPremiumHigh: defaultRule.otcMinIntraPremiumHigh,
     clientLabel: '',
     updatedAt: ''
   };
@@ -68,50 +162,44 @@ function pickPercent(value, fallback) {
 }
 
 export function normalizeSwitchConfigShape(input = {}) {
-  // 兼容旧格式：input.benchmarkCode (string) → [benchmarkCode]。
-  const rawBenchmarks = Array.isArray(input?.benchmarkCodes)
-    ? input.benchmarkCodes
-    : (input?.benchmarkCode ? [input.benchmarkCode] : []);
-  const benchmarkCodes = [];
-  const seen = new Set();
-  for (const raw of rawBenchmarks) {
-    const code = sanitizeFundCode(raw);
-    if (!code || seen.has(code)) continue;
-    seen.add(code);
-    benchmarkCodes.push(code);
-    if (benchmarkCodes.length >= 20) break;
+  const rawRules = Array.isArray(input?.rules) ? input.rules : [];
+  const rules = [];
+  const usedIds = new Set();
+  if (rawRules.length) {
+    for (const rawRule of rawRules.slice(0, MAX_SWITCH_RULES)) {
+      const normalizedRule = normalizeSwitchRuleShape(rawRule, rules.length);
+      let id = normalizedRule.id;
+      if (usedIds.has(id)) id = `${id}-${rules.length + 1}`;
+      usedIds.add(id);
+      rules.push({ ...normalizedRule, id });
+    }
+  } else {
+    const legacyRule = normalizeSwitchRuleShape({
+      ...input,
+      id: input?.ruleId || 'rule-1',
+      name: input?.ruleName || input?.name || '默认规则'
+    }, 0, { defaultEnabled: true, readEnabled: false });
+    rules.push(legacyRule);
+    usedIds.add(legacyRule.id);
   }
-  const enabledCodesRaw = Array.isArray(input?.enabledCodes)
-    ? input.enabledCodes
-    : Array.isArray(input?.candidateCodes) ? input.candidateCodes : [];
-  const enabledCodes = [];
-  for (const raw of enabledCodesRaw) {
-    const code = sanitizeFundCode(raw);
-    if (!code || seen.has(code)) continue;
-    seen.add(code);
-    enabledCodes.push(code);
-    if (enabledCodes.length >= 20) break;
-  }
-  // premiumClass：仅保留出现在 benchmarkCodes 或 enabledCodes 中的代码，且值为 'H' | 'L'。
-  const premiumClass = {};
-  const rawClass = (input && typeof input.premiumClass === 'object' && input.premiumClass) ? input.premiumClass : {};
-  const validCodes = new Set([...benchmarkCodes, ...enabledCodes]);
-  for (const [code, value] of Object.entries(rawClass)) {
-    const c = sanitizeFundCode(code);
-    if (!c || !validCodes.has(c)) continue;
-    const v = String(value || '').trim().toUpperCase();
-    if (v === 'H' || v === 'L') premiumClass[c] = v;
-  }
+  if (!rules.length) rules.push(normalizeSwitchRuleShape({ id: 'rule-1', name: '默认规则' }, 0));
+  const requestedActiveId = sanitizeRuleId(input?.activeRuleId);
+  const activeRule = rules.find((rule) => rule.id === requestedActiveId) || rules[0];
   return {
     enabled: Boolean(input?.enabled),
-    benchmarkCodes,
-    enabledCodes,
-    premiumClass,
-    intraSellLowerPct: pickPercent(input?.intraSellLowerPct, DEFAULT_INTRA_SELL_LOWER_PCT),
-    intraBuyOtherPct: pickPercent(input?.intraBuyOtherPct, DEFAULT_INTRA_BUY_OTHER_PCT),
-    otcPremiumThresholdPct: pickPercent(input?.otcPremiumThresholdPct, DEFAULT_OTC_PREMIUM_THRESHOLD_PCT),
-    otcMinIntraPremiumLow: pickPercent(input?.otcMinIntraPremiumLow, DEFAULT_OTC_MIN_INTRA_PREMIUM_LOW),
-    otcMinIntraPremiumHigh: pickPercent(input?.otcMinIntraPremiumHigh, DEFAULT_OTC_MIN_INTRA_PREMIUM_HIGH),
+    activeRuleId: activeRule.id,
+    rules,
+    ruleEnabled: activeRule.enabled,
+    ruleName: activeRule.name,
+    benchmarkCodes: activeRule.benchmarkCodes,
+    enabledCodes: activeRule.enabledCodes,
+    premiumClass: activeRule.premiumClass,
+    arbTargetPct: activeRule.arbTargetPct,
+    intraSellLowerPct: activeRule.intraSellLowerPct,
+    intraBuyOtherPct: activeRule.intraBuyOtherPct,
+    otcPremiumThresholdPct: activeRule.otcPremiumThresholdPct,
+    otcMinIntraPremiumLow: activeRule.otcMinIntraPremiumLow,
+    otcMinIntraPremiumHigh: activeRule.otcMinIntraPremiumHigh,
     clientLabel: String(input?.clientLabel || '').trim().slice(0, 120),
     updatedAt: String(input?.updatedAt || '').trim()
   };
@@ -119,19 +207,94 @@ export function normalizeSwitchConfigShape(input = {}) {
 
 export function buildSwitchConfigSyncKey(input = {}) {
   const normalized = normalizeSwitchConfigShape(input);
-  const premiumEntries = Object.entries(normalized.premiumClass || {})
-    .sort(([a], [b]) => a.localeCompare(b));
   return JSON.stringify({
     enabled: Boolean(normalized.enabled),
-    benchmarkCodes: (normalized.benchmarkCodes || []).slice().sort(),
-    enabledCodes: (normalized.enabledCodes || []).slice().sort(),
-    premiumClass: premiumEntries,
+    activeRuleId: normalized.activeRuleId,
+    rules: normalized.rules.map((rule) => ({
+      id: rule.id,
+      name: rule.name,
+      enabled: Boolean(rule.enabled),
+      benchmarkCodes: (rule.benchmarkCodes || []).slice().sort(),
+      enabledCodes: (rule.enabledCodes || []).slice().sort(),
+      premiumClass: Object.entries(rule.premiumClass || {}).sort(([a], [b]) => a.localeCompare(b)),
+      arbTargetPct: rule.arbTargetPct,
+      intraSellLowerPct: rule.intraSellLowerPct,
+      intraBuyOtherPct: rule.intraBuyOtherPct,
+      otcPremiumThresholdPct: rule.otcPremiumThresholdPct,
+      otcMinIntraPremiumLow: rule.otcMinIntraPremiumLow,
+      otcMinIntraPremiumHigh: rule.otcMinIntraPremiumHigh
+    }))
+  });
+}
+
+export function getActiveSwitchRule(input = {}) {
+  const normalized = normalizeSwitchConfigShape(input);
+  return normalized.rules.find((rule) => rule.id === normalized.activeRuleId) || normalized.rules[0];
+}
+
+export function updateActiveSwitchRule(input = {}, patchOrUpdater) {
+  const normalized = normalizeSwitchConfigShape(input);
+  const rules = normalized.rules.map((rule, index) => {
+    if (rule.id !== normalized.activeRuleId) return rule;
+    const patch = typeof patchOrUpdater === 'function' ? patchOrUpdater(rule) : patchOrUpdater;
+    return normalizeSwitchRuleShape({ ...rule, ...(patch || {}) }, index);
+  });
+  return normalizeSwitchConfigShape({ ...normalized, rules });
+}
+
+export function selectSwitchRule(input = {}, ruleId) {
+  const normalized = normalizeSwitchConfigShape(input);
+  const nextId = sanitizeRuleId(ruleId);
+  if (!normalized.rules.some((rule) => rule.id === nextId)) return normalized;
+  return normalizeSwitchConfigShape({ ...normalized, activeRuleId: nextId });
+}
+
+export function addSwitchRule(input = {}, seed = {}) {
+  const normalized = normalizeSwitchConfigShape(input);
+  if (normalized.rules.length >= MAX_SWITCH_RULES) return normalized;
+  const baseRule = normalizeSwitchRuleShape({
+    id: buildSwitchRuleId(),
+    name: defaultSwitchRuleName(normalized.rules.length),
+    enabled: true,
+    arbTargetPct: normalized.arbTargetPct,
     intraSellLowerPct: normalized.intraSellLowerPct,
     intraBuyOtherPct: normalized.intraBuyOtherPct,
     otcPremiumThresholdPct: normalized.otcPremiumThresholdPct,
     otcMinIntraPremiumLow: normalized.otcMinIntraPremiumLow,
-    otcMinIntraPremiumHigh: normalized.otcMinIntraPremiumHigh
+    otcMinIntraPremiumHigh: normalized.otcMinIntraPremiumHigh,
+    ...seed
+  }, normalized.rules.length);
+  return normalizeSwitchConfigShape({
+    ...normalized,
+    activeRuleId: baseRule.id,
+    rules: [...normalized.rules, baseRule]
   });
+}
+
+export function duplicateSwitchRule(input = {}, sourceRuleId = '') {
+  const normalized = normalizeSwitchConfigShape(input);
+  if (normalized.rules.length >= MAX_SWITCH_RULES) return normalized;
+  const source = normalized.rules.find((rule) => rule.id === sourceRuleId) || getActiveSwitchRule(normalized);
+  const copy = normalizeSwitchRuleShape({
+    ...source,
+    id: buildSwitchRuleId('rule-copy'),
+    name: `${source.name || '规则'} 副本`,
+    enabled: false
+  }, normalized.rules.length);
+  return normalizeSwitchConfigShape({
+    ...normalized,
+    activeRuleId: copy.id,
+    rules: [...normalized.rules, copy]
+  });
+}
+
+export function removeSwitchRule(input = {}, ruleId = '') {
+  const normalized = normalizeSwitchConfigShape(input);
+  if (normalized.rules.length <= 1) return normalized;
+  const targetId = sanitizeRuleId(ruleId) || normalized.activeRuleId;
+  const rules = normalized.rules.filter((rule) => rule.id !== targetId);
+  const activeRuleId = normalized.activeRuleId === targetId ? (rules[0]?.id || '') : normalized.activeRuleId;
+  return normalizeSwitchConfigShape({ ...normalized, activeRuleId, rules });
 }
 
 function sanitizeFundCode(value) {
@@ -190,9 +353,12 @@ export async function saveSwitchConfigToWorker(config) {
     method: 'POST',
     body: {
       enabled: next.enabled,
+      activeRuleId: next.activeRuleId,
+      rules: next.rules.map(serializeRule),
       benchmarkCodes: next.benchmarkCodes,
       enabledCodes: next.enabledCodes,
       premiumClass: next.premiumClass,
+      arbTargetPct: next.arbTargetPct,
       intraSellLowerPct: next.intraSellLowerPct,
       intraBuyOtherPct: next.intraBuyOtherPct,
       otcPremiumThresholdPct: next.otcPremiumThresholdPct,
@@ -204,12 +370,16 @@ export async function saveSwitchConfigToWorker(config) {
   const stored = normalizeSwitchConfigShape(payload?.config || next);
   writeSwitchConfigCache(stored);
   // 返回充足元数据供 UI notice 使用（clientId / benchmarks / 候选数量）。
-  const benchSet = new Set(stored.benchmarkCodes || []);
+  const candidateCount = (stored.rules || []).reduce((acc, rule) => {
+    const benchSet = new Set(rule.benchmarkCodes || []);
+    return acc + (rule.enabledCodes || []).filter((c) => c && !benchSet.has(c)).length;
+  }, 0);
   return {
     config: stored,
     clientId: payload?.clientId || '',
     benchmarkCodes: stored.benchmarkCodes,
-    candidateCount: (stored.enabledCodes || []).filter((c) => c && !benchSet.has(c)).length
+    candidateCount,
+    ruleCount: stored.rules.length
   };
 }
 

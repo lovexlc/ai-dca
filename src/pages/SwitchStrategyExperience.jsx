@@ -3,13 +3,19 @@ import { readLedgerState, persistLedgerState } from '../app/holdingsLedger.js';
 import { aggregateByCode, buildTransactionId, detectFundKind, normalizeTransaction } from '../app/holdingsLedgerCore.js';
 import { getNavSnapshots } from '../app/navService.js';
 import {
+  addSwitchRule,
   buildSwitchConfigSyncKey,
+  duplicateSwitchRule,
+  getActiveSwitchRule,
   loadSwitchConfigFromWorker,
   loadSwitchSnapshotFromWorker,
   normalizeSwitchConfigShape,
   readSwitchConfigCache,
+  removeSwitchRule,
   runSwitchOnce,
-  saveSwitchConfigToWorker
+  selectSwitchRule,
+  saveSwitchConfigToWorker,
+  updateActiveSwitchRule
 } from '../app/switchStrategySync.js';
 import {
   formatSwitchDate as formatDate,
@@ -30,6 +36,18 @@ import { SwitchStrategyOpportunityPanels } from './SwitchStrategyOpportunityPane
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 
 // 场内 / 场外纳指 100 切换套利策略实时建议器；纯格式化、偏好读写和候选列表 helper 在 switchStrategyHelpers.js。
+
+function pickSwitchSnapshotForRule(snapshot, ruleId) {
+  if (!snapshot) return null;
+  const rules = Array.isArray(snapshot.rules) ? snapshot.rules : [];
+  const matched = rules.find((entry) => {
+    const id = String(entry?.ruleId || entry?.id || entry?.snapshot?.ruleId || '').trim();
+    return id && id === ruleId;
+  });
+  if (matched?.snapshot) return matched.snapshot;
+  if (matched?.byBenchmark) return matched;
+  return snapshot;
+}
 
 export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false, initialView = 'opportunity', hideViewTabs = false } = {}) {
   const [prefs, setPrefs] = useState(readPrefs);
@@ -73,6 +91,13 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   const [nasdaqPoolExpanded, setNasdaqPoolExpanded] = useState(true);
   const [nasdaqPoolTouched, setNasdaqPoolTouched] = useState(false);
   const [switchView, setSwitchView] = useState(initialView === 'config' ? 'config' : 'opportunity');
+  const activeRule = useMemo(() => getActiveSwitchRule(prefs), [prefs]);
+  const switchRules = Array.isArray(prefs?.rules) ? prefs.rules : [];
+  const activeRuleId = prefs?.activeRuleId || activeRule?.id || '';
+  const activeWorkerSnapshot = useMemo(
+    () => pickSwitchSnapshotForRule(workerSnapshot, activeRuleId),
+    [workerSnapshot, activeRuleId]
+  );
 
   const switchMeta = () => ({
     embedded,
@@ -81,6 +106,9 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     workerEnabled: Boolean(workerConfig.enabled),
     workerHasSnapshot: Boolean(workerSnapshot),
     workerConfigExpanded,
+    activeRuleId,
+    ruleCount: switchRules.length,
+    activeRuleEnabled: Boolean(activeRule?.enabled),
     benchmarkCount: Array.isArray(prefs?.benchmarkCodes) ? prefs.benchmarkCodes.length : 0,
     enabledCodeCount: Array.isArray(prefs?.enabledCodes) ? prefs.enabledCodes.length : 0,
     exchangeHoldingCount: Array.isArray(exchangeFunds) ? exchangeFunds.length : 0,
@@ -133,6 +161,14 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         if (cancelled) return;
         if (config) {
           setWorkerConfig(config);
+          setPrefs((prev) => {
+            const normalizedPrev = normalizeSwitchConfigShape(prev);
+            const shouldAdoptWorkerRules = Array.isArray(config.rules)
+              && config.rules.length > normalizedPrev.rules.length;
+            return shouldAdoptWorkerRules
+              ? normalizeSwitchConfigShape({ ...config, enabled: normalizedPrev.enabled })
+              : normalizedPrev;
+          });
         }
         if (snapshotPayload?.snapshot) {
           setWorkerSnapshot(snapshotPayload.snapshot);
@@ -172,6 +208,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     const startedAt = Date.now();
     trackFeatureEvent('switch_strategy', 'worker_config_save_start', {
       enabled: Boolean(normalized.enabled),
+      activeRuleId: normalized.activeRuleId,
+      ruleCount: normalized.rules.length,
       benchmarkCount: Array.isArray(normalized.benchmarkCodes) ? normalized.benchmarkCodes.length : 0,
       enabledCodeCount: Array.isArray(normalized.enabledCodes) ? normalized.enabledCodes.length : 0,
       classCount: Object.keys(normalized.premiumClass || {}).length
@@ -187,15 +225,18 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       const benchmarkCodes = Array.isArray(result?.benchmarkCodes)
         ? result.benchmarkCodes
         : (stored.benchmarkCodes || []);
-      const benchSet = new Set(benchmarkCodes);
       const candidateCount = Number.isFinite(result?.candidateCount)
         ? result.candidateCount
-        : (stored.enabledCodes || []).filter((c) => c && !benchSet.has(c)).length;
+        : (stored.rules || []).reduce((acc, rule) => {
+            const ruleBenchSet = new Set(rule.benchmarkCodes || []);
+            return acc + (rule.enabledCodes || []).filter((c) => c && !ruleBenchSet.has(c)).length;
+          }, 0);
       const benchmarkLabel = benchmarkCodes.length
         ? (benchmarkCodes.length === 1 ? benchmarkCodes[0] : `${benchmarkCodes.length} 只 (${benchmarkCodes.join(', ')})`)
         : '未设定';
+      const ruleHint = `${stored.rules?.length || 1} 条规则`;
       const clientHint = clientId ? `· client ${clientId.slice(0, 18)}…` : '';
-      const baseHint = `基准 ${benchmarkLabel} / 候选 ${candidateCount} 只 ${clientHint}`.trim();
+      const baseHint = `${ruleHint} / 当前基准 ${benchmarkLabel} / 总候选 ${candidateCount} 只 ${clientHint}`.trim();
       setWorkerStatus((prev) => ({
         ...prev,
         saving: false,
@@ -206,6 +247,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       }));
       trackActionResult('switch_strategy', 'worker_config_save', 'success', {
         enabled: Boolean(stored.enabled),
+        activeRuleId: stored.activeRuleId,
+        ruleCount: stored.rules?.length || 1,
         benchmarkCount: Array.isArray(benchmarkCodes) ? benchmarkCodes.length : 0,
         candidateCount,
         durationMs: Date.now() - startedAt
@@ -230,14 +273,15 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   useEffect(() => {
     setWorkerSnapshot((prev) => {
       if (!prev) return prev;
-      const prevBenchmarks = Array.isArray(prev.byBenchmark)
-        ? prev.byBenchmark.map((b) => b?.benchmarkCode).filter(Boolean)
-        : (prev.benchmarkCode ? [prev.benchmarkCode] : []);
+      const activeSnapshot = pickSwitchSnapshotForRule(prev, activeRuleId);
+      const prevBenchmarks = Array.isArray(activeSnapshot?.byBenchmark)
+        ? activeSnapshot.byBenchmark.map((b) => b?.benchmarkCode).filter(Boolean)
+        : (activeSnapshot?.benchmarkCode ? [activeSnapshot.benchmarkCode] : []);
       const prevKey = prevBenchmarks.slice().sort().join(',');
       if (prevKey === benchmarkCodesKey) return prev;
       return null;
     });
-  }, [benchmarkCodesKey]);
+  }, [benchmarkCodesKey, activeRuleId]);
 
   // 启用时将页面 prefs 一起带上，worker 立刻获得可运行的配置。
   const handleWorkerToggle = useCallback((enabled) => {
@@ -247,51 +291,22 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       enabledCodeCount: Array.isArray(prefs?.enabledCodes) ? prefs.enabledCodes.length : 0
     });
     if (enabled) {
-      const benchmarkCodes = Array.from(new Set([
-        ...(prefs?.benchmarkCodes || []),
-        ...(workerConfig.benchmarkCodes || [])
-      ].map(String).filter(Boolean)));
-      const benchSet = new Set(benchmarkCodes);
-      const enabledCodes = Array.from(new Set((prefs?.enabledCodes || []).map(String)))
-        .filter((code) => code && !benchSet.has(code));
       void persistWorkerConfig({
-        ...workerConfig,
-        enabled: true,
-        benchmarkCodes,
-        enabledCodes,
-        premiumClass: (prefs && typeof prefs.premiumClass === 'object' && prefs.premiumClass) ? prefs.premiumClass : {},
-        intraSellLowerPct: Number(prefs?.intraSellLowerPct),
-        intraBuyOtherPct: Number(prefs?.intraBuyOtherPct),
-        otcPremiumThresholdPct: Number(prefs?.otcPremiumThresholdPct),
-        otcMinIntraPremiumLow: Number(prefs?.otcMinIntraPremiumLow),
-        otcMinIntraPremiumHigh: Number(prefs?.otcMinIntraPremiumHigh)
+        ...prefs,
+        enabled: true
       });
     } else {
-      void persistWorkerConfig({ ...workerConfig, enabled: false });
+      void persistWorkerConfig({ ...prefs, enabled: false });
     }
-  }, [workerConfig, persistWorkerConfig, prefs]);
+  }, [persistWorkerConfig, prefs]);
 
   const desiredWorkerConfig = useMemo(() => normalizeSwitchConfigShape({
     // enabled 保留开关状态：未启用时仍然同步配置，worker run 仅计不推。
-    enabled: Boolean(workerConfig.enabled),
-    benchmarkCodes: prefs?.benchmarkCodes || [],
-    enabledCodes: prefs?.enabledCodes || [],
-    premiumClass: prefs?.premiumClass || {},
-    intraSellLowerPct: prefs?.intraSellLowerPct,
-    intraBuyOtherPct: prefs?.intraBuyOtherPct,
-    otcPremiumThresholdPct: prefs?.otcPremiumThresholdPct,
-    otcMinIntraPremiumLow: prefs?.otcMinIntraPremiumLow,
-    otcMinIntraPremiumHigh: prefs?.otcMinIntraPremiumHigh
+    ...prefs,
+    enabled: Boolean(workerConfig.enabled)
   }), [
     workerConfig.enabled,
-    prefs?.benchmarkCodes,
-    prefs?.enabledCodes,
-    prefs?.premiumClass,
-    prefs?.intraSellLowerPct,
-    prefs?.intraBuyOtherPct,
-    prefs?.otcPremiumThresholdPct,
-    prefs?.otcMinIntraPremiumLow,
-    prefs?.otcMinIntraPremiumHigh
+    prefs
   ]);
   const desiredWorkerConfigKey = useMemo(
     () => buildSwitchConfigSyncKey(desiredWorkerConfig),
@@ -314,7 +329,9 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     //   POST /switch/config，浏览器看上去一直在刷新。
     // 同理各类阈值若为 NaN，归一化会 fallback 到
     // 默认值，也会形成同款死循环。
-    if (!desiredWorkerConfig.benchmarkCodes.length) return undefined;
+    const hasAnyBenchmark = (desiredWorkerConfig.rules || [])
+      .some((rule) => Array.isArray(rule.benchmarkCodes) && rule.benchmarkCodes.length);
+    if (!hasAnyBenchmark) return undefined;
     if (workerConfigKey === desiredWorkerConfigKey) return undefined;
     const timer = setTimeout(() => {
       // 直接下发已归一化的 desired，避免 server 再次裁剪后产生新的状态差。
@@ -391,6 +408,67 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     }
   }, []);
 
+  const handleRuleSelect = useCallback((ruleId) => {
+    trackFeatureEvent('switch_strategy', 'rule_select', {
+      ruleId,
+      ruleCount: switchRules.length
+    });
+    setSnapshotCandModal(null);
+    setPrefs((prev) => selectSwitchRule(prev, ruleId));
+  }, [switchRules.length]);
+
+  const handleRuleAdd = useCallback(() => {
+    trackFeatureEvent('switch_strategy', 'rule_add', {
+      ruleCount: switchRules.length
+    });
+    setWorkerConfigExpanded(true);
+    setSnapshotCandModal(null);
+    setPrefs((prev) => addSwitchRule(prev));
+  }, [switchRules.length]);
+
+  const handleRuleDuplicate = useCallback((ruleId) => {
+    trackFeatureEvent('switch_strategy', 'rule_duplicate', {
+      ruleId,
+      ruleCount: switchRules.length
+    });
+    setWorkerConfigExpanded(true);
+    setSnapshotCandModal(null);
+    setPrefs((prev) => duplicateSwitchRule(prev, ruleId));
+  }, [switchRules.length]);
+
+  const handleRuleRemove = useCallback((ruleId) => {
+    trackFeatureEvent('switch_strategy', 'rule_remove', {
+      ruleId,
+      ruleCount: switchRules.length
+    });
+    setSnapshotCandModal(null);
+    setPrefs((prev) => removeSwitchRule(prev, ruleId));
+  }, [switchRules.length]);
+
+  const handleRuleNameChange = useCallback((ruleId, name) => {
+    setPrefs((prev) => {
+      const normalized = normalizeSwitchConfigShape(prev);
+      return normalizeSwitchConfigShape({
+        ...normalized,
+        rules: normalized.rules.map((rule) => (
+          rule.id === ruleId ? { ...rule, name } : rule
+        ))
+      });
+    });
+  }, []);
+
+  const handleRuleEnabledChange = useCallback((ruleId, enabled) => {
+    setPrefs((prev) => {
+      const normalized = normalizeSwitchConfigShape(prev);
+      return normalizeSwitchConfigShape({
+        ...normalized,
+        rules: normalized.rules.map((rule) => (
+          rule.id === ruleId ? { ...rule, enabled: Boolean(enabled) } : rule
+        ))
+      });
+    });
+  }, []);
+
   // 持仓 ledger
   useEffect(() => {
     try {
@@ -432,11 +510,12 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     const heldCodes = new Set(exchangeFunds.map((f) => f.code));
     const next = Object.keys(cls).filter((code) => !heldCodes.has(code)).sort();
     setPrefs((prev) => {
-      const before = Array.isArray(prev.enabledCodes) ? prev.enabledCodes : [];
+      const current = getActiveSwitchRule(prev);
+      const before = Array.isArray(current.enabledCodes) ? current.enabledCodes : [];
       if (before.length === next.length && before.every((v, i) => v === next[i])) return prev;
-      return { ...prev, enabledCodes: next };
+      return updateActiveSwitchRule(prev, { enabledCodes: next });
     });
-  }, [exchangeFunds, premiumClassKey]);
+  }, [exchangeFunds, premiumClassKey, activeRuleId]);
 
   // 单一数据源：基准 ETF 只能从「持仓的场内 ETF」里选，所以 prefs.benchmarkCodes
   // 里所有 code 都必须落在 exchangeFunds 之内。这里在 exchangeFunds 变化后：
@@ -455,7 +534,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     const heldClassified = heldOrder.filter((code) => cls[code] === 'H' || cls[code] === 'L');
     const heldClassifiedSet = new Set(heldClassified);
     setPrefs((prev) => {
-      const before = Array.isArray(prev.benchmarkCodes) ? prev.benchmarkCodes : [];
+      const current = getActiveSwitchRule(prev);
+      const before = Array.isArray(current.benchmarkCodes) ? current.benchmarkCodes : [];
       const kept = before.filter((code) => heldClassifiedSet.has(code));
       const keptSet = new Set(kept);
       // 按 exchangeFunds 顺序追加尚未在 benchmarkCodes 中、但已分类的持仓 code。
@@ -465,9 +545,9 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       // 避免下游空数组造成的边角问题；用户分类后下次 effect 会刷成正确值。
       const next = merged.length ? merged : [heldOrder[0]];
       if (next.length === before.length && next.every((v, i) => v === before[i])) return prev;
-      return { ...prev, benchmarkCodes: next };
+      return updateActiveSwitchRule(prev, { benchmarkCodes: next });
     });
-  }, [exchangeFunds, benchmarkCodesJoined, premiumClassKey]);
+  }, [exchangeFunds, benchmarkCodesJoined, premiumClassKey, activeRuleId]);
 
   // 拉取所有候选 ETF 的 Worker 统一指标（候选池为内置纳指 ETF 全集，不仅限于持仓）。
   const loadNav = useCallback(async () => {
@@ -593,7 +673,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       valueKind: value === '' ? 'empty' : Number.isFinite(Number(value)) ? 'number' : typeof value,
       ...switchMeta()
     });
-    setPrefs((prev) => ({ ...prev, [key]: value }));
+    setPrefs((prev) => updateActiveSwitchRule(prev, { [key]: value }));
   }
   // 拖拽分类：将 code 套入 H / L / 未分类。targetClass=null 表示从分类中移出。
   function setCodeClass(code, targetClass) {
@@ -607,10 +687,11 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       ...switchMeta()
     });
     setPrefs((prev) => {
-      const cls = { ...((prev && prev.premiumClass) || {}) };
+      const current = getActiveSwitchRule(prev);
+      const cls = { ...((current && current.premiumClass) || {}) };
       if (targetClass === 'H' || targetClass === 'L') cls[code] = targetClass;
       else delete cls[code];
-      return { ...prev, premiumClass: cls };
+      return updateActiveSwitchRule(prev, { premiumClass: cls });
     });
   }
   // 拖拽状态：高亮当前悬停中的接收区。
@@ -647,7 +728,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   //  - 没启用自动监控也能看到 signals：未启用时 worker 仅计算不推送。
   //  - prefs 变动后会 auto-sync config 到 worker，随后手动/定时 run 刷新 snapshot。
   const intraSignals = useMemo(() => {
-    const list = Array.isArray(workerSnapshot?.signals) ? workerSnapshot.signals : [];
+    const list = Array.isArray(activeWorkerSnapshot?.signals) ? activeWorkerSnapshot.signals : [];
     return list.map((s) => ({
       kind: s.kind,
       from: s.from,
@@ -656,7 +737,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       toName: s.toName || s.to,
       description: s.description || ''
     }));
-  }, [workerSnapshot]);
+  }, [activeWorkerSnapshot]);
 
   // 场外信号：多基准下取「溢价最高」的基准（表示场内已充分偏高，走场外更交同）。
   const otcSignal = useMemo(() => {
@@ -747,14 +828,33 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     return { benches, Lbenches, Hbenches, Lrow, Hrow, pairs, Hpool, Lpool, cls };
   }, [prefs?.benchmarkCodes, prefs?.enabledCodes, prefs?.premiumClass]);
 
+  const runnableRuleCount = useMemo(() => {
+    return switchRules.filter((rule) => {
+      if (!rule?.enabled) return false;
+      const benches = Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes.filter(Boolean) : [];
+      if (!benches.length) return false;
+      if (Number(rule.intraBuyOtherPct) <= Number(rule.intraSellLowerPct)) return false;
+      const enabled = Array.isArray(rule.enabledCodes) ? rule.enabledCodes.filter(Boolean) : [];
+      const benchSet = new Set(benches);
+      const hasOtcCandidates = enabled.some((code) => code && !benchSet.has(code));
+      const cls = rule.premiumClass || {};
+      const pool = Array.from(new Set([...benches, ...enabled])).filter((code) => cls[code] === 'H' || cls[code] === 'L');
+      const hasIntraPair = benches.some((code) => {
+        const currentClass = cls[code];
+        if (currentClass !== 'H' && currentClass !== 'L') return false;
+        const opposite = currentClass === 'H' ? 'L' : 'H';
+        return pool.some((candidate) => candidate !== code && cls[candidate] === opposite);
+      });
+      return hasIntraPair || hasOtcCandidates;
+    }).length;
+  }, [switchRules]);
+
   const workerRunDisabledReason = workerStatus.running
     ? '正在运行'
     : workerStatus.saving
     ? '配置同步中'
-    : !switchSummary.benches.length
-    ? '先配置 H/L 基准'
-    : switchSummary.pairs === 0
-    ? '先配置候选配对'
+    : runnableRuleCount === 0
+    ? '先配置至少一条可运行规则'
     : '';
 
   // 机会卡片点「记录此次切换」后的快捷入口：
@@ -894,10 +994,18 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         workerConfig={workerConfig}
         workerStatus={workerStatus}
         workerConfigExpanded={workerConfigExpanded}
-        workerSnapshot={workerSnapshot}
+        workerSnapshot={activeWorkerSnapshot}
         workerRunDisabledReason={workerRunDisabledReason}
+        rules={switchRules}
+        activeRuleId={activeRuleId}
         handleWorkerToggle={handleWorkerToggle}
         handleWorkerRunOnce={handleWorkerRunOnce}
+        onRuleSelect={handleRuleSelect}
+        onRuleAdd={handleRuleAdd}
+        onRuleDuplicate={handleRuleDuplicate}
+        onRuleRemove={handleRuleRemove}
+        onRuleNameChange={handleRuleNameChange}
+        onRuleEnabledChange={handleRuleEnabledChange}
         setWorkerConfigExpanded={setWorkerConfigExpanded}
         setSnapshotCandModal={(payload) => {
           trackFeatureEvent('switch_strategy', 'snapshot_candidates_open', {

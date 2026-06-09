@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { AlertTriangle, ClipboardList, ChevronDown, ChevronRight, Info, PlayCircle, Radio, X } from 'lucide-react';
+import { AlertTriangle, ClipboardList, ChevronDown, ChevronRight, Copy, Info, PlayCircle, Plus, Radio, Trash2, X } from 'lucide-react';
 import { Card, Pill, SectionHeading, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 export function SwitchStrategyWorkerPanel({
@@ -10,8 +10,16 @@ export function SwitchStrategyWorkerPanel({
   workerConfigExpanded,
   workerSnapshot,
   workerRunDisabledReason,
+  rules = [],
+  activeRuleId = '',
   handleWorkerToggle,
   handleWorkerRunOnce,
+  onRuleSelect,
+  onRuleAdd,
+  onRuleDuplicate,
+  onRuleRemove,
+  onRuleNameChange,
+  onRuleEnabledChange,
   setWorkerConfigExpanded,
   setSnapshotCandModal,
   formatDate,
@@ -29,7 +37,7 @@ export function SwitchStrategyWorkerPanel({
           <label className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5">
             <input
               type="checkbox"
-              className="h-4 w-4"
+              className="h-5 w-5"
               checked={Boolean(workerConfig.enabled)}
               disabled={workerStatus.loading || workerStatus.saving}
               onChange={(e) => handleWorkerToggle(e.target.checked)}
@@ -66,6 +74,86 @@ export function SwitchStrategyWorkerPanel({
             <span>{workerStatus.notice}</span>
           </div>
         ) : null}
+        <div className="rounded-2xl border border-slate-200 bg-white p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">规则列表</div>
+            <button
+              type="button"
+              onClick={onRuleAdd}
+              className={cx(secondaryButtonClass, 'h-8 px-3 text-xs')}
+              title="新增规则"
+            >
+              <Plus className="h-4 w-4" />
+              新增规则
+            </button>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {(rules || []).map((rule, index) => {
+              const isActive = rule.id === activeRuleId;
+              const benchCount = Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes.length : 0;
+              const candidateCount = Array.isArray(rule.enabledCodes) ? rule.enabledCodes.length : 0;
+              return (
+                <div
+                  key={rule.id || `rule-${index}`}
+                  className={cx(
+                    'rounded-xl border p-2 transition-colors',
+                    isActive ? 'border-indigo-300 bg-indigo-50/70' : 'border-slate-200 bg-slate-50/70'
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onRuleSelect?.(rule.id)}
+                    className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1 text-left hover:bg-white/70"
+                  >
+                    <Pill tone={rule.enabled ? 'emerald' : 'slate'}>{rule.enabled ? '启用' : '停用'}</Pill>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold text-slate-800">{rule.name || `规则 ${index + 1}`}</div>
+                      <div className="truncate text-[11px] text-slate-500">{benchCount} 基准 · {candidateCount} 候选</div>
+                    </div>
+                  </button>
+                  {isActive ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-indigo-100 pt-2">
+                      <input
+                        value={rule.name || ''}
+                        onChange={(event) => onRuleNameChange?.(rule.id, event.target.value)}
+                        aria-label="当前规则名称"
+                        className="h-8 min-w-[160px] flex-1 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-800 focus:border-indigo-300 focus:outline-none"
+                      />
+                      <label className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-600">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4"
+                          checked={Boolean(rule.enabled)}
+                          onChange={(event) => onRuleEnabledChange?.(rule.id, event.target.checked)}
+                        />
+                        启用
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => onRuleDuplicate?.(rule.id)}
+                        className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-600 hover:border-indigo-200 hover:text-indigo-700"
+                        title="复制规则"
+                        aria-label="复制当前规则"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onRuleRemove?.(rule.id)}
+                        disabled={(rules || []).length <= 1}
+                        className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-600 hover:border-rose-200 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
+                        title={(rules || []).length <= 1 ? '至少保留一条规则' : '删除规则'}
+                        aria-label="删除当前规则"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
           <button
             type="button"

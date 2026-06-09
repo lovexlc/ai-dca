@@ -84,11 +84,80 @@ test('frontend switch config sync key ignores metadata and numeric string shape'
   assert.notEqual(first, changedThreshold);
 });
 
+test('frontend switch config supports multiple named rules and active rule mirror', () => {
+  const normalized = normalizeSwitchConfigShape({
+    enabled: true,
+    activeRuleId: 'rule-b',
+    rules: [
+      {
+        id: 'rule-a',
+        name: '低高切换',
+        benchmarkCodes: ['513100'],
+        enabledCodes: ['159501'],
+        premiumClass: { '513100': 'H', '159501': 'L' },
+        intraSellLowerPct: 1,
+        intraBuyOtherPct: 3
+      },
+      {
+        id: 'rule-b',
+        name: '备用规则',
+        enabled: false,
+        benchmarkCodes: ['159501'],
+        enabledCodes: ['513100'],
+        premiumClass: { '159501': 'L', '513100': 'H' },
+        intraSellLowerPct: 0.5,
+        intraBuyOtherPct: 4
+      }
+    ]
+  });
+
+  assert.equal(normalized.rules.length, 2);
+  assert.equal(normalized.activeRuleId, 'rule-b');
+  assert.equal(normalized.ruleName, '备用规则');
+  assert.equal(normalized.ruleEnabled, false);
+  assert.deepEqual(normalized.benchmarkCodes, ['159501']);
+  assert.equal(normalized.intraBuyOtherPct, 4);
+});
+
 test('notify worker switch config keeps OTC thresholds after normalization', () => {
   const normalized = normalizeSwitchConfig(BASE_CONFIG);
   assert.equal(normalized.otcPremiumThresholdPct, 9.5);
   assert.equal(normalized.otcMinIntraPremiumLow, 0.5);
   assert.equal(normalized.otcMinIntraPremiumHigh, 1.5);
+});
+
+test('notify worker switch config keeps multiple rules and checks runnable rules', () => {
+  const normalized = normalizeSwitchConfig({
+    enabled: true,
+    activeRuleId: 'rule-b',
+    rules: [
+      {
+        id: 'rule-a',
+        name: '停用规则',
+        enabled: false,
+        benchmarkCodes: ['513100'],
+        enabledCodes: ['159501'],
+        premiumClass: { '513100': 'H', '159501': 'L' },
+        intraSellLowerPct: 1,
+        intraBuyOtherPct: 3
+      },
+      {
+        id: 'rule-b',
+        name: '启用规则',
+        enabled: true,
+        benchmarkCodes: ['159501'],
+        enabledCodes: ['513100'],
+        premiumClass: { '159501': 'L', '513100': 'H' },
+        intraSellLowerPct: 1,
+        intraBuyOtherPct: 3
+      }
+    ]
+  });
+
+  assert.equal(normalized.rules.length, 2);
+  assert.equal(normalized.activeRuleId, 'rule-b');
+  assert.equal(normalized.ruleName, '启用规则');
+  assert.equal(isSwitchConfigRunnable(normalized), true);
 });
 
 test('notify worker switch snapshot echoes OTC thresholds', () => {

@@ -1,4 +1,5 @@
 import { NASDAQ_ETFS, NASDAQ_OTC_FUNDS } from '../app/nasdaqCatalog.js';
+import { normalizeSwitchConfigShape } from '../app/switchStrategySync.js';
 
 const SWITCH_PREFS_KEY = 'aiDcaSwitchStrategyPrefs';
 
@@ -14,43 +15,29 @@ export const DEFAULT_SWITCH_PREFS = {
   otcMinIntraPremiumHigh: 2
 };
 
+export function normalizeSwitchPrefsShape(input = DEFAULT_SWITCH_PREFS) {
+  const merged = { ...DEFAULT_SWITCH_PREFS, ...(input || {}) };
+  return normalizeSwitchConfigShape(merged);
+}
+
 export function readSwitchPrefs(defaults = DEFAULT_SWITCH_PREFS) {
-  if (typeof window === 'undefined') return { ...defaults };
+  if (typeof window === 'undefined') return normalizeSwitchPrefsShape(defaults);
   try {
     const raw = window.localStorage?.getItem(SWITCH_PREFS_KEY);
-    if (!raw) return { ...defaults };
+    if (!raw) return normalizeSwitchPrefsShape(defaults);
     const parsed = JSON.parse(raw);
-    let benchmarkCodes = Array.isArray(parsed?.benchmarkCodes) ? parsed.benchmarkCodes.filter(Boolean) : null;
-    if (!benchmarkCodes && typeof parsed?.benchmarkCode === 'string' && parsed.benchmarkCode) {
-      benchmarkCodes = [parsed.benchmarkCode];
-    }
-    if (!Array.isArray(benchmarkCodes) || !benchmarkCodes.length) {
-      benchmarkCodes = [...defaults.benchmarkCodes];
-    }
     const { benchmarkCode: _legacyBenchmark, ...rest } = parsed || {};
     void _legacyBenchmark;
-    const rawClass = (parsed && typeof parsed.premiumClass === 'object' && parsed.premiumClass) ? parsed.premiumClass : {};
-    const premiumClass = {};
-    for (const [code, value] of Object.entries(rawClass)) {
-      const v = String(value || '').trim().toUpperCase();
-      if (/^\d{6}$/.test(String(code)) && (v === 'H' || v === 'L')) premiumClass[code] = v;
-    }
-    return {
-      ...defaults,
-      ...rest,
-      benchmarkCodes,
-      enabledCodes: Array.isArray(parsed?.enabledCodes) ? parsed.enabledCodes : [],
-      premiumClass
-    };
+    return normalizeSwitchPrefsShape({ ...defaults, ...rest, ...(parsed?.benchmarkCode ? { benchmarkCodes: [parsed.benchmarkCode] } : {}) });
   } catch {
-    return { ...defaults };
+    return normalizeSwitchPrefsShape(defaults);
   }
 }
 
 export function writeSwitchPrefs(prefs) {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage?.setItem(SWITCH_PREFS_KEY, JSON.stringify(prefs));
+    window.localStorage?.setItem(SWITCH_PREFS_KEY, JSON.stringify(normalizeSwitchPrefsShape(prefs)));
   } catch (_error) {
     // ignore
   }

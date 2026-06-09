@@ -18,8 +18,10 @@ import {
 import {
   SWITCH_CONFIG_PREFIX,
   buildSwitchTriggerNotification,
+  collectSwitchConfigCodes,
   computeSwitchSnapshot,
   evaluateSwitchTriggers,
+  getRunnableSwitchRules,
   isInTradingSession,
   isSwitchConfigRunnable,
   normalizeSwitchConfig,
@@ -89,6 +91,8 @@ export async function handleSwitchConfigPost(request, env) {
   if (auth.didUpdate) await writeSettings(env, settings);
   const nextConfig = await writeSwitchConfigForClient(env, auth.clientId, {
     enabled: payload?.enabled,
+    activeRuleId: payload?.activeRuleId,
+    rules: Array.isArray(payload?.rules) ? payload.rules : undefined,
     benchmarkCodes: Array.isArray(payload?.benchmarkCodes)
       ? payload.benchmarkCodes
       : (payload?.benchmarkCode ? [payload.benchmarkCode] : []),
@@ -115,7 +119,7 @@ export async function handleSwitchSnapshotGet(request, env) {
 
   // 自动刷新净值：当 KV 里的 snapshot 是基于陈旧 NAV 算出时，直接补充最新净值，避免完整重算。
   try {
-    if (snapshot && config && isSwitchConfigRunnable({ ...config, enabled: true })) {
+    if (snapshot && !Array.isArray(snapshot.rules) && config && isSwitchConfigRunnable({ ...config, enabled: true })) {
       const benchmarkCodes = Array.isArray(config.benchmarkCodes) ? config.benchmarkCodes : [];
       const probeCode = benchmarkCodes[0]
         || (Array.isArray(config.enabledCodes) ? config.enabledCodes[0] : null);
@@ -195,10 +199,12 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
   if (!clientRecord || !clientRecord.clientId) {
     return { triggered: 0, skipped: 'no-client' };
   }
-  const codes = Array.from(new Set([
-    ...(Array.isArray(config.benchmarkCodes) ? config.benchmarkCodes : []),
-    ...(config.enabledCodes || [])
-  ]));
+  const normalizedConfig = normalizeSwitchConfig(config);
+  const runnableRules = getRunnableSwitchRules({ ...normalizedConfig, enabled: true });
+  if (!runnableRules.length) {
+    return { triggered: 0, pushed: 0, skipped: 'no-runnable-rule' };
+  }
+  const codes = collectSwitchConfigCodes(normalizedConfig);
   const effectivePriceMap = priceMap || await fetchFundMetricPrices(codes, env).catch(() => ({}));
 
   const effectiveNavMap = navByCode || await fetchLatestNavMapWithCache(env, codes, [], {
@@ -210,18 +216,68 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
   });
 
   const computedAtIso = computedAt || new Date().toISOString();
-  const snapshot = computeSwitchSnapshot(config, effectivePriceMap, effectiveNavMap, computedAtIso);
   const prevState = (await readJson(env, switchStateKey(clientId), null)) || {};
-  const { triggers, nextTriggerStates } = evaluateSwitchTriggers(snapshot, prevState.triggerStates || {});
-  snapshot.triggers = triggers;
-  await writeJson(env, switchSnapshotKey(clientId), snapshot);
+  const prevStatesByRule = (prevState && typeof prevState.triggerStatesByRule === 'object' && prevState.triggerStatesByRule)
+    ? prevState.triggerStatesByRule
+    : {};
+  const nextTriggerStatesByRule = {};
+  const snapshots = [];
+  const triggerJobs = [];
+  for (const rule of runnableRules) {
+    const ruleConfig = {
+      ...rule,
+      ruleId: rule.id,
+      ruleName: rule.name,
+      enabled: rule.enabled
+    };
+    const snapshot = computeSwitchSnapshot(ruleConfig, effectivePriceMap, effectiveNavMap, computedAtIso);
+    const prevRuleStates = prevStatesByRule[rule.id] || prevState.triggerStates || {};
+    const { triggers, nextTriggerStates } = evaluateSwitchTriggers(snapshot, prevRuleStates);
+    const taggedTriggers = triggers.map((trigger) => ({
+      ...trigger,
+      ruleId: rule.id,
+      ruleName: rule.name,
+      pairKey: `${rule.id}:${trigger.pairKey}`
+    }));
+    snapshot.triggers = taggedTriggers;
+    snapshots.push(snapshot);
+    nextTriggerStatesByRule[rule.id] = nextTriggerStates;
+    for (const trigger of taggedTriggers) {
+      triggerJobs.push({ snapshot, trigger });
+    }
+  }
+  const activeSnapshot = snapshots.find((snapshot) => snapshot.ruleId === normalizedConfig.activeRuleId)
+    || snapshots[0]
+    || null;
+  const allTriggers = triggerJobs.map((job) => job.trigger);
+  const shouldCombineSnapshot = (normalizedConfig.rules || []).length > 1;
+  const snapshotToStore = shouldCombineSnapshot
+    ? {
+        ...(activeSnapshot || {}),
+        computedAt: computedAtIso,
+        activeRuleId: normalizedConfig.activeRuleId,
+        rules: snapshots.map((snapshot) => ({
+          ruleId: snapshot.ruleId,
+          ruleName: snapshot.ruleName,
+          ready: Boolean(snapshot.ready),
+          signalCount: Array.isArray(snapshot.signals) ? snapshot.signals.length : 0,
+          triggerCount: Array.isArray(snapshot.triggers) ? snapshot.triggers.length : 0,
+          snapshot
+        })),
+        signals: snapshots.flatMap((snapshot) => Array.isArray(snapshot.signals) ? snapshot.signals : []),
+        triggers: allTriggers,
+        ready: snapshots.some((snapshot) => snapshot.ready)
+      }
+    : (activeSnapshot || { computedAt: computedAtIso, ready: false, triggers: [] });
+  await writeJson(env, switchSnapshotKey(clientId), snapshotToStore);
   await writeJson(env, switchStateKey(clientId), {
-    triggerStates: nextTriggerStates,
-    updatedAt: snapshot.computedAt
+    triggerStates: snapshots.length === 1 ? nextTriggerStatesByRule[snapshots[0].ruleId] : {},
+    triggerStatesByRule: nextTriggerStatesByRule,
+    updatedAt: computedAtIso
   });
   let pushedCount = 0;
-  for (const trigger of triggers) {
-    if (!config.enabled) break;
+  for (const { snapshot, trigger } of triggerJobs) {
+    if (!normalizedConfig.enabled) break;
     const testPayload = buildSwitchTriggerNotification(snapshot, trigger, env);
     try {
       const result = await runClientDetection(env, settings, clientRecord, {
@@ -238,11 +294,13 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
     await writeSettings(env, settings);
   }
   return {
-    triggered: triggers.length,
+    triggered: allTriggers.length,
     pushed: pushedCount,
-    candidateCount: (snapshot.byBenchmark || [])
-      .reduce((acc, b) => acc + ((b.candidates || []).length), 0),
-    ready: snapshot.ready
+    ruleCount: runnableRules.length,
+    candidateCount: snapshots.reduce((sum, snapshot) => (
+      sum + (snapshot.byBenchmark || []).reduce((acc, b) => acc + ((b.candidates || []).length), 0)
+    ), 0),
+    ready: snapshots.some((snapshot) => snapshot.ready)
   };
 }
 
@@ -289,8 +347,7 @@ export async function runSwitchStrategyTick(env, scheduledMs, { reason = 'switch
   if (!enabledList.length) return;
   const allCodes = new Set();
   for (const { config } of enabledList) {
-    for (const code of (config.benchmarkCodes || [])) allCodes.add(code);
-    for (const code of (config.enabledCodes || [])) allCodes.add(code);
+    for (const code of collectSwitchConfigCodes(config)) allCodes.add(code);
   }
   const codeList = Array.from(allCodes);
   const [priceMap, navByCode] = await Promise.all([
