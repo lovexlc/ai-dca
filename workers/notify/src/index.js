@@ -2,7 +2,7 @@ import { evaluatePositionDigest, evaluateSellPlanSignals, evaluateVixSignal, run
 import { readSettings, writeSettings } from './notifyStorage.js';
 import { compileNotifyRules, normalizeNotifyPayload } from './rules.js';
 import { handleBark, isBarkRoute } from './bark.js';
-import { WsHub, tryPublishWs } from './wsHub.js';
+import { WsHub } from './wsHub.js';
 import { runMarketDataPush } from './marketDataPush.js';
 import { emptyResponse, jsonResponse, readOrigin } from './notifyHttp.js';
 import {
@@ -18,23 +18,14 @@ import {
   buildEmptyRunSummary
 } from './clientEventState.js';
 import {
-  findGcmRegistration
-} from './gcmRegistrationState.js';
-import {
   buildScopedNotifySettings,
   ensureAuthenticatedClient,
   getClientRecord,
-  hashText,
   NotifyClientError,
   normalizeClientId,
-  normalizeClientName,
-  normalizeClientSecret,
-  normalizeDeviceInstallationId,
-  randomString,
   readCurrentClientId,
   upsertClientRecord
 } from './clientSettings.js';
-import { isWebWsRegistration, normalizeGcmRegistrations } from './gcm.js';
 import {
   handleSwitchConfigGet,
   handleSwitchConfigPost,
@@ -52,18 +43,15 @@ import {
   runHoldingsNotificationsAll
 } from './holdingsNotificationRoutes.js';
 import { normalizeServerChan3Config } from './channels/serverChan3.js';
+import {
+  handleWebWsRegister,
+  handleWebWsRequest,
+  handleWebWsUnregister
+} from './webWsRoutes.js';
 
 // 把 Durable Object 类型重新导出，让 Workers runtime 能在加载 wrangler 绑定时
 // 通过 entry module 的导出表找到 class_name="WsHub"。
 export { WsHub };
-
-function safeDecodePathSegment(value = '') {
-  try {
-    return decodeURIComponent(String(value || ''));
-  } catch (_) {
-    return String(value || '');
-  }
-}
 
 function normalizeTestTargetChannel(value = '') {
   const normalized = String(value || '').trim().toLowerCase();
@@ -71,38 +59,6 @@ function normalizeTestTargetChannel(value = '') {
   if (normalized === 'android' || normalized === 'andriod' || normalized === 'serverchan' || normalized === 'serverchan3') return 'serverchan3';
   if (normalized === 'pc' || normalized === 'ws') return normalized;
   return '';
-}
-
-const MAX_STORED_WEB_WS_REGISTRATIONS = 64;
-
-function webWsRegistrationTime(registration = {}) {
-  return Date.parse(String(registration?.updatedAt || registration?.createdAt || '')) || 0;
-}
-
-function pruneWebWsRegistrations(registrations = [], keepDeviceInstallationId = '') {
-  const normalizedKeepId = normalizeDeviceInstallationId(keepDeviceInstallationId);
-  const normalized = normalizeGcmRegistrations(registrations);
-  const webWs = normalized.filter((registration) => isWebWsRegistration(registration));
-  const nonWebWs = normalized.filter((registration) => !isWebWsRegistration(registration));
-  const sortedWebWs = [...webWs].sort((a, b) => webWsRegistrationTime(b) - webWsRegistrationTime(a));
-  const kept = new Map();
-
-  for (const registration of sortedWebWs) {
-    const id = normalizeDeviceInstallationId(registration.deviceInstallationId || registration.id);
-    if (normalizedKeepId && id === normalizedKeepId) {
-      kept.set(id, registration);
-      break;
-    }
-  }
-
-  for (const registration of sortedWebWs) {
-    if (kept.size >= MAX_STORED_WEB_WS_REGISTRATIONS) break;
-    const id = normalizeDeviceInstallationId(registration.deviceInstallationId || registration.id);
-    if (!id || kept.has(id)) continue;
-    kept.set(id, registration);
-  }
-
-  return [...nonWebWs, ...kept.values()];
 }
 
 async function runClientDetection(env, settings, clientRecord, { reason = 'manual-run', testPayload = null, targetChannels = null } = {}) {
@@ -355,161 +311,18 @@ export default {
       // ── Web 客户端 WebSocket 注册 ──────────────────────────────
       // PC 浏览器通过此端点获取 deviceInstallationId + token，然后接入 WsHub。
       if (request.method === 'POST' && url.pathname === '/api/notify/ws/register') {
-        const payload = await request.json().catch(() => ({}));
-        const clientId = normalizeClientId(payload?.clientId);
-        const clientSecret = normalizeClientSecret(payload?.clientSecret);
-
-        if (!clientId || !clientSecret) {
-          return jsonResponse({ ok: false, message: '缺少 clientId 或 clientSecret。' }, { status: 400, origin });
-        }
-
-        let settings = await readSettings(env);
-        let existingClient = settings.clients?.[clientId] || null;
-        const clientSecretHash = await hashText(clientSecret);
-        if (String(existingClient?.clientSecretHash || '').trim() && existingClient.clientSecretHash !== clientSecretHash) {
-          return jsonResponse({ ok: false, message: 'clientSecret 验证失败。' }, { status: 401, origin });
-        }
-
-        const requestedClientLabel = normalizeClientName(payload?.clientLabel || payload?.label || payload?.clientName || '');
-        const shouldBootstrapClient = !existingClient || !String(existingClient.clientSecretHash || '').trim();
-        const shouldUpdateClientLabel = requestedClientLabel && requestedClientLabel !== String(existingClient?.clientLabel || '').trim();
-        if (shouldBootstrapClient || shouldUpdateClientLabel) {
-          settings = upsertClientRecord(settings, clientId, {
-            ...(requestedClientLabel ? { clientLabel: requestedClientLabel } : {}),
-            clientSecretHash
-          });
-          existingClient = settings.clients?.[clientId] || getClientRecord(settings, clientId);
-        }
-
-        // 生成虚拟设备 ID 和 token
-        const deviceInstallationId = `web-ws:${clientId}`;
-        const wsToken = randomString(64);
-
-        // 历史存储字段仍叫 gcmRegistrations；现在只保留 PC WebSocket 虚拟设备。
-        const registrations = normalizeGcmRegistrations(settings.gcmRegistrations);
-        const existingIdx = registrations.findIndex((r) => r.deviceInstallationId === deviceInstallationId);
-
-        const webDevice = {
-          id: deviceInstallationId,
-          deviceInstallationId,
-          deviceName: `Web · ${existingClient.clientLabel || clientId}`,
-          packageName: '',
-          token: wsToken,
-          isWebClient: true,
-          pairedClients: [{
-            clientId,
-            groupId: existingClient.notifyGroupId || clientId,
-            clientName: existingClient.clientLabel || '',
-            pairedAt: new Date().toISOString(),
-            lastSeenAt: new Date().toISOString()
-          }],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        };
-
-        if (existingIdx >= 0) {
-          registrations[existingIdx] = { ...registrations[existingIdx], ...webDevice };
-        } else {
-          registrations.push(webDevice);
-        }
-
-        settings.gcmRegistrations = pruneWebWsRegistrations(registrations, deviceInstallationId);
-        await writeSettings(env, settings);
-
-        return jsonResponse({ ok: true, deviceInstallationId, token: wsToken }, { origin });
+        return await handleWebWsRegister(request, env);
       }
 
       // ── Web 客户端 WebSocket 注销 ──────────────────────────────
       if (request.method === 'POST' && url.pathname === '/api/notify/ws/unregister') {
-        const payload = await request.json().catch(() => ({}));
-        const clientId = normalizeClientId(payload?.clientId);
-        const clientSecret = normalizeClientSecret(payload?.clientSecret);
-
-        if (!clientId || !clientSecret) {
-          return jsonResponse({ ok: false, message: '缺少 clientId 或 clientSecret。' }, { status: 400, origin });
-        }
-
-        let settings = await readSettings(env);
-        const existingClient = settings.clients?.[clientId];
-
-        if (!existingClient) {
-          return jsonResponse({ ok: false, message: '客户端未注册。' }, { status: 404, origin });
-        }
-
-        const clientSecretHash = await hashText(clientSecret);
-        if (existingClient.clientSecretHash && existingClient.clientSecretHash !== clientSecretHash) {
-          return jsonResponse({ ok: false, message: 'clientSecret 验证失败。' }, { status: 401, origin });
-        }
-
-        const deviceInstallationId = `web-ws:${clientId}`;
-        const registrations = normalizeGcmRegistrations(settings.gcmRegistrations);
-        settings.gcmRegistrations = registrations.filter((r) => r.deviceInstallationId !== deviceInstallationId);
-        await writeSettings(env, settings);
-
-        return jsonResponse({ ok: true }, { origin });
+        return await handleWebWsUnregister(request, env);
       }
 
       // 实时通道 WebSocket 升级：客户端在 Sec-WebSocket-Protocol 头里用
       // "jijin-token-<fcmToken>" 携带 token。验证后转发给该设备的 WsHub Durable Object。
       if (url.pathname.startsWith('/api/notify/ws/')) {
-        const tail = url.pathname.slice('/api/notify/ws/'.length);
-        const slashIdx = tail.indexOf('/');
-        const deviceInstallationIdRaw = slashIdx === -1 ? tail : tail.slice(0, slashIdx);
-        const subpath = slashIdx === -1 ? '' : tail.slice(slashIdx + 1);
-        const deviceInstallationId = normalizeDeviceInstallationId(safeDecodePathSegment(deviceInstallationIdRaw || ''));
-
-        if (!deviceInstallationId) {
-          return jsonResponse({ ok: false, message: '缺少 deviceInstallationId。' }, { status: 400, origin });
-        }
-
-        // (a) Internal admin publish。仅服务仅有3 个调试点使用，需要 ADMIN_TEST_TOKEN。
-        if (request.method === 'POST' && subpath === 'publish') {
-          const expected = String((env && env.ADMIN_TEST_TOKEN) || '').trim();
-          const auth = String(request.headers.get('authorization') || '').trim();
-          const provided = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';
-          if (!expected || provided !== expected) {
-            return jsonResponse({ ok: false, message: 'admin token mismatch' }, { status: 401, origin });
-          }
-          let body = {};
-          try { body = await request.json(); } catch (_) { body = {}; }
-          const result = await tryPublishWs(env, deviceInstallationId, body || {});
-          return jsonResponse({ ok: !!(result && result.ok), result }, { origin });
-        }
-
-        // (b) WebSocket 升级。
-        if (request.method === 'GET' && subpath === '') {
-          if ((request.headers.get('upgrade') || '').toLowerCase() !== 'websocket') {
-            return jsonResponse({ ok: false, message: 'expected websocket upgrade' }, { status: 426, origin });
-          }
-          const protoHeader = request.headers.get('sec-websocket-protocol') || '';
-          const protocols = protoHeader.split(',').map((s) => s.trim()).filter(Boolean);
-          const TOKEN_PREFIX = 'jijin-token-';
-          const tokenProto = protocols.find((p) => p.startsWith(TOKEN_PREFIX)) || '';
-          const token = tokenProto ? tokenProto.slice(TOKEN_PREFIX.length).trim() : '';
-          if (!token) {
-            return jsonResponse({ ok: false, message: '缺少 token 子协议。' }, { status: 401, origin });
-          }
-          const settings = await readSettings(env);
-          const reg = findGcmRegistration(settings, { deviceInstallationId });
-          if (!reg) {
-            return jsonResponse({ ok: false, message: '未找到设备注册记录。' }, { status: 404, origin });
-          }
-          if (!reg.isWebClient && !String(reg.deviceInstallationId || reg.id || '').startsWith('web-ws:')) {
-            return jsonResponse({ ok: false, message: '旧版 Android GCM/FCM 设备已下线。' }, { status: 410, origin });
-          }
-          if (String(reg.token || '').trim() !== token) {
-            return jsonResponse({ ok: false, message: 'token 与注册记录不一致。' }, { status: 401, origin });
-          }
-          // 验证通过，转发给 WsHub Durable Object，并把设备 ID 通过内部 header
-          // 带给 DO，用于上线后自动 drain 该设备的离线队列。
-          const id = env.WS_HUB.idFromName(deviceInstallationId);
-          const stub = env.WS_HUB.get(id);
-          const forwardedHeaders = new Headers(request.headers);
-          forwardedHeaders.set('x-device-installation-id', deviceInstallationId);
-          return await stub.fetch('https://ws-hub/connect', new Request(request, { headers: forwardedHeaders }));
-        }
-
-        return jsonResponse({ ok: false, message: 'invalid ws route' }, { status: 404, origin });
+        return await handleWebWsRequest(request, env, url);
       }
 
       if ((request.method === 'GET' || request.method === 'POST') && isBarkRoute(url)) {
