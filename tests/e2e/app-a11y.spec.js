@@ -4,15 +4,16 @@ import {
   ensureNotifyConfigExpanded,
   mockAcceptanceNetwork,
   openMarketsCnEtfDetail,
+  selectChartRange,
   selectCnFundMetric,
   waitForWorkspace
 } from './acceptance-helpers.js';
 
 const pages = [
-  { name: 'strategy-guide', url: './index.html?tab=strategyGuide', text: '美股策略助手' },
+  { name: 'strategy-guide', url: './index.html?tab=strategyGuide', text: '策略指南' },
   { name: 'holdings', url: './index.html?tab=holdings', text: '持仓总览' },
   { name: 'markets', url: './index.html?tab=markets', text: '行情中心' },
-  { name: 'notify', url: './index.html?tab=notify', text: '通知设置' }
+  { name: 'notify', url: './index.html?tab=notify', text: '消息推送配置' }
 ];
 
 async function expectNoSeriousA11yViolations(page) {
@@ -34,12 +35,12 @@ test.describe('accessibility acceptance', () => {
 
   for (const item of pages) {
     test(`${item.name} has no serious accessibility violations`, async ({ page }) => {
-      await page.goto(item.url);
+      await page.goto(item.url, { waitUntil: 'domcontentloaded' });
       await waitForWorkspace(page, item.text);
 
       if (item.name === 'markets') {
         await openMarketsCnEtfDetail(page);
-        await page.getByRole('button', { name: '5天' }).click();
+        await selectChartRange(page, '5 天');
         await selectCnFundMetric(page, 'nav');
       }
 
@@ -52,7 +53,7 @@ test.describe('accessibility acceptance', () => {
   }
 
   test('account login dialog has no serious accessibility violations', async ({ page }) => {
-    await page.goto('./index.html?tab=strategy');
+    await page.goto('./index.html?tab=strategy', { waitUntil: 'domcontentloaded' });
     await waitForWorkspace(page, '美股策略助手');
     await page.getByRole('button', { name: /登录账户|账户：/ }).click();
     await expect(page.getByRole('dialog').filter({ hasText: /账户登录|注册账户|状态|未登录/ })).toBeVisible({ timeout: 10_000 });

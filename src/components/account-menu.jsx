@@ -660,12 +660,13 @@ export function AccountMenu() {
           <div
             role="dialog"
             aria-modal="true"
+            aria-labelledby="account-auth-dialog-title"
             className="relative flex max-h-[95vh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:max-h-[90vh] sm:rounded-2xl"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
               <div className="min-w-0">
-                <div className="text-sm font-bold text-slate-900">{authMode === 'register' ? '注册账户' : '账户登录'}</div>
+                <div id="account-auth-dialog-title" className="text-sm font-bold text-slate-900">{authMode === 'register' ? '注册账户' : '账户登录'}</div>
                 <div className="mt-0.5 truncate text-xs text-slate-500">登录后按变更自动同步</div>
               </div>
               <button

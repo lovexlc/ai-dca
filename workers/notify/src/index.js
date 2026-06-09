@@ -25,14 +25,16 @@ import {
   ensureAuthenticatedClient,
   getClientRecord,
   hashText,
+  NotifyClientError,
   normalizeClientId,
+  normalizeClientName,
   normalizeClientSecret,
   normalizeDeviceInstallationId,
   randomString,
   readCurrentClientId,
   upsertClientRecord
 } from './clientSettings.js';
-import { normalizeGcmRegistrations } from './gcm.js';
+import { isWebWsRegistration, normalizeGcmRegistrations } from './gcm.js';
 import {
   handleSwitchConfigGet,
   handleSwitchConfigPost,
@@ -69,6 +71,38 @@ function normalizeTestTargetChannel(value = '') {
   if (normalized === 'android' || normalized === 'andriod' || normalized === 'serverchan' || normalized === 'serverchan3') return 'serverchan3';
   if (normalized === 'pc' || normalized === 'ws') return normalized;
   return '';
+}
+
+const MAX_STORED_WEB_WS_REGISTRATIONS = 64;
+
+function webWsRegistrationTime(registration = {}) {
+  return Date.parse(String(registration?.updatedAt || registration?.createdAt || '')) || 0;
+}
+
+function pruneWebWsRegistrations(registrations = [], keepDeviceInstallationId = '') {
+  const normalizedKeepId = normalizeDeviceInstallationId(keepDeviceInstallationId);
+  const normalized = normalizeGcmRegistrations(registrations);
+  const webWs = normalized.filter((registration) => isWebWsRegistration(registration));
+  const nonWebWs = normalized.filter((registration) => !isWebWsRegistration(registration));
+  const sortedWebWs = [...webWs].sort((a, b) => webWsRegistrationTime(b) - webWsRegistrationTime(a));
+  const kept = new Map();
+
+  for (const registration of sortedWebWs) {
+    const id = normalizeDeviceInstallationId(registration.deviceInstallationId || registration.id);
+    if (normalizedKeepId && id === normalizedKeepId) {
+      kept.set(id, registration);
+      break;
+    }
+  }
+
+  for (const registration of sortedWebWs) {
+    if (kept.size >= MAX_STORED_WEB_WS_REGISTRATIONS) break;
+    const id = normalizeDeviceInstallationId(registration.deviceInstallationId || registration.id);
+    if (!id || kept.has(id)) continue;
+    kept.set(id, registration);
+  }
+
+  return [...nonWebWs, ...kept.values()];
 }
 
 async function runClientDetection(env, settings, clientRecord, { reason = 'manual-run', testPayload = null, targetChannels = null } = {}) {
@@ -330,15 +364,21 @@ export default {
         }
 
         let settings = await readSettings(env);
-        const existingClient = settings.clients?.[clientId];
-
-        if (!existingClient) {
-          return jsonResponse({ ok: false, message: '客户端未注册，请先同步通知配置。' }, { status: 404, origin });
+        let existingClient = settings.clients?.[clientId] || null;
+        const clientSecretHash = await hashText(clientSecret);
+        if (String(existingClient?.clientSecretHash || '').trim() && existingClient.clientSecretHash !== clientSecretHash) {
+          return jsonResponse({ ok: false, message: 'clientSecret 验证失败。' }, { status: 401, origin });
         }
 
-        const clientSecretHash = await hashText(clientSecret);
-        if (existingClient.clientSecretHash && existingClient.clientSecretHash !== clientSecretHash) {
-          return jsonResponse({ ok: false, message: 'clientSecret 验证失败。' }, { status: 401, origin });
+        const requestedClientLabel = normalizeClientName(payload?.clientLabel || payload?.label || payload?.clientName || '');
+        const shouldBootstrapClient = !existingClient || !String(existingClient.clientSecretHash || '').trim();
+        const shouldUpdateClientLabel = requestedClientLabel && requestedClientLabel !== String(existingClient?.clientLabel || '').trim();
+        if (shouldBootstrapClient || shouldUpdateClientLabel) {
+          settings = upsertClientRecord(settings, clientId, {
+            ...(requestedClientLabel ? { clientLabel: requestedClientLabel } : {}),
+            clientSecretHash
+          });
+          existingClient = settings.clients?.[clientId] || getClientRecord(settings, clientId);
         }
 
         // 生成虚拟设备 ID 和 token
@@ -373,7 +413,7 @@ export default {
           registrations.push(webDevice);
         }
 
-        settings.gcmRegistrations = registrations;
+        settings.gcmRegistrations = pruneWebWsRegistrations(registrations, deviceInstallationId);
         await writeSettings(env, settings);
 
         return jsonResponse({ ok: true, deviceInstallationId, token: wsToken }, { origin });
@@ -480,6 +520,16 @@ export default {
     } catch (error) {
       if (error instanceof Response) {
         return error;
+      }
+
+      const status = Number(error?.status) || 0;
+      if (error instanceof NotifyClientError || (status >= 400 && status < 500)) {
+        return jsonResponse({
+          error: error instanceof Error ? error.message : '通知请求无效'
+        }, {
+          status,
+          origin
+        });
       }
 
       return jsonResponse({

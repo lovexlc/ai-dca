@@ -108,7 +108,11 @@ export async function mockAcceptanceNetwork(page) {
 }
 
 export async function waitForWorkspace(page, label) {
-  await expect(page.getByText(label).first()).toBeVisible({ timeout: 20_000 });
+  await expect(visibleText(page, label)).toBeVisible({ timeout: 20_000 });
+}
+
+export function visibleText(page, text) {
+  return page.getByText(text).filter({ visible: true }).first();
 }
 
 export async function expectNoCrash(page) {
@@ -124,20 +128,35 @@ export async function openMarketsCnEtfDetail(page) {
   await page.goto('./index.html?tab=markets');
   await waitForWorkspace(page, '行情中心');
   await page.getByRole('button', { name: /A\s*股/ }).click();
-  await expect(page.getByText('513100').first()).toBeVisible({ timeout: 20_000 });
-  await page.getByText('513100').first().click();
-  await expect(page.getByText('纳指 ETF').first()).toBeVisible({ timeout: 20_000 });
+  const cnEtfRow = page.locator('tr:visible').filter({ hasText: '513100' }).first();
+  await expect(cnEtfRow).toBeVisible({ timeout: 20_000 });
+  await cnEtfRow.click();
+  await expect(visibleText(page, '纳指 ETF')).toBeVisible({ timeout: 20_000 });
 }
 
 export async function selectCnFundMetric(page, value) {
   const paramSelect = page.getByLabel('A股基金图表参数').first();
-  await paramSelect.selectOption(value);
+  if (await paramSelect.isVisible().catch(() => false)) {
+    await paramSelect.selectOption(value);
+  } else {
+    const metricLabel = value === 'nav' ? '净值' : value === 'premium' ? '溢价' : '价格';
+    const metricButton = page.getByRole('button', { name: /^(价格|净值|溢价)$/ }).first();
+    await expect(metricButton).toBeVisible({ timeout: 10_000 });
+    if ((await metricButton.innerText()).trim() !== metricLabel) {
+      await metricButton.click();
+      await page.getByRole('button', { name: new RegExp(`^${metricLabel}(\\s|$)`) }).last().click();
+    }
+  }
   await expect(page.locator('[aria-label="页面加载中"]')).toHaveCount(0, { timeout: 10_000 });
   const loadingText = value === 'nav' ? '正在获取净值' : value === 'premium' ? '正在计算溢价' : '';
   if (loadingText) {
     await expect(page.getByText(loadingText)).toHaveCount(0, { timeout: 10_000 });
   }
-  await expect(page.locator('.recharts-wrapper svg').first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('.recharts-wrapper svg:visible, [role="application"]:visible').first()).toBeVisible({ timeout: 10_000 });
+}
+
+export async function selectChartRange(page, label) {
+  await page.getByRole('tab', { name: label }).click();
 }
 
 export async function ensureNotifyConfigExpanded(page) {

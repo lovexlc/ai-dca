@@ -96,7 +96,6 @@ export function NotifyConfigCard({
                 type="button"
                 role="tab"
                 aria-selected={notifyPlatform === key}
-                aria-pressed={notifyPlatform === key}
                 aria-controls="notify-panel"
                 onClick={() => setNotifyPlatform(key)}
               >

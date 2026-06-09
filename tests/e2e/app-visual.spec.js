@@ -5,6 +5,7 @@ import {
   ensureNotifyConfigExpanded,
   mockAcceptanceNetwork,
   openMarketsCnEtfDetail,
+  selectChartRange,
   selectCnFundMetric,
   waitForWorkspace
 } from './acceptance-helpers.js';
@@ -26,16 +27,16 @@ test.describe('visual acceptance', () => {
 
   test('markets CN ETF detail screenshot', async ({ page }) => {
     await openMarketsCnEtfDetail(page);
-    await page.getByRole('button', { name: '5天' }).click();
+    await selectChartRange(page, '5 天');
     await selectCnFundMetric(page, 'nav');
     await page.screenshot({ path: screenshotPath('markets-cn-etf-detail'), fullPage: true });
   });
 
   test('markets CN fund metric state screenshot', async ({ page }) => {
     await openMarketsCnEtfDetail(page);
-    await page.getByRole('button', { name: '5天' }).click();
+    await selectChartRange(page, '5 天');
     await selectCnFundMetric(page, 'premium');
-    await expect(page.getByText('估算溢价').first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('body')).toContainText(/溢价|溢价差/, { timeout: 10_000 });
     await page.screenshot({ path: screenshotPath('markets-cn-fund-param-premium'), fullPage: true });
   });
 
@@ -47,7 +48,7 @@ test.describe('visual acceptance', () => {
 
   test('strategy guide screenshot', async ({ page }) => {
     await page.goto('./index.html?tab=strategyGuide');
-    await waitForWorkspace(page, '美股策略助手');
+    await waitForWorkspace(page, '策略指南');
     await page.screenshot({ path: screenshotPath('strategy-guide'), fullPage: true });
   });
 

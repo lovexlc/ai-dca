@@ -5,6 +5,14 @@ import { normalizeNotifyPayload } from './rules.js';
 export const CLIENT_SECRET_HEADER = 'x-notify-client-secret';
 const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
+export class NotifyClientError extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.name = 'NotifyClientError';
+    this.status = status;
+  }
+}
+
 export function normalizeSettings(settings = {}) {
   const rawClients = typeof settings.clients === 'object' && settings.clients ? settings.clients : {};
   const gotifyClients = Array.isArray(settings.gotifyClients)
@@ -248,11 +256,11 @@ export function requireMatchingClientId(request, payload = {}) {
   const currentClientId = queryClientId || bodyClientId;
 
   if (!currentClientId) {
-    throw new Error('缺少浏览器 clientId。');
+    throw new NotifyClientError('缺少浏览器 clientId。', 400);
   }
 
   if (queryClientId && bodyClientId && queryClientId !== bodyClientId) {
-    throw new Error('浏览器 clientId 不匹配。');
+    throw new NotifyClientError('浏览器 clientId 不匹配。', 400);
   }
 
   return currentClientId;
@@ -264,14 +272,14 @@ export async function ensureAuthenticatedClient(request, settings, options = {})
   const desiredClientLabel = normalizeClientName(options?.clientLabel || '');
 
   if (!clientSecret) {
-    throw new Error('缺少浏览器鉴权信息，请刷新页面后重试。');
+    throw new NotifyClientError('缺少浏览器鉴权信息，请刷新页面后重试。', 401);
   }
 
   const existingClient = settings.clients?.[clientId] || null;
   const clientSecretHash = await hashText(clientSecret);
 
   if (String(existingClient?.clientSecretHash || '').trim() && existingClient.clientSecretHash !== clientSecretHash) {
-    throw new Error('浏览器鉴权失败，请回到原浏览器页面重新加载后重试。');
+    throw new NotifyClientError('浏览器鉴权失败，请回到原浏览器页面重新加载后重试。', 401);
   }
 
   const needsSecretBootstrap = !existingClient || !String(existingClient.clientSecretHash || '').trim();
