@@ -1,31 +1,23 @@
 import { useState } from 'react';
 import { Check, MessageSquare } from 'lucide-react';
 import { trackFeatureEvent } from '../app/analytics.js';
+import { PREMIUM_SURVEY_INTEREST_OPTIONS, PREMIUM_SURVEY_PRICE_OPTIONS } from '../app/premiumSurveyOptions.js';
 
 const STORAGE_KEY = 'aiDcaPremiumSurveyState';
-
-const SURVEY_OPTIONS = [
-  { key: 'ad_free', label: '少广告 / 无广告' },
-  { key: 'advanced_alerts', label: '更强提醒策略' },
-  { key: 'ai_research', label: 'AI 复盘分析' },
-  { key: 'data_export', label: '导出与备份增强' },
-  { key: 'market_tools', label: '行情和切换工具增强' }
-];
-
-const PRICE_OPTIONS = [
-  { key: 'free_ads', label: '免费 + 广告' },
-  { key: 'monthly_low', label: '低价月付' },
-  { key: 'yearly', label: '年付' },
-  { key: 'one_time', label: '一次性买断' }
-];
+const MAX_INTEREST_SELECTIONS = 7;
+const VALID_INTEREST_KEYS = new Set(PREMIUM_SURVEY_INTEREST_OPTIONS.map((option) => option.key));
+const VALID_PRICE_KEYS = new Set(PREMIUM_SURVEY_PRICE_OPTIONS.map((option) => option.key));
 
 function readSurveyState() {
   if (typeof window === 'undefined') return { interests: [], price: '', submitted: false };
   try {
     const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || 'null');
+    const price = String(parsed?.price || '');
     return {
-      interests: Array.isArray(parsed?.interests) ? parsed.interests.filter(Boolean) : [],
-      price: String(parsed?.price || ''),
+      interests: Array.isArray(parsed?.interests)
+        ? parsed.interests.map((item) => String(item || '')).filter((item) => VALID_INTEREST_KEYS.has(item))
+        : [],
+      price: VALID_PRICE_KEYS.has(price) ? price : '',
       submitted: parsed?.submitted === true
     };
   } catch {
@@ -44,7 +36,7 @@ export function PremiumExperience({ embedded = false }) {
   function toggleInterest(key) {
     const interests = survey.interests.includes(key)
       ? survey.interests.filter((item) => item !== key)
-      : [...survey.interests, key].slice(0, 5);
+      : [...survey.interests, key].slice(0, MAX_INTEREST_SELECTIONS);
     const next = { ...survey, interests, submitted: false };
     setSurvey(next);
     saveSurveyState(next);
@@ -84,7 +76,7 @@ export function PremiumExperience({ embedded = false }) {
         </div>
         <div className="mt-4 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">想优先看到什么</div>
         <div className="mt-3 flex flex-wrap gap-2">
-          {SURVEY_OPTIONS.map((option) => {
+          {PREMIUM_SURVEY_INTEREST_OPTIONS.map((option) => {
             const selected = survey.interests.includes(option.key);
             return (
               <button
@@ -102,7 +94,7 @@ export function PremiumExperience({ embedded = false }) {
         </div>
         <div className="mt-5 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">更能接受哪种模式</div>
         <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {PRICE_OPTIONS.map((option) => {
+          {PREMIUM_SURVEY_PRICE_OPTIONS.map((option) => {
             const selected = survey.price === option.key;
             return (
               <button

@@ -3,6 +3,7 @@ import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Too
 import { Activity, Bell, Bot, Calendar, ChevronDown, ChevronRight, Clock, Eye, MessageSquareText, MousePointerClick, Percent, RefreshCw, ShieldCheck, Shuffle, Sparkles, Trash2, UserRound, Users } from 'lucide-react';
 import { buildAnalyticsSummary, clearAnalyticsEvents, fetchRemoteAnalyticsSummary, isAnalyticsAdmin, trackAnalyticsEvent } from '../app/analytics.js';
 import { loadCloudSession } from '../app/authClient.js';
+import { PREMIUM_SURVEY_INTEREST_LABELS, PREMIUM_SURVEY_PRICE_LABELS } from '../app/premiumSurveyOptions.js';
 import { cx } from '../components/experience-ui.jsx';
 
 const RANGE_OPTIONS = [
@@ -98,6 +99,11 @@ function Card({ title, value, icon: Icon, hint }) {
       {hint ? <div className="mt-1 text-xs text-slate-400">{hint}</div> : null}
     </div>
   );
+}
+
+function premiumSurveyLabel(key, labels) {
+  const value = String(key || '');
+  return labels[value] || value || 'unknown';
 }
 
 function NotifyCard({ total, platformUsers = {} }) {
@@ -464,7 +470,7 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
               <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-3 py-2 text-left">关注功能</th><th className="px-3 py-2 text-right">次数</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {(summary.premiumSurvey?.interests || []).length ? (summary.premiumSurvey.interests || []).map((row) => (
-                  <tr key={row.key}><td className="px-3 py-2 text-slate-700">{row.key}</td><td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.count}</td></tr>
+                  <tr key={row.key}><td className="px-3 py-2 text-slate-700">{premiumSurveyLabel(row.key, PREMIUM_SURVEY_INTEREST_LABELS)}</td><td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.count}</td></tr>
                 )) : <tr><td colSpan={2} className="px-3 py-8 text-center text-slate-400">暂无关注功能反馈</td></tr>}
               </tbody>
             </table>
@@ -474,7 +480,7 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
               <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-3 py-2 text-left">价格选项</th><th className="px-3 py-2 text-right">次数</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {(summary.premiumSurvey?.priceOptions || []).length ? (summary.premiumSurvey.priceOptions || []).map((row) => (
-                  <tr key={row.key}><td className="px-3 py-2 text-slate-700">{row.key}</td><td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.count}</td></tr>
+                  <tr key={row.key}><td className="px-3 py-2 text-slate-700">{premiumSurveyLabel(row.key, PREMIUM_SURVEY_PRICE_LABELS)}</td><td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.count}</td></tr>
                 )) : <tr><td colSpan={2} className="px-3 py-8 text-center text-slate-400">暂无价格反馈</td></tr>}
               </tbody>
             </table>
