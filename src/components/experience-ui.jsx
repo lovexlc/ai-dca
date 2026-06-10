@@ -75,13 +75,13 @@ export function PageHero({
           <button
             type="button"
             onClick={onBack}
-            className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition-colors hover:text-indigo-600"
+            className="-ml-2 mb-4 inline-flex min-h-8 items-center gap-2 rounded-lg px-2 text-sm font-medium text-slate-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
           >
             <ArrowLeft className="h-4 w-4" />
             {backLabel}
           </button>
         ) : backHref ? (
-          <a className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition-colors hover:text-indigo-600" href={backHref}>
+          <a className="-ml-2 mb-4 inline-flex min-h-8 items-center gap-2 rounded-lg px-2 text-sm font-medium text-slate-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600" href={backHref}>
             <ArrowLeft className="h-4 w-4" />
             {backLabel}
           </a>

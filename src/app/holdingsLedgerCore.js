@@ -16,8 +16,8 @@
  *     · exchange（场内 ETF）：盘中实时，仅当行情日期为今天时计入。
  *     · otc / qdii：按该类型的期望最新披露净值日计入；场外晚间披露的 T 日净值、
  *       QDII 天然滞后的 T-1 净值都应展示为最新披露日收益。
- *   - QDII 识别：优先看 transaction.kind，否则按持仓名称中的关键词（QDII / 纳指 / 标普 / 海外… ）+
- *     代码白名单兜底；都不命中则按代码前缀分 exchange / otc 两档。
+ *   - QDII 识别：优先看 transaction.kind，否则按项目内置 QDII 代码表兜底；都不命中则按
+ *     代码前缀分 exchange / otc 两档。
  */
 
 import { countHolidayWorkdaysBetween, calendarDaysBetween } from './holidaysCN.js';
@@ -522,7 +522,7 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     const latestNav = round(Number(snapshot?.latestNav) || 0, 4);
     const previousNav = round(Number(snapshot?.previousNav) || 0, 4);
     const latestNavDateStr = String(snapshot?.latestNavDate || '');
-    // 重新根据代码 + 名称识别 QDII：存量交易 kind='otc' 的 QDII 基金会在此升级为 'qdii'。
+    // 重新根据代码表识别 QDII：存量交易 kind='otc' 的 QDII 基金会在此升级为 'qdii'。
     const resolvedName = bucket.name || snapshot?.name || '';
     const resolvedKind = normalizeFundKind(bucket.kind, bucket.code, resolvedName);
     bucket.kind = resolvedKind;

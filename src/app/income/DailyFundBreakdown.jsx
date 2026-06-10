@@ -62,7 +62,42 @@ function renderPnl(value) {
   return `${value > 0 ? '+' : ''}${formatCurrency(value, '¥', 2)}`;
 }
 
-export function DailyFundBreakdown({ ledger, selectedDate, className = '' }) {
+function buildSnapshotRows(aggregates = []) {
+  return (Array.isArray(aggregates) ? aggregates : [])
+    .filter((agg) => agg && agg.hasPosition)
+    .map((agg) => {
+      const hasPreviousPrice = Boolean(agg.hasPreviousNav)
+        || Number(agg.previousPrice) > 0
+        || Number(agg.previousNav) > 0
+        || Number(agg.previousValue) > 0;
+      const hasUpdate = Boolean(agg.hasCurrentPrice && hasPreviousPrice && agg.hasTodayNav);
+      return {
+        code: String(agg.code || '').trim(),
+        name: String(agg.name || '').trim(),
+        shares: Number(agg.totalShares) || 0,
+        nav: Number(agg.currentPrice) || Number(agg.latestNav) || null,
+        prevNav: Number(agg.previousPrice) || Number(agg.previousNav) || null,
+        prevDate: String(agg.previousNavDate || ''),
+        navDate: String(agg.latestNavDate || ''),
+        pnl: hasUpdate ? Number(agg.todayProfit) : null,
+        txsToday: []
+      };
+    })
+    .sort((a, b) => {
+      const av = Number.isFinite(a.pnl) ? Math.abs(a.pnl) : -1;
+      const bv = Number.isFinite(b.pnl) ? Math.abs(b.pnl) : -1;
+      if (bv !== av) return bv - av;
+      return a.code.localeCompare(b.code);
+    });
+}
+
+export function DailyFundBreakdown({
+  ledger,
+  selectedDate,
+  aggregates = [],
+  currentSnapshotDate = '',
+  className = ''
+}) {
   const transactions = useMemo(
     () => (Array.isArray(ledger?.transactions) ? ledger.transactions : []),
     [ledger]
@@ -79,6 +114,10 @@ export function DailyFundBreakdown({ ledger, selectedDate, className = '' }) {
     let cancelled = false;
     if (!selectedDate || codes.length === 0) {
       setState({ status: 'ready', rows: [], stale: false, error: null });
+      return undefined;
+    }
+    if (currentSnapshotDate && selectedDate === currentSnapshotDate && Array.isArray(aggregates) && aggregates.length > 0) {
+      setState({ status: 'ready', rows: buildSnapshotRows(aggregates), stale: false, error: null });
       return undefined;
     }
     setState((p) => ({ ...p, status: 'loading', error: null }));
@@ -106,7 +145,7 @@ export function DailyFundBreakdown({ ledger, selectedDate, className = '' }) {
     return () => {
       cancelled = true;
     };
-  }, [selectedDate, codes, transactions, snapshotsByCode, txMetaByCode, today]);
+  }, [selectedDate, currentSnapshotDate, aggregates, codes, transactions, snapshotsByCode, txMetaByCode, today]);
 
   const isLoading = state.status === 'loading';
   const isError = state.status === 'error';
@@ -142,7 +181,7 @@ export function DailyFundBreakdown({ ledger, selectedDate, className = '' }) {
           </div>
         ) : null}
         {rows.map((row) => {
-          const displayName = nameMap.get(row.code) || row.code;
+          const displayName = row.name || nameMap.get(row.code) || row.code;
           const hasUpdate = Number.isFinite(row.pnl);
           return (
             <div key={row.code} className="flex items-center justify-between gap-3 py-2.5">

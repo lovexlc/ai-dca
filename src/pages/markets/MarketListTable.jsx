@@ -150,6 +150,21 @@ const RETURN_COLUMNS = [
 ];
 
 const DEFAULT_HIDDEN_COLUMNS = Object.fromEntries(RETURN_COLUMNS.map((c) => [c.id, false]));
+const MOBILE_DATA_TABLE_HIDDEN_COLUMNS = {
+  limit: false,
+  premium: false,
+  currentYearPercent: false,
+  return1w: false,
+  return1m: false,
+  return3m: false,
+  return6m: false,
+  return1y: false,
+  returnBase: false,
+  totalShares: false,
+  feeRate: false,
+  redeemFeeRate: false,
+  trend: false,
+};
 
 export function MarketListTable({
   rows = [],
@@ -432,7 +447,7 @@ export function MarketListTable({
     initialState: {
       sorting: [{ id: 'changePercent', desc: true }],
       pagination: { pageSize: 50 },
-      columnVisibility: {
+      columnVisibility: compact ? MOBILE_DATA_TABLE_HIDDEN_COLUMNS : {
         return1w: false,
         return1m: false,
         return3m: false,
@@ -534,7 +549,11 @@ export function MarketListTable({
           table={table}
           tableScrollRef={tableScrollRef}
           onHorizontalScroll={handleDataTableScroll}
-          className="[&_td]:text-right [&_td:first-child]:text-left [&_td:nth-child(2)]:text-left [&_th]:whitespace-nowrap"
+          tableContainerClassName={compact ? 'rounded-xl' : undefined}
+          className={cx(
+            '[&_td]:text-right [&_td:first-child]:text-left [&_td:nth-child(2)]:text-left [&_th]:whitespace-nowrap',
+            compact && '[&_table]:min-w-[360px] [&_td]:px-2 [&_td]:py-3 [&_th]:px-2 [&_th]:py-2 [&_td:nth-child(2)]:max-w-[160px] [&_td:nth-child(2)>div]:max-w-[160px]'
+          )}
           onRowClick={(tableRow) => onSelect?.(tableRow.original)}
         />
       </div>

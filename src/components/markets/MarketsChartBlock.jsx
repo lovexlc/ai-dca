@@ -191,7 +191,7 @@ export function MarketsKlineChart(props) {
         <span style={TITLE_STRONG}>{symbol} · {timeframe}</span>
         {stats ? (
           <span style={statColor}>
-            {stats.last.c}　{stats.chg >= 0 ? '+' : ''}{stats.chg.toFixed(2)}%
+            {stats.last.c} {stats.chg >= 0 ? '+' : ''}{stats.chg.toFixed(2)}%
           </span>
         ) : null}
       </div>

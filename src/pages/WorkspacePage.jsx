@@ -116,6 +116,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const [showQrModal, setShowQrModal] = useState(false);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [cloudSession, setCloudSession] = useState(() => loadCloudSession());
+  const [activeHash, setActiveHash] = useState(() => (typeof window === 'undefined' ? '' : window.location.hash || ''));
 
   // Legacy ?tab=home / ?tab=dca 进来时，重写为 ?tab=tradePlans + hash，使二级 tab 能在 mount 时被选中。
   useEffect(() => {
@@ -133,6 +134,18 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     window.dispatchEvent(new HashChangeEvent('hashchange'));
   }, []);
 
+  useEffect(() => {
+    function handleHashChange() {
+      setActiveHash(window.location.hash || '');
+    }
+    handleHashChange();
+    window.addEventListener('hashchange', handleHashChange);
+    window.addEventListener('popstate', handleHashChange);
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+      window.removeEventListener('popstate', handleHashChange);
+    };
+  }, []);
 
   useEffect(() => {
     function handleSessionChanged(event) {
@@ -215,6 +228,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const isAdminUser = isAnalyticsAdmin(cloudSession);
   const currentPageLabel = PRIMARY_TAB_META[activeTab]?.label || '';
+  const hideMobileTabBar = activeTab === 'tradePlans' && ['#new', '#dca-new'].includes(activeHash);
 
   const quickAction = useMemo(() => {
     if (activeTab === 'notify') {
@@ -275,6 +289,17 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   useEffect(() => {
     startCloudAutoSync();
   }, []);
+
+  useEffect(() => {
+    if (!showQrModal && !showDisclaimer) return undefined;
+    function handleModalKeyDown(event) {
+      if (event.key !== 'Escape') return;
+      setShowQrModal(false);
+      setShowDisclaimer(false);
+    }
+    window.addEventListener('keydown', handleModalKeyDown);
+    return () => window.removeEventListener('keydown', handleModalKeyDown);
+  }, [showQrModal, showDisclaimer]);
 
   // 未登录用户提示注册/登录以启用云同步
   useEffect(() => {
@@ -362,6 +387,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     }
     window.history.pushState({ tab: normalizedTab }, '', nextUrl);
     setActiveTab(normalizedTab);
+    setActiveHash(window.location.hash || '');
     // 记录侧边 tab 点击，供「策略指南 · Recently visited」读取。
     try {
       const RECENT_KEY = 'aiDcaRecentGuideAnchors';
@@ -473,6 +499,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       </ConsoleLayout>
       <AiChatWidget currentTab={activeTab} />
       <MobileTabBar
+        hidden={hideMobileTabBar}
         quickActionLabel={quickAction.label}
         quickActionIcon={quickAction.icon}
         quickActionMode={quickAction.mode}

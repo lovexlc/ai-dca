@@ -47,6 +47,7 @@ export function HoldingsOverviewShell({
         ledger={ledger}
         portfolio={portfolio}
         inceptionDate={inceptionDate}
+        aggregates={aggregates}
         onEditTransaction={sidePanel.onEditTransaction}
         accountAllocation={accountAllocation}
         navRefresh={navRefresh}

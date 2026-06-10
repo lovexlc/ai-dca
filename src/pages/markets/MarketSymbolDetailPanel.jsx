@@ -208,9 +208,86 @@ export function SymbolDetailPanel({
         })
         .finally(() => {
           compareNavInflightRef.current.delete(key);
-        });
+      });
     });
   }, [market, cnFundParam, compareSymbols, chartRange, compareNavHistoryMap]);
+
+  const compareCandidates = (() => {
+    const base = market === 'cn'
+      ? [
+        ...CN_ETF_WATCHLIST_PRESETS.map((item) => ({ symbol: item.symbol, name: item.name })),
+        { symbol: 'QQQ', name: '纳指 100 ETF' }
+      ]
+      : [
+        { symbol: 'QQQ', name: '纳指 100 ETF' },
+        { symbol: 'SPY', name: '标普 500 ETF' },
+        { symbol: 'TSLA', name: 'Tesla Inc' },
+        { symbol: 'MSFT', name: 'Microsoft Corp' },
+        { symbol: 'TQQQ', name: 'ProShares UltraPro QQQ' },
+        { symbol: 'VOO', name: '标普 500 ETF' }
+      ];
+    const current = String(row && row.symbol || '').toUpperCase();
+    const seen = new Set();
+    return base
+      .map((item) => ({ ...item, symbol: String(item.symbol || '').trim().toUpperCase() }))
+      .filter((item) => {
+        if (!item.symbol || item.symbol === current || seen.has(item.symbol)) return false;
+        seen.add(item.symbol);
+        return true;
+      });
+  })();
+  const compareSearchCandidates = compareSearchResults
+    .map((item) => ({
+      ...item,
+      symbol: String(item.symbol || '').trim().toUpperCase(),
+      name: item.name || item.shortName || item.displayName || item.symbol
+    }))
+    .filter((item) => item.symbol);
+  const compareSearchCandidateKey = compareSearchCandidates.map((item) => item.symbol).join('|');
+  const compareSymbolKey = compareSymbols.join('|');
+  useEffect(() => {
+    if (!rowSymbol) return;
+    const symbols = Array.from(new Set([
+      ...compareSearchCandidates.map((item) => item.symbol),
+      ...compareSymbols
+    ].map((sym) => String(sym || '').toUpperCase()).filter(Boolean)));
+    const missing = symbols.filter((sym) => sym !== rowSymbol && !compareQuoteMap[sym]);
+    if (!missing.length) return;
+    let cancelled = false;
+    fetchQuotes(missing)
+      .then((payload) => {
+        if (cancelled) return;
+        const quotes = payload?.quotes && typeof payload.quotes === 'object' ? payload.quotes : {};
+        setCompareQuoteMap((prev) => {
+          const next = { ...prev };
+          let changed = false;
+          missing.forEach((sym) => {
+            const quote = quotes[sym] || quotes[sym.toUpperCase()] || null;
+            if (quote) {
+              next[sym] = quote;
+              changed = true;
+            }
+          });
+          return changed ? next : prev;
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [compareSearchCandidateKey, compareSymbolKey, compareQuoteMap, rowSymbol]);
+  const handleChartHover = useCallback((payload) => {
+    setHoveredChartRow((prev) => (prev && payload && prev.t === payload.t ? prev : payload));
+  }, []);
+  const handleChartLeave = useCallback(() => {
+    setHoveredChartRow(null);
+  }, []);
+  const handleChartLock = useCallback((payload) => {
+    if (!payload) return;
+    setLockedChartRow((prev) => (prev && prev.t === payload.t ? null : payload));
+  }, []);
+  const clearLockedChartRow = useCallback(() => {
+    setLockedChartRow(null);
+  }, []);
+
   if (!row || !row.symbol) return null;
   const displaySymbol = formatSymbolDisplay(row.symbol);
   const pct = Number(row.changePercent);
@@ -269,39 +346,6 @@ export function SymbolDetailPanel({
     if (next.has(k)) next.delete(k); else next.add(k);
     return next;
   });
-  const compareCandidates = (() => {
-    const base = market === 'cn'
-      ? [
-        ...CN_ETF_WATCHLIST_PRESETS.map((item) => ({ symbol: item.symbol, name: item.name })),
-        { symbol: 'QQQ', name: '纳指 100 ETF' }
-      ]
-      : [
-        { symbol: 'QQQ', name: '纳指 100 ETF' },
-        { symbol: 'SPY', name: '标普 500 ETF' },
-        { symbol: 'TSLA', name: 'Tesla Inc' },
-        { symbol: 'MSFT', name: 'Microsoft Corp' },
-        { symbol: 'TQQQ', name: 'ProShares UltraPro QQQ' },
-        { symbol: 'VOO', name: '标普 500 ETF' }
-      ];
-    const current = String(row && row.symbol || '').toUpperCase();
-    const seen = new Set();
-    return base
-      .map((item) => ({ ...item, symbol: String(item.symbol || '').trim().toUpperCase() }))
-      .filter((item) => {
-        if (!item.symbol || item.symbol === current || seen.has(item.symbol)) return false;
-        seen.add(item.symbol);
-        return true;
-      });
-  })();
-  const compareSearchCandidates = compareSearchResults
-    .map((item) => ({
-      ...item,
-      symbol: String(item.symbol || '').trim().toUpperCase(),
-      name: item.name || item.shortName || item.displayName || item.symbol
-    }))
-    .filter((item) => item.symbol);
-  const compareSearchCandidateKey = compareSearchCandidates.map((item) => item.symbol).join('|');
-  const compareSymbolKey = compareSymbols.join('|');
   const backgroundStyle = (background) => ({ background });
   const normalizeCompareQuote = (symbol, fallback = {}) => {
     const upper = String(symbol || '').toUpperCase();
@@ -326,34 +370,6 @@ export function SymbolDetailPanel({
       previousClose
     };
   };
-  useEffect(() => {
-    const symbols = Array.from(new Set([
-      ...compareSearchCandidates.map((item) => item.symbol),
-      ...compareSymbols
-    ].map((sym) => String(sym || '').toUpperCase()).filter(Boolean)));
-    const missing = symbols.filter((sym) => sym !== String(row?.symbol || '').toUpperCase() && !compareQuoteMap[sym]);
-    if (!missing.length) return;
-    let cancelled = false;
-    fetchQuotes(missing)
-      .then((payload) => {
-        if (cancelled) return;
-        const quotes = payload?.quotes && typeof payload.quotes === 'object' ? payload.quotes : {};
-        setCompareQuoteMap((prev) => {
-          const next = { ...prev };
-          let changed = false;
-          missing.forEach((sym) => {
-            const quote = quotes[sym] || quotes[sym.toUpperCase()] || null;
-            if (quote) {
-              next[sym] = quote;
-              changed = true;
-            }
-          });
-          return changed ? next : prev;
-        });
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [compareSearchCandidateKey, compareSymbolKey, compareQuoteMap, row?.symbol]);
   const visibleCompareCandidates = (() => {
     const q = compareInput.trim().toUpperCase();
     const source = q
@@ -411,19 +427,6 @@ export function SymbolDetailPanel({
   const activeCursorRow = lockedChartRow || hoveredChartRow;
   const activeCursorTime = activeCursorRow?.t ?? null;
   const activeCursorLabel = activeCursorTime ? activeCursorRow?.label : '';
-  const handleChartHover = useCallback((payload) => {
-    setHoveredChartRow((prev) => (prev && payload && prev.t === payload.t ? prev : payload));
-  }, []);
-  const handleChartLeave = useCallback(() => {
-    setHoveredChartRow(null);
-  }, []);
-  const handleChartLock = useCallback((payload) => {
-    if (!payload) return;
-    setLockedChartRow((prev) => (prev && prev.t === payload.t ? null : payload));
-  }, []);
-  const clearLockedChartRow = useCallback(() => {
-    setLockedChartRow(null);
-  }, []);
   const applyHoverSnapshot = (quoteRow, keyPrefix) => {
     if (!activeCursorRow) return quoteRow;
     const priceKey = keyPrefix === 'main' ? 'mainPrice' : `${keyPrefix}price`;

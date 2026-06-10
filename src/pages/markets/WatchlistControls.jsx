@@ -8,7 +8,13 @@ export function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate
   const canDelete = (item) => item?.id !== 'default' && (lists || []).length > 1;
   return (
     <div className="relative">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="inline-flex max-w-[min(62vw,18rem)] items-center gap-1 rounded-md px-1 py-1 text-[17px] leading-6 font-normal tracking-tight text-[#1f1f1f] hover:bg-[#f1f3f4] sm:max-w-none sm:text-[20px] sm:leading-7" title="列表切换">
+      <button
+        type="button"
+        aria-label="切换监控列表"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex min-h-9 max-w-[min(62vw,18rem)] items-center gap-1 rounded-md px-2 py-1 text-[17px] leading-6 font-normal tracking-tight text-[#1f1f1f] hover:bg-[#f1f3f4] sm:max-w-none sm:text-[20px] sm:leading-7"
+        title="列表切换"
+      >
         <span className="truncate whitespace-nowrap">{active?.name || '列表'}</span>
         <ChevronDown size={18} className="shrink-0 text-[#5f6368]" />
       </button>

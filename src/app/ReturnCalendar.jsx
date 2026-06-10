@@ -200,7 +200,7 @@ function DayCell({ cell, pnl, max, onClick, todayIso, selectedIso, compact = fal
   );
 }
 
-function ReturnCalendar({ ledger, className = '', selectedDate, onSelectDate, compact = false }) {
+function ReturnCalendar({ ledger, portfolio, className = '', selectedDate, onSelectDate, compact = false }) {
   const transactions = useMemo(
     () => (Array.isArray(ledger?.transactions) ? ledger.transactions : []),
     [ledger]
@@ -240,6 +240,10 @@ function ReturnCalendar({ ledger, className = '', selectedDate, onSelectDate, co
         // 与 DailyFundBreakdown 同源：per-fund 真·当日 pnl 之和（nav.date === day 才计）。
         // 避免「全组合 mv 相邻差」在某基金当日 nav 未披露 + 当日 BUY 双算时出现伪 pnl 与明细加和反号。
         const daily = buildDailyFundPnlMap({ tx: transactions, navByCode, fromIso, toIso });
+        const latestDate = String(portfolio?.latestNavDate || '').slice(0, 10);
+        if (latestDate >= fromIso && latestDate <= toIso && Number.isFinite(portfolio?.todayProfit)) {
+          daily[latestDate] = Number(portfolio.todayProfit);
+        }
         setState({ status: 'ready', daily, stale, error: null });
       } catch (err) {
         if (cancelled) return;
@@ -249,7 +253,7 @@ function ReturnCalendar({ ledger, className = '', selectedDate, onSelectDate, co
     return () => {
       cancelled = true;
     };
-  }, [fromIso, toIso, transactions, inceptionDate]);
+  }, [fromIso, toIso, transactions, inceptionDate, portfolio]);
 
   const grid = useMemo(() => buildGrid(year, month), [year, month]);
 

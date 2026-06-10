@@ -60,6 +60,16 @@ export function NotifyHistoryCard({
             const title = String(event?.title || event?.summary || event?.eventType || '未命名事件');
             const summary = String(event?.summary || event?.body || '');
             const ruleId = String(event?.ruleId || '').trim();
+            const channelDetails = Array.isArray(event?.channels)
+              ? event.channels
+                .map((channel) => {
+                  const name = String(channel?.channel || '').trim();
+                  const status = String(channel?.status || '').trim();
+                  const detail = String(channel?.detail || '').trim();
+                  return [name, status, detail].filter(Boolean).join(' · ');
+                })
+                .filter(Boolean)
+              : [];
             const key = `${event?.id || ''}-${event?.createdAt || ''}-${index}`;
             return (
               <li key={key} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
@@ -75,6 +85,13 @@ export function NotifyHistoryCard({
                 ) : null}
                 {ruleId ? (
                   <p className="mt-1 text-[11px] text-slate-400">规则标识：{ruleId}</p>
+                ) : null}
+                {channelDetails.length ? (
+                  <div className="mt-2 space-y-1 rounded-xl bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-500">
+                    {channelDetails.map((detail, detailIndex) => (
+                      <div key={`${key}-channel-${detailIndex}`} className="break-words">{detail}</div>
+                    ))}
+                  </div>
                 ) : null}
               </li>
             );

@@ -271,7 +271,7 @@ svg {
 /* Reserve space for the mobile bottom tab bar so content isn't covered. */
 @media (max-width: 639px) {
   body {
-    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+    padding-bottom: calc(88px + env(safe-area-inset-bottom));
   }
 }
 

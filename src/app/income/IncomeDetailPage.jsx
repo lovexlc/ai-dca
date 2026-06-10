@@ -174,13 +174,20 @@ function BigKpi({ label, primary, primaryClass, sub }) {
   );
 }
 
-function MobileOverview({ rangeLabel, todayProfit, rangeProfit, rangeRate, onOpenRange }) {
+function MobileOverview({
+  rangeLabel,
+  todayProfit,
+  rangeProfit,
+  cumulativeProfit,
+  rangeRate,
+  onOpenRange
+}) {
   return (
     <div className="rounded-3xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] md:hidden">
       <div className="mb-3 flex items-center justify-between">
         <div className="text-[16px] font-semibold text-slate-900">收益总览</div>
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3">
         <div className="min-w-0">
           <div className="truncate text-[12px] text-slate-500">今日收益(元)</div>
           <div className={cx('mt-2 truncate whitespace-nowrap text-[18px] font-semibold tabular-nums', signClass(todayProfit))}>
@@ -191,6 +198,12 @@ function MobileOverview({ rangeLabel, todayProfit, rangeProfit, rangeRate, onOpe
           <div className="truncate text-[12px] text-slate-500">{rangeLabel}收益(元)</div>
           <div className={cx('mt-2 truncate whitespace-nowrap text-[18px] font-semibold tabular-nums', signClass(rangeProfit))}>
             {renderCurrency(rangeProfit)}
+          </div>
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-[12px] text-slate-500">累计盈亏</div>
+          <div className={cx('mt-2 truncate whitespace-nowrap text-[18px] font-semibold tabular-nums', signClass(cumulativeProfit))}>
+            {renderCurrency(cumulativeProfit)}
           </div>
         </div>
         <button type="button" onClick={onOpenRange} className="min-w-0 rounded-2xl text-left" aria-label="选择收益率时间">
@@ -274,7 +287,7 @@ function MobileRangeSheet({ open, activeRange, inceptionEnabled, onClose, onSele
   );
 }
 
-export function IncomeDetailPage({ ledger, portfolio, onBack, navigate, currentRoute }) {
+export function IncomeDetailPage({ ledger, portfolio, aggregates = [], onBack, navigate, currentRoute }) {
   const [{ range, customFrom, customTo }, setRange, setCustom] = useRangeUrlSync({ defaultRange: DEFAULT_RANGE });
   const transactions = useMemo(() => (Array.isArray(ledger?.transactions) ? ledger.transactions : []), [ledger]);
   const inceptionDate = useMemo(() => firstBuyDate(transactions), [transactions]);
@@ -427,7 +440,9 @@ export function IncomeDetailPage({ ledger, portfolio, onBack, navigate, currentR
   const subWindow = rangeWindow ? `${rangeWindow.from} → ${rangeWindow.to}` : '';
 
   const rangeProfit = rangeSeries?.windowProfit ?? null;
-  const todayProfit = todayState.series?.windowProfit ?? null;
+  const todayProfit = Number.isFinite(portfolio?.todayProfit)
+    ? portfolio.todayProfit
+    : (todayState.series?.windowProfit ?? null);
   const rangeRate = rangeSeries?.twrReturnRate ?? null;
   const annualized = rangeSeries?.annualizedTwrReturnRate ?? null;
   const cumulativeProfit = Number.isFinite(portfolio?.cumulativeProfit)
@@ -467,6 +482,7 @@ export function IncomeDetailPage({ ledger, portfolio, onBack, navigate, currentR
         rangeLabel={rangeLabel}
         todayProfit={todayProfit}
         rangeProfit={rangeProfit}
+        cumulativeProfit={cumulativeProfit}
         rangeRate={rangeRate}
         onOpenRange={() => setMobileRangeOpen(true)}
       />
@@ -539,6 +555,7 @@ export function IncomeDetailPage({ ledger, portfolio, onBack, navigate, currentR
               <Suspense fallback={<LazyFallback label="加载收益日历…" />}>
                 <ReturnCalendar
                   ledger={ledger}
+                  portfolio={portfolio}
                   selectedDate={selectedDate}
                   onSelectDate={setSelectedDate}
                   compact
@@ -547,6 +564,8 @@ export function IncomeDetailPage({ ledger, portfolio, onBack, navigate, currentR
               <Suspense fallback={<LazyFallback label="加载当日明细…" />}>
                 <DailyFundBreakdown
                   ledger={ledger}
+                  aggregates={aggregates}
+                  currentSnapshotDate={effectiveDate}
                   selectedDate={selectedDate}
                   className="lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden"
                 />
@@ -589,6 +608,7 @@ export function IncomeDetailPage({ ledger, portfolio, onBack, navigate, currentR
               <Suspense fallback={<LazyFallback label="加载收益日历…" />}>
                 <ReturnCalendar
                   ledger={ledger}
+                  portfolio={portfolio}
                   selectedDate={selectedDate}
                   onSelectDate={setSelectedDate}
                   compact
@@ -597,6 +617,8 @@ export function IncomeDetailPage({ ledger, portfolio, onBack, navigate, currentR
               <Suspense fallback={<LazyFallback label="加载当日明细…" />}>
                 <DailyFundBreakdown
                   ledger={ledger}
+                  aggregates={aggregates}
+                  currentSnapshotDate={effectiveDate}
                   selectedDate={selectedDate}
                 />
               </Suspense>

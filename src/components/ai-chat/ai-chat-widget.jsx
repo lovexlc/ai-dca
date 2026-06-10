@@ -33,6 +33,7 @@ const STORAGE_KEY = 'aiDcaChatHistory_v1';
 const MODE_KEY = 'aiDcaChatMode_v1';
 const MAX_HISTORY = 30;
 
+const ENABLE_AI_CHAT_LAUNCHER = false;
 const NUDGE_TEXT = '遇到问题了？点我给你解答';
 const NUDGE_INITIAL_DELAY_MS = 6000;
 const NUDGE_VISIBLE_MS = 7000;
@@ -834,7 +835,7 @@ export function AiChatWidget({ currentTab, pageContext } = {}) {
 
   return (
     <>
-      {false ? (
+      {ENABLE_AI_CHAT_LAUNCHER ? (
         <>
           {nudgeOpen ? (
             <button

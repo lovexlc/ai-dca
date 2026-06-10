@@ -39,8 +39,13 @@ export function resolveEventStatusMeta(status = '') {
       };
     case 'failed':
       return {
-        label: '发送失败',
+        label: '未送达',
         tone: 'red'
+      };
+    case 'queued':
+      return {
+        label: '待投递',
+        tone: 'amber'
       };
     default:
       return {

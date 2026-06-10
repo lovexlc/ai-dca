@@ -28,7 +28,8 @@ function DataTableViewOptions({
     [table]
   );
   return <Popover><PopoverTrigger asChild><Button
-    aria-label="Toggle columns"
+    aria-label="切换表格列"
+    title="切换表格列"
     role="combobox"
     variant="outline"
     size="sm"

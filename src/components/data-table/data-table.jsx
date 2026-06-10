@@ -16,6 +16,7 @@ function DataTable({
   actionBar,
   children,
   className,
+  tableContainerClassName,
   onRowClick,
   footerRow,
   resizable = false,
@@ -30,7 +31,7 @@ function DataTable({
       className
     )}
     {...props}
-  >{children}<div ref={tableScrollRef} onScroll={onHorizontalScroll} className="overflow-x-auto rounded-2xl border border-slate-200 bg-white"><Table><TableHeader>{table.getHeaderGroups().map((headerGroup) => <TableRow key={headerGroup.id}>{headerGroup.headers.map((header) => <TableHead
+  >{children}<div ref={tableScrollRef} onScroll={onHorizontalScroll} className={cn("max-w-full overflow-x-auto rounded-2xl border border-slate-200 bg-white", tableContainerClassName)}><Table><TableHeader>{table.getHeaderGroups().map((headerGroup) => <TableRow key={headerGroup.id}>{headerGroup.headers.map((header) => <TableHead
     key={header.id}
     colSpan={header.colSpan}
     style={{

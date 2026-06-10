@@ -28,7 +28,18 @@ const ADD_TABS = [
   },
 ];
 
-export function MobileTabBar({ onSearch, onAi, onNew, onPasteImport, onOcrImport, quickActionLabel = '新增交易', quickActionIcon: QuickActionIcon = Plus, quickActionMode = 'add', onQuickAction }) {
+export function MobileTabBar({
+  onSearch,
+  onAi,
+  onNew,
+  onPasteImport,
+  onOcrImport,
+  quickActionLabel = '新增交易',
+  quickActionIcon: QuickActionIcon = Plus,
+  quickActionMode = 'add',
+  onQuickAction,
+  hidden = false
+}) {
   const [addOpen, setAddOpen] = useState(false);
   const [addTab, setAddTab] = useState('single');
 
@@ -74,36 +85,38 @@ export function MobileTabBar({ onSearch, onAi, onNew, onPasteImport, onOcrImport
   return (
     <>
       <nav
-        className="fixed bottom-0 left-0 right-0 z-30 flex items-center gap-2 border-t border-slate-200 bg-white/95 px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-4px_24px_rgba(15,23,42,0.06)] backdrop-blur sm:hidden"
+        className={[
+          'fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] left-1/2 z-30 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-slate-200 bg-white/95 p-1.5 shadow-[0_10px_30px_rgba(15,23,42,0.16)] backdrop-blur sm:hidden',
+          hidden ? 'hidden' : ''
+        ].join(' ')}
         aria-label="底部快捷导航"
       >
         <button
           type="button"
-          className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200/60 active:bg-slate-200"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200/60 active:bg-slate-200"
           onClick={onSearch}
           aria-label="搜索"
+          title="搜索"
         >
-          <Search className="h-5 w-5" />
+          <Search className="h-4 w-4" />
         </button>
         <button
           type="button"
-          className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-full bg-slate-100 pl-1.5 pr-4 text-left transition-colors hover:bg-slate-200/60 active:bg-slate-200"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-[0_4px_12px_rgba(79,70,229,0.28)] transition-transform active:scale-95"
           onClick={onAi}
           aria-label="询问知识助手"
+          title="询问知识助手"
         >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-[0_4px_12px_rgba(79,70,229,0.3)]">
-            <Sparkles className="h-4 w-4" />
-          </span>
-          <span className="flex-1 truncate text-sm text-slate-500">询问知识助手</span>
+          <Sparkles className="h-4 w-4" />
         </button>
         <button
           type="button"
-          className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200/60 active:bg-slate-200"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200/60 active:bg-slate-200"
           onClick={triggerQuickAction}
           aria-label={quickActionLabel}
           title={quickActionLabel}
         >
-          <QuickActionIcon className="h-5 w-5" />
+          <QuickActionIcon className="h-4 w-4" />
         </button>
       </nav>
 

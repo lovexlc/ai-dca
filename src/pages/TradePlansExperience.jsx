@@ -682,7 +682,12 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
               <span>或者从其他类型开始：</span>
               <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
                 {config.links.map((link) => (
-                  <button key={link.type} type="button" onClick={() => enterCreateView(link.type)} className="font-semibold text-indigo-600 underline-offset-4 hover:underline">
+                  <button
+                    key={link.type}
+                    type="button"
+                    onClick={() => enterCreateView(link.type)}
+                    className="inline-flex min-h-8 items-center rounded-lg px-2 font-semibold text-indigo-600 underline-offset-4 hover:bg-indigo-50 hover:underline"
+                  >
                     {link.label}
                   </button>
                 ))}

@@ -466,7 +466,7 @@ function ScreenshotImage({ src, alt, caption }) {
       </figure>
       {zoomed ? (
         <div role="dialog" aria-modal="true" onClick={() => setZoomed(false)} className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-          <img src={src} alt={alt} className="max-h-[92vh] max-w-[92vw] cursor-zoom-out rounded-lg object-contain shadow-2xl" onClick={(event) => event.stopPropagation()} />
+          <img src={src} alt={alt} loading="lazy" className="max-h-[92vh] max-w-[92vw] cursor-zoom-out rounded-lg object-contain shadow-2xl" onClick={(event) => event.stopPropagation()} />
           <button type="button" onClick={() => setZoomed(false)} className="absolute right-4 top-4 rounded-full bg-white/90 px-3 py-1 text-sm font-semibold text-slate-700 shadow hover:bg-white">关闭</button>
         </div>
       ) : null}
@@ -546,7 +546,7 @@ function ChapterModalBody({ id, navigate, closeModal, demoMeta, onInstallDemo, o
             <Pill tone="indigo">iOS Bark</Pill>
             <h3 className="mt-3 text-base font-bold text-slate-900">复制完整 Bark 链接</h3>
             <p className="mt-2 text-sm leading-6 text-slate-500">打开 Bark，复制 api.day.app 开头的完整链接，或只复制 Device Key。系统会自动提取可用 Key。</p>
-            <ScreenshotImage src="/strategy-guide/bark-example.png" alt="iOS Bark 复制推送链接示例" caption="很便捷，整段复制粘到通知页即可。" />
+            <ScreenshotImage src="https://cdn.jsdelivr.net/gh/lovexlc/ai-dca@main/public/strategy-guide/bark-example.png" alt="iOS Bark 复制推送链接示例" caption="很便捷，整段复制粘到通知页即可。" />
             <button type="button" className={cx(primaryButtonClass, 'mt-5 w-full')} onClick={() => go('notify')}>去配置 iOS 通知</button>
           </Card>
           <Card>
