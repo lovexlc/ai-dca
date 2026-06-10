@@ -50,6 +50,24 @@ When the user gives a new requirement, follow this sequence by default:
 - Treat a frontend task as incomplete if the new behavior only exists in `src/` but has not been published into `docs/`.
 - If the user asks to push a frontend fix, assume they expect the live Pages site to update too. Do not stop at pushing `src/` commits only.
 
+## Pages Build Failure / Stale Live Site Playbook
+
+- When the user says a frontend change is pushed but the live page still shows the old UI, first verify the deployment pipeline before blaming browser cache:
+  - `git status -sb`
+  - `git log origin/main..HEAD --oneline`
+  - `gh run list --repo lovexlc/ai-dca --workflow "Deploy GitHub Pages" --limit 8`
+  - `curl -sS https://tools.freebacktrack.tech/ | rg 'react-assets-v2/index.js\\?v='`
+  - `curl -sS -I https://tools.freebacktrack.tech/`
+- The Pages workflow runs `npm run build`, which starts with `npm run check:refactor`. A pushed commit can be present on `origin/main` but still not be live if this guard fails.
+- If `Deploy GitHub Pages` is failing, reproduce locally with `npm run build` before making assumptions. The common failure is `scripts/check_refactor_guard.mjs` reporting a guarded file over its line budget, for example `src/pages/HoldingsExperience.jsx has 1314 lines; budget is 1300`.
+- Do not "fix" refactor guard failures by raising budgets or bypassing `check:refactor`. Extract the newly added logic into an existing or new focused module/hook under the relevant feature directory, then rerun `npm run build`.
+- After fixing a build-blocking issue, commit and push the minimal source change, wait for `Deploy GitHub Pages` to complete successfully with `gh run watch <run-id> --exit-status`, then confirm production updated by checking:
+  - root `index.html` asset version advanced, for example `v=YYYYMMDDHHMM`
+  - `Last-Modified` advanced in `curl -I`
+  - the relevant production chunk contains the expected text or symbol
+- Local builds can create or reveal unrelated dirty files such as `playwright-report/`, `test-results/`, screenshots, `ads.txt`, or edited root `index.html`. Do not stage or commit those unless they are part of the current task.
+- `apply_patch` success != commit; commit != push; push != Pages deployed; Pages deployed != browser fetched the new bundle. Report each step separately when diagnosing stale UI.
+
 ## Local Credentials
 
 - Store local GitHub and Cloudflare credentials in `/home/lovexl/ai-dca-stragety/.env.local`.
