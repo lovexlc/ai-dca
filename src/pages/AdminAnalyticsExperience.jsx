@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Activity, Bell, Bot, Calendar, ChevronDown, ChevronRight, Clock, Eye, MessageSquareText, MousePointerClick, Percent, RefreshCw, ShieldCheck, Shuffle, Sparkles, Trash2, UserRound, Users } from 'lucide-react';
 import { buildAnalyticsSummary, clearAnalyticsEvents, fetchRemoteAnalyticsSummary, isAnalyticsAdmin, trackAnalyticsEvent } from '../app/analytics.js';
@@ -11,6 +11,81 @@ const RANGE_OPTIONS = [
   { key: 90, label: '90 天' }
 ];
 const CHART_INITIAL_DIMENSION = { width: 1, height: 1 };
+const REMOTE_OVERVIEW_SECTION = 'overview';
+
+function mergeSummarySection(baseSummary, payload) {
+  if (!payload || typeof payload !== 'object') return baseSummary;
+  if (!payload.partial) return payload;
+  const sections = new Set(Array.isArray(payload.sections) ? payload.sections : []);
+  const next = {
+    ...baseSummary,
+    rangeDays: payload.rangeDays ?? baseSummary?.rangeDays,
+    generatedAt: payload.generatedAt || baseSummary?.generatedAt
+  };
+
+  if (sections.has('overview')) {
+    next.cards = payload.cards || baseSummary?.cards || {};
+    next.features = Array.isArray(payload.features) ? payload.features : (baseSummary?.features || []);
+    next.ads = {
+      ...(baseSummary?.ads || {}),
+      views: Number(payload.ads?.views) || 0,
+      clicks: Number(payload.ads?.clicks) || 0,
+      users: Number(payload.ads?.users) || 0,
+      ctr: Number(payload.ads?.ctr) || 0,
+      avgVisibleMs: Number(payload.ads?.avgVisibleMs) || 0
+    };
+    next.engagement = {
+      ...(baseSummary?.engagement || {}),
+      sessions: Number(payload.engagement?.sessions) || 0,
+      sessionUsers: Number(payload.engagement?.sessionUsers) || 0,
+      heartbeats: Number(payload.engagement?.heartbeats) || 0,
+      pageEvents: Number(payload.engagement?.pageEvents) || 0,
+      avgDurationMs: Number(payload.engagement?.avgDurationMs) || 0,
+      avgActiveTimeMs: Number(payload.engagement?.avgActiveTimeMs) || 0,
+      avgScrollPct: Number(payload.engagement?.avgScrollPct) || 0
+    };
+    next.premiumSurvey = {
+      ...(baseSummary?.premiumSurvey || {}),
+      submits: Number(payload.premiumSurvey?.submits) || 0,
+      users: Number(payload.premiumSurvey?.users) || 0
+    };
+  }
+  if (sections.has('traffic')) next.daily = payload.daily || [];
+  if (sections.has('pages')) {
+    next.pages = payload.pages || [];
+    next.userActivity = payload.userActivity || [];
+  }
+  if (sections.has('activity')) {
+    next.hourlyActivity = payload.hourlyActivity || [];
+    next.dailyActivity = payload.dailyActivity || [];
+  }
+  if (sections.has('ads')) next.ads = payload.ads || {};
+  if (sections.has('engagement')) next.engagement = payload.engagement || {};
+  if (sections.has('survey')) next.premiumSurvey = payload.premiumSurvey || {};
+  if (sections.has('featureDetails')) next.featureDetails = payload.featureDetails || [];
+  if (sections.has('recent')) next.recent = payload.recent || [];
+  return next;
+}
+
+function LazyRemoteSection({ as: Element = 'section', sectionKey, resetKey, onVisible, className, children }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return undefined;
+    if (typeof IntersectionObserver === 'undefined') {
+      onVisible(sectionKey);
+      return undefined;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) onVisible(sectionKey);
+    }, { root: null, rootMargin: '120px 0px', threshold: 0.01 });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [onVisible, resetKey, sectionKey]);
+
+  return <Element ref={ref} className={className}>{children}</Element>;
+}
 
 function Card({ title, value, icon: Icon, hint }) {
   return (
@@ -73,6 +148,14 @@ function EmptyChart() {
 
 function formatPercent(value) {
   return `${((Number(value) || 0) * 100).toFixed(1)}%`;
+}
+
+function formatCount(value, digits = 0) {
+  const num = Number(value) || 0;
+  return num.toLocaleString('zh-CN', {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: digits
+  });
 }
 
 function formatDuration(ms) {
@@ -257,7 +340,9 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
   }
 
   const cards = [
-    { title: '注册人数', value: summary.cards.registeredUsers, icon: Users, hint: '按登录/注册账号去重' },
+    { title: '注册人数', value: summary.cards.registeredUsers, icon: Users, hint: '注册账号去重' },
+    { title: '访客总人数', value: summary.cards.visitorUsers || 0, icon: UserRound, hint: '未登录 visitor 去重' },
+    { title: '日活用户', value: summary.cards.dailyActiveUsers || 0, icon: Activity, hint: `日均 ${formatCount(summary.cards.avgDailyActiveUsers, 1)} · ${summary.cards.dailyActiveDate ? summary.cards.dailyActiveDate.slice(5) : '最近一天'}` },
     { title: 'PV', value: summary.cards.pv, icon: Eye, hint: `${rangeDays} 天页面访问` },
     { title: 'UV', value: summary.cards.uv, icon: MousePointerClick, hint: '按访客 ID 去重' },
     { title: 'Worker 跑切换', value: summary.cards.switchRuns, icon: Shuffle, hint: '切换运行/使用次数' },
@@ -400,11 +485,11 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
         <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-bold text-slate-900">PV / UV 趋势</h2>
+            <h2 className="text-base font-bold text-slate-900">PV / UV / 活跃用户趋势</h2>
             <span className="text-xs text-slate-400">近 {rangeDays} 天</span>
           </div>
           <div className="h-72 min-w-0">
-            {summary.daily.some((d) => d.pv || d.uv) ? (
+            {summary.daily.some((d) => d.pv || d.uv || d.activeUsers) ? (
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={CHART_INITIAL_DIMENSION}>
                 <AreaChart data={summary.daily} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                   <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
@@ -413,6 +498,7 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
                   <Tooltip />
                   <Area type="monotone" dataKey="pv" name="PV" stroke="#2563eb" fill="#dbeafe" isAnimationActive={false} />
                   <Area type="monotone" dataKey="uv" name="UV" stroke="#16a34a" fill="#dcfce7" isAnimationActive={false} />
+                  <Area type="monotone" dataKey="activeUsers" name="活跃用户" stroke="#f59e0b" fill="#fef3c7" isAnimationActive={false} />
                 </AreaChart>
               </ResponsiveContainer>
             ) : <EmptyChart />}
@@ -441,33 +527,47 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="grid min-w-0 gap-4 lg:grid-cols-2">
+        <div className="min-w-0 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
           <h2 className="mb-3 text-base font-bold text-slate-900">高访问页面</h2>
           <div className="overflow-hidden rounded-2xl border border-slate-100">
-            <table className="min-w-full text-sm">
+            <table className="w-full table-fixed text-sm">
+              <colgroup>
+                <col />
+                <col className="w-14" />
+                <col className="w-14" />
+              </colgroup>
               <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-3 py-2 text-left">页面</th><th className="px-3 py-2 text-right">PV</th><th className="px-3 py-2 text-right">UV</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {(summary.pages || []).length ? (summary.pages || []).map((row) => (
-                  <tr key={row.key}><td className="px-3 py-2 text-slate-700">{row.key}</td><td className="px-3 py-2 text-right tabular-nums">{row.pv}</td><td className="px-3 py-2 text-right tabular-nums">{row.uv}</td></tr>
+                  <tr key={row.key}><td className="break-all px-3 py-2 text-slate-700">{row.key}</td><td className="px-3 py-2 text-right tabular-nums">{row.pv}</td><td className="px-3 py-2 text-right tabular-nums">{row.uv}</td></tr>
                 )) : <tr><td colSpan={3} className="px-3 py-8 text-center text-slate-400">暂无页面访问</td></tr>}
               </tbody>
             </table>
           </div>
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="min-w-0 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center gap-2">
             <UserRound className="h-4 w-4 text-indigo-500" />
             <h2 className="text-base font-bold text-slate-900">用户活跃列表</h2>
           </div>
-          <div className="max-h-80 overflow-auto rounded-2xl border border-slate-100">
-            <table className="min-w-full text-sm">
+          <div
+            className="max-h-80 overflow-auto rounded-2xl border border-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
+            tabIndex={0}
+            aria-label="用户活跃列表滚动区域"
+          >
+            <table className="w-full table-fixed text-sm">
+              <colgroup>
+                <col />
+                <col className="w-16" />
+                <col className="w-28" />
+              </colgroup>
               <thead className="bg-slate-50 text-xs text-slate-500 sticky top-0"><tr><th className="px-3 py-2 text-left">用户</th><th className="px-3 py-2 text-right">事件数</th><th className="px-3 py-2 text-right">最后活跃</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {(summary.userActivity || []).length ? (summary.userActivity || []).map((row) => (
                   <tr key={row.user}>
-                    <td className="px-3 py-2 font-semibold text-slate-800">{row.username || row.user}</td>
+                    <td className="break-all px-3 py-2 font-semibold text-slate-800">{row.username || row.user}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-slate-600">{row.events}</td>
                     <td className="px-3 py-2 text-right text-xs text-slate-400">{row.lastActive ? new Date(row.lastActive).toLocaleString() : '-'}</td>
                   </tr>

@@ -340,6 +340,18 @@ function notifyUserKey(event) {
   return event.userId || event.visitorId || '';
 }
 
+function analyticsIdentity(event) {
+  return event.userId || event.visitorId || '';
+}
+
+function isBackgroundAnalyticsEvent(event) {
+  return event.type === 'switch_worker_run' && event.meta?.reason === 'switch-cron';
+}
+
+function isVisitorOnlyEvent(event) {
+  return Boolean(event.visitorId) && !event.userId && !event.username;
+}
+
 function notifyEventDate(event) {
   return String(event.date || event.createdAt || '').slice(0, 10);
 }
@@ -418,11 +430,14 @@ function dailySeries(events, rangeDays, type) {
   for (let i = rangeDays - 1; i >= 0; i -= 1) dates.push(daysAgo(i));
   return dates.map((date) => {
     const dayEvents = events.filter((event) => String(event.date || '').slice(0, 10) === date);
+    const userEvents = dayEvents.filter((event) => !isBackgroundAnalyticsEvent(event));
     return {
       date: date.slice(5),
       fullDate: date,
       pv: count(dayEvents, 'page_view'),
       uv: uniqueCount(dayEvents.filter((event) => event.type === 'page_view'), (event) => event.visitorId),
+      activeUsers: uniqueCount(userEvents, analyticsIdentity),
+      visitorUsers: uniqueCount(dayEvents.filter(isVisitorOnlyEvent), (event) => event.visitorId),
       ai: uniqueCount(dayEvents.filter((event) => event.type === 'ai_used'), (event) => event.userId || event.visitorId),
       notify: uniqueCount(dayEvents.filter((event) => event.type === 'notify_used' || event.type === 'notify_enabled'), (event) => event.userId || event.visitorId),
       switchRuns: count(dayEvents, 'switch_worker_run') + count(dayEvents, 'switch_used'),
@@ -436,6 +451,7 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
   const events = allEvents.filter((event) => inRange(event, rangeDays));
   const pageEvents = events.filter((event) => event.type === 'page_view');
   const registeredEvents = allEvents.filter((event) => event.type === 'user_register' || event.type === 'user_login');
+  const visitorOnlyEvents = allEvents.filter(isVisitorOnlyEvent);
   const notifyEvents = events.filter((event) => event.type === 'notify_used' || event.type === 'notify_enabled');
   const aiEvents = events.filter((event) => event.type === 'ai_used');
   const switchEvents = events.filter((event) => event.type === 'switch_worker_run' || event.type === 'switch_used');
@@ -581,13 +597,22 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
         .sort((a, b) => b.count - a.count)
         .map((row) => ({ action: row.action, label: row.label, count: row.count, success: row.success, error: row.error, users: row.userSet.size }))
     }));
+  const daily = dailySeries(events, rangeDays);
+  const latestDaily = daily[daily.length - 1] || null;
+  const avgDailyActiveUsers = rangeDays > 0
+    ? daily.reduce((sum, row) => sum + (Number(row.activeUsers) || 0), 0) / rangeDays
+    : 0;
 
   return {
     rangeDays,
     generatedAt: new Date().toISOString(),
     totalEvents: events.length,
     cards: {
-      registeredUsers: uniqueCount(registeredEvents, (event) => event.userId || event.username || event.visitorId),
+      registeredUsers: uniqueCount(registeredEvents, (event) => event.userId || event.username),
+      visitorUsers: uniqueCount(visitorOnlyEvents, (event) => event.visitorId),
+      dailyActiveUsers: Number(latestDaily?.activeUsers) || 0,
+      avgDailyActiveUsers,
+      dailyActiveDate: latestDaily?.fullDate || '',
       pv: pageEvents.length,
       uv: uniqueCount(pageEvents, (event) => event.visitorId),
       aiUsers: uniqueCount(aiEvents, (event) => event.userId || event.visitorId),
@@ -595,7 +620,7 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
       switchRuns: switchEvents.length,
       notifyPlatformUsers: buildNotifyPlatformUserCounts(notifyEvents)
     },
-    daily: dailySeries(events, rangeDays),
+    daily,
     pages: Array.from(pageMap.values()).map((row) => ({ key: row.key, pv: row.pv, uv: row.uvSet.size })).sort((a, b) => b.pv - a.pv).slice(0, 8),
     features: featureRows,
     featureDetails,
@@ -671,10 +696,13 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
 }
 
 
-export async function fetchRemoteAnalyticsSummary({ rangeDays = 30, session = readAnalyticsSession() } = {}) {
+export async function fetchRemoteAnalyticsSummary({ rangeDays = 30, sections = [], session = readAnalyticsSession() } = {}) {
   if (!session?.accessToken) throw new Error('请先登录管理员账号');
   const url = new URL(`${getAnalyticsBase()}/admin/analytics`);
   url.searchParams.set('rangeDays', String(rangeDays));
+  if (Array.isArray(sections) && sections.length) {
+    url.searchParams.set('sections', sections.join(','));
+  }
   const response = await fetch(url.toString(), {
     method: 'GET',
     headers: { authorization: `Bearer ${session.accessToken}` }
