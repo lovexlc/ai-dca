@@ -6,6 +6,7 @@ import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
 import { MobileTabBar } from '../components/mobile-tab-bar.jsx';
 import { GlobalSearch } from '../components/global-search.jsx';
 import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
+import { ReleaseAnnouncementModal } from '../components/release-announcement-modal.jsx';
 import { startCloudAutoSync } from '../app/cloudSync.js';
 import { showToast } from '../app/toast.js';
 import { clearDemoData, readDemoDataMeta } from '../app/demoData.js';
@@ -529,6 +530,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
           );
         }}
       />
+      <ReleaseAnnouncementModal cloudSession={cloudSession} />
       {showQrModal ? (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/70 p-4" role="dialog" aria-modal="true" aria-label="加入群聊二维码" onClick={() => setShowQrModal(false)}>
           <div className="relative w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
