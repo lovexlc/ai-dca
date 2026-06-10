@@ -502,33 +502,30 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     return () => { cancelled = true; };
   }, [inPagesDir, refreshTick]);
 
-  // 候选集合 = 用户在 H/L 两表里拖入的代码 ∩ 排除持仓。
-  // 不再让用户手动勾选“候选基金”：入 H/L 即可作为候选。
+  // 候选集合：
+  // - 有场内持仓时，持仓 ETF 默认作为基准，未持有 ETF 作为候选；
+  // - 没有场内持仓时，用户可手动把已分类 ETF 设为模拟基准，其余已分类 ETF 作为候选。
   const premiumClassKey = JSON.stringify(prefs?.premiumClass || {});
   useEffect(() => {
     const cls = (prefs && prefs.premiumClass) || {};
     const heldCodes = new Set(exchangeFunds.map((f) => f.code));
-    const next = Object.keys(cls).filter((code) => !heldCodes.has(code)).sort();
     setPrefs((prev) => {
       const current = getActiveSwitchRule(prev);
+      const benchmarkSet = new Set(Array.isArray(current.benchmarkCodes) ? current.benchmarkCodes : []);
+      const next = Object.keys(cls).filter((code) => (
+        heldCodes.size ? !heldCodes.has(code) : !benchmarkSet.has(code)
+      )).sort();
       const before = Array.isArray(current.enabledCodes) ? current.enabledCodes : [];
       if (before.length === next.length && before.every((v, i) => v === next[i])) return prev;
       return updateActiveSwitchRule(prev, { enabledCodes: next });
     });
   }, [exchangeFunds, premiumClassKey, activeRuleId]);
 
-  // 单一数据源：基准 ETF 只能从「持仓的场内 ETF」里选，所以 prefs.benchmarkCodes
-  // 里所有 code 都必须落在 exchangeFunds 之内。这里在 exchangeFunds 变化后：
-  //   1) 先按原顺序保留仍然持仓且已分类（H/L）的 code；
-  //   2) 再把当前持仓中已分类、但尚未列入 benchmarkCodes 的 code 追加进去；
-  //   3) 如果最终为空（极端情况：暂时没有任何已分类持仓），fallback 到第一只持仓 ETF。
-  // 这样：
-  //   - 新增已分类持仓（例如再买入一只 L 类 ETF）会自动成为基准；
-  //   - 持仓但还没分类的 ETF（premiumClass 没标 H/L，例如 563020）不会被算成基准，
-  //     避免顶部绿条把它统计进 "基准 N 只"，因为没有 class 也无法参与任何规则。
+  // 基准集合：
+  // - 有持仓数据时，仍按已分类的持仓 ETF 自动维护；
+  // - 没有持仓数据时，仅保留用户手动选择且仍已分类的模拟基准。
   const benchmarkCodesJoined = (prefs?.benchmarkCodes || []).join(',');
   useEffect(() => {
-    if (!exchangeFunds.length) return;
     const cls = (prefs && prefs.premiumClass) || {};
     const heldOrder = exchangeFunds.map((f) => f.code);
     const heldClassified = heldOrder.filter((code) => cls[code] === 'H' || cls[code] === 'L');
@@ -536,14 +533,16 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     setPrefs((prev) => {
       const current = getActiveSwitchRule(prev);
       const before = Array.isArray(current.benchmarkCodes) ? current.benchmarkCodes : [];
-      const kept = before.filter((code) => heldClassifiedSet.has(code));
-      const keptSet = new Set(kept);
-      // 按 exchangeFunds 顺序追加尚未在 benchmarkCodes 中、但已分类的持仓 code。
-      const appended = heldClassified.filter((code) => !keptSet.has(code));
-      const merged = [...kept, ...appended];
-      // fallback：如果没有任何已分类持仓，至少保住一个非空 benchmarkCodes（用首个持仓），
-      // 避免下游空数组造成的边角问题；用户分类后下次 effect 会刷成正确值。
-      const next = merged.length ? merged : [heldOrder[0]];
+      let next = [];
+      if (heldOrder.length) {
+        const kept = before.filter((code) => heldClassifiedSet.has(code));
+        const keptSet = new Set(kept);
+        const appended = heldClassified.filter((code) => !keptSet.has(code));
+        next = [...kept, ...appended];
+        if (!next.length) next = [heldOrder[0]];
+      } else {
+        next = before.filter((code) => cls[code] === 'H' || cls[code] === 'L');
+      }
       if (next.length === before.length && next.every((v, i) => v === before[i])) return prev;
       return updateActiveSwitchRule(prev, { benchmarkCodes: next });
     });
@@ -719,6 +718,31 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       });
     });
   }
+  function setCodeBenchmark(code, shouldBeBenchmark) {
+    if (!code) return;
+    trackFeatureEvent('switch_strategy', 'code_benchmark_change', {
+      codeLength: String(code || '').length,
+      shouldBeBenchmark: Boolean(shouldBeBenchmark),
+      ...switchMeta()
+    });
+    setPrefs((prev) => {
+      const current = getActiveSwitchRule(prev);
+      const cls = { ...((current && current.premiumClass) || {}) };
+      if (cls[code] !== 'H' && cls[code] !== 'L') return prev;
+      const hasHoldings = exchangeFunds.length > 0;
+      const isHeld = exchangeFunds.some((fund) => fund.code === code);
+      if (hasHoldings && !isHeld) return prev;
+      const classifiedCodes = Object.keys(cls).filter((item) => cls[item] === 'H' || cls[item] === 'L');
+      const nextBenchmarkCodes = shouldBeBenchmark ? [code] : [];
+      const benchmarkSet = new Set(nextBenchmarkCodes);
+      const nextEnabledCodes = classifiedCodes.filter((item) => !benchmarkSet.has(item)).sort();
+      return updateActiveSwitchRule(prev, {
+        benchmarkCodes: nextBenchmarkCodes,
+        enabledCodes: nextEnabledCodes,
+        premiumClass: cls
+      });
+    });
+  }
   // 拖拽状态：高亮当前悬停中的接收区。
   const [dragOverZone, setDragOverZone] = useState(null);
   const handleChipDragStart = useCallback((event, code) => {
@@ -826,11 +850,9 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, [navState.navByCode]);
 
   const benchmarkSummary = useMemo(() => {
-    if (!exchangeFunds.length) {
-      return '当前持仓中没有场内 ETF，先在持仓页录入交易再回来配置切换策略。';
-    }
     if (!benchmarks.length) return '请先选择至少一只基准 ETF。';
-    return `基准：${benchmarks.map((b) => `${b.code} · ${b.name || ''}`).join(' / ')}`;
+    const prefix = exchangeFunds.length ? '基准' : '模拟基准';
+    return `${prefix}：${benchmarks.map((b) => `${b.code} · ${b.name || ''}`).join(' / ')}`;
   }, [exchangeFunds.length, benchmarks]);
 
   const switchSummary = useMemo(() => {
@@ -1065,6 +1087,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         handleZoneDragLeave={handleZoneDragLeave}
         handleZoneDrop={handleZoneDrop}
         setCodeClass={setCodeClass}
+        setCodeBenchmark={setCodeBenchmark}
         formatPrice={formatPrice}
       />
       <SwitchStrategyOpportunityPanels

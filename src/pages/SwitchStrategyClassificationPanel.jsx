@@ -20,10 +20,13 @@ export function SwitchStrategyClassificationPanel({
   handleZoneDragLeave,
   handleZoneDrop,
   setCodeClass,
+  setCodeBenchmark,
   formatPrice
 }) {
   const cls = prefs.premiumClass || {};
+  const benchmarkSet = new Set(Array.isArray(prefs.benchmarkCodes) ? prefs.benchmarkCodes : []);
   const heldSet = new Set(exchangeFunds.map((fund) => fund.code));
+  const hasHoldings = heldSet.size > 0;
   const poolList = fundsWithPremium.filter((fund) => !cls[fund.code]);
   const hList = fundsWithPremium.filter((fund) => cls[fund.code] === 'H');
   const lList = fundsWithPremium.filter((fund) => cls[fund.code] === 'L');
@@ -31,7 +34,9 @@ export function SwitchStrategyClassificationPanel({
   const renderChip = (fund) => {
     const code = fund.code;
     const currentClass = cls[code] || null;
+    const isBenchmark = benchmarkSet.has(code);
     const isHeld = heldSet.has(code);
+    const canManualBenchmark = currentClass && (!hasHoldings || isHeld);
     const hasNav = Number.isFinite(fund.navLatest);
     const priceSourceLabel = fund.latestPriceDate || 'daily';
     return (
@@ -43,7 +48,7 @@ export function SwitchStrategyClassificationPanel({
           ? `雪球净值 ${fund.navLatest.toFixed(4)} (${fund.navLatestDate})・现价 ${formatPrice(fund.latestNav)} (${priceSourceLabel})`
           : '实时数据未就绪'}
         className={cx(
-          'group inline-flex select-none items-center gap-1.5 rounded-full border px-2 py-1 text-xs font-semibold transition-colors cursor-grab active:cursor-grabbing',
+          'group inline-flex max-w-full select-none flex-wrap items-center gap-1.5 rounded-full border px-2 py-1 text-xs font-semibold transition-colors cursor-grab active:cursor-grabbing',
           currentClass === 'H' ? 'border-rose-200 bg-rose-50 text-rose-800' :
           currentClass === 'L' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' :
           'border-slate-200 bg-white text-slate-600'
@@ -53,15 +58,16 @@ export function SwitchStrategyClassificationPanel({
         {fund.name ? (
           <>
             <span className="text-slate-400">·</span>
-            <span className="max-w-[100px] truncate text-slate-500">{fund.name}</span>
+            <span className="max-w-[88px] truncate text-slate-500">{fund.name}</span>
           </>
         ) : null}
         {isHeld ? <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-800">持</span> : null}
-        <span className="ml-1 inline-flex overflow-hidden rounded border border-slate-200 text-[10px]">
+        {isBenchmark ? <span className="rounded bg-indigo-100 px-1 py-0.5 text-[10px] text-indigo-800">基准</span> : null}
+        <span className="ml-1 inline-flex max-w-full flex-wrap overflow-hidden rounded-lg border border-slate-200 text-[10px]">
           <button
             type="button"
             onClick={(event) => { event.stopPropagation(); setCodeClass(code, currentClass === 'H' ? null : 'H'); }}
-            className={cx('px-1.5 py-0.5', currentClass === 'H' ? 'bg-rose-500 text-white' : 'bg-white text-slate-500 hover:bg-rose-50 hover:text-rose-700')}
+            className={cx('inline-flex min-h-7 items-center px-2 py-1', currentClass === 'H' ? 'bg-rose-500 text-white' : 'bg-white text-slate-500 hover:bg-rose-50 hover:text-rose-700')}
             aria-label={`将 ${code} 设为 H 组`}
           >
             设为 H
@@ -69,11 +75,30 @@ export function SwitchStrategyClassificationPanel({
           <button
             type="button"
             onClick={(event) => { event.stopPropagation(); setCodeClass(code, currentClass === 'L' ? null : 'L'); }}
-            className={cx('border-l border-slate-200 px-1.5 py-0.5', currentClass === 'L' ? 'bg-emerald-500 text-white' : 'bg-white text-slate-500 hover:bg-emerald-50 hover:text-emerald-700')}
+            className={cx('inline-flex min-h-7 items-center border-l border-slate-200 px-2 py-1', currentClass === 'L' ? 'bg-emerald-500 text-white' : 'bg-white text-slate-500 hover:bg-emerald-50 hover:text-emerald-700')}
             aria-label={`将 ${code} 设为 L 组`}
           >
             设为 L
           </button>
+          {currentClass ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                if (canManualBenchmark) setCodeBenchmark(code, !isBenchmark);
+              }}
+              disabled={!canManualBenchmark}
+              title={canManualBenchmark ? '' : '已有持仓数据时，未持有 ETF 只作为候选；没有持仓数据时可手动设为模拟基准'}
+              className={cx(
+                'inline-flex min-h-7 items-center border-l border-slate-200 px-2 py-1',
+                isBenchmark ? 'bg-indigo-500 text-white' : 'bg-white text-slate-500 hover:bg-indigo-50 hover:text-indigo-700',
+                !canManualBenchmark && 'cursor-not-allowed opacity-45 hover:bg-white hover:text-slate-500'
+              )}
+              aria-label={isBenchmark ? `取消 ${code} 基准` : `将 ${code} 设为基准`}
+            >
+              {isBenchmark ? '取消基准' : '设为基准'}
+            </button>
+          ) : null}
         </span>
       </div>
     );
@@ -159,9 +184,12 @@ export function SwitchStrategyClassificationPanel({
                     <div className="text-xs text-slate-400">所有 ETF 都已分类。可把 chip 拖回此处取消分类。</div>
                   ) : poolList.map(renderChip)}
                 </div>
-                <div className="mt-2 text-[11px] text-slate-500">点击每个 chip 右侧的 <strong className="text-rose-700">设为 H</strong> / <strong className="text-emerald-700">设为 L</strong> 完成分类；桌面端仍支持拖放作为辅助操作。</div>
+                <div className="mt-2 text-[11px] text-slate-500">点击每个 chip 右侧的 <strong className="text-rose-700">设为 H</strong> / <strong className="text-emerald-700">设为 L</strong> 完成分类；已有持仓时，持仓 ETF 会默认成为基准。</div>
               </>
             ) : null}
+          </div>
+          <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-xs leading-5 text-indigo-900">
+            基准按“当前监控规则”单独保存。默认使用已持有的场内 ETF 作为基准；如果当前没有任何场内持仓，可以手动把已分类 ETF 设为模拟基准。模拟基准只用于观察，不代表已经有可卖出的份额。
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div

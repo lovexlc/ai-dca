@@ -17,13 +17,13 @@ const ETF_CODES = [
   '161128'
 ];
 
-async function seedSwitchPage(page) {
-  await page.addInitScript(() => {
+async function seedSwitchPage(page, { withHolding = true } = {}) {
+  await page.addInitScript(({ withHolding }) => {
     window.localStorage.clear();
     window.localStorage.setItem('aiDcaFundHoldingsLedger', JSON.stringify({
       source: 'react-fund-holdings-ledger',
       version: 2,
-      transactions: [{
+      transactions: withHolding ? [{
         id: 'tx-held-513100',
         code: '513100',
         name: '国泰纳斯达克100ETF',
@@ -33,7 +33,7 @@ async function seedSwitchPage(page) {
         price: 1.2,
         shares: 1000,
         note: ''
-      }],
+      }] : [],
       snapshotsByCode: {},
       lastNavMeta: { status: 'idle', updatedAt: '', successCount: 0, failureCount: 0, errors: [] },
       switchChains: []
@@ -56,7 +56,7 @@ async function seedSwitchPage(page) {
         otcMinIntraPremiumHigh: 2
       }]
     }));
-  });
+  }, { withHolding });
 }
 
 async function mockSwitchNetwork(page) {
@@ -113,4 +113,18 @@ test('all nasdaq ETF chips can be classified by H and L click buttons', async ({
 
   await page.getByLabel('将 159509 设为 L 组').click();
   await expect(page.getByText('低溢价组 L').locator('..').locator('..')).toContainText('159509');
+});
+
+test('classified ETF can be selected as a simulated benchmark when no holdings exist', async ({ page }) => {
+  await seedSwitchPage(page, { withHolding: false });
+  await mockSwitchNetwork(page);
+  await page.goto('./index.html?tab=fundSwitch');
+
+  await expect(page.getByText('所有纳指 ETF（未分类）')).toBeVisible({ timeout: 20_000 });
+  await page.getByLabel('将 159513 设为 H 组').click();
+  await expect(page.getByText('高溢价组 H').locator('..').locator('..')).toContainText('159513');
+
+  await page.getByLabel('将 159513 设为基准').click();
+  await expect(page.getByText('高溢价组 H').locator('..').locator('..')).toContainText('基准');
+  await expect(page.getByText(/模拟基准：159513/)).toBeVisible({ timeout: 10_000 });
 });
