@@ -530,6 +530,8 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
 
   const surveyInterestMap = new Map();
   const surveyPriceMap = new Map();
+  const surveyCompletedMap = new Map();
+  const surveyCustomTextMap = new Map();
   premiumSurveySubmitEvents.forEach((event) => {
     const interests = Array.isArray(event.meta?.interestOptions) ? event.meta.interestOptions : [];
     interests.forEach((interest) => {
@@ -538,6 +540,18 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
     });
     const priceOption = String(event.meta?.priceOption || '').slice(0, 80);
     if (priceOption) surveyPriceMap.set(priceOption, (surveyPriceMap.get(priceOption) || 0) + 1);
+    const completedOptions = Array.isArray(event.meta?.completedOptions) ? event.meta.completedOptions : [];
+    completedOptions.forEach((option) => {
+      const key = String(option || '').slice(0, 80);
+      if (key) surveyCompletedMap.set(key, (surveyCompletedMap.get(key) || 0) + 1);
+    });
+    const customText = String(event.meta?.customText || '').trim().slice(0, 160);
+    if (customText) {
+      const row = surveyCustomTextMap.get(customText) || { text: customText, count: 0, lastAt: '' };
+      row.count += 1;
+      if (!row.lastAt || String(event.createdAt || '') > row.lastAt) row.lastAt = String(event.createdAt || '');
+      surveyCustomTextMap.set(customText, row);
+    }
   });
 
   // 按 feature 前缀聚合详细事件（trackFeatureEvent / trackActionResult 产生的 event.type = `${feature}_${action}`）
@@ -663,7 +677,9 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
       submits: premiumSurveySubmitEvents.length,
       users: uniqueCount(premiumSurveySubmitEvents, (event) => event.userId || event.visitorId),
       interests: Array.from(surveyInterestMap.entries()).map(([key, countValue]) => ({ key, count: countValue })).sort((a, b) => b.count - a.count),
-      priceOptions: Array.from(surveyPriceMap.entries()).map(([key, countValue]) => ({ key, count: countValue })).sort((a, b) => b.count - a.count)
+      priceOptions: Array.from(surveyPriceMap.entries()).map(([key, countValue]) => ({ key, count: countValue })).sort((a, b) => b.count - a.count),
+      completedOptions: Array.from(surveyCompletedMap.entries()).map(([key, countValue]) => ({ key, count: countValue })).sort((a, b) => b.count - a.count),
+      customTexts: Array.from(surveyCustomTextMap.values()).sort((a, b) => (b.lastAt || '').localeCompare(a.lastAt || '')).slice(0, 20)
     },
     recent: events.slice(-20).reverse(),
     userActivity: (() => {

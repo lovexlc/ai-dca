@@ -377,6 +377,24 @@ async function handleAdminAnalytics(request, env, origin) {
     FROM analytics_events
     WHERE event_date >= ? AND type = 'premium_survey_submit' AND COALESCE(json_extract(meta, '$.priceOption'), '') != ''
     GROUP BY key ORDER BY count DESC LIMIT 20`).bind(since).all() : { results: [] };
+  const premiumSurveyCompletedRows = wants('survey') ? await env.DB.prepare(`SELECT
+    completed.value AS key,
+    COUNT(*) AS count
+    FROM analytics_events AS event,
+      json_each(CASE
+        WHEN json_valid(event.meta) AND json_type(event.meta, '$.completedOptions') = 'array'
+          THEN json_extract(event.meta, '$.completedOptions')
+        ELSE '[]'
+      END) AS completed
+    WHERE event.event_date >= ? AND event.type = 'premium_survey_submit' AND completed.value IS NOT NULL AND completed.value != ''
+    GROUP BY completed.value ORDER BY count DESC LIMIT 20`).bind(since).all() : { results: [] };
+  const premiumSurveyCustomTextRows = wants('survey') ? await env.DB.prepare(`SELECT
+    substr(trim(COALESCE(json_extract(meta, '$.customText'), '')), 1, 160) AS text,
+    COUNT(*) AS count,
+    MAX(created_at) AS lastAt
+    FROM analytics_events
+    WHERE event_date >= ? AND type = 'premium_survey_submit' AND trim(COALESCE(json_extract(meta, '$.customText'), '')) != ''
+    GROUP BY text ORDER BY lastAt DESC LIMIT 20`).bind(since).all() : { results: [] };
   const featureWhere = FEATURE_PREFIXES.map(() => 'type LIKE ?').join(' OR ');
   const featureCase = `CASE ${FEATURE_PREFIXES.map((item) => `WHEN type LIKE '${item.prefix}_%' THEN '${item.prefix}'`).join(' ')} END`;
   const featureGroupRows = wants('featureDetails') ? await env.DB.prepare(`SELECT
@@ -527,7 +545,13 @@ async function handleAdminAnalytics(request, env, origin) {
       submits: Number(premiumSurveyRow?.submits) || 0,
       users: Number(premiumSurveyRow?.users) || 0,
       interests: (premiumSurveyInterestRows.results || []).map((row) => ({ key: String(row.key || ''), count: Number(row.count) || 0 })),
-      priceOptions: (premiumSurveyPriceRows.results || []).map((row) => ({ key: String(row.key || ''), count: Number(row.count) || 0 }))
+      priceOptions: (premiumSurveyPriceRows.results || []).map((row) => ({ key: String(row.key || ''), count: Number(row.count) || 0 })),
+      completedOptions: (premiumSurveyCompletedRows.results || []).map((row) => ({ key: String(row.key || ''), count: Number(row.count) || 0 })),
+      customTexts: (premiumSurveyCustomTextRows.results || []).map((row) => ({
+        text: String(row.text || ''),
+        count: Number(row.count) || 0,
+        lastAt: String(row.lastAt || '')
+      }))
     },
     recent: (recentRows.results || []).map((row) => ({ ...row, meta: (() => { try { return JSON.parse(row.meta || '{}'); } catch { return {}; } })() })),
     userActivity: (userActivityRows.results || []).map((row) => ({

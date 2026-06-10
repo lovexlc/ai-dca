@@ -3,7 +3,7 @@ import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Too
 import { Activity, Bell, Bot, Calendar, ChevronDown, ChevronRight, Clock, Eye, MessageSquareText, MousePointerClick, Percent, RefreshCw, ShieldCheck, Shuffle, Sparkles, Trash2, UserRound, Users } from 'lucide-react';
 import { buildAnalyticsSummary, clearAnalyticsEvents, fetchRemoteAnalyticsSummary, isAnalyticsAdmin, trackAnalyticsEvent } from '../app/analytics.js';
 import { loadCloudSession } from '../app/authClient.js';
-import { PREMIUM_SURVEY_INTEREST_LABELS, PREMIUM_SURVEY_PRICE_LABELS } from '../app/premiumSurveyOptions.js';
+import { PREMIUM_SURVEY_COMPLETED_LABELS, PREMIUM_SURVEY_COMPLETED_OPTIONS, PREMIUM_SURVEY_INTEREST_LABELS, PREMIUM_SURVEY_PRICE_LABELS } from '../app/premiumSurveyOptions.js';
 import { cx } from '../components/experience-ui.jsx';
 
 const RANGE_OPTIONS = [
@@ -358,6 +358,10 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
     { title: '平均活跃', value: formatDuration(summary.engagement?.avgActiveTimeMs), icon: Clock, hint: `平均滚动 ${Math.round(Number(summary.engagement?.avgScrollPct) || 0)}%` },
     { title: '问卷提交', value: summary.premiumSurvey?.submits || 0, icon: MessageSquareText, hint: `提交用户 ${summary.premiumSurvey?.users || 0}` }
   ];
+  const completedSurveyRows = PREMIUM_SURVEY_COMPLETED_OPTIONS.map((option) => {
+    const stat = (summary.premiumSurvey?.completedOptions || []).find((row) => row.key === option.key);
+    return { key: option.key, count: Number(stat?.count) || 0 };
+  });
 
   return (
     <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>
@@ -462,7 +466,7 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
             <Sparkles className="h-4 w-4 text-amber-500" />
             <h2 className="text-base font-bold text-slate-900">高级版问卷</h2>
           </div>
-          <span className="text-xs text-slate-400">固定选项汇总，不含自由文本和持仓信息</span>
+          <span className="text-xs text-slate-400">固定选项与用户主动填写反馈</span>
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="overflow-hidden rounded-2xl border border-slate-100">
@@ -482,6 +486,32 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
                 {(summary.premiumSurvey?.priceOptions || []).length ? (summary.premiumSurvey.priceOptions || []).map((row) => (
                   <tr key={row.key}><td className="px-3 py-2 text-slate-700">{premiumSurveyLabel(row.key, PREMIUM_SURVEY_PRICE_LABELS)}</td><td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.count}</td></tr>
                 )) : <tr><td colSpan={2} className="px-3 py-8 text-center text-slate-400">暂无价格反馈</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+          <div className="overflow-hidden rounded-2xl border border-slate-100">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-3 py-2 text-left">已完成项</th><th className="px-3 py-2 text-right">提交数</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {completedSurveyRows.length ? completedSurveyRows.map((row) => (
+                  <tr key={row.key}><td className="px-3 py-2 text-slate-700">{premiumSurveyLabel(row.key, PREMIUM_SURVEY_COMPLETED_LABELS)}</td><td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.count}</td></tr>
+                )) : <tr><td colSpan={2} className="px-3 py-8 text-center text-slate-400">暂无已完成项记录</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <div className="overflow-hidden rounded-2xl border border-slate-100">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-3 py-2 text-left">用户自行输入</th><th className="px-3 py-2 text-right">次数</th><th className="px-3 py-2 text-right">最近</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {(summary.premiumSurvey?.customTexts || []).length ? (summary.premiumSurvey.customTexts || []).map((row) => (
+                  <tr key={`${row.text}-${row.lastAt || row.count}`}>
+                    <td className="max-w-[360px] px-3 py-2 text-slate-700"><span className="line-clamp-2 break-words">{row.text}</span></td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.count}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">{row.lastAt ? String(row.lastAt).slice(5, 16).replace('T', ' ') : '-'}</td>
+                  </tr>
+                )) : <tr><td colSpan={3} className="px-3 py-8 text-center text-slate-400">暂无用户输入反馈</td></tr>}
               </tbody>
             </table>
           </div>
