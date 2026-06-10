@@ -7,7 +7,7 @@ export const PREMIUM_SURVEY_INTEREST_OPTIONS = [
 ];
 
 export const PREMIUM_SURVEY_COMPLETED_OPTIONS = [
-  { key: 'advanced_fund_strategy', label: '更强基金策略功能' }
+  { key: 'advanced_fund_strategy', label: '更强提醒策略' }
 ];
 
 export const PREMIUM_SURVEY_PRICE_OPTIONS = [
