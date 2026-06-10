@@ -2,9 +2,9 @@ const DEFAULT_RELEASE_ANNOUNCEMENT = {
   enabled: true,
   id: '2026-06-10-switch-rules-analytics-release',
   title: '近期功能更新',
-  eyebrow: '根据最近 Git 提交整理',
+  eyebrow: '更新公告',
   summary: '本期更新集中在基金切换规则、纳指 ETF 交互、通知服务稳定性和数据看板统计口径。',
-  sourceLabel: '整理自 e52926c 至 2064961 的最近提交',
+  sourceLabel: '',
   embedUrl: '',
   externalUrl: '',
   items: [
