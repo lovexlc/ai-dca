@@ -502,8 +502,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     return () => { cancelled = true; };
   }, [inPagesDir, refreshTick]);
 
-  // 候选集合 = 当前规则里所有已分类代码，排除当前规则已选基准。
-  // 已持有 ETF 在被分类时会默认入基准；未持有 ETF 也可以被手动切为模拟基准。
   const premiumClassKey = JSON.stringify(prefs?.premiumClass || {});
   useEffect(() => {
     const cls = (prefs && prefs.premiumClass) || {};
@@ -519,9 +517,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     });
   }, [exchangeFunds, premiumClassKey, activeRuleId]);
 
-  // 基准集合：
-  // - 保留当前规则里仍已分类的手动基准，包括未持有模拟基准；
-  // - 如果没有任何已分类基准，则回到已分类持仓 ETF 的默认基准。
   const benchmarkCodesJoined = (prefs?.benchmarkCodes || []).join(',');
   useEffect(() => {
     const cls = (prefs && prefs.premiumClass) || {};
@@ -539,7 +534,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     });
   }, [exchangeFunds, benchmarkCodesJoined, premiumClassKey, activeRuleId]);
 
-  // 拉取所有候选 ETF 的 Worker 统一指标（候选池为内置纳指 ETF 全集，不仅限于持仓）。
   const loadNav = useCallback(async () => {
     const startedAt = Date.now();
     trackFeatureEvent('switch_strategy', 'metrics_refresh_start', {
@@ -615,7 +609,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
   useEffect(() => { loadNav(); }, [loadNav, refreshTick]);
 
-  // 合并 Worker 返回的价格、净值与溢价；浏览器不再重复计算溢价。
   const fundsWithPremium = useMemo(() => {
     return candidateUniverse.map((u) => {
       const navEntry = navState.navByCode?.[u.code] || null;
@@ -643,7 +636,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     return fundsWithPremium.filter((f) => set.has(f.code));
   }, [fundsWithPremium, prefs.enabledCodes]);
 
-  // 多基准：按 prefs.benchmarkCodes 顺序取 fundsWithPremium 中对应项。
   const benchmarks = useMemo(() => {
     const codes = Array.isArray(prefs.benchmarkCodes) ? prefs.benchmarkCodes : [];
     const list = codes
@@ -654,7 +646,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     if (fundsWithPremium[0]) return [fundsWithPremium[0]];
     return [];
   }, [fundsWithPremium, enabledFunds, prefs.benchmarkCodes]);
-  // 第一只基准，供需要单一基准上下文的位置使用（如 benchmarkSummary 默认提示、套利轮次默认记录）。
   const benchmark = benchmarks[0] || null;
 
   function setPrefValue(key, value) {
@@ -665,7 +656,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     });
     setPrefs((prev) => updateActiveSwitchRule(prev, { [key]: value }));
   }
-  // 拖拽分类：将 code 套入 H / L / 未分类。targetClass=null 表示从分类中移出。
   function setCodeClass(code, targetClass) {
     if (!code) return;
     const beforeClass = prefs?.premiumClass?.[code] || null;
@@ -734,7 +724,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       });
     });
   }
-  // 拖拽状态：高亮当前悬停中的接收区。
   const [dragOverZone, setDragOverZone] = useState(null);
   const handleChipDragStart = useCallback((event, code) => {
     if (!event || !event.dataTransfer || !code) return;
@@ -763,10 +752,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     setCodeClass(code, targetClass);
   }, []);
 
-  // 场内信号：统一使用 worker 计算的 snapshot.signals，不再在浏览器重复算一份。
-  //  - workerSnapshot 来自 /api/notify/switch/snapshot（本页顶部 useEffect 会定期拉）。
-  //  - 没启用自动监控也能看到 signals：未启用时 worker 仅计算不推送。
-  //  - prefs 变动后会 auto-sync config 到 worker，随后手动/定时 run 刷新 snapshot。
   const intraSignals = useMemo(() => {
     const list = Array.isArray(activeWorkerSnapshot?.signals) ? activeWorkerSnapshot.signals : [];
     return list.map((s) => ({
@@ -779,7 +764,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     }));
   }, [activeWorkerSnapshot]);
 
-  // 场外信号：多基准下取「溢价最高」的基准（表示场内已充分偏高，走场外更交同）。
   const otcSignal = useMemo(() => {
     let topBench = null;
     benchmarks.forEach((b) => {
@@ -849,7 +833,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       : '模拟基准';
     return `${prefix}：${benchmarks.map((b) => `${b.code} · ${b.name || ''}`).join(' / ')}`;
   }, [exchangeFunds, benchmarks]);
-
   const switchSummary = useMemo(() => {
     const cls = prefs?.premiumClass || {};
     const benches = (prefs?.benchmarkCodes || []).filter(Boolean);
