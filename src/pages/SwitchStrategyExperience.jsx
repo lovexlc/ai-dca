@@ -502,18 +502,16 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     return () => { cancelled = true; };
   }, [inPagesDir, refreshTick]);
 
-  // 候选集合：
-  // - 有场内持仓时，持仓 ETF 默认作为基准，未持有 ETF 作为候选；
-  // - 没有场内持仓时，用户可手动把已分类 ETF 设为模拟基准，其余已分类 ETF 作为候选。
+  // 候选集合 = 当前规则里所有已分类代码，排除当前规则已选基准。
+  // 已持有 ETF 在被分类时会默认入基准；未持有 ETF 也可以被手动切为模拟基准。
   const premiumClassKey = JSON.stringify(prefs?.premiumClass || {});
   useEffect(() => {
     const cls = (prefs && prefs.premiumClass) || {};
-    const heldCodes = new Set(exchangeFunds.map((f) => f.code));
     setPrefs((prev) => {
       const current = getActiveSwitchRule(prev);
       const benchmarkSet = new Set(Array.isArray(current.benchmarkCodes) ? current.benchmarkCodes : []);
       const next = Object.keys(cls).filter((code) => (
-        heldCodes.size ? !heldCodes.has(code) : !benchmarkSet.has(code)
+        (cls[code] === 'H' || cls[code] === 'L') && !benchmarkSet.has(code)
       )).sort();
       const before = Array.isArray(current.enabledCodes) ? current.enabledCodes : [];
       if (before.length === next.length && before.every((v, i) => v === next[i])) return prev;
@@ -522,27 +520,20 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, [exchangeFunds, premiumClassKey, activeRuleId]);
 
   // 基准集合：
-  // - 有持仓数据时，仍按已分类的持仓 ETF 自动维护；
-  // - 没有持仓数据时，仅保留用户手动选择且仍已分类的模拟基准。
+  // - 保留当前规则里仍已分类的手动基准，包括未持有模拟基准；
+  // - 如果没有任何已分类基准，则回到已分类持仓 ETF 的默认基准。
   const benchmarkCodesJoined = (prefs?.benchmarkCodes || []).join(',');
   useEffect(() => {
     const cls = (prefs && prefs.premiumClass) || {};
     const heldOrder = exchangeFunds.map((f) => f.code);
     const heldClassified = heldOrder.filter((code) => cls[code] === 'H' || cls[code] === 'L');
-    const heldClassifiedSet = new Set(heldClassified);
+    const classifiedSet = new Set(Object.keys(cls).filter((code) => cls[code] === 'H' || cls[code] === 'L'));
     setPrefs((prev) => {
       const current = getActiveSwitchRule(prev);
       const before = Array.isArray(current.benchmarkCodes) ? current.benchmarkCodes : [];
-      let next = [];
-      if (heldOrder.length) {
-        const kept = before.filter((code) => heldClassifiedSet.has(code));
-        const keptSet = new Set(kept);
-        const appended = heldClassified.filter((code) => !keptSet.has(code));
-        next = [...kept, ...appended];
-        if (!next.length) next = [heldOrder[0]];
-      } else {
-        next = before.filter((code) => cls[code] === 'H' || cls[code] === 'L');
-      }
+      let next = before.filter((code) => classifiedSet.has(code));
+      if (!next.length && heldClassified.length) next = heldClassified;
+      if (!next.length && heldOrder.length) next = [heldOrder[0]];
       if (next.length === before.length && next.every((v, i) => v === before[i])) return prev;
       return updateActiveSwitchRule(prev, { benchmarkCodes: next });
     });
@@ -692,11 +683,12 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       const isHeld = heldCodes.has(code);
       const benchmarkCodes = Array.isArray(current?.benchmarkCodes) ? current.benchmarkCodes.filter(Boolean) : [];
       const enabledCodes = Array.isArray(current?.enabledCodes) ? current.enabledCodes.filter(Boolean) : [];
+      const wasBenchmark = benchmarkCodes.includes(code);
       let nextBenchmarkCodes = benchmarkCodes;
       let nextEnabledCodes = enabledCodes;
       if (targetClass === 'H' || targetClass === 'L') {
         cls[code] = targetClass;
-        if (isHeld) {
+        if (isHeld || wasBenchmark) {
           nextBenchmarkCodes = Array.from(new Set([...benchmarkCodes, code]));
           nextEnabledCodes = enabledCodes.filter((item) => item !== code);
         } else {
@@ -705,11 +697,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         }
       } else {
         delete cls[code];
-        if (isHeld) {
-          nextBenchmarkCodes = benchmarkCodes.filter((item) => item !== code);
-        } else {
-          nextEnabledCodes = enabledCodes.filter((item) => item !== code);
-        }
+        nextBenchmarkCodes = benchmarkCodes.filter((item) => item !== code);
+        nextEnabledCodes = enabledCodes.filter((item) => item !== code);
       }
       return updateActiveSwitchRule(prev, {
         benchmarkCodes: nextBenchmarkCodes,
@@ -729,11 +718,13 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       const current = getActiveSwitchRule(prev);
       const cls = { ...((current && current.premiumClass) || {}) };
       if (cls[code] !== 'H' && cls[code] !== 'L') return prev;
-      const hasHoldings = exchangeFunds.length > 0;
-      const isHeld = exchangeFunds.some((fund) => fund.code === code);
-      if (hasHoldings && !isHeld) return prev;
       const classifiedCodes = Object.keys(cls).filter((item) => cls[item] === 'H' || cls[item] === 'L');
-      const nextBenchmarkCodes = shouldBeBenchmark ? [code] : [];
+      const currentBenchmarks = Array.isArray(current?.benchmarkCodes)
+        ? current.benchmarkCodes.filter((item) => cls[item] === 'H' || cls[item] === 'L')
+        : [];
+      const nextBenchmarkCodes = shouldBeBenchmark
+        ? Array.from(new Set([...currentBenchmarks, code]))
+        : currentBenchmarks.filter((item) => item !== code);
       const benchmarkSet = new Set(nextBenchmarkCodes);
       const nextEnabledCodes = classifiedCodes.filter((item) => !benchmarkSet.has(item)).sort();
       return updateActiveSwitchRule(prev, {
@@ -851,9 +842,13 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
   const benchmarkSummary = useMemo(() => {
     if (!benchmarks.length) return '请先选择至少一只基准 ETF。';
-    const prefix = exchangeFunds.length ? '基准' : '模拟基准';
+    const heldCodes = new Set(exchangeFunds.map((fund) => fund.code));
+    const hasUnheldBenchmark = benchmarks.some((b) => b?.code && !heldCodes.has(b.code));
+    const prefix = exchangeFunds.length
+      ? (hasUnheldBenchmark ? '基准/模拟基准' : '基准')
+      : '模拟基准';
     return `${prefix}：${benchmarks.map((b) => `${b.code} · ${b.name || ''}`).join(' / ')}`;
-  }, [exchangeFunds.length, benchmarks]);
+  }, [exchangeFunds, benchmarks]);
 
   const switchSummary = useMemo(() => {
     const cls = prefs?.premiumClass || {};

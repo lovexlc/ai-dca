@@ -26,7 +26,6 @@ export function SwitchStrategyClassificationPanel({
   const cls = prefs.premiumClass || {};
   const benchmarkSet = new Set(Array.isArray(prefs.benchmarkCodes) ? prefs.benchmarkCodes : []);
   const heldSet = new Set(exchangeFunds.map((fund) => fund.code));
-  const hasHoldings = heldSet.size > 0;
   const poolList = fundsWithPremium.filter((fund) => !cls[fund.code]);
   const hList = fundsWithPremium.filter((fund) => cls[fund.code] === 'H');
   const lList = fundsWithPremium.filter((fund) => cls[fund.code] === 'L');
@@ -36,9 +35,12 @@ export function SwitchStrategyClassificationPanel({
     const currentClass = cls[code] || null;
     const isBenchmark = benchmarkSet.has(code);
     const isHeld = heldSet.has(code);
-    const canManualBenchmark = currentClass && (!hasHoldings || isHeld);
+    const canManualBenchmark = Boolean(currentClass);
     const hasNav = Number.isFinite(fund.navLatest);
     const priceSourceLabel = fund.latestPriceDate || 'daily';
+    const benchmarkTitle = canManualBenchmark
+      ? (isHeld ? '设为当前规则基准' : '设为当前规则模拟基准；未持有 ETF 只用于监控提醒')
+      : '先设为 H 或 L 后才能设为基准';
     return (
       <div
         key={code}
@@ -88,7 +90,7 @@ export function SwitchStrategyClassificationPanel({
                 if (canManualBenchmark) setCodeBenchmark(code, !isBenchmark);
               }}
               disabled={!canManualBenchmark}
-              title={canManualBenchmark ? '' : '已有持仓数据时，未持有 ETF 只作为候选；没有持仓数据时可手动设为模拟基准'}
+              title={benchmarkTitle}
               className={cx(
                 'inline-flex min-h-7 items-center border-l border-slate-200 px-2 py-1',
                 isBenchmark ? 'bg-indigo-500 text-white' : 'bg-white text-slate-500 hover:bg-indigo-50 hover:text-indigo-700',
@@ -189,7 +191,7 @@ export function SwitchStrategyClassificationPanel({
             ) : null}
           </div>
           <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-xs leading-5 text-indigo-900">
-            基准按“当前监控规则”单独保存。默认使用已持有的场内 ETF 作为基准；如果当前没有任何场内持仓，可以手动把已分类 ETF 设为模拟基准。模拟基准只用于观察，不代表已经有可卖出的份额。
+            基准按“当前监控规则”单独保存。默认使用已持有的场内 ETF 作为基准，也可以手动把任意已分类 ETF 设为模拟基准。未持有基准只用于监控提醒，不代表已经有可卖出的份额。
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div

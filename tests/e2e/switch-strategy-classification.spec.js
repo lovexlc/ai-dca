@@ -128,3 +128,17 @@ test('classified ETF can be selected as a simulated benchmark when no holdings e
   await expect(page.getByText('高溢价组 H').locator('..').locator('..')).toContainText('基准');
   await expect(page.getByText(/模拟基准：159513/)).toBeVisible({ timeout: 10_000 });
 });
+
+test('classified unheld ETF can be selected as a rule benchmark when holdings exist', async ({ page }) => {
+  await seedSwitchPage(page, { withHolding: true });
+  await mockSwitchNetwork(page);
+  await page.goto('./index.html?tab=fundSwitch');
+
+  await expect(page.getByText('所有纳指 ETF（未分类）')).toBeVisible({ timeout: 20_000 });
+  await page.getByLabel('将 159513 设为 H 组').click();
+  await expect(page.getByText('高溢价组 H').locator('..').locator('..')).toContainText('159513');
+
+  await page.getByLabel('将 159513 设为基准').click();
+  await expect(page.getByText('高溢价组 H').locator('..').locator('..')).toContainText('基准');
+  await expect(page.getByText(/基准\/模拟基准：159513/)).toBeVisible({ timeout: 10_000 });
+});

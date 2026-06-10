@@ -48,8 +48,8 @@ const FUND_CODE_PATTERN = /^\d{6}$/;
 const MAX_CANDIDATES = 20;
 const MAX_SWITCH_RULES = 12;
 // 与前端 SwitchStrategyExperience 的 DEFAULT_PREFS 保持一致。
-// v3 持仓 + H/L 双维度：
-//   benchmarkCodes = 持仓基准（前端从持仓详情自动派生，worker 端只接收）
+// v4 规则基准 + H/L 双维度：
+//   benchmarkCodes = 当前规则基准（默认来自持仓，也允许前端手动设置未持有模拟基准）
 //   enabledCodes   = 用户挑选的候选（前端按 H/L 分类做对侧过滤后下发）
 //   premiumClass   = 每只 ETF 的「溢价中枢」分类 'H' | 'L'，与持仓/候选解耦
 //   触发方向锚定在 benchmark 的分类：
@@ -144,8 +144,8 @@ function normalizeSwitchRule(input = {}, index = 0, { defaultEnabled = true, rea
 }
 
 // 配置与前端 aiDcaSwitchStrategyPrefs 同名，不重复定义一套参数。
-// v3 持仓 + H/L 双维度（持仓决定基准，H/L 决定方向）：
-//  - benchmarkCodes: 持仓基准（前端从持仓详情自动派生，禁止手挑非持仓代码）
+// v4 规则基准 + H/L 双维度（benchmarkCodes 决定基准，H/L 决定方向）：
+//  - benchmarkCodes: 当前规则基准；通常来自持仓，也可包含未持有模拟基准
 //  - enabledCodes:   候选（前端按 premiumClass 过滤后只剩对侧）
 //  - premiumClass:   { [code]: 'H' | 'L' }，每只 ETF 的溢价中枢标签
 //  - intraSellLowerPct / intraBuyOtherPct: 场内阈值，与页面同名同义。
@@ -514,7 +514,7 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
 
   function computeOtcSignal() {
     let topBench = null;
-    // 场外触发必须从“持仓基准”发起；未持有候选即使高溢价也不能作为卖出侧触发推送。
+    // 场外触发必须从“规则基准”发起；候选即使高溢价也不能作为卖出侧触发推送。
     for (const code of benchmarkCodes) {
       const entry = premiumByCode[code];
       if (!entry || !Number.isFinite(entry.premiumPct)) continue;
@@ -721,7 +721,7 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
   };
 }
 
-// 与前端 intraSignals 算法一致（v3：持仓决定基准，H/L 决定方向）：
+// 与前端 intraSignals 算法一致（v4：规则基准决定基准，H/L 决定方向）：
 //   gap = H溢价 − L溢价（始终 H 在前）。满足以下任一才可能触发：
 //   - bench.class === 'L' && cand.class === 'H' && gap < intraSellLowerPct → 规则 A：卖 bench(L) 买 cand(H)
 //   - bench.class === 'H' && cand.class === 'L' && gap > intraBuyOtherPct  → 规则 B：卖 bench(H) 买 cand(L)
@@ -773,7 +773,7 @@ export function evaluateSwitchTriggers(snapshot, prevTriggerStates = {}) {
       if (benchClass === 'H') gap = diff;
       else if (benchClass === 'L') gap = -diff;
       const rule = classifyRule({ benchClass, candClass, gap, sellLower, buyOther });
-      // 方向始终是「卖持仓 bench, 买候选 cand」。
+      // 方向始终是「卖/观察基准 bench, 买候选 cand」。
       const fromCode = rule === 'none' ? '' : benchmark;
       const toCode = rule === 'none' ? '' : cand.code;
       const fromName = benchName;
@@ -900,7 +900,7 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
   if (trigger?.kind === 'otc' || String(trigger?.rule || '').startsWith('OTC_')) {
     return buildOtcSwitchTriggerNotification(snapshot, trigger, env);
   }
-  // v3 通知格式（持仓 bench + H/L 双维度）：
+  // v4 通知格式（规则基准 bench + H/L 双维度）：
   //   title:   切换 A 低→高 | 159632→513100
   //   body:    H−L +0.85% < 1%  · NAV 2026-04-28
   //            卖 159632 纳指ETF → 买 513100 纳指ETF
@@ -911,7 +911,7 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
   const gapStr = (gap >= 0 ? '+' : '') + gap.toFixed(2);
   const threshold = Number(trigger.threshold);
   const cmp = trigger.rule === 'A' ? '<' : '>';
-  // v3：fromCode 始终 = benchmark（持仓）。H 组只：
+  // v4：fromCode 始终 = benchmark（规则基准）。H 组只：
   //   bench.class === 'H' → H = fromCode；bench.class === 'L' → H = toCode。
   const benchHCode = trigger.benchClass === 'H' ? trigger.fromCode : trigger.toCode;
   const benchmarkEntry = (Array.isArray(snapshot?.byBenchmark) ? snapshot.byBenchmark : [])

@@ -189,7 +189,7 @@ export function SwitchStrategyWorkerPanel({
                   const fmtCls = (c) => `${c}${switchSummary.cls[c] === 'H' ? 'H' : (switchSummary.cls[c] === 'L' ? 'L' : '')}`;
                   const fmtList = (arr) => (arr || []).map(fmtCls).join(', ');
                   if (!switchSummary.benches.length) {
-                    return <span className="text-slate-500">未配置基准（在上方 H/L 表拖入你的持仓代码）</span>;
+                    return <span className="text-slate-500">未配置基准（在上方 H/L 表把已分类 ETF 设为基准）</span>;
                   }
                   const Lline = switchSummary.Lrow ? (
                     <span key="L" className="text-slate-500">
