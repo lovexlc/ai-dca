@@ -2,6 +2,11 @@
 // 导出范围只包含业务白名单 key，避免 UI 状态、登录态、缓存和分析日志推高云端版本。
 
 const LS_PREFIX = 'aiDca';
+export const BACKUP_APPLIED_EVENT = 'ai-dca:backup-applied';
+const HOLDINGS_BACKUP_KEYS = new Set([
+  'aiDcaFundHoldingsLedger',
+  'aiDcaFundHoldingsState'
+]);
 export const SYNCABLE_STORAGE_KEYS = new Set([
   'aiDcaAccountAssignments',
   'aiDcaAccumulationState',
@@ -94,6 +99,7 @@ export function applyBackupEnvelope(envelope, { wipePrefix = true } = {}) {
   }
 
   let restored = 0;
+  const restoredKeys = [];
   Object.entries(payload).forEach(([key, value]) => {
     if (typeof key !== 'string') return;
     if (!isBackupPayloadKey(key)) return;
@@ -101,7 +107,18 @@ export function applyBackupEnvelope(envelope, { wipePrefix = true } = {}) {
     const str = typeof value === 'string' ? value : JSON.stringify(value);
     ls.setItem(key, str);
     restored += 1;
+    restoredKeys.push(key);
   });
+
+  if (typeof window !== 'undefined') {
+    const detail = { keys: restoredKeys, restoredKeyCount: restored };
+    window.dispatchEvent(new CustomEvent(BACKUP_APPLIED_EVENT, { detail }));
+    if (restoredKeys.some((key) => HOLDINGS_BACKUP_KEYS.has(key))) {
+      window.dispatchEvent(new CustomEvent('holdings:ledger-updated', {
+        detail: { ...detail, source: 'backup-applied' }
+      }));
+    }
+  }
 
   return { restoredKeyCount: restored };
 }
