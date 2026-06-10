@@ -95,6 +95,26 @@ export function SymbolDetailPanel({
   const [lockedChartRow, setLockedChartRow] = useState(null);
   const indicatorOptions = INDICATOR_OPTIONS;
   const rowSymbol = row && row.symbol ? String(row.symbol).toUpperCase() : '';
+  const currentIsCnOtcFund = market === 'cn' && isCnOtcFundQuote(row);
+  const compareSearchMetaMap = useMemo(() => {
+    const next = {};
+    (Array.isArray(compareSearchResults) ? compareSearchResults : []).forEach((item) => {
+      const symbol = String(item?.symbol || item?.code || item?.ticker || '').trim().toUpperCase();
+      const code = normalizeCnFundCode(symbol);
+      if (symbol) next[symbol] = item;
+      if (code) next[code] = item;
+    });
+    return next;
+  }, [compareSearchResults]);
+  const isCompareCnOtcFund = useCallback((symbol) => {
+    if (market !== 'cn') return false;
+    const upper = String(symbol || '').trim().toUpperCase();
+    const code = normalizeCnFundCode(upper);
+    if (!/^\d{6}$/.test(code)) return false;
+    const quote = compareQuoteMap[upper] || compareQuoteMap[code] || null;
+    const searchMeta = compareSearchMetaMap[upper] || compareSearchMetaMap[code] || null;
+    return currentIsCnOtcFund || isCnOtcFundQuote(quote) || isCnOtcFundQuote(searchMeta);
+  }, [compareQuoteMap, compareSearchMetaMap, currentIsCnOtcFund, market]);
   // 当前 symbol 或时间范围切换时清空对比
   useEffect(() => { setCompareSymbols([]); setHoveredChartRow(null); setLockedChartRow(null); }, [rowSymbol]);
   useEffect(() => { setHoveredChartRow(null); setLockedChartRow(null); }, [chartRange, cnFundParam]);
@@ -156,6 +176,7 @@ export function SymbolDetailPanel({
   useEffect(() => {
     if (!chartTf || !compareSymbols.length) return;
     compareSymbols.forEach((sym) => {
+      if (market === 'cn' && isCompareCnOtcFund(sym)) return;
       const key = `${sym}|${chartTf}`;
       if (compareCandlesMap[key] || compareLoadingMap[key] || compareErrorMap[key]) return;
       setCompareLoadingMap((prev) => ({ ...prev, [key]: true }));
@@ -172,9 +193,10 @@ export function SymbolDetailPanel({
         setCompareLoadingMap((prev) => ({ ...prev, [key]: false }));
       });
     });
-  }, [compareSymbols, chartTf, compareCandlesMap, compareLoadingMap, compareErrorMap]);
+  }, [compareSymbols, chartTf, compareCandlesMap, compareLoadingMap, compareErrorMap, isCompareCnOtcFund, market]);
   useEffect(() => {
-    if (market !== 'cn' || cnFundParam === 'price' || !compareSymbols.length) return;
+    if (market !== 'cn' || !compareSymbols.length) return;
+    if (cnFundParam === 'price' && !compareSymbols.some((sym) => /^\d{6}$/.test(normalizeCnFundCode(sym)))) return;
     const days = navHistoryDaysForRange(chartRange);
     compareSymbols.forEach((sym) => {
       const code = normalizeCnFundCode(sym);
@@ -208,9 +230,9 @@ export function SymbolDetailPanel({
         })
         .finally(() => {
           compareNavInflightRef.current.delete(key);
-      });
+        });
     });
-  }, [market, cnFundParam, compareSymbols, chartRange, compareNavHistoryMap]);
+  }, [market, cnFundParam, compareSymbols, chartRange, compareNavHistoryMap, isCompareCnOtcFund]);
 
   const compareCandidates = (() => {
     const base = market === 'cn'
@@ -305,7 +327,7 @@ export function SymbolDetailPanel({
   const exchangeLabel = row.exchange || (market === 'us' ? 'NASDAQ/NYSE' : 'A 股');
   const currencyLabel = row.currency || (market === 'us' ? 'USD' : 'CNY');
   const stateLabel = marketStateLabel(row.marketState, market);
-  const isCnOtcFund = market === 'cn' && isCnOtcFundQuote(row);
+  const isCnOtcFund = currentIsCnOtcFund;
   const xueqiuQuote = getXueqiuQuote(xueqiuFundData);
   const yearExtrema = market === 'cn' && !isCnOtcFund
     ? deriveCandlestickExtrema(dailyCandles, { daysBack: 365 })
@@ -387,17 +409,27 @@ export function SymbolDetailPanel({
     });
   })();
   const addCompareSymbol = (raw) => {
-    const v = String(raw || '').trim().toUpperCase();
+    const candidate = raw && typeof raw === 'object' ? raw : null;
+    const v = String(candidate?.symbol || raw || '').trim().toUpperCase();
     if (!v) return;
     if (compareSymbols.includes(v) || v === String(row && row.symbol || '').toUpperCase()) {
       setCompareInput('');
       return;
     }
     if (compareSymbols.length >= 3) return;
+    const meta = candidate || compareSearchMetaMap[v] || compareSearchMetaMap[normalizeCnFundCode(v)] || null;
+    if (meta) {
+      setCompareQuoteMap((prev) => (prev[v] ? prev : { ...prev, [v]: meta }));
+    }
     setCompareSymbols((prev) => [...prev, v]);
     setCompareInput('');
   };
-  const addCompare = () => addCompareSymbol(compareInput);
+  const addCompare = () => {
+    const v = String(compareInput || '').trim().toUpperCase();
+    const code = normalizeCnFundCode(v);
+    const matched = visibleCompareCandidates.find((item) => item.symbol === v || normalizeCnFundCode(item.symbol) === code);
+    addCompareSymbol(matched || v);
+  };
   const removeCompare = (sym) => {
     setCompareSymbols((prev) => prev.filter((x) => x !== sym));
     setHoveredChartRow(null);
@@ -408,19 +440,27 @@ export function SymbolDetailPanel({
     const priceCandles = Array.isArray(rawCandles) ? sliceCandlesForRange(rawCandles, chartRange) : rawCandles;
     const compareCode = normalizeCnFundCode(sym);
     const compareNavKey = `${compareCode}|${navHistoryDaysForRange(chartRange)}`;
-    const compareNavItems = compareNavHistoryMap[compareNavKey]?.items;
+    const compareNavState = compareNavHistoryMap[compareNavKey];
+    const compareNavItems = compareNavState?.items;
+    const useNavAsPrice = market === 'cn'
+      && cnFundParam === 'price'
+      && (isCompareCnOtcFund(sym) || (Array.isArray(compareNavItems) && compareNavItems.length >= 2))
+      && (!Array.isArray(priceCandles) || priceCandles.length < 2);
     const candles = market === 'cn' && cnFundParam !== 'price'
       ? buildCnFundParamCandles(priceCandles, compareNavItems, cnFundParam, premiumState, chartRange)
-      : priceCandles;
+      : (useNavAsPrice ? buildCnFundParamCandles([], compareNavItems, 'nav', premiumState, chartRange) : priceCandles);
     return {
       symbol: sym,
-      candles
+      candles,
+      navLoading: Boolean(compareNavState?.loading),
+      navError: compareNavState?.error || ''
     };
   });
   const comparePendingSymbols = compareSymbols.filter((sym) => {
     if (compareLoadingMap[`${sym}|${chartTf}`]) return true;
-    if (market !== 'cn' || cnFundParam === 'price') return false;
+    if (market !== 'cn') return false;
     const code = normalizeCnFundCode(sym);
+    if (cnFundParam === 'price' && !/^\d{6}$/.test(code)) return false;
     return Boolean(compareNavHistoryMap[`${code}|${navHistoryDaysForRange(chartRange)}`]?.loading);
   });
   const compareReadyCount = compareSeries.filter((s) => Array.isArray(s.candles) && s.candles.length >= 2).length;
@@ -679,7 +719,7 @@ export function SymbolDetailPanel({
                       <button
                         key={item.symbol}
                         type="button"
-                        onClick={() => addCompareSymbol(item.symbol)}
+                        onClick={() => addCompareSymbol(item)}
                         disabled={disabled}
                         className={cx(
                           'flex items-center gap-2 rounded-lg px-2 py-2 text-left transition',
@@ -731,8 +771,8 @@ export function SymbolDetailPanel({
               {compareSeries.map((item, ci) => {
                 const markerColor = COMPARE_COLORS[ci % COMPARE_COLORS.length];
                 const ready = Array.isArray(item.candles) && item.candles.length >= 2;
-                const loading = compareLoadingMap[`${item.symbol}|${chartTf}`];
-                const failed = compareErrorMap[`${item.symbol}|${chartTf}`];
+                const loading = !ready && (compareLoadingMap[`${item.symbol}|${chartTf}`] || item.navLoading);
+                const failed = !ready && (compareErrorMap[`${item.symbol}|${chartTf}`] || item.navError);
                 return (
                   <span
                     key={item.symbol}
@@ -740,7 +780,7 @@ export function SymbolDetailPanel({
                     style={{ color: markerColor }}
                   >
                     <span className="size-2 shrink-0 rounded-full" style={{ background: markerColor }} />
-                    <span className="min-w-0 truncate">{formatSymbolDisplay(item.symbol)}{loading ? ' 加载中' : failed ? ' 无数据' : ready ? '' : ' 等待'}</span>
+                    <span className="min-w-0 truncate">{formatSymbolDisplay(item.symbol)}{ready ? '' : loading ? ' 加载中' : failed ? ' 无数据' : ' 等待'}</span>
                     <button
                       type="button"
                       onClick={(event) => { event.stopPropagation(); removeCompare(item.symbol); }}
