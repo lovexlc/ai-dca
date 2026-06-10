@@ -15,6 +15,7 @@ import { useIncomeRoute } from '../app/incomeRoute.js';
 import { HoldingsOverviewShell } from './holdings/HoldingsOverviewShell.jsx';
 import { createAggregateHoldingsColumns } from './holdings/aggregateHoldingsColumns.jsx';
 import { buildAggregateHoldingsTsv } from './holdings/holdingsClipboardExport.js';
+import { useHoldingsStorageSync } from './holdings/useHoldingsStorageSync.js';
 import {
   aggregateByCode,
   buildLedgerRows,
@@ -61,14 +62,6 @@ import { readTradeLedger } from '../app/tradeLedger.js';
 import { groupCostBasisBySymbol, attachUnrealized } from '../app/costTracker.js';
 import { hasPotentialUserData, installDemoData } from '../app/demoData.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
-import { BACKUP_APPLIED_EVENT } from '../app/webdavBackup.js';
-
-const HOLDINGS_SYNC_KEYS = new Set([
-  'aiDcaFundHoldingsLedger',
-  'aiDcaFundHoldingsState',
-  'aiDcaAccountAssignments',
-  'aiDcaTradeLedger'
-]);
 
 export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = false } = {}) {
   const [ledger, setLedger] = useState(() => readLedgerState());
@@ -167,33 +160,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   // ---- PR 3.5 part 1: 读取交易台账 (aiDcaTradeLedger)，给基金汇总行注入成本/盈亏字段（仅数据层，UI 留到 part 2）。 ----
   const [tradeLedgerEntries, setTradeLedgerEntries] = useState(() => readTradeLedger());
   const [accountAssignments, setAccountAssignments] = useState(() => readAccountAssignments());
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    function shouldRefreshFromEvent(event) {
-      const keys = Array.isArray(event?.detail?.keys) ? event.detail.keys : [];
-      if (!keys.length) return true;
-      return keys.some((key) => HOLDINGS_SYNC_KEYS.has(String(key || '')));
-    }
-    function refreshHoldingsFromStorage(event) {
-      if (!shouldRefreshFromEvent(event)) return;
-      setLedger(readLedgerState());
-      setAccountAssignments(readAccountAssignments());
-      setTradeLedgerEntries(readTradeLedger());
-    }
-    function onStorage(event) {
-      if (!event || event.key === null || HOLDINGS_SYNC_KEYS.has(String(event.key || ''))) {
-        refreshHoldingsFromStorage(event);
-      }
-    }
-    window.addEventListener(BACKUP_APPLIED_EVENT, refreshHoldingsFromStorage);
-    window.addEventListener('cloud-sync:auto-restored', refreshHoldingsFromStorage);
-    window.addEventListener('storage', onStorage);
-    return () => {
-      window.removeEventListener(BACKUP_APPLIED_EVENT, refreshHoldingsFromStorage);
-      window.removeEventListener('cloud-sync:auto-restored', refreshHoldingsFromStorage);
-      window.removeEventListener('storage', onStorage);
-    };
-  }, []);
+  useHoldingsStorageSync({ setLedger, setAccountAssignments, setTradeLedgerEntries });
 
   // ---- Derived data ----
   const transactions = ledger.transactions;
