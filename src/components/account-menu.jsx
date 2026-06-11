@@ -734,7 +734,9 @@ export function AccountMenu() {
                           </button>
                         ) : null}
                       </div>
-                      <button type="button" className={cx(subtleButtonClass, 'h-10 shrink-0 px-3')} onClick={() => updateField('securityPassword', generateSecurityPassword())}>生成</button>
+                      {authMode === 'register' ? (
+                        <button type="button" className={cx(subtleButtonClass, 'h-10 shrink-0 px-3')} onClick={() => updateField('securityPassword', generateSecurityPassword())}>生成</button>
+                      ) : null}
                     </div>
                   </label>
                   <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600">
