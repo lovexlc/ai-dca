@@ -33,7 +33,7 @@ export function IndexCard({ entry, onPick, sparkPoints }) {
       <div className="w-full flex items-center justify-between">
         <div className="w-2/3 truncate text-[12px] font-medium leading-tight tabular-nums text-slate-700">{formatMarketPrice(entry.price, entry)}</div>
         {hasChange && (
-          <div className="text-[10px] leading-none tabular-nums text-slate-500">({change >= 0 ? '+' : ''}{formatNumber(Math.abs(change))})</div>
+          <div className="text-[10px] leading-none tabular-nums text-slate-500">({change >= 0 ? '+' : ''}{formatMarketPrice(Math.abs(change), entry)})</div>
         )}
       </div>
       <div className="mt-auto -mx-1 w-[calc(100%+0.5rem)] pt-1">

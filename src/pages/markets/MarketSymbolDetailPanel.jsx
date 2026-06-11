@@ -361,8 +361,8 @@ export function SymbolDetailPanel({
   const overviewRows = [
     detailValueRow(isCnOtcFund ? '最新净值' : '最新价', isCnOtcFund ? formatNumber(row.price) : formatMarketPrice(row.price, row)),
     detailValueRow(isCnOtcFund ? '净值涨跌幅' : '今日涨跌幅', formatPercent(row.changePercent), positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#1f1f1f]'),
-    detailValueRow('涨跌额', Number.isFinite(change) ? `${change > 0 ? '+' : ''}${formatNumber(change)}` : '--'),
-    detailValueRow('昨收', formatNumber(row.previousClose)),
+    detailValueRow('涨跌额', Number.isFinite(change) ? `${change > 0 ? '+' : ''}${isCnOtcFund ? formatNumber(change) : formatMarketPrice(change, row)}` : '--'),
+    detailValueRow('昨收', isCnOtcFund ? formatNumber(row.previousClose) : formatMarketPrice(row.previousClose, row)),
     detailValueRow('市场', market === 'us' ? '美股' : 'A 股'),
     detailValueRow('交易状态', stateLabel),
     ...cnOverviewExtras,
@@ -593,7 +593,7 @@ export function SymbolDetailPanel({
             <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 sm:gap-x-2">
               <span className="text-[28px] font-medium leading-none tabular-nums text-[#1f1f1f] sm:text-[32px]">{isCnOtcFund ? formatNumber(row.price) : formatMarketPrice(row.price, row)}</span>
               <span className={cx('text-[12px] font-medium tabular-nums sm:text-[13px]', positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#5f6368]')}>
-                {Number.isFinite(change) ? `${change > 0 ? '+' : ''}${formatNumber(change)}` : '--'}
+                {Number.isFinite(change) ? `${change > 0 ? '+' : ''}${isCnOtcFund ? formatNumber(change) : formatMarketPrice(change, row)}` : '--'}
                 <span className="mx-1 text-[#5f6368]">·</span>
                 {formatPercent(row.changePercent)}
               </span>
@@ -602,7 +602,7 @@ export function SymbolDetailPanel({
             <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-[#5f6368] sm:text-[11px]">
               <span>{stateLabel}</span>
               {row.lastUpdated ? <><span>·</span><span>更新于 {formatClock(row.lastUpdated)}</span></> : null}
-              {Number.isFinite(Number(row.previousClose)) ? <><span>·</span><span>{isCnOtcFund ? '前一净值' : '昨收'} <span className="tabular-nums">{formatNumber(row.previousClose)}</span></span></> : null}
+              {Number.isFinite(Number(row.previousClose)) ? <><span>·</span><span>{isCnOtcFund ? '前一净值' : '昨收'} <span className="tabular-nums">{isCnOtcFund ? formatNumber(row.previousClose) : formatMarketPrice(row.previousClose, row)}</span></span></> : null}
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center">
@@ -869,6 +869,7 @@ export function SymbolDetailPanel({
               compareMode={premiumCompareMode ? 'value' : 'change'}
               tone={tone}
               symbol={cnFundParam === 'price' ? displaySymbol : CN_FUND_PARAM_LABEL[cnFundParam]}
+              valueRow={cnFundParam === 'price' ? row : null}
               onHover={handleChartHover}
               onLeave={handleChartLeave}
               onLock={handleChartLock}
@@ -952,10 +953,10 @@ export function SymbolDetailPanel({
                       <div className="mt-0.5 hidden truncate text-[12px] text-[rgba(17,24,39,0.64)] sm:block sm:text-[13px]">{item.name}</div>
                     </div>
                   </div>
-                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[17px]', premiumCompareMode ? toneClass : 'text-[#202124]')}>{Number.isFinite(item.price) ? (premiumCompareMode ? formatSignedPercent(item.price) : (market === 'cn' ? formatNumber(item.price, 2) : `$${formatNumber(item.price, 2)}`)) : '--'}</div>
-                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? spreadToneClass : toneClass)}>{premiumCompareMode ? (Number.isFinite(spreadValue) ? formatSignedPercent(spreadValue) : '--') : (Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${formatNumber(item.change, 2)}` : '--')}</div>
+                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[17px]', premiumCompareMode ? toneClass : 'text-[#202124]')}>{Number.isFinite(item.price) ? (premiumCompareMode ? formatSignedPercent(item.price) : (market === 'cn' ? formatMarketPrice(item.price, item) : `$${formatNumber(item.price, 2)}`)) : '--'}</div>
+                  <div className={cx('whitespace-nowrap text-[12px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? spreadToneClass : toneClass)}>{premiumCompareMode ? (Number.isFinite(spreadValue) ? formatSignedPercent(spreadValue) : '--') : (Number.isFinite(item.change) ? `${item.change > 0 ? '+' : ''}${market === 'cn' ? formatMarketPrice(item.change, item) : formatNumber(item.change, 2)}` : '--')}</div>
                   <div className={cx('whitespace-nowrap text-[13px] font-bold transition-colors duration-[120ms] sm:text-[16px]', premiumCompareMode ? 'text-[#202124]' : toneClass)}>{premiumCompareMode ? (Number.isFinite(item.marketPrice) ? formatNumber(item.marketPrice, 4) : '--') : (Number.isFinite(item.changePercent) ? formatSignedPercent(item.changePercent) : '--')}</div>
-                  <div className="hidden whitespace-nowrap text-[15px] font-bold text-[#202124] transition-colors duration-[120ms] sm:block sm:text-[17px]">{premiumCompareMode ? (Number.isFinite(item.navValue) ? formatNumber(item.navValue, 4) : '--') : (Number.isFinite(item.previousClose) ? (market === 'cn' ? formatNumber(item.previousClose, 2) : `$${formatNumber(item.previousClose, 2)}`) : '--')}</div>
+                  <div className="hidden whitespace-nowrap text-[15px] font-bold text-[#202124] transition-colors duration-[120ms] sm:block sm:text-[17px]">{premiumCompareMode ? (Number.isFinite(item.navValue) ? formatNumber(item.navValue, 4) : '--') : (Number.isFinite(item.previousClose) ? (market === 'cn' ? formatMarketPrice(item.previousClose, item) : `$${formatNumber(item.previousClose, 2)}`) : '--')}</div>
                 </div>
               );
             })}

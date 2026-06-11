@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { Area, Bar, CartesianGrid, Cell, ComposedChart, Customized, Line, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { cx } from '../../components/experience-ui.jsx';
-import { formatNumber, formatPercentNoPlus, formatSignedPercent, formatSymbolDisplay } from './marketDisplayUtils.js';
+import { formatMarketPrice, formatNumber, formatPercentNoPlus, formatSignedPercent, formatSymbolDisplay } from './marketDisplayUtils.js';
 
 function shanghaiDateFromEpochSec(sec) {
   const n = Number(sec);
@@ -285,7 +285,7 @@ function TradeMarkersLayer({ xAxisMap, yAxisMap, width, height, offset, data, ma
   );
 }
 
-export function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, compareMode = 'change', tone, symbol, tradeMarkers = [], onHover, onLeave, onLock, lockOnClick = false, premiumView = 'trend' }) {
+export function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, compareMode = 'change', tone, symbol, valueRow = null, tradeMarkers = [], onHover, onLeave, onLock, lockOnClick = false, premiumView = 'trend' }) {
   const chartShellRef = useRef(null);
   const pointersRef = useRef(new Map());
   const pinchRef = useRef(null);
@@ -301,6 +301,7 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
   const hasCompare = cmpList.length > 0;
   const compareAsValue = hasCompare && compareMode === 'value';
   const normalized = hasCompare && !compareAsValue;
+  const formatChartValue = (value) => formatMarketPrice(value, valueRow);
   const rows = useMemo(() => {
     const arr = Array.isArray(candles) ? candles : [];
     if (arr.length < 2) return [];
@@ -640,7 +641,7 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
           width={44}
           axisLine={false}
           tickLine={false}
-          tickFormatter={(value) => (normalized || compareAsValue || isPremiumChart) ? `${Number(value).toFixed(1)}%` : formatNumber(value, 2)}
+          tickFormatter={(value) => (normalized || compareAsValue || isPremiumChart) ? `${Number(value).toFixed(1)}%` : formatChartValue(value)}
         />
         {Number.isFinite(Number(premiumMean)) ? (
           <ReferenceLine
@@ -694,7 +695,7 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
             return (
               <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
                 <div>{label}</div>
-                {showValue ? <div className="mt-0.5 tabular-nums text-[#1f1f1f]">{formatNumber(value, 2)}</div> : null}
+                {showValue ? <div className="mt-0.5 tabular-nums text-[#1f1f1f]">{formatChartValue(value)}</div> : null}
                 {rangePct != null ? (
                   <div className={cx("mt-0.5 tabular-nums", rangePct > 0 ? "text-rose-600" : rangePct < 0 ? "text-emerald-600" : "text-[#5f6368]")}>{formatSignedPercent(rangePct)}</div>
                 ) : null}
