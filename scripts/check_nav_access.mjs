@@ -12,6 +12,7 @@ const ALLOW_NAV_API_ENDPOINTS = new Set([
   'workers/ocr-proxy/src/holdingsNavRoutes.js',
   'tests/e2e/acceptance-helpers.js',
   'tests/e2e/holdings-nav-refresh-regression.spec.js',
+  'tests/e2e/markets-otc-compare.spec.js',
   'scripts/check_nav_access.mjs'
 ]);
 
