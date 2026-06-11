@@ -53,11 +53,7 @@ export const COMPARE_TEXT_CLASSES = ['text-[#e37400]', 'text-[#9333ea]', 'text-[
 export const COMPARE_DOT_CLASSES = ['bg-[#e37400]', 'bg-[#9333ea]', 'bg-[#10b981]'];
 const CHART_UP = '#a50e0e';
 const CHART_DOWN = '#137333';
-const PREMIUM_BUCKETS = [
-  { key: 'lt5', label: '5%以下', color: '#137333', test: (value) => value < 5 },
-  { key: '5to8', label: '5%到8%', color: '#f9ab00', test: (value) => value >= 5 && value < 8 },
-  { key: 'gte8', label: '8%以上', color: '#a50e0e', test: (value) => value >= 8 },
-];
+const PREMIUM_BUCKET_COLORS = ['#137333', '#34a853', '#f9ab00', '#e37400', '#a50e0e'];
 
 function computeMA(closes, period) {
   const out = new Array(closes.length).fill(null);
@@ -128,26 +124,65 @@ function CandlesLayerPanel({ xAxisMap, yAxisMap, data }) {
   );
 }
 
-function buildPremiumDistribution(rows, compareCount = 0) {
-  const values = [];
-  const keys = ['main', ...Array.from({ length: compareCount }, (_item, index) => `cmp_${index}`)];
-  (Array.isArray(rows) ? rows : []).forEach((row) => {
-    keys.forEach((key) => {
-      const value = Number(row?.[key]);
-      if (Number.isFinite(value)) values.push(value);
-    });
+function buildDynamicBuckets(values, bucketCount = 5) {
+  const nums = (Array.isArray(values) ? values : []).filter(Number.isFinite).sort((a, b) => a - b);
+  if (!nums.length) return [];
+  const min = nums[0];
+  const max = nums[nums.length - 1];
+  if (Math.abs(max - min) < 0.000001) {
+    return [{
+      key: 'single',
+      label: formatPercentNoPlus(min),
+      color: PREMIUM_BUCKET_COLORS[Math.floor(PREMIUM_BUCKET_COLORS.length / 2)],
+      min,
+      max,
+      count: nums.length,
+      value: nums.length,
+      percent: 100
+    }];
+  }
+  const count = Math.min(bucketCount, Math.max(3, Math.ceil(Math.sqrt(nums.length))));
+  const width = (max - min) / count;
+  const buckets = Array.from({ length: count }, (_item, index) => {
+    const start = min + width * index;
+    const end = index === count - 1 ? max : min + width * (index + 1);
+    return {
+      key: `bucket_${index}`,
+      label: `${formatPercentNoPlus(start, 1)} ~ ${formatPercentNoPlus(end, 1)}`,
+      color: PREMIUM_BUCKET_COLORS[Math.min(PREMIUM_BUCKET_COLORS.length - 1, Math.floor((index / Math.max(1, count - 1)) * (PREMIUM_BUCKET_COLORS.length - 1)))],
+      min: start,
+      max: end,
+      count: 0,
+      value: 0,
+      percent: 0
+    };
   });
-  const total = values.length;
-  const counts = PREMIUM_BUCKETS.map((bucket) => ({ ...bucket, count: 0, value: 0, percent: 0 }));
-  values.forEach((value) => {
-    const bucket = counts.find((item) => item.test(value));
-    if (bucket) bucket.count += 1;
+  nums.forEach((value) => {
+    const index = Math.min(count - 1, Math.max(0, Math.floor((value - min) / width)));
+    buckets[index].count += 1;
   });
-  return counts.map((bucket) => ({
+  return buckets.map((bucket) => ({
     ...bucket,
     value: bucket.count,
-    percent: total ? (bucket.count / total) * 100 : 0
+    percent: nums.length ? (bucket.count / nums.length) * 100 : 0
   }));
+}
+
+function buildPremiumDistribution(rows, compareCount = 0, useSpread = false) {
+  const values = [];
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    if (useSpread) {
+      Array.from({ length: compareCount }, (_item, index) => {
+        const value = Number(row?.[`cmp_${index}`]);
+        if (Number.isFinite(value)) values.push(value);
+        return null;
+      });
+      return;
+    }
+    const value = Number(row?.main);
+    if (Number.isFinite(value)) values.push(value);
+  });
+  return buildDynamicBuckets(values);
 }
 
 function TradeMarkersLayer({ xAxisMap, yAxisMap, width, height, offset, data, markers = [] }) {
@@ -399,15 +434,29 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
     return <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">暂无数据</div>;
   }
   const isPremiumChart = finalRows.some((row) => Number.isFinite(Number(row?.mainIopv)) || Object.prototype.hasOwnProperty.call(row || {}, 'iopv'));
+  const showPremiumSpread = isPremiumChart && compareAsValue && cmpList.length > 0;
+  const displayRows = showPremiumSpread
+    ? visibleRows.map((row) => {
+      const mainPremium = Number(row.main);
+      const next = { ...row, main: Number.isFinite(mainPremium) ? 0 : null };
+      cmpList.forEach((_series, index) => {
+        const comparePremium = Number(row[`cmp_${index}`]);
+        next[`cmp_${index}`] = Number.isFinite(comparePremium) && Number.isFinite(mainPremium) ? comparePremium - mainPremium : null;
+      });
+      return next;
+    })
+    : visibleRows;
   const showPremiumDistribution = isPremiumChart && premiumView === 'distribution';
   const premiumMean = isPremiumChart
     ? (() => {
-      const values = visibleRows.map((row) => Number(row.main)).filter(Number.isFinite);
+      const values = showPremiumSpread
+        ? displayRows.flatMap((row) => cmpList.map((_series, index) => Number(row[`cmp_${index}`])).filter(Number.isFinite))
+        : displayRows.map((row) => Number(row.main)).filter(Number.isFinite);
       if (!values.length) return null;
       return values.reduce((sum, value) => sum + value, 0) / values.length;
     })()
     : null;
-  const premiumDistribution = showPremiumDistribution ? buildPremiumDistribution(visibleRows, cmpList.length) : [];
+  const premiumDistribution = showPremiumDistribution ? buildPremiumDistribution(displayRows, cmpList.length, showPremiumSpread) : [];
   const premiumDistributionTotal = premiumDistribution.reduce((sum, bucket) => sum + bucket.count, 0);
   if (showPremiumDistribution) {
     return (
@@ -445,7 +494,7 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
           </PieChart>
         </ResponsiveContainer>
         <div className="min-w-0 pr-1 text-[11px] font-medium text-[#5f6368] sm:text-[12px]">
-          <div className="mb-1 text-[12px] font-semibold text-[#202124] sm:text-[13px]">溢价分布</div>
+          <div className="mb-1 text-[12px] font-semibold text-[#202124] sm:text-[13px]">{showPremiumSpread ? '溢价差分布' : '溢价分布'}</div>
           {premiumDistribution.map((bucket) => (
             <div key={bucket.key} className="mb-1.5 grid grid-cols-[10px_minmax(0,1fr)] items-center gap-1.5">
               <span className="size-2.5 rounded-sm" style={{ background: bucket.color }} />
@@ -461,20 +510,20 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
     );
   }
   const mainColor = normalized ? COMPARE_MAIN_COLOR : tone === 'up' ? CHART_UP : tone === 'down' ? CHART_DOWN : '#1a73e8';
-  const showCandle = chartType === 'candle' && !normalized;
+  const showCandle = chartType === 'candle' && !normalized && !showPremiumSpread;
   const showArea = chartType === 'area' && !normalized;
-  const showLine = chartType === 'line' || (normalized && chartType !== 'bar');
+  const showLine = chartType === 'line' || (normalized && chartType !== 'bar') || (showPremiumSpread && chartType === 'candle');
   const showBar = chartType === 'bar';
   const pickRowFromPointer = (event) => {
     const rect = chartShellRef.current?.getBoundingClientRect();
-    if (!rect || rect.width <= 0 || visibleRows.length < 2) return null;
+    if (!rect || rect.width <= 0 || displayRows.length < 2) return null;
     const x = Math.min(Math.max(event.clientX - rect.left, 0), rect.width);
-    const index = Math.min(visibleRows.length - 1, Math.max(0, Math.round((x / rect.width) * (visibleRows.length - 1))));
-    return visibleRows[index] || null;
+    const index = Math.min(displayRows.length - 1, Math.max(0, Math.round((x / rect.width) * (displayRows.length - 1))));
+    return displayRows[index] || null;
   };
   const getChartPayload = (state) => {
     const index = Number.isInteger(state?.activeTooltipIndex) ? state.activeTooltipIndex : -1;
-    return state?.activePayload?.[0]?.payload || (index >= 0 ? visibleRows[index] : null);
+    return state?.activePayload?.[0]?.payload || (index >= 0 ? displayRows[index] : null);
   };
   const handleChartPoint = (state) => {
     if (!onHover) return;
@@ -578,7 +627,7 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
     >
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
-        data={visibleRows}
+        data={displayRows}
         margin={{ top: 12, right: 12, left: 4, bottom: 8 }}
         onMouseMove={handleChartPoint}
         onMouseLeave={handleChartLeave}
@@ -600,7 +649,7 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
             stroke="#5f6368"
             strokeDasharray="4 4"
             ifOverflow="extendDomain"
-            label={{ value: `均值 ${formatPercentNoPlus(premiumMean)}`, position: 'insideTopRight', fill: '#5f6368', fontSize: 12, fontWeight: 600 }}
+            label={{ value: `${showPremiumSpread ? '溢价差均值' : '均值'} ${formatPercentNoPlus(premiumMean)}`, position: 'insideTopRight', fill: '#5f6368', fontSize: 12, fontWeight: 600 }}
           />
         ) : null}
         <Tooltip
@@ -614,11 +663,32 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
             const showValue = !normalized && value != null && Number.isFinite(Number(value));
             const rangePct = Number.isFinite(price) && Number.isFinite(visibleBase) && visibleBase > 0 ? ((price / visibleBase) - 1) * 100 : null;
             const isPremiumPoint = row && (Object.prototype.hasOwnProperty.call(row, 'iopv') || Number.isFinite(Number(row.mainIopv)));
+            if (showPremiumSpread && row) {
+              const spreadItems = cmpList
+                .map((series, index) => ({
+                  symbol: formatSymbolDisplay(series.symbol),
+                  color: COMPARE_COLORS[index % COMPARE_COLORS.length],
+                  value: Number(row[`cmp_${index}`])
+                }))
+                .filter((entry) => Number.isFinite(entry.value));
+              return (
+                <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
+                  <div>{label}</div>
+                  {spreadItems.map((entry) => (
+                    <div key={entry.symbol} className="mt-0.5 flex items-center gap-1.5 tabular-nums text-[#1f1f1f]">
+                      <span className="size-2 rounded-sm" style={{ background: entry.color }} />
+                      <span>{entry.symbol}</span>
+                      <span>{formatSignedPercent(entry.value)}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            }
             if (isPremiumPoint) {
               return (
                 <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
                   <div>{label}</div>
-                  <div className="mt-0.5 tabular-nums text-[#1f1f1f]">{formatPercentNoPlus(value)}</div>
+                  <div className="mt-0.5 tabular-nums text-[#1f1f1f]">{showPremiumSpread ? `溢价差 ${formatSignedPercent(value)}` : formatPercentNoPlus(value)}</div>
                 </div>
               );
             }
