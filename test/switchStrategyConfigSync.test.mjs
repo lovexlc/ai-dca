@@ -241,7 +241,22 @@ test('notify worker switch trigger notification builds detail URL', () => {
       computedAt: '2026-06-04T02:31:00.000Z',
       byBenchmark: [{
         benchmarkCode: '513100',
-        benchmarkNavDate: '2026-06-03'
+        benchmarkNavDate: '2026-06-03',
+        benchmarkOrderBook: {
+          bidPrice: 2.36,
+          bidVolume: 120000,
+          askPrice: 2.361,
+          askVolume: 230000
+        },
+        candidates: [{
+          code: '159501',
+          orderBook: {
+            bidPrice: 1.1,
+            bidVolume: 340000,
+            askPrice: 1.101,
+            askVolume: 450000
+          }
+        }]
       }]
     },
     {
@@ -261,6 +276,8 @@ test('notify worker switch trigger notification builds detail URL', () => {
 
   assert.equal(payload.detailUrl, 'https://tools.freebacktrack.tech/index.html?tab=tradePlans#switch');
   assert.equal(payload.eventType, 'switch-strategy-trigger');
+  assert.match(payload.body_md, /513100盘口：买一 2\.36 × 12\.00万 \/ 卖一 2\.361 × 23\.00万/);
+  assert.match(payload.body_md, /159501盘口：买一 1\.1 × 34\.00万 \/ 卖一 1\.101 × 45\.00万/);
 });
 
 test('notify worker OTC trigger notification uses OTC copy', () => {
@@ -281,4 +298,33 @@ test('notify worker OTC trigger notification uses OTC copy', () => {
   assert.match(payload.title, /场外切换 强信号/);
   assert.match(payload.body, /申购场外 QDII 联接基金/);
   assert.equal(payload.detailUrl, 'https://tools.freebacktrack.tech/index.html?tab=tradePlans#switch');
+});
+
+test('notify worker OTC trigger notification includes exchange order book when available', () => {
+  const snapshot = computeSwitchSnapshot(
+    normalizeSwitchConfig(OTC_ONLY_CONFIG),
+    {
+      '513100': {
+        price: 2.2,
+        preClose: 2.05,
+        orderBook: { bidPrice: 2.199, bidVolume: 50000, askPrice: 2.2, askVolume: 60000 }
+      },
+      '159501': {
+        price: 1.005,
+        preClose: 1,
+        orderBook: { bidPrice: 1.004, bidVolume: 70000, askPrice: 1.005, askVolume: 80000 }
+      }
+    },
+    OTC_NAV_BY_CODE,
+    '2026-06-04T02:31:00.000Z'
+  );
+  const { triggers } = evaluateSwitchTriggers(snapshot, {});
+  const payload = buildSwitchTriggerNotification(
+    snapshot,
+    triggers[0],
+    { PUBLIC_DATA_BASE_URL: 'https://tools.freebacktrack.tech/' }
+  );
+
+  assert.match(payload.body_md, /513100盘口：买一 2\.199 × 5\.00万 \/ 卖一 2\.2 × 6\.00万/);
+  assert.match(payload.body_md, /159501盘口：买一 1\.004 × 7\.00万 \/ 卖一 1\.005 × 8\.00万/);
 });

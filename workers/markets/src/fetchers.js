@@ -128,6 +128,71 @@ function formatShanghaiDateFromMs(value) {
   return parts.year && parts.month && parts.day ? `${parts.year}-${parts.month}-${parts.day}` : '';
 }
 
+function finiteNumberOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function firstFiniteNumber(...values) {
+  for (const value of values) {
+    const n = finiteNumberOrNull(value);
+    if (n != null) return n;
+  }
+  return null;
+}
+
+function firstPositiveNumber(...values) {
+  for (const value of values) {
+    const n = finiteNumberOrNull(value);
+    if (n != null && n > 0) return n;
+  }
+  return null;
+}
+
+function normalizeXueqiuOrderBookPayload(data = {}) {
+  const root = data && typeof data === 'object' ? data : {};
+  const payload = root.data && typeof root.data === 'object' ? root.data : root;
+  const quote = payload.quote && typeof payload.quote === 'object' ? payload.quote : {};
+  const source = payload.pankou && typeof payload.pankou === 'object' ? payload.pankou : payload;
+  const bids = Array.isArray(source.bids) ? source.bids : Array.isArray(source.bid) ? source.bid : [];
+  const asks = Array.isArray(source.asks) ? source.asks : Array.isArray(source.ask) ? source.ask : [];
+  const bid1 = Array.isArray(bids[0]) ? bids[0] : null;
+  const ask1 = Array.isArray(asks[0]) ? asks[0] : null;
+  const bidPrice = firstPositiveNumber(
+    source.bp1, source.bid1, source.bid1_price, source.bid_price1,
+    source.buy1, source.buy1_price, source.buy_price1, quote.bp1, quote.bid1,
+    bid1?.[0], bid1?.price
+  );
+  const askPrice = firstPositiveNumber(
+    source.sp1, source.ask1, source.ask1_price, source.ask_price1,
+    source.sell1, source.sell1_price, source.sell_price1, quote.sp1, quote.ask1,
+    ask1?.[0], ask1?.price
+  );
+  const bidVolume = firstFiniteNumber(
+    source.bc1, source.bid1_volume, source.bid1_vol, source.bid_volume1,
+    source.buy1_volume, source.buy1_vol, source.buy_volume1, quote.bc1,
+    bid1?.[1], bid1?.volume
+  );
+  const askVolume = firstFiniteNumber(
+    source.sc1, source.ask1_volume, source.ask1_vol, source.ask_volume1,
+    source.sell1_volume, source.sell1_vol, source.sell_volume1, quote.sc1,
+    ask1?.[1], ask1?.volume
+  );
+  if (bidPrice == null && askPrice == null) return null;
+  const spread = bidPrice != null && askPrice != null ? round(askPrice - bidPrice, 4) : null;
+  const mid = bidPrice != null && askPrice != null ? (bidPrice + askPrice) / 2 : null;
+  const spreadPercent = spread != null && mid && mid > 0 ? round((spread / mid) * 100, 4) : null;
+  return {
+    bidPrice: bidPrice != null ? round(bidPrice, 4) : null,
+    bidVolume: bidVolume != null ? bidVolume : null,
+    askPrice: askPrice != null ? round(askPrice, 4) : null,
+    askVolume: askVolume != null ? askVolume : null,
+    spread,
+    spreadPercent,
+    source: 'xueqiu-pankou'
+  };
+}
+
 function normalizeXueqiuQuotePayload(data, code) {
   const quote = data?.data?.quote || data?.quote || data?.data || {};
   if (!quote || typeof quote !== 'object') throw new Error('xueqiu quote empty');
@@ -163,12 +228,21 @@ function normalizeXueqiuQuotePayload(data, code) {
     volumeRatio: round(quote.volume_ratio, 4),
     high52w: round(quote.high52w, 4),
     low52w: round(quote.low52w, 4),
+    orderBook: normalizeXueqiuOrderBookPayload(data),
     currency: quote.currency || 'CNY',
     exchangeTimezone: 'Asia/Shanghai',
     marketState: normalizeXueqiuMarketState(quote),
     asOf: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : new Date().toISOString(),
     source: 'xueqiu-quote'
   };
+}
+
+async function fetchXueqiuOrderBook(symbol, { cookie } = {}) {
+  const url = buildUrl(XUEQIU_STOCK_HOST, '/v5/stock/realtime/pankou.json', { symbol });
+  const res = await fetch(url, { headers: xueqiuHeaders(cookie, symbol), cf: { cacheTtl: 5 } });
+  if (!res.ok) throw new Error('xueqiu pankou ' + symbol + ' HTTP ' + res.status);
+  const data = await readXueqiuJson(res, 'xueqiu pankou ' + symbol);
+  return normalizeXueqiuOrderBookPayload(data);
 }
 
 function normalizeXueqiuKlinePayload(data, code, intervalLabel) {
@@ -209,7 +283,9 @@ export async function fetchXueqiuQuote(code, { cookie } = {}) {
   const res = await fetch(url, { headers: xueqiuHeaders(cookie, symbol), cf: { cacheTtl: 15 } });
   if (!res.ok) throw new Error('xueqiu quote ' + symbol + ' HTTP ' + res.status);
   const data = await readXueqiuJson(res, 'xueqiu quote ' + symbol);
-  return normalizeXueqiuQuotePayload(data, code);
+  const quote = normalizeXueqiuQuotePayload(data, code);
+  const orderBook = await fetchXueqiuOrderBook(symbol, { cookie }).catch(() => null);
+  return orderBook ? { ...quote, orderBook } : quote;
 }
 
 export async function fetchXueqiuQuotesBatch(codes = [], { cookie } = {}) {

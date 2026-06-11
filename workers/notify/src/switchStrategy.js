@@ -275,6 +275,29 @@ function positiveNumber(value) {
   return Number.isFinite(num) && num > 0 ? num : NaN;
 }
 
+function normalizeOrderBook(book = null) {
+  if (!book || typeof book !== 'object') return null;
+  const bidPrice = Number(book.bidPrice ?? book.bid_price ?? book.bp1);
+  const askPrice = Number(book.askPrice ?? book.ask_price ?? book.sp1);
+  const bidVolume = Number(book.bidVolume ?? book.bid_volume ?? book.bc1);
+  const askVolume = Number(book.askVolume ?? book.ask_volume ?? book.sc1);
+  const spread = Number(book.spread);
+  const mid = Number.isFinite(bidPrice) && Number.isFinite(askPrice) ? (bidPrice + askPrice) / 2 : NaN;
+  const derivedSpread = Number.isFinite(bidPrice) && Number.isFinite(askPrice) ? askPrice - bidPrice : NaN;
+  const spreadPercent = Number.isFinite(book.spreadPercent)
+    ? Number(book.spreadPercent)
+    : (Number.isFinite(mid) && mid > 0 && Number.isFinite(derivedSpread) ? (derivedSpread / mid) * 100 : NaN);
+  if (!Number.isFinite(bidPrice) && !Number.isFinite(askPrice)) return null;
+  return {
+    bidPrice: Number.isFinite(bidPrice) ? bidPrice : null,
+    bidVolume: Number.isFinite(bidVolume) ? bidVolume : null,
+    askPrice: Number.isFinite(askPrice) ? askPrice : null,
+    askVolume: Number.isFinite(askVolume) ? askVolume : null,
+    spread: Number.isFinite(spread) ? spread : (Number.isFinite(derivedSpread) ? derivedSpread : null),
+    spreadPercent: Number.isFinite(spreadPercent) ? spreadPercent : null
+  };
+}
+
 function previousCloseOf(priceEntry) {
   return positiveNumber(priceEntry?.previousClose ?? priceEntry?.prevClose ?? priceEntry?.preClose);
 }
@@ -478,6 +501,7 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
   const allConfigCodes = Array.from(new Set([...benchmarkCodes, ...enabledCodes]));
 
   function buildPremiumEntry(code) {
+    const quote = priceMap?.[code] || {};
     const price = Number(priceMap?.[code]?.price);
     const nav = Number(navByCode?.[code]?.nav);
     const navDate = String(navByCode?.[code]?.latestNavDate || '').trim();
@@ -497,6 +521,7 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       code,
       name: navByCode?.[code]?.name || '',
       price: Number.isFinite(price) ? price : null,
+      orderBook: normalizeOrderBook(quote.orderBook),
       nav: Number.isFinite(nav) ? nav : null,
       navDate,
       premiumPct: Number.isFinite(premiumPct) ? premiumPct : null,
@@ -553,12 +578,14 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       benchName: topBench.name || topBench.code,
       benchPremiumPct: topBench.premiumPct,
       benchPrice: topBench.price,
+      benchOrderBook: topBench.orderBook || null,
       benchNav: topBench.nav,
       benchNavDate: topBench.navDate,
       lowestCode: minFund.code,
       lowestName: minFund.name || minFund.code,
       lowestPremiumPct: minFund.premiumPct,
       lowestPrice: minFund.price,
+      lowestOrderBook: minFund.orderBook || null,
       lowestNav: minFund.nav,
       lowestNavDate: minFund.navDate,
       benchHigh,
@@ -586,6 +613,7 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       : enabledCodes;
 
     const benchPrice = Number(priceMap?.[benchmarkCode]?.price);
+    const benchOrderBook = normalizeOrderBook(priceMap?.[benchmarkCode]?.orderBook);
     const benchNav = Number(navByCode?.[benchmarkCode]?.nav);
     const benchNavDate = String(navByCode?.[benchmarkCode]?.latestNavDate || '').trim();
     const benchNavStale = navAgeDays(benchNavDate) > NAV_STALE_DAYS;
@@ -620,6 +648,7 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
         code,
         name: navByCode?.[code]?.name || '',
         price: Number.isFinite(candPrice) ? candPrice : null,
+        orderBook: normalizeOrderBook(priceMap?.[code]?.orderBook),
         nav: Number.isFinite(candNav) ? candNav : null,
         navDate: candNavDate,
         premiumPct: Number.isFinite(candPremium) ? candPremium : null,
@@ -638,6 +667,7 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       benchmarkName: navByCode?.[benchmarkCode]?.name || '',
       benchmarkClass,
       benchmarkPrice: Number.isFinite(benchPrice) ? benchPrice : null,
+      benchmarkOrderBook: benchOrderBook,
       benchmarkNav: Number.isFinite(benchNav) ? benchNav : null,
       benchmarkNavDate: benchNavDate,
       benchmarkPremiumPct: Number.isFinite(benchPremium) ? benchPremium : null,
@@ -854,6 +884,44 @@ function formatSignedPercentText(value) {
   return `${num >= 0 ? '+' : ''}${num.toFixed(2)}%`;
 }
 
+function formatDepthPrice(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return '—';
+  return num >= 10 ? num.toFixed(2) : num.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function formatDepthVolume(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return '';
+  if (num >= 100000000) return `${(num / 100000000).toFixed(2)}亿`;
+  if (num >= 10000) return `${(num / 10000).toFixed(2)}万`;
+  return String(Math.round(num));
+}
+
+function formatOrderBookLine(label, orderBook) {
+  const book = normalizeOrderBook(orderBook);
+  if (!book) return '';
+  const bidPrice = formatDepthPrice(book.bidPrice);
+  const askPrice = formatDepthPrice(book.askPrice);
+  const bidVolume = formatDepthVolume(book.bidVolume);
+  const askVolume = formatDepthVolume(book.askVolume);
+  const bid = bidVolume ? `${bidPrice} × ${bidVolume}` : bidPrice;
+  const ask = askVolume ? `${askPrice} × ${askVolume}` : askPrice;
+  const spread = Number(book.spread);
+  const spreadText = Number.isFinite(spread) ? `，价差 ${formatDepthPrice(spread)}` : '';
+  return `${label}盘口：买一 ${bid} / 卖一 ${ask}${spreadText}`;
+}
+
+function findSwitchOrderBookLines(snapshot, trigger) {
+  const groups = Array.isArray(snapshot?.byBenchmark) ? snapshot.byBenchmark : [];
+  const group = groups.find((item) => item?.benchmarkCode === trigger?.fromCode) || null;
+  const candidate = (group?.candidates || []).find((item) => item?.code === trigger?.toCode) || null;
+  return [
+    formatOrderBookLine(trigger?.fromCode || '', group?.benchmarkOrderBook),
+    formatOrderBookLine(trigger?.toCode || '', candidate?.orderBook)
+  ].filter(Boolean);
+}
+
 function buildOtcSwitchTriggerNotification(snapshot, trigger, env) {
   const fromLabel = trigger.fromName ? `${trigger.fromCode} ${trigger.fromName}` : trigger.fromCode;
   const refLabel = trigger.toName ? `${trigger.toCode} ${trigger.toName}` : trigger.toCode;
@@ -864,6 +932,11 @@ function buildOtcSwitchTriggerNotification(snapshot, trigger, env) {
   const highThreshold = Number(trigger.highThreshold);
   const signalThreshold = trigger.rule === 'OTC_STRONG' ? lowThreshold : highThreshold;
   const level = trigger.level || (trigger.rule === 'OTC_STRONG' ? '强信号' : '弱信号');
+  const otcOrderBookLines = [
+    formatOrderBookLine(trigger.fromCode, snapshot?.otcSignal?.benchOrderBook),
+    formatOrderBookLine(trigger.toCode, snapshot?.otcSignal?.lowestOrderBook)
+  ].filter(Boolean);
+  const otcOrderBookText = otcOrderBookLines.length ? `\n${otcOrderBookLines.join('\n')}` : '';
   const baseUrl = stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || 'https://tools.freebacktrack.tech');
   const detailUrl = `${baseUrl}/index.html?tab=tradePlans#switch`;
   const minuteKey = String(snapshot?.computedAt || '').slice(0, 16);
@@ -872,12 +945,13 @@ function buildOtcSwitchTriggerNotification(snapshot, trigger, env) {
   const ruleLabel = trigger.rule === 'OTC_STRONG'
     ? `场外强信号：基准溢价 > ${threshold}% 且场内最低溢价 < ${lowThreshold}%`
     : `场外弱信号：基准溢价 > ${threshold}% 且场内最低溢价 < ${highThreshold}%`;
-  const body = `基准溢价 ${benchPremium} > ${threshold}% · 场内最低 ${lowestPremium} < ${signalThreshold}%\n卖 ${fromLabel} → 申购场外 QDII 联接基金\n参考低溢价 ${refLabel}；下单前请以基金软件实时溢价和申购限额为准。`;
+  const body = `基准溢价 ${benchPremium} > ${threshold}% · 场内最低 ${lowestPremium} < ${signalThreshold}%\n卖 ${fromLabel} → 申购场外 QDII 联接基金\n参考低溢价 ${refLabel}${otcOrderBookText}\n下单前请以基金软件实时溢价和申购限额为准。`;
   const summary = `场外切换 ${level} ${trigger.fromCode}→场外QDII ${benchPremium}/${lowestPremium}`;
   const body_md = [
     `**基准溢价 ${benchPremium}** > ${threshold}%`,
     `**场内最低 ${lowestPremium}** < ${signalThreshold}%（参考 ${refLabel}）`,
     `卖 **${fromLabel}** → 申购 **场外 QDII 联接基金**`,
+    ...otcOrderBookLines.map((line) => `- ${line}`),
     `*下单前请以基金软件实时溢价和申购限额为准。*`
   ].join('\n');
   return {
@@ -918,9 +992,11 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
     .find((b) => b?.benchmarkCode === benchHCode) || null;
   const navDate = String(benchmarkEntry?.benchmarkNavDate || '').trim();
   const navHint = navDate ? ` · NAV ${navDate}` : '';
+  const orderBookLines = findSwitchOrderBookLines(snapshot, trigger);
+  const orderBookText = orderBookLines.length ? `\n${orderBookLines.join('\n')}` : '';
   const arrow = trigger.rule === 'A' ? '低→高' : '高→低';
   const title = `切换 ${trigger.rule} ${arrow} | ${trigger.fromCode}→${trigger.toCode}`;
-  const body = `H−L ${gapStr}% ${cmp} ${threshold}%${navHint}\n卖 ${fromLabel} → 买 ${toLabel}\n下单前请以基金软件实时溢价为准。`;
+  const body = `H−L ${gapStr}% ${cmp} ${threshold}%${navHint}\n卖 ${fromLabel} → 买 ${toLabel}${orderBookText}\n下单前请以基金软件实时溢价为准。`;
   const summary = `切换 ${trigger.rule} ${trigger.fromCode}→${trigger.toCode} ${gapStr}%`;
   const ruleLabel = trigger.rule === 'A'
     ? `规则 A 低→高：H溢价 − L溢价 < ${threshold}%（差价收窄，从持仓 L 换到 H）`
@@ -934,6 +1010,7 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
   const body_md = [
     `**H−L ${gapStr}%** ${cmp} ${threshold}%${navHint}`,
     `卖 **${fromLabel}** → 买 **${toLabel}**`,
+    ...orderBookLines.map((line) => `- ${line}`),
     `*下单前请以基金软件实时溢价为准。*`
   ].join('\n');
   return {

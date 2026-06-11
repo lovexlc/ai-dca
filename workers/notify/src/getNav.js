@@ -131,6 +131,7 @@ function metricToPrice(metric) {
     latestNavDate: String(metric?.latestNavDate || metric?.navDate || '').trim(),
     iopv: Number(metric?.iopv) || null,
     premiumPercent: Number(metric?.premiumPercent) || null,
+    orderBook: metric?.orderBook && typeof metric.orderBook === 'object' ? metric.orderBook : null,
     fundKind: String(metric?.fundKind || '').trim(),
     fundType: String(metric?.fundType || '').trim(),
     fundTypeCode: metric?.fundTypeCode ?? null

@@ -83,6 +83,31 @@ function derivePreviousValue(currentValue, changePercent = null, change = null) 
   return null;
 }
 
+function normalizeOrderBook(book = null) {
+  if (!book || typeof book !== 'object') return null;
+  const bidPrice = roundNumber(book.bidPrice ?? book.bid_price ?? book.bp1, 4);
+  const askPrice = roundNumber(book.askPrice ?? book.ask_price ?? book.sp1, 4);
+  const bidVolume = Number(book.bidVolume ?? book.bid_volume ?? book.bc1);
+  const askVolume = Number(book.askVolume ?? book.ask_volume ?? book.sc1);
+  const spread = Number.isFinite(bidPrice) && Number.isFinite(askPrice)
+    ? roundNumber(askPrice - bidPrice, 4)
+    : roundNumber(book.spread, 4);
+  const mid = Number.isFinite(bidPrice) && Number.isFinite(askPrice) ? (bidPrice + askPrice) / 2 : NaN;
+  const spreadPercent = Number.isFinite(mid) && mid > 0 && Number.isFinite(spread)
+    ? roundNumber((spread / mid) * 100, 4)
+    : roundNumber(book.spreadPercent ?? book.spread_percent, 4);
+  if (!Number.isFinite(bidPrice) && !Number.isFinite(askPrice)) return null;
+  return {
+    bidPrice: Number.isFinite(bidPrice) ? bidPrice : null,
+    bidVolume: Number.isFinite(bidVolume) ? bidVolume : null,
+    askPrice: Number.isFinite(askPrice) ? askPrice : null,
+    askVolume: Number.isFinite(askVolume) ? askVolume : null,
+    spread: Number.isFinite(spread) ? spread : null,
+    spreadPercent: Number.isFinite(spreadPercent) ? spreadPercent : null,
+    source: String(book.source || '').trim()
+  };
+}
+
 function normalizeFundKindHint(value = '') {
   const raw = String(value || '').trim().toLowerCase();
   return raw === 'exchange' || raw === 'qdii' || raw === 'otc' ? raw : '';
@@ -127,6 +152,7 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
     ? 'CLOSED'
     : rawMarketState;
   const resolvedFundKind = normalizeFundKindFromQuote(quote, exchange, fundKind || quote?.requestedFundKind);
+  const orderBook = exchange ? normalizeOrderBook(quote?.orderBook) : null;
   return {
     ok: !quote?.error,
     code: String(quote?.code || code || '').trim(),
@@ -151,6 +177,7 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
     premiumPercent,
     latestNavDate: String(quote?.latestNavDate || '').trim(),
     navDate: String(quote?.latestNavDate || '').trim(),
+    orderBook,
     marketState,
     asOf,
     updatedAt,

@@ -127,6 +127,13 @@ test('fund-metrics keeps exchange ETF price as current value', () => {
     latestNavDate: '2026-05-29',
     iopv: 2.0647,
     premiumPercent: 14.54,
+    orderBook: {
+      bidPrice: 2.364,
+      bidVolume: 123400,
+      askPrice: 2.365,
+      askVolume: 567800,
+      source: 'xueqiu-pankou'
+    },
     asOf: '2026-06-01T07:00:00.000Z',
     source: 'xueqiu-quote'
   }, { exchange: true, cachePolicy: 'live-refresh' });
@@ -142,6 +149,15 @@ test('fund-metrics keeps exchange ETF price as current value', () => {
   assert.equal(item.latestNav, 2.065);
   assert.equal(item.navBase, 2.0647);
   assert.equal(item.premiumPercent, 14.54);
+  assert.deepEqual(item.orderBook, {
+    bidPrice: 2.364,
+    bidVolume: 123400,
+    askPrice: 2.365,
+    askVolume: 567800,
+    spread: 0.001,
+    spreadPercent: 0.0423,
+    source: 'xueqiu-pankou'
+  });
   assert.equal(item.quoteDate, '2026-06-01');
 });
 
@@ -206,9 +222,20 @@ test('fund-metrics exchange refresh falls back to KV instead of Sina when Xueqiu
 
 test('Xueqiu quote maps 501-prefixed exchange funds to Shanghai symbols', async () => {
   const originalFetch = globalThis.fetch;
-  let requestedUrl = '';
+  const requestedUrls = [];
   globalThis.fetch = async (url) => {
-    requestedUrl = String(url);
+    requestedUrls.push(String(url));
+    if (String(url).includes('/realtime/pankou.json')) {
+      return new Response(JSON.stringify({
+        data: {
+          symbol: 'SH501312',
+          bp1: 1.233,
+          bc1: 120000,
+          sp1: 1.234,
+          sc1: 230000
+        }
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
     return new Response(JSON.stringify({
       data: {
         quote: {
@@ -225,9 +252,19 @@ test('Xueqiu quote maps 501-prefixed exchange funds to Shanghai symbols', async 
 
   try {
     const quote = await fetchXueqiuQuote('501312', { cookie: 'xq_a_token=test' });
-    assert.match(requestedUrl, /symbol=SH501312/);
+    assert.match(requestedUrls[0], /symbol=SH501312/);
+    assert.match(requestedUrls[1], /\/realtime\/pankou\.json/);
     assert.equal(quote.symbol, 'sh501312');
     assert.equal(quote.price, 1.234);
+    assert.deepEqual(quote.orderBook, {
+      bidPrice: 1.233,
+      bidVolume: 120000,
+      askPrice: 1.234,
+      askVolume: 230000,
+      spread: 0.001,
+      spreadPercent: 0.0811,
+      source: 'xueqiu-pankou'
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }

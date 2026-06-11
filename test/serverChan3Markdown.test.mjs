@@ -34,6 +34,27 @@ test('buildServerChan3MessagePayload uses Markdown body and WeChat-style metadat
   assert.doesNotMatch(payload.desp, /plain text fallback/);
 });
 
+test('buildServerChan3MessagePayload does not use body as list summary fallback', () => {
+  const payload = buildServerChan3MessagePayload({
+    eventType: 'switch-strategy-trigger',
+    title: '切换 B 高→低 | 513100→159501',
+    body_md: '**很长的 Markdown 正文**\n\n卖 **513100** → 买 **159501**'
+  });
+
+  assert.equal(payload.short, '切换 B 高→低 | 513100→159501');
+  assert.doesNotMatch(payload.short, /Markdown|卖/);
+});
+
+test('buildServerChan3MessagePayload lets explicit short override summary', () => {
+  const payload = buildServerChan3MessagePayload({
+    title: '长标题',
+    summary: '摘要',
+    short: '列表摘要'
+  });
+
+  assert.equal(payload.short, '列表摘要');
+});
+
 test('sendServerChan3Notification posts Markdown payload fields', async () => {
   const originalFetch = globalThis.fetch;
   let captured = null;

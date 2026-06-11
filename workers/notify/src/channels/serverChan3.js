@@ -120,8 +120,7 @@ export function buildServerChan3MessagePayload(notification = {}) {
   const markdown = buildServerChanMarkdown(notification);
   const shortSource = normalizeText(notification.short)
     || normalizeText(notification.summary)
-    || title
-    || stripMarkdownForShort(markdown);
+    || title;
   return {
     title,
     desp: markdown,
