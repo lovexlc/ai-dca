@@ -1,0 +1,7 @@
+name = "freebacktrack-apex-redirect"
+main = "src/index.js"
+compatibility_date = "2026-06-11"
+
+[[routes]]
+pattern = "freebacktrack.tech/*"
+zone_name = "freebacktrack.tech"
