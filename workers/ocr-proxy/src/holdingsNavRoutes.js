@@ -151,8 +151,8 @@ async function readHoldingsBaselinePayload(request, env, key, ttlMs, codes) {
   }
 }
 
-export async function readFundNavSnapshot(code, generatedAt) {
-  return getNavFundNavSnapshot(code, generatedAt);
+export async function readFundNavSnapshot(code, generatedAt, env = null) {
+  return getNavFundNavSnapshot(code, generatedAt, env);
 }
 
 async function readFundNavHistoryWithMonthlyKv(code, fromDate, toDate, env, options = {}) {

@@ -392,7 +392,7 @@ export async function handleHoldingsOcr(request, env) {
   const extracted = parseModelResponse(payload);
   const rowResult = await sanitizeHoldingsRows(extracted.rows || [], {
     generatedAt: nowShanghaiIso(),
-    readFundNavSnapshot
+    readFundNavSnapshot: (code, generatedAt) => readFundNavSnapshot(code, generatedAt, env)
   });
   const rows = rowResult.rows;
   const warnings = [

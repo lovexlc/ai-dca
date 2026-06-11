@@ -191,6 +191,11 @@ async function enrichHoldingExtractionRow(rawRow, { generatedAt = '', readFundNa
     }
   }
 
+  if (!(resolvedAvgCost > 0) && resolvedUnitNav > 0) {
+    resolvedAvgCost = resolvedUnitNav;
+    warnings.push(`${resolvedName || resolvedCode || '某一持仓行'} 缺少成本价，已按最新净值临时填入买入均价，请导入前核对。`);
+  }
+
   const normalizedRow = normalizeHoldingRow({
     id: workingRow.id,
     code: resolvedCode,
