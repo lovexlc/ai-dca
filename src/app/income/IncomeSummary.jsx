@@ -161,11 +161,16 @@ function renderSignedPercent(value) {
 }
 
 // KPI 单列：小 label + signed currency + signed percent。支付宝风格：无卡框、纯文字横排。
-function KpiCol({ label, value, rate, align = 'center', centerRate = false }) {
+function KpiCol({ label, value, rate, align = 'center', centerRate = false, statusLabel = '' }) {
 	const tone = signTone(value);
 	const alignClass = align === 'left' ? 'items-start text-left' : align === 'right' ? 'items-end text-right' : 'items-center text-center';
 	return (
 		<div className={cx('flex min-w-0 flex-col gap-0.5', alignClass)}>
+			{statusLabel ? (
+				<div className="mb-0.5 inline-flex max-w-full items-center rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-emerald-700">
+					<span className="truncate">{statusLabel}</span>
+				</div>
+			) : null}
 			<div className="text-[11px] font-medium text-slate-500">{label}</div>
 			<div className={cx('max-w-full truncate whitespace-nowrap text-base font-bold tabular-nums min-[380px]:text-lg sm:text-xl', tone)}>
 				{renderSignedCurrency(value, { compactFrom: 10000 })}
@@ -184,6 +189,8 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 	const todayReturnRate = portfolio?.todayReturnRate;
 	const unrealizedProfit = portfolio?.unrealizedProfit;
 	const unrealizedReturnRate = portfolio?.unrealizedReturnRate;
+	const allTodayDataReady = portfolio?.navDateCoverage === 'full';
+	const todayReadyLabel = allTodayDataReady ? '全部更新完成' : '';
 	const cumulativeProfit = Number.isFinite(portfolio?.cumulativeProfit)
 		? portfolio.cumulativeProfit
 		: cumulativeSeries?.profit;
@@ -222,7 +229,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 				</div>
 			<AccountAllocationRowMobile accountAllocation={accountAllocation} />
 				<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)] gap-1">
-				<KpiCol label="今日收益(元)" value={todayProfit} rate={todayReturnRate} align="center" centerRate />
+				<KpiCol label="今日收益(元)" value={todayProfit} rate={todayReturnRate} align="center" centerRate statusLabel={todayReadyLabel} />
 				<KpiCol label="持有收益(元)" value={unrealizedProfit} rate={unrealizedReturnRate} align="center" centerRate />
 				<KpiCol label="累计收益(元)" value={cumulativeProfit} rate={cumulativeReturnRate} align="center" centerRate />
 				</div>
@@ -245,7 +252,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 					<div className="flex-1" aria-hidden="true" />
 				)}
 				<div className="flex gap-6 shrink-0 self-center">
-				<KpiCol label="今日" value={todayProfit} rate={todayReturnRate} align="center" />
+				<KpiCol label="今日" value={todayProfit} rate={todayReturnRate} align="center" statusLabel={todayReadyLabel} />
 				<KpiCol label="持有" value={unrealizedProfit} rate={unrealizedReturnRate} align="center" />
 				<KpiCol label="累计" value={cumulativeProfit} rate={cumulativeReturnRate} align="center" />
 				</div>
