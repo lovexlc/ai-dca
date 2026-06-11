@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { Area, Bar, CartesianGrid, ComposedChart, Customized, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, Bar, CartesianGrid, Cell, ComposedChart, Customized, Line, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { cx } from '../../components/experience-ui.jsx';
 import { formatNumber, formatPercentNoPlus, formatSignedPercent, formatSymbolDisplay } from './marketDisplayUtils.js';
 
@@ -21,10 +21,13 @@ export const TOOLBAR_ICONS = {
   area: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={toolbarIconClass}><path d="M4 17l4-5 4 2 4-7 4 10" /><path d="M4 20h16" /><path d="M4 17l4-5 4 2 4-7 4 10v3H4z" fill="currentColor" opacity="0.16" stroke="none" /></svg>,
   candle: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={toolbarIconClass}><path d="M7 4v4" /><path d="M7 16v4" /><rect x="5" y="8" width="4" height="8" rx="1" /><path d="M17 3v5" /><path d="M17 15v6" /><rect x="15" y="8" width="4" height="7" rx="1" /></svg>,
   bar: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={toolbarIconClass}><path d="M5 20V9" /><path d="M12 20V4" /><path d="M19 20v-7" /><path d="M3 20h18" /></svg>,
+  pie: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={toolbarIconClass}><path d="M12 3v9h9" /><path d="M21 12a9 9 0 1 1-9-9" /><path d="M12 12l6.4 6.4" /></svg>,
   indicators: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={toolbarIconClass}><path d="M4 17c3-8 6 4 9-4s5 0 7-6" /><path d="M4 7h4" /><path d="M16 17h4" /></svg>,
   compare: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={toolbarIconClass}><path d="M4 8c2.5-3 5.5-3 8 0s5.5 3 8 0" /><path d="M4 16c2.5 3 5.5 3 8 0s5.5-3 8 0" /></svg>,
 };
 export const CHART_TYPE_OPTIONS = [
+  { key: 'area', label: '面积图', hint: '连续走势与面积填充', icon: TOOLBAR_ICONS.area },
+  { key: 'line', label: '点线图', hint: '连续折线展示', icon: TOOLBAR_ICONS.indicators },
   { key: 'candle', label: 'K 线图', hint: '开高低收烛台', icon: TOOLBAR_ICONS.candle },
   { key: 'bar', label: '柱形图', hint: '柱形展示收盘价', icon: TOOLBAR_ICONS.bar },
 ];
@@ -50,6 +53,11 @@ export const COMPARE_TEXT_CLASSES = ['text-[#e37400]', 'text-[#9333ea]', 'text-[
 export const COMPARE_DOT_CLASSES = ['bg-[#e37400]', 'bg-[#9333ea]', 'bg-[#10b981]'];
 const CHART_UP = '#a50e0e';
 const CHART_DOWN = '#137333';
+const PREMIUM_BUCKETS = [
+  { key: 'lt5', label: '5%以下', color: '#137333', test: (value) => value < 5 },
+  { key: '5to8', label: '5%到8%', color: '#f9ab00', test: (value) => value >= 5 && value < 8 },
+  { key: 'gte8', label: '8%以上', color: '#a50e0e', test: (value) => value >= 8 },
+];
 
 function computeMA(closes, period) {
   const out = new Array(closes.length).fill(null);
@@ -118,6 +126,28 @@ function CandlesLayerPanel({ xAxisMap, yAxisMap, data }) {
       })}
     </g>
   );
+}
+
+function buildPremiumDistribution(rows, compareCount = 0) {
+  const values = [];
+  const keys = ['main', ...Array.from({ length: compareCount }, (_item, index) => `cmp_${index}`)];
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    keys.forEach((key) => {
+      const value = Number(row?.[key]);
+      if (Number.isFinite(value)) values.push(value);
+    });
+  });
+  const total = values.length;
+  const counts = PREMIUM_BUCKETS.map((bucket) => ({ ...bucket, count: 0, value: 0, percent: 0 }));
+  values.forEach((value) => {
+    const bucket = counts.find((item) => item.test(value));
+    if (bucket) bucket.count += 1;
+  });
+  return counts.map((bucket) => ({
+    ...bucket,
+    value: bucket.count,
+    percent: total ? (bucket.count / total) * 100 : 0
+  }));
 }
 
 function TradeMarkersLayer({ xAxisMap, yAxisMap, width, height, offset, data, markers = [] }) {
@@ -221,7 +251,7 @@ function TradeMarkersLayer({ xAxisMap, yAxisMap, width, height, offset, data, ma
   );
 }
 
-export function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, compareMode = 'change', tone, symbol, tradeMarkers = [], onHover, onLeave, onLock, lockOnClick = false }) {
+export function SymbolDetailChart({ candles, tf, chartType, indicators, compareSeries, compareMode = 'change', tone, symbol, tradeMarkers = [], onHover, onLeave, onLock, lockOnClick = false, premiumView = 'trend' }) {
   const chartShellRef = useRef(null);
   const pointersRef = useRef(new Map());
   const pinchRef = useRef(null);
@@ -368,11 +398,73 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
   if (finalRows.length < 2) {
     return <div className="flex h-full items-center justify-center text-sm text-[#5f6368]">暂无数据</div>;
   }
+  const isPremiumChart = finalRows.some((row) => Number.isFinite(Number(row?.mainIopv)) || Object.prototype.hasOwnProperty.call(row || {}, 'iopv'));
+  const showPremiumDistribution = isPremiumChart && premiumView === 'distribution';
+  const premiumMean = isPremiumChart
+    ? (() => {
+      const values = visibleRows.map((row) => Number(row.main)).filter(Number.isFinite);
+      if (!values.length) return null;
+      return values.reduce((sum, value) => sum + value, 0) / values.length;
+    })()
+    : null;
+  const premiumDistribution = showPremiumDistribution ? buildPremiumDistribution(visibleRows, cmpList.length) : [];
+  const premiumDistributionTotal = premiumDistribution.reduce((sum, bucket) => sum + bucket.count, 0);
+  if (showPremiumDistribution) {
+    return (
+      <div className="grid h-full w-full grid-cols-[minmax(0,1fr)_108px] items-center gap-1 px-1 sm:grid-cols-[minmax(0,1fr)_148px] sm:gap-2 sm:px-2">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Tooltip
+              cursor={false}
+              content={({ payload }) => {
+                const item = Array.isArray(payload) ? payload[0]?.payload : null;
+                if (!item) return null;
+                return (
+                  <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
+                    <div>{item.label}</div>
+                    <div className="mt-0.5 tabular-nums text-[#1f1f1f]">{formatNumber(item.percent, 1)}% · {item.count} 个样本</div>
+                  </div>
+                );
+              }}
+            />
+            <Pie
+              data={premiumDistribution.filter((bucket) => bucket.count > 0)}
+              dataKey="value"
+              nameKey="label"
+              cx="50%"
+              cy="50%"
+              innerRadius="48%"
+              outerRadius="78%"
+              paddingAngle={2}
+              isAnimationActive={false}
+            >
+              {premiumDistribution.filter((bucket) => bucket.count > 0).map((bucket) => (
+                <Cell key={bucket.key} fill={bucket.color} />
+              ))}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="min-w-0 pr-1 text-[11px] font-medium text-[#5f6368] sm:text-[12px]">
+          <div className="mb-1 text-[12px] font-semibold text-[#202124] sm:text-[13px]">溢价分布</div>
+          {premiumDistribution.map((bucket) => (
+            <div key={bucket.key} className="mb-1.5 grid grid-cols-[10px_minmax(0,1fr)] items-center gap-1.5">
+              <span className="size-2.5 rounded-sm" style={{ background: bucket.color }} />
+              <div className="min-w-0">
+                <div className="truncate">{bucket.label}</div>
+                <div className="tabular-nums text-[#202124]">{formatNumber(bucket.percent, 1)}%</div>
+              </div>
+            </div>
+          ))}
+          <div className="mt-1 text-[10px] text-[#9aa0a6] sm:text-[11px]">样本 {premiumDistributionTotal}</div>
+        </div>
+      </div>
+    );
+  }
   const mainColor = normalized ? COMPARE_MAIN_COLOR : tone === 'up' ? CHART_UP : tone === 'down' ? CHART_DOWN : '#1a73e8';
   const showCandle = chartType === 'candle' && !normalized;
   const showArea = chartType === 'area' && !normalized;
-  const showLine = normalized;
-  const showBar = chartType === 'bar' && !normalized;
+  const showLine = chartType === 'line' || (normalized && chartType !== 'bar');
+  const showBar = chartType === 'bar';
   const pickRowFromPointer = (event) => {
     const rect = chartShellRef.current?.getBoundingClientRect();
     if (!rect || rect.width <= 0 || visibleRows.length < 2) return null;
@@ -500,8 +592,17 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
           width={44}
           axisLine={false}
           tickLine={false}
-          tickFormatter={(value) => (normalized || compareAsValue) ? `${Number(value).toFixed(1)}%` : formatNumber(value, 2)}
+          tickFormatter={(value) => (normalized || compareAsValue || isPremiumChart) ? `${Number(value).toFixed(1)}%` : formatNumber(value, 2)}
         />
+        {Number.isFinite(Number(premiumMean)) ? (
+          <ReferenceLine
+            y={premiumMean}
+            stroke="#5f6368"
+            strokeDasharray="4 4"
+            ifOverflow="extendDomain"
+            label={{ value: `均值 ${formatPercentNoPlus(premiumMean)}`, position: 'insideTopRight', fill: '#5f6368', fontSize: 12, fontWeight: 600 }}
+          />
+        ) : null}
         <Tooltip
           cursor={false}
           content={({ label, payload }) => {
@@ -512,8 +613,7 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
             const visibleBase = Number(visibleRows[0]?.mainPrice ?? visibleRows[0]?.c);
             const showValue = !normalized && value != null && Number.isFinite(Number(value));
             const rangePct = Number.isFinite(price) && Number.isFinite(visibleBase) && visibleBase > 0 ? ((price / visibleBase) - 1) * 100 : null;
-            const isPremiumPoint = row && Object.prototype.hasOwnProperty.call(row, 'iopv');
-            // If this tooltip is for premium data, only show time and premium percent labeled as "溢价%"
+            const isPremiumPoint = row && (Object.prototype.hasOwnProperty.call(row, 'iopv') || Number.isFinite(Number(row.mainIopv)));
             if (isPremiumPoint) {
               return (
                 <div className="rounded-xl bg-white/95 px-3 py-2 text-[13px] font-medium text-[#5f6368] shadow-[0_8px_24px_rgba(60,64,67,0.20)] ring-1 ring-black/5">
@@ -564,7 +664,17 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
             isAnimationActive={false}
           />
         ))}
-        {cmpList.map((series, ci) => (
+        {chartType === 'bar' ? cmpList.map((series, ci) => (
+          <Bar
+            key={`cmp_${ci}`}
+            dataKey={`cmp_${ci}`}
+            name={formatSymbolDisplay(series.symbol)}
+            fill={COMPARE_COLORS[ci % COMPARE_COLORS.length]}
+            fillOpacity={0.62}
+            radius={[3, 3, 0, 0]}
+            isAnimationActive={false}
+          />
+        )) : cmpList.map((series, ci) => (
           <Line
             key={`cmp_${ci}`}
             type="monotone"
@@ -653,4 +763,3 @@ export function ChartToolbarPopover({ label, icon, active, children, align = 'le
     </div>
   );
 }
-

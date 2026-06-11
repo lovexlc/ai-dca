@@ -78,6 +78,7 @@ export function SymbolDetailPanel({
 }) {
   const [chartType, setChartType] = useState('area');
   const [cnFundParam, setCnFundParam] = useState('price');
+  const [premiumView, setPremiumView] = useState('trend');
   const [indicators, setIndicators] = useState(() => new Set());
   const [compareSymbols, setCompareSymbols] = useState([]);
   const [compareInput, setCompareInput] = useState('');
@@ -120,8 +121,8 @@ export function SymbolDetailPanel({
   useEffect(() => { setHoveredChartRow(null); setLockedChartRow(null); }, [chartRange, cnFundParam]);
   useEffect(() => { if (market !== 'cn') setCnFundParam('price'); }, [market]);
   useEffect(() => {
-    if (market === 'cn' && cnFundParam !== 'price' && chartType !== 'area') setChartType('area');
-  }, [market, cnFundParam, chartType]);
+    if (cnFundParam !== 'premium') setPremiumView('trend');
+  }, [cnFundParam]);
   useEffect(() => {
     const q = compareInput.trim();
     const seq = ++compareSearchSeqRef.current;
@@ -496,7 +497,7 @@ export function SymbolDetailPanel({
     : (market !== 'cn' || cnFundParam === 'price'
       ? chartCandles
       : buildCnFundParamCandles(chartCandles, navHistoryState?.items, cnFundParam, premiumState, chartRange));
-  const effectiveChartType = market === 'cn' && cnFundParam !== 'price' ? 'area' : chartType;
+  const effectiveChartType = chartType;
   const premiumCompareMode = market === 'cn' && cnFundParam === 'premium';
   const premiumUnavailable = isCnOtcFund && cnFundParam === 'premium';
   const buildPremiumTableRow = (quoteRow, keyPrefix, metricCandles) => {
@@ -628,6 +629,30 @@ export function SymbolDetailPanel({
 
         {/* 图表工具栏 */}
         <div className="mt-1.5 flex min-h-0 flex-wrap items-center gap-1 rounded-[13px] bg-[#f1f3f4] px-1.5 py-1 sm:mt-2 sm:gap-1.5 sm:rounded-[15px] sm:px-2 sm:py-1.5">
+          <ChartToolbarPopover
+            icon={CHART_TYPE_OPTIONS.find((opt) => opt.key === chartType)?.icon || TOOLBAR_ICONS.area}
+            label={CHART_TYPE_LABEL[chartType] || '图形'}
+            active={chartType !== 'area'}
+          >
+            {({ close }) => (
+              <div className="flex flex-col gap-0.5">
+                {CHART_TYPE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => { setChartType(opt.key); close(); }}
+                    className={cx(
+                      'flex items-start gap-2 rounded-lg px-2 py-1.5 text-left transition',
+                      chartType === opt.key ? 'bg-[#e8f0fe]' : 'hover:bg-[#f1f3f4]'
+                    )}
+                  >
+                    <span className={cx('text-[13px] font-medium', chartType === opt.key ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>{opt.label}</span>
+                    <span className="ml-auto text-[11px] text-[#9aa0a6]">{opt.hint}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </ChartToolbarPopover>
           {market === 'cn' ? (
             <ChartToolbarPopover
               icon={TOOLBAR_ICONS.params}
@@ -647,6 +672,35 @@ export function SymbolDetailPanel({
                       )}
                     >
                       <span className={cx('text-[13px] font-medium', cnFundParam === opt.key ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>{opt.label}</span>
+                      <span className="ml-auto text-[11px] text-[#9aa0a6]">{opt.hint}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </ChartToolbarPopover>
+          ) : null}
+          {market === 'cn' && cnFundParam === 'premium' ? (
+            <ChartToolbarPopover
+              icon={premiumView === 'distribution' ? TOOLBAR_ICONS.pie : TOOLBAR_ICONS.bar}
+              label={premiumView === 'distribution' ? '分布' : '走势'}
+              active={premiumView === 'distribution'}
+            >
+              {({ close }) => (
+                <div className="flex flex-col gap-0.5">
+                  {[
+                    { key: 'trend', label: '走势', hint: '按时间展示溢价' },
+                    { key: 'distribution', label: '分布', hint: '按区间统计占比' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => { setPremiumView(opt.key); close(); }}
+                      className={cx(
+                        'flex items-start gap-2 rounded-lg px-2 py-1.5 text-left transition',
+                        premiumView === opt.key ? 'bg-[#e8f0fe]' : 'hover:bg-[#f1f3f4]'
+                      )}
+                    >
+                      <span className={cx('text-[13px] font-medium', premiumView === opt.key ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>{opt.label}</span>
                       <span className="ml-auto text-[11px] text-[#9aa0a6]">{opt.hint}</span>
                     </button>
                   ))}
@@ -817,6 +871,7 @@ export function SymbolDetailPanel({
               onLock={handleChartLock}
               tradeMarkers={compareSymbols.length === 0 ? tradeMarkers : []}
               lockOnClick={isMobile}
+              premiumView={premiumView}
             />
           ) : sparkFallback ? (
             <Sparkline points={sparkFallback} width={720} height={210} tone={tone} showFill markLast className="h-full w-full" />
