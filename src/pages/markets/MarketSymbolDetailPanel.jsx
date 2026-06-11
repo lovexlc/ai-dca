@@ -124,6 +124,9 @@ export function SymbolDetailPanel({
     if (cnFundParam !== 'premium') setPremiumView('trend');
   }, [cnFundParam]);
   useEffect(() => {
+    if (!CHART_TYPE_OPTIONS.some((opt) => opt.key === chartType)) setChartType('area');
+  }, [chartType]);
+  useEffect(() => {
     const q = compareInput.trim();
     const seq = ++compareSearchSeqRef.current;
     if (q.length < 1 || compareSymbols.length >= 3) {

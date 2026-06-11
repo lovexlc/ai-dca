@@ -28,7 +28,6 @@ export const TOOLBAR_ICONS = {
 export const CHART_TYPE_OPTIONS = [
   { key: 'area', label: '面积图', hint: '连续走势与面积填充', icon: TOOLBAR_ICONS.area },
   { key: 'line', label: '点线图', hint: '连续折线展示', icon: TOOLBAR_ICONS.indicators },
-  { key: 'candle', label: 'K 线图', hint: '开高低收烛台', icon: TOOLBAR_ICONS.candle },
   { key: 'bar', label: '柱形图', hint: '柱形展示收盘价', icon: TOOLBAR_ICONS.bar },
 ];
 export const CHART_TYPE_LABEL = CHART_TYPE_OPTIONS.reduce((acc, o) => { acc[o.key] = o.label; return acc; }, {});
