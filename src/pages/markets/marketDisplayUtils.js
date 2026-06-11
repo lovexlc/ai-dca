@@ -19,6 +19,17 @@ export function formatNumber(value, fractionDigits = 2) {
   return n.toLocaleString('zh-CN', { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
 }
 
+const CN_EXCHANGE_FUND_PREFIXES = new Set(['15', '50', '51', '52', '53', '54', '56', '58']);
+
+export function isCnExchangeFundRow(row) {
+  const digits = normalizeCnFundCode(row?.code || row?.symbol);
+  return /^\d{6}$/.test(digits) && CN_EXCHANGE_FUND_PREFIXES.has(digits.slice(0, 2));
+}
+
+export function formatMarketPrice(value, row = null) {
+  return formatNumber(value, isCnExchangeFundRow(row) ? 3 : 2);
+}
+
 export function formatPercent(value, fractionDigits = 2) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '--';

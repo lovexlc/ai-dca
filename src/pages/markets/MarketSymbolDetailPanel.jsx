@@ -28,7 +28,7 @@ import {
   navHistoryDaysForRange,
   sliceCandlesForRange,
 } from './marketFundMetrics.js';
-import { formatNumber, formatPercent, formatSignedPercent, formatSymbolDisplay, normalizeCnFundCode } from './marketDisplayUtils.js';
+import { formatMarketPrice, formatNumber, formatPercent, formatSignedPercent, formatSymbolDisplay, normalizeCnFundCode } from './marketDisplayUtils.js';
 
 const SYMBOL_DETAIL_TABS = [
   { key: 'overview', label: '概览' },
@@ -359,7 +359,7 @@ export function SymbolDetailPanel({
     detailValueRow('上市日期', formatXueqiuDateMs(xueqiuQuote?.issue_date)),
   ].filter((item) => item.value !== '--' && item.value !== '-').slice(0, 18) : [];
   const overviewRows = [
-    detailValueRow(isCnOtcFund ? '最新净值' : '最新价', formatNumber(row.price)),
+    detailValueRow(isCnOtcFund ? '最新净值' : '最新价', isCnOtcFund ? formatNumber(row.price) : formatMarketPrice(row.price, row)),
     detailValueRow(isCnOtcFund ? '净值涨跌幅' : '今日涨跌幅', formatPercent(row.changePercent), positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#1f1f1f]'),
     detailValueRow('涨跌额', Number.isFinite(change) ? `${change > 0 ? '+' : ''}${formatNumber(change)}` : '--'),
     detailValueRow('昨收', formatNumber(row.previousClose)),
@@ -591,7 +591,7 @@ export function SymbolDetailPanel({
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-[15px] font-medium leading-tight text-[#1f1f1f] sm:text-[17px]">{row.name || displaySymbol}</h2>
             <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 sm:gap-x-2">
-              <span className="text-[28px] font-medium leading-none tabular-nums text-[#1f1f1f] sm:text-[32px]">{formatNumber(row.price)}</span>
+              <span className="text-[28px] font-medium leading-none tabular-nums text-[#1f1f1f] sm:text-[32px]">{isCnOtcFund ? formatNumber(row.price) : formatMarketPrice(row.price, row)}</span>
               <span className={cx('text-[12px] font-medium tabular-nums sm:text-[13px]', positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#5f6368]')}>
                 {Number.isFinite(change) ? `${change > 0 ? '+' : ''}${formatNumber(change)}` : '--'}
                 <span className="mx-1 text-[#5f6368]">·</span>

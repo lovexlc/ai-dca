@@ -1,7 +1,7 @@
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import { cx } from '../../components/experience-ui.jsx';
 import { Sparkline } from '../../components/markets/Sparkline.jsx';
-import { formatNumber, formatPercent, formatSymbolDisplay } from './marketDisplayUtils.js';
+import { formatMarketPrice, formatNumber, formatPercent, formatSymbolDisplay } from './marketDisplayUtils.js';
 
 export function IndexCard({ entry, onPick, sparkPoints }) {
   const positive = Number(entry.changePercent) > 0;
@@ -31,7 +31,7 @@ export function IndexCard({ entry, onPick, sparkPoints }) {
         </div>
       </div>
       <div className="w-full flex items-center justify-between">
-        <div className="w-2/3 truncate text-[12px] font-medium leading-tight tabular-nums text-slate-700">{formatNumber(entry.price)}</div>
+        <div className="w-2/3 truncate text-[12px] font-medium leading-tight tabular-nums text-slate-700">{formatMarketPrice(entry.price, entry)}</div>
         {hasChange && (
           <div className="text-[10px] leading-none tabular-nums text-slate-500">({change >= 0 ? '+' : ''}{formatNumber(Math.abs(change))})</div>
         )}
@@ -81,7 +81,7 @@ export function SidebarRow({ symbol, name, price, changePercent, sparkPoints, se
           <div className="h-[28px] w-[76px]" />
         )}
         <div className="flex shrink-0 flex-col items-end leading-tight">
-          <div className="text-[13px] font-medium tabular-nums text-[#1f1f1f]">{formatNumber(price)}</div>
+          <div className="text-[13px] font-medium tabular-nums text-[#1f1f1f]">{formatMarketPrice(price, { symbol })}</div>
           <div className={cx('flex items-center gap-0.5 text-[11px] tabular-nums', textTone)}>
             {ArrowIcon ? <ArrowIcon size={10} /> : null}
             <span>{formatPercent(changePercent)}</span>
@@ -131,7 +131,7 @@ export function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoin
         <div className="h-[32px] w-[86px]" />
       )}
       <div className="flex shrink-0 flex-col items-end gap-0.5 leading-tight">
-        <div className="text-base font-medium tabular-nums text-[#1f1f1f]">{formatNumber(price)}</div>
+        <div className="text-base font-medium tabular-nums text-[#1f1f1f]">{formatMarketPrice(price, { symbol })}</div>
         <div className="flex items-center gap-1">
           <span className={cx('text-sm font-medium tabular-nums', textTone)}>{formatPercent(changePercent)}</span>
           {ArrowIcon ? (

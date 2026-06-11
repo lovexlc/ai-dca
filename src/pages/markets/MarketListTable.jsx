@@ -16,6 +16,7 @@ import {
   changeToneClass,
   feeRateToneClass,
   formatFeeRate,
+  formatMarketPrice,
   formatNumber,
   formatPercent,
   formatPremiumPercent,
@@ -222,7 +223,7 @@ export function MarketListTable({
       accessorFn: (row) => Number(row.price),
       meta: { label: '最新价', variant: 'number' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="最新价" className="justify-end" />,
-      cell: ({ row }) => <span className="tabular-nums">{formatNumber(row.original.price)}</span>,
+      cell: ({ row }) => <span className="tabular-nums">{formatMarketPrice(row.original.price, row.original)}</span>,
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
     },
@@ -641,7 +642,7 @@ export function MarketListTable({
                   <div className="truncate font-medium">{row.name || displaySymbol}</div>
                   {row.meta ? <div className="truncate text-[10px] text-[#5f6368]">{row.meta}</div> : null}
                 </td>
-                <td className={cx(cellPad, 'whitespace-nowrap text-right tabular-nums text-[#1f1f1f]')}>{formatNumber(row.price)}</td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-right tabular-nums text-[#1f1f1f]')}>{formatMarketPrice(row.price, row)}</td>
                 <td className={cx(cellPad, 'whitespace-nowrap text-right')}>
                   <span className="inline-flex items-center justify-end gap-1.5">
                     <span className={cx('font-semibold tabular-nums', flat ? 'text-[#5f6368]' : up ? 'text-[#a50e0e]' : 'text-[#137333]')}>{formatPercent(row.changePercent)}</span>
