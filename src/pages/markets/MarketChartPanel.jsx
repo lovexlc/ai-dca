@@ -124,7 +124,7 @@ function CandlesLayerPanel({ xAxisMap, yAxisMap, data }) {
   );
 }
 
-function buildDynamicBuckets(values, bucketCount = 5) {
+function buildDynamicBuckets(values, bucketCount = 3) {
   const nums = (Array.isArray(values) ? values : []).filter(Number.isFinite).sort((a, b) => a - b);
   if (!nums.length) return [];
   const min = nums[0];
@@ -441,7 +441,7 @@ export function SymbolDetailChart({ candles, tf, chartType, indicators, compareS
       const next = { ...row, main: Number.isFinite(mainPremium) ? 0 : null };
       cmpList.forEach((_series, index) => {
         const comparePremium = Number(row[`cmp_${index}`]);
-        next[`cmp_${index}`] = Number.isFinite(comparePremium) && Number.isFinite(mainPremium) ? comparePremium - mainPremium : null;
+        next[`cmp_${index}`] = Number.isFinite(comparePremium) && Number.isFinite(mainPremium) ? mainPremium - comparePremium : null;
       });
       return next;
     })
