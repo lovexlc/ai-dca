@@ -3,7 +3,7 @@ import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authClient.js
 import {
   Bell, BookOpen, ListChecks, Wallet, Trash2, X,
   Sparkles, Calendar, ChevronRight, Clock, Layers, ShieldCheck, Target,
-  Activity, FileText, TrendingUp, Repeat, Loader2
+  Activity, FileText, TrendingUp, Repeat, Loader2, ExternalLink
 } from 'lucide-react';
 import { clearDemoData, hasPotentialUserData, installDemoData, readDemoDataMeta } from '../app/demoData.js';
 import { Card, Pill, SectionHeading, cx, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
@@ -62,6 +62,7 @@ const DISCIPLINE_DETAILS = [
 ];
 
 const LEARN_CARDS = [
+  { id: 'guide-tutorial', title: '教程地址', meta: '原文 / Notion', icon: ExternalLink, tint: 'from-sky-50 to-sky-100/40', accent: 'text-sky-500' },
   { id: 'guide-index-etf', title: '金字塔加仓法', meta: '6 分钟阅读', icon: Layers, tint: 'from-amber-50 to-amber-100/40', accent: 'text-amber-500' },
   { id: 'guide-stock', title: '个股投资策略', meta: '7 分钟阅读', icon: Target, tint: 'from-rose-50 to-rose-100/40', accent: 'text-rose-500' },
   { id: 'guide-t', title: '做 T 与负成本', meta: '4 分钟阅读', icon: Activity, tint: 'from-violet-50 to-violet-100/40', accent: 'text-violet-500' },
@@ -537,6 +538,31 @@ function AccountModalBody({ account }) {
 
 function ChapterModalBody({ id, navigate, closeModal, demoMeta, onInstallDemo, onClearDemo }) {
   function go(tab, options) { closeModal(); navigate(tab, options); }
+  if (id === 'guide-tutorial') {
+    const links = [
+      { label: '微信公众号教程', href: 'https://mp.weixin.qq.com/s/fw0BZa5Ce2gdsoVnS8CC1g' },
+      { label: 'Notion 教程', href: 'https://www.notion.so/efc55788d3504989bf3eb03267bdcf72' }
+    ];
+    return (
+      <div className="space-y-5">
+        <SectionHeading eyebrow="教程地址" title="策略教程" description="优先阅读原始教程，再结合本工具里的加仓、持仓和通知模块执行。" />
+        <div className="grid gap-3">
+          {links.map((item) => (
+            <a
+              key={item.href}
+              href={item.href}
+              target="_blank"
+              rel="noreferrer"
+              className="group flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+            >
+              <span className="truncate">{item.label}</span>
+              <ExternalLink className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:text-sky-600" aria-hidden="true" />
+            </a>
+          ))}
+        </div>
+      </div>
+    );
+  }
   if (id === 'guide-notify') {
     return (
       <div className="space-y-6">
@@ -632,6 +658,7 @@ function ChapterModalBody({ id, navigate, closeModal, demoMeta, onInstallDemo, o
 }
 
 const CHAPTER_EYEBROW = {
+  'guide-tutorial': '教程地址',
   'guide-notify': '刚需功能',
   'guide-index-etf': '只买不卖',
   'guide-stock': '第一兼唯一',
