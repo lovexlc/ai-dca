@@ -19,7 +19,6 @@ export function NewPlanConfigCards({
   selectedAssetTypeLabel,
   selectedStrategyParams,
   selectedFrequencyLabel,
-  frequencyOptions,
   selectedInstrumentCurrency,
   customDrawdown,
   setCustomDrawdown,
@@ -80,9 +79,6 @@ export function NewPlanConfigCards({
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="总投资额">
               <NumberInput step="0.01" value={state.totalBudget} onChange={(event) => setState((current) => ({ ...current, totalBudget: Number(event.target.value) || 0 }))} />
-            </Field>
-            <Field label="执行频率">
-              <SelectField options={frequencyOptions} value={state.frequency} onChange={(event) => setState((current) => ({ ...current, frequency: event.target.value }))} />
             </Field>
           </div>
 

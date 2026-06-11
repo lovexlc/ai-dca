@@ -221,7 +221,7 @@ export function NewPlanSelectionCards({
           <div className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-500">当前模板说明</div>
           <div className="mt-2 text-lg font-bold text-indigo-700">{activeStrategyLabel}</div>
           <div className="mt-2 text-sm font-semibold text-slate-700">参考基准 {benchmarkNameLabel}</div>
-          <p className="mt-3 text-sm leading-6 text-slate-500">第三步再确认总金额、频率和风险档位；高级价格表默认折叠。</p>
+          <p className="mt-3 text-sm leading-6 text-slate-500">第三步再确认总金额和风险档位；高级价格表默认折叠。</p>
           <div className="mt-4 inline-flex rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500">
             首页仅查看策略结果，如需调整请回到本页重新创建
           </div>

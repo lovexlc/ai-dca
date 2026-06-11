@@ -133,7 +133,6 @@ export function NewPlanExperienceLayout(props) {
               selectedAssetTypeLabel={selectedAssetTypeLabel}
               selectedStrategyParams={selectedStrategyParams}
               selectedFrequencyLabel={selectedFrequencyLabel}
-              frequencyOptions={frequencyOptions}
               selectedInstrumentCurrency={selectedInstrumentCurrency}
               customDrawdown={customDrawdown}
               setCustomDrawdown={setCustomDrawdown}
