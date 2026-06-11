@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, CloudDownload, CloudUpload, GitMerge, Home, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
+import { AlertTriangle, CloudDownload, CloudUpload, Eye, EyeOff, GitMerge, Home, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
 import { ensureLocalChangeBaseline, loadCloudSyncMeta, mergeLocalIntoCloudBackup, overwriteCloudWithLocal, prepareCloudSyncConflict, refreshRemoteCloudMeta, restoreEncryptedCloudBackup, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
 import { clearRememberedKey, generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
@@ -63,6 +63,7 @@ export function AccountMenu() {
   const [homeSaved, setHomeSaved] = useState(false);
   const [open, setOpen] = useState(false);
   const [authMode, setAuthMode] = useState('login');
+  const [showSecurityPassword, setShowSecurityPassword] = useState(false);
   const dropdownRef = useRef(null);
 
   useEffect(() => {
@@ -713,7 +714,26 @@ export function AccountMenu() {
                   <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
                     安全密码
                     <div className="flex gap-2">
-                      <input className={inputClass} type="password" value={form.securityPassword} onChange={(event) => updateField('securityPassword', event.target.value)} autoComplete="off" />
+                      <div className="relative min-w-0 flex-1">
+                        <input
+                          className={cx(inputClass, form.securityPassword ? 'pr-10' : '')}
+                          type={showSecurityPassword ? 'text' : 'password'}
+                          value={form.securityPassword}
+                          onChange={(event) => updateField('securityPassword', event.target.value)}
+                          autoComplete="off"
+                        />
+                        {form.securityPassword ? (
+                          <button
+                            type="button"
+                            className="absolute right-2 top-1/2 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                            onClick={() => setShowSecurityPassword((visible) => !visible)}
+                            aria-label={showSecurityPassword ? '隐藏安全密码' : '显示安全密码'}
+                            title={showSecurityPassword ? '隐藏安全密码' : '显示安全密码'}
+                          >
+                            {showSecurityPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                          </button>
+                        ) : null}
+                      </div>
                       <button type="button" className={cx(subtleButtonClass, 'h-10 shrink-0 px-3')} onClick={() => updateField('securityPassword', generateSecurityPassword())}>生成</button>
                     </div>
                   </label>
