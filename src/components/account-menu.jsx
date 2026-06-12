@@ -7,12 +7,14 @@ import { clearRememberedKey, generateSecurityPassword, loadRememberedKey, SECURE
 import { showToast } from '../app/toast.js';
 import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
 import { persistWorkspacePrefs, readWorkspacePrefs } from '../app/workspacePrefs.js';
+import { isAnalyticsAdmin } from '../app/analytics.js';
 import { cx, inputClass, primaryButtonClass, secondaryButtonClass, SelectField, subtleButtonClass } from './experience-ui.jsx';
 
 const HOME_OPTIONS = [
   { value: 'strategy', label: '策略指南' },
   { value: 'holdings', label: '持仓总览' },
   { value: 'tradePlans', label: '交易计划' },
+  { value: 'quant', label: '量化模拟', adminOnly: true },
   { value: 'notify', label: '通知设置' },
   { value: 'markets', label: '行情中心' },
   { value: 'fundSwitch', label: '基金切换' }
@@ -30,6 +32,7 @@ const SYNC_KEY_LABELS = {
   aiDcaPlanState: '建仓计划',
   aiDcaPlanStore: '计划列表',
   aiDcaPositionSnapshot: '持仓快照',
+  aiDcaQuantProjectState: '量化模拟',
   aiDcaSellPlanStore: '卖出计划',
   aiDcaSwitchStrategyPrefs: '基金切换偏好',
   aiDcaTradeLedger: '交易流水',
@@ -424,7 +427,7 @@ export function AccountMenu() {
   }
 
   function handleSaveHomePref() {
-    const next = persistWorkspacePrefs({ homepageTab: homePref });
+    const next = persistWorkspacePrefs({ homepageTab: homeOptions.some((option) => option.value === homePref) ? homePref : 'strategy' });
     setHomePref(next.homepageTab);
     setHomeSaved(true);
     const label = HOME_OPTIONS.find((item) => item.value === next.homepageTab)?.label || '策略指南';
@@ -442,6 +445,8 @@ export function AccountMenu() {
     ? '填写安全密码'
     : '';
   const loggedIn = Boolean(session?.accessToken);
+  const isAdminUser = isAnalyticsAdmin(session);
+  const homeOptions = HOME_OPTIONS.filter((option) => !option.adminOnly || isAdminUser);
   const hasRememberedSyncKey = loggedIn && Boolean(loadRememberedKey()?.rawKey);
   const initial = loggedIn ? String(session.username || '?').slice(0, 1).toUpperCase() : '';
   const previewBytes = preview.keys.reduce((sum, key) => sum + (preview.entries[key]?.length || 0), 0);
@@ -640,7 +645,7 @@ export function AccountMenu() {
                     <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
                       <Home className="h-3.5 w-3.5 text-indigo-500" aria-hidden="true" />默认首页
                     </div>
-                    <SelectField options={HOME_OPTIONS} value={homePref} onChange={(event) => { setHomePref(event.target.value); setHomeSaved(false); }} />
+                    <SelectField options={homeOptions} value={homeOptions.some((option) => option.value === homePref) ? homePref : 'strategy'} onChange={(event) => { setHomePref(event.target.value); setHomeSaved(false); }} />
                     <button type="button" className={cx(secondaryButtonClass, "w-full justify-center text-xs")} onClick={handleSaveHomePref}>{homeSaved ? '已保存' : '保存默认首页'}</button>
                   </div>
                   {renderSyncError()}

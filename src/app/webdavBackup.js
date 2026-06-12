@@ -19,6 +19,7 @@ export const SYNCABLE_STORAGE_KEYS = new Set([
   'aiDcaPlanState',
   'aiDcaPlanStore',
   'aiDcaPositionSnapshot',
+  'aiDcaQuantProjectState',
   'aiDcaSellPlanDraft',
   'aiDcaSellPlanStore',
   'aiDcaSwitchStrategyPrefs',

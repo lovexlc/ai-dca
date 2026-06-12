@@ -3,6 +3,7 @@ import {
   ArrowRight,
   BarChart3,
   Bell,
+  Bot,
   Search,
   Shuffle,
   Wallet,
@@ -14,6 +15,7 @@ import { readPlanList } from '../app/plan.js';
 const TAB_ENTRIES = [
   { key: 'holdings', label: '持仓总览', desc: '基金持仓、汇总收益', icon: Wallet, keywords: 'holdings cangwei chicang' },
   { key: 'tradePlans', label: '交易计划', desc: '加仓 / 定投策略', icon: BarChart3, keywords: 'tradeplans plans jihua dca' },
+  { key: 'quant', label: '量化模拟', desc: '模拟盘、策略、交易、复盘', icon: Bot, keywords: 'quant lianghua moni backtest', adminOnly: true },
   { key: 'fundSwitch', label: '基金切换', desc: '切换链路与执行', icon: Shuffle, keywords: 'fundswitch switch qiehuan' },
   { key: 'notify', label: '通知', desc: '推送配置与状态', icon: Bell, keywords: 'notify push tongzhi' },
 ];
@@ -42,7 +44,7 @@ function kindLabel(kind) {
   return kind || '';
 }
 
-export function GlobalSearch({ open, onClose, onSelectTab, onSelectFund }) {
+export function GlobalSearch({ open, onClose, onSelectTab, onSelectFund, showAdminTabs = false }) {
   const [query, setQuery] = useState('');
   const [funds, setFunds] = useState([]);
   const [plans, setPlans] = useState([]);
@@ -81,12 +83,13 @@ export function GlobalSearch({ open, onClose, onSelectTab, onSelectFund }) {
   const q = query.trim().toLowerCase();
 
   const tabResults = useMemo(() => {
-    if (!q) return TAB_ENTRIES;
-    return TAB_ENTRIES.filter((tab) => {
+    const visibleEntries = TAB_ENTRIES.filter((tab) => !tab.adminOnly || showAdminTabs);
+    if (!q) return visibleEntries;
+    return visibleEntries.filter((tab) => {
       const hay = `${tab.label} ${tab.desc || ''} ${tab.key} ${tab.keywords || ''}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [q]);
+  }, [q, showAdminTabs]);
 
   const fundResults = useMemo(() => {
     if (!q) return [];

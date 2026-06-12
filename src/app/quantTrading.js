@@ -1,0 +1,532 @@
+export const QUANT_PROJECT_STORAGE_KEY = 'aiDcaQuantProjectState';
+
+export const DEFAULT_QUANT_STATE = {
+  account: {
+    cash: 60000,
+    feeRate: 0.01,
+    minFee: 0,
+    tickSize: 0.001,
+    slippageTicks: 1,
+    positions: {
+      '159513': {
+        symbol: '159513',
+        name: '纳指科技 ETF',
+        shares: 20000,
+        costPrice: 1.735
+      },
+      '513100': {
+        symbol: '513100',
+        name: '纳指 ETF',
+        shares: 8000,
+        costPrice: 1.486
+      }
+    }
+  },
+  strategy: {
+    name: '纳指 ETF 溢价差',
+    sellSymbol: '159513',
+    buySymbol: '513100',
+    triggerSpreadPct: 0.3,
+    closeSpreadPct: 0.12,
+    feeBufferPct: 0.04,
+    maxOrderCash: 16000,
+    minOrderCash: 1000,
+    lotSize: 100,
+    cooldownDays: 2
+  },
+  quotes: {
+    '159513': {
+      symbol: '159513',
+      name: '纳指科技 ETF',
+      bid: 1.772,
+      bidSize: 83000,
+      ask: 1.773,
+      askSize: 64000,
+      iopv: 1.762
+    },
+    '513100': {
+      symbol: '513100',
+      name: '纳指 ETF',
+      bid: 1.498,
+      bidSize: 92000,
+      ask: 1.499,
+      askSize: 78000,
+      iopv: 1.496
+    }
+  },
+  orders: []
+};
+
+export function clampNumber(value, fallback = 0) {
+  const next = Number(value);
+  return Number.isFinite(next) ? next : fallback;
+}
+
+export function roundTo(value, digits = 2) {
+  const factor = 10 ** digits;
+  return Math.round((clampNumber(value) + Number.EPSILON) * factor) / factor;
+}
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeSymbol(value, fallback = '') {
+  const next = String(value || '').trim().toUpperCase();
+  return next || fallback;
+}
+
+function normalizeAccount(account = {}) {
+  const fallback = DEFAULT_QUANT_STATE.account;
+  const positions = {};
+  const sourcePositions = account.positions && typeof account.positions === 'object'
+    ? account.positions
+    : fallback.positions;
+  for (const [key, item] of Object.entries(sourcePositions || {})) {
+    const symbol = normalizeSymbol(item?.symbol, normalizeSymbol(key));
+    if (!symbol) continue;
+    positions[symbol] = {
+      symbol,
+      name: String(item?.name || symbol),
+      shares: Math.max(0, clampNumber(item?.shares, 0)),
+      costPrice: Math.max(0, clampNumber(item?.costPrice, 0))
+    };
+  }
+  return {
+    cash: Math.max(0, clampNumber(account.cash, fallback.cash)),
+    feeRate: Math.max(0, clampNumber(account.feeRate, fallback.feeRate)),
+    minFee: Math.max(0, clampNumber(account.minFee, fallback.minFee)),
+    tickSize: Math.max(0.0001, clampNumber(account.tickSize, fallback.tickSize)),
+    slippageTicks: Math.max(0, clampNumber(account.slippageTicks, fallback.slippageTicks)),
+    positions
+  };
+}
+
+function normalizeStrategy(strategy = {}) {
+  const fallback = DEFAULT_QUANT_STATE.strategy;
+  return {
+    name: String(strategy.name || fallback.name),
+    sellSymbol: normalizeSymbol(strategy.sellSymbol, fallback.sellSymbol),
+    buySymbol: normalizeSymbol(strategy.buySymbol, fallback.buySymbol),
+    triggerSpreadPct: Math.max(0, clampNumber(strategy.triggerSpreadPct, fallback.triggerSpreadPct)),
+    closeSpreadPct: Math.max(0, clampNumber(strategy.closeSpreadPct, fallback.closeSpreadPct)),
+    feeBufferPct: Math.max(0, clampNumber(strategy.feeBufferPct, fallback.feeBufferPct)),
+    maxOrderCash: Math.max(0, clampNumber(strategy.maxOrderCash, fallback.maxOrderCash)),
+    minOrderCash: Math.max(0, clampNumber(strategy.minOrderCash, fallback.minOrderCash)),
+    lotSize: Math.max(1, Math.floor(clampNumber(strategy.lotSize, fallback.lotSize))),
+    cooldownDays: Math.max(0, Math.floor(clampNumber(strategy.cooldownDays, fallback.cooldownDays)))
+  };
+}
+
+function normalizeQuote(quote = {}, fallbackQuote = {}) {
+  const symbol = normalizeSymbol(quote.symbol, normalizeSymbol(fallbackQuote.symbol));
+  return {
+    symbol,
+    name: String(quote.name || fallbackQuote.name || symbol),
+    bid: Math.max(0, clampNumber(quote.bid, fallbackQuote.bid || 0)),
+    bidSize: Math.max(0, clampNumber(quote.bidSize, fallbackQuote.bidSize || 0)),
+    ask: Math.max(0, clampNumber(quote.ask, fallbackQuote.ask || 0)),
+    askSize: Math.max(0, clampNumber(quote.askSize, fallbackQuote.askSize || 0)),
+    iopv: Math.max(0, clampNumber(quote.iopv, fallbackQuote.iopv || 0))
+  };
+}
+
+function normalizeQuotes(quotes = {}) {
+  const next = {};
+  const symbols = new Set([
+    ...Object.keys(DEFAULT_QUANT_STATE.quotes),
+    ...Object.keys(quotes || {})
+  ]);
+  for (const symbol of symbols) {
+    const normalized = normalizeQuote(quotes?.[symbol], DEFAULT_QUANT_STATE.quotes[symbol]);
+    if (normalized.symbol) next[normalized.symbol] = normalized;
+  }
+  return next;
+}
+
+export function normalizeQuantState(input = {}) {
+  const account = normalizeAccount(input.account);
+  const strategy = normalizeStrategy(input.strategy);
+  const quotes = normalizeQuotes(input.quotes);
+  for (const symbol of [strategy.sellSymbol, strategy.buySymbol]) {
+    if (!quotes[symbol]) {
+      quotes[symbol] = normalizeQuote({ symbol }, {});
+    }
+    if (!account.positions[symbol]) {
+      account.positions[symbol] = {
+        symbol,
+        name: quotes[symbol]?.name || symbol,
+        shares: 0,
+        costPrice: 0
+      };
+    }
+  }
+  const orders = Array.isArray(input.orders)
+    ? input.orders
+      .filter(Boolean)
+      .slice(-80)
+      .map((order) => ({
+        id: String(order.id || `${Date.now()}-${Math.random()}`),
+        ts: String(order.ts || ''),
+        side: order.side === 'BUY' ? 'BUY' : 'SELL',
+        symbol: normalizeSymbol(order.symbol),
+        name: String(order.name || order.symbol || ''),
+        price: Math.max(0, clampNumber(order.price, 0)),
+        quantity: Math.max(0, clampNumber(order.quantity, 0)),
+        amount: Math.max(0, clampNumber(order.amount, 0)),
+        fee: Math.max(0, clampNumber(order.fee, 0)),
+        status: String(order.status || 'filled'),
+        reason: String(order.reason || '')
+      }))
+    : [];
+  return { account, strategy, quotes, orders };
+}
+
+export function readQuantProjectState() {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return normalizeQuantState(DEFAULT_QUANT_STATE);
+  }
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(QUANT_PROJECT_STORAGE_KEY) || 'null');
+    return normalizeQuantState(parsed || DEFAULT_QUANT_STATE);
+  } catch {
+    return normalizeQuantState(DEFAULT_QUANT_STATE);
+  }
+}
+
+export function saveQuantProjectState(state) {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  window.localStorage.setItem(QUANT_PROJECT_STORAGE_KEY, JSON.stringify(normalizeQuantState(state)));
+}
+
+export function resetQuantProjectState() {
+  const next = normalizeQuantState(DEFAULT_QUANT_STATE);
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.setItem(QUANT_PROJECT_STORAGE_KEY, JSON.stringify(next));
+  }
+  return next;
+}
+
+export function premiumPct(price, iopv) {
+  const base = clampNumber(iopv, 0);
+  if (base <= 0) return 0;
+  return ((clampNumber(price, 0) - base) / base) * 100;
+}
+
+export function getQuotePair(state) {
+  const normalized = normalizeQuantState(state);
+  const { strategy, quotes } = normalized;
+  return {
+    sellQuote: quotes[strategy.sellSymbol],
+    buyQuote: quotes[strategy.buySymbol]
+  };
+}
+
+export function evaluatePremiumSpread(state) {
+  const normalized = normalizeQuantState(state);
+  const { strategy } = normalized;
+  const { sellQuote, buyQuote } = getQuotePair(normalized);
+  const sellPremiumPct = premiumPct(sellQuote?.bid, sellQuote?.iopv);
+  const buyPremiumPct = premiumPct(buyQuote?.ask, buyQuote?.iopv);
+  const rawSpreadPct = sellPremiumPct - buyPremiumPct;
+  const netSpreadPct = rawSpreadPct - strategy.feeBufferPct;
+  const hasValidQuotes = Boolean(sellQuote?.bid > 0 && sellQuote?.iopv > 0 && buyQuote?.ask > 0 && buyQuote?.iopv > 0);
+  const action = hasValidQuotes && netSpreadPct >= strategy.triggerSpreadPct ? 'switch' : 'wait';
+  const reason = !hasValidQuotes
+    ? '盘口或 IOPV 不完整'
+    : action === 'switch'
+      ? '溢价差达到触发线'
+      : netSpreadPct <= strategy.closeSpreadPct
+        ? '差价低于观察线'
+        : '等待更高安全垫';
+  return {
+    action,
+    reason,
+    sellPremiumPct: roundTo(sellPremiumPct, 4),
+    buyPremiumPct: roundTo(buyPremiumPct, 4),
+    rawSpreadPct: roundTo(rawSpreadPct, 4),
+    netSpreadPct: roundTo(netSpreadPct, 4),
+    triggerSpreadPct: strategy.triggerSpreadPct,
+    closeSpreadPct: strategy.closeSpreadPct
+  };
+}
+
+function floorToLot(quantity, lotSize) {
+  const lot = Math.max(1, Math.floor(clampNumber(lotSize, 1)));
+  return Math.floor(Math.max(0, clampNumber(quantity, 0)) / lot) * lot;
+}
+
+function roundPriceToTick(price, tickSize) {
+  const tick = Math.max(0.0001, clampNumber(tickSize, 0.001));
+  return Math.max(tick, roundTo(Math.round(clampNumber(price, 0) / tick) * tick, 4));
+}
+
+function calcFee(amount, account) {
+  if (amount <= 0) return 0;
+  const raw = amount * (Math.max(0, clampNumber(account.feeRate, 0)) / 100);
+  return roundTo(Math.max(raw, Math.max(0, clampNumber(account.minFee, 0))), 2);
+}
+
+export function buildSimulatedOrderPlan(state) {
+  const normalized = normalizeQuantState(state);
+  const { account, strategy } = normalized;
+  const { sellQuote, buyQuote } = getQuotePair(normalized);
+  const signal = evaluatePremiumSpread(normalized);
+  const tickSize = account.tickSize;
+  const slip = account.slippageTicks * tickSize;
+  const sellPosition = account.positions[strategy.sellSymbol] || { shares: 0, costPrice: 0 };
+  const sellPrice = roundPriceToTick((sellQuote?.bid || 0) - slip, tickSize);
+  const buyPrice = roundPriceToTick((buyQuote?.ask || 0) + slip, tickSize);
+  const maxSellByCash = sellPrice > 0 ? strategy.maxOrderCash / sellPrice : 0;
+  const sellQuantity = floorToLot(
+    Math.min(sellPosition.shares, sellQuote?.bidSize || 0, maxSellByCash),
+    strategy.lotSize
+  );
+  const sellAmount = roundTo(sellQuantity * sellPrice, 2);
+  const sellFee = calcFee(sellAmount, account);
+  const sellNet = Math.max(0, sellAmount - sellFee);
+  const buyBudget = signal.action === 'switch'
+    ? Math.min(strategy.maxOrderCash, account.cash + sellNet)
+    : Math.min(strategy.maxOrderCash, account.cash);
+  const buyQuantity = floorToLot(
+    Math.min(buyQuote?.askSize || 0, buyPrice > 0 ? Math.max(0, buyBudget) / buyPrice : 0),
+    strategy.lotSize
+  );
+  const buyAmount = roundTo(buyQuantity * buyPrice, 2);
+  const buyFee = calcFee(buyAmount, account);
+  const canTrade = signal.action === 'switch'
+    && sellQuantity > 0
+    && buyQuantity > 0
+    && sellAmount >= strategy.minOrderCash
+    && buyAmount >= strategy.minOrderCash;
+  return {
+    signal,
+    canTrade,
+    rejectReason: canTrade
+      ? ''
+      : signal.action !== 'switch'
+        ? signal.reason
+        : sellQuantity <= 0
+          ? '可卖持仓或卖一量不足'
+          : buyQuantity <= 0
+            ? '现金或买一量不足'
+            : '订单金额低于最小交易额',
+    sell: {
+      side: 'SELL',
+      symbol: strategy.sellSymbol,
+      name: sellQuote?.name || strategy.sellSymbol,
+      price: sellPrice,
+      quantity: sellQuantity,
+      amount: sellAmount,
+      fee: sellFee
+    },
+    buy: {
+      side: 'BUY',
+      symbol: strategy.buySymbol,
+      name: buyQuote?.name || strategy.buySymbol,
+      price: buyPrice,
+      quantity: buyQuantity,
+      amount: buyAmount,
+      fee: buyFee
+    },
+    totalFee: roundTo(sellFee + buyFee, 2),
+    estimatedCapture: roundTo(Math.min(sellAmount, buyAmount) * Math.max(0, signal.netSpreadPct) / 100, 2)
+  };
+}
+
+function applySell(account, fill) {
+  const position = account.positions[fill.symbol] || {
+    symbol: fill.symbol,
+    name: fill.name,
+    shares: 0,
+    costPrice: 0
+  };
+  const quantity = Math.min(position.shares, fill.quantity);
+  const amount = roundTo(quantity * fill.price, 2);
+  const fee = calcFee(amount, account);
+  const nextShares = Math.max(0, position.shares - quantity);
+  account.cash = roundTo(account.cash + amount - fee, 2);
+  account.positions[fill.symbol] = {
+    ...position,
+    shares: roundTo(nextShares, 4),
+    costPrice: nextShares > 0 ? position.costPrice : 0
+  };
+  return { ...fill, quantity, amount, fee };
+}
+
+function applyBuy(account, fill) {
+  const availableForAmount = Math.max(0, account.cash - account.minFee);
+  const maxQuantity = fill.price > 0 ? floorToLot(availableForAmount / fill.price, 1) : 0;
+  const quantity = Math.min(fill.quantity, maxQuantity);
+  const amount = roundTo(quantity * fill.price, 2);
+  const fee = calcFee(amount, account);
+  if (amount + fee > account.cash || quantity <= 0) {
+    return { ...fill, quantity: 0, amount: 0, fee: 0 };
+  }
+  const position = account.positions[fill.symbol] || {
+    symbol: fill.symbol,
+    name: fill.name,
+    shares: 0,
+    costPrice: 0
+  };
+  const currentCost = position.shares * position.costPrice;
+  const nextShares = position.shares + quantity;
+  const nextCostPrice = nextShares > 0 ? (currentCost + amount + fee) / nextShares : 0;
+  account.cash = roundTo(account.cash - amount - fee, 2);
+  account.positions[fill.symbol] = {
+    ...position,
+    name: fill.name,
+    shares: roundTo(nextShares, 4),
+    costPrice: roundTo(nextCostPrice, 4)
+  };
+  return { ...fill, quantity, amount, fee };
+}
+
+export function executeSimulatedSwitch(state, timestamp = new Date().toISOString()) {
+  const normalized = normalizeQuantState(state);
+  const plan = buildSimulatedOrderPlan(normalized);
+  if (!plan.canTrade) {
+    return { state: normalized, plan, fills: [] };
+  }
+  const next = clone(normalized);
+  const sellFill = applySell(next.account, plan.sell);
+  const buyFill = applyBuy(next.account, plan.buy);
+  const fills = [sellFill, buyFill]
+    .filter((fill) => fill.quantity > 0)
+    .map((fill, index) => ({
+      id: `${Date.now()}-${index}-${fill.side}`,
+      ts: timestamp,
+      side: fill.side,
+      symbol: fill.symbol,
+      name: fill.name,
+      price: roundTo(fill.price, 4),
+      quantity: fill.quantity,
+      amount: roundTo(fill.amount, 2),
+      fee: roundTo(fill.fee, 2),
+      status: 'filled',
+      reason: plan.signal.reason
+    }));
+  next.orders = [...fills, ...next.orders].slice(0, 80);
+  return { state: normalizeQuantState(next), plan, fills };
+}
+
+export function computeAccountSummary(state) {
+  const normalized = normalizeQuantState(state);
+  const { account, quotes } = normalized;
+  const positions = Object.values(account.positions || {}).map((position) => {
+    const quote = quotes[position.symbol] || {};
+    const lastPrice = quote.bid > 0 ? quote.bid : quote.ask > 0 ? quote.ask : position.costPrice;
+    const marketValue = roundTo(position.shares * lastPrice, 2);
+    const cost = roundTo(position.shares * position.costPrice, 2);
+    const pnl = roundTo(marketValue - cost, 2);
+    const pnlPct = cost > 0 ? roundTo((pnl / cost) * 100, 2) : 0;
+    return {
+      ...position,
+      lastPrice: roundTo(lastPrice, 4),
+      marketValue,
+      cost,
+      pnl,
+      pnlPct
+    };
+  });
+  const marketValue = roundTo(positions.reduce((sum, item) => sum + item.marketValue, 0), 2);
+  const cost = roundTo(positions.reduce((sum, item) => sum + item.cost, 0), 2);
+  const equity = roundTo(account.cash + marketValue, 2);
+  return {
+    cash: roundTo(account.cash, 2),
+    positions,
+    marketValue,
+    cost,
+    equity,
+    pnl: roundTo(marketValue - cost, 2),
+    positionCount: positions.filter((item) => item.shares > 0).length
+  };
+}
+
+function shiftIsoDate(isoDate, offsetDays) {
+  const date = new Date(`${isoDate}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + offsetDays);
+  return date.toISOString().slice(0, 10);
+}
+
+export function buildSampleBacktestRows(days = 30, endDate = '2026-06-12') {
+  const totalDays = Math.max(8, Math.min(180, Math.floor(clampNumber(days, 30))));
+  const rows = [];
+  for (let index = 0; index < totalDays; index += 1) {
+    const offset = index - totalDays + 1;
+    const wave = Math.sin(index * 0.72) * 0.28 + Math.cos(index * 0.19) * 0.12;
+    const sellPremiumPct = 0.26 + wave + (index % 11 === 5 ? 0.22 : 0);
+    const buyPremiumPct = 0.04 - Math.sin(index * 0.47) * 0.1 + (index % 13 === 7 ? -0.08 : 0);
+    rows.push({
+      date: shiftIsoDate(endDate, offset),
+      sellPremiumPct: roundTo(sellPremiumPct, 4),
+      buyPremiumPct: roundTo(buyPremiumPct, 4)
+    });
+  }
+  return rows;
+}
+
+export function runPremiumSpreadBacktest({
+  rows = buildSampleBacktestRows(),
+  triggerSpreadPct = DEFAULT_QUANT_STATE.strategy.triggerSpreadPct,
+  feeBufferPct = DEFAULT_QUANT_STATE.strategy.feeBufferPct,
+  orderCash = DEFAULT_QUANT_STATE.strategy.maxOrderCash,
+  initialEquity = 100000,
+  cooldownDays = DEFAULT_QUANT_STATE.strategy.cooldownDays
+} = {}) {
+  const startEquity = Math.max(1, clampNumber(initialEquity, 100000));
+  const tradeCash = Math.max(0, clampNumber(orderCash, 0));
+  let equity = startEquity;
+  let peak = startEquity;
+  let maxDrawdownPct = 0;
+  let lastTradeIndex = -Infinity;
+  const trades = [];
+  const equityRows = rows.map((row, index) => {
+    const rawSpreadPct = clampNumber(row.sellPremiumPct, 0) - clampNumber(row.buyPremiumPct, 0);
+    const netSpreadPct = rawSpreadPct - Math.max(0, clampNumber(feeBufferPct, 0));
+    const canTrade = netSpreadPct >= triggerSpreadPct && index - lastTradeIndex > cooldownDays;
+    let profit = 0;
+    if (canTrade && tradeCash > 0) {
+      profit = roundTo((tradeCash * netSpreadPct) / 100, 2);
+      equity = roundTo(equity + profit, 2);
+      lastTradeIndex = index;
+      trades.push({
+        date: row.date,
+        rawSpreadPct: roundTo(rawSpreadPct, 4),
+        netSpreadPct: roundTo(netSpreadPct, 4),
+        profit,
+        orderCash: tradeCash
+      });
+    }
+    peak = Math.max(peak, equity);
+    const drawdownPct = peak > 0 ? ((equity - peak) / peak) * 100 : 0;
+    maxDrawdownPct = Math.min(maxDrawdownPct, drawdownPct);
+    return {
+      date: row.date,
+      sellPremiumPct: roundTo(row.sellPremiumPct, 4),
+      buyPremiumPct: roundTo(row.buyPremiumPct, 4),
+      rawSpreadPct: roundTo(rawSpreadPct, 4),
+      netSpreadPct: roundTo(netSpreadPct, 4),
+      signal: canTrade ? 'switch' : 'wait',
+      profit,
+      equity: roundTo(equity, 2)
+    };
+  });
+  const totalProfit = roundTo(equity - startEquity, 2);
+  const winners = trades.filter((trade) => trade.profit > 0).length;
+  return {
+    rows: equityRows,
+    trades,
+    summary: {
+      trades: trades.length,
+      totalProfit,
+      totalReturnPct: roundTo((totalProfit / startEquity) * 100, 2),
+      winRatePct: trades.length ? roundTo((winners / trades.length) * 100, 2) : 0,
+      maxDrawdownPct: roundTo(maxDrawdownPct, 2),
+      finalEquity: roundTo(equity, 2),
+      avgNetSpreadPct: trades.length
+        ? roundTo(trades.reduce((sum, trade) => sum + trade.netSpreadPct, 0) / trades.length, 4)
+        : 0
+    }
+  };
+}

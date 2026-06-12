@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, Crown, LineChart, ListChecks, Plus, Send, Shuffle, Trash2, Wallet, X } from 'lucide-react';
+import { ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, Bot, Crown, LineChart, ListChecks, Play, Plus, Send, Shuffle, Trash2, Wallet, X } from 'lucide-react';
 import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, PRIMARY_TAB_META, PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
@@ -21,6 +21,7 @@ const HoldingsExperience = lazy(() => import('./HoldingsExperience.jsx').then((m
 const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) => ({ default: m.NotifyExperience })));
 const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').then((m) => ({ default: m.TradePlansExperience })));
 const MarketsExperience = lazy(() => import('./MarketsExperience.jsx').then((m) => ({ default: m.MarketsExperience })));
+const QuantTradingExperience = lazy(() => import('./QuantTradingExperience.jsx').then((m) => ({ default: m.QuantTradingExperience })));
 const StrategyGuideExperience = lazy(() => import('./StrategyGuideExperience.jsx').then((m) => ({ default: m.StrategyGuideExperience })));
 const AdminAnalyticsExperience = lazy(() => import('./AdminAnalyticsExperience.jsx').then((m) => ({ default: m.AdminAnalyticsExperience })));
 const PremiumExperience = lazy(() => import('./PremiumExperience.jsx').then((m) => ({ default: m.PremiumExperience })));
@@ -33,6 +34,7 @@ function readPreferredWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
 const WORKSPACE_TITLES = {
   strategy: '美股策略助手',
   tradePlans: '交易计划中心',
+  quant: '量化模拟',
   fundSwitch: '基金切换收益分析',
   markets: '行情中心',
   premium: '高级版',
@@ -44,6 +46,7 @@ const WORKSPACE_TITLES = {
 const SIDEBAR_ICONS = {
   strategy: BookOpen,
   tradePlans: ListChecks,
+  quant: Bot,
   fundSwitch: Shuffle,
   markets: LineChart,
   premium: Crown,
@@ -253,6 +256,14 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         }
       };
     }
+    if (activeTab === 'quant') {
+      return {
+        label: '模拟撮合',
+        icon: Play,
+        mode: 'custom',
+        action: () => window.dispatchEvent(new CustomEvent('quant:execute-simulated-trade'))
+      };
+    }
     if (activeTab === 'fundSwitch') {
       return {
         label: '查看机会',
@@ -437,6 +448,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         return <StrategyGuideExperience {...sharedProps} onNavigate={handleSelectTab} onDemoDataChange={setDemoMeta} />;
       case 'tradePlans':
         return <TradePlansExperience {...sharedProps} />;
+      case 'quant':
+        return <QuantTradingExperience {...sharedProps} />;
       case 'fundSwitch':
         return <FundSwitchExperience {...sharedProps} />;
       case 'markets':
@@ -548,6 +561,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       <GlobalSearch
         open={globalSearchOpen}
         onClose={() => setGlobalSearchOpen(false)}
+        showAdminTabs={isAdminUser}
         onSelectTab={(key) => handleSelectTab(key)}
         onSelectFund={(code) => {
           handleSelectTab('holdings');

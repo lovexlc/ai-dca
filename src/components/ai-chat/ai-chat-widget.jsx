@@ -265,6 +265,7 @@ const TAB_LABELS = {
   home: '首页',
   holdings: '持仓',
   tradePlans: '交易计划',
+  quant: '量化模拟',
   fundSwitch: '基金切换',
   notify: '提醒中心',
 };
