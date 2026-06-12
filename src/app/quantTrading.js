@@ -54,6 +54,20 @@ export const DEFAULT_QUANT_STATE = {
       iopv: 1.496
     }
   },
+  realtime: {
+    enabled: false,
+    autoExecute: false,
+    onlyTradingSession: true,
+    refreshIntervalSec: 10,
+    maxExecutionsPerDay: 1,
+    executionsToday: 0,
+    lastExecutionDate: '',
+    lastExecutionAt: '',
+    lastRefreshAt: '',
+    lastQuoteAt: '',
+    lastStatus: 'idle',
+    lastError: ''
+  },
   orders: []
 };
 
@@ -127,7 +141,12 @@ function normalizeQuote(quote = {}, fallbackQuote = {}) {
     bidSize: Math.max(0, clampNumber(quote.bidSize, fallbackQuote.bidSize || 0)),
     ask: Math.max(0, clampNumber(quote.ask, fallbackQuote.ask || 0)),
     askSize: Math.max(0, clampNumber(quote.askSize, fallbackQuote.askSize || 0)),
-    iopv: Math.max(0, clampNumber(quote.iopv, fallbackQuote.iopv || 0))
+    iopv: Math.max(0, clampNumber(quote.iopv, fallbackQuote.iopv || 0)),
+    price: Math.max(0, clampNumber(quote.price, fallbackQuote.price || quote.bid || quote.ask || 0)),
+    asOf: String(quote.asOf || fallbackQuote.asOf || '').trim(),
+    source: String(quote.source || fallbackQuote.source || '').trim(),
+    marketState: String(quote.marketState || fallbackQuote.marketState || '').trim(),
+    cached: quote.cached === true
   };
 }
 
@@ -144,10 +163,51 @@ function normalizeQuotes(quotes = {}) {
   return next;
 }
 
+export function shanghaiDateKey(date = new Date()) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).formatToParts(date).reduce((acc, part) => {
+      if (part.type !== 'literal') acc[part.type] = part.value;
+      return acc;
+    }, {});
+    return parts.year && parts.month && parts.day ? `${parts.year}-${parts.month}-${parts.day}` : '';
+  } catch {
+    return '';
+  }
+}
+
+function normalizeRealtime(realtime = {}) {
+  const fallback = DEFAULT_QUANT_STATE.realtime;
+  const lastExecutionDate = String(realtime.lastExecutionDate || '').slice(0, 10);
+  const today = shanghaiDateKey();
+  const executionsToday = lastExecutionDate && lastExecutionDate === today
+    ? Math.max(0, Math.floor(clampNumber(realtime.executionsToday, fallback.executionsToday)))
+    : 0;
+  return {
+    enabled: realtime.enabled === true,
+    autoExecute: realtime.autoExecute === true,
+    onlyTradingSession: realtime.onlyTradingSession !== false,
+    refreshIntervalSec: Math.max(5, Math.min(60, Math.floor(clampNumber(realtime.refreshIntervalSec, fallback.refreshIntervalSec)))),
+    maxExecutionsPerDay: Math.max(1, Math.min(20, Math.floor(clampNumber(realtime.maxExecutionsPerDay, fallback.maxExecutionsPerDay)))),
+    executionsToday,
+    lastExecutionDate,
+    lastExecutionAt: String(realtime.lastExecutionAt || '').trim(),
+    lastRefreshAt: String(realtime.lastRefreshAt || '').trim(),
+    lastQuoteAt: String(realtime.lastQuoteAt || '').trim(),
+    lastStatus: String(realtime.lastStatus || fallback.lastStatus).trim(),
+    lastError: String(realtime.lastError || '').trim().slice(0, 240)
+  };
+}
+
 export function normalizeQuantState(input = {}) {
   const account = normalizeAccount(input.account);
   const strategy = normalizeStrategy(input.strategy);
   const quotes = normalizeQuotes(input.quotes);
+  const realtime = normalizeRealtime(input.realtime);
   for (const symbol of [strategy.sellSymbol, strategy.buySymbol]) {
     if (!quotes[symbol]) {
       quotes[symbol] = normalizeQuote({ symbol }, {});
@@ -179,7 +239,7 @@ export function normalizeQuantState(input = {}) {
         reason: String(order.reason || '')
       }))
     : [];
-  return { account, strategy, quotes, orders };
+  return { account, strategy, quotes, realtime, orders };
 }
 
 export function readQuantProjectState() {
@@ -249,6 +309,147 @@ export function evaluatePremiumSpread(state) {
     triggerSpreadPct: strategy.triggerSpreadPct,
     closeSpreadPct: strategy.closeSpreadPct
   };
+}
+
+function firstPositiveNumber(...values) {
+  for (const value of values) {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 0;
+}
+
+function firstNonNegativeNumber(...values) {
+  for (const value of values) {
+    const n = Number(value);
+    if (Number.isFinite(n) && n >= 0) return n;
+  }
+  return 0;
+}
+
+function quoteLookupKeys(symbol = '') {
+  const raw = String(symbol || '').trim();
+  const upper = raw.toUpperCase();
+  const lower = raw.toLowerCase();
+  const digits = upper.replace(/^(SH|SZ|BJ)/, '');
+  const exchange = digits.startsWith('6') || digits.startsWith('5') ? `SH${digits}` : `SZ${digits}`;
+  return Array.from(new Set([raw, upper, lower, digits, digits.toLowerCase(), exchange, exchange.toLowerCase()].filter(Boolean)));
+}
+
+export function pickMarketQuote(quoteMap = {}, symbol = '') {
+  if (!quoteMap || typeof quoteMap !== 'object') return null;
+  for (const key of quoteLookupKeys(symbol)) {
+    if (quoteMap[key]) return quoteMap[key];
+  }
+  const digits = String(symbol || '').replace(/^(sh|sz|bj)/i, '');
+  return Object.values(quoteMap).find((quote) => {
+    const code = String(quote?.code || '').trim();
+    const quoteSymbol = String(quote?.symbol || '').replace(/^(sh|sz|bj)/i, '').trim();
+    return code === digits || quoteSymbol === digits;
+  }) || null;
+}
+
+export function normalizeMarketQuoteToQuantQuote(marketQuote = {}, fallbackQuote = {}) {
+  if (!marketQuote || typeof marketQuote !== 'object' || marketQuote.error) return null;
+  const orderBook = marketQuote.orderBook && typeof marketQuote.orderBook === 'object' ? marketQuote.orderBook : {};
+  const symbol = normalizeSymbol(marketQuote.code, normalizeSymbol(marketQuote.symbol, fallbackQuote.symbol));
+  if (!symbol) return null;
+  const price = firstPositiveNumber(marketQuote.price, marketQuote.currentPrice, marketQuote.close, fallbackQuote.price, fallbackQuote.bid, fallbackQuote.ask);
+  const bid = firstPositiveNumber(orderBook.bidPrice, marketQuote.bid, marketQuote.bidPrice, price);
+  const ask = firstPositiveNumber(orderBook.askPrice, marketQuote.ask, marketQuote.askPrice, price);
+  const iopv = firstPositiveNumber(marketQuote.iopv, marketQuote.navBase, marketQuote.latestNav, fallbackQuote.iopv);
+  return normalizeQuote({
+    symbol,
+    name: marketQuote.name || fallbackQuote.name || symbol,
+    bid,
+    bidSize: firstNonNegativeNumber(orderBook.bidVolume, marketQuote.bidSize, marketQuote.bidVolume),
+    ask,
+    askSize: firstNonNegativeNumber(orderBook.askVolume, marketQuote.askSize, marketQuote.askVolume),
+    iopv,
+    price,
+    asOf: marketQuote.asOf || fallbackQuote.asOf || '',
+    source: marketQuote.source || orderBook.source || fallbackQuote.source || '',
+    marketState: marketQuote.marketState || fallbackQuote.marketState || '',
+    cached: marketQuote.cached === true
+  }, fallbackQuote);
+}
+
+export function applyMarketQuotesToQuantState(state, quoteMap = {}, { refreshedAt = new Date().toISOString() } = {}) {
+  const normalized = normalizeQuantState(state);
+  const symbols = Array.from(new Set([normalized.strategy.sellSymbol, normalized.strategy.buySymbol].filter(Boolean)));
+  const quotes = { ...normalized.quotes };
+  const updatedSymbols = [];
+  const errors = [];
+  let lastQuoteAt = '';
+  for (const symbol of symbols) {
+    const marketQuote = pickMarketQuote(quoteMap, symbol);
+    const nextQuote = normalizeMarketQuoteToQuantQuote(marketQuote, quotes[symbol]);
+    if (!nextQuote) {
+      errors.push(symbol);
+      continue;
+    }
+    quotes[nextQuote.symbol] = nextQuote;
+    updatedSymbols.push(nextQuote.symbol);
+    if (nextQuote.asOf && (!lastQuoteAt || nextQuote.asOf > lastQuoteAt)) {
+      lastQuoteAt = nextQuote.asOf;
+    }
+  }
+  const lastError = errors.length ? `行情未更新：${errors.join('、')}` : '';
+  return {
+    state: normalizeQuantState({
+      ...normalized,
+      quotes,
+      realtime: {
+        ...normalized.realtime,
+        lastRefreshAt: refreshedAt,
+        lastQuoteAt: lastQuoteAt || normalized.realtime.lastQuoteAt,
+        lastStatus: updatedSymbols.length ? 'updated' : 'empty',
+        lastError
+      }
+    }),
+    updatedSymbols,
+    errors
+  };
+}
+
+export function markRealtimeStatus(state, patch = {}) {
+  const normalized = normalizeQuantState(state);
+  return normalizeQuantState({
+    ...normalized,
+    realtime: {
+      ...normalized.realtime,
+      ...patch,
+      lastError: String(patch.lastError ?? normalized.realtime.lastError ?? '').slice(0, 240)
+    }
+  });
+}
+
+export function recordRealtimeExecution(state, timestamp = new Date().toISOString()) {
+  const normalized = normalizeQuantState(state);
+  const dateKey = shanghaiDateKey(new Date(timestamp));
+  const currentCount = normalized.realtime.lastExecutionDate === dateKey ? normalized.realtime.executionsToday : 0;
+  return normalizeQuantState({
+    ...normalized,
+    realtime: {
+      ...normalized.realtime,
+      executionsToday: currentCount + 1,
+      lastExecutionDate: dateKey,
+      lastExecutionAt: timestamp,
+      lastStatus: 'executed',
+      lastError: ''
+    }
+  });
+}
+
+export function evaluateRealtimeAutoExecution(state, { now = new Date(), isTradingSession = false } = {}) {
+  const normalized = normalizeQuantState(state);
+  const realtime = normalized.realtime;
+  if (!realtime.autoExecute) return { ok: false, reason: '自动撮合未开启' };
+  if (realtime.onlyTradingSession && !isTradingSession) return { ok: false, reason: '非 A 股交易时段' };
+  if (realtime.executionsToday >= realtime.maxExecutionsPerDay) return { ok: false, reason: '已达到今日自动执行上限' };
+  const plan = buildSimulatedOrderPlan(normalized);
+  if (!plan.canTrade) return { ok: false, reason: plan.rejectReason || plan.signal.reason, plan };
+  return { ok: true, reason: '满足自动执行条件', plan, now };
 }
 
 function floorToLot(quantity, lotSize) {

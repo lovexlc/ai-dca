@@ -3,6 +3,7 @@
 ## Goal
 
 Add a new quantitative simulation workspace to the React app. It should include four first-level blocks: simulated account, strategy, trading, and backtest.
+Extend it with Xueqiu real-time quote/order-book polling and optional intraday simulated auto-execution.
 
 ## Checklist
 
@@ -10,14 +11,16 @@ Add a new quantitative simulation workspace to the React app. It should include 
 - done: Add pure simulation, matching, and backtest helpers.
 - done: Build the React page with the four required blocks.
 - done: Register the page in the main sidebar navigation.
+- done: Add Xueqiu real-time quote polling and intraday auto-execution controls.
 - done: Add focused tests for the core helper logic.
 - done: Run local verification and record the results.
 
 ## Key Decisions
 
-- Build the first version as an offline simulator using editable bid/ask/IOPV inputs.
+- Build the first version as a simulator using editable bid/ask/IOPV inputs, with optional Xueqiu quote/order-book refresh.
 - Model matching conservatively: sell at bid minus slippage, buy at ask plus slippage, limited by level-one quantity, lot size, cash, and current holdings.
-- Keep Xueqiu/live market integration out of this change. The page will be ready to swap the quote input source later.
+- Automatic execution writes simulated fills only. It never sends real broker orders.
+- Real-time polling is off by default and can be restricted to A-share trading hours.
 - Expose the quant workspace only to analytics administrators.
 
 ## Open Confirmations
@@ -27,6 +30,8 @@ Add a new quantitative simulation workspace to the React app. It should include 
 ## Deliverables
 
 - New app module for quant state, signal evaluation, simulated matching, and backtesting.
+- Xueqiu quote/order-book normalization into simulated bid/ask/IOPV fields.
+- Real-time panel for manual refresh, intraday polling, auto execution, and daily execution cap.
 - New page exposed from the main workspace navigation.
 - Unit tests for signal, matching, and backtest behavior.
 

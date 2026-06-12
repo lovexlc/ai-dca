@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   History,
   Play,
+  Radio,
   RefreshCw,
   Settings2,
   WalletCards
@@ -21,17 +22,23 @@ import {
   YAxis
 } from 'recharts';
 import {
+  applyMarketQuotesToQuantState,
   buildSampleBacktestRows,
   buildSimulatedOrderPlan,
   computeAccountSummary,
   executeSimulatedSwitch,
+  evaluateRealtimeAutoExecution,
+  markRealtimeStatus,
   normalizeQuantState,
   readQuantProjectState,
+  recordRealtimeExecution,
   resetQuantProjectState,
   runPremiumSpreadBacktest,
   saveQuantProjectState
 } from '../app/quantTrading.js';
 import { trackFeatureEvent } from '../app/analytics.js';
+import { fetchQuotes } from '../app/marketsApi.js';
+import { isInTradingSession } from '../app/tradingSession.js';
 import { showToast } from '../app/toast.js';
 import {
   Card,
@@ -160,6 +167,103 @@ function EmptyRows({ children }) {
     <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
       {children}
     </div>
+  );
+}
+
+function ToggleField({ label, description, checked, onChange }) {
+  return (
+    <label className="flex min-h-[76px] cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 transition-colors hover:border-indigo-200 hover:bg-indigo-50/40">
+      <input
+        type="checkbox"
+        className="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span className="min-w-0">
+        <span className="block text-sm font-bold text-slate-900">{label}</span>
+        {description ? <span className="mt-1 block text-xs leading-5 text-slate-500">{description}</span> : null}
+      </span>
+    </label>
+  );
+}
+
+function RealtimePanel({ state, busy, isTradingSessionNow, onPatchRealtime, onRefresh }) {
+  const realtime = state.realtime;
+  const enabled = realtime.enabled;
+  const autoExecute = realtime.autoExecute;
+  const sessionTone = isTradingSessionNow ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600';
+  const statusText = busy
+    ? '刷新中'
+    : enabled
+      ? isTradingSessionNow || !realtime.onlyTradingSession
+        ? '监听中'
+        : '等待开盘'
+      : '手动模式';
+
+  return (
+    <Card className="space-y-4 p-5 sm:p-6">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">
+            <Radio className="h-3.5 w-3.5" />
+            雪球实时执行
+          </div>
+          <h2 className="mt-3 text-lg font-bold text-slate-900">盘中自动刷新盘口并执行模拟撮合</h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">实时行情来自 markets worker 的雪球 quote + pankou。自动撮合只写入模拟账户，不会向券商下真实订单。</p>
+        </div>
+        <button type="button" className={secondaryButtonClass} disabled={busy} onClick={() => onRefresh('manual')}>
+          <RefreshCw className={cx('h-4 w-4', busy && 'animate-spin')} />
+          刷新雪球行情
+        </button>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        <ToggleField
+          label="盘中自动刷新"
+          description="开启后按设定间隔轮询雪球实时盘口。"
+          checked={enabled}
+          onChange={(checked) => onPatchRealtime('enabled', checked)}
+        />
+        <ToggleField
+          label="达到条件自动撮合"
+          description="净差价超过触发线时自动执行模拟切换。"
+          checked={autoExecute}
+          onChange={(checked) => onPatchRealtime('autoExecute', checked)}
+        />
+        <ToggleField
+          label="仅 A 股交易时段"
+          description="默认只在 09:30-11:30、13:00-15:00 运行。"
+          checked={realtime.onlyTradingSession}
+          onChange={(checked) => onPatchRealtime('onlyTradingSession', checked)}
+        />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Field label="刷新间隔" rightLabel="秒">
+          <NumberInput value={realtime.refreshIntervalSec} min="5" max="60" step="1" onChange={(event) => onPatchRealtime('refreshIntervalSec', toInputNumber(event.target.value))} />
+        </Field>
+        <Field label="日内最多自动执行">
+          <NumberInput value={realtime.maxExecutionsPerDay} min="1" max="20" step="1" onChange={(event) => onPatchRealtime('maxExecutionsPerDay', toInputNumber(event.target.value))} />
+        </Field>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="text-xs font-bold text-slate-400">当前状态</div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className={cx('inline-flex rounded-full px-2.5 py-1 text-xs font-bold', sessionTone)}>{isTradingSessionNow ? '盘中' : '非盘中'}</span>
+            <span className="inline-flex rounded-full bg-white px-2.5 py-1 text-xs font-bold text-slate-600 ring-1 ring-slate-200">{statusText}</span>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="text-xs font-bold text-slate-400">今日自动执行</div>
+          <div className="mt-2 text-lg font-semibold tabular-nums text-slate-900">{realtime.executionsToday}/{realtime.maxExecutionsPerDay}</div>
+        </div>
+      </div>
+
+      <div className="grid gap-3 text-xs text-slate-500 lg:grid-cols-3">
+        <div className="truncate rounded-xl bg-slate-50 px-3 py-2">刷新：{formatDateTime(realtime.lastRefreshAt)}</div>
+        <div className="truncate rounded-xl bg-slate-50 px-3 py-2">行情：{formatDateTime(realtime.lastQuoteAt)}</div>
+        <div className={cx('truncate rounded-xl px-3 py-2', realtime.lastError ? 'bg-red-50 text-red-600' : 'bg-slate-50')}>{realtime.lastError || `状态：${realtime.lastStatus || 'idle'}`}</div>
+      </div>
+    </Card>
   );
 }
 
@@ -306,7 +410,7 @@ function StrategyPanel({ state, signal, onPatchStrategy, onPatchQuote }) {
       <Card className="p-0">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <h3 className="text-sm font-bold text-slate-900">盘口与 IOPV</h3>
-          <span className="text-xs font-semibold text-slate-400">买卖盘为模拟输入</span>
+          <span className="text-xs font-semibold text-slate-400">可手动输入，也可由雪球实时刷新覆盖</span>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-100 text-sm">
@@ -562,10 +666,22 @@ function BacktestPanel({ state, summary }) {
 export function QuantTradingExperience({ embedded = false } = {}) {
   const [activeModule, setActiveModule] = useState('account');
   const [state, setState] = useState(() => readQuantProjectState());
+  const [realtimeBusy, setRealtimeBusy] = useState(false);
+  const [isTradingSessionNow, setIsTradingSessionNow] = useState(() => isInTradingSession(new Date()));
   const normalized = useMemo(() => normalizeQuantState(state), [state]);
+  const stateRef = useRef(normalized);
+  const realtimeBusyRef = useRef(false);
   const summary = useMemo(() => computeAccountSummary(normalized), [normalized]);
   const plan = useMemo(() => buildSimulatedOrderPlan(normalized), [normalized]);
   const signal = plan.signal;
+  const realtimeEnabled = normalized.realtime.enabled;
+  const realtimeRefreshIntervalSec = normalized.realtime.refreshIntervalSec;
+  const realtimeAutoExecute = normalized.realtime.autoExecute;
+  const realtimeOnlyTradingSession = normalized.realtime.onlyTradingSession;
+
+  useEffect(() => {
+    stateRef.current = normalized;
+  }, [normalized]);
 
   useEffect(() => {
     saveQuantProjectState(normalized);
@@ -613,6 +729,16 @@ export function QuantTradingExperience({ embedded = false } = {}) {
     }));
   }
 
+  function patchRealtime(key, value) {
+    patchState((current) => ({
+      ...current,
+      realtime: {
+        ...current.realtime,
+        [key]: value
+      }
+    }));
+  }
+
   function patchPosition(symbol, key, value) {
     patchState((current) => ({
       ...current,
@@ -630,7 +756,8 @@ export function QuantTradingExperience({ embedded = false } = {}) {
   }
 
   const executeTrade = useCallback((source = 'button') => {
-    const result = executeSimulatedSwitch(normalized);
+    const nowIso = new Date().toISOString();
+    const result = executeSimulatedSwitch(stateRef.current, nowIso);
     if (!result.fills.length) {
       showToast({
         title: '没有执行撮合',
@@ -640,7 +767,9 @@ export function QuantTradingExperience({ embedded = false } = {}) {
       trackFeatureEvent('quant_trading', 'simulate_trade_skip', { source, reason: result.plan.rejectReason });
       return;
     }
-    setState(result.state);
+    const nextState = recordRealtimeExecution(result.state, nowIso);
+    stateRef.current = nextState;
+    setState(nextState);
     setActiveModule('trade');
     showToast({
       title: '模拟撮合完成',
@@ -652,13 +781,122 @@ export function QuantTradingExperience({ embedded = false } = {}) {
       fillCount: result.fills.length,
       netSpreadPct: result.plan.signal.netSpreadPct
     });
-  }, [normalized]);
+  }, []);
+
+  const refreshRealtimeQuotes = useCallback(async (source = 'manual') => {
+    if (realtimeBusyRef.current) return;
+    const startedAt = new Date();
+    const current = stateRef.current;
+    const realtime = current.realtime;
+    const tradingSession = isInTradingSession(startedAt);
+    setIsTradingSessionNow(tradingSession);
+
+    if (source === 'auto' && realtime.onlyTradingSession && !tradingSession) {
+      const nextState = markRealtimeStatus(current, {
+        lastStatus: 'waiting_session',
+        lastRefreshAt: startedAt.toISOString(),
+        lastError: ''
+      });
+      stateRef.current = nextState;
+      setState(nextState);
+      return;
+    }
+
+    realtimeBusyRef.current = true;
+    setRealtimeBusy(true);
+    try {
+      const symbols = [current.strategy.sellSymbol, current.strategy.buySymbol].filter(Boolean);
+      const payload = await fetchQuotes(symbols);
+      const merged = applyMarketQuotesToQuantState(stateRef.current, payload?.quotes || {}, {
+        refreshedAt: new Date().toISOString()
+      });
+      let nextState = merged.state;
+      let autoExecuted = false;
+      let decision = null;
+
+      if (source === 'auto' && nextState.realtime.autoExecute) {
+        decision = evaluateRealtimeAutoExecution(nextState, {
+          now: new Date(),
+          isTradingSession: tradingSession
+        });
+        if (decision.ok) {
+          const autoResult = executeSimulatedSwitch(nextState, new Date().toISOString());
+          if (autoResult.fills.length) {
+            nextState = recordRealtimeExecution(autoResult.state, new Date().toISOString());
+            autoExecuted = true;
+          }
+        } else {
+          nextState = markRealtimeStatus(nextState, {
+            lastStatus: 'watching',
+            lastError: decision.reason || ''
+          });
+        }
+      }
+
+      stateRef.current = nextState;
+      setState(nextState);
+      if (source !== 'auto' || autoExecuted) {
+        showToast({
+          title: autoExecuted ? '实时策略已自动撮合' : '雪球行情已刷新',
+          description: autoExecuted
+            ? `净差价 ${formatPct(decision?.plan?.signal?.netSpreadPct || 0)}，已写入模拟成交。`
+            : `更新 ${merged.updatedSymbols.length} 个标的盘口。`,
+          tone: autoExecuted ? 'emerald' : 'indigo'
+        });
+      }
+      trackFeatureEvent('quant_trading', autoExecuted ? 'realtime_auto_execute' : 'realtime_refresh', {
+        source,
+        updatedCount: merged.updatedSymbols.length,
+        errorCount: merged.errors.length,
+        tradingSession,
+        autoExecuted
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || '雪球行情刷新失败');
+      const nextState = markRealtimeStatus(stateRef.current, {
+        lastStatus: 'error',
+        lastRefreshAt: new Date().toISOString(),
+        lastError: message
+      });
+      stateRef.current = nextState;
+      setState(nextState);
+      if (source !== 'auto') {
+        showToast({ title: '雪球行情刷新失败', description: message, tone: 'red' });
+      }
+      trackFeatureEvent('quant_trading', 'realtime_refresh_error', { source, message: message.slice(0, 160) });
+    } finally {
+      realtimeBusyRef.current = false;
+      setRealtimeBusy(false);
+    }
+  }, []);
 
   function resetState() {
     const next = resetQuantProjectState();
+    stateRef.current = next;
     setState(next);
     showToast({ title: '已恢复样例模拟盘', tone: 'slate' });
   }
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setIsTradingSessionNow(isInTradingSession(new Date()));
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!realtimeEnabled) return undefined;
+    let cancelled = false;
+    const tick = () => {
+      if (!cancelled) refreshRealtimeQuotes('auto');
+    };
+    tick();
+    const timer = window.setInterval(tick, Math.max(5, realtimeRefreshIntervalSec) * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [realtimeEnabled, realtimeRefreshIntervalSec, realtimeAutoExecute, realtimeOnlyTradingSession, refreshRealtimeQuotes]);
 
   useEffect(() => {
     function onMobileExecute() {
@@ -677,7 +915,7 @@ export function QuantTradingExperience({ embedded = false } = {}) {
             量化模拟
           </div>
           <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">纳指 ETF 溢价差模拟盘</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">覆盖模拟账户、策略、交易和复盘，行情输入可后续替换为实时接口。</p>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">覆盖模拟账户、策略、交易和复盘，可接雪球实时盘口并在盘中自动写入模拟成交。</p>
         </div>
         <button type="button" className={secondaryButtonClass} onClick={() => executeTrade('header')}>
           <Play className="h-4 w-4" />
@@ -691,6 +929,14 @@ export function QuantTradingExperience({ embedded = false } = {}) {
         <Metric label="净差价" value={formatPct(signal.netSpreadPct)} note={`触发 ${formatPct(signal.triggerSpreadPct)}`} tone={signal.action === 'switch' ? 'emerald' : 'slate'} />
         <Metric label="交易信号" value={signal.action === 'switch' ? '切换' : '观察'} note={signal.reason} tone={signal.action === 'switch' ? 'emerald' : 'slate'} />
       </div>
+
+      <RealtimePanel
+        state={normalized}
+        busy={realtimeBusy}
+        isTradingSessionNow={isTradingSessionNow}
+        onPatchRealtime={patchRealtime}
+        onRefresh={refreshRealtimeQuotes}
+      />
 
       <ModuleTabs
         activeTab={activeModule}

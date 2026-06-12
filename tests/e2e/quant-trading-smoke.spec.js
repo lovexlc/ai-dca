@@ -16,6 +16,7 @@ test('quant trading workspace renders modules and executes a simulated trade', a
   await page.getByRole('button', { name: '知道了' }).click({ timeout: 3000 }).catch(() => {});
 
   await expect(page.getByRole('heading', { name: '纳指 ETF 溢价差模拟盘' })).toBeVisible();
+  await expect(page.getByText('雪球实时执行')).toBeVisible();
   await expect(page.getByText('模拟账户').first()).toBeVisible();
 
   await page.getByRole('button', { name: /^策略$/ }).click();
