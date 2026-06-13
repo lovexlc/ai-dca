@@ -34,7 +34,7 @@ function readPreferredWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
 const WORKSPACE_TITLES = {
   strategy: '美股策略助手',
   tradePlans: '交易计划中心',
-  quant: '量化模拟',
+  quant: '量化交易',
   fundSwitch: '基金切换收益分析',
   markets: '行情中心',
   premium: '高级版',

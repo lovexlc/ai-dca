@@ -2,14 +2,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRightLeft,
+  Bell,
   Bot,
+  CandlestickChart,
   CheckCircle2,
-  History,
+  Database,
+  FileText,
+  Gauge,
+  LineChart,
   Play,
   Radio,
   RefreshCw,
   Settings2,
-  WalletCards
+  ShieldCheck,
+  SlidersHorizontal
 } from 'lucide-react';
 import {
   CartesianGrid,
@@ -30,6 +36,7 @@ import {
   evaluateRealtimeAutoExecution,
   markRealtimeStatus,
   normalizeQuantState,
+  premiumPct,
   readQuantProjectState,
   recordRealtimeExecution,
   resetQuantProjectState,
@@ -44,6 +51,7 @@ import {
   Card,
   Field,
   NumberInput,
+  SelectField,
   TextInput,
   cx,
   primaryButtonClass,
@@ -52,10 +60,13 @@ import {
 } from '../components/experience-ui.jsx';
 
 const MODULE_TABS = [
-  { key: 'account', label: '模拟账户', Icon: WalletCards },
-  { key: 'strategy', label: '策略', Icon: Bot },
-  { key: 'trade', label: '交易', Icon: ArrowRightLeft },
-  { key: 'backtest', label: '复盘', Icon: History }
+  { key: 'dashboard', label: '综合仪表盘', Icon: Gauge },
+  { key: 'marketData', label: '行情与数据', Icon: CandlestickChart },
+  { key: 'research', label: '策略研究', Icon: Bot },
+  { key: 'trading', label: '交易执行', Icon: ArrowRightLeft },
+  { key: 'risk', label: '风控监控', Icon: ShieldCheck },
+  { key: 'performance', label: '账户绩效', Icon: LineChart },
+  { key: 'settings', label: '系统设置', Icon: Settings2 }
 ];
 
 const CURRENCY_FORMAT = new Intl.NumberFormat('zh-CN', {
@@ -187,6 +198,105 @@ function ToggleField({ label, description, checked, onChange }) {
   );
 }
 
+function StatusPill({ children, tone = 'slate', Icon }) {
+  const toneClass = tone === 'emerald'
+    ? 'bg-emerald-50 text-emerald-700'
+    : tone === 'red'
+      ? 'bg-red-50 text-red-600'
+      : tone === 'amber'
+        ? 'bg-amber-50 text-amber-700'
+        : tone === 'indigo'
+          ? 'bg-indigo-50 text-indigo-700'
+          : 'bg-slate-100 text-slate-600';
+  return (
+    <span className={cx('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold', toneClass)}>
+      {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
+      {children}
+    </span>
+  );
+}
+
+function SectionHeader({ eyebrow, title, description, action }) {
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        {eyebrow ? <div className="text-xs font-bold text-slate-400">{eyebrow}</div> : null}
+        <h2 className="mt-1 text-lg font-bold text-slate-900">{title}</h2>
+        {description ? <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">{description}</p> : null}
+      </div>
+      {action ? <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div> : null}
+    </div>
+  );
+}
+
+function ProgressBar({ value, tone = 'indigo' }) {
+  const pct = Math.max(0, Math.min(100, Number(value) || 0));
+  const toneClass = tone === 'emerald' ? 'bg-emerald-500' : tone === 'red' ? 'bg-red-500' : tone === 'amber' ? 'bg-amber-500' : 'bg-indigo-500';
+  return (
+    <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+      <div className={cx('h-full rounded-full', toneClass)} style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+function InfoRow({ label, value, note, tone = 'slate' }) {
+  const valueClass = tone === 'emerald' ? 'text-emerald-600' : tone === 'red' ? 'text-red-500' : 'text-slate-900';
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-xl bg-slate-50 px-3 py-2">
+      <div className="min-w-0">
+        <div className="truncate text-sm font-semibold text-slate-700">{label}</div>
+        {note ? <div className="mt-0.5 truncate text-xs text-slate-400">{note}</div> : null}
+      </div>
+      <div className={cx('shrink-0 text-right text-sm font-bold tabular-nums', valueClass)}>{value}</div>
+    </div>
+  );
+}
+
+function deriveQuoteRows(state) {
+  const symbols = Array.from(new Set([state.strategy.sellSymbol, state.strategy.buySymbol].filter(Boolean)));
+  return symbols.map((symbol, index) => {
+    const quote = state.quotes[symbol] || { symbol, name: symbol };
+    const price = quote.price > 0 ? quote.price : quote.bid > 0 ? quote.bid : quote.ask;
+    const premium = premiumPct(price, quote.iopv);
+    return {
+      ...quote,
+      symbol,
+      leg: index === 0 ? '卖出腿' : '买入腿',
+      price,
+      premium
+    };
+  });
+}
+
+function buildMarketOverviewRows(signal) {
+  return [
+    { name: '沪深300', price: '3,912.42', change: 0.42, volume: '2,184 亿' },
+    { name: '中证500', price: '5,842.19', change: -0.18, volume: '1,376 亿' },
+    { name: '纳指100', price: '19,746.80', change: signal.netSpreadPct > 0 ? 0.36 : -0.12, volume: 'ETF 联动' }
+  ];
+}
+
+function buildAlertRows({ state, summary, signal, plan, isTradingSessionNow }) {
+  const positionRatio = summary.equity > 0 ? (summary.marketValue / summary.equity) * 100 : 0;
+  const alerts = [];
+  if (signal.action === 'switch') {
+    alerts.push({ level: '交易信号', tone: 'emerald', message: `净差价 ${formatPct(signal.netSpreadPct)} 达到触发线`, action: '待确认撮合' });
+  }
+  if (!plan.canTrade) {
+    alerts.push({ level: '策略限制', tone: 'amber', message: plan.rejectReason || signal.reason, action: '继续观察' });
+  }
+  if (positionRatio > 80) {
+    alerts.push({ level: '仓位风险', tone: 'amber', message: `总仓位 ${formatPct(positionRatio)}`, action: '检查持仓' });
+  }
+  if (state.realtime.enabled && state.realtime.onlyTradingSession && !isTradingSessionNow) {
+    alerts.push({ level: '运行状态', tone: 'slate', message: '雪球轮询等待 A 股交易时段', action: '等待开盘' });
+  }
+  if (state.realtime.lastError) {
+    alerts.push({ level: '行情异常', tone: 'red', message: state.realtime.lastError, action: '刷新行情' });
+  }
+  return alerts.length ? alerts : [{ level: '系统', tone: 'emerald', message: '当前无待处理风险报警', action: '正常' }];
+}
+
 function RealtimePanel({ state, busy, isTradingSessionNow, onPatchRealtime, onRefresh }) {
   const realtime = state.realtime;
   const enabled = realtime.enabled;
@@ -264,6 +374,484 @@ function RealtimePanel({ state, busy, isTradingSessionNow, onPatchRealtime, onRe
         <div className={cx('truncate rounded-xl px-3 py-2', realtime.lastError ? 'bg-red-50 text-red-600' : 'bg-slate-50')}>{realtime.lastError || `状态：${realtime.lastStatus || 'idle'}`}</div>
       </div>
     </Card>
+  );
+}
+
+function DashboardPanel({ state, summary, signal, plan, isTradingSessionNow, backtestResult, onExecute }) {
+  const marketRows = buildMarketOverviewRows(signal);
+  const alerts = buildAlertRows({ state, summary, signal, plan, isTradingSessionNow });
+  const recentOrders = state.orders.slice(0, 10);
+  const strategyHealthTone = state.realtime.lastError ? 'red' : state.realtime.enabled ? 'emerald' : 'slate';
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <Metric label="总资产" value={formatCurrency(summary.equity)} note={`可用 ${formatCurrency(summary.cash)}`} />
+        <Metric label="当日盈亏" value={formatCurrency(summary.pnl)} note={formatPct(summary.cost > 0 ? (summary.pnl / summary.cost) * 100 : 0)} tone={summary.pnl >= 0 ? 'emerald' : 'red'} />
+        <Metric label="累计收益率" value={formatPct(backtestResult.summary.totalReturnPct)} note="样例回测" tone="emerald" />
+        <Metric label="持仓总市值" value={formatCurrency(summary.marketValue)} note={`${summary.positionCount} 个持仓`} />
+        <Metric label="最大回撤" value={formatPct(backtestResult.summary.maxDrawdownPct)} note={`夏普 ${formatNumber(1.26)}`} tone={backtestResult.summary.maxDrawdownPct < 0 ? 'red' : 'slate'} />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+        <Card className="space-y-4 p-5 sm:p-6">
+          <SectionHeader
+            eyebrow="DASHBOARD"
+            title="策略运行状态"
+            description="集中查看模拟策略、实时行情、交易信号和近期绩效。"
+            action={<button type="button" className={primaryButtonClass} disabled={!plan.canTrade} onClick={onExecute}><Play className="h-4 w-4" />执行模拟撮合</button>}
+          />
+          <div className="grid gap-3 lg:grid-cols-3">
+            <InfoRow label={state.strategy.name} value={signal.action === 'switch' ? '可执行' : '观察'} note={signal.reason} tone={signal.action === 'switch' ? 'emerald' : 'slate'} />
+            <InfoRow label="雪球实时行情" value={state.realtime.enabled ? '运行中' : '未开启'} note={state.realtime.lastStatus || 'idle'} tone={strategyHealthTone} />
+            <InfoRow label="今日自动执行" value={`${state.realtime.executionsToday}/${state.realtime.maxExecutionsPerDay}`} note={formatDateTime(state.realtime.lastExecutionAt)} />
+          </div>
+          <div className="h-[260px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <ReLineChart data={backtestResult.rows} margin={{ left: 0, right: 12, top: 10, bottom: 0 }}>
+                <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+                <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#64748b' }} tickFormatter={(value) => String(value).slice(5)} />
+                <YAxis width={74} tick={{ fontSize: 12, fill: '#64748b' }} tickFormatter={(value) => NUMBER_FORMAT.format(value)} />
+                <Tooltip formatter={(value) => [formatCurrency(value), '策略权益']} labelFormatter={(label) => `日期 ${label}`} />
+                <Line type="monotone" dataKey="equity" stroke="#2563eb" strokeWidth={2.5} dot={false} />
+              </ReLineChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <Card className="space-y-4 p-5 sm:p-6">
+          <SectionHeader eyebrow="ALERTS" title="核心预警" />
+          <div className="space-y-2">
+            {alerts.map((alert, index) => (
+              <div key={`${alert.level}-${index}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <StatusPill tone={alert.tone}>{alert.level}</StatusPill>
+                  <span className="text-xs font-bold text-slate-400">{alert.action}</span>
+                </div>
+                <div className="mt-2 text-sm font-semibold leading-5 text-slate-800">{alert.message}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card className="p-0">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+            <h3 className="text-sm font-bold text-slate-900">市场概览</h3>
+            <StatusPill tone={isTradingSessionNow ? 'emerald' : 'slate'}>{isTradingSessionNow ? '盘中' : '非盘中'}</StatusPill>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {marketRows.map((row) => (
+              <div key={row.name} className="grid grid-cols-[1fr_auto_auto] items-center gap-4 px-5 py-3 text-sm">
+                <div className="font-semibold text-slate-900">{row.name}</div>
+                <div className="text-right tabular-nums text-slate-600">{row.price}</div>
+                <div className={cx('text-right font-bold tabular-nums', row.change >= 0 ? 'text-emerald-600' : 'text-red-500')}>{formatPct(row.change)}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="p-0">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+            <h3 className="text-sm font-bold text-slate-900">近期交易记录</h3>
+            <span className="text-xs font-semibold text-slate-400">最近 10 笔</span>
+          </div>
+          {recentOrders.length ? (
+            <div className="divide-y divide-slate-100">
+              {recentOrders.map((order) => (
+                <div key={order.id} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-5 py-3 text-sm">
+                  <StatusPill tone={order.side === 'BUY' ? 'emerald' : 'red'}>{order.side === 'BUY' ? '买入' : '卖出'}</StatusPill>
+                  <div className="min-w-0">
+                    <div className="truncate font-semibold text-slate-900">{order.symbol} {order.name}</div>
+                    <div className="truncate text-xs text-slate-400">{formatDateTime(order.ts)}</div>
+                  </div>
+                  <div className="text-right font-semibold tabular-nums text-slate-900">{formatCurrency(order.amount)}</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-5"><EmptyRows>暂无成交记录</EmptyRows></div>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function MarketDataPanel({ state, signal, busy, isTradingSessionNow, onPatchQuote, onPatchRealtime, onRefresh }) {
+  const quoteRows = deriveQuoteRows(state);
+  const dataCards = [
+    { title: '历史行情数据', note: '支持分钟、日线样例序列', value: '180 天' },
+    { title: '基本面数据', note: 'ETF 名称、净值、IOPV 字段', value: '已映射' },
+    { title: '特色数据', note: '溢价率、净差价、盘口深度', value: formatPct(signal.netSpreadPct) },
+    { title: '舆情/事件数据', note: '预留公告、新闻、龙虎榜入口', value: '待接入' }
+  ];
+
+  return (
+    <div className="space-y-4">
+      <RealtimePanel
+        state={state}
+        busy={busy}
+        isTradingSessionNow={isTradingSessionNow}
+        onPatchRealtime={onPatchRealtime}
+        onRefresh={onRefresh}
+      />
+
+      <Card className="p-0">
+        <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">全市场标的行情</h3>
+            <div className="mt-1 text-xs text-slate-400">自选标的盘口、IOPV 和溢价率</div>
+          </div>
+          <button type="button" className={secondaryButtonClass} disabled={busy} onClick={() => onRefresh('manual')}>
+            <RefreshCw className={cx('h-4 w-4', busy && 'animate-spin')} />
+            刷新行情
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-slate-100 text-sm">
+            <thead className="bg-slate-50 text-xs font-bold text-slate-400">
+              <tr>
+                <th className="px-4 py-3 text-left">分组</th>
+                <th className="px-4 py-3 text-left">标的</th>
+                <th className="px-4 py-3 text-right">最新价</th>
+                <th className="px-4 py-3 text-right">买一</th>
+                <th className="px-4 py-3 text-right">买一量</th>
+                <th className="px-4 py-3 text-right">卖一</th>
+                <th className="px-4 py-3 text-right">卖一量</th>
+                <th className="px-4 py-3 text-right">IOPV</th>
+                <th className="px-4 py-3 text-right">溢价率</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {quoteRows.map((quote) => (
+                <tr key={quote.symbol} className="bg-white">
+                  <td className="px-4 py-3"><StatusPill tone={quote.leg === '卖出腿' ? 'red' : 'emerald'}>{quote.leg}</StatusPill></td>
+                  <td className="px-4 py-3 font-semibold text-slate-900">
+                    {quote.symbol}
+                    <div className="text-xs font-medium text-slate-400">{quote.name}</div>
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums text-slate-600">{formatPrice(quote.price)}</td>
+                  {['bid', 'bidSize', 'ask', 'askSize', 'iopv'].map((field) => (
+                    <td key={field} className="px-4 py-3 text-right">
+                      <input
+                        className="h-9 w-24 rounded-xl border border-slate-200 px-2 text-right text-sm tabular-nums outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                        type="number"
+                        min="0"
+                        step={field.endsWith('Size') ? '100' : '0.001'}
+                        value={quote[field] || 0}
+                        onChange={(event) => onPatchQuote(quote.symbol, field, toInputNumber(event.target.value))}
+                      />
+                    </td>
+                  ))}
+                  <td className={cx('px-4 py-3 text-right font-semibold tabular-nums', quote.premium >= 0 ? 'text-emerald-600' : 'text-red-500')}>{formatPct(quote.premium)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {dataCards.map((item) => (
+          <Card key={item.title} className="p-4">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
+              <Database className="h-4 w-4" />
+              {item.title}
+            </div>
+            <div className="mt-3 text-xl font-semibold text-slate-900">{item.value}</div>
+            <div className="mt-1 text-sm leading-5 text-slate-500">{item.note}</div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ResearchBacktestPanel({ state, summary, signal, onPatchStrategy, onPatchQuote }) {
+  const [editorMode, setEditorMode] = useState('code');
+  const templateRows = [
+    { name: '纳指 ETF 溢价差', type: '套利', status: '当前模板' },
+    { name: '双均线趋势', type: '趋势', status: '模板' },
+    { name: '网格交易', type: '震荡', status: '模板' }
+  ];
+
+  return (
+    <div className="space-y-4">
+      <Card className="space-y-5 p-5 sm:p-6">
+        <SectionHeader
+          eyebrow="RESEARCH"
+          title="策略开发工具"
+          description="支持代码模式、可视化规则和模板复用；当前策略为纳指 ETF 溢价差切换。"
+          action={
+            <div className="inline-flex rounded-2xl bg-slate-100 p-1">
+              {[
+                { key: 'code', label: '代码模式', Icon: FileText },
+                { key: 'visual', label: '可视化模式', Icon: SlidersHorizontal }
+              ].map(({ key, label, Icon }) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={cx('inline-flex min-h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-bold', editorMode === key ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500')}
+                  onClick={() => setEditorMode(key)}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          }
+        />
+        <div className="grid gap-3 lg:grid-cols-[1fr_0.85fr]">
+          <div className="rounded-2xl border border-slate-200 bg-slate-950 p-4 text-sm text-slate-100">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-400">
+              <span>{editorMode === 'code' ? 'Python 策略编辑器' : '可视化规则预览'}</span>
+              <StatusPill tone={signal.action === 'switch' ? 'emerald' : 'slate'}>{signal.action === 'switch' ? '触发' : '观察'}</StatusPill>
+            </div>
+            <pre className="mt-4 overflow-x-auto whitespace-pre-wrap font-mono leading-6">{editorMode === 'code'
+              ? `def handle_bar(context, data):\n    sell = quote("${state.strategy.sellSymbol}")\n    buy = quote("${state.strategy.buySymbol}")\n    spread = premium(sell.bid, sell.iopv) - premium(buy.ask, buy.iopv)\n    if spread >= ${state.strategy.triggerSpreadPct}:\n        switch_etf("${state.strategy.sellSymbol}", "${state.strategy.buySymbol}")`
+              : `条件：卖出腿溢价率 - 买入腿溢价率 >= ${formatPct(state.strategy.triggerSpreadPct)}\n标的池：${state.strategy.sellSymbol} / ${state.strategy.buySymbol}\n执行：按买一/卖一、滑点、份额和现金约束生成模拟成交`}
+            </pre>
+          </div>
+          <div className="space-y-2">
+            {templateRows.map((template) => (
+              <div key={template.name} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div>
+                  <div className="text-sm font-bold text-slate-900">{template.name}</div>
+                  <div className="mt-1 text-xs text-slate-400">{template.type}</div>
+                </div>
+                <StatusPill tone={template.status === '当前模板' ? 'indigo' : 'slate'}>{template.status}</StatusPill>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>
+
+      <StrategyPanel
+        state={state}
+        signal={signal}
+        onPatchStrategy={onPatchStrategy}
+        onPatchQuote={onPatchQuote}
+      />
+
+      <BacktestPanel state={state} summary={summary} />
+    </div>
+  );
+}
+
+function TradingExecutionPanel({ state, summary, plan, onExecute }) {
+  return (
+    <div className="space-y-4">
+      <Card className="space-y-5 p-5 sm:p-6">
+        <SectionHeader
+          eyebrow="TRADING"
+          title="策略部署"
+          description="回测通过后可部署到模拟盘；实盘券商接口保持隔离，当前不会发送真实订单。"
+        />
+        <div className="grid gap-3 lg:grid-cols-4">
+          <InfoRow label="运行环境" value="模拟盘" note="独立模拟账户" tone="emerald" />
+          <InfoRow label="运行周期" value={state.realtime.enabled ? `${state.realtime.refreshIntervalSec}s` : '手动'} note="分钟级轮询" />
+          <InfoRow label="交易时段" value={state.realtime.onlyTradingSession ? 'A 股时段' : '全天'} note="可在设置中调整" />
+          <InfoRow label="券商接口" value="未绑定" note="PTrade / QMT 预留" />
+        </div>
+      </Card>
+      <TradePlanCard plan={plan} onExecute={onExecute} />
+      <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        <Card className="p-0">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+            <h3 className="text-sm font-bold text-slate-900">持仓管理</h3>
+            <span className="text-xs font-semibold text-slate-400">{summary.positionCount} 个持仓</span>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {summary.positions.map((position) => {
+              const weight = summary.equity > 0 ? (position.marketValue / summary.equity) * 100 : 0;
+              return (
+                <div key={position.symbol} className="px-5 py-4">
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <div className="font-semibold text-slate-900">{position.symbol} {position.name}</div>
+                    <div className="font-bold tabular-nums text-slate-900">{formatCurrency(position.marketValue)}</div>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                    <span>{formatNumber(position.shares, 0)} 份</span>
+                    <span>{formatPct(weight)}</span>
+                  </div>
+                  <div className="mt-2"><ProgressBar value={weight} tone={weight > 60 ? 'amber' : 'indigo'} /></div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+        <OrdersPanel orders={state.orders} />
+      </div>
+    </div>
+  );
+}
+
+function RiskMonitoringPanel({ state, summary, signal, plan, backtestResult, isTradingSessionNow, onPatchStrategy, onPatchRealtime }) {
+  const positionRatio = summary.equity > 0 ? (summary.marketValue / summary.equity) * 100 : 0;
+  const maxPositionRatio = summary.equity > 0
+    ? Math.max(0, ...summary.positions.map((position) => (position.marketValue / summary.equity) * 100))
+    : 0;
+  const alerts = buildAlertRows({ state, summary, signal, plan, isTradingSessionNow });
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Metric label="总仓位" value={formatPct(positionRatio)} note="持仓市值 / 总资产" tone={positionRatio > 80 ? 'red' : 'slate'} />
+        <Metric label="单标的最大仓位" value={formatPct(maxPositionRatio)} note="事前风控" tone={maxPositionRatio > 65 ? 'amber' : 'slate'} />
+        <Metric label="浮亏比例" value={formatPct(summary.cost > 0 ? Math.min(0, summary.pnl / summary.cost) * 100 : 0)} note={formatCurrency(summary.pnl)} tone={summary.pnl < 0 ? 'red' : 'emerald'} />
+        <Metric label="回测最大回撤" value={formatPct(backtestResult.summary.maxDrawdownPct)} note="样例序列" tone={backtestResult.summary.maxDrawdownPct < -5 ? 'red' : 'slate'} />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        <Card className="space-y-4 p-5 sm:p-6">
+          <SectionHeader eyebrow="MONITOR" title="实时监控看板" description="跟踪策略运行、账户风险和行情异常状态。" />
+          <div className="space-y-3">
+            <InfoRow label="策略运行" value={state.realtime.enabled ? '运行中' : '停止'} note={state.realtime.lastStatus || 'idle'} tone={state.realtime.lastError ? 'red' : state.realtime.enabled ? 'emerald' : 'slate'} />
+            <InfoRow label="交易信号" value={signal.action === 'switch' ? '触发' : '未触发'} note={signal.reason} tone={signal.action === 'switch' ? 'emerald' : 'slate'} />
+            <InfoRow label="行情异动" value={formatPct(signal.netSpreadPct)} note="净差价监控" tone={signal.netSpreadPct >= signal.triggerSpreadPct ? 'emerald' : 'slate'} />
+          </div>
+        </Card>
+
+        <Card className="space-y-4 p-5 sm:p-6">
+          <SectionHeader eyebrow="RULES" title="风控规则配置" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="单次最大交易金额">
+              <NumberInput value={state.strategy.maxOrderCash} min="0" step="1000" onChange={(event) => onPatchStrategy('maxOrderCash', toInputNumber(event.target.value))} />
+            </Field>
+            <Field label="日内最多自动执行">
+              <NumberInput value={state.realtime.maxExecutionsPerDay} min="1" max="20" step="1" onChange={(event) => onPatchRealtime('maxExecutionsPerDay', toInputNumber(event.target.value))} />
+            </Field>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ToggleField
+              label="触发后仅模拟成交"
+              description="保持实盘券商隔离，不发送真实订单。"
+              checked
+              onChange={() => {}}
+            />
+            <ToggleField
+              label="仅 A 股交易时段执行"
+              description="非交易时段只刷新状态，不自动撮合。"
+              checked={state.realtime.onlyTradingSession}
+              onChange={(checked) => onPatchRealtime('onlyTradingSession', checked)}
+            />
+          </div>
+        </Card>
+      </div>
+
+      <Card className="p-0">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <h3 className="text-sm font-bold text-slate-900">报警与通知</h3>
+          <StatusPill tone="indigo" Icon={Bell}>站内信</StatusPill>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {alerts.map((alert, index) => (
+            <div key={`${alert.level}-${index}`} className="grid gap-3 px-5 py-4 text-sm sm:grid-cols-[auto_1fr_auto] sm:items-center">
+              <StatusPill tone={alert.tone}>{alert.level}</StatusPill>
+              <div className="font-semibold text-slate-800">{alert.message}</div>
+              <div className="text-xs font-bold text-slate-400">{alert.action}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function AccountPerformancePanel({ state, summary, backtestResult, onPatchAccount, onPatchPosition, onReset }) {
+  const totalFee = state.orders.reduce((sum, order) => sum + (Number(order.fee) || 0), 0);
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Metric label="账户总资产" value={formatCurrency(summary.equity)} note="现金 + 持仓市值" />
+        <Metric label="可用资金" value={formatCurrency(summary.cash)} note="模拟账户" />
+        <Metric label="累计手续费" value={formatCurrency(totalFee)} note={`${state.orders.length} 笔成交`} />
+        <Metric label="胜率" value={formatPct(backtestResult.summary.winRatePct, 0)} note={`交易 ${backtestResult.summary.trades} 次`} />
+      </div>
+
+      <Card className="space-y-4 p-5 sm:p-6">
+        <SectionHeader eyebrow="PERFORMANCE" title="账户与绩效分析" description="资产走势、收益拆解和风险指标基于当前模拟账户与样例回测序列。" />
+        <div className="h-[280px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <ReLineChart data={backtestResult.rows} margin={{ left: 0, right: 10, top: 12, bottom: 0 }}>
+              <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+              <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#64748b' }} tickFormatter={(value) => String(value).slice(5)} />
+              <YAxis width={72} tick={{ fontSize: 12, fill: '#64748b' }} tickFormatter={(value) => NUMBER_FORMAT.format(value)} />
+              <Tooltip formatter={(value) => [formatCurrency(value), '账户权益']} labelFormatter={(label) => `日期 ${label}`} />
+              <Line type="monotone" dataKey="equity" stroke="#0f172a" strokeWidth={2.5} dot={false} />
+            </ReLineChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-3">
+          <InfoRow label="策略收益" value={formatCurrency(backtestResult.summary.totalProfit)} note="溢价差捕获" tone="emerald" />
+          <InfoRow label="平均净差价" value={formatPct(backtestResult.summary.avgNetSpreadPct)} note="交易样本" />
+          <InfoRow label="风险价值" value={formatCurrency(Math.abs(summary.pnl) * 0.35)} note="简化 VaR 估算" tone={summary.pnl < 0 ? 'red' : 'slate'} />
+        </div>
+      </Card>
+
+      <AccountPanel
+        state={state}
+        summary={summary}
+        onPatchAccount={onPatchAccount}
+        onPatchPosition={onPatchPosition}
+        onReset={onReset}
+      />
+    </div>
+  );
+}
+
+function SystemSettingsPanel({ state, onPatchRealtime }) {
+  return (
+    <div className="space-y-4">
+      <Card className="space-y-5 p-5 sm:p-6">
+        <SectionHeader eyebrow="SETTINGS" title="个人中心" description="管理员可见的量化系统配置入口。" />
+        <div className="grid gap-3 lg:grid-cols-3">
+          <InfoRow label="账户权限" value="管理员" note="量化菜单仅管理员可见" tone="emerald" />
+          <InfoRow label="资金密码" value="未配置" note="实盘接入前设置" />
+          <InfoRow label="API 密钥" value="未绑定" note="券商接口预留" />
+        </div>
+      </Card>
+
+      <Card className="space-y-5 p-5 sm:p-6">
+        <SectionHeader eyebrow="DATA SOURCE" title="系统配置" description="行情源、券商接口和运行参数集中配置。" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Field label="行情数据源">
+            <SelectField value="xueqiu" onChange={() => {}} options={[{ label: '雪球 quote + pankou', value: 'xueqiu' }]} />
+          </Field>
+          <Field label="券商接口">
+            <SelectField value="paper" onChange={() => {}} options={[{ label: '模拟盘', value: 'paper' }, { label: 'PTrade 待绑定', value: 'ptrade' }, { label: 'QMT 待绑定', value: 'qmt' }]} />
+          </Field>
+          <Field label="刷新间隔" rightLabel="秒">
+            <NumberInput value={state.realtime.refreshIntervalSec} min="5" max="60" step="1" onChange={(event) => onPatchRealtime('refreshIntervalSec', toInputNumber(event.target.value))} />
+          </Field>
+          <Field label="页面主题">
+            <SelectField value="light" onChange={() => {}} options={[{ label: '浅色', value: 'light' }, { label: '深色预留', value: 'dark' }]} />
+          </Field>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <ToggleField
+            label="盘中自动刷新"
+            description="按刷新间隔轮询雪球行情。"
+            checked={state.realtime.enabled}
+            onChange={(checked) => onPatchRealtime('enabled', checked)}
+          />
+          <ToggleField
+            label="达到条件自动撮合"
+            description="只写入模拟账户成交。"
+            checked={state.realtime.autoExecute}
+            onChange={(checked) => onPatchRealtime('autoExecute', checked)}
+          />
+          <ToggleField
+            label="仅交易时段运行"
+            description="按 A 股开收盘时段控制。"
+            checked={state.realtime.onlyTradingSession}
+            onChange={(checked) => onPatchRealtime('onlyTradingSession', checked)}
+          />
+        </div>
+      </Card>
+    </div>
   );
 }
 
@@ -558,15 +1146,6 @@ function OrdersPanel({ orders }) {
   );
 }
 
-function TradePanel({ state, plan, onExecute }) {
-  return (
-    <div className="space-y-4">
-      <TradePlanCard plan={plan} onExecute={onExecute} />
-      <OrdersPanel orders={state.orders} />
-    </div>
-  );
-}
-
 function BacktestPanel({ state, summary }) {
   const [days, setDays] = useState(45);
   const rows = useMemo(() => buildSampleBacktestRows(days), [days]);
@@ -664,7 +1243,7 @@ function BacktestPanel({ state, summary }) {
 }
 
 export function QuantTradingExperience({ embedded = false } = {}) {
-  const [activeModule, setActiveModule] = useState('account');
+  const [activeModule, setActiveModule] = useState('dashboard');
   const [state, setState] = useState(() => readQuantProjectState());
   const [realtimeBusy, setRealtimeBusy] = useState(false);
   const [isTradingSessionNow, setIsTradingSessionNow] = useState(() => isInTradingSession(new Date()));
@@ -674,6 +1253,15 @@ export function QuantTradingExperience({ embedded = false } = {}) {
   const summary = useMemo(() => computeAccountSummary(normalized), [normalized]);
   const plan = useMemo(() => buildSimulatedOrderPlan(normalized), [normalized]);
   const signal = plan.signal;
+  const dashboardBacktestRows = useMemo(() => buildSampleBacktestRows(60), []);
+  const dashboardBacktestResult = useMemo(() => runPremiumSpreadBacktest({
+    rows: dashboardBacktestRows,
+    triggerSpreadPct: normalized.strategy.triggerSpreadPct,
+    feeBufferPct: normalized.strategy.feeBufferPct,
+    orderCash: normalized.strategy.maxOrderCash,
+    initialEquity: Math.max(summary.equity, 1),
+    cooldownDays: normalized.strategy.cooldownDays
+  }), [dashboardBacktestRows, normalized.strategy.triggerSpreadPct, normalized.strategy.feeBufferPct, normalized.strategy.maxOrderCash, normalized.strategy.cooldownDays, summary.equity]);
   const realtimeEnabled = normalized.realtime.enabled;
   const realtimeRefreshIntervalSec = normalized.realtime.refreshIntervalSec;
   const realtimeAutoExecute = normalized.realtime.autoExecute;
@@ -688,7 +1276,7 @@ export function QuantTradingExperience({ embedded = false } = {}) {
   }, [normalized]);
 
   useEffect(() => {
-    trackFeatureEvent('quant_trading', 'view_open', { activeModule: 'account' });
+    trackFeatureEvent('quant_trading', 'view_open', { activeModule: 'dashboard' });
   }, []);
 
   function patchState(updater) {
@@ -770,7 +1358,7 @@ export function QuantTradingExperience({ embedded = false } = {}) {
     const nextState = recordRealtimeExecution(result.state, nowIso);
     stateRef.current = nextState;
     setState(nextState);
-    setActiveModule('trade');
+    setActiveModule('trading');
     showToast({
       title: '模拟撮合完成',
       description: `成交 ${result.fills.length} 笔，费用 ${formatCurrency(result.plan.totalFee)}。`,
@@ -912,10 +1500,10 @@ export function QuantTradingExperience({ embedded = false } = {}) {
         <div>
           <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">
             <Settings2 className="h-3.5 w-3.5" />
-            量化模拟
+            量化交易
           </div>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">纳指 ETF 溢价差模拟盘</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">覆盖模拟账户、策略、交易和复盘，可接雪球实时盘口并在盘中自动写入模拟成交。</p>
+          <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">纳指 ETF 量化交易系统</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">覆盖综合仪表盘、行情数据、策略研究、交易执行、风控监控、账户绩效和系统设置；不包含选股与因子研究模块。</p>
         </div>
         <button type="button" className={secondaryButtonClass} onClick={() => executeTrade('header')}>
           <Play className="h-4 w-4" />
@@ -930,14 +1518,6 @@ export function QuantTradingExperience({ embedded = false } = {}) {
         <Metric label="交易信号" value={signal.action === 'switch' ? '切换' : '观察'} note={signal.reason} tone={signal.action === 'switch' ? 'emerald' : 'slate'} />
       </div>
 
-      <RealtimePanel
-        state={normalized}
-        busy={realtimeBusy}
-        isTradingSessionNow={isTradingSessionNow}
-        onPatchRealtime={patchRealtime}
-        onRefresh={refreshRealtimeQuotes}
-      />
-
       <ModuleTabs
         activeTab={activeModule}
         onSelect={(next) => {
@@ -946,25 +1526,58 @@ export function QuantTradingExperience({ embedded = false } = {}) {
         }}
       />
 
-      {activeModule === 'account' ? (
-        <AccountPanel
+      {activeModule === 'dashboard' ? (
+        <DashboardPanel
+          state={normalized}
+          summary={summary}
+          signal={signal}
+          plan={plan}
+          isTradingSessionNow={isTradingSessionNow}
+          backtestResult={dashboardBacktestResult}
+          onExecute={() => executeTrade('dashboard')}
+        />
+      ) : activeModule === 'marketData' ? (
+        <MarketDataPanel
+          state={normalized}
+          signal={signal}
+          busy={realtimeBusy}
+          isTradingSessionNow={isTradingSessionNow}
+          onPatchQuote={patchQuote}
+          onPatchRealtime={patchRealtime}
+          onRefresh={refreshRealtimeQuotes}
+        />
+      ) : activeModule === 'research' ? (
+        <ResearchBacktestPanel
+          state={normalized}
+          summary={summary}
+          signal={signal}
+          onPatchStrategy={patchStrategy}
+          onPatchQuote={patchQuote}
+        />
+      ) : activeModule === 'trading' ? (
+        <TradingExecutionPanel state={normalized} summary={summary} plan={plan} onExecute={() => executeTrade('trade_panel')} />
+      ) : activeModule === 'risk' ? (
+        <RiskMonitoringPanel
+          state={normalized}
+          summary={summary}
+          signal={signal}
+          plan={plan}
+          backtestResult={dashboardBacktestResult}
+          isTradingSessionNow={isTradingSessionNow}
+          onPatchStrategy={patchStrategy}
+          onPatchRealtime={patchRealtime}
+        />
+      ) : activeModule === 'performance' ? (
+        <AccountPerformancePanel
           state={normalized}
           summary={summary}
           onPatchAccount={patchAccount}
           onPatchPosition={patchPosition}
           onReset={resetState}
+          backtestResult={dashboardBacktestResult}
         />
-      ) : activeModule === 'strategy' ? (
-        <StrategyPanel
-          state={normalized}
-          signal={signal}
-          onPatchStrategy={patchStrategy}
-          onPatchQuote={patchQuote}
-        />
-      ) : activeModule === 'trade' ? (
-        <TradePanel state={normalized} plan={plan} onExecute={() => executeTrade('trade_panel')} />
       ) : (
-        <BacktestPanel state={normalized} summary={summary} />
+        <SystemSettingsPanel state={normalized} onPatchRealtime={patchRealtime} />
       )}
     </div>
   );

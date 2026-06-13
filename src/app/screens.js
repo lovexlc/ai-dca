@@ -9,7 +9,7 @@ export const PRIMARY_TAB_ORDER = ['strategy', 'holdings', 'tradePlans', 'quant',
 export const PRIMARY_TAB_META = {
   strategy: { label: '策略指南', hrefKey: 'strategy' },
   tradePlans: { label: '交易计划', hrefKey: 'tradePlans' },
-  quant: { label: '量化模拟', hrefKey: 'quant', adminOnly: true },
+  quant: { label: '量化交易', hrefKey: 'quant', adminOnly: true },
   fundSwitch: { label: '基金切换', hrefKey: 'fundSwitch' },
   markets: { label: '行情中心', hrefKey: 'markets' },
   premium: { label: '高级版', hrefKey: 'premium' },
