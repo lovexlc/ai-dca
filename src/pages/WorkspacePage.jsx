@@ -7,10 +7,12 @@ import { MobileTabBar } from '../components/mobile-tab-bar.jsx';
 import { GlobalSearch } from '../components/global-search.jsx';
 import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
 import { ReleaseAnnouncementModal } from '../components/release-announcement-modal.jsx';
+import { ScenarioSwitcher } from '../components/ScenarioSwitcher.jsx';
 import { startCloudAutoSync } from '../app/cloudSync.js';
 import { showToast } from '../app/toast.js';
 import { clearDemoData, readDemoDataMeta } from '../app/demoData.js';
-import { readWorkspacePrefs } from '../app/workspacePrefs.js';
+import { readWorkspacePrefs, switchScenario } from '../app/workspacePrefs.js';
+import { getScenario } from '../app/scenarios.js';
 import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authClient.js';
 import { isAnalyticsAdmin, trackPageEngagement, trackPageView, trackSessionHeartbeat, trackSessionStart } from '../app/analytics.js';
 
@@ -120,6 +122,11 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [cloudSession, setCloudSession] = useState(() => loadCloudSession());
   const [activeHash, setActiveHash] = useState(() => (typeof window === 'undefined' ? '' : window.location.hash || ''));
+  const [currentScenarioKey, setCurrentScenarioKey] = useState(() => readWorkspacePrefs().scenario);
+
+  const selectedScenario = getScenario(currentScenarioKey);
+  const isAdminUser = isAnalyticsAdmin(cloudSession);
+  const currentScenario = selectedScenario.requireAdmin && !isAdminUser ? getScenario('stock') : selectedScenario;
 
   // Legacy ?tab=home / ?tab=dca 进来时，重写为 ?tab=tradePlans + hash，使二级 tab 能在 mount 时被选中。
   useEffect(() => {
@@ -229,9 +236,34 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const restoreScrollOnNextTabRef = useRef(false);
   const activeTabRef = useRef(activeTab);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
-  const isAdminUser = isAnalyticsAdmin(cloudSession);
   const currentPageLabel = PRIMARY_TAB_META[activeTab]?.label || '';
   const hideMobileTabBar = activeTab === 'tradePlans' && ['#new', '#dca-new'].includes(activeHash);
+
+  function handleScenarioSwitch(newScenarioKey) {
+    const newScenario = getScenario(newScenarioKey);
+
+    if (newScenario.requireAdmin && !isAdminUser) {
+      showToast({
+        title: '权限不足',
+        description: '该场景需要管理员权限',
+        tone: 'red'
+      });
+      return;
+    }
+
+    switchScenario(newScenarioKey);
+    setCurrentScenarioKey(newScenarioKey);
+
+    if (!newScenario.visibleTabs.includes(activeTab)) {
+      handleSelectTab(newScenario.defaultHome);
+    }
+
+    showToast({
+      title: '场景切换成功',
+      description: `已切换到${newScenario.label}`,
+      tone: 'emerald'
+    });
+  }
 
   const quickAction = useMemo(() => {
     if (activeTab === 'notify') {
@@ -278,12 +310,20 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const sidebarNav = useMemo(
     () =>
       getPrimaryTabs(links)
-        .filter((tab) => !PRIMARY_TAB_META[tab.key]?.adminOnly || isAdminUser)
+        .filter((tab) => {
+          if (!currentScenario.visibleTabs.includes(tab.key)) {
+            return false;
+          }
+          if (PRIMARY_TAB_META[tab.key]?.adminOnly && !isAdminUser) {
+            return false;
+          }
+          return true;
+        })
         .map((tab) => ({
           ...tab,
           icon: SIDEBAR_ICONS[tab.key]
         })),
-    [links, isAdminUser]
+    [links, isAdminUser, currentScenario]
   );
   const heroTitle = WORKSPACE_TITLES[activeTab] || WORKSPACE_TITLES.strategy;
 
@@ -481,6 +521,13 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         activeKey={activeTab}
         onSelectNav={handleSelectTab}
         showMobileBar={false}
+        topbarRight={
+          <ScenarioSwitcher
+            currentScenario={currentScenario}
+            isAdmin={isAdminUser}
+            onSwitch={handleScenarioSwitch}
+          />
+        }
       >
         {demoMeta ? (
           <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
