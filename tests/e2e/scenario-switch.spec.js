@@ -7,14 +7,14 @@ async function closeStartupModals(page) {
 
 async function seedSession(page, username = 'lovexl') {
   await page.addInitScript((sessionUsername) => {
-    localStorage.setItem('aiDcaCloudSyncSession', JSON.stringify({
+    globalThis.localStorage.setItem('aiDcaCloudSyncSession', JSON.stringify({
       username: sessionUsername,
       userId: `test-${sessionUsername}`,
       accessToken: 'test-token'
     }));
-    if (!sessionStorage.getItem('scenarioSwitchTestSeeded')) {
-      localStorage.removeItem('aiDcaWorkspacePrefs');
-      sessionStorage.setItem('scenarioSwitchTestSeeded', '1');
+    if (!globalThis.sessionStorage.getItem('scenarioSwitchTestSeeded')) {
+      globalThis.localStorage.removeItem('aiDcaWorkspacePrefs');
+      globalThis.sessionStorage.setItem('scenarioSwitchTestSeeded', '1');
     }
   }, username);
 }
@@ -39,28 +39,29 @@ test.describe('scenario switcher', () => {
     await expect(page.getByRole('menuitemcheckbox', { name: /量化研究/ })).toBeVisible();
   });
 
-  test('switches to the quant scenario and shows quant modules in the sidebar', async ({ page }) => {
+  test('switches to the quant scenario and shows the Python runner page in the sidebar', async ({ page }) => {
     await openScenarioMenu(page);
     await page.getByRole('menuitemcheckbox', { name: /量化研究/ }).click();
 
     await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('量化研究');
-    await expect(page.locator('nav a', { hasText: '综合仪表盘' })).toBeVisible();
-    await expect(page.locator('nav a', { hasText: '行情与数据' })).toBeVisible();
-    await expect(page.locator('nav a', { hasText: '策略研究' })).toBeVisible();
+    await expect(page.locator('nav a', { hasText: '量化研究' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Python 溢价差执行器' })).toBeVisible();
+    await expect(page.locator('nav a', { hasText: '综合仪表盘' })).toHaveCount(0);
+    await expect(page.locator('nav a', { hasText: '行情与数据' })).toHaveCount(0);
     await expect(page.locator('nav a', { hasText: '交易计划' })).toHaveCount(0);
 
     await page.reload();
     await closeStartupModals(page);
 
     await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('量化研究');
-    await expect(page.locator('nav a', { hasText: '综合仪表盘' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Python 溢价差执行器' })).toBeVisible();
   });
 
   test('keeps holdings and trade plans inside the holding scenario', async ({ page }) => {
     await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('持仓交易');
     await expect(page.locator('nav a', { hasText: '持仓总览' })).toBeVisible();
     await expect(page.locator('nav a', { hasText: '交易计划' })).toBeVisible();
-    await expect(page.locator('nav a', { hasText: '综合仪表盘' })).toHaveCount(0);
+    await expect(page.locator('nav a', { hasText: '量化研究' })).toHaveCount(0);
   });
 });
 
@@ -75,6 +76,6 @@ test.describe('scenario permissions', () => {
     await expect(page.getByRole('menuitemcheckbox')).toHaveCount(1);
     await expect(page.getByRole('menuitemcheckbox', { name: /持仓交易/ })).toBeVisible();
     await expect(page.getByRole('menuitemcheckbox', { name: /量化研究/ })).toHaveCount(0);
-    await expect(page.locator('nav a', { hasText: '综合仪表盘' })).toHaveCount(0);
+    await expect(page.locator('nav a', { hasText: '量化研究' })).toHaveCount(0);
   });
 });

@@ -333,6 +333,14 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         action: () => window.dispatchEvent(new CustomEvent('quant:execute-simulated-trade'))
       };
     }
+    if (activeTab === 'quant') {
+      return {
+        label: '启动命令',
+        icon: Play,
+        mode: 'custom',
+        action: () => window.scrollTo({ top: 0, behavior: 'smooth' })
+      };
+    }
     if (activeTab === 'fundSwitch') {
       return {
         label: '查看机会',
@@ -368,7 +376,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const heroTitle = WORKSPACE_TITLES[activeTab] || WORKSPACE_TITLES.strategy;
 
   useEffect(() => {
-    if (isQuantModuleTab(activeTab) && isAdminUser && currentScenarioKey !== 'quant') {
+    if ((activeTab === 'quant' || isQuantModuleTab(activeTab)) && isAdminUser && currentScenarioKey !== 'quant') {
       setCurrentScenarioKey('quant');
     }
   }, [activeTab, currentScenarioKey, isAdminUser]);

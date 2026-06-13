@@ -6,16 +6,8 @@ export const PROJECT_TITLE = '美股策略助手';
 export const DEFAULT_WORKSPACE_TAB = 'strategy';
 export const PRIMARY_TAB_ORDER = ['strategy', 'holdings', 'tradePlans', 'quant', 'fundSwitch', 'markets', 'premium', 'notify', 'adminData'];
 export const QUANT_MODULE_TAB_PREFIX = 'quant:';
-export const DEFAULT_QUANT_MODULE_TAB = 'quant:dashboard';
-export const QUANT_MODULE_TABS = [
-  { key: 'quant:dashboard', module: 'dashboard', label: '综合仪表盘', hrefKey: 'quantDashboard', adminOnly: true },
-  { key: 'quant:marketData', module: 'marketData', label: '行情与数据', hrefKey: 'quantMarketData', adminOnly: true },
-  { key: 'quant:research', module: 'research', label: '策略研究', hrefKey: 'quantResearch', adminOnly: true },
-  { key: 'quant:trading', module: 'trading', label: '交易执行', hrefKey: 'quantTrading', adminOnly: true },
-  { key: 'quant:risk', module: 'risk', label: '风控监控', hrefKey: 'quantRisk', adminOnly: true },
-  { key: 'quant:performance', module: 'performance', label: '账户绩效', hrefKey: 'quantPerformance', adminOnly: true },
-  { key: 'quant:settings', module: 'settings', label: '系统设置', hrefKey: 'quantSettings', adminOnly: true }
-];
+export const DEFAULT_QUANT_MODULE_TAB = 'quant';
+export const QUANT_MODULE_TABS = [];
 export const QUANT_MODULE_TAB_KEYS = QUANT_MODULE_TABS.map((tab) => tab.key);
 
 export const PRIMARY_TAB_META = {

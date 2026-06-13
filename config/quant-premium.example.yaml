@@ -1,0 +1,48 @@
+runtime:
+  poll_interval_sec: 1
+  markets_api_base: "https://tools.freebacktrack.tech/api/markets"
+  output_dir: "data/quant"
+  only_trading_session: true
+  max_daily_triggers: 3
+  request_timeout_sec: 4
+  cooldown_sec: 120
+
+symbols:
+  - code: "159513"
+    name: "纳指科技 ETF"
+    class: "H"
+  - code: "513100"
+    name: "纳指 ETF"
+    class: "L"
+  - code: "159501"
+    name: "纳指 ETF 嘉实"
+    class: "L"
+
+rules:
+  - id: "nasdaq-hl"
+    name: "纳指 ETF H/L 溢价差"
+    enabled: true
+    benchmark_codes: ["159513"]
+    enabled_codes: ["513100", "159501"]
+    intra_sell_lower_pct: 1.0
+    intra_buy_other_pct: 3.0
+    max_order_cash: 16000
+    min_order_cash: 1000
+    cooldown_sec: 120
+
+account:
+  cash: 60000
+  fee_rate: 0.01
+  min_fee: 0
+  tick_size: 0.001
+  slippage_ticks: 1
+  lot_size: 100
+  positions:
+    "159513":
+      name: "纳指科技 ETF"
+      shares: 20000
+      cost_price: 1.735
+    "513100":
+      name: "纳指 ETF"
+      shares: 8000
+      cost_price: 1.486

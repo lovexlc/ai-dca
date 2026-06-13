@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('quant trading workspace renders modules and executes a simulated trade', async ({ page }) => {
+test('quant research workspace renders the Python premium runner handoff', async ({ page }) => {
   await page.addInitScript(({ quantStateKey, sessionKey }) => {
     globalThis.localStorage.removeItem(quantStateKey);
     globalThis.localStorage.setItem(sessionKey, JSON.stringify({
@@ -15,63 +15,22 @@ test('quant trading workspace renders modules and executes a simulated trade', a
   await page.goto('/?tab=quant');
   await page.getByRole('button', { name: '知道了' }).click({ timeout: 3000 }).catch(() => {});
 
-  await expect(page.getByRole('heading', { name: '纳指 ETF 量化研究系统' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Python 溢价差执行器' })).toBeVisible();
   await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('量化研究');
-  await expect(page.locator('nav a', { hasText: '综合仪表盘' })).toBeVisible();
-  await expect(page.locator('nav a', { hasText: '行情与数据' })).toBeVisible();
-  await expect(page.locator('nav a', { hasText: '策略研究' })).toBeVisible();
-  await expect(page.locator('nav a', { hasText: '交易执行' })).toBeVisible();
-  await expect(page.locator('nav a', { hasText: '风控监控' })).toBeVisible();
-  await expect(page.locator('nav a', { hasText: '账户绩效' })).toBeVisible();
-  await expect(page.locator('nav a', { hasText: '系统设置' })).toBeVisible();
+  await expect(page.locator('nav a', { hasText: '量化研究' })).toBeVisible();
+  await expect(page.locator('nav a', { hasText: '综合仪表盘' })).toHaveCount(0);
+  await expect(page.locator('nav a', { hasText: '行情与数据' })).toHaveCount(0);
+  await expect(page.locator('nav a', { hasText: '策略研究' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^选股与因子研究$/ })).toHaveCount(0);
+  await expect(page.getByText('python3 scripts/quant_premium_runner.py --config config/quant-premium.yaml')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'H/L 溢价差规则' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '159513' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '513100' })).toBeVisible();
+  await expect(page.getByText('data/quant/signals.jsonl')).toBeVisible();
+  await expect(page.getByText('data/quant/orders.jsonl')).toBeVisible();
 
-  await page.locator('nav a', { hasText: '行情与数据' }).click();
-  await expect(page.getByRole('heading', { name: '行情与数据工作台' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '纳指 ETF 量化研究系统' })).toHaveCount(0);
-  await expect(page.getByText('雪球实时执行')).toBeVisible();
-  await expect(page.getByText('策略标的行情')).toBeVisible();
-  await expect(page.getByText('事件与信号日志')).toBeVisible();
-
-  await page.locator('nav a', { hasText: '策略研究' }).click();
-  await expect(page.getByRole('heading', { name: '策略研究与回测' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '策略开发工具' })).toBeVisible();
-  await page.locator('div', { hasText: /^网格交易/ }).getByRole('button', { name: '应用' }).click();
-  await expect(page.getByLabel('策略名称')).toHaveValue('网格交易');
-  await expect(page.getByText('盘口与 IOPV')).toBeVisible();
-  await expect(page.getByRole('heading', { name: '复盘', exact: true })).toBeVisible();
-
-  await page.locator('nav a', { hasText: '交易执行' }).click();
-  await expect(page.getByRole('heading', { name: '交易执行台' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '策略部署' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '交易', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '执行模拟撮合' }).click();
-  await expect(page.getByText('模拟撮合完成')).toBeVisible();
-  await expect(page.getByRole('cell', { name: '买入' }).first()).toBeVisible();
-  await expect(page.getByRole('cell', { name: '卖出' }).first()).toBeVisible();
-
-  await page.locator('nav a', { hasText: '风控监控' }).click();
-  await expect(page.getByRole('heading', { name: '风控监控中心' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '风控规则配置' })).toBeVisible();
-
-  await page.locator('nav a', { hasText: '账户绩效' }).click();
-  await expect(page.getByRole('heading', { name: '账户绩效分析' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '账户与绩效分析' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '模拟账户' })).toBeVisible();
-
-  await page.locator('nav a', { hasText: '系统设置' }).click();
-  await expect(page.getByRole('heading', { name: '量化系统设置' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '系统配置' })).toBeVisible();
-  await page.getByLabel('行情数据源').selectOption('manual');
-  await page.getByLabel('券商接口').selectOption('ptrade');
-  await page.getByLabel('券商账号').fill('PT-90001');
-  await page.getByLabel('API 标识').fill('abc123xyz');
-  await page.getByLabel('页面密度').selectOption('compact');
-  await expect(page.getByText('参数已保存')).toBeVisible();
-  await expect(page.getByText('abc***xyz')).toBeVisible();
-  await page.locator('nav a', { hasText: '行情与数据' }).click();
-  await page.getByRole('button', { name: '刷新行情' }).first().click();
-  await expect(page.getByText('已记录手动盘口', { exact: true })).toBeVisible();
+  await page.goto('/?tab=quant&module=research');
+  await expect(page.getByRole('heading', { name: 'Python 溢价差执行器' })).toBeVisible();
 });
 
 test('quant trading menu is hidden for non-admin users', async ({ page }) => {
@@ -83,6 +42,6 @@ test('quant trading menu is hidden for non-admin users', async ({ page }) => {
   await page.getByRole('button', { name: '知道了' }).click({ timeout: 3000 }).catch(() => {});
 
   await expect(page.getByRole('link', { name: /策略指南/ })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '纳指 ETF 量化研究系统' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Python 溢价差执行器' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: /综合仪表盘/ })).toHaveCount(0);
 });

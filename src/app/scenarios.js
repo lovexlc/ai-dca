@@ -17,9 +17,9 @@ export const SCENARIOS = {
     key: 'quant',
     label: '量化研究',
     icon: 'Bot',
-    description: '策略、回测、风控与绩效',
-    defaultHome: 'quant:dashboard',
-    visibleTabs: ['quant:dashboard', 'quant:marketData', 'quant:research', 'quant:trading', 'quant:risk', 'quant:performance', 'quant:settings'],
+    description: 'Python 溢价差执行器',
+    defaultHome: 'quant',
+    visibleTabs: ['quant'],
     requireAdmin: true
   }
 };
