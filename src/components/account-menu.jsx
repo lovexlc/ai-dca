@@ -9,6 +9,7 @@ import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
 import { persistWorkspacePrefs, readWorkspacePrefs } from '../app/workspacePrefs.js';
 import { isAnalyticsAdmin } from '../app/analytics.js';
 import { cx, inputClass, primaryButtonClass, secondaryButtonClass, SelectField, subtleButtonClass } from './experience-ui.jsx';
+import { PrivacyNotice } from './PrivacyNotice.jsx';
 
 const HOME_OPTIONS = [
   { value: 'strategy', label: '策略指南' },
@@ -648,6 +649,7 @@ export function AccountMenu() {
                     <SelectField options={homeOptions} value={homeOptions.some((option) => option.value === homePref) ? homePref : 'strategy'} onChange={(event) => { setHomePref(event.target.value); setHomeSaved(false); }} />
                     <button type="button" className={cx(secondaryButtonClass, "w-full justify-center text-xs")} onClick={handleSaveHomePref}>{homeSaved ? '已保存' : '保存默认首页'}</button>
                   </div>
+                  <PrivacyNotice compact />
                   {renderSyncError()}
                   <button type="button" className={cx(subtleButtonClass, 'w-full justify-center')} onClick={() => { handleLogout(); setOpen(false); }}>
                     <LogOut className="h-4 w-4" />
@@ -708,6 +710,7 @@ export function AccountMenu() {
                     <p><span className="font-semibold">用户名 / 登录密码</span>会加密后存储到服务器，用于多设备同步。</p>
                     <p><span className="font-semibold">安全密码</span>仅用于本地加解密数据，<span className="font-semibold">不会上传服务器</span>。请务必自行保存，不要分享；丢失后云端备份将无法恢复。</p>
                   </div>
+                  <PrivacyNotice compact />
                   <label className="block space-y-1.5 text-xs font-semibold text-slate-600">
                     用户名
                     <input className={inputClass} value={form.username} onChange={(event) => updateField('username', event.target.value)} autoComplete="username" spellCheck="false" />

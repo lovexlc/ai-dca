@@ -6,20 +6,37 @@ const DEFAULT_SYNC_BASE = 'https://tools.freebacktrack.tech/api/sync';
 const MAX_EVENTS = 5000;
 const ADMIN_USERS = new Set(['lovexl']);
 const SESSION_START_KEY = 'aiDcaAnalyticsSessionStarted_v1';
+const OPT_OUT_KEY = 'aiDcaAnalyticsOptOut_v1';
 const SENSITIVE_META_KEYS = new Set([
   'amount',
   'baseUrl',
+  'connectionType',
   'content',
+  'cpuCores',
+  'deviceMemory',
+  'devicePixelRatio',
   'password',
+  'hardwareConcurrency',
+  'languages',
+  'maxTouchPoints',
+  'memoryGb',
   'price',
+  'platform',
   'raw',
   'remotePath',
+  'saveData',
+  'screenHeight',
+  'screenWidth',
   'sendKey',
   'shares',
   'text',
+  'touchPoints',
   'token',
   'uid',
   'url',
+  'userAgent',
+  'viewportHeight',
+  'viewportWidth',
   'username'
 ]);
 
@@ -60,32 +77,78 @@ function sanitizeMeta(meta = {}) {
   return normalizeMetaValue(meta) || {};
 }
 
+export function isDoNotTrackEnabled() {
+  if (typeof window === 'undefined') return false;
+  const nav = window.navigator || {};
+  const raw = nav.doNotTrack || window.doNotTrack || nav.msDoNotTrack;
+  const value = String(raw == null ? '' : raw).toLowerCase();
+  return value === '1' || value === 'yes';
+}
+
+export function getAnalyticsOptOut() {
+  const ls = safeStorage();
+  if (!ls) return false;
+  return ls.getItem(OPT_OUT_KEY) === '1';
+}
+
+export function setAnalyticsOptOut(optedOut) {
+  const ls = safeStorage();
+  if (!ls) return;
+  if (optedOut) {
+    ls.setItem(OPT_OUT_KEY, '1');
+  } else {
+    ls.removeItem(OPT_OUT_KEY);
+  }
+  try {
+    window.dispatchEvent(new CustomEvent('analytics:opt-out-changed', { detail: { optedOut: Boolean(optedOut) } }));
+  } catch (_error) {
+    // ignore
+  }
+}
+
+export function isAnalyticsCollectionDisabled() {
+  return getAnalyticsOptOut() || isDoNotTrackEnabled();
+}
+
+function coarseUserAgent(ua = '') {
+  const value = String(ua);
+  const os = /Windows/i.test(value) ? 'Windows'
+    : /iPhone|iPad|iPod/i.test(value) ? 'iOS'
+    : /Android/i.test(value) ? 'Android'
+    : /Mac OS X|Macintosh/i.test(value) ? 'macOS'
+    : /CrOS/i.test(value) ? 'ChromeOS'
+    : /Linux/i.test(value) ? 'Linux'
+    : 'Other';
+  const browser = /Edg\//i.test(value) ? 'Edge'
+    : /OPR\/|Opera/i.test(value) ? 'Opera'
+    : /Firefox\//i.test(value) ? 'Firefox'
+    : /Chrome\//i.test(value) ? 'Chrome'
+    : /Safari\//i.test(value) ? 'Safari'
+    : 'Other';
+  return `${browser} / ${os}`;
+}
+
 function getDeviceContext() {
   if (typeof window === 'undefined') return {};
   const nav = window.navigator || {};
-  const connection = nav.connection || nav.mozConnection || nav.webkitConnection || {};
   const standalone = Boolean(
     nav.standalone ||
     window.matchMedia?.('(display-mode: standalone)')?.matches ||
     window.matchMedia?.('(display-mode: fullscreen)')?.matches
   );
+  const ua = String(nav.userAgent || '');
+  const viewportWidth = Number(window.innerWidth || 0);
+  const deviceClass = /iPad|Tablet/i.test(ua) || (viewportWidth >= 768 && viewportWidth <= 1180 && Number(nav.maxTouchPoints || 0) > 0)
+    ? 'tablet'
+    : /Mobi|Android|iPhone|iPod/i.test(ua) || (viewportWidth > 0 && viewportWidth < 768)
+      ? 'mobile'
+      : 'desktop';
   return {
-    viewportWidth: Math.round(window.innerWidth || 0),
-    viewportHeight: Math.round(window.innerHeight || 0),
-    screenWidth: Math.round(window.screen?.width || 0),
-    screenHeight: Math.round(window.screen?.height || 0),
-    devicePixelRatio: Number(window.devicePixelRatio || 1),
+    deviceClass,
     language: String(nav.language || '').slice(0, 32),
-    languages: Array.isArray(nav.languages) ? nav.languages.slice(0, 4).join(',') : '',
     timezone: Intl.DateTimeFormat?.().resolvedOptions?.().timeZone || '',
     online: Boolean(nav.onLine),
-    platform: String(nav.platform || '').slice(0, 64),
-    touchPoints: Number(nav.maxTouchPoints || 0),
-    standalone,
-    connectionType: String(connection.effectiveType || connection.type || '').slice(0, 32),
-    saveData: Boolean(connection.saveData),
-    memoryGb: Number(nav.deviceMemory || 0) || null,
-    cpuCores: Number(nav.hardwareConcurrency || 0) || null
+    standalone
   };
 }
 
@@ -103,6 +166,7 @@ function getRouteContext() {
 export function getAnalyticsVisitorId() {
   const ls = safeStorage();
   if (!ls) return 'server';
+  if (isAnalyticsCollectionDisabled()) return 'visitor:disabled';
   let id = ls.getItem(VISITOR_KEY);
   if (!id) {
     id = randomId('visitor');
@@ -114,6 +178,7 @@ export function getAnalyticsVisitorId() {
 export function getAnalyticsSessionId() {
   const storage = typeof window !== 'undefined' ? window.sessionStorage : null;
   if (!storage) return 'server-session';
+  if (isAnalyticsCollectionDisabled()) return 'session:disabled';
   let id = storage.getItem(SESSION_KEY);
   if (!id) {
     id = randomId('session');
@@ -158,8 +223,10 @@ export function isAnalyticsAdmin(session = readAnalyticsSession()) {
 
 export function trackAnalyticsEvent(type, meta = {}) {
   if (!type || typeof window === 'undefined') return null;
+  if (isAnalyticsCollectionDisabled()) return null;
   const session = readAnalyticsSession();
   const safeMeta = sanitizeMeta(meta);
+  const nav = window.navigator || {};
   const event = {
     id: randomId('event'),
     type: String(type),
@@ -171,7 +238,7 @@ export function trackAnalyticsEvent(type, meta = {}) {
     username: String(session?.username || ''),
     path: `${window.location.pathname}${window.location.search}${window.location.hash}`,
     referrer: document.referrer || '',
-    userAgent: navigator.userAgent || '',
+    userAgent: coarseUserAgent(nav.userAgent || ''),
     meta: {
       ...safeMeta,
       context: {
@@ -193,8 +260,8 @@ export function trackAnalyticsEvent(type, meta = {}) {
 
   try {
     const endpoint = window.__AI_DCA_ANALYTICS_ENDPOINT__ || `${getAnalyticsBase()}/analytics/track`;
-    if (navigator.sendBeacon) {
-      navigator.sendBeacon(endpoint, new Blob([JSON.stringify(event)], { type: 'application/json' }));
+    if (nav.sendBeacon) {
+      nav.sendBeacon(endpoint, new Blob([JSON.stringify(event)], { type: 'application/json' }));
     } else {
       fetch(endpoint, {
         method: 'POST',
