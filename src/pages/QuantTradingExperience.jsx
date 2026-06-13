@@ -69,6 +69,54 @@ const MODULE_TABS = [
   { key: 'settings', label: '系统设置', Icon: Settings2 }
 ];
 
+const MODULE_HEADER_META = {
+  dashboard: {
+    eyebrow: 'DASHBOARD',
+    title: '纳指 ETF 量化研究系统',
+    description: '聚合策略状态、实时信号、账户权益和近期成交，作为量化研究入口总览。',
+    Icon: Gauge,
+    action: 'trade'
+  },
+  marketData: {
+    eyebrow: 'DATA',
+    title: '行情与数据工作台',
+    description: '维护策略标的盘口、IOPV、溢价率和实时刷新状态，为研究和执行提供数据底座。',
+    Icon: CandlestickChart,
+    action: 'refresh'
+  },
+  research: {
+    eyebrow: 'RESEARCH',
+    title: '策略研究与回测',
+    description: '编辑策略规则、调整阈值参数，并用样例溢价差序列验证交易触发效果。',
+    Icon: Bot
+  },
+  trading: {
+    eyebrow: 'TRADING',
+    title: '交易执行台',
+    description: '查看策略部署状态、生成模拟撮合计划，并跟踪持仓与成交记录。',
+    Icon: ArrowRightLeft,
+    action: 'trade'
+  },
+  risk: {
+    eyebrow: 'RISK',
+    title: '风控监控中心',
+    description: '集中观察仓位、浮亏、回撤和自动执行限制，处理策略运行中的风险报警。',
+    Icon: ShieldCheck
+  },
+  performance: {
+    eyebrow: 'PERFORMANCE',
+    title: '账户绩效分析',
+    description: '拆解模拟账户收益、费用、胜率和权益曲线，复盘策略运行质量。',
+    Icon: LineChart
+  },
+  settings: {
+    eyebrow: 'SETTINGS',
+    title: '量化系统设置',
+    description: '配置行情源、券商接口预留项、刷新间隔和自动执行参数。',
+    Icon: Settings2
+  }
+};
+
 const CURRENCY_FORMAT = new Intl.NumberFormat('zh-CN', {
   style: 'currency',
   currency: 'CNY',
@@ -152,6 +200,39 @@ function ModuleTabs({ activeTab, onSelect }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function ModulePageHeader({ meta, busy = false, onExecute, onRefresh }) {
+  const Icon = meta.Icon || Gauge;
+  const action = meta.action === 'trade'
+    ? (
+      <button type="button" className={secondaryButtonClass} onClick={onExecute}>
+        <Play className="h-4 w-4" />
+        模拟撮合
+      </button>
+    )
+    : meta.action === 'refresh'
+      ? (
+        <button type="button" className={secondaryButtonClass} disabled={busy} onClick={() => onRefresh('manual')}>
+          <RefreshCw className={cx('h-4 w-4', busy && 'animate-spin')} />
+          刷新行情
+        </button>
+      )
+      : null;
+
+  return (
+    <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0">
+        <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">
+          <Icon className="h-3.5 w-3.5" />
+          {meta.eyebrow}
+        </div>
+        <h1 className="mt-3 text-2xl font-bold text-slate-900 sm:text-3xl">{meta.title}</h1>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">{meta.description}</p>
+      </div>
+      {action ? <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div> : null}
     </div>
   );
 }
@@ -1268,6 +1349,7 @@ export function QuantTradingExperience({ embedded = false, activeModule: control
   const realtimeAutoExecute = normalized.realtime.autoExecute;
   const realtimeOnlyTradingSession = normalized.realtime.onlyTradingSession;
   const activeModule = controlledModule || internalActiveModule;
+  const moduleMeta = MODULE_HEADER_META[activeModule] || MODULE_HEADER_META.dashboard;
 
   const selectModule = useCallback((nextModule) => {
     const normalizedModule = MODULE_TABS.some((tab) => tab.key === nextModule) ? nextModule : 'dashboard';
@@ -1514,27 +1596,12 @@ export function QuantTradingExperience({ embedded = false, activeModule: control
 
   return (
     <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">
-            <Settings2 className="h-3.5 w-3.5" />
-            量化研究
-          </div>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">纳指 ETF 量化研究系统</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">覆盖综合仪表盘、行情数据、策略研究、交易执行、风控监控、账户绩效和系统设置；不包含选股与因子研究模块。</p>
-        </div>
-        <button type="button" className={secondaryButtonClass} onClick={() => executeTrade('header')}>
-          <Play className="h-4 w-4" />
-          模拟撮合
-        </button>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric label="账户权益" value={formatCurrency(summary.equity)} note={`现金 ${formatCurrency(summary.cash)}`} />
-        <Metric label="持仓市值" value={formatCurrency(summary.marketValue)} note={`${summary.positionCount} 个持仓`} />
-        <Metric label="净差价" value={formatPct(signal.netSpreadPct)} note={`触发 ${formatPct(signal.triggerSpreadPct)}`} tone={signal.action === 'switch' ? 'emerald' : 'slate'} />
-        <Metric label="交易信号" value={signal.action === 'switch' ? '切换' : '观察'} note={signal.reason} tone={signal.action === 'switch' ? 'emerald' : 'slate'} />
-      </div>
+      <ModulePageHeader
+        meta={moduleMeta}
+        busy={realtimeBusy}
+        onExecute={() => executeTrade('module_header')}
+        onRefresh={refreshRealtimeQuotes}
+      />
 
       {hideModuleTabs ? null : (
         <ModuleTabs
