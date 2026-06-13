@@ -32,49 +32,49 @@ test.describe('scenario switcher', () => {
   });
 
   test('renders the current scenario in the top bar', async ({ page }) => {
-    await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('美股交易');
+    await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('持仓交易');
     await openScenarioMenu(page);
     await expect(page.getByRole('menuitemcheckbox')).toHaveCount(2);
-    await expect(page.getByRole('menuitemcheckbox', { name: /美股交易/ })).toBeVisible();
-    await expect(page.getByRole('menuitemcheckbox', { name: /基金定投/ })).toBeVisible();
-    await expect(page.getByRole('menuitemcheckbox', { name: /量化研究/ })).toHaveCount(0);
+    await expect(page.getByRole('menuitemcheckbox', { name: /持仓交易/ })).toBeVisible();
+    await expect(page.getByRole('menuitemcheckbox', { name: /量化研究/ })).toBeVisible();
   });
 
-  test('switches to the fund scenario and persists it', async ({ page }) => {
+  test('switches to the quant scenario and shows quant modules in the sidebar', async ({ page }) => {
     await openScenarioMenu(page);
-    await page.getByRole('menuitemcheckbox', { name: /基金定投/ }).click();
+    await page.getByRole('menuitemcheckbox', { name: /量化研究/ }).click();
 
-    await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('基金定投');
-    await expect(page.locator('nav a', { hasText: '基金切换' })).toBeVisible();
-    await expect(page.locator('nav a', { hasText: '策略指南' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('量化研究');
+    await expect(page.locator('nav a', { hasText: '综合仪表盘' })).toBeVisible();
+    await expect(page.locator('nav a', { hasText: '行情与数据' })).toBeVisible();
+    await expect(page.locator('nav a', { hasText: '策略研究' })).toBeVisible();
+    await expect(page.locator('nav a', { hasText: '交易计划' })).toHaveCount(0);
 
     await page.reload();
     await closeStartupModals(page);
 
-    await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('基金定投');
-    await expect(page.locator('nav a', { hasText: '基金切换' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('量化研究');
+    await expect(page.locator('nav a', { hasText: '综合仪表盘' })).toBeVisible();
   });
 
-  test('keeps admin quant tabs inside the stock scenario', async ({ page }) => {
-    await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('美股交易');
-    await expect(page.locator('nav a', { hasText: '量化交易' })).toBeVisible();
-    await expect(page.locator('nav a', { hasText: '数据' })).toBeVisible();
+  test('keeps holdings and trade plans inside the holding scenario', async ({ page }) => {
+    await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('持仓交易');
+    await expect(page.locator('nav a', { hasText: '持仓总览' })).toBeVisible();
+    await expect(page.locator('nav a', { hasText: '交易计划' })).toBeVisible();
+    await expect(page.locator('nav a', { hasText: '综合仪表盘' })).toHaveCount(0);
   });
 });
 
 test.describe('scenario permissions', () => {
-  test('shows two scenarios and hides admin-only tabs from non-admin users', async ({ page }) => {
+  test('hides the quant scenario from non-admin users', async ({ page }) => {
     await seedSession(page, 'normaluser');
     await page.goto('/');
     await closeStartupModals(page);
 
     await openScenarioMenu(page);
 
-    await expect(page.getByRole('menuitemcheckbox')).toHaveCount(2);
-    await expect(page.getByRole('menuitemcheckbox', { name: /美股交易/ })).toBeVisible();
-    await expect(page.getByRole('menuitemcheckbox', { name: /基金定投/ })).toBeVisible();
+    await expect(page.getByRole('menuitemcheckbox')).toHaveCount(1);
+    await expect(page.getByRole('menuitemcheckbox', { name: /持仓交易/ })).toBeVisible();
     await expect(page.getByRole('menuitemcheckbox', { name: /量化研究/ })).toHaveCount(0);
-    await expect(page.locator('nav a', { hasText: '量化交易' })).toHaveCount(0);
-    await expect(page.locator('nav a', { hasText: '数据' })).toHaveCount(0);
+    await expect(page.locator('nav a', { hasText: '综合仪表盘' })).toHaveCount(0);
   });
 });

@@ -6,21 +6,21 @@
 export const SCENARIOS = {
   stock: {
     key: 'stock',
-    label: '美股交易',
+    label: '持仓交易',
     icon: 'TrendingUp',
-    description: '适合美股投资者',
-    defaultHome: 'strategy',
-    visibleTabs: ['strategy', 'holdings', 'tradePlans', 'quant', 'markets', 'premium', 'notify', 'adminData'],
+    description: '持仓、交易计划与行情',
+    defaultHome: 'holdings',
+    visibleTabs: ['holdings', 'tradePlans', 'strategy', 'fundSwitch', 'markets', 'premium', 'notify'],
     requireAdmin: false
   },
-  fund: {
-    key: 'fund',
-    label: '基金定投',
-    icon: 'PieChart',
-    description: '适合基金定投用户',
-    defaultHome: 'tradePlans',
-    visibleTabs: ['tradePlans', 'holdings', 'fundSwitch', 'markets', 'premium', 'notify'],
-    requireAdmin: false
+  quant: {
+    key: 'quant',
+    label: '量化研究',
+    icon: 'Bot',
+    description: '策略、回测、风控与绩效',
+    defaultHome: 'quant:dashboard',
+    visibleTabs: ['quant:dashboard', 'quant:marketData', 'quant:research', 'quant:trading', 'quant:risk', 'quant:performance', 'quant:settings'],
+    requireAdmin: true
   }
 };
 

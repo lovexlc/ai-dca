@@ -1,4 +1,4 @@
-import { PRIMARY_TAB_ORDER } from './screens.js';
+import { isWorkspaceGroup } from './screens.js';
 import { SCENARIOS } from './scenarios.js';
 
 export const WORKSPACE_PREFS_KEY = 'aiDcaWorkspacePrefs';
@@ -13,7 +13,7 @@ export const DEFAULT_WORKSPACE_PREFS = {
 
 export function normalizeHomepageTab(value = '') {
   const tab = String(value || '').trim();
-  return PRIMARY_TAB_ORDER.includes(tab) ? tab : DEFAULT_WORKSPACE_PREFS.homepageTab;
+  return isWorkspaceGroup(tab) ? tab : DEFAULT_WORKSPACE_PREFS.homepageTab;
 }
 
 export function normalizeScenario(value = '') {

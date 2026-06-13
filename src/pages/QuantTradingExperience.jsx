@@ -1242,8 +1242,9 @@ function BacktestPanel({ state, summary }) {
   );
 }
 
-export function QuantTradingExperience({ embedded = false } = {}) {
-  const [activeModule, setActiveModule] = useState('dashboard');
+export function QuantTradingExperience({ embedded = false, activeModule: controlledModule = '', hideModuleTabs = false, onModuleChange } = {}) {
+  const isControlledModule = Boolean(controlledModule);
+  const [internalActiveModule, setInternalActiveModule] = useState(controlledModule || 'dashboard');
   const [state, setState] = useState(() => readQuantProjectState());
   const [realtimeBusy, setRealtimeBusy] = useState(false);
   const [isTradingSessionNow, setIsTradingSessionNow] = useState(() => isInTradingSession(new Date()));
@@ -1266,6 +1267,23 @@ export function QuantTradingExperience({ embedded = false } = {}) {
   const realtimeRefreshIntervalSec = normalized.realtime.refreshIntervalSec;
   const realtimeAutoExecute = normalized.realtime.autoExecute;
   const realtimeOnlyTradingSession = normalized.realtime.onlyTradingSession;
+  const activeModule = controlledModule || internalActiveModule;
+
+  const selectModule = useCallback((nextModule) => {
+    const normalizedModule = MODULE_TABS.some((tab) => tab.key === nextModule) ? nextModule : 'dashboard';
+    if (isControlledModule) {
+      onModuleChange?.(normalizedModule);
+    } else {
+      setInternalActiveModule(normalizedModule);
+    }
+    trackFeatureEvent('quant_trading', 'module_select', { module: normalizedModule });
+  }, [isControlledModule, onModuleChange]);
+
+  useEffect(() => {
+    if (controlledModule && MODULE_TABS.some((tab) => tab.key === controlledModule)) {
+      setInternalActiveModule(controlledModule);
+    }
+  }, [controlledModule]);
 
   useEffect(() => {
     stateRef.current = normalized;
@@ -1276,8 +1294,8 @@ export function QuantTradingExperience({ embedded = false } = {}) {
   }, [normalized]);
 
   useEffect(() => {
-    trackFeatureEvent('quant_trading', 'view_open', { activeModule: 'dashboard' });
-  }, []);
+    trackFeatureEvent('quant_trading', 'view_open', { activeModule });
+  }, [activeModule]);
 
   function patchState(updater) {
     setState((current) => normalizeQuantState(updater(normalizeQuantState(current))));
@@ -1358,7 +1376,7 @@ export function QuantTradingExperience({ embedded = false } = {}) {
     const nextState = recordRealtimeExecution(result.state, nowIso);
     stateRef.current = nextState;
     setState(nextState);
-    setActiveModule('trading');
+    selectModule('trading');
     showToast({
       title: '模拟撮合完成',
       description: `成交 ${result.fills.length} 笔，费用 ${formatCurrency(result.plan.totalFee)}。`,
@@ -1369,7 +1387,7 @@ export function QuantTradingExperience({ embedded = false } = {}) {
       fillCount: result.fills.length,
       netSpreadPct: result.plan.signal.netSpreadPct
     });
-  }, []);
+  }, [selectModule]);
 
   const refreshRealtimeQuotes = useCallback(async (source = 'manual') => {
     if (realtimeBusyRef.current) return;
@@ -1500,9 +1518,9 @@ export function QuantTradingExperience({ embedded = false } = {}) {
         <div>
           <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">
             <Settings2 className="h-3.5 w-3.5" />
-            量化交易
+            量化研究
           </div>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">纳指 ETF 量化交易系统</h1>
+          <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">纳指 ETF 量化研究系统</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">覆盖综合仪表盘、行情数据、策略研究、交易执行、风控监控、账户绩效和系统设置；不包含选股与因子研究模块。</p>
         </div>
         <button type="button" className={secondaryButtonClass} onClick={() => executeTrade('header')}>
@@ -1518,13 +1536,12 @@ export function QuantTradingExperience({ embedded = false } = {}) {
         <Metric label="交易信号" value={signal.action === 'switch' ? '切换' : '观察'} note={signal.reason} tone={signal.action === 'switch' ? 'emerald' : 'slate'} />
       </div>
 
-      <ModuleTabs
-        activeTab={activeModule}
-        onSelect={(next) => {
-          setActiveModule(next);
-          trackFeatureEvent('quant_trading', 'module_select', { module: next });
-        }}
-      />
+      {hideModuleTabs ? null : (
+        <ModuleTabs
+          activeTab={activeModule}
+          onSelect={selectModule}
+        />
+      )}
 
       {activeModule === 'dashboard' ? (
         <DashboardPanel

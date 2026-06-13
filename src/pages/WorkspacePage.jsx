@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, Bot, Crown, LineChart, ListChecks, Play, Plus, Send, Shuffle, Trash2, Wallet, X } from 'lucide-react';
-import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, PRIMARY_TAB_META, PRIMARY_TAB_ORDER, createPageLinks, getPrimaryTabs } from '../app/screens.js';
+import { ArrowLeft, ArrowRightLeft, ArrowUp, BarChart3, Bell, BookOpen, Bot, CandlestickChart, Crown, Gauge, LineChart, ListChecks, Play, Plus, Send, ShieldCheck, Shuffle, SlidersHorizontal, Trash2, Wallet, X } from 'lucide-react';
+import { DEFAULT_QUANT_MODULE_TAB, DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, QUANT_MODULE_TABS, QUANT_MODULE_TAB_KEYS, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getQuantModuleTabs, isWorkspaceGroup } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
 import { MobileTabBar } from '../components/mobile-tab-bar.jsx';
@@ -36,7 +36,14 @@ function readPreferredWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
 const WORKSPACE_TITLES = {
   strategy: '美股策略助手',
   tradePlans: '交易计划中心',
-  quant: '量化交易',
+  quant: '量化研究',
+  'quant:dashboard': '量化研究',
+  'quant:marketData': '量化研究 · 行情与数据',
+  'quant:research': '量化研究 · 策略研究',
+  'quant:trading': '量化研究 · 交易执行',
+  'quant:risk': '量化研究 · 风控监控',
+  'quant:performance': '量化研究 · 账户绩效',
+  'quant:settings': '量化研究 · 系统设置',
   fundSwitch: '基金切换收益分析',
   markets: '行情中心',
   premium: '高级版',
@@ -49,6 +56,13 @@ const SIDEBAR_ICONS = {
   strategy: BookOpen,
   tradePlans: ListChecks,
   quant: Bot,
+  'quant:dashboard': Gauge,
+  'quant:marketData': CandlestickChart,
+  'quant:research': Bot,
+  'quant:trading': ArrowRightLeft,
+  'quant:risk': ShieldCheck,
+  'quant:performance': LineChart,
+  'quant:settings': SlidersHorizontal,
   fundSwitch: Shuffle,
   markets: LineChart,
   premium: Crown,
@@ -60,7 +74,24 @@ const SIDEBAR_ICONS = {
 const HASH_ROUTE_TABS = new Set(['tradePlans', 'holdings']);
 
 function normalizeWorkspaceTab(value = '') {
-  return PRIMARY_TAB_ORDER.includes(value) ? value : DEFAULT_WORKSPACE_TAB;
+  return isWorkspaceGroup(value) ? value : DEFAULT_WORKSPACE_TAB;
+}
+
+function isQuantModuleTab(value = '') {
+  return QUANT_MODULE_TAB_KEYS.includes(value);
+}
+
+function normalizeQuantModule(value = '') {
+  const module = String(value || '').trim();
+  return QUANT_MODULE_TABS.some((tab) => tab.module === module) ? module : 'dashboard';
+}
+
+function quantModuleToTab(module = '') {
+  return QUANT_MODULE_TABS.find((tab) => tab.module === module)?.key || DEFAULT_QUANT_MODULE_TAB;
+}
+
+function quantTabToModule(tab = '') {
+  return QUANT_MODULE_TABS.find((item) => item.key === tab)?.module || 'dashboard';
 }
 
 function readTabFromLocation(fallbackTab = DEFAULT_WORKSPACE_TAB) {
@@ -72,6 +103,9 @@ function readTabFromLocation(fallbackTab = DEFAULT_WORKSPACE_TAB) {
   // Legacy ?tab=home / ?tab=dca 重定向到交易计划的二级 tab。
   if (currentTab && Object.prototype.hasOwnProperty.call(LEGACY_TAB_REDIRECTS, currentTab)) {
     return LEGACY_TAB_REDIRECTS[currentTab].tab;
+  }
+  if (currentTab === 'quant') {
+    return quantModuleToTab(normalizeQuantModule(params.get('module')));
   }
   return currentTab ? normalizeWorkspaceTab(currentTab) : normalizeWorkspaceTab(fallbackTab);
 }
@@ -90,7 +124,10 @@ function readLegacyHashFromLocation() {
 function buildWorkspaceUrl(tab, { inPagesDir = false } = {}) {
   const nextUrl = new URL(inPagesDir ? '../index.html' : './index.html', window.location.href);
   const preferredTab = readPreferredWorkspaceTab(DEFAULT_WORKSPACE_TAB);
-  if (tab !== preferredTab) {
+  if (isQuantModuleTab(tab)) {
+    nextUrl.searchParams.set('tab', 'quant');
+    nextUrl.searchParams.set('module', quantTabToModule(tab));
+  } else if (tab !== preferredTab) {
     nextUrl.searchParams.set('tab', tab);
   }
   return nextUrl;
@@ -236,7 +273,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const restoreScrollOnNextTabRef = useRef(false);
   const activeTabRef = useRef(activeTab);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
-  const currentPageLabel = PRIMARY_TAB_META[activeTab]?.label || '';
+  const currentPageLabel = WORKSPACE_TAB_META[activeTab]?.label || '';
   const hideMobileTabBar = activeTab === 'tradePlans' && ['#new', '#dca-new'].includes(activeHash);
 
   function handleScenarioSwitch(newScenarioKey) {
@@ -288,7 +325,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         }
       };
     }
-    if (activeTab === 'quant') {
+    if (isQuantModuleTab(activeTab)) {
       return {
         label: '模拟撮合',
         icon: Play,
@@ -308,13 +345,15 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   }, [activeTab]);
 
   const sidebarNav = useMemo(
-    () =>
-      getPrimaryTabs(links)
+    () => {
+      const tabMap = new Map(
+        [...getPrimaryTabs(links), ...getQuantModuleTabs(links)].map((tab) => [tab.key, tab])
+      );
+      return currentScenario.visibleTabs
+        .map((key) => tabMap.get(key))
+        .filter(Boolean)
         .filter((tab) => {
-          if (!currentScenario.visibleTabs.includes(tab.key)) {
-            return false;
-          }
-          if (PRIMARY_TAB_META[tab.key]?.adminOnly && !isAdminUser) {
+          if (WORKSPACE_TAB_META[tab.key]?.adminOnly && !isAdminUser) {
             return false;
           }
           return true;
@@ -322,13 +361,20 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         .map((tab) => ({
           ...tab,
           icon: SIDEBAR_ICONS[tab.key]
-        })),
+        }));
+    },
     [links, isAdminUser, currentScenario]
   );
   const heroTitle = WORKSPACE_TITLES[activeTab] || WORKSPACE_TITLES.strategy;
 
   useEffect(() => {
-    if (PRIMARY_TAB_META[activeTab]?.adminOnly && !isAdminUser) {
+    if (isQuantModuleTab(activeTab) && isAdminUser && currentScenarioKey !== 'quant') {
+      setCurrentScenarioKey('quant');
+    }
+  }, [activeTab, currentScenarioKey, isAdminUser]);
+
+  useEffect(() => {
+    if (WORKSPACE_TAB_META[activeTab]?.adminOnly && !isAdminUser) {
       setActiveTab(DEFAULT_WORKSPACE_TAB);
     }
   }, [activeTab, isAdminUser]);
@@ -409,7 +455,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   function handleSelectTab(nextTab, options = {}) {
     const normalizedTab = normalizeWorkspaceTab(nextTab);
-    if (PRIMARY_TAB_META[normalizedTab]?.adminOnly && !isAdminUser) {
+    if (WORKSPACE_TAB_META[normalizedTab]?.adminOnly && !isAdminUser) {
       return;
     }
     const hash = typeof options.hash === 'string' ? options.hash : '';
@@ -483,13 +529,30 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   function renderActivePanel() {
     const sharedProps = { links, inPagesDir, embedded: true };
+    if (isQuantModuleTab(activeTab)) {
+      return (
+        <QuantTradingExperience
+          {...sharedProps}
+          activeModule={quantTabToModule(activeTab)}
+          hideModuleTabs
+          onModuleChange={(module) => handleSelectTab(quantModuleToTab(module))}
+        />
+      );
+    }
     switch (activeTab) {
       case 'strategy':
         return <StrategyGuideExperience {...sharedProps} onNavigate={handleSelectTab} onDemoDataChange={setDemoMeta} />;
       case 'tradePlans':
         return <TradePlansExperience {...sharedProps} />;
       case 'quant':
-        return <QuantTradingExperience {...sharedProps} />;
+        return (
+          <QuantTradingExperience
+            {...sharedProps}
+            activeModule="dashboard"
+            hideModuleTabs
+            onModuleChange={(module) => handleSelectTab(quantModuleToTab(module))}
+          />
+        );
       case 'fundSwitch':
         return <FundSwitchExperience {...sharedProps} />;
       case 'markets':
