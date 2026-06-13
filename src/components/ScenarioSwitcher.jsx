@@ -1,4 +1,4 @@
-import { TrendingUp, PieChart, Bot, ChevronDown } from 'lucide-react';
+import { TrendingUp, PieChart, ChevronDown } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -11,8 +11,7 @@ import { getAvailableScenarios } from '../app/scenarios.js';
 
 const ICON_MAP = {
   TrendingUp,
-  PieChart,
-  Bot
+  PieChart
 };
 
 /**

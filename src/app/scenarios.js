@@ -10,7 +10,7 @@ export const SCENARIOS = {
     icon: 'TrendingUp',
     description: '适合美股投资者',
     defaultHome: 'strategy',
-    visibleTabs: ['strategy', 'holdings', 'tradePlans', 'markets', 'premium', 'notify'],
+    visibleTabs: ['strategy', 'holdings', 'tradePlans', 'quant', 'markets', 'premium', 'notify', 'adminData'],
     requireAdmin: false
   },
   fund: {
@@ -21,15 +21,6 @@ export const SCENARIOS = {
     defaultHome: 'tradePlans',
     visibleTabs: ['tradePlans', 'holdings', 'fundSwitch', 'markets', 'premium', 'notify'],
     requireAdmin: false
-  },
-  quant: {
-    key: 'quant',
-    label: '量化研究',
-    icon: 'Bot',
-    description: '需要管理员权限',
-    defaultHome: 'quant',
-    visibleTabs: ['quant', 'adminData', 'holdings', 'markets', 'strategy', 'notify'],
-    requireAdmin: true
   }
 };
 
