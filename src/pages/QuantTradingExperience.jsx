@@ -112,10 +112,68 @@ const MODULE_HEADER_META = {
   settings: {
     eyebrow: 'SETTINGS',
     title: '量化系统设置',
-    description: '配置行情源、券商接口预留项、刷新间隔和自动执行参数。',
+    description: '配置行情源、券商参数、刷新间隔和自动执行保护。',
     Icon: Settings2
   }
 };
+
+const DATA_SOURCE_OPTIONS = [
+  { label: '雪球 quote + pankou', value: 'xueqiu' },
+  { label: '手动盘口', value: 'manual' }
+];
+
+const BROKER_OPTIONS = [
+  { label: '模拟盘', value: 'paper' },
+  { label: 'PTrade 参数', value: 'ptrade' },
+  { label: 'QMT 参数', value: 'qmt' }
+];
+
+const VIEW_DENSITY_OPTIONS = [
+  { label: '标准', value: 'standard' },
+  { label: '紧凑', value: 'compact' }
+];
+
+const STRATEGY_TEMPLATES = [
+  {
+    name: '纳指 ETF 溢价差',
+    type: '套利',
+    patch: {
+      name: '纳指 ETF 溢价差',
+      triggerSpreadPct: 0.3,
+      closeSpreadPct: 0.12,
+      feeBufferPct: 0.04,
+      maxOrderCash: 16000,
+      minOrderCash: 1000,
+      cooldownDays: 2
+    }
+  },
+  {
+    name: '双均线趋势',
+    type: '趋势',
+    patch: {
+      name: '双均线趋势',
+      triggerSpreadPct: 0.45,
+      closeSpreadPct: 0.18,
+      feeBufferPct: 0.03,
+      maxOrderCash: 12000,
+      minOrderCash: 1000,
+      cooldownDays: 3
+    }
+  },
+  {
+    name: '网格交易',
+    type: '震荡',
+    patch: {
+      name: '网格交易',
+      triggerSpreadPct: 0.22,
+      closeSpreadPct: 0.08,
+      feeBufferPct: 0.05,
+      maxOrderCash: 8000,
+      minOrderCash: 800,
+      cooldownDays: 1
+    }
+  }
+];
 
 const CURRENCY_FORMAT = new Intl.NumberFormat('zh-CN', {
   style: 'currency',
@@ -160,6 +218,33 @@ function formatDateTime(value = '') {
 function toInputNumber(value) {
   const next = Number(value);
   return Number.isFinite(next) ? next : 0;
+}
+
+function optionLabel(options, value, fallback = '-') {
+  return options.find((option) => option.value === value)?.label || fallback;
+}
+
+function maskSecret(value = '') {
+  const text = String(value || '').trim();
+  if (!text) return '未配置';
+  if (text.length <= 6) return `${text.slice(0, 1)}***${text.slice(-1)}`;
+  return `${text.slice(0, 3)}***${text.slice(-3)}`;
+}
+
+function getBrokerStatus(settings = {}) {
+  if (settings.broker === 'paper') {
+    return {
+      value: '模拟盘可用',
+      note: '本地撮合，不发送实盘订单',
+      tone: 'emerald'
+    };
+  }
+  const configured = Boolean(settings.brokerAccount && settings.brokerApiKey);
+  return {
+    value: configured ? '参数已保存' : '待配置参数',
+    note: configured ? `${optionLabel(BROKER_OPTIONS, settings.broker)} · ${settings.brokerAccount}` : '需要账号与 API 标识',
+    tone: configured ? 'indigo' : 'amber'
+  };
 }
 
 function SignalBadge({ signal }) {
@@ -378,6 +463,69 @@ function buildAlertRows({ state, summary, signal, plan, isTradingSessionNow }) {
   return alerts.length ? alerts : [{ level: '系统', tone: 'emerald', message: '当前无待处理风险报警', action: '正常' }];
 }
 
+function buildMarketEventRows({ state, summary, signal, plan, isTradingSessionNow }) {
+  const settings = state.settings || {};
+  const positionRatio = summary.equity > 0 ? (summary.marketValue / summary.equity) * 100 : 0;
+  const sourceLabel = optionLabel(DATA_SOURCE_OPTIONS, settings.dataSource, '行情源');
+  const rows = [
+    {
+      type: '数据源',
+      tone: settings.dataSource === 'xueqiu' ? 'indigo' : 'slate',
+      message: settings.dataSource === 'xueqiu'
+        ? `${sourceLabel} 已接入当前策略标的`
+        : '使用手动盘口，刷新会记录当前输入状态',
+      detail: state.realtime.lastQuoteAt ? `行情 ${formatDateTime(state.realtime.lastQuoteAt)}` : `状态 ${state.realtime.lastStatus || 'idle'}`
+    },
+    {
+      type: '交易信号',
+      tone: signal.action === 'switch' ? 'emerald' : 'slate',
+      message: signal.reason,
+      detail: `净差价 ${formatPct(signal.netSpreadPct)} / 触发 ${formatPct(signal.triggerSpreadPct)}`
+    }
+  ];
+
+  if (state.realtime.lastError) {
+    rows.push({
+      type: '行情异常',
+      tone: 'red',
+      message: state.realtime.lastError,
+      detail: formatDateTime(state.realtime.lastRefreshAt)
+    });
+  } else if (state.realtime.lastRefreshAt) {
+    rows.push({
+      type: '行情刷新',
+      tone: 'emerald',
+      message: settings.dataSource === 'manual' ? '已记录手动盘口状态' : '盘口数据已更新',
+      detail: formatDateTime(state.realtime.lastRefreshAt)
+    });
+  }
+
+  rows.push({
+    type: '撮合计划',
+    tone: plan.canTrade ? 'emerald' : 'amber',
+    message: plan.canTrade ? `可执行 ${formatCurrency(Math.min(plan.sell.amount, plan.buy.amount))}` : plan.rejectReason,
+    detail: `${plan.sell.symbol} -> ${plan.buy.symbol}`
+  });
+
+  if (positionRatio > 80 || summary.pnl < 0) {
+    rows.push({
+      type: '风控事件',
+      tone: positionRatio > 80 ? 'amber' : 'red',
+      message: positionRatio > 80 ? `总仓位 ${formatPct(positionRatio)}` : `浮亏 ${formatCurrency(summary.pnl)}`,
+      detail: isTradingSessionNow ? '盘中监控' : '非盘中监控'
+    });
+  }
+
+  rows.push({
+    type: '执行保护',
+    tone: settings.paperTradeOnly ? 'emerald' : 'amber',
+    message: settings.paperTradeOnly ? '仅模拟成交已开启' : '已允许记录外部接口参数',
+    detail: getBrokerStatus(settings).note
+  });
+
+  return rows.slice(0, 8);
+}
+
 function RealtimePanel({ state, busy, isTradingSessionNow, onPatchRealtime, onRefresh }) {
   const realtime = state.realtime;
   const enabled = realtime.enabled;
@@ -560,13 +708,14 @@ function DashboardPanel({ state, summary, signal, plan, isTradingSessionNow, bac
   );
 }
 
-function MarketDataPanel({ state, signal, busy, isTradingSessionNow, onPatchQuote, onPatchRealtime, onRefresh }) {
+function MarketDataPanel({ state, summary, signal, plan, busy, isTradingSessionNow, onPatchQuote, onPatchRealtime, onRefresh }) {
   const quoteRows = deriveQuoteRows(state);
+  const eventRows = buildMarketEventRows({ state, summary, signal, plan, isTradingSessionNow });
   const dataCards = [
-    { title: '历史行情数据', note: '支持分钟、日线样例序列', value: '180 天' },
+    { title: '历史行情数据', note: '用于回测窗口的本地序列', value: '180 天' },
     { title: '基本面数据', note: 'ETF 名称、净值、IOPV 字段', value: '已映射' },
     { title: '特色数据', note: '溢价率、净差价、盘口深度', value: formatPct(signal.netSpreadPct) },
-    { title: '舆情/事件数据', note: '预留公告、新闻、龙虎榜入口', value: '待接入' }
+    { title: '事件数据', note: '行情、信号、风控和执行保护事件', value: `${eventRows.length} 条` }
   ];
 
   return (
@@ -582,7 +731,7 @@ function MarketDataPanel({ state, signal, busy, isTradingSessionNow, onPatchQuot
       <Card className="p-0">
         <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-sm font-bold text-slate-900">全市场标的行情</h3>
+            <h3 className="text-sm font-bold text-slate-900">策略标的行情</h3>
             <div className="mt-1 text-xs text-slate-400">自选标的盘口、IOPV 和溢价率</div>
           </div>
           <button type="button" className={secondaryButtonClass} disabled={busy} onClick={() => onRefresh('manual')}>
@@ -646,17 +795,28 @@ function MarketDataPanel({ state, signal, busy, isTradingSessionNow, onPatchQuot
           </Card>
         ))}
       </div>
+
+      <Card className="p-0">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <h3 className="text-sm font-bold text-slate-900">事件与信号日志</h3>
+          <span className="text-xs font-semibold text-slate-400">{optionLabel(DATA_SOURCE_OPTIONS, state.settings.dataSource)}</span>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {eventRows.map((event, index) => (
+            <div key={`${event.type}-${index}`} className="grid gap-3 px-5 py-4 text-sm sm:grid-cols-[auto_1fr_auto] sm:items-center">
+              <StatusPill tone={event.tone}>{event.type}</StatusPill>
+              <div className="font-semibold text-slate-800">{event.message}</div>
+              <div className="text-xs font-bold text-slate-400">{event.detail}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
     </div>
   );
 }
 
-function ResearchBacktestPanel({ state, summary, signal, onPatchStrategy, onPatchQuote }) {
+function ResearchBacktestPanel({ state, summary, signal, onPatchStrategy, onPatchQuote, onApplyTemplate }) {
   const [editorMode, setEditorMode] = useState('code');
-  const templateRows = [
-    { name: '纳指 ETF 溢价差', type: '套利', status: '当前模板' },
-    { name: '双均线趋势', type: '趋势', status: '模板' },
-    { name: '网格交易', type: '震荡', status: '模板' }
-  ];
 
   return (
     <div className="space-y-4">
@@ -664,12 +824,12 @@ function ResearchBacktestPanel({ state, summary, signal, onPatchStrategy, onPatc
         <SectionHeader
           eyebrow="RESEARCH"
           title="策略开发工具"
-          description="支持代码模式、可视化规则和模板复用；当前策略为纳指 ETF 溢价差切换。"
+          description="支持代码预览、可视化规则和模板复用；当前执行逻辑以参数化溢价差切换为准。"
           action={
             <div className="inline-flex rounded-2xl bg-slate-100 p-1">
               {[
-                { key: 'code', label: '代码模式', Icon: FileText },
-                { key: 'visual', label: '可视化模式', Icon: SlidersHorizontal }
+                { key: 'code', label: '代码预览', Icon: FileText },
+                { key: 'visual', label: '可视化规则', Icon: SlidersHorizontal }
               ].map(({ key, label, Icon }) => (
                 <button
                   key={key}
@@ -687,7 +847,7 @@ function ResearchBacktestPanel({ state, summary, signal, onPatchStrategy, onPatc
         <div className="grid gap-3 lg:grid-cols-[1fr_0.85fr]">
           <div className="rounded-2xl border border-slate-200 bg-slate-950 p-4 text-sm text-slate-100">
             <div className="flex items-center justify-between text-xs font-bold text-slate-400">
-              <span>{editorMode === 'code' ? 'Python 策略编辑器' : '可视化规则预览'}</span>
+              <span>{editorMode === 'code' ? 'Python 策略预览' : '可视化规则预览'}</span>
               <StatusPill tone={signal.action === 'switch' ? 'emerald' : 'slate'}>{signal.action === 'switch' ? '触发' : '观察'}</StatusPill>
             </div>
             <pre className="mt-4 overflow-x-auto whitespace-pre-wrap font-mono leading-6">{editorMode === 'code'
@@ -696,15 +856,24 @@ function ResearchBacktestPanel({ state, summary, signal, onPatchStrategy, onPatc
             </pre>
           </div>
           <div className="space-y-2">
-            {templateRows.map((template) => (
+            {STRATEGY_TEMPLATES.map((template) => {
+              const active = state.strategy.name === template.name;
+              return (
               <div key={template.name} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div>
                   <div className="text-sm font-bold text-slate-900">{template.name}</div>
-                  <div className="mt-1 text-xs text-slate-400">{template.type}</div>
+                  <div className="mt-1 text-xs text-slate-400">{template.type} · 触发 {formatPct(template.patch.triggerSpreadPct)}</div>
                 </div>
-                <StatusPill tone={template.status === '当前模板' ? 'indigo' : 'slate'}>{template.status}</StatusPill>
+                {active ? (
+                  <StatusPill tone="indigo">当前模板</StatusPill>
+                ) : (
+                  <button type="button" className={subtleButtonClass} onClick={() => onApplyTemplate(template.patch)}>
+                    应用
+                  </button>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </Card>
@@ -722,6 +891,7 @@ function ResearchBacktestPanel({ state, summary, signal, onPatchStrategy, onPatc
 }
 
 function TradingExecutionPanel({ state, summary, plan, onExecute }) {
+  const brokerStatus = getBrokerStatus(state.settings);
   return (
     <div className="space-y-4">
       <Card className="space-y-5 p-5 sm:p-6">
@@ -730,11 +900,12 @@ function TradingExecutionPanel({ state, summary, plan, onExecute }) {
           title="策略部署"
           description="回测通过后可部署到模拟盘；实盘券商接口保持隔离，当前不会发送真实订单。"
         />
-        <div className="grid gap-3 lg:grid-cols-4">
+        <div className="grid gap-3 lg:grid-cols-5">
           <InfoRow label="运行环境" value="模拟盘" note="独立模拟账户" tone="emerald" />
           <InfoRow label="运行周期" value={state.realtime.enabled ? `${state.realtime.refreshIntervalSec}s` : '手动'} note="分钟级轮询" />
           <InfoRow label="交易时段" value={state.realtime.onlyTradingSession ? 'A 股时段' : '全天'} note="可在设置中调整" />
-          <InfoRow label="券商接口" value="未绑定" note="PTrade / QMT 预留" />
+          <InfoRow label="券商接口" value={optionLabel(BROKER_OPTIONS, state.settings.broker)} note={brokerStatus.note} tone={brokerStatus.tone} />
+          <InfoRow label="执行保护" value={state.settings.paperTradeOnly ? '仅模拟' : '参数登记'} note={state.settings.paperTradeOnly ? '不会发出实盘订单' : '外部接口参数已允许登记'} tone={state.settings.paperTradeOnly ? 'emerald' : 'amber'} />
         </div>
       </Card>
       <TradePlanCard plan={plan} onExecute={onExecute} />
@@ -769,7 +940,7 @@ function TradingExecutionPanel({ state, summary, plan, onExecute }) {
   );
 }
 
-function RiskMonitoringPanel({ state, summary, signal, plan, backtestResult, isTradingSessionNow, onPatchStrategy, onPatchRealtime }) {
+function RiskMonitoringPanel({ state, summary, signal, plan, backtestResult, isTradingSessionNow, onPatchStrategy, onPatchRealtime, onPatchSettings }) {
   const positionRatio = summary.equity > 0 ? (summary.marketValue / summary.equity) * 100 : 0;
   const maxPositionRatio = summary.equity > 0
     ? Math.max(0, ...summary.positions.map((position) => (position.marketValue / summary.equity) * 100))
@@ -808,9 +979,9 @@ function RiskMonitoringPanel({ state, summary, signal, plan, backtestResult, isT
           <div className="grid gap-3 sm:grid-cols-2">
             <ToggleField
               label="触发后仅模拟成交"
-              description="保持实盘券商隔离，不发送真实订单。"
-              checked
-              onChange={() => {}}
+              description={state.settings.paperTradeOnly ? '保持实盘券商隔离，不发送真实订单。' : '允许登记外部接口参数，但当前撮合仍写入模拟账户。'}
+              checked={state.settings.paperTradeOnly}
+              onChange={(checked) => onPatchSettings('paperTradeOnly', checked)}
             />
             <ToggleField
               label="仅 A 股交易时段执行"
@@ -883,32 +1054,43 @@ function AccountPerformancePanel({ state, summary, backtestResult, onPatchAccoun
   );
 }
 
-function SystemSettingsPanel({ state, onPatchRealtime }) {
+function SystemSettingsPanel({ state, onPatchRealtime, onPatchSettings }) {
+  const settings = state.settings;
+  const brokerStatus = getBrokerStatus(settings);
   return (
     <div className="space-y-4">
       <Card className="space-y-5 p-5 sm:p-6">
         <SectionHeader eyebrow="SETTINGS" title="个人中心" description="管理员可见的量化系统配置入口。" />
-        <div className="grid gap-3 lg:grid-cols-3">
+        <div className="grid gap-3 lg:grid-cols-4">
           <InfoRow label="账户权限" value="管理员" note="量化菜单仅管理员可见" tone="emerald" />
-          <InfoRow label="资金密码" value="未配置" note="实盘接入前设置" />
-          <InfoRow label="API 密钥" value="未绑定" note="券商接口预留" />
+          <InfoRow label="行情源" value={optionLabel(DATA_SOURCE_OPTIONS, settings.dataSource)} note={state.realtime.lastStatus || 'idle'} />
+          <InfoRow label="券商接口" value={brokerStatus.value} note={brokerStatus.note} tone={brokerStatus.tone} />
+          <InfoRow label="API 标识" value={maskSecret(settings.brokerApiKey)} note={settings.brokerAccount || '未配置账号'} />
         </div>
       </Card>
 
       <Card className="space-y-5 p-5 sm:p-6">
-        <SectionHeader eyebrow="DATA SOURCE" title="系统配置" description="行情源、券商接口和运行参数集中配置。" />
+        <SectionHeader eyebrow="DATA SOURCE" title="系统配置" description="行情源、券商参数和运行参数集中配置。" />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="行情数据源">
-            <SelectField value="xueqiu" onChange={() => {}} options={[{ label: '雪球 quote + pankou', value: 'xueqiu' }]} />
+            <SelectField value={settings.dataSource} onChange={(event) => onPatchSettings('dataSource', event.target.value)} options={DATA_SOURCE_OPTIONS} />
           </Field>
           <Field label="券商接口">
-            <SelectField value="paper" onChange={() => {}} options={[{ label: '模拟盘', value: 'paper' }, { label: 'PTrade 待绑定', value: 'ptrade' }, { label: 'QMT 待绑定', value: 'qmt' }]} />
+            <SelectField value={settings.broker} onChange={(event) => onPatchSettings('broker', event.target.value)} options={BROKER_OPTIONS} />
           </Field>
           <Field label="刷新间隔" rightLabel="秒">
             <NumberInput value={state.realtime.refreshIntervalSec} min="5" max="60" step="1" onChange={(event) => onPatchRealtime('refreshIntervalSec', toInputNumber(event.target.value))} />
           </Field>
-          <Field label="页面主题">
-            <SelectField value="light" onChange={() => {}} options={[{ label: '浅色', value: 'light' }, { label: '深色预留', value: 'dark' }]} />
+          <Field label="页面密度">
+            <SelectField value={settings.viewDensity} onChange={(event) => onPatchSettings('viewDensity', event.target.value)} options={VIEW_DENSITY_OPTIONS} />
+          </Field>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="券商账号">
+            <TextInput value={settings.brokerAccount} placeholder="例如 PAPER-001 / PTrade 资金账号" onChange={(event) => onPatchSettings('brokerAccount', event.target.value)} />
+          </Field>
+          <Field label="API 标识">
+            <TextInput type="password" value={settings.brokerApiKey} placeholder="本地保存的接口标识，不会发起实盘下单" onChange={(event) => onPatchSettings('brokerApiKey', event.target.value)} />
           </Field>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -920,7 +1102,7 @@ function SystemSettingsPanel({ state, onPatchRealtime }) {
           />
           <ToggleField
             label="达到条件自动撮合"
-            description="只写入模拟账户成交。"
+            description={settings.paperTradeOnly ? '只写入模拟账户成交。' : '当前仍写入模拟账户，同时保留外部接口参数。'}
             checked={state.realtime.autoExecute}
             onChange={(checked) => onPatchRealtime('autoExecute', checked)}
           />
@@ -929,6 +1111,12 @@ function SystemSettingsPanel({ state, onPatchRealtime }) {
             description="按 A 股开收盘时段控制。"
             checked={state.realtime.onlyTradingSession}
             onChange={(checked) => onPatchRealtime('onlyTradingSession', checked)}
+          />
+          <ToggleField
+            label="触发后仅模拟成交"
+            description="控制策略触发后的执行保护状态。"
+            checked={settings.paperTradeOnly}
+            onChange={(checked) => onPatchSettings('paperTradeOnly', checked)}
           />
         </div>
       </Card>
@@ -1350,6 +1538,7 @@ export function QuantTradingExperience({ embedded = false, activeModule: control
   const realtimeOnlyTradingSession = normalized.realtime.onlyTradingSession;
   const activeModule = controlledModule || internalActiveModule;
   const moduleMeta = MODULE_HEADER_META[activeModule] || MODULE_HEADER_META.dashboard;
+  const compactView = normalized.settings.viewDensity === 'compact';
 
   const selectModule = useCallback((nextModule) => {
     const normalizedModule = MODULE_TABS.some((tab) => tab.key === nextModule) ? nextModule : 'dashboard';
@@ -1403,6 +1592,16 @@ export function QuantTradingExperience({ embedded = false, activeModule: control
     }));
   }
 
+  function patchStrategyValues(values = {}) {
+    patchState((current) => ({
+      ...current,
+      strategy: {
+        ...current.strategy,
+        ...values
+      }
+    }));
+  }
+
   function patchQuote(symbol, key, value) {
     patchState((current) => ({
       ...current,
@@ -1422,6 +1621,16 @@ export function QuantTradingExperience({ embedded = false, activeModule: control
       ...current,
       realtime: {
         ...current.realtime,
+        [key]: value
+      }
+    }));
+  }
+
+  function patchSettings(key, value) {
+    patchState((current) => ({
+      ...current,
+      settings: {
+        ...current.settings,
         [key]: value
       }
     }));
@@ -1487,6 +1696,26 @@ export function QuantTradingExperience({ embedded = false, activeModule: control
       });
       stateRef.current = nextState;
       setState(nextState);
+      return;
+    }
+
+    if (current.settings?.dataSource === 'manual') {
+      const nextState = markRealtimeStatus(current, {
+        lastStatus: 'manual',
+        lastRefreshAt: startedAt.toISOString(),
+        lastQuoteAt: startedAt.toISOString(),
+        lastError: ''
+      });
+      stateRef.current = nextState;
+      setState(nextState);
+      if (source !== 'auto') {
+        showToast({
+          title: '已记录手动盘口',
+          description: '当前行情来自页面输入，不会请求雪球实时接口。',
+          tone: 'indigo'
+        });
+      }
+      trackFeatureEvent('quant_trading', 'manual_quote_refresh', { source, tradingSession });
       return;
     }
 
@@ -1595,7 +1824,7 @@ export function QuantTradingExperience({ embedded = false, activeModule: control
   }, [executeTrade]);
 
   return (
-    <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>
+    <div className={cx('mx-auto max-w-7xl', compactView ? 'space-y-3' : 'space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>
       <ModulePageHeader
         meta={moduleMeta}
         busy={realtimeBusy}
@@ -1623,7 +1852,9 @@ export function QuantTradingExperience({ embedded = false, activeModule: control
       ) : activeModule === 'marketData' ? (
         <MarketDataPanel
           state={normalized}
+          summary={summary}
           signal={signal}
+          plan={plan}
           busy={realtimeBusy}
           isTradingSessionNow={isTradingSessionNow}
           onPatchQuote={patchQuote}
@@ -1637,6 +1868,7 @@ export function QuantTradingExperience({ embedded = false, activeModule: control
           signal={signal}
           onPatchStrategy={patchStrategy}
           onPatchQuote={patchQuote}
+          onApplyTemplate={patchStrategyValues}
         />
       ) : activeModule === 'trading' ? (
         <TradingExecutionPanel state={normalized} summary={summary} plan={plan} onExecute={() => executeTrade('trade_panel')} />
@@ -1650,6 +1882,7 @@ export function QuantTradingExperience({ embedded = false, activeModule: control
           isTradingSessionNow={isTradingSessionNow}
           onPatchStrategy={patchStrategy}
           onPatchRealtime={patchRealtime}
+          onPatchSettings={patchSettings}
         />
       ) : activeModule === 'performance' ? (
         <AccountPerformancePanel
@@ -1661,7 +1894,7 @@ export function QuantTradingExperience({ embedded = false, activeModule: control
           backtestResult={dashboardBacktestResult}
         />
       ) : (
-        <SystemSettingsPanel state={normalized} onPatchRealtime={patchRealtime} />
+        <SystemSettingsPanel state={normalized} onPatchRealtime={patchRealtime} onPatchSettings={patchSettings} />
       )}
     </div>
   );

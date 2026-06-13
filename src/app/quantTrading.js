@@ -68,6 +68,14 @@ export const DEFAULT_QUANT_STATE = {
     lastStatus: 'idle',
     lastError: ''
   },
+  settings: {
+    dataSource: 'xueqiu',
+    broker: 'paper',
+    brokerAccount: 'PAPER-001',
+    brokerApiKey: '',
+    viewDensity: 'standard',
+    paperTradeOnly: true
+  },
   orders: []
 };
 
@@ -203,11 +211,27 @@ function normalizeRealtime(realtime = {}) {
   };
 }
 
+function normalizeSettings(settings = {}) {
+  const fallback = DEFAULT_QUANT_STATE.settings;
+  const dataSource = ['xueqiu', 'manual'].includes(settings.dataSource) ? settings.dataSource : fallback.dataSource;
+  const broker = ['paper', 'ptrade', 'qmt'].includes(settings.broker) ? settings.broker : fallback.broker;
+  const viewDensity = ['standard', 'compact'].includes(settings.viewDensity) ? settings.viewDensity : fallback.viewDensity;
+  return {
+    dataSource,
+    broker,
+    brokerAccount: String(settings.brokerAccount || fallback.brokerAccount).trim().slice(0, 64),
+    brokerApiKey: String(settings.brokerApiKey || '').trim().slice(0, 160),
+    viewDensity,
+    paperTradeOnly: settings.paperTradeOnly !== false
+  };
+}
+
 export function normalizeQuantState(input = {}) {
   const account = normalizeAccount(input.account);
   const strategy = normalizeStrategy(input.strategy);
   const quotes = normalizeQuotes(input.quotes);
   const realtime = normalizeRealtime(input.realtime);
+  const settings = normalizeSettings(input.settings);
   for (const symbol of [strategy.sellSymbol, strategy.buySymbol]) {
     if (!quotes[symbol]) {
       quotes[symbol] = normalizeQuote({ symbol }, {});
@@ -239,7 +263,7 @@ export function normalizeQuantState(input = {}) {
         reason: String(order.reason || '')
       }))
     : [];
-  return { account, strategy, quotes, realtime, orders };
+  return { account, strategy, quotes, realtime, settings, orders };
 }
 
 export function readQuantProjectState() {

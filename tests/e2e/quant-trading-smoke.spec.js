@@ -30,11 +30,14 @@ test('quant trading workspace renders modules and executes a simulated trade', a
   await expect(page.getByRole('heading', { name: '行情与数据工作台' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '纳指 ETF 量化研究系统' })).toHaveCount(0);
   await expect(page.getByText('雪球实时执行')).toBeVisible();
-  await expect(page.getByText('全市场标的行情')).toBeVisible();
+  await expect(page.getByText('策略标的行情')).toBeVisible();
+  await expect(page.getByText('事件与信号日志')).toBeVisible();
 
   await page.locator('nav a', { hasText: '策略研究' }).click();
   await expect(page.getByRole('heading', { name: '策略研究与回测' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '策略开发工具' })).toBeVisible();
+  await page.locator('div', { hasText: /^网格交易/ }).getByRole('button', { name: '应用' }).click();
+  await expect(page.getByLabel('策略名称')).toHaveValue('网格交易');
   await expect(page.getByText('盘口与 IOPV')).toBeVisible();
   await expect(page.getByRole('heading', { name: '复盘', exact: true })).toBeVisible();
 
@@ -59,6 +62,16 @@ test('quant trading workspace renders modules and executes a simulated trade', a
   await page.locator('nav a', { hasText: '系统设置' }).click();
   await expect(page.getByRole('heading', { name: '量化系统设置' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '系统配置' })).toBeVisible();
+  await page.getByLabel('行情数据源').selectOption('manual');
+  await page.getByLabel('券商接口').selectOption('ptrade');
+  await page.getByLabel('券商账号').fill('PT-90001');
+  await page.getByLabel('API 标识').fill('abc123xyz');
+  await page.getByLabel('页面密度').selectOption('compact');
+  await expect(page.getByText('参数已保存')).toBeVisible();
+  await expect(page.getByText('abc***xyz')).toBeVisible();
+  await page.locator('nav a', { hasText: '行情与数据' }).click();
+  await page.getByRole('button', { name: '刷新行情' }).first().click();
+  await expect(page.getByText('已记录手动盘口', { exact: true })).toBeVisible();
 });
 
 test('quant trading menu is hidden for non-admin users', async ({ page }) => {
