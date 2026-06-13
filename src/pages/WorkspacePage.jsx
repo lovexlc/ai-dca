@@ -511,6 +511,13 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     <>
       <BrandPreviewBar
         currentPageLabel={currentPageLabel}
+        rightSlot={
+          <ScenarioSwitcher
+            currentScenario={currentScenario}
+            isAdmin={isAdminUser}
+            onSwitch={handleScenarioSwitch}
+          />
+        }
         onOpenNav={() => window.dispatchEvent(new CustomEvent('console:open-mobile-nav'))}
         onJoinGroup={() => setShowQrModal(true)}
         onShowDisclaimer={() => setShowDisclaimer(true)}
@@ -521,13 +528,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         activeKey={activeTab}
         onSelectNav={handleSelectTab}
         showMobileBar={false}
-        topbarRight={
-          <ScenarioSwitcher
-            currentScenario={currentScenario}
-            isAdmin={isAdminUser}
-            onSwitch={handleScenarioSwitch}
-          />
-        }
       >
         {demoMeta ? (
           <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">

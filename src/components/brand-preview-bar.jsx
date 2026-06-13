@@ -61,7 +61,8 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
             免责
           </button>
         ) : null}
-        {rightSlot || <AccountMenu />}
+        {rightSlot}
+        <AccountMenu />
       </div>
     </div>
   );

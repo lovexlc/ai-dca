@@ -27,11 +27,11 @@ export function ScenarioSwitcher({ currentScenario, isAdmin, onSwitch }) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100"
+          className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm"
           aria-label="切换使用场景"
         >
           <IconComponent className="w-4 h-4" />
-          <span className="hidden sm:inline">{currentScenario.label}</span>
+          <span className="inline max-w-[4.5rem] truncate sm:max-w-none">{currentScenario.label}</span>
           <ChevronDown className="w-4 h-4 opacity-60" />
         </button>
       </DropdownMenuTrigger>
