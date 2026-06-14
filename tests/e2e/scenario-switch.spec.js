@@ -45,6 +45,7 @@ test.describe('scenario switcher', () => {
 
     await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('量化研究');
     await expect(page.locator('nav a', { hasText: '量化研究' })).toBeVisible();
+    await expect(page.locator('nav a', { hasText: '数据' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Python 溢价差执行器' })).toBeVisible();
     await expect(page.locator('nav a', { hasText: '综合仪表盘' })).toHaveCount(0);
     await expect(page.locator('nav a', { hasText: '行情与数据' })).toHaveCount(0);
@@ -61,6 +62,7 @@ test.describe('scenario switcher', () => {
     await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('持仓交易');
     await expect(page.locator('nav a', { hasText: '持仓总览' })).toBeVisible();
     await expect(page.locator('nav a', { hasText: '交易计划' })).toBeVisible();
+    await expect(page.locator('nav a', { hasText: '数据' })).toBeVisible();
     await expect(page.locator('nav a', { hasText: '量化研究' })).toHaveCount(0);
   });
 });
@@ -77,5 +79,6 @@ test.describe('scenario permissions', () => {
     await expect(page.getByRole('menuitemcheckbox', { name: /持仓交易/ })).toBeVisible();
     await expect(page.getByRole('menuitemcheckbox', { name: /量化研究/ })).toHaveCount(0);
     await expect(page.locator('nav a', { hasText: '量化研究' })).toHaveCount(0);
+    await expect(page.locator('nav a', { hasText: '数据' })).toHaveCount(0);
   });
 });

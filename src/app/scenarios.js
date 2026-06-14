@@ -10,7 +10,7 @@ export const SCENARIOS = {
     icon: 'TrendingUp',
     description: '持仓、交易计划与行情',
     defaultHome: 'holdings',
-    visibleTabs: ['holdings', 'tradePlans', 'strategy', 'fundSwitch', 'markets', 'premium', 'notify'],
+    visibleTabs: ['holdings', 'tradePlans', 'strategy', 'fundSwitch', 'markets', 'premium', 'notify', 'adminData'],
     requireAdmin: false
   },
   quant: {
@@ -19,7 +19,7 @@ export const SCENARIOS = {
     icon: 'Bot',
     description: 'Python 溢价差执行器',
     defaultHome: 'quant',
-    visibleTabs: ['quant'],
+    visibleTabs: ['quant', 'adminData'],
     requireAdmin: true
   }
 };
