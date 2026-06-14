@@ -122,6 +122,138 @@ function BacktestMetric({ label, value, note, tone = 'slate' }) {
   );
 }
 
+function formatKlineTick(value) {
+  const sec = Number(value);
+  if (!Number.isFinite(sec) || sec <= 0) return '--';
+  return formatDateTime(new Date(sec * 1000).toISOString());
+}
+
+function QuantBacktestKlineChart({ chart, quality }) {
+  const candles = (Array.isArray(chart?.candles) ? chart.candles : [])
+    .map((item) => ({
+      t: Number(item?.t),
+      o: Number(item?.o),
+      h: Number(item?.h),
+      l: Number(item?.l),
+      c: Number(item?.c)
+    }))
+    .filter((item) => Number.isFinite(item.t) && [item.o, item.h, item.l, item.c].every((value) => Number.isFinite(value) && value > 0));
+  const markers = (Array.isArray(chart?.markers) ? chart.markers : [])
+    .map((item) => ({
+      ts: Number(item?.ts),
+      side: String(item?.side || 'signal'),
+      price: Number(item?.price),
+      label: String(item?.label || ''),
+      gapPct: Number(item?.gapPct)
+    }))
+    .filter((item) => Number.isFinite(item.ts) && Number.isFinite(item.price) && item.price > 0);
+  const width = 760;
+  const height = 286;
+  const margin = { top: 18, right: 58, bottom: 34, left: 14 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+
+  if (candles.length < 2) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="flex h-64 items-center justify-center text-sm text-slate-400">运行回测后显示对应策略 K 线和买卖点</div>
+      </div>
+    );
+  }
+
+  const priceValues = candles.flatMap((item) => [item.h, item.l, item.o, item.c]).concat(markers.map((item) => item.price));
+  const rawMin = Math.min(...priceValues);
+  const rawMax = Math.max(...priceValues);
+  const padding = Math.max(0.0001, (rawMax - rawMin) * 0.12);
+  const minPrice = rawMin - padding;
+  const maxPrice = rawMax + padding;
+  const priceRange = Math.max(0.0001, maxPrice - minPrice);
+  const xForIndex = (index) => margin.left + (candles.length === 1 ? plotWidth / 2 : (plotWidth * index) / (candles.length - 1));
+  const yForPrice = (price) => margin.top + ((maxPrice - price) / priceRange) * plotHeight;
+  const bodyWidth = Math.max(2, Math.min(8, (plotWidth / candles.length) * 0.62));
+  const tsToIndex = new Map(candles.map((item, index) => [item.t, index]));
+  const gridTicks = Array.from({ length: 4 }, (_, index) => maxPrice - (priceRange * index) / 3);
+  const xLabelIndexes = Array.from(new Set([0, Math.floor((candles.length - 1) / 2), candles.length - 1]));
+  const chartCode = String(chart?.code || '').trim() || '策略标的';
+  const chartTf = String(chart?.timeframe || '').trim() || '';
+  const qualityTone = quality?.passed ? 'text-emerald-700' : 'text-amber-700';
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="text-xs font-bold text-slate-400">BACKTEST KLINE</div>
+          <div className="mt-1 text-sm font-semibold text-slate-800">{chartCode} · {chartTf || 'K线'} · {formatNumber(candles.length)} 根</div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-slate-500">
+          <span className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-emerald-500" />买点</span>
+          <span className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-rose-500" />卖点</span>
+          <span>{formatNumber(markers.length)} 个标记</span>
+        </div>
+      </div>
+      <div className="h-72 w-full overflow-hidden rounded-lg bg-slate-50">
+        <svg role="img" aria-label="回测 K 线图" data-testid="quant-backtest-kline-chart" viewBox={`0 0 ${width} ${height}`} className="h-full w-full">
+          <rect x="0" y="0" width={width} height={height} fill="#f8fafc" />
+          {gridTicks.map((tick) => {
+            const y = yForPrice(tick);
+            return (
+              <g key={tick}>
+                <line x1={margin.left} x2={width - margin.right} y1={y} y2={y} stroke="#e2e8f0" strokeDasharray="4 4" />
+                <text x={width - margin.right + 8} y={y + 4} fill="#64748b" fontSize="11">{formatPrice(tick)}</text>
+              </g>
+            );
+          })}
+          {xLabelIndexes.map((index) => (
+            <text key={index} x={xForIndex(index)} y={height - 10} textAnchor={index === 0 ? 'start' : index === candles.length - 1 ? 'end' : 'middle'} fill="#64748b" fontSize="11">
+              {formatKlineTick(candles[index]?.t)}
+            </text>
+          ))}
+          {candles.map((item, index) => {
+            const x = xForIndex(index);
+            const openY = yForPrice(item.o);
+            const closeY = yForPrice(item.c);
+            const highY = yForPrice(item.h);
+            const lowY = yForPrice(item.l);
+            const up = item.c >= item.o;
+            const color = up ? '#10b981' : '#f43f5e';
+            const bodyTop = Math.min(openY, closeY);
+            const bodyHeight = Math.max(1, Math.abs(openY - closeY));
+            return (
+              <g key={`${item.t}-${index}`}>
+                <title>{`${formatKlineTick(item.t)} O:${formatPrice(item.o)} H:${formatPrice(item.h)} L:${formatPrice(item.l)} C:${formatPrice(item.c)}`}</title>
+                <line x1={x} x2={x} y1={highY} y2={lowY} stroke={color} strokeWidth="1.4" />
+                <rect x={x - bodyWidth / 2} y={bodyTop} width={bodyWidth} height={bodyHeight} fill={up ? '#d1fae5' : '#ffe4e6'} stroke={color} strokeWidth="1.2" rx="0.8" />
+              </g>
+            );
+          })}
+          {markers.map((item, index) => {
+            const candleIndex = tsToIndex.get(item.ts);
+            if (!Number.isFinite(candleIndex)) return null;
+            const x = xForIndex(candleIndex);
+            const y = yForPrice(item.price);
+            const side = item.side === 'sell' ? 'sell' : item.side === 'buy' ? 'buy' : 'signal';
+            const fill = side === 'sell' ? '#e11d48' : side === 'buy' ? '#059669' : '#d97706';
+            const points = side === 'sell'
+              ? `${x - 6},${y - 10} ${x + 6},${y - 10} ${x},${y}`
+              : side === 'buy'
+                ? `${x - 6},${y + 10} ${x + 6},${y + 10} ${x},${y}`
+                : `${x},${y - 7} ${x + 7},${y} ${x},${y + 7} ${x - 7},${y}`;
+            return (
+              <g key={`${item.ts}-${item.side}-${index}`}>
+                <title>{`${item.label} · ${formatKlineTick(item.ts)} · gap ${formatPercent(item.gapPct, 2)}`}</title>
+                <polygon points={points} fill={fill} stroke="#fff" strokeWidth="1.5" />
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+      {quality?.reason ? (
+        <div className={`mt-3 text-sm font-semibold ${qualityTone}`}>{quality.reason}</div>
+      ) : null}
+    </div>
+  );
+}
+
 
 const inputClass = 'h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100';
 const textAreaClass = 'min-h-24 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100';
@@ -677,19 +809,12 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
             <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
               <span className="font-semibold text-slate-800">回测区间：</span>{backtestRange}
             </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-500">
-              分钟级历史 K 线由 markets Worker 提供。雪球单次最多约 1000 根，5m 是默认平衡；1m 只适合短窗口验证。
-              {backtestQuality?.reason ? (
-                <div className={`mt-2 font-semibold ${backtestQuality.passed ? 'text-emerald-700' : 'text-amber-700'}`}>
-                  {backtestQuality.reason}
-                </div>
-              ) : null}
-              {missingKlineCodes.length ? (
-                <div className="mt-1 text-amber-700">
-                  缺失 K 线代码：{missingKlineCodes.join('、')}。可换更高粒度重试，或先从策略中移除缺数据标的。
-                </div>
-              ) : null}
-            </div>
+            <QuantBacktestKlineChart chart={backtest?.chart} quality={backtestQuality} />
+            {missingKlineCodes.length ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-700">
+                缺失 K 线代码：{missingKlineCodes.join('、')}。可换更高粒度重试，或先从策略中移除缺数据标的。
+              </div>
+            ) : null}
             <div className="flex flex-wrap gap-2">
               <button type="button" className={primaryButtonClass} onClick={() => handleLiveSignalToggle(true)} disabled={saving || !backtestPassed || backtestApproved}>
                 <ShieldCheck className="h-4 w-4" />

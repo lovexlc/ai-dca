@@ -102,6 +102,10 @@ test('quant premium backtest passes when 5m price and nav coverage are sufficien
   assert.equal(result.summary.sampleCount, 16);
   assert.ok(result.summary.signalCount > 0);
   assert.equal(result.timeframe, '5m');
+  assert.equal(result.chart.code, '159513');
+  assert.equal(result.chart.candles.length, 16);
+  assert.ok(result.chart.markers.length > 0);
+  assert.equal(result.chart.markers[0].side, 'sell');
 });
 
 test('quant premium backtest records missing kline codes as quality issues', () => {
@@ -133,4 +137,7 @@ test('quant premium backtest records missing kline codes as quality issues', () 
   assert.deepEqual(result.quality.missingKlineCodes, ['159509']);
   assert.match(result.quality.reason, /159509/);
   assert.equal(result.summary.sampleCount, 0);
+  assert.equal(result.chart.code, '513100');
+  assert.equal(result.chart.candles.length, 16);
+  assert.equal(result.chart.markers.length, 0);
 });

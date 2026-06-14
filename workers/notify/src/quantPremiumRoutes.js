@@ -467,9 +467,15 @@ function normalizeBacktestCandles(input = []) {
       const t = Number(item?.t ?? item?.timestamp);
       const close = Number(item?.c ?? item?.close);
       if (!Number.isFinite(t) || t <= 0 || !Number.isFinite(close) || close <= 0) return null;
+      const open = Number(item?.o ?? item?.open);
+      const high = Number(item?.h ?? item?.high);
+      const low = Number(item?.l ?? item?.low);
       return {
         t,
         date: shanghaiDateFromEpochSec(t),
+        open: Number.isFinite(open) && open > 0 ? open : close,
+        high: Number.isFinite(high) && high > 0 ? high : close,
+        low: Number.isFinite(low) && low > 0 ? low : close,
         close
       };
     })
@@ -597,6 +603,43 @@ export function runQuantPremiumBacktest(strategyInput = {}, { timeframe = '5m', 
     : missingKlineCodes.length
       ? `缺少 ${missingKlineCodes.join('、')} 的 ${tf} 历史 K 线，已按回测失败处理`
       : '样本或 NAV/价格覆盖率不足';
+  const chartCandles = anchorCandles.slice(-240).map((bar) => ({
+    t: bar.t,
+    date: bar.date,
+    o: roundTo(bar.open, 4),
+    h: roundTo(bar.high, 4),
+    l: roundTo(bar.low, 4),
+    c: roundTo(bar.close, 4)
+  }));
+  const chartTs = new Set(chartCandles.map((bar) => bar.t));
+  const chartMarkers = signals
+    .filter((signal) => chartTs.has(signal.ts))
+    .slice(-120)
+    .map((signal) => {
+      const bar = closeByCode[anchorCode]?.get(signal.ts);
+      const isSell = signal.fromCode === anchorCode;
+      const isBuy = signal.toCode === anchorCode;
+      const side = isSell ? 'sell' : isBuy ? 'buy' : 'signal';
+      const markerPrice = side === 'sell'
+        ? Number(bar?.high ?? bar?.close)
+        : side === 'buy'
+          ? Number(bar?.low ?? bar?.close)
+          : Number(bar?.close);
+      return {
+        ts: signal.ts,
+        date: signal.date,
+        side,
+        price: roundTo(Number.isFinite(markerPrice) && markerPrice > 0 ? markerPrice : bar?.close, 4),
+        fromCode: signal.fromCode,
+        toCode: signal.toCode,
+        gapPct: signal.gapPct,
+        label: side === 'sell'
+          ? `卖 ${signal.fromCode} → 买 ${signal.toCode}`
+          : side === 'buy'
+            ? `买 ${signal.toCode}`
+            : `${signal.fromCode} → ${signal.toCode}`
+      };
+    });
   return {
     ok: true,
     status: passed ? 'passed' : 'failed',
@@ -606,6 +649,12 @@ export function runQuantPremiumBacktest(strategyInput = {}, { timeframe = '5m', 
     generatedAt: new Date().toISOString(),
     rows: rows.slice(-500),
     signals: signals.slice(-120),
+    chart: {
+      code: anchorCode,
+      timeframe: tf,
+      candles: chartCandles,
+      markers: chartMarkers
+    },
     summary: {
       sampleCount,
       signalCount: signals.length,

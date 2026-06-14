@@ -28,6 +28,7 @@ test('quant research workspace renders the Worker premium paper trading panel', 
     liveSignalEnabled: false,
     backtestGate: { status: 'none', latestRunId: '', approvedAt: '', approvedFingerprint: '', summary: null }
   }];
+  let latestBacktestResult = null;
   await page.route('**/api/notify/quant/premium/strategies**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname !== '/api/notify/quant/premium/strategies') {
@@ -72,9 +73,38 @@ test('quant research workspace renders the Worker premium paper trading panel', 
         to: '2026-06-12'
       },
       quality: { passed: true, reason: '数据覆盖率满足回测门槛' },
+      chart: {
+        code: '159513',
+        timeframe: '5m',
+        candles: Array.from({ length: 24 }, (_, index) => ({
+          t: Math.floor(Date.UTC(2026, 5, 12, 1, 30) / 1000) + index * 300,
+          o: 1.72 + index * 0.001,
+          h: 1.728 + index * 0.001,
+          l: 1.716 + index * 0.001,
+          c: 1.724 + index * 0.001
+        })),
+        markers: [{
+          ts: Math.floor(Date.UTC(2026, 5, 12, 2, 0) / 1000),
+          side: 'sell',
+          price: 1.734,
+          fromCode: '159513',
+          toCode: '513100',
+          gapPct: 3.4,
+          label: '卖 159513 → 买 513100'
+        }, {
+          ts: Math.floor(Date.UTC(2026, 5, 12, 2, 20) / 1000),
+          side: 'buy',
+          price: 1.721,
+          fromCode: '159513',
+          toCode: '513100',
+          gapPct: 3.1,
+          label: '买 513100'
+        }]
+      },
       rows: [],
       signals: []
     };
+    latestBacktestResult = result;
     strategies = strategies.map((item) => item.id === 'default'
       ? { ...item, backtestGate: { status: 'passed', latestRunId: 'bt-e2e', approvedAt: '', approvedFingerprint: '', summary: result.summary } }
       : item);
@@ -83,7 +113,7 @@ test('quant research workspace renders the Worker premium paper trading panel', 
   await page.route('**/api/notify/quant/premium/strategies/*/backtest/latest**', async (route) => {
     await route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify({ ok: true, result: null, gate: strategies[0].backtestGate })
+      body: JSON.stringify({ ok: true, result: latestBacktestResult, gate: strategies[0].backtestGate })
     });
   });
   await page.route('**/api/notify/quant/premium/strategies/default**', async (route) => {
@@ -211,6 +241,11 @@ test('quant research workspace renders the Worker premium paper trading panel', 
   await expect(page.getByText('-0.35%')).toBeVisible();
   await expect(page.getByText('¥101,200.00')).toBeVisible();
   await expect(page.getByText('2026-05-20 至 2026-06-12')).toBeVisible();
+  await expect(page.getByTestId('quant-backtest-kline-chart')).toBeVisible();
+  await expect(page.getByText('159513 · 5m · 24 根')).toBeVisible();
+  await expect(page.getByText('买点')).toBeVisible();
+  await expect(page.getByText('卖点')).toBeVisible();
+  await expect(page.getByText(/分钟级历史 K 线由 markets Worker 提供/)).toHaveCount(0);
   await expect(page.getByRole('button', { name: '确认用于实盘信号' })).toBeEnabled();
   await page.getByRole('button', { name: '确认用于实盘信号' }).click();
   await expect(page.getByText('实盘信号已确认').first()).toBeVisible();
