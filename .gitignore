@@ -28,3 +28,6 @@ android/app/build/
 android/capacitor-cordova-android-plugins/build/
 .wrangler/
 test-results/
+
+# Quant simulation runtime artifacts (state/signals/orders)
+data/quant/
