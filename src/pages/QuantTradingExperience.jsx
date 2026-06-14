@@ -435,6 +435,8 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
   const visibleBacktestStatus = backtest?.status || backtestGate.status;
   const backtestPassed = visibleBacktestStatus === 'passed';
   const backtestApproved = backtestPassed && Boolean(backtestGate.approvedAt) && config.liveSignalEnabled;
+  const backtestQuality = backtest?.quality || null;
+  const missingKlineCodes = Array.isArray(backtestQuality?.missingKlineCodes) ? backtestQuality.missingKlineCodes : [];
   const metrics = [
     { label: 'Worker 频率', value: '1 分钟', note: '交易时段 cron', Icon: Clock3 },
     { label: '策略数量', value: formatNumber(strategies.length || 1), note: config.enabled ? '当前策略已启用' : '当前策略未启用', Icon: Bot },
@@ -649,6 +651,16 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-500">
               分钟级历史 K 线由 markets Worker 提供。雪球单次最多约 1000 根，5m 是默认平衡；1m 只适合短窗口验证。
+              {backtestQuality?.reason ? (
+                <div className={`mt-2 font-semibold ${backtestQuality.passed ? 'text-emerald-700' : 'text-amber-700'}`}>
+                  {backtestQuality.reason}
+                </div>
+              ) : null}
+              {missingKlineCodes.length ? (
+                <div className="mt-1 text-amber-700">
+                  缺失 K 线代码：{missingKlineCodes.join('、')}。可换更高粒度重试，或先从策略中移除缺数据标的。
+                </div>
+              ) : null}
             </div>
             <div className="flex flex-wrap gap-2">
               <button type="button" className={primaryButtonClass} onClick={() => handleLiveSignalToggle(true)} disabled={saving || !backtestPassed || backtestApproved}>

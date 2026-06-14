@@ -103,3 +103,34 @@ test('quant premium backtest passes when 5m price and nav coverage are sufficien
   assert.ok(result.summary.signalCount > 0);
   assert.equal(result.timeframe, '5m');
 });
+
+test('quant premium backtest records missing kline codes as quality issues', () => {
+  const candles = Array.from({ length: 16 }, (_, index) => ({
+    t: Math.floor(Date.UTC(2026, 5, 12, 1, 30) / 1000) + index * 300,
+    c: 1.5 + index * 0.001
+  }));
+  const result = runQuantPremiumBacktest({
+    id: 's-missing',
+    enabled: true,
+    highCodes: ['159509'],
+    lowCodes: ['513100']
+  }, {
+    timeframe: '5m',
+    historyByCode: {
+      '159509': [],
+      '513100': candles
+    },
+    navHistoryByCode: {
+      '159509': [{ date: '2026-06-12', nav: 1.5 }],
+      '513100': [{ date: '2026-06-12', nav: 1.5 }]
+    },
+    dataIssues: {
+      kline: [{ code: '159509', timeframe: '5m', reason: 'xueqiu kline empty SZ159509' }]
+    }
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.deepEqual(result.quality.missingKlineCodes, ['159509']);
+  assert.match(result.quality.reason, /159509/);
+  assert.equal(result.summary.sampleCount, 0);
+});

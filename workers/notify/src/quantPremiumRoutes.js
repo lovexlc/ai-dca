@@ -504,7 +504,7 @@ function buildBacktestRunId() {
   return `bt-${Date.now().toString(36)}`;
 }
 
-export function runQuantPremiumBacktest(strategyInput = {}, { timeframe = '5m', historyByCode = {}, navHistoryByCode = {}, initialEquity = 100000, orderCash = 16000 } = {}) {
+export function runQuantPremiumBacktest(strategyInput = {}, { timeframe = '5m', historyByCode = {}, navHistoryByCode = {}, dataIssues = {}, initialEquity = 100000, orderCash = 16000 } = {}) {
   const strategy = normalizeQuantPremiumStrategy(strategyInput);
   const tf = normalizeBacktestTimeframe(timeframe);
   const highCodes = strategy.highCodes;
@@ -590,6 +590,13 @@ export function runQuantPremiumBacktest(strategyInput = {}, { timeframe = '5m', 
   const dataCoveragePct = anchorCandles.length ? roundTo((sampleCount / anchorCandles.length) * 100, 2) : 0;
   const totalProfit = roundTo(equity - Math.max(1, Number(initialEquity) || 100000), 2);
   const passed = sampleCount >= 10 && priceCoveragePct >= 60 && navCoveragePct >= 60;
+  const klineIssues = Array.isArray(dataIssues?.kline) ? dataIssues.kline : [];
+  const missingKlineCodes = klineIssues.map((item) => String(item?.code || '').trim()).filter(Boolean);
+  const qualityReason = passed
+    ? '数据覆盖率满足回测门槛'
+    : missingKlineCodes.length
+      ? `缺少 ${missingKlineCodes.join('、')} 的 ${tf} 历史 K 线，已按回测失败处理`
+      : '样本或 NAV/价格覆盖率不足';
   return {
     ok: true,
     status: passed ? 'passed' : 'failed',
@@ -614,22 +621,43 @@ export function runQuantPremiumBacktest(strategyInput = {}, { timeframe = '5m', 
     },
     quality: {
       passed,
-      reason: passed ? '数据覆盖率满足回测门槛' : '样本或 NAV/价格覆盖率不足',
+      reason: qualityReason,
       anchorCode,
       anchorBars: anchorCandles.length,
+      missingKlineCodes,
+      klineIssues,
       supportedTimeframes: Array.from(SUPPORTED_BACKTEST_TF)
     }
   };
 }
 
-async function fetchQuantBacktestKline(env, code, timeframe) {
+async function fetchMarketsJsonForQuantBacktest(env, path) {
   const baseUrl = stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || 'https://tools.freebacktrack.tech');
-  const url = `${baseUrl}/api/markets/kline/${encodeURIComponent(code)}?tf=${encodeURIComponent(timeframe)}`;
-  const response = await fetch(url, { headers: { accept: 'application/json' } });
-  if (!response.ok) {
-    throw new Error(`${code} 历史 K 线请求失败：HTTP ${response.status}`);
+  const publicUrl = `${baseUrl}/api/markets${path}`;
+  const request = new Request(`https://tools.freebacktrack.tech/api/markets${path}`, {
+    headers: { accept: 'application/json' }
+  });
+  const response = env?.MARKETS && typeof env.MARKETS.fetch === 'function'
+    ? await env.MARKETS.fetch(request)
+    : await fetch(publicUrl, { headers: { accept: 'application/json' } });
+  const text = await response.text();
+  let payload = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = { error: text.slice(0, 200) };
+    }
   }
-  const payload = await response.json();
+  if (!response.ok) {
+    const message = payload?.error || payload?.message || `HTTP ${response.status}`;
+    throw new Error(message);
+  }
+  return payload || {};
+}
+
+async function fetchQuantBacktestKline(env, code, timeframe) {
+  const payload = await fetchMarketsJsonForQuantBacktest(env, `/kline/${encodeURIComponent(code)}?tf=${encodeURIComponent(timeframe)}`);
   return Array.isArray(payload?.candles) ? payload.candles : [];
 }
 
@@ -644,8 +672,22 @@ async function runQuantPremiumBacktestWithLiveData(env, strategy, options = {}) 
   const timeframe = normalizeBacktestTimeframe(options.timeframe || '5m');
   const codes = collectQuantPremiumCodes(strategy);
   const historyByCode = {};
+  const klineIssues = [];
   for (const code of codes) {
-    historyByCode[code] = await fetchQuantBacktestKline(env, code, timeframe);
+    try {
+      const candles = await fetchQuantBacktestKline(env, code, timeframe);
+      historyByCode[code] = candles;
+      if (!candles.length) {
+        klineIssues.push({ code, timeframe, reason: 'no candles returned' });
+      }
+    } catch (error) {
+      historyByCode[code] = [];
+      klineIssues.push({
+        code,
+        timeframe,
+        reason: error instanceof Error ? error.message : String(error || 'K 线请求失败')
+      });
+    }
   }
   const dates = Object.values(historyByCode)
     .flat()
@@ -670,6 +712,7 @@ async function runQuantPremiumBacktestWithLiveData(env, strategy, options = {}) 
     timeframe,
     historyByCode,
     navHistoryByCode,
+    dataIssues: { kline: klineIssues },
     initialEquity: options.initialEquity,
     orderCash: options.orderCash
   });
