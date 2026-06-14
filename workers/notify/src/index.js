@@ -37,10 +37,16 @@ import {
 import {
   handleQuantPremiumConfigGet,
   handleQuantPremiumConfigPost,
+  handleQuantPremiumBacktestLatestGet,
+  handleQuantPremiumBacktestPost,
   handleQuantPremiumPaperGet,
   handleQuantPremiumPaperPost,
   handleQuantPremiumRunPost,
   handleQuantPremiumSnapshotGet,
+  handleQuantPremiumStrategiesGet,
+  handleQuantPremiumStrategiesPost,
+  handleQuantPremiumStrategyDelete,
+  handleQuantPremiumStrategyPost,
   runQuantPremiumTick
 } from './quantPremiumRoutes.js';
 import {
@@ -319,6 +325,38 @@ export default {
 
       if (request.method === 'POST' && url.pathname === '/api/notify/quant/premium/config') {
         return await handleQuantPremiumConfigPost(request, env);
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/notify/quant/premium/strategies') {
+        return await handleQuantPremiumStrategiesGet(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/quant/premium/strategies') {
+        return await handleQuantPremiumStrategiesPost(request, env);
+      }
+
+      {
+        const match = url.pathname.match(/^\/api\/notify\/quant\/premium\/strategies\/([^/]+)$/);
+        if (match && request.method === 'POST') {
+          return await handleQuantPremiumStrategyPost(request, env, decodeURIComponent(match[1]));
+        }
+        if (match && request.method === 'DELETE') {
+          return await handleQuantPremiumStrategyDelete(request, env, decodeURIComponent(match[1]));
+        }
+      }
+
+      {
+        const match = url.pathname.match(/^\/api\/notify\/quant\/premium\/strategies\/([^/]+)\/backtest$/);
+        if (match && request.method === 'POST') {
+          return await handleQuantPremiumBacktestPost(request, env, decodeURIComponent(match[1]));
+        }
+      }
+
+      {
+        const match = url.pathname.match(/^\/api\/notify\/quant\/premium\/strategies\/([^/]+)\/backtest\/latest$/);
+        if (match && request.method === 'GET') {
+          return await handleQuantPremiumBacktestLatestGet(request, env, decodeURIComponent(match[1]));
+        }
       }
 
       if (request.method === 'GET' && url.pathname === '/api/notify/quant/premium/snapshot') {

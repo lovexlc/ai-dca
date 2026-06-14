@@ -39,8 +39,12 @@ const FUND_CODE_PATTERN = /^\d{6}$/;
 const MAX_ORDERS = 120;
 const MAX_CASH_EVENTS = 80;
 
-export function quantPremiumPaperStateKey(clientId) {
-  return `${QUANT_PREMIUM_PAPER_STATE_PREFIX}${String(clientId || '').trim()}`;
+export function quantPremiumPaperStateKey(clientId, strategyId = 'default') {
+  const client = String(clientId || '').trim();
+  const strategy = String(strategyId || 'default').trim() || 'default';
+  return strategy === 'default'
+    ? `${QUANT_PREMIUM_PAPER_STATE_PREFIX}${client}`
+    : `${QUANT_PREMIUM_PAPER_STATE_PREFIX}${client}:${strategy}`;
 }
 
 function clampNumber(value, fallback = 0) {

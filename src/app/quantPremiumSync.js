@@ -6,6 +6,7 @@ const NOTIFY_CLIENT_SECRET_HEADER = 'x-notify-client-secret';
 const FUND_CODE_PATTERN = /^\d{6}$/;
 
 export const DEFAULT_QUANT_PREMIUM_CONFIG = {
+  id: 'default',
   enabled: false,
   name: '纳指 ETF 溢价差',
   highCodes: ['159513'],
@@ -14,6 +15,15 @@ export const DEFAULT_QUANT_PREMIUM_CONFIG = {
   intraSellLowerPct: 1,
   intraBuyOtherPct: 3,
   notifyEnabled: true,
+  paperEnabled: true,
+  liveSignalEnabled: false,
+  backtestGate: {
+    status: 'none',
+    latestRunId: '',
+    approvedAt: '',
+    approvedFingerprint: '',
+    summary: null
+  },
   updatedAt: ''
 };
 
@@ -62,7 +72,18 @@ export function normalizeQuantPremiumConfigShape(input = {}) {
   const highCodes = parseQuantPremiumCodes(source.highCodes ?? DEFAULT_QUANT_PREMIUM_CONFIG.highCodes);
   const lowCodes = parseQuantPremiumCodes(source.lowCodes ?? DEFAULT_QUANT_PREMIUM_CONFIG.lowCodes)
     .filter((code) => !highCodes.includes(code));
+  const backtestGate = source.backtestGate && typeof source.backtestGate === 'object'
+    ? {
+      status: ['none', 'passed', 'failed', 'stale'].includes(source.backtestGate.status) ? source.backtestGate.status : 'none',
+      latestRunId: String(source.backtestGate.latestRunId || ''),
+      approvedAt: String(source.backtestGate.approvedAt || ''),
+      approvedFingerprint: String(source.backtestGate.approvedFingerprint || ''),
+      summary: source.backtestGate.summary && typeof source.backtestGate.summary === 'object' ? source.backtestGate.summary : null,
+      updatedAt: String(source.backtestGate.updatedAt || '')
+    }
+    : { ...DEFAULT_QUANT_PREMIUM_CONFIG.backtestGate };
   return {
+    id: String(source.id || source.strategyId || DEFAULT_QUANT_PREMIUM_CONFIG.id).trim() || DEFAULT_QUANT_PREMIUM_CONFIG.id,
     enabled: Boolean(source.enabled),
     name: String(source.name || DEFAULT_QUANT_PREMIUM_CONFIG.name).trim().slice(0, 60),
     highCodes,
@@ -71,8 +92,18 @@ export function normalizeQuantPremiumConfigShape(input = {}) {
     intraSellLowerPct: pickPercent(source.intraSellLowerPct, DEFAULT_QUANT_PREMIUM_CONFIG.intraSellLowerPct),
     intraBuyOtherPct: pickPercent(source.intraBuyOtherPct, DEFAULT_QUANT_PREMIUM_CONFIG.intraBuyOtherPct),
     notifyEnabled: source.notifyEnabled === undefined ? true : Boolean(source.notifyEnabled),
+    paperEnabled: source.paperEnabled === undefined ? true : Boolean(source.paperEnabled),
+    liveSignalEnabled: Boolean(source.liveSignalEnabled),
+    backtestGate,
+    createdAt: String(source.createdAt || '').trim(),
     updatedAt: String(source.updatedAt || '').trim()
   };
+}
+
+function normalizeStrategyList(input = []) {
+  const list = Array.isArray(input) ? input : [];
+  const normalized = list.map((item) => normalizeQuantPremiumConfigShape(item));
+  return normalized.length ? normalized : [normalizeQuantPremiumConfigShape(DEFAULT_QUANT_PREMIUM_CONFIG)];
 }
 
 function buildQuantUrl(path, query = {}) {
@@ -109,9 +140,51 @@ async function requestQuantPremium(path, { method = 'GET', body = null } = {}) {
   return payload;
 }
 
+function withStrategyQuery(strategyId = '') {
+  const id = String(strategyId || '').trim();
+  return id ? { strategyId: id } : {};
+}
+
 export async function loadQuantPremiumConfigFromWorker() {
   const payload = await requestQuantPremium('/config', { method: 'GET' });
   return normalizeQuantPremiumConfigShape(payload?.config || DEFAULT_QUANT_PREMIUM_CONFIG);
+}
+
+export async function loadQuantPremiumStrategiesFromWorker() {
+  try {
+    const payload = await requestQuantPremium('/strategies', { method: 'GET' });
+    return normalizeStrategyList(payload?.strategies);
+  } catch {
+    return [await loadQuantPremiumConfigFromWorker()];
+  }
+}
+
+export async function saveQuantPremiumStrategyToWorker(strategy) {
+  const clientConfig = readNotifyClientConfig();
+  const next = normalizeQuantPremiumConfigShape(strategy);
+  const approveLiveSignal = strategy?.approveLiveSignal === true;
+  const path = next.id && next.id !== 'default'
+    ? `/strategies/${encodeURIComponent(next.id)}`
+    : '/strategies';
+  const payload = await requestQuantPremium(path, {
+    method: 'POST',
+    body: {
+      strategy: {
+        ...next,
+        approveLiveSignal
+      },
+      clientLabel: clientConfig?.notifyClientLabel || ''
+    }
+  });
+  return {
+    strategy: normalizeQuantPremiumConfigShape(payload?.strategy || next),
+    strategies: normalizeStrategyList(payload?.strategies || [payload?.strategy || next])
+  };
+}
+
+export async function deleteQuantPremiumStrategyInWorker(strategyId) {
+  const payload = await requestQuantPremium(`/strategies/${encodeURIComponent(strategyId)}`, { method: 'DELETE' });
+  return normalizeStrategyList(payload?.strategies);
 }
 
 export async function saveQuantPremiumConfigToWorker(config) {
@@ -135,13 +208,30 @@ export async function loadQuantPremiumSnapshotFromWorker() {
   };
 }
 
-export async function loadQuantPremiumPaperStateFromWorker() {
-  const payload = await requestQuantPremium('/paper', { method: 'GET' });
+export async function loadQuantPremiumStrategySnapshotFromWorker(strategyId = '') {
+  const payload = await requestQuantPremium(`/snapshot${buildQueryString(withStrategyQuery(strategyId))}`, { method: 'GET' });
+  return {
+    snapshot: payload?.snapshot || null,
+    config: normalizeQuantPremiumConfigShape(payload?.config || DEFAULT_QUANT_PREMIUM_CONFIG)
+  };
+}
+
+function buildQueryString(query = {}) {
+  const params = new URLSearchParams();
+  Object.entries(query || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value).trim()) params.set(key, String(value));
+  });
+  const text = params.toString();
+  return text ? `?${text}` : '';
+}
+
+export async function loadQuantPremiumPaperStateFromWorker(strategyId = '') {
+  const payload = await requestQuantPremium(`/paper${buildQueryString(withStrategyQuery(strategyId))}`, { method: 'GET' });
   return payload?.state || null;
 }
 
-export async function adjustQuantPremiumCashInWorker(amount, note = '') {
-  const payload = await requestQuantPremium('/paper', {
+export async function adjustQuantPremiumCashInWorker(amount, note = '', strategyId = '') {
+  const payload = await requestQuantPremium(`/paper${buildQueryString(withStrategyQuery(strategyId))}`, {
     method: 'POST',
     body: {
       adjustment: {
@@ -156,17 +246,33 @@ export async function adjustQuantPremiumCashInWorker(amount, note = '') {
   };
 }
 
-export async function resetQuantPremiumPaperStateInWorker(state = null) {
+export async function resetQuantPremiumPaperStateInWorker(state = null, strategyId = '') {
   const body = state && typeof state === 'object'
     ? { reset: true, state }
     : { reset: true };
-  const payload = await requestQuantPremium('/paper', {
+  const payload = await requestQuantPremium(`/paper${buildQueryString(withStrategyQuery(strategyId))}`, {
     method: 'POST',
     body
   });
   return payload?.state || null;
 }
 
-export async function runQuantPremiumOnce() {
-  return await requestQuantPremium('/run', { method: 'POST' });
+export async function runQuantPremiumOnce(strategyId = '') {
+  return await requestQuantPremium(`/run${buildQueryString(withStrategyQuery(strategyId))}`, { method: 'POST' });
+}
+
+export async function runQuantPremiumBacktestInWorker(strategyId, options = {}) {
+  const payload = await requestQuantPremium(`/strategies/${encodeURIComponent(strategyId)}/backtest`, {
+    method: 'POST',
+    body: options
+  });
+  return payload?.result || null;
+}
+
+export async function loadQuantPremiumBacktestLatestFromWorker(strategyId) {
+  const payload = await requestQuantPremium(`/strategies/${encodeURIComponent(strategyId)}/backtest/latest`, { method: 'GET' });
+  return {
+    result: payload?.result || null,
+    gate: payload?.gate || null
+  };
 }

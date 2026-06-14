@@ -1,18 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, Bot, CheckCircle2, Clock3, Database, ListChecks, Minus, Play, Plus, RefreshCw, RotateCcw, ShieldCheck, SlidersHorizontal, WalletCards } from 'lucide-react';
+import { Activity, BarChart3, Bot, CheckCircle2, Clock3, Database, ListChecks, Minus, Play, Plus, RefreshCw, RotateCcw, ShieldCheck, SlidersHorizontal, Trash2, WalletCards } from 'lucide-react';
 import { Card, cx, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
 import { showToast } from '../app/toast.js';
 import {
   adjustQuantPremiumCashInWorker,
+  deleteQuantPremiumStrategyInWorker,
+  loadQuantPremiumBacktestLatestFromWorker,
   loadQuantPremiumConfigFromWorker,
   loadQuantPremiumPaperStateFromWorker,
   loadQuantPremiumSnapshotFromWorker,
+  loadQuantPremiumStrategiesFromWorker,
+  loadQuantPremiumStrategySnapshotFromWorker,
   normalizeQuantPremiumConfigShape,
   parseQuantPremiumCodes,
   quantPremiumCodesToText,
   resetQuantPremiumPaperStateInWorker,
+  runQuantPremiumBacktestInWorker,
   runQuantPremiumOnce,
-  saveQuantPremiumConfigToWorker
+  saveQuantPremiumConfigToWorker,
+  saveQuantPremiumStrategyToWorker
 } from '../app/quantPremiumSync.js';
 
 function formatMoney(value) {
@@ -126,18 +132,23 @@ function normalizeQuantViewKey(value = '') {
 }
 
 export function QuantTradingExperience({ embedded = false, activeModule = 'strategy', hideModuleTabs = false, onModuleChange } = {}) {
+  const [strategies, setStrategies] = useState([]);
+  const [selectedStrategyId, setSelectedStrategyId] = useState('');
   const [paperState, setPaperState] = useState(null);
   const [snapshot, setSnapshot] = useState(null);
   const [config, setConfig] = useState(() => normalizeQuantPremiumConfigShape());
+  const [backtest, setBacktest] = useState(null);
   const [summary, setSummary] = useState(null);
   const [activeTab, setActiveTab] = useState(() => normalizeQuantViewKey(activeModule));
   const [highText, setHighText] = useState('');
   const [lowText, setLowText] = useState('');
   const [cashAmount, setCashAmount] = useState('10000');
   const [cashNote, setCashNote] = useState('');
+  const [backtestTf, setBacktestTf] = useState('5m');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
+  const [backtesting, setBacktesting] = useState(false);
   const [adjustingCash, setAdjustingCash] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [error, setError] = useState('');
@@ -149,36 +160,55 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
     setLowText(quantPremiumCodesToText(normalized.lowCodes));
   }, []);
 
-  const refresh = useCallback(async ({ silent = false } = {}) => {
+  const refresh = useCallback(async ({ silent = false, strategyId = '' } = {}) => {
     if (!silent) setLoading(true);
     setError('');
-    const [configResult, paperResult, snapshotResult] = await Promise.allSettled([
-      loadQuantPremiumConfigFromWorker(),
-      loadQuantPremiumPaperStateFromWorker(),
-      loadQuantPremiumSnapshotFromWorker()
-    ]);
+    const strategiesResult = await loadQuantPremiumStrategiesFromWorker()
+      .catch(async () => [await loadQuantPremiumConfigFromWorker()]);
+    const nextStrategies = Array.isArray(strategiesResult) && strategiesResult.length
+      ? strategiesResult
+      : [normalizeQuantPremiumConfigShape()];
+    const pickedId = strategyId || selectedStrategyId || nextStrategies[0]?.id || 'default';
+    const picked = nextStrategies.find((item) => item.id === pickedId) || nextStrategies[0];
+    let effectiveConfig = picked;
+    setStrategies(nextStrategies);
+    setSelectedStrategyId(picked.id);
+    applyConfig(effectiveConfig);
 
-    if (configResult.status === 'fulfilled') {
-      applyConfig(configResult.value);
-    }
+    const [paperResult, snapshotResult, backtestResult] = await Promise.allSettled([
+      loadQuantPremiumPaperStateFromWorker(picked.id),
+      loadQuantPremiumStrategySnapshotFromWorker(picked.id).catch(() => loadQuantPremiumSnapshotFromWorker()),
+      loadQuantPremiumBacktestLatestFromWorker(picked.id)
+    ]);
     if (paperResult.status === 'fulfilled') {
       setPaperState(paperResult.value);
     }
     if (snapshotResult.status === 'fulfilled') {
       setSnapshot(snapshotResult.value?.snapshot || null);
-      if (configResult.status !== 'fulfilled' && snapshotResult.value?.config) {
-        applyConfig(snapshotResult.value.config);
+    }
+    if (backtestResult.status === 'fulfilled') {
+      const latestBacktest = backtestResult.value || {};
+      setBacktest(latestBacktest.result || null);
+      if (latestBacktest.gate) {
+        effectiveConfig = normalizeQuantPremiumConfigShape({
+          ...effectiveConfig,
+          backtestGate: latestBacktest.gate
+        });
+        setStrategies((current) => current.map((item) => item.id === effectiveConfig.id
+          ? normalizeQuantPremiumConfigShape({ ...item, backtestGate: latestBacktest.gate })
+          : item));
       }
     }
+    applyConfig(effectiveConfig);
 
-    const failures = [configResult, paperResult, snapshotResult].filter((item) => item.status === 'rejected');
+    const failures = [paperResult, snapshotResult, backtestResult].filter((item) => item.status === 'rejected');
     if (failures.length === 3) {
       setError(failures[0].reason instanceof Error ? failures[0].reason.message : 'Worker 状态暂不可用');
     } else if (failures.length) {
       setError('部分 Worker 状态暂不可用');
     }
     if (!silent) setLoading(false);
-  }, [applyConfig]);
+  }, [applyConfig, selectedStrategyId]);
 
   useEffect(() => {
     refresh();
@@ -201,12 +231,20 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
     setSaving(true);
     setError('');
     try {
-      const stored = await saveQuantPremiumConfigToWorker(nextConfig);
-      applyConfig(stored);
+      const result = await saveQuantPremiumStrategyToWorker(nextConfig);
+      setStrategies(result.strategies);
+      setSelectedStrategyId(result.strategy.id);
+      applyConfig(result.strategy);
       showToast({ title: '量化策略已保存', tone: 'emerald' });
     } catch (saveError) {
+      try {
+        const stored = await saveQuantPremiumConfigToWorker(nextConfig);
+        applyConfig(stored);
+        showToast({ title: '量化策略已保存', tone: 'emerald' });
+      } catch {
       setError(saveError instanceof Error ? saveError.message : '保存失败');
       showToast({ title: '保存失败', description: saveError instanceof Error ? saveError.message : '', tone: 'amber' });
+      }
     } finally {
       setSaving(false);
     }
@@ -216,7 +254,7 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
     setRunning(true);
     setError('');
     try {
-      const result = await runQuantPremiumOnce();
+      const result = await runQuantPremiumOnce(config.id);
       setSummary(result?.summary || null);
       await refresh({ silent: true });
       showToast({ title: '量化 Worker 已完成一轮评估', tone: 'emerald' });
@@ -226,7 +264,7 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
     } finally {
       setRunning(false);
     }
-  }, [refresh]);
+  }, [config.id, refresh]);
 
   useEffect(() => {
     function handleRunEvent() {
@@ -245,7 +283,7 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
     setAdjustingCash(true);
     setError('');
     try {
-      const result = await adjustQuantPremiumCashInWorker(direction === 'out' ? -amount : amount, cashNote);
+      const result = await adjustQuantPremiumCashInWorker(direction === 'out' ? -amount : amount, cashNote, config.id);
       setPaperState(result.state);
       setCashNote('');
       showToast({ title: direction === 'out' ? '模拟现金已减少' : '模拟现金已增加', tone: 'emerald' });
@@ -261,7 +299,7 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
     setResetting(true);
     setError('');
     try {
-      const next = await resetQuantPremiumPaperStateInWorker();
+      const next = await resetQuantPremiumPaperStateInWorker(null, config.id);
       setPaperState(next);
       setSummary(null);
       showToast({ title: '模拟盘已重置', tone: 'emerald' });
@@ -273,16 +311,135 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
     }
   }
 
+  async function handleCreateStrategy() {
+    setSaving(true);
+    setError('');
+    try {
+      const draft = normalizeQuantPremiumConfigShape({
+        ...config,
+        id: `strategy-${Date.now().toString(36)}`,
+        name: `溢价差策略 ${strategies.length + 1}`,
+        enabled: false,
+        liveSignalEnabled: false,
+        backtestGate: { status: 'none' }
+      });
+      const result = await saveQuantPremiumStrategyToWorker(draft);
+      setStrategies(result.strategies);
+      setSelectedStrategyId(result.strategy.id);
+      applyConfig(result.strategy);
+      setSnapshot(null);
+      setPaperState(null);
+      setBacktest(null);
+      showToast({ title: '新策略已创建', tone: 'emerald' });
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : '创建策略失败');
+      showToast({ title: '创建策略失败', description: createError instanceof Error ? createError.message : '', tone: 'amber' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteStrategy() {
+    if (strategies.length <= 1 || config.id === 'default') return;
+    setSaving(true);
+    setError('');
+    try {
+      const nextStrategies = await deleteQuantPremiumStrategyInWorker(config.id);
+      setStrategies(nextStrategies);
+      const next = nextStrategies[0] || normalizeQuantPremiumConfigShape();
+      setSelectedStrategyId(next.id);
+      applyConfig(next);
+      await refresh({ silent: true, strategyId: next.id });
+      showToast({ title: '策略已删除', tone: 'emerald' });
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : '删除策略失败');
+      showToast({ title: '删除策略失败', description: deleteError instanceof Error ? deleteError.message : '', tone: 'amber' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSelectStrategy(strategyId) {
+    const next = strategies.find((item) => item.id === strategyId);
+    if (next) {
+      setSelectedStrategyId(next.id);
+      applyConfig(next);
+    }
+    await refresh({ silent: true, strategyId });
+  }
+
+  async function handleRunBacktest() {
+    setBacktesting(true);
+    setError('');
+    try {
+      const result = await runQuantPremiumBacktestInWorker(config.id, { timeframe: backtestTf });
+      setBacktest(result);
+      if (result?.status) {
+        applyConfig({
+          ...config,
+          backtestGate: {
+            ...(config.backtestGate || {}),
+            status: result.status,
+            latestRunId: result.runId || config.backtestGate?.latestRunId || '',
+            summary: result.summary || config.backtestGate?.summary || null,
+            updatedAt: result.finishedAt || new Date().toISOString()
+          }
+        });
+      }
+      await refresh({ silent: true, strategyId: config.id });
+      showToast({ title: result?.status === 'passed' ? '回测有效' : '回测未通过数据门槛', tone: result?.status === 'passed' ? 'emerald' : 'amber' });
+    } catch (backtestError) {
+      setError(backtestError instanceof Error ? backtestError.message : '回测失败');
+      showToast({ title: '回测失败', description: backtestError instanceof Error ? backtestError.message : '', tone: 'amber' });
+    } finally {
+      setBacktesting(false);
+    }
+  }
+
+  async function handleLiveSignalToggle(enabled) {
+    setSaving(true);
+    setError('');
+    try {
+      const effectiveBacktestGate = config.backtestGate?.status === 'passed' || backtest?.status !== 'passed'
+        ? config.backtestGate
+        : {
+          ...(config.backtestGate || {}),
+          status: 'passed',
+          latestRunId: backtest.runId || config.backtestGate?.latestRunId || '',
+          summary: backtest.summary || config.backtestGate?.summary || null,
+          updatedAt: backtest.finishedAt || new Date().toISOString()
+        };
+      const result = await saveQuantPremiumStrategyToWorker({
+        ...config,
+        backtestGate: effectiveBacktestGate,
+        liveSignalEnabled: enabled,
+        approveLiveSignal: enabled
+      });
+      setStrategies(result.strategies);
+      applyConfig(result.strategy);
+      showToast({ title: enabled ? '实盘信号已确认' : '实盘信号已关闭', tone: 'emerald' });
+    } catch (liveError) {
+      setError(liveError instanceof Error ? liveError.message : '实盘信号更新失败');
+      showToast({ title: '实盘信号更新失败', description: liveError instanceof Error ? liveError.message : '', tone: 'amber' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const positions = useMemo(() => normalizePositionList(paperState), [paperState]);
   const orders = useMemo(() => normalizeOrderList(paperState), [paperState]);
   const cashEvents = useMemo(() => normalizeCashEvents(paperState), [paperState]);
   const signals = useMemo(() => normalizeSignalList(snapshot), [snapshot]);
   const positionCount = positions.filter((item) => Number(item.shares) > 0).length;
+  const backtestGate = config.backtestGate || {};
+  const visibleBacktestStatus = backtest?.status || backtestGate.status;
+  const backtestPassed = visibleBacktestStatus === 'passed';
+  const backtestApproved = backtestPassed && Boolean(backtestGate.approvedAt) && config.liveSignalEnabled;
   const metrics = [
     { label: 'Worker 频率', value: '1 分钟', note: '交易时段 cron', Icon: Clock3 },
-    { label: '量化策略', value: config.enabled ? '已启用' : '未启用', note: `${config.highCodes.length} H / ${config.lowCodes.length} L`, Icon: Bot },
+    { label: '策略数量', value: formatNumber(strategies.length || 1), note: config.enabled ? '当前策略已启用' : '当前策略未启用', Icon: Bot },
     { label: '模拟现金', value: formatMoney(paperState?.cash), note: `${positionCount} 个模拟持仓`, Icon: WalletCards },
-    { label: '今日成交', value: formatNumber(paperState?.executionsToday || 0), note: `上限 ${formatNumber(paperState?.maxExecutionsPerDay || 0)} 次`, Icon: Activity }
+    { label: '实盘信号', value: backtestApproved ? '已确认' : '未确认', note: backtestPassed ? '回测有效，需人工确认' : '需先完成有效回测', Icon: Activity }
   ];
   const tabs = [
     { key: 'strategy', label: '策略', Icon: SlidersHorizontal },
@@ -297,6 +454,18 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
       onModuleChange(nextTab);
     }
   }
+
+  const strategyPicker = strategies.length > 1 ? (
+    <select
+      className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+      value={selectedStrategyId || config.id}
+      onChange={(event) => handleSelectStrategy(event.target.value)}
+    >
+      {strategies.map((item) => (
+        <option key={item.id} value={item.id}>{item.name || item.id}</option>
+      ))}
+    </select>
+  ) : null;
 
   return (
     <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>
@@ -349,6 +518,42 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
       </div> : null}
 
       {activeTab === 'strategy' ? (
+        <>
+        <Card className="space-y-3 p-4 sm:p-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="text-xs font-bold text-slate-400">STRATEGIES</div>
+              <h2 className="mt-1 text-lg font-bold text-slate-900">策略配置</h2>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className={secondaryButtonClass} onClick={handleCreateStrategy} disabled={saving}>
+                <Plus className="h-4 w-4" />
+                新增策略
+              </button>
+              <button type="button" className={subtleButtonClass} onClick={handleDeleteStrategy} disabled={saving || strategies.length <= 1 || config.id === 'default'}>
+                <Trash2 className="h-4 w-4" />
+                删除策略
+              </button>
+            </div>
+          </div>
+          <div className="flex gap-2 overflow-x-auto">
+            {(strategies.length ? strategies : [config]).map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => handleSelectStrategy(item.id)}
+                className={cx(
+                  'min-w-[180px] rounded-xl border px-3 py-2 text-left transition-colors',
+                  item.id === selectedStrategyId ? 'border-indigo-300 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                )}
+              >
+                <div className="truncate text-sm font-bold">{item.name || item.id}</div>
+                <div className="mt-1 text-xs">{item.enabled ? '已启用' : '未启用'} · {item.liveSignalEnabled ? '实盘信号已确认' : '未确认实盘'}</div>
+              </button>
+            ))}
+          </div>
+        </Card>
+
         <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
           <Card className="space-y-4 p-5 sm:p-6">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -389,7 +594,11 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
               </label>
               <label className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-slate-700">
                 <input type="checkbox" checked={config.notifyEnabled} onChange={(event) => setConfig((current) => ({ ...current, notifyEnabled: event.target.checked }))} />
-                推送通知
+                实盘信号通知
+              </label>
+              <label className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-slate-700">
+                <input type="checkbox" checked={config.paperEnabled} onChange={(event) => setConfig((current) => ({ ...current, paperEnabled: event.target.checked }))} />
+                模拟盘撮合
               </label>
               <button type="button" className={primaryButtonClass} onClick={handleSaveConfig} disabled={saving}>
                 <CheckCircle2 className="h-4 w-4" />
@@ -399,6 +608,60 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
           </Card>
 
           <Card className="space-y-4 p-5 sm:p-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-xs font-bold text-slate-400">BACKTEST</div>
+                <h2 className="mt-1 text-lg font-bold text-slate-900">历史回测</h2>
+              </div>
+              <StatusPill tone={visibleBacktestStatus === 'passed' ? 'emerald' : visibleBacktestStatus === 'failed' ? 'rose' : visibleBacktestStatus === 'stale' ? 'amber' : 'slate'}>
+                {visibleBacktestStatus === 'passed' ? '回测有效' : visibleBacktestStatus === 'failed' ? '回测无效' : visibleBacktestStatus === 'stale' ? '需重新回测' : '未回测'}
+              </StatusPill>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+              <FormLabel label="K 线粒度">
+                <select className={inputClass} value={backtestTf} onChange={(event) => setBacktestTf(event.target.value)}>
+                  <option value="5m">5m 默认（约 3-4 周）</option>
+                  <option value="1m">1m（约 3-4 个交易日）</option>
+                  <option value="15m">15m（约 2-3 个月）</option>
+                  <option value="30m">30m</option>
+                  <option value="60m">60m</option>
+                  <option value="1d">1d（日线长期）</option>
+                </select>
+              </FormLabel>
+              <button type="button" className={secondaryButtonClass} onClick={handleRunBacktest} disabled={backtesting || saving}>
+                <BarChart3 className="h-4 w-4" />
+                {backtesting ? '回测中' : '运行回测'}
+              </button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl bg-slate-50 p-3">
+                <div className="text-xs font-bold text-slate-400">样本</div>
+                <div className="mt-1 text-lg font-semibold text-slate-900">{formatNumber(backtest?.summary?.sampleCount ?? backtestGate.summary?.sampleCount ?? 0)}</div>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-3">
+                <div className="text-xs font-bold text-slate-400">信号</div>
+                <div className="mt-1 text-lg font-semibold text-slate-900">{formatNumber(backtest?.summary?.signalCount ?? backtestGate.summary?.signalCount ?? 0)}</div>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-3">
+                <div className="text-xs font-bold text-slate-400">数据覆盖</div>
+                <div className="mt-1 text-lg font-semibold text-slate-900">{formatNumber(backtest?.summary?.dataCoveragePct ?? backtestGate.summary?.dataCoveragePct ?? 0, 1)}%</div>
+              </div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-500">
+              分钟级历史 K 线由 markets Worker 提供。雪球单次最多约 1000 根，5m 是默认平衡；1m 只适合短窗口验证。
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className={primaryButtonClass} onClick={() => handleLiveSignalToggle(true)} disabled={saving || !backtestPassed || backtestApproved}>
+                <ShieldCheck className="h-4 w-4" />
+                {backtestApproved ? '实盘信号已确认' : '确认用于实盘信号'}
+              </button>
+              <button type="button" className={subtleButtonClass} onClick={() => handleLiveSignalToggle(false)} disabled={saving || !config.liveSignalEnabled}>
+                关闭实盘信号
+              </button>
+            </div>
+          </Card>
+
+          <Card className="space-y-4 p-5 sm:p-6 xl:col-span-2">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="text-xs font-bold text-slate-400">WORKER SNAPSHOT</div>
@@ -428,6 +691,7 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
             </div>
           </Card>
         </div>
+        </>
       ) : null}
 
       {activeTab === 'funds' ? (
@@ -438,7 +702,10 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
                 <div className="text-xs font-bold text-slate-400">CASH</div>
                 <h2 className="mt-1 text-lg font-bold text-slate-900">资金</h2>
               </div>
-              <StatusPill tone="emerald">{formatMoney(paperState?.cash)}</StatusPill>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {strategyPicker}
+                <StatusPill tone="emerald">{formatMoney(paperState?.cash)}</StatusPill>
+              </div>
             </div>
             <FormLabel label="调整金额">
               <input className={inputClass} type="number" min="0" step="100" value={cashAmount} onChange={(event) => setCashAmount(event.target.value)} />
@@ -503,10 +770,13 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
                 <div className="text-xs font-bold text-slate-400">PAPER ACCOUNT</div>
                 <h2 className="mt-1 text-lg font-bold text-slate-900">模拟持仓</h2>
               </div>
-              <StatusPill tone={paperState?.enabled === false ? 'amber' : 'emerald'}>
-                <ShieldCheck className="h-3.5 w-3.5" />
-                {paperState?.enabled === false ? '已停用' : '模拟模式'}
-              </StatusPill>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {strategyPicker}
+                <StatusPill tone={paperState?.enabled === false ? 'amber' : 'emerald'}>
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  {paperState?.enabled === false ? '已停用' : '模拟模式'}
+                </StatusPill>
+              </div>
             </div>
             <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="min-w-full divide-y divide-slate-100 text-sm">

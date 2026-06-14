@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 
 import {
   QUANT_PREMIUM_CONFIG_PREFIX,
+  QUANT_PREMIUM_STRATEGIES_PREFIX,
   buildQuantPremiumSwitchConfig,
-  normalizeQuantPremiumConfig
+  normalizeQuantPremiumConfig,
+  normalizeQuantPremiumStrategy,
+  runQuantPremiumBacktest
 } from '../workers/notify/src/quantPremiumRoutes.js';
 import { quantPremiumPaperStateKey } from '../workers/notify/src/premiumPaperTrading.js';
 import { getRunnableSwitchRules } from '../workers/notify/src/switchStrategy.js';
@@ -36,6 +39,67 @@ test('quant premium config normalizes arbitrary H/L symbols without holdings', (
 
 test('quant premium state keys are isolated from holding switch keys', () => {
   assert.equal(QUANT_PREMIUM_CONFIG_PREFIX, 'quant:premium:config:');
+  assert.equal(QUANT_PREMIUM_STRATEGIES_PREFIX, 'quant:premium:strategies:');
   assert.equal(quantPremiumPaperStateKey('client-a'), 'quant:premium:paper:state:client-a');
+  assert.equal(quantPremiumPaperStateKey('client-a', 'strategy-a'), 'quant:premium:paper:state:client-a:strategy-a');
   assert.equal(quantPremiumPaperStateKey('client-a').startsWith('switch:'), false);
+});
+
+test('quant premium live signal requires a passed approved backtest gate', () => {
+  const strategy = normalizeQuantPremiumStrategy({
+    id: 's1',
+    enabled: true,
+    liveSignalEnabled: true,
+    highCodes: ['159513'],
+    lowCodes: ['513100'],
+    backtestGate: {
+      status: 'passed',
+      approvedAt: '2026-06-12T02:00:00.000Z',
+      approvedFingerprint: JSON.stringify({
+        highCodes: ['159513'],
+        lowCodes: ['513100'],
+        activeSide: 'all',
+        intraSellLowerPct: 1,
+        intraBuyOtherPct: 3
+      })
+    }
+  });
+
+  assert.equal(strategy.liveSignalEnabled, true);
+
+  const stale = normalizeQuantPremiumStrategy({
+    ...strategy,
+    lowCodes: ['159501']
+  });
+  assert.equal(stale.liveSignalEnabled, false);
+  assert.equal(stale.backtestGate.approvedAt, '');
+});
+
+test('quant premium backtest passes when 5m price and nav coverage are sufficient', () => {
+  const candles = Array.from({ length: 16 }, (_, index) => ({
+    t: Math.floor(Date.UTC(2026, 5, 12, 1, 30) / 1000) + index * 300,
+    c: 1.5 + index * 0.001
+  }));
+  const result = runQuantPremiumBacktest({
+    id: 's1',
+    enabled: true,
+    highCodes: ['159513'],
+    lowCodes: ['513100'],
+    intraBuyOtherPct: 0.2
+  }, {
+    timeframe: '5m',
+    historyByCode: {
+      '159513': candles.map((item) => ({ ...item, c: item.c + 0.02 })),
+      '513100': candles
+    },
+    navHistoryByCode: {
+      '159513': [{ date: '2026-06-12', nav: 1.48 }],
+      '513100': [{ date: '2026-06-12', nav: 1.5 }]
+    }
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.equal(result.summary.sampleCount, 16);
+  assert.ok(result.summary.signalCount > 0);
+  assert.equal(result.timeframe, '5m');
 });
