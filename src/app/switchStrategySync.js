@@ -394,3 +394,27 @@ export async function loadSwitchSnapshotFromWorker() {
 export async function runSwitchOnce() {
   return await requestSwitch('/switch/run', { method: 'POST' });
 }
+
+export async function loadSwitchPaperStateFromWorker() {
+  const payload = await requestSwitch('/switch/paper', { method: 'GET' });
+  return payload?.state || null;
+}
+
+export async function saveSwitchPaperStateToWorker(state) {
+  const payload = await requestSwitch('/switch/paper', {
+    method: 'POST',
+    body: { state }
+  });
+  return payload?.state || null;
+}
+
+export async function resetSwitchPaperStateInWorker(state = null) {
+  const body = state && typeof state === 'object'
+    ? { reset: true, state }
+    : { reset: true };
+  const payload = await requestSwitch('/switch/paper', {
+    method: 'POST',
+    body
+  });
+  return payload?.state || null;
+}

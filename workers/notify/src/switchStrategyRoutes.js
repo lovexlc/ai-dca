@@ -31,6 +31,12 @@ import {
   switchStateKey,
   testGetNav513100
 } from './switchStrategy.js';
+import {
+  createDefaultSwitchPaperState,
+  executeSwitchPaperTrade,
+  normalizeSwitchPaperState,
+  switchPaperStateKey
+} from './premiumPaperTrading.js';
 
 export async function readSwitchConfigForClient(env, clientId) {
   const stored = await readJson(env, switchConfigKey(clientId), null);
@@ -48,6 +54,19 @@ async function writeSwitchConfigForClient(env, clientId, config) {
 
 async function readSwitchSnapshotForClient(env, clientId) {
   return await readJson(env, switchSnapshotKey(clientId), null);
+}
+
+async function readSwitchPaperStateForClient(env, clientId) {
+  return normalizeSwitchPaperState(await readJson(env, switchPaperStateKey(clientId), null));
+}
+
+async function writeSwitchPaperStateForClient(env, clientId, state) {
+  const normalized = normalizeSwitchPaperState({
+    ...state,
+    updatedAt: state?.updatedAt || new Date().toISOString()
+  });
+  await writeJson(env, switchPaperStateKey(clientId), normalized);
+  return normalized;
 }
 
 async function listSwitchClientIds(env) {
@@ -171,6 +190,45 @@ export async function handleSwitchSnapshotGet(request, env) {
   }, { origin });
 }
 
+export async function handleSwitchPaperGet(request, env) {
+  const origin = readOrigin(request);
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings);
+  settings = auth.settings;
+  if (auth.didUpdate) await writeSettings(env, settings);
+  const state = await readSwitchPaperStateForClient(env, auth.clientId);
+  return jsonResponse({
+    ok: true,
+    clientId: auth.clientId,
+    state
+  }, { origin });
+}
+
+export async function handleSwitchPaperPost(request, env) {
+  const origin = readOrigin(request);
+  const payload = await request.json().catch(() => ({}));
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings, {
+    payload,
+    clientLabel: normalizeClientName(payload?.clientLabel || payload?.notifyClientLabel || '')
+  });
+  settings = auth.settings;
+  if (auth.didUpdate) await writeSettings(env, settings);
+  const current = await readSwitchPaperStateForClient(env, auth.clientId);
+  const nextState = payload?.reset
+    ? createDefaultSwitchPaperState(payload?.state || {})
+    : normalizeSwitchPaperState({
+        ...current,
+        ...(payload?.state && typeof payload.state === 'object' ? payload.state : payload)
+      });
+  const state = await writeSwitchPaperStateForClient(env, auth.clientId, nextState);
+  return jsonResponse({
+    ok: true,
+    clientId: auth.clientId,
+    state
+  }, { origin });
+}
+
 export async function handleSwitchRunPost(request, env, { runClientDetection }) {
   const origin = readOrigin(request);
   let settings = await readSettings(env);
@@ -276,7 +334,40 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
     updatedAt: computedAtIso
   });
   let pushedCount = 0;
+  let paperExecutedCount = 0;
+  let paperOrderCount = 0;
+  let paperSkippedCount = 0;
+  const paperResults = [];
   for (const { snapshot, trigger } of triggerJobs) {
+    try {
+      const paperState = await readSwitchPaperStateForClient(env, clientId);
+      const paperResult = executeSwitchPaperTrade(paperState, snapshot, trigger, computedAtIso);
+      const shouldPersistPaper = paperResult.executed || paperResult.skipped;
+      if (shouldPersistPaper) {
+        await writeSwitchPaperStateForClient(env, clientId, paperResult.state);
+      }
+      if (paperResult.executed) {
+        paperExecutedCount += 1;
+        paperOrderCount += paperResult.fills.length;
+      } else if (paperResult.skipped) {
+        paperSkippedCount += 1;
+      }
+      paperResults.push({
+        trigger: trigger.pairKey,
+        executed: paperResult.executed,
+        orders: paperResult.fills.length,
+        skipped: paperResult.skipped || ''
+      });
+    } catch {
+      paperSkippedCount += 1;
+      paperResults.push({
+        trigger: trigger.pairKey,
+        executed: false,
+        orders: 0,
+        skipped: 'paper-error'
+      });
+    }
+
     if (!normalizedConfig.enabled) break;
     const testPayload = buildSwitchTriggerNotification(snapshot, trigger, env);
     try {
@@ -286,7 +377,7 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
       });
       settings = result.settings;
       pushedCount += 1;
-    } catch (_error) {
+    } catch {
       // 忽略单条失败：下一分钟若仍处触发态会再尝试推送。
     }
   }
@@ -296,6 +387,10 @@ async function runSwitchStrategyForOneClient(env, clientId, config, { reason = '
   return {
     triggered: allTriggers.length,
     pushed: pushedCount,
+    paperExecuted: paperExecutedCount,
+    paperOrders: paperOrderCount,
+    paperSkipped: paperSkippedCount,
+    paperResults,
     ruleCount: runnableRules.length,
     candidateCount: snapshots.reduce((sum, snapshot) => (
       sum + (snapshot.byBenchmark || []).reduce((acc, b) => acc + ((b.candidates || []).length), 0)

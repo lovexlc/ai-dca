@@ -17,7 +17,7 @@ export const SCENARIOS = {
     key: 'quant',
     label: '量化研究',
     icon: 'Bot',
-    description: 'Python 溢价差执行器',
+    description: 'Worker 溢价差模拟盘',
     defaultHome: 'quant',
     visibleTabs: ['quant', 'adminData'],
     requireAdmin: true

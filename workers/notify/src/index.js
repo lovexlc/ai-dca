@@ -29,6 +29,8 @@ import {
 import {
   handleSwitchConfigGet,
   handleSwitchConfigPost,
+  handleSwitchPaperGet,
+  handleSwitchPaperPost,
   handleSwitchRunPost,
   handleSwitchSnapshotGet,
   handleSwitchTestNav,
@@ -296,6 +298,14 @@ export default {
         return await handleSwitchSnapshotGet(request, env);
       }
 
+      if (request.method === 'GET' && url.pathname === '/api/notify/switch/paper') {
+        return await handleSwitchPaperGet(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/switch/paper') {
+        return await handleSwitchPaperPost(request, env);
+      }
+
       if (request.method === 'POST' && url.pathname === '/api/notify/switch/run') {
         return await handleSwitchRunPost(request, env, { runClientDetection });
       }
@@ -378,7 +388,7 @@ export default {
     if (cron === '* 1-7 * * MON-FRI') {
       console.log('[notify] scheduled dispatch -> runSwitchStrategyTick', JSON.stringify({ cron }));
       ctx.waitUntil(runSwitchStrategyTick(env, scheduledMs, { reason: 'switch-cron', runClientDetection }));
-      // 场内切换 cron 每分钟运行一次，也顺便推送行情
+      // 场内切换 cron 每分钟运行一次：切换通知 + 溢价差模拟盘 + 行情推送。
       ctx.waitUntil(runMarketDataPush(env).catch((error) => {
         console.log('[notify] marketPush error', JSON.stringify({
           message: error instanceof Error ? error.message : String(error),
