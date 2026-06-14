@@ -1,4 +1,4 @@
-export const SWITCH_PAPER_STATE_PREFIX = 'switch:paper:state:';
+export const QUANT_PREMIUM_PAPER_STATE_PREFIX = 'quant:premium:paper:state:';
 
 const DEFAULT_PAPER_STATE = {
   enabled: true,
@@ -31,14 +31,16 @@ const DEFAULT_PAPER_STATE = {
       costPrice: 1.486
     }
   },
-  orders: []
+  orders: [],
+  cashEvents: []
 };
 
 const FUND_CODE_PATTERN = /^\d{6}$/;
 const MAX_ORDERS = 120;
+const MAX_CASH_EVENTS = 80;
 
-export function switchPaperStateKey(clientId) {
-  return `${SWITCH_PAPER_STATE_PREFIX}${String(clientId || '').trim()}`;
+export function quantPremiumPaperStateKey(clientId) {
+  return `${QUANT_PREMIUM_PAPER_STATE_PREFIX}${String(clientId || '').trim()}`;
 }
 
 function clampNumber(value, fallback = 0) {
@@ -106,6 +108,22 @@ function normalizeOrder(raw = {}) {
   };
 }
 
+function normalizeCashEvent(raw = {}) {
+  const amount = Math.abs(roundTo(raw?.amount, 2));
+  const cashBefore = roundTo(raw?.cashBefore, 2);
+  const cashAfter = roundTo(raw?.cashAfter, 2);
+  if (!(amount > 0)) return null;
+  return {
+    id: String(raw?.id || '').trim() || createOrderId('cash'),
+    ts: String(raw?.ts || raw?.createdAt || '').trim(),
+    type: raw?.type === 'withdraw' ? 'withdraw' : 'deposit',
+    amount,
+    cashBefore,
+    cashAfter,
+    note: String(raw?.note || '').trim().slice(0, 120)
+  };
+}
+
 export function normalizeSwitchPaperState(input = {}) {
   const source = input && typeof input === 'object' ? input : {};
   const positions = {};
@@ -137,6 +155,9 @@ export function normalizeSwitchPaperState(input = {}) {
     positions,
     orders: Array.isArray(source.orders)
       ? source.orders.map((order) => normalizeOrder(order)).filter(Boolean).slice(0, MAX_ORDERS)
+      : [],
+    cashEvents: Array.isArray(source.cashEvents)
+      ? source.cashEvents.map((event) => normalizeCashEvent(event)).filter(Boolean).slice(0, MAX_CASH_EVENTS)
       : []
   };
 }
@@ -146,7 +167,8 @@ export function createDefaultSwitchPaperState(overrides = {}) {
     ...DEFAULT_PAPER_STATE,
     ...overrides,
     positions: overrides.positions || DEFAULT_PAPER_STATE.positions,
-    orders: overrides.orders || []
+    orders: overrides.orders || [],
+    cashEvents: overrides.cashEvents || []
   });
 }
 
@@ -325,6 +347,40 @@ function createOrderId(prefix = 'paper') {
     return `${prefix}-${globalThis.crypto.randomUUID()}`;
   }
   return `${prefix}-${Date.now().toString(36)}`;
+}
+
+export function adjustSwitchPaperCash(stateInput, { amount = 0, note = '', timestamp = new Date().toISOString() } = {}) {
+  const state = normalizeSwitchPaperState(stateInput);
+  const requestedDelta = roundTo(amount, 2);
+  if (!Number.isFinite(requestedDelta) || requestedDelta === 0) {
+    return { state, event: null, adjusted: false };
+  }
+  const nextCash = roundTo(Math.max(0, state.cash + requestedDelta), 2);
+  const appliedDelta = roundTo(nextCash - state.cash, 2);
+  if (appliedDelta === 0) {
+    return { state, event: null, adjusted: false };
+  }
+  const event = {
+    id: createOrderId(appliedDelta > 0 ? 'cash-in' : 'cash-out'),
+    ts: timestamp,
+    type: appliedDelta > 0 ? 'deposit' : 'withdraw',
+    amount: Math.abs(appliedDelta),
+    cashBefore: state.cash,
+    cashAfter: nextCash,
+    note: String(note || '').trim().slice(0, 120)
+  };
+  return {
+    state: normalizeSwitchPaperState({
+      ...state,
+      cash: nextCash,
+      updatedAt: timestamp,
+      lastStatus: 'cash-adjusted',
+      lastReason: appliedDelta > 0 ? '手动增加模拟现金' : '手动减少模拟现金',
+      cashEvents: [event, ...state.cashEvents].slice(0, MAX_CASH_EVENTS)
+    }),
+    event,
+    adjusted: true
+  };
 }
 
 function applySell(state, fill) {

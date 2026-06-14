@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  adjustSwitchPaperCash,
   createDefaultSwitchPaperState,
   executeSwitchPaperTrade
 } from '../workers/notify/src/premiumPaperTrading.js';
@@ -91,4 +92,27 @@ test('switch paper trading skips OTC triggers', () => {
   assert.equal(result.executed, false);
   assert.equal(result.skipped, 'unsupported-trigger');
   assert.equal(result.fills.length, 0);
+});
+
+test('paper cash adjustment records cash ledger entries', () => {
+  const before = createDefaultSwitchPaperState({ cash: 60000 });
+  const deposited = adjustSwitchPaperCash(before, {
+    amount: 5000,
+    note: 'add cash',
+    timestamp: '2026-06-12T02:03:00.000Z'
+  });
+  assert.equal(deposited.adjusted, true);
+  assert.equal(deposited.state.cash, 65000);
+  assert.equal(deposited.state.cashEvents.length, 1);
+  assert.equal(deposited.state.cashEvents[0].type, 'deposit');
+  assert.equal(deposited.state.cashEvents[0].amount, 5000);
+
+  const withdrawn = adjustSwitchPaperCash(deposited.state, {
+    amount: -70000,
+    note: 'withdraw cash',
+    timestamp: '2026-06-12T02:04:00.000Z'
+  });
+  assert.equal(withdrawn.state.cash, 0);
+  assert.equal(withdrawn.state.cashEvents[0].type, 'withdraw');
+  assert.equal(withdrawn.state.cashEvents[0].amount, 65000);
 });

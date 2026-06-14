@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, Bot, CheckCircle2, Clock3, Database, Play, RefreshCw, RotateCcw, ShieldCheck, WalletCards } from 'lucide-react';
+import { Activity, Bot, CheckCircle2, Clock3, Database, ListChecks, Minus, Play, Plus, RefreshCw, RotateCcw, ShieldCheck, SlidersHorizontal, WalletCards } from 'lucide-react';
 import { Card, cx, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
 import { showToast } from '../app/toast.js';
 import {
-  loadSwitchPaperStateFromWorker,
-  loadSwitchSnapshotFromWorker,
-  resetSwitchPaperStateInWorker,
-  runSwitchOnce
-} from '../app/switchStrategySync.js';
+  adjustQuantPremiumCashInWorker,
+  loadQuantPremiumConfigFromWorker,
+  loadQuantPremiumPaperStateFromWorker,
+  loadQuantPremiumSnapshotFromWorker,
+  normalizeQuantPremiumConfigShape,
+  parseQuantPremiumCodes,
+  quantPremiumCodesToText,
+  resetQuantPremiumPaperStateInWorker,
+  runQuantPremiumOnce,
+  saveQuantPremiumConfigToWorker
+} from '../app/quantPremiumSync.js';
 
 function formatMoney(value) {
   const num = Number(value);
@@ -53,7 +59,9 @@ function StatusPill({ children, tone = 'slate' }) {
       ? 'bg-amber-50 text-amber-700'
       : tone === 'indigo'
         ? 'bg-indigo-50 text-indigo-700'
-        : 'bg-slate-100 text-slate-600';
+        : tone === 'rose'
+          ? 'bg-rose-50 text-rose-700'
+          : 'bg-slate-100 text-slate-600';
   return <span className={cx('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold', toneClass)}>{children}</span>;
 }
 
@@ -78,6 +86,18 @@ function EmptyRow({ colSpan, children }) {
   );
 }
 
+function FormLabel({ label, children }) {
+  return (
+    <label className="space-y-2">
+      <span className="block text-xs font-bold text-slate-500">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+const inputClass = 'h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100';
+const textAreaClass = 'min-h-24 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100';
+
 function normalizePositionList(paperState) {
   return Object.values(paperState?.positions || {})
     .filter((item) => item && item.code)
@@ -85,7 +105,11 @@ function normalizePositionList(paperState) {
 }
 
 function normalizeOrderList(paperState) {
-  return Array.isArray(paperState?.orders) ? paperState.orders.slice(0, 8) : [];
+  return Array.isArray(paperState?.orders) ? paperState.orders.slice(0, 12) : [];
+}
+
+function normalizeCashEvents(paperState) {
+  return Array.isArray(paperState?.cashEvents) ? paperState.cashEvents.slice(0, 10) : [];
 }
 
 function normalizeSignalList(snapshot) {
@@ -97,50 +121,94 @@ function normalizeSignalList(snapshot) {
 export function QuantTradingExperience({ embedded = false } = {}) {
   const [paperState, setPaperState] = useState(null);
   const [snapshot, setSnapshot] = useState(null);
-  const [config, setConfig] = useState(null);
+  const [config, setConfig] = useState(() => normalizeQuantPremiumConfigShape());
   const [summary, setSummary] = useState(null);
+  const [activeTab, setActiveTab] = useState('strategy');
+  const [highText, setHighText] = useState('');
+  const [lowText, setLowText] = useState('');
+  const [cashAmount, setCashAmount] = useState('10000');
+  const [cashNote, setCashNote] = useState('');
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
+  const [adjustingCash, setAdjustingCash] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [error, setError] = useState('');
+
+  const applyConfig = useCallback((nextConfig) => {
+    const normalized = normalizeQuantPremiumConfigShape(nextConfig);
+    setConfig(normalized);
+    setHighText(quantPremiumCodesToText(normalized.highCodes));
+    setLowText(quantPremiumCodesToText(normalized.lowCodes));
+  }, []);
 
   const refresh = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
     setError('');
-    const [paperResult, snapshotResult] = await Promise.allSettled([
-      loadSwitchPaperStateFromWorker(),
-      loadSwitchSnapshotFromWorker()
+    const [configResult, paperResult, snapshotResult] = await Promise.allSettled([
+      loadQuantPremiumConfigFromWorker(),
+      loadQuantPremiumPaperStateFromWorker(),
+      loadQuantPremiumSnapshotFromWorker()
     ]);
 
+    if (configResult.status === 'fulfilled') {
+      applyConfig(configResult.value);
+    }
     if (paperResult.status === 'fulfilled') {
       setPaperState(paperResult.value);
     }
     if (snapshotResult.status === 'fulfilled') {
       setSnapshot(snapshotResult.value?.snapshot || null);
-      setConfig(snapshotResult.value?.config || null);
+      if (configResult.status !== 'fulfilled' && snapshotResult.value?.config) {
+        applyConfig(snapshotResult.value.config);
+      }
     }
 
-    const failures = [paperResult, snapshotResult].filter((item) => item.status === 'rejected');
-    if (failures.length === 2) {
+    const failures = [configResult, paperResult, snapshotResult].filter((item) => item.status === 'rejected');
+    if (failures.length === 3) {
       setError(failures[0].reason instanceof Error ? failures[0].reason.message : 'Worker 状态暂不可用');
     } else if (failures.length) {
       setError('部分 Worker 状态暂不可用');
     }
     if (!silent) setLoading(false);
-  }, []);
+  }, [applyConfig]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
+  async function handleSaveConfig() {
+    const nextConfig = normalizeQuantPremiumConfigShape({
+      ...config,
+      highCodes: parseQuantPremiumCodes(highText),
+      lowCodes: parseQuantPremiumCodes(lowText)
+    });
+    if (!nextConfig.highCodes.length || !nextConfig.lowCodes.length) {
+      setError('H 和 L 至少各设置一只 ETF。');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const stored = await saveQuantPremiumConfigToWorker(nextConfig);
+      applyConfig(stored);
+      showToast({ title: '量化策略已保存', tone: 'emerald' });
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : '保存失败');
+      showToast({ title: '保存失败', description: saveError instanceof Error ? saveError.message : '', tone: 'amber' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleRunOnce() {
     setRunning(true);
     setError('');
     try {
-      const result = await runSwitchOnce();
+      const result = await runQuantPremiumOnce();
       setSummary(result?.summary || null);
       await refresh({ silent: true });
-      showToast({ title: 'Worker 已完成一轮评估', tone: 'emerald' });
+      showToast({ title: '量化 Worker 已完成一轮评估', tone: 'emerald' });
     } catch (runError) {
       setError(runError instanceof Error ? runError.message : '手动运行失败');
       showToast({ title: '手动运行失败', description: runError instanceof Error ? runError.message : '', tone: 'amber' });
@@ -149,11 +217,32 @@ export function QuantTradingExperience({ embedded = false } = {}) {
     }
   }
 
+  async function handleCashAdjust(direction) {
+    const amount = Math.abs(Number(cashAmount) || 0);
+    if (!(amount > 0)) {
+      setError('请输入有效金额。');
+      return;
+    }
+    setAdjustingCash(true);
+    setError('');
+    try {
+      const result = await adjustQuantPremiumCashInWorker(direction === 'out' ? -amount : amount, cashNote);
+      setPaperState(result.state);
+      setCashNote('');
+      showToast({ title: direction === 'out' ? '模拟现金已减少' : '模拟现金已增加', tone: 'emerald' });
+    } catch (cashError) {
+      setError(cashError instanceof Error ? cashError.message : '资金调整失败');
+      showToast({ title: '资金调整失败', description: cashError instanceof Error ? cashError.message : '', tone: 'amber' });
+    } finally {
+      setAdjustingCash(false);
+    }
+  }
+
   async function handleResetPaper() {
     setResetting(true);
     setError('');
     try {
-      const next = await resetSwitchPaperStateInWorker();
+      const next = await resetQuantPremiumPaperStateInWorker();
       setPaperState(next);
       setSummary(null);
       showToast({ title: '模拟盘已重置', tone: 'emerald' });
@@ -167,17 +256,19 @@ export function QuantTradingExperience({ embedded = false } = {}) {
 
   const positions = useMemo(() => normalizePositionList(paperState), [paperState]);
   const orders = useMemo(() => normalizeOrderList(paperState), [paperState]);
+  const cashEvents = useMemo(() => normalizeCashEvents(paperState), [paperState]);
   const signals = useMemo(() => normalizeSignalList(snapshot), [snapshot]);
-  const activeRules = Array.isArray(config?.rules)
-    ? config.rules.filter((rule) => rule?.enabled).length
-    : 0;
   const positionCount = positions.filter((item) => Number(item.shares) > 0).length;
-
   const metrics = [
     { label: 'Worker 频率', value: '1 分钟', note: '交易时段 cron', Icon: Clock3 },
-    { label: '策略状态', value: config?.enabled ? '已启用' : '未启用', note: `${activeRules} 条启用规则`, Icon: Bot },
-    { label: '模拟现金', value: formatMoney(paperState?.cash), note: `${positionCount} 个持仓`, Icon: WalletCards },
+    { label: '量化策略', value: config.enabled ? '已启用' : '未启用', note: `${config.highCodes.length} H / ${config.lowCodes.length} L`, Icon: Bot },
+    { label: '模拟现金', value: formatMoney(paperState?.cash), note: `${positionCount} 个模拟持仓`, Icon: WalletCards },
     { label: '今日成交', value: formatNumber(paperState?.executionsToday || 0), note: `上限 ${formatNumber(paperState?.maxExecutionsPerDay || 0)} 次`, Icon: Activity }
+  ];
+  const tabs = [
+    { key: 'strategy', label: '策略', Icon: SlidersHorizontal },
+    { key: 'funds', label: '资金', Icon: WalletCards },
+    { key: 'fills', label: '成交', Icon: ListChecks }
   ];
 
   return (
@@ -190,7 +281,7 @@ export function QuantTradingExperience({ embedded = false } = {}) {
           </div>
           <h1 className="mt-3 text-2xl font-bold text-slate-900 sm:text-3xl">Worker 溢价差模拟盘</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-            分钟级通知 Worker 读取 ETF 盘口与净值，触发 H/L 溢价差信号后写入模拟盘 SELL/BUY 成交。
+            量化 H/L 配置独立于持仓交易，模拟资金和成交也使用单独账户。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -201,10 +292,6 @@ export function QuantTradingExperience({ embedded = false } = {}) {
           <button type="button" className={secondaryButtonClass} onClick={() => refresh()} disabled={loading || running}>
             <RefreshCw className={cx('h-4 w-4', loading ? 'animate-spin' : '')} />
             刷新
-          </button>
-          <button type="button" className={subtleButtonClass} onClick={handleResetPaper} disabled={resetting || running}>
-            <RotateCcw className="h-4 w-4" />
-            重置模拟盘
           </button>
         </div>
       </div>
@@ -217,131 +304,263 @@ export function QuantTradingExperience({ embedded = false } = {}) {
         {metrics.map((item) => <Metric key={item.label} {...item} />)}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-        <Card className="space-y-4 p-5 sm:p-6">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="text-xs font-bold text-slate-400">PAPER ACCOUNT</div>
-              <h2 className="mt-1 text-lg font-bold text-slate-900">模拟持仓</h2>
-            </div>
-            <StatusPill tone={paperState?.enabled === false ? 'amber' : 'emerald'}>
-              <ShieldCheck className="h-3.5 w-3.5" />
-              {paperState?.enabled === false ? '已停用' : '模拟模式'}
-            </StatusPill>
-          </div>
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
-            <table className="min-w-full divide-y divide-slate-100 text-sm">
-              <thead className="bg-slate-50 text-xs font-bold text-slate-400">
-                <tr>
-                  <th className="px-4 py-3 text-left">代码</th>
-                  <th className="px-4 py-3 text-left">名称</th>
-                  <th className="px-4 py-3 text-right">份额</th>
-                  <th className="px-4 py-3 text-right">成本</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {positions.length ? positions.map((row) => (
-                  <tr key={row.code}>
-                    <td className="px-4 py-3 font-semibold text-slate-900">{row.code}</td>
-                    <td className="px-4 py-3 text-slate-600">{row.name || row.code}</td>
-                    <td className="px-4 py-3 text-right text-slate-700">{formatNumber(row.shares, 0)}</td>
-                    <td className="px-4 py-3 text-right text-slate-700">{formatPrice(row.costPrice)}</td>
-                  </tr>
-                )) : <EmptyRow colSpan={4}>暂无模拟持仓</EmptyRow>}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
-        <Card className="space-y-4 p-5 sm:p-6">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="text-xs font-bold text-slate-400">WORKER SNAPSHOT</div>
-              <h2 className="mt-1 text-lg font-bold text-slate-900">当前信号</h2>
-            </div>
-            <StatusPill tone={snapshot?.ready ? 'emerald' : 'slate'}>
-              <Database className="h-3.5 w-3.5" />
-              {snapshot?.computedAt ? formatDateTime(snapshot.computedAt) : '未计算'}
-            </StatusPill>
-          </div>
-          <div className="space-y-2">
-            {signals.length ? signals.map((signal, index) => (
-              <div key={`${signal.pairKey || signal.from || index}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="font-semibold text-slate-900">{signal.fromCode || signal.from} → {signal.toCode || signal.to}</div>
-                  <StatusPill tone={signal.rule === 'B' ? 'indigo' : 'slate'}>{signal.rule || signal.kind || '信号'}</StatusPill>
-                </div>
-                <div className="mt-1 text-sm text-slate-500">
-                  {signal.description || `gap ${Number((signal.gapPct ?? signal.diffPct) || 0).toFixed(2)}% / 阈值 ${Number(signal.threshold || 0).toFixed(2)}%`}
-                </div>
-              </div>
-            )) : (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-400">
-                当前没有触发信号
-              </div>
+      <div className="flex gap-2 overflow-x-auto rounded-xl bg-slate-100 p-1">
+        {tabs.map(({ key, label, Icon }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setActiveTab(key)}
+            className={cx(
+              'inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold transition-colors',
+              activeTab === key ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:bg-white/70 hover:text-slate-800'
             )}
-          </div>
-        </Card>
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+          </button>
+        ))}
       </div>
 
-      <Card className="space-y-4 p-5 sm:p-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="text-xs font-bold text-slate-400">FILLS</div>
-            <h2 className="mt-1 text-lg font-bold text-slate-900">最近模拟成交</h2>
-          </div>
-          <StatusPill>
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            {paperState?.lastStatus || 'idle'}
-          </StatusPill>
+      {activeTab === 'strategy' ? (
+        <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+          <Card className="space-y-4 p-5 sm:p-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-xs font-bold text-slate-400">QUANT H/L</div>
+                <h2 className="mt-1 text-lg font-bold text-slate-900">量化策略配置</h2>
+              </div>
+              <StatusPill tone={config.enabled ? 'emerald' : 'slate'}>{config.enabled ? '已启用' : '未启用'}</StatusPill>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <FormLabel label="策略名称">
+                <input className={inputClass} value={config.name} onChange={(event) => setConfig((current) => ({ ...current, name: event.target.value }))} />
+              </FormLabel>
+              <FormLabel label="卖出侧">
+                <select className={inputClass} value={config.activeSide} onChange={(event) => setConfig((current) => ({ ...current, activeSide: event.target.value }))}>
+                  <option value="all">H 和 L 都可作为卖出侧</option>
+                  <option value="H">只从 H 换到 L</option>
+                  <option value="L">只从 L 换到 H</option>
+                </select>
+              </FormLabel>
+              <FormLabel label="H 高溢价 ETF">
+                <textarea className={textAreaClass} value={highText} onChange={(event) => setHighText(event.target.value)} />
+              </FormLabel>
+              <FormLabel label="L 低溢价 ETF">
+                <textarea className={textAreaClass} value={lowText} onChange={(event) => setLowText(event.target.value)} />
+              </FormLabel>
+              <FormLabel label="规则 A 阈值">
+                <input className={inputClass} type="number" step="0.1" value={config.intraSellLowerPct} onChange={(event) => setConfig((current) => ({ ...current, intraSellLowerPct: event.target.value }))} />
+              </FormLabel>
+              <FormLabel label="规则 B 阈值">
+                <input className={inputClass} type="number" step="0.1" value={config.intraBuyOtherPct} onChange={(event) => setConfig((current) => ({ ...current, intraBuyOtherPct: event.target.value }))} />
+              </FormLabel>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+              <label className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-slate-700">
+                <input type="checkbox" checked={config.enabled} onChange={(event) => setConfig((current) => ({ ...current, enabled: event.target.checked }))} />
+                启用量化 Worker
+              </label>
+              <label className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-slate-700">
+                <input type="checkbox" checked={config.notifyEnabled} onChange={(event) => setConfig((current) => ({ ...current, notifyEnabled: event.target.checked }))} />
+                推送通知
+              </label>
+              <button type="button" className={primaryButtonClass} onClick={handleSaveConfig} disabled={saving}>
+                <CheckCircle2 className="h-4 w-4" />
+                {saving ? '保存中' : '保存策略'}
+              </button>
+            </div>
+          </Card>
+
+          <Card className="space-y-4 p-5 sm:p-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-xs font-bold text-slate-400">WORKER SNAPSHOT</div>
+                <h2 className="mt-1 text-lg font-bold text-slate-900">当前信号</h2>
+              </div>
+              <StatusPill tone={snapshot?.ready ? 'emerald' : 'slate'}>
+                <Database className="h-3.5 w-3.5" />
+                {snapshot?.computedAt ? formatDateTime(snapshot.computedAt) : '未计算'}
+              </StatusPill>
+            </div>
+            <div className="space-y-2">
+              {signals.length ? signals.map((signal, index) => (
+                <div key={`${signal.pairKey || signal.from || index}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="font-semibold text-slate-900">{signal.fromCode || signal.from} → {signal.toCode || signal.to}</div>
+                    <StatusPill tone={signal.rule === 'B' ? 'indigo' : 'slate'}>{signal.rule || signal.kind || '信号'}</StatusPill>
+                  </div>
+                  <div className="mt-1 text-sm text-slate-500">
+                    {signal.description || `gap ${Number((signal.gapPct ?? signal.diffPct) || 0).toFixed(2)}% / 阈值 ${Number(signal.threshold || 0).toFixed(2)}%`}
+                  </div>
+                </div>
+              )) : (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-400">
+                  当前没有触发信号
+                </div>
+              )}
+            </div>
+          </Card>
         </div>
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="min-w-full divide-y divide-slate-100 text-sm">
-            <thead className="bg-slate-50 text-xs font-bold text-slate-400">
-              <tr>
-                <th className="px-4 py-3 text-left">时间</th>
-                <th className="px-4 py-3 text-left">方向</th>
-                <th className="px-4 py-3 text-left">代码</th>
-                <th className="px-4 py-3 text-right">价格</th>
-                <th className="px-4 py-3 text-right">数量</th>
-                <th className="px-4 py-3 text-right">金额</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {orders.length ? orders.map((order) => (
-                <tr key={order.id}>
-                  <td className="px-4 py-3 text-slate-500">{formatDateTime(order.ts)}</td>
-                  <td className={cx('px-4 py-3 font-semibold', order.side === 'SELL' ? 'text-rose-600' : 'text-emerald-600')}>{order.side}</td>
-                  <td className="px-4 py-3 font-semibold text-slate-900">{order.code}</td>
-                  <td className="px-4 py-3 text-right text-slate-700">{formatPrice(order.price)}</td>
-                  <td className="px-4 py-3 text-right text-slate-700">{formatNumber(order.quantity, 0)}</td>
-                  <td className="px-4 py-3 text-right text-slate-700">{formatMoney(order.amount)}</td>
-                </tr>
-              )) : <EmptyRow colSpan={6}>暂无模拟成交</EmptyRow>}
-            </tbody>
-          </table>
+      ) : null}
+
+      {activeTab === 'funds' ? (
+        <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+          <Card className="space-y-4 p-5 sm:p-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-bold text-slate-400">CASH</div>
+                <h2 className="mt-1 text-lg font-bold text-slate-900">资金</h2>
+              </div>
+              <StatusPill tone="emerald">{formatMoney(paperState?.cash)}</StatusPill>
+            </div>
+            <FormLabel label="调整金额">
+              <input className={inputClass} type="number" min="0" step="100" value={cashAmount} onChange={(event) => setCashAmount(event.target.value)} />
+            </FormLabel>
+            <FormLabel label="备注">
+              <input className={inputClass} value={cashNote} onChange={(event) => setCashNote(event.target.value)} />
+            </FormLabel>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button type="button" className={secondaryButtonClass} onClick={() => handleCashAdjust('in')} disabled={adjustingCash}>
+                <Plus className="h-4 w-4" />
+                增加现金
+              </button>
+              <button type="button" className={subtleButtonClass} onClick={() => handleCashAdjust('out')} disabled={adjustingCash}>
+                <Minus className="h-4 w-4" />
+                减少现金
+              </button>
+            </div>
+            <button type="button" className={subtleButtonClass} onClick={handleResetPaper} disabled={resetting || running}>
+              <RotateCcw className="h-4 w-4" />
+              重置模拟盘
+            </button>
+          </Card>
+
+          <Card className="space-y-4 p-5 sm:p-6">
+            <div>
+              <div className="text-xs font-bold text-slate-400">CASH LOG</div>
+              <h2 className="mt-1 text-lg font-bold text-slate-900">资金流水</h2>
+            </div>
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="min-w-full divide-y divide-slate-100 text-sm">
+                <thead className="bg-slate-50 text-xs font-bold text-slate-400">
+                  <tr>
+                    <th className="px-4 py-3 text-left">时间</th>
+                    <th className="px-4 py-3 text-left">类型</th>
+                    <th className="px-4 py-3 text-right">金额</th>
+                    <th className="px-4 py-3 text-right">余额</th>
+                    <th className="px-4 py-3 text-left">备注</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {cashEvents.length ? cashEvents.map((event) => (
+                    <tr key={event.id}>
+                      <td className="px-4 py-3 text-slate-500">{formatDateTime(event.ts)}</td>
+                      <td className={cx('px-4 py-3 font-semibold', event.type === 'withdraw' ? 'text-rose-600' : 'text-emerald-600')}>{event.type === 'withdraw' ? '减少' : '增加'}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{formatMoney(event.amount)}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{formatMoney(event.cashAfter)}</td>
+                      <td className="px-4 py-3 text-slate-500">{event.note || '--'}</td>
+                    </tr>
+                  )) : <EmptyRow colSpan={5}>暂无资金流水</EmptyRow>}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         </div>
-        {summary ? (
-          <div className="grid gap-3 text-sm sm:grid-cols-4">
-            <div className="rounded-xl bg-slate-50 p-3">
-              <div className="text-xs font-bold text-slate-400">触发</div>
-              <div className="mt-1 font-semibold text-slate-900">{formatNumber(summary.triggered || 0)}</div>
+      ) : null}
+
+      {activeTab === 'fills' ? (
+        <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+          <Card className="space-y-4 p-5 sm:p-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-xs font-bold text-slate-400">PAPER ACCOUNT</div>
+                <h2 className="mt-1 text-lg font-bold text-slate-900">模拟持仓</h2>
+              </div>
+              <StatusPill tone={paperState?.enabled === false ? 'amber' : 'emerald'}>
+                <ShieldCheck className="h-3.5 w-3.5" />
+                {paperState?.enabled === false ? '已停用' : '模拟模式'}
+              </StatusPill>
             </div>
-            <div className="rounded-xl bg-slate-50 p-3">
-              <div className="text-xs font-bold text-slate-400">通知</div>
-              <div className="mt-1 font-semibold text-slate-900">{formatNumber(summary.pushed || 0)}</div>
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="min-w-full divide-y divide-slate-100 text-sm">
+                <thead className="bg-slate-50 text-xs font-bold text-slate-400">
+                  <tr>
+                    <th className="px-4 py-3 text-left">代码</th>
+                    <th className="px-4 py-3 text-left">名称</th>
+                    <th className="px-4 py-3 text-right">份额</th>
+                    <th className="px-4 py-3 text-right">成本</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {positions.length ? positions.map((row) => (
+                    <tr key={row.code}>
+                      <td className="px-4 py-3 font-semibold text-slate-900">{row.code}</td>
+                      <td className="px-4 py-3 text-slate-600">{row.name || row.code}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{formatNumber(row.shares, 0)}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{formatPrice(row.costPrice)}</td>
+                    </tr>
+                  )) : <EmptyRow colSpan={4}>暂无模拟持仓</EmptyRow>}
+                </tbody>
+              </table>
             </div>
-            <div className="rounded-xl bg-slate-50 p-3">
-              <div className="text-xs font-bold text-slate-400">模拟执行</div>
-              <div className="mt-1 font-semibold text-slate-900">{formatNumber(summary.paperExecuted || 0)}</div>
+          </Card>
+
+          <Card className="space-y-4 p-5 sm:p-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-xs font-bold text-slate-400">FILLS</div>
+                <h2 className="mt-1 text-lg font-bold text-slate-900">最近模拟成交</h2>
+              </div>
+              <StatusPill>
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {paperState?.lastStatus || 'idle'}
+              </StatusPill>
             </div>
-            <div className="rounded-xl bg-slate-50 p-3">
-              <div className="text-xs font-bold text-slate-400">模拟订单</div>
-              <div className="mt-1 font-semibold text-slate-900">{formatNumber(summary.paperOrders || 0)}</div>
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="min-w-full divide-y divide-slate-100 text-sm">
+                <thead className="bg-slate-50 text-xs font-bold text-slate-400">
+                  <tr>
+                    <th className="px-4 py-3 text-left">时间</th>
+                    <th className="px-4 py-3 text-left">方向</th>
+                    <th className="px-4 py-3 text-left">代码</th>
+                    <th className="px-4 py-3 text-right">价格</th>
+                    <th className="px-4 py-3 text-right">数量</th>
+                    <th className="px-4 py-3 text-right">金额</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {orders.length ? orders.map((order) => (
+                    <tr key={order.id}>
+                      <td className="px-4 py-3 text-slate-500">{formatDateTime(order.ts)}</td>
+                      <td className={cx('px-4 py-3 font-semibold', order.side === 'SELL' ? 'text-rose-600' : 'text-emerald-600')}>{order.side}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-900">{order.code}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{formatPrice(order.price)}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{formatNumber(order.quantity, 0)}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{formatMoney(order.amount)}</td>
+                    </tr>
+                  )) : <EmptyRow colSpan={6}>暂无模拟成交</EmptyRow>}
+                </tbody>
+              </table>
             </div>
-          </div>
-        ) : null}
-      </Card>
+            {summary ? (
+              <div className="grid gap-3 text-sm sm:grid-cols-3">
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <div className="text-xs font-bold text-slate-400">触发</div>
+                  <div className="mt-1 font-semibold text-slate-900">{formatNumber(summary.triggered || 0)}</div>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <div className="text-xs font-bold text-slate-400">模拟执行</div>
+                  <div className="mt-1 font-semibold text-slate-900">{formatNumber(summary.paperExecuted || 0)}</div>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <div className="text-xs font-bold text-slate-400">模拟订单</div>
+                  <div className="mt-1 font-semibold text-slate-900">{formatNumber(summary.paperOrders || 0)}</div>
+                </div>
+              </div>
+            ) : null}
+          </Card>
+        </div>
+      ) : null}
     </div>
   );
 }

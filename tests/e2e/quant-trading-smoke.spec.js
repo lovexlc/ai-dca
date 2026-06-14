@@ -1,7 +1,25 @@
 import { expect, test } from '@playwright/test';
 
 test('quant research workspace renders the Worker premium paper trading panel', async ({ page }) => {
-  await page.route('**/api/notify/switch/paper**', async (route) => {
+  await page.route('**/api/notify/quant/premium/config**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ok: true,
+        config: {
+          enabled: true,
+          name: '纳指 ETF 溢价差',
+          highCodes: ['159513'],
+          lowCodes: ['513100', '159501'],
+          activeSide: 'all',
+          intraSellLowerPct: 1,
+          intraBuyOtherPct: 3,
+          notifyEnabled: true
+        }
+      })
+    });
+  });
+  await page.route('**/api/notify/quant/premium/paper**', async (route) => {
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
@@ -16,19 +34,34 @@ test('quant research workspace renders the Worker premium paper trading panel', 
             '159513': { code: '159513', name: '纳指科技 ETF', shares: 20000, costPrice: 1.735 },
             '513100': { code: '513100', name: '纳指 ETF', shares: 8000, costPrice: 1.486 }
           },
-          orders: []
+          orders: [],
+          cashEvents: [{
+            id: 'cash-1',
+            ts: '2026-06-12T02:00:00.000Z',
+            type: 'deposit',
+            amount: 10000,
+            cashBefore: 50000,
+            cashAfter: 60000,
+            note: 'e2e'
+          }]
         }
       })
     });
   });
-  await page.route('**/api/notify/switch/snapshot**', async (route) => {
+  await page.route('**/api/notify/quant/premium/snapshot**', async (route) => {
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
         ok: true,
         config: {
           enabled: true,
-          rules: [{ id: 'rule-1', enabled: true }]
+          name: '纳指 ETF 溢价差',
+          highCodes: ['159513'],
+          lowCodes: ['513100', '159501'],
+          activeSide: 'all',
+          intraSellLowerPct: 1,
+          intraBuyOtherPct: 3,
+          notifyEnabled: true
         },
         snapshot: {
           ready: true,
@@ -69,12 +102,26 @@ test('quant research workspace renders the Worker premium paper trading panel', 
   await expect(page.locator('nav a', { hasText: '策略研究' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^选股与因子研究$/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '手动跑一轮' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '重置模拟盘' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '模拟持仓' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '策略', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '资金', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '成交', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '量化策略配置' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '当前信号' })).toBeVisible();
+  await expect(page.getByLabel('H 高溢价 ETF')).toHaveValue('159513');
+  await expect(page.getByLabel('L 低溢价 ETF')).toHaveValue('513100 159501');
+  await expect(page.getByText('159513(H) - 513100(L) 溢价差 +3.40% > 3%')).toBeVisible();
+
+  await page.getByRole('button', { name: '资金', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '资金', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '增加现金' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '减少现金' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '重置模拟盘' })).toBeVisible();
+  await expect(page.getByText('e2e')).toBeVisible();
+
+  await page.getByRole('button', { name: '成交', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '模拟持仓' })).toBeVisible();
   await expect(page.getByRole('cell', { name: '159513' })).toBeVisible();
   await expect(page.getByRole('cell', { name: '513100' })).toBeVisible();
-  await expect(page.getByText('159513(H) - 513100(L) 溢价差 +3.40% > 3%')).toBeVisible();
   await expect(page.getByText('python3 scripts/quant_premium_runner.py')).toHaveCount(0);
   await expect(page.getByText('data/quant/orders.jsonl')).toHaveCount(0);
 

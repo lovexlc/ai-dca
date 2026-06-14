@@ -29,13 +29,20 @@ import {
 import {
   handleSwitchConfigGet,
   handleSwitchConfigPost,
-  handleSwitchPaperGet,
-  handleSwitchPaperPost,
   handleSwitchRunPost,
   handleSwitchSnapshotGet,
   handleSwitchTestNav,
   runSwitchStrategyTick
 } from './switchStrategyRoutes.js';
+import {
+  handleQuantPremiumConfigGet,
+  handleQuantPremiumConfigPost,
+  handleQuantPremiumPaperGet,
+  handleQuantPremiumPaperPost,
+  handleQuantPremiumRunPost,
+  handleQuantPremiumSnapshotGet,
+  runQuantPremiumTick
+} from './quantPremiumRoutes.js';
 import {
   handleAdminAlert,
   handleAdminHoldingsAllTest,
@@ -298,20 +305,36 @@ export default {
         return await handleSwitchSnapshotGet(request, env);
       }
 
-      if (request.method === 'GET' && url.pathname === '/api/notify/switch/paper') {
-        return await handleSwitchPaperGet(request, env);
-      }
-
-      if (request.method === 'POST' && url.pathname === '/api/notify/switch/paper') {
-        return await handleSwitchPaperPost(request, env);
-      }
-
       if (request.method === 'POST' && url.pathname === '/api/notify/switch/run') {
         return await handleSwitchRunPost(request, env, { runClientDetection });
       }
 
       if (request.method === 'GET' && url.pathname === '/api/notify/switch/test-nav') {
         return await handleSwitchTestNav(request, env);
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/notify/quant/premium/config') {
+        return await handleQuantPremiumConfigGet(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/quant/premium/config') {
+        return await handleQuantPremiumConfigPost(request, env);
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/notify/quant/premium/snapshot') {
+        return await handleQuantPremiumSnapshotGet(request, env);
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/notify/quant/premium/paper') {
+        return await handleQuantPremiumPaperGet(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/quant/premium/paper') {
+        return await handleQuantPremiumPaperPost(request, env);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/notify/quant/premium/run') {
+        return await handleQuantPremiumRunPost(request, env, { runClientDetection });
       }
 
       if (request.method === 'GET' && url.pathname === '/api/notify/health') {
@@ -388,7 +411,8 @@ export default {
     if (cron === '* 1-7 * * MON-FRI') {
       console.log('[notify] scheduled dispatch -> runSwitchStrategyTick', JSON.stringify({ cron }));
       ctx.waitUntil(runSwitchStrategyTick(env, scheduledMs, { reason: 'switch-cron', runClientDetection }));
-      // 场内切换 cron 每分钟运行一次：切换通知 + 溢价差模拟盘 + 行情推送。
+      ctx.waitUntil(runQuantPremiumTick(env, scheduledMs, { reason: 'quant-premium-cron', runClientDetection }));
+      // 场内分钟 cron：持仓交易 H/L 通知 + 量化溢价差模拟盘 + 行情推送。
       ctx.waitUntil(runMarketDataPush(env).catch((error) => {
         console.log('[notify] marketPush error', JSON.stringify({
           message: error instanceof Error ? error.message : String(error),
