@@ -61,9 +61,15 @@ test('quant research workspace renders the Worker premium paper trading panel', 
       summary: {
         sampleCount: 128,
         signalCount: 6,
+        totalProfit: 1200,
         dataCoveragePct: 98.4,
+        priceCoveragePct: 99.2,
+        navCoveragePct: 98.4,
         totalReturnPct: 1.2,
-        maxDrawdownPct: 0
+        maxDrawdownPct: -0.35,
+        finalEquity: 101200,
+        from: '2026-05-20',
+        to: '2026-06-12'
       },
       quality: { passed: true, reason: '数据覆盖率满足回测门槛' },
       rows: [],
@@ -201,6 +207,10 @@ test('quant research workspace renders the Worker premium paper trading panel', 
   await expect(page.getByRole('button', { name: '运行回测' })).toBeVisible();
   await page.getByRole('button', { name: '运行回测' }).click();
   await expect(page.getByText('128')).toBeVisible();
+  await expect(page.getByText('1.20%')).toBeVisible();
+  await expect(page.getByText('-0.35%')).toBeVisible();
+  await expect(page.getByText('¥101,200.00')).toBeVisible();
+  await expect(page.getByText('2026-05-20 至 2026-06-12')).toBeVisible();
   await expect(page.getByRole('button', { name: '确认用于实盘信号' })).toBeEnabled();
   await page.getByRole('button', { name: '确认用于实盘信号' }).click();
   await expect(page.getByText('实盘信号已确认').first()).toBeVisible();

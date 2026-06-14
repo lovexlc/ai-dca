@@ -33,6 +33,12 @@ function formatNumber(value, digits = 0) {
   return num.toLocaleString('zh-CN', { maximumFractionDigits: digits, minimumFractionDigits: digits });
 }
 
+function formatPercent(value, digits = 2) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '--';
+  return `${num.toLocaleString('zh-CN', { maximumFractionDigits: digits, minimumFractionDigits: digits })}%`;
+}
+
 function formatPrice(value) {
   const num = Number(value);
   if (!Number.isFinite(num) || num <= 0) return '--';
@@ -100,6 +106,22 @@ function FormLabel({ label, children }) {
     </label>
   );
 }
+
+function BacktestMetric({ label, value, note, tone = 'slate' }) {
+  const toneClass = tone === 'emerald'
+    ? 'text-emerald-700'
+    : tone === 'rose'
+      ? 'text-rose-700'
+      : 'text-slate-900';
+  return (
+    <div className="rounded-xl bg-slate-50 p-3">
+      <div className="text-xs font-bold text-slate-400">{label}</div>
+      <div className={cx('mt-1 text-lg font-semibold', toneClass)}>{value}</div>
+      {note ? <div className="mt-1 text-xs leading-5 text-slate-500">{note}</div> : null}
+    </div>
+  );
+}
+
 
 const inputClass = 'h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100';
 const textAreaClass = 'min-h-24 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100';
@@ -435,8 +457,14 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
   const visibleBacktestStatus = backtest?.status || backtestGate.status;
   const backtestPassed = visibleBacktestStatus === 'passed';
   const backtestApproved = backtestPassed && Boolean(backtestGate.approvedAt) && config.liveSignalEnabled;
+  const backtestSummary = backtest?.summary || backtestGate.summary || {};
   const backtestQuality = backtest?.quality || null;
   const missingKlineCodes = Array.isArray(backtestQuality?.missingKlineCodes) ? backtestQuality.missingKlineCodes : [];
+  const totalReturnPct = Number(backtestSummary.totalReturnPct);
+  const totalReturnTone = Number.isFinite(totalReturnPct) && totalReturnPct < 0 ? 'rose' : Number.isFinite(totalReturnPct) && totalReturnPct > 0 ? 'emerald' : 'slate';
+  const maxDrawdownPct = Number(backtestSummary.maxDrawdownPct);
+  const drawdownTone = Number.isFinite(maxDrawdownPct) && maxDrawdownPct < 0 ? 'rose' : 'slate';
+  const backtestRange = backtestSummary.from || backtestSummary.to ? `${backtestSummary.from || '--'} 至 ${backtestSummary.to || '--'}` : '--';
   const metrics = [
     { label: 'Worker 频率', value: '1 分钟', note: '交易时段 cron', Icon: Clock3 },
     { label: '策略数量', value: formatNumber(strategies.length || 1), note: config.enabled ? '当前策略已启用' : '当前策略未启用', Icon: Bot },
@@ -635,19 +663,19 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
                 {backtesting ? '回测中' : '运行回测'}
               </button>
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-xl bg-slate-50 p-3">
-                <div className="text-xs font-bold text-slate-400">样本</div>
-                <div className="mt-1 text-lg font-semibold text-slate-900">{formatNumber(backtest?.summary?.sampleCount ?? backtestGate.summary?.sampleCount ?? 0)}</div>
-              </div>
-              <div className="rounded-xl bg-slate-50 p-3">
-                <div className="text-xs font-bold text-slate-400">信号</div>
-                <div className="mt-1 text-lg font-semibold text-slate-900">{formatNumber(backtest?.summary?.signalCount ?? backtestGate.summary?.signalCount ?? 0)}</div>
-              </div>
-              <div className="rounded-xl bg-slate-50 p-3">
-                <div className="text-xs font-bold text-slate-400">数据覆盖</div>
-                <div className="mt-1 text-lg font-semibold text-slate-900">{formatNumber(backtest?.summary?.dataCoveragePct ?? backtestGate.summary?.dataCoveragePct ?? 0, 1)}%</div>
-              </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <BacktestMetric label="收益率" value={formatPercent(backtestSummary.totalReturnPct, 2)} tone={totalReturnTone} />
+              <BacktestMetric label="累计收益" value={formatMoney(backtestSummary.totalProfit)} tone={totalReturnTone} />
+              <BacktestMetric label="最大回撤" value={formatPercent(backtestSummary.maxDrawdownPct, 2)} tone={drawdownTone} />
+              <BacktestMetric label="样本" value={formatNumber(backtestSummary.sampleCount ?? 0)} />
+              <BacktestMetric label="信号" value={formatNumber(backtestSummary.signalCount ?? 0)} />
+              <BacktestMetric label="最终权益" value={formatMoney(backtestSummary.finalEquity)} />
+              <BacktestMetric label="价格覆盖" value={formatPercent(backtestSummary.priceCoveragePct, 1)} />
+              <BacktestMetric label="NAV 覆盖" value={formatPercent(backtestSummary.navCoveragePct, 1)} />
+              <BacktestMetric label="数据覆盖" value={formatPercent(backtestSummary.dataCoveragePct, 1)} />
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
+              <span className="font-semibold text-slate-800">回测区间：</span>{backtestRange}
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-500">
               分钟级历史 K 线由 markets Worker 提供。雪球单次最多约 1000 根，5m 是默认平衡；1m 只适合短窗口验证。
