@@ -18,8 +18,8 @@ export const SCENARIOS = {
     label: '量化研究',
     icon: 'Bot',
     description: 'Worker 溢价差模拟盘',
-    defaultHome: 'quant',
-    visibleTabs: ['quant', 'adminData'],
+    defaultHome: 'quant:strategy',
+    visibleTabs: ['quant:strategy', 'quant:funds', 'quant:fills'],
     requireAdmin: true
   }
 };

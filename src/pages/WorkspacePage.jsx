@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRightLeft, ArrowUp, BarChart3, Bell, BookOpen, Bot, CandlestickChart, Crown, Gauge, LineChart, ListChecks, Play, Plus, Send, ShieldCheck, Shuffle, SlidersHorizontal, Trash2, Wallet, X } from 'lucide-react';
+import { ArrowLeft, ArrowRightLeft, ArrowUp, BarChart3, Bell, BookOpen, Bot, Crown, LineChart, ListChecks, Play, Plus, Send, Shuffle, SlidersHorizontal, Trash2, Wallet, X } from 'lucide-react';
 import { DEFAULT_QUANT_MODULE_TAB, DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, QUANT_MODULE_TABS, QUANT_MODULE_TAB_KEYS, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getQuantModuleTabs, isWorkspaceGroup } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
@@ -37,13 +37,9 @@ const WORKSPACE_TITLES = {
   strategy: '美股策略助手',
   tradePlans: '交易计划中心',
   quant: '量化研究',
-  'quant:dashboard': '量化研究',
-  'quant:marketData': '量化研究 · 行情与数据',
-  'quant:research': '量化研究 · 策略研究',
-  'quant:trading': '量化研究 · 交易执行',
-  'quant:risk': '量化研究 · 风控监控',
-  'quant:performance': '量化研究 · 账户绩效',
-  'quant:settings': '量化研究 · 系统设置',
+  'quant:strategy': '量化研究 · 策略',
+  'quant:funds': '量化研究 · 资金',
+  'quant:fills': '量化研究 · 成交',
   fundSwitch: '基金切换收益分析',
   markets: '行情中心',
   premium: '高级版',
@@ -56,13 +52,9 @@ const SIDEBAR_ICONS = {
   strategy: BookOpen,
   tradePlans: ListChecks,
   quant: Bot,
-  'quant:dashboard': Gauge,
-  'quant:marketData': CandlestickChart,
-  'quant:research': Bot,
-  'quant:trading': ArrowRightLeft,
-  'quant:risk': ShieldCheck,
-  'quant:performance': LineChart,
-  'quant:settings': SlidersHorizontal,
+  'quant:strategy': SlidersHorizontal,
+  'quant:funds': Wallet,
+  'quant:fills': ArrowRightLeft,
   fundSwitch: Shuffle,
   markets: LineChart,
   premium: Crown,
@@ -74,6 +66,7 @@ const SIDEBAR_ICONS = {
 const HASH_ROUTE_TABS = new Set(['tradePlans', 'holdings']);
 
 function normalizeWorkspaceTab(value = '') {
+  if (value === 'quant') return DEFAULT_QUANT_MODULE_TAB;
   return isWorkspaceGroup(value) ? value : DEFAULT_WORKSPACE_TAB;
 }
 
@@ -83,7 +76,7 @@ function isQuantModuleTab(value = '') {
 
 function normalizeQuantModule(value = '') {
   const module = String(value || '').trim();
-  return QUANT_MODULE_TABS.some((tab) => tab.module === module) ? module : 'dashboard';
+  return QUANT_MODULE_TABS.some((tab) => tab.module === module) ? module : 'strategy';
 }
 
 function quantModuleToTab(module = '') {
@@ -91,7 +84,7 @@ function quantModuleToTab(module = '') {
 }
 
 function quantTabToModule(tab = '') {
-  return QUANT_MODULE_TABS.find((item) => item.key === tab)?.module || 'dashboard';
+  return QUANT_MODULE_TABS.find((item) => item.key === tab)?.module || 'strategy';
 }
 
 function readTabFromLocation(fallbackTab = DEFAULT_WORKSPACE_TAB) {
@@ -327,10 +320,10 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     }
     if (isQuantModuleTab(activeTab)) {
       return {
-        label: '模拟撮合',
+        label: '手动跑一轮',
         icon: Play,
         mode: 'custom',
-        action: () => window.dispatchEvent(new CustomEvent('quant:execute-simulated-trade'))
+        action: () => window.dispatchEvent(new CustomEvent('quant:run-once'))
       };
     }
     if (activeTab === 'quant') {
@@ -556,7 +549,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         return (
           <QuantTradingExperience
             {...sharedProps}
-            activeModule="dashboard"
+            activeModule="strategy"
             hideModuleTabs
             onModuleChange={(module) => handleSelectTab(quantModuleToTab(module))}
           />

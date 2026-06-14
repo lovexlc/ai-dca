@@ -118,12 +118,19 @@ function normalizeSignalList(snapshot) {
   return (triggers.length ? triggers : signals).slice(0, 6);
 }
 
-export function QuantTradingExperience({ embedded = false } = {}) {
+const QUANT_VIEW_KEYS = new Set(['strategy', 'funds', 'fills']);
+
+function normalizeQuantViewKey(value = '') {
+  const key = String(value || '').trim();
+  return QUANT_VIEW_KEYS.has(key) ? key : 'strategy';
+}
+
+export function QuantTradingExperience({ embedded = false, activeModule = 'strategy', hideModuleTabs = false, onModuleChange } = {}) {
   const [paperState, setPaperState] = useState(null);
   const [snapshot, setSnapshot] = useState(null);
   const [config, setConfig] = useState(() => normalizeQuantPremiumConfigShape());
   const [summary, setSummary] = useState(null);
-  const [activeTab, setActiveTab] = useState('strategy');
+  const [activeTab, setActiveTab] = useState(() => normalizeQuantViewKey(activeModule));
   const [highText, setHighText] = useState('');
   const [lowText, setLowText] = useState('');
   const [cashAmount, setCashAmount] = useState('10000');
@@ -177,6 +184,10 @@ export function QuantTradingExperience({ embedded = false } = {}) {
     refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    setActiveTab(normalizeQuantViewKey(activeModule));
+  }, [activeModule]);
+
   async function handleSaveConfig() {
     const nextConfig = normalizeQuantPremiumConfigShape({
       ...config,
@@ -201,7 +212,7 @@ export function QuantTradingExperience({ embedded = false } = {}) {
     }
   }
 
-  async function handleRunOnce() {
+  const handleRunOnce = useCallback(async () => {
     setRunning(true);
     setError('');
     try {
@@ -215,7 +226,15 @@ export function QuantTradingExperience({ embedded = false } = {}) {
     } finally {
       setRunning(false);
     }
-  }
+  }, [refresh]);
+
+  useEffect(() => {
+    function handleRunEvent() {
+      handleRunOnce();
+    }
+    window.addEventListener('quant:run-once', handleRunEvent);
+    return () => window.removeEventListener('quant:run-once', handleRunEvent);
+  }, [handleRunOnce]);
 
   async function handleCashAdjust(direction) {
     const amount = Math.abs(Number(cashAmount) || 0);
@@ -271,6 +290,14 @@ export function QuantTradingExperience({ embedded = false } = {}) {
     { key: 'fills', label: '成交', Icon: ListChecks }
   ];
 
+  function handleTabChange(key) {
+    const nextTab = normalizeQuantViewKey(key);
+    setActiveTab(nextTab);
+    if (typeof onModuleChange === 'function') {
+      onModuleChange(nextTab);
+    }
+  }
+
   return (
     <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>
       <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 lg:flex-row lg:items-start lg:justify-between">
@@ -304,12 +331,12 @@ export function QuantTradingExperience({ embedded = false } = {}) {
         {metrics.map((item) => <Metric key={item.label} {...item} />)}
       </div>
 
-      <div className="flex gap-2 overflow-x-auto rounded-xl bg-slate-100 p-1">
+      {!hideModuleTabs ? <div className="flex gap-2 overflow-x-auto rounded-xl bg-slate-100 p-1">
         {tabs.map(({ key, label, Icon }) => (
           <button
             key={key}
             type="button"
-            onClick={() => setActiveTab(key)}
+            onClick={() => handleTabChange(key)}
             className={cx(
               'inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold transition-colors',
               activeTab === key ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:bg-white/70 hover:text-slate-800'
@@ -319,7 +346,7 @@ export function QuantTradingExperience({ embedded = false } = {}) {
             {label}
           </button>
         ))}
-      </div>
+      </div> : null}
 
       {activeTab === 'strategy' ? (
         <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">

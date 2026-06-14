@@ -15,7 +15,7 @@ const HOME_OPTIONS = [
   { value: 'strategy', label: '策略指南' },
   { value: 'holdings', label: '持仓总览' },
   { value: 'tradePlans', label: '交易计划' },
-  { value: 'quant', label: '量化模拟', adminOnly: true },
+  { value: 'quant', label: '量化研究', adminOnly: true },
   { value: 'notify', label: '通知设置' },
   { value: 'markets', label: '行情中心' },
   { value: 'fundSwitch', label: '基金切换' }
@@ -33,7 +33,7 @@ const SYNC_KEY_LABELS = {
   aiDcaPlanState: '建仓计划',
   aiDcaPlanStore: '计划列表',
   aiDcaPositionSnapshot: '持仓快照',
-  aiDcaQuantProjectState: '量化模拟',
+  aiDcaQuantProjectState: '量化研究',
   aiDcaSellPlanStore: '卖出计划',
   aiDcaSwitchStrategyPrefs: '基金切换偏好',
   aiDcaTradeLedger: '交易流水',

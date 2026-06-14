@@ -6,8 +6,12 @@ export const PROJECT_TITLE = '美股策略助手';
 export const DEFAULT_WORKSPACE_TAB = 'strategy';
 export const PRIMARY_TAB_ORDER = ['strategy', 'holdings', 'tradePlans', 'quant', 'fundSwitch', 'markets', 'premium', 'notify', 'adminData'];
 export const QUANT_MODULE_TAB_PREFIX = 'quant:';
-export const DEFAULT_QUANT_MODULE_TAB = 'quant';
-export const QUANT_MODULE_TABS = [];
+export const DEFAULT_QUANT_MODULE_TAB = 'quant:strategy';
+export const QUANT_MODULE_TABS = [
+  { key: 'quant:strategy', module: 'strategy', label: '策略', hrefKey: 'quantStrategy', adminOnly: true },
+  { key: 'quant:funds', module: 'funds', label: '资金', hrefKey: 'quantFunds', adminOnly: true },
+  { key: 'quant:fills', module: 'fills', label: '成交', hrefKey: 'quantFills', adminOnly: true }
+];
 export const QUANT_MODULE_TAB_KEYS = QUANT_MODULE_TABS.map((tab) => tab.key);
 
 export const PRIMARY_TAB_META = {
@@ -45,13 +49,16 @@ export function createPageLinks({ inPagesDir = false } = {}) {
     strategy: `${indexHref}?tab=strategy`,
     tradePlans: `${indexHref}?tab=tradePlans`,
     quant: `${indexHref}?tab=quant`,
-    quantDashboard: `${indexHref}?tab=quant&module=dashboard`,
-    quantMarketData: `${indexHref}?tab=quant&module=marketData`,
-    quantResearch: `${indexHref}?tab=quant&module=research`,
-    quantTrading: `${indexHref}?tab=quant&module=trading`,
-    quantRisk: `${indexHref}?tab=quant&module=risk`,
-    quantPerformance: `${indexHref}?tab=quant&module=performance`,
-    quantSettings: `${indexHref}?tab=quant&module=settings`,
+    quantStrategy: `${indexHref}?tab=quant&module=strategy`,
+    quantFunds: `${indexHref}?tab=quant&module=funds`,
+    quantFills: `${indexHref}?tab=quant&module=fills`,
+    quantDashboard: `${indexHref}?tab=quant&module=strategy`,
+    quantMarketData: `${indexHref}?tab=quant&module=strategy`,
+    quantResearch: `${indexHref}?tab=quant&module=strategy`,
+    quantTrading: `${indexHref}?tab=quant&module=fills`,
+    quantRisk: `${indexHref}?tab=quant&module=strategy`,
+    quantPerformance: `${indexHref}?tab=quant&module=funds`,
+    quantSettings: `${indexHref}?tab=quant&module=strategy`,
     tradePlansHome: `${indexHref}?tab=tradePlans#home`,
     dca: `${indexHref}?tab=tradePlans#dca`,
     fundSwitch: `${indexHref}?tab=fundSwitch`,

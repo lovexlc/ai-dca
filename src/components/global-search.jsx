@@ -15,7 +15,7 @@ import { readPlanList } from '../app/plan.js';
 const TAB_ENTRIES = [
   { key: 'holdings', label: '持仓总览', desc: '基金持仓、汇总收益', icon: Wallet, keywords: 'holdings cangwei chicang' },
   { key: 'tradePlans', label: '交易计划', desc: '加仓 / 定投策略', icon: BarChart3, keywords: 'tradeplans plans jihua dca' },
-  { key: 'quant', label: '量化模拟', desc: '模拟盘、策略、交易、复盘', icon: Bot, keywords: 'quant lianghua moni backtest', adminOnly: true },
+  { key: 'quant', label: '量化研究', desc: '模拟盘、策略、交易、复盘', icon: Bot, keywords: 'quant lianghua moni backtest', adminOnly: true },
   { key: 'fundSwitch', label: '基金切换', desc: '切换链路与执行', icon: Shuffle, keywords: 'fundswitch switch qiehuan' },
   { key: 'notify', label: '通知', desc: '推送配置与状态', icon: Bell, keywords: 'notify push tongzhi' },
 ];
