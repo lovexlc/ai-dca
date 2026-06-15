@@ -78,4 +78,5 @@ new_sqlite_classes = ["WsHub"]
 [vars]
 PUBLIC_DATA_BASE_URL = "https://tools.freebacktrack.tech"
 NOTIFY_TIMEZONE = "Asia/Shanghai"
-ADMIN_TEST_TOKEN = "admintest"
+QUANT_BACKTEST_DAILY_LIMIT = "20"
+QUANT_BACKTEST_IP_HOURLY_LIMIT = "12"

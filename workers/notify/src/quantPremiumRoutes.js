@@ -31,6 +31,7 @@ import {
   quantPremiumPaperStateKey
 } from './premiumPaperTrading.js';
 import { runQuantPremiumBacktestV2 } from './quantPremiumBacktestV2.js';
+import { enforceClientAndIpRateLimit } from './security.js';
 
 export const QUANT_PREMIUM_CONFIG_PREFIX = 'quant:premium:config:';
 export const QUANT_PREMIUM_STRATEGIES_PREFIX = 'quant:premium:strategies:';
@@ -1068,6 +1069,16 @@ export async function handleQuantPremiumBacktestPost(request, env, strategyId) {
   });
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
+  const rateLimitError = await enforceClientAndIpRateLimit(request, env, {
+    scope: 'quant-premium-backtest',
+    clientId: auth.clientId,
+    clientLimit: env?.QUANT_BACKTEST_DAILY_LIMIT || 20,
+    clientWindowSeconds: 86400,
+    ipLimit: env?.QUANT_BACKTEST_IP_HOURLY_LIMIT || 12,
+    ipWindowSeconds: 3600,
+    origin
+  });
+  if (rateLimitError) return rateLimitError;
   const strategy = await readQuantPremiumStrategyForClient(env, auth.clientId, strategyId);
   const result = await runQuantPremiumBacktestWithLiveData(env, strategy, {
     timeframe: payload?.timeframe || payload?.tf || '5m',

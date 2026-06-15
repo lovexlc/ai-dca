@@ -26,6 +26,7 @@ import {
   fetchHoldingsNavSnapshots,
   isExchangeLikeCode
 } from './holdingsSnapshotFetch.js';
+import { requireAdminToken } from './security.js';
 
 function resolveRunClientDetection(options = {}) {
   if (typeof options.runClientDetection !== 'function') {
@@ -123,11 +124,8 @@ export function resolveAdminNotifyClient(settings = {}, env = {}) {
 export async function handleAdminAlert(request, env, options = {}) {
   const runClientDetection = resolveRunClientDetection(options);
   const origin = readOrigin(request);
-  const headerToken = request.headers.get('x-admin-token') || '';
-  const expected = String(env?.ADMIN_TEST_TOKEN || env?.ADMIN_NOTIFY_TOKEN || '').trim();
-  if (!expected || String(headerToken || '').trim() !== expected) {
-    return jsonResponse({ error: 'forbidden' }, { status: 403, origin });
-  }
+  const authError = requireAdminToken(request, env, { origin });
+  if (authError) return authError;
   let settings = await readSettings(env);
   const clientRecord = resolveAdminNotifyClient(settings, env);
   if (!clientRecord?.clientId) {
@@ -160,11 +158,8 @@ export async function handleAdminAlert(request, env, options = {}) {
 
 export async function handleAdminHoldingsAllTest(request, env, options = {}) {
   const origin = readOrigin(request);
-  const headerToken = request.headers.get('x-admin-token') || '';
-  const expected = String(env?.ADMIN_TEST_TOKEN || '').trim();
-  if (!expected || headerToken !== expected) {
-    return jsonResponse({ error: 'forbidden' }, { status: 403, origin });
-  }
+  const authError = requireAdminToken(request, env, { origin });
+  if (authError) return authError;
   const payload = await request.json().catch(() => ({}));
   const onlyClientId = String(payload?.clientId || '').trim();
   if (!onlyClientId) {

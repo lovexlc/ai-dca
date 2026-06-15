@@ -13,6 +13,7 @@ import {
   randomString,
   upsertClientRecord
 } from './clientSettings.js';
+import { requireAdminToken } from './security.js';
 
 const MAX_STORED_WEB_WS_REGISTRATIONS = 64;
 const WS_PATH_PREFIX = '/api/notify/ws/';
@@ -161,12 +162,8 @@ export async function handleWebWsRequest(request, env, url) {
   }
 
   if (request.method === 'POST' && subpath === 'publish') {
-    const expected = String((env && env.ADMIN_TEST_TOKEN) || '').trim();
-    const auth = String(request.headers.get('authorization') || '').trim();
-    const provided = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';
-    if (!expected || provided !== expected) {
-      return jsonResponse({ ok: false, message: 'admin token mismatch' }, { status: 401, origin });
-    }
+    const authError = requireAdminToken(request, env, { origin });
+    if (authError) return authError;
     let body = {};
     try { body = await request.json(); } catch (_) { body = {}; }
     const result = await tryPublishWs(env, deviceInstallationId, body || {});

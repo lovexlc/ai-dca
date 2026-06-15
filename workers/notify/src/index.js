@@ -63,6 +63,7 @@ import {
   handleWebWsRequest,
   handleWebWsUnregister
 } from './webWsRoutes.js';
+import { requireAdminToken } from './security.js';
 
 // 把 Durable Object 类型重新导出，让 Workers runtime 能在加载 wrangler 绑定时
 // 通过 entry module 的导出表找到 class_name="WsHub"。
@@ -218,6 +219,9 @@ async function handleRun(request, env) {
     if (auth.didUpdate) {
       await writeSettings(env, auth.settings);
     }
+  } else {
+    const authError = requireAdminToken(request, env, { origin });
+    if (authError) return authError;
   }
 
   const summary = await runDetection(env, 'manual-run', {
