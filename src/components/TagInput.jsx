@@ -14,7 +14,9 @@ export function TagInput({ label, placeholder = '输入代码按回车添加', t
       e.preventDefault();
       const newTag = inputValue.trim().toUpperCase();
       if (!tags.includes(newTag)) {
-        onChange([...tags, newTag]);
+        const newTags = [...tags, newTag];
+        console.log('TagInput onChange:', newTags);
+        onChange(newTags);
       }
       setInputValue('');
     } else if (e.key === 'Backspace' && !inputValue && tags.length > 0) {

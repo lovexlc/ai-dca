@@ -147,7 +147,9 @@ export default function QuantTradingExperienceV2() {
   }
 
   async function handleSaveAndBacktest() {
-    if (highCodes.length === 0 || lowCodes.length === 0) {
+    console.log('回测前检查:', { highCodes, lowCodes });
+
+    if (!Array.isArray(highCodes) || highCodes.length === 0 || !Array.isArray(lowCodes) || lowCodes.length === 0) {
       showToast({ title: 'H 和 L 至少各设置一只 ETF', tone: 'amber' });
       return;
     }
@@ -163,6 +165,8 @@ export default function QuantTradingExperienceV2() {
         intraBuyOtherPct: ruleB
       });
 
+      console.log('保存配置:', config);
+
       const saveResult = await saveQuantPremiumStrategyToWorker(config);
       setActiveStrategyId(saveResult.strategy.id);
 
@@ -176,6 +180,7 @@ export default function QuantTradingExperienceV2() {
       setActiveTab('backtest');
       showToast({ title: '回测完成', tone: 'emerald' });
     } catch (error) {
+      console.error('回测失败:', error);
       showToast({ title: '回测失败', description: error.message, tone: 'rose' });
     } finally {
       setBacktesting(false);
