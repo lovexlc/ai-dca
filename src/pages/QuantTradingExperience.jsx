@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, BarChart3, Bot, CheckCircle2, Clock3, Database, ListChecks, Minus, Play, Plus, RefreshCw, RotateCcw, ShieldCheck, SlidersHorizontal, Trash2, WalletCards } from 'lucide-react';
 import { Card, cx, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
 import { showToast } from '../app/toast.js';
@@ -129,29 +129,175 @@ function formatKlineTick(value) {
 }
 
 function QuantBacktestKlineChart({ chart, quality }) {
-  const candles = (Array.isArray(chart?.candles) ? chart.candles : [])
-    .map((item) => ({
-      t: Number(item?.t),
-      o: Number(item?.o),
-      h: Number(item?.h),
-      l: Number(item?.l),
-      c: Number(item?.c)
-    }))
-    .filter((item) => Number.isFinite(item.t) && [item.o, item.h, item.l, item.c].every((value) => Number.isFinite(value) && value > 0));
-  const markers = (Array.isArray(chart?.markers) ? chart.markers : [])
-    .map((item) => ({
-      ts: Number(item?.ts),
-      side: String(item?.side || 'signal'),
-      price: Number(item?.price),
-      label: String(item?.label || ''),
-      gapPct: Number(item?.gapPct)
-    }))
-    .filter((item) => Number.isFinite(item.ts) && Number.isFinite(item.price) && item.price > 0);
+  const chartShellRef = useRef(null);
+  const pointersRef = useRef(new Map());
+  const pinchRef = useRef(null);
+  const gestureRef = useRef(false);
+  const [zoomWindow, setZoomWindow] = useState(null);
+  const [hoverPoint, setHoverPoint] = useState(null);
+  const [lockedPoint, setLockedPoint] = useState(null);
+  const candles = useMemo(() => {
+    const rawCandles = Array.isArray(chart?.candles) ? chart.candles : [];
+    return rawCandles
+      .map((item) => ({
+        t: Number(item?.t),
+        o: Number(item?.o),
+        h: Number(item?.h),
+        l: Number(item?.l),
+        c: Number(item?.c)
+      }))
+      .filter((item) => Number.isFinite(item.t) && [item.o, item.h, item.l, item.c].every((value) => Number.isFinite(value) && value > 0));
+  }, [chart]);
+  const markers = useMemo(() => {
+    const rawMarkers = Array.isArray(chart?.markers) ? chart.markers : [];
+    return rawMarkers
+      .map((item) => ({
+        ts: Number(item?.ts),
+        side: String(item?.side || 'signal'),
+        price: Number(item?.price),
+        label: String(item?.label || ''),
+        gapPct: Number(item?.gapPct)
+      }))
+      .filter((item) => Number.isFinite(item.ts) && Number.isFinite(item.price) && item.price > 0);
+  }, [chart]);
+  const chartSignature = candles.length ? `${candles.length}|${candles[0].t}|${candles[candles.length - 1].t}` : 'empty';
   const width = 760;
   const height = 286;
   const margin = { top: 18, right: 58, bottom: 34, left: 14 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
+  const clampZoomWindow = useCallback((start, end, total = candles.length) => {
+    if (total < 2) return null;
+    const minSpan = Math.min(total, Math.max(12, Math.ceil(total * 0.08)));
+    let nextStart = Math.round(start);
+    let nextEnd = Math.round(end);
+    if (nextEnd - nextStart + 1 < minSpan) {
+      const mid = (nextStart + nextEnd) / 2;
+      nextStart = Math.round(mid - (minSpan - 1) / 2);
+      nextEnd = nextStart + minSpan - 1;
+    }
+    if (nextStart < 0) {
+      nextEnd -= nextStart;
+      nextStart = 0;
+    }
+    if (nextEnd > total - 1) {
+      nextStart -= nextEnd - (total - 1);
+      nextEnd = total - 1;
+    }
+    nextStart = Math.max(0, nextStart);
+    nextEnd = Math.min(total - 1, nextEnd);
+    if (nextStart <= 0 && nextEnd >= total - 1) return null;
+    return { start: nextStart, end: nextEnd };
+  }, [candles.length]);
+  const visibleCandles = useMemo(() => {
+    if (!zoomWindow || candles.length < 2) return candles;
+    const start = Math.max(0, Math.min(candles.length - 2, zoomWindow.start));
+    const end = Math.max(start + 1, Math.min(candles.length - 1, zoomWindow.end));
+    return candles.slice(start, end + 1);
+  }, [candles, zoomWindow]);
+  const visibleTimestamps = useMemo(() => new Set(visibleCandles.map((item) => item.t)), [visibleCandles]);
+  const visibleMarkers = useMemo(() => markers.filter((item) => visibleTimestamps.has(item.ts)), [markers, visibleTimestamps]);
+  const markerByTs = useMemo(() => {
+    const map = new Map();
+    visibleMarkers.forEach((item) => {
+      const list = map.get(item.ts) || [];
+      list.push(item);
+      map.set(item.ts, list);
+    });
+    return map;
+  }, [visibleMarkers]);
+  const resetChartInteraction = useCallback(() => {
+    setZoomWindow(null);
+    setHoverPoint(null);
+    setLockedPoint(null);
+    pointersRef.current.clear();
+    pinchRef.current = null;
+    gestureRef.current = false;
+  }, []);
+  const pickPointFromPointer = useCallback((event) => {
+    const rect = chartShellRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || visibleCandles.length < 2) return null;
+    const x = Math.min(Math.max(event.clientX - rect.left, 0), rect.width);
+    const index = Math.min(visibleCandles.length - 1, Math.max(0, Math.round((x / rect.width) * (visibleCandles.length - 1))));
+    const candle = visibleCandles[index];
+    if (!candle) return null;
+    return {
+      ...candle,
+      index,
+      markers: markerByTs.get(candle.t) || []
+    };
+  }, [markerByTs, visibleCandles]);
+  const getPointerDistance = useCallback((a, b) => Math.hypot(a.x - b.x, a.y - b.y), []);
+  const getPointerCenterX = useCallback((a, b) => (a.x + b.x) / 2, []);
+  const handlePointerDown = useCallback((event) => {
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointersRef.current.size >= 2) {
+      event.preventDefault();
+      gestureRef.current = true;
+      const [a, b] = Array.from(pointersRef.current.values()).slice(0, 2);
+      const rect = chartShellRef.current?.getBoundingClientRect();
+      const baseWindow = zoomWindow || { start: 0, end: candles.length - 1 };
+      pinchRef.current = {
+        distance: Math.max(1, getPointerDistance(a, b)),
+        centerRatio: rect?.width ? Math.min(1, Math.max(0, (getPointerCenterX(a, b) - rect.left) / rect.width)) : 0.5,
+        start: baseWindow.start,
+        end: baseWindow.end
+      };
+    }
+  }, [candles.length, getPointerCenterX, getPointerDistance, zoomWindow]);
+  const handlePointerMoveZoom = useCallback((event) => {
+    if (pointersRef.current.has(event.pointerId)) {
+      pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    }
+    if (pointersRef.current.size >= 2 && pinchRef.current) {
+      event.preventDefault();
+      const [a, b] = Array.from(pointersRef.current.values()).slice(0, 2);
+      const distance = Math.max(1, getPointerDistance(a, b));
+      const base = pinchRef.current;
+      const baseSpan = Math.max(1, base.end - base.start + 1);
+      const nextSpan = baseSpan / Math.max(0.25, Math.min(4, distance / base.distance));
+      const anchor = base.start + base.centerRatio * (baseSpan - 1);
+      const nextStart = anchor - base.centerRatio * (nextSpan - 1);
+      setZoomWindow(clampZoomWindow(nextStart, nextStart + nextSpan - 1));
+      return;
+    }
+    const point = pickPointFromPointer(event);
+    setHoverPoint(point);
+  }, [clampZoomWindow, getPointerDistance, pickPointFromPointer]);
+  const handlePointerEnd = useCallback((event) => {
+    pointersRef.current.delete(event.pointerId);
+    if (pointersRef.current.size < 2) pinchRef.current = null;
+  }, []);
+  const handlePointerLeave = useCallback((event) => {
+    handlePointerEnd(event);
+    setHoverPoint(null);
+  }, [handlePointerEnd]);
+  const handleWheelZoom = useCallback((event) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    const rect = chartShellRef.current?.getBoundingClientRect();
+    const current = zoomWindow || { start: 0, end: candles.length - 1 };
+    const ratio = rect?.width ? Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)) : 0.5;
+    const span = current.end - current.start + 1;
+    const scale = event.deltaY < 0 ? 0.82 : 1.18;
+    const nextSpan = span * scale;
+    const anchor = current.start + ratio * (span - 1);
+    const nextStart = anchor - ratio * (nextSpan - 1);
+    setZoomWindow(clampZoomWindow(nextStart, nextStart + nextSpan - 1));
+  }, [candles.length, clampZoomWindow, zoomWindow]);
+  const handleChartClick = useCallback((event) => {
+    if (gestureRef.current) {
+      gestureRef.current = false;
+      return;
+    }
+    const point = pickPointFromPointer(event);
+    if (!point) return;
+    setLockedPoint((current) => (current && current.t === point.t ? null : point));
+  }, [pickPointFromPointer]);
+
+  useEffect(() => {
+    resetChartInteraction();
+  }, [chartSignature, resetChartInteraction]);
 
   if (candles.length < 2) {
     return (
@@ -161,22 +307,25 @@ function QuantBacktestKlineChart({ chart, quality }) {
     );
   }
 
-  const priceValues = candles.flatMap((item) => [item.h, item.l, item.o, item.c]).concat(markers.map((item) => item.price));
+  const priceValues = visibleCandles.flatMap((item) => [item.h, item.l, item.o, item.c]).concat(visibleMarkers.map((item) => item.price));
   const rawMin = Math.min(...priceValues);
   const rawMax = Math.max(...priceValues);
   const padding = Math.max(0.0001, (rawMax - rawMin) * 0.12);
   const minPrice = rawMin - padding;
   const maxPrice = rawMax + padding;
   const priceRange = Math.max(0.0001, maxPrice - minPrice);
-  const xForIndex = (index) => margin.left + (candles.length === 1 ? plotWidth / 2 : (plotWidth * index) / (candles.length - 1));
+  const xForIndex = (index) => margin.left + (visibleCandles.length === 1 ? plotWidth / 2 : (plotWidth * index) / (visibleCandles.length - 1));
   const yForPrice = (price) => margin.top + ((maxPrice - price) / priceRange) * plotHeight;
-  const bodyWidth = Math.max(2, Math.min(8, (plotWidth / candles.length) * 0.62));
-  const tsToIndex = new Map(candles.map((item, index) => [item.t, index]));
+  const bodyWidth = Math.max(2, Math.min(10, (plotWidth / visibleCandles.length) * 0.62));
+  const tsToIndex = new Map(visibleCandles.map((item, index) => [item.t, index]));
   const gridTicks = Array.from({ length: 4 }, (_, index) => maxPrice - (priceRange * index) / 3);
-  const xLabelIndexes = Array.from(new Set([0, Math.floor((candles.length - 1) / 2), candles.length - 1]));
+  const xLabelIndexes = Array.from(new Set([0, Math.floor((visibleCandles.length - 1) / 2), visibleCandles.length - 1]));
   const chartCode = String(chart?.code || '').trim() || '策略标的';
   const chartTf = String(chart?.timeframe || '').trim() || '';
   const qualityTone = quality?.passed ? 'text-emerald-700' : 'text-amber-700';
+  const activePoint = lockedPoint || hoverPoint;
+  const activeIndex = activePoint ? tsToIndex.get(activePoint.t) : null;
+  const activeMarkers = activePoint?.markers || [];
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -189,9 +338,51 @@ function QuantBacktestKlineChart({ chart, quality }) {
           <span className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-emerald-500" />买点</span>
           <span className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-rose-500" />卖点</span>
           <span>{formatNumber(markers.length)} 个标记</span>
+          {zoomWindow ? <span>{formatNumber(visibleCandles.length)} 根可见</span> : null}
+          {zoomWindow ? (
+            <button type="button" data-testid="quant-backtest-kline-reset" onClick={resetChartInteraction} className="inline-flex h-7 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-600 shadow-sm hover:bg-slate-50">
+              <RotateCcw className="h-3.5 w-3.5" />
+              复位
+            </button>
+          ) : null}
         </div>
       </div>
-      <div className="h-72 w-full overflow-hidden rounded-lg bg-slate-50">
+      <div
+        ref={chartShellRef}
+        className="relative h-72 w-full touch-none select-none overflow-hidden rounded-lg bg-slate-50 outline-none [-webkit-tap-highlight-color:transparent]"
+        tabIndex={0}
+        onPointerMove={handlePointerMoveZoom}
+        onPointerLeave={handlePointerLeave}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
+        onWheel={handleWheelZoom}
+        onDoubleClick={resetChartInteraction}
+        onClick={handleChartClick}
+      >
+        {activePoint ? (
+          <div data-testid="quant-backtest-kline-selected" className="pointer-events-none absolute left-3 top-3 z-10 max-w-[calc(100%-1.5rem)] rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-600 shadow-lg backdrop-blur">
+            <div className="flex flex-wrap items-center gap-2 text-slate-900">
+              <span>{formatKlineTick(activePoint.t)}</span>
+              {lockedPoint ? <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">已选中</span> : null}
+            </div>
+            <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 tabular-nums sm:grid-cols-4">
+              <span>O {formatPrice(activePoint.o)}</span>
+              <span>H {formatPrice(activePoint.h)}</span>
+              <span>L {formatPrice(activePoint.l)}</span>
+              <span>C {formatPrice(activePoint.c)}</span>
+            </div>
+            {activeMarkers.length ? (
+              <div className="mt-1 space-y-0.5">
+                {activeMarkers.map((item, index) => (
+                  <div key={`${item.ts}-${item.side}-${index}`} className={item.side === 'sell' ? 'text-rose-600' : item.side === 'buy' ? 'text-emerald-600' : 'text-amber-600'}>
+                    {item.label || (item.side === 'sell' ? '卖点' : item.side === 'buy' ? '买点' : '信号')} · {formatPercent(item.gapPct, 2)}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <svg role="img" aria-label="回测 K 线图" data-testid="quant-backtest-kline-chart" viewBox={`0 0 ${width} ${height}`} className="h-full w-full">
           <rect x="0" y="0" width={width} height={height} fill="#f8fafc" />
           {gridTicks.map((tick) => {
@@ -204,11 +395,11 @@ function QuantBacktestKlineChart({ chart, quality }) {
             );
           })}
           {xLabelIndexes.map((index) => (
-            <text key={index} x={xForIndex(index)} y={height - 10} textAnchor={index === 0 ? 'start' : index === candles.length - 1 ? 'end' : 'middle'} fill="#64748b" fontSize="11">
-              {formatKlineTick(candles[index]?.t)}
+            <text key={index} x={xForIndex(index)} y={height - 10} textAnchor={index === 0 ? 'start' : index === visibleCandles.length - 1 ? 'end' : 'middle'} fill="#64748b" fontSize="11">
+              {formatKlineTick(visibleCandles[index]?.t)}
             </text>
           ))}
-          {candles.map((item, index) => {
+          {visibleCandles.map((item, index) => {
             const x = xForIndex(index);
             const openY = yForPrice(item.o);
             const closeY = yForPrice(item.c);
@@ -226,7 +417,7 @@ function QuantBacktestKlineChart({ chart, quality }) {
               </g>
             );
           })}
-          {markers.map((item, index) => {
+          {visibleMarkers.map((item, index) => {
             const candleIndex = tsToIndex.get(item.ts);
             if (!Number.isFinite(candleIndex)) return null;
             const x = xForIndex(candleIndex);
@@ -245,6 +436,12 @@ function QuantBacktestKlineChart({ chart, quality }) {
               </g>
             );
           })}
+          {Number.isFinite(activeIndex) ? (
+            <g>
+              <line x1={xForIndex(activeIndex)} x2={xForIndex(activeIndex)} y1={margin.top} y2={height - margin.bottom} stroke="#0f172a" strokeOpacity="0.28" strokeDasharray="3 3" />
+              <circle cx={xForIndex(activeIndex)} cy={yForPrice(activePoint.c)} r="3.5" fill="#0f172a" stroke="#fff" strokeWidth="1.5" />
+            </g>
+          ) : null}
         </svg>
       </div>
       {quality?.reason ? (

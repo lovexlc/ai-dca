@@ -245,6 +245,24 @@ test('quant research workspace renders the Worker premium paper trading panel', 
   await expect(page.getByText('159513 · 5m · 24 根')).toBeVisible();
   await expect(page.getByText('买点')).toBeVisible();
   await expect(page.getByText('卖点')).toBeVisible();
+  const backtestChart = page.getByTestId('quant-backtest-kline-chart');
+  await backtestChart.click({ position: { x: 320, y: 130 } });
+  await expect(page.getByTestId('quant-backtest-kline-selected')).toBeVisible();
+  await expect(page.getByTestId('quant-backtest-kline-selected')).toContainText('已选中');
+  await backtestChart.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    node.dispatchEvent(new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+      ctrlKey: true,
+      deltaY: -500
+    }));
+  });
+  await expect(page.getByTestId('quant-backtest-kline-reset')).toBeVisible();
+  await page.getByTestId('quant-backtest-kline-reset').click();
+  await expect(page.getByTestId('quant-backtest-kline-reset')).toHaveCount(0);
   await expect(page.getByText(/分钟级历史 K 线由 markets Worker 提供/)).toHaveCount(0);
   await expect(page.getByRole('button', { name: '确认用于实盘信号' })).toBeEnabled();
   await page.getByRole('button', { name: '确认用于实盘信号' }).click();
