@@ -9,8 +9,10 @@
  */
 
 function roundTo(value, digits = 2) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
   const factor = 10 ** digits;
-  return Math.round((Number(value) + Number.EPSILON) * factor) / factor;
+  return Math.round((num + Number.EPSILON) * factor) / factor;
 }
 
 function clampNumber(value, fallback = 0) {
@@ -19,8 +21,15 @@ function clampNumber(value, fallback = 0) {
 }
 
 function buildNavLookup(navHistory = []) {
-  const sorted = navHistory
-    .filter((item) => item && item.date && Number.isFinite(item.nav))
+  const sorted = (Array.isArray(navHistory) ? navHistory : [])
+    .map((item) => {
+      const date = String(item?.date || '').slice(0, 10);
+      const nav = Number(item?.nav);
+      return /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(nav) && nav > 0
+        ? { date, nav }
+        : null;
+    })
+    .filter(Boolean)
     .sort((a, b) => a.date.localeCompare(b.date));
   return (date) => {
     for (let i = sorted.length - 1; i >= 0; i--) {
@@ -30,9 +39,40 @@ function buildNavLookup(navHistory = []) {
   };
 }
 
+function shanghaiDateFromEpochSec(sec) {
+  const n = Number(sec);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  try {
+    return new Date(n * 1000).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+  } catch {
+    return new Date(n * 1000).toISOString().slice(0, 10);
+  }
+}
+
+function normalizeBacktestTimeframe(value = '') {
+  const tf = String(value || '').trim();
+  return new Set(['1m', '5m', '15m', '30m', '60m', '1d']).has(tf) ? tf : '5m';
+}
+
 function normalizeBacktestCandles(candles = []) {
   return (Array.isArray(candles) ? candles : [])
-    .filter((bar) => bar && bar.t && Number.isFinite(bar.close))
+    .map((bar) => {
+      const t = Number(bar?.t ?? bar?.timestamp);
+      const close = Number(bar?.c ?? bar?.close);
+      if (!Number.isFinite(t) || t <= 0 || !Number.isFinite(close) || close <= 0) return null;
+      const open = Number(bar?.o ?? bar?.open);
+      const high = Number(bar?.h ?? bar?.high);
+      const low = Number(bar?.l ?? bar?.low);
+      return {
+        t,
+        date: String(bar?.date || '').slice(0, 10) || shanghaiDateFromEpochSec(t),
+        open: Number.isFinite(open) && open > 0 ? open : close,
+        high: Number.isFinite(high) && high > 0 ? high : close,
+        low: Number.isFinite(low) && low > 0 ? low : close,
+        close
+      };
+    })
+    .filter(Boolean)
     .sort((a, b) => a.t - b.t);
 }
 
@@ -55,6 +95,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
   } = options;
 
   const strategy = normalizeStrategy(strategyInput);
+  const tf = normalizeBacktestTimeframe(timeframe);
   const highCodes = strategy.highCodes || [];
   const lowCodes = strategy.lowCodes || [];
   const codes = Array.from(new Set([...highCodes, ...lowCodes]));
@@ -85,7 +126,8 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
 
   // 持仓状态
   const positions = {}; // { code: { shares, costPrice } }
-  let cash = clampNumber(initialEquity, 100000);
+  const startEquity = Math.max(1, clampNumber(initialEquity, 100000));
+  let cash = startEquity;
   let equity = cash;
   let peak = equity;
   let maxDrawdownPct = 0;
@@ -258,6 +300,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
         const buyTrade = executeBuy(currentCode, bar, nav, cash * 0.95);
         if (buyTrade) {
           trades.push({ ...buyTrade, ts: anchor.t, date: anchor.date });
+          equity = calcEquity(currentPrices);
         }
       }
     }
@@ -364,6 +407,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
         if (buyTrade) {
           trades.push({ ...buyTrade, ts: anchor.t, date: anchor.date });
         }
+        equity = calcEquity(currentPrices);
       }
 
       signals.push({
@@ -429,9 +473,9 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
     ? roundTo((sampleCount / anchorCandles.length) * 100, 2)
     : 0;
 
-  const totalProfit = roundTo(finalEquity - initialEquity, 2);
-  const totalReturnPct = initialEquity > 0
-    ? roundTo((totalProfit / initialEquity) * 100, 4)
+  const totalProfit = roundTo(finalEquity - startEquity, 2);
+  const totalReturnPct = startEquity > 0
+    ? roundTo((totalProfit / startEquity) * 100, 4)
     : 0;
 
   // 计算胜率
@@ -459,10 +503,76 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
   const sharpeRatio = stdDev > 0 ? roundTo(avgReturn / stdDev * Math.sqrt(252), 2) : 0;
 
   const passed = sampleCount >= 10 && priceCoveragePct >= 60 && navCoveragePct >= 60;
+  const klineIssues = Array.isArray(dataIssues?.kline) ? dataIssues.kline : [];
+  const missingKlineCodes = Array.from(new Set([
+    ...klineIssues.map((item) => String(item?.code || '').trim()).filter(Boolean),
+    ...codes.filter((code) => !(candleMap[code]?.length > 0))
+  ]));
+  const qualityReason = passed
+    ? '数据覆盖率满足回测门槛'
+    : missingKlineCodes.length
+      ? `缺少 ${missingKlineCodes.join('、')} 的 ${tf} 历史 K 线，已按回测失败处理`
+      : '样本或 NAV/价格覆盖率不足';
+
+  const chartCandles = anchorCandles.map((bar) => {
+    const open = roundTo(bar.open, 4);
+    const high = roundTo(bar.high, 4);
+    const low = roundTo(bar.low, 4);
+    const close = roundTo(bar.close, 4);
+    return {
+      t: bar.t,
+      date: bar.date,
+      o: open,
+      h: high,
+      l: low,
+      c: close,
+      open,
+      high,
+      low,
+      close
+    };
+  });
+  const chartTs = new Set(chartCandles.map((bar) => bar.t));
+  const chartMarkers = signals
+    .filter((signal) => chartTs.has(signal.ts))
+    .map((signal) => {
+      const bar = closeByCode[anchorCode]?.get(signal.ts);
+      const isSell = signal.fromCode === anchorCode;
+      const isBuy = signal.toCode === anchorCode;
+      const side = isSell ? 'sell' : isBuy ? 'buy' : 'signal';
+      const markerPrice = side === 'sell'
+        ? Number(bar?.high ?? bar?.close)
+        : side === 'buy'
+          ? Number(bar?.low ?? bar?.close)
+          : Number(bar?.close);
+      return {
+        ts: signal.ts,
+        date: signal.date,
+        side,
+        price: roundTo(Number.isFinite(markerPrice) && markerPrice > 0 ? markerPrice : bar?.close, 4),
+        fromCode: signal.fromCode,
+        toCode: signal.toCode,
+        rule: signal.rule,
+        gapPct: signal.gapPct,
+        label: side === 'sell'
+          ? `卖 ${signal.fromCode} → 买 ${signal.toCode}`
+          : side === 'buy'
+            ? `卖 ${signal.fromCode} → 买 ${signal.toCode}`
+            : `${signal.fromCode} → ${signal.toCode}`
+      };
+    });
 
   return {
+    ok: true,
+    status: passed ? 'passed' : 'failed',
+    timeframe: tf,
+    strategyId: strategy.id,
+    strategyName: strategy.name,
+    generatedAt: new Date().toISOString(),
     summary: {
       trades: signals.length,
+      signalCount: signals.length,
+      tradeCount: trades.length,
       totalProfit,
       totalReturnPct,
       winRatePct,
@@ -473,20 +583,35 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
       priceCoveragePct,
       navCoveragePct,
       dataCoveragePct,
-      passed
+      passed,
+      from: rows[0]?.date || '',
+      to: rows[rows.length - 1]?.date || ''
     },
-    rows,
-    signals,
+    rows: rows.slice(-500),
+    signals: signals.slice(-120),
     trades,
     chart: {
-      candles: anchorCandles,
-      markers: signals
+      code: anchorCode,
+      timeframe: tf,
+      candles: chartCandles,
+      markers: chartMarkers
+    },
+    quality: {
+      passed,
+      reason: qualityReason,
+      anchorCode,
+      anchorBars: anchorCandles.length,
+      missingKlineCodes,
+      klineIssues,
+      supportedTimeframes: ['1m', '5m', '15m', '30m', '60m', '1d']
     }
   };
 }
 
 function normalizeStrategy(input = {}) {
   return {
+    id: String(input.id || input.strategyId || 'default').trim() || 'default',
+    name: String(input.name || '纳指 ETF 溢价差').trim().slice(0, 60),
     highCodes: Array.isArray(input.highCodes) ? input.highCodes : [],
     lowCodes: Array.isArray(input.lowCodes) ? input.lowCodes : [],
     activeSide: ['all', 'H', 'L'].includes(input.activeSide) ? input.activeSide : 'all',

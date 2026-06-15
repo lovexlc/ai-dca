@@ -32,6 +32,15 @@ import {
   runQuantPremiumOnce
 } from '../app/quantPremiumSync.js';
 
+const BACKTEST_TIMEFRAME_OPTIONS = [
+  { value: '5m', label: '5m 默认（约 3-4 周）' },
+  { value: '1m', label: '1m（约 3-4 个交易日）' },
+  { value: '15m', label: '15m（约 2-3 个月）' },
+  { value: '30m', label: '30m' },
+  { value: '60m', label: '60m' },
+  { value: '1d', label: '1d（日线长期）' }
+];
+
 // 格式化辅助函数
 function formatMoney(value) {
   const num = Number(value);
@@ -73,6 +82,7 @@ export default function QuantTradingExperienceV2() {
   const [ruleA, setRuleA] = useState(1);  // intraSellLowerPct: 卖L买H的阈值
   const [ruleB, setRuleB] = useState(3);  // intraBuyOtherPct: 卖H买L的阈值
   const [useV2, setUseV2] = useState(true);
+  const [backtestTf, setBacktestTf] = useState('5m');
 
   // 回测结果
   const [backtest, setBacktest] = useState(null);
@@ -116,6 +126,9 @@ export default function QuantTradingExperienceV2() {
     try {
       const { result } = await loadQuantPremiumBacktestLatestFromWorker(strategyId);
       setBacktest(result);
+      if (result?.timeframe) {
+        setBacktestTf(result.timeframe);
+      }
     } catch (error) {
       console.error('加载回测结果失败:', error);
     }
@@ -183,7 +196,7 @@ export default function QuantTradingExperienceV2() {
 
       // 运行回测
       const result = await runQuantPremiumBacktestInWorker(saveResult.strategy.id, {
-        timeframe: '5m',
+        timeframe: backtestTf,
         useV2
       });
 
@@ -455,6 +468,42 @@ export default function QuantTradingExperienceV2() {
 
         {activeTab === 'backtest' && (
           <div className="mx-auto max-w-7xl space-y-8">
+            <Card className="p-6">
+              <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    K 线粒度
+                  </label>
+                  <select
+                    className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900"
+                    value={backtestTf}
+                    onChange={(e) => setBacktestTf(e.target.value)}
+                  >
+                    {BACKTEST_TIMEFRAME_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveAndBacktest}
+                  disabled={backtesting}
+                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  {backtesting ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      回测中
+                    </>
+                  ) : (
+                    <>
+                      <BarChart3 className="h-4 w-4" />
+                      运行回测
+                    </>
+                  )}
+                </button>
+              </div>
+            </Card>
             {backtest ? (
               <>
                 <InteractiveChartContainer
@@ -523,7 +572,7 @@ export default function QuantTradingExperienceV2() {
                 <div className="text-center text-slate-400">
                   <BarChart3 className="mx-auto h-16 w-16 mb-4" />
                   <p className="text-lg font-semibold">暂无回测结果</p>
-                  <p className="text-sm mt-2">请先在"策略配置"中配置并运行回测</p>
+                  <p className="text-sm mt-2">请先在策略配置中配置并运行回测</p>
                 </div>
               </Card>
             )}

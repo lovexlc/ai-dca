@@ -115,6 +115,44 @@ test('quant premium backtest passes when 5m price and nav coverage are sufficien
   assert.equal(result.chart.markers[0].side, 'sell');
 });
 
+test('quant premium V2 backtest accepts markets candle schema and returns route contract', () => {
+  const candles = Array.from({ length: 16 }, (_, index) => ({
+    t: Math.floor(Date.UTC(2026, 5, 12, 1, 30) / 1000) + index * 300,
+    c: 1.5 + index * 0.001
+  }));
+  const result = runQuantPremiumBacktest({
+    id: 's1-v2',
+    enabled: true,
+    highCodes: ['159513'],
+    lowCodes: ['513100'],
+    intraBuyOtherPct: 0.2
+  }, {
+    timeframe: '5m',
+    useV2: true,
+    historyByCode: {
+      '159513': candles.map((item) => ({ ...item, c: item.c + 0.02 })),
+      '513100': candles
+    },
+    navHistoryByCode: {
+      '159513': [{ date: '2026-06-12', nav: 1.48 }],
+      '513100': [{ date: '2026-06-12', nav: 1.5 }]
+    }
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.equal(result.timeframe, '5m');
+  assert.equal(result.summary.sampleCount, 16);
+  assert.equal(result.summary.priceCoveragePct, 100);
+  assert.equal(result.summary.navCoveragePct, 100);
+  assert.equal(result.summary.signalCount, result.signals.length);
+  assert.ok(result.summary.signalCount > 0);
+  assert.equal(result.quality.passed, true);
+  assert.equal(result.chart.code, '159513');
+  assert.equal(result.chart.candles.length, 16);
+  assert.equal(result.chart.candles[0].c, result.chart.candles[0].close);
+  assert.ok(result.chart.markers.length > 0);
+});
+
 test('quant premium backtest cycles according to simulated current holding', () => {
   const gaps = [4, 4, 0.5, 0.5, 4, 4, 0.4, 0.4, 4, 4, 0.6, 0.6];
   const result = runQuantPremiumBacktest({
