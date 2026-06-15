@@ -554,6 +554,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         return <StrategyGuideExperience {...sharedProps} onNavigate={handleSelectTab} onDemoDataChange={setDemoMeta} />;
       case 'tradePlans':
         return <TradePlansExperience {...sharedProps} />;
+      case 'quantV2':
+        return <QuantTradingExperienceV2 {...sharedProps} />;
       case 'quant-v2':
         return <QuantTradingExperienceV2 {...sharedProps} />;
       case 'quant':

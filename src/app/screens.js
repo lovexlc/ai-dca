@@ -4,7 +4,7 @@ export const PROJECT_TITLE = '美股策略助手';
 // 主 tab 顺序与元数据：所有页面都通过 WorkspacePage（侧边栏 + ?tab=）展示。
 // 加仓计划（home）和定投计划（dca）已并入交易计划 tab，作为其二级 tab，不再独立出现在侧边栏。
 export const DEFAULT_WORKSPACE_TAB = 'strategy';
-export const PRIMARY_TAB_ORDER = ['strategy', 'holdings', 'tradePlans', 'quant', 'fundSwitch', 'markets', 'premium', 'notify', 'adminData'];
+export const PRIMARY_TAB_ORDER = ['strategy', 'holdings', 'tradePlans', 'quant', 'quantV2', 'fundSwitch', 'markets', 'premium', 'notify', 'adminData'];
 export const QUANT_MODULE_TAB_PREFIX = 'quant:';
 export const DEFAULT_QUANT_MODULE_TAB = 'quant:strategy';
 export const QUANT_MODULE_TABS = [
@@ -19,6 +19,7 @@ export const PRIMARY_TAB_META = {
   strategy: { label: '策略指南', hrefKey: 'strategy' },
   tradePlans: { label: '交易计划', hrefKey: 'tradePlans' },
   quant: { label: '量化研究', hrefKey: 'quant', adminOnly: true },
+  quantV2: { label: '量化研究 V2', hrefKey: 'quantV2', adminOnly: true },
   fundSwitch: { label: '基金切换', hrefKey: 'fundSwitch' },
   markets: { label: '行情中心', hrefKey: 'markets' },
   premium: { label: '高级版', hrefKey: 'premium' },
@@ -50,6 +51,7 @@ export function createPageLinks({ inPagesDir = false } = {}) {
     strategy: `${indexHref}?tab=strategy`,
     tradePlans: `${indexHref}?tab=tradePlans`,
     quant: `${indexHref}?tab=quant`,
+    quantV2: `${indexHref}?tab=quantV2`,
     quantStrategy: `${indexHref}?tab=quant&module=strategy`,
     quantFunds: `${indexHref}?tab=quant&module=funds`,
     quantFills: `${indexHref}?tab=quant&module=fills`,
