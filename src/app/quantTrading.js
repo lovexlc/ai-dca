@@ -224,7 +224,9 @@ function normalizeSettings(settings = {}) {
     brokerAccount: String(settings.brokerAccount || fallback.brokerAccount).trim().slice(0, 64),
     brokerApiKey: String(settings.brokerApiKey || '').trim().slice(0, 160),
     viewDensity,
-    paperTradeOnly: settings.paperTradeOnly !== false
+    paperTradeOnly: settings.paperTradeOnly !== false,
+    useV2Logic: settings.useV2Logic !== false,  // 默认启用V2逻辑
+    enableEnhancedRiskControl: settings.enableEnhancedRiskControl !== false  // 默认启用增强风控
   };
 }
 
