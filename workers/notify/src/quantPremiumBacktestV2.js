@@ -221,7 +221,15 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
 
     if (hasAllPrices) completePriceRows += 1;
     if (hasAllPrices && hasAllNav) completeNavRows += 1;
-    if (!hasAllPrices || !hasAllNav) continue;
+
+    // V2修复：即使数据不完整也继续，只是不执行交易
+    // 这样至少能看到回测框架和数据覆盖率
+    const canTrade = hasAllPrices && hasAllNav;
+
+    if (!hasAllPrices) {
+      // 没有价格数据，跳过这个时间点
+      continue;
+    }
 
     // 计算当前权益
     equity = calcEquity(currentPrices);
@@ -237,8 +245,8 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
       .map((code) => ({ code, premiumPct: premiums[code] }))
       .filter((item) => Number.isFinite(item.premiumPct));
 
-    // 初始化持仓
-    if (!currentCode || !Number.isFinite(premiums[currentCode])) {
+    // 初始化持仓（只在数据完整时）
+    if (canTrade && (!currentCode || !Number.isFinite(premiums[currentCode]))) {
       const initial = pickInitialHolding(highList, lowList);
       currentCode = initial?.code || '';
       entryGapPct = null;
@@ -260,7 +268,28 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
       ? { code: currentCode, premiumPct: currentPremiumPct }
       : null;
 
-    if (!from) continue;
+    if (!from) {
+      // 没有持仓或无效溢价，记录数据行
+      rows.push({
+        ts: anchor.t,
+        date: anchor.date,
+        fromCode: '',
+        toCode: '',
+        currentCode: '',
+        currentClass: '',
+        highPremiumPct: 0,
+        lowPremiumPct: 0,
+        gapPct: 0,
+        rule: 'none',
+        threshold: 0,
+        signal: 'wait',
+        profit: 0,
+        equity: roundTo(equity, 2),
+        cash: roundTo(cash, 2),
+        positions: JSON.parse(JSON.stringify(positions))
+      });
+      continue;
+    }
 
     // 判断交易信号
     let to = null;
@@ -288,16 +317,37 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
       }
     }
 
-    if (!to || !Number.isFinite(gapPct)) continue;
+    if (!to || !Number.isFinite(gapPct)) {
+      // 没有对手方或无效差价，记录数据但不交易
+      rows.push({
+        ts: anchor.t,
+        date: anchor.date,
+        fromCode: from.code,
+        toCode: from.code,
+        currentCode: from.code,
+        currentClass,
+        highPremiumPct: 0,
+        lowPremiumPct: 0,
+        gapPct: 0,
+        rule: 'none',
+        threshold: 0,
+        signal: 'wait',
+        profit: 0,
+        equity: roundTo(equity, 2),
+        cash: roundTo(cash, 2),
+        positions: JSON.parse(JSON.stringify(positions))
+      });
+      continue;
+    }
 
     const sideAllowed = strategy.activeSide === 'all' || strategy.activeSide === currentClass;
-    const triggered = sideAllowed && (
+    const triggered = canTrade && sideAllowed && (
       (rule === 'B' && gapPct > strategy.intraBuyOtherPct) ||
       (rule === 'A' && gapPct < strategy.intraSellLowerPct)
     );
 
-    // 执行交易
-    if (triggered) {
+    // 执行交易（只在数据完整时）
+    if (triggered && canTrade) {
       const fromBar = closeByCode[from.code].get(anchor.t);
       const toBar = closeByCode[to.code].get(anchor.t);
       const fromNav = navLookupByCode[from.code](anchor.date);
