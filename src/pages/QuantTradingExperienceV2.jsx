@@ -18,14 +18,18 @@ import { MetricCard } from '../components/MetricCard.jsx';
 import { TabNavigation } from '../components/TabNavigation.jsx';
 import { RealTimeSignalCard } from '../components/RealTimeSignalCard.jsx';
 import { InteractiveChartContainer } from '../components/InteractiveChartContainer.jsx';
+import { EquityChart, KlineChart, PremiumChart } from '../components/BacktestCharts.jsx';
 import { showToast } from '../app/toast.js';
 import {
   loadQuantPremiumStrategiesFromWorker,
   loadQuantPremiumBacktestLatestFromWorker,
+  loadQuantPremiumSnapshotFromWorker,
+  loadQuantPremiumStrategySnapshotFromWorker,
   normalizeQuantPremiumConfigShape,
   parseQuantPremiumCodes,
   saveQuantPremiumStrategyToWorker,
-  runQuantPremiumBacktestInWorker
+  runQuantPremiumBacktestInWorker,
+  runQuantPremiumOnce
 } from '../app/quantPremiumSync.js';
 
 // 格式化辅助函数
@@ -48,6 +52,12 @@ function formatNumber(value, digits = 2) {
   return num.toLocaleString('zh-CN', { maximumFractionDigits: digits, minimumFractionDigits: digits });
 }
 
+function formatPrice(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return '--';
+  return num.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+}
+
 export default function QuantTradingExperienceV2() {
   // 状态管理
   const [strategies, setStrategies] = useState([]);
@@ -67,6 +77,11 @@ export default function QuantTradingExperienceV2() {
   // 回测结果
   const [backtest, setBacktest] = useState(null);
   const [chartView, setChartView] = useState('equity');
+
+  // 实盘监控
+  const [snapshot, setSnapshot] = useState(null);
+  const [liveSignals, setLiveSignals] = useState([]);
+  const [refreshing, setRefreshing] = useState(false);
 
   // 加载策略列表
   useEffect(() => {
@@ -103,6 +118,31 @@ export default function QuantTradingExperienceV2() {
       setBacktest(result);
     } catch (error) {
       console.error('加载回测结果失败:', error);
+    }
+
+    // 加载实盘快照
+    try {
+      const snap = await loadQuantPremiumStrategySnapshotFromWorker(strategyId);
+      setSnapshot(snap);
+    } catch (error) {
+      console.error('加载实盘快照失败:', error);
+    }
+  }
+
+  async function handleRefreshSnapshot() {
+    if (!activeStrategyId) return;
+    setRefreshing(true);
+    try {
+      const result = await runQuantPremiumOnce(activeStrategyId);
+      setSnapshot(result.snapshot);
+      if (result.signal) {
+        setLiveSignals([result.signal, ...liveSignals.slice(0, 9)]);
+      }
+      showToast({ title: '刷新成功', tone: 'emerald' });
+    } catch (error) {
+      showToast({ title: '刷新失败', description: error.message, tone: 'rose' });
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -374,13 +414,18 @@ export default function QuantTradingExperienceV2() {
                   activeView={chartView}
                   onViewChange={setChartView}
                 >
-                  <div className="h-96 flex items-center justify-center text-slate-400">
-                    <div className="text-center">
-                      <BarChart3 className="mx-auto h-12 w-12 mb-3" />
-                      <p>图表视图：{chartViews.find(v => v.id === chartView)?.label}</p>
-                      <p className="text-xs mt-2">（集成 Recharts 交互式图表）</p>
-                    </div>
-                  </div>
+                  {chartView === 'equity' && (
+                    <EquityChart data={backtest.rows || []} />
+                  )}
+                  {chartView === 'kline' && (
+                    <KlineChart
+                      candles={backtest.chart?.candles || []}
+                      signals={backtest.signals || []}
+                    />
+                  )}
+                  {chartView === 'premium' && (
+                    <PremiumChart data={backtest.rows || []} />
+                  )}
                 </InteractiveChartContainer>
 
                 <Card className="p-6">
@@ -439,24 +484,195 @@ export default function QuantTradingExperienceV2() {
 
         {activeTab === 'live' && (
           <div className="mx-auto max-w-4xl space-y-6">
+            {/* 实时信号 */}
             <Card className="p-6">
-              <div className="text-center text-slate-400 py-8">
-                <Activity className="mx-auto h-12 w-12 mb-3" />
-                <p className="text-lg font-semibold">实盘监控</p>
-                <p className="text-sm mt-2">实时信号和持仓监控功能开发中</p>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-slate-900">实时信号</h3>
+                <button
+                  type="button"
+                  onClick={handleRefreshSnapshot}
+                  disabled={refreshing}
+                  className="flex items-center gap-2 rounded-lg bg-indigo-100 px-3 py-1.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-200 disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                  刷新
+                </button>
               </div>
+
+              {snapshot?.signal ? (
+                <RealTimeSignalCard
+                  signal={{
+                    rule: snapshot.signal.rule,
+                    fromCode: snapshot.signal.fromCode,
+                    toCode: snapshot.signal.toCode,
+                    gapPct: snapshot.signal.gapPct?.toFixed(2),
+                    threshold: snapshot.signal.threshold,
+                    triggered: snapshot.signal.triggered,
+                    timestamp: snapshot.generatedAt
+                  }}
+                />
+              ) : (
+                <div className="rounded-xl border-2 border-slate-200 bg-slate-50 p-8 text-center">
+                  <Activity className="mx-auto h-12 w-12 text-slate-400 mb-3" />
+                  <p className="text-sm text-slate-600">暂无信号，点击刷新获取最新数据</p>
+                </div>
+              )}
+
+              {liveSignals.length > 0 && (
+                <div className="mt-4 space-y-3">
+                  <h4 className="text-sm font-bold text-slate-700">历史信号</h4>
+                  {liveSignals.map((sig, idx) => (
+                    <RealTimeSignalCard
+                      key={idx}
+                      signal={sig}
+                      className="opacity-70"
+                    />
+                  ))}
+                </div>
+              )}
             </Card>
+
+            {/* 当前持仓 */}
+            <Card className="p-6">
+              <h3 className="text-lg font-bold text-slate-900 mb-4">当前持仓</h3>
+              {snapshot?.positions && Object.keys(snapshot.positions).length > 0 ? (
+                <div className="space-y-3">
+                  {Object.entries(snapshot.positions).map(([code, pos]) => (
+                    <div key={code} className="flex items-center justify-between rounded-lg bg-slate-50 p-4">
+                      <div>
+                        <div className="text-sm font-bold text-slate-900">{code}</div>
+                        <div className="text-xs text-slate-600">{pos.name || code}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-semibold text-slate-900">
+                          {formatNumber(pos.shares, 0)} 股 @ {formatPrice(pos.costPrice)}
+                        </div>
+                        <div className="text-xs text-slate-600">
+                          市值: {formatMoney(pos.shares * pos.costPrice)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between rounded-lg bg-indigo-50 p-4 border-2 border-indigo-200">
+                    <div className="text-sm font-bold text-indigo-900">现金</div>
+                    <div className="text-sm font-bold text-indigo-900">
+                      {formatMoney(snapshot.cash || 0)}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center text-slate-400 py-8">
+                  <p className="text-sm">暂无持仓数据</p>
+                </div>
+              )}
+            </Card>
+
+            {/* 实时行情 */}
+            {snapshot?.quotes && Object.keys(snapshot.quotes).length > 0 && (
+              <Card className="p-6">
+                <h3 className="text-lg font-bold text-slate-900 mb-4">实时行情</h3>
+                <div className="space-y-3">
+                  {Object.entries(snapshot.quotes).map(([code, quote]) => (
+                    <div key={code} className="rounded-lg bg-slate-50 p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <span className="text-sm font-bold text-slate-900">{code}</span>
+                          <span className="ml-2 text-xs text-slate-600">{quote.name}</span>
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {quote.asOf ? new Date(quote.asOf).toLocaleTimeString('zh-CN') : '--'}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 text-xs">
+                        <div>
+                          <span className="text-slate-600">买一: </span>
+                          <span className="font-semibold text-emerald-700">{formatPrice(quote.bid)}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-600">卖一: </span>
+                          <span className="font-semibold text-rose-700">{formatPrice(quote.ask)}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-600">IOPV: </span>
+                          <span className="font-semibold text-slate-900">{formatPrice(quote.iopv)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
           </div>
         )}
 
         {activeTab === 'history' && (
           <div className="mx-auto max-w-6xl">
-            <Card className="p-6">
-              <div className="text-center text-slate-400 py-8">
-                <ListChecks className="mx-auto h-12 w-12 mb-3" />
-                <p className="text-lg font-semibold">交易历史</p>
-                <p className="text-sm mt-2">历史交易记录功能开发中</p>
+            <Card className="overflow-hidden">
+              <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
+                <h3 className="text-lg font-bold text-slate-900">交易历史</h3>
+                <p className="text-sm text-slate-600 mt-1">回测模拟交易记录</p>
               </div>
+
+              {backtest?.trades && backtest.trades.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-slate-50 text-xs font-bold text-slate-700">
+                      <tr>
+                        <th className="px-4 py-3 text-left">日期</th>
+                        <th className="px-4 py-3 text-left">类型</th>
+                        <th className="px-4 py-3 text-left">代码</th>
+                        <th className="px-4 py-3 text-right">股数</th>
+                        <th className="px-4 py-3 text-right">价格</th>
+                        <th className="px-4 py-3 text-right">金额</th>
+                        <th className="px-4 py-3 text-right">手续费</th>
+                        <th className="px-4 py-3 text-right">总成本</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {backtest.trades.map((trade, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-3 text-sm text-slate-900">
+                            {trade.date || '--'}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex rounded-full px-2 py-1 text-xs font-bold ${
+                              trade.type === 'buy'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-rose-100 text-rose-700'
+                            }`}>
+                              {trade.type === 'buy' ? '买入' : '卖出'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm font-semibold text-slate-900">
+                            {trade.code}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-slate-900">
+                            {formatNumber(trade.shares, 0)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-slate-900">
+                            {formatPrice(trade.price)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-slate-900">
+                            {formatMoney(trade.amount)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-slate-600">
+                            {formatMoney(trade.fee)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right font-semibold text-slate-900">
+                            {formatMoney(trade.totalCost)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center text-slate-400 py-12">
+                  <ListChecks className="mx-auto h-12 w-12 mb-3" />
+                  <p className="text-lg font-semibold">暂无交易记录</p>
+                  <p className="text-sm mt-2">运行回测后查看模拟交易</p>
+                </div>
+              )}
             </Card>
           </div>
         )}

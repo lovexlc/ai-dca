@@ -24,6 +24,7 @@ const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) =>
 const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').then((m) => ({ default: m.TradePlansExperience })));
 const MarketsExperience = lazy(() => import('./MarketsExperience.jsx').then((m) => ({ default: m.MarketsExperience })));
 const QuantTradingExperience = lazy(() => import('./QuantTradingExperience.jsx').then((m) => ({ default: m.QuantTradingExperience })));
+const QuantTradingExperienceV2 = lazy(() => import('./QuantTradingExperienceV2.jsx'));
 const EtfSwitchStrategyPage = lazy(() => import('./EtfSwitchStrategyPage.jsx'));
 const StrategyGuideExperience = lazy(() => import('./StrategyGuideExperience.jsx').then((m) => ({ default: m.StrategyGuideExperience })));
 const AdminAnalyticsExperience = lazy(() => import('./AdminAnalyticsExperience.jsx').then((m) => ({ default: m.AdminAnalyticsExperience })));
@@ -553,6 +554,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         return <StrategyGuideExperience {...sharedProps} onNavigate={handleSelectTab} onDemoDataChange={setDemoMeta} />;
       case 'tradePlans':
         return <TradePlansExperience {...sharedProps} />;
+      case 'quant-v2':
+        return <QuantTradingExperienceV2 {...sharedProps} />;
       case 'quant':
         return (
           <QuantTradingExperience
