@@ -30,6 +30,7 @@ import {
   normalizeSwitchPaperState,
   quantPremiumPaperStateKey
 } from './premiumPaperTrading.js';
+import { runQuantPremiumBacktestV2 } from './quantPremiumBacktestV2.js';
 
 export const QUANT_PREMIUM_CONFIG_PREFIX = 'quant:premium:config:';
 export const QUANT_PREMIUM_STRATEGIES_PREFIX = 'quant:premium:strategies:';
@@ -510,7 +511,20 @@ function buildBacktestRunId() {
   return `bt-${Date.now().toString(36)}`;
 }
 
-export function runQuantPremiumBacktest(strategyInput = {}, { timeframe = '5m', historyByCode = {}, navHistoryByCode = {}, dataIssues = {}, initialEquity = 100000, orderCash = 16000 } = {}) {
+export function runQuantPremiumBacktest(strategyInput = {}, { timeframe = '5m', historyByCode = {}, navHistoryByCode = {}, dataIssues = {}, initialEquity = 100000, orderCash = 16000, useV2 = false } = {}) {
+  // 如果启用V2，使用新的回测引擎
+  if (useV2) {
+    return runQuantPremiumBacktestV2(strategyInput, {
+      timeframe,
+      historyByCode,
+      navHistoryByCode,
+      dataIssues,
+      initialEquity,
+      orderCash
+    });
+  }
+
+  // 原有的V1逻辑
   const strategy = normalizeQuantPremiumStrategy(strategyInput);
   const tf = normalizeBacktestTimeframe(timeframe);
   const highCodes = strategy.highCodes;
@@ -824,7 +838,8 @@ async function runQuantPremiumBacktestWithLiveData(env, strategy, options = {}) 
     navHistoryByCode,
     dataIssues: { kline: klineIssues },
     initialEquity: options.initialEquity,
-    orderCash: options.orderCash
+    orderCash: options.orderCash,
+    useV2: options.useV2 // 添加V2选项
   });
 }
 
@@ -1055,7 +1070,8 @@ export async function handleQuantPremiumBacktestPost(request, env, strategyId) {
   const result = await runQuantPremiumBacktestWithLiveData(env, strategy, {
     timeframe: payload?.timeframe || payload?.tf || '5m',
     initialEquity: payload?.initialEquity,
-    orderCash: payload?.orderCash
+    orderCash: payload?.orderCash,
+    useV2: payload?.useV2 === true  // 从请求中读取V2标志
   });
   const stored = await storeQuantPremiumBacktestResult(env, auth.clientId, strategy, result);
   await trackAnalyticsEvent(env, 'quant_premium_backtest_run', {

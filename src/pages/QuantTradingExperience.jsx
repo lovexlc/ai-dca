@@ -496,6 +496,7 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
   const [cashAmount, setCashAmount] = useState('10000');
   const [cashNote, setCashNote] = useState('');
   const [backtestTf, setBacktestTf] = useState('5m');
+  const [useV2Backtest, setUseV2Backtest] = useState(true); // V2回测开关，默认启用
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
@@ -723,7 +724,10 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
     setBacktesting(true);
     setError('');
     try {
-      const result = await runQuantPremiumBacktestInWorker(config.id, { timeframe: backtestTf });
+      const result = await runQuantPremiumBacktestInWorker(config.id, {
+        timeframe: backtestTf,
+        useV2: useV2Backtest  // 传递V2标志
+      });
       setBacktest(result);
       if (result?.status) {
         applyConfig({
@@ -992,12 +996,32 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
                 {backtesting ? '回测中' : '运行回测'}
               </button>
             </div>
+            <div className="flex items-center gap-4 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3">
+              <label className="inline-flex items-center gap-2 text-sm font-semibold text-indigo-900">
+                <input
+                  type="checkbox"
+                  checked={useV2Backtest}
+                  onChange={(event) => setUseV2Backtest(event.target.checked)}
+                  className="h-4 w-4 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                使用 V2 回测引擎（修复版）
+              </label>
+              <div className="text-xs text-indigo-700">
+                V2版本：持仓追踪 + 真实交易模拟 + 准确胜率 + 夏普比率
+              </div>
+            </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <BacktestMetric label="收益率" value={formatPercent(backtestSummary.totalReturnPct, 2)} tone={totalReturnTone} />
               <BacktestMetric label="累计收益" value={formatMoney(backtestSummary.totalProfit)} tone={totalReturnTone} />
               <BacktestMetric label="最大回撤" value={formatPercent(backtestSummary.maxDrawdownPct, 2)} tone={drawdownTone} />
+              {useV2Backtest && backtestSummary.winRatePct !== undefined ? (
+                <BacktestMetric label="胜率 (V2)" value={formatPercent(backtestSummary.winRatePct, 0)} />
+              ) : null}
+              {useV2Backtest && backtestSummary.sharpeRatio !== undefined ? (
+                <BacktestMetric label="夏普比率 (V2)" value={formatNumber(backtestSummary.sharpeRatio, 2)} />
+              ) : null}
               <BacktestMetric label="样本" value={formatNumber(backtestSummary.sampleCount ?? 0)} />
-              <BacktestMetric label="信号" value={formatNumber(backtestSummary.signalCount ?? 0)} />
+              <BacktestMetric label="信号" value={formatNumber(backtestSummary.signalCount ?? backtestSummary.trades ?? 0)} />
               <BacktestMetric label="最终权益" value={formatMoney(backtestSummary.finalEquity)} />
               <BacktestMetric label="价格覆盖" value={formatPercent(backtestSummary.priceCoveragePct, 1)} />
               <BacktestMetric label="NAV 覆盖" value={formatPercent(backtestSummary.navCoveragePct, 1)} />
