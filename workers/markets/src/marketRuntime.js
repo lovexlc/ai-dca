@@ -258,9 +258,9 @@ export async function fetchCnQuotesBatchWithFallback(env, items = []) {
   return out;
 }
 
-export async function fetchCnKlineWithFallback(env, code, tf) {
+export async function fetchCnKlineWithFallback(env, code, tf, { limit = 500 } = {}) {
   try {
-    const payload = await fetchXueqiuKline(code, { cookie: env.XUEQIU_COOKIE, intervalLabel: tf, limit: 500 });
+    const payload = await fetchXueqiuKline(code, { cookie: env.XUEQIU_COOKIE, intervalLabel: tf, limit });
     return { ...payload, market: 'cn', generatedAt: new Date().toISOString() };
   } catch (error) {
     await notifyXueqiuCookieIssue(env, error, { code, endpoint: 'kline', tf });

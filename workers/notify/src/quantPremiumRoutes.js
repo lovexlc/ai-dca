@@ -531,6 +531,21 @@ export function runQuantPremiumBacktest(strategyInput = {}, { timeframe = '5m', 
   let equity = Math.max(1, Number(initialEquity) || 100000);
   let peak = equity;
   let maxDrawdownPct = 0;
+  const premiumClass = Object.fromEntries([
+    ...highCodes.map((code) => [code, 'H']),
+    ...lowCodes.map((code) => [code, 'L'])
+  ]);
+  let currentCode = '';
+  let entryGapPct = null;
+
+  function pickInitialHolding(highList, lowList) {
+    if (strategy.activeSide === 'L') {
+      return lowList.reduce((best, item) => (!best || item.premiumPct < best.premiumPct ? item : best), null)
+        || highList.reduce((best, item) => (!best || item.premiumPct > best.premiumPct ? item : best), null);
+    }
+    return highList.reduce((best, item) => (!best || item.premiumPct > best.premiumPct ? item : best), null)
+      || lowList.reduce((best, item) => (!best || item.premiumPct < best.premiumPct ? item : best), null);
+  }
 
   for (const anchor of anchorCandles) {
     const premiums = {};
@@ -555,23 +570,66 @@ export function runQuantPremiumBacktest(strategyInput = {}, { timeframe = '5m', 
 
     const highList = highCodes.map((code) => ({ code, premiumPct: premiums[code] })).filter((item) => Number.isFinite(item.premiumPct));
     const lowList = lowCodes.map((code) => ({ code, premiumPct: premiums[code] })).filter((item) => Number.isFinite(item.premiumPct));
-    const from = highList.reduce((best, item) => (!best || item.premiumPct > best.premiumPct ? item : best), null);
-    const to = lowList.reduce((best, item) => (!best || item.premiumPct < best.premiumPct ? item : best), null);
-    if (!from || !to) continue;
-    const gapPct = roundTo(from.premiumPct - to.premiumPct, 4);
-    const triggered = gapPct >= strategy.intraBuyOtherPct;
+    if (!currentCode || !Number.isFinite(premiums[currentCode])) {
+      const initial = pickInitialHolding(highList, lowList);
+      currentCode = initial?.code || '';
+      entryGapPct = null;
+    }
+
+    const currentClass = premiumClass[currentCode] || '';
+    const currentPremiumPct = premiums[currentCode];
+    let from = currentCode && Number.isFinite(currentPremiumPct)
+      ? { code: currentCode, premiumPct: currentPremiumPct }
+      : null;
+    let to = null;
+    let gapPct = NaN;
+    let rule = 'none';
+    let threshold = NaN;
+    if (from && currentClass === 'H') {
+      to = lowList.reduce((best, item) => (!best || item.premiumPct < best.premiumPct ? item : best), null);
+      if (to) {
+        gapPct = roundTo(from.premiumPct - to.premiumPct, 4);
+        rule = 'B';
+        threshold = strategy.intraBuyOtherPct;
+      }
+    } else if (from && currentClass === 'L') {
+      to = highList.reduce((best, item) => (!best || item.premiumPct > best.premiumPct ? item : best), null);
+      if (to) {
+        gapPct = roundTo(to.premiumPct - from.premiumPct, 4);
+        rule = 'A';
+        threshold = strategy.intraSellLowerPct;
+      }
+    }
+    if (!from || !to || !Number.isFinite(gapPct)) continue;
+
+    const sideAllowed = strategy.activeSide === 'all' || strategy.activeSide === currentClass;
+    const triggered = sideAllowed && (
+      (rule === 'B' && gapPct > strategy.intraBuyOtherPct)
+      || (rule === 'A' && gapPct < strategy.intraSellLowerPct)
+    );
     let profit = 0;
     if (triggered) {
-      profit = roundTo(Math.max(0, Number(orderCash) || 16000) * gapPct / 100, 2);
+      if (rule === 'A' && Number.isFinite(entryGapPct)) {
+        profit = roundTo(Math.max(0, Number(orderCash) || 16000) * Math.max(0, entryGapPct - gapPct) / 100, 2);
+      }
       equity = roundTo(equity + profit, 2);
       signals.push({
         ts: anchor.t,
         date: anchor.date,
         fromCode: from.code,
         toCode: to.code,
+        rule,
+        threshold,
         gapPct,
+        entryGapPct: Number.isFinite(entryGapPct) ? entryGapPct : null,
         profit
       });
+      if (rule === 'B') {
+        entryGapPct = gapPct;
+      } else if (rule === 'A') {
+        entryGapPct = null;
+      }
+      currentCode = to.code;
     }
     peak = Math.max(peak, equity);
     const drawdownPct = peak > 0 ? ((equity - peak) / peak) * 100 : 0;
@@ -581,9 +639,13 @@ export function runQuantPremiumBacktest(strategyInput = {}, { timeframe = '5m', 
       date: anchor.date,
       fromCode: from.code,
       toCode: to.code,
-      highPremiumPct: from.premiumPct,
-      lowPremiumPct: to.premiumPct,
+      currentCode: from.code,
+      currentClass,
+      highPremiumPct: currentClass === 'H' ? from.premiumPct : to.premiumPct,
+      lowPremiumPct: currentClass === 'H' ? to.premiumPct : from.premiumPct,
       gapPct,
+      rule,
+      threshold,
       signal: triggered ? 'switch' : 'wait',
       profit,
       equity: roundTo(equity, 2)
@@ -603,7 +665,7 @@ export function runQuantPremiumBacktest(strategyInput = {}, { timeframe = '5m', 
     : missingKlineCodes.length
       ? `缺少 ${missingKlineCodes.join('、')} 的 ${tf} 历史 K 线，已按回测失败处理`
       : '样本或 NAV/价格覆盖率不足';
-  const chartCandles = anchorCandles.slice(-240).map((bar) => ({
+  const chartCandles = anchorCandles.map((bar) => ({
     t: bar.t,
     date: bar.date,
     o: roundTo(bar.open, 4),
@@ -614,7 +676,6 @@ export function runQuantPremiumBacktest(strategyInput = {}, { timeframe = '5m', 
   const chartTs = new Set(chartCandles.map((bar) => bar.t));
   const chartMarkers = signals
     .filter((signal) => chartTs.has(signal.ts))
-    .slice(-120)
     .map((signal) => {
       const bar = closeByCode[anchorCode]?.get(signal.ts);
       const isSell = signal.fromCode === anchorCode;
@@ -636,7 +697,7 @@ export function runQuantPremiumBacktest(strategyInput = {}, { timeframe = '5m', 
         label: side === 'sell'
           ? `卖 ${signal.fromCode} → 买 ${signal.toCode}`
           : side === 'buy'
-            ? `买 ${signal.toCode}`
+            ? `卖 ${signal.fromCode} → 买 ${signal.toCode}`
             : `${signal.fromCode} → ${signal.toCode}`
       };
     });
@@ -706,7 +767,7 @@ async function fetchMarketsJsonForQuantBacktest(env, path) {
 }
 
 async function fetchQuantBacktestKline(env, code, timeframe) {
-  const payload = await fetchMarketsJsonForQuantBacktest(env, `/kline/${encodeURIComponent(code)}?tf=${encodeURIComponent(timeframe)}`);
+  const payload = await fetchMarketsJsonForQuantBacktest(env, `/kline/${encodeURIComponent(code)}?tf=${encodeURIComponent(timeframe)}&limit=1000&session=all&refresh=1`);
   return Array.isArray(payload?.candles) ? payload.candles : [];
 }
 

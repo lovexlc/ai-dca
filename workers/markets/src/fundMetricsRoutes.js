@@ -399,18 +399,23 @@ export async function handleKline(env, rawSymbol, params) {
   if (!market) return errorJson('invalid symbol', 400);
   const r2k = klineKey(market, code, tf);
   const forceRefresh = params.get('refresh') === '1';
+  const requestedLimit = Math.max(1, Math.min(Number(params.get('limit')) || 500, 1000));
+  const sessionMode = params.get('session') === 'all' ? 'all' : 'latest';
+  const shouldUseDefaultCache = sessionMode === 'latest' && requestedLimit <= 500;
   console.log('[markets:kline] request', {
     rawSymbol,
     market,
     code,
     tf,
     forceRefresh,
+    limit: requestedLimit,
+    sessionMode,
     r2Key: r2k,
     nowIso: new Date().toISOString(),
     tradingMinute: market === 'cn' ? getShanghaiTradingMinute() : null,
     isCnTradingSession: market === 'cn' ? isCnTradingSession() : null
   });
-  if (!forceRefresh) {
+  if (!forceRefresh && shouldUseDefaultCache) {
     const cached = await r2GetJson(env, r2k);
     if (cached && cached.candles && cached.candles.length) {
       const stale = klineCacheIsStale({ cached, market, tf });
@@ -429,9 +434,9 @@ export async function handleKline(env, rawSymbol, params) {
       console.log('[markets:kline] cache miss', { rawSymbol, market, code, tf, r2Key: r2k });
     }
   } else {
-    console.log('[markets:kline] force refresh skips cache', { rawSymbol, market, code, tf, r2Key: r2k });
+    console.log('[markets:kline] request skips default cache', { rawSymbol, market, code, tf, forceRefresh, sessionMode, requestedLimit, r2Key: r2k });
   }
-  const fresh = await refreshKline(env, market, code, tf);
+  const fresh = await refreshKline(env, market, code, tf, { limit: requestedLimit, sessionMode, writeCache: shouldUseDefaultCache });
   console.log('[markets:kline] response fresh', {
     rawSymbol,
     market,
@@ -442,7 +447,7 @@ export async function handleKline(env, rawSymbol, params) {
   return json({ ...fresh, cached: false });
 }
 
-async function refreshKline(env, market, code, tf) {
+async function refreshKline(env, market, code, tf, { limit = 500, sessionMode = 'latest', writeCache = true } = {}) {
   let payload;
   if (market === 'us') {
     const yahooRange = { '1d': '5y', '1y': '5y', '1w': '5y', '1mo': '5y', '5m': '5d', '15m': '1mo', '60m': '3mo' }[tf] || '5y';
@@ -450,12 +455,14 @@ async function refreshKline(env, market, code, tf) {
     const raw = await fetchYahooChart(code, { range: yahooRange, interval: yahooInterval });
     payload = { ...normalizeYahooKline(raw, tf), market, generatedAt: new Date().toISOString() };
   } else {
-    console.log('[markets:kline] fetch xueqiu primary start', { market, code, tf, limit: 500, nowIso: new Date().toISOString() });
-    payload = await fetchCnKlineWithFallback(env, code, tf);
+    console.log('[markets:kline] fetch xueqiu primary start', { market, code, tf, limit, sessionMode, nowIso: new Date().toISOString() });
+    payload = await fetchCnKlineWithFallback(env, code, tf, { limit });
     console.log('[markets:kline] fetch cn kline done', { market, code, tf, payload: describeKlinePayloadForLog(payload) });
   }
-  payload = keepLatestCnIntradaySession(payload, market, tf);
-  await r2PutJson(env, klineKey(market, code, tf), payload);
-  console.log('[markets:kline] cache write', { market, code, tf, r2Key: klineKey(market, code, tf), payload: describeKlinePayloadForLog(payload) });
+  payload = sessionMode === 'all' ? payload : keepLatestCnIntradaySession(payload, market, tf);
+  if (writeCache) {
+    await r2PutJson(env, klineKey(market, code, tf), payload);
+    console.log('[markets:kline] cache write', { market, code, tf, r2Key: klineKey(market, code, tf), payload: describeKlinePayloadForLog(payload) });
+  }
   return payload;
 }

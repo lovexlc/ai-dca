@@ -12,6 +12,13 @@ import {
 import { quantPremiumPaperStateKey } from '../workers/notify/src/premiumPaperTrading.js';
 import { getRunnableSwitchRules } from '../workers/notify/src/switchStrategy.js';
 
+function makePremiumCandles(premiums = [], { start = Math.floor(Date.UTC(2026, 5, 12, 1, 30) / 1000), step = 300 } = {}) {
+  return premiums.map((premiumPct, index) => ({
+    t: start + index * step,
+    c: 1 + Number(premiumPct) / 100
+  }));
+}
+
 test('quant premium config normalizes arbitrary H/L symbols without holdings', () => {
   const config = normalizeQuantPremiumConfig({
     enabled: true,
@@ -106,6 +113,65 @@ test('quant premium backtest passes when 5m price and nav coverage are sufficien
   assert.equal(result.chart.candles.length, 16);
   assert.ok(result.chart.markers.length > 0);
   assert.equal(result.chart.markers[0].side, 'sell');
+});
+
+test('quant premium backtest cycles according to simulated current holding', () => {
+  const gaps = [4, 4, 0.5, 0.5, 4, 4, 0.4, 0.4, 4, 4, 0.6, 0.6];
+  const result = runQuantPremiumBacktest({
+    id: 'cycle',
+    enabled: true,
+    highCodes: ['513100'],
+    lowCodes: ['159501'],
+    activeSide: 'all',
+    intraSellLowerPct: 1,
+    intraBuyOtherPct: 3
+  }, {
+    timeframe: '5m',
+    historyByCode: {
+      '513100': makePremiumCandles(gaps),
+      '159501': makePremiumCandles(gaps.map(() => 0))
+    },
+    navHistoryByCode: {
+      '513100': [{ date: '2026-06-12', nav: 1 }],
+      '159501': [{ date: '2026-06-12', nav: 1 }]
+    }
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.deepEqual(result.signals.slice(0, 4).map((signal) => `${signal.fromCode}->${signal.toCode}`), [
+    '513100->159501',
+    '159501->513100',
+    '513100->159501',
+    '159501->513100'
+  ]);
+  assert.deepEqual(result.signals.slice(0, 4).map((signal) => signal.rule), ['B', 'A', 'B', 'A']);
+  assert.ok(result.summary.totalProfit > 0);
+});
+
+test('quant premium backtest chart returns the full fetched kline window', () => {
+  const gaps = Array.from({ length: 300 }, () => 4);
+  const result = runQuantPremiumBacktest({
+    id: 'full-chart',
+    enabled: true,
+    highCodes: ['513100'],
+    lowCodes: ['159501'],
+    activeSide: 'all',
+    intraBuyOtherPct: 3
+  }, {
+    timeframe: '5m',
+    historyByCode: {
+      '513100': makePremiumCandles(gaps),
+      '159501': makePremiumCandles(gaps.map(() => 0))
+    },
+    navHistoryByCode: {
+      '513100': [{ date: '2026-06-12', nav: 1 }],
+      '159501': [{ date: '2026-06-12', nav: 1 }]
+    }
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.equal(result.summary.sampleCount, 300);
+  assert.equal(result.chart.candles.length, 300);
 });
 
 test('quant premium backtest records missing kline codes as quality issues', () => {
