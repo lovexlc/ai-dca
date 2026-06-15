@@ -781,6 +781,8 @@ async function fetchMarketsJsonForQuantBacktest(env, path) {
 }
 
 async function fetchQuantBacktestKline(env, code, timeframe) {
+  // 保持原有配置：session=all 获取完整历史数据，limit=1000 确保足够样本
+  // 虽然不走R2缓存，但有其他层缓存（CF边缘/内存）
   const payload = await fetchMarketsJsonForQuantBacktest(env, `/kline/${encodeURIComponent(code)}?tf=${encodeURIComponent(timeframe)}&limit=1000&session=all&refresh=1`);
   return Array.isArray(payload?.candles) ? payload.candles : [];
 }
