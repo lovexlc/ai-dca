@@ -150,8 +150,8 @@ export default function QuantTradingExperienceV2() {
     // 确保从状态读取最新值
     const currentHighCodes = Array.isArray(highCodes) ? highCodes : [];
     const currentLowCodes = Array.isArray(lowCodes) ? lowCodes : [];
-    const currentRuleA = typeof ruleA === 'number' && ruleA > 0 ? ruleA : 3;
-    const currentRuleB = typeof ruleB === 'number' && ruleB > 0 ? ruleB : 1;
+    const currentRuleA = typeof ruleA === 'number' ? ruleA : 3;
+    const currentRuleB = typeof ruleB === 'number' ? ruleB : 1;
 
     console.log('回测前检查:', {
       highCodes: currentHighCodes,
@@ -167,7 +167,7 @@ export default function QuantTradingExperienceV2() {
 
     setBacktesting(true);
     try {
-      // 保存配置 - 使用当前值
+      // 保存配置 - 使用当前值（允许负数）
       const config = normalizeQuantPremiumConfigShape({
         id: activeStrategyId,
         highCodes: currentHighCodes,
@@ -351,13 +351,19 @@ export default function QuantTradingExperienceV2() {
                       value={ruleA}
                       onChange={(e) => {
                         const val = e.target.value;
-                        if (val === '' || /^\d*\.?\d*$/.test(val)) {
-                          setRuleA(val === '' ? '' : val);
+                        // 允许负号、数字和小数点
+                        if (val === '' || val === '-' || /^-?\d*\.?\d*$/.test(val)) {
+                          setRuleA(val);
                         }
                       }}
                       onBlur={(e) => {
-                        const num = parseFloat(e.target.value);
-                        setRuleA(Number.isFinite(num) && num > 0 ? num : 3);
+                        const val = e.target.value;
+                        if (val === '' || val === '-' || val === '.') {
+                          setRuleA(3);
+                          return;
+                        }
+                        const num = parseFloat(val);
+                        setRuleA(Number.isFinite(num) ? num : 3);
                       }}
                       className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-semibold"
                     />
@@ -380,13 +386,19 @@ export default function QuantTradingExperienceV2() {
                       value={ruleB}
                       onChange={(e) => {
                         const val = e.target.value;
-                        if (val === '' || /^\d*\.?\d*$/.test(val)) {
-                          setRuleB(val === '' ? '' : val);
+                        // 允许负号、数字和小数点
+                        if (val === '' || val === '-' || /^-?\d*\.?\d*$/.test(val)) {
+                          setRuleB(val);
                         }
                       }}
                       onBlur={(e) => {
-                        const num = parseFloat(e.target.value);
-                        setRuleB(Number.isFinite(num) && num > 0 ? num : 1);
+                        const val = e.target.value;
+                        if (val === '' || val === '-' || val === '.') {
+                          setRuleB(1);
+                          return;
+                        }
+                        const num = parseFloat(val);
+                        setRuleB(Number.isFinite(num) ? num : 1);
                       }}
                       className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-semibold"
                     />
