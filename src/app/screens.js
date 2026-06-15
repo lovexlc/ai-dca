@@ -9,6 +9,7 @@ export const QUANT_MODULE_TAB_PREFIX = 'quant:';
 export const DEFAULT_QUANT_MODULE_TAB = 'quant:strategy';
 export const QUANT_MODULE_TABS = [
   { key: 'quant:strategy', module: 'strategy', label: '策略', hrefKey: 'quantStrategy', adminOnly: true },
+  { key: 'quant:v2', module: 'v2', label: 'V2回测', hrefKey: 'quantV2', adminOnly: true },
   { key: 'quant:funds', module: 'funds', label: '资金', hrefKey: 'quantFunds', adminOnly: true },
   { key: 'quant:fills', module: 'fills', label: '成交', hrefKey: 'quantFills', adminOnly: true },
   { key: 'quant:etf', module: 'etf', label: 'ETF切换 V2', hrefKey: 'quantEtf', adminOnly: true }
@@ -51,7 +52,7 @@ export function createPageLinks({ inPagesDir = false } = {}) {
     strategy: `${indexHref}?tab=strategy`,
     tradePlans: `${indexHref}?tab=tradePlans`,
     quant: `${indexHref}?tab=quant`,
-    quantV2: `${indexHref}?tab=quantV2`,
+    quantV2: `${indexHref}?tab=quant&module=v2`,
     quantStrategy: `${indexHref}?tab=quant&module=strategy`,
     quantFunds: `${indexHref}?tab=quant&module=funds`,
     quantFills: `${indexHref}?tab=quant&module=fills`,

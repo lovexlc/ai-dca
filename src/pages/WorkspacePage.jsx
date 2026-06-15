@@ -40,6 +40,7 @@ const WORKSPACE_TITLES = {
   tradePlans: '交易计划中心',
   quant: '量化研究',
   'quant:strategy': '量化研究 · 策略',
+  'quant:v2': '量化研究 · V2回测',
   'quant:funds': '量化研究 · 资金',
   'quant:fills': '量化研究 · 成交',
   'quant:etf': '量化研究 · ETF切换 V2',
@@ -56,6 +57,7 @@ const SIDEBAR_ICONS = {
   tradePlans: ListChecks,
   quant: Bot,
   'quant:strategy': SlidersHorizontal,
+  'quant:v2': BarChart3,
   'quant:funds': Wallet,
   'quant:fills': ArrowRightLeft,
   'quant:etf': TrendingUp,
@@ -71,6 +73,7 @@ const HASH_ROUTE_TABS = new Set(['tradePlans', 'holdings']);
 
 function normalizeWorkspaceTab(value = '') {
   if (value === 'quant') return DEFAULT_QUANT_MODULE_TAB;
+  if (value === 'quantV2' || value === 'quant-v2') return 'quant:v2';
   return isWorkspaceGroup(value) ? value : DEFAULT_WORKSPACE_TAB;
 }
 
@@ -535,6 +538,9 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   function renderActivePanel() {
     const sharedProps = { links, inPagesDir, embedded: true };
     if (isQuantModuleTab(activeTab)) {
+      if (activeTab === 'quant:v2') {
+        return <QuantTradingExperienceV2 {...sharedProps} />;
+      }
       // ETF切换策略使用独立页面
       if (activeTab === 'quant:etf') {
         return <EtfSwitchStrategyPage {...sharedProps} />;

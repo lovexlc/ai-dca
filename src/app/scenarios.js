@@ -19,7 +19,7 @@ export const SCENARIOS = {
     icon: 'Bot',
     description: 'Worker 溢价差模拟盘',
     defaultHome: 'quant:strategy',
-    visibleTabs: ['quant:strategy', 'quant:funds', 'quant:fills'],
+    visibleTabs: ['quant:strategy', 'quant:v2', 'quant:funds', 'quant:fills'],
     requireAdmin: true
   }
 };
