@@ -70,8 +70,8 @@ export default function QuantTradingExperienceV2() {
   // 策略配置
   const [highCodes, setHighCodes] = useState([]);
   const [lowCodes, setLowCodes] = useState([]);
-  const [ruleA, setRuleA] = useState(3);
-  const [ruleB, setRuleB] = useState(1);
+  const [ruleA, setRuleA] = useState(1);  // intraSellLowerPct: 卖L买H的阈值
+  const [ruleB, setRuleB] = useState(3);  // intraBuyOtherPct: 卖H买L的阈值
   const [useV2, setUseV2] = useState(true);
 
   // 回测结果
@@ -108,8 +108,8 @@ export default function QuantTradingExperienceV2() {
     if (strategy) {
       setHighCodes(strategy.highCodes || []);
       setLowCodes(strategy.lowCodes || []);
-      setRuleA(strategy.intraSellLowerPct || 3);
-      setRuleB(strategy.intraBuyOtherPct || 1);
+      setRuleA(strategy.intraSellLowerPct || 1);
+      setRuleB(strategy.intraBuyOtherPct || 3);
     }
 
     // 加载回测结果
@@ -150,8 +150,8 @@ export default function QuantTradingExperienceV2() {
     // 确保从状态读取最新值
     const currentHighCodes = Array.isArray(highCodes) ? highCodes : [];
     const currentLowCodes = Array.isArray(lowCodes) ? lowCodes : [];
-    const currentRuleA = typeof ruleA === 'number' ? ruleA : 3;
-    const currentRuleB = typeof ruleB === 'number' ? ruleB : 1;
+    const currentRuleA = typeof ruleA === 'number' ? ruleA : 1;
+    const currentRuleB = typeof ruleB === 'number' ? ruleB : 3;
 
     console.log('回测前检查:', {
       highCodes: currentHighCodes,
@@ -341,7 +341,7 @@ export default function QuantTradingExperienceV2() {
               <div className="mt-6 space-y-6">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-3">
-                    规则 A：卖 H 买 L
+                    规则 A：卖 L 买 H
                   </label>
                   <div className="flex items-center gap-3">
                     <span className="text-sm text-slate-600">溢价差 ≤</span>
@@ -359,24 +359,24 @@ export default function QuantTradingExperienceV2() {
                       onBlur={(e) => {
                         const val = e.target.value;
                         if (val === '' || val === '-' || val === '.') {
-                          setRuleA(3);
+                          setRuleA(1);
                           return;
                         }
                         const num = parseFloat(val);
-                        setRuleA(Number.isFinite(num) ? num : 3);
+                        setRuleA(Number.isFinite(num) ? num : 1);
                       }}
                       className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-semibold"
                     />
                     <span className="text-sm text-slate-600">% 时触发</span>
                   </div>
                   <p className="mt-2 text-xs text-slate-500">
-                    高溢价ETF相对低溢价ETF的差价缩小到此阈值以内时，卖出H买入L
+                    持有L时，溢价差缩小到此阈值以内，卖出L买入H
                   </p>
                 </div>
 
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-3">
-                    规则 B：卖 L 买 H
+                    规则 B：卖 H 买 L
                   </label>
                   <div className="flex items-center gap-3">
                     <span className="text-sm text-slate-600">溢价差 ≥</span>
@@ -394,18 +394,18 @@ export default function QuantTradingExperienceV2() {
                       onBlur={(e) => {
                         const val = e.target.value;
                         if (val === '' || val === '-' || val === '.') {
-                          setRuleB(1);
+                          setRuleB(3);
                           return;
                         }
                         const num = parseFloat(val);
-                        setRuleB(Number.isFinite(num) ? num : 1);
+                        setRuleB(Number.isFinite(num) ? num : 3);
                       }}
                       className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-semibold"
                     />
                     <span className="text-sm text-slate-600">% 时触发</span>
                   </div>
                   <p className="mt-2 text-xs text-slate-500">
-                    低溢价ETF相对高溢价ETF的差价扩大到此阈值以上时，卖出L买入H
+                    持有H时，溢价差扩大到此阈值以上，卖出H买入L
                   </p>
                 </div>
               </div>
