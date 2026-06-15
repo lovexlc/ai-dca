@@ -74,7 +74,9 @@ export const DEFAULT_QUANT_STATE = {
     brokerAccount: 'PAPER-001',
     brokerApiKey: '',
     viewDensity: 'standard',
-    paperTradeOnly: true
+    paperTradeOnly: true,
+    useV2Logic: true,  // 新增：默认启用V2逻辑（admin专用）
+    enableEnhancedRiskControl: true  // 新增：默认启用增强风控
   },
   orders: []
 };
@@ -755,3 +757,13 @@ export function runPremiumSpreadBacktest({
     }
   };
 }
+
+// ========================================
+// V2 模块导出（修复版本）
+// ========================================
+export { BacktestEngine, runPremiumSpreadBacktest as runBacktestV2 } from './quantBacktestEngine.js';
+export { buildOrderPlanV2 } from './quantOrderPlanV2.js';
+export { RiskMonitor, performRiskCheck } from './quantRiskMonitor.js';
+export { getCachedHistoricalData, generateRealisticSimulation, clearHistoricalDataCache } from './quantHistoricalData.js';
+export { RECOMMENDED_STRATEGY_CONFIGS, applyConfigPreset, recommendParameters, validateStrategyParameters } from './quantConfigPresets.js';
+
