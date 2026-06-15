@@ -724,7 +724,26 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
     setBacktesting(true);
     setError('');
     try {
-      const result = await runQuantPremiumBacktestInWorker(config.id, {
+      // 先保存当前配置到后端，确保回测使用最新的H/L codes
+      const nextConfig = normalizeQuantPremiumConfigShape({
+        ...config,
+        highCodes: parseQuantPremiumCodes(highText),
+        lowCodes: parseQuantPremiumCodes(lowText)
+      });
+
+      if (!nextConfig.highCodes.length || !nextConfig.lowCodes.length) {
+        setError('H 和 L 至少各设置一只 ETF。');
+        setBacktesting(false);
+        return;
+      }
+
+      // 保存配置
+      const saveResult = await saveQuantPremiumStrategyToWorker(nextConfig);
+      const savedStrategy = saveResult.strategy;
+      applyConfig(savedStrategy);
+
+      // 用保存后的策略ID运行回测
+      const result = await runQuantPremiumBacktestInWorker(savedStrategy.id, {
         timeframe: backtestTf,
         useV2: useV2Backtest  // 传递V2标志
       });
