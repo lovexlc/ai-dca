@@ -147,22 +147,33 @@ export default function QuantTradingExperienceV2() {
   }
 
   async function handleSaveAndBacktest() {
-    console.log('回测前检查:', { highCodes, lowCodes });
+    // 确保从状态读取最新值
+    const currentHighCodes = Array.isArray(highCodes) ? highCodes : [];
+    const currentLowCodes = Array.isArray(lowCodes) ? lowCodes : [];
+    const currentRuleA = typeof ruleA === 'number' && ruleA > 0 ? ruleA : 3;
+    const currentRuleB = typeof ruleB === 'number' && ruleB > 0 ? ruleB : 1;
 
-    if (!Array.isArray(highCodes) || highCodes.length === 0 || !Array.isArray(lowCodes) || lowCodes.length === 0) {
+    console.log('回测前检查:', {
+      highCodes: currentHighCodes,
+      lowCodes: currentLowCodes,
+      ruleA: currentRuleA,
+      ruleB: currentRuleB
+    });
+
+    if (currentHighCodes.length === 0 || currentLowCodes.length === 0) {
       showToast({ title: 'H 和 L 至少各设置一只 ETF', tone: 'amber' });
       return;
     }
 
     setBacktesting(true);
     try {
-      // 保存配置
+      // 保存配置 - 使用当前值
       const config = normalizeQuantPremiumConfigShape({
         id: activeStrategyId,
-        highCodes,
-        lowCodes,
-        intraSellLowerPct: ruleA,
-        intraBuyOtherPct: ruleB
+        highCodes: currentHighCodes,
+        lowCodes: currentLowCodes,
+        intraSellLowerPct: currentRuleA,
+        intraBuyOtherPct: currentRuleB
       });
 
       console.log('保存配置:', config);
@@ -175,6 +186,8 @@ export default function QuantTradingExperienceV2() {
         timeframe: '5m',
         useV2
       });
+
+      console.log('回测结果:', result);
 
       setBacktest(result);
       setActiveTab('backtest');
@@ -344,7 +357,7 @@ export default function QuantTradingExperienceV2() {
                       }}
                       onBlur={(e) => {
                         const num = parseFloat(e.target.value);
-                        setRuleA(Number.isFinite(num) ? num : 3);
+                        setRuleA(Number.isFinite(num) && num > 0 ? num : 3);
                       }}
                       className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-semibold"
                     />
@@ -373,7 +386,7 @@ export default function QuantTradingExperienceV2() {
                       }}
                       onBlur={(e) => {
                         const num = parseFloat(e.target.value);
-                        setRuleB(Number.isFinite(num) ? num : 1);
+                        setRuleB(Number.isFinite(num) && num > 0 ? num : 1);
                       }}
                       className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-semibold"
                     />
