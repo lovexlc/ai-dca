@@ -6,22 +6,30 @@ import { cx } from './experience-ui.jsx';
  * TagInput - 标签式输入组件
  * 用于输入和显示ETF代码列表
  */
-export function TagInput({ label, placeholder = '输入代码按回车添加', tags = [], onChange, className }) {
+export function TagInput({ label, placeholder = '输入代码', tags = [], onChange, className }) {
   const [inputValue, setInputValue] = useState('');
+
+  function addTag() {
+    const trimmed = inputValue.trim().toUpperCase();
+    if (trimmed && !tags.includes(trimmed)) {
+      const newTags = [...tags, trimmed];
+      console.log('TagInput onChange:', newTags);
+      onChange(newTags);
+    }
+    setInputValue('');
+  }
 
   function handleKeyDown(e) {
     if (e.key === 'Enter' && inputValue.trim()) {
       e.preventDefault();
-      const newTag = inputValue.trim().toUpperCase();
-      if (!tags.includes(newTag)) {
-        const newTags = [...tags, newTag];
-        console.log('TagInput onChange:', newTags);
-        onChange(newTags);
-      }
-      setInputValue('');
+      addTag();
     } else if (e.key === 'Backspace' && !inputValue && tags.length > 0) {
       onChange(tags.slice(0, -1));
     }
+  }
+
+  function handleBlur() {
+    addTag();
   }
 
   function removeTag(tagToRemove) {
@@ -53,12 +61,13 @@ export function TagInput({ label, placeholder = '输入代码按回车添加', t
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
+            onBlur={handleBlur}
             placeholder={tags.length === 0 ? placeholder : ''}
             className="flex-1 min-w-[120px] bg-transparent border-none outline-none text-sm text-slate-900 placeholder:text-slate-400"
           />
         </div>
       </div>
-      <p className="mt-1.5 text-xs text-slate-500">输入代码后按回车添加</p>
+      <p className="mt-1.5 text-xs text-slate-500">回车或失焦后自动添加</p>
     </div>
   );
 }

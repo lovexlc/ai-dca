@@ -333,10 +333,19 @@ export default function QuantTradingExperienceV2() {
                   <div className="flex items-center gap-3">
                     <span className="text-sm text-slate-600">溢价差 ≤</span>
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="decimal"
                       value={ruleA}
-                      onChange={(e) => setRuleA(Number(e.target.value))}
-                      step="0.1"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                          setRuleA(val === '' ? '' : val);
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const num = parseFloat(e.target.value);
+                        setRuleA(Number.isFinite(num) ? num : 3);
+                      }}
                       className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-semibold"
                     />
                     <span className="text-sm text-slate-600">% 时触发</span>
@@ -353,10 +362,19 @@ export default function QuantTradingExperienceV2() {
                   <div className="flex items-center gap-3">
                     <span className="text-sm text-slate-600">溢价差 ≥</span>
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="decimal"
                       value={ruleB}
-                      onChange={(e) => setRuleB(Number(e.target.value))}
-                      step="0.1"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                          setRuleB(val === '' ? '' : val);
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const num = parseFloat(e.target.value);
+                        setRuleB(Number.isFinite(num) ? num : 1);
+                      }}
                       className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-semibold"
                     />
                     <span className="text-sm text-slate-600">% 时触发</span>
