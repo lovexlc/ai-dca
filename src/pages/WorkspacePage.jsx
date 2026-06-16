@@ -538,7 +538,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     const sharedProps = { links, inPagesDir, embedded: true };
     if (isQuantModuleTab(activeTab)) {
       if (activeTab === 'quant:v2') {
-        return <QuantTradingExperienceV2 {...sharedProps} initialTab="backtest" />;
+        return <QuantTradingExperienceV2 {...sharedProps} initialTab="backtest" singleTab />;
       }
       // ETF切换策略使用独立页面
       if (activeTab === 'quant:etf') {

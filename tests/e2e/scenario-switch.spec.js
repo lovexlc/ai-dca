@@ -39,17 +39,19 @@ test.describe('scenario switcher', () => {
     await expect(page.getByRole('menuitemcheckbox', { name: /量化研究/ })).toBeVisible();
   });
 
-  test('switches to the quant scenario and shows the Worker paper trading page in the sidebar', async ({ page }) => {
+  test('switches to the quant scenario and shows quant feature tabs in the sidebar', async ({ page }) => {
     await openScenarioMenu(page);
     await page.getByRole('menuitemcheckbox', { name: /量化研究/ }).click();
 
     await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('量化研究');
     await expect(page.locator('nav a', { hasText: '策略' })).toBeVisible();
+    await expect(page.locator('nav a', { hasText: '回测' })).toBeVisible();
     await expect(page.locator('nav a', { hasText: '资金' })).toBeVisible();
     await expect(page.locator('nav a', { hasText: '成交' })).toBeVisible();
     await expect(page.locator('nav a', { hasText: '量化研究' })).toHaveCount(0);
     await expect(page.locator('nav a', { hasText: '数据' })).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: 'Worker 溢价差模拟盘' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Worker 溢价差模拟盘' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: '量化策略配置' })).toBeVisible();
     await expect(page.locator('nav a', { hasText: '综合仪表盘' })).toHaveCount(0);
     await expect(page.locator('nav a', { hasText: '行情与数据' })).toHaveCount(0);
     await expect(page.locator('nav a', { hasText: '交易计划' })).toHaveCount(0);
@@ -58,7 +60,8 @@ test.describe('scenario switcher', () => {
     await closeStartupModals(page);
 
     await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('量化研究');
-    await expect(page.getByRole('heading', { name: 'Worker 溢价差模拟盘' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Worker 溢价差模拟盘' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: '量化策略配置' })).toBeVisible();
   });
 
   test('keeps holdings and trade plans inside the holding scenario', async ({ page }) => {

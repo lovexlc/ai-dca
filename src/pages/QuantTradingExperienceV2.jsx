@@ -115,7 +115,7 @@ function backtestStatusClass(status = '') {
   return 'bg-slate-100 text-slate-600';
 }
 
-export default function QuantTradingExperienceV2({ initialTab = 'config' } = {}) {
+export default function QuantTradingExperienceV2({ initialTab = 'config', singleTab = false } = {}) {
   // 状态管理
   const [strategies, setStrategies] = useState([]);
   const [activeStrategyId, setActiveStrategyId] = useState('');
@@ -405,6 +405,8 @@ export default function QuantTradingExperienceV2({ initialTab = 'config' } = {})
   const sharpeTone = sharpeRatio >= 1.5 ? 'positive' : sharpeRatio >= 1 ? 'neutral' : 'negative';
   const drawdownTone = Math.abs(maxDrawdownPct) <= 5 ? 'positive' : Math.abs(maxDrawdownPct) <= 10 ? 'neutral' : 'negative';
   const currentLiveSignal = normalizeLiveSignal(snapshot);
+  const showSharedChrome = !singleTab;
+  const showBacktestMetrics = showSharedChrome || activeTab === 'backtest';
 
   // Tab 配置
   const tabs = [
@@ -435,7 +437,7 @@ export default function QuantTradingExperienceV2({ initialTab = 'config' } = {})
   return (
     <div className="min-h-screen bg-slate-50">
       {/* 顶部导航栏 */}
-      <div className="border-b border-slate-200 bg-white px-4 sm:px-6 py-3 sm:py-4">
+      {showSharedChrome ? <div className="border-b border-slate-200 bg-white px-4 sm:px-6 py-3 sm:py-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex-1 min-w-0">
             <h1 className="text-lg sm:text-2xl font-bold text-slate-900 truncate">量化研究</h1>
@@ -461,10 +463,10 @@ export default function QuantTradingExperienceV2({ initialTab = 'config' } = {})
             </button>
           </div>
         </div>
-      </div>
+      </div> : null}
 
       {/* 核心指标卡片区 */}
-      <div className="px-4 sm:px-6 py-4 sm:py-8">
+      {showBacktestMetrics ? <div className="px-4 sm:px-6 py-4 sm:py-8">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
           <MetricCard
             label="累计收益"
@@ -552,15 +554,15 @@ export default function QuantTradingExperienceV2({ initialTab = 'config' } = {})
             </Card>
           </div>
         )}
-      </div>
+      </div> : null}
 
       {/* Tab 导航 */}
-      <TabNavigation
+      {showSharedChrome ? <TabNavigation
         tabs={tabs}
         activeTab={activeTab}
         onChange={setActiveTab}
         className="sticky top-0 z-10 shadow-sm"
-      />
+      /> : null}
 
       {/* Tab 内容区 */}
       <div className="px-4 sm:px-6 py-4 sm:py-8">
@@ -805,9 +807,22 @@ export default function QuantTradingExperienceV2({ initialTab = 'config' } = {})
                   <h2 className="mt-1 text-base sm:text-lg font-bold text-slate-900">历史回测</h2>
                   <p className="mt-1 text-xs sm:text-sm text-slate-600">使用 V2 引擎运行回测，并在通过后确认是否用于实盘信号。</p>
                 </div>
-                <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-xs font-bold ${backtestStatusClass(visibleBacktestStatus)}`}>
-                  {backtestStatusLabel(visibleBacktestStatus)}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {singleTab ? (
+                    <select
+                      value={activeStrategyId}
+                      onChange={(e) => loadStrategy(e.target.value)}
+                      className="min-h-[40px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                    >
+                      {strategies.map((strategy) => (
+                        <option key={strategy.id} value={strategy.id}>{strategy.name || strategy.id}</option>
+                      ))}
+                    </select>
+                  ) : null}
+                  <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-xs font-bold ${backtestStatusClass(visibleBacktestStatus)}`}>
+                    {backtestStatusLabel(visibleBacktestStatus)}
+                  </span>
+                </div>
               </div>
               <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
                 <div>

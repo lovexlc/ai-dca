@@ -212,7 +212,6 @@ test('quant research workspace renders the Worker premium paper trading panel', 
   await page.goto('/?tab=quant');
   await page.getByRole('button', { name: '知道了' }).click({ timeout: 3000 }).catch(() => {});
 
-  await expect(page.getByRole('heading', { name: 'Worker 溢价差模拟盘' })).toBeVisible();
   await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('量化研究');
   await expect(page.locator('nav a', { hasText: '策略' })).toBeVisible();
   await expect(page.locator('nav a', { hasText: '回测' })).toBeVisible();
@@ -224,7 +223,8 @@ test('quant research workspace renders the Worker premium paper trading panel', 
   await expect(page.locator('nav a', { hasText: '行情与数据' })).toHaveCount(0);
   await expect(page.locator('nav a', { hasText: '策略研究' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^选股与因子研究$/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '手动跑一轮' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Worker 溢价差模拟盘' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '手动跑一轮' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '策略', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '资金', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '成交', exact: true })).toHaveCount(0);
@@ -268,7 +268,7 @@ test('quant research workspace renders the Worker premium paper trading panel', 
   await expect(page.getByRole('heading', { name: '资金', exact: true })).toBeVisible();
 
   await page.goto('/?tab=quant&module=research');
-  await expect(page.getByRole('heading', { name: 'Worker 溢价差模拟盘' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Worker 溢价差模拟盘' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '量化策略配置' })).toBeVisible();
 });
 

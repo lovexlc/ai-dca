@@ -181,8 +181,8 @@ test('quant v2 backtest flow works for H 513100 and L 159501', async ({ page }) 
     id: 'default',
     enabled: true,
     name: '纳指 ETF 溢价差',
-    highCodes: ['159513'],
-    lowCodes: ['513100', '159501'],
+    highCodes: ['513100'],
+    lowCodes: ['159501'],
     activeSide: 'all',
     intraSellLowerPct: 1,
     intraBuyOtherPct: 3,
@@ -331,23 +331,10 @@ test('quant v2 backtest flow works for H 513100 and L 159501', async ({ page }) 
   await page.goto('/?tab=quant&module=v2');
   await page.getByRole('button', { name: '知道了' }).click({ timeout: 3000 }).catch(() => {});
 
-  await expect(page.getByRole('heading', { name: '量化研究' })).toBeVisible();
-  await page.getByRole('button', { name: /策略配置/ }).click();
-  await expect(page.getByLabel('H 高溢价 ETF（卖出方）')).toBeVisible();
-  await expect(page.getByRole('button', { name: '移除 159513' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '移除 513100' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '移除 159501' })).toBeVisible();
-
-  await page.getByRole('button', { name: '移除 159513' }).click();
-  await page.getByRole('button', { name: '移除 513100' }).click();
-  await page.getByLabel('H 高溢价 ETF（卖出方）').fill('513100');
-  await page.getByLabel('H 高溢价 ETF（卖出方）').press('Enter');
-  await expect(page.getByRole('button', { name: '移除 513100' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '移除 159501' })).toBeVisible();
-
-  await page.getByLabel('规则 A：卖 L 买 H').fill('1');
-  await page.getByLabel('规则 B：卖 H 买 L').fill('3');
-  await page.getByRole('button', { name: /保存并运行回测/ }).click();
+  await expect(page.getByRole('heading', { name: '历史回测' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /策略配置/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /交易历史/ })).toHaveCount(0);
+  await page.getByRole('button', { name: /运行回测/ }).click();
 
   await expect(page.getByText('+1.45%').first()).toBeVisible();
   await expect(page.getByText('+67%')).toBeVisible();
@@ -368,20 +355,6 @@ test('quant v2 backtest flow works for H 513100 and L 159501', async ({ page }) 
   await page.getByLabel('K 线粒度').selectOption('1d');
   await page.getByRole('button', { name: /运行回测/ }).click();
   await expect.poll(() => backtestPayloads.at(-1)?.timeframe).toBe('1d');
-
-  await page.getByRole('button', { name: /交易历史/ }).click();
-  await expect(page.getByRole('columnheader', { name: '时间' })).toBeVisible();
-  await expect(page.getByRole('cell', { name: '2026-06-12 09:50' }).first()).toBeVisible();
-  await expect(page.getByRole('cell', { name: '513100' }).first()).toBeVisible();
-  await expect(page.getByRole('cell', { name: '159501' }).first()).toBeVisible();
-  await expect(page.getByRole('columnheader', { name: '结算金额' })).toBeVisible();
-  await expect(page.getByRole('cell', { name: '¥94,507.27' })).toBeVisible();
-
-  await page.getByRole('button', { name: /实盘监控/ }).click();
-  await page.getByRole('button', { name: '刷新' }).click();
-  await expect(page.getByText('规则 B').first()).toBeVisible();
-  await expect(page.getByText('卖 513100').first()).toBeVisible();
-  await expect(page.getByText('买 159501').first()).toBeVisible();
 
   expect(pageErrors).toEqual([]);
   expect(httpErrors).toEqual([]);

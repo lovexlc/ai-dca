@@ -405,10 +405,11 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
       ))}
     </select>
   ) : null;
+  const showSharedChrome = !hideModuleTabs;
 
   return (
     <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>
-      <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 lg:flex-row lg:items-start lg:justify-between">
+      {showSharedChrome ? <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">
             <Bot className="h-3.5 w-3.5" />
@@ -429,17 +430,17 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
             刷新
           </button>
         </div>
-      </div>
+      </div> : null}
 
       {error ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">{error}</div>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {showSharedChrome ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {metrics.map((item) => <Metric key={item.label} {...item} />)}
-      </div>
+      </div> : null}
 
-      {!hideModuleTabs ? <div className="flex gap-2 overflow-x-auto rounded-xl bg-slate-100 p-1">
+      {showSharedChrome ? <div className="flex gap-2 overflow-x-auto rounded-xl bg-slate-100 p-1">
         {tabs.map(({ key, label, Icon }) => (
           <button
             key={key}
