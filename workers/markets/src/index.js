@@ -39,6 +39,7 @@ import {
   mapLimit
 } from './marketRuntime.js';
 import { handleFundMetrics, handleKline } from './fundMetricsRoutes.js';
+import { runAfterMarketCloseTask } from './klineBatchSaver.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -123,6 +124,10 @@ export default {
       if (path === '/refresh' && request.method === 'POST') {
         const body = await request.json().catch(() => ({}));
         return await handleManualRefresh(env, body, ctx);
+      }
+      if (path === '/kline-batch' && request.method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        return await handleKlineBatchSave(env, body, ctx);
       }
       return errorJson('not found', 404, { path });
     } catch (err) {
@@ -668,30 +673,74 @@ async function handleManualRefresh(env, body, ctx) {
   return errorJson('unknown target ' + target, 400);
 }
 
+async function handleKlineBatchSave(env, body, ctx) {
+  const market = String((body && body.market) || '').toLowerCase();
+  if (market !== 'us' && market !== 'cn') {
+    return errorJson('market must be "us" or "cn"', 400);
+  }
+
+  // 在后台运行，立即返回
+  ctx.waitUntil(
+    runAfterMarketCloseTask(env, market).catch(err => {
+      console.error(`[kline-batch] Manual trigger failed for ${market}:`, err);
+    })
+  );
+
+  return json({
+    ok: true,
+    message: `K-line batch save task started for ${market} market`,
+    market,
+    timestamp: new Date().toISOString()
+  });
+}
+
 // ===================== Scheduled =====================
 
 async function runScheduled(env, cron) {
-  // 简化策略：任意 cron 都会跳过试图梳理交易时段，直接按词典驱动“哪些需要创新”。
+  // 简化策略：任意 cron 都会跳过试图梳理交易时段，直接按词典驱动”哪些需要创新”。
   // 01-06 UTC MON-FRI 是 A 股盘中，13-20 UTC 是美股盘中。别的 cron 是收盘后。
   const tasks = [];
   const hourUtc = new Date().getUTCHours();
+
+  // A股盘中刷新
   if (hourUtc >= 1 && hourUtc <= 7) {
     tasks.push(refreshIndices(env, 'cn'));
     tasks.push(handleMovers(env, 'cn', 'mixed', true));
   }
+
+  // 美股盘中刷新
   if (hourUtc >= 13 && hourUtc <= 20) {
     tasks.push(refreshIndices(env, 'us'));
     tasks.push(handleMovers(env, 'us', 'mixed', true));
   }
-  if (cron === '30 22 * * *' || cron === '0 7 * * MON-FRI') {
-    // 美股收盘后跨天 + A 股盘中际调度。
+
+  // 收盘后任务
+  // UTC 22:30 (北京 06:30) - 美股收盘后
+  // UTC 07:30 (北京 15:30) - A股收盘后
+  if (cron === '30 22 * * *') {
+    console.log('[scheduled] US after-market-close task');
     tasks.push(refreshIndices(env, 'us'));
     tasks.push(handleNews(env, 'us', true));
+    // 保存美股K线数据
+    tasks.push(runAfterMarketCloseTask(env, 'us').catch(err => {
+      console.error('[scheduled] US kline batch save failed:', err);
+    }));
   }
+
+  if (cron === '30 7 * * MON-FRI') {
+    console.log('[scheduled] CN after-market-close task');
+    tasks.push(refreshIndices(env, 'cn'));
+    // 保存A股K线数据
+    tasks.push(runAfterMarketCloseTask(env, 'cn').catch(err => {
+      console.error('[scheduled] CN kline batch save failed:', err);
+    }));
+  }
+
   // 每 30 分钟跑一次美股主题摘要（由专门的 cron 触发）。
   if (cron === '*/30 * * * *') {
     tasks.push(handleSummary(env, 'us', true));
   }
+
   const results = await Promise.allSettled(tasks);
   for (const r of results) {
     if (r.status === 'rejected') {

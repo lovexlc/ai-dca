@@ -402,6 +402,7 @@ export async function handleKline(env, rawSymbol, params) {
   const requestedLimit = Math.max(1, Math.min(Number(params.get('limit')) || 500, 1000));
   const sessionMode = params.get('session') === 'all' ? 'all' : 'latest';
   const shouldUseDefaultCache = sessionMode === 'latest' && requestedLimit <= 500;
+
   console.log('[markets:kline] request', {
     rawSymbol,
     market,
@@ -415,36 +416,64 @@ export async function handleKline(env, rawSymbol, params) {
     tradingMinute: market === 'cn' ? getShanghaiTradingMinute() : null,
     isCnTradingSession: market === 'cn' ? isCnTradingSession() : null
   });
+
+  // 策略：优先从 R2 读取批量保存的历史数据
+  // 只有在以下情况才会触发实时抓取：
+  // 1. forceRefresh=1 明确要求刷新
+  // 2. R2 中没有数据
+  // 3. 数据过期且正在交易时段
   if (!forceRefresh && shouldUseDefaultCache) {
     const cached = await r2GetJson(env, r2k);
     if (cached && cached.candles && cached.candles.length) {
       const stale = klineCacheIsStale({ cached, market, tf });
       const sourceOk = market !== 'cn' || cached.source === 'xueqiu-kline';
-      console.log('[markets:kline] cache check', {
+
+      console.log('[markets:kline] R2 cache check', {
         rawSymbol,
         market,
         code,
         tf,
         stale,
         sourceOk,
+        hasBatchSavedFlag: !!cached.batchSaved,
         cache: describeKlinePayloadForLog(cached)
       });
-      if (!stale && sourceOk) return json({ ...cached, cached: true });
+
+      // 如果有批量保存的标记，且数据不是太旧，直接使用
+      // 批量保存的数据是高质量的完整历史数据，优先使用
+      if (cached.batchSaved) {
+        const age = Date.now() - new Date(cached.generatedAt || 0).getTime();
+        const maxAgeMs = tf === '1d' ? 24 * 60 * 60 * 1000 : 2 * 60 * 60 * 1000; // 日线24h，分钟线2h
+
+        if (age < maxAgeMs) {
+          console.log('[markets:kline] Using batch-saved data from R2', {
+            rawSymbol, tf, age: Math.round(age / 1000 / 60) + 'min'
+          });
+          return json({ ...cached, cached: true, source: 'r2-batch' });
+        }
+      }
+
+      // 非批量保存的数据，使用原有的过期策略
+      if (!stale && sourceOk) {
+        return json({ ...cached, cached: true, source: 'r2-cache' });
+      }
     } else {
-      console.log('[markets:kline] cache miss', { rawSymbol, market, code, tf, r2Key: r2k });
+      console.log('[markets:kline] R2 cache miss', { rawSymbol, market, code, tf, r2Key: r2k });
     }
   } else {
     console.log('[markets:kline] request skips default cache', { rawSymbol, market, code, tf, forceRefresh, sessionMode, requestedLimit, r2Key: r2k });
   }
+
+  // 只有在必要时才实时抓取
   const fresh = await refreshKline(env, market, code, tf, { limit: requestedLimit, sessionMode, writeCache: shouldUseDefaultCache });
-  console.log('[markets:kline] response fresh', {
+  console.log('[markets:kline] response fresh (realtime fetch)', {
     rawSymbol,
     market,
     code,
     tf,
     payload: describeKlinePayloadForLog(fresh)
   });
-  return json({ ...fresh, cached: false });
+  return json({ ...fresh, cached: false, source: 'realtime' });
 }
 
 async function refreshKline(env, market, code, tf, { limit = 500, sessionMode = 'latest', writeCache = true } = {}) {
