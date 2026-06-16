@@ -6,6 +6,7 @@ import { cx } from './experience-ui.jsx';
  */
 export function TradeHistoryCard({ trade }) {
   const isBuy = trade.type === 'buy';
+  const settlementValue = isBuy ? (trade.totalCost ?? trade.amount) : (trade.netProceeds ?? trade.amount);
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 hover:shadow-md transition-shadow">
@@ -26,9 +27,9 @@ export function TradeHistoryCard({ trade }) {
         </div>
         <div className="text-right">
           <div className="text-base font-bold text-slate-900">
-            {formatMoney(trade.totalCost)}
+            {formatMoney(settlementValue)}
           </div>
-          <div className="text-xs text-slate-500">总成本</div>
+          <div className="text-xs text-slate-500">结算金额</div>
         </div>
       </div>
 

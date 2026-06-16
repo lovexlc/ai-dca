@@ -385,8 +385,8 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
 
     const sideAllowed = strategy.activeSide === 'all' || strategy.activeSide === currentClass;
     const triggered = canTrade && sideAllowed && (
-      (rule === 'B' && gapPct > strategy.intraBuyOtherPct) ||
-      (rule === 'A' && gapPct < strategy.intraSellLowerPct)
+      (rule === 'B' && gapPct >= strategy.intraBuyOtherPct) ||
+      (rule === 'A' && gapPct <= strategy.intraSellLowerPct)
     );
 
     // 执行交易（只在数据完整时）

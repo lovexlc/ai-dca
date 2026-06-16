@@ -1,8 +1,6 @@
 import {
   LineChart,
   Line,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -88,7 +86,7 @@ export function EquityChart({ data }) {
 
   const maxEquity = Math.max(...chartData.map(d => d.equity));
   const minEquity = Math.min(...chartData.map(d => d.equity));
-  const padding = (maxEquity - minEquity) * 0.1;
+  const padding = Math.max((maxEquity - minEquity) * 0.1, Math.abs(maxEquity) * 0.001, 1);
 
   return (
     <ResponsiveContainer width="100%" height={400}>
@@ -155,8 +153,15 @@ export function KlineChart({ candles, signals }) {
     return <EmptyChart message="暂无K线数据" />;
   }
 
-  const chartData = candles.map((candle, idx) => {
-    const signal = signals?.find(s => s.ts === candle.t);
+  const signalByTs = new Map(
+    (Array.isArray(signals) ? signals : [])
+      .map((signal) => [Number(signal.ts), signal])
+      .filter(([ts]) => Number.isFinite(ts))
+  );
+
+  const chartData = candles.map((candle) => {
+    const ts = Number(candle.t);
+    const signal = signalByTs.get(ts);
 
     // 从时间戳生成带时间的日期
     let dateLabel = candle.date;
@@ -181,6 +186,7 @@ export function KlineChart({ candles, signals }) {
     }
 
     return {
+      ts,
       date: dateLabel,
       close: candle.close,
       open: candle.open,
@@ -225,12 +231,12 @@ export function KlineChart({ candles, signals }) {
           name="收盘价"
         />
         {signals?.map((signal, idx) => {
-          const point = chartData.find(d => d.date === signal.date);
+          const point = chartData.find(d => d.ts === Number(signal.ts));
           if (!point) return null;
           return (
             <ReferenceLine
               key={idx}
-              x={signal.date}
+              x={point.date}
               stroke={signal.rule === 'A' ? '#10b981' : '#6366f1'}
               strokeDasharray="3 3"
               label={{

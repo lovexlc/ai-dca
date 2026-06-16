@@ -1,12 +1,12 @@
 import { X } from 'lucide-react';
-import { useState } from 'react';
-import { cx } from './experience-ui.jsx';
+import { useId, useState } from 'react';
 
 /**
  * TagInput - 标签式输入组件
  * 用于输入和显示ETF代码列表
  */
 export function TagInput({ label, placeholder = '输入代码', tags = [], onChange, className }) {
+  const inputId = useId();
   const [inputValue, setInputValue] = useState('');
 
   function addTag() {
@@ -38,7 +38,7 @@ export function TagInput({ label, placeholder = '输入代码', tags = [], onCha
 
   return (
     <div className={className}>
-      {label && <label className="block text-sm font-semibold text-slate-700 mb-2">{label}</label>}
+      {label && <label htmlFor={inputId} className="block text-sm font-semibold text-slate-700 mb-2">{label}</label>}
       <div className="rounded-xl border-2 border-slate-200 bg-white p-2 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
         <div className="flex flex-wrap gap-2">
           {tags.map(tag => (
@@ -50,6 +50,7 @@ export function TagInput({ label, placeholder = '输入代码', tags = [], onCha
               <button
                 type="button"
                 onClick={() => removeTag(tag)}
+                aria-label={`移除 ${tag}`}
                 className="hover:bg-indigo-200 rounded p-0.5 transition-colors"
               >
                 <X className="h-3.5 w-3.5" />
@@ -57,7 +58,9 @@ export function TagInput({ label, placeholder = '输入代码', tags = [], onCha
             </span>
           ))}
           <input
+            id={inputId}
             type="text"
+            aria-label={label || placeholder}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}

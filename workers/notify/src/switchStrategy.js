@@ -712,7 +712,7 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       const lCode = benchClass === 'H' ? cand.code : benchCode;
       const tag = rule === 'A' ? '差价收窄' : '差价扩大';
       const arrow = rule === 'A' ? '低→高' : '高→低';
-      const cmp = rule === 'A' ? '<' : '>';
+      const cmp = rule === 'A' ? '≤' : '≥';
       const threshold = rule === 'A' ? sellLowerCfg : buyOtherCfg;
       const gapStr = (gap >= 0 ? '+' : '') + gap.toFixed(2);
       signals.push({
@@ -753,8 +753,8 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
 
 // 与前端 intraSignals 算法一致（v4：规则基准决定基准，H/L 决定方向）：
 //   gap = H溢价 − L溢价（始终 H 在前）。满足以下任一才可能触发：
-//   - bench.class === 'L' && cand.class === 'H' && gap < intraSellLowerPct → 规则 A：卖 bench(L) 买 cand(H)
-//   - bench.class === 'H' && cand.class === 'L' && gap > intraBuyOtherPct  → 规则 B：卖 bench(H) 买 cand(L)
+//   - bench.class === 'L' && cand.class === 'H' && gap <= intraSellLowerPct → 规则 A：卖 bench(L) 买 cand(H)
+//   - bench.class === 'H' && cand.class === 'L' && gap >= intraBuyOtherPct  → 规则 B：卖 bench(H) 买 cand(L)
 //   同类、未分类、数据缺失 都不触发。
 // per-pair dedup：仅当本轮 rule 与上次不同时才推送（方向已被类别锁定，不会翻转）。
 function classifyRule({ benchClass, candClass, gap, sellLower, buyOther }) {
@@ -762,8 +762,8 @@ function classifyRule({ benchClass, candClass, gap, sellLower, buyOther }) {
   if (benchClass !== 'H' && benchClass !== 'L') return 'none';
   if (candClass !== 'H' && candClass !== 'L') return 'none';
   if (benchClass === candClass) return 'none';
-  if (benchClass === 'L' && gap < sellLower) return 'A';
-  if (benchClass === 'H' && gap > buyOther) return 'B';
+  if (benchClass === 'L' && gap <= sellLower) return 'A';
+  if (benchClass === 'H' && gap >= buyOther) return 'B';
   return 'none';
 }
 

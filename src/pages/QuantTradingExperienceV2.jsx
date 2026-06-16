@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Activity,
   BarChart3,
-  Bot,
-  LineChart,
   ListChecks,
   Play,
   RefreshCw,
@@ -24,10 +22,8 @@ import { showToast } from '../app/toast.js';
 import {
   loadQuantPremiumStrategiesFromWorker,
   loadQuantPremiumBacktestLatestFromWorker,
-  loadQuantPremiumSnapshotFromWorker,
   loadQuantPremiumStrategySnapshotFromWorker,
   normalizeQuantPremiumConfigShape,
-  parseQuantPremiumCodes,
   saveQuantPremiumStrategyToWorker,
   runQuantPremiumBacktestInWorker,
   runQuantPremiumOnce
@@ -68,13 +64,39 @@ function formatPrice(value) {
   return num.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
 }
 
+function readPercentInput(value, fallback) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function normalizeLiveSignal(snapshot) {
+  const source = snapshot?.signal
+    || (Array.isArray(snapshot?.signals) ? snapshot.signals[0] : null)
+    || (Array.isArray(snapshot?.triggers) ? snapshot.triggers[0] : null);
+  if (!source || typeof source !== 'object') return null;
+  const gapValue = Number(source.gapPct ?? source.gapPercent);
+  return {
+    rule: source.rule || source.ruleName || source.ruleId || '',
+    fromCode: source.fromCode || source.from || source.from_code || '',
+    toCode: source.toCode || source.to || source.to_code || '',
+    gapPct: Number.isFinite(gapValue) ? gapValue.toFixed(2) : '',
+    threshold: source.threshold ?? source.triggerPct ?? '',
+    triggered: source.triggered !== undefined ? Boolean(source.triggered) : true,
+    timestamp: source.timestamp || source.ts || source.date || snapshot.generatedAt || snapshot.computedAt || ''
+  };
+}
+
+function resolveTradeSettlementValue(trade = {}) {
+  if (trade.type === 'buy') return trade.totalCost ?? trade.amount;
+  return trade.netProceeds ?? trade.amount;
+}
+
 export default function QuantTradingExperienceV2() {
   // 状态管理
   const [strategies, setStrategies] = useState([]);
   const [activeStrategyId, setActiveStrategyId] = useState('');
   const [activeTab, setActiveTab] = useState('config');
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [backtesting, setBacktesting] = useState(false);
 
   // 策略配置
@@ -97,14 +119,19 @@ export default function QuantTradingExperienceV2() {
   // 加载策略列表
   useEffect(() => {
     loadStrategies();
+    // 初始进入 v2 工作台时加载一次策略；后续策略切换由 loadStrategy 显式处理。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadStrategies() {
     try {
       const list = await loadQuantPremiumStrategiesFromWorker();
       setStrategies(list);
-      if (list.length > 0 && !activeStrategyId) {
-        loadStrategy(list[0].id);
+      const nextId = activeStrategyId && list.some((item) => item.id === activeStrategyId)
+        ? activeStrategyId
+        : list[0]?.id || '';
+      if (nextId) {
+        await loadStrategy(nextId, list);
       }
     } catch (error) {
       console.error('加载策略失败:', error);
@@ -113,14 +140,19 @@ export default function QuantTradingExperienceV2() {
     }
   }
 
-  async function loadStrategy(strategyId) {
+  async function loadStrategy(strategyId, sourceStrategies = strategies) {
     setActiveStrategyId(strategyId);
-    const strategy = strategies.find(s => s.id === strategyId);
+    const strategy = sourceStrategies.find(s => s.id === strategyId);
     if (strategy) {
       setHighCodes(strategy.highCodes || []);
       setLowCodes(strategy.lowCodes || []);
       setRuleA(strategy.intraSellLowerPct || 1);
       setRuleB(strategy.intraBuyOtherPct || 3);
+    } else {
+      setHighCodes([]);
+      setLowCodes([]);
+      setRuleA(1);
+      setRuleB(3);
     }
 
     // 加载回测结果
@@ -137,10 +169,32 @@ export default function QuantTradingExperienceV2() {
     // 加载实盘快照
     try {
       const snap = await loadQuantPremiumStrategySnapshotFromWorker(strategyId);
-      setSnapshot(snap);
+      setSnapshot(snap?.snapshot || null);
     } catch (error) {
       console.error('加载实盘快照失败:', error);
     }
+  }
+
+  function handleCreateStrategy() {
+    const id = `strategy-${Date.now().toString(36)}`;
+    const next = normalizeQuantPremiumConfigShape({
+      id,
+      enabled: true,
+      name: `V2 策略 ${strategies.length + 1}`,
+      highCodes: [],
+      lowCodes: [],
+      intraSellLowerPct: 1,
+      intraBuyOtherPct: 3
+    });
+    setStrategies((current) => [next, ...current]);
+    setActiveStrategyId(id);
+    setHighCodes([]);
+    setLowCodes([]);
+    setRuleA(1);
+    setRuleB(3);
+    setBacktest(null);
+    setSnapshot(null);
+    setActiveTab('config');
   }
 
   async function handleRefreshSnapshot() {
@@ -148,9 +202,11 @@ export default function QuantTradingExperienceV2() {
     setRefreshing(true);
     try {
       const result = await runQuantPremiumOnce(activeStrategyId);
-      setSnapshot(result.snapshot);
-      if (result.signal) {
-        setLiveSignals([result.signal, ...liveSignals.slice(0, 9)]);
+      const nextSnapshot = result.snapshot || null;
+      const nextSignal = normalizeLiveSignal(nextSnapshot);
+      setSnapshot(nextSnapshot);
+      if (nextSignal) {
+        setLiveSignals([nextSignal, ...liveSignals.slice(0, 9)]);
       }
       showToast({ title: '刷新成功', tone: 'emerald' });
     } catch (error) {
@@ -164,8 +220,8 @@ export default function QuantTradingExperienceV2() {
     // 确保从状态读取最新值
     const currentHighCodes = Array.isArray(highCodes) ? highCodes : [];
     const currentLowCodes = Array.isArray(lowCodes) ? lowCodes : [];
-    const currentRuleA = typeof ruleA === 'number' ? ruleA : 1;
-    const currentRuleB = typeof ruleB === 'number' ? ruleB : 3;
+    const currentRuleA = readPercentInput(ruleA, 1);
+    const currentRuleB = readPercentInput(ruleB, 3);
 
     console.log('回测前检查:', {
       highCodes: currentHighCodes,
@@ -182,8 +238,11 @@ export default function QuantTradingExperienceV2() {
     setBacktesting(true);
     try {
       // 保存配置 - 使用当前值（允许负数）
+      const existing = strategies.find((item) => item.id === activeStrategyId);
       const config = normalizeQuantPremiumConfigShape({
-        id: activeStrategyId,
+        ...existing,
+        id: existing?.id || activeStrategyId || 'default',
+        enabled: existing?.enabled ?? true,
         highCodes: currentHighCodes,
         lowCodes: currentLowCodes,
         intraSellLowerPct: currentRuleA,
@@ -193,7 +252,12 @@ export default function QuantTradingExperienceV2() {
       console.log('保存配置:', config);
 
       const saveResult = await saveQuantPremiumStrategyToWorker(config);
+      setStrategies(saveResult.strategies);
       setActiveStrategyId(saveResult.strategy.id);
+      setHighCodes(saveResult.strategy.highCodes || []);
+      setLowCodes(saveResult.strategy.lowCodes || []);
+      setRuleA(saveResult.strategy.intraSellLowerPct || 1);
+      setRuleB(saveResult.strategy.intraBuyOtherPct || 3);
 
       // 运行回测
       const result = await runQuantPremiumBacktestInWorker(saveResult.strategy.id, {
@@ -225,6 +289,7 @@ export default function QuantTradingExperienceV2() {
   const winRateTone = winRatePct >= 60 ? 'positive' : winRatePct >= 50 ? 'neutral' : 'negative';
   const sharpeTone = sharpeRatio >= 1.5 ? 'positive' : sharpeRatio >= 1 ? 'neutral' : 'negative';
   const drawdownTone = Math.abs(maxDrawdownPct) <= 5 ? 'positive' : Math.abs(maxDrawdownPct) <= 10 ? 'neutral' : 'negative';
+  const currentLiveSignal = normalizeLiveSignal(snapshot);
 
   // Tab 配置
   const tabs = [
@@ -273,6 +338,7 @@ export default function QuantTradingExperienceV2() {
             </select>
             <button
               type="button"
+              onClick={handleCreateStrategy}
               className="rounded-lg bg-indigo-600 px-3 sm:px-4 py-2.5 min-h-[44px] text-xs sm:text-sm font-semibold text-white hover:bg-indigo-700 whitespace-nowrap"
             >
               <span className="hidden sm:inline">+ 新建策略</span>
@@ -412,12 +478,14 @@ export default function QuantTradingExperienceV2() {
 
               <div className="mt-6 space-y-6">
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-3">
+                  <label htmlFor="quant-v2-rule-a" className="block text-sm font-semibold text-slate-700 mb-3">
                     规则 A：卖 L 买 H
                   </label>
                   <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                     <span className="text-xs sm:text-sm text-slate-600">溢价差 ≤</span>
                     <input
+                      id="quant-v2-rule-a"
+                      aria-label="规则 A：卖 L 买 H"
                       type="text"
                       inputMode="decimal"
                       value={ruleA}
@@ -447,12 +515,14 @@ export default function QuantTradingExperienceV2() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-3">
+                  <label htmlFor="quant-v2-rule-b" className="block text-sm font-semibold text-slate-700 mb-3">
                     规则 B：卖 H 买 L
                   </label>
                   <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                     <span className="text-xs sm:text-sm text-slate-600">溢价差 ≥</span>
                     <input
+                      id="quant-v2-rule-b"
+                      aria-label="规则 B：卖 H 买 L"
                       type="text"
                       inputMode="decimal"
                       value={ruleB}
@@ -530,10 +600,11 @@ export default function QuantTradingExperienceV2() {
             <Card className="p-4 sm:p-6">
               <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  <label htmlFor="quant-v2-backtest-timeframe" className="block text-sm font-semibold text-slate-700 mb-2">
                     K 线粒度
                   </label>
                   <select
+                    id="quant-v2-backtest-timeframe"
                     className="w-full rounded-lg border border-slate-300 px-3 sm:px-4 py-2 text-sm font-semibold text-slate-900"
                     value={backtestTf}
                     onChange={(e) => setBacktestTf(e.target.value)}
@@ -655,17 +726,9 @@ export default function QuantTradingExperienceV2() {
                 </button>
               </div>
 
-              {snapshot?.signal ? (
+              {currentLiveSignal ? (
                 <RealTimeSignalCard
-                  signal={{
-                    rule: snapshot.signal.rule,
-                    fromCode: snapshot.signal.fromCode,
-                    toCode: snapshot.signal.toCode,
-                    gapPct: snapshot.signal.gapPct?.toFixed(2),
-                    threshold: snapshot.signal.threshold,
-                    triggered: snapshot.signal.triggered,
-                    timestamp: snapshot.generatedAt
-                  }}
+                  signal={currentLiveSignal}
                 />
               ) : (
                 <div className="rounded-xl border-2 border-slate-200 bg-slate-50 p-6 sm:p-8 text-center">
@@ -790,7 +853,7 @@ export default function QuantTradingExperienceV2() {
                           <th className="px-4 py-3 text-right">价格</th>
                           <th className="px-4 py-3 text-right">金额</th>
                           <th className="px-4 py-3 text-right">手续费</th>
-                          <th className="px-4 py-3 text-right">总成本</th>
+                          <th className="px-4 py-3 text-right">结算金额</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -824,7 +887,7 @@ export default function QuantTradingExperienceV2() {
                               {formatMoney(trade.fee)}
                             </td>
                             <td className="px-4 py-3 text-sm text-right font-semibold text-slate-900">
-                              {formatMoney(trade.totalCost)}
+                              {formatMoney(resolveTradeSettlementValue(trade))}
                             </td>
                           </tr>
                         ))}

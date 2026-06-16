@@ -619,8 +619,8 @@ export function runQuantPremiumBacktest(strategyInput = {}, { timeframe = '5m', 
 
     const sideAllowed = strategy.activeSide === 'all' || strategy.activeSide === currentClass;
     const triggered = sideAllowed && (
-      (rule === 'B' && gapPct > strategy.intraBuyOtherPct)
-      || (rule === 'A' && gapPct < strategy.intraSellLowerPct)
+      (rule === 'B' && gapPct >= strategy.intraBuyOtherPct)
+      || (rule === 'A' && gapPct <= strategy.intraSellLowerPct)
     );
     let profit = 0;
     if (triggered) {

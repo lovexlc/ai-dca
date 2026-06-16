@@ -186,6 +186,39 @@ test('quant premium backtest cycles according to simulated current holding', () 
   assert.ok(result.summary.totalProfit > 0);
 });
 
+test('quant premium V2 backtest triggers on documented inclusive thresholds for 513100 and 159501', () => {
+  const gaps = [3, 3, 1, 1, 3, 3, 1, 1, 3, 3, 1, 1];
+  const result = runQuantPremiumBacktest({
+    id: 'inclusive-v2',
+    enabled: true,
+    highCodes: ['513100'],
+    lowCodes: ['159501'],
+    activeSide: 'all',
+    intraSellLowerPct: 1,
+    intraBuyOtherPct: 3
+  }, {
+    timeframe: '5m',
+    useV2: true,
+    historyByCode: {
+      '513100': makePremiumCandles(gaps),
+      '159501': makePremiumCandles(gaps.map(() => 0))
+    },
+    navHistoryByCode: {
+      '513100': [{ date: '2026-06-12', nav: 1 }],
+      '159501': [{ date: '2026-06-12', nav: 1 }]
+    }
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.deepEqual(result.signals.slice(0, 4).map((signal) => signal.rule), ['B', 'A', 'B', 'A']);
+  assert.deepEqual(result.signals.slice(0, 4).map((signal) => `${signal.fromCode}->${signal.toCode}`), [
+    '513100->159501',
+    '159501->513100',
+    '513100->159501',
+    '159501->513100'
+  ]);
+});
+
 test('quant premium backtest chart returns the full fetched kline window', () => {
   const gaps = Array.from({ length: 300 }, () => 4);
   const result = runQuantPremiumBacktest({

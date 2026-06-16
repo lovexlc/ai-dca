@@ -65,6 +65,10 @@ export function startNotifyRealtime({ clientId, clientSecret, onStatusChange, de
     return { disconnect: () => {}, getStatus: () => 'stopped' };
   }
 
+  if (!readWebNotifyConfig().pcEnabled) {
+    return { disconnect: () => {}, getStatus: () => 'stopped' };
+  }
+
   let stopped = false;
   let ws = null;
   let reconnectTimer = null;
@@ -80,7 +84,7 @@ export function startNotifyRealtime({ clientId, clientSecret, onStatusChange, de
     if (status === newStatus) return;
     status = newStatus;
     if (debug) console.info('[notifyWs] status ->', newStatus);
-    try { onStatusChange?.(newStatus); } catch (_e) { /* ignore */ }
+    try { onStatusChange?.(newStatus); } catch { /* ignore */ }
   }
 
   function cleanupTimers() {
@@ -90,13 +94,13 @@ export function startNotifyRealtime({ clientId, clientSecret, onStatusChange, de
 
   function cleanupWs() {
     if (ws) {
-      try { ws.close(1000, 'client disconnect'); } catch (_e) { /* ignore */ }
+      try { ws.close(1000, 'client disconnect'); } catch { /* ignore */ }
       ws = null;
     }
   }
 
   function stopPoller() {
-    if (pollerStop) { try { pollerStop(); } catch (_e) { /* ignore */ } pollerStop = null; }
+    if (pollerStop) { try { pollerStop(); } catch { /* ignore */ } pollerStop = null; }
   }
 
   // ── 降级为轮询 ────────────────────────────────────────────────
@@ -112,7 +116,7 @@ export function startNotifyRealtime({ clientId, clientSecret, onStatusChange, de
   // ── WS 帧处理 ─────────────────────────────────────────────────
   function handleFrame(data) {
     let frame;
-    try { frame = JSON.parse(data); } catch (_e) { return; }
+    try { frame = JSON.parse(data); } catch { return; }
 
     if (!frame || typeof frame !== 'object') return;
 
@@ -157,7 +161,7 @@ export function startNotifyRealtime({ clientId, clientSecret, onStatusChange, de
     // 通过自定义事件广播给页面组件
     try {
       window.dispatchEvent(new CustomEvent('ai-dca-price-push', { detail: { items, ts: frame.ts } }));
-    } catch (_e) { /* ignore */ }
+    } catch { /* ignore */ }
   }
 
   function handleMarketSnapshotFrame(frame) {
@@ -183,7 +187,7 @@ export function startNotifyRealtime({ clientId, clientSecret, onStatusChange, de
           topics: Array.isArray(frame.topics) ? frame.topics : []
         }
       }));
-    } catch (_e) { /* ignore */ }
+    } catch { /* ignore */ }
   }
 
   // 待发送的订阅列表（连接建立前缓存）
