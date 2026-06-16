@@ -1072,9 +1072,9 @@ export async function handleQuantPremiumBacktestPost(request, env, strategyId) {
   const rateLimitError = await enforceClientAndIpRateLimit(request, env, {
     scope: 'quant-premium-backtest',
     clientId: auth.clientId,
-    clientLimit: env?.QUANT_BACKTEST_DAILY_LIMIT || 20,
+    clientLimit: env?.QUANT_BACKTEST_DAILY_LIMIT || 100,
     clientWindowSeconds: 86400,
-    ipLimit: env?.QUANT_BACKTEST_IP_HOURLY_LIMIT || 12,
+    ipLimit: env?.QUANT_BACKTEST_IP_HOURLY_LIMIT || 50,
     ipWindowSeconds: 3600,
     origin
   });
