@@ -521,6 +521,8 @@ export function computeSwitchSnapshot(config, priceMap, navByCode, computedAt) {
       code,
       name: navByCode?.[code]?.name || '',
       price: Number.isFinite(price) ? price : null,
+      high: Number(priceMap?.[code]?.high) || null,
+      low: Number(priceMap?.[code]?.low) || null,
       orderBook: normalizeOrderBook(quote.orderBook),
       nav: Number.isFinite(nav) ? nav : null,
       navDate,

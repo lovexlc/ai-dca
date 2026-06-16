@@ -906,6 +906,14 @@ export default function QuantTradingExperienceV2() {
                           <span className="text-slate-600">IOPV: </span>
                           <span className="font-semibold text-slate-900">{formatPrice(quote.iopv)}</span>
                         </div>
+                        <div>
+                          <span className="text-slate-600">最高: </span>
+                          <span className="font-semibold text-rose-600">{formatPrice(quote.high)}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-600">最低: </span>
+                          <span className="font-semibold text-emerald-600">{formatPrice(quote.low)}</span>
+                        </div>
                       </div>
                     </div>
                   ))}

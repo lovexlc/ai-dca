@@ -123,6 +123,8 @@ function metricToPrice(metric) {
     code,
     name: String(metric?.name || '').trim(),
     price,
+    high: Number(metric?.high) || null,
+    low: Number(metric?.low) || null,
     preClose: Number(metric?.previousClose) || 0,
     date: shanghaiDateFromTimestamp(metric?.asOf) || String(metric?.latestNavDate || metric?.navDate || '').slice(0, 10),
     time: String(metric?.asOf || '').slice(11, 19),

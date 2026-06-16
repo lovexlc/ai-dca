@@ -166,6 +166,8 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
     price,
     currentPrice: currentValue,
     close: currentValue,
+    high: roundNumber(quote?.high, 4),
+    low: roundNumber(quote?.low, 4),
     previousClose: previousValue,
     previousNav: previousValue,
     previousNavDate: String(quote?.previousNavDate || quote?.previous_nav_date || '').trim(),
