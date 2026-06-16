@@ -314,6 +314,52 @@ export default function QuantTradingExperienceV2() {
             Icon={Activity}
           />
         </div>
+
+        {/* 持有对比 */}
+        {backtest && (summary.holdHighReturnPct !== undefined || summary.holdLowReturnPct !== undefined) && (
+          <div className="mt-4 sm:mt-6">
+            <Card className="p-4 sm:p-6 bg-slate-50">
+              <h3 className="text-xs sm:text-sm font-semibold text-slate-700 mb-3">持有收益对比</h3>
+              <div className="grid grid-cols-3 gap-3 sm:gap-4">
+                <div className="text-center">
+                  <div className="text-xs text-slate-600">策略收益</div>
+                  <div className={`mt-1 text-lg sm:text-xl font-bold ${
+                    totalReturnPct > 0 ? 'text-emerald-600' : totalReturnPct < 0 ? 'text-rose-600' : 'text-slate-900'
+                  }`}>
+                    {formatPercent(totalReturnPct, 2)}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1">轮动策略</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-xs text-slate-600">持有 H</div>
+                  <div className={`mt-1 text-lg sm:text-xl font-bold ${
+                    (summary.holdHighReturnPct || 0) > 0 ? 'text-emerald-600' : (summary.holdHighReturnPct || 0) < 0 ? 'text-rose-600' : 'text-slate-900'
+                  }`}>
+                    {formatPercent(summary.holdHighReturnPct || 0, 2)}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1">{summary.highCode || ''}</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-xs text-slate-600">持有 L</div>
+                  <div className={`mt-1 text-lg sm:text-xl font-bold ${
+                    (summary.holdLowReturnPct || 0) > 0 ? 'text-emerald-600' : (summary.holdLowReturnPct || 0) < 0 ? 'text-rose-600' : 'text-slate-900'
+                  }`}>
+                    {formatPercent(summary.holdLowReturnPct || 0, 2)}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1">{summary.lowCode || ''}</div>
+                </div>
+              </div>
+              {totalReturnPct > (summary.holdHighReturnPct || 0) && totalReturnPct > (summary.holdLowReturnPct || 0) && (
+                <div className="mt-3 text-center">
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
+                    <TrendingUp className="h-3 w-3" />
+                    策略跑赢单独持有
+                  </span>
+                </div>
+              )}
+            </Card>
+          </div>
+        )}
       </div>
 
       {/* Tab 导航 */}

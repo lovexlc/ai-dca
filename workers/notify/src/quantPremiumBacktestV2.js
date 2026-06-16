@@ -87,7 +87,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
     dataIssues = {},
     initialEquity = 100000,
     orderCash = 16000,
-    feeRate = 0.001,
+    feeRate = 0.0005,  // 0.05% = 万5
     minFee = 0,
     tickSize = 0.001,
     slippageTicks = 1,
@@ -478,6 +478,33 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
     ? roundTo((totalProfit / startEquity) * 100, 4)
     : 0;
 
+  // 计算单独持有高溢价和低溢价基金的收益（用于对比）
+  let holdHighReturnPct = 0;
+  let holdLowReturnPct = 0;
+
+  if (anchorCandles.length > 1 && highCodes.length > 0 && lowCodes.length > 0) {
+    const firstBar = anchorCandles[0];
+    const lastBar = anchorCandles[anchorCandles.length - 1];
+
+    // 计算高溢价基金的首尾价格
+    const highCode = highCodes[0];
+    const highFirstPrice = closeByCode[highCode]?.get(firstBar.t)?.close;
+    const highLastPrice = closeByCode[highCode]?.get(lastBar.t)?.close;
+
+    if (highFirstPrice && highLastPrice && highFirstPrice > 0) {
+      holdHighReturnPct = roundTo(((highLastPrice - highFirstPrice) / highFirstPrice) * 100, 4);
+    }
+
+    // 计算低溢价基金的首尾价格
+    const lowCode = lowCodes[0];
+    const lowFirstPrice = closeByCode[lowCode]?.get(firstBar.t)?.close;
+    const lowLastPrice = closeByCode[lowCode]?.get(lastBar.t)?.close;
+
+    if (lowFirstPrice && lowLastPrice && lowFirstPrice > 0) {
+      holdLowReturnPct = roundTo(((lowLastPrice - lowFirstPrice) / lowFirstPrice) * 100, 4);
+    }
+  }
+
   // 计算胜率
   const profitableTrades = trades.filter(t => t.type === 'sell' && t.profit > 0).length;
   const totalSellTrades = trades.filter(t => t.type === 'sell').length;
@@ -585,7 +612,12 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
       dataCoveragePct,
       passed,
       from: rows[0]?.date || '',
-      to: rows[rows.length - 1]?.date || ''
+      to: rows[rows.length - 1]?.date || '',
+      // 持有收益对比
+      holdHighReturnPct,
+      holdLowReturnPct,
+      highCode: highCodes[0] || '',
+      lowCode: lowCodes[0] || ''
     },
     rows: rows.slice(-500),
     signals: signals.slice(-120),
