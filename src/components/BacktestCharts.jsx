@@ -15,6 +15,28 @@ import {
 } from 'recharts';
 
 /**
+ * 智能格式化时间轴标签
+ * 根据日期格式自动判断是日线还是分钟线
+ */
+function formatTimeLabel(value) {
+  if (!value) return '';
+
+  // 判断是否包含时间信息（分钟线格式：YYYY-MM-DD HH:mm）
+  if (value.includes(':')) {
+    // 分钟线：显示 MM-DD HH:mm
+    const parts = value.split(' ');
+    if (parts.length === 2) {
+      const date = parts[0].slice(5, 10); // MM-DD
+      const time = parts[1].slice(0, 5);  // HH:mm
+      return `${date} ${time}`;
+    }
+  }
+
+  // 日线：只显示 MM-DD
+  return value.slice(5, 10);
+}
+
+/**
  * EquityChart - 权益曲线图表
  */
 export function EquityChart({ data }) {
@@ -44,8 +66,11 @@ export function EquityChart({ data }) {
         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
         <XAxis
           dataKey="date"
-          tick={{ fontSize: 12, fill: '#64748b' }}
-          tickFormatter={(value) => value.slice(5, 10)}
+          tick={{ fontSize: 11, fill: '#64748b' }}
+          tickFormatter={formatTimeLabel}
+          angle={-45}
+          textAnchor="end"
+          height={80}
         />
         <YAxis
           tick={{ fontSize: 12, fill: '#64748b' }}
@@ -60,7 +85,7 @@ export function EquityChart({ data }) {
             fontSize: '12px'
           }}
           formatter={(value) => `¥${Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`}
-          labelFormatter={(label) => `日期: ${label}`}
+          labelFormatter={(label) => `时间: ${label}`}
         />
         <Legend
           wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}
@@ -112,8 +137,11 @@ export function KlineChart({ candles, signals }) {
         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
         <XAxis
           dataKey="date"
-          tick={{ fontSize: 12, fill: '#64748b' }}
-          tickFormatter={(value) => value.slice(5, 10)}
+          tick={{ fontSize: 11, fill: '#64748b' }}
+          tickFormatter={formatTimeLabel}
+          angle={-45}
+          textAnchor="end"
+          height={80}
         />
         <YAxis
           tick={{ fontSize: 12, fill: '#64748b' }}
@@ -126,7 +154,7 @@ export function KlineChart({ candles, signals }) {
             borderRadius: '8px',
             fontSize: '12px'
           }}
-          labelFormatter={(label) => `日期: ${label}`}
+          labelFormatter={(label) => `时间: ${label}`}
         />
         <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
         <Line
@@ -182,8 +210,11 @@ export function PremiumChart({ data }) {
         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
         <XAxis
           dataKey="date"
-          tick={{ fontSize: 12, fill: '#64748b' }}
-          tickFormatter={(value) => value.slice(5, 10)}
+          tick={{ fontSize: 11, fill: '#64748b' }}
+          tickFormatter={formatTimeLabel}
+          angle={-45}
+          textAnchor="end"
+          height={80}
         />
         <YAxis
           tick={{ fontSize: 12, fill: '#64748b' }}
@@ -197,7 +228,7 @@ export function PremiumChart({ data }) {
             fontSize: '12px'
           }}
           formatter={(value) => `${Number(value).toFixed(2)}%`}
-          labelFormatter={(label) => `日期: ${label}`}
+          labelFormatter={(label) => `时间: ${label}`}
         />
         <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
         <Line
