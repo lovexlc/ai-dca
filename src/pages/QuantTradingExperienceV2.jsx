@@ -107,6 +107,8 @@ export default function QuantTradingExperienceV2() {
   const [ruleB, setRuleB] = useState(3);  // intraBuyOtherPct: 卖H买L的阈值
   const [useV2, setUseV2] = useState(true);
   const [backtestTf, setBacktestTf] = useState('5m');
+  const [buyFeeRate, setBuyFeeRate] = useState(1);   // 买入手续费，单位：万X
+  const [sellFeeRate, setSellFeeRate] = useState(1); // 卖出手续费，单位：万X
 
   // 回测结果
   const [backtest, setBacktest] = useState(null);
@@ -263,7 +265,8 @@ export default function QuantTradingExperienceV2() {
       // 运行回测
       const result = await runQuantPremiumBacktestInWorker(saveResult.strategy.id, {
         timeframe: backtestTf,
-        useV2
+        useV2,
+        feeRate: (Number(buyFeeRate) + Number(sellFeeRate)) / 2 / 10000  // 转换为小数
       });
 
       console.log('回测结果:', result);
@@ -550,6 +553,93 @@ export default function QuantTradingExperienceV2() {
                   <p className="mt-2 text-xs text-slate-500">
                     持有H时，溢价差扩大到此阈值以上，卖出H买入L
                   </p>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-4 sm:p-8">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900">交易费用</h2>
+              <p className="mt-1 text-xs sm:text-sm text-slate-600">配置买入和卖出的手续费率（单位：万X）</p>
+
+              <div className="mt-6 space-y-6">
+                <div>
+                  <label htmlFor="buy-fee-rate" className="block text-sm font-semibold text-slate-700 mb-3">
+                    买入手续费
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <span className="text-xs sm:text-sm text-slate-600">万</span>
+                    <input
+                      id="buy-fee-rate"
+                      aria-label="买入手续费"
+                      type="text"
+                      inputMode="decimal"
+                      value={buyFeeRate}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                          setBuyFeeRate(val);
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || val === '.') {
+                          setBuyFeeRate(1);
+                          return;
+                        }
+                        const num = parseFloat(val);
+                        setBuyFeeRate(Number.isFinite(num) && num >= 0 ? num : 1);
+                      }}
+                      className="w-20 sm:w-24 rounded-lg border border-slate-300 px-3 py-2.5 min-h-[44px] text-center text-sm font-semibold"
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">
+                    万1 = 0.01%，万0.5 = 0.005%
+                  </p>
+                </div>
+
+                <div>
+                  <label htmlFor="sell-fee-rate" className="block text-sm font-semibold text-slate-700 mb-3">
+                    卖出手续费
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <span className="text-xs sm:text-sm text-slate-600">万</span>
+                    <input
+                      id="sell-fee-rate"
+                      aria-label="卖出手续费"
+                      type="text"
+                      inputMode="decimal"
+                      value={sellFeeRate}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                          setSellFeeRate(val);
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || val === '.') {
+                          setSellFeeRate(1);
+                          return;
+                        }
+                        const num = parseFloat(val);
+                        setSellFeeRate(Number.isFinite(num) && num >= 0 ? num : 1);
+                      }}
+                      className="w-20 sm:w-24 rounded-lg border border-slate-300 px-3 py-2.5 min-h-[44px] text-center text-sm font-semibold"
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">
+                    万1 = 0.01%，万0.5 = 0.005%
+                  </p>
+                </div>
+
+                <div className="rounded-lg bg-blue-50 border border-blue-100 p-3">
+                  <div className="flex gap-2">
+                    <span className="text-blue-600">💡</span>
+                    <div className="flex-1 text-xs text-blue-900">
+                      <p className="font-semibold mb-1">手续费说明</p>
+                      <p>场内 ETF 的手续费通常在万0.5到万2.5之间，具体费率以券商为准。</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </Card>
