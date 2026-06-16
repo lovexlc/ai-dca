@@ -31,3 +31,4 @@ test-results/
 
 # Quant simulation runtime artifacts (state/signals/orders)
 data/quant/
+.archive
