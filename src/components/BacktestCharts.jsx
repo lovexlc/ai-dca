@@ -42,7 +42,16 @@ function formatTimeLabel(value) {
 function formatDateTime(row) {
   // 优先使用 ts 时间戳
   if (row.ts) {
-    const date = new Date(row.ts);
+    // 判断是秒还是毫秒时间戳
+    // 如果小于 10000000000，则是秒级时间戳，需要转换为毫秒
+    const timestamp = row.ts < 10000000000 ? row.ts * 1000 : row.ts;
+    const date = new Date(timestamp);
+
+    // 验证日期是否有效
+    if (isNaN(date.getTime())) {
+      return row.date || '';
+    }
+
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
@@ -144,13 +153,19 @@ export function KlineChart({ candles, signals }) {
     // 从时间戳生成带时间的日期
     let dateLabel = candle.date;
     if (candle.t) {
-      const date = new Date(candle.t);
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      dateLabel = `${year}-${month}-${day} ${hours}:${minutes}`;
+      // 判断是秒还是毫秒时间戳
+      const timestamp = candle.t < 10000000000 ? candle.t * 1000 : candle.t;
+      const date = new Date(timestamp);
+
+      // 验证日期是否有效
+      if (!isNaN(date.getTime())) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        dateLabel = `${year}-${month}-${day} ${hours}:${minutes}`;
+      }
     }
 
     return {
