@@ -479,8 +479,8 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
     : 0;
 
   // 计算单独持有高溢价和低溢价基金的收益（用于对比）
-  let holdHighReturnPct = 0;
-  let holdLowReturnPct = 0;
+  let holdHighReturnPct = null;
+  let holdLowReturnPct = null;
 
   if (anchorCandles.length > 1 && highCodes.length > 0 && lowCodes.length > 0) {
     const firstBar = anchorCandles[0];

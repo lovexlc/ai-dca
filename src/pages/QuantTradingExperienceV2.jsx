@@ -333,23 +333,34 @@ export default function QuantTradingExperienceV2() {
                 <div className="text-center">
                   <div className="text-xs text-slate-600">持有 H</div>
                   <div className={`mt-1 text-lg sm:text-xl font-bold ${
-                    (summary.holdHighReturnPct || 0) > 0 ? 'text-emerald-600' : (summary.holdHighReturnPct || 0) < 0 ? 'text-rose-600' : 'text-slate-900'
+                    summary.holdHighReturnPct === null ? 'text-slate-400' :
+                    summary.holdHighReturnPct > 0 ? 'text-emerald-600' :
+                    summary.holdHighReturnPct < 0 ? 'text-rose-600' : 'text-slate-900'
                   }`}>
-                    {formatPercent(summary.holdHighReturnPct || 0, 2)}
+                    {summary.holdHighReturnPct === null ? 'N/A' : formatPercent(summary.holdHighReturnPct, 2)}
                   </div>
                   <div className="text-xs text-slate-500 mt-1">{summary.highCode || ''}</div>
+                  {summary.holdHighReturnPct === null && (
+                    <div className="text-xs text-slate-400 mt-1">数据不足</div>
+                  )}
                 </div>
                 <div className="text-center">
                   <div className="text-xs text-slate-600">持有 L</div>
                   <div className={`mt-1 text-lg sm:text-xl font-bold ${
-                    (summary.holdLowReturnPct || 0) > 0 ? 'text-emerald-600' : (summary.holdLowReturnPct || 0) < 0 ? 'text-rose-600' : 'text-slate-900'
+                    summary.holdLowReturnPct === null ? 'text-slate-400' :
+                    summary.holdLowReturnPct > 0 ? 'text-emerald-600' :
+                    summary.holdLowReturnPct < 0 ? 'text-rose-600' : 'text-slate-900'
                   }`}>
-                    {formatPercent(summary.holdLowReturnPct || 0, 2)}
+                    {summary.holdLowReturnPct === null ? 'N/A' : formatPercent(summary.holdLowReturnPct, 2)}
                   </div>
                   <div className="text-xs text-slate-500 mt-1">{summary.lowCode || ''}</div>
+                  {summary.holdLowReturnPct === null && (
+                    <div className="text-xs text-slate-400 mt-1">数据不足</div>
+                  )}
                 </div>
               </div>
-              {totalReturnPct > (summary.holdHighReturnPct || 0) && totalReturnPct > (summary.holdLowReturnPct || 0) && (
+              {summary.holdHighReturnPct !== null && summary.holdLowReturnPct !== null &&
+               totalReturnPct > summary.holdHighReturnPct && totalReturnPct > summary.holdLowReturnPct && (
                 <div className="mt-3 text-center">
                   <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
                     <TrendingUp className="h-3 w-3" />
