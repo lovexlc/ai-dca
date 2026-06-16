@@ -5,6 +5,7 @@ import {
   ListChecks,
   Play,
   RefreshCw,
+  Save,
   Settings,
   TrendingUp,
   Trophy,
@@ -105,7 +106,6 @@ export default function QuantTradingExperienceV2() {
   const [lowCodes, setLowCodes] = useState([]);
   const [ruleA, setRuleA] = useState(1);  // intraSellLowerPct: 卖L买H的阈值
   const [ruleB, setRuleB] = useState(3);  // intraBuyOtherPct: 卖H买L的阈值
-  const [useV2, setUseV2] = useState(true);
   const [backtestTf, setBacktestTf] = useState('5m');
   const [buyFeeRate, setBuyFeeRate] = useState(1);   // 买入手续费，单位：万X
   const [sellFeeRate, setSellFeeRate] = useState(1); // 卖出手续费，单位：万X
@@ -265,7 +265,7 @@ export default function QuantTradingExperienceV2() {
       // 运行回测
       const result = await runQuantPremiumBacktestInWorker(saveResult.strategy.id, {
         timeframe: backtestTf,
-        useV2,
+        useV2: true,
         feeRate: (Number(buyFeeRate) + Number(sellFeeRate)) / 2 / 10000  // 转换为小数
       });
 
@@ -298,7 +298,7 @@ export default function QuantTradingExperienceV2() {
   // Tab 配置
   const tabs = [
     { id: 'config', label: '策略配置', mobileLabel: '配置', icon: Settings },
-    { id: 'backtest', label: '回测分析', mobileLabel: '回测', icon: BarChart3, badge: backtest ? '✓' : null },
+    { id: 'backtest', label: '回测', mobileLabel: '回测', icon: BarChart3, badge: backtest ? '✓' : null },
     { id: 'live', label: '实盘监控', mobileLabel: '实盘', icon: Activity },
     { id: 'history', label: '交易历史', mobileLabel: '历史', icon: ListChecks }
   ];
@@ -644,45 +644,44 @@ export default function QuantTradingExperienceV2() {
               </div>
             </Card>
 
-            <Card className="p-4 sm:p-8">
-              <h2 className="text-base sm:text-lg font-bold text-slate-900">回测设置</h2>
-
-              <div className="mt-6">
-                <label className="inline-flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={useV2}
-                    onChange={(e) => setUseV2(e.target.checked)}
-                    className="h-5 w-5 rounded border-slate-300 text-indigo-600"
-                  />
-                  <div>
-                    <span className="text-sm font-semibold text-slate-900">使用 V2 回测引擎</span>
-                    <p className="text-xs text-slate-600">持仓追踪 + 真实交易模拟 + 准确胜率 + 夏普比率</p>
-                  </div>
-                </label>
-              </div>
-
-              <div className="mt-6">
-                <button
-                  type="button"
-                  onClick={handleSaveAndBacktest}
-                  disabled={backtesting}
-                  className="w-full rounded-xl bg-indigo-600 px-6 py-3 sm:py-4 text-sm sm:text-base font-bold text-white hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {backtesting ? (
-                    <>
-                      <RefreshCw className="h-5 w-5 animate-spin" />
-                      回测中...
-                    </>
-                  ) : (
-                    <>
-                      <Play className="h-5 w-5" />
-                      保存并运行回测
-                    </>
-                  )}
-                </button>
-              </div>
-            </Card>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={handleSaveStrategy}
+                disabled={saving}
+                className="flex-1 rounded-xl bg-slate-600 px-6 py-3 sm:py-4 text-sm sm:text-base font-bold text-white hover:bg-slate-700 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {saving ? (
+                  <>
+                    <RefreshCw className="h-5 w-5 animate-spin" />
+                    保存中...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-5 w-5" />
+                    保存策略
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAndBacktest}
+                disabled={backtesting}
+                className="flex-1 rounded-xl bg-indigo-600 px-6 py-3 sm:py-4 text-sm sm:text-base font-bold text-white hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {backtesting ? (
+                  <>
+                    <RefreshCw className="h-5 w-5 animate-spin" />
+                    回测中...
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-5 w-5" />
+                    运行回测
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         )}
 
