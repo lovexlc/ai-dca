@@ -34,39 +34,39 @@ export function MetricCard({
   };
 
   const sizeClasses = size === 'large'
-    ? 'p-6'
-    : 'p-5';
+    ? 'p-4 sm:p-6'
+    : 'p-3 sm:p-5';
 
   const valueSizeClasses = size === 'large'
-    ? 'text-4xl'
-    : 'text-3xl';
+    ? 'text-2xl sm:text-4xl'
+    : 'text-xl sm:text-3xl';
 
   return (
     <div className={cx(
-      'rounded-2xl border-2 shadow-sm transition-all hover:shadow-md',
+      'rounded-xl sm:rounded-2xl border-2 shadow-sm transition-all hover:shadow-md',
       toneClasses[tone],
       sizeClasses
     )}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1">
+      <div className="flex items-start justify-between gap-2 sm:gap-3">
+        <div className="flex-1 min-w-0">
           <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
             {label}
           </div>
           <div className={cx(
-            'mt-3 font-bold tracking-tight',
+            'mt-2 sm:mt-3 font-bold tracking-tight truncate',
             valueSizeClasses,
             valueColorClasses[tone]
           )}>
             {value}
           </div>
           {subtitle && (
-            <div className="mt-2 text-sm text-slate-600">
+            <div className="mt-1 sm:mt-2 text-xs sm:text-sm text-slate-600 truncate">
               {subtitle}
             </div>
           )}
         </div>
         {Icon && (
-          <Icon className={cx('h-6 w-6 flex-shrink-0', iconColorClasses[tone])} />
+          <Icon className={cx('h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0', iconColorClasses[tone])} />
         )}
       </div>
     </div>
