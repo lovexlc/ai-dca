@@ -18,6 +18,7 @@ import { MetricCard } from '../components/MetricCard.jsx';
 import { TabNavigation } from '../components/TabNavigation.jsx';
 import { RealTimeSignalCard } from '../components/RealTimeSignalCard.jsx';
 import { InteractiveChartContainer } from '../components/InteractiveChartContainer.jsx';
+import { TradeHistoryCard } from '../components/TradeHistoryCard.jsx';
 import { EquityChart, KlineChart, PremiumChart } from '../components/BacktestCharts.jsx';
 import { showToast } from '../app/toast.js';
 import {
@@ -227,10 +228,10 @@ export default function QuantTradingExperienceV2() {
 
   // Tab 配置
   const tabs = [
-    { id: 'config', label: '策略配置', icon: Settings },
-    { id: 'backtest', label: '回测分析', icon: BarChart3, badge: backtest ? '✓' : null },
-    { id: 'live', label: '实盘监控', icon: Activity },
-    { id: 'history', label: '交易历史', icon: ListChecks }
+    { id: 'config', label: '策略配置', mobileLabel: '配置', icon: Settings },
+    { id: 'backtest', label: '回测分析', mobileLabel: '回测', icon: BarChart3, badge: backtest ? '✓' : null },
+    { id: 'live', label: '实盘监控', mobileLabel: '实盘', icon: Activity },
+    { id: 'history', label: '交易历史', mobileLabel: '历史', icon: ListChecks }
   ];
 
   // 图表视图配置
@@ -254,17 +255,17 @@ export default function QuantTradingExperienceV2() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* 顶部导航栏 */}
-      <div className="border-b border-slate-200 bg-white px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">量化研究</h1>
-            <p className="mt-1 text-sm text-slate-600">ETF溢价差轮动策略</p>
+      <div className="border-b border-slate-200 bg-white px-4 sm:px-6 py-3 sm:py-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-lg sm:text-2xl font-bold text-slate-900 truncate">量化研究</h1>
+            <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-slate-600">ETF溢价差轮动</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             <select
               value={activeStrategyId}
               onChange={(e) => loadStrategy(e.target.value)}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900"
+              className="rounded-lg border border-slate-300 px-2 sm:px-4 py-2.5 min-h-[44px] text-xs sm:text-sm font-semibold text-slate-900 max-w-[120px] sm:max-w-none"
             >
               {strategies.map(s => (
                 <option key={s.id} value={s.id}>{s.name || s.id}</option>
@@ -272,17 +273,18 @@ export default function QuantTradingExperienceV2() {
             </select>
             <button
               type="button"
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+              className="rounded-lg bg-indigo-600 px-3 sm:px-4 py-2.5 min-h-[44px] text-xs sm:text-sm font-semibold text-white hover:bg-indigo-700 whitespace-nowrap"
             >
-              + 新建策略
+              <span className="hidden sm:inline">+ 新建策略</span>
+              <span className="sm:hidden">+</span>
             </button>
           </div>
         </div>
       </div>
 
       {/* 核心指标卡片区 */}
-      <div className="px-6 py-8">
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="px-4 sm:px-6 py-4 sm:py-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
           <MetricCard
             label="累计收益"
             value={formatPercent(totalReturnPct, 2)}
@@ -323,12 +325,12 @@ export default function QuantTradingExperienceV2() {
       />
 
       {/* Tab 内容区 */}
-      <div className="px-6 py-8">
+      <div className="px-4 sm:px-6 py-4 sm:py-8">
         {activeTab === 'config' && (
-          <div className="mx-auto max-w-4xl space-y-8">
-            <Card className="p-8">
-              <h2 className="text-lg font-bold text-slate-900">ETF 配置</h2>
-              <p className="mt-1 text-sm text-slate-600">配置高溢价（H）和低溢价（L）ETF池</p>
+          <div className="mx-auto max-w-4xl space-y-4 sm:space-y-8">
+            <Card className="p-4 sm:p-8">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900">ETF 配置</h2>
+              <p className="mt-1 text-xs sm:text-sm text-slate-600">配置高溢价（H）和低溢价（L）ETF池</p>
 
               <div className="mt-6 space-y-6">
                 <TagInput
@@ -347,17 +349,17 @@ export default function QuantTradingExperienceV2() {
               </div>
             </Card>
 
-            <Card className="p-8">
-              <h2 className="text-lg font-bold text-slate-900">交易规则</h2>
-              <p className="mt-1 text-sm text-slate-600">配置溢价差触发阈值</p>
+            <Card className="p-4 sm:p-8">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900">交易规则</h2>
+              <p className="mt-1 text-xs sm:text-sm text-slate-600">配置溢价差触发阈值</p>
 
               <div className="mt-6 space-y-6">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-3">
                     规则 A：卖 L 买 H
                   </label>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm text-slate-600">溢价差 ≤</span>
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <span className="text-xs sm:text-sm text-slate-600">溢价差 ≤</span>
                     <input
                       type="text"
                       inputMode="decimal"
@@ -378,9 +380,9 @@ export default function QuantTradingExperienceV2() {
                         const num = parseFloat(val);
                         setRuleA(Number.isFinite(num) ? num : 1);
                       }}
-                      className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-semibold"
+                      className="w-20 sm:w-24 rounded-lg border border-slate-300 px-3 py-2.5 min-h-[44px] text-center text-sm font-semibold"
                     />
-                    <span className="text-sm text-slate-600">% 时触发</span>
+                    <span className="text-xs sm:text-sm text-slate-600">% 时触发</span>
                   </div>
                   <p className="mt-2 text-xs text-slate-500">
                     持有L时，溢价差缩小到此阈值以内，卖出L买入H
@@ -391,8 +393,8 @@ export default function QuantTradingExperienceV2() {
                   <label className="block text-sm font-semibold text-slate-700 mb-3">
                     规则 B：卖 H 买 L
                   </label>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm text-slate-600">溢价差 ≥</span>
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <span className="text-xs sm:text-sm text-slate-600">溢价差 ≥</span>
                     <input
                       type="text"
                       inputMode="decimal"
@@ -413,9 +415,9 @@ export default function QuantTradingExperienceV2() {
                         const num = parseFloat(val);
                         setRuleB(Number.isFinite(num) ? num : 3);
                       }}
-                      className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-semibold"
+                      className="w-20 sm:w-24 rounded-lg border border-slate-300 px-3 py-2.5 min-h-[44px] text-center text-sm font-semibold"
                     />
-                    <span className="text-sm text-slate-600">% 时触发</span>
+                    <span className="text-xs sm:text-sm text-slate-600">% 时触发</span>
                   </div>
                   <p className="mt-2 text-xs text-slate-500">
                     持有H时，溢价差扩大到此阈值以上，卖出H买入L
@@ -424,8 +426,8 @@ export default function QuantTradingExperienceV2() {
               </div>
             </Card>
 
-            <Card className="p-8">
-              <h2 className="text-lg font-bold text-slate-900">回测设置</h2>
+            <Card className="p-4 sm:p-8">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900">回测设置</h2>
 
               <div className="mt-6">
                 <label className="inline-flex items-center gap-3">
@@ -447,7 +449,7 @@ export default function QuantTradingExperienceV2() {
                   type="button"
                   onClick={handleSaveAndBacktest}
                   disabled={backtesting}
-                  className="w-full rounded-xl bg-indigo-600 px-6 py-4 text-base font-bold text-white hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="w-full rounded-xl bg-indigo-600 px-6 py-3 sm:py-4 text-sm sm:text-base font-bold text-white hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {backtesting ? (
                     <>
@@ -467,15 +469,15 @@ export default function QuantTradingExperienceV2() {
         )}
 
         {activeTab === 'backtest' && (
-          <div className="mx-auto max-w-7xl space-y-8">
-            <Card className="p-6">
+          <div className="mx-auto max-w-7xl space-y-4 sm:space-y-8">
+            <Card className="p-4 sm:p-6">
               <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">
                     K 线粒度
                   </label>
                   <select
-                    className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900"
+                    className="w-full rounded-lg border border-slate-300 px-3 sm:px-4 py-2 text-sm font-semibold text-slate-900"
                     value={backtestTf}
                     onChange={(e) => setBacktestTf(e.target.value)}
                   >
@@ -488,7 +490,7 @@ export default function QuantTradingExperienceV2() {
                   type="button"
                   onClick={handleSaveAndBacktest}
                   disabled={backtesting}
-                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50 disabled:opacity-50"
+                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 sm:px-4 py-2.5 text-sm font-semibold text-slate-900 hover:bg-slate-50 disabled:opacity-50 w-full sm:w-auto"
                 >
                   {backtesting ? (
                     <>
@@ -525,42 +527,42 @@ export default function QuantTradingExperienceV2() {
                   )}
                 </InteractiveChartContainer>
 
-                <Card className="p-6">
+                <Card className="p-4 sm:p-6">
                   <h3 className="text-sm font-bold text-slate-700 mb-4">详细指标</h3>
-                  <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
                     <div className="text-center">
                       <div className="text-xs text-slate-600">样本</div>
-                      <div className="mt-1 text-lg font-bold text-slate-900">
+                      <div className="mt-1 text-base sm:text-lg font-bold text-slate-900">
                         {summary.sampleCount || 0}
                       </div>
                     </div>
                     <div className="text-center">
                       <div className="text-xs text-slate-600">信号</div>
-                      <div className="mt-1 text-lg font-bold text-slate-900">
+                      <div className="mt-1 text-base sm:text-lg font-bold text-slate-900">
                         {summary.trades || summary.signalCount || 0}
                       </div>
                     </div>
                     <div className="text-center">
                       <div className="text-xs text-slate-600">价格覆盖</div>
-                      <div className="mt-1 text-lg font-bold text-slate-900">
+                      <div className="mt-1 text-base sm:text-lg font-bold text-slate-900">
                         {formatPercent(summary.priceCoveragePct, 0)}
                       </div>
                     </div>
                     <div className="text-center">
                       <div className="text-xs text-slate-600">NAV覆盖</div>
-                      <div className="mt-1 text-lg font-bold text-slate-900">
+                      <div className="mt-1 text-base sm:text-lg font-bold text-slate-900">
                         {formatPercent(summary.navCoveragePct, 0)}
                       </div>
                     </div>
                     <div className="text-center">
                       <div className="text-xs text-slate-600">数据覆盖</div>
-                      <div className="mt-1 text-lg font-bold text-slate-900">
+                      <div className="mt-1 text-base sm:text-lg font-bold text-slate-900">
                         {formatPercent(summary.dataCoveragePct, 0)}
                       </div>
                     </div>
                     <div className="text-center">
                       <div className="text-xs text-slate-600">最终权益</div>
-                      <div className="mt-1 text-lg font-bold text-slate-900">
+                      <div className="mt-1 text-base sm:text-lg font-bold text-slate-900">
                         {formatMoney(summary.finalEquity)}
                       </div>
                     </div>
@@ -580,18 +582,18 @@ export default function QuantTradingExperienceV2() {
         )}
 
         {activeTab === 'live' && (
-          <div className="mx-auto max-w-4xl space-y-6">
+          <div className="mx-auto max-w-4xl space-y-4 sm:space-y-6">
             {/* 实时信号 */}
-            <Card className="p-6">
+            <Card className="p-4 sm:p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-slate-900">实时信号</h3>
+                <h3 className="text-base sm:text-lg font-bold text-slate-900">实时信号</h3>
                 <button
                   type="button"
                   onClick={handleRefreshSnapshot}
                   disabled={refreshing}
-                  className="flex items-center gap-2 rounded-lg bg-indigo-100 px-3 py-1.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-200 disabled:opacity-50"
+                  className="flex items-center gap-2 rounded-lg bg-indigo-100 px-3 py-2.5 min-h-[44px] text-xs sm:text-sm font-semibold text-indigo-700 hover:bg-indigo-200 disabled:opacity-50"
                 >
-                  <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`h-3.5 sm:h-4 w-3.5 sm:w-4 ${refreshing ? 'animate-spin' : ''}`} />
                   刷新
                 </button>
               </div>
@@ -609,9 +611,9 @@ export default function QuantTradingExperienceV2() {
                   }}
                 />
               ) : (
-                <div className="rounded-xl border-2 border-slate-200 bg-slate-50 p-8 text-center">
-                  <Activity className="mx-auto h-12 w-12 text-slate-400 mb-3" />
-                  <p className="text-sm text-slate-600">暂无信号，点击刷新获取最新数据</p>
+                <div className="rounded-xl border-2 border-slate-200 bg-slate-50 p-6 sm:p-8 text-center">
+                  <Activity className="mx-auto h-10 sm:h-12 w-10 sm:w-12 text-slate-400 mb-3" />
+                  <p className="text-xs sm:text-sm text-slate-600">暂无信号，点击刷新获取最新数据</p>
                 </div>
               )}
 
@@ -630,18 +632,18 @@ export default function QuantTradingExperienceV2() {
             </Card>
 
             {/* 当前持仓 */}
-            <Card className="p-6">
-              <h3 className="text-lg font-bold text-slate-900 mb-4">当前持仓</h3>
+            <Card className="p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-4">当前持仓</h3>
               {snapshot?.positions && Object.keys(snapshot.positions).length > 0 ? (
                 <div className="space-y-3">
                   {Object.entries(snapshot.positions).map(([code, pos]) => (
-                    <div key={code} className="flex items-center justify-between rounded-lg bg-slate-50 p-4">
+                    <div key={code} className="flex items-center justify-between rounded-lg bg-slate-50 p-3 sm:p-4">
                       <div>
                         <div className="text-sm font-bold text-slate-900">{code}</div>
                         <div className="text-xs text-slate-600">{pos.name || code}</div>
                       </div>
                       <div className="text-right">
-                        <div className="text-sm font-semibold text-slate-900">
+                        <div className="text-xs sm:text-sm font-semibold text-slate-900">
                           {formatNumber(pos.shares, 0)} 股 @ {formatPrice(pos.costPrice)}
                         </div>
                         <div className="text-xs text-slate-600">
@@ -650,7 +652,7 @@ export default function QuantTradingExperienceV2() {
                       </div>
                     </div>
                   ))}
-                  <div className="flex items-center justify-between rounded-lg bg-indigo-50 p-4 border-2 border-indigo-200">
+                  <div className="flex items-center justify-between rounded-lg bg-indigo-50 p-3 sm:p-4 border-2 border-indigo-200">
                     <div className="text-sm font-bold text-indigo-900">现金</div>
                     <div className="text-sm font-bold text-indigo-900">
                       {formatMoney(snapshot.cash || 0)}
@@ -666,11 +668,11 @@ export default function QuantTradingExperienceV2() {
 
             {/* 实时行情 */}
             {snapshot?.quotes && Object.keys(snapshot.quotes).length > 0 && (
-              <Card className="p-6">
-                <h3 className="text-lg font-bold text-slate-900 mb-4">实时行情</h3>
+              <Card className="p-4 sm:p-6">
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-4">实时行情</h3>
                 <div className="space-y-3">
                   {Object.entries(snapshot.quotes).map(([code, quote]) => (
-                    <div key={code} className="rounded-lg bg-slate-50 p-4">
+                    <div key={code} className="rounded-lg bg-slate-50 p-3 sm:p-4">
                       <div className="flex items-center justify-between mb-2">
                         <div>
                           <span className="text-sm font-bold text-slate-900">{code}</span>
@@ -680,7 +682,7 @@ export default function QuantTradingExperienceV2() {
                           {quote.asOf ? new Date(quote.asOf).toLocaleTimeString('zh-CN') : '--'}
                         </div>
                       </div>
-                      <div className="grid grid-cols-3 gap-3 text-xs">
+                      <div className="grid grid-cols-3 gap-2 sm:gap-3 text-xs">
                         <div>
                           <span className="text-slate-600">买一: </span>
                           <span className="font-semibold text-emerald-700">{formatPrice(quote.bid)}</span>
@@ -705,64 +707,74 @@ export default function QuantTradingExperienceV2() {
         {activeTab === 'history' && (
           <div className="mx-auto max-w-6xl">
             <Card className="overflow-hidden">
-              <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
-                <h3 className="text-lg font-bold text-slate-900">交易历史</h3>
-                <p className="text-sm text-slate-600 mt-1">回测模拟交易记录</p>
+              <div className="bg-slate-50 px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-200">
+                <h3 className="text-base sm:text-lg font-bold text-slate-900">交易历史</h3>
+                <p className="text-xs sm:text-sm text-slate-600 mt-1">回测模拟交易记录</p>
               </div>
 
               {backtest?.trades && backtest.trades.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-slate-50 text-xs font-bold text-slate-700">
-                      <tr>
-                        <th className="px-4 py-3 text-left">日期</th>
-                        <th className="px-4 py-3 text-left">类型</th>
-                        <th className="px-4 py-3 text-left">代码</th>
-                        <th className="px-4 py-3 text-right">股数</th>
-                        <th className="px-4 py-3 text-right">价格</th>
-                        <th className="px-4 py-3 text-right">金额</th>
-                        <th className="px-4 py-3 text-right">手续费</th>
-                        <th className="px-4 py-3 text-right">总成本</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {backtest.trades.map((trade, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-4 py-3 text-sm text-slate-900">
-                            {trade.date || '--'}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex rounded-full px-2 py-1 text-xs font-bold ${
-                              trade.type === 'buy'
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-rose-100 text-rose-700'
-                            }`}>
-                              {trade.type === 'buy' ? '买入' : '卖出'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm font-semibold text-slate-900">
-                            {trade.code}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right text-slate-900">
-                            {formatNumber(trade.shares, 0)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right text-slate-900">
-                            {formatPrice(trade.price)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right text-slate-900">
-                            {formatMoney(trade.amount)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right text-slate-600">
-                            {formatMoney(trade.fee)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right font-semibold text-slate-900">
-                            {formatMoney(trade.totalCost)}
-                          </td>
+                <>
+                  {/* 移动端卡片视图 */}
+                  <div className="block sm:hidden p-4 space-y-3">
+                    {backtest.trades.map((trade, idx) => (
+                      <TradeHistoryCard key={idx} trade={trade} />
+                    ))}
+                  </div>
+
+                  {/* 桌面端表格视图 */}
+                  <div className="hidden sm:block overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-slate-50 text-xs font-bold text-slate-700">
+                        <tr>
+                          <th className="px-4 py-3 text-left">日期</th>
+                          <th className="px-4 py-3 text-left">类型</th>
+                          <th className="px-4 py-3 text-left">代码</th>
+                          <th className="px-4 py-3 text-right">股数</th>
+                          <th className="px-4 py-3 text-right">价格</th>
+                          <th className="px-4 py-3 text-right">金额</th>
+                          <th className="px-4 py-3 text-right">手续费</th>
+                          <th className="px-4 py-3 text-right">总成本</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {backtest.trades.map((trade, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-4 py-3 text-sm text-slate-900">
+                              {trade.date || '--'}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex rounded-full px-2 py-1 text-xs font-bold ${
+                                trade.type === 'buy'
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-rose-100 text-rose-700'
+                              }`}>
+                                {trade.type === 'buy' ? '买入' : '卖出'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm font-semibold text-slate-900">
+                              {trade.code}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right text-slate-900">
+                              {formatNumber(trade.shares, 0)}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right text-slate-900">
+                              {formatPrice(trade.price)}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right text-slate-900">
+                              {formatMoney(trade.amount)}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right text-slate-600">
+                              {formatMoney(trade.fee)}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right font-semibold text-slate-900">
+                              {formatMoney(trade.totalCost)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               ) : (
                 <div className="text-center text-slate-400 py-12">
                   <ListChecks className="mx-auto h-12 w-12 mb-3" />

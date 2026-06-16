@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dialog';
 
 const SEEN_KEY_PREFIX = 'aiDcaReleaseAnnouncementSeen_v1';
-const SHOW_DELAY_MS = 900;
+const SHOW_DELAY_MS = 3000; // 延迟3秒显示，避免阻塞初始交互
 
 function safeLocalStorage() {
   try {
@@ -106,11 +106,20 @@ export function ReleaseAnnouncementModal({ cloudSession }) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[88vh] max-w-[calc(100%-2rem)] overflow-hidden border-slate-200 bg-white p-0 shadow-2xl sm:max-w-3xl" showCloseButton={false}>
+      <DialogContent
+        className="max-h-[88vh] max-w-[calc(100%-2rem)] overflow-hidden border-slate-200 bg-white p-0 shadow-2xl sm:max-w-3xl"
+        showCloseButton={false}
+        onPointerDownOutside={(e) => {
+          // 允许点击外部关闭，避免完全阻塞交互
+          e.preventDefault();
+          handleClose();
+        }}
+        onEscapeKeyDown={handleClose}
+      >
         <button
           type="button"
           aria-label="关闭"
-          className="absolute right-4 top-4 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          className="absolute right-4 top-4 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           onClick={handleClose}
         >
           <X className="h-4 w-4" />
