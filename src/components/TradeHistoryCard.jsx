@@ -1,4 +1,5 @@
 import { cx } from './experience-ui.jsx';
+import { formatTradeDateTime } from '../app/tradeDisplay.js';
 
 /**
  * TradeHistoryCard - 交易历史卡片组件
@@ -23,7 +24,7 @@ export function TradeHistoryCard({ trade }) {
               {isBuy ? '买入' : '卖出'}
             </span>
           </div>
-          <div className="mt-1 text-xs text-slate-500">{trade.date || '--'}</div>
+          <div className="mt-1 text-xs text-slate-500">{formatTradeDateTime(trade)}</div>
         </div>
         <div className="text-right">
           <div className="text-base font-bold text-slate-900">

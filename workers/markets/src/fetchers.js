@@ -252,15 +252,41 @@ function normalizeXueqiuKlinePayload(data, code, intervalLabel) {
   if (!items.length) throw new Error('xueqiu kline empty ' + code);
   const idx = Object.fromEntries(columns.map((name, index) => [String(name), index]));
   const get = (row, name) => row[idx[name]];
+  const getAny = (row, names) => {
+    for (const name of names) {
+      if (Object.prototype.hasOwnProperty.call(idx, name)) return row[idx[name]];
+    }
+    return undefined;
+  };
   const candles = items.map((row) => {
     const ts = Number(get(row, 'timestamp'));
+    const bidPrice = firstPositiveNumber(getAny(row, [
+      'bidPrice', 'bid_price', 'bid', 'bp1', 'bid1', 'bid1_price', 'bid_price1',
+      'buy1', 'buy1_price', 'buy_price1'
+    ]));
+    const askPrice = firstPositiveNumber(getAny(row, [
+      'askPrice', 'ask_price', 'ask', 'sp1', 'ask1', 'ask1_price', 'ask_price1',
+      'sell1', 'sell1_price', 'sell_price1'
+    ]));
+    const bidVolume = firstFiniteNumber(getAny(row, [
+      'bidVolume', 'bid_volume', 'bidSize', 'bc1', 'bid1_volume', 'bid_volume1',
+      'buy1_volume', 'buy_volume1'
+    ]));
+    const askVolume = firstFiniteNumber(getAny(row, [
+      'askVolume', 'ask_volume', 'askSize', 'sc1', 'ask1_volume', 'ask_volume1',
+      'sell1_volume', 'sell_volume1'
+    ]));
     return {
       t: Number.isFinite(ts) ? Math.floor(ts / 1000) : null,
       o: round(get(row, 'open'), 4),
       h: round(get(row, 'high'), 4),
       l: round(get(row, 'low'), 4),
       c: round(get(row, 'close'), 4),
-      v: Number(get(row, 'volume')) || 0
+      v: Number(get(row, 'volume')) || 0,
+      bidPrice: bidPrice != null ? round(bidPrice, 4) : null,
+      bidVolume: bidVolume != null ? bidVolume : null,
+      askPrice: askPrice != null ? round(askPrice, 4) : null,
+      askVolume: askVolume != null ? askVolume : null
     };
   }).filter((bar) => bar && Number.isFinite(bar.t) && [bar.o, bar.h, bar.l, bar.c].every((value) => Number.isFinite(value)))
     .sort((left, right) => left.t - right.t);

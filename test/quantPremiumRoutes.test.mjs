@@ -307,6 +307,61 @@ test('quant premium V2 switch buy rounds up to the next board lot after selling'
   assert.equal(firstSwitchRow.cash, -10);
 });
 
+test('quant premium V2 trades use bid/ask execution prices and minute timestamps', () => {
+  const start = Math.floor(Date.UTC(2026, 0, 2, 1, 35) / 1000);
+  const hCandles = Array.from({ length: 12 }, (_, index) => ({
+    t: start + index * 300,
+    c: 1.03,
+    bidPrice: 1.02,
+    askPrice: 1.04
+  }));
+  const lCandles = Array.from({ length: 12 }, (_, index) => ({
+    t: start + index * 300,
+    c: 1,
+    bidPrice: 0.99,
+    askPrice: 1.01
+  }));
+
+  const result = runQuantPremiumBacktestV2({
+    id: 'bid-ask-v2',
+    enabled: true,
+    highCodes: ['513100'],
+    lowCodes: ['159501'],
+    activeSide: 'all',
+    intraSellLowerPct: 1,
+    intraBuyOtherPct: 3
+  }, {
+    timeframe: '5m',
+    initialEquity: 100000,
+    feeRate: 0,
+    minFee: 0,
+    tickSize: 0.001,
+    slippageTicks: 0,
+    lotSize: 100,
+    historyByCode: {
+      '513100': hCandles,
+      '159501': lCandles
+    },
+    navHistoryByCode: {
+      '513100': [{ date: '2026-01-02', nav: 1 }],
+      '159501': [{ date: '2026-01-02', nav: 1 }]
+    }
+  });
+
+  assert.equal(result.status, 'passed');
+  const switchSell = result.trades.find((trade) => trade.type === 'sell' && trade.code === '513100');
+  const switchBuy = result.trades.find((trade) => trade.type === 'buy' && trade.code === '159501');
+  assert.ok(switchSell);
+  assert.ok(switchBuy);
+  assert.equal(switchSell.price, 1.02);
+  assert.equal(switchSell.priceSource, 'bid');
+  assert.equal(switchSell.datetime, '2026-01-02 09:35');
+  assert.equal(switchBuy.price, 1.01);
+  assert.equal(switchBuy.priceSource, 'ask');
+  assert.equal(switchBuy.datetime, '2026-01-02 09:35');
+  assert.match(result.rows[0].datetime, /^2026-01-02 09:35$/);
+});
+
 test('quant premium backtest chart returns the full fetched kline window', () => {
   const gaps = Array.from({ length: 300 }, () => 4);
   const result = runQuantPremiumBacktest({

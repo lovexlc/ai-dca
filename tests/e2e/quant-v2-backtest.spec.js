@@ -40,6 +40,7 @@ function makeBacktestResult(strategy, { timeframe = '5m' } = {}) {
   const signals = [{
     ts: rows[4].ts,
     date: rows[4].date,
+    datetime: '2026-06-12 09:50',
     fromCode: '513100',
     toCode: '159501',
     rule: 'B',
@@ -49,12 +50,23 @@ function makeBacktestResult(strategy, { timeframe = '5m' } = {}) {
   }, {
     ts: rows[10].ts,
     date: rows[10].date,
+    datetime: '2026-06-12 10:20',
     fromCode: '159501',
     toCode: '513100',
     rule: 'A',
     threshold: 1,
     gapPct: 0.8,
     profit: 1450
+  }, {
+    ts: rows[15].ts,
+    date: rows[15].date,
+    datetime: '2026-06-12 10:45',
+    fromCode: '513100',
+    toCode: '159501',
+    rule: 'B',
+    threshold: 3,
+    gapPct: 3.1,
+    profit: 0
   }];
 
   return {
@@ -70,7 +82,7 @@ function makeBacktestResult(strategy, { timeframe = '5m' } = {}) {
       tradeCount: 3,
       totalProfit: 1450,
       totalReturnPct: 1.45,
-      winRatePct: 100,
+      winRatePct: 66.67,
       sharpeRatio: 1.84,
       maxDrawdownPct: -0.42,
       finalEquity: 101450,
@@ -96,7 +108,10 @@ function makeBacktestResult(strategy, { timeframe = '5m' } = {}) {
       amount: 93984,
       fee: 4.7,
       totalCost: 93988.7,
-      date: '2026-06-12'
+      ts: rows[0].ts,
+      date: '2026-06-12',
+      datetime: '2026-06-12 09:30',
+      priceSource: 'ask'
     }, {
       type: 'sell',
       code: '513100',
@@ -106,7 +121,10 @@ function makeBacktestResult(strategy, { timeframe = '5m' } = {}) {
       fee: 4.73,
       netProceeds: 94507.27,
       profit: 518.57,
-      date: '2026-06-12'
+      ts: rows[4].ts,
+      date: '2026-06-12',
+      datetime: '2026-06-12 09:50',
+      priceSource: 'bid'
     }, {
       type: 'buy',
       code: '159501',
@@ -115,7 +133,10 @@ function makeBacktestResult(strategy, { timeframe = '5m' } = {}) {
       amount: 94464,
       fee: 4.72,
       totalCost: 94468.72,
-      date: '2026-06-12'
+      ts: rows[4].ts,
+      date: '2026-06-12',
+      datetime: '2026-06-12 09:50',
+      priceSource: 'ask'
     }],
     chart: {
       code: '513100',
@@ -328,6 +349,8 @@ test('quant v2 backtest flow works for H 513100 and L 159501', async ({ page }) 
   await page.getByRole('button', { name: /保存并运行回测/ }).click();
 
   await expect(page.getByText('+1.45%').first()).toBeVisible();
+  await expect(page.getByText('+67%')).toBeVisible();
+  await expect(page.getByText('3 次轮动')).toBeVisible();
   await expect(page.getByText('¥1,450.00')).toBeVisible();
   await expect(page.getByText('¥101,450.00')).toBeVisible();
   await expect(page.getByText('持有 H')).toBeVisible();
@@ -346,6 +369,8 @@ test('quant v2 backtest flow works for H 513100 and L 159501', async ({ page }) 
   await expect.poll(() => backtestPayloads.at(-1)?.timeframe).toBe('1d');
 
   await page.getByRole('button', { name: /交易历史/ }).click();
+  await expect(page.getByRole('columnheader', { name: '时间' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '2026-06-12 09:50' }).first()).toBeVisible();
   await expect(page.getByRole('cell', { name: '513100' }).first()).toBeVisible();
   await expect(page.getByRole('cell', { name: '159501' }).first()).toBeVisible();
   await expect(page.getByRole('columnheader', { name: '结算金额' })).toBeVisible();

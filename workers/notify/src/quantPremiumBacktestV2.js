@@ -20,6 +20,27 @@ function clampNumber(value, fallback = 0) {
   return Number.isFinite(next) ? next : fallback;
 }
 
+function finiteNumberOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function firstFiniteNumber(...values) {
+  for (const value of values) {
+    const n = finiteNumberOrNull(value);
+    if (n != null) return n;
+  }
+  return null;
+}
+
+function firstPositiveNumber(...values) {
+  for (const value of values) {
+    const n = finiteNumberOrNull(value);
+    if (n != null && n > 0) return n;
+  }
+  return null;
+}
+
 function buildNavLookup(navHistory = []) {
   const sorted = (Array.isArray(navHistory) ? navHistory : [])
     .map((item) => {
@@ -49,6 +70,36 @@ function shanghaiDateFromEpochSec(sec) {
   }
 }
 
+function shanghaiMinuteFromEpochSec(sec) {
+  const n = Number(sec);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).formatToParts(new Date(n * 1000)).reduce((acc, part) => {
+      acc[part.type] = part.value;
+      return acc;
+    }, {});
+    if (parts.year && parts.month && parts.day && parts.hour && parts.minute) {
+      return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+    }
+  } catch {
+    // Fall through to deterministic UTC+8 fallback.
+  }
+  return new Date(n * 1000 + 8 * 60 * 60 * 1000).toISOString().slice(0, 16).replace('T', ' ');
+}
+
+function normalizeMinuteLabel(value) {
+  const label = String(value || '').trim().slice(0, 16).replace('T', ' ');
+  return /^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}$/.test(label) ? label : '';
+}
+
 function normalizeBacktestTimeframe(value = '') {
   const tf = String(value || '').trim();
   return new Set(['1m', '5m', '15m', '30m', '60m', '1d']).has(tf) ? tf : '5m';
@@ -63,17 +114,63 @@ function normalizeBacktestCandles(candles = []) {
       const open = Number(bar?.o ?? bar?.open);
       const high = Number(bar?.h ?? bar?.high);
       const low = Number(bar?.l ?? bar?.low);
+      const orderBook = bar?.orderBook && typeof bar.orderBook === 'object' ? bar.orderBook : {};
+      const bidPrice = firstPositiveNumber(
+        bar?.bidPrice, bar?.bid, bar?.bp1, bar?.bid1, bar?.bid1_price, bar?.bid_price1,
+        bar?.buy1, bar?.buy1_price, bar?.buy_price1, orderBook.bidPrice, orderBook.bid
+      );
+      const askPrice = firstPositiveNumber(
+        bar?.askPrice, bar?.ask, bar?.sp1, bar?.ask1, bar?.ask1_price, bar?.ask_price1,
+        bar?.sell1, bar?.sell1_price, bar?.sell_price1, orderBook.askPrice, orderBook.ask
+      );
+      const bidVolume = firstFiniteNumber(
+        bar?.bidVolume, bar?.bidSize, bar?.bc1, bar?.bid1_volume, bar?.bid_volume1,
+        bar?.buy1_volume, bar?.buy_volume1, orderBook.bidVolume, orderBook.bidSize
+      );
+      const askVolume = firstFiniteNumber(
+        bar?.askVolume, bar?.askSize, bar?.sc1, bar?.ask1_volume, bar?.ask_volume1,
+        bar?.sell1_volume, bar?.sell_volume1, orderBook.askVolume, orderBook.askSize
+      );
       return {
         t,
         date: String(bar?.date || '').slice(0, 10) || shanghaiDateFromEpochSec(t),
+        datetime: normalizeMinuteLabel(bar?.datetime || bar?.dateTime) || shanghaiMinuteFromEpochSec(t),
         open: Number.isFinite(open) && open > 0 ? open : close,
         high: Number.isFinite(high) && high > 0 ? high : close,
         low: Number.isFinite(low) && low > 0 ? low : close,
-        close
+        close,
+        bidPrice: bidPrice != null ? roundTo(bidPrice, 4) : null,
+        bidVolume: bidVolume != null ? bidVolume : null,
+        askPrice: askPrice != null ? roundTo(askPrice, 4) : null,
+        askVolume: askVolume != null ? askVolume : null
       };
     })
     .filter(Boolean)
     .sort((a, b) => a.t - b.t);
+}
+
+function resolveSellExecutionPrice(bar, tickSize, slippageTicks) {
+  const quoted = firstPositiveNumber(
+    bar?.bidPrice, bar?.bid, bar?.bp1, bar?.bid1, bar?.bid1_price, bar?.bid_price1,
+    bar?.buy1, bar?.buy1_price, bar?.buy_price1, bar?.orderBook?.bidPrice
+  );
+  if (quoted != null) return { price: roundTo(quoted, 4), priceSource: 'bid' };
+  return {
+    price: roundTo(Number(bar?.close || 0) - clampNumber(slippageTicks, 0) * clampNumber(tickSize, 0.001), 4),
+    priceSource: 'close-slippage'
+  };
+}
+
+function resolveBuyExecutionPrice(bar, tickSize, slippageTicks) {
+  const quoted = firstPositiveNumber(
+    bar?.askPrice, bar?.ask, bar?.sp1, bar?.ask1, bar?.ask1_price, bar?.ask_price1,
+    bar?.sell1, bar?.sell1_price, bar?.sell_price1, bar?.orderBook?.askPrice
+  );
+  if (quoted != null) return { price: roundTo(quoted, 4), priceSource: 'ask' };
+  return {
+    price: roundTo(Number(bar?.close || 0) + clampNumber(slippageTicks, 0) * clampNumber(tickSize, 0.001), 4),
+    priceSource: 'close+slippage'
+  };
 }
 
 /**
@@ -173,7 +270,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
     const pos = positions[code];
     if (!pos || pos.shares <= 0) return null;
 
-    const sellPrice = bar.close - slippageTicks * tickSize; // 滑点
+    const { price: sellPrice, priceSource } = resolveSellExecutionPrice(bar, tickSize, slippageTicks);
     const sellAmount = pos.shares * sellPrice;
     const fee = calcFee(sellAmount);
     const netProceeds = sellAmount - fee;
@@ -186,6 +283,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
       code,
       shares: pos.shares,
       price: sellPrice,
+      priceSource,
       amount: sellAmount,
       fee,
       netProceeds,
@@ -199,7 +297,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
 
   // 执行买入
   function executeBuy(code, bar, targetCash = cash, { roundLotMode = 'floor' } = {}) {
-    const buyPrice = bar.close + slippageTicks * tickSize; // 滑点
+    const { price: buyPrice, priceSource } = resolveBuyExecutionPrice(bar, tickSize, slippageTicks);
     const targetSpend = Math.max(0, clampNumber(targetCash, cash));
     const boundedSpend = roundLotMode === 'ceil' ? targetSpend : Math.min(cash, targetSpend);
     const rawLots = boundedSpend / buyPrice / lotSize;
@@ -224,6 +322,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
           code,
           shares: maxShares,
           price: buyPrice,
+          priceSource,
           amount: buyAmount,
           fee,
           totalCost,
@@ -249,6 +348,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
 
   // 主循环
   for (const anchor of anchorCandles) {
+    const anchorDatetime = anchor.datetime || shanghaiMinuteFromEpochSec(anchor.t);
     const premiums = {};
     const currentPrices = {};
     let hasAllPrices = true;
@@ -307,7 +407,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
         const bar = closeByCode[currentCode].get(anchor.t);
         const buyTrade = executeBuy(currentCode, bar, cash);
         if (buyTrade) {
-          trades.push({ ...buyTrade, ts: anchor.t, date: anchor.date });
+          trades.push({ ...buyTrade, ts: anchor.t, date: anchor.date, datetime: anchorDatetime });
           equity = calcEquity(currentPrices);
         }
       }
@@ -324,6 +424,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
       rows.push({
         ts: anchor.t,
         date: anchor.date,
+        datetime: anchorDatetime,
         fromCode: '',
         toCode: '',
         currentCode: '',
@@ -373,6 +474,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
       rows.push({
         ts: anchor.t,
         date: anchor.date,
+        datetime: anchorDatetime,
         fromCode: from.code,
         toCode: from.code,
         currentCode: from.code,
@@ -405,13 +507,13 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
       // 卖出当前持仓
       const sellTrade = executeSell(from.code, fromBar);
       if (sellTrade) {
-        trades.push({ ...sellTrade, ts: anchor.t, date: anchor.date });
+        trades.push({ ...sellTrade, ts: anchor.t, date: anchor.date, datetime: anchorDatetime });
 
         // V2 回测模拟的是满仓轮动：卖出后立即买入对侧。
         // 买入受 100 股一手约束时向上补到下一手，允许出现少量负现金。
         const buyTrade = executeBuy(to.code, toBar, cash, { roundLotMode: 'ceil' });
         if (buyTrade) {
-          trades.push({ ...buyTrade, ts: anchor.t, date: anchor.date });
+          trades.push({ ...buyTrade, ts: anchor.t, date: anchor.date, datetime: anchorDatetime });
           currentCode = to.code;
         } else {
           currentCode = '';
@@ -422,6 +524,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
       signals.push({
         ts: anchor.t,
         date: anchor.date,
+        datetime: anchorDatetime,
         fromCode: from.code,
         toCode: to.code,
         rule,
@@ -444,6 +547,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
     rows.push({
       ts: anchor.t,
       date: anchor.date,
+      datetime: anchorDatetime,
       fromCode: from.code,
       toCode: to.code,
       currentCode: displayCurrentCode,
@@ -583,6 +687,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
     return {
       t: bar.t,
       date: bar.date,
+      datetime: bar.datetime,
       o: open,
       h: high,
       l: low,
@@ -609,6 +714,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
       return {
         ts: signal.ts,
         date: signal.date,
+        datetime: signal.datetime,
         side,
         price: roundTo(Number.isFinite(markerPrice) && markerPrice > 0 ? markerPrice : bar?.close, 4),
         fromCode: signal.fromCode,
@@ -668,6 +774,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
         ? Array.from(closeByCode[highCodes[0]].values()).map(bar => ({
             t: bar.t,
             date: bar.date,
+            datetime: bar.datetime,
             open: roundTo(bar.open, 4),
             high: roundTo(bar.high, 4),
             low: roundTo(bar.low, 4),
@@ -678,6 +785,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
         ? Array.from(closeByCode[lowCodes[0]].values()).map(bar => ({
             t: bar.t,
             date: bar.date,
+            datetime: bar.datetime,
             open: roundTo(bar.open, 4),
             high: roundTo(bar.high, 4),
             low: roundTo(bar.low, 4),

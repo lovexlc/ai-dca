@@ -19,6 +19,7 @@ import { InteractiveChartContainer } from '../components/InteractiveChartContain
 import { TradeHistoryCard } from '../components/TradeHistoryCard.jsx';
 import { EquityChart, KlineChart, PremiumChart } from '../components/BacktestCharts.jsx';
 import { showToast } from '../app/toast.js';
+import { formatTradeDateTime } from '../app/tradeDisplay.js';
 import {
   loadQuantPremiumStrategiesFromWorker,
   loadQuantPremiumBacktestLatestFromWorker,
@@ -359,9 +360,9 @@ export default function QuantTradingExperienceV2() {
             Icon={TrendingUp}
           />
           <MetricCard
-            label="胜率 (V2)"
+            label="盈利轮动"
             value={formatPercent(winRatePct, 0)}
-            subtitle={`${summary.trades || 0} 笔交易`}
+            subtitle={`${summary.trades || 0} 次轮动`}
             tone={winRateTone}
             Icon={Trophy}
           />
@@ -846,7 +847,7 @@ export default function QuantTradingExperienceV2() {
                     <table className="w-full">
                       <thead className="bg-slate-50 text-xs font-bold text-slate-700">
                         <tr>
-                          <th className="px-4 py-3 text-left">日期</th>
+                          <th className="px-4 py-3 text-left">时间</th>
                           <th className="px-4 py-3 text-left">类型</th>
                           <th className="px-4 py-3 text-left">代码</th>
                           <th className="px-4 py-3 text-right">股数</th>
@@ -860,7 +861,7 @@ export default function QuantTradingExperienceV2() {
                         {backtest.trades.map((trade, idx) => (
                           <tr key={idx} className="hover:bg-slate-50 transition-colors">
                             <td className="px-4 py-3 text-sm text-slate-900">
-                              {trade.date || '--'}
+                              {formatTradeDateTime(trade)}
                             </td>
                             <td className="px-4 py-3">
                               <span className={`inline-flex rounded-full px-2 py-1 text-xs font-bold ${

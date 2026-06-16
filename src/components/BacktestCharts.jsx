@@ -38,6 +38,8 @@ function formatTimeLabel(value) {
  * 从时间戳或日期字符串生成带时间的日期标签
  */
 function formatDateTime(row) {
+  if (row.datetime) return String(row.datetime).slice(0, 16).replace('T', ' ');
+
   // 优先使用 ts 时间戳
   if (row.ts) {
     // 判断是秒还是毫秒时间戳
