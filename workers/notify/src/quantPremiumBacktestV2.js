@@ -86,7 +86,6 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
     navHistoryByCode = {},
     dataIssues = {},
     initialEquity = 100000,
-    orderCash = 16000,
     feeRate = 0.00005,  // 0.005% = 万0.5
     minFee = 0,
     tickSize = 0.001,
@@ -170,7 +169,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
   }
 
   // 执行卖出
-  function executeSell(code, bar, nav) {
+  function executeSell(code, bar) {
     const pos = positions[code];
     if (!pos || pos.shares <= 0) return null;
 
@@ -199,33 +198,37 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
   }
 
   // 执行买入
-  function executeBuy(code, bar, nav, targetCash) {
+  function executeBuy(code, bar, targetCash = cash) {
     const buyPrice = bar.close + slippageTicks * tickSize; // 滑点
-    const maxShares = Math.floor(targetCash / buyPrice / lotSize) * lotSize;
-    if (maxShares <= 0) return null;
+    const spendLimit = Math.min(cash, Math.max(0, clampNumber(targetCash, cash)));
+    let maxShares = Math.floor(spendLimit / buyPrice / lotSize) * lotSize;
 
-    const buyAmount = maxShares * buyPrice;
-    const fee = calcFee(buyAmount);
-    const totalCost = buyAmount + fee;
+    while (maxShares > 0) {
+      const buyAmount = roundTo(maxShares * buyPrice, 2);
+      const fee = calcFee(buyAmount);
+      const totalCost = roundTo(buyAmount + fee, 2);
+      if (totalCost <= spendLimit && totalCost <= cash) {
+        cash = roundTo(cash - totalCost, 2);
+        positions[code] = {
+          shares: maxShares,
+          costPrice: roundTo(totalCost / maxShares, 4)
+        };
 
-    if (totalCost > cash) return null;
+        return {
+          type: 'buy',
+          code,
+          shares: maxShares,
+          price: buyPrice,
+          amount: buyAmount,
+          fee,
+          totalCost,
+          costPrice: positions[code].costPrice
+        };
+      }
+      maxShares -= lotSize;
+    }
 
-    cash -= totalCost;
-    positions[code] = {
-      shares: maxShares,
-      costPrice: roundTo((buyAmount + fee) / maxShares, 4)
-    };
-
-    return {
-      type: 'buy',
-      code,
-      shares: maxShares,
-      price: buyPrice,
-      amount: buyAmount,
-      fee,
-      totalCost,
-      costPrice: positions[code].costPrice
-    };
+    return null;
   }
 
   // 计算当前权益
@@ -296,8 +299,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
       // 用所有现金买入初始持仓
       if (currentCode && cash > 0) {
         const bar = closeByCode[currentCode].get(anchor.t);
-        const nav = navLookupByCode[currentCode](anchor.date);
-        const buyTrade = executeBuy(currentCode, bar, nav, cash * 0.95);
+        const buyTrade = executeBuy(currentCode, bar, cash);
         if (buyTrade) {
           trades.push({ ...buyTrade, ts: anchor.t, date: anchor.date });
           equity = calcEquity(currentPrices);
@@ -393,19 +395,20 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
     if (triggered && canTrade) {
       const fromBar = closeByCode[from.code].get(anchor.t);
       const toBar = closeByCode[to.code].get(anchor.t);
-      const fromNav = navLookupByCode[from.code](anchor.date);
-      const toNav = navLookupByCode[to.code](anchor.date);
 
       // 卖出当前持仓
-      const sellTrade = executeSell(from.code, fromBar, fromNav);
+      const sellTrade = executeSell(from.code, fromBar);
       if (sellTrade) {
         trades.push({ ...sellTrade, ts: anchor.t, date: anchor.date });
 
-        // 买入新持仓
-        const targetCash = Math.min(cash, clampNumber(orderCash, 16000));
-        const buyTrade = executeBuy(to.code, toBar, toNav, targetCash);
+        // V2 回测模拟的是满仓轮动：卖出后立即用可用现金买入对侧，
+        // 仅因手续费和 100 股一手约束保留少量现金零头。
+        const buyTrade = executeBuy(to.code, toBar, cash);
         if (buyTrade) {
           trades.push({ ...buyTrade, ts: anchor.t, date: anchor.date });
+          currentCode = to.code;
+        } else {
+          currentCode = '';
         }
         equity = calcEquity(currentPrices);
       }
@@ -427,16 +430,18 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
       } else if (rule === 'A') {
         entryGapPct = null;
       }
-      currentCode = to.code;
     }
+
+    const displayCurrentCode = triggered ? currentCode : from.code;
+    const displayCurrentClass = premiumClass[displayCurrentCode] || (triggered ? '' : currentClass);
 
     rows.push({
       ts: anchor.t,
       date: anchor.date,
       fromCode: from.code,
       toCode: to.code,
-      currentCode: from.code,
-      currentClass,
+      currentCode: displayCurrentCode,
+      currentClass: displayCurrentClass,
       highPremiumPct: currentClass === 'H' ? from.premiumPct : to.premiumPct,
       lowPremiumPct: currentClass === 'H' ? to.premiumPct : from.premiumPct,
       gapPct,

@@ -219,6 +219,44 @@ test('quant premium V2 backtest triggers on documented inclusive thresholds for 
   ]);
 });
 
+test('quant premium V2 backtest reinvests full proceeds instead of idling orderCash-sized cash', () => {
+  const gaps = [3, 3, 1, 1, 3, 3, 1, 1, 3, 3, 1, 1];
+  const result = runQuantPremiumBacktest({
+    id: 'full-reinvest-v2',
+    enabled: true,
+    highCodes: ['513100'],
+    lowCodes: ['159501'],
+    activeSide: 'all',
+    intraSellLowerPct: 1,
+    intraBuyOtherPct: 3
+  }, {
+    timeframe: '1d',
+    useV2: true,
+    initialEquity: 100000,
+    orderCash: 16000,
+    historyByCode: {
+      '513100': makePremiumCandles(gaps, { start: Math.floor(Date.UTC(2026, 0, 2) / 1000), step: 86400 }),
+      '159501': makePremiumCandles(gaps.map(() => 0), { start: Math.floor(Date.UTC(2026, 0, 2) / 1000), step: 86400 })
+    },
+    navHistoryByCode: {
+      '513100': [{ date: '2026-01-02', nav: 1 }],
+      '159501': [{ date: '2026-01-02', nav: 1 }]
+    }
+  });
+
+  assert.equal(result.status, 'passed');
+  const buyTrades = result.trades.filter((trade) => trade.type === 'buy');
+  assert.ok(buyTrades.length >= 3);
+  assert.ok(
+    buyTrades.slice(1).every((trade) => trade.totalCost > 90000),
+    `expected post-switch buys to stay near full equity, got ${buyTrades.slice(1).map((trade) => trade.totalCost).join(', ')}`
+  );
+  const investedRows = result.rows.filter((row) => Object.keys(row.positions || {}).length > 0);
+  assert.ok(investedRows.length > 0);
+  const maxCashRatio = Math.max(...investedRows.map((row) => row.cash / row.equity));
+  assert.ok(maxCashRatio < 0.01, `expected cash drag below 1%, got ${(maxCashRatio * 100).toFixed(2)}%`);
+});
+
 test('quant premium backtest chart returns the full fetched kline window', () => {
   const gaps = Array.from({ length: 300 }, () => 4);
   const result = runQuantPremiumBacktest({
