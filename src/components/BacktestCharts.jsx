@@ -37,6 +37,25 @@ function formatTimeLabel(value) {
 }
 
 /**
+ * 从时间戳或日期字符串生成带时间的日期标签
+ */
+function formatDateTime(row) {
+  // 优先使用 ts 时间戳
+  if (row.ts) {
+    const date = new Date(row.ts);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  }
+
+  // 否则使用 date 字段
+  return row.date;
+}
+
+/**
  * EquityChart - 权益曲线图表
  */
 export function EquityChart({ data }) {
@@ -45,7 +64,7 @@ export function EquityChart({ data }) {
   }
 
   const chartData = data.map(row => ({
-    date: row.date,
+    date: formatDateTime(row),
     equity: row.equity,
     cash: row.cash
   }));
@@ -121,8 +140,21 @@ export function KlineChart({ candles, signals }) {
 
   const chartData = candles.map((candle, idx) => {
     const signal = signals?.find(s => s.ts === candle.t);
+
+    // 从时间戳生成带时间的日期
+    let dateLabel = candle.date;
+    if (candle.t) {
+      const date = new Date(candle.t);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      dateLabel = `${year}-${month}-${day} ${hours}:${minutes}`;
+    }
+
     return {
-      date: candle.date,
+      date: dateLabel,
       close: candle.close,
       open: candle.open,
       high: candle.high,
@@ -198,7 +230,7 @@ export function PremiumChart({ data }) {
   }
 
   const chartData = data.map(row => ({
-    date: row.date,
+    date: formatDateTime(row),
     highPremium: row.highPremiumPct,
     lowPremium: row.lowPremiumPct,
     gap: row.gapPct
