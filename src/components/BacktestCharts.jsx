@@ -45,6 +45,14 @@ function formatDateTime(row) {
     // 判断是秒还是毫秒时间戳
     // 如果小于 10000000000，则是秒级时间戳，需要转换为毫秒
     const timestamp = row.ts < 10000000000 ? row.ts * 1000 : row.ts;
+
+    // 验证时间戳是否在合理范围内（2020-2030年之间）
+    // 2020-01-01: 1577836800000, 2030-12-31: 1924905600000
+    if (timestamp < 1577836800000 || timestamp > 1924905600000) {
+      // 时间戳超出合理范围，回退到 date 字段
+      return row.date || '';
+    }
+
     const date = new Date(timestamp);
 
     // 验证日期是否有效
@@ -155,16 +163,20 @@ export function KlineChart({ candles, signals }) {
     if (candle.t) {
       // 判断是秒还是毫秒时间戳
       const timestamp = candle.t < 10000000000 ? candle.t * 1000 : candle.t;
-      const date = new Date(timestamp);
 
-      // 验证日期是否有效
-      if (!isNaN(date.getTime())) {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        dateLabel = `${year}-${month}-${day} ${hours}:${minutes}`;
+      // 验证时间戳是否在合理范围内（2020-2030年之间）
+      if (timestamp >= 1577836800000 && timestamp <= 1924905600000) {
+        const date = new Date(timestamp);
+
+        // 验证日期是否有效
+        if (!isNaN(date.getTime())) {
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          const hours = String(date.getHours()).padStart(2, '0');
+          const minutes = String(date.getMinutes()).padStart(2, '0');
+          dateLabel = `${year}-${month}-${day} ${hours}:${minutes}`;
+        }
       }
     }
 
