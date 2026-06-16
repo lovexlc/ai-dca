@@ -332,6 +332,7 @@ test('quant v2 backtest flow works for H 513100 and L 159501', async ({ page }) 
   await page.getByRole('button', { name: '知道了' }).click({ timeout: 3000 }).catch(() => {});
 
   await expect(page.getByRole('heading', { name: '量化研究' })).toBeVisible();
+  await page.getByRole('button', { name: /策略配置/ }).click();
   await expect(page.getByLabel('H 高溢价 ETF（卖出方）')).toBeVisible();
   await expect(page.getByRole('button', { name: '移除 159513' })).toBeVisible();
   await expect(page.getByRole('button', { name: '移除 513100' })).toBeVisible();

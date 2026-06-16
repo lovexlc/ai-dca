@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, BarChart3, Bot, CheckCircle2, Clock3, Database, ListChecks, Minus, Play, Plus, RefreshCw, RotateCcw, ShieldCheck, SlidersHorizontal, Trash2, WalletCards } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Activity, Bot, CheckCircle2, Clock3, Database, ListChecks, Minus, Play, Plus, RefreshCw, RotateCcw, ShieldCheck, SlidersHorizontal, Trash2, WalletCards } from 'lucide-react';
 import { Card, cx, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
 import { showToast } from '../app/toast.js';
 import {
@@ -15,7 +15,6 @@ import {
   parseQuantPremiumCodes,
   quantPremiumCodesToText,
   resetQuantPremiumPaperStateInWorker,
-  runQuantPremiumBacktestInWorker,
   runQuantPremiumOnce,
   saveQuantPremiumConfigToWorker,
   saveQuantPremiumStrategyToWorker
@@ -31,12 +30,6 @@ function formatNumber(value, digits = 0) {
   const num = Number(value);
   if (!Number.isFinite(num)) return '--';
   return num.toLocaleString('zh-CN', { maximumFractionDigits: digits, minimumFractionDigits: digits });
-}
-
-function formatPercent(value, digits = 2) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return '--';
-  return `${num.toLocaleString('zh-CN', { maximumFractionDigits: digits, minimumFractionDigits: digits })}%`;
 }
 
 function formatPrice(value) {
@@ -107,351 +100,6 @@ function FormLabel({ label, children }) {
   );
 }
 
-function BacktestMetric({ label, value, note, tone = 'slate' }) {
-  const toneClass = tone === 'emerald'
-    ? 'text-emerald-700'
-    : tone === 'rose'
-      ? 'text-rose-700'
-      : 'text-slate-900';
-  return (
-    <div className="rounded-xl bg-slate-50 p-3">
-      <div className="text-xs font-bold text-slate-400">{label}</div>
-      <div className={cx('mt-1 text-lg font-semibold', toneClass)}>{value}</div>
-      {note ? <div className="mt-1 text-xs leading-5 text-slate-500">{note}</div> : null}
-    </div>
-  );
-}
-
-function formatKlineTick(value) {
-  const sec = Number(value);
-  if (!Number.isFinite(sec) || sec <= 0) return '--';
-  return formatDateTime(new Date(sec * 1000).toISOString());
-}
-
-function QuantBacktestKlineChart({ chart, quality }) {
-  const chartShellRef = useRef(null);
-  const pointersRef = useRef(new Map());
-  const pinchRef = useRef(null);
-  const gestureRef = useRef(false);
-  const [zoomWindow, setZoomWindow] = useState(null);
-  const [hoverPoint, setHoverPoint] = useState(null);
-  const [lockedPoint, setLockedPoint] = useState(null);
-  const candles = useMemo(() => {
-    const rawCandles = Array.isArray(chart?.candles) ? chart.candles : [];
-    return rawCandles
-      .map((item) => ({
-        t: Number(item?.t),
-        o: Number(item?.o),
-        h: Number(item?.h),
-        l: Number(item?.l),
-        c: Number(item?.c)
-      }))
-      .filter((item) => Number.isFinite(item.t) && [item.o, item.h, item.l, item.c].every((value) => Number.isFinite(value) && value > 0));
-  }, [chart]);
-  const markers = useMemo(() => {
-    const rawMarkers = Array.isArray(chart?.markers) ? chart.markers : [];
-    return rawMarkers
-      .map((item) => ({
-        ts: Number(item?.ts),
-        side: String(item?.side || 'signal'),
-        price: Number(item?.price),
-        label: String(item?.label || ''),
-        gapPct: Number(item?.gapPct)
-      }))
-      .filter((item) => Number.isFinite(item.ts) && Number.isFinite(item.price) && item.price > 0);
-  }, [chart]);
-  const chartSignature = candles.length ? `${candles.length}|${candles[0].t}|${candles[candles.length - 1].t}` : 'empty';
-  const width = 760;
-  const height = 286;
-  const margin = { top: 18, right: 58, bottom: 34, left: 14 };
-  const plotWidth = width - margin.left - margin.right;
-  const plotHeight = height - margin.top - margin.bottom;
-  const clampZoomWindow = useCallback((start, end, total = candles.length) => {
-    if (total < 2) return null;
-    const minSpan = Math.min(total, Math.max(12, Math.ceil(total * 0.08)));
-    let nextStart = Math.round(start);
-    let nextEnd = Math.round(end);
-    if (nextEnd - nextStart + 1 < minSpan) {
-      const mid = (nextStart + nextEnd) / 2;
-      nextStart = Math.round(mid - (minSpan - 1) / 2);
-      nextEnd = nextStart + minSpan - 1;
-    }
-    if (nextStart < 0) {
-      nextEnd -= nextStart;
-      nextStart = 0;
-    }
-    if (nextEnd > total - 1) {
-      nextStart -= nextEnd - (total - 1);
-      nextEnd = total - 1;
-    }
-    nextStart = Math.max(0, nextStart);
-    nextEnd = Math.min(total - 1, nextEnd);
-    if (nextStart <= 0 && nextEnd >= total - 1) return null;
-    return { start: nextStart, end: nextEnd };
-  }, [candles.length]);
-  const visibleCandles = useMemo(() => {
-    if (!zoomWindow || candles.length < 2) return candles;
-    const start = Math.max(0, Math.min(candles.length - 2, zoomWindow.start));
-    const end = Math.max(start + 1, Math.min(candles.length - 1, zoomWindow.end));
-    return candles.slice(start, end + 1);
-  }, [candles, zoomWindow]);
-  const visibleTimestamps = useMemo(() => new Set(visibleCandles.map((item) => item.t)), [visibleCandles]);
-  const visibleMarkers = useMemo(() => markers.filter((item) => visibleTimestamps.has(item.ts)), [markers, visibleTimestamps]);
-  const markerByTs = useMemo(() => {
-    const map = new Map();
-    visibleMarkers.forEach((item) => {
-      const list = map.get(item.ts) || [];
-      list.push(item);
-      map.set(item.ts, list);
-    });
-    return map;
-  }, [visibleMarkers]);
-  const resetChartInteraction = useCallback(() => {
-    setZoomWindow(null);
-    setHoverPoint(null);
-    setLockedPoint(null);
-    pointersRef.current.clear();
-    pinchRef.current = null;
-    gestureRef.current = false;
-  }, []);
-  const pickPointFromPointer = useCallback((event) => {
-    const rect = chartShellRef.current?.getBoundingClientRect();
-    if (!rect || rect.width <= 0 || visibleCandles.length < 2) return null;
-    const x = Math.min(Math.max(event.clientX - rect.left, 0), rect.width);
-    const index = Math.min(visibleCandles.length - 1, Math.max(0, Math.round((x / rect.width) * (visibleCandles.length - 1))));
-    const candle = visibleCandles[index];
-    if (!candle) return null;
-    return {
-      ...candle,
-      index,
-      markers: markerByTs.get(candle.t) || []
-    };
-  }, [markerByTs, visibleCandles]);
-  const getPointerDistance = useCallback((a, b) => Math.hypot(a.x - b.x, a.y - b.y), []);
-  const getPointerCenterX = useCallback((a, b) => (a.x + b.x) / 2, []);
-  const handlePointerDown = useCallback((event) => {
-    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (pointersRef.current.size >= 2) {
-      event.preventDefault();
-      gestureRef.current = true;
-      const [a, b] = Array.from(pointersRef.current.values()).slice(0, 2);
-      const rect = chartShellRef.current?.getBoundingClientRect();
-      const baseWindow = zoomWindow || { start: 0, end: candles.length - 1 };
-      pinchRef.current = {
-        distance: Math.max(1, getPointerDistance(a, b)),
-        centerRatio: rect?.width ? Math.min(1, Math.max(0, (getPointerCenterX(a, b) - rect.left) / rect.width)) : 0.5,
-        start: baseWindow.start,
-        end: baseWindow.end
-      };
-    }
-  }, [candles.length, getPointerCenterX, getPointerDistance, zoomWindow]);
-  const handlePointerMoveZoom = useCallback((event) => {
-    if (pointersRef.current.has(event.pointerId)) {
-      pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    }
-    if (pointersRef.current.size >= 2 && pinchRef.current) {
-      event.preventDefault();
-      const [a, b] = Array.from(pointersRef.current.values()).slice(0, 2);
-      const distance = Math.max(1, getPointerDistance(a, b));
-      const base = pinchRef.current;
-      const baseSpan = Math.max(1, base.end - base.start + 1);
-      const nextSpan = baseSpan / Math.max(0.25, Math.min(4, distance / base.distance));
-      const anchor = base.start + base.centerRatio * (baseSpan - 1);
-      const nextStart = anchor - base.centerRatio * (nextSpan - 1);
-      setZoomWindow(clampZoomWindow(nextStart, nextStart + nextSpan - 1));
-      return;
-    }
-    const point = pickPointFromPointer(event);
-    setHoverPoint(point);
-  }, [clampZoomWindow, getPointerDistance, pickPointFromPointer]);
-  const handlePointerEnd = useCallback((event) => {
-    pointersRef.current.delete(event.pointerId);
-    if (pointersRef.current.size < 2) pinchRef.current = null;
-  }, []);
-  const handlePointerLeave = useCallback((event) => {
-    handlePointerEnd(event);
-    setHoverPoint(null);
-  }, [handlePointerEnd]);
-  const handleWheelZoom = useCallback((event) => {
-    if (!event.ctrlKey && !event.metaKey) return;
-    event.preventDefault();
-    const rect = chartShellRef.current?.getBoundingClientRect();
-    const current = zoomWindow || { start: 0, end: candles.length - 1 };
-    const ratio = rect?.width ? Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)) : 0.5;
-    const span = current.end - current.start + 1;
-    const scale = event.deltaY < 0 ? 0.82 : 1.18;
-    const nextSpan = span * scale;
-    const anchor = current.start + ratio * (span - 1);
-    const nextStart = anchor - ratio * (nextSpan - 1);
-    setZoomWindow(clampZoomWindow(nextStart, nextStart + nextSpan - 1));
-  }, [candles.length, clampZoomWindow, zoomWindow]);
-  const handleChartClick = useCallback((event) => {
-    if (gestureRef.current) {
-      gestureRef.current = false;
-      return;
-    }
-    const point = pickPointFromPointer(event);
-    if (!point) return;
-    setLockedPoint((current) => (current && current.t === point.t ? null : point));
-  }, [pickPointFromPointer]);
-
-  useEffect(() => {
-    resetChartInteraction();
-  }, [chartSignature, resetChartInteraction]);
-
-  if (candles.length < 2) {
-    return (
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="flex h-64 items-center justify-center text-sm text-slate-400">运行回测后显示对应策略 K 线和买卖点</div>
-      </div>
-    );
-  }
-
-  const priceValues = visibleCandles.flatMap((item) => [item.h, item.l, item.o, item.c]).concat(visibleMarkers.map((item) => item.price));
-  const rawMin = Math.min(...priceValues);
-  const rawMax = Math.max(...priceValues);
-  const padding = Math.max(0.0001, (rawMax - rawMin) * 0.12);
-  const minPrice = rawMin - padding;
-  const maxPrice = rawMax + padding;
-  const priceRange = Math.max(0.0001, maxPrice - minPrice);
-  const xForIndex = (index) => margin.left + (visibleCandles.length === 1 ? plotWidth / 2 : (plotWidth * index) / (visibleCandles.length - 1));
-  const yForPrice = (price) => margin.top + ((maxPrice - price) / priceRange) * plotHeight;
-  const bodyWidth = Math.max(2, Math.min(10, (plotWidth / visibleCandles.length) * 0.62));
-  const tsToIndex = new Map(visibleCandles.map((item, index) => [item.t, index]));
-  const gridTicks = Array.from({ length: 4 }, (_, index) => maxPrice - (priceRange * index) / 3);
-  const xLabelIndexes = Array.from(new Set([0, Math.floor((visibleCandles.length - 1) / 2), visibleCandles.length - 1]));
-  const chartCode = String(chart?.code || '').trim() || '策略标的';
-  const chartTf = String(chart?.timeframe || '').trim() || '';
-  const qualityTone = quality?.passed ? 'text-emerald-700' : 'text-amber-700';
-  const activePoint = lockedPoint || hoverPoint;
-  const activeIndex = activePoint ? tsToIndex.get(activePoint.t) : null;
-  const activeMarkers = activePoint?.markers || [];
-
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="text-xs font-bold text-slate-400">BACKTEST KLINE</div>
-          <div className="mt-1 text-sm font-semibold text-slate-800">{chartCode} · {chartTf || 'K线'} · {formatNumber(candles.length)} 根</div>
-        </div>
-        <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-slate-500">
-          <span className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-emerald-500" />买点</span>
-          <span className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-rose-500" />卖点</span>
-          <span>{formatNumber(markers.length)} 个标记</span>
-          {zoomWindow ? <span>{formatNumber(visibleCandles.length)} 根可见</span> : null}
-          {zoomWindow ? (
-            <button type="button" data-testid="quant-backtest-kline-reset" onClick={resetChartInteraction} className="inline-flex h-7 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-600 shadow-sm hover:bg-slate-50">
-              <RotateCcw className="h-3.5 w-3.5" />
-              复位
-            </button>
-          ) : null}
-        </div>
-      </div>
-      <div
-        ref={chartShellRef}
-        className="relative h-72 w-full touch-none select-none overflow-hidden rounded-lg bg-slate-50 outline-none [-webkit-tap-highlight-color:transparent]"
-        tabIndex={0}
-        onPointerMove={handlePointerMoveZoom}
-        onPointerLeave={handlePointerLeave}
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerEnd}
-        onPointerCancel={handlePointerEnd}
-        onWheel={handleWheelZoom}
-        onDoubleClick={resetChartInteraction}
-        onClick={handleChartClick}
-      >
-        {activePoint ? (
-          <div data-testid="quant-backtest-kline-selected" className="pointer-events-none absolute left-3 top-3 z-10 max-w-[calc(100%-1.5rem)] rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-600 shadow-lg backdrop-blur">
-            <div className="flex flex-wrap items-center gap-2 text-slate-900">
-              <span>{formatKlineTick(activePoint.t)}</span>
-              {lockedPoint ? <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">已选中</span> : null}
-            </div>
-            <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 tabular-nums sm:grid-cols-4">
-              <span>O {formatPrice(activePoint.o)}</span>
-              <span>H {formatPrice(activePoint.h)}</span>
-              <span>L {formatPrice(activePoint.l)}</span>
-              <span>C {formatPrice(activePoint.c)}</span>
-            </div>
-            {activeMarkers.length ? (
-              <div className="mt-1 space-y-0.5">
-                {activeMarkers.map((item, index) => (
-                  <div key={`${item.ts}-${item.side}-${index}`} className={item.side === 'sell' ? 'text-rose-600' : item.side === 'buy' ? 'text-emerald-600' : 'text-amber-600'}>
-                    {item.label || (item.side === 'sell' ? '卖点' : item.side === 'buy' ? '买点' : '信号')} · {formatPercent(item.gapPct, 2)}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        <svg role="img" aria-label="回测 K 线图" data-testid="quant-backtest-kline-chart" viewBox={`0 0 ${width} ${height}`} className="h-full w-full">
-          <rect x="0" y="0" width={width} height={height} fill="#f8fafc" />
-          {gridTicks.map((tick) => {
-            const y = yForPrice(tick);
-            return (
-              <g key={tick}>
-                <line x1={margin.left} x2={width - margin.right} y1={y} y2={y} stroke="#e2e8f0" strokeDasharray="4 4" />
-                <text x={width - margin.right + 8} y={y + 4} fill="#64748b" fontSize="11">{formatPrice(tick)}</text>
-              </g>
-            );
-          })}
-          {xLabelIndexes.map((index) => (
-            <text key={index} x={xForIndex(index)} y={height - 10} textAnchor={index === 0 ? 'start' : index === visibleCandles.length - 1 ? 'end' : 'middle'} fill="#64748b" fontSize="11">
-              {formatKlineTick(visibleCandles[index]?.t)}
-            </text>
-          ))}
-          {visibleCandles.map((item, index) => {
-            const x = xForIndex(index);
-            const openY = yForPrice(item.o);
-            const closeY = yForPrice(item.c);
-            const highY = yForPrice(item.h);
-            const lowY = yForPrice(item.l);
-            const up = item.c >= item.o;
-            const color = up ? '#10b981' : '#f43f5e';
-            const bodyTop = Math.min(openY, closeY);
-            const bodyHeight = Math.max(1, Math.abs(openY - closeY));
-            return (
-              <g key={`${item.t}-${index}`}>
-                <title>{`${formatKlineTick(item.t)} O:${formatPrice(item.o)} H:${formatPrice(item.h)} L:${formatPrice(item.l)} C:${formatPrice(item.c)}`}</title>
-                <line x1={x} x2={x} y1={highY} y2={lowY} stroke={color} strokeWidth="1.4" />
-                <rect x={x - bodyWidth / 2} y={bodyTop} width={bodyWidth} height={bodyHeight} fill={up ? '#d1fae5' : '#ffe4e6'} stroke={color} strokeWidth="1.2" rx="0.8" />
-              </g>
-            );
-          })}
-          {visibleMarkers.map((item, index) => {
-            const candleIndex = tsToIndex.get(item.ts);
-            if (!Number.isFinite(candleIndex)) return null;
-            const x = xForIndex(candleIndex);
-            const y = yForPrice(item.price);
-            const side = item.side === 'sell' ? 'sell' : item.side === 'buy' ? 'buy' : 'signal';
-            const fill = side === 'sell' ? '#e11d48' : side === 'buy' ? '#059669' : '#d97706';
-            const points = side === 'sell'
-              ? `${x - 6},${y - 10} ${x + 6},${y - 10} ${x},${y}`
-              : side === 'buy'
-                ? `${x - 6},${y + 10} ${x + 6},${y + 10} ${x},${y}`
-                : `${x},${y - 7} ${x + 7},${y} ${x},${y + 7} ${x - 7},${y}`;
-            return (
-              <g key={`${item.ts}-${item.side}-${index}`}>
-                <title>{`${item.label} · ${formatKlineTick(item.ts)} · gap ${formatPercent(item.gapPct, 2)}`}</title>
-                <polygon points={points} fill={fill} stroke="#fff" strokeWidth="1.5" />
-              </g>
-            );
-          })}
-          {Number.isFinite(activeIndex) ? (
-            <g>
-              <line x1={xForIndex(activeIndex)} x2={xForIndex(activeIndex)} y1={margin.top} y2={height - margin.bottom} stroke="#0f172a" strokeOpacity="0.28" strokeDasharray="3 3" />
-              <circle cx={xForIndex(activeIndex)} cy={yForPrice(activePoint.c)} r="3.5" fill="#0f172a" stroke="#fff" strokeWidth="1.5" />
-            </g>
-          ) : null}
-        </svg>
-      </div>
-      {quality?.reason ? (
-        <div className={`mt-3 text-sm font-semibold ${qualityTone}`}>{quality.reason}</div>
-      ) : null}
-    </div>
-  );
-}
-
-
 const inputClass = 'h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100';
 const textAreaClass = 'min-h-24 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100';
 
@@ -495,12 +143,9 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
   const [lowText, setLowText] = useState('');
   const [cashAmount, setCashAmount] = useState('10000');
   const [cashNote, setCashNote] = useState('');
-  const [backtestTf, setBacktestTf] = useState('5m');
-  const [useV2Backtest, setUseV2Backtest] = useState(true); // V2回测开关，默认启用
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
-  const [backtesting, setBacktesting] = useState(false);
   const [adjustingCash, setAdjustingCash] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [error, setError] = useState('');
@@ -720,86 +365,6 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
     await refresh({ silent: true, strategyId });
   }
 
-  async function handleRunBacktest() {
-    setBacktesting(true);
-    setError('');
-    try {
-      // 先保存当前配置到后端，确保回测使用最新的H/L codes
-      const nextConfig = normalizeQuantPremiumConfigShape({
-        ...config,
-        highCodes: parseQuantPremiumCodes(highText),
-        lowCodes: parseQuantPremiumCodes(lowText)
-      });
-
-      if (!nextConfig.highCodes.length || !nextConfig.lowCodes.length) {
-        setError('H 和 L 至少各设置一只 ETF。');
-        setBacktesting(false);
-        return;
-      }
-
-      // 保存配置
-      const saveResult = await saveQuantPremiumStrategyToWorker(nextConfig);
-      const savedStrategy = saveResult.strategy;
-      applyConfig(savedStrategy);
-
-      // 用保存后的策略ID运行回测
-      const result = await runQuantPremiumBacktestInWorker(savedStrategy.id, {
-        timeframe: backtestTf,
-        useV2: useV2Backtest  // 传递V2标志
-      });
-      setBacktest(result);
-      if (result?.status) {
-        applyConfig({
-          ...config,
-          backtestGate: {
-            ...(config.backtestGate || {}),
-            status: result.status,
-            latestRunId: result.runId || config.backtestGate?.latestRunId || '',
-            summary: result.summary || config.backtestGate?.summary || null,
-            updatedAt: result.finishedAt || new Date().toISOString()
-          }
-        });
-      }
-      await refresh({ silent: true, strategyId: config.id });
-      showToast({ title: result?.status === 'passed' ? '回测有效' : '回测未通过数据门槛', tone: result?.status === 'passed' ? 'emerald' : 'amber' });
-    } catch (backtestError) {
-      setError(backtestError instanceof Error ? backtestError.message : '回测失败');
-      showToast({ title: '回测失败', description: backtestError instanceof Error ? backtestError.message : '', tone: 'amber' });
-    } finally {
-      setBacktesting(false);
-    }
-  }
-
-  async function handleLiveSignalToggle(enabled) {
-    setSaving(true);
-    setError('');
-    try {
-      const effectiveBacktestGate = config.backtestGate?.status === 'passed' || backtest?.status !== 'passed'
-        ? config.backtestGate
-        : {
-          ...(config.backtestGate || {}),
-          status: 'passed',
-          latestRunId: backtest.runId || config.backtestGate?.latestRunId || '',
-          summary: backtest.summary || config.backtestGate?.summary || null,
-          updatedAt: backtest.finishedAt || new Date().toISOString()
-        };
-      const result = await saveQuantPremiumStrategyToWorker({
-        ...config,
-        backtestGate: effectiveBacktestGate,
-        liveSignalEnabled: enabled,
-        approveLiveSignal: enabled
-      });
-      setStrategies(result.strategies);
-      applyConfig(result.strategy);
-      showToast({ title: enabled ? '实盘信号已确认' : '实盘信号已关闭', tone: 'emerald' });
-    } catch (liveError) {
-      setError(liveError instanceof Error ? liveError.message : '实盘信号更新失败');
-      showToast({ title: '实盘信号更新失败', description: liveError instanceof Error ? liveError.message : '', tone: 'amber' });
-    } finally {
-      setSaving(false);
-    }
-  }
-
   const positions = useMemo(() => normalizePositionList(paperState), [paperState]);
   const orders = useMemo(() => normalizeOrderList(paperState), [paperState]);
   const cashEvents = useMemo(() => normalizeCashEvents(paperState), [paperState]);
@@ -809,14 +374,6 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
   const visibleBacktestStatus = backtest?.status || backtestGate.status;
   const backtestPassed = visibleBacktestStatus === 'passed';
   const backtestApproved = backtestPassed && Boolean(backtestGate.approvedAt) && config.liveSignalEnabled;
-  const backtestSummary = backtest?.summary || backtestGate.summary || {};
-  const backtestQuality = backtest?.quality || null;
-  const missingKlineCodes = Array.isArray(backtestQuality?.missingKlineCodes) ? backtestQuality.missingKlineCodes : [];
-  const totalReturnPct = Number(backtestSummary.totalReturnPct);
-  const totalReturnTone = Number.isFinite(totalReturnPct) && totalReturnPct < 0 ? 'rose' : Number.isFinite(totalReturnPct) && totalReturnPct > 0 ? 'emerald' : 'slate';
-  const maxDrawdownPct = Number(backtestSummary.maxDrawdownPct);
-  const drawdownTone = Number.isFinite(maxDrawdownPct) && maxDrawdownPct < 0 ? 'rose' : 'slate';
-  const backtestRange = backtestSummary.from || backtestSummary.to ? `${backtestSummary.from || '--'} 至 ${backtestSummary.to || '--'}` : '--';
   const metrics = [
     { label: 'Worker 频率', value: '1 分钟', note: '交易时段 cron', Icon: Clock3 },
     { label: '策略数量', value: formatNumber(strategies.length || 1), note: config.enabled ? '当前策略已启用' : '当前策略未启用', Icon: Bot },
@@ -990,83 +547,6 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
           </Card>
 
           <Card className="space-y-4 p-5 sm:p-6">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="text-xs font-bold text-slate-400">BACKTEST</div>
-                <h2 className="mt-1 text-lg font-bold text-slate-900">历史回测</h2>
-              </div>
-              <StatusPill tone={visibleBacktestStatus === 'passed' ? 'emerald' : visibleBacktestStatus === 'failed' ? 'rose' : visibleBacktestStatus === 'stale' ? 'amber' : 'slate'}>
-                {visibleBacktestStatus === 'passed' ? '回测有效' : visibleBacktestStatus === 'failed' ? '回测无效' : visibleBacktestStatus === 'stale' ? '需重新回测' : '未回测'}
-              </StatusPill>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-              <FormLabel label="K 线粒度">
-                <select className={inputClass} value={backtestTf} onChange={(event) => setBacktestTf(event.target.value)}>
-                  <option value="5m">5m 默认（约 3-4 周）</option>
-                  <option value="1m">1m（约 3-4 个交易日）</option>
-                  <option value="15m">15m（约 2-3 个月）</option>
-                  <option value="30m">30m</option>
-                  <option value="60m">60m</option>
-                  <option value="1d">1d（日线长期）</option>
-                </select>
-              </FormLabel>
-              <button type="button" className={secondaryButtonClass} onClick={handleRunBacktest} disabled={backtesting || saving}>
-                <BarChart3 className="h-4 w-4" />
-                {backtesting ? '回测中' : '运行回测'}
-              </button>
-            </div>
-            <div className="flex items-center gap-4 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3">
-              <label className="inline-flex items-center gap-2 text-sm font-semibold text-indigo-900">
-                <input
-                  type="checkbox"
-                  checked={useV2Backtest}
-                  onChange={(event) => setUseV2Backtest(event.target.checked)}
-                  className="h-4 w-4 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
-                />
-                使用 V2 回测引擎（修复版）
-              </label>
-              <div className="text-xs text-indigo-700">
-                V2版本：持仓追踪 + 真实交易模拟 + 准确胜率 + 夏普比率
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              <BacktestMetric label="收益率" value={formatPercent(backtestSummary.totalReturnPct, 2)} tone={totalReturnTone} />
-              <BacktestMetric label="累计收益" value={formatMoney(backtestSummary.totalProfit)} tone={totalReturnTone} />
-              <BacktestMetric label="最大回撤" value={formatPercent(backtestSummary.maxDrawdownPct, 2)} tone={drawdownTone} />
-              {useV2Backtest && backtestSummary.winRatePct !== undefined ? (
-                <BacktestMetric label="胜率 (V2)" value={formatPercent(backtestSummary.winRatePct, 0)} />
-              ) : null}
-              {useV2Backtest && backtestSummary.sharpeRatio !== undefined ? (
-                <BacktestMetric label="夏普比率 (V2)" value={formatNumber(backtestSummary.sharpeRatio, 2)} />
-              ) : null}
-              <BacktestMetric label="样本" value={formatNumber(backtestSummary.sampleCount ?? 0)} />
-              <BacktestMetric label="信号" value={formatNumber(backtestSummary.signalCount ?? backtestSummary.trades ?? 0)} />
-              <BacktestMetric label="最终权益" value={formatMoney(backtestSummary.finalEquity)} />
-              <BacktestMetric label="价格覆盖" value={formatPercent(backtestSummary.priceCoveragePct, 1)} />
-              <BacktestMetric label="NAV 覆盖" value={formatPercent(backtestSummary.navCoveragePct, 1)} />
-              <BacktestMetric label="数据覆盖" value={formatPercent(backtestSummary.dataCoveragePct, 1)} />
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
-              <span className="font-semibold text-slate-800">回测区间：</span>{backtestRange}
-            </div>
-            <QuantBacktestKlineChart chart={backtest?.chart} quality={backtestQuality} />
-            {missingKlineCodes.length ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-700">
-                缺失 K 线代码：{missingKlineCodes.join('、')}。可换更高粒度重试，或先从策略中移除缺数据标的。
-              </div>
-            ) : null}
-            <div className="flex flex-wrap gap-2">
-              <button type="button" className={primaryButtonClass} onClick={() => handleLiveSignalToggle(true)} disabled={saving || !backtestPassed || backtestApproved}>
-                <ShieldCheck className="h-4 w-4" />
-                {backtestApproved ? '实盘信号已确认' : '确认用于实盘信号'}
-              </button>
-              <button type="button" className={subtleButtonClass} onClick={() => handleLiveSignalToggle(false)} disabled={saving || !config.liveSignalEnabled}>
-                关闭实盘信号
-              </button>
-            </div>
-          </Card>
-
-          <Card className="space-y-4 p-5 sm:p-6 xl:col-span-2">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="text-xs font-bold text-slate-400">WORKER SNAPSHOT</div>

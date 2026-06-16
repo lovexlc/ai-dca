@@ -215,6 +215,7 @@ test('quant research workspace renders the Worker premium paper trading panel', 
   await expect(page.getByRole('heading', { name: 'Worker 溢价差模拟盘' })).toBeVisible();
   await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('量化研究');
   await expect(page.locator('nav a', { hasText: '策略' })).toBeVisible();
+  await expect(page.locator('nav a', { hasText: '回测' })).toBeVisible();
   await expect(page.locator('nav a', { hasText: '资金' })).toBeVisible();
   await expect(page.locator('nav a', { hasText: '成交' })).toBeVisible();
   await expect(page.locator('nav a', { hasText: '量化研究' })).toHaveCount(0);
@@ -234,36 +235,17 @@ test('quant research workspace renders the Worker premium paper trading panel', 
   await expect(page.getByLabel('H 高溢价 ETF')).toHaveValue('159513');
   await expect(page.getByLabel('L 低溢价 ETF')).toHaveValue('513100 159501');
   await expect(page.getByText('159513(H) - 513100(L) 溢价差 +3.40% > 3%')).toBeVisible();
-  await expect(page.getByRole('button', { name: '运行回测' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '历史回测' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '运行回测' })).toHaveCount(0);
+
+  await page.locator('nav a', { hasText: '回测' }).click();
+  await expect(page.getByRole('heading', { name: '历史回测' })).toBeVisible();
   await page.getByRole('button', { name: '运行回测' }).click();
   await expect(page.getByText('128')).toBeVisible();
   await expect(page.getByText('1.20%')).toBeVisible();
   await expect(page.getByText('-0.35%')).toBeVisible();
   await expect(page.getByText('¥101,200.00')).toBeVisible();
   await expect(page.getByText('2026-05-20 至 2026-06-12')).toBeVisible();
-  await expect(page.getByTestId('quant-backtest-kline-chart')).toBeVisible();
-  await expect(page.getByText('159513 · 5m · 24 根')).toBeVisible();
-  await expect(page.getByText('买点')).toBeVisible();
-  await expect(page.getByText('卖点')).toBeVisible();
-  const backtestChart = page.getByTestId('quant-backtest-kline-chart');
-  await backtestChart.click({ position: { x: 320, y: 130 } });
-  await expect(page.getByTestId('quant-backtest-kline-selected')).toBeVisible();
-  await expect(page.getByTestId('quant-backtest-kline-selected')).toContainText('已选中');
-  await backtestChart.evaluate((node) => {
-    const rect = node.getBoundingClientRect();
-    node.dispatchEvent(new WheelEvent('wheel', {
-      bubbles: true,
-      cancelable: true,
-      clientX: rect.left + rect.width / 2,
-      clientY: rect.top + rect.height / 2,
-      ctrlKey: true,
-      deltaY: -500
-    }));
-  });
-  await expect(page.getByTestId('quant-backtest-kline-reset')).toBeVisible();
-  await page.getByTestId('quant-backtest-kline-reset').click();
-  await expect(page.getByTestId('quant-backtest-kline-reset')).toHaveCount(0);
-  await expect(page.getByText(/分钟级历史 K 线由 markets Worker 提供/)).toHaveCount(0);
   await expect(page.getByRole('button', { name: '确认用于实盘信号' })).toBeEnabled();
   await page.getByRole('button', { name: '确认用于实盘信号' }).click();
   await expect(page.getByText('实盘信号已确认').first()).toBeVisible();

@@ -7,6 +7,7 @@ import {
   RefreshCw,
   Save,
   Settings,
+  ShieldCheck,
   TrendingUp,
   Trophy,
   Zap
@@ -39,6 +40,13 @@ const BACKTEST_TIMEFRAME_OPTIONS = [
   { value: '60m', label: '60m' },
   { value: '1d', label: '1d（日线长期）' }
 ];
+
+const QUANT_V2_TABS = new Set(['config', 'backtest', 'live', 'history']);
+
+function normalizeQuantV2Tab(value = '') {
+  const tab = String(value || '').trim();
+  return QUANT_V2_TABS.has(tab) ? tab : 'config';
+}
 
 // 格式化辅助函数
 function formatMoney(value) {
@@ -93,12 +101,27 @@ function resolveTradeSettlementValue(trade = {}) {
   return trade.netProceeds ?? trade.amount;
 }
 
-export default function QuantTradingExperienceV2() {
+function backtestStatusLabel(status = '') {
+  if (status === 'passed') return '回测有效';
+  if (status === 'failed') return '回测无效';
+  if (status === 'stale') return '需重新回测';
+  return '未回测';
+}
+
+function backtestStatusClass(status = '') {
+  if (status === 'passed') return 'bg-emerald-50 text-emerald-700';
+  if (status === 'failed') return 'bg-rose-50 text-rose-700';
+  if (status === 'stale') return 'bg-amber-50 text-amber-700';
+  return 'bg-slate-100 text-slate-600';
+}
+
+export default function QuantTradingExperienceV2({ initialTab = 'config' } = {}) {
   // 状态管理
   const [strategies, setStrategies] = useState([]);
   const [activeStrategyId, setActiveStrategyId] = useState('');
-  const [activeTab, setActiveTab] = useState('config');
+  const [activeTab, setActiveTab] = useState(() => normalizeQuantV2Tab(initialTab));
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [backtesting, setBacktesting] = useState(false);
 
   // 策略配置
@@ -118,6 +141,10 @@ export default function QuantTradingExperienceV2() {
   const [snapshot, setSnapshot] = useState(null);
   const [liveSignals, setLiveSignals] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    setActiveTab(normalizeQuantV2Tab(initialTab));
+  }, [initialTab]);
 
   // 加载策略列表
   useEffect(() => {
@@ -160,8 +187,13 @@ export default function QuantTradingExperienceV2() {
 
     // 加载回测结果
     try {
-      const { result } = await loadQuantPremiumBacktestLatestFromWorker(strategyId);
+      const { result, gate } = await loadQuantPremiumBacktestLatestFromWorker(strategyId);
       setBacktest(result);
+      if (gate) {
+        setStrategies((current) => current.map((item) => item.id === strategyId
+          ? normalizeQuantPremiumConfigShape({ ...item, backtestGate: gate })
+          : item));
+      }
       if (result?.timeframe) {
         setBacktestTf(result.timeframe);
       }
@@ -219,6 +251,47 @@ export default function QuantTradingExperienceV2() {
     }
   }
 
+  function buildCurrentStrategyConfig() {
+    const existing = strategies.find((item) => item.id === activeStrategyId);
+    return normalizeQuantPremiumConfigShape({
+      ...existing,
+      id: existing?.id || activeStrategyId || 'default',
+      enabled: existing?.enabled ?? true,
+      highCodes: Array.isArray(highCodes) ? highCodes : [],
+      lowCodes: Array.isArray(lowCodes) ? lowCodes : [],
+      intraSellLowerPct: readPercentInput(ruleA, 1),
+      intraBuyOtherPct: readPercentInput(ruleB, 3)
+    });
+  }
+
+  function applySavedStrategy(result) {
+    setStrategies(result.strategies);
+    setActiveStrategyId(result.strategy.id);
+    setHighCodes(result.strategy.highCodes || []);
+    setLowCodes(result.strategy.lowCodes || []);
+    setRuleA(result.strategy.intraSellLowerPct || 1);
+    setRuleB(result.strategy.intraBuyOtherPct || 3);
+  }
+
+  async function handleSaveStrategy() {
+    const config = buildCurrentStrategyConfig();
+    if (!config.highCodes.length || !config.lowCodes.length) {
+      showToast({ title: 'H 和 L 至少各设置一只 ETF', tone: 'amber' });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const result = await saveQuantPremiumStrategyToWorker(config);
+      applySavedStrategy(result);
+      showToast({ title: '策略已保存', tone: 'emerald' });
+    } catch (error) {
+      showToast({ title: '保存失败', description: error.message, tone: 'rose' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleSaveAndBacktest() {
     // 确保从状态读取最新值
     const currentHighCodes = Array.isArray(highCodes) ? highCodes : [];
@@ -241,26 +314,12 @@ export default function QuantTradingExperienceV2() {
     setBacktesting(true);
     try {
       // 保存配置 - 使用当前值（允许负数）
-      const existing = strategies.find((item) => item.id === activeStrategyId);
-      const config = normalizeQuantPremiumConfigShape({
-        ...existing,
-        id: existing?.id || activeStrategyId || 'default',
-        enabled: existing?.enabled ?? true,
-        highCodes: currentHighCodes,
-        lowCodes: currentLowCodes,
-        intraSellLowerPct: currentRuleA,
-        intraBuyOtherPct: currentRuleB
-      });
+      const config = buildCurrentStrategyConfig();
 
       console.log('保存配置:', config);
 
       const saveResult = await saveQuantPremiumStrategyToWorker(config);
-      setStrategies(saveResult.strategies);
-      setActiveStrategyId(saveResult.strategy.id);
-      setHighCodes(saveResult.strategy.highCodes || []);
-      setLowCodes(saveResult.strategy.lowCodes || []);
-      setRuleA(saveResult.strategy.intraSellLowerPct || 1);
-      setRuleB(saveResult.strategy.intraBuyOtherPct || 3);
+      applySavedStrategy(saveResult);
 
       // 运行回测
       const result = await runQuantPremiumBacktestInWorker(saveResult.strategy.id, {
@@ -272,8 +331,22 @@ export default function QuantTradingExperienceV2() {
       console.log('回测结果:', result);
 
       setBacktest(result);
+      if (result?.status) {
+        const nextGate = {
+          ...(saveResult.strategy.backtestGate || {}),
+          status: result.status,
+          latestRunId: result.runId || saveResult.strategy.backtestGate?.latestRunId || '',
+          approvedAt: '',
+          approvedFingerprint: '',
+          summary: result.summary || saveResult.strategy.backtestGate?.summary || null,
+          updatedAt: result.finishedAt || new Date().toISOString()
+        };
+        setStrategies((current) => current.map((item) => item.id === saveResult.strategy.id
+          ? normalizeQuantPremiumConfigShape({ ...item, backtestGate: nextGate })
+          : item));
+      }
       setActiveTab('backtest');
-      showToast({ title: '回测完成', tone: 'emerald' });
+      showToast({ title: result?.status === 'passed' ? '回测有效' : '回测完成', tone: result?.status === 'passed' ? 'emerald' : 'amber' });
     } catch (error) {
       console.error('回测失败:', error);
       showToast({ title: '回测失败', description: error.message, tone: 'rose' });
@@ -282,12 +355,50 @@ export default function QuantTradingExperienceV2() {
     }
   }
 
+  async function handleLiveSignalToggle(enabled) {
+    const targetStrategy = strategies.find((item) => item.id === activeStrategyId);
+    if (!targetStrategy) return;
+    const targetGate = targetStrategy.backtestGate || {};
+    setSaving(true);
+    try {
+      const effectiveBacktestGate = targetGate?.status === 'passed' || backtest?.status !== 'passed'
+        ? targetGate
+        : {
+          ...(targetGate || {}),
+          status: 'passed',
+          latestRunId: backtest.runId || targetGate?.latestRunId || '',
+          summary: backtest.summary || targetGate?.summary || null,
+          updatedAt: backtest.finishedAt || new Date().toISOString()
+        };
+      const result = await saveQuantPremiumStrategyToWorker({
+        ...targetStrategy,
+        backtestGate: effectiveBacktestGate,
+        liveSignalEnabled: enabled,
+        approveLiveSignal: enabled
+      });
+      applySavedStrategy(result);
+      showToast({ title: enabled ? '实盘信号已确认' : '实盘信号已关闭', tone: 'emerald' });
+    } catch (error) {
+      showToast({ title: '实盘信号更新失败', description: error.message, tone: 'rose' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   // 计算核心指标
+  const currentStrategy = strategies.find((item) => item.id === activeStrategyId) || null;
   const summary = backtest?.summary || {};
   const totalReturnPct = summary.totalReturnPct || 0;
   const winRatePct = summary.winRatePct || 0;
   const sharpeRatio = summary.sharpeRatio || 0;
   const maxDrawdownPct = summary.maxDrawdownPct || 0;
+  const backtestGate = currentStrategy?.backtestGate || {};
+  const visibleBacktestStatus = backtest?.status || backtestGate.status;
+  const backtestPassed = visibleBacktestStatus === 'passed';
+  const backtestApproved = backtestPassed && Boolean(backtestGate.approvedAt) && currentStrategy?.liveSignalEnabled;
+  const backtestQuality = backtest?.quality || null;
+  const missingKlineCodes = Array.isArray(backtestQuality?.missingKlineCodes) ? backtestQuality.missingKlineCodes : [];
+  const backtestRange = summary.from || summary.to ? `${summary.from || '--'} 至 ${summary.to || '--'}` : '--';
 
   const returnTone = totalReturnPct > 0 ? 'positive' : totalReturnPct < 0 ? 'negative' : 'neutral';
   const winRateTone = winRatePct >= 60 ? 'positive' : winRatePct >= 50 ? 'neutral' : 'negative';
@@ -677,7 +788,7 @@ export default function QuantTradingExperienceV2() {
                 ) : (
                   <>
                     <Play className="h-5 w-5" />
-                    运行回测
+                    保存并运行回测
                   </>
                 )}
               </button>
@@ -688,6 +799,16 @@ export default function QuantTradingExperienceV2() {
         {activeTab === 'backtest' && (
           <div className="mx-auto max-w-7xl space-y-4 sm:space-y-8">
             <Card className="p-4 sm:p-6">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="text-xs font-bold text-slate-400">BACKTEST</div>
+                  <h2 className="mt-1 text-base sm:text-lg font-bold text-slate-900">历史回测</h2>
+                  <p className="mt-1 text-xs sm:text-sm text-slate-600">使用 V2 引擎运行回测，并在通过后确认是否用于实盘信号。</p>
+                </div>
+                <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-xs font-bold ${backtestStatusClass(visibleBacktestStatus)}`}>
+                  {backtestStatusLabel(visibleBacktestStatus)}
+                </span>
+              </div>
               <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
                 <div>
                   <label htmlFor="quant-v2-backtest-timeframe" className="block text-sm font-semibold text-slate-700 mb-2">
@@ -723,9 +844,46 @@ export default function QuantTradingExperienceV2() {
                   )}
                 </button>
               </div>
+              <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+                <button
+                  type="button"
+                  onClick={() => handleLiveSignalToggle(true)}
+                  disabled={saving || !backtestPassed || backtestApproved}
+                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 sm:px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  {backtestApproved ? '实盘信号已确认' : '确认用于实盘信号'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleLiveSignalToggle(false)}
+                  disabled={saving || !currentStrategy?.liveSignalEnabled}
+                  className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-300 bg-white px-3 sm:px-4 py-2.5 text-sm font-semibold text-slate-900 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  关闭实盘信号
+                </button>
+              </div>
             </Card>
             {backtest ? (
               <>
+                <Card className="p-4 sm:p-6">
+                  <div className="grid gap-3 text-sm sm:grid-cols-2">
+                    <div className="rounded-lg bg-slate-50 px-4 py-3">
+                      <div className="text-xs font-bold text-slate-400">回测区间</div>
+                      <div className="mt-1 font-semibold text-slate-900">{backtestRange}</div>
+                    </div>
+                    <div className="rounded-lg bg-slate-50 px-4 py-3">
+                      <div className="text-xs font-bold text-slate-400">数据覆盖</div>
+                      <div className="mt-1 font-semibold text-slate-900">{formatPercent(summary.dataCoveragePct, 1)}</div>
+                    </div>
+                  </div>
+                  {missingKlineCodes.length ? (
+                    <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-700">
+                      缺失 K 线代码：{missingKlineCodes.join('、')}。可换更高粒度重试，或先从策略中移除缺数据标的。
+                    </div>
+                  ) : null}
+                </Card>
+
                 <InteractiveChartContainer
                   views={chartViews}
                   activeView={chartView}
