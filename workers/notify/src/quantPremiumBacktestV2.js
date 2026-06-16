@@ -87,7 +87,7 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
     dataIssues = {},
     initialEquity = 100000,
     orderCash = 16000,
-    feeRate = 0.0005,  // 0.05% = 万5
+    feeRate = 0.00005,  // 0.005% = 万0.5
     minFee = 0,
     tickSize = 0.001,
     slippageTicks = 1,
