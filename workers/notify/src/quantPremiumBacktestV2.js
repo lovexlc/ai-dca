@@ -486,10 +486,25 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
     const firstBar = anchorCandles[0];
     const lastBar = anchorCandles[anchorCandles.length - 1];
 
+    console.log('[持有收益] 回测期间:', {
+      from: firstBar.date,
+      to: lastBar.date,
+      firstTs: firstBar.t,
+      lastTs: lastBar.t
+    });
+
     // 计算高溢价基金的首尾价格
     const highCode = highCodes[0];
     const highFirstPrice = closeByCode[highCode]?.get(firstBar.t)?.close;
     const highLastPrice = closeByCode[highCode]?.get(lastBar.t)?.close;
+
+    console.log('[持有收益] 高溢价基金:', {
+      code: highCode,
+      firstPrice: highFirstPrice,
+      lastPrice: highLastPrice,
+      hasData: !!closeByCode[highCode],
+      dataPoints: closeByCode[highCode]?.size || 0
+    });
 
     if (highFirstPrice && highLastPrice && highFirstPrice > 0) {
       holdHighReturnPct = roundTo(((highLastPrice - highFirstPrice) / highFirstPrice) * 100, 4);
@@ -499,6 +514,14 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
     const lowCode = lowCodes[0];
     const lowFirstPrice = closeByCode[lowCode]?.get(firstBar.t)?.close;
     const lowLastPrice = closeByCode[lowCode]?.get(lastBar.t)?.close;
+
+    console.log('[持有收益] 低溢价基金:', {
+      code: lowCode,
+      firstPrice: lowFirstPrice,
+      lastPrice: lowLastPrice,
+      hasData: !!closeByCode[lowCode],
+      dataPoints: closeByCode[lowCode]?.size || 0
+    });
 
     if (lowFirstPrice && lowLastPrice && lowFirstPrice > 0) {
       holdLowReturnPct = roundTo(((lowLastPrice - lowFirstPrice) / lowFirstPrice) * 100, 4);
