@@ -198,16 +198,21 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
   }
 
   // 执行买入
-  function executeBuy(code, bar, targetCash = cash) {
+  function executeBuy(code, bar, targetCash = cash, { roundLotMode = 'floor' } = {}) {
     const buyPrice = bar.close + slippageTicks * tickSize; // 滑点
-    const spendLimit = Math.min(cash, Math.max(0, clampNumber(targetCash, cash)));
-    let maxShares = Math.floor(spendLimit / buyPrice / lotSize) * lotSize;
+    const targetSpend = Math.max(0, clampNumber(targetCash, cash));
+    const boundedSpend = roundLotMode === 'ceil' ? targetSpend : Math.min(cash, targetSpend);
+    const rawLots = boundedSpend / buyPrice / lotSize;
+    let maxShares = (roundLotMode === 'ceil' ? Math.ceil(rawLots) : Math.floor(rawLots)) * lotSize;
 
     while (maxShares > 0) {
       const buyAmount = roundTo(maxShares * buyPrice, 2);
       const fee = calcFee(buyAmount);
       const totalCost = roundTo(buyAmount + fee, 2);
-      if (totalCost <= spendLimit && totalCost <= cash) {
+      const canSpend = roundLotMode === 'ceil'
+        ? totalCost >= targetSpend || maxShares === lotSize
+        : totalCost <= boundedSpend && totalCost <= cash;
+      if (canSpend) {
         cash = roundTo(cash - totalCost, 2);
         positions[code] = {
           shares: maxShares,
@@ -222,10 +227,11 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
           amount: buyAmount,
           fee,
           totalCost,
-          costPrice: positions[code].costPrice
+          costPrice: positions[code].costPrice,
+          roundLotMode
         };
       }
-      maxShares -= lotSize;
+      maxShares += roundLotMode === 'ceil' ? lotSize : -lotSize;
     }
 
     return null;
@@ -401,9 +407,9 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
       if (sellTrade) {
         trades.push({ ...sellTrade, ts: anchor.t, date: anchor.date });
 
-        // V2 回测模拟的是满仓轮动：卖出后立即用可用现金买入对侧，
-        // 仅因手续费和 100 股一手约束保留少量现金零头。
-        const buyTrade = executeBuy(to.code, toBar, cash);
+        // V2 回测模拟的是满仓轮动：卖出后立即买入对侧。
+        // 买入受 100 股一手约束时向上补到下一手，允许出现少量负现金。
+        const buyTrade = executeBuy(to.code, toBar, cash, { roundLotMode: 'ceil' });
         if (buyTrade) {
           trades.push({ ...buyTrade, ts: anchor.t, date: anchor.date });
           currentCode = to.code;

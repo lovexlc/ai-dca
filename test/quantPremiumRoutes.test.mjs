@@ -9,6 +9,7 @@ import {
   normalizeQuantPremiumStrategy,
   runQuantPremiumBacktest
 } from '../workers/notify/src/quantPremiumRoutes.js';
+import { runQuantPremiumBacktestV2 } from '../workers/notify/src/quantPremiumBacktestV2.js';
 import { quantPremiumPaperStateKey } from '../workers/notify/src/premiumPaperTrading.js';
 import { getRunnableSwitchRules } from '../workers/notify/src/switchStrategy.js';
 
@@ -255,6 +256,55 @@ test('quant premium V2 backtest reinvests full proceeds instead of idling orderC
   assert.ok(investedRows.length > 0);
   const maxCashRatio = Math.max(...investedRows.map((row) => row.cash / row.equity));
   assert.ok(maxCashRatio < 0.01, `expected cash drag below 1%, got ${(maxCashRatio * 100).toFixed(2)}%`);
+});
+
+test('quant premium V2 switch buy rounds up to the next board lot after selling', () => {
+  const start = Math.floor(Date.UTC(2026, 0, 2) / 1000);
+  const hCandles = Array.from({ length: 12 }, (_, index) => ({
+    t: start + index * 86400,
+    c: 1.9
+  }));
+  const lCandles = Array.from({ length: 12 }, (_, index) => ({
+    t: start + index * 86400,
+    c: 1.901
+  }));
+
+  const result = runQuantPremiumBacktestV2({
+    id: 'ceil-lot-v2',
+    enabled: true,
+    highCodes: ['513100'],
+    lowCodes: ['159501'],
+    activeSide: 'all',
+    intraSellLowerPct: 1,
+    intraBuyOtherPct: 3
+  }, {
+    timeframe: '1d',
+    initialEquity: 19000,
+    feeRate: 0,
+    minFee: 0,
+    tickSize: 0.001,
+    slippageTicks: 0,
+    lotSize: 100,
+    historyByCode: {
+      '513100': hCandles,
+      '159501': lCandles
+    },
+    navHistoryByCode: {
+      '513100': [{ date: '2026-01-02', nav: 1 }],
+      '159501': [{ date: '2026-01-02', nav: 1.901 }]
+    }
+  });
+
+  assert.equal(result.status, 'passed');
+  const switchBuy = result.trades.find((trade) => trade.type === 'buy' && trade.code === '159501');
+  assert.ok(switchBuy);
+  assert.equal(switchBuy.shares, 10000);
+  assert.equal(switchBuy.totalCost, 19010);
+  assert.equal(switchBuy.roundLotMode, 'ceil');
+  const firstSwitchRow = result.rows.find((row) => row.signal === 'switch');
+  assert.ok(firstSwitchRow);
+  assert.equal(firstSwitchRow.currentCode, '159501');
+  assert.equal(firstSwitchRow.cash, -10);
 });
 
 test('quant premium backtest chart returns the full fetched kline window', () => {
