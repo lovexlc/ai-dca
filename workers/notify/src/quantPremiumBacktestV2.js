@@ -649,7 +649,30 @@ export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
       code: anchorCode,
       timeframe: tf,
       candles: chartCandles,
-      markers: chartMarkers
+      markers: chartMarkers,
+      // 添加高溢价和低溢价的K线数据
+      highCode: highCodes[0] || '',
+      lowCode: lowCodes[0] || '',
+      highCandles: highCodes[0] && closeByCode[highCodes[0]]
+        ? Array.from(closeByCode[highCodes[0]].values()).map(bar => ({
+            t: bar.t,
+            date: bar.date,
+            open: roundTo(bar.open, 4),
+            high: roundTo(bar.high, 4),
+            low: roundTo(bar.low, 4),
+            close: roundTo(bar.close, 4)
+          })).slice(-500)
+        : [],
+      lowCandles: lowCodes[0] && closeByCode[lowCodes[0]]
+        ? Array.from(closeByCode[lowCodes[0]].values()).map(bar => ({
+            t: bar.t,
+            date: bar.date,
+            open: roundTo(bar.open, 4),
+            high: roundTo(bar.high, 4),
+            low: roundTo(bar.low, 4),
+            close: roundTo(bar.close, 4)
+          })).slice(-500)
+        : []
     },
     quality: {
       passed,
