@@ -9,11 +9,16 @@ export const QUANT_MODULE_TAB_PREFIX = 'quant:';
 export const DEFAULT_QUANT_MODULE_TAB = 'quant:strategy';
 export const QUANT_MODULE_TABS = [
   { key: 'quant:strategy', module: 'strategy', label: '策略', hrefKey: 'quantStrategy', adminOnly: true },
-  { key: 'quant:v2', module: 'v2', label: '回测', hrefKey: 'quantBacktest', adminOnly: true },
-  { key: 'quant:funds', module: 'funds', label: '资金', hrefKey: 'quantFunds', adminOnly: true },
-  { key: 'quant:fills', module: 'fills', label: '成交', hrefKey: 'quantFills', adminOnly: true },
-  { key: 'quant:etf', module: 'etf', label: 'ETF切换 V2', hrefKey: 'quantEtf', adminOnly: true }
+  { key: 'quant:backtest', module: 'backtest', label: '回测', hrefKey: 'quantBacktest', adminOnly: true },
+  { key: 'quant:live', module: 'live', label: '实盘', hrefKey: 'quantLive', adminOnly: true }
 ];
+// 旧 module 名 → 新 module 名（用于 ?module= 兼容旧链接）
+export const LEGACY_QUANT_MODULE_REDIRECTS = {
+  v2: 'backtest',
+  funds: 'live',
+  fills: 'live',
+  etf: 'strategy'
+};
 export const QUANT_MODULE_TAB_KEYS = QUANT_MODULE_TABS.map((tab) => tab.key);
 
 export const PRIMARY_TAB_META = {
@@ -38,7 +43,12 @@ export const WORKSPACE_TAB_META = {
 // WorkspacePage 在 mount 时读取 query，将其重写到 ?tab=tradePlans 并把 hash 设为 LEGACY_TAB_HASH 中的值。
 export const LEGACY_TAB_REDIRECTS = {
   home: { tab: 'tradePlans', hash: '#home' },
-  dca: { tab: 'tradePlans', hash: '#dca' }
+  dca: { tab: 'tradePlans', hash: '#dca' },
+  // 旧量化场景 tab 全部并入新的 3 段 IA：策略 / 回测 / 实盘
+  'quant:v2': { tab: 'quant:backtest' },
+  'quant:funds': { tab: 'quant:live' },
+  'quant:fills': { tab: 'quant:live' },
+  'quant:etf': { tab: 'quant:strategy' }
 };
 
 // 所有链接都指向唯一的 index.html，通过 ?tab= 查询参数切换。
@@ -52,16 +62,17 @@ export function createPageLinks({ inPagesDir = false } = {}) {
     tradePlans: `${indexHref}?tab=tradePlans`,
     quant: `${indexHref}?tab=quant`,
     quantStrategy: `${indexHref}?tab=quant&module=strategy`,
-    quantBacktest: `${indexHref}?tab=quant&module=v2`,
-    quantFunds: `${indexHref}?tab=quant&module=funds`,
-    quantFills: `${indexHref}?tab=quant&module=fills`,
-    quantEtf: `${indexHref}?tab=quant&module=etf`,
+    quantBacktest: `${indexHref}?tab=quant&module=backtest`,
+    quantLive: `${indexHref}?tab=quant&module=live`,
+    quantFunds: `${indexHref}?tab=quant&module=live`,
+    quantFills: `${indexHref}?tab=quant&module=live`,
+    quantEtf: `${indexHref}?tab=quant&module=strategy`,
     quantDashboard: `${indexHref}?tab=quant&module=strategy`,
     quantMarketData: `${indexHref}?tab=quant&module=strategy`,
     quantResearch: `${indexHref}?tab=quant&module=strategy`,
-    quantTrading: `${indexHref}?tab=quant&module=fills`,
+    quantTrading: `${indexHref}?tab=quant&module=live`,
     quantRisk: `${indexHref}?tab=quant&module=strategy`,
-    quantPerformance: `${indexHref}?tab=quant&module=funds`,
+    quantPerformance: `${indexHref}?tab=quant&module=live`,
     quantSettings: `${indexHref}?tab=quant&module=strategy`,
     tradePlansHome: `${indexHref}?tab=tradePlans#home`,
     dca: `${indexHref}?tab=tradePlans#dca`,

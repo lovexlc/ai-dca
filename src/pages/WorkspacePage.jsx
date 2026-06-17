@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRightLeft, ArrowUp, BarChart3, Bell, BookOpen, Bot, Crown, LineChart, ListChecks, Play, Plus, Send, Shuffle, SlidersHorizontal, TrendingUp, Trash2, Wallet, X } from 'lucide-react';
-import { DEFAULT_QUANT_MODULE_TAB, DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, QUANT_MODULE_TABS, QUANT_MODULE_TAB_KEYS, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getQuantModuleTabs, isWorkspaceGroup } from '../app/screens.js';
+import { Activity, ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, Bot, Crown, LineChart, ListChecks, Play, Plus, Send, Shuffle, SlidersHorizontal, Trash2, Wallet, X } from 'lucide-react';
+import { DEFAULT_QUANT_MODULE_TAB, DEFAULT_WORKSPACE_TAB, LEGACY_QUANT_MODULE_REDIRECTS, LEGACY_TAB_REDIRECTS, QUANT_MODULE_TABS, QUANT_MODULE_TAB_KEYS, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getQuantModuleTabs, isWorkspaceGroup } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
 import { MobileTabBar } from '../components/mobile-tab-bar.jsx';
@@ -23,9 +23,7 @@ const HoldingsExperience = lazy(() => import('./HoldingsExperience.jsx').then((m
 const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) => ({ default: m.NotifyExperience })));
 const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').then((m) => ({ default: m.TradePlansExperience })));
 const MarketsExperience = lazy(() => import('./MarketsExperience.jsx').then((m) => ({ default: m.MarketsExperience })));
-const QuantTradingExperience = lazy(() => import('./QuantTradingExperience.jsx').then((m) => ({ default: m.QuantTradingExperience })));
-const QuantTradingExperienceV2 = lazy(() => import('./QuantTradingExperienceV2.jsx'));
-const EtfSwitchStrategyPage = lazy(() => import('./EtfSwitchStrategyPage.jsx'));
+const QuantStudioPage = lazy(() => import('./QuantStudioPage.jsx').then((m) => ({ default: m.QuantStudioPage })));
 const StrategyGuideExperience = lazy(() => import('./StrategyGuideExperience.jsx').then((m) => ({ default: m.StrategyGuideExperience })));
 const AdminAnalyticsExperience = lazy(() => import('./AdminAnalyticsExperience.jsx').then((m) => ({ default: m.AdminAnalyticsExperience })));
 const PremiumExperience = lazy(() => import('./PremiumExperience.jsx').then((m) => ({ default: m.PremiumExperience })));
@@ -40,10 +38,8 @@ const WORKSPACE_TITLES = {
   tradePlans: '交易计划中心',
   quant: '量化研究',
   'quant:strategy': '量化研究 · 策略',
-  'quant:v2': '量化研究 · 回测',
-  'quant:funds': '量化研究 · 资金',
-  'quant:fills': '量化研究 · 成交',
-  'quant:etf': '量化研究 · ETF切换 V2',
+  'quant:backtest': '量化研究 · 回测',
+  'quant:live': '量化研究 · 实盘',
   fundSwitch: '基金切换收益分析',
   markets: '行情中心',
   premium: '高级版',
@@ -57,10 +53,8 @@ const SIDEBAR_ICONS = {
   tradePlans: ListChecks,
   quant: Bot,
   'quant:strategy': SlidersHorizontal,
-  'quant:v2': BarChart3,
-  'quant:funds': Wallet,
-  'quant:fills': ArrowRightLeft,
-  'quant:etf': TrendingUp,
+  'quant:backtest': BarChart3,
+  'quant:live': Activity,
   fundSwitch: Shuffle,
   markets: LineChart,
   premium: Crown,
@@ -81,7 +75,11 @@ function isQuantModuleTab(value = '') {
 }
 
 function normalizeQuantModule(value = '') {
-  const module = String(value || '').trim();
+  const raw = String(value || '').trim();
+  // 旧 module 名（v2/funds/fills/etf）映射到新 module
+  const module = Object.prototype.hasOwnProperty.call(LEGACY_QUANT_MODULE_REDIRECTS, raw)
+    ? LEGACY_QUANT_MODULE_REDIRECTS[raw]
+    : raw;
   return QUANT_MODULE_TABS.some((tab) => tab.module === module) ? module : 'strategy';
 }
 
@@ -99,7 +97,7 @@ function readTabFromLocation(fallbackTab = DEFAULT_WORKSPACE_TAB) {
   }
   const params = new URLSearchParams(window.location.search);
   const currentTab = params.get('tab');
-  // Legacy ?tab=home / ?tab=dca 重定向到交易计划的二级 tab。
+  // Legacy ?tab=home / ?tab=dca / ?tab=quant:v2 等重定向到新 tab key。
   if (currentTab && Object.prototype.hasOwnProperty.call(LEGACY_TAB_REDIRECTS, currentTab)) {
     return LEGACY_TAB_REDIRECTS[currentTab].tab;
   }
@@ -537,19 +535,9 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   function renderActivePanel() {
     const sharedProps = { links, inPagesDir, embedded: true };
     if (isQuantModuleTab(activeTab)) {
-      if (activeTab === 'quant:v2') {
-        return <QuantTradingExperienceV2 {...sharedProps} initialTab="backtest" singleTab />;
-      }
-      // ETF切换策略使用独立页面
-      if (activeTab === 'quant:etf') {
-        return <EtfSwitchStrategyPage {...sharedProps} />;
-      }
-      // 其他量化模块使用原有的QuantTradingExperience
       return (
-        <QuantTradingExperience
-          {...sharedProps}
+        <QuantStudioPage
           activeModule={quantTabToModule(activeTab)}
-          hideModuleTabs
           onModuleChange={(module) => handleSelectTab(quantModuleToTab(module))}
         />
       );
@@ -561,10 +549,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         return <TradePlansExperience {...sharedProps} />;
       case 'quant':
         return (
-          <QuantTradingExperience
-            {...sharedProps}
+          <QuantStudioPage
             activeModule="strategy"
-            hideModuleTabs
             onModuleChange={(module) => handleSelectTab(quantModuleToTab(module))}
           />
         );
