@@ -47,6 +47,10 @@ function navItems(points = 36) {
 }
 
 export async function mockAcceptanceNetwork(page) {
+  await page.addInitScript(() => {
+    window.__AI_DCA_RELEASE_ANNOUNCEMENT__ = { enabled: false };
+  });
+
   await page.route('**/api/markets/**', async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;

@@ -5,7 +5,7 @@ import { EarningsCalendar, LatestNewsList, SummaryModule } from './MarketNewsPan
 import { IndexCard } from './MarketSidebarRows.jsx';
 import {
   CHART_RANGE_TABS,
-  navHistoryDaysForRange,
+  navHistoryCacheKey,
   sliceCandlesForRange,
 } from './marketFundMetrics.js';
 
@@ -147,19 +147,21 @@ export function MarketsMainContent({
           onTabChange={detail.onTabChange}
           chartRange={detail.chartRange}
           onChartRangeChange={detail.onChartRangeChange}
+          chartCustomRange={detail.chartCustomRange}
+          onChartCustomRangeChange={detail.onChartCustomRangeChange}
           chartCandles={(() => {
             const cfg = CHART_RANGE_TABS.find((r) => r.key === detail.chartRange);
             if (!cfg) return undefined;
             const cacheKey = `${selectedQuote.symbol}|${cfg.tf}`;
             const candles = detail.chartCandlesMap[cacheKey];
             if (!Array.isArray(candles) || candles.length < 2) return undefined;
-            return sliceCandlesForRange(candles, detail.chartRange);
+            return sliceCandlesForRange(candles, detail.chartRange, detail.chartCustomRange);
           })()}
           dailyCandles={detail.chartCandlesMap[`${selectedQuote.symbol}|1d`]}
           chartTf={(CHART_RANGE_TABS.find((r) => r.key === detail.chartRange) || {}).tf}
           chartLoading={detail.chartLoading}
           premiumState={detail.premiumState}
-          navHistoryState={detail.navHistoryMap[`${detail.selectedCnFundCode || selectedQuote.symbol}|${navHistoryDaysForRange(detail.chartRange)}`]}
+          navHistoryState={detail.navHistoryMap[navHistoryCacheKey(detail.selectedCnFundCode || selectedQuote.symbol, detail.chartRange, detail.chartCustomRange)]}
           isMobile={detail.isMobile}
           tradeMarkers={detail.tradeMarkers}
           buildOtcCandidate={detail.buildOtcCandidate}

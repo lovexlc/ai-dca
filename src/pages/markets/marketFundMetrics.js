@@ -11,7 +11,48 @@ export const CHART_RANGE_TABS = [
   { key: '1y', label: '1 年', tabId: '1yearTab', tf: '1d', daysBack: 365 },
   { key: '5y', label: '5 年', tabId: '5yearTab', tf: '1d', daysBack: 365 * 5 },
   { key: 'max', label: '最大', tabId: 'maxTab', tf: '1d', daysBack: null },
+  { key: 'custom', label: '自定义', tabId: 'customRangeTab', tf: '1d', daysBack: null, custom: true },
 ];
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isIsoDate(value) {
+  return ISO_DATE_RE.test(String(value || ''));
+}
+
+export function todayShanghaiIso() {
+  try {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+  } catch (_error) {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
+export function shiftShanghaiIsoDate(isoDate, deltaDays) {
+  if (!isIsoDate(isoDate)) return '';
+  const [year, month, day] = isoDate.split('-').map((part) => Number(part));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + Number(deltaDays || 0));
+  return date.toISOString().slice(0, 10);
+}
+
+export function normalizeChartCustomRange(customRange) {
+  const from = String(customRange?.from || '').slice(0, 10);
+  const to = String(customRange?.to || '').slice(0, 10);
+  if (!isIsoDate(from) || !isIsoDate(to) || from > to) return null;
+  return { from, to };
+}
+
+export function defaultChartCustomRange({ daysBack = 90 } = {}) {
+  const to = todayShanghaiIso();
+  return { from: shiftShanghaiIsoDate(to, -Math.max(1, Number(daysBack) || 90)), to };
+}
+
+export function formatChartRangeLabel(rangeKey, customRange) {
+  const custom = rangeKey === 'custom' ? normalizeChartCustomRange(customRange) : null;
+  if (custom) return `${custom.from} 至 ${custom.to}`;
+  return CHART_RANGE_TABS.find((item) => item.key === rangeKey)?.label || '区间';
+}
 
 export function buildNavSnapshotItems(snapshot) {
   if (!snapshot) return [];
@@ -36,9 +77,19 @@ export function buildNavSnapshotItems(snapshot) {
     });
 }
 
-export function sliceCandlesForRange(candles, rangeKey) {
+export function sliceCandlesForRange(candles, rangeKey, customRange = null) {
   const arr = Array.isArray(candles) ? candles : [];
   if (!arr.length) return arr;
+  const custom = rangeKey === 'custom' ? normalizeChartCustomRange(customRange) : null;
+  if (custom) {
+    const startSec = epochSecFromShanghaiDate(custom.from, '00:00:00');
+    const endSec = epochSecFromShanghaiDate(custom.to, '23:59:59');
+    if (!startSec || !endSec) return [];
+    return arr.filter((c) => {
+      const t = Number(c && c.t);
+      return Number.isFinite(t) && t >= startSec && t <= endSec;
+    });
+  }
   const cfg = CHART_RANGE_TABS.find((r) => r.key === rangeKey);
   if (!cfg) return arr;
   if (rangeKey === 'ytd') {
@@ -172,7 +223,14 @@ export function buildHoldingTradeMarkers(transactions = [], code = '', aliases =
     .sort((a, b) => a.t - b.t);
 }
 
-export function navHistoryDaysForRange(rangeKey) {
+export function navHistoryDaysForRange(rangeKey, customRange = null) {
+  const custom = rangeKey === 'custom' ? normalizeChartCustomRange(customRange) : null;
+  if (custom) {
+    const start = epochSecFromShanghaiDate(custom.from, '00:00:00');
+    const end = epochSecFromShanghaiDate(custom.to, '23:59:59');
+    if (!start || !end) return 3650;
+    return Math.max(1, Math.min(3650, Math.ceil((end - start) / 86400) + 2));
+  }
   const cfg = CHART_RANGE_TABS.find((r) => r.key === rangeKey);
   if (rangeKey === '1d') return 30;
   if (rangeKey === '5d') return 45;
@@ -182,6 +240,19 @@ export function navHistoryDaysForRange(rangeKey) {
   }
   if (!cfg || cfg.daysBack == null) return 3650;
   return Math.max(30, Math.min(3650, cfg.daysBack + 10));
+}
+
+export function navHistoryQueryForRange(rangeKey, customRange = null) {
+  const custom = rangeKey === 'custom' ? normalizeChartCustomRange(customRange) : null;
+  if (custom) return { from: custom.from, to: custom.to };
+  return { days: navHistoryDaysForRange(rangeKey) };
+}
+
+export function navHistoryCacheKey(code, rangeKey, customRange = null) {
+  const normalizedCode = normalizeCnFundCode(code);
+  const query = navHistoryQueryForRange(rangeKey, customRange);
+  if (query.from && query.to) return `${normalizedCode}|${query.from}|${query.to}`;
+  return `${normalizedCode}|${query.days}`;
 }
 
 export function findNavOnOrBefore(navItems, date) {

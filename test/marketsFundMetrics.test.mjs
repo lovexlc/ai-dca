@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 
 import { fetchXueqiuQuote } from '../workers/markets/src/fetchers.js';
 import { handleFundMetrics, handleKline, normalizeFundMetricFromQuote } from '../workers/markets/src/fundMetricsRoutes.js';
-import { deriveCandlestickExtrema } from '../src/pages/markets/marketFundMetrics.js';
+import {
+  deriveCandlestickExtrema,
+  navHistoryCacheKey,
+  navHistoryQueryForRange,
+  sliceCandlesForRange,
+} from '../src/pages/markets/marketFundMetrics.js';
 
 const SOURCE_UPDATED_AT_MS = Date.UTC(2026, 4, 29, 8, 0, 0);
 const SOURCE_UPDATED_AT_SEC = SOURCE_UPDATED_AT_MS / 1000;
@@ -23,6 +28,22 @@ test('CN fund high/low extrema are derived from daily candles instead of quote a
   assert.equal(extrema.low, 1.548);
   assert.equal(extrema.highDate, '2026-06-03');
   assert.equal(extrema.lowDate, '2025-06-13');
+});
+
+test('market detail custom range filters candles and builds date-based NAV query key', () => {
+  const candles = [
+    { t: Date.parse('2026-05-01T15:00:00+08:00') / 1000, c: 1.01 },
+    { t: Date.parse('2026-05-02T15:00:00+08:00') / 1000, c: 1.02 },
+    { t: Date.parse('2026-05-03T15:00:00+08:00') / 1000, c: 1.03 },
+    { t: Date.parse('2026-05-04T15:00:00+08:00') / 1000, c: 1.04 },
+  ];
+
+  const customRange = { from: '2026-05-02', to: '2026-05-03' };
+  const sliced = sliceCandlesForRange(candles, 'custom', customRange);
+
+  assert.deepEqual(sliced.map((item) => item.c), [1.02, 1.03]);
+  assert.deepEqual(navHistoryQueryForRange('custom', customRange), customRange);
+  assert.equal(navHistoryCacheKey('513100', 'custom', customRange), '513100|2026-05-02|2026-05-03');
 });
 
 test('fund-metrics normalizes Danjuan OTC NAV into stable front-end fields', () => {

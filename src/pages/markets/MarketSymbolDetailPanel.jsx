@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUp, Loader2, Search, Sparkles, Star, X } from 'lucide-react';
+import { ArrowUp, CalendarDays, Loader2, Search, Sparkles, Star, X } from 'lucide-react';
 import { fetchKline, fetchQuotes, searchSymbols, CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsApi.js';
 import { getNavHistory, getNavSnapshot } from '../../app/navService.js';
 import { getXueqiuQuote } from '../../app/xueqiuQuote.js';
@@ -23,10 +23,15 @@ import {
   CHART_RANGE_TABS,
   buildCnFundParamCandles,
   buildNavSnapshotItems,
+  defaultChartCustomRange,
   deriveCandlestickExtrema,
+  formatChartRangeLabel,
   isCnOtcFundQuote,
-  navHistoryDaysForRange,
+  navHistoryCacheKey,
+  navHistoryQueryForRange,
+  normalizeChartCustomRange,
   sliceCandlesForRange,
+  todayShanghaiIso,
 } from './marketFundMetrics.js';
 import { formatMarketPrice, formatNumber, formatPercent, formatSignedPercent, formatSymbolDisplay, normalizeCnFundCode } from './marketDisplayUtils.js';
 
@@ -64,6 +69,8 @@ export function SymbolDetailPanel({
   onBack,
   chartRange,
   onChartRangeChange,
+  chartCustomRange,
+  onChartCustomRangeChange,
   chartCandles,
   dailyCandles,
   chartTf,
@@ -94,6 +101,7 @@ export function SymbolDetailPanel({
   const [compareQuoteMap, setCompareQuoteMap] = useState({});
   const [hoveredChartRow, setHoveredChartRow] = useState(null);
   const [lockedChartRow, setLockedChartRow] = useState(null);
+  const [customRangeDraft, setCustomRangeDraft] = useState(() => normalizeChartCustomRange(chartCustomRange) || defaultChartCustomRange());
   const indicatorOptions = INDICATOR_OPTIONS;
   const rowSymbol = row && row.symbol ? String(row.symbol).toUpperCase() : '';
   const currentIsCnOtcFund = market === 'cn' && isCnOtcFundQuote(row);
@@ -118,11 +126,15 @@ export function SymbolDetailPanel({
   }, [compareQuoteMap, compareSearchMetaMap, currentIsCnOtcFund, market]);
   // 当前 symbol 或时间范围切换时清空对比
   useEffect(() => { setCompareSymbols([]); setHoveredChartRow(null); setLockedChartRow(null); }, [rowSymbol]);
-  useEffect(() => { setHoveredChartRow(null); setLockedChartRow(null); }, [chartRange, cnFundParam]);
+  useEffect(() => { setHoveredChartRow(null); setLockedChartRow(null); }, [chartRange, chartCustomRange?.from, chartCustomRange?.to, cnFundParam]);
   useEffect(() => { if (market !== 'cn') setCnFundParam('price'); }, [market]);
   useEffect(() => {
     if (cnFundParam !== 'premium') setPremiumView('trend');
   }, [cnFundParam]);
+  useEffect(() => {
+    const normalized = normalizeChartCustomRange(chartCustomRange);
+    if (normalized) setCustomRangeDraft(normalized);
+  }, [chartCustomRange?.from, chartCustomRange?.to]);
   useEffect(() => {
     if (!CHART_TYPE_OPTIONS.some((opt) => opt.key === chartType)) setChartType('area');
   }, [chartType]);
@@ -201,15 +213,15 @@ export function SymbolDetailPanel({
   useEffect(() => {
     if (market !== 'cn' || !compareSymbols.length) return;
     if (cnFundParam === 'price' && !compareSymbols.some((sym) => /^\d{6}$/.test(normalizeCnFundCode(sym)))) return;
-    const days = navHistoryDaysForRange(chartRange);
+    const query = navHistoryQueryForRange(chartRange, chartCustomRange);
     compareSymbols.forEach((sym) => {
       const code = normalizeCnFundCode(sym);
       if (!/^\d{6}$/.test(code)) return;
-      const key = `${code}|${days}`;
+      const key = navHistoryCacheKey(code, chartRange, chartCustomRange);
       if (compareNavHistoryMap[key]?.items?.length || compareNavHistoryMap[key]?.loading || compareNavHistoryMap[key]?.error || compareNavInflightRef.current.has(key)) return;
       compareNavInflightRef.current.add(key);
       setCompareNavHistoryMap((prev) => ({ ...prev, [key]: { loading: true, items: prev[key]?.items || [], error: '' } }));
-      getNavHistory(code, { days })
+      getNavHistory(code, query)
         .then(async (payload) => {
           let items = Array.isArray(payload?.items) ? payload.items : [];
           if (items.length < 2) {
@@ -236,7 +248,7 @@ export function SymbolDetailPanel({
           compareNavInflightRef.current.delete(key);
         });
     });
-  }, [market, cnFundParam, compareSymbols, chartRange, compareNavHistoryMap, isCompareCnOtcFund]);
+  }, [market, cnFundParam, compareSymbols, chartRange, chartCustomRange?.from, chartCustomRange?.to, compareNavHistoryMap, isCompareCnOtcFund]);
 
   const compareCandidates = (() => {
     const base = market === 'cn'
@@ -372,6 +384,27 @@ export function SymbolDetailPanel({
     if (next.has(k)) next.delete(k); else next.add(k);
     return next;
   });
+  const ensureCustomRange = () => {
+    const normalized = normalizeChartCustomRange(chartCustomRange) || normalizeChartCustomRange(customRangeDraft) || defaultChartCustomRange();
+    setCustomRangeDraft(normalized);
+    if (!normalizeChartCustomRange(chartCustomRange)) onChartCustomRangeChange?.(normalized);
+    return normalized;
+  };
+  const handleChartRangeSelect = (key) => {
+    if (key === 'custom') {
+      ensureCustomRange();
+      onChartRangeChange?.('custom');
+      return;
+    }
+    onChartRangeChange?.(key);
+  };
+  const commitCustomRange = (close) => {
+    const normalized = normalizeChartCustomRange(customRangeDraft);
+    if (!normalized) return;
+    onChartCustomRangeChange?.(normalized);
+    onChartRangeChange?.('custom');
+    close?.();
+  };
   const backgroundStyle = (background) => ({ background });
   const normalizeCompareQuote = (symbol, fallback = {}) => {
     const upper = String(symbol || '').toUpperCase();
@@ -441,9 +474,9 @@ export function SymbolDetailPanel({
   };
   const compareSeries = compareSymbols.map((sym) => {
     const rawCandles = compareCandlesMap[`${sym}|${chartTf}`];
-    const priceCandles = Array.isArray(rawCandles) ? sliceCandlesForRange(rawCandles, chartRange) : rawCandles;
+    const priceCandles = Array.isArray(rawCandles) ? sliceCandlesForRange(rawCandles, chartRange, chartCustomRange) : rawCandles;
     const compareCode = normalizeCnFundCode(sym);
-    const compareNavKey = `${compareCode}|${navHistoryDaysForRange(chartRange)}`;
+    const compareNavKey = navHistoryCacheKey(compareCode, chartRange, chartCustomRange);
     const compareNavState = compareNavHistoryMap[compareNavKey];
     const compareNavItems = compareNavState?.items;
     const useNavAsPrice = market === 'cn'
@@ -465,7 +498,7 @@ export function SymbolDetailPanel({
     if (market !== 'cn') return false;
     const code = normalizeCnFundCode(sym);
     if (cnFundParam === 'price' && !/^\d{6}$/.test(code)) return false;
-    return Boolean(compareNavHistoryMap[`${code}|${navHistoryDaysForRange(chartRange)}`]?.loading);
+    return Boolean(compareNavHistoryMap[navHistoryCacheKey(code, chartRange, chartCustomRange)]?.loading);
   });
   const compareReadyCount = compareSeries.filter((s) => Array.isArray(s.candles) && s.candles.length >= 2).length;
   const activeCursorRow = lockedChartRow || hoveredChartRow;
@@ -574,6 +607,10 @@ export function SymbolDetailPanel({
   const metricError = market === 'cn' && (cnFundParam !== 'price' || isCnOtcFund) ? navHistoryState?.error : '';
   const hasFullCandles = Array.isArray(effectiveChartCandles) && effectiveChartCandles.length >= 2;
   const sparkFallback = cnFundParam === 'price' && (!hasFullCandles && Array.isArray(sparkPoints) && sparkPoints.length >= 2) ? sparkPoints : null;
+  const normalizedCustomRange = normalizeChartCustomRange(chartCustomRange);
+  const customRangeDraftValid = Boolean(normalizeChartCustomRange(customRangeDraft));
+  const currentRangeLabel = chartRange === 'custom' && normalizedCustomRange ? '自定义' : formatChartRangeLabel(chartRange, chartCustomRange);
+  const todayForInput = todayShanghaiIso();
 
   return (
     <section className="mx-0">
@@ -653,6 +690,73 @@ export function SymbolDetailPanel({
                     <span className="ml-auto text-[11px] text-[#9aa0a6]">{opt.hint}</span>
                   </button>
                 ))}
+              </div>
+            )}
+          </ChartToolbarPopover>
+          <ChartToolbarPopover
+            icon={<CalendarDays size={18} className="text-[#202124]" />}
+            label={currentRangeLabel}
+            active={chartRange !== '1d'}
+          >
+            {({ close }) => (
+              <div className="w-[280px] max-w-[calc(100vw-2rem)]">
+                <div className="grid grid-cols-4 gap-1">
+                  {CHART_RANGE_TABS.filter((tab) => tab.key !== 'custom').map((tab) => {
+                    const selected = chartRange === tab.key;
+                    return (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => { handleChartRangeSelect(tab.key); close(); }}
+                        className={cx(
+                          'h-8 rounded-lg px-2 text-[12px] font-medium transition',
+                          selected ? 'bg-[#e8f0fe] text-[#1a73e8]' : 'text-[#3c4043] hover:bg-[#f1f3f4]'
+                        )}
+                      >
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 rounded-xl bg-[#f8fafd] p-2">
+                  <div className="mb-2 text-[12px] font-semibold text-[#5f6368]">自定义区间</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="min-w-0 text-[11px] font-medium text-[#5f6368]">
+                      从
+                      <input
+                        type="date"
+                        value={customRangeDraft.from || ''}
+                        max={customRangeDraft.to || todayForInput}
+                        onChange={(event) => setCustomRangeDraft((prev) => ({ ...prev, from: event.target.value }))}
+                        className="mt-1 h-9 w-full rounded-lg border border-[#dfe3eb] bg-white px-2 text-[12px] font-semibold text-[#202124] outline-none focus:border-[#1a73e8] focus:ring-2 focus:ring-[#1a73e8]/15"
+                      />
+                    </label>
+                    <label className="min-w-0 text-[11px] font-medium text-[#5f6368]">
+                      到
+                      <input
+                        type="date"
+                        value={customRangeDraft.to || ''}
+                        min={customRangeDraft.from || undefined}
+                        max={todayForInput}
+                        onChange={(event) => setCustomRangeDraft((prev) => ({ ...prev, to: event.target.value }))}
+                        className="mt-1 h-9 w-full rounded-lg border border-[#dfe3eb] bg-white px-2 text-[12px] font-semibold text-[#202124] outline-none focus:border-[#1a73e8] focus:ring-2 focus:ring-[#1a73e8]/15"
+                      />
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!customRangeDraftValid}
+                    onClick={() => commitCustomRange(close)}
+                    className={cx(
+                      'mt-2 h-9 w-full rounded-lg text-[12px] font-semibold transition',
+                      customRangeDraftValid
+                        ? 'bg-[#202124] text-white hover:bg-[#3c4043]'
+                        : 'cursor-not-allowed bg-[#eef1f5] text-[#9aa0a6]'
+                    )}
+                  >
+                    应用自定义区间
+                  </button>
+                </div>
               </div>
             )}
           </ChartToolbarPopover>
@@ -893,7 +997,7 @@ export function SymbolDetailPanel({
           <div
             className="flex w-max items-center gap-0.5 text-[12px] font-medium text-[#5f6368] sm:w-auto sm:gap-1 sm:text-[13px]"
             role="tablist"
-            aria-label="股票图表标签页"
+            aria-label="行情图时间区间"
           >
             {CHART_RANGE_TABS.map((tab) => {
               const selected = chartRange === tab.key;
@@ -906,7 +1010,7 @@ export function SymbolDetailPanel({
                   aria-label={tab.label}
                   aria-selected={selected}
                   tabIndex={selected ? 0 : -1}
-                  onClick={() => onChartRangeChange && onChartRangeChange(tab.key)}
+                  onClick={() => handleChartRangeSelect(tab.key)}
                   className={cx(
                     'relative flex h-7 min-w-[38px] shrink-0 items-center justify-center rounded-[10px] px-2 transition-colors sm:h-7 sm:min-w-[44px] sm:rounded-[11px] sm:px-2.5',
                     selected

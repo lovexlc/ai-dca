@@ -37,8 +37,7 @@ import {
   CHART_RANGE_TABS,
   buildNavSnapshotItems,
   buildHoldingTradeMarkers,
-  isCnOtcFundQuote,
-  navHistoryDaysForRange,
+  defaultChartCustomRange, isCnOtcFundQuote, navHistoryCacheKey, navHistoryQueryForRange,
 } from './markets/marketFundMetrics.js';
 import { loadWatchQuotesWithEnhancements, readCachedFundLimits, writeCachedFundLimits } from './markets/marketsWatchData.js';
 import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
@@ -120,6 +119,7 @@ export function MarketsExperience() {
   const [detailHeaderHidden, setDetailHeaderHidden] = useState(false);
   const [symbolDetailTab, setSymbolDetailTab] = useState('overview');
   const [chartRange, setChartRange] = useState('1d');
+  const [chartCustomRange, setChartCustomRange] = useState(() => defaultChartCustomRange());
   // 各 tf 的 close 序列缓存：键为 `${symbol}|${tf}`。
   const [chartCandlesMap, setChartCandlesMap] = useState({});
   const [chartLoading, setChartLoading] = useState(false);
@@ -1221,13 +1221,13 @@ export function MarketsExperience() {
     if (market !== 'cn' || !selectedSymbol) return;
     const symbol = normalizeCnFundCode(selectedSymbol);
     if (!/^\d{6}$/.test(symbol)) return;
-    const days = navHistoryDaysForRange(chartRange);
-    const key = `${symbol}|${days}`;
+    const query = navHistoryQueryForRange(chartRange, chartCustomRange);
+    const key = navHistoryCacheKey(symbol, chartRange, chartCustomRange);
     if (navHistoryMap[key]?.items?.length || navHistoryMap[key]?.loading || navHistoryMap[key]?.error || navHistoryInflightRef.current.has(key)) return;
     let cancelled = false;
     navHistoryInflightRef.current.add(key);
     setNavHistoryMap((prev) => ({ ...prev, [key]: { loading: true, items: prev[key]?.items || [], error: '' } }));
-    getNavHistory(symbol, { days })
+    getNavHistory(symbol, query)
       .then(async (payload) => {
         if (cancelled) return;
         let items = Array.isArray(payload?.items) ? payload.items : [];
@@ -1261,7 +1261,7 @@ export function MarketsExperience() {
         navHistoryInflightRef.current.delete(key);
       });
     return () => { /* keep the in-flight cache write; otherwise loading can stay true after rerender */ };
-  }, [market, selectedSymbol, chartRange]);
+  }, [market, selectedSymbol, chartRange, chartCustomRange?.from, chartCustomRange?.to]);
 
   function handleResearchHandleClick() {
     if (researchDragRef.current.moved) {
@@ -1454,6 +1454,7 @@ export function MarketsExperience() {
           onTabChange: setSymbolDetailTab,
           chartRange,
           onChartRangeChange: setChartRange,
+          chartCustomRange, onChartCustomRangeChange: setChartCustomRange,
           chartCandlesMap,
           chartLoading,
           selectedCnFundCode,

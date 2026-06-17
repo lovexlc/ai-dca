@@ -20,6 +20,14 @@ test.describe('workspace smoke', () => {
     await openMarketsCnEtfDetail(page);
 
     await selectChartRange(page, '5 天');
+    await page.getByRole('button', { name: /^5 天$/ }).click();
+    await expect(page.getByText('自定义区间', { exact: true })).toBeVisible();
+    await page.locator('input[type="date"]').nth(0).fill('2026-05-02');
+    await page.locator('input[type="date"]').nth(1).fill('2026-05-20');
+    await page.getByRole('button', { name: '应用自定义区间' }).click();
+    await expect(page.getByRole('tab', { name: '自定义' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('.recharts-wrapper svg:visible, [role="application"]:visible').first()).toBeVisible({ timeout: 10_000 });
+
     await selectCnFundMetric(page, 'nav');
 
     await selectCnFundMetric(page, 'premium');
