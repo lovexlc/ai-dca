@@ -217,6 +217,7 @@ export function readAnalyticsSession() {
 }
 
 export function isAnalyticsAdmin(session = readAnalyticsSession()) {
+  if (session?.isAdmin) return true;
   const username = String(session?.username || '').trim().toLowerCase();
   return ADMIN_USERS.has(username);
 }

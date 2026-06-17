@@ -51,6 +51,7 @@ export function saveCloudSession(session) {
     username: String(session?.username || ''),
     accessToken: String(session?.accessToken || ''),
     refreshToken: String(session?.refreshToken || ''),
+    isAdmin: Boolean(session?.isAdmin),
     savedAt: new Date().toISOString()
   };
   ls.setItem(SESSION_KEY, JSON.stringify(payload));

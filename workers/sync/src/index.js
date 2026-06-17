@@ -15,6 +15,12 @@ const FEATURE_PREFIXES = [
   { prefix: 'vix', label: 'VIX 面板' },
   { prefix: 'premium', label: '高级版' }
 ];
+const ADMIN_USERNAMES = new Set(['lovexl', 'wanghao0902', 'de88903']);
+
+function isAdminUsername(username = '') {
+  return ADMIN_USERNAMES.has(String(username || '').trim().toLowerCase());
+}
+
 const ADMIN_ANALYTICS_SECTIONS = new Set([
   'overview',
   'traffic',
@@ -140,7 +146,7 @@ async function createSession(env, user) {
   const expires = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
   await env.DB.prepare('INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)')
     .bind(tokenHash, user.id, nowIso(), expires).run();
-  return { userId: user.id, username: user.username, accessToken, refreshToken, expiresAt: expires };
+  return { userId: user.id, username: user.username, accessToken, refreshToken, expiresAt: expires, isAdmin: isAdminUsername(user.username) };
 }
 
 async function requireUser(request, env) {
@@ -183,7 +189,7 @@ async function handleTrackAnalytics(request, env, origin) {
 async function handleAdminAnalytics(request, env, origin) {
   const user = await requireUser(request, env);
   if (!user) return json({ message: '未登录' }, { status: 401, origin });
-  if (user.username !== 'lovexl') return json({ message: '无管理员权限' }, { status: 403, origin });
+  if (!isAdminUsername(user.username)) return json({ message: '无管理员权限' }, { status: 403, origin });
   const url = new URL(request.url);
   const rangeDays = Math.max(1, Math.min(Number(url.searchParams.get('rangeDays')) || 30, 365));
   const since = new Date(Date.now() - (rangeDays - 1) * 86400000).toISOString().slice(0, 10);
