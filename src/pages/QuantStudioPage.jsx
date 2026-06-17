@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Bot, RefreshCw } from 'lucide-react';
-import { Card, cx, subtleButtonClass } from '../components/experience-ui.jsx';
+import { BarChart3, TrendingUp } from 'lucide-react';
+import { Card, subtleButtonClass } from '../components/experience-ui.jsx';
 import { useQuantStudioState } from '../components/quant/useQuantStudioState.js';
+import { QuantStudioHeader } from '../components/quant/QuantStudioHeader.jsx';
 import { StrategyListPanel } from '../components/quant/StrategyListPanel.jsx';
 import { StrategyEditorPanel } from '../components/quant/StrategyEditorPanel.jsx';
 import { BacktestRunnerPanel } from '../components/quant/BacktestRunnerPanel.jsx';
@@ -40,11 +41,50 @@ function useIsMobile() {
 function LoadingState() {
   return (
     <Card className="flex items-center justify-center gap-3 p-12 text-sm text-slate-500">
-      <RefreshCw className="h-4 w-4 animate-spin text-indigo-500" />
+      <BarChart3 className="h-5 w-5 animate-pulse text-indigo-500" />
       正在加载量化策略…
     </Card>
   );
 }
+
+const STRATEGY_TEMPLATES = [
+  {
+    key: 'high-low-premium',
+    label: '高低溢价差策略',
+    description: '监控 H/L 两个 ETF 池的溢价差，触发阈值后自动切换',
+    Icon: TrendingUp,
+    accent: 'emerald',
+    draft: {
+      name: '高低溢价差策略',
+      highCodes: ['159513'],
+      lowCodes: ['513100'],
+      intraSellLowerPct: 1,
+      intraBuyOtherPct: 3,
+      activeSide: 'all',
+      enabled: true,
+      notifyEnabled: true,
+      paperEnabled: true
+    }
+  },
+  {
+    key: 'nasdaq-etf',
+    label: '纳指 ETF 预设',
+    description: '纳指 100 相关 ETF 的溢价差套利',
+    Icon: BarChart3,
+    accent: 'indigo',
+    draft: {
+      name: '纳指 ETF 套利',
+      highCodes: ['513300', '159941'],
+      lowCodes: ['513100', '159605'],
+      intraSellLowerPct: 1,
+      intraBuyOtherPct: 3,
+      activeSide: 'all',
+      enabled: true,
+      notifyEnabled: true,
+      paperEnabled: true
+    }
+  }
+];
 
 export function QuantStudioPage({ activeModule = 'strategy', onModuleChange } = {}) {
   const module = normalizeModule(activeModule);
@@ -89,21 +129,16 @@ export function QuantStudioPage({ activeModule = 'strategy', onModuleChange } = 
 
   const handleSelectStrategy = useCallback(async (id) => {
     await selectStrategy(id);
-    if (isMobile) setMobileView('editor');
-  }, [selectStrategy, isMobile]);
+    if (isMobile && module === 'strategy') setMobileView('editor');
+  }, [selectStrategy, isMobile, module]);
 
   const handleCreateFromTemplate = useCallback(async (templateDraft) => {
     const created = await createStrategy(templateDraft);
-    if (created && isMobile) setMobileView('editor');
+    if (created && isMobile && module === 'strategy') setMobileView('editor');
     return created;
-  }, [createStrategy, isMobile]);
+  }, [createStrategy, isMobile, module]);
 
   const handleSaveStrategy = useCallback(async (draft) => saveStrategy(draft), [saveStrategy]);
-
-  const handleSaveAndBacktest = useCallback(async (draft) => {
-    await runBacktest(draft, { timeframe: '5m', useV2: true });
-    goModule('backtest');
-  }, [runBacktest, goModule]);
 
   const handleRunBacktest = useCallback(async (strategy, options) => {
     await runBacktest(strategy, options);
@@ -119,24 +154,42 @@ export function QuantStudioPage({ activeModule = 'strategy', onModuleChange } = 
     if (!id || id === 'default') return;
     if (typeof window !== 'undefined' && !window.confirm('确定删除该策略？')) return;
     await deleteStrategy(id);
-    if (isMobile) setMobileView('list');
-  }, [deleteStrategy, isMobile]);
+    if (isMobile && module === 'strategy') setMobileView('list');
+  }, [deleteStrategy, isMobile, module]);
+
+  const [runningStrategyId, setRunningStrategyId] = useState('');
+  const [deletingStrategyId, setDeletingStrategyId] = useState('');
+
+  const handleRunFromList = useCallback(async (strategy) => {
+    setRunningStrategyId(strategy.id);
+    try {
+      await runOnce(strategy);
+    } finally {
+      setRunningStrategyId('');
+    }
+  }, [runOnce]);
+
+  const handleDeleteFromList = useCallback(async (strategy) => {
+    if (strategy.id === 'default') return;
+    if (typeof window !== 'undefined' && !window.confirm(`确定删除策略「${strategy.name || strategy.id}」？`)) return;
+    setDeletingStrategyId(strategy.id);
+    try {
+      await deleteStrategy(strategy.id);
+    } finally {
+      setDeletingStrategyId('');
+    }
+  }, [deleteStrategy]);
+
+  const moduleCounts = {
+    total: strategies.length,
+    strategy: strategies.length,
+    backtest: strategies.filter((s) => s.backtestGate?.status === 'passed').length,
+    live: strategies.filter((s) => s.liveSignalEnabled).length
+  };
 
   const errorBanner = error ? (
     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">{error}</div>
   ) : null;
-
-  const headerActions = (
-    <button
-      type="button"
-      className={subtleButtonClass}
-      onClick={() => refresh().catch(() => {})}
-      disabled={loading || refreshing}
-    >
-      <RefreshCw className={cx('h-4 w-4', loading || refreshing ? 'animate-spin' : '')} />
-      刷新
-    </button>
-  );
 
   if (loading && !strategies.length) {
     return (
@@ -147,62 +200,57 @@ export function QuantStudioPage({ activeModule = 'strategy', onModuleChange } = 
     );
   }
 
-  if (module === 'strategy') {
-    const showList = !isMobile || mobileView === 'list';
-    const showEditor = !isMobile || mobileView === 'editor';
-    return (
-      <div className="mx-auto max-w-7xl space-y-4 px-4 sm:px-6">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
-              <Bot className="h-3.5 w-3.5" />
-              量化研究
-            </div>
-            <p className="mt-2 text-xs text-slate-500">策略 → 回测 → 实盘 三步流水线</p>
-          </div>
-          {headerActions}
-        </div>
-        {errorBanner}
-        <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-          {showList ? (
+  return (
+    <div className="mx-auto max-w-7xl space-y-4 px-4 sm:px-6">
+      <QuantStudioHeader
+        activeModule={module}
+        counts={moduleCounts}
+        onModuleChange={goModule}
+        onCreateNew={handleCreateFromTemplate}
+        onRefresh={() => refresh().catch(() => {})}
+        refreshing={refreshing || loading}
+        templates={STRATEGY_TEMPLATES}
+      />
+      {errorBanner}
+
+      {module === 'strategy' ? (
+        <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
+          {(!isMobile || mobileView === 'list') && (
             <StrategyListPanel
               strategies={strategies}
               selectedStrategyId={selectedStrategyId}
+              runningStrategyId={runningStrategyId}
+              deletingStrategyId={deletingStrategyId}
               onSelect={handleSelectStrategy}
-              onCreate={handleCreateFromTemplate}
-              busy={saving}
+              onRun={handleRunFromList}
+              onEdit={handleSelectStrategy}
+              onDelete={handleDeleteFromList}
             />
-          ) : null}
-          {showEditor ? (
-            <StrategyEditorPanel
-              strategy={selectedStrategy}
-              saving={saving}
-              busy={backtesting}
-              onSave={handleSaveStrategy}
-              onBacktest={handleSaveAndBacktest}
-              onDelete={handleDeleteStrategy}
-              onBack={() => setMobileView('list')}
-              showBackButton={isMobile && mobileView === 'editor'}
-            />
-          ) : null}
-        </div>
-      </div>
-    );
-  }
-
-  if (module === 'backtest') {
-    return (
-      <div className="mx-auto max-w-7xl space-y-4 px-4 sm:px-6">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
-              <Bot className="h-3.5 w-3.5" />
-              量化 · 回测
+          )}
+          {(!isMobile || mobileView === 'editor') && (
+            <div className="space-y-4">
+              {isMobile && mobileView === 'editor' && (
+                <button
+                  type="button"
+                  className={subtleButtonClass}
+                  onClick={() => setMobileView('list')}
+                >
+                  ← 策略列表
+                </button>
+              )}
+              <StrategyEditorPanel
+                strategy={selectedStrategy}
+                saving={saving}
+                busy={backtesting}
+                onSave={handleSaveStrategy}
+                onDelete={handleDeleteStrategy}
+              />
             </div>
-          </div>
-          {headerActions}
+          )}
         </div>
-        {errorBanner}
+      ) : null}
+
+      {module === 'backtest' ? (
         <BacktestRunnerPanel
           strategies={strategies}
           selectedStrategy={selectedStrategy}
@@ -215,35 +263,23 @@ export function QuantStudioPage({ activeModule = 'strategy', onModuleChange } = 
           onGoLive={() => goModule('live')}
           onGoStrategy={() => goModule('strategy')}
         />
-      </div>
-    );
-  }
+      ) : null}
 
-  return (
-    <div className="mx-auto max-w-7xl space-y-4 px-4 sm:px-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
-            <Bot className="h-3.5 w-3.5" />
-            量化 · 实盘
-          </div>
-        </div>
-        {headerActions}
-      </div>
-      {errorBanner}
-      <LivePanel
-        strategy={selectedStrategy}
-        snapshot={snapshot}
-        paperState={paperState}
-        summary={summary}
-        refreshing={refreshing}
-        running={running}
-        saving={saving}
-        onRefresh={() => refresh().catch(() => {})}
-        onRunOnce={runOnce}
-        onAdjustCash={adjustCash}
-        onResetPaper={resetPaper}
-      />
+      {module === 'live' ? (
+        <LivePanel
+          strategy={selectedStrategy}
+          snapshot={snapshot}
+          paperState={paperState}
+          summary={summary}
+          refreshing={refreshing}
+          running={running}
+          saving={saving}
+          onRefresh={() => refresh().catch(() => {})}
+          onRunOnce={runOnce}
+          onAdjustCash={adjustCash}
+          onResetPaper={resetPaper}
+        />
+      ) : null}
     </div>
   );
 }

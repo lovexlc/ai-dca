@@ -1,174 +1,263 @@
-import { Bot, ChevronRight, Plus, ShieldCheck, Sparkles, TrendingUp } from 'lucide-react';
-import { Card, cx, subtleButtonClass } from '../experience-ui.jsx';
-
-const TEMPLATE_DEFINITIONS = [
-  {
-    key: 'premium',
-    label: '高低溢价差',
-    description: '在 H/L 两组 ETF 之间按溢价差阈值切换',
-    Icon: Sparkles,
-    accent: 'indigo',
-    draft: {
-      name: '新溢价差策略',
-      highCodes: [],
-      lowCodes: [],
-      intraSellLowerPct: 1,
-      intraBuyOtherPct: 3,
-      activeSide: 'all'
-    }
-  },
-  {
-    key: 'nasdaq',
-    label: '纳指 ETF（推荐）',
-    description: '预填 159513 / 513100 / 159501，开箱即用',
-    Icon: TrendingUp,
-    accent: 'emerald',
-    draft: {
-      name: '纳指 ETF 溢价差',
-      highCodes: ['159513'],
-      lowCodes: ['513100', '159501'],
-      intraSellLowerPct: 1,
-      intraBuyOtherPct: 3,
-      activeSide: 'all'
-    }
-  }
-];
-
-function StatusDot({ tone }) {
-  const toneClass = tone === 'emerald'
-    ? 'bg-emerald-500'
-    : tone === 'amber'
-      ? 'bg-amber-500'
-      : 'bg-slate-300';
-  return <span className={cx('inline-block h-2 w-2 rounded-full', toneClass)} />;
-}
+import { BarChart3, ChevronRight, MoreHorizontal, Pencil, Play, ShieldCheck, Trash2 } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Card, cx } from '../experience-ui.jsx';
 
 function strategyTone(strategy) {
-  if (!strategy) return 'slate';
+  if (!strategy) return 'indigo';
   if (strategy.liveSignalEnabled && strategy.enabled) return 'emerald';
   if (strategy.enabled) return 'amber';
   return 'slate';
 }
 
-function strategyHint(strategy) {
+function strategyToneLabel(strategy) {
   if (!strategy) return '未启用';
-  if (strategy.liveSignalEnabled && strategy.enabled) return '已启用 · 实盘信号已确认';
-  if (strategy.enabled) return '已启用 · 未确认实盘信号';
+  if (strategy.liveSignalEnabled && strategy.enabled) return '已确认实盘';
+  if (strategy.enabled) return '已启用';
   return '未启用';
+}
+
+const TONE_CLASS = {
+  emerald: {
+    pill: 'bg-emerald-50 text-emerald-700',
+    icon: 'bg-emerald-100 text-emerald-600'
+  },
+  amber: {
+    pill: 'bg-amber-50 text-amber-700',
+    icon: 'bg-amber-100 text-amber-600'
+  },
+  indigo: {
+    pill: 'bg-indigo-50 text-indigo-700',
+    icon: 'bg-indigo-100 text-indigo-600'
+  },
+  slate: {
+    pill: 'bg-slate-100 text-slate-600',
+    icon: 'bg-slate-100 text-slate-400'
+  }
+};
+
+function StrategyCardMenu({ strategy, onRun, onEdit, onDelete, running, deleting }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    function handleClickOutside(event) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        type="button"
+        aria-label="更多操作"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+        onClick={(event) => {
+          event.stopPropagation();
+          setIsOpen(!isOpen);
+        }}
+      >
+        <MoreHorizontal className="h-5 w-5" />
+      </button>
+      {isOpen ? (
+        <>
+          <button
+            type="button"
+            aria-label="关闭操作菜单"
+            className="fixed inset-0 z-[110] cursor-default bg-transparent sm:hidden"
+            onClick={() => setIsOpen(false)}
+          />
+          <div
+            role="menu"
+            className="absolute right-0 top-10 z-[120] w-44 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg sm:z-10"
+          >
+            <button
+              type="button"
+              role="menuitem"
+              disabled={running}
+              onClick={() => {
+                onRun?.(strategy);
+                setIsOpen(false);
+              }}
+              className="flex min-h-12 w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-0 sm:font-normal"
+            >
+              <Play className="h-4 w-4 text-slate-400" />
+              {running ? '运行中…' : '手动跑一轮'}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onEdit?.(strategy);
+                setIsOpen(false);
+              }}
+              className="flex min-h-12 w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:min-h-0 sm:font-normal"
+            >
+              <Pencil className="h-4 w-4 text-slate-400" />
+              编辑
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={deleting || strategy.id === 'default'}
+              onClick={() => {
+                onDelete?.(strategy);
+                setIsOpen(false);
+              }}
+              className="flex min-h-12 w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-0 sm:font-normal"
+            >
+              <Trash2 className="h-4 w-4" />
+              删除
+            </button>
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
 }
 
 export function StrategyListPanel({
   strategies = [],
   selectedStrategyId = '',
+  runningStrategyId = '',
+  deletingStrategyId = '',
   onSelect,
-  onCreate,
-  busy = false
+  onRun,
+  onEdit,
+  onDelete
 }) {
-  return (
-    <div className="flex h-full flex-col gap-4">
-      <Card className="space-y-3 p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Templates</div>
-            <h2 className="mt-1 text-base font-bold text-slate-900">从模板开始</h2>
+  if (!strategies.length) {
+    return (
+      <Card className="min-w-0">
+        <div className="rounded-3xl border border-dashed border-indigo-200 bg-slate-50 px-6 py-10 text-center">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-600">
+            <BarChart3 className="h-8 w-8" aria-hidden="true" />
           </div>
-          <Bot className="h-5 w-5 text-slate-300" />
-        </div>
-        <div className="space-y-2">
-          {TEMPLATE_DEFINITIONS.map((template) => (
-            <button
-              key={template.key}
-              type="button"
-              onClick={() => onCreate?.(template.draft)}
-              disabled={busy}
-              className={cx(
-                'group flex w-full items-start gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50/40 disabled:opacity-60',
-                'min-h-[64px]'
-              )}
-            >
-              <span className={cx(
-                'inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg',
-                template.accent === 'emerald' ? 'bg-emerald-50 text-emerald-600' : 'bg-indigo-50 text-indigo-600'
-              )}>
-                <template.Icon className="h-4 w-4" />
-              </span>
-              <span className="flex-1">
-                <span className="block text-sm font-bold text-slate-900">{template.label}</span>
-                <span className="mt-0.5 block text-xs leading-5 text-slate-500">{template.description}</span>
-              </span>
-              <Plus className="mt-1 h-4 w-4 text-slate-400 transition-colors group-hover:text-indigo-500" />
-            </button>
-          ))}
+          <div className="text-lg font-bold text-slate-950">还没有策略</div>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+            点击页面顶部的「新建策略」按钮，从模板开始配置你的第一个溢价差策略。
+          </p>
         </div>
       </Card>
+    );
+  }
 
-      <Card className="flex-1 space-y-3 p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Strategies</div>
-            <h2 className="mt-1 text-base font-bold text-slate-900">我的策略</h2>
-          </div>
-          <button
-            type="button"
-            className={subtleButtonClass}
-            onClick={() => onCreate?.(TEMPLATE_DEFINITIONS[0].draft)}
-            disabled={busy}
+  return (
+    <div className="grid gap-3">
+      {strategies.map((strategy) => {
+        const tone = strategyTone(strategy);
+        const toneClass = TONE_CLASS[tone] || TONE_CLASS.slate;
+        const toneLabel = strategyToneLabel(strategy);
+        const highCount = strategy.highCodes?.length || 0;
+        const lowCount = strategy.lowCodes?.length || 0;
+        const backtestStatus = strategy.backtestGate?.status || 'none';
+        const backtestLabel = backtestStatus === 'passed' ? '回测有效'
+          : backtestStatus === 'failed' ? '回测无效'
+          : backtestStatus === 'stale' ? '需重新回测'
+          : '未回测';
+        const isRunning = runningStrategyId === strategy.id;
+        const isDeleting = deletingStrategyId === strategy.id;
+        const isSelected = selectedStrategyId === strategy.id;
+
+        return (
+          <div
+            key={strategy.id}
+            className={cx(
+              'relative min-w-0 max-w-full cursor-pointer rounded-2xl border bg-white px-4 py-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-200/70 sm:px-5',
+              isSelected ? 'border-indigo-300 bg-indigo-50/30' : 'border-slate-200 hover:border-indigo-100'
+            )}
+            onClick={() => onSelect?.(strategy.id)}
           >
-            <Plus className="h-4 w-4" />
-            新建
-          </button>
-        </div>
-        {strategies.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-            还没有策略，先从上方模板新建一个吧。
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+                  <span className={cx('inline-flex items-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold', toneClass.pill)}>
+                    {toneLabel}
+                  </span>
+                  <span className="line-clamp-2 min-w-0 flex-1 basis-0 text-sm font-bold leading-5 text-slate-950 sm:truncate" title={strategy.name}>
+                    {strategy.name || strategy.id}
+                  </span>
+                </div>
+                <div className="mt-2 flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium text-slate-500">
+                  <span className="shrink-0 font-bold text-slate-700">H {highCount} · L {lowCount}</span>
+                  <span className="text-slate-300" aria-hidden="true">·</span>
+                  <span className="min-w-0 max-w-full break-words leading-5">{backtestLabel}</span>
+                  {strategy.liveSignalEnabled ? (
+                    <>
+                      <span className="text-slate-300" aria-hidden="true">·</span>
+                      <span className="inline-flex items-center gap-1 text-emerald-600">
+                        <ShieldCheck className="h-3 w-3" />
+                        实盘已确认
+                      </span>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  className="hidden h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-60 sm:inline-flex"
+                  aria-label="手动跑一轮"
+                  title="手动跑一轮"
+                  disabled={isRunning}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRun?.(strategy);
+                  }}
+                >
+                  <Play className={cx('h-4 w-4', isRunning ? 'animate-pulse' : '')} />
+                </button>
+                <button
+                  type="button"
+                  className="hidden h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 sm:inline-flex"
+                  aria-label="编辑策略"
+                  title="编辑策略"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit?.(strategy);
+                  }}
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  className="hidden h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-60 sm:inline-flex"
+                  aria-label="删除策略"
+                  title="删除策略"
+                  disabled={isDeleting || strategy.id === 'default'}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete?.(strategy);
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+                <StrategyCardMenu
+                  strategy={strategy}
+                  onRun={onRun}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  running={isRunning}
+                  deleting={isDeleting}
+                />
+              </div>
+            </div>
+
+            <div className="mt-3 flex min-w-0 items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
+              <span className="min-w-0 truncate">
+                Rule A: {strategy.intraSellLowerPct || 0}% · Rule B: {strategy.intraBuyOtherPct || 0}%
+              </span>
+              <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-300" />
+            </div>
           </div>
-        ) : (
-          <ul className="space-y-2">
-            {strategies.map((strategy) => {
-              const active = strategy.id === selectedStrategyId;
-              const tone = strategyTone(strategy);
-              const hint = strategyHint(strategy);
-              const highCount = strategy.highCodes?.length || 0;
-              const lowCount = strategy.lowCodes?.length || 0;
-              return (
-                <li key={strategy.id}>
-                  <button
-                    type="button"
-                    onClick={() => onSelect?.(strategy.id)}
-                    className={cx(
-                      'group flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors min-h-[64px]',
-                      active
-                        ? 'border-indigo-300 bg-indigo-50 text-indigo-900'
-                        : 'border-slate-200 bg-white text-slate-800 hover:border-indigo-200 hover:bg-indigo-50/40'
-                    )}
-                    aria-pressed={active}
-                  >
-                    <span className="flex-1 min-w-0">
-                      <span className="flex items-center gap-2">
-                        <StatusDot tone={tone} />
-                        <span className="truncate text-sm font-bold">{strategy.name || strategy.id}</span>
-                      </span>
-                      <span className="mt-1 block truncate text-xs text-slate-500">
-                        {hint}
-                      </span>
-                      <span className="mt-1 block text-xs text-slate-400">
-                        H {highCount} · L {lowCount}
-                      </span>
-                    </span>
-                    {strategy.liveSignalEnabled ? (
-                      <ShieldCheck className="h-4 w-4 flex-shrink-0 text-emerald-500" aria-label="已确认实盘信号" />
-                    ) : null}
-                    <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400 transition-colors group-hover:text-indigo-500" />
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </Card>
+        );
+      })}
     </div>
   );
 }
-
-export { TEMPLATE_DEFINITIONS };
-export const STRATEGY_TEMPLATE_DEFAULT = TEMPLATE_DEFINITIONS[0].draft;

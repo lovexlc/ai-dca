@@ -63,9 +63,9 @@ function readFeeRate(value, fallback) {
 function FeeInput({ id, label, value, onChange, onCommit }) {
   return (
     <div>
-      <label htmlFor={id} className="block text-xs font-bold text-slate-500">{label}</label>
+      <label htmlFor={id} className="block text-xs font-semibold text-slate-500">{label}</label>
       <div className="mt-2 flex items-center gap-2">
-        <span className="text-sm text-slate-500">万</span>
+        <span className="text-sm text-slate-500">万分之</span>
         <input
           id={id}
           type="text"
@@ -81,20 +81,6 @@ function FeeInput({ id, label, value, onChange, onCommit }) {
       </div>
     </div>
   );
-}
-
-function backtestStatusLabel(status = '') {
-  if (status === 'passed') return '回测有效';
-  if (status === 'failed') return '回测无效';
-  if (status === 'stale') return '需重新回测';
-  return '未回测';
-}
-
-function backtestStatusTone(status = '') {
-  if (status === 'passed') return 'bg-emerald-50 text-emerald-700';
-  if (status === 'failed') return 'bg-rose-50 text-rose-700';
-  if (status === 'stale') return 'bg-amber-50 text-amber-700';
-  return 'bg-slate-100 text-slate-600';
 }
 
 export function BacktestRunnerPanel({
@@ -181,11 +167,14 @@ export function BacktestRunnerPanel({
 
   if (!selectedStrategy) {
     return (
-      <Card className="mx-auto flex max-w-2xl flex-col items-center gap-3 p-8 text-center text-sm text-slate-500">
-        <BarChart3 className="h-10 w-10 text-slate-300" />
-        <p>没有可回测的策略。</p>
+      <Card className="flex flex-col items-center gap-3 p-10 text-center">
+        <BarChart3 className="h-12 w-12 text-slate-300" />
+        <div>
+          <p className="text-base font-bold text-slate-700">没有可回测的策略</p>
+          <p className="mt-1 text-sm text-slate-500">先去创建一个策略</p>
+        </div>
         <button type="button" className={primaryButtonClass} onClick={onGoStrategy}>
-          先去创建一个策略
+          前往策略页
           <ArrowRight className="h-4 w-4" />
         </button>
       </Card>
@@ -193,33 +182,29 @@ export function BacktestRunnerPanel({
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
-      <Card className="space-y-4 p-4 sm:p-6">
+    <Card className="space-y-6 p-5 sm:p-6">
+      {/* 顶部选择器 + 配置 */}
+      <div className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Backtest</div>
+            <div className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">BACKTEST</div>
             <h2 className="mt-1 text-lg font-bold text-slate-900">{selectedStrategy.name || selectedStrategy.id}</h2>
-            <p className="mt-1 text-xs text-slate-500">使用 V2 引擎在历史 K 线上回放策略；通过的回测可手动确认用于实盘信号。</p>
+            <p className="mt-1 text-xs text-slate-500">V2 引擎 · 历史 K 线回放 · 通过后可用于实盘信号</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={selectedStrategy.id}
-              onChange={(event) => onSelectStrategy?.(event.target.value)}
-              className={cx(inputClass, 'h-10 max-w-[200px] font-semibold')}
-            >
-              {strategies.map((item) => (
-                <option key={item.id} value={item.id}>{item.name || item.id}</option>
-              ))}
-            </select>
-            <span className={cx('inline-flex items-center rounded-full px-3 py-1 text-xs font-bold', backtestStatusTone(gateStatus))}>
-              {backtestStatusLabel(gateStatus)}
-            </span>
-          </div>
+          <select
+            value={selectedStrategy.id}
+            onChange={(event) => onSelectStrategy?.(event.target.value)}
+            className={cx(inputClass, 'h-10 max-w-[200px] font-semibold')}
+          >
+            {strategies.map((item) => (
+              <option key={item.id} value={item.id}>{item.name || item.id}</option>
+            ))}
+          </select>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="sm:col-span-1">
-            <label htmlFor="quant-backtest-tf" className="block text-xs font-bold text-slate-500">K 线粒度</label>
+            <label htmlFor="quant-backtest-tf" className="block text-xs font-semibold text-slate-500">K 线粒度</label>
             <select
               id="quant-backtest-tf"
               className={cx(inputClass, 'mt-2')}
@@ -233,21 +218,21 @@ export function BacktestRunnerPanel({
           </div>
           <FeeInput
             id="quant-backtest-buy-fee"
-            label="买入手续费（万分之）"
+            label="买入手续费"
             value={buyFee}
             onChange={setBuyFee}
             onCommit={(next) => setBuyFee(String(readFeeRate(next, 1)))}
           />
           <FeeInput
             id="quant-backtest-sell-fee"
-            label="卖出手续费（万分之）"
+            label="卖出手续费"
             value={sellFee}
             onChange={setSellFee}
             onCommit={(next) => setSellFee(String(readFeeRate(next, 1)))}
           />
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <button
             type="button"
             className={primaryButtonClass}
@@ -277,11 +262,12 @@ export function BacktestRunnerPanel({
             </button>
           </div>
         </div>
-      </Card>
+      </div>
 
       {backtest ? (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+          {/* 指标行 */}
+          <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-6 sm:gap-4 lg:grid-cols-4">
             <MetricCard
               label="累计收益"
               value={formatPercent(totalReturnPct, 2)}
@@ -312,53 +298,53 @@ export function BacktestRunnerPanel({
             />
           </div>
 
-          <Card className="space-y-3 p-4 sm:p-6">
-            <div className="grid gap-3 text-sm sm:grid-cols-2">
-              <div className="rounded-lg bg-slate-50 px-4 py-3">
-                <div className="text-xs font-bold text-slate-400">回测区间</div>
-                <div className="mt-1 font-semibold text-slate-900">{backtestRange}</div>
-              </div>
-              <div className="rounded-lg bg-slate-50 px-4 py-3">
-                <div className="text-xs font-bold text-slate-400">数据覆盖</div>
-                <div className="mt-1 font-semibold text-slate-900">{formatPercent(summary.dataCoveragePct, 1)}</div>
-              </div>
+          {/* 回测元信息 */}
+          <div className="grid gap-3 text-sm sm:grid-cols-2">
+            <div className="rounded-lg bg-slate-50 px-4 py-3">
+              <div className="text-xs font-bold text-slate-400">回测区间</div>
+              <div className="mt-1 font-semibold text-slate-900">{backtestRange}</div>
             </div>
-            {missingKlineCodes.length ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-700">
-                缺失 K 线代码：{missingKlineCodes.join('、')}。可换更高粒度重试，或先从策略中移除缺数据标的。
-              </div>
-            ) : null}
-          </Card>
+            <div className="rounded-lg bg-slate-50 px-4 py-3">
+              <div className="text-xs font-bold text-slate-400">数据覆盖</div>
+              <div className="mt-1 font-semibold text-slate-900">{formatPercent(summary.dataCoveragePct, 1)}</div>
+            </div>
+          </div>
+          {missingKlineCodes.length ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-700">
+              缺失 K 线代码：{missingKlineCodes.join('、')}。可换更高粒度重试，或先从策略中移除缺数据标的。
+            </div>
+          ) : null}
 
-          <InteractiveChartContainer
-            views={CHART_VIEWS}
-            activeView={chartView}
-            onViewChange={setChartView}
-          >
-            {chartView === 'equity' && <EquityChart data={backtest.rows || []} />}
-            {chartView === 'kline' && (
-              <KlineChart
-                candles={backtest.chart?.candles || []}
-                signals={backtest.signals || []}
-              />
-            )}
-            {chartView === 'premium' && <PremiumChart data={backtest.rows || []} />}
-          </InteractiveChartContainer>
+          {/* 图表区 */}
+          <div className="border-t border-slate-100 pt-6">
+            <InteractiveChartContainer
+              views={CHART_VIEWS}
+              activeView={chartView}
+              onViewChange={setChartView}
+            >
+              {chartView === 'equity' && <EquityChart data={backtest.rows || []} />}
+              {chartView === 'kline' && (
+                <KlineChart
+                  candles={backtest.chart?.candles || []}
+                  signals={backtest.signals || []}
+                />
+              )}
+              {chartView === 'premium' && <PremiumChart data={backtest.rows || []} />}
+            </InteractiveChartContainer>
+          </div>
 
+          {/* 交易明细 */}
           {backtest.trades?.length ? (
-            <Card className="overflow-hidden p-0">
-              <div className="bg-slate-50 px-4 py-3 sm:px-6">
-                <h3 className="text-sm font-bold text-slate-900">交易明细</h3>
-                <p className="text-xs text-slate-500">来自本次回测的模拟成交</p>
-              </div>
-              <div className="block sm:hidden divide-y divide-slate-100">
+            <div className="space-y-3 border-t border-slate-100 pt-6">
+              <div className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">TRADES</div>
+              <div className="block divide-y divide-slate-100 sm:hidden">
                 {backtest.trades.map((trade, idx) => (
-                  <div key={idx} className="px-4 py-3">
+                  <div key={idx} className="py-3">
                     <TradeHistoryCard trade={trade} />
                   </div>
                 ))}
               </div>
-              <div className="hidden sm:block overflow-x-auto">
+              <div className="hidden overflow-x-auto rounded-xl border border-slate-200 sm:block">
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-xs font-bold text-slate-700">
                     <tr>
@@ -395,10 +381,11 @@ export function BacktestRunnerPanel({
                   </tbody>
                 </table>
               </div>
-            </Card>
+            </div>
           ) : null}
 
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+          {/* 底部 CTA */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-6">
             <div>
               <div className="text-sm font-bold text-slate-900">投入实盘</div>
               <div className="mt-1 text-xs text-slate-500">回测通过后，去实盘页查看信号、持仓和成交。</div>
@@ -410,12 +397,12 @@ export function BacktestRunnerPanel({
           </div>
         </>
       ) : (
-        <Card className="flex flex-col items-center gap-3 p-10 text-center text-slate-400">
+        <div className="flex flex-col items-center gap-3 border-t border-slate-100 py-10 text-center text-slate-400">
           <BarChart3 className="h-12 w-12" />
           <p className="text-base font-semibold text-slate-600">暂无回测结果</p>
           <p className="text-sm">选择粒度后点「运行回测」</p>
-        </Card>
+        </div>
       )}
-    </div>
+    </Card>
   );
 }

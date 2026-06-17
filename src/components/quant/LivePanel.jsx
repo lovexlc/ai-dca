@@ -1,15 +1,14 @@
 import { useMemo, useState } from 'react';
 import { Activity, ArrowRightLeft, ListChecks, Minus, Play, Plus, RefreshCw, RotateCcw, ShieldCheck, Wallet } from 'lucide-react';
 import { Card, cx, primaryButtonClass, secondaryButtonClass, subtleButtonClass, inputClass } from '../experience-ui.jsx';
-import { TabNavigation } from '../TabNavigation.jsx';
 import { RealTimeSignalCard } from '../RealTimeSignalCard.jsx';
 import { showToast } from '../../app/toast.js';
 
 const SUB_TABS = [
-  { id: 'signal', label: '信号', mobileLabel: '信号', icon: Activity },
-  { id: 'positions', label: '持仓', mobileLabel: '持仓', icon: ShieldCheck },
-  { id: 'cash', label: '现金', mobileLabel: '现金', icon: Wallet },
-  { id: 'fills', label: '成交', mobileLabel: '成交', icon: ArrowRightLeft }
+  { id: 'signal', label: '信号', icon: Activity },
+  { id: 'positions', label: '持仓', icon: ShieldCheck },
+  { id: 'cash', label: '现金', icon: Wallet },
+  { id: 'fills', label: '成交', icon: ArrowRightLeft }
 ];
 
 function formatMoney(value) {
@@ -81,40 +80,6 @@ function normalizeCashEvents(paperState) {
   return Array.isArray(paperState?.cashEvents) ? paperState.cashEvents.slice(0, 20) : [];
 }
 
-function HeaderBar({ strategy, snapshot, refreshing, running, onRefresh, onRunOnce }) {
-  const liveSignal = useMemo(() => normalizeLiveSignal(snapshot), [snapshot]);
-  return (
-    <Card className="space-y-3 p-4 sm:p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Live</div>
-          <h2 className="mt-1 truncate text-lg font-bold text-slate-900">{strategy?.name || strategy?.id || '未选择策略'}</h2>
-          <p className="mt-1 text-xs text-slate-500">
-            {snapshot?.computedAt ? `最新计算：${formatDateTime(snapshot.computedAt)}` : '尚未计算'}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" className={subtleButtonClass} onClick={onRefresh} disabled={refreshing}>
-            <RefreshCw className={cx('h-4 w-4', refreshing ? 'animate-spin' : '')} />
-            刷新
-          </button>
-          <button type="button" className={primaryButtonClass} onClick={onRunOnce} disabled={running}>
-            <Play className="h-4 w-4" />
-            {running ? '运行中…' : '跑一轮'}
-          </button>
-        </div>
-      </div>
-      {liveSignal ? (
-        <RealTimeSignalCard signal={liveSignal} />
-      ) : (
-        <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
-          当前没有触发信号
-        </div>
-      )}
-    </Card>
-  );
-}
-
 function SignalSubPanel({ snapshot }) {
   const signals = useMemo(() => {
     if (!snapshot) return [];
@@ -122,8 +87,9 @@ function SignalSubPanel({ snapshot }) {
     const signalList = Array.isArray(snapshot.signals) ? snapshot.signals : [];
     return (triggers.length ? triggers : signalList).slice(0, 12);
   }, [snapshot]);
+
   return (
-    <Card className="space-y-3 p-4 sm:p-6">
+    <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-bold text-slate-900">信号列表</h3>
         <span className="text-xs text-slate-500">{signals.length} 条</span>
@@ -152,15 +118,16 @@ function SignalSubPanel({ snapshot }) {
           ))}
         </ul>
       )}
-    </Card>
+    </div>
   );
 }
 
 function PositionsSubPanel({ paperState }) {
   const positions = useMemo(() => normalizePositions(paperState), [paperState]);
   const positionCount = positions.filter((item) => Number(item.shares) > 0).length;
+
   return (
-    <Card className="space-y-3 p-4 sm:p-6">
+    <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-bold text-slate-900">模拟持仓</h3>
@@ -196,7 +163,7 @@ function PositionsSubPanel({ paperState }) {
           </tbody>
         </table>
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -220,8 +187,8 @@ function CashSubPanel({ paperState, adjusting, resetting, onAdjust, onReset }) {
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-      <Card className="space-y-4 p-4 sm:p-6">
+    <div className="grid gap-6 lg:grid-cols-2">
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-900">资金管理</h3>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
@@ -229,7 +196,7 @@ function CashSubPanel({ paperState, adjusting, resetting, onAdjust, onReset }) {
           </span>
         </div>
         <div>
-          <label htmlFor="quant-live-cash-amount" className="block text-xs font-bold text-slate-500">调整金额</label>
+          <label htmlFor="quant-live-cash-amount" className="block text-xs font-semibold text-slate-500">调整金额</label>
           <input
             id="quant-live-cash-amount"
             type="number"
@@ -241,7 +208,7 @@ function CashSubPanel({ paperState, adjusting, resetting, onAdjust, onReset }) {
           />
         </div>
         <div>
-          <label htmlFor="quant-live-cash-note" className="block text-xs font-bold text-slate-500">备注</label>
+          <label htmlFor="quant-live-cash-note" className="block text-xs font-semibold text-slate-500">备注</label>
           <input
             id="quant-live-cash-note"
             value={note}
@@ -260,13 +227,13 @@ function CashSubPanel({ paperState, adjusting, resetting, onAdjust, onReset }) {
             减少现金
           </button>
         </div>
-        <button type="button" className={subtleButtonClass} onClick={onReset} disabled={resetting}>
+        <button type="button" className={cx(subtleButtonClass, 'w-full text-rose-600 hover:bg-rose-50')} onClick={onReset} disabled={resetting}>
           <RotateCcw className="h-4 w-4" />
           重置模拟盘
         </button>
-      </Card>
+      </div>
 
-      <Card className="space-y-3 p-4 sm:p-6">
+      <div className="space-y-3">
         <h3 className="text-sm font-bold text-slate-900">资金流水</h3>
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="min-w-full divide-y divide-slate-100 text-sm">
@@ -298,15 +265,16 @@ function CashSubPanel({ paperState, adjusting, resetting, onAdjust, onReset }) {
             </tbody>
           </table>
         </div>
-      </Card>
+      </div>
     </div>
   );
 }
 
 function FillsSubPanel({ paperState, summary }) {
   const orders = useMemo(() => normalizeOrders(paperState), [paperState]);
+
   return (
-    <Card className="space-y-3 p-4 sm:p-6">
+    <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-bold text-slate-900">模拟成交</h3>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
@@ -359,7 +327,7 @@ function FillsSubPanel({ paperState, summary }) {
           </div>
         </div>
       ) : null}
-    </Card>
+    </div>
   );
 }
 
@@ -377,44 +345,97 @@ export function LivePanel({
   onResetPaper
 }) {
   const [subTab, setSubTab] = useState('signal');
+  const liveSignal = useMemo(() => normalizeLiveSignal(snapshot), [snapshot]);
 
   if (!strategy) {
     return (
-      <Card className="mx-auto flex max-w-2xl flex-col items-center gap-3 p-8 text-center text-sm text-slate-500">
-        <ListChecks className="h-10 w-10 text-slate-300" />
-        <p>没有可监控的策略，先在「策略」页创建一个。</p>
+      <Card className="flex flex-col items-center gap-3 p-10 text-center">
+        <ListChecks className="h-12 w-12 text-slate-300" />
+        <div>
+          <p className="text-base font-bold text-slate-700">没有可监控的策略</p>
+          <p className="mt-1 text-sm text-slate-500">先在「策略」页创建一个</p>
+        </div>
       </Card>
     );
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
-      <HeaderBar
-        strategy={strategy}
-        snapshot={snapshot}
-        refreshing={refreshing}
-        running={running}
-        onRefresh={onRefresh}
-        onRunOnce={onRunOnce}
-      />
-      <TabNavigation
-        tabs={SUB_TABS}
-        activeTab={subTab}
-        onChange={setSubTab}
-        className="rounded-2xl"
-      />
-      {subTab === 'signal' ? <SignalSubPanel snapshot={snapshot} /> : null}
-      {subTab === 'positions' ? <PositionsSubPanel paperState={paperState} /> : null}
-      {subTab === 'cash' ? (
-        <CashSubPanel
-          paperState={paperState}
-          adjusting={saving}
-          resetting={saving}
-          onAdjust={onAdjustCash}
-          onReset={onResetPaper}
-        />
-      ) : null}
-      {subTab === 'fills' ? <FillsSubPanel paperState={paperState} summary={summary} /> : null}
-    </div>
+    <Card className="space-y-6 p-5 sm:p-6">
+      {/* 顶部信号区 */}
+      <div className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">LIVE</div>
+            <h2 className="mt-1 truncate text-lg font-bold text-slate-900">{strategy?.name || strategy?.id || '未选择策略'}</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              {snapshot?.computedAt ? `最新计算：${formatDateTime(snapshot.computedAt)}` : '尚未计算'}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className={subtleButtonClass} onClick={onRefresh} disabled={refreshing}>
+              <RefreshCw className={cx('h-4 w-4', refreshing ? 'animate-spin' : '')} />
+              刷新
+            </button>
+            <button type="button" className={primaryButtonClass} onClick={onRunOnce} disabled={running}>
+              <Play className="h-4 w-4" />
+              {running ? '运行中…' : '跑一轮'}
+            </button>
+          </div>
+        </div>
+        {liveSignal ? (
+          <RealTimeSignalCard signal={liveSignal} />
+        ) : (
+          <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
+            当前没有触发信号
+          </div>
+        )}
+      </div>
+
+      {/* 子标签栏 */}
+      <div className="border-t border-slate-100 pt-6">
+        <div className="overflow-x-auto border-b border-slate-200" role="tablist" aria-label="实盘子页签">
+          <div className="flex min-w-max items-center gap-0">
+            {SUB_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = subTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setSubTab(tab.id)}
+                  role="tab"
+                  aria-selected={isActive}
+                  className={cx(
+                    'inline-flex min-h-12 shrink-0 items-center gap-1.5 border-b-2 px-4 py-3 text-sm font-semibold transition-all duration-200',
+                    isActive
+                      ? 'border-indigo-500 text-indigo-700'
+                      : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800'
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* 内容区 */}
+      <div>
+        {subTab === 'signal' ? <SignalSubPanel snapshot={snapshot} /> : null}
+        {subTab === 'positions' ? <PositionsSubPanel paperState={paperState} /> : null}
+        {subTab === 'cash' ? (
+          <CashSubPanel
+            paperState={paperState}
+            adjusting={saving}
+            resetting={saving}
+            onAdjust={onAdjustCash}
+            onReset={onResetPaper}
+          />
+        ) : null}
+        {subTab === 'fills' ? <FillsSubPanel paperState={paperState} summary={summary} /> : null}
+      </div>
+    </Card>
   );
 }
