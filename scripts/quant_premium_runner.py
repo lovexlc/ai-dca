@@ -14,7 +14,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 
-DEFAULT_MARKETS_API_BASE = "https://tools.freebacktrack.tech/api/markets"
+DEFAULT_MARKETS_API_BASE = "https://api.freebacktrack.tech/api/markets"
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
 EXCHANGE_PREFIXES = {"15", "50", "51", "52", "53", "54", "56", "58"}
 
