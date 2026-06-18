@@ -416,7 +416,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
           title: '登录账号自动同步数据',
           description: '点击右上角登录，数据变更后自动同步到云端，换设备也不丢。',
           tone: 'indigo',
-          durationMs: 6000
+          durationMs: 3000,
+          dismissOnInteraction: true
         });
       }, 1500);
     }

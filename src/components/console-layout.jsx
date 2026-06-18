@@ -35,6 +35,21 @@ function ConsoleToastViewport() {
     };
   }, [toasts]);
 
+  useEffect(() => {
+    if (!toasts.some((toast) => toast.dismissOnInteraction)) {
+      return undefined;
+    }
+
+    function dismissInteractiveToasts() {
+      setToasts((current) => current.filter((toast) => !toast.dismissOnInteraction));
+    }
+
+    window.addEventListener('pointerdown', dismissInteractiveToasts, { capture: true });
+    return () => {
+      window.removeEventListener('pointerdown', dismissInteractiveToasts, { capture: true });
+    };
+  }, [toasts]);
+
   if (!toasts.length) {
     return null;
   }

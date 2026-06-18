@@ -13,7 +13,8 @@ function normalizeToast(input = {}) {
     title: String(input.title || '操作完成').trim() || '操作完成',
     description: String(input.description || '').trim(),
     tone: String(input.tone || 'emerald').trim() || 'emerald',
-    durationMs: Math.max(Number(input.durationMs) || DEFAULT_DURATION_MS, 1200)
+    durationMs: Math.max(Number(input.durationMs) || DEFAULT_DURATION_MS, 1200),
+    dismissOnInteraction: Boolean(input.dismissOnInteraction)
   };
 }
 
