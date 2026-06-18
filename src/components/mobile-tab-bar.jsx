@@ -86,38 +86,41 @@ export function MobileTabBar({
     <>
       <nav
         className={[
-          'fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] left-1/2 z-30 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-slate-200 bg-white/95 p-1.5 shadow-[0_10px_30px_rgba(15,23,42,0.16)] backdrop-blur sm:hidden',
+          'pointer-events-none fixed inset-x-0 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 flex items-center px-4 sm:hidden',
           hidden ? 'hidden' : ''
         ].join(' ')}
         aria-label="底部快捷导航"
       >
-        <button
-          type="button"
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200/60 active:bg-slate-200"
-          onClick={onSearch}
-          aria-label="搜索"
-          title="搜索"
-        >
-          <Search className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-[0_4px_12px_rgba(79,70,229,0.28)] transition-transform active:scale-95"
-          onClick={onAi}
-          aria-label="询问知识助手"
-          title="询问知识助手"
-        >
-          <Sparkles className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200/60 active:bg-slate-200"
-          onClick={triggerQuickAction}
-          aria-label={quickActionLabel}
-          title={quickActionLabel}
-        >
-          <QuickActionIcon className="h-4 w-4" />
-        </button>
+        <div className="pointer-events-auto flex w-full items-center gap-2 rounded-2xl border border-slate-200 bg-white/95 p-1.5 shadow-[0_10px_30px_rgba(15,23,42,0.16)] backdrop-blur">
+          <button
+            type="button"
+            className="flex h-11 w-11 flex-none items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200/60 active:bg-slate-200"
+            onClick={onSearch}
+            aria-label="搜索"
+            title="搜索"
+          >
+            <Search className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 px-4 text-left text-sm font-semibold text-white shadow-[0_4px_12px_rgba(79,70,229,0.28)] transition-transform active:scale-[0.99]"
+            onClick={onAi}
+            aria-label="询问知识助手"
+            title="询问知识助手"
+          >
+            <Sparkles className="h-4 w-4 flex-none" />
+            <span className="min-w-0 truncate">问问智能助手</span>
+          </button>
+          <button
+            type="button"
+            className="flex h-11 w-11 flex-none items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200/60 active:bg-slate-200"
+            onClick={triggerQuickAction}
+            aria-label={quickActionLabel}
+            title={quickActionLabel}
+          >
+            <QuickActionIcon className="h-4 w-4" />
+          </button>
+        </div>
       </nav>
 
       {addOpen ? (
