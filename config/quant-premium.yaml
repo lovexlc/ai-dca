@@ -3,7 +3,7 @@
 # 第一阶段仅模拟盘: 触发后只写模拟成交, 绝不下真实委托.
 runtime:
   poll_interval_sec: 3
-  markets_api_base: "https://tools.freebacktrack.tech/api/markets"
+  markets_api_base: "https://api.freebacktrack.tech/api/markets"
   output_dir: "data/quant"
   only_trading_session: true
   max_daily_triggers: 3

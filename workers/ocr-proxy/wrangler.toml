@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 
 # 单条 route 即可。
 [[routes]]
-pattern = "tools.freebacktrack.tech/api/*"
+pattern = "api.freebacktrack.tech/api/*"
 zone_name = "freebacktrack.tech"
 
 # Cloudflare Workers AI 绑定。代码里通过 env.AI.run(model, input) 调用。

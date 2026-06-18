@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../src/index.js';
 
-const BASE = 'https://tools.freebacktrack.tech';
+const BASE = 'https://api.freebacktrack.tech';
 const USER_ID = 'usr_test';
 const USERNAME = 'lovexl';
 const TOKEN = 'tok_test_access';

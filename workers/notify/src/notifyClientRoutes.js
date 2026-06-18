@@ -23,7 +23,7 @@ import {
 
 async function trackAnalyticsEvent(env, type, meta = {}) {
   try {
-    const endpoint = String(env?.ANALYTICS_ENDPOINT || 'https://tools.freebacktrack.tech/api/sync/analytics/track').trim();
+    const endpoint = String(env?.ANALYTICS_ENDPOINT || 'https://api.freebacktrack.tech/api/sync/analytics/track').trim();
     if (!endpoint || !type) return;
     await fetch(endpoint, {
       method: 'POST',

@@ -1,6 +1,6 @@
 import { trackAnalyticsEvent } from './analytics.js';
 
-const DEFAULT_SYNC_BASE = 'https://tools.freebacktrack.tech/api/sync';
+const DEFAULT_SYNC_BASE = 'https://api.freebacktrack.tech/api/sync';
 const SESSION_KEY = 'aiDcaCloudSyncSession';
 const SESSION_EVENT = 'cloud-sync:session-changed';
 

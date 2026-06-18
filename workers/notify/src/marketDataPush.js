@@ -7,7 +7,7 @@ import { getSubscriptionSnapshot, tryPublishPrices } from './wsHub.js';
 import { readSettings } from './notifyStorage.js';
 
 // markets worker 的基础 URL（与前端 marketsApi.js 一致）
-const MARKETS_API_BASE = 'https://tools.freebacktrack.tech/api/markets';
+const MARKETS_API_BASE = 'https://api.freebacktrack.tech/api/markets';
 
 // KV 缓存 key 前缀，避免同一代码在短时间内重复请求
 const PRICE_CACHE_PREFIX = 'market-push-cache:';

@@ -939,7 +939,7 @@ function buildOtcSwitchTriggerNotification(snapshot, trigger, env) {
     formatOrderBookLine(trigger.toCode, snapshot?.otcSignal?.lowestOrderBook)
   ].filter(Boolean);
   const otcOrderBookText = otcOrderBookLines.length ? `\n${otcOrderBookLines.join('\n')}` : '';
-  const baseUrl = stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || 'https://tools.freebacktrack.tech');
+  const baseUrl = stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || 'https://api.freebacktrack.tech');
   const detailUrl = `${baseUrl}/index.html?tab=tradePlans#switch`;
   const minuteKey = String(snapshot?.computedAt || '').slice(0, 16);
   const eventId = `switch:${trigger.pairKey}:R${trigger.rule}:${minuteKey}`;
@@ -1003,7 +1003,7 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
   const ruleLabel = trigger.rule === 'A'
     ? `规则 A 低→高：H溢价 − L溢价 < ${threshold}%（差价收窄，从持仓 L 换到 H）`
     : `规则 B 高→低：H溢价 − L溢价 > ${threshold}%（差价扩大，从持仓 H 换到 L）`;
-  const baseUrl = stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || 'https://tools.freebacktrack.tech');
+  const baseUrl = stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || 'https://api.freebacktrack.tech');
   const detailUrl = `${baseUrl}/index.html?tab=tradePlans#switch`;
   // 同一对 + 同一规则 + 同一分钟，只发一次。
   const minuteKey = String(snapshot?.computedAt || '').slice(0, 16);

@@ -1,9 +1,9 @@
 import { buildMovingAverageValues, buildNasdaqStrategyPlan, buildPeakDrawdownStrategyPlan, findLatestFiniteValue, mapReferencePrice } from '../../../src/app/strategyEngine.js';
 import { fetchFundNavHistoryWithMonthlyKv } from './getNav.js';
 
-const DEFAULT_PUBLIC_DATA_BASE_URL = 'https://tools.freebacktrack.tech';
+const DEFAULT_PUBLIC_DATA_BASE_URL = 'https://api.freebacktrack.tech';
 const DEFAULT_TIMEZONE = 'Asia/Shanghai';
-const DEFAULT_MARKETS_API_BASE = 'https://tools.freebacktrack.tech/api/markets';
+const DEFAULT_MARKETS_API_BASE = 'https://api.freebacktrack.tech/api/markets';
 const BENCHMARK_SYMBOL_MAP = {
   'nas-daq100': '^NDX'
 };

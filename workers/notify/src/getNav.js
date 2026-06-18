@@ -10,7 +10,7 @@
 
 const FUND_CODE_PATTERN = /^\d{6}$/;
 export const NAV_CACHE_PREFIX = 'nav:cache:';
-const DEFAULT_PUBLIC_DATA_BASE_URL = 'https://tools.freebacktrack.tech';
+const DEFAULT_PUBLIC_DATA_BASE_URL = 'https://api.freebacktrack.tech';
 
 function sanitizeCode(value) {
   const code = String(value || '').trim();

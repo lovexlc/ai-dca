@@ -423,7 +423,7 @@ function stripTrailingSlash(value = '') {
 
 function buildQuantPremiumTriggerNotification(snapshot, trigger, paperResult, env) {
   const payload = buildSwitchTriggerNotification(snapshot, trigger, env);
-  const baseUrl = stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || 'https://tools.freebacktrack.tech');
+  const baseUrl = stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || 'https://api.freebacktrack.tech');
   const paperText = paperResult?.executed
     ? `模拟盘已成交 ${paperResult.fills.length} 笔`
     : `模拟盘未成交：${paperResult?.skipped || '未满足撮合条件'}`;
@@ -895,9 +895,9 @@ export function runQuantPremiumBacktest(strategyInput = {}, { timeframe = '5m', 
 }
 
 async function fetchMarketsJsonForQuantBacktest(env, path) {
-  const baseUrl = stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || 'https://tools.freebacktrack.tech');
+  const baseUrl = stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || 'https://api.freebacktrack.tech');
   const publicUrl = `${baseUrl}/api/markets${path}`;
-  const request = new Request(`https://tools.freebacktrack.tech/api/markets${path}`, {
+  const request = new Request(`https://api.freebacktrack.tech/api/markets${path}`, {
     headers: { accept: 'application/json' }
   });
   const response = env?.MARKETS && typeof env.MARKETS.fetch === 'function'

@@ -6,7 +6,7 @@ compatibility_date = "2026-03-30"
 compatibility_flags = ["nodejs_compat"]
 
 [[routes]]
-pattern = "tools.freebacktrack.tech/api/notify*"
+pattern = "api.freebacktrack.tech/api/notify*"
 zone_name = "freebacktrack.tech"
 
 [[kv_namespaces]]
@@ -56,7 +56,7 @@ invocation_logs = true
 # Service binding to ocr-proxy worker. Calls /api/holdings/nav directly via
 # env.OCR_PROXY.fetch(...) without going through the public hostname.
 # Avoids same-zone worker→worker 405 caused by route collision on
-# tools.freebacktrack.tech/api/* (notify and ocr-proxy share the zone).
+# api.freebacktrack.tech/api/* (notify and ocr-proxy share the zone).
 [[services]]
 binding = "OCR_PROXY"
 service = "ai-dca-ocr-proxy"
@@ -76,7 +76,7 @@ tag = "v1"
 new_sqlite_classes = ["WsHub"]
 
 [vars]
-PUBLIC_DATA_BASE_URL = "https://tools.freebacktrack.tech"
+PUBLIC_DATA_BASE_URL = "https://api.freebacktrack.tech"
 NOTIFY_TIMEZONE = "Asia/Shanghai"
 QUANT_BACKTEST_DAILY_LIMIT = "100"
 QUANT_BACKTEST_IP_HOURLY_LIMIT = "50"

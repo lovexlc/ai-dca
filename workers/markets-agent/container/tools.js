@@ -4,7 +4,7 @@
 
 import { SKILL_TOOL_DEFS, SKILL_TOOL_HANDLERS } from './skills.js';
 
-const MARKETS_BASE = process.env.MARKETS_BASE_URL || 'https://tools.freebacktrack.tech/api/markets';
+const MARKETS_BASE = process.env.MARKETS_BASE_URL || 'https://api.freebacktrack.tech/api/markets';
 const TAVILY_BASE = 'https://api.tavily.com';
 const FIRECRAWL_BASE = 'https://api.firecrawl.dev';
 

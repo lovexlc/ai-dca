@@ -194,7 +194,7 @@ export async function notifyXueqiuCookieIssue(env, error, context = {}) {
     await kvPutJson(env, 'alert:xueqiu-cookie', payload, { ttlSeconds: 6 * 3600 }).catch(() => {});
   } catch (_) {}
   console.warn('[markets:xueqiu] cookie issue', payload);
-  const notifyEndpoint = String(env.MARKETS_ADMIN_NOTIFY_ENDPOINT || 'https://tools.freebacktrack.tech/api/notify/admin/alert').trim();
+  const notifyEndpoint = String(env.MARKETS_ADMIN_NOTIFY_ENDPOINT || 'https://api.freebacktrack.tech/api/notify/admin/alert').trim();
   const legacyWebhook = String(env.MARKETS_ADMIN_NOTIFY_WEBHOOK || '').trim();
   const token = String(env.MARKETS_ADMIN_NOTIFY_TOKEN || env.ADMIN_NOTIFY_TOKEN || env.ADMIN_TEST_TOKEN || '').trim();
   const targetUrl = notifyEndpoint || legacyWebhook;

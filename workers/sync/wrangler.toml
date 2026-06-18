@@ -4,7 +4,7 @@ compatibility_date = "2026-03-30"
 compatibility_flags = ["nodejs_compat"]
 
 [[routes]]
-pattern = "tools.freebacktrack.tech/api/sync/*"
+pattern = "api.freebacktrack.tech/api/sync/*"
 zone_name = "freebacktrack.tech"
 
 # TODO: create Cloudflare D1 database and KV namespace, then fill real IDs.

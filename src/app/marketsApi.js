@@ -1,9 +1,9 @@
-// Markets API client. Talks to ai-dca-markets worker mounted at /api/markets/* on tools.freebacktrack.tech.
+// Markets API client. Talks to ai-dca-markets worker mounted at /api/markets/* on api.freebacktrack.tech.
 
 import { apiUrl } from './apiBase.js';
 import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
 
-const DEFAULT_BASE = 'https://tools.freebacktrack.tech/api/markets';
+const DEFAULT_BASE = 'https://api.freebacktrack.tech/api/markets';
 const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '56', '58', '53', '54']);
 
 function resolveBase() {

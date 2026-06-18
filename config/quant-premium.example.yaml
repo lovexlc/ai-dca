@@ -1,6 +1,6 @@
 runtime:
   poll_interval_sec: 1
-  markets_api_base: "https://tools.freebacktrack.tech/api/markets"
+  markets_api_base: "https://api.freebacktrack.tech/api/markets"
   output_dir: "data/quant"
   only_trading_session: true
   max_daily_triggers: 3

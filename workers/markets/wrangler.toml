@@ -16,7 +16,7 @@ compatibility_flags = ["nodejs_compat"]
 #   POST /api/markets/ask                   — AI 问答（Tavily + Workers AI）
 #   POST /api/markets/refresh               — 手动触发抓取
 [[routes]]
-pattern = "tools.freebacktrack.tech/api/markets/*"
+pattern = "api.freebacktrack.tech/api/markets/*"
 zone_name = "freebacktrack.tech"
 
 [ai]
