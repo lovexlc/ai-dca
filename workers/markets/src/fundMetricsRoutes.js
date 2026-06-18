@@ -1,3 +1,5 @@
+/* global URLSearchParams, console */
+
 import {
   fetchDanjuanFundMeta,
   fetchDanjuanFundNav,
@@ -243,6 +245,47 @@ function normalizeFundKindHints(body = {}) {
   return out;
 }
 
+function klinePayloadForSession(payload, market, tf, sessionMode = 'latest') {
+  return sessionMode === 'all' ? payload : keepLatestCnIntradaySession(payload, market, tf);
+}
+
+function collectValidKlineCandles(payload = {}) {
+  return (Array.isArray(payload?.candles) ? payload.candles : [])
+    .filter((bar) => bar && Number.isFinite(Number(bar.t)));
+}
+
+function mergeKlinePayloadsWithR2(cached, fresh, { market, tf, limit = 1000, sessionMode = 'all' } = {}) {
+  const r2Candles = collectValidKlineCandles(cached);
+  const freshCandles = collectValidKlineCandles(fresh);
+  const byTimestamp = new Map();
+  for (const candle of r2Candles) {
+    byTimestamp.set(Number(candle.t), { ...candle, t: Number(candle.t) });
+  }
+  for (const candle of freshCandles) {
+    byTimestamp.set(Number(candle.t), { ...candle, t: Number(candle.t) });
+  }
+  const mergedCandles = Array.from(byTimestamp.values())
+    .sort((left, right) => Number(left.t) - Number(right.t));
+  const requestedLimit = Math.max(1, Math.min(Number(limit) || 1000, 1000));
+  const limitedCandles = mergedCandles.slice(-requestedLimit);
+  const payload = {
+    ...(cached && typeof cached === 'object' ? cached : {}),
+    ...(fresh && typeof fresh === 'object' ? fresh : {}),
+    market: fresh?.market || cached?.market || market,
+    symbol: fresh?.symbol || cached?.symbol || '',
+    interval: fresh?.interval || cached?.interval || tf,
+    generatedAt: fresh?.generatedAt || new Date().toISOString(),
+    cached: false,
+    source: 'realtime+r2',
+    mergedR2: r2Candles.length > 0,
+    r2CandleCount: r2Candles.length,
+    freshCandleCount: freshCandles.length,
+    mergedCandleCount: mergedCandles.length,
+    candles: limitedCandles
+  };
+  return klinePayloadForSession(payload, market, tf, sessionMode);
+}
+
 async function readCachedFundMetric(env, cacheKey, fundKind = '') {
   const cached = await kvGetJson(env, cacheKey).catch(() => null);
   if (!cached || !cached.code) return null;
@@ -403,6 +446,7 @@ export async function handleKline(env, rawSymbol, params) {
   const forceRefresh = params.get('refresh') === '1';
   const requestedLimit = Math.max(1, Math.min(Number(params.get('limit')) || 500, 1000));
   const sessionMode = params.get('session') === 'all' ? 'all' : 'latest';
+  const shouldMergeR2 = params.get('mergeR2') === '1' || params.get('includeR2') === '1';
   const shouldUseDefaultCache = sessionMode === 'latest' && requestedLimit <= 500;
 
   console.log('[markets:kline] request', {
@@ -413,6 +457,7 @@ export async function handleKline(env, rawSymbol, params) {
     forceRefresh,
     limit: requestedLimit,
     sessionMode,
+    mergeR2: shouldMergeR2,
     r2Key: r2k,
     nowIso: new Date().toISOString(),
     tradingMinute: market === 'cn' ? getShanghaiTradingMinute() : null,
@@ -451,13 +496,13 @@ export async function handleKline(env, rawSymbol, params) {
           console.log('[markets:kline] Using batch-saved data from R2', {
             rawSymbol, tf, age: Math.round(age / 1000 / 60) + 'min'
           });
-          return json({ ...cached, cached: true, source: 'r2-batch' });
+          return json({ ...klinePayloadForSession(cached, market, tf, sessionMode), cached: true, source: 'r2-batch' });
         }
       }
 
       // 非批量保存的数据，使用原有的过期策略
       if (!stale && sourceOk) {
-        return json({ ...cached, cached: true, source: 'r2-cache' });
+        return json({ ...klinePayloadForSession(cached, market, tf, sessionMode), cached: true, source: 'r2-cache' });
       }
     } else {
       console.log('[markets:kline] R2 cache miss', { rawSymbol, market, code, tf, r2Key: r2k });
@@ -467,7 +512,28 @@ export async function handleKline(env, rawSymbol, params) {
   }
 
   // 只有在必要时才实时抓取
+  const cachedForMerge = shouldMergeR2 ? await r2GetJson(env, r2k).catch(() => null) : null;
   const fresh = await refreshKline(env, market, code, tf, { limit: requestedLimit, sessionMode, writeCache: shouldUseDefaultCache });
+  if (shouldMergeR2 && cachedForMerge && Array.isArray(cachedForMerge.candles) && cachedForMerge.candles.length) {
+    const merged = mergeKlinePayloadsWithR2(cachedForMerge, fresh, {
+      market,
+      tf,
+      limit: requestedLimit,
+      sessionMode
+    });
+    console.log('[markets:kline] response merged with R2', {
+      rawSymbol,
+      market,
+      code,
+      tf,
+      r2Key: r2k,
+      r2CandleCount: merged.r2CandleCount,
+      freshCandleCount: merged.freshCandleCount,
+      mergedCandleCount: merged.mergedCandleCount,
+      payload: describeKlinePayloadForLog(merged)
+    });
+    return json(merged);
+  }
   console.log('[markets:kline] response fresh (realtime fetch)', {
     rawSymbol,
     market,

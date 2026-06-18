@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+/* global Response, URLSearchParams */
+
 import { fetchXueqiuQuote } from '../workers/markets/src/fetchers.js';
 import { handleFundMetrics, handleKline, normalizeFundMetricFromQuote } from '../workers/markets/src/fundMetricsRoutes.js';
 import {
@@ -323,6 +325,121 @@ test('US daily kline fetches enough Yahoo history for six-month charts', async (
     assert.match(requestedUrl, /interval=1d/);
     assert.equal(payload.symbol, 'QQQ');
     assert.equal(payload.candles.length, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('kline refresh can merge R2 history with realtime candles for backtests', async () => {
+  const originalFetch = globalThis.fetch;
+  const r2Candles = [
+    { t: Date.UTC(2026, 5, 12, 1, 30) / 1000, o: 1, h: 1.1, l: 0.9, c: 1.01, v: 100 },
+    { t: Date.UTC(2026, 5, 13, 1, 30) / 1000, o: 2, h: 2.1, l: 1.9, c: 2.01, v: 200 }
+  ];
+  const freshCandles = [
+    { t: Date.UTC(2026, 5, 13, 1, 30) / 1000, o: 20, h: 21, l: 19, c: 20.5, v: 2000 },
+    { t: Date.UTC(2026, 5, 14, 1, 30) / 1000, o: 3, h: 3.1, l: 2.9, c: 3.01, v: 300 }
+  ];
+  const env = {
+    MARKETS_R2: {
+      async get(key) {
+        assert.equal(key, 'kline/us/QQQ/1d.json');
+        return {
+          async text() {
+            return JSON.stringify({
+              symbol: 'QQQ',
+              interval: '1d',
+              market: 'us',
+              source: 'r2-batch',
+              batchSaved: true,
+              generatedAt: '2026-06-13T08:00:00.000Z',
+              candles: r2Candles
+            });
+          }
+        };
+      }
+    }
+  };
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    chart: {
+      result: [{
+        meta: { symbol: 'QQQ' },
+        timestamp: freshCandles.map((item) => item.t),
+        indicators: {
+          quote: [{
+            open: freshCandles.map((item) => item.o),
+            high: freshCandles.map((item) => item.h),
+            low: freshCandles.map((item) => item.l),
+            close: freshCandles.map((item) => item.c),
+            volume: freshCandles.map((item) => item.v)
+          }]
+        }
+      }],
+      error: null
+    }
+  }), { status: 200, headers: { 'content-type': 'application/json' } });
+
+  try {
+    const response = await handleKline(env, 'QQQ', new URLSearchParams('tf=1d&limit=1000&session=all&refresh=1&mergeR2=1'));
+    const payload = await response.json();
+
+    assert.equal(payload.source, 'realtime+r2');
+    assert.equal(payload.mergedR2, true);
+    assert.equal(payload.r2CandleCount, 2);
+    assert.equal(payload.freshCandleCount, 2);
+    assert.deepEqual(payload.candles.map((item) => item.t), [
+      r2Candles[0].t,
+      freshCandles[0].t,
+      freshCandles[1].t
+    ]);
+    assert.equal(payload.candles[1].c, 20.5);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('merged kline response applies the requested limit after dedupe', async () => {
+  const originalFetch = globalThis.fetch;
+  const r2Candles = [
+    { t: 100, o: 1, h: 1, l: 1, c: 1, v: 1 },
+    { t: 200, o: 2, h: 2, l: 2, c: 2, v: 2 }
+  ];
+  const env = {
+    MARKETS_R2: {
+      async get() {
+        return {
+          async text() {
+            return JSON.stringify({ symbol: 'QQQ', interval: '1d', market: 'us', candles: r2Candles });
+          }
+        };
+      }
+    }
+  };
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    chart: {
+      result: [{
+        meta: { symbol: 'QQQ' },
+        timestamp: [300, 400],
+        indicators: {
+          quote: [{
+            open: [3, 4],
+            high: [3, 4],
+            low: [3, 4],
+            close: [3, 4],
+            volume: [3, 4]
+          }]
+        }
+      }],
+      error: null
+    }
+  }), { status: 200, headers: { 'content-type': 'application/json' } });
+
+  try {
+    const response = await handleKline(env, 'QQQ', new URLSearchParams('tf=1d&limit=2&session=all&refresh=1&mergeR2=1'));
+    const payload = await response.json();
+
+    assert.deepEqual(payload.candles.map((item) => item.t), [300, 400]);
+    assert.equal(payload.mergedCandleCount, 4);
   } finally {
     globalThis.fetch = originalFetch;
   }

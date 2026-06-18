@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-/* global Request */
+/* global Request, Response, URL */
 
 import notifyWorker from '../workers/notify/src/index.js';
 import {
@@ -28,8 +28,17 @@ function makePremiumCandles(premiums = [], { start = Math.floor(Date.UTC(2026, 5
 function createMemoryKv(seed = {}) {
   const memory = new Map(Object.entries(seed));
   return {
-    async get(key) {
-      return memory.has(key) ? memory.get(key) : null;
+    async get(key, options = undefined) {
+      if (!memory.has(key)) return null;
+      const value = memory.get(key);
+      if (options?.type === 'json') {
+        try {
+          return typeof value === 'string' ? JSON.parse(value) : value;
+        } catch {
+          return null;
+        }
+      }
+      return typeof value === 'string' ? value : JSON.stringify(value);
     },
     async put(key, value) {
       memory.set(key, String(value));
@@ -43,6 +52,20 @@ function createMemoryKv(seed = {}) {
       };
     }
   };
+}
+
+function navHistoryMonthPayload(code, items = []) {
+  return JSON.stringify({
+    version: 1,
+    code,
+    month: '2026-06',
+    from: '2026-06-01',
+    to: '2026-06-30',
+    count: items.length,
+    items,
+    generatedAt: '2026-06-18T00:00:00.000+08:00',
+    expiresAt: '2099-01-01T00:00:00.000+08:00'
+  });
 }
 
 function quantPremiumTestFingerprint({
@@ -266,6 +289,94 @@ test('quant premium resource backtests route returns latest and requested run', 
   assert.equal(requestedResponse.status, 200);
   assert.equal(requestedPayload.result.runId, 'bt-old');
   assert.equal(requestedPayload.gate.latestRunId, 'bt-latest');
+});
+
+test('quant premium backtest route requests kline with R2 merge enabled', async () => {
+  const clientId = 'web:quant-r2-merge';
+  const clientSecret = 'quant-secret';
+  const strategy = normalizeQuantPremiumStrategy({
+    id: 'merge-r2-demo',
+    enabled: true,
+    name: 'Merge R2 Demo',
+    highCodes: ['159513'],
+    lowCodes: ['513100'],
+    activeSide: 'all',
+    intraBuyOtherPct: 3,
+    intraSellLowerPct: 1
+  });
+  const { env } = await createQuantPremiumRouteFixture({
+    clientId,
+    clientSecret,
+    strategies: [strategy]
+  });
+  const requestedUrls = [];
+  const start = Math.floor(Date.UTC(2026, 5, 12, 1, 30) / 1000);
+  const candles = Array.from({ length: 12 }, (_, index) => ({
+    t: start + index * 60,
+    o: 1,
+    h: 1.05,
+    l: 0.99,
+    c: 1,
+    v: 1000
+  }));
+  env.ADMIN_TEST_TOKEN = 'admin-test';
+  env.NAV_HISTORY_KV = createMemoryKv({
+    'navhist:v1:159513:2026-06': navHistoryMonthPayload('159513', [{ date: '2026-06-12', nav: 1 }]),
+    'navhist:v1:513100:2026-06': navHistoryMonthPayload('513100', [{ date: '2026-06-12', nav: 1 }])
+  });
+  env.MARKETS = {
+    async fetch(request) {
+      const url = new URL(request.url);
+      requestedUrls.push(url.toString());
+      const code = decodeURIComponent(url.pathname.split('/').pop() || '');
+      const premium = code === '159513' ? 0.04 : 0;
+      return new Response(JSON.stringify({
+        symbol: code,
+        interval: url.searchParams.get('tf') || '1m',
+        market: 'cn',
+        source: 'realtime+r2',
+        mergedR2: true,
+        candles: candles.map((item) => ({ ...item, c: item.c + premium }))
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' }
+  });
+
+  try {
+    const response = await notifyWorker.fetch(new Request(
+      `https://tools.freebacktrack.tech/api/notify/quant/premium/strategies/merge-r2-demo/backtest?clientId=${encodeURIComponent(clientId)}`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-admin-token': 'admin-test',
+          'x-notify-client-secret': clientSecret
+        },
+        body: JSON.stringify({ timeframe: '1m' })
+      }
+    ), env);
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.result.status, 'passed');
+    assert.equal(payload.result.timeframe, '1m');
+    assert.equal(payload.result.summary.sampleCount, 12);
+    assert.equal(requestedUrls.length, 2);
+    for (const item of requestedUrls) {
+      const url = new URL(item);
+      assert.equal(url.searchParams.get('tf'), '1m');
+      assert.equal(url.searchParams.get('limit'), '1000');
+      assert.equal(url.searchParams.get('session'), 'all');
+      assert.equal(url.searchParams.get('refresh'), '1');
+      assert.equal(url.searchParams.get('mergeR2'), '1');
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('quant premium approve route enables live signal only for a passed matching backtest', async () => {

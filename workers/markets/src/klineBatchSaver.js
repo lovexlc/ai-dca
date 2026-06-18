@@ -1,13 +1,13 @@
 // K线数据收盘后批量保存任务
 // 用于解决雪球接口K线数据时间窗口限制的问题
+/* global console */
 
 import { fetchYahooChart, normalizeYahooKline } from './fetchers.js';
 import { r2GetJson, r2PutJson, klineKey } from './storage.js';
 import { classifySymbol } from './symbols.js';
 import {
   fetchCnKlineWithFallback,
-  keepLatestCnIntradaySession,
-  describeKlinePayloadForLog,
+  INTRADAY_KLINE_INTERVALS,
   mapLimit
 } from './marketRuntime.js';
 
@@ -176,9 +176,8 @@ async function saveKlineDataForSymbol(env, market, symbol, interval, options = {
     };
   } else {
     // A股使用雪球
-    const limit = interval === '1d' ? 500 : 300;  // 日线获取更多历史数据
+    const limit = interval === '1d' ? 500 : (INTRADAY_KLINE_INTERVALS.has(interval) ? 1000 : 300);
     payload = await fetchCnKlineWithFallback(env, code, interval, { limit });
-    payload = keepLatestCnIntradaySession(payload, market, interval);
     payload.batchSaved = true;
     payload.generatedAt = new Date().toISOString();
   }
