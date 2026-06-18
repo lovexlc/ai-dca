@@ -1,9 +1,8 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, Bot, Crown, LineChart, ListChecks, Play, Plus, Send, Shuffle, SlidersHorizontal, Trash2, Wallet, X } from 'lucide-react';
+import { Activity, ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, Bot, Crown, LineChart, ListChecks, Shuffle, SlidersHorizontal, Trash2, Wallet, X } from 'lucide-react';
 import { DEFAULT_QUANT_MODULE_TAB, DEFAULT_WORKSPACE_TAB, LEGACY_QUANT_MODULE_REDIRECTS, LEGACY_TAB_REDIRECTS, QUANT_MODULE_TABS, QUANT_MODULE_TAB_KEYS, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getQuantModuleTabs, isWorkspaceGroup } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
-import { MobileTabBar } from '../components/mobile-tab-bar.jsx';
 import { GlobalSearch } from '../components/global-search.jsx';
 import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
 import { ReleaseAnnouncementModal } from '../components/release-announcement-modal.jsx';
@@ -17,7 +16,7 @@ import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authClient.js
 import { isAnalyticsAdmin, trackPageEngagement, trackPageView, trackSessionHeartbeat, trackSessionStart } from '../app/analytics.js';
 
 // 各主 tab 使用 React.lazy 按需加载，在 Vite 中会被拆成独立 chunk。
-// HomeExperience / DcaExperience 已并入 TradePlansExperience 作为二级 tab，不再在这里顶级 lazy。
+// 定投、卖出、VIX、回测工具已并入 TradePlansExperience 作为二级视图。
 const FundSwitchExperience = lazy(() => import('./FundSwitchExperience.jsx').then((m) => ({ default: m.FundSwitchExperience })));
 const HoldingsExperience = lazy(() => import('./HoldingsExperience.jsx').then((m) => ({ default: m.HoldingsExperience })));
 const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) => ({ default: m.NotifyExperience })));
@@ -155,7 +154,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const [showQrModal, setShowQrModal] = useState(false);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [cloudSession, setCloudSession] = useState(() => loadCloudSession());
-  const [activeHash, setActiveHash] = useState(() => (typeof window === 'undefined' ? '' : window.location.hash || ''));
+  // 仅用于在 hash 变化时触发本组件重渲染，使子面板读到新 hash；值本身无需读取。
+  const [, setActiveHash] = useState(() => (typeof window === 'undefined' ? '' : window.location.hash || ''));
   const [currentScenarioKey, setCurrentScenarioKey] = useState(() => readWorkspacePrefs().scenario);
 
   const selectedScenario = getScenario(currentScenarioKey);
@@ -271,7 +271,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const activeTabRef = useRef(activeTab);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const currentPageLabel = WORKSPACE_TAB_META[activeTab]?.label || '';
-  const hideMobileTabBar = activeTab === 'tradePlans' && ['#new', '#dca-new'].includes(activeHash);
 
   function handleScenarioSwitch(newScenarioKey) {
     const newScenario = getScenario(newScenarioKey);
@@ -298,56 +297,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       tone: 'emerald'
     });
   }
-
-  const quickAction = useMemo(() => {
-    if (activeTab === 'notify') {
-      return {
-        label: '测试通知',
-        icon: Send,
-        mode: 'custom',
-        action: () => window.dispatchEvent(new CustomEvent('notify:test-pc'))
-      };
-    }
-    if (activeTab === 'tradePlans') {
-      return {
-        label: '新建策略',
-        icon: ListChecks,
-        mode: 'custom',
-        action: () => {
-          handleSelectTab('tradePlans');
-          setTimeout(() => {
-            window.history.pushState({ subView: 'new' }, '', `${window.location.pathname}${window.location.search}#new`);
-            window.dispatchEvent(new HashChangeEvent('hashchange'));
-          }, 80);
-        }
-      };
-    }
-    if (isQuantModuleTab(activeTab)) {
-      return {
-        label: '手动跑一轮',
-        icon: Play,
-        mode: 'custom',
-        action: () => window.dispatchEvent(new CustomEvent('quant:run-once'))
-      };
-    }
-    if (activeTab === 'quant') {
-      return {
-        label: '启动命令',
-        icon: Play,
-        mode: 'custom',
-        action: () => window.scrollTo({ top: 0, behavior: 'smooth' })
-      };
-    }
-    if (activeTab === 'fundSwitch') {
-      return {
-        label: '查看机会',
-        icon: Shuffle,
-        mode: 'custom',
-        action: () => window.scrollTo({ top: 0, behavior: 'smooth' })
-      };
-    }
-    return { label: '新增交易', icon: Plus, mode: 'add', action: null };
-  }, [activeTab]);
 
   const sidebarNav = useMemo(
     () => {
@@ -623,27 +572,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         </div>
       </ConsoleLayout>
       <AiChatWidget currentTab={activeTab} />
-      <MobileTabBar
-        hidden={hideMobileTabBar}
-        quickActionLabel={quickAction.label}
-        quickActionIcon={quickAction.icon}
-        quickActionMode={quickAction.mode}
-        onQuickAction={quickAction.action}
-        onSearch={() => setGlobalSearchOpen(true)}
-        onAi={() => window.dispatchEvent(new CustomEvent('aichat:open'))}
-        onNew={() => {
-          handleSelectTab('holdings');
-          setTimeout(() => window.dispatchEvent(new CustomEvent('holdings:new')), 80);
-        }}
-        onPasteImport={() => {
-          handleSelectTab('holdings');
-          setTimeout(() => window.dispatchEvent(new CustomEvent('holdings:import-paste')), 80);
-        }}
-        onOcrImport={() => {
-          handleSelectTab('holdings');
-          setTimeout(() => window.dispatchEvent(new CustomEvent('holdings:import-ocr')), 80);
-        }}
-      />
       {(tabHistory.length > 0 || showScrollTop) ? (
         <div className="fixed bottom-24 right-4 z-40 flex flex-col gap-2 sm:hidden" aria-label="页面快捷操作">
           {tabHistory.length > 0 ? (
