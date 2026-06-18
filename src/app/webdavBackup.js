@@ -1,41 +1,17 @@
 // 本地业务数据 envelope helper，供账号云同步使用。
 // 导出范围只包含业务白名单 key，避免 UI 状态、登录态、缓存和分析日志推高云端版本。
+// 「哪些 key 同步」唯一来源是 syncRegistry.js，本文件只负责 envelope 的收集 / 应用。
 
-const LS_PREFIX = 'aiDca';
+import { SYNCABLE_STORAGE_KEYS } from './syncRegistry.js';
+
 export const BACKUP_APPLIED_EVENT = 'ai-dca:backup-applied';
 const HOLDINGS_BACKUP_KEYS = new Set([
   'aiDcaFundHoldingsLedger',
   'aiDcaFundHoldingsState'
 ]);
-export const SYNCABLE_STORAGE_KEYS = new Set([
-  'aiDcaAccountAssignments',
-  'aiDcaAccumulationState',
-  'aiDcaDcaState',
-  'aiDcaDcaStore',
-  'aiDcaFundHoldingsLedger',
-  'aiDcaFundHoldingsState',
-  'aiDcaHomeDashboardState',
-  'aiDcaNotifyClientConfig',
-  'aiDcaPlanState',
-  'aiDcaPlanStore',
-  'aiDcaPositionSnapshot',
-  'aiDcaQuantProjectState',
-  'aiDcaSellPlanDraft',
-  'aiDcaSellPlanStore',
-  'aiDcaSwitchStrategyPrefs',
-  'aiDcaSwitchStrategyWorkerConfig',
-  'aiDcaTradeLedger',
-  'aiDcaTradeLedgerArchive',
-  'aiDcaVixState',
-  'aiDcaWebNotifyConfig',
-  'aiDcaWorkspacePrefs'
-]);
-const _TRANSIENT_KEYS = new Set([
-  'aiDcaPendingToasts',
-  'aiDcaCloudSyncSession',
-  'aiDcaCloudSyncMeta',
-  'aiDcaSecureSyncRememberedKey'
-]);
+// 恢复后需主动广播领域事件、让对应消费者重新读取的 key（无 React storage 监听兜底者）。
+const PREMIUM_STATE_KEY = 'aiDcaPremiumState';
+export { SYNCABLE_STORAGE_KEYS };
 const BACKUP_VERSION = 1;
 
 function safeLocalStorage() {
@@ -88,12 +64,13 @@ export function applyBackupEnvelope(envelope, { wipePrefix = true } = {}) {
   if (!payload || typeof payload !== 'object') throw new Error('备份缺少 payload 字段');
 
   if (wipePrefix) {
+    // 清理所有可同步 key（不再依赖 'aiDca' 前缀，使 markets:watchlist:v1 等非前缀 key 也能被覆盖清理）。
+    // 登录态 / 缓存 / UI 临时状态因不在白名单内而被保留。
     const toDelete = [];
     for (let i = 0; i < ls.length; i += 1) {
       const key = ls.key(i);
       if (!key) continue;
-      if (!key.startsWith(LS_PREFIX)) continue;
-      if (!isBackupPayloadKey(key)) continue; // 保留登录态、缓存和 UI 临时状态
+      if (!isBackupPayloadKey(key)) continue;
       toDelete.push(key);
     }
     toDelete.forEach((key) => ls.removeItem(key));
@@ -118,6 +95,10 @@ export function applyBackupEnvelope(envelope, { wipePrefix = true } = {}) {
       window.dispatchEvent(new CustomEvent('holdings:ledger-updated', {
         detail: { ...detail, source: 'backup-applied' }
       }));
+    }
+    // 会员状态 UI 监听 aidca:premium-changed；恢复是直接写 localStorage，需补发一次以刷新。
+    if (restoredKeys.includes(PREMIUM_STATE_KEY)) {
+      window.dispatchEvent(new CustomEvent('aidca:premium-changed', { detail: { source: 'backup-applied' } }));
     }
   }
 

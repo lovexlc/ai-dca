@@ -321,7 +321,7 @@ export const CN_OTC_WATCHLIST_PRESETS = [
 
 const DEFAULT_CN_OTC_WATCHLIST = CN_OTC_WATCHLIST_PRESETS.map((item) => item.symbol);
 
-function normalizeWatchlist(value = {}) {
+export function normalizeWatchlist(value = {}) {
   const now = new Date().toISOString();
   const rawUs = Array.isArray(value.us) ? value.us : [];
   const rawCn = Array.isArray(value.cn) ? value.cn : [];

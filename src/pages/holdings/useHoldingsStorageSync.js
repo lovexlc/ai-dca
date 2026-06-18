@@ -3,13 +3,7 @@ import { readAccountAssignments } from '../../app/accountManager.js';
 import { readLedgerState } from '../../app/holdingsLedger.js';
 import { readTradeLedger } from '../../app/tradeLedger.js';
 import { BACKUP_APPLIED_EVENT } from '../../app/webdavBackup.js';
-
-const HOLDINGS_SYNC_KEYS = new Set([
-  'aiDcaFundHoldingsLedger',
-  'aiDcaFundHoldingsState',
-  'aiDcaAccountAssignments',
-  'aiDcaTradeLedger'
-]);
+import { HOLDINGS_SYNC_KEYS } from '../../app/syncRegistry.js';
 
 export function useHoldingsStorageSync({
   setLedger,

@@ -22,6 +22,7 @@ import {
   renameWatchlist,
   setActiveWatchlist,
 } from '../app/marketsApi.js';
+import { BACKUP_APPLIED_EVENT } from '../app/webdavBackup.js';
 import { showActionToast } from '../app/toast.js';
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { readTradeLedger, TRADE_LEDGER_UPDATED_EVENT } from '../app/tradeLedger.js';
@@ -142,6 +143,17 @@ export function MarketsExperience() {
     const h = () => setIsMobile(mq.matches);
     mq.addEventListener ? mq.addEventListener('change', h) : mq.addListener(h);
     return () => { mq.removeEventListener ? mq.removeEventListener('change', h) : mq.removeListener(h); };
+  }, []);
+  // 账号云同步恢复后重新读取自选清单（restore/merge 直接写 localStorage，不会触发本页 state 更新）。
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    function onBackupApplied(event) {
+      const keys = Array.isArray(event?.detail?.keys) ? event.detail.keys : [];
+      if (keys.length && !keys.includes('markets:watchlist:v1')) return;
+      setWatch(loadWatchlist());
+    }
+    window.addEventListener(BACKUP_APPLIED_EVENT, onBackupApplied);
+    return () => window.removeEventListener(BACKUP_APPLIED_EVENT, onBackupApplied);
   }, []);
   const researchModeRef = useRef('peek');
   useEffect(() => { researchModeRef.current = researchMode; }, [researchMode]);

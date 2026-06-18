@@ -1,25 +1,10 @@
 import { applyBackupEnvelope, buildBackupEnvelope, isBackupPayloadKey } from './webdavBackup.js';
 import { fetchCloudSyncMeta, fetchLatestCloudBackup, loadCloudSession, uploadLatestCloudBackup } from './authClient.js';
 import { decryptBackupEnvelope, encryptBackupEnvelope, loadRememberedKey, rememberKeyForEncryptedEnvelope, saveRememberedKey } from './secureVault.js';
+import { TRANSIENT_SYNC_KEYS, getMergeStrategy, isDomainMergeKey } from './syncRegistry.js';
+import { normalizeWatchlist } from './marketsApi.js';
 
 export const CLOUD_SYNC_META_KEY = 'aiDcaCloudSyncMeta';
-
-const TRANSIENT_SYNC_KEYS = new Set([
-  'aiDcaPendingToasts',
-  'aiDcaCloudSyncMeta',
-  'aiDcaCloudSyncSession',
-  'aiDcaSecureSyncRememberedKey'
-]);
-
-const DOMAIN_MERGE_PAYLOAD_KEYS = new Set([
-  'aiDcaPlanStore',
-  'aiDcaDcaStore',
-  'aiDcaFundHoldingsLedger',
-  'aiDcaTradeLedger',
-  'aiDcaTradeLedgerArchive',
-  'aiDcaSellPlanStore',
-  'aiDcaAccountAssignments'
-]);
 
 function storage() {
   if (typeof window === 'undefined' || !window.localStorage) return null;
@@ -216,29 +201,79 @@ function mergeHoldingsLedgerPayload(remoteValue, localValue) {
   });
 }
 
+// 自选清单：lists 按 id 合并；同 id 清单的 us/cn 取并集（自选是增量行为，不能让某端的新增被覆盖丢失）；
+// activeListId 优先保留本地选择；最后用 normalizeWatchlist 兜底默认清单 + 重算顶层 us/cn。
+function unionSymbols(remoteList = [], localList = []) {
+  const seen = new Set();
+  const out = [];
+  for (const sym of [...(Array.isArray(remoteList) ? remoteList : []), ...(Array.isArray(localList) ? localList : [])]) {
+    const key = String(sym || '').trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(sym);
+  }
+  return out;
+}
+
+function mergeWatchlistPayload(remoteValue, localValue) {
+  const remote = parsePayloadJson(remoteValue);
+  const local = parsePayloadJson(localValue);
+  if (!remote || typeof remote !== 'object' || !local || typeof local !== 'object') return localValue ?? remoteValue;
+  const remoteLists = Array.isArray(remote.lists) ? remote.lists : [];
+  const localLists = Array.isArray(local.lists) ? local.lists : [];
+  const byId = new Map();
+  for (const list of remoteLists) {
+    const id = String(list?.id || '').trim();
+    if (id) byId.set(id, list);
+  }
+  for (const list of localLists) {
+    const id = String(list?.id || '').trim();
+    if (!id) continue;
+    const remoteSide = byId.get(id);
+    if (!remoteSide) {
+      byId.set(id, list);
+      continue;
+    }
+    // 取较新清单的元信息，但 us/cn 始终并集，保证两端新增都不丢。
+    const newer = compareRecordVersions(list, remoteSide) >= 0 ? list : remoteSide;
+    byId.set(id, {
+      ...remoteSide,
+      ...newer,
+      us: unionSymbols(remoteSide.us, list.us),
+      cn: unionSymbols(remoteSide.cn, list.cn)
+    });
+  }
+  const lists = Array.from(byId.values());
+  const localActiveId = String(local.activeListId || '').trim();
+  const activeListId = lists.some((item) => item.id === localActiveId)
+    ? localActiveId
+    : String(remote.activeListId || '').trim();
+  return stringifyPayloadJson(normalizeWatchlist({ ...remote, ...local, lists, activeListId }));
+}
+
 function mergePayloadValue(key, remoteValue, localValue) {
   if (localValue == null) return remoteValue;
   if (remoteValue == null) return localValue;
-  switch (key) {
-    case 'aiDcaPlanStore':
+  switch (getMergeStrategy(key)) {
+    case 'planStore':
       return mergePlanStorePayload(remoteValue, localValue);
-    case 'aiDcaDcaStore':
+    case 'dcaStore':
       return mergeDcaStorePayload(remoteValue, localValue);
-    case 'aiDcaFundHoldingsLedger':
+    case 'holdingsLedger':
       return mergeHoldingsLedgerPayload(remoteValue, localValue);
-    case 'aiDcaTradeLedger':
-    case 'aiDcaTradeLedgerArchive':
-    case 'aiDcaSellPlanStore':
+    case 'arrayById':
       return mergeArrayPayload(remoteValue, localValue);
-    case 'aiDcaAccountAssignments':
+    case 'objectMerge':
       return mergeObjectByCode(remoteValue, localValue);
+    case 'watchlist':
+      return mergeWatchlistPayload(remoteValue, localValue);
     default:
       return localValue;
   }
 }
 
 function canAutoMergeChangedKey(key) {
-  return DOMAIN_MERGE_PAYLOAD_KEYS.has(String(key || ''));
+  return isDomainMergeKey(key);
 }
 
 export function mergeBackupEnvelopes(remoteEnvelope = {}, localEnvelope = {}) {
@@ -634,6 +669,8 @@ let originalClear = null;
 let autoUploadInFlight = false;
 let suppressAutoUpload = false;
 let lastObservedSignature = '';
+let autoPullTimer = null;
+let autoPullInFlight = false;
 
 function observeLocalChange() {
   if (suppressAutoUpload) return false;
@@ -654,7 +691,7 @@ export function scheduleCloudAutoUpload({ delay = 2500, changed = false } = {}) 
   if (!session?.accessToken || !remembered?.rawKey || typeof window === 'undefined') return false;
   window.clearTimeout(autoSyncTimer);
   autoSyncTimer = window.setTimeout(async () => {
-    if (autoUploadInFlight) return;
+    if (autoUploadInFlight || autoPullInFlight) return;
     autoUploadInFlight = true;
     window.dispatchEvent(new CustomEvent('cloud-sync:auto-upload-started'));
     try {
@@ -671,6 +708,51 @@ export function scheduleCloudAutoUpload({ delay = 2500, changed = false } = {}) 
       autoUploadInFlight = false;
     }
   }, delay);
+  return true;
+}
+
+// 自动拉取：让第二台设备无需手动「恢复」也能拿到最新数据。
+// 决策：远端版本不高于本地已知版本则跳过；本地有未上传改动则走合并（零丢失），
+// 否则纯拉取覆盖。全程与上传互斥，applyBackupEnvelope 会广播 BACKUP_APPLIED_EVENT 触发各页刷新。
+async function runCloudAutoPull() {
+  const session = loadCloudSession();
+  const remembered = loadRememberedKey();
+  if (!session?.accessToken || !remembered?.rawKey) return;
+  if (autoUploadInFlight || autoPullInFlight || suppressAutoUpload) return;
+  autoPullInFlight = true;
+  try {
+    const remoteMeta = await fetchCloudSyncMeta(session);
+    const remoteVersion = Number(remoteMeta?.version);
+    if (!Number.isFinite(remoteVersion)) return;
+    const localMeta = loadCloudSyncMeta() || {};
+    const knownVersion = Number(localMeta?.version);
+    if (Number.isFinite(knownVersion) && remoteVersion <= knownVersion) return; // 没有更新的云端数据
+    const snapshot = createLocalDataSnapshot(buildBackupEnvelope());
+    const hasLocalUnsynced = snapshot.keyCount > 0 && snapshot.signature !== localMeta?.uploadedSignature;
+    // 已确认 remoteVersion > knownVersion：本地无未上传改动时直接拉取覆盖（不再用墙钟二次判定，避免时钟漂移误跳过）；
+    // 本地有未上传改动则合并，零丢失。
+    const result = hasLocalUnsynced
+      ? await mergeLocalIntoCloudBackup({ useRemembered: true })
+      : await restoreEncryptedCloudBackup({ useRemembered: true });
+    window.dispatchEvent(new CustomEvent('cloud-sync:auto-pulled', { detail: { result, merged: hasLocalUnsynced } }));
+  } catch (err) {
+    window.dispatchEvent(new CustomEvent('cloud-sync:auto-error', {
+      detail: {
+        message: err?.message || String(err),
+        conflict: err?.isCloudSyncConflict ? err.conflict : null
+      }
+    }));
+  } finally {
+    autoPullInFlight = false;
+  }
+}
+
+export function scheduleCloudAutoPull({ delay = 1500 } = {}) {
+  const session = loadCloudSession();
+  const remembered = loadRememberedKey();
+  if (!session?.accessToken || !remembered?.rawKey || typeof window === 'undefined') return false;
+  window.clearTimeout(autoPullTimer);
+  autoPullTimer = window.setTimeout(() => { runCloudAutoPull(); }, delay);
   return true;
 }
 
@@ -713,4 +795,12 @@ export function startCloudAutoSync() {
   window.addEventListener('storage', (event) => {
     if (isSyncableKey(event.key)) maybeScheduleAfterStorageMutation();
   });
+
+  // 自动拉取触发器：回到前台 / 窗口聚焦 / 周期轮询，让其它设备的改动落到本机。
+  window.addEventListener('visibilitychange', () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') scheduleCloudAutoPull();
+  });
+  window.addEventListener('focus', () => scheduleCloudAutoPull());
+  window.setInterval(() => scheduleCloudAutoPull({ delay: 0 }), 60000);
+  scheduleCloudAutoPull({ delay: 1500 }); // 启动后稍候拉取一次
 }
