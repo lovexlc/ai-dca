@@ -35,7 +35,7 @@ import {
   summarizeSoldLots,
   summarizeTransactionErrors
 } from '../app/holdingsLedgerCore.js';
-import { getNearestTradingDayShanghai, getNextTradingDayShanghai } from '../app/holidaysCN.js';
+import { getNearestTradingDayShanghai, getNextTradingDayShanghai, isTradingDayShanghai } from '../app/holidaysCN.js';
 import {
   buildNavMetaFromResult,
   mergeSnapshotsFromNavResult,
@@ -63,10 +63,21 @@ import { groupCostBasisBySymbol, attachUnrealized } from '../app/costTracker.js'
 import { hasPotentialUserData, installDemoData } from '../app/demoData.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 
+function enforceExchangeKindFilter(filters, enabled) {
+  const list = Array.isArray(filters) ? filters.filter((filter) => filter && filter.id !== 'kind') : [];
+  if (!enabled) return Array.isArray(filters) ? filters : [];
+  return [...list, { id: 'kind', value: ['exchange'] }];
+}
+
+function readColumnFilterValue(filters, id) {
+  const filter = (Array.isArray(filters) ? filters : []).find((item) => item?.id === id);
+  return filter?.value;
+}
+
 export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = false } = {}) {
   const [ledger, setLedger] = useState(() => readLedgerState());
-  const [kindFilter, setKindFilter] = useState('all');
-  const [searchText, setSearchText] = useState('');
+  const tradingDayExchangeOnly = useMemo(() => isTradingDayShanghai(getTodayShanghaiDate()), []);
+  const [columnFilters, setColumnFilters] = useState(() => enforceExchangeKindFilter([], tradingDayExchangeOnly));
   const [selectedCode, setSelectedCode] = useState('');
   const [sidePanelTab, setSidePanelTab] = useState('summary');
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
@@ -81,11 +92,18 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     aggregateCount: Array.isArray(aggregates) ? aggregates.length : 0,
     activePositionCount: Array.isArray(aggregatesTableData) ? aggregatesTableData.length : 0,
     soldLotCount: Array.isArray(soldLots) ? soldLots.length : 0,
-    hasSearch: Boolean(String(searchText || '').trim()),
-    kindFilter,
+    hasSearch: Boolean(String(readColumnFilterValue(columnFilters, 'name') || '').trim()),
+    kindFilter: (() => {
+      const value = readColumnFilterValue(columnFilters, 'kind');
+      return Array.isArray(value) && value.length ? value.join(',') : 'all';
+    })(),
     selected: Boolean(selectedCode),
     embedded
   });
+  useEffect(() => {
+    if (!tradingDayExchangeOnly) return;
+    setColumnFilters((current) => enforceExchangeKindFilter(current, true));
+  }, [tradingDayExchangeOnly]);
   useEffect(() => {
     function onMobileNew() {
       // 4.2: 已卖出 tab 已移除 (迁移到 #/liquidation)，默认留 BUY
@@ -288,9 +306,20 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     onNavigateToMarkets: navigateToMarkets,
   }), [accountAssignments, kindFilterOptions, links.markets]);
 
+  function handleColumnFiltersChange(updater) {
+    setColumnFilters((current) => {
+      const next = typeof updater === 'function' ? updater(current) : updater;
+      return enforceExchangeKindFilter(next, tradingDayExchangeOnly);
+    });
+  }
+
   const aggregatesTable = useReactTable({
     data: aggregatesTableData,
     columns: aggregateColumns,
+    state: {
+      columnFilters,
+    },
+    onColumnFiltersChange: handleColumnFiltersChange,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -791,7 +820,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   }
 
   function buildAggregateTsv() {
-    return buildAggregateHoldingsTsv({ aggregates, kindFilter, searchText });
+    const visibleAggregates = aggregatesTable.getFilteredRowModel().rows.map((row) => row.original);
+    return buildAggregateHoldingsTsv({ aggregates: visibleAggregates, kindFilter: 'all', searchText: '' });
   }
 
   async function handleCopyVisibleTable() {
