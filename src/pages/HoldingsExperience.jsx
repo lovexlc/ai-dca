@@ -135,13 +135,9 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [pasteResult, setPasteResult] = useState(null);
-  // ---- OCR import modal: 截图 OCR 走与「粘贴 Excel」一致的「先弹窗 → 解析预览 → 导入有效行」流程。 ----
   const [ocrModalOpen, setOcrModalOpen] = useState(false);
-  // ocrPreview 与 pasteResult 形状对齐：{ rows: Array<{ index, draft, errors }>, fileName, recordCount, warnings, provider, model }
   const [ocrPreview, setOcrPreview] = useState(null);
-  // 识别提醒（warnings）默认折叠，点击展开后显示全部，避免占用太多纵向空间。
   const [ocrWarningsExpanded, setOcrWarningsExpanded] = useState(false);
-  // 预览弹窗里把多行识别结果做成卡片轮播，每次只显示一条，避免手机端表格被横向截断。
   const [ocrPreviewIndex, setOcrPreviewIndex] = useState(0);
   const [pastePreviewIndex, setPastePreviewIndex] = useState(0);
   useEffect(() => {
@@ -169,18 +165,14 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const autoNavTriggeredRef = useRef(false);
   const navAttemptedCodesRef = useRef(new Set());
 
-
-  // ---- Persist changes to localStorage whenever ledger state changes ----
   useEffect(() => {
     persistLedgerState(ledger);
   }, [ledger]);
 
-  // ---- PR 3.5 part 1: 读取交易台账 (aiDcaTradeLedger)，给基金汇总行注入成本/盈亏字段（仅数据层，UI 留到 part 2）。 ----
   const [tradeLedgerEntries, setTradeLedgerEntries] = useState(() => readTradeLedger());
   const [accountAssignments, setAccountAssignments] = useState(() => readAccountAssignments());
   useHoldingsStorageSync({ setLedger, setAccountAssignments, setTradeLedgerEntries });
 
-  // ---- Derived data ----
   const transactions = ledger.transactions;
   const inceptionDate = useMemo(() => {
     if (!Array.isArray(transactions) || transactions.length === 0) return null;
@@ -215,8 +207,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     () => summarizePortfolio(aggregates, soldSummary),
     [aggregates, soldSummary]
   );
-  // ---- TanStack Table (shadcn / tablecn) for the 「基金汇总」 view ----
-  // PR 3.5 part 1：交易台账以 symbol 为维度聚合成本/盈亏，以 ledger* 字段挂到持仓行上；UI 呈现留给 part 2。
   const costBasisBySymbol = useMemo(
     () => groupCostBasisBySymbol(tradeLedgerEntries),
     [tradeLedgerEntries],
@@ -341,7 +331,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   );
   const migrationNoticeVisible = Boolean(ledger.migratedFromLegacy) && needsDateBackfill;
 
-  // ---- NAV auto-refresh on mount ----
   useEffect(() => {
     // 进入页面时无条件触发一次净值刷新（包含所有持仓代码）。
     // autoNavTriggeredRef 保证整个 mount 周期内只跑一次；手动刷新走 handleManualRefresh，独立于此。
@@ -356,7 +345,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     void refreshNavForCodes(codes, { silent: true });
   }, [transactions]);
 
-  // ---- WS 行情订阅：持仓代码变化时重新订阅 ----
   useEffect(() => {
     const ledgerCodes = getLedgerCodeList(transactions);
     const chainCodes = getSwitchChainCodeList(transactions);
@@ -488,7 +476,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     void refreshNavForCodes(codes, { silent: false, forceRefresh: true });
   }
 
-  // ---- Draft (quick add) handlers ----
   function resetDraft(nextDraft = emptyDraft()) {
     setDraft(nextDraft);
     setDraftMode('create');
