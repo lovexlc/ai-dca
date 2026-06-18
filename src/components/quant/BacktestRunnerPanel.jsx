@@ -6,8 +6,6 @@ import { InteractiveChartContainer } from '../InteractiveChartContainer.jsx';
 import { EquityChart, KlineChart, PremiumChart } from '../BacktestCharts.jsx';
 import { TradeHistoryCard } from '../TradeHistoryCard.jsx';
 import { formatTradeDateTime } from '../../app/tradeDisplay.js';
-import { saveQuantPremiumStrategyToWorker, normalizeQuantPremiumConfigShape } from '../../app/quantPremiumSync.js';
-import { showToast } from '../../app/toast.js';
 
 const BACKTEST_TIMEFRAME_OPTIONS = [
   { value: '5m', label: '5m 默认（约 3-4 周）' },
@@ -91,7 +89,7 @@ export function BacktestRunnerPanel({
   saving = false,
   onSelectStrategy,
   onRunBacktest,
-  onUpdateStrategy,
+  onSetLiveSignalApproved,
   onGoLive,
   onGoStrategy
 }) {
@@ -138,31 +136,9 @@ export function BacktestRunnerPanel({
 
   async function handleLiveSignalToggle(enabled) {
     if (!selectedStrategy) return;
-    const target = selectedStrategy;
-    const targetGate = target.backtestGate || {};
-    const effectiveGate = targetGate?.status === 'passed' || backtest?.status !== 'passed'
-      ? targetGate
-      : {
-        ...(targetGate || {}),
-        status: 'passed',
-        latestRunId: backtest?.runId || targetGate?.latestRunId || '',
-        summary: backtest?.summary || targetGate?.summary || null,
-        updatedAt: backtest?.finishedAt || ''
-      };
-    try {
-      const result = await saveQuantPremiumStrategyToWorker({
-        ...target,
-        backtestGate: effectiveGate,
-        liveSignalEnabled: enabled,
-        approveLiveSignal: enabled
-      });
-      const saved = normalizeQuantPremiumConfigShape(result.strategy);
-      onUpdateStrategy?.(saved, result.strategies);
-      showToast({ title: enabled ? '实盘信号已确认' : '实盘信号已关闭', tone: 'emerald' });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '实盘信号更新失败';
-      showToast({ title: '更新失败', description: message, tone: 'rose' });
-    }
+    await onSetLiveSignalApproved?.(enabled, {
+      runId: backtest?.runId || selectedStrategy.backtestGate?.latestRunId || ''
+    });
   }
 
   if (!selectedStrategy) {

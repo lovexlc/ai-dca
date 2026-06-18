@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   adjustQuantPremiumCashInWorker,
+  approveQuantPremiumBacktestInWorker,
   deleteQuantPremiumStrategyInWorker,
-  loadQuantPremiumBacktestLatestFromWorker,
-  loadQuantPremiumPaperStateFromWorker,
-  loadQuantPremiumStrategiesFromWorker,
-  loadQuantPremiumStrategySnapshotFromWorker,
+  loadQuantPremiumStudioFromWorker,
   normalizeQuantPremiumConfigShape,
   resetQuantPremiumPaperStateInWorker,
   runQuantPremiumBacktestInWorker,
@@ -48,17 +46,40 @@ function pickStrategy(list, preferredId) {
   return list[0];
 }
 
+function normalizeStudioContract(payload = {}, preferredId = '') {
+  const strategies = Array.isArray(payload?.strategies)
+    ? payload.strategies.map((item) => normalizeQuantPremiumConfigShape(item))
+    : [];
+  const picked = pickStrategy(strategies, payload?.selectedStrategyId || preferredId);
+  const resources = payload?.resources && typeof payload.resources === 'object' ? payload.resources : {};
+  const strategy = normalizeQuantPremiumConfigShape(resources.strategy || payload?.strategy || picked || {});
+  const selectedStrategyId = strategy.id || picked?.id || '';
+  return {
+    strategies: strategies.length ? strategies : (strategy.id ? [strategy] : []),
+    selectedStrategyId,
+    strategy,
+    paperState: resources.paperPortfolio || payload?.paperState || null,
+    snapshot: resources.marketSnapshot?.snapshot || payload?.snapshot || null,
+    backtest: resources.backtest?.result || payload?.backtest || null,
+    riskDecision: resources.riskDecision || null,
+    auditEvents: Array.isArray(resources.audit?.events) ? resources.audit.events : Array.isArray(payload?.auditEvents) ? payload.auditEvents : []
+  };
+}
+
 export function useQuantStudioState() {
   const [strategies, setStrategies] = useState([]);
   const [selectedStrategyId, setSelectedStrategyId] = useState(() => readStrategyIdFromUrl());
   const [paperState, setPaperState] = useState(null);
   const [snapshot, setSnapshot] = useState(null);
   const [backtest, setBacktest] = useState(null);
+  const [riskDecision, setRiskDecision] = useState(null);
+  const [auditEvents, setAuditEvents] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
   const [backtesting, setBacktesting] = useState(false);
+  const [approving, setApproving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
@@ -73,53 +94,44 @@ export function useQuantStudioState() {
     [strategies, selectedStrategyId]
   );
 
+  const applyStudioContract = useCallback((payload, preferredId = '') => {
+    const contract = normalizeStudioContract(payload, preferredId);
+    setStrategies(contract.strategies);
+    setSelectedStrategyId(contract.selectedStrategyId);
+    setPaperState(contract.paperState);
+    setSnapshot(contract.snapshot);
+    setBacktest(contract.backtest);
+    setRiskDecision(contract.riskDecision);
+    setAuditEvents(contract.auditEvents);
+    return contract;
+  }, []);
+
   const loadStrategyDetails = useCallback(async (strategyId) => {
-    if (!strategyId) return;
+    if (!strategyId) return null;
     setRefreshing(true);
     setError('');
-    const [paperResult, snapshotResult, backtestResult] = await Promise.allSettled([
-      loadQuantPremiumPaperStateFromWorker(strategyId),
-      loadQuantPremiumStrategySnapshotFromWorker(strategyId),
-      loadQuantPremiumBacktestLatestFromWorker(strategyId)
-    ]);
-    if (paperResult.status === 'fulfilled') setPaperState(paperResult.value);
-    if (snapshotResult.status === 'fulfilled') setSnapshot(snapshotResult.value?.snapshot || null);
-    if (backtestResult.status === 'fulfilled') {
-      const latest = backtestResult.value || {};
-      setBacktest(latest.result || null);
-      if (latest.gate) {
-        setStrategies((current) => current.map((item) => item.id === strategyId
-          ? normalizeQuantPremiumConfigShape({ ...item, backtestGate: latest.gate })
-          : item));
-      }
+    try {
+      return applyStudioContract(await loadQuantPremiumStudioFromWorker(strategyId), strategyId);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Worker 状态暂不可用');
+      throw loadError;
+    } finally {
+      setRefreshing(false);
     }
-    const failures = [paperResult, snapshotResult, backtestResult].filter((item) => item.status === 'rejected');
-    if (failures.length === 3) {
-      setError(failures[0].reason instanceof Error ? failures[0].reason.message : 'Worker 状态暂不可用');
-    } else if (failures.length) {
-      setError('部分 Worker 状态暂不可用');
-    }
-    setRefreshing(false);
-  }, []);
+  }, [applyStudioContract]);
 
   const refresh = useCallback(async ({ preferStrategyId = '' } = {}) => {
     setLoading(true);
     setError('');
     try {
-      const list = await loadQuantPremiumStrategiesFromWorker();
-      setStrategies(list);
       const desired = preferStrategyId || strategyIdRef.current;
-      const picked = pickStrategy(list, desired);
-      if (picked) {
-        setSelectedStrategyId(picked.id);
-        await loadStrategyDetails(picked.id);
-      }
+      applyStudioContract(await loadQuantPremiumStudioFromWorker(desired), desired);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '加载策略失败');
     } finally {
       setLoading(false);
     }
-  }, [loadStrategyDetails]);
+  }, [applyStudioContract]);
 
   useEffect(() => {
     refresh();
@@ -133,16 +145,19 @@ export function useQuantStudioState() {
     setBacktest(null);
     setSnapshot(null);
     setPaperState(null);
+    setRiskDecision(null);
+    setAuditEvents([]);
     await loadStrategyDetails(strategyId);
   }, [loadStrategyDetails]);
 
-  const saveStrategy = useCallback(async (strategyDraft, { approveLiveSignal = false } = {}) => {
+  const saveStrategy = useCallback(async (strategyDraft) => {
     setSaving(true);
     setError('');
     try {
-      const result = await saveQuantPremiumStrategyToWorker({ ...strategyDraft, approveLiveSignal });
+      const result = await saveQuantPremiumStrategyToWorker(strategyDraft);
       setStrategies(result.strategies);
       setSelectedStrategyId(result.strategy.id);
+      await loadStrategyDetails(result.strategy.id).catch(() => null);
       showToast({ title: '策略已保存', tone: 'emerald' });
       return result.strategy;
     } catch (saveError) {
@@ -153,7 +168,37 @@ export function useQuantStudioState() {
     } finally {
       setSaving(false);
     }
-  }, []);
+  }, [loadStrategyDetails]);
+
+  const setLiveSignalApproved = useCallback(async (enabled, { runId = '' } = {}) => {
+    const id = strategyIdRef.current;
+    if (!id) return null;
+    setApproving(true);
+    setSaving(true);
+    setError('');
+    try {
+      const result = enabled
+        ? await approveQuantPremiumBacktestInWorker(id, runId, { enableLiveSignal: true })
+        : await saveQuantPremiumStrategyToWorker({
+          ...(strategies.find((item) => item.id === id) || {}),
+          id,
+          liveSignalEnabled: false
+        });
+      setStrategies(result.strategies);
+      if (result.strategy?.id) setSelectedStrategyId(result.strategy.id);
+      await loadStrategyDetails(result.strategy?.id || id).catch(() => null);
+      showToast({ title: enabled ? '实盘信号已确认' : '实盘信号已关闭', tone: 'emerald' });
+      return result.strategy;
+    } catch (approveError) {
+      const message = approveError instanceof Error ? approveError.message : '实盘信号更新失败';
+      setError(message);
+      showToast({ title: '更新失败', description: message, tone: 'rose' });
+      throw approveError;
+    } finally {
+      setApproving(false);
+      setSaving(false);
+    }
+  }, [loadStrategyDetails, strategies]);
 
   const deleteStrategy = useCallback(async (strategyId) => {
     if (!strategyId || strategyId === 'default') return;
@@ -215,6 +260,7 @@ export function useQuantStudioState() {
           ? normalizeQuantPremiumConfigShape({ ...item, backtestGate: nextGate })
           : item));
       }
+      await loadStrategyDetails(saved.strategy.id).catch(() => null);
       return { strategy: saved.strategy, result };
     } catch (backtestError) {
       const message = backtestError instanceof Error ? backtestError.message : '回测失败';
@@ -224,10 +270,10 @@ export function useQuantStudioState() {
     } finally {
       setBacktesting(false);
     }
-  }, []);
+  }, [loadStrategyDetails]);
 
-  const runOnce = useCallback(async () => {
-    const id = strategyIdRef.current;
+  const runOnce = useCallback(async (strategy = null) => {
+    const id = String(strategy?.id || strategyIdRef.current || '').trim();
     if (!id) return;
     setRunning(true);
     setError('');
@@ -252,6 +298,7 @@ export function useQuantStudioState() {
     try {
       const result = await adjustQuantPremiumCashInWorker(amount, note, id);
       setPaperState(result.state);
+      await loadStrategyDetails(id).catch(() => null);
       showToast({ title: amount < 0 ? '模拟现金已减少' : '模拟现金已增加', tone: 'emerald' });
     } catch (cashError) {
       const message = cashError instanceof Error ? cashError.message : '资金调整失败';
@@ -259,7 +306,7 @@ export function useQuantStudioState() {
       showToast({ title: '资金调整失败', description: message, tone: 'rose' });
       throw cashError;
     }
-  }, []);
+  }, [loadStrategyDetails]);
 
   const resetPaper = useCallback(async () => {
     const id = strategyIdRef.current;
@@ -269,6 +316,7 @@ export function useQuantStudioState() {
       const next = await resetQuantPremiumPaperStateInWorker(null, id);
       setPaperState(next);
       setSummary(null);
+      await loadStrategyDetails(id).catch(() => null);
       showToast({ title: '模拟盘已重置', tone: 'emerald' });
     } catch (resetError) {
       const message = resetError instanceof Error ? resetError.message : '重置失败';
@@ -276,7 +324,7 @@ export function useQuantStudioState() {
       showToast({ title: '重置失败', description: message, tone: 'rose' });
       throw resetError;
     }
-  }, []);
+  }, [loadStrategyDetails]);
 
   return {
     strategies,
@@ -285,11 +333,14 @@ export function useQuantStudioState() {
     paperState,
     snapshot,
     backtest,
+    riskDecision,
+    auditEvents,
     summary,
     loading,
     saving,
     running,
     backtesting,
+    approving,
     refreshing,
     error,
     refresh,
@@ -298,6 +349,7 @@ export function useQuantStudioState() {
     deleteStrategy,
     createStrategy,
     runBacktest,
+    setLiveSignalApproved,
     runOnce,
     adjustCash,
     resetPaper,

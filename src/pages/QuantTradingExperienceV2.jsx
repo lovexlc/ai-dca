@@ -23,6 +23,7 @@ import { EquityChart, KlineChart, PremiumChart } from '../components/BacktestCha
 import { showToast } from '../app/toast.js';
 import { formatTradeDateTime } from '../app/tradeDisplay.js';
 import {
+  approveQuantPremiumBacktestInWorker,
   loadQuantPremiumStrategiesFromWorker,
   loadQuantPremiumBacktestLatestFromWorker,
   loadQuantPremiumStrategySnapshotFromWorker,
@@ -358,24 +359,18 @@ export default function QuantTradingExperienceV2({ initialTab = 'config', single
   async function handleLiveSignalToggle(enabled) {
     const targetStrategy = strategies.find((item) => item.id === activeStrategyId);
     if (!targetStrategy) return;
-    const targetGate = targetStrategy.backtestGate || {};
     setSaving(true);
     try {
-      const effectiveBacktestGate = targetGate?.status === 'passed' || backtest?.status !== 'passed'
-        ? targetGate
-        : {
-          ...(targetGate || {}),
-          status: 'passed',
-          latestRunId: backtest.runId || targetGate?.latestRunId || '',
-          summary: backtest.summary || targetGate?.summary || null,
-          updatedAt: backtest.finishedAt || new Date().toISOString()
-        };
-      const result = await saveQuantPremiumStrategyToWorker({
-        ...targetStrategy,
-        backtestGate: effectiveBacktestGate,
-        liveSignalEnabled: enabled,
-        approveLiveSignal: enabled
-      });
+      const result = enabled
+        ? await approveQuantPremiumBacktestInWorker(
+          targetStrategy.id,
+          backtest?.runId || targetStrategy.backtestGate?.latestRunId || '',
+          { enableLiveSignal: true }
+        )
+        : await saveQuantPremiumStrategyToWorker({
+          ...targetStrategy,
+          liveSignalEnabled: false
+        });
       applySavedStrategy(result);
       showToast({ title: enabled ? '实盘信号已确认' : '实盘信号已关闭', tone: 'emerald' });
     } catch (error) {

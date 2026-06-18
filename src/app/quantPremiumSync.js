@@ -95,6 +95,7 @@ export function normalizeQuantPremiumConfigShape(input = {}) {
     paperEnabled: source.paperEnabled === undefined ? true : Boolean(source.paperEnabled),
     liveSignalEnabled: Boolean(source.liveSignalEnabled),
     backtestGate,
+    stage: String(source.stage || '').trim(),
     createdAt: String(source.createdAt || '').trim(),
     updatedAt: String(source.updatedAt || '').trim()
   };
@@ -145,6 +146,11 @@ function withStrategyQuery(strategyId = '') {
   return id ? { strategyId: id } : {};
 }
 
+export async function loadQuantPremiumStudioFromWorker(strategyId = '') {
+  const payload = await requestQuantPremium(`/studio${buildQueryString(withStrategyQuery(strategyId))}`, { method: 'GET' });
+  return payload || null;
+}
+
 export async function loadQuantPremiumConfigFromWorker() {
   const payload = await requestQuantPremium('/config', { method: 'GET' });
   return normalizeQuantPremiumConfigShape(payload?.config || DEFAULT_QUANT_PREMIUM_CONFIG);
@@ -162,17 +168,13 @@ export async function loadQuantPremiumStrategiesFromWorker() {
 export async function saveQuantPremiumStrategyToWorker(strategy) {
   const clientConfig = readNotifyClientConfig();
   const next = normalizeQuantPremiumConfigShape(strategy);
-  const approveLiveSignal = strategy?.approveLiveSignal === true;
   const path = next.id && next.id !== 'default'
     ? `/strategies/${encodeURIComponent(next.id)}`
     : '/strategies';
   const payload = await requestQuantPremium(path, {
     method: 'POST',
     body: {
-      strategy: {
-        ...next,
-        approveLiveSignal
-      },
+      strategy: next,
       clientLabel: clientConfig?.notifyClientLabel || ''
     }
   });
@@ -258,11 +260,15 @@ export async function resetQuantPremiumPaperStateInWorker(state = null, strategy
 }
 
 export async function runQuantPremiumOnce(strategyId = '') {
-  return await requestQuantPremium(`/run${buildQueryString(withStrategyQuery(strategyId))}`, { method: 'POST' });
+  const id = String(strategyId || '').trim();
+  if (!id) {
+    return await requestQuantPremium('/run', { method: 'POST' });
+  }
+  return await requestQuantPremium(`/strategies/${encodeURIComponent(id)}/paper/run-once`, { method: 'POST' });
 }
 
 export async function runQuantPremiumBacktestInWorker(strategyId, options = {}) {
-  const payload = await requestQuantPremium(`/strategies/${encodeURIComponent(strategyId)}/backtest`, {
+  const payload = await requestQuantPremium(`/strategies/${encodeURIComponent(strategyId)}/backtests`, {
     method: 'POST',
     body: options
   });
@@ -270,9 +276,24 @@ export async function runQuantPremiumBacktestInWorker(strategyId, options = {}) 
 }
 
 export async function loadQuantPremiumBacktestLatestFromWorker(strategyId) {
-  const payload = await requestQuantPremium(`/strategies/${encodeURIComponent(strategyId)}/backtest/latest`, { method: 'GET' });
+  const payload = await requestQuantPremium(`/strategies/${encodeURIComponent(strategyId)}/backtests`, { method: 'GET' });
   return {
     result: payload?.result || null,
+    gate: payload?.gate || null
+  };
+}
+
+export async function approveQuantPremiumBacktestInWorker(strategyId, runId = '', { enableLiveSignal = true } = {}) {
+  const payload = await requestQuantPremium(`/strategies/${encodeURIComponent(strategyId)}/approve`, {
+    method: 'POST',
+    body: {
+      runId,
+      enableLiveSignal
+    }
+  });
+  return {
+    strategy: normalizeQuantPremiumConfigShape(payload?.strategy || {}),
+    strategies: normalizeStrategyList(payload?.strategies || [payload?.strategy]),
     gate: payload?.gate || null
   };
 }

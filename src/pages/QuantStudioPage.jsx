@@ -98,11 +98,14 @@ export function QuantStudioPage({ activeModule = 'strategy', onModuleChange } = 
     paperState,
     snapshot,
     backtest,
+    riskDecision,
+    auditEvents,
     summary,
     loading,
     saving,
     running,
     backtesting,
+    approving,
     refreshing,
     error,
     selectStrategy,
@@ -110,6 +113,7 @@ export function QuantStudioPage({ activeModule = 'strategy', onModuleChange } = 
     createStrategy,
     deleteStrategy,
     runBacktest,
+    setLiveSignalApproved,
     runOnce,
     adjustCash,
     resetPaper,
@@ -143,12 +147,6 @@ export function QuantStudioPage({ activeModule = 'strategy', onModuleChange } = 
   const handleRunBacktest = useCallback(async (strategy, options) => {
     await runBacktest(strategy, options);
   }, [runBacktest]);
-
-  const handleStrategyUpdated = useCallback((nextStrategy, nextList) => {
-    if (Array.isArray(nextList)) {
-      studio.refresh?.({ preferStrategyId: nextStrategy?.id }).catch(() => {});
-    }
-  }, [studio]);
 
   const handleDeleteStrategy = useCallback(async (id) => {
     if (!id || id === 'default') return;
@@ -256,10 +254,10 @@ export function QuantStudioPage({ activeModule = 'strategy', onModuleChange } = 
           selectedStrategy={selectedStrategy}
           backtest={backtest}
           backtesting={backtesting}
-          saving={saving}
+          saving={saving || approving}
           onSelectStrategy={selectStrategy}
           onRunBacktest={handleRunBacktest}
-          onUpdateStrategy={handleStrategyUpdated}
+          onSetLiveSignalApproved={setLiveSignalApproved}
           onGoLive={() => goModule('live')}
           onGoStrategy={() => goModule('strategy')}
         />
@@ -270,6 +268,8 @@ export function QuantStudioPage({ activeModule = 'strategy', onModuleChange } = 
           strategy={selectedStrategy}
           snapshot={snapshot}
           paperState={paperState}
+          riskDecision={riskDecision}
+          auditEvents={auditEvents}
           summary={summary}
           refreshing={refreshing}
           running={running}

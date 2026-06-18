@@ -37,12 +37,15 @@ import {
 import {
   handleQuantPremiumConfigGet,
   handleQuantPremiumConfigPost,
+  handleQuantPremiumBacktestApprovePost,
   handleQuantPremiumBacktestLatestGet,
   handleQuantPremiumBacktestPost,
+  handleQuantPremiumBacktestsGet,
   handleQuantPremiumPaperGet,
   handleQuantPremiumPaperPost,
   handleQuantPremiumRunPost,
   handleQuantPremiumSnapshotGet,
+  handleQuantPremiumStudioGet,
   handleQuantPremiumStrategiesGet,
   handleQuantPremiumStrategiesPost,
   handleQuantPremiumStrategyDelete,
@@ -331,6 +334,10 @@ export default {
         return await handleQuantPremiumConfigPost(request, env);
       }
 
+      if (request.method === 'GET' && url.pathname === '/api/notify/quant/premium/studio') {
+        return await handleQuantPremiumStudioGet(request, env);
+      }
+
       if (request.method === 'GET' && url.pathname === '/api/notify/quant/premium/strategies') {
         return await handleQuantPremiumStrategiesGet(request, env);
       }
@@ -357,9 +364,33 @@ export default {
       }
 
       {
+        const match = url.pathname.match(/^\/api\/notify\/quant\/premium\/strategies\/([^/]+)\/backtests$/);
+        if (match && request.method === 'GET') {
+          return await handleQuantPremiumBacktestsGet(request, env, decodeURIComponent(match[1]));
+        }
+        if (match && request.method === 'POST') {
+          return await handleQuantPremiumBacktestPost(request, env, decodeURIComponent(match[1]));
+        }
+      }
+
+      {
         const match = url.pathname.match(/^\/api\/notify\/quant\/premium\/strategies\/([^/]+)\/backtest\/latest$/);
         if (match && request.method === 'GET') {
           return await handleQuantPremiumBacktestLatestGet(request, env, decodeURIComponent(match[1]));
+        }
+      }
+
+      {
+        const match = url.pathname.match(/^\/api\/notify\/quant\/premium\/strategies\/([^/]+)\/backtests\/([^/]+)$/);
+        if (match && request.method === 'GET') {
+          return await handleQuantPremiumBacktestLatestGet(request, env, decodeURIComponent(match[1]), decodeURIComponent(match[2]));
+        }
+      }
+
+      {
+        const match = url.pathname.match(/^\/api\/notify\/quant\/premium\/strategies\/([^/]+)\/approve$/);
+        if (match && request.method === 'POST') {
+          return await handleQuantPremiumBacktestApprovePost(request, env, decodeURIComponent(match[1]));
         }
       }
 
@@ -377,6 +408,16 @@ export default {
 
       if (request.method === 'POST' && url.pathname === '/api/notify/quant/premium/run') {
         return await handleQuantPremiumRunPost(request, env, { runClientDetection });
+      }
+
+      {
+        const match = url.pathname.match(/^\/api\/notify\/quant\/premium\/strategies\/([^/]+)\/paper\/run-once$/);
+        if (match && request.method === 'POST') {
+          const resourceUrl = new URL(request.url);
+          resourceUrl.pathname = '/api/notify/quant/premium/run';
+          resourceUrl.searchParams.set('strategyId', decodeURIComponent(match[1]));
+          return await handleQuantPremiumRunPost(new Request(resourceUrl, request), env, { runClientDetection });
+        }
       }
 
       if (request.method === 'GET' && url.pathname === '/api/notify/health') {

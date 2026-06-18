@@ -1,14 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+/* global Request */
+
+import notifyWorker from '../workers/notify/src/index.js';
 import {
   QUANT_PREMIUM_CONFIG_PREFIX,
   QUANT_PREMIUM_STRATEGIES_PREFIX,
+  QUANT_PREMIUM_STUDIO_CONTRACT_VERSION,
   buildQuantPremiumSwitchConfig,
   normalizeQuantPremiumConfig,
   normalizeQuantPremiumStrategy,
   runQuantPremiumBacktest
 } from '../workers/notify/src/quantPremiumRoutes.js';
+import { hashText } from '../workers/notify/src/clientSettings.js';
 import { runQuantPremiumBacktestV2 } from '../workers/notify/src/quantPremiumBacktestV2.js';
 import { quantPremiumPaperStateKey } from '../workers/notify/src/premiumPaperTrading.js';
 import { getRunnableSwitchRules } from '../workers/notify/src/switchStrategy.js';
@@ -18,6 +23,71 @@ function makePremiumCandles(premiums = [], { start = Math.floor(Date.UTC(2026, 5
     t: start + index * step,
     c: 1 + Number(premiumPct) / 100
   }));
+}
+
+function createMemoryKv(seed = {}) {
+  const memory = new Map(Object.entries(seed));
+  return {
+    async get(key) {
+      return memory.has(key) ? memory.get(key) : null;
+    },
+    async put(key, value) {
+      memory.set(key, String(value));
+    },
+    async list({ prefix = '' } = {}) {
+      return {
+        keys: Array.from(memory.keys())
+          .filter((name) => name.startsWith(prefix))
+          .map((name) => ({ name })),
+        list_complete: true
+      };
+    }
+  };
+}
+
+function quantPremiumTestFingerprint({
+  highCodes = ['159513'],
+  lowCodes = ['513100'],
+  activeSide = 'all',
+  intraSellLowerPct = 1,
+  intraBuyOtherPct = 3
+} = {}) {
+  return JSON.stringify({
+    highCodes,
+    lowCodes,
+    activeSide,
+    intraSellLowerPct,
+    intraBuyOtherPct
+  });
+}
+
+async function createQuantPremiumRouteFixture({
+  clientId = 'web:quant-route',
+  clientSecret = 'quant-secret',
+  strategies = [],
+  records = {}
+} = {}) {
+  return {
+    clientId,
+    clientSecret,
+    env: {
+      NOTIFY_STATE: createMemoryKv({
+        'notify:settings': JSON.stringify({
+          clients: {
+            [clientId]: {
+              clientId,
+              clientSecretHash: await hashText(clientSecret)
+            }
+          }
+        }),
+        [`quant:premium:strategies:${clientId}`]: JSON.stringify({
+          version: 1,
+          strategies
+        }),
+        ...records
+      })
+    }
+  };
 }
 
 test('quant premium config normalizes arbitrary H/L symbols without holdings', () => {
@@ -51,6 +121,283 @@ test('quant premium state keys are isolated from holding switch keys', () => {
   assert.equal(quantPremiumPaperStateKey('client-a'), 'quant:premium:paper:state:client-a');
   assert.equal(quantPremiumPaperStateKey('client-a', 'strategy-a'), 'quant:premium:paper:state:client-a:strategy-a');
   assert.equal(quantPremiumPaperStateKey('client-a').startsWith('switch:'), false);
+});
+
+test('quant premium studio route returns one backend contract for the workspace', async () => {
+  const clientId = 'web:quant-studio';
+  const clientSecret = 'quant-secret';
+  const strategy = normalizeQuantPremiumStrategy({
+    id: 'studio-demo',
+    enabled: true,
+    name: 'Studio Demo',
+    highCodes: ['159513'],
+    lowCodes: ['513100'],
+    backtestGate: {
+      status: 'passed',
+      latestRunId: 'bt-studio-demo',
+      summary: { sampleCount: 16, signalCount: 2 },
+      updatedAt: '2026-06-12T02:00:00.000Z'
+    }
+  });
+  const env = {
+    NOTIFY_STATE: createMemoryKv({
+      'notify:settings': JSON.stringify({
+        clients: {
+          [clientId]: {
+            clientId,
+            clientSecretHash: await hashText(clientSecret)
+          }
+        }
+      }),
+      [`quant:premium:strategies:${clientId}`]: JSON.stringify({
+        version: 1,
+        strategies: [strategy]
+      }),
+      [`quant:premium:backtest:${clientId}:studio-demo:bt-studio-demo`]: JSON.stringify({
+        ok: true,
+        runId: 'bt-studio-demo',
+        strategyId: 'studio-demo',
+        status: 'passed',
+        summary: { sampleCount: 16, signalCount: 2 },
+        rows: [],
+        signals: []
+      }),
+      [`quant:premium:snapshot:${clientId}:studio-demo`]: JSON.stringify({
+        ready: true,
+        computedAt: '2026-06-12T02:05:00.000Z',
+        triggers: [{ pairKey: 'studio-demo:159513:513100', fromCode: '159513', toCode: '513100' }]
+      }),
+      [`quant:premium:paper:state:${clientId}:studio-demo`]: JSON.stringify({
+        cash: 50000,
+        positions: {},
+        orders: [],
+        cashEvents: [],
+        lastStatus: 'idle'
+      }),
+      [`quant:premium:audit:${clientId}:studio-demo`]: JSON.stringify({
+        events: [{
+          id: 'qa-1',
+          type: 'quant.backtest.completed',
+          strategyId: 'studio-demo',
+          createdAt: '2026-06-12T02:00:00.000Z',
+          summary: '回测通过'
+        }]
+      })
+    })
+  };
+
+  const response = await notifyWorker.fetch(new Request(
+    `https://tools.freebacktrack.tech/api/notify/quant/premium/studio?clientId=${encodeURIComponent(clientId)}&strategyId=studio-demo`,
+    {
+      headers: { 'x-notify-client-secret': clientSecret }
+    }
+  ), env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.kind, 'quant-premium-studio');
+  assert.equal(payload.version, QUANT_PREMIUM_STUDIO_CONTRACT_VERSION);
+  assert.equal(payload.selectedStrategyId, 'studio-demo');
+  assert.equal(payload.resources.strategy.id, 'studio-demo');
+  assert.equal(payload.resources.backtest.result.runId, 'bt-studio-demo');
+  assert.equal(payload.resources.marketSnapshot.liveSignals.length, 1);
+  assert.equal(payload.resources.paperPortfolio.cash, 50000);
+  assert.equal(payload.resources.audit.events[0].type, 'quant.backtest.completed');
+  assert.deepEqual(payload.resources.riskDecision.reasons, ['backtest-not-approved', 'live-signal-disabled']);
+});
+
+test('quant premium resource backtests route returns latest and requested run', async () => {
+  const clientId = 'web:quant-backtests';
+  const strategy = normalizeQuantPremiumStrategy({
+    id: 'route-demo',
+    enabled: true,
+    name: 'Route Demo',
+    highCodes: ['159513'],
+    lowCodes: ['513100'],
+    backtestGate: {
+      status: 'passed',
+      latestRunId: 'bt-latest',
+      summary: { sampleCount: 20, signalCount: 3 },
+      updatedAt: '2026-06-12T02:00:00.000Z'
+    }
+  });
+  const { clientSecret, env } = await createQuantPremiumRouteFixture({
+    clientId,
+    strategies: [strategy],
+    records: {
+      [`quant:premium:backtest:${clientId}:route-demo:bt-latest`]: JSON.stringify({
+        ok: true,
+        runId: 'bt-latest',
+        strategyId: 'route-demo',
+        status: 'passed',
+        summary: { sampleCount: 20, signalCount: 3 },
+        rows: [],
+        signals: []
+      }),
+      [`quant:premium:backtest:${clientId}:route-demo:bt-old`]: JSON.stringify({
+        ok: true,
+        runId: 'bt-old',
+        strategyId: 'route-demo',
+        status: 'passed',
+        summary: { sampleCount: 12, signalCount: 1 },
+        rows: [],
+        signals: []
+      })
+    }
+  });
+
+  const headers = { 'x-notify-client-secret': clientSecret };
+  const latestResponse = await notifyWorker.fetch(new Request(
+    `https://tools.freebacktrack.tech/api/notify/quant/premium/strategies/route-demo/backtests?clientId=${encodeURIComponent(clientId)}`,
+    { headers }
+  ), env);
+  const latestPayload = await latestResponse.json();
+  const requestedResponse = await notifyWorker.fetch(new Request(
+    `https://tools.freebacktrack.tech/api/notify/quant/premium/strategies/route-demo/backtests/bt-old?clientId=${encodeURIComponent(clientId)}`,
+    { headers }
+  ), env);
+  const requestedPayload = await requestedResponse.json();
+
+  assert.equal(latestResponse.status, 200);
+  assert.equal(latestPayload.result.runId, 'bt-latest');
+  assert.equal(latestPayload.items.length, 1);
+  assert.equal(latestPayload.items[0].runId, 'bt-latest');
+  assert.equal(latestPayload.gate.latestRunId, 'bt-latest');
+  assert.equal(requestedResponse.status, 200);
+  assert.equal(requestedPayload.result.runId, 'bt-old');
+  assert.equal(requestedPayload.gate.latestRunId, 'bt-latest');
+});
+
+test('quant premium approve route enables live signal only for a passed matching backtest', async () => {
+  const clientId = 'web:quant-approve';
+  const strategy = normalizeQuantPremiumStrategy({
+    id: 'approve-demo',
+    enabled: true,
+    name: 'Approve Demo',
+    highCodes: ['159513'],
+    lowCodes: ['513100'],
+    backtestGate: {
+      status: 'passed',
+      latestRunId: 'bt-pass',
+      summary: { sampleCount: 20, signalCount: 3 },
+      updatedAt: '2026-06-12T02:00:00.000Z'
+    }
+  });
+  const fingerprint = quantPremiumTestFingerprint();
+  const { clientSecret, env } = await createQuantPremiumRouteFixture({
+    clientId,
+    strategies: [strategy],
+    records: {
+      [`quant:premium:backtest:${clientId}:approve-demo:bt-pass`]: JSON.stringify({
+        ok: true,
+        runId: 'bt-pass',
+        strategyId: 'approve-demo',
+        strategyFingerprint: fingerprint,
+        status: 'passed',
+        summary: { sampleCount: 20, signalCount: 3 },
+        rows: [],
+        signals: []
+      })
+    }
+  });
+
+  const response = await notifyWorker.fetch(new Request(
+    `https://tools.freebacktrack.tech/api/notify/quant/premium/strategies/approve-demo/approve?clientId=${encodeURIComponent(clientId)}`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-notify-client-secret': clientSecret
+      },
+      body: JSON.stringify({ runId: 'bt-pass' })
+    }
+  ), env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.strategy.id, 'approve-demo');
+  assert.equal(payload.strategy.liveSignalEnabled, true);
+  assert.equal(payload.gate.status, 'passed');
+  assert.equal(payload.gate.latestRunId, 'bt-pass');
+  assert.equal(payload.gate.approvedFingerprint, fingerprint);
+  assert.ok(payload.gate.approvedAt);
+
+  const studioResponse = await notifyWorker.fetch(new Request(
+    `https://tools.freebacktrack.tech/api/notify/quant/premium/studio?clientId=${encodeURIComponent(clientId)}&strategyId=approve-demo`,
+    { headers: { 'x-notify-client-secret': clientSecret } }
+  ), env);
+  const studioPayload = await studioResponse.json();
+  assert.equal(studioPayload.resources.riskDecision.allowed, true);
+  assert.equal(studioPayload.resources.audit.events[0].type, 'quant.backtest.approved');
+});
+
+test('quant premium approve route rejects failed and stale backtests', async () => {
+  const clientId = 'web:quant-approve-rejects';
+  const failedStrategy = normalizeQuantPremiumStrategy({
+    id: 'failed-demo',
+    enabled: true,
+    highCodes: ['159513'],
+    lowCodes: ['513100'],
+    backtestGate: {
+      status: 'failed',
+      latestRunId: 'bt-failed',
+      summary: { sampleCount: 0, signalCount: 0 }
+    }
+  });
+  const staleStrategy = normalizeQuantPremiumStrategy({
+    id: 'stale-demo',
+    enabled: true,
+    highCodes: ['159513'],
+    lowCodes: ['159501'],
+    backtestGate: {
+      status: 'passed',
+      latestRunId: 'bt-stale',
+      summary: { sampleCount: 20, signalCount: 3 }
+    }
+  });
+  const { clientSecret, env } = await createQuantPremiumRouteFixture({
+    clientId,
+    strategies: [failedStrategy, staleStrategy],
+    records: {
+      [`quant:premium:backtest:${clientId}:failed-demo:bt-failed`]: JSON.stringify({
+        ok: true,
+        runId: 'bt-failed',
+        strategyId: 'failed-demo',
+        status: 'failed',
+        summary: { sampleCount: 0, signalCount: 0 },
+        rows: [],
+        signals: []
+      }),
+      [`quant:premium:backtest:${clientId}:stale-demo:bt-stale`]: JSON.stringify({
+        ok: true,
+        runId: 'bt-stale',
+        strategyId: 'stale-demo',
+        strategyFingerprint: quantPremiumTestFingerprint({ lowCodes: ['513100'] }),
+        status: 'passed',
+        summary: { sampleCount: 20, signalCount: 3 },
+        rows: [],
+        signals: []
+      })
+    }
+  });
+  const headers = {
+    'content-type': 'application/json',
+    'x-notify-client-secret': clientSecret
+  };
+
+  const failedResponse = await notifyWorker.fetch(new Request(
+    `https://tools.freebacktrack.tech/api/notify/quant/premium/strategies/failed-demo/approve?clientId=${encodeURIComponent(clientId)}`,
+    { method: 'POST', headers, body: JSON.stringify({ runId: 'bt-failed' }) }
+  ), env);
+  const staleResponse = await notifyWorker.fetch(new Request(
+    `https://tools.freebacktrack.tech/api/notify/quant/premium/strategies/stale-demo/approve?clientId=${encodeURIComponent(clientId)}`,
+    { method: 'POST', headers, body: JSON.stringify({ runId: 'bt-stale' }) }
+  ), env);
+
+  assert.equal(failedResponse.status, 400);
+  assert.match((await failedResponse.json()).error, /通过/);
+  assert.equal(staleResponse.status, 409);
+  assert.match((await staleResponse.json()).error, /重新回测/);
 });
 
 test('quant premium live signal requires a passed approved backtest gate', () => {

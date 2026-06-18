@@ -1,3 +1,5 @@
+/* global Request, URL, console, fetch */
+
 import { jsonResponse, readOrigin } from './notifyHttp.js';
 import { ensureStateBinding, readJson, readSettings, writeJson, writeSettings } from './notifyStorage.js';
 import {
@@ -36,6 +38,8 @@ import { enforceClientAndIpRateLimit } from './security.js';
 export const QUANT_PREMIUM_CONFIG_PREFIX = 'quant:premium:config:';
 export const QUANT_PREMIUM_STRATEGIES_PREFIX = 'quant:premium:strategies:';
 export const QUANT_PREMIUM_BACKTEST_PREFIX = 'quant:premium:backtest:';
+export const QUANT_PREMIUM_AUDIT_PREFIX = 'quant:premium:audit:';
+export const QUANT_PREMIUM_STUDIO_CONTRACT_VERSION = 1;
 const QUANT_PREMIUM_SNAPSHOT_PREFIX = 'quant:premium:snapshot:';
 const QUANT_PREMIUM_STATE_PREFIX = 'quant:premium:state:';
 const FUND_CODE_PATTERN = /^\d{6}$/;
@@ -90,6 +94,10 @@ function quantPremiumStateKey(clientId, strategyId = DEFAULT_STRATEGY_ID) {
 
 function quantPremiumBacktestKey(clientId, strategyId, runId) {
   return `${QUANT_PREMIUM_BACKTEST_PREFIX}${String(clientId || '').trim()}:${normalizeStrategyId(strategyId)}:${String(runId || '').trim()}`;
+}
+
+function quantPremiumAuditKey(clientId, strategyId = DEFAULT_STRATEGY_ID) {
+  return scopedClientStrategyKey(QUANT_PREMIUM_AUDIT_PREFIX, clientId, strategyId);
 }
 
 function sanitizeCode(value = '') {
@@ -320,10 +328,10 @@ function mergeStrategyPatch(current, patch = {}) {
   const now = new Date().toISOString();
   const source = patch && typeof patch === 'object' ? patch : {};
   const beforeFingerprint = buildQuantPremiumConfigFingerprint(current);
-  const requestedLive = source.liveSignalEnabled === true || source.approveLiveSignal === true;
   const merged = {
     ...current,
     ...source,
+    backtestGate: current.backtestGate,
     id: current.id || normalizeStrategyId(source.id || source.strategyId),
     updatedAt: now
   };
@@ -341,19 +349,9 @@ function mergeStrategyPatch(current, patch = {}) {
     };
   }
 
-  if (requestedLive && backtestGate.status === 'passed') {
-    backtestGate = {
-      ...backtestGate,
-      approvedAt: now,
-      approvedFingerprint: afterFingerprint,
-      updatedAt: now
-    };
-  }
-
   normalized = normalizeQuantPremiumStrategy({
     ...normalized,
-    backtestGate,
-    liveSignalEnabled: requestedLive || normalized.liveSignalEnabled
+    backtestGate
   });
   return normalized;
 }
@@ -510,6 +508,146 @@ function buildBacktestRunId() {
     return `bt-${globalThis.crypto.randomUUID()}`;
   }
   return `bt-${Date.now().toString(36)}`;
+}
+
+function buildAuditEventId() {
+  if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
+    return `qa-${globalThis.crypto.randomUUID()}`;
+  }
+  return `qa-${Date.now().toString(36)}`;
+}
+
+function normalizeQuantPremiumAuditEvent(input = {}) {
+  const source = input && typeof input === 'object' ? input : {};
+  return {
+    id: String(source.id || buildAuditEventId()).trim(),
+    type: String(source.type || 'quant.event').trim().slice(0, 80),
+    strategyId: normalizeStrategyId(source.strategyId || DEFAULT_STRATEGY_ID),
+    createdAt: String(source.createdAt || new Date().toISOString()).trim(),
+    actor: String(source.actor || 'worker').trim().slice(0, 80),
+    summary: String(source.summary || '').trim().slice(0, 180),
+    detail: source.detail && typeof source.detail === 'object' ? source.detail : {}
+  };
+}
+
+async function readQuantPremiumAuditEvents(env, clientId, strategyId = DEFAULT_STRATEGY_ID) {
+  const payload = await readJson(env, quantPremiumAuditKey(clientId, strategyId), null);
+  const list = Array.isArray(payload?.events) ? payload.events : Array.isArray(payload) ? payload : [];
+  return list.map((item) => normalizeQuantPremiumAuditEvent(item)).slice(0, 80);
+}
+
+async function appendQuantPremiumAuditEvent(env, clientId, strategyId, event = {}) {
+  const normalizedStrategyId = normalizeStrategyId(strategyId);
+  const current = await readQuantPremiumAuditEvents(env, clientId, normalizedStrategyId);
+  const nextEvent = normalizeQuantPremiumAuditEvent({
+    ...event,
+    strategyId: normalizedStrategyId,
+    createdAt: event.createdAt || new Date().toISOString()
+  });
+  const nextEvents = [nextEvent, ...current.filter((item) => item.id !== nextEvent.id)].slice(0, 80);
+  await writeJson(env, quantPremiumAuditKey(clientId, normalizedStrategyId), {
+    version: 1,
+    strategyId: normalizedStrategyId,
+    updatedAt: nextEvent.createdAt,
+    events: nextEvents
+  });
+  return nextEvent;
+}
+
+function resolveQuantStrategyStage(strategy = {}, paperState = null) {
+  const gate = strategy?.backtestGate || {};
+  if (!strategy?.enabled) return 'draft';
+  if (strategy.liveSignalEnabled && strategy.paperEnabled && paperState?.lastStatus === 'executed') return 'paper_running';
+  if (strategy.liveSignalEnabled) return 'live_signal_enabled';
+  if (gate.status === 'passed') return 'passed';
+  if (gate.status === 'stale') return 'draft';
+  if (gate.status === 'failed') return 'draft';
+  return 'draft';
+}
+
+function normalizeLiveSignalList(snapshot = null) {
+  const triggers = Array.isArray(snapshot?.triggers) ? snapshot.triggers : [];
+  const signals = Array.isArray(snapshot?.signals) ? snapshot.signals : [];
+  return (triggers.length ? triggers : signals).slice(0, 24);
+}
+
+function buildRiskDecision(strategy = {}, snapshot = null) {
+  const gate = strategy?.backtestGate || {};
+  const reasons = [];
+  if (!strategy?.enabled) reasons.push('strategy-disabled');
+  if (gate.status !== 'passed') reasons.push('backtest-not-passed');
+  if (!gate.approvedAt) reasons.push('backtest-not-approved');
+  if (!strategy?.liveSignalEnabled) reasons.push('live-signal-disabled');
+  if (snapshot && snapshot.ready === false) reasons.push('market-snapshot-not-ready');
+  return {
+    allowed: reasons.length === 0,
+    level: reasons.length === 0 ? 'ok' : gate.status === 'failed' ? 'block' : 'warn',
+    reasons,
+    evaluatedAt: new Date().toISOString()
+  };
+}
+
+async function readLatestQuantPremiumBacktest(env, clientId, strategy = {}) {
+  const runId = strategy?.backtestGate?.latestRunId || '';
+  const result = runId ? await readJson(env, quantPremiumBacktestKey(clientId, strategy.id, runId), null) : null;
+  return {
+    latestRunId: runId,
+    gate: strategy?.backtestGate || null,
+    result
+  };
+}
+
+async function buildQuantPremiumStudioContract(env, clientId, { strategyId = DEFAULT_STRATEGY_ID } = {}) {
+  const strategies = await readQuantPremiumStrategiesForClient(env, clientId);
+  const selected = findStrategy(strategies, strategyId);
+  const selectedId = selected?.id || DEFAULT_STRATEGY_ID;
+  const [snapshot, paperState, backtest, auditEvents] = await Promise.all([
+    readJson(env, quantPremiumSnapshotKey(clientId, selectedId), null),
+    readQuantPremiumPaperStateForClient(env, clientId, selectedId),
+    readLatestQuantPremiumBacktest(env, clientId, selected),
+    readQuantPremiumAuditEvents(env, clientId, selectedId)
+  ]);
+  const liveSignals = normalizeLiveSignalList(snapshot);
+  const riskDecision = buildRiskDecision(selected, snapshot);
+  const strategy = {
+    ...selected,
+    stage: resolveQuantStrategyStage(selected, paperState)
+  };
+  const strategiesWithStage = strategies.map((item) => ({
+    ...item,
+    stage: item.id === selectedId ? strategy.stage : resolveQuantStrategyStage(item)
+  }));
+
+  return {
+    ok: true,
+    version: QUANT_PREMIUM_STUDIO_CONTRACT_VERSION,
+    kind: 'quant-premium-studio',
+    generatedAt: new Date().toISOString(),
+    clientId,
+    selectedStrategyId: selectedId,
+    strategies: strategiesWithStage,
+    strategy,
+    resources: {
+      strategy,
+      marketSnapshot: {
+        strategyId: selectedId,
+        snapshot,
+        liveSignals,
+        generatedAt: snapshot?.computedAt || snapshot?.generatedAt || ''
+      },
+      backtest,
+      riskDecision,
+      paperPortfolio: paperState,
+      audit: {
+        events: auditEvents
+      }
+    },
+    // Compatibility fields for existing front-end code while the UI migrates to resources.*.
+    snapshot,
+    backtest: backtest.result,
+    paperState,
+    auditEvents
+  };
 }
 
 export function runQuantPremiumBacktest(strategyInput = {}, { timeframe = '5m', historyByCode = {}, navHistoryByCode = {}, dataIssues = {}, initialEquity = 100000, orderCash = 16000, useV2 = false } = {}) {
@@ -998,6 +1136,18 @@ export async function handleQuantPremiumStrategiesPost(request, env) {
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
   const { strategy, strategies } = await upsertQuantPremiumStrategyForClient(env, auth.clientId, payload?.strategy || payload);
+  await appendQuantPremiumAuditEvent(env, auth.clientId, strategy.id, {
+    type: 'quant.strategy.saved',
+    actor: 'client',
+    summary: '保存策略配置',
+    detail: {
+      strategyId: strategy.id,
+      enabled: strategy.enabled,
+      liveSignalEnabled: strategy.liveSignalEnabled,
+      highCount: strategy.highCodes.length,
+      lowCount: strategy.lowCodes.length
+    }
+  });
   return jsonResponse({ ok: true, clientId: auth.clientId, strategy, strategies }, { origin });
 }
 
@@ -1015,6 +1165,18 @@ export async function handleQuantPremiumStrategyPost(request, env, strategyId) {
     ...(payload?.strategy && typeof payload.strategy === 'object' ? payload.strategy : payload),
     id: strategyId
   });
+  await appendQuantPremiumAuditEvent(env, auth.clientId, strategy.id, {
+    type: 'quant.strategy.saved',
+    actor: 'client',
+    summary: '保存策略配置',
+    detail: {
+      strategyId: strategy.id,
+      enabled: strategy.enabled,
+      liveSignalEnabled: strategy.liveSignalEnabled,
+      highCount: strategy.highCodes.length,
+      lowCount: strategy.lowCodes.length
+    }
+  });
   return jsonResponse({ ok: true, clientId: auth.clientId, strategy, strategies }, { origin });
 }
 
@@ -1025,6 +1187,14 @@ export async function handleQuantPremiumStrategyDelete(request, env, strategyId)
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
   const result = await deleteQuantPremiumStrategyForClient(env, auth.clientId, strategyId);
+  if (result.deleted) {
+    await appendQuantPremiumAuditEvent(env, auth.clientId, strategyId, {
+      type: 'quant.strategy.deleted',
+      actor: 'client',
+      summary: '删除策略配置',
+      detail: { strategyId }
+    });
+  }
   return jsonResponse({ ok: true, clientId: auth.clientId, ...result }, { origin });
 }
 
@@ -1035,6 +1205,7 @@ async function storeQuantPremiumBacktestResult(env, clientId, strategy, result) 
     runId,
     strategyId: strategy.id,
     strategyName: strategy.name,
+    strategyFingerprint: buildQuantPremiumConfigFingerprint(strategy),
     generatedAt: result.generatedAt || new Date().toISOString()
   };
   await writeJson(env, quantPremiumBacktestKey(clientId, strategy.id, runId), stored);
@@ -1056,6 +1227,18 @@ async function storeQuantPremiumBacktestResult(env, clientId, strategy, result) 
     });
   });
   await writeQuantPremiumStrategiesForClient(env, clientId, next);
+  await appendQuantPremiumAuditEvent(env, clientId, strategy.id, {
+    type: 'quant.backtest.completed',
+    actor: 'worker',
+    summary: `回测 ${stored.status === 'passed' ? '通过' : '未通过'}`,
+    detail: {
+      runId,
+      status: stored.status,
+      sampleCount: stored.summary?.sampleCount || 0,
+      signalCount: stored.summary?.signalCount || 0,
+      totalReturnPct: stored.summary?.totalReturnPct || 0
+    }
+  });
   return stored;
 }
 
@@ -1098,16 +1281,101 @@ export async function handleQuantPremiumBacktestPost(request, env, strategyId) {
   return jsonResponse({ ok: true, clientId: auth.clientId, strategyId: strategy.id, result: stored }, { origin });
 }
 
-export async function handleQuantPremiumBacktestLatestGet(request, env, strategyId) {
+export async function handleQuantPremiumBacktestLatestGet(request, env, strategyId, requestedRunId = '') {
   const origin = readOrigin(request);
   let settings = await readSettings(env);
   const auth = await ensureAuthenticatedClient(request, settings);
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
   const strategy = await readQuantPremiumStrategyForClient(env, auth.clientId, strategyId);
-  const runId = strategy.backtestGate?.latestRunId || '';
+  const runId = String(requestedRunId || strategy.backtestGate?.latestRunId || '').trim();
   const result = runId ? await readJson(env, quantPremiumBacktestKey(auth.clientId, strategy.id, runId), null) : null;
   return jsonResponse({ ok: true, clientId: auth.clientId, strategyId: strategy.id, result, gate: strategy.backtestGate }, { origin });
+}
+
+export async function handleQuantPremiumBacktestsGet(request, env, strategyId) {
+  const origin = readOrigin(request);
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings);
+  settings = auth.settings;
+  if (auth.didUpdate) await writeSettings(env, settings);
+  const strategies = await readQuantPremiumStrategiesForClient(env, auth.clientId);
+  const strategy = findStrategy(strategies, strategyId);
+  const runId = strategy.backtestGate?.latestRunId || '';
+  const result = runId ? await readJson(env, quantPremiumBacktestKey(auth.clientId, strategy.id, runId), null) : null;
+  return jsonResponse({
+    ok: true,
+    clientId: auth.clientId,
+    strategyId: strategy.id,
+    result,
+    items: result ? [result] : [],
+    gate: strategy.backtestGate
+  }, { origin });
+}
+
+export async function handleQuantPremiumBacktestApprovePost(request, env, strategyId) {
+  const origin = readOrigin(request);
+  const payload = await request.json().catch(() => ({}));
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings, {
+    payload,
+    clientLabel: normalizeClientName(payload?.clientLabel || payload?.notifyClientLabel || '')
+  });
+  settings = auth.settings;
+  if (auth.didUpdate) await writeSettings(env, settings);
+  const strategies = await readQuantPremiumStrategiesForClient(env, auth.clientId);
+  const strategy = findStrategy(strategies, strategyId);
+  const runId = String(payload?.runId || strategy.backtestGate?.latestRunId || '').trim();
+  const result = runId ? await readJson(env, quantPremiumBacktestKey(auth.clientId, strategy.id, runId), null) : null;
+  if (!result) {
+    return jsonResponse({ ok: false, error: '未找到回测记录。' }, { status: 404, origin });
+  }
+  if (result.status !== 'passed') {
+    return jsonResponse({ ok: false, error: '只有通过的回测可以批准用于实盘信号。' }, { status: 400, origin });
+  }
+  const approvedFingerprint = buildQuantPremiumConfigFingerprint(strategy);
+  const resultFingerprint = String(result.strategyFingerprint || result.configFingerprint || '').trim();
+  const isLatestPassedGate = runId === strategy.backtestGate?.latestRunId && strategy.backtestGate?.status === 'passed';
+  if (resultFingerprint && resultFingerprint !== approvedFingerprint) {
+    return jsonResponse({ ok: false, error: '策略配置已变化，请重新回测后再批准。' }, { status: 409, origin });
+  }
+  if (!resultFingerprint && !isLatestPassedGate) {
+    return jsonResponse({ ok: false, error: '回测门禁已过期，请重新回测后再批准。' }, { status: 409, origin });
+  }
+  const nowIso = new Date().toISOString();
+  const nextStrategies = strategies.map((item) => {
+    if (item.id !== strategy.id) return item;
+    return normalizeQuantPremiumStrategy({
+      ...item,
+      liveSignalEnabled: payload?.enableLiveSignal === false ? false : true,
+      backtestGate: {
+        status: 'passed',
+        latestRunId: runId,
+        approvedAt: nowIso,
+        approvedFingerprint,
+        summary: result.summary || item.backtestGate?.summary || null,
+        updatedAt: nowIso
+      },
+      updatedAt: nowIso
+    });
+  });
+  await writeQuantPremiumStrategiesForClient(env, auth.clientId, nextStrategies);
+  await appendQuantPremiumAuditEvent(env, auth.clientId, strategy.id, {
+    type: 'quant.backtest.approved',
+    actor: 'client',
+    summary: '批准回测作为实盘门禁',
+    detail: {
+      runId,
+      enableLiveSignal: payload?.enableLiveSignal !== false
+    }
+  });
+  return jsonResponse({
+    ok: true,
+    clientId: auth.clientId,
+    strategy: findStrategy(nextStrategies, strategy.id),
+    strategies: nextStrategies,
+    gate: findStrategy(nextStrategies, strategy.id).backtestGate
+  }, { origin });
 }
 
 export async function handleQuantPremiumConfigPost(request, env) {
@@ -1121,6 +1389,16 @@ export async function handleQuantPremiumConfigPost(request, env) {
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
   const config = await writeQuantPremiumConfigForClient(env, auth.clientId, payload?.config || payload);
+  await appendQuantPremiumAuditEvent(env, auth.clientId, config.id, {
+    type: 'quant.strategy.saved',
+    actor: 'client',
+    summary: '保存策略配置',
+    detail: {
+      strategyId: config.id,
+      enabled: config.enabled,
+      liveSignalEnabled: config.liveSignalEnabled
+    }
+  });
   return jsonResponse({ ok: true, clientId: auth.clientId, config }, { origin });
 }
 
@@ -1137,6 +1415,18 @@ export async function handleQuantPremiumSnapshotGet(request, env) {
     readJson(env, quantPremiumSnapshotKey(auth.clientId, strategyId), null)
   ]);
   return jsonResponse({ ok: true, clientId: auth.clientId, strategyId: config.id || strategyId, config, snapshot }, { origin });
+}
+
+export async function handleQuantPremiumStudioGet(request, env) {
+  const origin = readOrigin(request);
+  const url = new URL(request.url);
+  const strategyId = normalizeStrategyId(url.searchParams.get('strategyId') || DEFAULT_STRATEGY_ID);
+  let settings = await readSettings(env);
+  const auth = await ensureAuthenticatedClient(request, settings);
+  settings = auth.settings;
+  if (auth.didUpdate) await writeSettings(env, settings);
+  const contract = await buildQuantPremiumStudioContract(env, auth.clientId, { strategyId });
+  return jsonResponse(contract, { origin });
 }
 
 export async function handleQuantPremiumPaperGet(request, env) {
@@ -1185,6 +1475,15 @@ export async function handleQuantPremiumPaperPost(request, env) {
     });
   }
   const state = await writeQuantPremiumPaperStateForClient(env, auth.clientId, nextState, strategyId);
+  await appendQuantPremiumAuditEvent(env, auth.clientId, strategyId, {
+    type: payload?.reset ? 'quant.paper.reset' : payload?.adjustment ? 'quant.paper.cash-adjusted' : 'quant.paper.updated',
+    actor: 'client',
+    summary: payload?.reset ? '重置模拟盘' : payload?.adjustment ? '调整模拟盘现金' : '更新模拟盘状态',
+    detail: {
+      reset: Boolean(payload?.reset),
+      hasAdjustment: Boolean(payload?.adjustment || payload?.cashDelta !== undefined)
+    }
+  });
   return jsonResponse({ ok: true, clientId: auth.clientId, strategyId, state, cashEvent }, { origin });
 }
 
@@ -1208,6 +1507,16 @@ export async function handleQuantPremiumRunPost(request, env, { runClientDetecti
     strategyId: config.id || strategyId,
     reason: 'quant-premium-manual-run',
     runClientDetection
+  });
+  await appendQuantPremiumAuditEvent(env, auth.clientId, config.id || strategyId, {
+    type: 'quant.worker.run',
+    actor: 'client',
+    summary: '手动运行量化评估',
+    detail: {
+      strategyId: config.id || strategyId,
+      triggered: summary?.triggered || 0,
+      paperExecuted: summary?.paperExecuted || 0
+    }
   });
   await trackAnalyticsEvent(env, 'quant_premium_worker_run', { clientId: auth.clientId, strategyId: config.id || strategyId, reason: 'manual', triggered: summary?.triggered || 0, skipped: summary?.skipped || '' });
   const snapshot = await readJson(env, quantPremiumSnapshotKey(auth.clientId, config.id || strategyId), null);

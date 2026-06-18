@@ -331,10 +331,62 @@ function FillsSubPanel({ paperState, summary }) {
   );
 }
 
+function RiskDecisionPanel({ riskDecision }) {
+  const reasons = Array.isArray(riskDecision?.reasons) ? riskDecision.reasons : [];
+  const allowed = riskDecision?.allowed === true;
+  return (
+    <div className={cx(
+      'rounded-xl border px-4 py-3 text-sm',
+      allowed ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'
+    )}>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="font-bold">{allowed ? '后端风控允许实盘信号' : '后端风控暂未放行'}</div>
+        <div className="text-xs font-semibold opacity-80">级别 {riskDecision?.level || (allowed ? 'ok' : 'warn')}</div>
+      </div>
+      {reasons.length ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {reasons.map((reason) => (
+            <span key={reason} className="rounded-full bg-white/70 px-2 py-1 text-xs font-semibold">{reason}</span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function AuditTrailPanel({ events = [] }) {
+  const list = Array.isArray(events) ? events.slice(0, 4) : [];
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-slate-900">最近审计</h3>
+        <span className="text-xs text-slate-500">{list.length} 条</span>
+      </div>
+      {list.length ? (
+        <div className="mt-3 grid gap-2">
+          {list.map((event) => (
+            <div key={event.id} className="flex items-start justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-xs">
+              <div className="min-w-0">
+                <div className="font-bold text-slate-700">{event.summary || event.type}</div>
+                <div className="mt-0.5 truncate text-slate-500">{event.type}</div>
+              </div>
+              <div className="shrink-0 text-slate-400">{formatDateTime(event.createdAt)}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-3 rounded-lg bg-slate-50 px-3 py-6 text-center text-sm text-slate-400">暂无审计事件</div>
+      )}
+    </div>
+  );
+}
+
 export function LivePanel({
   strategy,
   snapshot,
   paperState,
+  riskDecision,
+  auditEvents,
   summary,
   refreshing = false,
   running = false,
@@ -389,6 +441,11 @@ export function LivePanel({
             当前没有触发信号
           </div>
         )}
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-[1fr_1fr]">
+        <RiskDecisionPanel riskDecision={riskDecision} />
+        <AuditTrailPanel events={auditEvents} />
       </div>
 
       {/* 子标签栏 */}
