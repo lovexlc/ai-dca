@@ -59,6 +59,7 @@ export {
   sanitizeTransactions,
   summarizeTransactionErrors
 } from './holdingsLedgerBasics.js';
+export { parseExcelPaste } from './holdingsLedgerPaste.js';
 export {
   computeSwitchChainMetrics,
   normalizeSwitchChain,
