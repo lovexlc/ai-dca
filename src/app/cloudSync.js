@@ -1,8 +1,9 @@
 import { applyBackupEnvelope, buildBackupEnvelope, isBackupPayloadKey } from './webdavBackup.js';
 import { fetchCloudSyncMeta, fetchLatestCloudBackup, loadCloudSession, uploadLatestCloudBackup } from './authClient.js';
-import { decryptBackupEnvelope, encryptBackupEnvelope, loadRememberedKey, rememberKeyForEncryptedEnvelope, saveRememberedKey } from './secureVault.js';
+import { computeBackupContentHash, decryptBackupEnvelope, encryptBackupEnvelope, loadRememberedKey, rememberKeyForEncryptedEnvelope, saveRememberedKey } from './secureVault.js';
 import { TRANSIENT_SYNC_KEYS, getMergeStrategy, isDomainMergeKey } from './syncRegistry.js';
 import { normalizeWatchlist } from './marketsApi.js';
+import { getClientEnd } from './syncClient.js';
 
 export const CLOUD_SYNC_META_KEY = 'aiDcaCloudSyncMeta';
 
@@ -276,6 +277,136 @@ function canAutoMergeChangedKey(key) {
   return isDomainMergeKey(key);
 }
 
+// 远端权威合并：远端覆盖两端共有的项，但保留本地独有（remote 没有、local 有）的数据。
+// 用于跨端接管的拉取：另一端是最新事实来源，本端未上传的独有数据不丢。
+function unionRecordsRemoteWins(remoteList = [], localList = []) {
+  const map = new Map();
+  for (const record of Array.isArray(localList) ? localList : []) {
+    const id = String(record?.id || '').trim();
+    if (id) map.set(id, record);
+  }
+  for (const record of Array.isArray(remoteList) ? remoteList : []) {
+    const id = String(record?.id || '').trim();
+    if (id) map.set(id, record); // 远端覆盖共有项
+  }
+  return Array.from(map.values());
+}
+
+function mergeArrayRemoteWins(remoteValue, localValue) {
+  const remote = parsePayloadJson(remoteValue);
+  const local = parsePayloadJson(localValue);
+  if (!Array.isArray(remote) || !Array.isArray(local)) return remoteValue ?? localValue;
+  return stringifyPayloadJson(sortRecords(unionRecordsRemoteWins(remote, local)));
+}
+
+function mergePlanLikeRemoteWins(remoteValue, localValue, { activeKey = 'activePlanId' } = {}) {
+  const remote = parsePayloadJson(remoteValue);
+  const local = parsePayloadJson(localValue);
+  if (!remote || typeof remote !== 'object' || !local || typeof local !== 'object') return remoteValue ?? localValue;
+  const plans = sortRecords(unionRecordsRemoteWins(remote.plans, local.plans));
+  const remoteActiveId = String(remote?.[activeKey] || '').trim();
+  const localActiveId = String(local?.[activeKey] || '').trim();
+  const activeId = plans.some((plan) => plan.id === remoteActiveId)
+    ? remoteActiveId
+    : (plans.some((plan) => plan.id === localActiveId) ? localActiveId : plans[0]?.id || '');
+  return stringifyPayloadJson({ ...local, ...remote, plans, [activeKey]: activeId });
+}
+
+function mergeHoldingsLedgerRemoteWins(remoteValue, localValue) {
+  const remote = parsePayloadJson(remoteValue);
+  const local = parsePayloadJson(localValue);
+  if (!remote || typeof remote !== 'object' || !local || typeof local !== 'object') return remoteValue ?? localValue;
+  const transactions = sortRecords(unionRecordsRemoteWins(remote.transactions, local.transactions));
+  const switchChains = sortRecords(unionRecordsRemoteWins(remote.switchChains, local.switchChains));
+  const snapshotsByCode = {
+    ...(local.snapshotsByCode && typeof local.snapshotsByCode === 'object' ? local.snapshotsByCode : {}),
+    ...(remote.snapshotsByCode && typeof remote.snapshotsByCode === 'object' ? remote.snapshotsByCode : {})
+  };
+  return stringifyPayloadJson({
+    ...local,
+    ...remote,
+    transactions,
+    switchChains,
+    snapshotsByCode,
+    lastNavMeta: remote.lastNavMeta || local.lastNavMeta || {}
+  });
+}
+
+function mergeObjectRemoteWins(remoteValue, localValue) {
+  const remote = parsePayloadJson(remoteValue);
+  const local = parsePayloadJson(localValue);
+  if (!remote || typeof remote !== 'object' || !local || typeof local !== 'object') return remoteValue ?? localValue;
+  return stringifyPayloadJson({ ...local, ...remote });
+}
+
+function mergeWatchlistRemoteWins(remoteValue, localValue) {
+  const remote = parsePayloadJson(remoteValue);
+  const local = parsePayloadJson(localValue);
+  if (!remote || typeof remote !== 'object' || !local || typeof local !== 'object') return remoteValue ?? localValue;
+  const byId = new Map();
+  for (const list of Array.isArray(local.lists) ? local.lists : []) {
+    const id = String(list?.id || '').trim();
+    if (id) byId.set(id, list);
+  }
+  for (const list of Array.isArray(remote.lists) ? remote.lists : []) {
+    const id = String(list?.id || '').trim();
+    if (!id) continue;
+    const localSide = byId.get(id);
+    // 清单内自选 us/cn 仍取并集（增量行为不能丢），其余元信息以远端为准。
+    byId.set(id, localSide ? { ...localSide, ...list, us: unionSymbols(list.us, localSide.us), cn: unionSymbols(list.cn, localSide.cn) } : list);
+  }
+  const lists = Array.from(byId.values());
+  const remoteActiveId = String(remote.activeListId || '').trim();
+  const activeListId = lists.some((item) => item.id === remoteActiveId)
+    ? remoteActiveId
+    : String(local.activeListId || '').trim();
+  return stringifyPayloadJson(normalizeWatchlist({ ...local, ...remote, lists, activeListId }));
+}
+
+function mergePayloadValueRemoteWins(key, remoteValue, localValue) {
+  if (remoteValue == null) return localValue; // 远端没有、本地有 → 保留本地独有
+  if (localValue == null) return remoteValue;
+  switch (getMergeStrategy(key)) {
+    case 'planStore':
+      return mergePlanLikeRemoteWins(remoteValue, localValue, { activeKey: 'activePlanId' });
+    case 'dcaStore':
+      return mergePlanLikeRemoteWins(remoteValue, localValue, { activeKey: 'activeDcaId' });
+    case 'holdingsLedger':
+      return mergeHoldingsLedgerRemoteWins(remoteValue, localValue);
+    case 'arrayById':
+      return mergeArrayRemoteWins(remoteValue, localValue);
+    case 'objectMerge':
+      return mergeObjectRemoteWins(remoteValue, localValue);
+    case 'watchlist':
+      return mergeWatchlistRemoteWins(remoteValue, localValue);
+    default:
+      return remoteValue; // lww：远端覆盖
+  }
+}
+
+// 远端权威合并整份 envelope：共有项远端胜、本地独有项保留。
+export function mergeRemoteAuthoritative(remoteEnvelope = {}, localEnvelope = {}) {
+  const remote = normalizeEnvelopePayload(remoteEnvelope);
+  const local = normalizeEnvelopePayload(localEnvelope);
+  const allKeys = Array.from(new Set([...remote.keys, ...local.keys])).filter((key) => isBackupPayloadKey(key)).sort();
+  const payload = allKeys.reduce((acc, key) => {
+    acc[key] = mergePayloadValueRemoteWins(key, remote.payload[key], local.payload[key]);
+    return acc;
+  }, {});
+  const keys = Object.keys(payload).filter((key) => isBackupPayloadKey(key)).sort();
+  return {
+    version: Number(localEnvelope?.version || remoteEnvelope?.version || 1) || 1,
+    exportedAt: nowIso(),
+    source: 'ai-dca',
+    keyCount: keys.length,
+    keys,
+    payload: keys.reduce((acc, key) => {
+      acc[key] = payload[key];
+      return acc;
+    }, {})
+  };
+}
+
 export function mergeBackupEnvelopes(remoteEnvelope = {}, localEnvelope = {}) {
   const remote = normalizeEnvelopePayload(remoteEnvelope);
   const local = normalizeEnvelopePayload(localEnvelope);
@@ -335,15 +466,6 @@ export function summarizeBackupConflict({ localEnvelope = null, remoteEnvelope =
     sameKeyCount: sameKeys.length,
     summaryText: parts.join('；')
   };
-}
-
-function createCloudSyncConflictError(conflict, cause = null) {
-  const error = new Error('云端数据已更新，请选择合并本机数据或拉取云端覆盖本地');
-  error.status = 409;
-  error.isCloudSyncConflict = true;
-  error.conflict = conflict || null;
-  error.cause = cause || undefined;
-  return error;
 }
 
 async function readRemoteBackupWithEnvelope({ securityPassword = '', useRemembered = false } = {}) {
@@ -446,6 +568,7 @@ export async function uploadEncryptedCloudBackup({ securityPassword, rememberDev
   const payload = {
     baseVersion: force ? null : (localMeta?.version ?? null),
     clientUpdatedAt,
+    end: getClientEnd(),
     encryptedEnvelope: {
       version: encrypted.version,
       source: encrypted.source,
@@ -464,24 +587,11 @@ export async function uploadEncryptedCloudBackup({ securityPassword, rememberDev
   } catch (err) {
     const currentVersion = Number(err?.data?.currentVersion);
     if (!force && err?.status === 409 && Number.isFinite(currentVersion) && currentVersion >= 0) {
-      let conflict = null;
-      try {
-        conflict = await prepareCloudSyncConflict({ securityPassword, useRemembered });
-      } catch {
-        conflict = {
-          hasConflict: true,
-          remoteVersion: currentVersion,
-          localVersion: localMeta?.version ?? null,
-          summaryText: '云端版本已变化，但当前设备暂时无法解密云端数据生成明细。'
-        };
-      }
-      if (!conflict?.hasConflict && conflict?.hasLocalChanges) {
-        return mergeLocalIntoCloudBackup({ securityPassword, rememberDevice, useRemembered });
-      }
-      throw createCloudSyncConflictError(conflict, err);
-    } else {
-      throw err;
+      // 跨端并发：另一安装实例在本端上传前已更新云端。直接走「远端权威 + 保留本地独有」自动解决，
+      // 不再弹手动合并/覆盖对话框（用户诉求：非同时操作即覆盖即可）。
+      return pullRemoteAuthoritativeMerge({ securityPassword, rememberDevice, useRemembered });
     }
+    throw err;
   }
   if (rememberDevice && encrypted.rememberedKey) {
     saveRememberedKey(encrypted.rememberedKey, { username: session.username, version: result.version, crypto: encrypted.crypto });
@@ -496,6 +606,8 @@ export async function uploadEncryptedCloudBackup({ securityPassword, rememberDev
     localUpdatedAt: clientUpdatedAt,
     uploadedSignature: snapshot.signature,
     uploadedAt: result.updatedAt,
+    appliedContentHash: encrypted.meta?.contentHash || '',
+    lastEndType: result.lastEndType || getClientEnd().type,
     direction: 'upload'
   });
   return result;
@@ -521,6 +633,7 @@ export async function mergeLocalIntoCloudBackup({ securityPassword = '', remembe
   const result = await uploadLatestCloudBackup({
     baseVersion: remote.version ?? null,
     clientUpdatedAt: localMeta?.localUpdatedAt || mergedEnvelope.exportedAt,
+    end: getClientEnd(),
     conflictResolution: 'merge-local-over-remote',
     encryptedEnvelope: {
       version: encrypted.version,
@@ -559,6 +672,7 @@ export async function mergeLocalIntoCloudBackup({ securityPassword = '', remembe
     localUpdatedAt: localMeta?.localUpdatedAt || mergedEnvelope.exportedAt,
     uploadedSignature: mergedSnapshot.signature,
     uploadedAt: result.updatedAt,
+    appliedContentHash: encrypted.meta?.contentHash || '',
     remoteSignature: mergedSnapshot.signature,
     remoteUpdatedAt: result.updatedAt,
     direction: 'merge'
@@ -588,6 +702,7 @@ export async function restoreEncryptedCloudBackup({ securityPassword = '', useRe
     });
   }
   const remoteSnapshot = snapshotFromEnvelope(envelope);
+  const remoteContentHash = encryptedEnvelope?.meta?.contentHash || remote.contentHash || '';
   const currentEnvelope = buildBackupEnvelope();
   const currentSnapshot = createLocalDataSnapshot(currentEnvelope);
   const currentMeta = ensureLocalChangeBaseline({ localSnapshot: currentSnapshot });
@@ -605,6 +720,7 @@ export async function restoreEncryptedCloudBackup({ securityPassword = '', useRe
       remoteUpdatedAt,
       localSignature: currentSnapshot.signature,
       localKeyCount: currentSnapshot.keyCount,
+      appliedContentHash: remoteContentHash,
       direction: sameData ? 'restore-skip-same' : 'restore-skip-local-newer'
     });
     return {
@@ -639,11 +755,105 @@ export async function restoreEncryptedCloudBackup({ securityPassword = '', useRe
     localUpdatedAt: remoteUpdatedAt,
     uploadedSignature: remoteSnapshot.signature,
     uploadedAt: remote.updatedAt,
+    appliedContentHash: remoteContentHash,
     remoteSignature: remoteSnapshot.signature,
     remoteUpdatedAt,
     direction: 'restore'
   });
   return { ...applied, version: remote.version, updatedAt: remote.updatedAt, localUpdatedAt: remoteUpdatedAt };
+}
+
+// 远端权威拉取：远端覆盖两端共有项、保留本地独有项，应用到本地。
+// 若本地存在远端没有的独有数据，则把合并结果回传，使云端也纳入这些独有项（上传带端标识，
+// 服务端按「同端不涨版本、跨端才涨」决定版本）。
+export async function pullRemoteAuthoritativeMerge({ securityPassword = '', useRemembered = false, rememberDevice = true } = {}) {
+  const session = loadCloudSession();
+  if (!session?.accessToken) throw new Error('请先登录账户');
+  const localEnvelope = buildBackupEnvelope();
+  const { remote, envelope: remoteEnvelope } = await readRemoteBackupWithEnvelope({ securityPassword, useRemembered });
+  if (!remoteEnvelope) {
+    // 云端无数据：本地有则推上去，否则空操作。
+    return uploadEncryptedCloudBackup({ securityPassword, rememberDevice, useRemembered, force: true });
+  }
+  const merged = mergeRemoteAuthoritative(remoteEnvelope, localEnvelope);
+  const mergedHash = await computeBackupContentHash(merged);
+  const remoteHash = await computeBackupContentHash(remoteEnvelope);
+  const mergedSnapshot = createLocalDataSnapshot(merged);
+  const currentMeta = loadCloudSyncMeta() || {};
+  // 先把合并结果落到本地（远端覆盖共有项、保留本地独有）。
+  suppressAutoUpload = true;
+  let applied;
+  try {
+    applied = applyBackupEnvelope(merged, { wipePrefix: true });
+  } finally {
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => { suppressAutoUpload = false; }, 0);
+    } else {
+      suppressAutoUpload = false;
+    }
+  }
+  lastObservedSignature = mergedSnapshot.signature;
+  if (mergedHash === remoteHash) {
+    // 本地无额外数据：纯拉取，不回传，版本不动。
+    saveCloudSyncMeta({
+      ...currentMeta,
+      version: remote.version,
+      updatedAt: remote.updatedAt,
+      keyCount: merged.keyCount,
+      localSignature: mergedSnapshot.signature,
+      localKeyCount: mergedSnapshot.keyCount,
+      uploadedSignature: mergedSnapshot.signature,
+      uploadedAt: remote.updatedAt,
+      appliedContentHash: remoteHash,
+      remoteSignature: mergedSnapshot.signature,
+      remoteUpdatedAt: remote.updatedAt,
+      direction: 'pull'
+    });
+    return { ...applied, pulled: true, reuploaded: false, version: remote.version };
+  }
+  // 本地有额外数据：把合并结果回传，使云端也包含本地独有项。
+  const remembered = useRemembered ? loadRememberedKey() : null;
+  const encrypted = await encryptBackupEnvelope(merged, securityPassword, {
+    rememberDevice,
+    rawKey: remembered?.rawKey || '',
+    cryptoMeta: remembered?.crypto || null
+  });
+  const result = await uploadLatestCloudBackup({
+    baseVersion: remote.version ?? null,
+    clientUpdatedAt: merged.exportedAt,
+    end: getClientEnd(),
+    conflictResolution: 'remote-authoritative-keep-local',
+    encryptedEnvelope: {
+      version: encrypted.version,
+      source: encrypted.source,
+      crypto: encrypted.crypto,
+      meta: {
+        ...encrypted.meta,
+        localSignature: mergedSnapshot.signature,
+        localUpdatedAt: merged.exportedAt
+      },
+      ciphertext: encrypted.ciphertext
+    }
+  }, session);
+  if (rememberDevice && encrypted.rememberedKey) {
+    saveRememberedKey(encrypted.rememberedKey, { username: session.username, version: result.version, crypto: encrypted.crypto });
+  }
+  saveCloudSyncMeta({
+    ...currentMeta,
+    version: result.version,
+    updatedAt: result.updatedAt,
+    keyCount: merged.keyCount,
+    localSignature: mergedSnapshot.signature,
+    localKeyCount: mergedSnapshot.keyCount,
+    localUpdatedAt: merged.exportedAt,
+    uploadedSignature: mergedSnapshot.signature,
+    uploadedAt: result.updatedAt,
+    appliedContentHash: encrypted.meta?.contentHash || mergedHash,
+    remoteSignature: mergedSnapshot.signature,
+    remoteUpdatedAt: result.updatedAt,
+    direction: 'pull-merge'
+  });
+  return { ...applied, pulled: true, reuploaded: true, version: result.version };
 }
 
 export async function refreshRemoteCloudMeta() {
@@ -711,9 +921,10 @@ export function scheduleCloudAutoUpload({ delay = 2500, changed = false } = {}) 
   return true;
 }
 
-// 自动拉取：让第二台设备无需手动「恢复」也能拿到最新数据。
-// 决策：远端版本不高于本地已知版本则跳过；本地有未上传改动则走合并（零丢失），
-// 否则纯拉取覆盖。全程与上传互斥，applyBackupEnvelope 会广播 BACKUP_APPLIED_EVENT 触发各页刷新。
+// 自动拉取：让另一台设备无需手动「恢复」也能拿到最新数据。
+// 新鲜度判定用内容哈希（与版本号解耦——版本号现在只统计跨端接管次数，不再反映同端的每次改动），
+// 因此即便另一台「同平台」设备改了数据、版本号没涨，本端也能凭 contentHash 差异感知并拉取。
+// 远端有新内容时统一走「远端权威 + 保留本地独有」合并，避免删除本地独有数据；全程与上传互斥。
 async function runCloudAutoPull() {
   const session = loadCloudSession();
   const remembered = loadRememberedKey();
@@ -722,19 +933,13 @@ async function runCloudAutoPull() {
   autoPullInFlight = true;
   try {
     const remoteMeta = await fetchCloudSyncMeta(session);
-    const remoteVersion = Number(remoteMeta?.version);
-    if (!Number.isFinite(remoteVersion)) return;
+    const remoteHash = String(remoteMeta?.contentHash || '');
+    if (!remoteHash) return; // 云端暂无备份
     const localMeta = loadCloudSyncMeta() || {};
-    const knownVersion = Number(localMeta?.version);
-    if (Number.isFinite(knownVersion) && remoteVersion <= knownVersion) return; // 没有更新的云端数据
-    const snapshot = createLocalDataSnapshot(buildBackupEnvelope());
-    const hasLocalUnsynced = snapshot.keyCount > 0 && snapshot.signature !== localMeta?.uploadedSignature;
-    // 已确认 remoteVersion > knownVersion：本地无未上传改动时直接拉取覆盖（不再用墙钟二次判定，避免时钟漂移误跳过）；
-    // 本地有未上传改动则合并，零丢失。
-    const result = hasLocalUnsynced
-      ? await mergeLocalIntoCloudBackup({ useRemembered: true })
-      : await restoreEncryptedCloudBackup({ useRemembered: true });
-    window.dispatchEvent(new CustomEvent('cloud-sync:auto-pulled', { detail: { result, merged: hasLocalUnsynced } }));
+    const appliedHash = String(localMeta?.appliedContentHash || '');
+    if (remoteHash === appliedHash) return; // 远端内容与本端已应用的一致，无需拉取
+    const result = await pullRemoteAuthoritativeMerge({ useRemembered: true });
+    window.dispatchEvent(new CustomEvent('cloud-sync:auto-pulled', { detail: { result } }));
   } catch (err) {
     window.dispatchEvent(new CustomEvent('cloud-sync:auto-error', {
       detail: {

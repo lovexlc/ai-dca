@@ -47,12 +47,13 @@ export const SYNC_REGISTRY = [
   { key: 'aiDcaPremiumState', tab: 'global', label: '会员状态', merge: 'lww' },
 ];
 
-// 登录态 / 同步元数据 / 设备密钥 / 临时 toast —— 永不进入同步 envelope。
+// 登录态 / 同步元数据 / 设备密钥 / 安装实例 id / 临时 toast —— 永不进入同步 envelope。
 export const TRANSIENT_SYNC_KEYS = new Set([
   'aiDcaPendingToasts',
   'aiDcaCloudSyncSession',
   'aiDcaCloudSyncMeta',
   'aiDcaSecureSyncRememberedKey',
+  'aiDcaSyncClientId',
 ]);
 
 const REGISTRY_BY_KEY = new Map(SYNC_REGISTRY.map((descriptor) => [descriptor.key, descriptor]));

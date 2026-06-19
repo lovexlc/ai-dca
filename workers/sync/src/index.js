@@ -11,7 +11,6 @@ const FEATURE_PREFIXES = [
   { prefix: 'fund_switch_analysis', label: '切换分析' },
   { prefix: 'fund_switch', label: '基金切换' },
   { prefix: 'notify', label: '消息通知' },
-  { prefix: 'home', label: '首页' },
   { prefix: 'vix', label: 'VIX 面板' },
   { prefix: 'premium', label: '高级版' }
 ];
@@ -125,7 +124,9 @@ async function ensureSchema(env) {
   for (const alter of [
     "ALTER TABLE backups ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE backups ADD COLUMN envelope TEXT NOT NULL DEFAULT ''",
-    "ALTER TABLE backups ADD COLUMN cipher_sha256 TEXT NOT NULL DEFAULT ''"
+    "ALTER TABLE backups ADD COLUMN cipher_sha256 TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE backups ADD COLUMN last_end_id TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE backups ADD COLUMN last_end_type TEXT NOT NULL DEFAULT ''"
   ]) {
     try {
       await env.DB.prepare(alter).run();
@@ -609,14 +610,14 @@ async function handleLogin(request, env, origin) {
 async function handleMeta(request, env, origin) {
   const user = await requireUser(request, env);
   if (!user) return json({ message: '未登录' }, { status: 401, origin });
-  const meta = await env.DB.prepare('SELECT version, updated_at AS updatedAt, key_count AS keyCount, bytes FROM backups WHERE user_id = ?').bind(user.id).first();
-  return json(meta || { version: null, updatedAt: '', keyCount: 0, bytes: 0 }, { origin });
+  const meta = await env.DB.prepare('SELECT version, updated_at AS updatedAt, key_count AS keyCount, bytes, content_hash AS contentHash, last_end_id AS lastEndId, last_end_type AS lastEndType FROM backups WHERE user_id = ?').bind(user.id).first();
+  return json(meta || { version: null, updatedAt: '', keyCount: 0, bytes: 0, contentHash: '', lastEndId: '', lastEndType: '' }, { origin });
 }
 
 async function handleGetLatest(request, env, origin) {
   const user = await requireUser(request, env);
   if (!user) return json({ message: '未登录' }, { status: 401, origin });
-  const meta = await env.DB.prepare('SELECT version, updated_at AS updatedAt, key_count AS keyCount, bytes, kv_key AS kvKey, envelope, cipher_sha256 AS cipherSha256 FROM backups WHERE user_id = ?').bind(user.id).first();
+  const meta = await env.DB.prepare('SELECT version, updated_at AS updatedAt, key_count AS keyCount, bytes, kv_key AS kvKey, envelope, cipher_sha256 AS cipherSha256, content_hash AS contentHash, last_end_id AS lastEndId, last_end_type AS lastEndType FROM backups WHERE user_id = ?').bind(user.id).first();
   if (!meta) return json({ version: null, encryptedEnvelope: null }, { origin });
   let encoded = meta.envelope ? String(meta.envelope) : '';
   let backfilled = false;
@@ -655,6 +656,9 @@ async function handleGetLatest(request, env, origin) {
     keyCount: meta.keyCount,
     bytes: meta.bytes,
     kvKey: meta.kvKey,
+    contentHash: meta.contentHash || '',
+    lastEndId: meta.lastEndId || '',
+    lastEndType: meta.lastEndType || '',
     encryptedEnvelope
   }, { origin });
 }
@@ -667,7 +671,7 @@ async function handlePutLatest(request, env, origin) {
   if (!encryptedEnvelope.ciphertext || encryptedEnvelope.source !== 'ai-dca-secure-sync') {
     return json({ message: '密文备份格式不合法' }, { status: 400, origin });
   }
-  const current = await env.DB.prepare('SELECT version, kv_key AS kvKey, updated_at AS updatedAt, key_count AS keyCount, bytes, content_hash AS contentHash FROM backups WHERE user_id = ?').bind(user.id).first();
+  const current = await env.DB.prepare('SELECT version, kv_key AS kvKey, updated_at AS updatedAt, key_count AS keyCount, bytes, content_hash AS contentHash, last_end_id AS lastEndId FROM backups WHERE user_id = ?').bind(user.id).first();
   const incomingHash = String(encryptedEnvelope?.meta?.contentHash || '');
   // 内容未变化：保持版本号不变，不重写 KV，不报冲突。
   if (current && incomingHash && incomingHash === String(current.contentHash || '')) {
@@ -679,11 +683,17 @@ async function handlePutLatest(request, env, origin) {
       unchanged: true
     }, { origin });
   }
+  // 端标识（安装实例粒度）：同端连续修改只覆盖、不涨版本；跨端接管才涨版本。
+  const end = body.end && typeof body.end === 'object' ? body.end : {};
+  const endId = String(end.id || '').slice(0, 80);
+  const endType = String(end.type || '').slice(0, 40);
+  const sameEnd = Boolean(current && endId && endId === String(current.lastEndId || ''));
   const baseVersion = body.baseVersion == null ? null : Number(body.baseVersion);
-  if (current && baseVersion !== null && Number(current.version) !== baseVersion) {
+  // 乐观锁仅用于跨端并发：同端（即同一安装）连续写入直接覆盖，不做 baseVersion 校验。
+  if (current && !sameEnd && baseVersion !== null && Number(current.version) !== baseVersion) {
     return json({ message: '云端数据已更新，请先处理冲突', currentVersion: current.version }, { status: 409, origin });
   }
-  const version = current ? Number(current.version) + 1 : 1;
+  const version = current ? (sameEnd ? Number(current.version) : Number(current.version) + 1) : 1;
   const kvKey = current?.kvKey || `backup:${user.id}`;
   const encoded = JSON.stringify(encryptedEnvelope);
   const cipherSha = await sha256Hex(encoded);
@@ -691,11 +701,11 @@ async function handlePutLatest(request, env, origin) {
   const keyCount = Number(encryptedEnvelope?.meta?.keyCount) || 0;
   // 强一致主存储：密文 BLOB + 完整性校验和 + 版本元数据写入同一 D1 行（单次原子写）。
   if (current) {
-    await env.DB.prepare('UPDATE backups SET version = ?, updated_at = ?, key_count = ?, bytes = ?, content_hash = ?, envelope = ?, cipher_sha256 = ? WHERE user_id = ?')
-      .bind(version, updatedAt, keyCount, encoded.length, incomingHash, encoded, cipherSha, user.id).run();
+    await env.DB.prepare('UPDATE backups SET version = ?, updated_at = ?, key_count = ?, bytes = ?, content_hash = ?, envelope = ?, cipher_sha256 = ?, last_end_id = ?, last_end_type = ? WHERE user_id = ?')
+      .bind(version, updatedAt, keyCount, encoded.length, incomingHash, encoded, cipherSha, endId, endType, user.id).run();
   } else {
-    await env.DB.prepare('INSERT INTO backups (user_id, version, kv_key, updated_at, key_count, bytes, content_hash, envelope, cipher_sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(user.id, version, kvKey, updatedAt, keyCount, encoded.length, incomingHash, encoded, cipherSha).run();
+    await env.DB.prepare('INSERT INTO backups (user_id, version, kv_key, updated_at, key_count, bytes, content_hash, envelope, cipher_sha256, last_end_id, last_end_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(user.id, version, kvKey, updatedAt, keyCount, encoded.length, incomingHash, encoded, cipherSha, endId, endType).run();
   }
   // KV 镜像仅为旧 Worker 回滚兼容（尽力而为，不阻塞、不影响一致性）。
   try {
@@ -703,7 +713,7 @@ async function handlePutLatest(request, env, origin) {
   } catch {
     // 镜像失败不影响主存储一致性。
   }
-  return json({ version, updatedAt, keyCount, bytes: encoded.length }, { origin });
+  return json({ version, updatedAt, keyCount, bytes: encoded.length, contentHash: incomingHash, lastEndId: endId, lastEndType: endType, sameEnd }, { origin });
 }
 
 export default {
