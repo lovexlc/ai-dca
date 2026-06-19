@@ -87,7 +87,7 @@ function getPreviousTradingDayShanghai(dateStr) {
   return cur;
 }
 
-function isTradingDayShanghai(dateStr) {
+export function isTradingDayShanghai(dateStr) {
   return !isWeekendShanghai(dateStr) && !isChinaMarketHoliday(dateStr);
 }
 
