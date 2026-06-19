@@ -241,7 +241,10 @@ function ReturnCalendar({ ledger, portfolio, className = '', selectedDate, onSel
         // 避免「全组合 mv 相邻差」在某基金当日 nav 未披露 + 当日 BUY 双算时出现伪 pnl 与明细加和反号。
         const daily = buildDailyFundPnlMap({ tx: transactions, navByCode, fromIso, toIso });
         const latestDate = String(portfolio?.latestNavDate || '').slice(0, 10);
-        if (latestDate >= fromIso && latestDate <= toIso && Number.isFinite(portfolio?.todayProfit)) {
+        // 用实时 portfolio.todayProfit 补最新交易日的格子；但非交易日 todayProfit=0 时不要覆盖
+        // 已由 NAV 历史算出的该日真实收益（否则周六会把周五的收益抹成 0）。
+        if (latestDate >= fromIso && latestDate <= toIso && Number.isFinite(portfolio?.todayProfit)
+          && (Number(portfolio.todayProfit) !== 0 || daily[latestDate] === undefined)) {
           daily[latestDate] = Number(portfolio.todayProfit);
         }
         setState({ status: 'ready', daily, stale, error: null });

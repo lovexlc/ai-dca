@@ -60,6 +60,7 @@ import {
   runHoldingsNotifications,
   runHoldingsNotificationsAll
 } from './holdingsNotificationRoutes.js';
+import { getShanghaiDateParts, isTradingDayShanghai } from './holdingsNavSupport.js';
 import { normalizeServerChan3Config } from './channels/serverChan3.js';
 import {
   handleWebWsRegister,
@@ -518,7 +519,11 @@ export default {
     try {
       const todayShanghai = shanghaiDate || getShanghaiDateParts(new Date(scheduledMs)).date;
       const hhmm = shanghaiHHMM || getShanghaiDateParts(new Date(scheduledMs)).hhmm;
-      if (hhmm === '15:30') {
+      // cron 已限定 MON-FRI，但不排除工作日法定节假日（如国庆/春节）。非交易日不应推送「当日收益」，
+      // 否则会把上一交易日净值的收益误报为今日收益（与前端 holdingsLedgerCore 的交易日门禁一致）。
+      if (!isTradingDayShanghai(todayShanghai)) {
+        console.log('[notify] scheduled holdings dispatch skipped: non-trading day', JSON.stringify({ hhmm, todayShanghai }));
+      } else if (hhmm === '15:30') {
         console.log('[notify] scheduled dispatch -> runHoldingsNotifications', JSON.stringify({ kind: 'exchange', hhmm, todayShanghai }));
         ctx.waitUntil(runHoldingsNotifications(env, 'exchange', todayShanghai, 'holdings-scheduled-1530', { runClientDetection }));
       } else if (hhmm === '20:30') {

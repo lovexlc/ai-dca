@@ -20,7 +20,7 @@
  *     代码前缀分 exchange / otc 两档。
  */
 
-import { countHolidayWorkdaysBetween, calendarDaysBetween } from './holidaysCN.js';
+import { countHolidayWorkdaysBetween, calendarDaysBetween, isTradingDayShanghai } from './holidaysCN.js';
 import {
   FUND_CODE_PATTERN,
   TRANSACTION_TYPES,
@@ -59,7 +59,6 @@ export {
   sanitizeTransactions,
   summarizeTransactionErrors
 } from './holdingsLedgerBasics.js';
-export { parseExcelPaste } from './holdingsLedgerPaste.js';
 export {
   computeSwitchChainMetrics,
   normalizeSwitchChain,
@@ -147,6 +146,9 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
   const hasExpectedNavDate = resolvedKind === 'exchange'
     ? isLiteralToday
     : isLatestNavExpected;
+  // 今天本身不是交易日（周末 / 节假日）时，不应把「最新披露日」的收益记成今日收益——
+  // 否则周六会把周五的场外/QDII 收益重复展示为今日收益。exchange 已由 quoteDate===today 隐含此约束。
+  const todayIsTradingDay = isTradingDayShanghai(todayDate);
   const cost = round(normalized.price * normalized.shares, 2);
   const currentPrice = getSnapshotCurrentPrice(snapshot, resolvedKind);
   const previousPrice = getSnapshotPreviousPrice(snapshot, resolvedKind);
@@ -158,7 +160,7 @@ export function buildLotMetrics(tx = {}, snapshot = null, options = {}) {
     hasCurrentPrice,
     hasPreviousPrice,
     hasChangePercent,
-    isLiteralToday: hasExpectedNavDate
+    isLiteralToday: hasExpectedNavDate && todayIsTradingDay
   });
   const hasExpectedNav = getHasExpectedNav(resolvedKind, {
     hasCurrentPrice,
@@ -546,7 +548,8 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     const hasExpectedNavDate = resolvedKind === 'exchange'
       ? isLiteralToday
       : isLatestNavExpected;
-
+    // 今天非交易日（周末 / 节假日）时不计今日收益，避免把最新披露日（昨日/周五）的收益记成今日。
+    const todayIsTradingDay = isTradingDayShanghai(todayDate);
     // 买入批次扣减法：详见上方第二趟计算。
     // BUY 追加批次；SELL 按 FIFO 消耗批次；剩余成本和均价只来自未卖出的批次。
     const totalShares = bucket.movingTotalShares;
@@ -569,7 +572,7 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       hasCurrentPrice,
       hasPreviousPrice,
       hasChangePercent,
-      isLiteralToday: hasExpectedNavDate
+      isLiteralToday: hasExpectedNavDate && todayIsTradingDay
     });
     const hasDailyReturnInput = getHasDailyReturn(resolvedKind, {
       hasCurrentPrice,
