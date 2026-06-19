@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   aggregateByCode,
   getActiveHoldingCodeList,
+  getTransactionAmount,
   getTransactionErrors,
   normalizeTransaction,
   summarizePortfolio
@@ -369,6 +370,45 @@ test('场外 BUY 可先录入金额，净值确认后自动推导份额', () => 
   }, { todayDate: '2026-06-01' });
   assert.equal(agg.totalShares, 810.0446);
   assert.equal(agg.totalCost, 1000);
+});
+
+test('价格和份额导入的交易自动推导金额', () => {
+  const exchangeBuy = normalizeTransaction({
+    id: 'exchange-buy-imported',
+    code: '513100',
+    name: '纳指ETF国泰',
+    kind: 'exchange',
+    type: 'BUY',
+    date: '2026-06-01',
+    price: 1.2345,
+    shares: 1000
+  });
+  const exchangeSell = normalizeTransaction({
+    id: 'exchange-sell-imported',
+    code: '513100',
+    name: '纳指ETF国泰',
+    kind: 'exchange',
+    type: 'SELL',
+    date: '2026-06-02',
+    price: 1.25,
+    shares: 800,
+    amount: 0
+  });
+  const otcBuy = normalizeTransaction({
+    id: 'otc-buy-imported',
+    code: '000001',
+    name: '场外测试基金',
+    kind: 'otc',
+    type: 'BUY',
+    date: '2026-06-01',
+    price: 1.5,
+    shares: 600
+  });
+
+  assert.equal(exchangeBuy.amount, 1234.5);
+  assert.equal(exchangeSell.amount, 1000);
+  assert.equal(otcBuy.amount, 900);
+  assert.equal(getTransactionAmount({ amount: 0, price: 2.3456, shares: 100 }), 234.56);
 });
 
 test('场外待确认 BUY 金额计入行市值和组合总市值', () => {

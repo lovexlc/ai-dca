@@ -31,6 +31,8 @@
 // 与「持仓 KPI / 今日盈亏」数字肯定会出现几个点偏差：KPI 走 latestNav （持仓 ledger 路径），
 // 本模块走公布净值。UI 端由调用者加「截至 YYYY-MM-DD」提示。
 
+import { getTransactionAmount } from './holdingsLedgerBasics.js';
+
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const EPSILON = 1e-9;
 
@@ -113,9 +115,7 @@ function normalizeTxList(txList) {
       date: toIsoDate(tx?.date),
       shares: safeNumber(tx?.shares, 0),
       price: safeNumber(tx?.price, 0),
-      amount: Number.isFinite(Number(tx?.amount))
-        ? Number(tx.amount)
-        : safeNumber(tx?.shares, 0) * safeNumber(tx?.price, 0)
+      amount: getTransactionAmount(tx)
     }))
     .filter((tx) => tx.code && tx.date && tx.shares > 0);
 }

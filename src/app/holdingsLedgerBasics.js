@@ -135,6 +135,16 @@ function parsePositiveDecimal(value, precision = 4) {
   return round(num, precision);
 }
 
+export function getTransactionAmount(tx = {}) {
+  const explicitAmount = parsePositiveDecimal(tx?.amount, 2);
+  if (explicitAmount > 0) {
+    return explicitAmount;
+  }
+  const price = parsePositiveDecimal(tx?.price, 4);
+  const shares = parsePositiveDecimal(tx?.shares, 4);
+  return price > 0 && shares > 0 ? round(price * shares, 2) : 0;
+}
+
 export function buildTransactionId(prefix = 'tx') {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -165,10 +175,11 @@ export function normalizeTransaction(tx = {}, { idPrefix = 'tx' } = {}) {
   const rawTags = Array.isArray(tx?.tags) ? tx.tags.filter((t) => typeof t === 'string' && t.trim()) : [];
   const tags = rawTags.length > 0 ? rawTags : (kind === 'qdii' ? ['qdii', 'otc'] : [kind]);
   const price = parsePositiveDecimal(tx?.price, 4);
-  const amount = parsePositiveDecimal(tx?.amount, 2);
+  const explicitAmount = parsePositiveDecimal(tx?.amount, 2);
   const rawShares = parsePositiveDecimal(tx?.shares, 4);
-  const canDeriveSharesFromAmount = type === 'BUY' && kind !== 'exchange' && amount > 0 && price > 0;
-  const shares = rawShares > 0 ? rawShares : (canDeriveSharesFromAmount ? round(amount / price, 4) : 0);
+  const canDeriveSharesFromAmount = type === 'BUY' && kind !== 'exchange' && explicitAmount > 0 && price > 0;
+  const shares = rawShares > 0 ? rawShares : (canDeriveSharesFromAmount ? round(explicitAmount / price, 4) : 0);
+  const amount = explicitAmount > 0 ? explicitAmount : (price > 0 && shares > 0 ? round(price * shares, 2) : 0);
   return {
     id: String(tx?.id || '').trim() || buildTransactionId(idPrefix),
     code,

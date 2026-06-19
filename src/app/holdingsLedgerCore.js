@@ -23,12 +23,9 @@
 import { countHolidayWorkdaysBetween, calendarDaysBetween, isTradingDayShanghai } from './holidaysCN.js';
 import {
   FUND_CODE_PATTERN,
-  TRANSACTION_TYPES,
   getExpectedLatestNavDate,
   getTodayShanghaiDate,
-  normalizeFundCode,
   normalizeFundKind,
-  normalizeIsoDate,
   normalizeTransaction,
   round,
   sanitizeTransactions
@@ -45,6 +42,7 @@ export {
   detectQdiiByName,
   getExpectedLatestNavDate,
   getLedgerCodeList,
+  getTransactionAmount,
   getTodayShanghaiDate,
   getTransactionErrors,
   hasMeaningfulTransaction,

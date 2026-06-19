@@ -17,7 +17,7 @@ import { formatCurrency } from '../accumulation.js';
 import { cx } from '../../components/experience-ui.jsx';
 import SubPageShell from './SubPageShell.jsx';
 import { ROUTES } from '../incomeRoute.js';
-import { buildSoldLots, normalizeIsoDate } from '../holdingsLedgerCore.js';
+import { buildSoldLots, getTransactionAmount, normalizeIsoDate } from '../holdingsLedgerCore.js';
 import { getAssetTypeLabel } from '../assetType.js';
 import { KIND_LABELS } from '../holdingsHelpers.js';
 
@@ -48,11 +48,8 @@ function monthKeyOf(iso) {
 }
 
 function computeAmount(tx) {
-	if (Number.isFinite(tx?.amount)) return tx.amount;
-	const shares = Number(tx?.shares);
-	const price = Number(tx?.price);
-	if (Number.isFinite(shares) && Number.isFinite(price)) return shares * price;
-	return null;
+	const amount = getTransactionAmount(tx);
+	return amount > 0 ? amount : null;
 }
 
 function getTransactionAssetLabel(tx) {
