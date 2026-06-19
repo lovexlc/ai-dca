@@ -119,6 +119,10 @@ export function visibleText(page, text) {
   return page.getByText(text).filter({ visible: true }).first();
 }
 
+export function visibleChart(page) {
+  return page.locator('.recharts-wrapper svg, [role="application"]').filter({ visible: true }).first();
+}
+
 export async function expectNoCrash(page) {
   await expect(page.locator('body')).not.toContainText(/Cannot access|Unhandled Runtime Error|TypeError|ReferenceError/);
 }
@@ -132,7 +136,7 @@ export async function openMarketsCnEtfDetail(page) {
   await page.goto('./index.html?tab=markets');
   await waitForWorkspace(page, '行情中心');
   await page.getByRole('button', { name: /A\s*股/ }).click();
-  const cnEtfRow = page.locator('tr:visible').filter({ hasText: '513100' }).first();
+  const cnEtfRow = page.locator('tr').filter({ hasText: '513100', visible: true }).first();
   await expect(cnEtfRow).toBeVisible({ timeout: 20_000 });
   await cnEtfRow.click();
   await expect(visibleText(page, '纳指 ETF')).toBeVisible({ timeout: 20_000 });
@@ -156,7 +160,7 @@ export async function selectCnFundMetric(page, value) {
   if (loadingText) {
     await expect(page.getByText(loadingText)).toHaveCount(0, { timeout: 10_000 });
   }
-  await expect(page.locator('.recharts-wrapper svg:visible, [role="application"]:visible').first()).toBeVisible({ timeout: 10_000 });
+  await expect(visibleChart(page)).toBeVisible({ timeout: 10_000 });
 }
 
 export async function selectChartRange(page, label) {

@@ -43,6 +43,7 @@ function parseAdminAnalyticsSections(value = '') {
 function corsHeaders(origin = '*') {
   return {
     'access-control-allow-origin': origin,
+    'access-control-allow-credentials': 'true',
     'access-control-allow-methods': 'GET,PUT,POST,OPTIONS',
     'access-control-allow-headers': 'content-type, authorization',
     'access-control-max-age': '86400'

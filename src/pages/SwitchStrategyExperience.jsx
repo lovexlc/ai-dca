@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { readLedgerState, persistLedgerState } from '../app/holdingsLedger.js';
-import { aggregateByCode, buildTransactionId, detectFundKind, normalizeTransaction } from '../app/holdingsLedgerCore.js';
+import { readLedgerState } from '../app/holdingsLedger.js';
+import { aggregateByCode } from '../app/holdingsLedgerCore.js';
 import { getNavSnapshots } from '../app/navService.js';
 import {
   addSwitchRule,
@@ -27,7 +27,6 @@ import {
   writeSwitchPrefs as writePrefs,
 } from './switchStrategyHelpers.js';
 import {
-  SwitchStrategyQuickRecordModal,
   SwitchStrategySnapshotModal,
   SwitchStrategyWorkerPanel
 } from './SwitchStrategyPanels.jsx';
@@ -51,9 +50,6 @@ function pickSwitchSnapshotForRule(snapshot, ruleId) {
 
 export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false, initialView = 'opportunity', hideViewTabs = false } = {}) {
   const [prefs, setPrefs] = useState(readPrefs);
-  // 「记录此次切换」快捷入口的 Modal 表单状态。
-  // 为 null 时不渲染 Modal；设为表单对象后开启录入。
-  const [quickRecord, setQuickRecord] = useState(null);
   // worker 最近一次计算里点击「查看候选」后弹出的详情 modal。
   // 为空时不渲染 modal；设为 { bench, sellLower, buyOther, cls } 后弹起。
   const [snapshotCandModal, setSnapshotCandModal] = useState(null);
@@ -882,135 +878,6 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     ? '先配置至少一条可运行规则'
     : '';
 
-  // 机会卡片点「记录此次切换」后的快捷入口：
-  //   1. 从 intra signal / otc signal 预填表单 → setQuickRecord(form)。
-  //   2. 用户在 Modal 里补全价格、份额、备注 → saveQuickRecord 写入持仓 ledger。
-  //   3. 两笔交易 (SELL + BUY) 互指 switchPairId，复盘页 buildAutoSwitchChains 会自动推导出切换链路；
-  //      持仓总览也读同一份 holdings ledger，无需额外同步。
-  const openQuickRecordFromIntra = useCallback((sig) => {
-    trackFeatureEvent('switch_strategy', 'quick_record_open', {
-      sourceKind: 'intra',
-      ruleKind: sig?.kind || '',
-      fromCodeLength: String(sig?.from || '').length,
-      toCodeLength: String(sig?.to || '').length,
-      intraSignalCount: intraSignals.length
-    });
-    setQuickRecord({
-      date: new Date().toISOString().slice(0, 10),
-      sellCode: sig?.from || '',
-      sellName: sig?.fromName || '',
-      sellPrice: '',
-      sellShares: '',
-      buyCode: sig?.to || '',
-      buyName: sig?.toName || '',
-      buyPrice: '',
-      buyShares: '',
-      note: `规则 ${sig?.kind || ''} · ${sig?.description || ''}`.trim(),
-      sourceKind: 'intra'
-    });
-  }, [intraSignals.length]);
-
-  const openQuickRecordFromOtc = useCallback(() => {
-    trackFeatureEvent('switch_strategy', 'quick_record_open', {
-      sourceKind: 'otc',
-      benchCodeLength: String(otcSignal?.benchCode || '').length,
-      lowestCodeLength: String(otcSignal?.lowestCode || '').length,
-      otcLevel: otcSignal?.level || ''
-    });
-    setQuickRecord({
-      date: new Date().toISOString().slice(0, 10),
-      sellCode: otcSignal?.benchCode || '',
-      sellName: otcSignal?.benchName || '',
-      sellPrice: '',
-      sellShares: '',
-      buyCode: '',
-      buyName: '',
-      buyPrice: '',
-      buyShares: '',
-      note: `场外申购 QDII 联接 · 参考场内最低溢价 ${otcSignal?.lowestCode || ''}`,
-      sourceKind: 'otc'
-    });
-  }, [otcSignal?.benchCode, otcSignal?.benchName, otcSignal?.lowestCode]);
-
-  const quickRecordValid = !!(
-    quickRecord
-    && quickRecord.sellCode && quickRecord.buyCode
-    && Number(quickRecord.sellPrice) > 0
-    && Number(quickRecord.sellShares) > 0
-    && Number(quickRecord.buyPrice) > 0
-    && Number(quickRecord.buyShares) > 0
-  );
-
-  const saveQuickRecord = useCallback(() => {
-    if (!quickRecord) return;
-    const sellPrice = Number(quickRecord.sellPrice);
-    const sellShares = Number(quickRecord.sellShares);
-    const buyPrice = Number(quickRecord.buyPrice);
-    const buyShares = Number(quickRecord.buyShares);
-    if (!quickRecord.sellCode || !quickRecord.buyCode) {
-      trackActionResult('switch_strategy', 'quick_record_save', 'validation_error', {
-        reason: 'missing_code',
-        sourceKind: quickRecord.sourceKind || ''
-      });
-      return;
-    }
-    if (!(sellPrice > 0) || !(sellShares > 0) || !(buyPrice > 0) || !(buyShares > 0)) {
-      trackActionResult('switch_strategy', 'quick_record_save', 'validation_error', {
-        reason: 'invalid_trade_numbers',
-        sourceKind: quickRecord.sourceKind || '',
-        hasSellPrice: sellPrice > 0,
-        hasSellShares: sellShares > 0,
-        hasBuyPrice: buyPrice > 0,
-        hasBuyShares: buyShares > 0
-      });
-      return;
-    }
-    const sellId = buildTransactionId('quick');
-    const buyId = buildTransactionId('quick');
-    const sellTx = normalizeTransaction({
-      id: sellId,
-      code: quickRecord.sellCode,
-      name: quickRecord.sellName || '',
-      kind: detectFundKind(quickRecord.sellCode, quickRecord.sellName || ''),
-      type: 'SELL',
-      date: quickRecord.date,
-      price: sellPrice,
-      shares: sellShares,
-      switchPairId: buyId,
-      note: quickRecord.note || ''
-    }, { idPrefix: 'quick' });
-    const buyTx = normalizeTransaction({
-      id: buyId,
-      code: quickRecord.buyCode,
-      name: quickRecord.buyName || '',
-      kind: detectFundKind(quickRecord.buyCode, quickRecord.buyName || ''),
-      type: 'BUY',
-      date: quickRecord.date,
-      price: buyPrice,
-      shares: buyShares,
-      switchPairId: sellId,
-      note: quickRecord.note || ''
-    }, { idPrefix: 'quick' });
-    const current = readLedgerState();
-    persistLedgerState({
-      ...current,
-      transactions: [...(Array.isArray(current.transactions) ? current.transactions : []), sellTx, buyTx]
-    });
-    // 同窗口其它组件（复盘页、持仓总览页）不会自动收到 localStorage 的 storage 事件，
-    // 主动 dispatch 一下便于订阅了 storage 的页面重新读取 ledger。
-    try {
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new StorageEvent('storage', { key: 'aiDcaFundHoldingsLedger' }));
-      }
-    } catch (_error) { /* ignore */ }
-    trackActionResult('switch_strategy', 'quick_record_save', 'success', {
-      sourceKind: quickRecord.sourceKind || '',
-      sellCodeLength: String(quickRecord.sellCode || '').length,
-      buyCodeLength: String(quickRecord.buyCode || '').length
-    });
-    setQuickRecord(null);
-  }, [quickRecord]);
-
   return (
     <div className="space-y-6">
       <SwitchStrategyWorkerPanel
@@ -1072,17 +939,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         prefs={prefs}
         setPrefValue={setPrefValue}
         intraSignals={intraSignals}
-        openQuickRecordFromIntra={openQuickRecordFromIntra}
         otcSignal={otcSignal}
-        openQuickRecordFromOtc={openQuickRecordFromOtc}
         links={links}
-      />
-
-      <SwitchStrategyQuickRecordModal
-        quickRecord={quickRecord}
-        setQuickRecord={setQuickRecord}
-        quickRecordValid={quickRecordValid}
-        saveQuickRecord={saveQuickRecord}
       />
 
       <SwitchStrategySnapshotModal

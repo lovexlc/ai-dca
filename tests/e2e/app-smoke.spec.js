@@ -8,6 +8,7 @@ import {
   openMarketsCnEtfDetail,
   selectChartRange,
   selectCnFundMetric,
+  visibleChart,
   waitForWorkspace
 } from './acceptance-helpers.js';
 
@@ -26,7 +27,7 @@ test.describe('workspace smoke', () => {
     await page.locator('input[type="date"]').nth(1).fill('2026-05-20');
     await page.getByRole('button', { name: '应用自定义区间' }).click();
     await expect(page.getByRole('tab', { name: '自定义' })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator('.recharts-wrapper svg:visible, [role="application"]:visible').first()).toBeVisible({ timeout: 10_000 });
+    await expect(visibleChart(page)).toBeVisible({ timeout: 10_000 });
 
     await selectCnFundMetric(page, 'nav');
 
@@ -40,7 +41,7 @@ test.describe('workspace smoke', () => {
 
     await waitForWorkspace(page, '持仓总览');
     await expect(page.locator('body')).toContainText(/持仓|基金|收益|暂无/);
-    await page.getByText(/录入第一笔交易|录入交易流水|新增单笔/).first().click();
+    await page.getByRole('button', { name: /录入第一笔交易|录入交易流水|新增单笔/ }).filter({ visible: true }).first().click();
     await expect(page.getByRole('dialog').filter({ hasText: '新增交易' })).toBeVisible({ timeout: 10_000 });
     await expectNoCrash(page);
   });

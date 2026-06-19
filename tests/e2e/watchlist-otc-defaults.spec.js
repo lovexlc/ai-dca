@@ -2,15 +2,15 @@ import { expect, test } from '@playwright/test';
 import { mockAcceptanceNetwork, waitForWorkspace } from './acceptance-helpers.js';
 
 function activeListSelector(page, name) {
-  return page.locator('button[title="列表切换"]:visible').filter({ hasText: name }).first();
+  return page.locator('button[title="列表切换"]').filter({ hasText: name, visible: true }).first();
 }
 
 function visibleListOption(page, name) {
-  return page.locator('button:visible').filter({ hasText: name }).last();
+  return page.locator('button').filter({ hasText: name, visible: true }).last();
 }
 
 function visibleText(page, text) {
-  return page.locator(`:text("${text}"):visible`).first();
+  return page.getByText(text).filter({ visible: true }).first();
 }
 
 test.describe('watchlist OTC defaults', () => {
@@ -89,11 +89,11 @@ test.describe('watchlist OTC defaults', () => {
     await expect(visibleText(page, '未配置自选。')).toBeVisible();
 
     await page.getByRole('button', { name: /基金搜索/ }).first().click();
-    await page.locator('input[placeholder*="搜索基金代码"]:visible').first().fill('513100');
-    await expect(page.locator('button:visible').filter({ hasText: '加入自选' }).first()).toBeVisible();
-    await page.locator('button:visible').filter({ hasText: '加入自选' }).first().click();
+    await page.locator('input[placeholder*="搜索基金代码"]').filter({ visible: true }).first().fill('513100');
+    await expect(page.locator('button').filter({ hasText: '加入自选', visible: true }).first()).toBeVisible();
+    await page.locator('button').filter({ hasText: '加入自选', visible: true }).first().click();
 
-    await expect(page.locator(':text("未配置自选。"):visible')).toHaveCount(0);
+    await expect(page.getByText('未配置自选。').filter({ visible: true })).toHaveCount(0);
     await expect(visibleText(page, '513100')).toBeVisible();
   });
 

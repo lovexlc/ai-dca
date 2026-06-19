@@ -59,7 +59,8 @@ function makeEnv({ backupRow = null, kvBlob = null } = {}) {
 					}
 					if (/^\s*UPDATE backups/i.test(sql)) {
 						if (/version = \?/i.test(sql)) {
-							const [version, updated_at, key_count, bytes, content_hash, envelope, cipher_sha256, user_id] = args;
+							const [version, updated_at, key_count, bytes, content_hash, envelope, cipher_sha256] = args;
+							const user_id = args[args.length - 1];
 							const row = state.backups.get(user_id) || {};
 							Object.assign(row, {
 								version, updatedAt: updated_at, keyCount: key_count, bytes,
@@ -239,6 +240,17 @@ test('GET without auth returns 401', async () => {
 	const { env } = makeEnv({});
 	const res = await worker.fetch(req('GET', '/api/sync/latest', {}), env);
 	assert.equal(res.status, 401);
+});
+
+test('OPTIONS preflight allows credentialed browser requests', async () => {
+	const { env } = makeEnv({});
+	const res = await worker.fetch(new Request(BASE + '/api/sync/analytics/track', {
+		method: 'OPTIONS',
+		headers: { origin: 'http://127.0.0.1:4173' }
+	}), env);
+	assert.equal(res.status, 204);
+	assert.equal(res.headers.get('access-control-allow-origin'), 'http://127.0.0.1:4173');
+	assert.equal(res.headers.get('access-control-allow-credentials'), 'true');
 });
 
 test('roundtrip: PUT then GET returns identical envelope with checksum verified', async () => {

@@ -1,13 +1,11 @@
-import { ClipboardList, Info, TrendingUp } from 'lucide-react';
+import { Info, TrendingUp } from 'lucide-react';
 import { Card, Pill, SectionHeading, cx, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 export function SwitchStrategyOpportunityPanels({
   prefs,
   setPrefValue,
   intraSignals,
-  openQuickRecordFromIntra,
   otcSignal,
-  openQuickRecordFromOtc,
   links
 }) {
   function openMarkets(event) {
@@ -75,15 +73,6 @@ export function SwitchStrategyOpportunityPanels({
                   <div className="text-xs text-slate-500">{sig.fromName || ''} → {sig.toName || ''}。{sig.description}。</div>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => openQuickRecordFromIntra(sig)}
-                className={cx(secondaryButtonClass, 'h-8 w-full px-3 text-xs sm:w-auto')}
-                title="记录此次切换到持仓 ledger"
-              >
-                <ClipboardList className="h-4 w-4" />
-                记录此次切换
-              </button>
             </div>
           ))}
         </div>
@@ -148,15 +137,6 @@ export function SwitchStrategyOpportunityPanels({
                     <div className="text-xs text-slate-500">「{otcSignal.benchCode} {otcSignal.benchName}」溢价偏高且「{otcSignal.lowestCode} {otcSignal.lowestName}」溢价偏低，出现反向套利机会。</div>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={openQuickRecordFromOtc}
-                  className={cx(secondaryButtonClass, 'h-8 w-full px-3 text-xs sm:w-auto')}
-                  title="记录此次场内→场外切换到持仓 ledger"
-                >
-                  <ClipboardList className="h-4 w-4" />
-                  记录此次切换
-                </button>
               </div>
             ) : (
               <div className="flex items-center gap-2 text-sm text-slate-500">
