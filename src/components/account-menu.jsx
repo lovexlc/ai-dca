@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, CloudDownload, CloudUpload, Eye, EyeOff, GitMerge, Home, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
+import { AlertTriangle, CloudDownload, CloudUpload, Crown, Eye, EyeOff, GitMerge, Home, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
 import { ensureLocalChangeBaseline, loadCloudSyncMeta, mergeLocalIntoCloudBackup, overwriteCloudWithLocal, prepareCloudSyncConflict, refreshRemoteCloudMeta, restoreEncryptedCloudBackup, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
 import { clearRememberedKey, generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
@@ -28,7 +28,6 @@ const SYNC_KEY_LABELS = {
   aiDcaDcaStore: '定投计划列表',
   aiDcaFundHoldingsLedger: '持仓账本',
   aiDcaFundHoldingsState: '持仓状态',
-  aiDcaHomeDashboardState: '首页仪表盘',
   aiDcaNotifyClientConfig: '通知配置',
   aiDcaPlanState: '建仓计划',
   aiDcaPlanStore: '计划列表',
@@ -649,6 +648,17 @@ export function AccountMenu() {
                     <SelectField options={homeOptions} value={homeOptions.some((option) => option.value === homePref) ? homePref : 'strategy'} onChange={(event) => { setHomePref(event.target.value); setHomeSaved(false); }} />
                     <button type="button" className={cx(secondaryButtonClass, "w-full justify-center text-xs")} onClick={handleSaveHomePref}>{homeSaved ? '已保存' : '保存默认首页'}</button>
                   </div>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 px-4 py-3 text-left text-sm font-semibold text-amber-900 shadow-sm transition-all hover:border-amber-300 hover:shadow-md"
+                    onClick={() => {
+                      window.location.href = './index.html?tab=premium';
+                      setOpen(false);
+                    }}
+                  >
+                    <Crown className="h-4 w-4 text-amber-600" />
+                    高级版
+                  </button>
                   <PrivacyNotice compact />
                   {renderSyncError()}
                   <button type="button" className={cx(subtleButtonClass, 'w-full justify-center')} onClick={() => { handleLogout(); setOpen(false); }}>
