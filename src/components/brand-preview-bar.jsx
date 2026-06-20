@@ -1,5 +1,6 @@
-import { AlertCircle, LineChart, Menu } from 'lucide-react';
+import { AlertCircle, LineChart, Menu, MoreVertical, MessageCircle } from 'lucide-react';
 import { AccountMenu } from './account-menu.jsx';
+import { useState, useRef, useEffect } from 'react';
 
 /**
  * 应用顶部品牌条（Google Finance 风格）。
@@ -7,6 +8,28 @@ import { AccountMenu } from './account-menu.jsx';
  * 手机 / PC 均可见，保证加入群聊 / 免责 / 账号菜单 三件事两端一致。
  */
 export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onShowDisclaimer, onOpenNav }) {
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const moreButtonRef = useRef(null);
+  const moreMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!moreMenuOpen) return;
+
+    function handleClickOutside(event) {
+      if (
+        moreMenuRef.current &&
+        !moreMenuRef.current.contains(event.target) &&
+        moreButtonRef.current &&
+        !moreButtonRef.current.contains(event.target)
+      ) {
+        setMoreMenuOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [moreMenuOpen]);
+
   return (
     <div className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-slate-200 bg-white px-3 sm:gap-3 sm:px-6">
       <div className="flex shrink-0 items-center gap-2">
@@ -42,25 +65,50 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
         </>
       ) : null}
       <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
-        {onJoinGroup ? (
+        <div className="relative">
           <button
+            ref={moreButtonRef}
             type="button"
-            onClick={onJoinGroup}
-            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[12px] font-medium text-slate-600 transition-colors hover:border-indigo-200 hover:text-indigo-600 sm:px-3 sm:text-[13px]"
+            onClick={() => setMoreMenuOpen(!moreMenuOpen)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-slate-100"
+            aria-label="更多选项"
           >
-            加入群聊
+            <MoreVertical className="h-4 w-4 text-slate-600" />
           </button>
-        ) : null}
-        {onShowDisclaimer ? (
-          <button
-            type="button"
-            onClick={onShowDisclaimer}
-            className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[12px] font-medium text-amber-700 ring-1 ring-amber-200 transition-colors hover:bg-amber-100 sm:px-3 sm:text-[13px]"
-          >
-            <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
-            免责
-          </button>
-        ) : null}
+          {moreMenuOpen && (
+            <div
+              ref={moreMenuRef}
+              className="absolute right-0 top-full mt-1 w-40 rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+            >
+              {onJoinGroup && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onJoinGroup();
+                    setMoreMenuOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  加入群聊
+                </button>
+              )}
+              {onShowDisclaimer && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onShowDisclaimer();
+                    setMoreMenuOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-amber-700 hover:bg-amber-50"
+                >
+                  <AlertCircle className="h-4 w-4" />
+                  免责声明
+                </button>
+              )}
+            </div>
+          )}
+        </div>
         {rightSlot}
         <AccountMenu />
       </div>

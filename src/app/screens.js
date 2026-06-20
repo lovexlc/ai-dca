@@ -3,8 +3,10 @@ export const PROJECT_TITLE = '美股策略助手';
 
 // 主 tab 顺序与元数据：所有页面都通过 WorkspacePage（侧边栏 + ?tab=）展示。
 // 加仓计划（home）和定投计划（dca）已并入交易计划 tab，作为其二级 tab，不再独立出现在侧边栏。
+// 「高级版」已移出主侧栏，入口改为账户菜单/页脚；admin-only 的「量化研究」「数据」在侧栏底部单独分组。
 export const DEFAULT_WORKSPACE_TAB = 'strategy';
-export const PRIMARY_TAB_ORDER = ['strategy', 'holdings', 'tradePlans', 'quant', 'fundSwitch', 'markets', 'premium', 'notify', 'adminData'];
+export const PRIMARY_TAB_ORDER = ['strategy', 'holdings', 'tradePlans', 'fundSwitch', 'markets', 'notify'];
+export const ADMIN_TAB_ORDER = ['quant', 'adminData'];
 export const QUANT_MODULE_TAB_PREFIX = 'quant:';
 export const DEFAULT_QUANT_MODULE_TAB = 'quant:strategy';
 export const QUANT_MODULE_TABS = [
@@ -99,6 +101,14 @@ export function getPrimaryTabs(links) {
   }));
 }
 
+export function getAdminTabs(links) {
+  return ADMIN_TAB_ORDER.map((key) => ({
+    key,
+    label: PRIMARY_TAB_META[key].label,
+    href: links[PRIMARY_TAB_META[key].hrefKey]
+  }));
+}
+
 export function getQuantModuleTabs(links) {
   return QUANT_MODULE_TABS.map((tab) => ({
     key: tab.key,
@@ -108,5 +118,5 @@ export function getQuantModuleTabs(links) {
 }
 
 export function isWorkspaceGroup(group = '') {
-  return PRIMARY_TAB_ORDER.includes(group) || QUANT_MODULE_TAB_KEYS.includes(group);
+  return PRIMARY_TAB_ORDER.includes(group) || ADMIN_TAB_ORDER.includes(group) || QUANT_MODULE_TAB_KEYS.includes(group);
 }

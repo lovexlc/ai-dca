@@ -506,7 +506,6 @@ function dailySeries(events, rangeDays, type) {
       uv: uniqueCount(dayEvents.filter((event) => event.type === 'page_view'), (event) => event.visitorId),
       activeUsers: uniqueCount(userEvents, analyticsIdentity),
       visitorUsers: uniqueCount(dayEvents.filter(isVisitorOnlyEvent), (event) => event.visitorId),
-      ai: uniqueCount(dayEvents.filter((event) => event.type === 'ai_used'), (event) => event.userId || event.visitorId),
       notify: uniqueCount(dayEvents.filter((event) => event.type === 'notify_used' || event.type === 'notify_enabled'), (event) => event.userId || event.visitorId),
       switchRuns: count(dayEvents, 'switch_worker_run') + count(dayEvents, 'switch_used'),
       value: type ? count(dayEvents, type) : dayEvents.length
@@ -521,7 +520,6 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
   const registeredEvents = allEvents.filter((event) => event.type === 'user_register' || event.type === 'user_login');
   const visitorOnlyEvents = allEvents.filter(isVisitorOnlyEvent);
   const notifyEvents = events.filter((event) => event.type === 'notify_used' || event.type === 'notify_enabled');
-  const aiEvents = events.filter((event) => event.type === 'ai_used');
   const switchEvents = events.filter((event) => event.type === 'switch_worker_run' || event.type === 'switch_used');
   const adViewEvents = events.filter((event) => event.type === 'ad_slot_view');
   const adClickEvents = events.filter((event) => event.type === 'ad_slot_click');
@@ -540,7 +538,6 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
   });
 
   const featureRows = [
-    { key: 'AI 使用', value: aiEvents.length, users: uniqueCount(aiEvents, (event) => event.userId || event.visitorId) },
     { key: '通知使用', value: notifyEvents.length, users: uniqueCount(notifyEvents, (event) => event.userId || event.visitorId) },
     { key: '切换运行', value: switchEvents.length, users: uniqueCount(switchEvents, (event) => event.userId || event.visitorId) }
   ];
@@ -635,7 +632,6 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
     { prefix: 'fund_switch_analysis', label: '切换分析' },
     { prefix: 'fund_switch', label: '基金切换' },
     { prefix: 'notify', label: '消息通知' },
-    { prefix: 'home', label: '首页' },
     { prefix: 'vix', label: 'VIX 面板' },
     { prefix: 'premium', label: '高级版' }
   ];
@@ -697,7 +693,6 @@ export function buildAnalyticsSummary({ rangeDays = 30 } = {}) {
       dailyActiveDate: latestDaily?.fullDate || '',
       pv: pageEvents.length,
       uv: uniqueCount(pageEvents, (event) => event.visitorId),
-      aiUsers: uniqueCount(aiEvents, (event) => event.userId || event.visitorId),
       notifyUsers: uniqueCount(notifyEvents, (event) => event.userId || event.visitorId),
       switchRuns: switchEvents.length,
       notifyPlatformUsers: buildNotifyPlatformUserCounts(notifyEvents)

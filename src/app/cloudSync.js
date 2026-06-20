@@ -1008,4 +1008,12 @@ export function startCloudAutoSync() {
   window.addEventListener('focus', () => scheduleCloudAutoPull());
   window.setInterval(() => scheduleCloudAutoPull({ delay: 0 }), 60000);
   scheduleCloudAutoPull({ delay: 1500 }); // 启动后稍候拉取一次
+
+  // 已登录时立即刷新远端 meta，让状态如实反映云端版本
+  const session = loadCloudSession();
+  if (session?.accessToken) {
+    refreshRemoteCloudMeta().catch((err) => {
+      console.warn('[cloudSync] 启动时刷新远端 meta 失败', err);
+    });
+  }
 }

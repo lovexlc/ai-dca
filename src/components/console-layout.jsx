@@ -79,7 +79,8 @@ function ConsoleToastViewport() {
  * and an optional right context panel. Replaces the previous PageShell + TopBar (tabs) combo.
  *
  * Props:
- * - sidebarNav: Array<{ key, label, href?, icon? }>
+ * - sidebarNav: Array<{ key, label, href?, icon? }> — 主导航项
+ * - sidebarAdminNav: Array<{ key, label, href?, icon? }> — 管理项（可选，会在底部单独分组）
  * - activeKey: string
  * - onSelectNav: (key) => void
  * - brand: string (sidebar brand)
@@ -89,6 +90,7 @@ function ConsoleToastViewport() {
  */
 export function ConsoleLayout({
   sidebarNav = [],
+  sidebarAdminNav = [],
   activeKey = '',
   onSelectNav,
   brand = 'ai-dca',
@@ -153,7 +155,7 @@ export function ConsoleLayout({
   const hasTopbar = Boolean(topbarTitle || topbarDescription || topbarRight);
   const hasContext = Boolean(contextPanel);
   const mobileSidebarHidden = isMobileViewport && !mobileNavOpen;
-  const currentNavItem = sidebarNav.find((item) => item.key === activeKey);
+  const currentNavItem = sidebarNav.find((item) => item.key === activeKey) || sidebarAdminNav.find((item) => item.key === activeKey);
   const mobileTitle = topbarTitle || currentNavItem?.label || brand;
 
   return (
@@ -218,6 +220,33 @@ export function ConsoleLayout({
                 </a>
               );
             })}
+            {sidebarAdminNav.length > 0 && (
+              <>
+                <div className="px-3 pt-4 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">管理</div>
+                {sidebarAdminNav.map((item) => {
+                  const isActive = item.key === activeKey;
+                  const Icon = item.icon;
+                  return (
+                    <a
+                      key={item.key}
+                      href={item.href}
+                      aria-current={isActive ? 'page' : undefined}
+                      className={cx('console-sidenav__link', isActive && 'is-active', 'opacity-75')}
+                      onClick={(event) => {
+                        if (!onSelectNav) {
+                          return;
+                        }
+                        event.preventDefault();
+                        onSelectNav(item.key);
+                      }}
+                    >
+                      {Icon ? <Icon className="h-4 w-4 shrink-0" aria-hidden="true" /> : null}
+                      <span className="truncate">{item.label}</span>
+                    </a>
+                  );
+                })}
+              </>
+            )}
           </nav>
           {sidebarFooter ? <div className="console-sidebar__footer">{sidebarFooter}</div> : null}
           <button

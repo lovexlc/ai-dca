@@ -427,18 +427,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     }
   }
 
-  function handleViewMore(row) {
-    setOpenMenuRowId('');
-    trackFeatureEvent('trade_plans', 'view_more', {
-      actionKey: row?.actionKey || '',
-      sourceType: row?.sourceType || '',
-      ...tradePlansMeta()
-    });
-    if (row?.actionKey === 'home' || row?.actionKey === 'dca' || row?.actionKey === 'sell') {
-      handleSelectSubTab(row.actionKey);
-    }
-  }
-
   function handleEditRow(row) {
     setOpenMenuRowId('');
     trackFeatureEvent('trade_plans', 'edit_open', {
@@ -540,7 +528,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   function renderSubTabBar() {
     return (
-      <div className="overflow-x-auto border-b border-slate-200" role="tablist" aria-label="交易计划分类">
+      <div className="scroll-fade-x overflow-x-auto border-b border-slate-200" role="tablist" aria-label="交易计划分类">
         <div className="flex min-w-max items-center gap-0">
           {SUB_TABS.map((tab) => {
             const Icon = tab.icon;
@@ -623,15 +611,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
               >
                 <Bell className="h-4 w-4 text-slate-400" />
                 {isTesting ? '正在发送' : '测试通知'}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => handleViewMore(row)}
-                className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:min-h-0 sm:gap-2 sm:rounded-none sm:font-normal"
-              >
-                <ArrowRight className="h-4 w-4 text-slate-400" />
-                查看更多
               </button>
               <button
                 type="button"

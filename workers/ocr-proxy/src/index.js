@@ -1,4 +1,3 @@
-import { handleAiChat as handleAiChatRoute } from './aiChatRoutes.js';
 import { handleFundFee, handleFundLimit } from './fundRoutes.js';
 import {
   handleHoldingsNav,
@@ -139,24 +138,6 @@ export default {
       } catch (error) {
         return jsonResponse({
           error: error instanceof Error ? error.message : '基金费率代理执行失败。'
-        }, 502);
-      }
-    }
-
-    if (url.pathname === '/api/ai-chat') {
-      if (request.method !== 'POST') {
-        return jsonResponse({
-          error: 'Method not allowed'
-        }, 405, {
-          allow: 'POST, OPTIONS'
-        });
-      }
-
-      try {
-        return await handleAiChatRoute(request, env);
-      } catch (error) {
-        return jsonResponse({
-          error: error instanceof Error ? error.message : 'AI 问答代理执行失败。'
         }, 502);
       }
     }

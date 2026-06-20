@@ -268,6 +268,12 @@ svg {
   }
 }
 
+/* 横向滚动渐隐工具类：用于策略章节、交易计划 tab、行情指数卡等可滑动容器 */
+.scroll-fade-x {
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
 /* Reserve space for the mobile bottom tab bar so content isn't covered. */
 @media (max-width: 639px) {
   body {

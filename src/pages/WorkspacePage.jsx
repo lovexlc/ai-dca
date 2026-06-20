@@ -1,8 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, Bot, Crown, LineChart, ListChecks, Shuffle, SlidersHorizontal, Trash2, Wallet, X } from 'lucide-react';
-import { DEFAULT_QUANT_MODULE_TAB, DEFAULT_WORKSPACE_TAB, LEGACY_QUANT_MODULE_REDIRECTS, LEGACY_TAB_REDIRECTS, QUANT_MODULE_TABS, QUANT_MODULE_TAB_KEYS, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getQuantModuleTabs, isWorkspaceGroup } from '../app/screens.js';
+import { DEFAULT_QUANT_MODULE_TAB, DEFAULT_WORKSPACE_TAB, LEGACY_QUANT_MODULE_REDIRECTS, LEGACY_TAB_REDIRECTS, QUANT_MODULE_TABS, QUANT_MODULE_TAB_KEYS, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getAdminTabs, getQuantModuleTabs, isWorkspaceGroup } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
-import { AiChatWidget } from '../components/ai-chat/ai-chat-widget.jsx';
 import { GlobalSearch } from '../components/global-search.jsx';
 import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
 import { ReleaseAnnouncementModal } from '../components/release-announcement-modal.jsx';
@@ -301,9 +300,9 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const sidebarNav = useMemo(
     () => {
       const tabMap = new Map(
-        [...getPrimaryTabs(links), ...getQuantModuleTabs(links)].map((tab) => [tab.key, tab])
+        [...getPrimaryTabs(links), ...getQuantModuleTabs(links), ...getAdminTabs(links)].map((tab) => [tab.key, tab])
       );
-      return currentScenario.visibleTabs
+      const allTabs = currentScenario.visibleTabs
         .map((key) => tabMap.get(key))
         .filter(Boolean)
         .filter((tab) => {
@@ -316,6 +315,12 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
           ...tab,
           icon: SIDEBAR_ICONS[tab.key]
         }));
+
+      // 分离主导航和管理项
+      const primaryNav = allTabs.filter(tab => !WORKSPACE_TAB_META[tab.key]?.adminOnly);
+      const adminNav = allTabs.filter(tab => WORKSPACE_TAB_META[tab.key]?.adminOnly);
+
+      return { primaryNav, adminNav };
     },
     [links, isAdminUser, currentScenario]
   );
@@ -538,7 +543,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       />
       <ConsoleLayout
         brand="美股策略助手"
-        sidebarNav={sidebarNav}
+        sidebarNav={sidebarNav.primaryNav}
+        sidebarAdminNav={sidebarNav.adminNav}
         activeKey={activeTab}
         onSelectNav={handleSelectTab}
         showMobileBar={false}
@@ -571,7 +577,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
           <Suspense fallback={<TabLoadingFallback />}>{renderActivePanel()}</Suspense>
         </div>
       </ConsoleLayout>
-      <AiChatWidget currentTab={activeTab} />
       {(tabHistory.length > 0 || showScrollTop) ? (
         <div className="fixed bottom-24 right-4 z-40 flex flex-col gap-2 sm:hidden" aria-label="页面快捷操作">
           {tabHistory.length > 0 ? (

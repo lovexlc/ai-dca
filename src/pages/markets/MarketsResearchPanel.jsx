@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import '../../styles/ai-chat.css';
+import '../../styles/markdown.css';
 import { ArrowUp, Edit3, History, Loader2, Plus, Send, Sparkles, X } from 'lucide-react';
 import { askMarkets, askMarketsStream, loadWatchlist } from '../../app/marketsApi.js';
 import { buildStockAnalysisPrompt } from '../../app/stockAnalysisPrompt.js';

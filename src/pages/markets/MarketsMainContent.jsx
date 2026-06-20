@@ -40,7 +40,7 @@ export function MarketsMainContent({
   const noSelectedContent = (
     <>
       {indices.length ? (
-        <div className="-mx-2 min-h-[176px] overflow-x-auto px-2 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="scroll-fade-x -mx-2 min-h-[176px] overflow-x-auto px-2 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div className="flex min-h-[156px] snap-x snap-mandatory items-stretch gap-3 pb-1">
             {indices.map((entry) => (
               <IndexCard

@@ -801,14 +801,16 @@ export function StrategyGuideExperience({ links, onNavigate, onDemoDataChange })
 
         <section className="space-y-3">
           <SectionLabel icon={BookOpen}>策略章节</SectionLabel>
-          <div className="flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 sm:gap-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="scroll-fade-x flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 sm:gap-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {LEARN_CARDS.map((card) => <LearnCard key={card.id} card={card} onOpen={handleOpenChapter} />)}
           </div>
         </section>
 
         <section className="space-y-3">
           <SectionLabel icon={Calendar}>即将到来</SectionLabel>
-          <UpcomingEvents navigate={navigate} />
+          <div className="opacity-70">
+            <UpcomingEvents navigate={navigate} />
+          </div>
         </section>
 
         <section className="space-y-3">

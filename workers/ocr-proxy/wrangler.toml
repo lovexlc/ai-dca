@@ -46,25 +46,17 @@ persist = true
 
 [vars]
 # OCR 视觉模型，可换成 @cf/llava-hf/llava-1.5-7b-hf（更便宜更小）等。
-OCR_MODEL = "@cf/moonshotai/kimi-k2.6"
+OCR_MODEL = “@cf/moonshotai/kimi-k2.6”
 # 单次 OCR 推理最多生成的 token 数。
 # 结构化 JSON 输出（多行 rows + 多字段）容易在 1500 内被截断，
-# 表现为 finish_reason="length"、客户端拿到不完整 JSON、Worker 报
+# 表现为 finish_reason=”length”、客户端拿到不完整 JSON、Worker 报
 # “没有返回可解析的 JSON 文本”。kimi-k2.6 支持很大的输出窗口，
 # 这里默认放到 4096；如果需要更多行可以再调到 8192。
-OCR_MAX_TOKENS = "4096"
-# /api/ai-chat 默认使用的文本对话模型，可换为 @cf/qwen/qwen2.5-coder-32b-instruct 等。
-CHAT_MODEL = "@cf/meta/llama-3.1-8b-instruct"
-# /api/ai-chat 单次生成上限。
-CHAT_MAX_TOKENS = "1024"
+OCR_MAX_TOKENS = “4096”
 # AI 问答检索使用的 embedding 模型。bge-m3 是多语言 1024 维，中文友好。
-EMBED_MODEL = "@cf/baai/bge-m3"
+EMBED_MODEL = “@cf/baai/bge-m3”
 # embedding 向量维度，要与 Vectorize 索引创建时一致。
-EMBED_DIMENSIONS = "1024"
-# /api/ai-chat 从知识库召回的 topK 。
-CHAT_TOP_K = "5"
-# 少于此分数的检索命中丢弃（0~1、越高越相似）。
-CHAT_MIN_SCORE = "0.3"
+EMBED_DIMENSIONS = “1024”
 
 # fund-limit 接口的 KV 缓存。
 # - key 形态：limit:<6位基金代码>
