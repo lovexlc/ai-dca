@@ -7,7 +7,7 @@ import {
   formatSignedCurrency,
   formatSignedPercent
 } from '../../app/holdingsHelpers.js';
-import { cx, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from '../../components/experience-ui.jsx';
+import { cx, primaryButtonClass } from '../../components/experience-ui.jsx';
 
 export function AggregateHoldingsTableSection({
   table,
@@ -109,16 +109,10 @@ export function AggregateHoldingsTableSection({
   const showAllColumns = () => {
     hideableColumns.forEach((column) => column.toggleVisibility(true));
   };
-  const compactButtonClass = cx(
-    subtleButtonClass,
-    'min-h-8 px-3 py-1.5 text-xs',
-    compactActive ? 'bg-indigo-50 text-indigo-700 ring-indigo-200' : ''
-  );
-  const fullButtonClass = cx(
-    secondaryButtonClass,
-    'min-h-8 px-3 py-1.5 text-xs',
-    fullActive ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : ''
-  );
+  const columnViewPresets = [
+    { key: 'compact', label: '精简视图', active: compactActive, onSelect: showCompactColumns },
+    { key: 'full', label: '完整视图', active: fullActive, onSelect: showAllColumns },
+  ];
 
   return (
     <div className="flex flex-col gap-2">
@@ -133,13 +127,7 @@ export function AggregateHoldingsTableSection({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" className={compactButtonClass} onClick={showCompactColumns} aria-pressed={compactActive}>
-              精简视图
-            </button>
-            <button type="button" className={fullButtonClass} onClick={showAllColumns} aria-pressed={fullActive}>
-              完整视图
-            </button>
-            <DataTableViewOptions table={table} />
+            <DataTableViewOptions table={table} presetActions={columnViewPresets} />
           </div>
         </div>
         <DataTableToolbar table={table} className="mt-3" />

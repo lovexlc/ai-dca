@@ -21,6 +21,7 @@ function DataTableViewOptions({
   disabled,
   label = "列设置",
   searchPlaceholder = "搜索列...",
+  presetActions = [],
   ...props
 }) {
   const columns = React.useMemo(
@@ -39,7 +40,15 @@ function DataTableViewOptions({
     disabled={disabled}
   ><Settings2 className="text-muted-foreground" />
           {label}
-        </Button></PopoverTrigger><PopoverContent className="w-44 p-0" {...props}><Command><CommandInput placeholder={searchPlaceholder} /><CommandList><CommandEmpty>没有可切换的列</CommandEmpty><CommandGroup>{columns.map((column) => <CommandItem
+        </Button></PopoverTrigger><PopoverContent className="w-44 p-0" {...props}><Command><CommandInput placeholder={searchPlaceholder} /><CommandList><CommandEmpty>没有可切换的列</CommandEmpty>{presetActions.length ? <CommandGroup>{presetActions.map((action) => <CommandItem
+    key={action.key || action.label}
+    onSelect={action.onSelect}
+  ><span className="truncate">{action.label}</span><Check
+    className={cn(
+      "ml-auto size-4 shrink-0",
+      action.active ? "opacity-100" : "opacity-0"
+    )}
+  /></CommandItem>)}</CommandGroup> : null}<CommandGroup>{columns.map((column) => <CommandItem
     key={column.id}
     onSelect={() => column.toggleVisibility(!column.getIsVisible())}
   ><span className="truncate">{column.columnDef.meta?.label ?? column.id}</span><Check
