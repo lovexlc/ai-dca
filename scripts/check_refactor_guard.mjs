@@ -105,13 +105,12 @@ const REFACTOR_PHASES = [
     name: 'ocr proxy route modules',
     activationFile: 'workers/ocr-proxy/src/imageOcrRoutes.js',
     requiredFiles: [
-      'workers/ocr-proxy/src/aiChatRoutes.js',
       'workers/ocr-proxy/src/fundRoutes.js',
       'workers/ocr-proxy/src/imageOcrRoutes.js'
     ],
     budgets: [['workers/ocr-proxy/src/index.js', 250]],
     forbiddenPatterns: [
-      ['workers/ocr-proxy/src/index.js', /\b(?:function|const)\s+handleAiChat\b/, 'AI chat route belongs in aiChatRoutes.js'],
+      ['workers/ocr-proxy/src/index.js', /\b(?:function|const)\s+handleAiChat\b/, 'AI chat route was removed from ocr-proxy'],
       ['workers/ocr-proxy/src/index.js', /\b(?:function|const)\s+handleImageOcr\b/, 'image OCR route belongs in imageOcrRoutes.js']
     ]
   }
