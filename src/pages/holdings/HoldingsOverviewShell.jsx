@@ -55,9 +55,9 @@ export function HoldingsOverviewShell({
       />
       {incomeRoute === ROUTES.OVERVIEW ? (<>
         <div className="grid grid-cols-1 gap-4">
-          <section className="min-w-0 rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <section className="min-w-0">
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onOcrFile} />
-            <div className="min-h-[480px] px-1">
+            <div className="min-h-[480px]">
               <AggregateHoldingsTableSection
                 table={aggregatesTable}
                 tableData={aggregatesTableData}
@@ -67,7 +67,7 @@ export function HoldingsOverviewShell({
                 onRowClick={onAggregateRowClick}
               />
             </div>
-            <div className="border-t border-slate-100 px-4 py-2 text-[11px] text-slate-400">
+            <div className="px-1 pt-2 text-[11px] text-slate-400">
               {`持仓中 ${portfolio.assetCount} 只基金；累计 ${ledgerRows.length} 笔流水。`}
             </div>
           </section>

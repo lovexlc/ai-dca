@@ -13,7 +13,7 @@ import { formatCurrency } from '../app/accumulation.js';
 import { assignAccount, getAccountAllocation, getAssignedAccount, readAccountAssignments } from '../app/accountManager.js';
 import { useIncomeRoute } from '../app/incomeRoute.js';
 import { HoldingsOverviewShell } from './holdings/HoldingsOverviewShell.jsx';
-import { createAggregateHoldingsColumns } from './holdings/aggregateHoldingsColumns.jsx';
+import { COMPACT_HOLDINGS_COLUMN_VISIBILITY, createAggregateHoldingsColumns } from './holdings/aggregateHoldingsColumns.jsx';
 import { buildAggregateHoldingsTsv } from './holdings/holdingsClipboardExport.js';
 import { useHoldingsStorageSync } from './holdings/useHoldingsStorageSync.js';
 import {
@@ -319,6 +319,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     initialState: {
       sorting: [{ id: 'marketValue', desc: true }],
       pagination: { pageSize: 50 },
+      columnVisibility: COMPACT_HOLDINGS_COLUMN_VISIBILITY,
     },
     autoResetAll: false,
     autoResetPageIndex: false,

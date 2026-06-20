@@ -1,12 +1,13 @@
 import { Plus, Wallet } from 'lucide-react';
 import { DataTable } from '@/components/data-table/data-table';
 import { DataTableToolbar } from '@/components/data-table/data-table-toolbar';
+import { DataTableViewOptions } from '@/components/data-table/data-table-view-options';
 import { formatCurrency } from '../../app/accumulation.js';
 import {
   formatSignedCurrency,
   formatSignedPercent
 } from '../../app/holdingsHelpers.js';
-import { cx, primaryButtonClass } from '../../components/experience-ui.jsx';
+import { cx, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from '../../components/experience-ui.jsx';
 
 export function AggregateHoldingsTableSection({
   table,
@@ -97,10 +98,52 @@ export function AggregateHoldingsTableSection({
       ? <span className={cx('tabular-nums font-semibold', todayReturnTone)}>{formatSignedPercent(summaryTodayReturnRate)}</span>
       : <span className="text-muted-foreground">—</span>,
   };
+  const hideableColumns = table.getAllLeafColumns().filter((column) => column.getCanHide());
+  const hiddenColumns = hideableColumns.filter((column) => !column.getIsVisible());
+  const defaultHiddenColumns = hideableColumns.filter((column) => column.columnDef?.meta?.defaultHidden);
+  const compactActive = defaultHiddenColumns.length > 0 && defaultHiddenColumns.every((column) => !column.getIsVisible());
+  const fullActive = hiddenColumns.length === 0;
+  const showCompactColumns = () => {
+    hideableColumns.forEach((column) => column.toggleVisibility(!column.columnDef?.meta?.defaultHidden));
+  };
+  const showAllColumns = () => {
+    hideableColumns.forEach((column) => column.toggleVisibility(true));
+  };
+  const compactButtonClass = cx(
+    subtleButtonClass,
+    'min-h-8 px-3 py-1.5 text-xs',
+    compactActive ? 'bg-indigo-50 text-indigo-700 ring-indigo-200' : ''
+  );
+  const fullButtonClass = cx(
+    secondaryButtonClass,
+    'min-h-8 px-3 py-1.5 text-xs',
+    fullActive ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : ''
+  );
 
   return (
     <div className="flex flex-col gap-2">
-      <DataTableToolbar table={table} />
+      <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-slate-900">基金汇总</div>
+            <div className="mt-0.5 text-xs text-slate-500">
+              {hiddenColumns.length > 0
+                ? `精简显示 ${table.getVisibleLeafColumns().length} 列，已收起 ${hiddenColumns.length} 个次要列。`
+                : '完整显示全部列。'}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className={compactButtonClass} onClick={showCompactColumns} aria-pressed={compactActive}>
+              精简视图
+            </button>
+            <button type="button" className={fullButtonClass} onClick={showAllColumns} aria-pressed={fullActive}>
+              完整视图
+            </button>
+            <DataTableViewOptions table={table} />
+          </div>
+        </div>
+        <DataTableToolbar table={table} className="mt-3" />
+      </div>
       <DataTable
         table={table}
         footerRow={footerRow}

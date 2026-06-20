@@ -14,6 +14,15 @@ import {
 } from '../../app/holdingsHelpers.js';
 import { Pill, cx } from '../../components/experience-ui.jsx';
 
+export const COMPACT_HOLDINGS_COLUMN_VISIBILITY = {
+  kind: false,
+  accountType: false,
+  totalShares: false,
+  avgCost: false,
+  latestNav: false,
+  todayReturnRate: false,
+};
+
 export function createAggregateHoldingsColumns({
   accountAssignments,
   kindFilterOptions,
@@ -21,11 +30,14 @@ export function createAggregateHoldingsColumns({
   onAccountChange,
   onNavigateToMarkets,
 }) {
+  const coreMeta = (meta = {}) => ({ ...meta, priority: 'core' });
+  const secondaryMeta = (meta = {}) => ({ ...meta, priority: 'secondary', defaultHidden: true });
+
   return [
     {
       id: 'code',
       accessorFn: (row) => row.code,
-      meta: { label: '代码' },
+      meta: coreMeta({ label: '代码' }),
       enableHiding: false,
       header: ({ column }) => <DataTableColumnHeader column={column} label="代码" />,
       cell: ({ row }) => (
@@ -38,7 +50,8 @@ export function createAggregateHoldingsColumns({
     {
       id: 'name',
       accessorFn: (row) => row.name || '',
-      meta: { label: '名称', variant: 'text', placeholder: '搜索名称' },
+      meta: coreMeta({ label: '名称', variant: 'text', placeholder: '搜索名称' }),
+      enableHiding: false,
       header: ({ column }) => <DataTableColumnHeader column={column} label="名称" />,
       cell: ({ row }) => row.original.name || <span className="text-muted-foreground">—</span>,
       filterFn: 'includesString',
@@ -46,7 +59,7 @@ export function createAggregateHoldingsColumns({
     {
       id: 'kind',
       accessorFn: (row) => row.kind,
-      meta: { label: '标签', variant: 'multiSelect', options: kindFilterOptions },
+      meta: secondaryMeta({ label: '标签', variant: 'multiSelect', options: kindFilterOptions }),
       header: ({ column }) => <DataTableColumnHeader column={column} label="标签" />,
       cell: ({ row }) => {
         const tags = Array.isArray(row.original.tags) && row.original.tags.length > 0
@@ -71,7 +84,7 @@ export function createAggregateHoldingsColumns({
     {
       id: 'accountType',
       accessorFn: (row) => row.accountType,
-      meta: { label: '账户' },
+      meta: secondaryMeta({ label: '账户' }),
       header: ({ column }) => <DataTableColumnHeader column={column} label="账户" />,
       cell: ({ row }) => (
         <select
@@ -87,7 +100,7 @@ export function createAggregateHoldingsColumns({
     {
       id: 'totalShares',
       accessorFn: (row) => row.totalShares,
-      meta: { label: '总份额' },
+      meta: secondaryMeta({ label: '总份额' }),
       header: ({ column }) => <DataTableColumnHeader column={column} label="总份额" />,
       cell: ({ row }) => (
         <span className="tabular-nums">
@@ -109,7 +122,7 @@ export function createAggregateHoldingsColumns({
     {
       id: 'avgCost',
       accessorFn: (row) => row.avgCost,
-      meta: { label: '平均成本' },
+      meta: secondaryMeta({ label: '平均成本' }),
       header: ({ column }) => <DataTableColumnHeader column={column} label="平均成本" />,
       cell: ({ row }) => <span className="tabular-nums">{formatNav(row.original.avgCost)}</span>,
       sortingFn: numericSortFn,
@@ -117,7 +130,7 @@ export function createAggregateHoldingsColumns({
     {
       id: 'latestNav',
       accessorFn: (row) => row.currentPrice ?? row.latestNav,
-      meta: { label: '当前价格' },
+      meta: secondaryMeta({ label: '当前价格' }),
       header: ({ column }) => <DataTableColumnHeader column={column} label="当前价格" />,
       cell: ({ row }) => {
         const r = row.original;
@@ -136,7 +149,7 @@ export function createAggregateHoldingsColumns({
     {
       id: 'marketValue',
       accessorFn: (row) => row.marketValue,
-      meta: { label: '总市值' },
+      meta: coreMeta({ label: '总市值' }),
       header: ({ column }) => <DataTableColumnHeader column={column} label="总市值" />,
       cell: ({ row }) => <span className="tabular-nums">{formatCurrency(row.original.marketValue, '¥', 2)}</span>,
       sortingFn: numericSortFn,
@@ -144,7 +157,7 @@ export function createAggregateHoldingsColumns({
     {
       id: 'unrealizedProfit',
       accessorFn: (row) => row.unrealizedProfit,
-      meta: { label: '总收益' },
+      meta: coreMeta({ label: '总收益' }),
       header: ({ column }) => <DataTableColumnHeader column={column} label="总收益" />,
       cell: ({ row }) => {
         if (!row.original.hasCurrentPrice) return <span className="text-muted-foreground">—</span>;
@@ -157,7 +170,7 @@ export function createAggregateHoldingsColumns({
     {
       id: 'unrealizedReturnRate',
       accessorFn: (row) => row.unrealizedReturnRate,
-      meta: { label: '总收益率' },
+      meta: coreMeta({ label: '总收益率' }),
       header: ({ column }) => <DataTableColumnHeader column={column} label="总收益率" />,
       cell: ({ row }) => {
         if (!row.original.hasCurrentPrice) return <span className="text-muted-foreground">—</span>;
@@ -170,7 +183,7 @@ export function createAggregateHoldingsColumns({
     {
       id: 'todayProfit',
       accessorFn: (row) => row.todayProfit,
-      meta: { label: '当日收益' },
+      meta: coreMeta({ label: '当日收益' }),
       header: ({ column }) => <DataTableColumnHeader column={column} label="当日收益" />,
       cell: ({ row }) => {
         if (!row.original.hasCurrentPrice) return <span className="text-muted-foreground">—</span>;
@@ -183,7 +196,7 @@ export function createAggregateHoldingsColumns({
     {
       id: 'todayReturnRate',
       accessorFn: (row) => row.todayReturnRate,
-      meta: { label: '当日收益率' },
+      meta: secondaryMeta({ label: '当日收益率' }),
       header: ({ column }) => <DataTableColumnHeader column={column} label="当日收益率" />,
       cell: ({ row }) => {
         if (!row.original.hasCurrentPrice) return <span className="text-muted-foreground">—</span>;
@@ -196,7 +209,7 @@ export function createAggregateHoldingsColumns({
     {
       id: 'weightPct',
       accessorFn: (row) => (row.weightPct == null ? null : row.weightPct),
-      meta: { label: '仓位占比' },
+      meta: coreMeta({ label: '仓位占比' }),
       header: ({ column }) => <DataTableColumnHeader column={column} label="仓位占比" />,
       cell: ({ row }) => {
         const v = row.original.weightPct;

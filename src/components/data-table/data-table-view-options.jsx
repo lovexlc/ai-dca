@@ -19,6 +19,8 @@ import { cn } from "@/lib/utils";
 function DataTableViewOptions({
   table,
   disabled,
+  label = "列设置",
+  searchPlaceholder = "搜索列...",
   ...props
 }) {
   const columns = React.useMemo(
@@ -33,11 +35,11 @@ function DataTableViewOptions({
     role="combobox"
     variant="outline"
     size="sm"
-    className="ml-auto flex h-8 font-normal"
+    className="flex h-8 font-normal"
     disabled={disabled}
   ><Settings2 className="text-muted-foreground" />
-          View
-        </Button></PopoverTrigger><PopoverContent className="w-44 p-0" {...props}><Command><CommandInput placeholder="Search columns..." /><CommandList><CommandEmpty>No columns found.</CommandEmpty><CommandGroup>{columns.map((column) => <CommandItem
+          {label}
+        </Button></PopoverTrigger><PopoverContent className="w-44 p-0" {...props}><Command><CommandInput placeholder={searchPlaceholder} /><CommandList><CommandEmpty>没有可切换的列</CommandEmpty><CommandGroup>{columns.map((column) => <CommandItem
     key={column.id}
     onSelect={() => column.toggleVisibility(!column.getIsVisible())}
   ><span className="truncate">{column.columnDef.meta?.label ?? column.id}</span><Check
