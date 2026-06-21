@@ -113,29 +113,28 @@ export function AggregateHoldingsTableSection({
     { key: 'compact', label: '精简视图', active: compactActive, onSelect: showCompactColumns },
     { key: 'full', label: '完整视图', active: fullActive, onSelect: showAllColumns },
   ];
+  const tableChrome = (
+    <div className="flex min-w-[620px] items-center justify-between gap-3">
+      <div className="min-w-0">
+        <div className="text-sm font-semibold text-slate-900">基金汇总</div>
+        <div className="mt-0.5 text-xs text-slate-500">
+          {hiddenColumns.length > 0
+            ? `精简显示 ${table.getVisibleLeafColumns().length} 列，已收起 ${hiddenColumns.length} 个次要列。`
+            : '完整显示全部列。'}
+        </div>
+      </div>
+      <DataTableViewOptions table={table} presetActions={columnViewPresets} />
+    </div>
+  );
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <div className="text-sm font-semibold text-slate-900">基金汇总</div>
-            <div className="mt-0.5 text-xs text-slate-500">
-              {hiddenColumns.length > 0
-                ? `精简显示 ${table.getVisibleLeafColumns().length} 列，已收起 ${hiddenColumns.length} 个次要列。`
-                : '完整显示全部列。'}
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <DataTableViewOptions table={table} presetActions={columnViewPresets} />
-          </div>
-        </div>
-        <DataTableToolbar table={table} className="mt-3" />
-      </div>
+      <DataTableToolbar table={table} />
       <DataTable
         table={table}
         footerRow={footerRow}
         resizable
+        tableChrome={tableChrome}
         onRowClick={onRowClick}
       />
     </div>
