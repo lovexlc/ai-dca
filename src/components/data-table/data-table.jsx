@@ -35,7 +35,7 @@ function DataTable({
     {...props}
   >{children}<div ref={tableScrollRef} onScroll={onHorizontalScroll} className={cn("max-w-full overflow-x-auto rounded-2xl border border-slate-200 bg-white", tableContainerClassName)}>{tableChrome ? <div
     className={cn(
-      "sticky top-0 z-30 min-h-[55px] border-b border-slate-200 bg-white/95 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-white/85",
+      "sticky top-0 z-30 min-h-[55px] border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85",
       tableChromeClassName
     )}
   >{tableChrome}</div> : null}<Table><TableHeader
