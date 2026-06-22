@@ -1,7 +1,8 @@
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, ScanLine, ReceiptText, Plus } from 'lucide-react';
 import { IncomeSection } from '../../app/income/IncomeSection.jsx';
 import { ROUTES } from '../../app/incomeRoute.js';
 import { cx } from '../../components/experience-ui.jsx';
+import { FloatingActionButton } from '../../components/FloatingActionButton.jsx';
 import { AggregateHoldingsTableSection } from './AggregateHoldingsTableSection.jsx';
 import { HoldingSummaryPanel } from './HoldingSummaryPanel.jsx';
 import { HoldingsSidePanel } from './HoldingsSidePanel.jsx';
@@ -33,6 +34,30 @@ export function HoldingsOverviewShell({
   switchPicker,
   sidePanel,
 }) {
+  // v7.7: FAB 操作列表（仅移动端显示，按重要性排序）
+  const fabActions = [];
+  if (quickActions?.onNewTransaction) {
+    fabActions.push({
+      label: '新增单笔',
+      icon: Plus,
+      onClick: quickActions.onNewTransaction,
+    });
+  }
+  if (quickActions?.onPasteExcel) {
+    fabActions.push({
+      label: 'Excel 粘贴',
+      icon: ReceiptText,
+      onClick: quickActions.onPasteExcel,
+    });
+  }
+  if (quickActions?.onOcr) {
+    fabActions.push({
+      label: '截图 OCR',
+      icon: ScanLine,
+      onClick: quickActions.onOcr,
+    });
+  }
+
   return (
     <div className={cx('flex flex-col gap-4 px-4 sm:px-6', embedded ? '' : 'mx-auto max-w-[1600px]')}>
       {migrationNoticeVisible ? (
@@ -137,6 +162,9 @@ export function HoldingsOverviewShell({
           )}
         </div>
       </HoldingsSidePanel>
+
+      {/* v7.7: 移动端右下角悬浮操作按钮 */}
+      <FloatingActionButton actions={fabActions} />
     </div>
   );
 }

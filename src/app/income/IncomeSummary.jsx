@@ -278,33 +278,7 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 				})}
 			</nav>
 
-			{/* 入口区：移动端 新增交易 / 截图 OCR（原底栏加号功能回归此处） */}
-			{quickActions && (quickActions.onNewTransaction || quickActions.onOcr) ? (
-				<div className="grid grid-cols-2 gap-2 sm:hidden">
-					{quickActions.onOcr ? (
-						<button
-							type="button"
-							onClick={quickActions.onOcr}
-							title="从截图识别交易流水"
-							className="inline-flex h-11 items-center justify-center gap-1.5 rounded-2xl border border-slate-200 bg-white text-sm font-medium text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors active:bg-slate-100"
-						>
-							<ScanLine className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
-							<span>截图 OCR</span>
-						</button>
-					) : null}
-					{quickActions.onNewTransaction ? (
-						<button
-							type="button"
-							onClick={quickActions.onNewTransaction}
-							title="新增单条交易"
-							className="inline-flex h-11 items-center justify-center gap-1.5 rounded-2xl bg-rose-500 text-sm font-semibold text-white shadow-sm transition-colors active:bg-rose-600"
-						>
-							<Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
-							<span>新增单笔</span>
-						</button>
-					) : null}
-				</div>
-			) : null}
+			{/* v7.7: 移动端操作按钮已移至右下角 FAB */}
 
 			{/* PC 端：4 pill chip 入口 + 右侧 复制表格 / + 新增交易 */}
 			<div className="hidden sm:flex sm:items-center sm:justify-between sm:gap-3">
