@@ -1,6 +1,6 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Activity, Bell, Bot, Calendar, ChevronDown, ChevronRight, Clock, Eye, MousePointerClick, RefreshCw, ShieldCheck, Shuffle, Trash2, UserRound, Users } from 'lucide-react';
+import { Activity, Bell, Bot, Calendar, ChevronDown, Clock, Eye, MousePointerClick, RefreshCw, ShieldCheck, Shuffle, Trash2, UserRound, Users } from 'lucide-react';
 import { buildAnalyticsSummary, clearAnalyticsEvents, fetchRemoteAnalyticsSummary, isAnalyticsAdmin, trackAnalyticsEvent } from '../app/analytics.js';
 import { loadCloudSession } from '../app/authClient.js';
 import { cx } from '../components/experience-ui.jsx';
@@ -86,127 +86,6 @@ function formatDuration(ms) {
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
   return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
-}
-
-const FEATURE_COLORS = {
-  holdings: 'bg-blue-50 text-blue-700 ring-blue-200',
-  markets: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  dca: 'bg-violet-50 text-violet-700 ring-violet-200',
-  sell_plan: 'bg-rose-50 text-rose-700 ring-rose-200',
-  new_plan: 'bg-indigo-50 text-indigo-700 ring-indigo-200',
-  trade_plans: 'bg-amber-50 text-amber-700 ring-amber-200',
-  dca_calculator: 'bg-cyan-50 text-cyan-700 ring-cyan-200',
-  switch_strategy: 'bg-orange-50 text-orange-700 ring-orange-200',
-  fund_switch: 'bg-teal-50 text-teal-700 ring-teal-200',
-  fund_switch_analysis: 'bg-lime-50 text-lime-700 ring-lime-200',
-  notify: 'bg-pink-50 text-pink-700 ring-pink-200',
-  home: 'bg-sky-50 text-sky-700 ring-sky-200',
-  vix: 'bg-red-50 text-red-700 ring-red-200',
-  premium: 'bg-yellow-50 text-yellow-700 ring-yellow-200'
-};
-
-function FeatureDetailsSection({ featureDetails = [] }) {
-  const [expandedPrefix, setExpandedPrefix] = useState(null);
-  if (!featureDetails.length) {
-    return (
-      <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-base font-bold text-slate-900">功能明细统计</h2>
-        <div className="flex min-h-[120px] items-center justify-center text-sm text-slate-400">暂无功能事件数据</div>
-      </div>
-    );
-  }
-  return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-base font-bold text-slate-900">功能明细统计</h2>
-        <span className="text-xs text-slate-400">{featureDetails.length} 个功能模块</span>
-      </div>
-      <div className="overflow-hidden rounded-2xl border border-slate-100">
-        <table className="min-w-full text-sm">
-          <thead className="bg-slate-50 text-xs text-slate-500">
-            <tr>
-              <th className="w-8 px-2 py-2" />
-              <th className="px-3 py-2 text-left">功能</th>
-              <th className="px-3 py-2 text-right">总事件</th>
-              <th className="px-3 py-2 text-right">成功</th>
-              <th className="px-3 py-2 text-right">失败</th>
-              <th className="px-3 py-2 text-right">人数</th>
-              <th className="px-3 py-2 text-right">成功率</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {featureDetails.map((feature) => {
-              const isExpanded = expandedPrefix === feature.prefix;
-              const successRate = feature.total > 0 ? ((feature.success / feature.total) * 100).toFixed(1) : '—';
-              const colorClass = FEATURE_COLORS[feature.prefix] || 'bg-slate-50 text-slate-600 ring-slate-200';
-              return (
-                <Fragment key={feature.prefix}>
-                  <tr
-                    className="cursor-pointer transition-colors hover:bg-slate-50/60"
-                    onClick={() => setExpandedPrefix(isExpanded ? null : feature.prefix)}
-                  >
-                    <td className="px-2 py-2 text-center">
-                      {isExpanded
-                        ? <ChevronDown className="inline h-3.5 w-3.5 text-slate-400" />
-                        : <ChevronRight className="inline h-3.5 w-3.5 text-slate-300" />}
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className={cx('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ring-1', colorClass)}>
-                        {feature.label}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-right font-bold tabular-nums text-slate-900">{feature.total}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-emerald-600">{feature.success || '—'}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-rose-600">{feature.error || '—'}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-600">{feature.users}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">{successRate}%</td>
-                  </tr>
-                  {isExpanded && feature.actions.length > 0 && (
-                    <tr>
-                      <td colSpan={7} className="bg-slate-50/50 px-0 py-0">
-                        <div className="px-4 py-3">
-                          <div className="mb-2 text-xs font-semibold text-slate-500">动作明细 — {feature.label}</div>
-                          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-                            <table className="min-w-full text-xs">
-                              <thead className="bg-slate-50 text-slate-500">
-                                <tr>
-                                  <th className="px-3 py-1.5 text-left">动作</th>
-                                  <th className="px-3 py-1.5 text-right">次数</th>
-                                  <th className="px-3 py-1.5 text-right">成功</th>
-                                  <th className="px-3 py-1.5 text-right">失败</th>
-                                  <th className="px-3 py-1.5 text-right">人数</th>
-                                  <th className="px-3 py-1.5 text-right">成功率</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-100">
-                                {feature.actions.map((action) => {
-                                  const rate = action.count > 0 ? ((action.success / action.count) * 100).toFixed(1) : '—';
-                                  return (
-                                    <tr key={action.action}>
-                                      <td className="px-3 py-1.5 font-medium text-slate-700">{action.label}</td>
-                                      <td className="px-3 py-1.5 text-right tabular-nums text-slate-900">{action.count}</td>
-                                      <td className="px-3 py-1.5 text-right tabular-nums text-emerald-600">{action.success || '—'}</td>
-                                      <td className="px-3 py-1.5 text-right tabular-nums text-rose-600">{action.error || '—'}</td>
-                                      <td className="px-3 py-1.5 text-right tabular-nums text-slate-600">{action.users}</td>
-                                      <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">{rate}%</td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
 }
 
 export function AdminAnalyticsExperience({ embedded = false } = {}) {
@@ -318,40 +197,6 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {cards.map((card) => <Card key={card.title} {...card} />)}
         <NotifyCard total={summary.cards.notifyUsers} platformUsers={summary.cards.notifyPlatformUsers} />
-      </section>
-
-      <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Activity className="h-4 w-4 text-emerald-500" />
-            <h2 className="text-base font-bold text-slate-900">页面参与度</h2>
-          </div>
-          <span className="text-xs text-slate-400">停留 / 活跃 / 滚动</span>
-        </div>
-        <div className="overflow-hidden rounded-2xl border border-slate-100">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-xs text-slate-500">
-              <tr>
-                <th className="px-3 py-2 text-left">Tab</th>
-                <th className="px-3 py-2 text-right">事件</th>
-                <th className="px-3 py-2 text-right">用户</th>
-                <th className="px-3 py-2 text-right">活跃</th>
-                <th className="px-3 py-2 text-right">滚动</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {(summary.engagement?.byTab || []).length ? (summary.engagement.byTab || []).map((row) => (
-                <tr key={row.tab}>
-                  <td className="px-3 py-2 font-semibold text-slate-800">{row.tab || 'unknown'}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.events}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.users}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-slate-500">{formatDuration(row.avgActiveTimeMs)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-slate-500">{Math.round(Number(row.avgScrollPct) || 0)}%</td>
-                </tr>
-              )) : <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-400">暂无页面参与度统计</td></tr>}
-            </tbody>
-          </table>
-        </div>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
@@ -500,7 +345,6 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
         </div>
       </section>
 
-      <FeatureDetailsSection featureDetails={summary.featureDetails || []} />
     </div>
   );
 }
