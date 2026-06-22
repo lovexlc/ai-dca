@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { readLedgerState } from '../app/holdingsLedger.js';
+import { readLedgerState, persistLedgerState } from '../app/holdingsLedger.js';
 import { aggregateByCode } from '../app/holdingsLedgerCore.js';
 import { getNavSnapshots } from '../app/navService.js';
 import {
@@ -28,7 +28,8 @@ import {
 } from './switchStrategyHelpers.js';
 import {
   SwitchStrategySnapshotModal,
-  SwitchStrategyWorkerPanel
+  SwitchStrategyWorkerPanel,
+  SwitchStrategyQuickRecordModal
 } from './SwitchStrategyPanels.jsx';
 import { SwitchStrategyClassificationPanel } from './SwitchStrategyClassificationPanel.jsx';
 import { SwitchStrategyOpportunityPanels } from './SwitchStrategyOpportunityPanels.jsx';
@@ -53,6 +54,8 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   // worker 最近一次计算里点击「查看候选」后弹出的详情 modal。
   // 为空时不渲染 modal；设为 { bench, sellLower, buyOther, cls } 后弹起。
   const [snapshotCandModal, setSnapshotCandModal] = useState(null);
+  // 快速记录切换交易的 modal 状态
+  const [quickRecord, setQuickRecord] = useState(null);
   const [aggregates, setAggregates] = useState([]);
   const [refreshTick, setRefreshTick] = useState(0);
 
@@ -878,6 +881,62 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     ? '先配置至少一条可运行规则'
     : '';
 
+  // 快速记录切换交易的验证和保存
+  const quickRecordValid = useMemo(() => {
+    if (!quickRecord) return false;
+    const { sellCode, sellPrice, sellShares, buyCode, buyPrice, buyShares } = quickRecord;
+    return Boolean(
+      sellCode?.trim() &&
+      buyCode?.trim() &&
+      Number(sellPrice) > 0 &&
+      Number(sellShares) > 0 &&
+      Number(buyPrice) > 0 &&
+      Number(buyShares) > 0
+    );
+  }, [quickRecord]);
+
+  const saveQuickRecord = useCallback(() => {
+    if (!quickRecordValid) return;
+    const ledger = readLedgerState();
+    const switchPairId = `switch-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const sellTx = {
+      id: `${switchPairId}-sell`,
+      type: 'SELL',
+      code: quickRecord.sellCode.trim(),
+      name: quickRecord.sellName?.trim() || '',
+      date: quickRecord.date || nowIso().slice(0, 10),
+      price: Number(quickRecord.sellPrice),
+      shares: Number(quickRecord.sellShares),
+      note: quickRecord.note?.trim() || '',
+      switchPairId,
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+    };
+    const buyTx = {
+      id: `${switchPairId}-buy`,
+      type: 'BUY',
+      code: quickRecord.buyCode.trim(),
+      name: quickRecord.buyName?.trim() || '',
+      date: quickRecord.date || nowIso().slice(0, 10),
+      price: Number(quickRecord.buyPrice),
+      shares: Number(quickRecord.buyShares),
+      note: quickRecord.note?.trim() || '',
+      switchPairId,
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+    };
+    const updatedLedger = {
+      ...ledger,
+      transactions: [...(ledger.transactions || []), sellTx, buyTx],
+    };
+    persistLedgerState(updatedLedger);
+    setQuickRecord(null);
+    trackActionResult('switch_strategy', 'quick_record_saved', true, {
+      sellCode: sellTx.code,
+      buyCode: buyTx.code,
+    });
+  }, [quickRecordValid, quickRecord]);
+
   return (
     <div className="space-y-6">
       <SwitchStrategyWorkerPanel
@@ -905,6 +964,21 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
             candidateCount: Array.isArray(payload?.bench?.candidates) ? payload.bench.candidates.length : 0
           });
           setSnapshotCandModal(payload);
+        }}
+        onQuickRecordOpen={() => {
+          setQuickRecord({
+            date: nowIso().slice(0, 10),
+            sellCode: '',
+            sellName: '',
+            sellPrice: '',
+            sellShares: '',
+            buyCode: '',
+            buyName: '',
+            buyPrice: '',
+            buyShares: '',
+            note: '',
+          });
+          trackFeatureEvent('switch_strategy', 'quick_record_open', {});
         }}
         formatDate={formatDate}
         formatPrice={formatPrice}
@@ -948,6 +1022,13 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         setSnapshotCandModal={setSnapshotCandModal}
         formatPrice={formatPrice}
         formatPercent={formatPercent}
+      />
+
+      <SwitchStrategyQuickRecordModal
+        quickRecord={quickRecord}
+        setQuickRecord={setQuickRecord}
+        quickRecordValid={quickRecordValid}
+        saveQuickRecord={saveQuickRecord}
       />
 
     </div>

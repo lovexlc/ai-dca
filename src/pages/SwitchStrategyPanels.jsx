@@ -22,6 +22,7 @@ export function SwitchStrategyWorkerPanel({
   onRuleEnabledChange,
   setWorkerConfigExpanded,
   setSnapshotCandModal,
+  onQuickRecordOpen,
   formatDate,
   formatPrice,
   formatPercent
@@ -237,16 +238,29 @@ export function SwitchStrategyWorkerPanel({
                     ) : <div className="mt-1 text-xs text-slate-400">尚无快照</div>}
                   </div>
                   <div className="flex flex-col items-end gap-1">
-                    <button
-                      type="button"
-                      className={cx(secondaryButtonClass, 'h-9 px-3 text-xs')}
-                      onClick={handleWorkerRunOnce}
-                      disabled={Boolean(workerRunDisabledReason)}
-                      title={workerRunDisabledReason || (workerConfig.enabled ? '手动跑一次：拉价 + 算 diff + 命中规则 A/B 则推送' : '手动跑一次：拉价 + 算 diff，未启用监控不推送')}
-                    >
-                      <PlayCircle className="h-4 w-4" />
-                      {workerStatus.running ? '运行中…' : '手动跑一次'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className={cx(secondaryButtonClass, 'h-9 px-3 text-xs')}
+                        onClick={handleWorkerRunOnce}
+                        disabled={Boolean(workerRunDisabledReason)}
+                        title={workerRunDisabledReason || (workerConfig.enabled ? '手动跑一次：拉价 + 算 diff + 命中规则 A/B 则推送' : '手动跑一次：拉价 + 算 diff，未启用监控不推送')}
+                      >
+                        <PlayCircle className="h-4 w-4" />
+                        {workerStatus.running ? '运行中…' : '手动跑一次'}
+                      </button>
+                      {onQuickRecordOpen ? (
+                        <button
+                          type="button"
+                          className={cx(primaryButtonClass, 'h-9 px-3 text-xs')}
+                          onClick={onQuickRecordOpen}
+                          title="快速记录一次场内/场外切换交易"
+                        >
+                          <Plus className="h-4 w-4" />
+                          快速记录
+                        </button>
+                      ) : null}
+                    </div>
                     {workerRunDisabledReason ? <span className="text-[11px] text-slate-400">{workerRunDisabledReason}</span> : null}
                   </div>
                 </div>
