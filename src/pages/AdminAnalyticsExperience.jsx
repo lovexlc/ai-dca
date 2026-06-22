@@ -12,6 +12,7 @@ const RANGE_OPTIONS = [
 ];
 const CHART_INITIAL_DIMENSION = { width: 1, height: 1 };
 const UMAMI_SHARE_URL = 'https://cloud.umami.is/analytics/us/share/xnYvpAacsvCInEHo';
+const UMAMI_EMBED_TIMEOUT_MS = 8000;
 
 function Card({ title, value, icon: Icon, hint }) {
   return (
@@ -94,6 +95,7 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
   const [remoteSummary, setRemoteSummary] = useState(null);
   const [remoteStatus, setRemoteStatus] = useState('idle');
   const [remoteError, setRemoteError] = useState('');
+  const [umamiFrameStatus, setUmamiFrameStatus] = useState('loading');
   const session = loadCloudSession();
   const isAdmin = isAnalyticsAdmin(session);
   const localSummary = useMemo(() => {
@@ -111,6 +113,14 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
   useEffect(() => {
     if (isAdmin) trackAnalyticsEvent('admin_dashboard_view', { rangeDays });
   }, [isAdmin, rangeDays]);
+
+  useEffect(() => {
+    setUmamiFrameStatus('loading');
+    const timer = window.setTimeout(() => {
+      setUmamiFrameStatus((status) => status === 'loading' ? 'blocked' : status);
+    }, UMAMI_EMBED_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (!isAdmin) return undefined;
@@ -183,14 +193,34 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
           </div>
           <a className="text-xs font-semibold text-indigo-600 hover:text-indigo-700" href={UMAMI_SHARE_URL} target="_blank" rel="noreferrer">打开原始看板</a>
         </div>
-        <div className="h-[720px] bg-slate-50 sm:h-[820px] lg:h-[900px]">
+        <div className="relative h-[720px] bg-slate-50 sm:h-[820px] lg:h-[900px]">
           <iframe
             title="Umami 共享统计看板"
             src={UMAMI_SHARE_URL}
             className="h-full w-full border-0"
             loading="lazy"
             referrerPolicy="no-referrer-when-downgrade"
+            onLoad={() => setUmamiFrameStatus('loaded')}
+            onError={() => setUmamiFrameStatus('blocked')}
           />
+          {umamiFrameStatus !== 'loaded' ? (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-50/95 px-4 text-center">
+              <div className="max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                {umamiFrameStatus === 'blocked' ? (
+                  <>
+                    <div className="text-base font-bold text-slate-900">Umami 看板未能嵌入</div>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">浏览器、隐私插件或 Umami Cloud 的 iframe 限制可能拦截了这个页面。可以打开原始看板查看。</p>
+                    <a className="mt-4 inline-flex rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800" href={UMAMI_SHARE_URL} target="_blank" rel="noreferrer">打开原始看板</a>
+                  </>
+                ) : (
+                  <>
+                    <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-500" />
+                    <div className="mt-3 text-sm font-semibold text-slate-700">正在加载 Umami 看板</div>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : null}
         </div>
       </section>
 
