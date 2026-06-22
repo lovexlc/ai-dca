@@ -3,9 +3,9 @@ import { useState, useRef, useEffect } from 'react';
 import { Card, cx } from '../experience-ui.jsx';
 
 function strategyTone(strategy) {
-  if (!strategy) return 'indigo';
+  if (!strategy) return 'slate';
   if (strategy.liveSignalEnabled && strategy.enabled) return 'emerald';
-  if (strategy.enabled) return 'amber';
+  if (strategy.enabled) return 'emerald';
   return 'slate';
 }
 
@@ -18,7 +18,7 @@ function strategyToneLabel(strategy) {
 
 const TONE_CLASS = {
   emerald: {
-    pill: 'bg-emerald-50 text-emerald-700',
+    pill: 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-sm shadow-emerald-200',
     icon: 'bg-emerald-100 text-emerald-600'
   },
   amber: {
@@ -30,9 +30,16 @@ const TONE_CLASS = {
     icon: 'bg-indigo-100 text-indigo-600'
   },
   slate: {
-    pill: 'bg-slate-100 text-slate-600',
+    pill: 'border border-slate-200 bg-slate-100 text-slate-600',
     icon: 'bg-slate-100 text-slate-400'
   }
+};
+
+const BACKTEST_CLASS = {
+  passed: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  failed: 'border-rose-200 bg-rose-50 text-rose-600',
+  stale: 'border-amber-200 bg-amber-50 text-amber-700',
+  none: 'border-amber-200 bg-amber-50 text-amber-700'
 };
 
 function StrategyCardMenu({ strategy, onRun, onEdit, onDelete, running, deleting }) {
@@ -94,7 +101,7 @@ function StrategyCardMenu({ strategy, onRun, onEdit, onDelete, running, deleting
               type="button"
               role="menuitem"
               onClick={() => {
-                onEdit?.(strategy);
+                onEdit?.(strategy.id);
                 setIsOpen(false);
               }}
               className="flex min-h-12 w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:min-h-0 sm:font-normal"
@@ -169,7 +176,8 @@ export function StrategyListPanel({
           <div
             key={strategy.id}
             className={cx(
-              'relative min-w-0 max-w-full cursor-pointer rounded-2xl border bg-white px-4 py-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-200/70 sm:px-5',
+              "group relative min-w-0 max-w-full cursor-pointer overflow-hidden rounded-2xl border bg-white px-4 py-4 transition-all duration-200 before:absolute before:left-0 before:top-4 before:bottom-4 before:w-[3px] before:rounded-r-full before:content-[''] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-200/70 sm:px-5",
+              strategy.enabled ? 'before:bg-emerald-500' : 'before:bg-slate-200',
               isSelected ? 'border-indigo-300 bg-indigo-50/30' : 'border-slate-200 hover:border-indigo-100'
             )}
             onClick={() => onSelect?.(strategy.id)}
@@ -187,7 +195,12 @@ export function StrategyListPanel({
                 <div className="mt-2 flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium text-slate-500">
                   <span className="shrink-0 font-bold text-slate-700">H {highCount} · L {lowCount}</span>
                   <span className="text-slate-300" aria-hidden="true">·</span>
-                  <span className="min-w-0 max-w-full break-words leading-5">{backtestLabel}</span>
+                  <span className={cx(
+                    'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-bold leading-4',
+                    BACKTEST_CLASS[backtestStatus] || BACKTEST_CLASS.none
+                  )}>
+                    {backtestLabel}
+                  </span>
                   {strategy.liveSignalEnabled ? (
                     <>
                       <span className="text-slate-300" aria-hidden="true">·</span>
@@ -202,7 +215,7 @@ export function StrategyListPanel({
               <div className="flex shrink-0 items-center gap-1">
                 <button
                   type="button"
-                  className="hidden h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-60 sm:inline-flex"
+                  className="hidden h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-[#EEF2FF] hover:text-[#4F46E5] disabled:cursor-not-allowed disabled:opacity-60 sm:inline-flex"
                   aria-label="手动跑一轮"
                   title="手动跑一轮"
                   disabled={isRunning}
@@ -215,12 +228,12 @@ export function StrategyListPanel({
                 </button>
                 <button
                   type="button"
-                  className="hidden h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 sm:inline-flex"
+                  className="hidden h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-[#EEF2FF] hover:text-[#4F46E5] sm:inline-flex"
                   aria-label="编辑策略"
                   title="编辑策略"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onEdit?.(strategy);
+                    onEdit?.(strategy.id);
                   }}
                 >
                   <Pencil className="h-4 w-4" />

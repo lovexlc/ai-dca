@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BarChart3, TrendingUp } from 'lucide-react';
-import { Card, subtleButtonClass } from '../components/experience-ui.jsx';
+import { BarChart3, TrendingUp, X } from 'lucide-react';
+import { Card } from '../components/experience-ui.jsx';
 import { useQuantStudioState } from '../components/quant/useQuantStudioState.js';
 import { QuantStudioHeader } from '../components/quant/QuantStudioHeader.jsx';
 import { StrategyListPanel } from '../components/quant/StrategyListPanel.jsx';
 import { StrategyEditorPanel } from '../components/quant/StrategyEditorPanel.jsx';
 import { BacktestRunnerPanel } from '../components/quant/BacktestRunnerPanel.jsx';
 import { LivePanel } from '../components/quant/LivePanel.jsx';
+import '../styles/quant-studio-redesign.css';
 
 const SUPPORTED_MODULES = new Set(['strategy', 'backtest', 'live']);
 
@@ -15,35 +16,62 @@ function normalizeModule(value = '') {
   return SUPPORTED_MODULES.has(key) ? key : 'strategy';
 }
 
-function isMobileViewport() {
-  if (typeof window === 'undefined') return false;
-  return window.matchMedia?.('(max-width: 1023px)')?.matches ?? false;
-}
-
-function useIsMobile() {
-  const [mobile, setMobile] = useState(() => isMobileViewport());
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const mq = window.matchMedia('(max-width: 1023px)');
-    function handler(event) {
-      setMobile(event.matches);
-    }
-    if (mq.addEventListener) mq.addEventListener('change', handler);
-    else mq.addListener(handler);
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener('change', handler);
-      else mq.removeListener(handler);
-    };
-  }, []);
-  return mobile;
-}
-
 function LoadingState() {
   return (
     <Card className="flex items-center justify-center gap-3 p-12 text-sm text-slate-500">
       <BarChart3 className="h-5 w-5 animate-pulse text-indigo-500" />
       正在加载量化策略…
     </Card>
+  );
+}
+
+function StrategyEditorDrawer({ open, onClose, children }) {
+  useEffect(() => {
+    if (!open || typeof document === 'undefined') return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    function handleKeyDown(event) {
+      if (event.key === 'Escape') onClose?.();
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="关闭策略配置抽屉"
+        className="fixed inset-0 z-[999] cursor-default bg-slate-950/35 backdrop-blur-[2px] animate-in fade-in duration-200"
+        onClick={onClose}
+      />
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label="策略配置"
+        className="fixed right-0 top-0 z-[1000] flex h-[100vh] w-[min(520px,100vw)] flex-col bg-[#F0F2F8] shadow-2xl animate-in fade-in slide-in-from-right-7 duration-200"
+      >
+        <div className="flex h-14 flex-shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-5">
+          <div className="text-sm font-bold text-slate-900">策略配置</div>
+          <button
+            type="button"
+            aria-label="关闭"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
+            onClick={onClose}
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+          {children}
+        </div>
+      </aside>
+    </>
   );
 }
 
@@ -88,8 +116,8 @@ const STRATEGY_TEMPLATES = [
 
 export function QuantStudioPage({ activeModule = 'strategy', onModuleChange } = {}) {
   const module = normalizeModule(activeModule);
-  const isMobile = useIsMobile();
-  const [mobileView, setMobileView] = useState('list');
+  const [editorDrawerOpen, setEditorDrawerOpen] = useState(false);
+  const [drawerStrategyId, setDrawerStrategyId] = useState('');
   const studio = useQuantStudioState();
   const {
     strategies,
@@ -120,27 +148,36 @@ export function QuantStudioPage({ activeModule = 'strategy', onModuleChange } = 
     refresh
   } = studio;
 
-  useEffect(() => {
-    if (module !== 'strategy') return;
-    if (!isMobile) {
-      setMobileView('list');
-    }
-  }, [module, isMobile]);
-
   const goModule = useCallback((next) => {
     onModuleChange?.(normalizeModule(next));
   }, [onModuleChange]);
 
   const handleSelectStrategy = useCallback(async (id) => {
     await selectStrategy(id);
-    if (isMobile && module === 'strategy') setMobileView('editor');
-  }, [selectStrategy, isMobile, module]);
+  }, [selectStrategy]);
+
+  const closeEditorDrawer = useCallback(() => {
+    setEditorDrawerOpen(false);
+  }, []);
+
+  const openEditorDrawer = useCallback(async (strategyOrId) => {
+    const id = typeof strategyOrId === 'string' ? strategyOrId : strategyOrId?.id;
+    if (!id) return;
+    setDrawerStrategyId(id);
+    setEditorDrawerOpen(true);
+    if (id !== selectedStrategyId) {
+      await selectStrategy(id);
+    }
+  }, [selectStrategy, selectedStrategyId]);
 
   const handleCreateFromTemplate = useCallback(async (templateDraft) => {
     const created = await createStrategy(templateDraft);
-    if (created && isMobile && module === 'strategy') setMobileView('editor');
+    if (created?.id) {
+      setDrawerStrategyId(created.id);
+      setEditorDrawerOpen(true);
+    }
     return created;
-  }, [createStrategy, isMobile, module]);
+  }, [createStrategy]);
 
   const handleSaveStrategy = useCallback(async (draft) => saveStrategy(draft), [saveStrategy]);
 
@@ -152,8 +189,13 @@ export function QuantStudioPage({ activeModule = 'strategy', onModuleChange } = 
     if (!id || id === 'default') return;
     if (typeof window !== 'undefined' && !window.confirm('确定删除该策略？')) return;
     await deleteStrategy(id);
-    if (isMobile && module === 'strategy') setMobileView('list');
-  }, [deleteStrategy, isMobile, module]);
+  }, [deleteStrategy]);
+
+  const handleDeleteFromEditor = useCallback(async (id) => {
+    await handleDeleteStrategy(id);
+    setEditorDrawerOpen(false);
+    setDrawerStrategyId('');
+  }, [handleDeleteStrategy]);
 
   const [runningStrategyId, setRunningStrategyId] = useState('');
   const [deletingStrategyId, setDeletingStrategyId] = useState('');
@@ -173,10 +215,28 @@ export function QuantStudioPage({ activeModule = 'strategy', onModuleChange } = 
     setDeletingStrategyId(strategy.id);
     try {
       await deleteStrategy(strategy.id);
+      if (drawerStrategyId === strategy.id) {
+        setEditorDrawerOpen(false);
+        setDrawerStrategyId('');
+      }
     } finally {
       setDeletingStrategyId('');
     }
-  }, [deleteStrategy]);
+  }, [deleteStrategy, drawerStrategyId]);
+
+  useEffect(() => {
+    if (module !== 'strategy') {
+      setEditorDrawerOpen(false);
+    }
+  }, [module]);
+
+  useEffect(() => {
+    if (!editorDrawerOpen || !drawerStrategyId || !strategies.length) return;
+    if (!strategies.some((strategy) => strategy.id === drawerStrategyId)) {
+      setEditorDrawerOpen(false);
+      setDrawerStrategyId('');
+    }
+  }, [drawerStrategyId, editorDrawerOpen, strategies]);
 
   const moduleCounts = {
     total: strategies.length,
@@ -189,6 +249,9 @@ export function QuantStudioPage({ activeModule = 'strategy', onModuleChange } = 
     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">{error}</div>
   ) : null;
 
+  const drawerStrategy = strategies.find((strategy) => strategy.id === drawerStrategyId)
+    || (editorDrawerOpen ? selectedStrategy : null);
+
   if (loading && !strategies.length) {
     return (
       <div className="mx-auto max-w-7xl space-y-4 px-4 sm:px-6">
@@ -199,7 +262,7 @@ export function QuantStudioPage({ activeModule = 'strategy', onModuleChange } = 
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 px-4 sm:px-6">
+    <div className="quant-studio-v2 mx-auto max-w-7xl space-y-4 px-4 sm:px-6">
       <QuantStudioHeader
         activeModule={module}
         counts={moduleCounts}
@@ -212,39 +275,26 @@ export function QuantStudioPage({ activeModule = 'strategy', onModuleChange } = 
       {errorBanner}
 
       {module === 'strategy' ? (
-        <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
-          {(!isMobile || mobileView === 'list') && (
-            <StrategyListPanel
-              strategies={strategies}
-              selectedStrategyId={selectedStrategyId}
-              runningStrategyId={runningStrategyId}
-              deletingStrategyId={deletingStrategyId}
-              onSelect={handleSelectStrategy}
-              onRun={handleRunFromList}
-              onEdit={handleSelectStrategy}
-              onDelete={handleDeleteFromList}
+        <div className="flex flex-col gap-4">
+          <StrategyListPanel
+            strategies={strategies}
+            selectedStrategyId={selectedStrategyId}
+            runningStrategyId={runningStrategyId}
+            deletingStrategyId={deletingStrategyId}
+            onSelect={handleSelectStrategy}
+            onRun={handleRunFromList}
+            onEdit={openEditorDrawer}
+            onDelete={handleDeleteFromList}
+          />
+          <StrategyEditorDrawer open={editorDrawerOpen} onClose={closeEditorDrawer}>
+            <StrategyEditorPanel
+              strategy={drawerStrategy}
+              saving={saving}
+              busy={backtesting}
+              onSave={handleSaveStrategy}
+              onDelete={handleDeleteFromEditor}
             />
-          )}
-          {(!isMobile || mobileView === 'editor') && (
-            <div className="space-y-4">
-              {isMobile && mobileView === 'editor' && (
-                <button
-                  type="button"
-                  className={subtleButtonClass}
-                  onClick={() => setMobileView('list')}
-                >
-                  ← 策略列表
-                </button>
-              )}
-              <StrategyEditorPanel
-                strategy={selectedStrategy}
-                saving={saving}
-                busy={backtesting}
-                onSave={handleSaveStrategy}
-                onDelete={handleDeleteStrategy}
-              />
-            </div>
-          )}
+          </StrategyEditorDrawer>
         </div>
       ) : null}
 

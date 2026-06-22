@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Save, Trash2 } from 'lucide-react';
-import { Card, cx, primaryButtonClass, subtleButtonClass, inputClass } from '../experience-ui.jsx';
+import { Card, cx, subtleButtonClass, inputClass } from '../experience-ui.jsx';
 import { TagInput } from '../TagInput.jsx';
 import {
   normalizeQuantPremiumConfigShape,
@@ -17,6 +17,23 @@ function parseDecimalOr(value, fallback) {
   if (value === '' || value === '-' || value === '.') return fallback;
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
+}
+
+const editorInputFocusClass = 'focus:border-[#4F46E5] focus:ring-[#EEF2FF]';
+
+function SectionLabel({ children }) {
+  return (
+    <div className="flex items-center gap-2 border-b border-slate-100 pb-3 text-[11px] font-bold tracking-[0.16em] text-slate-400">
+      <span className="h-3.5 w-[3px] rounded-full bg-[#4F46E5]" aria-hidden="true" />
+      <span>{children}</span>
+    </div>
+  );
+}
+
+function gateBadgeClass(status) {
+  if (status === 'passed') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (status === 'failed') return 'border-rose-200 bg-rose-50 text-rose-600';
+  return 'border-amber-200 bg-amber-50 text-amber-700';
 }
 
 function strategyToFormState(strategy) {
@@ -54,7 +71,7 @@ function DecimalInput({ id, label, suffix, hint, value, onChange, onCommit }) {
             }
           }}
           onBlur={(event) => onCommit?.(event.target.value)}
-          className={cx(inputClass, 'h-11 w-24 text-center font-semibold tabular-nums')}
+          className={cx(inputClass, editorInputFocusClass, 'h-11 w-24 text-center font-semibold tabular-nums')}
         />
         {suffix ? <span className="text-sm text-slate-500">{suffix}</span> : null}
       </div>
@@ -135,22 +152,32 @@ export function StrategyEditorPanel({
       {/* 标题区 */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <div className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">STRATEGY CONFIG</div>
+          <div className="text-xs font-bold tracking-[0.18em] text-slate-400">策略配置</div>
           <h2 className="mt-1 truncate text-lg font-bold text-slate-900">{strategy.name || strategy.id}</h2>
-          <p className="mt-1 text-xs text-slate-500">
-            {gateLabel} · {strategy.liveSignalEnabled ? '实盘已确认' : '未确认实盘信号'}
-          </p>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs font-bold">
+            <span className={cx('inline-flex items-center rounded-full border px-2.5 py-1', gateBadgeClass(gateStatus))}>
+              {gateLabel}
+            </span>
+            <span className={cx(
+              'inline-flex items-center rounded-full border px-2.5 py-1',
+              strategy.liveSignalEnabled
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                : 'border-slate-200 bg-slate-100 text-slate-600'
+            )}>
+              {strategy.liveSignalEnabled ? '实盘已确认' : '未确认实盘信号'}
+            </span>
+          </div>
         </div>
       </div>
 
       {/* 基本信息 */}
       <div className="space-y-4 border-t border-slate-100 pt-6">
-        <div className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">BASIC</div>
+        <SectionLabel>基础信息</SectionLabel>
         <div>
           <label htmlFor="quant-strategy-name" className="block text-xs font-semibold text-slate-500">策略名称</label>
           <input
             id="quant-strategy-name"
-            className={cx(inputClass, 'mt-2')}
+            className={cx(inputClass, editorInputFocusClass, 'mt-2')}
             value={form.name}
             onChange={(event) => patch({ name: event.target.value })}
             maxLength={60}
@@ -160,7 +187,7 @@ export function StrategyEditorPanel({
 
       {/* ETF 池 */}
       <div className="space-y-4 border-t border-slate-100 pt-6">
-        <div className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">ETF POOL</div>
+        <SectionLabel>ETF 资产池</SectionLabel>
         <TagInput
           label="H 高溢价 ETF（卖出方）"
           placeholder="输入代码如 159513"
@@ -177,7 +204,7 @@ export function StrategyEditorPanel({
           <label htmlFor="quant-strategy-side" className="block text-xs font-semibold text-slate-500">允许的切换方向</label>
           <select
             id="quant-strategy-side"
-            className={cx(inputClass, 'mt-2')}
+            className={cx(inputClass, editorInputFocusClass, 'mt-2')}
             value={form.activeSide}
             onChange={(event) => patch({ activeSide: event.target.value })}
           >
@@ -190,7 +217,7 @@ export function StrategyEditorPanel({
 
       {/* 触发阈值 */}
       <div className="space-y-4 border-t border-slate-100 pt-6">
-        <div className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">RULES</div>
+        <SectionLabel>触发规则</SectionLabel>
         <div className="grid gap-4 sm:grid-cols-2">
           <DecimalInput
             id="quant-strategy-rule-a"
@@ -215,7 +242,7 @@ export function StrategyEditorPanel({
 
       {/* 运行开关 */}
       <div className="space-y-3 border-t border-slate-100 pt-6">
-        <div className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">SWITCHES</div>
+        <SectionLabel>开关设置</SectionLabel>
         <label className="flex min-h-11 items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2">
           <span className="text-sm font-semibold text-slate-700">启用量化 Worker</span>
           <input
@@ -262,7 +289,7 @@ export function StrategyEditorPanel({
           </button>
           <button
             type="button"
-            className={primaryButtonClass}
+            className="inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-transparent bg-gradient-to-r from-[#4F46E5] to-[#6366F1] px-4 py-2.5 text-sm font-semibold leading-5 text-white shadow-[0_8px_18px_rgba(79,70,229,0.24)] transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_26px_rgba(79,70,229,0.32)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C7D2FE] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
             onClick={handleSave}
             disabled={saving || busy}
           >
