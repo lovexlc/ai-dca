@@ -7,6 +7,7 @@ import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
 import { ReleaseAnnouncementModal } from '../components/release-announcement-modal.jsx';
 import { ScenarioSwitcher } from '../components/ScenarioSwitcher.jsx';
 import { startCloudAutoSync } from '../app/cloudSync.js';
+import { printSyncDebugInfo } from '../app/syncDebugger.js';
 import { showToast } from '../app/toast.js';
 import { clearDemoData, readDemoDataMeta } from '../app/demoData.js';
 import { readWorkspacePrefs, switchScenario } from '../app/workspacePrefs.js';
@@ -344,6 +345,10 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   useEffect(() => {
     startCloudAutoSync();
+    // 开发环境打印同步状态，方便诊断
+    if (import.meta.env.DEV) {
+      setTimeout(() => printSyncDebugInfo(), 2000);
+    }
   }, []);
 
   useEffect(() => {
