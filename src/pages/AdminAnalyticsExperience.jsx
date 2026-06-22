@@ -1,9 +1,8 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Activity, Bell, Bot, Calendar, ChevronDown, ChevronRight, Clock, Eye, MessageSquareText, MousePointerClick, Percent, RefreshCw, ShieldCheck, Shuffle, Sparkles, Trash2, UserRound, Users } from 'lucide-react';
+import { Activity, Bell, Bot, Calendar, ChevronDown, ChevronRight, Clock, Eye, MousePointerClick, RefreshCw, ShieldCheck, Shuffle, Trash2, UserRound, Users } from 'lucide-react';
 import { buildAnalyticsSummary, clearAnalyticsEvents, fetchRemoteAnalyticsSummary, isAnalyticsAdmin, trackAnalyticsEvent } from '../app/analytics.js';
 import { loadCloudSession } from '../app/authClient.js';
-import { PREMIUM_SURVEY_COMPLETED_LABELS, PREMIUM_SURVEY_COMPLETED_OPTIONS, PREMIUM_SURVEY_INTEREST_LABELS, PREMIUM_SURVEY_PRICE_LABELS } from '../app/premiumSurveyOptions.js';
 import { cx } from '../components/experience-ui.jsx';
 
 const RANGE_OPTIONS = [
@@ -12,81 +11,7 @@ const RANGE_OPTIONS = [
   { key: 90, label: '90 天' }
 ];
 const CHART_INITIAL_DIMENSION = { width: 1, height: 1 };
-const REMOTE_OVERVIEW_SECTION = 'overview';
-
-function mergeSummarySection(baseSummary, payload) {
-  if (!payload || typeof payload !== 'object') return baseSummary;
-  if (!payload.partial) return payload;
-  const sections = new Set(Array.isArray(payload.sections) ? payload.sections : []);
-  const next = {
-    ...baseSummary,
-    rangeDays: payload.rangeDays ?? baseSummary?.rangeDays,
-    generatedAt: payload.generatedAt || baseSummary?.generatedAt
-  };
-
-  if (sections.has('overview')) {
-    next.cards = payload.cards || baseSummary?.cards || {};
-    next.features = Array.isArray(payload.features) ? payload.features : (baseSummary?.features || []);
-    next.ads = {
-      ...(baseSummary?.ads || {}),
-      views: Number(payload.ads?.views) || 0,
-      clicks: Number(payload.ads?.clicks) || 0,
-      users: Number(payload.ads?.users) || 0,
-      ctr: Number(payload.ads?.ctr) || 0,
-      avgVisibleMs: Number(payload.ads?.avgVisibleMs) || 0
-    };
-    next.engagement = {
-      ...(baseSummary?.engagement || {}),
-      sessions: Number(payload.engagement?.sessions) || 0,
-      sessionUsers: Number(payload.engagement?.sessionUsers) || 0,
-      heartbeats: Number(payload.engagement?.heartbeats) || 0,
-      pageEvents: Number(payload.engagement?.pageEvents) || 0,
-      avgDurationMs: Number(payload.engagement?.avgDurationMs) || 0,
-      avgActiveTimeMs: Number(payload.engagement?.avgActiveTimeMs) || 0,
-      avgScrollPct: Number(payload.engagement?.avgScrollPct) || 0
-    };
-    next.premiumSurvey = {
-      ...(baseSummary?.premiumSurvey || {}),
-      submits: Number(payload.premiumSurvey?.submits) || 0,
-      users: Number(payload.premiumSurvey?.users) || 0
-    };
-  }
-  if (sections.has('traffic')) next.daily = payload.daily || [];
-  if (sections.has('pages')) {
-    next.pages = payload.pages || [];
-    next.userActivity = payload.userActivity || [];
-  }
-  if (sections.has('activity')) {
-    next.hourlyActivity = payload.hourlyActivity || [];
-    next.dailyActivity = payload.dailyActivity || [];
-  }
-  if (sections.has('ads')) next.ads = payload.ads || {};
-  if (sections.has('engagement')) next.engagement = payload.engagement || {};
-  if (sections.has('survey')) next.premiumSurvey = payload.premiumSurvey || {};
-  if (sections.has('featureDetails')) next.featureDetails = payload.featureDetails || [];
-  if (sections.has('recent')) next.recent = payload.recent || [];
-  return next;
-}
-
-function LazyRemoteSection({ as: Element = 'section', sectionKey, resetKey, onVisible, className, children }) {
-  const ref = useRef(null);
-
-  useEffect(() => {
-    const node = ref.current;
-    if (!node) return undefined;
-    if (typeof IntersectionObserver === 'undefined') {
-      onVisible(sectionKey);
-      return undefined;
-    }
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) onVisible(sectionKey);
-    }, { root: null, rootMargin: '120px 0px', threshold: 0.01 });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [onVisible, resetKey, sectionKey]);
-
-  return <Element ref={ref} className={className}>{children}</Element>;
-}
+const UMAMI_SHARE_URL = 'https://cloud.umami.is/analytics/us/share/xnYvpAacsvCInEHo';
 
 function Card({ title, value, icon: Icon, hint }) {
   return (
@@ -99,11 +24,6 @@ function Card({ title, value, icon: Icon, hint }) {
       {hint ? <div className="mt-1 text-xs text-slate-400">{hint}</div> : null}
     </div>
   );
-}
-
-function premiumSurveyLabel(key, labels) {
-  const value = String(key || '');
-  return labels[value] || value || 'unknown';
 }
 
 function NotifyCard({ total, platformUsers = {} }) {
@@ -150,10 +70,6 @@ function NotifyCard({ total, platformUsers = {} }) {
 
 function EmptyChart() {
   return <div className="flex h-full items-center justify-center text-sm text-slate-400">暂无统计数据</div>;
-}
-
-function formatPercent(value) {
-  return `${((Number(value) || 0) * 100).toFixed(1)}%`;
 }
 
 function formatCount(value, digits = 0) {
@@ -301,7 +217,10 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
   const [remoteError, setRemoteError] = useState('');
   const session = loadCloudSession();
   const isAdmin = isAnalyticsAdmin(session);
-  const localSummary = useMemo(() => buildAnalyticsSummary({ rangeDays }), [rangeDays, version]);
+  const localSummary = useMemo(() => {
+    void version;
+    return buildAnalyticsSummary({ rangeDays });
+  }, [rangeDays, version]);
   const summary = remoteSummary || localSummary;
 
   useEffect(() => {
@@ -353,15 +272,9 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
     { title: 'UV', value: summary.cards.uv, icon: MousePointerClick, hint: '按访客 ID 去重' },
     { title: 'Worker 跑切换', value: summary.cards.switchRuns, icon: Shuffle, hint: '切换运行/使用次数' },
     { title: 'AI 使用人数', value: summary.cards.aiUsers, icon: Bot, hint: '发送 AI 请求用户' },
-    { title: '广告曝光', value: summary.ads?.views || 0, icon: Eye, hint: `点击 ${summary.ads?.clicks || 0} · CTR ${formatPercent(summary.ads?.ctr)}` },
     { title: '会话数', value: summary.engagement?.sessions || 0, icon: Activity, hint: `用户 ${summary.engagement?.sessionUsers || 0} · 心跳 ${summary.engagement?.heartbeats || 0}` },
-    { title: '平均活跃', value: formatDuration(summary.engagement?.avgActiveTimeMs), icon: Clock, hint: `平均滚动 ${Math.round(Number(summary.engagement?.avgScrollPct) || 0)}%` },
-    { title: '问卷提交', value: summary.premiumSurvey?.submits || 0, icon: MessageSquareText, hint: `提交用户 ${summary.premiumSurvey?.users || 0}` }
+    { title: '平均活跃', value: formatDuration(summary.engagement?.avgActiveTimeMs), icon: Clock, hint: `平均滚动 ${Math.round(Number(summary.engagement?.avgScrollPct) || 0)}%` }
   ];
-  const completedSurveyRows = PREMIUM_SURVEY_COMPLETED_OPTIONS.map((option) => {
-    const stat = (summary.premiumSurvey?.completedOptions || []).find((row) => row.key === option.key);
-    return { key: option.key, count: Number(stat?.count) || 0 };
-  });
 
   return (
     <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>
@@ -370,7 +283,7 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700"><Activity className="h-3.5 w-3.5" />管理员数据看板</div>
             <h1 className="mt-3 text-2xl font-bold text-slate-900">站点与功能统计</h1>
-            <p className="mt-1 text-sm text-slate-500">优先读取 sync Worker 的 D1 汇总，失败时回落本地轻量事件，方便后续接入广告分析。</p>
+            <p className="mt-1 text-sm text-slate-500">嵌入 Umami 共享看板，并保留站内功能统计；远程汇总失败时回落本地轻量事件。</p>
             <div className="mt-2 text-xs text-slate-400">{remoteStatus === 'ready' ? '数据源：远程 D1 汇总' : remoteStatus === 'loading' ? '正在读取远程统计…' : `数据源：本地事件${remoteError ? ` · ${remoteError}` : ''}`}</div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -383,138 +296,61 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
         </div>
       </header>
 
+      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-2 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">Umami 访问统计</h2>
+            <p className="mt-1 text-xs text-slate-400">来自 Umami Share URL 的公开统计看板</p>
+          </div>
+          <a className="text-xs font-semibold text-indigo-600 hover:text-indigo-700" href={UMAMI_SHARE_URL} target="_blank" rel="noreferrer">打开原始看板</a>
+        </div>
+        <div className="h-[720px] bg-slate-50 sm:h-[820px] lg:h-[900px]">
+          <iframe
+            title="Umami 共享统计看板"
+            src={UMAMI_SHARE_URL}
+            className="h-full w-full border-0"
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+          />
+        </div>
+      </section>
+
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {cards.map((card) => <Card key={card.title} {...card} />)}
         <NotifyCard total={summary.cards.notifyUsers} platformUsers={summary.cards.notifyPlatformUsers} />
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
-        <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Percent className="h-4 w-4 text-sky-500" />
-              <h2 className="text-base font-bold text-slate-900">广告位表现</h2>
-            </div>
-            <span className="text-xs text-slate-400">曝光 / 点击 / CTR</span>
-          </div>
-          <div className="overflow-hidden rounded-2xl border border-slate-100">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-xs text-slate-500">
-                <tr>
-                  <th className="px-3 py-2 text-left">广告位</th>
-                  <th className="px-3 py-2 text-left">位置</th>
-                  <th className="px-3 py-2 text-right">曝光</th>
-                  <th className="px-3 py-2 text-right">点击</th>
-                  <th className="px-3 py-2 text-right">CTR</th>
-                  <th className="px-3 py-2 text-right">可见时长</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {(summary.ads?.slots || []).length ? (summary.ads.slots || []).map((row) => (
-                  <tr key={`${row.slotId}-${row.pageTab}-${row.position}`}>
-                    <td className="px-3 py-2 font-semibold text-slate-800">{row.slotId}</td>
-                    <td className="px-3 py-2 text-slate-500">{[row.pageTab, row.position].filter(Boolean).join(' / ') || '-'}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.views}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.clicks}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{formatPercent(row.ctr)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">{formatDuration(row.avgVisibleMs)}</td>
-                  </tr>
-                )) : <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">暂无广告位统计</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Activity className="h-4 w-4 text-emerald-500" />
-              <h2 className="text-base font-bold text-slate-900">页面参与度</h2>
-            </div>
-            <span className="text-xs text-slate-400">停留 / 活跃 / 滚动</span>
-          </div>
-          <div className="overflow-hidden rounded-2xl border border-slate-100">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-xs text-slate-500">
-                <tr>
-                  <th className="px-3 py-2 text-left">Tab</th>
-                  <th className="px-3 py-2 text-right">事件</th>
-                  <th className="px-3 py-2 text-right">用户</th>
-                  <th className="px-3 py-2 text-right">活跃</th>
-                  <th className="px-3 py-2 text-right">滚动</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {(summary.engagement?.byTab || []).length ? (summary.engagement.byTab || []).map((row) => (
-                  <tr key={row.tab}>
-                    <td className="px-3 py-2 font-semibold text-slate-800">{row.tab || 'unknown'}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.events}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.users}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">{formatDuration(row.avgActiveTimeMs)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">{Math.round(Number(row.avgScrollPct) || 0)}%</td>
-                  </tr>
-                )) : <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-400">暂无页面参与度统计</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
       <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-amber-500" />
-            <h2 className="text-base font-bold text-slate-900">高级版问卷</h2>
+            <Activity className="h-4 w-4 text-emerald-500" />
+            <h2 className="text-base font-bold text-slate-900">页面参与度</h2>
           </div>
-          <span className="text-xs text-slate-400">固定选项与用户主动填写反馈</span>
+          <span className="text-xs text-slate-400">停留 / 活跃 / 滚动</span>
         </div>
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className="overflow-hidden rounded-2xl border border-slate-100">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-3 py-2 text-left">关注功能</th><th className="px-3 py-2 text-right">次数</th></tr></thead>
-              <tbody className="divide-y divide-slate-100">
-                {(summary.premiumSurvey?.interests || []).length ? (summary.premiumSurvey.interests || []).map((row) => (
-                  <tr key={row.key}><td className="px-3 py-2 text-slate-700">{premiumSurveyLabel(row.key, PREMIUM_SURVEY_INTEREST_LABELS)}</td><td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.count}</td></tr>
-                )) : <tr><td colSpan={2} className="px-3 py-8 text-center text-slate-400">暂无关注功能反馈</td></tr>}
-              </tbody>
-            </table>
-          </div>
-          <div className="overflow-hidden rounded-2xl border border-slate-100">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-3 py-2 text-left">价格选项</th><th className="px-3 py-2 text-right">次数</th></tr></thead>
-              <tbody className="divide-y divide-slate-100">
-                {(summary.premiumSurvey?.priceOptions || []).length ? (summary.premiumSurvey.priceOptions || []).map((row) => (
-                  <tr key={row.key}><td className="px-3 py-2 text-slate-700">{premiumSurveyLabel(row.key, PREMIUM_SURVEY_PRICE_LABELS)}</td><td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.count}</td></tr>
-                )) : <tr><td colSpan={2} className="px-3 py-8 text-center text-slate-400">暂无价格反馈</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-          <div className="overflow-hidden rounded-2xl border border-slate-100">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-3 py-2 text-left">已完成项</th><th className="px-3 py-2 text-right">提交数</th></tr></thead>
-              <tbody className="divide-y divide-slate-100">
-                {completedSurveyRows.length ? completedSurveyRows.map((row) => (
-                  <tr key={row.key}><td className="px-3 py-2 text-slate-700">{premiumSurveyLabel(row.key, PREMIUM_SURVEY_COMPLETED_LABELS)}</td><td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.count}</td></tr>
-                )) : <tr><td colSpan={2} className="px-3 py-8 text-center text-slate-400">暂无已完成项记录</td></tr>}
-              </tbody>
-            </table>
-          </div>
-          <div className="overflow-hidden rounded-2xl border border-slate-100">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-3 py-2 text-left">用户自行输入</th><th className="px-3 py-2 text-right">次数</th><th className="px-3 py-2 text-right">最近</th></tr></thead>
-              <tbody className="divide-y divide-slate-100">
-                {(summary.premiumSurvey?.customTexts || []).length ? (summary.premiumSurvey.customTexts || []).map((row) => (
-                  <tr key={`${row.text}-${row.lastAt || row.count}`}>
-                    <td className="max-w-[360px] px-3 py-2 text-slate-700"><span className="line-clamp-2 break-words">{row.text}</span></td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.count}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">{row.lastAt ? String(row.lastAt).slice(5, 16).replace('T', ' ') : '-'}</td>
-                  </tr>
-                )) : <tr><td colSpan={3} className="px-3 py-8 text-center text-slate-400">暂无用户输入反馈</td></tr>}
-              </tbody>
-            </table>
-          </div>
+        <div className="overflow-hidden rounded-2xl border border-slate-100">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-xs text-slate-500">
+              <tr>
+                <th className="px-3 py-2 text-left">Tab</th>
+                <th className="px-3 py-2 text-right">事件</th>
+                <th className="px-3 py-2 text-right">用户</th>
+                <th className="px-3 py-2 text-right">活跃</th>
+                <th className="px-3 py-2 text-right">滚动</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {(summary.engagement?.byTab || []).length ? (summary.engagement.byTab || []).map((row) => (
+                <tr key={row.tab}>
+                  <td className="px-3 py-2 font-semibold text-slate-800">{row.tab || 'unknown'}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.events}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-700">{row.users}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-500">{formatDuration(row.avgActiveTimeMs)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-500">{Math.round(Number(row.avgScrollPct) || 0)}%</td>
+                </tr>
+              )) : <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-400">暂无页面参与度统计</td></tr>}
+            </tbody>
+          </table>
         </div>
       </section>
 
