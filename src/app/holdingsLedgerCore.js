@@ -579,10 +579,26 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
       hasChangePercent
     });
     const hasDailyReturn = hasTodayNav && hasDailyReturnInput;
-    const todayProfit = totalShares > 0 && hasDailyReturn
-      ? round(previousValue * (changePercent / 100), 2)
-      : 0;
-    const todayReturnRate = hasDailyReturn ? changePercent : 0;
+
+    // 如果今天有买入交易，用买入成本价作为基准计算当日收益
+    const hasTodayBuy = bucket.lastTxDate === todayDate &&
+                        bucket.transactions.some(tx => tx.type === 'BUY' && tx.date === todayDate);
+
+    let todayProfit = 0;
+    let todayReturnRate = 0;
+
+    if (totalShares > 0 && hasDailyReturn) {
+      if (hasTodayBuy && avgCost > 0) {
+        // 今天有买入：用买入成本价计算当日收益
+        const costBase = avgCost * totalShares;
+        todayProfit = round(marketValue - costBase, 2);
+        todayReturnRate = round((todayProfit / costBase) * 100, 2);
+      } else {
+        // 非今天买入：用昨日净值计算当日收益
+        todayProfit = round(previousValue * (changePercent / 100), 2);
+        todayReturnRate = changePercent;
+      }
+    }
 
     const aggLatestNavDateStr = String(snapshot?.latestNavDate || '');
     const aggPreviousNavDateStr = String(snapshot?.previousNavDate || '');
