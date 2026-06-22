@@ -42,9 +42,21 @@ const BACKTEST_CLASS = {
   none: 'border-amber-200 bg-amber-50 text-amber-700'
 };
 
+function getRunBlockReason(strategy) {
+  const highCount = Array.isArray(strategy?.highCodes) ? strategy.highCodes.length : 0;
+  const lowCount = Array.isArray(strategy?.lowCodes) ? strategy.lowCodes.length : 0;
+  if (!strategy?.enabled) return '需先启用策略';
+  if (!highCount || !lowCount) return '需先补全 H/L ETF';
+  const sellLower = Number(strategy.intraSellLowerPct);
+  const buyOther = Number(strategy.intraBuyOtherPct);
+  if (!Number.isFinite(sellLower) || !Number.isFinite(buyOther) || buyOther <= sellLower) return '需先检查触发规则';
+  return '';
+}
+
 function StrategyCardMenu({ strategy, onRun, onEdit, onDelete, running, deleting }) {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef(null);
+  const runBlockReason = getRunBlockReason(strategy);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -87,7 +99,8 @@ function StrategyCardMenu({ strategy, onRun, onEdit, onDelete, running, deleting
             <button
               type="button"
               role="menuitem"
-              disabled={running}
+              disabled={running || Boolean(runBlockReason)}
+              title={runBlockReason || '手动跑一轮'}
               onClick={() => {
                 onRun?.(strategy);
                 setIsOpen(false);
@@ -95,7 +108,7 @@ function StrategyCardMenu({ strategy, onRun, onEdit, onDelete, running, deleting
               className="flex min-h-12 w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-0 sm:font-normal"
             >
               <Play className="h-4 w-4 text-slate-400" />
-              {running ? '运行中…' : '手动跑一轮'}
+              {running ? '运行中…' : runBlockReason || '手动跑一轮'}
             </button>
             <button
               type="button"
@@ -171,6 +184,7 @@ export function StrategyListPanel({
         const isRunning = runningStrategyId === strategy.id;
         const isDeleting = deletingStrategyId === strategy.id;
         const isSelected = selectedStrategyId === strategy.id;
+        const runBlockReason = getRunBlockReason(strategy);
 
         return (
           <div
@@ -217,8 +231,8 @@ export function StrategyListPanel({
                   type="button"
                   className="hidden h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-[#EEF2FF] hover:text-[#4F46E5] disabled:cursor-not-allowed disabled:opacity-60 sm:inline-flex"
                   aria-label="手动跑一轮"
-                  title="手动跑一轮"
-                  disabled={isRunning}
+                  title={runBlockReason || '手动跑一轮'}
+                  disabled={isRunning || Boolean(runBlockReason)}
                   onClick={(e) => {
                     e.stopPropagation();
                     onRun?.(strategy);

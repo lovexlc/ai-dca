@@ -46,6 +46,22 @@ function pickStrategy(list, preferredId) {
   return list[0];
 }
 
+function getRunBlockReason(strategy) {
+  if (!strategy?.id) return '请先选择一个策略。';
+  const highCount = Array.isArray(strategy.highCodes) ? strategy.highCodes.length : 0;
+  const lowCount = Array.isArray(strategy.lowCodes) ? strategy.lowCodes.length : 0;
+  if (!strategy.enabled) return '请先在策略配置里打开「启用量化 Worker」，保存后再运行。';
+  if (!highCount && !lowCount) return '请先在策略配置里分别添加 H 高溢价 ETF 和 L 低溢价 ETF。';
+  if (!highCount) return '请先添加至少一只 H 高溢价 ETF，保存后再运行。';
+  if (!lowCount) return '请先添加至少一只 L 低溢价 ETF，保存后再运行。';
+  const sellLower = Number(strategy.intraSellLowerPct);
+  const buyOther = Number(strategy.intraBuyOtherPct);
+  if (!Number.isFinite(sellLower) || !Number.isFinite(buyOther) || buyOther <= sellLower) {
+    return '请检查触发规则：规则 B 阈值需要大于规则 A 阈值。';
+  }
+  return '';
+}
+
 function normalizeStudioContract(payload = {}, preferredId = '') {
   const strategies = Array.isArray(payload?.strategies)
     ? payload.strategies.map((item) => normalizeQuantPremiumConfigShape(item))
@@ -275,6 +291,13 @@ export function useQuantStudioState() {
   const runOnce = useCallback(async (strategy = null) => {
     const id = String(strategy?.id || strategyIdRef.current || '').trim();
     if (!id) return;
+    const candidate = strategy || strategies.find((item) => item.id === id) || null;
+    const blockReason = getRunBlockReason(candidate);
+    if (blockReason) {
+      setError(blockReason);
+      showToast({ title: '策略暂不能运行', description: blockReason, tone: 'amber' });
+      return;
+    }
     setRunning(true);
     setError('');
     try {
@@ -289,7 +312,7 @@ export function useQuantStudioState() {
     } finally {
       setRunning(false);
     }
-  }, [loadStrategyDetails]);
+  }, [loadStrategyDetails, strategies]);
 
   const adjustCash = useCallback(async (amount, note = '') => {
     const id = strategyIdRef.current;

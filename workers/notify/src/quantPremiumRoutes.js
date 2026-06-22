@@ -259,6 +259,50 @@ function collectQuantPremiumCodes(config = {}) {
   return Array.from(new Set([...normalized.highCodes, ...normalized.lowCodes]));
 }
 
+function getQuantPremiumRunBlockReason(strategy = {}) {
+  const highCount = Array.isArray(strategy?.highCodes) ? strategy.highCodes.length : 0;
+  const lowCount = Array.isArray(strategy?.lowCodes) ? strategy.lowCodes.length : 0;
+  if (!strategy?.enabled) {
+    return {
+      code: 'strategy-disabled',
+      message: `策略「${strategy?.name || strategy?.id || '未命名策略'}」尚未启用：请打开「启用量化 Worker」并保存后再运行。`
+    };
+  }
+  if (!highCount && !lowCount) {
+    return {
+      code: 'missing-hl-codes',
+      message: '请先在策略配置里分别添加 H 高溢价 ETF 和 L 低溢价 ETF，保存后再运行。'
+    };
+  }
+  if (!highCount) {
+    return {
+      code: 'missing-high-codes',
+      message: '请先添加至少一只 H 高溢价 ETF，保存后再运行。'
+    };
+  }
+  if (!lowCount) {
+    return {
+      code: 'missing-low-codes',
+      message: '请先添加至少一只 L 低溢价 ETF，保存后再运行。'
+    };
+  }
+  const sellLower = Number(strategy.intraSellLowerPct);
+  const buyOther = Number(strategy.intraBuyOtherPct);
+  if (!Number.isFinite(sellLower) || !Number.isFinite(buyOther) || buyOther <= sellLower) {
+    return {
+      code: 'invalid-thresholds',
+      message: '请检查触发规则：规则 B 阈值需要大于规则 A 阈值，保存后再运行。'
+    };
+  }
+  if (!getRunnableSwitchRules(buildQuantPremiumSwitchConfig(strategy)).length) {
+    return {
+      code: 'not-runnable',
+      message: '当前策略无法形成有效 H/L 切换组合：请确认 H/L ETF 互不重复，且切换方向允许对侧交易。'
+    };
+  }
+  return null;
+}
+
 function normalizeStrategyList(input = []) {
   const sourceList = Array.isArray(input) ? input : [];
   const seen = new Set();
@@ -318,6 +362,11 @@ async function writeQuantPremiumStrategiesForClient(env, clientId, strategies) {
 function findStrategy(strategies, strategyId = DEFAULT_STRATEGY_ID) {
   const normalizedId = normalizeStrategyId(strategyId);
   return strategies.find((strategy) => strategy.id === normalizedId) || strategies[0] || normalizeQuantPremiumStrategy(DEFAULT_QUANT_PREMIUM_CONFIG);
+}
+
+function findExactStrategy(strategies, strategyId = DEFAULT_STRATEGY_ID) {
+  const normalizedId = normalizeStrategyId(strategyId);
+  return strategies.find((strategy) => strategy.id === normalizedId) || null;
 }
 
 async function readQuantPremiumStrategyForClient(env, clientId, strategyId = DEFAULT_STRATEGY_ID) {
@@ -1489,17 +1538,37 @@ export async function handleQuantPremiumPaperPost(request, env) {
 export async function handleQuantPremiumRunPost(request, env, { runClientDetection }) {
   const origin = readOrigin(request);
   const url = new URL(request.url);
-  const strategyId = normalizeStrategyId(url.searchParams.get('strategyId') || DEFAULT_STRATEGY_ID);
+  const rawStrategyId = String(url.searchParams.get('strategyId') || '').trim();
+  const strategyId = normalizeStrategyId(rawStrategyId || DEFAULT_STRATEGY_ID);
   let settings = await readSettings(env);
   const auth = await ensureAuthenticatedClient(request, settings);
   settings = auth.settings;
   if (auth.didUpdate) await writeSettings(env, settings);
-  const config = await readQuantPremiumStrategyForClient(env, auth.clientId, strategyId);
-  const switchConfig = buildQuantPremiumSwitchConfig(config);
-  if (!getRunnableSwitchRules(switchConfig).length) {
+  const strategies = await readQuantPremiumStrategiesForClient(env, auth.clientId);
+  const config = rawStrategyId ? findExactStrategy(strategies, strategyId) : findStrategy(strategies, strategyId);
+  if (!config) {
     return jsonResponse({
       ok: false,
-      error: '当前没有可计算的量化 H/L 配置：请至少设置一只 H 和一只 L，并启用策略。'
+      code: 'strategy-not-found',
+      strategyId,
+      error: `没有找到策略「${strategyId}」：请刷新策略列表后再运行。`
+    }, { status: 400, origin });
+  }
+  const blockReason = getQuantPremiumRunBlockReason(config);
+  if (blockReason) {
+    return jsonResponse({
+      ok: false,
+      code: blockReason.code,
+      strategyId: config.id || strategyId,
+      error: blockReason.message,
+      detail: {
+        enabled: Boolean(config.enabled),
+        highCount: Array.isArray(config.highCodes) ? config.highCodes.length : 0,
+        lowCount: Array.isArray(config.lowCodes) ? config.lowCodes.length : 0,
+        activeSide: config.activeSide || 'all',
+        intraSellLowerPct: config.intraSellLowerPct,
+        intraBuyOtherPct: config.intraBuyOtherPct
+      }
     }, { status: 400, origin });
   }
   const summary = await runQuantPremiumForOneClient(env, auth.clientId, config, {
