@@ -35,7 +35,7 @@ import {
   summarizeSoldLots,
   summarizeTransactionErrors
 } from '../app/holdingsLedgerCore.js';
-import { getNearestTradingDayShanghai, getNextTradingDayShanghai, isTradingDayShanghai } from '../app/holidaysCN.js';
+import { getNearestTradingDayShanghai, getNextTradingDayShanghai } from '../app/holidaysCN.js';
 import {
   buildNavMetaFromResult,
   mergeSnapshotsFromNavResult,
@@ -63,12 +63,6 @@ import { groupCostBasisBySymbol, attachUnrealized } from '../app/costTracker.js'
 import { hasPotentialUserData, installDemoData } from '../app/demoData.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 
-function enforceExchangeKindFilter(filters, enabled) {
-  const list = Array.isArray(filters) ? filters.filter((filter) => filter && filter.id !== 'kind') : [];
-  if (!enabled) return Array.isArray(filters) ? filters : [];
-  return [...list, { id: 'kind', value: ['exchange'] }];
-}
-
 function readColumnFilterValue(filters, id) {
   const filter = (Array.isArray(filters) ? filters : []).find((item) => item?.id === id);
   return filter?.value;
@@ -76,8 +70,8 @@ function readColumnFilterValue(filters, id) {
 
 export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = false } = {}) {
   const [ledger, setLedger] = useState(() => readLedgerState());
-  const tradingDayExchangeOnly = useMemo(() => isTradingDayShanghai(getTodayShanghaiDate()), []);
-  const [columnFilters, setColumnFilters] = useState(() => enforceExchangeKindFilter([], tradingDayExchangeOnly));
+  // v7.6: 移除交易日自动过滤场内数据的逻辑，避免出现不必要的"重置过滤"按钮
+  const [columnFilters, setColumnFilters] = useState([]);
   const [selectedCode, setSelectedCode] = useState('');
   const [sidePanelTab, setSidePanelTab] = useState('summary');
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
@@ -100,10 +94,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     selected: Boolean(selectedCode),
     embedded
   });
-  useEffect(() => {
-    if (!tradingDayExchangeOnly) return;
-    setColumnFilters((current) => enforceExchangeKindFilter(current, true));
-  }, [tradingDayExchangeOnly]);
+  // v7.6: 移除交易日自动应用场内过滤的 useEffect
   useEffect(() => {
     function onMobileNew() {
       // 4.2: 已卖出 tab 已移除 (迁移到 #/liquidation)，默认留 BUY
@@ -296,20 +287,14 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     onNavigateToMarkets: navigateToMarkets,
   }), [accountAssignments, kindFilterOptions, links.markets]);
 
-  function handleColumnFiltersChange(updater) {
-    setColumnFilters((current) => {
-      const next = typeof updater === 'function' ? updater(current) : updater;
-      return enforceExchangeKindFilter(next, tradingDayExchangeOnly);
-    });
-  }
-
+  // v7.6: 简化过滤逻辑，移除交易日强制场内过滤
   const aggregatesTable = useReactTable({
     data: aggregatesTableData,
     columns: aggregateColumns,
     state: {
       columnFilters,
     },
-    onColumnFiltersChange: handleColumnFiltersChange,
+    onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
