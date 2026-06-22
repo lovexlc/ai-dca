@@ -428,7 +428,7 @@ export function LivePanel({
               <RefreshCw className={cx('h-4 w-4', refreshing ? 'animate-spin' : '')} />
               刷新
             </button>
-            <button type="button" className={primaryButtonClass} onClick={onRunOnce} disabled={running}>
+            <button type="button" className={primaryButtonClass} onClick={() => onRunOnce?.()} disabled={running}>
               <Play className="h-4 w-4" />
               {running ? '运行中…' : '跑一轮'}
             </button>

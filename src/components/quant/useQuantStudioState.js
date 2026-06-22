@@ -62,6 +62,16 @@ function getRunBlockReason(strategy) {
   return '';
 }
 
+function isStrategyLike(value) {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && !value.nativeEvent
+    && !value.currentTarget
+    && (value.id || value.strategyId || Array.isArray(value.highCodes) || Array.isArray(value.lowCodes))
+  );
+}
+
 function normalizeStudioContract(payload = {}, preferredId = '') {
   const strategies = Array.isArray(payload?.strategies)
     ? payload.strategies.map((item) => normalizeQuantPremiumConfigShape(item))
@@ -289,9 +299,10 @@ export function useQuantStudioState() {
   }, [loadStrategyDetails]);
 
   const runOnce = useCallback(async (strategy = null) => {
-    const id = String(strategy?.id || strategyIdRef.current || '').trim();
+    const strategyInput = isStrategyLike(strategy) ? strategy : null;
+    const id = String(strategyInput?.id || strategyIdRef.current || '').trim();
     if (!id) return;
-    const candidate = strategy || strategies.find((item) => item.id === id) || null;
+    const candidate = strategyInput || strategies.find((item) => item.id === id) || null;
     const blockReason = getRunBlockReason(candidate);
     if (blockReason) {
       setError(blockReason);

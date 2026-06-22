@@ -325,7 +325,7 @@ export function QuantStudioPage({ activeModule = 'strategy', onModuleChange } = 
           running={running}
           saving={saving}
           onRefresh={() => refresh().catch(() => {})}
-          onRunOnce={runOnce}
+          onRunOnce={() => runOnce(selectedStrategy)}
           onAdjustCash={adjustCash}
           onResetPaper={resetPaper}
         />
