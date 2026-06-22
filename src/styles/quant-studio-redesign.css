@@ -1,0 +1,665 @@
+/* ══════════════════════════════════════════════════════════════════════════════
+   量化研究策略 Tab 设计系统 CSS
+   基于 Fable 5 设计语言 + Material Design 3 启发
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* ══ 设计系统 Token ══ */
+:root {
+  --c-bg:        #F0F2F8;
+  --c-surface:   #FFFFFF;
+  --c-border:    #E4E8F0;
+  --c-primary:   #4F46E5;
+  --c-primary-l: #EEF2FF;
+  --c-green:     #10B981;
+  --c-green-l:   #ECFDF5;
+  --c-red:       #EF4444;
+  --c-red-l:     #FEF2F2;
+  --c-amber:     #F59E0B;
+  --c-amber-l:   #FFFBEB;
+  --c-gray:      #6B7280;
+  --c-gray-l:    #F3F4F6;
+  --c-text:      #111827;
+  --c-text-sub:  #6B7280;
+  --c-text-mute: #9CA3AF;
+  --shadow-sm:   0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.05);
+  --shadow-md:   0 4px 12px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04);
+  --shadow-lg:   0 10px 24px rgba(0,0,0,.10), 0 4px 8px rgba(0,0,0,.05);
+  --radius:      12px;
+  --radius-sm:   8px;
+  --radius-xs:   6px;
+  --transition:  all .2s ease;
+}
+
+/* ══ 全局基础 ══ */
+.quant-studio-v2 *,
+.quant-studio-v2 *::before,
+.quant-studio-v2 *::after {
+  box-sizing: border-box;
+}
+
+.quant-studio-v2 {
+  background: var(--c-bg) !important;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ══ 顶部导航栏增强 ══ */
+.quant-studio-v2 > div:first-child {
+  background: var(--c-surface) !important;
+  border-bottom: 1px solid var(--c-border) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+/* 标题区域 */
+.quant-studio-v2 h1 {
+  font-weight: 700 !important;
+  color: var(--c-text) !important;
+  letter-spacing: -.02em !important;
+}
+
+.quant-studio-v2 h1 + p {
+  color: var(--c-text-sub) !important;
+  font-weight: 500 !important;
+}
+
+/* 策略选择下拉框 */
+.quant-studio-v2 select {
+  border: 1.5px solid var(--c-border) !important;
+  border-radius: var(--radius-sm) !important;
+  background: #FAFBFF !important;
+  color: var(--c-text) !important;
+  font-weight: 600 !important;
+  transition: var(--transition) !important;
+  outline: none !important;
+}
+
+.quant-studio-v2 select:focus {
+  border-color: var(--c-primary) !important;
+  box-shadow: 0 0 0 3px var(--c-primary-l) !important;
+  background: #fff !important;
+}
+
+/* 新建策略按钮 */
+.quant-studio-v2 button[class*="indigo-600"],
+.quant-studio-v2 .btn-primary {
+  background: linear-gradient(135deg, #4F46E5, #6366F1) !important;
+  color: #fff !important;
+  border: none !important;
+  box-shadow: 0 2px 8px rgba(79,70,229,.30) !important;
+  border-radius: var(--radius-sm) !important;
+  font-weight: 600 !important;
+  transition: var(--transition) !important;
+}
+
+.quant-studio-v2 button[class*="indigo-600"]:hover,
+.quant-studio-v2 .btn-primary:hover {
+  background: linear-gradient(135deg, #4338CA, #4F46E5) !important;
+  box-shadow: 0 4px 14px rgba(79,70,229,.40) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* ══ 指标卡片美化 ══ */
+.quant-studio-v2 .metric-card {
+  background: var(--c-surface) !important;
+  border: 1px solid var(--c-border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow-sm) !important;
+  transition: var(--transition) !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.quant-studio-v2 .metric-card:hover {
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-2px) !important;
+}
+
+/* 指标卡片左侧色条 */
+.quant-studio-v2 .metric-card.tone-positive::before {
+  content: '' !important;
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 4px !important;
+  background: linear-gradient(180deg, var(--c-green), #059669) !important;
+}
+
+.quant-studio-v2 .metric-card.tone-negative::before {
+  content: '' !important;
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 4px !important;
+  background: linear-gradient(180deg, var(--c-red), #DC2626) !important;
+}
+
+.quant-studio-v2 .metric-card.tone-neutral::before {
+  content: '' !important;
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 4px !important;
+  background: var(--c-gray) !important;
+}
+
+/* ══ 持有对比卡片 ══ */
+.quant-studio-v2 .hold-comparison-card {
+  background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%) !important;
+  border: 1px solid var(--c-border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+/* 跑赢徽标 */
+.quant-studio-v2 .badge-outperform {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  background: linear-gradient(135deg, #10B981, #059669) !important;
+  color: #fff !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  padding: 6px 14px !important;
+  border-radius: 20px !important;
+  box-shadow: 0 2px 6px rgba(16,185,129,.35) !important;
+}
+
+/* ══ Tab 导航增强 ══ */
+.quant-studio-v2 [role="tablist"] {
+  background: var(--c-surface) !important;
+  border-bottom: 2px solid var(--c-border) !important;
+  gap: 4px !important;
+  padding: 0 !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.quant-studio-v2 [role="tab"] {
+  border-radius: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  color: var(--c-text-sub) !important;
+  font-weight: 600 !important;
+  padding: 12px 20px !important;
+  position: relative !important;
+  transition: var(--transition) !important;
+  font-size: 14px !important;
+}
+
+.quant-studio-v2 [role="tab"]:hover {
+  color: var(--c-primary) !important;
+  background: var(--c-primary-l) !important;
+}
+
+.quant-studio-v2 [role="tab"][aria-selected="true"] {
+  color: var(--c-primary) !important;
+  font-weight: 700 !important;
+  background: transparent !important;
+}
+
+.quant-studio-v2 [role="tab"][aria-selected="true"]::after {
+  content: '' !important;
+  position: absolute !important;
+  bottom: -2px !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  height: 3px !important;
+  background: linear-gradient(90deg, #4F46E5, #6366F1) !important;
+  border-radius: 3px 3px 0 0 !important;
+}
+
+/* Tab 徽标 */
+.quant-studio-v2 [role="tab"] .badge {
+  margin-left: 6px !important;
+  background: var(--c-green-l) !important;
+  color: var(--c-green) !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  padding: 2px 6px !important;
+  border-radius: 4px !important;
+}
+
+/* ══ 配置卡片 ══ */
+.quant-studio-v2 .config-card {
+  background: var(--c-surface) !important;
+  border: 1px solid var(--c-border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow-sm) !important;
+  transition: var(--transition) !important;
+}
+
+.quant-studio-v2 .config-card:hover {
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* 配置卡片标题 */
+.quant-studio-v2 .config-card h2 {
+  font-weight: 700 !important;
+  color: var(--c-text) !important;
+  letter-spacing: -.01em !important;
+}
+
+.quant-studio-v2 .config-card h2 + p {
+  color: var(--c-text-sub) !important;
+  font-weight: 500 !important;
+}
+
+/* ══ ETF 标签输入美化 ══ */
+.quant-studio-v2 .tag-input-label {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: var(--c-text) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  margin-bottom: 12px !important;
+}
+
+/* H 高溢价标签 */
+.quant-studio-v2 .etf-label-h {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  color: var(--c-red) !important;
+  background: var(--c-red-l) !important;
+  padding: 3px 8px !important;
+  border-radius: 6px !important;
+  border: 1px solid #FECACA !important;
+}
+
+/* L 低溢价标签 */
+.quant-studio-v2 .etf-label-l {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  color: var(--c-green) !important;
+  background: var(--c-green-l) !important;
+  padding: 3px 8px !important;
+  border-radius: 6px !important;
+  border: 1px solid #A7F3D0 !important;
+}
+
+/* ETF 代码 Chip */
+.quant-studio-v2 .etf-chip {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  background: var(--c-primary-l) !important;
+  color: var(--c-primary) !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  font-variant-numeric: tabular-nums !important;
+  letter-spacing: .03em !important;
+  padding: 6px 12px !important;
+  border-radius: 20px !important;
+  border: 1.5px solid #C7D2FE !important;
+  transition: var(--transition) !important;
+}
+
+.quant-studio-v2 .etf-chip:hover {
+  background: var(--c-primary) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 8px rgba(79,70,229,.35) !important;
+  transform: translateY(-1px) !important;
+}
+
+.quant-studio-v2 .etf-chip button {
+  background: transparent !important;
+  border: none !important;
+  cursor: pointer !important;
+  color: inherit !important;
+  opacity: .7 !important;
+  padding: 0 !important;
+  line-height: 1 !important;
+  font-size: 16px !important;
+  transition: opacity .15s ease !important;
+}
+
+.quant-studio-v2 .etf-chip button:hover {
+  opacity: 1 !important;
+}
+
+/* ══ 输入框增强 ══ */
+.quant-studio-v2 input[type="text"],
+.quant-studio-v2 input[type="number"],
+.quant-studio-v2 textarea,
+.quant-studio-v2 .input-field {
+  border: 1.5px solid var(--c-border) !important;
+  border-radius: var(--radius-sm) !important;
+  background: #FAFBFF !important;
+  color: var(--c-text) !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  transition: var(--transition) !important;
+  outline: none !important;
+}
+
+.quant-studio-v2 input[type="text"]:focus,
+.quant-studio-v2 input[type="number"]:focus,
+.quant-studio-v2 textarea:focus,
+.quant-studio-v2 .input-field:focus {
+  border-color: var(--c-primary) !important;
+  box-shadow: 0 0 0 3px var(--c-primary-l) !important;
+  background: #fff !important;
+}
+
+/* 数值输入（规则阈值） */
+.quant-studio-v2 input[type="number"] {
+  text-align: center !important;
+  font-variant-numeric: tabular-nums !important;
+  font-weight: 700 !important;
+  color: var(--c-primary) !important;
+}
+
+/* ══ 规则配置行 ══ */
+.quant-studio-v2 .rule-config-row {
+  background: var(--c-gray-l) !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 16px !important;
+  border: 1px solid var(--c-border) !important;
+}
+
+.quant-studio-v2 .rule-config-row label {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: var(--c-text) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.quant-studio-v2 .rule-config-row label::before {
+  content: '' !important;
+  display: inline-block !important;
+  width: 3px !important;
+  height: 16px !important;
+  background: var(--c-primary) !important;
+  border-radius: 2px !important;
+}
+
+/* 规则说明文本 */
+.quant-studio-v2 .rule-hint {
+  font-size: 12px !important;
+  color: var(--c-text-sub) !important;
+  line-height: 1.6 !important;
+  background: var(--c-primary-l) !important;
+  padding: 8px 12px !important;
+  border-radius: var(--radius-xs) !important;
+  border-left: 3px solid var(--c-primary) !important;
+}
+
+/* ══ 信息提示框 ══ */
+.quant-studio-v2 .info-box {
+  background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%) !important;
+  border: 1.5px solid #BFDBFE !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 14px !important;
+  display: flex !important;
+  gap: 10px !important;
+}
+
+.quant-studio-v2 .info-box-icon {
+  font-size: 20px !important;
+  line-height: 1 !important;
+}
+
+.quant-studio-v2 .info-box-content {
+  flex: 1 !important;
+  font-size: 12px !important;
+  color: #1E40AF !important;
+  line-height: 1.6 !important;
+}
+
+.quant-studio-v2 .info-box-title {
+  font-weight: 700 !important;
+  margin-bottom: 6px !important;
+  color: #1E3A8A !important;
+}
+
+/* ══ 按钮增强 ══ */
+/* 保存按钮 */
+.quant-studio-v2 button[class*="slate-600"],
+.quant-studio-v2 .btn-secondary {
+  background: linear-gradient(135deg, #475569, #64748B) !important;
+  color: #fff !important;
+  border: none !important;
+  box-shadow: 0 2px 8px rgba(71,85,105,.25) !important;
+  border-radius: var(--radius) !important;
+  font-weight: 600 !important;
+  transition: var(--transition) !important;
+}
+
+.quant-studio-v2 button[class*="slate-600"]:hover,
+.quant-studio-v2 .btn-secondary:hover {
+  background: linear-gradient(135deg, #334155, #475569) !important;
+  box-shadow: 0 4px 14px rgba(71,85,105,.35) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* 运行回测按钮 */
+.quant-studio-v2 button[class*="indigo-600"]:has(> svg:first-child),
+.quant-studio-v2 .btn-run {
+  background: linear-gradient(135deg, #4F46E5, #6366F1) !important;
+  color: #fff !important;
+  border: none !important;
+  box-shadow: 0 2px 8px rgba(79,70,229,.30), 0 0 20px rgba(79,70,229,.15) !important;
+  border-radius: var(--radius) !important;
+  font-weight: 700 !important;
+  transition: var(--transition) !important;
+}
+
+.quant-studio-v2 button[class*="indigo-600"]:has(> svg:first-child):hover,
+.quant-studio-v2 .btn-run:hover {
+  background: linear-gradient(135deg, #4338CA, #4F46E5) !important;
+  box-shadow: 0 4px 16px rgba(79,70,229,.45), 0 0 30px rgba(79,70,229,.25) !important;
+  transform: translateY(-2px) scale(1.02) !important;
+}
+
+/* 按钮禁用状态 */
+.quant-studio-v2 button:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* ══ 回测结果区域 ══ */
+.quant-studio-v2 .backtest-header {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  margin-bottom: 20px !important;
+}
+
+.quant-studio-v2 .backtest-eyebrow {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: .12em !important;
+  color: var(--c-primary) !important;
+  background: var(--c-primary-l) !important;
+  padding: 4px 10px !important;
+  border-radius: 6px !important;
+}
+
+/* 图表视图切换 */
+.quant-studio-v2 .chart-view-toggle button {
+  background: var(--c-surface) !important;
+  border: 1.5px solid var(--c-border) !important;
+  color: var(--c-text-sub) !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  padding: 8px 16px !important;
+  border-radius: var(--radius-sm) !important;
+  transition: var(--transition) !important;
+}
+
+.quant-studio-v2 .chart-view-toggle button:hover {
+  border-color: var(--c-primary) !important;
+  color: var(--c-primary) !important;
+  background: var(--c-primary-l) !important;
+}
+
+.quant-studio-v2 .chart-view-toggle button[data-active="true"] {
+  background: var(--c-primary) !important;
+  border-color: var(--c-primary) !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+  box-shadow: 0 2px 6px rgba(79,70,229,.25) !important;
+}
+
+/* ══ 实盘信号卡片 ══ */
+.quant-studio-v2 .signal-card {
+  background: var(--c-surface) !important;
+  border: 2px solid var(--c-border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow-md) !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.quant-studio-v2 .signal-card.signal-triggered {
+  border-color: var(--c-green) !important;
+  background: linear-gradient(135deg, #FFFFFF 0%, #ECFDF5 100%) !important;
+  box-shadow: 0 0 0 3px var(--c-green-l), var(--shadow-md) !important;
+}
+
+.quant-studio-v2 .signal-card.signal-triggered::before {
+  content: '' !important;
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 5px !important;
+  background: linear-gradient(180deg, var(--c-green), #059669) !important;
+}
+
+/* ══ 交易历史表格 ══ */
+.quant-studio-v2 .trade-history-table {
+  background: var(--c-surface) !important;
+  border: 1px solid var(--c-border) !important;
+  border-radius: var(--radius) !important;
+  overflow: hidden !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.quant-studio-v2 .trade-history-table thead {
+  background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%) !important;
+  border-bottom: 2px solid var(--c-border) !important;
+}
+
+.quant-studio-v2 .trade-history-table th {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  color: var(--c-text-sub) !important;
+  text-transform: uppercase !important;
+  letter-spacing: .05em !important;
+  padding: 14px 16px !important;
+}
+
+.quant-studio-v2 .trade-history-table td {
+  font-size: 13px !important;
+  color: var(--c-text) !important;
+  padding: 12px 16px !important;
+  border-bottom: 1px solid var(--c-border) !important;
+}
+
+.quant-studio-v2 .trade-history-table tbody tr:hover {
+  background: var(--c-primary-l) !important;
+}
+
+/* 交易类型徽标 */
+.quant-studio-v2 .trade-type-buy {
+  color: var(--c-green) !important;
+  background: var(--c-green-l) !important;
+  font-weight: 700 !important;
+  padding: 4px 10px !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+}
+
+.quant-studio-v2 .trade-type-sell {
+  color: var(--c-red) !important;
+  background: var(--c-red-l) !important;
+  font-weight: 700 !important;
+  padding: 4px 10px !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+}
+
+/* ══ 加载状态 ══ */
+.quant-studio-v2 .loading-spinner {
+  display: inline-block !important;
+  width: 20px !important;
+  height: 20px !important;
+  border: 3px solid rgba(79,70,229,.2) !important;
+  border-top-color: var(--c-primary) !important;
+  border-radius: 50% !important;
+  animation: __quant_spin__ .7s linear infinite !important;
+}
+
+@keyframes __quant_spin__ {
+  to { transform: rotate(360deg); }
+}
+
+/* ══ 页面入场动画 ══ */
+@keyframes __fadeInUp__ {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.quant-studio-v2 .animate-in {
+  animation: __fadeInUp__ .4s ease both !important;
+}
+
+.quant-studio-v2 .animate-in-delay-1 { animation-delay: 50ms !important; }
+.quant-studio-v2 .animate-in-delay-2 { animation-delay: 100ms !important; }
+.quant-studio-v2 .animate-in-delay-3 { animation-delay: 150ms !important; }
+.quant-studio-v2 .animate-in-delay-4 { animation-delay: 200ms !important; }
+
+/* ══ 滚动条美化 ══ */
+.quant-studio-v2 ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.quant-studio-v2 ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.quant-studio-v2 ::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+
+.quant-studio-v2 ::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* ══ 响应式调整 ══ */
+@media (max-width: 640px) {
+  .quant-studio-v2 .metric-card {
+    padding: 16px !important;
+  }
+
+  .quant-studio-v2 .config-card {
+    padding: 20px !important;
+  }
+
+  .quant-studio-v2 [role="tab"] {
+    padding: 10px 14px !important;
+    font-size: 13px !important;
+  }
+}
+
+/* ══ 打印样式 ══ */
+@media print {
+  .quant-studio-v2 {
+    background: white !important;
+  }
+
+  .quant-studio-v2 button,
+  .quant-studio-v2 [role="tablist"] {
+    display: none !important;
+  }
+}

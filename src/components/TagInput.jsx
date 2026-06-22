@@ -5,9 +5,14 @@ import { useId, useState } from 'react';
  * TagInput - 标签式输入组件
  * 用于输入和显示ETF代码列表
  */
-export function TagInput({ label, placeholder = '输入代码', tags = [], onChange, className }) {
+export function TagInput({ label, placeholder = '输入代码', tags = [], onChange, className, variant }) {
   const inputId = useId();
   const [inputValue, setInputValue] = useState('');
+
+  // 判断标签类型（H 高溢价 / L 低溢价）
+  const isHighLabel = label && (label.includes('H') || label.includes('高溢价') || label.includes('卖出'));
+  const isLowLabel = label && (label.includes('L') || label.includes('低溢价') || label.includes('买入'));
+  const labelBadge = isHighLabel ? 'H' : isLowLabel ? 'L' : null;
 
   function addTag() {
     const trimmed = inputValue.trim().toUpperCase();
@@ -38,13 +43,22 @@ export function TagInput({ label, placeholder = '输入代码', tags = [], onCha
 
   return (
     <div className={className}>
-      {label && <label htmlFor={inputId} className="block text-sm font-semibold text-slate-700 mb-2">{label}</label>}
+      {label && (
+        <label htmlFor={inputId} className="tag-input-label block text-sm font-semibold text-slate-700 mb-2">
+          {label}
+          {labelBadge && (
+            <span className={labelBadge === 'H' ? 'etf-label-h' : 'etf-label-l'}>
+              {labelBadge}
+            </span>
+          )}
+        </label>
+      )}
       <div className="rounded-xl border-2 border-slate-200 bg-white p-2 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
         <div className="flex flex-wrap gap-2">
           {tags.map(tag => (
             <span
               key={tag}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-100 px-3 py-1.5 text-sm font-semibold text-indigo-700"
+              className="etf-chip inline-flex items-center gap-1.5 rounded-lg bg-indigo-100 px-3 py-1.5 text-sm font-semibold text-indigo-700"
             >
               {tag}
               <button

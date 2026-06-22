@@ -32,6 +32,7 @@ import {
   runQuantPremiumBacktestInWorker,
   runQuantPremiumOnce
 } from '../app/quantPremiumSync.js';
+import '../styles/quant-studio-redesign.css';
 
 const BACKTEST_TIMEFRAME_OPTIONS = [
   { value: '5m', label: '5m 默认（约 3-4 周）' },
@@ -430,7 +431,7 @@ export default function QuantTradingExperienceV2({ initialTab = 'config', single
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="quant-studio-v2 min-h-screen bg-slate-50">
       {/* 顶部导航栏 */}
       {showSharedChrome ? <div className="border-b border-slate-200 bg-white px-4 sm:px-6 py-3 sm:py-4">
         <div className="flex items-center justify-between gap-3">
@@ -496,7 +497,7 @@ export default function QuantTradingExperienceV2({ initialTab = 'config', single
         {/* 持有对比 */}
         {backtest && (summary.holdHighReturnPct !== undefined || summary.holdLowReturnPct !== undefined) && (
           <div className="mt-4 sm:mt-6">
-            <Card className="p-4 sm:p-6 bg-slate-50">
+            <Card className="hold-comparison-card animate-in p-4 sm:p-6 bg-slate-50">
               <h3 className="text-xs sm:text-sm font-semibold text-slate-700 mb-3">持有收益对比</h3>
               <div className="grid grid-cols-3 gap-3 sm:gap-4">
                 <div className="text-center">
@@ -540,7 +541,7 @@ export default function QuantTradingExperienceV2({ initialTab = 'config', single
               {summary.holdHighReturnPct !== null && summary.holdLowReturnPct !== null &&
                totalReturnPct > summary.holdHighReturnPct && totalReturnPct > summary.holdLowReturnPct && (
                 <div className="mt-3 text-center">
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
+                  <span className="badge-outperform">
                     <TrendingUp className="h-3 w-3" />
                     策略跑赢单独持有
                   </span>
@@ -563,7 +564,7 @@ export default function QuantTradingExperienceV2({ initialTab = 'config', single
       <div className="px-4 sm:px-6 py-4 sm:py-8">
         {activeTab === 'config' && (
           <div className="mx-auto max-w-4xl space-y-4 sm:space-y-8">
-            <Card className="p-4 sm:p-8">
+            <Card className="config-card animate-in p-4 sm:p-8">
               <h2 className="text-base sm:text-lg font-bold text-slate-900">ETF 配置</h2>
               <p className="mt-1 text-xs sm:text-sm text-slate-600">配置高溢价（H）和低溢价（L）ETF池</p>
 
@@ -584,12 +585,12 @@ export default function QuantTradingExperienceV2({ initialTab = 'config', single
               </div>
             </Card>
 
-            <Card className="p-4 sm:p-8">
+            <Card className="config-card animate-in animate-in-delay-1 p-4 sm:p-8">
               <h2 className="text-base sm:text-lg font-bold text-slate-900">交易规则</h2>
               <p className="mt-1 text-xs sm:text-sm text-slate-600">配置溢价差触发阈值</p>
 
               <div className="mt-6 space-y-6">
-                <div>
+                <div className="rule-config-row">
                   <label htmlFor="quant-v2-rule-a" className="block text-sm font-semibold text-slate-700 mb-3">
                     规则 A：卖 L 买 H
                   </label>
@@ -621,12 +622,12 @@ export default function QuantTradingExperienceV2({ initialTab = 'config', single
                     />
                     <span className="text-xs sm:text-sm text-slate-600">% 时触发</span>
                   </div>
-                  <p className="mt-2 text-xs text-slate-500">
+                  <p className="rule-hint mt-2 text-xs text-slate-500">
                     持有L时，溢价差缩小到此阈值以内，卖出L买入H
                   </p>
                 </div>
 
-                <div>
+                <div className="rule-config-row">
                   <label htmlFor="quant-v2-rule-b" className="block text-sm font-semibold text-slate-700 mb-3">
                     规则 B：卖 H 买 L
                   </label>
@@ -658,14 +659,14 @@ export default function QuantTradingExperienceV2({ initialTab = 'config', single
                     />
                     <span className="text-xs sm:text-sm text-slate-600">% 时触发</span>
                   </div>
-                  <p className="mt-2 text-xs text-slate-500">
+                  <p className="rule-hint mt-2 text-xs text-slate-500">
                     持有H时，溢价差扩大到此阈值以上，卖出H买入L
                   </p>
                 </div>
               </div>
             </Card>
 
-            <Card className="p-4 sm:p-8">
+            <Card className="config-card animate-in animate-in-delay-2 p-4 sm:p-8">
               <h2 className="text-base sm:text-lg font-bold text-slate-900">交易费用</h2>
               <p className="mt-1 text-xs sm:text-sm text-slate-600">配置买入和卖出的手续费率（单位：万X）</p>
 
@@ -740,13 +741,11 @@ export default function QuantTradingExperienceV2({ initialTab = 'config', single
                   </p>
                 </div>
 
-                <div className="rounded-lg bg-blue-50 border border-blue-100 p-3">
-                  <div className="flex gap-2">
-                    <span className="text-blue-600">💡</span>
-                    <div className="flex-1 text-xs text-blue-900">
-                      <p className="font-semibold mb-1">手续费说明</p>
-                      <p>场内 ETF 的手续费通常在万0.5到万2.5之间，具体费率以券商为准。</p>
-                    </div>
+                <div className="info-box">
+                  <div className="info-box-icon">💡</div>
+                  <div className="info-box-content">
+                    <p className="info-box-title">手续费说明</p>
+                    <p>场内 ETF 的手续费通常在万0.5到万2.5之间，具体费率以券商为准。</p>
                   </div>
                 </div>
               </div>
@@ -757,7 +756,7 @@ export default function QuantTradingExperienceV2({ initialTab = 'config', single
                 type="button"
                 onClick={handleSaveStrategy}
                 disabled={saving}
-                className="flex-1 rounded-xl bg-slate-600 px-6 py-3 sm:py-4 text-sm sm:text-base font-bold text-white hover:bg-slate-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                className="btn-secondary flex-1 rounded-xl bg-slate-600 px-6 py-3 sm:py-4 text-sm sm:text-base font-bold text-white hover:bg-slate-700 disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {saving ? (
                   <>
@@ -775,7 +774,7 @@ export default function QuantTradingExperienceV2({ initialTab = 'config', single
                 type="button"
                 onClick={handleSaveAndBacktest}
                 disabled={backtesting}
-                className="flex-1 rounded-xl bg-indigo-600 px-6 py-3 sm:py-4 text-sm sm:text-base font-bold text-white hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                className="btn-run flex-1 rounded-xl bg-indigo-600 px-6 py-3 sm:py-4 text-sm sm:text-base font-bold text-white hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {backtesting ? (
                   <>

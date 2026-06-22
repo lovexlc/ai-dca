@@ -43,7 +43,8 @@ export function MetricCard({
 
   return (
     <div className={cx(
-      'rounded-xl sm:rounded-2xl border-2 shadow-sm transition-all hover:shadow-md',
+      'metric-card rounded-xl sm:rounded-2xl border-2 shadow-sm transition-all hover:shadow-md',
+      `tone-${tone}`,
       toneClasses[tone],
       sizeClasses
     )}>
