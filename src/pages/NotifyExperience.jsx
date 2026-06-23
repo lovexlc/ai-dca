@@ -26,6 +26,7 @@ import { NotifyConfigCard } from './NotifyConfigCard.jsx';
 import { NotifyHistoryCard } from './NotifyHistoryCard.jsx';
 import { NotifyStrategyCard } from './NotifyStrategyCard.jsx';
 import { NotifyAlertRulesCard } from './NotifyAlertRulesCard.jsx';
+import { NotifyTradePlanRulesCard } from './NotifyTradePlanRulesCard.jsx';
 import { StatCard, cx } from '../components/experience-ui.jsx';
 import { formatEventTimeLabel, resolveEventStatusMeta } from '../app/tradePlansHelpers.js';
 import { parseBarkInput } from '../app/notifyParsers.js';
@@ -33,6 +34,8 @@ import { getVisibleNotifyEvents, humanizeNotifyError } from './notifyHistoryHelp
 import { assertNotifyTestDelivered, detectNotifySurface, getAvailableNotifyPlatforms } from './notifySurfaceHelpers.js';
 import { AlertRuleDialog } from '../components/AlertRuleDialog.jsx';
 import { useNotifyAlertRules } from './notify/useNotifyAlertRules.js';
+import { readPlanList } from '../app/plan.js';
+import { readDcaList } from '../app/dca.js';
 export function NotifyExperience({ embedded = false }) {
   const notifySurface = useMemo(() => detectNotifySurface(), []);
   const availablePlatforms = useMemo(() => getAvailableNotifyPlatforms(notifySurface), [notifySurface]);
@@ -98,6 +101,8 @@ export function NotifyExperience({ embedded = false }) {
   const [webNotifySupported, setWebNotifySupported] = useState(() => getWebNotifyState().supported);
   const [webNotifyPermission, setWebNotifyPermission] = useState(() => getWebNotifyState().permission);
   const [webNotifyEnabled, setWebNotifyEnabled] = useState(() => Boolean(readWebNotifyConfig().pcEnabled));
+  const [tradePlans, setTradePlans] = useState(() => readPlanList());
+  const [dcaPlans, setDcaPlans] = useState(() => readDcaList());
   function buildLatestHoldingsDigest() {
     try {
       const ledger = readLedgerState();
@@ -157,45 +162,25 @@ export function NotifyExperience({ embedded = false }) {
     setWebNotifyPermission(result);
     setWebNotifySupported(getWebNotifyState().supported);
     if (result === 'granted') {
-      // 首次授权后默认启用轮询，省一步用户操作
       persistWebNotifyConfig({ pcEnabled: true });
       setWebNotifyEnabled(true);
       showActionToast({ tone: 'positive', message: '已授权 PC 桌面通知，前台轮询已自动启用。' });
     } else if (result === 'denied') {
       showActionToast({ tone: 'negative', message: '浏览器已拒绝通知。请到地址栏 🔒 → 通知 → 允许后重试。' });
     }
-    trackActionResult('notify', 'pc_permission_request', result === 'granted' ? 'success' : result === 'denied' ? 'denied' : 'dismissed', {
-      ...notifyMeta(),
-      result,
-      durationMs: Date.now() - startedAt
-    });
+    trackActionResult('notify', 'pc_permission_request', result === 'granted' ? 'success' : result === 'denied' ? 'denied' : 'dismissed', { ...notifyMeta(), result, durationMs: Date.now() - startedAt });
   }
   function handleSendLocalWebNotifyTest() {
-    const note = showLocalWebNotification({
-      title: 'AI-DCA 测试通知',
-      body: '这是一条本地桌面测试通知，证明当前浏览器可以收到 PC 通知。',
-      tag: 'pc-test'
-    });
-    if (!note) {
-      showActionToast({ tone: 'negative', message: '未能弹出通知，请先完成浏览器授权。' });
-    }
+    const note = showLocalWebNotification({ title: 'AI-DCA 测试通知', body: '这是一条本地桌面测试通知，证明当前浏览器可以收到 PC 通知。', tag: 'pc-test' });
+    if (!note) showActionToast({ tone: 'negative', message: '未能弹出通知，请先完成浏览器授权。' });
     trackActionResult('notify', 'pc_local_test', note ? 'success' : 'error', notifyMeta());
   }
   function handleToggleWebNotifyEnabled() {
     const next = !webNotifyEnabled;
     persistWebNotifyConfig({ pcEnabled: next });
     setWebNotifyEnabled(next);
-    trackFeatureEvent('notify', 'pc_toggle', {
-      ...notifyMeta(),
-      enabled: next
-    });
-    if (next) {
-      trackAnalyticsEvent('notify_enabled', {
-        hasBark: barkConfigured,
-        clientId: notifyConfig.notifyClientId,
-        platforms: ['pc']
-      });
-    }
+    trackFeatureEvent('notify', 'pc_toggle', { ...notifyMeta(), enabled: next });
+    if (next) trackAnalyticsEvent('notify_enabled', { hasBark: barkConfigured, clientId: notifyConfig.notifyClientId, platforms: ['pc'] });
   }
   useEffect(() => {
     window.addEventListener('notify:test-pc', handleSendLocalWebNotifyTest);
@@ -851,6 +836,14 @@ export function NotifyExperience({ embedded = false }) {
           onDeleteHoldingAlert={handleDeleteHoldingAlert}
           expanded={expandedStrategy === 'alerts'}
           onToggleExpand={() => setExpandedStrategy(expandedStrategy === 'alerts' ? null : 'alerts')}
+        />
+        <NotifyTradePlanRulesCard
+          tradePlans={tradePlans}
+          dcaPlans={dcaPlans}
+          onNavigateToTradePlans={() => { window.location.hash = '#tradePlans'; }}
+          onNavigateToDca={() => { window.location.hash = '#tradePlans'; window.location.hash = '#tradePlans#dca'; }}
+          expanded={expandedStrategy === 'tradePlans'}
+          onToggleExpand={() => setExpandedStrategy(expandedStrategy === 'tradePlans' ? null : 'tradePlans')}
         />
         {renderStrategyCard()}
         <NotifyHistoryCard
