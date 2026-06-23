@@ -799,6 +799,9 @@ export function NotifyExperience({ embedded = false }) {
       />
     );
   }
+  const rulesLastSyncedLabel = rulesLastSyncedAt
+    ? formatEventTimeLabel(rulesLastSyncedAt)
+    : '本次会话尚未同步';
   return (
     <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
       <div className={cx('grid gap-4', pcFeaturesAvailable ? 'md:grid-cols-3' : 'sm:grid-cols-2')}>
