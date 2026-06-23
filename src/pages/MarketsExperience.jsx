@@ -372,6 +372,11 @@ export function MarketsExperience() {
       if (Object.keys(fundFees).length) {
         setFundFeesByCode((prev) => ({ ...prev, ...fundFees }));
       }
+      // 检查并记录有错误的行情数据
+      const quotesWithErrors = Object.entries(quotes).filter(([, q]) => q?.error);
+      if (quotesWithErrors.length > 0) {
+        console.warn('[Markets] 以下标的获取行情失败:', quotesWithErrors.map(([sym, q]) => ({ symbol: sym, error: q.error })));
+      }
       setWatchQuotes(quotes);
       trackActionResult('markets', 'watch_refresh', 'success', {
         market,
