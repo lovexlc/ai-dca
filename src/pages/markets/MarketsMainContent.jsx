@@ -109,7 +109,6 @@ export function MarketsMainContent({
           buildOtcCandidate={detail.buildOtcCandidate}
           inWatch={detail.inWatch}
           onToggleWatch={detail.onToggleWatch}
-          onAnalyze={detail.onAnalyze}
           onBack={detail.onBack}
         />
       ) : (

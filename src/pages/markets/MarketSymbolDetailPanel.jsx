@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUp, CalendarDays, Loader2, Search, Sparkles, Star, X } from 'lucide-react';
+import { ArrowUp, CalendarDays, Loader2, Search, Star, X } from 'lucide-react';
 import { fetchKline, fetchQuotes, searchSymbols, CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsApi.js';
 import { getNavHistory, getNavSnapshot } from '../../app/navService.js';
 import { getXueqiuQuote } from '../../app/xueqiuQuote.js';
@@ -66,7 +66,6 @@ export function SymbolDetailPanel({
   xueqiuFundLoading = false,
   activeTab,
   onTabChange,
-  onAnalyze,
   onBack,
   chartRange,
   onChartRangeChange,
@@ -663,14 +662,6 @@ export function SymbolDetailPanel({
             >
               <Star size={14} className={inWatch ? 'fill-amber-400 text-amber-400' : ''} />
               {inWatch ? '已添加' : '添加自选'}
-            </button>
-            <button
-              type="button"
-              onClick={onAnalyze}
-              className="inline-flex items-center gap-1 rounded-full bg-[#e8f0fe] px-2 py-0.5 text-[12px] font-medium text-[#1a73e8] transition hover:bg-[#d2e3fc] sm:px-2.5 sm:py-1 sm:text-[13px]"
-            >
-              <Sparkles size={14} />
-              研究
             </button>
           </div>
         </div>

@@ -31,7 +31,6 @@ import { getCnEtfPremiumSnapshot, getNavHistory, getNavSnapshot, getNavSnapshots
 import { ExpandedMarketListOverlay } from './markets/ExpandedMarketListOverlay.jsx';
 import { MarketsFullTablePanel } from './markets/MarketsFullTablePanel.jsx';
 import { MarketsMainContent } from './markets/MarketsMainContent.jsx';
-import { MarketsResearchShell } from './markets/MarketsResearchShell.jsx';
 import { MarketsSidebar } from './markets/MarketsSidebar.jsx';
 import { WatchlistNameDialog } from './markets/WatchlistControls.jsx';
 import {
@@ -63,10 +62,6 @@ function normalizeMarketKey(value) {
   return value === A_SHARE_MARKET.key ? value : A_SHARE_MARKET.key;
 }
 const MARKETS_PENDING_SYMBOL_KEY = 'markets:pendingSymbol';
-// 行情中心底部”搜索或提问”输入条。提交后向全局 AI 抽屉发 prefill 事件，
-// 抽屉会自动切到市场行情模式并预填问题。
-// 右栏”研究”面板：inline 问答，点击预设问题或提交输入后直接调 /api/markets/ask。
-// 不再弹出右下角 AI 抽屉。
 export function MarketsExperience() {
   const { saveSearchHistory } = useMarketsSearchHistory();
   const [market, setMarket] = useState(A_SHARE_MARKET.key);
@@ -111,8 +106,6 @@ export function MarketsExperience() {
   const [watchOpen, setWatchOpen] = useState(true);
   const [sectorsOpen, setSectorsOpen] = useState(true);
   const [sectorSearchOpen, setSectorSearchOpen] = useState(false);
-  // 研究底部抽屉模式（仅 mobile）：peek=小片 / conversation=全屏展开
-  const [researchMode, setResearchMode] = useState('peek');
   const [selectedSymbol, setSelectedSymbol] = useState('');
   const [fullTableMode, setFullTableMode] = useState(true);
   const selectedSymbolRef = useRef('');
@@ -136,33 +129,10 @@ export function MarketsExperience() {
   const [xueqiuFundLoading, setXueqiuFundLoading] = useState(false);
   const xueqiuFundInflightRef = useRef(new Set());
   const chartInflightRef = useRef(new Set());
-  const [vpHeight, setVpHeight] = useState(null);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)').matches : false);
   useMarketsPageSync({ setIsMobile, setWatch });
-  const researchModeRef = useRef('peek');
-  useEffect(() => { researchModeRef.current = researchMode; }, [researchMode]);
-  useEffect(() => {
-    const vp = window.visualViewport;
-    if (!vp) return;
-    const handler = () => {
-      const h = Math.round(vp.height);
-      setVpHeight(h);
-      // keyboard dismissed→back to peek if in search mode
-      if (h > window.innerHeight * 0.85 && researchModeRef.current === 'search') {
-        setResearchMode('peek');
-      }
-    };
-    vp.addEventListener('resize', handler);
-    return () => vp.removeEventListener('resize', handler);
-  }, []);
-  const researchDragRef = useRef({ startY: 0, lastY: 0, startT: 0, dragging: false, moved: false });
   const mainRef = useRef(null);
   const detailScrollRef = useRef({ y: 0 });
-  const asideRef = useRef(null);
-  const isDraggingRef = useRef(false);
-  // 供侧边自选行【AI 分析】按钮跨组件触发右侧 ResearchPanel 发起结构化问答。
-  // shape: { symbol, name } | null
-  const [pendingAnalysis, setPendingAnalysis] = useState(null);
   const summarizeMarkets = () => ({
     market,
     selected: Boolean(selectedSymbol),
@@ -173,7 +143,6 @@ export function MarketsExperience() {
     watchSymbolCount: Array.isArray(watchSymbols) ? watchSymbols.length : 0,
     activeWatchlistType: activeWatchList?.type || '',
     isOtcList: Boolean(isActiveOtcList),
-    researchMode,
     isMobile
   });
   const ensureKlines = useCallback(async (symbols) => {
@@ -225,7 +194,6 @@ export function MarketsExperience() {
     selectedSymbolRef.current = selectedSymbol;
   }, [selectedSymbol]);
   useEffect(() => {
-    setResearchMode('peek');
     setDetailHeaderHidden(false);
     requestAnimationFrame(() => {
       mainRef.current?.scrollTo?.({ top: 0, behavior: 'auto' });
@@ -795,7 +763,6 @@ export function MarketsExperience() {
     setSelectedSymbol(symbol);
     setFullTableMode(false);
     setSymbolDetailTab('overview');
-    setResearchMode('peek');
     setSymbolInput('');
     setSymbolSearchResults([]);
     setSectorSearchOpen(false);
@@ -962,13 +929,11 @@ export function MarketsExperience() {
     setSelectedSymbol(symbol);
     setFullTableMode(false);
     setSymbolDetailTab('overview');
-    setResearchMode(options.openResearch ? 'conversation' : 'peek');
     updateSymbolInUrl(symbol);
     trackFeatureEvent('markets', 'symbol_select', {
       source: options.source || 'watchlist',
       market: targetMarket,
-      symbolLength: String(symbol || '').length,
-      openResearch: Boolean(options.openResearch)
+      symbolLength: String(symbol || '').length
     });
   }
 
@@ -1263,78 +1228,6 @@ export function MarketsExperience() {
     return () => { /* keep the in-flight cache write; otherwise loading can stay true after rerender */ };
   }, [market, selectedSymbol, chartRange, chartCustomRange?.from, chartCustomRange?.to]);
 
-  function handleResearchHandleClick() {
-    if (researchDragRef.current.moved) {
-      researchDragRef.current.moved = false;
-      return;
-    }
-    setResearchMode((mode) => mode === 'peek' ? 'conversation' : 'peek');
-  }
-
-  function handleResearchDragInit(event) {
-    const aside = asideRef.current;
-    const startH = aside ? aside.offsetHeight : (researchMode === 'peek' ? 130 : 600);
-    researchDragRef.current = { startY: event.clientY, lastY: event.clientY, startH, startT: Date.now(), dragging: true, moved: false };
-    try { event.currentTarget.setPointerCapture(event.pointerId); } catch (_error) { /* best-effort */ }
-    isDraggingRef.current = true;
-    if (aside) {
-      aside.style.transition = 'none';
-      aside.style.height = `${startH}px`;
-    }
-    if (researchMode === 'peek') setResearchMode('conversation');
-  }
-
-  function handleResearchDragMove(event) {
-    const dragState = researchDragRef.current;
-    if (!dragState.dragging) return;
-    const dy = event.clientY - dragState.startY;
-    dragState.lastY = event.clientY;
-    if (Math.abs(dy) > 6) dragState.moved = true;
-    const vh = vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844);
-    const peekH = 130;
-    const fullH = vh;
-    let nextHeight = dragState.startH - dy;
-    if (nextHeight > fullH) nextHeight = fullH + Math.min((nextHeight - fullH) * 0.3, 36);
-    if (nextHeight < peekH) nextHeight = peekH - Math.min((peekH - nextHeight) * 0.3, 36);
-    if (asideRef.current) asideRef.current.style.height = `${nextHeight}px`;
-  }
-
-  function handleResearchDragEnd(event) {
-    const dragState = researchDragRef.current;
-    if (!dragState.dragging) return;
-    dragState.dragging = false;
-    const dy = event.clientY - dragState.startY;
-    const dt = Math.max(Date.now() - dragState.startT, 1);
-    const velocity = dy / dt;
-    let nextMode = researchMode;
-    if (researchMode === 'peek' && (dy < -60 || velocity < -0.4)) nextMode = 'conversation';
-    else if (researchMode === 'conversation' && (dy > 60 || velocity > 0.4)) nextMode = 'peek';
-    const aside = asideRef.current;
-    if (aside) {
-      aside.style.transition = '';
-      const vh = vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844);
-      const target = nextMode === 'conversation' ? vh : nextMode === 'search' ? vh : 130;
-      aside.style.height = `${target}px`;
-    }
-    isDraggingRef.current = false;
-    if (nextMode !== researchMode) setResearchMode(nextMode);
-    else if (researchMode === 'conversation' && nextMode === 'conversation') {
-      setResearchMode((mode) => mode);
-    }
-  }
-
-  function handleResearchDragCancel() {
-    researchDragRef.current.dragging = false;
-    const aside = asideRef.current;
-    if (aside) {
-      aside.style.transition = '';
-      const vh = vpHeight || (typeof window !== 'undefined' ? window.innerHeight : 844);
-      const target = researchMode === 'conversation' ? vh : researchMode === 'search' ? vh : 130;
-      aside.style.height = `${target}px`;
-    }
-    isDraggingRef.current = false;
-  }
-
   const otcTableColumnProps = { showLimitColumn: isActiveOtcList && market === 'cn', hidePremiumColumn: isActiveOtcList && market === 'cn', hideTrendColumn: isActiveOtcList && market === 'cn' };
   const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, ...otcTableColumnProps };
 
@@ -1371,7 +1264,7 @@ export function MarketsExperience() {
       {...otcTableColumnProps}
     />
     <div className={cx(
-      "flex flex-col gap-5 lg:grid lg:h-[calc(100vh-6rem)] lg:min-h-0 lg:grid-cols-[280px_minmax(0,1fr)_360px] lg:items-stretch lg:gap-4 lg:overflow-hidden lg:pb-0 xl:grid-cols-[320px_minmax(0,1fr)_400px]",
+      "flex flex-col gap-5 lg:grid lg:h-[calc(100vh-6rem)] lg:min-h-0 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-stretch lg:gap-4 lg:overflow-hidden lg:pb-0 xl:grid-cols-[320px_minmax(0,1fr)]",
       fullTableMode && !selectedSymbol && "lg:grid-cols-[minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)]",
       selectedSymbol ? "pb-4" : "pb-[140px]"
     )}>
@@ -1472,11 +1365,6 @@ export function MarketsExperience() {
               setWatch(addToWatchlist(market, selectedQuote.symbol, watch.activeListId));
             }
           },
-          onAnalyze: () => {
-            if (!selectedQuote) return;
-            handleSelectSymbol(selectedQuote, { openResearch: true });
-            setPendingAnalysis({ symbol: selectedQuote.symbol, name: selectedQuote.name });
-          },
           onBack: () => {
             clearSelectedSymbol();
             setFullTableMode(true);
@@ -1484,35 +1372,6 @@ export function MarketsExperience() {
           },
         }}
       />
-
-      {/* Backdrop when conversation */}
-      {researchMode === 'conversation' && (
-        <div className="fixed inset-0 z-30 bg-white lg:hidden" onClick={() => setResearchMode('peek')} />
-      )}
-      {/* Research panel: PC = sticky aside / Mobile = bottom sheet */}
-      {!(fullTableMode && !selectedSymbol) && (
-      <MarketsResearchShell
-        market={market}
-        mode={researchMode}
-        onModeChange={setResearchMode}
-        watchSymbols={watchSymbols}
-        watchQuotes={watchQuotes}
-        selectedSymbol={selectedSymbol}
-        selectedQuote={selectedQuote}
-        pendingAnalysis={pendingAnalysis}
-        onAnalysisConsumed={() => setPendingAnalysis(null)}
-        isMobile={isMobile}
-        vpHeight={vpHeight}
-        asideRef={asideRef}
-        researchDragRef={researchDragRef}
-        isDraggingRef={isDraggingRef}
-        onHandleClick={handleResearchHandleClick}
-        onDragInit={handleResearchDragInit}
-        onDragMove={handleResearchDragMove}
-        onDragEnd={handleResearchDragEnd}
-        onDragCancel={handleResearchDragCancel}
-      />
-      )}
     </div>
     </>
   );
