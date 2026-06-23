@@ -46,6 +46,7 @@ import {
 import { getKnownQdiiFundName } from '../app/qdiiFundCodes.js';
 import { showActionToast } from '../app/toast.js';
 import { getNavSnapshots, mergePricePushItems } from '../app/navService.js';
+import { useHoldingsQuickTransaction } from './holdings/useHoldingsQuickTransaction.js';
 import {
   KIND_FILTER_KEYS,
   KIND_FILTER_LABELS,
@@ -63,13 +64,12 @@ import { groupCostBasisBySymbol, attachUnrealized } from '../app/costTracker.js'
 import { hasPotentialUserData, installDemoData } from '../app/demoData.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import { getCodeFromUrl, updateCodeInUrl } from './holdings/holdingsUrlSync.js';
-
 function readColumnFilterValue(filters, id) {
   const filter = (Array.isArray(filters) ? filters : []).find((item) => item?.id === id);
   return filter?.value;
 }
-
 export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = false } = {}) {
+  const { recordTransaction } = useHoldingsQuickTransaction();
   const [ledger, setLedger] = useState(() => readLedgerState());
   // v7.6: 移除交易日自动过滤场内数据的逻辑，避免出现不必要的"重置过滤"按钮
   const [columnFilters, setColumnFilters] = useState([]);
@@ -723,6 +723,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         ? `${normalized.code} ${normalized.type} ${formatShares(normalized.shares)} 份 @ ${formatNav(normalized.price)}`
         : `${normalized.code} ${normalized.type} ${formatCurrency(normalized.amount, '¥', 2)}`
     });
+    recordTransaction(normalized, draftMode);
     resetDraft();
     setSelectedCode(normalized.code);
     setSidePanelTab('summary');

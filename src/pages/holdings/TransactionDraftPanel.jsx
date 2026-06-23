@@ -18,6 +18,7 @@ import {
   formatShares
 } from '../../app/holdingsHelpers.js';
 import { Pill, cx, tableInputClass } from '../../components/experience-ui.jsx';
+import { QuickTransactionButtons } from './QuickTransactionButtons.jsx';
 
 export function TransactionDraftPanel({
   draft,
@@ -72,6 +73,14 @@ export function TransactionDraftPanel({
 
   const availableTags = ALL_TAGS.filter((t) => !currentTags.includes(t));
 
+  function handleQuickFill(fields) {
+    Object.entries(fields).forEach(([key, value]) => {
+      if (value !== undefined) {
+        onDraftChange(key, value);
+      }
+    });
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -87,6 +96,7 @@ export function TransactionDraftPanel({
           </button>
         ) : null}
       </div>
+      {draftMode === 'create' && <QuickTransactionButtons onFillDraft={handleQuickFill} />}
       <div className="grid grid-cols-2 gap-3">
         <label className="col-span-1 text-xs text-slate-500">
           代码
