@@ -25,6 +25,7 @@ import {
   formatSignedPercent,
   formatSymbolDisplay,
   formatTotalShares,
+  formatTurnover,
   formatYearPercent,
   resolveFundFeeRate,
   resolveRedeemFeeRate,
@@ -243,6 +244,15 @@ export function MarketListTable({
           </span>
         );
       },
+      sortingFn: numericSortFn,
+      filterFn: numberRangeFilterFn,
+    },
+    {
+      id: 'turnover',
+      accessorFn: (row) => Number(row.turnover ?? row.amount),
+      meta: { label: '成交额', variant: 'number' },
+      header: ({ column }) => <DataTableColumnHeader column={column} label="成交额" className="justify-end" />,
+      cell: ({ row }) => <span className="tabular-nums text-[#1f1f1f]">{formatTurnover(row.original.turnover ?? row.original.amount)}</span>,
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
     },
@@ -614,6 +624,7 @@ export function MarketListTable({
             <th className={cx(cellPad, 'text-left')}>名称</th>
             <th className={cx(cellPad, 'text-right')}>最新价</th>
             <th className={cx(cellPad, 'text-right')}>涨跌幅</th>
+            <th className={cx(cellPad, 'text-right')}>成交额</th>
             {showLimitColumn ? <th className={cx(cellPad, 'text-right')}>限额</th> : null}
             {!hidePremiumColumn ? <th className={cx(cellPad, 'text-right')}>溢价</th> : null}
             <th className={cx(cellPad, 'text-right')}>今年以来</th>
@@ -662,6 +673,7 @@ export function MarketListTable({
                     {isLatestChangeRow(row) ? <span className="rounded-full bg-[#e8f0fe] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#1a73e8]">最新</span> : null}
                   </span>
                 </td>
+                <td className={cx(cellPad, 'whitespace-nowrap text-right tabular-nums text-[#1f1f1f]')}>{formatTurnover(row.turnover ?? row.amount)}</td>
                 {showLimitColumn ? (
                   <td className={cx(cellPad, 'whitespace-nowrap text-right text-xs')}>
                     {row.fundLimit || shouldShowAppTag(row.fundMeta, row.fundLimit) ? (

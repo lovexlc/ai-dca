@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { formatMarketPrice, isCnExchangeFundRow } from '../src/pages/markets/marketDisplayUtils.js';
+import { formatMarketPrice, formatTurnover, isCnExchangeFundRow } from '../src/pages/markets/marketDisplayUtils.js';
 
 test('market price displays CN exchange fund prices with 3 decimals', () => {
   assert.equal(isCnExchangeFundRow({ symbol: '159513' }), true);
@@ -12,4 +12,10 @@ test('market price displays CN exchange fund prices with 3 decimals', () => {
 test('market price keeps non-exchange rows at 2 decimals', () => {
   assert.equal(isCnExchangeFundRow({ symbol: 'QQQ' }), false);
   assert.equal(formatMarketPrice(438.126, { symbol: 'QQQ' }), '438.13');
+});
+
+test('market turnover displays compact CN money units', () => {
+  assert.equal(formatTurnover(29382745.67), '2,938.27万');
+  assert.equal(formatTurnover(2930000000), '29.30亿');
+  assert.equal(formatTurnover(null), '—');
 });

@@ -10,6 +10,7 @@ export const MARKET_TABLE_METRICS = {
   high: ['high', 'regularMarketDayHigh', 'dayHigh'],
   low: ['low', 'regularMarketDayLow', 'dayLow'],
   volume: ['volume', 'regularMarketVolume'],
+  turnover: ['turnover', 'amount', 'regularMarketTurnover'],
   marketCap: ['marketCap', 'marketCapitalization'],
 };
 
@@ -240,6 +241,15 @@ export function formatTotalShares(value) {
   if (!Number.isFinite(n) || n <= 0) return '—';
   if (n >= 100000000) return `${formatNumber(n / 100000000, 2)}亿`;
   if (n >= 10000) return `${formatNumber(n / 10000, 2)}万`;
+  return formatNumber(n, 2);
+}
+
+export function formatTurnover(value) {
+  if (value == null || value === '') return '—';
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return '—';
+  if (Math.abs(n) >= 100000000) return `${formatNumber(n / 100000000, 2)}亿`;
+  if (Math.abs(n) >= 10000) return `${formatNumber(n / 10000, 2)}万`;
   return formatNumber(n, 2);
 }
 
