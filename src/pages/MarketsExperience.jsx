@@ -207,6 +207,7 @@ export function MarketsExperience() {
     if (!selectedSymbol || typeof window === 'undefined') return undefined;
     const scrollTarget = isMobile ? window : mainRef.current;
     if (!scrollTarget) return undefined;
+    const readY = () => isMobile ? window.scrollY : (mainRef.current?.scrollTop || 0);
     detailScrollRef.current.y = readY();
     const handleDetailScroll = () => {
       const y = readY();
