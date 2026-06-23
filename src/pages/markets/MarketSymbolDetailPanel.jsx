@@ -34,6 +34,7 @@ import {
   todayShanghaiIso,
 } from './marketFundMetrics.js';
 import { formatMarketPrice, formatNumber, formatPercent, formatSignedPercent, formatSymbolDisplay, normalizeCnFundCode } from './marketDisplayUtils.js';
+import { getCompareFromUrl, updateCompareInUrl, getChartConfigFromUrl, updateChartConfigInUrl } from './marketsUrlSync.js';
 
 const SYMBOL_DETAIL_TABS = [
   { key: 'overview', label: '概览' },
@@ -83,11 +84,12 @@ export function SymbolDetailPanel({
   tradeMarkers = [],
   buildOtcCandidate = () => null,
 }) {
-  const [chartType, setChartType] = useState('area');
-  const [cnFundParam, setCnFundParam] = useState('price');
+  const urlChartConfig = getChartConfigFromUrl();
+  const [chartType, setChartType] = useState(urlChartConfig.chartType);
+  const [cnFundParam, setCnFundParam] = useState(urlChartConfig.cnFundParam);
   const [premiumView, setPremiumView] = useState('trend');
-  const [indicators, setIndicators] = useState(() => new Set());
-  const [compareSymbols, setCompareSymbols] = useState([]);
+  const [indicators, setIndicators] = useState(urlChartConfig.indicators);
+  const [compareSymbols, setCompareSymbols] = useState(() => getCompareFromUrl());
   const [compareInput, setCompareInput] = useState('');
   const [compareSearchResults, setCompareSearchResults] = useState([]);
   const [compareSearchLoading, setCompareSearchLoading] = useState(false);
@@ -126,6 +128,12 @@ export function SymbolDetailPanel({
   }, [compareQuoteMap, compareSearchMetaMap, currentIsCnOtcFund, market]);
   // 当前 symbol 或时间范围切换时清空对比
   useEffect(() => { setCompareSymbols([]); setHoveredChartRow(null); setLockedChartRow(null); }, [rowSymbol]);
+  // 对比列表变化时同步到 URL
+  useEffect(() => { updateCompareInUrl(compareSymbols); }, [compareSymbols]);
+  // 图表配置变化时同步到 URL
+  useEffect(() => {
+    updateChartConfigInUrl({ chartType, indicators, cnFundParam });
+  }, [chartType, indicators, cnFundParam]);
   useEffect(() => { setHoveredChartRow(null); setLockedChartRow(null); }, [chartRange, chartCustomRange?.from, chartCustomRange?.to, cnFundParam]);
   useEffect(() => { if (market !== 'cn') setCnFundParam('price'); }, [market]);
   useEffect(() => {

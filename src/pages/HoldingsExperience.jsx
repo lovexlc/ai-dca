@@ -62,6 +62,7 @@ import { readTradeLedger } from '../app/tradeLedger.js';
 import { groupCostBasisBySymbol, attachUnrealized } from '../app/costTracker.js';
 import { hasPotentialUserData, installDemoData } from '../app/demoData.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
+import { getCodeFromUrl, updateCodeInUrl } from './holdings/holdingsUrlSync.js';
 
 function readColumnFilterValue(filters, id) {
   const filter = (Array.isArray(filters) ? filters : []).find((item) => item?.id === id);
@@ -81,6 +82,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [ocrState, setOcrState] = useState(() => createOcrState());
   const [pasteModalOpen, setPasteModalOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  const pendingCodeHandledRef = useRef('');
   const summarizeHoldings = () => ({
     transactionCount: Array.isArray(transactions) ? transactions.length : 0,
     aggregateCount: Array.isArray(aggregates) ? aggregates.length : 0,
@@ -125,6 +127,19 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // 从 URL 读取 code 参数并打开持仓详情
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const code = getCodeFromUrl();
+    if (!code || pendingCodeHandledRef.current === code) return;
+    pendingCodeHandledRef.current = code;
+    setSelectedCode(code);
+    setSidePanelTab('summary');
+    setSidePanelOpen(true);
+    trackFeatureEvent('holdings', 'fund_summary_open', { source: 'url_param', codeLength: String(code).length });
+  }, []);
+  // 选中基金时更新 URL
+  useEffect(() => { updateCodeInUrl(selectedCode); }, [selectedCode]);
   const [pasteResult, setPasteResult] = useState(null);
   const [ocrModalOpen, setOcrModalOpen] = useState(false);
   const [ocrPreview, setOcrPreview] = useState(null);
