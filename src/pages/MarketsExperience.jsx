@@ -57,10 +57,11 @@ import {
 } from './markets/marketsCatalog.js';
 import { updateSymbolInUrl, clearSymbolFromUrl } from './markets/marketsUrlSync.js';
 
-const MARKETS = [
-  { key: 'us', label: '美股' },
-  { key: 'cn', label: 'A股' }
-];
+const A_SHARE_MARKET = { key: 'cn', label: 'A股' };
+
+function normalizeMarketKey(value) {
+  return value === A_SHARE_MARKET.key ? value : A_SHARE_MARKET.key;
+}
 
 const MARKETS_PENDING_SYMBOL_KEY = 'markets:pendingSymbol';
 
@@ -69,7 +70,7 @@ const MARKETS_PENDING_SYMBOL_KEY = 'markets:pendingSymbol';
 // 右栏“研究”面板：inline 问答，点击预设问题或提交输入后直接调 /api/markets/ask。
 // 不再弹出右下角 AI 抽屉。
 export function MarketsExperience() {
-  const [market, setMarket] = useState('cn');
+  const [market, setMarket] = useState(A_SHARE_MARKET.key);
   const [indices, setIndices] = useState([]);
   const [indicesLoading, setIndicesLoading] = useState(false);
   const [movers, setMovers] = useState([]);
@@ -654,7 +655,7 @@ export function MarketsExperience() {
     setSymbolSearchLoading(true);
     setSymbolSearchError('');
     const timer = window.setTimeout(() => {
-      const activeMarket = MARKETS.find((m) => m.key === market) || MARKETS[0];
+      const activeMarket = A_SHARE_MARKET;
       searchSymbols(activeMarket.key, q, { limit: 8, signal: controller.signal })
         .then((r) => {
           if (seq !== symbolSearchSeqRef.current) return;
@@ -717,7 +718,7 @@ export function MarketsExperience() {
     setWatchOverlaySearchLoading(true);
     setWatchOverlaySearchError('');
     const timer = window.setTimeout(() => {
-      const activeMarket = MARKETS.find((m) => m.key === market) || MARKETS[0];
+      const activeMarket = A_SHARE_MARKET;
       searchSymbols(activeMarket.key, q, { limit: 10, signal: controller.signal })
         .then((r) => {
           if (seq !== watchOverlaySearchSeqRef.current) return;
@@ -778,7 +779,7 @@ export function MarketsExperience() {
     if (event && event.preventDefault) event.preventDefault();
     const raw = (rawOverride != null ? String(rawOverride) : symbolInput).trim().toUpperCase();
     if (!raw) return;
-    const targetMarket = marketOverride || market;
+    const targetMarket = normalizeMarketKey(marketOverride || market);
     const next = addToWatchlist(targetMarket, raw, watch.activeListId);
     setWatch(next);
     setMarket(targetMarket);
@@ -800,7 +801,7 @@ export function MarketsExperience() {
   function handlePickSymbolSearch(row) {
     if (!row || !row.symbol) return;
     setWatchListExpanded(false);
-    const targetMarket = row.market || market;
+    const targetMarket = normalizeMarketKey(row.market || market);
     const symbol = rememberSelectedQuote(row, targetMarket);
     if (!symbol) return;
     setMarket(targetMarket);
@@ -848,7 +849,7 @@ export function MarketsExperience() {
 
   function handleAddSearchResult(row) {
     if (!row || !row.symbol) return;
-    const targetMarket = row.market || market;
+    const targetMarket = normalizeMarketKey(row.market || market);
     const symbol = String(row.symbol || row.code || row.ticker || '').trim().toUpperCase();
     if (!symbol) return;
     const next = addToWatchlist(targetMarket, symbol, watch.activeListId);
@@ -955,7 +956,7 @@ export function MarketsExperience() {
   function handleSelectSymbol(row, options = {}) {
     if (!row || !row.symbol) return;
     setWatchListExpanded(false);
-    const targetMarket = options.market || row.market || market;
+    const targetMarket = normalizeMarketKey(options.market || row.market || market);
     if (targetMarket && targetMarket !== market) setMarket(targetMarket);
     const symbol = rememberSelectedQuote(row, targetMarket) || row.symbol;
     setSelectedSymbol(symbol);
@@ -1351,7 +1352,7 @@ export function MarketsExperience() {
       klineMap={klineMap}
       selectedSymbol={selectedSymbol}
       activeName={activeWatchList?.name}
-      marketLabel={market === 'us' ? '美股监控列表' : 'A 股监控列表'}
+      marketLabel="A 股监控列表"
       loading={watchLoading}
       searchOpen={watchOverlaySearchOpen}
       searchValue={watchOverlaySearchInput}
@@ -1421,7 +1422,6 @@ export function MarketsExperience() {
       <MarketsMainContent
         mainRef={mainRef}
         market={market}
-        onMarketChange={setMarket}
         selectedQuote={selectedQuote}
         detailHeaderHidden={detailHeaderHidden}
         indices={indices}

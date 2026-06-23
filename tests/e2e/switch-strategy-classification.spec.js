@@ -14,11 +14,24 @@ const ETF_CODES = [
   '159660',
   '513110',
   '159659',
-  '161128'
+  '161128',
+  '513500',
+  '513650',
+  '159612',
+  '159655'
 ];
+
+const ETF_NAMES = {
+  '513100': '国泰纳斯达克100ETF',
+  '513500': '博时标普500ETF(QDII)',
+  '513650': '南方标普500ETF(QDII)',
+  '159612': '国泰标普500ETF(QDII)',
+  '159655': '华夏标普500ETF(QDII)'
+};
 
 async function seedSwitchPage(page, { withHolding = true } = {}) {
   await page.addInitScript(({ withHolding }) => {
+    window.__AI_DCA_RELEASE_ANNOUNCEMENT__ = { enabled: false };
     window.localStorage.clear();
     window.localStorage.setItem('aiDcaFundHoldingsLedger', JSON.stringify({
       source: 'react-fund-holdings-ledger',
@@ -69,7 +82,7 @@ async function mockSwitchNetwork(page) {
         items: codes.map((code, index) => ({
           ok: true,
           code,
-          name: code === '513100' ? '国泰纳斯达克100ETF' : `纳指 ETF ${code}`,
+          name: ETF_NAMES[code] || `纳指 ETF ${code}`,
           price: Number((1.1 + index * 0.01).toFixed(4)),
           latestNav: Number((1.08 + index * 0.01).toFixed(4)),
           latestNavDate: '2026-06-08',
@@ -105,8 +118,10 @@ test('all nasdaq ETF chips can be classified by H and L click buttons', async ({
   await mockSwitchNetwork(page);
   await page.goto('./index.html?tab=fundSwitch');
 
-  await expect(page.getByText('所有纳指 ETF（未分类）')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText('所有纳指 / 标普 ETF（未分类）')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByLabel('将 159513 设为 H 组')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByLabel('将 513500 设为 H 组')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByLabel('将 159655 设为 L 组')).toBeVisible({ timeout: 20_000 });
 
   await page.getByLabel('将 159513 设为 H 组').click();
   await expect(page.getByText('高溢价组 H').locator('..').locator('..')).toContainText('159513');
@@ -120,7 +135,7 @@ test('classified ETF can be selected as a simulated benchmark when no holdings e
   await mockSwitchNetwork(page);
   await page.goto('./index.html?tab=fundSwitch');
 
-  await expect(page.getByText('所有纳指 ETF（未分类）')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText('所有纳指 / 标普 ETF（未分类）')).toBeVisible({ timeout: 20_000 });
   await page.getByLabel('将 159513 设为 H 组').click();
   await expect(page.getByText('高溢价组 H').locator('..').locator('..')).toContainText('159513');
 
@@ -134,7 +149,7 @@ test('classified unheld ETF can be selected as a rule benchmark when holdings ex
   await mockSwitchNetwork(page);
   await page.goto('./index.html?tab=fundSwitch');
 
-  await expect(page.getByText('所有纳指 ETF（未分类）')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText('所有纳指 / 标普 ETF（未分类）')).toBeVisible({ timeout: 20_000 });
   await page.getByLabel('将 159513 设为 H 组').click();
   await expect(page.getByText('高溢价组 H').locator('..').locator('..')).toContainText('159513');
 

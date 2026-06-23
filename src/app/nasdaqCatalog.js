@@ -20,6 +20,18 @@ export const NASDAQ_ETFS = Object.freeze([
   { code: '161128', name: '易方达标普信息科技指数(QDII-LOF)A', index_key: 'nasdaq100' }
 ]);
 
+export const SP500_ETFS = Object.freeze([
+  { code: '513500', name: '博时标普500ETF(QDII)', index_key: 'sp500' },
+  { code: '513650', name: '南方标普500ETF(QDII)', index_key: 'sp500' },
+  { code: '159612', name: '国泰标普500ETF(QDII)', index_key: 'sp500' },
+  { code: '159655', name: '华夏标普500ETF(QDII)', index_key: 'sp500' }
+]);
+
+export const SWITCH_STRATEGY_ETFS = Object.freeze([
+  ...NASDAQ_ETFS,
+  ...SP500_ETFS
+]);
+
 export const NASDAQ_OTC_FUNDS = Object.freeze([
   { code: '000834', name: '大成纳斯达克100ETF联接(QDII)A', index_key: 'nasdaq100', kind: 'etf_link', link_to: '159513', share_class: 'A', currency: 'CNY' },
   { code: '008971', name: '大成纳斯达克100ETF联接(QDII)C', index_key: 'nasdaq100', kind: 'etf_link', link_to: '159513', share_class: 'C', currency: 'CNY' },

@@ -110,7 +110,7 @@ export function SwitchStrategyClassificationPanel({
     <Card>
       <SectionHeading
         eyebrow="规则配置"
-        title="场内 / 场外纳指 100 切换套利"
+        title="场内 / 场外纳指 100 / 标普 500 切换套利"
       />
       <div className="mt-5 space-y-4">
         <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
@@ -168,7 +168,7 @@ export function SwitchStrategyClassificationPanel({
               }}
               className="flex w-full items-center justify-between rounded-lg p-1 text-left transition-colors hover:bg-slate-50"
             >
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">所有纳指 ETF（未分类）</div>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">所有纳指 / 标普 ETF（未分类）</div>
               <div className="flex items-center gap-2">
                 <div className="text-xs text-slate-500">{poolList.length} / 共 {fundsWithPremium.length} 只</div>
                 <ChevronDown className={cx('h-4 w-4 shrink-0 text-slate-400 transition-transform', nasdaqPoolExpanded ? 'rotate-180' : '')} />

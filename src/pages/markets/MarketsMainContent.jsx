@@ -9,15 +9,9 @@ import {
   sliceCandlesForRange,
 } from './marketFundMetrics.js';
 
-const MARKET_TABS = [
-  { key: 'us', label: '美股' },
-  { key: 'cn', label: 'A股' },
-];
-
 export function MarketsMainContent({
   mainRef,
   market,
-  onMarketChange,
   selectedQuote,
   detailHeaderHidden,
   indices,
@@ -100,22 +94,8 @@ export function MarketsMainContent({
         selectedQuote ? 'hidden' : 'flex',
         !selectedQuote && detailHeaderHidden && 'pointer-events-none -translate-y-full opacity-0'
       )}>
-        <div className="flex items-center gap-3">
-          {MARKET_TABS.map((m) => (
-            <button
-              key={m.key}
-              type="button"
-              className={cx(
-                'rounded-full px-3 py-1 text-sm transition',
-                market === m.key
-                  ? 'border border-slate-900 font-medium text-slate-900'
-                  : 'text-slate-600 hover:text-slate-900'
-              )}
-              onClick={() => onMarketChange(m.key)}
-            >
-              {m.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <div className="text-sm font-semibold text-slate-900">A股行情</div>
           {indicesLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
         </div>
         <div className="flex items-center gap-2">

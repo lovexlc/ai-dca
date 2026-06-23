@@ -1,4 +1,4 @@
-import { NASDAQ_ETFS, NASDAQ_OTC_FUNDS } from '../app/nasdaqCatalog.js';
+import { NASDAQ_OTC_FUNDS, SWITCH_STRATEGY_ETFS } from '../app/nasdaqCatalog.js';
 import { normalizeSwitchConfigShape } from '../app/switchStrategySync.js';
 
 const SWITCH_PREFS_KEY = 'aiDcaSwitchStrategyPrefs';
@@ -141,7 +141,7 @@ export function nowIso() {
 
 export async function loadNasdaqList({ inPagesDir = false } = {}) {
   void inPagesDir;
-  return NASDAQ_ETFS.map((item) => ({ ...item }));
+  return SWITCH_STRATEGY_ETFS.map((item) => ({ ...item }));
 }
 
 export async function loadNasdaqOtcList({ inPagesDir = false } = {}) {
