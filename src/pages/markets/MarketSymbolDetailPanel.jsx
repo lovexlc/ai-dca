@@ -359,10 +359,9 @@ export function SymbolDetailPanel({
   const yearHigh = yearExtrema?.count ? yearExtrema.high : null;
   const yearLow = yearExtrema?.count ? yearExtrema.low : null;
   const cnOtcFundExtras = market === 'cn' && isCnOtcFund ? [
-    detailValueRow('近1年收益', Number.isFinite(Number(row.return1y)) ? formatSignedPercent(row.return1y) : '--'),
     detailValueRow('今年以来', Number.isFinite(Number(row.ytdReturn)) ? formatSignedPercent(row.ytdReturn) : '--'),
-    detailValueRow('近3月收益', Number.isFinite(Number(row.return3m)) ? formatSignedPercent(row.return3m) : '--'),
-    detailValueRow('近1月收益', Number.isFinite(Number(row.return1m)) ? formatSignedPercent(row.return1m) : '--'),
+    detailValueRow('最大回撤', Number.isFinite(Number(row.maxDrawdown)) ? formatSignedPercent(row.maxDrawdown) : '--'),
+    detailValueRow('基金规模', formatCnMoney(row.fundSize)),
   ].filter((item) => item.value !== '--' && item.value !== '-') : [];
   const cnOverviewExtras = market === 'cn' && !isCnOtcFund ? [
     detailValueRow('开盘价', formatNumber(row.open ?? xueqiuQuote?.open, 3)),

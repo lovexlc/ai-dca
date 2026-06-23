@@ -934,6 +934,8 @@ export async function fetchDanjuanFundNav(code) {
     return6m: round(Number(d.nav_grl6m), 4),
     return1y: round(Number(d.nav_grl1y), 4),
     returnBase: round(Number(d.nav_grbase), 4),
+    maxDrawdown: round(Number(d.max_retracement ?? d.max_drawdown ?? d.max_dd), 4),
+    fundSize: round(Number(d.asset_scale ?? d.total_asset ?? d.fund_size), 2),
   };
 }
 
