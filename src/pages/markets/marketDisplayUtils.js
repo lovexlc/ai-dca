@@ -201,20 +201,18 @@ export function resolveRedeemFeeTiers(row) {
       if (rule && typeof rule === 'object' && !Array.isArray(rule)) {
         const name = String(rule.name ?? '').trim().replace(/(\d)\.0(?=\D|$)/g, '$1');
         const unit = String(rule.unit ?? '').trim();
-        if (rule.value == null || rule.value === '') return name || null;
+        if (rule.value == null || rule.value === '') return null;
         let valueText;
         if (unit === '1') {
           valueText = `${String(rule.value).trim()}元`;
         } else {
           const rate = unit === '2' ? parsePercentNumber(rule.value) : parseRateValue(rule.value);
-          valueText = isFiniteRate(rate) ? `${formatNumber(rate, 2)}%` : `${String(rule.value).trim()}%`;
+          if (!isFiniteRate(rate)) return null; // 过滤掉非数字的费率
+          valueText = `${formatNumber(rate, 2)}%`;
         }
         return name ? `${name}：${valueText}` : valueText;
       }
-      const cells = (Array.isArray(rule) ? rule : [rule])
-        .map((cell) => String(cell ?? '').trim())
-        .filter(Boolean);
-      return cells.length ? cells.join(' ') : null;
+      return null; // 过滤掉数组类型的规则（通常是文本说明）
     })
     .filter(Boolean);
 }
