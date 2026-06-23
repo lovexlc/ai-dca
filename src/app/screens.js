@@ -32,7 +32,7 @@ export const PRIMARY_TAB_META = {
   markets: { label: '行情中心', hrefKey: 'markets' },
   holdings: { label: '持仓总览', hrefKey: 'holdings' },
   newPlan: { label: '新建计划', hrefKey: 'newPlan' },
-  notify: { label: '通知', hrefKey: 'notify' },
+  notify: { label: '通知管理', hrefKey: 'notify' },
   adminData: { label: '数据', hrefKey: 'adminData', adminOnly: true }
 };
 

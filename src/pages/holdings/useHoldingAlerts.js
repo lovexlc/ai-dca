@@ -20,21 +20,31 @@ export function useHoldingAlerts(onCloseSidePanel) {
     setAlertDialogOpen(true);
   }, [onCloseSidePanel]);
 
-  const handleSaveAlert = useCallback(async (alertConfig) => {
+  const handleSaveAlert = useCallback(async (alertConfig, isFirstAlert) => {
     if (!selectedHolding) return;
 
-    const newAlert = {
-      id: `holding-alert:${selectedHolding.symbol}:${alertConfig.alertType}:${Date.now()}`,
-      type: 'holding-alert',
-      symbol: selectedHolding.symbol,
-      name: selectedHolding.name,
-      holdingCost: selectedHolding.holdingCost,
-      ...alertConfig,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
+    const isEdit = selectedHolding.id;
+    const alert = isEdit
+      ? {
+          ...selectedHolding,
+          ...alertConfig,
+          updatedAt: new Date().toISOString()
+        }
+      : {
+          id: `holding-alert:${selectedHolding.symbol}:${alertConfig.alertType}:${Date.now()}`,
+          type: 'holding-alert',
+          symbol: selectedHolding.symbol,
+          name: selectedHolding.name,
+          holdingCost: selectedHolding.holdingCost,
+          ...alertConfig,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
 
-    const updated = [...holdingAlerts, newAlert];
+    const updated = isEdit
+      ? holdingAlerts.map(a => a.id === alert.id ? alert : a)
+      : [...holdingAlerts, alert];
+
     setHoldingAlerts(updated);
     persistHoldingAlerts(updated);
 
@@ -43,7 +53,14 @@ export function useHoldingAlerts(onCloseSidePanel) {
         ...buildNotifySyncPayload(),
         holdingAlerts: updated
       });
-      showActionToast('预警规则已保存');
+      showActionToast(isEdit ? '预警规则已更新' : '预警规则已保存，可在"通知管理"页面查看和编辑');
+
+      // 首次创建预警时，跳转到通知管理页面
+      if (!isEdit && isFirstAlert && typeof window !== 'undefined') {
+        setTimeout(() => {
+          window.location.hash = '#notify';
+        }, 1500);
+      }
     } catch (error) {
       console.error('Failed to sync holding alert:', error);
       showActionToast('预警规则保存失败');

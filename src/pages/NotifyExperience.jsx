@@ -25,16 +25,32 @@ import { trackActionResult, trackAnalyticsEvent, trackFeatureEvent } from '../ap
 import { NotifyConfigCard } from './NotifyConfigCard.jsx';
 import { NotifyHistoryCard } from './NotifyHistoryCard.jsx';
 import { NotifyStrategyCard } from './NotifyStrategyCard.jsx';
+import { NotifyAlertRulesCard } from './NotifyAlertRulesCard.jsx';
 import { StatCard, cx } from '../components/experience-ui.jsx';
 import { formatEventTimeLabel, resolveEventStatusMeta } from '../app/tradePlansHelpers.js';
 import { parseBarkInput } from '../app/notifyParsers.js';
 import { getVisibleNotifyEvents, humanizeNotifyError } from './notifyHistoryHelpers.js';
 import { assertNotifyTestDelivered, detectNotifySurface, getAvailableNotifyPlatforms } from './notifySurfaceHelpers.js';
-
+import { AlertRuleDialog } from '../components/AlertRuleDialog.jsx';
+import { useNotifyAlertRules } from './notify/useNotifyAlertRules.js';
 export function NotifyExperience({ embedded = false }) {
   const notifySurface = useMemo(() => detectNotifySurface(), []);
   const availablePlatforms = useMemo(() => getAvailableNotifyPlatforms(notifySurface), [notifySurface]);
   const pcFeaturesAvailable = availablePlatforms.some(([key]) => key === 'pc');
+  const {
+    marketAlerts,
+    holdingAlerts,
+    alertDialogOpen,
+    editingAlert,
+    alertDialogMode,
+    handleEditMarketAlert,
+    handleSaveMarketAlert,
+    handleDeleteMarketAlert,
+    handleEditHoldingAlert,
+    handleSaveHoldingAlert,
+    handleDeleteHoldingAlert,
+    handleCloseAlertDialog
+  } = useNotifyAlertRules();
   const [notifyStatus, setNotifyStatus] = useState(null);
   const [notifyError, setNotifyError] = useState('');
   const [notifyMessage, setNotifyMessage] = useState('');
@@ -68,7 +84,7 @@ export function NotifyExperience({ embedded = false }) {
   // 点击卡片头部可手动展开。null 表示尚未从远端收到 status，默认保持展开。
   const [configCollapsed, setConfigCollapsed] = useState(null);
   // 「提醒策略」内的多条策略默认全部收起，点击标题切换展开。
-  // 取值：'rules' | 'holdings' | null。同时只展开一条，避免页面过长。
+  // 取值：'rules' | 'holdings' | 'alerts' | null。同时只展开一条，避免页面过长。
   const [expandedStrategy, setExpandedStrategy] = useState(null);
   // WebSocket 实时通道状态（由 entry-screen.jsx 通过自定义事件更新）
   const [notifyWsStatus, setNotifyWsStatus] = useState(() => {
@@ -82,7 +98,6 @@ export function NotifyExperience({ embedded = false }) {
   const [webNotifySupported, setWebNotifySupported] = useState(() => getWebNotifyState().supported);
   const [webNotifyPermission, setWebNotifyPermission] = useState(() => getWebNotifyState().permission);
   const [webNotifyEnabled, setWebNotifyEnabled] = useState(() => Boolean(readWebNotifyConfig().pcEnabled));
-
   function buildLatestHoldingsDigest() {
     try {
       const ledger = readLedgerState();
@@ -93,7 +108,6 @@ export function NotifyExperience({ embedded = false }) {
       return null;
     }
   }
-
   const notifySetup = notifyStatus?.setup || null;
   const currentClientRegistrations = Array.isArray(notifySetup?.webWsCurrentClientRegistrations)
     ? notifySetup.webWsCurrentClientRegistrations
@@ -116,35 +130,26 @@ export function NotifyExperience({ embedded = false }) {
     wsStatus: notifyWsStatus,
     holdingsRuleEnabled: Boolean(holdingsRule.enabled),
     visibleEventCount: visibleEvents.length,
-    pairedWebWsCount: pairedWebWsDevices.length
+    pairedWebWsCount: pairedWebWsDevices.length,
+    marketAlertCount: marketAlerts.length,
+    holdingAlertCount: holdingAlerts.length
   });
-
   const summary = useMemo(() => {
     const channelLabels = [];
     if (barkConfigured) channelLabels.push('iOS Bark');
     if (serverChan3Configured) channelLabels.push('Server酱³');
-    if (pcConfigured) {
-      channelLabels.push('PC 浏览器');
-    }
+    if (pcConfigured) channelLabels.push('PC 浏览器');
     return {
       channelStatus: channelLabels.length ? '已配置' : '未配置',
-      channelNote: channelLabels.length
-        ? `${channelLabels.join(' / ')} 可发送`
-        : pcFeaturesAvailable
-          ? '请先配置 iOS Bark、Server酱³，或授权 PC 浏览器通知'
-          : notifySurface.isNativeAndroid
-            ? '请先配置 Server酱³'
-            : '请先配置 iOS Bark 或 Server酱³',
+      channelNote: channelLabels.length ? `${channelLabels.join(' / ')} 可发送` : pcFeaturesAvailable ? '请先配置 iOS Bark、Server酱³，或授权 PC 浏览器通知' : notifySurface.isNativeAndroid ? '请先配置 Server酱³' : '请先配置 iOS Bark 或 Server酱³',
       serverChan3Configured
     };
   }, [barkConfigured, pcConfigured, pcFeaturesAvailable, serverChan3Configured, notifySurface.isNativeAndroid]);
-
   useEffect(() => {
     if (!availablePlatforms.some(([key]) => key === notifyPlatform)) {
       setNotifyPlatform(availablePlatforms[0]?.[0] || 'ios');
     }
   }, [availablePlatforms, notifyPlatform]);
-
   async function handleRequestWebNotifyPermission() {
     const startedAt = Date.now();
     trackFeatureEvent('notify', 'pc_permission_request_start', notifyMeta());
@@ -165,7 +170,6 @@ export function NotifyExperience({ embedded = false }) {
       durationMs: Date.now() - startedAt
     });
   }
-
   function handleSendLocalWebNotifyTest() {
     const note = showLocalWebNotification({
       title: 'AI-DCA 测试通知',
@@ -177,7 +181,6 @@ export function NotifyExperience({ embedded = false }) {
     }
     trackActionResult('notify', 'pc_local_test', note ? 'success' : 'error', notifyMeta());
   }
-
   function handleToggleWebNotifyEnabled() {
     const next = !webNotifyEnabled;
     persistWebNotifyConfig({ pcEnabled: next });
@@ -194,12 +197,10 @@ export function NotifyExperience({ embedded = false }) {
       });
     }
   }
-
   useEffect(() => {
     window.addEventListener('notify:test-pc', handleSendLocalWebNotifyTest);
     return () => window.removeEventListener('notify:test-pc', handleSendLocalWebNotifyTest);
   }, [webNotifySupported, webNotifyPermission]);
-
   // 监听 WS 连接状态变化（由 entry-screen.jsx 的 CustomEvent 派发）
   useEffect(() => {
     function handleWsStatusChange(event) {
@@ -215,7 +216,6 @@ export function NotifyExperience({ embedded = false }) {
     }
     return () => window.removeEventListener('ai-dca-notify-ws-status', handleWsStatusChange);
   }, []);
-
   useEffect(() => {
     let cancelled = false;
     async function refreshNotifyPanel() {
@@ -241,7 +241,6 @@ export function NotifyExperience({ embedded = false }) {
       cancelled = true;
     };
   }, [notifyConfig.notifyClientId]);
-
   useEffect(() => {
     let cancelled = false;
     async function loadRule() {
@@ -262,7 +261,6 @@ export function NotifyExperience({ embedded = false }) {
       cancelled = true;
     };
   }, [notifyConfig.notifyClientId]);
-
   // 首次拿到远端 status 后，若已配置任意一个推送通道，默认收起《消息推送配置》。
   // 之后由用户手动切换展开/收起，不再被远端覆盖。
   useEffect(() => {
@@ -282,7 +280,6 @@ export function NotifyExperience({ embedded = false }) {
     : webNotifyPermission !== 'granted'
     ? '需先授权浏览器通知'
     : '';
-
   // 首次进入页面拉取提醒历史。后续手动同步 / 发出测试通知后主动重新拉取。
   useEffect(() => {
     let cancelled = false;
@@ -307,7 +304,6 @@ export function NotifyExperience({ embedded = false }) {
       cancelled = true;
     };
   }, [notifyConfig.notifyClientId]);
-
   // 每 60 秒推进 tick，让超过 30 分钟的测试通知从列表中自动消失。
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -315,11 +311,9 @@ export function NotifyExperience({ embedded = false }) {
     }, 60 * 1000);
     return () => window.clearInterval(timer);
   }, []);
-
   // 按 30 分钟 TTL 过滤测试通知，其他事件原样保留。
   // 依赖 eventsTick 是为了让定时器触发重评估。
   const visibleEvents = useMemo(() => getVisibleNotifyEvents(notifyEvents, eventsTick), [notifyEvents, eventsTick]);
-
   async function refreshNotifyEvents() {
     setEventsLoading(true);
     setEventsError('');
@@ -346,7 +340,6 @@ export function NotifyExperience({ embedded = false }) {
       setEventsLoading(false);
     }
   }
-
   async function refreshNotifyData({ serverChan3Fallback = null } = {}) {
     const statusPayload = await loadNotifyStatus(notifyConfig.notifyClientId);
     const fallbackConfigured = Boolean(serverChan3Fallback?.configured || (serverChan3Fallback?.uid && serverChan3Fallback?.sendKeyMasked));
@@ -377,7 +370,6 @@ export function NotifyExperience({ embedded = false }) {
     }));
     setNotifyError('');
   }
-
   async function handleSaveNotifyConfig() {
     setIsSavingSettings(true);
     setNotifyError('');
@@ -419,7 +411,6 @@ export function NotifyExperience({ embedded = false }) {
       setIsSavingSettings(false);
     }
   }
-
   async function handleSaveServerChan3Config() {
     setIsSavingSettings(true);
     setNotifyError('');
@@ -488,7 +479,6 @@ export function NotifyExperience({ embedded = false }) {
       setIsSavingSettings(false);
     }
   }
-
   async function handleTestBarkNotify() {
     setTestingNotifyChannel('ios');
     setNotifyError('');
@@ -546,7 +536,6 @@ export function NotifyExperience({ embedded = false }) {
       setTestingNotifyChannel('');
     }
   }
-
   async function handleTestServerChan3Notify() {
     setTestingNotifyChannel('serverchan3');
     setNotifyError('');
@@ -618,7 +607,6 @@ export function NotifyExperience({ embedded = false }) {
       setTestingNotifyChannel('');
     }
   }
-
   async function handleToggleHoldingsRule(nextEnabled) {
     setIsSavingHoldingsRule(true);
     setNotifyError('');
@@ -659,7 +647,6 @@ export function NotifyExperience({ embedded = false }) {
       setIsSavingHoldingsRule(false);
     }
   }
-
   async function handleSyncHoldingsDigest() {
     setIsSyncingHoldingsDigest(true);
     setNotifyError('');
@@ -695,7 +682,6 @@ export function NotifyExperience({ embedded = false }) {
       setIsSyncingHoldingsDigest(false);
     }
   }
-
   // 发送一条「持仓总览」样式的测试推送，用于验证推送通道与文案。
   async function handleTestHoldingsNotify() {
     setIsTestingHoldingsNotify(true);
@@ -743,7 +729,6 @@ export function NotifyExperience({ embedded = false }) {
       setIsTestingHoldingsNotify(false);
     }
   }
-
   async function handleSyncRules() {
     setIsSyncingRules(true);
     setNotifyError('');
@@ -774,7 +759,6 @@ export function NotifyExperience({ embedded = false }) {
       setIsSyncingRules(false);
     }
   }
-
   function renderConfigCard() {
     return (
       <NotifyConfigCard
@@ -811,7 +795,6 @@ export function NotifyExperience({ embedded = false }) {
       />
     );
   }
-
   function renderStrategyCard() {
     const rulesLastSyncedLabel = rulesLastSyncedAt
       ? formatEventTimeLabel(rulesLastSyncedAt)
@@ -846,7 +829,6 @@ export function NotifyExperience({ embedded = false }) {
       />
     );
   }
-
   return (
     <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
       <div className={cx('grid gap-4', pcFeaturesAvailable ? 'md:grid-cols-3' : 'sm:grid-cols-2')}>
@@ -858,9 +840,18 @@ export function NotifyExperience({ embedded = false }) {
           <StatCard eyebrow="iOS Bark" value={barkConfigured ? '已配置' : '未配置'} note="在 iOS tab 填入 Bark device key" />
         ) : null}
       </div>
-
       <div className="space-y-6">
         {renderConfigCard()}
+        <NotifyAlertRulesCard
+          marketAlerts={marketAlerts}
+          holdingAlerts={holdingAlerts}
+          onEditMarketAlert={handleEditMarketAlert}
+          onDeleteMarketAlert={handleDeleteMarketAlert}
+          onEditHoldingAlert={handleEditHoldingAlert}
+          onDeleteHoldingAlert={handleDeleteHoldingAlert}
+          expanded={expandedStrategy === 'alerts'}
+          onToggleExpand={() => setExpandedStrategy(expandedStrategy === 'alerts' ? null : 'alerts')}
+        />
         {renderStrategyCard()}
         <NotifyHistoryCard
           visibleEvents={visibleEvents}
@@ -872,6 +863,13 @@ export function NotifyExperience({ embedded = false }) {
           resolveEventStatusMeta={resolveEventStatusMeta}
         />
       </div>
+      <AlertRuleDialog
+        open={alertDialogOpen}
+        onClose={handleCloseAlertDialog}
+        onSave={alertDialogMode === 'market' ? handleSaveMarketAlert : handleSaveHoldingAlert}
+        initialRule={editingAlert}
+        mode={alertDialogMode}
+      />
     </div>
   );
 }

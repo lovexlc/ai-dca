@@ -67,6 +67,8 @@ const MARKETS_PENDING_SYMBOL_KEY = 'markets:pendingSymbol';
 export function MarketsExperience() {
   const { saveSearchHistory } = useMarketsSearchHistory();
   const { marketAlerts, alertDialogOpen, selectedAlertSymbol, handleOpenAlertDialog, handleSaveAlert, handleCloseAlertDialog } = useMarketAlerts();
+  const totalAlertCount = marketAlerts.length;
+  const isFirstAlert = totalAlertCount === 0;
   const [market, setMarket] = useState(A_SHARE_MARKET.key);
   const [indices, setIndices] = useState([]);
   const [indicesLoading, setIndicesLoading] = useState(false);
@@ -1384,7 +1386,8 @@ export function MarketsExperience() {
     <AlertRuleDialog
       open={alertDialogOpen}
       onClose={handleCloseAlertDialog}
-      onSave={handleSaveAlert}
+      onSave={(config) => handleSaveAlert(config, isFirstAlert)}
+      initialRule={selectedAlertSymbol}
       mode="market"
     />
     </>

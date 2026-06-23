@@ -74,6 +74,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const { recordTransaction } = useHoldingsQuickTransaction();
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
   const { holdingAlerts, alertDialogOpen, selectedHolding, handleOpenAlertDialog, handleSaveAlert, handleCloseAlertDialog } = useHoldingAlerts(() => setSidePanelOpen(false));
+  const totalAlertCount = holdingAlerts.length;
+  const isFirstAlert = totalAlertCount === 0;
   const [ledger, setLedger] = useState(() => readLedgerState());
   // v7.6: 移除交易日自动过滤场内数据的逻辑，避免出现不必要的"重置过滤"按钮
   const [columnFilters, setColumnFilters] = useState([]);
@@ -1258,7 +1260,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     <AlertRuleDialog
       open={alertDialogOpen}
       onClose={handleCloseAlertDialog}
-      onSave={handleSaveAlert}
+      onSave={(config) => handleSaveAlert(config, isFirstAlert)}
+      initialRule={selectedHolding}
       mode="holding"
     />
     </>
