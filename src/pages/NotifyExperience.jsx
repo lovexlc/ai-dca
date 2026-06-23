@@ -90,8 +90,10 @@ export function NotifyExperience({ embedded = false }) {
   // 「消息推送配置」默认在检测到已配置（Bark / Server酱³ / PC 任意一项）后自动收起，
   // 点击卡片头部可手动展开。null 表示尚未从远端收到 status，默认保持展开。
   const [configCollapsed, setConfigCollapsed] = useState(null);
-  // 「通知规则」默认展开，点击标题切换。
-  const [rulesExpanded, setRulesExpanded] = useState(true);
+  // 「通知规则」「规则同步与测试」「最近推送记录」默认收起，点击标题切换。
+  const [rulesExpanded, setRulesExpanded] = useState(false);
+  const [syncTestExpanded, setSyncTestExpanded] = useState(false);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
   // WebSocket 实时通道状态（由 entry-screen.jsx 通过自定义事件更新）
   const [notifyWsStatus, setNotifyWsStatus] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -838,6 +840,8 @@ export function NotifyExperience({ embedded = false }) {
           isSyncingRules={isSyncingRules}
           onSyncRules={handleSyncRules}
           onOpenTestDialog={() => setTestDialogOpen(true)}
+          expanded={syncTestExpanded}
+          onToggleExpand={() => setSyncTestExpanded(!syncTestExpanded)}
         />
         <NotifyHistoryCard
           visibleEvents={visibleEvents}
@@ -847,6 +851,8 @@ export function NotifyExperience({ embedded = false }) {
           refreshNotifyEvents={refreshNotifyEvents}
           formatEventTimeLabel={formatEventTimeLabel}
           resolveEventStatusMeta={resolveEventStatusMeta}
+          expanded={historyExpanded}
+          onToggleExpand={() => setHistoryExpanded(!historyExpanded)}
         />
       </div>
       <AlertRuleDialog

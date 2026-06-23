@@ -1,4 +1,4 @@
-import { History, RefreshCw } from 'lucide-react';
+import { History, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { Card, Pill, cx, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 export function NotifyHistoryCard({
@@ -8,7 +8,9 @@ export function NotifyHistoryCard({
   eventsLastSyncedAt,
   refreshNotifyEvents,
   formatEventTimeLabel,
-  resolveEventStatusMeta
+  resolveEventStatusMeta,
+  expanded,
+  onToggleExpand
 }) {
   const eventsLastSyncedLabel = eventsLastSyncedAt
     ? formatEventTimeLabel(eventsLastSyncedAt)
@@ -17,8 +19,11 @@ export function NotifyHistoryCard({
 
   return (
     <Card>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
+      <button
+        onClick={onToggleExpand}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
             <History className="h-3.5 w-3.5 text-slate-400" />
             提醒历史
@@ -27,18 +32,27 @@ export function NotifyHistoryCard({
           <p className="mt-1 text-xs leading-5 text-slate-500">
             集中展示交易计划与定投提醒的推送记录。测试通知仅保留 30 分钟，超过后从列表中自动移除。
           </p>
-          <p className="mt-1 text-xs text-slate-400">上次拉取：{eventsLastSyncedLabel}</p>
         </div>
-        <button
-          type="button"
-          className={cx(secondaryButtonClass, eventsLoading && 'cursor-not-allowed opacity-60')}
-          onClick={refreshNotifyEvents}
-          disabled={eventsLoading}
-        >
-          <RefreshCw className="h-4 w-4" />
-          {eventsLoading ? '正在加载' : '刷新历史'}
-        </button>
-      </div>
+        {expanded ? <ChevronUp size={20} className="text-slate-400" /> : <ChevronDown size={20} className="text-slate-400" />}
+      </button>
+
+      {expanded && (
+        <>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-slate-400">上次拉取：{eventsLastSyncedLabel}</p>
+            <button
+              type="button"
+              className={cx(secondaryButtonClass, eventsLoading && 'cursor-not-allowed opacity-60')}
+              onClick={(e) => {
+                e.stopPropagation();
+                refreshNotifyEvents();
+              }}
+              disabled={eventsLoading}
+            >
+              <RefreshCw className="h-4 w-4" />
+              {eventsLoading ? '正在加载' : '刷新历史'}
+            </button>
+          </div>
       {eventsError ? (
         <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
           {eventsError}
@@ -98,6 +112,8 @@ export function NotifyHistoryCard({
           })}
         </ul>
       ) : null}
+        </>
+      )}
     </Card>
   );
 }
