@@ -412,13 +412,15 @@ export function MarketListTable({
           || String(row.original.exchange || '').toLowerCase().includes('场外');
         if (!isOtc) return <span className="font-semibold tabular-nums text-slate-400">—</span>;
         const redeemTiers = formatRedeemFeeTiers(row.original);
+        if (!redeemTiers || redeemTiers === '—') {
+          return <span className="font-semibold tabular-nums text-[#5f6368]">{formatRedeemFeeRate(row.original)}</span>;
+        }
         return (
-          <span
-            className={cx('font-semibold tabular-nums text-[#5f6368]', redeemTiers.includes('\n') && 'cursor-help underline decoration dotted underline-offset-2')}
-            title={redeemTiers || undefined}
-          >
-            {formatRedeemFeeRate(row.original)}
-          </span>
+          <div className="space-y-0.5 text-[10px] leading-tight text-[#5f6368]">
+            {redeemTiers.split('\n').map((tier, idx) => (
+              <div key={idx} className="whitespace-nowrap">{tier}</div>
+            ))}
+          </div>
         );
       },
       sortingFn: numericSortFn,
@@ -698,7 +700,19 @@ export function MarketListTable({
                 })}
                 <td className={cx(cellPad, 'whitespace-nowrap text-right tabular-nums text-[#1f1f1f]')}>{formatTotalShares(row.totalShares)}</td>
                 <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums', feeRateToneClass(row))}>{formatFeeRate(row)}</td>
-                <td className={cx(cellPad, 'whitespace-nowrap text-right font-semibold tabular-nums text-[#5f6368]', formatRedeemFeeTiers(row).includes('\n') && 'cursor-help underline decoration-dotted underline-offset-2')} title={formatRedeemFeeTiers(row) || undefined}>{formatRedeemFeeRate(row)}</td>
+                <td className={cx(cellPad, 'text-right text-[#5f6368]')}>
+                  {(() => {
+                    const tiers = formatRedeemFeeTiers(row);
+                    if (!tiers || tiers === '—') return <span className="font-semibold tabular-nums">{formatRedeemFeeRate(row)}</span>;
+                    return (
+                      <div className="space-y-0.5 text-[10px] leading-tight">
+                        {tiers.split('\n').map((tier, idx) => (
+                          <div key={idx} className="whitespace-nowrap">{tier}</div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </td>
                 {!hideTrendColumn ? (
                   <td className={cx(cellPad, 'text-right')}>
                     <div className="inline-flex justify-end">
