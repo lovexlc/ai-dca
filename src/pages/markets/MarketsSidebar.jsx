@@ -154,6 +154,7 @@ export function MarketsSidebar({
   onCreateWatchlist,
   onRenameWatchlist,
   onDeleteWatchlist,
+  onAddPopular,
   onToggleWatchListExpanded,
   onToggleWatchOpen,
   onToggleSectorsOpen,
@@ -182,6 +183,7 @@ export function MarketsSidebar({
               onCreate={onCreateWatchlist}
               onRename={onRenameWatchlist}
               onDelete={onDeleteWatchlist}
+              onAddPopular={onAddPopular}
             />
             <div className="flex items-center gap-1">
               <button
@@ -319,6 +321,7 @@ export function MarketsSidebar({
               onCreate={onCreateWatchlist}
               onRename={onRenameWatchlist}
               onDelete={onDeleteWatchlist}
+              onAddPopular={onAddPopular}
             />
             <div className="flex items-center gap-1">
               <button

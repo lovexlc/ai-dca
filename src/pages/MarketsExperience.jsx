@@ -57,6 +57,7 @@ import {
 } from './markets/marketsCatalog.js';
 import { updateSymbolInUrl, clearSymbolFromUrl } from './markets/marketsUrlSync.js';
 import { useMarketsSearchHistory } from './markets/useMarketsSearchHistory.js';
+import { batchAddToWatchlist } from './markets/marketsWatchlistUtils.js';
 const A_SHARE_MARKET = { key: 'cn', label: 'A股' };
 function normalizeMarketKey(value) {
   return value === A_SHARE_MARKET.key ? value : A_SHARE_MARKET.key;
@@ -175,7 +176,6 @@ export function MarketsExperience() {
     researchMode,
     isMobile
   });
-
   const ensureKlines = useCallback(async (symbols) => {
     const pending = uniq.filter((s) => !klineInflightRef.current.has(s));
     pending.forEach((s) => klineInflightRef.current.add(s));
@@ -195,7 +195,6 @@ export function MarketsExperience() {
       })
     );
   }, []);
-
   const watchLists = Array.isArray(watch.lists) ? watch.lists : [];
   const isActiveOtcList = activeWatchList.type === 'cn_otc' || activeWatchList.id === 'default-otc';
   const watchSymbols = useMemo(() => activeWatchList[market] || [], [activeWatchList, market]);
@@ -225,7 +224,6 @@ export function MarketsExperience() {
   useEffect(() => {
     selectedSymbolRef.current = selectedSymbol;
   }, [selectedSymbol]);
-
   useEffect(() => {
     setResearchMode('peek');
     setDetailHeaderHidden(false);
@@ -234,7 +232,6 @@ export function MarketsExperience() {
       window.scrollTo({ top: 0, behavior: 'auto' });
     });
   }, [selectedSymbol, isMobile]);
-
   useEffect(() => {
     setDetailHeaderHidden(false);
     detailScrollRef.current = { y: 0 };
@@ -252,7 +249,6 @@ export function MarketsExperience() {
     scrollTarget.addEventListener('scroll', handleDetailScroll, { passive: true });
     return () => scrollTarget.removeEventListener('scroll', handleDetailScroll);
   }, [selectedSymbol, isMobile]);
-
   const refreshIndices = useCallback(async (forceRefresh = false) => {
     setIndicesLoading(true);
     const reqId = ++reqIdRef.current;
@@ -284,7 +280,6 @@ export function MarketsExperience() {
       if (reqId === reqIdRef.current) setIndicesLoading(false);
     }
   }, [market, ensureKlines]);
-
   const refreshMovers = useCallback(async (forceRefresh = false) => {
     setMoversLoading(true);
     const startedAt = Date.now();
@@ -311,7 +306,6 @@ export function MarketsExperience() {
       setMoversLoading(false);
     }
   }, [market, ensureKlines]);
-
   const refreshNews = useCallback(async () => {
     setNewsLoading(true);
     try {
@@ -323,7 +317,6 @@ export function MarketsExperience() {
       setNewsLoading(false);
     }
   }, [market]);
-
   // 即将发布的财报日历（仅美股）。失败不弹 toast。
   const refreshEarnings = useCallback(async (forceRefresh = false) => {
     if (market !== 'us') {
@@ -340,7 +333,6 @@ export function MarketsExperience() {
       setEarningsLoading(false);
     }
   }, [market]);
-
   // 今日主题摘要（仅美股）。多数时候读 30 分钟 cron 写的缓存；force 时会调 AI 重生成。
   const refreshSummary = useCallback(async (forceRefresh = false) => {
     if (market !== 'us') {
@@ -361,7 +353,6 @@ export function MarketsExperience() {
       setSummaryLoading(false);
     }
   }, [market]);
-
   const refreshWatch = useCallback(async () => {
     const list = trackedWatchSymbols || [];
     if (!list.length) {
@@ -409,7 +400,6 @@ export function MarketsExperience() {
       setWatchLoading(false);
     }
   }, [trackedWatchSymbols, market]);
-
   // 场外基金申购限额：批量拉取，仅限当前活跃列表含 6 位数代码时触发。
   useEffect(() => {
     if (market !== 'cn') { setFundLimitsByCode({}); return undefined; }
@@ -471,7 +461,6 @@ export function MarketsExperience() {
     })();
     return () => { cancelled = true; ctrl.abort(); };
   }, [trackedWatchSymbols, market]);
-
   // 美股 11 大行业指数（Google Finance 同款）。A 股暂未接入。
   const refreshSectors = useCallback(async (forceRefresh = false) => {
     if (market !== 'us') {
@@ -491,7 +480,6 @@ export function MarketsExperience() {
       setSectorsLoading(false);
     }
   }, [market, ensureKlines]);
-
   // 当 selectedSymbol / chartRange 变化时拉取对应 tf 的 candles。
   useEffect(() => {
     if (!selectedSymbol) return;
@@ -517,7 +505,6 @@ export function MarketsExperience() {
     })();
     return () => { cancelled = true; };
   }, [selectedSymbol, chartRange, chartCandlesMap]);
-
   useCnFundDailyCandles({ market, selectedSymbol, chartCandlesMap, chartInflightRef, fetchKline, hasNasdaqOtcFund, setChartCandlesMap });
 
   // 当前标的切到财务 tab 时按需拉 Yahoo quoteSummary 三大表。
@@ -533,7 +520,6 @@ export function MarketsExperience() {
         const r = await fetchFinancials(selectedSymbol);
         if (!cancelled) setFinancialsMap((prev) => ({ ...prev, [selectedSymbol]: r }));
       } catch (_) {
-        if (!cancelled) setFinancialsMap((prev) => ({ ...prev, [selectedSymbol]: { statements: { income: { annual: [], quarterly: [] }, balance: { annual: [], quarterly: [] }, cashflow: { annual: [], quarterly: [] } } } }));
       } finally {
         financialsInflightRef.current.delete(selectedSymbol);
         if (!cancelled) setFinancialsLoading(false);
@@ -908,6 +894,19 @@ export function MarketsExperience() {
     if (!list || list.id === 'default') return;
     setWatchlistDialog({ type: 'delete', list, name: list.name || '' });
     trackFeatureEvent('markets', 'watchlist_dialog_open', { type: 'delete', listIdLength: String(list.id || '').length });
+  }
+
+  function handleAddPopular(symbols) {
+    const next = batchAddToWatchlist(symbols, watch, watch.activeListId);
+    if (next === watch) return;
+    setWatch(next);
+    showActionToast('已添加热门基金到自选', 'success', {
+      description: `已添加 ${symbols.length} 个基金到当前列表`
+    });
+    trackActionResult('markets', 'popular_batch_add', 'success', {
+      count: symbols.length,
+      listId: next.activeListId
+    });
   }
 
   function handleWatchlistDialogSubmit() {
@@ -1399,6 +1398,7 @@ export function MarketsExperience() {
         onCreateWatchlist={handleCreateWatchlist}
         onRenameWatchlist={handleRenameWatchlist}
         onDeleteWatchlist={handleDeleteWatchlist}
+        onAddPopular={handleAddPopular}
         onToggleWatchListExpanded={() => setWatchListExpanded((v) => !v)}
         onToggleWatchOpen={() => setWatchOpen((v) => !v)}
         onToggleSectorsOpen={() => setSectorsOpen((v) => !v)}

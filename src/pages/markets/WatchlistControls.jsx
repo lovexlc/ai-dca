@@ -1,11 +1,14 @@
 import { useState } from 'react';
-import { ChevronDown, Edit3, ListPlus, Trash2 } from 'lucide-react';
+import { ChevronDown, Edit3, ListPlus, Trash2, TrendingUp } from 'lucide-react';
 import { cx } from '../../components/experience-ui.jsx';
+import { getPopularSymbols } from './marketsSearchHistory.js';
 
-export function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate, onRename, onDelete }) {
+export function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate, onRename, onDelete, onAddPopular }) {
   const [open, setOpen] = useState(false);
   const active = (lists || []).find((item) => item.id === activeListId) || lists[0];
   const canDelete = (item) => item?.id !== 'default' && (lists || []).length > 1;
+  const popularSymbols = getPopularSymbols('cn');
+
   return (
     <div className="relative">
       <button
@@ -48,7 +51,16 @@ export function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate
               ) : null}
             </div>
           ))}
-          <button type="button" onClick={() => { onCreate?.(); setOpen(false); }} className="flex w-full items-center gap-2 border-t border-[#e8eaed] px-3 py-2 text-left text-sm font-medium text-[#1a73e8] hover:bg-[#f8fafd]"><ListPlus size={14} /> 新建列表</button>
+          <div className="border-t border-[#e8eaed]">
+            <button type="button" onClick={() => { onCreate?.(); setOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-[#1a73e8] hover:bg-[#f8fafd]">
+              <ListPlus size={14} /> 新建列表
+            </button>
+            {popularSymbols.length > 0 && onAddPopular && (
+              <button type="button" onClick={() => { onAddPopular?.(popularSymbols); setOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-[#1a73e8] hover:bg-[#f8fafd]">
+                <TrendingUp size={14} /> 添加热门基金
+              </button>
+            )}
+          </div>
         </div>
       ) : null}
     </div>
