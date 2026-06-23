@@ -224,6 +224,59 @@ ai-dca/
 - 超过限制需要拆分功能到独立文件
 - 优先使用 URL 参数，避免 sessionStorage
 
+### 弹窗/下拉菜单开发规范
+
+**强制要求**：所有自定义弹窗、下拉菜单、浮层必须使用 `useClickOutside` Hook
+
+**位置**：`src/hooks/useClickOutside.js`
+
+**使用方法**：
+
+```javascript
+import { useClickOutside } from '../../hooks/useClickOutside.js';
+
+function MyDropdown() {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+  
+  // 添加点击外部关闭逻辑
+  useClickOutside(containerRef, () => setOpen(false), open);
+  
+  return (
+    <div ref={containerRef}>
+      <button onClick={() => setOpen(!open)}>打开菜单</button>
+      {open && (
+        <div className="absolute ...">
+          {/* 菜单内容 */}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+**参数说明**：
+- `ref`：容器的 ref 对象
+- `handler`：点击外部时的回调函数
+- `enabled`：是否启用（通常传 `open` 状态）
+
+**为什么必须使用**：
+- 防止点击穿透到下层元素
+- 使用 capture 阶段拦截事件
+- 统一的关闭行为
+- 高内聚低耦合，修改一处全局生效
+
+**已应用的组件**：
+- WatchlistSelector（自选列表下拉）
+- ChartToolbarPopover（图表工具栏）
+- TradePlansExperience（交易计划菜单）
+- Radix Popover 组件（自动应用 `modal=true`）
+
+**不要**：
+- ❌ 不要手动监听 `mousedown` 或 `click` 事件
+- ❌ 不要重复实现点击外部逻辑
+- ❌ 不要忘记阻止事件传播
+
 ---
 
 ## 📚 相关文档
