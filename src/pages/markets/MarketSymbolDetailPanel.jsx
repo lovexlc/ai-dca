@@ -358,6 +358,12 @@ export function SymbolDetailPanel({
     : null;
   const yearHigh = yearExtrema?.count ? yearExtrema.high : null;
   const yearLow = yearExtrema?.count ? yearExtrema.low : null;
+  const cnOtcFundExtras = market === 'cn' && isCnOtcFund ? [
+    detailValueRow('近1年收益', Number.isFinite(Number(row.return1y)) ? formatSignedPercent(row.return1y) : '--'),
+    detailValueRow('今年以来', Number.isFinite(Number(row.ytdReturn)) ? formatSignedPercent(row.ytdReturn) : '--'),
+    detailValueRow('近3月收益', Number.isFinite(Number(row.return3m)) ? formatSignedPercent(row.return3m) : '--'),
+    detailValueRow('近1月收益', Number.isFinite(Number(row.return1m)) ? formatSignedPercent(row.return1m) : '--'),
+  ].filter((item) => item.value !== '--' && item.value !== '-') : [];
   const cnOverviewExtras = market === 'cn' && !isCnOtcFund ? [
     detailValueRow('开盘价', formatNumber(row.open ?? xueqiuQuote?.open, 3)),
     detailValueRow('市值', formatCnMoney(row.marketCapital ?? row.marketCap ?? xueqiuQuote?.market_capital)),
@@ -384,7 +390,8 @@ export function SymbolDetailPanel({
     detailValueRow('涨跌额', Number.isFinite(change) ? `${change > 0 ? '+' : ''}${isCnOtcFund ? formatNumber(change) : formatMarketPrice(change, row)}` : '--'),
     detailValueRow('昨收', isCnOtcFund ? formatNumber(row.previousClose) : formatMarketPrice(row.previousClose, row)),
     detailValueRow('市场', market === 'us' ? '美股' : 'A 股'),
-    detailValueRow('交易状态', stateLabel),
+    ...(isCnOtcFund ? [] : [detailValueRow('交易状态', stateLabel)]),
+    ...cnOtcFundExtras,
     ...cnOverviewExtras,
   ];
   const toggleIndicator = (k) => setIndicators((prev) => {
@@ -635,6 +642,11 @@ export function SymbolDetailPanel({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-[15px] font-medium leading-tight text-[#1f1f1f] sm:text-[17px]">{row.name || displaySymbol}</h2>
+            {isCnOtcFund && row.lastUpdated ? (
+              <div className="mt-0.5 text-[11px] text-[#5f6368] sm:text-[12px]">
+                {new Date(row.lastUpdated).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', timeZone: 'Asia/Shanghai' })}
+              </div>
+            ) : null}
             <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 sm:gap-x-2">
               <span className="text-[28px] font-medium leading-none tabular-nums text-[#1f1f1f] sm:text-[32px]">{isCnOtcFund ? formatNumber(row.price) : formatMarketPrice(row.price, row)}</span>
               <span className={cx('text-[12px] font-medium tabular-nums sm:text-[13px]', positive ? 'text-[#a50e0e]' : negative ? 'text-[#137333]' : 'text-[#5f6368]')}>
@@ -644,11 +656,13 @@ export function SymbolDetailPanel({
               </span>
               <span className="text-[11px] text-[#5f6368]">{isCnOtcFund ? '净值' : '今日'}</span>
             </div>
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-[#5f6368] sm:text-[11px]">
-              <span>{stateLabel}</span>
-              {row.lastUpdated ? <><span>·</span><span>更新于 {formatClock(row.lastUpdated)}</span></> : null}
-              {Number.isFinite(Number(row.previousClose)) ? <><span>·</span><span>{isCnOtcFund ? '前一净值' : '昨收'} <span className="tabular-nums">{isCnOtcFund ? formatNumber(row.previousClose) : formatMarketPrice(row.previousClose, row)}</span></span></> : null}
-            </div>
+            {!isCnOtcFund ? (
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-[#5f6368] sm:text-[11px]">
+                <span>{stateLabel}</span>
+                {row.lastUpdated ? <><span>·</span><span>更新于 {formatClock(row.lastUpdated)}</span></> : null}
+                {Number.isFinite(Number(row.previousClose)) ? <><span>·</span><span>昨收 <span className="tabular-nums">{formatMarketPrice(row.previousClose, row)}</span></span></> : null}
+              </div>
+            ) : null}
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center">
             <button
