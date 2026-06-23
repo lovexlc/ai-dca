@@ -123,6 +123,26 @@ export async function loadWatchQuotesWithEnhancements({
     return { quotes, navSnapshots, fundFees };
   }
 
+  // 获取场外基金的净值快照并构建 quote 对象
+  if (otcCodes.length) {
+    try {
+      const snapshotsPayload = await getNavSnapshots(otcCodes);
+      (snapshotsPayload.items || []).forEach((item) => {
+        const code = normalizeCnFundCode(item?.code);
+        if (code) {
+          navSnapshots[code] = item;
+        }
+      });
+      otcCodes.forEach((code) => {
+        const existing = quotes[code] || quotes[`SZ${code}`] || quotes[`SH${code}`] || {};
+        const quote = buildOtcFundQuoteFromSnapshot(code, navSnapshots[code], existing);
+        if (quote) quotes[code] = quote;
+      });
+    } catch {
+      // 场外基金净值是增强信息，失败时仍展示行情源返回的结果。
+    }
+  }
+
   const feeCodes = uniqueCodes(list.map((sym) => normalizeCnFundCode(sym)).filter((code) => /^\d{6}$/.test(code)));
   if (feeCodes.length) {
     const cached = readCachedItems('fundFee', feeCodes);
