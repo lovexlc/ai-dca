@@ -311,11 +311,18 @@ export async function fetchFundFee({ code, force, env, ctx }) {
     tried.push({ source: 'danjuan', ok: false, error: err instanceof Error ? err.message : String(err) });
   }
 
-  if (!chosen || chosen.annualFeeRate == null || EXCHANGE_FUND_PREFIX.test(code)) {
+  // 检查蛋卷是否有有效的赎回费率数据（对象格式的 redeemRules）
+  const danjuanHasValidRedeemRules = chosen && Array.isArray(chosen.redeemRules) &&
+    chosen.redeemRules.some(rule => rule && typeof rule === 'object' && !Array.isArray(rule) && rule.name && rule.value);
+
+  if (!chosen || chosen.annualFeeRate == null || (EXCHANGE_FUND_PREFIX.test(code) && !danjuanHasValidRedeemRules)) {
     try {
       const f10 = await tryEastmoneyF10Fee(code, danjuanUnavailableMessage);
       tried.push({ source: 'eastmoney_f10', ok: !!f10, useful: !!f10 && f10.annualFeeRate != null });
-      if (f10 && (EXCHANGE_FUND_PREFIX.test(code) || !chosen || chosen.annualFeeRate == null)) chosen = f10;
+      // 对于场内基金，如果蛋卷有有效的赎回费率数据，保留蛋卷数据；否则使用 f10
+      if (f10 && (!chosen || chosen.annualFeeRate == null || (EXCHANGE_FUND_PREFIX.test(code) && !danjuanHasValidRedeemRules))) {
+        chosen = f10;
+      }
     } catch (err) {
       tried.push({ source: 'eastmoney_f10', ok: false, error: err instanceof Error ? err.message : String(err) });
     }
