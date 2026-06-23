@@ -12,7 +12,6 @@ import { cx, inputClass, primaryButtonClass, secondaryButtonClass, SelectField, 
 import { PrivacyNotice } from './PrivacyNotice.jsx';
 
 const HOME_OPTIONS = [
-  { value: 'strategy', label: '策略指南' },
   { value: 'holdings', label: '持仓总览' },
   { value: 'tradePlans', label: '交易计划' },
   { value: 'quant', label: '量化研究', adminOnly: true },
@@ -427,10 +426,10 @@ export function AccountMenu() {
   }
 
   function handleSaveHomePref() {
-    const next = persistWorkspacePrefs({ homepageTab: homeOptions.some((option) => option.value === homePref) ? homePref : 'strategy' });
+    const next = persistWorkspacePrefs({ homepageTab: homeOptions.some((option) => option.value === homePref) ? homePref : 'holdings' });
     setHomePref(next.homepageTab);
     setHomeSaved(true);
-    const label = HOME_OPTIONS.find((item) => item.value === next.homepageTab)?.label || '策略指南';
+    const label = HOME_OPTIONS.find((item) => item.value === next.homepageTab)?.label || '持仓总览';
     showToast({ title: '默认首页已保存', description: `下次打开会默认跳到「${label}」。`, tone: 'emerald' });
     window.setTimeout(() => setHomeSaved(false), 1800);
   }
@@ -645,7 +644,7 @@ export function AccountMenu() {
                     <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
                       <Home className="h-3.5 w-3.5 text-indigo-500" aria-hidden="true" />默认首页
                     </div>
-                    <SelectField options={homeOptions} value={homeOptions.some((option) => option.value === homePref) ? homePref : 'strategy'} onChange={(event) => { setHomePref(event.target.value); setHomeSaved(false); }} />
+                    <SelectField options={homeOptions} value={homeOptions.some((option) => option.value === homePref) ? homePref : 'holdings'} onChange={(event) => { setHomePref(event.target.value); setHomeSaved(false); }} />
                     <button type="button" className={cx(secondaryButtonClass, "w-full justify-center text-xs")} onClick={handleSaveHomePref}>{homeSaved ? '已保存' : '保存默认首页'}</button>
                   </div>
                   <button

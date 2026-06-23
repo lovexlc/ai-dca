@@ -23,7 +23,6 @@ const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) =>
 const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').then((m) => ({ default: m.TradePlansExperience })));
 const MarketsExperience = lazy(() => import('./MarketsExperience.jsx').then((m) => ({ default: m.MarketsExperience })));
 const QuantStudioPage = lazy(() => import('./QuantStudioPage.jsx').then((m) => ({ default: m.QuantStudioPage })));
-const StrategyGuideExperience = lazy(() => import('./StrategyGuideExperience.jsx').then((m) => ({ default: m.StrategyGuideExperience })));
 const AdminAnalyticsExperience = lazy(() => import('./AdminAnalyticsExperience.jsx').then((m) => ({ default: m.AdminAnalyticsExperience })));
 const PremiumExperience = lazy(() => import('./PremiumExperience.jsx').then((m) => ({ default: m.PremiumExperience })));
 
@@ -33,7 +32,6 @@ function readPreferredWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
 }
 
 const WORKSPACE_TITLES = {
-  strategy: '美股策略助手',
   tradePlans: '交易计划中心',
   quant: '量化研究',
   'quant:strategy': '量化研究 · 策略',
@@ -503,8 +501,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       );
     }
     switch (activeTab) {
-      case 'strategy':
-        return <StrategyGuideExperience {...sharedProps} onNavigate={handleSelectTab} onDemoDataChange={setDemoMeta} />;
       case 'tradePlans':
         return <TradePlansExperience {...sharedProps} />;
       case 'quant':
@@ -523,11 +519,11 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       case 'notify':
         return <NotifyExperience {...sharedProps} />;
       case 'adminData':
-        return isAdminUser ? <AdminAnalyticsExperience {...sharedProps} /> : <StrategyGuideExperience {...sharedProps} onNavigate={handleSelectTab} onDemoDataChange={setDemoMeta} />;
+        return isAdminUser ? <AdminAnalyticsExperience {...sharedProps} /> : <HoldingsExperience {...sharedProps} />;
       case 'holdings':
         return <HoldingsExperience {...sharedProps} />;
       default:
-        return <StrategyGuideExperience {...sharedProps} onNavigate={handleSelectTab} onDemoDataChange={setDemoMeta} />;
+        return <HoldingsExperience {...sharedProps} />;
     }
   }
 
