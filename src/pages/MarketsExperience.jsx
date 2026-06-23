@@ -55,6 +55,7 @@ import {
   normalizeSearchResults,
   resolveCnFundName,
 } from './markets/marketsCatalog.js';
+import { updateSymbolInUrl, clearSymbolFromUrl } from './markets/marketsUrlSync.js';
 
 const MARKETS = [
   { key: 'us', label: '美股' },
@@ -880,7 +881,7 @@ export function MarketsExperience() {
     setWatchListExpanded(false);
     const next = setActiveWatchlist(listId);
     setWatch(next);
-    setSelectedSymbol('');
+    clearSelectedSymbol();
     setFullTableMode(true);
     setSymbolDetailTab('overview');
     trackFeatureEvent('markets', 'watchlist_select', {
@@ -912,7 +913,7 @@ export function MarketsExperience() {
     if (watchlistDialog.type === 'delete') {
       const next = deleteWatchlist(watchlistDialog.list?.id);
       setWatch(next);
-      setSelectedSymbol('');
+      clearSelectedSymbol();
       setSymbolDetailTab('overview');
       setWatchlistDialog(null);
       setWatchListExpanded(false);
@@ -938,7 +939,7 @@ export function MarketsExperience() {
     }
     const next = createWatchlist(trimmed);
     setWatch(next);
-    setSelectedSymbol('');
+    clearSelectedSymbol();
     setSymbolDetailTab('overview');
     setWatchlistDialog(null);
     setWatchListExpanded(false);
@@ -948,6 +949,8 @@ export function MarketsExperience() {
       listCount: (next?.lists || []).length
     });
   }
+
+  const clearSelectedSymbol = () => { setSelectedSymbol(''); clearSymbolFromUrl(); };
 
   function handleSelectSymbol(row, options = {}) {
     if (!row || !row.symbol) return;
@@ -959,6 +962,7 @@ export function MarketsExperience() {
     setFullTableMode(false);
     setSymbolDetailTab('overview');
     setResearchMode(options.openResearch ? 'conversation' : 'peek');
+    updateSymbolInUrl(symbol);
     trackFeatureEvent('markets', 'symbol_select', {
       source: options.source || 'watchlist',
       market: targetMarket,
@@ -1473,7 +1477,7 @@ export function MarketsExperience() {
             setPendingAnalysis({ symbol: selectedQuote.symbol, name: selectedQuote.name });
           },
           onBack: () => {
-            setSelectedSymbol('');
+            clearSelectedSymbol();
             setFullTableMode(true);
             setSymbolDetailTab('overview');
           },
