@@ -360,7 +360,6 @@ export function SymbolDetailPanel({
   const yearLow = yearExtrema?.count ? yearExtrema.low : null;
   const cnOtcFundExtras = market === 'cn' && isCnOtcFund ? [
     detailValueRow('今年以来', Number.isFinite(Number(row.ytdReturn)) ? formatSignedPercent(row.ytdReturn) : '--'),
-    detailValueRow('最大回撤', Number.isFinite(Number(row.maxDrawdown)) ? formatSignedPercent(row.maxDrawdown) : '--'),
     detailValueRow('基金规模', formatCnMoney(row.fundSize)),
   ].filter((item) => item.value !== '--' && item.value !== '-') : [];
   const cnOverviewExtras = market === 'cn' && !isCnOtcFund ? [

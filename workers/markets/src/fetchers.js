@@ -877,9 +877,40 @@ export async function fetchDanjuanFundMeta(code) {
     fullName: String(d.fd_full_name || '').trim(),
     fundType: String(d.type_desc || '').trim(),
     fundTypeCode: d.fd_type ?? d.type ?? null,
+    totalShare: String(d.totshare || '').trim(),
     source: 'danjuan'
   };
 }
+
+export async function fetchDanjuanFundDetail(code) {
+  const fundCode = String(code || '').replace(/^(sh|sz|bj)/i, '');
+  if (!/^\d{6}$/.test(fundCode)) throw new Error('danjuan invalid fund code: ' + code);
+  const url = DANJUAN_FUNDS_HOST + '/djapi/fund/detail/' + fundCode;
+  const res = await fetch(url, {
+    headers: {
+      ...COMMON_HEADERS,
+      referer: 'https://danjuanfunds.com/',
+      'accept-language': 'zh-CN,zh;q=0.9'
+    },
+    cf: { cacheTtl: 86400 }
+  });
+  if (!res.ok) throw new Error('danjuan fund detail HTTP ' + res.status);
+  const body = await res.json().catch(() => ({}));
+  if (body?.result_code !== 0 && body?.result_code !== '0') {
+    throw new Error('danjuan fund detail error: ' + JSON.stringify(body?.result_code));
+  }
+  const d = body?.data || {};
+  const position = d.fund_position || {};
+  return {
+    code: fundCode,
+    assetTotal: round(Number(position.asset_tot), 2),
+    assetValue: round(Number(position.asset_val), 2),
+    stockPercent: round(Number(position.stock_percent), 2),
+    cashPercent: round(Number(position.cash_percent), 2),
+    source: 'danjuan'
+  };
+}
+
 
 export async function fetchDanjuanFundNav(code) {
   const fundCode = String(code || '').replace(/^(sh|sz|bj)/i, '');
@@ -907,6 +938,16 @@ export async function fetchDanjuanFundNav(code) {
     ? round(nav / (1 + changePercent / 100), 4) : null;
   const change = Number.isFinite(nav) && Number.isFinite(prevNav)
     ? round(nav - prevNav, 4) : null;
+
+  // 尝试获取基金详情（资产规模）
+  let assetTotal = null;
+  try {
+    const detail = await fetchDanjuanFundDetail(fundCode);
+    assetTotal = detail.assetTotal;
+  } catch (_err) {
+    // 详情接口失败不影响主流程
+  }
+
   return {
     code: fundCode,
     symbol: fundCode,
@@ -934,8 +975,7 @@ export async function fetchDanjuanFundNav(code) {
     return6m: round(Number(d.nav_grl6m), 4),
     return1y: round(Number(d.nav_grl1y), 4),
     returnBase: round(Number(d.nav_grbase), 4),
-    maxDrawdown: round(Number(d.max_retracement ?? d.max_drawdown ?? d.max_dd), 4),
-    fundSize: round(Number(d.asset_scale ?? d.total_asset ?? d.fund_size), 2),
+    fundSize: assetTotal,
   };
 }
 
