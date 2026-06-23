@@ -104,22 +104,35 @@ export function NotifyStrategyCard({
 
 function SyncRulesBody({ rulesLastSyncedLabel, isSyncingRules, handleSyncRules }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="min-w-0">
-        <p className="text-xs leading-5 text-slate-500">
-          将本机交易计划与定投规则同步到云端。交易计划中心修改后会自动同步，这里只是手动补同步入口。
-        </p>
-        <p className="mt-1 text-xs text-slate-400">上次同步：{rulesLastSyncedLabel}</p>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs leading-5 text-slate-500">
+            将本机交易计划与定投规则同步到云端。交易计划中心修改后会自动同步，这里只是手动补同步入口。
+          </p>
+          <p className="mt-1 text-xs text-slate-400">上次同步：{rulesLastSyncedLabel}</p>
+        </div>
+        <button
+          type="button"
+          className={cx(secondaryButtonClass, isSyncingRules && 'cursor-not-allowed opacity-60')}
+          onClick={handleSyncRules}
+          disabled={isSyncingRules}
+        >
+          <RefreshCw className="h-4 w-4" />
+          {isSyncingRules ? '正在同步' : '同步通知规则'}
+        </button>
       </div>
-      <button
-        type="button"
-        className={cx(secondaryButtonClass, isSyncingRules && 'cursor-not-allowed opacity-60')}
-        onClick={handleSyncRules}
-        disabled={isSyncingRules}
-      >
-        <RefreshCw className="h-4 w-4" />
-        {isSyncingRules ? '正在同步' : '同步通知规则'}
-      </button>
+      <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-3 py-2">
+        <p className="text-xs text-indigo-700">
+          💡 想查看所有通知规则？
+          <a
+            href="?tab=notify&from=tradePlans"
+            className="ml-1 font-medium underline hover:text-indigo-800"
+          >
+            前往通知管理中心 →
+          </a>
+        </p>
+      </div>
     </div>
   );
 }

@@ -74,6 +74,9 @@ export function NotifyExperience({ embedded = false }) {
   const [isSyncingHoldingsDigest, setIsSyncingHoldingsDigest] = useState(false);
   const [isTestingHoldingsNotify, setIsTestingHoldingsNotify] = useState(false);
   const [testingNotifyChannel, setTestingNotifyChannel] = useState('');
+  const [tradePlans, setTradePlans] = useState(() => readPlanList());
+  const [dcaPlans, setDcaPlans] = useState(() => readDcaList());
+  const [returnPath, setReturnPath] = useState('');
   // 提醒历史与规则同步：从各 tab 合并到本页，避免交易计划中心重复采点。
   const [notifyEvents, setNotifyEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(false);
@@ -101,8 +104,11 @@ export function NotifyExperience({ embedded = false }) {
   const [webNotifySupported, setWebNotifySupported] = useState(() => getWebNotifyState().supported);
   const [webNotifyPermission, setWebNotifyPermission] = useState(() => getWebNotifyState().permission);
   const [webNotifyEnabled, setWebNotifyEnabled] = useState(() => Boolean(readWebNotifyConfig().pcEnabled));
-  const [tradePlans, setTradePlans] = useState(() => readPlanList());
-  const [dcaPlans, setDcaPlans] = useState(() => readDcaList());
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const from = params.get('from');
+    if (from) { setReturnPath(from); setExpandedStrategy('tradePlans'); }
+  }, []);
   function buildLatestHoldingsDigest() {
     try {
       const ledger = readLedgerState();
@@ -844,6 +850,8 @@ export function NotifyExperience({ embedded = false }) {
           onNavigateToDca={() => { window.location.hash = '#tradePlans'; window.location.hash = '#tradePlans#dca'; }}
           expanded={expandedStrategy === 'tradePlans'}
           onToggleExpand={() => setExpandedStrategy(expandedStrategy === 'tradePlans' ? null : 'tradePlans')}
+          showBackButton={Boolean(returnPath)}
+          onBack={() => { if (returnPath) window.location.hash = returnPath; }}
         />
         {renderStrategyCard()}
         <NotifyHistoryCard

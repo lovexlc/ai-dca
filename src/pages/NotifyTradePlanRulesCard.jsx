@@ -1,4 +1,4 @@
-import { TrendingUp, Trash2, Calendar, ChevronDown, ChevronUp } from 'lucide-react';
+import { TrendingUp, Trash2, Calendar, ChevronDown, ChevronUp, ArrowLeft } from 'lucide-react';
 import { cx } from '../components/experience-ui.jsx';
 
 export function NotifyTradePlanRulesCard({
@@ -7,7 +7,9 @@ export function NotifyTradePlanRulesCard({
   onNavigateToTradePlans,
   onNavigateToDca,
   expanded,
-  onToggleExpand
+  onToggleExpand,
+  showBackButton,
+  onBack
 }) {
   const totalRules = tradePlans.length + dcaPlans.length;
   const enabledPlans = tradePlans.filter(plan => plan.notify?.enabled).length;
@@ -20,6 +22,18 @@ export function NotifyTradePlanRulesCard({
         className="flex w-full items-center justify-between px-6 py-4 text-left transition-colors hover:bg-slate-50"
       >
         <div className="flex items-center gap-3">
+          {showBackButton && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onBack();
+              }}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white transition-colors hover:bg-slate-50"
+              title="返回"
+            >
+              <ArrowLeft size={16} className="text-slate-600" />
+            </button>
+          )}
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-50">
             <TrendingUp size={18} className="text-indigo-600" />
           </div>
