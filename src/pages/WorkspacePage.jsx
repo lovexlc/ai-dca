@@ -24,7 +24,6 @@ const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').the
 const MarketsExperience = lazy(() => import('./MarketsExperience.jsx').then((m) => ({ default: m.MarketsExperience })));
 const QuantStudioPage = lazy(() => import('./QuantStudioPage.jsx').then((m) => ({ default: m.QuantStudioPage })));
 const AdminAnalyticsExperience = lazy(() => import('./AdminAnalyticsExperience.jsx').then((m) => ({ default: m.AdminAnalyticsExperience })));
-const PremiumExperience = lazy(() => import('./PremiumExperience.jsx').then((m) => ({ default: m.PremiumExperience })));
 
 function readPreferredWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
   if (typeof window === 'undefined') return fallbackTab;
@@ -39,7 +38,6 @@ const WORKSPACE_TITLES = {
   'quant:live': '量化研究 · 实盘',
   fundSwitch: '基金切换收益分析',
   markets: '行情中心',
-  premium: '高级版',
   holdings: '持仓总览',
   notify: '通知设置',
   adminData: '数据看板'
@@ -54,7 +52,6 @@ const SIDEBAR_ICONS = {
   'quant:live': Activity,
   fundSwitch: Shuffle,
   markets: LineChart,
-  premium: Crown,
   holdings: Wallet,
   notify: Bell,
   adminData: BarChart3
@@ -514,8 +511,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         return <FundSwitchExperience {...sharedProps} />;
       case 'markets':
         return <MarketsExperience {...sharedProps} />;
-      case 'premium':
-        return <PremiumExperience {...sharedProps} />;
       case 'notify':
         return <NotifyExperience {...sharedProps} />;
       case 'adminData':
