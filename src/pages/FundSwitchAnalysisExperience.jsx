@@ -22,6 +22,7 @@ import {
 import { formatCurrency } from '../app/accumulation.js';
 import { Pill, cx } from '../components/experience-ui.jsx';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
+import { FundSwitchQuickTip } from '../components/FundSwitchGuide.jsx';
 
 const LEDGER_STORAGE_KEY = 'aiDcaFundHoldingsLedger';
 
@@ -260,11 +261,14 @@ export function FundSwitchAnalysisExperience() {
       </div>
 
       {chainsWithMetrics.length === 0 ? (
-        <div className="flex min-h-[180px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-200 bg-white text-center text-sm text-slate-500">
-          <Shuffle className="h-7 w-7 text-slate-300" />
-          <div>暂无基金切换记录。</div>
-          <div className="text-xs text-slate-400">在「持仓 → 新增交易」中将卖出标记为「基金切换」并选择反向买入即可自动出现。</div>
-        </div>
+        <>
+          <FundSwitchQuickTip />
+          <div className="flex min-h-[180px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-200 bg-white text-center text-sm text-slate-500">
+            <Shuffle className="h-7 w-7 text-slate-300" />
+            <div>暂无基金切换记录。</div>
+            <div className="text-xs text-slate-400">在「持仓 → 新增交易」中将卖出标记为「基金切换」并选择反向买入即可自动出现。</div>
+          </div>
+        </>
       ) : (
         <div className="space-y-3">
           {chainsWithMetrics.map(({ chain, metrics }) => {

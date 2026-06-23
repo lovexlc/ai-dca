@@ -3,6 +3,7 @@ import { History, Settings2 } from 'lucide-react';
 import { Card, cx } from '../components/experience-ui.jsx';
 import { FundSwitchAnalysisExperience } from './FundSwitchAnalysisExperience.jsx';
 import { trackFeatureEvent } from '../app/analytics.js';
+import { FundSwitchGuide, shouldShowFundSwitchGuide } from '../components/FundSwitchGuide.jsx';
 
 // PC：机会 + 复盘 同屏两列；App：子 tab 切换。
 const SwitchStrategyExperienceLazy = lazy(() =>
@@ -24,6 +25,7 @@ const MOBILE_TABS = [
 
 export function FundSwitchExperience({ links, inPagesDir = false, embedded = false } = {}) {
   const [mobileTab, setMobileTab] = useState('config');
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     trackFeatureEvent('fund_switch', 'view_open', {
@@ -31,10 +33,21 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
       embedded,
       inPagesDir
     });
+    setShowGuide(shouldShowFundSwitchGuide());
   }, []);
 
   return (
     <div className={cx('mx-auto max-w-7xl space-y-4', embedded ? 'px-4 sm:px-6' : 'px-6')}>
+      {/* 首次使用引导教程 */}
+      {showGuide && (
+        <FundSwitchGuide
+          onDismiss={() => {
+            setShowGuide(false);
+            trackFeatureEvent('fund_switch', 'guide_dismissed', {});
+          }}
+        />
+      )}
+
       {/* 移动端子 tab；lg+ 隐藏，PC 直接两列 */}
       <div className="mb-3 inline-flex gap-1 rounded-full bg-slate-100 p-1 lg:hidden">
         {MOBILE_TABS.map((t) => {

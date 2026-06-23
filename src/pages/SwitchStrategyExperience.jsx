@@ -608,6 +608,15 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
   useEffect(() => { loadNav(); }, [loadNav, refreshTick]);
 
+  // 自动刷新：每 2 分钟自动刷新净值数据
+  useEffect(() => {
+    if (!candidateUniverse.length) return undefined;
+    const interval = setInterval(() => {
+      setRefreshTick((n) => n + 1);
+    }, 2 * 60 * 1000); // 2 分钟
+    return () => clearInterval(interval);
+  }, [candidateUniverse.length]);
+
   const fundsWithPremium = useMemo(() => {
     return candidateUniverse.map((u) => {
       const navEntry = navState.navByCode?.[u.code] || null;
