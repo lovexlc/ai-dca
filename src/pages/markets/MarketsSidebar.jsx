@@ -179,6 +179,7 @@ export function MarketsSidebar({
             <WatchlistSelector
               lists={watchLists}
               activeListId={activeWatchListId}
+              market={market}
               onSelect={onSelectWatchlist}
               onCreate={onCreateWatchlist}
               onRename={onRenameWatchlist}
@@ -317,6 +318,7 @@ export function MarketsSidebar({
             <WatchlistSelector
               lists={watchLists}
               activeListId={activeWatchListId}
+              market={market}
               onSelect={onSelectWatchlist}
               onCreate={onCreateWatchlist}
               onRename={onRenameWatchlist}

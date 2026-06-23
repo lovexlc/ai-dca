@@ -1,6 +1,7 @@
 import {
   CN_ETF_WATCHLIST_PRESETS,
-  CN_OTC_WATCHLIST_PRESETS
+  CN_OTC_WATCHLIST_PRESETS,
+  US_INDICATOR_WATCHLIST_PRESETS
 } from '../../app/marketsApi.js';
 import { NASDAQ_OTC_FUND_MAP } from '../../app/nasdaqCatalog.js';
 import { formatNumber, formatSymbolDisplay, normalizeCnFundCode } from './marketDisplayUtils.js';
@@ -18,6 +19,10 @@ export const CN_ETF_PRESET_MAP = Object.fromEntries(
 
 export const CN_OTC_PRESET_MAP = Object.fromEntries(
   CN_OTC_WATCHLIST_PRESETS.map((item) => [item.symbol, item])
+);
+
+export const US_INDICATOR_PRESET_MAP = Object.fromEntries(
+  US_INDICATOR_WATCHLIST_PRESETS.map((item) => [item.symbol, item])
 );
 
 export { NASDAQ_OTC_FUND_MAP };

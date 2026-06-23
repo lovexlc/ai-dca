@@ -13,6 +13,8 @@ import {
   fetchFinnhubMarketNews,
   fetchFinnhubEarningsCalendar,
   fetchYahooFinancials,
+  fetchSpecialMarketIndicatorQuote,
+  isSpecialMarketIndicator,
 } from './fetchers.js';
 import {
   fetchTavilyNews,
@@ -252,8 +254,12 @@ async function handleQuote(env, rawSymbol) {
   }
   let quote;
   if (market === 'us') {
-    const raw = await fetchYahooChart(code, { range: '1d', interval: '5m' });
-    quote = normalizeYahooQuote(raw);
+    if (isSpecialMarketIndicator(code)) {
+      quote = await fetchSpecialMarketIndicatorQuote(code);
+    } else {
+      const raw = await fetchYahooChart(code, { range: '1d', interval: '5m' });
+      quote = normalizeYahooQuote(raw);
+    }
   } else {
     quote = await fetchCnQuoteWithFallback(env, code, { rawSymbol });
   }
@@ -282,8 +288,12 @@ async function handleBatchQuotes(env, symbolsParam) {
   }
   await mapLimit(usItems, 5, async (item) => {
     try {
-      const r = await fetchYahooChart(item.code, { range: '1d', interval: '5m' });
-      out[item.raw] = normalizeYahooQuote(r);
+      if (isSpecialMarketIndicator(item.code)) {
+        out[item.raw] = await fetchSpecialMarketIndicatorQuote(item.code);
+      } else {
+        const r = await fetchYahooChart(item.code, { range: '1d', interval: '5m' });
+        out[item.raw] = normalizeYahooQuote(r);
+      }
     } catch (err) {
       out[item.raw] = { symbol: item.raw, error: String((err && err.message) || err) };
     }

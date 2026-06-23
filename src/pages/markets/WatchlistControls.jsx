@@ -4,7 +4,7 @@ import { cx } from '../../components/experience-ui.jsx';
 import { getPopularSymbols } from './marketsSearchHistory.js';
 import { useClickOutside } from '../../hooks/useClickOutside.js';
 
-export function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate, onRename, onDelete, onAddPopular }) {
+export function WatchlistSelector({ lists = [], activeListId, market = 'cn', onSelect, onCreate, onRename, onDelete, onAddPopular }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
 
@@ -12,7 +12,8 @@ export function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate
 
   const active = (lists || []).find((item) => item.id === activeListId) || lists[0];
   const canDelete = (item) => item?.id !== 'default' && (lists || []).length > 1;
-  const popularSymbols = getPopularSymbols('cn');
+  const popularSymbols = getPopularSymbols(market === 'us' ? 'us' : 'cn');
+  const popularLabel = market === 'us' ? '添加热门标的' : '添加热门基金';
 
   return (
     <div className="relative" ref={containerRef}>
@@ -62,7 +63,7 @@ export function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate
             </button>
             {popularSymbols.length > 0 && onAddPopular && (
               <button type="button" onClick={() => { onAddPopular?.(popularSymbols); setOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-[#1a73e8] hover:bg-[#f8fafd]">
-                <TrendingUp size={14} /> 添加热门基金
+                <TrendingUp size={14} /> {popularLabel}
               </button>
             )}
           </div>

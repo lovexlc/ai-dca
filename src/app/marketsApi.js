@@ -238,9 +238,12 @@ export async function askMarketsStream({
 
 // Watchlist (localStorage). Stored per market for convenience.
 const WATCHLIST_KEY = 'markets:watchlist:v1';
-const WATCHLIST_DEFAULTS_VERSION = 5;
+const WATCHLIST_OTC_DEFAULTS_VERSION = 5;
+const WATCHLIST_INDICATOR_DEFAULTS_VERSION = 6;
+const WATCHLIST_DEFAULTS_VERSION = WATCHLIST_INDICATOR_DEFAULTS_VERSION;
 const DEFAULT_WATCHLIST_ID = 'default';
 const DEFAULT_OTC_LIST_ID = 'default-otc';
+const DEFAULT_INDICATOR_LIST_ID = 'default-indicators';
 
 export const CN_ETF_WATCHLIST_PRESETS = [
   // 用户指定的默认 A 股监控列表（以代码覆盖）
@@ -321,13 +324,27 @@ export const CN_OTC_WATCHLIST_PRESETS = [
 
 const DEFAULT_CN_OTC_WATCHLIST = CN_OTC_WATCHLIST_PRESETS.map((item) => item.symbol);
 
+export const US_INDICATOR_WATCHLIST_PRESETS = [
+  { symbol: '^VIX', name: 'VIX 波动率指数', source: 'Cboe / Yahoo Finance' },
+  { symbol: 'CNN_FNG', name: 'CNN Fear & Greed Index', source: 'CNN' },
+  { symbol: 'CBOE_PCR', name: 'Put/Call Ratio', source: 'Cboe' },
+  { symbol: 'NYAD_LINE', name: 'Advance-Decline Line (NYSE)', source: 'Yahoo Finance / StockCharts symbol' },
+  { symbol: 'NAAD_LINE', name: 'A/D Line (Nasdaq)', source: 'Yahoo Finance / StockCharts symbol' },
+  { symbol: 'SP500_PE', name: 'S&P 500 P/E Ratio', source: 'Multpl / Robert Shiller data' },
+  { symbol: 'CPIAUCSL', name: 'CPI', source: 'FRED' },
+  { symbol: 'PCEPI', name: 'PCE Price Index', source: 'FRED' },
+];
+
+const DEFAULT_US_INDICATOR_WATCHLIST = US_INDICATOR_WATCHLIST_PRESETS.map((item) => item.symbol);
+
 export function normalizeWatchlist(value = {}) {
   const now = new Date().toISOString();
   const rawUs = Array.isArray(value.us) ? value.us : [];
   const rawCn = Array.isArray(value.cn) ? value.cn : [];
   const version = Number(value.defaultsVersion) || 0;
   const hasCnDefaults = version >= 1;
-  const hasOtcDefaults = version >= WATCHLIST_DEFAULTS_VERSION;
+  const hasOtcDefaults = version >= WATCHLIST_OTC_DEFAULTS_VERSION;
+  const hasIndicatorDefaults = version >= WATCHLIST_INDICATOR_DEFAULTS_VERSION;
   const cn = hasCnDefaults
     ? rawCn
     : Array.from(new Set([...DEFAULT_CN_WATCHLIST, ...rawCn]));
@@ -349,6 +366,15 @@ export function normalizeWatchlist(value = {}) {
     createdAt: now,
     updatedAt: now,
   };
+  const indicatorSeedList = {
+    id: DEFAULT_INDICATOR_LIST_ID,
+    name: '默认-常用指标',
+    type: 'us_indicator',
+    us: [...DEFAULT_US_INDICATOR_WATCHLIST],
+    cn: [],
+    createdAt: now,
+    updatedAt: now,
+  };
   const rawLists = Array.isArray(value.lists) ? value.lists : [];
   let lists = rawLists.length
     ? rawLists.map((item, index) => ({
@@ -361,7 +387,7 @@ export function normalizeWatchlist(value = {}) {
       updatedAt: item.updatedAt || now,
     }))
     : [seedList];
-  // 迁移：确保默认列表命名正确 + 场外基金列表始终存在。
+  // 迁移：确保默认列表命名正确 + 场外基金/常用指标列表始终存在。
   {
     const defaultIdx = lists.findIndex((item) => item.id === DEFAULT_WATCHLIST_ID);
     if (defaultIdx >= 0) {
@@ -388,11 +414,29 @@ export function normalizeWatchlist(value = {}) {
         cn: Array.from(new Set([...DEFAULT_CN_OTC_WATCHLIST, ...(old.cn || [])])),
       };
     }
+    if (!lists.some((item) => item.id === DEFAULT_INDICATOR_LIST_ID)) {
+      const afterOtc = lists.findIndex((item) => item.id === DEFAULT_OTC_LIST_ID);
+      const afterDefault = lists.findIndex((item) => item.id === DEFAULT_WATCHLIST_ID);
+      const insertAt = afterOtc >= 0 ? afterOtc + 1 : afterDefault >= 0 ? afterDefault + 1 : lists.length;
+      lists.splice(insertAt, 0, indicatorSeedList);
+    } else if (!hasIndicatorDefaults) {
+      const indicatorIdx = lists.findIndex((item) => item.id === DEFAULT_INDICATOR_LIST_ID);
+      const old = lists[indicatorIdx];
+      lists[indicatorIdx] = {
+        ...old,
+        name: '默认-常用指标',
+        type: 'us_indicator',
+        us: Array.from(new Set([...DEFAULT_US_INDICATOR_WATCHLIST, ...(old.us || [])])),
+      };
+    }
   }
   if (!lists.some((item) => item.id === DEFAULT_WATCHLIST_ID)) {
     lists.unshift(seedList);
     if (!lists.some((item) => item.id === DEFAULT_OTC_LIST_ID)) {
       lists.splice(1, 0, otcSeedList);
+    }
+    if (!lists.some((item) => item.id === DEFAULT_INDICATOR_LIST_ID)) {
+      lists.splice(2, 0, indicatorSeedList);
     }
   }
   let activeListId = String(value.activeListId || DEFAULT_WATCHLIST_ID);

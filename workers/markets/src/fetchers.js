@@ -2,11 +2,16 @@
 //
 // 所有外部 URL 都拆成 base + path，避免被上游平台误伤为可压缩引用。
 
+import { fetchCnnFearGreed } from './newsFetchers.js';
+
 const UA = 'Mozilla/5.0 (compatible; ai-dca-markets/1.0)';
 const COMMON_HEADERS = { 'user-agent': UA, accept: '*/*' };
 
 const YAHOO_HOST = 'https://' + 'query1.finance.yahoo.com';
 const YAHOO_SEARCH_HOST = 'https://' + 'query2.finance.yahoo.com';
+const CBOE_HOST = 'https://' + 'www.cboe.com';
+const FRED_HOST = 'https://' + 'fred.stlouisfed.org';
+const MULTPL_HOST = 'https://' + 'www.multpl.com';
 const EM_SEARCH_HOST = 'https://' + 'searchapi.eastmoney.com';
 const XUEQIU_STOCK_HOST = 'https://' + 'stock.xueqiu.com';
 const XUEQIU_WEB_HOST = 'https://' + 'xueqiu.com';
@@ -55,6 +60,183 @@ function buildUrl(base, path, params = {}) {
     u.searchParams.set(k, String(v));
   }
   return u.toString();
+}
+
+function stripHtml(value) {
+  return String(value || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;|&#x2002;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function toDateIso(dateText) {
+  const raw = String(dateText || '').trim();
+  if (!raw) return '';
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+    ? Date.parse(raw + 'T00:00:00Z')
+    : Date.parse(raw + ' UTC');
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : '';
+}
+
+function normalizeIndicatorQuote({
+  symbol,
+  name,
+  price,
+  previousClose = null,
+  asOf = '',
+  source,
+  meta = '',
+  extra = {},
+}) {
+  const value = round(price, 4);
+  const previous = previousClose == null ? null : round(previousClose, 4);
+  const change = value != null && previous != null ? round(value - previous, 4) : null;
+  const changePercent = previous ? round(((value - previous) / previous) * 100, 4) : null;
+  return {
+    symbol,
+    name,
+    market: 'us',
+    price: value,
+    previousClose: previous,
+    change,
+    changePercent,
+    volume: null,
+    currency: '',
+    exchangeTimezone: 'America/New_York',
+    marketState: '',
+    asOf: asOf || new Date().toISOString(),
+    source,
+    meta,
+    ...extra
+  };
+}
+
+function parseSimpleCsvSeries(text, seriesId) {
+  const rows = String(text || '').split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const values = [];
+  for (const line of rows) {
+    if (line.startsWith('observation_date')) continue;
+    const parts = line.split(',');
+    const date = String(parts[0] || '').trim();
+    const rawValue = String(parts[1] || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || rawValue === '.') continue;
+    const value = Number(rawValue);
+    if (Number.isFinite(value)) values.push({ date, value });
+  }
+  if (!values.length) throw new Error('fred series empty ' + seriesId);
+  return values;
+}
+
+async function fetchFredSeriesQuote(seriesId, name) {
+  const url = buildUrl(FRED_HOST, '/graph/fredgraph.csv', { id: seriesId });
+  const res = await fetch(url, { headers: COMMON_HEADERS, cf: { cacheTtl: 21600 } });
+  if (!res.ok) throw new Error('fred ' + seriesId + ' HTTP ' + res.status);
+  const rows = parseSimpleCsvSeries(await res.text(), seriesId);
+  const latest = rows[rows.length - 1];
+  const previous = rows.length > 1 ? rows[rows.length - 2] : null;
+  return normalizeIndicatorQuote({
+    symbol: seriesId,
+    name,
+    price: latest.value,
+    previousClose: previous?.value ?? null,
+    asOf: toDateIso(latest.date),
+    source: 'fred',
+    meta: 'FRED · monthly',
+    extra: { observationDate: latest.date }
+  });
+}
+
+async function fetchCboePutCallRatio() {
+  const url = buildUrl(CBOE_HOST, '/markets/us/options/market-statistics/daily');
+  const res = await fetch(url, { headers: COMMON_HEADERS, cf: { cacheTtl: 300 } });
+  if (!res.ok) throw new Error('cboe put/call HTTP ' + res.status);
+  const text = stripHtml(await res.text());
+  const match = text.match(/TOTAL\s+PUT\/CALL\s+RATIO\s+(-?\d+(?:\.\d+)?)/i);
+  if (!match) throw new Error('cboe put/call ratio missing');
+  return normalizeIndicatorQuote({
+    symbol: 'CBOE_PCR',
+    name: 'Put/Call Ratio',
+    price: Number(match[1]),
+    source: 'cboe-daily-market-statistics',
+    meta: 'Cboe · daily'
+  });
+}
+
+function parseMultplRows(html) {
+  const rows = [];
+  const rowRe = /<tr[^>]*>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<\/tr>/gi;
+  let match;
+  while ((match = rowRe.exec(String(html || ''))) !== null) {
+    const dateText = stripHtml(match[1]);
+    const valueText = stripHtml(match[2]);
+    const valueMatch = valueText.match(/-?\d+(?:\.\d+)?/);
+    if (!dateText || !valueMatch) continue;
+    const value = Number(valueMatch[0]);
+    if (Number.isFinite(value)) rows.push({ dateText, value });
+  }
+  return rows;
+}
+
+async function fetchSp500PeRatio() {
+  const url = buildUrl(MULTPL_HOST, '/s-p-500-pe-ratio/table/by-month');
+  const res = await fetch(url, { headers: COMMON_HEADERS, cf: { cacheTtl: 21600 } });
+  if (!res.ok) throw new Error('multpl sp500 pe HTTP ' + res.status);
+  const rows = parseMultplRows(await res.text());
+  if (!rows.length) throw new Error('multpl sp500 pe empty');
+  const latest = rows[0];
+  const previous = rows[1] || null;
+  return normalizeIndicatorQuote({
+    symbol: 'SP500_PE',
+    name: 'S&P 500 P/E Ratio',
+    price: latest.value,
+    previousClose: previous?.value ?? null,
+    asOf: toDateIso(latest.dateText),
+    source: 'multpl-sp500-pe',
+    meta: 'Multpl · monthly',
+    extra: { observationDate: latest.dateText }
+  });
+}
+
+async function fetchYahooIndicatorAlias(symbol, yahooSymbol, name) {
+  const raw = await fetchYahooChart(yahooSymbol, { range: '1d', interval: '5m' });
+  const quote = normalizeYahooQuote(raw, name);
+  return {
+    ...quote,
+    symbol,
+    name,
+    currency: '',
+    source: 'yahoo-market-breadth',
+    underlyingSymbol: yahooSymbol,
+    meta: 'Yahoo Finance'
+  };
+}
+
+const SPECIAL_MARKET_INDICATORS = {
+  CNN_FNG: () => fetchCnnFearGreed(),
+  CBOE_PCR: () => fetchCboePutCallRatio(),
+  CPIAUCSL: () => fetchFredSeriesQuote('CPIAUCSL', 'CPI'),
+  PCEPI: () => fetchFredSeriesQuote('PCEPI', 'PCE Price Index'),
+  SP500_PE: () => fetchSp500PeRatio(),
+  NYAD_LINE: () => fetchYahooIndicatorAlias('NYAD_LINE', '^NYAD', 'Advance-Decline Line (NYSE)'),
+  NAAD_LINE: () => fetchYahooIndicatorAlias('NAAD_LINE', '^NAAD', 'A/D Line (Nasdaq)'),
+};
+
+export function isSpecialMarketIndicator(symbol) {
+  const key = String(symbol || '').trim().toUpperCase();
+  return Boolean(SPECIAL_MARKET_INDICATORS[key]);
+}
+
+export async function fetchSpecialMarketIndicatorQuote(symbol) {
+  const key = String(symbol || '').trim().toUpperCase();
+  const fetcher = SPECIAL_MARKET_INDICATORS[key];
+  if (!fetcher) throw new Error('unknown special indicator ' + symbol);
+  return fetcher();
 }
 
 

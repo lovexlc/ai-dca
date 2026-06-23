@@ -35,6 +35,7 @@ export function MarketsFullTablePanel({
   if (!fullTableMode) return null;
 
   const marketLabel = market === 'cn' ? 'A 股监控列表' : '美股监控列表';
+  const searchLabel = market === 'cn' ? '基金搜索' : '标的搜索';
 
   const renderHeader = ({ table, viewOptions }) => {
     const filterCount = table?.getState?.().columnFilters?.length || 0;
@@ -47,6 +48,7 @@ export function MarketsFullTablePanel({
               <WatchlistSelector
                 lists={watchLists}
                 activeListId={activeWatchListId}
+                market={market}
                 onSelect={onSelectWatchlist}
                 onCreate={onCreateWatchlist}
                 onRename={onRenameWatchlist}
@@ -84,7 +86,7 @@ export function MarketsFullTablePanel({
                 <button
                   type="button"
                   onClick={onSearchToggle}
-                  aria-label="关闭基金搜索"
+                  aria-label={`关闭${searchLabel}`}
                   className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
                 >
                   <X size={16} />
@@ -96,7 +98,7 @@ export function MarketsFullTablePanel({
                 onClick={onSearchToggle}
                 className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
               >
-                <Search size={16} /> 基金搜索
+                <Search size={16} /> {searchLabel}
               </button>
             )}
             {viewOptions}

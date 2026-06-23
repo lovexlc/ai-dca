@@ -53,6 +53,7 @@ import {
   hasNasdaqOtcFund,
   normalizeSearchResults,
   resolveCnFundName,
+  US_INDICATOR_PRESET_MAP,
 } from './markets/marketsCatalog.js';
 import { updateSymbolInUrl, clearSymbolFromUrl } from './markets/marketsUrlSync.js';
 import { useMarketsSearchHistory } from './markets/useMarketsSearchHistory.js';
@@ -60,8 +61,21 @@ import { batchAddToWatchlist } from './markets/marketsWatchlistUtils.js';
 import { useMarketAlerts } from './markets/useMarketAlerts.js';
 import { AlertRuleDialog } from '../components/AlertRuleDialog.jsx';
 const A_SHARE_MARKET = { key: 'cn', label: 'A股' };
+const US_MARKET = { key: 'us', label: '美股' };
 function normalizeMarketKey(value) {
-  return value === A_SHARE_MARKET.key ? value : A_SHARE_MARKET.key;
+  return value === US_MARKET.key ? US_MARKET.key : A_SHARE_MARKET.key;
+}
+function marketMetaFor(value) {
+  return normalizeMarketKey(value) === US_MARKET.key ? US_MARKET : A_SHARE_MARKET;
+}
+function marketForWatchList(list, fallback = A_SHARE_MARKET.key) {
+  if (list?.type === 'us_indicator') return US_MARKET.key;
+  if (list?.type === 'cn_etf' || list?.type === 'cn_otc') return A_SHARE_MARKET.key;
+  const usCount = Array.isArray(list?.us) ? list.us.length : 0;
+  const cnCount = Array.isArray(list?.cn) ? list.cn.length : 0;
+  if (usCount > 0 && cnCount === 0) return US_MARKET.key;
+  if (cnCount > 0 && usCount === 0) return A_SHARE_MARKET.key;
+  return normalizeMarketKey(fallback);
 }
 const MARKETS_PENDING_SYMBOL_KEY = 'markets:pendingSymbol';
 export function MarketsExperience() {
@@ -173,6 +187,10 @@ export function MarketsExperience() {
   const activeWatchList = watchLists.find((item) => item.id === watch.activeListId) || watchLists[0] || {};
   const isActiveOtcList = activeWatchList.type === 'cn_otc' || activeWatchList.id === 'default-otc';
   const watchSymbols = useMemo(() => activeWatchList[market] || [], [activeWatchList, market]);
+  useEffect(() => {
+    const targetMarket = marketForWatchList(activeWatchList, market);
+    if (targetMarket !== market) setMarket(targetMarket);
+  }, [activeWatchList?.id, activeWatchList?.type, market]);
   useEffect(() => {
     const refreshHoldingsLedger = () => setHoldingsLedger(readLedgerState());
     const refreshTradeLedger = () => setTradeLedgerEntries(readTradeLedger());
@@ -609,7 +627,7 @@ export function MarketsExperience() {
     setSymbolSearchLoading(true);
     setSymbolSearchError('');
     const timer = window.setTimeout(() => {
-      const activeMarket = A_SHARE_MARKET;
+      const activeMarket = marketMetaFor(market);
       searchSymbols(activeMarket.key, q, { limit: 8, signal: controller.signal })
         .then((r) => {
           if (seq !== symbolSearchSeqRef.current) return;
@@ -672,7 +690,7 @@ export function MarketsExperience() {
     setWatchOverlaySearchLoading(true);
     setWatchOverlaySearchError('');
     const timer = window.setTimeout(() => {
-      const activeMarket = A_SHARE_MARKET;
+      const activeMarket = marketMetaFor(market);
       searchSymbols(activeMarket.key, q, { limit: 10, signal: controller.signal })
         .then((r) => {
           if (seq !== watchOverlaySearchSeqRef.current) return;
@@ -711,13 +729,14 @@ export function MarketsExperience() {
     const symbol = String(row.symbol || row.code || row.ticker || '').trim().toUpperCase();
     if (!symbol) return null;
     const key = `${targetMarket || market}:${symbol}`;
+    const indicatorPreset = targetMarket === 'us' ? US_INDICATOR_PRESET_MAP[symbol] || null : null;
     setSelectedQuoteMap((prev) => ({
       ...prev,
       [key]: {
         ...prev[key],
         ...row,
         symbol,
-        name: row.name || row.shortName || row.displayName || prev[key]?.name || CN_ETF_PRESET_MAP[symbol]?.name || symbol,
+        name: row.name || row.shortName || row.displayName || prev[key]?.name || CN_ETF_PRESET_MAP[symbol]?.name || indicatorPreset?.name || symbol,
         exchange: row.exchange || prev[key]?.exchange || CN_ETF_PRESET_MAP[symbol]?.exchange,
         currency: row.currency || prev[key]?.currency || CN_ETF_PRESET_MAP[symbol]?.currency,
         premiumPercent: row.premiumPercent ?? row.premium_rate ?? prev[key]?.premiumPercent,
@@ -842,14 +861,18 @@ export function MarketsExperience() {
   function handleSelectWatchlist(listId) {
     setWatchListExpanded(false);
     const next = setActiveWatchlist(listId);
+    const nextLists = Array.isArray(next?.lists) ? next.lists : [];
+    const nextActive = nextLists.find((item) => item.id === next.activeListId) || nextLists[0] || {};
+    const nextMarket = marketForWatchList(nextActive, market);
     setWatch(next);
+    if (nextMarket !== market) setMarket(nextMarket);
     clearSelectedSymbol();
     setFullTableMode(true);
     setSymbolDetailTab('overview');
     trackFeatureEvent('markets', 'watchlist_select', {
       listIdLength: String(listId || '').length,
       listCount: watchLists.length,
-      market
+      market: nextMarket
     });
   }
 
@@ -873,9 +896,11 @@ export function MarketsExperience() {
   function handleAddPopular(symbols) {
     const next = batchAddToWatchlist(symbols, watch, watch.activeListId);
     if (next === watch) return;
+    const activeMarket = marketForWatchList((next?.lists || []).find((item) => item.id === next.activeListId), market);
+    const itemLabel = activeMarket === 'us' ? '标的' : '基金';
     setWatch(next);
-    showActionToast('已添加热门基金到自选', 'success', {
-      description: `已添加 ${symbols.length} 个基金到当前列表`
+    showActionToast(`已添加热门${itemLabel}到自选`, 'success', {
+      description: `已添加 ${symbols.length} 个${itemLabel}到当前列表`
     });
     trackActionResult('markets', 'popular_batch_add', 'success', {
       count: symbols.length,
@@ -948,6 +973,7 @@ export function MarketsExperience() {
     const code = normalizeCnFundCode(sym);
     const q = watchQuotes[sym] || (code ? watchQuotes[code] : null) || {};
     const snapshot = code ? watchNavSnapshots[code] : null;
+    const indicatorPreset = market === 'us' ? US_INDICATOR_PRESET_MAP[sym] || null : null;
     const otcQuote = market === 'cn' && hasNasdaqOtcFund(code)
       ? buildOtcFundQuoteFromSnapshot(sym, snapshot, q)
       : null;
@@ -962,10 +988,12 @@ export function MarketsExperience() {
       const parts = ['场外基金'];
       parts.push(latestNavDate ? `净值日 ${latestNavDate.slice(5)}` : '净值');
       baseMeta = parts.join(' · ');
+    } else if (indicatorPreset?.source) {
+      baseMeta = indicatorPreset.source;
     }
     return {
       symbol: sym,
-      name: market === 'cn' ? resolveCnFundName(sym, merged.name || CN_ETF_PRESET_MAP[sym]?.name || sym) : (merged.name || CN_ETF_PRESET_MAP[sym]?.name || sym),
+      name: market === 'cn' ? resolveCnFundName(sym, merged.name || CN_ETF_PRESET_MAP[sym]?.name || sym) : (merged.name || indicatorPreset?.name || sym),
       price: merged.price,
       changePercent: merged.changePercent,
       change: merged.change,
@@ -1254,7 +1282,7 @@ export function MarketsExperience() {
       klineMap={klineMap}
       selectedSymbol={selectedSymbol}
       activeName={activeWatchList?.name}
-      marketLabel="A 股监控列表"
+      marketLabel={market === 'cn' ? 'A 股监控列表' : '美股监控列表'}
       loading={watchLoading}
       searchOpen={watchOverlaySearchOpen}
       searchValue={watchOverlaySearchInput}
