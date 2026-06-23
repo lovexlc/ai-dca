@@ -99,8 +99,42 @@ export function normalizeNotifyPayload(payload = {}) {
       .map((plan) => normalizePlan(plan))
       .filter((plan) => plan && plan.isConfigured),
     dca: dcaList[0] || null,
-    dcaList
+    dcaList,
+    marketAlerts: normalizeMarketAlerts(payload.marketAlerts),
+    holdingAlerts: normalizeHoldingAlerts(payload.holdingAlerts)
   };
+}
+
+function normalizeMarketAlerts(alerts = []) {
+  if (!Array.isArray(alerts)) return [];
+  return alerts
+    .map(alert => ({
+      id: String(alert.id || '').trim(),
+      symbol: String(alert.symbol || '').trim(),
+      name: String(alert.name || '').trim(),
+      alertType: ['gain', 'loss', 'premium', 'discount'].includes(alert.alertType)
+        ? alert.alertType : 'gain',
+      threshold: Number(alert.threshold) || 0,
+      enabled: alert.enabled !== false,
+      cooldownHours: Number(alert.cooldownHours) || 24
+    }))
+    .filter(alert => alert.id && alert.symbol && alert.threshold > 0);
+}
+
+function normalizeHoldingAlerts(alerts = []) {
+  if (!Array.isArray(alerts)) return [];
+  return alerts
+    .map(alert => ({
+      id: String(alert.id || '').trim(),
+      symbol: String(alert.symbol || '').trim(),
+      name: String(alert.name || '').trim(),
+      alertType: ['gain', 'loss'].includes(alert.alertType) ? alert.alertType : 'gain',
+      threshold: Number(alert.threshold) || 0,
+      holdingCost: Number(alert.holdingCost) || 0,
+      enabled: alert.enabled !== false,
+      cooldownHours: Number(alert.cooldownHours) || 24
+    }))
+    .filter(alert => alert.id && alert.symbol && alert.threshold > 0 && alert.holdingCost > 0);
 }
 
 export function compileNotifyRules(payload = {}) {
@@ -150,15 +184,42 @@ export function compileNotifyRules(payload = {}) {
     })
     .filter(Boolean);
 
+  const marketAlertRules = normalized.marketAlerts.map(alert => ({
+    ruleId: alert.id,
+    type: 'market-alert',
+    symbol: alert.symbol,
+    name: alert.name,
+    alertType: alert.alertType,
+    threshold: alert.threshold,
+    cooldownHours: alert.cooldownHours,
+    enabled: alert.enabled
+  }));
+
+  const holdingAlertRules = normalized.holdingAlerts.map(alert => ({
+    ruleId: alert.id,
+    type: 'holding-alert',
+    symbol: alert.symbol,
+    name: alert.name,
+    alertType: alert.alertType,
+    threshold: alert.threshold,
+    holdingCost: alert.holdingCost,
+    cooldownHours: alert.cooldownHours,
+    enabled: alert.enabled
+  }));
+
   return {
     normalized,
     planRules,
     dcaRules,
-    allRules: [...planRules, ...dcaRules],
+    marketAlertRules,
+    holdingAlertRules,
+    allRules: [...planRules, ...dcaRules, ...marketAlertRules, ...holdingAlertRules],
     summary: {
       planRuleCount: planRules.length,
       dcaRuleCount: dcaRules.length,
-      totalRuleCount: planRules.length + dcaRules.length
+      marketAlertCount: marketAlertRules.length,
+      holdingAlertCount: holdingAlertRules.length,
+      totalRuleCount: planRules.length + dcaRules.length + marketAlertRules.length + holdingAlertRules.length
     }
   };
 }

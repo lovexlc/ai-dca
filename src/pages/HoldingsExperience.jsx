@@ -16,6 +16,8 @@ import { HoldingsOverviewShell } from './holdings/HoldingsOverviewShell.jsx';
 import { COMPACT_HOLDINGS_COLUMN_VISIBILITY, createAggregateHoldingsColumns } from './holdings/aggregateHoldingsColumns.jsx';
 import { buildAggregateHoldingsTsv } from './holdings/holdingsClipboardExport.js';
 import { useHoldingsStorageSync } from './holdings/useHoldingsStorageSync.js';
+import { useHoldingAlerts } from './holdings/useHoldingAlerts.js';
+import { AlertRuleDialog } from '../components/AlertRuleDialog.jsx';
 import {
   aggregateByCode,
   buildLedgerRows,
@@ -70,6 +72,7 @@ function readColumnFilterValue(filters, id) {
 }
 export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = false } = {}) {
   const { recordTransaction } = useHoldingsQuickTransaction();
+  const { holdingAlerts, alertDialogOpen, selectedHolding, handleOpenAlertDialog, handleSaveAlert, handleCloseAlertDialog } = useHoldingAlerts();
   const [ledger, setLedger] = useState(() => readLedgerState());
   // v7.6: 移除交易日自动过滤场内数据的逻辑，避免出现不必要的"重置过滤"按钮
   const [columnFilters, setColumnFilters] = useState([]);
@@ -170,15 +173,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const fileInputRef = useRef(null);
   const autoNavTriggeredRef = useRef(false);
   const navAttemptedCodesRef = useRef(new Set());
-
   useEffect(() => {
     persistLedgerState(ledger);
   }, [ledger]);
-
   const [tradeLedgerEntries, setTradeLedgerEntries] = useState(() => readTradeLedger());
   const [accountAssignments, setAccountAssignments] = useState(() => readAccountAssignments());
   useHoldingsStorageSync({ setLedger, setAccountAssignments, setTradeLedgerEntries });
-
   const transactions = ledger.transactions;
   const inceptionDate = useMemo(() => {
     if (!Array.isArray(transactions) || transactions.length === 0) return null;
@@ -282,7 +282,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       ...summarizeHoldings()
     });
   }
-
   function handleInstallDemoData() {
     if (typeof window !== 'undefined' && hasPotentialUserData() && !window.confirm('检测到已有本地数据。生成演示数据会覆盖当前持仓、计划和定投数据。建议先登录账号完成云同步。确认继续？')) return;
     installDemoData();
@@ -301,7 +300,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     onAccountChange: handleAccountChange,
     onNavigateToMarkets: navigateToMarkets,
   }), [accountAssignments, kindFilterOptions, links.markets]);
-
   // v7.6: 简化过滤逻辑，移除交易日强制场内过滤
   const aggregatesTable = useReactTable({
     data: aggregatesTableData,
@@ -324,14 +322,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     autoResetAll: false,
     autoResetPageIndex: false,
   });
-
   const selectedAggregate = selectedCode ? aggregateByCodeMap.get(selectedCode) : null;
   const needsDateBackfill = useMemo(
     () => transactions.some((tx) => !tx.date),
     [transactions]
   );
   const migrationNoticeVisible = Boolean(ledger.migratedFromLegacy) && needsDateBackfill;
-
   useEffect(() => {
     // 进入页面时无条件触发一次净值刷新（包含所有持仓代码）。
     // autoNavTriggeredRef 保证整个 mount 周期内只跑一次；手动刷新走 handleManualRefresh，独立于此。
@@ -345,7 +341,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     for (const code of codes) navAttemptedCodesRef.current.add(code);
     void refreshNavForCodes(codes, { silent: true });
   }, [transactions]);
-
   useEffect(() => {
     const ledgerCodes = getLedgerCodeList(transactions);
     const chainCodes = getSwitchChainCodeList(transactions);
@@ -359,7 +354,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       });
     }
   }, [transactions]);
-
   // ---- WS 行情推送：接收实时价格更新 ----
   useEffect(() => {
     function handlePricePush(event) {
@@ -384,7 +378,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     window.addEventListener('ai-dca-price-push', handlePricePush);
     return () => window.removeEventListener('ai-dca-price-push', handlePricePush);
   }, []);
-
   async function refreshNavForCodes(codes, { silent = false, forceRefresh = false } = {}) {
     const safeCodes = (Array.isArray(codes) ? codes : []).filter(Boolean);
     if (!safeCodes.length) {
@@ -455,7 +448,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       });
     }
   }
-
   function handleManualRefresh() {
     // 手动刷新：所有交易代码 + 切换链路里出现过的代码，保证已卖出/清仓记录也能同步确认 NAV。
     const ledgerCodes = getLedgerCodeList(transactions);
@@ -476,12 +468,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     trackFeatureEvent('holdings', 'manual_refresh_click', { codeCount: codes.length, ...summarizeHoldings() });
     void refreshNavForCodes(codes, { silent: false, forceRefresh: true });
   }
-
   function resetDraft(nextDraft = emptyDraft()) {
     setDraft(nextDraft);
     setDraftMode('create');
   }
-
   // 扫描所有「价格为空 / 0」的场外/QDII 交易，如果快照中能找到与 tx.date 匹配的
   // latestNavDate 或 previousNavDate，则自动回填净值。场内不走净值路径、跳过。
   // 由「点击基金汇总 / 已卖出 tab」等 useEffect 触发。
@@ -523,14 +513,12 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       return { ...prev, transactions: nextList };
     });
   }
-
   // 净值快照更新后，立即扫描交易记录，把价格为空 / 0 且日期匹配的场外/QDII 买卖单回填确认 NAV。
   // 这样已卖出/清仓记录不需要用户再打开某个弹窗，也能在刷新净值后自动修正收益。
   useEffect(() => {
     autoFillTransactionPricesFromSnapshots();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshotsByCode]);
-
   // 从「该基金汇总」弹窗点击 买入 / 卖出：预填代码/名称/标签。
   // 场外/QDII 默认「三点前」= true；场内不展示三点前选项，日期默认今天、成交价留空手填。
   function openBuyOrSellFromSummary(aggSrc, type) {
@@ -557,7 +545,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       hasPosition: Boolean(aggSrc.hasPosition)
     });
   }
-
   function handleDraftChange(field, value) {
     setDraft((prev) => {
       if (!prev) return prev;
@@ -590,7 +577,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       return { ...prev, [field]: value };
     });
   }
-
   // 场外/QDII 基金「三点前/后」确认逻辑：
   //   三点前 -> 确认日 = 今天所在的交易日（T 日）。
   //   三点后 -> 确认日 = 下一个交易日（T+1）。
@@ -604,7 +590,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     const confirmDate = before3pm ? todayTrading : getNextTradingDayShanghai(todayTrading);
     return { confirmDate, price: '', hint: '' };
   }
-
   function submitDraft() {
     const prepared = {
       ...draft,
@@ -668,7 +653,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         }
         return tx;
       };
-
       if (allocations) {
         // 生成按 allocation 拆分的交易条目
         const basePrice = Number(prepared.price) || 0;
@@ -688,7 +672,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           const last = allocTxs[allocTxs.length - 1];
           last.shares = Number((Number(last.shares || 0) + (totalSharesTarget - sumShares)).toFixed(4));
         }
-
         const normalizedList = allocTxs.map((t, idx) => normalizeTransaction({ ...t, id: undefined }));
         if (draftMode === 'edit' && draft.id) {
           // 保留原 id 给第一笔，其他作为新记录追加
@@ -702,7 +685,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         }
         return { ...prev, transactions: [...list.map((tx) => remap(tx, normalizedList[0]?.id, normalizedList[0]?.switchPairId)), ...normalizedList] };
       }
-
       const newPairId = normalized.switchPairId || '';
       const remapSingle = (tx) => {
         if (previousPairId && previousPairId !== newPairId && tx.id === previousPairId && tx.switchPairId === normalized.id) {
@@ -738,7 +720,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       switchAllocationCount: Array.isArray(draft.switchAllocations) ? draft.switchAllocations.length : 0
     });
   }
-
   function handleDeleteTransaction(txId) {
     if (!txId) return false;
     const tx = transactions.find((item) => item.id === txId);
@@ -762,7 +743,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     });
     return true;
   }
-
   // 第五刀 v6: 供 IncomeTransactionsPage 子页调用 — 点击明细行后用 sidePanel 编辑该 tx。
   // sidePanel 是 fixed overlay，不需 navigate 回主页即可覆盖在 #/transactions 上方。
   function handleEditTransaction(txId) {
@@ -781,7 +761,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       source: 'side_panel'
     });
   }
-
   // ---- Copy visible table to clipboard ----
   async function writeClipboard(text) {
     try {
@@ -807,12 +786,10 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       return false;
     }
   }
-
   function buildAggregateTsv() {
     const visibleAggregates = aggregatesTable.getFilteredRowModel().rows.map((row) => row.original);
     return buildAggregateHoldingsTsv({ aggregates: visibleAggregates, kindFilter: 'all', searchText: '' });
   }
-
   async function handleCopyVisibleTable() {
     const payload = buildAggregateTsv();
     const label = '基金汇总';
@@ -832,7 +809,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       ...summarizeHoldings()
     });
   }
-
   // ---- OCR import ----
   function handleTriggerOcr() {
     if (!fileInputRef.current) return;
@@ -840,7 +816,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     fileInputRef.current.click();
     trackFeatureEvent('holdings', 'ocr_file_picker_open');
   }
-
   async function handleOcrFile(event) {
     const file = event?.target?.files?.[0];
     if (!file) return;
@@ -932,7 +907,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       if (event?.target) event.target.value = '';
     }
   }
-
   // ---- Excel paste import ----
   function openPasteModal(source = 'toolbar') {
     setPasteModalOpen(true);
@@ -940,11 +914,9 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     setPasteResult(null);
     trackFeatureEvent('holdings', 'paste_modal_open', { source });
   }
-
   function closePasteModal() {
     setPasteModalOpen(false);
   }
-
   // ---- OCR import modal controls ----
   function openOcrModal(source = 'toolbar') {
     setOcrModalOpen(true);
@@ -954,7 +926,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     if (fileInputRef.current) fileInputRef.current.value = '';
     trackFeatureEvent('holdings', 'ocr_modal_open', { source });
   }
-
   function closeOcrModal() {
     setOcrModalOpen(false);
     setOcrPreview(null);
@@ -962,7 +933,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     setOcrWarningsExpanded(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
-
   function handleImportOcr() {
     if (!ocrPreview || !ocrPreview.rows.length) return;
     const validRows = ocrPreview.rows.filter((row) => Object.keys(row.errors).length === 0);
@@ -997,7 +967,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       skippedCount: skipped
     });
   }
-
   // 在 OCR 预览表格里逐行修改某个字段。修改后同步重算 errors，让「状态/问题」列即时刷新。
   function handleOcrRowFieldChange(rowIndex, field, value) {
     setOcrPreview((prev) => {
@@ -1018,7 +987,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       return { ...prev, rows: nextRows };
     });
   }
-
   // 粘贴预览也采用卡片表单后，需要可编辑模式，逻辑与 OCR 完全对齐。
   function handlePasteRowFieldChange(rowIndex, field, value) {
     setPasteResult((prev) => {
@@ -1039,7 +1007,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       return { ...prev, rows: nextRows };
     });
   }
-
   // ---- Switch counterpart picker ----
   function openSwitchPicker() {
     setSwitchPickerSearch('');
@@ -1065,11 +1032,9 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       selectedCount: switchPickerSelectedIds.size
     });
   }
-
   function closeSwitchPicker() {
     setSwitchPickerOpen(false);
   }
-
   function handleSelectSwitchCounterpart(txId) {
     // 保持与旧接口兼容：单击行为改为切换选中（多选）。
     setSwitchPickerSelectedIds((prev) => {
@@ -1080,7 +1045,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       return next;
     });
   }
-
   function handleConfirmSwitchAllocations({ allocations, remaining }) {
     // 写回 draft，用于 submit 时按照 allocations 拆分/保存
     handleDraftChange('switchAllocations', allocations);
@@ -1094,7 +1058,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       hasRemaining: remaining > 0
     });
   }
-
   function handleParsePaste() {
     const text = pasteText;
     if (!text.trim()) {
@@ -1122,7 +1085,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       textLengthBucket: text.length > 5000 ? 'gt_5k' : text.length > 1000 ? '1k_5k' : 'lte_1k'
     });
   }
-
   function handleImportPasted() {
     if (!pasteResult || !pasteResult.rows.length) return;
     const validRows = pasteResult.rows.filter((row) => Object.keys(row.errors).length === 0);
@@ -1168,7 +1130,6 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     setPasteText('');
     setPasteResult(null);
   }
-
   // ---- Render helpers ----
   function navigateToMarkets(event, code = '') {
     if (event && (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)) return;
@@ -1187,8 +1148,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       window.dispatchEvent(new CustomEvent('markets:select-symbol', { detail: { symbol: normalizeFundCode(code), market: 'cn' } }));
     }
   }
-
   return (
+    <>
     <HoldingsOverviewShell
       embedded={embedded}
       migrationNoticeVisible={migrationNoticeVisible}
@@ -1233,6 +1194,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         setSidePanelTab('summary');
         setSidePanelOpen(true);
       }}
+      onOpenAlertDialog={handleOpenAlertDialog}
       pasteModal={{
         open: pasteModalOpen,
         pasteText,
@@ -1293,7 +1255,13 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         onEditTransaction: handleEditTransaction,
       }}
     />
+    <AlertRuleDialog
+      open={alertDialogOpen}
+      onClose={handleCloseAlertDialog}
+      onSave={handleSaveAlert}
+      mode="holding"
+    />
+    </>
   );
 }
-
 export default HoldingsExperience;

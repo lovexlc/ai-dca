@@ -15,7 +15,8 @@ export function AggregateHoldingsTableSection({
   aggregates,
   onCreateFirstTransaction,
   onInstallDemoData,
-  onRowClick
+  onRowClick,
+  onOpenAlertDialog
 }) {
   if (tableData.length === 0) {
     const emptyHint = aggregates.length === 0
@@ -141,6 +142,7 @@ export function AggregateHoldingsTableSection({
         resizable
         tableChrome={tableChrome}
         onRowClick={onRowClick}
+        onOpenAlertDialog={onOpenAlertDialog}
       />
     </div>
   );

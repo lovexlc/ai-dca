@@ -29,6 +29,7 @@ export function HoldingsOverviewShell({
   onCreateFirstTransaction,
   onInstallDemoData,
   onAggregateRowClick,
+  onOpenAlertDialog,
   pasteModal,
   ocrModal,
   switchPicker,
@@ -90,6 +91,7 @@ export function HoldingsOverviewShell({
                 onCreateFirstTransaction={onCreateFirstTransaction}
                 onInstallDemoData={onInstallDemoData}
                 onRowClick={onAggregateRowClick}
+                onOpenAlertDialog={onOpenAlertDialog}
               />
             </div>
             <div className="px-1 pt-2 text-[11px] text-slate-400">
@@ -146,6 +148,7 @@ export function HoldingsOverviewShell({
               aggregate={sidePanel.selectedAggregate}
               onNavigateToMarkets={sidePanel.onNavigateToMarkets}
               onBuyOrSell={sidePanel.onBuyOrSell}
+              onOpenAlertDialog={onOpenAlertDialog}
             />
           ) : (
             <TransactionDraftPanel

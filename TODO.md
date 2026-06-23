@@ -67,6 +67,21 @@
 
 ## 🚀 功能开发
 
+### 进行中
+
+- [ ] **涨幅/溢价率预警和持仓涨跌幅预警**（2026-06-23 开始）
+  - [x] 前端基础：alertRules.js 和 AlertRuleDialog.jsx
+  - [x] 前端集成：Markets 页面添加入口
+  - [x] 前端集成：Holdings 页面添加入口
+  - [x] 数据同步：扩展 notifySync.js
+  - [x] Worker 规则编译：修改 rules.js
+  - [x] Worker 规则评估：添加 alertRuleEvaluation.js
+  - [x] Worker 主循环集成：连接所有模块
+  - [x] 前端构建验证：通过
+  - [ ] 本地测试：验证前端 + Worker 联调
+  - [ ] 部署上线：Wrangler 部署 Worker
+  - [ ] 监控验证：查看埋点数据和用户反馈
+
 ### 待规划
 
 - [ ] 新功能开发前需要：

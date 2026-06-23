@@ -57,6 +57,8 @@ import {
 import { updateSymbolInUrl, clearSymbolFromUrl } from './markets/marketsUrlSync.js';
 import { useMarketsSearchHistory } from './markets/useMarketsSearchHistory.js';
 import { batchAddToWatchlist } from './markets/marketsWatchlistUtils.js';
+import { useMarketAlerts } from './markets/useMarketAlerts.js';
+import { AlertRuleDialog } from '../components/AlertRuleDialog.jsx';
 const A_SHARE_MARKET = { key: 'cn', label: 'A股' };
 function normalizeMarketKey(value) {
   return value === A_SHARE_MARKET.key ? value : A_SHARE_MARKET.key;
@@ -64,6 +66,7 @@ function normalizeMarketKey(value) {
 const MARKETS_PENDING_SYMBOL_KEY = 'markets:pendingSymbol';
 export function MarketsExperience() {
   const { saveSearchHistory } = useMarketsSearchHistory();
+  const { marketAlerts, alertDialogOpen, selectedAlertSymbol, handleOpenAlertDialog, handleSaveAlert, handleCloseAlertDialog } = useMarketAlerts();
   const [market, setMarket] = useState(A_SHARE_MARKET.key);
   const [indices, setIndices] = useState([]);
   const [indicesLoading, setIndicesLoading] = useState(false);
@@ -1374,9 +1377,16 @@ export function MarketsExperience() {
             setFullTableMode(true);
             setSymbolDetailTab('overview');
           },
+          onOpenAlertDialog: handleOpenAlertDialog,
         }}
       />
     </div>
+    <AlertRuleDialog
+      open={alertDialogOpen}
+      onClose={handleCloseAlertDialog}
+      onSave={handleSaveAlert}
+      mode="market"
+    />
     </>
   );
 }

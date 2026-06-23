@@ -14,6 +14,7 @@ import {
   loadLatestMarketMap,
   resolveDcaWindow
 } from './notificationRuleEvaluation.js';
+import { evaluateMarketAlertRules, evaluateHoldingAlertRules } from './alertRuleEvaluation.js';
 
 const DEFAULT_TIMEZONE = 'Asia/Shanghai';
 
@@ -540,6 +541,72 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
     }
   }
 
+  if (compiled.marketAlertRules?.length) {
+    const marketAlertStateKey = `${env.__notifyCurrentClientId}:market-alerts`;
+    const marketAlertResult = await evaluateMarketAlertRules(env, compiled.marketAlertRules, {
+      clientId: env.__notifyCurrentClientId,
+      settings: env.__notifySettings,
+      readState: async () => nextState.ruleStates[marketAlertStateKey] || {},
+      writeState: async (data) => { nextState.ruleStates[marketAlertStateKey] = data; }
+    });
+
+    for (const item of marketAlertResult.delivered || []) {
+      const event = {
+        id: `market-alert:${item.symbol}:${now.toISOString()}`,
+        eventType: 'market-alert',
+        ruleId: item.ruleId,
+        title: `${item.symbol} 市场预警`,
+        body: `触发值: ${item.actualValue.toFixed(2)}%`,
+        body_md: '',
+        summary: `${item.symbol} 市场预警`,
+        symbol: item.symbol,
+        strategyName: '',
+        triggerCondition: '',
+        purchaseAmount: '',
+        detailUrl: buildNotificationDetailUrl(env, 'markets', item.symbol),
+        status: 'delivered',
+        channels: item.results,
+        createdAt: now.toISOString(),
+        reason
+      };
+      events.push(event);
+      recentEvents = appendEvent(recentEvents, event);
+    }
+  }
+
+  if (compiled.holdingAlertRules?.length) {
+    const holdingAlertStateKey = `${env.__notifyCurrentClientId}:holding-alerts`;
+    const holdingAlertResult = await evaluateHoldingAlertRules(env, compiled.holdingAlertRules, {
+      clientId: env.__notifyCurrentClientId,
+      settings: env.__notifySettings,
+      readState: async () => nextState.ruleStates[holdingAlertStateKey] || {},
+      writeState: async (data) => { nextState.ruleStates[holdingAlertStateKey] = data; }
+    });
+
+    for (const item of holdingAlertResult.delivered || []) {
+      const event = {
+        id: `holding-alert:${item.symbol}:${now.toISOString()}`,
+        eventType: 'holding-alert',
+        ruleId: item.ruleId,
+        title: `${item.symbol} 持仓预警`,
+        body: `触发值: ${item.actualValue.toFixed(2)}%`,
+        body_md: '',
+        summary: `${item.symbol} 持仓预警`,
+        symbol: item.symbol,
+        strategyName: '',
+        triggerCondition: '',
+        purchaseAmount: '',
+        detailUrl: buildNotificationDetailUrl(env, 'holdings', item.symbol),
+        status: 'delivered',
+        channels: item.results,
+        createdAt: now.toISOString(),
+        reason
+      };
+      events.push(event);
+      recentEvents = appendEvent(recentEvents, event);
+    }
+  }
+
   return {
     state: {
       ...nextState,
@@ -554,3 +621,4 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
     settingsRemovals
   };
 }
+

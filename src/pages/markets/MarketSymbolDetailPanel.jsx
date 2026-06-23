@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUp, CalendarDays, Loader2, Search, Star, X } from 'lucide-react';
+import { ArrowUp, Bell, CalendarDays, Loader2, Search, Star, X } from 'lucide-react';
 import { fetchKline, fetchQuotes, searchSymbols, CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsApi.js';
 import { getNavHistory, getNavSnapshot } from '../../app/navService.js';
 import { getXueqiuQuote } from '../../app/xueqiuQuote.js';
@@ -77,6 +77,7 @@ export function SymbolDetailPanel({
   chartLoading,
   inWatch,
   onToggleWatch,
+  onOpenAlertDialog,
   premiumState,
   navHistoryState,
   isMobile = false,
@@ -663,6 +664,16 @@ export function SymbolDetailPanel({
               <Star size={14} className={inWatch ? 'fill-amber-400 text-amber-400' : ''} />
               {inWatch ? '已添加' : '添加自选'}
             </button>
+            {onOpenAlertDialog && (
+              <button
+                type="button"
+                onClick={() => onOpenAlertDialog(row)}
+                className="inline-flex items-center gap-1 rounded-full border border-[#dadce0] bg-white px-2 py-0.5 text-[12px] font-medium text-[#1f1f1f] transition hover:bg-[#f1f3f4] sm:px-2.5 sm:py-1 sm:text-[13px]"
+              >
+                <Bell size={14} />
+                设置预警
+              </button>
+            )}
           </div>
         </div>
 

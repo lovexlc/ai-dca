@@ -1,4 +1,4 @@
-import { ExternalLink, Minus, Plus } from 'lucide-react';
+import { Bell, ExternalLink, Minus, Plus } from 'lucide-react';
 import { formatCurrency } from '../../app/accumulation.js';
 import {
   KIND_LABELS,
@@ -12,7 +12,7 @@ import {
 } from '../../app/holdingsHelpers.js';
 import { Pill, cx } from '../../components/experience-ui.jsx';
 
-export function HoldingSummaryPanel({ aggregate, onNavigateToMarkets, onBuyOrSell }) {
+export function HoldingSummaryPanel({ aggregate, onNavigateToMarkets, onBuyOrSell, onOpenAlertDialog }) {
   if (!aggregate) {
     return <div className="text-sm text-slate-500" />;
   }
@@ -104,6 +104,15 @@ export function HoldingSummaryPanel({ aggregate, onNavigateToMarkets, onBuyOrSel
           净值获取失败：{agg.snapshotError}
         </div>
       ) : null}
+      {onOpenAlertDialog && (
+        <button
+          type="button"
+          className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+          onClick={() => onOpenAlertDialog(agg)}
+        >
+          <Bell className="h-4 w-4" />设置预警
+        </button>
+      )}
       <button
         type="button"
         className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-100"

@@ -7,6 +7,7 @@ import { calculatePositions } from './positionManager.js';
 import { readVixSnapshot, resolveVixSignal, VIX_THRESHOLDS } from './vixSignal.js';
 import { trackAnalyticsEvent } from './analytics.js';
 import { apiUrl } from './apiBase.js';
+import { readMarketAlerts, readHoldingAlerts } from './alertRules.js';
 
 const NOTIFY_ENDPOINT = '/api/notify';
 const NOTIFY_CLIENT_CONFIG_KEY = 'aiDcaNotifyClientConfig';
@@ -301,7 +302,7 @@ export function buildNotifySyncPayload() {
       snapshotPrices = snap.prices;
     }
   } catch { /* ignore */ }
-  // PR 1.5：sell_layer 规则 — 上传已保存的卖出计划列表，让 worker 能生成“盈利 X% → 卖 Y%”提醒。
+  // PR 1.5：sell_layer 规则 — 上传已保存的卖出计划列表，让 worker 能生成”盈利 X% → 卖 Y%”提醒。
   // 只传一个精简快照，并附带 currentPrice 供 worker 计算盈利%。
   const sellPlans = readSellPlanList().map((plan) => {
     const sym = String(plan.symbol || '').trim().toUpperCase();
@@ -321,6 +322,9 @@ export function buildNotifySyncPayload() {
   const positionDigest = buildPositionDigest();
   const vixDigest = buildVixDigest();
 
+  const marketAlerts = readMarketAlerts().filter(rule => rule.enabled);
+  const holdingAlerts = readHoldingAlerts().filter(rule => rule.enabled);
+
   return {
     plans,
     dca,
@@ -328,6 +332,8 @@ export function buildNotifySyncPayload() {
     sellPlans,
     positionDigest,
     vix: vixDigest,
+    marketAlerts,
+    holdingAlerts,
     syncedAt: new Date().toISOString()
   };
 }
