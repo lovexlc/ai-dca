@@ -165,6 +165,7 @@ export function MarketsExperience() {
     );
   }, []);
   const watchLists = Array.isArray(watch.lists) ? watch.lists : [];
+  const activeWatchList = watchLists.find((item) => item.id === watch.activeListId) || watchLists[0] || {};
   const isActiveOtcList = activeWatchList.type === 'cn_otc' || activeWatchList.id === 'default-otc';
   const watchSymbols = useMemo(() => activeWatchList[market] || [], [activeWatchList, market]);
   useEffect(() => {
