@@ -56,20 +56,18 @@ import {
   resolveCnFundName,
 } from './markets/marketsCatalog.js';
 import { updateSymbolInUrl, clearSymbolFromUrl } from './markets/marketsUrlSync.js';
-
+import { useMarketsSearchHistory } from './markets/useMarketsSearchHistory.js';
 const A_SHARE_MARKET = { key: 'cn', label: 'A股' };
-
 function normalizeMarketKey(value) {
   return value === A_SHARE_MARKET.key ? value : A_SHARE_MARKET.key;
 }
-
 const MARKETS_PENDING_SYMBOL_KEY = 'markets:pendingSymbol';
-
-// 行情中心底部“搜索或提问”输入条。提交后向全局 AI 抽屉发 prefill 事件，
+// 行情中心底部”搜索或提问”输入条。提交后向全局 AI 抽屉发 prefill 事件，
 // 抽屉会自动切到市场行情模式并预填问题。
-// 右栏“研究”面板：inline 问答，点击预设问题或提交输入后直接调 /api/markets/ask。
+// 右栏”研究”面板：inline 问答，点击预设问题或提交输入后直接调 /api/markets/ask。
 // 不再弹出右下角 AI 抽屉。
 export function MarketsExperience() {
+  const { saveSearchHistory } = useMarketsSearchHistory();
   const [market, setMarket] = useState(A_SHARE_MARKET.key);
   const [indices, setIndices] = useState([]);
   const [indicesLoading, setIndicesLoading] = useState(false);
@@ -179,7 +177,6 @@ export function MarketsExperience() {
   });
 
   const ensureKlines = useCallback(async (symbols) => {
-    const uniq = Array.from(new Set((symbols || []).filter(Boolean)));
     const pending = uniq.filter((s) => !klineInflightRef.current.has(s));
     pending.forEach((s) => klineInflightRef.current.add(s));
     if (!pending.length) return;
@@ -200,7 +197,6 @@ export function MarketsExperience() {
   }, []);
 
   const watchLists = Array.isArray(watch.lists) ? watch.lists : [];
-  const activeWatchList = watchLists.find((item) => item.id === watch.activeListId) || watchLists[0] || { us: [], cn: [], name: '默认列表' };
   const isActiveOtcList = activeWatchList.type === 'cn_otc' || activeWatchList.id === 'default-otc';
   const watchSymbols = useMemo(() => activeWatchList[market] || [], [activeWatchList, market]);
   useEffect(() => {
@@ -231,7 +227,6 @@ export function MarketsExperience() {
   }, [selectedSymbol]);
 
   useEffect(() => {
-    if (!selectedSymbol || !isMobile) return;
     setResearchMode('peek');
     setDetailHeaderHidden(false);
     requestAnimationFrame(() => {
@@ -246,7 +241,6 @@ export function MarketsExperience() {
     if (!selectedSymbol || typeof window === 'undefined') return undefined;
     const scrollTarget = isMobile ? window : mainRef.current;
     if (!scrollTarget) return undefined;
-    const readY = () => isMobile ? window.scrollY : (mainRef.current?.scrollTop || 0);
     detailScrollRef.current.y = readY();
     const handleDetailScroll = () => {
       const y = readY();
@@ -526,7 +520,6 @@ export function MarketsExperience() {
 
   useCnFundDailyCandles({ market, selectedSymbol, chartCandlesMap, chartInflightRef, fetchKline, hasNasdaqOtcFund, setChartCandlesMap });
 
-
   // 当前标的切到财务 tab 时按需拉 Yahoo quoteSummary 三大表。
   useEffect(() => {
     if (!selectedSymbol || market !== 'us' || symbolDetailTab !== 'financials') return;
@@ -804,6 +797,14 @@ export function MarketsExperience() {
     const targetMarket = normalizeMarketKey(row.market || market);
     const symbol = rememberSelectedQuote(row, targetMarket);
     if (!symbol) return;
+
+    // 保存到搜索历史
+    saveSearchHistory(
+      symbol,
+      row.name || row.shortName || row.displayName || '',
+      targetMarket
+    );
+
     setMarket(targetMarket);
     setSelectedSymbol(symbol);
     setFullTableMode(false);

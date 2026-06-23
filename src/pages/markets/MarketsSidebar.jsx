@@ -1,10 +1,11 @@
-import { ChevronDown, ChevronRight, ChevronUp, ListPlus, Loader2, Search, Star, TrendingUp, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp, ListPlus, Loader2, Search, Star, TrendingUp, X, Clock, TrendingUp as Hot } from 'lucide-react';
 import { TextInput, cx } from '../../components/experience-ui.jsx';
 import { formatSymbolDisplay } from './marketDisplayUtils.js';
 import { ListExpandButton } from './ListExpandButton.jsx';
 import { MarketListTable } from './MarketListTable.jsx';
 import { MobileSidebarRow, SidebarRow } from './MarketSidebarRows.jsx';
 import { WatchlistSelector } from './WatchlistControls.jsx';
+import { getSearchSuggestions } from './marketsSearchHistory.js';
 
 function SymbolSearchResults({
   compact = false,
@@ -13,6 +14,7 @@ function SymbolSearchResults({
   error,
   results,
   onPick,
+  searchQuery = '',
 }) {
   if (loading) {
     return (
@@ -25,9 +27,79 @@ function SymbolSearchResults({
   if (error) {
     return <div className={cx('px-3 py-2 text-rose-600', compact ? 'text-xs' : 'text-sm')}>{error}</div>;
   }
+
+  // 当没有搜索内容时，显示搜索历史和热门推荐
+  if (!searchQuery || searchQuery.trim().length === 0) {
+    const suggestions = getSearchSuggestions(market);
+    if (!suggestions.length) return null;
+
+    const history = suggestions.filter(item => item.timestamp);
+    const popular = suggestions.filter(item => !item.timestamp);
+
+    return (
+      <div className="divide-y divide-[#e8eaed]">
+        {history.length > 0 && (
+          <div className="px-3 py-2">
+            <div className={cx('mb-2 flex items-center gap-1.5 text-[#5f6368]', compact ? 'text-xs' : 'text-sm')}>
+              <Clock size={compact ? 12 : 14} />
+              <span className="font-medium">最近搜索</span>
+            </div>
+            <ul className="space-y-1">
+              {history.map((item) => (
+                <li key={item.symbol}>
+                  <button
+                    type="button"
+                    className={cx(
+                      'flex w-full items-center justify-between rounded text-left hover:bg-[#f8fafd]',
+                      compact ? 'gap-2 px-2 py-1.5' : 'gap-3 px-2 py-2'
+                    )}
+                    onClick={() => onPick({ symbol: item.symbol, name: item.name, market: item.market })}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className={cx('block truncate font-semibold text-[#1f1f1f]', compact ? 'text-xs' : 'text-sm')}>{formatSymbolDisplay(item.symbol)}</span>
+                      {item.name && <span className={cx('block truncate text-[#5f6368]', compact ? 'text-[11px]' : 'text-xs')}>{item.name}</span>}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {popular.length > 0 && (
+          <div className="px-3 py-2">
+            <div className={cx('mb-2 flex items-center gap-1.5 text-[#5f6368]', compact ? 'text-xs' : 'text-sm')}>
+              <Hot size={compact ? 12 : 14} />
+              <span className="font-medium">热门基金</span>
+            </div>
+            <ul className="space-y-1">
+              {popular.map((item) => (
+                <li key={item.symbol}>
+                  <button
+                    type="button"
+                    className={cx(
+                      'flex w-full items-center justify-between rounded text-left hover:bg-[#f8fafd]',
+                      compact ? 'gap-2 px-2 py-1.5' : 'gap-3 px-2 py-2'
+                    )}
+                    onClick={() => onPick({ symbol: item.symbol, name: item.name, market: item.market })}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className={cx('block truncate font-semibold text-[#1f1f1f]', compact ? 'text-xs' : 'text-sm')}>{formatSymbolDisplay(item.symbol)}</span>
+                      {item.name && <span className={cx('block truncate text-[#5f6368]', compact ? 'text-[11px]' : 'text-xs')}>{item.name}</span>}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (!results.length) {
     return <div className={cx('px-3 py-2 text-[#5f6368]', compact ? 'text-xs' : 'text-sm')}>没有找到匹配标的</div>;
   }
+
   return (
     <ul className="divide-y divide-[#e8eaed]">
       {results.map((row) => (
@@ -204,7 +276,7 @@ export function MarketsSidebar({
               </button>
             </div>
           </div>
-          {sectorsOpen && sectorSearchOpen && symbolInput.trim() ? (
+          {sectorsOpen && sectorSearchOpen && (
             <div className="mb-2 rounded-2xl border border-[#e8eaed] bg-white shadow-sm">
               <SymbolSearchResults
                 market={market}
@@ -212,9 +284,10 @@ export function MarketsSidebar({
                 error={symbolSearchError}
                 results={symbolSearchResults}
                 onPick={onPickSymbolSearch}
+                searchQuery={symbolInput}
               />
             </div>
-          ) : null}
+          )}
           {sectorsOpen && (
             sectors.length === 0 ? (
               <p className="px-2 py-2 text-sm text-[#5f6368]">{sectorEmptyText}</p>
@@ -350,7 +423,7 @@ export function MarketsSidebar({
           </div>
           {sectorsOpen && (
             <div className="px-1 pb-2 pt-1">
-              {sectorSearchOpen && symbolInput.trim() ? (
+              {sectorSearchOpen && (
                 <div className="mb-2 overflow-hidden rounded-xl border border-[#e8eaed] bg-white shadow-sm">
                   <SymbolSearchResults
                     compact
@@ -359,9 +432,10 @@ export function MarketsSidebar({
                     error={symbolSearchError}
                     results={symbolSearchResults}
                     onPick={onPickSymbolSearch}
+                    searchQuery={symbolInput}
                   />
                 </div>
-              ) : null}
+              )}
               {sectors.length === 0 ? (
                 <p className="px-2 py-1 text-xs text-slate-400">{sectorEmptyText}</p>
               ) : (
