@@ -1,16 +1,34 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, Edit3, ListPlus, Trash2, TrendingUp } from 'lucide-react';
 import { cx } from '../../components/experience-ui.jsx';
 import { getPopularSymbols } from './marketsSearchHistory.js';
 
 export function WatchlistSelector({ lists = [], activeListId, onSelect, onCreate, onRename, onDelete, onAddPopular }) {
   const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        event.preventDefault();
+        event.stopPropagation();
+        setOpen(false);
+      }
+    };
+
+    // Capture phase to prevent click events from reaching underlying elements
+    document.addEventListener('click', handleClickOutside, true);
+    return () => document.removeEventListener('click', handleClickOutside, true);
+  }, [open]);
+
   const active = (lists || []).find((item) => item.id === activeListId) || lists[0];
   const canDelete = (item) => item?.id !== 'default' && (lists || []).length > 1;
   const popularSymbols = getPopularSymbols('cn');
 
   return (
-    <div className="relative">
+    <div className="relative" ref={containerRef}>
       <button
         type="button"
         aria-label="切换监控列表"

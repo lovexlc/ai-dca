@@ -3,8 +3,8 @@ import * as React from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { cn } from "@/lib/utils";
 
-function Popover({ ...props }) {
-  return <PopoverPrimitive.Root data-slot="popover" {...props} />;
+function Popover({ modal = true, ...props }) {
+  return <PopoverPrimitive.Root data-slot="popover" modal={modal} {...props} />;
 }
 
 const PopoverTrigger = React.forwardRef(function PopoverTrigger(props, ref) {

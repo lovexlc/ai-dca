@@ -1,0 +1,523 @@
+[
+  {
+    "view": "strategy",
+    "viewport": "desktop",
+    "type": "clipped",
+    "count": 3,
+    "items": [
+      {
+        "control": "button \"操作纪律5 分钟阅读\"",
+        "left": 1280,
+        "right": 1500
+      },
+      {
+        "control": "button \"生成 Demo 数据新手辅助\"",
+        "left": 1516,
+        "right": 1736
+      },
+      {
+        "control": "button \"全站 README8 分钟阅读\"",
+        "left": 1752,
+        "right": 1972
+      }
+    ]
+  },
+  {
+    "view": "markets",
+    "viewport": "desktop",
+    "type": "clipped",
+    "count": 1,
+    "items": [
+      {
+        "control": "button \"趋势\"",
+        "left": 1378,
+        "right": 1463
+      }
+    ]
+  },
+  {
+    "view": "account-menu",
+    "viewport": "desktop",
+    "type": "overlay-occlusion",
+    "count": 4,
+    "items": [
+      {
+        "control": "button.relative.inline-flex.h-7 \"同步净值\"",
+        "coveredBy": "div.flex.items-center.gap-3 \"Llovexl等待同步\"",
+        "at": {
+          "x": 1398,
+          "y": 78
+        }
+      },
+      {
+        "control": "button.inline-flex.items-center.gap-1.5 \"复制表格\"",
+        "coveredBy": "div.space-y-4 \"Llovexl等待同步状态等待同步云端-本地4 项范围 4 项 · 1.6 KB\"",
+        "at": {
+          "x": 1161,
+          "y": 174
+        }
+      },
+      {
+        "control": "button.inline-flex.items-center.gap-1.5 \"截图 OCR\"",
+        "coveredBy": "div.space-y-4 \"Llovexl等待同步状态等待同步云端-本地4 项范围 4 项 · 1.6 KB\"",
+        "at": {
+          "x": 1266,
+          "y": 174
+        }
+      },
+      {
+        "control": "button.inline-flex.items-center.gap-1.5 \"新增单笔\"",
+        "coveredBy": "div.space-y-4 \"Llovexl等待同步状态等待同步云端-本地4 项范围 4 项 · 1.6 KB\"",
+        "at": {
+          "x": 1370,
+          "y": 174
+        }
+      }
+    ]
+  },
+  {
+    "view": "new-plan",
+    "viewport": "desktop",
+    "type": "overlay-occlusion",
+    "count": 1,
+    "items": [
+      {
+        "control": "a.ml-auto.inline-flex.items-center \"去设置\"",
+        "coveredBy": "button.flex.w-full.items-center \"从回测结果创建...\"",
+        "at": {
+          "x": 1368,
+          "y": 296
+        }
+      }
+    ]
+  },
+  {
+    "view": "add-lot",
+    "viewport": "desktop",
+    "type": "overlay-occlusion",
+    "count": 23,
+    "items": [
+      {
+        "control": "button.rounded-full.border.border-slate-200 \"加入群聊\"",
+        "coveredBy": "div.fixed.inset-0.z-[100] \"新增交易新增交易代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 \"",
+        "at": {
+          "x": 1067,
+          "y": 24
+        }
+      },
+      {
+        "control": "button.inline-flex.items-center.gap-1 \"免责\"",
+        "coveredBy": "div.fixed.inset-0.z-[100] \"新增交易新增交易代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 \"",
+        "at": {
+          "x": 1148,
+          "y": 24
+        }
+      },
+      {
+        "control": "button#radix-_r_0_.flex.items-center.gap-1.5 \"切换使用场景\"",
+        "coveredBy": "div.fixed.inset-0.z-[100] \"新增交易新增交易代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 \"",
+        "at": {
+          "x": 1254,
+          "y": 24
+        }
+      },
+      {
+        "control": "button.inline-flex.h-8.items-center \"账户：lovexl\"",
+        "coveredBy": "div.fixed.inset-0.z-[100] \"新增交易新增交易代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 \"",
+        "at": {
+          "x": 1371,
+          "y": 24
+        }
+      },
+      {
+        "control": "a.console-sidenav__link.is-active \"持仓总览\"",
+        "coveredBy": "div.fixed.inset-0.z-[100] \"新增交易新增交易代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 \"",
+        "at": {
+          "x": 104,
+          "y": 78
+        }
+      },
+      {
+        "control": "a.console-sidenav__link \"交易计划\"",
+        "coveredBy": "div.fixed.inset-0.z-[100] \"新增交易新增交易代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 \"",
+        "at": {
+          "x": 104,
+          "y": 116
+        }
+      },
+      {
+        "control": "a.console-sidenav__link \"策略指南\"",
+        "coveredBy": "div.fixed.inset-0.z-[100] \"新增交易新增交易代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 \"",
+        "at": {
+          "x": 104,
+          "y": 154
+        }
+      },
+      {
+        "control": "a.console-sidenav__link \"基金切换\"",
+        "coveredBy": "div.fixed.inset-0.z-[100] \"新增交易新增交易代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 \"",
+        "at": {
+          "x": 104,
+          "y": 193
+        }
+      },
+      {
+        "control": "a.console-sidenav__link \"行情中心\"",
+        "coveredBy": "div.fixed.inset-0.z-[100] \"新增交易新增交易代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 \"",
+        "at": {
+          "x": 104,
+          "y": 231
+        }
+      },
+      {
+        "control": "a.console-sidenav__link \"高级版\"",
+        "coveredBy": "div.fixed.inset-0.z-[100] \"新增交易新增交易代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 \"",
+        "at": {
+          "x": 104,
+          "y": 269
+        }
+      },
+      {
+        "control": "a.console-sidenav__link \"通知\"",
+        "coveredBy": "div.fixed.inset-0.z-[100] \"新增交易新增交易代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 \"",
+        "at": {
+          "x": 104,
+          "y": 307
+        }
+      },
+      {
+        "control": "a.console-sidenav__link \"数据\"",
+        "coveredBy": "div.fixed.inset-0.z-[100] \"新增交易新增交易代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 \"",
+        "at": {
+          "x": 104,
+          "y": 345
+        }
+      },
+      {
+        "control": "button.console-sidebar__expand \"收起导航\"",
+        "coveredBy": "div.fixed.inset-0.z-[100] \"新增交易新增交易代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 \"",
+        "at": {
+          "x": 104,
+          "y": 880
+        }
+      },
+      {
+        "control": "button.relative.inline-flex.h-7 \"同步净值\"",
+        "coveredBy": "div.fixed.inset-0.z-[100] \"新增交易新增交易代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 \"",
+        "at": {
+          "x": 1398,
+          "y": 78
+        }
+      },
+      {
+        "control": "button.inline-flex.items-center.gap-1.5 \"收益明细\"",
+        "coveredBy": "div.fixed.inset-0.z-[100] \"新增交易新增交易代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 \"",
+        "at": {
+          "x": 279,
+          "y": 174
+        }
+      }
+    ]
+  },
+  {
+    "view": "strategy",
+    "viewport": "mobile",
+    "type": "clipped",
+    "count": 5,
+    "items": [
+      {
+        "control": "button \"个股投资策略7 分钟阅读\"",
+        "left": 312,
+        "right": 448
+      },
+      {
+        "control": "button \"做 T 与负成本4 分钟阅读\"",
+        "left": 458,
+        "right": 594
+      },
+      {
+        "control": "button \"操作纪律5 分钟阅读\"",
+        "left": 604,
+        "right": 740
+      },
+      {
+        "control": "button \"生成 Demo 数据新手辅助\"",
+        "left": 750,
+        "right": 886
+      },
+      {
+        "control": "button \"全站 README8 分钟阅读\"",
+        "left": 896,
+        "right": 1032
+      }
+    ]
+  },
+  {
+    "view": "tradePlans",
+    "viewport": "mobile",
+    "type": "clipped",
+    "count": 3,
+    "items": [
+      {
+        "control": "button \"卖出 · 0\"",
+        "left": 357,
+        "right": 464
+      },
+      {
+        "control": "button \"VIX 信号\"",
+        "left": 464,
+        "right": 578
+      },
+      {
+        "control": "button \"回测工具\"",
+        "left": 578,
+        "right": 688
+      }
+    ]
+  },
+  {
+    "view": "markets",
+    "viewport": "mobile",
+    "type": "clipped",
+    "count": 1,
+    "items": [
+      {
+        "control": "button \"涨跌幅\"",
+        "left": 370,
+        "right": 468
+      }
+    ]
+  },
+  {
+    "view": "account-menu",
+    "viewport": "mobile",
+    "type": "overlay-occlusion",
+    "count": 9,
+    "items": [
+      {
+        "control": "button.relative.inline-flex.h-7 \"同步净值\"",
+        "coveredBy": "div.flex.items-center.gap-3 \"Llovexl等待同步\"",
+        "at": {
+          "x": 356,
+          "y": 86
+        }
+      },
+      {
+        "control": "button.flex.flex-col.items-center \"收益\"",
+        "coveredBy": "div.absolute.right-0.top-full \"Llovexl等待同步状态等待同步云端-本地4 项范围 4 项 · 1.6 KB\"",
+        "at": {
+          "x": 58,
+          "y": 287
+        }
+      },
+      {
+        "control": "button.flex.flex-col.items-center \"清仓\"",
+        "coveredBy": "div.mt-0.5.leading-5.text-indigo-700 \"登录后仍停在等待同步时，可手动检查云端并上传或合并本机数据。\"",
+        "at": {
+          "x": 149,
+          "y": 287
+        }
+      },
+      {
+        "control": "button.flex.flex-col.items-center \"持仓\"",
+        "coveredBy": "div.mt-0.5.leading-5.text-indigo-700 \"登录后仍停在等待同步时，可手动检查云端并上传或合并本机数据。\"",
+        "at": {
+          "x": 241,
+          "y": 287
+        }
+      },
+      {
+        "control": "button.flex.flex-col.items-center \"记录\"",
+        "coveredBy": "div.mt-0.5.leading-5.text-indigo-700 \"登录后仍停在等待同步时，可手动检查云端并上传或合并本机数据。\"",
+        "at": {
+          "x": 332,
+          "y": 287
+        }
+      },
+      {
+        "control": "button.inline-flex.h-11.items-center \"截图 OCR\"",
+        "coveredBy": "button.inline-flex.min-h-11.items-center \"立即同步\"",
+        "at": {
+          "x": 104,
+          "y": 353
+        }
+      },
+      {
+        "control": "button.inline-flex.h-11.items-center \"新增单笔\"",
+        "coveredBy": "button.inline-flex.min-h-11.items-center \"立即同步\"",
+        "at": {
+          "x": 287,
+          "y": 353
+        }
+      },
+      {
+        "control": "button.inline-flex.min-h-11.items-center \"录入第一笔交易\"",
+        "coveredBy": "span.relative.h-4.w-7",
+        "at": {
+          "x": 124,
+          "y": 667
+        }
+      },
+      {
+        "control": "button.inline-flex.h-10.items-center \"生成demo数据\"",
+        "coveredBy": "button.inline-flex.min-h-11.items-center \"查看数据说明\"",
+        "at": {
+          "x": 279,
+          "y": 667
+        }
+      }
+    ]
+  },
+  {
+    "view": "new-plan",
+    "viewport": "mobile",
+    "type": "overlay-occlusion",
+    "count": 3,
+    "items": [
+      {
+        "control": "button#trade-plan-tab-home.inline-flex.min-h-12.shrink-0 \"加仓 · 0\"",
+        "coveredBy": "button.flex.w-full.items-center \"加仓策略（按回撤/均线）\"",
+        "at": {
+          "x": 197,
+          "y": 265
+        }
+      },
+      {
+        "control": "button#trade-plan-tab-dca.inline-flex.min-h-12.shrink-0 \"定投 · 0\"",
+        "coveredBy": "button.flex.w-full.items-center \"加仓策略（按回撤/均线）\"",
+        "at": {
+          "x": 304,
+          "y": 265
+        }
+      },
+      {
+        "control": "a.ml-auto.inline-flex.items-center \"去设置\"",
+        "coveredBy": "button.flex.w-full.items-center \"从回测结果创建...\"",
+        "at": {
+          "x": 326,
+          "y": 384
+        }
+      }
+    ]
+  },
+  {
+    "view": "add-lot",
+    "viewport": "mobile",
+    "type": "overlay-occlusion",
+    "count": 14,
+    "items": [
+      {
+        "control": "button.relative.inline-flex.h-7 \"打开导航\"",
+        "coveredBy": "div.fixed.inset-0.z-[100] \"新增交易新增交易代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 \"",
+        "at": {
+          "x": 26,
+          "y": 24
+        }
+      },
+      {
+        "control": "button.rounded-full.border.border-slate-200 \"加入群聊\"",
+        "coveredBy": "div.fixed.inset-0.z-[100] \"新增交易新增交易代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 \"",
+        "at": {
+          "x": 113,
+          "y": 24
+        }
+      },
+      {
+        "control": "button.inline-flex.items-center.gap-1 \"免责\"",
+        "coveredBy": "div.fixed.inset-0.z-[100] \"新增交易新增交易代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 \"",
+        "at": {
+          "x": 185,
+          "y": 24
+        }
+      },
+      {
+        "control": "button#radix-_r_0_.flex.items-center.gap-1.5 \"切换使用场景\"",
+        "coveredBy": "div.fixed.inset-0.z-[100] \"新增交易新增交易代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 \"",
+        "at": {
+          "x": 276,
+          "y": 24
+        }
+      },
+      {
+        "control": "button.inline-flex.h-8.items-center \"账户：lovexl\"",
+        "coveredBy": "div.fixed.inset-0.z-[100] \"新增交易新增交易代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 \"",
+        "at": {
+          "x": 357,
+          "y": 24
+        }
+      },
+      {
+        "control": "button.relative.inline-flex.h-7 \"同步净值\"",
+        "coveredBy": "div.flex.items-center.justify-between \"新增交易\"",
+        "at": {
+          "x": 356,
+          "y": 86
+        }
+      },
+      {
+        "control": "button.flex.flex-col.items-center \"收益\"",
+        "coveredBy": "div.grid.grid-cols-2.gap-3 \"代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 *净值确认后自动\"",
+        "at": {
+          "x": 58,
+          "y": 287
+        }
+      },
+      {
+        "control": "button.flex.flex-col.items-center \"清仓\"",
+        "coveredBy": "div.grid.grid-cols-2.gap-3 \"代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 *净值确认后自动\"",
+        "at": {
+          "x": 149,
+          "y": 287
+        }
+      },
+      {
+        "control": "button.flex.flex-col.items-center \"持仓\"",
+        "coveredBy": "div.grid.grid-cols-2.gap-3 \"代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 *净值确认后自动\"",
+        "at": {
+          "x": 241,
+          "y": 287
+        }
+      },
+      {
+        "control": "button.flex.flex-col.items-center \"记录\"",
+        "coveredBy": "div.grid.grid-cols-2.gap-3 \"代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 *净值确认后自动\"",
+        "at": {
+          "x": 332,
+          "y": 287
+        }
+      },
+      {
+        "control": "button.inline-flex.h-11.items-center \"截图 OCR\"",
+        "coveredBy": "select.h-10.w-full.rounded-xl \"BUYSELL\"",
+        "at": {
+          "x": 104,
+          "y": 353
+        }
+      },
+      {
+        "control": "button.inline-flex.h-11.items-center \"新增单笔\"",
+        "coveredBy": "div.grid.grid-cols-2.gap-3 \"代码名称标签 添加类型BUYSELL日期价格（净值·选填）金额 *净值确认后自动\"",
+        "at": {
+          "x": 287,
+          "y": 353
+        }
+      },
+      {
+        "control": "button.inline-flex.min-h-11.items-center \"录入第一笔交易\"",
+        "coveredBy": "label.col-span-2.text-xs.text-slate-500 \"备注\"",
+        "at": {
+          "x": 124,
+          "y": 667
+        }
+      },
+      {
+        "control": "button.inline-flex.h-10.items-center \"生成demo数据\"",
+        "coveredBy": "label.col-span-2.text-xs.text-slate-500 \"备注\"",
+        "at": {
+          "x": 279,
+          "y": 667
+        }
+      }
+    ]
+  }
+]

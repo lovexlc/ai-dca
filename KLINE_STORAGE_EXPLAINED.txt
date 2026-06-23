@@ -1,0 +1,227 @@
+╔═══════════════════════════════════════════════════════════════════╗
+║           1分钟K线数据在KV中的存储方式                             ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+📊 存储架构
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+K线数据存储在 Cloudflare R2（对象存储），不在 KV 中。
+
+存储位置: Cloudflare R2
+存储 Worker: markets
+查询 Worker: notify
+
+📁 R2 Key 命名规范
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+格式: kline/<market>/<symbol>/<interval>.json
+
+示例:
+  kline/cn/159513/1m.json      // 1分钟线
+  kline/cn/159513/5m.json      // 5分钟线
+  kline/cn/159513/15m.json     // 15分钟线
+  kline/cn/159513/60m.json     // 60分钟线
+  kline/cn/159513/1d.json      // 日线
+
+参数说明:
+  <market>   : cn (中国市场) / us (美国市场)
+  <symbol>   : 证券代码，如 159513, 513100
+  <interval> : 时间周期，如 1m, 5m, 15m, 30m, 60m, 1d
+
+📦 数据格式
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+JSON 格式:
+{
+  "symbol": "159513",
+  "interval": "1m",
+  "generatedAt": "2024-06-15T10:30:00Z",
+  "candles": [
+    {
+      "t": 1718437800,           // 时间戳（秒）
+      "date": "2024-06-15",      // 日期
+      "datetime": "2024-06-15 09:30",  // 日期时间（可选）
+      "open": 1.234,             // 开盘价
+      "high": 1.256,             // 最高价
+      "low": 1.222,              // 最低价
+      "close": 1.245,            // 收盘价
+      "volume": 1234567,         // 成交量
+      "bidPrice": 1.244,         // 买一价（可选）
+      "bidVolume": 10000,        // 买一量（可选）
+      "askPrice": 1.246,         // 卖一价（可选）
+      "askVolume": 10000         // 卖一量（可选）
+    },
+    // ... 更多K线数据
+  ]
+}
+
+🔄 数据流程
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. 数据采集 (markets worker)
+   ↓
+   数据源（Yahoo Finance / 雪球）获取K线
+   ↓
+   格式化为标准格式
+   ↓
+   存储到 R2: kline/cn/159513/1m.json
+
+2. 数据读取 (notify worker - 回测)
+   ↓
+   调用: fetchQuantBacktestKline(env, code, timeframe)
+   ↓
+   请求: /kline/159513?tf=1m&limit=1000&session=all
+   ↓
+   markets worker 从 R2 读取
+   ↓
+   返回 candles 数组
+
+🔍 回测数据获取逻辑
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+代码位置: workers/notify/src/quantPremiumRoutes.js
+
+函数调用链:
+  runQuantPremiumBacktestWithLiveData()
+    ↓
+  fetchQuantBacktestKline(env, code, timeframe)
+    ↓
+  fetchMarketsJsonForQuantBacktest(env, `/kline/${code}?tf=${timeframe}&limit=1000&session=all`)
+    ↓
+  markets worker 处理请求
+    ↓
+  从 R2 读取: kline/cn/${code}/${timeframe}.json
+    ↓
+  返回 candles 数组
+
+关键参数:
+  - tf: timeframe（1m, 5m, 15m, 60m, 1d）
+  - limit: 最多返回多少条（默认1000）
+  - session: all（获取完整历史数据）
+  - refresh: 1（强制刷新，不走缓存）
+
+📝 存储函数 (workers/markets/src/storage.js)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+工具函数:
+  klineKey(market, symbol, interval)
+    返回: `kline/${market}/${symbol}/${interval}.json`
+
+  r2PutJson(env, key, value)
+    写入 R2
+
+  r2GetJson(env, key)
+    从 R2 读取
+
+示例:
+  const key = klineKey('cn', '159513', '1m');
+  // 返回: 'kline/cn/159513/1m.json'
+
+  await r2PutJson(env, key, {
+    symbol: '159513',
+    interval: '1m',
+    candles: [...]
+  });
+
+💾 缓存策略
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. R2 存储（持久化）
+   - 完整历史数据
+   - 不会过期
+   - 定期更新
+
+2. Cloudflare 边缘缓存
+   - 自动缓存 R2 读取
+   - 加速全球访问
+
+3. 回测时不走缓存
+   - refresh=1 参数
+   - 确保数据最新
+
+⚙️ 当前配置
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+支持的时间周期:
+  1m  - 1分钟线
+  5m  - 5分钟线
+  15m - 15分钟线
+  30m - 30分钟线
+  60m - 60分钟线（1小时）
+  1d  - 日线
+
+回测默认参数:
+  - limit: 1000 条K线
+  - session: all（完整历史）
+  - refresh: 1（不走缓存）
+
+🔧 数据更新
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+更新频率:
+  - 1m: 每分钟更新（盘中）
+  - 5m: 每5分钟更新（盘中）
+  - 1d: 每日收盘后更新
+
+数据来源:
+  - Yahoo Finance（主要）
+  - 雪球（备用）
+
+📊 数据量估算
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1分钟线（1m）:
+  每天: 240条（4小时交易）
+  30天: 7,200条
+  1年: 约60,000条
+
+存储大小（单个基金）:
+  每条K线: ~150 bytes
+  1000条: ~150 KB
+  完整1年: ~9 MB
+
+🎯 最佳实践
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. 回测使用
+   - 选择合适的 timeframe
+   - 1m: 最精细，但数据量大
+   - 5m: 平衡精度和性能
+   - 1d: 长期回测
+
+2. 数据获取
+   - 通过 markets worker API
+   - 参数: ?tf=1m&limit=1000&session=all
+   - 返回标准格式的 candles 数组
+
+3. 本地缓存
+   - 前端可以缓存回测结果
+   - 减少重复请求
+
+📚 相关文件
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+存储相关:
+  workers/markets/src/storage.js
+    - klineKey() 函数
+    - r2PutJson() / r2GetJson()
+
+回测数据获取:
+  workers/notify/src/quantPremiumRoutes.js
+    - fetchQuantBacktestKline()
+    - runQuantPremiumBacktestWithLiveData()
+
+回测引擎:
+  workers/notify/src/quantPremiumBacktestV2.js
+    - normalizeBacktestCandles()
+    - 处理 candles 数组
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+总结：
+- K线数据存储在 R2，不在 KV
+- Key格式: kline/cn/159513/1m.json
+- 通过 markets worker API 访问
+- 回测时动态获取，不预加载到 KV
+
+文档创建时间: 2026-06-16
