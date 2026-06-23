@@ -28,7 +28,7 @@ export function WatchlistSelector({ lists = [], activeListId, market = 'cn', onS
         <ChevronDown size={18} className="shrink-0 text-[#5f6368]" />
       </button>
       {open ? (
-        <div className="absolute left-0 top-full z-30 mt-1 w-64 overflow-hidden rounded-2xl border border-[#e8eaed] bg-white py-1 shadow-lg">
+        <div className="absolute left-0 top-full z-50 mt-1 w-64 overflow-hidden rounded-2xl border border-[#e8eaed] bg-white py-1 shadow-lg">
           {(lists || []).map((item) => (
             <div key={item.id} className={cx('flex w-full items-center gap-1 px-3 py-2 text-sm hover:bg-[#f8fafd]', item.id === activeListId ? 'text-[#1a73e8]' : 'text-[#1f1f1f]')}>
               <button type="button" onClick={() => { onSelect?.(item.id); setOpen(false); }} className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
