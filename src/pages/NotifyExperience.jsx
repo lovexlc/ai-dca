@@ -24,9 +24,9 @@ import { showActionToast } from '../app/toast.js';
 import { trackActionResult, trackAnalyticsEvent, trackFeatureEvent } from '../app/analytics.js';
 import { NotifyConfigCard } from './NotifyConfigCard.jsx';
 import { NotifyHistoryCard } from './NotifyHistoryCard.jsx';
-import { NotifyStrategyCard } from './NotifyStrategyCard.jsx';
-import { NotifyAlertRulesCard } from './NotifyAlertRulesCard.jsx';
-import { NotifyTradePlanRulesCard } from './NotifyTradePlanRulesCard.jsx';
+import { NotifyRulesCard } from './NotifyRulesCard.jsx';
+import { NotifySyncAndTestCard } from './NotifySyncAndTestCard.jsx';
+import { NotifyTestDialog } from './NotifyTestDialog.jsx';
 import { StatCard, cx } from '../components/experience-ui.jsx';
 import { formatEventTimeLabel, resolveEventStatusMeta } from '../app/tradePlansHelpers.js';
 import { parseBarkInput } from '../app/notifyParsers.js';
@@ -77,6 +77,7 @@ export function NotifyExperience({ embedded = false }) {
   const [tradePlans, setTradePlans] = useState(() => readPlanList());
   const [dcaPlans, setDcaPlans] = useState(() => readDcaList());
   const [returnPath, setReturnPath] = useState('');
+  const [testDialogOpen, setTestDialogOpen] = useState(false);
   // 提醒历史与规则同步：从各 tab 合并到本页，避免交易计划中心重复采点。
   const [notifyEvents, setNotifyEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(false);
@@ -89,9 +90,8 @@ export function NotifyExperience({ embedded = false }) {
   // 「消息推送配置」默认在检测到已配置（Bark / Server酱³ / PC 任意一项）后自动收起，
   // 点击卡片头部可手动展开。null 表示尚未从远端收到 status，默认保持展开。
   const [configCollapsed, setConfigCollapsed] = useState(null);
-  // 「提醒策略」内的多条策略默认全部收起，点击标题切换展开。
-  // 取值：'rules' | 'holdings' | 'alerts' | null。同时只展开一条，避免页面过长。
-  const [expandedStrategy, setExpandedStrategy] = useState(null);
+  // 「通知规则」默认展开，点击标题切换。
+  const [rulesExpanded, setRulesExpanded] = useState(true);
   // WebSocket 实时通道状态（由 entry-screen.jsx 通过自定义事件更新）
   const [notifyWsStatus, setNotifyWsStatus] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -107,7 +107,7 @@ export function NotifyExperience({ embedded = false }) {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const from = params.get('from');
-    if (from) { setReturnPath(from); setExpandedStrategy('tradePlans'); }
+    if (from) { setReturnPath(from); setRulesExpanded(true); }
   }, []);
   function buildLatestHoldingsDigest() {
     try {
@@ -750,6 +750,19 @@ export function NotifyExperience({ embedded = false }) {
       setIsSyncingRules(false);
     }
   }
+  async function handleSendTestNotify(ruleType, ruleId) {
+    const startedAt = Date.now();
+    trackFeatureEvent('notify', 'test_rule_start', { ...notifyMeta(), ruleType, ruleId });
+    try {
+      await sendNotifyTest({ ruleType, ruleId, title: '测试通知', body: `这是一条来自"${ruleType}"的测试通知` });
+      showActionToast('测试通知已发送');
+      trackActionResult('notify', 'test_rule', 'success', { ...notifyMeta(), ruleType, ruleId, durationMs: Date.now() - startedAt });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '测试通知发送失败';
+      showActionToast('测试通知失败', 'error', { description: message });
+      trackActionResult('notify', 'test_rule', 'error', { ...notifyMeta(), ruleType, ruleId, durationMs: Date.now() - startedAt, errorMessage: message });
+    }
+  }
   function renderConfigCard() {
     return (
       <NotifyConfigCard
@@ -786,40 +799,6 @@ export function NotifyExperience({ embedded = false }) {
       />
     );
   }
-  function renderStrategyCard() {
-    const rulesLastSyncedLabel = rulesLastSyncedAt
-      ? formatEventTimeLabel(rulesLastSyncedAt)
-      : '本次会话尚未同步';
-    const digest = holdingsRule.digest || null;
-    const exchangeCount = Array.isArray(digest?.exchange) ? digest.exchange.length : 0;
-    const otcCount = Array.isArray(digest?.otc) ? digest.otc.length : 0;
-    const totalWeight = [...(digest?.exchange || []), ...(digest?.otc || [])]
-      .reduce((sum, entry) => sum + (Number(entry?.weight) || 0), 0);
-    const updatedLabel = holdingsRule.updatedAt
-      ? formatEventTimeLabel(holdingsRule.updatedAt)
-      : '尚未同步';
-    const generatedLabel = digest?.generatedAt
-      ? formatEventTimeLabel(digest.generatedAt)
-      : '尚未同步';
-    const hasDigest = exchangeCount + otcCount > 0;
-    return (
-      <NotifyStrategyCard
-        expandedStrategy={expandedStrategy}
-        setExpandedStrategy={setExpandedStrategy}
-        rulesLastSyncedLabel={rulesLastSyncedLabel}
-        holdingsRule={holdingsRule}
-        holdingsDigestStats={{ exchangeCount, otcCount, totalWeight, updatedLabel, generatedLabel, hasDigest }}
-        isSyncingRules={isSyncingRules}
-        isSavingHoldingsRule={isSavingHoldingsRule}
-        isSyncingHoldingsDigest={isSyncingHoldingsDigest}
-        isTestingHoldingsNotify={isTestingHoldingsNotify}
-        handleSyncRules={handleSyncRules}
-        handleToggleHoldingsRule={handleToggleHoldingsRule}
-        handleSyncHoldingsDigest={handleSyncHoldingsDigest}
-        handleTestHoldingsNotify={handleTestHoldingsNotify}
-      />
-    );
-  }
   return (
     <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
       <div className={cx('grid gap-4', pcFeaturesAvailable ? 'md:grid-cols-3' : 'sm:grid-cols-2')}>
@@ -833,27 +812,30 @@ export function NotifyExperience({ embedded = false }) {
       </div>
       <div className="space-y-6">
         {renderConfigCard()}
-        <NotifyAlertRulesCard
+        <NotifyRulesCard
           marketAlerts={marketAlerts}
           holdingAlerts={holdingAlerts}
+          tradePlans={tradePlans}
+          dcaPlans={dcaPlans}
+          holdingsRule={holdingsRule}
           onEditMarketAlert={handleEditMarketAlert}
           onDeleteMarketAlert={handleDeleteMarketAlert}
           onEditHoldingAlert={handleEditHoldingAlert}
           onDeleteHoldingAlert={handleDeleteHoldingAlert}
-          expanded={expandedStrategy === 'alerts'}
-          onToggleExpand={() => setExpandedStrategy(expandedStrategy === 'alerts' ? null : 'alerts')}
-        />
-        <NotifyTradePlanRulesCard
-          tradePlans={tradePlans}
-          dcaPlans={dcaPlans}
           onNavigateToTradePlans={() => { window.location.hash = '#tradePlans'; }}
-          onNavigateToDca={() => { window.location.hash = '#tradePlans'; window.location.hash = '#tradePlans#dca'; }}
-          expanded={expandedStrategy === 'tradePlans'}
-          onToggleExpand={() => setExpandedStrategy(expandedStrategy === 'tradePlans' ? null : 'tradePlans')}
+          onNavigateToDca={() => { window.location.hash = '#tradePlans#dca'; }}
+          onToggleHoldingsRule={handleToggleHoldingsRule}
+          expanded={rulesExpanded}
+          onToggleExpand={() => setRulesExpanded(!rulesExpanded)}
           showBackButton={Boolean(returnPath)}
           onBack={() => { if (returnPath) window.location.hash = returnPath; }}
         />
-        {renderStrategyCard()}
+        <NotifySyncAndTestCard
+          rulesLastSyncedLabel={rulesLastSyncedLabel}
+          isSyncingRules={isSyncingRules}
+          onSyncRules={handleSyncRules}
+          onOpenTestDialog={() => setTestDialogOpen(true)}
+        />
         <NotifyHistoryCard
           visibleEvents={visibleEvents}
           eventsLoading={eventsLoading}
@@ -870,6 +852,16 @@ export function NotifyExperience({ embedded = false }) {
         onSave={alertDialogMode === 'market' ? handleSaveMarketAlert : handleSaveHoldingAlert}
         initialRule={editingAlert}
         mode={alertDialogMode}
+      />
+      <NotifyTestDialog
+        open={testDialogOpen}
+        onClose={() => setTestDialogOpen(false)}
+        marketAlerts={marketAlerts}
+        holdingAlerts={holdingAlerts}
+        tradePlans={tradePlans}
+        dcaPlans={dcaPlans}
+        holdingsRule={holdingsRule}
+        onSendTest={handleSendTestNotify}
       />
     </div>
   );
