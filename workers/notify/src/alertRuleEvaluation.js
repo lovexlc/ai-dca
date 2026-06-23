@@ -36,7 +36,17 @@ export async function evaluateMarketAlertRules(env, rules, options = {}) {
       continue;
     }
 
-    const changePct = ((currentPrice - previousClose) / previousClose) * 100;
+    // 计算涨跌幅基准
+    let basePrice = previousClose; // 默认是前一交易日收盘价（daily）
+    if (rule.priceBase === 'alert-day' && rule.alertDayPrice) {
+      basePrice = Number(rule.alertDayPrice);
+    } else if (rule.priceBase === 'alert-day' && !rule.alertDayPrice) {
+      // 首次触发，记录基准价格
+      rule.alertDayPrice = previousClose;
+      basePrice = previousClose;
+    }
+
+    const changePct = ((currentPrice - basePrice) / basePrice) * 100;
     const premiumRate = Number(marketEntry.premium_rate) || 0;
 
     let triggered = false;
@@ -59,10 +69,10 @@ export async function evaluateMarketAlertRules(env, rules, options = {}) {
         triggered = premiumRate >= rule.threshold;
         valueLabel = `溢价率 ${premiumRate.toFixed(2)}%`;
         break;
-      case 'discount':
-        actualValue = -premiumRate;
-        triggered = premiumRate <= -rule.threshold;
-        valueLabel = `折价率 ${Math.abs(premiumRate).toFixed(2)}%`;
+      case 'premium-below':
+        actualValue = premiumRate;
+        triggered = premiumRate <= rule.threshold;
+        valueLabel = `溢价率 ${premiumRate.toFixed(2)}%`;
         break;
     }
 
@@ -84,7 +94,7 @@ export async function evaluateMarketAlertRules(env, rules, options = {}) {
       gain: '涨幅预警',
       loss: '跌幅预警',
       premium: '溢价预警',
-      discount: '折价预警'
+      'premium-below': '溢价率低于预警'
     }[rule.alertType] || '市场预警';
 
     const title = `${symbol} ${rule.name || ''} ${typeLabel}`;

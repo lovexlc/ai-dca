@@ -15,26 +15,33 @@ export function AlertRuleDialog({
   const [threshold, setThreshold] = useState(initialRule?.threshold || 5);
   const [enabled, setEnabled] = useState(initialRule?.enabled ?? true);
   const [cooldownHours, setCooldownHours] = useState(initialRule?.cooldownHours || 24);
+  const [priceBase, setPriceBase] = useState(initialRule?.priceBase || 'daily'); // 'daily' | 'alert-day'
 
   const alertTypeOptions = mode === 'market'
     ? [
         { value: 'gain', label: '涨幅超过' },
         { value: 'loss', label: '跌幅超过' },
         { value: 'premium', label: '溢价率超过' },
-        { value: 'discount', label: '折价率超过' }
+        { value: 'premium-below', label: '溢价率低于' }
       ]
     : [
         { value: 'gain', label: '持仓涨幅超过' },
         { value: 'loss', label: '持仓跌幅超过' }
       ];
 
+  const showPriceBaseOption = mode === 'market' && (alertType === 'gain' || alertType === 'loss');
+
   const handleSave = () => {
-    onSave({
+    const config = {
       alertType,
       threshold: Number(threshold),
       enabled,
       cooldownHours: Number(cooldownHours)
-    });
+    };
+    if (showPriceBaseOption) {
+      config.priceBase = priceBase;
+    }
+    onSave(config);
   };
 
   return (
@@ -75,6 +82,25 @@ export function AlertRuleDialog({
               当{alertTypeOptions.find(o => o.value === alertType)?.label} {threshold}% 时触发通知
             </p>
           </div>
+
+          {showPriceBaseOption && (
+            <div>
+              <Label>涨跌幅计算基准</Label>
+              <select
+                value={priceBase}
+                onChange={(e) => setPriceBase(e.target.value)}
+                className="w-full mt-1 px-3 py-2 border rounded-md bg-white"
+              >
+                <option value="daily">相对前一交易日收盘价（每日重置）</option>
+                <option value="alert-day">相对设置预警当天收盘价（固定基准）</option>
+              </select>
+              <p className="text-sm text-gray-500 mt-1">
+                {priceBase === 'daily'
+                  ? '每天计算相对昨日收盘的涨跌幅'
+                  : '始终相对设置预警时的收盘价计算涨跌幅'}
+              </p>
+            </div>
+          )}
 
           <div>
             <Label>通知频率</Label>
