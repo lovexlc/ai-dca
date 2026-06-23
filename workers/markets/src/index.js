@@ -42,6 +42,8 @@ import {
 } from './marketRuntime.js';
 import { handleFundMetrics, handleKline } from './fundMetricsRoutes.js';
 import { runAfterMarketCloseTask } from './klineBatchSaver.js';
+import { syncOtcFunds, getOtcFundFromCache, syncOtcFundsTask } from './otcFundSync.js';
+import { OTC_ALL_FUNDS } from './otcFundList.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -245,8 +247,44 @@ async function handleSearch(env, market, query, limitParam) {
 }
 
 async function handleQuote(env, rawSymbol) {
-  const { market, code } = classifySymbol(rawSymbol);
+  let { market, code } = classifySymbol(rawSymbol);
   if (!market) return errorJson('invalid symbol', 400);
+
+  // 场外基金特殊处理：去掉自动添加的前缀
+  // classifySymbol 会给 6 位数字代码自动加前缀，但场外基金不需要前缀
+  const rawCode = rawSymbol.replace(/^(sh|sz|bj)/i, '');
+  if (market === 'cn' && OTC_ALL_FUNDS.includes(rawCode)) {
+    code = rawCode; // 使用不带前缀的原始代码
+
+    // 优先从 KV 缓存读取
+    const cachedOtc = await getOtcFundFromCache(code, env.MARKETS_KV);
+    if (cachedOtc) {
+      console.log('[quote] OTC fund from cache:', code);
+      return json({ ...cachedOtc, cached: true });
+    }
+
+    // 缓存未命中，实时拉取蛋卷数据
+    console.log('[quote] OTC fund cache miss, fetching from Danjuan:', code);
+    const { fetchOtcFundFullData, transformOtcFundData } = await import('./otcFundSync.js');
+    try {
+      const fullData = await fetchOtcFundFullData(code);
+      const quote = transformOtcFundData(fullData);
+      if (quote) {
+        // 保存到 KV 缓存供下次使用
+        const cacheKey = `otc_fund:${code}`;
+        await env.MARKETS_KV.put(cacheKey, JSON.stringify(fullData), {
+          expirationTtl: 86400 // 24小时过期
+        });
+        console.log('[quote] OTC fund saved to cache:', code);
+        return json({ ...quote, cached: false });
+      }
+      return errorJson('OTC fund data unavailable', 500);
+    } catch (err) {
+      console.error('[quote] OTC fund fetch error:', err);
+      return errorJson(`OTC fund fetch failed: ${err.message}`, 500);
+    }
+  }
+
   const cacheKey = 'quote:' + code;
   const cached = await kvGetJson(env, cacheKey);
   if (cached && cached.asOf && Date.now() - new Date(cached.asOf).getTime() < 90000 && (market === 'us' || cached.source === 'xueqiu-quote')) {
@@ -749,6 +787,14 @@ async function runScheduled(env, cron) {
   // 每 30 分钟跑一次美股主题摘要（由专门的 cron 触发）。
   if (cron === '*/30 * * * *') {
     tasks.push(handleSummary(env, 'us', true));
+  }
+
+  // 场外基金数据同步：北京时间 19:30, 20:30, 21:30 (UTC 11:30, 12:30, 13:30)
+  // 在这些时间点同步场外基金净值数据
+  const minute = new Date().getUTCMinutes();
+  if (minute === 30 && (hourUtc === 11 || hourUtc === 12 || hourUtc === 13)) {
+    console.log('[scheduled] OTC fund sync task at UTC ' + hourUtc + ':30');
+    tasks.push(syncOtcFundsTask(env, OTC_ALL_FUNDS));
   }
 
   const results = await Promise.allSettled(tasks);

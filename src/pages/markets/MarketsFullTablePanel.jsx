@@ -1,4 +1,4 @@
-import { Search, X } from 'lucide-react';
+import { Search, X, RefreshCw } from 'lucide-react';
 import { MarketListTable } from './MarketListTable.jsx';
 import { MarketSymbolSearchBox } from './MarketSymbolSearchBox.jsx';
 import { WatchlistSelector } from './WatchlistControls.jsx';
@@ -31,6 +31,8 @@ export function MarketsFullTablePanel({
   showLimitColumn = false,
   hidePremiumColumn = false,
   hideTrendColumn = false,
+  onRefresh,
+  refreshing = false,
 }) {
   if (!fullTableMode) return null;
 
@@ -57,6 +59,17 @@ export function MarketsFullTablePanel({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
+            {onRefresh ? (
+              <button
+                type="button"
+                onClick={onRefresh}
+                disabled={refreshing}
+                aria-label="刷新数据"
+                className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f] disabled:opacity-50"
+              >
+                <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} /> 刷新
+              </button>
+            ) : null}
             {filterCount ? (
               <button
                 type="button"

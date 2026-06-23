@@ -110,42 +110,17 @@ export async function loadWatchQuotesWithEnhancements({
   const otcCodes = market === 'cn'
     ? uniqueCodes(list.map((sym) => normalizeCnFundCode(sym)).filter(hasNasdaqOtcFund))
     : [];
-  const nonCachedQuoteSymbols = market === 'cn'
-    ? list.filter((sym) => !hasNasdaqOtcFund(normalizeCnFundCode(sym)))
-    : list;
-  const quotePayload = nonCachedQuoteSymbols.length ? await fetchQuotes(nonCachedQuoteSymbols) : { quotes: {} };
+
+  // 场外基金现在直接调用 Worker API，不再使用本地 navSnapshot 缓存
+  // Worker API 内部已经有 KV 缓存，数据更新及时
+  const allSymbols = market === 'cn' ? list : list;
+  const quotePayload = allSymbols.length ? await fetchQuotes(allSymbols) : { quotes: {} };
   const quotes = { ...(quotePayload.quotes || {}) };
   const navSnapshots = {};
   const fundFees = {};
 
   if (market !== 'cn') {
     return { quotes, navSnapshots, fundFees };
-  }
-
-  if (otcCodes.length) {
-    const cached = readCachedItems('navSnapshot', otcCodes);
-    Object.assign(navSnapshots, cached.dataByCode);
-    try {
-      const snapshotsPayload = cached.missing.length ? await getNavSnapshots(cached.missing) : { items: [] };
-      const freshSnapshots = {};
-      (snapshotsPayload.items || []).forEach((item) => {
-        const code = normalizeCnFundCode(item?.code);
-        if (code) {
-          navSnapshots[code] = item;
-          freshSnapshots[code] = item;
-        }
-      });
-      if (Object.keys(freshSnapshots).length) {
-        writeCachedItems('navSnapshot', freshSnapshots, nextShanghaiCloseIso());
-      }
-      otcCodes.forEach((code) => {
-        const existing = quotes[code] || quotes[`SZ${code}`] || quotes[`SH${code}`] || {};
-        const quote = buildOtcFundQuoteFromSnapshot(code, navSnapshots[code], existing);
-        if (quote) quotes[code] = quote;
-      });
-    } catch {
-      // 场外基金净值是增强信息，失败时仍展示行情源返回的结果。
-    }
   }
 
   const feeCodes = uniqueCodes(list.map((sym) => normalizeCnFundCode(sym)).filter((code) => /^\d{6}$/.test(code)));

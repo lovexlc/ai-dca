@@ -61,7 +61,12 @@ export function classifySymbol(input) {
   // A 股 6 位裸代码 → 自动加前缀。
   // 51/56/58 开头通常是上交所 ETF/基金；15 开头通常是深交所 ETF。
   // 之前 513100 / 513500 被误判成 sz，导致东方财富 secid 错误、K 线为空。
+  //
+  // 场外基金（蛋卷基金）不需要前缀，直接返回裸代码
   if (/^\d{6}$/.test(s)) {
+    // 检查是否是场外基金（从 otcFundList 导入）
+    // 注意：这里需要动态导入或传入判断函数，为了避免循环依赖，
+    // 我们先保持原有逻辑，在 handleQuote 中特殊处理
     const prefix = s.startsWith('6') || s.startsWith('51') || s.startsWith('56') || s.startsWith('58')
       ? 'sh'
       : s.startsWith('4') || s.startsWith('8')

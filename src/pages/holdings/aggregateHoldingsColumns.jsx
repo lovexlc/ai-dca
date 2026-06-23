@@ -135,13 +135,23 @@ export function createAggregateHoldingsColumns({
       cell: ({ row }) => {
         const r = row.original;
         if (!r.hasCurrentPrice) return <span className="text-muted-foreground">—</span>;
+
+        // 获取价格日期：场内基金用 quoteDate，场外/QDII 用 latestNavDate
+        const priceDate = r.kind === 'exchange' ? r.quoteDate : r.latestNavDate;
+        const formattedDate = priceDate ? String(priceDate).slice(5).replace('-', '/') : '';
+
         return (
-          <span className="tabular-nums">
-            {formatNav(r.currentPrice ?? r.latestNav)}
-            {r.kind === 'exchange' && r.latestNav ? (
-              <span className="ml-1 text-[10px] text-muted-foreground">NAV {formatNav(r.latestNav)}</span>
+          <div className="flex flex-col gap-0.5">
+            <span className="tabular-nums">
+              {formatNav(r.currentPrice ?? r.latestNav)}
+              {r.kind === 'exchange' && r.latestNav ? (
+                <span className="ml-1 text-[10px] text-muted-foreground">NAV {formatNav(r.latestNav)}</span>
+              ) : null}
+            </span>
+            {formattedDate ? (
+              <span className="text-[10px] text-muted-foreground">{formattedDate}</span>
             ) : null}
-          </span>
+          </div>
         );
       },
       sortingFn: numericSortFn,

@@ -146,8 +146,6 @@ export function NotifyConfigCard({
                   <h3 className="text-base font-bold text-slate-900">Server酱³ 推送设置</h3>
                   <FeatureHelp
                     topic="android-notify"
-                    hintText="还没填？点这里看怎么获取 UID / SendKey"
-                    hintActive={serverChan3InputEmpty}
                   />
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5">
@@ -371,9 +369,6 @@ export function NotifyConfigCard({
                   <h3 className="text-base font-bold text-slate-900">iOS Bark 配置</h3>
                   <FeatureHelp
                     topic="ios-notify"
-                    hintText="未填写通知链接，点击查看介绍"
-                    hintActive={barkInputEmpty}
-                    hintDelayMs={0}
                   />
                 </div>
                 <div className="mt-5 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
