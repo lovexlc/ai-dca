@@ -31,7 +31,7 @@ export function BrandPreviewBar({ currentPageLabel, rightSlot, onJoinGroup, onSh
   }, [moreMenuOpen]);
 
   return (
-    <div className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b border-slate-200 bg-white px-3 sm:gap-3 sm:px-6">
+    <div className="sticky top-0 z-[100] flex h-12 items-center gap-2 border-b border-slate-200 bg-white px-3 sm:gap-3 sm:px-6">
       <div className="flex shrink-0 items-center gap-2">
         {onOpenNav ? (
           <>

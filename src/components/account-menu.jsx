@@ -1,24 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, CloudDownload, CloudUpload, Crown, Eye, EyeOff, GitMerge, Home, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
+import { AlertTriangle, CloudDownload, CloudUpload, Eye, EyeOff, GitMerge, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
 import { ensureLocalChangeBaseline, loadCloudSyncMeta, mergeLocalIntoCloudBackup, overwriteCloudWithLocal, prepareCloudSyncConflict, refreshRemoteCloudMeta, restoreEncryptedCloudBackup, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
 import { clearRememberedKey, generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
 import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
-import { persistWorkspacePrefs, readWorkspacePrefs } from '../app/workspacePrefs.js';
-import { isAnalyticsAdmin } from '../app/analytics.js';
-import { cx, inputClass, primaryButtonClass, secondaryButtonClass, SelectField, subtleButtonClass } from './experience-ui.jsx';
+import { cx, inputClass, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from './experience-ui.jsx';
 import { PrivacyNotice } from './PrivacyNotice.jsx';
-
-const HOME_OPTIONS = [
-  { value: 'holdings', label: '持仓总览' },
-  { value: 'tradePlans', label: '交易计划' },
-  { value: 'quant', label: '量化研究', adminOnly: true },
-  { value: 'notify', label: '通知设置' },
-  { value: 'markets', label: '行情中心' },
-  { value: 'fundSwitch', label: '基金切换' }
-];
 
 const SYNC_KEY_LABELS = {
   aiDcaAccountAssignments: '账户分配',
@@ -61,8 +50,6 @@ export function AccountMenu() {
   const [conflict, setConflict] = useState(null);
   const [conflictPassword, setConflictPassword] = useState('');
   const [manualSyncPassword, setManualSyncPassword] = useState('');
-  const [homePref, setHomePref] = useState(() => readWorkspacePrefs().homepageTab);
-  const [homeSaved, setHomeSaved] = useState(false);
   const [open, setOpen] = useState(false);
   const [authMode, setAuthMode] = useState('login');
   const [showSecurityPassword, setShowSecurityPassword] = useState(false);
@@ -425,15 +412,6 @@ export function AccountMenu() {
     );
   }
 
-  function handleSaveHomePref() {
-    const next = persistWorkspacePrefs({ homepageTab: homeOptions.some((option) => option.value === homePref) ? homePref : 'holdings' });
-    setHomePref(next.homepageTab);
-    setHomeSaved(true);
-    const label = HOME_OPTIONS.find((item) => item.value === next.homepageTab)?.label || '持仓总览';
-    showToast({ title: '默认首页已保存', description: `下次打开会默认跳到「${label}」。`, tone: 'emerald' });
-    window.setTimeout(() => setHomeSaved(false), 1800);
-  }
-
   const authDisabledReason = busy
     ? '处理中'
     : !form.username
@@ -444,8 +422,6 @@ export function AccountMenu() {
     ? '填写安全密码'
     : '';
   const loggedIn = Boolean(session?.accessToken);
-  const isAdminUser = isAnalyticsAdmin(session);
-  const homeOptions = HOME_OPTIONS.filter((option) => !option.adminOnly || isAdminUser);
   const hasRememberedSyncKey = loggedIn && Boolean(loadRememberedKey()?.rawKey);
   const initial = loggedIn ? String(session.username || '?').slice(0, 1).toUpperCase() : '';
   const previewBytes = preview.keys.reduce((sum, key) => sum + (preview.entries[key]?.length || 0), 0);
@@ -586,7 +562,7 @@ export function AccountMenu() {
         <div
           role="dialog"
           aria-modal="false"
-          className="absolute right-0 top-full z-50 mt-2 w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-xl"
+          className="absolute right-0 top-full z-[130] mt-2 w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-xl"
           onClick={(event) => event.stopPropagation()}
         >
                 <div className="space-y-4">
@@ -640,24 +616,6 @@ export function AccountMenu() {
                       {busy === 'manual-sync' ? '正在同步' : '立即同步'}
                     </button>
                   </div>
-                  <div className="space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                      <Home className="h-3.5 w-3.5 text-indigo-500" aria-hidden="true" />默认首页
-                    </div>
-                    <SelectField options={homeOptions} value={homeOptions.some((option) => option.value === homePref) ? homePref : 'holdings'} onChange={(event) => { setHomePref(event.target.value); setHomeSaved(false); }} />
-                    <button type="button" className={cx(secondaryButtonClass, "w-full justify-center text-xs")} onClick={handleSaveHomePref}>{homeSaved ? '已保存' : '保存默认首页'}</button>
-                  </div>
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 px-4 py-3 text-left text-sm font-semibold text-amber-900 shadow-sm transition-all hover:border-amber-300 hover:shadow-md"
-                    onClick={() => {
-                      window.location.href = './index.html?tab=premium';
-                      setOpen(false);
-                    }}
-                  >
-                    <Crown className="h-4 w-4 text-amber-600" />
-                    高级版
-                  </button>
                   <PrivacyNotice compact />
                   {renderSyncError()}
                   <button type="button" className={cx(subtleButtonClass, 'w-full justify-center')} onClick={() => { handleLogout(); setOpen(false); }}>
