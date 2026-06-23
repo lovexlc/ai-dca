@@ -183,6 +183,7 @@ export function MarketListTable({
   columnVisibility: controlledVisibility,
   onColumnVisibilityChange,
   dataTableHeader,
+  dataTableChrome,
   autoPinColumn = false,
 }) {
   const todayDate = getTodayShanghaiDate();
@@ -543,6 +544,11 @@ export function MarketListTable({
       ? dataTableHeader({ table, viewOptions })
       : dataTableHeader)
     : null;
+  const tableChrome = dataTable && dataTableChrome
+    ? (typeof dataTableChrome === 'function'
+      ? dataTableChrome({ table, viewOptions })
+      : dataTableChrome)
+    : null;
 
   if (!rows.length) {
     if (dataTable) {
@@ -574,6 +580,7 @@ export function MarketListTable({
           tableScrollRef={tableScrollRef}
           onHorizontalScroll={handleDataTableScroll}
           tableContainerClassName={compact ? 'rounded-xl' : undefined}
+          tableChrome={tableChrome}
           className={cx(
             '[&_td]:text-right [&_td:first-child]:text-left [&_td:nth-child(2)]:text-left [&_th]:whitespace-nowrap',
             compact && '[&_table]:min-w-[360px] [&_td]:px-2 [&_td]:py-3 [&_th]:px-2 [&_th]:py-2 [&_td:nth-child(2)]:max-w-[160px] [&_td:nth-child(2)>div]:max-w-[160px]'
