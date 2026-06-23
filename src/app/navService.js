@@ -25,6 +25,9 @@ function normalizeSnapshotItem(item = {}) {
   const iopv = roundNullable(item?.iopv, 4);
   const navBase = roundNullable(item?.navBase, 4);
   const premiumPercent = roundNullable(item?.premiumPercent, 4);
+  const volume = roundNullable(item?.volume, 0);
+  const turnover = roundNullable(item?.turnover ?? item?.amount, 2);
+  const marketCapital = roundNullable(item?.marketCapital ?? item?.marketCap ?? item?.market_capital, 2);
   const valueType = price > 0 ? 'fund-metrics' : 'nav';
   return {
     ok: item?.ok !== false,
@@ -46,6 +49,9 @@ function normalizeSnapshotItem(item = {}) {
     previousClose: roundNullable(item?.previousClose, 4),
     change: roundNullable(item?.change, 4),
     changePercent: roundNullable(item?.changePercent, 4),
+    volume,
+    turnover,
+    marketCapital,
     iopv,
     navBase,
     premiumPercent,
@@ -236,6 +242,15 @@ export function mergePricePushItems(existing = [], pushItems = []) {
     }
     if (pushItem.premiumPercent != null) {
       updated.premiumPercent = roundNullable(pushItem.premiumPercent, 4);
+    }
+    if (pushItem.volume != null) {
+      updated.volume = roundNullable(pushItem.volume, 0);
+    }
+    if (pushItem.turnover != null || pushItem.amount != null) {
+      updated.turnover = roundNullable(pushItem.turnover ?? pushItem.amount, 2);
+    }
+    if (pushItem.marketCapital != null || pushItem.marketCap != null || pushItem.market_capital != null) {
+      updated.marketCapital = roundNullable(pushItem.marketCapital ?? pushItem.marketCap ?? pushItem.market_capital, 2);
     }
     if (pushItem.latestNav != null) {
       updated.latestNav = round(Number(pushItem.latestNav), 4);

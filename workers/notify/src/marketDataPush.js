@@ -108,6 +108,9 @@ export function normalizeMarketSnapshotItem(item) {
     : (price != null && premiumBase != null && premiumBase > 0 ? ((price - premiumBase) / premiumBase) * 100 : null);
   const premiumPercent = roundNumber(premiumPercentRaw, 4);
   const prevClose = positiveNumberOrNull(item?.previousClose ?? item?.prevClose ?? item?.previousNav);
+  const volume = numberOrNull(item?.volume);
+  const turnover = numberOrNull(item?.turnover ?? item?.amount);
+  const marketCapital = numberOrNull(item?.marketCapital ?? item?.marketCap ?? item?.market_capital);
   const quoteAt = String(item?.asOf || item?.quoteAt || item?.updatedAt || item?.quoteDate || '').trim();
   return {
     code,
@@ -120,6 +123,9 @@ export function normalizeMarketSnapshotItem(item) {
     previousClose: prevClose,
     change: numberOrNull(item?.change) ?? 0,
     changePercent: numberOrNull(item?.changePercent) ?? 0,
+    volume,
+    turnover,
+    marketCapital,
     premiumPercent,
     latestNav,
     latestNavDate: String(item?.latestNavDate || item?.navDate || '').trim(),

@@ -14,6 +14,9 @@ test('market realtime normalizes exchange fund snapshot fields', () => {
     previousClose: 2.273,
     change: 0.092,
     changePercent: 4.05,
+    volume: 12345678,
+    turnover: 29382745.67,
+    marketCapital: 2930000000,
     latestNav: 2.065,
     latestNavDate: '2026-06-02',
     iopv: 2.0647,
@@ -27,6 +30,9 @@ test('market realtime normalizes exchange fund snapshot fields', () => {
   assert.equal(item.kind, 'exchange_fund');
   assert.equal(item.price, 2.365);
   assert.equal(item.prevClose, 2.273);
+  assert.equal(item.volume, 12345678);
+  assert.equal(item.turnover, 29382745.67);
+  assert.equal(item.marketCapital, 2930000000);
   assert.equal(item.latestNav, 2.065);
   assert.equal(item.latestNavDate, '2026-06-02');
   assert.equal(item.estimatedNav, 2.0647);
@@ -50,6 +56,9 @@ test('market realtime merge preserves snapshot and applies WS fields', () => {
     price: 2.365,
     prevClose: 2.273,
     changePercent: 4.05,
+    volume: 12345678,
+    turnover: 29382745.67,
+    marketCapital: 2930000000,
     latestNav: 2.065,
     latestNavDate: '2026-06-02',
     estimatedNav: 2.0647,
@@ -63,6 +72,9 @@ test('market realtime merge preserves snapshot and applies WS fields', () => {
   assert.equal(merged[0].price, 2.365);
   assert.equal(merged[0].previousClose, 2.273);
   assert.equal(merged[0].previousNav, 2.273);
+  assert.equal(merged[0].volume, 12345678);
+  assert.equal(merged[0].turnover, 29382745.67);
+  assert.equal(merged[0].marketCapital, 2930000000);
   assert.equal(merged[0].latestNav, 2.065);
   assert.equal(merged[0].latestNavDate, '2026-06-02');
   assert.equal(merged[0].estimatedNav, 2.0647);

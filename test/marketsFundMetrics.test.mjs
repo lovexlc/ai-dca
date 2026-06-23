@@ -146,6 +146,9 @@ test('fund-metrics keeps exchange ETF price as current value', () => {
     previousClose: 2.273,
     change: 0.092,
     changePercent: 4.05,
+    volume: 12345678,
+    turnover: 29382745.67,
+    marketCapital: 2930000000,
     latestNav: 2.065,
     latestNavDate: '2026-05-29',
     iopv: 2.0647,
@@ -169,6 +172,9 @@ test('fund-metrics keeps exchange ETF price as current value', () => {
   assert.equal(item.previousNav, 2.273);
   assert.equal(item.change, 0.092);
   assert.equal(item.changePercent, 4.05);
+  assert.equal(item.volume, 12345678);
+  assert.equal(item.turnover, 29382745.67);
+  assert.equal(item.marketCapital, 2930000000);
   assert.equal(item.latestNav, 2.065);
   assert.equal(item.navBase, 2.0647);
   assert.equal(item.premiumPercent, 14.54);

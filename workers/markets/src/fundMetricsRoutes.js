@@ -155,6 +155,9 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
     : rawMarketState;
   const resolvedFundKind = normalizeFundKindFromQuote(quote, exchange, fundKind || quote?.requestedFundKind);
   const orderBook = exchange ? normalizeOrderBook(quote?.orderBook) : null;
+  const volume = Number(quote?.volume);
+  const turnover = Number(quote?.turnover ?? quote?.amount);
+  const marketCapital = Number(quote?.marketCapital ?? quote?.marketCap ?? quote?.market_capital);
   return {
     ok: !quote?.error,
     code: String(quote?.code || code || '').trim(),
@@ -170,6 +173,9 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
     close: currentValue,
     high: roundNumber(quote?.high, 4),
     low: roundNumber(quote?.low, 4),
+    volume: Number.isFinite(volume) && volume >= 0 ? volume : null,
+    turnover: Number.isFinite(turnover) && turnover >= 0 ? turnover : null,
+    marketCapital: Number.isFinite(marketCapital) && marketCapital >= 0 ? marketCapital : null,
     previousClose: previousValue,
     previousNav: previousValue,
     previousNavDate: String(quote?.previousNavDate || quote?.previous_nav_date || '').trim(),
