@@ -33,23 +33,6 @@ export function MarketsMainContent({
   const showFullTable = fullTableMode && !selectedQuote;
   const noSelectedContent = (
     <>
-      {indices.length ? (
-        <div className="scroll-fade-x -mx-2 min-h-[176px] overflow-x-auto px-2 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="flex min-h-[156px] snap-x snap-mandatory items-stretch gap-3 pb-1">
-            {indices.map((entry) => (
-              <IndexCard
-                key={entry.symbol}
-                entry={entry}
-                onPick={onPickIndex}
-                sparkPoints={klineMap[entry.symbol]}
-              />
-            ))}
-          </div>
-        </div>
-      ) : !indicesLoading ? (
-        <p className="text-sm text-slate-400">指数数据暂未加载。</p>
-      ) : null}
-
       {market === 'us' && (
         <div className="hidden lg:block">
           <SummaryModule
@@ -89,27 +72,6 @@ export function MarketsMainContent({
 
   return (
     <main ref={mainRef} className="order-1 flex min-w-0 flex-col gap-5 lg:order-2 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
-      <div className={cx(
-        'sticky top-0 z-20 items-center justify-between gap-3 bg-white/95 px-1 py-2 backdrop-blur transition-all duration-500 ease-out will-change-transform',
-        selectedQuote ? 'hidden' : 'flex',
-        !selectedQuote && detailHeaderHidden && 'pointer-events-none -translate-y-full opacity-0'
-      )}>
-        <div className="flex items-center gap-2">
-          <div className="text-sm font-semibold text-slate-900">A股行情</div>
-          {indicesLoading && <Loader2 size={12} className="animate-spin text-slate-400" />}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            aria-label="刷新"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-            onClick={onRefreshAll}
-          >
-            <RefreshCw size={14} />
-          </button>
-        </div>
-      </div>
-
       {showFullTable ? (
         fullTablePanel
       ) : selectedQuote ? (

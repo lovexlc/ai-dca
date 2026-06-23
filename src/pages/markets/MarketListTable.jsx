@@ -396,14 +396,25 @@ export function MarketListTable({
     },
     {
       id: 'redeemFeeRate',
-      accessorFn: (row) => Number(resolveRedeemFeeRate(row)),
+      accessorFn: (row) => {
+        const isOtc = row.valueType === 'nav'
+          || String(row.assetType || row.type || '').toLowerCase().includes('otc')
+          || String(row.assetType || row.type || '').toLowerCase().includes('场外')
+          || String(row.exchange || '').toLowerCase().includes('场外');
+        return isOtc ? Number(resolveRedeemFeeRate(row)) : null;
+      },
       meta: { label: '卖出费率', variant: 'number' },
       header: ({ column }) => <DataTableColumnHeader column={column} label="卖出费率" className="justify-end" />,
       cell: ({ row }) => {
+        const isOtc = row.original.valueType === 'nav'
+          || String(row.original.assetType || row.original.type || '').toLowerCase().includes('otc')
+          || String(row.original.assetType || row.original.type || '').toLowerCase().includes('场外')
+          || String(row.original.exchange || '').toLowerCase().includes('场外');
+        if (!isOtc) return <span className="font-semibold tabular-nums text-slate-400">—</span>;
         const redeemTiers = formatRedeemFeeTiers(row.original);
         return (
           <span
-            className={cx('font-semibold tabular-nums text-[#5f6368]', redeemTiers.includes('\n') && 'cursor-help underline decoration-dotted underline-offset-2')}
+            className={cx('font-semibold tabular-nums text-[#5f6368]', redeemTiers.includes('\n') && 'cursor-help underline decoration dotted underline-offset-2')}
             title={redeemTiers || undefined}
           >
             {formatRedeemFeeRate(row.original)}
