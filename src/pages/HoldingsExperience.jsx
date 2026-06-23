@@ -72,13 +72,13 @@ function readColumnFilterValue(filters, id) {
 }
 export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = false } = {}) {
   const { recordTransaction } = useHoldingsQuickTransaction();
-  const { holdingAlerts, alertDialogOpen, selectedHolding, handleOpenAlertDialog, handleSaveAlert, handleCloseAlertDialog } = useHoldingAlerts();
+  const [sidePanelOpen, setSidePanelOpen] = useState(false);
+  const { holdingAlerts, alertDialogOpen, selectedHolding, handleOpenAlertDialog, handleSaveAlert, handleCloseAlertDialog } = useHoldingAlerts(() => setSidePanelOpen(false));
   const [ledger, setLedger] = useState(() => readLedgerState());
   // v7.6: 移除交易日自动过滤场内数据的逻辑，避免出现不必要的"重置过滤"按钮
   const [columnFilters, setColumnFilters] = useState([]);
   const [selectedCode, setSelectedCode] = useState('');
   const [sidePanelTab, setSidePanelTab] = useState('summary');
-  const [sidePanelOpen, setSidePanelOpen] = useState(false);
   const [draft, setDraft] = useState(() => emptyDraft());
   const [draftMode, setDraftMode] = useState('create');
   const [navStatus, setNavStatus] = useState('idle');

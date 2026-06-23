@@ -3,7 +3,7 @@ import { readHoldingAlerts, persistHoldingAlerts } from '../../app/alertRules.js
 import { syncTradePlanRules, buildNotifySyncPayload } from '../../app/notifySync.js';
 import { showActionToast } from '../../app/toast.js';
 
-export function useHoldingAlerts() {
+export function useHoldingAlerts(onCloseSidePanel) {
   const [holdingAlerts, setHoldingAlerts] = useState(() => readHoldingAlerts());
   const [alertDialogOpen, setAlertDialogOpen] = useState(false);
   const [selectedHolding, setSelectedHolding] = useState(null);
@@ -14,8 +14,11 @@ export function useHoldingAlerts() {
       name: holding.name || holding.code || holding.symbol,
       holdingCost: holding.avgCost || holding.costBasis || 0
     });
+    if (onCloseSidePanel) {
+      onCloseSidePanel();
+    }
     setAlertDialogOpen(true);
-  }, []);
+  }, [onCloseSidePanel]);
 
   const handleSaveAlert = useCallback(async (alertConfig) => {
     if (!selectedHolding) return;
