@@ -3,6 +3,7 @@ import { ArrowRight, Bell, Calculator, CalendarClock, ChevronDown, ChevronUp, Li
 import { loadNotifyStatus, readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { deletePlan } from '../app/plan.js';
+import { useClickOutside } from '../hooks/useClickOutside.js';
 import { deleteSellPlan } from '../app/sellPlans.js';
 import { clearDcaState } from '../app/dca.js';
 import { showActionToast } from '../app/toast.js';
@@ -179,6 +180,23 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   const createMenuRef = useRef(null);
   const [openMenuPlacement, setOpenMenuPlacement] = useState('below');
 
+  useClickOutside(menuContainerRef, () => setOpenMenuRowId(''), !!openMenuRowId);
+  useClickOutside(createMenuRef, () => setCreateMenuOpen(false), createMenuOpen);
+
+  useEffect(() => {
+    if (!openMenuRowId && !createMenuOpen) return undefined;
+    function handleKeyDown(event) {
+      if (event.key === 'Escape') {
+        setOpenMenuRowId('');
+        setCreateMenuOpen(false);
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openMenuRowId, createMenuOpen]);
+
   function gotoSubView(nextView, { push = false } = {}) {
     if (typeof window === 'undefined') {
       setSubView(nextView);
@@ -281,32 +299,6 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
       cancelled = true;
     };
   }, [notifyClientId]);
-
-  useEffect(() => {
-    if (!openMenuRowId && !createMenuOpen) return undefined;
-    function handleClickOutside(event) {
-      const rowNode = menuContainerRef.current;
-      const createNode = createMenuRef.current;
-      if (rowNode && !rowNode.contains(event.target)) {
-        setOpenMenuRowId('');
-      }
-      if (createNode && !createNode.contains(event.target)) {
-        setCreateMenuOpen(false);
-      }
-    }
-    function handleKeyDown(event) {
-      if (event.key === 'Escape') {
-        setOpenMenuRowId('');
-        setCreateMenuOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [openMenuRowId, createMenuOpen]);
 
   function handleDeletePlanRow(row) {
     if (!row) return;

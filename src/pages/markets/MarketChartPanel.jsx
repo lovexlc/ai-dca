@@ -3,6 +3,7 @@ import { ChevronDown } from 'lucide-react';
 import { Area, Bar, CartesianGrid, Cell, ComposedChart, Customized, Line, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { cx } from '../../components/experience-ui.jsx';
 import { formatMarketPrice, formatNumber, formatPercentNoPlus, formatSignedPercent, formatSymbolDisplay } from './marketDisplayUtils.js';
+import { useClickOutside } from '../../hooks/useClickOutside.js';
 
 function shanghaiDateFromEpochSec(sec) {
   const n = Number(sec);
@@ -769,6 +770,9 @@ export function ChartToolbarPopover({ label, icon, active, children, align = 'le
   const [panelStyle, setPanelStyle] = useState(null);
   const ref = useRef(null);
   const buttonRef = useRef(null);
+
+  useClickOutside(ref, () => setOpen(false), open);
+
   const updateFixedPanelPosition = useCallback(() => {
     if (!fixedPanel || !buttonRef.current || typeof window === 'undefined') return;
     const rect = buttonRef.current.getBoundingClientRect();
@@ -776,23 +780,19 @@ export function ChartToolbarPopover({ label, icon, active, children, align = 'le
     const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
     setPanelStyle({ left, top: rect.bottom + 6, width });
   }, [fixedPanel]);
+
   useEffect(() => {
     if (!open) return undefined;
     updateFixedPanelPosition();
-    function onDown(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    }
     function onKey(e) {
       if (e.key === 'Escape') setOpen(false);
     }
-    document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
     if (fixedPanel) {
       window.addEventListener('resize', updateFixedPanelPosition);
       window.addEventListener('scroll', updateFixedPanelPosition, true);
     }
     return () => {
-      document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
       if (fixedPanel) {
         window.removeEventListener('resize', updateFixedPanelPosition);
