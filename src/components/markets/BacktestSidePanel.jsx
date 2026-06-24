@@ -117,6 +117,15 @@ function runRotationBacktest(highCandles, lowCandles, config) {
 
   const minLength = Math.min(highCandles.length, lowCandles.length);
 
+  console.log('[Backtest] 轮动策略开始', {
+    minLength,
+    sellLowerThreshold,
+    buyOtherThreshold,
+    firstHighPrice: highCandles[0]?.c,
+    firstLowPrice: lowCandles[0]?.c,
+    firstPremium: calculatePremium(highCandles[0]?.c, lowCandles[0]?.c)
+  });
+
   for (let i = 0; i < minLength; i++) {
     const highPrice = highCandles[i].c;
     const lowPrice = lowCandles[i].c;
@@ -129,7 +138,9 @@ function runRotationBacktest(highCandles, lowCandles, config) {
     // 交易逻辑
     if (position === 'cash') {
       // 初始买入低溢价（L档）
-      if (premium >= buyOtherThreshold && lowPrice > 0) {
+      // 修改逻辑：只要有L档价格就买入，不再判断溢价差阈值
+      if (lowPrice > 0) {
+        console.log('[Backtest] 初始买入 L', { i, lowPrice, premium });
         shares = cash / lowPrice;
         cash = 0;
         position = 'low';
@@ -146,6 +157,7 @@ function runRotationBacktest(highCandles, lowCandles, config) {
     } else if (position === 'low') {
       // 持有L，溢价差缩小 -> 卖L买H
       if (premium <= sellLowerThreshold && highPrice > 0) {
+        console.log('[Backtest] 卖L买H', { i, premium, sellLowerThreshold, lowPrice, highPrice });
         const sellAmount = shares * lowPrice;
         trades.push({
           date: lowCandles[i].t,
@@ -175,6 +187,7 @@ function runRotationBacktest(highCandles, lowCandles, config) {
     } else if (position === 'high') {
       // 持有H，溢价差扩大 -> 卖H买L
       if (premium >= buyOtherThreshold && lowPrice > 0) {
+        console.log('[Backtest] 卖H买L', { i, premium, buyOtherThreshold, highPrice, lowPrice });
         const sellAmount = shares * highPrice;
         trades.push({
           date: highCandles[i].t,
