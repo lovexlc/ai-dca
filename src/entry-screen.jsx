@@ -4,7 +4,11 @@ import { ScreenPage } from './pages/ScreenPage.jsx';
 import { readNotifyClientConfig } from './app/notifySync.js';
 import { startNotifyRealtime } from './app/notifyWsClient.js';
 import { AppEntryAdGate } from './components/monetization.jsx';
+import { initPostHog } from './app/posthog.js';
 import './styles/app.css';
+
+// 初始化 PostHog
+initPostHog();
 
 const inPagesDir = /\/pages(?:-v2)?\//.test(window.location.pathname);
 

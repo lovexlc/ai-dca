@@ -1,3 +1,5 @@
+import { trackEvent as trackPostHogEvent, trackPageView as trackPostHogPageView } from './posthog.js';
+
 const STORE_KEY = 'aiDcaAnalyticsEvents_v1';
 const VISITOR_KEY = 'aiDcaAnalyticsVisitorId_v1';
 const SESSION_KEY = 'aiDcaAnalyticsSessionId_v1';
@@ -259,6 +261,20 @@ export function trackAnalyticsEvent(type, meta = {}) {
     // ignore
   }
 
+  // 同步到 PostHog
+  try {
+    trackPostHogEvent(type, {
+      ...safeMeta,
+      visitorId: event.visitorId,
+      sessionId: event.sessionId,
+      userId: event.userId,
+      username: event.username,
+      path: event.path
+    });
+  } catch (error) {
+    // PostHog 错误不应影响核心埋点
+  }
+
   try {
     const endpoint = window.__AI_DCA_ANALYTICS_ENDPOINT__ || `${getAnalyticsBase()}/analytics/track`;
     if (nav.sendBeacon) {
@@ -279,6 +295,13 @@ export function trackAnalyticsEvent(type, meta = {}) {
 }
 
 export function trackPageView(tab) {
+  // 同步到 PostHog
+  try {
+    trackPostHogPageView({ tab: tab || '' });
+  } catch (error) {
+    // ignore
+  }
+
   return trackAnalyticsEvent('page_view', { tab: tab || '', feature: 'navigation', action: 'page_view' });
 }
 
