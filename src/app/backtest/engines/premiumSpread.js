@@ -1,188 +1,29 @@
 /**
- * @deprecated This file will be replaced by the unified backtest system.
+ * 溢价差轮动回测引擎 - 统一真源
  *
- * Frontend has migrated to: src/app/backtest/engines/premiumSpread.js
- * Worker endpoints should continue using this file until full migration.
- *
- * 量化溢价差回测引擎 V2 - 修复版
- *
- * 核心改进：
- * 1. 完整的持仓追踪（股数、成本、市值）
- * 2. 真实的交易模拟（买卖价、手续费、滑点）
- * 3. 准确的胜率计算（盈利交易/总交易）
- * 4. 专业指标（夏普比率、最大回撤）
+ * 从 quantPremiumBacktestV2.js 完整迁移，功能完全保留：
+ * - 完整的持仓追踪（股数、成本、市值）
+ * - 真实的交易模拟（买卖价、手续费、滑点）
+ * - 准确的胜率计算（盈利交易/总交易）
+ * - 专业指标（夏普比率、最大回撤）
+ * - 基准对比（hold-high vs hold-low 收益）
  */
 
-function roundTo(value, digits = 2) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return 0;
-  const factor = 10 ** digits;
-  return Math.round((num + Number.EPSILON) * factor) / factor;
-}
-
-function clampNumber(value, fallback = 0) {
-  const next = Number(value);
-  return Number.isFinite(next) ? next : fallback;
-}
-
-function finiteNumberOrNull(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
-function firstFiniteNumber(...values) {
-  for (const value of values) {
-    const n = finiteNumberOrNull(value);
-    if (n != null) return n;
-  }
-  return null;
-}
-
-function firstPositiveNumber(...values) {
-  for (const value of values) {
-    const n = finiteNumberOrNull(value);
-    if (n != null && n > 0) return n;
-  }
-  return null;
-}
-
-function buildNavLookup(navHistory = []) {
-  const sorted = (Array.isArray(navHistory) ? navHistory : [])
-    .map((item) => {
-      const date = String(item?.date || '').slice(0, 10);
-      const nav = Number(item?.nav);
-      return /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(nav) && nav > 0
-        ? { date, nav }
-        : null;
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.date.localeCompare(b.date));
-  return (date) => {
-    for (let i = sorted.length - 1; i >= 0; i--) {
-      if (sorted[i].date <= date) return sorted[i].nav;
-    }
-    return 0;
-  };
-}
-
-function shanghaiDateFromEpochSec(sec) {
-  const n = Number(sec);
-  if (!Number.isFinite(n) || n <= 0) return '';
-  try {
-    return new Date(n * 1000).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
-  } catch {
-    return new Date(n * 1000).toISOString().slice(0, 10);
-  }
-}
-
-function shanghaiMinuteFromEpochSec(sec) {
-  const n = Number(sec);
-  if (!Number.isFinite(n) || n <= 0) return '';
-  try {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Shanghai',
-      hourCycle: 'h23',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).formatToParts(new Date(n * 1000)).reduce((acc, part) => {
-      acc[part.type] = part.value;
-      return acc;
-    }, {});
-    if (parts.year && parts.month && parts.day && parts.hour && parts.minute) {
-      return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
-    }
-  } catch {
-    // Fall through to deterministic UTC+8 fallback.
-  }
-  return new Date(n * 1000 + 8 * 60 * 60 * 1000).toISOString().slice(0, 16).replace('T', ' ');
-}
-
-function normalizeMinuteLabel(value) {
-  const label = String(value || '').trim().slice(0, 16).replace('T', ' ');
-  return /^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}$/.test(label) ? label : '';
-}
-
-function normalizeBacktestTimeframe(value = '') {
-  const tf = String(value || '').trim();
-  return new Set(['1m', '5m', '15m', '30m', '60m', '1d']).has(tf) ? tf : '5m';
-}
-
-function normalizeBacktestCandles(candles = []) {
-  return (Array.isArray(candles) ? candles : [])
-    .map((bar) => {
-      const t = Number(bar?.t ?? bar?.timestamp);
-      const close = Number(bar?.c ?? bar?.close);
-      if (!Number.isFinite(t) || t <= 0 || !Number.isFinite(close) || close <= 0) return null;
-      const open = Number(bar?.o ?? bar?.open);
-      const high = Number(bar?.h ?? bar?.high);
-      const low = Number(bar?.l ?? bar?.low);
-      const orderBook = bar?.orderBook && typeof bar.orderBook === 'object' ? bar.orderBook : {};
-      const bidPrice = firstPositiveNumber(
-        bar?.bidPrice, bar?.bid, bar?.bp1, bar?.bid1, bar?.bid1_price, bar?.bid_price1,
-        bar?.buy1, bar?.buy1_price, bar?.buy_price1, orderBook.bidPrice, orderBook.bid
-      );
-      const askPrice = firstPositiveNumber(
-        bar?.askPrice, bar?.ask, bar?.sp1, bar?.ask1, bar?.ask1_price, bar?.ask_price1,
-        bar?.sell1, bar?.sell1_price, bar?.sell_price1, orderBook.askPrice, orderBook.ask
-      );
-      const bidVolume = firstFiniteNumber(
-        bar?.bidVolume, bar?.bidSize, bar?.bc1, bar?.bid1_volume, bar?.bid_volume1,
-        bar?.buy1_volume, bar?.buy_volume1, orderBook.bidVolume, orderBook.bidSize
-      );
-      const askVolume = firstFiniteNumber(
-        bar?.askVolume, bar?.askSize, bar?.sc1, bar?.ask1_volume, bar?.ask_volume1,
-        bar?.sell1_volume, bar?.sell_volume1, orderBook.askVolume, orderBook.askSize
-      );
-      return {
-        t,
-        date: String(bar?.date || '').slice(0, 10) || shanghaiDateFromEpochSec(t),
-        datetime: normalizeMinuteLabel(bar?.datetime || bar?.dateTime) || shanghaiMinuteFromEpochSec(t),
-        open: Number.isFinite(open) && open > 0 ? open : close,
-        high: Number.isFinite(high) && high > 0 ? high : close,
-        low: Number.isFinite(low) && low > 0 ? low : close,
-        close,
-        bidPrice: bidPrice != null ? roundTo(bidPrice, 4) : null,
-        bidVolume: bidVolume != null ? bidVolume : null,
-        askPrice: askPrice != null ? roundTo(askPrice, 4) : null,
-        askVolume: askVolume != null ? askVolume : null
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.t - b.t);
-}
-
-function resolveSellExecutionPrice(bar, tickSize, slippageTicks) {
-  const quoted = firstPositiveNumber(
-    bar?.bidPrice, bar?.bid, bar?.bp1, bar?.bid1, bar?.bid1_price, bar?.bid_price1,
-    bar?.buy1, bar?.buy1_price, bar?.buy_price1, bar?.orderBook?.bidPrice
-  );
-  if (quoted != null) return { price: roundTo(quoted, 4), priceSource: 'bid' };
-  return {
-    price: roundTo(Number(bar?.close || 0) - clampNumber(slippageTicks, 0) * clampNumber(tickSize, 0.001), 4),
-    priceSource: 'close-slippage'
-  };
-}
-
-function resolveBuyExecutionPrice(bar, tickSize, slippageTicks) {
-  const quoted = firstPositiveNumber(
-    bar?.askPrice, bar?.ask, bar?.sp1, bar?.ask1, bar?.ask1_price, bar?.ask_price1,
-    bar?.sell1, bar?.sell1_price, bar?.sell_price1, bar?.orderBook?.askPrice
-  );
-  if (quoted != null) return { price: roundTo(quoted, 4), priceSource: 'ask' };
-  return {
-    price: roundTo(Number(bar?.close || 0) + clampNumber(slippageTicks, 0) * clampNumber(tickSize, 0.001), 4),
-    priceSource: 'close+slippage'
-  };
-}
+import { roundTo, clampNumber } from '../core/math.js';
+import {
+  normalizeBacktestCandles,
+  buildNavLookup,
+  shanghaiMinuteFromEpochSec,
+  normalizeBacktestTimeframe
+} from '../core/candles.js';
 
 /**
- * V2回测引擎 - 带持仓追踪
+ * 运行溢价差轮动回测
+ * @param {Object} strategyInput - 策略配置
+ * @param {Object} options - 回测选项
+ * @returns {Object} 回测结果
  */
-export function runQuantPremiumBacktestV2(strategyInput = {}, options = {}) {
-  const {
+export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {  const {
     timeframe = '5m',
     historyByCode = {},
     navHistoryByCode = {},

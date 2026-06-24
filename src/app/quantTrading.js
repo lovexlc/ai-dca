@@ -678,6 +678,10 @@ function shiftIsoDate(isoDate, offsetDays) {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * @deprecated Moved to src/app/backtest/engines/sample.js
+ * Use: import { buildSampleBacktestRows } from './backtest/index.js'
+ */
 export function buildSampleBacktestRows(days = 30, endDate = '2026-06-12') {
   const totalDays = Math.max(8, Math.min(180, Math.floor(clampNumber(days, 30))));
   const rows = [];
@@ -695,6 +699,11 @@ export function buildSampleBacktestRows(days = 30, endDate = '2026-06-12') {
   return rows;
 }
 
+/**
+ * @deprecated This is the V1 toy implementation with no position tracking.
+ * Use: import { runBacktest } from './backtest/index.js'
+ * The new implementation provides full position tracking, realistic fees, and professional metrics.
+ */
 export function runPremiumSpreadBacktest({
   rows = buildSampleBacktestRows(),
   triggerSpreadPct = DEFAULT_QUANT_STATE.strategy.triggerSpreadPct,

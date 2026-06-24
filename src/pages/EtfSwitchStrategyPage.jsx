@@ -12,10 +12,6 @@ import {
   computeAccountSummary,
   evaluatePremiumSpread,
   shanghaiDateKey,
-  buildSampleBacktestRows,
-  runPremiumSpreadBacktest,
-  // V2模块
-  BacktestEngine,
   buildOrderPlanV2,
   RiskMonitor,
   getCachedHistoricalData,
@@ -23,6 +19,7 @@ import {
   recommendParameters,
   validateStrategyParameters
 } from '../app/quantTrading.js';
+import { buildSampleBacktestRows, runBacktest } from '../app/backtest/index.js';
 
 function formatMoney(value) {
   const num = Number(value);
@@ -176,51 +173,49 @@ export default function EtfSwitchStrategyPage() {
   const handleRunBacktest = useCallback(async () => {
     setBacktesting(true);
     try {
-      if (useV2) {
-        // V2回测：使用真实数据
-        const endDate = shanghaiDateKey();
-        const startDate = new Date(new Date(endDate).getTime() - 90 * 24 * 60 * 60 * 1000)
-          .toISOString().slice(0, 10);
+      // 统一使用 runBacktest() 接口
+      const endDate = shanghaiDateKey();
+      const startDate = new Date(new Date(endDate).getTime() - 90 * 24 * 60 * 60 * 1000)
+        .toISOString().slice(0, 10);
 
-        const historicalData = await getCachedHistoricalData(
-          [state.strategy.sellSymbol, state.strategy.buySymbol],
-          startDate,
-          endDate
-        );
+      const historicalData = await getCachedHistoricalData(
+        [state.strategy.sellSymbol, state.strategy.buySymbol],
+        startDate,
+        endDate
+      );
 
-        const engine = new BacktestEngine({
-          initialCash: state.account.cash,
-          initialPositions: state.account.positions,
-          strategy: state.strategy,
-          tradingCosts: {
-            feeRate: state.account.feeRate,
-            minFee: state.account.minFee,
-            tickSize: state.account.tickSize,
-            slippageTicks: state.account.slippageTicks,
-            lotSize: state.strategy.lotSize
-          }
-        });
+      // 构建策略配置（适配新接口）
+      const strategy = {
+        type: 'premium-spread',
+        highCodes: [state.strategy.sellSymbol],
+        lowCodes: [state.strategy.buySymbol],
+        intraSellLowerPct: state.strategy.triggerSpreadPct,
+        intraBuyOtherPct: state.strategy.triggerSpreadPct,
+        activeSide: 'all'
+      };
 
-        const result = engine.runPremiumSpreadBacktest(historicalData);
-        setBacktestResult(result);
+      const options = {
+        timeframe: '5m',
+        historyByCode: {
+          [state.strategy.sellSymbol]: historicalData[state.strategy.sellSymbol],
+          [state.strategy.buySymbol]: historicalData[state.strategy.buySymbol]
+        },
+        navHistoryByCode: {},
+        initialEquity: state.account.cash,
+        feeRate: state.account.feeRate,
+        minFee: state.account.minFee,
+        tickSize: state.account.tickSize,
+        slippageTicks: state.account.slippageTicks,
+        lotSize: state.strategy.lotSize
+      };
 
-        // 显示参数推荐
-        const recommendations = recommendParameters(result);
-        if (recommendations.length > 0) {
-          console.log('参数优化建议：', recommendations);
-        }
-      } else {
-        // V1回测：使用样例数据
-        const rows = buildSampleBacktestRows(90);
-        const result = runPremiumSpreadBacktest({
-          rows,
-          triggerSpreadPct: state.strategy.triggerSpreadPct,
-          feeBufferPct: state.strategy.feeBufferPct,
-          orderCash: state.strategy.maxOrderCash,
-          initialEquity: summary.equity,
-          cooldownDays: state.strategy.cooldownDays
-        });
-        setBacktestResult({ summary: result.summary, rows: result.rows, trades: result.trades });
+      const result = runBacktest(strategy, options);
+      setBacktestResult(result);
+
+      // 显示参数推荐
+      const recommendations = recommendParameters(result);
+      if (recommendations.length > 0) {
+        console.log('参数优化建议：', recommendations);
       }
 
       showToast({ title: '回测完成', tone: 'emerald' });

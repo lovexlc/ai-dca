@@ -1,4 +1,18 @@
 /**
+ * @deprecated This file is deprecated and will be removed in v2.0.
+ *
+ * Migration guide:
+ * - Use: import { runBacktest, PositionState, AccountState } from './backtest/index.js'
+ * - The new unified backtest system provides:
+ *   - Full position tracking with cost basis
+ *   - Realistic trade simulation (bid/ask, fees, slippage)
+ *   - Professional metrics (Sharpe ratio, max drawdown)
+ *   - Benchmark comparisons (hold-high vs hold-low)
+ *
+ * This file is kept temporarily for backward compatibility with existing tests.
+ */
+
+/**
  * 量化回测引擎 - 修正版
  * 解决原版的持仓追踪、收益计算等问题
  */
