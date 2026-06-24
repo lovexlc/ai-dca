@@ -101,7 +101,7 @@ export function SymbolDetailPanel({
   const [compareErrorMap, setCompareErrorMap] = useState({});
   const [compareNavHistoryMap, setCompareNavHistoryMap] = useState({});
   const compareNavInflightRef = useRef(new Set());
-  const [compareQuoteMap, setCompareQuoteMap] = useState();
+  const [compareQuoteMap, setCompareQuoteMap] = useState({});
   const [hoveredChartRow, setHoveredChartRow] = useState(null);
   const [lockedChartRow, setLockedChartRow] = useState(null);
   const [customRangeDraft, setCustomRangeDraft] = useState(() => normalizeChartCustomRange(chartCustomRange) || defaultChartCustomRange());

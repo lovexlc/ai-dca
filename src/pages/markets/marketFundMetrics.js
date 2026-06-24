@@ -294,19 +294,6 @@ export function buildCnFundParamCandles(priceCandles, navItems, param, premiumSt
       : [];
   }
   if (param === 'nav') {
-    const priceTimeline = Array.isArray(priceCandles) ? priceCandles : [];
-    if (priceTimeline.length >= 2 && rangeKey !== '1d') {
-      return priceTimeline
-        .map((candle) => {
-          const date = shanghaiDateFromEpochSec(candle?.t);
-          const navItem = findNavOnOrBefore(sortedNav, date);
-          const v = Number(navItem?.nav);
-          return date && Number.isFinite(v) && v > 0
-            ? { t: Number(candle.t), o: v, h: v, l: v, c: v, date: navItem.date }
-            : null;
-        })
-        .filter(Boolean);
-    }
     return sortedNav
       .map((item) => {
         const t = epochSecFromShanghaiDate(item.date);
