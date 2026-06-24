@@ -542,11 +542,15 @@ export function SymbolDetailPanel({
     applyHoverSnapshot(normalizeCompareQuote(row.symbol, row), 'main'),
     ...compareSymbols.map((sym, index) => applyHoverSnapshot(normalizeCompareQuote(sym, compareCandidates.find((item) => item.symbol === sym)), `cmp_${index}_`))
   ];
-  const effectiveChartCandles = isCnOtcFund
+  const rawEffectiveCandles = isCnOtcFund
     ? (cnFundParam === 'premium' ? [] : buildCnFundParamCandles([], navHistoryState?.items, 'nav', premiumState, chartRange))
     : (market !== 'cn' || cnFundParam === 'price'
       ? chartCandles
       : buildCnFundParamCandles(chartCandles, navHistoryState?.items, cnFundParam, premiumState, chartRange));
+  // Apply range slicing to nav/premium candles (price candles are already sliced in MarketsMainContent)
+  const effectiveChartCandles = (market === 'cn' && cnFundParam !== 'price')
+    ? sliceCandlesForRange(rawEffectiveCandles, chartRange, chartCustomRange)
+    : rawEffectiveCandles;
   const effectiveChartType = chartType;
   const premiumCompareMode = market === 'cn' && cnFundParam === 'premium';
   const premiumUnavailable = isCnOtcFund && cnFundParam === 'premium';
