@@ -99,6 +99,8 @@ export function BacktestSidePanel({
   const [intraSellLowerPct, setIntraSellLowerPct] = useState('1');
   const [intraBuyOtherPct, setIntraBuyOtherPct] = useState('3');
   const [initialCash, setInitialCash] = useState('10000');
+  const [investMode, setInvestMode] = useState('dca'); // 'dca' 或 'lump-sum'
+  const [investAmount, setInvestAmount] = useState('1000');
 
   useEffect(() => {
     if (open) {
@@ -134,33 +136,50 @@ export function BacktestSidePanel({
     setResult(null);
 
     try {
-      // 简化的回测逻辑：将初始资金平均分成10份定投
       const cash = parseDecimalOr(initialCash, 10000);
-      const investAmount = cash / 10; // 自动计算每次定投金额
       let currentCash = cash;
       let shares = 0;
       const trades = [];
       const equityCurve = []; // 记录权益曲线用于计算回撤
 
-      // 每隔一定周期买入
-      const interval = Math.max(1, Math.floor(candles.length / 10));
-
-      for (let i = 0; i < candles.length; i += interval) {
-        const candle = candles[i];
-        const price = candle.close;
-
-        if (currentCash >= investAmount && price > 0) {
-          const buyShares = investAmount / price;
-          shares += buyShares;
-          currentCash -= investAmount;
+      if (investMode === 'lump-sum') {
+        // 一次性投入：区间开始时全部买入
+        const firstPrice = candles[0].close;
+        if (firstPrice > 0) {
+          const buyShares = cash / firstPrice;
+          shares = buyShares;
+          currentCash = 0;
 
           trades.push({
-            date: candle.time,
+            date: candles[0].time,
             type: 'buy',
-            price,
+            price: firstPrice,
             shares: buyShares,
-            amount: investAmount
+            amount: cash
           });
+        }
+      } else {
+        // 定投模式：每隔一定周期买入
+        const invest = parseDecimalOr(investAmount, 1000);
+        const interval = Math.max(1, Math.floor(candles.length / 10));
+
+        for (let i = 0; i < candles.length; i += interval) {
+          const candle = candles[i];
+          const price = candle.close;
+
+          if (currentCash >= invest && price > 0) {
+            const buyShares = invest / price;
+            shares += buyShares;
+            currentCash -= invest;
+
+            trades.push({
+              date: candle.time,
+              type: 'buy',
+              price,
+              shares: buyShares,
+              amount: invest
+            });
+          }
         }
       }
 
@@ -168,28 +187,46 @@ export function BacktestSidePanel({
       const lastPrice = candles[candles.length - 1].close;
       let maxValue = cash;
       let maxDrawdown = 0;
-      let accumulatedShares = 0;
-      let accumulatedCash = cash;
-      let tradeIndex = 0;
 
-      for (let i = 0; i < candles.length; i++) {
-        const currentPrice = candles[i].close;
+      if (investMode === 'lump-sum') {
+        // 一次性投入：持仓从开始就是固定的
+        for (let i = 0; i < candles.length; i++) {
+          const currentPrice = candles[i].close;
+          const currentValue = shares * currentPrice;
+          equityCurve.push(currentValue);
 
-        // 更新持仓
-        if (tradeIndex < trades.length && i >= interval * tradeIndex) {
-          accumulatedShares += trades[tradeIndex].shares;
-          accumulatedCash -= trades[tradeIndex].amount;
-          tradeIndex++;
+          maxValue = Math.max(maxValue, currentValue);
+          if (maxValue > 0) {
+            const drawdown = ((currentValue - maxValue) / maxValue) * 100;
+            maxDrawdown = Math.min(maxDrawdown, drawdown);
+          }
         }
+      } else {
+        // 定投模式：逐步累积持仓
+        const interval = Math.max(1, Math.floor(candles.length / 10));
+        let accumulatedShares = 0;
+        let accumulatedCash = cash;
+        let tradeIndex = 0;
 
-        const currentValue = accumulatedCash + accumulatedShares * currentPrice;
-        equityCurve.push(currentValue);
+        for (let i = 0; i < candles.length; i++) {
+          const currentPrice = candles[i].close;
 
-        // 计算回撤
-        maxValue = Math.max(maxValue, currentValue);
-        if (maxValue > 0) {
-          const drawdown = ((currentValue - maxValue) / maxValue) * 100;
-          maxDrawdown = Math.min(maxDrawdown, drawdown);
+          // 更新持仓
+          if (tradeIndex < trades.length && i >= interval * tradeIndex) {
+            accumulatedShares += trades[tradeIndex].shares;
+            accumulatedCash -= trades[tradeIndex].amount;
+            tradeIndex++;
+          }
+
+          const currentValue = accumulatedCash + accumulatedShares * currentPrice;
+          equityCurve.push(currentValue);
+
+          // 计算回撤
+          maxValue = Math.max(maxValue, currentValue);
+          if (maxValue > 0) {
+            const drawdown = ((currentValue - maxValue) / maxValue) * 100;
+            maxDrawdown = Math.min(maxDrawdown, drawdown);
+          }
         }
       }
 
@@ -331,16 +368,39 @@ export function BacktestSidePanel({
             {/* 回测参数 */}
             <div className="rounded-xl bg-white p-4 shadow-sm">
               <SectionLabel>回测参数</SectionLabel>
-              <div>
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="invest-mode" className="block text-xs font-semibold text-slate-500">投入方式</label>
+                  <select
+                    id="invest-mode"
+                    className={cx(inputClass, 'mt-2')}
+                    value={investMode}
+                    onChange={(e) => setInvestMode(e.target.value)}
+                  >
+                    <option value="dca">定投模式（分批买入）</option>
+                    <option value="lump-sum">一次性投入（区间开始全部买入）</option>
+                  </select>
+                </div>
                 <DecimalInput
                   id="initial-cash"
                   label="初始资金"
                   suffix="¥"
-                  hint="将平均分成 10 次定投买入"
+                  hint={investMode === 'dca' ? '分 10 次定投买入' : '一次性全部买入'}
                   value={initialCash}
                   onChange={setInitialCash}
                   onCommit={(v) => setInitialCash(String(parseDecimalOr(v, 10000)))}
                 />
+                {investMode === 'dca' && (
+                  <DecimalInput
+                    id="invest-amount"
+                    label="每次定投"
+                    suffix="¥"
+                    hint="每次定投的金额"
+                    value={investAmount}
+                    onChange={setInvestAmount}
+                    onCommit={(v) => setInvestAmount(String(parseDecimalOr(v, 1000)))}
+                  />
+                )}
               </div>
             </div>
 
