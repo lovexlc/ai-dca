@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { X, Play, BarChart3, TrendingUp, Trophy, Activity, Save } from 'lucide-react';
+import { X, Play, BarChart3, TrendingUp, Trophy, Activity, RefreshCw } from 'lucide-react';
 import { cx, primaryButtonClass, secondaryButtonClass, inputClass } from '../experience-ui.jsx';
 import { TagInput } from '../TagInput.jsx';
+import { fetchKline } from '../../app/marketsApi.js';
 
 function formatPercent(value, digits = 2) {
   const num = Number(value);
@@ -82,6 +83,250 @@ function DecimalInput({ id, label, suffix, hint, value, onChange, onCommit }) {
   );
 }
 
+// 获取多个代码的K线数据
+async function fetchMultipleKlines(codes, timeframe = '1d') {
+  const results = {};
+  for (const code of codes) {
+    try {
+      const data = await fetchKline('cn', code, timeframe);
+      if (Array.isArray(data?.candles)) {
+        results[code] = data.candles;
+      }
+    } catch (error) {
+      console.error(`[Backtest] 获取 ${code} K线失败:`, error);
+    }
+  }
+  return results;
+}
+
+// 计算溢价率（简化版：使用价格比）
+function calculatePremium(highPrice, lowPrice) {
+  if (!lowPrice || lowPrice <= 0) return 0;
+  return ((highPrice - lowPrice) / lowPrice) * 100;
+}
+
+// 溢价差轮动策略回测
+function runRotationBacktest(highCandles, lowCandles, config) {
+  const { initialCash, sellLowerThreshold, buyOtherThreshold } = config;
+
+  let cash = initialCash;
+  let position = 'cash'; // 'cash', 'high', 'low'
+  let shares = 0;
+  const trades = [];
+  const equityCurve = [];
+
+  const minLength = Math.min(highCandles.length, lowCandles.length);
+
+  for (let i = 0; i < minLength; i++) {
+    const highPrice = highCandles[i].c;
+    const lowPrice = lowCandles[i].c;
+    const premium = calculatePremium(highPrice, lowPrice);
+
+    let currentValue = cash;
+    if (position === 'high') currentValue = shares * highPrice;
+    if (position === 'low') currentValue = shares * lowPrice;
+
+    // 交易逻辑
+    if (position === 'cash') {
+      // 初始买入低溢价（L档）
+      if (premium >= buyOtherThreshold && lowPrice > 0) {
+        shares = cash / lowPrice;
+        cash = 0;
+        position = 'low';
+        trades.push({
+          date: lowCandles[i].t,
+          type: 'buy',
+          code: 'L',
+          price: lowPrice,
+          shares,
+          amount: shares * lowPrice,
+          premium
+        });
+      }
+    } else if (position === 'low') {
+      // 持有L，溢价差缩小 -> 卖L买H
+      if (premium <= sellLowerThreshold && highPrice > 0) {
+        const sellAmount = shares * lowPrice;
+        trades.push({
+          date: lowCandles[i].t,
+          type: 'sell',
+          code: 'L',
+          price: lowPrice,
+          shares,
+          amount: sellAmount,
+          premium
+        });
+
+        cash = sellAmount;
+        shares = cash / highPrice;
+        cash = 0;
+        position = 'high';
+
+        trades.push({
+          date: highCandles[i].t,
+          type: 'buy',
+          code: 'H',
+          price: highPrice,
+          shares,
+          amount: shares * highPrice,
+          premium
+        });
+      }
+    } else if (position === 'high') {
+      // 持有H，溢价差扩大 -> 卖H买L
+      if (premium >= buyOtherThreshold && lowPrice > 0) {
+        const sellAmount = shares * highPrice;
+        trades.push({
+          date: highCandles[i].t,
+          type: 'sell',
+          code: 'H',
+          price: highPrice,
+          shares,
+          amount: sellAmount,
+          premium
+        });
+
+        cash = sellAmount;
+        shares = cash / lowPrice;
+        cash = 0;
+        position = 'low';
+
+        trades.push({
+          date: lowCandles[i].t,
+          type: 'buy',
+          code: 'L',
+          price: lowPrice,
+          shares,
+          amount: shares * lowPrice,
+          premium
+        });
+      }
+    }
+
+    equityCurve.push(currentValue);
+  }
+
+  // 计算最终市值
+  const lastHighPrice = highCandles[minLength - 1].c;
+  const lastLowPrice = lowCandles[minLength - 1].c;
+  let finalValue = cash;
+  if (position === 'high') finalValue = shares * lastHighPrice;
+  if (position === 'low') finalValue = shares * lastLowPrice;
+
+  // 计算指标
+  const totalReturn = finalValue - initialCash;
+  const totalReturnPct = (totalReturn / initialCash) * 100;
+
+  let maxValue = initialCash;
+  let maxDrawdown = 0;
+  for (const value of equityCurve) {
+    maxValue = Math.max(maxValue, value);
+    if (maxValue > 0) {
+      const drawdown = ((value - maxValue) / maxValue) * 100;
+      maxDrawdown = Math.min(maxDrawdown, drawdown);
+    }
+  }
+
+  const rotationCount = trades.filter(t => t.type === 'sell').length;
+
+  return {
+    finalValue,
+    totalReturnPct,
+    maxDrawdownPct: maxDrawdown,
+    tradeCount: trades.length,
+    rotationCount,
+    trades,
+    equityCurve
+  };
+}
+
+// 持有策略回测（对比基准）
+function runHoldBacktest(candles, config) {
+  const { initialCash, mode, investAmount } = config;
+
+  let cash = initialCash;
+  let shares = 0;
+  const trades = [];
+  const equityCurve = [];
+
+  if (mode === 'lump-sum') {
+    // 一次性投入
+    const firstPrice = candles[0].c;
+    if (firstPrice > 0) {
+      shares = cash / firstPrice;
+      cash = 0;
+      trades.push({
+        date: candles[0].t,
+        type: 'buy',
+        price: firstPrice,
+        shares,
+        amount: shares * firstPrice
+      });
+    }
+
+    for (const candle of candles) {
+      equityCurve.push(shares * candle.c);
+    }
+  } else {
+    // 定投模式
+    const interval = Math.max(1, Math.floor(candles.length / 10));
+    let accShares = 0;
+    let accCash = initialCash;
+    let tradeIndex = 0;
+
+    for (let i = 0; i < candles.length; i += interval) {
+      const price = candles[i].c;
+      if (accCash >= investAmount && price > 0) {
+        const buyShares = investAmount / price;
+        shares += buyShares;
+        accCash -= investAmount;
+        trades.push({
+          date: candles[i].t,
+          type: 'buy',
+          price,
+          shares: buyShares,
+          amount: investAmount
+        });
+      }
+    }
+
+    for (let i = 0; i < candles.length; i++) {
+      if (tradeIndex < trades.length && i >= interval * tradeIndex) {
+        accShares += trades[tradeIndex].shares;
+        accCash -= trades[tradeIndex].amount;
+        tradeIndex++;
+      }
+      equityCurve.push(accCash + accShares * candles[i].c);
+    }
+
+    cash = accCash;
+  }
+
+  const lastPrice = candles[candles.length - 1].c;
+  const finalValue = cash + shares * lastPrice;
+  const totalReturn = finalValue - initialCash;
+  const totalReturnPct = (totalReturn / initialCash) * 100;
+
+  let maxValue = initialCash;
+  let maxDrawdown = 0;
+  for (const value of equityCurve) {
+    maxValue = Math.max(maxValue, value);
+    if (maxValue > 0) {
+      const drawdown = ((value - maxValue) / maxValue) * 100;
+      maxDrawdown = Math.min(maxDrawdown, drawdown);
+    }
+  }
+
+  return {
+    finalValue,
+    totalReturnPct,
+    maxDrawdownPct: maxDrawdown,
+    tradeCount: trades.length,
+    trades,
+    equityCurve
+  };
+}
+
 export function BacktestSidePanel({
   open = false,
   onClose,
@@ -99,7 +344,7 @@ export function BacktestSidePanel({
   const [intraSellLowerPct, setIntraSellLowerPct] = useState('1');
   const [intraBuyOtherPct, setIntraBuyOtherPct] = useState('3');
   const [initialCash, setInitialCash] = useState('10000');
-  const [investMode, setInvestMode] = useState('dca'); // 'dca' 或 'lump-sum'
+  const [investMode, setInvestMode] = useState('dca');
   const [investAmount, setInvestAmount] = useState('1000');
 
   useEffect(() => {
@@ -111,7 +356,6 @@ export function BacktestSidePanel({
     }
   }, [open, symbol]);
 
-  // 阻止滚动
   useEffect(() => {
     if (!open || typeof document === 'undefined') return undefined;
     const previousOverflow = document.body.style.overflow;
@@ -132,154 +376,69 @@ export function BacktestSidePanel({
       return;
     }
 
-    console.log('[Backtest] 开始回测', {
-      candlesCount: candles.length,
-      firstCandle: candles[0],
-      lastCandle: candles[candles.length - 1],
-      investMode,
-      initialCash,
-      investAmount
-    });
-
     setRunning(true);
     setResult(null);
 
     try {
       const cash = parseDecimalOr(initialCash, 10000);
-      let currentCash = cash;
-      let shares = 0;
-      const trades = [];
-      const equityCurve = []; // 记录权益曲线用于计算回撤
+      const sellLowerThreshold = parseDecimalOr(intraSellLowerPct, 1);
+      const buyOtherThreshold = parseDecimalOr(intraBuyOtherPct, 3);
+      const invest = parseDecimalOr(investAmount, 1000);
 
-      if (investMode === 'lump-sum') {
-        // 一次性投入：区间开始时全部买入
-        const firstPrice = candles[0].c;
-        console.log('[Backtest] 一次性投入模式', { firstPrice, cash });
-        if (firstPrice > 0) {
-          const buyShares = cash / firstPrice;
-          shares = buyShares;
-          currentCash = 0;
+      console.log('[Backtest] 开始回测', {
+        highCodes,
+        lowCodes,
+        sellLowerThreshold,
+        buyOtherThreshold,
+        initialCash: cash
+      });
 
-          trades.push({
-            date: candles[0].time || candles[0].t,
-            type: 'buy',
-            price: firstPrice,
-            shares: buyShares,
-            amount: cash
+      let rotationResult = null;
+      let holdResult = null;
+
+      // 如果配置了H/L档，运行溢价差轮动策略
+      if (highCodes.length > 0 && lowCodes.length > 0) {
+        console.log('[Backtest] 获取H/L档K线数据...');
+        const allCodes = [...highCodes, ...lowCodes];
+        const klineMap = await fetchMultipleKlines(allCodes, chartRange);
+
+        // 使用第一个H和第一个L
+        const highCandles = klineMap[highCodes[0]];
+        const lowCandles = klineMap[lowCodes[0]];
+
+        if (highCandles && lowCandles) {
+          console.log('[Backtest] 运行溢价差轮动策略...');
+          rotationResult = runRotationBacktest(highCandles, lowCandles, {
+            initialCash: cash,
+            sellLowerThreshold,
+            buyOtherThreshold
           });
-        }
-      } else {
-        // 定投模式：每隔一定周期买入
-        const invest = parseDecimalOr(investAmount, 1000);
-        const interval = Math.max(1, Math.floor(candles.length / 10));
-
-        console.log('[Backtest] 定投模式', { invest, interval, candlesLength: candles.length });
-
-        for (let i = 0; i < candles.length; i += interval) {
-          const candle = candles[i];
-          const price = candle.c;
-
-          if (currentCash >= invest && price > 0) {
-            const buyShares = invest / price;
-            shares += buyShares;
-            currentCash -= invest;
-
-            trades.push({
-              date: candle.time || candle.t,
-              type: 'buy',
-              price,
-              shares: buyShares,
-              amount: invest
-            });
-          }
+          console.log('[Backtest] 轮动策略结果:', rotationResult);
         }
       }
 
-      console.log('[Backtest] 交易完成', {
-        tradesCount: trades.length,
-        totalShares: shares,
-        remainingCash: currentCash,
-        trades: trades.slice(0, 3)
+      // 运行持有策略（对比基准）
+      console.log('[Backtest] 运行持有策略...');
+      holdResult = runHoldBacktest(candles, {
+        initialCash: cash,
+        mode: investMode,
+        investAmount: invest
       });
-
-      // 计算权益曲线和最终收益
-      const lastPrice = candles[candles.length - 1].c;
-      let maxValue = cash;
-      let maxDrawdown = 0;
-
-      if (investMode === 'lump-sum') {
-        // 一次性投入：持仓从开始就是固定的
-        for (let i = 0; i < candles.length; i++) {
-          const currentPrice = candles[i].c;
-          const currentValue = shares * currentPrice;
-          equityCurve.push(currentValue);
-
-          maxValue = Math.max(maxValue, currentValue);
-          if (maxValue > 0) {
-            const drawdown = ((currentValue - maxValue) / maxValue) * 100;
-            maxDrawdown = Math.min(maxDrawdown, drawdown);
-          }
-        }
-      } else {
-        // 定投模式：逐步累积持仓
-        const interval = Math.max(1, Math.floor(candles.length / 10));
-        let accumulatedShares = 0;
-        let accumulatedCash = cash;
-        let tradeIndex = 0;
-
-        for (let i = 0; i < candles.length; i++) {
-          const currentPrice = candles[i].c;
-
-          // 更新持仓
-          if (tradeIndex < trades.length && i >= interval * tradeIndex) {
-            accumulatedShares += trades[tradeIndex].shares;
-            accumulatedCash -= trades[tradeIndex].amount;
-            tradeIndex++;
-          }
-
-          const currentValue = accumulatedCash + accumulatedShares * currentPrice;
-          equityCurve.push(currentValue);
-
-          // 计算回撤
-          maxValue = Math.max(maxValue, currentValue);
-          if (maxValue > 0) {
-            const drawdown = ((currentValue - maxValue) / maxValue) * 100;
-            maxDrawdown = Math.min(maxDrawdown, drawdown);
-          }
-        }
-      }
-
-      const finalValue = currentCash + shares * lastPrice;
-      const totalReturn = finalValue - cash;
-      const totalReturnPct = (totalReturn / cash) * 100;
-
-      // 计算胜率
-      const profitTrades = trades.filter(t => lastPrice > t.price).length;
-      const winRate = trades.length > 0 ? (profitTrades / trades.length) * 100 : 0;
-
-      console.log('[Backtest] 结果计算', {
-        lastPrice,
-        finalValue,
-        totalReturn,
-        totalReturnPct,
-        maxDrawdown,
-        winRate,
-        profitTrades,
-        totalTrades: trades.length
-      });
+      console.log('[Backtest] 持有策略结果:', holdResult);
 
       setResult({
-        summary: {
-          totalReturnPct,
-          winRatePct: winRate,
-          maxDrawdownPct: maxDrawdown,
-          tradeCount: trades.length,
-          finalValue,
+        rotation: rotationResult,
+        hold: holdResult,
+        config: {
+          highCodes,
+          lowCodes,
+          sellLowerThreshold,
+          buyOtherThreshold,
           initialCash: cash
-        },
-        trades
+        }
       });
     } catch (error) {
+      console.error('[Backtest] 回测失败:', error);
       alert(error.message || '回测失败');
     } finally {
       setRunning(false);
@@ -288,19 +447,11 @@ export function BacktestSidePanel({
 
   if (!open) return null;
 
-  const summary = result?.summary || {};
-  const totalReturnPct = summary.totalReturnPct || 0;
-  const winRatePct = summary.winRatePct || 0;
-  const maxDrawdownPct = summary.maxDrawdownPct || 0;
-  const tradeCount = summary.tradeCount || 0;
-
-  const returnTone = totalReturnPct > 0 ? 'positive' : totalReturnPct < 0 ? 'negative' : 'neutral';
-  const winRateTone = winRatePct >= 60 ? 'positive' : winRatePct >= 50 ? 'neutral' : 'negative';
-  const drawdownTone = Math.abs(maxDrawdownPct) <= 5 ? 'positive' : Math.abs(maxDrawdownPct) <= 10 ? 'neutral' : 'negative';
+  const rotation = result?.rotation;
+  const hold = result?.hold;
 
   return (
     <>
-      {/* 背景遮罩 */}
       <button
         type="button"
         aria-label="关闭回测侧边栏"
@@ -308,14 +459,12 @@ export function BacktestSidePanel({
         onClick={onClose}
       />
 
-      {/* 侧边栏 */}
       <aside
         role="dialog"
         aria-modal="true"
         aria-label="策略回测"
-        className="fixed right-0 top-0 z-[1000] flex h-[100vh] w-[min(520px,100vw)] flex-col bg-[#F0F2F8] shadow-2xl animate-in fade-in slide-in-from-right-7 duration-200"
+        className="fixed right-0 top-0 z-[1000] flex h-[100vh] w-[min(560px,100vw)] flex-col bg-[#F0F2F8] shadow-2xl animate-in fade-in slide-in-from-right-7 duration-200"
       >
-        {/* Header */}
         <div className="flex h-14 flex-shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-5">
           <div>
             <div className="text-sm font-bold text-slate-900">策略回测</div>
@@ -333,8 +482,7 @@ export function BacktestSidePanel({
           </button>
         </div>
 
-        {/* Content */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:px-5">
           <div className="space-y-6">
             {/* 基本信息 */}
             <div className="rounded-xl bg-white p-4 shadow-sm">
@@ -400,7 +548,7 @@ export function BacktestSidePanel({
               <SectionLabel>回测参数</SectionLabel>
               <div className="space-y-4">
                 <div>
-                  <label htmlFor="invest-mode" className="block text-xs font-semibold text-slate-500">投入方式</label>
+                  <label htmlFor="invest-mode" className="block text-xs font-semibold text-slate-500">持有对比模式</label>
                   <select
                     id="invest-mode"
                     className={cx(inputClass, 'mt-2')}
@@ -415,7 +563,7 @@ export function BacktestSidePanel({
                   id="initial-cash"
                   label="初始资金"
                   suffix="¥"
-                  hint={investMode === 'dca' ? '分 10 次定投买入' : '一次性全部买入'}
+                  hint="轮动策略和持有对比使用相同初始资金"
                   value={initialCash}
                   onChange={setInitialCash}
                   onCommit={(v) => setInitialCash(String(parseDecimalOr(v, 10000)))}
@@ -425,7 +573,7 @@ export function BacktestSidePanel({
                     id="invest-amount"
                     label="每次定投"
                     suffix="¥"
-                    hint="每次定投的金额"
+                    hint="定投模式下每次买入金额"
                     value={investAmount}
                     onChange={setInvestAmount}
                     onCommit={(v) => setInvestAmount(String(parseDecimalOr(v, 1000)))}
@@ -441,18 +589,18 @@ export function BacktestSidePanel({
                 <div>
                   <h3 className="text-base font-bold text-slate-700">准备开始回测</h3>
                   <p className="mt-2 text-sm text-slate-500">
-                    配置策略参数后点击"开始回测"
+                    配置 H/L 档和触发规则后点击"开始回测"
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={handleRun}
-                  disabled={running || candles.length < 10}
+                  disabled={running}
                   className={cx(primaryButtonClass, 'mt-4')}
                 >
                   {running ? (
                     <>
-                      <Play className="h-4 w-4 animate-pulse" />
+                      <RefreshCw className="h-4 w-4 animate-spin" />
                       <span>回测中...</span>
                     </>
                   ) : (
@@ -465,60 +613,97 @@ export function BacktestSidePanel({
               </div>
             ) : (
               <div className="space-y-4">
-                {/* 核心指标 */}
-                <div className="grid grid-cols-2 gap-3">
-                  <MetricCard
-                    icon={TrendingUp}
-                    label="总收益率"
-                    value={formatPercent(totalReturnPct)}
-                    tone={returnTone}
-                  />
-                  <MetricCard
-                    icon={Trophy}
-                    label="胜率"
-                    value={formatPercent(winRatePct, 0)}
-                    tone={winRateTone}
-                  />
-                  <MetricCard
-                    icon={Activity}
-                    label="最大回撤"
-                    value={formatPercent(maxDrawdownPct)}
-                    tone={drawdownTone}
-                  />
-                  <MetricCard
-                    icon={BarChart3}
-                    label="交易次数"
-                    value={`${tradeCount} 笔`}
-                    tone="neutral"
-                  />
-                </div>
-
-                {/* 详细信息 */}
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <h4 className="text-sm font-semibold text-slate-700">回测详情</h4>
-                  <div className="mt-3 space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">初始资金</span>
-                      <span className="font-medium tabular-nums text-slate-900">
-                        ¥{summary.initialCash?.toLocaleString()}
+                {/* 溢价差轮动策略结果 */}
+                {rotation && (
+                  <div className="rounded-xl bg-white p-4 shadow-sm">
+                    <h3 className="mb-3 text-sm font-bold text-slate-900">
+                      溢价差轮动策略
+                      <span className="ml-2 text-xs font-normal text-slate-500">
+                        {rotation.rotationCount} 次轮动
                       </span>
+                    </h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      <MetricCard
+                        icon={TrendingUp}
+                        label="总收益率"
+                        value={formatPercent(rotation.totalReturnPct)}
+                        tone={rotation.totalReturnPct > 0 ? 'positive' : rotation.totalReturnPct < 0 ? 'negative' : 'neutral'}
+                      />
+                      <MetricCard
+                        icon={Activity}
+                        label="最大回撤"
+                        value={formatPercent(rotation.maxDrawdownPct)}
+                        tone={Math.abs(rotation.maxDrawdownPct) <= 5 ? 'positive' : Math.abs(rotation.maxDrawdownPct) <= 10 ? 'neutral' : 'negative'}
+                      />
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">最终市值</span>
-                      <span className="font-medium tabular-nums text-slate-900">
-                        ¥{summary.finalValue?.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">净收益</span>
-                      <span className={cx('font-bold tabular-nums', returnTone === 'positive' ? 'text-emerald-600' : returnTone === 'negative' ? 'text-rose-600' : 'text-slate-900')}>
-                        {totalReturnPct > 0 ? '+' : ''}¥{(summary.finalValue - summary.initialCash).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}
-                      </span>
+                    <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">最终市值</span>
+                        <span className="font-semibold tabular-nums text-slate-900">
+                          ¥{rotation.finalValue.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
-                {/* 操作按钮 */}
+                {/* 持有策略对比 */}
+                {hold && (
+                  <div className="rounded-xl bg-white p-4 shadow-sm">
+                    <h3 className="mb-3 text-sm font-bold text-slate-900">
+                      持有策略对比
+                      <span className="ml-2 text-xs font-normal text-slate-500">
+                        {investMode === 'dca' ? '定投' : '一次性'} · {symbol}
+                      </span>
+                    </h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      <MetricCard
+                        icon={TrendingUp}
+                        label="总收益率"
+                        value={formatPercent(hold.totalReturnPct)}
+                        tone={hold.totalReturnPct > 0 ? 'positive' : hold.totalReturnPct < 0 ? 'negative' : 'neutral'}
+                      />
+                      <MetricCard
+                        icon={Activity}
+                        label="最大回撤"
+                        value={formatPercent(hold.maxDrawdownPct)}
+                        tone={Math.abs(hold.maxDrawdownPct) <= 5 ? 'positive' : Math.abs(hold.maxDrawdownPct) <= 10 ? 'neutral' : 'negative'}
+                      />
+                    </div>
+                    <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">最终市值</span>
+                        <span className="font-semibold tabular-nums text-slate-900">
+                          ¥{hold.finalValue.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 策略对比 */}
+                {rotation && hold && (
+                  <div className="rounded-xl border-2 border-indigo-200 bg-indigo-50 p-4">
+                    <h3 className="mb-3 text-sm font-bold text-indigo-900">策略对比</h3>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-indigo-700">收益率差异</span>
+                        <span className={cx('font-bold tabular-nums',
+                          rotation.totalReturnPct > hold.totalReturnPct ? 'text-emerald-600' : 'text-rose-600'
+                        )}>
+                          {formatPercent(rotation.totalReturnPct - hold.totalReturnPct)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-indigo-700">轮动策略 vs 持有</span>
+                        <span className="font-semibold text-indigo-900">
+                          {rotation.totalReturnPct > hold.totalReturnPct ? '轮动胜出' : '持有胜出'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex gap-3">
                   <button
                     type="button"
