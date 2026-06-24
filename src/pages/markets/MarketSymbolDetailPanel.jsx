@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUp, Bell, CalendarDays, Loader2, Search, Star, X } from 'lucide-react';
+import { ArrowUp, Bell, CalendarDays, Loader2, Search, Star, X, BarChart3 } from 'lucide-react';
 import { fetchKline, fetchQuotes, searchSymbols, CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsApi.js';
 import { getNavHistory, getNavSnapshot } from '../../app/navService.js';
 import { getXueqiuQuote } from '../../app/xueqiuQuote.js';
@@ -35,6 +35,7 @@ import {
 } from './marketFundMetrics.js';
 import { formatMarketPrice, formatNumber, formatPercent, formatSignedPercent, formatSymbolDisplay, normalizeCnFundCode } from './marketDisplayUtils.js';
 import { getCompareFromUrl, updateCompareInUrl, getChartConfigFromUrl, updateChartConfigInUrl } from './marketsUrlSync.js';
+import { BacktestSidePanel } from '../../components/markets/BacktestSidePanel.jsx';
 
 const SYMBOL_DETAIL_TABS = [
   { key: 'overview', label: '概览' },
@@ -100,10 +101,11 @@ export function SymbolDetailPanel({
   const [compareErrorMap, setCompareErrorMap] = useState({});
   const [compareNavHistoryMap, setCompareNavHistoryMap] = useState({});
   const compareNavInflightRef = useRef(new Set());
-  const [compareQuoteMap, setCompareQuoteMap] = useState({});
+  const [compareQuoteMap, setCompareQuoteMap] = useState();
   const [hoveredChartRow, setHoveredChartRow] = useState(null);
   const [lockedChartRow, setLockedChartRow] = useState(null);
   const [customRangeDraft, setCustomRangeDraft] = useState(() => normalizeChartCustomRange(chartCustomRange) || defaultChartCustomRange());
+  const [backtestPanelOpen, setBacktestPanelOpen] = useState(false);
   const indicatorOptions = INDICATOR_OPTIONS;
   const rowSymbol = row && row.symbol ? String(row.symbol).toUpperCase() : '';
   const currentIsCnOtcFund = market === 'cn' && isCnOtcFundQuote(row);
@@ -937,6 +939,21 @@ export function SymbolDetailPanel({
             </div>
           </ChartToolbarPopover>
 
+          {/* 回测按钮 */}
+          <button
+            type="button"
+            onClick={() => setBacktestPanelOpen(true)}
+            disabled={!chartCandles || chartCandles.length < 10}
+            className={cx(
+              'flex h-7 items-center gap-1.5 rounded-[10px] px-2.5 text-[12px] font-medium transition-colors sm:h-8 sm:rounded-[11px] sm:text-[13px]',
+              'text-[#1f1f1f] hover:bg-white/60 disabled:cursor-not-allowed disabled:opacity-40'
+            )}
+            title={chartCandles && chartCandles.length >= 10 ? '策略回测' : '数据不足，无法回测'}
+          >
+            <BarChart3 size={16} className="text-[#202124]" />
+            <span>回测</span>
+          </button>
+
           <div className="ml-auto hidden items-center gap-1 text-[11px] text-[#9aa0a6] sm:flex">
             {chartLoading || metricLoading ? <Loader2 size={12} className="animate-spin" /> : null}
             {compareSymbols.length > 0 ? <span>{premiumCompareMode ? '溢价(%)' : '涨幅(%)'}</span> : null}
@@ -1153,6 +1170,15 @@ export function SymbolDetailPanel({
           <FinancialsPanel financials={financials} loading={financialsLoading} />
         )}
       </div>
+
+      {/* 回测侧边栏 */}
+      <BacktestSidePanel
+        open={backtestPanelOpen}
+        onClose={() => setBacktestPanelOpen(false)}
+        symbol={rowSymbol}
+        candles={chartCandles || []}
+        chartRange={chartRange}
+      />
     </section>
   );
 }
