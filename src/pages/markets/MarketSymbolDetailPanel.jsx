@@ -943,12 +943,12 @@ export function SymbolDetailPanel({
           <button
             type="button"
             onClick={() => setBacktestPanelOpen(true)}
-            disabled={!chartCandles || chartCandles.length < 10}
+            disabled={!effectiveChartCandles || effectiveChartCandles.length < 10}
             className={cx(
               'flex h-7 items-center gap-1.5 rounded-[10px] px-2.5 text-[12px] font-medium transition-colors sm:h-8 sm:rounded-[11px] sm:text-[13px]',
               'text-[#1f1f1f] hover:bg-white/60 disabled:cursor-not-allowed disabled:opacity-40'
             )}
-            title={chartCandles && chartCandles.length >= 10 ? '策略回测' : '数据不足，无法回测'}
+            title={effectiveChartCandles && effectiveChartCandles.length >= 10 ? '策略回测' : '数据不足，无法回测'}
           >
             <BarChart3 size={16} className="text-[#202124]" />
             <span>回测</span>
@@ -1176,7 +1176,7 @@ export function SymbolDetailPanel({
         open={backtestPanelOpen}
         onClose={() => setBacktestPanelOpen(false)}
         symbol={rowSymbol}
-        candles={chartCandles || []}
+        candles={effectiveChartCandles || []}
         chartRange={chartRange}
       />
     </section>
