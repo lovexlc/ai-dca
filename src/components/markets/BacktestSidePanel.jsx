@@ -4,6 +4,7 @@ import { cx, primaryButtonClass, secondaryButtonClass, inputClass } from '../exp
 import { TagInput } from '../TagInput.jsx';
 import { runBacktest } from '../../app/backtest/index.js';
 import { fetchBacktestData } from '../../app/backtestDataFetcher.js';
+import { deriveDefaultBacktestCodes } from './backtestSidePanelState.js';
 
 function formatPercent(value, digits = 2) {
   const num = Number(value);
@@ -330,6 +331,7 @@ export function BacktestSidePanel({
   onClose,
   symbol,
   candles = [],
+  switchPrefs = null,
   chartRange = '1d',
 }) {
   const [running, setRunning] = useState(false);
@@ -337,8 +339,9 @@ export function BacktestSidePanel({
 
   // 策略配置状态
   const [strategyName, setStrategyName] = useState('');
-  const [highCodes, setHighCodes] = useState([symbol]);
-  const [lowCodes, setLowCodes] = useState([]);
+  const defaultCodes = deriveDefaultBacktestCodes(symbol, { switchPrefs });
+  const [highCodes, setHighCodes] = useState(defaultCodes.highCodes);
+  const [lowCodes, setLowCodes] = useState(defaultCodes.lowCodes);
   const [intraSellLowerPct, setIntraSellLowerPct] = useState('1');
   const [intraBuyOtherPct, setIntraBuyOtherPct] = useState('3');
   const [initialCash, setInitialCash] = useState('10000');
@@ -347,12 +350,13 @@ export function BacktestSidePanel({
 
   useEffect(() => {
     if (open) {
+      const nextDefaults = deriveDefaultBacktestCodes(symbol, { switchPrefs });
       setResult(null);
       setStrategyName(`${symbol} 策略`);
-      setHighCodes([symbol]);
-      setLowCodes([]);
+      setHighCodes(nextDefaults.highCodes);
+      setLowCodes(nextDefaults.lowCodes);
     }
-  }, [open, symbol]);
+  }, [open, symbol, switchPrefs]);
 
   useEffect(() => {
     if (!open || typeof document === 'undefined') return undefined;

@@ -72,6 +72,8 @@
     "postcss": "^8.5.8",
     "prettier": "^3.3.3",
     "tailwindcss": "^4.2.2",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1",
     "vite": "^5.4.10"
   }
 }
