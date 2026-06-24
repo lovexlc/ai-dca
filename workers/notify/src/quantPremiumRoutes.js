@@ -32,6 +32,10 @@ import {
   normalizeSwitchPaperState,
   quantPremiumPaperStateKey
 } from './premiumPaperTrading.js';
+import {
+  normalizeBacktestTimeframe,
+  shanghaiDateFromEpochSec
+} from './backtest/core/candles.js';
 import { runQuantPremiumBacktestV2 } from './quantPremiumBacktestV2.js';
 import { enforceClientAndIpRateLimit } from './security.js';
 
@@ -45,8 +49,6 @@ const QUANT_PREMIUM_STATE_PREFIX = 'quant:premium:state:';
 const FUND_CODE_PATTERN = /^\d{6}$/;
 const MAX_CODES_PER_SIDE = 20;
 const DEFAULT_STRATEGY_ID = 'default';
-const SUPPORTED_BACKTEST_TF = new Set(['1m', '5m', '15m', '30m', '60m', '1d']);
-
 const DEFAULT_QUANT_PREMIUM_CONFIG = {
   enabled: false,
   name: '纳指 ETF 溢价差',
@@ -488,70 +490,6 @@ function buildQuantPremiumTriggerNotification(snapshot, trigger, paperResult, en
   };
 }
 
-function roundTo(value, digits = 2) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return 0;
-  const factor = 10 ** digits;
-  return Math.round((num + Number.EPSILON) * factor) / factor;
-}
-
-function shanghaiDateFromEpochSec(sec) {
-  const n = Number(sec);
-  if (!Number.isFinite(n) || n <= 0) return '';
-  try {
-    return new Date(n * 1000).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
-  } catch {
-    return new Date(n * 1000).toISOString().slice(0, 10);
-  }
-}
-
-function normalizeBacktestTimeframe(value = '') {
-  const tf = String(value || '').trim();
-  return SUPPORTED_BACKTEST_TF.has(tf) ? tf : '5m';
-}
-
-function normalizeBacktestCandles(input = []) {
-  return (Array.isArray(input) ? input : [])
-    .map((item) => {
-      const t = Number(item?.t ?? item?.timestamp);
-      const close = Number(item?.c ?? item?.close);
-      if (!Number.isFinite(t) || t <= 0 || !Number.isFinite(close) || close <= 0) return null;
-      const open = Number(item?.o ?? item?.open);
-      const high = Number(item?.h ?? item?.high);
-      const low = Number(item?.l ?? item?.low);
-      return {
-        t,
-        date: shanghaiDateFromEpochSec(t),
-        open: Number.isFinite(open) && open > 0 ? open : close,
-        high: Number.isFinite(high) && high > 0 ? high : close,
-        low: Number.isFinite(low) && low > 0 ? low : close,
-        close
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.t - b.t);
-}
-
-function buildNavLookup(items = []) {
-  const sorted = (Array.isArray(items) ? items : [])
-    .map((item) => {
-      const date = String(item?.date || '').slice(0, 10);
-      const nav = Number(item?.nav);
-      return /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(nav) && nav > 0 ? { date, nav } : null;
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.date.localeCompare(b.date));
-  let cursor = 0;
-  let current = null;
-  return (date) => {
-    while (cursor < sorted.length && sorted[cursor].date <= date) {
-      current = sorted[cursor];
-      cursor += 1;
-    }
-    return current?.nav || 0;
-  };
-}
-
 function buildBacktestRunId() {
   if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
     return `bt-${globalThis.crypto.randomUUID()}`;
@@ -699,248 +637,28 @@ async function buildQuantPremiumStudioContract(env, clientId, { strategyId = DEF
   };
 }
 
-export function runQuantPremiumBacktest(strategyInput = {}, { timeframe = '5m', historyByCode = {}, navHistoryByCode = {}, dataIssues = {}, initialEquity = 100000, orderCash = 16000, useV2 = false } = {}) {
-  // 如果启用V2，使用新的回测引擎
-  if (useV2) {
-    return runQuantPremiumBacktestV2(strategyInput, {
-      timeframe,
-      historyByCode,
-      navHistoryByCode,
-      dataIssues,
-      initialEquity,
-      orderCash
-    });
-  }
+export function runQuantPremiumBacktest(strategyInput = {}, options = {}) {
+  const normalizedOptions = { ...(options || {}) };
+  delete normalizedOptions.useV2;
+  const {
+    timeframe = "5m",
+    historyByCode = {},
+    navHistoryByCode = {},
+    dataIssues = {},
+    initialEquity = 100000,
+    orderCash = 16000,
+    ...engineOptions
+  } = normalizedOptions;
 
-  // 原有的V1逻辑
-  const strategy = normalizeQuantPremiumStrategy(strategyInput);
-  const tf = normalizeBacktestTimeframe(timeframe);
-  const highCodes = strategy.highCodes;
-  const lowCodes = strategy.lowCodes;
-  const codes = Array.from(new Set([...highCodes, ...lowCodes]));
-  const candleMap = {};
-  for (const code of codes) {
-    candleMap[code] = normalizeBacktestCandles(historyByCode?.[code]?.candles || historyByCode?.[code] || []);
-  }
-  const anchorCode = codes.slice().sort((a, b) => (candleMap[b]?.length || 0) - (candleMap[a]?.length || 0))[0] || '';
-  const anchorCandles = candleMap[anchorCode] || [];
-  const closeByCode = Object.fromEntries(codes.map((code) => [code, new Map((candleMap[code] || []).map((bar) => [bar.t, bar]))]));
-  const navLookupByCode = Object.fromEntries(codes.map((code) => [code, buildNavLookup(navHistoryByCode?.[code] || [])]));
-  const rows = [];
-  const signals = [];
-  let completePriceRows = 0;
-  let completeNavRows = 0;
-  let equity = Math.max(1, Number(initialEquity) || 100000);
-  let peak = equity;
-  let maxDrawdownPct = 0;
-  const premiumClass = Object.fromEntries([
-    ...highCodes.map((code) => [code, 'H']),
-    ...lowCodes.map((code) => [code, 'L'])
-  ]);
-  let currentCode = '';
-  let entryGapPct = null;
-
-  function pickInitialHolding(highList, lowList) {
-    if (strategy.activeSide === 'L') {
-      return lowList.reduce((best, item) => (!best || item.premiumPct < best.premiumPct ? item : best), null)
-        || highList.reduce((best, item) => (!best || item.premiumPct > best.premiumPct ? item : best), null);
-    }
-    return highList.reduce((best, item) => (!best || item.premiumPct > best.premiumPct ? item : best), null)
-      || lowList.reduce((best, item) => (!best || item.premiumPct < best.premiumPct ? item : best), null);
-  }
-
-  for (const anchor of anchorCandles) {
-    const premiums = {};
-    let hasAllPrices = true;
-    let hasAllNav = true;
-    for (const code of codes) {
-      const bar = closeByCode[code].get(anchor.t);
-      if (!bar) {
-        hasAllPrices = false;
-        continue;
-      }
-      const nav = navLookupByCode[code](anchor.date);
-      if (!(nav > 0)) {
-        hasAllNav = false;
-        continue;
-      }
-      premiums[code] = roundTo(((bar.close - nav) / nav) * 100, 4);
-    }
-    if (hasAllPrices) completePriceRows += 1;
-    if (hasAllPrices && hasAllNav) completeNavRows += 1;
-    if (!hasAllPrices || !hasAllNav) continue;
-
-    const highList = highCodes.map((code) => ({ code, premiumPct: premiums[code] })).filter((item) => Number.isFinite(item.premiumPct));
-    const lowList = lowCodes.map((code) => ({ code, premiumPct: premiums[code] })).filter((item) => Number.isFinite(item.premiumPct));
-    if (!currentCode || !Number.isFinite(premiums[currentCode])) {
-      const initial = pickInitialHolding(highList, lowList);
-      currentCode = initial?.code || '';
-      entryGapPct = null;
-    }
-
-    const currentClass = premiumClass[currentCode] || '';
-    const currentPremiumPct = premiums[currentCode];
-    let from = currentCode && Number.isFinite(currentPremiumPct)
-      ? { code: currentCode, premiumPct: currentPremiumPct }
-      : null;
-    let to = null;
-    let gapPct = NaN;
-    let rule = 'none';
-    let threshold = NaN;
-    if (from && currentClass === 'H') {
-      to = lowList.reduce((best, item) => (!best || item.premiumPct < best.premiumPct ? item : best), null);
-      if (to) {
-        gapPct = roundTo(from.premiumPct - to.premiumPct, 4);
-        rule = 'B';
-        threshold = strategy.intraBuyOtherPct;
-      }
-    } else if (from && currentClass === 'L') {
-      to = highList.reduce((best, item) => (!best || item.premiumPct > best.premiumPct ? item : best), null);
-      if (to) {
-        gapPct = roundTo(to.premiumPct - from.premiumPct, 4);
-        rule = 'A';
-        threshold = strategy.intraSellLowerPct;
-      }
-    }
-    if (!from || !to || !Number.isFinite(gapPct)) continue;
-
-    const sideAllowed = strategy.activeSide === 'all' || strategy.activeSide === currentClass;
-    const triggered = sideAllowed && (
-      (rule === 'B' && gapPct >= strategy.intraBuyOtherPct)
-      || (rule === 'A' && gapPct <= strategy.intraSellLowerPct)
-    );
-    let profit = 0;
-    if (triggered) {
-      if (rule === 'A' && Number.isFinite(entryGapPct)) {
-        profit = roundTo(Math.max(0, Number(orderCash) || 16000) * Math.max(0, entryGapPct - gapPct) / 100, 2);
-      }
-      equity = roundTo(equity + profit, 2);
-      signals.push({
-        ts: anchor.t,
-        date: anchor.date,
-        fromCode: from.code,
-        toCode: to.code,
-        rule,
-        threshold,
-        gapPct,
-        entryGapPct: Number.isFinite(entryGapPct) ? entryGapPct : null,
-        profit
-      });
-      if (rule === 'B') {
-        entryGapPct = gapPct;
-      } else if (rule === 'A') {
-        entryGapPct = null;
-      }
-      currentCode = to.code;
-    }
-    peak = Math.max(peak, equity);
-    const drawdownPct = peak > 0 ? ((equity - peak) / peak) * 100 : 0;
-    maxDrawdownPct = Math.min(maxDrawdownPct, drawdownPct);
-    rows.push({
-      ts: anchor.t,
-      date: anchor.date,
-      fromCode: from.code,
-      toCode: to.code,
-      currentCode: from.code,
-      currentClass,
-      highPremiumPct: currentClass === 'H' ? from.premiumPct : to.premiumPct,
-      lowPremiumPct: currentClass === 'H' ? to.premiumPct : from.premiumPct,
-      gapPct,
-      rule,
-      threshold,
-      signal: triggered ? 'switch' : 'wait',
-      profit,
-      equity: roundTo(equity, 2)
-    });
-  }
-
-  const sampleCount = rows.length;
-  const priceCoveragePct = anchorCandles.length ? roundTo((completePriceRows / anchorCandles.length) * 100, 2) : 0;
-  const navCoveragePct = completePriceRows ? roundTo((completeNavRows / completePriceRows) * 100, 2) : 0;
-  const dataCoveragePct = anchorCandles.length ? roundTo((sampleCount / anchorCandles.length) * 100, 2) : 0;
-  const totalProfit = roundTo(equity - Math.max(1, Number(initialEquity) || 100000), 2);
-  const passed = sampleCount >= 10 && priceCoveragePct >= 60 && navCoveragePct >= 60;
-  const klineIssues = Array.isArray(dataIssues?.kline) ? dataIssues.kline : [];
-  const missingKlineCodes = klineIssues.map((item) => String(item?.code || '').trim()).filter(Boolean);
-  const qualityReason = passed
-    ? '数据覆盖率满足回测门槛'
-    : missingKlineCodes.length
-      ? `缺少 ${missingKlineCodes.join('、')} 的 ${tf} 历史 K 线，已按回测失败处理`
-      : '样本或 NAV/价格覆盖率不足';
-  const chartCandles = anchorCandles.map((bar) => ({
-    t: bar.t,
-    date: bar.date,
-    o: roundTo(bar.open, 4),
-    h: roundTo(bar.high, 4),
-    l: roundTo(bar.low, 4),
-    c: roundTo(bar.close, 4)
-  }));
-  const chartTs = new Set(chartCandles.map((bar) => bar.t));
-  const chartMarkers = signals
-    .filter((signal) => chartTs.has(signal.ts))
-    .map((signal) => {
-      const bar = closeByCode[anchorCode]?.get(signal.ts);
-      const isSell = signal.fromCode === anchorCode;
-      const isBuy = signal.toCode === anchorCode;
-      const side = isSell ? 'sell' : isBuy ? 'buy' : 'signal';
-      const markerPrice = side === 'sell'
-        ? Number(bar?.high ?? bar?.close)
-        : side === 'buy'
-          ? Number(bar?.low ?? bar?.close)
-          : Number(bar?.close);
-      return {
-        ts: signal.ts,
-        date: signal.date,
-        side,
-        price: roundTo(Number.isFinite(markerPrice) && markerPrice > 0 ? markerPrice : bar?.close, 4),
-        fromCode: signal.fromCode,
-        toCode: signal.toCode,
-        gapPct: signal.gapPct,
-        label: side === 'sell'
-          ? `卖 ${signal.fromCode} → 买 ${signal.toCode}`
-          : side === 'buy'
-            ? `卖 ${signal.fromCode} → 买 ${signal.toCode}`
-            : `${signal.fromCode} → ${signal.toCode}`
-      };
-    });
-  return {
-    ok: true,
-    status: passed ? 'passed' : 'failed',
-    timeframe: tf,
-    strategyId: strategy.id,
-    strategyName: strategy.name,
-    generatedAt: new Date().toISOString(),
-    rows: rows.slice(-500),
-    signals: signals.slice(-120),
-    chart: {
-      code: anchorCode,
-      timeframe: tf,
-      candles: chartCandles,
-      markers: chartMarkers
-    },
-    summary: {
-      sampleCount,
-      signalCount: signals.length,
-      totalProfit,
-      totalReturnPct: roundTo((totalProfit / Math.max(1, Number(initialEquity) || 100000)) * 100, 2),
-      maxDrawdownPct: roundTo(maxDrawdownPct, 2),
-      finalEquity: roundTo(equity, 2),
-      priceCoveragePct,
-      navCoveragePct,
-      dataCoveragePct,
-      from: rows[0]?.date || '',
-      to: rows[rows.length - 1]?.date || ''
-    },
-    quality: {
-      passed,
-      reason: qualityReason,
-      anchorCode,
-      anchorBars: anchorCandles.length,
-      missingKlineCodes,
-      klineIssues,
-      supportedTimeframes: Array.from(SUPPORTED_BACKTEST_TF)
-    }
-  };
+  return runQuantPremiumBacktestV2(strategyInput, {
+    timeframe,
+    historyByCode,
+    navHistoryByCode,
+    dataIssues,
+    initialEquity,
+    orderCash,
+    ...engineOptions
+  });
 }
 
 async function fetchMarketsJsonForQuantBacktest(env, path) {
@@ -1027,8 +745,7 @@ async function runQuantPremiumBacktestWithLiveData(env, strategy, options = {}) 
     navHistoryByCode,
     dataIssues: { kline: klineIssues },
     initialEquity: options.initialEquity,
-    orderCash: options.orderCash,
-    useV2: options.useV2 // 添加V2选项
+    orderCash: options.orderCash
   });
 }
 
@@ -1314,8 +1031,7 @@ export async function handleQuantPremiumBacktestPost(request, env, strategyId) {
   const result = await runQuantPremiumBacktestWithLiveData(env, strategy, {
     timeframe: payload?.timeframe || payload?.tf || '5m',
     initialEquity: payload?.initialEquity,
-    orderCash: payload?.orderCash,
-    useV2: payload?.useV2 === true  // 从请求中读取V2标志
+    orderCash: payload?.orderCash
   });
   const stored = await storeQuantPremiumBacktestResult(env, auth.clientId, strategy, result);
   await trackAnalyticsEvent(env, 'quant_premium_backtest_run', {

@@ -1,13 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, AlertTriangle, BarChart3, Bot, CheckCircle2, Play, RefreshCw, Settings, ShieldCheck, TrendingUp } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Activity, AlertTriangle, Play, RefreshCw, Settings, ShieldCheck, TrendingUp } from 'lucide-react';
 import { Card, cx, primaryButtonClass, secondaryButtonClass, subtleButtonClass } from '../components/experience-ui.jsx';
 import { showToast } from '../app/toast.js';
 import {
-  DEFAULT_QUANT_STATE,
   readQuantProjectState,
   saveQuantProjectState,
   resetQuantProjectState,
-  buildSimulatedOrderPlan,
   executeSimulatedSwitch,
   computeAccountSummary,
   evaluatePremiumSpread,
@@ -16,10 +14,9 @@ import {
   RiskMonitor,
   getCachedHistoricalData,
   RECOMMENDED_STRATEGY_CONFIGS,
-  recommendParameters,
-  validateStrategyParameters
+  recommendParameters
 } from '../app/quantTrading.js';
-import { buildSampleBacktestRows, runBacktest } from '../app/backtest/index.js';
+import { buildPremiumSpreadInputFromLegacyRows, runBacktest } from '../app/backtest/index.js';
 
 function formatMoney(value) {
   const num = Number(value);
@@ -39,7 +36,7 @@ function formatNumber(value, digits = 0) {
   return num.toLocaleString('zh-CN', { maximumFractionDigits: digits });
 }
 
-function StatusBadge({ status, useV2 }) {
+function StatusBadge({ status }) {
   const config = {
     switch: { label: '可交易', tone: 'emerald', Icon: TrendingUp },
     wait: { label: '观察中', tone: 'slate', Icon: Activity }
@@ -53,11 +50,9 @@ function StatusBadge({ status, useV2 }) {
         <c.Icon className="h-3.5 w-3.5" />
         {c.label}
       </span>
-      {useV2 && (
-        <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-bold text-indigo-700">
-          V2
-        </span>
-      )}
+      <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-bold text-indigo-700">
+        统一引擎
+      </span>
     </div>
   );
 }
@@ -118,30 +113,23 @@ export default function EtfSwitchStrategyPage() {
   const [riskCheck, setRiskCheck] = useState(null);
   const [activePreset, setActivePreset] = useState('balanced');
 
-  const useV2 = state.settings?.useV2Logic !== false;
   const enhancedRisk = state.settings?.enableEnhancedRiskControl !== false;
 
-  // 使用V2或V1逻辑
-  const orderPlan = useMemo(() => {
-    if (useV2) {
-      return buildOrderPlanV2(state);
-    }
-    return buildSimulatedOrderPlan(state);
-  }, [state, useV2]);
+  const orderPlan = useMemo(() => buildOrderPlanV2(state), [state]);
 
   const summary = useMemo(() => computeAccountSummary(state), [state]);
   const signal = useMemo(() => evaluatePremiumSpread(state), [state]);
 
   // 风控检查
   useEffect(() => {
-    if (enhancedRisk && useV2) {
+    if (enhancedRisk) {
       const monitor = new RiskMonitor();
       const check = monitor.checkRisks(state, orderPlan);
       setRiskCheck(check);
     } else {
       setRiskCheck(null);
     }
-  }, [state, orderPlan, enhancedRisk, useV2]);
+  }, [state, orderPlan, enhancedRisk]);
 
   const handleExecuteTrade = useCallback(() => {
     if (!orderPlan.canTrade) {
@@ -168,7 +156,7 @@ export default function EtfSwitchStrategyPage() {
         tone: 'emerald'
       });
     }
-  }, [state, orderPlan, signal, riskCheck, useV2]);
+  }, [state, orderPlan, riskCheck]);
 
   const handleRunBacktest = useCallback(async () => {
     setBacktesting(true);
@@ -183,6 +171,10 @@ export default function EtfSwitchStrategyPage() {
         startDate,
         endDate
       );
+      const { historyByCode, navHistoryByCode } = buildPremiumSpreadInputFromLegacyRows(historicalData, {
+        highCode: state.strategy.sellSymbol,
+        lowCode: state.strategy.buySymbol
+      });
 
       // 构建策略配置（适配新接口）
       const strategy = {
@@ -195,12 +187,9 @@ export default function EtfSwitchStrategyPage() {
       };
 
       const options = {
-        timeframe: '5m',
-        historyByCode: {
-          [state.strategy.sellSymbol]: historicalData[state.strategy.sellSymbol],
-          [state.strategy.buySymbol]: historicalData[state.strategy.buySymbol]
-        },
-        navHistoryByCode: {},
+        timeframe: '1d',
+        historyByCode,
+        navHistoryByCode,
         initialEquity: state.account.cash,
         feeRate: state.account.feeRate,
         minFee: state.account.minFee,
@@ -224,7 +213,7 @@ export default function EtfSwitchStrategyPage() {
     } finally {
       setBacktesting(false);
     }
-  }, [state, summary, useV2]);
+  }, [state]);
 
   const handleApplyPreset = useCallback((presetName) => {
     const preset = RECOMMENDED_STRATEGY_CONFIGS[presetName];
@@ -255,14 +244,12 @@ export default function EtfSwitchStrategyPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-slate-900">ETF 切换策略</h1>
-            {useV2 && (
-              <span className="rounded-lg bg-indigo-100 px-2 py-1 text-xs font-bold text-indigo-700">
-                V2 修复版
-              </span>
-            )}
+            <span className="rounded-lg bg-indigo-100 px-2 py-1 text-xs font-bold text-indigo-700">
+              统一回测引擎
+            </span>
           </div>
           <p className="mt-2 text-sm text-slate-500">
-            基于溢价差的纳指ETF自动切换策略 · {useV2 ? '真实回测 + 增强风控' : '样例回测'}
+            基于溢价差的纳指ETF自动切换策略 · 真实回测 + 增强风控
           </p>
         </div>
         <button
@@ -327,7 +314,7 @@ export default function EtfSwitchStrategyPage() {
             <h2 className="text-lg font-bold text-slate-900">交易信号</h2>
             <p className="mt-1 text-sm text-slate-500">{signal.reason}</p>
           </div>
-          <StatusBadge status={signal.action} useV2={useV2} />
+          <StatusBadge status={signal.action} />
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -364,7 +351,7 @@ export default function EtfSwitchStrategyPage() {
           <div>
             <h2 className="text-lg font-bold text-slate-900">策略回测</h2>
             <p className="mt-1 text-sm text-slate-500">
-              {useV2 ? '使用真实历史数据和持仓追踪' : '使用样例数据'}
+              使用真实历史数据和持仓追踪
             </p>
           </div>
           <button
@@ -406,7 +393,7 @@ export default function EtfSwitchStrategyPage() {
             </div>
             <div className="rounded-xl bg-slate-50 px-3 py-2">
               <div className="text-xs font-bold text-slate-400">
-                {useV2 ? '胜率' : '胜率（V1）'}
+                胜率
               </div>
               <div className="mt-1 text-lg font-semibold text-slate-900">
                 {formatPercent(backtestResult.summary.winRatePct, 0)}
@@ -421,7 +408,7 @@ export default function EtfSwitchStrategyPage() {
                 {formatPercent(backtestResult.summary.maxDrawdownPct)}
               </div>
             </div>
-            {useV2 && backtestResult.summary.sharpeRatio !== undefined && (
+            {backtestResult.summary.sharpeRatio !== undefined && (
               <div className="rounded-xl bg-slate-50 px-3 py-2">
                 <div className="text-xs font-bold text-slate-400">夏普比率</div>
                 <div className="mt-1 text-lg font-semibold text-slate-900">

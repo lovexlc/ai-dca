@@ -6,6 +6,7 @@
 
 import { getCachedHistoricalData } from './quantHistoricalData.js';
 import { getNavHistory } from './navService.js';
+import { buildPremiumSpreadInputFromLegacyRows } from './backtest/index.js';
 
 /**
  * 获取回测所需的完整数据
@@ -17,21 +18,45 @@ export async function fetchBacktestData(codes, options = {}) {
   const {
     startDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
     endDate = new Date().toISOString().slice(0, 10),
-    forceRefresh = false
+    forceRefresh = false,
+    highCodes = [],
+    lowCodes = []
   } = options;
+  const normalizedCodes = Array.from(new Set((Array.isArray(codes) ? codes : [])
+    .map((code) => String(code || '').trim())
+    .filter(Boolean)));
+  const normalizedHighCodes = (Array.isArray(highCodes) ? highCodes : [])
+    .map((code) => String(code || '').trim())
+    .filter(Boolean);
+  const normalizedLowCodes = (Array.isArray(lowCodes) ? lowCodes : [])
+    .map((code) => String(code || '').trim())
+    .filter(Boolean);
 
   // 获取 K线历史数据
-  const historyByCode = await getCachedHistoricalData(codes, startDate, endDate, forceRefresh);
+  const rawHistory = await getCachedHistoricalData(normalizedCodes, startDate, endDate, forceRefresh);
+  let historyByCode = rawHistory && typeof rawHistory === 'object' && !Array.isArray(rawHistory)
+    ? rawHistory
+    : {};
+  let legacyNavHistoryByCode = {};
+  if (Array.isArray(rawHistory)) {
+    const adapted = buildPremiumSpreadInputFromLegacyRows(rawHistory, {
+      highCode: normalizedHighCodes[0] || normalizedCodes[0],
+      lowCode: normalizedLowCodes[0] || normalizedCodes[1]
+    });
+    historyByCode = adapted.historyByCode;
+    legacyNavHistoryByCode = adapted.navHistoryByCode;
+  }
 
   // 获取 NAV 历史数据
   const navHistoryByCode = {};
-  const navPromises = codes.map(async (code) => {
+  const navPromises = normalizedCodes.map(async (code) => {
     try {
       const navData = await getNavHistory(code, { from: startDate, to: endDate, forceRefresh });
-      navHistoryByCode[code] = navData?.history || [];
+      const navHistory = navData?.history || navData?.items || [];
+      navHistoryByCode[code] = navHistory.length ? navHistory : (legacyNavHistoryByCode[code] || []);
     } catch (err) {
       console.warn(`Failed to fetch NAV for ${code}:`, err);
-      navHistoryByCode[code] = [];
+      navHistoryByCode[code] = legacyNavHistoryByCode[code] || [];
     }
   });
 

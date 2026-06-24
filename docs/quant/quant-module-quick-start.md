@@ -16,9 +16,8 @@
 
 ```javascript
 import {
-  // V2回测引擎
-  BacktestEngine,
-  runBacktestV2,
+  // 统一回测入口
+  runBacktest,
   
   // V2订单生成
   buildOrderPlanV2,
@@ -44,22 +43,26 @@ const historicalData = await getCachedHistoricalData(
   '2026-06-01'
 );
 
-const engine = new BacktestEngine({
-  initialCash: 60000,
-  initialPositions: {
-    '159513': { shares: 20000, costPrice: 1.735 }
-  },
-  strategy: RECOMMENDED_STRATEGY_CONFIGS.balanced, // 或 conservative / aggressive
-  tradingCosts: {
-    feeRate: 0.01,
-    minFee: 0,
-    tickSize: 0.001,
-    slippageTicks: 1,
-    lotSize: 100
-  }
-});
+const strategy = {
+  type: 'premium-spread',
+  highCodes: ['159513'],
+  lowCodes: ['513100'],
+  activeSide: 'all',
+  intraSellLowerPct: 1,
+  intraBuyOtherPct: 3
+};
 
-const result = engine.runPremiumSpreadBacktest(historicalData);
+const result = runBacktest(strategy, {
+  timeframe: '5m',
+  historyByCode: historicalData,
+  navHistoryByCode,
+  initialEquity: 60000,
+  feeRate: 0.0001,
+  minFee: 0,
+  tickSize: 0.001,
+  slippageTicks: 1,
+  lotSize: 100
+});
 
 console.log('回测结果：', result.summary);
 // {
@@ -194,7 +197,7 @@ executeTradeWithRiskCheck(state, plan);
 
 - **源码仓库**: [GitHub](https://github.com/lovexlc/ai-dca)
 - **测试文件**: `src/app/quantTests.js`
-- **核心模块**: `src/app/quantBacktestEngine.js`
+- **核心模块**: `src/app/backtest/index.js`
 - **API文档**: `workers/notify/src/quantHistoricalRoutes.js`
 
 ---

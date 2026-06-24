@@ -25,7 +25,7 @@
 
 ```
 src/app/
-├── quantBacktestEngine.js          ✅ 回测引擎（持仓追踪、真实模拟）
+├── backtest/                       ✅ 统一回测引擎（core + premiumSpread）
 ├── quantHistoricalData.js          ✅ 历史数据获取（API + 真实模拟）
 ├── quantOrderPlanV2.js             ✅ 订单生成逻辑修正版
 ├── quantRiskMonitor.js             ✅ 增强风控监控
@@ -51,7 +51,7 @@ docs/
 
 ## 三、核心修复详解
 
-### 3.1 回测引擎 (`quantBacktestEngine.js`)
+### 3.1 回测引擎 (`src/app/backtest/index.js`)
 
 **修复前**：
 ```javascript
@@ -320,7 +320,7 @@ $ node src/app/quantTests.js
 ## 八、交付物清单
 
 ### 代码模块（已完成）
-- ✅ `quantBacktestEngine.js` (379行)
+- ✅ `src/app/backtest/`（统一回测入口与 core/engine）
 - ✅ `quantHistoricalData.js` (249行)
 - ✅ `quantOrderPlanV2.js` (350行)
 - ✅ `quantRiskMonitor.js` (398行)

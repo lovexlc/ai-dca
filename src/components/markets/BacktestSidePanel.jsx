@@ -84,22 +84,6 @@ function DecimalInput({ id, label, suffix, hint, value, onChange, onCommit }) {
   );
 }
 
-// 获取多个代码的K线数据
-async function fetchMultipleKlines(codes, timeframe = '1d') {
-  const results = {};
-  for (const code of codes) {
-    try {
-      const data = await fetchKline('cn', code, timeframe);
-      if (Array.isArray(data?.candles)) {
-        results[code] = data.candles;
-      }
-    } catch (error) {
-      console.error(`[Backtest] 获取 ${code} K线失败:`, error);
-    }
-  }
-  return results;
-}
-
 // 计算溢价率（简化版：使用价格比）
 function calculatePremium(highPrice, lowPrice) {
   if (!lowPrice || lowPrice <= 0) return 0;
@@ -416,7 +400,7 @@ export function BacktestSidePanel({
         const allCodes = [...highCodes, ...lowCodes];
 
         // 使用统一的数据获取函数
-        const { historyByCode, navHistoryByCode } = await fetchBacktestData(allCodes);
+        const { historyByCode, navHistoryByCode } = await fetchBacktestData(allCodes, { highCodes, lowCodes });
 
         console.log('[Backtest] 运行溢价差轮动策略（使用NAV计算真实溢价率）...');
 
@@ -632,7 +616,7 @@ export function BacktestSidePanel({
                 <div>
                   <h3 className="text-base font-bold text-slate-700">准备开始回测</h3>
                   <p className="mt-2 text-sm text-slate-500">
-                    配置 H/L 档和触发规则后点击"开始回测"
+                    配置 H/L 档和触发规则后点击「开始回测」
                   </p>
                 </div>
                 <button

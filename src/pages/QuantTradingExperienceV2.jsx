@@ -331,7 +331,7 @@ export default function QuantTradingExperienceV2({ initialTab = 'config', single
       const codes = Array.from(new Set([...highCodes, ...lowCodes]));
 
       // 获取历史数据
-      const { historyByCode, navHistoryByCode } = await fetchBacktestData(codes);
+      const { historyByCode, navHistoryByCode } = await fetchBacktestData(codes, { highCodes, lowCodes });
 
       // 构建回测配置
       const backtestStrategy = {

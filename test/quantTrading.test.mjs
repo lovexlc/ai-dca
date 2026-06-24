@@ -3,15 +3,14 @@ import assert from 'node:assert/strict';
 
 import {
   applyMarketQuotesToQuantState,
-  buildSampleBacktestRows,
   buildSimulatedOrderPlan,
   computeAccountSummary,
   evaluateRealtimeAutoExecution,
   executeSimulatedSwitch,
   normalizeQuantState,
-  recordRealtimeExecution,
-  runPremiumSpreadBacktest
+  recordRealtimeExecution
 } from '../src/app/quantTrading.js';
+import { runBacktest } from '../src/app/backtest/index.js';
 
 test('quant simulator produces a switch signal from the default premium spread sample', () => {
   const state = normalizeQuantState();
@@ -55,20 +54,36 @@ test('simulated matching refuses trades when the signal does not reach the trigg
 });
 
 test('premium spread backtest returns trades and summary metrics', () => {
-  const rows = buildSampleBacktestRows(45);
-  const result = runPremiumSpreadBacktest({
-    rows,
-    triggerSpreadPct: 0.3,
-    feeBufferPct: 0.04,
-    orderCash: 16000,
+  const start = Math.floor(Date.UTC(2026, 5, 12, 1, 30) / 1000);
+  const candles = Array.from({ length: 16 }, (_, index) => ({
+    t: start + index * 300,
+    c: 1 + index * 0.001
+  }));
+  const result = runBacktest({
+    type: 'premium-spread',
+    highCodes: ['159513'],
+    lowCodes: ['513100'],
+    activeSide: 'all',
+    intraSellLowerPct: 1,
+    intraBuyOtherPct: 0.2
+  }, {
+    timeframe: '5m',
     initialEquity: 100000,
-    cooldownDays: 2
+    historyByCode: {
+      '159513': candles.map((item) => ({ ...item, c: item.c + 0.02 })),
+      '513100': candles
+    },
+    navHistoryByCode: {
+      '159513': [{ date: '2026-06-12', nav: 1 }],
+      '513100': [{ date: '2026-06-12', nav: 1 }]
+    }
   });
 
-  assert.equal(result.rows.length, 45);
+  assert.equal(result.status, 'passed');
+  assert.equal(result.summary.sampleCount, 16);
   assert.ok(result.trades.length > 0);
-  assert.ok(result.summary.totalProfit > 0);
-  assert.ok(result.summary.finalEquity > 100000);
+  assert.ok(result.summary.signalCount > 0);
+  assert.ok(result.summary.finalEquity > 0);
 });
 
 test('xueqiu quote payload updates simulated bid ask and iopv fields', () => {

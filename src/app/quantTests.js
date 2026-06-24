@@ -3,11 +3,42 @@
  * 验证修复后的逻辑正确性
  */
 
-import { BacktestEngine } from './quantBacktestEngine.js';
+import { buildPremiumSpreadInputFromLegacyRows, runBacktest } from './backtest/index.js';
 import { generateRealisticSimulation } from './quantHistoricalData.js';
 import { buildOrderPlanV2 } from './quantOrderPlanV2.js';
 import { RiskMonitor } from './quantRiskMonitor.js';
 import { RECOMMENDED_STRATEGY_CONFIGS } from './quantConfigPresets.js';
+
+function runSimulationBacktest(config = {}, rows = []) {
+  const strategyConfig = config.strategy || RECOMMENDED_STRATEGY_CONFIGS.balanced;
+  const sellSymbol = strategyConfig.sellSymbol || '159513';
+  const buySymbol = strategyConfig.buySymbol || '513100';
+  const { historyByCode, navHistoryByCode } = buildPremiumSpreadInputFromLegacyRows(rows, {
+    highCode: sellSymbol,
+    lowCode: buySymbol
+  });
+  const tradingCosts = config.tradingCosts || {};
+  return runBacktest({
+    type: 'premium-spread',
+    id: 'quant-tests',
+    name: strategyConfig.name,
+    highCodes: [sellSymbol],
+    lowCodes: [buySymbol],
+    activeSide: 'all',
+    intraSellLowerPct: strategyConfig.closeSpreadPct ?? strategyConfig.triggerSpreadPct ?? 1,
+    intraBuyOtherPct: strategyConfig.triggerSpreadPct ?? 3
+  }, {
+    timeframe: '1d',
+    historyByCode,
+    navHistoryByCode,
+    initialEquity: config.initialCash || 100000,
+    feeRate: Number(tradingCosts.feeRate || 0) / 100,
+    minFee: tradingCosts.minFee || 0,
+    tickSize: tradingCosts.tickSize || 0.001,
+    slippageTicks: tradingCosts.slippageTicks || 1,
+    lotSize: tradingCosts.lotSize || 100
+  });
+}
 
 /**
  * 测试1：回测引擎持仓追踪
@@ -38,8 +69,7 @@ export function testBacktestPositionTracking() {
     '2026-05-30'
   );
 
-  const engine = new BacktestEngine(config);
-  const result = engine.runPremiumSpreadBacktest(historicalData);
+  const result = runSimulationBacktest(config, historicalData);
 
   console.log('回测结果：');
   console.log(`- 交易次数: ${result.summary.trades}`);
@@ -48,20 +78,21 @@ export function testBacktestPositionTracking() {
   console.log(`- 胜率: ${result.summary.winRatePct}%`);
   console.log(`- 最大回撤: ${result.summary.maxDrawdownPct}%`);
   console.log(`- 夏普比率: ${result.summary.sharpeRatio}`);
-  console.log(`- 总手续费: ${result.summary.totalFees}元`);
+  console.log(`- 价格覆盖率: ${result.summary.priceCoveragePct}%`);
 
   console.log('\n最终账户状态：');
-  console.log(`- 现金: ${result.finalAccount.cash}元`);
+  const finalRow = result.rows[result.rows.length - 1] || {};
+  console.log(`- 现金: ${finalRow.cash ?? 0}元`);
   console.log('- 持仓:');
-  for (const [symbol, pos] of Object.entries(result.finalAccount.positions)) {
-    console.log(`  ${symbol}: ${pos.shares}股, 成本均价 ${pos.avgPrice.toFixed(3)}`);
+  for (const [symbol, pos] of Object.entries(finalRow.positions || {})) {
+    console.log(`  ${symbol}: ${pos.shares}股, 成本均价 ${Number(pos.costPrice || 0).toFixed(3)}`);
   }
 
   // 验证逻辑
   const checks = {
     交易次数合理: result.summary.trades >= 0 && result.summary.trades < 50,
     胜率计算正确: result.summary.trades === 0 || (result.summary.winRatePct >= 0 && result.summary.winRatePct <= 100), // 改为验证胜率在合理范围
-    持仓状态正确: Object.keys(result.finalAccount.positions).length > 0,
+    持仓状态正确: Object.keys(finalRow.positions || {}).length > 0,
     权益计算正确: result.summary.finalEquity > 0
   };
 
@@ -242,13 +273,12 @@ export function testCompareVersions() {
   };
 
   // 新版逻辑
-  const engine = new BacktestEngine({
+  const newVersionResult = runSimulationBacktest({
     initialCash: 60000,
     initialPositions: { '159513': { shares: 20000, costPrice: 1.735 } },
     strategy: RECOMMENDED_STRATEGY_CONFIGS.balanced,
     tradingCosts: { feeRate: 0.01, minFee: 0, tickSize: 0.001, slippageTicks: 1, lotSize: 100 }
-  });
-  const newVersionResult = engine.runPremiumSpreadBacktest(testData);
+  }, testData);
 
   console.log('原版结果（基于纯数学公式）：');
   console.log(`- 交易次数: ${oldVersionResult.trades}`);

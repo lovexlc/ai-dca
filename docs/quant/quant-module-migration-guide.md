@@ -4,13 +4,16 @@
 
 本文档说明如何从原版量化逻辑迁移到修复版本。
 
+> 当前回测入口已收敛到 `src/app/backtest/index.js` 的 `runBacktest()`。
+> 旧的 `quantBacktestEngine.js` / `runBacktestV2` 仅作为历史迁移背景保留，不再作为新代码入口。
+
 ---
 
 ## 修复内容总览
 
 ### 🔴 P0 - 严重问题修复
 
-1. **回测引擎重写** (`quantBacktestEngine.js`)
+1. **回测引擎重写** (`src/app/backtest/index.js`)
    - ✅ 添加持仓状态追踪
    - ✅ 修正收益计算逻辑
    - ✅ 修正胜率计算（不再永远100%）
@@ -52,8 +55,8 @@
 新模块独立于原版，可以并行运行：
 
 ```javascript
-// 在 quantTrading.js 中添加导入（保持原有导出不变）
-export { BacktestEngine, runPremiumSpreadBacktest as runBacktestV2 } from './quantBacktestEngine.js';
+// 在 quantTrading.js 中添加统一回测导出
+export { runBacktest, runPremiumSpreadBacktest } from './backtest/index.js';
 export { buildOrderPlanV2 } from './quantOrderPlanV2.js';
 export { RiskMonitor, performRiskCheck } from './quantRiskMonitor.js';
 export { getCachedHistoricalData } from './quantHistoricalData.js';
@@ -78,15 +81,7 @@ settings: {
 #### 3.1 回测模块
 
 ```javascript
-// 原版调用（保留作为对比）
-const resultOld = runPremiumSpreadBacktest({
-  rows: buildSampleBacktestRows(60),
-  triggerSpreadPct: strategy.triggerSpreadPct,
-  // ...
-});
-
-// 新版调用（真实数据）
-import { BacktestEngine } from './quantBacktestEngine.js';
+import { runBacktest } from './backtest/index.js';
 import { getCachedHistoricalData } from './quantHistoricalData.js';
 
 const historicalData = await getCachedHistoricalData(
@@ -95,23 +90,24 @@ const historicalData = await getCachedHistoricalData(
   endDate
 );
 
-const engine = new BacktestEngine({
-  initialCash: account.cash,
-  initialPositions: { [strategy.sellSymbol]: { shares: 20000, costPrice: 1.735 } },
-  strategy,
-  tradingCosts: {
-    feeRate: account.feeRate,
-    minFee: account.minFee,
-    tickSize: account.tickSize,
-    slippageTicks: account.slippageTicks,
-    lotSize: strategy.lotSize
-  }
+const result = runBacktest({
+  type: 'premium-spread',
+  highCodes: [strategy.sellSymbol],
+  lowCodes: [strategy.buySymbol],
+  activeSide: 'all',
+  intraSellLowerPct: strategy.closeSpreadPct,
+  intraBuyOtherPct: strategy.triggerSpreadPct
+}, {
+  timeframe: '5m',
+  historyByCode: historicalData,
+  navHistoryByCode,
+  initialEquity: account.cash,
+  feeRate: account.feeRate / 100,
+  minFee: account.minFee,
+  tickSize: account.tickSize,
+  slippageTicks: account.slippageTicks,
+  lotSize: strategy.lotSize
 });
-
-const resultNew = engine.runPremiumSpreadBacktest(historicalData);
-
-// UI显示时可以对比两个版本
-const result = settings.useV2Logic ? resultNew : resultOld;
 ```
 
 #### 3.2 订单生成

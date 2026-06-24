@@ -129,7 +129,6 @@ export function BacktestRunnerPanel({
     const feeRate = (readFeeRate(buyFee, 1) + readFeeRate(sellFee, 1)) / 2 / 10000;
     await onRunBacktest?.(selectedStrategy, {
       timeframe,
-      useV2: true,
       feeRate
     });
   }

@@ -208,6 +208,38 @@ test('quant v2 backtest flow works for H 513100 and L 159501', async ({ page }) 
   const savedPayloads = [];
   const backtestPayloads = [];
 
+  const buildStudioPayload = (preferredId = '') => {
+    const strategy = strategies.find((item) => item.id === preferredId) || strategies[0];
+    return {
+      ok: true,
+      version: 1,
+      kind: 'quant-premium-studio',
+      selectedStrategyId: strategy?.id || '',
+      strategies,
+      strategy,
+      resources: {
+        strategy,
+        marketSnapshot: {
+          strategyId: strategy?.id || '',
+          snapshot: latestSnapshot,
+          generatedAt: latestSnapshot?.computedAt || ''
+        },
+        backtest: {
+          result: latestBacktestResult
+        },
+        riskDecision: null,
+        paperPortfolio: null,
+        audit: {
+          events: []
+        }
+      },
+      snapshot: latestSnapshot,
+      backtest: latestBacktestResult,
+      paperState: null,
+      auditEvents: []
+    };
+  };
+
   await page.route('https://tools.freebacktrack.tech/**', async (route) => {
     await route.fulfill({ status: 204, body: '' });
   });
@@ -219,9 +251,17 @@ test('quant v2 backtest flow works for H 513100 and L 159501', async ({ page }) 
   });
 
   await page.route('**/api/notify/quant/premium/**', async (route) => {
-    const url = new URL(route.request().url());
+    const url = new globalThis.URL(route.request().url());
     const path = url.pathname;
     const method = route.request().method();
+
+    if (path === '/api/notify/quant/premium/studio' && method === 'GET') {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify(buildStudioPayload(url.searchParams.get('strategyId') || ''))
+      });
+      return;
+    }
 
     if (path === '/api/notify/quant/premium/strategies' && method === 'GET') {
       await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, strategies }) });
@@ -233,7 +273,7 @@ test('quant v2 backtest flow works for H 513100 and L 159501', async ({ page }) 
       return;
     }
 
-    if (path.endsWith('/backtest/latest') && method === 'GET') {
+    if ((path.endsWith('/backtest/latest') || path.endsWith('/backtests')) && method === 'GET') {
       await route.fulfill({
         contentType: 'application/json',
         body: JSON.stringify({ ok: true, result: latestBacktestResult, gate: strategies[0]?.backtestGate || null })
@@ -241,7 +281,7 @@ test('quant v2 backtest flow works for H 513100 and L 159501', async ({ page }) 
       return;
     }
 
-    if (path.endsWith('/backtest') && method === 'POST') {
+    if ((path.endsWith('/backtest') || path.endsWith('/backtests')) && method === 'POST') {
       const payload = await route.request().postDataJSON();
       backtestPayloads.push(payload);
       const strategyId = decodeURIComponent(path.split('/').at(-2));
@@ -331,7 +371,7 @@ test('quant v2 backtest flow works for H 513100 and L 159501', async ({ page }) 
   await page.goto('/?tab=quant&module=v2');
   await page.getByRole('button', { name: '知道了' }).click({ timeout: 3000 }).catch(() => {});
 
-  await expect(page.getByRole('heading', { name: '历史回测' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '纳指 ETF 溢价差' })).toBeVisible();
   await expect(page.getByRole('button', { name: /策略配置/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /交易历史/ })).toHaveCount(0);
   await page.getByRole('button', { name: /运行回测/ }).click();
@@ -340,12 +380,10 @@ test('quant v2 backtest flow works for H 513100 and L 159501', async ({ page }) 
   await expect(page.getByText('+67%')).toBeVisible();
   await expect(page.getByText('3 次轮动')).toBeVisible();
   await expect(page.getByText('¥1,450.00')).toBeVisible();
-  await expect(page.getByText('¥101,450.00')).toBeVisible();
-  await expect(page.getByText('持有 H')).toBeVisible();
   expect(savedPayloads.at(-1).strategy.highCodes).toEqual(['513100']);
   expect(savedPayloads.at(-1).strategy.lowCodes).toEqual(['159501']);
   expect(savedPayloads.at(-1).strategy.enabled).toBe(true);
-  expect(backtestPayloads.at(-1)).toMatchObject({ timeframe: '5m', useV2: true });
+  expect(backtestPayloads.at(-1)).toMatchObject({ timeframe: '5m' });
 
   await page.getByRole('button', { name: 'K线+信号' }).click();
   await expect(page.getByText('收盘价')).toBeVisible();

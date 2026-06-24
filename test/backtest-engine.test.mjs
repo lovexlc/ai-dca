@@ -1,0 +1,156 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  buildPremiumSpreadInputFromLegacyRows,
+  buildNavLookup,
+  createTradeSimulator,
+  normalizeBacktestCandles,
+  runBacktest,
+  runPremiumSpreadBacktest
+} from '../src/app/backtest/index.js';
+
+function premiumCandles(premiums = [], { start = Math.floor(Date.UTC(2026, 5, 12, 1, 30) / 1000), step = 300 } = {}) {
+  return premiums.map((premiumPct, index) => ({
+    t: start + index * step,
+    c: 1 + Number(premiumPct) / 100
+  }));
+}
+
+test('unified backtest entry runs premium-spread strategy with one schema', () => {
+  const gaps = [3, 3, 1, 1, 3, 3, 1, 1, 3, 3, 1, 1];
+  const result = runBacktest({
+    type: 'premium-spread',
+    id: 'unified',
+    name: 'Unified Backtest',
+    highCodes: ['513100'],
+    lowCodes: ['159501'],
+    activeSide: 'all',
+    intraSellLowerPct: 1,
+    intraBuyOtherPct: 3
+  }, {
+    timeframe: '5m',
+    initialEquity: 100000,
+    historyByCode: {
+      '513100': premiumCandles(gaps),
+      '159501': premiumCandles(gaps.map(() => 0))
+    },
+    navHistoryByCode: {
+      '513100': [{ date: '2026-06-12', nav: 1 }],
+      '159501': [{ date: '2026-06-12', nav: 1 }]
+    }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.status, 'passed');
+  assert.equal(result.strategyId, 'unified');
+  assert.equal(result.summary.sampleCount, 12);
+  assert.ok(result.summary.signalCount > 0);
+  assert.ok(Array.isArray(result.rows));
+  assert.ok(Array.isArray(result.signals));
+  assert.ok(Array.isArray(result.trades));
+  assert.equal(result.chart.code, '513100');
+  assert.equal(result.quality.passed, true);
+});
+
+test('deprecated premium-spread alias delegates to the unified engine', () => {
+  const result = runPremiumSpreadBacktest({
+    highCodes: ['513100'],
+    lowCodes: ['159501'],
+    intraBuyOtherPct: 3
+  }, {
+    historyByCode: {
+      '513100': premiumCandles(Array.from({ length: 12 }, () => 4)),
+      '159501': premiumCandles(Array.from({ length: 12 }, () => 0))
+    },
+    navHistoryByCode: {
+      '513100': [{ date: '2026-06-12', nav: 1 }],
+      '159501': [{ date: '2026-06-12', nav: 1 }]
+    }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.status, 'passed');
+});
+
+test('legacy premium rows adapt to unified backtest inputs', () => {
+  const rows = Array.from({ length: 12 }, (_, index) => ({
+    date: `2026-06-${String(index + 1).padStart(2, '0')}`,
+    sellBid: index % 4 < 2 ? 1.03 : 1.01,
+    sellAsk: index % 4 < 2 ? 1.031 : 1.011,
+    sellIOPV: 1,
+    buyBid: 1,
+    buyAsk: 1.001,
+    buyIOPV: 1
+  }));
+  const { historyByCode, navHistoryByCode } = buildPremiumSpreadInputFromLegacyRows(rows, {
+    highCode: '159513',
+    lowCode: '513100'
+  });
+
+  const result = runBacktest({
+    type: 'premium-spread',
+    highCodes: ['159513'],
+    lowCodes: ['513100'],
+    intraSellLowerPct: 1,
+    intraBuyOtherPct: 3
+  }, {
+    timeframe: '1d',
+    historyByCode,
+    navHistoryByCode
+  });
+
+  assert.equal(historyByCode['159513'].length, 12);
+  assert.equal(navHistoryByCode['513100'].length, 12);
+  assert.equal(result.status, 'passed');
+  assert.equal(result.summary.sampleCount, 12);
+});
+
+test('core helpers normalize candles, nav, and bid ask execution prices', () => {
+  const candles = normalizeBacktestCandles([{
+    t: Math.floor(Date.UTC(2026, 0, 2, 1, 35) / 1000),
+    c: 1.03,
+    orderBook: { bidPrice: 1.02, askPrice: 1.04 }
+  }]);
+  const navLookup = buildNavLookup([
+    { date: '2026-01-01', nav: 1 },
+    { date: '2026-01-03', nav: 1.1 }
+  ]);
+  const simulator = createTradeSimulator({ initialCash: 10000, feeRate: 0, slippageTicks: 1 });
+
+  const buy = simulator.executeBuy('513100', candles[0], 10000);
+  const sell = simulator.executeSell('513100', candles[0]);
+
+  assert.equal(candles[0].datetime, '2026-01-02 09:35');
+  assert.equal(navLookup('2026-01-02'), 1);
+  assert.equal(navLookup('2026-01-04'), 1.1);
+  assert.equal(buy.price, 1.04);
+  assert.equal(buy.priceSource, 'ask');
+  assert.equal(sell.price, 1.02);
+  assert.equal(sell.priceSource, 'bid');
+});
+
+test('unified engine reports quality failure for missing kline data', () => {
+  const result = runBacktest({
+    type: 'premium-spread',
+    highCodes: ['159509'],
+    lowCodes: ['513100']
+  }, {
+    timeframe: '5m',
+    historyByCode: {
+      '159509': [],
+      '513100': premiumCandles(Array.from({ length: 12 }, () => 0))
+    },
+    navHistoryByCode: {
+      '159509': [{ date: '2026-06-12', nav: 1 }],
+      '513100': [{ date: '2026-06-12', nav: 1 }]
+    },
+    dataIssues: {
+      kline: [{ code: '159509', timeframe: '5m', reason: 'empty' }]
+    }
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.deepEqual(result.quality.missingKlineCodes, ['159509']);
+  assert.match(result.quality.reason, /159509/);
+});
