@@ -51,7 +51,8 @@
       "Bash(codex -p plus exec \"say hello\")",
       "Bash(npx vitest *)",
       "Bash(git reset *)",
-      "Bash(read code *)"
+      "Bash(read code *)",
+      "Skill(run)"
     ]
   }
 }
