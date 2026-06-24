@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { X, Play, BarChart3, TrendingUp, Trophy, Activity, RefreshCw } from 'lucide-react';
 import { cx, primaryButtonClass, secondaryButtonClass, inputClass } from '../experience-ui.jsx';
 import { TagInput } from '../TagInput.jsx';
-import { fetchKline } from '../../app/marketsApi.js';
+import { runBacktest } from '../../app/backtest/index.js';
+import { fetchBacktestData } from '../../app/backtestDataFetcher.js';
 
 function formatPercent(value, digits = 2) {
   const num = Number(value);
@@ -409,28 +410,57 @@ export function BacktestSidePanel({
       let rotationResult = null;
       let holdResult = null;
 
-      // 如果配置了H/L档，运行溢价差轮动策略
+      // 如果配置了H/L档，使用统一回测引擎
       if (highCodes.length > 0 && lowCodes.length > 0) {
-        console.log('[Backtest] 获取H/L档K线数据...');
+        console.log('[Backtest] 获取历史数据和NAV...');
         const allCodes = [...highCodes, ...lowCodes];
-        const klineMap = await fetchMultipleKlines(allCodes, chartRange);
 
-        // 使用第一个H和第一个L
-        const highCandles = klineMap[highCodes[0]];
-        const lowCandles = klineMap[lowCodes[0]];
+        // 使用统一的数据获取函数
+        const { historyByCode, navHistoryByCode } = await fetchBacktestData(allCodes);
 
-        if (highCandles && lowCandles) {
-          console.log('[Backtest] 运行溢价差轮动策略...');
-          rotationResult = runRotationBacktest(highCandles, lowCandles, {
-            initialCash: cash,
-            sellLowerThreshold,
-            buyOtherThreshold
-          });
+        console.log('[Backtest] 运行溢价差轮动策略（使用NAV计算真实溢价率）...');
+
+        // 构建策略配置
+        const strategy = {
+          type: 'premium-spread',
+          highCodes: [highCodes[0]],
+          lowCodes: [lowCodes[0]],
+          intraSellLowerPct: sellLowerThreshold,
+          intraBuyOtherPct: buyOtherThreshold,
+          activeSide: 'all'
+        };
+
+        const backtestOptions = {
+          timeframe: chartRange === '1y' ? '1d' : chartRange === '1m' ? '1d' : '5m',
+          historyByCode,
+          navHistoryByCode,
+          initialEquity: cash,
+          feeRate: 0.00005,
+          minFee: 0,
+          tickSize: 0.001,
+          slippageTicks: 1,
+          lotSize: 100
+        };
+
+        const result = runBacktest(strategy, backtestOptions);
+
+        if (result.ok && result.status === 'passed') {
+          rotationResult = {
+            finalValue: result.summary.finalEquity,
+            totalReturnPct: result.summary.totalReturnPct,
+            maxDrawdownPct: result.summary.maxDrawdownPct,
+            tradeCount: result.summary.tradeCount,
+            rotationCount: result.summary.switchCount || 0,
+            trades: result.trades,
+            equityCurve: result.rows.map(r => r.equity)
+          };
           console.log('[Backtest] 轮动策略结果:', rotationResult);
+        } else {
+          console.warn('[Backtest] 回测未通过质量检查:', result.quality);
         }
       }
 
-      // 运行持有策略（对比基准）
+      // 运行持有策略（对比基准）- 保持原逻辑
       console.log('[Backtest] 运行持有策略...');
       holdResult = runHoldBacktest(candles, {
         initialCash: cash,
