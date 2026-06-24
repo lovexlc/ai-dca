@@ -202,6 +202,62 @@ ai-dca/
 
 ---
 
+## 🧹 项目整洁性守则（强制）
+
+> 以下规则基于 2026-06-24 项目混乱诊断制定，所有 agent 必须遵守，禁止再犯同类错误。诊断发现根目录堆积 14 个无关文件、测试目录三重混乱、docs 平铺 83 个文件无归档、重复脚本并存、配置文档冗余、.gitignore 漏洞。
+
+### 1. 根目录零产物
+
+- 禁止在仓库根目录创建任何 `*.txt` 总结 / 报告 / 说明文件（如 `BACKTEST_CHART_FIX_VERIFIED.txt`、`KLINE_*_EXPLAINED.txt`、`QUANT_UI_*_SUMMARY.txt`）。任务总结写进对话回复或 `docs/` 下的 `.md`，绝不落地为根目录 `.txt`。
+- 禁止在根目录存放截图、调试图片（如 `debug-holdings.png`、`mobile-holdings-*.png`）。调试截图属临时产物，本地放 `test-results/`（已 gitignore），不提交。
+- 禁止创建空文件或 0 字节残留（如根目录的 `0` 文件）。写文件前确认路径与重定向语法，避免 `> 0` 这类误操作残留。
+- 同一截图禁止以多个文件名重复保存。需要复用就复用同一文件，不要 `cp` 出多个名字。
+
+### 2. 测试目录统一
+
+- 所有测试统一放 `test/`，命名 `{name}.test.mjs`。
+- 禁止新建 `tests/` 目录，也禁止把测试脚本放根目录（如 `test-frontend-data.js`、`test-mobile-layout.js`）。
+- 测试语言统一为 Node ESM（`.mjs`），不在测试目录混入 `.py`；确需 Python 脚本时归入 `scripts/` 并单独说明。
+- 一次性冒烟 / 验证脚本归入 `scripts/`，以前缀 `smoke-` 或语义化命名，不放根目录。
+
+### 3. docs 归档
+
+- `docs/` 下同类计划文档按主题归入子目录或统一命名；旧版本一律归档到 `docs/archive/`，不在一级目录平铺多版本（禁止再出现 `income-dashboard-plan.md` / `v2-plan` / `v2` / `v3-plan` / `v4-plan` 同时平铺的情况）。
+- 计划文件命名 `{task}-plan.md`；迭代版本用 `{task}-vN-plan.md`，旧版移入 `docs/archive/` 而非保留平铺。
+- 新增 docs 文件前必须检查是否已有同名 / 同主题文件，优先合并或追加，而非新建。
+- 运维 / 长期参考类文档归入 `docs/ops/`，不在 `docs/` 一级平铺。
+
+### 4. 脚本归位与去重
+
+- 根目录禁止放业务 / 检查脚本（如 `danjuan_check.js`）；脚本一律放 `scripts/`。
+- 同一逻辑禁止 `.js` 与 `.mjs` 双版本并存。本项目为 ESM，统一用 `.mjs`；发现旧 `.js` 版本应在同一次改动中迁移并删除旧文件。
+- 新增脚本前必须检查 `scripts/` 是否已有同功能脚本，避免重复造轮子。
+
+### 5. 配置 / 文档去冗
+
+- 仓库根仅保留一份通用 agent 指导：`AGENTS.md`（小写 `.md` 后缀，禁止用 `AGENTS.MD`）。
+- `CLAUDE.md` 作为 Claude 专属补充可并存，但不得与 `AGENTS.md` 内容重复，仅记录 Claude / 本项目特有的开发约定。
+- Python 依赖文件（如 `requirements-quant.txt`）归入对应子项目或 `scripts/`，不放 JS 项目根目录。
+- 通用规范写进 `AGENTS.md`；本文件只保留 AI-DCA 项目特定的开发指南、埋点规范、功能优先级等内容。
+
+### 6. .gitignore 同步维护
+
+- 新增任何构建 / 审计 / 产物目录时，必须同步更新 `.gitignore`，禁止产物入库。
+- 以下目录一律忽略：`playwright-report/`、`ui-audit-report/`、`test-results/`、`frontend-dist/`、`node_modules/`。
+- 截图、`ads.txt`、本地构建产物等脏文件不得提交。
+
+### 7. 任务收尾自检（每次必做）
+
+完成任何任务后、提交前，必须自检以下各项，未通过不得提交：
+
+- [ ] 本次是否在根目录留下 `.txt` / 截图 / 空文件？有则清理。
+- [ ] 本次是否新增了未归档的 `docs/` 一级文件？有则归档或合并。
+- [ ] 本次是否新增了需 gitignore 的产物目录？有则补 `.gitignore`。
+- [ ] 本次是否在根目录新建了脚本 / 测试文件？有则归入 `scripts/` 或 `test/`。
+- [ ] 本次是否产生同名多版本文件 / `.js`+`.mjs` 双版本？有则去重。
+
+---
+
 ## ⚠️ 注意事项
 
 ### 当前关键问题
@@ -313,3 +369,4 @@ function MyDropdown() {
 
 **最后更新**：2026-06-23  
 **更新内容**：基于 30 天数据分析，移除低频功能，建立数据驱动开发流程
+
