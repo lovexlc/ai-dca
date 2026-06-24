@@ -99,7 +99,6 @@ export function BacktestSidePanel({
   const [intraSellLowerPct, setIntraSellLowerPct] = useState('1');
   const [intraBuyOtherPct, setIntraBuyOtherPct] = useState('3');
   const [initialCash, setInitialCash] = useState('10000');
-  const [investAmount, setInvestAmount] = useState('1000');
 
   useEffect(() => {
     if (open) {
@@ -135,12 +134,13 @@ export function BacktestSidePanel({
     setResult(null);
 
     try {
-      // 简化的回测逻辑：模拟定投策略
+      // 简化的回测逻辑：将初始资金平均分成10份定投
       const cash = parseDecimalOr(initialCash, 10000);
-      const invest = parseDecimalOr(investAmount, 1000);
+      const investAmount = cash / 10; // 自动计算每次定投金额
       let currentCash = cash;
       let shares = 0;
       const trades = [];
+      const equityCurve = []; // 记录权益曲线用于计算回撤
 
       // 每隔一定周期买入
       const interval = Math.max(1, Math.floor(candles.length / 10));
@@ -149,23 +149,50 @@ export function BacktestSidePanel({
         const candle = candles[i];
         const price = candle.close;
 
-        if (currentCash >= invest) {
-          const buyShares = invest / price;
+        if (currentCash >= investAmount && price > 0) {
+          const buyShares = investAmount / price;
           shares += buyShares;
-          currentCash -= invest;
+          currentCash -= investAmount;
 
           trades.push({
             date: candle.time,
             type: 'buy',
             price,
             shares: buyShares,
-            amount: invest
+            amount: investAmount
           });
         }
       }
 
-      // 计算最终收益
+      // 计算权益曲线和最终收益
       const lastPrice = candles[candles.length - 1].close;
+      let maxValue = cash;
+      let maxDrawdown = 0;
+      let accumulatedShares = 0;
+      let accumulatedCash = cash;
+      let tradeIndex = 0;
+
+      for (let i = 0; i < candles.length; i++) {
+        const currentPrice = candles[i].close;
+
+        // 更新持仓
+        if (tradeIndex < trades.length && i >= interval * tradeIndex) {
+          accumulatedShares += trades[tradeIndex].shares;
+          accumulatedCash -= trades[tradeIndex].amount;
+          tradeIndex++;
+        }
+
+        const currentValue = accumulatedCash + accumulatedShares * currentPrice;
+        equityCurve.push(currentValue);
+
+        // 计算回撤
+        maxValue = Math.max(maxValue, currentValue);
+        if (maxValue > 0) {
+          const drawdown = ((currentValue - maxValue) / maxValue) * 100;
+          maxDrawdown = Math.min(maxDrawdown, drawdown);
+        }
+      }
+
       const finalValue = currentCash + shares * lastPrice;
       const totalReturn = finalValue - cash;
       const totalReturnPct = (totalReturn / cash) * 100;
@@ -173,18 +200,6 @@ export function BacktestSidePanel({
       // 计算胜率
       const profitTrades = trades.filter(t => lastPrice > t.price).length;
       const winRate = trades.length > 0 ? (profitTrades / trades.length) * 100 : 0;
-
-      // 计算最大回撤（简化）
-      let maxValue = cash;
-      let maxDrawdown = 0;
-
-      for (let i = 0; i < candles.length; i++) {
-        const currentPrice = candles[i].close;
-        const currentValue = currentCash + shares * currentPrice;
-        maxValue = Math.max(maxValue, currentValue);
-        const drawdown = ((currentValue - maxValue) / maxValue) * 100;
-        maxDrawdown = Math.min(maxDrawdown, drawdown);
-      }
 
       setResult({
         summary: {
@@ -316,22 +331,15 @@ export function BacktestSidePanel({
             {/* 回测参数 */}
             <div className="rounded-xl bg-white p-4 shadow-sm">
               <SectionLabel>回测参数</SectionLabel>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div>
                 <DecimalInput
                   id="initial-cash"
                   label="初始资金"
                   suffix="¥"
+                  hint="将平均分成 10 次定投买入"
                   value={initialCash}
                   onChange={setInitialCash}
                   onCommit={(v) => setInitialCash(String(parseDecimalOr(v, 10000)))}
-                />
-                <DecimalInput
-                  id="invest-amount"
-                  label="每次定投"
-                  suffix="¥"
-                  value={investAmount}
-                  onChange={setInvestAmount}
-                  onCommit={(v) => setInvestAmount(String(parseDecimalOr(v, 1000)))}
                 />
               </div>
             </div>
