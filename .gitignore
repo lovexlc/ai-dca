@@ -28,6 +28,12 @@ android/app/build/
 android/capacitor-cordova-android-plugins/build/
 .wrangler/
 test-results/
+playwright-report/
+ui-audit-report/
+
+# Temporary txt reports and duplicate images
+*.txt
+!requirements*.txt
 
 # Quant simulation runtime artifacts (state/signals/orders)
 data/quant/
