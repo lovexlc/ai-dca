@@ -132,6 +132,15 @@ export function BacktestSidePanel({
       return;
     }
 
+    console.log('[Backtest] 开始回测', {
+      candlesCount: candles.length,
+      firstCandle: candles[0],
+      lastCandle: candles[candles.length - 1],
+      investMode,
+      initialCash,
+      investAmount
+    });
+
     setRunning(true);
     setResult(null);
 
@@ -144,14 +153,15 @@ export function BacktestSidePanel({
 
       if (investMode === 'lump-sum') {
         // 一次性投入：区间开始时全部买入
-        const firstPrice = candles[0].close;
+        const firstPrice = candles[0].c;
+        console.log('[Backtest] 一次性投入模式', { firstPrice, cash });
         if (firstPrice > 0) {
           const buyShares = cash / firstPrice;
           shares = buyShares;
           currentCash = 0;
 
           trades.push({
-            date: candles[0].time,
+            date: candles[0].time || candles[0].t,
             type: 'buy',
             price: firstPrice,
             shares: buyShares,
@@ -163,9 +173,11 @@ export function BacktestSidePanel({
         const invest = parseDecimalOr(investAmount, 1000);
         const interval = Math.max(1, Math.floor(candles.length / 10));
 
+        console.log('[Backtest] 定投模式', { invest, interval, candlesLength: candles.length });
+
         for (let i = 0; i < candles.length; i += interval) {
           const candle = candles[i];
-          const price = candle.close;
+          const price = candle.c;
 
           if (currentCash >= invest && price > 0) {
             const buyShares = invest / price;
@@ -173,7 +185,7 @@ export function BacktestSidePanel({
             currentCash -= invest;
 
             trades.push({
-              date: candle.time,
+              date: candle.time || candle.t,
               type: 'buy',
               price,
               shares: buyShares,
@@ -183,15 +195,22 @@ export function BacktestSidePanel({
         }
       }
 
+      console.log('[Backtest] 交易完成', {
+        tradesCount: trades.length,
+        totalShares: shares,
+        remainingCash: currentCash,
+        trades: trades.slice(0, 3)
+      });
+
       // 计算权益曲线和最终收益
-      const lastPrice = candles[candles.length - 1].close;
+      const lastPrice = candles[candles.length - 1].c;
       let maxValue = cash;
       let maxDrawdown = 0;
 
       if (investMode === 'lump-sum') {
         // 一次性投入：持仓从开始就是固定的
         for (let i = 0; i < candles.length; i++) {
-          const currentPrice = candles[i].close;
+          const currentPrice = candles[i].c;
           const currentValue = shares * currentPrice;
           equityCurve.push(currentValue);
 
@@ -209,7 +228,7 @@ export function BacktestSidePanel({
         let tradeIndex = 0;
 
         for (let i = 0; i < candles.length; i++) {
-          const currentPrice = candles[i].close;
+          const currentPrice = candles[i].c;
 
           // 更新持仓
           if (tradeIndex < trades.length && i >= interval * tradeIndex) {
@@ -237,6 +256,17 @@ export function BacktestSidePanel({
       // 计算胜率
       const profitTrades = trades.filter(t => lastPrice > t.price).length;
       const winRate = trades.length > 0 ? (profitTrades / trades.length) * 100 : 0;
+
+      console.log('[Backtest] 结果计算', {
+        lastPrice,
+        finalValue,
+        totalReturn,
+        totalReturnPct,
+        maxDrawdown,
+        winRate,
+        profitTrades,
+        totalTrades: trades.length
+      });
 
       setResult({
         summary: {
