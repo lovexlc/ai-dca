@@ -237,7 +237,8 @@ function isFresh(record, nowMs, queryToDate) {
     const today = todayIsoDateShanghai();
     if (queryToDate >= today) {
       const cachedDate = String(record.generatedAt || '').slice(0, 10);
-      if (cachedDate && cachedDate < today) return false;
+      // 如果没有 generatedAt（旧缓存）或日期早于今天，都视为过期
+      if (!cachedDate || cachedDate < today) return false;
     }
   }
 
