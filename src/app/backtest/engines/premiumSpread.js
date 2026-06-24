@@ -99,6 +99,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
   const signals = [];
   let completePriceRows = 0;
   let completeNavRows = 0;
+  let switchCount = 0; // 轮动次数统计
 
   // 溢价分类
   const premiumClass = Object.fromEntries([
@@ -280,6 +281,8 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
 
     // 执行交易（只在数据完整时）
     if (triggered && canTrade) {
+      switchCount += 1; // 记录轮动次数
+
       const fromBar = closeByCode[from.code].get(anchor.t);
       const toBar = closeByCode[to.code].get(anchor.t);
 
@@ -496,6 +499,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
       trades: signals.length,
       signalCount: signals.length,
       tradeCount: trades.length,
+      switchCount, // 轮动次数
       totalProfit,
       totalReturnPct,
       winRatePct,
