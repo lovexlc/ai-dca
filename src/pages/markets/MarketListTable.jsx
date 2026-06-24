@@ -151,7 +151,10 @@ const RETURN_COLUMNS = [
   { id: 'returnBase', label: '成立以来' },
 ];
 
-const DEFAULT_HIDDEN_COLUMNS = Object.fromEntries(RETURN_COLUMNS.map((c) => [c.id, false]));
+const DEFAULT_HIDDEN_COLUMNS = {
+  premium: true,  // 溢价率列默认显示
+  ...Object.fromEntries(RETURN_COLUMNS.map((c) => [c.id, false])),
+};
 const MOBILE_DATA_TABLE_HIDDEN_COLUMNS = {
   limit: false,
   premium: false,
