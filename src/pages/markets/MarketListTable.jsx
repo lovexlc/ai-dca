@@ -157,6 +157,25 @@ const MOBILE_DATA_TABLE_HIDDEN_COLUMNS = {
   premium: false,
   currentYearPercent: false,
   return1w: false,
+
+const COLUMN_VISIBILITY_STORAGE_KEY = 'markets:columnVisibility';
+
+function readColumnVisibility() {
+  try {
+    const stored = localStorage.getItem(COLUMN_VISIBILITY_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : DEFAULT_HIDDEN_COLUMNS;
+  } catch {
+    return DEFAULT_HIDDEN_COLUMNS;
+  }
+}
+
+function writeColumnVisibility(visibility) {
+  try {
+    localStorage.setItem(COLUMN_VISIBILITY_STORAGE_KEY, JSON.stringify(visibility));
+  } catch {
+    // ignore
+  }
+}
   return1m: false,
   return3m: false,
   return6m: false,
@@ -482,9 +501,15 @@ export function MarketListTable({
       },
     },
   });
-  const [localVisibility, setLocalVisibility] = useState(DEFAULT_HIDDEN_COLUMNS);
+  const [localVisibility, setLocalVisibility] = useState(() => readColumnVisibility());
   const visibility = controlledVisibility ?? localVisibility;
-  const setVisibility = onColumnVisibilityChange ?? setLocalVisibility;
+  const setVisibility = onColumnVisibilityChange ?? ((updater) => {
+    setLocalVisibility((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      writeColumnVisibility(next);
+      return next;
+    });
+  });
   const isColVisible = (id) => visibility[id] !== false;
   const toggleCol = (id) => setVisibility((prev) => ({ ...prev, [id]: prev[id] === false }));
   const [menuOpen, setMenuOpen] = useState(false);
