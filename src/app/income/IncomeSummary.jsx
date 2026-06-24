@@ -18,7 +18,7 @@
 import { ROUTES, useIncomeRoute } from '../incomeRoute.js';
 import { Pill, cx } from '../../components/experience-ui.jsx';
 import { formatCurrency, formatPercent } from '../accumulation.js';
-import { RefreshCw, BarChart3, Receipt, PieChart, ArrowLeftRight, Plus, Copy, ScanLine } from 'lucide-react';
+import { RefreshCw, BarChart3, Receipt, PieChart, ArrowLeftRight, Plus, Copy, ScanLine, Trash2 } from 'lucide-react';
 
 const TONE_UP = 'text-rose-600';
 const TONE_DOWN = 'text-emerald-600';
@@ -299,8 +299,19 @@ export function IncomeSummary({ portfolio, navigate, navRefresh, accountAllocati
 						);
 					})}
 				</nav>
-				{quickActions && (quickActions.onCopyTable || quickActions.onNewTransaction || quickActions.onOcr) ? (
+				{quickActions && (quickActions.onCopyTable || quickActions.onNewTransaction || quickActions.onOcr || quickActions.onClearAllData) ? (
 					<div className="flex shrink-0 items-center gap-2">
+						{quickActions.onClearAllData ? (
+							<button
+								type="button"
+								onClick={quickActions.onClearAllData}
+								title="清除所有数据（不可恢复）"
+								className="inline-flex items-center gap-1.5 h-8 rounded-full border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+							>
+								<Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+								<span>清除数据</span>
+							</button>
+						) : null}
 						{quickActions.onCopyTable ? (
 							<button
 								type="button"

@@ -45,7 +45,9 @@ export function FloatingActionButton({ actions = [] }) {
               }}
               className={cx(
                 'flex items-center gap-3 rounded-full px-4 py-3 text-sm font-medium shadow-lg transition-all',
-                'bg-white text-slate-700 hover:bg-slate-50 active:scale-95',
+                action.variant === 'danger'
+                  ? 'bg-white text-red-600 hover:bg-red-50 active:scale-95 border border-red-200'
+                  : 'bg-white text-slate-700 hover:bg-slate-50 active:scale-95',
                 'animate-in fade-in slide-in-from-bottom-2',
               )}
               style={{ animationDelay: `${index * 50}ms` }}

@@ -66,6 +66,7 @@ import { groupCostBasisBySymbol, attachUnrealized } from '../app/costTracker.js'
 import { hasPotentialUserData, installDemoData } from '../app/demoData.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import { getCodeFromUrl, updateCodeInUrl } from './holdings/holdingsUrlSync.js';
+import { clearAllLocalData, getDataStats, getClearDataConfirmMessage } from '../app/clearAllData.js';
 function readColumnFilterValue(filters, id) {
   const filter = (Array.isArray(filters) ? filters : []).find((item) => item?.id === id);
   return filter?.value;
@@ -294,6 +295,31 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       description: '已生成纳指 ETF 模拟持仓，买入价锚定 2026-03-01。'
     });
     trackFeatureEvent('holdings', 'demo_install', { hadExistingData: hasPotentialUserData() });
+  }
+  function handleClearAllData() {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      showActionToast('清除数据失败', 'error', { description: '无法访问本地存储。' });
+      return;
+    }
+    const stats = getDataStats({ transactions, aggregates, tradeLedgerEntries });
+    if (!window.confirm(getClearDataConfirmMessage(stats))) {
+      trackFeatureEvent('holdings', 'clear_all_data_cancel', stats);
+      return;
+    }
+    const startedAt = Date.now();
+    try {
+      clearAllLocalData();
+      setLedger(readLedgerState());
+      setAccountAssignments(readAccountAssignments());
+      setTradeLedgerEntries(readTradeLedger());
+      setSelectedCode('');
+      setSidePanelOpen(false);
+      showActionToast('已清除所有数据', 'success', { description: '所有持仓、交易、计划数据已清空。' });
+      trackActionResult('holdings', 'clear_all_data', 'success', { ...stats, durationMs: Date.now() - startedAt });
+    } catch (error) {
+      showActionToast('清除数据失败', 'error', { description: error?.message || '清除过程中出现错误。' });
+      trackActionResult('holdings', 'clear_all_data', 'error', { ...stats, durationMs: Date.now() - startedAt, errorMessage: error?.message || '' });
+    }
   }
   const aggregateColumns = useMemo(() => createAggregateHoldingsColumns({
     accountAssignments,
@@ -1178,6 +1204,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
         onOcr: openOcrModal,
         onCopyTable: handleCopyVisibleTable,
         copyTitle: '复制基金汇总为 TSV',
+        onClearAllData: handleClearAllData,
       }}
       fileInputRef={fileInputRef}
       onOcrFile={handleOcrFile}

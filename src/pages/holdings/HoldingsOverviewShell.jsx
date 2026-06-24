@@ -1,4 +1,4 @@
-import { AlertTriangle, ScanLine, ReceiptText, Plus } from 'lucide-react';
+import { AlertTriangle, ScanLine, ReceiptText, Plus, Trash2 } from 'lucide-react';
 import { IncomeSection } from '../../app/income/IncomeSection.jsx';
 import { ROUTES } from '../../app/incomeRoute.js';
 import { cx } from '../../components/experience-ui.jsx';
@@ -56,6 +56,14 @@ export function HoldingsOverviewShell({
       label: '截图 OCR',
       icon: ScanLine,
       onClick: quickActions.onOcr,
+    });
+  }
+  if (quickActions?.onClearAllData) {
+    fabActions.push({
+      label: '清除数据',
+      icon: Trash2,
+      onClick: quickActions.onClearAllData,
+      variant: 'danger',
     });
   }
 
