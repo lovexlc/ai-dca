@@ -6,10 +6,11 @@ import {
   loadQuantPremiumStudioFromWorker,
   normalizeQuantPremiumConfigShape,
   resetQuantPremiumPaperStateInWorker,
-  runQuantPremiumBacktestInWorker,
   runQuantPremiumOnce,
   saveQuantPremiumStrategyToWorker
 } from '../../app/quantPremiumSync.js';
+import { runBacktest } from '../../app/backtest/index.js';
+import { fetchBacktestData } from '../../app/backtestDataFetcher.js';
 import { showToast } from '../../app/toast.js';
 
 const STRATEGY_QUERY_KEY = 'strategy';
@@ -270,7 +271,40 @@ export function useQuantStudioState() {
       const saved = await saveQuantPremiumStrategyToWorker(strategyDraft);
       setStrategies(saved.strategies);
       setSelectedStrategyId(saved.strategy.id);
-      const result = await runQuantPremiumBacktestInWorker(saved.strategy.id, options);
+
+      // 使用本地回测引擎（统一真源）
+      const strategy = saved.strategy;
+      const highCodes = strategy.highCodes || [];
+      const lowCodes = strategy.lowCodes || [];
+      const codes = Array.from(new Set([...highCodes, ...lowCodes]));
+
+      // 获取历史数据和 NAV
+      const { historyByCode, navHistoryByCode } = await fetchBacktestData(codes);
+
+      // 构建回测配置
+      const backtestStrategy = {
+        type: 'premium-spread',
+        highCodes,
+        lowCodes,
+        intraSellLowerPct: strategy.intraSellLowerPct || 0.2,
+        intraBuyOtherPct: strategy.intraBuyOtherPct || 0.5,
+        activeSide: strategy.activeSide || 'all'
+      };
+
+      const backtestOptions = {
+        timeframe: options.timeframe || '5m',
+        historyByCode,
+        navHistoryByCode,
+        initialEquity: 100000,
+        feeRate: options.feeRate || 0.00005,
+        minFee: 0,
+        tickSize: 0.001,
+        slippageTicks: 1,
+        lotSize: 100
+      };
+
+      const result = runBacktest(backtestStrategy, backtestOptions);
+
       setBacktest(result || null);
       if (result?.status) {
         const nextGate = {
@@ -280,7 +314,7 @@ export function useQuantStudioState() {
           approvedAt: saved.strategy.backtestGate?.approvedAt || '',
           approvedFingerprint: saved.strategy.backtestGate?.approvedFingerprint || '',
           summary: result.summary || saved.strategy.backtestGate?.summary || null,
-          updatedAt: result.finishedAt || ''
+          updatedAt: result.finishedAt || new Date().toISOString()
         };
         setStrategies((current) => current.map((item) => item.id === saved.strategy.id
           ? normalizeQuantPremiumConfigShape({ ...item, backtestGate: nextGate })

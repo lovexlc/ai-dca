@@ -29,9 +29,10 @@ import {
   loadQuantPremiumStrategySnapshotFromWorker,
   normalizeQuantPremiumConfigShape,
   saveQuantPremiumStrategyToWorker,
-  runQuantPremiumBacktestInWorker,
   runQuantPremiumOnce
 } from '../app/quantPremiumSync.js';
+import { runBacktest } from '../app/backtest/index.js';
+import { fetchBacktestData } from '../app/backtestDataFetcher.js';
 import '../styles/quant-studio-redesign.css';
 
 const BACKTEST_TIMEFRAME_OPTIONS = [
@@ -323,12 +324,38 @@ export default function QuantTradingExperienceV2({ initialTab = 'config', single
       const saveResult = await saveQuantPremiumStrategyToWorker(config);
       applySavedStrategy(saveResult);
 
-      // 运行回测
-      const result = await runQuantPremiumBacktestInWorker(saveResult.strategy.id, {
+      // 使用本地回测引擎
+      const strategy = saveResult.strategy;
+      const highCodes = strategy.highCodes || [];
+      const lowCodes = strategy.lowCodes || [];
+      const codes = Array.from(new Set([...highCodes, ...lowCodes]));
+
+      // 获取历史数据
+      const { historyByCode, navHistoryByCode } = await fetchBacktestData(codes);
+
+      // 构建回测配置
+      const backtestStrategy = {
+        type: 'premium-spread',
+        highCodes,
+        lowCodes,
+        intraSellLowerPct: strategy.intraSellLowerPct || 0.2,
+        intraBuyOtherPct: strategy.intraBuyOtherPct || 0.5,
+        activeSide: strategy.activeSide || 'all'
+      };
+
+      const backtestOptions = {
         timeframe: backtestTf,
-        useV2: true,
-        feeRate: (Number(buyFeeRate) + Number(sellFeeRate)) / 2 / 10000  // 转换为小数
-      });
+        historyByCode,
+        navHistoryByCode,
+        initialEquity: 100000,
+        feeRate: (Number(buyFeeRate) + Number(sellFeeRate)) / 2 / 10000,
+        minFee: 0,
+        tickSize: 0.001,
+        slippageTicks: 1,
+        lotSize: 100
+      };
+
+      const result = runBacktest(backtestStrategy, backtestOptions);
 
       console.log('回测结果:', result);
 

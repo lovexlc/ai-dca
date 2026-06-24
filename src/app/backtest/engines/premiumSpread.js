@@ -9,13 +9,48 @@
  * - 基准对比（hold-high vs hold-low 收益）
  */
 
-import { roundTo, clampNumber } from '../core/math.js';
+import { roundTo, clampNumber, firstPositiveNumber } from '../core/math.js';
 import {
   normalizeBacktestCandles,
   buildNavLookup,
   shanghaiMinuteFromEpochSec,
   normalizeBacktestTimeframe
 } from '../core/candles.js';
+
+// 内联辅助函数（从原始 quantPremiumBacktestV2.js 保留）
+function resolveSellExecutionPrice(bar, tickSize, slippageTicks) {
+  const quoted = firstPositiveNumber(
+    bar?.bidPrice, bar?.bid, bar?.bp1, bar?.bid1, bar?.bid1_price, bar?.bid_price1,
+    bar?.buy1, bar?.buy1_price, bar?.buy_price1, bar?.orderBook?.bidPrice
+  );
+  if (quoted != null) return { price: roundTo(quoted, 4), priceSource: 'bid' };
+  return {
+    price: roundTo(Number(bar?.close || 0) - clampNumber(slippageTicks, 0) * clampNumber(tickSize, 0.001), 4),
+    priceSource: 'close-slippage'
+  };
+}
+
+function resolveBuyExecutionPrice(bar, tickSize, slippageTicks) {
+  const quoted = firstPositiveNumber(
+    bar?.askPrice, bar?.ask, bar?.sp1, bar?.ask1, bar?.ask1_price, bar?.ask_price1,
+    bar?.sell1, bar?.sell1_price, bar?.sell_price1, bar?.orderBook?.askPrice
+  );
+  if (quoted != null) return { price: roundTo(quoted, 4), priceSource: 'ask' };
+  return {
+    price: roundTo(Number(bar?.close || 0) + clampNumber(slippageTicks, 0) * clampNumber(tickSize, 0.001), 4),
+    priceSource: 'close+slippage'
+  };
+}
+
+function normalizeStrategy(input = {}) {
+  return {
+    highCodes: Array.isArray(input.highCodes) ? input.highCodes : [],
+    lowCodes: Array.isArray(input.lowCodes) ? input.lowCodes : [],
+    intraSellLowerPct: clampNumber(input.intraSellLowerPct, 0.2),
+    intraBuyOtherPct: clampNumber(input.intraBuyOtherPct, 0.5),
+    activeSide: ['H', 'L', 'all'].includes(input.activeSide) ? input.activeSide : 'all'
+  };
+}
 
 /**
  * 运行溢价差轮动回测
@@ -648,17 +683,5 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {  co
       klineIssues,
       supportedTimeframes: ['1m', '5m', '15m', '30m', '60m', '1d']
     }
-  };
-}
-
-function normalizeStrategy(input = {}) {
-  return {
-    id: String(input.id || input.strategyId || 'default').trim() || 'default',
-    name: String(input.name || '纳指 ETF 溢价差').trim().slice(0, 60),
-    highCodes: Array.isArray(input.highCodes) ? input.highCodes : [],
-    lowCodes: Array.isArray(input.lowCodes) ? input.lowCodes : [],
-    activeSide: ['all', 'H', 'L'].includes(input.activeSide) ? input.activeSide : 'all',
-    intraSellLowerPct: clampNumber(input.intraSellLowerPct, 1),
-    intraBuyOtherPct: clampNumber(input.intraBuyOtherPct, 3)
   };
 }
