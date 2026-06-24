@@ -165,6 +165,7 @@ export function MarketsExperience() {
     isMobile
   });
   const ensureKlines = useCallback(async (symbols) => {
+    const uniq = Array.from(new Set(symbols));
     const pending = uniq.filter((s) => !klineInflightRef.current.has(s));
     pending.forEach((s) => klineInflightRef.current.add(s));
     if (!pending.length) return;
