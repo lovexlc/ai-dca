@@ -155,11 +155,22 @@ const DEFAULT_HIDDEN_COLUMNS = {
   premium: true,  // 溢价率列默认显示
   ...Object.fromEntries(RETURN_COLUMNS.map((c) => [c.id, false])),
 };
+
 const MOBILE_DATA_TABLE_HIDDEN_COLUMNS = {
   limit: false,
   premium: false,
   currentYearPercent: false,
   return1w: false,
+  return1m: false,
+  return3m: false,
+  return6m: false,
+  return1y: false,
+  returnBase: false,
+  totalShares: false,
+  feeRate: false,
+  redeemFeeRate: false,
+  trend: false,
+};
 
 const COLUMN_VISIBILITY_STORAGE_KEY = 'markets:columnVisibility';
 
@@ -179,16 +190,6 @@ function writeColumnVisibility(visibility) {
     // ignore
   }
 }
-  return1m: false,
-  return3m: false,
-  return6m: false,
-  return1y: false,
-  returnBase: false,
-  totalShares: false,
-  feeRate: false,
-  redeemFeeRate: false,
-  trend: false,
-};
 
 export function MarketListTable({
   rows = [],

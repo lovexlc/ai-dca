@@ -227,10 +227,21 @@ async function fetchFromWorker({ code, from, to, forceLive }) {
   return payload;
 }
 
-function isFresh(record, nowMs) {
+function isFresh(record, nowMs, queryToDate) {
   if (!record) return false;
   const exp = Date.parse(String(record.expiresAt || ''));
-  return Number.isFinite(exp) && exp - FRESH_MARGIN_MS > nowMs;
+  if (!Number.isFinite(exp) || exp - FRESH_MARGIN_MS <= nowMs) return false;
+
+  // 如果查询范围包含"今天"，缓存必须是今天生成的，否则跨天后立即失效
+  if (queryToDate) {
+    const today = todayIsoDateShanghai();
+    if (queryToDate >= today) {
+      const cachedDate = String(record.generatedAt || '').slice(0, 10);
+      if (cachedDate && cachedDate < today) return false;
+    }
+  }
+
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -253,7 +264,7 @@ export async function fetchNavHistory(opts = {}) {
     let cached = null;
     if (!args.forceLive) {
       cached = await idbGet(key).catch(() => null);
-      if (isFresh(cached, nowMs)) {
+      if (isFresh(cached, nowMs, args.to)) {
         return {
           code: args.code,
           from: args.from,
