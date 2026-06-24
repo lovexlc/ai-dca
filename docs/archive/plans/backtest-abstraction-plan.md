@@ -17,7 +17,7 @@
 | S7 清理玩具版 V1 | done | `quantTrading.js` 删除公式版 `runPremiumSpreadBacktest`，转发统一 backtest 导出；删除 `quantBacktestEngine.js`。 |
 | S8 测试对齐 | done | 更新 `quantTrading.test.mjs`，新增 `test/backtest-engine.test.mjs`、`test/backtestDataFetcher.test.mjs`，保留 worker 回归测试。 |
 | S9 前端验证 | done | `npx playwright test test/e2e/quant-v2-backtest.spec.js --project=chromium` 通过，覆盖 QuantStudio 回测路径。 |
-| S10 提交推送 | pending | 代码完成后按仓库流程提交。 |
+| S10 提交推送 | done | 计划改动已进入提交，随本轮收尾推送到 `main`。 |
 
 ## 决策
 
