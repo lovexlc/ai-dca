@@ -20,7 +20,7 @@
 // dailySeries / cumulativeProfit / cumulativeReturnRate / twrReturnRate 的**末端 = T-1**，
 //
 // === 字段命名 (Phase 2) ===
-// buildPortfolioSeries 返回字段（外部 API，详见 docs/data-glossary.md）：
+// buildPortfolioSeries 返回字段（外部 API，详见 docs/reference/data-glossary.md）：
 //   - windowProfit            : 区间 per-fund 累计盈亏 = Σ_t Σ_fund shares_{t-1}·Δnav
 //   - twrReturnRate           : 区间时间加权收益率 = exp(Σ log(1+r_i)) - 1
 //   - annualizedTwrReturnRate : TWR 年化（不足 365d 返回 null）

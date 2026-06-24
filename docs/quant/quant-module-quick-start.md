@@ -164,12 +164,12 @@ executeTradeWithRiskCheck(state, plan);
 
 ## 📚 完整文档
 
-- **迁移指南**: `docs/quant-module-migration-guide.md`
+- **迁移指南**: `docs/quant/quant-module-migration-guide.md`
   - 详细的集成步骤
   - 参数调整建议
   - 常见问题解答
 
-- **修复总结**: `docs/quant-module-fix-summary.md`
+- **修复总结**: `docs/quant/quant-module-fix-summary.md`
   - 问题诊断详解
   - 修复方案架构
   - 实施路线图

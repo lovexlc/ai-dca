@@ -129,7 +129,7 @@ npm run worker:webdav:dev   # webdav-cors-proxy（端口 8789）
 - [workers/ocr-proxy/README.md](workers/ocr-proxy/README.md)
 - [workers/notify/README.md](workers/notify/README.md)
 - 实时通道架构：[docs/architecture/realtime-channel.md](docs/architecture/realtime-channel.md)
-- QDII NAV 规则：[docs/qdii-nav-rules.md](docs/qdii-nav-rules.md)
+- QDII NAV 规则：[docs/reference/qdii-nav-rules.md](docs/reference/qdii-nav-rules.md)
 
 ## Worker API 一览
 

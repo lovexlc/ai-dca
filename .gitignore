@@ -34,6 +34,8 @@ ui-audit-report/
 # Temporary txt reports and duplicate images
 *.txt
 !requirements*.txt
+debug-*.png
+mobile-*.png
 
 # Quant simulation runtime artifacts (state/signals/orders)
 data/quant/

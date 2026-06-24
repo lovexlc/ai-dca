@@ -184,6 +184,6 @@ const QuantTradingExperience = lazy(() =>
 ---
 
 **需要帮助？**
-- 查看设计文档：`docs/quant-redesign.md`
+- 查看设计文档：`docs/quant/quant-redesign.md`
 - 组件位置：`src/components/`
 - 页面位置：`src/pages/QuantTradingExperienceV2.jsx`

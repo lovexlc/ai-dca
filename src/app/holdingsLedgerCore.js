@@ -783,7 +783,7 @@ export function summarizePortfolio(aggregates = [], soldSummary = null) {
     : '';
   // QDII 的预期最新 NAV 日期天然落后一个工作日（周一为 T-3），需要单独暴露给 UI，
   // 在「最后更新」徽章 tooltip 上独立展示，避免与场内/场外混在一起被误判为同步异常。
-  // 详见 docs/qdii-nav-rules.md。
+  // 详见 docs/reference/qdii-nav-rules.md。
   summary.latestQdiiNavDate = qdiiNavDates.size
     ? Array.from(qdiiNavDates).sort().slice(-1)[0]
     : '';

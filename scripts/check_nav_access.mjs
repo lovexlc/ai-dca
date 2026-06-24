@@ -3,16 +3,17 @@ import { join, relative } from 'node:path';
 
 const ROOT = process.cwd();
 const EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx']);
-const IGNORE_DIRS = new Set(['.git', 'node_modules', '.frontend-build', 'frontend-dist', 'react-assets', 'react-assets-v2', 'dist', 'coverage', 'test-results', 'playwright-report']);
+const IGNORE_DIRS = new Set(['.git', '.archive', 'node_modules', '.frontend-build', 'frontend-dist', 'react-assets', 'react-assets-v2', 'dist', 'coverage', 'test-results', 'playwright-report', 'ui-audit-report']);
 
 const ALLOW_NAV_API_ENDPOINTS = new Set([
   'src/app/navService.js',
   'src/app/navHistoryClient.js',
   'workers/ocr-proxy/src/index.js',
   'workers/ocr-proxy/src/holdingsNavRoutes.js',
-  'tests/e2e/acceptance-helpers.js',
-  'tests/e2e/holdings-nav-refresh-regression.spec.js',
-  'tests/e2e/markets-otc-compare.spec.js',
+  'test/e2e/acceptance-helpers.js',
+  'test/e2e/holdings-nav-refresh-regression.spec.js',
+  'test/e2e/market-cn-fund-nav-range.spec.js',
+  'test/e2e/markets-otc-compare.spec.js',
   'scripts/check_nav_access.mjs'
 ]);
 

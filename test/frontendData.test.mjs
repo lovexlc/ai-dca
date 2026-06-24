@@ -11,7 +11,7 @@ import {
   buildOrderPlanV2,
   RiskMonitor,
   RECOMMENDED_STRATEGY_CONFIGS
-} from './src/app/quantTrading.js';
+} from '../src/app/quantTrading.js';
 
 console.log('========================================');
 console.log('前端页面数据流测试');

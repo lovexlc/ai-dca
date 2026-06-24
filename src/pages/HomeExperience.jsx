@@ -2,7 +2,7 @@
 // Visual language adapted from:
 //   - Tremor Dashboard OSS (Apache 2.0) https://dashboard.tremor.so/overview
 //   - shadcn/ui dashboard example (MIT)  https://ui.shadcn.com/examples/dashboard
-// See docs/home-redesign.md for the layout spec.
+// See docs/design/home-redesign.md for the layout spec.
 
 import { useEffect, useMemo, useState } from 'react';
 import { Activity, Plus, Trash2 } from 'lucide-react';

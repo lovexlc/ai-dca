@@ -435,9 +435,9 @@ http://localhost:5173/?nav=quant-v2
 
 ## 📚 文档索引
 
-- 设计方案：`docs/quant-redesign.md`
-- 第一阶段完成：`docs/quant-v2-complete.md`
-- 本文档（最终版）：`docs/quant-v2-final.md`
+- 设计方案：`docs/quant/quant-redesign.md`
+- 第一阶段完成：`docs/quant/quant-v2-complete.md`
+- 本文档（最终版）：`docs/quant/quant-v2-final.md`
 
 ---
 
