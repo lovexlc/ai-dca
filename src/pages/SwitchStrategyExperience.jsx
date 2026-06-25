@@ -626,7 +626,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
       const premiumPct = Number.isFinite(Number(navEntry?.premiumPercent)) ? Number(navEntry.premiumPercent) : null;
       return {
         code: u.code,
-        name: navEntry?.name || u.name || '',
+        name: u.name || navEntry?.name || '',
         kind: exchangeFunds.find((f) => f.code === u.code)?.kind || 'exchange',
         hasPosition: exchangeFunds.some((f) => f.code === u.code),
         latestNav: Number.isFinite(px) && px > 0 ? px : null,

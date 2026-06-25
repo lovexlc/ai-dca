@@ -60,7 +60,7 @@ export function SwitchStrategyClassificationPanel({
         {fund.name ? (
           <>
             <span className="text-slate-400">·</span>
-            <span className="max-w-[88px] truncate text-slate-500">{fund.name}</span>
+            <span className="whitespace-normal break-keep text-slate-500">{fund.name}</span>
           </>
         ) : null}
         {isHeld ? <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-800">持</span> : null}
