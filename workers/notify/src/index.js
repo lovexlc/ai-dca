@@ -67,6 +67,7 @@ import {
   handleWebWsRequest,
   handleWebWsUnregister
 } from './webWsRoutes.js';
+import { handleWechatRoute } from './wechatRoutes.js';
 import { requireAdminToken } from './security.js';
 
 // 把 Durable Object 类型重新导出，让 Workers runtime 能在加载 wrangler 绑定时
@@ -255,6 +256,10 @@ export default {
     }
 
     try {
+      if (url.pathname.startsWith('/api/wechat/')) {
+        return await handleWechatRoute(request, env, { origin });
+      }
+
       if (request.method === 'GET' && url.pathname === '/api/notify/status') {
         return await handleStatus(request, env);
       }

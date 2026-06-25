@@ -9,6 +9,10 @@ compatibility_flags = ["nodejs_compat"]
 pattern = "api.freebacktrack.tech/api/notify*"
 zone_name = "freebacktrack.tech"
 
+[[routes]]
+pattern = "api.freebacktrack.tech/api/wechat*"
+zone_name = "freebacktrack.tech"
+
 [[kv_namespaces]]
 binding = "NOTIFY_STATE"
 id = "d3d7cf8351b24070a156649fdd50790d"

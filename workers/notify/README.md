@@ -12,6 +12,9 @@
 - `POST /api/notify/ws/register`
 - `WS /api/notify/ws/:deviceInstallationId`
 - `POST /api/notify/run`
+- `POST /api/wechat/login`
+- `GET /api/wechat/notification-prefs`
+- `POST /api/wechat/notification-prefs`
 - cron 定时检查价格提醒和定投提醒
   Worker 内部按北京时间 `Asia/Shanghai` 判断日期；Cloudflare cron 触发本身使用 UTC，因此 `wrangler.toml` 里的 cron 表达式已经换算到北京时间工作日。
 
@@ -21,12 +24,27 @@
 
 - 通知配置主要通过 `/api/notify/settings` 按 client 保存到 KV。
 - Server酱³、Bark 的密钥来自前端配置；不要把用户密钥硬编码进 Worker。
+- 微信小程序登录需要配置 `WECHAT_APPID` 和 `WECHAT_APP_SECRET`。
+- 微信小程序 session token 签名需要配置 `WECHAT_SESSION_SECRET`；未配置时会回退使用 `WECHAT_APP_SECRET`。
+
+微信相关 secret 示例：
+
+```bash
+wrangler secret put WECHAT_APPID --config workers/notify/wrangler.toml
+wrangler secret put WECHAT_APP_SECRET --config workers/notify/wrangler.toml
+wrangler secret put WECHAT_SESSION_SECRET --config workers/notify/wrangler.toml
+```
 
 ## KV
 
 需要创建一个 KV namespace 并填入 `wrangler.toml`：
 
 - `NOTIFY_STATE`
+
+微信提醒偏好会写入：
+
+- `wechat:user:<openid>:notification-prefs`
+- `wechat:active-users`
 
 ## 本地调试
 
