@@ -284,8 +284,26 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     const sideAllowed = strategy.activeSide === 'all' || strategy.activeSide === currentClass;
     const triggered = canTrade && sideAllowed && (
       (rule === 'B' && gapPct >= strategy.intraBuyOtherPct) ||
-      (rule === 'A' && gapPct <= strategy.intraSellLowerPct)
+      (rule === 'A' && gapPct >= strategy.intraSellLowerPct)
     );
+
+    // 记录交易判断逻辑（每10行记录一次，避免日志过多）
+    if (rows.length % 10 === 0) {
+      console.log('[premiumSpread] 交易判断:', {
+        date: anchor.date,
+        fromCode: from.code,
+        fromClass: currentClass,
+        fromPremium: from.premiumPct,
+        toCode: to?.code,
+        toPremium: to?.premiumPct,
+        gapPct,
+        rule,
+        threshold,
+        sideAllowed,
+        canTrade,
+        triggered
+      });
+    }
 
     // 执行交易（只在数据完整时）
     if (triggered && canTrade) {
