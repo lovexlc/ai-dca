@@ -18,6 +18,12 @@ export function buildNavLookup(navHistory = []) {
     .filter(Boolean)
     .sort((a, b) => a.date.localeCompare(b.date));
 
+  console.log('[buildNavLookup] NAV数据范围:', {
+    total: sorted.length,
+    firstDate: sorted[0]?.date,
+    lastDate: sorted[sorted.length - 1]?.date
+  });
+
   return (date) => {
     for (let i = sorted.length - 1; i >= 0; i -= 1) {
       if (sorted[i].date <= date) return sorted[i].nav;

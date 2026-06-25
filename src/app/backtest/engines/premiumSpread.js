@@ -127,6 +127,11 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
   }
 
   // 主循环
+  console.log('[premiumSpread] 开始主循环，总K线数:', anchorCandles.length);
+  console.log('[premiumSpread] 代码列表:', codes);
+  console.log('[premiumSpread] K线数据长度:', Object.fromEntries(codes.map(c => [c, candleMap[c]?.length])));
+  console.log('[premiumSpread] NAV查询函数已构建');
+
   for (const anchor of anchorCandles) {
     const anchorDatetime = anchor.datetime || shanghaiMinuteFromEpochSec(anchor.t);
     const premiums = {};
@@ -144,6 +149,9 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
       const nav = navLookupByCode[code](anchor.date);
       if (!(nav > 0)) {
         hasAllNav = false;
+        if (completeNavRows === 0) {
+          console.log('[premiumSpread] 第一次NAV缺失:', { date: anchor.date, code, nav });
+        }
         continue;
       }
       currentPrices[code] = bar.close;
@@ -487,6 +495,17 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
             : `${signal.fromCode} → ${signal.toCode}`
       };
     });
+
+  console.log('[premiumSpread] 回测完成统计:', {
+    completePriceRows,
+    completeNavRows,
+    totalRows: rows.length,
+    trades: trades.length,
+    switchCount,
+    priceCoveragePct,
+    navCoveragePct,
+    passed
+  });
 
   return {
     ok: true,
