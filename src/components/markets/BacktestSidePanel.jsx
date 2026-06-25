@@ -271,14 +271,15 @@ function runHoldBacktest(candles, config) {
     const interval = Math.max(1, Math.floor(candles.length / 10));
     let accShares = 0;
     let accCash = initialCash;
+    let remainingBudget = initialCash;
     let tradeIndex = 0;
 
     for (let i = 0; i < candles.length; i += interval) {
       const price = candles[i].c;
-      if (accCash >= investAmount && price > 0) {
+      if (remainingBudget >= investAmount && price > 0) {
         const buyShares = investAmount / price;
         shares += buyShares;
-        accCash -= investAmount;
+        remainingBudget -= investAmount;
         trades.push({
           date: candles[i].t,
           type: 'buy',
@@ -350,11 +351,14 @@ export function BacktestSidePanel({
 
   useEffect(() => {
     if (open) {
+      console.log('[BacktestSidePanel] useEffect triggered on open:', { symbol, switchPrefs });
       const nextDefaults = deriveDefaultBacktestCodes(symbol, { switchPrefs });
+      console.log('[BacktestSidePanel] nextDefaults:', nextDefaults);
       setResult(null);
       setStrategyName(`${symbol} 策略`);
       setHighCodes(nextDefaults.highCodes);
       setLowCodes(nextDefaults.lowCodes);
+      console.log('[BacktestSidePanel] state updated with highCodes:', nextDefaults.highCodes, 'lowCodes:', nextDefaults.lowCodes);
     }
   }, [open, symbol, switchPrefs]);
 
@@ -373,7 +377,11 @@ export function BacktestSidePanel({
   }, [open, onClose]);
 
   async function handleRun() {
+    console.log('[BacktestSidePanel] handleRun called');
+    console.log('[BacktestSidePanel] current state:', { highCodes, lowCodes, candles: candles?.length });
+
     if (!candles || candles.length < 10) {
+      console.log('[BacktestSidePanel] insufficient candles:', candles?.length);
       alert('数据不足，至少需要 10 个数据点');
       return;
     }
@@ -400,11 +408,19 @@ export function BacktestSidePanel({
 
       // 如果配置了H/L档，使用统一回测引擎
       if (highCodes.length > 0 && lowCodes.length > 0) {
+        console.log('[Backtest] 进入H/L档回测分支');
         console.log('[Backtest] 获取历史数据和NAV...');
         const allCodes = [...highCodes, ...lowCodes];
+        console.log('[Backtest] allCodes:', allCodes);
 
         // 使用统一的数据获取函数
         const { historyByCode, navHistoryByCode } = await fetchBacktestData(allCodes, { highCodes, lowCodes });
+        console.log('[Backtest] fetchBacktestData 返回:', {
+          historyByCodeKeys: Object.keys(historyByCode),
+          navHistoryByCodeKeys: Object.keys(navHistoryByCode),
+          historyLengths: Object.fromEntries(Object.entries(historyByCode).map(([k, v]) => [k, v?.length])),
+          navLengths: Object.fromEntries(Object.entries(navHistoryByCode).map(([k, v]) => [k, v?.length]))
+        });
 
         console.log('[Backtest] 运行溢价差轮动策略（使用NAV计算真实溢价率）...');
 
@@ -417,6 +433,7 @@ export function BacktestSidePanel({
           intraBuyOtherPct: buyOtherThreshold,
           activeSide: 'all'
         };
+        console.log('[Backtest] strategy config:', strategy);
 
         const backtestOptions = {
           timeframe: chartRange === '1y' ? '1d' : chartRange === '1m' ? '1d' : '5m',
@@ -429,8 +446,10 @@ export function BacktestSidePanel({
           slippageTicks: 1,
           lotSize: 100
         };
+        console.log('[Backtest] backtestOptions:', { ...backtestOptions, historyByCode: 'omitted', navHistoryByCode: 'omitted' });
 
         const result = runBacktest(strategy, backtestOptions);
+        console.log('[Backtest] runBacktest 返回:', result);
 
         if (result.ok && result.status === 'passed') {
           rotationResult = {
@@ -446,6 +465,8 @@ export function BacktestSidePanel({
         } else {
           console.warn('[Backtest] 回测未通过质量检查:', result.quality);
         }
+      } else {
+        console.log('[Backtest] 跳过H/L档回测（highCodes或lowCodes为空）');
       }
 
       // 运行持有策略（对比基准）- 保持原逻辑

@@ -110,7 +110,11 @@ export function SymbolDetailPanel({
   const [backtestPanelOpen, setBacktestPanelOpen] = useState(false);
   const indicatorOptions = INDICATOR_OPTIONS;
   const rowSymbol = row && row.symbol ? String(row.symbol).toUpperCase() : '';
-  const switchPrefs = useMemo(() => readSwitchPrefs(), []);
+  const switchPrefs = useMemo(() => {
+    const prefs = readSwitchPrefs();
+    console.log('[MarketSymbolDetailPanel] switchPrefs loaded:', prefs);
+    return prefs;
+  }, []);
   const currentIsCnOtcFund = market === 'cn' && isCnOtcFundQuote(row);
   const compareSearchMetaMap = useMemo(() => {
     const next = {};
@@ -556,10 +560,21 @@ export function SymbolDetailPanel({
   const effectiveChartCandles = (market === 'cn' && cnFundParam !== 'price')
     ? sliceCandlesForRange(rawEffectiveCandles, chartRange, chartCustomRange)
     : rawEffectiveCandles;
-  const backtestCandles = selectBacktestBaseCandles({
-    priceCandles: chartCandles,
-    displayCandles: effectiveChartCandles,
-  });
+  const backtestCandles = useMemo(() => {
+    const result = selectBacktestBaseCandles({
+      dailyCandles,
+      priceCandles: chartCandles,
+      displayCandles: effectiveChartCandles,
+    });
+    console.log('[MarketSymbolDetailPanel] backtestCandles calculated:', {
+      dailyCandlesLength: dailyCandles?.length,
+      priceCandlesLength: chartCandles?.length,
+      displayCandlesLength: effectiveChartCandles?.length,
+      resultLength: result?.length,
+      rowSymbol
+    });
+    return result;
+  }, [dailyCandles, chartCandles, effectiveChartCandles, rowSymbol]);
   const effectiveChartType = chartType;
   const premiumCompareMode = market === 'cn' && cnFundParam === 'premium';
   const premiumUnavailable = isCnOtcFund && cnFundParam === 'premium';
@@ -949,7 +964,16 @@ export function SymbolDetailPanel({
           {/* 回测按钮 */}
           <button
             type="button"
-            onClick={() => setBacktestPanelOpen(true)}
+            onClick={() => {
+              console.log('[MarketSymbolDetailPanel] 回测按钮点击，打开面板');
+              console.log('[MarketSymbolDetailPanel] 当前状态:', {
+                rowSymbol,
+                backtestCandlesLength: backtestCandles?.length,
+                switchPrefs,
+                chartRange
+              });
+              setBacktestPanelOpen(true);
+            }}
             disabled={!backtestCandles || backtestCandles.length < 10}
             className={cx(
               'flex h-7 items-center gap-1.5 rounded-[10px] px-2.5 text-[12px] font-medium transition-colors sm:h-8 sm:rounded-[11px] sm:text-[13px]',
