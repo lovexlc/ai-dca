@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { saveLastTransaction, addToQuickHistory } from './holdingsQuickTransaction.js';
+import { saveLastTransaction } from './holdingsQuickTransaction.js';
 
 /**
  * 持仓快速交易管理 hook
@@ -13,11 +13,10 @@ export function useHoldingsQuickTransaction() {
         name: normalized.name || '',
         type: normalized.type,
         kind: normalized.kind,
-        amount: normalized.amount
+        amount: normalized.amount,
+        shares: normalized.shares,
+        price: normalized.price
       });
-      if (normalized.type === 'BUY' && normalized.amount > 0) {
-        addToQuickHistory(normalized.code, normalized.name || '', 'BUY', normalized.amount);
-      }
     }
   }, []);
 

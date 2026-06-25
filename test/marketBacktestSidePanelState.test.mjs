@@ -55,3 +55,17 @@ test('market detail backtest uses price candles before display-only metric candl
     []
   );
 });
+
+test('market detail backtest prefers daily candles for strategy runs', () => {
+  const dailyCandles = [{ t: 1, c: 1.2 }, { t: 2, c: 1.3 }];
+  const intradayCandles = [{ t: 1, c: 1.21 }, { t: 2, c: 1.22 }];
+
+  assert.equal(
+    selectBacktestBaseCandles({
+      dailyCandles,
+      priceCandles: intradayCandles,
+      displayCandles: [],
+    }),
+    dailyCandles
+  );
+});
