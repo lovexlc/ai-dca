@@ -317,6 +317,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     }
 
     const sideAllowed = strategy.activeSide === 'all' || strategy.activeSide === currentClass;
+    // 规则 B：持 H 时溢价差扩大，切到便宜的 L；规则 A：持 L 时溢价差回归，切回流动性好的 H。
     const triggered = canTrade && sideAllowed && (
       (rule === 'B' && gapPct >= strategy.intraBuyOtherPct) ||
       (rule === 'A' && gapPct <= strategy.intraSellLowerPct)

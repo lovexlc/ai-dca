@@ -789,7 +789,7 @@ export function BacktestSidePanel({
                       id="sell-lower"
                       label="当前卖 L 买 H 阈值"
                       suffix="%"
-                      hint="运行后自动回填最优值"
+                      hint="持 L 时溢价差回落到该值以下切回 H"
                       value={intraSellLowerPct}
                       onChange={setIntraSellLowerPct}
                       onCommit={(v) => setIntraSellLowerPct(String(parseDecimalOr(v, 1)))}
@@ -798,7 +798,7 @@ export function BacktestSidePanel({
                       id="buy-other"
                       label="当前卖 H 买 L 阈值"
                       suffix="%"
-                      hint="运行后自动回填最优值"
+                      hint="持 H 时溢价差超过该值切到便宜的 L"
                       value={intraBuyOtherPct}
                       onChange={setIntraBuyOtherPct}
                       onCommit={(v) => setIntraBuyOtherPct(String(parseDecimalOr(v, 3)))}
