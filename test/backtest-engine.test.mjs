@@ -159,6 +159,15 @@ test('core helpers normalize candles, nav, and bid ask execution prices', () => 
   assert.equal(sell.priceSource, 'bid');
 });
 
+test('trade simulator can ceil buy to next 100-share lot and carry negative cash', () => {
+  const simulator = createTradeSimulator({ initialCash: 100000, feeRate: 0, lotSize: 100 });
+  const buy = simulator.executeBuy('513100', { close: 1002 }, 100000, { roundLotMode: 'ceil' });
+
+  assert.equal(buy.shares, 100);
+  assert.equal(buy.totalCost, 100200);
+  assert.equal(simulator.cash, -200);
+});
+
 test('unified engine reports quality failure for missing kline data', () => {
   const result = runBacktest({
     type: 'premium-spread',

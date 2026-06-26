@@ -259,16 +259,24 @@ export function KlineChart({ candles, signals }) {
 /**
  * PremiumChart - 溢价差图表
  */
-export function PremiumChart({ data }) {
+export function PremiumChart({ data, signals = [] }) {
   if (!data || data.length === 0) {
     return <EmptyChart message="暂无溢价差数据" />;
   }
 
+  const signalByTs = new Map(
+    (Array.isArray(signals) ? signals : [])
+      .map((signal) => [Number(signal.ts), signal])
+      .filter(([ts]) => Number.isFinite(ts))
+  );
+
   const chartData = data.map(row => ({
+    ts: Number(row.ts),
     date: formatDateTime(row),
     highPremium: row.highPremiumPct,
     lowPremium: row.lowPremiumPct,
-    gap: row.gapPct
+    gap: row.gapPct,
+    switchGap: signalByTs.has(Number(row.ts)) ? row.gapPct : null
   })).filter(d => d.highPremium !== undefined);
 
   return (
@@ -322,6 +330,34 @@ export function PremiumChart({ data }) {
           dot={false}
           name="溢价差 (%)"
         />
+        <Line
+          type="monotone"
+          dataKey="switchGap"
+          stroke="transparent"
+          dot={{ r: 5, fill: '#f97316', stroke: '#ffffff', strokeWidth: 2 }}
+          activeDot={{ r: 7, fill: '#f97316', stroke: '#ffffff', strokeWidth: 2 }}
+          connectNulls={false}
+          name="切换点"
+        />
+        {signals?.map((signal, idx) => {
+          const point = chartData.find(d => d.ts === Number(signal.ts));
+          if (!point) return null;
+          return (
+            <ReferenceLine
+              key={idx}
+              x={point.date}
+              stroke={signal.rule === 'A' ? '#10b981' : '#6366f1'}
+              strokeDasharray="3 3"
+              label={{
+                value: `${signal.rule}切换`,
+                position: 'top',
+                fill: signal.rule === 'A' ? '#10b981' : '#6366f1',
+                fontSize: 12,
+                fontWeight: 'bold'
+              }}
+            />
+          );
+        })}
         <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="3 3" />
       </LineChart>
     </ResponsiveContainer>

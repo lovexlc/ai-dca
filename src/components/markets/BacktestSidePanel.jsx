@@ -939,7 +939,7 @@ export function BacktestSidePanel({
                         signals={rotation.signals || []}
                       />
                     )}
-                    {chartView === 'premium' && <PremiumChart data={rotation.rows || []} />}
+                    {chartView === 'premium' && <PremiumChart data={rotation.rows || []} signals={rotation.signals || []} />}
                   </InteractiveChartContainer>
                 )}
 

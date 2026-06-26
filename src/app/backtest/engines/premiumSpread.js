@@ -261,10 +261,10 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
       currentCode = initial?.code || '';
       entryGapPct = null;
 
-      // 用所有现金买入初始持仓
+      // 用所有现金买入初始持仓；买入受 100 股一手约束时向上补到下一手，允许出现少量负现金。
       if (currentCode && simulator.cash > 0) {
         const bar = closeByCode[currentCode].get(anchor.t);
-        const buyTrade = simulator.executeBuy(currentCode, bar, simulator.cash);
+        const buyTrade = simulator.executeBuy(currentCode, bar, simulator.cash, { roundLotMode: 'ceil' });
         if (buyTrade) {
           trades.push({ ...buyTrade, ts: anchor.t, date: anchor.date, datetime: anchorDatetime });
           equity = simulator.calcEquity(currentPrices);
