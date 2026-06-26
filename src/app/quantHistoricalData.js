@@ -8,7 +8,8 @@ import { roundTo } from './quantTrading.js';
 /**
  * 从后端API获取历史溢价数据
  */
-export async function fetchHistoricalPremiums(symbols, startDate, endDate) {
+export async function fetchHistoricalPremiums(symbols, startDate, endDate, options = {}) {
+  const { allowSimulation = true } = options;
   try {
     const params = new URLSearchParams({
       symbols: symbols.join(','),
@@ -28,8 +29,11 @@ export async function fetchHistoricalPremiums(symbols, startDate, endDate) {
     return normalizeHistoricalData(data);
   } catch (error) {
     console.error('Failed to fetch historical premiums:', error);
-    // Fallback to realistic simulation if API fails
-    return generateRealisticSimulation(symbols, startDate, endDate);
+    if (allowSimulation) {
+      // Fallback to realistic simulation for demo/test flows.
+      return generateRealisticSimulation(symbols, startDate, endDate);
+    }
+    throw new Error('历史溢价数据暂不可用，请稍后重试或检查数据接口权限');
   }
 }
 
@@ -197,9 +201,9 @@ function getWeekday(dateStr) {
 const CACHE_KEY = 'aiDcaQuantHistoricalDataCache';
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24小时
 
-export async function getCachedHistoricalData(symbols, startDate, endDate, forceRefresh = false) {
+export async function getCachedHistoricalData(symbols, startDate, endDate, forceRefresh = false, options = {}) {
   if (typeof window === 'undefined' || !window.localStorage) {
-    return fetchHistoricalPremiums(symbols, startDate, endDate);
+    return fetchHistoricalPremiums(symbols, startDate, endDate, options);
   }
 
   const cacheKey = `${CACHE_KEY}_${symbols.join('_')}_${startDate}_${endDate}`;
@@ -219,7 +223,7 @@ export async function getCachedHistoricalData(symbols, startDate, endDate, force
   }
 
   // 获取新数据
-  const data = await fetchHistoricalPremiums(symbols, startDate, endDate);
+  const data = await fetchHistoricalPremiums(symbols, startDate, endDate, options);
 
   // 写入缓存
   try {

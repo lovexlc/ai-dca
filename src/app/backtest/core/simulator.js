@@ -22,12 +22,14 @@ export function calcFee(amount, feeRate = 0.001, minFee = 0) {
  * @param {number} slippageTicks - 滑点跳数
  * @returns {Object} {price, priceSource}
  */
-export function resolveSellExecutionPrice(bar, tickSize = 0.001, slippageTicks = 0) {
-  const quoted = firstPositiveNumber(
-    bar?.bidPrice, bar?.bid, bar?.bp1, bar?.bid1, bar?.bid1_price, bar?.bid_price1,
-    bar?.buy1, bar?.buy1_price, bar?.buy_price1, bar?.orderBook?.bidPrice
-  );
-  if (quoted != null) return { price: roundTo(quoted, 4), priceSource: 'bid' };
+export function resolveSellExecutionPrice(bar, tickSize = 0.001, slippageTicks = 0, useQuotedPrices = true) {
+  if (useQuotedPrices) {
+    const quoted = firstPositiveNumber(
+      bar?.bidPrice, bar?.bid, bar?.bp1, bar?.bid1, bar?.bid1_price, bar?.bid_price1,
+      bar?.buy1, bar?.buy1_price, bar?.buy_price1, bar?.orderBook?.bidPrice
+    );
+    if (quoted != null) return { price: roundTo(quoted, 4), priceSource: 'bid' };
+  }
   return {
     price: roundTo(Number(bar?.close || 0) - clampNumber(slippageTicks, 0) * clampNumber(tickSize, 0.001), 4),
     priceSource: 'close-slippage'
@@ -41,12 +43,14 @@ export function resolveSellExecutionPrice(bar, tickSize = 0.001, slippageTicks =
  * @param {number} slippageTicks - 滑点跳数
  * @returns {Object} {price, priceSource}
  */
-export function resolveBuyExecutionPrice(bar, tickSize = 0.001, slippageTicks = 0) {
-  const quoted = firstPositiveNumber(
-    bar?.askPrice, bar?.ask, bar?.sp1, bar?.ask1, bar?.ask1_price, bar?.ask_price1,
-    bar?.sell1, bar?.sell1_price, bar?.sell_price1, bar?.orderBook?.askPrice
-  );
-  if (quoted != null) return { price: roundTo(quoted, 4), priceSource: 'ask' };
+export function resolveBuyExecutionPrice(bar, tickSize = 0.001, slippageTicks = 0, useQuotedPrices = true) {
+  if (useQuotedPrices) {
+    const quoted = firstPositiveNumber(
+      bar?.askPrice, bar?.ask, bar?.sp1, bar?.ask1, bar?.ask1_price, bar?.ask_price1,
+      bar?.sell1, bar?.sell1_price, bar?.sell_price1, bar?.orderBook?.askPrice
+    );
+    if (quoted != null) return { price: roundTo(quoted, 4), priceSource: 'ask' };
+  }
   return {
     price: roundTo(Number(bar?.close || 0) + clampNumber(slippageTicks, 0) * clampNumber(tickSize, 0.001), 4),
     priceSource: 'close+slippage'
@@ -65,7 +69,8 @@ export function createTradeSimulator(config = {}) {
     minFee = 0,
     lotSize = 100,
     tickSize = 0.001,
-    slippageTicks = 0
+    slippageTicks = 0,
+    useQuotedPrices = true
   } = config;
 
   let cash = initialCash;
@@ -78,7 +83,7 @@ export function createTradeSimulator(config = {}) {
     const pos = positions[code];
     if (!pos || pos.shares <= 0) return null;
 
-    const { price: sellPrice, priceSource } = resolveSellExecutionPrice(bar, tickSize, slippageTicks);
+    const { price: sellPrice, priceSource } = resolveSellExecutionPrice(bar, tickSize, slippageTicks, useQuotedPrices);
     const sellAmount = pos.shares * sellPrice;
     const fee = calcFee(sellAmount, feeRate, minFee);
     const netProceeds = sellAmount - fee;
@@ -107,7 +112,7 @@ export function createTradeSimulator(config = {}) {
    * 执行买入
    */
   function executeBuy(code, bar, targetCash = cash, { roundLotMode = 'floor' } = {}) {
-    const { price: buyPrice, priceSource } = resolveBuyExecutionPrice(bar, tickSize, slippageTicks);
+    const { price: buyPrice, priceSource } = resolveBuyExecutionPrice(bar, tickSize, slippageTicks, useQuotedPrices);
     const targetSpend = Math.max(0, clampNumber(targetCash, cash));
     const boundedSpend = roundLotMode === 'ceil' ? targetSpend : Math.min(cash, targetSpend);
     const rawLots = boundedSpend / buyPrice / lotSize;

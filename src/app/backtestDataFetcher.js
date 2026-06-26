@@ -21,6 +21,7 @@ export async function fetchBacktestData(codes, options = {}) {
     startDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
     endDate = new Date().toISOString().slice(0, 10),
     forceRefresh = false,
+    allowSimulation = true,
     highCodes = [],
     lowCodes = []
   } = options;
@@ -41,7 +42,7 @@ export async function fetchBacktestData(codes, options = {}) {
 
   // 获取 K线历史数据
   console.log('[backtestDataFetcher] fetching historical data...');
-  const rawHistory = await getCachedHistoricalData(normalizedCodes, startDate, endDate, forceRefresh);
+  const rawHistory = await getCachedHistoricalData(normalizedCodes, startDate, endDate, forceRefresh, { allowSimulation });
   console.log('[backtestDataFetcher] rawHistory type:', Array.isArray(rawHistory) ? 'array' : typeof rawHistory);
 
   let historyByCode = rawHistory && typeof rawHistory === 'object' && !Array.isArray(rawHistory)

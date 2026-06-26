@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { X, Play, BarChart3, TrendingUp, Trophy, Activity, RefreshCw, Settings2 } from 'lucide-react';
 import { cx, primaryButtonClass, secondaryButtonClass, inputClass } from '../experience-ui.jsx';
 import { TagInput } from '../TagInput.jsx';
-import { runBacktest } from '../../app/backtest/index.js';
+import { createTradeSimulator, runBacktest } from '../../app/backtest/index.js';
 import { fetchBacktestData } from '../../app/backtestDataFetcher.js';
 import { deriveDefaultBacktestCodes } from './backtestSidePanelState.js';
 
@@ -40,6 +40,14 @@ const BACKTEST_RANGE_OPTIONS = Object.freeze([
 
 const OPTIMIZE_SELL_LOWER_GRID = Object.freeze([0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.5, 2]);
 const OPTIMIZE_BUY_OTHER_GRID = Object.freeze([1, 1.5, 2, 2.5, 3, 3.5, 4, 5]);
+const BACKTEST_TRADING_COSTS = Object.freeze({
+  feeRate: 0.00005,
+  minFee: 0,
+  tickSize: 0.005,
+  slippageTicks: 1,
+  lotSize: 100,
+  useQuotedPrices: false
+});
 
 function todayShanghaiIso() {
   try {
@@ -65,6 +73,8 @@ function deriveBacktestDateRange(rangeKey, customRange = {}) {
     if (/^\d{4}-\d{2}-\d{2}$/.test(startDate) && /^\d{4}-\d{2}-\d{2}$/.test(endDate) && startDate <= endDate) {
       return { startDate, endDate };
     }
+    const fallbackEndDate = todayShanghaiIso();
+    return { startDate: shiftIsoDate(fallbackEndDate, -365), endDate: fallbackEndDate };
   }
   const endDate = todayShanghaiIso();
   return { startDate: shiftIsoDate(endDate, -selected.days), endDate };
@@ -79,6 +89,7 @@ function normalizeCandlesForHold(raw = []) {
       return {
         ...item,
         c: close,
+        close,
         t: Number.isFinite(t) && t > 0 ? t : (rawDate ? Math.floor(Date.parse(`${rawDate}T15:00:00+08:00`) / 1000) : 0),
       };
     })
@@ -355,69 +366,42 @@ function runRotationBacktest(highCandles, lowCandles, config) {
 
 // 持有策略回测（对比基准）
 function runHoldBacktest(candles, config) {
-  const { initialCash, mode, investAmount } = config;
-
-  let cash = initialCash;
-  let shares = 0;
+  const { code, initialCash, mode, investAmount, tradingCosts = BACKTEST_TRADING_COSTS } = config;
   const trades = [];
   const equityCurve = [];
+  const simulator = createTradeSimulator({
+    initialCash,
+    ...tradingCosts
+  });
+
+  function currentPrices(candle) {
+    return { [code]: candle.c };
+  }
 
   if (mode === 'lump-sum') {
-    // 一次性投入
-    const firstPrice = candles[0].c;
-    if (firstPrice > 0) {
-      shares = cash / firstPrice;
-      cash = 0;
-      trades.push({
-        date: candles[0].t,
-        type: 'buy',
-        price: firstPrice,
-        shares,
-        amount: shares * firstPrice
-      });
-    }
+    const firstTrade = simulator.executeBuy(code, candles[0], simulator.cash);
+    if (firstTrade) trades.push({ ...firstTrade, date: candles[0].t });
 
     for (const candle of candles) {
-      equityCurve.push(shares * candle.c);
+      equityCurve.push(simulator.calcEquity(currentPrices(candle)));
     }
   } else {
-    // 定投模式
     const interval = Math.max(1, Math.floor(candles.length / 10));
-    let accShares = 0;
-    let accCash = initialCash;
-    let remainingBudget = initialCash;
-    let tradeIndex = 0;
-
-    for (let i = 0; i < candles.length; i += interval) {
-      const price = candles[i].c;
-      if (remainingBudget >= investAmount && price > 0) {
-        const buyShares = investAmount / price;
-        shares += buyShares;
-        remainingBudget -= investAmount;
-        trades.push({
-          date: candles[i].t,
-          type: 'buy',
-          price,
-          shares: buyShares,
-          amount: investAmount
-        });
-      }
-    }
 
     for (let i = 0; i < candles.length; i++) {
-      if (tradeIndex < trades.length && i >= interval * tradeIndex) {
-        accShares += trades[tradeIndex].shares;
-        accCash -= trades[tradeIndex].amount;
-        tradeIndex++;
+      const candle = candles[i];
+      if (i % interval === 0 && simulator.cash >= investAmount && candle.c > 0) {
+        const buyTrade = simulator.executeBuy(code, candle, investAmount);
+        if (buyTrade) {
+          trades.push({ ...buyTrade, date: candle.t });
+        }
       }
-      equityCurve.push(accCash + accShares * candles[i].c);
+      equityCurve.push(simulator.calcEquity(currentPrices(candle)));
     }
-
-    cash = accCash;
   }
 
   const lastPrice = candles[candles.length - 1].c;
-  const finalValue = cash + shares * lastPrice;
+  const finalValue = simulator.calcEquity({ [code]: lastPrice });
   const totalReturn = finalValue - initialCash;
   const totalReturnPct = (totalReturn / initialCash) * 100;
 
@@ -432,6 +416,7 @@ function runHoldBacktest(candles, config) {
   }
 
   return {
+    code,
     finalValue,
     totalReturnPct,
     maxDrawdownPct: maxDrawdown,
@@ -514,6 +499,7 @@ export function BacktestSidePanel({
 
       let rotationResult = null;
       let holdResult = null;
+      let holdResults = [];
 
       // 如果配置了H/L档，使用统一回测引擎
       if (highCodes.length > 0 && lowCodes.length > 0) {
@@ -522,7 +508,13 @@ export function BacktestSidePanel({
         const allCodes = [...highCodes, ...lowCodes];
         console.log('[Backtest] allCodes:', allCodes);
 
-        const { historyByCode, navHistoryByCode } = await fetchBacktestData(allCodes, { highCodes, lowCodes, ...dateRange });
+        const { historyByCode, navHistoryByCode } = await fetchBacktestData(allCodes, {
+          highCodes,
+          lowCodes,
+          ...dateRange,
+          forceRefresh: true,
+          allowSimulation: false
+        });
         console.log('[Backtest] fetchBacktestData 返回:', {
           historyByCodeKeys: Object.keys(historyByCode),
           navHistoryByCodeKeys: Object.keys(navHistoryByCode),
@@ -545,11 +537,7 @@ export function BacktestSidePanel({
           historyByCode,
           navHistoryByCode,
           initialEquity: cash,
-          feeRate: 0.00005,
-          minFee: 0,
-          tickSize: 0.001,
-          slippageTicks: 1,
-          lotSize: 100,
+          ...BACKTEST_TRADING_COSTS,
           silent: true
         };
         console.log('[Backtest] backtestOptions:', { ...backtestOptions, historyByCode: 'omitted', navHistoryByCode: 'omitted' });
@@ -574,24 +562,37 @@ export function BacktestSidePanel({
           console.warn('[Backtest] 所有阈值组合均未通过质量检查');
         }
 
-        const holdCandles = normalizeCandlesForHold(historyByCode?.[symbol] || historyByCode?.[highCodes[0]] || []);
-        if (!holdCandles || holdCandles.length < 10) {
-          console.log('[Backtest] 持有对比数据不足:', holdCandles?.length);
+        holdResults = [highCodes[0], lowCodes[0]]
+          .filter(Boolean)
+          .map((holdCode) => {
+            const holdCandles = normalizeCandlesForHold(historyByCode?.[holdCode] || []);
+            if (!holdCandles || holdCandles.length < 10) {
+              console.log('[Backtest] 持有对比数据不足:', { holdCode, length: holdCandles?.length });
+              return null;
+            }
+            console.log('[Backtest] 运行持有策略...', { holdCode, holdCandles: holdCandles.length });
+            return runHoldBacktest(holdCandles, {
+              code: holdCode,
+              initialCash: cash,
+              mode: investMode,
+              investAmount: invest,
+              tradingCosts: BACKTEST_TRADING_COSTS
+            });
+          })
+          .filter(Boolean);
+
+        if (!holdResults.length) {
           alert('数据不足，至少需要 10 个数据点');
           return;
         }
-        console.log('[Backtest] 运行持有策略...', { holdCode: symbol || highCodes[0], holdCandles: holdCandles.length });
-        holdResult = runHoldBacktest(holdCandles, {
-          initialCash: cash,
-          mode: investMode,
-          investAmount: invest
-        });
-        console.log('[Backtest] 持有策略结果:', {
-          totalReturnPct: holdResult.totalReturnPct,
-          maxDrawdownPct: holdResult.maxDrawdownPct,
-          tradeCount: holdResult.tradeCount,
-          finalValue: holdResult.finalValue
-        });
+        holdResult = holdResults.find((item) => item.code === symbol) || holdResults[0] || null;
+        console.log('[Backtest] 持有策略结果:', holdResults.map((item) => ({
+          code: item.code,
+          totalReturnPct: item.totalReturnPct,
+          maxDrawdownPct: item.maxDrawdownPct,
+          tradeCount: item.tradeCount,
+          finalValue: item.finalValue
+        })));
       } else {
         console.log('[Backtest] 跳过H/L档回测（highCodes或lowCodes为空）');
       }
@@ -599,6 +600,7 @@ export function BacktestSidePanel({
       setResult({
         rotation: rotationResult,
         hold: holdResult,
+        holds: holdResults,
         config: {
           highCodes,
           lowCodes,
@@ -620,6 +622,12 @@ export function BacktestSidePanel({
 
   const rotation = result?.rotation;
   const hold = result?.hold;
+  const holds = Array.isArray(result?.holds) ? result.holds : (hold ? [hold] : []);
+  const bestHold = holds.reduce((best, item) => {
+    if (!item) return best;
+    if (!best) return item;
+    return Number(item.totalReturnPct) > Number(best.totalReturnPct) ? item : best;
+  }, null);
   const selectedRangeLabel = BACKTEST_RANGE_OPTIONS.find((item) => item.key === backtestRange)?.label || '1 年';
 
   return (
@@ -900,56 +908,52 @@ export function BacktestSidePanel({
                 )}
 
                 {/* 持有策略对比 */}
-                {hold && (
+                {holds.length > 0 && (
                   <div className="rounded-xl bg-white p-4 shadow-sm">
                     <h3 className="mb-3 text-sm font-bold text-slate-900">
                       持有策略对比
                       <span className="ml-2 text-xs font-normal text-slate-500">
-                        {investMode === 'dca' ? '定投' : '一次性'} · {symbol}
+                        {investMode === 'dca' ? '定投' : '一次性'} · 同手续费/滑点/整手
                       </span>
                     </h3>
-                    <div className="grid grid-cols-2 gap-3">
-                      <MetricCard
-                        icon={TrendingUp}
-                        label="总收益率"
-                        value={formatPercent(hold.totalReturnPct)}
-                        tone={hold.totalReturnPct > 0 ? 'positive' : hold.totalReturnPct < 0 ? 'negative' : 'neutral'}
-                      />
-                      <MetricCard
-                        icon={Activity}
-                        label="最大回撤"
-                        value={formatPercent(hold.maxDrawdownPct)}
-                        tone={Math.abs(hold.maxDrawdownPct) <= 5 ? 'positive' : Math.abs(hold.maxDrawdownPct) <= 10 ? 'neutral' : 'negative'}
-                      />
-                    </div>
-                    <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">最终市值</span>
-                        <span className="font-semibold tabular-nums text-slate-900">
-                          ¥{hold.finalValue.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
+                    <div className="grid gap-3">
+                      {holds.map((item) => (
+                        <div key={item.code} className="rounded-lg bg-slate-50 p-3">
+                          <div className="mb-2 flex items-center justify-between text-sm">
+                            <span className="font-semibold text-slate-900">持有 {item.code}</span>
+                            <span className={cx('font-bold tabular-nums',
+                              item.totalReturnPct > 0 ? 'text-emerald-600' : item.totalReturnPct < 0 ? 'text-rose-600' : 'text-slate-600'
+                            )}>
+                              {formatPercent(item.totalReturnPct)}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-xs text-slate-500">
+                            <span>最大回撤 {formatPercent(item.maxDrawdownPct)}</span>
+                            <span className="text-right">最终 ¥{item.finalValue.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}</span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
 
                 {/* 策略对比 */}
-                {rotation && hold && (
+                {rotation && bestHold && (
                   <div className="rounded-xl border-2 border-indigo-200 bg-indigo-50 p-4">
                     <h3 className="mb-3 text-sm font-bold text-indigo-900">策略对比</h3>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-indigo-700">收益率差异</span>
+                        <span className="text-indigo-700">相对最佳持有差异</span>
                         <span className={cx('font-bold tabular-nums',
-                          rotation.totalReturnPct > hold.totalReturnPct ? 'text-emerald-600' : 'text-rose-600'
+                          rotation.totalReturnPct > bestHold.totalReturnPct ? 'text-emerald-600' : 'text-rose-600'
                         )}>
-                          {formatPercent(rotation.totalReturnPct - hold.totalReturnPct)}
+                          {formatPercent(rotation.totalReturnPct - bestHold.totalReturnPct)}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-indigo-700">轮动策略 vs 持有</span>
+                        <span className="text-indigo-700">轮动策略 vs 持有 {bestHold.code}</span>
                         <span className="font-semibold text-indigo-900">
-                          {rotation.totalReturnPct > hold.totalReturnPct ? '轮动胜出' : '持有胜出'}
+                          {rotation.totalReturnPct > bestHold.totalReturnPct ? '轮动胜出' : '持有胜出'}
                         </span>
                       </div>
                     </div>
