@@ -155,7 +155,7 @@ function PositionCapPanel({ positions }) {
 						<input
 							type="number"
 							value={capPct}
-							onChange={(e) => setCapPct(Number(e.target.value) || 0)}
+							onChange={(e) => setCapPct(e.target.value)}
 							min="1"
 							max="100"
 							step="1"
