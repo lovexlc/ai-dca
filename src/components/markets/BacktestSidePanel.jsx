@@ -80,7 +80,9 @@ const BACKTEST_TRADING_COSTS = Object.freeze({
   feeRate: 0.00005,
   minFee: 0,
   tickSize: 0.005,
-  slippageTicks: 1,
+  // 日线回测按收盘价成交，额外加 1 tick 滑点会显著压低轮动收益。
+  // 如需更保守估算，可手动改为 1。
+  slippageTicks: 0,
   lotSize: 100,
   useQuotedPrices: false
 });
