@@ -639,8 +639,8 @@ export function SymbolDetailPanel({
   const todayForInput = todayShanghaiIso();
 
   return (
-    <section className="mx-0">
-      <div className="px-3 pt-0 sm:px-1">
+    <section className={cx('mx-0', backtestPanelOpen && 'lg:relative')}>
+      <div className={cx('px-3 pt-0 sm:px-1', backtestPanelOpen && 'lg:pr-[580px] xl:pr-[588px]')}>
         <button
           type="button"
           onClick={onBack}

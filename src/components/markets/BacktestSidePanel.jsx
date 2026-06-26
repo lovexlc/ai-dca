@@ -566,14 +566,21 @@ export function BacktestSidePanel({
 
   useEffect(() => {
     if (!open || typeof document === 'undefined') return undefined;
+    const shouldLockBody = typeof window === 'undefined'
+      || typeof window.matchMedia !== 'function'
+      || window.matchMedia('(max-width: 1023px)').matches;
     const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    if (shouldLockBody) {
+      document.body.style.overflow = 'hidden';
+    }
     function handleKeyDown(event) {
       if (event.key === 'Escape') onClose?.();
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => {
-      document.body.style.overflow = previousOverflow;
+      if (shouldLockBody) {
+        document.body.style.overflow = previousOverflow;
+      }
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [open, onClose]);
@@ -796,7 +803,7 @@ export function BacktestSidePanel({
       <button
         type="button"
         aria-label="关闭回测侧边栏"
-        className="fixed inset-0 z-[999] cursor-default bg-slate-950/35 backdrop-blur-[2px] animate-in fade-in duration-200"
+        className="fixed inset-0 z-[999] cursor-default bg-slate-950/35 backdrop-blur-[2px] animate-in fade-in duration-200 lg:hidden"
         onClick={onClose}
       />
 
@@ -804,7 +811,7 @@ export function BacktestSidePanel({
         role="dialog"
         aria-modal="true"
         aria-label="策略回测"
-        className="fixed right-0 top-0 z-[1000] flex h-[100vh] w-[min(560px,100vw)] flex-col bg-[#F0F2F8] shadow-2xl animate-in fade-in slide-in-from-right-7 duration-200"
+        className="fixed right-0 top-0 z-[1000] flex h-[100vh] w-[min(560px,100vw)] flex-col bg-[#F0F2F8] shadow-2xl animate-in fade-in slide-in-from-right-7 duration-200 lg:absolute lg:right-0 lg:top-0 lg:h-full lg:w-[560px] lg:overflow-hidden lg:rounded-xl lg:border lg:border-slate-200"
       >
         <div className="flex h-14 flex-shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-5">
           <div>
