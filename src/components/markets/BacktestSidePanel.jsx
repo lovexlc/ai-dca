@@ -7,6 +7,8 @@ import { InteractiveChartContainer } from '../InteractiveChartContainer.jsx';
 import { createTradeSimulator, runBacktest } from '../../app/backtest/index.js';
 import { fetchBacktestData } from '../../app/backtestDataFetcher.js';
 import { deriveDefaultBacktestCodes } from './backtestSidePanelState.js';
+import { addSwitchRule } from '../../app/switchStrategySync.js';
+import { readSwitchPrefs as readStoredSwitchPrefs, writeSwitchPrefs as writeStoredSwitchPrefs } from '../../pages/switchStrategyHelpers.js';
 
 function formatPercent(value, digits = 2) {
   const num = Number(value);
@@ -41,6 +43,11 @@ function formatTradeDate(value) {
   const date = new Date(num < 10000000000 ? num * 1000 : num);
   if (Number.isNaN(date.getTime())) return '--';
   return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function normalizeFundCode(value) {
+  const code = String(value || '').trim();
+  return /^\d{6}$/.test(code) ? code : '';
 }
 
 function toDecimalText(value, fallback) {
@@ -177,6 +184,29 @@ function buildTradeExamples(trades = [], signals = [], limit = 4) {
     })
     .filter(Boolean)
     .slice(0, limit);
+}
+
+function counterpartFromCodes(symbol, highCodes = [], lowCodes = []) {
+  const current = normalizeFundCode(symbol);
+  const allCodes = [...(highCodes || []), ...(lowCodes || [])].map(normalizeFundCode).filter(Boolean);
+  return allCodes.find((code) => code && code !== current) || '';
+}
+
+function applyCounterpartToPair(symbol, counterpart, highCodes = [], lowCodes = []) {
+  const current = normalizeFundCode(symbol);
+  const peer = normalizeFundCode(counterpart);
+  if (!current || !peer || current === peer) return { highCodes, lowCodes };
+  const currentIsLow = (lowCodes || []).map(normalizeFundCode).includes(current);
+  if (currentIsLow) return { highCodes: [peer], lowCodes: [current] };
+  return { highCodes: [current], lowCodes: [peer] };
+}
+
+function navigateToFundSwitchPage() {
+  if (typeof window === 'undefined') return;
+  const url = new URL(window.location.href);
+  url.searchParams.set('tab', 'fundSwitch');
+  url.hash = '';
+  window.location.href = url.toString();
 }
 
 function pickBetterBacktest(currentBest, candidate) {
@@ -503,8 +533,10 @@ export function BacktestSidePanel({
   const defaultCodes = deriveDefaultBacktestCodes(symbol, { switchPrefs });
   const [highCodes, setHighCodes] = useState(defaultCodes.highCodes);
   const [lowCodes, setLowCodes] = useState(defaultCodes.lowCodes);
+  const [counterpartCode, setCounterpartCode] = useState(() => counterpartFromCodes(symbol, defaultCodes.highCodes, defaultCodes.lowCodes));
   const [intraSellLowerPct, setIntraSellLowerPct] = useState('1');
   const [intraBuyOtherPct, setIntraBuyOtherPct] = useState('3');
+  const [thresholdMode, setThresholdMode] = useState('auto');
   const [initialCash, setInitialCash] = useState('10000');
   const [investMode, setInvestMode] = useState('dca');
   const [investAmount, setInvestAmount] = useState('1000');
@@ -524,6 +556,8 @@ export function BacktestSidePanel({
       setStrategyName(`${symbol} 策略`);
       setHighCodes(nextDefaults.highCodes);
       setLowCodes(nextDefaults.lowCodes);
+      setCounterpartCode(counterpartFromCodes(symbol, nextDefaults.highCodes, nextDefaults.lowCodes));
+      setThresholdMode('auto');
       console.log('[BacktestSidePanel] state updated with highCodes:', nextDefaults.highCodes, 'lowCodes:', nextDefaults.lowCodes);
     }
   }, [open, symbol, switchPrefs]);
@@ -553,6 +587,10 @@ export function BacktestSidePanel({
       const cash = parseDecimalOr(initialCash, 10000);
       const invest = parseDecimalOr(investAmount, 1000);
       const dateRange = deriveBacktestDateRange(backtestRange, { startDate: customStartDate, endDate: customEndDate });
+      if (!highCodes.length || !lowCodes.length) {
+        alert('请先填写对手方，组成 H/L 回测组合。');
+        return;
+      }
 
       console.log('[Backtest] 开始回测', {
         highCodes,
@@ -606,7 +644,33 @@ export function BacktestSidePanel({
         };
         console.log('[Backtest] backtestOptions:', { ...backtestOptions, historyByCode: 'omitted', navHistoryByCode: 'omitted' });
 
-        const optimized = optimizePremiumSpread({ baseStrategy, backtestOptions });
+        const manualSellLower = parseDecimalOr(intraSellLowerPct, 1);
+        const manualBuyOther = parseDecimalOr(intraBuyOtherPct, 3);
+        const optimized = thresholdMode === 'manual'
+          ? (() => {
+            let best = null;
+            const attempts = [];
+            for (const initialSide of ['L', 'H']) {
+              const result = runBacktest({
+                ...baseStrategy,
+                initialSide,
+                intraSellLowerPct: manualSellLower,
+                intraBuyOtherPct: manualBuyOther
+              }, backtestOptions);
+              const rotation = makeRotationResult(result);
+              if (rotation) {
+                rotation.thresholds = {
+                  sellLowerThreshold: manualSellLower,
+                  buyOtherThreshold: manualBuyOther
+                };
+                rotation.initialSide = initialSide;
+                attempts.push(rotation);
+                best = pickBetterBacktest(best, rotation);
+              }
+            }
+            return { best, attempts };
+          })()
+          : optimizePremiumSpread({ baseStrategy, backtestOptions });
         rotationResult = optimized.best;
         console.log('[Backtest] 阈值自动寻优结果:', {
           attempts: optimized.attempts.length,
@@ -622,6 +686,9 @@ export function BacktestSidePanel({
         if (rotationResult) {
           setIntraSellLowerPct(toDecimalText(rotationResult.thresholds.sellLowerThreshold, 1));
           setIntraBuyOtherPct(toDecimalText(rotationResult.thresholds.buyOtherThreshold, 3));
+          setHighCodes(rotationResult.effectiveHighCodes?.length ? rotationResult.effectiveHighCodes : highCodes);
+          setLowCodes(rotationResult.effectiveLowCodes?.length ? rotationResult.effectiveLowCodes : lowCodes);
+          setCounterpartCode(counterpartFromCodes(symbol, rotationResult.effectiveHighCodes?.length ? rotationResult.effectiveHighCodes : highCodes, rotationResult.effectiveLowCodes?.length ? rotationResult.effectiveLowCodes : lowCodes));
         } else {
           console.warn('[Backtest] 所有阈值组合均未通过质量检查');
         }
@@ -682,6 +749,30 @@ export function BacktestSidePanel({
     }
   }
 
+  function handleCreateSwitchRuleFromBacktest() {
+    if (!rotation) return;
+    const highCode = effectiveHighCodes[0] || highCodes[0] || '';
+    const lowCode = effectiveLowCodes[0] || lowCodes[0] || '';
+    if (!highCode || !lowCode) return;
+    const sellLowerThreshold = Number(rotation.thresholds?.sellLowerThreshold ?? intraSellLowerPct);
+    const buyOtherThreshold = Number(rotation.thresholds?.buyOtherThreshold ?? intraBuyOtherPct);
+    const currentPrefs = readStoredSwitchPrefs();
+    const nextPrefs = addSwitchRule(currentPrefs, {
+      name: `${highCode}/${lowCode} 回测规则`,
+      enabled: true,
+      benchmarkCodes: [highCode, lowCode],
+      enabledCodes: [],
+      premiumClass: {
+        [highCode]: 'H',
+        [lowCode]: 'L'
+      },
+      intraSellLowerPct: sellLowerThreshold,
+      intraBuyOtherPct: buyOtherThreshold
+    });
+    writeStoredSwitchPrefs(nextPrefs);
+    navigateToFundSwitchPage();
+  }
+
   if (!open) return null;
 
   const rotation = result?.rotation;
@@ -694,6 +785,7 @@ export function BacktestSidePanel({
     if (!best) return item;
     return Number(item.totalReturnPct) > Number(best.totalReturnPct) ? item : best;
   }, null);
+  const rotationWins = Boolean(rotation && bestHold && Number(rotation.totalReturnPct) > Number(bestHold.totalReturnPct));
   const tradeExamples = rotation ? buildTradeExamples(rotation.trades, rotation.signals, 4) : [];
   const selectedRangeLabel = BACKTEST_RANGE_OPTIONS.find((item) => item.key === backtestRange)?.label || '1 年';
 
@@ -800,7 +892,8 @@ export function BacktestSidePanel({
               </div>
             </div>
 
-            {/* 高级选项 */}
+            {/* 高级选项：先跑出一版回测后再开放 H/L 与阈值编辑 */}
+            {result && (
             <div className="rounded-xl bg-white p-4 shadow-sm">
               <button
                 type="button"
@@ -816,7 +909,7 @@ export function BacktestSidePanel({
                 </span>
               </button>
               <p className="mt-2 text-xs leading-5 text-slate-400">
-                默认自动识别 H/L 并遍历阈值组合，普通回测无需手动填写。
+                已根据回测结果自动填入 H/L 和阈值；修改后再次回测会按当前阈值运行。
               </p>
               {advancedOpen && (
                 <div className="mt-4 space-y-5">
@@ -841,8 +934,8 @@ export function BacktestSidePanel({
                       suffix="%"
                       hint="持 L 时溢价差回落到该值以下切回 H"
                       value={intraSellLowerPct}
-                      onChange={setIntraSellLowerPct}
-                      onCommit={(v) => setIntraSellLowerPct(String(parseDecimalOr(v, 1)))}
+                      onChange={(value) => { setThresholdMode('manual'); setIntraSellLowerPct(value); }}
+                      onCommit={(v) => { setThresholdMode('manual'); setIntraSellLowerPct(String(parseDecimalOr(v, 1))); }}
                     />
                     <DecimalInput
                       id="buy-other"
@@ -850,18 +943,46 @@ export function BacktestSidePanel({
                       suffix="%"
                       hint="持 H 时溢价差超过该值切到便宜的 L"
                       value={intraBuyOtherPct}
-                      onChange={setIntraBuyOtherPct}
-                      onCommit={(v) => setIntraBuyOtherPct(String(parseDecimalOr(v, 3)))}
+                      onChange={(value) => { setThresholdMode('manual'); setIntraBuyOtherPct(value); }}
+                      onCommit={(v) => { setThresholdMode('manual'); setIntraBuyOtherPct(String(parseDecimalOr(v, 3))); }}
                     />
                   </div>
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                    onClick={() => setThresholdMode('auto')}
+                  >
+                    恢复自动寻优阈值
+                  </button>
                 </div>
               )}
             </div>
+            )}
 
             {/* 回测参数 */}
             <div className="rounded-xl bg-white p-4 shadow-sm">
               <SectionLabel>回测参数</SectionLabel>
               <div className="space-y-4">
+                <div>
+                  <label htmlFor="counterpart-code" className="block text-xs font-semibold text-slate-500">对手方</label>
+                  <input
+                    id="counterpart-code"
+                    className={cx(inputClass, 'mt-2 font-semibold tabular-nums')}
+                    value={counterpartCode}
+                    onChange={(event) => {
+                      const value = event.target.value.replace(/\D/g, '').slice(0, 6);
+                      setCounterpartCode(value);
+                      const pair = applyCounterpartToPair(symbol, value, highCodes, lowCodes);
+                      setHighCodes(pair.highCodes);
+                      setLowCodes(pair.lowCodes);
+                    }}
+                    placeholder="例如 159501"
+                    inputMode="numeric"
+                  />
+                  <p className="mt-1.5 text-xs leading-5 text-slate-400">
+                    当前标的会与对手方组成 H/L 组合；回测后可在高级选项里调整 H/L 归类。
+                  </p>
+                </div>
                 <div>
                   <label htmlFor="invest-mode" className="block text-xs font-semibold text-slate-500">持有对比模式</label>
                   <select
@@ -1039,10 +1160,19 @@ export function BacktestSidePanel({
                       <div className="flex justify-between">
                         <span className="text-indigo-700">轮动策略 vs 持有 {bestHold.code}</span>
                         <span className="font-semibold text-indigo-900">
-                          {rotation.totalReturnPct > bestHold.totalReturnPct ? '轮动胜出' : '持有胜出'}
+                          {rotationWins ? '轮动胜出' : '持有胜出'}
                         </span>
                       </div>
                     </div>
+                    {rotationWins ? (
+                      <button
+                        type="button"
+                        onClick={handleCreateSwitchRuleFromBacktest}
+                        className={cx(primaryButtonClass, 'mt-3 w-full')}
+                      >
+                        一键创建基金切换规则
+                      </button>
+                    ) : null}
                     <div className="mt-3 rounded-xl bg-white/70 p-3">
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <span className="text-xs font-bold text-indigo-900">真实买卖点示例</span>
