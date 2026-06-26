@@ -78,6 +78,21 @@ function marketForWatchList(list, fallback = A_SHARE_MARKET.key) {
   return normalizeMarketKey(fallback);
 }
 const MARKETS_PENDING_SYMBOL_KEY = 'markets:pendingSymbol';
+function normalizeHoldingLookupKey(value) {
+  const code = normalizeCnFundCode(value);
+  return code || String(value || '').trim().toUpperCase();
+}
+
+function sortHeldRowsFirst(rows = []) {
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) => {
+      if (Boolean(a.row?.isHeld) !== Boolean(b.row?.isHeld)) return a.row?.isHeld ? -1 : 1;
+      return a.index - b.index;
+    })
+    .map((entry) => entry.row);
+}
+
 export function MarketsExperience() {
   const { saveSearchHistory } = useMarketsSearchHistory();
   const { marketAlerts, alertDialogOpen, selectedAlertSymbol, handleOpenAlertDialog, handleSaveAlert, handleCloseAlertDialog } = useMarketAlerts();
@@ -211,6 +226,14 @@ export function MarketsExperience() {
     () => aggregateByCode(holdingsLedger.transactions, holdingsLedger.snapshotsByCode).filter((agg) => agg.hasPosition),
     [holdingsLedger]
   );
+  const heldCodeMap = useMemo(() => {
+    const next = new Map();
+    heldAggregates.forEach((agg) => {
+      const key = normalizeHoldingLookupKey(agg.code);
+      if (key) next.set(key, agg);
+    });
+    return next;
+  }, [heldAggregates]);
   const trackedWatchSymbols = useMemo(
     () => watchSymbols,
     [watchSymbols]
@@ -977,6 +1000,8 @@ export function MarketsExperience() {
 
   const buildSidebarRow = useCallback((sym) => {
     const code = normalizeCnFundCode(sym);
+    const holdingKey = normalizeHoldingLookupKey(sym);
+    const holding = heldCodeMap.get(holdingKey) || (code ? heldCodeMap.get(code) : null) || null;
     const q = watchQuotes[sym] || (code ? watchQuotes[code] : null) || {};
     const snapshot = code ? watchNavSnapshots[code] : null;
     const indicatorPreset = market === 'us' ? US_INDICATOR_PRESET_MAP[sym] || null : null;
@@ -1034,13 +1059,15 @@ export function MarketsExperience() {
       source: merged.source,
       fundLimit,
       fundMeta,
+      isHeld: Boolean(holding),
+      holding,
       market,
       meta: baseMeta
     };
-  }, [watchQuotes, watchNavSnapshots, fundFeesByCode, fundLimitsByCode, market]);
+  }, [watchQuotes, watchNavSnapshots, fundFeesByCode, fundLimitsByCode, heldCodeMap, market]);
 
   const watchRows = useMemo(
-    () => watchSymbols.map((sym) => buildSidebarRow(sym)),
+    () => sortHeldRowsFirst(watchSymbols.map((sym) => buildSidebarRow(sym))),
     [watchSymbols, buildSidebarRow]
   );
 

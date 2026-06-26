@@ -43,7 +43,7 @@ export function IndexCard({ entry, onPick, sparkPoints }) {
   );
 }
 
-export function SidebarRow({ symbol, name, price, changePercent, sparkPoints, selected = false, onSelect, meta = '' }) {
+export function SidebarRow({ symbol, name, price, changePercent, sparkPoints, selected = false, onSelect, meta = '', isHeld = false }) {
   const pct = Number(changePercent);
   const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
   const up = pct > 0;
@@ -72,8 +72,11 @@ export function SidebarRow({ symbol, name, price, changePercent, sparkPoints, se
         )}
       >
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-medium leading-tight text-[#1f1f1f]">{displaySymbol}</div>
-          {detailText ? <div className="truncate text-[11px] leading-tight text-[#5f6368]">{detailText}</div> : null}
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className={cx('truncate text-[13px] font-medium leading-tight', isHeld ? 'text-[#a50e0e]' : 'text-[#1f1f1f]')}>{displaySymbol}</span>
+            {isHeld ? <span className="shrink-0 rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#a50e0e]">持仓</span> : null}
+          </div>
+          {detailText ? <div className={cx('truncate text-[11px] leading-tight', isHeld ? 'text-rose-700/80' : 'text-[#5f6368]')}>{detailText}</div> : null}
         </div>
         {sparkPoints && sparkPoints.length >= 2 ? (
           <Sparkline points={sparkPoints} width={76} height={28} tone={sparkTone} showFill markLast />
@@ -92,7 +95,7 @@ export function SidebarRow({ symbol, name, price, changePercent, sparkPoints, se
   );
 }
 
-export function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints, selected = false, onSelect, meta = '' }) {
+export function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoints, selected = false, onSelect, meta = '', isHeld = false }) {
   const pct = Number(changePercent);
   const flat = !Number.isFinite(pct) || Math.abs(pct) < 0.0001;
   const up = pct > 0;
@@ -122,8 +125,11 @@ export function MobileSidebarRow({ symbol, name, price, changePercent, sparkPoin
       )}
     >
       <div className="min-w-0 flex-1">
-        <div className="truncate text-base font-semibold leading-tight text-[#1f1f1f]">{displaySymbol}</div>
-        {detailText ? <div className="truncate text-sm leading-tight text-[#5f6368]">{detailText}</div> : null}
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className={cx('truncate text-base font-semibold leading-tight', isHeld ? 'text-[#a50e0e]' : 'text-[#1f1f1f]')}>{displaySymbol}</span>
+          {isHeld ? <span className="shrink-0 rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#a50e0e]">持仓</span> : null}
+        </div>
+        {detailText ? <div className={cx('truncate text-sm leading-tight', isHeld ? 'text-rose-700/80' : 'text-[#5f6368]')}>{detailText}</div> : null}
       </div>
       {sparkPoints && sparkPoints.length >= 2 ? (
         <Sparkline points={sparkPoints} width={86} height={32} tone={sparkTone} showFill markLast />

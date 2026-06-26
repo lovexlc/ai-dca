@@ -4,6 +4,7 @@ import { cx, primaryButtonClass, secondaryButtonClass, inputClass } from '../exp
 import { TagInput } from '../TagInput.jsx';
 import { EquityChart, KlineChart, PremiumChart } from '../BacktestCharts.jsx';
 import { InteractiveChartContainer } from '../InteractiveChartContainer.jsx';
+import { BacktestCounterpartPicker } from './BacktestCounterpartPicker.jsx';
 import { createTradeSimulator, runBacktest } from '../../app/backtest/index.js';
 import { fetchBacktestData } from '../../app/backtestDataFetcher.js';
 import { deriveDefaultBacktestCodes } from './backtestSidePanelState.js';
@@ -973,24 +974,22 @@ export function BacktestSidePanel({
               <SectionLabel>回测参数</SectionLabel>
               <div className="space-y-4">
                 <div>
-                  <label htmlFor="counterpart-code" className="block text-xs font-semibold text-slate-500">对手方</label>
-                  <input
-                    id="counterpart-code"
-                    className={cx(inputClass, 'mt-2 font-semibold tabular-nums')}
+                  <BacktestCounterpartPicker
                     value={counterpartCode}
+                    currentSymbol={symbol}
                     onChange={(event) => {
-                      const value = event.target.value.replace(/\D/g, '').slice(0, 6);
+                      const value = String(event || '').replace(/\D/g, '').slice(0, 6);
                       setCounterpartCode(value);
                       const pair = applyCounterpartToPair(symbol, value, highCodes, lowCodes);
                       setHighCodes(pair.highCodes);
                       setLowCodes(pair.lowCodes);
                     }}
-                    placeholder="例如 159501"
-                    inputMode="numeric"
+                    onSelect={(value) => {
+                      const pair = applyCounterpartToPair(symbol, value, highCodes, lowCodes);
+                      setHighCodes(pair.highCodes);
+                      setLowCodes(pair.lowCodes);
+                    }}
                   />
-                  <p className="mt-1.5 text-xs leading-5 text-slate-400">
-                    当前标的会与对手方组成 H/L 组合；回测后可在高级选项里调整 H/L 归类。
-                  </p>
                 </div>
                 <div>
                   <label htmlFor="invest-mode" className="block text-xs font-semibold text-slate-500">持有对比模式</label>

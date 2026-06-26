@@ -304,6 +304,7 @@ export function MarketsSidebar({
                     price={row.price}
                     changePercent={row.changePercent}
                     sparkPoints={klineMap[row.symbol]}
+                    isHeld={row.isHeld}
                   />
                 ))}
               </ul>
@@ -366,6 +367,7 @@ export function MarketsSidebar({
                       changePercent={row.changePercent}
                       sparkPoints={klineMap[row.symbol]}
                       meta={row.meta}
+                      isHeld={row.isHeld}
                       selected={row.symbol === selectedSymbol}
                       onSelect={() => onSelectSymbol(row)}
                     />

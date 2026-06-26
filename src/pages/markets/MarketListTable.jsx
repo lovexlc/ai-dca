@@ -157,6 +157,7 @@ const DEFAULT_HIDDEN_COLUMNS = {
 };
 
 const MOBILE_DATA_TABLE_HIDDEN_COLUMNS = {
+  heldRank: false,
   limit: false,
   premium: false,
   currentYearPercent: false,
@@ -219,12 +220,24 @@ export function MarketListTable({
   };
   const columns = useMemo(() => ([
     {
+      id: 'heldRank',
+      accessorFn: (row) => (row.isHeld ? 1 : 0),
+      enableHiding: false,
+      header: () => null,
+      cell: () => null,
+      sortingFn: numericSortFn,
+    },
+    {
       id: 'symbol',
       accessorFn: (row) => formatSymbolDisplay(row.symbol),
       meta: { label: '代码', variant: 'text' },
       enableHiding: false,
       header: ({ column }) => <DataTableColumnHeader column={column} label="代码" />,
-      cell: ({ row }) => <span className="font-mono text-xs font-semibold tabular-nums">{formatSymbolDisplay(row.original.symbol)}</span>,
+      cell: ({ row }) => (
+        <span className={cx('font-mono text-xs font-semibold tabular-nums', row.original.isHeld ? 'text-[#a50e0e]' : '')}>
+          {formatSymbolDisplay(row.original.symbol)}
+        </span>
+      ),
       filterFn: textIncludesFilterFn,
     },
     {
@@ -236,7 +249,10 @@ export function MarketListTable({
         const displaySymbol = formatSymbolDisplay(row.original.symbol);
         return (
           <div className="min-w-0">
-            <div className="truncate font-medium text-[#1f1f1f]">{row.original.name || displaySymbol}</div>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <span className={cx('truncate font-medium', row.original.isHeld ? 'text-[#a50e0e]' : 'text-[#1f1f1f]')}>{row.original.name || displaySymbol}</span>
+              {row.original.isHeld ? <span className="shrink-0 rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#a50e0e]">持仓</span> : null}
+            </div>
             {row.original.meta ? <div className="truncate text-[10px] text-[#5f6368]">{row.original.meta}</div> : null}
           </div>
         );
@@ -493,9 +509,10 @@ export function MarketListTable({
       onPinColumn: setPinTargetColumnId,
     },
     initialState: {
-      sorting: [{ id: 'changePercent', desc: true }],
+      sorting: [{ id: 'heldRank', desc: true }, { id: 'changePercent', desc: true }],
       pagination: { pageSize: 50 },
       columnVisibility: compact ? MOBILE_DATA_TABLE_HIDDEN_COLUMNS : {
+        heldRank: false,
         return1w: false,
         return1m: false,
         return3m: false,
@@ -697,9 +714,12 @@ export function MarketListTable({
                   selected && 'bg-[#e8f0fe] hover:bg-[#e8f0fe]'
                 )}
               >
-                <td className={cx(cellPad, 'w-[88px] whitespace-nowrap font-mono text-xs font-semibold text-[#1f1f1f]', stickyBodyCell(selected))}>{displaySymbol}</td>
+                <td className={cx(cellPad, 'w-[88px] whitespace-nowrap font-mono text-xs font-semibold', row.isHeld ? 'text-[#a50e0e]' : 'text-[#1f1f1f]', stickyBodyCell(selected))}>{displaySymbol}</td>
                 <td className={cx(cellPad, 'min-w-[120px] text-[#1f1f1f]')}>
-                  <div className="truncate font-medium">{row.name || displaySymbol}</div>
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <span className={cx('truncate font-medium', row.isHeld ? 'text-[#a50e0e]' : 'text-[#1f1f1f]')}>{row.name || displaySymbol}</span>
+                    {row.isHeld ? <span className="shrink-0 rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#a50e0e]">持仓</span> : null}
+                  </div>
                   {row.meta ? <div className="truncate text-[10px] text-[#5f6368]">{row.meta}</div> : null}
                 </td>
                 <td className={cx(cellPad, 'whitespace-nowrap text-right tabular-nums text-[#1f1f1f]')}>{formatMarketPrice(row.price, row)}</td>
