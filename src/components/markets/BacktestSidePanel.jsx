@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, Play, BarChart3, TrendingUp, Trophy, Activity, RefreshCw } from 'lucide-react';
+import { X, Play, BarChart3, TrendingUp, Trophy, Activity, RefreshCw, Settings2 } from 'lucide-react';
 import { cx, primaryButtonClass, secondaryButtonClass, inputClass } from '../experience-ui.jsx';
 import { TagInput } from '../TagInput.jsx';
 import { runBacktest } from '../../app/backtest/index.js';
@@ -28,6 +28,120 @@ function parseDecimalOr(value, fallback) {
   if (value === '' || value === '-' || value === '.') return fallback;
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
+}
+
+const BACKTEST_RANGE_OPTIONS = Object.freeze([
+  { key: '3mo', label: '3 个月', days: 92 },
+  { key: '6mo', label: '6 个月', days: 183 },
+  { key: '1y', label: '1 年', days: 365 },
+  { key: '2y', label: '2 年', days: 365 * 2 },
+  { key: 'custom', label: '自定义', days: null },
+]);
+
+const OPTIMIZE_SELL_LOWER_GRID = Object.freeze([0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.5, 2]);
+const OPTIMIZE_BUY_OTHER_GRID = Object.freeze([1, 1.5, 2, 2.5, 3, 3.5, 4, 5]);
+
+function todayShanghaiIso() {
+  try {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+  } catch (_error) {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
+function shiftIsoDate(isoDate, deltaDays) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(isoDate || ''))) return '';
+  const [year, month, day] = isoDate.split('-').map((part) => Number(part));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + Number(deltaDays || 0));
+  return date.toISOString().slice(0, 10);
+}
+
+function deriveBacktestDateRange(rangeKey, customRange = {}) {
+  const selected = BACKTEST_RANGE_OPTIONS.find((item) => item.key === rangeKey) || BACKTEST_RANGE_OPTIONS[2];
+  if (selected.key === 'custom') {
+    const startDate = String(customRange.startDate || '').slice(0, 10);
+    const endDate = String(customRange.endDate || '').slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(startDate) && /^\d{4}-\d{2}-\d{2}$/.test(endDate) && startDate <= endDate) {
+      return { startDate, endDate };
+    }
+  }
+  const endDate = todayShanghaiIso();
+  return { startDate: shiftIsoDate(endDate, -selected.days), endDate };
+}
+
+function normalizeCandlesForHold(raw = []) {
+  return (Array.isArray(raw) ? raw : [])
+    .map((item) => {
+      const close = Number(item?.c ?? item?.close ?? item?.price);
+      const t = Number(item?.t ?? item?.timestamp ?? 0);
+      const rawDate = String(item?.date || item?.day || '').slice(0, 10);
+      return {
+        ...item,
+        c: close,
+        t: Number.isFinite(t) && t > 0 ? t : (rawDate ? Math.floor(Date.parse(`${rawDate}T15:00:00+08:00`) / 1000) : 0),
+      };
+    })
+    .filter((item) => Number.isFinite(item.c) && item.c > 0)
+    .sort((a, b) => Number(a.t) - Number(b.t));
+}
+
+function makeRotationResult(result) {
+  if (!result?.ok || result.status !== 'passed') return null;
+  return {
+    finalValue: result.summary.finalEquity,
+    totalReturnPct: result.summary.totalReturnPct,
+    maxDrawdownPct: result.summary.maxDrawdownPct,
+    tradeCount: result.summary.tradeCount,
+    rotationCount: result.summary.switchCount || 0,
+    trades: result.trades,
+    equityCurve: result.rows.map((row) => row.equity),
+    summary: result.summary,
+    thresholds: {
+      sellLowerThreshold: result.strategy?.intraSellLowerPct,
+      buyOtherThreshold: result.strategy?.intraBuyOtherPct,
+    },
+    initialSide: ''
+  };
+}
+
+function pickBetterBacktest(currentBest, candidate) {
+  if (!candidate) return currentBest;
+  if (!currentBest) return candidate;
+  const candidateReturn = Number(candidate.totalReturnPct);
+  const bestReturn = Number(currentBest.totalReturnPct);
+  if (candidateReturn > bestReturn) return candidate;
+  if (candidateReturn < bestReturn) return currentBest;
+  const candidateDrawdown = Math.abs(Number(candidate.maxDrawdownPct));
+  const bestDrawdown = Math.abs(Number(currentBest.maxDrawdownPct));
+  return candidateDrawdown < bestDrawdown ? candidate : currentBest;
+}
+
+function optimizePremiumSpread({ baseStrategy, backtestOptions }) {
+  let best = null;
+  const attempts = [];
+  for (const initialSide of ['L', 'H']) {
+    for (const sellLowerThreshold of OPTIMIZE_SELL_LOWER_GRID) {
+      for (const buyOtherThreshold of OPTIMIZE_BUY_OTHER_GRID) {
+        if (buyOtherThreshold < sellLowerThreshold) continue;
+        const strategy = {
+          ...baseStrategy,
+          initialSide,
+          intraSellLowerPct: sellLowerThreshold,
+          intraBuyOtherPct: buyOtherThreshold,
+        };
+        const result = runBacktest(strategy, backtestOptions);
+        const rotation = makeRotationResult(result);
+        if (rotation) {
+          rotation.thresholds = { sellLowerThreshold, buyOtherThreshold };
+          rotation.initialSide = initialSide;
+          attempts.push(rotation);
+          best = pickBetterBacktest(best, rotation);
+        }
+      }
+    }
+  }
+  return { best, attempts };
 }
 
 function MetricCard({ icon: Icon, label, value, tone = 'neutral' }) {
@@ -331,9 +445,7 @@ export function BacktestSidePanel({
   open = false,
   onClose,
   symbol,
-  candles = [],
   switchPrefs = null,
-  chartRange = '1d',
 }) {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
@@ -348,6 +460,10 @@ export function BacktestSidePanel({
   const [initialCash, setInitialCash] = useState('10000');
   const [investMode, setInvestMode] = useState('dca');
   const [investAmount, setInvestAmount] = useState('1000');
+  const [backtestRange, setBacktestRange] = useState('1y');
+  const [customStartDate, setCustomStartDate] = useState(() => shiftIsoDate(todayShanghaiIso(), -365));
+  const [customEndDate, setCustomEndDate] = useState(() => todayShanghaiIso());
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -378,29 +494,22 @@ export function BacktestSidePanel({
 
   async function handleRun() {
     console.log('[BacktestSidePanel] handleRun called');
-    console.log('[BacktestSidePanel] current state:', { highCodes, lowCodes, candles: candles?.length });
-
-    if (!candles || candles.length < 10) {
-      console.log('[BacktestSidePanel] insufficient candles:', candles?.length);
-      alert('数据不足，至少需要 10 个数据点');
-      return;
-    }
+    console.log('[BacktestSidePanel] current state:', { highCodes, lowCodes, backtestRange, customStartDate, customEndDate });
 
     setRunning(true);
     setResult(null);
 
     try {
       const cash = parseDecimalOr(initialCash, 10000);
-      const sellLowerThreshold = parseDecimalOr(intraSellLowerPct, 1);
-      const buyOtherThreshold = parseDecimalOr(intraBuyOtherPct, 3);
       const invest = parseDecimalOr(investAmount, 1000);
+      const dateRange = deriveBacktestDateRange(backtestRange, { startDate: customStartDate, endDate: customEndDate });
 
       console.log('[Backtest] 开始回测', {
         highCodes,
         lowCodes,
-        sellLowerThreshold,
-        buyOtherThreshold,
-        initialCash: cash
+        dateRange,
+        initialCash: cash,
+        optimize: true
       });
 
       let rotationResult = null;
@@ -413,8 +522,7 @@ export function BacktestSidePanel({
         const allCodes = [...highCodes, ...lowCodes];
         console.log('[Backtest] allCodes:', allCodes);
 
-        // 使用统一的数据获取函数
-        const { historyByCode, navHistoryByCode } = await fetchBacktestData(allCodes, { highCodes, lowCodes });
+        const { historyByCode, navHistoryByCode } = await fetchBacktestData(allCodes, { highCodes, lowCodes, ...dateRange });
         console.log('[Backtest] fetchBacktestData 返回:', {
           historyByCodeKeys: Object.keys(historyByCode),
           navHistoryByCodeKeys: Object.keys(navHistoryByCode),
@@ -424,19 +532,16 @@ export function BacktestSidePanel({
 
         console.log('[Backtest] 运行溢价差轮动策略（使用NAV计算真实溢价率）...');
 
-        // 构建策略配置
-        const strategy = {
+        const baseStrategy = {
           type: 'premium-spread',
           highCodes: [highCodes[0]],
           lowCodes: [lowCodes[0]],
-          intraSellLowerPct: sellLowerThreshold,
-          intraBuyOtherPct: buyOtherThreshold,
           activeSide: 'all'
         };
-        console.log('[Backtest] strategy config:', strategy);
+        console.log('[Backtest] strategy config:', baseStrategy);
 
         const backtestOptions = {
-          timeframe: chartRange === '1y' ? '1d' : chartRange === '1m' ? '1d' : '5m',
+          timeframe: '1d',
           historyByCode,
           navHistoryByCode,
           initialEquity: cash,
@@ -444,39 +549,52 @@ export function BacktestSidePanel({
           minFee: 0,
           tickSize: 0.001,
           slippageTicks: 1,
-          lotSize: 100
+          lotSize: 100,
+          silent: true
         };
         console.log('[Backtest] backtestOptions:', { ...backtestOptions, historyByCode: 'omitted', navHistoryByCode: 'omitted' });
 
-        const result = runBacktest(strategy, backtestOptions);
-        console.log('[Backtest] runBacktest 返回:', result);
+        const optimized = optimizePremiumSpread({ baseStrategy, backtestOptions });
+        rotationResult = optimized.best;
+        console.log('[Backtest] 阈值自动寻优结果:', {
+          attempts: optimized.attempts.length,
+          best: rotationResult ? {
+            totalReturnPct: rotationResult.totalReturnPct,
+            maxDrawdownPct: rotationResult.maxDrawdownPct,
+            rotationCount: rotationResult.rotationCount,
+            initialSide: rotationResult.initialSide,
+            thresholds: rotationResult.thresholds
+          } : null
+        });
 
-        if (result.ok && result.status === 'passed') {
-          rotationResult = {
-            finalValue: result.summary.finalEquity,
-            totalReturnPct: result.summary.totalReturnPct,
-            maxDrawdownPct: result.summary.maxDrawdownPct,
-            tradeCount: result.summary.tradeCount,
-            rotationCount: result.summary.switchCount || 0,
-            trades: result.trades,
-            equityCurve: result.rows.map(r => r.equity)
-          };
-          console.log('[Backtest] 轮动策略结果:', rotationResult);
+        if (rotationResult) {
+          setIntraSellLowerPct(toDecimalText(rotationResult.thresholds.sellLowerThreshold, 1));
+          setIntraBuyOtherPct(toDecimalText(rotationResult.thresholds.buyOtherThreshold, 3));
         } else {
-          console.warn('[Backtest] 回测未通过质量检查:', result.quality);
+          console.warn('[Backtest] 所有阈值组合均未通过质量检查');
         }
+
+        const holdCandles = normalizeCandlesForHold(historyByCode?.[symbol] || historyByCode?.[highCodes[0]] || []);
+        if (!holdCandles || holdCandles.length < 10) {
+          console.log('[Backtest] 持有对比数据不足:', holdCandles?.length);
+          alert('数据不足，至少需要 10 个数据点');
+          return;
+        }
+        console.log('[Backtest] 运行持有策略...', { holdCode: symbol || highCodes[0], holdCandles: holdCandles.length });
+        holdResult = runHoldBacktest(holdCandles, {
+          initialCash: cash,
+          mode: investMode,
+          investAmount: invest
+        });
+        console.log('[Backtest] 持有策略结果:', {
+          totalReturnPct: holdResult.totalReturnPct,
+          maxDrawdownPct: holdResult.maxDrawdownPct,
+          tradeCount: holdResult.tradeCount,
+          finalValue: holdResult.finalValue
+        });
       } else {
         console.log('[Backtest] 跳过H/L档回测（highCodes或lowCodes为空）');
       }
-
-      // 运行持有策略（对比基准）- 保持原逻辑
-      console.log('[Backtest] 运行持有策略...');
-      holdResult = runHoldBacktest(candles, {
-        initialCash: cash,
-        mode: investMode,
-        investAmount: invest
-      });
-      console.log('[Backtest] 持有策略结果:', holdResult);
 
       setResult({
         rotation: rotationResult,
@@ -484,9 +602,10 @@ export function BacktestSidePanel({
         config: {
           highCodes,
           lowCodes,
-          sellLowerThreshold,
-          buyOtherThreshold,
-          initialCash: cash
+          sellLowerThreshold: rotationResult?.thresholds?.sellLowerThreshold ?? parseDecimalOr(intraSellLowerPct, 1),
+          buyOtherThreshold: rotationResult?.thresholds?.buyOtherThreshold ?? parseDecimalOr(intraBuyOtherPct, 3),
+          initialCash: cash,
+          dateRange
         }
       });
     } catch (error) {
@@ -501,6 +620,7 @@ export function BacktestSidePanel({
 
   const rotation = result?.rotation;
   const hold = result?.hold;
+  const selectedRangeLabel = BACKTEST_RANGE_OPTIONS.find((item) => item.key === backtestRange)?.label || '1 年';
 
   return (
     <>
@@ -521,7 +641,7 @@ export function BacktestSidePanel({
           <div>
             <div className="text-sm font-bold text-slate-900">策略回测</div>
             <p className="text-xs text-slate-500">
-              {symbol} · {chartRange} · {candles.length} 个数据点
+              {symbol} · {selectedRangeLabel} · 自动寻优
             </p>
           </div>
           <button
@@ -551,48 +671,116 @@ export function BacktestSidePanel({
               </div>
             </div>
 
-            {/* ETF 资产池 */}
+            {/* 时间区间 */}
             <div className="rounded-xl bg-white p-4 shadow-sm">
-              <SectionLabel>ETF 资产池</SectionLabel>
+              <SectionLabel>回测区间</SectionLabel>
               <div className="space-y-4">
-                <TagInput
-                  label="H 高溢价 ETF（卖出方）"
-                  placeholder="输入代码如 159513"
-                  tags={highCodes}
-                  onChange={setHighCodes}
-                />
-                <TagInput
-                  label="L 低溢价 ETF（买入方）"
-                  placeholder="输入代码如 513100"
-                  tags={lowCodes}
-                  onChange={setLowCodes}
-                />
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  {BACKTEST_RANGE_OPTIONS.map((option) => {
+                    const selected = backtestRange === option.key;
+                    return (
+                      <button
+                        key={option.key}
+                        type="button"
+                        onClick={() => setBacktestRange(option.key)}
+                        className={cx(
+                          'h-10 rounded-xl border px-3 text-sm font-semibold transition',
+                          selected
+                            ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {backtestRange === 'custom' && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="text-xs font-semibold text-slate-500">
+                      开始日期
+                      <input
+                        type="date"
+                        className={cx(inputClass, 'mt-2')}
+                        value={customStartDate}
+                        max={customEndDate || undefined}
+                        onChange={(event) => setCustomStartDate(event.target.value)}
+                      />
+                    </label>
+                    <label className="text-xs font-semibold text-slate-500">
+                      结束日期
+                      <input
+                        type="date"
+                        className={cx(inputClass, 'mt-2')}
+                        value={customEndDate}
+                        min={customStartDate || undefined}
+                        onChange={(event) => setCustomEndDate(event.target.value)}
+                      />
+                    </label>
+                  </div>
+                )}
+                <p className="text-xs leading-5 text-slate-400">
+                  回测会按这里选择的日期独立拉取 H/L 与持有对比数据，不再依赖基金详情页当前 K 线。
+                </p>
               </div>
             </div>
 
-            {/* 触发规则 */}
+            {/* 高级选项 */}
             <div className="rounded-xl bg-white p-4 shadow-sm">
-              <SectionLabel>触发规则</SectionLabel>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <DecimalInput
-                  id="sell-lower"
-                  label="卖 L 买 H 阈值"
-                  suffix="%"
-                  hint="溢价差缩小到此阈值触发"
-                  value={intraSellLowerPct}
-                  onChange={setIntraSellLowerPct}
-                  onCommit={(v) => setIntraSellLowerPct(String(parseDecimalOr(v, 1)))}
-                />
-                <DecimalInput
-                  id="buy-other"
-                  label="卖 H 买 L 阈值"
-                  suffix="%"
-                  hint="溢价差扩大到此阈值触发"
-                  value={intraBuyOtherPct}
-                  onChange={setIntraBuyOtherPct}
-                  onCommit={(v) => setIntraBuyOtherPct(String(parseDecimalOr(v, 3)))}
-                />
-              </div>
+              <button
+                type="button"
+                onClick={() => setAdvancedOpen((value) => !value)}
+                className="flex w-full items-center justify-between text-left"
+              >
+                <span className="inline-flex items-center gap-2 text-sm font-bold text-slate-900">
+                  <Settings2 className="h-4 w-4 text-indigo-500" />
+                  高级选项
+                </span>
+                <span className="text-xs font-semibold text-slate-400">
+                  {advancedOpen ? '收起' : '展开'}
+                </span>
+              </button>
+              <p className="mt-2 text-xs leading-5 text-slate-400">
+                默认自动识别 H/L 并遍历阈值组合，普通回测无需手动填写。
+              </p>
+              {advancedOpen && (
+                <div className="mt-4 space-y-5">
+                  <div className="space-y-4">
+                    <TagInput
+                      label="H 高溢价 ETF（卖出方）"
+                      placeholder="输入代码如 513100"
+                      tags={highCodes}
+                      onChange={setHighCodes}
+                    />
+                    <TagInput
+                      label="L 低溢价 ETF（买入方）"
+                      placeholder="输入代码如 159501"
+                      tags={lowCodes}
+                      onChange={setLowCodes}
+                    />
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <DecimalInput
+                      id="sell-lower"
+                      label="当前卖 L 买 H 阈值"
+                      suffix="%"
+                      hint="运行后自动回填最优值"
+                      value={intraSellLowerPct}
+                      onChange={setIntraSellLowerPct}
+                      onCommit={(v) => setIntraSellLowerPct(String(parseDecimalOr(v, 1)))}
+                    />
+                    <DecimalInput
+                      id="buy-other"
+                      label="当前卖 H 买 L 阈值"
+                      suffix="%"
+                      hint="运行后自动回填最优值"
+                      value={intraBuyOtherPct}
+                      onChange={setIntraBuyOtherPct}
+                      onCommit={(v) => setIntraBuyOtherPct(String(parseDecimalOr(v, 3)))}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 回测参数 */}
@@ -641,7 +829,7 @@ export function BacktestSidePanel({
                 <div>
                   <h3 className="text-base font-bold text-slate-700">准备开始回测</h3>
                   <p className="mt-2 text-sm text-slate-500">
-                    配置 H/L 档和触发规则后点击「开始回测」
+                    选择回测区间后点击「开始回测」，系统会自动寻找最优溢价差阈值。
                   </p>
                 </div>
                 <button
@@ -671,7 +859,7 @@ export function BacktestSidePanel({
                     <h3 className="mb-3 text-sm font-bold text-slate-900">
                       溢价差轮动策略
                       <span className="ml-2 text-xs font-normal text-slate-500">
-                        {rotation.rotationCount} 次轮动
+                        初始 {rotation.initialSide || 'L'} · {rotation.rotationCount} 次轮动
                       </span>
                     </h3>
                     <div className="grid grid-cols-2 gap-3">
@@ -689,6 +877,18 @@ export function BacktestSidePanel({
                       />
                     </div>
                     <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm">
+                      <div className="mb-2 flex justify-between">
+                        <span className="text-slate-500">最优阈值</span>
+                        <span className="font-semibold tabular-nums text-slate-900">
+                          L→H {formatNumber(rotation.thresholds?.sellLowerThreshold)}% / H→L {formatNumber(rotation.thresholds?.buyOtherThreshold)}%
+                        </span>
+                      </div>
+                      <div className="mb-2 flex justify-between">
+                        <span className="text-slate-500">初始持仓</span>
+                        <span className="font-semibold tabular-nums text-slate-900">
+                          {rotation.initialSide === 'H' ? highCodes[0] : lowCodes[0]}
+                        </span>
+                      </div>
                       <div className="flex justify-between">
                         <span className="text-slate-500">最终市值</span>
                         <span className="font-semibold tabular-nums text-slate-900">
@@ -753,6 +953,15 @@ export function BacktestSidePanel({
                         </span>
                       </div>
                     </div>
+                    {rotation.initialSide === 'H' ? (
+                      <p className="mt-3 text-xs leading-5 text-indigo-700">
+                        示例：当前最优组合表示先持有 H（{highCodes[0] || 'H'}）。当 H 相对 L（{lowCodes[0] || 'L'}）的溢价优势扩大到 H→L 阈值时，卖出 H 切到 L；之后若差距收敛到 L→H 阈值，再卖出 L 切回 H。系统已在候选阈值和初始方向中选择收益率最高的一组。
+                      </p>
+                    ) : (
+                      <p className="mt-3 text-xs leading-5 text-indigo-700">
+                        示例：当前最优组合表示先持有 L（{lowCodes[0] || 'L'}）。当 H（{highCodes[0] || 'H'}）相对 L 的溢价优势达到 L→H 阈值时，卖出 L 切到 H；之后若差距扩大到 H→L 阈值，再卖出 H 切回 L。系统已在候选阈值和初始方向中选择收益率最高的一组。
+                      </p>
+                    )}
                   </div>
                 )}
 

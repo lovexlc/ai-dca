@@ -65,59 +65,37 @@ function derivePairFromSwitchPrefs(code, switchPrefs = null) {
 }
 
 export function deriveDefaultBacktestCodes(symbol, { switchPrefs = null } = {}) {
-  console.log('[backtestState] deriveDefaultBacktestCodes called:', { symbol, switchPrefs });
-
   const code = normalizeCnFundCode(symbol);
-  console.log('[backtestState] normalized code:', code);
 
   if (!code) {
     const fallbackSymbol = String(symbol || '').trim().toUpperCase();
-    const result = { highCodes: fallbackSymbol ? [fallbackSymbol] : [], lowCodes: [] };
-    console.log('[backtestState] no code, returning fallback:', result);
-    return result;
+    return { highCodes: fallbackSymbol ? [fallbackSymbol] : [], lowCodes: [] };
   }
 
   const switchPair = derivePairFromSwitchPrefs(code, switchPrefs);
-  console.log('[backtestState] switchPair from prefs:', switchPair);
 
   if (switchPair) {
-    console.log('[backtestState] returning switchPair');
     return switchPair;
   }
 
   const fallbackPair = DETAIL_BACKTEST_FALLBACK_PAIRS[code];
-  console.log('[backtestState] fallbackPair:', fallbackPair);
 
   if (fallbackPair) {
-    const cloned = clonePair(fallbackPair);
-    console.log('[backtestState] returning cloned fallbackPair:', cloned);
-    return cloned;
+    return clonePair(fallbackPair);
   }
 
-  const result = { highCodes: [code], lowCodes: [] };
-  console.log('[backtestState] returning default pair:', result);
-  return result;
+  return { highCodes: [code], lowCodes: [] };
 }
 
 export function selectBacktestBaseCandles({ dailyCandles = [], priceCandles = [], displayCandles = [] } = {}) {
-  console.log('[backtestState] selectBacktestBaseCandles called:', {
-    dailyCandlesLength: dailyCandles?.length,
-    priceCandlesLength: priceCandles?.length,
-    displayCandlesLength: displayCandles?.length
-  });
-
   if (Array.isArray(dailyCandles) && dailyCandles.length >= 2) {
-    console.log('[backtestState] selecting dailyCandles');
     return dailyCandles;
   }
   if (Array.isArray(priceCandles) && priceCandles.length >= 2) {
-    console.log('[backtestState] selecting priceCandles');
     return priceCandles;
   }
   if (Array.isArray(displayCandles) && displayCandles.length >= 2) {
-    console.log('[backtestState] selecting displayCandles');
     return displayCandles;
   }
-  console.log('[backtestState] no valid candles found, returning empty array');
   return [];
 }

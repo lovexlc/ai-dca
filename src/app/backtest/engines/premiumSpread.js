@@ -26,7 +26,8 @@ function normalizeStrategy(input = {}) {
     lowCodes: Array.isArray(input.lowCodes) ? input.lowCodes : [],
     intraSellLowerPct: clampNumber(input.intraSellLowerPct, 0.2),
     intraBuyOtherPct: clampNumber(input.intraBuyOtherPct, 0.5),
-    activeSide: ['H', 'L', 'all'].includes(input.activeSide) ? input.activeSide : 'all'
+    activeSide: ['H', 'L', 'all'].includes(input.activeSide) ? input.activeSide : 'all',
+    initialSide: ['H', 'L'].includes(input.initialSide) ? input.initialSide : ''
   };
 }
 
@@ -47,7 +48,8 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     minFee = 0,
     tickSize = 0.001,
     slippageTicks = 1,
-    lotSize = 100
+    lotSize = 100,
+    silent = false
   } = options;
 
   const strategy = normalizeStrategy(strategyInput);
@@ -112,6 +114,20 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
 
   // 初始化：选择初始持仓
   function pickInitialHolding(highList, lowList) {
+    if (strategy.initialSide === 'L') {
+      return lowList.reduce((best, item) =>
+        (!best || item.premiumPct < best.premiumPct ? item : best), null
+      ) || highList.reduce((best, item) =>
+        (!best || item.premiumPct > best.premiumPct ? item : best), null
+      );
+    }
+    if (strategy.initialSide === 'H') {
+      return highList.reduce((best, item) =>
+        (!best || item.premiumPct > best.premiumPct ? item : best), null
+      ) || lowList.reduce((best, item) =>
+        (!best || item.premiumPct < best.premiumPct ? item : best), null
+      );
+    }
     if (strategy.activeSide === 'L') {
       return lowList.reduce((best, item) =>
         (!best || item.premiumPct < best.premiumPct ? item : best), null
@@ -127,10 +143,12 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
   }
 
   // 主循环
-  console.log('[premiumSpread] 开始主循环，总K线数:', anchorCandles.length);
-  console.log('[premiumSpread] 代码列表:', codes);
-  console.log('[premiumSpread] K线数据长度:', Object.fromEntries(codes.map(c => [c, candleMap[c]?.length])));
-  console.log('[premiumSpread] NAV查询函数已构建');
+  if (!silent) {
+    console.log('[premiumSpread] 开始主循环，总K线数:', anchorCandles.length);
+    console.log('[premiumSpread] 代码列表:', codes);
+    console.log('[premiumSpread] K线数据长度:', Object.fromEntries(codes.map(c => [c, candleMap[c]?.length])));
+    console.log('[premiumSpread] NAV查询函数已构建');
+  }
 
   for (const anchor of anchorCandles) {
     const anchorDatetime = anchor.datetime || shanghaiMinuteFromEpochSec(anchor.t);
@@ -149,7 +167,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
       const nav = navLookupByCode[code](anchor.date);
       if (!(nav > 0)) {
         hasAllNav = false;
-        if (completeNavRows === 0) {
+        if (!silent && completeNavRows === 0) {
           console.log('[premiumSpread] 第一次NAV缺失:', { date: anchor.date, code, nav });
         }
         continue;
@@ -288,7 +306,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     );
 
     // 记录交易判断逻辑（每10行记录一次，避免日志过多）
-    if (rows.length % 10 === 0) {
+    if (!silent && rows.length % 10 === 0) {
       console.log('[premiumSpread] 交易判断:', {
         date: anchor.date,
         fromCode: from.code,
@@ -514,16 +532,18 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
       };
     });
 
-  console.log('[premiumSpread] 回测完成统计:', {
-    completePriceRows,
-    completeNavRows,
-    totalRows: rows.length,
-    trades: trades.length,
-    switchCount,
-    priceCoveragePct,
-    navCoveragePct,
-    passed
-  });
+  if (!silent) {
+    console.log('[premiumSpread] 回测完成统计:', {
+      completePriceRows,
+      completeNavRows,
+      totalRows: rows.length,
+      trades: trades.length,
+      switchCount,
+      priceCoveragePct,
+      navCoveragePct,
+      passed
+    });
+  }
 
   return {
     ok: true,

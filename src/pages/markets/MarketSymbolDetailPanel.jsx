@@ -37,7 +37,6 @@ import { formatMarketPrice, formatNumber, formatPercent, formatSignedPercent, fo
 import { getCompareFromUrl, updateCompareInUrl, getChartConfigFromUrl, updateChartConfigInUrl } from './marketsUrlSync.js';
 import { BacktestSidePanel } from '../../components/markets/BacktestSidePanel.jsx';
 import { readSwitchPrefs } from '../switchStrategyHelpers.js';
-import { selectBacktestBaseCandles } from '../../components/markets/backtestSidePanelState.js';
 
 const SYMBOL_DETAIL_TABS = [
   { key: 'overview', label: '概览' },
@@ -560,21 +559,6 @@ export function SymbolDetailPanel({
   const effectiveChartCandles = (market === 'cn' && cnFundParam !== 'price')
     ? sliceCandlesForRange(rawEffectiveCandles, chartRange, chartCustomRange)
     : rawEffectiveCandles;
-  const backtestCandles = useMemo(() => {
-    const result = selectBacktestBaseCandles({
-      dailyCandles,
-      priceCandles: chartCandles,
-      displayCandles: effectiveChartCandles,
-    });
-    console.log('[MarketSymbolDetailPanel] backtestCandles calculated:', {
-      dailyCandlesLength: dailyCandles?.length,
-      priceCandlesLength: chartCandles?.length,
-      displayCandlesLength: effectiveChartCandles?.length,
-      resultLength: result?.length,
-      rowSymbol
-    });
-    return result;
-  }, [dailyCandles, chartCandles, effectiveChartCandles, rowSymbol]);
   const effectiveChartType = chartType;
   const premiumCompareMode = market === 'cn' && cnFundParam === 'premium';
   const premiumUnavailable = isCnOtcFund && cnFundParam === 'premium';
@@ -968,18 +952,16 @@ export function SymbolDetailPanel({
               console.log('[MarketSymbolDetailPanel] 回测按钮点击，打开面板');
               console.log('[MarketSymbolDetailPanel] 当前状态:', {
                 rowSymbol,
-                backtestCandlesLength: backtestCandles?.length,
                 switchPrefs,
                 chartRange
               });
               setBacktestPanelOpen(true);
             }}
-            disabled={!backtestCandles || backtestCandles.length < 10}
             className={cx(
               'flex h-7 items-center gap-1.5 rounded-[10px] px-2.5 text-[12px] font-medium transition-colors sm:h-8 sm:rounded-[11px] sm:text-[13px]',
-              'text-[#1f1f1f] hover:bg-white/60 disabled:cursor-not-allowed disabled:opacity-40'
+              'text-[#1f1f1f] hover:bg-white/60'
             )}
-            title={backtestCandles && backtestCandles.length >= 10 ? '策略回测' : '数据不足，无法回测'}
+            title="策略回测"
           >
             <BarChart3 size={16} className="text-[#202124]" />
             <span>回测</span>
@@ -1207,9 +1189,7 @@ export function SymbolDetailPanel({
         open={backtestPanelOpen}
         onClose={() => setBacktestPanelOpen(false)}
         symbol={rowSymbol}
-        candles={backtestCandles || []}
         switchPrefs={switchPrefs}
-        chartRange={chartRange}
       />
     </section>
   );
