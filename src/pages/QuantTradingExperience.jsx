@@ -521,10 +521,10 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
                 <textarea className={textAreaClass} value={lowText} onChange={(event) => setLowText(event.target.value)} />
               </FormLabel>
               <FormLabel label="规则 A 阈值">
-                <input className={inputClass} type="text" inputMode="decimal" step="0.1" value={config.intraSellLowerPct} onChange={(event) => setConfig((current) => ({ ...current, intraSellLowerPct: event.target.value }))} />
+                <input className={inputClass} type="number" step="0.1" value={config.intraSellLowerPct} onChange={(event) => setConfig((current) => ({ ...current, intraSellLowerPct: event.target.value }))} />
               </FormLabel>
               <FormLabel label="规则 B 阈值">
-                <input className={inputClass} type="text" inputMode="decimal" step="0.1" value={config.intraBuyOtherPct} onChange={(event) => setConfig((current) => ({ ...current, intraBuyOtherPct: event.target.value }))} />
+                <input className={inputClass} type="number" step="0.1" value={config.intraBuyOtherPct} onChange={(event) => setConfig((current) => ({ ...current, intraBuyOtherPct: event.target.value }))} />
               </FormLabel>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
@@ -594,7 +594,7 @@ export function QuantTradingExperience({ embedded = false, activeModule = 'strat
               </div>
             </div>
             <FormLabel label="调整金额">
-              <input className={inputClass} type="text" inputMode="decimal" min="0" step="100" value={cashAmount} onChange={(event) => setCashAmount(event.target.value)} />
+              <input className={inputClass} type="number" min="0" step="100" value={cashAmount} onChange={(event) => setCashAmount(event.target.value)} />
             </FormLabel>
             <FormLabel label="备注">
               <input className={inputClass} value={cashNote} onChange={(event) => setCashNote(event.target.value)} />

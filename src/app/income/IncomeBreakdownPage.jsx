@@ -153,10 +153,9 @@ function PositionCapPanel({ positions }) {
 					<span className="text-xs text-slate-500">个股仓位上限</span>
 					<span className="flex items-baseline gap-1">
 						<input
-							type="text"
-							inputMode="decimal"
+							type="number"
 							value={capPct}
-							onChange={(e) => setCapPct(e.target.value)}
+							onChange={(e) => setCapPct(Number(e.target.value) || 0)}
 							min="1"
 							max="100"
 							step="1"
@@ -170,8 +169,7 @@ function PositionCapPanel({ positions }) {
 					<span className="flex items-baseline gap-1">
 						<span className="text-sm text-slate-400">¥</span>
 						<input
-							type="text"
-							inputMode="decimal"
+							type="number"
 							value={totalAssetsInput}
 							onChange={(e) => setTotalAssetsInput(e.target.value)}
 							min="0"

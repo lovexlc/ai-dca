@@ -236,7 +236,7 @@ export function DcaCalculatorExperience({ embedded = false }) {
                 step="10"
                 min="1"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => setAmount(Math.max(Number(e.target.value) || 0, 0))}
               />
             </Field>
           </div>

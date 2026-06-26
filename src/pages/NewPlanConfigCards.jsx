@@ -78,7 +78,7 @@ export function NewPlanConfigCards({
 
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="总投资额">
-              <NumberInput step="0.01" value={state.totalBudget} onChange={(event) => setState((current) => ({ ...current, totalBudget: event.target.value }))} />
+              <NumberInput step="0.01" value={state.totalBudget} onChange={(event) => setState((current) => ({ ...current, totalBudget: Number(event.target.value) || 0 }))} />
             </Field>
           </div>
 
@@ -125,14 +125,14 @@ export function NewPlanConfigCards({
               <div className="grid gap-4 md:grid-cols-2">
                 <Field label={selectedStrategy === 'peak-drawdown' ? '阶段高点' : '120日线触发价'}>
                   <div className="flex items-center gap-2">
-                    <NumberInput className="flex-1" step="0.001" value={state.basePrice ?? ''} onChange={(event) => { isBasePriceDirtyRef.current = true; setState((current) => ({ ...current, basePrice: event.target.value })); }} />
+                    <NumberInput className="flex-1" step="0.001" value={Number(state.basePrice || 0).toFixed(3)} onChange={(event) => { isBasePriceDirtyRef.current = true; setState((current) => ({ ...current, basePrice: Number(event.target.value) || 0 })); }} />
                     <button type="button" title="重置为系统推荐值" className="shrink-0 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" onClick={() => { isBasePriceDirtyRef.current = false; const sym = String(state.symbol || '').trim().toUpperCase(); const usingExtra = EXTRA_SYMBOL_CODES.has(sym) && extraQuote.symbol === sym && extraQuote.price > 0; const next = selectedStrategy === 'peak-drawdown' ? derivedStageHigh : (usingExtra ? extraQuote.price : derivedMa120); setState((current) => ({ ...current, basePrice: Number(next) || 0 })); }}>推荐</button>
                   </div>
                 </Field>
                 {selectedStrategy === 'ma120-risk' ? (
                   <Field label="200日线风控价" helper="当它足够低于120日线深水层时，会进入最后一档。">
                     <div className="flex items-center gap-2">
-                      <NumberInput className="flex-1" step="0.001" value={state.riskControlPrice ?? ''} onChange={(event) => { isRiskPriceDirtyRef.current = true; setState((current) => ({ ...current, riskControlPrice: event.target.value })); }} />
+                      <NumberInput className="flex-1" step="0.001" value={Number(state.riskControlPrice || 0).toFixed(3)} onChange={(event) => { isRiskPriceDirtyRef.current = true; setState((current) => ({ ...current, riskControlPrice: Number(event.target.value) || 0 })); }} />
                       <button type="button" title="重置为系统推荐值" className="shrink-0 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" onClick={() => { isRiskPriceDirtyRef.current = false; setState((current) => ({ ...current, riskControlPrice: Number(derivedMa200) || 0 })); }}>推荐</button>
                     </div>
                   </Field>

@@ -32,8 +32,7 @@ export function SwitchStrategyOpportunityPanels({
             <div className="mt-1 text-slate-700">
               H溢价 − L溢价 {'<'}
               <input
-                type="text"
-                inputMode="decimal"
+                type="number"
                 step="0.5"
                 id="intra-sell-lower"
                 aria-label="规则 A 阈值，默认 1%"
@@ -49,8 +48,7 @@ export function SwitchStrategyOpportunityPanels({
             <div className="mt-1 text-slate-700">
               H溢价 − L溢价 {'>'}
               <input
-                type="text"
-                inputMode="decimal"
+                type="number"
                 step="0.5"
                 id="intra-buy-other"
                 aria-label="规则 B 阈值，默认 3%"
@@ -91,8 +89,7 @@ export function SwitchStrategyOpportunityPanels({
             <div className="mt-1 text-slate-700">
               &gt;
               <input
-                type="text"
-                inputMode="decimal"
+                type="number"
                 step="0.5"
                 id="otc-premium-threshold"
                 aria-label="场外基准溢价阈值，默认 8%"
@@ -107,8 +104,7 @@ export function SwitchStrategyOpportunityPanels({
             <div className="mt-1 text-slate-700">
               &lt;
               <input
-                type="text"
-                inputMode="decimal"
+                type="number"
                 step="0.5"
                 id="otc-strong-threshold"
                 aria-label="场外强信号阈值，默认 1%"
@@ -117,8 +113,7 @@ export function SwitchStrategyOpportunityPanels({
                 className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"
               /><span className="sr-only">场外强信号阈值</span>%（强） / &lt;
               <input
-                type="text"
-                inputMode="decimal"
+                type="number"
                 step="0.5"
                 id="otc-weak-threshold"
                 aria-label="场外弱信号阈值，默认 2%"

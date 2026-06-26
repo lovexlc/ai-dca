@@ -199,8 +199,7 @@ function CashSubPanel({ paperState, adjusting, resetting, onAdjust, onReset }) {
           <label htmlFor="quant-live-cash-amount" className="block text-xs font-semibold text-slate-500">调整金额</label>
           <input
             id="quant-live-cash-amount"
-            type="text"
-            inputMode="decimal"
+            type="number"
             min="0"
             step="100"
             value={amount}
