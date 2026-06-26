@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { X, Play, BarChart3, TrendingUp, Trophy, Activity, RefreshCw, Settings2 } from 'lucide-react';
 import { cx, primaryButtonClass, secondaryButtonClass, inputClass } from '../experience-ui.jsx';
 import { TagInput } from '../TagInput.jsx';
+import { EquityChart, KlineChart, PremiumChart } from '../BacktestCharts.jsx';
+import { InteractiveChartContainer } from '../InteractiveChartContainer.jsx';
 import { createTradeSimulator, runBacktest } from '../../app/backtest/index.js';
 import { fetchBacktestData } from '../../app/backtestDataFetcher.js';
 import { deriveDefaultBacktestCodes } from './backtestSidePanelState.js';
@@ -40,6 +42,11 @@ const BACKTEST_RANGE_OPTIONS = Object.freeze([
 
 const OPTIMIZE_SELL_LOWER_GRID = Object.freeze([0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.5, 2]);
 const OPTIMIZE_BUY_OTHER_GRID = Object.freeze([1, 1.5, 2, 2.5, 3, 3.5, 4, 5]);
+const BACKTEST_CHART_VIEWS = Object.freeze([
+  { id: 'equity', label: '权益曲线' },
+  { id: 'kline', label: 'K线+信号' },
+  { id: 'premium', label: '溢价差' }
+]);
 const BACKTEST_TRADING_COSTS = Object.freeze({
   feeRate: 0.00005,
   minFee: 0,
@@ -107,6 +114,9 @@ function makeRotationResult(result) {
     rotationCount: result.summary.switchCount || 0,
     trades: result.trades,
     equityCurve: result.rows.map((row) => row.equity),
+    rows: result.rows,
+    signals: result.signals,
+    chart: result.chart,
     summary: result.summary,
     thresholds: {
       sellLowerThreshold: result.strategy?.intraSellLowerPct,
@@ -449,6 +459,7 @@ export function BacktestSidePanel({
   const [customStartDate, setCustomStartDate] = useState(() => shiftIsoDate(todayShanghaiIso(), -365));
   const [customEndDate, setCustomEndDate] = useState(() => todayShanghaiIso());
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [chartView, setChartView] = useState('equity');
 
   useEffect(() => {
     if (open) {
@@ -456,6 +467,7 @@ export function BacktestSidePanel({
       const nextDefaults = deriveDefaultBacktestCodes(symbol, { switchPrefs });
       console.log('[BacktestSidePanel] nextDefaults:', nextDefaults);
       setResult(null);
+      setChartView('equity');
       setStrategyName(`${symbol} 策略`);
       setHighCodes(nextDefaults.highCodes);
       setLowCodes(nextDefaults.lowCodes);
@@ -904,6 +916,24 @@ export function BacktestSidePanel({
                       </div>
                     </div>
                   </div>
+                )}
+
+                {rotation && (
+                  <InteractiveChartContainer
+                    views={BACKTEST_CHART_VIEWS}
+                    activeView={chartView}
+                    onViewChange={setChartView}
+                    className="shadow-sm"
+                  >
+                    {chartView === 'equity' && <EquityChart data={rotation.rows || []} />}
+                    {chartView === 'kline' && (
+                      <KlineChart
+                        candles={rotation.chart?.candles || []}
+                        signals={rotation.signals || []}
+                      />
+                    )}
+                    {chartView === 'premium' && <PremiumChart data={rotation.rows || []} />}
+                  </InteractiveChartContainer>
                 )}
 
                 {/* 持有策略对比 */}
