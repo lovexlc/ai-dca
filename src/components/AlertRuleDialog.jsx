@@ -70,7 +70,8 @@ export function AlertRuleDialog({
           <div>
             <Label>阈值（%）</Label>
             <Input
-              type="number"
+              type="text"
+              inputMode="decimal"
               step="0.1"
               min="0"
               max="100"

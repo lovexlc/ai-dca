@@ -340,14 +340,14 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave }) {
                   <NumberInput
                     step="0.01"
                     value={state.holdingCost}
-                    onChange={(event) => setState((current) => ({ ...current, holdingCost: Number(event.target.value) || 0 }))}
+                    onChange={(event) => setState((current) => ({ ...current, holdingCost: event.target.value }))}
                   />
                 </Field>
                 <Field label="持仓股数">
                   <NumberInput
                     step="0.01"
                     value={state.holdingShares}
-                    onChange={(event) => setState((current) => ({ ...current, holdingShares: Number(event.target.value) || 0 }))}
+                    onChange={(event) => setState((current) => ({ ...current, holdingShares: event.target.value }))}
                   />
                 </Field>
               </div>
@@ -401,7 +401,7 @@ export function SellPlanExperience({ links, embedded = false, onAfterSave }) {
                   min="0"
                   max="50"
                   value={state.trailingStopPct}
-                  onChange={(event) => setState((current) => ({ ...current, trailingStopPct: Math.max(Number(event.target.value) || 0, 0) }))}
+                  onChange={(event) => setState((current) => ({ ...current, trailingStopPct: event.target.value }))}
                 />
               </Field>
             </div>

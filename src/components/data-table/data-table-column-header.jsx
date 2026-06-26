@@ -221,7 +221,7 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
               <div className="grid grid-cols-2 gap-2">
                 <Input
                   autoFocus
-                  type="number"
+                  type="text"
                   inputMode="decimal"
                   placeholder="最小值"
                   value={(filterValue && typeof filterValue === "object" && !Array.isArray(filterValue) ? filterValue.min : "") ?? ""}
@@ -229,7 +229,7 @@ function DataTableColumnHeader({ column, label, className, ...props }) {
                   className="h-9"
                 />
                 <Input
-                  type="number"
+                  type="text"
                   inputMode="decimal"
                   placeholder="最大值"
                   value={(filterValue && typeof filterValue === "object" && !Array.isArray(filterValue) ? filterValue.max : "") ?? ""}

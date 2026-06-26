@@ -164,7 +164,7 @@ export function TextInput({ className = '', ...props }) {
 }
 
 export function NumberInput({ className = '', ...props }) {
-  return <input className={cx(inputClass, className)} type="number" {...props} />;
+  return <input className={cx(inputClass, className)} type="text" inputMode="decimal" {...props} />;
 }
 
 export function SelectField({ options, className = '', ...props }) {

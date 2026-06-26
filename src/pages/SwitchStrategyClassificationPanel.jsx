@@ -141,7 +141,8 @@ export function SwitchStrategyClassificationPanel({
           <div className="flex flex-wrap items-center gap-3">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">套利目标</div>
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
               step="0.5"
               className="w-24 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 focus:border-indigo-300 focus:outline-none"
               value={prefs.arbTargetPct}
