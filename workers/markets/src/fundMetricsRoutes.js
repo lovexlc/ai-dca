@@ -91,19 +91,48 @@ function normalizeOrderBook(book = null) {
   const askPrice = roundNumber(book.askPrice ?? book.ask_price ?? book.sp1, 4);
   const bidVolume = Number(book.bidVolume ?? book.bid_volume ?? book.bc1);
   const askVolume = Number(book.askVolume ?? book.ask_volume ?? book.sc1);
-  const spread = Number.isFinite(bidPrice) && Number.isFinite(askPrice)
-    ? roundNumber(askPrice - bidPrice, 4)
+  const rawLevels = Array.isArray(book.levels) && book.levels.length
+    ? book.levels.slice(0, 3)
+    : [1, 2, 3].map((level) => ({
+      level,
+      bidPrice: book[`bp${level}`] ?? book[`bid${level}`] ?? book[`bid${level}_price`] ?? book[`bid_price${level}`] ?? book[`buy${level}`] ?? book[`buy${level}_price`] ?? book[`buy_price${level}`],
+      bidVolume: book[`bc${level}`] ?? book[`bid${level}_volume`] ?? book[`bid${level}_vol`] ?? book[`bid_volume${level}`] ?? book[`buy${level}_volume`] ?? book[`buy${level}_vol`] ?? book[`buy_volume${level}`],
+      askPrice: book[`sp${level}`] ?? book[`ask${level}`] ?? book[`ask${level}_price`] ?? book[`ask_price${level}`] ?? book[`sell${level}`] ?? book[`sell${level}_price`] ?? book[`sell_price${level}`],
+      askVolume: book[`sc${level}`] ?? book[`ask${level}_volume`] ?? book[`ask${level}_vol`] ?? book[`ask_volume${level}`] ?? book[`sell${level}_volume`] ?? book[`sell${level}_vol`] ?? book[`sell_volume${level}`]
+    }));
+  const levels = rawLevels.map((item, index) => {
+    const level = Number(item?.level) || index + 1;
+    const levelBidPrice = roundNumber(item?.bidPrice ?? item?.bid_price ?? item?.bp, 4);
+    const levelAskPrice = roundNumber(item?.askPrice ?? item?.ask_price ?? item?.sp, 4);
+    const levelBidVolume = Number(item?.bidVolume ?? item?.bid_volume ?? item?.bc);
+    const levelAskVolume = Number(item?.askVolume ?? item?.ask_volume ?? item?.sc);
+    return {
+      level,
+      bidPrice: Number.isFinite(levelBidPrice) ? levelBidPrice : null,
+      bidVolume: Number.isFinite(levelBidVolume) ? levelBidVolume : null,
+      askPrice: Number.isFinite(levelAskPrice) ? levelAskPrice : null,
+      askVolume: Number.isFinite(levelAskVolume) ? levelAskVolume : null
+    };
+  }).filter((item) => Number.isFinite(item.bidPrice) || Number.isFinite(item.askPrice));
+  const topLevel = levels.find((item) => item.level === 1) || levels[0] || {};
+  const normalizedBidPrice = Number.isFinite(bidPrice) ? bidPrice : topLevel.bidPrice;
+  const normalizedAskPrice = Number.isFinite(askPrice) ? askPrice : topLevel.askPrice;
+  const normalizedBidVolume = Number.isFinite(bidVolume) ? bidVolume : topLevel.bidVolume;
+  const normalizedAskVolume = Number.isFinite(askVolume) ? askVolume : topLevel.askVolume;
+  const spread = Number.isFinite(normalizedBidPrice) && Number.isFinite(normalizedAskPrice)
+    ? roundNumber(normalizedAskPrice - normalizedBidPrice, 4)
     : roundNumber(book.spread, 4);
-  const mid = Number.isFinite(bidPrice) && Number.isFinite(askPrice) ? (bidPrice + askPrice) / 2 : NaN;
+  const mid = Number.isFinite(normalizedBidPrice) && Number.isFinite(normalizedAskPrice) ? (normalizedBidPrice + normalizedAskPrice) / 2 : NaN;
   const spreadPercent = Number.isFinite(mid) && mid > 0 && Number.isFinite(spread)
     ? roundNumber((spread / mid) * 100, 4)
     : roundNumber(book.spreadPercent ?? book.spread_percent, 4);
-  if (!Number.isFinite(bidPrice) && !Number.isFinite(askPrice)) return null;
+  if (!Number.isFinite(normalizedBidPrice) && !Number.isFinite(normalizedAskPrice) && !levels.length) return null;
   return {
-    bidPrice: Number.isFinite(bidPrice) ? bidPrice : null,
-    bidVolume: Number.isFinite(bidVolume) ? bidVolume : null,
-    askPrice: Number.isFinite(askPrice) ? askPrice : null,
-    askVolume: Number.isFinite(askVolume) ? askVolume : null,
+    bidPrice: Number.isFinite(normalizedBidPrice) ? normalizedBidPrice : null,
+    bidVolume: Number.isFinite(normalizedBidVolume) ? normalizedBidVolume : null,
+    askPrice: Number.isFinite(normalizedAskPrice) ? normalizedAskPrice : null,
+    askVolume: Number.isFinite(normalizedAskVolume) ? normalizedAskVolume : null,
+    levels,
     spread: Number.isFinite(spread) ? spread : null,
     spreadPercent: Number.isFinite(spreadPercent) ? spreadPercent : null,
     source: String(book.source || '').trim()

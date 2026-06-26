@@ -9,7 +9,8 @@ import {
   ResponsiveContainer,
   ReferenceLine,
   ComposedChart,
-  Area
+  Area,
+  LabelList
 } from 'recharts';
 
 /**
@@ -259,7 +260,7 @@ export function KlineChart({ candles, signals }) {
 /**
  * PremiumChart - 溢价差图表
  */
-export function PremiumChart({ data, signals = [] }) {
+export function PremiumChart({ data, signals = [], trades = [] }) {
   if (!data || data.length === 0) {
     return <EmptyChart message="暂无溢价差数据" />;
   }
@@ -269,6 +270,17 @@ export function PremiumChart({ data, signals = [] }) {
       .map((signal) => [Number(signal.ts), signal])
       .filter(([ts]) => Number.isFinite(ts))
   );
+  const tradesByTs = new Map();
+  for (const trade of Array.isArray(trades) ? trades : []) {
+    const ts = Number(trade?.ts ?? trade?.date);
+    if (!Number.isFinite(ts)) continue;
+    const list = tradesByTs.get(ts) || [];
+    list.push(trade);
+    tradesByTs.set(ts, list);
+  }
+  const gapValues = data.map((row) => Number(row.gapPct)).filter((value) => Number.isFinite(value));
+  const gapRange = gapValues.length ? Math.max(...gapValues) - Math.min(...gapValues) : 0;
+  const markerOffset = Math.max(gapRange * 0.035, 0.08);
 
   const chartData = data.map(row => ({
     ts: Number(row.ts),
@@ -277,7 +289,21 @@ export function PremiumChart({ data, signals = [] }) {
     lowPremium: row.lowPremiumPct,
     gap: row.gapPct,
     switchGap: signalByTs.has(Number(row.ts)) ? row.gapPct : null
-  })).filter(d => d.highPremium !== undefined);
+  })).filter(d => d.highPremium !== undefined).map((item) => {
+    const itemTrades = tradesByTs.get(item.ts) || [];
+    const buyTrade = itemTrades.find((trade) => trade?.type === 'buy');
+    const sellTrade = itemTrades.find((trade) => trade?.type === 'sell');
+    const gap = Number(item.gap);
+    return {
+      ...item,
+      buyGap: buyTrade && Number.isFinite(gap) ? gap - markerOffset : null,
+      sellGap: sellTrade && Number.isFinite(gap) ? gap + markerOffset : null,
+      buyLabel: buyTrade ? `买 ${buyTrade.code}` : '',
+      sellLabel: sellTrade ? `卖 ${sellTrade.code}` : '',
+      buyTrade,
+      sellTrade
+    };
+  });
 
   return (
     <ResponsiveContainer width="100%" height={400}>
@@ -302,7 +328,10 @@ export function PremiumChart({ data, signals = [] }) {
             borderRadius: '8px',
             fontSize: '12px'
           }}
-          formatter={(value) => `${Number(value).toFixed(2)}%`}
+          formatter={(value, name) => {
+            if (name === '买入点' || name === '卖出点') return '';
+            return `${Number(value).toFixed(2)}%`;
+          }}
           labelFormatter={(label) => `时间: ${label}`}
         />
         <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
@@ -339,6 +368,30 @@ export function PremiumChart({ data, signals = [] }) {
           connectNulls={false}
           name="切换点"
         />
+        <Line
+          type="monotone"
+          dataKey="sellGap"
+          stroke="transparent"
+          dot={{ r: 6, fill: '#ef4444', stroke: '#ffffff', strokeWidth: 2 }}
+          activeDot={{ r: 8, fill: '#ef4444', stroke: '#ffffff', strokeWidth: 2 }}
+          connectNulls={false}
+          name="卖出点"
+          isAnimationActive={false}
+        >
+          <LabelList dataKey="sellLabel" position="top" fontSize={11} fill="#b91c1c" fontWeight={700} />
+        </Line>
+        <Line
+          type="monotone"
+          dataKey="buyGap"
+          stroke="transparent"
+          dot={{ r: 6, fill: '#10b981', stroke: '#ffffff', strokeWidth: 2 }}
+          activeDot={{ r: 8, fill: '#10b981', stroke: '#ffffff', strokeWidth: 2 }}
+          connectNulls={false}
+          name="买入点"
+          isAnimationActive={false}
+        >
+          <LabelList dataKey="buyLabel" position="bottom" fontSize={11} fill="#047857" fontWeight={700} />
+        </Line>
         {signals?.map((signal, idx) => {
           const point = chartData.find(d => d.ts === Number(signal.ts));
           if (!point) return null;

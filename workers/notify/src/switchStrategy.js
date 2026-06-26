@@ -275,24 +275,46 @@ function positiveNumber(value) {
   return Number.isFinite(num) && num > 0 ? num : NaN;
 }
 
+function finiteNumber(value) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : NaN;
+}
+
 function normalizeOrderBook(book = null) {
   if (!book || typeof book !== 'object') return null;
-  const bidPrice = Number(book.bidPrice ?? book.bid_price ?? book.bp1);
-  const askPrice = Number(book.askPrice ?? book.ask_price ?? book.sp1);
-  const bidVolume = Number(book.bidVolume ?? book.bid_volume ?? book.bc1);
-  const askVolume = Number(book.askVolume ?? book.ask_volume ?? book.sc1);
+  const fromLevels = Array.isArray(book.levels) ? book.levels : [];
+  const levels = [1, 2, 3].map((level) => {
+    const source = fromLevels.find((item) => Number(item?.level) === level) || fromLevels[level - 1] || {};
+    const bidPrice = finiteNumber(source.bidPrice ?? source.bid_price ?? source.bp ?? book[`bp${level}`] ?? book[`bid${level}`] ?? book[`bid${level}_price`] ?? book[`bid_price${level}`] ?? book[`buy${level}`] ?? book[`buy${level}_price`] ?? book[`buy_price${level}`]);
+    const askPrice = finiteNumber(source.askPrice ?? source.ask_price ?? source.sp ?? book[`sp${level}`] ?? book[`ask${level}`] ?? book[`ask${level}_price`] ?? book[`ask_price${level}`] ?? book[`sell${level}`] ?? book[`sell${level}_price`] ?? book[`sell_price${level}`]);
+    const bidVolume = finiteNumber(source.bidVolume ?? source.bid_volume ?? source.bc ?? book[`bc${level}`] ?? book[`bid${level}_volume`] ?? book[`bid${level}_vol`] ?? book[`bid_volume${level}`] ?? book[`buy${level}_volume`] ?? book[`buy${level}_vol`] ?? book[`buy_volume${level}`]);
+    const askVolume = finiteNumber(source.askVolume ?? source.ask_volume ?? source.sc ?? book[`sc${level}`] ?? book[`ask${level}_volume`] ?? book[`ask${level}_vol`] ?? book[`ask_volume${level}`] ?? book[`sell${level}_volume`] ?? book[`sell${level}_vol`] ?? book[`sell_volume${level}`]);
+    return {
+      level,
+      bidPrice: Number.isFinite(bidPrice) && bidPrice > 0 ? bidPrice : null,
+      bidVolume: Number.isFinite(bidVolume) && bidVolume >= 0 ? bidVolume : null,
+      askPrice: Number.isFinite(askPrice) && askPrice > 0 ? askPrice : null,
+      askVolume: Number.isFinite(askVolume) && askVolume >= 0 ? askVolume : null
+    };
+  }).filter((item) => item.bidPrice != null || item.askPrice != null);
+  const topLevel = levels.find((item) => item.level === 1) || levels[0] || {};
+  const bidPrice = Number(topLevel.bidPrice ?? book.bidPrice ?? book.bid_price ?? book.bp1);
+  const askPrice = Number(topLevel.askPrice ?? book.askPrice ?? book.ask_price ?? book.sp1);
+  const bidVolume = Number(topLevel.bidVolume ?? book.bidVolume ?? book.bid_volume ?? book.bc1);
+  const askVolume = Number(topLevel.askVolume ?? book.askVolume ?? book.ask_volume ?? book.sc1);
   const spread = Number(book.spread);
   const mid = Number.isFinite(bidPrice) && Number.isFinite(askPrice) ? (bidPrice + askPrice) / 2 : NaN;
   const derivedSpread = Number.isFinite(bidPrice) && Number.isFinite(askPrice) ? askPrice - bidPrice : NaN;
   const spreadPercent = Number.isFinite(book.spreadPercent)
     ? Number(book.spreadPercent)
     : (Number.isFinite(mid) && mid > 0 && Number.isFinite(derivedSpread) ? (derivedSpread / mid) * 100 : NaN);
-  if (!Number.isFinite(bidPrice) && !Number.isFinite(askPrice)) return null;
+  if (!Number.isFinite(bidPrice) && !Number.isFinite(askPrice) && !levels.length) return null;
   return {
     bidPrice: Number.isFinite(bidPrice) ? bidPrice : null,
     bidVolume: Number.isFinite(bidVolume) ? bidVolume : null,
     askPrice: Number.isFinite(askPrice) ? askPrice : null,
     askVolume: Number.isFinite(askVolume) ? askVolume : null,
+    levels,
     spread: Number.isFinite(spread) ? spread : (Number.isFinite(derivedSpread) ? derivedSpread : null),
     spreadPercent: Number.isFinite(spreadPercent) ? spreadPercent : null
   };
@@ -903,15 +925,21 @@ function formatDepthVolume(value) {
 function formatOrderBookLine(label, orderBook) {
   const book = normalizeOrderBook(orderBook);
   if (!book) return '';
-  const bidPrice = formatDepthPrice(book.bidPrice);
-  const askPrice = formatDepthPrice(book.askPrice);
-  const bidVolume = formatDepthVolume(book.bidVolume);
-  const askVolume = formatDepthVolume(book.askVolume);
-  const bid = bidVolume ? `${bidPrice} × ${bidVolume}` : bidPrice;
-  const ask = askVolume ? `${askPrice} × ${askVolume}` : askPrice;
+  const levelNames = ['一', '二', '三'];
+  const levels = book.levels?.length ? book.levels : [{ level: 1, bidPrice: book.bidPrice, bidVolume: book.bidVolume, askPrice: book.askPrice, askVolume: book.askVolume }];
+  const depthText = levels.slice(0, 3).map((level) => {
+    const name = levelNames[level.level - 1] || String(level.level);
+    const bidPrice = formatDepthPrice(level.bidPrice);
+    const askPrice = formatDepthPrice(level.askPrice);
+    const bidVolume = formatDepthVolume(level.bidVolume);
+    const askVolume = formatDepthVolume(level.askVolume);
+    const bid = bidVolume ? `${bidPrice} × ${bidVolume}` : bidPrice;
+    const ask = askVolume ? `${askPrice} × ${askVolume}` : askPrice;
+    return `买${name} ${bid} / 卖${name} ${ask}`;
+  }).join('；');
   const spread = Number(book.spread);
   const spreadText = Number.isFinite(spread) ? `，价差 ${formatDepthPrice(spread)}` : '';
-  return `${label}盘口：买一 ${bid} / 卖一 ${ask}${spreadText}`;
+  return `${label}盘口：${depthText}${spreadText}`;
 }
 
 function findSwitchOrderBookLines(snapshot, trigger) {

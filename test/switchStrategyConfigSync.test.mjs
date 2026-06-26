@@ -246,7 +246,12 @@ test('notify worker switch trigger notification builds detail URL', () => {
           bidPrice: 2.36,
           bidVolume: 120000,
           askPrice: 2.361,
-          askVolume: 230000
+          askVolume: 230000,
+          levels: [
+            { level: 1, bidPrice: 2.36, bidVolume: 120000, askPrice: 2.361, askVolume: 230000 },
+            { level: 2, bidPrice: 2.359, bidVolume: 130000, askPrice: 2.362, askVolume: 240000 },
+            { level: 3, bidPrice: 2.358, bidVolume: 140000, askPrice: 2.363, askVolume: 250000 }
+          ]
         },
         candidates: [{
           code: '159501',
@@ -254,7 +259,12 @@ test('notify worker switch trigger notification builds detail URL', () => {
             bidPrice: 1.1,
             bidVolume: 340000,
             askPrice: 1.101,
-            askVolume: 450000
+            askVolume: 450000,
+            levels: [
+              { level: 1, bidPrice: 1.1, bidVolume: 340000, askPrice: 1.101, askVolume: 450000 },
+              { level: 2, bidPrice: 1.099, bidVolume: 350000, askPrice: 1.102, askVolume: 460000 },
+              { level: 3, bidPrice: 1.098, bidVolume: 360000, askPrice: 1.103, askVolume: 470000 }
+            ]
           }
         }]
       }]
@@ -277,7 +287,11 @@ test('notify worker switch trigger notification builds detail URL', () => {
   assert.equal(payload.detailUrl, 'https://tools.freebacktrack.tech/index.html?tab=tradePlans#switch');
   assert.equal(payload.eventType, 'switch-strategy-trigger');
   assert.match(payload.body_md, /513100盘口：买一 2\.36 × 12\.00万 \/ 卖一 2\.361 × 23\.00万/);
+  assert.match(payload.body_md, /买二 2\.359 × 13\.00万 \/ 卖二 2\.362 × 24\.00万/);
+  assert.match(payload.body_md, /买三 2\.358 × 14\.00万 \/ 卖三 2\.363 × 25\.00万/);
   assert.match(payload.body_md, /159501盘口：买一 1\.1 × 34\.00万 \/ 卖一 1\.101 × 45\.00万/);
+  assert.match(payload.body_md, /买二 1\.099 × 35\.00万 \/ 卖二 1\.102 × 46\.00万/);
+  assert.match(payload.body_md, /买三 1\.098 × 36\.00万 \/ 卖三 1\.103 × 47\.00万/);
 });
 
 test('notify worker OTC trigger notification uses OTC copy', () => {

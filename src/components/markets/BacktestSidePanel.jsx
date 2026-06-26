@@ -21,6 +21,28 @@ function formatNumber(value, digits = 2) {
   return num.toFixed(digits);
 }
 
+function formatCurrency(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '--';
+  return `¥${num.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`;
+}
+
+function formatPrice(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '--';
+  return num >= 10 ? num.toFixed(2) : num.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function formatTradeDate(value) {
+  const raw = String(value || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(5, 10);
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return '--';
+  const date = new Date(num < 10000000000 ? num * 1000 : num);
+  if (Number.isNaN(date.getTime())) return '--';
+  return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 function toDecimalText(value, fallback) {
   if (value === '' || value === null || value === undefined) return String(fallback);
   return String(value);
@@ -128,6 +150,33 @@ function makeRotationResult(result) {
     effectiveLowCodes: result.effectiveLowCodes || [],
     avgPremiumByCode: result.avgPremiumByCode || null
   };
+}
+
+function buildTradeExamples(trades = [], signals = [], limit = 4) {
+  const signalByTs = new Map(
+    (Array.isArray(signals) ? signals : [])
+      .map((signal) => [Number(signal.ts), signal])
+      .filter(([ts]) => Number.isFinite(ts))
+  );
+  const groups = new Map();
+  for (const trade of Array.isArray(trades) ? trades : []) {
+    const ts = Number(trade?.ts ?? trade?.date);
+    if (!Number.isFinite(ts)) continue;
+    const list = groups.get(ts) || [];
+    list.push(trade);
+    groups.set(ts, list);
+  }
+  return Array.from(groups.entries())
+    .sort(([leftTs], [rightTs]) => leftTs - rightTs)
+    .map(([ts, list]) => {
+      const sell = list.find((trade) => trade?.type === 'sell');
+      const buy = list.find((trade) => trade?.type === 'buy');
+      if (!sell || !buy) return null;
+      const signal = signalByTs.get(ts) || {};
+      return { ts, sell, buy, signal };
+    })
+    .filter(Boolean)
+    .slice(0, limit);
 }
 
 function pickBetterBacktest(currentBest, candidate) {
@@ -645,6 +694,7 @@ export function BacktestSidePanel({
     if (!best) return item;
     return Number(item.totalReturnPct) > Number(best.totalReturnPct) ? item : best;
   }, null);
+  const tradeExamples = rotation ? buildTradeExamples(rotation.trades, rotation.signals, 4) : [];
   const selectedRangeLabel = BACKTEST_RANGE_OPTIONS.find((item) => item.key === backtestRange)?.label || '1 年';
 
   return (
@@ -939,7 +989,7 @@ export function BacktestSidePanel({
                         signals={rotation.signals || []}
                       />
                     )}
-                    {chartView === 'premium' && <PremiumChart data={rotation.rows || []} signals={rotation.signals || []} />}
+                    {chartView === 'premium' && <PremiumChart data={rotation.rows || []} signals={rotation.signals || []} trades={rotation.trades || []} />}
                   </InteractiveChartContainer>
                 )}
 
@@ -993,15 +1043,49 @@ export function BacktestSidePanel({
                         </span>
                       </div>
                     </div>
-                    {rotation.initialSide === 'H' ? (
-                      <p className="mt-3 text-xs leading-5 text-indigo-700">
-                        示例：当前最优组合表示先持有 H（{effectiveHighCodes[0] || 'H'}）。当 H 相对 L（{effectiveLowCodes[0] || 'L'}）的溢价优势扩大到 H→L 阈值时，卖出 H 切到 L；之后若差距收敛到 L→H 阈值，再卖出 L 切回 H。系统已在候选阈值和初始方向中选择收益率最高的一组。
-                      </p>
-                    ) : (
-                      <p className="mt-3 text-xs leading-5 text-indigo-700">
-                        示例：当前最优组合表示先持有 L（{effectiveLowCodes[0] || 'L'}）。当 H（{effectiveHighCodes[0] || 'H'}）相对 L 的溢价优势达到 L→H 阈值时，卖出 L 切到 H；之后若差距扩大到 H→L 阈值，再卖出 H 切回 L。系统已在候选阈值和初始方向中选择收益率最高的一组。
-                      </p>
-                    )}
+                    <div className="mt-3 rounded-xl bg-white/70 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-indigo-900">真实买卖点示例</span>
+                        <span className="text-[11px] text-indigo-500">来自本次回测成交记录</span>
+                      </div>
+                      {tradeExamples.length ? (
+                        <div className="space-y-2">
+                          {tradeExamples.map(({ ts, sell, buy, signal }, index) => {
+                            const rule = signal.rule || (sell.code === effectiveHighCodes[0] ? 'B' : 'A');
+                            const gap = Number(signal.gapPct);
+                            return (
+                              <div key={`${ts}-${sell.code}-${buy.code}-${index}`} className="rounded-lg border border-indigo-100 bg-white px-3 py-2 text-xs">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span className="font-bold text-indigo-900">
+                                    {formatTradeDate(signal.datetime || signal.date || ts)} · 规则 {rule}
+                                  </span>
+                                  <span className="font-semibold tabular-nums text-indigo-700">
+                                    H−L {Number.isFinite(gap) ? formatPercent(gap) : '--'}
+                                  </span>
+                                </div>
+                                <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-slate-700">
+                                  <span className="rounded-full bg-rose-50 px-2 py-0.5 font-semibold text-rose-600">
+                                    卖 {sell.code} @ {formatPrice(sell.price)}
+                                  </span>
+                                  <span className="text-slate-400">→</span>
+                                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-600">
+                                    买 {buy.code} @ {formatPrice(buy.price)}
+                                  </span>
+                                </div>
+                                <div className="mt-1 text-[11px] text-slate-500">
+                                  卖出 {formatCurrency(sell.netProceeds ?? sell.amount)}，买入 {formatCurrency(buy.totalCost ?? buy.amount)}
+                                  {Number.isFinite(Number(sell.profit)) ? `，本轮卖出盈亏 ${formatCurrency(sell.profit)}` : ''}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-xs leading-5 text-indigo-700">
+                          本次最优组合没有形成完整卖出→买入轮动，图表仍展示权益和溢价差轨迹。
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
 

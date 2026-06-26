@@ -338,37 +338,56 @@ function normalizeXueqiuOrderBookPayload(data = {}) {
   const source = payload.pankou && typeof payload.pankou === 'object' ? payload.pankou : payload;
   const bids = Array.isArray(source.bids) ? source.bids : Array.isArray(source.bid) ? source.bid : [];
   const asks = Array.isArray(source.asks) ? source.asks : Array.isArray(source.ask) ? source.ask : [];
-  const bid1 = Array.isArray(bids[0]) ? bids[0] : null;
-  const ask1 = Array.isArray(asks[0]) ? asks[0] : null;
-  const bidPrice = firstPositiveNumber(
-    source.bp1, source.bid1, source.bid1_price, source.bid_price1,
-    source.buy1, source.buy1_price, source.buy_price1, quote.bp1, quote.bid1,
-    bid1?.[0], bid1?.price
-  );
-  const askPrice = firstPositiveNumber(
-    source.sp1, source.ask1, source.ask1_price, source.ask_price1,
-    source.sell1, source.sell1_price, source.sell_price1, quote.sp1, quote.ask1,
-    ask1?.[0], ask1?.price
-  );
-  const bidVolume = firstFiniteNumber(
-    source.bc1, source.bid1_volume, source.bid1_vol, source.bid_volume1,
-    source.buy1_volume, source.buy1_vol, source.buy_volume1, quote.bc1,
-    bid1?.[1], bid1?.volume
-  );
-  const askVolume = firstFiniteNumber(
-    source.sc1, source.ask1_volume, source.ask1_vol, source.ask_volume1,
-    source.sell1_volume, source.sell1_vol, source.sell_volume1, quote.sc1,
-    ask1?.[1], ask1?.volume
-  );
+  const levels = [1, 2, 3].map((level) => {
+    const bid = Array.isArray(bids[level - 1]) ? bids[level - 1] : null;
+    const ask = Array.isArray(asks[level - 1]) ? asks[level - 1] : null;
+    return {
+      level,
+      bidPrice: firstPositiveNumber(
+        source[`bp${level}`], source[`bid${level}`], source[`bid${level}_price`], source[`bid_price${level}`],
+        source[`buy${level}`], source[`buy${level}_price`], source[`buy_price${level}`], quote[`bp${level}`], quote[`bid${level}`],
+        bid?.[0], bid?.price
+      ),
+      bidVolume: firstFiniteNumber(
+        source[`bc${level}`], source[`bid${level}_volume`], source[`bid${level}_vol`], source[`bid_volume${level}`],
+        source[`buy${level}_volume`], source[`buy${level}_vol`], source[`buy_volume${level}`], quote[`bc${level}`],
+        bid?.[1], bid?.volume
+      ),
+      askPrice: firstPositiveNumber(
+        source[`sp${level}`], source[`ask${level}`], source[`ask${level}_price`], source[`ask_price${level}`],
+        source[`sell${level}`], source[`sell${level}_price`], source[`sell_price${level}`], quote[`sp${level}`], quote[`ask${level}`],
+        ask?.[0], ask?.price
+      ),
+      askVolume: firstFiniteNumber(
+        source[`sc${level}`], source[`ask${level}_volume`], source[`ask${level}_vol`], source[`ask_volume${level}`],
+        source[`sell${level}_volume`], source[`sell${level}_vol`], source[`sell_volume${level}`], quote[`sc${level}`],
+        ask?.[1], ask?.volume
+      )
+    };
+  });
+  const validLevels = levels
+    .filter((item) => item.bidPrice != null || item.askPrice != null)
+    .map((item) => ({
+      level: item.level,
+      bidPrice: item.bidPrice != null ? round(item.bidPrice, 4) : null,
+      bidVolume: item.bidVolume != null ? item.bidVolume : null,
+      askPrice: item.askPrice != null ? round(item.askPrice, 4) : null,
+      askVolume: item.askVolume != null ? item.askVolume : null
+    }));
+  const bidPrice = validLevels[0]?.bidPrice ?? null;
+  const askPrice = validLevels[0]?.askPrice ?? null;
+  const bidVolume = validLevels[0]?.bidVolume ?? null;
+  const askVolume = validLevels[0]?.askVolume ?? null;
   if (bidPrice == null && askPrice == null) return null;
   const spread = bidPrice != null && askPrice != null ? round(askPrice - bidPrice, 4) : null;
   const mid = bidPrice != null && askPrice != null ? (bidPrice + askPrice) / 2 : null;
   const spreadPercent = spread != null && mid && mid > 0 ? round((spread / mid) * 100, 4) : null;
   return {
-    bidPrice: bidPrice != null ? round(bidPrice, 4) : null,
+    bidPrice,
     bidVolume: bidVolume != null ? bidVolume : null,
-    askPrice: askPrice != null ? round(askPrice, 4) : null,
+    askPrice,
     askVolume: askVolume != null ? askVolume : null,
+    levels: validLevels,
     spread,
     spreadPercent,
     source: 'xueqiu-pankou'
