@@ -12,11 +12,11 @@ import {
   shanghaiDateKey,
   buildOrderPlanV2,
   RiskMonitor,
-  getCachedHistoricalData,
   RECOMMENDED_STRATEGY_CONFIGS,
   recommendParameters
 } from '../app/quantTrading.js';
-import { buildPremiumSpreadInputFromLegacyRows, runBacktest } from '../app/backtest/index.js';
+import { runBacktest } from '../app/backtest/index.js';
+import { fetchBacktestData } from '../app/backtestDataFetcher.js';
 
 function formatMoney(value) {
   const num = Number(value);
@@ -166,15 +166,15 @@ export default function EtfSwitchStrategyPage() {
       const startDate = new Date(new Date(endDate).getTime() - 90 * 24 * 60 * 60 * 1000)
         .toISOString().slice(0, 10);
 
-      const historicalData = await getCachedHistoricalData(
+      const { historyByCode, navHistoryByCode } = await fetchBacktestData(
         [state.strategy.sellSymbol, state.strategy.buySymbol],
-        startDate,
-        endDate
+        {
+          startDate,
+          endDate,
+          highCodes: [state.strategy.sellSymbol],
+          lowCodes: [state.strategy.buySymbol]
+        }
       );
-      const { historyByCode, navHistoryByCode } = buildPremiumSpreadInputFromLegacyRows(historicalData, {
-        highCode: state.strategy.sellSymbol,
-        lowCode: state.strategy.buySymbol
-      });
 
       // 构建策略配置（适配新接口）
       const strategy = {

@@ -8,56 +8,8 @@ import { roundTo } from './quantTrading.js';
 /**
  * 从后端API获取历史溢价数据
  */
-export async function fetchHistoricalPremiums(symbols, startDate, endDate, options = {}) {
-  const { allowSimulation = true } = options;
-  try {
-    const params = new URLSearchParams({
-      symbols: symbols.join(','),
-      start: startDate,
-      end: endDate
-    });
-
-    const response = await fetch(`/api/v1/quant/historical-premiums?${params}`, {
-      headers: { 'Content-Type': 'application/json' }
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return normalizeHistoricalData(data);
-  } catch (error) {
-    console.error('Failed to fetch historical premiums:', error);
-    if (allowSimulation) {
-      // Fallback to realistic simulation for demo/test flows.
-      return generateRealisticSimulation(symbols, startDate, endDate);
-    }
-    throw new Error('历史溢价数据暂不可用，请稍后重试或检查数据接口权限');
-  }
-}
-
-/**
- * 规范化历史数据格式
- */
-function normalizeHistoricalData(rawData) {
-  if (!Array.isArray(rawData)) {
-    throw new Error('Invalid data format: expected array');
-  }
-
-  return rawData.map(row => ({
-    date: row.date,
-    sellBid: roundTo(row.sell_bid || 0, 3),
-    sellAsk: roundTo(row.sell_ask || 0, 3),
-    sellIOPV: roundTo(row.sell_iopv || 0, 3),
-    sellPremiumPct: roundTo(row.sell_premium_pct || 0, 4),
-    buyBid: roundTo(row.buy_bid || 0, 3),
-    buyAsk: roundTo(row.buy_ask || 0, 3),
-    buyIOPV: roundTo(row.buy_iopv || 0, 3),
-    buyPremiumPct: roundTo(row.buy_premium_pct || 0, 4),
-    marketState: row.market_state || '',
-    volume: row.volume || 0
-  }));
+export async function fetchHistoricalPremiums() {
+  throw new Error('历史溢价接口已废弃；回测应使用价格 K 线和 NAV 净值实时计算溢价');
 }
 
 /**
@@ -199,43 +151,9 @@ function getWeekday(dateStr) {
  * 从localStorage缓存历史数据
  */
 const CACHE_KEY = 'aiDcaQuantHistoricalDataCache';
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 24小时
 
-export async function getCachedHistoricalData(symbols, startDate, endDate, forceRefresh = false, options = {}) {
-  if (typeof window === 'undefined' || !window.localStorage) {
-    return fetchHistoricalPremiums(symbols, startDate, endDate, options);
-  }
-
-  const cacheKey = `${CACHE_KEY}_${symbols.join('_')}_${startDate}_${endDate}`;
-
-  if (!forceRefresh) {
-    try {
-      const cached = window.localStorage.getItem(cacheKey);
-      if (cached) {
-        const { data, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < CACHE_TTL) {
-          return data;
-        }
-      }
-    } catch (error) {
-      console.warn('Cache read failed:', error);
-    }
-  }
-
-  // 获取新数据
-  const data = await fetchHistoricalPremiums(symbols, startDate, endDate, options);
-
-  // 写入缓存
-  try {
-    window.localStorage.setItem(cacheKey, JSON.stringify({
-      data,
-      timestamp: Date.now()
-    }));
-  } catch (error) {
-    console.warn('Cache write failed:', error);
-  }
-
-  return data;
+export async function getCachedHistoricalData() {
+  throw new Error('历史溢价缓存已废弃；请改用 fetchBacktestData 获取价格 K 线和 NAV 净值');
 }
 
 /**

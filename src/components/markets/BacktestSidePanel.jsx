@@ -512,8 +512,7 @@ export function BacktestSidePanel({
           highCodes,
           lowCodes,
           ...dateRange,
-          forceRefresh: true,
-          allowSimulation: false
+          forceRefresh: true
         });
         console.log('[Backtest] fetchBacktestData 返回:', {
           historyByCodeKeys: Object.keys(historyByCode),
