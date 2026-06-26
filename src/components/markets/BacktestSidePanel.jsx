@@ -122,7 +122,11 @@ function makeRotationResult(result) {
       sellLowerThreshold: result.strategy?.intraSellLowerPct,
       buyOtherThreshold: result.strategy?.intraBuyOtherPct,
     },
-    initialSide: ''
+    initialSide: '',
+    autoClassified: result.autoClassified || false,
+    effectiveHighCodes: result.effectiveHighCodes || [],
+    effectiveLowCodes: result.effectiveLowCodes || [],
+    avgPremiumByCode: result.avgPremiumByCode || null
   };
 }
 
@@ -634,6 +638,8 @@ export function BacktestSidePanel({
   const rotation = result?.rotation;
   const hold = result?.hold;
   const holds = Array.isArray(result?.holds) ? result.holds : (hold ? [hold] : []);
+  const effectiveHighCodes = rotation?.effectiveHighCodes?.length ? rotation.effectiveHighCodes : highCodes;
+  const effectiveLowCodes = rotation?.effectiveLowCodes?.length ? rotation.effectiveLowCodes : lowCodes;
   const bestHold = holds.reduce((best, item) => {
     if (!item) return best;
     if (!best) return item;
@@ -879,6 +885,7 @@ export function BacktestSidePanel({
                       溢价差轮动策略
                       <span className="ml-2 text-xs font-normal text-slate-500">
                         初始 {rotation.initialSide || 'L'} · {rotation.rotationCount} 次轮动
+                        {rotation.autoClassified ? ' · 已自动校正 H/L' : ''}
                       </span>
                     </h3>
                     <div className="grid grid-cols-2 gap-3">
@@ -905,7 +912,7 @@ export function BacktestSidePanel({
                       <div className="mb-2 flex justify-between">
                         <span className="text-slate-500">初始持仓</span>
                         <span className="font-semibold tabular-nums text-slate-900">
-                          {rotation.initialSide === 'H' ? highCodes[0] : lowCodes[0]}
+                          {rotation.initialSide === 'H' ? effectiveHighCodes[0] : effectiveLowCodes[0]}
                         </span>
                       </div>
                       <div className="flex justify-between">
@@ -988,11 +995,11 @@ export function BacktestSidePanel({
                     </div>
                     {rotation.initialSide === 'H' ? (
                       <p className="mt-3 text-xs leading-5 text-indigo-700">
-                        示例：当前最优组合表示先持有 H（{highCodes[0] || 'H'}）。当 H 相对 L（{lowCodes[0] || 'L'}）的溢价优势扩大到 H→L 阈值时，卖出 H 切到 L；之后若差距收敛到 L→H 阈值，再卖出 L 切回 H。系统已在候选阈值和初始方向中选择收益率最高的一组。
+                        示例：当前最优组合表示先持有 H（{effectiveHighCodes[0] || 'H'}）。当 H 相对 L（{effectiveLowCodes[0] || 'L'}）的溢价优势扩大到 H→L 阈值时，卖出 H 切到 L；之后若差距收敛到 L→H 阈值，再卖出 L 切回 H。系统已在候选阈值和初始方向中选择收益率最高的一组。
                       </p>
                     ) : (
                       <p className="mt-3 text-xs leading-5 text-indigo-700">
-                        示例：当前最优组合表示先持有 L（{lowCodes[0] || 'L'}）。当 H（{highCodes[0] || 'H'}）相对 L 的溢价优势达到 L→H 阈值时，卖出 L 切到 H；之后若差距扩大到 H→L 阈值，再卖出 H 切回 L。系统已在候选阈值和初始方向中选择收益率最高的一组。
+                        示例：当前最优组合表示先持有 L（{effectiveLowCodes[0] || 'L'}）。当 H（{effectiveHighCodes[0] || 'H'}）相对 L 的溢价优势达到 L→H 阈值时，卖出 L 切到 H；之后若差距扩大到 H→L 阈值，再卖出 H 切回 L。系统已在候选阈值和初始方向中选择收益率最高的一组。
                       </p>
                     )}
                   </div>

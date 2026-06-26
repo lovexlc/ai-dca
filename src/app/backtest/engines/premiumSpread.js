@@ -27,7 +27,33 @@ function normalizeStrategy(input = {}) {
     intraSellLowerPct: clampNumber(input.intraSellLowerPct, 0.2),
     intraBuyOtherPct: clampNumber(input.intraBuyOtherPct, 0.5),
     activeSide: ['H', 'L', 'all'].includes(input.activeSide) ? input.activeSide : 'all',
-    initialSide: ['H', 'L'].includes(input.initialSide) ? input.initialSide : ''
+    initialSide: ['H', 'L'].includes(input.initialSide) ? input.initialSide : '',
+    autoClassify: input.autoClassify !== false
+  };
+}
+
+function classifyByActualPremium(codes, navLookupByCode, closeByCode, anchorCandles) {
+  const avgPremiumByCode = {};
+  for (const code of codes) {
+    const samples = [];
+    for (const bar of anchorCandles) {
+      const close = closeByCode[code]?.get(bar.t)?.close;
+      const nav = navLookupByCode[code]?.(bar.date);
+      if (close > 0 && nav > 0) {
+        samples.push(((close - nav) / nav) * 100);
+      }
+    }
+    avgPremiumByCode[code] = samples.length
+      ? samples.reduce((sum, value) => sum + value, 0) / samples.length
+      : 0;
+  }
+
+  const sorted = codes.slice().sort((a, b) => avgPremiumByCode[b] - avgPremiumByCode[a]);
+  const mid = Math.ceil(sorted.length / 2);
+  return {
+    highCodes: sorted.slice(0, mid),
+    lowCodes: sorted.slice(mid),
+    avgPremiumByCode
   };
 }
 
@@ -54,9 +80,10 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
 
   const strategy = normalizeStrategy(strategyInput);
   const tf = normalizeBacktestTimeframe(timeframe);
-  const highCodes = strategy.highCodes || [];
-  const lowCodes = strategy.lowCodes || [];
-  const codes = Array.from(new Set([...highCodes, ...lowCodes]));
+  const codes = Array.from(new Set([
+    ...(strategy.highCodes || []),
+    ...(strategy.lowCodes || [])
+  ]));
 
   // 构建K线和NAV查询
   const candleMap = {};
@@ -81,6 +108,32 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
   const navLookupByCode = Object.fromEntries(
     codes.map((code) => [code, buildNavLookup(navHistoryByCode?.[code] || [])])
   );
+
+  let highCodes = strategy.highCodes || [];
+  let lowCodes = strategy.lowCodes || [];
+  let avgPremiumByCode = null;
+  let autoClassified = false;
+  if (strategy.autoClassify && codes.length >= 2 && anchorCandles.length >= 10) {
+    const classified = classifyByActualPremium(codes, navLookupByCode, closeByCode, anchorCandles);
+    const newHSet = new Set(classified.highCodes);
+    const mismatch = highCodes.length !== classified.highCodes.length ||
+      highCodes.some((code) => !newHSet.has(code));
+    if (mismatch) {
+      if (!silent) {
+        console.log('[premiumSpread] 自适应 H/L 重分类:', {
+          old: { H: highCodes, L: lowCodes },
+          new: { H: classified.highCodes, L: classified.lowCodes },
+          avgPremiumByCode: Object.fromEntries(
+            Object.entries(classified.avgPremiumByCode).map(([code, value]) => [code, roundTo(value, 4)])
+          )
+        });
+      }
+      highCodes = classified.highCodes;
+      lowCodes = classified.lowCodes;
+      autoClassified = true;
+    }
+    avgPremiumByCode = classified.avgPremiumByCode;
+  }
 
   const startEquity = Math.max(1, clampNumber(initialEquity, 100000));
   const simulator = createTradeSimulator({
@@ -552,6 +605,12 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     strategyId: strategy.id,
     strategyName: strategy.name,
     generatedAt: new Date().toISOString(),
+    autoClassified,
+    effectiveHighCodes: highCodes,
+    effectiveLowCodes: lowCodes,
+    avgPremiumByCode: avgPremiumByCode
+      ? Object.fromEntries(Object.entries(avgPremiumByCode).map(([code, value]) => [code, roundTo(value, 4)]))
+      : null,
     summary: {
       trades: signals.length,
       signalCount: signals.length,

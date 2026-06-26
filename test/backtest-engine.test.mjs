@@ -73,6 +73,35 @@ test('deprecated premium-spread alias delegates to the unified engine', () => {
   assert.equal(result.status, 'passed');
 });
 
+test('premium-spread auto classifies inverted H/L labels by actual average premium', () => {
+  const result = runPremiumSpreadBacktest({
+    highCodes: ['159513'],
+    lowCodes: ['513100'],
+    intraSellLowerPct: 1,
+    intraBuyOtherPct: 3
+  }, {
+    historyByCode: {
+      '159513': premiumCandles(Array.from({ length: 12 }, () => 2)),
+      '513100': premiumCandles(Array.from({ length: 12 }, () => 5))
+    },
+    navHistoryByCode: {
+      '159513': [{ date: '2026-06-12', nav: 1 }],
+      '513100': [{ date: '2026-06-12', nav: 1 }]
+    },
+    silent: true
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.status, 'passed');
+  assert.equal(result.autoClassified, true);
+  assert.deepEqual(result.effectiveHighCodes, ['513100']);
+  assert.deepEqual(result.effectiveLowCodes, ['159513']);
+  assert.equal(result.summary.highCode, '513100');
+  assert.equal(result.summary.lowCode, '159513');
+  assert.equal(result.avgPremiumByCode['513100'], 5);
+  assert.equal(result.avgPremiumByCode['159513'], 2);
+});
+
 test('legacy premium rows adapt to unified backtest inputs', () => {
   const rows = Array.from({ length: 12 }, (_, index) => ({
     date: `2026-06-${String(index + 1).padStart(2, '0')}`,

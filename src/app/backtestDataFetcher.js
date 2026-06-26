@@ -104,6 +104,29 @@ export async function fetchBacktestData(codes, options = {}) {
     });
   }));
 
+  const navDateRanges = normalizedCodes.map((code) => {
+    const nav = navHistoryByCode[code] || [];
+    return nav.length ? { first: nav[0].date, last: nav[nav.length - 1].date } : null;
+  }).filter(Boolean);
+  if (navDateRanges.length === normalizedCodes.length && navDateRanges.length > 0) {
+    const alignedFirst = navDateRanges.map((range) => range.first).sort().at(-1);
+    const alignedLast = navDateRanges.map((range) => range.last).sort()[0];
+    if (alignedFirst && alignedLast && alignedFirst <= alignedLast) {
+      for (const code of normalizedCodes) {
+        const before = historyByCode[code]?.length || 0;
+        historyByCode[code] = (historyByCode[code] || []).filter(
+          (bar) => bar.date >= alignedFirst && bar.date <= alignedLast
+        );
+        const after = historyByCode[code]?.length || 0;
+        if (before !== after) {
+          console.log(`[backtestDataFetcher] ${code} K线按NAV范围对齐: ${before} -> ${after} (${alignedFirst} ~ ${alignedLast})`);
+        }
+      }
+    } else {
+      console.warn('[backtestDataFetcher] NAV日期范围无共同交集，跳过K线对齐:', navDateRanges);
+    }
+  }
+
   const missingPriceCodes = normalizedCodes.filter((code) => !(historyByCode[code]?.length >= 10));
   const missingNavCodes = normalizedCodes.filter((code) => !(navHistoryByCode[code]?.length >= 2));
 
