@@ -102,6 +102,74 @@ test('premium-spread auto classifies inverted H/L labels by actual average premi
   assert.equal(result.avgPremiumByCode['159513'], 2);
 });
 
+test('premium-spread chooses highest gap low candidate when holding H', () => {
+  const result = runBacktest({
+    type: 'premium-spread',
+    highCodes: ['513100'],
+    lowCodes: ['159501', '159941'],
+    initialSide: 'H',
+    autoClassify: false,
+    intraSellLowerPct: 1,
+    intraBuyOtherPct: 3
+  }, {
+    timeframe: '5m',
+    initialEquity: 100000,
+    feeRate: 0,
+    slippageTicks: 0,
+    historyByCode: {
+      '513100': premiumCandles(Array.from({ length: 12 }, () => 5)),
+      '159501': premiumCandles(Array.from({ length: 12 }, () => 1)),
+      '159941': premiumCandles(Array.from({ length: 12 }, () => 0))
+    },
+    navHistoryByCode: {
+      '513100': [{ date: '2026-06-12', nav: 1 }],
+      '159501': [{ date: '2026-06-12', nav: 1 }],
+      '159941': [{ date: '2026-06-12', nav: 1 }]
+    },
+    silent: true
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.signals[0].fromCode, '513100');
+  assert.equal(result.signals[0].toCode, '159941');
+  assert.equal(result.signals[0].targetReason, 'max_gap');
+  assert.equal(result.signals[0].gapPct, 5);
+});
+
+test('premium-spread chooses lowest gap high candidate when holding L', () => {
+  const result = runBacktest({
+    type: 'premium-spread',
+    highCodes: ['513100', '513300'],
+    lowCodes: ['159501'],
+    initialSide: 'L',
+    autoClassify: false,
+    intraSellLowerPct: 1,
+    intraBuyOtherPct: 3
+  }, {
+    timeframe: '5m',
+    initialEquity: 100000,
+    feeRate: 0,
+    slippageTicks: 0,
+    historyByCode: {
+      '513100': premiumCandles(Array.from({ length: 12 }, () => 3)),
+      '513300': premiumCandles(Array.from({ length: 12 }, () => 1.2)),
+      '159501': premiumCandles(Array.from({ length: 12 }, () => 1))
+    },
+    navHistoryByCode: {
+      '513100': [{ date: '2026-06-12', nav: 1 }],
+      '513300': [{ date: '2026-06-12', nav: 1 }],
+      '159501': [{ date: '2026-06-12', nav: 1 }]
+    },
+    silent: true
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.signals[0].fromCode, '159501');
+  assert.equal(result.signals[0].toCode, '513300');
+  assert.equal(result.signals[0].targetReason, 'min_gap');
+  assert.equal(result.signals[0].gapPct, 0.2);
+});
+
 test('legacy premium rows adapt to unified backtest inputs', () => {
   const rows = Array.from({ length: 12 }, (_, index) => ({
     date: `2026-06-${String(index + 1).padStart(2, '0')}`,

@@ -5,6 +5,7 @@ import { TagInput } from '../TagInput.jsx';
 import { EquityChart, KlineChart, PremiumChart } from '../BacktestCharts.jsx';
 import { InteractiveChartContainer } from '../InteractiveChartContainer.jsx';
 import { BacktestCounterpartPicker } from './BacktestCounterpartPicker.jsx';
+import { buildGapDistributionThresholdGrids } from './backtestGapOptimization.js';
 import { createTradeSimulator, runBacktest } from '../../app/backtest/index.js';
 import { fetchBacktestData } from '../../app/backtestDataFetcher.js';
 import { deriveDefaultBacktestCodes } from './backtestSidePanelState.js';
@@ -189,19 +190,22 @@ function buildTradeExamples(trades = [], signals = [], limit = 4) {
     .slice(0, limit);
 }
 
-function counterpartFromCodes(symbol, highCodes = [], lowCodes = []) {
+function counterpartsFromCodes(symbol, highCodes = [], lowCodes = []) {
   const current = normalizeFundCode(symbol);
   const allCodes = [...(highCodes || []), ...(lowCodes || [])].map(normalizeFundCode).filter(Boolean);
-  return allCodes.find((code) => code && code !== current) || '';
+  return allCodes.filter((code) => code && code !== current);
 }
 
-function applyCounterpartToPair(symbol, counterpart, highCodes = [], lowCodes = []) {
+function applyCounterpartsToPair(symbol, counterparts, highCodes = [], lowCodes = []) {
   const current = normalizeFundCode(symbol);
-  const peer = normalizeFundCode(counterpart);
-  if (!current || !peer || current === peer) return { highCodes, lowCodes };
+  const peers = Array.from(new Set((Array.isArray(counterparts) ? counterparts : [counterparts])
+    .map(normalizeFundCode)
+    .filter((code) => code && code !== current)));
+  if (!current) return { highCodes, lowCodes };
   const currentIsLow = (lowCodes || []).map(normalizeFundCode).includes(current);
-  if (currentIsLow) return { highCodes: [peer], lowCodes: [current] };
-  return { highCodes: [current], lowCodes: [peer] };
+  if (!peers.length) return currentIsLow ? { highCodes: [], lowCodes: [current] } : { highCodes: [current], lowCodes: [] };
+  if (currentIsLow) return { highCodes: peers, lowCodes: [current] };
+  return { highCodes: [current], lowCodes: peers };
 }
 
 function navigateToFundSwitchPage() {
@@ -224,13 +228,15 @@ function pickBetterBacktest(currentBest, candidate) {
   return candidateDrawdown < bestDrawdown ? candidate : currentBest;
 }
 
-function optimizePremiumSpread({ baseStrategy, backtestOptions }) {
+function optimizePremiumSpread({ baseStrategy, backtestOptions, thresholdGrids = null }) {
   let best = null;
   const attempts = [];
+  const sellLowerGrid = thresholdGrids?.sellLowerGrid?.length ? thresholdGrids.sellLowerGrid : OPTIMIZE_SELL_LOWER_GRID;
+  const buyOtherGrid = thresholdGrids?.buyOtherGrid?.length ? thresholdGrids.buyOtherGrid : OPTIMIZE_BUY_OTHER_GRID;
   for (const initialSide of ['L', 'H']) {
-    for (const sellLowerThreshold of OPTIMIZE_SELL_LOWER_GRID) {
-      for (const buyOtherThreshold of OPTIMIZE_BUY_OTHER_GRID) {
-        if (buyOtherThreshold < sellLowerThreshold) continue;
+    for (const sellLowerThreshold of sellLowerGrid) {
+      for (const buyOtherThreshold of buyOtherGrid) {
+        if (buyOtherThreshold <= sellLowerThreshold) continue;
         const strategy = {
           ...baseStrategy,
           initialSide,
@@ -536,10 +542,11 @@ export function BacktestSidePanel({
   const defaultCodes = deriveDefaultBacktestCodes(symbol, { switchPrefs });
   const [highCodes, setHighCodes] = useState(defaultCodes.highCodes);
   const [lowCodes, setLowCodes] = useState(defaultCodes.lowCodes);
-  const [counterpartCode, setCounterpartCode] = useState(() => counterpartFromCodes(symbol, defaultCodes.highCodes, defaultCodes.lowCodes));
+  const [counterpartCodes, setCounterpartCodes] = useState(() => counterpartsFromCodes(symbol, defaultCodes.highCodes, defaultCodes.lowCodes));
   const [intraSellLowerPct, setIntraSellLowerPct] = useState('1');
   const [intraBuyOtherPct, setIntraBuyOtherPct] = useState('3');
   const [thresholdMode, setThresholdMode] = useState('auto');
+  const [strategyParamMode, setStrategyParamMode] = useState('auto');
   const [initialCash, setInitialCash] = useState('10000');
   const [investMode, setInvestMode] = useState('dca');
   const [investAmount, setInvestAmount] = useState('1000');
@@ -559,8 +566,9 @@ export function BacktestSidePanel({
       setStrategyName(`${symbol} 策略`);
       setHighCodes(nextDefaults.highCodes);
       setLowCodes(nextDefaults.lowCodes);
-      setCounterpartCode(counterpartFromCodes(symbol, nextDefaults.highCodes, nextDefaults.lowCodes));
+      setCounterpartCodes(counterpartsFromCodes(symbol, nextDefaults.highCodes, nextDefaults.lowCodes));
       setThresholdMode('auto');
+      setStrategyParamMode('auto');
       console.log('[BacktestSidePanel] state updated with highCodes:', nextDefaults.highCodes, 'lowCodes:', nextDefaults.lowCodes);
     }
   }, [open, symbol, switchPrefs]);
@@ -636,11 +644,15 @@ export function BacktestSidePanel({
 
         console.log('[Backtest] 运行溢价差轮动策略（使用NAV计算真实溢价率）...');
 
+        const manualSellLower = parseDecimalOr(intraSellLowerPct, 1);
+        const manualBuyOther = parseDecimalOr(intraBuyOtherPct, 3);
+        const useManualParams = strategyParamMode === 'manual' || thresholdMode === 'manual';
         const baseStrategy = {
           type: 'premium-spread',
-          highCodes: [highCodes[0]],
-          lowCodes: [lowCodes[0]],
-          activeSide: 'all'
+          highCodes,
+          lowCodes,
+          activeSide: 'all',
+          autoClassify: !useManualParams
         };
         console.log('[Backtest] strategy config:', baseStrategy);
 
@@ -654,9 +666,15 @@ export function BacktestSidePanel({
         };
         console.log('[Backtest] backtestOptions:', { ...backtestOptions, historyByCode: 'omitted', navHistoryByCode: 'omitted' });
 
-        const manualSellLower = parseDecimalOr(intraSellLowerPct, 1);
-        const manualBuyOther = parseDecimalOr(intraBuyOtherPct, 3);
-        const optimized = thresholdMode === 'manual'
+        const thresholdGrids = useManualParams ? null : buildGapDistributionThresholdGrids({
+          historyByCode,
+          navHistoryByCode,
+          highCodes,
+          lowCodes,
+          fallbackSellLowerGrid: OPTIMIZE_SELL_LOWER_GRID,
+          fallbackBuyOtherGrid: OPTIMIZE_BUY_OTHER_GRID
+        });
+        const optimized = useManualParams
           ? (() => {
             let best = null;
             const attempts = [];
@@ -680,7 +698,7 @@ export function BacktestSidePanel({
             }
             return { best, attempts };
           })()
-          : optimizePremiumSpread({ baseStrategy, backtestOptions });
+          : optimizePremiumSpread({ baseStrategy, backtestOptions, thresholdGrids });
         rotationResult = optimized.best;
         console.log('[Backtest] 阈值自动寻优结果:', {
           attempts: optimized.attempts.length,
@@ -696,14 +714,16 @@ export function BacktestSidePanel({
         if (rotationResult) {
           setIntraSellLowerPct(toDecimalText(rotationResult.thresholds.sellLowerThreshold, 1));
           setIntraBuyOtherPct(toDecimalText(rotationResult.thresholds.buyOtherThreshold, 3));
-          setHighCodes(rotationResult.effectiveHighCodes?.length ? rotationResult.effectiveHighCodes : highCodes);
-          setLowCodes(rotationResult.effectiveLowCodes?.length ? rotationResult.effectiveLowCodes : lowCodes);
-          setCounterpartCode(counterpartFromCodes(symbol, rotationResult.effectiveHighCodes?.length ? rotationResult.effectiveHighCodes : highCodes, rotationResult.effectiveLowCodes?.length ? rotationResult.effectiveLowCodes : lowCodes));
+          if (!useManualParams) {
+            setHighCodes(rotationResult.effectiveHighCodes?.length ? rotationResult.effectiveHighCodes : highCodes);
+            setLowCodes(rotationResult.effectiveLowCodes?.length ? rotationResult.effectiveLowCodes : lowCodes);
+            setCounterpartCodes(counterpartsFromCodes(symbol, rotationResult.effectiveHighCodes?.length ? rotationResult.effectiveHighCodes : highCodes, rotationResult.effectiveLowCodes?.length ? rotationResult.effectiveLowCodes : lowCodes));
+          }
         } else {
           console.warn('[Backtest] 所有阈值组合均未通过质量检查');
         }
 
-        holdResults = [highCodes[0], lowCodes[0]]
+        holdResults = Array.from(new Set([...highCodes, ...lowCodes]))
           .filter(Boolean)
           .map((holdCode) => {
             const holdCandles = normalizeCandlesForHold(historyByCode?.[holdCode] || []);
@@ -761,21 +781,21 @@ export function BacktestSidePanel({
 
   function handleCreateSwitchRuleFromBacktest() {
     if (!rotation) return;
-    const highCode = effectiveHighCodes[0] || highCodes[0] || '';
-    const lowCode = effectiveLowCodes[0] || lowCodes[0] || '';
-    if (!highCode || !lowCode) return;
+    const ruleHighCodes = (effectiveHighCodes.length ? effectiveHighCodes : highCodes).filter(Boolean);
+    const ruleLowCodes = (effectiveLowCodes.length ? effectiveLowCodes : lowCodes).filter(Boolean);
+    if (!ruleHighCodes.length || !ruleLowCodes.length) return;
     const sellLowerThreshold = Number(rotation.thresholds?.sellLowerThreshold ?? intraSellLowerPct);
     const buyOtherThreshold = Number(rotation.thresholds?.buyOtherThreshold ?? intraBuyOtherPct);
     const currentPrefs = readStoredSwitchPrefs();
     const nextPrefs = addSwitchRule(currentPrefs, {
-      name: `${highCode}/${lowCode} 回测规则`,
+      name: `${ruleHighCodes[0]}/${ruleLowCodes[0]} 回测规则`,
       enabled: true,
-      benchmarkCodes: [highCode, lowCode],
+      benchmarkCodes: [...ruleHighCodes, ...ruleLowCodes],
       enabledCodes: [],
-      premiumClass: {
-        [highCode]: 'H',
-        [lowCode]: 'L'
-      },
+      premiumClass: Object.fromEntries([
+        ...ruleHighCodes.map((code) => [code, 'H']),
+        ...ruleLowCodes.map((code) => [code, 'L'])
+      ]),
       intraSellLowerPct: sellLowerThreshold,
       intraBuyOtherPct: buyOtherThreshold
     });
@@ -928,13 +948,21 @@ export function BacktestSidePanel({
                       label="H 高溢价 ETF（卖出方）"
                       placeholder="输入代码如 513100"
                       tags={highCodes}
-                      onChange={setHighCodes}
+                      onChange={(values) => {
+                        setStrategyParamMode('manual');
+                        setThresholdMode('manual');
+                        setHighCodes(values);
+                      }}
                     />
                     <TagInput
                       label="L 低溢价 ETF（买入方）"
                       placeholder="输入代码如 159501"
                       tags={lowCodes}
-                      onChange={setLowCodes}
+                      onChange={(values) => {
+                        setStrategyParamMode('manual');
+                        setThresholdMode('manual');
+                        setLowCodes(values);
+                      }}
                     />
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -960,7 +988,10 @@ export function BacktestSidePanel({
                   <button
                     type="button"
                     className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
-                    onClick={() => setThresholdMode('auto')}
+                    onClick={() => {
+                      setThresholdMode('auto');
+                      setStrategyParamMode('auto');
+                    }}
                   >
                     恢复自动寻优阈值
                   </button>
@@ -975,17 +1006,26 @@ export function BacktestSidePanel({
               <div className="space-y-4">
                 <div>
                   <BacktestCounterpartPicker
-                    value={counterpartCode}
+                    value={counterpartCodes}
                     currentSymbol={symbol}
-                    onChange={(event) => {
-                      const value = String(event || '').replace(/\D/g, '').slice(0, 6);
-                      setCounterpartCode(value);
-                      const pair = applyCounterpartToPair(symbol, value, highCodes, lowCodes);
+                    onChange={(values) => {
+                      const nextValues = Array.isArray(values) ? values : [values].filter(Boolean);
+                      if (result) {
+                        setStrategyParamMode('manual');
+                        setThresholdMode('manual');
+                      }
+                      setCounterpartCodes(nextValues);
+                      const pair = applyCounterpartsToPair(symbol, nextValues, highCodes, lowCodes);
                       setHighCodes(pair.highCodes);
                       setLowCodes(pair.lowCodes);
                     }}
-                    onSelect={(value) => {
-                      const pair = applyCounterpartToPair(symbol, value, highCodes, lowCodes);
+                    onSelect={(values) => {
+                      const nextValues = Array.isArray(values) ? values : [values].filter(Boolean);
+                      if (result) {
+                        setStrategyParamMode('manual');
+                        setThresholdMode('manual');
+                      }
+                      const pair = applyCounterpartsToPair(symbol, nextValues, highCodes, lowCodes);
                       setHighCodes(pair.highCodes);
                       setLowCodes(pair.lowCodes);
                     }}

@@ -27,6 +27,7 @@ function normalizeStrategy(input = {}) {
     intraSellLowerPct: clampNumber(input.intraSellLowerPct, 0.2),
     intraBuyOtherPct: clampNumber(input.intraBuyOtherPct, 0.5),
     activeSide: ['H', 'L', 'all'].includes(input.activeSide) ? input.activeSide : 'all',
+    initialSide: ['H', 'L'].includes(input.initialSide) ? input.initialSide : '',
     autoClassify: input.autoClassify !== false
   };
 }
@@ -54,6 +55,35 @@ function classifyByActualPremium(codes, navLookupByCode, closeByCode, anchorCand
     lowCodes: sorted.slice(mid),
     avgPremiumByCode
   };
+}
+
+function pickPremiumSpreadTarget({ currentClass, from, highList, lowList, strategy }) {
+  if (!from) return null;
+  if (currentClass === 'H') {
+    return lowList
+      .map((item) => ({
+        ...item,
+        rule: 'B',
+        threshold: strategy.intraBuyOtherPct,
+        gapPct: roundTo(from.premiumPct - item.premiumPct, 4),
+        targetReason: 'max_gap'
+      }))
+      .filter((item) => Number.isFinite(item.gapPct))
+      .reduce((best, item) => (!best || item.gapPct > best.gapPct ? item : best), null);
+  }
+  if (currentClass === 'L') {
+    return highList
+      .map((item) => ({
+        ...item,
+        rule: 'A',
+        threshold: strategy.intraSellLowerPct,
+        gapPct: roundTo(item.premiumPct - from.premiumPct, 4),
+        targetReason: 'min_gap'
+      }))
+      .filter((item) => Number.isFinite(item.gapPct))
+      .reduce((best, item) => (!best || item.gapPct < best.gapPct ? item : best), null);
+  }
+  return null;
 }
 
 /**
@@ -155,6 +185,20 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
 
   // 初始化：选择初始持仓
   function pickInitialHolding(highList, lowList) {
+    if (strategy.initialSide === 'L') {
+      return lowList.reduce((best, item) =>
+        (!best || item.premiumPct < best.premiumPct ? item : best), null
+      ) || highList.reduce((best, item) =>
+        (!best || item.premiumPct > best.premiumPct ? item : best), null
+      );
+    }
+    if (strategy.initialSide === 'H') {
+      return highList.reduce((best, item) =>
+        (!best || item.premiumPct > best.premiumPct ? item : best), null
+      ) || lowList.reduce((best, item) =>
+        (!best || item.premiumPct < best.premiumPct ? item : best), null
+      );
+    }
     if (strategy.activeSide === 'L') {
       return lowList.reduce((best, item) =>
         (!best || item.premiumPct < best.premiumPct ? item : best), null
@@ -267,30 +311,10 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     }
 
     // 判断交易信号
-    let to = null;
-    let gapPct = NaN;
-    let rule = 'none';
-    let threshold = NaN;
-
-    if (currentClass === 'H') {
-      to = lowList.reduce((best, item) =>
-        (!best || item.premiumPct < best.premiumPct ? item : best), null
-      );
-      if (to) {
-        gapPct = roundTo(from.premiumPct - to.premiumPct, 4);
-        rule = 'B';
-        threshold = strategy.intraBuyOtherPct;
-      }
-    } else if (currentClass === 'L') {
-      to = highList.reduce((best, item) =>
-        (!best || item.premiumPct > best.premiumPct ? item : best), null
-      );
-      if (to) {
-        gapPct = roundTo(to.premiumPct - from.premiumPct, 4);
-        rule = 'A';
-        threshold = strategy.intraSellLowerPct;
-      }
-    }
+    const to = pickPremiumSpreadTarget({ currentClass, from, highList, lowList, strategy });
+    const gapPct = Number(to?.gapPct);
+    const rule = to?.rule || 'none';
+    const threshold = Number(to?.threshold);
 
     if (!to || !Number.isFinite(gapPct)) {
       // 没有对手方或无效差价，记录数据但不交易
@@ -302,6 +326,8 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
         toCode: from.code,
         currentCode: from.code,
         currentClass,
+        fromClass: currentClass,
+        toClass: currentClass,
         highPremiumPct: 0,
         lowPremiumPct: 0,
         gapPct: 0,
@@ -351,9 +377,12 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
         datetime: anchorDatetime,
         fromCode: from.code,
         toCode: to.code,
+        fromClass: currentClass,
+        toClass: premiumClass[to.code] || '',
         rule,
         threshold,
         gapPct,
+        targetReason: to.targetReason,
         entryGapPct: Number.isFinite(entryGapPct) ? entryGapPct : null,
         profit: sellTrade ? sellTrade.profit : 0
       });
@@ -376,11 +405,14 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
       toCode: to.code,
       currentCode: displayCurrentCode,
       currentClass: displayCurrentClass,
+      fromClass: currentClass,
+      toClass: premiumClass[to.code] || '',
       highPremiumPct: currentClass === 'H' ? from.premiumPct : to.premiumPct,
       lowPremiumPct: currentClass === 'H' ? to.premiumPct : from.premiumPct,
       gapPct,
       rule,
       threshold,
+      targetReason: to.targetReason,
       signal: triggered ? 'switch' : 'wait',
       profit: 0,
       equity: roundTo(equity, 2),

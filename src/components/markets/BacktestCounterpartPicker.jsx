@@ -67,6 +67,7 @@ export function BacktestCounterpartPicker({
   onSelect,
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const [heldFunds, setHeldFunds] = useState(() => readHeldExchangeFunds());
   const containerRef = useRef(null);
   useClickOutside(containerRef, () => setOpen(false), open);
@@ -86,37 +87,81 @@ export function BacktestCounterpartPicker({
 
   const candidates = useMemo(() => buildCandidateFunds(heldFunds), [heldFunds]);
   const currentCode = normalizeFundCode(currentSymbol);
-  const query = String(value || '').trim();
+  const selectedCodes = useMemo(() => Array.from(new Set(
+    (Array.isArray(value) ? value : [value])
+      .map(normalizeFundCode)
+      .filter((code) => code && code !== currentCode)
+  )), [value, currentCode]);
+  const selectedSet = new Set(selectedCodes);
   const visibleCandidates = candidates
     .filter((item) => item.code !== currentCode)
     .filter((item) => !query || item.code.includes(query) || item.name.includes(query))
     .slice(0, 8);
 
-  function commitCode(code) {
-    const normalized = normalizeFundCode(code);
-    if (!normalized) return;
+  function emit(nextCodes) {
+    const normalized = Array.from(new Set(
+      nextCodes.map(normalizeFundCode).filter((code) => code && code !== currentCode)
+    ));
     onChange?.(normalized);
     onSelect?.(normalized);
-    setOpen(false);
+  }
+
+  function toggleCode(code) {
+    const normalized = normalizeFundCode(code);
+    if (!normalized) return;
+    const next = selectedSet.has(normalized)
+      ? selectedCodes.filter((item) => item !== normalized)
+      : [...selectedCodes, normalized];
+    emit(next);
+    setQuery('');
+    setOpen(true);
+  }
+
+  function addQueryCode() {
+    const normalized = normalizeFundCode(query);
+    if (!normalized || normalized === currentCode) return;
+    emit([...selectedCodes, normalized]);
+    setQuery('');
+    setOpen(true);
   }
 
   return (
     <div ref={containerRef} className="relative">
       <label htmlFor="counterpart-code" className="block text-xs font-semibold text-slate-500">对手方</label>
+      {selectedCodes.length ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {selectedCodes.map((code) => (
+            <button
+              key={code}
+              type="button"
+              className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700"
+              onClick={() => toggleCode(code)}
+              title="点击移除"
+            >
+              {code}<span className="text-indigo-400">×</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="relative mt-2">
         <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
           id="counterpart-code"
           className={cx(inputClass, 'pl-9 font-semibold tabular-nums')}
-          value={value}
+          value={query}
           onFocus={() => setOpen(true)}
           onChange={(event) => {
             const next = event.target.value.replace(/\D/g, '').slice(0, 6);
-            onChange?.(next);
-            if (next.length === 6) onSelect?.(next);
+            setQuery(next);
             setOpen(true);
           }}
-          placeholder="输入或选择场内基金"
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              addQueryCode();
+            }
+          }}
+          placeholder="输入代码后回车，或从列表选择"
           inputMode="numeric"
         />
       </div>
@@ -127,13 +172,16 @@ export function BacktestCounterpartPicker({
               key={item.code}
               type="button"
               className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left hover:bg-slate-50"
-              onClick={() => commitCode(item.code)}
+              onClick={() => toggleCode(item.code)}
             >
               <span className="min-w-0">
-                <span className="block font-mono text-sm font-semibold tabular-nums text-slate-900">{item.code}</span>
+                <span className={cx('block font-mono text-sm font-semibold tabular-nums', selectedSet.has(item.code) ? 'text-indigo-700' : 'text-slate-900')}>{item.code}</span>
                 <span className="block truncate text-xs text-slate-500">{item.name}</span>
               </span>
-              {item.held ? <span className="shrink-0 rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-[#a50e0e]">已持有</span> : null}
+              <span className="flex shrink-0 items-center gap-1">
+                {item.held ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-[#a50e0e]">已持有</span> : null}
+                {selectedSet.has(item.code) ? <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">已选</span> : null}
+              </span>
             </button>
           )) : (
             <div className="px-3 py-6 text-center text-sm text-slate-500">没有匹配的场内基金</div>
@@ -141,7 +189,7 @@ export function BacktestCounterpartPicker({
         </div>
       ) : null}
       <p className="mt-1.5 text-xs leading-5 text-slate-400">
-        当前标的会与对手方组成 H/L 组合；已持有基金会优先显示并标注。
+        当前标的会与多个对手方组成 H/L 候选池；已持有基金会优先显示并标注。
       </p>
     </div>
   );
