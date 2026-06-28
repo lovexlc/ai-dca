@@ -19,7 +19,7 @@ const OUT_DIR = path.resolve('ui-audit-report');
 const DESKTOP = { width: 1440, height: 900 };
 const MOBILE = { width: 390, height: 844 };
 
-// Tabs reachable via ?tab= . lovexl is an admin so quant + adminData are visible.
+// Tabs reachable via ?tab= . lovexl is an admin so adminData is visible.
 const TABS = [
   { key: 'strategy', label: '策略指南' },
   { key: 'holdings', label: '持仓总览' },
@@ -28,7 +28,6 @@ const TABS = [
   { key: 'markets', label: '行情中心' },
   { key: 'premium', label: '高级版' },
   { key: 'notify', label: '通知' },
-  { key: 'quant', label: '量化研究' },
   { key: 'adminData', label: '数据' }
 ];
 

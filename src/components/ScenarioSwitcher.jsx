@@ -1,4 +1,4 @@
-import { TrendingUp, Bot, ChevronDown } from 'lucide-react';
+import { TrendingUp, ChevronDown } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -10,8 +10,7 @@ import {
 import { getAvailableScenarios } from '../app/scenarios.js';
 
 const ICON_MAP = {
-  TrendingUp,
-  Bot
+  TrendingUp
 };
 
 /**

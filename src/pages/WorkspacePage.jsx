@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, Bot, Crown, LineChart, ListChecks, Shuffle, SlidersHorizontal, Sparkles, Trash2, Wallet, X } from 'lucide-react';
-import { DEFAULT_QUANT_MODULE_TAB, DEFAULT_WORKSPACE_TAB, LEGACY_QUANT_MODULE_REDIRECTS, LEGACY_TAB_REDIRECTS, QUANT_MODULE_TABS, QUANT_MODULE_TAB_KEYS, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getAdminTabs, getQuantModuleTabs, isWorkspaceGroup } from '../app/screens.js';
+import { ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, LineChart, ListChecks, Shuffle, Sparkles, Trash2, Wallet, X } from 'lucide-react';
+import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getAdminTabs, isWorkspaceGroup } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { GlobalSearch } from '../components/global-search.jsx';
 import { BrandPreviewBar } from '../components/brand-preview-bar.jsx';
@@ -22,7 +22,6 @@ const HoldingsExperience = lazy(() => import('./HoldingsExperience.jsx').then((m
 const NotifyExperience = lazy(() => import('./NotifyExperience.jsx').then((m) => ({ default: m.NotifyExperience })));
 const TradePlansExperience = lazy(() => import('./TradePlansExperience.jsx').then((m) => ({ default: m.TradePlansExperience })));
 const MarketsExperience = lazy(() => import('./MarketsExperience.jsx').then((m) => ({ default: m.MarketsExperience })));
-const QuantStudioPage = lazy(() => import('./QuantStudioPage.jsx').then((m) => ({ default: m.QuantStudioPage })));
 const AdminAnalyticsExperience = lazy(() => import('./AdminAnalyticsExperience.jsx').then((m) => ({ default: m.AdminAnalyticsExperience })));
 
 function readPreferredWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
@@ -32,10 +31,6 @@ function readPreferredWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
 
 const WORKSPACE_TITLES = {
   tradePlans: '交易计划中心',
-  quant: '量化研究',
-  'quant:strategy': '量化研究 · 策略',
-  'quant:backtest': '量化研究 · 回测',
-  'quant:live': '量化研究 · 实盘',
   fundSwitch: '基金切换收益分析',
   markets: '行情中心',
   holdings: '持仓总览',
@@ -46,10 +41,6 @@ const WORKSPACE_TITLES = {
 const SIDEBAR_ICONS = {
   strategy: BookOpen,
   tradePlans: ListChecks,
-  quant: Bot,
-  'quant:strategy': SlidersHorizontal,
-  'quant:backtest': BarChart3,
-  'quant:live': Activity,
   fundSwitch: Shuffle,
   markets: LineChart,
   holdings: Wallet,
@@ -60,29 +51,7 @@ const SIDEBAR_ICONS = {
 const HASH_ROUTE_TABS = new Set(['tradePlans', 'holdings']);
 
 function normalizeWorkspaceTab(value = '') {
-  if (value === 'quant') return DEFAULT_QUANT_MODULE_TAB;
   return isWorkspaceGroup(value) ? value : DEFAULT_WORKSPACE_TAB;
-}
-
-function isQuantModuleTab(value = '') {
-  return QUANT_MODULE_TAB_KEYS.includes(value);
-}
-
-function normalizeQuantModule(value = '') {
-  const raw = String(value || '').trim();
-  // 旧 module 名（v2/funds/fills/etf）映射到新 module
-  const module = Object.prototype.hasOwnProperty.call(LEGACY_QUANT_MODULE_REDIRECTS, raw)
-    ? LEGACY_QUANT_MODULE_REDIRECTS[raw]
-    : raw;
-  return QUANT_MODULE_TABS.some((tab) => tab.module === module) ? module : 'strategy';
-}
-
-function quantModuleToTab(module = '') {
-  return QUANT_MODULE_TABS.find((tab) => tab.module === module)?.key || DEFAULT_QUANT_MODULE_TAB;
-}
-
-function quantTabToModule(tab = '') {
-  return QUANT_MODULE_TABS.find((item) => item.key === tab)?.module || 'strategy';
 }
 
 function readTabFromLocation(fallbackTab = DEFAULT_WORKSPACE_TAB) {
@@ -91,12 +60,9 @@ function readTabFromLocation(fallbackTab = DEFAULT_WORKSPACE_TAB) {
   }
   const params = new URLSearchParams(window.location.search);
   const currentTab = params.get('tab');
-  // Legacy ?tab=home / ?tab=dca / ?tab=quant:v2 等重定向到新 tab key。
+  // Legacy ?tab=home / ?tab=dca / removed quant tabs redirect to supported tab keys.
   if (currentTab && Object.prototype.hasOwnProperty.call(LEGACY_TAB_REDIRECTS, currentTab)) {
     return LEGACY_TAB_REDIRECTS[currentTab].tab;
-  }
-  if (currentTab === 'quant') {
-    return quantModuleToTab(normalizeQuantModule(params.get('module')));
   }
   return currentTab ? normalizeWorkspaceTab(currentTab) : normalizeWorkspaceTab(fallbackTab);
 }
@@ -115,10 +81,7 @@ function readLegacyHashFromLocation() {
 function buildWorkspaceUrl(tab, { inPagesDir = false } = {}) {
   const nextUrl = new URL(inPagesDir ? '../index.html' : './index.html', window.location.href);
   const preferredTab = readPreferredWorkspaceTab(DEFAULT_WORKSPACE_TAB);
-  if (isQuantModuleTab(tab)) {
-    nextUrl.searchParams.set('tab', 'quant');
-    nextUrl.searchParams.set('module', quantTabToModule(tab));
-  } else if (tab !== preferredTab) {
+  if (tab !== preferredTab) {
     nextUrl.searchParams.set('tab', tab);
   }
   return nextUrl;
@@ -296,7 +259,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
   const sidebarNav = useMemo(
     () => {
       const tabMap = new Map(
-        [...getPrimaryTabs(links), ...getQuantModuleTabs(links), ...getAdminTabs(links)].map((tab) => [tab.key, tab])
+        [...getPrimaryTabs(links), ...getAdminTabs(links)].map((tab) => [tab.key, tab])
       );
       const allTabs = currentScenario.visibleTabs
         .map((key) => tabMap.get(key))
@@ -321,12 +284,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     [links, isAdminUser, currentScenario]
   );
   const heroTitle = WORKSPACE_TITLES[activeTab] || WORKSPACE_TITLES.strategy;
-
-  useEffect(() => {
-    if ((activeTab === 'quant' || isQuantModuleTab(activeTab)) && isAdminUser && currentScenarioKey !== 'quant') {
-      setCurrentScenarioKey('quant');
-    }
-  }, [activeTab, currentScenarioKey, isAdminUser]);
 
   useEffect(() => {
     if (WORKSPACE_TAB_META[activeTab]?.adminOnly && !isAdminUser) {
@@ -489,24 +446,9 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   function renderActivePanel() {
     const sharedProps = { links, inPagesDir, embedded: true };
-    if (isQuantModuleTab(activeTab)) {
-      return (
-        <QuantStudioPage
-          activeModule={quantTabToModule(activeTab)}
-          onModuleChange={(module) => handleSelectTab(quantModuleToTab(module))}
-        />
-      );
-    }
     switch (activeTab) {
       case 'tradePlans':
         return <TradePlansExperience {...sharedProps} />;
-      case 'quant':
-        return (
-          <QuantStudioPage
-            activeModule="strategy"
-            onModuleChange={(module) => handleSelectTab(quantModuleToTab(module))}
-          />
-        );
       case 'fundSwitch':
         return <FundSwitchExperience {...sharedProps} />;
       case 'markets':

@@ -34,35 +34,24 @@ test.describe('scenario switcher', () => {
   test('renders the current scenario in the top bar', async ({ page }) => {
     await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('持仓交易');
     await openScenarioMenu(page);
-    await expect(page.getByRole('menuitemcheckbox')).toHaveCount(2);
+    await expect(page.getByRole('menuitemcheckbox')).toHaveCount(1);
     await expect(page.getByRole('menuitemcheckbox', { name: /持仓交易/ })).toBeVisible();
-    await expect(page.getByRole('menuitemcheckbox', { name: /量化研究/ })).toBeVisible();
+    await expect(page.getByRole('menuitemcheckbox', { name: /量化研究/ })).toHaveCount(0);
   });
 
-  test('switches to the quant scenario and shows quant feature tabs in the sidebar', async ({ page }) => {
-    await openScenarioMenu(page);
-    await page.getByRole('menuitemcheckbox', { name: /量化研究/ }).click();
-
-    await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('量化研究');
-    await expect(page.locator('nav a', { hasText: '策略' })).toBeVisible();
-    await expect(page.locator('nav a', { hasText: '回测' })).toBeVisible();
-    await expect(page.locator('nav a', { hasText: '实盘' })).toBeVisible();
-    await expect(page.locator('nav a', { hasText: '资金' })).toHaveCount(0);
-    await expect(page.locator('nav a', { hasText: '成交' })).toHaveCount(0);
-    await expect(page.locator('nav a', { hasText: '量化研究' })).toHaveCount(0);
-    await expect(page.locator('nav a', { hasText: '数据' })).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: 'Worker 溢价差模拟盘' })).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: '量化研究', level: 1 })).toBeVisible();
-    await expect(page.locator('nav a', { hasText: '综合仪表盘' })).toHaveCount(0);
-    await expect(page.locator('nav a', { hasText: '行情与数据' })).toHaveCount(0);
-    await expect(page.locator('nav a', { hasText: '交易计划' })).toHaveCount(0);
-
-    await page.reload();
+  test('removed quant links fall back to holdings', async ({ page }) => {
+    await page.goto('/?tab=quant&module=backtest');
     await closeStartupModals(page);
 
-    await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('量化研究');
-    await expect(page.getByRole('heading', { name: 'Worker 溢价差模拟盘' })).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: '量化研究', level: 1 })).toBeVisible();
+    await expect(page.getByRole('button', { name: '切换使用场景' })).toContainText('持仓交易');
+    await expect(page.locator('nav a', { hasText: '策略' })).toHaveCount(0);
+    await expect(page.locator('nav a', { hasText: '回测' })).toHaveCount(0);
+    await expect(page.locator('nav a', { hasText: '实盘' })).toHaveCount(0);
+    await expect(page.locator('nav a', { hasText: '量化研究' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: '量化研究', level: 1 })).toHaveCount(0);
+    await expect(page).toHaveURL(/\/(?:index\.html)?(?:\?tab=holdings)?$/);
+    await expect(page.locator('body')).toContainText('持仓总览');
+    await expect(page.getByRole('heading', { name: '暂无交易记录', level: 3 })).toBeVisible();
   });
 
   test('keeps holdings and trade plans inside the holding scenario', async ({ page }) => {

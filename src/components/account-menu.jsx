@@ -20,7 +20,6 @@ const SYNC_KEY_LABELS = {
   aiDcaPlanState: '建仓计划',
   aiDcaPlanStore: '计划列表',
   aiDcaPositionSnapshot: '持仓快照',
-  aiDcaQuantProjectState: '量化研究',
   aiDcaSellPlanStore: '卖出计划',
   aiDcaSwitchStrategyPrefs: '基金切换偏好',
   aiDcaTradeLedger: '交易流水',

@@ -12,15 +12,6 @@ export const SCENARIOS = {
     defaultHome: 'holdings',
     visibleTabs: ['holdings', 'tradePlans', 'strategy', 'fundSwitch', 'markets', 'premium', 'notify', 'adminData'],
     requireAdmin: false
-  },
-  quant: {
-    key: 'quant',
-    label: '量化研究',
-    icon: 'Bot',
-    description: 'Worker 溢价差模拟盘',
-    defaultHome: 'quant:strategy',
-    visibleTabs: ['quant:strategy', 'quant:backtest', 'quant:live'],
-    requireAdmin: true
   }
 };
 

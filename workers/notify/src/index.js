@@ -35,24 +35,6 @@ import {
   runSwitchStrategyTick
 } from './switchStrategyRoutes.js';
 import {
-  handleQuantPremiumConfigGet,
-  handleQuantPremiumConfigPost,
-  handleQuantPremiumBacktestApprovePost,
-  handleQuantPremiumBacktestLatestGet,
-  handleQuantPremiumBacktestPost,
-  handleQuantPremiumBacktestsGet,
-  handleQuantPremiumPaperGet,
-  handleQuantPremiumPaperPost,
-  handleQuantPremiumRunPost,
-  handleQuantPremiumSnapshotGet,
-  handleQuantPremiumStudioGet,
-  handleQuantPremiumStrategiesGet,
-  handleQuantPremiumStrategiesPost,
-  handleQuantPremiumStrategyDelete,
-  handleQuantPremiumStrategyPost,
-  runQuantPremiumTick
-} from './quantPremiumRoutes.js';
-import {
   handleAdminAlert,
   handleAdminHoldingsAllTest,
   handleHoldingsRuleGet,
@@ -332,98 +314,8 @@ export default {
         return await handleSwitchTestNav(request, env);
       }
 
-      if (request.method === 'GET' && url.pathname === '/api/notify/quant/premium/config') {
-        return await handleQuantPremiumConfigGet(request, env);
-      }
-
-      if (request.method === 'POST' && url.pathname === '/api/notify/quant/premium/config') {
-        return await handleQuantPremiumConfigPost(request, env);
-      }
-
-      if (request.method === 'GET' && url.pathname === '/api/notify/quant/premium/studio') {
-        return await handleQuantPremiumStudioGet(request, env);
-      }
-
-      if (request.method === 'GET' && url.pathname === '/api/notify/quant/premium/strategies') {
-        return await handleQuantPremiumStrategiesGet(request, env);
-      }
-
-      if (request.method === 'POST' && url.pathname === '/api/notify/quant/premium/strategies') {
-        return await handleQuantPremiumStrategiesPost(request, env);
-      }
-
-      {
-        const match = url.pathname.match(/^\/api\/notify\/quant\/premium\/strategies\/([^/]+)$/);
-        if (match && request.method === 'POST') {
-          return await handleQuantPremiumStrategyPost(request, env, decodeURIComponent(match[1]));
-        }
-        if (match && request.method === 'DELETE') {
-          return await handleQuantPremiumStrategyDelete(request, env, decodeURIComponent(match[1]));
-        }
-      }
-
-      {
-        const match = url.pathname.match(/^\/api\/notify\/quant\/premium\/strategies\/([^/]+)\/backtest$/);
-        if (match && request.method === 'POST') {
-          return await handleQuantPremiumBacktestPost(request, env, decodeURIComponent(match[1]));
-        }
-      }
-
-      {
-        const match = url.pathname.match(/^\/api\/notify\/quant\/premium\/strategies\/([^/]+)\/backtests$/);
-        if (match && request.method === 'GET') {
-          return await handleQuantPremiumBacktestsGet(request, env, decodeURIComponent(match[1]));
-        }
-        if (match && request.method === 'POST') {
-          return await handleQuantPremiumBacktestPost(request, env, decodeURIComponent(match[1]));
-        }
-      }
-
-      {
-        const match = url.pathname.match(/^\/api\/notify\/quant\/premium\/strategies\/([^/]+)\/backtest\/latest$/);
-        if (match && request.method === 'GET') {
-          return await handleQuantPremiumBacktestLatestGet(request, env, decodeURIComponent(match[1]));
-        }
-      }
-
-      {
-        const match = url.pathname.match(/^\/api\/notify\/quant\/premium\/strategies\/([^/]+)\/backtests\/([^/]+)$/);
-        if (match && request.method === 'GET') {
-          return await handleQuantPremiumBacktestLatestGet(request, env, decodeURIComponent(match[1]), decodeURIComponent(match[2]));
-        }
-      }
-
-      {
-        const match = url.pathname.match(/^\/api\/notify\/quant\/premium\/strategies\/([^/]+)\/approve$/);
-        if (match && request.method === 'POST') {
-          return await handleQuantPremiumBacktestApprovePost(request, env, decodeURIComponent(match[1]));
-        }
-      }
-
-      if (request.method === 'GET' && url.pathname === '/api/notify/quant/premium/snapshot') {
-        return await handleQuantPremiumSnapshotGet(request, env);
-      }
-
-      if (request.method === 'GET' && url.pathname === '/api/notify/quant/premium/paper') {
-        return await handleQuantPremiumPaperGet(request, env);
-      }
-
-      if (request.method === 'POST' && url.pathname === '/api/notify/quant/premium/paper') {
-        return await handleQuantPremiumPaperPost(request, env);
-      }
-
-      if (request.method === 'POST' && url.pathname === '/api/notify/quant/premium/run') {
-        return await handleQuantPremiumRunPost(request, env, { runClientDetection });
-      }
-
-      {
-        const match = url.pathname.match(/^\/api\/notify\/quant\/premium\/strategies\/([^/]+)\/paper\/run-once$/);
-        if (match && request.method === 'POST') {
-          const resourceUrl = new URL(request.url);
-          resourceUrl.pathname = '/api/notify/quant/premium/run';
-          resourceUrl.searchParams.set('strategyId', decodeURIComponent(match[1]));
-          return await handleQuantPremiumRunPost(new Request(resourceUrl, request), env, { runClientDetection });
-        }
+      if (url.pathname.startsWith('/api/notify/quant/')) {
+        return jsonResponse({ error: '量化研究功能已移除。' }, { status: 410, origin });
       }
 
       if (request.method === 'GET' && url.pathname === '/api/notify/health') {
@@ -500,8 +392,7 @@ export default {
     if (cron === '* 1-7 * * MON-FRI') {
       console.log('[notify] scheduled dispatch -> runSwitchStrategyTick', JSON.stringify({ cron }));
       ctx.waitUntil(runSwitchStrategyTick(env, scheduledMs, { reason: 'switch-cron', runClientDetection }));
-      ctx.waitUntil(runQuantPremiumTick(env, scheduledMs, { reason: 'quant-premium-cron', runClientDetection }));
-      // 场内分钟 cron：持仓交易 H/L 通知 + 量化溢价差模拟盘 + 行情推送。
+      // 场内分钟 cron：持仓交易 H/L 通知 + 行情推送。
       ctx.waitUntil(runMarketDataPush(env).catch((error) => {
         console.log('[notify] marketPush error', JSON.stringify({
           message: error instanceof Error ? error.message : String(error),

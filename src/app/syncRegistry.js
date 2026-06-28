@@ -33,8 +33,7 @@ export const SYNC_REGISTRY = [
   // —— 换基策略 ——
   { key: 'aiDcaSwitchStrategyPrefs', tab: 'fundSwitch', label: '换基偏好', merge: 'lww' },
   { key: 'aiDcaSwitchStrategyWorkerConfig', tab: 'fundSwitch', label: '换基 Worker 配置', merge: 'lww' },
-  // —— 量化 / VIX ——
-  { key: 'aiDcaQuantProjectState', tab: 'quant', label: '量化项目', merge: 'lww' },
+  // —— VIX ——
   { key: 'aiDcaVixState', tab: 'tradePlans', label: 'VIX 状态', merge: 'lww' },
   // —— 通知 ——
   { key: 'aiDcaNotifyClientConfig', tab: 'notify', label: '通知客户端配置', merge: 'lww' },

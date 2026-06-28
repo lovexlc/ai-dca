@@ -55,7 +55,7 @@ test('admin token accepts bearer and x-admin-token headers', () => {
 
 test('client and IP rate limit blocks repeated non-admin requests', async () => {
   const env = { NOTIFY_STATE: createMemoryKv() };
-  const request = new Request('https://tools.freebacktrack.tech/api/notify/quant/premium/strategies/default/backtest', {
+  const request = new Request('https://tools.freebacktrack.tech/api/notify/test-rate-limit', {
     method: 'POST',
     headers: {
       'cf-connecting-ip': '203.0.113.8'
@@ -98,7 +98,7 @@ test('admin token bypasses usage rate limits', async () => {
     ADMIN_TOKEN: 'secret-admin-token',
     NOTIFY_STATE: createMemoryKv()
   };
-  const request = new Request('https://tools.freebacktrack.tech/api/notify/quant/premium/strategies/default/backtest', {
+  const request = new Request('https://tools.freebacktrack.tech/api/notify/test-rate-limit', {
     method: 'POST',
     headers: {
       authorization: 'Bearer secret-admin-token',
@@ -114,6 +114,17 @@ test('admin token bypasses usage rate limits', async () => {
   });
 
   assert.equal(result, null);
+});
+
+test('removed quant notify API returns gone', async () => {
+  const response = await notifyWorker.fetch(new Request('https://tools.freebacktrack.tech/api/notify/quant/premium/strategies/default/backtest', {
+    method: 'POST'
+  }), {
+    NOTIFY_STATE: createMemoryKv()
+  });
+
+  assert.equal(response.status, 410);
+  assert.equal((await response.json()).error, '量化研究功能已移除。');
 });
 
 test('full manual notify run requires admin auth when no clientId is scoped', async () => {
