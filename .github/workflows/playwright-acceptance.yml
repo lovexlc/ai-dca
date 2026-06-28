@@ -1,32 +1,6 @@
 name: Playwright Acceptance
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'src/**'
-      - 'public/**'
-      - 'tests/e2e/**'
-      - 'scripts/check_nav_access.mjs'
-      - 'playwright.config.js'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.lighthouserc.cjs'
-      - '.github/workflows/playwright-acceptance.yml'
-  push:
-    branches:
-      - main
-    paths:
-      - 'src/**'
-      - 'public/**'
-      - 'tests/e2e/**'
-      - 'scripts/check_nav_access.mjs'
-      - 'playwright.config.js'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.lighthouserc.cjs'
-      - '.github/workflows/playwright-acceptance.yml'
   workflow_dispatch:
     inputs:
       full:

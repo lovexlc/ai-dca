@@ -1,14 +1,6 @@
 name: Build AI knowledge base
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'scripts/build_kb.mjs'
-      - '.github/workflows/build-knowledge-base.yml'
-  schedule:
-    # 每天 UTC 18:00 跑一次（= Asia/Shanghai 02:00），从 Notion 同步 KB
-    - cron: '0 18 * * *'
   workflow_dispatch:
 
 concurrency:
