@@ -1,7 +1,7 @@
 // Markets API client. Talks to ai-dca-markets worker mounted at /api/markets/* on api.freebacktrack.tech.
 
 import { apiUrl } from './apiBase.js';
-import { askPuterGlm, askPuterGlmStream, isPuterGlmEnabled } from './puterGlm.js';
+import { PuterAuthRequiredError, askPuterGlm, askPuterGlmStream, isPuterGlmEnabled } from './puterGlm.js';
 import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
 
 const DEFAULT_BASE = 'https://api.freebacktrack.tech/api/markets';
@@ -151,7 +151,7 @@ export async function askMarkets({ question, symbols = [], depth = 'fast', conte
     try {
       return await askPuterGlm({ question, symbols, context });
     } catch (error) {
-      console.warn('[markets] Puter GLM fallback to worker', error);
+      console.warn('[markets] Puter AI fallback to worker', error);
     }
   }
 
@@ -163,8 +163,11 @@ export async function askMarketsFastStream({ question, symbols = [], context = '
     try {
       return await askPuterGlmStream({ question, symbols, context, onEvent });
     } catch (error) {
-      console.warn('[markets] Puter GLM stream fallback to worker', error);
-      onEvent?.({ type: 'progress', payload: { message: 'Puter GLM 暂不可用，切换到备用服务…' } });
+      console.warn('[markets] Puter AI stream fallback to worker', error);
+      const message = error instanceof PuterAuthRequiredError
+        ? 'Puter 需要登录，已切换到备用服务…'
+        : 'Puter AI 暂不可用，已切换到备用服务…';
+      onEvent?.({ type: 'progress', payload: { message } });
     }
   }
 

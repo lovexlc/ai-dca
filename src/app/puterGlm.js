@@ -1,9 +1,25 @@
-const DEFAULT_MODEL = 'z-ai/glm-5.2';
+const FALLBACK_MODEL = 'gemini-2.5-flash-lite';
+const PREFERRED_MODELS = [
+  'gpt-5.4-nano',
+  'gemini-2.5-flash-lite',
+  'gpt-5.4-mini',
+  'claude-3-5-haiku',
+  'claude-sonnet-4-5',
+];
 const PUTER_SCRIPT_URL = 'https://js.puter.com/v2/';
 const DEFAULT_TIMEOUT_MS = 8000;
 const DEFAULT_CHAT_TIMEOUT_MS = 12000;
 
 let puterLoadPromise = null;
+let modelListPromise = null;
+
+export class PuterAuthRequiredError extends Error {
+  constructor(message = '需要登录 Puter 后才能使用可选 AI 通道。') {
+    super(message);
+    this.name = 'PuterAuthRequiredError';
+    this.code = 'PUTER_AUTH_REQUIRED';
+  }
+}
 
 function readEnvFlag(name, fallback = true) {
   const value = String(import.meta.env?.[name] ?? '').trim().toLowerCase();
@@ -102,7 +118,101 @@ async function waitForPuter(timeoutMs = DEFAULT_TIMEOUT_MS) {
   throw new Error('Puter.js 加载超时。');
 }
 
-function extractText(payload) {
+function getEnvModel() {
+  return String(import.meta.env?.VITE_PUTER_GLM_MODEL || '').trim();
+}
+
+async function ensurePuterSession(puter) {
+  const isSignedIn = puter?.auth?.isSignedIn;
+  if (typeof isSignedIn !== 'function') return;
+
+  const signedIn = await isSignedIn.call(puter.auth);
+  if (!signedIn) {
+    throw new PuterAuthRequiredError();
+  }
+}
+
+function normalizeModelId(model) {
+  if (typeof model === 'string') return model.trim();
+  if (model && typeof model === 'object') return String(model.id || model.name || '').trim();
+  return '';
+}
+
+export function selectPuterModelFromList(models, requestedModel = '') {
+  const requested = String(requestedModel || '').trim();
+  const available = (Array.isArray(models) ? models : [])
+    .map((model) => ({
+      id: normalizeModelId(model),
+      aliases: Array.isArray(model?.aliases) ? model.aliases.map(normalizeModelId).filter(Boolean) : [],
+    }))
+    .filter((model) => model.id);
+
+  if (!available.length) return requested || FALLBACK_MODEL;
+
+  const allIds = new Set();
+  for (const model of available) {
+    allIds.add(model.id);
+    for (const alias of model.aliases) allIds.add(alias);
+  }
+
+  if (requested && allIds.has(requested)) return requested;
+
+  for (const preferred of PREFERRED_MODELS) {
+    if (allIds.has(preferred)) return preferred;
+  }
+
+  const lightweight = available.find((model) => /(?:nano|flash-lite|mini|haiku)/i.test(model.id));
+  return lightweight?.id || available[0].id;
+}
+
+async function listPuterModels(puter) {
+  if (typeof puter?.ai?.listModels !== 'function') return [];
+  if (!modelListPromise) {
+    modelListPromise = Promise.resolve()
+      .then(() => puter.ai.listModels())
+      .then((models) => (Array.isArray(models) ? models : []))
+      .catch((error) => {
+        modelListPromise = null;
+        throw error;
+      });
+  }
+  return modelListPromise;
+}
+
+async function resolvePuterModel(puter, requestedModel = '') {
+  const configuredModel = String(requestedModel || getEnvModel()).trim();
+  try {
+    const models = await withTimeout(
+      listPuterModels(puter),
+      'Puter 模型列表获取超时。',
+      DEFAULT_TIMEOUT_MS
+    );
+    return selectPuterModelFromList(models, configuredModel);
+  } catch (error) {
+    console.warn('[puter] model discovery failed, using fallback model', error);
+    return configuredModel || FALLBACK_MODEL;
+  }
+}
+
+function readContentText(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (!item || typeof item !== 'object') return '';
+        return item.text || item.content || item.value || '';
+      })
+      .filter(Boolean)
+      .join('');
+  }
+  if (content && typeof content === 'object') {
+    return content.text || content.content || content.value || '';
+  }
+  return '';
+}
+
+export function extractPuterText(payload) {
   if (typeof payload === 'string') return payload;
   if (!payload || typeof payload !== 'object') return '';
 
@@ -111,14 +221,20 @@ function extractText(payload) {
     payload.delta,
     payload.response,
     payload.answer,
-    payload.message?.content,
+    readContentText(payload.message?.content),
     payload.choices?.[0]?.message?.content,
     payload.output?.[0]?.content?.[0]?.text,
     payload.output_text
   ];
 
   for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim()) return candidate;
+    const text = readContentText(candidate);
+    if (text.trim()) return text;
+  }
+
+  if (typeof payload.toString === 'function' && payload.toString !== Object.prototype.toString) {
+    const text = payload.toString();
+    if (typeof text === 'string' && text.trim() && text !== '[object Object]') return text;
   }
 
   return '';
@@ -128,9 +244,19 @@ function withTimeout(promise, message, timeoutMs = DEFAULT_CHAT_TIMEOUT_MS) {
   return Promise.race([
     promise,
     new Promise((_, reject) => {
-      window.setTimeout(() => reject(new Error(message)), timeoutMs);
+      globalThis.setTimeout(() => reject(new Error(message)), timeoutMs);
     })
   ]);
+}
+
+function readPuterError(payload) {
+  if (!payload || typeof payload !== 'object') return '';
+  if (payload.error) {
+    if (typeof payload.error === 'string') return payload.error;
+    if (payload.error.message) return payload.error.message;
+  }
+  if (payload.type === 'error' && payload.message) return payload.message;
+  return '';
 }
 
 function buildMarketsPrompt({ question, symbols = [], context = '' }) {
@@ -168,27 +294,29 @@ function buildMarketsPrompt({ question, symbols = [], context = '' }) {
   return lines.join('\n');
 }
 
-export async function askPuterGlm({ question, symbols = [], context = '', model = DEFAULT_MODEL } = {}) {
+export async function askPuterGlm({ question, symbols = [], context = '', model = '' } = {}) {
   if (!isPuterGlmEnabled()) {
-    throw new Error('Puter GLM 已关闭。');
+    throw new Error('Puter AI 已关闭。');
   }
 
   const prompt = buildMarketsPrompt({ question, symbols, context });
   const puter = await waitForPuter();
+  await ensurePuterSession(puter);
+  const resolvedModel = await resolvePuterModel(puter, model);
   const payload = await withTimeout(
-    puter.ai.chat(prompt, { model, stream: false }),
-    'Puter GLM 响应超时。'
+    puter.ai.chat(prompt, { model: resolvedModel, stream: false }),
+    'Puter AI 响应超时。'
   );
-  const answer = extractText(payload).trim();
+  const answer = extractPuterText(payload).trim();
 
   if (!answer) {
-    throw new Error('Puter GLM 返回了空响应。');
+    throw new Error('Puter AI 返回了空响应。');
   }
 
   return {
     answer,
     text: answer,
-    model,
+    model: resolvedModel,
     provider: 'puter',
     sources: []
   };
@@ -198,35 +326,39 @@ export async function askPuterGlmStream({
   question,
   symbols = [],
   context = '',
-  model = DEFAULT_MODEL,
+  model = '',
   onEvent
 } = {}) {
   if (!isPuterGlmEnabled()) {
-    throw new Error('Puter GLM 已关闭。');
+    throw new Error('Puter AI 已关闭。');
   }
 
   const prompt = buildMarketsPrompt({ question, symbols, context });
   const puter = await waitForPuter();
-  onEvent?.({ type: 'progress', payload: { message: '正在连接 Puter GLM…' } });
+  await ensurePuterSession(puter);
+  const resolvedModel = await resolvePuterModel(puter, model);
+  onEvent?.({ type: 'progress', payload: { message: `正在连接 Puter AI（${resolvedModel}）…` } });
 
   const streamOrPayload = await withTimeout(
-    puter.ai.chat(prompt, { model, stream: true }),
-    'Puter GLM 建立流式响应超时。'
+    puter.ai.chat(prompt, { model: resolvedModel, stream: true }),
+    'Puter AI 建立流式响应超时。'
   );
 
   if (!streamOrPayload || typeof streamOrPayload[Symbol.asyncIterator] !== 'function') {
-    const answer = extractText(streamOrPayload).trim();
-    if (!answer) throw new Error('Puter GLM 返回了空响应。');
+    const answer = extractPuterText(streamOrPayload).trim();
+    if (!answer) throw new Error('Puter AI 返回了空响应。');
     onEvent?.({ type: 'token', payload: { delta: answer } });
-    return { answer, text: answer, model, provider: 'puter', sources: [] };
+    return { answer, text: answer, model: resolvedModel, provider: 'puter', sources: [] };
   }
 
   let answer = '';
   const iterator = streamOrPayload[Symbol.asyncIterator]();
   for (;;) {
-    const next = await withTimeout(iterator.next(), 'Puter GLM 流式响应超时。');
+    const next = await withTimeout(iterator.next(), 'Puter AI 流式响应超时。');
     if (next.done) break;
-    const delta = extractText(next.value);
+    const chunkError = readPuterError(next.value);
+    if (chunkError) throw new Error('Puter AI 返回错误：' + chunkError);
+    const delta = extractPuterText(next.value);
     if (!delta) continue;
     answer += delta;
     onEvent?.({ type: 'token', payload: { delta } });
@@ -234,13 +366,13 @@ export async function askPuterGlmStream({
 
   const cleaned = answer.trim();
   if (!cleaned) {
-    throw new Error('Puter GLM 返回了空响应。');
+    throw new Error('Puter AI 返回了空响应。');
   }
 
   return {
     answer: cleaned,
     text: cleaned,
-    model,
+    model: resolvedModel,
     provider: 'puter',
     sources: []
   };

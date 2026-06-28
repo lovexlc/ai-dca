@@ -185,7 +185,7 @@
       <header>
         <div>
           <h1>AI 功能测试</h1>
-          <p>独立测试 Puter.js + Z.ai GLM 调用链路，不依赖主应用状态。</p>
+          <p>独立测试 Puter.js 可选 AI 通道，不依赖主应用状态。</p>
         </div>
         <a href="./index.html">返回应用</a>
       </header>
@@ -195,7 +195,8 @@
           <div class="row">
             <label>
               模型
-              <input id="model" value="z-ai/glm-5.2" />
+              <input id="model" value="gemini-2.5-flash-lite" list="model-list" />
+              <datalist id="model-list"></datalist>
             </label>
             <label>
               超时秒数
@@ -207,11 +208,13 @@
             <textarea id="prompt">用中文回答：请用 3 条要点说明 AI-DCA 的投资记录助手可以怎样帮助我。</textarea>
           </label>
           <div class="actions">
+            <button id="auth" type="button" class="secondary">检查登录</button>
+            <button id="models" type="button" class="secondary">列出模型</button>
             <button id="run" type="button" class="primary">运行测试</button>
             <button id="clear" type="button" class="secondary">清空输出</button>
             <span id="status" class="status">未运行</span>
           </div>
-          <div class="hint">如果页面长时间停在“等待响应”，通常是 Puter 侧登录、区域或模型可用性问题。这个页面会按设置的超时时间终止等待。</div>
+          <div class="hint">Puter.js 是用户自付模式。若未登录或模型不可用，主应用会切换到备用服务；这个页面用于单独确认 Puter 账号和模型状态。</div>
         </div>
         <div id="output" class="output">输出会显示在这里。</div>
       </section>
@@ -223,8 +226,11 @@
       const PUTER_SCRIPT_URL = 'https://js.puter.com/v2/';
       const els = {
         model: document.getElementById('model'),
+        modelList: document.getElementById('model-list'),
         prompt: document.getElementById('prompt'),
         timeout: document.getElementById('timeout'),
+        auth: document.getElementById('auth'),
+        models: document.getElementById('models'),
         run: document.getElementById('run'),
         clear: document.getElementById('clear'),
         status: document.getElementById('status'),
@@ -285,12 +291,101 @@
       function readText(part) {
         if (typeof part === 'string') return part;
         if (!part || typeof part !== 'object') return '';
-        return part.text || part.delta || part.response || part.answer || part.message?.content || '';
+        const content = part.message?.content;
+        if (Array.isArray(content)) {
+          const text = content.map((item) => typeof item === 'string' ? item : item?.text || item?.content || '').join('');
+          if (text) return text;
+        }
+        if (typeof content === 'string') return content;
+        if (part.choices?.[0]?.message?.content) return part.choices[0].message.content;
+        if (part.output?.[0]?.content?.[0]?.text) return part.output[0].content[0].text;
+        if (part.output_text) return part.output_text;
+        if (part.text || part.delta || part.response || part.answer) return part.text || part.delta || part.response || part.answer;
+        if (typeof part.toString === 'function' && part.toString !== Object.prototype.toString) {
+          const text = part.toString();
+          if (text && text !== '[object Object]') return text;
+        }
+        return '';
+      }
+
+      async function checkAuth() {
+        els.auth.disabled = true;
+        setStatus('检查登录', '');
+        try {
+          const puter = await withTimeout(loadPuter(), 10000);
+          if (!puter.auth || typeof puter.auth.isSignedIn !== 'function') {
+            setStatus('SDK 无登录接口', 'err');
+            log('auth api unavailable');
+            return false;
+          }
+          const signedIn = await puter.auth.isSignedIn();
+          if (signedIn) {
+            setStatus('Puter 已登录', 'ok');
+            log('auth signed in');
+            return true;
+          }
+          setStatus('Puter 未登录', 'err');
+          log('auth not signed in');
+          if (typeof puter.auth.signIn === 'function') {
+            await puter.auth.signIn();
+            const nextSignedIn = await puter.auth.isSignedIn();
+            setStatus(nextSignedIn ? 'Puter 已登录' : 'Puter 未登录', nextSignedIn ? 'ok' : 'err');
+            log('auth signIn result=' + nextSignedIn);
+            return nextSignedIn;
+          }
+          return false;
+        } catch (error) {
+          const message = error && error.message ? error.message : String(error);
+          setStatus('登录检查失败', 'err');
+          log('auth error ' + message);
+          return false;
+        } finally {
+          els.auth.disabled = false;
+        }
+      }
+
+      function pickDefaultModel(models) {
+        const ids = models.map((model) => String(model.id || model.name || '').trim()).filter(Boolean);
+        const preferred = ['gpt-5.4-nano', 'gemini-2.5-flash-lite', 'gpt-5.4-mini', 'claude-3-5-haiku', 'claude-sonnet-4-5'];
+        return preferred.find((id) => ids.includes(id)) || ids.find((id) => /nano|flash-lite|mini|haiku/i.test(id)) || ids[0] || els.model.value.trim();
+      }
+
+      async function listModels() {
+        els.models.disabled = true;
+        setStatus('获取模型', '');
+        try {
+          const puter = await withTimeout(loadPuter(), 10000);
+          if (typeof puter.ai.listModels !== 'function') {
+            throw new Error('当前 Puter SDK 没有 listModels 接口');
+          }
+          const models = await withTimeout(puter.ai.listModels(), 10000);
+          const list = Array.isArray(models) ? models : [];
+          els.modelList.innerHTML = '';
+          for (const model of list.slice(0, 80)) {
+            const id = String(model.id || model.name || '').trim();
+            if (!id) continue;
+            const option = document.createElement('option');
+            option.value = id;
+            els.modelList.appendChild(option);
+          }
+          const selected = pickDefaultModel(list);
+          if (selected) els.model.value = selected;
+          els.output.textContent = JSON.stringify(list.slice(0, 20), null, 2);
+          setStatus('模型已获取', 'ok');
+          log('models count=' + list.length + ' selected=' + selected);
+        } catch (error) {
+          const message = error && error.message ? error.message : String(error);
+          setStatus('模型获取失败', 'err');
+          els.output.textContent = '模型列表获取失败：' + message;
+          log('models error ' + message);
+        } finally {
+          els.models.disabled = false;
+        }
       }
 
       async function runTest() {
         const prompt = els.prompt.value.trim();
-        const model = els.model.value.trim() || 'z-ai/glm-5.2';
+        const model = els.model.value.trim() || 'gemini-2.5-flash-lite';
         const timeoutMs = Math.max(5, Number(els.timeout.value) || 30) * 1000;
         if (!prompt) {
           setStatus('请输入 prompt', 'err');
@@ -304,6 +399,10 @@
 
         try {
           const puter = await withTimeout(loadPuter(), 10000);
+          if (puter.auth && typeof puter.auth.isSignedIn === 'function') {
+            const signedIn = await puter.auth.isSignedIn();
+            if (!signedIn) throw new Error('Puter 未登录，请先点击“检查登录”。');
+          }
           setStatus('等待响应', '');
           log('calling puter.ai.chat model=' + model);
           const result = await withTimeout(puter.ai.chat(prompt, { model, stream: true }), timeoutMs);
@@ -336,6 +435,8 @@
         }
       }
 
+      els.auth.addEventListener('click', checkAuth);
+      els.models.addEventListener('click', listModels);
       els.run.addEventListener('click', runTest);
       els.clear.addEventListener('click', () => {
         els.output.textContent = '';
