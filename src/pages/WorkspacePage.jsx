@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, Bot, Crown, LineChart, ListChecks, Shuffle, SlidersHorizontal, Trash2, Wallet, X } from 'lucide-react';
+import { Activity, ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, Bot, Crown, LineChart, ListChecks, Shuffle, SlidersHorizontal, Sparkles, Trash2, Wallet, X } from 'lucide-react';
 import { DEFAULT_QUANT_MODULE_TAB, DEFAULT_WORKSPACE_TAB, LEGACY_QUANT_MODULE_REDIRECTS, LEGACY_TAB_REDIRECTS, QUANT_MODULE_TABS, QUANT_MODULE_TAB_KEYS, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getAdminTabs, getQuantModuleTabs, isWorkspaceGroup } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { GlobalSearch } from '../components/global-search.jsx';
@@ -544,6 +544,18 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         activeKey={activeTab}
         onSelectNav={handleSelectTab}
         showMobileBar={false}
+        sidebarFooter={
+          <a
+            href={links.aiTest}
+            className="console-quick__secondary"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="打开 AI 功能测试页"
+          >
+            <Sparkles className="h-4 w-4" aria-hidden="true" />
+            <span>AI 功能测试</span>
+          </a>
+        }
       >
         {demoMeta ? (
           <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">

@@ -174,8 +174,8 @@ export function HoldingsOverviewShell({
         </div>
       </HoldingsSidePanel>
 
-      {/* v7.7: 移动端右下角悬浮操作按钮 */}
-      <FloatingActionButton actions={fabActions} />
+      {/* v7.7: 移动端右下角悬浮操作按钮，仅持仓总览展示 */}
+      {incomeRoute === ROUTES.OVERVIEW ? <FloatingActionButton actions={fabActions} /> : null}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 // Markets API client. Talks to ai-dca-markets worker mounted at /api/markets/* on api.freebacktrack.tech.
 
 import { apiUrl } from './apiBase.js';
+import { askPuterGlm, askPuterGlmStream, isPuterGlmEnabled } from './puterGlm.js';
 import { isKnownQdiiFundCode } from './qdiiFundCodes.js';
 
 const DEFAULT_BASE = 'https://api.freebacktrack.tech/api/markets';
@@ -146,7 +147,31 @@ export async function fetchProfile(symbol) {
 }
 
 export async function askMarkets({ question, symbols = [], depth = 'fast', context = '' }) {
+  if (depth === 'fast' && isPuterGlmEnabled()) {
+    try {
+      return await askPuterGlm({ question, symbols, context });
+    } catch (error) {
+      console.warn('[markets] Puter GLM fallback to worker', error);
+    }
+  }
+
   return postJson('/ask', { question, symbols, depth, context });
+}
+
+export async function askMarketsFastStream({ question, symbols = [], context = '', onEvent } = {}) {
+  if (isPuterGlmEnabled()) {
+    try {
+      return await askPuterGlmStream({ question, symbols, context, onEvent });
+    } catch (error) {
+      console.warn('[markets] Puter GLM stream fallback to worker', error);
+      onEvent?.({ type: 'progress', payload: { message: 'Puter GLM 暂不可用，切换到备用服务…' } });
+    }
+  }
+
+  const res = await postJson('/ask', { question, symbols, depth: 'fast', context });
+  const answer = (res && (res.answer || res.text)) || '';
+  if (answer) onEvent?.({ type: 'token', payload: { delta: answer } });
+  return res;
 }
 
 // M3: 深度问答 SSE 流式调用。

@@ -84,6 +84,7 @@ export function createPageLinks({ inPagesDir = false } = {}) {
     newPlan: `${indexHref}?tab=newPlan`,
     notify: `${indexHref}?tab=notify`,
     adminData: `${indexHref}?tab=adminData`,
+    aiTest: inPagesDir ? '../ai-test.html' : './ai-test.html',
     // 旧入口已并入交易计划 tab 的 #new 子视图
     accumNew: `${indexHref}?tab=tradePlans#new`,
     accumEdit: indexHref,

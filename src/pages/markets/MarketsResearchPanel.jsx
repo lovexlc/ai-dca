@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import '../../styles/markdown.css';
 import { ArrowUp, Edit3, History, Loader2, Plus, Send, Sparkles, X } from 'lucide-react';
-import { askMarkets, askMarketsStream, loadWatchlist } from '../../app/marketsApi.js';
+import { askMarketsFastStream, askMarketsStream, loadWatchlist } from '../../app/marketsApi.js';
 import { buildStockAnalysisPrompt } from '../../app/stockAnalysisPrompt.js';
 import { MarketsChartCodeBlock } from '../../components/markets/MarketsChartBlock.jsx';
 import { cx } from '../../components/experience-ui.jsx';
@@ -95,8 +95,36 @@ export function MarketsResearchPanel({ market, mode, onModeChange, watchSymbols 
             return [...next, { role: 'assistant', content: finalAnswer, sources: finalSources, depth: 'deep' }];
           });
         } else {
-          const res = await askMarkets({ question, symbols, depth: 'fast', context: useContext });
-          const answer = (res && (res.answer || res.text)) || '抱歉，未获取到回答。';
+          let streamed = '';
+          let stage = '正在连接 AI…';
+          const renderPending = () => {
+            setMessages((prev) => {
+              const next = prev.slice();
+              const last = next[next.length - 1];
+              if (!last || !last.pending) return prev;
+              next[next.length - 1] = {
+                ...last,
+                content: streamed,
+                stage,
+              };
+              return next;
+            });
+          };
+          const res = await askMarketsFastStream({
+            question,
+            symbols,
+            context: useContext,
+            onEvent: ({ type, payload }) => {
+              if (type === 'token' && payload && typeof payload.delta === 'string') {
+                streamed += payload.delta;
+                renderPending();
+              } else if (type === 'progress' && payload && typeof payload.message === 'string') {
+                stage = payload.message;
+                renderPending();
+              }
+            },
+          });
+          const answer = (res && (res.answer || res.text)) || streamed || '抱歉，未获取到回答。';
           const sources = (res && Array.isArray(res.sources)) ? res.sources : [];
           setMessages((prev) => {
             const next = prev.slice(0, -1);
