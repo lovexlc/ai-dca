@@ -223,8 +223,8 @@ async function requestNotify(path, init = {}) {
     throw new Error(payload.error || `通知服务请求失败：状态 ${response.status}`);
   }
 
-  const platform = path.includes('/ws/') ? 'pc' : path.includes('/settings') ? 'serverchan3' : 'ios';
-  trackAnalyticsEvent('notify_used', { path, platform });
+  const notifyPlatform = path.includes('/ws/') ? 'pc' : path.includes('/settings') ? 'serverchan3' : 'ios';
+  trackAnalyticsEvent('notify_used', { path, notifyPlatform });
   return payload;
 }
 

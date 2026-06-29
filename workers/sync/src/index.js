@@ -272,7 +272,20 @@ async function handleAdminAnalytics(request, env, origin) {
       NULLIF(COALESCE(NULLIF(user_id, ''), visitor_id), '') AS uid,
       type,
       event_date,
-      meta
+      meta,
+      CASE
+        WHEN type = 'notify_used' THEN COALESCE(
+          NULLIF(json_extract(meta, '$.notifyPlatform'), ''),
+          NULLIF(json_extract(meta, '$.platform'), ''),
+          CASE
+            WHEN COALESCE(json_extract(meta, '$.path'), '') LIKE '%/ws/%' THEN 'pc'
+            WHEN COALESCE(json_extract(meta, '$.path'), '') LIKE '%/settings%' THEN 'serverchan3'
+            WHEN COALESCE(json_extract(meta, '$.path'), '') != '' THEN 'ios'
+            ELSE ''
+          END
+        )
+        ELSE ''
+      END AS notify_platform
     FROM analytics_events
     WHERE event_date >= ? AND type IN ('notify_enabled','notify_used')
   ),
@@ -281,21 +294,21 @@ async function handleAdminAnalytics(request, env, origin) {
       uid,
       MAX(CASE
         WHEN type = 'notify_enabled' AND json_extract(meta, '$.hasBark') = 1 THEN 1
-        WHEN type = 'notify_used' AND json_extract(meta, '$.platform') = 'ios' THEN 1
+        WHEN type = 'notify_used' AND notify_platform = 'ios' THEN 1
         ELSE 0
       END) AS has_ios,
       MAX(CASE
-        WHEN type = 'notify_used' AND json_extract(meta, '$.platform') = 'serverchan3' THEN 1
+        WHEN type = 'notify_used' AND notify_platform = 'serverchan3' THEN 1
         WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'serverchan3') THEN 1
         ELSE 0
       END) AS has_serverchan3,
       MAX(CASE
         WHEN type = 'notify_enabled' AND EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value = 'pc') THEN 1
-        WHEN type = 'notify_used' AND json_extract(meta, '$.platform') = 'pc' THEN 1
+        WHEN type = 'notify_used' AND notify_platform = 'pc' THEN 1
         ELSE 0
       END) AS has_pc,
       MAX(CASE
-        WHEN type = 'notify_used' AND COALESCE(json_extract(meta, '$.platform'), '') NOT IN ('ios', 'serverchan3', 'pc') THEN 1
+        WHEN type = 'notify_used' AND notify_platform NOT IN ('ios', 'serverchan3', 'pc') THEN 1
         WHEN type = 'notify_enabled'
           AND COALESCE(json_extract(meta, '$.hasBark'), 0) != 1
           AND NOT EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value IN ('serverchan3', 'pc'))
@@ -303,7 +316,7 @@ async function handleAdminAnalytics(request, env, origin) {
         ELSE 0
       END) AS has_unknown,
       MAX(CASE
-        WHEN type = 'notify_used' AND COALESCE(json_extract(meta, '$.platform'), '') NOT IN ('ios', 'serverchan3', 'pc') THEN event_date
+        WHEN type = 'notify_used' AND notify_platform NOT IN ('ios', 'serverchan3', 'pc') THEN event_date
         WHEN type = 'notify_enabled'
           AND COALESCE(json_extract(meta, '$.hasBark'), 0) != 1
           AND NOT EXISTS (SELECT 1 FROM json_each(json_extract(meta, '$.platforms')) WHERE value IN ('serverchan3', 'pc'))

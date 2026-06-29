@@ -451,9 +451,26 @@ function getNotifyPlatforms(event) {
   return Array.isArray(event.meta?.platforms) ? event.meta.platforms.map((platform) => String(platform || '')) : [];
 }
 
+function inferNotifyPlatformFromPath(path = '') {
+  const value = String(path || '');
+  if (value.includes('/ws/')) return 'pc';
+  if (value.includes('/settings')) return 'serverchan3';
+  if (value) return 'ios';
+  return '';
+}
+
+function getNotifyUsedPlatform(event) {
+  return String(
+    event.meta?.notifyPlatform ||
+    event.meta?.platform ||
+    inferNotifyPlatformFromPath(event.meta?.path) ||
+    ''
+  );
+}
+
 function isKnownNotifyEvent(event, platform) {
   const platforms = getNotifyPlatforms(event);
-  if (event.type === 'notify_used') return String(event.meta?.platform || '') === platform;
+  if (event.type === 'notify_used') return getNotifyUsedPlatform(event) === platform;
   if (event.type !== 'notify_enabled') return false;
   if (platform === 'ios') return Boolean(event.meta?.hasBark) || platforms.includes('ios');
   return platforms.includes(platform);
@@ -461,7 +478,7 @@ function isKnownNotifyEvent(event, platform) {
 
 function isUnknownNotifyEvent(event) {
   const platforms = getNotifyPlatforms(event);
-  if (event.type === 'notify_used') return !['ios', 'serverchan3', 'pc'].includes(String(event.meta?.platform || ''));
+  if (event.type === 'notify_used') return !['ios', 'serverchan3', 'pc'].includes(getNotifyUsedPlatform(event));
   if (event.type === 'notify_enabled') {
     return !event.meta?.hasBark && !platforms.some((platform) => ['ios', 'serverchan3', 'pc'].includes(platform));
   }
