@@ -9,6 +9,7 @@ import { ScenarioSwitcher } from '../components/ScenarioSwitcher.jsx';
 import { startCloudAutoSync } from '../app/cloudSync.js';
 import { printSyncDebugInfo } from '../app/syncDebugger.js';
 import { showToast } from '../app/toast.js';
+import { readLedgerState } from '../app/holdingsLedger.js';
 import { clearDemoData, readDemoDataMeta } from '../app/demoData.js';
 import { readWorkspacePrefs, switchScenario } from '../app/workspacePrefs.js';
 import { getScenario } from '../app/scenarios.js';
@@ -27,6 +28,20 @@ const AdminAnalyticsExperience = lazy(() => import('./AdminAnalyticsExperience.j
 function readPreferredWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
   if (typeof window === 'undefined') return fallbackTab;
   return readWorkspacePrefs().homepageTab || fallbackTab;
+}
+
+function hasLocalHoldingData() {
+  try {
+    const ledger = readLedgerState();
+    return Array.isArray(ledger.transactions) && ledger.transactions.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function resolveDefaultWorkspaceTab(fallbackTab = DEFAULT_WORKSPACE_TAB) {
+  if (hasLocalHoldingData()) return 'holdings';
+  return readPreferredWorkspaceTab(fallbackTab);
 }
 
 const WORKSPACE_TITLES = {
@@ -80,7 +95,7 @@ function readLegacyHashFromLocation() {
 
 function buildWorkspaceUrl(tab, { inPagesDir = false } = {}) {
   const nextUrl = new URL(inPagesDir ? '../index.html' : './index.html', window.location.href);
-  const preferredTab = readPreferredWorkspaceTab(DEFAULT_WORKSPACE_TAB);
+  const preferredTab = resolveDefaultWorkspaceTab(DEFAULT_WORKSPACE_TAB);
   if (tab !== preferredTab) {
     nextUrl.searchParams.set('tab', tab);
   }
@@ -105,7 +120,7 @@ function TabLoadingFallback() {
 
 export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir = false }) {
   const links = createPageLinks({ inPagesDir });
-  const [activeTab, setActiveTab] = useState(() => readTabFromLocation(readPreferredWorkspaceTab(initialTab)));
+  const [activeTab, setActiveTab] = useState(() => readTabFromLocation(resolveDefaultWorkspaceTab(initialTab)));
   const [demoMeta, setDemoMeta] = useState(() => readDemoDataMeta());
   const [tabHistory, setTabHistory] = useState([]);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -287,7 +302,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   useEffect(() => {
     if (WORKSPACE_TAB_META[activeTab]?.adminOnly && !isAdminUser) {
-      setActiveTab(DEFAULT_WORKSPACE_TAB);
+      setActiveTab(resolveDefaultWorkspaceTab(DEFAULT_WORKSPACE_TAB));
     }
   }, [activeTab, isAdminUser]);
 
@@ -346,7 +361,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
 
   useEffect(() => {
     function handlePopState() {
-      const nextTab = readTabFromLocation(readPreferredWorkspaceTab(initialTab));
+      const nextTab = readTabFromLocation(resolveDefaultWorkspaceTab(initialTab));
       scrollPositionsRef.current.set(activeTab, window.scrollY);
       restoreScrollOnNextTabRef.current = true;
       setTabHistory((current) => current.filter((item) => item !== nextTab));
