@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Bell, Calculator, CalendarClock, ChevronDown, ChevronUp, ListChecks, MoreHorizontal, Pencil, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bell, Calculator, CalendarClock, ChevronDown, ChevronUp, ListChecks, MoreHorizontal, Pencil, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
 import { loadNotifyStatus, readNotifyClientConfig, sendNotifyTest } from '../app/notifySync.js';
 import { buildTradePlanCenter } from '../app/tradePlans.js';
 import { deletePlan } from '../app/plan.js';
@@ -16,6 +16,7 @@ import {
 } from '../app/tradePlansHelpers.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import { clearMarketActionDraft, readMarketActionDraft } from '../app/marketActionDraft.js';
+import { clearWorkspaceReturn, readWorkspaceReturn } from '../app/workspaceReturn.js';
 
 // 定投 / 卖出仍按需 lazy 加载，列表页只展示计划分类与卡片。
 const DcaExperienceLazy = lazy(() => import('./DcaExperience.jsx').then((m) => ({ default: m.DcaExperience })));
@@ -178,6 +179,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [openMenuRowId, setOpenMenuRowId] = useState('');
+  const [workspaceReturn, setWorkspaceReturn] = useState(() => readWorkspaceReturn('tradePlans'));
   const menuContainerRef = useRef(null);
   const createMenuRef = useRef(null);
   const [openMenuPlacement, setOpenMenuPlacement] = useState('below');
@@ -225,6 +227,21 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     setEditingDca(null);
     setEditingSell(null);
     gotoSubView('new', { push: true });
+  }
+
+  function handleWorkspaceReturn() {
+    if (!workspaceReturn?.tab) return;
+    const target = workspaceReturn;
+    clearWorkspaceReturn();
+    setWorkspaceReturn(null);
+    window.dispatchEvent(new CustomEvent('workspace:navigate', {
+      detail: {
+        tab: target.tab,
+        hash: target.hash || '',
+        search: target.search || '',
+        recordReturn: false,
+      }
+    }));
   }
 
   function enterCreateView(type) {
@@ -553,6 +570,22 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     );
   }
 
+  function renderWorkspaceReturnBar() {
+    if (!workspaceReturn?.tab) return null;
+    return (
+      <div className="flex">
+        <button
+          type="button"
+          onClick={handleWorkspaceReturn}
+          className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          返回{workspaceReturn.label || '上一页'}
+        </button>
+      </div>
+    );
+  }
+
   function renderSubTabBar() {
     return (
       <div className="scroll-fade-x overflow-x-auto border-b border-slate-200" role="tablist" aria-label="交易计划分类">
@@ -838,19 +871,25 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   if (subView === 'new') {
     return (
-      <NewPlanExperience
-        links={links}
-        embedded
-        initialPlan={editingPlan}
-        mode={editingPlan?.id ? 'replace' : 'create'}
-        onBack={exitNewPlanView}
-      />
+      <div className="space-y-3">
+        <div className={cx('mx-auto max-w-7xl', embedded ? 'px-4 pt-4 sm:px-6' : 'px-6 pt-4')}>
+          {renderWorkspaceReturnBar()}
+        </div>
+        <NewPlanExperience
+          links={links}
+          embedded
+          initialPlan={editingPlan}
+          mode={editingPlan?.id ? 'replace' : 'create'}
+          onBack={exitNewPlanView}
+        />
+      </div>
     );
   }
 
   if (subView === 'dcaNew') {
     return (
       <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
+        {renderWorkspaceReturnBar()}
         <Suspense fallback={<SubViewLoadingFallback />}>
           <DcaExperienceLazy
             links={links}
@@ -876,6 +915,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   if (subView === 'sellNew') {
     return (
       <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 pt-6 sm:px-6 sm:pt-8' : 'px-6 pt-8')}>
+        {renderWorkspaceReturnBar()}
         <Suspense fallback={<SubViewLoadingFallback />}>
           <SellPlanExperienceLazy
             links={links}
@@ -893,6 +933,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
 
   return (
     <div className={cx('mx-auto max-w-7xl space-y-6', embedded ? 'px-4 sm:px-6' : 'px-6')}>
+      {renderWorkspaceReturnBar()}
       {renderPageHeader()}
 
       {channelConfigured ? null : (

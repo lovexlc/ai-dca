@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { ArrowLeft } from 'lucide-react';
 import {
   getCoreRowModel,
   getFacetedRowModel,
@@ -18,6 +19,7 @@ import { buildAggregateHoldingsTsv } from './holdings/holdingsClipboardExport.js
 import { useHoldingsStorageSync } from './holdings/useHoldingsStorageSync.js';
 import { useHoldingAlerts } from './holdings/useHoldingAlerts.js';
 import { AlertRuleDialog } from '../components/AlertRuleDialog.jsx';
+import { cx } from '../components/experience-ui.jsx';
 import {
   aggregateByCode,
   buildLedgerRows,
@@ -69,6 +71,7 @@ import { getCodeFromUrl, updateCodeInUrl } from './holdings/holdingsUrlSync.js';
 import { clearAllLocalData, getDataStats, getClearDataConfirmMessage } from '../app/clearAllData.js';
 import { clearMarketActionDraft, readMarketActionDraft } from '../app/marketActionDraft.js';
 import { buildAggregatesTableData } from './holdings/buildAggregatesTableData.js';
+import { clearWorkspaceReturn, readWorkspaceReturn } from '../app/workspaceReturn.js';
 function readColumnFilterValue(filters, id) {
   const filter = (Array.isArray(filters) ? filters : []).find((item) => item?.id === id);
   return filter?.value;
@@ -88,6 +91,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [draftMode, setDraftMode] = useState('create');
   const [navStatus, setNavStatus] = useState('idle');
   const [ocrState, setOcrState] = useState(() => createOcrState());
+  const [workspaceReturn, setWorkspaceReturn] = useState(() => readWorkspaceReturn('holdings'));
   const [pasteModalOpen, setPasteModalOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const pendingCodeHandledRef = useRef('');
@@ -1175,8 +1179,41 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       window.dispatchEvent(new CustomEvent('markets:select-symbol', { detail: { symbol: normalizeFundCode(code), market: 'cn' } }));
     }
   }
+
+  function handleWorkspaceReturn() {
+    if (!workspaceReturn?.tab) return;
+    const target = workspaceReturn;
+    clearWorkspaceReturn();
+    setWorkspaceReturn(null);
+    window.dispatchEvent(new CustomEvent('workspace:navigate', {
+      detail: {
+        tab: target.tab,
+        hash: target.hash || '',
+        search: target.search || '',
+        recordReturn: false,
+      }
+    }));
+  }
+
+  function renderWorkspaceReturnBar() {
+    if (!workspaceReturn?.tab) return null;
+    return (
+      <div className={cx('mb-3 px-4 sm:px-6', embedded ? '' : 'mx-auto max-w-[1600px]')}>
+        <button
+          type="button"
+          onClick={handleWorkspaceReturn}
+          className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          返回{workspaceReturn.label || '上一页'}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <>
+    {renderWorkspaceReturnBar()}
     <HoldingsOverviewShell
       embedded={embedded}
       migrationNoticeVisible={migrationNoticeVisible}

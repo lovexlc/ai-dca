@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUp, Bell, CalendarClock, CalendarDays, Loader2, Search, Star, TrendingDown, TrendingUp, Wallet, X, BarChart3 } from 'lucide-react';
 import { fetchKline, fetchQuotes, searchSymbols, CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsApi.js';
-import { formatCurrency } from '../../app/accumulation.js';
 import { getNavHistory, getNavSnapshot } from '../../app/navService.js';
 import { getXueqiuQuote } from '../../app/xueqiuQuote.js';
 import { Sparkline } from '../../components/markets/Sparkline.jsx';
@@ -82,6 +81,7 @@ export function SymbolDetailPanel({
   onToggleWatch,
   onOpenAlertDialog,
   onMarketAction,
+  onBacktestEvent,
   premiumState,
   navHistoryState,
   isMobile = false,
@@ -640,20 +640,6 @@ export function SymbolDetailPanel({
   const currentRangeLabel = chartRange === 'custom' && normalizedCustomRange ? '自定义' : formatChartRangeLabel(chartRange, chartCustomRange);
   const todayForInput = todayShanghaiIso();
   const canCreateSellPlan = Boolean(row.isHeld || row.holding || tradeMarkers.length);
-  const holding = row.holding || null;
-  const holdingProfitPositive = Number(holding?.unrealizedProfit) > 0;
-  const holdingProfitNegative = Number(holding?.unrealizedProfit) < 0;
-  const holdingTodayPositive = Number(holding?.todayProfit) > 0;
-  const holdingTodayNegative = Number(holding?.todayProfit) < 0;
-  const holdingAmountLabel = holding && (holding.hasLatestNav || holding.pendingBuyAmount > 0)
-    ? formatCurrency(holding.marketValue, '¥', 2)
-    : '—';
-  const holdingCurrentChangeLabel = holding?.hasCurrentPrice
-    ? formatSignedPercent(holding.hasTodayNav ? holding.todayReturnRate : 0)
-    : '—';
-  const holdingTotalChangeLabel = holding?.hasLatestNav
-    ? formatSignedPercent(holding.unrealizedReturnRate)
-    : '—';
   const detailActionButtonClass = 'inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-[#dadce0] bg-white px-2.5 text-[12px] font-semibold text-[#1f1f1f] transition hover:bg-[#f1f3f4] disabled:cursor-not-allowed disabled:opacity-45 sm:h-9 sm:px-3 sm:text-[13px]';
 
   return (
@@ -690,38 +676,6 @@ export function SymbolDetailPanel({
                 <span>{stateLabel}</span>
                 {row.lastUpdated ? <><span>·</span><span>更新于 {formatClock(row.lastUpdated)}</span></> : null}
                 {Number.isFinite(Number(row.previousClose)) ? <><span>·</span><span>昨收 <span className="tabular-nums">{formatMarketPrice(row.previousClose, row)}</span></span></> : null}
-              </div>
-            ) : null}
-            {holding ? (
-              <div className="mt-2 grid max-w-xl grid-cols-3 overflow-hidden rounded-[12px] border border-[#e8eaed] bg-[#f8fafd]">
-                <div className="min-w-0 px-2.5 py-1.5 sm:px-3">
-                  <div className="truncate text-[10px] font-medium text-[#5f6368]">持有金额</div>
-                  <div className="mt-0.5 truncate text-[12px] font-semibold tabular-nums text-[#1f1f1f] sm:text-[13px]" title={holdingAmountLabel}>{holdingAmountLabel}</div>
-                </div>
-                <div className="min-w-0 border-l border-[#e8eaed] px-2.5 py-1.5 sm:px-3">
-                  <div className="truncate text-[10px] font-medium text-[#5f6368]">当前涨跌幅</div>
-                  <div
-                    className={cx(
-                      'mt-0.5 truncate text-[12px] font-semibold tabular-nums sm:text-[13px]',
-                      holdingTodayPositive ? 'text-[#a50e0e]' : holdingTodayNegative ? 'text-[#137333]' : 'text-[#5f6368]'
-                    )}
-                    title={holdingCurrentChangeLabel}
-                  >
-                    {holdingCurrentChangeLabel}
-                  </div>
-                </div>
-                <div className="min-w-0 border-l border-[#e8eaed] px-2.5 py-1.5 sm:px-3">
-                  <div className="truncate text-[10px] font-medium text-[#5f6368]">总涨跌幅</div>
-                  <div
-                    className={cx(
-                      'mt-0.5 truncate text-[12px] font-semibold tabular-nums sm:text-[13px]',
-                      holdingProfitPositive ? 'text-[#a50e0e]' : holdingProfitNegative ? 'text-[#137333]' : 'text-[#5f6368]'
-                    )}
-                    title={holdingTotalChangeLabel}
-                  >
-                    {holdingTotalChangeLabel}
-                  </div>
-                </div>
               </div>
             ) : null}
           </div>
@@ -1047,6 +1001,16 @@ export function SymbolDetailPanel({
                 switchPrefs,
                 chartRange
               });
+              onBacktestEvent?.('tab_select', {
+                symbolLength: rowSymbol.length,
+                chartRange,
+                market,
+              });
+              onBacktestEvent?.('open', {
+                symbolLength: rowSymbol.length,
+                chartRange,
+                market,
+              });
               setBacktestPanelOpen(true);
             }}
             className={cx(
@@ -1279,9 +1243,17 @@ export function SymbolDetailPanel({
       {/* 回测侧边栏 */}
       <BacktestSidePanel
         open={backtestPanelOpen}
-        onClose={() => setBacktestPanelOpen(false)}
+        onClose={() => {
+          onBacktestEvent?.('close', {
+            symbolLength: rowSymbol.length,
+            chartRange,
+            market,
+          });
+          setBacktestPanelOpen(false);
+        }}
         symbol={rowSymbol}
         switchPrefs={switchPrefs}
+        onEvent={onBacktestEvent}
       />
     </section>
   );

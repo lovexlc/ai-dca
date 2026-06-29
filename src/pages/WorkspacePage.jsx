@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, LineChart, ListChecks, Shuffle, Sparkles, Trash2, Wallet, X } from 'lucide-react';
+import { ArrowLeft, ArrowUp, BarChart3, Bell, BookOpen, LineChart, ListChecks, Shuffle, Trash2, Wallet, X } from 'lucide-react';
 import { DEFAULT_WORKSPACE_TAB, LEGACY_TAB_REDIRECTS, WORKSPACE_TAB_META, createPageLinks, getPrimaryTabs, getAdminTabs, isWorkspaceGroup } from '../app/screens.js';
 import { ConsoleLayout } from '../components/console-layout.jsx';
 import { GlobalSearch } from '../components/global-search.jsx';
@@ -15,6 +15,7 @@ import { readWorkspacePrefs, switchScenario } from '../app/workspacePrefs.js';
 import { getScenario } from '../app/scenarios.js';
 import { CLOUD_SYNC_SESSION_EVENT, loadCloudSession } from '../app/authClient.js';
 import { isAnalyticsAdmin, trackPageEngagement, trackPageView, trackSessionHeartbeat, trackSessionStart } from '../app/analytics.js';
+import { saveWorkspaceReturn } from '../app/workspaceReturn.js';
 
 // 各主 tab 使用 React.lazy 按需加载，在 Vite 中会被拆成独立 chunk。
 // 定投、卖出、VIX、回测工具已并入 TradePlansExperience 作为二级视图。
@@ -391,6 +392,7 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
       return;
     }
     const hash = typeof options.hash === 'string' ? options.hash : '';
+    const search = typeof options.search === 'string' ? options.search : '';
     const alreadyActive = normalizedTab === activeTab;
     const hashMatches = (window.location.hash || '') === hash;
     if (alreadyActive && hashMatches) {
@@ -411,6 +413,17 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     }
 
     const nextUrl = buildWorkspaceUrl(normalizedTab, { inPagesDir });
+    if (search) {
+      nextUrl.search = search;
+      const params = nextUrl.searchParams;
+      const preferredTab = resolveDefaultWorkspaceTab(DEFAULT_WORKSPACE_TAB);
+      if (normalizedTab !== preferredTab) {
+        params.set('tab', normalizedTab);
+      } else {
+        params.delete('tab');
+      }
+      nextUrl.search = params.toString();
+    }
     if (hash) {
       nextUrl.hash = hash;
     }
@@ -438,14 +451,26 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     function handleWorkspaceNavigate(event) {
       const tab = event?.detail?.tab || '';
       const hash = typeof event?.detail?.hash === 'string' ? event.detail.hash : '';
+      const search = typeof event?.detail?.search === 'string' ? event.detail.search : '';
       if (!tab) return;
-      handleSelectTab(tab, { hash });
+      const normalizedTab = normalizeWorkspaceTab(tab);
+      if (event?.detail?.recordReturn !== false && normalizedTab !== activeTab) {
+        saveWorkspaceReturn({
+          tab: activeTab,
+          targetTab: normalizedTab,
+          hash: window.location.hash || '',
+          search: window.location.search || '',
+          label: WORKSPACE_TITLES[activeTab] || '上一页',
+          createdAt: Date.now(),
+        });
+      }
+      handleSelectTab(normalizedTab, { hash, search });
     }
     window.addEventListener('workspace:navigate', handleWorkspaceNavigate);
     return () => window.removeEventListener('workspace:navigate', handleWorkspaceNavigate);
   });
 
-  function handleMobileBack() {
+  function handleWorkspaceBack() {
     const previousTab = tabHistory[tabHistory.length - 1];
     if (!previousTab) return;
     setTabHistory((current) => current.slice(0, -1));
@@ -512,18 +537,6 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         activeKey={activeTab}
         onSelectNav={handleSelectTab}
         showMobileBar={false}
-        sidebarFooter={
-          <a
-            href={links.aiTest}
-            className="console-quick__secondary"
-            target="_blank"
-            rel="noreferrer"
-            aria-label="打开 AI 功能测试页"
-          >
-            <Sparkles className="h-4 w-4" aria-hidden="true" />
-            <span>AI 功能测试</span>
-          </a>
-        }
       >
         {demoMeta ? (
           <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
@@ -554,14 +567,14 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
         </div>
       </ConsoleLayout>
       {(tabHistory.length > 0 || showScrollTop) ? (
-        <div className="fixed bottom-24 right-4 z-40 flex flex-col gap-2 sm:hidden" aria-label="页面快捷操作">
+        <div className="fixed bottom-6 right-4 z-40 flex flex-col gap-2 sm:bottom-8 sm:right-6" aria-label="页面快捷操作">
           {tabHistory.length > 0 ? (
             <button
               type="button"
               className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 shadow-lg shadow-slate-900/10 backdrop-blur active:bg-slate-100"
               aria-label="返回上一页"
               title="返回上一页"
-              onClick={handleMobileBack}
+              onClick={handleWorkspaceBack}
             >
               <ArrowLeft className="h-5 w-5" aria-hidden="true" />
             </button>
