@@ -70,6 +70,9 @@ import { getCodeFromUrl, updateCodeInUrl } from './holdings/holdingsUrlSync.js';
 import { clearAllLocalData, getDataStats, getClearDataConfirmMessage } from '../app/clearAllData.js';
 import { clearMarketActionDraft, readMarketActionDraft } from '../app/marketActionDraft.js';
 import { buildAggregatesTableData } from './holdings/buildAggregatesTableData.js';
+import { loadSwitchSnapshotFromWorker } from '../app/switchStrategySync.js';
+import { readSellPlanList } from '../app/sellPlans.js';
+import { summarizeExitSignals, summarizeSwitchSignals } from '../app/todaySignals.js';
 function readColumnFilterValue(filters, id) {
   const filter = (Array.isArray(filters) ? filters : []).find((item) => item?.id === id);
   return filter?.value;
@@ -205,6 +208,8 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
   const [switchPickerOpen, setSwitchPickerOpen] = useState(false);
   const [switchPickerSearch, setSwitchPickerSearch] = useState('');
   const [switchPickerSelectedIds, setSwitchPickerSelectedIds] = useState(() => new Set());
+  const [workerSwitchSnapshot, setWorkerSwitchSnapshot] = useState(null);
+  const [todaySignalLoading, setTodaySignalLoading] = useState(false);
   const fileInputRef = useRef(null);
   const autoNavTriggeredRef = useRef(false);
   const navAttemptedCodesRef = useRef(new Set());
@@ -256,6 +261,30 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     () => buildAggregatesTableData({ aggregates, accountAssignments, costBasisBySymbol }),
     [accountAssignments, aggregates, costBasisBySymbol],
   );
+  const switchSignalSummary = useMemo(
+    () => summarizeSwitchSignals(workerSwitchSnapshot),
+    [workerSwitchSnapshot],
+  );
+  const exitSignalSummary = useMemo(
+    () => summarizeExitSignals(readSellPlanList(), aggregatesTableData),
+    [aggregatesTableData],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    setTodaySignalLoading(true);
+    loadSwitchSnapshotFromWorker()
+      .then((payload) => {
+        if (!cancelled) setWorkerSwitchSnapshot(payload?.snapshot || null);
+      })
+      .catch(() => {
+        if (!cancelled) setWorkerSwitchSnapshot(null);
+      })
+      .finally(() => {
+        if (!cancelled) setTodaySignalLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
   const numericSortFn = (rowA, rowB, columnId) => {
     const a = rowA.getValue(columnId);
     const b = rowB.getValue(columnId);
@@ -1177,6 +1206,31 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     }
   }
 
+  function navigateToFundSwitch() {
+    if (typeof window === 'undefined') return;
+    trackFeatureEvent('holdings', 'today_signal_open_fund_switch', {
+      switchSignalCount: switchSignalSummary.count,
+      switchEventCount: switchSignalSummary.signalCount,
+    });
+    const target = links.fundSwitch || './index.html?tab=fundSwitch';
+    const nextUrl = new URL(target, window.location.href);
+    if (window.location.href === nextUrl.href) return;
+    window.history.pushState({ tab: 'fundSwitch', source: 'todaySignal' }, '', nextUrl);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }
+
+  function openExitSignal(signal) {
+    const code = normalizeFundCode(signal?.code);
+    if (!code) return;
+    trackFeatureEvent('holdings', 'today_signal_open_exit_detail', {
+      codeLength: code.length,
+      exitSignalCount: exitSignalSummary.count,
+    });
+    setSelectedCode(code);
+    setSidePanelTab('summary');
+    setSidePanelOpen(true);
+  }
+
   return (
     <>
     <WorkspaceReturnBar currentTab="holdings" className={`mb-3 px-4 sm:px-6 ${embedded ? '' : 'mx-auto max-w-[1600px]'}`} />
@@ -1214,6 +1268,13 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       aggregatesTableData={aggregatesTableData}
       aggregates={aggregates}
       ledgerRows={ledgerRows}
+      todaySignals={{
+        loading: todaySignalLoading,
+        switchSummary: switchSignalSummary,
+        exitSummary: exitSignalSummary,
+        onOpenFundSwitch: navigateToFundSwitch,
+        onOpenExitSignal: openExitSignal,
+      }}
       onCreateFirstTransaction={() => {
         resetDraft(emptyDraft({ type: 'BUY' }));
         setSidePanelTab('create');

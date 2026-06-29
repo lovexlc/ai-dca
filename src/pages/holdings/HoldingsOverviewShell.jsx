@@ -8,6 +8,7 @@ import { HoldingSummaryPanel } from './HoldingSummaryPanel.jsx';
 import { HoldingsSidePanel } from './HoldingsSidePanel.jsx';
 import { OcrImportModal, PasteImportModal } from './TransactionImportModals.jsx';
 import { SwitchCounterpartPickerModal } from './SwitchCounterpartPickerModal.jsx';
+import { TodaySignalPanel } from './TodaySignalPanel.jsx';
 import { TransactionDraftPanel } from './TransactionDraftPanel.jsx';
 
 export function HoldingsOverviewShell({
@@ -26,6 +27,7 @@ export function HoldingsOverviewShell({
   aggregatesTableData,
   aggregates,
   ledgerRows,
+  todaySignals,
   onCreateFirstTransaction,
   onInstallDemoData,
   onAggregateRowClick,
@@ -91,6 +93,15 @@ export function HoldingsOverviewShell({
         <div className="grid grid-cols-1 gap-4">
           <section className="min-w-0">
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onOcrFile} />
+            <div className="mb-4">
+              <TodaySignalPanel
+                loading={todaySignals?.loading}
+                switchSummary={todaySignals?.switchSummary}
+                exitSummary={todaySignals?.exitSummary}
+                onOpenFundSwitch={todaySignals?.onOpenFundSwitch}
+                onOpenExitSignal={todaySignals?.onOpenExitSignal}
+              />
+            </div>
             <div className="min-h-[480px]">
               <AggregateHoldingsTableSection
                 table={aggregatesTable}

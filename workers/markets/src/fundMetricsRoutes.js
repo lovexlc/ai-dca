@@ -7,6 +7,7 @@ import {
   fetchYahooChart,
   normalizeYahooKline
 } from './fetchers.js';
+import { OTC_FUND_NAME_BY_CODE } from './otcFundList.js';
 import { kvGetJson, kvPutJson, r2GetJson, r2PutJson, klineKey } from './storage.js';
 import { classifySymbol } from './symbols.js';
 import {
@@ -152,6 +153,8 @@ function normalizeFundKindFromQuote(quote, exchange, hintedKind = '') {
 }
 
 export function normalizeFundMetricFromQuote(code, quote, { cached = false, cachePolicy = '', primaryError = '', exchange = isExchangeTradedFund(code), fundKind = '' } = {}) {
+  const normalizedCode = String(quote?.code || code || '').trim();
+  const fallbackName = OTC_FUND_NAME_BY_CODE[normalizedCode] || '';
   const price = firstPositiveNumber(quote?.price, quote?.currentPrice, quote?.close);
   const latestNav = firstPositiveNumber(quote?.latestNav, !exchange ? quote?.currentPrice : null);
   const currentValue = exchange ? price : latestNav;
@@ -189,14 +192,14 @@ export function normalizeFundMetricFromQuote(code, quote, { cached = false, cach
   const marketCapital = Number(quote?.marketCapital ?? quote?.marketCap ?? quote?.market_capital);
   return {
     ok: !quote?.error,
-    code: String(quote?.code || code || '').trim(),
+    code: normalizedCode,
     symbol: String(quote?.symbol || code || '').trim(),
-    name: String(quote?.name || '').trim(),
+    name: String(quote?.name || fallbackName).trim(),
     market: 'cn',
     fundKind: resolvedFundKind,
-    fundType: String(quote?.fundType || quote?.typeDesc || '').trim(),
+    fundType: String(quote?.fundType || quote?.typeDesc || (!exchange && resolvedFundKind === 'qdii' && fallbackName ? 'QDII' : '')).trim(),
     fundTypeCode: quote?.fundTypeCode ?? null,
-    fullName: String(quote?.fullName || '').trim(),
+    fullName: String(quote?.fullName || fallbackName).trim(),
     price,
     currentPrice: currentValue,
     close: currentValue,

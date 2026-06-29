@@ -402,13 +402,17 @@ export function MarketsExperience() {
       if (quotesWithErrors.length > 0) {
         console.warn('[Markets] 以下标的获取行情失败:', quotesWithErrors.map(([sym, q]) => ({ symbol: sym, error: q.error })));
       }
+      const missingQuoteSymbols = list.filter((symbol) => !quotes?.[symbol]);
       setWatchQuotes(quotes);
       trackActionResult('markets', 'watch_refresh', 'success', {
         market,
         symbolCount: list.length,
+        symbolSample: list.slice(0, 30),
         quoteCount: Object.keys(quotes || {}).length,
         navSnapshotCount: Object.keys(navSnapshots || {}).length,
         fundFeeCount: Object.keys(fundFees || {}).length,
+        errorSymbols: quotesWithErrors.slice(0, 30).map(([symbol]) => symbol),
+        missingQuoteSymbols: missingQuoteSymbols.slice(0, 30),
         durationMs: Date.now() - startedAt
       });
     } catch (err) {
@@ -416,6 +420,7 @@ export function MarketsExperience() {
       trackActionResult('markets', 'watch_refresh', 'error', {
         market,
         symbolCount: list.length,
+        symbolSample: list.slice(0, 30),
         durationMs: Date.now() - startedAt,
         errorMessage: err?.message || ''
       });

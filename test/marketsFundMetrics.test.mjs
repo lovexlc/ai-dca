@@ -135,6 +135,24 @@ test('fund-metrics uses project-provided QDII kind hint', () => {
   assert.equal(item.fundKind, 'qdii');
 });
 
+test('fund-metrics fills known OTC metadata when Danjuan meta is blank', () => {
+  const item = normalizeFundMetricFromQuote('021000', {
+    code: '021000',
+    name: '',
+    fullName: '',
+    fundType: '',
+    latestNav: 2.3756,
+    previousClose: 2.3861,
+    changePercent: -0.44,
+    latestNavDate: '2026-06-04',
+    source: 'danjuan'
+  }, { exchange: false, fundKind: 'qdii' });
+
+  assert.equal(item.name, '南方纳斯达克100指数发起(QDII)I人民币');
+  assert.equal(item.fullName, '南方纳斯达克100指数发起(QDII)I人民币');
+  assert.equal(item.fundType, 'QDII');
+});
+
 test('fund-metrics keeps exchange ETF price as current value', () => {
   const item = normalizeFundMetricFromQuote('513100', {
     code: '513100',
