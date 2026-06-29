@@ -10,7 +10,7 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { formatCurrency } from '../app/accumulation.js';
-import { assignAccount, getAccountAllocation, getAssignedAccount, readAccountAssignments } from '../app/accountManager.js';
+import { assignAccount, getAccountAllocation, readAccountAssignments } from '../app/accountManager.js';
 import { useIncomeRoute } from '../app/incomeRoute.js';
 import { HoldingsOverviewShell } from './holdings/HoldingsOverviewShell.jsx';
 import { COMPACT_HOLDINGS_COLUMN_VISIBILITY, createAggregateHoldingsColumns } from './holdings/aggregateHoldingsColumns.jsx';
@@ -62,12 +62,13 @@ import {
   transactionToDraft
 } from '../app/holdingsHelpers.js';
 import { readTradeLedger } from '../app/tradeLedger.js';
-import { groupCostBasisBySymbol, attachUnrealized } from '../app/costTracker.js';
+import { groupCostBasisBySymbol } from '../app/costTracker.js';
 import { hasPotentialUserData, installDemoData } from '../app/demoData.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import { getCodeFromUrl, updateCodeInUrl } from './holdings/holdingsUrlSync.js';
 import { clearAllLocalData, getDataStats, getClearDataConfirmMessage } from '../app/clearAllData.js';
 import { clearMarketActionDraft, readMarketActionDraft } from '../app/marketActionDraft.js';
+import { buildAggregatesTableData } from './holdings/buildAggregatesTableData.js';
 function readColumnFilterValue(filters, id) {
   const filter = (Array.isArray(filters) ? filters : []).find((item) => item?.id === id);
   return filter?.value;
@@ -251,39 +252,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     [tradeLedgerEntries],
   );
   const aggregatesTableData = useMemo(
-    () => {
-      const enriched = aggregates.filter((agg) => agg.hasPosition).map((agg) => {
-        const sym = String(agg.code || '').trim().toUpperCase();
-        const entry = sym ? costBasisBySymbol[sym] : null;
-        const summary = entry ? entry.summary : null;
-        const accountType = getAssignedAccount(sym || agg.code, accountAssignments);
-        const base = summary ? {
-          ...agg,
-          accountType,
-          ledgerTextbookCost: summary.textbookCost,
-          ledgerEffectiveCost: summary.effectiveCost,
-          ledgerRealizedPnl: summary.realizedPnl,
-          ledgerIsNegativeCost: summary.isNegativeCost,
-        } : { ...agg, accountType };
-        const price = Number(agg.currentPrice ?? agg.latestNav) || 0;
-        if (summary && price > 0) {
-          const withUnreal = attachUnrealized(summary, price);
-          base.ledgerUnrealizedPnl = withUnreal.unrealizedPnl;
-          base.ledgerTotalPnl = withUnreal.totalPnl;
-        }
-        return base;
-      });
-      // PR 4.5 收尾：仓位占比在表中可视化。总市值走有当前价格的行，以避免未定价资产拉低总合计。
-      const totalMv = enriched.reduce(
-        (sum, row) => sum + (row.hasCurrentPrice ? (Number(row.marketValue) || 0) : 0),
-        0,
-      );
-      if (totalMv <= 0) return enriched;
-      return enriched.map((row) => ({
-        ...row,
-        weightPct: row.hasCurrentPrice ? ((Number(row.marketValue) || 0) / totalMv) * 100 : null,
-      }));
-    },
+    () => buildAggregatesTableData({ aggregates, accountAssignments, costBasisBySymbol }),
     [accountAssignments, aggregates, costBasisBySymbol],
   );
   const numericSortFn = (rowA, rowB, columnId) => {
