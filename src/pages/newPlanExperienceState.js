@@ -15,8 +15,9 @@ export function buildInitialPlanState(initialPlan = null) {
   const template = readPlanState();
   return {
     ...template,
+    ...(initialPlan && typeof initialPlan === 'object' ? initialPlan : {}),
     id: '',
-    name: '',
+    name: String(initialPlan?.name || ''),
     isConfigured: false,
     createdAt: '',
     updatedAt: ''

@@ -5,9 +5,9 @@ export const WORKSPACE_PREFS_KEY = 'aiDcaWorkspacePrefs';
 
 export const DEFAULT_WORKSPACE_PREFS = {
   source: 'react-workspace-prefs',
-  version: 2,
+  version: 3,
   scenario: 'stock',
-  homepageTab: 'strategy',
+  homepageTab: 'markets',
   updatedAt: ''
 };
 
@@ -22,10 +22,11 @@ export function normalizeScenario(value = '') {
 }
 
 export function normalizeWorkspacePrefs(raw = {}) {
+  const rawVersion = Number(raw?.version) || 0;
   return {
     ...DEFAULT_WORKSPACE_PREFS,
     scenario: normalizeScenario(raw?.scenario),
-    homepageTab: normalizeHomepageTab(raw?.homepageTab),
+    homepageTab: rawVersion < 3 ? DEFAULT_WORKSPACE_PREFS.homepageTab : normalizeHomepageTab(raw?.homepageTab),
     updatedAt: String(raw?.updatedAt || '')
   };
 }

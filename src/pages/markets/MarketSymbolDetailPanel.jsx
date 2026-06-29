@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUp, Bell, CalendarDays, Loader2, Search, Star, X, BarChart3 } from 'lucide-react';
+import { ArrowUp, Bell, CalendarClock, CalendarDays, Loader2, Search, Star, TrendingDown, TrendingUp, Wallet, X, BarChart3 } from 'lucide-react';
 import { fetchKline, fetchQuotes, searchSymbols, CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsApi.js';
 import { getNavHistory, getNavSnapshot } from '../../app/navService.js';
 import { getXueqiuQuote } from '../../app/xueqiuQuote.js';
@@ -80,6 +80,7 @@ export function SymbolDetailPanel({
   inWatch,
   onToggleWatch,
   onOpenAlertDialog,
+  onMarketAction,
   premiumState,
   navHistoryState,
   isMobile = false,
@@ -637,6 +638,8 @@ export function SymbolDetailPanel({
   const customRangeDraftValid = Boolean(normalizeChartCustomRange(customRangeDraft));
   const currentRangeLabel = chartRange === 'custom' && normalizedCustomRange ? '自定义' : formatChartRangeLabel(chartRange, chartCustomRange);
   const todayForInput = todayShanghaiIso();
+  const canCreateSellPlan = Boolean(row.isHeld || row.holding || tradeMarkers.length);
+  const detailActionButtonClass = 'inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-[#dadce0] bg-white px-2.5 text-[12px] font-semibold text-[#1f1f1f] transition hover:bg-[#f1f3f4] disabled:cursor-not-allowed disabled:opacity-45 sm:h-9 sm:px-3 sm:text-[13px]';
 
   return (
     <section className={cx('mx-0', backtestPanelOpen && 'lg:relative')}>
@@ -701,6 +704,48 @@ export function SymbolDetailPanel({
             )}
           </div>
         </div>
+
+        {onMarketAction ? (
+          <div className="mt-2 flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible sm:pb-0 [&::-webkit-scrollbar]:hidden">
+            <button
+              type="button"
+              onClick={() => onMarketAction('holding-buy', row)}
+              className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#1f1f1f] px-3 text-[12px] font-semibold text-white transition hover:bg-[#3c3c3c] sm:h-9 sm:px-3.5 sm:text-[13px]"
+              title="带入当前标的，去持仓页新增一笔买入"
+            >
+              <Wallet size={14} />
+              加入持仓
+            </button>
+            <button
+              type="button"
+              onClick={() => onMarketAction('plan-new', row)}
+              className={detailActionButtonClass}
+              title="带入当前标的，设置分批买入计划"
+            >
+              <TrendingUp size={14} />
+              设置买入计划
+            </button>
+            <button
+              type="button"
+              onClick={() => onMarketAction('dca-new', row)}
+              className={detailActionButtonClass}
+              title="带入当前标的，设置定投计划"
+            >
+              <CalendarClock size={14} />
+              定投
+            </button>
+            <button
+              type="button"
+              onClick={() => onMarketAction('sell-new', row)}
+              disabled={!canCreateSellPlan}
+              className={detailActionButtonClass}
+              title={canCreateSellPlan ? '为当前持仓设置卖出规则' : '先加入持仓后再设置卖出规则'}
+            >
+              <TrendingDown size={14} />
+              卖出
+            </button>
+          </div>
+        ) : null}
 
         {/* 图表工具栏 */}
         <div className="mt-1.5 flex min-h-0 flex-wrap items-center gap-1 rounded-[13px] bg-[#f1f3f4] px-1.5 py-1 sm:mt-2 sm:gap-1.5 sm:rounded-[15px] sm:px-2 sm:py-1.5">

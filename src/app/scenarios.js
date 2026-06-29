@@ -9,8 +9,8 @@ export const SCENARIOS = {
     label: '持仓交易',
     icon: 'TrendingUp',
     description: '持仓、交易计划与行情',
-    defaultHome: 'holdings',
-    visibleTabs: ['holdings', 'tradePlans', 'strategy', 'fundSwitch', 'markets', 'premium', 'notify', 'adminData'],
+    defaultHome: 'markets',
+    visibleTabs: ['markets', 'holdings', 'tradePlans', 'fundSwitch', 'notify', 'adminData'],
     requireAdmin: false
   }
 };

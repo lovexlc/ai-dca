@@ -419,6 +419,17 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     }
   }
 
+  useEffect(() => {
+    function handleWorkspaceNavigate(event) {
+      const tab = event?.detail?.tab || '';
+      const hash = typeof event?.detail?.hash === 'string' ? event.detail.hash : '';
+      if (!tab) return;
+      handleSelectTab(tab, { hash });
+    }
+    window.addEventListener('workspace:navigate', handleWorkspaceNavigate);
+    return () => window.removeEventListener('workspace:navigate', handleWorkspaceNavigate);
+  });
+
   function handleMobileBack() {
     const previousTab = tabHistory[tabHistory.length - 1];
     if (!previousTab) return;

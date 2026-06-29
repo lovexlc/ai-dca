@@ -20,6 +20,9 @@ export function HoldingSummaryPanel({ aggregate, onNavigateToMarkets, onBuyOrSel
   const agg = aggregate;
   const profitTone = agg.unrealizedProfit > 0 ? 'text-red-600' : agg.unrealizedProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
   const todayTone = agg.todayProfit > 0 ? 'text-red-600' : agg.todayProfit < 0 ? 'text-emerald-600' : 'text-slate-700';
+  const holdingAmountLabel = agg.hasLatestNav || agg.pendingBuyAmount > 0 ? formatCurrency(agg.marketValue, '¥', 2) : '—';
+  const currentChangeLabel = agg.hasCurrentPrice ? formatSignedPercent(agg.hasTodayNav ? agg.todayReturnRate : 0) : '—';
+  const totalChangeLabel = agg.hasLatestNav ? formatSignedPercent(agg.unrealizedReturnRate) : '—';
 
   return (
     <div className="space-y-4">
@@ -34,6 +37,20 @@ export function HoldingSummaryPanel({ aggregate, onNavigateToMarkets, onBuyOrSel
           ))}
         </div>
         {agg.name ? <div className="mt-1 text-sm text-slate-600">{agg.name}</div> : null}
+      </div>
+      <div className="grid grid-cols-3 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2">
+        <div className="min-w-0 rounded-xl bg-white px-3 py-2">
+          <div className="text-[11px] font-semibold text-slate-400">持有金额</div>
+          <div className="mt-1 truncate text-sm font-bold tabular-nums text-slate-900" title={holdingAmountLabel}>{holdingAmountLabel}</div>
+        </div>
+        <div className="min-w-0 rounded-xl bg-white px-3 py-2">
+          <div className="text-[11px] font-semibold text-slate-400">当前涨跌幅</div>
+          <div className={cx('mt-1 truncate text-sm font-bold tabular-nums', todayTone)} title={currentChangeLabel}>{currentChangeLabel}</div>
+        </div>
+        <div className="min-w-0 rounded-xl bg-white px-3 py-2">
+          <div className="text-[11px] font-semibold text-slate-400">总涨跌幅</div>
+          <div className={cx('mt-1 truncate text-sm font-bold tabular-nums', profitTone)} title={totalChangeLabel}>{totalChangeLabel}</div>
+        </div>
       </div>
       <dl className="grid min-w-0 grid-cols-2 gap-x-4 gap-y-3 text-sm">
         <div className="min-w-0">

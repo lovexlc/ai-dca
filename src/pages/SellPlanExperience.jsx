@@ -46,8 +46,11 @@ function normalizeArrayLength(values, length, fallback) {
   return arr.slice(0, length);
 }
 
-export function SellPlanExperience({ links, embedded = false, onAfterSave }) {
-  const [state, setState] = useState(() => readSellPlanDraft());
+export function SellPlanExperience({ links, embedded = false, onAfterSave, initialSell = null }) {
+  const [state, setState] = useState(() => ({
+    ...readSellPlanDraft(),
+    ...(initialSell && typeof initialSell === 'object' ? initialSell : {})
+  }));
   const [planList] = useState(() => readPlanList());
   const [isSaving, setIsSaving] = useState(false);
   const sellPlanMeta = () => ({

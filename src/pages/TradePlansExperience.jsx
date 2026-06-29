@@ -15,6 +15,7 @@ import {
   extractPurchaseAmount
 } from '../app/tradePlansHelpers.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
+import { clearMarketActionDraft, readMarketActionDraft } from '../app/marketActionDraft.js';
 
 // 定投 / 卖出仍按需 lazy 加载，列表页只展示计划分类与卡片。
 const DcaExperienceLazy = lazy(() => import('./DcaExperience.jsx').then((m) => ({ default: m.DcaExperience })));
@@ -145,6 +146,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   const [expandedRowIds, setExpandedRowIds] = useState(() => new Set());
   const [editingPlan, setEditingPlan] = useState(null);
   const [editingDca, setEditingDca] = useState(null);
+  const [editingSell, setEditingSell] = useState(null);
   const { previewRows = [] } = useMemo(() => {
     void planRefreshKey;
     return buildTradePlanCenter();
@@ -221,6 +223,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
   function enterNewPlanView() {
     setEditingPlan(null);
     setEditingDca(null);
+    setEditingSell(null);
     gotoSubView('new', { push: true });
   }
 
@@ -232,10 +235,12 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     });
     if (type === 'dca') {
       setEditingDca(null);
+      setEditingSell(null);
       gotoSubView('dcaNew', { push: true });
       return;
     }
     if (type === 'sell') {
+      setEditingSell(null);
       gotoSubView('sellNew', { push: true });
       return;
     }
@@ -245,6 +250,45 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
     }
     enterNewPlanView();
   }
+
+  useEffect(() => {
+    const actionDraft = readMarketActionDraft();
+    if (!actionDraft || !['plan-new', 'dca-new', 'sell-new'].includes(actionDraft.action)) return;
+    clearMarketActionDraft();
+    const symbol = String(actionDraft.symbol || '').trim().toUpperCase();
+    if (!symbol) return;
+    const label = actionDraft.name || symbol;
+    setCreateMenuOpen(false);
+    if (actionDraft.action === 'plan-new') {
+      setEditingPlan({
+        symbol,
+        name: `${label} · 加仓策略`,
+      });
+      gotoSubView('new');
+    } else if (actionDraft.action === 'dca-new') {
+      setEditingDca({
+        symbol,
+        name: `${label} · 定投计划`,
+        currentPrice: actionDraft.price > 0 ? actionDraft.price : 0,
+      });
+      gotoSubView('dcaNew');
+    } else {
+      setEditingSell({
+        symbol,
+        name: `${label} · 卖出计划`,
+        holdingCost: actionDraft.price > 0 ? actionDraft.price : 0,
+      });
+      gotoSubView('sellNew');
+    }
+    showActionToast('已带入行情标的', 'success', {
+      description: `${symbol}${actionDraft.name ? ` · ${actionDraft.name}` : ''}`,
+    });
+    trackFeatureEvent('trade_plans', 'prefill_from_markets', {
+      action: actionDraft.action,
+      symbolLength: symbol.length,
+      hasPrice: actionDraft.price > 0,
+    });
+  }, []);
 
   function exitNewPlanView() {
     setEditingPlan(null);
@@ -422,6 +466,7 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
       return;
     }
     if (row?.sourceType === 'sell') {
+      setEditingSell(row.editPayload || null);
       gotoSubView('sellNew', { push: true });
       return;
     }
@@ -835,7 +880,11 @@ export function TradePlansExperience({ links, inPagesDir = false, embedded = fal
           <SellPlanExperienceLazy
             links={links}
             embedded
-            onAfterSave={() => gotoSubView('sell')}
+            initialSell={editingSell}
+            onAfterSave={() => {
+              setEditingSell(null);
+              gotoSubView('sell');
+            }}
           />
         </Suspense>
       </div>

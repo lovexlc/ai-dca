@@ -29,8 +29,9 @@ function buildInitialDcaState(initialDca = null) {
 
   return {
     ...defaultDcaState,
+    ...(initialDca && typeof initialDca === 'object' ? initialDca : {}),
     id: '',
-    name: '',
+    name: String(initialDca?.name || ''),
     isConfigured: false,
     createdAt: '',
     updatedAt: ''

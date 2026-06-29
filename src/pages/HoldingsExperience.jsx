@@ -67,6 +67,7 @@ import { hasPotentialUserData, installDemoData } from '../app/demoData.js';
 import { trackActionResult, trackFeatureEvent } from '../app/analytics.js';
 import { getCodeFromUrl, updateCodeInUrl } from './holdings/holdingsUrlSync.js';
 import { clearAllLocalData, getDataStats, getClearDataConfirmMessage } from '../app/clearAllData.js';
+import { clearMarketActionDraft, readMarketActionDraft } from '../app/marketActionDraft.js';
 function readColumnFilterValue(filters, id) {
   const filter = (Array.isArray(filters) ? filters : []).find((item) => item?.id === id);
   return filter?.value;
@@ -143,6 +144,35 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     setSidePanelTab('summary');
     setSidePanelOpen(true);
     trackFeatureEvent('holdings', 'fund_summary_open', { source: 'url_param', codeLength: String(code).length });
+  }, []);
+  useEffect(() => {
+    const actionDraft = readMarketActionDraft();
+    if (!actionDraft || actionDraft.action !== 'holding-buy') return;
+    clearMarketActionDraft();
+    const code = normalizeFundCode(actionDraft.symbol);
+    if (!code) return;
+    const kind = normalizeFundKind(actionDraft.kind, code, actionDraft.name);
+    resetDraft(emptyDraft({
+      type: 'BUY',
+      code,
+      name: actionDraft.name,
+      kind,
+      date: getTodayShanghaiDate(),
+      price: kind === 'exchange' && actionDraft.price > 0 ? String(actionDraft.price) : '',
+      before3pm: kind === 'exchange' ? false : true,
+    }));
+    setSelectedCode(code);
+    setSidePanelTab('create');
+    setSidePanelOpen(true);
+    showActionToast('已带入行情标的', 'success', {
+      description: `${code}${actionDraft.name ? ` · ${actionDraft.name}` : ''}`,
+    });
+    trackFeatureEvent('holdings', 'prefill_from_markets', {
+      action: actionDraft.action,
+      kind,
+      codeLength: code.length,
+      hasPrice: actionDraft.price > 0,
+    });
   }, []);
   // 选中基金时更新 URL
   useEffect(() => { updateCodeInUrl(selectedCode); }, [selectedCode]);

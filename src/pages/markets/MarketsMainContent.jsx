@@ -111,6 +111,7 @@ export function MarketsMainContent({
           onToggleWatch={detail.onToggleWatch}
           onBack={detail.onBack}
           onOpenAlertDialog={detail.onOpenAlertDialog}
+          onMarketAction={detail.onMarketAction}
         />
       ) : (
         noSelectedContent

@@ -60,6 +60,7 @@ import { useMarketsSearchHistory } from './markets/useMarketsSearchHistory.js';
 import { batchAddToWatchlist } from './markets/marketsWatchlistUtils.js';
 import { useMarketAlerts } from './markets/useMarketAlerts.js';
 import { AlertRuleDialog } from '../components/AlertRuleDialog.jsx';
+import { buildMarketActionDraft, writeMarketActionDraft } from '../app/marketActionDraft.js';
 const A_SHARE_MARKET = { key: 'cn', label: 'A股' };
 const US_MARKET = { key: 'us', label: '美股' };
 function normalizeMarketKey(value) {
@@ -1094,6 +1095,38 @@ export function MarketsExperience() {
     );
   }, [holdingsLedger.transactions, tradeLedgerEntries, selectedCnFundCode, selectedSymbol, selectedQuote?.symbol, selectedQuote?.code, selectedQuote?.name, heldAggregates]);
 
+  const handleMarketAction = useCallback((action, quote) => {
+    if (!quote?.symbol) return;
+    const symbol = String(quote.symbol || '').trim().toUpperCase();
+    const code = normalizeCnFundCode(symbol);
+    const kind = quote.kind || quote.fundKind || (market === 'cn' && isCnOtcFundQuote(quote) ? 'otc' : 'exchange');
+    const draft = buildMarketActionDraft({
+      action,
+      symbol: code || symbol,
+      name: quote.name || quote.displayName || symbol,
+      market,
+      kind,
+      price: Number(quote.price) || 0,
+    });
+    if (!draft) return;
+    writeMarketActionDraft(draft);
+    trackFeatureEvent('markets', 'action_click', {
+      action,
+      market,
+      isHeld: Boolean(quote.isHeld || quote.holding),
+      symbolLength: symbol.length,
+      source: 'symbol_detail',
+    });
+    const route = action === 'holding-buy'
+      ? { tab: 'holdings', hash: '' }
+      : action === 'plan-new'
+        ? { tab: 'tradePlans', hash: '#new' }
+        : action === 'dca-new'
+          ? { tab: 'tradePlans', hash: '#dca-new' }
+          : { tab: 'tradePlans', hash: '#sell-new' };
+    window.dispatchEvent(new CustomEvent('workspace:navigate', { detail: route }));
+  }, [market]);
+
   useEffect(() => {
     if (typeof document === 'undefined') return;
     document.title = selectedQuote ? formatBrowserTitleForQuote(selectedQuote) : '行情中心';
@@ -1441,6 +1474,7 @@ export function MarketsExperience() {
             setSymbolDetailTab('overview');
           },
           onOpenAlertDialog: handleOpenAlertDialog,
+          onMarketAction: handleMarketAction,
         }}
       />
     </div>

@@ -4,9 +4,9 @@ export const PROJECT_TITLE = '美股策略助手';
 // 主 tab 顺序与元数据：所有页面都通过 WorkspacePage（侧边栏 + ?tab=）展示。
 // 加仓计划（home）和定投计划（dca）已并入交易计划 tab，作为其二级 tab，不再独立出现在侧边栏。
 // 「高级版」已移出主侧栏，入口改为账户菜单/页脚；admin-only 的「数据」在侧栏底部单独分组。
-// 策略指南已移除，主页默认为持仓总览。
-export const DEFAULT_WORKSPACE_TAB = 'holdings';
-export const PRIMARY_TAB_ORDER = ['holdings', 'tradePlans', 'fundSwitch', 'markets', 'notify'];
+// 策略指南已移除，主页默认为行情中心，由标的详情进入持仓和交易计划。
+export const DEFAULT_WORKSPACE_TAB = 'markets';
+export const PRIMARY_TAB_ORDER = ['markets', 'holdings', 'tradePlans', 'fundSwitch', 'notify'];
 export const ADMIN_TAB_ORDER = ['adminData'];
 
 export const PRIMARY_TAB_META = {
