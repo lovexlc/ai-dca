@@ -1,4 +1,4 @@
-import { AlertTriangle, ChevronDown, Info, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Info, Pin, RefreshCw } from 'lucide-react';
 import { Card, SectionHeading, cx, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 export function SwitchStrategyClassificationPanel({
@@ -39,8 +39,8 @@ export function SwitchStrategyClassificationPanel({
     const hasNav = Number.isFinite(fund.navLatest);
     const priceSourceLabel = fund.latestPriceDate || 'daily';
     const benchmarkTitle = canManualBenchmark
-      ? (isHeld ? '设为当前规则基准' : '设为当前规则模拟基准；未持有 ETF 只用于监控提醒')
-      : '先设为 H 或 L 后才能设为基准';
+      ? (isHeld ? '设为当前规则持仓' : '设为当前规则模拟持仓；未持有 ETF 只用于监控提醒')
+      : '先设为 H 或 L 后才能设为持仓';
     return (
       <div
         key={code}
@@ -64,7 +64,7 @@ export function SwitchStrategyClassificationPanel({
           </>
         ) : null}
         {isHeld ? <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-800">持</span> : null}
-        {isBenchmark ? <span className="rounded bg-indigo-100 px-1 py-0.5 text-[10px] text-indigo-800">基准</span> : null}
+        {isBenchmark ? <Pin className="h-3 w-3 text-indigo-600" aria-label="当前规则持仓" title="当前规则持仓" /> : null}
         <span className="ml-1 inline-flex max-w-full flex-wrap overflow-hidden rounded-lg border border-slate-200 text-[10px]">
           <button
             type="button"
@@ -96,9 +96,9 @@ export function SwitchStrategyClassificationPanel({
                 isBenchmark ? 'bg-indigo-500 text-white' : 'bg-white text-slate-500 hover:bg-indigo-50 hover:text-indigo-700',
                 !canManualBenchmark && 'cursor-not-allowed opacity-45 hover:bg-white hover:text-slate-500'
               )}
-              aria-label={isBenchmark ? `取消 ${code} 基准` : `将 ${code} 设为基准`}
+              aria-label={isBenchmark ? `取消 ${code} 持仓` : `将 ${code} 设为持仓`}
             >
-              {isBenchmark ? '取消基准' : '设为基准'}
+              {isBenchmark ? '取消我的持仓' : '设为我的持仓'}
             </button>
           ) : null}
         </span>
@@ -186,13 +186,11 @@ export function SwitchStrategyClassificationPanel({
                     <div className="text-xs text-slate-400">所有 ETF 都已分类。可把 chip 拖回此处取消分类。</div>
                   ) : poolList.map(renderChip)}
                 </div>
-                <div className="mt-2 text-[11px] text-slate-500">点击每个 chip 右侧的 <strong className="text-rose-700">设为 H</strong> / <strong className="text-emerald-700">设为 L</strong> 完成分类；已有持仓时，持仓 ETF 会默认成为基准。</div>
+                <div className="mt-2 text-[11px] text-slate-500">点击每个 chip 右侧的 <strong className="text-rose-700">设为 H</strong> / <strong className="text-emerald-700">设为 L</strong> 完成分类；已持有的 ETF 会默认成为你的持仓。</div>
               </>
             ) : null}
           </div>
-          <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-xs leading-5 text-indigo-900">
-            基准按“当前监控规则”单独保存。默认使用已持有的场内 ETF 作为基准，也可以手动把任意已分类 ETF 设为模拟基准。未持有基准只用于监控提醒，不代表已经有可卖出的份额。
-          </div>
+
           <div className="grid gap-4 md:grid-cols-2">
             <div
               onDragOver={(event) => handleZoneDragOver(event, 'H')}

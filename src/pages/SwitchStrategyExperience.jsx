@@ -235,7 +235,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         : '未设定';
       const ruleHint = `${stored.rules?.length || 1} 条规则`;
       const clientHint = clientId ? `· client ${clientId.slice(0, 18)}…` : '';
-      const baseHint = `${ruleHint} / 当前基准 ${benchmarkLabel} / 总候选 ${candidateCount} 只 ${clientHint}`.trim();
+      const baseHint = `${ruleHint} / 当前持仓 ${benchmarkLabel} / 总候选 ${candidateCount} 只 ${clientHint}`.trim();
       setWorkerStatus((prev) => ({
         ...prev,
         saving: false,
@@ -833,12 +833,12 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   }, [navState.navByCode]);
 
   const benchmarkSummary = useMemo(() => {
-    if (!benchmarks.length) return '请先选择至少一只基准 ETF。';
+    if (!benchmarks.length) return '请先选择至少一只持仓 ETF。';
     const heldCodes = new Set(exchangeFunds.map((fund) => fund.code));
     const hasUnheldBenchmark = benchmarks.some((b) => b?.code && !heldCodes.has(b.code));
     const prefix = exchangeFunds.length
-      ? (hasUnheldBenchmark ? '基准/模拟基准' : '基准')
-      : '模拟基准';
+      ? (hasUnheldBenchmark ? '持仓/模拟持仓' : '持仓')
+      : '模拟持仓';
     return `${prefix}：${benchmarks.map((b) => `${b.code} · ${b.name || ''}`).join(' / ')}`;
   }, [exchangeFunds, benchmarks]);
   const switchSummary = useMemo(() => {
@@ -904,6 +904,40 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     );
   }, [quickRecord]);
 
+  const BENCHMARK_PICKER_DISMISSED_KEY = 'fundSwitch:benchmarkPickerDismissed';
+  const [benchmarkPickerDismissed, setBenchmarkPickerDismissed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return window.localStorage.getItem(BENCHMARK_PICKER_DISMISSED_KEY) === 'true';
+    } catch (_error) {
+      return false;
+    }
+  });
+  const benchmarkPickerOptions = useMemo(() => {
+    const heldCodes = new Set(exchangeFunds.map((fund) => fund.code));
+    const heldFunds = fundsWithPremium.filter((fund) => heldCodes.has(fund.code));
+    const otherFunds = fundsWithPremium.filter((fund) => !heldCodes.has(fund.code));
+    return [...heldFunds, ...otherFunds].slice(0, 8);
+  }, [fundsWithPremium, exchangeFunds]);
+  const activeBenchmarkCodes = Array.isArray(activeRule?.benchmarkCodes) ? activeRule.benchmarkCodes : [];
+  const showBenchmarkPicker = !benchmarkPickerDismissed && activeBenchmarkCodes.length === 0 && benchmarkPickerOptions.length > 0;
+  function handlePickBenchmark(code) {
+    if (!code) return;
+    trackFeatureEvent('switch_strategy', 'benchmark_picker_select', { code });
+    setCodeClass(code, 'H');
+    setCodeBenchmark(code, true);
+  }
+  function handleDismissBenchmarkPicker() {
+    trackFeatureEvent('switch_strategy', 'benchmark_picker_dismiss', {});
+    setBenchmarkPickerDismissed(true);
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(BENCHMARK_PICKER_DISMISSED_KEY, 'true');
+    } catch (_error) {
+      // ignore
+    }
+  }
+
   const saveQuickRecord = useCallback(() => {
     if (!quickRecordValid) return;
     const ledger = readLedgerState();
@@ -948,6 +982,33 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
 
   return (
     <div className="space-y-6">
+      {showBenchmarkPicker ? (
+        <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3">
+          <div className="text-sm font-medium text-indigo-900">
+            你目前持有哪只纳指 ETF？（选一个作为监控持仓）
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {benchmarkPickerOptions.map((fund) => (
+              <button
+                key={fund.code}
+                type="button"
+                onClick={() => handlePickBenchmark(fund.code)}
+                className="inline-flex items-center rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 transition-colors hover:border-indigo-400 hover:bg-indigo-100"
+              >
+                <span className="font-mono">{fund.code}</span>
+                {fund.name ? <span className="ml-1.5 text-slate-500">{fund.name}</span> : null}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={handleDismissBenchmarkPicker}
+              className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+            >
+              还没持有，先看模拟
+            </button>
+          </div>
+        </div>
+      ) : null}
       <SwitchStrategyWorkerPanel
         prefs={prefs}
         switchSummary={switchSummary}

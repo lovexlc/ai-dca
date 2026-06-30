@@ -98,7 +98,7 @@ export function SwitchStrategyWorkerPanel({
                     const candidateCount = Array.isArray(rule.enabledCodes) ? rule.enabledCodes.length : 0;
                     return (
                       <option key={rule.id || `rule-${index}`} value={rule.id}>
-                        {rule.enabled ? '启用' : '停用'} · {rule.name || `规则 ${index + 1}`} · {benchCount} 基准 / {candidateCount} 候选
+                        {rule.enabled ? '启用' : '停用'} · {rule.name || `规则 ${index + 1}`} · {benchCount} 持仓 / {candidateCount} 候选
                       </option>
                     );
                   })}
@@ -109,7 +109,7 @@ export function SwitchStrategyWorkerPanel({
             <div className="flex min-w-0 items-center gap-2 lg:justify-end">
               <Pill tone={activeRule?.enabled ? 'emerald' : 'slate'}>{activeRule?.enabled ? '启用' : '停用'}</Pill>
               <div className="truncate text-xs text-slate-500">
-                当前第 {activeRule ? activeRuleIndex + 1 : 0} 条 · {activeBenchCount} 基准 · {activeCandidateCount} 候选
+                当前第 {activeRule ? activeRuleIndex + 1 : 0} 条 · {activeBenchCount} 持仓 · {activeCandidateCount} 候选
               </div>
             </div>
           </div>
@@ -157,7 +157,7 @@ export function SwitchStrategyWorkerPanel({
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">H/L 分组</div>
               <div className="mt-1 text-xs text-slate-600">
-                当前规则读取下方分类：<span className="font-semibold text-slate-800">{activeBenchCount}</span> 基准 / <span className="font-semibold text-slate-800">{activeCandidateCount}</span> 候选
+                当前规则读取下方分类：<span className="font-semibold text-slate-800">{activeBenchCount}</span> 持仓 / <span className="font-semibold text-slate-800">{activeCandidateCount}</span> 候选
               </div>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
@@ -170,7 +170,7 @@ export function SwitchStrategyWorkerPanel({
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">worker 输出</div>
               <div className="mt-1 text-xs text-slate-600">
                 {workerSnapshot ? (
-                  <>快照 <span className="font-semibold text-slate-800">{Array.isArray(workerSnapshot.byBenchmark) ? workerSnapshot.byBenchmark.length : (workerSnapshot.benchmarkCode ? 1 : 0)}</span> 基准 / 触发 <span className="font-semibold text-slate-800">{Array.isArray(workerSnapshot.triggers) ? workerSnapshot.triggers.length : 0}</span></>
+                  <>快照 <span className="font-semibold text-slate-800">{Array.isArray(workerSnapshot.byBenchmark) ? workerSnapshot.byBenchmark.length : (workerSnapshot.benchmarkCode ? 1 : 0)}</span> 持仓 / 触发 <span className="font-semibold text-slate-800">{Array.isArray(workerSnapshot.triggers) ? workerSnapshot.triggers.length : 0}</span></>
                 ) : '暂无快照，等待扫描或手动运行'}
               </div>
             </div>
@@ -190,11 +190,11 @@ export function SwitchStrategyWorkerPanel({
                   const fmtCls = (c) => `${c}${switchSummary.cls[c] === 'H' ? 'H' : (switchSummary.cls[c] === 'L' ? 'L' : '')}`;
                   const fmtList = (arr) => (arr || []).map(fmtCls).join(', ');
                   if (!switchSummary.benches.length) {
-                    return <span className="text-slate-500">未配置基准（在上方 H/L 表把已分类 ETF 设为基准）</span>;
+                    return <span className="text-slate-500">未配置持仓（在上方 H/L 表把已分类 ETF 设为我的持仓）</span>;
                   }
                   const Lline = switchSummary.Lrow ? (
                     <span key="L" className="text-slate-500">
-                      <span className="font-semibold text-slate-700">L 基准 {switchSummary.Lrow.benches.length} 只</span>
+                      <span className="font-semibold text-slate-700">L 持仓 {switchSummary.Lrow.benches.length} 只</span>
                       <span className="text-[11px] text-slate-400">{' '}({fmtList(switchSummary.Lrow.benches)})</span>
                       {' · 候选 '}<span className="font-semibold text-slate-700">{switchSummary.Lrow.cands.length}</span> 对{' '}
                       <span className="text-[11px] text-slate-400">({fmtList(switchSummary.Lrow.cands) || '无'})</span>
@@ -203,7 +203,7 @@ export function SwitchStrategyWorkerPanel({
                   ) : null;
                   const Hline = switchSummary.Hrow ? (
                     <span key="H" className="text-slate-500">
-                      <span className="font-semibold text-slate-700">H 基准 {switchSummary.Hrow.benches.length} 只</span>
+                      <span className="font-semibold text-slate-700">H 持仓 {switchSummary.Hrow.benches.length} 只</span>
                       <span className="text-[11px] text-slate-400">{' '}({fmtList(switchSummary.Hrow.benches)})</span>
                       {' · 候选 '}<span className="font-semibold text-slate-700">{switchSummary.Hrow.cands.length}</span> 对{' '}
                       <span className="text-[11px] text-slate-400">({fmtList(switchSummary.Hrow.cands) || '无'})</span>
@@ -281,7 +281,7 @@ export function SwitchStrategyWorkerPanel({
                       if (!benchSnapshots.length) {
                         return (
                           <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-400">
-                            快照中暂无基准数据。
+                            快照中暂无持仓数据。
                           </div>
                         );
                       }
@@ -290,7 +290,7 @@ export function SwitchStrategyWorkerPanel({
                       const cls = prefs.premiumClass || {};
                       return benchSnapshots.map((bench) => (
                         <div key={`bench-${bench.benchmarkCode}`} className="rounded-xl border border-slate-200 bg-white p-3">
-                          <div className="text-xs uppercase tracking-[0.18em] text-slate-400">基准 {bench.benchmarkCode}{bench.benchmarkName ? ` · ${bench.benchmarkName}` : ''}</div>
+                          <div className="text-xs uppercase tracking-[0.18em] text-slate-400">持仓 {bench.benchmarkCode}{bench.benchmarkName ? ` · ${bench.benchmarkName}` : ''}</div>
                           <div className="mt-1 grid grid-cols-1 gap-x-2 gap-y-1 text-xs text-slate-600 sm:grid-cols-3">
                             <div className="min-w-0">现价 <span className="font-semibold text-slate-800">{formatPrice(bench.benchmarkPrice)}</span></div>
                             <div className="min-w-0">净值 <span className="font-semibold text-slate-800">{formatPrice(bench.benchmarkNav)}</span>{bench.benchmarkNavDate ? <span className="ml-1 whitespace-nowrap text-slate-400">@{bench.benchmarkNavDate}</span> : null}</div>
@@ -426,7 +426,7 @@ export function SwitchStrategySnapshotModal({ snapshotCandModal, setSnapshotCand
         <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
           <div className="min-w-0">
             <div className="text-xs uppercase tracking-[0.18em] text-slate-400">快照候选详情</div>
-            <div className="mt-0.5 text-sm font-semibold text-slate-900">基准 {snapshotCandModal.bench.benchmarkCode}{snapshotCandModal.bench.benchmarkName ? <span className="ml-1 font-normal text-slate-500">· {snapshotCandModal.bench.benchmarkName}</span> : null}</div>
+            <div className="mt-0.5 text-sm font-semibold text-slate-900">持仓 {snapshotCandModal.bench.benchmarkCode}{snapshotCandModal.bench.benchmarkName ? <span className="ml-1 font-normal text-slate-500">· {snapshotCandModal.bench.benchmarkName}</span> : null}</div>
           </div>
           <button
             type="button"
@@ -446,7 +446,7 @@ export function SwitchStrategySnapshotModal({ snapshotCandModal, setSnapshotCand
                   <th className="px-3 py-2 text-right">现价</th>
                   <th className="px-3 py-2 text-right">净值</th>
                   <th className="px-3 py-2 text-right">溢价</th>
-                  <th className="px-3 py-2 text-right">与基准差</th>
+                  <th className="px-3 py-2 text-right">与持仓差</th>
                 </tr>
               </thead>
               <tbody>

@@ -85,14 +85,14 @@ export function SwitchStrategyOpportunityPanels({
         />
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
-            <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="otc-premium-threshold">基准溢价阈值 · 默认 8%</label>
+            <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="otc-premium-threshold">持仓溢价阈值 · 默认 8%</label>
             <div className="mt-1 text-slate-700">
               &gt;
               <input
                 type="number"
                 step="0.5"
                 id="otc-premium-threshold"
-                aria-label="场外基准溢价阈值，默认 8%"
+                aria-label="场外持仓溢价阈值，默认 8%"
                 value={prefs.otcPremiumThresholdPct}
                 onChange={(e) => setPrefValue('otcPremiumThresholdPct', e.target.value)}
                 className="mx-1 w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold focus:border-indigo-300 focus:outline-none"

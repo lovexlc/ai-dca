@@ -52,7 +52,7 @@ export function summarizeSwitchSignals(snapshot) {
         fromName: otc.benchName || '',
         to: normalizeCode(otc.lowestCode),
         toName: otc.lowestName || '',
-        description: `${otc.level || '场外信号'}：卖 ${otc.benchCode || '基准'}，观察场外 QDII 申购机会`,
+        description: `${otc.level || '场外信号'}：卖 ${otc.benchCode || '持仓'}，观察场外 QDII 申购机会`,
       });
     }
   });

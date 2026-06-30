@@ -256,7 +256,7 @@ export function FundSwitchAnalysisExperience() {
         </div>
         <div className="mt-1 text-xs leading-relaxed text-slate-500">
           自动从「成交流水」中已标注 <span className="font-semibold text-slate-600">基金切换</span>（SELL ↔ BUY 配对）的记录推导链路，按日期顺序串联。
-          链路收益率 = 每段价格/净值乘积 − 1；未切换基准 = 一直持有首段基金到链路终点。场内基金以场内交易价计算，场外基金以净值计算。
+          链路收益率 = 每段价格/净值乘积 − 1；未切换持仓 = 一直持有首段基金到链路终点。场内基金以场内交易价计算，场外基金以净值计算。
         </div>
       </div>
 
@@ -388,7 +388,7 @@ export function FundSwitchAnalysisExperience() {
                         </div>
                         <div>
                           <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                            未切换基准
+                            未切换持仓
                             {metrics.baselineCode ? <span className="ml-1 font-mono text-slate-500">({metrics.baselineCode})</span> : null}
                           </div>
                           <div className={cx('mt-1 text-base font-semibold tabular-nums', baselineTone)}>
