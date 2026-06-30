@@ -1,5 +1,5 @@
 import {
-  buildNotificationDetailUrl,
+  buildNotificationDetailAction,
   buildNotificationEventId,
   loadLatestMarketMap
 } from './notificationRuleEvaluation.js';
@@ -9,8 +9,7 @@ export async function evaluateMarketAlertRules(env, rules, options = {}) {
   const { clientId = '', settings = {}, readState, writeState } = options;
   if (!Array.isArray(rules) || !rules.length) return { skipped: 'no-rules' };
 
-  const symbols = rules.map(r => r.symbol);
-  const latestMarketMap = await loadLatestMarketMap(env, { planRules: rules.map(r => ({ symbol: r.symbol })) });
+  const latestMarketMap = await loadLatestMarketMap(env, rules.map(r => ({ symbol: r.symbol, fundKind: r.fundKind })), { forceRefresh: true });
 
   const prev = (typeof readState === 'function' ? (await readState()) : null) || {};
   const next = { ...prev };
@@ -98,7 +97,7 @@ export async function evaluateMarketAlertRules(env, rules, options = {}) {
     }[rule.alertType] || '市场预警';
 
     const title = `${symbol} ${rule.name || ''} ${typeLabel}`;
-    const body = `${symbol} ${valueLabel}，已超过设定阈值 ${rule.threshold.toFixed(1)}%。当前价 ¥${currentPrice.toFixed(3)}。`;
+    const body = `${symbol} ${valueLabel}，已超过设定阈值 ${rule.threshold.toFixed(1)}%。当前价 ¥${currentPrice.toFixed(3)} → 点此查看行情详情。`;
     const body_md = [
       `**${symbol} ${typeLabel}**`,
       '',
@@ -108,7 +107,11 @@ export async function evaluateMarketAlertRules(env, rules, options = {}) {
       `- 昨收：¥${previousClose.toFixed(3)}`
     ].join('\n');
 
-    const detailUrl = buildNotificationDetailUrl(env, 'markets', symbol);
+    const action = buildNotificationDetailAction(env, 'markets', '', {
+      code: symbol,
+      trigger: 'market-alert',
+      ruleId: rule.ruleId
+    });
 
     env.__notifySettings = settings;
     env.__notifyCurrentClientId = clientId;
@@ -122,8 +125,11 @@ export async function evaluateMarketAlertRules(env, rules, options = {}) {
       body_md,
       summary: title,
       symbol,
-      detailUrl,
-      url: detailUrl
+      detailUrl: action.detailUrl,
+      url: action.url,
+      links: action.links,
+      target: action.target,
+      params: action.params
     };
 
     try {
@@ -146,8 +152,7 @@ export async function evaluateHoldingAlertRules(env, rules, options = {}) {
   const { clientId = '', settings = {}, readState, writeState } = options;
   if (!Array.isArray(rules) || !rules.length) return { skipped: 'no-rules' };
 
-  const symbols = rules.map(r => r.symbol);
-  const latestMarketMap = await loadLatestMarketMap(env, { planRules: rules.map(r => ({ symbol: r.symbol })) });
+  const latestMarketMap = await loadLatestMarketMap(env, rules.map(r => ({ symbol: r.symbol, fundKind: r.fundKind })), { forceRefresh: true });
 
   const prev = (typeof readState === 'function' ? (await readState()) : null) || {};
   const next = { ...prev };
@@ -206,7 +211,7 @@ export async function evaluateHoldingAlertRules(env, rules, options = {}) {
 
     const typeLabel = rule.alertType === 'gain' ? '持仓涨幅预警' : '持仓跌幅预警';
     const title = `${symbol} ${rule.name || ''} ${typeLabel}`;
-    const body = `${symbol} ${valueLabel}，已超过设定阈值 ${rule.threshold.toFixed(1)}%。当前价 ¥${currentPrice.toFixed(3)}，成本 ¥${holdingCost.toFixed(3)}。`;
+    const body = `${symbol} ${valueLabel}，已超过设定阈值 ${rule.threshold.toFixed(1)}%。当前价 ¥${currentPrice.toFixed(3)}，成本 ¥${holdingCost.toFixed(3)} → 点此查看持仓明细。`;
     const body_md = [
       `**${symbol} ${typeLabel}**`,
       '',
@@ -216,7 +221,11 @@ export async function evaluateHoldingAlertRules(env, rules, options = {}) {
       `- ${valueLabel}（阈值 ${rule.threshold.toFixed(1)}%）`
     ].join('\n');
 
-    const detailUrl = buildNotificationDetailUrl(env, 'holdings', symbol);
+    const action = buildNotificationDetailAction(env, 'holdings', '', {
+      code: symbol,
+      trigger: 'holding-alert',
+      ruleId: rule.ruleId
+    });
 
     env.__notifySettings = settings;
     env.__notifyCurrentClientId = clientId;
@@ -230,8 +239,11 @@ export async function evaluateHoldingAlertRules(env, rules, options = {}) {
       body_md,
       summary: title,
       symbol,
-      detailUrl,
-      url: detailUrl
+      detailUrl: action.detailUrl,
+      url: action.url,
+      links: action.links,
+      target: action.target,
+      params: action.params
     };
 
     try {

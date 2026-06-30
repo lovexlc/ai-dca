@@ -113,15 +113,15 @@ export function buildHoldingsNotificationContent(kind, returnRate, contributors,
   const top = contributors.slice(0, 3).map((item) => `${item.code} ${formatPercent(item.ratio)}`);
   // 出于隐私考虑：推送仅展示加权收益率，不再携带 ¥ 金额；具体金额请回网页查看。
   const body = top.length
-    ? `今日${kindLabel}加权收益率 ${formatPercent(returnRate)}；贡献 Top：${top.join('、')}。详情请打开网页查看。`
-    : `今日${kindLabel}加权收益率 ${formatPercent(returnRate)}。详情请打开网页查看。`;
+    ? `今日${kindLabel}加权收益率 ${formatPercent(returnRate)}；贡献 Top：${top.join('、')} → 点击查看明细。`
+    : `今日${kindLabel}加权收益率 ${formatPercent(returnRate)} → 点击查看明细。`;
   // 富文本通道支持 **bold** / 列表 / 空行；这里给出更清晰的视觉层次。
   const topMdItems = contributors.slice(0, 3).map((item) => `- ${item.code} **${formatPercent(item.ratio)}**`);
   const bodyMdLines = [`**${kindLabel}加权收益率 ${formatPercent(returnRate)}**`];
   if (topMdItems.length) {
     bodyMdLines.push('', '贡献 Top：', ...topMdItems);
   }
-  bodyMdLines.push('', '详情请打开网页查看。');
+  bodyMdLines.push('', '点击查看明细。');
   const body_md = bodyMdLines.join('\n');
   return { title, body, summary: `${kindLabel}当日收益 ${formatPercent(returnRate)}`, body_md };
 }
@@ -138,8 +138,8 @@ export function buildHoldingsNotificationContentAll(returnRate, contributors, da
   const title = `[持仓总览] ${dateLabel ? `${dateLabel} ` : ''}当日收益 ${dailyPct}`;
   const summary = `当日加权收益率 ${dailyPct}`;
   const body = top.length
-    ? `今日加权收益率 ${dailyPct}；贡献 Top：${top.join('、')}。详情请打开网页查看。`
-    : `今日加权收益率 ${dailyPct}。详情请打开网页查看。`;
+    ? `今日加权收益率 ${dailyPct}；贡献 Top：${top.join('、')} → 点击查看明细。`
+    : `今日加权收益率 ${dailyPct} → 点击查看明细。`;
 
   // 富文本通道支持 **bold** / 列表 / 空行；这里给出更清晰的视觉层次。
   const topMdItems = (contributors || []).slice(0, 3).map((item) => `- ${item.code} **${formatPercent(item.ratio)}**`);
@@ -147,7 +147,7 @@ export function buildHoldingsNotificationContentAll(returnRate, contributors, da
   if (topMdItems.length) {
     bodyMdLines.push('', '贡献 Top：', ...topMdItems);
   }
-  bodyMdLines.push('', '详情请打开网页查看。');
+  bodyMdLines.push('', '点击查看明细。');
   const body_md = bodyMdLines.join('\n');
 
   return { title, body, summary, body_md };

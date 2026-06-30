@@ -26,6 +26,7 @@ import {
   fetchHoldingsNavSnapshots,
   isExchangeLikeCode
 } from './holdingsSnapshotFetch.js';
+import { buildNotificationAction } from './notificationLinks.js';
 import { requireAdminToken } from './security.js';
 
 function resolveRunClientDetection(options = {}) {
@@ -352,6 +353,11 @@ export async function runHoldingsNotifications(env, kind, todayShanghai, reason 
     if (!clientRecord) continue;
 
     const { title, body, summary, body_md } = buildHoldingsNotificationContent(kind, computed.returnRate, computed.contributors, todayShanghai);
+    const action = buildNotificationAction(env, 'holdings', {
+      trigger: 'daily-return',
+      scope: kind,
+      date: todayShanghai
+    });
     const eventId = `holdings-${kind}-${todayShanghai}`;
     try {
       const result = await runClientDetection(env, settings, clientRecord, {
@@ -368,7 +374,11 @@ export async function runHoldingsNotifications(env, kind, todayShanghai, reason 
           strategyName: '持仓当日收益',
           triggerCondition: `${todayShanghai} ${kind}`,
           purchaseAmount: '',
-          detailUrl: ''
+          detailUrl: action.detailUrl,
+          url: action.url,
+          links: action.links,
+          target: action.target,
+          params: action.params
         }
       });
       settings = result.settings;
@@ -579,6 +589,11 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
     }
 
     const eventId = eventIdOverride || `holdings-all${partialDispatch ? '-partial' : ''}-${todayShanghai}`;
+    const action = buildNotificationAction(env, 'holdings', {
+      trigger: 'daily-return',
+      scope: partialDispatch ? 'all-partial' : 'all',
+      date: todayShanghai
+    });
     console.log('[notify][holdings-all] dispatching', JSON.stringify({
       clientId,
       eventId,
@@ -603,7 +618,11 @@ export async function runHoldingsNotificationsAll(env, todayShanghai, reason = '
           strategyName: '持仓当日收益',
           triggerCondition: `${todayShanghai} ${partialDispatch ? 'all-partial' : 'all'}`,
           purchaseAmount: '',
-          detailUrl: ''
+          detailUrl: action.detailUrl,
+          url: action.url,
+          links: action.links,
+          target: action.target,
+          params: action.params
         }
       });
       settings = result.settings;

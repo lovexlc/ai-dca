@@ -158,7 +158,11 @@ async function handleTest(request, env) {
       strategyName: String(payload.strategyName || '').trim(),
       triggerCondition: String(payload.triggerCondition || '').trim(),
       purchaseAmount: String(payload.purchaseAmount || '').trim(),
-      detailUrl: String(payload.detailUrl || payload.url || '').trim()
+      detailUrl: String(payload.detailUrl || payload.url || '').trim(),
+      url: String(payload.url || payload.detailUrl || '').trim(),
+      links: payload.links && typeof payload.links === 'object' ? payload.links : null,
+      target: String(payload.target || '').trim(),
+      params: payload.params && typeof payload.params === 'object' ? payload.params : null
     },
     targetChannels: targetChannel ? [targetChannel] : null
   });

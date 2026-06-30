@@ -6,8 +6,8 @@ import {
   updateDeliveryFailures
 } from './deliveryEngine.js';
 import {
+  buildNotificationDetailAction,
   buildDcaNotification,
-  buildNotificationDetailUrl,
   buildNotificationEventId,
   buildPlanNotification,
   evaluatePlanRule,
@@ -77,7 +77,7 @@ export async function evaluateVixSignal(env, vixDigest, options = {}) {
   const fromLabel = vixLevelLabel(prevPushedLevel || 'calm');
   const toLabel = vixLevelLabel(level);
   const title = `VIX ${direction} ${toLabel}`;
-  const body = `当前 VIX ${value.toFixed(2)}，${fromLabel} → ${toLabel}。`;
+  const body = `当前 VIX ${value.toFixed(2)}，${fromLabel} → ${toLabel} → 点此查看策略详情。`;
   const body_md = [
     '**VIX 跨阈值提醒**',
     '',
@@ -85,7 +85,10 @@ export async function evaluateVixSignal(env, vixDigest, options = {}) {
     `- 区间变动：${fromLabel} → **${toLabel}**`,
     '- 操作：参考策略按对应层级买入。',
   ].join('\n');
-  const detailUrl = buildNotificationDetailUrl(env, 'tradePlans', 'vix-signal');
+  const action = buildNotificationDetailAction(env, 'tradePlans', 'vix-signal', {
+    trigger: 'vix-signal',
+    code: 'VIX'
+  });
   const notification = {
     eventId: buildNotificationEventId(`vix:level:${level}`, `cross:${prevPushedLevel || 'calm'}->${level}`, new Date(now)),
     eventType: 'vix-signal',
@@ -95,8 +98,11 @@ export async function evaluateVixSignal(env, vixDigest, options = {}) {
     body_md,
     summary: title,
     symbol: 'VIX',
-    detailUrl,
-    url: detailUrl,
+    detailUrl: action.detailUrl,
+    url: action.url,
+    links: action.links,
+    target: action.target,
+    params: action.params,
   };
 
   let delivery = null;
@@ -184,7 +190,7 @@ export async function evaluateSellPlanSignals(env, sellPlans, options = {}) {
       ? Math.floor((Number(plan.holdingShares) * ratioPct) / 100)
       : null;
     const title = `${symbol} 盈利↑ 卖 ${ratioPct.toFixed(0)}%（第 ${tier + 1} 档）`;
-    const body = `${symbol} 当前 ${currentPrice.toFixed(2)}，盈利 ${gainPct.toFixed(2)}% 越线 ${triggerPct.toFixed(0)}%；计划卖出 ${ratioPct.toFixed(0)}%${sharesToSell ? `（约 ${sharesToSell} 股）` : ''}。`;
+    const body = `${symbol} 当前 ${currentPrice.toFixed(2)}，盈利 ${gainPct.toFixed(2)}% 越线 ${triggerPct.toFixed(0)}%；计划卖出 ${ratioPct.toFixed(0)}%${sharesToSell ? `（约 ${sharesToSell} 股）` : ''} → 点此查看卖出策略。`;
     const body_md = [
       `**${symbol} 卖出信号—第 ${tier + 1} 档触发**`,
       '',
@@ -193,7 +199,10 @@ export async function evaluateSellPlanSignals(env, sellPlans, options = {}) {
       `- 盈利：**${gainPct.toFixed(2)}%** (越线 ${triggerPct.toFixed(0)}%)`,
       `- 计划卖出比例：**${ratioPct.toFixed(0)}%**${sharesToSell ? `（约 ${sharesToSell} 股）` : ''}`,
     ].join('\n');
-    const detailUrl = buildNotificationDetailUrl(env, 'tradePlans', `sell:${id}`);
+    const action = buildNotificationDetailAction(env, 'tradePlans', `sell:${id}`, {
+      code: symbol,
+      trigger: 'sell-signal'
+    });
 
     env.__notifySettings = settings;
     env.__notifyCurrentClientId = clientId;
@@ -206,8 +215,11 @@ export async function evaluateSellPlanSignals(env, sellPlans, options = {}) {
       body_md,
       summary: title,
       symbol,
-      detailUrl,
-      url: detailUrl,
+      detailUrl: action.detailUrl,
+      url: action.url,
+      links: action.links,
+      target: action.target,
+      params: action.params,
     };
     try {
       const result = await deliverNotification(env, notification);
@@ -265,14 +277,17 @@ export async function evaluatePositionDigest(env, positionDigest, options = {}) 
     }
 
     const title = `${symbol} 超仓：${weightPct.toFixed(2)}%`;
-    const body = `${symbol} 当前仓位 ${weightPct.toFixed(2)}%，超出个股 50% 上限。建议逐步减仓或做 T 限仓。`;
+    const body = `${symbol} 当前仓位 ${weightPct.toFixed(2)}%，超出个股 50% 上限 → 点此查看持仓明细。`;
     const body_md = [
       `**${symbol} 超仓报警**`,
       '',
       `- 当前仓位：**${weightPct.toFixed(2)}%** (上限 50%)`,
       '- 建议：逐步减仓或做 T 限仓。',
     ].join('\n');
-    const detailUrl = buildNotificationDetailUrl(env, 'tradePlans', `position:${symbol}`);
+    const action = buildNotificationDetailAction(env, 'holdings', `position:${symbol}`, {
+      code: symbol,
+      trigger: 'position-cap'
+    });
     const notification = {
       eventId: buildNotificationEventId(`position:${symbol}:exceeds`, `cap-cross`, new Date(now)),
       eventType: 'position-cap',
@@ -282,8 +297,11 @@ export async function evaluatePositionDigest(env, positionDigest, options = {}) 
       body_md,
       summary: title,
       symbol,
-      detailUrl,
-      url: detailUrl,
+      detailUrl: action.detailUrl,
+      url: action.url,
+      links: action.links,
+      target: action.target,
+      params: action.params,
     };
     try {
       const result = await deliverNotification(env, notification);
@@ -300,8 +318,10 @@ export async function evaluatePositionDigest(env, positionDigest, options = {}) 
     const cashPrevAt = Number(cashState.lastPushedAt) || 0;
     if (!cashPrevHigh || now - cashPrevAt >= POSITION_DEBOUNCE_MS) {
       const title = `现金仓位偏高：${cashWeightPct.toFixed(2)}%`;
-      const body = `现金占比 ${cashWeightPct.toFixed(2)}%（≥ ${CASH_HIGH_PCT}%），可金字塔加仓宽基。`;
-      const detailUrl = buildNotificationDetailUrl(env, 'tradePlans', 'position:cash');
+      const body = `现金占比 ${cashWeightPct.toFixed(2)}%（≥ ${CASH_HIGH_PCT}%）→ 点此查看策略详情。`;
+      const action = buildNotificationDetailAction(env, 'tradePlans', 'position:cash', {
+        trigger: 'cash-high'
+      });
       const notification = {
         eventId: buildNotificationEventId('position:cash:high', 'cross', new Date(now)),
         eventType: 'cash-high',
@@ -310,8 +330,11 @@ export async function evaluatePositionDigest(env, positionDigest, options = {}) 
         body,
         body_md: `**现金偏高**\n\n- 现金占比：**${cashWeightPct.toFixed(2)}%**\n- 建议：金字塔加仓宽基。`,
         summary: title,
-        detailUrl,
-        url: detailUrl,
+        detailUrl: action.detailUrl,
+        url: action.url,
+        links: action.links,
+        target: action.target,
+        params: action.params,
       };
       try {
         const result = await deliverNotification(env, notification);
@@ -371,6 +394,9 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
       triggerCondition: String(testPayload.triggerCondition || '').trim(),
       purchaseAmount: String(testPayload.purchaseAmount || '').trim(),
       detailUrl: String(testPayload.detailUrl || testPayload.url || '').trim(),
+      links: testPayload.links || null,
+      target: String(testPayload.target || '').trim(),
+      params: testPayload.params || null,
       status: delivery.status,
       channels: delivery.results,
       createdAt: new Date().toISOString(),
@@ -460,6 +486,9 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
         triggerCondition: notification.triggerCondition,
         purchaseAmount: notification.purchaseAmount,
         detailUrl: notification.detailUrl,
+        links: notification.links || null,
+        target: notification.target || '',
+        params: notification.params || null,
         status: delivery.status,
         channels: delivery.results,
         createdAt: now.toISOString(),
@@ -525,6 +554,9 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
       triggerCondition: notification.triggerCondition,
       purchaseAmount: notification.purchaseAmount,
       detailUrl: notification.detailUrl,
+      links: notification.links || null,
+      target: notification.target || '',
+      params: notification.params || null,
       status: delivery.status,
       channels: delivery.results,
       createdAt: now.toISOString(),
@@ -551,6 +583,11 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
     });
 
     for (const item of marketAlertResult.delivered || []) {
+      const action = buildNotificationDetailAction(env, 'markets', '', {
+        code: item.symbol,
+        trigger: 'market-alert',
+        ruleId: item.ruleId
+      });
       const event = {
         id: `market-alert:${item.symbol}:${now.toISOString()}`,
         eventType: 'market-alert',
@@ -563,7 +600,10 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
         strategyName: '',
         triggerCondition: '',
         purchaseAmount: '',
-        detailUrl: buildNotificationDetailUrl(env, 'markets', item.symbol),
+        detailUrl: action.detailUrl,
+        links: action.links,
+        target: action.target,
+        params: action.params,
         status: 'delivered',
         channels: item.results,
         createdAt: now.toISOString(),
@@ -584,6 +624,11 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
     });
 
     for (const item of holdingAlertResult.delivered || []) {
+      const action = buildNotificationDetailAction(env, 'holdings', '', {
+        code: item.symbol,
+        trigger: 'holding-alert',
+        ruleId: item.ruleId
+      });
       const event = {
         id: `holding-alert:${item.symbol}:${now.toISOString()}`,
         eventType: 'holding-alert',
@@ -596,7 +641,10 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
         strategyName: '',
         triggerCondition: '',
         purchaseAmount: '',
-        detailUrl: buildNotificationDetailUrl(env, 'holdings', item.symbol),
+        detailUrl: action.detailUrl,
+        links: action.links,
+        target: action.target,
+        params: action.params,
         status: 'delivered',
         channels: item.results,
         createdAt: now.toISOString(),
@@ -621,4 +669,3 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
     settingsRemovals
   };
 }
-

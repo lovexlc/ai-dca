@@ -26,6 +26,7 @@ import {
   getLatestNavWithCache,
   NAV_CACHE_PREFIX
 } from './getNav.js';
+import { buildNotificationAction } from './notificationLinks.js';
 
 export const SWITCH_CONFIG_PREFIX = 'switch:config:';
 export const SWITCH_SNAPSHOT_PREFIX = 'switch:snapshot:';
@@ -68,10 +69,6 @@ const DELAYED_OPEN_UNTIL_MINUTE = 10 * 60 + 30;
 function sanitizeCode(value) {
   const code = String(value || '').trim();
   return FUND_CODE_PATTERN.test(code) ? code : '';
-}
-
-function stripTrailingSlash(value = '') {
-  return String(value || '').replace(/\/+$/, '');
 }
 
 function pickPercent(value, fallback) {
@@ -967,15 +964,19 @@ function buildOtcSwitchTriggerNotification(snapshot, trigger, env) {
     formatOrderBookLine(trigger.toCode, snapshot?.otcSignal?.lowestOrderBook)
   ].filter(Boolean);
   const otcOrderBookText = otcOrderBookLines.length ? `\n${otcOrderBookLines.join('\n')}` : '';
-  const baseUrl = stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || 'https://api.freebacktrack.tech');
-  const detailUrl = `${baseUrl}/index.html?tab=tradePlans#switch`;
+  const action = buildNotificationAction(env, 'fundSwitch', {
+    code: trigger.fromCode,
+    targetCode: trigger.toCode,
+    trigger: 'switch-otc',
+    rule: trigger.rule || ''
+  });
   const minuteKey = String(snapshot?.computedAt || '').slice(0, 16);
   const eventId = `switch:${trigger.pairKey}:R${trigger.rule}:${minuteKey}`;
   const title = `场外切换 ${level} | ${trigger.fromCode}→场外QDII`;
   const ruleLabel = trigger.rule === 'OTC_STRONG'
     ? `场外强信号：基准溢价 > ${threshold}% 且场内最低溢价 < ${lowThreshold}%`
     : `场外弱信号：基准溢价 > ${threshold}% 且场内最低溢价 < ${highThreshold}%`;
-  const body = `基准溢价 ${benchPremium} > ${threshold}% · 场内最低 ${lowestPremium} < ${signalThreshold}%\n卖 ${fromLabel} → 申购场外 QDII 联接基金\n参考低溢价 ${refLabel}${otcOrderBookText}\n下单前请以基金软件实时溢价和申购限额为准。`;
+  const body = `基准溢价 ${benchPremium} > ${threshold}% · 场内最低 ${lowestPremium} < ${signalThreshold}%\n卖 ${fromLabel} → 申购场外 QDII 联接基金\n参考低溢价 ${refLabel}${otcOrderBookText}\n点此查看策略详情，下单前请以基金软件实时溢价和申购限额为准。`;
   const summary = `场外切换 ${level} ${trigger.fromCode}→场外QDII ${benchPremium}/${lowestPremium}`;
   const body_md = [
     `**基准溢价 ${benchPremium}** > ${threshold}%`,
@@ -992,7 +993,11 @@ function buildOtcSwitchTriggerNotification(snapshot, trigger, env) {
     strategyName: trigger.ruleName ? `场外切换 · ${trigger.ruleName}` : '场外切换',
     triggerCondition: ruleLabel,
     purchaseAmount: '',
-    detailUrl,
+    detailUrl: action.detailUrl,
+    url: action.url,
+    links: action.links,
+    target: action.target,
+    params: action.params,
     title,
     body,
     summary,
@@ -1031,8 +1036,12 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
   const ruleLabel = trigger.rule === 'A'
     ? `规则 A 低→高：H溢价 − L溢价 < ${threshold}%（差价收窄，从持仓 L 换到 H）`
     : `规则 B 高→低：H溢价 − L溢价 > ${threshold}%（差价扩大，从持仓 H 换到 L）`;
-  const baseUrl = stripTrailingSlash(env?.PUBLIC_DATA_BASE_URL || 'https://api.freebacktrack.tech');
-  const detailUrl = `${baseUrl}/index.html?tab=tradePlans#switch`;
+  const action = buildNotificationAction(env, 'fundSwitch', {
+    code: trigger.fromCode,
+    targetCode: trigger.toCode,
+    trigger: 'switch-threshold',
+    rule: trigger.rule || ''
+  });
   // 同一对 + 同一规则 + 同一分钟，只发一次。
   const minuteKey = String(snapshot?.computedAt || '').slice(0, 16);
   // pairKey 已含 benchmark:cand，多基准下仍唯一。
@@ -1041,7 +1050,7 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
     `**H−L ${gapStr}%** ${cmp} ${threshold}%${navHint}`,
     `卖 **${fromLabel}** → 买 **${toLabel}**`,
     ...orderBookLines.map((line) => `- ${line}`),
-    `*下单前请以基金软件实时溢价为准。*`
+    `*点此查看策略详情，下单前请以基金软件实时溢价为准。*`
   ].join('\n');
   return {
     eventId,
@@ -1051,9 +1060,13 @@ export function buildSwitchTriggerNotification(snapshot, trigger, env) {
     strategyName: trigger.ruleName ? `场内切换 · ${trigger.ruleName}` : '场内切换',
     triggerCondition: ruleLabel,
     purchaseAmount: '',
-    detailUrl,
+    detailUrl: action.detailUrl,
+    url: action.url,
+    links: action.links,
+    target: action.target,
+    params: action.params,
     title,
-    body,
+    body: `${body}\n点此查看策略详情。`,
     summary,
     body_md
   };

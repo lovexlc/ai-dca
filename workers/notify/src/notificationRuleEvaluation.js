@@ -1,5 +1,6 @@
 import { buildMovingAverageValues, buildNasdaqStrategyPlan, buildPeakDrawdownStrategyPlan, findLatestFiniteValue, mapReferencePrice } from '../../../src/app/strategyEngine.js';
 import { fetchFundNavHistoryWithMonthlyKv } from './getNav.js';
+import { buildNotificationAction } from './notificationLinks.js';
 
 const DEFAULT_PUBLIC_DATA_BASE_URL = 'https://api.freebacktrack.tech';
 const DEFAULT_TIMEZONE = 'Asia/Shanghai';
@@ -80,15 +81,15 @@ export function getBaseUrl(env) {
   return stripTrailingSlash(env.PUBLIC_DATA_BASE_URL || DEFAULT_PUBLIC_DATA_BASE_URL);
 }
 
+export function buildNotificationDetailAction(env, tab = 'tradePlans', ruleId = '', params = {}) {
+  return buildNotificationAction(env, tab, {
+    ...(String(ruleId || '').trim() ? { ruleId: String(ruleId || '').trim() } : {}),
+    ...(params || {})
+  });
+}
+
 export function buildNotificationDetailUrl(env, tab = 'tradePlans', ruleId = '') {
-  const url = new URL('/index.html', `${getBaseUrl(env)}/`);
-  url.searchParams.set('tab', String(tab || 'tradePlans').trim() || 'tradePlans');
-
-  if (String(ruleId || '').trim()) {
-    url.searchParams.set('ruleId', String(ruleId || '').trim());
-  }
-
-  return url.toString();
+  return buildNotificationDetailAction(env, tab, ruleId).web;
 }
 
 function resolveMarketSymbol(symbol = '') {
@@ -125,14 +126,20 @@ function normalizeQuoteEntry(symbol, item = {}) {
   };
 }
 
-export async function loadLatestMarketMap(env, rulesOrSymbols = []) {
+export async function loadLatestMarketMap(env, rulesOrSymbols = [], options = {}) {
   const symbols = new Set();
+  const fundKinds = {};
   for (const item of Array.isArray(rulesOrSymbols) ? rulesOrSymbols : []) {
     if (typeof item === 'string') {
       if (item.trim()) symbols.add(item.trim());
       continue;
     }
-    if (item?.symbol) symbols.add(String(item.symbol).trim());
+    if (item?.symbol) {
+      const symbol = String(item.symbol).trim();
+      symbols.add(symbol);
+      const kind = String(item.fundKind || item.kind || item.requestedFundKind || '').trim().toLowerCase();
+      if (/^\d{6}$/.test(symbol) && (kind === 'otc' || kind === 'qdii' || kind === 'exchange')) fundKinds[symbol] = kind;
+    }
     if (item?.referenceSymbol) symbols.add(String(item.referenceSymbol).trim());
   }
   const list = [...symbols].filter(Boolean);
@@ -146,7 +153,11 @@ export async function loadLatestMarketMap(env, rulesOrSymbols = []) {
     const payload = await fetchMarketsJson(env, '/fund-metrics', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ codes: fundCodes })
+      body: JSON.stringify({
+        codes: fundCodes,
+        ...(options.forceRefresh ? { refresh: true } : {}),
+        ...(Object.keys(fundKinds).length ? { fundKinds } : {})
+      })
     });
     for (const item of Array.isArray(payload?.items) ? payload.items : []) {
       const code = String(item?.code || '').trim();
@@ -299,6 +310,10 @@ export function buildPlanNotification(rule, evaluation, env, options = {}) {
   const currentPriceLabel = formatPrice(currentPrice, currency);
   const triggerPriceLabel = formatPrice(layer?.price, currency);
   const triggerCondition = `${rule.symbol} 已下跌 ${drawdownLabel}，当前价 ${currentPriceLabel}，触发第 ${stageOrder} 档买入（触发价 ${triggerPriceLabel}）`;
+  const action = buildNotificationDetailAction(env, 'tradePlans', rule.ruleId, {
+    code: rule.symbol,
+    trigger: 'plan-threshold'
+  });
 
   return {
     eventId: String(options.eventId || '').trim() || buildNotificationEventId(rule.ruleId, `stage-${stageOrder}`),
@@ -308,9 +323,13 @@ export function buildPlanNotification(rule, evaluation, env, options = {}) {
     strategyName: displayName,
     triggerCondition,
     purchaseAmount,
-    detailUrl: buildNotificationDetailUrl(env, 'tradePlans', rule.ruleId),
-    title: '交易计划提醒',
-    body: `已触发「${displayName}」的购买条件${purchaseAmount ? `，建议买入 ${purchaseAmount}` : ''}。请到网站查看更详细的策略说明。`,
+    detailUrl: action.detailUrl,
+    url: action.url,
+    links: action.links,
+    target: action.target,
+    params: action.params,
+    title: `${rule.symbol} 触及买入阈值`,
+    body: `已触发「${displayName}」第 ${stageOrder} 档${purchaseAmount ? `，建议买入 ${purchaseAmount}` : ''} → 点此查看策略详情。`,
     summary: `${displayName} 触发第 ${stageOrder} 档买入`
   };
 }
@@ -325,6 +344,10 @@ export function buildDcaNotification(rule, localDateLabel, env, options = {}) {
   const triggerCondition = isFirstExecution
     ? `已到达您设定的${rule.frequency}定投日（${localDateLabel}），首次执行将按「${strategyName}」的首档金额提醒`
     : `已到达您设定的${rule.frequency}定投日（${localDateLabel}）`;
+  const action = buildNotificationDetailAction(env, 'dca', rule.ruleId, {
+    code: rule.symbol,
+    trigger: 'dca-window'
+  });
 
   return {
     eventId: String(options.eventId || '').trim() || buildNotificationEventId(rule.ruleId, localDateLabel),
@@ -334,9 +357,13 @@ export function buildDcaNotification(rule, localDateLabel, env, options = {}) {
     strategyName,
     triggerCondition,
     purchaseAmount,
-    detailUrl: buildNotificationDetailUrl(env, 'dca', rule.ruleId),
+    detailUrl: action.detailUrl,
+    url: action.url,
+    links: action.links,
+    target: action.target,
+    params: action.params,
     title: '定投计划提醒',
-    body: `${strategyName} 已进入本期执行窗口${purchaseAmount ? `，建议投入 ${purchaseAmount}` : ''}。请到网站查看更详细的策略说明。`,
+    body: `${strategyName} 已进入本期执行窗口${purchaseAmount ? `，建议投入 ${purchaseAmount}` : ''} → 点此查看定投详情。`,
     summary: `${strategyName} 定投执行日`
   };
 }

@@ -106,6 +106,7 @@ export async function deliverNotification(env, notification, options = {}) {
       results.push({
         ...(await sendBarkNotification({
           ...notification,
+          url: notification.url || notification.detailUrl || '',
           deviceKey: barkDeviceKey
         })),
         configKey: barkConfigKey,
@@ -166,7 +167,10 @@ export async function deliverNotification(env, notification, options = {}) {
       purchaseAmount: notification.purchaseAmount || '',
       body_md: notification.body_md || '',
       detailUrl: notification.detailUrl || notification.url || '',
-      url: notification.url || notification.detailUrl || ''
+      url: notification.url || notification.detailUrl || '',
+      links: notification.links || null,
+      target: notification.target || '',
+      params: notification.params || null
     };
 
     const wsSettledList = await Promise.allSettled(
