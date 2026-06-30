@@ -324,25 +324,26 @@ function mergeKlinePayloadsWithR2(cached, fresh, { market, tf, limit = 1000, ses
   return klinePayloadForSession(payload, market, tf, sessionMode);
 }
 
-async function readCachedFundMetric(env, cacheKey, fundKind = '') {
+async function readCachedFundMetric(env, cacheKey, fundKind = '', exchangeOverride = null) {
   const cached = await kvGetJson(env, cacheKey).catch(() => null);
   if (!cached || !cached.code) return null;
   const hasNav = Number(cached.latestNav) > 0;
   const hasPrice = Number(cached.price) > 0;
   if (!hasNav && !hasPrice) return null;
   const code = String(cached.code || '').trim();
-  if (isExchangeTradedFund(code) && String(cached.source || '').trim() !== 'xueqiu-quote') {
+  const exchange = typeof exchangeOverride === 'boolean' ? exchangeOverride : isExchangeTradedFund(code);
+  if (exchange && String(cached.source || '').trim() !== 'xueqiu-quote') {
     return null;
   }
   let quote = cached;
-  if (!isExchangeTradedFund(code) && !cached.fundKind && !cached.fundType) {
+  if (!exchange && !cached.fundKind && !cached.fundType) {
     const meta = await fetchDanjuanFundMetaWithCache(env, code).catch(() => null);
     if (meta) {
       quote = { ...cached, ...meta };
       await kvPutJson(env, cacheKey, quote, { ttlSeconds: 24 * 3600 }).catch(() => {});
     }
   }
-  return normalizeFundMetricFromQuote(code, quote, { cached: true, cachePolicy: 'kv-closed-session', fundKind });
+  return normalizeFundMetricFromQuote(code, quote, { cached: true, cachePolicy: 'kv-closed-session', exchange, fundKind });
 }
 
 async function fetchDanjuanFundMetaWithCache(env, code) {
@@ -363,9 +364,9 @@ function isDanjuanUpdatedToday(updatedAtMs) {
   return shanghai === today;
 }
 
-async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '') {
+async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '', exchangeOverride = null) {
   const cacheKey = 'fund-metrics:' + code;
-  const exchange = isExchangeTradedFund(code);
+  const exchange = typeof exchangeOverride === 'boolean' ? exchangeOverride : isExchangeTradedFund(code);
   try {
     let quote = exchange
       ? await fetchXueqiuQuote(code, { cookie: env.XUEQIU_COOKIE })
@@ -385,7 +386,7 @@ async function fetchFreshFundMetric(env, code, cachePolicy, fundKind = '') {
     const primaryError = summarizeXueqiuError(error);
     if (exchange) {
       await notifyXueqiuCookieIssue(env, error, { code, endpoint: 'fund-metrics' });
-      const cached = await readCachedFundMetric(env, cacheKey);
+      const cached = await readCachedFundMetric(env, cacheKey, fundKind, exchange);
       if (cached) {
         return {
           ...cached,
@@ -444,8 +445,9 @@ export async function handleFundMetrics(env, body = {}, params = new URLSearchPa
 
   const items = await mapLimit(codes, 5, async (code) => {
     const cacheKey = 'fund-metrics:' + code;
-    const exchange = isExchangeTradedFund(code);
-    const requestedKind = exchange ? 'exchange' : normalizeFundKindHint(fundKindHints[code]);
+    const hintedKind = normalizeFundKindHint(fundKindHints[code]);
+    const exchange = isExchangeTradedFund(code) || hintedKind === 'exchange';
+    const requestedKind = exchange ? 'exchange' : hintedKind;
     // 场内：盘中拉活数据，非交易时段读缓存
     // 场外：周末/节假日始终读缓存；交易日盘中读缓存，盘后拉活数据并按 updated_at 判断是否缓存
     let codeShouldReadCache;
@@ -461,10 +463,10 @@ export async function handleFundMetrics(env, body = {}, params = new URLSearchPa
       ? 'kv-closed-session'
       : (forceRefresh ? 'live-refresh' : (exchange ? 'live-trading-session' : 'live-post-close'));
     if (codeShouldReadCache) {
-      const cached = await readCachedFundMetric(env, cacheKey, requestedKind);
+      const cached = await readCachedFundMetric(env, cacheKey, requestedKind, exchange);
       if (cached) return cached;
     }
-    return await fetchFreshFundMetric(env, code, codeCachePolicy, requestedKind);
+    return await fetchFreshFundMetric(env, code, codeCachePolicy, requestedKind, exchange);
   });
 
   return json({

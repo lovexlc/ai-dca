@@ -70,6 +70,24 @@ import { buildAggregatesTableData } from './holdings/buildAggregatesTableData.js
 import { useTodaySignals } from './holdings/useTodaySignals.js';
 import { readColumnFilterValue } from './holdings/tableFilters.js';
 import { computeOtcAutoFillContext, updateTransactionDraftField } from './holdings/transactionDraftState.js';
+
+function buildCodeKindMap(codes, transactions) {
+  const map = {};
+  if (!Array.isArray(codes) || !codes.length) return map;
+  for (const code of codes) {
+    if (!code) continue;
+    const normalized = normalizeFundCode(code);
+    // 以该代码最新一笔有效交易的 kind 为准；没有交易时让后端按代码前缀推断。
+    const latestTx = transactions
+      .filter((tx) => normalizeFundCode(tx.code) === normalized && tx.kind)
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))[0];
+    if (latestTx?.kind) {
+      map[normalized] = latestTx.kind;
+    }
+  }
+  return map;
+}
+
 export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = false } = {}) {
   const { recordTransaction } = useHoldingsQuickTransaction();
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
@@ -364,7 +382,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     if (!codes.length) return;
     autoNavTriggeredRef.current = true;
     for (const code of codes) navAttemptedCodesRef.current.add(code);
-    void refreshNavForCodes(codes, { silent: true });
+    void refreshNavForCodes(codes, { silent: true, fundKinds: buildCodeKindMap(codes, transactions) });
   }, [transactions]);
   useEffect(() => {
     const ledgerCodes = getLedgerCodeList(transactions);
@@ -403,7 +421,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     window.addEventListener('ai-dca-price-push', handlePricePush);
     return () => window.removeEventListener('ai-dca-price-push', handlePricePush);
   }, []);
-  async function refreshNavForCodes(codes, { silent = false, forceRefresh = false } = {}) {
+  async function refreshNavForCodes(codes, { silent = false, forceRefresh = false, fundKinds = null } = {}) {
     const safeCodes = (Array.isArray(codes) ? codes : []).filter(Boolean);
     if (!safeCodes.length) {
       if (!silent) showActionToast('净值刷新', 'warning', { description: '当前没有可刷新的基金代码。' });
@@ -418,7 +436,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
       ...summarizeHoldings()
     });
     try {
-      const navResult = await getNavSnapshots(safeCodes, { forceRefresh });
+      const navResult = await getNavSnapshots(safeCodes, { forceRefresh, fundKinds });
       let mergeErrors = [];
       let nextMeta = null;
       // 用函数式 setState 基于最新 prev 合并，避免并发刷新互相覆盖。
@@ -491,7 +509,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     // 手动刷新清空已尝试集合，所有代码都重新走一遍。
     navAttemptedCodesRef.current.clear();
     trackFeatureEvent('holdings', 'manual_refresh_click', { codeCount: codes.length, ...summarizeHoldings() });
-    void refreshNavForCodes(codes, { silent: false, forceRefresh: true });
+    void refreshNavForCodes(codes, { silent: false, forceRefresh: true, fundKinds: buildCodeKindMap(codes, transactions) });
   }
   function resetDraft(nextDraft = emptyDraft()) {
     setDraft(nextDraft);

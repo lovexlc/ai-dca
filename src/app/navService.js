@@ -98,8 +98,8 @@ function normalizeSnapshotPayload(payload = {}) {
   };
 }
 
-async function fetchSnapshotBatch(codes = [], { forceRefresh = false } = {}) {
-  const payload = await fetchFundMetrics(codes, { refresh: forceRefresh });
+async function fetchSnapshotBatch(codes = [], { forceRefresh = false, fundKinds = null } = {}) {
+  const payload = await fetchFundMetrics(codes, { refresh: forceRefresh, fundKinds });
   return normalizeSnapshotPayload(payload);
 }
 

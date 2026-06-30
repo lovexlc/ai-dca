@@ -110,7 +110,7 @@ export async function fetchXueqiuFundData(symbol, { refresh = false, raw = true 
   return getJson('/xueqiu-fund-data/' + encodeURIComponent(symbol) + q);
 }
 
-export async function fetchFundMetrics(codes, { refresh = false, signal } = {}) {
+export async function fetchFundMetrics(codes, { refresh = false, signal, fundKinds: callerFundKinds = null } = {}) {
   const list = (Array.isArray(codes) ? codes : [codes])
     .map((code) => String(code || '').trim())
     .filter(Boolean);
@@ -118,12 +118,20 @@ export async function fetchFundMetrics(codes, { refresh = false, signal } = {}) 
     return { items: [], successCount: 0, failureCount: 0, generatedAt: '', tradingSession: false, cachePolicy: '' };
   }
   const fundKinds = Object.fromEntries(list.map((code) => {
-    const digits = String(code || '').replace(/^(sh|sz|bj)/i, '').replace(/\D/g, '');
-    const normalized = digits.length === 6 ? digits : code;
+    const normalized = normalizeCodeForKind(code);
+    const callerKind = callerFundKinds?.[normalized] || callerFundKinds?.[code];
+    if (callerKind === 'exchange' || callerKind === 'qdii' || callerKind === 'otc') {
+      return [normalized, callerKind];
+    }
     if (/^\d{6}$/.test(normalized) && EXCHANGE_PREFIXES.has(normalized.slice(0, 2))) return [normalized, 'exchange'];
     return [normalized, isKnownQdiiFundCode(normalized) ? 'qdii' : 'otc'];
   }));
   return postJson('/fund-metrics' + (refresh ? '?refresh=1' : ''), { codes: list, refresh, fundKinds }, { signal });
+}
+
+function normalizeCodeForKind(code = '') {
+  const digits = String(code || '').replace(/^(sh|sz|bj)/i, '').replace(/\D/g, '');
+  return digits.length === 6 ? digits : code;
 }
 
 export async function fetchFundFees(codes, { refresh = false, signal } = {}) {
