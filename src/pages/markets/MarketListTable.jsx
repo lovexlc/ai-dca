@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   getCoreRowModel,
   getFilteredRowModel,
@@ -209,6 +209,7 @@ export function MarketListTable({
   dataTableHeader,
   dataTableChrome,
   autoPinColumn = false,
+  onVisibleSymbolsChange,
 }) {
   const todayDate = getTodayShanghaiDate();
   const tableScrollRef = useRef(null);
@@ -584,6 +585,19 @@ export function MarketListTable({
     setColumnPinning({ left: nextLeft });
   };
 
+  const handleVisibleRowsChange = useCallback((visibleRows = []) => {
+    if (typeof onVisibleSymbolsChange !== 'function') return;
+    const symbols = [];
+    const seen = new Set();
+    visibleRows.forEach((row) => {
+      const symbol = String(row?.symbol || '').trim();
+      if (!symbol || seen.has(symbol)) return;
+      seen.add(symbol);
+      symbols.push(symbol);
+    });
+    onVisibleSymbolsChange(symbols);
+  }, [onVisibleSymbolsChange]);
+
   const viewOptions = dataTable ? <DataTableViewOptions table={table} /> : null;
   const header = dataTable
     ? (typeof dataTableHeader === 'function'
@@ -625,6 +639,7 @@ export function MarketListTable({
           table={table}
           tableScrollRef={tableScrollRef}
           onHorizontalScroll={handleDataTableScroll}
+          onVisibleRowsChange={handleVisibleRowsChange}
           tableContainerClassName={compact ? 'rounded-xl' : undefined}
           tableChrome={tableChrome}
           className={cx(

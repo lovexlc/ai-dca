@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { flexRender } from "@tanstack/react-table";
 import { DataTablePagination } from "@/components/data-table/data-table-pagination";
 import {
@@ -23,9 +24,42 @@ function DataTable({
   footerRow,
   resizable = false,
   onHorizontalScroll,
+  onVisibleRowsChange,
   tableScrollRef,
   ...props
 }) {
+  const rowRefs = useRef(new Map());
+  const rowModelRows = table.getRowModel().rows || [];
+  const rowIdsSignature = rowModelRows.map((row) => row.id).join("|");
+
+  useEffect(() => {
+    if (typeof onVisibleRowsChange !== "function") return undefined;
+    const currentRows = table.getRowModel().rows || [];
+    if (typeof IntersectionObserver === "undefined") {
+      onVisibleRowsChange(currentRows.map((row) => row.original));
+      return undefined;
+    }
+    const visibleIds = new Set();
+    const emit = () => {
+      const visibleRows = currentRows
+        .filter((row) => visibleIds.has(row.id))
+        .map((row) => row.original);
+      onVisibleRowsChange(visibleRows);
+    };
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const rowId = entry.target.getAttribute("data-row-id");
+        if (!rowId) return;
+        if (entry.isIntersecting) visibleIds.add(rowId);
+        else visibleIds.delete(rowId);
+      });
+      emit();
+    }, { threshold: 0.01, rootMargin: "0px 0px 120px 0px" });
+    rowRefs.current.forEach((element) => observer.observe(element));
+    emit();
+    return () => observer.disconnect();
+  }, [onVisibleRowsChange, rowIdsSignature, table]);
+
   return <div
     className={cn(
       "flex w-full flex-col gap-2.5 overflow-auto",
@@ -49,8 +83,13 @@ function DataTable({
   >{header.isPlaceholder ? null : flexRender(
     header.column.columnDef.header,
     header.getContext()
-  )}</TableHead>)}</TableRow>)}</TableHeader><TableBody>{table.getRowModel().rows?.length ? table.getRowModel().rows.map((row) => <TableRow
+  )}</TableHead>)}</TableRow>)}</TableHeader><TableBody>{rowModelRows?.length ? rowModelRows.map((row) => <TableRow
     key={row.id}
+    ref={(element) => {
+      if (element) rowRefs.current.set(row.id, element);
+      else rowRefs.current.delete(row.id);
+    }}
+    data-row-id={row.id}
     data-state={row.getIsSelected() && "selected"}
     className={onRowClick ? "cursor-pointer" : undefined}
     onClick={onRowClick ? () => onRowClick(row) : undefined}

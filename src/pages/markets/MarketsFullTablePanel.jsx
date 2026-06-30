@@ -33,6 +33,7 @@ export function MarketsFullTablePanel({
   hideTrendColumn = false,
   onRefresh,
   refreshing = false,
+  onVisibleSymbolsChange,
 }) {
   if (!fullTableMode) return null;
 
@@ -238,6 +239,7 @@ export function MarketsFullTablePanel({
             dataTable
             dataTableHeader={renderHeader}
             autoPinColumn
+            onVisibleSymbolsChange={onVisibleSymbolsChange}
           />
         </div>
       </div>
@@ -254,6 +256,7 @@ export function MarketsFullTablePanel({
           dataTableHeader={renderMobileHeader}
           dataTableChrome={renderMobileTableChrome}
           autoPinColumn
+          onVisibleSymbolsChange={onVisibleSymbolsChange}
           showLimitColumn={showLimitColumn}
           hidePremiumColumn={hidePremiumColumn}
           hideTrendColumn={hideTrendColumn}

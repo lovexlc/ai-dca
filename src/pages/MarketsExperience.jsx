@@ -23,6 +23,7 @@ import {
   setActiveWatchlist,
 } from '../app/marketsApi.js';
 import { useMarketsPageSync } from './markets/useMarketsPageSync.js';
+import { useVisibleMarketSymbols } from './markets/useVisibleMarketSymbols.js';
 import { showActionToast } from '../app/toast.js';
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { readTradeLedger, TRADE_LEDGER_UPDATED_EVENT } from '../app/tradeLedger.js';
@@ -235,10 +236,8 @@ export function MarketsExperience() {
     });
     return next;
   }, [heldAggregates]);
-  const trackedWatchSymbols = useMemo(
-    () => watchSymbols,
-    [watchSymbols]
-  );
+  const trackedWatchSymbols = watchSymbols;
+  const { requestedSymbols: requestedWatchSymbols, handleVisibleSymbolsChange: handleVisibleWatchSymbolsChange } = useVisibleMarketSymbols({ fullTableMode, selectedSymbol, trackedSymbols: trackedWatchSymbols, resetKey: `${watch.activeListId}|${market}` });
   useEffect(() => {
     selectedSymbolRef.current = selectedSymbol;
   }, [selectedSymbol]);
@@ -372,10 +371,9 @@ export function MarketsExperience() {
     }
   }, [market]);
   const refreshWatch = useCallback(async () => {
-    const list = trackedWatchSymbols || [];
+    const list = requestedWatchSymbols || [];
     if (!list.length) {
-      setWatchQuotes({});
-      setWatchNavSnapshots({});
+      if (!trackedWatchSymbols.length) { setWatchQuotes({}); setWatchNavSnapshots({}); }
       trackActionResult('markets', 'watch_refresh', 'empty', { market });
       return;
     }
@@ -403,7 +401,7 @@ export function MarketsExperience() {
         console.warn('[Markets] 以下标的获取行情失败:', quotesWithErrors.map(([sym, q]) => ({ symbol: sym, error: q.error })));
       }
       const missingQuoteSymbols = list.filter((symbol) => !quotes?.[symbol]);
-      setWatchQuotes(quotes);
+      setWatchQuotes((prev) => ({ ...prev, ...quotes }));
       trackActionResult('markets', 'watch_refresh', 'success', {
         market,
         symbolCount: list.length,
@@ -427,11 +425,11 @@ export function MarketsExperience() {
     } finally {
       setWatchLoading(false);
     }
-  }, [trackedWatchSymbols, market]);
+  }, [requestedWatchSymbols, trackedWatchSymbols, market]);
   // 场外基金申购限额：批量拉取，仅限当前活跃列表含 6 位数代码时触发。
   useEffect(() => {
     if (market !== 'cn') { setFundLimitsByCode({}); return undefined; }
-    const codes = (trackedWatchSymbols || [])
+    const codes = (requestedWatchSymbols || [])
       .map((sym) => normalizeCnFundCode(sym))
       .filter((code) => /^\d{6}$/.test(code));
     if (!codes.length) { setFundLimitsByCode({}); return undefined; }
@@ -488,7 +486,7 @@ export function MarketsExperience() {
       }
     })();
     return () => { cancelled = true; ctrl.abort(); };
-  }, [trackedWatchSymbols, market]);
+  }, [requestedWatchSymbols, market]);
   // 美股 11 大行业指数（Google Finance 同款）。A 股暂未接入。
   const refreshSectors = useCallback(async (forceRefresh = false) => {
     if (market !== 'us') {
@@ -599,7 +597,7 @@ export function MarketsExperience() {
 
   // ---- WS 行情订阅：自选代码变化时重新订阅 ----
   useEffect(() => {
-    const symbols = trackedWatchSymbols || [];
+    const symbols = requestedWatchSymbols || [];
     if (!symbols.length) return;
     if (typeof window !== 'undefined' && typeof window.__aiDcaSubscribeMarketData === 'function') {
       window.__aiDcaSubscribeMarketData(symbols);
@@ -609,7 +607,7 @@ export function MarketsExperience() {
         activeWatchlistType: activeWatchList?.type || ''
       });
     }
-  }, [trackedWatchSymbols]);
+  }, [requestedWatchSymbols]);
 
   // ---- WS 行情推送：接收实时价格更新 ----
   useEffect(() => {
@@ -618,7 +616,7 @@ export function MarketsExperience() {
       if (!Array.isArray(items) || !items.length) return;
       trackFeatureEvent('markets', 'price_push_receive', {
         itemCount: items.length,
-        watchSymbolCount: trackedWatchSymbols.length,
+        watchSymbolCount: requestedWatchSymbols.length,
         selected: Boolean(selectedSymbolRef.current)
       });
       setWatchQuotes((prev) => {
@@ -637,7 +635,7 @@ export function MarketsExperience() {
     }
     window.addEventListener('ai-dca-price-push', handlePricePush);
     return () => window.removeEventListener('ai-dca-price-push', handlePricePush);
-  }, []);
+  }, [requestedWatchSymbols]);
 
   useEffect(() => {
     refreshSectors(false);
@@ -646,8 +644,8 @@ export function MarketsExperience() {
   // 自选股迷你图只在总览态加载；进入详情后避免为侧栏批量补拉 1d K 线。
   useEffect(() => {
     if (selectedSymbol) return;
-    ensureKlines(trackedWatchSymbols);
-  }, [selectedSymbol, trackedWatchSymbols, ensureKlines]);
+    ensureKlines(requestedWatchSymbols);
+  }, [selectedSymbol, requestedWatchSymbols, ensureKlines]);
 
   useEffect(() => {
     const q = symbolInput.trim();
@@ -1337,7 +1335,7 @@ export function MarketsExperience() {
   }, [market, selectedSymbol, chartRange, chartCustomRange?.from, chartCustomRange?.to]);
 
   const otcTableColumnProps = { showLimitColumn: isActiveOtcList && market === 'cn', hidePremiumColumn: isActiveOtcList && market === 'cn', hideTrendColumn: isActiveOtcList && market === 'cn' };
-  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshWatch, refreshing: watchLoading, ...otcTableColumnProps };
+  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshWatch, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, ...otcTableColumnProps };
 
   return (
     <>
