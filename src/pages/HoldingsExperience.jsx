@@ -23,7 +23,6 @@ import {
   aggregateByCode,
   buildLedgerRows,
   buildSoldLots,
-  detectFundKind,
   getExpectedLatestNavDate,
   getLedgerCodeList,
   getSwitchChainCodeList,
@@ -38,7 +37,6 @@ import {
   summarizeSoldLots,
   summarizeTransactionErrors
 } from '../app/holdingsLedgerCore.js';
-import { getNearestTradingDayShanghai, getNextTradingDayShanghai } from '../app/holidaysCN.js';
 import {
   buildNavMetaFromResult,
   mergeSnapshotsFromNavResult,
@@ -46,7 +44,6 @@ import {
   readLedgerState,
   recognizeLedgerFile
 } from '../app/holdingsLedger.js';
-import { getKnownQdiiFundName } from '../app/qdiiFundCodes.js';
 import { showActionToast } from '../app/toast.js';
 import { getNavSnapshots, mergePricePushItems } from '../app/navService.js';
 import { useHoldingsQuickTransaction } from './holdings/useHoldingsQuickTransaction.js';
@@ -58,7 +55,6 @@ import {
   formatNav,
   formatShares,
   nowIso,
-  resolveTagsFromKind,
   sanitizeCodeInput,
   sanitizeDecimalInput,
   transactionToDraft
@@ -73,6 +69,7 @@ import { clearMarketActionDraft, readMarketActionDraft } from '../app/marketActi
 import { buildAggregatesTableData } from './holdings/buildAggregatesTableData.js';
 import { useTodaySignals } from './holdings/useTodaySignals.js';
 import { readColumnFilterValue } from './holdings/tableFilters.js';
+import { computeOtcAutoFillContext, updateTransactionDraftField } from './holdings/transactionDraftState.js';
 export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = false } = {}) {
   const { recordTransaction } = useHoldingsQuickTransaction();
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
@@ -574,60 +571,7 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
     });
   }
   function handleDraftChange(field, value) {
-    setDraft((prev) => {
-      if (!prev) return prev;
-      if (field === 'code') {
-        const nextCode = sanitizeCodeInput(value);
-        const normalizedCode = normalizeFundCode(nextCode);
-        const existingName = aggregateByCodeMap.get(normalizedCode)?.name || '';
-        const knownQdiiName = getKnownQdiiFundName(normalizedCode);
-        const nextName = existingName || knownQdiiName || prev.name;
-        const nextKind = prev.kind && prev.kind !== 'otc' ? prev.kind : detectFundKind(nextCode);
-        return { ...prev, code: nextCode, name: nextName, kind: nextKind };
-      }
-      if (field === 'price' || field === 'shares' || field === 'amount' || field === 'costPrice') {
-        return { ...prev, [field]: sanitizeDecimalInput(value) };
-      }
-      if (field === 'before3pm') {
-        // 场外/QDII：勾选「三点前」表示今天交易日收盘价确认；未勾 = 次个交易日确认。
-        // 场内不适用，只记状态不动 date。NAV 始终不自动带入。
-        const nextBefore3pm = Boolean(value);
-        if (prev.kind === 'exchange') {
-          return { ...prev, before3pm: nextBefore3pm };
-        }
-        const ctx = computeOtcAutoFillContext({ kind: prev.kind, before3pm: nextBefore3pm });
-        return {
-          ...prev,
-          before3pm: nextBefore3pm,
-          date: ctx.confirmDate || prev.date
-        };
-      }
-      if (field === 'kind') {
-        const nextKind = normalizeFundKind(value, prev.code, prev.name);
-        const ctx = computeOtcAutoFillContext({ kind: nextKind, before3pm: prev.before3pm ?? true });
-        return {
-          ...prev,
-          kind: nextKind,
-          before3pm: nextKind === 'exchange' ? false : (prev.before3pm ?? true),
-          date: nextKind === 'exchange' ? prev.date : (ctx.confirmDate || prev.date),
-          tags: resolveTagsFromKind(nextKind)
-        };
-      }
-      return { ...prev, [field]: value };
-    });
-  }
-  // 场外/QDII 基金「三点前/后」确认逻辑：
-  //   三点前 -> 确认日 = 今天所在的交易日（T 日）。
-  //   三点后 -> 确认日 = 下一个交易日（T+1）。
-  // 价格（净值）始终不自动带入——下单时本日 NAV 还未公布，快照里看到的只是上一个交易日的净值。
-  function computeOtcAutoFillContext({ kind, before3pm }) {
-    if (kind === 'exchange') {
-      return { confirmDate: '', price: '', hint: '' };
-    }
-    const today = getTodayShanghaiDate();
-    const todayTrading = getNearestTradingDayShanghai(today);
-    const confirmDate = before3pm ? todayTrading : getNextTradingDayShanghai(todayTrading);
-    return { confirmDate, price: '', hint: '' };
+    setDraft((prev) => updateTransactionDraftField(prev, field, value, { aggregateByCodeMap }));
   }
   function submitDraft() {
     const prepared = {
