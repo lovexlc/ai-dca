@@ -80,3 +80,38 @@ test('normalizeNotifyPayload: explicit empty dcaList does not revive legacy acti
   assert.equal(normalized.dca, null);
   assert.deepEqual(normalized.dcaList, []);
 });
+
+test('compileNotifyRules: price alerts preserve fixed-base and holding metadata', () => {
+  const compiled = compileNotifyRules({
+    marketAlerts: [{
+      id: 'market-alert:513100:premium-below',
+      symbol: '513100',
+      name: '纳指ETF',
+      alertType: 'premium-below',
+      priceBase: 'alert-day',
+      alertDayPrice: 2.1,
+      threshold: 3,
+      fundKind: 'exchange',
+      enabled: true
+    }],
+    holdingAlerts: [{
+      id: 'holding-alert:021000:gain',
+      symbol: '021000',
+      name: '南方纳指 I',
+      alertType: 'gain',
+      threshold: 10,
+      holdingCost: 2.139,
+      fundKind: 'qdii',
+      enabled: true
+    }]
+  });
+
+  assert.equal(compiled.marketAlertRules.length, 1);
+  assert.equal(compiled.marketAlertRules[0].alertType, 'premium-below');
+  assert.equal(compiled.marketAlertRules[0].priceBase, 'alert-day');
+  assert.equal(compiled.marketAlertRules[0].alertDayPrice, 2.1);
+  assert.equal(compiled.marketAlertRules[0].fundKind, 'exchange');
+  assert.equal(compiled.holdingAlertRules.length, 1);
+  assert.equal(compiled.holdingAlertRules[0].holdingCost, 2.139);
+  assert.equal(compiled.holdingAlertRules[0].fundKind, 'qdii');
+});

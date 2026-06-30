@@ -546,6 +546,7 @@ export function MarketsExperience() {
         const r = await fetchFinancials(selectedSymbol);
         if (!cancelled) setFinancialsMap((prev) => ({ ...prev, [selectedSymbol]: r }));
       } catch (_) {
+        // Optional financials data can fail silently.
       } finally {
         financialsInflightRef.current.delete(selectedSymbol);
         if (!cancelled) setFinancialsLoading(false);
@@ -1082,6 +1083,14 @@ export function MarketsExperience() {
   const selectedQuote = useMemo(
     () => {
       const watchRow = watchRows.find((row) => row.symbol === selectedSymbol) || null;
+      if (selectedStoredQuote && watchRow) {
+        return {
+          ...selectedStoredQuote,
+          ...watchRow,
+          name: watchRow.name || selectedStoredQuote.name,
+          holding: watchRow.holding || selectedStoredQuote.holding || null,
+        };
+      }
       if (selectedStoredQuote && Number.isFinite(Number(selectedStoredQuote.price))) return selectedStoredQuote;
       return watchRow || selectedStoredQuote || null;
     },
@@ -1129,6 +1138,19 @@ export function MarketsExperience() {
           : { tab: 'tradePlans', hash: '#sell-new' };
     window.dispatchEvent(new CustomEvent('workspace:navigate', { detail: route }));
   }, [market]);
+
+  function handleBacktestEvent(action, meta = {}) {
+    const eventMeta = {
+      ...summarizeMarkets(),
+      ...meta,
+      source: 'symbol_detail_backtest',
+    };
+    if (action === 'run_success' || action === 'run_error' || action === 'run_validation_error') {
+      trackActionResult('markets', 'symbol_detail_backtest_run', action.replace(/^run_/, ''), eventMeta);
+      return;
+    }
+    trackFeatureEvent('markets', `symbol_detail_backtest_${action}`, eventMeta);
+  }
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -1478,6 +1500,7 @@ export function MarketsExperience() {
           },
           onOpenAlertDialog: handleOpenAlertDialog,
           onMarketAction: handleMarketAction,
+          onBacktestEvent: handleBacktestEvent,
         }}
       />
     </div>

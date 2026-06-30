@@ -17,6 +17,7 @@ function DataTable({
   actionBar,
   children,
   className,
+  tableClassName,
   tableContainerClassName,
   tableChrome,
   tableChromeClassName,
@@ -72,7 +73,7 @@ function DataTable({
       "sticky top-0 z-30 min-h-[55px] border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85",
       tableChromeClassName
     )}
-  >{tableChrome}</div> : null}<Table><TableHeader
+  >{tableChrome}</div> : null}<Table className={tableClassName}><TableHeader
     className={cn(tableChrome && "sticky top-0 z-20")}
   >{table.getHeaderGroups().map((headerGroup) => <TableRow key={headerGroup.id}>{headerGroup.headers.map((header) => <TableHead
     key={header.id}

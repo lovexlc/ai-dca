@@ -94,9 +94,4 @@ export const PREMIUM_FEATURES = [
     title: '更多持仓快照与历史',
     description: '预留给更长历史记录、更多基金池和多设备同步额度。'
   },
-  {
-    key: 'ai_research',
-    title: 'AI 组合分析',
-    description: '预留给自动生成复盘、风险摘要和调仓建议说明。'
-  }
 ];

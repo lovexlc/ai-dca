@@ -17,6 +17,8 @@ export function getColumnPinningStyle({ column, withBorder = false }) {
     position: isPinned ? 'sticky' : 'relative',
     background: isPinned ? 'var(--background)' : 'var(--background)',
     width: column.getSize(),
+    minWidth: column.getSize(),
+    maxWidth: column.getSize(),
     zIndex: isPinned ? 1 : undefined,
   };
 }

@@ -46,6 +46,11 @@ export function NotifyRulesCard({
     const priceBaseLabel = alert.priceBase ? ` (${priceBaseLabels[alert.priceBase] || alert.priceBase})` : '';
     const onEdit = type === 'market' ? onEditMarketAlert : onEditHoldingAlert;
     const onDelete = type === 'market' ? onDeleteMarketAlert : onDeleteHoldingAlert;
+    const holdingCost = Number(alert.holdingCost);
+    const thresholdValue = Number(alert.threshold);
+    const triggerPrice = type === 'holding' && Number.isFinite(holdingCost) && holdingCost > 0 && Number.isFinite(thresholdValue)
+      ? holdingCost * (alert.alertType === 'loss' ? (1 - thresholdValue / 100) : (1 + thresholdValue / 100))
+      : null;
 
     return (
       <div
@@ -67,6 +72,7 @@ export function NotifyRulesCard({
           <div className="text-xs text-slate-600">
             {typeLabel} {alert.threshold}%{priceBaseLabel}
             {alert.holdingCost && ` · 成本 ¥${alert.holdingCost.toFixed(3)}`}
+            {Number.isFinite(triggerPrice) && triggerPrice > 0 ? ` · 触发价 ${alert.alertType === 'loss' ? '≤' : '≥'} ¥${triggerPrice.toFixed(3)}` : ''}
             {' · '}
             {alert.cooldownHours === 1 ? '每小时' :
              alert.cooldownHours === 6 ? '每6小时' :

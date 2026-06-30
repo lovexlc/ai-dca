@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { ChevronDown, ChevronRight, ChevronUp, ExternalLink, Loader2, RefreshCw, Search } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
 import { Card, cx } from '../../components/experience-ui.jsx';
 
 export function formatClock(value) {
@@ -78,45 +78,6 @@ export function siteFavicon(url) {
   const host = siteHost(url);
   if (!host) return '';
   return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`;
-}
-
-export function ThemeExploreButton({ theme }) {
-  const onClick = useCallback(() => {
-    if (!theme) return;
-    const title = String(theme.title || '').trim();
-    const detail = String(theme.detail || '').trim();
-    const refs = (theme.sources || [])
-      .filter((s) => s && s.url)
-      .slice(0, 6)
-      .map((s, i) => {
-        const host = s.source || siteHost(s.url) || '';
-        const t = s.title || host || s.url;
-        return `${i + 1}. ${t}${host ? `（${host}）` : ''} ${s.url}`;
-      })
-      .join('\n');
-    const question = title ? `深入解读主题「${title}」` : '深入解读今日主题';
-    const ctxLines = [
-      title ? `主题标题：${title}` : '',
-      detail ? `主题概要：${detail}` : '',
-      refs ? `相关新闻引用：\n${refs}` : '',
-    ].filter(Boolean).join('\n\n');
-    try {
-      window.dispatchEvent(new CustomEvent('markets:research', {
-        detail: { question, depth: 'deep', context: ctxLines },
-      }));
-    } catch (_) { /* ignore */ }
-  }, [theme]);
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
-    >
-      <Search size={12} />
-      借助 AI 深入探索此主题
-    </button>
-  );
 }
 
 export function NewsList({ items = [] }) {
@@ -243,7 +204,6 @@ export function SummaryModule({ themes = [], loading, onRefresh }) {
                 {isOpen && (
                   <div className="space-y-3 pt-3">
                     <p className="text-[13.5px] leading-[1.7] text-slate-600">{t.detail}</p>
-                    <ThemeExploreButton theme={t} />
                   </div>
                 )}
               </li>

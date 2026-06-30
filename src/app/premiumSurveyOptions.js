@@ -1,6 +1,5 @@
 export const PREMIUM_SURVEY_INTEREST_OPTIONS = [
   { key: 'ad_free', label: '少广告 / 无广告' },
-  { key: 'ai_research', label: 'AI 复盘分析' },
   { key: 'data_export', label: '导出与备份增强' },
   { key: 'market_tools', label: '行情和切换工具增强' }
 ];

@@ -533,6 +533,7 @@ export function BacktestSidePanel({
   onClose,
   symbol,
   switchPrefs = null,
+  onEvent,
 }) {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
@@ -605,7 +606,20 @@ export function BacktestSidePanel({
       const cash = parseDecimalOr(initialCash, 10000);
       const invest = parseDecimalOr(investAmount, 1000);
       const dateRange = deriveBacktestDateRange(backtestRange, { startDate: customStartDate, endDate: customEndDate });
+      const runMeta = {
+        symbolLength: String(symbol || '').length,
+        highCount: highCodes.length,
+        lowCount: lowCodes.length,
+        range: backtestRange,
+        investMode,
+        thresholdMode,
+        strategyParamMode,
+        initialCash: cash,
+        hasCustomRange: backtestRange === 'custom',
+      };
+      onEvent?.('run_start', runMeta);
       if (!highCodes.length || !lowCodes.length) {
+        onEvent?.('run_validation_error', { ...runMeta, reason: 'missing_counterpart' });
         alert('请先填写对手方，组成 H/L 回测组合。');
         return;
       }
@@ -758,7 +772,7 @@ export function BacktestSidePanel({
         console.log('[Backtest] 跳过H/L档回测（highCodes或lowCodes为空）');
       }
 
-      setResult({
+      const nextResult = {
         rotation: rotationResult,
         hold: holdResult,
         holds: holdResults,
@@ -770,9 +784,28 @@ export function BacktestSidePanel({
           initialCash: cash,
           dateRange
         }
+      };
+      setResult(nextResult);
+      onEvent?.('run_success', {
+        ...runMeta,
+        rotation: Boolean(rotationResult),
+        rotationCount: Number(rotationResult?.rotationCount) || 0,
+        holdCount: holdResults.length,
+        totalReturnPct: Number(rotationResult?.totalReturnPct),
+        maxDrawdownPct: Number(rotationResult?.maxDrawdownPct),
       });
     } catch (error) {
       console.error('[Backtest] 回测失败:', error);
+      onEvent?.('run_error', {
+        symbolLength: String(symbol || '').length,
+        highCount: highCodes.length,
+        lowCount: lowCodes.length,
+        range: backtestRange,
+        investMode,
+        thresholdMode,
+        strategyParamMode,
+        errorMessage: error?.message || String(error || ''),
+      });
       alert(error.message || '回测失败');
     } finally {
       setRunning(false);
@@ -800,6 +833,14 @@ export function BacktestSidePanel({
       intraBuyOtherPct: buyOtherThreshold
     });
     writeStoredSwitchPrefs(nextPrefs);
+    onEvent?.('create_switch_rule', {
+      symbolLength: String(symbol || '').length,
+      highCount: ruleHighCodes.length,
+      lowCount: ruleLowCodes.length,
+      sellLowerThreshold,
+      buyOtherThreshold,
+      rotationCount: Number(rotation.rotationCount) || 0,
+    });
     navigateToFundSwitchPage();
   }
 

@@ -112,6 +112,7 @@ export function MarketsMainContent({
           onBack={detail.onBack}
           onOpenAlertDialog={detail.onOpenAlertDialog}
           onMarketAction={detail.onMarketAction}
+          onBacktestEvent={detail.onBacktestEvent}
         />
       ) : (
         noSelectedContent

@@ -17,7 +17,6 @@ const BASE_REQUIRED_FILES = [
   'src/pages/markets/MarketNewsPanels.jsx',
   'src/pages/markets/MarketSidebarRows.jsx',
   'src/pages/markets/MarketSymbolDetailPanel.jsx',
-  'src/pages/markets/MarketsResearchPanel.jsx',
   'src/pages/markets/marketDisplayUtils.js',
   'src/pages/markets/marketFundMetrics.js'
 ];
@@ -37,7 +36,6 @@ const REFACTOR_PHASES = [
     activationFile: 'src/pages/markets/MarketsMainContent.jsx',
     requiredFiles: [
       'src/pages/markets/MarketsMainContent.jsx',
-      'src/pages/markets/MarketsResearchShell.jsx',
       'src/pages/markets/MarketsSidebar.jsx',
       'src/pages/markets/marketOtcHelpers.js'
     ],
@@ -135,8 +133,7 @@ const FORBIDDEN_PATTERNS = [
   ['src/pages/HoldingsExperience.jsx', /\bLedgerTransactionRow\b/, 'legacy ledger row component must stay removed'],
   ['src/pages/HoldingsExperience.jsx', /\bSwitchChainPickerModal\b/, 'legacy switch-chain picker must stay removed'],
   ['src/pages/MarketsExperience.jsx', /\bfunction\s+SymbolDetailChart\b/, 'chart presentation belongs in MarketChartPanel.jsx'],
-  ['src/pages/MarketsExperience.jsx', /\bfunction\s+SymbolDetailPanel\b/, 'symbol detail presentation belongs in MarketSymbolDetailPanel.jsx'],
-  ['src/pages/MarketsExperience.jsx', /\bfunction\s+MarketsResearchPanel\b/, 'research presentation belongs in MarketsResearchPanel.jsx']
+  ['src/pages/MarketsExperience.jsx', /\bfunction\s+SymbolDetailPanel\b/, 'symbol detail presentation belongs in MarketSymbolDetailPanel.jsx']
 ];
 
 function fullPath(relativePath) {

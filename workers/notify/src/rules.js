@@ -105,6 +105,17 @@ export function normalizeNotifyPayload(payload = {}) {
   };
 }
 
+function normalizeAlertFundKind(value = '') {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === 'exchange' || normalized === 'otc' || normalized === 'qdii' ? normalized : '';
+}
+
+function normalizeMarketAlertType(value = '') {
+  const normalized = String(value || '').trim();
+  if (normalized === 'discount') return 'premium-below';
+  return ['gain', 'loss', 'premium', 'premium-below'].includes(normalized) ? normalized : 'gain';
+}
+
 function normalizeMarketAlerts(alerts = []) {
   if (!Array.isArray(alerts)) return [];
   return alerts
@@ -112,8 +123,10 @@ function normalizeMarketAlerts(alerts = []) {
       id: String(alert.id || '').trim(),
       symbol: String(alert.symbol || '').trim(),
       name: String(alert.name || '').trim(),
-      alertType: ['gain', 'loss', 'premium', 'discount'].includes(alert.alertType)
-        ? alert.alertType : 'gain',
+      fundKind: normalizeAlertFundKind(alert.fundKind || alert.kind),
+      alertType: normalizeMarketAlertType(alert.alertType),
+      priceBase: ['daily', 'alert-day'].includes(alert.priceBase) ? alert.priceBase : '',
+      alertDayPrice: Number(alert.alertDayPrice) || 0,
       threshold: Number(alert.threshold) || 0,
       enabled: alert.enabled !== false,
       cooldownHours: Number(alert.cooldownHours) || 24
@@ -128,6 +141,7 @@ function normalizeHoldingAlerts(alerts = []) {
       id: String(alert.id || '').trim(),
       symbol: String(alert.symbol || '').trim(),
       name: String(alert.name || '').trim(),
+      fundKind: normalizeAlertFundKind(alert.fundKind || alert.kind),
       alertType: ['gain', 'loss'].includes(alert.alertType) ? alert.alertType : 'gain',
       threshold: Number(alert.threshold) || 0,
       holdingCost: Number(alert.holdingCost) || 0,
@@ -189,7 +203,10 @@ export function compileNotifyRules(payload = {}) {
     type: 'market-alert',
     symbol: alert.symbol,
     name: alert.name,
+    fundKind: alert.fundKind,
     alertType: alert.alertType,
+    priceBase: alert.priceBase,
+    alertDayPrice: alert.alertDayPrice,
     threshold: alert.threshold,
     cooldownHours: alert.cooldownHours,
     enabled: alert.enabled
@@ -200,6 +217,7 @@ export function compileNotifyRules(payload = {}) {
     type: 'holding-alert',
     symbol: alert.symbol,
     name: alert.name,
+    fundKind: alert.fundKind,
     alertType: alert.alertType,
     threshold: alert.threshold,
     holdingCost: alert.holdingCost,

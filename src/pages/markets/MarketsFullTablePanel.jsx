@@ -41,7 +41,7 @@ export function MarketsFullTablePanel({
   const searchLabel = market === 'cn' ? '基金搜索' : '标的搜索';
 
   // 桌面端 header：包含监控列表、刷新、搜索、列设置
-  const renderHeader = ({ table, viewOptions }) => {
+  const renderHeader = ({ table, viewOptions, presetControls }) => {
     const filterCount = table?.getState?.().columnFilters?.length || 0;
     return (
       <div className="flex flex-col gap-3 border-b border-[#e8eaed] pb-3">
@@ -62,7 +62,8 @@ export function MarketsFullTablePanel({
               </div>
             </div>
           ) : null}
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5">
+            {presetControls}
             {searchOpen ? (
               <div className="flex items-center gap-1.5">
                 <MarketSymbolSearchBox
@@ -163,10 +164,11 @@ export function MarketsFullTablePanel({
   };
 
   // 移动端表格内部的工具栏：搜索和列设置
-  const renderMobileTableChrome = ({ table, viewOptions }) => {
+  const renderMobileTableChrome = ({ table, viewOptions, presetControls }) => {
     const filterCount = table?.getState?.().columnFilters?.length || 0;
     return (
-      <div className="flex min-h-[48px] items-center justify-between gap-2 border-b border-[#e8eaed] px-3 py-2">
+      <div className="flex min-h-[48px] flex-col gap-2 border-b border-[#e8eaed] px-3 py-2">
+        {presetControls}
         {searchOpen ? (
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
             <MarketSymbolSearchBox

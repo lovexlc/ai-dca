@@ -30,6 +30,7 @@ android/capacitor-cordova-android-plugins/build/
 test-results/
 playwright-report/
 ui-audit-report/
+tools/cliproxyapi/
 
 # Temporary txt reports and duplicate images
 *.txt
@@ -40,3 +41,6 @@ mobile-*.png
 # Quant simulation runtime artifacts (state/signals/orders)
 data/quant/
 .archive
+
+# Analytics one-time exports (produced by scripts/analyze-analytics.mjs)
+analytics-export/

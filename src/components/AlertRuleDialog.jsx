@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Label } from './ui/label';
 import { Input } from './ui/input';
@@ -17,6 +17,15 @@ export function AlertRuleDialog({
   const [cooldownHours, setCooldownHours] = useState(initialRule?.cooldownHours || 24);
   const [priceBase, setPriceBase] = useState(initialRule?.priceBase || 'daily'); // 'daily' | 'alert-day'
 
+  useEffect(() => {
+    if (!open) return;
+    setAlertType(initialRule?.alertType || 'gain');
+    setThreshold(initialRule?.threshold || 5);
+    setEnabled(initialRule?.enabled ?? true);
+    setCooldownHours(initialRule?.cooldownHours || 24);
+    setPriceBase(initialRule?.priceBase || 'daily');
+  }, [open, mode, initialRule?.id, initialRule?.symbol, initialRule?.alertType, initialRule?.threshold, initialRule?.enabled, initialRule?.cooldownHours, initialRule?.priceBase]);
+
   const alertTypeOptions = mode === 'market'
     ? [
         { value: 'gain', label: '涨幅超过' },
@@ -30,6 +39,15 @@ export function AlertRuleDialog({
       ];
 
   const showPriceBaseOption = mode === 'market' && (alertType === 'gain' || alertType === 'loss');
+  const holdingTrigger = useMemo(() => {
+    if (mode !== 'holding') return null;
+    const cost = Number(initialRule?.holdingCost);
+    const pct = Number(threshold);
+    if (!Number.isFinite(cost) || cost <= 0 || !Number.isFinite(pct) || pct < 0) return null;
+    const triggerPrice = alertType === 'loss' ? cost * (1 - pct / 100) : cost * (1 + pct / 100);
+    if (!Number.isFinite(triggerPrice) || triggerPrice <= 0) return null;
+    return { cost, triggerPrice, direction: alertType === 'loss' ? '跌到或低于' : '涨到或高于' };
+  }, [alertType, initialRule?.holdingCost, mode, threshold]);
 
   const handleSave = () => {
     const config = {
@@ -82,6 +100,12 @@ export function AlertRuleDialog({
               当{alertTypeOptions.find(o => o.value === alertType)?.label} {threshold}% 时触发通知
             </p>
           </div>
+
+          {holdingTrigger ? (
+            <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              当前持仓成本 ¥{holdingTrigger.cost.toFixed(3)}，规则会在净值{holdingTrigger.direction} ¥{holdingTrigger.triggerPrice.toFixed(3)} 时触发。
+            </div>
+          ) : null}
 
           {showPriceBaseOption && (
             <div>

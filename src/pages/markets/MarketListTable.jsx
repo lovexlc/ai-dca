@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Save, Trash2 } from 'lucide-react';
 import {
   getCoreRowModel,
   getFilteredRowModel,
@@ -17,7 +18,6 @@ import {
   feeRateToneClass,
   formatFeeRate,
   formatMarketPrice,
-  formatNumber,
   formatPercent,
   formatPremiumPercent,
   formatRedeemFeeRate,
@@ -174,22 +174,59 @@ const MOBILE_DATA_TABLE_HIDDEN_COLUMNS = {
 };
 
 const COLUMN_VISIBILITY_STORAGE_KEY = 'markets:columnVisibility';
+const TABLE_VIEW_STATE_STORAGE_KEY = 'markets:tableViewState:v1';
+const TABLE_VIEW_PRESETS_STORAGE_KEY = 'markets:tableViewPresets:v1';
 
-function readColumnVisibility() {
+function readJsonStorage(key, fallback) {
   try {
-    const stored = localStorage.getItem(COLUMN_VISIBILITY_STORAGE_KEY);
-    return stored ? JSON.parse(stored) : DEFAULT_HIDDEN_COLUMNS;
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : fallback;
   } catch {
-    return DEFAULT_HIDDEN_COLUMNS;
+    return fallback;
   }
 }
 
-function writeColumnVisibility(visibility) {
+function writeJsonStorage(key, value) {
   try {
-    localStorage.setItem(COLUMN_VISIBILITY_STORAGE_KEY, JSON.stringify(visibility));
+    localStorage.setItem(key, JSON.stringify(value));
   } catch {
     // ignore
   }
+}
+
+function readColumnVisibility() {
+  return readJsonStorage(COLUMN_VISIBILITY_STORAGE_KEY, DEFAULT_HIDDEN_COLUMNS);
+}
+
+function writeColumnVisibility(visibility) {
+  writeJsonStorage(COLUMN_VISIBILITY_STORAGE_KEY, visibility);
+}
+
+function readTableViewState() {
+  return readJsonStorage(TABLE_VIEW_STATE_STORAGE_KEY, {});
+}
+
+function writeTableViewState(state) {
+  writeJsonStorage(TABLE_VIEW_STATE_STORAGE_KEY, state || {});
+}
+
+function readTableViewPresets() {
+  const list = readJsonStorage(TABLE_VIEW_PRESETS_STORAGE_KEY, []);
+  return Array.isArray(list) ? list.filter((item) => item && item.id && item.name && item.state) : [];
+}
+
+function writeTableViewPresets(presets) {
+  writeJsonStorage(TABLE_VIEW_PRESETS_STORAGE_KEY, Array.isArray(presets) ? presets.slice(0, 12) : []);
+}
+
+function normalizeTableViewState(value = {}, fallbackVisibility = {}) {
+  return {
+    sorting: Array.isArray(value.sorting) ? value.sorting : [{ id: 'heldRank', desc: true }, { id: 'changePercent', desc: true }],
+    columnFilters: Array.isArray(value.columnFilters) ? value.columnFilters : [],
+    columnVisibility: value.columnVisibility && typeof value.columnVisibility === 'object' && !Array.isArray(value.columnVisibility)
+      ? value.columnVisibility
+      : fallbackVisibility,
+  };
 }
 
 export function MarketListTable({
@@ -215,6 +252,21 @@ export function MarketListTable({
   const tableScrollRef = useRef(null);
   const [columnPinning, setColumnPinning] = useState({ left: [] });
   const [pinTargetColumnId, setPinTargetColumnId] = useState('');
+  const defaultColumnVisibility = compact ? MOBILE_DATA_TABLE_HIDDEN_COLUMNS : {
+    heldRank: false,
+    return1w: false,
+    return1m: false,
+    return3m: false,
+    return6m: false,
+    return1y: false,
+    returnBase: false,
+    ...readColumnVisibility(),
+  };
+  const initialViewState = normalizeTableViewState(readTableViewState(), defaultColumnVisibility);
+  const [sorting, setSorting] = useState(initialViewState.sorting);
+  const [columnFilters, setColumnFilters] = useState(initialViewState.columnFilters);
+  const [localVisibility, setLocalVisibility] = useState(initialViewState.columnVisibility);
+  const [viewPresets, setViewPresets] = useState(() => readTableViewPresets());
   const limitFilterOptions = useMemo(() => getAvailableLimitFilterOptions(rows), [rows]);
   const isLatestChangeRow = (row) => {
     return isExpectedLatestChangeRow(row, todayDate);
@@ -232,6 +284,7 @@ export function MarketListTable({
       id: 'symbol',
       accessorFn: (row) => formatSymbolDisplay(row.symbol),
       meta: { label: '代码', variant: 'text' },
+      size: 96,
       enableHiding: false,
       header: ({ column }) => <DataTableColumnHeader column={column} label="代码" />,
       cell: ({ row }) => (
@@ -245,6 +298,7 @@ export function MarketListTable({
       id: 'name',
       accessorFn: (row) => [row.name, row.meta, row.symbol].filter(Boolean).join(' '),
       meta: { label: '名称', variant: 'text' },
+      size: compact ? 168 : 220,
       header: ({ column }) => <DataTableColumnHeader column={column} label="名称" />,
       cell: ({ row }) => {
         const displaySymbol = formatSymbolDisplay(row.original.symbol);
@@ -264,6 +318,7 @@ export function MarketListTable({
       id: 'price',
       accessorFn: (row) => Number(row.price),
       meta: { label: '最新价', variant: 'number' },
+      size: 96,
       header: ({ column }) => <DataTableColumnHeader column={column} label="最新价" className="justify-end" />,
       cell: ({ row }) => <span className="tabular-nums">{formatMarketPrice(row.original.price, row.original)}</span>,
       sortingFn: numericSortFn,
@@ -273,6 +328,7 @@ export function MarketListTable({
       id: 'changePercent',
       accessorFn: (row) => Number(row.changePercent),
       meta: { label: '涨跌幅', variant: 'number' },
+      size: 104,
       header: ({ column }) => <DataTableColumnHeader column={column} label="涨跌幅" className="justify-end" />,
       cell: ({ row }) => {
         const pct = Number(row.original.changePercent);
@@ -292,6 +348,7 @@ export function MarketListTable({
       id: 'turnover',
       accessorFn: (row) => Number(row.turnover ?? row.amount),
       meta: { label: '成交额', variant: 'number' },
+      size: 112,
       header: ({ column }) => <DataTableColumnHeader column={column} label="成交额" className="justify-end" />,
       cell: ({ row }) => <span className="tabular-nums text-[#1f1f1f]">{formatTurnover(row.original.turnover ?? row.original.amount)}</span>,
       sortingFn: numericSortFn,
@@ -300,6 +357,7 @@ export function MarketListTable({
     showLimitColumn ? {
       id: 'limit',
       accessorFn: (row) => resolveLimitSortValue(row.fundLimit),
+      size: 120,
       meta: {
         label: '限额',
         variant: 'multiSelect',
@@ -338,6 +396,7 @@ export function MarketListTable({
       id: 'premium',
       accessorFn: (row) => Number(resolvePremiumPercent(row)),
       meta: { label: '溢价', variant: 'number' },
+      size: 92,
       header: ({ column }) => <DataTableColumnHeader column={column} label="溢价" className="justify-end" />,
       cell: ({ row }) => {
         const premiumPct = resolvePremiumPercent(row.original);
@@ -350,6 +409,7 @@ export function MarketListTable({
       id: 'currentYearPercent',
       accessorFn: (row) => Number(row.ytdReturn ?? row.currentYearPercent),
       meta: { label: '今年以来', variant: 'number' },
+      size: 108,
       header: ({ column }) => <DataTableColumnHeader column={column} label="今年以来" className="justify-end" />,
       cell: ({ row }) => <span className={cx('font-semibold tabular-nums', changeToneClass(Number(row.original.ytdReturn ?? row.original.currentYearPercent)))}>{formatYearPercent(row.original)}</span>,
       sortingFn: numericSortFn,
@@ -359,6 +419,7 @@ export function MarketListTable({
       id: 'return1w',
       accessorFn: (row) => Number(row.return1w),
       meta: { label: '近1周', variant: 'number' },
+      size: 96,
       header: ({ column }) => <DataTableColumnHeader column={column} label="近1周" className="justify-end" />,
       cell: ({ row }) => {
         const v = Number(row.original.return1w);
@@ -371,6 +432,7 @@ export function MarketListTable({
       id: 'return1m',
       accessorFn: (row) => Number(row.return1m),
       meta: { label: '近1月', variant: 'number' },
+      size: 96,
       header: ({ column }) => <DataTableColumnHeader column={column} label="近1月" className="justify-end" />,
       cell: ({ row }) => {
         const v = Number(row.original.return1m);
@@ -383,6 +445,7 @@ export function MarketListTable({
       id: 'return3m',
       accessorFn: (row) => Number(row.return3m),
       meta: { label: '近3月', variant: 'number' },
+      size: 96,
       header: ({ column }) => <DataTableColumnHeader column={column} label="近3月" className="justify-end" />,
       cell: ({ row }) => {
         const v = Number(row.original.return3m);
@@ -395,6 +458,7 @@ export function MarketListTable({
       id: 'return6m',
       accessorFn: (row) => Number(row.return6m),
       meta: { label: '近6月', variant: 'number' },
+      size: 96,
       header: ({ column }) => <DataTableColumnHeader column={column} label="近6月" className="justify-end" />,
       cell: ({ row }) => {
         const v = Number(row.original.return6m);
@@ -407,6 +471,7 @@ export function MarketListTable({
       id: 'return1y',
       accessorFn: (row) => Number(row.return1y),
       meta: { label: '近1年', variant: 'number' },
+      size: 96,
       header: ({ column }) => <DataTableColumnHeader column={column} label="近1年" className="justify-end" />,
       cell: ({ row }) => {
         const v = Number(row.original.return1y);
@@ -419,6 +484,7 @@ export function MarketListTable({
       id: 'returnBase',
       accessorFn: (row) => Number(row.returnBase),
       meta: { label: '成立以来', variant: 'number' },
+      size: 104,
       header: ({ column }) => <DataTableColumnHeader column={column} label="成立以来" className="justify-end" />,
       cell: ({ row }) => {
         const v = Number(row.original.returnBase);
@@ -431,6 +497,7 @@ export function MarketListTable({
       id: 'totalShares',
       accessorFn: (row) => Number(row.totalShares),
       meta: { label: '总份额', variant: 'number' },
+      size: 112,
       header: ({ column }) => <DataTableColumnHeader column={column} label="总份额" className="justify-end" />,
       cell: ({ row }) => <span className="tabular-nums">{formatTotalShares(row.original.totalShares)}</span>,
       sortingFn: numericSortFn,
@@ -440,6 +507,7 @@ export function MarketListTable({
       id: 'feeRate',
       accessorFn: (row) => Number(resolveFundFeeRate(row)),
       meta: { label: '费率', variant: 'number' },
+      size: 92,
       header: ({ column }) => <DataTableColumnHeader column={column} label="费率" className="justify-end" />,
       cell: ({ row }) => <span className={cx('font-semibold tabular-nums', feeRateToneClass(row.original))}>{formatFeeRate(row.original)}</span>,
       sortingFn: numericSortFn,
@@ -455,6 +523,7 @@ export function MarketListTable({
         return isOtc ? Number(resolveRedeemFeeRate(row)) : null;
       },
       meta: { label: '卖出费率', variant: 'number' },
+      size: 118,
       header: ({ column }) => <DataTableColumnHeader column={column} label="卖出费率" className="justify-end" />,
       cell: ({ row }) => {
         const isOtc = row.original.valueType === 'nav'
@@ -481,6 +550,7 @@ export function MarketListTable({
       id: 'trend',
       accessorFn: (row) => Number(row.changePercent),
       meta: { label: '趋势', variant: 'number' },
+      size: 116,
       header: ({ column }) => <DataTableColumnHeader column={column} label="趋势" className="justify-end" />,
       cell: ({ row }) => {
         const pct = Number(row.original.changePercent);
@@ -494,7 +564,7 @@ export function MarketListTable({
       sortingFn: numericSortFn,
       filterFn: numberRangeFilterFn,
     } : null,
-  ].filter(Boolean)), [showLimitColumn, hidePremiumColumn, hideTrendColumn, klineMap, todayDate, limitFilterOptions]);
+  ].filter(Boolean)), [showLimitColumn, hidePremiumColumn, hideTrendColumn, klineMap, todayDate, limitFilterOptions, compact]);
   const table = useReactTable({
     data: rows,
     columns,
@@ -502,33 +572,25 @@ export function MarketListTable({
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    state: { columnPinning },
+    state: { columnPinning, sorting, columnFilters, columnVisibility: controlledVisibility ?? localVisibility },
     onColumnPinningChange: setColumnPinning,
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
+    onColumnVisibilityChange: onColumnVisibilityChange ?? setLocalVisibility,
     meta: {
       pinningEnabled: Boolean(autoPinColumn),
       pinnedColumnId: pinTargetColumnId,
       onPinColumn: setPinTargetColumnId,
     },
     initialState: {
-      sorting: [{ id: 'heldRank', desc: true }, { id: 'changePercent', desc: true }],
       pagination: { pageSize: 50 },
-      columnVisibility: compact ? MOBILE_DATA_TABLE_HIDDEN_COLUMNS : {
-        heldRank: false,
-        return1w: false,
-        return1m: false,
-        return3m: false,
-        return6m: false,
-        return1y: false,
-        returnBase: false,
-      },
     },
+    autoResetPageIndex: false,
   });
-  const [localVisibility, setLocalVisibility] = useState(() => readColumnVisibility());
   const visibility = controlledVisibility ?? localVisibility;
   const setVisibility = onColumnVisibilityChange ?? ((updater) => {
     setLocalVisibility((prev) => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
-      writeColumnVisibility(next);
       return next;
     });
   });
@@ -598,15 +660,86 @@ export function MarketListTable({
     onVisibleSymbolsChange(symbols);
   }, [onVisibleSymbolsChange]);
 
+  useEffect(() => {
+    const state = { sorting, columnFilters, columnVisibility: visibility };
+    writeTableViewState(state);
+    writeColumnVisibility(visibility);
+  }, [sorting, columnFilters, visibility]);
+
+  function applyViewState(state) {
+    const normalized = normalizeTableViewState(state, defaultColumnVisibility);
+    setSorting(normalized.sorting);
+    setColumnFilters(normalized.columnFilters);
+    setVisibility(normalized.columnVisibility);
+  }
+
+  function saveCurrentView() {
+    if (typeof window === 'undefined') return;
+    const name = window.prompt('保存当前筛选视图名称', '我的筛选');
+    const trimmed = String(name || '').trim();
+    if (!trimmed) return;
+    const preset = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name: trimmed.slice(0, 18),
+      state: { sorting, columnFilters, columnVisibility: visibility },
+      createdAt: new Date().toISOString(),
+    };
+    setViewPresets((prev) => {
+      const next = [preset, ...prev.filter((item) => item.name !== preset.name)].slice(0, 12);
+      writeTableViewPresets(next);
+      return next;
+    });
+  }
+
+  function deleteViewPreset(id) {
+    setViewPresets((prev) => {
+      const next = prev.filter((item) => item.id !== id);
+      writeTableViewPresets(next);
+      return next;
+    });
+  }
+
+  const presetControls = dataTable ? (
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+      {viewPresets.map((preset) => (
+        <span key={preset.id} className="inline-flex h-8 max-w-[180px] items-center overflow-hidden rounded-full border border-[#dadce0] bg-white text-xs text-[#3c4043]">
+          <button
+            type="button"
+            onClick={() => applyViewState(preset.state)}
+            className="min-w-0 truncate px-3 py-1.5 hover:bg-[#f1f3f4]"
+            title={preset.name}
+          >
+            {preset.name}
+          </button>
+          <button
+            type="button"
+            onClick={() => deleteViewPreset(preset.id)}
+            aria-label={`删除筛选视图 ${preset.name}`}
+            className="inline-flex h-full w-7 shrink-0 items-center justify-center border-l border-[#e8eaed] text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
+          >
+            <Trash2 size={13} />
+          </button>
+        </span>
+      ))}
+      <button
+        type="button"
+        onClick={saveCurrentView}
+        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-dashed border-[#dadce0] px-3 text-xs font-medium text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
+      >
+        <Save size={14} /> 保存视图
+      </button>
+    </div>
+  ) : null;
+
   const viewOptions = dataTable ? <DataTableViewOptions table={table} /> : null;
   const header = dataTable
     ? (typeof dataTableHeader === 'function'
-      ? dataTableHeader({ table, viewOptions })
+      ? dataTableHeader({ table, viewOptions, presetControls })
       : dataTableHeader)
     : null;
   const tableChrome = dataTable && dataTableChrome
     ? (typeof dataTableChrome === 'function'
-      ? dataTableChrome({ table, viewOptions })
+      ? dataTableChrome({ table, viewOptions, presetControls })
       : dataTableChrome)
     : null;
 
@@ -641,6 +774,7 @@ export function MarketListTable({
           onHorizontalScroll={handleDataTableScroll}
           onVisibleRowsChange={handleVisibleRowsChange}
           tableContainerClassName={compact ? 'rounded-xl' : undefined}
+          tableClassName="min-w-max table-fixed"
           tableChrome={tableChrome}
           className={cx(
             '[&_td]:text-right [&_td:first-child]:text-left [&_td:nth-child(2)]:text-left [&_th]:whitespace-nowrap',
