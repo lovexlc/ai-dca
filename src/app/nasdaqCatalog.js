@@ -27,9 +27,15 @@ export const SP500_ETFS = Object.freeze([
   { code: '159655', name: '华夏标普500ETF(QDII)', index_key: 'sp500' }
 ]);
 
+export const US50_ETFS = Object.freeze([
+  { code: '159577', name: '汇添富美国50ETF(QDII)', index_key: 'us50' },
+  { code: '513850', name: '易方达美国50ETF(QDII)', index_key: 'us50' }
+]);
+
 export const SWITCH_STRATEGY_ETFS = Object.freeze([
   ...NASDAQ_ETFS,
-  ...SP500_ETFS
+  ...SP500_ETFS,
+  ...US50_ETFS
 ]);
 
 export const NASDAQ_OTC_FUNDS = Object.freeze([
