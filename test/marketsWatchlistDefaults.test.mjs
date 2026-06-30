@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  CN_ETF_WATCHLIST_PRESETS,
   US_INDICATOR_WATCHLIST_PRESETS,
   normalizeWatchlist,
 } from '../src/app/marketsApi.js';
 
 const INDICATOR_SYMBOLS = US_INDICATOR_WATCHLIST_PRESETS.map((item) => item.symbol);
+const ETF_SYMBOLS = CN_ETF_WATCHLIST_PRESETS.map((item) => item.symbol);
 
 function byName(watchlist, name) {
   return (watchlist.lists || []).find((item) => item.name === name);
@@ -23,10 +25,11 @@ test('new markets watchlist includes common indicator defaults', () => {
   for (const symbol of INDICATOR_SYMBOLS) {
     assert.ok(indicators.us.includes(symbol), `missing ${symbol}`);
   }
-  assert.equal(watchlist.defaultsVersion, 6);
+  assert.equal(watchlist.defaultsVersion, 7);
+  assert.ok(byName(watchlist, '默认-场内基金').cn.includes('161130'));
 });
 
-test('v5 markets watchlist migrates to common indicator list', () => {
+test('v5 markets watchlist migrates to current default lists', () => {
   const watchlist = normalizeWatchlist({
     lists: [
       { id: 'default', name: '默认-场内基金', type: 'cn_etf', us: [], cn: ['513100'] },
@@ -37,8 +40,12 @@ test('v5 markets watchlist migrates to common indicator list', () => {
   });
 
   const indicators = byName(watchlist, '默认-常用指标');
+  const cnEtfs = byName(watchlist, '默认-场内基金');
   assert.ok(indicators);
   assert.deepEqual(indicators.us, INDICATOR_SYMBOLS);
+  for (const symbol of ETF_SYMBOLS) {
+    assert.ok(cnEtfs.cn.includes(symbol), `missing ${symbol}`);
+  }
 });
 
 test('existing indicator list keeps user symbols while adding new defaults', () => {

@@ -147,9 +147,10 @@ export async function fetchProfile(symbol) {
 
 // Watchlist (localStorage). Stored per market for convenience.
 const WATCHLIST_KEY = 'markets:watchlist:v1';
+const WATCHLIST_ETF_DEFAULTS_VERSION = 7;
 const WATCHLIST_OTC_DEFAULTS_VERSION = 5;
 const WATCHLIST_INDICATOR_DEFAULTS_VERSION = 6;
-const WATCHLIST_DEFAULTS_VERSION = WATCHLIST_INDICATOR_DEFAULTS_VERSION;
+const WATCHLIST_DEFAULTS_VERSION = Math.max(WATCHLIST_ETF_DEFAULTS_VERSION, WATCHLIST_OTC_DEFAULTS_VERSION, WATCHLIST_INDICATOR_DEFAULTS_VERSION);
 const DEFAULT_WATCHLIST_ID = 'default';
 const DEFAULT_OTC_LIST_ID = 'default-otc';
 const DEFAULT_INDICATOR_LIST_ID = 'default-indicators';
@@ -171,6 +172,7 @@ export const CN_ETF_WATCHLIST_PRESETS = [
   { symbol: '159501', name: '纳指ETF 嘉实', exchange: '深交所', currency: 'CNY' },
   { symbol: '159577', name: '纳指ETF 新增2', exchange: '深交所', currency: 'CNY' },
   { symbol: '161128', name: '标普信息科技LOF 易方达', exchange: '深交所', currency: 'CNY' },
+  { symbol: '161130', name: '纳指100LOF 易方达', exchange: '深交所', currency: 'CNY' },
   { symbol: '513500', name: '标准500ETF 博时', exchange: '深交所', currency: 'CNY' },
   { symbol: '513650', name: '标普500ETF 南方', exchange: '深交所', currency: 'CNY' },
   { symbol: '159612', name: '标普500ETF 国泰', exchange: '深交所', currency: 'CNY' },
@@ -251,7 +253,7 @@ export function normalizeWatchlist(value = {}) {
   const rawUs = Array.isArray(value.us) ? value.us : [];
   const rawCn = Array.isArray(value.cn) ? value.cn : [];
   const version = Number(value.defaultsVersion) || 0;
-  const hasCnDefaults = version >= 1;
+  const hasCnDefaults = version >= WATCHLIST_ETF_DEFAULTS_VERSION;
   const hasOtcDefaults = version >= WATCHLIST_OTC_DEFAULTS_VERSION;
   const hasIndicatorDefaults = version >= WATCHLIST_INDICATOR_DEFAULTS_VERSION;
   const cn = hasCnDefaults
@@ -301,12 +303,12 @@ export function normalizeWatchlist(value = {}) {
     const defaultIdx = lists.findIndex((item) => item.id === DEFAULT_WATCHLIST_ID);
     if (defaultIdx >= 0) {
       const old = lists[defaultIdx];
-      if (old.name !== '默认-场内基金' || old.type !== 'cn_etf' || !hasOtcDefaults) {
+      if (old.name !== '默认-场内基金' || old.type !== 'cn_etf' || !hasCnDefaults) {
         lists[defaultIdx] = {
           ...old,
           name: '默认-场内基金',
           type: 'cn_etf',
-          cn: hasOtcDefaults ? (old.cn || []) : Array.from(new Set([...DEFAULT_CN_WATCHLIST, ...(old.cn || [])])),
+          cn: hasCnDefaults ? (old.cn || []) : Array.from(new Set([...DEFAULT_CN_WATCHLIST, ...(old.cn || [])])),
         };
       }
     }

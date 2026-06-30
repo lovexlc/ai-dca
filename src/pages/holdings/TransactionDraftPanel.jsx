@@ -158,6 +158,32 @@ export function TransactionDraftPanel({
             <option value="SELL">SELL</option>
           </select>
         </label>
+        <div className="col-span-1 text-xs text-slate-500">
+          交易场所
+          <div className="mt-1 grid h-10 grid-cols-3 rounded-xl bg-slate-100 p-1">
+            {[
+              { value: 'otc', label: '场外' },
+              { value: 'qdii', label: 'QDII' },
+              { value: 'exchange', label: '场内' }
+            ].map((item) => {
+              const active = draft.kind === item.value || (item.value === 'otc' && draft.kind !== 'exchange' && draft.kind !== 'qdii');
+              return (
+                <button
+                  key={item.value}
+                  type="button"
+                  className={cx(
+                    'rounded-lg px-1 text-xs font-semibold transition',
+                    active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                  )}
+                  onClick={() => onDraftChange('kind', item.value)}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-1 text-[10px] text-slate-400">LOF 可按实际下单渠道选择场内或场外。</div>
+        </div>
         <label className="col-span-2 text-xs text-slate-500">
           日期
           <input

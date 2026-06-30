@@ -58,6 +58,7 @@ import {
   formatNav,
   formatShares,
   nowIso,
+  resolveTagsFromKind,
   sanitizeCodeInput,
   sanitizeDecimalInput,
   transactionToDraft
@@ -599,6 +600,17 @@ export function HoldingsExperience({ links = {}, inPagesDir = false, embedded = 
           ...prev,
           before3pm: nextBefore3pm,
           date: ctx.confirmDate || prev.date
+        };
+      }
+      if (field === 'kind') {
+        const nextKind = normalizeFundKind(value, prev.code, prev.name);
+        const ctx = computeOtcAutoFillContext({ kind: nextKind, before3pm: prev.before3pm ?? true });
+        return {
+          ...prev,
+          kind: nextKind,
+          before3pm: nextKind === 'exchange' ? false : (prev.before3pm ?? true),
+          date: nextKind === 'exchange' ? prev.date : (ctx.confirmDate || prev.date),
+          tags: resolveTagsFromKind(nextKind)
         };
       }
       return { ...prev, [field]: value };

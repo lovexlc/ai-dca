@@ -33,8 +33,9 @@ export function MarketSymbolSearchBox({
             const symbol = formatSymbolDisplay(row.symbol);
             const displayName = row.name || row.exchange || '--';
             const alreadyAdded = watchSymbols.includes(row.symbol);
+            const venueKey = row.assetType || row.type || row.exchange || '';
             return (
-              <li key={`${row.market || marketLabel}:${row.symbol}`} className="flex items-center gap-3 px-3 py-2 hover:bg-white">
+              <li key={`${row.market || marketLabel}:${row.symbol}:${venueKey}`} className="flex items-center gap-3 px-3 py-2 hover:bg-white">
                 <button
                   type="button"
                   className="min-w-0 flex-1 text-left"

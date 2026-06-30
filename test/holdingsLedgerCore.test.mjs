@@ -12,6 +12,21 @@ import {
 import { mergeSnapshotsFromNavResult } from '../src/app/holdingsLedger.js';
 import { getKnownQdiiFundName } from '../src/app/qdiiFundCodes.js';
 
+test('LOF transaction can be explicitly recorded as exchange', () => {
+  const tx = normalizeTransaction({
+    code: '161130',
+    name: '易方达纳斯达克100ETF联接(QDII-LOF)A',
+    kind: 'exchange',
+    type: 'BUY',
+    date: '2026-06-30',
+    price: 1.234,
+    shares: 1000
+  });
+
+  assert.equal(tx.kind, 'exchange');
+  assert.deepEqual(tx.tags, ['exchange']);
+});
+
 test('场外持仓刷新后从 latest/previous NAV 反推当日收益率', () => {
   const transactions = [{
     id: 'buy-1',

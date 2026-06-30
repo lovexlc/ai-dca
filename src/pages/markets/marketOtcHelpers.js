@@ -53,13 +53,24 @@ export function normalizeSearchResults(rawRows, marketKey, query = '', buildCand
   const seen = new Set();
   const rows = Array.isArray(rawRows) ? [...rawRows] : [];
   const otcCode = normalizeCnFundCode(query);
-  if (marketKey === 'cn' && /^\d{6}$/.test(otcCode) && !rows.some((row) => normalizeCnFundCode(row.symbol || row.code || row.ticker) === otcCode)) {
+  if (marketKey === 'cn' && /^\d{6}$/.test(otcCode) && !rows.some((row) => {
+    const rowCode = normalizeCnFundCode(row.symbol || row.code || row.ticker);
+    const assetText = String(row.assetType || row.type || row.exchange || '').toLowerCase();
+    return rowCode === otcCode && (assetText.includes('otc') || assetText.includes('场外'));
+  })) {
     rows.push(buildCandidate(otcCode, {}, catalog));
   }
   return rows.map((row) => {
     const symbol = String(row && (row.symbol || row.code || row.ticker) || '').trim().toUpperCase();
-    if (!symbol || seen.has(symbol)) return null;
-    seen.add(symbol);
+    const assetText = String(row?.assetType || row?.type || row?.exchange || '').toLowerCase();
+    const venueKey = assetText.includes('otc') || assetText.includes('场外')
+      ? 'otc'
+      : assetText.includes('exchange') || assetText.includes('场内') || assetText.includes('交易所')
+        ? 'exchange'
+        : 'default';
+    const dedupeKey = `${symbol}:${venueKey}`;
+    if (!symbol || seen.has(dedupeKey)) return null;
+    seen.add(dedupeKey);
     return {
       ...row,
       symbol,

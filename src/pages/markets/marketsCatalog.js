@@ -41,7 +41,22 @@ export function buildOtcCandidate(code, fallback = {}) {
 }
 
 export function normalizeSearchResults(rawRows, marketKey, query = '') {
-  return normalizeSearchResultsBase(rawRows, marketKey, query, buildOtcCandidate, NASDAQ_OTC_FUND_MAP);
+  const rows = Array.isArray(rawRows) ? [...rawRows] : [];
+  const code = normalizeCnFundCode(query);
+  const exchangePreset = code ? CN_ETF_PRESET_MAP[code] : null;
+  if (marketKey === 'cn' && exchangePreset && !rows.some((row) => (
+    normalizeCnFundCode(row.symbol || row.code || row.ticker) === code
+    && String(row.assetType || row.type || row.exchange || '').includes('场内')
+  ))) {
+    rows.unshift({
+      ...exchangePreset,
+      symbol: code,
+      code,
+      market: 'cn',
+      assetType: 'exchange_fund'
+    });
+  }
+  return normalizeSearchResultsBase(rows, marketKey, query, buildOtcCandidate, NASDAQ_OTC_FUND_MAP);
 }
 
 export function buildOtcFundQuoteFromSnapshot(symbol, snapshot, fallback = {}) {
