@@ -395,7 +395,8 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     const search = typeof options.search === 'string' ? options.search : '';
     const alreadyActive = normalizedTab === activeTab;
     const hashMatches = (window.location.hash || '') === hash;
-    if (alreadyActive && hashMatches) {
+    const searchMatches = !search || (window.location.search || '').replace(/^\?/, '') === search.replace(/^\?/, '');
+    if (alreadyActive && hashMatches && searchMatches) {
       return;
     }
 
@@ -444,6 +445,9 @@ export function WorkspacePage({ initialTab = DEFAULT_WORKSPACE_TAB, inPagesDir =
     // 由于 TradePlansExperience 在 mount 时才读 hash，手动触发 hashchange 用于已 mount 的情况。
     if (hash && alreadyActive) {
       window.dispatchEvent(new HashChangeEvent('hashchange'));
+    }
+    if (search && alreadyActive) {
+      window.dispatchEvent(new PopStateEvent('popstate'));
     }
   }
 

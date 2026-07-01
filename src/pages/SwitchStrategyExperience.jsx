@@ -501,6 +501,10 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     nextUrl.searchParams.set('source', 'fundSwitchRule');
     if (rule.id) nextUrl.searchParams.set('rule', rule.id);
     window.dispatchEvent(new CustomEvent('workspace:navigate', { detail: { tab: 'markets', search: nextUrl.search.replace(/^\?/, '') } }));
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('markets:select-symbol', { detail: { symbol, source: 'fundSwitchRule' } }));
+      window.dispatchEvent(new CustomEvent('markets:open-backtest', { detail: { symbol, source: 'fundSwitchRule', ruleId: rule.id || '' } }));
+    }, 0);
   }, [links?.markets]);
 
   // 持仓 ledger

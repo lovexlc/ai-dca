@@ -4,6 +4,8 @@ import { cx } from '../components/experience-ui.jsx';
 import { FundSwitchAnalysisExperience } from './FundSwitchAnalysisExperience.jsx';
 import { trackFeatureEvent } from '../app/analytics.js';
 import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
+import { getActiveSwitchRule } from '../app/switchStrategySync.js';
+import { readSwitchPrefs } from './switchStrategyHelpers.js';
 
 function useFundSwitchInitialSymbol() {
   const [symbol, setSymbol] = useState('');
@@ -34,6 +36,16 @@ const MOBILE_TABS = [
   { id: 'analysis', label: '复盘', icon: History }
 ];
 
+function pickBacktestSymbol(initialSymbol = '') {
+  const prefs = readSwitchPrefs();
+  const rule = getActiveSwitchRule(prefs);
+  return normalizeCnFundCode(initialSymbol)
+    || (Array.isArray(rule?.benchmarkCodes) ? normalizeCnFundCode(rule.benchmarkCodes[0]) : '')
+    || (Array.isArray(rule?.enabledCodes) ? normalizeCnFundCode(rule.enabledCodes[0]) : '')
+    || normalizeCnFundCode(Object.keys(rule?.premiumClass || {})[0])
+    || '513100';
+}
+
 export function FundSwitchExperience({ links, inPagesDir = false, embedded = false } = {}) {
   const [mobileTab, setMobileTab] = useState('config');
   const initialSymbol = useFundSwitchInitialSymbol();
@@ -47,11 +59,20 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
     nextUrl.searchParams.set('tab', 'markets');
     nextUrl.searchParams.set('backtest', '1');
     nextUrl.searchParams.set('source', 'fundSwitchBanner');
-    if (initialSymbol) nextUrl.searchParams.set('symbol', initialSymbol);
+    const symbol = pickBacktestSymbol(initialSymbol);
+    nextUrl.searchParams.set('symbol', symbol);
     const search = nextUrl.search.replace(/^\?/, '');
     window.dispatchEvent(new CustomEvent('workspace:navigate', {
       detail: { tab: 'markets', search }
     }));
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('markets:select-symbol', {
+        detail: { symbol, source: 'fundSwitchBanner' }
+      }));
+      window.dispatchEvent(new CustomEvent('markets:open-backtest', {
+        detail: { symbol, source: 'fundSwitchBanner' }
+      }));
+    }, 0);
   }
 
   useEffect(() => {
@@ -72,7 +93,7 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
       </div>
 
       <a
-        href={`${links?.markets || './index.html?tab=markets'}&backtest=1`}
+        href={`${links?.markets || './index.html?tab=markets'}&symbol=${encodeURIComponent(pickBacktestSymbol(initialSymbol))}&backtest=1`}
         onClick={openBacktestIntro}
         className="flex flex-col gap-3 rounded-xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 text-sm text-indigo-900 transition-colors hover:border-indigo-200 hover:bg-indigo-50 sm:flex-row sm:items-center sm:justify-between"
       >

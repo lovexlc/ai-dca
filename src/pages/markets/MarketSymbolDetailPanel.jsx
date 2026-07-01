@@ -158,6 +158,23 @@ export function SymbolDetailPanel({
     });
     setBacktestPanelOpen(true);
   }, [chartRange, market, onBacktestEvent, rowSymbol]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !rowSymbol) return undefined;
+    const handleOpenBacktestEvent = (event) => {
+      const requestedSymbol = normalizeCnFundCode(event?.detail?.symbol || '') || String(event?.detail?.symbol || '').trim().toUpperCase();
+      if (requestedSymbol && requestedSymbol !== normalizeCnFundCode(rowSymbol) && requestedSymbol !== rowSymbol) return;
+      onBacktestEvent?.('open_from_event', {
+        symbolLength: rowSymbol.length,
+        chartRange,
+        market,
+        source: event?.detail?.source || ''
+      });
+      setBacktestPanelOpen(true);
+    };
+    window.addEventListener('markets:open-backtest', handleOpenBacktestEvent);
+    return () => window.removeEventListener('markets:open-backtest', handleOpenBacktestEvent);
+  }, [chartRange, market, onBacktestEvent, rowSymbol]);
   // 对比列表变化时同步到 URL
   useEffect(() => { updateCompareInUrl(compareSymbols); }, [compareSymbols]);
   // 图表配置变化时同步到 URL
