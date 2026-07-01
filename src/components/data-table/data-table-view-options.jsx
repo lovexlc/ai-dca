@@ -36,14 +36,15 @@ function DataTableViewOptions({
     role="combobox"
     variant="outline"
     size="sm"
-    className="flex h-8 font-normal"
+    className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap font-normal"
     disabled={disabled}
   ><Settings2 className="text-muted-foreground" />
           {label}
-        </Button></PopoverTrigger><PopoverContent className="w-44 p-0" {...props}><Command><CommandInput placeholder={searchPlaceholder} /><CommandList><CommandEmpty>没有可切换的列</CommandEmpty>{presetActions.length ? <CommandGroup>{presetActions.map((action) => <CommandItem
+        </Button></PopoverTrigger><PopoverContent align="end" className="w-52 p-0" {...props}><Command><CommandInput placeholder={searchPlaceholder} /><CommandList><CommandEmpty>没有可切换的列</CommandEmpty>{presetActions.length ? <CommandGroup>{presetActions.map((action) => <CommandItem
     key={action.key || action.label}
     onSelect={action.onSelect}
-  ><span className="truncate">{action.label}</span><Check
+    className="flex w-full items-center gap-2 whitespace-nowrap"
+  ><span className="min-w-0 flex-1 truncate text-left">{action.label}</span><Check
     className={cn(
       "ml-auto size-4 shrink-0",
       action.active ? "opacity-100" : "opacity-0"
@@ -51,7 +52,8 @@ function DataTableViewOptions({
   /></CommandItem>)}</CommandGroup> : null}<CommandGroup>{columns.map((column) => <CommandItem
     key={column.id}
     onSelect={() => column.toggleVisibility(!column.getIsVisible())}
-  ><span className="truncate">{column.columnDef.meta?.label ?? column.id}</span><Check
+    className="flex w-full items-center gap-2 whitespace-nowrap"
+  ><span className="min-w-0 flex-1 truncate text-left">{column.columnDef.meta?.label ?? column.id}</span><Check
     className={cn(
       "ml-auto size-4 shrink-0",
       column.getIsVisible() ? "opacity-100" : "opacity-0"
