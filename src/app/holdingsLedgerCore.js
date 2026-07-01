@@ -930,6 +930,100 @@ export function buildSoldLots(transactions = []) {
   return lots;
 }
 
+/**
+ * BUY transaction performance for the transaction detail list.
+ *
+ * - If a BUY lot still has remaining shares, show holding-to-date P/L based on
+ *   the latest snapshot price for the remaining shares.
+ * - If a BUY lot has been fully consumed by SELL transactions, show realized
+ *   P/L from buy date to sell date using FIFO-matched sell proceeds.
+ */
+export function buildBuyTransactionPerformance(transactions = [], snapshotsByCode = {}) {
+  const normalizedTxs = sanitizeTransactions(transactions, { filterInvalid: false });
+  const byCode = new Map();
+  for (const tx of normalizedTxs) {
+    if (!tx.code) continue;
+    if (!byCode.has(tx.code)) byCode.set(tx.code, []);
+    byCode.get(tx.code).push(tx);
+  }
+
+  const performanceByBuyId = new Map();
+  for (const txs of byCode.values()) {
+    const sortedTxs = [...txs].sort(compareTxChrono);
+    const lots = [];
+    for (const tx of sortedTxs) {
+      if (tx.type === 'BUY') {
+        if (isPendingOtcBuy(tx)) continue;
+        const shares = round(Number(tx.shares) || 0, 4);
+        const price = Number(tx.price) || 0;
+        if (!(shares > 0) || !(price > 0)) continue;
+        const lot = {
+          tx,
+          originalShares: shares,
+          remainingShares: shares,
+          buyPrice: price,
+          realizedShares: 0,
+          realizedProceeds: 0,
+          lastSellDate: ''
+        };
+        lots.push(lot);
+        if (tx.id) performanceByBuyId.set(tx.id, lot);
+        continue;
+      }
+      if (tx.type !== 'SELL') continue;
+      if (isPendingOtcSell(tx)) continue;
+      let remaining = round(Number(tx.shares) || 0, 4);
+      const sellPrice = Number(tx.price) || 0;
+      if (!(remaining > 0) || !(sellPrice > 0)) continue;
+      while (remaining > 0 && lots.length) {
+        const lot = lots[0];
+        const take = Math.min(lot.remainingShares, remaining);
+        lot.remainingShares = round(lot.remainingShares - take, 4);
+        lot.realizedShares = round(lot.realizedShares + take, 4);
+        lot.realizedProceeds = round(lot.realizedProceeds + take * sellPrice, 6);
+        lot.lastSellDate = tx.date || lot.lastSellDate;
+        remaining = round(remaining - take, 4);
+        if (lot.remainingShares <= 0.000001) {
+          lot.remainingShares = 0;
+          lots.shift();
+        }
+      }
+    }
+  }
+
+  const result = {};
+  for (const [id, lot] of performanceByBuyId.entries()) {
+    const tx = lot.tx;
+    const costPerShare = lot.buyPrice;
+    const isFullySold = lot.remainingShares <= 0;
+    const snapshot = snapshotsByCode?.[tx.code] || null;
+    const currentPrice = getSnapshotCurrentPrice(snapshot, normalizeFundKind(tx.kind, tx.code, tx.name || snapshot?.name || ''));
+    const basisShares = isFullySold ? lot.originalShares : lot.remainingShares;
+    const costBasis = round(basisShares * costPerShare, 2);
+    const value = isFullySold
+      ? round(lot.realizedProceeds, 2)
+      : (currentPrice > 0 ? round(lot.remainingShares * currentPrice, 2) : null);
+    const profit = value === null ? null : round(value - costBasis, 2);
+    const returnRate = profit === null || !(costBasis > 0) ? null : round((profit / costBasis) * 100, 2);
+    result[id] = {
+      txId: id,
+      code: tx.code,
+      status: isFullySold ? 'sold' : 'holding',
+      label: isFullySold ? '已卖出' : '持有至今',
+      originalShares: lot.originalShares,
+      remainingShares: lot.remainingShares,
+      realizedShares: lot.realizedShares,
+      costBasis,
+      value,
+      profit,
+      returnRate,
+      currentPrice: isFullySold ? null : currentPrice,
+      sellDate: isFullySold ? lot.lastSellDate : ''
+    };
+  }
+  return result;
+}
+
 /** 已卖出 tab 的 footer 合计。 */
 export function summarizeSoldLots(lots = []) {
   const summary = {

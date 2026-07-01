@@ -17,7 +17,7 @@ import { formatCurrency } from '../accumulation.js';
 import { cx } from '../../components/experience-ui.jsx';
 import SubPageShell from './SubPageShell.jsx';
 import { ROUTES } from '../incomeRoute.js';
-import { buildSoldLots, getTransactionAmount, normalizeIsoDate } from '../holdingsLedgerCore.js';
+import { buildBuyTransactionPerformance, buildSoldLots, getTransactionAmount, normalizeIsoDate } from '../holdingsLedgerCore.js';
 import { getAssetTypeLabel } from '../assetType.js';
 import { KIND_LABELS } from '../holdingsHelpers.js';
 
@@ -50,6 +50,19 @@ function monthKeyOf(iso) {
 function computeAmount(tx) {
 	const amount = getTransactionAmount(tx);
 	return amount > 0 ? amount : null;
+}
+
+function renderPercent(value) {
+	const num = Number(value);
+	if (!Number.isFinite(num)) return '—';
+	const sign = num > 0 ? '+' : '';
+	return `${sign}${num.toFixed(2)}%`;
+}
+
+function signClass(value) {
+	const num = Number(value);
+	if (!Number.isFinite(num) || num === 0) return 'text-slate-500';
+	return num > 0 ? 'text-rose-600' : 'text-emerald-600';
 }
 
 function getTransactionAssetLabel(tx) {
@@ -199,6 +212,11 @@ export function IncomeTransactionsPage({ ledger, onBack, navigate, currentRoute,
 		return map;
 	}, [transactions]);
 
+	const buyPerformanceById = useMemo(
+		() => buildBuyTransactionPerformance(transactions, ledger?.snapshotsByCode || {}),
+		[transactions, ledger?.snapshotsByCode]
+	);
+
 	function handleExportTransactions() {
 		if (!sortedDesc.length) return;
 		const csv = `\uFEFF${buildTransactionsCsv(sortedDesc, txById)}`;
@@ -341,6 +359,7 @@ export function IncomeTransactionsPage({ ledger, onBack, navigate, currentRoute,
 									<Row
 										key={tx.id || `${tx.code}-${tx.date}-${tx.shares}`}
 										tx={tx}
+										performance={tx?.type === 'BUY' && tx?.id ? buyPerformanceById[tx.id] : null}
 										onClick={() => onEditTransaction && tx.id && onEditTransaction(tx.id)}
 									/>
 								))}
@@ -373,11 +392,12 @@ function SummaryStat({ count, label, amount, dim, subLabel, tone }) {
 	);
 }
 
-function Row({ tx, onClick }) {
+function Row({ tx, performance, onClick }) {
 	const amount = computeAmount(tx);
 	const isBuy = tx?.type === 'BUY';
 	const tone = isBuy ? TONE_BUY : TONE_SELL;
 	const label = isBuy ? '买入' : '卖出';
+	const hasPerformance = isBuy && performance && Number.isFinite(Number(performance.profit));
 	return (
 		<button
 			type="button"
@@ -389,7 +409,21 @@ function Row({ tx, onClick }) {
 			</span>
 			<span className="min-w-0">
 				<div className="truncate text-[13px] font-medium text-slate-800">{getTransactionAssetLabel(tx)} | {tx.name || tx.code || '—'}</div>
-				<div className="mt-0.5 text-[11px] text-slate-400 tabular-nums">{toIsoDay(tx.date)}</div>
+				<div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-slate-400 tabular-nums">
+					<span>{toIsoDay(tx.date)}</span>
+					{hasPerformance ? (
+						<>
+							<span>·</span>
+							<span>{performance.label}</span>
+							<span className={cx('font-semibold', signClass(performance.profit))}>
+								{formatCurrency(performance.profit, '¥', 2)}
+							</span>
+							<span className={cx('font-semibold', signClass(performance.returnRate))}>
+								{renderPercent(performance.returnRate)}
+							</span>
+						</>
+					) : null}
+				</div>
 			</span>
 			<span className="shrink-0 whitespace-nowrap text-right text-[13px] font-semibold tabular-nums text-slate-800">{amount === null ? '—' : formatCurrency(amount, '¥', 2)}</span>
 		</button>

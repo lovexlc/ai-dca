@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   aggregateByCode,
+  buildBuyTransactionPerformance,
   computeSwitchChainMetrics,
   getActiveHoldingCodeList,
   getTransactionAmount,
@@ -26,6 +27,27 @@ test('LOF transaction can be explicitly recorded as exchange', () => {
 
   assert.equal(tx.kind, 'exchange');
   assert.deepEqual(tx.tags, ['exchange']);
+});
+
+test('交易记录 BUY 明细：未卖出按持有至今收益，已卖出按买入到卖出收益', () => {
+  const transactions = [
+    { id: 'buy-sold', code: '513100', name: '纳指ETF', kind: 'exchange', type: 'BUY', date: '2026-01-01', price: 1, shares: 100 },
+    { id: 'sell-sold', code: '513100', name: '纳指ETF', kind: 'exchange', type: 'SELL', date: '2026-02-01', price: 1.2, shares: 100 },
+    { id: 'buy-hold', code: '513100', name: '纳指ETF', kind: 'exchange', type: 'BUY', date: '2026-03-01', price: 1.5, shares: 200 }
+  ];
+  const performance = buildBuyTransactionPerformance(transactions, {
+    '513100': { code: '513100', name: '纳指ETF', price: 1.8 }
+  });
+
+  assert.equal(performance['buy-sold'].status, 'sold');
+  assert.equal(performance['buy-sold'].profit, 20);
+  assert.equal(performance['buy-sold'].returnRate, 20);
+  assert.equal(performance['buy-sold'].label, '已卖出');
+
+  assert.equal(performance['buy-hold'].status, 'holding');
+  assert.equal(performance['buy-hold'].profit, 60);
+  assert.equal(performance['buy-hold'].returnRate, 20);
+  assert.equal(performance['buy-hold'].label, '持有至今');
 });
 
 test('场外持仓刷新后从 latest/previous NAV 反推当日收益率', () => {
