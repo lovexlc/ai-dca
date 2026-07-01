@@ -486,6 +486,23 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
     });
   }, []);
 
+  const handleOpenRuleBacktest = useCallback((rule) => {
+    if (typeof window === 'undefined' || !rule) return;
+    const benchmarkCodes = Array.isArray(rule.benchmarkCodes) ? rule.benchmarkCodes.filter(Boolean) : [];
+    const enabledCodes = Array.isArray(rule.enabledCodes) ? rule.enabledCodes.filter(Boolean) : [];
+    const symbol = benchmarkCodes[0] || enabledCodes[0] || Object.keys(rule.premiumClass || {}).filter(Boolean)[0] || '';
+    if (!symbol) return;
+    trackFeatureEvent('switch_strategy', 'rule_backtest_open', { ruleId: rule.id || '', symbolLength: symbol.length, benchmarkCount: benchmarkCodes.length, candidateCount: enabledCodes.length });
+    const target = links?.markets || './index.html?tab=markets';
+    const nextUrl = new URL(target, window.location.href);
+    nextUrl.searchParams.set('tab', 'markets');
+    nextUrl.searchParams.set('symbol', symbol);
+    nextUrl.searchParams.set('backtest', '1');
+    nextUrl.searchParams.set('source', 'fundSwitchRule');
+    if (rule.id) nextUrl.searchParams.set('rule', rule.id);
+    window.dispatchEvent(new CustomEvent('workspace:navigate', { detail: { tab: 'markets', search: nextUrl.search.replace(/^\?/, '') } }));
+  }, [links?.markets]);
+
   // 持仓 ledger
   useEffect(() => {
     try {
@@ -991,6 +1008,7 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
         onRuleRemove={handleRuleRemove}
         onRuleNameChange={handleRuleNameChange}
         onRuleEnabledChange={handleRuleEnabledChange}
+        onOpenBacktest={handleOpenRuleBacktest}
         setWorkerConfigExpanded={setWorkerConfigExpanded}
         setSnapshotCandModal={(payload) => {
           trackFeatureEvent('switch_strategy', 'snapshot_candidates_open', {

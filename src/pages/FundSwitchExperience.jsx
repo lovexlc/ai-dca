@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
-import { History, Settings2 } from 'lucide-react';
+import { ArrowRight, BarChart3, History, Settings2 } from 'lucide-react';
 import { cx } from '../components/experience-ui.jsx';
 import { FundSwitchAnalysisExperience } from './FundSwitchAnalysisExperience.jsx';
 import { trackFeatureEvent } from '../app/analytics.js';
@@ -38,6 +38,22 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
   const [mobileTab, setMobileTab] = useState('config');
   const initialSymbol = useFundSwitchInitialSymbol();
 
+  function openBacktestIntro(event) {
+    if (event && (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)) return;
+    if (event) event.preventDefault();
+    if (typeof window === 'undefined') return;
+    const target = links?.markets || './index.html?tab=markets';
+    const nextUrl = new URL(target, window.location.href);
+    nextUrl.searchParams.set('tab', 'markets');
+    nextUrl.searchParams.set('backtest', '1');
+    nextUrl.searchParams.set('source', 'fundSwitchBanner');
+    if (initialSymbol) nextUrl.searchParams.set('symbol', initialSymbol);
+    const search = nextUrl.search.replace(/^\?/, '');
+    window.dispatchEvent(new CustomEvent('workspace:navigate', {
+      detail: { tab: 'markets', search }
+    }));
+  }
+
   useEffect(() => {
     trackFeatureEvent('fund_switch', 'view_open', {
       view: 'fundSwitch',
@@ -54,6 +70,21 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
           <div className="mt-1 text-sm text-slate-500">配置规则、查看信号、复盘历史表现。</div>
         </div>
       </div>
+
+      <a
+        href={`${links?.markets || './index.html?tab=markets'}&backtest=1`}
+        onClick={openBacktestIntro}
+        className="flex flex-col gap-3 rounded-xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 text-sm text-indigo-900 transition-colors hover:border-indigo-200 hover:bg-indigo-50 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <span className="inline-flex min-w-0 items-center gap-2 font-semibold">
+          <BarChart3 className="h-4 w-4 shrink-0" />
+          <span>新功能：现在可以回测你的切换策略了</span>
+        </span>
+        <span className="inline-flex items-center gap-1 text-xs font-bold text-indigo-700">
+          试试
+          <ArrowRight className="h-4 w-4" />
+        </span>
+      </a>
 
       {/* 移动端子 tab；lg+ 隐藏，PC 直接两列 */}
       <div className="mb-3 inline-flex gap-1 rounded-full bg-slate-100 p-1 lg:hidden">

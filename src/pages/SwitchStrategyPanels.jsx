@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { AlertTriangle, ChevronDown, ChevronRight, Copy, Info, PlayCircle, Plus, Radio, Trash2, X } from 'lucide-react';
+import { AlertTriangle, BarChart3, ChevronDown, ChevronRight, Copy, Info, PlayCircle, Plus, Radio, Trash2, X } from 'lucide-react';
 import { Card, Pill, SectionHeading, cx, primaryButtonClass, secondaryButtonClass } from '../components/experience-ui.jsx';
 
 export function SwitchStrategyWorkerPanel({
@@ -20,6 +20,7 @@ export function SwitchStrategyWorkerPanel({
   onRuleRemove,
   onRuleNameChange,
   onRuleEnabledChange,
+  onOpenBacktest,
   setWorkerConfigExpanded,
   setSnapshotCandModal,
   onQuickRecordOpen,
@@ -150,6 +151,18 @@ export function SwitchStrategyWorkerPanel({
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
+                {onOpenBacktest ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenBacktest(activeRule)}
+                    disabled={!activeBenchCount && !activeCandidateCount}
+                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    title={activeBenchCount || activeCandidateCount ? '回测当前切换规则' : '先配置持仓或候选代码'}
+                  >
+                    <BarChart3 className="h-4 w-4" />
+                    回测此策略
+                  </button>
+                ) : null}
               </div>
             </div>
           ) : null}

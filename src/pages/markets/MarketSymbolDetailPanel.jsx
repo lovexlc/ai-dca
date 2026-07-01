@@ -109,6 +109,7 @@ export function SymbolDetailPanel({
   const [lockedChartRow, setLockedChartRow] = useState(null);
   const [customRangeDraft, setCustomRangeDraft] = useState(() => normalizeChartCustomRange(chartCustomRange) || defaultChartCustomRange());
   const [backtestPanelOpen, setBacktestPanelOpen] = useState(false);
+  const backtestUrlHandledRef = useRef('');
   const indicatorOptions = INDICATOR_OPTIONS;
   const rowSymbol = row && row.symbol ? String(row.symbol).toUpperCase() : '';
   const switchPrefs = useMemo(() => {
@@ -138,6 +139,25 @@ export function SymbolDetailPanel({
   }, [compareQuoteMap, compareSearchMetaMap, currentIsCnOtcFund, market]);
   // 当前 symbol 或时间范围切换时清空对比
   useEffect(() => { setCompareSymbols([]); setHoveredChartRow(null); setLockedChartRow(null); }, [rowSymbol]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !rowSymbol) return;
+    const params = new URLSearchParams(window.location.search);
+    const shouldOpenBacktest = params.get('backtest') === '1';
+    if (!shouldOpenBacktest) return;
+    const requestedSymbol = normalizeCnFundCode(params.get('symbol') || '') || String(params.get('symbol') || '').trim().toUpperCase();
+    if (requestedSymbol && requestedSymbol !== normalizeCnFundCode(rowSymbol) && requestedSymbol !== rowSymbol) return;
+    const handleKey = `${rowSymbol}:${params.get('rule') || ''}:${params.get('source') || ''}`;
+    if (backtestUrlHandledRef.current === handleKey) return;
+    backtestUrlHandledRef.current = handleKey;
+    onBacktestEvent?.('open_from_url', {
+      symbolLength: rowSymbol.length,
+      chartRange,
+      market,
+      source: params.get('source') || ''
+    });
+    setBacktestPanelOpen(true);
+  }, [chartRange, market, onBacktestEvent, rowSymbol]);
   // 对比列表变化时同步到 URL
   useEffect(() => { updateCompareInUrl(compareSymbols); }, [compareSymbols]);
   // 图表配置变化时同步到 URL
