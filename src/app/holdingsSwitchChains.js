@@ -1,4 +1,4 @@
-import { round } from './holdingsLedgerBasics.js';
+import { round, normalizeFundKind } from './holdingsLedgerBasics.js';
 
 function buildChainId() {
   const rand = Math.random().toString(36).slice(2, 8);
@@ -111,7 +111,7 @@ export function computeSwitchChainMetrics(chain, transactions = [], snapshotsByC
       segEndDate = sellTx.date || '';
     } else {
       const snap = snapshotsByCode?.[buyTx.code] || null;
-      segEnd = Number(snap?.latestNav) || 0;
+      segEnd = resolveSnapshotCurrentPrice(snap, buyTx.kind, buyTx.code, buyTx.name || snap?.name || '');
       segEndDate = String(snap?.latestNavDate || '');
       if (!(segEnd > 0)) missingPriceCodes.add(buyTx.code);
     }
@@ -165,7 +165,7 @@ export function computeSwitchChainMetrics(chain, transactions = [], snapshotsByC
     baselineAlignedToChainEnd = true;
   } else {
     const snap = snapshotsByCode?.[baselineCode] || null;
-    baselineEndPrice = Number(snap?.latestNav) || 0;
+    baselineEndPrice = resolveSnapshotCurrentPrice(snap, firstSeg.kind, baselineCode, firstSeg.name);
     baselineEndSource = 'latestNav';
     if (!(baselineEndPrice > 0)) missingPriceCodes.add(baselineCode);
   }
