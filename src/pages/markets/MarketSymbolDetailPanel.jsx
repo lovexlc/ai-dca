@@ -680,8 +680,11 @@ export function SymbolDetailPanel({
   const detailActionButtonClass = 'inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-[#dadce0] bg-white px-2.5 text-[12px] font-semibold text-[#1f1f1f] transition hover:bg-[#f1f3f4] disabled:cursor-not-allowed disabled:opacity-45 sm:h-9 sm:px-3 sm:text-[13px]';
 
   return (
-    <section className={cx('mx-0', backtestPanelOpen && 'lg:relative')}>
-      <div className={cx('px-3 pt-0 sm:px-1', backtestPanelOpen && 'lg:pr-[580px] xl:pr-[588px]')}>
+    <section className={cx('mx-0', backtestPanelOpen && 'lg:relative lg:h-full lg:min-h-0 lg:overflow-hidden')}>
+      <div className={cx(
+        'px-3 pt-0 sm:px-1',
+        backtestPanelOpen && 'lg:h-full lg:w-[calc(100%-568px)] lg:min-w-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-3 lg:[scrollbar-gutter:stable] xl:w-[calc(100%-576px)]'
+      )}>
         <button
           type="button"
           onClick={onBack}
