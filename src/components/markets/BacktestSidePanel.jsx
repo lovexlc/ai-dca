@@ -8,6 +8,7 @@ import { BacktestCounterpartPicker } from './BacktestCounterpartPicker.jsx';
 import { buildGapDistributionThresholdGrids } from './backtestGapOptimization.js';
 import { createTradeSimulator, runBacktest } from '../../app/backtest/index.js';
 import { fetchBacktestData } from '../../app/backtestDataFetcher.js';
+import { buildPremiumPanel } from '../../app/backtest/core/premiumPanel.js';
 import { deriveDefaultBacktestCodes } from './backtestSidePanelState.js';
 import { addSwitchRule } from '../../app/switchStrategySync.js';
 import { readSwitchPrefs as readStoredSwitchPrefs, writeSwitchPrefs as writeStoredSwitchPrefs } from '../../pages/switchStrategyHelpers.js';
@@ -63,6 +64,12 @@ function parseDecimalOr(value, fallback) {
   return Number.isFinite(num) ? num : fallback;
 }
 
+function parseMonthlyDcaDay(value, fallback = 1) {
+  const num = Math.round(Number(value));
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(31, Math.max(1, num));
+}
+
 const BACKTEST_RANGE_OPTIONS = Object.freeze([
   { key: '3mo', label: '3 个月', days: 92 },
   { key: '6mo', label: '6 个月', days: 183 },
@@ -92,7 +99,7 @@ const BACKTEST_TRADING_COSTS = Object.freeze({
 function todayShanghaiIso() {
   try {
     return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
-  } catch (_error) {
+  } catch {
     return new Date().toISOString().slice(0, 10);
   }
 }
@@ -135,6 +142,35 @@ function normalizeCandlesForHold(raw = []) {
     })
     .filter((item) => Number.isFinite(item.c) && item.c > 0)
     .sort((a, b) => Number(a.t) - Number(b.t));
+}
+
+function getBacktestIsoDate(row) {
+  const raw = String(row?.date || row?.datetime || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+  const t = Number(row?.t ?? row?.ts ?? 0);
+  if (!Number.isFinite(t) || t <= 0) return '';
+  const date = new Date(t < 10000000000 ? t * 1000 : t);
+  if (Number.isNaN(date.getTime())) return '';
+  try {
+    return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+  } catch {
+    return date.toISOString().slice(0, 10);
+  }
+}
+
+function isMonthlyDcaDue(rows, index, targetDay) {
+  const date = getBacktestIsoDate(rows[index]);
+  if (!date) return index === 0;
+  const month = date.slice(0, 7);
+  const day = Number(date.slice(8, 10));
+  const previousDate = index > 0 ? getBacktestIsoDate(rows[index - 1]) : '';
+  const previousMonth = previousDate.slice(0, 7);
+  const previousDay = Number(previousDate.slice(8, 10));
+  const nextDate = index < rows.length - 1 ? getBacktestIsoDate(rows[index + 1]) : '';
+  const nextMonth = nextDate.slice(0, 7);
+
+  if (day >= targetDay && (previousMonth !== month || previousDay < targetDay)) return true;
+  return day < targetDay && nextMonth !== month;
 }
 
 function makeRotationResult(result) {
@@ -468,7 +504,7 @@ function runRotationBacktest(highCandles, lowCandles, config) {
 
 // 持有策略回测（对比基准）
 function runHoldBacktest(candles, config) {
-  const { code, initialCash, mode, investAmount, tradingCosts = BACKTEST_TRADING_COSTS } = config;
+  const { code, initialCash, mode, investAmount, monthlyDcaDay = 1, tradingCosts = BACKTEST_TRADING_COSTS } = config;
   const trades = [];
   const equityCurve = [];
   const simulator = createTradeSimulator({
@@ -488,11 +524,9 @@ function runHoldBacktest(candles, config) {
       equityCurve.push(simulator.calcEquity(currentPrices(candle)));
     }
   } else {
-    const interval = Math.max(1, Math.floor(candles.length / 10));
-
     for (let i = 0; i < candles.length; i++) {
       const candle = candles[i];
-      if (i % interval === 0 && simulator.cash >= investAmount && candle.c > 0) {
+      if (isMonthlyDcaDue(candles, i, monthlyDcaDay) && simulator.cash >= investAmount && candle.c > 0) {
         const buyTrade = simulator.executeBuy(code, candle, investAmount);
         if (buyTrade) {
           trades.push({ ...buyTrade, date: candle.t });
@@ -528,6 +562,113 @@ function runHoldBacktest(candles, config) {
   };
 }
 
+function runAdaptiveDcaHoldBacktest(panel, config) {
+  const {
+    codes = [],
+    initialCash,
+    investAmount,
+    monthlyDcaDay = 1,
+    signals = [],
+    tradingCosts = BACKTEST_TRADING_COSTS
+  } = config;
+  const normalizedCodes = Array.from(new Set(codes.map(normalizeFundCode).filter(Boolean)));
+  const rows = Array.isArray(panel?.rows) ? panel.rows : [];
+  const trades = [];
+  const equityCurve = [];
+  const signalByTs = new Map(
+    (Array.isArray(signals) ? signals : [])
+      .map((signal) => [Number(signal?.ts), signal])
+      .filter(([ts, signal]) => Number.isFinite(ts) && normalizeFundCode(signal?.toCode))
+  );
+  const simulator = createTradeSimulator({
+    initialCash,
+    ...tradingCosts
+  });
+  let switchCount = 0;
+
+  function pickLowestPremium(row) {
+    return normalizedCodes
+      .map((code) => ({ code, premiumPct: Number(row?.premiums?.[code]) }))
+      .filter((item) => Number.isFinite(item.premiumPct))
+      .reduce((best, item) => (!best || item.premiumPct < best.premiumPct ? item : best), null);
+  }
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const prices = row.currentPrices || {};
+    const signal = signalByTs.get(Number(row.ts));
+
+    if (signal?.toCode) {
+      const targetCode = normalizeFundCode(signal.toCode);
+      const heldCodes = Object.keys(simulator.positions || {}).filter((code) => Number(simulator.positions?.[code]?.shares) > 0);
+      let soldAny = false;
+      for (const heldCode of heldCodes) {
+        const sellBar = panel.getBar?.(heldCode, row.ts);
+        if (!sellBar) continue;
+        const sellTrade = simulator.executeSell(heldCode, sellBar);
+        if (sellTrade) {
+          soldAny = true;
+          trades.push({ ...sellTrade, ts: row.ts, date: row.date, datetime: row.datetime, reason: 'switch' });
+        }
+      }
+      const targetBar = panel.getBar?.(targetCode, row.ts);
+      if ((soldAny || simulator.cash > 0) && targetBar) {
+        const buyTrade = simulator.executeBuy(targetCode, targetBar, simulator.cash, { roundLotMode: 'ceil' });
+        if (buyTrade) {
+          trades.push({ ...buyTrade, ts: row.ts, date: row.date, datetime: row.datetime, reason: 'switch' });
+          switchCount += 1;
+        }
+      }
+    }
+
+    if (isMonthlyDcaDue(rows, i, monthlyDcaDay) && simulator.cash >= investAmount) {
+      const target = pickLowestPremium(row);
+      const bar = target ? panel.getBar?.(target.code, row.ts) : null;
+      if (target && bar) {
+        const buyTrade = simulator.executeBuy(target.code, bar, investAmount);
+        if (buyTrade) {
+          trades.push({
+            ...buyTrade,
+            ts: row.ts,
+            date: row.date,
+            datetime: row.datetime,
+            reason: 'dca-lowest-premium',
+            premiumPct: target.premiumPct
+          });
+        }
+      }
+    }
+
+    equityCurve.push(simulator.calcEquity(prices));
+  }
+
+  const lastRow = rows[rows.length - 1] || {};
+  const finalValue = simulator.calcEquity(lastRow.currentPrices || {});
+  const totalReturnPct = initialCash > 0 ? ((finalValue - initialCash) / initialCash) * 100 : 0;
+
+  let maxValue = initialCash;
+  let maxDrawdown = 0;
+  for (const value of equityCurve) {
+    maxValue = Math.max(maxValue, value);
+    if (maxValue > 0) {
+      const drawdown = ((value - maxValue) / maxValue) * 100;
+      maxDrawdown = Math.min(maxDrawdown, drawdown);
+    }
+  }
+
+  return {
+    code: normalizedCodes.join('/'),
+    label: '择低溢价定投',
+    finalValue,
+    totalReturnPct,
+    maxDrawdownPct: maxDrawdown,
+    tradeCount: trades.length,
+    switchCount,
+    trades,
+    equityCurve
+  };
+}
+
 export function BacktestSidePanel({
   open = false,
   onClose,
@@ -551,6 +692,7 @@ export function BacktestSidePanel({
   const [initialCash, setInitialCash] = useState('10000');
   const [investMode, setInvestMode] = useState('dca');
   const [investAmount, setInvestAmount] = useState('1000');
+  const [monthlyDcaDay, setMonthlyDcaDay] = useState('1');
   const [backtestRange, setBacktestRange] = useState('1y');
   const [customStartDate, setCustomStartDate] = useState(() => shiftIsoDate(todayShanghaiIso(), -365));
   const [customEndDate, setCustomEndDate] = useState(() => todayShanghaiIso());
@@ -605,28 +747,42 @@ export function BacktestSidePanel({
     try {
       const cash = parseDecimalOr(initialCash, 10000);
       const invest = parseDecimalOr(investAmount, 1000);
+      const dcaDay = parseMonthlyDcaDay(monthlyDcaDay, 1);
       const dateRange = deriveBacktestDateRange(backtestRange, { startDate: customStartDate, endDate: customEndDate });
+      const currentCode = normalizeFundCode(symbol);
+      const configuredCodes = Array.from(new Set([
+        ...highCodes,
+        ...lowCodes,
+        ...(Array.isArray(counterpartCodes) ? counterpartCodes : [])
+      ].map(normalizeFundCode).filter(Boolean)));
+      const hasCounterpart = configuredCodes.some((code) => code && code !== currentCode);
+      const runCodes = hasCounterpart
+        ? Array.from(new Set([currentCode, ...configuredCodes].filter(Boolean)))
+        : [currentCode].filter(Boolean);
       const runMeta = {
         symbolLength: String(symbol || '').length,
-        highCount: highCodes.length,
-        lowCount: lowCodes.length,
+        highCount: hasCounterpart ? highCodes.length : 0,
+        lowCount: hasCounterpart ? lowCodes.length : 0,
+        singleFundMode: !hasCounterpart,
         range: backtestRange,
         investMode,
         thresholdMode,
         strategyParamMode,
         initialCash: cash,
+        monthlyDcaDay: dcaDay,
         hasCustomRange: backtestRange === 'custom',
       };
       onEvent?.('run_start', runMeta);
-      if (!highCodes.length || !lowCodes.length) {
-        onEvent?.('run_validation_error', { ...runMeta, reason: 'missing_counterpart' });
-        alert('请先填写对手方，组成 H/L 回测组合。');
+      if (!runCodes.length) {
+        onEvent?.('run_validation_error', { ...runMeta, reason: 'missing_symbol' });
+        alert('请先选择要回测的基金。');
         return;
       }
 
       console.log('[Backtest] 开始回测', {
-        highCodes,
-        lowCodes,
+        highCodes: hasCounterpart ? highCodes : [],
+        lowCodes: hasCounterpart ? lowCodes : [],
+        runCodes,
         dateRange,
         initialCash: cash,
         optimize: true
@@ -636,8 +792,30 @@ export function BacktestSidePanel({
       let holdResult = null;
       let holdResults = [];
 
-      // 如果配置了H/L档，使用统一回测引擎
-      if (highCodes.length > 0 && lowCodes.length > 0) {
+      if (!hasCounterpart) {
+        console.log('[Backtest] 进入单基金持有回测分支');
+        const { historyByCode } = await fetchBacktestData(runCodes, {
+          highCodes: runCodes,
+          lowCodes: [],
+          ...dateRange,
+          forceRefresh: true
+        });
+        const holdCode = runCodes[0];
+        const holdCandles = normalizeCandlesForHold(historyByCode?.[holdCode] || []);
+        if (!holdCandles || holdCandles.length < 10) {
+          alert('数据不足，至少需要 10 个数据点');
+          return;
+        }
+        holdResult = runHoldBacktest(holdCandles, {
+          code: holdCode,
+          initialCash: cash,
+          mode: investMode,
+          investAmount: invest,
+          monthlyDcaDay: dcaDay,
+          tradingCosts: BACKTEST_TRADING_COSTS
+        });
+        holdResults = [holdResult];
+      } else if (highCodes.length > 0 && lowCodes.length > 0) {
         console.log('[Backtest] 进入H/L档回测分支');
         console.log('[Backtest] 获取历史数据和NAV...');
         const allCodes = [...highCodes, ...lowCodes];
@@ -737,24 +915,41 @@ export function BacktestSidePanel({
           console.warn('[Backtest] 所有阈值组合均未通过质量检查');
         }
 
-        holdResults = Array.from(new Set([...highCodes, ...lowCodes]))
-          .filter(Boolean)
-          .map((holdCode) => {
-            const holdCandles = normalizeCandlesForHold(historyByCode?.[holdCode] || []);
-            if (!holdCandles || holdCandles.length < 10) {
-              console.log('[Backtest] 持有对比数据不足:', { holdCode, length: holdCandles?.length });
-              return null;
-            }
-            console.log('[Backtest] 运行持有策略...', { holdCode, holdCandles: holdCandles.length });
-            return runHoldBacktest(holdCandles, {
-              code: holdCode,
+        if (investMode === 'dca') {
+          const panel = buildPremiumPanel({ codes: Array.from(new Set([...highCodes, ...lowCodes])), historyByCode, navHistoryByCode });
+          if (panel.rows.length >= 10) {
+            holdResults = [runAdaptiveDcaHoldBacktest(panel, {
+              codes: Array.from(new Set([...highCodes, ...lowCodes])),
               initialCash: cash,
-              mode: investMode,
               investAmount: invest,
+              monthlyDcaDay: dcaDay,
+              signals: rotationResult?.signals || [],
               tradingCosts: BACKTEST_TRADING_COSTS
-            });
-          })
-          .filter(Boolean);
+            })];
+          } else {
+            holdResults = [];
+          }
+        } else {
+          holdResults = Array.from(new Set([...highCodes, ...lowCodes]))
+            .filter(Boolean)
+            .map((holdCode) => {
+              const holdCandles = normalizeCandlesForHold(historyByCode?.[holdCode] || []);
+              if (!holdCandles || holdCandles.length < 10) {
+                console.log('[Backtest] 持有对比数据不足:', { holdCode, length: holdCandles?.length });
+                return null;
+              }
+              console.log('[Backtest] 运行持有策略...', { holdCode, holdCandles: holdCandles.length });
+              return runHoldBacktest(holdCandles, {
+                code: holdCode,
+                initialCash: cash,
+                mode: investMode,
+                investAmount: invest,
+                monthlyDcaDay: dcaDay,
+                tradingCosts: BACKTEST_TRADING_COSTS
+              });
+            })
+            .filter(Boolean);
+        }
 
         if (!holdResults.length) {
           alert('数据不足，至少需要 10 个数据点');
@@ -763,6 +958,7 @@ export function BacktestSidePanel({
         holdResult = holdResults.find((item) => item.code === symbol) || holdResults[0] || null;
         console.log('[Backtest] 持有策略结果:', holdResults.map((item) => ({
           code: item.code,
+          label: item.label,
           totalReturnPct: item.totalReturnPct,
           maxDrawdownPct: item.maxDrawdownPct,
           tradeCount: item.tradeCount,
@@ -782,6 +978,7 @@ export function BacktestSidePanel({
           sellLowerThreshold: rotationResult?.thresholds?.sellLowerThreshold ?? parseDecimalOr(intraSellLowerPct, 1),
           buyOtherThreshold: rotationResult?.thresholds?.buyOtherThreshold ?? parseDecimalOr(intraBuyOtherPct, 3),
           initialCash: cash,
+          monthlyDcaDay: dcaDay,
           dateRange
         }
       };
@@ -859,6 +1056,7 @@ export function BacktestSidePanel({
   const rotationWins = Boolean(rotation && bestHold && Number(rotation.totalReturnPct) > Number(bestHold.totalReturnPct));
   const tradeExamples = rotation ? buildTradeExamples(rotation.trades, rotation.signals, 4) : [];
   const selectedRangeLabel = BACKTEST_RANGE_OPTIONS.find((item) => item.key === backtestRange)?.label || '1 年';
+  const hasCounterpartInput = counterpartCodes.some((code) => normalizeFundCode(code) && normalizeFundCode(code) !== normalizeFundCode(symbol));
 
   return (
     <>
@@ -879,7 +1077,7 @@ export function BacktestSidePanel({
           <div>
             <div className="text-sm font-bold text-slate-900">策略回测</div>
             <p className="text-xs text-slate-500">
-              {symbol} · {selectedRangeLabel} · 自动寻优
+              {symbol} · {selectedRangeLabel} · {hasCounterpartInput ? '自动寻优' : '单基金回测'}
             </p>
           </div>
           <button
@@ -1094,15 +1292,26 @@ export function BacktestSidePanel({
                   onCommit={(v) => setInitialCash(String(parseDecimalOr(v, 10000)))}
                 />
                 {investMode === 'dca' && (
-                  <DecimalInput
-                    id="invest-amount"
-                    label="每次定投"
-                    suffix="¥"
-                    hint="定投模式下每次买入金额"
-                    value={investAmount}
-                    onChange={setInvestAmount}
-                    onCommit={(v) => setInvestAmount(String(parseDecimalOr(v, 1000)))}
-                  />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <DecimalInput
+                      id="invest-amount"
+                      label="每次定投"
+                      suffix="¥"
+                      hint="定投模式下每次买入金额"
+                      value={investAmount}
+                      onChange={setInvestAmount}
+                      onCommit={(v) => setInvestAmount(String(parseDecimalOr(v, 1000)))}
+                    />
+                    <DecimalInput
+                      id="monthly-dca-day"
+                      label="每月定投日"
+                      suffix="号"
+                      hint="遇非交易日或当月无该日期时，顺延到之后第一个交易日；若超过月末则用当月最后交易日"
+                      value={monthlyDcaDay}
+                      onChange={setMonthlyDcaDay}
+                      onCommit={(v) => setMonthlyDcaDay(String(parseMonthlyDcaDay(v, 1)))}
+                    />
+                  </div>
                 )}
               </div>
             </div>
@@ -1114,7 +1323,9 @@ export function BacktestSidePanel({
                 <div>
                   <h3 className="text-base font-bold text-slate-700">准备开始回测</h3>
                   <p className="mt-2 text-sm text-slate-500">
-                    选择回测区间后点击「开始回测」，系统会自动寻找最优溢价差阈值。
+                    {hasCounterpartInput
+                      ? '选择回测区间后点击「开始回测」，系统会自动寻找最优溢价差阈值。'
+                      : '未填写对手方时，将只回测当前基金的持有表现。'}
                   </p>
                 </div>
                 <button
@@ -1217,6 +1428,7 @@ export function BacktestSidePanel({
                         <div key={item.code} className="rounded-lg bg-slate-50 p-3">
                           <div className="mb-2 flex items-center justify-between text-sm">
                             <span className="font-semibold text-slate-900">持有 {item.code}</span>
+                            {item.label ? <span className="ml-2 text-xs font-semibold text-indigo-600">{item.label}</span> : null}
                             <span className={cx('font-bold tabular-nums',
                               item.totalReturnPct > 0 ? 'text-emerald-600' : item.totalReturnPct < 0 ? 'text-rose-600' : 'text-slate-600'
                             )}>

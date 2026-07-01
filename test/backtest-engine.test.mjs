@@ -308,6 +308,17 @@ test('trade simulator can ceil buy to next 100-share lot and carry negative cash
   assert.equal(simulator.cash, -200);
 });
 
+test('trade simulator accumulates repeated buys into one weighted position', () => {
+  const simulator = createTradeSimulator({ initialCash: 1000, feeRate: 0, lotSize: 1, useQuotedPrices: false });
+
+  simulator.executeBuy('513100', { close: 1 }, 100);
+  simulator.executeBuy('513100', { close: 2 }, 200);
+
+  assert.equal(simulator.positions['513100'].shares, 200);
+  assert.equal(simulator.positions['513100'].costPrice, 1.5);
+  assert.equal(simulator.calcEquity({ '513100': 2 }), 1100);
+});
+
 test('unified engine reports quality failure for missing kline data', () => {
   const result = runBacktest({
     type: 'premium-spread',

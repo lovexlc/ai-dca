@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">美股策略助手</string>
-    <string name="title_activity_main">美股策略助手</string>
-    <string name="package_name">tech.freebacktrack.aidca</string>
-    <string name="custom_url_scheme">tech.freebacktrack.aidca</string>
-</resources>

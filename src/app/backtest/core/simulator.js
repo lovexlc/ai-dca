@@ -127,9 +127,13 @@ export function createTradeSimulator(config = {}) {
         : totalCost <= boundedSpend && totalCost <= cash;
       if (canSpend) {
         cash = roundTo(cash - totalCost, 2);
+        const existing = positions[code];
+        const existingShares = Number(existing?.shares) || 0;
+        const existingCost = existingShares > 0 ? existingShares * Number(existing.costPrice || 0) : 0;
+        const nextShares = existingShares + maxShares;
         positions[code] = {
-          shares: maxShares,
-          costPrice: roundTo(totalCost / maxShares, 4)
+          shares: nextShares,
+          costPrice: roundTo((existingCost + totalCost) / nextShares, 4)
         };
         return {
           type: 'buy',
