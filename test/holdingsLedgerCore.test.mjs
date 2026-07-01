@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   aggregateByCode,
+  computeSwitchChainMetrics,
   getActiveHoldingCodeList,
   getTransactionAmount,
   getTransactionErrors,
@@ -310,6 +311,40 @@ test('场内 ETF 使用 price/previousClose 计算当日收益', () => {
   assert.equal(agg.hasTodayNav, true);
   assert.equal(agg.todayProfit, 92.06);
   assert.equal(agg.todayReturnRate, 4.05);
+});
+
+test('切换链路未卖出场内 ETF 使用实时价格而不是净值', () => {
+  const chain = {
+    id: 'chain-realtime-price',
+    name: '实时价链路',
+    legs: [{ buyTxId: 'buy-513100' }]
+  };
+  const transactions = [{
+    id: 'buy-513100',
+    code: '513100',
+    name: '纳指ETF国泰',
+    kind: 'exchange',
+    type: 'BUY',
+    date: '2026-05-20',
+    price: 2.2,
+    shares: 1000
+  }];
+  const metrics = computeSwitchChainMetrics(chain, transactions, {
+    '513100': {
+      code: '513100',
+      name: '纳指ETF国泰',
+      price: 2.365,
+      currentPrice: 2.365,
+      close: 2.365,
+      latestNav: 2.065,
+      latestNavDate: '2026-05-29'
+    }
+  });
+
+  assert.equal(metrics.valid, true);
+  assert.equal(metrics.segments[0].sellPrice, 2.365);
+  assert.equal(metrics.baselineEndPrice, 2.365);
+  assert.deepEqual(metrics.missingPriceCodes, []);
 });
 
 test('场内 ETF 行情时间不是今天时不显示今日收益', () => {

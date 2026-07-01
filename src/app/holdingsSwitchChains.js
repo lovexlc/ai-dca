@@ -23,6 +23,18 @@ export function normalizeSwitchChains(rawList) {
   return rawList.map(normalizeSwitchChain);
 }
 
+function resolveSnapshotCurrentPrice(snapshot = null, kind = '', code = '', name = '') {
+  const resolvedKind = normalizeFundKind(kind, code, name || snapshot?.name || '');
+  const candidates = resolvedKind === 'exchange'
+    ? [snapshot?.price, snapshot?.currentPrice, snapshot?.close, snapshot?.latestNav]
+    : [snapshot?.latestNav, snapshot?.currentPrice, snapshot?.price, snapshot?.close];
+  for (const candidate of candidates) {
+    const value = Number(candidate);
+    if (Number.isFinite(value) && value > 0) return round(value, 4);
+  }
+  return 0;
+}
+
 function emptyChainMetrics(extra = {}) {
   return {
     segments: [],
