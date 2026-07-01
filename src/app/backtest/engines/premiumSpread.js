@@ -10,12 +10,15 @@
 
 import { roundTo, clampNumber } from '../core/math.js';
 import {
-  normalizeBacktestCandles,
   shanghaiMinuteFromEpochSec,
   normalizeBacktestTimeframe
 } from '../core/candles.js';
-import { buildNavLookup } from '../core/nav.js';
 import { createTradeSimulator } from '../core/simulator.js';
+import {
+  buildPremiumLists,
+  buildPremiumPanel,
+  classifyPremiumCodes
+} from '../core/premiumPanel.js';
 
 function normalizeStrategy(input = {}) {
   return {
@@ -28,31 +31,6 @@ function normalizeStrategy(input = {}) {
     activeSide: ['H', 'L', 'all'].includes(input.activeSide) ? input.activeSide : 'all',
     initialSide: ['H', 'L'].includes(input.initialSide) ? input.initialSide : '',
     autoClassify: input.autoClassify !== false
-  };
-}
-
-function classifyByActualPremium(codes, navLookupByCode, closeByCode, anchorCandles) {
-  const avgPremiumByCode = {};
-  for (const code of codes) {
-    const samples = [];
-    for (const bar of anchorCandles) {
-      const close = closeByCode[code]?.get(bar.t)?.close;
-      const nav = navLookupByCode[code]?.(bar.date);
-      if (close > 0 && nav > 0) {
-        samples.push(((close - nav) / nav) * 100);
-      }
-    }
-    avgPremiumByCode[code] = samples.length
-      ? samples.reduce((sum, value) => sum + value, 0) / samples.length
-      : 0;
-  }
-
-  const sorted = codes.slice().sort((a, b) => avgPremiumByCode[b] - avgPremiumByCode[a]);
-  const mid = Math.ceil(sorted.length / 2);
-  return {
-    highCodes: sorted.slice(0, mid),
-    lowCodes: sorted.slice(mid),
-    avgPremiumByCode
   };
 }
 
@@ -113,36 +91,20 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     ...(strategy.lowCodes || [])
   ]));
 
-  // 构建K线和NAV查询
-  const candleMap = {};
-  for (const code of codes) {
-    candleMap[code] = normalizeBacktestCandles(
-      historyByCode?.[code]?.candles || historyByCode?.[code] || []
-    );
-  }
-
-  const anchorCode = codes.slice().sort((a, b) =>
-    (candleMap[b]?.length || 0) - (candleMap[a]?.length || 0)
-  )[0] || '';
-  const anchorCandles = candleMap[anchorCode] || [];
-
-  const closeByCode = Object.fromEntries(
-    codes.map((code) => [
-      code,
-      new Map((candleMap[code] || []).map((bar) => [bar.t, bar]))
-    ])
-  );
-
-  const navLookupByCode = Object.fromEntries(
-    codes.map((code) => [code, buildNavLookup(navHistoryByCode?.[code] || [])])
-  );
+  const panel = buildPremiumPanel({ codes, historyByCode, navHistoryByCode });
+  const {
+    anchorCode,
+    anchorCandles,
+    candleMap,
+    closeByCode,
+  } = panel;
 
   let highCodes = strategy.highCodes || [];
   let lowCodes = strategy.lowCodes || [];
   let avgPremiumByCode = null;
   let autoClassified = false;
   if (strategy.autoClassify && codes.length >= 2 && anchorCandles.length >= 10) {
-    const classified = classifyByActualPremium(codes, navLookupByCode, closeByCode, anchorCandles);
+    const classified = classifyPremiumCodes(panel, codes);
     const newHSet = new Set(classified.highCodes);
     const mismatch = highCodes.length !== classified.highCodes.length ||
       highCodes.some((code) => !newHSet.has(code));
@@ -180,8 +142,6 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
   const trades = [];
   const rows = [];
   const signals = [];
-  let completePriceRows = 0;
-  let completeNavRows = 0;
   let switchCount = 0; // 轮动次数统计
 
   // 溢价分类
@@ -231,38 +191,16 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     console.log('[premiumSpread] NAV查询函数已构建');
   }
 
-  for (const anchor of anchorCandles) {
-    const anchorDatetime = anchor.datetime || shanghaiMinuteFromEpochSec(anchor.t);
-    const premiums = {};
-    const currentPrices = {};
-    let hasAllPrices = true;
-    let hasAllNav = true;
-
-    // 获取当前行情
-    for (const code of codes) {
-      const bar = closeByCode[code].get(anchor.t);
-      if (!bar) {
-        hasAllPrices = false;
-        continue;
-      }
-      const nav = navLookupByCode[code](anchor.date);
-      if (!(nav > 0)) {
-        hasAllNav = false;
-        if (!silent && completeNavRows === 0) {
-          console.log('[premiumSpread] 第一次NAV缺失:', { date: anchor.date, code, nav });
-        }
-        continue;
-      }
-      currentPrices[code] = bar.close;
-      premiums[code] = roundTo(((bar.close - nav) / nav) * 100, 4);
-    }
-
-    if (hasAllPrices) completePriceRows += 1;
-    if (hasAllPrices && hasAllNav) completeNavRows += 1;
+  for (const panelRow of panel.rows) {
+    const anchor = panelRow.anchor;
+    const anchorDatetime = panelRow.datetime || shanghaiMinuteFromEpochSec(anchor.t);
+    const premiums = panelRow.premiums;
+    const currentPrices = panelRow.currentPrices;
+    const hasAllPrices = panelRow.hasAllPrices;
 
     // V2修复：即使数据不完整也继续，只是不执行交易
     // 这样至少能看到回测框架和数据覆盖率
-    const canTrade = hasAllPrices && hasAllNav;
+    const canTrade = panelRow.canTrade;
 
     if (!hasAllPrices) {
       // 没有价格数据，跳过这个时间点
@@ -276,12 +214,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     maxDrawdownPct = Math.min(maxDrawdownPct, drawdownPct);
 
     // 构建H/L列表
-    const highList = highCodes
-      .map((code) => ({ code, premiumPct: premiums[code] }))
-      .filter((item) => Number.isFinite(item.premiumPct));
-    const lowList = lowCodes
-      .map((code) => ({ code, premiumPct: premiums[code] }))
-      .filter((item) => Number.isFinite(item.premiumPct));
+    const { highList, lowList } = buildPremiumLists(panelRow, highCodes, lowCodes);
 
     // 初始化持仓（只在数据完整时）
     if (canTrade && (!currentCode || !Number.isFinite(premiums[currentCode]))) {
@@ -475,15 +408,13 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
 
   // 统计
   const sampleCount = rows.length;
-  const priceCoveragePct = anchorCandles.length
-    ? roundTo((completePriceRows / anchorCandles.length) * 100, 2)
-    : 0;
-  const navCoveragePct = completePriceRows
-    ? roundTo((completeNavRows / completePriceRows) * 100, 2)
-    : 0;
-  const dataCoveragePct = anchorCandles.length
-    ? roundTo((sampleCount / anchorCandles.length) * 100, 2)
-    : 0;
+  const {
+    completePriceRows,
+    completeNavRows,
+    priceCoveragePct,
+    navCoveragePct,
+    dataCoveragePct
+  } = panel.coverage;
 
   const totalProfit = roundTo(finalEquity - startEquity, 2);
   const totalReturnPct = startEquity > 0

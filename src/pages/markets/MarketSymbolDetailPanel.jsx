@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUp, Bell, CalendarClock, CalendarDays, Loader2, Search, Star, TrendingDown, TrendingUp, Wallet, X, BarChart3 } from 'lucide-react';
+import { ArrowUp, Bell, CalendarClock, CalendarDays, Loader2, Search, Shuffle, Star, TrendingDown, TrendingUp, Wallet, X, BarChart3 } from 'lucide-react';
 import { fetchKline, fetchQuotes, searchSymbols, CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsApi.js';
 import { getNavHistory, getNavSnapshot } from '../../app/navService.js';
 import { getXueqiuQuote } from '../../app/xueqiuQuote.js';
@@ -716,6 +716,15 @@ export function SymbolDetailPanel({
             >
               <Wallet size={14} />
               加入持仓
+            </button>
+            <button
+              type="button"
+              onClick={() => onMarketAction('fund-switch', row)}
+              className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full bg-violet-600 px-3 text-[12px] font-semibold text-white transition hover:bg-violet-700 sm:h-9 sm:px-3.5 sm:text-[13px]"
+              title="查看当前标的的基金切换机会"
+            >
+              <Shuffle size={14} />
+              切换分析
             </button>
             <button
               type="button"

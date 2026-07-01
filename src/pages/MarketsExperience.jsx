@@ -1129,13 +1129,13 @@ export function MarketsExperience() {
       symbolLength: symbol.length,
       source: 'symbol_detail',
     });
-    const route = action === 'holding-buy'
-      ? { tab: 'holdings', hash: '' }
-      : action === 'plan-new'
-        ? { tab: 'tradePlans', hash: '#new' }
-        : action === 'dca-new'
-          ? { tab: 'tradePlans', hash: '#dca-new' }
-          : { tab: 'tradePlans', hash: '#sell-new' };
+    const routeByAction = {
+      'holding-buy': { tab: 'holdings', hash: '' },
+      'plan-new': { tab: 'tradePlans', hash: '#new' },
+      'dca-new': { tab: 'tradePlans', hash: '#dca-new' },
+      'fund-switch': { tab: 'fundSwitch', search: `symbol=${encodeURIComponent(code || symbol)}` },
+    };
+    const route = routeByAction[action] || { tab: 'tradePlans', hash: '#sell-new' };
     window.dispatchEvent(new CustomEvent('workspace:navigate', { detail: route }));
   }, [market]);
 

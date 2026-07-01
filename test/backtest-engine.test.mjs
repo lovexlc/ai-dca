@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 
 import {
   buildPremiumSpreadInputFromLegacyRows,
+  buildPremiumPanel,
   buildNavLookup,
+  classifyPremiumCodes,
   createTradeSimulator,
   normalizeBacktestCandles,
   runBacktest,
@@ -51,6 +53,76 @@ test('unified backtest entry runs premium-spread strategy with one schema', () =
   assert.ok(Array.isArray(result.trades));
   assert.equal(result.chart.code, '513100');
   assert.equal(result.quality.passed, true);
+});
+
+test('premium panel aligns K-line and NAV data once before simulation', () => {
+  const panel = buildPremiumPanel({
+    codes: ['513100', '159501'],
+    historyByCode: {
+      '513100': premiumCandles(Array.from({ length: 12 }, () => 5)),
+      '159501': premiumCandles(Array.from({ length: 10 }, () => 1))
+    },
+    navHistoryByCode: {
+      '513100': [{ date: '2026-06-12', nav: 1 }],
+      '159501': [{ date: '2026-06-12', nav: 1 }]
+    }
+  });
+
+  assert.equal(panel.anchorCode, '513100');
+  assert.equal(panel.anchorCandles.length, 12);
+  assert.equal(panel.rows.length, 10);
+  assert.equal(panel.coverage.completePriceRows, 10);
+  assert.equal(panel.coverage.completeNavRows, 10);
+  assert.equal(panel.coverage.priceCoveragePct, 83.33);
+  assert.equal(panel.coverage.navCoveragePct, 100);
+  assert.equal(panel.rows[0].premiums['513100'], 5);
+  assert.equal(panel.rows[0].premiums['159501'], 1);
+  assert.equal(panel.getBar('159501', panel.rows[0].ts).close, 1.01);
+});
+
+test('premium panel classification uses realized average premium', () => {
+  const panel = buildPremiumPanel({
+    codes: ['159513', '513100'],
+    historyByCode: {
+      '159513': premiumCandles(Array.from({ length: 12 }, () => 2)),
+      '513100': premiumCandles(Array.from({ length: 12 }, () => 5))
+    },
+    navHistoryByCode: {
+      '159513': [{ date: '2026-06-12', nav: 1 }],
+      '513100': [{ date: '2026-06-12', nav: 1 }]
+    }
+  });
+
+  const classified = classifyPremiumCodes(panel);
+  assert.deepEqual(classified.highCodes, ['513100']);
+  assert.deepEqual(classified.lowCodes, ['159513']);
+  assert.equal(classified.avgPremiumByCode['513100'], 5);
+  assert.equal(classified.avgPremiumByCode['159513'], 2);
+});
+
+test('premium panel classification samples each code independently', () => {
+  const panel = buildPremiumPanel({
+    codes: ['513100', '159501'],
+    historyByCode: {
+      '513100': premiumCandles([
+        ...Array.from({ length: 10 }, () => 2),
+        8,
+        8
+      ]),
+      '159501': premiumCandles(Array.from({ length: 10 }, () => 2.5))
+    },
+    navHistoryByCode: {
+      '513100': [{ date: '2026-06-12', nav: 1 }],
+      '159501': [{ date: '2026-06-12', nav: 1 }]
+    }
+  });
+
+  const classified = classifyPremiumCodes(panel);
+  assert.equal(panel.rows.length, 10);
+  assert.deepEqual(classified.highCodes, ['513100']);
+  assert.deepEqual(classified.lowCodes, ['159501']);
+  assert.equal(classified.avgPremiumByCode['513100'], 3);
+  assert.equal(classified.avgPremiumByCode['159501'], 2.5);
 });
 
 test('deprecated premium-spread alias delegates to the unified engine', () => {

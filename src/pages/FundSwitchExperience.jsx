@@ -3,6 +3,18 @@ import { History, Settings2 } from 'lucide-react';
 import { cx } from '../components/experience-ui.jsx';
 import { FundSwitchAnalysisExperience } from './FundSwitchAnalysisExperience.jsx';
 import { trackFeatureEvent } from '../app/analytics.js';
+import { normalizeCnFundCode } from './markets/marketDisplayUtils.js';
+
+function useFundSwitchInitialSymbol() {
+  const [symbol, setSymbol] = useState('');
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('symbol') || '';
+    setSymbol(normalizeCnFundCode(raw) || raw.trim().toUpperCase());
+  }, []);
+  return symbol;
+}
 
 // PC：机会 + 复盘 同屏两列；App：子 tab 切换。
 const SwitchStrategyExperienceLazy = lazy(() =>
@@ -24,6 +36,7 @@ const MOBILE_TABS = [
 
 export function FundSwitchExperience({ links, inPagesDir = false, embedded = false } = {}) {
   const [mobileTab, setMobileTab] = useState('config');
+  const initialSymbol = useFundSwitchInitialSymbol();
 
   useEffect(() => {
     trackFeatureEvent('fund_switch', 'view_open', {
@@ -74,7 +87,7 @@ export function FundSwitchExperience({ links, inPagesDir = false, embedded = fal
         {/* 左：机会 / 规则 */}
         <div className={cx('min-w-0', mobileTab === 'analysis' ? 'hidden lg:block' : '')}>
           <Suspense fallback={<SubViewLoadingFallback />}>
-            <SwitchStrategyExperienceLazy links={links} inPagesDir={inPagesDir} embedded hideViewTabs initialView={mobileTab === 'config' ? 'config' : 'opportunity'} />
+            <SwitchStrategyExperienceLazy links={links} inPagesDir={inPagesDir} embedded hideViewTabs initialView={mobileTab === 'config' ? 'config' : 'opportunity'} initialSymbol={initialSymbol} />
           </Suspense>
         </div>
         {/* 右：复盘（PC 端 sticky 占满视口内可见区） */}

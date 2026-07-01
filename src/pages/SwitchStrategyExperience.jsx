@@ -50,7 +50,7 @@ function pickSwitchSnapshotForRule(snapshot, ruleId) {
   return snapshot;
 }
 
-export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false, initialView = 'opportunity', hideViewTabs = false } = {}) {
+export function SwitchStrategyExperience({ links, inPagesDir = false, embedded = false, initialView = 'opportunity', hideViewTabs = false, initialSymbol = '' } = {}) {
   const [prefs, setPrefs] = useState(readPrefs);
   // worker 最近一次计算里点击「查看候选」后弹出的详情 modal。
   // 为空时不渲染 modal；设为 { bench, sellLower, buyOther, cls } 后弹起。
@@ -145,6 +145,23 @@ export function SwitchStrategyExperience({ links, inPagesDir = false, embedded =
   useEffect(() => {
     setSwitchView(initialView === 'config' ? 'config' : 'opportunity');
   }, [initialView]);
+
+  // 从行情页等入口带进来的初始标的：自动加入当前规则的候选池并展示机会面板。
+  useEffect(() => {
+    const code = String(initialSymbol || '').trim().toUpperCase();
+    if (!code) return;
+    setPrefs((prev) => {
+      const current = getActiveSwitchRule(prev);
+      const enabledCodes = Array.isArray(current?.enabledCodes) ? current.enabledCodes : [];
+      if (enabledCodes.includes(code)) return prev;
+      trackFeatureEvent('switch_strategy', 'symbol_param_add', {
+        codeLength: code.length,
+        previousEnabledCount: enabledCodes.length
+      });
+      return updateActiveSwitchRule(prev, { enabledCodes: Array.from(new Set([...enabledCodes, code])) });
+    });
+    setSwitchView('opportunity');
+  }, [initialSymbol]);
 
   // 首次入页：从 worker 拉取配置 + 快照。失败不阻断 UI（本地缓存仍可用）。
   useEffect(() => {

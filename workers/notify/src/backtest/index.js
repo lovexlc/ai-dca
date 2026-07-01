@@ -40,6 +40,7 @@ export { buildSampleBacktestRows };
 export { roundTo, clampNumber } from './core/math.js';
 export { normalizeBacktestCandles } from './core/candles.js';
 export { buildNavLookup } from './core/nav.js';
+export { buildPremiumLists, buildPremiumPanel, classifyPremiumCodes } from './core/premiumPanel.js';
 export { buildPremiumSpreadInputFromLegacyRows } from './core/legacyRows.js';
 export { PositionState, AccountState } from './core/account.js';
 export { createTradeSimulator } from './core/simulator.js';

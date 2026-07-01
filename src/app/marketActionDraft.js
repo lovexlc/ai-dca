@@ -1,6 +1,6 @@
 export const MARKET_ACTION_DRAFT_KEY = 'aiDcaMarketActionDraft';
 
-const VALID_ACTIONS = new Set(['holding-buy', 'plan-new', 'dca-new', 'sell-new']);
+const VALID_ACTIONS = new Set(['holding-buy', 'plan-new', 'dca-new', 'sell-new', 'fund-switch']);
 
 function normalizeKind(value = '') {
   const kind = String(value || '').trim();
