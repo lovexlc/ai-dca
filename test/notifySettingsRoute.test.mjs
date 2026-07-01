@@ -155,6 +155,7 @@ test('buildPublicGcmSetup: returns current browser registrations plus a bounded 
   assert.equal(setup.webWsCurrentClientRegistrationCount, 1);
   assert.equal(setup.webWsRegistrations.length, 20);
   assert.equal(setup.webWsRegistrations[0].deviceInstallationId, `web-ws:${currentClientId}`);
+  assert.deepEqual(setup.webWsRegistrations[0].capabilities, ['notify', 'market']);
 });
 
 test('notify ws register: bootstraps new web client and prunes old websocket registrations', async () => {
@@ -192,5 +193,36 @@ test('notify ws register: bootstraps new web client and prunes old websocket reg
   assert.equal(payload.deviceInstallationId, 'web-ws:web:new-client');
   assert.equal(storedSettings.clients['web:new-client'].clientLabel, 'New Client');
   assert.equal(storedSettings.gcmRegistrations.length, 64);
-  assert.ok(storedSettings.gcmRegistrations.some((registration) => registration.deviceInstallationId === 'web-ws:web:new-client'));
+  const storedRegistration = storedSettings.gcmRegistrations.find((registration) => registration.deviceInstallationId === 'web-ws:web:new-client');
+  assert.ok(storedRegistration);
+  assert.deepEqual(storedRegistration.capabilities, ['notify', 'market']);
+});
+
+test('notify ws register: stores market-only capability for realtime market data', async () => {
+  const env = {
+    NOTIFY_STATE: createMemoryKv({
+      'notify:settings': JSON.stringify({
+        clients: {},
+        gcmRegistrations: []
+      })
+    })
+  };
+  const response = await notifyWorker.fetch(new Request('https://tools.freebacktrack.tech/api/notify/ws/register', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      clientId: 'web:market-client',
+      clientSecret: 'market-client-secret',
+      clientLabel: 'Market Client',
+      capabilities: ['market']
+    })
+  }), env);
+  const payload = await response.json();
+  const storedSettings = JSON.parse(await env.NOTIFY_STATE.get('notify:settings'));
+  const storedRegistration = storedSettings.gcmRegistrations.find((registration) => registration.deviceInstallationId === 'web-ws:web:market-client');
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.ok, true);
+  assert.ok(storedRegistration);
+  assert.deepEqual(storedRegistration.capabilities, ['market']);
 });

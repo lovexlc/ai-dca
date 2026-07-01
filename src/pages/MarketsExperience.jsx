@@ -598,7 +598,7 @@ export function MarketsExperience() {
 
   // ---- WS 行情订阅：自选代码变化时重新订阅 ----
   useEffect(() => {
-    const symbols = requestedWatchSymbols || [];
+    const symbols = trackedWatchSymbols || [];
     if (!symbols.length) return;
     if (typeof window !== 'undefined' && typeof window.__aiDcaSubscribeMarketData === 'function') {
       window.__aiDcaSubscribeMarketData(symbols);
@@ -608,7 +608,7 @@ export function MarketsExperience() {
         activeWatchlistType: activeWatchList?.type || ''
       });
     }
-  }, [requestedWatchSymbols]);
+  }, [trackedWatchSymbols, market, activeWatchList?.type]);
 
   // ---- WS 行情推送：接收实时价格更新 ----
   useEffect(() => {

@@ -51,22 +51,45 @@ function buildWsUrl(deviceInstallationId, token) {
  * @param {object} opts
  * @param {string} opts.clientId - web:<uuid> 格式的客户端 ID
  * @param {string} opts.clientSecret - 客户端密钥
+ * @param {string} [opts.clientLabel] - 客户端显示名
+ * @param {boolean} [opts.enableMarketData] - 是否启用行情数据订阅能力
  * @param {function} [opts.onStatusChange] - 连接状态回调：'connecting' | 'connected' | 'reconnecting' | 'fallback' | 'stopped'
  * @param {boolean} [opts.debug] - 是否输出调试日志
- * @returns {{ disconnect: function, getStatus: function }}
+ * @returns {{ disconnect: function, getStatus: function, subscribeMarketData: function }}
  */
-export function startNotifyRealtime({ clientId, clientSecret, onStatusChange, debug = false } = {}) {
+export function startNotifyRealtime({
+  clientId,
+  clientSecret,
+  clientLabel = '',
+  enableMarketData = false,
+  onStatusChange,
+  debug = false
+} = {}) {
   // 停止前一个实例
   if (currentInstance) {
     currentInstance.disconnect();
   }
 
+  const noopInstance = {
+    disconnect: () => {},
+    getStatus: () => 'stopped',
+    subscribeMarketData: () => {}
+  };
+
   if (typeof window === 'undefined' || !clientId || !clientSecret) {
-    return { disconnect: () => {}, getStatus: () => 'stopped' };
+    return noopInstance;
   }
 
-  if (!readWebNotifyConfig().pcEnabled) {
-    return { disconnect: () => {}, getStatus: () => 'stopped' };
+  function isPcNotificationReady() {
+    const config = readWebNotifyConfig();
+    const state = getWebNotifyState();
+    return Boolean(config.pcEnabled && state.supported && state.permission === 'granted');
+  }
+
+  const notificationsEnabledAtStart = isPcNotificationReady();
+  const marketDataEnabled = Boolean(enableMarketData);
+  if (!notificationsEnabledAtStart && !marketDataEnabled) {
+    return noopInstance;
   }
 
   let stopped = false;
@@ -79,6 +102,13 @@ export function startNotifyRealtime({ clientId, clientSecret, onStatusChange, de
   let deviceInstallationId = null;
   let wsToken = null;
   let pollerStop = null;
+
+  function buildCapabilities() {
+    const capabilities = [];
+    if (isPcNotificationReady()) capabilities.push('notify');
+    if (marketDataEnabled) capabilities.push('market');
+    return capabilities;
+  }
 
   function setStatus(newStatus) {
     if (status === newStatus) return;
@@ -108,8 +138,12 @@ export function startNotifyRealtime({ clientId, clientSecret, onStatusChange, de
     stopPoller();
     cleanupWs();
     cleanupTimers();
-    setStatus('fallback');
+    if (!isPcNotificationReady()) {
+      setStatus('stopped');
+      return;
+    }
 
+    setStatus('fallback');
     pollerStop = startFallbackPoller({ clientId, debug });
   }
 
@@ -222,6 +256,11 @@ export function startNotifyRealtime({ clientId, clientSecret, onStatusChange, de
   }
 
   function handleNotifyFrame(frame) {
+    if (!isPcNotificationReady()) {
+      if (debug) console.info('[notifyWs] notify frame ignored: PC notification disabled');
+      return;
+    }
+
     const data = frame.data || {};
     const title = String(data.title || data.summary || '交易提醒');
     const body = String(data.body || data.message || '');
@@ -333,7 +372,12 @@ export function startNotifyRealtime({ clientId, clientSecret, onStatusChange, de
       const res = await fetch(apiUrl(WS_CONNECT_URL), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ clientId, clientSecret })
+        body: JSON.stringify({
+          clientId,
+          clientSecret,
+          clientLabel,
+          capabilities: buildCapabilities()
+        })
       });
 
       if (!res.ok) {

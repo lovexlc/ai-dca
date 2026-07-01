@@ -17,6 +17,7 @@ import { requireAdminToken } from './security.js';
 
 const MAX_STORED_WEB_WS_REGISTRATIONS = 64;
 const WS_PATH_PREFIX = '/api/notify/ws/';
+const WEB_WS_CAPABILITIES = new Set(['notify', 'market']);
 
 function safeDecodePathSegment(value = '') {
   try {
@@ -28,6 +29,20 @@ function safeDecodePathSegment(value = '') {
 
 function webWsRegistrationTime(registration = {}) {
   return Date.parse(String(registration?.updatedAt || registration?.createdAt || '')) || 0;
+}
+
+function normalizeRequestedCapabilities(value) {
+  const raw = Array.isArray(value)
+    ? value
+    : (typeof value === 'string' ? value.split(',') : []);
+  const capabilities = [];
+  for (const item of raw) {
+    const capability = String(item || '').trim().toLowerCase();
+    if (WEB_WS_CAPABILITIES.has(capability) && !capabilities.includes(capability)) {
+      capabilities.push(capability);
+    }
+  }
+  return capabilities.length ? capabilities : ['notify', 'market'];
 }
 
 function pruneWebWsRegistrations(registrations = [], keepDeviceInstallationId = '') {
@@ -74,6 +89,7 @@ export async function handleWebWsRegister(request, env) {
   }
 
   const requestedClientLabel = normalizeClientName(payload?.clientLabel || payload?.label || payload?.clientName || '');
+  const capabilities = normalizeRequestedCapabilities(payload?.capabilities);
   const shouldBootstrapClient = !existingClient || !String(existingClient.clientSecretHash || '').trim();
   const shouldUpdateClientLabel = requestedClientLabel && requestedClientLabel !== String(existingClient?.clientLabel || '').trim();
   if (shouldBootstrapClient || shouldUpdateClientLabel) {
@@ -96,6 +112,7 @@ export async function handleWebWsRegister(request, env) {
     packageName: '',
     token: wsToken,
     isWebClient: true,
+    capabilities,
     pairedClients: [{
       clientId,
       groupId: existingClient.notifyGroupId || clientId,

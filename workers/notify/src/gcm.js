@@ -12,6 +12,32 @@ export function isWebWsRegistration(registration = {}) {
     || String(registration?.deviceInstallationId || registration?.id || '').startsWith('web-ws:');
 }
 
+const WEB_WS_CAPABILITY_SET = new Set(['notify', 'market']);
+const LEGACY_WEB_WS_CAPABILITIES = ['notify', 'market'];
+
+export function normalizeWebWsCapabilities(registration = {}) {
+  const rawCapabilities = Array.isArray(registration?.capabilities)
+    ? registration.capabilities
+    : (typeof registration?.capabilities === 'string' ? registration.capabilities.split(',') : []);
+  const capabilities = [];
+  for (const capability of rawCapabilities) {
+    const normalized = String(capability || '').trim().toLowerCase();
+    if (WEB_WS_CAPABILITY_SET.has(normalized) && !capabilities.includes(normalized)) {
+      capabilities.push(normalized);
+    }
+  }
+  if (!capabilities.length && isWebWsRegistration(registration)) {
+    return LEGACY_WEB_WS_CAPABILITIES.slice();
+  }
+  return capabilities;
+}
+
+export function hasWebWsCapability(registration = {}, capability = '') {
+  const normalizedCapability = String(capability || '').trim().toLowerCase();
+  if (!normalizedCapability) return false;
+  return normalizeWebWsCapabilities(registration).includes(normalizedCapability);
+}
+
 export function normalizeGcmPairedClients(pairedClients = []) {
   return Array.isArray(pairedClients)
     ? pairedClients.map((client) => ({
@@ -69,6 +95,7 @@ export function normalizeGcmRegistrations(registrations = []) {
           lastCheckedAt: String(registration?.lastCheckedAt || '').trim(),
           lastCheckStatus: String(registration?.lastCheckStatus || '').trim(),
           lastCheckDetail: String(registration?.lastCheckDetail || '').trim(),
+          capabilities: normalizeWebWsCapabilities({ ...registration, id: normalizedId, deviceInstallationId: normalizedDeviceInstallationId }),
           pairedClients: normalizeGcmPairedClients(registration?.pairedClients),
           pairingCodeHash: String(registration?.pairingCodeHash || '').trim(),
           pairingCodeIssuedAt: String(registration?.pairingCodeIssuedAt || '').trim(),
@@ -94,6 +121,7 @@ export function buildPublicGcmRegistration(registration = {}, options = {}) {
     senderId: normalizedRegistration.senderId,
     tokenMasked: maskSecret(normalizedRegistration.token),
     isWebClient: Boolean(normalizedRegistration.isWebClient) || String(normalizedRegistration.deviceInstallationId || normalizedRegistration.id || '').startsWith('web-ws:'),
+    capabilities: normalizeWebWsCapabilities(normalizedRegistration),
     createdAt: normalizedRegistration.createdAt,
     updatedAt: normalizedRegistration.updatedAt,
     lastCheckedAt: normalizedRegistration.lastCheckedAt,

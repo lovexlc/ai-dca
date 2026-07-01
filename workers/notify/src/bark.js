@@ -11,7 +11,7 @@
 // Legacy alias: /api/notify/bark/... is still accepted for back-compat with
 // any out-of-tree callers, but the client UI no longer surfaces it.
 
-import { normalizeGcmRegistrations } from './gcm.js';
+import { hasWebWsCapability, normalizeGcmRegistrations } from './gcm.js';
 import { tryPublishWs } from './wsHub.js';
 
 const QUICK_PATH_PREFIX = '/api/notify/quick/';
@@ -140,7 +140,7 @@ export async function handleBark(request, env, deps = {}) {
   const settings = await readSettings(env);
   const registrations = normalizeGcmRegistrations(settings && settings.gcmRegistrations);
   const registration = findRegistrationByKey(registrations, key);
-  if (!registration || !registration.token) {
+  if (!registration || !registration.token || !hasWebWsCapability(registration, 'notify')) {
     return jsonResponse({
       ok: false,
       code: 404,

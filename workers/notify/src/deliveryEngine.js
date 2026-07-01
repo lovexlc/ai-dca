@@ -1,6 +1,12 @@
 import { sendBarkNotification } from './channels/bark.js';
 import { sendServerChan3Notification } from './channels/serverChan3.js';
-import { isRegistrationPairedToScope, normalizeGcmRegistrations, normalizeNotifyGroupId } from './gcm.js';
+import {
+  hasWebWsCapability,
+  isRegistrationPairedToScope,
+  isWebWsRegistration,
+  normalizeGcmRegistrations,
+  normalizeNotifyGroupId
+} from './gcm.js';
 import { tryPublishWs } from './wsHub.js';
 
 export const MAX_RECENT_EVENTS = 30;
@@ -44,11 +50,6 @@ function selectGcmRegistrationsForDelivery(registrations = [], { currentClientId
     .slice(0, limit);
 }
 
-function isWebWsRegistration(registration = {}) {
-  return Boolean(registration?.isWebClient)
-    || String(registration?.deviceInstallationId || registration?.id || '').startsWith('web-ws:');
-}
-
 function normalizeDeliveryTargetChannels(channels = null) {
   if (!channels) return null;
   const list = Array.isArray(channels) ? channels : [channels];
@@ -88,6 +89,7 @@ export async function deliverNotification(env, notification, options = {}) {
   const gcmRegistrations = normalizeGcmRegistrations(settings.gcmRegistrations);
   const selectedWsRegistrations = gcmRegistrations.filter((registration) => (
     isWebWsRegistration(registration)
+    && hasWebWsCapability(registration, 'notify')
     && (
     isRegistrationPairedToScope(registration, {
       clientId: currentClientId,

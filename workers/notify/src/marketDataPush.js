@@ -5,6 +5,7 @@
 
 import { getSubscriptionSnapshot, tryPublishPrices } from './wsHub.js';
 import { readSettings } from './notifyStorage.js';
+import { hasWebWsCapability } from './gcm.js';
 
 // markets worker 的基础 URL（与前端 marketsApi.js 一致）
 const MARKETS_API_BASE = 'https://api.freebacktrack.tech/api/markets';
@@ -202,6 +203,7 @@ export async function runMarketDataPush(env) {
 
   // 只扫描 WebSocket 虚拟设备；没有在线连接/订阅时不请求上游行情源。
   const allDeviceIds = registrations
+    .filter((r) => hasWebWsCapability(r, 'market'))
     .map((r) => String(r?.deviceInstallationId || r?.id || '').trim())
     .filter(isWebWsDeviceId);
 

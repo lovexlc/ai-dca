@@ -26,6 +26,45 @@ function buildNotification() {
   };
 }
 
+function buildWsEnv({ capabilities = ['notify', 'market'], delivered = 1 } = {}) {
+  let publishCalls = 0;
+  return {
+    env: {
+      __notifyCurrentClientId: 'web:client-1',
+      __notifySettings: {
+        clientLabel: 'Web console',
+        gcmRegistrations: [{
+          id: 'web-ws:web:client-1',
+          deviceInstallationId: 'web-ws:web:client-1',
+          deviceName: 'Current browser',
+          token: 'ws-token',
+          isWebClient: true,
+          capabilities,
+          pairedClients: [{ clientId: 'web:client-1', groupId: 'web:client-1' }]
+        }]
+      },
+      WS_HUB: {
+        idFromName(name) {
+          return name;
+        },
+        get() {
+          return {
+            async fetch() {
+              publishCalls += 1;
+              return new Response(JSON.stringify({ delivered, failed: 0, total: delivered }), {
+                headers: { 'content-type': 'application/json' }
+              });
+            }
+          };
+        }
+      }
+    },
+    getPublishCalls() {
+      return publishCalls;
+    }
+  };
+}
+
 test('deliverNotification: targetChannels bark only skips ServerChan3 and PC', async (t) => {
   const originalFetch = globalThis.fetch;
   const calls = [];
@@ -66,4 +105,28 @@ test('deliverNotification: targetChannels serverchan3 only skips Bark and PC', a
   assert.equal(calls.length, 1);
   assert.match(calls[0], /^https:\/\/uid-test\.push\.ft07\.com\/send\//);
   assert.deepEqual(result.results.map((item) => item.channel), ['serverchan3']);
+});
+
+test('deliverNotification: market-only websocket registration is not used for PC notifications', async () => {
+  const { env, getPublishCalls } = buildWsEnv({ capabilities: ['market'] });
+
+  const result = await deliverNotification(env, buildNotification(), {
+    targetChannels: ['pc']
+  });
+
+  assert.equal(getPublishCalls(), 0);
+  assert.equal(result.status, 'delivered');
+  assert.deepEqual(result.results.map((item) => `${item.channel}:${item.status}`), ['pc:queued']);
+});
+
+test('deliverNotification: notify-capable websocket registration receives PC notifications', async () => {
+  const { env, getPublishCalls } = buildWsEnv({ capabilities: ['notify', 'market'] });
+
+  const result = await deliverNotification(env, buildNotification(), {
+    targetChannels: ['pc']
+  });
+
+  assert.equal(getPublishCalls(), 1);
+  assert.equal(result.status, 'delivered');
+  assert.deepEqual(result.results.map((item) => `${item.channel}:${item.status}`), ['ws:delivered', 'ws:delivered']);
 });
