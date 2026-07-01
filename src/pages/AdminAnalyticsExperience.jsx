@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Activity, Bell, Bot, Calendar, ChevronDown, Clock, Eye, MousePointerClick, RefreshCw, ShieldCheck, Shuffle, Trash2, UserRound, Users } from 'lucide-react';
+import { Activity, Bell, Calendar, ChevronDown, Clock, Eye, MousePointerClick, RefreshCw, ShieldCheck, Shuffle, Trash2, UserRound, Users } from 'lucide-react';
 import { buildAnalyticsSummary, clearAnalyticsEvents, fetchRemoteAnalyticsSummary, isAnalyticsAdmin, trackAnalyticsEvent } from '../app/analytics.js';
 import { loadCloudSession } from '../app/authClient.js';
 import { cx } from '../components/experience-ui.jsx';
@@ -11,7 +11,6 @@ const RANGE_OPTIONS = [
   { key: 90, label: '90 天' }
 ];
 const CHART_INITIAL_DIMENSION = { width: 1, height: 1 };
-const UMAMI_SHARE_URL = 'https://cloud.umami.is/analytics/us/share/xnYvpAacsvCInEHo';
 
 function Card({ title, value, icon: Icon, hint }) {
   return (
@@ -150,7 +149,6 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
     { title: 'PV', value: summary.cards.pv, icon: Eye, hint: `${rangeDays} 天页面访问` },
     { title: 'UV', value: summary.cards.uv, icon: MousePointerClick, hint: '按访客 ID 去重' },
     { title: 'Worker 跑切换', value: summary.cards.switchRuns, icon: Shuffle, hint: '切换运行/使用次数' },
-    { title: 'AI 使用人数', value: summary.cards.aiUsers, icon: Bot, hint: '发送 AI 请求用户' },
     { title: '会话数', value: summary.engagement?.sessions || 0, icon: Activity, hint: `用户 ${summary.engagement?.sessionUsers || 0} · 心跳 ${summary.engagement?.heartbeats || 0}` },
     { title: '平均活跃', value: formatDuration(summary.engagement?.avgActiveTimeMs), icon: Clock, hint: `平均滚动 ${Math.round(Number(summary.engagement?.avgScrollPct) || 0)}%` }
   ];
@@ -162,7 +160,7 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700"><Activity className="h-3.5 w-3.5" />管理员数据看板</div>
             <h1 className="mt-3 text-2xl font-bold text-slate-900">站点与功能统计</h1>
-            <p className="mt-1 text-sm text-slate-500">嵌入 Umami 共享看板，并保留站内功能统计；远程汇总失败时回落本地轻量事件。</p>
+            <p className="mt-1 text-sm text-slate-500">展示站内功能统计；远程汇总失败时回落本地轻量事件。</p>
             <div className="mt-2 text-xs text-slate-400">{remoteStatus === 'ready' ? '数据源：远程 D1 汇总' : remoteStatus === 'loading' ? '正在读取远程统计…' : `数据源：本地事件${remoteError ? ` · ${remoteError}` : ''}`}</div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -174,16 +172,6 @@ export function AdminAnalyticsExperience({ embedded = false } = {}) {
           </div>
         </div>
       </header>
-
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">Umami 访问统计</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Umami Cloud 当前会被浏览器安全策略拦截 iframe 嵌入。这里保留原始共享看板入口，避免数据页出现空白或控制台安全错误。</p>
-          </div>
-          <a className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800" href={UMAMI_SHARE_URL} target="_blank" rel="noreferrer">打开原始看板</a>
-        </div>
-      </section>
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {cards.map((card) => <Card key={card.title} {...card} />)}
