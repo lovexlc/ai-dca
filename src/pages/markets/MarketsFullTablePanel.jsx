@@ -45,7 +45,7 @@ export function MarketsFullTablePanel({
     const filterCount = table?.getState?.().columnFilters?.length || 0;
     return (
       <div className="flex flex-col gap-3 border-b border-[#e8eaed] pb-3">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-start justify-between gap-3">
           {!searchOpen ? (
             <div className="flex min-w-0 items-end gap-3">
               <div className="min-w-0">
@@ -62,8 +62,7 @@ export function MarketsFullTablePanel({
               </div>
             </div>
           ) : null}
-          <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5">
-            {presetControls}
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 pt-4">
             {searchOpen ? (
               <div className="flex items-center gap-1.5">
                 <MarketSymbolSearchBox
@@ -124,6 +123,11 @@ export function MarketsFullTablePanel({
             {viewOptions}
           </div>
         </div>
+        {!searchOpen ? (
+          <div className="flex min-w-0 items-center">
+            {presetControls}
+          </div>
+        ) : null}
       </div>
     );
   };

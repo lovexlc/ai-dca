@@ -219,6 +219,24 @@ function writeTableViewPresets(presets) {
   writeJsonStorage(TABLE_VIEW_PRESETS_STORAGE_KEY, Array.isArray(presets) ? presets.slice(0, 12) : []);
 }
 
+function stableStringify(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function buildTableViewKey(state = {}) {
+  return stableStringify({
+    sorting: Array.isArray(state.sorting) ? state.sorting : [],
+    columnFilters: Array.isArray(state.columnFilters) ? state.columnFilters : [],
+    columnVisibility: state.columnVisibility && typeof state.columnVisibility === 'object' ? state.columnVisibility : {},
+  });
+}
+
 function normalizeTableViewState(value = {}, fallbackVisibility = {}) {
   return {
     sorting: Array.isArray(value.sorting) ? value.sorting : [{ id: 'heldRank', desc: true }, { id: 'changePercent', desc: true }],
@@ -699,28 +717,50 @@ export function MarketListTable({
     });
   }
 
+  const currentViewKey = useMemo(
+    () => buildTableViewKey({ sorting, columnFilters, columnVisibility: visibility }),
+    [sorting, columnFilters, visibility]
+  );
+
   const presetControls = dataTable ? (
     <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-      {viewPresets.map((preset) => (
-        <span key={preset.id} className="inline-flex h-8 max-w-[180px] items-center overflow-hidden rounded-full border border-[#dadce0] bg-white text-xs text-[#3c4043]">
-          <button
-            type="button"
-            onClick={() => applyViewState(preset.state)}
-            className="min-w-0 truncate px-3 py-1.5 hover:bg-[#f1f3f4]"
-            title={preset.name}
-          >
-            {preset.name}
-          </button>
-          <button
-            type="button"
-            onClick={() => deleteViewPreset(preset.id)}
-            aria-label={`删除筛选视图 ${preset.name}`}
-            className="inline-flex h-full w-7 shrink-0 items-center justify-center border-l border-[#e8eaed] text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
-          >
-            <Trash2 size={13} />
-          </button>
-        </span>
-      ))}
+      {viewPresets.map((preset) => {
+        const active = buildTableViewKey(normalizeTableViewState(preset.state, defaultColumnVisibility)) === currentViewKey;
+        return (
+          <span key={preset.id} className={cx(
+            'inline-flex h-8 max-w-[180px] items-center overflow-hidden rounded-full border text-xs transition',
+            active
+              ? 'border-[#1a73e8] bg-[#e8f0fe] text-[#174ea6] shadow-[inset_0_0_0_1px_rgba(26,115,232,0.12)]'
+              : 'border-[#dadce0] bg-white text-[#3c4043]'
+          )}>
+            <button
+              type="button"
+              onClick={() => applyViewState(preset.state)}
+              aria-pressed={active}
+              className={cx(
+                'min-w-0 truncate px-3 py-1.5 font-medium transition',
+                active ? 'hover:bg-[#d2e3fc]' : 'hover:bg-[#f1f3f4]'
+              )}
+              title={preset.name}
+            >
+              {preset.name}
+            </button>
+            <button
+              type="button"
+              onClick={() => deleteViewPreset(preset.id)}
+              aria-label={`删除筛选视图 ${preset.name}`}
+              className={cx(
+                'inline-flex h-full w-7 shrink-0 items-center justify-center border-l transition',
+                active
+                  ? 'border-[#c6dafc] text-[#174ea6] hover:bg-[#d2e3fc]'
+                  : 'border-[#e8eaed] text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#1f1f1f]'
+              )}
+            >
+              <Trash2 size={13} />
+            </button>
+          </span>
+        );
+      })}
       <button
         type="button"
         onClick={saveCurrentView}
