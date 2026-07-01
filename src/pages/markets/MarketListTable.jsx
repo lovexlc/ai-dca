@@ -263,6 +263,8 @@ export function MarketListTable({
   onColumnVisibilityChange,
   dataTableHeader,
   dataTableChrome,
+  dataTableViewOptionsProps,
+  tableChromeClassName,
   autoPinColumn = false,
   onVisibleSymbolsChange,
 }) {
@@ -771,7 +773,7 @@ export function MarketListTable({
     </div>
   ) : null;
 
-  const viewOptions = dataTable ? <DataTableViewOptions table={table} /> : null;
+  const viewOptions = dataTable ? <DataTableViewOptions table={table} {...dataTableViewOptionsProps} /> : null;
   const header = dataTable
     ? (typeof dataTableHeader === 'function'
       ? dataTableHeader({ table, viewOptions, presetControls })
@@ -816,6 +818,7 @@ export function MarketListTable({
           tableContainerClassName={compact ? 'rounded-xl' : undefined}
           tableClassName="min-w-max table-fixed"
           tableChrome={tableChrome}
+          tableChromeClassName={tableChromeClassName}
           className={cx(
             '[&_td]:text-right [&_td:first-child]:text-left [&_td:nth-child(2)]:text-left [&_th]:whitespace-nowrap',
             compact && '[&_table]:min-w-[360px] [&_td]:px-2 [&_td]:py-3 [&_th]:px-2 [&_th]:py-2 [&_td:nth-child(2)]:max-w-[160px] [&_td:nth-child(2)>div]:max-w-[160px]'

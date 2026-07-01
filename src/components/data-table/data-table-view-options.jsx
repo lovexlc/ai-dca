@@ -20,6 +20,7 @@ function DataTableViewOptions({
   table,
   disabled,
   label = "列设置",
+  iconOnly = false,
   searchPlaceholder = "搜索列...",
   presetActions = [],
   ...props
@@ -36,10 +37,13 @@ function DataTableViewOptions({
     role="combobox"
     variant="outline"
     size="sm"
-    className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap font-normal"
+    className={cn(
+      "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap font-normal",
+      iconOnly && "w-8 px-0"
+    )}
     disabled={disabled}
   ><Settings2 className="text-muted-foreground" />
-          {label}
+          {iconOnly ? <span className="sr-only">{label}</span> : label}
         </Button></PopoverTrigger><PopoverContent align="end" className="w-52 p-0" {...props}><Command><CommandInput placeholder={searchPlaceholder} /><CommandList><CommandEmpty>没有可切换的列</CommandEmpty>{presetActions.length ? <CommandGroup>{presetActions.map((action) => <CommandItem
     key={action.key || action.label}
     onSelect={action.onSelect}

@@ -171,8 +171,7 @@ export function MarketsFullTablePanel({
   const renderMobileTableChrome = ({ table, viewOptions, presetControls }) => {
     const filterCount = table?.getState?.().columnFilters?.length || 0;
     return (
-      <div className="flex min-h-[48px] flex-col gap-2 border-b border-[#e8eaed] px-3 py-2">
-        {presetControls}
+      <div className="flex h-11 min-w-0 items-center justify-between gap-2 px-2">
         {searchOpen ? (
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
             <MarketSymbolSearchBox
@@ -201,25 +200,30 @@ export function MarketsFullTablePanel({
           </div>
         ) : (
           <>
-            <div className="flex items-center gap-1.5">
+            <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="flex min-w-max items-center gap-1.5">
+                {presetControls}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
               {filterCount ? (
                 <button
                   type="button"
                   onClick={() => table.resetColumnFilters()}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-full border border-dashed border-[#dadce0] px-3 text-sm font-medium text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
+                  className="inline-flex h-8 items-center gap-1 rounded-full border border-dashed border-[#dadce0] px-2 text-xs font-medium text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
                 >
-                  <X size={15} /> 重置过滤
+                  <X size={14} /> 重置
                 </button>
               ) : null}
               <button
                 type="button"
                 onClick={onSearchToggle}
-                className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
+                aria-label={searchLabel}
+                title={searchLabel}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#5f6368] transition hover:bg-[#f1f3f4] hover:text-[#1f1f1f]"
               >
-                <Search size={16} /> {searchLabel}
+                <Search size={16} />
               </button>
-            </div>
-            <div className="flex shrink-0 items-center">
               {viewOptions}
             </div>
           </>
@@ -261,6 +265,8 @@ export function MarketsFullTablePanel({
           dataTable
           dataTableHeader={renderMobileHeader}
           dataTableChrome={renderMobileTableChrome}
+          dataTableViewOptionsProps={{ iconOnly: true }}
+          tableChromeClassName="min-h-0"
           autoPinColumn
           onVisibleSymbolsChange={onVisibleSymbolsChange}
           showLimitColumn={showLimitColumn}
