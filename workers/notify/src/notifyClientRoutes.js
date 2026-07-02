@@ -56,6 +56,15 @@ function requireCurrentClientId(request) {
   return currentClientId;
 }
 
+function splitMarketAlertsByVenue(alerts = []) {
+  return (Array.isArray(alerts) ? alerts : []).reduce((groups, alert) => {
+    const kind = String(alert?.fundKind || alert?.kind || '').trim().toLowerCase();
+    const venue = kind === 'otc' || kind === 'qdii' ? 'otc' : 'exchange';
+    groups[venue].push(alert);
+    return groups;
+  }, { exchange: [], otc: [] });
+}
+
 async function handleStatus(request, env) {
   const origin = readOrigin(request);
   let settings = await readSettings(env);
@@ -153,6 +162,9 @@ async function handleSync(request, env) {
   const currentClientId = auth.clientId;
   const existingClient = auth.clientRecord;
   const allowedRuleIds = new Set(compiled.allRules.map((rule) => rule.ruleId));
+  allowedRuleIds.add(`${currentClientId}:market-alerts:exchange`);
+  allowedRuleIds.add(`${currentClientId}:market-alerts:otc`);
+  allowedRuleIds.add(`${currentClientId}:holding-alerts`);
   const nextRuleStates = Object.entries(existingClient?.state?.ruleStates || {}).reduce((map, [ruleId, state]) => {
     if (allowedRuleIds.has(ruleId)) {
       map[ruleId] = state;
@@ -177,6 +189,12 @@ async function handleSync(request, env) {
   });
 
   await writeSettings(env, nextSettings);
+
+  const marketAlertGroups = splitMarketAlertsByVenue(payload.marketAlerts);
+  await Promise.all([
+    writeJson(env, `notify:market-alerts:${currentClientId}:exchange`, marketAlertGroups.exchange),
+    writeJson(env, `notify:market-alerts:${currentClientId}:otc`, marketAlertGroups.otc)
+  ]);
 
   // PR 2b尾巴：worker 侧 VIX 跨阈值推送。
   // rawPayload.vix 是客户端在 buildNotifySyncPayload() 中上传的 digest，

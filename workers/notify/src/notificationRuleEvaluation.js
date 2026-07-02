@@ -120,6 +120,8 @@ function normalizeQuoteEntry(symbol, item = {}) {
     previous_close: Number(item?.previousClose ?? item?.previousNav) || 0,
     change: Number(item?.change) || 0,
     change_percent: Number(item?.changePercent) || 0,
+    premium_rate: Number(item?.premiumPercent ?? item?.premium_rate),
+    premiumPercent: Number(item?.premiumPercent ?? item?.premium_rate),
     date: String(item?.quoteDate || item?.latestNavDate || '').trim(),
     datetime: String(item?.asOf || item?.updatedAt || '').trim(),
     source: String(item?.source || '').trim() || 'markets'

@@ -11,7 +11,8 @@ export function useMarketAlerts() {
   const handleOpenAlertDialog = useCallback((quote) => {
     setSelectedAlertSymbol({
       symbol: quote.symbol,
-      name: quote.name || quote.symbol
+      name: quote.name || quote.symbol,
+      fundKind: quote.fundKind || quote.kind || ''
     });
     setAlertDialogOpen(true);
   }, []);
@@ -31,6 +32,7 @@ export function useMarketAlerts() {
           type: 'market-alert',
           symbol: selectedAlertSymbol.symbol,
           name: selectedAlertSymbol.name,
+          fundKind: selectedAlertSymbol.fundKind,
           ...alertConfig,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()

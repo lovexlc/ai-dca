@@ -1043,6 +1043,8 @@ export function MarketsExperience() {
       marketCap: merged.marketCap ?? merged.marketCapital,
       exchange: merged.exchange || CN_ETF_PRESET_MAP[sym]?.exchange,
       currency: merged.currency || CN_ETF_PRESET_MAP[sym]?.currency,
+      fundKind: isOtc ? 'otc' : 'exchange',
+      kind: isOtc ? 'otc' : 'exchange',
       latestNav: merged.latestNav || snapshot?.latestNav,
       iopv: merged.iopv,
       premiumPercent: merged.premiumPercent ?? merged.premium_rate,

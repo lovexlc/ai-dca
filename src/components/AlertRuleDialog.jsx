@@ -16,23 +16,28 @@ export function AlertRuleDialog({
   const [enabled, setEnabled] = useState(initialRule?.enabled ?? true);
   const [cooldownHours, setCooldownHours] = useState(initialRule?.cooldownHours || 24);
   const [priceBase, setPriceBase] = useState(initialRule?.priceBase || 'daily'); // 'daily' | 'alert-day'
+  const isOtcFund = mode === 'market' && ['otc', 'qdii'].includes(String(initialRule?.fundKind || initialRule?.kind || '').toLowerCase());
 
   useEffect(() => {
     if (!open) return;
-    setAlertType(initialRule?.alertType || 'gain');
+    const nextAlertType = initialRule?.alertType || 'gain';
+    setAlertType(isOtcFund && (nextAlertType === 'premium' || nextAlertType === 'premium-below') ? 'gain' : nextAlertType);
     setThreshold(initialRule?.threshold || 5);
     setEnabled(initialRule?.enabled ?? true);
     setCooldownHours(initialRule?.cooldownHours || 24);
     setPriceBase(initialRule?.priceBase || 'daily');
-  }, [open, mode, initialRule?.id, initialRule?.symbol, initialRule?.alertType, initialRule?.threshold, initialRule?.enabled, initialRule?.cooldownHours, initialRule?.priceBase]);
+  }, [open, mode, initialRule?.id, initialRule?.symbol, initialRule?.alertType, initialRule?.threshold, initialRule?.enabled, initialRule?.cooldownHours, initialRule?.priceBase, isOtcFund]);
 
   const alertTypeOptions = mode === 'market'
-    ? [
+    ? (isOtcFund ? [
+        { value: 'gain', label: '涨幅超过' },
+        { value: 'loss', label: '跌幅超过' }
+      ] : [
         { value: 'gain', label: '涨幅超过' },
         { value: 'loss', label: '跌幅超过' },
         { value: 'premium', label: '溢价率超过' },
         { value: 'premium-below', label: '溢价率低于' }
-      ]
+      ])
     : [
         { value: 'gain', label: '持仓涨幅超过' },
         { value: 'loss', label: '持仓跌幅超过' }

@@ -5,19 +5,75 @@ import {
 } from './notificationRuleEvaluation.js';
 import { deliverNotification } from './deliveryEngine.js';
 
+const EXCHANGE_PREFIXES = new Set(['15', '50', '51', '52', '53', '54', '56', '58']);
+
+function getShanghaiParts(now = new Date()) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(now).reduce((map, part) => {
+    map[part.type] = part.value;
+    return map;
+  }, {});
+  return {
+    weekday: parts.weekday,
+    hhmm: Number(`${parts.hour || '00'}${parts.minute || '00'}`)
+  };
+}
+
+function isChinaExchangeTradingSession(now = new Date()) {
+  const { weekday, hhmm } = getShanghaiParts(now);
+  if (weekday === 'Sat' || weekday === 'Sun') return false;
+  return (hhmm >= 930 && hhmm <= 1130) || (hhmm >= 1300 && hhmm <= 1500);
+}
+
+function resolveRuleFundKind(rule = {}) {
+  const explicit = String(rule.fundKind || rule.kind || '').trim().toLowerCase();
+  if (explicit === 'exchange' || explicit === 'otc' || explicit === 'qdii') return explicit;
+  const symbol = String(rule.symbol || '').trim();
+  return /^\d{6}$/.test(symbol) && EXCHANGE_PREFIXES.has(symbol.slice(0, 2)) ? 'exchange' : '';
+}
+
+function isPremiumAlert(rule = {}) {
+  return rule.alertType === 'premium' || rule.alertType === 'premium-below';
+}
+
 export async function evaluateMarketAlertRules(env, rules, options = {}) {
-  const { clientId = '', settings = {}, readState, writeState } = options;
+  const { clientId = '', settings = {}, readState, writeState, now = new Date() } = options;
   if (!Array.isArray(rules) || !rules.length) return { skipped: 'no-rules' };
 
-  const latestMarketMap = await loadLatestMarketMap(env, rules.map(r => ({ symbol: r.symbol, fundKind: r.fundKind })), { forceRefresh: true });
+  const exchangeTrading = isChinaExchangeTradingSession(now);
+  const runnableRules = [];
+  const preSkipped = [];
+
+  for (const rule of rules) {
+    const fundKind = resolveRuleFundKind(rule);
+    if (fundKind === 'exchange' && !exchangeTrading) {
+      preSkipped.push({ ruleId: rule.ruleId, reason: 'exchange-market-closed' });
+      continue;
+    }
+    if ((fundKind === 'otc' || fundKind === 'qdii') && isPremiumAlert(rule)) {
+      preSkipped.push({ ruleId: rule.ruleId, reason: 'premium-unavailable-for-otc' });
+      continue;
+    }
+    runnableRules.push({ ...rule, fundKind });
+  }
+
+  if (!runnableRules.length) return { delivered: [], skipped: preSkipped };
+
+  const latestMarketMap = await loadLatestMarketMap(env, runnableRules.map(r => ({ symbol: r.symbol, fundKind: r.fundKind })), { forceRefresh: true });
 
   const prev = (typeof readState === 'function' ? (await readState()) : null) || {};
   const next = { ...prev };
-  const now = Date.now();
+  const nowMs = now instanceof Date ? now.getTime() : Date.now();
   const delivered = [];
-  const skipped = [];
+  const skipped = [...preSkipped];
 
-  for (const rule of rules) {
+  for (const rule of runnableRules) {
     const symbol = String(rule.symbol || '').trim();
     if (!symbol) continue;
 
@@ -46,7 +102,8 @@ export async function evaluateMarketAlertRules(env, rules, options = {}) {
     }
 
     const changePct = ((currentPrice - basePrice) / basePrice) * 100;
-    const premiumRate = Number(marketEntry.premium_rate) || 0;
+    const rawPremiumRate = Number(marketEntry.premium_rate ?? marketEntry.premiumPercent);
+    const premiumRate = Number.isFinite(rawPremiumRate) ? rawPremiumRate : null;
 
     let triggered = false;
     let actualValue = 0;
@@ -64,11 +121,19 @@ export async function evaluateMarketAlertRules(env, rules, options = {}) {
         valueLabel = `跌幅 ${Math.abs(changePct).toFixed(2)}%`;
         break;
       case 'premium':
+        if (premiumRate === null) {
+          skipped.push({ ruleId: rule.ruleId, reason: 'invalid-premium' });
+          continue;
+        }
         actualValue = premiumRate;
         triggered = premiumRate >= rule.threshold;
         valueLabel = `溢价率 ${premiumRate.toFixed(2)}%`;
         break;
       case 'premium-below':
+        if (premiumRate === null) {
+          skipped.push({ ruleId: rule.ruleId, reason: 'invalid-premium' });
+          continue;
+        }
         actualValue = premiumRate;
         triggered = premiumRate <= rule.threshold;
         valueLabel = `溢价率 ${premiumRate.toFixed(2)}%`;
@@ -84,7 +149,7 @@ export async function evaluateMarketAlertRules(env, rules, options = {}) {
     const prevAt = Number(state.lastPushedAt) || 0;
     const cooldownMs = (rule.cooldownHours || 24) * 60 * 60 * 1000;
 
-    if (now - prevAt < cooldownMs) {
+    if (nowMs - prevAt < cooldownMs) {
       skipped.push({ ruleId: rule.ruleId, reason: 'debounced', actualValue });
       continue;
     }
@@ -117,7 +182,7 @@ export async function evaluateMarketAlertRules(env, rules, options = {}) {
     env.__notifyCurrentClientId = clientId;
 
     const notification = {
-      eventId: buildNotificationEventId(rule.ruleId, `triggered:${actualValue.toFixed(2)}`, new Date(now)),
+      eventId: buildNotificationEventId(rule.ruleId, `triggered:${actualValue.toFixed(2)}`, new Date(nowMs)),
       eventType: 'market-alert',
       ruleId: rule.ruleId,
       title,
@@ -135,7 +200,7 @@ export async function evaluateMarketAlertRules(env, rules, options = {}) {
     try {
       const result = await deliverNotification(env, notification);
       delivered.push({ ruleId: rule.ruleId, symbol, actualValue, results: result?.results || [] });
-      next[rule.ruleId] = { lastPushedAt: now, lastPushedValue: actualValue };
+      next[rule.ruleId] = { lastPushedAt: nowMs, lastPushedValue: actualValue };
     } catch (error) {
       skipped.push({ ruleId: rule.ruleId, reason: 'delivery-error', detail: error.message });
     }

@@ -226,3 +226,55 @@ test('notify ws register: stores market-only capability for realtime market data
   assert.ok(storedRegistration);
   assert.deepEqual(storedRegistration.capabilities, ['market']);
 });
+
+test('notify sync: stores exchange and otc market alerts in separate KV keys', async () => {
+  const env = {
+    NOTIFY_STATE: createMemoryKv({
+      'notify:settings': JSON.stringify({
+        clients: {},
+        gcmRegistrations: []
+      })
+    })
+  };
+
+  const response = await notifyWorker.fetch(new Request('https://tools.freebacktrack.tech/api/notify/sync?clientId=web%3Aalerts', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-notify-client-secret': 'secret-alerts'
+    },
+    body: JSON.stringify({
+      clientId: 'web:alerts',
+      clientSecret: 'secret-alerts',
+      marketAlerts: [
+        {
+          id: 'market-alert:159509:premium-below',
+          symbol: '159509',
+          name: '纳指科技ETF景顺',
+          alertType: 'premium-below',
+          threshold: 15,
+          fundKind: 'exchange',
+          enabled: true
+        },
+        {
+          id: 'market-alert:021000:gain',
+          symbol: '021000',
+          name: '南方纳指 I',
+          alertType: 'gain',
+          threshold: 3,
+          fundKind: 'qdii',
+          enabled: true
+        }
+      ]
+    })
+  }), env);
+
+  const payload = await response.json();
+  const exchangeAlerts = JSON.parse(await env.NOTIFY_STATE.get('notify:market-alerts:web:alerts:exchange'));
+  const otcAlerts = JSON.parse(await env.NOTIFY_STATE.get('notify:market-alerts:web:alerts:otc'));
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.ok, true);
+  assert.deepEqual(exchangeAlerts.map((alert) => alert.symbol), ['159509']);
+  assert.deepEqual(otcAlerts.map((alert) => alert.symbol), ['021000']);
+});

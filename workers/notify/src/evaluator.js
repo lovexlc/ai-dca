@@ -26,6 +26,15 @@ function getDeliveryFailures(state = {}) {
   return typeof state?.deliveryFailures === 'object' && state.deliveryFailures ? state.deliveryFailures : {};
 }
 
+function splitMarketAlertRulesByVenue(rules = []) {
+  return (Array.isArray(rules) ? rules : []).reduce((groups, rule) => {
+    const kind = String(rule?.fundKind || '').trim().toLowerCase();
+    const venue = kind === 'otc' || kind === 'qdii' ? 'otc' : 'exchange';
+    groups[venue].push(rule);
+    return groups;
+  }, { exchange: [], otc: [] });
+}
+
 // PR 2b尾巴：worker 侧 VIX 跨阈值检测 + 24h 同级防抖。
 // 客户端在 sync payload 中附带 vix: { value, level, levelLabel, thresholds }。
 // 这里仅在「区间变动」时推送；same-level + 24h 内不重推。
@@ -574,43 +583,48 @@ export async function runNotificationCycle(env, payload = {}, storedState = {}, 
   }
 
   if (compiled.marketAlertRules?.length) {
-    const marketAlertStateKey = `${env.__notifyCurrentClientId}:market-alerts`;
-    const marketAlertResult = await evaluateMarketAlertRules(env, compiled.marketAlertRules, {
-      clientId: env.__notifyCurrentClientId,
-      settings: env.__notifySettings,
-      readState: async () => nextState.ruleStates[marketAlertStateKey] || {},
-      writeState: async (data) => { nextState.ruleStates[marketAlertStateKey] = data; }
-    });
-
-    for (const item of marketAlertResult.delivered || []) {
-      const action = buildNotificationDetailAction(env, 'markets', '', {
-        code: item.symbol,
-        trigger: 'market-alert',
-        ruleId: item.ruleId
+    const groupedMarketAlerts = splitMarketAlertRulesByVenue(compiled.marketAlertRules);
+    for (const [venue, venueRules] of Object.entries(groupedMarketAlerts)) {
+      if (!venueRules.length) continue;
+      const marketAlertStateKey = `${env.__notifyCurrentClientId}:market-alerts:${venue}`;
+      const marketAlertResult = await evaluateMarketAlertRules(env, venueRules, {
+        clientId: env.__notifyCurrentClientId,
+        settings: env.__notifySettings,
+        readState: async () => nextState.ruleStates[marketAlertStateKey] || {},
+        writeState: async (data) => { nextState.ruleStates[marketAlertStateKey] = data; },
+        now
       });
-      const event = {
-        id: `market-alert:${item.symbol}:${now.toISOString()}`,
-        eventType: 'market-alert',
-        ruleId: item.ruleId,
-        title: `${item.symbol} 市场预警`,
-        body: `触发值: ${item.actualValue.toFixed(2)}%`,
-        body_md: '',
-        summary: `${item.symbol} 市场预警`,
-        symbol: item.symbol,
-        strategyName: '',
-        triggerCondition: '',
-        purchaseAmount: '',
-        detailUrl: action.detailUrl,
-        links: action.links,
-        target: action.target,
-        params: action.params,
-        status: 'delivered',
-        channels: item.results,
-        createdAt: now.toISOString(),
-        reason
-      };
-      events.push(event);
-      recentEvents = appendEvent(recentEvents, event);
+
+      for (const item of marketAlertResult.delivered || []) {
+        const action = buildNotificationDetailAction(env, 'markets', '', {
+          code: item.symbol,
+          trigger: 'market-alert',
+          ruleId: item.ruleId
+        });
+        const event = {
+          id: `market-alert:${item.symbol}:${now.toISOString()}`,
+          eventType: 'market-alert',
+          ruleId: item.ruleId,
+          title: `${item.symbol} 市场预警`,
+          body: `触发值: ${item.actualValue.toFixed(2)}%`,
+          body_md: '',
+          summary: `${item.symbol} 市场预警`,
+          symbol: item.symbol,
+          strategyName: '',
+          triggerCondition: '',
+          purchaseAmount: '',
+          detailUrl: action.detailUrl,
+          links: action.links,
+          target: action.target,
+          params: action.params,
+          status: 'delivered',
+          channels: item.results,
+          createdAt: now.toISOString(),
+          reason
+        };
+        events.push(event);
+        recentEvents = appendEvent(recentEvents, event);
+      }
     }
   }
 

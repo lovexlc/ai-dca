@@ -43,6 +43,8 @@ export function buildOtcCandidate(code, fallback = {}, catalog = {}, resolveName
     name,
     market: 'cn',
     exchange: '场外基金',
+    fundKind: 'otc',
+    kind: 'otc',
     assetType: 'otc_fund',
     linkedSymbol: meta.link_to || fallback.linkedSymbol || '',
     indexKey: meta.index_key || fallback.indexKey || ''
@@ -93,6 +95,8 @@ export function buildOtcFundQuoteFromSnapshot(symbol, snapshot, fallback = {}, r
     name: resolveName(snapshot?.code || symbol || fallback.code, snapshot?.name || fallback.name || fallback.displayName || fallback.shortName, catalog),
     market: 'cn',
     exchange: '场外基金',
+    fundKind: 'otc',
+    kind: 'otc',
     currency: 'CNY',
     price: latestNav,
     previousClose: hasPrevious ? previousNav : latestNav,
