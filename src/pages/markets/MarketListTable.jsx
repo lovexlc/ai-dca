@@ -205,6 +205,7 @@ const PLAIN_TABLE_TOGGLE_COLUMNS = [
 const COLUMN_VISIBILITY_STORAGE_KEY = 'markets:columnVisibility';
 const TABLE_VIEW_STATE_STORAGE_KEY = 'markets:tableViewState:v1';
 const TABLE_VIEW_PRESETS_STORAGE_KEY = 'markets:tableViewPresets:v1';
+const TABLE_VIEW_SCOPE_MIGRATION_KEY = 'markets:tableViewScopeMigration:v1';
 
 function scopedStorageKey(baseKey, scope) {
   const normalizedScope = String(scope || '').trim();
@@ -251,6 +252,36 @@ function readTableViewPresets(key = TABLE_VIEW_PRESETS_STORAGE_KEY) {
 
 function writeTableViewPresets(presets, key = TABLE_VIEW_PRESETS_STORAGE_KEY) {
   writeJsonStorage(key, Array.isArray(presets) ? presets.slice(0, 12) : []);
+}
+
+function hasViewState(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length > 0;
+}
+
+function readInitialTableViewStorage(scope, stateKey, presetsKey) {
+  const scopedState = readTableViewState(stateKey);
+  const scopedPresets = readTableViewPresets(presetsKey);
+  const normalizedScope = String(scope || '').trim();
+  if (!normalizedScope || scopedPresets.length) {
+    return { state: scopedState, presets: scopedPresets };
+  }
+
+  const migratedScope = readJsonStorage(TABLE_VIEW_SCOPE_MIGRATION_KEY, '');
+  if (migratedScope) return { state: scopedState, presets: scopedPresets };
+
+  const legacyState = readTableViewState(TABLE_VIEW_STATE_STORAGE_KEY);
+  const legacyPresets = readTableViewPresets(TABLE_VIEW_PRESETS_STORAGE_KEY);
+  const shouldMigrateState = !hasViewState(scopedState) && hasViewState(legacyState);
+  const shouldMigratePresets = legacyPresets.length > 0;
+  if (!shouldMigrateState && !shouldMigratePresets) return { state: scopedState, presets: scopedPresets };
+
+  if (shouldMigrateState) writeTableViewState(legacyState, stateKey);
+  if (shouldMigratePresets) writeTableViewPresets(legacyPresets, presetsKey);
+  writeJsonStorage(TABLE_VIEW_SCOPE_MIGRATION_KEY, normalizedScope);
+  return {
+    state: shouldMigrateState ? legacyState : scopedState,
+    presets: shouldMigratePresets ? legacyPresets : scopedPresets,
+  };
 }
 
 function stableStringify(value) {
@@ -319,11 +350,12 @@ export function MarketListTable({
   };
   const viewStateStorageKey = scopedStorageKey(TABLE_VIEW_STATE_STORAGE_KEY, viewStorageScope);
   const viewPresetsStorageKey = scopedStorageKey(TABLE_VIEW_PRESETS_STORAGE_KEY, viewStorageScope);
-  const initialViewState = normalizeTableViewState(readTableViewState(viewStateStorageKey), defaultColumnVisibility);
+  const initialViewStorage = readInitialTableViewStorage(viewStorageScope, viewStateStorageKey, viewPresetsStorageKey);
+  const initialViewState = normalizeTableViewState(initialViewStorage.state, defaultColumnVisibility);
   const [sorting, setSorting] = useState(initialViewState.sorting);
   const [columnFilters, setColumnFilters] = useState(initialViewState.columnFilters);
   const [localVisibility, setLocalVisibility] = useState(initialViewState.columnVisibility);
-  const [viewPresets, setViewPresets] = useState(() => readTableViewPresets(viewPresetsStorageKey));
+  const [viewPresets, setViewPresets] = useState(initialViewStorage.presets);
   const limitFilterOptions = useMemo(() => getAvailableLimitFilterOptions(rows), [rows]);
   const isLatestChangeRow = (row) => {
     return isExpectedLatestChangeRow(row, todayDate);
