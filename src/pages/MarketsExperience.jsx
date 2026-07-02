@@ -24,7 +24,6 @@ import {
 } from '../app/marketsApi.js';
 import { useMarketsPageSync } from './markets/useMarketsPageSync.js';
 import { useVisibleMarketSymbols } from './markets/useVisibleMarketSymbols.js';
-import { useMarketKlineSnapshots } from './markets/useMarketKlineSnapshots.js';
 import { showActionToast } from '../app/toast.js';
 import { readLedgerState } from '../app/holdingsLedger.js';
 import { readTradeLedger, TRADE_LEDGER_UPDATED_EVENT } from '../app/tradeLedger.js';
@@ -65,6 +64,7 @@ import { AlertRuleDialog } from '../components/AlertRuleDialog.jsx';
 import { buildMarketActionDraft, writeMarketActionDraft } from '../app/marketActionDraft.js';
 const A_SHARE_MARKET = { key: 'cn', label: 'A股' };
 const US_MARKET = { key: 'us', label: '美股' };
+const EMPTY_KLINE_MAP = {};
 function normalizeMarketKey(value) {
   return value === US_MARKET.key ? US_MARKET.key : A_SHARE_MARKET.key;
 }
@@ -135,7 +135,7 @@ export function MarketsExperience() {
   const reqIdRef = useRef(0);
   const symbolSearchSeqRef = useRef(0);
   const watchOverlaySearchSeqRef = useRef(0);
-  const { klineMap, ensureKlines } = useMarketKlineSnapshots(fetchKline);
+  const klineMap = EMPTY_KLINE_MAP;
   const [sectors, setSectors] = useState([]);
   const [sectorsLoading, setSectorsLoading] = useState(false);
   // 侧边折叠状态：默认两组都展开。
@@ -256,7 +256,6 @@ export function MarketsExperience() {
       if (reqId !== reqIdRef.current) return;
       const list = Array.isArray(r.indexes) ? r.indexes : [];
       setIndices(list);
-      if (!selectedSymbolRef.current) ensureKlines(list.map((it) => it.symbol).filter(Boolean));
       setGeneratedAt(r.generatedAt || '');
       trackActionResult('markets', 'indices_refresh', 'success', {
         market,
@@ -276,7 +275,7 @@ export function MarketsExperience() {
     } finally {
       if (reqId === reqIdRef.current) setIndicesLoading(false);
     }
-  }, [market, ensureKlines]);
+  }, [market]);
   const refreshMovers = useCallback(async (forceRefresh = false) => {
     setMoversLoading(true);
     const startedAt = Date.now();
@@ -284,7 +283,6 @@ export function MarketsExperience() {
       const r = await fetchMovers(market, { direction: 'mixed', refresh: forceRefresh });
       const list = Array.isArray(r.list) ? r.list : [];
       setMovers(list);
-      if (!selectedSymbolRef.current) ensureKlines(list.map((it) => it.symbol).filter(Boolean));
       trackActionResult('markets', 'movers_refresh', 'success', {
         market,
         forceRefresh,
@@ -302,7 +300,7 @@ export function MarketsExperience() {
     } finally {
       setMoversLoading(false);
     }
-  }, [market, ensureKlines]);
+  }, [market]);
   const refreshNews = useCallback(async () => {
     setNewsLoading(true);
     try {
@@ -478,14 +476,13 @@ export function MarketsExperience() {
       const r = await fetchSectors(market, { refresh: forceRefresh });
       const list = Array.isArray(r && r.sectors) ? r.sectors : [];
       setSectors(list);
-      if (!selectedSymbolRef.current) ensureKlines(list.map((it) => it.symbol).filter(Boolean));
     } catch (err) {
       // 行业是增量信息，失败不弹 toast，避免骩扰。
       setSectors([]);
     } finally {
       setSectorsLoading(false);
     }
-  }, [market, ensureKlines]);
+  }, [market]);
   // 当 selectedSymbol / chartRange 变化时拉取对应 tf 的 candles。
   useEffect(() => {
     if (!selectedSymbol) return;
@@ -621,12 +618,6 @@ export function MarketsExperience() {
   useEffect(() => {
     refreshSectors(false);
   }, [refreshSectors]);
-
-  // 自选股迷你图只在总览态加载；进入详情后避免为侧栏批量补拉 1d K 线。
-  useEffect(() => {
-    if (selectedSymbol) return;
-    ensureKlines(requestedWatchSymbols);
-  }, [selectedSymbol, requestedWatchSymbols, ensureKlines]);
 
   useEffect(() => {
     const q = symbolInput.trim();
@@ -998,6 +989,15 @@ export function MarketsExperience() {
     const isOtc = isCnOtcFundQuote(merged) || (market === 'cn' && hasNasdaqOtcFund(code));
     const fundLimit = code ? fundLimitsByCode[code] || null : null;
     const fundMeta = code ? NASDAQ_OTC_FUND_MAP[code] || null : null;
+    const cachedHighPointHigh = Number(merged.highPoint?.high);
+    const cachedHighPoint = Number.isFinite(cachedHighPointHigh) && cachedHighPointHigh > 0
+      ? { ...merged.highPoint, high: cachedHighPointHigh, highDate: String(merged.highPoint?.highDate || '').trim(), source: merged.highPoint?.source || merged.highSource || 'daily-kline-365d' }
+      : null;
+    const quoteYearHigh = merged.yearHigh ?? merged.high52w ?? merged.high52Week ?? merged.fiftyTwoWeekHigh;
+    const rowYearHigh = market === 'cn' && !isOtc ? cachedHighPoint?.high : quoteYearHigh;
+    const rowHighDate = market === 'cn' && !isOtc
+      ? cachedHighPoint?.highDate
+      : (merged.highDate ?? merged.yearHighDate ?? merged.high52wDate);
 
     let baseMeta = '';
     if (isOtc) {
@@ -1015,10 +1015,13 @@ export function MarketsExperience() {
       change: merged.change,
       previousClose: merged.previousClose,
       historicalPercentile: merged.historicalPercentile,
+      highPoint: cachedHighPoint,
       allTimeHigh: merged.allTimeHigh ?? merged.all_time_high,
       all_time_high: merged.all_time_high,
       historicalHigh: merged.historicalHigh ?? merged.historyHigh ?? merged.history_high,
-      yearHigh: merged.yearHigh ?? merged.high52w ?? merged.high52Week ?? merged.fiftyTwoWeekHigh,
+      yearHigh: rowYearHigh,
+      yearHighDate: cachedHighPoint?.highDate ?? merged.yearHighDate,
+      highSource: cachedHighPoint?.source ?? merged.highSource,
       high52w: merged.high52w,
       high_52w: merged.high_52w,
       high52Week: merged.high52Week,
@@ -1029,7 +1032,7 @@ export function MarketsExperience() {
       highestPrice: merged.highestPrice,
       highest_price: merged.highest_price,
       maxPrice: merged.maxPrice ?? merged.max_price,
-      highDate: merged.highDate ?? merged.yearHighDate ?? merged.high52wDate,
+      highDate: rowHighDate,
       open: merged.open,
       high: merged.high,
       low: merged.low,
@@ -1354,8 +1357,8 @@ export function MarketsExperience() {
     return () => { /* keep the in-flight cache write; otherwise loading can stay true after rerender */ };
   }, [market, selectedSymbol, chartRange, chartCustomRange?.from, chartCustomRange?.to]);
 
-  const otcTableColumnProps = { showLimitColumn: isActiveOtcList && market === 'cn', hidePremiumColumn: isActiveOtcList && market === 'cn', hideTrendColumn: isActiveOtcList && market === 'cn' };
-  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshWatch, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, ...otcTableColumnProps };
+  const listTableColumnProps = { showLimitColumn: isActiveOtcList && market === 'cn', hidePremiumColumn: isActiveOtcList && market === 'cn', hideTrendColumn: true };
+  const fullTablePanelProps = { fullTableMode, rows: activeSidebarRows, activeWatchListName: activeWatchList?.name, watchLists, activeWatchListId: watch.activeListId, market, klineMap, selectedSymbol, onSelectWatchlist: handleSelectWatchlist, onCreateWatchlist: handleCreateWatchlist, onRenameWatchlist: handleRenameWatchlist, onDeleteWatchlist: handleDeleteWatchlist, onSelectSymbol: handleSelectSymbol, searchOpen: watchOverlaySearchOpen, searchValue: watchOverlaySearchInput, searchResults: watchOverlaySearchResults, searchLoading: watchOverlaySearchLoading, searchError: watchOverlaySearchError, watchSymbols, onSearchToggle: handleToggleWatchOverlaySearch, onSearchChange: setWatchOverlaySearchInput, onSearchClear: handleClearWatchOverlaySearch, onSearchResultSelect: handlePickSymbolSearch, onSearchResultAdd: handleAddSearchResult, onRefresh: refreshWatch, refreshing: watchLoading, onVisibleSymbolsChange: handleVisibleWatchSymbolsChange, ...listTableColumnProps };
 
   return (
     <>
@@ -1387,7 +1390,7 @@ export function MarketsExperience() {
       onClose={() => { setWatchListExpanded(false); setWatchOverlaySearchOpen(false); handleClearWatchOverlaySearch(); }}
       onCreate={handleCreateWatchlist}
       onSelect={handleSelectSymbol}
-      {...otcTableColumnProps}
+      {...listTableColumnProps}
     />
     <div className={cx(
       "flex flex-col gap-5 lg:grid lg:h-[calc(100vh-6rem)] lg:min-h-0 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-stretch lg:gap-4 lg:overflow-hidden lg:pb-0 xl:grid-cols-[320px_minmax(0,1fr)]",
@@ -1434,7 +1437,7 @@ export function MarketsExperience() {
         onSubmitSymbol={handleAddSymbol}
         onPickSymbolSearch={handlePickSymbolSearch}
         onSelectSymbol={handleSelectSymbol}
-        {...otcTableColumnProps}
+        {...listTableColumnProps}
         mobileHidden={fullTableMode && !selectedSymbol}
         desktopHidden={fullTableMode && !selectedSymbol}
       />

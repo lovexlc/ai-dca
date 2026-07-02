@@ -72,8 +72,10 @@ export async function searchSymbols(market, query, { limit = 8, signal } = {}) {
   return getJson('/search?market=' + encodeURIComponent(market) + '&q=' + encodeURIComponent(q) + '&limit=' + encodeURIComponent(limit), { signal });
 }
 
-export async function fetchKline(symbol, { timeframe = '1d' } = {}) {
-  return getJson('/kline/' + encodeURIComponent(symbol) + '?tf=' + encodeURIComponent(timeframe));
+export async function fetchKline(symbol, { timeframe = '1d', limit = '' } = {}) {
+  const params = new URLSearchParams({ tf: timeframe });
+  if (limit) params.set('limit', String(limit));
+  return getJson('/kline/' + encodeURIComponent(symbol) + '?' + params.toString());
 }
 
 export async function fetchMovers(market, { direction = 'mixed', refresh = false } = {}) {

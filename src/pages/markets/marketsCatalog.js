@@ -44,9 +44,10 @@ export function normalizeSearchResults(rawRows, marketKey, query = '') {
   const rows = Array.isArray(rawRows) ? [...rawRows] : [];
   const code = normalizeCnFundCode(query);
   const exchangePreset = code ? CN_ETF_PRESET_MAP[code] : null;
+  const hasOtcCandidate = Boolean(code && NASDAQ_OTC_FUND_MAP[code]);
   if (marketKey === 'cn' && exchangePreset && !rows.some((row) => (
     normalizeCnFundCode(row.symbol || row.code || row.ticker) === code
-    && String(row.assetType || row.type || row.exchange || '').includes('场内')
+    && /exchange|场内|交易所|etf|lof/i.test(String(row.assetType || row.type || row.exchange || ''))
   ))) {
     rows.unshift({
       ...exchangePreset,
@@ -56,7 +57,7 @@ export function normalizeSearchResults(rawRows, marketKey, query = '') {
       assetType: 'exchange_fund'
     });
   }
-  return normalizeSearchResultsBase(rows, marketKey, query, buildOtcCandidate, NASDAQ_OTC_FUND_MAP);
+  return normalizeSearchResultsBase(rows, marketKey, hasOtcCandidate ? query : '', buildOtcCandidate, NASDAQ_OTC_FUND_MAP);
 }
 
 export function buildOtcFundQuoteFromSnapshot(symbol, snapshot, fallback = {}) {

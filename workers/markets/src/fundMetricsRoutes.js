@@ -10,6 +10,8 @@ import {
 import { OTC_ALL_FUNDS, OTC_FUND_NAME_BY_CODE } from './otcFundList.js';
 import { kvGetJson, kvPutJson, r2GetJson, r2PutJson, klineKey } from './storage.js';
 import { classifySymbol } from './symbols.js';
+import { attachKlineHighPoint, pickHigherHighPoint } from './klineHighPoint.js';
+import { writeKlineHighPointCache } from './klineHighPointCache.js';
 import {
   describeKlinePayloadForLog,
   errorJson,
@@ -287,6 +289,21 @@ function klinePayloadForSession(payload, market, tf, sessionMode = 'latest') {
   return sessionMode === 'all' ? payload : keepLatestCnIntradaySession(payload, market, tf);
 }
 
+function limitKlinePayload(payload = {}, limit = 500) {
+  const requestedLimit = Math.max(1, Math.min(Number(limit) || 500, 1000));
+  const candles = Array.isArray(payload?.candles) ? payload.candles.slice(-requestedLimit) : [];
+  return { ...payload, candles };
+}
+
+function buildKlineResponsePayload(payload, { market, tf, sessionMode, limit, highPoint = null, forceDeriveHighPoint = false } = {}) {
+  const withHigh = attachKlineHighPoint({ ...payload, highPoint: pickHigherHighPoint(payload?.highPoint, highPoint) || payload?.highPoint }, {
+    interval: tf,
+    source: forceDeriveHighPoint ? 'daily-kline-1d' : 'daily-kline-365d',
+    forceDerive: forceDeriveHighPoint
+  });
+  return limitKlinePayload(klinePayloadForSession(withHigh, market, tf, sessionMode), limit);
+}
+
 function collectValidKlineCandles(payload = {}) {
   return (Array.isArray(payload?.candles) ? payload.candles : [])
     .filter((bar) => bar && Number.isFinite(Number(bar.t)));
@@ -306,6 +323,10 @@ function mergeKlinePayloadsWithR2(cached, fresh, { market, tf, limit = 1000, ses
     .sort((left, right) => Number(left.t) - Number(right.t));
   const requestedLimit = Math.max(1, Math.min(Number(limit) || 1000, 1000));
   const limitedCandles = mergedCandles.slice(-requestedLimit);
+  const highPoint = attachKlineHighPoint({ candles: mergedCandles, interval: tf }, {
+    interval: tf,
+    source: 'daily-kline-365d'
+  })?.highPoint;
   const payload = {
     ...(cached && typeof cached === 'object' ? cached : {}),
     ...(fresh && typeof fresh === 'object' ? fresh : {}),
@@ -319,6 +340,7 @@ function mergeKlinePayloadsWithR2(cached, fresh, { market, tf, limit = 1000, ses
     r2CandleCount: r2Candles.length,
     freshCandleCount: freshCandles.length,
     mergedCandleCount: mergedCandles.length,
+    highPoint: pickHigherHighPoint(highPoint, pickHigherHighPoint(cached?.highPoint, fresh?.highPoint)) || undefined,
     candles: limitedCandles
   };
   return klinePayloadForSession(payload, market, tf, sessionMode);
@@ -500,6 +522,8 @@ export async function handleKline(env, rawSymbol, params) {
   const sessionMode = params.get('session') === 'all' ? 'all' : 'latest';
   const shouldMergeR2 = params.get('mergeR2') === '1' || params.get('includeR2') === '1';
   const shouldUseDefaultCache = sessionMode === 'latest' && requestedLimit <= 500;
+  const shouldWriteFreshCache = shouldUseDefaultCache && requestedLimit >= 500;
+  let cachedPayloadForHigh = null;
 
   console.log('[markets:kline] request', {
     rawSymbol,
@@ -524,6 +548,12 @@ export async function handleKline(env, rawSymbol, params) {
   if (!forceRefresh && shouldUseDefaultCache) {
     const cached = await r2GetJson(env, r2k);
     if (cached && cached.candles && cached.candles.length) {
+      const cachedWithHigh = attachKlineHighPoint(cached, { interval: tf, source: 'daily-kline-365d' });
+      cachedPayloadForHigh = cachedWithHigh;
+      if (tf === '1d' && cachedWithHigh.highPoint && !cached.highPoint) {
+        await r2PutJson(env, r2k, cachedWithHigh).catch(() => {});
+      }
+      await writeKlineHighPointCache(env, { market, symbol: code, interval: tf, highPoint: cachedWithHigh.highPoint });
       const stale = klineCacheIsStale({ cached, market, tf });
       const sourceOk = market !== 'cn' || cached.source === 'xueqiu-kline';
 
@@ -548,13 +578,13 @@ export async function handleKline(env, rawSymbol, params) {
           console.log('[markets:kline] Using batch-saved data from R2', {
             rawSymbol, tf, age: Math.round(age / 1000 / 60) + 'min'
           });
-          return json({ ...klinePayloadForSession(cached, market, tf, sessionMode), cached: true, source: 'r2-batch' });
+          return json({ ...buildKlineResponsePayload(cachedWithHigh, { market, tf, sessionMode, limit: requestedLimit }), cached: true, source: 'r2-batch' });
         }
       }
 
       // 非批量保存的数据，使用原有的过期策略
       if (!stale && sourceOk) {
-        return json({ ...klinePayloadForSession(cached, market, tf, sessionMode), cached: true, source: 'r2-cache' });
+        return json({ ...buildKlineResponsePayload(cachedWithHigh, { market, tf, sessionMode, limit: requestedLimit }), cached: true, source: 'r2-cache' });
       }
     } else {
       console.log('[markets:kline] R2 cache miss', { rawSymbol, market, code, tf, r2Key: r2k });
@@ -565,7 +595,7 @@ export async function handleKline(env, rawSymbol, params) {
 
   // 只有在必要时才实时抓取
   const cachedForMerge = shouldMergeR2 ? await r2GetJson(env, r2k).catch(() => null) : null;
-  const fresh = await refreshKline(env, market, code, tf, { limit: requestedLimit, sessionMode, writeCache: shouldUseDefaultCache });
+  const fresh = await refreshKline(env, market, code, tf, { limit: requestedLimit, sessionMode, writeCache: shouldWriteFreshCache });
   if (shouldMergeR2 && cachedForMerge && Array.isArray(cachedForMerge.candles) && cachedForMerge.candles.length) {
     const merged = mergeKlinePayloadsWithR2(cachedForMerge, fresh, {
       market,
@@ -593,7 +623,8 @@ export async function handleKline(env, rawSymbol, params) {
     tf,
     payload: describeKlinePayloadForLog(fresh)
   });
-  return json({ ...fresh, cached: false, source: 'realtime' });
+  const highPoint = pickHigherHighPoint(cachedPayloadForHigh?.highPoint, fresh?.highPoint);
+  return json({ ...buildKlineResponsePayload(fresh, { market, tf, sessionMode, limit: requestedLimit, highPoint, forceDeriveHighPoint: Boolean(highPoint) }), cached: false, source: 'realtime' });
 }
 
 async function refreshKline(env, market, code, tf, { limit = 500, sessionMode = 'latest', writeCache = true } = {}) {
@@ -609,6 +640,13 @@ async function refreshKline(env, market, code, tf, { limit = 500, sessionMode = 
     console.log('[markets:kline] fetch cn kline done', { market, code, tf, payload: describeKlinePayloadForLog(payload) });
   }
   payload = sessionMode === 'all' ? payload : keepLatestCnIntradaySession(payload, market, tf);
+  if (tf === '1d' && Number(limit) >= 365) {
+    payload = attachKlineHighPoint(payload, {
+      interval: tf,
+      source: 'daily-kline-365d'
+    });
+    await writeKlineHighPointCache(env, { market, symbol: code, interval: tf, highPoint: payload.highPoint });
+  }
   if (writeCache) {
     await r2PutJson(env, klineKey(market, code, tf), payload);
     console.log('[markets:kline] cache write', { market, code, tf, r2Key: klineKey(market, code, tf), payload: describeKlinePayloadForLog(payload) });

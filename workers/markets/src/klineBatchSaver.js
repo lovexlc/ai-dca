@@ -3,8 +3,10 @@
 /* global console */
 
 import { fetchYahooChart, normalizeYahooKline } from './fetchers.js';
-import { r2GetJson, r2PutJson, klineKey } from './storage.js';
+import { kvGetJson, kvPutJson, r2GetJson, r2PutJson, klineKey } from './storage.js';
 import { classifySymbol } from './symbols.js';
+import { attachKlineHighPoint } from './klineHighPoint.js';
+import { writeKlineHighPointCache } from './klineHighPointCache.js';
 import {
   fetchCnKlineWithFallback,
   INTRADAY_KLINE_INTERVALS,
@@ -183,7 +185,9 @@ async function saveKlineDataForSymbol(env, market, symbol, interval, options = {
   }
 
   // 保存到 R2
+  payload = attachKlineHighPoint(payload, { interval, source: 'daily-kline-365d' });
   await r2PutJson(env, r2k, payload);
+  await writeKlineHighPointCache(env, { market, symbol: code, interval, highPoint: payload.highPoint });
 
   console.log(`[kline-batch] Saved ${symbol}:${interval}`, {
     r2Key: r2k,
@@ -226,6 +230,3 @@ export async function runAfterMarketCloseTask(env, market) {
     throw error;
   }
 }
-
-// 导入 kvGetJson 和 kvPutJson
-import { kvGetJson, kvPutJson } from './storage.js';
