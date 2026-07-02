@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { readMarketAlerts, persistMarketAlerts, readHoldingAlerts, persistHoldingAlerts, deleteMarketAlert, deleteHoldingAlert } from '../../app/alertRules.js';
 import { syncTradePlanRules, buildNotifySyncPayload } from '../../app/notifySync.js';
 import { showActionToast } from '../../app/toast.js';
+import { BACKUP_APPLIED_EVENT } from '../../app/webdavBackup.js';
 
 export function useNotifyAlertRules() {
   const [marketAlerts, setMarketAlerts] = useState(() => readMarketAlerts());
@@ -9,6 +10,19 @@ export function useNotifyAlertRules() {
   const [alertDialogOpen, setAlertDialogOpen] = useState(false);
   const [editingAlert, setEditingAlert] = useState(null);
   const [alertDialogMode, setAlertDialogMode] = useState('market');
+
+  useEffect(() => {
+    function refreshAlerts() {
+      setMarketAlerts(readMarketAlerts());
+      setHoldingAlerts(readHoldingAlerts());
+    }
+    window.addEventListener(BACKUP_APPLIED_EVENT, refreshAlerts);
+    window.addEventListener('storage', refreshAlerts);
+    return () => {
+      window.removeEventListener(BACKUP_APPLIED_EVENT, refreshAlerts);
+      window.removeEventListener('storage', refreshAlerts);
+    };
+  }, []);
 
   function handleEditMarketAlert(alert) {
     setEditingAlert(alert);

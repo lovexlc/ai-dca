@@ -38,8 +38,11 @@ export const SYNC_REGISTRY = [
   // —— 通知 ——
   { key: 'aiDcaNotifyClientConfig', tab: 'notify', label: '通知客户端配置', merge: 'lww' },
   { key: 'aiDcaWebNotifyConfig', tab: 'notify', label: 'Web 通知配置', merge: 'lww' },
+  { key: 'aiDcaMarketAlerts', tab: 'notify', label: '行情提醒规则', merge: 'arrayById' },
+  { key: 'aiDcaHoldingAlerts', tab: 'notify', label: '持仓提醒规则', merge: 'arrayById' },
   // —— 全局偏好 ——
   { key: 'aiDcaWorkspacePrefs', tab: 'global', label: '工作台偏好', merge: 'lww' },
+  { key: 'aiDcaHomeDashboardState', tab: 'global', label: '首页看板偏好', merge: 'lww' },
   // —— 新增覆盖项 ——
   { key: 'markets:watchlist:v1', tab: 'markets', label: '自选清单', merge: 'watchlist' },
   { key: 'aiDcaAnalyticsOptOut_v1', tab: 'global', label: '分析偏好', merge: 'lww' },
