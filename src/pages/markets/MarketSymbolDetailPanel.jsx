@@ -3,6 +3,7 @@ import { ArrowUp, Bell, CalendarClock, CalendarDays, Loader2, Search, Star, Tren
 import { fetchKline, fetchQuotes, searchSymbols, CN_ETF_WATCHLIST_PRESETS } from '../../app/marketsApi.js';
 import { getNavHistory, getNavSnapshot } from '../../app/navService.js';
 import { getXueqiuQuote } from '../../app/xueqiuQuote.js';
+import { isKnownQdiiFundCode } from '../../app/qdiiFundCodes.js';
 import { Sparkline } from '../../components/markets/Sparkline.jsx';
 import { cx } from '../../components/experience-ui.jsx';
 import {
@@ -399,6 +400,7 @@ export function SymbolDetailPanel({
   const currencyLabel = row.currency || (market === 'us' ? 'USD' : 'CNY');
   const stateLabel = marketStateLabel(row.marketState, market);
   const isCnOtcFund = currentIsCnOtcFund;
+  const isQdii = isKnownQdiiFundCode(normalizeCnFundCode(row.symbol));
   const xueqiuQuote = getXueqiuQuote(xueqiuFundData);
   const yearExtrema = market === 'cn' && !isCnOtcFund
     ? deriveCandlestickExtrema(dailyCandles, { daysBack: 365 })
@@ -544,9 +546,10 @@ export function SymbolDetailPanel({
       && cnFundParam === 'price'
       && (isCompareCnOtcFund(sym) || (Array.isArray(compareNavItems) && compareNavItems.length >= 2))
       && (!Array.isArray(priceCandles) || priceCandles.length < 2);
+    const isCompareQdii = isKnownQdiiFundCode(compareCode);
     const candles = market === 'cn' && cnFundParam !== 'price'
-      ? buildCnFundParamCandles(priceCandles, compareNavItems, cnFundParam, premiumState, chartRange)
-      : (useNavAsPrice ? buildCnFundParamCandles([], compareNavItems, 'nav', premiumState, chartRange) : priceCandles);
+      ? buildCnFundParamCandles(priceCandles, compareNavItems, cnFundParam, premiumState, chartRange, isCompareQdii)
+      : (useNavAsPrice ? buildCnFundParamCandles([], compareNavItems, 'nav', premiumState, chartRange, isCompareQdii) : priceCandles);
     return {
       symbol: sym,
       candles,
@@ -590,10 +593,10 @@ export function SymbolDetailPanel({
     ...compareSymbols.map((sym, index) => applyHoverSnapshot(normalizeCompareQuote(sym, compareCandidates.find((item) => item.symbol === sym)), `cmp_${index}_`))
   ];
   const rawEffectiveCandles = isCnOtcFund
-    ? (cnFundParam === 'premium' ? [] : buildCnFundParamCandles([], navHistoryState?.items, 'nav', premiumState, chartRange))
+    ? (cnFundParam === 'premium' ? [] : buildCnFundParamCandles([], navHistoryState?.items, 'nav', premiumState, chartRange, isQdii))
     : (market !== 'cn' || cnFundParam === 'price'
       ? chartCandles
-      : buildCnFundParamCandles(chartCandles, navHistoryState?.items, cnFundParam, premiumState, chartRange));
+      : buildCnFundParamCandles(chartCandles, navHistoryState?.items, cnFundParam, premiumState, chartRange, isQdii));
   // Apply range slicing to nav/premium candles (price candles are already sliced in MarketsMainContent)
   const effectiveChartCandles = (market === 'cn' && cnFundParam !== 'price')
     ? sliceCandlesForRange(rawEffectiveCandles, chartRange, chartCustomRange)

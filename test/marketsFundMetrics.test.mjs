@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { fetchXueqiuQuote } from '../workers/markets/src/fetchers.js';
 import { handleFundMetrics, handleKline, normalizeFundMetricFromQuote } from '../workers/markets/src/fundMetricsRoutes.js';
 import {
+  buildCnFundParamCandles,
   deriveCandlestickExtrema,
   navHistoryCacheKey,
   navHistoryQueryForRange,
@@ -467,4 +468,68 @@ test('merged kline response applies the requested limit after dedupe', async () 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+
+test('premium candles use same-day NAV for non-QDII funds', () => {
+  const priceCandles = [
+    { t: Date.parse('2026-06-02T15:00:00+08:00') / 1000, o: 1.10, h: 1.12, l: 1.08, c: 1.11 },
+  ];
+  const navItems = [
+    { date: '2026-06-01', nav: 1.00 },
+    { date: '2026-06-02', nav: 1.05 },
+  ];
+
+  const candles = buildCnFundParamCandles(priceCandles, navItems, 'premium', null, '1mo', false);
+
+  assert.equal(candles.length, 1);
+  // (1.11 - 1.05) / 1.05 * 100 ≈ 5.7143%
+  assert.ok(Math.abs(candles[0].c - 5.714285714285714) < 1e-9);
+  assert.equal(candles[0].nav, 1.05);
+});
+
+test('premium candles use T-1 NAV for QDII funds to avoid lookahead bias', () => {
+  const priceCandles = [
+    { t: Date.parse('2026-06-02T15:00:00+08:00') / 1000, o: 1.10, h: 1.12, l: 1.08, c: 1.11 },
+  ];
+  const navItems = [
+    { date: '2026-06-01', nav: 1.00 },
+    // QDII 的 6/2 NAV 实际上要 6/3 才披露，但历史数据里已经按 6/2 日期收录
+    { date: '2026-06-02', nav: 1.05 },
+  ];
+
+  const candles = buildCnFundParamCandles(priceCandles, navItems, 'premium', null, '1mo', true);
+
+  assert.equal(candles.length, 1);
+  // QDII 应用 6/1 的 NAV: (1.11 - 1.00) / 1.00 * 100 = 11%
+  assert.ok(Math.abs(candles[0].c - 11) < 1e-9);
+  assert.equal(candles[0].nav, 1.00);
+});
+
+
+test('513100 2025-04-09 QDII premium uses previous day NAV', () => {
+  // 数据来源：
+  // - 价格：腾讯财经 513100 日 K 线
+  //   2025-04-09 收盘 1.300
+  // - 净值：蛋卷基金 513100 单位净值
+  //   2025-04-08 NAV = 1.2350（QDII T 日收盘时最新已披露净值）
+  //   2025-04-09 NAV = 1.3830（T+1 才披露，历史数据里已按 4/9 日期收录）
+  const t = Date.parse('2025-04-09T15:00:00+08:00') / 1000;
+  const priceCandles = [{ t, o: 1.271, h: 1.313, l: 1.260, c: 1.300 }];
+  const navItems = [
+    { date: '2025-04-08', nav: 1.2350 },
+    { date: '2025-04-09', nav: 1.3830 },
+  ];
+
+  const qdiiCandles = buildCnFundParamCandles(priceCandles, navItems, 'premium', null, '1mo', true);
+  const nonQdiiCandles = buildCnFundParamCandles(priceCandles, navItems, 'premium', null, '1mo', false);
+
+  assert.equal(qdiiCandles.length, 1);
+  assert.equal(nonQdiiCandles.length, 1);
+  // 正确算法（QDII）用 4/8 NAV：(1.300 - 1.2350) / 1.2350 * 100 ≈ 5.2632%
+  assert.ok(Math.abs(qdiiCandles[0].c - 5.263157894736842) < 1e-9);
+  assert.equal(qdiiCandles[0].nav, 1.2350);
+  // 旧算法（错误）用 4/9 NAV：(1.300 - 1.3830) / 1.3830 * 100 ≈ -6.0014%
+  assert.ok(Math.abs(nonQdiiCandles[0].c - (-6.001446131597973)) < 1e-9);
+  assert.equal(nonQdiiCandles[0].nav, 1.3830);
 });

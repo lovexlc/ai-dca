@@ -9,6 +9,7 @@ import { buildGapDistributionThresholdGrids } from './backtestGapOptimization.js
 import { createTradeSimulator, runBacktest } from '../../app/backtest/index.js';
 import { fetchBacktestData } from '../../app/backtestDataFetcher.js';
 import { buildPremiumPanel } from '../../app/backtest/core/premiumPanel.js';
+import { isKnownQdiiFundCode } from '../../app/qdiiFundCodes.js';
 import { deriveDefaultBacktestCodes } from './backtestSidePanelState.js';
 import { addSwitchRule } from '../../app/switchStrategySync.js';
 import { readSwitchPrefs as readStoredSwitchPrefs, writeSwitchPrefs as writeStoredSwitchPrefs } from '../../pages/switchStrategyHelpers.js';
@@ -819,7 +820,8 @@ export function BacktestSidePanel({
         console.log('[Backtest] 进入H/L档回测分支');
         console.log('[Backtest] 获取历史数据和NAV...');
         const allCodes = [...highCodes, ...lowCodes];
-        console.log('[Backtest] allCodes:', allCodes);
+        const crossBorderCodes = new Set(allCodes.filter(isKnownQdiiFundCode));
+        console.log('[Backtest] allCodes:', allCodes, 'crossBorderCodes:', [...crossBorderCodes]);
 
         const { historyByCode, navHistoryByCode } = await fetchBacktestData(allCodes, {
           highCodes,
@@ -852,6 +854,7 @@ export function BacktestSidePanel({
           timeframe: '1d',
           historyByCode,
           navHistoryByCode,
+          crossBorderCodes,
           initialEquity: cash,
           ...BACKTEST_TRADING_COSTS,
           silent: true
@@ -863,6 +866,7 @@ export function BacktestSidePanel({
           navHistoryByCode,
           highCodes,
           lowCodes,
+          crossBorderCodes,
           fallbackSellLowerGrid: OPTIMIZE_SELL_LOWER_GRID,
           fallbackBuyOtherGrid: OPTIMIZE_BUY_OTHER_GRID
         });
@@ -916,7 +920,7 @@ export function BacktestSidePanel({
         }
 
         if (investMode === 'dca') {
-          const panel = buildPremiumPanel({ codes: Array.from(new Set([...highCodes, ...lowCodes])), historyByCode, navHistoryByCode });
+          const panel = buildPremiumPanel({ codes: Array.from(new Set([...highCodes, ...lowCodes])), historyByCode, navHistoryByCode, crossBorderCodes });
           if (panel.rows.length >= 10) {
             holdResults = [runAdaptiveDcaHoldBacktest(panel, {
               codes: Array.from(new Set([...highCodes, ...lowCodes])),
