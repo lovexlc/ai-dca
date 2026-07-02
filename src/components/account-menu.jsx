@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, CloudDownload, CloudUpload, Eye, EyeOff, GitMerge, KeyRound, Loader2, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
 import { clearCloudSession, CLOUD_SYNC_SESSION_EVENT, loadCloudSession, loginCloudAccount, registerCloudAccount } from '../app/authClient.js';
-import { ensureLocalChangeBaseline, loadCloudSyncMeta, mergeLocalIntoCloudBackup, overwriteCloudWithLocal, prepareCloudSyncConflict, refreshRemoteCloudMeta, restoreEncryptedCloudBackup, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
+import { ensureLocalChangeBaseline, loadCloudSyncMeta, mergeLocalIntoCloudBackup, overwriteCloudWithLocal, pullRemoteAuthoritativeMerge, refreshRemoteCloudMeta, uploadEncryptedCloudBackup } from '../app/cloudSync.js';
 import { clearRememberedKey, generateSecurityPassword, loadRememberedKey, SECURE_VAULT_ERROR_CODES } from '../app/secureVault.js';
 import { showToast } from '../app/toast.js';
 import { collectBackupPayload, formatBytes } from '../app/webdavBackup.js';
@@ -88,6 +88,7 @@ export function AccountMenu() {
     window.addEventListener('cloud-sync:auto-upload-started', handleSyncStarted);
     window.addEventListener('cloud-sync:auto-uploaded', handleSyncDone);
     window.addEventListener('cloud-sync:auto-restored', handleSyncDone);
+    window.addEventListener('cloud-sync:auto-pulled', handleSyncDone);
     window.addEventListener('cloud-sync:auto-error', handleSyncError);
     window.addEventListener('storage', syncStorage);
     return () => {
@@ -96,6 +97,7 @@ export function AccountMenu() {
       window.removeEventListener('cloud-sync:auto-upload-started', handleSyncStarted);
       window.removeEventListener('cloud-sync:auto-uploaded', handleSyncDone);
       window.removeEventListener('cloud-sync:auto-restored', handleSyncDone);
+      window.removeEventListener('cloud-sync:auto-pulled', handleSyncDone);
       window.removeEventListener('cloud-sync:auto-error', handleSyncError);
       window.removeEventListener('storage', syncStorage);
     };
@@ -129,30 +131,13 @@ export function AccountMenu() {
     const hasRemoteBackup = Boolean(remoteMeta?.version);
     ensureLocalChangeBaseline();
     if (hasRemoteBackup) {
-      const nextConflict = await prepareCloudSyncConflict({
-        securityPassword: form.securityPassword,
-        useRemembered: false
-      });
-      if (nextConflict?.hasConflict) {
-        setConflict(nextConflict);
-        return 'conflict';
-      }
-      if (nextConflict?.hasLocalChanges) {
-        const merged = await mergeLocalIntoCloudBackup({
-          securityPassword: form.securityPassword,
-          rememberDevice: form.rememberDevice,
-          useRemembered: false
-        });
-        window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result: merged } }));
-        return 'merged';
-      }
-      const restored = await restoreEncryptedCloudBackup({
+      const pulled = await pullRemoteAuthoritativeMerge({
         securityPassword: form.securityPassword,
         rememberDevice: form.rememberDevice,
-        onlyIfRemoteNewer: true
+        useRemembered: false
       });
-      window.dispatchEvent(new CustomEvent('cloud-sync:auto-restored', { detail: { result: restored } }));
-      return restored?.skipped ? 'skipped-restore' : 'restored';
+      window.dispatchEvent(new CustomEvent(pulled?.reuploaded ? 'cloud-sync:auto-uploaded' : 'cloud-sync:auto-restored', { detail: { result: pulled } }));
+      return pulled?.reuploaded ? 'pulled-merged' : 'pulled';
     }
     if (action === 'register' || collectBackupPayload().keys.length > 0) {
       const uploaded = await uploadEncryptedCloudBackup({
@@ -182,7 +167,7 @@ export function AccountMenu() {
       setSyncState(syncResult === 'conflict' ? 'conflict' : 'synced');
       showToast({
         title: action === 'register' ? '账户已注册' : '已登录',
-        description: syncResult === 'conflict' ? '检测到云端与本机都有不同数据，请选择合并或拉取云端。' : syncResult === 'restored' ? '已恢复云端较新数据' : syncResult === 'merged' ? '已自动合并本机与云端数据' : syncResult === 'uploaded' ? '已创建云端备份' : '本地与云端无需更新',
+        description: syncResult === 'pulled' ? '已按云端版本刷新本机数据' : syncResult === 'pulled-merged' ? '已按云端版本刷新，并把本机独有数据回传云端' : syncResult === 'uploaded' ? '已创建云端备份' : '本地与云端无需更新',
         tone: syncResult === 'conflict' ? 'amber' : 'emerald'
       });
       if (syncResult !== 'conflict') setOpen(false);
@@ -224,7 +209,7 @@ export function AccountMenu() {
       } else if (mode === 'local') {
         result = await overwriteCloudWithLocal({ securityPassword: secret, rememberDevice: form.rememberDevice, useRemembered });
       } else {
-        result = await restoreEncryptedCloudBackup({ securityPassword: secret, useRemembered, rememberDevice: form.rememberDevice, onlyIfRemoteNewer: false });
+        result = await pullRemoteAuthoritativeMerge({ securityPassword: secret, useRemembered, rememberDevice: form.rememberDevice });
       }
       setConflict(null);
       setConflictPassword('');
@@ -235,7 +220,7 @@ export function AccountMenu() {
       const toastByMode = {
         merge: { title: '已合并并同步', description: '本机数据已合并到云端，远端独有数据也已保留到本机。' },
         local: { title: '已采用本机', description: '已用本机数据强制覆盖云端版本。' },
-        pull: { title: '已采用云端', description: '云端版本已覆盖本机数据。' }
+        pull: { title: '已采用云端', description: '云端版本已覆盖本机冲突数据，本机独有数据已保留。' }
       };
       showToast({ ...toastByMode[mode], tone: 'emerald' });
     } catch (err) {
@@ -273,35 +258,13 @@ export function AccountMenu() {
       let result = null;
 
       if (hasRemoteBackup) {
-        const nextConflict = await prepareCloudSyncConflict({
+        result = await pullRemoteAuthoritativeMerge({
           securityPassword: secret,
+          rememberDevice: form.rememberDevice,
           useRemembered
         });
-        if (nextConflict?.hasConflict) {
-          setConflict(nextConflict);
-          setSyncState('conflict');
-          setErrorCode('');
-          showToast({ title: '检测到同步冲突', description: nextConflict.summaryText, tone: 'amber' });
-          return;
-        }
-        if (nextConflict?.hasLocalChanges) {
-          result = await mergeLocalIntoCloudBackup({
-            securityPassword: secret,
-            rememberDevice: form.rememberDevice,
-            useRemembered
-          });
-          syncResult = 'merged';
-          window.dispatchEvent(new CustomEvent('cloud-sync:auto-uploaded', { detail: { result } }));
-        } else {
-          result = await restoreEncryptedCloudBackup({
-            securityPassword: secret,
-            useRemembered,
-            rememberDevice: form.rememberDevice,
-            onlyIfRemoteNewer: true
-          });
-          syncResult = result?.skipped ? 'skipped-restore' : 'restored';
-          window.dispatchEvent(new CustomEvent('cloud-sync:auto-restored', { detail: { result } }));
-        }
+        syncResult = result?.reuploaded ? 'pulled-merged' : 'pulled';
+        window.dispatchEvent(new CustomEvent(result?.reuploaded ? 'cloud-sync:auto-uploaded' : 'cloud-sync:auto-restored', { detail: { result } }));
       } else if (collectBackupPayload().keys.length > 0) {
         result = await uploadEncryptedCloudBackup({
           securityPassword: secret,
@@ -320,7 +283,7 @@ export function AccountMenu() {
       setSyncState('synced');
       showToast({
         title: '手动同步完成',
-        description: syncResult === 'restored' ? '已恢复云端较新数据。' : syncResult === 'merged' ? '已合并本机与云端数据。' : syncResult === 'uploaded' ? '已创建云端备份。' : '本地与云端无需更新。',
+        description: syncResult === 'pulled' ? '已按云端版本刷新本机数据。' : syncResult === 'pulled-merged' ? '已按云端版本刷新，并把本机独有数据回传云端。' : syncResult === 'uploaded' ? '已创建云端备份。' : '本地与云端无需更新。',
         tone: 'emerald'
       });
     } catch (err) {

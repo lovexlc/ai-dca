@@ -865,6 +865,7 @@ export async function refreshRemoteCloudMeta() {
       version: meta.version,
       updatedAt: meta.updatedAt,
       remoteUpdatedAt: meta.updatedAt,
+      remoteContentHash: meta.contentHash || '',
       direction: 'remote'
     });
   }
