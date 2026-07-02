@@ -157,11 +157,12 @@ export async function fetchProfile(symbol) {
 const WATCHLIST_KEY = 'markets:watchlist:v1';
 const WATCHLIST_ETF_DEFAULTS_VERSION = 7;
 const WATCHLIST_OTC_DEFAULTS_VERSION = 5;
-const WATCHLIST_INDICATOR_DEFAULTS_VERSION = 6;
+const WATCHLIST_INDICATOR_DEFAULTS_VERSION = 8;
 const WATCHLIST_DEFAULTS_VERSION = Math.max(WATCHLIST_ETF_DEFAULTS_VERSION, WATCHLIST_OTC_DEFAULTS_VERSION, WATCHLIST_INDICATOR_DEFAULTS_VERSION);
 const DEFAULT_WATCHLIST_ID = 'default';
 const DEFAULT_OTC_LIST_ID = 'default-otc';
 const DEFAULT_INDICATOR_LIST_ID = 'default-indicators';
+const REMOVED_US_INDICATOR_SYMBOLS = new Set(['NYAD_LINE', 'NAAD_LINE']);
 
 export const CN_ETF_WATCHLIST_PRESETS = [
   // 用户指定的默认 A 股监控列表（以代码覆盖）
@@ -252,7 +253,19 @@ export const US_INDICATOR_WATCHLIST_PRESETS = [
   { symbol: 'CPIAUCSL', name: 'CPI', source: 'FRED' },
 ];
 
-const DEFAULT_US_INDICATOR_WATCHLIST = US_INDICATOR_WATCHLIST_PRESETS.map((item) => item.symbol);
+function sanitizeDefaultIndicatorSymbols(symbols = []) {
+  const next = [];
+  const seen = new Set();
+  for (const symbol of symbols) {
+    const normalized = String(symbol || '').trim();
+    if (!normalized || REMOVED_US_INDICATOR_SYMBOLS.has(normalized) || seen.has(normalized)) continue;
+    seen.add(normalized);
+    next.push(normalized);
+  }
+  return next;
+}
+
+const DEFAULT_US_INDICATOR_WATCHLIST = sanitizeDefaultIndicatorSymbols(US_INDICATOR_WATCHLIST_PRESETS.map((item) => item.symbol));
 
 export function normalizeWatchlist(value = {}) {
   const now = new Date().toISOString();
@@ -343,7 +356,14 @@ export function normalizeWatchlist(value = {}) {
         ...old,
         name: '默认-常用指标',
         type: 'us_indicator',
-        us: Array.from(new Set([...DEFAULT_US_INDICATOR_WATCHLIST, ...(old.us || [])])),
+        us: sanitizeDefaultIndicatorSymbols([...DEFAULT_US_INDICATOR_WATCHLIST, ...(old.us || [])]),
+      };
+    } else {
+      const indicatorIdx = lists.findIndex((item) => item.id === DEFAULT_INDICATOR_LIST_ID);
+      const old = lists[indicatorIdx];
+      lists[indicatorIdx] = {
+        ...old,
+        us: sanitizeDefaultIndicatorSymbols(old.us || []),
       };
     }
   }

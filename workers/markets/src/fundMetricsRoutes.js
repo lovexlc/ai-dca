@@ -7,7 +7,7 @@ import {
   fetchYahooChart,
   normalizeYahooKline
 } from './fetchers.js';
-import { OTC_FUND_NAME_BY_CODE } from './otcFundList.js';
+import { OTC_ALL_FUNDS, OTC_FUND_NAME_BY_CODE } from './otcFundList.js';
 import { kvGetJson, kvPutJson, r2GetJson, r2PutJson, klineKey } from './storage.js';
 import { classifySymbol } from './symbols.js';
 import {
@@ -482,6 +482,18 @@ export async function handleKline(env, rawSymbol, params) {
   const tf = String(params.get('tf') || '1d');
   const { market, code } = classifySymbol(rawSymbol);
   if (!market) return errorJson('invalid symbol', 400);
+  const rawDigits = String(rawSymbol || code || '').replace(/^(sh|sz|bj)/i, '');
+  if (market === 'cn' && OTC_ALL_FUNDS.includes(rawDigits)) {
+    return json({
+      market,
+      symbol: rawDigits,
+      interval: tf,
+      generatedAt: new Date().toISOString(),
+      candles: [],
+      cached: false,
+      source: 'otc-fund-no-kline'
+    });
+  }
   const r2k = klineKey(market, code, tf);
   const forceRefresh = params.get('refresh') === '1';
   const requestedLimit = Math.max(1, Math.min(Number(params.get('limit')) || 500, 1000));

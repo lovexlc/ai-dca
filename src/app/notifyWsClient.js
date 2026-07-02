@@ -171,6 +171,10 @@ export function startNotifyRealtime({
         }
         break;
 
+      case 'pong':
+        // 客户端主动 ping 的确认帧，无需额外处理。
+        break;
+
       case 'notify':
         handleNotifyFrame(frame);
         break;

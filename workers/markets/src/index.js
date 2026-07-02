@@ -1,14 +1,19 @@
+/* global Response, URL, console */
+
 // ai-dca-markets Worker 主入口。路由统一在 /api/markets/* 下。
 
-import {
-  CN_ETF_WATCHLIST_DEFAULTS,
-  CN_OTC_WATCHLIST_DEFAULTS,
-  US_INDICATOR_WATCHLIST_DEFAULTS,
-} from './defaults.js';
+import { CORS_HEADERS, errorJson, fetchCnQuoteWithFallback, fetchCnQuotesBatchWithFallback, json, mapLimit } from './marketRuntime.js';
+import { fetchFinnhubEarningsCalendar, fetchFinnhubMarketNews, fetchFinnhubProfile, fetchXueqiuCnFundData, fetchYahooChart, fetchYahooFinancials, fetchYahooQuotesBatch, isSpecialMarketIndicator, normalizeYahooQuote, searchEastmoneySymbols, searchYahooSymbols, fetchSpecialMarketIndicatorQuote } from './fetchers.js';
+import { fetchCnnFearGreed, fetchTavilyNews, hostToSourceName } from './newsFetchers.js';
+import { askWithGrounding, summarizeMarkets } from './ai.js';
 import { handleFundMetrics, handleKline } from './fundMetricsRoutes.js';
+import { attachHistoricalPercentile } from './historicalPercentile.js';
+import { tagIndices } from './indexConstituents.js';
 import { runAfterMarketCloseTask } from './klineBatchSaver.js';
-import { syncOtcFunds, getOtcFundFromCache, syncOtcFundsTask } from './otcFundSync.js';
+import { fetchOtcFundFullData, getOtcFundFromCache, syncOtcFundsTask, transformOtcFundData } from './otcFundSync.js';
 import { OTC_ALL_FUNDS } from './otcFundList.js';
+import { CN_INDICES, CN_TOP_TICKERS, US_INDICES, US_SECTORS, US_TOP_TICKERS, classifySymbol } from './symbols.js';
+import { kvGetJson, kvPutJson } from './storage.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -212,29 +217,6 @@ async function handleSearch(env, market, query, limitParam) {
 }
 
 
-const ALL_HISTORICAL_SYMBOLS = new Set([
-  ...CN_ETF_WATCHLIST_DEFAULTS,
-  ...CN_OTC_WATCHLIST_DEFAULTS,
-  ...US_INDICATOR_WATCHLIST_DEFAULTS,
-]);
-
-async function attachHistoricalPercentile(env, quote, market) {
-  if (!quote || quote.error || !quote.symbol) return quote;
-  if (!ALL_HISTORICAL_SYMBOLS.has(quote.symbol)) return quote;
-  // 如果 fetcher 已经提供了历史水位，优先使用 fetcher 的结果（源站历史更完整）
-  if (quote.historicalPercentile != null) return quote;
-
-  const value = market === 'cn' && quote.latestNav != null ? quote.latestNav : quote.price;
-  if (!Number.isFinite(Number(value))) return quote;
-
-  const date = marketDateString(market);
-  await kvAppendHistoricalValue(env, quote.symbol, { date, value: Number(value) });
-  const history = await kvGetHistoricalValues(env, quote.symbol);
-  const percentile = computeHistoricalPercentile(value, history, { asOfDate: date });
-  if (percentile == null) return quote;
-  return { ...quote, historicalPercentile: percentile };
-}
-
 async function handleQuote(env, rawSymbol) {
   let { market, code } = classifySymbol(rawSymbol);
   if (!market) return errorJson('invalid symbol', 400);
@@ -244,30 +226,9 @@ async function handleQuote(env, rawSymbol) {
   const rawCode = rawSymbol.replace(/^(sh|sz|bj)/i, '');
   if (market === 'cn' && OTC_ALL_FUNDS.includes(rawCode)) {
     code = rawCode; // 使用不带前缀的原始代码
-
-    // 优先从 KV 缓存读取
-    const cachedOtc = await getOtcFundFromCache(code, env.MARKETS_KV);
-    if (cachedOtc) {
-      console.log('[quote] OTC fund from cache:', code);
-      return json({ ...cachedOtc, cached: true });
-    }
-
-    // 缓存未命中，实时拉取蛋卷数据
-    console.log('[quote] OTC fund cache miss, fetching from Danjuan:', code);
-    const { fetchOtcFundFullData, transformOtcFundData } = await import('./otcFundSync.js');
     try {
-      const fullData = await fetchOtcFundFullData(code);
-      const quote = transformOtcFundData(fullData);
-      if (quote) {
-        // 保存到 KV 缓存供下次使用
-        const cacheKey = `otc_fund:${code}`;
-        await env.MARKETS_KV.put(cacheKey, JSON.stringify(fullData), {
-          expirationTtl: 86400 // 24小时过期
-        });
-        console.log('[quote] OTC fund saved to cache:', code);
-        const otcWithPct = await attachHistoricalPercentile(env, quote, 'cn');
-        return json({ ...otcWithPct, cached: false });
-      }
+      const quote = await fetchOtcQuote(env, code);
+      if (quote) return json(quote);
       return errorJson('OTC fund data unavailable', 500);
     } catch (err) {
       console.error('[quote] OTC fund fetch error:', err);
@@ -297,6 +258,27 @@ async function handleQuote(env, rawSymbol) {
   return json({ ...enrichedQuote, cached: false });
 }
 
+async function fetchOtcQuote(env, code) {
+  const normalizedCode = String(code || '').replace(/^(sh|sz|bj)/i, '');
+  const cachedOtc = await getOtcFundFromCache(normalizedCode, env.MARKETS_KV);
+  if (cachedOtc) {
+    console.log('[quote] OTC fund from cache:', normalizedCode);
+    const otcWithPct = await attachHistoricalPercentile(env, cachedOtc, 'cn');
+    return { ...otcWithPct, cached: true };
+  }
+
+  console.log('[quote] OTC fund cache miss, fetching from Danjuan:', normalizedCode);
+  const fullData = await fetchOtcFundFullData(normalizedCode);
+  const quote = transformOtcFundData(fullData);
+  if (!quote) return null;
+  await env.MARKETS_KV?.put(`otc_fund:${normalizedCode}`, JSON.stringify(fullData), {
+    expirationTtl: 86400
+  });
+  console.log('[quote] OTC fund saved to cache:', normalizedCode);
+  const otcWithPct = await attachHistoricalPercentile(env, quote, 'cn');
+  return { ...otcWithPct, cached: false };
+}
+
 async function handleBatchQuotes(env, symbolsParam) {
   const list = String(symbolsParam || '').split(',').map((s) => s.trim()).filter(Boolean);
   if (!list.length) return json({ quotes: {} });
@@ -306,13 +288,28 @@ async function handleBatchQuotes(env, symbolsParam) {
   }
   const out = {};
   const cnItems = [];
+  const otcItems = [];
   const usItems = [];
   for (const raw of list) {
     const { market, code } = classifySymbol(raw);
     if (!market) continue;
-    if (market === 'cn') cnItems.push({ raw, code });
+    const digits = String(raw || code || '').replace(/^(sh|sz|bj)/i, '');
+    if (market === 'cn' && OTC_ALL_FUNDS.includes(digits)) otcItems.push({ raw, code: digits });
+    else if (market === 'cn') cnItems.push({ raw, code });
     else usItems.push({ raw, code });
   }
+  await mapLimit(otcItems, 5, async (item) => {
+    try {
+      out[item.raw] = await fetchOtcQuote(env, item.code) || {
+        symbol: item.raw,
+        code: item.code,
+        error: 'OTC fund data unavailable',
+        source: 'danjuan'
+      };
+    } catch (err) {
+      out[item.raw] = { symbol: item.raw, error: String((err && err.message) || err), source: 'danjuan' };
+    }
+  });
   if (cnItems.length) {
     const cnQuotes = await fetchCnQuotesBatchWithFallback(env, cnItems);
     for (const [key, q] of Object.entries(cnQuotes)) {
@@ -404,7 +401,7 @@ async function enrichWithProfiles(env, list) {
       }
       const industry = (prof && (prof.finnhubIndustry || prof.gicsSector || prof.industry)) || '';
       return industry ? { ...row, industry } : row;
-    } catch (err) {
+    } catch {
       return row;
     }
   });
@@ -695,7 +692,7 @@ async function handleAskStream(env, request) {
   });
 }
 
-async function handleManualRefresh(env, body, ctx) {
+async function handleManualRefresh(env, body) {
   const target = String((body && body.target) || '').toLowerCase();
   if (target === 'us-indices') {
     return json(await refreshIndices(env, 'us'));
@@ -819,11 +816,15 @@ async function handleSummary(env, market, forceRefresh) {
   try {
     const newsCached = await kvGetJson(env, 'news:' + market);
     if (newsCached && Array.isArray(newsCached.items)) news = newsCached.items;
-  } catch (_) {}
+  } catch {
+    // Optional cache seed; empty means summary will rely on movers or return 503.
+  }
   try {
     const moversCached = await kvGetJson(env, 'movers:' + market + ':mixed');
     if (moversCached && Array.isArray(moversCached.list)) movers = moversCached.list;
-  } catch (_) {}
+  } catch {
+    // Optional cache seed; empty means summary will rely on news or return 503.
+  }
   // 最低限度：新闻或涨跌榜之一需要有内容，否则不用调 AI。
   if (!news.length && !movers.length) {
     return errorJson('no upstream data (news/movers KV empty)', 503, { market });

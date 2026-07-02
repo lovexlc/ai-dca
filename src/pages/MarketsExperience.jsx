@@ -1034,6 +1034,7 @@ export function MarketsExperience() {
       changePercent: merged.changePercent,
       change: merged.change,
       previousClose: merged.previousClose,
+      historicalPercentile: merged.historicalPercentile,
       open: merged.open,
       high: merged.high,
       low: merged.low,

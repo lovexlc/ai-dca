@@ -72,6 +72,11 @@ binding = "MARKETS_KV"
 id = "604823eb1497431bb8a13f895a0d68e3"
 preview_id = "cad6a160bc0a47f9adbd9f07559374ac"
 
+[[kv_namespaces]]
+binding = "NAV_HISTORY_KV"
+id = "1537be1895404cc4a8286ae2aead9d52"
+preview_id = "76ce4f15374d458fb9c2f2af5e3eedd0"
+
 [[r2_buckets]]
 binding = "MARKETS_R2"
 bucket_name = "ai-dca-markets"
