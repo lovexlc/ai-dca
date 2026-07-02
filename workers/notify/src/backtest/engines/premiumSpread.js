@@ -74,6 +74,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     timeframe = '5m',
     historyByCode = {},
     navHistoryByCode = {},
+    crossBorderCodes,
     dataIssues = {},
     initialEquity = 100000,
     feeRate = 0.00005,  // 0.005% = 万0.5
@@ -90,7 +91,7 @@ export function runPremiumSpreadBacktest(strategyInput = {}, options = {}) {
     ...(strategy.lowCodes || [])
   ]));
 
-  const panel = buildPremiumPanel({ codes, historyByCode, navHistoryByCode });
+  const panel = buildPremiumPanel({ codes, historyByCode, navHistoryByCode, crossBorderCodes });
   const {
     anchorCode,
     anchorCandles,

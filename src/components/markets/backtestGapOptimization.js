@@ -48,10 +48,18 @@ export function buildGapDistributionThresholdGrids({
       ? historyByCode[code].candles
       : (Array.isArray(historyByCode?.[code]) ? historyByCode[code] : []);
     const byDate = new Map();
+    const needsPrevNav = crossBorderCodes.has(code);
     for (const row of rows) {
       const date = String(row?.date || row?.day || row?.datetime || '').slice(0, 10);
       const close = Number(row?.close ?? row?.c ?? row?.price);
-      const nav = navLookupByCode[code]?.(date);
+      let navDate = date;
+      if (needsPrevNav) {
+        navDate = previousIsoDate(date);
+      }
+      let nav = navLookupByCode[code]?.(navDate);
+      if (!(nav > 0) && needsPrevNav) {
+        nav = navLookupByCode[code]?.(date);
+      }
       if (date && close > 0 && nav > 0) {
         byDate.set(date, ((close - nav) / nav) * 100);
       }
