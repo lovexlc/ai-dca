@@ -10,6 +10,9 @@ import { normalizeBacktestCandles } from './candles.js';
 import { buildNavLookup } from './nav.js';
 import { roundTo } from './math.js';
 import { isKnownQdiiFundCode } from '../../qdiiFundCodes.js';
+import { historicalPremiumNavLookupDate } from '../../fundPremiumNav.js';
+
+export { previousIsoDate } from '../../fundPremiumNav.js';
 
 function uniqueCodes(codes = []) {
   return Array.from(new Set(
@@ -17,19 +20,6 @@ function uniqueCodes(codes = []) {
       .map((code) => String(code || '').trim())
       .filter(Boolean)
   ));
-}
-
-/**
- * 返回 ISO 日期的上一个日历日。
- * 用于 QDII/跨境基金：A 股 T 日收盘时，已披露净值对应的是海外市场 T-1 日收盘。
- */
-export function previousIsoDate(isoDate) {
-  const parts = String(isoDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!parts) return '';
-  const [, year, month, day] = parts.map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  date.setUTCDate(date.getUTCDate() - 1);
-  return date.toISOString().slice(0, 10);
 }
 
 function candlesForCode(historyByCode = {}, code) {
@@ -94,15 +84,8 @@ export function buildPremiumPanel({
       }
       const lookup = navLookupByCode[code];
       const needsPrevNav = crossBorderCodes.has(code);
-      let navDate = anchor.date;
-      if (needsPrevNav) {
-        navDate = previousIsoDate(anchor.date);
-      }
-      let nav = lookup?.(navDate);
-      // 跨境基金优先用 T-1 净值；若 T-1 无数据（序列开头或长假后），回退到 T 日净值
-      if (!(nav > 0) && needsPrevNav) {
-        nav = lookup?.(anchor.date);
-      }
+      const navDate = historicalPremiumNavLookupDate(anchor.date, needsPrevNav);
+      const nav = lookup?.(navDate);
       if (!(nav > 0)) {
         hasAllNav = false;
         continue;
@@ -169,14 +152,8 @@ export function classifyPremiumCodes(panel, codes = panel?.codes || []) {
     for (const anchor of panel?.anchorCandles || []) {
       const close = panel?.closeByCode?.[code]?.get(anchor.t)?.close;
       const lookup = panel?.navLookupByCode?.[code];
-      let navDate = anchor.date;
-      if (needsPrevNav) {
-        navDate = previousIsoDate(anchor.date);
-      }
-      let nav = lookup?.(navDate);
-      if (!(nav > 0) && needsPrevNav) {
-        nav = lookup?.(anchor.date);
-      }
+      const navDate = historicalPremiumNavLookupDate(anchor.date, needsPrevNav);
+      const nav = lookup?.(navDate);
       if (close > 0 && nav > 0) {
         samples.push(((close - nav) / nav) * 100);
       }

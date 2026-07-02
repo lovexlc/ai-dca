@@ -437,6 +437,27 @@ function summarizeCostLots(lots) {
   };
 }
 
+function summarizeConfirmedSameDayBuys(transactions = [], todayDate = '', totalShares = 0) {
+  if (!todayDate) return { shares: 0, cost: 0 };
+  let shares = 0;
+  let cost = 0;
+  for (const tx of Array.isArray(transactions) ? transactions : []) {
+    if (tx?.type !== 'BUY' || tx.date !== todayDate || isPendingOtcBuy(tx)) continue;
+    const qty = round(Number(tx.shares) || 0, 4);
+    const price = Number(tx.price) || 0;
+    if (!(qty > 0) || !(price > 0)) continue;
+    shares = round(shares + qty, 4);
+    cost = round(cost + qty * price, 6);
+  }
+  const maxShares = round(Number(totalShares) || 0, 4);
+  if (shares > maxShares && shares > 0 && maxShares > 0) {
+    const scale = maxShares / shares;
+    shares = maxShares;
+    cost = round(cost * scale, 6);
+  }
+  return { shares, cost };
+}
+
 export function aggregateByCode(transactions = [], snapshotsByCode = {}, options = {}) {
   const normalizedTxs = sanitizeTransactions(transactions, { filterInvalid: false });
   const map = new Map();
@@ -580,19 +601,22 @@ export function aggregateByCode(transactions = [], snapshotsByCode = {}, options
     });
     const hasDailyReturn = hasTodayNav && hasDailyReturnInput;
 
-    // 如果今天有买入交易，用买入成本价作为基准计算当日收益
-    const hasTodayBuy = bucket.lastTxDate === todayDate &&
-                        bucket.transactions.some(tx => tx.type === 'BUY' && tx.date === todayDate);
+    const sameDayBuy = summarizeConfirmedSameDayBuys(bucket.transactions, todayDate, totalShares);
 
     let todayProfit = 0;
     let todayReturnRate = 0;
 
     if (totalShares > 0 && hasDailyReturn) {
-      if (hasTodayBuy && avgCost > 0) {
-        // 今天有买入：用买入成本价计算当日收益
-        const costBase = avgCost * totalShares;
-        todayProfit = round(marketValue - costBase, 2);
-        todayReturnRate = round((todayProfit / costBase) * 100, 2);
+      if (sameDayBuy.shares > 0 && sameDayBuy.cost > 0) {
+        // 今日有追加买入时分段计算：老仓按昨日/上一净值基准，新买入份额按成交成本基准。
+        // 不能用全仓平均成本替代今日收益基准，否则会把历史持有收益误报为今日收益。
+        const previousHeldShares = round(Math.max(totalShares - sameDayBuy.shares, 0), 4);
+        const previousHeldValue = previousPrice * previousHeldShares;
+        const previousHeldProfit = previousHeldValue * (changePercent / 100);
+        const sameDayBuyProfit = currentPrice * sameDayBuy.shares - sameDayBuy.cost;
+        todayProfit = round(previousHeldProfit + sameDayBuyProfit, 2);
+        const dailyCostBase = previousHeldValue + sameDayBuy.cost;
+        todayReturnRate = dailyCostBase > 0 ? round((todayProfit / dailyCostBase) * 100, 2) : 0;
       } else {
         // 非今天买入：用昨日净值计算当日收益
         todayProfit = round(previousValue * (changePercent / 100), 2);

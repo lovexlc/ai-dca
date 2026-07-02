@@ -15,6 +15,10 @@ const navRows = Array.from({ length: 12 }, (_, index) => ({
   nav: 1,
 }));
 
+function dateFromDayOffset(offset) {
+  return new Date(Date.UTC(2025, 3, 9 + offset)).toISOString().slice(0, 10);
+}
+
 test('gap distribution grid uses mean/std bounded 8x8 thresholds', () => {
   const result = buildGapDistributionThresholdGrids({
     highCodes: ['H1', 'H2'],
@@ -54,4 +58,28 @@ test('gap distribution grid falls back when samples are insufficient', () => {
   assert.deepEqual(result.sellLowerGrid, fallbackSellLowerGrid);
   assert.deepEqual(result.buyOtherGrid, fallbackBuyOtherGrid);
   assert.equal(result.stats, null);
+});
+
+test('gap distribution uses previous available NAV for QDII premium samples', () => {
+  const sampleDates = Array.from({ length: 12 }, (_, index) => dateFromDayOffset(index * 3));
+  const qdiiNavRows = sampleDates.flatMap((date, index) => [
+    { date: dateFromDayOffset(index * 3 - 1), nav: 1 },
+    { date, nav: 10 },
+  ]);
+  const result = buildGapDistributionThresholdGrids({
+    highCodes: ['513100'],
+    lowCodes: ['L1'],
+    historyByCode: {
+      '513100': sampleDates.map((date) => ({ date, close: 1.05 })),
+      L1: sampleDates.map((date) => ({ date, close: 1 })),
+    },
+    navHistoryByCode: {
+      '513100': qdiiNavRows,
+      L1: sampleDates.map((date) => ({ date, nav: 1 })),
+    },
+    crossBorderCodes: new Set(['513100']),
+  });
+
+  assert.ok(Math.abs(result.stats.mean - 5) < 1e-9);
+  assert.equal(result.stats.sampleCount, 12);
 });

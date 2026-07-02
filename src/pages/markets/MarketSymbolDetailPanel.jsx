@@ -57,6 +57,20 @@ function marketStateLabel(state, marketCode) {
   return marketCode === 'cn' ? '已收盘' : '已收盘';
 }
 
+function isKnownQdiiQuote(row) {
+  const candidates = [
+    row?.symbol,
+    row?.code,
+    row?.fundCode,
+    row?.shortCode,
+    row?.ticker,
+  ];
+  return candidates.some((value) => {
+    const code = normalizeCnFundCode(value);
+    return code && isKnownQdiiFundCode(code);
+  });
+}
+
 export function SymbolDetailPanel({
   row,
   market,
@@ -400,7 +414,7 @@ export function SymbolDetailPanel({
   const currencyLabel = row.currency || (market === 'us' ? 'USD' : 'CNY');
   const stateLabel = marketStateLabel(row.marketState, market);
   const isCnOtcFund = currentIsCnOtcFund;
-  const isQdii = isKnownQdiiFundCode(normalizeCnFundCode(row.symbol));
+  const isQdii = isKnownQdiiQuote(row);
   const xueqiuQuote = getXueqiuQuote(xueqiuFundData);
   const yearExtrema = market === 'cn' && !isCnOtcFund
     ? deriveCandlestickExtrema(dailyCandles, { daysBack: 365 })

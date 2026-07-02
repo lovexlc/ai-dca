@@ -1,5 +1,5 @@
 import { buildNavLookup } from '../../app/backtest/index.js';
-import { previousIsoDate } from '../../app/backtest/core/premiumPanel.js';
+import { historicalPremiumNavLookupDate } from '../../app/fundPremiumNav.js';
 
 const DEFAULT_SELL_LOWER_GRID = Object.freeze([0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.5, 2]);
 const DEFAULT_BUY_OTHER_GRID = Object.freeze([1, 1.5, 2, 2.5, 3, 3.5, 4, 5]);
@@ -52,14 +52,8 @@ export function buildGapDistributionThresholdGrids({
     for (const row of rows) {
       const date = String(row?.date || row?.day || row?.datetime || '').slice(0, 10);
       const close = Number(row?.close ?? row?.c ?? row?.price);
-      let navDate = date;
-      if (needsPrevNav) {
-        navDate = previousIsoDate(date);
-      }
-      let nav = navLookupByCode[code]?.(navDate);
-      if (!(nav > 0) && needsPrevNav) {
-        nav = navLookupByCode[code]?.(date);
-      }
+      const navDate = historicalPremiumNavLookupDate(date, needsPrevNav);
+      const nav = navLookupByCode[code]?.(navDate);
       if (date && close > 0 && nav > 0) {
         byDate.set(date, ((close - nav) / nav) * 100);
       }

@@ -40,7 +40,8 @@ test('unified backtest entry runs premium-spread strategy with one schema', () =
     navHistoryByCode: {
       '513100': [{ date: '2026-06-12', nav: 1 }],
       '159501': [{ date: '2026-06-12', nav: 1 }]
-    }
+    },
+    crossBorderCodes: []
   });
 
   assert.equal(result.ok, true);
@@ -65,7 +66,8 @@ test('premium panel aligns K-line and NAV data once before simulation', () => {
     navHistoryByCode: {
       '513100': [{ date: '2026-06-12', nav: 1 }],
       '159501': [{ date: '2026-06-12', nav: 1 }]
-    }
+    },
+    crossBorderCodes: []
   });
 
   assert.equal(panel.anchorCode, '513100');
@@ -90,7 +92,8 @@ test('premium panel classification uses realized average premium', () => {
     navHistoryByCode: {
       '159513': [{ date: '2026-06-12', nav: 1 }],
       '513100': [{ date: '2026-06-12', nav: 1 }]
-    }
+    },
+    crossBorderCodes: []
   });
 
   const classified = classifyPremiumCodes(panel);
@@ -114,7 +117,8 @@ test('premium panel classification samples each code independently', () => {
     navHistoryByCode: {
       '513100': [{ date: '2026-06-12', nav: 1 }],
       '159501': [{ date: '2026-06-12', nav: 1 }]
-    }
+    },
+    crossBorderCodes: []
   });
 
   const classified = classifyPremiumCodes(panel);
@@ -138,7 +142,8 @@ test('deprecated premium-spread alias delegates to the unified engine', () => {
     navHistoryByCode: {
       '513100': [{ date: '2026-06-12', nav: 1 }],
       '159501': [{ date: '2026-06-12', nav: 1 }]
-    }
+    },
+    crossBorderCodes: []
   });
 
   assert.equal(result.ok, true);
@@ -160,6 +165,7 @@ test('premium-spread auto classifies inverted H/L labels by actual average premi
       '159513': [{ date: '2026-06-12', nav: 1 }],
       '513100': [{ date: '2026-06-12', nav: 1 }]
     },
+    crossBorderCodes: [],
     silent: true
   });
 
@@ -198,6 +204,7 @@ test('premium-spread chooses highest gap low candidate when holding H', () => {
       '159501': [{ date: '2026-06-12', nav: 1 }],
       '159941': [{ date: '2026-06-12', nav: 1 }]
     },
+    crossBorderCodes: [],
     silent: true
   });
 
@@ -232,6 +239,7 @@ test('premium-spread chooses lowest gap high candidate when holding L', () => {
       '513300': [{ date: '2026-06-12', nav: 1 }],
       '159501': [{ date: '2026-06-12', nav: 1 }]
     },
+    crossBorderCodes: [],
     silent: true
   });
 
@@ -266,7 +274,8 @@ test('legacy premium rows adapt to unified backtest inputs', () => {
   }, {
     timeframe: '1d',
     historyByCode,
-    navHistoryByCode
+    navHistoryByCode,
+    crossBorderCodes: []
   });
 
   assert.equal(historyByCode['159513'].length, 12);
@@ -334,6 +343,7 @@ test('unified engine reports quality failure for missing kline data', () => {
       '159509': [{ date: '2026-06-12', nav: 1 }],
       '513100': [{ date: '2026-06-12', nav: 1 }]
     },
+    crossBorderCodes: [],
     dataIssues: {
       kline: [{ code: '159509', timeframe: '5m', reason: 'empty' }]
     }
@@ -342,4 +352,23 @@ test('unified engine reports quality failure for missing kline data', () => {
   assert.equal(result.status, 'failed');
   assert.deepEqual(result.quality.missingKlineCodes, ['159509']);
   assert.match(result.quality.reason, /159509/);
+});
+
+test('premium panel uses previous available NAV for 513100 on 2025-04-09', () => {
+  const t = Math.floor(Date.parse('2025-04-09T15:00:00+08:00') / 1000);
+  const panel = buildPremiumPanel({
+    codes: ['513100'],
+    historyByCode: {
+      '513100': [{ t, c: 1.300 }]
+    },
+    navHistoryByCode: {
+      '513100': [
+        { date: '2025-04-08', nav: 1.2350 },
+        { date: '2025-04-09', nav: 1.3830 }
+      ]
+    }
+  });
+
+  assert.equal(panel.rows.length, 1);
+  assert.equal(panel.rows[0].premiums['513100'], 5.2632);
 });

@@ -1,4 +1,11 @@
 import { normalizeCnFundCode } from './marketDisplayUtils.js';
+import {
+  findNavOnDate as findPremiumNavOnDate,
+  findNavOnOrBefore as findPremiumNavOnOrBefore,
+  historicalPremiumNavLookupDate,
+  normalizeNavHistoryItems,
+  resolveHistoricalPremiumNavItem,
+} from '../../app/fundPremiumNav.js';
 
 // 图表时间范围 tab：Google Finance 风格。每个 range 映射到 worker 接受的 tf。
 // 客户端再按 range 截取 candles 最后一段，保证视觉粒度合理。
@@ -256,30 +263,20 @@ export function navHistoryCacheKey(code, rangeKey, customRange = null) {
 }
 
 export function findNavOnOrBefore(navItems, date) {
-  if (!Array.isArray(navItems) || !date) return null;
-  let found = null;
-  for (const item of navItems) {
-    if (item.date <= date) found = item;
-    else break;
-  }
-  return found;
+  return findPremiumNavOnOrBefore(navItems, date);
 }
 
 function premiumNavLookupDate(candleDate, qdii) {
-  if (!qdii || !candleDate) return candleDate;
-  return shiftShanghaiIsoDate(candleDate, -1);
+  return historicalPremiumNavLookupDate(candleDate, qdii);
 }
 
 export function findNavOnDate(navItems, date) {
-  if (!Array.isArray(navItems) || !date) return null;
-  return navItems.find((item) => item.date === date) || null;
+  return findPremiumNavOnDate(navItems, date);
 }
 
 export function buildCnFundParamCandles(priceCandles, navItems, param, premiumState, rangeKey = '', isQdii = false) {
   if (param === 'price') return priceCandles;
-  let sortedNav = (Array.isArray(navItems) ? navItems : [])
-    .filter((item) => item && /^\d{4}-\d{2}-\d{2}$/.test(String(item.date || '')) && Number(item.nav) > 0)
-    .sort((a, b) => a.date.localeCompare(b.date));
+  let sortedNav = normalizeNavHistoryItems(navItems);
   if (param === 'nav') {
     const latestData = premiumState?.data || null;
     const latestDate = String(latestData?.navDate || '').slice(0, 10);
@@ -316,11 +313,10 @@ export function buildCnFundParamCandles(priceCandles, navItems, param, premiumSt
     const base = (Array.isArray(priceCandles) ? priceCandles : [])
       .map((candle) => {
         const date = shanghaiDateFromEpochSec(candle?.t);
-        const navItem = isQdii
-          ? findNavOnOrBefore(sortedNav, premiumNavLookupDate(date, true))
-          : rangeKey === '1d'
-            ? findNavOnOrBefore(sortedNav, date)
-            : findNavOnDate(sortedNav, date);
+        const navItem = resolveHistoricalPremiumNavItem(sortedNav, date, {
+          isCrossBorder: isQdii,
+          allowPreviousForNonCrossBorder: rangeKey === '1d',
+        });
         const nav = Number(navItem?.nav);
         if (!date || !Number.isFinite(nav) || nav <= 0) return null;
         const iopv = nav;

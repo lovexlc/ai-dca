@@ -296,6 +296,96 @@ test('场外 QDII 净值日期等于今天时仍计算最新披露日收益', ()
   assert.equal(agg.todayReturnRate, 0.25);
 });
 
+test('场外 QDII 今日追加买入不把历史持有收益计入当日收益', () => {
+  const transactions = [
+    {
+      id: 'buy-old-qdii',
+      code: '021000',
+      name: '南方纳斯达克100指数发起(QDII)I',
+      kind: 'qdii',
+      type: 'BUY',
+      date: '2026-05-20',
+      price: 1,
+      shares: 1000
+    },
+    {
+      id: 'buy-today-qdii',
+      code: '021000',
+      name: '南方纳斯达克100指数发起(QDII)I',
+      kind: 'qdii',
+      type: 'BUY',
+      date: '2026-07-02',
+      price: 2,
+      shares: 100
+    }
+  ];
+  const snapshotsByCode = {
+    '021000': {
+      code: '021000',
+      latestNav: 1.9,
+      latestNavDate: '2026-07-01',
+      previousNav: 2,
+      previousNavDate: '2026-06-30',
+      changePercent: -5
+    }
+  };
+
+  const [agg] = aggregateByCode(transactions, snapshotsByCode, { todayDate: '2026-07-02' });
+
+  assert.equal(agg.hasTodayNav, true);
+  assert.equal(agg.unrealizedProfit, 890);
+  // 老仓：1000 * 2 * -5% = -100；今日买入：100 * (1.9 - 2) = -10。
+  assert.equal(agg.todayProfit, -110);
+  assert.equal(agg.todayReturnRate, -5);
+});
+
+test('场内基金今日追加买入按老仓和新买入分段计算当日收益', () => {
+  const transactions = [
+    {
+      id: 'buy-old-exchange',
+      code: '513100',
+      name: '纳指ETF',
+      kind: 'exchange',
+      type: 'BUY',
+      date: '2026-06-01',
+      price: 1,
+      shares: 100
+    },
+    {
+      id: 'buy-today-exchange',
+      code: '513100',
+      name: '纳指ETF',
+      kind: 'exchange',
+      type: 'BUY',
+      date: '2026-07-02',
+      price: 11,
+      shares: 10
+    }
+  ];
+  const snapshotsByCode = {
+    '513100': {
+      code: '513100',
+      price: 12,
+      currentPrice: 12,
+      previousClose: 10,
+      previousNav: 10,
+      changePercent: 20,
+      latestNav: 11,
+      latestNavDate: '2026-07-01',
+      quoteDate: '2026-07-02',
+      asOf: '2026-07-02T07:00:00.000Z'
+    }
+  };
+
+  const [agg] = aggregateByCode(transactions, snapshotsByCode, { todayDate: '2026-07-02' });
+
+  assert.equal(agg.hasTodayNav, true);
+  assert.equal(agg.unrealizedProfit, 1110);
+  // 老仓：100 * 10 * 20% = 200；今日买入：10 * (12 - 11) = 10。
+  assert.equal(agg.todayProfit, 210);
+  assert.equal(agg.todayReturnRate, 18.92);
+});
+
 test('场内 ETF 使用 price/previousClose 计算当日收益', () => {
   const transactions = [{
     id: 'buy-513100',
